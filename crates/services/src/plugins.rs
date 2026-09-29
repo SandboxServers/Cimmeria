@@ -6,6 +6,7 @@
 //! table is an explicit list, never link-time discovery.
 
 use cimmeria_cell_duel::DuelPlugin;
+use cimmeria_cell_org::OrgPlugin;
 use cimmeria_cell_pets::PetsPlugin;
 use cimmeria_cell_world::cell::plugin::{CellPlugin, CellPlugins, PluginError};
 
@@ -13,11 +14,12 @@ use cimmeria_cell_world::cell::plugin::{CellPlugin, CellPlugins, PluginError};
 ///
 /// No two plugins share a hook point yet: pets use the owner-sweep and
 /// arrival stages and the base-destroy hook; duels use the gate-crossing
-/// stage and the disconnect, travel and death hooks. So the order reaches no
-/// wire output today; a plugin that joins a shared point must pin its order
-/// with a test (ADR §3.2).
-pub fn cell_plugin_table() -> [&'static dyn CellPlugin; 2] {
-    [&PetsPlugin, &DuelPlugin]
+/// stage and the disconnect-teardown, travel and death hooks; org uses the
+/// base-disconnect and world-entry hooks. So the order reaches no wire
+/// output today; a plugin that joins a shared point must pin its order with
+/// a test (ADR §3.2).
+pub fn cell_plugin_table() -> [&'static dyn CellPlugin; 3] {
+    [&PetsPlugin, &DuelPlugin, &OrgPlugin]
 }
 
 /// The built and checked plugin registry the orchestrator installs on the
@@ -41,7 +43,7 @@ mod tests {
     #[test]
     fn the_default_table_builds_and_is_complete() {
         let plugins = cell_plugins().expect("the shipped plugin table must build");
-        assert_eq!(plugins.plugin_names(), &["pets", "duel"]);
+        assert_eq!(plugins.plugin_names(), &["pets", "duel", "org"]);
         assert_eq!(
             plugins.cell_method_indices().collect::<Vec<_>>(),
             PLUGIN_OWNED_CELL_METHODS.to_vec()
@@ -59,7 +61,8 @@ mod tests {
             DUEL_FORFEIT, SEND_DUEL_RESPONSE,
         };
 
-        let plugins = CellPlugins::build(&[&PetsPlugin]).expect("pets alone still builds");
+        let plugins =
+            CellPlugins::build(&[&PetsPlugin, &OrgPlugin]).expect("pets and org still build");
         match plugins.check_complete() {
             Err(PluginError::MissingCellMethods { missing }) => {
                 let indices: Vec<u16> = missing.iter().map(|(i, _)| *i).collect();
@@ -70,6 +73,37 @@ mod tests {
                 );
             }
             other => panic!("a table without DuelPlugin must fail check_complete: {other:?}"),
+        }
+    }
+
+    /// #962 test rule, for step 3: a table missing `OrgPlugin` must not
+    /// start. `check_complete` names the twelve OrganizationMember methods
+    /// and `onOrganizationCreation`, so the orchestrator refuses to start the
+    /// cell instead of letting a squad invite answer, a leave or an
+    /// organization name fall through to "Unhandled cell method call".
+    #[test]
+    fn a_table_without_the_org_plugin_fails_the_startup_check() {
+        use cimmeria_wire::cell::cell_methods::organization::{INVITE_RESPONSE, TRANSFER_CASH};
+        use cimmeria_wire::cell::cell_methods::player::constants::ORG_CREATION;
+
+        let plugins =
+            CellPlugins::build(&[&PetsPlugin, &DuelPlugin]).expect("pets and duel still build");
+        match plugins.check_complete() {
+            Err(PluginError::MissingCellMethods { missing }) => {
+                let indices: Vec<u16> = missing.iter().map(|(i, _)| *i).collect();
+                let expected: Vec<u16> = (INVITE_RESPONSE..=TRANSFER_CASH)
+                    .chain(std::iter::once(ORG_CREATION))
+                    .collect();
+                assert_eq!(indices, expected);
+                let names: Vec<&str> = missing.iter().map(|(_, n)| *n).collect();
+                assert_eq!(names.first(), Some(&"organizationInviteResponse"));
+                assert_eq!(names.last(), Some(&"onOrganizationCreation"));
+                assert!(
+                    !names.contains(&"unknown"),
+                    "every org index is a client cell method: {names:?}"
+                );
+            }
+            other => panic!("a table without OrgPlugin must fail check_complete: {other:?}"),
         }
     }
 }

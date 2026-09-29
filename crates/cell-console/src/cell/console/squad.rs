@@ -4,7 +4,7 @@
 //!
 //! The console owns the GM check, the name resolution, the `.squad_info`
 //! listing and the audit row. The squad work itself is
-//! `cimmeria_cell_methods::…::organization::squad::{gm_invite, gm_join}`,
+//! `cimmeria_cell_interactions::cell::organization::squad::{gm_invite, gm_join}`,
 //! beside the ORG-03 handlers whose checks and join fanout it reuses; those
 //! return a `GmOutcome` for the row.
 //!
@@ -17,9 +17,10 @@
 //! `target_account_id` / `target_player_id`, and `squad_id`. Each counts on
 //! `squad_actions_total` under the same `action`.
 
+use cimmeria_cell_world::cell::squad::SquadResources;
 use tokio::sync::mpsc;
 
-use cimmeria_cell_methods::cell::cell_methods::organization::squad::{self, GmOutcome};
+use cimmeria_cell_interactions::cell::organization::squad::{self, GmOutcome};
 use cimmeria_entity::cell_entity::PlayerIdentity;
 use cimmeria_entity::organization::SquadLootType;
 
@@ -202,8 +203,8 @@ async fn info(
         .await;
         return refused("not_ready");
     };
-    let squad_id = space_mgr.squads.squad_of(player_id);
-    let lines = match space_mgr.squads.squad_for(player_id) {
+    let squad_id = space_mgr.resources.squads().squad_of(player_id);
+    let lines = match space_mgr.resources.squads().squad_for(player_id) {
         Some(squad) => info_lines(space_mgr, squad),
         None => vec![format!("{name} is not in a squad.")],
     };

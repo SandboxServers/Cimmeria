@@ -6,7 +6,7 @@
 //! `-cashAmt` for a withdrawal, and never zero (`if cashAmt > 0`). The cell
 //! decodes it into a `CashDir` and forwards it as `OrgCellToBase::TransferCash`
 //! (ORG-01, ORG-API); a zero amount is refused on the cell
-//! (`cimmeria-cell-methods` `organization::forward::zero_cash`).
+//! (`cimmeria-cell-org` `organization::forward::zero_cash`).
 //!
 //! [`handle_transfer_cash`]:
 //!

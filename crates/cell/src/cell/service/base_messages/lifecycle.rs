@@ -240,14 +240,15 @@ pub(super) async fn handle_disconnect_entity(
     // disconnect mid-trade has to notify the surviving partner.
     crate::cell::cell_methods::player::trade::cancel_trade_on_disconnect(entity_id, tx, space_mgr)
         .await;
-    // Squad (ORG-03): leave with `Logout`, promote or disband, and drop the
-    // player's pending invites. Before the teardown, so the remaining
-    // members' `onMemberLeftOrganization` still names the entity. Only this
-    // arm: `DestroyEntity` is also the gate-travel teardown, and a squad
-    // survives a world change.
-    crate::cell::cell_methods::organization::squad::on_disconnect(entity_id, tx, space_mgr).await;
-    // ORG-05: an open registrar offer ends with the session.
-    crate::cell::cell_methods::organization::creation::on_disconnect(entity_id, space_mgr);
+    // Plugin hooks (#962): the org plugin's squad leave (with `Logout`,
+    // promote or disband, drop the player's pending invites; ORG-03) and
+    // the end of an open registrar offer (ORG-05) run here. Before the
+    // teardown, so the remaining members' `onMemberLeftOrganization` still
+    // names the entity. Only this arm: `DestroyEntity` is also the
+    // gate-travel teardown, and a squad survives a world change.
+    space_mgr
+        .fire_entity_hook(EntityHookPoint::AfterDisconnectTradeCancel, entity_id, tx)
+        .await;
     // BM-02: the Black Market session ends with the login; this is where a
     // window the client never answered is logged.
     crate::cell::cell_methods::black_market::on_disconnect(entity_id, space_mgr);

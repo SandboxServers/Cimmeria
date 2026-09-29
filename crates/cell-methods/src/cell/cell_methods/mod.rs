@@ -29,5 +29,8 @@ pub mod minigame;
 #[cfg(test)]
 mod mission_abandoned_tests;
 pub mod missionary;
-pub mod organization;
+// The OrganizationMember interface (8-19) and `onOrganizationCreation` (94)
+// are the org plugin's (`cimmeria-cell-org`, #962 step 3); the half the
+// base-message handler and the console call is
+// `cimmeria_cell_interactions::cell::organization`.
 pub mod player;

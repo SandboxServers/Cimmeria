@@ -7,7 +7,7 @@ last_updated: 2026-09-28
 
 # ADR: feature plugins over `CellEntity` and `SpaceManager` (no ECS)
 
-> **Status:** Accepted (owner decision, 2026-09-28, [#962](https://github.com/SandboxServers/Cimmeria/issues/962)). Pilot: pets (`cimmeria-cell-pets`), measured in §4.1. Step 2: duels (`cimmeria-cell-duel`), §4.2. Amends [services-crate-split.md](services-crate-split.md).
+> **Status:** Accepted (owner decision, 2026-09-28, [#962](https://github.com/SandboxServers/Cimmeria/issues/962)). Pilot: pets (`cimmeria-cell-pets`), measured in §4.1. Step 2: duels (`cimmeria-cell-duel`), §4.2. Step 3: squads and org creation (`cimmeria-cell-org`), §4.3. Amends [services-crate-split.md](services-crate-split.md).
 > **Type:** Architecture decision record
 > **Owner:** Server architecture
 > **Companion docs:** [services-crate-split.md](services-crate-split.md) (the layer split this builds on), [build-system.md](build-system.md) (the build lane and the rebuild measurements), [negative-logging-convention.md](negative-logging-convention.md) (the hook-miss logs), [scaling-analysis.md](scaling-analysis.md) (why the base/cell split buys us nothing), [../protocol/cell-method-dispatch-table.md](../protocol/cell-method-dispatch-table.md) (the method indices plugins register against)
@@ -166,7 +166,7 @@ pub extensions: EntityExtensions,
 - **Storage is a small `Vec`, scanned linearly.** An entity carries zero to a few extensions; an empty map allocates nothing and costs 24 bytes, against 8 for the `Option<Box<PetState>>` it replaces.
 - **The type lives with its lowest reader.** A feature crate that is a leaf owns its types. While lower crates still read a type (combat reads `PetState` for kill credit and the pet AI), it stays where they can see it (`cimmeria-entity`), and only the storage becomes generic. It moves up when its last lower reader does.
 - **Not replicated, not persisted.** Nothing in the map reaches the client or the database on its own; the feature's code sends and saves explicitly, as today (C4).
-- **The same type serves the base and the space.** `ConnectedClientState` gets an `extensions` field when the first base feature migrates. `SpaceManager::resources` (a `SpaceResources`, the same storage) holds space-wide feature state; the duel registry moved there in step 2 (§4.2). A feature reads its resource through an extension trait on the map, called on the field (`mgr.resources.duels()`), so the borrow stays on that one field. It stores the value on first write, so a manager with no feature installed reads an empty one. The pet and squad registries follow when their features move.
+- **The same type serves the base and the space.** `ConnectedClientState` gets an `extensions` field when the first base feature migrates. `SpaceManager::resources` (a `SpaceResources`, the same storage) holds space-wide feature state; the duel registry moved there in step 2 (§4.2), and the squad registry and the pending organization creations in step 3 (§4.3). A feature reads its resource through an extension trait on the map, called on the field (`mgr.resources.duels()`, `mgr.resources.squads()`), so the borrow stays on that one field. It stores the value on first write, so a manager with no feature installed reads an empty one. The pet registry follows when its feature moves.
 
 ### 3.6 Hook seams and missing registrations
 
@@ -191,6 +191,7 @@ core     cimmeria-entity        EntityExtensions on CellEntity (and, as SpaceRes
 systems  cell-combat, cell-content, cell-interactions, cell-methods, cell-console   (unchanged)
 leaves   cimmeria-cell-pets     PetsPlugin: the pet cell methods and the pet hooks
          cimmeria-cell-duel     DuelPlugin: the duel cell methods, the duel tick and the leave hooks
+         cimmeria-cell-org      OrgPlugin: the organization cell methods, the disconnect and world-entry hooks
 root     cimmeria-services      the plugin table; installs it on the CellService
 ```
 
@@ -198,7 +199,7 @@ A leaf depends on core and on the systems it calls; only the composition root (a
 
 The estimates in #962 for the full migration: a crafting edit rebuilds about 53k lines instead of about 135k; mail about 45k, org about 42k, bank or chat about 33k. The envelope and the `entity-types` split add a 15-20% cut on the `wire` and `entity` long tail.
 
-**Pilot measurement.** A pets edit went from 8 rebuilt crates to 7 in the workspace build, and from about 49k to about 14k production lines in the server build; see §4.1. A duels edit went from 13 to 9 crates (three of them test binaries only) and from about 113k to about 10k production lines; see §4.2.
+**Pilot measurement.** A pets edit went from 8 rebuilt crates to 7 in the workspace build, and from about 49k to about 14k production lines in the server build; see §4.1. A duels edit went from 13 to 9 crates (three of them test binaries only) and from about 113k to about 10k production lines; see §4.2. A squad edit went from 8 to 7 crates (one of them a test binary only) and from about 48k to about 14k production lines; see §4.3.
 
 ### 3.8 Migration order
 
@@ -206,7 +207,7 @@ Features move at their campaign's close-out, never while a campaign coordinator 
 
 1. **Pets (pilot).** The three pet cell methods (88-90), the pet tick hooks and the base-destroy hook become `PetsPlugin` in `cimmeria-cell-pets`; `CellEntity::pet` becomes an extension. The pet world half (the registry, spawn, teardown, owner hooks) stays in `cell-world`, and the pet AI and owner abilities stay in `cell-combat`, because combat, content, interactions and the console call them. They follow when those call sites go behind hooks (death credit, owner-path hooks).
 2. **Duels** (`cell-duel`; Social Systems closed 2026-09-27). **Done** (§4.2). The duel cell methods, the duel tick and the disconnect, travel and death paths became `DuelPlugin`, and the registry became a `SpaceManager` resource. The challenge, the end paths, the non-lethal clamp, the harm-gate inputs and the GM commands stay in `cell-world` until combat, the AoI enter path and the base-message handler get seams for them.
-3. **Squads and org creation** (`cell-org`; Organizations closed 2026-09-27). Also removes the console-to-methods edge (`console/squad.rs`).
+3. **Squads and org creation** (`cell-org`; Organizations closed 2026-09-27). **Done** (§4.3). The OrganizationMember cell methods (8-19) and `onOrganizationCreation` (94), the squad disconnect, the registrar offer's end and the squad world-entry replay became `OrgPlugin`; the squad registry and the pending creations became `SpaceManager` resources, and `CellEntity::squad_id` an extension. The console-to-methods edge (`console/squad.rs`) is gone: the half the base-message handler and the console call (the base-forwarded squad invite and kick, the GM squad commands, the registrar reply and create result, and the squad fanout) moved from `cell-methods` down to `cell-interactions`, below both.
 4. **Effect scripts** (`cell-effect-scripts`). A registry move rather than a plugin (the static table at `effects/registry.rs`); changes [abilities-and-effects-system.md](abilities-and-effects-system.md) and the CLAUDE.md line on where scripts go.
 5. **The base features** (`base-crafting` after the crafting close-out CR-13, then bank, mail, chat, vendor with trade, inventory, progression). Brings in `BasePlugin`, `ConnectedClientState::extensions`, the `CellToBaseMsg` envelope, the session teardown moved up to `base`, and the unified `SessionCtx`.
 6. **The console** as a plugin registered by the facade ([services-crate-split.md §6](services-crate-split.md#6-expected-build-impact), "later options").
@@ -290,13 +291,59 @@ An edit to the half that stayed (the registry, the end paths, the clamp) still r
 
 New tests: the facade's `a_table_without_the_duel_plugin_fails_the_startup_check` (the missing-registration test: a table without `DuelPlugin` fails `check_complete` naming 102 and 103, so the orchestrator refuses to start); `DuelPlugin`'s registrations (`cell-duel` `plugin_tests`); the tick stage and the travel and death hooks fired the way core fires them, with and without the plugin (`cell::duel::tests::hooks`); and the hook helpers and death hooks in core (`cell-world` `cell::plugin::tests`).
 
-### 4.3 What gets better
+### 4.3 Step 3: squads and org creation
+
+Squads and organization creation moved at the Organizations close-out (2026-09-27), with the coordinators reassigned on 2026-09-28 and no packets in flight. The step added two hook points, one of them of a new kind, and reused `SpaceManager::resources` and `fire_entity_hook` from step 2.
+
+**New hook points** (`cell::plugin::hook_points`). Each sits on the line the organization's inline call occupied:
+
+- `EntityHookPoint::AfterDisconnectTradeCancel`: in `cimmeria-cell`'s `handle_disconnect_entity` (the base's `DisconnectEntity`), after the open trade is cancelled and before the Black Market session end, the last-position save and `SpaceManager::disconnect_entity`. The squad leave (`Logout`) and then the registrar offer's end run here, in that order, as the two inline calls did. It is not step 2's `BeforeDisconnectTeardown`, which fires later, inside `disconnect_entity`, after the vault and gate scrubs; moving the squad leave there would reorder its `onMemberLeftOrganization` sends against the trade cancel and the Black Market row.
+- `PlayerHookPoint::AfterInitPlayerState`: a new hook kind, `PlayerHook`, which gets the entity id and the character id. It fires in the base-message handler's `InitPlayerState` arm, after `handle_init_player_state`. The squad replay needs the character id the base sent, not the one on the entity: an `onOrganizationLeft` owed to a player in gate transit is keyed by character, and the inline call delivered it even when the cell entity was missing (the ConnectEntity ordering-bug path). An `EntityHook` that read `player_id` off the entity would have dropped it there.
+
+The org plugin needs no tick hook: invites and offers expire lazily when they are next touched, and nothing about a squad runs per tick. It needs no travel, death or AoI hook either: a squad survives a gate trip by design (the registry is keyed by character), the pending creation checks the space lazily, and squad membership is never sent on AoI enter (the frames follow entity presence, ORG-E1 Q6).
+
+What moved, and what did not:
+
+- **Moved to `cimmeria-cell-org`:** the organization router (`cell::organization::dispatch`, cell methods 8-19), the Team and Command forward to the base (`forward`), the squad invite answer (`respond`, CM 8), leave (CM 9), the minimap ping (CM 10), the loot mode (CM 18), the squad disconnect and the world-entry replay, and the creation name check (`on_organization_creation`, CM 94) with the offer's disconnect end: about 1.3k production lines, from `cimmeria-cell-methods`. The organization tests moved with them (about 2.2k lines), including the tests of the base-forwarded invite and kick and the GM backends, which drive the whole flow through the moved handlers. `OrgPlugin` registers the thirteen methods and the two hooks.
+- **Now generic in core:** `SpaceManager::squads` and `SpaceManager::org_creations` are gone. The registries are `SpaceManager` resources, read through `cell::squad::SquadResources` (`mgr.resources.squads()`, `squads_mut()`) and `cell::org_creation::OrgCreationResources` (`org_creations()`, `org_creations_mut()`). `CellEntity::squad_id` is gone: the entity's squad is an `EntitySquad` in `CellEntity::extensions`, read and written through `cell::squad::{entity_squad_id, set_entity_squad_id}`. The router no longer has an organization arm; `handle_disconnect_entity` and the `InitPlayerState` arm fire hook points and no longer name squads. `cimmeria-cell-methods` has no organization module, and `social.rs` no CM 94 arm.
+- **Moved down to `cimmeria-cell-interactions`, and why** (`cell::organization`, re-exported whole by the plugin's modules of the same name, so the moved code keeps its `super::…` paths):
+  - the base-forwarded squad invite and kick (`handle_invite`, `handle_kick`) and the registrar reply and create result (`on_registrar_eligible`, `on_create_result`), because `cimmeria-cell`'s base-message handler calls them for `BaseToCellMsg::Org`. There is no base-message seam until the §3.4 envelope lands (step 5).
+  - the GM `.squad_invite` / `.squad_join` backends (`gm_invite`, `gm_join`), because `cimmeria-cell-console` calls them, and the console is not a plugin until step 6.
+  - the shared pieces the plugin builds on: the squad fanout, feedback lines, telemetry and the actor and reject helpers, the creation replies and telemetry, and `feedback_line`, now `pub`.
+
+  They went to `cell-interactions`, not back to `cell-methods`, because the console must reach the GM backends and sits beside `cell-methods`, above `cell-interactions`. Keeping them in `cell-methods` would have kept the ORG-04 console-to-methods edge; putting them in `cell-world` would have put squad code at the bottom of the cell track. `cell-interactions` already held the registrar click (`interactions::org_registrar`), where the creation flow starts.
+- **Stayed in `cell-world`:** `SquadRegistry` and `PendingCreations` (pure state, no I/O). The console's squad chat relay (`console::chat::squad`) and `.squad_info` read the registry, and the registrar click opens offers in it.
+
+**Rebuild measurement** (2026-09-28, warm dev build through the build lane on the Dev Drive, two runs each, one slot of 8 jobs as in §4.2). The edit adds one `pub const` to the squad loot handler (`squad/loot.rs`), before in `cell-methods` and after in `cell-org`:
+
+| Command | Before: crates rebuilt | Before: time | After: crates rebuilt | After: time |
+|---|---|---|---|---|
+| `cargo build --workspace --all-targets` (CI exclusions) | 8: cell-methods, cell-console, cell, services, admin-api, wireclient, lab-mcp, server | 7.7 s, 7.5 s | 7: cell-org, services, cell (test binary only), admin-api, wireclient, lab-mcp, server | 5.5 s, 4.4 s |
+| `cargo build -p cimmeria-server` | 7: the same without wireclient | 8.8 s, 8.2 s | 5: cell-org, services, admin-api, lab-mcp, server | 4.0 s, 3.9 s |
+
+In production lines, the server build rebuilds about 48k lines before (cell-methods 10.0k, cell-console 15.9k, cell 9.9k, services 2.2k, admin-api 4.5k, lab-mcp 1.2k, server 4.6k; `.rs` files under `src/`, test files excluded) and about 14k after (cell-org 1.3k plus the facade and binaries), a 71% cut. `cimmeria-cell`'s test binary still rebuilds in the workspace build, because its base-message and router tests install `OrgPlugin`.
+
+Removing the console-to-methods edge also shortens every other `cell-methods` edit: one now rebuilds cell-methods, cell, services, admin-api, lab-mcp and server in the server build, and no longer `cell-console` (15.9k lines). The half that moved down to `cell-interactions` pays for that: an edit to the base-forwarded invite, the GM backends or the fanout now rebuilds from `cell-interactions` up (about 9k more lines than from `cell-methods`), until the base-message envelope and the console plugin let it move up into the leaf.
+
+**Tests changed beyond import paths.** Each is listed so a reviewer can check that none weakens a guard:
+
+- About 125 lines, in tests and in production code, rewrote `mgr.squads` and `mgr.org_creations` to `mgr.resources.squads()` / `squads_mut()` and `org_creations()` / `org_creations_mut()`, and `entity.squad_id` to `entity_squad_id(entity)` / `set_entity_squad_id(entity, …)`, with the trait imports. Mechanical, with no assertion changed.
+- `cimmeria-cell`'s base-message organization tests (`base_messages::tests::org`) build their manager with `org_world()`, which installs `OrgPlugin`, because the CM 8 accept, the disconnect and the world-entry replay now run through the plugin.
+- `cimmeria-cell-methods`: `social.rs`' `org_creation_routes_to_the_creation_handler` and `org_creation_rejects_a_forged_length` pinned the static CM 94 arm, which no longer exists. They moved to `cell-org` `plugin_tests` with the same assertions, through the registered handler. `plugin_owned_methods_are_not_routed_here` now also asserts that 8-19 and 94 are plugin-owned, and checks every per-interface router in the crate (being, ability manager, combatant, minigame, gate travel, inventory, mail, missionary, contact list, Black Market), not only the SGWPlayer one, for every plugin-owned index.
+- `cimmeria-cell`'s `plugin_owned_methods_route_to_the_installed_plugin` installs all three plugins and asserts that each of 8-19 and 94 reaches the organization decoder; `a_missing_plugin_logs_unhandled_for_each_plugin_owned_method` also asserts that no `org` or `squad` row was written.
+- `cell-world`'s plugin tests: the plugin-owned list is now 8-19, 88-90, 94 and 102-103 (and must stay ascending), the complete registration registers all three sets, and the missing-method error names the organization methods too.
+- `cimmeria-cell-duel`'s `duel_plugin_registers_exactly_the_duel_methods` assumed the other plugins' methods were the pet commands; it now derives them from the plugin-owned list.
+- `cimmeria-cell-methods`' `social::dispatch` keeps its signature, with `_tx` and `_space_mgr`: CM 94 was the last arm that used them.
+
+New tests: the facade's `a_table_without_the_org_plugin_fails_the_startup_check` (the missing-registration test: a table without `OrgPlugin` fails `check_complete` naming 8-19 and 94, so the orchestrator refuses to start); `OrgPlugin`'s registrations, both hooks with and without the plugin, and CM 18 through its handler (`cell-org` `plugin_tests`); the player hook kind (`cell-world` `cell::plugin::tests::player_hooks_get_the_entity_and_the_character`); and the `cimmeria_cell_org=debug` log row (`cell_org_crate_events_keep_their_index`).
+
+### 4.4 What gets better
 
 - A feature edit rebuilds the feature, the facade and the binaries, not the cell track above the lowest crate it touches.
 - `CellEntity`, `SpaceManager`, the routers and the cell loop stop changing when a feature is added.
 - A missing registration is a startup failure, not a player ticket.
 
-### 4.4 What gets worse, and the mitigations
+### 4.5 What gets worse, and the mitigations
 
 - **Compile-time exhaustiveness.** The static `match` on method indices goes away. The startup assertion (§3.3) and the router's WARN replace it.
 - **Indirection.** A method call is a registry lookup and an `Arc` clone before the handler. That is noise against a `SpaceManager` lookup and an `mpsc` send.

@@ -13,6 +13,8 @@
 //! [37] sets a member's id, so the roster always comes first and a [37] per
 //! other member follows it.
 
+use cimmeria_cell_world::cell::squad::set_entity_squad_id;
+use cimmeria_cell_world::cell::squad::SquadResources;
 use tokio::sync::mpsc;
 
 use crate::cell::messages::CellToBaseMsg;
@@ -33,7 +35,7 @@ use cimmeria_wire::cell::client_methods::organization::{
 };
 
 /// Queue one client method on `entity_id`'s player.
-pub(super) async fn send(
+pub async fn send(
     tx: &mpsc::Sender<CellToBaseMsg>,
     entity_id: u32,
     method_index: u16,
@@ -58,7 +60,7 @@ pub(super) async fn send(
 
 /// The roster snapshot of a player entity, or `None` when it is not a
 /// fully initialised player (no `player_id` or no cached name yet).
-pub(super) fn member_snapshot(entity: &CellEntity) -> Option<SquadMember> {
+pub fn member_snapshot(entity: &CellEntity) -> Option<SquadMember> {
     if !entity.is_player {
         return None;
     }
@@ -82,10 +84,10 @@ fn member_id(space_mgr: &SpaceManager, player_id: i32) -> i32 {
 }
 
 /// Mirror the registry onto `player_id`'s live entity.
-pub(super) fn stamp_squad_id(space_mgr: &mut SpaceManager, player_id: i32, squad_id: Option<i32>) {
+pub fn stamp_squad_id(space_mgr: &mut SpaceManager, player_id: i32, squad_id: Option<i32>) {
     if let Some(eid) = space_mgr.player_entity_by_player_id(player_id) {
         if let Some(entity) = space_mgr.get_entity_mut(eid) {
-            entity.squad_id = squad_id;
+            set_entity_squad_id(entity, squad_id);
         }
     }
 }
@@ -111,7 +113,7 @@ fn roster(squad: &Squad) -> Vec<RosterInfo> {
 ///
 /// `new_member` is 1 on a fresh join and 0 on a world-entry replay; each
 /// [37] carries 1 only for members in `newcomers`.
-pub(super) async fn send_whole_squad(
+pub async fn send_whole_squad(
     tx: &mpsc::Sender<CellToBaseMsg>,
     space_mgr: &SpaceManager,
     squad: &Squad,
@@ -170,7 +172,7 @@ pub(super) async fn send_whole_squad(
 
 /// Announce `newcomers` joining `squad_id`: each newcomer gets the whole
 /// squad; every other online member gets one [37] per newcomer.
-pub(super) async fn announce_join(
+pub async fn announce_join(
     tx: &mpsc::Sender<CellToBaseMsg>,
     space_mgr: &mut SpaceManager,
     squad_id: i32,
@@ -180,7 +182,7 @@ pub(super) async fn announce_join(
     for &pid in newcomers {
         stamp_squad_id(space_mgr, pid, Some(squad_id));
     }
-    let Some(squad) = space_mgr.squads.squad(squad_id).cloned() else {
+    let Some(squad) = space_mgr.resources.squads().squad(squad_id).cloned() else {
         return;
     };
     if created {
@@ -259,7 +261,10 @@ async fn tell_left(
                 reason = reason.as_u8(),
                 "squad member in transit; onOrganizationLeft queued for their world entry"
             );
-            space_mgr.squads.owe_left(player_id, squad_id, reason);
+            space_mgr
+                .resources
+                .squads_mut()
+                .owe_left(player_id, squad_id, reason);
         }
     }
 }
@@ -272,7 +277,7 @@ async fn tell_left(
 ///    every remaining member;
 /// 4. a disband: the member left alone gets [36] `Disbanded`, after the
 ///    [39] that removes the departed row.
-pub(super) async fn announce_departure(
+pub async fn announce_departure(
     tx: &mpsc::Sender<CellToBaseMsg>,
     space_mgr: &mut SpaceManager,
     d: &Departure,
@@ -332,11 +337,7 @@ pub(super) async fn announce_departure(
 }
 
 /// `onSquadLootType` [51] to `entity_id`.
-pub(super) async fn send_loot_type(
-    tx: &mpsc::Sender<CellToBaseMsg>,
-    entity_id: u32,
-    squad: &Squad,
-) {
+pub async fn send_loot_type(tx: &mpsc::Sender<CellToBaseMsg>, entity_id: u32, squad: &Squad) {
     send(
         tx,
         entity_id,

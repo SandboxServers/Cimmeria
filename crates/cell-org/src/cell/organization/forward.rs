@@ -12,13 +12,13 @@
 use crate::cell::messages::{CellToBaseMsg, OrgCellToBase};
 use crate::cell::org_creation::count_org_action;
 use crate::cell::space_manager::SpaceManager;
+
+use super::feedback_line;
 use tokio::sync::mpsc;
 
 use cimmeria_entity::organization::CashDir;
 
 use cimmeria_wire::cell::cell_methods::organization::OrgCellCall;
-use cimmeria_wire::cell::chat::{serialize_on_player_communication, CHAN_FEEDBACK};
-use cimmeria_wire::cell::client_methods::communicator::ON_PLAYER_COMMUNICATION;
 use cimmeria_wire::cell::client_methods::organization::ORG_NOT_AVAILABLE_TEXT;
 use cimmeria_wire::cell::client_methods::player::{
     build_on_error_code, CONDITION_FEEDBACK_INVALID_ENTITY, ERRORCODE_SYSTEM_ABILITY, ON_ERROR_CODE,
@@ -344,15 +344,5 @@ pub(super) async fn send_error_and_line(
             );
             return;
         }
-    }
-}
-
-/// `text` from `SYSTEM` on the feedback channel, as an entity-method call
-/// on `entity_id`'s own player.
-pub(super) fn feedback_line(entity_id: u32, text: &str) -> CellToBaseMsg {
-    CellToBaseMsg::EntityMethodCall {
-        entity_id,
-        method_index: ON_PLAYER_COMMUNICATION,
-        args: serialize_on_player_communication("SYSTEM", 0, CHAN_FEEDBACK, text),
     }
 }

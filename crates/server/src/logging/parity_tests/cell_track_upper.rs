@@ -355,6 +355,43 @@ fn cell_duel_crate_events_keep_their_index() {
     }
 }
 
+/// The organization router, the squad cell methods, the disconnect and
+/// world-entry replay and the creation name check moved from
+/// `cimmeria-cell-methods` to the `cimmeria-cell-org` plugin crate (#962
+/// step 3). Most rows name the `org` / `squad` targets, but the untargeted
+/// `org.create` span takes the new module path, which
+/// `cimmeria_cell_methods=debug` does not prefix-match; the crate's own row
+/// keeps DEBUG reaching SigNoz and INFO `server.log`. The half that stayed
+/// below (`cimmeria_cell_interactions::cell::organization`) keeps its
+/// `cimmeria_cell_interactions=debug` row and no file layer.
+#[test]
+fn cell_org_crate_events_keep_their_index() {
+    let (dispatch, hits) = harness(FILE_LAYERS);
+    let set =
+        |names: &[&str]| -> BTreeSet<String> { names.iter().map(|s| s.to_string()).collect() };
+    for target in [
+        "cimmeria_cell_org::plugin",
+        "cimmeria_cell_org::cell::organization::creation",
+        "cimmeria_cell_org::cell::organization::squad::membership",
+        "cimmeria_cell_interactions::cell::organization::creation",
+    ] {
+        let sinks = |lvl| sinks_for(&dispatch, &hits, target, lvl);
+        assert!(sinks(Level::TRACE).is_empty(), "{target} at TRACE");
+        assert_eq!(
+            sinks(Level::DEBUG),
+            set(&[OTLP_SERVER]),
+            "{target} at DEBUG"
+        );
+        for lvl in [Level::INFO, Level::WARN, Level::ERROR] {
+            assert_eq!(
+                sinks(lvl),
+                set(&[SERVER_LOG, OTLP_SERVER]),
+                "{target} at {lvl}"
+            );
+        }
+    }
+}
+
 /// The client-callable cell methods moved from
 /// `cimmeria_services::cell::cell_methods` to the `cimmeria-cell-methods` crate
 /// (services crate split, wave C5a), which changed the `module_path!()` of
@@ -552,6 +589,10 @@ fn cell_crate_events_keep_their_file_and_index() {
         (
             "cimmeria_cell_duel=debug,",
             "cimmeria_cell_duel::cell::duel::response",
+        ),
+        (
+            "cimmeria_cell_org=debug,",
+            "cimmeria_cell_org::cell::organization::creation",
         ),
         (
             "cimmeria_cell_console=debug,",

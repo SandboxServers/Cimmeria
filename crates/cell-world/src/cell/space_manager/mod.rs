@@ -472,22 +472,16 @@ pub struct SpaceManager {
     /// already holds is the exclusive token. See
     /// `content::event_dispatch::step_activation`.
     pub step_region_replay: StepRegionReplayGuard,
-    /// Every squad on this cell and the pending squad invites (ORG-03,
-    /// D-ORG03). Service-wide, not per space, so a member who gates to
-    /// another world keeps their squad. Keyed by `player_id`, never entity
-    /// id; see `cell::squad`.
-    pub squads: super::squad::SquadRegistry,
-    /// Open organization-registrar offers awaiting a name (ORG-05), keyed
-    /// by `player_id`; see `cell::org_creation`.
-    pub org_creations: super::org_creation::PendingCreations,
     /// Black Market sessions (BM-02): the auctioneer each player was sent
     /// to, keyed by `player_id`; see `cell::black_market`.
     pub black_market: super::black_market::BlackMarketSessions,
     /// Space-wide feature state keyed by type (#962,
     /// `docs/architecture/plugin-architecture.md` §3.5): one value per
     /// feature type, so a feature adds no field here. The duel registry
-    /// (`cell::duel::DuelRegistry`, read through `cell::duel::DuelResources`)
-    /// lives here. Not replicated and not persisted.
+    /// (`cell::duel::DuelRegistry`, read through `cell::duel::DuelResources`),
+    /// the squad registry (`cell::squad::SquadResources`) and the open
+    /// registrar offers (`cell::org_creation::OrgCreationResources`) live
+    /// here. Not replicated and not persisted.
     pub resources: SpaceResources,
     /// The feature plugins' handlers and hooks (#962,
     /// `docs/architecture/plugin-architecture.md`). Empty until the cell
@@ -558,8 +552,6 @@ impl SpaceManager {
             step_region_replay: StepRegionReplayGuard::default(),
             pending_gate_dials: HashMap::new(),
             pending_crossings: HashMap::new(),
-            squads: super::squad::SquadRegistry::new(),
-            org_creations: super::org_creation::PendingCreations::new(),
             black_market: super::black_market::BlackMarketSessions::new(),
             resources: SpaceResources::new(),
             plugins: super::plugin::CellPlugins::empty(),

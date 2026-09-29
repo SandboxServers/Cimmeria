@@ -44,7 +44,7 @@ async fn call(
 }
 
 /// The plugin owns exactly the two duel cell methods: with it alone, the
-/// startup check names only the pet commands as missing.
+/// startup check names only the other plugins' methods as missing.
 #[test]
 fn duel_plugin_registers_exactly_the_duel_methods() {
     let plugins = duel();
@@ -56,10 +56,14 @@ fn duel_plugin_registers_exactly_the_duel_methods() {
     match plugins.check_complete() {
         Err(PluginError::MissingCellMethods { missing }) => assert_eq!(
             missing.iter().map(|(i, _)| *i).collect::<Vec<_>>(),
-            vec![88, 89, 90],
-            "only the pets plugin's methods are missing"
+            cimmeria_cell_world::cell::plugin::PLUGIN_OWNED_CELL_METHODS
+                .iter()
+                .copied()
+                .filter(|i| ![SEND_DUEL_RESPONSE, DUEL_FORFEIT].contains(i))
+                .collect::<Vec<_>>(),
+            "only the other plugins' methods are missing"
         ),
-        other => panic!("expected the pet commands missing: {other:?}"),
+        other => panic!("expected the other plugins' methods missing: {other:?}"),
     }
 }
 

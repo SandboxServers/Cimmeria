@@ -10,8 +10,11 @@
 //!
 //! This module is pure state: no I/O, no clock. Every time-dependent call
 //! takes `now`, so the 5-minute expiry is tested with exact instants. The
-//! handlers live in `cimmeria-cell-methods`
-//! (`cell_methods::organization::creation`).
+//! handlers live in `cimmeria-cell-interactions`
+//! (`cell::organization::creation`: the registrar reply and the create
+//! result) and the org plugin, `cimmeria-cell-org` (cell method 94 and the
+//! disconnect). The offers are a `SpaceManager` resource
+//! ([`OrgCreationResources`]).
 //!
 //! Keyed by `player_id` (entity ids are recycled). An entry ends when:
 //!
@@ -32,6 +35,8 @@ use std::collections::HashMap;
 use std::time::{Duration, Instant};
 
 use cimmeria_entity::organization::OrgType;
+
+use super::space_manager::SpaceResources;
 
 /// How long a registrar's offer stays open.
 pub const PENDING_CREATION_TTL: Duration = Duration::from_secs(5 * 60);
@@ -223,6 +228,33 @@ impl PendingCreations {
 
     pub fn is_empty(&self) -> bool {
         self.by_player.is_empty()
+    }
+}
+
+/// The open offers as a `SpaceManager` resource (#962,
+/// `docs/architecture/plugin-architecture.md` §3.5), read on the
+/// `resources` field (`mgr.resources.org_creations()`), so the borrow stays
+/// on that one field.
+pub trait OrgCreationResources {
+    /// The offers. Empty (and nothing stored) until the first registrar.
+    fn org_creations(&self) -> &PendingCreations;
+    /// The offers, mutably; stored empty on first use.
+    fn org_creations_mut(&mut self) -> &mut PendingCreations;
+}
+
+impl OrgCreationResources for SpaceResources {
+    fn org_creations(&self) -> &PendingCreations {
+        static EMPTY: std::sync::LazyLock<PendingCreations> =
+            std::sync::LazyLock::new(PendingCreations::new);
+        self.get::<PendingCreations>().unwrap_or(&EMPTY)
+    }
+
+    fn org_creations_mut(&mut self) -> &mut PendingCreations {
+        if !self.contains::<PendingCreations>() {
+            self.insert(PendingCreations::new());
+        }
+        self.get_mut::<PendingCreations>()
+            .expect("the pending creations were stored above")
     }
 }
 

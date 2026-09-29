@@ -3,6 +3,7 @@
 //! where the action has one), DEBUG transitions with before/after values,
 //! and WARN on the negative seams.
 
+use cimmeria_cell_world::cell::squad::SquadResources;
 use std::time::Instant;
 
 use crate::test_support::Captured;
@@ -207,7 +208,11 @@ async fn expired_invite_is_logged_as_expired() {
     let past = Instant::now()
         .checked_sub(crate::cell::squad::INVITE_TTL)
         .expect("uptime exceeds the invite TTL");
-    let issued = mgr.squads.invite(1, "Alice", 2, past).unwrap();
+    let issued = mgr
+        .resources
+        .squads_mut()
+        .invite(1, "Alice", 2, past)
+        .unwrap();
     squad::respond(12, issued.request_id, true, &tx, &mut mgr).await;
 
     assert!(squad_event(

@@ -8,6 +8,7 @@
 pub mod gate_travel;
 pub mod interactions;
 pub mod mail;
+pub mod organization;
 pub mod respawn;
 pub mod space_transfer;
 pub mod trade;
@@ -16,5 +17,7 @@ pub mod trade;
 pub(crate) use cimmeria_cell_catalog::cell::spawner;
 pub(crate) use cimmeria_cell_combat::cell::{abilities, combat};
 pub(crate) use cimmeria_cell_content::cell::{content, missions, ring_transport};
-pub(crate) use cimmeria_cell_world::cell::{arrival, playtest_friction, space_manager};
+pub(crate) use cimmeria_cell_world::cell::{
+    arrival, org_creation, playtest_friction, space_manager, squad,
+};
 pub(crate) use cimmeria_wire::cell::{client_methods, kismet, messages};

@@ -1,5 +1,8 @@
 //! CM 18 loot mode (D-ORG16, CAT-M-11) and the world-entry replay.
 
+use cimmeria_cell_world::cell::squad::entity_squad_id;
+use cimmeria_cell_world::cell::squad::set_entity_squad_id;
+use cimmeria_cell_world::cell::squad::SquadResources;
 use cimmeria_entity::organization::{OrgRank, OrgType, SquadLootType, SQUAD_ORG_ID_MIN};
 use cimmeria_wire::cell::client_methods::organization::{
     build_on_member_joined_organization, build_on_organization_joined,
@@ -30,7 +33,7 @@ async fn leader_sets_loot_mode_for_everyone() {
         );
     }
     assert_eq!(
-        mgr.squads.squad(SID).unwrap().loot(),
+        mgr.resources.squads().squad(SID).unwrap().loot(),
         SquadLootType::FreeForAll
     );
 }
@@ -57,7 +60,7 @@ async fn loot_mode_rejects_non_leader() {
         "not_leader"
     ));
     assert_eq!(
-        mgr.squads.squad(SID).unwrap().loot(),
+        mgr.resources.squads().squad(SID).unwrap().loot(),
         SquadLootType::RoundRobin
     );
 }
@@ -87,7 +90,7 @@ async fn loot_mode_rejects_out_of_range() {
         "loot_mode_invalid"
     ));
     assert_eq!(
-        mgr.squads.squad(SID).unwrap().loot(),
+        mgr.resources.squads().squad(SID).unwrap().loot(),
         SquadLootType::FreeForAll
     );
 }
@@ -114,7 +117,7 @@ async fn world_entry_replays_the_squad_to_the_member_only() {
     squad::set_loot_mode(11, 1, &tx, &mut mgr).await;
     drain(&mut rx);
     // The re-created entity has no squad_id.
-    mgr.get_entity_mut(12).unwrap().squad_id = None;
+    set_entity_squad_id(mgr.get_entity_mut(12).unwrap(), None);
 
     squad::on_world_entry(12, 2, &tx, &mut mgr).await;
     let sent = drain(&mut rx);
@@ -148,7 +151,7 @@ async fn world_entry_replays_the_squad_to_the_member_only() {
         ]
     );
     assert_eq!(sent.len(), 4, "the other members are told nothing");
-    assert_eq!(mgr.get_entity(12).unwrap().squad_id, Some(SID));
+    assert_eq!(entity_squad_id(mgr.get_entity(12).unwrap()), Some(SID));
 }
 
 /// A first login (no squad) sends nothing and clears any stale id.
@@ -156,8 +159,8 @@ async fn world_entry_replays_the_squad_to_the_member_only() {
 async fn world_entry_outside_a_squad_sends_nothing() {
     let mut mgr = world(&["Alice"]);
     let (tx, mut rx) = channel();
-    mgr.get_entity_mut(11).unwrap().squad_id = Some(SID);
+    set_entity_squad_id(mgr.get_entity_mut(11).unwrap(), Some(SID));
     squad::on_world_entry(11, 1, &tx, &mut mgr).await;
     assert!(drain(&mut rx).is_empty());
-    assert_eq!(mgr.get_entity(11).unwrap().squad_id, None);
+    assert_eq!(entity_squad_id(mgr.get_entity(11).unwrap()), None);
 }

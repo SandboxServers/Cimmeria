@@ -11,7 +11,7 @@ use crate::cell::org_creation::{count_org_action, Pending};
 
 /// The two actions whose rows the cell writes.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(super) enum Action {
+pub enum Action {
     /// The registrar dialog opened (after the base found the player
     /// eligible), or could not be.
     RegistrarOpen,
@@ -37,7 +37,7 @@ impl Action {
 
 /// One outcome row.
 #[derive(Debug)]
-pub(super) struct Outcome {
+pub struct Outcome {
     pub action: Action,
     pub actor: PlayerIdentity,
     pub entity_id: u32,
@@ -50,7 +50,7 @@ pub(super) struct Outcome {
 }
 
 impl Outcome {
-    pub(super) fn new(action: Action, actor: PlayerIdentity, entity_id: u32) -> Self {
+    pub fn new(action: Action, actor: PlayerIdentity, entity_id: u32) -> Self {
         Self {
             action,
             actor,
@@ -63,11 +63,11 @@ impl Outcome {
         }
     }
 
-    pub(super) fn ok(&self) {
+    pub fn ok(&self) {
         self.emit(None);
     }
 
-    pub(super) fn rejected(&self, reason: &'static str) {
+    pub fn rejected(&self, reason: &'static str) {
         self.emit(Some(reason));
     }
 
@@ -96,7 +96,7 @@ impl Outcome {
 
 /// `pending_creation_created`: a registrar offer was recorded (or an open
 /// one re-pointed, `refreshed`).
-pub(super) fn pending_created(actor: PlayerIdentity, p: &Pending, refreshed: bool) {
+pub fn pending_created(actor: PlayerIdentity, p: &Pending, refreshed: bool) {
     tracing::debug!(
         target: "org",
         event = "pending_creation_created",
@@ -112,7 +112,7 @@ pub(super) fn pending_created(actor: PlayerIdentity, p: &Pending, refreshed: boo
 }
 
 /// `pending_creation_consumed`: the organization was created.
-pub(super) fn pending_consumed(actor: PlayerIdentity, p: &Pending) {
+pub fn pending_consumed(actor: PlayerIdentity, p: &Pending) {
     tracing::debug!(
         target: "org",
         event = "pending_creation_consumed",
@@ -127,7 +127,7 @@ pub(super) fn pending_consumed(actor: PlayerIdentity, p: &Pending) {
 
 /// `pending_creation_expired`: the offer ended without a creation.
 /// `cause` is `ttl`, `space_changed` or `disconnect`.
-pub(super) fn pending_expired(actor: PlayerIdentity, p: &Pending, cause: &'static str) {
+pub fn pending_expired(actor: PlayerIdentity, p: &Pending, cause: &'static str) {
     tracing::debug!(
         target: "org",
         event = "pending_creation_expired",
@@ -143,7 +143,7 @@ pub(super) fn pending_expired(actor: PlayerIdentity, p: &Pending, cause: &'stati
 
 /// `pending_creation_attempt_charged`: a name was refused; one attempt
 /// spent.
-pub(super) fn attempt_charged(actor: PlayerIdentity, attempts_left: Option<u8>, by: &'static str) {
+pub fn attempt_charged(actor: PlayerIdentity, attempts_left: Option<u8>, by: &'static str) {
     tracing::debug!(
         target: "org",
         event = "pending_creation_attempt_charged",

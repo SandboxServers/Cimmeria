@@ -1,14 +1,29 @@
 //! Squad wiring in the base-message loop (ORG-03): the `Org` arm reaches
 //! the squad handlers, `DisconnectEntity` removes the member, and
 //! `InitPlayerState` re-sends the squad. The handlers themselves are tested
-//! in `cimmeria-cell-methods` (`cell_methods::organization::tests`); these
-//! guard only that each arm calls them.
+//! in `cimmeria-cell-org` (`cell::organization::tests`); these guard only
+//! that each arm reaches them. The CM 8 accept, the disconnect and the world
+//! entry go through the org plugin (#962 step 3), so the fixture installs
+//! it, as the orchestrator does.
 
 use super::*;
 use crate::cell::messages::OrgBaseToCell;
 use crate::test_support::make_space_manager;
+use cimmeria_cell_org::OrgPlugin;
+use cimmeria_cell_world::cell::org_creation::OrgCreationResources;
+use cimmeria_cell_world::cell::plugin::CellPlugins;
+use cimmeria_cell_world::cell::squad::entity_squad_id;
+use cimmeria_cell_world::cell::squad::set_entity_squad_id;
+use cimmeria_cell_world::cell::squad::SquadResources;
 
 const SID: i32 = 0x4000_0000;
+
+/// A manager with the org plugin installed.
+fn org_world() -> SpaceManager {
+    let mut mgr = make_space_manager();
+    mgr.install_plugins(CellPlugins::build(&[&OrgPlugin]).expect("OrgPlugin builds"));
+    mgr
+}
 
 fn player(mgr: &mut SpaceManager, entity_id: u32, player_id: i32, name: &str) {
     mgr.create_entity(entity_id, "Agnos", [0.0; 3], [0.0; 3])
@@ -62,13 +77,13 @@ async fn pair(
         args: vec![1, 0, 0, 0, 1],
     };
     handle_base_message(accept, tx, mgr, engine, &[]).await;
-    assert_eq!(mgr.squads.squad_of(2), Some(SID));
+    assert_eq!(mgr.resources.squads().squad_of(2), Some(SID));
     calls(rx);
 }
 
 #[tokio::test]
 async fn squad_kick_from_the_base_reaches_the_squad_handler() {
-    let mut mgr = make_space_manager();
+    let mut mgr = org_world();
     let (tx, mut rx) = mpsc::channel(64);
     let engine = ChainEngine::new();
     pair(&mut mgr, &tx, &mut rx, &engine).await;
@@ -80,20 +95,20 @@ async fn squad_kick_from_the_base_reaches_the_squad_handler() {
     };
     handle_base_message(BaseToCellMsg::Org(kick), &tx, &mut mgr, &engine, &[]).await;
     assert!(calls(&mut rx).contains(&(12, 36)), "Bob is told he left");
-    assert_eq!(mgr.squads.squad_count(), 0);
+    assert_eq!(mgr.resources.squads().squad_count(), 0);
 }
 
 /// `DisconnectEntity` removes the member: Alice is told Bob left and the
 /// squad of one dissolved.
 #[tokio::test]
 async fn disconnect_entity_removes_the_squad_member() {
-    let mut mgr = make_space_manager();
+    let mut mgr = org_world();
     let (tx, mut rx) = mpsc::channel(64);
     let engine = ChainEngine::new();
     pair(&mut mgr, &tx, &mut rx, &engine).await;
     handle_base_message(disconnect_entity_msg(12), &tx, &mut mgr, &engine, &[]).await;
     assert_eq!(calls(&mut rx), [(11, 39), (11, 36)]);
-    assert_eq!(mgr.squads.squad_count(), 0);
+    assert_eq!(mgr.resources.squads().squad_count(), 0);
 }
 
 /// A member who disconnects in gate transit (an aborted transfer, or a
@@ -102,7 +117,7 @@ async fn disconnect_entity_removes_the_squad_member() {
 /// them, found by their last entity id, and Alice's [39] must name that id.
 #[tokio::test]
 async fn disconnect_in_gate_transit_removes_the_squad_member() {
-    let mut mgr = make_space_manager();
+    let mut mgr = org_world();
     let (tx, mut rx) = mpsc::channel(64);
     let engine = ChainEngine::new();
     pair(&mut mgr, &tx, &mut rx, &engine).await;
@@ -135,8 +150,8 @@ async fn disconnect_in_gate_transit_removes_the_squad_member() {
         12i32.to_le_bytes(),
         "[39] names Bob's last entity"
     );
-    assert_eq!(mgr.squads.squad_of(2), None);
-    assert_eq!(mgr.squads.squad_count(), 0);
+    assert_eq!(mgr.resources.squads().squad_of(2), None);
+    assert_eq!(mgr.resources.squads().squad_count(), 0);
 }
 
 /// A `DisconnectEntity` naming a member's old entity id while that member
@@ -145,7 +160,7 @@ async fn disconnect_in_gate_transit_removes_the_squad_member() {
 #[tokio::test]
 async fn disconnect_of_a_stale_entity_id_keeps_the_member_and_warns() {
     let capture = crate::test_support::LogCapture::install();
-    let mut mgr = make_space_manager();
+    let mut mgr = org_world();
     let (tx, mut rx) = mpsc::channel(64);
     let engine = ChainEngine::new();
     pair(&mut mgr, &tx, &mut rx, &engine).await;
@@ -162,7 +177,11 @@ async fn disconnect_of_a_stale_entity_id_keeps_the_member_and_warns() {
     player(&mut mgr, 13, 2, "Bob");
     calls(&mut rx);
     handle_base_message(disconnect_entity_msg(12), &tx, &mut mgr, &engine, &[]).await;
-    assert_eq!(mgr.squads.squad_of(2), Some(SID), "Bob keeps his squad");
+    assert_eq!(
+        mgr.resources.squads().squad_of(2),
+        Some(SID),
+        "Bob keeps his squad"
+    );
     assert!(calls(&mut rx).is_empty());
     let warn = capture
         .find_event(tracing::Level::WARN, "old entity id", "stale_entity_id")
@@ -175,7 +194,7 @@ async fn disconnect_of_a_stale_entity_id_keeps_the_member_and_warns() {
 /// squad, or a member would lose it on every world change.
 #[tokio::test]
 async fn destroy_entity_keeps_the_squad() {
-    let mut mgr = make_space_manager();
+    let mut mgr = org_world();
     let (tx, mut rx) = mpsc::channel(64);
     let engine = ChainEngine::new();
     pair(&mut mgr, &tx, &mut rx, &engine).await;
@@ -187,7 +206,7 @@ async fn destroy_entity_keeps_the_squad() {
         &[],
     )
     .await;
-    assert_eq!(mgr.squads.squad_of(2), Some(SID));
+    assert_eq!(mgr.resources.squads().squad_of(2), Some(SID));
     assert!(!calls(&mut rx).iter().any(|&(_, m)| (35..=39).contains(&m)));
 }
 
@@ -195,11 +214,11 @@ async fn destroy_entity_keeps_the_squad() {
 /// whose entity was re-created, and re-stamps `squad_id`.
 #[tokio::test]
 async fn init_player_state_replays_the_squad() {
-    let mut mgr = make_space_manager();
+    let mut mgr = org_world();
     let (tx, mut rx) = mpsc::channel(256);
     let engine = ChainEngine::new();
     pair(&mut mgr, &tx, &mut rx, &engine).await;
-    mgr.get_entity_mut(12).unwrap().squad_id = None;
+    set_entity_squad_id(mgr.get_entity_mut(12).unwrap(), None);
     handle_base_message(
         BaseToCellMsg::InitPlayerState {
             entity_id: 12,
@@ -232,7 +251,7 @@ async fn init_player_state_replays_the_squad() {
         .filter(|&(_, m)| (35..=51).contains(&m))
         .collect();
     assert_eq!(squad_calls, [(12, 35), (12, 38), (12, 37), (12, 51)]);
-    assert_eq!(mgr.get_entity(12).unwrap().squad_id, Some(SID));
+    assert_eq!(entity_squad_id(mgr.get_entity(12).unwrap()), Some(SID));
 }
 
 /// ORG-06's Bank hook: `OrgMembershipEnded` reaches the `Org` arm, which
@@ -242,7 +261,7 @@ async fn init_player_state_replays_the_squad() {
 async fn membership_ended_reaches_the_org_arm() {
     use cimmeria_entity::organization::OrgLeaveReason;
     let capture = crate::test_support::LogCapture::install();
-    let mut mgr = make_space_manager();
+    let mut mgr = org_world();
     let (tx, mut rx) = mpsc::channel(64);
     player(&mut mgr, 11, 1, "Alice");
     let ended = OrgBaseToCell::OrgMembershipEnded {
@@ -283,7 +302,7 @@ async fn membership_ended_reaches_the_org_arm() {
 async fn creation_arms_reach_the_creation_handlers() {
     use cimmeria_entity::organization::OrgType;
 
-    let mut mgr = make_space_manager();
+    let mut mgr = org_world();
     let (tx, mut rx) = mpsc::channel(64);
     let engine = ChainEngine::new();
     player(&mut mgr, 11, 1, "Alice");
@@ -298,7 +317,7 @@ async fn creation_arms_reach_the_creation_handlers() {
 
     handle_base_message(eligible(OrgType::Team), &tx, &mut mgr, &engine, &[]).await;
     assert_eq!(calls(&mut rx), [(11, 135)]);
-    assert!(mgr.org_creations.get(1).is_some());
+    assert!(mgr.resources.org_creations().get(1).is_some());
 
     let created = OrgBaseToCell::CreateResult {
         player_id: 1,
@@ -308,12 +327,15 @@ async fn creation_arms_reach_the_creation_handlers() {
     };
     handle_base_message(BaseToCellMsg::Org(created), &tx, &mut mgr, &engine, &[]).await;
     assert!(
-        mgr.org_creations.get(1).is_none(),
+        mgr.resources.org_creations().get(1).is_none(),
         "a creation closes the offer"
     );
 
     handle_base_message(eligible(OrgType::Command), &tx, &mut mgr, &engine, &[]).await;
     calls(&mut rx);
     handle_base_message(disconnect_entity_msg(11), &tx, &mut mgr, &engine, &[]).await;
-    assert!(mgr.org_creations.is_empty(), "logging out drops the offer");
+    assert!(
+        mgr.resources.org_creations().is_empty(),
+        "logging out drops the offer"
+    );
 }

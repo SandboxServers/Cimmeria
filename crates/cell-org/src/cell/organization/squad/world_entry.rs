@@ -1,5 +1,7 @@
 //! Re-sending the squad on world entry.
 
+use cimmeria_cell_world::cell::squad::set_entity_squad_id;
+use cimmeria_cell_world::cell::squad::SquadResources;
 use tokio::sync::mpsc;
 
 use crate::cell::messages::CellToBaseMsg;
@@ -34,7 +36,7 @@ pub async fn on_world_entry(
     tx: &mpsc::Sender<CellToBaseMsg>,
     space_mgr: &mut SpaceManager,
 ) {
-    if let Some((squad_id, reason)) = space_mgr.squads.take_owed_left(player_id) {
+    if let Some((squad_id, reason)) = space_mgr.resources.squads_mut().take_owed_left(player_id) {
         fanout::send(
             tx,
             entity_id,
@@ -43,14 +45,17 @@ pub async fn on_world_entry(
         )
         .await;
     }
-    let squad = space_mgr.squads.squad_for(player_id).cloned();
+    let squad = space_mgr.resources.squads().squad_for(player_id).cloned();
     if let Some(entity) = space_mgr.get_entity_mut(entity_id) {
-        entity.squad_id = squad.as_ref().map(|s| s.id());
+        set_entity_squad_id(entity, squad.as_ref().map(|s| s.id()));
     }
     let Some(squad) = squad else {
         return;
     };
-    space_mgr.squads.note_entity(player_id, entity_id);
+    space_mgr
+        .resources
+        .squads_mut()
+        .note_entity(player_id, entity_id);
     tracing::debug!(
         target: "squad",
         event = "squad.world_entry_replay",

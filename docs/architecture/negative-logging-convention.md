@@ -428,7 +428,7 @@ logged on the cell, the rest on the base. `no_permission` adds `perm`
 `error`. The `LogCapture` guards, one per reason: `base-session`
 `org_cash/tests/{refusals,transfers,race}.rs`, `base-world-entry`
 `tests_dispatch_arms/org_arms.rs` (`db_unavailable`, `actor_mismatch` at
-the arm), and `cell-methods` `organization/tests/router.rs`
+the arm), and `cell-org` `organization/tests/router.rs`
 (`zero_amount`).
 
 ## Team vault expansion refusals (BV-09)

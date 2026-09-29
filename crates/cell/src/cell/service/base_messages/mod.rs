@@ -26,6 +26,7 @@
 
 use tokio::sync::mpsc;
 
+use cimmeria_cell_world::cell::plugin::PlayerHookPoint;
 use cimmeria_content_engine::chain::ChainEngine;
 
 use super::super::messages::{BaseToCellMsg, CellToBaseMsg};
@@ -248,12 +249,20 @@ pub(super) async fn handle_base_message(
                 engine,
             )
             .await;
-            // A gate arrival re-creates the player: re-send their squad
-            // (ORG-03). After the handler above, which stamps `player_id`.
-            super::super::cell_methods::organization::squad::on_world_entry(
-                entity_id, player_id, tx, space_mgr,
-            )
-            .await;
+            // Plugin hooks (#962): a gate arrival re-creates the player, and
+            // the org plugin re-sends their squad here (ORG-03). After the
+            // handler above, which stamps `player_id`.
+            space_mgr
+                .plugins()
+                .clone()
+                .run_player_hook(
+                    PlayerHookPoint::AfterInitPlayerState,
+                    entity_id,
+                    player_id,
+                    tx,
+                    space_mgr,
+                )
+                .await;
         }
 
         BaseToCellMsg::AdvanceRingDestination {

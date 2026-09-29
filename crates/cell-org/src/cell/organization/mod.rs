@@ -1,5 +1,10 @@
 //! OrganizationMember interface exposed CellMethods (indices 8–19): the
-//! router.
+//! router, and the org plugin's handlers (#962 step 3; `OrgPlugin`
+//! registers 8-19 here and 94 in [`creation`]).
+//!
+//! The organization half the lower crates call stays in
+//! `cimmeria_cell_interactions::cell::organization` and is re-exported here
+//! whole; [`squad`] and [`creation`] extend its modules of the same name.
 //!
 //! Every method is decoded in full by
 //! [`decode_org_cell_method`](cimmeria_wire::cell::cell_methods::organization::decode_org_cell_method)
@@ -43,13 +48,17 @@ pub use cimmeria_wire::cell::cell_methods::organization::{
     SET_RANK_NAME, SET_RANK_PERMISSIONS, SQUAD_SET_LOOT_MODE, STRIKE_TEAM_RESPONSE, TRANSFER_CASH,
 };
 
+pub use cimmeria_cell_interactions::cell::organization::*;
+
 pub mod creation;
 mod forward;
 pub mod squad;
 
 #[cfg(test)]
-mod tests;
+pub(crate) mod tests;
 
+/// Route one OrganizationMember call (8-19). `false` for any other index;
+/// the plugin registers only 8-19 for it.
 pub async fn dispatch(
     entity_id: u32,
     method_index: u16,

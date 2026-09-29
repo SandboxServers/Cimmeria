@@ -11,6 +11,7 @@
 //! have seen it, and a line per click would flood the chat window of a
 //! player holding the ping key.
 
+use cimmeria_cell_world::cell::squad::SquadResources;
 use std::time::Instant;
 
 use tokio::sync::mpsc;
@@ -42,7 +43,7 @@ pub async fn broadcast_minimap_ping(
 
 /// [`broadcast_minimap_ping`] on an explicit clock, so the rate limit can
 /// be stepped exactly.
-pub(in crate::cell::cell_methods::organization) async fn ping_at(
+pub(in crate::cell::organization) async fn ping_at(
     entity_id: u32,
     org_id: i32,
     location: [f32; 3],
@@ -57,7 +58,11 @@ pub(in crate::cell::cell_methods::organization) async fn ping_at(
         out.rejected(Reason::NotReady);
         return reject(tx, entity_id, 0, feedback::NOT_READY).await;
     };
-    match space_mgr.squads.check_ping(player_id, org_id, now) {
+    match space_mgr
+        .resources
+        .squads_mut()
+        .check_ping(player_id, org_id, now)
+    {
         Ok(()) => {
             tracing::debug!(
                 target: "squad",

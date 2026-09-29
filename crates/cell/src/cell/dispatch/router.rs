@@ -84,10 +84,9 @@ pub async fn dispatch_cell_method(
     if cell_methods::combatant::dispatch(entity_id, method_index, args, tx, space_mgr).await {
         return;
     }
-    // OrganizationMember interface (8–19)
-    if cell_methods::organization::dispatch(entity_id, method_index, args, tx, space_mgr).await {
-        return;
-    }
+    // OrganizationMember interface (8–19): the org plugin's
+    // (`cimmeria-cell-org`, #962 step 3), answered by the plugin lookup
+    // above.
     // MinigamePlayer interface (20–34)
     if cell_methods::minigame::dispatch(entity_id, method_index, args, tx, space_mgr).await {
         return;

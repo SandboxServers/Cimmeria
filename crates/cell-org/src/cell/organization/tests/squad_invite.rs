@@ -1,6 +1,8 @@
 //! Squad invites: issuing, the join fanout, and the CAT-M-18 response
 //! guards.
 
+use cimmeria_cell_world::cell::squad::entity_squad_id;
+use cimmeria_cell_world::cell::squad::SquadResources;
 use std::time::Instant;
 
 use cimmeria_entity::organization::{OrgRank, OrgType, SquadLootType, SQUAD_ORG_ID_MIN};
@@ -44,7 +46,11 @@ async fn invite_sends_34_to_the_target_and_confirms_to_the_inviter() {
         [(28, line("You invited Bob to your squad."))]
     );
     assert_eq!(sent.len(), 2);
-    assert_eq!(mgr.squads.squad_count(), 0, "nobody has accepted yet");
+    assert_eq!(
+        mgr.resources.squads().squad_count(),
+        0,
+        "nobody has accepted yet"
+    );
 }
 
 /// The first accept creates the squad, and both founders get the whole
@@ -95,8 +101,8 @@ async fn first_accept_sends_both_founders_the_whole_squad() {
         ]
     );
     assert_eq!(sent.len(), 8);
-    assert_eq!(mgr.get_entity(11).unwrap().squad_id, Some(SID));
-    assert_eq!(mgr.get_entity(12).unwrap().squad_id, Some(SID));
+    assert_eq!(entity_squad_id(mgr.get_entity(11).unwrap()), Some(SID));
+    assert_eq!(entity_squad_id(mgr.get_entity(12).unwrap()), Some(SID));
 }
 
 /// A third member: the newcomer gets the whole squad, with a [37] per
@@ -159,8 +165,8 @@ async fn decline_tells_the_inviter() {
         sent,
         [(11, 28, line("Bob declined your squad invitation."))]
     );
-    assert_eq!(mgr.squads.pending_for(2, Instant::now()), 0);
-    assert_eq!(mgr.squads.squad_count(), 0);
+    assert_eq!(mgr.resources.squads().pending_for(2, Instant::now()), 0);
+    assert_eq!(mgr.resources.squads().squad_count(), 0);
 }
 
 /// Each target-resolution refusal: feedback, no [34], no invite stored.
@@ -223,7 +229,7 @@ async fn invite_refuses_unresolvable_targets() {
     }
     let now = Instant::now();
     for p in 1..=4 {
-        assert!(mgr.squads.pending_requests(p, now).is_empty());
+        assert!(mgr.resources.squads().pending_requests(p, now).is_empty());
     }
 }
 
@@ -273,12 +279,18 @@ async fn invite_response_rejects_foreign_request_id() {
         "squad.invite_response",
         "invite_foreign"
     ));
-    assert_eq!(mgr.squads.squad_count(), 0);
-    assert_eq!(mgr.squads.pending_requests(3, Instant::now()), [cara_req]);
-    assert_eq!(mgr.squads.pending_requests(2, Instant::now()), [bob_req]);
+    assert_eq!(mgr.resources.squads().squad_count(), 0);
+    assert_eq!(
+        mgr.resources.squads().pending_requests(3, Instant::now()),
+        [cara_req]
+    );
+    assert_eq!(
+        mgr.resources.squads().pending_requests(2, Instant::now()),
+        [bob_req]
+    );
 
     squad::respond(13, cara_req, true, &tx, &mut mgr).await;
-    assert_eq!(mgr.squads.squad_of(3), Some(SID));
+    assert_eq!(mgr.resources.squads().squad_of(3), Some(SID));
 }
 
 /// CAT-M-18: an invite is single-use. Decline, then accept the same id:
@@ -299,7 +311,7 @@ async fn invite_response_rejects_replay() {
         to(&drain(&mut rx), 12),
         rejection(0, "That invitation is no longer valid.")
     );
-    assert_eq!(mgr.squads.squad_of(2), None);
+    assert_eq!(mgr.resources.squads().squad_of(2), None);
 
     // Squad of three so Bob's leave does not dissolve it.
     invite_accept(&mut mgr, &tx, 11, 13).await;
@@ -311,8 +323,11 @@ async fn invite_response_rejects_replay() {
         to(&drain(&mut rx), 12),
         rejection(0, "That invitation is no longer valid.")
     );
-    assert_eq!(mgr.squads.squad_of(2), None);
-    assert_eq!(mgr.squads.squad(SID).unwrap().members().len(), 2);
+    assert_eq!(mgr.resources.squads().squad_of(2), None);
+    assert_eq!(
+        mgr.resources.squads().squad(SID).unwrap().members().len(),
+        2
+    );
     let unknown = capture
         .all()
         .iter()
@@ -351,9 +366,12 @@ async fn squad_accept_rejects_when_full() {
         "squad.invite_response",
         "squad_full"
     ));
-    assert_eq!(mgr.squads.squad(SID).unwrap().members().len(), 6);
-    assert_eq!(mgr.squads.squad_of(7), None);
-    assert_eq!(mgr.get_entity(17).unwrap().squad_id, None);
+    assert_eq!(
+        mgr.resources.squads().squad(SID).unwrap().members().len(),
+        6
+    );
+    assert_eq!(mgr.resources.squads().squad_of(7), None);
+    assert_eq!(entity_squad_id(mgr.get_entity(17).unwrap()), None);
 }
 
 /// The inviter logged off before the accept: their invites went with them.
@@ -369,5 +387,5 @@ async fn accept_after_the_inviter_disconnected_is_refused() {
         to(&drain(&mut rx), 12),
         rejection(0, "That invitation is no longer valid.")
     );
-    assert_eq!(mgr.squads.squad_count(), 0);
+    assert_eq!(mgr.resources.squads().squad_count(), 0);
 }

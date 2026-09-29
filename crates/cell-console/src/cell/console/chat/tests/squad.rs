@@ -8,6 +8,7 @@ use super::super::*;
 use super::decode_on_player_communication;
 use crate::cell::squad::SquadMember;
 use crate::test_support::{Captured, LogCapture, LogCaptureGuard};
+use cimmeria_cell_world::cell::squad::SquadResources;
 use tracing::Level;
 
 /// Two spaces, Agnos and Castle, both loaded.
@@ -58,11 +59,15 @@ fn world() -> (SpaceManager, i32) {
     }
     let (alice, bob, cara) = (member(&mgr, 1), member(&mgr, 2), member(&mgr, 3));
     let sid = mgr
-        .squads
+        .resources
+        .squads_mut()
         .force_join(bob, alice.clone())
         .expect("join")
         .squad_id;
-    mgr.squads.force_join(cara, alice).expect("join");
+    mgr.resources
+        .squads_mut()
+        .force_join(cara, alice)
+        .expect("join");
     (mgr, sid)
 }
 

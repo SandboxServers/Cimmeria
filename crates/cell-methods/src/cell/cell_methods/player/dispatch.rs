@@ -110,12 +110,16 @@ mod tests {
     }
 
     /// The pet commands (88..=90) left this dispatcher for the pets plugin
-    /// (`cimmeria-cell-pets`, #962). The cell router asks the plugin
-    /// registry first, so an arm re-added here would never run while the
-    /// plugin is installed, and would silently take the calls if it were
-    /// not, hiding the missing plugin that `CellPlugins::check_complete`
-    /// reports. Every pet index must fall through to `false`. (The plugin
-    /// side of the routing is pinned in `cimmeria-cell`'s router tests.)
+    /// (`cimmeria-cell-pets`, #962), the duel methods (102-103) for the duel
+    /// plugin, and the OrganizationMember interface (8-19) and
+    /// `onOrganizationCreation` (94) for the org plugin. The cell router asks
+    /// the plugin registry first, so an arm re-added to any static router
+    /// would never run while the plugin is installed, and would silently
+    /// take the calls if it were not, hiding the missing plugin that
+    /// `CellPlugins::check_complete` reports. Every plugin-owned index must
+    /// fall through to `false` in this dispatcher and in every other
+    /// per-interface router in this crate. (The plugin side of the routing
+    /// is pinned in `cimmeria-cell`'s router tests.)
     #[tokio::test]
     async fn plugin_owned_methods_are_not_routed_here() {
         let mut mgr = make_space_manager_with_player(1);
@@ -131,20 +135,78 @@ mod tests {
             PET_CHANGE_STANCE,
             SEND_DUEL_RESPONSE,
             DUEL_FORFEIT,
+            ORG_CREATION,
         ]
         .iter()
-        {
+        .chain(
+            &(cimmeria_wire::cell::cell_methods::organization::INVITE_RESPONSE
+                ..=cimmeria_wire::cell::cell_methods::organization::TRANSFER_CASH)
+                .collect::<Vec<u16>>(),
+        ) {
             assert!(
                 owned.contains(&plugin_method),
                 "{plugin_method} must be plugin-owned"
             );
         }
+        use crate::cell::cell_methods as cm;
         for &index in owned {
-            let handled = dispatch(1, index, &[0; 12], &tx, &mut mgr, &engine).await;
+            let args = [0u8; 12];
+            let handled = dispatch(1, index, &args, &tx, &mut mgr, &engine).await;
             assert!(
                 !handled,
                 "method {index} must not be handled by the static SGWPlayer router: a plugin owns it",
             );
+            // The other per-interface routers, in `dispatch_cell_method`'s
+            // order (the OrganizationMember router is gone: the org plugin
+            // owns 8-19).
+            let others = [
+                (
+                    "being",
+                    cm::being::dispatch(1, index, &args, &tx, &mut mgr).await,
+                ),
+                (
+                    "ability_manager",
+                    cm::ability_manager::dispatch(1, index, &args, &tx, &mut mgr).await,
+                ),
+                (
+                    "combatant",
+                    cm::combatant::dispatch(1, index, &args, &tx, &mut mgr).await,
+                ),
+                (
+                    "minigame",
+                    cm::minigame::dispatch(1, index, &args, &tx, &mut mgr).await,
+                ),
+                (
+                    "gate_travel",
+                    cm::gate_travel::dispatch(1, index, &args, &tx, &mut mgr, &engine).await,
+                ),
+                (
+                    "inventory",
+                    cm::inventory::dispatch(1, index, &args, &tx, &mut mgr, &engine).await,
+                ),
+                (
+                    "mail",
+                    cm::mail::dispatch(1, index, &args, &tx, &mut mgr).await,
+                ),
+                (
+                    "missionary",
+                    cm::missionary::dispatch(1, index, &args, &tx, &mut mgr, &engine).await,
+                ),
+                (
+                    "contact_list",
+                    cm::contact_list::dispatch(1, index, &args, &tx, &mut mgr).await,
+                ),
+                (
+                    "black_market",
+                    cm::black_market::dispatch(1, index, &args, &tx, &mut mgr).await,
+                ),
+            ];
+            for (router, handled) in others {
+                assert!(
+                    !handled,
+                    "method {index} must not be handled by the static {router} router: a plugin owns it",
+                );
+            }
         }
         assert!(
             rx.try_recv().is_err(),

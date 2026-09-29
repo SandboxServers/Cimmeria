@@ -12,6 +12,7 @@
 //!   handshake and the leader check, never the membership rules
 //!   (`SquadRegistry::force_join`).
 
+use cimmeria_cell_world::cell::squad::SquadResources;
 use tokio::sync::mpsc;
 
 use crate::cell::messages::CellToBaseMsg;
@@ -48,7 +49,7 @@ pub async fn gm_invite(
     space_mgr: &mut SpaceManager,
 ) -> GmOutcome {
     let result = invite::issue(gm_player_id, gm_entity, target_name, tx, space_mgr).await;
-    GmOutcome::new(space_mgr.squads.squad_of(gm_player_id), result)
+    GmOutcome::new(space_mgr.resources.squads().squad_of(gm_player_id), result)
 }
 
 /// `.squad_join`: the GM at `gm_entity` joins the squad of the player at
@@ -69,12 +70,18 @@ pub async fn gm_join(
         reject(tx, gm_entity, 0, feedback::NOT_READY).await;
         return GmOutcome::new(None, Err(Reason::NotAPlayer));
     };
-    let host_squad = space_mgr.squads.squad_of(host.player_id);
+    let host_squad = space_mgr.resources.squads().squad_of(host.player_id);
     let (joiner_pid, host_pid, host_name) = (joiner.player_id, host.player_id, host.name.clone());
-    match space_mgr.squads.force_join(joiner, host) {
+    match space_mgr.resources.squads_mut().force_join(joiner, host) {
         Ok(joined) => {
-            space_mgr.squads.note_entity(joiner_pid, gm_entity);
-            space_mgr.squads.note_entity(host_pid, host_entity);
+            space_mgr
+                .resources
+                .squads_mut()
+                .note_entity(joiner_pid, gm_entity);
+            space_mgr
+                .resources
+                .squads_mut()
+                .note_entity(host_pid, host_entity);
             let newcomers: &[i32] = if joined.created {
                 &[host_pid, joiner_pid]
             } else {

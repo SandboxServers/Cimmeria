@@ -14,6 +14,7 @@
 //! Identities are `Option`s from the cell's resolver: an unresolvable one
 //! is omitted from the row, never written as 0.
 
+use cimmeria_cell_world::cell::squad::SquadResources;
 use cimmeria_entity::cell_entity::PlayerIdentity;
 use cimmeria_entity::organization::{OrgLeaveReason, OrgRank, SquadLootType};
 
@@ -25,7 +26,7 @@ use crate::cell::squad::{
 
 /// A squad action: one span and one outcome row each.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(super) enum Action {
+pub enum Action {
     Invite,
     InviteResponse,
     Leave,
@@ -65,7 +66,7 @@ impl Action {
 /// `ignored` (the target ignores the actor) is reserved: the cell has no
 /// ignore list yet.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(super) enum Reason {
+pub enum Reason {
     TargetAmbiguous,
     TargetInTransition,
     TargetNotFound,
@@ -93,7 +94,7 @@ pub(super) enum Reason {
 }
 
 impl Reason {
-    pub(super) fn as_str(self) -> &'static str {
+    pub fn as_str(self) -> &'static str {
         match self {
             Reason::TargetAmbiguous => "target_ambiguous",
             Reason::TargetInTransition => "target_in_transition",
@@ -163,7 +164,7 @@ impl From<ResponseReject> for Reason {
 impl Reason {
     /// A kick refusal; `in_a_squad` splits "names a squad you are not in"
     /// into `wrong_squad` (you have another) and `not_in_squad` (none).
-    pub(super) fn from_kick(r: KickReject, in_a_squad: bool) -> Self {
+    pub fn from_kick(r: KickReject, in_a_squad: bool) -> Self {
         match r {
             KickReject::NotInThatSquad if in_a_squad => Reason::WrongSquad,
             KickReject::NotInThatSquad => Reason::NotInSquad,
@@ -206,7 +207,7 @@ impl From<LootReject> for Reason {
 }
 
 /// `EReasons` as a log label.
-pub(super) fn leave_reason(r: OrgLeaveReason) -> &'static str {
+pub fn leave_reason(r: OrgLeaveReason) -> &'static str {
     match r {
         OrgLeaveReason::Requested => "requested",
         OrgLeaveReason::Kicked => "kicked",
@@ -224,14 +225,14 @@ fn loot_label(l: SquadLootType) -> &'static str {
 
 /// The identity of the player behind `entity_id` (both halves `None` when
 /// it does not resolve).
-pub(super) fn of_entity(space_mgr: &SpaceManager, entity_id: u32) -> PlayerIdentity {
+pub fn of_entity(space_mgr: &SpaceManager, entity_id: u32) -> PlayerIdentity {
     space_mgr.player_identity(entity_id)
 }
 
 /// The identity of character `player_id`: resolved through their live
 /// entity for the account half, and the `player_id` itself even when they
 /// are offline or in transit.
-pub(super) fn of_player(space_mgr: &SpaceManager, player_id: i32) -> PlayerIdentity {
+pub fn of_player(space_mgr: &SpaceManager, player_id: i32) -> PlayerIdentity {
     let live = space_mgr
         .player_entity_by_player_id(player_id)
         .map_or(PlayerIdentity::UNKNOWN, |eid| {
@@ -245,7 +246,7 @@ pub(super) fn of_player(space_mgr: &SpaceManager, player_id: i32) -> PlayerIdent
 
 /// The identity a base-forwarded call claims, before the cell confirms it:
 /// the `player_id` from the base session, no account half.
-pub(super) fn claimed(player_id: i32) -> PlayerIdentity {
+pub fn claimed(player_id: i32) -> PlayerIdentity {
     PlayerIdentity {
         account_id: None,
         player_id: Some(player_id),
@@ -253,7 +254,7 @@ pub(super) fn claimed(player_id: i32) -> PlayerIdentity {
 }
 
 /// One outcome row, before it is emitted.
-pub(super) struct Outcome {
+pub struct Outcome {
     pub action: Action,
     pub entity_id: u32,
     pub actor: PlayerIdentity,
@@ -267,7 +268,7 @@ pub(super) struct Outcome {
 }
 
 impl Outcome {
-    pub(super) fn new(action: Action, entity_id: u32, actor: PlayerIdentity) -> Self {
+    pub fn new(action: Action, entity_id: u32, actor: PlayerIdentity) -> Self {
         Self {
             action,
             entity_id,
@@ -279,11 +280,11 @@ impl Outcome {
         }
     }
 
-    pub(super) fn ok(self) {
+    pub fn ok(self) {
         self.emit(None);
     }
 
-    pub(super) fn rejected(self, reason: Reason) {
+    pub fn rejected(self, reason: Reason) {
         self.emit(Some(reason));
     }
 
@@ -311,7 +312,7 @@ impl Outcome {
     }
 }
 
-pub(super) fn squad_created(squad_id: i32, leader: PlayerIdentity) {
+pub fn squad_created(squad_id: i32, leader: PlayerIdentity) {
     tracing::debug!(
         target: "squad",
         event = "squad_created",
@@ -322,7 +323,7 @@ pub(super) fn squad_created(squad_id: i32, leader: PlayerIdentity) {
     );
 }
 
-pub(super) fn member_joined(squad_id: i32, who: PlayerIdentity, rank: OrgRank) {
+pub fn member_joined(squad_id: i32, who: PlayerIdentity, rank: OrgRank) {
     tracing::debug!(
         target: "squad",
         event = "member_joined",
@@ -336,7 +337,7 @@ pub(super) fn member_joined(squad_id: i32, who: PlayerIdentity, rank: OrgRank) {
 
 /// `member_left`, `leader_changed` and `disbanded` for one departure.
 /// `departed` is resolved by the caller before the teardown.
-pub(super) fn departure(space_mgr: &SpaceManager, d: &Departure, departed: PlayerIdentity) {
+pub fn departure(space_mgr: &SpaceManager, d: &Departure, departed: PlayerIdentity) {
     let reason = leave_reason(d.reason);
     tracing::debug!(
         target: "squad",
@@ -377,7 +378,7 @@ pub(super) fn departure(space_mgr: &SpaceManager, d: &Departure, departed: Playe
     }
 }
 
-pub(super) fn loot_mode_changed(
+pub fn loot_mode_changed(
     squad_id: i32,
     actor: PlayerIdentity,
     from: SquadLootType,
@@ -395,7 +396,7 @@ pub(super) fn loot_mode_changed(
     );
 }
 
-pub(super) fn invite_created(
+pub fn invite_created(
     request_id: i32,
     squad_id: Option<i32>,
     inviter: PlayerIdentity,
@@ -414,7 +415,7 @@ pub(super) fn invite_created(
     );
 }
 
-pub(super) fn invite_consumed(
+pub fn invite_consumed(
     request_id: i32,
     squad_id: Option<i32>,
     accepted: bool,
@@ -436,8 +437,8 @@ pub(super) fn invite_consumed(
 }
 
 /// One `invite_expired` row per invite that expired since the last drain.
-pub(super) fn invites_expired(space_mgr: &mut SpaceManager) {
-    let expired: Vec<ExpiredInvite> = space_mgr.squads.drain_expired();
+pub fn invites_expired(space_mgr: &mut SpaceManager) {
+    let expired: Vec<ExpiredInvite> = space_mgr.resources.squads_mut().drain_expired();
     for e in expired {
         let inviter = of_player(space_mgr, e.inviter_player_id);
         let invitee = of_player(space_mgr, e.invitee_player_id);

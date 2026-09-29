@@ -39,7 +39,6 @@ impl CellEntity {
             interaction_type: None,
             npc_name: None,
             character_name: None,
-            squad_id: None,
             missions: MissionManager::new(),
             player_id: None,
             account_id: None,

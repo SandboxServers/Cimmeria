@@ -36,17 +36,17 @@ Cimmeria does not build squads on `GroupAuthority`. A squad is ephemeral, so it 
 | Feature | Status | Where |
 |---------|--------|-------|
 | Registry | DONE | [`crates/cell-world/src/cell/squad/`](../../crates/cell-world/src/cell/squad/): squads, membership, pending invites, limits. Pure state, `now` injected |
-| Invite (`/squadinvite`) | DONE | Base 0xD0 `organizationInviteByType` with type 0 → `OrgBaseToCell::SquadInvite` → [`squad/invite.rs`](../../crates/cell-methods/src/cell/cell_methods/organization/squad/invite.rs) |
+| Invite (`/squadinvite`) | DONE | Base 0xD0 `organizationInviteByType` with type 0 → `OrgBaseToCell::SquadInvite` → [`squad/invite.rs`](../../crates/cell-interactions/src/cell/organization/squad/invite.rs) |
 | Accept / decline | DONE | CM 8 `organizationInviteResponse` with a cell request id |
 | Leave | DONE | CM 9 `organizationLeave` with the caller's own squad id |
 | Kick (leader) | DONE | Base 0xD1 `organizationKick` with a squad id → `OrgBaseToCell::SquadKick` |
 | Loot mode (leader) | DONE | CM 18 `squadSetLootMode`, 0 or 1 only. The mode is stored and shown to every member; no loot path reads it yet |
-| Disconnect | DONE | The cell's `DisconnectEntity` arm removes the member with `Logout`, including a member in gate transit whose cell entity is gone (found by the last entity id the registry recorded on join or world entry) |
-| World entry | DONE | `InitPlayerState` re-sends the squad after a gate trip |
+| Disconnect | DONE | The cell's `DisconnectEntity` arm (through the org plugin's disconnect hook, `cimmeria-cell-org`) removes the member with `Logout`, including a member in gate transit whose cell entity is gone (found by the last entity id the registry recorded on join or world entry) |
+| World entry | DONE | `InitPlayerState` re-sends the squad after a gate trip (the org plugin's world-entry hook) |
 | Promote to leader | NOT IMPL | No client UI sends it; `/squadpromote` is assumed to use `organizationRankChange` (unconfirmed, ORG-E1 Q2) |
 | Squad chat | DONE | `sendPlayerCommunication` on `CHAN_SQUAD` (4), past the base's chat flood limit and text rules → [`chat/squad.rs`](../../crates/cell-console/src/cell/console/chat/squad.rs) (ORG-04) |
-| Minimap ping | DONE (validated, not relayed) | CM 10 `BroadcastMinimapPing` with a squad id → [`squad/ping.rs`](../../crates/cell-methods/src/cell/cell_methods/organization/squad/ping.rs). No client method shows another member's ping (ORG-E1 Q3), so nothing is sent (ORG-04) |
-| GM console | DONE | `.squad_invite <name>`, `.squad_join <name>`, `.squad_info [name]` → [`console/squad.rs`](../../crates/cell-console/src/cell/console/squad.rs) (the GM check, name resolution, the listing and the audit row), which calls the thin [`squad/gm.rs`](../../crates/cell-methods/src/cell/cell_methods/organization/squad/gm.rs) for the invite and the join (ORG-04) |
+| Minimap ping | DONE (validated, not relayed) | CM 10 `BroadcastMinimapPing` with a squad id → [`squad/ping.rs`](../../crates/cell-org/src/cell/organization/squad/ping.rs). No client method shows another member's ping (ORG-E1 Q3), so nothing is sent (ORG-04) |
+| GM console | DONE | `.squad_invite <name>`, `.squad_join <name>`, `.squad_info [name]` → [`console/squad.rs`](../../crates/cell-console/src/cell/console/squad.rs) (the GM check, name resolution, the listing and the audit row), which calls the thin [`squad/gm.rs`](../../crates/cell-interactions/src/cell/organization/squad/gm.rs) for the invite and the join (ORG-04) |
 | Ignore-list check on invite | DONE | The base checks the invitee's cached Ignore list (SS-C1) before it forwards `organizationInviteByType` type 0 to the cell, and refuses with a line and a `squad.invite` row (`reason = ignored`) (ORG-07) |
 
 ### Rules
