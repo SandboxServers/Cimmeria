@@ -114,7 +114,11 @@ pub fn parse(text: &str) -> PatchLogSummary {
                 Some(entry) => entry.1 = outcome,
                 None => summary.sites.push((site.to_string(), outcome)),
             }
-        } else if message.starts_with("Black Market receive path installed") {
+        } else if message.starts_with("Black Market installed")
+            || message.starts_with("Black Market receive path installed")
+        {
+            // The DLL writes "Black Market installed: ..." (boot.rs); the
+            // older wording is still accepted for earlier DLL builds.
             summary.verdict = Some(Verdict::Installed);
         } else if message.ends_with("nothing installed") {
             summary.verdict = Some(Verdict::NothingInstalled(message.to_string()));
@@ -284,6 +288,22 @@ mod tests {
 [cimmeria-client-patches +2ms] FEngineLoop::Tick at 0x00416ec0: expected 64 a1 00 00, found 55 8b ec 83\r\n\
 [cimmeria-client-patches +2ms] Client_NetIn_EntityMethodDispatch at 0x00c6f8f0: already hooked by a jump to 0x7ff00000, outside every known hook owner; not chaining\r\n\
 [cimmeria-client-patches +2ms] a prologue does not match: a different SGW.exe build, or another patch at that address; nothing installed\r\n";
+
+    /// The verdict line exactly as the shipped DLL writes it (copied from
+    /// a player's log, 2026-09-29). The parser used to look only for an
+    /// older wording, so a successful install never reported a verdict.
+    #[test]
+    fn parses_the_installed_line_the_dll_writes() {
+        let log = concat!(
+            "[cimmeria-client-patches +0ms] attached, version 0.1.0, host SGW.exe
+",
+            "[cimmeria-client-patches +257ms] Black Market installed: received calls go to ",
+            "the Lua table CimmeriaBM, and CimmeriaBMNative is registered for sending once ",
+            "the UI Lua is up
+",
+        );
+        assert_eq!(parse(log).verdict, Some(Verdict::Installed));
+    }
 
     #[test]
     fn parses_version_sites_and_installed_verdict() {
