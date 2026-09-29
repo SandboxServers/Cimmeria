@@ -79,6 +79,10 @@ Each entry tagged with bucket assignment per #264 step 4. Bible chapter targets 
 
 - [Stargate dial and travel timing](stargate-dial-travel-timing-na35.md) — **[PROMOTE → spec.gate-travel.dhd-and-stargate]** — deprecated Python is not gate-travel evidence; DHD dial is single-shot and server-invisible per-chevron (chevron broadcast needs a client patch); `GATE_DIAL_DURATION`/`onStargatePassage`/crossing-hold fixed 2026-09-25 (`907c187a`).
 
+## Client engine sinks and seams (2026-09-28)
+
+- [Engine log sinks and silent-failure seams](client-engine-sinks-seams.md) — **[PROMOTE → docs/reverse-engineering/findings/client-engine-sinks-and-seams.md DONE]** — BigWorld `0x00a36460`, UE3 GLog/GError/check(), log4cxx IAT, PhysX discarded stream, Bink-from-memory, UObject/FName layout, GNames `0x01ecade0` correction; UE3 debugf compiled out, UnrealAppender dead.
+
 ## Recurring RE-table failure modes
 
 - [RTTI table shifts + RVA/VA traps](rtti-table-shift-and-rva-va-traps.md) — one-row shifts in contiguous RTTI tables (blank trailing cell is the tell); Atrea config mixes RVAs with VAs in one column.
@@ -101,3 +105,7 @@ Each entry tagged with bucket assignment per #264 step 4. Bible chapter targets 
 - This MEMORY.md was merged from two trees during Phase −0.5 agent surgery (orchestrator commit `1917d20`). The previous index referenced several files that didn't exist (`findings_cover_system_s4.md`, `findings_respawn_lifecycle_s7.md`, `findings_mission_state_s4b.md`, `findings_world_entry_s4b.md`, `findings_mercury_layer_s5b.md`, `mercury-protocol-internals.md`) — those were hallucinated references. The triage step (this commit) resolves them by either annotating present files with bucket tags or noting their absence here.
 - The canonical findings docs for the topics those hallucinated files purported to cover live in `docs/reverse-engineering/findings/` (not in agent memory) — see `state-flag-broadcast.md`, `cover-system.md`, `respawn-lifecycle.md`, `mission-state-machine.md`, `world-entry-pipeline.md`, `mercury-protocol-internals.md`.
 - The Phase −0.5 triage step (step 4 of #264) ran 2026-05-13. All PROMOTE entries should be kept in memory until the corresponding bible chapters are scaffolded in Phase 0; chapter authoring will copy these forward into the chapter's section 1.
+
+## Multi-client lab (2026-09-29)
+
+- [Two SGW.exe on one machine](multi-client-lab-findings.md) — no client single-instance guard, SGW.lock is Ghidra's, focus throttle 0x00417100, named lab instances; live run pending

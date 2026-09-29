@@ -2,7 +2,8 @@
 
 > **Diátaxis type**: explanation
 > **Audience**: engineers extending or reviewing the `cimmeria-client-telemetry` DLL and its launcher-side injector (issue #417)
-> **Last updated**: 2026-09-27
+> **Last updated**: 2026-09-28
+> **Engine capture (2026-09-28)**: adds the engine layer on top of the hooks below: log sinks for BigWorld, UE3, log4cxx and the OS, plus subsystem seams (actors, Matinee, level streaming, Bink, FMOD, PhysX, file I/O, D3D9, frame health): 6 inline, 4 vtable and 15 IAT hooks, a vectored exception handler and 3 D3D9 COM patches. See [Engine layer: log sinks and subsystem seams](#engine-layer-log-sinks-and-subsystem-seams). Statically verified, not yet run in a live client.
 > **Status**: Phases 2-5 substantially landed, **none of it yet run inside the real client** (the launcher never injected the DLL; see the fingerprint section). **32 hooks total** across 3 techniques: 22 inline JMP hooks (4 engine + state-flag dispatcher, anim notify A+B, console command, Bink tick, entity-method drop oracle, CME event-registry lookup, and 11 entity-lifecycle, inbound-message and outgoing-RPC hooks added 2026-09-28), 7 IAT-swap hooks (3 Lua + 4 OS), 3 vtable-swap hooks (CEGUI logger, now with the line text + AActor::Tick + USequence::UpdateOp). The two CME subscribers (`onClientMapLoad`, `onClientReady`) were removed on 2026-09-28: the subscribe API they called is not one (see Hook taxonomy item 1). Every address was re-checked against the QA `SGW.exe` on 2026-09-27 and is fingerprinted. **Removed pending re-resolution (#989)**: `Mercury::Nub::handleMessage` and the cooked-data PAK load, whose anchors were not function entries. **Deferred**: CME RTTI auto-discovery (~270 more events; needs `.rdata` scanner), FMOD runtime vtable traversal, ProcessEvent slot search, PropertyNode<T> per-T enumeration, Phase 6 crash filter.
 
 How `cimmeria-client-telemetry.dll` is side-loaded into `SGW.exe` by `sgw-launcher`, what it observes, and how those observations flow into SigNoz alongside the server-side OTLP stream.
@@ -241,6 +242,57 @@ Added 2026-09-28 for the invisible-guard class of bug (#838): the client creates
 
 **Safety.** Every read of a game structure goes through `ReadProcessMemory` (`cimmeria_client_hookgate::os::read_bytes`), so a stale pointer reads as missing instead of faulting the network thread; the std::map walker is bounded (96 steps a lookup, 20,000 nodes for the catalog); the CME catalog runs on its own thread after a 2 second delay, so the game thread never waits on it; every detour forwards its arguments and result untouched and keeps telemetry code inside `catch_unwind`. All eleven new inline sites are in the fingerprint gate.
 
+## Engine layer: log sinks and subsystem seams
+
+The client already logs through five paths and swallows failures at a dozen seams, and none of it reached SigNoz. `src/hooks/sinks/` hooks the five logging paths; `src/hooks/seams/` hooks the seams where a failure is silent. The game layer (CME events, Mercury, entities, Lua, the UI) is separate: the tables above and `client.cme.event`. Recovered addresses, layouts and evidence: [`client-engine-sinks-and-seams.md`](../reverse-engineering/findings/client-engine-sinks-and-seams.md). **None of these has been seen from a live client yet**; the second table says what each one needs to be confirmed.
+
+### Log sinks
+
+| Target | Hook | Fields | Level | Volume control |
+|---|---|---|---|---|
+| `client.bw.message` | inline, `DebugMsgHelper::message` `0x00a36460` | `message`, `priority`, `priority_name` (`TRACE`..`HACK`), `component_priority`, `fmt_addr`, `filtered` (the client's own threshold would have dropped it), `suppressed`, `truncated` | by priority: `debug` (trace, debug), `info`, `warn` (warning, hack), `error` | per (format string address, priority) |
+| `client.ue3.log` | inline, `FOutputDeviceRedirector::Serialize` `0x004ce0b0` (`GLog`) | `category` (the `FName`), `event`, `message`, `suppressed_category`, `suppressed`, `truncated` | by category (`Error` `error`, `*Warning` `warn`, `Dev*` `debug`, else `info`) | per category; warnings per message shape. Low volume: `debugf`/`warnf` are compiled out of this build |
+| `client.ue3.fatal_error` | inline, `FOutputDeviceWindowsError::Serialize` `0x004ce3a0` (`GError`) | `category`, `event`, `message`, `fatal` | `error` | none; also written synchronously to the local log, because the process ends |
+| `client.ue3.assert` | inline, the `check()` reporter `0x00486000` | `expr`, `file`, `line` | `error` | per source line. A failed `check` is reported and survived |
+| `client.log4cxx.event` | IAT `Logger::forcedLog` (narrow `0x017f0160`, wide `0x017f0188`) | `logger`, `level`, `level_int`, `message`, `file`, `line`, `method`, `wide` | by level | per (logger, level, message shape): the lock trace collapses to one bucket |
+| `client.os.debug_string` | IAT `OutputDebugStringA` `0x017ef32c` / `W` `0x017ef230` | `message`, `api` | `info` | per message shape; skips what a known sink already reported |
+| `client.os.exception` | vectored exception handler | `code`, `code_name`, `address`, `module`, `rva`, `access`, `target`, `noncontinuable`, `thread_id` | `error` | per (code, site). Not C++ throws, not debugger plumbing, never stack overflow |
+| `client.hooks.capabilities` | once, after every install | `hook.<name>` = `installed` / `failed: <why>` / `skipped: <why>`, `installed`, `attempted`, `capture.unfilter`, `capture.firehose` | `warn` if any hook failed, else `info` | once |
+
+### Subsystem seams
+
+| Target | Hook | Fields | Level | Needs live confirmation |
+|---|---|---|---|---|
+| `client.engine.spawn_actor` | inline, `UWorld::SpawnActor` `0x00876970` | `class`, `actor`, `location`, `ok`, `no_collision_fail`, `no_fail` | `debug`; `warn` when it returns `NULL` | class names resolve through the recovered `UObject` layout |
+| `client.engine.destroy_actor` | inline, `UWorld::DestroyActor` `0x00875290` | `class`, `actor`, `destroyed`, `net_force` | `debug` | same |
+| `client.engine.matinee` | vtable `USeqAct_Interp` slots 85, 86 | `event` (`activated`/`deactivated`), `sequence`, `inputs`, `position`, `length`, `cut_short` | `info` | that slot 86 is `DeActivated`; the offsets |
+| `client.engine.level_visible`, `client.engine.level_stream_slow` | inside the `UpdateLevelStreamingInner` hook | `package`, `elapsed_ms`, `visible` | `info`, `warn` (a step over 30 ms; 10 ms under `firehose`) | the `bIsVisible` bit and the package walk |
+| `client.engine.load_failed` | inside the `StaticLoadObject` hook | `name`, `filename`, `flags` | `warn` | how often optional lookups fail this way |
+| `client.media.bink_open`, `client.media.bink_close` | IAT `_BinkOpen@8` `0x017effa4`, `_BinkClose@4` `0x017effa8` | `ok`, `flags`, `width`, `height`, `frames`, `fps`, `plausible`; `frame_num`, `completed` | `info`; `warn` when the open returns `NULL` | the Bink header layout (SDK layout, not this build's) |
+| `client.audio.event` | IAT `Event::start` `0x017f00a4` / `stop` `0x017f0080` | `action`, `name`, `result`, `immediate` | `debug`; `warn` on a non-zero `FMOD_RESULT` | the `getInfo` name lookup |
+| `client.physx.error`, `client.physx.assert` | vtable `FNxOutputStream` slots 0, 1 (`0x01839d94`) | `code`, `code_name`, `message`, `file`, `line` | by code; `error` for asserts | that the SDK reports through this stream |
+| `client.io.open_failed` | IAT `CreateFileW` `0x017ef2a8` / `A` `0x017ef2a4` | `path`, `error`, `error_name`, `write`, `disposition` | `debug` for not-found, else `warn` | volume of not-found probes |
+| `client.gfx.device_created`, `client.gfx.device_reset`, `client.gfx.device_state` | IAT `Direct3DCreate9` `0x017effd8`, then the COM vtables | `hresult`, `hresult_name`, the requested mode, `elapsed_ms`, `lost`, `needs_reset` | `info`; `warn` on a failure | whether the hook lands before the game creates its device |
+| `client.engine.hitch` | inside the `FEngineLoop::Tick` hook | `gap_ms`, `frame`, `working_set_mb` | `warn` (a tick-to-tick gap of 200 ms; 100 ms under `firehose`) | the threshold against real frame times |
+| `client.engine.memory` | inside the `FEngineLoop::Tick` hook | `working_set_mb`, `peak_working_set_mb`, `private_mb`, `avail_virtual_mb`, `total_virtual_mb`, `machine_load_percent` | `info`; `warn` under 256 MB of free address space | every 30 s |
+
+### Capture switches
+
+Off by default. Read once at boot, from the optional top-level `capture` block of `current-session.json` (written by the launcher or the lab supervisor) and from the `CIMMERIA_CLIENT_CAPTURE` environment variable (a comma-separated list); either can turn a switch on.
+
+| Switch | Effect |
+|---|---|
+| `unfilter` | lifts the client's own thresholds so they and its own outputs see more: the BigWorld filter threshold (`impl[0x3c]`) is set very low, the four log4cxx `is*Enabled` checks answer `true`, the UE3 suppress flag (`0x1000`) is cleared on the categories that are logged. It changes what the client itself writes to `SGWDebugLog.log` and `OutputDebugString`: a lab and debug switch. |
+| `firehose` | raises every sink's rate limit from burst 8 / 4 per second to burst 64 / 64 per second, and lowers the hitch and slow-step thresholds. The limit still exists. |
+
+```json
+{ "install_id": "...", "telemetry": { "...": "..." }, "capture": { "unfilter": true, "firehose": false } }
+```
+
+### Budget
+
+Every sink and seam limits per distinct message with the shared token bucket ([`name_throttle.rs`](../../crates/client-telemetry/src/hooks/name_throttle.rs)): burst 8, then 4 a second, the swallowed count riding the next event that gets through as `suppressed`. The bucket key is chosen per stream so a hot message cannot hide a rare one (the format string's address for BigWorld; the message with digits collapsed for log4cxx and debug strings, so the client's 65 000-line lock trace is one bucket; the class name for actors; the path for file failures). Hooks on a hot path (the tick, streaming, spawn) do a clock read, a compare and at most one bucket lookup when nothing is reportable.
+
 ## The fingerprint gate, the local log and the hook ABI
 
 The DLL had never run inside the client until 2026-09-27: the launcher's
@@ -313,6 +365,7 @@ To preserve "observe without changing behavior":
 | 4 | UI / Lua — CEGUI::DefaultLogger::logEvent (vtable swap) + lua_pcall, lua_call, lua_newstate (IAT swap). Console command already covered in Phase 3. | LANDED (manifest-driven 2026-06-05) |
 | 5 | Subsystem correlators — Bink tick (inline, in Phase-3 commit) + CreateThread, LoadLibraryW/A, GetForegroundWindow (IAT swap). **FMOD** runtime vtable traversal and **PropertyNode<T>** per-T enumeration deferred. | LANDED (manifest-driven 2026-06-05) — partial |
 | 6 | Crash + on-disk artifact shipping (SetUnhandledExceptionFilter IAT, MiniDumpWriteDump call, log/dump file tailers). IAT slots known; not yet implemented. | DEFERRED |
+| 7 | Engine capture: the log sinks (`hooks/sinks/`) and the subsystem seams (`hooks/seams/`), the `capture` switches and the `client.hooks.capabilities` event. Adds 6 inline sites (17 total) and 4 vtable slots (7 total) to the fingerprint gate. | LANDED 2026-09-28 (static evidence; live confirmation pending) |
 
 ## CI
 
@@ -331,6 +384,7 @@ To preserve "observe without changing behavior":
 
 - [`docs/reverse-engineering/findings/client-instrumentation-hookpoints.md`](../reverse-engineering/findings/client-instrumentation-hookpoints.md) — per-anchor hook table
 - [`docs/reverse-engineering/findings/client-instrumentation-entry-points.md`](../reverse-engineering/findings/client-instrumentation-entry-points.md) — **resolved Phase 3-6 entry points** (companion to hookpoints — all addresses + IAT slots + signatures pre-resolved so Phase 3-6 implementation skips the RE round-trip)
+- [`docs/reverse-engineering/findings/client-engine-sinks-and-seams.md`](../reverse-engineering/findings/client-engine-sinks-and-seams.md) — the engine-layer log sinks and subsystem seams: addresses, layouts, evidence, what is not yet confirmed
 - [`docs/reverse-engineering/findings/cme-event-signal.md`](../reverse-engineering/findings/cme-event-signal.md) — full CME EventSignal emit pipeline
 - [`docs/architecture/client-patches.md`](client-patches.md) — the always-injected gameplay-patch DLL. It hooks `FEngineLoop::Tick` and the drop-oracle function (`0x01590f30`) too; both DLLs chain through MinHook, so neither may unhook while the other is loaded
 - [`docs/architecture/observability.md`](observability.md) — the broader OTLP / SigNoz pipeline this plugs into

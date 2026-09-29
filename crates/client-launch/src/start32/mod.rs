@@ -269,7 +269,21 @@ pub enum HelperError {
 /// [`crate::process::create_process_suspended_with_args`]); this is the
 /// second guard.
 pub fn run(helper: &Path, request: &Request) -> Result<u32, HelperError> {
+    run_with_env(helper, request, &[])
+}
+
+/// [`run`] with extra environment variables for the helper. The target is
+/// started by the helper with a null environment block, so it inherits the
+/// helper's: what `envs` adds here reaches the game process (and the DLLs
+/// injected into it). The lab uses it to give each instance its own
+/// session file (`CIMMERIA_LAB_SESSION_FILE`) without a client patch.
+pub fn run_with_env(
+    helper: &Path,
+    request: &Request,
+    envs: &[(String, String)],
+) -> Result<u32, HelperError> {
     let mut cmd = std::process::Command::new(helper);
+    cmd.envs(envs.iter().map(|(k, v)| (k, v)));
     cmd.args(request.to_args())
         .stdin(std::process::Stdio::null())
         .stdout(std::process::Stdio::piped())

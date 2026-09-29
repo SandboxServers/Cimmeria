@@ -88,6 +88,12 @@ pub struct DllSession {
     /// the `lab-bridge` feature.
     #[serde(default)]
     pub lab: Option<LabConfig>,
+    /// Optional capture switches for the engine-layer log sinks
+    /// (`unfilter`, `firehose`; see [`crate::capture`]). Absent = both off.
+    /// The `CIMMERIA_CLIENT_CAPTURE` environment variable can turn the same
+    /// switches on.
+    #[serde(default)]
+    pub capture: Option<crate::capture::CaptureConfig>,
 }
 
 /// The `lab` block of `current-session.json` — bind address, port,
@@ -160,6 +166,48 @@ pub fn session_path_for_host(host_exe_path: &Path) -> Result<PathBuf, SessionErr
     Ok(binaries.join("sessions").join("current-session.json"))
 }
 
+/// Environment variable that points the DLL at a specific session file
+/// instead of `<Binaries>/sessions/current-session.json`.
+///
+/// The lab supervisor sets it for a *named instance* so two clients on one
+/// machine each read their own session (their own bridge port and token)
+/// instead of racing on one shared file. Absent or empty means the
+/// conventional path, which is what the launcher and a single lab client
+/// use. Must match `SESSION_FILE_ENV` in
+/// `crates/lab/src/supervisor/instance.rs`.
+pub const SESSION_FILE_ENV: &str = "CIMMERIA_LAB_SESSION_FILE";
+
+/// Environment variable naming the lab instance (`p2`, ...). Only used to
+/// give each instance its own local log files. Must match `INSTANCE_ENV` in
+/// `crates/lab/src/supervisor/instance.rs`.
+pub const INSTANCE_ENV: &str = "CIMMERIA_LAB_INSTANCE";
+
+/// The session file to load: `override_path` (the value of
+/// [`SESSION_FILE_ENV`]) when non-empty, else the conventional path next to
+/// `host_exe_path` ([`session_path_for_host`]). Pure, so it is testable
+/// without touching the process environment.
+pub fn resolve_session_path(
+    host_exe_path: &Path,
+    override_path: Option<std::ffi::OsString>,
+) -> Result<PathBuf, SessionError> {
+    match override_path.filter(|p| !p.is_empty()) {
+        Some(p) => Ok(PathBuf::from(p)),
+        None => session_path_for_host(host_exe_path),
+    }
+}
+
+/// The instance name from [`INSTANCE_ENV`], kept only when it is a safe
+/// file-name fragment (ASCII letters, digits, `-`, `_`; 1 to 16 chars). A
+/// hostile or malformed value yields `None`, so it can never steer a log
+/// file out of the install directory.
+pub fn sanitize_instance(raw: Option<std::ffi::OsString>) -> Option<String> {
+    let s = raw?.into_string().ok()?;
+    let ok = (1..=16).contains(&s.len())
+        && s.bytes()
+            .all(|b| b.is_ascii_alphanumeric() || b == b'-' || b == b'_');
+    ok.then_some(s)
+}
+
 /// Load + parse `current-session.json` from disk.
 ///
 /// Returns `Err(SessionError::Disabled)` when the parsed block has
@@ -220,6 +268,50 @@ mod tests {
             p,
             PathBuf::from("/opt/SGW/Binaries/sessions/current-session.json")
         );
+    }
+
+    #[test]
+    fn env_override_wins_over_the_conventional_path() {
+        let host = PathBuf::from("/opt/SGW/Binaries/SGW.exe");
+        let custom = std::ffi::OsString::from(
+            "/opt/SGW/Binaries/sessions/instances/p2/current-session.json",
+        );
+        assert_eq!(
+            resolve_session_path(&host, Some(custom.clone())).unwrap(),
+            PathBuf::from(custom)
+        );
+    }
+
+    #[test]
+    fn empty_or_absent_override_falls_back_to_the_conventional_path() {
+        let host = PathBuf::from("/opt/SGW/Binaries/SGW.exe");
+        let conventional = PathBuf::from("/opt/SGW/Binaries/sessions/current-session.json");
+        assert_eq!(resolve_session_path(&host, None).unwrap(), conventional);
+        assert_eq!(
+            resolve_session_path(&host, Some(std::ffi::OsString::new())).unwrap(),
+            conventional
+        );
+    }
+
+    #[test]
+    fn env_names_are_the_contract_with_the_lab_supervisor() {
+        assert_eq!(SESSION_FILE_ENV, "CIMMERIA_LAB_SESSION_FILE");
+        assert_eq!(INSTANCE_ENV, "CIMMERIA_LAB_INSTANCE");
+    }
+
+    #[test]
+    fn instance_name_must_be_a_safe_file_name_fragment() {
+        let os = |s: &str| Some(std::ffi::OsString::from(s));
+        assert_eq!(sanitize_instance(os("p2")), Some("p2".to_string()));
+        assert_eq!(
+            sanitize_instance(os("player_2-b")),
+            Some("player_2-b".to_string())
+        );
+        assert_eq!(sanitize_instance(None), None);
+        assert_eq!(sanitize_instance(os("")), None);
+        assert_eq!(sanitize_instance(os("..\\evil")), None);
+        assert_eq!(sanitize_instance(os("a/b")), None);
+        assert_eq!(sanitize_instance(os("seventeen-chars-xx")), None);
     }
 
     /// Empty path → parent() returns None → InstallDir error.
@@ -374,6 +466,21 @@ mod tests {
         assert_eq!(lab.token, "abc123");
     }
 
+    /// The optional `capture` block turns the engine-layer sink switches on;
+    /// absent, both are off, and a session file from before the block existed
+    /// still parses.
+    #[test]
+    fn the_capture_block_is_optional() {
+        let base = r#""install_id":"i","machine_id":"m","session_id":"s",
+            "telemetry":{"enabled":true,"token":"t","upload_endpoint":"u"}"#;
+        let without: DllSession = serde_json::from_str(&format!("{{{base}}}")).unwrap();
+        assert_eq!(without.capture, None);
+        let with: DllSession =
+            serde_json::from_str(&format!(r#"{{{base},"capture":{{"unfilter":true}}}}"#)).unwrap();
+        let cfg = with.capture.expect("capture block");
+        assert!(cfg.unfilter && !cfg.firehose);
+    }
+
     /// Identity fields helper produces the canonical 3-entry bag
     /// that every DLL event should carry.
     #[test]
@@ -391,6 +498,7 @@ mod tests {
                 flush_interval_ms: 0,
             },
             lab: None,
+            capture: None,
         };
         let f = identity_fields(&s);
         assert_eq!(f.len(), 3);
