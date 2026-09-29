@@ -29,7 +29,7 @@ pub const PATCH_TARGETS: &[&str] = &[
     "Working/SGWGame/Content/UI/Core/Dialog/Blurb.lua",
     "Working/SGWGame/Content/UI/Core/Dialog/Dialog.layout",
     "Working/SGWGame/Content/UI/Core/Dialog/Dialog.lua",
-    // 002-castle-ring-transport
+    // 002-castle-ring-transport; 007-castle-armory-ring writes fffeffff too.
     "Working/SGWGame/CookedPC/Maps/Castle_CellBlock/Castle_CellBlock-fffdfffc.umap",
     "Working/SGWGame/CookedPC/Maps/Castle_CellBlock/Castle_CellBlock-fffeffff.umap",
     // 003-cooked-data

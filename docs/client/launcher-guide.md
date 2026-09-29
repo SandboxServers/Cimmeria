@@ -663,6 +663,19 @@ Once you publish a patch, **never mutate it**:
 **To fix a broken patch, publish a new patch that overwrites the
 affected files.** The manifest is append-only at the patch level.
 
+**Retiring a patch doesn't undo it.** Removing an entry from the
+manifest stops fresh installs from getting it, but installs that already
+applied it keep its files. A patch that supersedes a retired one should
+repeat the ops it keeps, pinned to the same result hashes, so the apply
+step skips them on installs that already have the result. For example,
+`007-castle-armory-ring` replaced `002-castle-ring-transport` (retired
+2026-09-29) and repeats only 002's Armory op. Changing a file back to
+stock needs a delta whose result is the stock bytes. That works when the
+patched file differs from stock by a small edit. It doesn't work when
+the patch rewrote the whole file: 002's stasis-hall map is stored
+uncompressed, and the stock map is LZO-compressed, so a delta back to
+stock would carry about half of the stock map verbatim.
+
 The seed is replaceable, but it's a heavy operation: a new
 `seed.sha256` forces every installed player to re-download the full
 seed and re-apply every patch. Reserve seed bumps for major-version
