@@ -111,6 +111,10 @@ pub struct TelemetrySettings {
     /// the local-dev admin port; ops override for production.
     #[serde(default = "default_telemetry_auth_url")]
     pub auth_url: String,
+    /// Load this `cimmeria-client-telemetry.dll` instead of the bundled
+    /// one. For testing a local build; unset for players.
+    #[serde(default)]
+    pub dll_override: Option<PathBuf>,
 }
 
 impl Default for TelemetrySettings {
@@ -119,6 +123,7 @@ impl Default for TelemetrySettings {
             opted_in: false,
             prompt_answered: false,
             auth_url: default_telemetry_auth_url(),
+            dll_override: None,
         }
     }
 }
@@ -217,6 +222,7 @@ mod tests {
                 opted_in: true,
                 prompt_answered: true,
                 auth_url: "http://test/api".into(),
+                dll_override: Some(PathBuf::from("T")),
             },
             client_patches: ClientPatchesSettings {
                 enabled: false,
@@ -230,6 +236,7 @@ mod tests {
         assert_eq!(loaded.manifest_url, "Z");
         assert!(loaded.telemetry.opted_in, "the opt-in must roundtrip");
         assert!(loaded.telemetry.prompt_answered);
+        assert_eq!(loaded.telemetry.dll_override, Some(PathBuf::from("T")));
         assert_eq!(loaded.client_patches, cfg.client_patches);
     }
 

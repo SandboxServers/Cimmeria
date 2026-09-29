@@ -30,27 +30,6 @@ pub enum Command {
     LaunchSgw(LaunchSgwRequest),
     LaunchAteraDebug(PathBuf),
     LaunchAteraFixAslr(PathBuf),
-    /// Launch SGW.exe with the `cimmeria-client-telemetry.dll`
-    /// side-loaded via the launcher's own injector (issue #417).
-    /// `install_dir` is where SGW.exe lives; `dll_path` is the
-    /// absolute path to the DLL alongside `sgw-launcher.exe`. The
-    /// client-patches DLL goes in first unless `client_patches` opts
-    /// out; see [`injection_order`].
-    ///
-    /// `allow(dead_code)`: Phase 1 of issue #417 lands the worker
-    /// dispatch + injector primitives. UI exposure (the "Launch
-    /// with telemetry" button + DLL path resolution) is intentionally
-    /// deferred to the first hook-set PR so the foundation can land
-    /// in isolation. The dispatch routing is covered by
-    /// [`tests::launch_sgw_with_client_telemetry_routes_through_dispatch`].
-    ///
-    /// [`injection_order`]: crate::client_patches::injection_order
-    #[allow(dead_code)]
-    LaunchSgwWithClientTelemetry {
-        install_dir: PathBuf,
-        dll_path: PathBuf,
-        client_patches: ClientPatchesSettings,
-    },
     /// Launch the Atera debug bat AND run the telemetry pipeline for
     /// the lifetime of the spawned game process. The telemetry config
     /// carries the auth handshake inputs (install_id, machine_id,
@@ -99,6 +78,9 @@ pub enum Event {
     /// What happened to the client-patches DLL on a launch, when it did
     /// not simply go in: opted out, unavailable, or injection failed.
     ClientPatchesNote(String),
+    /// What happened to the in-game telemetry DLL on a launch the player
+    /// opted into telemetry for: loaded, or why not.
+    TelemetryNote(String),
     /// Telemetry session ended cleanly with a final bundle upload.
     /// Surfaces in the status log so the dev can confirm the upload
     /// completed.
@@ -140,4 +122,6 @@ pub struct LaunchTelemetryConfig {
     pub launcher_version: String,
     pub state_dir: PathBuf,
     pub tags: Vec<String>,
+    /// `telemetry.dll_override`: a local build of the in-game DLL.
+    pub dll_override: Option<PathBuf>,
 }

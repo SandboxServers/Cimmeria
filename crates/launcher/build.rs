@@ -22,10 +22,15 @@ fn main() {
             }
         }
     }
-    // The launcher stays 64-bit, but both of these are 32-bit: the DLL is
+    // The launcher stays 64-bit, but all of these are 32-bit: the DLLs are
     // injected into the 32-bit SGW.exe, and the helper does the injection
     // at that bitness. See src/bundled.rs for how they reach the disk.
     embed("CIMMERIA_CLIENT_PATCHES_DLL", "cimmeria-client-patches.dll");
+    // Loaded only for players who opted into telemetry.
+    embed(
+        "CIMMERIA_CLIENT_TELEMETRY_DLL",
+        "cimmeria-client-telemetry.dll",
+    );
     embed("CIMMERIA_START32_EXE", "sgw-start32.exe");
 }
 

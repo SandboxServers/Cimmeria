@@ -201,9 +201,12 @@ fn launch_changes(inputs: &ChangeInputs<'_>) -> Vec<ClientChange> {
     let telemetry_description = if inputs.telemetry_opted_in {
         "On, because you opted in. While the game runs, the launcher reads the client's \
          log files and uploads them, with this install's random id, to the Cimmeria \
-         server so crashes and bugs can be traced. It writes \
-         Working\\Binaries\\sessions\\current-session.json for that. It adds no code to \
-         SGW.exe."
+         server so crashes and bugs can be traced, and adds cimmeria-client-telemetry.dll \
+         to SGW.exe when it starts. That DLL only observes: it reports what the game is \
+         doing (loading, frame time, network and UI events, crashes) to the same server, \
+         checks it is hooking the exact SGW.exe build it was made for and does nothing \
+         otherwise, and writes its log next to SGW.exe. The launcher writes \
+         Working\\Binaries\\sessions\\current-session.json for both."
     } else {
         "Off. Telemetry is opt-in: the launcher reads and sends nothing unless you turn it \
          on."

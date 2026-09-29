@@ -6,11 +6,12 @@
 #
 # Usage: tools/launcher-release/build.sh <stage> [args]
 #
-#   i686             build the 32-bit artifacts: cimmeria-client-patches.dll
-#                    and the sgw-start32.exe injection helper
-#   launcher         build the 64-bit launcher, embedding both i686 artifacts
+#   i686             build the 32-bit artifacts: cimmeria-client-patches.dll,
+#                    cimmeria-client-telemetry.dll (without lab-bridge) and
+#                    the sgw-start32.exe injection helper
+#   launcher         build the 64-bit launcher, embedding the i686 artifacts
 #   verify           check the artifacts: bitness, the helper's manifest and
-#                    version resource, both embedded in the launcher
+#                    version resource, all embedded in the launcher
 #   overlay <url>    pack crates/client-patches/overlay; <url> is the release
 #                    download base the manifest entry will point at
 #   paths            print the artifact paths
@@ -30,6 +31,7 @@ esac
 
 I686_DIR="$TARGET_DIR/$I686/$PROFILE_DIR"
 DLL="$I686_DIR/cimmeria_client_patches.dll"
+TELEMETRY_DLL="$I686_DIR/cimmeria_client_telemetry.dll"
 HELPER="$I686_DIR/sgw-start32.exe"
 LAUNCHER="$TARGET_DIR/$PROFILE_DIR/sgw-launcher.exe"
 PACKER="$TARGET_DIR/$PROFILE_DIR/pack-client-overlay.exe"
@@ -49,13 +51,17 @@ stage_i686() {
   # Separate invocations: building the two together would unify their
   # dependency features, and the helper must link only cimmeria-client-launch.
   cargo build -p cimmeria-client-patches "${PROFILE_FLAG[@]}" --target "$I686"
+  # Default features only: the lab bridge is for research sessions and must
+  # never ship to players (docs/architecture/client-telemetry.md).
+  cargo build -p cimmeria-client-telemetry "${PROFILE_FLAG[@]}" --target "$I686"
   cargo build -p cimmeria-start32 "${PROFILE_FLAG[@]}" --target "$I686"
-  need "$DLL"; need "$HELPER"
+  need "$DLL"; need "$TELEMETRY_DLL"; need "$HELPER"
 }
 
 stage_launcher() {
-  need "$DLL"; need "$HELPER"
+  need "$DLL"; need "$TELEMETRY_DLL"; need "$HELPER"
   CIMMERIA_CLIENT_PATCHES_DLL="$(winpath "$DLL")" \
+  CIMMERIA_CLIENT_TELEMETRY_DLL="$(winpath "$TELEMETRY_DLL")" \
   CIMMERIA_START32_EXE="$(winpath "$HELPER")" \
     cargo build -p sgw-launcher "${PROFILE_FLAG[@]}"
   need "$LAUNCHER"; need "$PACKER"
@@ -78,8 +84,9 @@ contains() {
 }
 
 stage_verify() {
-  need "$DLL"; need "$HELPER"; need "$LAUNCHER"
+  need "$DLL"; need "$TELEMETRY_DLL"; need "$HELPER"; need "$LAUNCHER"
   [ "$(pe_machine "$DLL")" = 0x14c ] || die "$DLL is not 32-bit"
+  [ "$(pe_machine "$TELEMETRY_DLL")" = 0x14c ] || die "$TELEMETRY_DLL is not 32-bit"
   [ "$(pe_machine "$HELPER")" = 0x14c ] || die "$HELPER is not 32-bit"
   [ "$(pe_machine "$LAUNCHER")" = 0x8664 ] || die "$LAUNCHER is not 64-bit"
   grep -q asInvoker "$HELPER" || die "$HELPER has no asInvoker manifest"
@@ -90,8 +97,9 @@ stage_verify() {
     echo "helper version resource: $product"
   fi
   contains "$LAUNCHER" "$DLL" || die "the launcher does not embed $DLL"
+  contains "$LAUNCHER" "$TELEMETRY_DLL" || die "the launcher does not embed $TELEMETRY_DLL"
   contains "$LAUNCHER" "$HELPER" || die "the launcher does not embed $HELPER"
-  echo "verified: 32-bit DLL + helper, both embedded in the 64-bit launcher"
+  echo "verified: 32-bit DLLs + helper, all embedded in the 64-bit launcher"
 }
 
 stage_overlay() {
@@ -107,6 +115,6 @@ case "${1:-}" in
   launcher) stage_launcher ;;
   verify) stage_verify ;;
   overlay) shift; stage_overlay "$@" ;;
-  paths) printf '%s\n' "DLL=$DLL" "HELPER=$HELPER" "LAUNCHER=$LAUNCHER" ;;
+  paths) printf '%s\n' "DLL=$DLL" "TELEMETRY_DLL=$TELEMETRY_DLL" "HELPER=$HELPER" "LAUNCHER=$LAUNCHER" ;;
   *) sed -n '2,20p' "$0" >&2; exit 2 ;;
 esac

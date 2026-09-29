@@ -3,6 +3,7 @@
 pub mod auth;
 pub mod bundle;
 pub mod chunk;
+pub mod dll_source;
 pub mod endpoint;
 pub mod events;
 pub mod patch_log;

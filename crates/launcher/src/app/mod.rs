@@ -151,6 +151,7 @@ impl LauncherApp {
                 | Event::Launched(..)
                 | Event::LaunchError(_)
                 | Event::ClientPatchesNote(_)
+                | Event::TelemetryNote(_)
                 | Event::UploadStarted
                 | Event::UploadSkipped(_)
                 | Event::UploadComplete { .. }
@@ -265,6 +266,7 @@ fn build_telemetry_config(
         launcher_version: identity.created_by_launcher_version.clone(),
         state_dir: crate::config::exe_dir(),
         tags: vec![],
+        dll_override: config.telemetry.dll_override.clone(),
     }
 }
 
@@ -306,6 +308,7 @@ fn status_line_for(event: &Event) -> Option<String> {
         Event::Launched(name, pid) => format!("Launched {name} (pid {pid})"),
         Event::LaunchError(e) => format!("Launch failed: {e}"),
         Event::ClientPatchesNote(n) => format!("Client patches: {n}"),
+        Event::TelemetryNote(n) => format!("In-game telemetry: {n}"),
         Event::UploadStarted => "Uploading logs…".into(),
         Event::UploadSkipped(why) => format!("Log upload skipped: {why}"),
         Event::UploadComplete { blob, bytes } => format!("Uploaded {bytes} bytes to {blob}"),
