@@ -2,7 +2,7 @@
 title: "Address Map — Key Locations in SGW.exe"
 type: reference
 audience: contributors doing RE
-last_updated: 2026-05-27
+last_updated: 2026-09-28
 ---
 
 # Address Map — Key Locations in SGW.exe
@@ -427,6 +427,40 @@ Full trace in [findings/dialog-controller-wire-flow.md](findings/dialog-controll
 | `0x017ef990` | `malloc` | MSVCR80.dll |
 | `0x017ef994` | `free` | MSVCR80.dll |
 | `0x017efa58` | `realloc` | MSVCR80.dll |
+
+### Client-telemetry hook anchors (corrected 2026-09-27)
+
+Checked **statically only**, against the local QA `SGW.exe` (image base `0x00400000`, ASLR off): function entries, `ret N` against the detour's arguments, and the PE import directory. None has run in the live client yet. The telemetry DLL's fingerprint gate (`crates/client-telemetry/src/fingerprint.rs`) holds the expected bytes for each site. The old values were wrong and are listed so they are not reintroduced.
+
+**IAT slots.** The old values were the slots' on-disk contents, i.e. hint/name RVAs read as VAs, which point into UTF-16 strings in `.rdata`. A runtime lookup by import name is tracked in #1067.
+
+| IAT slot | Import | DLL | Old (wrong) value |
+|---|---|---|---|
+| `0x017f0228` | `?lua_pcall@@YAHPAUlua_State@@HHH@Z` | lua51.dll | `0x01988a0c` |
+| `0x017f0244` | `?lua_call@@YAXPAUlua_State@@HH@Z` | lua51.dll | `0x01988904` |
+| `0x017f0288` | `?lua_newstate@@YAPAUlua_State@@P6APAXPAX0II@Z0@Z` | lua51.dll | `0x01988656` |
+| `0x017ef290` | `CreateThread` | KERNEL32.dll | `0x0196b65a` |
+| `0x017ef26c` | `LoadLibraryW` | KERNEL32.dll | `0x0196b5bc` |
+| `0x017ef268` | `LoadLibraryA` | KERNEL32.dll | `0x0196b5ac` |
+| `0x017efdf8` | `GetForegroundWindow` | USER32.dll | `0x0196af20` |
+
+`lua51.dll` imports `_CxxThrowException` and `__CxxFrameHandler3`, so Lua errors are C++ exceptions; any detour on these must use `C-unwind`.
+
+**Vtable slot.** `0x01ac1ba8` is the RTTI Complete Object Locator pointer in front of the `CEGUI::DefaultLogger` vtable, so slot 0 (the scalar deleting destructor, `0x012130d0`, `ret 4`) is at `0x01ac1bac`, and slot 1 (`logEvent`, `0x012129e0`, `ret 8`) is at **`0x01ac1bb0`**. The old anchor `0x01ac1ba8 + 4` hooked the destructor.
+
+**Signatures corrected by `ret N`.**
+
+| Address | Function | Correct stack arguments | Old claim |
+|---|---|---|---|
+| `0x00539850` | `APlayerController::execConsoleCommand` | `(this, FFrame&, void* Result)`, `ret 8` | `(this, int)` |
+| `0x00e01c90` | `GameBeing::onStateFieldUpdate` | `(this, event_data, <unresolved u32>)`, `ret 8` | `(this, event_data)` |
+
+**Wrong anchors, hooks removed (#989).**
+
+| Old address | What it actually is | Probable function |
+|---|---|---|
+| `0x01b18be0` (`Mercury::Nub::handleMessage`) | The log string `"Mercury::Nub::handleMessage: received the wrong kind of message!"` | The single code xref sits in an SEH-guarded function at `0x0157bd30`, 4 stack args (`ret 0x10`); unconfirmed as the dispatcher |
+| `0x00420074` (cooked-data PAK load) | `0xA54` bytes inside a function (`lea ecx,[esp+0x88]; call ...`) | Nearest entry `0x0041f620`, signature unresolved |
 
 ## UE3 Engine Initialization
 

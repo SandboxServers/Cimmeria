@@ -429,6 +429,7 @@ The script runs `cargo nextest run --profile=ci-live-db --lib` once over every c
 The client DLLs (`cimmeria-client-telemetry`, `cimmeria-client-patches`) and their shared `cimmeria-client-hookgate` are 32-bit. Their hooks compile only for `i686-pc-windows-msvc`, so the workspace run above never checks them. Their unit tests run on that target (the crate READMEs list the commands; telemetry also runs with `--features lab-bridge`). Their own workflows are `client-telemetry-build.yml` and `client-patches-build.yml`.
 
 Boot tests, without the game, live in `crates/sgw-testhost`. `sgw-testhost.exe` is a 32-bit stand-in for `SGW.exe`. The tests inject each DLL into it through the launcher's `sgw-start32` helper and check four things:
+
 - the DLL boots;
 - its fingerprint gate fails closed and logs why;
 - the host exits cleanly;
