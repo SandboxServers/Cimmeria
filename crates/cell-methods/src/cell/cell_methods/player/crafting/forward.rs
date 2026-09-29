@@ -3,10 +3,11 @@
 use tokio::sync::mpsc;
 
 use crate::cell::interactions::crafting_stations::{station_mask, stations_in_range};
-use crate::cell::messages::{CellToBaseMsg, CraftRequest, CraftVerb};
+use crate::cell::messages::{CellToBaseMsg, CraftRequest, CraftVerb, PluginMsg};
 use crate::cell::space_manager::SpaceManager;
 
-/// Forward `verb` for `entity_id` as a `CellToBaseMsg::Crafting`.
+/// Forward `verb` for `entity_id` as a `CraftRequest` in the
+/// `CellToBaseMsg::Plugin` envelope, on the one cell-to-base channel.
 ///
 /// `allowed` is the station gate: the verbs whose station is in
 /// reach right now, computed here rather than read from the 1 Hz station
@@ -38,7 +39,10 @@ pub(super) async fn forward(
         verb,
         allowed: station_mask(&stations_in_range(space_mgr, entity_id)),
     };
-    if let Err(e) = tx.send(CellToBaseMsg::Crafting(request)).await {
+    if let Err(e) = tx
+        .send(CellToBaseMsg::Plugin(PluginMsg::new(request)))
+        .await
+    {
         tracing::warn!(
             target: "crafting",
             event = "forward_failed",

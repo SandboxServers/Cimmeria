@@ -91,7 +91,7 @@ fn paradigm_levels(state: &CraftingState) -> Vec<(i32, i8)> {
     levels
 }
 
-/// Handle `CellToBaseMsg::GmAllCraft`.
+/// Handle a [`GmAllCraft`] from the `CellToBaseMsg::Plugin` envelope.
 #[tracing::instrument(
     name = "crafting.allcraft",
     level = "info",

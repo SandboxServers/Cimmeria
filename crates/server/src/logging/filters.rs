@@ -162,6 +162,15 @@ use crate::otel;
 /// moved from `cimmeria_cell_methods` to `cimmeria_cell_interactions`
 /// (`cell::organization`), whose row already covers it.
 ///
+/// `cimmeria_base_crafting=debug` (#962 step 5) does the same for the
+/// crafting base plugin, moved whole from `cimmeria_base_session`
+/// (`base::crafting`, and `CraftingPlugin`). Nearly every row names the
+/// `crafting` target, which the `crafting=debug` row exports; the
+/// `crafting.request` spans and any untargeted row take the module path,
+/// which `cimmeria_base_session=debug` no longer covers. No other crate's row
+/// is a prefix of it (`cimmeria_base::base` names the base crate's module),
+/// and it is a prefix of none. No file layer ever named crafting.
+///
 /// `cimmeria_cell_effect_scripts=debug` (#962 step 4) does the same for the
 /// effect scripts crate: every `EffectScript` implementation and the table
 /// the composition root registers. Their rows name the `abilities`,
@@ -292,6 +301,7 @@ pub(crate) const OTEL_FILTER: &str = "info,\
                 cimmeria_cell_duel=debug,\
                 cimmeria_cell_org=debug,\
                 cimmeria_cell_effect_scripts=debug,\
+                cimmeria_base_crafting=debug,\
                 cimmeria_cell::cell=debug,\
                 cimmeria_mercury=debug,\
                 mercury.packet=info,\

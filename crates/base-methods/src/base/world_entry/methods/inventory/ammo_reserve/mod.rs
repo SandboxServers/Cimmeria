@@ -48,7 +48,7 @@ pub use requests::{handle_ammo_reserve_request, ReserveIo};
 use cimmeria_entity::inventory::{INV_CRAFTING, INV_MAIN};
 use sqlx::{Postgres, Transaction};
 
-use crate::base::crafting::inventory_locks::take_inventory_locks;
+use crate::base::inventory_locks::take_inventory_locks;
 use crate::base::resources::{bag_max_slots, bag_min_slot};
 use plan::{plan_draw, plan_return};
 

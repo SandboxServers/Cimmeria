@@ -1,7 +1,7 @@
 //! Crafting respec, in two steps.
 //!
 //! 1. `.respeccraft` (a console line any player may type, forwarded by the
-//!    cell as `CellToBaseMsg::RespecCraftOpen`): if the player has anything
+//!    cell as a `RespecCraftOpen` in the `CellToBaseMsg::Plugin` envelope): if the player has anything
 //!    to clear, the base sends `onCraftingRespecPrompt(0)` (112) and opens a
 //!    respec for [`RESPEC_WINDOW`] ([`handle_respec_open`]).
 //! 2. The prompt's Yes sends `respecCrafting` (100). With a respec open for

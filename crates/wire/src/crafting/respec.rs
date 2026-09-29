@@ -1,4 +1,5 @@
-//! `.respeccraft` for one player (`CellToBaseMsg::RespecCraftOpen`).
+//! `.respeccraft` for one player, sent in the `CellToBaseMsg::Plugin`
+//! envelope.
 
 /// A player's `.respeccraft`: open a crafting respec.
 ///

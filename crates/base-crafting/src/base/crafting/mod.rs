@@ -1,11 +1,15 @@
-//! Crafting subsystem — BaseApp side.
+//! Crafting subsystem — BaseApp side, as a base plugin (#962 step 5; the
+//! registrations are in `crate::CraftingPlugin`).
 //!
 //! Crafting state and inventory are base-owned, so every crafting verb is
 //! decided here (`docs/analysis/crafting/work-packets.md`, "Contract fixed
 //! by this ledger"):
 //!
-//! - [`request`]: the entry point for `CellToBaseMsg::Crafting`. It logs the
+//! - [`request`]: the entry point for a crafting request (a [`CraftRequest`]
+//!   the cell sends in the `CellToBaseMsg::Plugin` envelope). It logs the
 //!   request and routes each verb to its handler.
+//!
+//! [`CraftRequest`]: crate::cell::messages::CraftRequest
 //! - [`spend`]: `spendAppliedSciencePoints`, learning a discipline.
 //! - [`research`] and [`reverse_engineer`]: the `research` and
 //!   `reverseEngineer` inductions; [`induction_verb`] and [`item_lookup`]
@@ -33,7 +37,9 @@
 //! - [`allcraft`]: the GM `.allcraft` grant.
 //! - [`gm_grant`]: the GM `.craftkit` and `.learnblueprint` grants.
 //! - [`inventory_locks`]: the advisory locks every crafting write takes
-//!   on a player's inventory before any row.
+//!   on a player's inventory before any row. Re-exported from
+//!   `cimmeria-base-session`, where the rest of the inventory code takes the
+//!   same locks.
 //! - [`session`]: the induction engine. Each player runs one induction at
 //!   a time, with up to [`session::MAX_INDUCTIONS`] held; the client's bar
 //!   is the type-16 timer, and the job runs when it expires.
@@ -55,7 +61,7 @@ pub mod gate;
 pub mod gm_grant;
 pub mod handlers;
 pub mod induction_verb;
-pub mod inventory_locks;
+pub use cimmeria_base_session::base::inventory_locks;
 pub mod item_lookup;
 pub mod item_use;
 pub mod options;

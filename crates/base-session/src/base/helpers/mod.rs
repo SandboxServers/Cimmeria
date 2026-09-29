@@ -444,7 +444,8 @@ pub(crate) fn get_active_entity_id(
 /// player whenever the cell is busy or the shared Base→Cell channel is
 /// backpressured. Everything that does not depend on the cell's reply (the
 /// session-map removal, the Account entity free, the reverse-index removal,
-/// the crafting-queue drop, the offline-presence fan-out, the Discord emit)
+/// the plugins' teardown hook (the crafting-queue drop), the offline-presence
+/// fan-out, the Discord emit)
 /// still runs synchronously before this function returns.
 pub fn destroy_client_entities(
     connected: &Arc<Mutex<HashMap<SocketAddr, ConnectedClientState>>>,
@@ -538,13 +539,9 @@ pub fn destroy_client_entities(
         // Remove from entity->addr reverse index
         entity_to_addr.lock().unwrap().remove(&player_eid);
 
-        // Queued crafting inductions die with the session; nothing they
-        // would have consumed is touched.
-        crate::base::crafting::session::drop_player_inductions(
-            player_eid,
-            crate::base::crafting::session::DropReason::Logout,
-            reason,
-        );
+        // The base plugins' teardown (#962 step 5): crafting's queued
+        // inductions die with the session here, and nothing they would have
+        // consumed is touched.
         plugins.run_session_hook(
             crate::base::plugin::SessionHookPoint::DisconnectAfterEntityUnmapped,
             crate::base::plugin::SessionEvent {

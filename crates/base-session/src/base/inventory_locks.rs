@@ -1,5 +1,10 @@
-//! The advisory locks every crafting write takes on a player's inventory
-//! before it locks any row.
+//! The advisory locks every inventory write takes on a player's inventory
+//! before it locks any row: crafting, vendor, trade, mail, the Black Market
+//! and the ammo reserve.
+//!
+//! It lived under `base::crafting` until crafting became a plugin (#962
+//! step 5, `cimmeria-base-crafting`); the inventory code below the plugin
+//! takes the same locks, so it stayed in the session layer.
 //!
 //! The shared inventory order is: every advisory lock first (the
 //! player-wide key [`PLAYER_WIDE_LOCK`], then the per-(player, container)

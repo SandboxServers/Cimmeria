@@ -1,5 +1,5 @@
 //! Live-DB guards: vendor buyback and sell take the shared inventory lock
-//! order (`crate::base::crafting::inventory_locks`: advisory keys, then
+//! order (`crate::base::inventory_locks`: advisory keys, then
 //! rows, then `sgw_player`), so each serializes with a trade, a crafting
 //! completion or the other on the same player instead of deadlocking.
 //!
@@ -22,7 +22,7 @@ use cimmeria_mercury::transport::Transport;
 use sqlx::PgPool;
 
 use super::{handle_buyback_vendor_items, handle_sell_vendor_items};
-use crate::base::crafting::inventory_locks::take_inventory_locks;
+use crate::base::inventory_locks::take_inventory_locks;
 use crate::base::ConnectedClientState;
 use crate::test_support::{require_db_or_skip, TestTransport};
 

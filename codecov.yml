@@ -213,6 +213,7 @@ component_management:
         - "crates/base-world-entry/**"
         - "crates/cell-combat/**"
         - "crates/base/**"
+        - "crates/base-crafting/**"
         - "crates/cell-content/**"
         - "crates/cell-console/**"
         - "crates/cell-interactions/**"

@@ -1,5 +1,5 @@
 //! The crafting stations around a player, as the cell reports them to the
-//! base (`CellToBaseMsg::CraftingStations`).
+//! base (in the `CellToBaseMsg::Plugin` envelope).
 //!
 //! The base owns `onUpdateCraftingOptions` (140), but only the cell knows
 //! where the stations are relative to the player. So the cell reports the

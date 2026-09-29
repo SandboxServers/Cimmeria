@@ -104,12 +104,13 @@ pub const GM_GIVE_TRAINING_POINTS: u16 = 137;
 // -- Crafting grants (139, 140) -----------------------------------------------
 /// `gmGiveExpertise(INT32 aDisciplineId, INT32 aExpertise)` — offset 30.
 /// Grants crafting expertise in one discipline. Routes through
-/// `CellToBaseMsg::GrantExpertise` → `base::crafting::handle_grant_expertise`.
+/// a `GmGrantExpertise` in the `CellToBaseMsg::Plugin` envelope →
+/// `cimmeria-base-crafting`'s `handlers::handle_grant_expertise`.
 pub const GM_GIVE_EXPERTISE: u16 = 139;
 /// `gmGiveAppliedSciencePoints(INT32 aPoints)` — offset 31. Grants
 /// applied-science points. Routes through
-/// `CellToBaseMsg::GrantAppliedSciencePoints` →
-/// `base::crafting::handle_grant_applied_science`.
+/// a `GmGrantAppliedSciencePoints` in the envelope →
+/// `cimmeria-base-crafting`'s `handlers::handle_grant_applied_science`.
 pub const GM_GIVE_APPLIED_SCIENCE_POINTS: u16 = 140;
 
 // -- Set health / focus (147–150) ---------------------------------------------

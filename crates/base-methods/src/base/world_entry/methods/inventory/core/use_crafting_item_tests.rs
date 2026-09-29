@@ -18,9 +18,9 @@ use cimmeria_wire::crafting::racial_paradigm_level_args;
 use sqlx::PgPool;
 
 use super::handle_use_inventory_item;
-use crate::base::crafting::feedback::feedback_text_args;
 use crate::mercury::{build_player_entity_method_packet, method_idx};
 use crate::test_support::{require_db_or_skip, test_default_connected_client_state, TestTransport};
+use cimmeria_base_crafting::base::crafting::feedback::feedback_text_args;
 
 const TEST_BASE: i32 = 0x7000_CEC0;
 /// Slappack TC1: an ordinary item, no crafting effect rows.
@@ -83,10 +83,13 @@ fn session(entity_id: u32, port: u16) -> Session {
     let addr: SocketAddr = format!("127.0.0.1:{port}").parse().unwrap();
     let typed = Arc::new(TestTransport::new());
     let transport: Arc<dyn Transport> = typed.clone();
-    let connected = Arc::new(Mutex::new(HashMap::from([(
-        addr,
-        test_default_connected_client_state(),
-    )])));
+    let mut state = test_default_connected_client_state();
+    // The use is the crafting plugin's item-use hook (#962 step 5).
+    state.plugins = cimmeria_base_session::base::plugin::BasePlugins::build(&[
+        &cimmeria_base_crafting::CraftingPlugin,
+    ])
+    .unwrap();
+    let connected = Arc::new(Mutex::new(HashMap::from([(addr, state)])));
     let entity_to_addr = Arc::new(Mutex::new(HashMap::from([(entity_id, addr)])));
     (typed, transport, connected, entity_to_addr, addr)
 }
@@ -337,4 +340,54 @@ async fn live_db_another_characters_ordinary_item_stays_silent() {
     }
     assert!(sent.is_empty(), "no packet: {sent:?}");
     assert_eq!(outbox, 0);
+}
+
+/// The missing-registration guard for the item-use seam (#962 step 5): a
+/// session admitted without the crafting plugin uses a crafting item, and
+/// core logs `reason = "no_plugin"` at `base.plugin` instead of silently doing
+/// nothing. Nothing is consumed, nothing is raised and nothing is sent.
+#[tokio::test]
+async fn live_db_a_crafting_item_with_no_plugin_warns_and_is_not_consumed() {
+    use crate::test_support::LogCapture;
+
+    let capture = LogCapture::install();
+    let pool = require_db_or_skip!();
+    let (account_id, player_id) = (TEST_BASE + 12, TEST_BASE + 13);
+    let entity_id = account_id as u32;
+    cleanup(&pool, account_id, player_id).await;
+    insert_player(&pool, account_id, player_id).await;
+    let item_id = insert_owned(&pool, player_id, GOAULD_GUIDE).await;
+    let s = session(entity_id, 55822);
+    // Admitted without the crafting plugin.
+    s.2.lock().unwrap().get_mut(&s.4).unwrap().plugins =
+        cimmeria_base_session::base::plugin::BasePlugins::empty();
+
+    use_through_entry(&pool, &s, entity_id, player_id, item_id).await;
+
+    let left: Option<i32> =
+        sqlx::query_scalar("SELECT item_id FROM sgw_inventory WHERE item_id = $1")
+            .bind(item_id)
+            .fetch_optional(&pool)
+            .await
+            .expect("instance");
+    let levels: Vec<i32> =
+        sqlx::query_scalar("SELECT racial_paradigm_levels FROM sgw_player WHERE player_id = $1")
+            .bind(player_id)
+            .fetch_one(&pool)
+            .await
+            .expect("levels");
+    let sent = s.0.filter_to(s.4);
+    cleanup(&pool, account_id, player_id).await;
+
+    assert_eq!(left, Some(item_id), "the guide was not consumed");
+    assert_eq!(levels, vec![5, 1, 1, 1, 1], "no paradigm raised");
+    assert!(sent.is_empty(), "no packet: {sent:?}");
+    let warn = capture
+        .find_message(
+            tracing::Level::WARN,
+            "crafting item but no base plugin takes it",
+        )
+        .unwrap_or_else(|| panic!("no_plugin WARN missing: {:#?}", capture.all()));
+    assert_eq!(warn.target, "base.plugin");
+    assert!(warn.has_field("item_id", &item_id.to_string()), "{warn:#?}");
 }

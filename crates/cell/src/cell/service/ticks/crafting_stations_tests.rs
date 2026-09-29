@@ -49,7 +49,9 @@ async fn tick(mgr: &mut SpaceManager) -> Vec<CraftingStations> {
     let mut out = Vec::new();
     while let Some(msg) = rx.recv().await {
         match msg {
-            CellToBaseMsg::CraftingStations(r) => out.push(r),
+            CellToBaseMsg::Plugin(m) if m.is::<CraftingStations>() => {
+                out.push(m.downcast::<CraftingStations>().unwrap())
+            }
             other => panic!("unexpected message {other:?}"),
         }
     }

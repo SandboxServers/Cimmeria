@@ -3,8 +3,8 @@
 //! [`handle_grant_expertise`] / [`handle_grant_applied_science`] mirror
 //! `progression::handle_grant_cash`: change the persistent state in one
 //! transaction, then push the client update. They are the canonical
-//! one-way sinks for `CellToBaseMsg::GrantExpertise` /
-//! `CellToBaseMsg::GrantAppliedSciencePoints`.
+//! one-way sinks for the `GmGrantExpertise` / `GmGrantAppliedSciencePoints`
+//! payloads in the `CellToBaseMsg::Plugin` envelope.
 //!
 //! Both write under the `sgw_player` row lock, as `spend` does, so a grant
 //! racing a spend can neither drop the spent point nor the learned

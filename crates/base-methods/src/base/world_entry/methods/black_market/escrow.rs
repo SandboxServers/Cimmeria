@@ -30,7 +30,7 @@ use sqlx::PgConnection;
 use super::super::mail::SystemItem;
 use super::types::{AuctionRow, LISTABLE_BAGS};
 use super::wire::BMError;
-use crate::base::crafting::inventory_locks::take_inventory_locks;
+use crate::base::inventory_locks::take_inventory_locks;
 
 /// The listed row's state as the auction records it.
 #[derive(Debug, Clone, PartialEq, Eq, sqlx::FromRow)]

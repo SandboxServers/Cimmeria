@@ -8,8 +8,18 @@
 //!   ASP entity property (`onEntityProperty(2, total)`). Each is
 //!   byte-exact tested; the index constants are in
 //!   `cell::client_methods::player`.
-//! - [`request`]: [`CraftRequest`] / [`CraftVerb`], carried by
-//!   `CellToBaseMsg::Crafting`.
+//! - [`request`]: [`CraftRequest`] / [`CraftVerb`], the verbs the cell
+//!   parses from methods 95-100.
+//! - [`gm_points`]: [`GmGrantExpertise`] and [`GmGrantAppliedSciencePoints`],
+//!   the GM expertise and ASP grants.
+//!
+//! The payloads the cell sends to the base ([`CraftRequest`],
+//! [`CraftingStations`], [`GmAllCraft`], [`GmCraftGrant`], [`RespecCraftOpen`]
+//! and the two GM point grants) travel in the `CellToBaseMsg::Plugin`
+//! envelope (#962 step 5), consumed by `cimmeria-base-crafting`'s
+//! `CraftingPlugin`. The base's declared envelope list
+//! (`cimmeria-base-session`'s `base::plugin::PLUGIN_CELL_MESSAGES`) names
+//! each, so a missing consumer fails the base's startup check.
 //! - [`stations`]: [`CraftingStations`], the station set the cell reports.
 //! - [`gm_allcraft`]: [`GmAllCraft`], the GM `.allcraft` grant.
 //! - [`gm_craft_grant`]: [`GmCraftGrant`], the GM `.craftkit` and
@@ -22,6 +32,7 @@
 pub mod client_methods;
 pub mod gm_allcraft;
 pub mod gm_craft_grant;
+pub mod gm_points;
 pub mod request;
 pub mod respec;
 pub mod stations;
@@ -33,6 +44,7 @@ pub use client_methods::{
 };
 pub use gm_allcraft::GmAllCraft;
 pub use gm_craft_grant::{GmCraftGrant, GmCraftGrantKind};
+pub use gm_points::{GmGrantAppliedSciencePoints, GmGrantExpertise};
 pub use request::{CraftRequest, CraftVerb};
 pub use respec::RespecCraftOpen;
 pub use stations::{CraftingStations, StationChangeCause, StationSet};

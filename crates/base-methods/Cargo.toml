@@ -52,3 +52,7 @@ test-support = []
 cimmeria-test-support = { workspace = true }
 # `test_default_connected_client_state`, re-exported from the same shim.
 cimmeria-base-session = { workspace = true, features = ["test-support"] }
+# The crafting base plugin (#962 step 5): the crafting tests that run
+# through this crate's hook sites install it on their sessions. A leaf
+# that depends only on cimmeria-base-session, so this is no cycle.
+cimmeria-base-crafting = { workspace = true }

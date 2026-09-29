@@ -14,9 +14,12 @@
 //!   GM feedback channel (`base::gm_feedback`) and cooked-data delivery
 //!   (`base::cooked_data`).
 //! - The session-scoped handlers with no world-entry dependency: contact
-//!   list, crafting, GM spawn,
-//!   console authoring, and the chat-channel registration payloads
-//!   (`base::world_entry_chat`).
+//!   list, GM spawn, console authoring, and the chat-channel registration
+//!   payloads (`base::world_entry_chat`).
+//! - The base plugin API (`base::plugin`, #962 step 5) and the inventory
+//!   advisory locks every inventory write shares (`base::inventory_locks`).
+//!   Crafting, which used to live here, is a plugin in
+//!   `cimmeria-base-crafting`.
 //! - Two leaves of the world-entry tree the methods crate needs below it:
 //!   the space registry (`base::world_entry::space_registry`) and the
 //!   appearance wire builders (`base::world_entry_appearance::builders`).

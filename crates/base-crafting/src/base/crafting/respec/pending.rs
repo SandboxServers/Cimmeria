@@ -69,5 +69,5 @@ pub fn with_session<R>(
     let addr = entity_to_addr.lock().ok()?.get(&entity_id).copied()?;
     let mut clients = connected.lock().ok()?;
     let client = clients.get_mut(&addr)?;
-    Some(f(&mut client.crafting_options))
+    Some(f(super::super::options::session_options_mut(client)))
 }

@@ -10,11 +10,13 @@ use cimmeria_game::player::{apply_level_ups, max_exp_for_level};
 
 use super::super::super::contact_list::handlers::fanout_contact_event;
 use super::super::super::contact_list::wire::EVENT_GAIN_LEVEL;
-use super::super::super::crafting::sync::{push_asp, CraftClient};
 use super::super::super::gm_feedback::send_gm_feedback_to_client;
 use super::super::super::helpers::{send_bundle_to_witness_reliable, send_to_witness_reliable};
 use super::super::super::ConnectedClientState;
 use crate::mercury::{build_player_entity_method_packet, method_idx};
+use cimmeria_base_session::base::plugin::{
+    entity_plugins, AppliedScienceCall, ProgressionHookPoint,
+};
 
 // The XP table, the cap and the points-per-level all live in
 // `cimmeria_game::player` (`LEVEL_XP`, levels 1-50 plus the level-50
@@ -273,16 +275,24 @@ pub async fn handle_grant_xp(
     );
     send_bundle_to_witness_reliable(transport, connected, entity_to_addr, entity_id, bundle).await;
 
-    // The discipline trainer shows the ASP property live and replaces its
-    // count with the value, so push the new total (not the points earned).
-    // `push_asp` logs its own failed send.
+    // The base plugins see the new applied-science total (#962 step 5): the
+    // discipline trainer shows the ASP property live and replaces its count
+    // with the value, so crafting pushes the new total (not the points
+    // earned), and logs its own failed send.
     if let Some((player_id, asp_total)) = asp_push {
-        let client = CraftClient {
-            transport,
-            connected,
-            entity_to_addr,
-        };
-        push_asp(entity_id, player_id, asp_total, client).await;
+        entity_plugins(connected, entity_to_addr, entity_id)
+            .run_progression_hook(
+                ProgressionHookPoint::AfterAppliedScienceEarned,
+                AppliedScienceCall {
+                    entity_id,
+                    player_id,
+                    total: asp_total,
+                    transport,
+                    connected,
+                    entity_to_addr,
+                },
+            )
+            .await;
     }
 
     // The cell's trainer gates read level and training points; mirror the
