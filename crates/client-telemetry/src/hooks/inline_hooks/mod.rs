@@ -35,7 +35,7 @@
 //!
 //! # What's installed
 //!
-//! 22 hooks. Every address below was re-checked against the QA
+//! 27 hooks. Every address below was re-checked against the QA
 //! `SGW.exe` on 2026-09-27 (function entry, `ret N` against the detour's
 //! argument count) and is covered by the [fingerprint
 //! gate](crate::fingerprint), which installs none of them on a build
@@ -75,6 +75,11 @@
 //! | `EntityManager::onEntityProperty` | `0x00dd29d0` | `client.mercury.entity_property` | per (event, entity) bucket |
 //! | queued-message replay | `0x00dd1e40` | `client.entity.queue_replay` | per (event, entity) bucket |
 //! | `RouteOutgoingEntityRpc` (`stdcall`, 4 args) | `0x00c6fc40` | `client.net.out` | per (method, entity) bucket |
+//! | `Nub::processFilteredPacket` (`this, addr, packet`, `ret 8`) | `0x01580840` | `client.mercury.packet_in` (+ `client.mercury.error`) | ordinary traffic: bucket; fragments, buffered, in-flight and every non-happy packet: unthrottled |
+//! | `UnAckedHandler::queueAckForPacket` (`ret 0x10`) | `0x0158cba0` | (records the window disposition for the packet event; no event) | - |
+//! | `Nub::processPacket` (`this, addr, packet, channel`, `ret 0xc`) | `0x0157fd20` | `client.mercury.fragment` (+ `client.mercury.error`) | fragments only, unthrottled |
+//! | `Nub::processOrderedPacket` (`this, message`, `ret 4`, game thread) | `0x0157c820` | `client.mercury.bundle` `phase=start|end` (+ `client.mercury.error`) | assembled and non-happy bundles unthrottled; clean single-packet bundles: bucket |
+//! | `Bundle::iterator::unpack` (`this, element`, `ret 4`, game thread) | `0x01579830` | (feeds the bundle summary; no event) | - |
 //!
 //! # Why MinHook
 //!
@@ -99,6 +104,8 @@ mod entity_lifecycle;
 #[cfg(all(target_os = "windows", target_arch = "x86"))]
 mod entity_messages;
 mod mercury_dispatch;
+#[cfg(all(target_os = "windows", target_arch = "x86"))]
+mod mercury_recv;
 #[cfg(all(target_os = "windows", target_arch = "x86"))]
 mod net_out;
 mod state_flags;
@@ -155,11 +162,12 @@ unsafe fn install_inner(producer: Producer) {
     entity_lifecycle::install_all(&producer);
     entity_messages::install_all(&producer);
     net_out::install_all(&producer);
+    mercury_recv::install_all(&producer);
 
     super::emit_info(
         &producer,
         "client.hooks.inline.install_complete",
-        [("hook_count", serde_json::json!(22))],
+        [("hook_count", serde_json::json!(27))],
     );
 }
 
@@ -279,6 +287,15 @@ mod tests {
             assert_eq!(super::entity_messages::ADDR_ENTITY_PROPERTY, 0x00dd29d0);
             assert_eq!(super::entity_messages::ADDR_QUEUE_REPLAY, 0x00dd1e40);
             assert_eq!(super::net_out::ADDR_ROUTE_OUTGOING_RPC, 0x00c6fc40);
+            // Mercury receive path (findings/client-mercury-receive-path.md).
+            assert_eq!(
+                super::mercury_recv::ADDR_PROCESS_FILTERED_PACKET,
+                0x01580840
+            );
+            assert_eq!(super::mercury_recv::ADDR_QUEUE_ACK, 0x0158cba0);
+            assert_eq!(super::mercury_recv::ADDR_PROCESS_PACKET, 0x0157fd20);
+            assert_eq!(super::mercury_recv::ADDR_PROCESS_ORDERED_PACKET, 0x0157c820);
+            assert_eq!(super::mercury_recv::ADDR_BUNDLE_UNPACK, 0x01579830);
         }
     }
     /// Every inline-hooked address is a fingerprinted site, so a build
@@ -309,6 +326,11 @@ mod tests {
             super::entity_messages::ADDR_ENTITY_PROPERTY,
             super::entity_messages::ADDR_QUEUE_REPLAY,
             super::net_out::ADDR_ROUTE_OUTGOING_RPC,
+            super::mercury_recv::ADDR_PROCESS_FILTERED_PACKET,
+            super::mercury_recv::ADDR_QUEUE_ACK,
+            super::mercury_recv::ADDR_PROCESS_PACKET,
+            super::mercury_recv::ADDR_PROCESS_ORDERED_PACKET,
+            super::mercury_recv::ADDR_BUNDLE_UNPACK,
         ];
         for addr in hooked {
             assert!(

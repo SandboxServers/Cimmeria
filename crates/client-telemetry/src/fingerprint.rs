@@ -223,8 +223,55 @@ pub const ROUTE_OUTGOING_RPC: Site = code_site(
     ],
 );
 
+/// `Nub::processFilteredPacket`: `push ebp; mov ebp, esp; push -1; push
+/// 0x01793b8b; mov eax, fs:[0]`.
+pub const PROCESS_FILTERED_PACKET: Site = code_site(
+    "Nub::processFilteredPacket",
+    0x0158_0840,
+    &[
+        0x55, 0x8B, 0xEC, 0x6A, 0xFF, 0x68, 0x8B, 0x3B, 0x79, 0x01, 0x64, 0xA1,
+    ],
+);
+
+/// `UnAckedHandler::queueAckForPacket`: `push -1; push 0x01794bc1; mov eax,
+/// fs:[0]`.
+pub const QUEUE_ACK: Site = code_site(
+    "UnAckedHandler::queueAckForPacket",
+    0x0158_cba0,
+    &[
+        0x6A, 0xFF, 0x68, 0xC1, 0x4B, 0x79, 0x01, 0x64, 0xA1, 0x00, 0x00, 0x00,
+    ],
+);
+
+/// `Nub::processPacket`: `push -1; push 0x01793aed; mov eax, fs:[0]`.
+pub const PROCESS_PACKET: Site = code_site(
+    "Nub::processPacket",
+    0x0157_fd20,
+    &[
+        0x6A, 0xFF, 0x68, 0xED, 0x3A, 0x79, 0x01, 0x64, 0xA1, 0x00, 0x00, 0x00,
+    ],
+);
+
+/// `Nub::processOrderedPacket`: `push -1; mov eax, fs:[0]; push 0x01793681`.
+pub const PROCESS_ORDERED_PACKET: Site = code_site(
+    "Nub::processOrderedPacket",
+    0x0157_c820,
+    &[
+        0x6A, 0xFF, 0x64, 0xA1, 0x00, 0x00, 0x00, 0x00, 0x68, 0x81, 0x36, 0x79,
+    ],
+);
+
+/// `Bundle::iterator::unpack`: `push -1; push 0x017932b1; mov eax, fs:[0]`.
+pub const BUNDLE_UNPACK: Site = code_site(
+    "Bundle::iterator::unpack",
+    0x0157_9830,
+    &[
+        0x6A, 0xFF, 0x68, 0xB1, 0x32, 0x79, 0x01, 0x64, 0xA1, 0x00, 0x00, 0x00,
+    ],
+);
+
 /// Every function the gate checks.
-pub const CODE_SITES: [Site; 22] = [
+pub const CODE_SITES: [Site; 27] = [
     cimmeria_client_hookgate::ENGINE_TICK,
     cimmeria_client_hookgate::DROP_CALLEE,
     BINK_TICK,
@@ -247,6 +294,11 @@ pub const CODE_SITES: [Site; 22] = [
     ENTITY_PROPERTY,
     QUEUE_REPLAY,
     ROUTE_OUTGOING_RPC,
+    PROCESS_FILTERED_PACKET,
+    QUEUE_ACK,
+    PROCESS_PACKET,
+    PROCESS_ORDERED_PACKET,
+    BUNDLE_UNPACK,
 ];
 
 const fn code_site(name: &'static str, address: usize, expected: &'static [u8]) -> Site {

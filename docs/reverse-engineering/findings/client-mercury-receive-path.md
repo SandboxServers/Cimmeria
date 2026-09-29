@@ -2,7 +2,7 @@
 
 > **Date**: 2026-09-29
 > **Method**: Ghidra (MCP, `SGW.exe` QA build): decompile plus disassembly of every function named below; every `ret N` and argument slot read from the prologue/epilogue bytes, not only from the decompiler. Function names in Ghidra are partly stale (`Mercury_Nub_12` is `processFilteredPacket`, `Mercury_Nub_14` is `processPacket`, `Mercury_Nub_5` is a caller named after the wrong slot); this doc uses the meaning, and gives the address.
-> **Status**: statically verified. Nothing here has been observed live yet; the telemetry seams described in [client-telemetry.md](../../architecture/client-telemetry.md) exist to confirm it. Items marked **inferred** are read from code shape.
+> **Status**: statically verified. Nothing here has been observed live yet; the five telemetry seams ("Telemetry seams" below, catalog in [client-telemetry.md](../../architecture/client-telemetry.md)) exist to confirm it. Items marked **inferred** are read from code shape.
 > **Feeds**: the `client.mercury.packet_in`, `client.mercury.fragment` and `client.mercury.bundle` events; the server-side audit of `crates/mercury`'s fragment encoder; the "AoI bundle partially processed" repro (15-fragment, 18,367-byte reliable bundle whose tail is never processed although every fragment was ACKed).
 > **Related**: [mercury-nub-anatomy.md](mercury-nub-anatomy.md), [mercury-protocol-internals.md](mercury-protocol-internals.md), [client-entity-lifecycle.md](client-entity-lifecycle.md), [../../protocol/mercury-wire-format.md](../../protocol/mercury-wire-format.md).
 
@@ -189,6 +189,20 @@ The observed pattern is: all 15 fragments ACKed, the first 12 NPCs' messages pro
 * **The message loop stops midway in exactly two ways** (unknown message id; header or body that does not fit), and after either it processes **nothing more**. The "nothing more" half of the observation matches the header-straddle abort.
 * **The client cannot skip messages inside the loop.** `next()` advances by the declared length, independently of the handler. A "gap of about three NPCs, then one stray message" is therefore **not** a Mercury-level skip. It matches the entity layer instead: [client-entity-lifecycle.md](client-entity-lifecycle.md) shows that a message for an entity that is not yet in the world is **queued** (`client.mercury.entity_method` with `path = queued`, logged at `info`; delivered ones are `debug`), and an NPC whose `enterAoI` count is 0 when its create arrives is parked. That would look like "skipped" in a `debug`-filtered view. **Unconfirmed**: the new `client.mercury.bundle` event states how many messages the loop dispatched, which separates the two explanations.
 * **Concrete candidate, not yet proven**: a `WORD_LENGTH` message header (3 bytes) that a fragment boundary splits. It is data-dependent (NPC order changes the bytes) and probabilistic (a boundary falls inside a header in a few percent of boundaries; 14 boundaries per bundle), which fits "about 1 login in 4, different subset every time". The server-side audit must check whether the encoder starts a new fragment when fewer than `h` bytes remain.
+
+## Telemetry seams
+
+Five inline hooks in `cimmeria-client-telemetry` (`inline_hooks/mercury_recv.rs`, portable logic in `hooks/mercury_recv/`) turn this path into events; the event catalog is in [client-telemetry.md](../../architecture/client-telemetry.md) ("Mercury receive path"). All five prologues are fingerprinted (`push -1; push <SEH handler>; mov eax, fs:[0]` shapes, plus `push ebp; mov ebp, esp` for the filter), and each `ret N` was read from the function's epilogue bytes.
+
+| Hook | Reads | Says |
+|---|---|---|
+| `0x01580840` `processFilteredPacket` | the datagram (copy), `Nub+0xf8` before and after | footers, the filter's result, whether a drop path bumped the bad-packet counter |
+| `0x0158cba0` `queueAckForPacket` | channel `+0x30`, `+0x48`, `+0x50` before and after | delivered (and how many followers were released), buffered, duplicate, out of window, stale |
+| `0x0157fd20` `processPacket` | the fragment's footers, the channel's group (`+0x124`, `+0`, `+4`, `+0x10` list) before and after | started, added, completed (assembled bytes and packet count), duplicate, mangled footers, bundle missing, restarted |
+| `0x0157c820` `processOrderedPacket` | the bundle's packet chain, `Nub+0x10c`/`+0x118` before and after | source, total bytes, boundaries, how the loop ended |
+| `0x01579830` `unpack` | the iterator (`0x24` bytes) and the message's interface element before and after | each message's offset, header, length, straddle; the exact header that did not fit |
+
+**Static versus live.** Everything in the layout, footer and rule sections is read from decompile and disassembly and is unit-tested against synthetic memory built to those layouts. **Not yet confirmed live**: that the four-word argument list of `queueAckForPacket` is `(out, packet, seq, seq)` in that order (the hook does not depend on it: it reads the channel only and pairs with the filter's own parse); that `ClientIncomingMessage+0x10 -> +4` is the head packet on the assembled path as well as the single-packet one (read from `processOrderedPacket`'s decompile, `*(*(param_1 + 0x10) + 4)`); and that the header-straddle rule is what the server's encoder violates in the failing logins (a hypothesis until a `client.mercury.bundle` end event with `fault = header_does_not_fit_packet` shows it).
 
 ## Open questions
 
