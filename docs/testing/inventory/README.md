@@ -35,11 +35,11 @@ many tests also updates the catalogue.
 
 | Metric | Count |
 |---|---:|
-| Tests (`#[test]` / `#[tokio::test]`) | 8,865 |
-| Files with tests | 1,478 |
-| Gated in CI (every crate but CI's exclude list) | 8,225 |
+| Tests (`#[test]` / `#[tokio::test]`) | 8,873 |
+| Files with tests | 1,480 |
+| Gated in CI (every crate but CI's exclude list) | 8,233 |
 | Live-DB tests (`require_db_or_skip!` in the body) | 1,517 |
-| Inventory threshold (5% of the tests) | 443 |
+| Inventory threshold (5% of the tests) | 444 |
 
 <!-- /gen:tests-totals -->
 
@@ -136,6 +136,7 @@ with no file in this directory yet.
 | `tools/ContentEditor` | `cimmeria-content-editor` | 12 | 1 | 0 | no | [tools-contenteditor.md](tools-contenteditor.md) |
 | `crates/lab-mcp` | `cimmeria-lab-mcp` | 9 | 2 | 0 | yes | none |
 | `crates/observability` | `cimmeria-observability` | 8 | 2 | 0 | yes | none |
+| `crates/sgw-testhost` | `cimmeria-sgw-testhost` | 8 | 2 | 0 | yes | none |
 | `src-tauri` | `cimmeria-app` | 6 | 2 | 0 | no | [tauri-app.md](tauri-app.md) |
 | `crates/defs` | `cimmeria-defs` | 5 | 1 | 0 | yes | [defs.md](defs.md) |
 
