@@ -43,6 +43,8 @@ pub fn lookup(name: &str) -> Option<&'static dyn EffectScript> {
         "RadiationDamage" => Some(&super::ammo_dart_tech::RadiationDamage),
         // Antidote and Coagulant darts (ammo AM-11c): remove effects by category.
         "RemoveEffects" => Some(&super::ammo_dart_support::RemoveEffects),
+        // EMP rounds' on-hit effect 9120 (ammo campaign AM-09).
+        "EmpDisrupt" => Some(&super::ammo_emp::EmpDisrupt),
         _ => None,
     }
 }
