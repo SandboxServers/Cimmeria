@@ -845,8 +845,8 @@ Telemetry: `ammo_damage_applied` (DEBUG, target `ammo`) per modified shot, and `
 | Family (packet) | Row | On-hit effect | Script | Stacking |
 |---|---|---|---|---|
 | Incendiary (AM-08, toggle 723) | 1.0 damage / 1.0 penetration, `DT_Energy` | 9110 Incendiary Burn: 4 pulses, 1 s apart, 15 Focus and 3 Health each; `EffectCategory` = `Burning` for AM-11c's cleanse | existing `RangedEnergyDamage`, no new script | decision 4: the same shooter refreshes, another shooter stacks |
-| Tech-disable darts (AM-11b, `Dart_EMP`, toggle 999) | 1.1 damage / 0.75 penetration, `DT_Physical` | 9150: a one-shot 50 Focus (shield) drain | existing `RangedEnergyDamage` with `FocusDamage` only, no new script | one-shot, nothing to stack |
-| Tech-disable darts (AM-11b, `Dart_Radioactive`; no toggle exists, 1227 Contagion cited) | 1.0 damage / 1.0 penetration, the ability's own type | 9151: 3 Health per pulse, 5 pulses 2 s apart, the first on the hit | new `RadiationDamage` (`cell/effects/ammo_dart_tech.rs`) | same-shooter hits refresh |
+| EMP dart (AM-11b, toggle 999) | 1.1 damage / 0.75 penetration, `DT_Physical` | 9150 Dart EMP Focus Drain: one shot, 50 Focus | existing `RangedEnergyDamage` (`FocusDamage` only), no new script | single shot, nothing registers |
+| Radioactive dart (AM-11b; no toggle exists, 1227 Contagion cited) | 1.0 damage / 1.0 penetration, the ability's own type | 9151 Dart Radiation Dose: 5 pulses, 2 s apart, 3 Health each, the first on the hit | new `RadiationDamage` in `cell/effects/ammo_dart_tech.rs` | decision 4: the same shooter refreshes, another shooter stacks |
 
 ## Cross-cutting follow-ups
 

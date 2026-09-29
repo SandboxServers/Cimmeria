@@ -49,6 +49,17 @@ The dart auto attack (1086, effect 1237) is "-100F / -10H", so the payloads are 
 - `MITIGATION` is capped at 0 in the default stats, so EMP's `penetration_mult` of 0.75 does nothing in live play; the EMP shot is a plain 10% damage increase until mitigation is populated.
 - The dose's pulses after the first run through the pulse tick, which skips dead targets, floors surrendered NPCs at 1 and credits a DoT kill. The first pulse runs in `apply_damage_to_target`'s script pass, before its death sweep.
 
+## Client exposure and UAT
+
+Effects 9150 and 9151 exist only in the server seed, not in the client's cooked data. What each dart sends the client:
+
+| Dart | Per-effect client message | Risk |
+|---|---|---|
+| `Dart_EMP` | None. Effect 9150 is single-shot, so it never registers an active effect; the client sees only the target's `onStatUpdate` (FOCUS) that follows every scripted hit. | None known. |
+| `Dart_Radioactive` | Yes. Effect 9151 pulses, so `pulsing::register_active_effect` sends `onTimerUpdate` type 5 (`EffectSet`) with `ID` and `SecondaryId` 9151 addressed to the target entity on every hit, and a zero timer when the dose ends. | **Unverified.** `EffectSet_HandleOnTimerUpdate` (`0x00e09160`) stores the id in its active-effect list; nobody has checked whether the effect bar then looks 9151 up in cooked data, or what it does when the lookup misses. An unknown cooked id has crashed the client before (dialog overrides, #938). |
+
+Nothing reaches a client until AM-12 turns `ammo.finite_special` on. Before then, one UAT step should cover it: fire a Radioactive dart at an NPC with the target frame open, and watch for a crash, a missing icon, or a blank icon for the 8 seconds of the dose. If the client mishandles the id, the fix is in the shared pulsing layer (a per-effect "server-only, no timer" switch), which every Wave-2 family with a pulsing on-hit effect (AM-08's 9110 too) would need, not in this packet.
+
 ## Telemetry
 
 | Event | Level | Target | Fields |
