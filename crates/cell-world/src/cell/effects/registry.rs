@@ -39,6 +39,8 @@ pub fn lookup(name: &str) -> Option<&'static dyn EffectScript> {
         "PetSummonSpeed" => Some(&super::pet_scripts::PetSummonSpeed),
         // Timed primary-attribute buffs: the consumable stimpacks.
         "StatBuff" => Some(&super::stat_buff::StatBuff),
+        // Dart_Tranquilizer's on-hit slow (ammo campaign AM-11a).
+        "MovementSlow" => Some(&super::ammo_dart_cc::MovementSlow),
         _ => None,
     }
 }

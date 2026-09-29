@@ -845,6 +845,9 @@ Telemetry: `ammo_damage_applied` (DEBUG, target `ammo`) per modified shot, and `
 | Family (packet) | Row | On-hit effect | Script | Stacking |
 |---|---|---|---|---|
 | Incendiary (AM-08, toggle 723) | 1.0 damage / 1.0 penetration, `DT_Energy` | 9110 Incendiary Burn: 4 pulses, 1 s apart, 15 Focus and 3 Health each; `EffectCategory` = `Burning` for AM-11c's cleanse | existing `RangedEnergyDamage`, no new script | decision 4: the same shooter refreshes, another shooter stacks |
+| Dart Poison (AM-11a, toggle 990) | 1.0 damage / 1.0 penetration, `DT_Physical` | 9140 Poison Dart Toxin: 4 Health on the hit and on each of 4 pulses 2 s apart; `EffectCategory` = `Poison` for AM-11c's cleanse | existing `Suppression`, no new script | decision 4: the same shooter refreshes, another shooter stacks |
+| Dart Disease (AM-11a, toggle 991) | 1.0 / 1.0, `DT_Physical` | 9141 Disease Dart Infection: 2 Health on the hit and on each of 9 pulses 2 s apart; `EffectCategory` = `Disease` | existing `Suppression` | as Poison |
+| Dart Tranquilizer (AM-11a, toggle 998 Disorient) | 1.0 / 1.0, `DT_Physical` | 9142 Tranquilizer Dart Sedation: `MOVEMENT_SPEED_MOD` -40 (60% speed) until the instance expires 6 s after the hit | new `MovementSlow` (`cell/effects/ammo_dart_cc.rs`), because `Stun` leaks its flag when it pulses and NPCs ignore `BSF_MOVEMENT_LOCK` (#1049) | one slow per effect per target: pulses and refreshes do not slow again, and a second shooter shares the slow until the last instance goes |
 
 ## Cross-cutting follow-ups
 

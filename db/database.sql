@@ -299,6 +299,7 @@
 \ir resources/Effects/Seed/effects.sql
 \ir resources/Abilities/Seed/ammo_modifiers_hp_ap.sql
 \ir resources/Abilities/Seed/ammo_modifiers_incendiary.sql
+\ir resources/Abilities/Seed/ammo_modifiers_dart_cc.sql
 \ir resources/Entities/Seed/blueprints.sql
 \ir resources/Entities/Seed/blueprints_components.sql
 \ir resources/Entities/Seed/deployables.sql
@@ -329,9 +330,11 @@
 \ir resources/Items/Tables/ammo_item_types.sql
 \ir resources/Items/Seed/ammo_item_types.sql
 \ir resources/Items/Seed/ammo_weapon_widening.sql
+\ir resources/Items/Seed/ammo_dart_widening.sql
 \ir resources/Loot/Seed/loot.sql
 \ir resources/Loot/Seed/loot_tables.sql
 \ir resources/Loot/Seed/ammo_loot.sql
+\ir resources/Loot/Seed/ammo_dart_loot.sql
 \ir resources/Missions/Seed/mission_objectives.sql
 \ir resources/Missions/Seed/mission_reward_groups.sql
 \ir resources/Missions/Seed/mission_rewards.sql
