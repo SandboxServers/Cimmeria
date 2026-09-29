@@ -9,7 +9,9 @@
 //! Anchors per the `client-instrumentation-hookpoints.md` and
 //! `client-instrumentation-entry-points.md` docs. Three techniques:
 //!
-//! - **Inline JMP** (MinHook) — `inline_hooks/`. 11 hooks:
+//! - **Inline JMP** (MinHook) — `inline_hooks/`. 22 hooks (the 11 below
+//!   plus the entity-lifecycle, inbound-message and outgoing-RPC hooks
+//!   documented in `inline_hooks/mod.rs`):
 //!   FEngineLoop::Tick, FArchiveAsync::Serialize,
 //!   UWorld::UpdateLevelStreamingInner, UObject::StaticLoadObject,
 //!   GameBeing::onStateFieldUpdate, USGWAnimNotify::Notify A+B,
@@ -57,6 +59,16 @@ use crate::queue::Producer;
 // Pure helpers run only from the i686 CEGUI logger detour.
 #[cfg_attr(not(target_arch = "x86"), allow(dead_code))]
 mod cegui_log;
+// The one-time dump of every registered CME event type (i686 walker).
+#[cfg_attr(not(target_arch = "x86"), allow(dead_code))]
+mod cme_catalog;
+// One place the entity, net and Lua detours emit an event (i686 only).
+#[cfg_attr(not(target_arch = "x86"), allow(dead_code))]
+mod emit;
+// Per-entity state, map reader and field builders behind the
+// `client.entity.*` events; driven only by the i686 detours.
+#[cfg_attr(not(target_arch = "x86"), allow(dead_code))]
+pub(crate) mod entity_trace;
 mod iat_hooks;
 mod inline_hooks;
 // Used only by the i686 CME event-factory detour.
@@ -67,6 +79,11 @@ mod name_throttle;
 // trampoline primitive without duplicating the protect/patch/flush dance.
 pub(crate) mod primitives;
 mod sampling;
+// The engine layer's log sinks and OS-level seams (BigWorld messages, UE3
+// `GLog`, log4cxx, debug strings, exceptions). Own module tree, own
+// fingerprint sites.
+pub mod seams;
+pub mod sinks;
 mod vtable_hooks;
 
 pub use sampling::SamplingCounter;
@@ -88,7 +105,10 @@ pub fn install_all(producer: Producer) {
     // failure event. Order doesn't matter — they're independent.
     inline_hooks::install(producer.clone());
     iat_hooks::install(producer.clone());
-    vtable_hooks::install(producer);
+    vtable_hooks::install(producer.clone());
+    sinks::install(producer.clone());
+    seams::install(producer.clone());
+    sinks::emit_capabilities(&producer);
 }
 
 /// Convenience: emit a one-shot info event with this target +

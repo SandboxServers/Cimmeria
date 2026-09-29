@@ -38,8 +38,10 @@
 // session loader, and uploader thread compile and run on Linux for
 // unit tests; only the Windows cdylib actually executes them inside
 // SGW.exe.
+pub mod capture;
 pub mod events;
 pub mod fingerprint;
+pub mod governor;
 pub mod hooks;
 pub mod log;
 pub mod msvc_string;

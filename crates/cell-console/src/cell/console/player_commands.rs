@@ -10,7 +10,7 @@
 use tokio::sync::mpsc;
 
 use super::send_gm_feedback;
-use crate::cell::messages::{CellToBaseMsg, RespecCraftOpen};
+use crate::cell::messages::{CellToBaseMsg, PluginMsg, RespecCraftOpen};
 use crate::cell::space_manager::SpaceManager;
 
 /// The player commands, by the name typed after the `.`.
@@ -63,7 +63,7 @@ async fn respec_craft(entity_id: u32, tx: &mpsc::Sender<CellToBaseMsg>, space_mg
         entity_id,
         player_id,
     };
-    if let Err(e) = tx.send(CellToBaseMsg::RespecCraftOpen(open)).await {
+    if let Err(e) = tx.send(CellToBaseMsg::Plugin(PluginMsg::new(open))).await {
         tracing::warn!(
             target: "crafting",
             event = "forward_failed",

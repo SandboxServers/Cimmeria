@@ -3,7 +3,7 @@
 > **Date**: 2026-09-28
 > **Audience**: whoever drives or extends the Live Research Lab, and the sessions working on `cimmeria-client-telemetry`, `cimmeria-lab` and `cimmeria-lab-mcp`
 > **Type**: analysis (gap report plus prioritized backlog)
-> **Status**: items C1 and C2 landed with this document; the rest are proposals
+> **Status**: items C1 and C2 landed with this document. C3 (Lua errors), C6 (outbound methods) and the entity part of C7 (create, enter, leave, destroy, appearance, per-entity CME ids, inbound message paths) plus a CME event catalog landed 2026-09-28 ([client-telemetry.md](../../architecture/client-telemetry.md#entity-lifecycle-inbound-and-outbound-messages-lua-errors-and-the-cme-catalog)); the rest are proposals
 > **Companion docs**: [live-research-lab.md](../../architecture/live-research-lab.md) (ADR), [client-telemetry.md](../../architecture/client-telemetry.md), [client-instrumentation-hookpoints.md](../../reverse-engineering/findings/client-instrumentation-hookpoints.md), [cme-event-signal.md](../../reverse-engineering/findings/cme-event-signal.md), [instrumentation-discipline.md](../../architecture/instrumentation-discipline.md)
 
 ## Goal
@@ -76,10 +76,10 @@ These touch `crates/client-telemetry/src/bridge/` and `crates/lab/`, which anoth
 | ID | Proposal | Why | Effort |
 |---|---|---|---|
 | B1 | **Sequence numbers and a cursor on the event ring.** Give `LabEvent` a monotonic `seq`, keep a bounded history, and let `events_read` take `since_seq` instead of draining. | Two readers (the agent and `lab_timeline`) currently steal each other's events, and a crash loses what was drained but not yet processed. | S |
-| B2 | **`client_wait_for`.** Evaluate a Lua predicate once per tick on the main thread until it is true or a timeout passes, returning the value and the elapsed time. | Agents hand-roll sleep-and-poll loops through `lua_eval`, one round trip per poll. | S |
-| B3 | **Canned state readers** (`client_ui_state`): visible top-level windows, the open dialog's id and text, mission-tracker entries, target, player position, and the error box text, as one Lua probe. | Every step assertion needs these; writing the Lua each time is slow and error-prone. | M |
+| B2 | **`client_wait_for`.** Evaluate a Lua predicate once per tick on the main thread until it is true or a timeout passes, returning the value and the elapsed time. | Agents hand-roll sleep-and-poll loops through `lua_eval`, one round trip per poll. **Built** as a supervisor-side poll (one round trip per poll, not per tick). | S |
+| B3 | **Canned state readers** (`client_ui_state`): visible top-level windows, the open dialog's id and text, mission-tracker entries, target, player position, and the error box text, as one Lua probe. | Every step assertion needs these; writing the Lua each time is slow and error-prone. **Built** without target and position. | M |
 | B4 | **`lab_timeline` over the full ring**, including `cme.event` and `cegui.log`, not only heartbeats. | Puts "server sent X" and "client accepted X" on one line. | S after B1 |
-| B5 | **Character creation in autologin** (`lab_create_character`): drive the creation screen through its Lua module, with name, archetype and appearance as parameters. | The tutorial needs a fresh character each run. | M |
+| B5 | **Character creation in autologin** (`lab_create_character`): drive the creation screen through its Lua module, with name, archetype and appearance as parameters. | The tutorial needs a fresh character each run. **Built** with the native input instead of the Lua module (no appearance parameters). | M |
 | B6 | **Server-confirmed world entry**: `lab_login` waits for `client.cme.event` `Event_NetIn_onClientMapLoad` (or the server's `player entered world`) instead of the login windows closing. | "Entered world" is currently a guess. | S |
 | B7 | **Screenshot on assertion failure**: a wait that times out attaches a `lab_screenshot`. | A failed step is then diagnosable after the fact. | S |
 

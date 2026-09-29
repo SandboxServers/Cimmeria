@@ -1,5 +1,5 @@
 //! `.craftkit` and `.learnblueprint` for one player
-//! (`CellToBaseMsg::GmCraftGrant`).
+//! (sent in the `CellToBaseMsg::Plugin` envelope).
 
 /// What a GM crafting grant gives.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

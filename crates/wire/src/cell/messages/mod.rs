@@ -51,7 +51,7 @@ mod plugin_msg;
 
 pub use crate::crafting::{
     CraftRequest, CraftVerb, CraftingStations, GmAllCraft, GmCraftGrant, GmCraftGrantKind,
-    RespecCraftOpen, StationChangeCause, StationSet,
+    GmGrantAppliedSciencePoints, GmGrantExpertise, RespecCraftOpen, StationChangeCause, StationSet,
 };
 pub use ammo_gm_cell_to_base::GmGiveAmmo;
 pub use ammo_reserve::{AmmoReserveAnswer, AmmoReserveRequest, ReserveRefusal};

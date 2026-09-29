@@ -91,7 +91,7 @@ Lives at `crates/client-telemetry/src/bridge/` (directory from day one: `mod.rs`
 
 **Activation is double-gated.** The code exists only when the DLL is built with `--features lab-bridge`, which is off by default, so any telemetry DLL handed to someone else physically lacks it. Even when present, it starts only if `current-session.json` carries a `lab` block, which only the supervisor writes.
 
-**Transport.** Same shape as the Atrea bridge so both can share framing code: JSON-RPC 2.0 over TCP, 4-byte little-endian length prefix, single client, 32-byte token regenerated per launch and passed through the session file. Default bind `127.0.0.1:8770`; the bind address is configurable for a second PC on the LAN or VPN. Port 8765 is avoided because both the Atrea ADR and the SigNoz MCP already claim it.
+**Transport.** Same shape as the Atrea bridge so both can share framing code: JSON-RPC 2.0 over TCP, 4-byte little-endian length prefix, single client, 32-byte token regenerated per launch and passed through the session file. Default bind `127.0.0.1:8770`; the bind address is configurable for a second PC on the LAN or VPN. The bridge stays single-client per process; two game clients are two bridges, one per named instance (`CIMMERIA_LAB_INSTANCE`, its own port and session file), see [the guide](../guides/live-research-lab.md#two-clients-two-player-scenarios). Port 8765 is avoided because both the Atrea ADR and the SigNoz MCP already claim it.
 
 **Threading.** The IO thread parses and queues only. All Lua, all UObject access, and all native calls run in the existing `FEngineLoop::Tick` hook (`hooks/inline_hooks/engine_frame.rs`), which drains a bounded queue before the original tick. Memory reads run on the IO thread behind `VirtualQuery` checks and never fault. Every main-thread dispatch is wrapped in a structured exception guard; Rust has no native SEH, so this needs `microseh` or a small C shim (see §8).
 
@@ -117,7 +117,7 @@ A Windows-only stdio MCP server. It reuses the launcher's `launch` and `inject` 
 |---|---|
 | `lab_client_start` / `_stop` / `_restart` | Launch suspended, inject, resume; or terminate. Target server (local or colo) is a parameter. |
 | `lab_client_status` | PID, uptime, bridge heartbeat age, login state, crash count. |
-| `lab_login` | Autologin with the lab account and enter the world on a named character. |
+| `lab_login` | Log in with the client's own input and stop at character select. The character and world flows (`lab_create_character`, `lab_play_character`, `lab_finish_dialog`, `lab_logout`, ...) are listed in the operating guide. |
 | `lab_screenshot` | Window capture by PID, returned as an MCP image. |
 | `lab_crash_report` | Last minidump path, last N bridge commands before the crash, quarantined commands. |
 | `lab_timeline` | Merge local client events with server packet-tap rows for a time window (§5). |

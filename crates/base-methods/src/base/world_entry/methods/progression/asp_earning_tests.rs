@@ -65,6 +65,10 @@ async fn fixture(
     let entity_id: u32 = 9_970_000 + offset as u32;
     let addr: SocketAddr = format!("127.0.0.1:{}", 56_700 + offset).parse().unwrap();
     let mut state = make_connected_state(Some(player_id));
+    state.plugins = cimmeria_base_session::base::plugin::BasePlugins::build(&[
+        &cimmeria_base_crafting::CraftingPlugin,
+    ])
+    .unwrap();
     state.account_id = ACCOUNT_ID;
     state.player_level = Some(cached_level);
     state.player_xp = Some(exp as u64);

@@ -8,9 +8,11 @@ use std::sync::Arc;
 use cimmeria_wire::base::names::base_method_name;
 
 use super::{
-    BaseCtx, BaseMethodHandler, BasePlugin, CellMessageHandler, PluginMsg, PluginOwnership,
-    SessionEvent, SessionHook, SessionHookPoint, SessionStateHook, SessionStateHookPoint,
-    WorldEntryCall, WorldEntryHook, WorldEntryHookPoint,
+    AppliedScienceCall, BaseCtx, BaseMethodHandler, BasePlugin, CellMessageHandler, InventoryCall,
+    InventoryHook, InventoryHookPoint, ItemUseCall, ItemUseHook, ItemUseHookPoint, ItemUseOutcome,
+    PluginMsg, PluginOwnership, ProgressionHook, ProgressionHookPoint, SessionEvent, SessionHook,
+    SessionHookPoint, SessionStateHook, SessionStateHookPoint, WorldEntryCall, WorldEntryHook,
+    WorldEntryHookPoint,
 };
 use crate::base::ConnectedClientState;
 
@@ -124,6 +126,34 @@ impl BasePluginBuilder<'_> {
             .push((point, self.plugin, hook));
         self
     }
+
+    /// Offer every `useItem` at `point` to `hook`.
+    pub fn item_use_hook(&mut self, point: ItemUseHookPoint, hook: ItemUseHook) -> &mut Self {
+        self.registry
+            .item_use_hooks
+            .push((point, self.plugin, hook));
+        self
+    }
+
+    /// Run `hook` at inventory `point`.
+    pub fn inventory_hook(&mut self, point: InventoryHookPoint, hook: InventoryHook) -> &mut Self {
+        self.registry
+            .inventory_hooks
+            .push((point, self.plugin, hook));
+        self
+    }
+
+    /// Run `hook` at progression `point`.
+    pub fn progression_hook(
+        &mut self,
+        point: ProgressionHookPoint,
+        hook: ProgressionHook,
+    ) -> &mut Self {
+        self.registry
+            .progression_hooks
+            .push((point, self.plugin, hook));
+        self
+    }
 }
 
 type PendingMessage = (TypeId, &'static str, &'static str, CellMessageHandler);
@@ -140,6 +170,9 @@ struct Registry {
     session_hooks: Vec<(SessionHookPoint, &'static str, SessionHook)>,
     session_state_hooks: Vec<(SessionStateHookPoint, &'static str, SessionStateHook)>,
     world_entry_hooks: Vec<(WorldEntryHookPoint, &'static str, WorldEntryHook)>,
+    item_use_hooks: Vec<(ItemUseHookPoint, &'static str, ItemUseHook)>,
+    inventory_hooks: Vec<(InventoryHookPoint, &'static str, InventoryHook)>,
+    progression_hooks: Vec<(ProgressionHookPoint, &'static str, ProgressionHook)>,
 }
 
 impl Registry {
@@ -154,6 +187,9 @@ impl Registry {
             session_hooks: Vec::new(),
             session_state_hooks: Vec::new(),
             world_entry_hooks: Vec::new(),
+            item_use_hooks: Vec::new(),
+            inventory_hooks: Vec::new(),
+            progression_hooks: Vec::new(),
         }
     }
 }
@@ -349,6 +385,48 @@ impl BasePlugins {
             }
         }
     }
+
+    /// Offer a `useItem` to the hooks registered for `point`, in table
+    /// order. The first that does not answer
+    /// [`ItemUseOutcome::NotHandled`] decides and the rest do not run;
+    /// `NotHandled` when none takes it.
+    pub async fn run_item_use_hook(
+        &self,
+        point: ItemUseHookPoint,
+        call: ItemUseCall<'_>,
+    ) -> ItemUseOutcome {
+        for (p, _, hook) in &self.inner.item_use_hooks {
+            if *p == point {
+                match hook(call).await {
+                    ItemUseOutcome::NotHandled => {}
+                    decided => return decided,
+                }
+            }
+        }
+        ItemUseOutcome::NotHandled
+    }
+
+    /// Fire every hook registered for inventory `point`, in table order.
+    pub async fn run_inventory_hook(&self, point: InventoryHookPoint, call: InventoryCall<'_>) {
+        for (p, _, hook) in &self.inner.inventory_hooks {
+            if *p == point {
+                hook(call).await;
+            }
+        }
+    }
+
+    /// Fire every hook registered for progression `point`, in table order.
+    pub async fn run_progression_hook(
+        &self,
+        point: ProgressionHookPoint,
+        call: AppliedScienceCall<'_>,
+    ) {
+        for (p, _, hook) in &self.inner.progression_hooks {
+            if *p == point {
+                hook(call).await;
+            }
+        }
+    }
 }
 
 impl std::fmt::Debug for BasePlugins {
@@ -366,6 +444,9 @@ impl std::fmt::Debug for BasePlugins {
             .field("session_hooks", &self.inner.session_hooks.len())
             .field("session_state_hooks", &self.inner.session_state_hooks.len())
             .field("world_entry_hooks", &self.inner.world_entry_hooks.len())
+            .field("item_use_hooks", &self.inner.item_use_hooks.len())
+            .field("inventory_hooks", &self.inner.inventory_hooks.len())
+            .field("progression_hooks", &self.inner.progression_hooks.len())
             .finish()
     }
 }

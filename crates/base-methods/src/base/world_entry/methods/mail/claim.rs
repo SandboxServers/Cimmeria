@@ -34,8 +34,8 @@ use cimmeria_entity::inventory::{INV_CRAFTING, INV_MAIN};
 use sqlx::PgConnection;
 
 use super::MailCtx;
-use crate::base::crafting::inventory_locks::take_inventory_locks;
 use crate::base::feedback::{send_feedback_line, FeedbackCtx};
+use crate::base::inventory_locks::take_inventory_locks;
 use crate::cell::mail;
 use crate::cell::mail::codes::flags::{MAIL_ARCHIVE, MAIL_COD};
 use crate::mercury::method_idx;

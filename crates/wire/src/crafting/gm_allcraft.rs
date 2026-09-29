@@ -1,4 +1,4 @@
-//! `.allcraft` for one player (`CellToBaseMsg::GmAllCraft`).
+//! `.allcraft` for one player, sent in the `CellToBaseMsg::Plugin` envelope.
 
 /// A GM's `.allcraft`, already GM-gated by the cell's `.`-console.
 ///

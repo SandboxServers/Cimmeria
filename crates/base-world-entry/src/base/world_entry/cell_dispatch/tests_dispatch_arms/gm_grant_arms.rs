@@ -17,6 +17,7 @@
 
 use super::super::*;
 use super::empty_maps;
+use crate::cell::messages::{GmGrantAppliedSciencePoints, GmGrantExpertise, PluginMsg};
 use crate::test_support::{LogCapture, TestTransport};
 
 #[tokio::test]
@@ -26,13 +27,13 @@ async fn grant_expertise_routes_to_handler_and_warns_when_no_pool() {
     let transport: Arc<dyn Transport> = typed_transport.clone();
     let (connected, entity_to_addr) = empty_maps();
 
-    handle_cell_message(
-        CellToBaseMsg::GrantExpertise {
+    route_cell_message(
+        CellToBaseMsg::Plugin(PluginMsg::new(GmGrantExpertise {
             entity_id: 4242,
             player_id: 77,
             discipline_id: 3,
             amount: 40,
-        },
+        })),
         &transport,
         &connected,
         &entity_to_addr,
@@ -41,6 +42,7 @@ async fn grant_expertise_routes_to_handler_and_warns_when_no_pool() {
         &None,
         "127.0.0.1",
         7777,
+        &super::crafting_plugins(),
     )
     .await;
 
@@ -78,12 +80,12 @@ async fn grant_applied_science_routes_to_handler_and_warns_when_no_pool() {
     let transport: Arc<dyn Transport> = typed_transport.clone();
     let (connected, entity_to_addr) = empty_maps();
 
-    handle_cell_message(
-        CellToBaseMsg::GrantAppliedSciencePoints {
+    route_cell_message(
+        CellToBaseMsg::Plugin(PluginMsg::new(GmGrantAppliedSciencePoints {
             entity_id: 4243,
             player_id: 88,
             amount: 12,
-        },
+        })),
         &transport,
         &connected,
         &entity_to_addr,
@@ -92,6 +94,7 @@ async fn grant_applied_science_routes_to_handler_and_warns_when_no_pool() {
         &None,
         "127.0.0.1",
         7777,
+        &super::crafting_plugins(),
     )
     .await;
 

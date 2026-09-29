@@ -27,7 +27,7 @@ use sqlx::PgPool;
 use tracing::Level;
 
 use super::{cleanup, insert_account_and_player, insert_item, naquadah_of, owner_of};
-use crate::base::crafting::inventory_locks::take_inventory_locks;
+use crate::base::inventory_locks::take_inventory_locks;
 use crate::base::world_entry::methods::trade::handle_execute_trade;
 use crate::base::ConnectedClientState;
 use crate::mercury::{build_player_entity_method_packet, method_idx};

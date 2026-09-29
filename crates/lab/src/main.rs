@@ -21,6 +21,11 @@
 //!   injects the DLL (#985); default: beside this executable.
 //! - `CIMMERIA_LAB_BRIDGE_BIND` / `_PORT`, `CIMMERIA_LAB_UPLOAD_ENDPOINT`
 //!   — written into the session file the supervisor generates.
+//! - `CIMMERIA_LAB_INSTANCE` — names this supervisor's client (`p2`) so a
+//!   second `cimmeria-lab` can drive a second client: its own session file,
+//!   `lab-account.<name>.json`, logs and (with `_PORT`) bridge port.
+//!   `CIMMERIA_LAB_MAX_CLIENTS` caps the clients (default 2). Unset = the
+//!   single-client layout.
 
 use std::sync::Arc;
 
@@ -48,8 +53,16 @@ async fn main() -> Result<()> {
         .with_ansi(false)
         .init();
 
-    let addr =
-        std::env::var("CIMMERIA_LAB_BRIDGE").unwrap_or_else(|_| "127.0.0.1:8770".to_string());
+    // A bad instance name must stop the server: silently becoming the
+    // default instance would put two clients on one session file.
+    if let Err(e) = supervisor::instance::from_env() {
+        anyhow::bail!(e);
+    }
+    let config = SupervisorConfig::from_env();
+    // The bridge address follows the configured port, so a second instance
+    // needs only `CIMMERIA_LAB_BRIDGE_PORT`.
+    let addr = std::env::var("CIMMERIA_LAB_BRIDGE")
+        .unwrap_or_else(|_| format!("127.0.0.1:{}", config.port));
     let token = std::env::var("CIMMERIA_LAB_TOKEN").unwrap_or_default();
     if token.is_empty() {
         tracing::warn!(
@@ -57,8 +70,8 @@ async fn main() -> Result<()> {
              fail until lab_client_start mints its own token"
         );
     }
-    let config = SupervisorConfig::from_env();
-    tracing::info!(%addr, install_dir = ?config.install_dir, "cimmeria-lab supervisor starting");
+    tracing::info!(%addr, install_dir = ?config.install_dir, instance = ?config.instance,
+        "cimmeria-lab supervisor starting");
 
     let bridge = Arc::new(BridgeClient::new(addr, token));
     let supervisor = Arc::new(Supervisor::new(bridge, config));

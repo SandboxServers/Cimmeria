@@ -2,7 +2,7 @@
 title: "Address Map — Key Locations in SGW.exe"
 type: reference
 audience: contributors doing RE
-last_updated: 2026-05-27
+last_updated: 2026-09-28
 ---
 
 # Address Map — Key Locations in SGW.exe
@@ -26,7 +26,7 @@ Key virtual addresses, vtables, global variables, and important functions discov
 | `0x01ee1254` | `GEngine` | `UEngine*` | UE3 engine singleton (RVA `0x01AE1254`) |
 | `0x01ef134c` | `GEditor` | `UEditorEngine*` | Set when GIsEditor=1 (RVA `0x01AF134C`) |
 | `0x01ef2e74` | `GApp` | `void*` | Application pointer (RVA `0x01AF2E74`) |
-| `0x01eadbc0` | `FName::GNames` | `TArray<FNameEntry*>*` | Global name table (RVA `0x01ACADE0`; add image base `+0x400000` for note below) |
+| `0x01ecade0` | `FName::GNames` | `TArray<FNameEntry*>` (`Data` at `+0`, `Num` at `+4`) | Global name table (RVA `0x01ACADE0`). **Corrected 2026-09-28**: this row said `0x01eadbc0`, which does not match its own RVA. `FName::StaticInit` (`0x0049ba90`) zeroes `0x01ecade0` and the `FName -> string` routine (`0x0049b190`) indexes it. Entry layout in [findings/client-engine-sinks-and-seams.md](findings/client-engine-sinks-and-seams.md#fname-and-uobject-layout) |
 | `0x01edc69c` | `UObject::GObjObjects` | `TArray<UObject*>*` | Global object array (RVA `0x01ADC69C`) |
 | `0x01ead7ac` | `GIsEditor` | `UBOOL` | Editor mode flag |
 | `0x01ead7b0` | `GIsUCC` | `UBOOL` | Commandlet mode flag |
@@ -427,6 +427,40 @@ Full trace in [findings/dialog-controller-wire-flow.md](findings/dialog-controll
 | `0x017ef990` | `malloc` | MSVCR80.dll |
 | `0x017ef994` | `free` | MSVCR80.dll |
 | `0x017efa58` | `realloc` | MSVCR80.dll |
+
+### Client-telemetry hook anchors (corrected 2026-09-27)
+
+Checked **statically only**, against the local QA `SGW.exe` (image base `0x00400000`, ASLR off): function entries, `ret N` against the detour's arguments, and the PE import directory. None has run in the live client yet. The telemetry DLL's fingerprint gate (`crates/client-telemetry/src/fingerprint.rs`) holds the expected bytes for each site. The old values were wrong and are listed so they are not reintroduced.
+
+**IAT slots.** The old values were the slots' on-disk contents, i.e. hint/name RVAs read as VAs, which point into UTF-16 strings in `.rdata`. A runtime lookup by import name is tracked in #1067.
+
+| IAT slot | Import | DLL | Old (wrong) value |
+|---|---|---|---|
+| `0x017f0228` | `?lua_pcall@@YAHPAUlua_State@@HHH@Z` | lua51.dll | `0x01988a0c` |
+| `0x017f0244` | `?lua_call@@YAXPAUlua_State@@HH@Z` | lua51.dll | `0x01988904` |
+| `0x017f0288` | `?lua_newstate@@YAPAUlua_State@@P6APAXPAX0II@Z0@Z` | lua51.dll | `0x01988656` |
+| `0x017ef290` | `CreateThread` | KERNEL32.dll | `0x0196b65a` |
+| `0x017ef26c` | `LoadLibraryW` | KERNEL32.dll | `0x0196b5bc` |
+| `0x017ef268` | `LoadLibraryA` | KERNEL32.dll | `0x0196b5ac` |
+| `0x017efdf8` | `GetForegroundWindow` | USER32.dll | `0x0196af20` |
+
+`lua51.dll` imports `_CxxThrowException` and `__CxxFrameHandler3`, so Lua errors are C++ exceptions; any detour on these must use `C-unwind`.
+
+**Vtable slot.** `0x01ac1ba8` is the RTTI Complete Object Locator pointer in front of the `CEGUI::DefaultLogger` vtable, so slot 0 (the scalar deleting destructor, `0x012130d0`, `ret 4`) is at `0x01ac1bac`, and slot 1 (`logEvent`, `0x012129e0`, `ret 8`) is at **`0x01ac1bb0`**. The old anchor `0x01ac1ba8 + 4` hooked the destructor.
+
+**Signatures corrected by `ret N`.**
+
+| Address | Function | Correct stack arguments | Old claim |
+|---|---|---|---|
+| `0x00539850` | `APlayerController::execConsoleCommand` | `(this, FFrame&, void* Result)`, `ret 8` | `(this, int)` |
+| `0x00e01c90` | `GameBeing::onStateFieldUpdate` | `(this, event_data, <unresolved u32>)`, `ret 8` | `(this, event_data)` |
+
+**Wrong anchors, hooks removed (#989).**
+
+| Old address | What it actually is | Probable function |
+|---|---|---|
+| `0x01b18be0` (`Mercury::Nub::handleMessage`) | The log string `"Mercury::Nub::handleMessage: received the wrong kind of message!"` | The single code xref sits in an SEH-guarded function at `0x0157bd30`, 4 stack args (`ret 0x10`); unconfirmed as the dispatcher |
+| `0x00420074` (cooked-data PAK load) | `0xA54` bytes inside a function (`lea ecx,[esp+0x88]; call ...`) | Nearest entry `0x0041f620`, signature unresolved |
 
 ## UE3 Engine Initialization
 
@@ -1956,6 +1990,67 @@ Source: [findings/render-thread-options.md](findings/render-thread-options.md). 
 | `DAT_01e6ea4c` | shadow depth buffer size | Static `0x400` (1024); never written |
 | `DAT_01db58f4` | `allowDynamicShadows` game-thread mirror | |
 | `DAT_01db5900` / `DAT_01db5904` / `DAT_01db5908` | `ppMotionBlur` / `ppDepthOfField` / `ppBloom` mirrors | Forced 0 when `postprocessing` is off |
+
+## Engine log sinks and subsystem seams (client-telemetry engine capture, 2026-09-28)
+
+Source: [findings/client-engine-sinks-and-seams.md](findings/client-engine-sinks-and-seams.md). Every row was read in Ghidra (decompile or disassembly) or from the PE import table of `SGW.exe` and the export tables of the client's own DLLs. Not yet seen from a live client.
+
+| Address | Name | Notes |
+|---------|------|-------|
+| `0x00a36460` | `DebugMsgHelper::message` | BigWorld message choke point. `__thiscall(this, int* {component, priority}, const char* fmt, va_list)`, `ret 0xc`. Passes when `header[0] + impl[0x3c] <= header[1]`. Hook: `client.bw.message` |
+| `0x00a35210` | BigWorld `DEBUG_MSG`-family varargs wrapper | cdecl; 30 callers in `ServerConnection` / `EntityManager` / `Mercury::Nub` |
+| `0x00a351d0` | BigWorld assertion wrapper | cdecl; 14 callers; -> `0x00a36ac0` -> `0x00a36900` (formats, debugger box) -> `0x00a36650` -> `0x00a36460` |
+| `0x00a353b0` / `0x00a352f0` | default message output | `"<PRIORITY>: "` + `_vsnprintf` + `OutputDebugStringA` (+ stderr when `0x01ef0713`) |
+| `0x01922380` | priority-name table | `TRACE`, `DEBUG`, `INFO`, `NOTICE`, `WARNING`, `ERROR`, `CRITICAL`, `HACK`, null |
+| `0x004ce0b0` | `FOutputDeviceRedirector::Serialize` (`GLog`) | vtable `0x01815188` slot 1; `__thiscall(this, const TCHAR*, EName)`, `ret 8`. Hook: `client.ue3.log` |
+| `0x004ce3a0` | `FOutputDeviceWindowsError::Serialize` (`GError`) | vtable `0x018150f8` slot 1; `ret 8`; ends the process. Hook: `client.ue3.fatal_error` |
+| `0x004cc9f0` | `FOutputDeviceDebug::Serialize` | skips names with flag `0x1000` and names `0x5a`, `0x314` |
+| `0x00486000` | UE3 `check()` reporter | `__cdecl(const char* expr, const char* file, int line)`; returns (survivable). Hook: `client.ue3.assert` |
+| `0x00c64680` | `log4cxx::UnrealAppender` name getter | its `append` maps a level to `debugf`/`warnf`, both compiled out |
+| `0x017f0160` / `0x017f0188` | IAT `log4cxx.dll` `Logger::forcedLog` (narrow / wide) | `__thiscall`, `ret 0xc`. Hook: `client.log4cxx.event` |
+| `0x017f017c` `0x017f01ac` `0x017f01c4` `0x017f01d8` | IAT `Logger::isError/Warn/Debug/InfoEnabled` | forced true by `unfilter` |
+| `0x017ef230` / `0x017ef32c` | IAT `OutputDebugStringW` / `OutputDebugStringA` | Hook: `client.os.debug_string` |
+| `0x00876970` | `UWorld::SpawnActor` | `__thiscall`, 11 stack args, `ret 0x2c`. Hook: `client.engine.spawn_actor` |
+| `0x00875290` | `UWorld::DestroyActor` | `__thiscall(this, AActor*, bNetForce, bShouldModifyLevel)`, `ret 0xc`. Hook: `client.engine.destroy_actor` |
+| `0x006e1640` | `AActor::execSpawn` | registration table `0x01db1c98` |
+| `0x0049f090` | `UObject::GetOutermost` | loops `eax = [eax+0x28]` (`Outer` at `+0x28`) |
+| `0x0049b190` | `FName -> string` | `Names[index] + 0x10`; `name_(number-1)` when the number is non-zero |
+| `0x018ad494` | `USeqAct_Interp` vtable | slot 84 `UpdateOp` `0x007b0940`; slot 85 `Activated` `0x007b06a0`; slot 86 `DeActivated` `0x007a6730`. Hook: `client.engine.matinee` |
+| `0x0054e9c0` | `UWorld::UpdateLevelStreamingInner` | `StreamingLevel + 0x44` `LoadedLevel`, `+ 0x60` bit 0 `bIsVisible`. `client.engine.level_visible` / `level_stream_slow` |
+| `0x004a8e10` | `UObject::StaticLoadObject` | `NULL` return reported as `client.engine.load_failed` |
+| `0x017effa4` / `0x017effa8` | IAT `binkw32.dll` `_BinkOpen@8` / `_BinkClose@4` | movies open from memory (`FUN_00509820`, flags `0x4004400`) |
+| `0x017f00a4` / `0x017f0080` / `0x017f0084` | IAT `fmod_event.dll` `Event::start` / `stop` / `getInfo` | `__stdcall` member, `this` first on the stack. Hook: `client.audio.event` |
+| `0x01839d94` | `FNxOutputStream` vtable | slot 0 `reportError` `0x0055c5e0` (`ret 0x10`), slot 1 `reportAssertViolation` `0x0055c5d0` (`mov eax, 2; ret 0xc`), slot 2 `print` `0x00af6810` (`RET 4`), slot 3 deleting dtor `0x0055c700`. Hook: `client.physx.error` / `assert` |
+| `0x017efd34` | IAT `PhysXLoader.dll` `NxCreatePhysicsSDK` | called from `FUN_005590c0` |
+| `0x017ef2a4` / `0x017ef2a8` | IAT `CreateFileA` / `CreateFileW` | Hook: `client.io.open_failed` |
+| `0x017effd8` | IAT `d3d9.dll` `Direct3DCreate9` | then `IDirect3D9` vtable 16 (`CreateDevice`), device vtable 3 (`TestCooperativeLevel`) and 16 (`Reset`). Hooks: `client.gfx.device_*` |
+
+---
+
+## Client entity lifecycle and telemetry anchors (2026-09-28)
+
+Source: [findings/client-entity-lifecycle.md](findings/client-entity-lifecycle.md). Argument counts are read from each function's `ret N`; the Ghidra names in the last column are the current ones, several of which are wrong or unnamed (`ret N` is the authority, not the decompiler's parameter list).
+
+| Address | Name | Signature / notes | Ghidra name today |
+|---------|------|-------------------|-------------------|
+| `0x00dd24f0` | `EntityManager::onEntityEnter` (`enterAoI`) | `thiscall(this, id, space, vehicle)`, `ret 0xc`. Bumps the enter count; enters the world for a cached entity only if it is the local player or client-only (`id > 0x3fffffff`) | `FUN_00dd24f0` |
+| `0x00dd2270` | `EntityManager::onEntityCreate` | `thiscall(this, id, type, space, vehicle, stream)`, `ret 0x14`. Enter count < 1 parks the entity in the cache map (`+0x24`); otherwise `enterWorld` | `BW_client_entity_manager_4` |
+| `0x00dd1d00` | `EntityManager::enterWorld` | `thiscall(this, entity, space, vehicle, flag)`, `ret 0x10`. Inserts into the world map (`+0x18`), requests the appearance | `EntityManager_enterWorld` |
+| `0x00dd2800` | `EntityManager::onEntityLeave` (`leaveAoI`) | `thiscall(this, id, cache_stamp)`, `ret 8`. **Not** `EnterAoI`: decrements the enter count | `BW_client_entity_manager_5` |
+| `0x00dd1120` | entity destroy | `thiscall(this, entity, arg)`, `ret 8`. Removes from the world and cache maps, `delete` through the vtable | `FUN_00dd1120` |
+| `0x00dd1fb0` | queue / pending purge | `fastcall(this)` + 1 stack arg; erases an id's queue (`+0x3c`) and pending record (`+0x30`) | `FUN_00dd1fb0` |
+| `0x00dd1e40` | queued-message replay | `thiscall(this, entity) -> bool`, `ret 4`. Drains `+0x3c` through `0x00c6f8f0`; callers `0x00dd2429`, `0x00dd26e1`, `0x00dd21d6` | `FUN_00dd1e40` |
+| `0x00dd2b80` | `EntityManager::onEntityMethod` | `thiscall(this, id, msg_id, stream)`, `ret 0xc`. World map or local player: dispatch; else queue | `FUN_00dd2b80` |
+| `0x00dd29d0` | `EntityManager::onEntityProperty` | `thiscall(this, id, msg_id, stream)`, `ret 0xc`. **Not** `LeaveAoI`: ignores a known entity's message, queues (`\|0x40`) for an unknown one | `FUN_00dd29d0` |
+| `0x00dd0f70` | `EntityManager::isInWorld` | `thiscall(this, entity) -> bool` (world map lookup) | `FUN_00dd0f70` |
+| `0x00e69150` | `GameEntity` appearance request | `thiscall(entity, const std::string* reason)`, `ret 4`. Exits: not ready / schedule / hold (`entity+0x32`) | `GameEntity__unknown_00e69150` |
+| `0x00e998e0` | appearance job scheduler | `thiscall(scheduler = GEM+0x98, entity)`, `ret 4` | `FUN_00e998e0` |
+| `0x00c6fc40` | `RouteOutgoingEntityRpc` | `stdcall(entity, desc, method, args)`, `ret 0x10`. `method+0`: name `std::string`, `+0x1c&3` route, `+0x44` msg id, `+0x48` sub-index | `CEGUI__unknown_00c6fc40` |
+| `0x01f11fc4` | CME event registry | `std::map<std::string, factory>`; node key at `+0x0c`, factory at `+0x28`; getter `0x0155f790` | - |
+| `0x0158ea90` | registry `find` | `thiscall(map, out_iter*, const std::string&)`, `ret 8` | `FUN_0158ea90` |
+| `0x00e9ba60` / `0x00e9b8d0` | entity allocator | called by `BW_client_entity_manager_7` (`0x00dd09e0`) | - |
+
+`lua51.dll` (wide build) exports used for error capture: `?lua_type@@YAHPAUlua_State@@H@Z`, `?lua_tolstring@@YAPB_WPAUlua_State@@HPAI@Z`.
 
 ---
 

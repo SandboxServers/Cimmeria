@@ -52,10 +52,7 @@ async fn say(mgr: &mut SpaceManager, speaker: u32, text: &str) -> Vec<CellToBase
 
 fn grants(msgs: &[CellToBaseMsg]) -> Vec<&GmAllCraft> {
     msgs.iter()
-        .filter_map(|m| match m {
-            CellToBaseMsg::GmAllCraft(g) => Some(g),
-            _ => None,
-        })
+        .filter_map(|m| m.plugin_payload::<GmAllCraft>())
         .collect()
 }
 

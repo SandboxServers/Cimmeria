@@ -53,6 +53,88 @@ pub fn png_to_base64(png_bytes: &[u8]) -> String {
     base64::engine::general_purpose::STANDARD.encode(png_bytes)
 }
 
+/// A rectangle in capture pixels (the whole window, frame included — the
+/// same space a saved `lab_screenshot` PNG uses).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct Region {
+    pub x: u32,
+    pub y: u32,
+    pub w: u32,
+    pub h: u32,
+}
+
+impl Region {
+    /// Refuse a region that leaves the image (rather than clamp silently:
+    /// a probe of the wrong pixels is worse than an error).
+    pub fn check(&self, img: &CapturedImage) -> Result<(), String> {
+        if self.w == 0 || self.h == 0 {
+            return Err("region has zero area".into());
+        }
+        let fits =
+            |start: u32, len: u32, max: u32| start.checked_add(len).is_some_and(|e| e <= max);
+        if !fits(self.x, self.w, img.width) || !fits(self.y, self.h, img.height) {
+            return Err(format!(
+                "region {}x{}+{}+{} leaves the {}x{} capture",
+                self.w, self.h, self.x, self.y, img.width, img.height
+            ));
+        }
+        Ok(())
+    }
+}
+
+/// Cut `region` out of `img`.
+pub fn crop(img: &CapturedImage, region: Region) -> Result<CapturedImage, String> {
+    region.check(img)?;
+    let mut rgba = Vec::with_capacity((region.w * region.h * 4) as usize);
+    for row in region.y..region.y + region.h {
+        let start = ((row * img.width + region.x) * 4) as usize;
+        rgba.extend_from_slice(&img.rgba[start..start + (region.w * 4) as usize]);
+    }
+    Ok(CapturedImage {
+        width: region.w,
+        height: region.h,
+        rgba,
+    })
+}
+
+/// How many pixels of a region fall in an inclusive RGB box.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct PixelProbe {
+    pub matched: u32,
+    pub total: u32,
+    pub mean_rgb: [u8; 3],
+}
+
+/// Count the pixels in `region` with `min <= rgb <= max` per channel, and
+/// the region's mean colour. The frost-corpse campaign used this shape to
+/// spot a green nameplate without reading the image by eye.
+pub fn probe(
+    img: &CapturedImage,
+    region: Region,
+    min: [u8; 3],
+    max: [u8; 3],
+) -> Result<PixelProbe, String> {
+    let c = crop(img, region)?;
+    let mut matched = 0u32;
+    let mut sum = [0u64; 3];
+    let (pixels, _) = c.rgba.as_chunks::<4>();
+    for px in pixels {
+        if (0..3).all(|i| px[i] >= min[i] && px[i] <= max[i]) {
+            matched += 1;
+        }
+        for i in 0..3 {
+            sum[i] += px[i] as u64;
+        }
+    }
+    let total = pixels.len() as u32;
+    let mean = |i: usize| (sum[i] / total.max(1) as u64) as u8;
+    Ok(PixelProbe {
+        matched,
+        total,
+        mean_rgb: [mean(0), mean(1), mean(2)],
+    })
+}
+
 /// Capture the main window of `pid` and return it as an RGBA image.
 #[cfg(windows)]
 pub fn capture_pid(pid: u32) -> Result<CapturedImage, String> {
@@ -178,6 +260,61 @@ mod tests {
         let png = encode_png(&img).unwrap();
         // PNG magic.
         assert_eq!(&png[..8], &[0x89, b'P', b'N', b'G', 0x0d, 0x0a, 0x1a, 0x0a]);
+    }
+
+    /// 3x2 image: pixel (x, y) is RGB (x*10, y*10, 200).
+    fn grid() -> CapturedImage {
+        let mut rgba = Vec::new();
+        for y in 0..2u8 {
+            for x in 0..3u8 {
+                rgba.extend_from_slice(&[x * 10, y * 10, 200, 255]);
+            }
+        }
+        CapturedImage {
+            width: 3,
+            height: 2,
+            rgba,
+        }
+    }
+
+    #[test]
+    fn crop_takes_the_right_rows_and_columns() {
+        let c = crop(
+            &grid(),
+            Region {
+                x: 1,
+                y: 1,
+                w: 2,
+                h: 1,
+            },
+        )
+        .unwrap();
+        assert_eq!((c.width, c.height), (2, 1));
+        assert_eq!(c.rgba, vec![10, 10, 200, 255, 20, 10, 200, 255]);
+    }
+
+    #[test]
+    fn regions_outside_the_capture_are_refused() {
+        let img = grid();
+        let r = |x, y, w, h| Region { x, y, w, h };
+        assert!(crop(&img, r(2, 0, 2, 1)).is_err());
+        assert!(crop(&img, r(0, 1, 1, 2)).is_err());
+        assert!(crop(&img, r(0, 0, 0, 1)).is_err());
+        assert!(crop(&img, r(u32::MAX, 0, 2, 1)).is_err());
+    }
+
+    #[test]
+    fn probe_counts_pixels_in_the_colour_box() {
+        let whole = Region {
+            x: 0,
+            y: 0,
+            w: 3,
+            h: 2,
+        };
+        // Red channel 10..=20 and green 0..=0: pixels (1,0) and (2,0).
+        let p = probe(&grid(), whole, [10, 0, 0], [20, 0, 255]).unwrap();
+        assert_eq!((p.matched, p.total), (2, 6));
+        assert_eq!(p.mean_rgb, [10, 5, 200]);
     }
 
     #[test]

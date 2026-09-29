@@ -291,6 +291,120 @@ fn both_dlls_in_either_order() {
     }
 }
 
+/// Two lab clients in ONE install directory, the way the lab runs a second
+/// player: each instance has its own session file (found through
+/// `CIMMERIA_LAB_SESSION_FILE`), its own bridge port and token, and its own
+/// DLL log. Each bridge accepts only its own token, so an agent driving
+/// instance one can never reach instance two's client. Before named
+/// instances both clients read `sessions/current-session.json`, so they
+/// shared one port and token and the second bridge failed to bind
+/// (`lab_second_client_on_the_same_session_cannot_bind`).
+#[test]
+fn two_lab_instances_in_one_install_each_get_their_own_bridge_and_log() {
+    let Some(stage) = Stage::find() else { return };
+    let upload = MockUpload::start();
+    let install = Install::new(&stage);
+    let dll = install.add_dll(&stage.telemetry_lab());
+    let run_ms = 14_000;
+
+    let (port_a, port_b) = (free_port(), free_port());
+    let (token_a, token_b) = ("ab".repeat(32), "cd".repeat(32));
+    let launch = |name: &str, port: u16, token: &str| {
+        let session = session(
+            &upload.url,
+            TOKEN,
+            Some(serde_json::json!({ "bind": "127.0.0.1", "port": port, "token": token })),
+        );
+        let path = install.write_instance_session(name, &session);
+        install.launch_with_env(
+            std::slice::from_ref(&dll),
+            run_ms,
+            &[
+                (
+                    "CIMMERIA_LAB_SESSION_FILE".into(),
+                    path.display().to_string(),
+                ),
+                ("CIMMERIA_LAB_INSTANCE".into(), name.into()),
+            ],
+        )
+    };
+    let host_a = launch("p1", port_a, &token_a);
+    let host_b = launch("p2", port_b, &token_b);
+
+    let handshake = |port: u16, token: &str| -> Option<serde_json::Value> {
+        let addr: SocketAddr = ([127, 0, 0, 1], port).into();
+        let mut s = support::connect(addr, Duration::from_secs(8));
+        support::write_frame(
+            &mut s,
+            serde_json::json!({ "token": token }).to_string().as_bytes(),
+        );
+        support::read_frame(&mut s)
+            .ok()
+            .and_then(|b| serde_json::from_slice(&b).ok())
+    };
+    let ok = Some(serde_json::json!({ "ok": true }));
+    assert_eq!(handshake(port_a, &token_a), ok, "instance p1 own token");
+    assert_eq!(handshake(port_b, &token_b), ok, "instance p2 own token");
+    assert_eq!(handshake(port_a, &token_b), None, "p1 accepted p2's token");
+    assert_eq!(handshake(port_b, &token_a), None, "p2 accepted p1's token");
+
+    host_a.wait();
+    host_b.wait();
+    for (name, port) in [("p1", port_a), ("p2", port_b)] {
+        let log = install.log(&format!("cimmeria-client-telemetry-{name}.log"));
+        assert!(
+            messages(&log)
+                .iter()
+                .any(|l| l.starts_with(&format!("lab bridge listening on 127.0.0.1:{port}"))),
+            "instance {name} log: {log}"
+        );
+    }
+    assert_eq!(
+        install.log(TELEMETRY_LOG),
+        "",
+        "a named instance must not write the shared default log"
+    );
+}
+
+/// The failure a named instance exists to prevent: a second client that
+/// reads the same session (same port) cannot bind its bridge.
+#[test]
+fn lab_second_client_on_the_same_session_cannot_bind() {
+    let Some(stage) = Stage::find() else { return };
+    let upload = MockUpload::start();
+    let install = Install::new(&stage);
+    let dll = install.add_dll(&stage.telemetry_lab());
+    let run_ms = 10_000;
+    let port = free_port();
+    let token = "ef".repeat(32);
+    let lab = serde_json::json!({ "bind": "127.0.0.1", "port": port, "token": token });
+    let path = install.write_instance_session("shared", &session(&upload.url, TOKEN, Some(lab)));
+    let env = [
+        (
+            "CIMMERIA_LAB_SESSION_FILE".to_string(),
+            path.display().to_string(),
+        ),
+        ("CIMMERIA_LAB_INSTANCE".to_string(), "one".to_string()),
+    ];
+    let first = install.launch_with_env(std::slice::from_ref(&dll), run_ms, &env);
+    let addr: SocketAddr = ([127, 0, 0, 1], port).into();
+    let _up = support::connect(addr, Duration::from_secs(8));
+    let env2 = [
+        env[0].clone(),
+        ("CIMMERIA_LAB_INSTANCE".to_string(), "two".to_string()),
+    ];
+    let second = install.launch_with_env(std::slice::from_ref(&dll), run_ms, &env2);
+    first.wait();
+    second.wait();
+    let log = install.log("cimmeria-client-telemetry-two.log");
+    assert!(
+        messages(&log)
+            .iter()
+            .any(|l| l.contains("lab bridge failed to start")),
+        "the second client on the same port must fail to bind: {log}"
+    );
+}
+
 /// The lab build: the bridge comes up on the session's loopback port,
 /// accepts the token handshake, refuses a wrong token, and answers a
 /// request. With no `FEngineLoop::Tick` hook here nothing drains the

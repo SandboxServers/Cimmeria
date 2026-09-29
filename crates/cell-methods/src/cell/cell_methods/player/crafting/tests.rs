@@ -173,7 +173,7 @@ fn player_space() -> SpaceManager {
 }
 
 /// Driving the real player dispatcher with each verb's bytes forwards exactly
-/// one `CellToBaseMsg::Crafting` carrying every argument, the entity, the
+/// one `CraftRequest` envelope carrying every argument, the entity, the
 /// player id and `allowed = 0`. This pins the 95-100 routing and the forward
 /// together: a verb that stops forwarding, drops a field, or reaches another
 /// handler fails here.
@@ -189,8 +189,8 @@ async fn every_verb_forwards_every_argument_through_player_dispatch() {
         assert!(handled, "{verb:?} must be handled");
 
         match rx.try_recv() {
-            Ok(CellToBaseMsg::Crafting(request)) => assert_eq!(
-                request,
+            Ok(CellToBaseMsg::Plugin(msg)) if msg.is::<CraftRequest>() => assert_eq!(
+                msg.downcast::<CraftRequest>().unwrap(),
                 CraftRequest {
                     entity_id: ENTITY,
                     player_id: PLAYER_ID,
@@ -291,14 +291,18 @@ async fn forward_carries_the_station_mask_at_request_time() {
     let (index, args) = encode(&CraftVerb::ReverseEngineer { item_id: 20_001 });
     assert!(dispatch(ENTITY, index, &args, &tx, &mut mgr).await);
     match rx.try_recv() {
-        Ok(CellToBaseMsg::Crafting(request)) => assert_eq!(request.allowed, 0x03),
+        Ok(CellToBaseMsg::Plugin(msg)) if msg.is::<CraftRequest>() => {
+            assert_eq!(msg.downcast::<CraftRequest>().unwrap().allowed, 0x03)
+        }
         other => panic!("expected one Crafting message, got {other:?}"),
     }
 
     mgr.update_entity_position(ENTITY, [p.x + 23.0, p.y, p.z], [0; 3], [0.0; 3]);
     assert!(dispatch(ENTITY, index, &args, &tx, &mut mgr).await);
     match rx.try_recv() {
-        Ok(CellToBaseMsg::Crafting(request)) => assert_eq!(request.allowed, 0),
+        Ok(CellToBaseMsg::Plugin(msg)) if msg.is::<CraftRequest>() => {
+            assert_eq!(msg.downcast::<CraftRequest>().unwrap().allowed, 0)
+        }
         other => panic!("expected one Crafting message, got {other:?}"),
     }
 }

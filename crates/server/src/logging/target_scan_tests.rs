@@ -27,6 +27,7 @@ pub(super) const IN_PROCESS_CRATES: &[&str] = &[
     "admin-api",
     "auth",
     "base",
+    "base-crafting",
     "base-methods",
     "base-session",
     "base-world-entry",
@@ -331,7 +332,7 @@ fn scan_finds_known_targets() {
         // Emitted only by crates/base-methods (wave B2).
         ("trade.atomic_swap", Level::DEBUG),
         ("progression", Level::WARN),
-        // Emitted by crates/base-session (the crafting request and its
+        // Emitted by crates/base-crafting (the crafting request and its
         // rejection, CR-01) and crates/cell-methods (malformed requests).
         ("crafting", Level::INFO),
         ("crafting", Level::WARN),

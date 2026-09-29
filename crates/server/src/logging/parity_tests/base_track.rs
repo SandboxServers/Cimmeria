@@ -26,8 +26,10 @@ use crate::logging::filters::{FILE_LAYERS, OTEL_FILTER};
 /// - cooked-data delivery keeps `character.log`;
 /// - the space registry keeps `world_entry.log`, which the old
 ///   `cimmeria_services::base::world_entry` row reached by prefix;
-/// - the modules no file names (outbox, contact list, deferred AoI, crafting,
-///   GM spawn) keep `server.log` from INFO;
+/// - the modules no file names (outbox, contact list, deferred AoI, the
+///   inventory locks, GM spawn) keep `server.log` from INFO (crafting, which
+///   was one of them, is `cimmeria-base-crafting` since #962 step 5: see
+///   [`base_crafting_crate_events_keep_their_index`]);
 ///
 /// and every one reaches one OTLP index per level. `cimmeria_services=debug`
 /// does not prefix-match `cimmeria_base_session`, so without its own
@@ -95,7 +97,7 @@ fn base_session_events_keep_their_file_and_index() {
         "cimmeria_base_session::base::outbox",
         "cimmeria_base_session::base::contact_list::handlers::presence_fanout",
         "cimmeria_base_session::base::deferred_aoi",
-        "cimmeria_base_session::base::crafting::persistence",
+        "cimmeria_base_session::base::inventory_locks",
         "cimmeria_base_session::base::gm_spawn",
     ] {
         let sinks = |lvl| sinks_for(&dispatch, &hits, target, lvl);
@@ -398,4 +400,61 @@ fn base_events_keep_their_file_and_index() {
              cimmeria-base's"
         );
     }
+}
+
+/// Crafting moved from `cimmeria_base_session::base::crafting` to the
+/// `cimmeria-base-crafting` plugin crate (#962 step 5). Its rows mostly name
+/// the `crafting` target, but the `crafting.request` spans and any untargeted
+/// row take the new module path, which `cimmeria_base_session=debug` does not
+/// prefix-match. No file layer ever named crafting, so every one reaches
+/// `server.log` from INFO and one OTLP index per level. The second half pins
+/// that the crate's DEBUG export depends on its own row: dropped, nothing
+/// else exports it.
+#[test]
+fn base_crafting_crate_events_keep_their_index() {
+    let (dispatch, hits) = harness(FILE_LAYERS);
+    let set =
+        |names: &[&str]| -> BTreeSet<String> { names.iter().map(|s| s.to_string()).collect() };
+    for target in [
+        "cimmeria_base_crafting::plugin",
+        "cimmeria_base_crafting::base::crafting::request",
+        "cimmeria_base_crafting::base::crafting::persistence",
+    ] {
+        let sinks = |lvl| sinks_for(&dispatch, &hits, target, lvl);
+        assert!(sinks(Level::TRACE).is_empty(), "{target} at TRACE");
+        assert_eq!(
+            sinks(Level::DEBUG),
+            set(&[OTLP_SERVER]),
+            "{target} at DEBUG"
+        );
+        for lvl in [Level::INFO, Level::WARN, Level::ERROR] {
+            assert_eq!(
+                sinks(lvl),
+                set(&[SERVER_LOG, OTLP_SERVER]),
+                "{target} at {lvl}"
+            );
+        }
+    }
+
+    let row = "cimmeria_base_crafting=debug,";
+    let without = OTEL_FILTER.replace(row, "");
+    assert_ne!(
+        without, OTEL_FILTER,
+        "OTEL_FILTER no longer carries `{row}`; update this test"
+    );
+    let hits: Hits = Arc::default();
+    let dispatch = Dispatch::new(
+        tracing_subscriber::registry()
+            .with(recorder(OTLP_SERVER.into(), &hits).with_filter(EnvFilter::new(without))),
+    );
+    assert!(
+        sinks_for(
+            &dispatch,
+            &hits,
+            "cimmeria_base_crafting::base::crafting::request",
+            Level::DEBUG
+        )
+        .is_empty(),
+        "the crafting crate's DEBUG export must depend on its own `{row}` row"
+    );
 }

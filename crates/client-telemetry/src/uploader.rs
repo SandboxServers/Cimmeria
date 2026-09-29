@@ -42,7 +42,9 @@
 //!
 //! Drops also happen at the queue itself when the producer side
 //! overflows the ring (see [`crate::queue`]) — those are accounted
-//! for separately and never reach the uploader.
+//! for separately and never reach the uploader. Both counts, the ring's
+//! and the discarded-after-failed-POST count above, are reported by the
+//! governor's `client.telemetry.health` event (see [`crate::governor`]).
 
 use std::io::Write;
 use std::time::{Duration, Instant};
@@ -149,12 +151,16 @@ pub fn run_uploader(
     let client = build_agent();
     let mut batch: Vec<ClientNativeEvent> = Vec::with_capacity(cfg.max_batch);
     let mut last_flush = Instant::now();
+    // Events discarded after failed POSTs. Reported by the governor's
+    // health event, so a long outage is visible once the link returns.
+    let mut upload_dropped: u64 = 0;
 
     loop {
         if should_stop() {
             // Drain anything still in the queue + ship one last
             // batch on the way out.
             drain_into(&consumer, &mut batch, cfg.max_batch);
+            consumer.governor_finish(upload_dropped, &mut batch);
             if !batch.is_empty() {
                 let _ = post_batch(&client, &cfg, &batch);
             }
@@ -192,6 +198,8 @@ pub fn run_uploader(
         // blocking. Caps at `max_batch - 1` (we already pushed at
         // most one above).
         drain_into(&consumer, &mut batch, cfg.max_batch);
+        // Rollups, repeat events and health, on the governor's own cadence.
+        consumer.governor_tick(upload_dropped, &mut batch);
 
         // Ship when either the batch hit a meaningful size OR the
         // flush interval elapsed since the last successful POST.
@@ -212,7 +220,9 @@ pub fn run_uploader(
                     // preferring newer telemetry over the very
                     // oldest.
                     if batch.len() >= cfg.max_batch {
-                        batch.drain(..batch.len() / 2);
+                        let n = batch.len() / 2;
+                        batch.drain(..n);
+                        upload_dropped += n as u64;
                     }
                 }
             }
