@@ -261,6 +261,18 @@ fn bootstrap_phase2() {
         return;
     }
 
+    // Capture switches for the engine-layer log sinks: the session's
+    // `capture` block and `CIMMERIA_CLIENT_CAPTURE` each can turn them on.
+    let capture = session
+        .capture
+        .unwrap_or_default()
+        .merged(crate::capture::CaptureConfig::from_env());
+    crate::capture::init(capture);
+    crate::log::line(format_args!(
+        "capture switches: unfilter={} firehose={}",
+        capture.unfilter, capture.firehose
+    ));
+
     // Step 5: first event — `client.dll.attached`. Carries the
     // identity fields the server-side replay uses to pivot
     // SigNoz queries on session.

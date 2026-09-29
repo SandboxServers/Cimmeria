@@ -115,8 +115,48 @@ pub const CME_EVENT_FACTORY: Site = code_site(
     ],
 );
 
+/// `DebugMsgHelper::message`, the BigWorld message sink
+/// (`client.bw.message`): `push -1; push 0x016d5d48; mov eax, fs:[0]`.
+pub const BW_MESSAGE: Site = code_site(
+    "BigWorld DebugMsgHelper::message",
+    0x00a3_6460,
+    &[
+        0x6A, 0xFF, 0x68, 0x48, 0x5D, 0x6D, 0x01, 0x64, 0xA1, 0x00, 0x00, 0x00,
+    ],
+);
+
+/// `FOutputDeviceRedirector::Serialize` (`GLog`, `client.ue3.log`): `push
+/// -1; push 0x016856de; mov eax, fs:[0]`.
+pub const REDIRECTOR_SERIALIZE: Site = code_site(
+    "FOutputDeviceRedirector::Serialize",
+    0x004c_e0b0,
+    &[
+        0x6A, 0xFF, 0x68, 0xDE, 0x56, 0x68, 0x01, 0x64, 0xA1, 0x00, 0x00, 0x00,
+    ],
+);
+
+/// `FOutputDeviceWindowsError::Serialize` (`GError`,
+/// `client.ue3.fatal_error`): `mov eax, fs:[0]; push -1; push 0x01685724`.
+pub const ERROR_SERIALIZE: Site = code_site(
+    "FOutputDeviceWindowsError::Serialize",
+    0x004c_e3a0,
+    &[
+        0x64, 0xA1, 0x00, 0x00, 0x00, 0x00, 0x6A, 0xFF, 0x68, 0x24, 0x57, 0x68,
+    ],
+);
+
+/// The UE3 `check()` reporter (`client.ue3.assert`): `push -1; push
+/// 0x0167f195; mov eax, fs:[0]`.
+pub const CHECK_FAILED: Site = code_site(
+    "UE3 check() reporter",
+    0x0048_6000,
+    &[
+        0x6A, 0xFF, 0x68, 0x95, 0xF1, 0x67, 0x01, 0x64, 0xA1, 0x00, 0x00, 0x00,
+    ],
+);
+
 /// Every function the gate checks.
-pub const CODE_SITES: [Site; 11] = [
+pub const CODE_SITES: [Site; 15] = [
     cimmeria_client_hookgate::ENGINE_TICK,
     cimmeria_client_hookgate::DROP_CALLEE,
     BINK_TICK,
@@ -128,6 +168,10 @@ pub const CODE_SITES: [Site; 11] = [
     ANIM_NOTIFY_A,
     ANIM_NOTIFY_B,
     CME_EVENT_FACTORY,
+    BW_MESSAGE,
+    REDIRECTOR_SERIALIZE,
+    ERROR_SERIALIZE,
+    CHECK_FAILED,
 ];
 
 const fn code_site(name: &'static str, address: usize, expected: &'static [u8]) -> Site {

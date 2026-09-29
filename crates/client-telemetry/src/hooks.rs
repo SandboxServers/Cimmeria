@@ -67,6 +67,10 @@ mod name_throttle;
 // trampoline primitive without duplicating the protect/patch/flush dance.
 pub(crate) mod primitives;
 mod sampling;
+// The engine layer's log sinks and OS-level seams (BigWorld messages, UE3
+// `GLog`, log4cxx, debug strings, exceptions). Own module tree, own
+// fingerprint sites.
+pub mod sinks;
 mod vtable_hooks;
 
 pub use sampling::SamplingCounter;
@@ -88,7 +92,8 @@ pub fn install_all(producer: Producer) {
     // failure event. Order doesn't matter — they're independent.
     inline_hooks::install(producer.clone());
     iat_hooks::install(producer.clone());
-    vtable_hooks::install(producer);
+    vtable_hooks::install(producer.clone());
+    sinks::install(producer);
 }
 
 /// Convenience: emit a one-shot info event with this target +
