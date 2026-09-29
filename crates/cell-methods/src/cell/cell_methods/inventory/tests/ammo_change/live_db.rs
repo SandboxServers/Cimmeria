@@ -32,6 +32,17 @@ const LIVE_INSTANCE: i32 = 0x7000_3031;
 /// its column does not list, with the feedback line.
 #[tokio::test]
 async fn live_db_request_ammo_change_follows_a_widened_weapons_column() {
+    // This test guards AM-F's widened `ammo_types` column, not AM-02's
+    // switch-return. With `ammo.finite_special` on (the default since
+    // AM-12) every switch here starts from the default clip (a fresh
+    // `player_with_weapon()` each iteration), so a default clip switched to
+    // a special type is emptied first: an extra `ON_STAT_UPDATE`
+    // (`EntityMethodCall`, method 20) lands ahead of the
+    // `BandolierAmmoUpdate` this test asserts is first
+    // (`switch_return_tests` in `cimmeria-cell-combat` pins that emptying).
+    // Pin the flag off, matching the sibling AM-03 dispatcher tests in
+    // `../mod.rs`, so this test isolates the widened-column behavior.
+    cimmeria_entity::ammo_feature::set_finite_special(false);
     let pool = require_db_or_skip!();
     let defs = spawner::load_item_defs(&pool)
         .await
