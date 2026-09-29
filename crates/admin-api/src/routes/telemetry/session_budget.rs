@@ -179,6 +179,8 @@ const PRIORITY_PREFIXES: &[&str] = &[
     "client.mercury.error",
     "client.mercury.fragment",
     "client.mercury.bundle",
+    "client.mercury.request_misparse",
+    "client.mercury.unpack_fault",
     "client.dispatch.method_dropped",
 ];
 

@@ -101,6 +101,11 @@ fn priority_is_level_and_the_must_keep_families() {
     assert!(!is_priority(&native("client.lua.pcall", "debug")));
     assert!(is_priority(&native("client.entity.create", "info")));
     assert!(is_priority(&native("client.mercury.bundle", "debug")));
+    assert!(is_priority(&native(
+        "client.mercury.request_misparse",
+        "info"
+    )));
+    assert!(is_priority(&native("client.mercury.unpack_fault", "info")));
     assert!(!is_priority(&native("client.cme.event", "debug")));
     assert!(is_priority(&TelemetryEvent::DebugLog(DebugLogEvent {
         ts_ms: 0,

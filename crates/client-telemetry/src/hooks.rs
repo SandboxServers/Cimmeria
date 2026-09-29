@@ -10,8 +10,8 @@
 //! `client-instrumentation-entry-points.md` docs. Three techniques:
 //!
 //! - **Inline JMP** (MinHook) — `inline_hooks/`. 22 hooks (the 11 below
-//!   plus the entity-lifecycle, inbound-message and outgoing-RPC hooks
-//!   documented in `inline_hooks/mod.rs`):
+//!   plus the entity-lifecycle, inbound-message, outgoing-RPC and Mercury
+//!   receive-path hooks documented in `inline_hooks/mod.rs`):
 //!   FEngineLoop::Tick, FArchiveAsync::Serialize,
 //!   UWorld::UpdateLevelStreamingInner, UObject::StaticLoadObject,
 //!   GameBeing::onStateFieldUpdate, USGWAnimNotify::Notify A+B,
@@ -71,6 +71,11 @@ mod emit;
 pub(crate) mod entity_trace;
 mod iat_hooks;
 mod inline_hooks;
+// Mercury receive-path readers and classifiers behind the
+// `client.mercury.packet_in|fragment|bundle` events; driven only by the
+// i686 detours.
+#[cfg_attr(not(target_arch = "x86"), allow(dead_code))]
+pub(crate) mod mercury_recv;
 // Used only by the i686 CME event-factory detour.
 #[cfg_attr(not(target_arch = "x86"), allow(dead_code))]
 mod name_throttle;

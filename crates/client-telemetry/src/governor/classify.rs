@@ -180,6 +180,14 @@ pub const RULES: &[Rule] = &[
     ),
     keep(Prefix("client.mercury.bundle"), KeepReason::MercuryAnomaly),
     keep(
+        Exact("client.mercury.request_misparse"),
+        KeepReason::MercuryAnomaly,
+    ),
+    keep(
+        Exact("client.mercury.unpack_fault"),
+        KeepReason::MercuryAnomaly,
+    ),
+    keep(
         Exact("client.dispatch.method_dropped"),
         KeepReason::MercuryAnomaly,
     ),

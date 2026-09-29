@@ -105,6 +105,7 @@ Each entry tagged with bucket assignment per #264 step 4. Bible chapter targets 
 - This MEMORY.md was merged from two trees during Phase −0.5 agent surgery (orchestrator commit `1917d20`). The previous index referenced several files that didn't exist (`findings_cover_system_s4.md`, `findings_respawn_lifecycle_s7.md`, `findings_mission_state_s4b.md`, `findings_world_entry_s4b.md`, `findings_mercury_layer_s5b.md`, `mercury-protocol-internals.md`) — those were hallucinated references. The triage step (this commit) resolves them by either annotating present files with bucket tags or noting their absence here.
 - The canonical findings docs for the topics those hallucinated files purported to cover live in `docs/reverse-engineering/findings/` (not in agent memory) — see `state-flag-broadcast.md`, `cover-system.md`, `respawn-lifecycle.md`, `mission-state-machine.md`, `world-entry-pipeline.md`, `mercury-protocol-internals.md`.
 - The Phase −0.5 triage step (step 4 of #264) ran 2026-05-13. All PROMOTE entries should be kept in memory until the corresponding bible chapters are scaffolded in Phase 0; chapter authoring will copy these forward into the chapter's section 1.
+- [Client Mercury receive path](client-mercury-receive-path.md) — ACK-before-decision, one fragment group per channel, header-must-not-straddle rule, log fn is a ret stub (PR #1088)
 
 ## Multi-client lab (2026-09-29)
 

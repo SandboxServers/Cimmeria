@@ -2060,3 +2060,23 @@ Source: [findings/client-entity-lifecycle.md](findings/client-entity-lifecycle.m
 - Vtable entries: `ClassName__vfunc_N` (double underscore + index)
 - Inferred names: `ClassName__unknown_HEXADDR` (script 10)
 - Event handlers: `EventHandler_NetOut_EventName` or `EventHandler_NetIn_EventName`
+
+## Mercury receive path (client) - added 2026-09-29
+
+Recovered in [client-mercury-receive-path.md](findings/client-mercury-receive-path.md). Ghidra names in `Mercury_Nub_*` are partly stale; these are the meanings.
+
+| Address | Function | Notes |
+|---------|----------|-------|
+| `0x01580840` | `Nub::processFilteredPacket` | `thiscall(nub, addr, packet)`, `ret 8`; flags byte, ACK and sequence footers, reliable window, chain dispatch. Hooked (`client.mercury.packet_in`). |
+| `0x0158cba0` | `UnAckedHandler::queueAckForPacket` | `ret 0x10`; ACK queued **before** the in-order test; reorder buffer at channel `+0x40`, `inSeqAt` at `+0x50`. Hooked (window note). |
+| `0x0157fd20` | `Nub::processPacket` | `thiscall(nub, addr, packet, channel)`, `ret 0xc`; fragment footers, one group per channel at `channel+0x124`, completion pushes the bundle to `Nub+0x138`. Hooked (`client.mercury.fragment`). |
+| `0x0157b120` | fragment group stale test | 60 s of TSC since the last fragment |
+| `0x0157e2c0` | fragment group constructor | `+0` lastFrag, `+4` remaining, `+8/+0xc` TSC, `+0x10` sorted list |
+| `0x0158d3f0` | queue consumer | game thread; calls `processOrderedPacket` |
+| `0x0157c820` | `Nub::processOrderedPacket` | `thiscall(nub, message)`, `ret 4`; the bundle message loop. Hooked (`client.mercury.bundle`). |
+| `0x01579830` | `Bundle::iterator::unpack` | `thiscall(iterator, element)`, `ret 4`; header must lie inside one packet. Hooked (feeds the summary). |
+| `0x01579a50` | `Bundle::iterator::data` | body pointer; temp buffer for a straddling body |
+| `0x01579cd0` | `Bundle::iterator::next` | advance across packet boundaries (continuation resumes at `data[1]`) |
+| `0x0157a1b0` / `0x01579710` | `Bundle::begin` | cursor starts at 1; empty leading packets skipped |
+| `0x0158aa40` | `InterfaceElement` header length | 1 fixed, `1 + width` variable |
+| `0x0081c2e0` | Mercury log function | a one-byte `ret` stub: no Mercury log line ever prints |

@@ -35,7 +35,7 @@
 //!
 //! # What's installed
 //!
-//! 22 hooks. Every address below was re-checked against the QA
+//! 27 hooks. Every address below was re-checked against the QA
 //! `SGW.exe` on 2026-09-27 (function entry, `ret N` against the detour's
 //! argument count) and is covered by the [fingerprint
 //! gate](crate::fingerprint), which installs none of them on a build
@@ -75,6 +75,11 @@
 //! | `EntityManager::onEntityProperty` | `0x00dd29d0` | `client.mercury.entity_property` | per (event, entity) bucket |
 //! | queued-message replay | `0x00dd1e40` | `client.entity.queue_replay` | per (event, entity) bucket |
 //! | `RouteOutgoingEntityRpc` (`stdcall`, 4 args) | `0x00c6fc40` | `client.net.out` | per (method, entity) bucket |
+//! | `Nub::processFilteredPacket` (`this, addr, packet`, `ret 8`) | `0x01580840` | `client.mercury.packet_in` (+ `client.mercury.error`) | ordinary traffic: bucket; fragments, buffered, in-flight and every non-happy packet: unthrottled |
+//! | `UnAckedHandler::queueAckForPacket` (`ret 0x10`) | `0x0158cba0` | (records the window disposition for the packet event; no event) | - |
+//! | `Nub::processPacket` (`this, addr, packet, channel`, `ret 0xc`) | `0x0157fd20` | `client.mercury.fragment` (+ `client.mercury.error`) | fragments only, unthrottled |
+//! | `Nub::processOrderedPacket` (`this, message`, `ret 4`, game thread) | `0x0157c820` | `client.mercury.bundle` `phase=start|end` (+ `client.mercury.error`) | assembled and non-happy bundles unthrottled; clean single-packet bundles: bucket |
+//! | `Bundle::iterator::unpack` (`this, element`, `ret 4`, game thread) | `0x01579830` | (feeds the bundle summary; no event) | - |
 //!
 //! # Why MinHook
 //!
@@ -99,6 +104,8 @@ mod entity_lifecycle;
 #[cfg(all(target_os = "windows", target_arch = "x86"))]
 mod entity_messages;
 mod mercury_dispatch;
+#[cfg(all(target_os = "windows", target_arch = "x86"))]
+mod mercury_recv;
 #[cfg(all(target_os = "windows", target_arch = "x86"))]
 mod net_out;
 mod state_flags;
@@ -163,12 +170,74 @@ unsafe fn install_inner(producer: Producer) {
     entity_lifecycle::install_all(&producer);
     entity_messages::install_all(&producer);
     net_out::install_all(&producer);
+    mercury_recv::install_all(&producer);
 
     super::emit_info(
         &producer,
         "client.hooks.inline.install_complete",
-        [("hook_count", serde_json::json!(22))],
+        [("hook_count", serde_json::json!(27))],
     );
+}
+
+/// Environment variable naming inline hooks to leave uninstalled, so a hook
+/// that misbehaves in the lab can be switched off without a rebuild:
+/// `CIMMERIA_CLIENT_HOOKS_DISABLE=mercury_bundle_unpack,mercury_queue_ack`.
+/// Names are the `hook` values of `client.hooks.inline.installed`; a trailing
+/// `*` matches a prefix (`mercury_*`) and `all` disables every inline hook.
+/// Read once, at install.
+#[cfg_attr(not(all(target_os = "windows", target_arch = "x86")), allow(dead_code))]
+pub const DISABLE_ENV: &str = "CIMMERIA_CLIENT_HOOKS_DISABLE";
+
+/// Whether `name` is listed in the comma-separated `list`.
+#[cfg_attr(not(all(target_os = "windows", target_arch = "x86")), allow(dead_code))]
+pub(crate) fn is_listed(list: &str, name: &str) -> bool {
+    list.split(',').map(str::trim).any(|item| match item {
+        "" => false,
+        "all" => true,
+        _ => match item.strip_suffix('*') {
+            Some(prefix) => name.starts_with(prefix),
+            None => item == name,
+        },
+    })
+}
+
+/// Environment variable naming default-off hooks to install anyway
+/// (same list syntax as [`DISABLE_ENV`]).
+#[cfg_attr(not(all(target_os = "windows", target_arch = "x86")), allow(dead_code))]
+pub const ENABLE_ENV: &str = "CIMMERIA_CLIENT_HOOKS_ENABLE";
+
+/// Hooks that are off unless [`ENABLE_ENV`] names them, because merely
+/// sitting in the call path changes what the client does.
+///
+/// `mercury_process_ordered_packet`: the client's `Bundle::iterator` copy
+/// constructor (`0x01578e90`) never initializes `+0x14`, the next-request
+/// offset, so `processOrderedPacket`'s iterator starts with whatever an
+/// earlier call left in that stack slot. With our detour's frame in
+/// between, that residue is our code's, and it was `1` (the first
+/// message's cursor): every message parsed as a request and every bundle
+/// aborted, so the client could not log in (live bisect, 2026-09-29).
+/// `unpack` runs inside that frame and reports the same faults, so the
+/// default build observes from there.
+pub(crate) const DEFAULT_OFF: &[&str] = &["mercury_process_ordered_packet"];
+
+/// Whether the hook `name` should be left uninstalled, given the two
+/// environment lists.
+#[cfg_attr(not(all(target_os = "windows", target_arch = "x86")), allow(dead_code))]
+pub(crate) fn skip_hook(name: &str, disable: Option<&str>, enable: Option<&str>) -> bool {
+    if disable.is_some_and(|l| is_listed(l, name)) {
+        return true;
+    }
+    DEFAULT_OFF.contains(&name) && !enable.is_some_and(|l| is_listed(l, name))
+}
+
+/// Whether the environment disables the hook `name`.
+#[cfg(all(target_os = "windows", target_arch = "x86"))]
+fn hook_disabled(name: &str) -> bool {
+    skip_hook(
+        name,
+        std::env::var(DISABLE_ENV).ok().as_deref(),
+        std::env::var(ENABLE_ENV).ok().as_deref(),
+    )
 }
 
 /// Shared CreateHook + EnableHook plumbing — same for every
@@ -183,6 +252,17 @@ unsafe fn install_one(
     detour: *mut c_void,
     trampoline_slot: &OnceLock<usize>,
 ) {
+    if hook_disabled(hook_name) {
+        super::emit_info(
+            producer,
+            "client.hooks.inline.disabled",
+            [
+                ("hook", serde_json::Value::String(hook_name.into())),
+                ("env", serde_json::Value::String(DISABLE_ENV.into())),
+            ],
+        );
+        return;
+    }
     let target = address as *mut c_void;
     let mut trampoline: *mut c_void = std::ptr::null_mut();
 
@@ -232,6 +312,40 @@ unsafe fn install_one(
 
 #[cfg(test)]
 mod tests {
+    use super::{is_listed, skip_hook};
+
+    /// `processOrderedPacket` stays off unless enabled by name (its frame
+    /// changes the client's uninitialized iterator field and broke login);
+    /// the disable list still wins, and other hooks are on by default.
+    #[test]
+    fn the_ordered_packet_hook_is_off_unless_enabled() {
+        let ordered = "mercury_process_ordered_packet";
+        assert!(skip_hook(ordered, None, None));
+        assert!(skip_hook(ordered, None, Some("mercury_bundle_unpack")));
+        assert!(!skip_hook(ordered, None, Some(ordered)));
+        assert!(!skip_hook(ordered, None, Some("mercury_*")));
+        assert!(skip_hook(ordered, Some(ordered), Some(ordered)));
+        assert!(!skip_hook("mercury_bundle_unpack", None, None));
+        assert!(skip_hook("mercury_bundle_unpack", Some("mercury_*"), None));
+    }
+
+    /// A hook that misbehaves in the lab is switched off by name, by
+    /// prefix, or all at once, and an empty or unrelated list leaves it on.
+    #[test]
+    fn the_disable_list_matches_names_prefixes_and_all() {
+        assert!(is_listed("mercury_bundle_unpack", "mercury_bundle_unpack"));
+        assert!(is_listed(
+            "entity_create, mercury_queue_ack",
+            "mercury_queue_ack"
+        ));
+        assert!(is_listed("mercury_*", "mercury_process_packet"));
+        assert!(is_listed("all", "anything"));
+        assert!(!is_listed("mercury_*", "entity_create"));
+        assert!(!is_listed("mercury_queue", "mercury_queue_ack"));
+        assert!(!is_listed("", "mercury_queue_ack"));
+        assert!(!is_listed(" , ", "mercury_queue_ack"));
+    }
+
     /// Pin the resolved addresses against the documented anchors.
     /// If a future RE pass moves any of them, this test trips and
     /// reminds us to update the docs + commit comment together.
@@ -287,6 +401,15 @@ mod tests {
             assert_eq!(super::entity_messages::ADDR_ENTITY_PROPERTY, 0x00dd29d0);
             assert_eq!(super::entity_messages::ADDR_QUEUE_REPLAY, 0x00dd1e40);
             assert_eq!(super::net_out::ADDR_ROUTE_OUTGOING_RPC, 0x00c6fc40);
+            // Mercury receive path (findings/client-mercury-receive-path.md).
+            assert_eq!(
+                super::mercury_recv::ADDR_PROCESS_FILTERED_PACKET,
+                0x01580840
+            );
+            assert_eq!(super::mercury_recv::ADDR_QUEUE_ACK, 0x0158cba0);
+            assert_eq!(super::mercury_recv::ADDR_PROCESS_PACKET, 0x0157fd20);
+            assert_eq!(super::mercury_recv::ADDR_PROCESS_ORDERED_PACKET, 0x0157c820);
+            assert_eq!(super::mercury_recv::ADDR_BUNDLE_UNPACK, 0x01579830);
         }
     }
     /// Every inline-hooked address is a fingerprinted site, so a build
@@ -317,6 +440,11 @@ mod tests {
             super::entity_messages::ADDR_ENTITY_PROPERTY,
             super::entity_messages::ADDR_QUEUE_REPLAY,
             super::net_out::ADDR_ROUTE_OUTGOING_RPC,
+            super::mercury_recv::ADDR_PROCESS_FILTERED_PACKET,
+            super::mercury_recv::ADDR_QUEUE_ACK,
+            super::mercury_recv::ADDR_PROCESS_PACKET,
+            super::mercury_recv::ADDR_PROCESS_ORDERED_PACKET,
+            super::mercury_recv::ADDR_BUNDLE_UNPACK,
         ];
         for addr in hooked {
             assert!(

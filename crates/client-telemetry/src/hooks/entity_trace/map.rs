@@ -25,6 +25,21 @@
 pub trait Mem {
     /// The little-endian `u32` at `addr`, or `None` if unreadable.
     fn u32_at(&self, addr: u32) -> Option<u32>;
+
+    /// `len` bytes at `addr`, or `None` if any part is unreadable. The
+    /// default reads word by word; [`LiveMem`] overrides it with one
+    /// `ReadProcessMemory` call, which the per-packet Mercury reader needs.
+    fn bytes_at(&self, addr: u32, len: usize) -> Option<Vec<u8>> {
+        let mut out = Vec::with_capacity(len);
+        let mut at = addr;
+        while out.len() < len {
+            let word = self.u32_at(at)?;
+            let take = (len - out.len()).min(4);
+            out.extend_from_slice(&word.to_le_bytes()[..take]);
+            at = at.wrapping_add(4);
+        }
+        Some(out)
+    }
 }
 
 /// The live client address space, read through `ReadProcessMemory`.
@@ -36,6 +51,10 @@ impl Mem for LiveMem {
     fn u32_at(&self, addr: u32) -> Option<u32> {
         let bytes = cimmeria_client_hookgate::os::read_bytes(addr as usize, 4)?;
         Some(u32::from_le_bytes(bytes.try_into().ok()?))
+    }
+
+    fn bytes_at(&self, addr: u32, len: usize) -> Option<Vec<u8>> {
+        cimmeria_client_hookgate::os::read_bytes(addr as usize, len)
     }
 }
 

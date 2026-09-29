@@ -41,6 +41,11 @@ fn the_must_keep_targets_are_never_summarized() {
         ("client.mercury.error", KeepReason::MercuryAnomaly),
         ("client.mercury.fragment", KeepReason::MercuryAnomaly),
         ("client.mercury.bundle", KeepReason::MercuryAnomaly),
+        (
+            "client.mercury.request_misparse",
+            KeepReason::MercuryAnomaly,
+        ),
+        ("client.mercury.unpack_fault", KeepReason::MercuryAnomaly),
         ("client.dispatch.method_dropped", KeepReason::MercuryAnomaly),
         ("client.hooks.fingerprint", KeepReason::HookInstall),
         ("client.hooks.capabilities", KeepReason::HookInstall),
