@@ -14,8 +14,7 @@ use cimmeria_entity::abilities::{
 use cimmeria_entity::cell_entity::{ActiveEffectInstance, AiState};
 use cimmeria_entity::stats::{FOCUS, HEALTH};
 
-use crate::cell::abilities::send_entity_method;
-use crate::cell::client_methods::being::ON_TIMER_UPDATE;
+use crate::cell::abilities::{send_entity_method, send_timer_update};
 use crate::cell::content_events::ContentEvents;
 use crate::cell::messages::CellToBaseMsg;
 use crate::cell::space_manager::SpaceManager;
@@ -204,7 +203,7 @@ pub async fn effect_pulse_tick(
                 0.0,
                 0.0,
             );
-            send_entity_method(entity_id, ON_TIMER_UPDATE, zero_timer, tx, space_mgr).await;
+            send_timer_update(entity_id, zero_timer, tx, space_mgr).await;
         }
     }
 }

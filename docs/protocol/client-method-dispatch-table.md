@@ -16,8 +16,8 @@ last_updated: 2026-09-27
 > SGWPlayer's at the same index — they are a different entity type's dispatch table, not an
 > extension of SGWPlayer's).
 >
-> **Last updated**: 2026-09-27 — added the SGWPet table (pets campaign PT-E1)
-> **Previously**: 2026-09-25 — added the SGWMob table (NA33)
+> **Last updated**: 2026-09-29 — added [Client handler bindings](#client-handler-bindings) (which class dispatches which method)
+> **Previously**: 2026-09-27 — added the SGWPet table (pets campaign PT-E1); 2026-09-25 — added the SGWMob table (NA33)
 > **Verified**: 2026-07-25 — all 157 index/name pairs re-derived from
 > `entities/defs/` by replaying the BigWorld flattening rule, and diffed
 > against both this table and the constants in
@@ -355,6 +355,60 @@ Where the server sends them: the `mapLoaded` bundle carries 139 and the ASP prop
 The server sends one tool id (`items`, an inventory instance id) and one machine id (`entities`, a station entity id, or the player's own id under `.allcraft`'s "craft anywhere") per section at most, because the client keeps only the last id of each array (CR-E1 Q2). It is sent after every `onClientReady` and then on change; see [gameplay/crafting-system.md](../gameplay/crafting-system.md) "Stations, tools and crafting options".
 
 With every list empty the payload is 32 zero bytes, which disables every crafting tab. `items` names usable tools (item ids) and `entities` usable machines (entity ids); the client keeps only the last id of each list ([crafting audit C-35](../analysis/crafting/audit.md)). The order above comes from the def file; the client unpacker (`0x00e49180` → `0x00e47250`) has not yet been checked against it (crafting packet CR-E1, question 2).
+
+---
+
+## Client handler bindings
+
+> **Added**: 2026-09-29, from the colo drop-oracle report (191 dropped `onTimerUpdate` in one session).
+
+A method index existing in an entity's table does not mean the client handles it for that
+entity. The client binds a handler (a `(clientIndex, methodIndex)` node naming an
+`Event_NetIn_*` signal) only for the class named at registration, and it registers every
+NetIn handler in one startup sweep: `FUN_00c6f1e0(class, method, event)`, called 162 times
+from `0x00db3390` and from nowhere else. `FUN_00c6f1e0` resolves the class's
+`EntityDescription`, reads its clientIndex (`desc+0x1e`) and the method's index
+(`MethodDescription+0x44`), and inserts the node. The dispatcher
+`Client_NetIn_EntityMethodDispatch` (`0x00c6f8f0`) looks the method up under the receiving
+entity's clientIndex, then under each parent class's (`FUN_0158eca0`), and on a miss calls
+`0x01590f30` and returns: the method is skipped whole, nothing else in the bundle is lost,
+and the telemetry DLL reports `client.dispatch.method_dropped`.
+
+So a method bound under `SGWBeing` works on every being (`SGWBeing` 1, `SGWPlayer` 2,
+`SGWGmPlayer` 3, `SGWMob` 4, `SGWPet` 5), a method bound under `SGWPlayer` works on player
+entities only, and nothing bound under `SGWBeing` reaches a plain `SGWSpawnableEntity` (0) or
+`SGWDuelMarker` (6).
+
+| Bound under | Methods (this table's indices) |
+|---|---|
+| `SGWSpawnableEntity` | `onStaticMeshNameUpdate`, `onEntityMove`, `InteractionType`, `onEntityFlags`, `onEntityProperty`, `onVisible`, `onKismetEventSetUpdate`, `onEntityTint` |
+| `SGWBeing` | `onSequence`, `onBeingNameIDUpdate`, `onEffectResults`, `onLevelUpdate`, `onTargetUpdate`, `onBeingNameUpdate`, `onStateFieldUpdate`, `onStatUpdate`, `onStatBaseUpdate`, `onMeleeRangeUpdate`, `onAlignmentUpdate`, `onFactionUpdate`, `BeingAppearance` |
+| `SGWPlayer` | every other method in the SGWPlayer table except those below, **including `onTimerUpdate` (12), `onEffectUserData` (13) and `onArchetypeUpdate` (23)** |
+| `SGWMob` | `onAggressionOverrideUpdate`, `onAggressionOverrideCleared` |
+| `SGWPet` | `onPetAbilityList`, `onPetStanceList`, `onPetStanceUpdate` |
+| `SGWGmPlayer` | `onLOSResult`, `onShowWaypoints`, `onShowPath`, `onDisableShowPath`, `onSetTarget`, `onShowNavigation` |
+| *(bound nowhere)* | `getInteractions` (5), `toggleInteractionDebugging` (6), `onTopSpeedUpdate` (18), the six `onBM*` (90-95), `onPlayerTeleport` (116), `giveAbility` (118), `giveXPForLevel` (119), `onOrganizationCreationResult` (134) |
+
+Consequences for the server:
+
+- **`onTimerUpdate` goes to the owning player's own client only.** Sent about an NPC or pet
+  (an NPC's cooldown, a duration timer on an NPC target) it is dropped by every witness. The
+  cell routes every timer through `send_timer_update`
+  ([`timer_update.rs`](../../crates/cell-combat/src/cell/abilities/timer_update.rs)), and the
+  witness fan-out helpers refuse method 12 for a non-player with a WARN
+  (`reason = no_client_binding`, target `cimmeria_cell_combat::cell::abilities::messaging`). An NPC's attack is shown by its
+  `onSequence`, which `SGWBeing` binds.
+- **`onBeingNameIDUpdate` goes to beings only.** The AoI cascade skips it for a class-0 prop or
+  corpse (`class_binds_being_methods` in `crates/wire/src/mercury/aoi/create.rs`).
+- A method in the *bound nowhere* row always shows up in the drop oracle. Seen on the colo on
+  2026-09-29: `onPlayerTeleport` (116) and `giveXPForLevel` (119). Sending them does nothing on
+  a stock client; the six `onBM*` need the client patch in
+  [black-market-client-window-patch.md](../reverse-engineering/findings/black-market-client-window-patch.md).
+
+The table was read from the decompiled sweep in
+`docs/reverse-engineering/decompiled/14_standalone_named.c` (the function Ghidra once named
+`register_NetOut_onStrikeTeamResponse`), and `FUN_00c6f1e0` and the dispatcher were
+re-decompiled on 2026-09-29.
 
 ---
 

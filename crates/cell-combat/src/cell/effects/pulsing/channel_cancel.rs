@@ -18,8 +18,7 @@ use cimmeria_entity::abilities::{
     serialize_timer_update, AF_CHANNEL_ALLOWS_MOVEMENT, TIMER_DURATION_EFFECT,
 };
 
-use crate::cell::abilities::send_entity_method;
-use crate::cell::client_methods::being::ON_TIMER_UPDATE;
+use crate::cell::abilities::{send_entity_method, send_timer_update};
 use crate::cell::messages::CellToBaseMsg;
 use crate::cell::space_manager::SpaceManager;
 
@@ -143,7 +142,7 @@ pub async fn cancel_channels_from_attacker(
             0.0,
             0.0,
         );
-        send_entity_method(target_eid, ON_TIMER_UPDATE, zero_timer, tx, space_mgr).await;
+        send_timer_update(target_eid, zero_timer, tx, space_mgr).await;
     }
 
     cancelled_count
@@ -325,7 +324,7 @@ pub async fn cancel_channels_for_invoker_ability(
             0.0,
             0.0,
         );
-        send_entity_method(target_eid, ON_TIMER_UPDATE, zero_timer, tx, space_mgr).await;
+        send_timer_update(target_eid, zero_timer, tx, space_mgr).await;
     }
     cancelled_count
 }

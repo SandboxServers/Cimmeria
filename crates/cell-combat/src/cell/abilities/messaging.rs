@@ -54,6 +54,9 @@ pub async fn send_entity_method(
             })
             .await;
     } else {
+        if refuse_unbound_npc_method(entity_id, method_index, "send_entity_method") {
+            return;
+        }
         let witnesses = space_mgr.get_witnesses_of(entity_id);
         if witnesses.is_empty() {
             tracing::warn!(
@@ -81,6 +84,24 @@ pub async fn send_entity_method(
                 .await;
         }
     }
+}
+
+/// Refuse a witness fanout of a method the client never binds on a non-player
+/// entity (today only `onTimerUpdate`; see [`super::timer_update`]). Every
+/// such send is a silent drop on the witness's client, so reaching this is a
+/// caller that bypassed [`super::timer_update::send_timer_update`]: WARN.
+fn refuse_unbound_npc_method(entity_id: u32, method_index: u16, via: &'static str) -> bool {
+    if !super::timer_update::unbound_on_non_player(method_index) {
+        return false;
+    }
+    tracing::warn!(
+        entity_id,
+        method_index,
+        via,
+        reason = "no_client_binding",
+        "NPC method not fanned out to witnesses: the client binds it on SGWPlayer only and would drop it"
+    );
+    true
 }
 
 /// Fan out an entity-method call to all AoI witnesses of `entity_id`.
@@ -115,6 +136,11 @@ pub async fn send_entity_method_to_witnesses(
     // Compute once before the loop — the observee's player-ness is the same for
     // every witness and drives the idbase selection at wire-encode time.
     let entity_is_player = space_mgr.get_entity(entity_id).is_some_and(|e| e.is_player);
+    if !entity_is_player
+        && refuse_unbound_npc_method(entity_id, method_index, "send_entity_method_to_witnesses")
+    {
+        return 0;
+    }
     for witness_id in witnesses {
         let _ = tx
             .send(CellToBaseMsg::WitnessEntityMethod {

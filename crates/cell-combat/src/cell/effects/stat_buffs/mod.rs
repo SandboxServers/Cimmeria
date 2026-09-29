@@ -36,8 +36,7 @@ use cimmeria_entity::abilities::{
     serialize_timer_update, EF_CLEAR_ON_DEATH, TIMER_DURATION_EFFECT,
 };
 
-use crate::cell::abilities::send_entity_method;
-use crate::cell::client_methods::being::ON_TIMER_UPDATE;
+use crate::cell::abilities::{send_entity_method, send_timer_update};
 use crate::cell::effects::stat_buff::StatBuffRemoval;
 use crate::cell::messages::CellToBaseMsg;
 use crate::cell::space_manager::SpaceManager;
@@ -122,7 +121,7 @@ pub async fn flush_stat_buff_timers(
             0.0,
             0.0,
         );
-        send_entity_method(entity_id, ON_TIMER_UPDATE, args, tx, space_mgr).await;
+        send_timer_update(entity_id, args, tx, space_mgr).await;
     }
     for (effect_id, invoker_id, total, remaining) in starts {
         let args = serialize_timer_update(
@@ -133,7 +132,7 @@ pub async fn flush_stat_buff_timers(
             total,
             crate::mercury::game_clock::game_time_secs() + remaining,
         );
-        send_entity_method(entity_id, ON_TIMER_UPDATE, args, tx, space_mgr).await;
+        send_timer_update(entity_id, args, tx, space_mgr).await;
     }
 }
 

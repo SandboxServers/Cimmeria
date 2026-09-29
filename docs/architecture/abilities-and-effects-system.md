@@ -554,6 +554,22 @@ cooldown ends up to 0.1 s early. A server restart resets the clock; never persis
 absolute expiry. Category (type 8) cooldown timers are still not sent. Evidence and test
 list: [CR-02 worknote](../analysis/crafting/worknotes/cr-02.md).
 
+**Routing (2026-09-29): the owning player's client only.** Every cell `onTimerUpdate` goes
+through `send_timer_update`
+([`timer_update.rs`](../../crates/cell-combat/src/cell/abilities/timer_update.rs)), which
+sends to the entity's own client when it is a player and sends nothing otherwise. The client
+binds `Event_NetIn_TimerUpdate` on `SGWPlayer` alone (see
+[the binding table](../protocol/client-method-dispatch-table.md#client-handler-bindings)), so
+an NPC or pet cooldown, and a duration timer on an NPC target, sent to that NPC's witnesses
+was dropped by the dispatcher on arrival: 191 `client.dispatch.method_dropped` rows (method 12,
+type 4) in one colo session on 2026-09-29, one per NPC shot. The witness-fanout helpers refuse
+method 12 for a non-player entity with a WARN (`reason = no_client_binding`,
+target `cimmeria_cell_combat::cell::abilities::messaging`), so a new caller that bypasses the helper is visible in SigNoz.
+Python sent ability timers to `ent.client` only (`AbilityManager.py:611-652`); its
+`updateEffectTimer` also sent effect timers to `ent.witnesses` (`:825`), which only a player
+target's witnesses could use. The drop never cost an animation: a dropped method is skipped
+whole and the NPC's `onSequence` in the same bundle still dispatches.
+
 ### 23. A pet summon is a player cast with a `pet_summons` row, diverted at launch and fire (pets PT-03)
 
 **Decision:** A player ability with a `resources.pet_summons` row (`SpaceManager::pet_summons`)
@@ -879,7 +895,7 @@ Ammo that is not beneficial is untouched: the #444 rule applies exactly as befor
 - **Support darts reach players and the shooter only.** A friendly NPC or an ally's pet is still refused by #444.
 - **No floating heal numbers.** A support shot sends no `onEffectResults`, so the heal shows only as the ally's bars moving.
 - **Nanites has no effect.** There is no evidence for it and no `ammo_modifiers` row, so a Nanites dart fires as a plain dart.
-- **Unknown effect ids reach clients.** The pulsing on-hit effects 9110 (Incendiary), 9140-9142 (Poison, Disease, Tranquilizer) and 9151 (Radioactive) register an active effect, so `onTimerUpdate` carries an id the client's cooked data does not have, to the target and an NPC target's witnesses. What the client does with it is unverified; an unknown cooked id has crashed it before (#938). The UAT's second risk check covers it.
+- **Unknown effect ids reach clients.** The pulsing on-hit effects 9110 (Incendiary), 9140-9142 (Poison, Disease, Tranquilizer) and 9151 (Radioactive) register an active effect, so `onTimerUpdate` carries an id the client's cooked data does not have, to a player target (an NPC target's timer is no longer sent, decision 22). What the client does with it is unverified; an unknown cooked id has crashed it before (#938). The UAT's second risk check covers it.
 
 ### 32. NPC-vs-NPC: an NPC's area ability hits the NPCs it would target, and an NPC-only kill pays nobody (#1009)
 

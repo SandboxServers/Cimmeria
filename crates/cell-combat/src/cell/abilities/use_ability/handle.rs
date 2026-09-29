@@ -22,6 +22,7 @@ use super::super::super::space_manager::SpaceManager;
 use crate::mercury::game_clock;
 
 use super::super::messaging::send_entity_method;
+use super::super::timer_update::send_timer_update;
 
 use super::weapon_redirect::resolve_weapon_redirect;
 
@@ -594,7 +595,7 @@ pub async fn handle_use_ability(
         "useAbility: launched"
     );
 
-    // ── Send cooldown timer to attacker ──
+    // ── Send cooldown timer to the attacker's own client ──
     //
     // `BigWorldTimeComplete` is absolute, on the clock the client was told
     // at login: the client's cooldown manager (`FUN_00c6d1c0`) shows
@@ -609,7 +610,9 @@ pub async fn handle_use_ability(
         game_clock::game_time_secs() + charged_secs,
     );
 
-    send_entity_method(entity_id, 12, timer_args, tx, space_mgr).await;
+    // Owner only: the client binds onTimerUpdate on SGWPlayer alone, so an
+    // NPC's cooldown sent to its witnesses was dropped on every shot.
+    send_timer_update(entity_id, timer_args, tx, space_mgr).await;
 
     // ── Auto-cycle commit: arm or DEACTIVATE-flag clear ──
     //
