@@ -15,7 +15,7 @@ last_updated: 2026-09-28
 
 The crafting system enables players to create items through blueprints, research items for expertise, reverse engineer items into components, and alloy materials into higher tiers. Crafting is gated by disciplines (learned skill trees), racial paradigms (faction-specific tech trees), and Applied Science points (discipline training currency).
 
-The Rust implementation lives in [`crates/base-session/src/base/crafting/`](../../crates/base-session/src/base/crafting/) (persistence, GM grants, the induction engine and the consume-and-grant transaction) and [`cell/cell_methods/player/crafting/`](../../crates/cell-methods/src/cell/cell_methods/player/crafting/) (cell methods 95–100: argument parsing and the forward to the base). The state model is `cimmeria_entity::crafting::CraftingState`.
+The Rust implementation lives in [`crates/base-crafting/src/base/crafting/`](../../crates/base-crafting/src/base/crafting/) (persistence, GM grants, the induction engine and the consume-and-grant transaction), the `cimmeria-base-crafting` base plugin since [#962 step 5](../architecture/plugin-architecture.md#45-step-5-the-baseplugin-core-and-crafting), and [`cell/cell_methods/player/crafting/`](../../crates/cell-methods/src/cell/cell_methods/player/crafting/) (cell methods 95–100: argument parsing and the forward to the base, in the `CellToBaseMsg::Plugin` envelope). The state model is `cimmeria_entity::crafting::CraftingState`.
 
 The `Crafter` pseudo-code blocks under [Crafting Operations](#crafting-operations) document the **legacy Python server's design**. Each is followed by what Cimmeria does, which follows the client where the two disagree (D-CR11) and does not port the legacy defects listed in the campaign audit (C-50 to C-58).
 
@@ -98,7 +98,7 @@ Before the transaction the player's induction queue is dropped (`queue_dropped`,
 | Yes after the 60-second window | "The crafting respec was not confirmed within 60 seconds. Type .respeccraft to start again." | `respec_expired` |
 | No database, or the transaction failed | "Crafting respec is unavailable right now. Nothing was changed." | `unavailable` |
 
-Events: `respec_prompted` (the prompt) and `respec` (each cleared discipline as `discipline_id:expertise_before→0`, `asp_before` / `asp_after`, the kept blueprint count and paradigm levels), in the `crafting` row of [observability.md](../architecture/observability.md). Code: `crates/base-session/src/base/crafting/respec/`, `crates/cell-console/src/cell/console/player_commands.rs`.
+Events: `respec_prompted` (the prompt) and `respec` (each cleared discipline as `discipline_id:expertise_before→0`, `asp_before` / `asp_after`, the kept blueprint count and paradigm levels), in the `crafting` row of [observability.md](../architecture/observability.md). Code: `crates/base-crafting/src/base/crafting/respec/`, `crates/cell-console/src/cell/console/player_commands.rs`.
 
 ## Stations, tools and crafting options
 

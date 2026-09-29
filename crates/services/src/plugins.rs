@@ -10,10 +10,10 @@
 //! scripts crate stays a leaf only this crate names.
 //!
 //! And the base plugin table ([`base_plugin_table`], #962 step 5): the same
-//! shape on the base track. It is empty until the first base feature
-//! (crafting) moves; the orchestrator builds and checks it anyway, so the
-//! startup refusal is in place before anything depends on it.
+//! shape on the base track. Crafting (`cimmeria-base-crafting`) is its first
+//! plugin.
 
+use cimmeria_base_crafting::CraftingPlugin;
 use cimmeria_base_session::base::plugin::{BasePlugin, BasePluginError, BasePlugins};
 use cimmeria_cell_duel::DuelPlugin;
 use cimmeria_cell_org::OrgPlugin;
@@ -42,10 +42,13 @@ pub fn cell_plugins() -> Result<CellPlugins, PluginError> {
     Ok(plugins)
 }
 
-/// Every base plugin, in hook-firing order. Empty: no base feature has
-/// moved yet (#962 step 5, ADR §4.5).
-pub fn base_plugin_table() -> [&'static dyn BasePlugin; 0] {
-    []
+/// Every base plugin, in hook-firing order (#962 step 5, ADR §4.5).
+///
+/// Crafting alone for now, so no two plugins share a hook point and the
+/// order reaches no wire output; a plugin that joins one of crafting's
+/// points must pin its order with a test (ADR §3.2).
+pub fn base_plugin_table() -> [&'static dyn BasePlugin; 1] {
+    [&CraftingPlugin]
 }
 
 /// The built and checked base plugin registry the orchestrator installs on
@@ -141,8 +144,8 @@ mod tests {
     }
 
     /// #962 step 5: the shipped base table builds and is complete, so the
-    /// orchestrator starts the base. While it is empty, every owned list is
-    /// empty too; the first base plugin changes both in one PR.
+    /// orchestrator starts the base: crafting consumes every envelope payload
+    /// type, and no base method is plugin-owned yet.
     #[test]
     fn the_default_base_table_builds_and_is_complete() {
         use cimmeria_base_session::base::plugin::{
@@ -150,7 +153,7 @@ mod tests {
         };
 
         let plugins = base_plugins().expect("the shipped base plugin table must build");
-        assert!(plugins.plugin_names().is_empty());
+        assert_eq!(plugins.plugin_names(), &["crafting"]);
         assert_eq!(
             plugins.base_method_indices().collect::<Vec<_>>(),
             PLUGIN_OWNED_BASE_METHODS.to_vec()
@@ -159,6 +162,30 @@ mod tests {
             plugins.cell_message_types().count(),
             PLUGIN_CELL_MESSAGES.len()
         );
+    }
+
+    /// #962 test rule, for step 5: a base table missing `CraftingPlugin` must
+    /// not start. `check_complete` names the seven crafting payload types, so
+    /// the orchestrator refuses to start the base
+    /// (`plugin_table_incomplete`) instead of letting every crafting verb,
+    /// station report and GM grant be dropped as "no consumer".
+    #[test]
+    fn a_base_table_without_the_crafting_plugin_fails_the_startup_check() {
+        use cimmeria_base_session::base::plugin::PLUGIN_CELL_MESSAGES;
+
+        let plugins = BasePlugins::build(&[]).expect("an empty base table builds");
+        match plugins.check_complete() {
+            Err(BasePluginError::MissingCellMessageConsumers { missing }) => {
+                let declared: Vec<&str> =
+                    PLUGIN_CELL_MESSAGES.iter().map(|k| k.type_name()).collect();
+                assert_eq!(missing, declared);
+                assert!(missing
+                    .iter()
+                    .any(|t| t.ends_with("crafting::request::CraftRequest")));
+                assert_eq!(missing.len(), 7);
+            }
+            other => panic!("a table without CraftingPlugin must fail check_complete: {other:?}"),
+        }
     }
 
     /// #962 step 4: the shipped script table builds, so the orchestrator

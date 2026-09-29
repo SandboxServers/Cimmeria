@@ -9,7 +9,9 @@ use tokio::sync::mpsc;
 
 use super::feedback::send_gm_feedback;
 use super::{forward_to_base, read_i32};
-use crate::cell::messages::CellToBaseMsg;
+use crate::cell::messages::{
+    CellToBaseMsg, GmGrantAppliedSciencePoints, GmGrantExpertise, PluginMsg,
+};
 use crate::cell::space_manager::{vault_access, SpaceManager};
 use crate::mercury::read_wstring;
 
@@ -331,12 +333,12 @@ pub(super) async fn handle_give_expertise(
     // ("discipline <d> now <newExpertise>") once `save_crafting_state` commits.
     forward_to_base(
         tx,
-        CellToBaseMsg::GrantExpertise {
+        CellToBaseMsg::Plugin(PluginMsg::new(GmGrantExpertise {
             entity_id,
             player_id,
             discipline_id,
             amount,
-        },
+        })),
         "gmGiveExpertise",
     )
     .await;
@@ -412,11 +414,11 @@ pub(super) async fn handle_give_applied_science(
     // ("+<amount> (total <newTotal>)") once `save_crafting_state` commits.
     forward_to_base(
         tx,
-        CellToBaseMsg::GrantAppliedSciencePoints {
+        CellToBaseMsg::Plugin(PluginMsg::new(GmGrantAppliedSciencePoints {
             entity_id,
             player_id,
             amount,
-        },
+        })),
         "gmGiveAppliedSciencePoints",
     )
     .await;

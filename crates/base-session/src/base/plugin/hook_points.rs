@@ -44,6 +44,14 @@ pub enum SessionHookPoint {
 /// connected-map lock. Hooks here are synchronous and must not block.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum SessionStateHookPoint {
+    /// `playCharacter` (`cimmeria-base-world-entry`'s `play_character`),
+    /// when the connection's first world entry latches (`world_entry_sent`),
+    /// before the world-entry query and the cell entity. A new character
+    /// enters the world: state from whatever the connection played before
+    /// goes. Crafting resets its options (no station, tool or "craft
+    /// anywhere" carries over; no option send until this entry's login
+    /// send).
+    PlayCharacterAfterEntryLatch,
     /// Gate travel, after the active-character check passed and before the
     /// cell is asked to create the destination entity. State tied to the
     /// origin world is dropped here: crafting forgets the stations in reach
@@ -61,4 +69,43 @@ pub enum WorldEntryHookPoint {
     /// entry, gate travel included. Crafting's login sync (disciplines,
     /// paradigm levels, blueprints, ASP, crafting options) runs here.
     ClientReadyAfterOrgRestore,
+}
+
+/// A position in `useItem` (`cimmeria-base-methods`'
+/// `inventory::core::use_instance`) where a plugin may take the use over.
+/// The first hook in table order that handles it decides; with none, the
+/// core's own line runs.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum ItemUseHookPoint {
+    /// The instance is this character's, reachable, not a bandolier
+    /// auto-equip, and its type has a crafting item effect
+    /// (`resources.crafting_item_effects`). Crafting teaches the blueprint or
+    /// raises the paradigm and consumes the item. Unhandled, the core logs a
+    /// WARN (`reason = "no_plugin"`) and the use does nothing.
+    CraftingItem,
+    /// No instance of the item is this character's. Crafting claims a
+    /// crafting item the player already used up, or another character's,
+    /// and refuses it with a visible line. Unhandled, the core logs its
+    /// instance-not-found WARN, as before.
+    InstanceNotFound,
+}
+
+/// A position in the inventory code.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum InventoryHookPoint {
+    /// The full inventory resync (`inventory::core::send_full_inventory_update`),
+    /// after `onUpdateItem` is sent. Every inventory commit ends here, so it
+    /// is where crafting learns that a Field Crafting Tool entered or left
+    /// the crafting bag and resends its options.
+    AfterFullInventoryUpdate,
+}
+
+/// A position in the progression code.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum ProgressionHookPoint {
+    /// An XP grant that earned applied-science points
+    /// (`progression::handle_grant_xp`, D-CR01), after the level-up bundle
+    /// and before the cell is told the new level. Crafting pushes the new ASP
+    /// total to the discipline trainer here.
+    AfterAppliedScienceEarned,
 }

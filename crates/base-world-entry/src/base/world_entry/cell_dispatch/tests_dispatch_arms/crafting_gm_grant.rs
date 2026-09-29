@@ -6,10 +6,11 @@
 
 use super::super::*;
 use super::one_session;
-use crate::base::crafting::feedback::feedback_text_args;
+use crate::cell::messages::PluginMsg;
 use crate::cell::messages::{GmCraftGrant, GmCraftGrantKind};
 use crate::mercury::{build_player_entity_method_packet, method_idx};
 use crate::test_support::{LogCapture, TestTransport};
+use cimmeria_base_crafting::base::crafting::feedback::feedback_text_args;
 use cimmeria_mercury::encryption::EncryptionVersion;
 
 const ENTITY: u32 = 4273;
@@ -37,13 +38,13 @@ async fn dispatch_from_non_gm(
     let transport: Arc<dyn Transport> = typed.clone();
     let (addr, connected, entity_to_addr) = one_session(ENTITY, false);
     assert_eq!(connected.lock().unwrap()[&addr].access_level, 0);
-    handle_cell_message(
-        CellToBaseMsg::GmCraftGrant(GmCraftGrant {
+    route_cell_message(
+        CellToBaseMsg::Plugin(PluginMsg::new(GmCraftGrant {
             entity_id: ENTITY,
             player_id: PLAYER_ID,
             gm_entity_id: ENTITY,
             grant,
-        }),
+        })),
         &transport,
         &connected,
         &entity_to_addr,
@@ -52,6 +53,7 @@ async fn dispatch_from_non_gm(
         &None,
         "127.0.0.1",
         7777,
+        &super::crafting_plugins(),
     )
     .await;
     (typed.filter_to(addr), capture)

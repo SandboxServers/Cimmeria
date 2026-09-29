@@ -14,7 +14,6 @@ use std::path::{Path, PathBuf};
 
 use serde::{Deserialize, Serialize};
 
-use super::autologin::LabCreds;
 use super::telemetry_session::{TelemetryGrant, LAB_INSTALL_ID};
 
 /// Bridge default port (mirrors the DLL's `default_lab_port`). 8770 —
@@ -63,21 +62,16 @@ pub struct CurrentSession {
 /// Lab account credentials, read from `lab-account.json`.
 #[derive(Debug, Clone, Deserialize, PartialEq, Eq)]
 pub struct LabAccount {
+    /// Server row to pick at server select (`lab_login` falls back to the
+    /// preselected row when this name is not in the list).
+    #[serde(default)]
     pub server: String,
     pub username: String,
     pub password: String,
+    /// The lab character: always protected by `lab_ensure_character_slot`
+    /// and played after a crash relaunch.
+    #[serde(default)]
     pub character: String,
-}
-
-impl LabAccount {
-    pub fn into_creds(self) -> LabCreds {
-        LabCreds {
-            server: self.server,
-            username: self.username,
-            password: self.password,
-            character: self.character,
-        }
-    }
 }
 
 /// `<install>/Binaries/sessions/`.
@@ -105,11 +99,11 @@ pub fn generate_token() -> String {
     format!("{a}{b}")
 }
 
-/// Read + parse `lab-account.json`.
-pub fn read_lab_account(install_dir: &Path) -> Result<LabAccount, String> {
-    let path = lab_account_path(install_dir);
+/// Read + parse a credentials file: `lab-account.json`, or a named
+/// instance's `lab-account.<name>.json` (`super::instance::account_path`).
+pub fn read_lab_account_at(path: &Path) -> Result<LabAccount, String> {
     let text =
-        std::fs::read_to_string(&path).map_err(|e| format!("read {}: {e}", path.display()))?;
+        std::fs::read_to_string(path).map_err(|e| format!("read {}: {e}", path.display()))?;
     serde_json::from_str(&text).map_err(|e| format!("parse {}: {e}", path.display()))
 }
 
@@ -154,16 +148,18 @@ pub fn build_session(
     }
 }
 
-/// Write `current-session.json` for a lab launch. Creates the sessions
-/// directory if missing. Returns the path written.
-pub fn write_session(install_dir: &Path, session: &CurrentSession) -> Result<PathBuf, String> {
-    let dir = sessions_dir(install_dir);
-    std::fs::create_dir_all(&dir).map_err(|e| format!("create {}: {e}", dir.display()))?;
-    let path = current_session_path(install_dir);
+/// Write a lab launch's session file (`current-session.json`, or a named
+/// instance's `sessions/instances/<name>/current-session.json`, see
+/// `super::instance::session_path`). Creates the directory if missing and
+/// returns the path written.
+pub fn write_session_at(path: &Path, session: &CurrentSession) -> Result<PathBuf, String> {
+    if let Some(dir) = path.parent() {
+        std::fs::create_dir_all(dir).map_err(|e| format!("create {}: {e}", dir.display()))?;
+    }
     let bytes =
         serde_json::to_vec_pretty(session).map_err(|e| format!("serialize session: {e}"))?;
-    std::fs::write(&path, bytes).map_err(|e| format!("write {}: {e}", path.display()))?;
-    Ok(path)
+    std::fs::write(path, bytes).map_err(|e| format!("write {}: {e}", path.display()))?;
+    Ok(path.to_path_buf())
 }
 
 #[cfg(test)]
@@ -184,6 +180,28 @@ mod tests {
             },
             &TelemetryConfig::default(),
         )
+    }
+
+    #[test]
+    fn write_session_at_creates_a_named_instances_directory() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir
+            .path()
+            .join("sessions")
+            .join("instances")
+            .join("p2")
+            .join("current-session.json");
+        let s = build_session(&generate_token(), DEFAULT_BRIDGE_BIND, 8771, &minted());
+        assert_eq!(write_session_at(&path, &s).unwrap(), path);
+        let back: serde_json::Value =
+            serde_json::from_slice(&std::fs::read(&path).unwrap()).unwrap();
+        assert_eq!(back["lab"]["port"], 8771);
+        // The default instance's file is untouched by a named one.
+        assert!(!dir
+            .path()
+            .join("sessions")
+            .join("current-session.json")
+            .exists());
     }
 
     #[test]
@@ -277,11 +295,10 @@ mod tests {
             r#"{"server":"Cimmeria","username":"lab","password":"pw","character":"LabRat"}"#,
         )
         .unwrap();
-        let acct = read_lab_account(install).unwrap();
+        let acct = read_lab_account_at(&lab_account_path(install)).unwrap();
         assert_eq!(acct.server, "Cimmeria");
         assert_eq!(acct.character, "LabRat");
-        let creds = acct.into_creds();
-        assert_eq!(creds.username, "lab");
+        assert_eq!(acct.username, "lab");
     }
 
     #[test]
@@ -294,7 +311,7 @@ mod tests {
             DEFAULT_BRIDGE_PORT,
             &minted(),
         );
-        let path = write_session(install, &s).unwrap();
+        let path = write_session_at(&current_session_path(install), &s).unwrap();
         assert!(path.exists());
         let back: serde_json::Value =
             serde_json::from_slice(&std::fs::read(&path).unwrap()).unwrap();

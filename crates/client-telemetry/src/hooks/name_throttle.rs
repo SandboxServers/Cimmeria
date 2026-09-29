@@ -66,18 +66,45 @@ pub struct NameThrottle {
     buckets: HashMap<String, Bucket>,
     burst: u32,
     rate_per_sec: u32,
+    max_names: usize,
 }
 
 impl Default for NameThrottle {
     fn default() -> Self {
-        Self::with_limits(BURST, RATE_PER_SEC)
+        Self::new()
     }
 }
 
 impl NameThrottle {
-    /// An empty table with the default limits ([`BURST`], [`RATE_PER_SEC`]).
+    /// An empty table with the default limits ([`BURST`], [`RATE_PER_SEC`])
+    /// that tracks up to [`MAX_NAMES`] names.
     pub fn new() -> Self {
-        Self::default()
+        Self::with_limits(BURST, RATE_PER_SEC)
+    }
+
+    /// An empty table with the default limits that tracks up to `max_names`
+    /// names before the overflow bucket takes over.
+    pub fn with_max_names(max_names: usize) -> Self {
+        Self {
+            max_names,
+            ..Self::new()
+        }
+    }
+
+    /// Number of buckets held (overflow included).
+    pub fn len(&self) -> usize {
+        self.buckets.len()
+    }
+
+    /// Whether no bucket is held.
+    #[allow(dead_code)]
+    pub fn is_empty(&self) -> bool {
+        self.buckets.is_empty()
+    }
+
+    /// Forget every bucket: each name starts again with a full burst.
+    pub fn clear(&mut self) {
+        self.buckets.clear();
     }
 
     /// An empty table with its own limits: `burst` events back to back, then
@@ -88,12 +115,13 @@ impl NameThrottle {
             buckets: HashMap::new(),
             burst: burst.max(1),
             rate_per_sec,
+            max_names: MAX_NAMES,
         }
     }
 
     /// Decide for one event named `name` at monotonic time `now_ms`.
     pub fn check(&mut self, name: &str, now_ms: u64) -> Decision {
-        let key = if self.buckets.contains_key(name) || self.buckets.len() < MAX_NAMES {
+        let key = if self.buckets.contains_key(name) || self.buckets.len() < self.max_names {
             name
         } else {
             OVERFLOW_NAME
@@ -126,7 +154,7 @@ impl NameThrottle {
     /// Number of distinct buckets (overflow included).
     #[cfg(test)]
     fn bucket_count(&self) -> usize {
-        self.buckets.len()
+        self.len()
     }
 }
 

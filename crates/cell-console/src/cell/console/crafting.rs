@@ -2,12 +2,14 @@
 //! `.forgetdiscipline`, `.allcraft`, `.craftkit`, `.learnblueprint`.
 //!
 //! The discipline commands route through the existing crafting grant
-//! plumbing (`CellToBaseMsg::GrantExpertise` → `base::crafting::handlers`).
+//! plumbing (a `GmGrantExpertise` in the `CellToBaseMsg::Plugin` envelope →
+//! `cimmeria-base-crafting`'s `base::crafting::handlers`).
 //! Discipline expertise is clamped `[0, 100]` base-side, so "forget" zeroes
 //! the expertise (a full row delete would need a dedicated base path, noted
-//! in feedback). `.allcraft` sends `CellToBaseMsg::GmAllCraft` to
-//! `base::crafting::allcraft`. `.craftkit` and `.learnblueprint` send
-//! `CellToBaseMsg::GmCraftGrant` to `base::crafting::gm_grant`; the base holds
+//! in feedback). `.allcraft` sends a `GmAllCraft` to
+//! `base::crafting::allcraft`. `.craftkit` and `.learnblueprint` send a
+//! `GmCraftGrant` to `base::crafting::gm_grant`, both in the envelope (#962
+//! step 5); the base holds
 //! the catalog, re-checks the caller's access level and answers the GM.
 //!
 //! Legacy reference: `deprecated/python/cell/commands/Crafting.py`.
@@ -15,7 +17,9 @@
 use tokio::sync::mpsc;
 
 use super::send_gm_feedback;
-use crate::cell::messages::{CellToBaseMsg, GmAllCraft, GmCraftGrant, GmCraftGrantKind};
+use crate::cell::messages::{
+    CellToBaseMsg, GmAllCraft, GmCraftGrant, GmCraftGrantKind, GmGrantExpertise, PluginMsg,
+};
 use crate::cell::space_manager::SpaceManager;
 
 pub(super) async fn dispatch(
@@ -80,12 +84,12 @@ async fn learn(
         None => 1,
     };
     let _ = tx
-        .send(CellToBaseMsg::GrantExpertise {
+        .send(CellToBaseMsg::Plugin(PluginMsg::new(GmGrantExpertise {
             entity_id: target,
             player_id,
             discipline_id,
             amount: expertise,
-        })
+        })))
         .await;
     send_gm_feedback(
         caller_id,
@@ -112,12 +116,12 @@ async fn forget(
         return;
     }
     let _ = tx
-        .send(CellToBaseMsg::GrantExpertise {
+        .send(CellToBaseMsg::Plugin(PluginMsg::new(GmGrantExpertise {
             entity_id: target,
             player_id,
             discipline_id,
             amount: -100,
-        })
+        })))
         .await;
     send_gm_feedback(
         caller_id,
@@ -140,7 +144,7 @@ async fn all_craft(caller_id: u32, target: u32, player_id: i32, tx: &mpsc::Sende
         player_id,
         gm_entity_id: caller_id,
     };
-    if let Err(e) = tx.send(CellToBaseMsg::GmAllCraft(grant)).await {
+    if let Err(e) = tx.send(CellToBaseMsg::Plugin(PluginMsg::new(grant))).await {
         tracing::warn!(
             target: "crafting",
             event = "allcraft_send_failed",
@@ -219,7 +223,7 @@ async fn send_grant(
         gm_entity_id: caller_id,
         grant,
     };
-    if let Err(e) = tx.send(CellToBaseMsg::GmCraftGrant(msg)).await {
+    if let Err(e) = tx.send(CellToBaseMsg::Plugin(PluginMsg::new(msg))).await {
         tracing::warn!(
             target: "crafting",
             event = "forward_failed",

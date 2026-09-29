@@ -95,7 +95,16 @@ unsafe extern "system" fn bootstrap_thread(_arg: *mut c_void) -> u32 {
 
 fn bootstrap() {
     let exe = std::env::current_exe().ok();
-    log::init(exe.as_deref().and_then(|p| p.parent()));
+    // A named lab instance keeps its own log (see the telemetry DLL's
+    // `CIMMERIA_LAB_INSTANCE`); the name must be a plain file-name fragment.
+    let instance = std::env::var("CIMMERIA_LAB_INSTANCE")
+        .ok()
+        .filter(|s| (1..=16).contains(&s.len()))
+        .filter(|s| {
+            s.bytes()
+                .all(|b| b.is_ascii_alphanumeric() || b == b'-' || b == b'_')
+        });
+    log::init_as(exe.as_deref().and_then(|p| p.parent()), instance.as_deref());
     log::line(format_args!(
         "attached, version {}, host {}",
         env!("CARGO_PKG_VERSION"),

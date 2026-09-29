@@ -46,6 +46,12 @@ impl PluginMsg {
         self.type_id == TypeId::of::<T>()
     }
 
+    /// A borrow of the payload as a `T`, when it is one. For tests and logs
+    /// that read an envelope without consuming it.
+    pub fn downcast_ref<T: Any>(&self) -> Option<&T> {
+        self.payload.downcast_ref::<T>()
+    }
+
     /// The payload as a `T`, or the envelope back when it is another type.
     pub fn downcast<T: Any>(self) -> Result<T, Self> {
         if !self.is::<T>() {
@@ -60,6 +66,18 @@ impl PluginMsg {
                 type_name: self.type_name,
                 payload,
             }),
+        }
+    }
+}
+
+impl super::CellToBaseMsg {
+    /// The payload of a `Plugin` envelope, borrowed as a `T`; `None` for any
+    /// other message or payload type. Lets a test (or a log) pick a feature
+    /// message out of the channel as it would match a variant.
+    pub fn plugin_payload<T: Any>(&self) -> Option<&T> {
+        match self {
+            Self::Plugin(msg) => msg.downcast_ref::<T>(),
+            _ => None,
         }
     }
 }
@@ -87,11 +105,28 @@ mod tests {
         assert!(!msg.is::<Pong>());
         assert_eq!(msg.type_id(), TypeId::of::<Ping>());
         assert!(msg.type_name().ends_with("Ping"));
+        assert_eq!(msg.downcast_ref::<Ping>(), Some(&Ping(7)));
+        assert!(msg.downcast_ref::<Pong>().is_none());
         let msg = match msg.downcast::<Pong>() {
             Ok(_) => panic!("a Ping is not a Pong"),
             Err(msg) => msg,
         };
         assert_eq!(msg.downcast::<Ping>().unwrap(), Ping(7));
+    }
+
+    #[test]
+    fn plugin_payload_picks_the_type_out_of_a_message() {
+        use crate::cell::messages::CellToBaseMsg;
+
+        let msg = CellToBaseMsg::Plugin(PluginMsg::new(Ping(3)));
+        assert_eq!(msg.plugin_payload::<Ping>(), Some(&Ping(3)));
+        assert!(msg.plugin_payload::<Pong>().is_none());
+        let other = CellToBaseMsg::EntityMethodCall {
+            entity_id: 1,
+            method_index: 2,
+            args: Vec::new(),
+        };
+        assert!(other.plugin_payload::<Ping>().is_none());
     }
 
     #[test]

@@ -30,7 +30,7 @@ prefixes = ["cimmeria-cell-"]
 [[group]]
 id = "base"
 title = "Base (session) track"
-crates = ["cimmeria-base", "cimmeria-base-world-entry", "cimmeria-base-methods", "cimmeria-base-session"]
+crates = ["cimmeria-base", "cimmeria-base-crafting", "cimmeria-base-world-entry", "cimmeria-base-methods", "cimmeria-base-session"]
 prefixes = ["cimmeria-base-"]
 
 [[group]]

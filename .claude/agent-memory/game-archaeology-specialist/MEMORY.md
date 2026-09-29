@@ -96,8 +96,16 @@ Each entry tagged with bucket assignment per #264 step 4. Bible chapter targets 
 
 - [Ammo system AM-01 findings](ammo-system-am01.md) — **[PROMOTE → docs/reverse-engineering/findings/ammo-system.md DONE]** — no reserve exists in the client schema (`knownAmmoTypes` is a discovery flag, not a count); `getAmmoTypes`/`getCurrentAmmoType`/`requestAmmoChange` all hit the same live `SGWPlayer+0x8c → *+0x24` container cache as the bandolier active-slot map (not cooked data); toggle abilities 715/719 are independent of `requestAmmoChange`; `docs/**/*.md` CRLF claim does NOT hold for `docs/reverse-engineering/findings/` (verified LF in git HEAD) — check the sibling file before assuming.
 
+## Client entity lifecycle / telemetry (2026-09-28)
+
+- [Client entity lifecycle + telemetry hooks](client-entity-lifecycle-telemetry.md) — **[PROMOTE DONE → findings/client-entity-lifecycle.md]** — EntityManager four maps, create parks at enter count < 1 (#838 hypothesis), `ret N` beats the decompiler, don't hook the shared dispatcher `0x00c6f8f0`, harness command quirks.
+
 ## Phase −0.5 maintenance notes (2026-05-13)
 
 - This MEMORY.md was merged from two trees during Phase −0.5 agent surgery (orchestrator commit `1917d20`). The previous index referenced several files that didn't exist (`findings_cover_system_s4.md`, `findings_respawn_lifecycle_s7.md`, `findings_mission_state_s4b.md`, `findings_world_entry_s4b.md`, `findings_mercury_layer_s5b.md`, `mercury-protocol-internals.md`) — those were hallucinated references. The triage step (this commit) resolves them by either annotating present files with bucket tags or noting their absence here.
 - The canonical findings docs for the topics those hallucinated files purported to cover live in `docs/reverse-engineering/findings/` (not in agent memory) — see `state-flag-broadcast.md`, `cover-system.md`, `respawn-lifecycle.md`, `mission-state-machine.md`, `world-entry-pipeline.md`, `mercury-protocol-internals.md`.
 - The Phase −0.5 triage step (step 4 of #264) ran 2026-05-13. All PROMOTE entries should be kept in memory until the corresponding bible chapters are scaffolded in Phase 0; chapter authoring will copy these forward into the chapter's section 1.
+
+## Multi-client lab (2026-09-29)
+
+- [Two SGW.exe on one machine](multi-client-lab-findings.md) — no client single-instance guard, SGW.lock is Ghidra's, focus throttle 0x00417100, named lab instances; live run pending

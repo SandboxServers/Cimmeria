@@ -14,6 +14,7 @@ use cimmeria_mercury::transport::Transport;
 use sqlx::PgPool;
 use tokio::sync::mpsc;
 
+use cimmeria_base_session::base::plugin::SessionStateHookPoint;
 use cimmeria_entity::manager::EntityManager;
 
 use crate::cell::messages::BaseToCellMsg;
@@ -49,13 +50,15 @@ pub async fn handle_play_character(
         if let Some(c) = clients.get_mut(&addr) {
             if !c.world_entry_sent {
                 c.world_entry_sent = true;
-                // A new character enters the world: no crafting stations,
-                // tools or "craft anywhere" carry over from whatever this
-                // connection played before, and no crafting options go out
-                // until this entry's login send. Before the cell entity is
-                // created, so every station report that follows is this
-                // character's.
-                c.crafting_options = Default::default();
+                // A new character enters the world (#962 step 5): the base
+                // plugins drop what the connection played before. No
+                // crafting stations, tools or "craft anywhere" carry over,
+                // and no crafting options go out until this entry's login
+                // send. Before the cell entity is created, so every station
+                // report that follows is this character's.
+                let plugins = c.plugins.clone();
+                plugins
+                    .run_session_state_hook(SessionStateHookPoint::PlayCharacterAfterEntryLatch, c);
                 Some((
                     Arc::clone(&c.pending_acks),
                     Arc::clone(&c.next_seq),
@@ -284,7 +287,6 @@ mod tests {
             channel: Mutex::new(cimmeria_mercury::channel::Channel::new(
                 "127.0.0.1:9999".parse().unwrap(),
             )),
-            crafting_options: Default::default(),
             extensions: Default::default(),
             plugins: Default::default(),
         }

@@ -233,7 +233,6 @@ pub(crate) async fn handle_login(
                 active_player_id: None,
                 pending_destination_ring_id: None,
                 channel: Mutex::new(channel),
-                crafting_options: Default::default(),
                 extensions: Default::default(),
                 // The service's plugin table (#962 step 5): hook sites
                 // read it off the session.

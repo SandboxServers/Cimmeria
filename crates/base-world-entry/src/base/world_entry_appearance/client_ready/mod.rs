@@ -478,24 +478,12 @@ pub async fn handle_on_client_ready(
     )
     .await;
 
-    // Crafting state: disciplines, paradigm levels, blueprints, the ASP
-    // total and the crafting options (140: the window's machine and tool),
-    // owner-only, in one bundle. After the burst for the same reason as the
-    // contact lists: the entity is live and the crafting UI has loaded. Sent
-    // on every onClientReady, so a world change resends it too.
-    crate::base::crafting::sync::push_crafting_on_login(
-        entity_id,
-        pending.player_id,
-        db_pool,
-        crate::base::crafting::sync::CraftClient {
-            transport,
-            connected,
-            entity_to_addr,
-        },
-    )
-    .await;
-
-    // The base plugins' world-entry work (#962 step 5), at the same point.
+    // The base plugins' world-entry work (#962 step 5). Crafting sends its
+    // state here: disciplines, paradigm levels, blueprints, the ASP total and
+    // the crafting options (140: the window's machine and tool), owner-only,
+    // in one bundle. After the burst for the same reason as the contact
+    // lists: the entity is live and the crafting UI has loaded. Runs on every
+    // onClientReady, so a world change resends it too.
     plugins
         .run_world_entry_hook(
             WorldEntryHookPoint::ClientReadyAfterOrgRestore,

@@ -1,5 +1,5 @@
 //! The crafting request the cell forwards to the base
-//! (`CellToBaseMsg::Crafting`).
+//! (sent in the `CellToBaseMsg::Plugin` envelope).
 //!
 //! The cell parses the client's arguments (methods 95-100, `SGWPlayer.def`)
 //! and applies the station gate; the base owns every rule and every write.

@@ -219,7 +219,9 @@ fn bootstrap_phase2() {
 
     // The local log goes next to the host executable, before anything
     // can fail, so "loaded but silent" is visible without SigNoz.
-    crate::log::init(host_exe.parent());
+    let instance =
+        crate::session::sanitize_instance(std::env::var_os(crate::session::INSTANCE_ENV));
+    crate::log::init_as(host_exe.parent(), instance.as_deref());
     crate::log::line(format_args!(
         "attached, version {}, host {}, dll {}",
         env!("CARGO_PKG_VERSION"),
@@ -236,9 +238,11 @@ fn bootstrap_phase2() {
     // launcher), parse errors, and the explicit
     // `telemetry.enabled = false` kill-switch case. All map to
     // "park, do nothing."
-    let session = match crate::session::session_path_for_host(&host_exe)
-        .and_then(|p| crate::session::load_session(&p))
-    {
+    let session_path = crate::session::resolve_session_path(
+        &host_exe,
+        std::env::var_os(crate::session::SESSION_FILE_ENV),
+    );
+    let session = match session_path.and_then(|p| crate::session::load_session(&p)) {
         Ok(s) => s,
         Err(e) => {
             crate::log::line(format_args!(
@@ -354,7 +358,10 @@ fn bootstrap_phase2() {
             // UE3's unhandled-exception filter. Evidence lands in the
             // session dir (parent of current-session.json) next to the
             // marker the supervisor reads for `lab_crash_report`.
-            if let Ok(session_file) = crate::session::session_path_for_host(&host_exe) {
+            if let Ok(session_file) = crate::session::resolve_session_path(
+                &host_exe,
+                std::env::var_os(crate::session::SESSION_FILE_ENV),
+            ) {
                 if let Some(dir) = session_file.parent() {
                     crate::bridge::crash::install(dir.to_path_buf());
                 }

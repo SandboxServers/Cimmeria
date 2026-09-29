@@ -71,6 +71,17 @@ mod plugin_envelope;
 mod two_player_visibility;
 mod witness_broadcast;
 
+/// The base plugin table with crafting installed (#962 step 5). The crafting
+/// arm tests route through `route_cell_message` with it, since the crafting
+/// payloads travel in the `Plugin` envelope and the crafting plugin consumes
+/// them.
+pub(super) fn crafting_plugins() -> cimmeria_base_session::base::plugin::BasePlugins {
+    cimmeria_base_session::base::plugin::BasePlugins::build(&[
+        &cimmeria_base_crafting::CraftingPlugin,
+    ])
+    .expect("the crafting plugin builds")
+}
+
 /// Empty maps shared by routing tests that don't need a session installed.
 pub(super) fn empty_maps() -> (
     Arc<Mutex<HashMap<SocketAddr, ConnectedClientState>>>,

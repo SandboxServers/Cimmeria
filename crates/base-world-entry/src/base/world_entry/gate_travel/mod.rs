@@ -189,15 +189,10 @@ pub async fn handle_gate_travel(
         "Gate travel: sending RESET_ENTITIES for world transition"
     );
 
-    // A world change drops the player's crafting queue without consuming
-    // anything; the running bar goes with the old world.
-    crate::base::crafting::session::drop_player_inductions(
-        entity_id,
-        crate::base::crafting::session::DropReason::WorldChange,
-        "gate_travel",
-    );
-    // The session's base plugins leave the origin world here too (#962
-    // step 5), before the fail-closed check below.
+    // The session's base plugins leave the origin world (#962 step 5),
+    // before the fail-closed check below: a world change drops the player's
+    // crafting queue without consuming anything, and the running bar goes
+    // with the old world.
     let plugins = plugin::session_plugins(connected, addr);
     plugins.run_session_hook(
         plugin::SessionHookPoint::GateTravelBeforeActiveCharacterCheck,
@@ -249,17 +244,16 @@ pub async fn handle_gate_travel(
         }
     };
 
-    // The stations in reach belong to the origin world. Forget them and hold
-    // crafting-option sends until the destination's login send, before the
-    // cell creates the destination entity, so the login bundle can never
-    // name an origin-world station and every report after this is the
-    // destination's.
+    // Session state tied to the origin world goes before the cell creates
+    // the destination entity (#962 step 5): crafting forgets the stations in
+    // reach and holds its option sends until the destination's login send,
+    // so the login bundle can never name an origin-world station and every
+    // report after this is the destination's.
     if let Some(c) = connected
         .lock()
         .map_err(|_| "connected lock poisoned")?
         .get_mut(&addr)
     {
-        c.crafting_options.begin_world_entry();
         plugins.run_session_state_hook(
             plugin::SessionStateHookPoint::GateTravelBeforeCreateEntity,
             c,
