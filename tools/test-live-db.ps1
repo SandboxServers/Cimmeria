@@ -42,6 +42,7 @@ $LiveDbCrates = @(
     'cimmeria-cell-pets'
     'cimmeria-cell-duel'
     'cimmeria-cell-org'
+    'cimmeria-cell-effect-scripts'
     'cimmeria-cell'
 )
 

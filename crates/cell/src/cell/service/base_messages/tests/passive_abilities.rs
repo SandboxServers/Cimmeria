@@ -18,6 +18,7 @@ const HEED_OUR_CALLING: i32 = 2852;
 
 fn fixture() -> SpaceManager {
     let mut mgr = crate::test_support::make_space_manager();
+    crate::test_support::install_effect_scripts(&mut mgr);
     mgr.create_entity(PLAYER, "Agnos", [0.0; 3], [0.0; 3])
         .unwrap();
     if let Some(p) = mgr.get_entity_mut(PLAYER) {

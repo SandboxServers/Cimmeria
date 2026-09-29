@@ -13,3 +13,4 @@
 - [respawn-reanchor-combat-state.md](respawn-reanchor-combat-state.md) — reanchor wipes client stats/archetype/tree (sent pre-reanchor, never after); auto-attack = interact idx 74; stale not_resent log
 - [same-space-target-gate.md](same-space-target-gate.md) — #906 cross-space cast gate in fire_los; Instanced="true" test fixtures split caster/target into separate spaces
 - [ability-range-units.md](ability-range-units.md) — ability ranges UE3 units -> metres (#919); caster_range_bounds choke point, player min_range (#1016), UseWeaponRange fallback (#1017)
+- [effect-script-registry-seam.md](effect-script-registry-seam.md) — #962 step 4: scripts in cell-effect-scripts, looked up on SpaceManager; bare test managers have no scripts

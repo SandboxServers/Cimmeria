@@ -143,7 +143,7 @@ The two `EEffectFlag` bits that matter here:
 > `effects.script_name` is **not** original evidence. The column exists in the
 > dump DDL, but all 16 non-NULL values (`RangedPhysicalDamage`, `HealHealth`,
 > `Suppression`, …) are Cimmeria's own `EffectScript` registry keys in
-> `crates/cell-world/src/cell/effects/registry.rs`. Do not cite it as original.
+> `crates/cell-effect-scripts/src/cell/effects/registry.rs` (`EFFECT_SCRIPTS`). Do not cite it as original.
 
 ---
 

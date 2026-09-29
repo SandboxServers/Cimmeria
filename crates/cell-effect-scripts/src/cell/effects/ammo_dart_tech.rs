@@ -2,7 +2,7 @@
 //! tech-disable darts (EMP, Radioactive).
 //!
 //! Created empty by AM-F so each family packet adds its script here and one
-//! `match` arm in `registry.rs`, and never edits `effects/mod.rs`.
+//! `EFFECT_SCRIPTS` row in `registry.rs`, and never edits `effects/mod.rs`.
 //!
 //! # What the two darts do (RECONSTRUCTION)
 //!

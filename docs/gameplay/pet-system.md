@@ -143,7 +143,7 @@ The owner may not aim the pet at anything the owner could not attack. `handle_us
 
 Some of the owner's own abilities act on the owner's pet. The code is in
 `crates/cell-combat/src/cell/abilities/use_ability/owner_pet/`, the effect scripts are in
-`crates/cell-world/src/cell/effects/pet_scripts.rs`, and the design is decision 25 of
+`crates/cell-effect-scripts/src/cell/effects/pet_scripts/`, and the design is decision 25 of
 [`abilities-and-effects-system.md`](../architecture/abilities-and-effects-system.md).
 
 | Ability | What the server does |

@@ -137,6 +137,7 @@ async fn stack_size(pool: &PgPool, instance: i32) -> Option<i32> {
 /// Engagement at an archetype-like 10/10.
 async fn stage(pool: &PgPool, health: i32) -> (SpaceManager, ChainEngine) {
     let mut mgr = SpaceManager::new(1);
+    mgr.install_effect_scripts(crate::plugins::effect_scripts().unwrap());
     let xml = r#"<?xml version="1.0"?><Spaces><Space WorldName="W" Instanced="false" MinX="-100" MaxX="100" MinY="-100" MaxY="100" /></Spaces>"#;
     let cxml = r#"<?xml version="1.0"?><Spaces><Space WorldName="W" /></Spaces>"#;
     mgr.parse_spaces_xml(xml).unwrap();

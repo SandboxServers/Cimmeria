@@ -1,5 +1,6 @@
-//! Shared fixtures for the effect-script unit tests (`scripts`, `heal`,
-//! `stat_buff`).
+//! The effect-script target world: one space with a player whose pools have
+//! room to move, and an effect with one NVP. For the effect tests here and in
+//! `cimmeria-cell-effect-scripts` (which installs the script registry on it).
 
 use std::collections::HashMap;
 
@@ -10,7 +11,7 @@ use crate::cell::space_manager::SpaceManager;
 
 /// One space `W` with player entity 1 (player id 100) at HEALTH 50/100 and
 /// FOCUS 200/1000, so a heal has room to show a delta.
-pub(crate) fn make_mgr_with_target() -> SpaceManager {
+pub fn make_mgr_with_target() -> SpaceManager {
     let mut mgr = SpaceManager::new(1);
     let xml = r#"<?xml version="1.0"?><Spaces><Space WorldName="W" Instanced="false" MinX="0" MaxX="100" MinY="0" MaxY="100" /></Spaces>"#;
     let cxml = r#"<?xml version="1.0"?><Spaces><Space WorldName="W" /></Spaces>"#;
@@ -31,7 +32,7 @@ pub(crate) fn make_mgr_with_target() -> SpaceManager {
 }
 
 /// Effect 999 of ability 597 with one NVP and no script.
-pub(crate) fn effect_with_nvp(name: &str, value: &str) -> EffectDef {
+pub fn effect_with_nvp(name: &str, value: &str) -> EffectDef {
     let mut params = HashMap::new();
     params.insert(name.to_string(), value.to_string());
     EffectDef {

@@ -4,10 +4,15 @@
 //! feature plugin, so a feature crate stays a leaf. Order matters where two
 //! plugins subscribe to one hook point (they fire in this order), so the
 //! table is an explicit list, never link-time discovery.
+//!
+//! It also builds the effect-script registry ([`effect_scripts`], #962 step
+//! 4) from `cimmeria-cell-effect-scripts`' table, for the same reason: the
+//! scripts crate stays a leaf only this crate names.
 
 use cimmeria_cell_duel::DuelPlugin;
 use cimmeria_cell_org::OrgPlugin;
 use cimmeria_cell_pets::PetsPlugin;
+use cimmeria_cell_world::cell::effects::registry::{EffectScriptError, EffectScripts};
 use cimmeria_cell_world::cell::plugin::{CellPlugin, CellPlugins, PluginError};
 
 /// Every cell plugin, in hook-firing order.
@@ -29,6 +34,13 @@ pub fn cell_plugins() -> Result<CellPlugins, PluginError> {
     let plugins = CellPlugins::build(&cell_plugin_table())?;
     plugins.check_complete()?;
     Ok(plugins)
+}
+
+/// The effect-script registry the orchestrator installs on the cell (#962
+/// step 4): every row of `cimmeria-cell-effect-scripts`' table, in table
+/// order. `Err` when two rows share a name or a name is empty.
+pub fn effect_scripts() -> Result<EffectScripts, EffectScriptError> {
+    EffectScripts::build(cimmeria_cell_effect_scripts::EFFECT_SCRIPTS.iter().copied())
 }
 
 #[cfg(test)]
@@ -105,5 +117,51 @@ mod tests {
             }
             other => panic!("a table without OrgPlugin must fail check_complete: {other:?}"),
         }
+    }
+
+    /// #962 step 4: the shipped script table builds, so the orchestrator
+    /// installs a registry instead of refusing to start, and it registers
+    /// every script the cell registry used to name, in the old order.
+    #[test]
+    fn the_effect_script_table_builds_and_names_every_script() {
+        let scripts = effect_scripts().expect("the shipped effect script table must build");
+        assert_eq!(
+            scripts.names().collect::<Vec<_>>(),
+            [
+                "HealHealth",
+                "HealFocus",
+                "MeleeDamage",
+                "MeleePhysicalDamage",
+                "AbsorbShield",
+                "Stun",
+                "Suppression",
+                "RangedPhysicalDamage",
+                "RangedEnergyDamage",
+                "CoverStance",
+                "RemoveCoverStance",
+                "PetStatBuff",
+                "PetDeathTimer",
+                "HealPetHealth",
+                "PetSummonSpeed",
+                "StatBuff",
+                "RadiationDamage",
+                "RemoveEffects",
+                "EmpDisrupt",
+                "MovementSlow",
+            ]
+        );
+    }
+
+    /// #962 test rule, for step 4: a table that registers a script twice
+    /// does not build, so the orchestrator refuses to start
+    /// (`effect_scripts_invalid`) instead of one row shadowing the other.
+    #[test]
+    fn a_duplicated_effect_script_row_fails_the_startup_build() {
+        let table = cimmeria_cell_effect_scripts::EFFECT_SCRIPTS;
+        let doubled = table.iter().copied().chain(std::iter::once(table[5]));
+        assert_eq!(
+            EffectScripts::build(doubled).unwrap_err(),
+            EffectScriptError::DuplicateScript { name: "Stun" }
+        );
     }
 }

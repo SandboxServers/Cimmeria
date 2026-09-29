@@ -214,6 +214,7 @@ pub(super) fn seed_rows(mgr: &mut SpaceManager) {
 /// Returns the pet id.
 pub(super) fn world() -> (SpaceManager, u32) {
     let (mut mgr, pet) = watched_pet_world();
+    crate::test_support::install_effect_scripts(&mut mgr);
     seed_rows(&mut mgr);
     let owner = mgr.get_entity_mut(OWNER).expect("owner");
     for id in [

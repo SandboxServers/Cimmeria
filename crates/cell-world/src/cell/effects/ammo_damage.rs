@@ -23,7 +23,7 @@
 //!   one ([`ShotAmmo::damage_type`]);
 //! - on a hit (not a miss), runs `on_hit_effect_id` on the target through the
 //!   ordinary effect machinery ([`ShotAmmo::on_hit_effect_id`]): its
-//!   `script_name` dispatches through [`super::registry::lookup`] after the
+//!   `script_name` dispatches through [`super::dispatch_by_name`] after the
 //!   damage, and a pulsing effect registers on the target like any ability
 //!   effect.
 //!
@@ -61,8 +61,8 @@
 //!    picks the behaviour: an existing script (`StatBuff`, `Stun`,
 //!    `Suppression`, `MeleeDamage`, ...) or a new one.
 //! 3. A new script is a zero-sized `impl super::EffectScript` in the
-//!    family's own `effects/ammo_<family>.rs` plus one `match` arm in
-//!    `registry.rs`. [`super::EffectContext`] gives it the shooter
+//!    family's own `effects/ammo_<family>.rs` in `cimmeria-cell-effect-scripts`
+//!    plus one row in its `EFFECT_SCRIPTS` table. [`super::EffectContext`] gives it the shooter
 //!    (`source_id`, so [`shot_ammo`]'s inputs are reachable), the target and
 //!    the effect's NVPs. A pulsing effect (`pulse_count > 1`) is re-fired by
 //!    the pulse tick, so a DoT needs no extra wiring.
@@ -201,8 +201,8 @@ pub fn log_applied(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::cell::effects::test_fixtures::{effect_with_nvp, make_mgr_with_target};
     use crate::cell::spawner::AmmoCatalog;
+    use crate::test_support::{effect_with_nvp, make_mgr_with_target};
     use cimmeria_entity::abilities::{DT_ENERGY, DT_PHYSICAL};
     use cimmeria_entity::ammo_type::{BULLET_ARMOR_PIERCING, BULLET_DEFAULT, BULLET_HOLLOW_POINT};
     use cimmeria_entity::cell_entity::BandolierItem;

@@ -12,7 +12,8 @@
 //! - [`cell::ring_transport`]: the ring-transporter state machine, its regions
 //!   and wire payloads, and the departing-player hook.
 //! - [`cell::effects`]: the synchronous effect-script layer (Cover Stance runs
-//!   through it at spawn).
+//!   through it at spawn): the trait, dispatch and the registry type. The
+//!   scripts are in `cimmeria-cell-effect-scripts`, registered at startup.
 //! - [`cell::cover`]: the cover crate re-exported, plus the spawn-time cover
 //!   hold and Cover Stance grant/revoke.
 //! - [`cell::combat`]: NPC aggression, the faction reaction table and the

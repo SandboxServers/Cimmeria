@@ -1,21 +1,20 @@
-//! Live-DB guards for `entity_templates.use_cover` and the Cover Stance
-//! effect rows (NA22).
+//! Live-DB guards for `entity_templates.use_cover` (NA22).
 //!
 //! The column is nullable: NULL means the runtime default rule (a hostile
 //! NPC takes cover), so the loaders read it without a COALESCE. The seed
 //! sets it on the Cellblock and Castle combat templates only. The last test
 //! runs the whole chain on seeded data: the real spawn row, the real
-//! world-12 cover rows and world ids, and the spawn hold.
+//! world-12 cover rows and world ids, and the spawn hold. The guard that the
+//! Cover Stance effect rows name registered scripts moved with the scripts
+//! to `cimmeria-cell-effect-scripts` (`cover_stance::live_db_tests`).
 
 use std::collections::HashMap;
 
 use cimmeria_common::EntityId;
 
-use crate::cell::cover::{self, CoverSlotKey, COVER_STANCE_EFFECT, COVER_STANCE_REMOVE_EFFECT};
+use crate::cell::cover::{self, CoverSlotKey};
 use crate::cell::space_manager::{resolve_use_cover, SpaceManager};
-use crate::cell::spawner::{
-    load_effect_defs, load_spawn_templates, load_spawns_from_db, load_world_rows,
-};
+use crate::cell::spawner::{load_spawn_templates, load_spawns_from_db, load_world_rows};
 use crate::test_support::require_db_or_skip;
 
 /// Templates the seed opts in, and the two drones it opts out.
@@ -73,28 +72,6 @@ async fn seeded_spawns_resolve_use_cover_as_designed() {
         "ArmYourself_PrisonerRetrievalUnit"
     )));
     assert!(!resolve_use_cover(by_tag("Castle_PRU1")));
-}
-
-/// Effects 4565 and 1742 name the Cover Stance scripts. Without them the
-/// stance is tracked but no stat changes (`cover.stance event=effect_missing`).
-#[tokio::test]
-async fn cover_stance_effect_rows_name_their_scripts() {
-    let pool = require_db_or_skip!();
-    let defs = load_effect_defs(&pool).await.expect("load_effect_defs");
-    for (id, script) in [
-        (COVER_STANCE_EFFECT, "CoverStance"),
-        (COVER_STANCE_REMOVE_EFFECT, "RemoveCoverStance"),
-    ] {
-        let def = defs
-            .get(&id)
-            .unwrap_or_else(|| panic!("effect {id} seeded"));
-        assert_eq!(def.ability_id, cover::COVER_STANCE_ABILITY);
-        assert_eq!(def.script_name.as_deref(), Some(script), "effect {id}");
-        assert!(
-            crate::cell::effects::registry::lookup(script).is_some(),
-            "{script} must be registered"
-        );
-    }
 }
 
 /// End to end on seeded data: `MessHall_Guard1` spawns holding the cover

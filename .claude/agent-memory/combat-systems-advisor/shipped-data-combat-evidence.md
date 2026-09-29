@@ -30,7 +30,7 @@ present at commit `4b8dea9f`) and 4 are Cimmeria-authored (18–19 via PR #493,
 `HealPercentage`. Nine effects out of 3,216 carry a number.
 
 `effects.script_name` is **NOT original evidence** — all 16 non-NULL values are
-Cimmeria's own `EffectScript` registry keys (`cell/effects/registry.rs`).
+Cimmeria's own `EffectScript` registry keys (the `EFFECT_SCRIPTS` table in `cimmeria-cell-effect-scripts`, `cell/effects/registry.rs`, since #962 step 4).
 
 ## Confirmed original relationships worth reusing
 

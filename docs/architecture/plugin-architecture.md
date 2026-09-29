@@ -7,7 +7,7 @@ last_updated: 2026-09-28
 
 # ADR: feature plugins over `CellEntity` and `SpaceManager` (no ECS)
 
-> **Status:** Accepted (owner decision, 2026-09-28, [#962](https://github.com/SandboxServers/Cimmeria/issues/962)). Pilot: pets (`cimmeria-cell-pets`), measured in §4.1. Step 2: duels (`cimmeria-cell-duel`), §4.2. Step 3: squads and org creation (`cimmeria-cell-org`), §4.3. Amends [services-crate-split.md](services-crate-split.md).
+> **Status:** Accepted (owner decision, 2026-09-28, [#962](https://github.com/SandboxServers/Cimmeria/issues/962)). Pilot: pets (`cimmeria-cell-pets`), measured in §4.1. Step 2: duels (`cimmeria-cell-duel`), §4.2. Step 3: squads and org creation (`cimmeria-cell-org`), §4.3. Step 4: effect scripts (`cimmeria-cell-effect-scripts`, a registry move), §4.4. Amends [services-crate-split.md](services-crate-split.md).
 > **Type:** Architecture decision record
 > **Owner:** Server architecture
 > **Companion docs:** [services-crate-split.md](services-crate-split.md) (the layer split this builds on), [build-system.md](build-system.md) (the build lane and the rebuild measurements), [negative-logging-convention.md](negative-logging-convention.md) (the hook-miss logs), [scaling-analysis.md](scaling-analysis.md) (why the base/cell split buys us nothing), [../protocol/cell-method-dispatch-table.md](../protocol/cell-method-dispatch-table.md) (the method indices plugins register against)
@@ -192,6 +192,7 @@ systems  cell-combat, cell-content, cell-interactions, cell-methods, cell-consol
 leaves   cimmeria-cell-pets     PetsPlugin: the pet cell methods and the pet hooks
          cimmeria-cell-duel     DuelPlugin: the duel cell methods, the duel tick and the leave hooks
          cimmeria-cell-org      OrgPlugin: the organization cell methods, the disconnect and world-entry hooks
+         cimmeria-cell-effect-scripts   every EffectScript and the EFFECT_SCRIPTS table (a registry, not a plugin)
 root     cimmeria-services      the plugin table; installs it on the CellService
 ```
 
@@ -199,7 +200,7 @@ A leaf depends on core and on the systems it calls; only the composition root (a
 
 The estimates in #962 for the full migration: a crafting edit rebuilds about 53k lines instead of about 135k; mail about 45k, org about 42k, bank or chat about 33k. The envelope and the `entity-types` split add a 15-20% cut on the `wire` and `entity` long tail.
 
-**Pilot measurement.** A pets edit went from 8 rebuilt crates to 7 in the workspace build, and from about 49k to about 14k production lines in the server build; see §4.1. A duels edit went from 13 to 9 crates (three of them test binaries only) and from about 113k to about 10k production lines; see §4.2. A squad edit went from 8 to 7 crates (one of them a test binary only) and from about 48k to about 14k production lines; see §4.3.
+**Pilot measurement.** A pets edit went from 8 rebuilt crates to 7 in the workspace build, and from about 49k to about 14k production lines in the server build; see §4.1. A duels edit went from 13 to 9 crates (three of them test binaries only) and from about 113k to about 10k production lines; see §4.2. A squad edit went from 8 to 7 crates (one of them a test binary only) and from about 48k to about 14k production lines; see §4.3. An effect-script edit went from 15 to 9 crates (three of them test binaries only) and from about 103k to about 10k production lines; see §4.4.
 
 ### 3.8 Migration order
 
@@ -208,7 +209,7 @@ Features move at their campaign's close-out, never while a campaign coordinator 
 1. **Pets (pilot).** The three pet cell methods (88-90), the pet tick hooks and the base-destroy hook become `PetsPlugin` in `cimmeria-cell-pets`; `CellEntity::pet` becomes an extension. The pet world half (the registry, spawn, teardown, owner hooks) stays in `cell-world`, and the pet AI and owner abilities stay in `cell-combat`, because combat, content, interactions and the console call them. They follow when those call sites go behind hooks (death credit, owner-path hooks).
 2. **Duels** (`cell-duel`; Social Systems closed 2026-09-27). **Done** (§4.2). The duel cell methods, the duel tick and the disconnect, travel and death paths became `DuelPlugin`, and the registry became a `SpaceManager` resource. The challenge, the end paths, the non-lethal clamp, the harm-gate inputs and the GM commands stay in `cell-world` until combat, the AoI enter path and the base-message handler get seams for them.
 3. **Squads and org creation** (`cell-org`; Organizations closed 2026-09-27). **Done** (§4.3). The OrganizationMember cell methods (8-19) and `onOrganizationCreation` (94), the squad disconnect, the registrar offer's end and the squad world-entry replay became `OrgPlugin`; the squad registry and the pending creations became `SpaceManager` resources, and `CellEntity::squad_id` an extension. The console-to-methods edge (`console/squad.rs`) is gone: the half the base-message handler and the console call (the base-forwarded squad invite and kick, the GM squad commands, the registrar reply and create result, and the squad fanout) moved from `cell-methods` down to `cell-interactions`, below both.
-4. **Effect scripts** (`cell-effect-scripts`). A registry move rather than a plugin (the static table at `effects/registry.rs`); changes [abilities-and-effects-system.md](abilities-and-effects-system.md) and the CLAUDE.md line on where scripts go.
+4. **Effect scripts** (`cell-effect-scripts`). **Done** (§4.4). A registry move rather than a plugin: every `EffectScript` moved to the leaf with its tests, the static `match` in `effects/registry.rs` became the leaf's `EFFECT_SCRIPTS` table, and `cell-world` keeps the trait, dispatch and an `EffectScripts` registry type the composition root builds at startup and the cell installs on its `SpaceManager`. The passive pass, the pet-script name predicates, the stat-buff ledger and the ammo shot helpers stay in `cell-world`, because layers below the leaf call them. Changed [abilities-and-effects-system.md](abilities-and-effects-system.md) (decision 33) and the CLAUDE.md line on where scripts go.
 5. **The base features** (`base-crafting` after the crafting close-out CR-13, then bank, mail, chat, vendor with trade, inventory, progression). Brings in `BasePlugin`, `ConnectedClientState::extensions`, the `CellToBaseMsg` envelope, the session teardown moved up to `base`, and the unified `SessionCtx`.
 6. **The console** as a plugin registered by the facade ([services-crate-split.md §6](services-crate-split.md#6-expected-build-impact), "later options").
 7. **NPC AI** last: the `npc_ai` / combat cycle has to break first.
@@ -337,13 +338,58 @@ Removing the console-to-methods edge also shortens every other `cell-methods` ed
 
 New tests: the facade's `a_table_without_the_org_plugin_fails_the_startup_check` (the missing-registration test: a table without `OrgPlugin` fails `check_complete` naming 8-19 and 94, so the orchestrator refuses to start); `OrgPlugin`'s registrations, both hooks with and without the plugin, and CM 18 through its handler (`cell-org` `plugin_tests`); the player hook kind (`cell-world` `cell::plugin::tests::player_hooks_get_the_entity_and_the_character`); and the `cimmeria_cell_org=debug` log row (`cell_org_crate_events_keep_their_index`).
 
-### 4.4 What gets better
+### 4.4 Step 4: effect scripts
+
+The effect scripts moved on 2026-09-28. The ammo campaign, the last to add scripts, had merged its script packets (AM-11d, #1069), and no open PR touched `cell/effects/`. This step is a registry move, not a plugin: a script is not a client method or a hook, it is a value the effect runtime looks up by the `script_name` an effect row carries. So it adds no hook point and does not touch `CellPlugins`.
+
+**The seam.** `cimmeria-cell-world` keeps the `EffectScript` trait, `EffectContext`, `dispatch_by_name` / `dispatch_on_remove` and a registry type, `cell::effects::registry::EffectScripts`: a frozen, `Arc`-shared map from `script_name` to a `&'static dyn EffectScript`.
+
+- **The composition root fills it at startup, in fixed order.** `cimmeria-cell-effect-scripts` exports one table, `EFFECT_SCRIPTS: &[(&str, &dyn EffectScript)]`. The facade builds the registry from it (`services::plugins::effect_scripts`, beside `cell_plugins`), the orchestrator hands it to the `CellService` (`set_effect_scripts`), and `CellService::start` installs it on its `SpaceManager` (`install_effect_scripts`) right after the plugin table and before the space definitions load, so the spawn-time cover hold finds Cover Stance. There is no link-time discovery, for the reason in §3.2.
+- **Dispatch reads it off the manager.** Every dispatch site already holds an `EffectContext`, which carries `&mut SpaceManager`, so `dispatch_by_name` looks the script up in `ctx.space_mgr.effect_scripts()`. The signatures of the dispatch functions and of `EffectScript` did not change, so no call site in combat, content or the world changed. A script is `&'static`, so the lookup hands back a reference that does not borrow the manager the script then mutates.
+- **Lookup is deterministic.** A `HashMap` keyed by the exact, case-sensitive name; table order reaches only `EffectScripts::names`, for the startup log and the tests.
+- **A duplicate or empty name fails startup.** `EffectScripts::build` returns `DuplicateScript` or `EmptyName`; the orchestrator logs `effect_scripts_invalid`, leaves the registry empty, and refuses to start the cell on an empty registry (`effect_scripts_empty`), as it refuses an incomplete plugin table. A bare `CellService` (a test harness) starts anyway and logs `effect_scripts_empty` at WARN.
+- **A missing registration warns.** "Missing" is defined by the data, not by a list in core: a list of expected names in `cell-world` would make adding a script edit core again. Once the effect definitions load, the cell logs one `effect_script_unregistered` WARN with every `script_name` the rows carry that no script answers, and their effect ids. Dispatch still logs `effect_script_unknown` per call and falls back to the legacy NVP path, exactly as before. The shipped seed has two such rows, which no script ever answered (effect 658 names `Reload`, which the reload pipeline handles; effect 2907, a `test` row, has an empty name); the live-DB guard pins exactly those two, so a dropped or misspelled table row fails it.
+
+What moved, and what did not:
+
+- **Moved to `cimmeria-cell-effect-scripts`:** every `EffectScript` implementation, about 1.9k production lines and 3k test lines, from `cimmeria-cell-world`'s `cell::effects`: `scripts` (the damage, shield, stun and suppression scripts), `heal`, `cover_stance`, the pet scripts, the stimpack `StatBuff`, and the special-ammo families `ammo_dart_cc`, `ammo_dart_support`, `ammo_dart_tech`, `ammo_emp` and `ammo_incendiary` (the burn, which has no script of its own but runs `RangedEnergyDamage`, and whose only other readers were combat's tests). The static `match` in `effects/registry.rs` became the leaf's `EFFECT_SCRIPTS`, in the same order. The leaf's `cell::effects` re-exports the world's effect layer, so the moved code keeps its `super::…` and `crate::cell::effects::…` paths.
+- **Stayed in `cell-world`, and why.** Each is called from below the leaf:
+  - the passive pass (`effects/passives.rs`), which `cimmeria-cell`'s base-message handlers call at world entry, on a grant and on a respec;
+  - the pet-script name predicates `acts_on_owner_pet` and `is_passive_script` (`effects/pet_scripts.rs`), which the owner-pet cast redirect in `cell-combat` and the passive pass ask;
+  - the stat-buff ledger (`effects/stat_buff/`: `SpaceManager::apply_stat_buff`, `remove_stat_buffs`, `StatBuffRemoval`), which `cell-combat`'s stat-buff tick calls, and which is an inherent `impl SpaceManager` that cannot leave the crate defining `SpaceManager` anyway;
+  - the special-ammo shot helpers the damage path reads (`effects/ammo_damage.rs`, `effects/ammo_explosive.rs`), which hold no script.
+
+  No script needed a value-returning combat hook: every one is a synchronous `SpaceManager` mutator, so none was left behind for that reason. Three leaf modules share a name with the world module they extend (`registry`, `pet_scripts`, `stat_buff`) and re-export it.
+
+**Rebuild measurement** (2026-09-28, warm dev build through the build lane on the Dev Drive, one slot of 8 jobs as in §4.2, two runs each). The edit adds one `pub const` to `effects/scripts.rs`, before in `cell-world` and after in `cell-effect-scripts`:
+
+| Command | Before: crates rebuilt | Before: time | After: crates rebuilt | After: time |
+|---|---|---|---|---|
+| `cargo build --workspace --all-targets` (CI exclusions) | 15: cell-world, cell-combat, cell-duel, cell-content, cell-interactions, cell-pets, cell-methods, cell-console, cell-org, cell, services, admin-api, wireclient, lab-mcp, server | 11.7 s, 12.9 s | 9: cell-effect-scripts, services, cell-combat, cell-content and cell (test binaries only), admin-api, wireclient, lab-mcp, server | 6.3 s, 5.9 s |
+| `cargo build -p cimmeria-server` | 14: the same without wireclient | 11.4 s, 10.8 s | 5: cell-effect-scripts, services, admin-api, lab-mcp, server | 4.8 s, 3.8 s |
+
+In production lines (`.rs` files under `src/`, test files, test directories and inline `#[cfg(test)]` modules excluded), the server build rebuilds about 103k lines before (cell-world 22.9k, cell-combat 22.1k, cell-content 10.4k, cell-interactions 8.4k, cell-console 15.6k, cell-methods 5.3k, cell 6.9k, the three plugins 3.3k, services 1.0k, admin-api 4.1k, lab-mcp 1.1k, server 1.9k) and about 10k after (cell-effect-scripts 2.2k plus the facade and binaries), a 90% cut. Like §4.2, the gain is large because the moved code came from the bottom of the cell track. Three test binaries still rebuild in the workspace build: `cell-combat`, `cell-content` and `cell` install the registry in the tests that dispatch a script, and combat's ammo tests read the ammo families' constants.
+
+An edit to what stayed (dispatch, the registry type, the passive pass, the ledger, the shot helpers) still rebuilds the cell track from `cell-world` up; those are runtime, not scripts, and change far less often.
+
+**Tests changed beyond import paths.** Each is listed so a reviewer can check that none weakens a guard:
+
+- A test that builds its own `SpaceManager` and dispatches a script now installs the registry first (one statement), because a bare manager has no scripts. Behind the move every manager saw the static table, so this restores what those tests ran against. The statement went into the shared fixtures, not the tests: `cell-combat`'s `damage_apply::tests::make_mgr_player_vs_npc`, `deployable::tests::deploy_mgr`, `use_ability::owner_pet::tests::world`, `use_ability::tests::support_shot::support_mgr` and the `ammo_dart_support` integration test's `world`; `cell-content`'s `consumable_use_tests::mgr`; `cimmeria-cell`'s `passive_abilities::fixture` and `npc_ai_cover_behaviour::seed_cover_stance_effects`; and `cimmeria-services`' `consumable_round_trip_tests::stage` (live-DB). One test installs it in its own body, `cimmeria-cell`'s `zero_health_guard::npc_killed_by_an_effect_bleed_does_not_shoot_back`, whose fixture (`make_ai_fixture`) many script-free tests share. Combat, content and `cimmeria-cell` re-export the installer as `test_support::install_effect_scripts`.
+- The script unit tests moved with their files, unchanged. Their fixture `make_mgr_with_target` now installs the registry; its world half moved to `cimmeria_cell_world::test_fixtures` (`make_mgr_with_target`, `effect_with_nvp`), where `cell-world`'s `ammo_damage` tests also read it.
+- `cell-world`'s `pets::tests::owner_buffs`: the six tests that dispatch a pet script or run the passive pass (`pet_stat_buff_toggles_for_a_toggled_ability`, `pet_stat_buff_is_timed_by_its_pulse_duration`, `pet_scripts_leave_a_non_pet_alone`, `pet_death_timer_dooms_the_pet`, `a_learned_passive_raises_speed_pet_and_unlearning_restores_it`, `the_passive_pass_runs_only_flagged_passive_scripts`) moved to the leaf as `cell::effects::pet_scripts::tests`, with the same assertions, on the shared pet world plus the registry. A test in `cell-world` cannot install the leaf's scripts (the leaf depends on it; §4.6). The owner-pet resolution and buff-ledger tests stayed.
+- `cell-world`'s `live_db_use_cover::cover_stance_effect_rows_name_their_scripts` moved to the leaf as `cover_stance::live_db_tests`, unchanged.
+- The old registry's `known_scripts_resolve` and `unknown_script_returns_none` moved to the leaf's `registry::tests`, reading the table (`registry::lookup`) instead of the `match`.
+- `cimmeria-server`'s `cell_track_lower` parity test used `cimmeria_cell_world::cell::effects::scripts` as a sample world target; the module is gone, so it now samples `cell::effects::passives`, with the same assertions.
+
+New tests: the registry type (`cell-world` `cell::effects::registry::tests`: lookup by exact name, order independence, the duplicate-id and empty-name build failures, the empty registry, and `unregistered`); the table (`cell-effect-scripts` `registry::tests`: every row builds and resolves to itself, and `install` makes dispatch find a script a bare manager misses); the missing-registration guard on the shipped data (`registry::live_db_tests::every_seeded_script_name_is_registered`); the facade's `the_effect_script_table_builds_and_names_every_script` and `a_duplicated_effect_script_row_fails_the_startup_build`; and the `cimmeria_cell_effect_scripts=debug` log row (`effect_scripts_crate_events_keep_their_index`).
+
+### 4.5 What gets better
 
 - A feature edit rebuilds the feature, the facade and the binaries, not the cell track above the lowest crate it touches.
 - `CellEntity`, `SpaceManager`, the routers and the cell loop stop changing when a feature is added.
 - A missing registration is a startup failure, not a player ticket.
 
-### 4.5 What gets worse, and the mitigations
+### 4.6 What gets worse, and the mitigations
 
 - **Compile-time exhaustiveness.** The static `match` on method indices goes away. The startup assertion (§3.3) and the router's WARN replace it.
 - **Indirection.** A method call is a registry lookup and an `Arc` clone before the handler. That is noise against a `SpaceManager` lookup and an `mpsc` send.

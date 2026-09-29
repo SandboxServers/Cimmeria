@@ -595,6 +595,10 @@ fn cell_crate_events_keep_their_file_and_index() {
             "cimmeria_cell_org::cell::organization::creation",
         ),
         (
+            "cimmeria_cell_effect_scripts=debug,",
+            "cimmeria_cell_effect_scripts::cell::effects::scripts",
+        ),
+        (
             "cimmeria_cell_console=debug,",
             "cimmeria_cell_console::cell::console::dispatch",
         ),

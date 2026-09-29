@@ -49,6 +49,7 @@ LIVE_DB_CRATES=(
   cimmeria-cell-pets
   cimmeria-cell-duel
   cimmeria-cell-org
+  cimmeria-cell-effect-scripts
   cimmeria-cell
 )
 

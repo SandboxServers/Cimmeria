@@ -487,6 +487,11 @@ pub struct SpaceManager {
     /// `docs/architecture/plugin-architecture.md`). Empty until the cell
     /// service installs the plugin table; see `cell::plugin`.
     pub(crate) plugins: super::plugin::CellPlugins,
+    /// The effect scripts `effects::dispatch_by_name` looks up (#962 step 4).
+    /// Empty until the cell service installs the registry the composition
+    /// root built from `cimmeria-cell-effect-scripts`; see
+    /// `cell::effects::registry`.
+    pub(crate) effect_scripts: super::effects::registry::EffectScripts,
 }
 
 impl SpaceManager {
@@ -555,6 +560,7 @@ impl SpaceManager {
             black_market: super::black_market::BlackMarketSessions::new(),
             resources: SpaceResources::new(),
             plugins: super::plugin::CellPlugins::empty(),
+            effect_scripts: super::effects::registry::EffectScripts::empty(),
         }
     }
 }
