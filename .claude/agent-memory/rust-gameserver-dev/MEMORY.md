@@ -45,6 +45,7 @@ One line per topic file; the detail lives in the file. Keep hooks short (this in
 - [cooked-override-client-cache-persistence.md](cooked-override-client-cache-persistence.md) — the client caches pushed overrides on disk; removed ids are never evicted.
 - [gm-feedback-cell-base.md](gm-feedback-cell-base.md) — four method-28 serializers.
 - [witness-entity-method-dual-fn.md](witness-entity-method-dual-fn.md) — two `witness_entity_method` fns; idbase 61 player / 62 NPC matters for index >= 61.
+- [request-ammo-change-instance-id.md](request-ammo-change-instance-id.md) — method 42 `ItemId` is the weapon instance id; match `instance_id`, whitelist by the slot's design id (#534).
 - [cell-entity-direction-semantics.md](cell-entity-direction-semantics.md) — `direction` is `[pitch, yaw, roll]` radians for all entities; `[i8; 3]` param zeroes facing.
 - [login-handshake-acks-and-pre-channel-sends.md](login-handshake-acks-and-pre-channel-sends.md) — seqs 1/2 in the TX window (#842); clients ack them in 3 of 5 captures; testing a pre-channel drop.
 - [game-clock-and-timer-expiry-tests.md](game-clock-and-timer-expiry-tests.md) — client clock is ticks / hertz; expiries = `game_time_secs() + d`.
