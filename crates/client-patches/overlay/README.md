@@ -50,8 +50,9 @@ The plan is [docs/analysis/black-market/README.md](../../../docs/analysis/black-
 | Receive | A global `CimmeriaBM` table with plain function fields that the DLL calls without `self`: `onOpen(entityId)`, `onError(errorId)`, `onAuctions(items, totalResults, clientKey)`, `onAuctionRemove(sequenceId)`, `onAuctionUpdate(item)` and `onWatchedItems(itemList)`. `onOpen` opens the window through `BlackMarketMod.onBMOpen()`, the same path as `Events.BMOpen`, which stays subscribed. |
 | Store | The four C++ read bindings the stock code called (`getAuctionItemInfo`, `getAuctionViewItems`, `getAuctionTotalCount`, `getAuctionVisibleCount`) are now `BlackMarketMod.*` functions over a Lua store, keyed by view (`clientKey` 0/1/2, plus 3 for Watched). `getAuctionItemInfo` returns the table shape the C++ built (evidence §4). Name and icon come from `getItemDefInfo`. Tech competency comes from `CimmeriaBMNative.techCompetency` and is blank when that returns nil (D7). Bidder name and bid count are not on the wire, so they are blank. The native globals are not overwritten. |
 | Send | Every request goes through `BlackMarketMod.send`, which calls `CimmeriaBMNative.search/create/bid/cancel` under `pcall`. `nil, reason` or a thrown error shows a line saying why (offline, bad arguments, and so on), and the button works again. `search` takes the `.def`-named options table, with `bForward` as a boolean. |
-| U1 | Bid and Buyout are subscribed. Bid sends `bid(seq, amount)` from the bid box and refuses locally, with a message, below `nextMinBidPrice`. Buyout sends `bid(seq, buyoutPrice)` and is enabled only when the auction has a buyout price. |
+| U1 | Bid and Buyout are subscribed. Bid sends `bid(seq, amount)` from the bid box and refuses locally, with a message, below `nextMinBidPrice`. Buyout sends `bid(seq, buyoutPrice)`. On a bid-only auction (buyout 0) Buyout stays enabled and the press says "This auction is bid only. Enter at least <min> and press Bid.", because a disabled button gives no feedback on the first press. |
 | U2, U3, U4 | Paging. The server returns one page per search, cut to fit one message, together with the full count. The overlay keeps the page's offset within the whole result: Next is enabled while `offset + rows < total`, and Prev while `offset > 0`. The cursor is the highest id shown (forward) or the lowest (backward). The page text is 1-based (`1/3`, or `0/0` when there are no results). The undefined `viewType` and `currentPage` are gone. |
+| Prices | Rows in Search Results, My Auctions and My Bids show the standing bid in the Bid column, or `Min <nextMinBidPrice>` while nobody has bid (a bare `0` read as "no price" on the first live run, 2026-09-29), and `Bid only` in the Buyout column when the buyout is 0. Watched rows, which are item definitions, leave both blank. |
 | U5 | `selectRow` reads `viewData[view].auctionToRow`, and ignores a click on a row with no auction. |
 | U6 | `initRows` uses its `viewType` argument, so rows in Search Results and My Auctions get click handlers. |
 | U7 | My Auctions uses the row prefix `MyAuction`, the one the layout imports. |
@@ -75,6 +76,7 @@ The plan is [docs/analysis/black-market/README.md](../../../docs/analysis/black-
 | `BlackMarket_TabButton4` (Watched Items) is no longer commented out | The Watched tab needs a button to show its refusal line |
 | Eight `LayoutImport`s of `BlackMarket_ItemRow.layout` in the My Bids tab (`BlackMarket_MyBids1`–`8`) | U8: the stock tab had headers and a scrollbar but no rows |
 | Eight more in the Watched tab (`BlackMarket_Watched1`–`8`) | U8 |
+| The Create tab's duration selector: labels `Short`, `Medium` and `Long` (were `SHORT`, `MEDIUM`, `LONG`), each 52 px wide on its own slot, with the three bars and their highlights re-centred under them (-52, 0, +52 px from the middle of the 160 px container) | The stock labels were 32, 60 and 24 px wide and Medium's box covered Short's, so CEGUI clipped them into "SHORMEDIUM ONG" on the first live run |
 | A `BlackMarket_ErrorText` static text in the tab container, below the tab pages | The stock Lua writes to it on every tab switch and error, but the stock layout never defined it, so each of those writes raised an error. It is now the status and error line. |
 
 ## What changed in `Access.lua`
@@ -90,9 +92,9 @@ CEGUI windows from this `BlackMarket.layout` (every named window and every
 imported row, and nothing else), stubs the tolua globals and
 `CimmeriaBMNative`, loads the overlay `BlackMarket.lua`, and drives these
 flows: open, search, results, scrolling, paging both ways, row selection,
-bid, buyout, errors, create, cancel, the My Bids and Watched tabs, a missing
+bid, buyout, bid-only listings (the Bid and Buyout columns in every view, and Buyout's first-press line), errors, create, cancel, the My Bids and Watched tabs, a missing
 DLL, refused and throwing sends, reply timeouts, guarded handlers, and
-reopening. It also checks that every `BMError` id in `error.rs` has text.
+reopening. It also checks that every `BMError` id in `error.rs` has text, and that the duration labels in the layout are wide enough for their text, do not overlap, and sit over their bars.
 Run against the stock files, every scenario fails.
 
 `test/access.lua` is the Access-bar suite, which `run.lua` loads. It loads the
@@ -114,6 +116,9 @@ These need the live client (BM-00 and the BM-07 UAT):
 
 - How CEGUI really renders the layout: the new status line's position and
   wrapping, the fourth tab button, and the imported My Bids and Watched rows.
+- That `Min <price>` and `Bid only` fit the 65 px Bid and Buyout columns at
+  Verdana 8pt, and the duration labels fit their slots. The UAT checks the
+  layout geometry against an estimate of the text width, not the rendered font.
 - The handler argument order for row clicks. The overlay reads the clicked
   row from either argument, so both orders work.
 - Whether `Debug:log` reaches the client log the launcher tails.

@@ -7,6 +7,7 @@
 
 use sqlx::PgPool;
 
+use super::claim::unix_now;
 use super::MailCtx;
 use crate::cell::mail;
 use crate::cell::mail::codes::flags::MAIL_ARCHIVE;
@@ -113,10 +114,22 @@ async fn read_headers(reader: Reader<'_>, select: Select) -> Result<Headers, sql
                 .await?
         }
     };
-    Ok(to_wire(reader, &rows))
+    Ok(to_wire(reader, &rows, unix_now()))
 }
 
-fn to_wire(reader: Reader<'_>, rows: &[MailRow]) -> Headers {
+/// The wire `sentTime` of a mail written at `sent_time` (epoch seconds), as
+/// of `now`: its **age** in seconds, not the epoch value the database holds.
+///
+/// The client's header-record constructor (`SGW.exe@0x00eb5ab0`) truncates
+/// `sentTime` to an integer `age` and builds the "Sent" date as local now
+/// minus `age` (`FUN_00eb5a10`), and `ExpiresHours` as `720 - age / 3600`.
+/// Sending the epoch value made every mail read "Thu Jan 1st, 1970" and
+/// expire "Soon". A clock step that puts `sent_time` in the future sends 0.
+fn wire_sent_time(sent_time: i32, now: i32) -> f32 {
+    (i64::from(now) - i64::from(sent_time)).max(0) as f32
+}
+
+fn to_wire(reader: Reader<'_>, rows: &[MailRow], now: i32) -> Headers {
     let headers = rows
         .iter()
         .map(|r| {
@@ -139,7 +152,7 @@ fn to_wire(reader: Reader<'_>, rows: &[MailRow]) -> Headers {
                 from_id: r.sender_id.unwrap_or(0),
                 subject_text: r.subject.clone(),
                 cash,
-                sent_time: r.sent_time as f32,
+                sent_time: wire_sent_time(r.sent_time, now),
                 read_time: r.read_time as f32,
                 flags: r.flags,
             }
@@ -261,4 +274,62 @@ pub(super) async fn refresh_one(ctx: &MailCtx<'_>, mail_id: i32) {
     let args = mail::serialize_on_mail_header_info(false, b_archive, &headers, &attachments);
     ctx.send_to_caller(method_idx::ON_MAIL_HEADER_INFO, &args)
         .await;
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    const NOW: i32 = 1_790_000_000;
+
+    fn row(sent_time: i32) -> MailRow {
+        MailRow {
+            mail_id: 7,
+            sender_name: "Black Market".into(),
+            sender_id: None,
+            subject: "Auction Won".into(),
+            cash: 0,
+            sent_time,
+            read_time: 0,
+            flags: 0,
+            att_type_id: None,
+            att_stack_size: None,
+            att_durability: None,
+            att_charges: None,
+        }
+    }
+
+    fn header_sent_time(sent_time: i32) -> f32 {
+        let pool = sqlx::postgres::PgPoolOptions::new()
+            .connect_lazy("postgres://nobody:nobody@127.0.0.1:1/none")
+            .expect("connect_lazy accepts any well-formed URL");
+        let reader = Reader {
+            pool: &pool,
+            player_id: 1,
+            entity_id: None,
+            account_id: None,
+        };
+        let (headers, _) = to_wire(reader, &[row(sent_time)], NOW);
+        headers[0].sent_time
+    }
+
+    /// The client builds "Sent" as local now minus `sentTime` and
+    /// `ExpiresHours` as `720 - sentTime / 3600` (`SGW.exe@0x00eb5ab0`), so
+    /// the wire carries the age. The epoch value showed "Jan 1st, 1970" and
+    /// "Soon" on the first live Black Market payout.
+    #[tokio::test]
+    async fn header_sent_time_is_the_mails_age() {
+        assert_eq!(header_sent_time(NOW), 0.0, "sent just now");
+        assert_eq!(header_sent_time(NOW - 90), 90.0, "sent 90 s ago");
+        assert_eq!(
+            header_sent_time(NOW - 3 * 86_400),
+            259_200.0,
+            "three days old: the client shows 27 days left"
+        );
+    }
+
+    #[tokio::test]
+    async fn header_sent_time_in_the_future_is_zero() {
+        assert_eq!(header_sent_time(NOW + 30), 0.0, "clock stepped back");
+    }
 }

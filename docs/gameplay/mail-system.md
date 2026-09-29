@@ -87,7 +87,7 @@ A caller of `send_system_mail` that holds the session map calls `SystemMailSent:
 
 ### Expiry (SS-M4)
 
-Mail expires after 30 days, the client's own constant: `MessageHeader` has no expiry field, and the client computes the Expires column as `720 - hours` since the mail was sent (`0x2d0`, M-Q3). Every writer stamps `expires_at = sent_time + 720 h` at insert (player send, the COD payment mail, server mail, the GM COD mail). A return and a COD payment restart it. Archiving clears it: archived mail never expires, and the client shows "Never" for it. The length is HIGH confidence; that the client counts from `sentTime` is MEDIUM (M-Q3), so a capture could move the anchor but not the 30 days.
+Mail expires after 30 days, the client's own constant: `MessageHeader` has no expiry field, and the client computes the Expires column as `720 - hours` since the mail was sent (`0x2d0`, M-Q3). Every writer stamps `expires_at = sent_time + 720 h` at insert (player send, the COD payment mail, server mail, the GM COD mail). A return and a COD payment restart it. Archiving clears it: archived mail never expires, and the client shows "Never" for it. Both are HIGH confidence: the client reads the wire `sentTime` as the mail's age in seconds, builds the "Sent" date as local now minus that age, and computes ExpiresHours as `720 - age / 3600` (M-Q3, `SGW.exe@0x00eb5ab0`). So the header sends `now - sent_time`, not the stored epoch value; sending the epoch value showed every mail as sent on 1 January 1970 and expiring "Soon" (fixed 2026-09-29).
 
 A base task sweeps every 5 minutes, 100 mails per query, oldest expiry first, at most 1,000 per run. When a player enters the world, their own mailbox is swept too, so mail that expired while they were away has taken its path before they can open the mailbox. Each mail expires in a transaction of its own, taking the same locks in the same order as the attachment ops, so a sweep racing a take, a payment or a return is one more op on the mail row. It takes one of three paths (D-SS04):
 
@@ -208,8 +208,8 @@ UINT32 headerCount
     WSTRING subjectText     -- subject
     INT32   subjectId       -- always 0 (server sends literal subjects, not string ids)
     INT32   cash            -- attached cash (clamped from the bigint DB column)
-    FLOAT   sentTime        -- unix epoch seconds
-    FLOAT   readTime        -- unix epoch seconds; 0 = unread
+    FLOAT   sentTime        -- the mail's age in seconds (now - sent_time); the client shows Sent = now - sentTime
+    FLOAT   readTime        -- the stored read_time (unix epoch seconds; 0 = unread), sent as is. The client sets HasBeenRead when readTime >= 0.0, so today every mail reads as read (see M-Q3)
     INT32   flags
 UINT32 attachmentCount
   repeated attachmentCount times:

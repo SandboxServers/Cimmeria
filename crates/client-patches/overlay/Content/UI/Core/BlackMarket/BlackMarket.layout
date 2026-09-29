@@ -572,7 +572,7 @@
                         <Window Type="SolidHighlight" Name="BlackMarket_DurationShortHighlightImage">
                             <Property Name="Alpha" Value="0.25" />
                             <Property Name="ZOrderChangeEnabled" Value="False" />
-                            <Property Name="UnifiedAreaRect" Value="{{0.5,-62},{0,3},{0.5,-22},{1,-3}}" />
+                            <Property Name="UnifiedAreaRect" Value="{{0.5,-76},{0,3},{0.5,-28},{1,-3}}" />
                         </Window>
                         
                         <!-- short time [ button ] -->
@@ -585,14 +585,14 @@
                             <Property Name="IdleOverlay" Value="BFC3F3FF" />
                             <Property Name="HoverOverlay" Value="FFC3F3FF" />
                             <Property Name="PushedOverlay" Value="FFFFFFFF" />
-                            <Property Name="UnifiedAreaRect" Value="{{0.5,-54},{1,-35},{0.5,-30},{1,-15}}" />
+                            <Property Name="UnifiedAreaRect" Value="{{0.5,-64},{1,-35},{0.5,-40},{1,-15}}" />
                         </Window>
 
                         <!-- [ highlight ] -->
                         <Window Type="SolidHighlight" Name="BlackMarket_DurationMediumHighlightImage">
                             <Property Name="Alpha" Value="0.25" />
                             <Property Name="ZOrderChangeEnabled" Value="False" />
-                            <Property Name="UnifiedAreaRect" Value="{{0.5,-20},{0,3},{0.5,20},{1,-3}}" />
+                            <Property Name="UnifiedAreaRect" Value="{{0.5,-24},{0,3},{0.5,24},{1,-3}}" />
                         </Window>
                         
                         <!-- medium time [ button ] -->
@@ -612,7 +612,7 @@
                         <Window Type="SolidHighlight" Name="BlackMarket_DurationLongHighlightImage">
                             <Property Name="Alpha" Value="0.25" />
                             <Property Name="ZOrderChangeEnabled" Value="False" />
-                            <Property Name="UnifiedAreaRect" Value="{{0.5,22},{0,3},{0.5,62},{1,-3}}" />
+                            <Property Name="UnifiedAreaRect" Value="{{0.5,28},{0,3},{0.5,76},{1,-3}}" />
                         </Window>
                         
                         <!-- long time [ button ] -->
@@ -625,31 +625,31 @@
                             <Property Name="IdleOverlay" Value="BFC3F3FF" />
                             <Property Name="HoverOverlay" Value="FFC3F3FF" />
                             <Property Name="PushedOverlay" Value="FFFFFFFF" />
-                            <Property Name="UnifiedAreaRect" Value="{{0.5,30},{1,-35},{0.5,54},{1,-15}}" />
+                            <Property Name="UnifiedAreaRect" Value="{{0.5,40},{1,-35},{0.5,64},{1,-15}}" />
                         </Window>
                         <!-- short [ text area ] -->
                         <Window Type="StaticText_2">
-                            <Property Name="Text" Value="SHORT" />
+                            <Property Name="Text" Value="Short" />
                             <Property Name="Font" Value="Verdana_6pt" />
                             <Property Name="VertFormatting" Value="VertCentred" />
                             <Property Name="HorzFormatting" Value="HorzCentred" />
-                            <Property Name="UnifiedAreaRect" Value="{{0.5,-58},{1,-15},{0.5,-26},{1,-5}}" />
+                            <Property Name="UnifiedAreaRect" Value="{{0.5,-78},{1,-15},{0.5,-26},{1,-5}}" />
                         </Window>
                         <!-- medium [ text area ] -->
                         <Window Type="StaticText_2">
-                            <Property Name="Text" Value="MEDIUM" />
+                            <Property Name="Text" Value="Medium" />
                             <Property Name="Font" Value="Verdana_6pt" />
                             <Property Name="VertFormatting" Value="VertCentred" />
                             <Property Name="HorzFormatting" Value="HorzCentred" />
-                            <Property Name="UnifiedAreaRect" Value="{{0.5,-30},{1,-15},{0.5,30},{1,-5}}" />
+                            <Property Name="UnifiedAreaRect" Value="{{0.5,-26},{1,-15},{0.5,26},{1,-5}}" />
                         </Window>
                         <!-- long [ text area ] -->
                         <Window Type="StaticText_2">
-                            <Property Name="Text" Value="LONG" />
+                            <Property Name="Text" Value="Long" />
                             <Property Name="Font" Value="Verdana_6pt" />
                             <Property Name="VertFormatting" Value="VertCentred" />
                             <Property Name="HorzFormatting" Value="HorzCentred" />
-                            <Property Name="UnifiedAreaRect" Value="{{0.5,30},{1,-15},{0.5,54},{1,-5}}" />
+                            <Property Name="UnifiedAreaRect" Value="{{0.5,26},{1,-15},{0.5,78},{1,-5}}" />
                         </Window>
                         
                     </Window>                    

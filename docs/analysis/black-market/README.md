@@ -188,6 +188,20 @@ Live checks owed to BM-00 for the send side, in order:
 - **UAT.** [uat.md](uat.md): steps U0-U23, each with its expected result, its SigNoz query and whether it needs the client patch. The saved view is [black-market.view.json](../../operations/signoz/black-market.view.json). The unified UAT guide's Black Market section follows it.
 - **Deferred.** The auctioneer's role is not restored if he dies (death writes `Loot`; the respawn tick restores only the flags), as for every Banker and Vendor; he is faction 1 and cannot be killed by a player. A GM tool for quarantined auctions (§5.2 follow-up) is not in BM-07.
 
+### 5.7 First live run (2026-09-29): presentation fixes
+
+A colo player's first run with the patch found three defects. None changes the wire contract.
+
+| Defect | Cause | Fix | Guard |
+|---|---|---|---|
+| A bid-only listing (the seeded Health Slappacks: start 30, buyout 0) read as "no price, can't buy" | The rows showed `currentBid`, 0 before any bid, and a blank Buyout; Buyout was disabled, so pressing it did nothing | The Bid column shows `Min <nextMinBidPrice>` until someone bids and the Buyout column says `Bid only`, in Search Results, My Auctions and My Bids. Buyout stays enabled on a bid-only row and the press says "This auction is bid only. Enter at least 30 and press Bid." | Overlay logic UAT, scenario "bid-only listing" |
+| The Create tab's duration labels read "SHORMEDIUM ONG" | Stock layout: labels 32, 60 and 24 px wide, Medium's box over Short's, so CEGUI clipped them | `Short`, `Medium`, `Long`, 52 px each on their own slots, bars and highlights re-centred | Overlay logic UAT, scenario "Create tab: Short/Medium/Long labels" (geometry from the layout) |
+| The "Auction Won" mail showed Sent "Thu Jan 1st, 1970 @ 2:2 am" and Expires "Soon" | Not the payout: every mail's header sent `sentTime` as epoch seconds. The client reads it as the mail's age: Sent is local now minus `sentTime`, and ExpiresHours is `720 - sentTime / 3600` (`SGW.exe@0x00eb5ab0`, `0x00eb5a10`) | `mail/headers.rs` sends `now - sent_time` (at least 0). The database keeps epoch seconds | `headers::tests::header_sent_time_*` (unit) and `mail::tests::header_time_live` (live-DB, a Black Market payout read back through `read_one`) |
+
+The overlay change ships as a new `bm-ui-overlay` zip from the next launcher release, with its entry swapped in the signed manifest.
+
+Found on the way, not fixed here: the same constructor sets `HasBeenRead` when `readTime >= 0.0`, and the server sends `read_time` 0 for an unread mail, so no mail ever shows the inbox's "New" marker. See [mail-wire-formats.md](../../reverse-engineering/findings/mail-wire-formats.md#m-q3--expireshours-source-and-ttl-closed).
+
 ## 6. Decisions
 
 All eight were answered in session on 2026-09-26, each as recommended.
