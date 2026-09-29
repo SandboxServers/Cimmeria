@@ -30,6 +30,10 @@ Status: verified against the live `SGW.exe` binary (image base `0x00400000`, ASL
 
 The `0xC4` group mask (bits 2 + 6 + 7) is the movement-speed recompute — any of crouch / movement-lock / walking changes triggers the same code path.
 
+## NPCs: `BSF_InCombat` follows `Fighting`
+
+An NPC's `BSF_InCombat` bit is derived from its AI state, never set on its own: it is on exactly while `ai_state == Fighting`. `npc_ai::combat_stance::sync_combat_stance` writes it and sends `onStateFieldUpdate` to the NPC's witnesses when the announced stance changes, at the top of every Fighting pass (before the first shot) and once per AI tick for the other ticked states. The legacy `SGWMob.aiBeginCombat` did the same. Without it a guard's weapon sequences draw no muzzle flash, tracer or weapon sound on the client (`findings/npc-attack-presentation.md`). Players keep the separate `threatened_mobs` rule above.
+
 ## Persistence across relogs
 
 `state_field` is transient combat state with one exception: `BSF_AutoCycling`

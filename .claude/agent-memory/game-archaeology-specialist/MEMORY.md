@@ -110,3 +110,7 @@ Each entry tagged with bucket assignment per #264 step 4. Bible chapter targets 
 ## Multi-client lab (2026-09-29)
 
 - [Two SGW.exe on one machine](multi-client-lab-findings.md) — no client single-instance guard, SGW.lock is Ghidra's, focus throttle 0x00417100, named lab instances; live run pending
+
+## NPC attack presentation (2026-09-29)
+
+- [NPC shots draw nothing on the client](npc-attack-presentation.md) — NPC BSF_InCombat never set; SequenceManager play path addresses, Kismet weapon-slot chain, per-shot telemetry method; cause MEDIUM until a client confirms

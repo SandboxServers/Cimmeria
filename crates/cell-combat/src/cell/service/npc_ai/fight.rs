@@ -22,6 +22,12 @@ pub(super) async fn npc_ai_fight(
     use crate::cell::combat;
     use cimmeria_entity::cell_entity::MobMovementType;
 
+    // Draw before the first shot: the stance reaches every witness ahead of
+    // the Ability_End `onSequence` on the same reliable channel. This pass
+    // is also the fast-retry sweep's entry, which never passes the tick's
+    // own sync.
+    super::combat_stance::sync_combat_stance(npc_id, tx, space_mgr).await;
+
     // Record CombatAdvance in the movement-type cache. Nothing goes on the
     // wire: the client has no movement-type receiver (NA10, see
     // `broadcast_movement_type`).

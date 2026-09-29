@@ -48,6 +48,8 @@
 //!   submit, error).
 //! - [`path_failure`] — the one throttled emitter every state above
 //!   uses when `find_path` gives it nothing usable.
+//! - [`combat_stance`] — `BSF_InCombat` on a Fighting NPC and the
+//!   `onStateFieldUpdate` to its witnesses, so its weapon sequences play.
 //! - [`aggro_acquired`] — the `npc_ai.aggro event=acquired` row and
 //!   its cause-to-transition-reason mapping.
 //! - [`transition`] — `set_ai_state`, the single writer of `ai_state`,
@@ -70,6 +72,7 @@ mod aggro_acquired;
 mod aggro_gates;
 mod assist;
 mod chase;
+mod combat_stance;
 #[cfg(test)]
 mod detector_tests;
 // The NPC AI's state primitives (`detectors`, `transition`, `movement_stop`,
@@ -113,6 +116,8 @@ pub use dispatch::{npc_ai_retry_sweep, npc_ai_tick};
 // logs the acquisition.
 pub(in crate::cell) use aggro_acquired::log_aggro_acquired;
 pub(in crate::cell) use assist::recruit_assisters;
+// The ability-sequence WARN asks whether an NPC attacker's stance was announced.
+pub(in crate::cell) use combat_stance::stance_announced;
 pub(in crate::cell) use fight_target::purge_dead_target_from_threat;
 // Stopping and rerouting an NPC: the only writers of `nav_path` outside the
 // movement tick (NA10). The AI-state transition helper is the only way to

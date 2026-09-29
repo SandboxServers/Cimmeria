@@ -252,6 +252,7 @@ warmup ability is the warmup tick, not the launch (AT-10).
 | `no_event_set` | `event_set_id` is NULL, so no sequence is looked up | same |
 | `no_end_sequence` | the event set has no event-1001 sequence | same, plus `event_set_id` |
 | `no_witnesses` | the Ability_End went out to zero AoI witnesses | same, plus `sequence_id` |
+| `stance_not_announced` | the Ability_End reached a witness but the NPC's `BSF_InCombat` stance had not (the shot came from outside the Fighting pass, or the stance sync regressed): the client draws no muzzle flash, tracer or weapon sound | same, plus `sequence_id`, `witness_count` |
 
 This is a Pattern D seam with one deliberate difference: the throttle
 (`SpaceManager::ability_sequence_log`, 60 s window) is keyed by
@@ -272,7 +273,10 @@ scope, and the burst and independence throttle guards),
 `use_ability/tests/sequence_phases.rs` (the WARN rides the Ability_End
 into the warmup tick; Interrupt never WARNs) and
 `service/tests/npc_ai/attack_sequence.rs` (`witness_count = 2` on a real
-fight tick). The seed side is linted by the live-DB
+fight tick). The stance row is guarded by `use_ability/tests/sequence.rs`
+(`an_npc_shot_before_its_stance_was_announced_warns`) and
+`service/tests/npc_ai/combat_stance.rs` (a real fight tick announces
+`BSF_InCombat` before the shot, once per fight, and announces the clear). The seed side is linted by the live-DB
 `spawner/tests/npc_ability_animation.rs`.
 
 ## Encrypted-channel decrypt rejects
