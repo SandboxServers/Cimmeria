@@ -299,6 +299,7 @@
 \ir resources/Effects/Seed/effects.sql
 \ir resources/Abilities/Seed/ammo_modifiers_hp_ap.sql
 \ir resources/Abilities/Seed/ammo_modifiers_incendiary.sql
+\ir resources/Abilities/Seed/ammo_modifiers_explosive.sql
 \ir resources/Entities/Seed/blueprints.sql
 \ir resources/Entities/Seed/blueprints_components.sql
 \ir resources/Entities/Seed/deployables.sql
