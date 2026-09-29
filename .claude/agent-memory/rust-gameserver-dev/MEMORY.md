@@ -53,6 +53,10 @@ One line per topic file; the detail lives in the file. Keep hooks short (this in
 - [cooked-data-full-resync.md](cooked-data-full-resync.md) — #840: paced full resync (RequiredUpdates=0), misses jump the stream, Play held for 6 no-miss-path categories.
 - [cooked-item-additions-shape.md](cooked-item-additions-shape.md) — real shipped COOKED_ITEM shape (not alphabetical); new ids via ITEM_ADDITIONS; AmmoType_Icons = EAmmoType labels.
 
+## Lab supervisor
+
+- [lab-uat-runner-in-process-tool-calls.md](lab-uat-runner-in-process-tool-calls.md) — call rmcp tools by name in-process via the RequestContext extractor; chat marks before the action; capability table.
+
 ## Injected client DLLs
 
 - [injected-dll-unwind-and-lua-error-rules.md](injected-dll-unwind-and-lua-error-rules.md) — `thiscall-unwind` detours for C++-EH prologues.

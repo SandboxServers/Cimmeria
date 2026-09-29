@@ -1,0 +1,109 @@
+# Unified UAT, section "Bank and vault" (the rows the lab can drive today).
+# Guide: docs/guides/unified-uat.md#bank-and-vault
+# A fresh character per run: step 12 needs less than 100 naquadah.
+
+schema = 1
+
+[section]
+id = "bank"
+system = "Bank and vault"
+guide = "docs/guides/unified-uat.md#bank-and-vault"
+ledger = "docs/analysis/bank-vault/handoffs/session-resume.md#uat-checklist"
+account = "gm"
+character = "fresh"
+
+[section.fresh]
+alignment = "sgu"
+archetype = "Soldier"
+gender = "male"
+first = "Uat"
+
+[[row]]
+id = "1"
+title = ".bank opens the 40-slot vault"
+expected = "The vault window opens with 40 slots and does not scroll past them."
+step = [
+  { chat = ".bank", label = "bank" },
+  { wait_ms = 2500 },
+]
+
+[[row.expect]]
+id = "size"
+text = "the vault container holds 40 slots"
+source = "lua"
+chunk = "return getContainerSize(Container.Vault)"
+op = "eq"
+value = 40
+
+[[row.expect]]
+id = "no-scroll"
+text = "the window does not scroll past slot 40"
+source = "human"
+question = "In final.png, is the vault window open with exactly 40 slots, with no empty scroll area past them?"
+
+[[row.evidence]]
+name = "vault-window"
+tool = "client_ui_state"
+at = "bank"
+
+[[row]]
+id = "12"
+title = ".bankexpand without the naquadah is refused"
+expected = "\"You need 100 naquadah to expand your vault. Nothing was charged.\"; nothing changes."
+setup = [
+  { chat = ".bank" },
+  { wait_ms = 2000 },
+]
+step = [
+  { chat = ".bankexpand", label = "expand" },
+  { wait_ms = 1500 },
+]
+
+[[row.expect]]
+id = "refused"
+text = "the refusal names the price and says nothing was charged"
+source = "chat"
+since = "expand"
+contains = "You need 100 naquadah to expand your vault. Nothing was charged."
+
+[[row.expect]]
+id = "unchanged"
+text = "the vault is still 40 slots"
+source = "lua"
+chunk = "return getContainerSize(Container.Vault)"
+op = "eq"
+value = 40
+
+[[row.expect]]
+id = "refusal-logged"
+text = "SigNoz records the refusal with its reason"
+source = "signoz"
+filter = "body CONTAINS 'bankexpand' AND reason EXISTS"
+min_rows = 1
+required = false
+
+[[row]]
+id = "2"
+title = "Right-click the Storage Officer"
+expected = "The vault opens on the first click. No \"Expand vault\" dialog appears."
+notes = "@world_click (client_world_click, #1099) right-clicks the nearest entity whose name contains the text; three Bankers share the name (K17), so the nearest one must be the personal Storage Officer: start next to it."
+step = [
+  { tool = "@world_click", args = { name = "Storage Officer", button = "right", expect = "window" }, label = "click" },
+  { wait_ms = 2000 },
+]
+
+[[row.expect]]
+id = "vault-open"
+text = "the first click opens the 40-slot vault"
+source = "lua"
+chunk = "return getContainerSize(Container.Vault)"
+op = "eq"
+value = 40
+
+[[row.expect]]
+id = "no-expand-dialog"
+text = "no Expand vault dialog appears (K3)"
+source = "tool"
+tool = "@ui_state"
+pointer = "/dialog"
+op = "absent"

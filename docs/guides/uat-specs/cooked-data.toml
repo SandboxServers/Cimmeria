@@ -1,0 +1,150 @@
+# Unified UAT, section "Cooked-data resync".
+# Guide: docs/guides/unified-uat.md#cooked-data-resync
+# CD1, CD4 and CD5 swap files in the client's writable cache while the
+# client is stopped: they name `client_cache_files` (matrix L18), which
+# does not exist yet, so the runner reports them BLOCKED naming it.
+
+schema = 1
+
+[section]
+id = "cooked-data"
+system = "Cooked-data resync"
+guide = "docs/guides/unified-uat.md#cooked-data-resync"
+ledger = "docs/guides/unified-uat.md#cooked-data-resync"
+account = "gm"
+character = "lab"
+
+[[row]]
+id = "CD1"
+title = "A stale CookedWorldInfo.pak resyncs without a Play wait"
+expected = "Character select looks normal; Play takes at most a second longer than usual."
+state = "client_stopped"
+step = [
+  { tool = "@cache_files", args = { op = "copy_pristine", file = "CookedWorldInfo.pak" }, label = "copy" },
+  { tool = "lab_client_start", label = "start" },
+  { tool = "lab_login", label = "login" },
+  { tool = "lab_play_character", args = { name = "${character}" }, label = "play" },
+]
+
+[[row.expect]]
+id = "play-fast"
+text = "Play reaches the world within its usual time"
+source = "timing"
+action = "play"
+max_ms = 60000
+
+[[row.expect]]
+id = "full-resync"
+text = "SigNoz: category 12 answered full_resync"
+source = "signoz"
+filter = "event = 'cooked_data.version_reply' AND category_id = 12"
+field = "outcome"
+op = "eq"
+value = "full_resync"
+
+[[row.expect]]
+id = "held-released"
+text = "SigNoz: world entry was held and released"
+source = "signoz"
+filter = "event IN ('cooked_data.world_entry_held','cooked_data.world_entry_released')"
+min_rows = 2
+
+[[row]]
+id = "CD2"
+title = "Play a character; travel to CellBlock43"
+expected = "You enter the world normally. With the historical-cellblock client files installed, .gotolocation CellBlock43 loads CellBlock43."
+blocked = "the travel half needs the owner-only historical-cellblock client files"
+
+[[row]]
+id = "CD3"
+title = "A second login does not resync"
+expected = "No wait, normal entry. SigNoz shows category 12 up_to_date: no second resync."
+relog = "same"
+step = [
+  { tool = "lab_logout", label = "logout" },
+  { tool = "lab_play_character", args = { name = "${character}" }, label = "play" },
+]
+
+[[row.expect]]
+id = "play-fast"
+text = "Play reaches the world with no wait"
+source = "timing"
+action = "play"
+max_ms = 60000
+
+[[row.expect]]
+id = "up-to-date"
+text = "SigNoz: category 12 answered up_to_date"
+source = "signoz"
+filter = "event = 'cooked_data.version_reply' AND category_id = 12"
+field = "outcome"
+op = "eq"
+value = "up_to_date"
+
+[[row.expect]]
+id = "no-resync"
+text = "SigNoz: no category-12 sync started"
+source = "signoz"
+filter = "event = 'cooked_data.sync_start' AND category_id = 12"
+max_rows = 0
+
+[[row]]
+id = "CD4"
+title = "A stale dialogs pak streams, and a first dialog is served on a miss"
+expected = "No extra wait at Play. The dialog text shows, at worst a moment late."
+blocked = "needs client_cache_files (matrix L18) and client_world_click to talk to an NPC (matrix L4)"
+
+[[row]]
+id = "CD5"
+title = "An abandoned push resyncs on the next login"
+expected = "The second login resyncs the dialogs in full and play is normal."
+state = "client_stopped"
+step = [
+  { tool = "@cache_files", args = { op = "copy_pristine", file = "CookedDataDialogs.pak" } },
+  { tool = "lab_client_start" },
+  { tool = "lab_login", label = "login" },
+  { tool = "lab_client_stop" },
+  { tool = "lab_client_start" },
+  { tool = "lab_login" },
+  { tool = "lab_play_character", args = { name = "${character}" } },
+]
+
+[[row.expect]]
+id = "abandoned"
+text = "SigNoz: the first push ended abandoned"
+source = "signoz"
+filter = "event = 'cooked_data.sync_finish' AND outcome = 'abandoned'"
+min_rows = 1
+
+[[row]]
+id = "CD6"
+title = "The crafting Sciences list is present"
+expected = "The sciences show."
+step = [
+  { tool = "client_input_focus", args = { on = true } },
+  { tool = "client_input_key", args = { key = "Ctrl", action = "down" } },
+  { tool = "client_input_key", args = { key = "J" }, label = "ctrl-j" },
+  { tool = "client_input_key", args = { key = "Ctrl", action = "up" } },
+  { wait_ms = 1500 },
+]
+teardown = [
+  { tool = "client_input_key", args = { key = "Ctrl", action = "down" }, optional = true },
+  { tool = "client_input_key", args = { key = "J" }, optional = true },
+  { tool = "client_input_key", args = { key = "Ctrl", action = "up" }, optional = true },
+]
+
+[[row.expect]]
+id = "sciences"
+text = "the client holds at least four applied sciences"
+source = "lua"
+chunk = "local t = getAppliedSciences() local n = 0 for _ in pairs(t) do n = n + 1 end return n"
+op = "gte"
+value = 4
+
+[[row.expect]]
+id = "no-in-world-requests"
+text = "SigNoz: no version request after the client was ready"
+source = "signoz"
+filter = "event = 'cooked_data.version_reply'"
+max_rows = 0
+required = false

@@ -42,6 +42,13 @@ base64 = "0.23"
 # lab-mcp — it POSTs a JSON-RPC tools/call. Workspace reqwest.
 reqwest = { workspace = true }
 
+# UAT runner (`src/uat/`): TOML row specs, regex clauses and captures,
+# UTC timestamps for the evidence bundle, SHA-256 build fingerprints.
+toml = { workspace = true }
+regex = "1"
+chrono = { workspace = true }
+sha2 = { workspace = true }
+
 # Process lifecycle, window enumeration, and GDI capture on the host
 # (x86_64-pc-windows-msvc). The supervisor is a 64-bit host binary
 # driving the 32-bit SGW.exe child.

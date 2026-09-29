@@ -1,0 +1,129 @@
+# Unified UAT, section "Pets" (rows the lab can drive today).
+# Guide: docs/guides/unified-uat.md#pets
+# Replies quoted below are the server's own strings
+# (crates/cell-console/src/cell/console/pet.rs, give_ability.rs,
+# crates/base-methods/.../progression/grant_ability.rs).
+
+schema = 1
+
+[section]
+id = "pets"
+system = "Pets"
+guide = "docs/guides/unified-uat.md#pets"
+ledger = "docs/analysis/pets/handoffs/session-resume.md#uat-checklist-owner-colo-after-the-pt-13-release"
+account = "gm"
+character = "lab"
+
+[[row]]
+id = "U1"
+title = "GM summon of a Straegis Fighter"
+expected = "A Straegis Fighter appears beside you; chat names the pet id (and \"via ability 2826\" for the ability id). The pet window/bar shows portrait, name, ability row and three stance buttons, Defensive highlighted."
+step = [
+  { chat = ".pet summon 2826", label = "summon" },
+  { wait_ms = 2500 },
+]
+teardown = [{ chat = ".pet dismiss", optional = true }]
+
+[[row.expect]]
+id = "reply"
+text = "chat names the pet and the summon ability"
+source = "chat"
+since = "summon"
+matches = '\.pet summon: pet [0-9]+ from template [0-9]+ via ability 2826'
+
+[[row.expect]]
+id = "lifecycle"
+text = "SigNoz records the GM summon"
+source = "signoz"
+filter = "scope_name LIKE 'pets.%' AND decision_outcome = 'gm_summoned'"
+min_rows = 1
+
+[[row.expect]]
+id = "renders"
+text = "the Straegis body renders and the pet bar shows three stance buttons, Defensive lit"
+source = "human"
+question = "In final.png: is a Straegis Fighter standing beside the character, and does the pet bar show three stance buttons with Defensive highlighted?"
+
+[[row]]
+id = "U2b"
+title = ".giveability 2826 is saved and survives a relog"
+expected = "Chat says it was saved; the ability appears at once. After a relog it is still known. A second .giveability 2826 says \"already knows\"."
+relog = "same"
+notes = "On a character that already knows 2826 the first grant also says 'already knows'; the relog clause is what proves it persisted."
+step = [
+  { chat = ".giveability 2826", label = "grant" },
+  { wait_ms = 1500 },
+  { tool = "lab_logout", label = "logout" },
+  { tool = "lab_play_character", args = { name = "${character}" }, label = "relog" },
+  { wait_ms = 3000 },
+  { chat = ".giveability 2826", label = "again" },
+  { wait_ms = 1500 },
+]
+
+[[row.expect]]
+id = "granted"
+text = "the first grant answers in chat"
+source = "chat"
+since = "grant"
+matches = '\.giveability'
+
+[[row.expect]]
+id = "known-after-relog"
+text = "after a relog a second grant says it is already known"
+source = "chat"
+since = "again"
+matches = '\.giveability: (entity [0-9]+ already knows 2826|entity [0-9]+ already knows ability 2826)'
+
+[[row.expect]]
+id = "persisted"
+text = "SigNoz shows the grant persisted (or already known)"
+source = "signoz"
+filter = "body CONTAINS 'GmGrantAbility'"
+min_rows = 1
+
+[[row]]
+id = "U12"
+title = ".pet info reads the pet"
+expected = "Owner name and id, stance and allowed stances, AI state, abilities [221, 1156], what is toggled off, distance to owner, last teleport (\"never\" until it has teleported)."
+setup = [
+  { chat = ".pet summon 350" },
+  { wait_ms = 2500 },
+]
+step = [
+  { chat = ".pet info", label = "info" },
+  { wait_ms = 1500 },
+]
+teardown = [{ chat = ".pet dismiss", optional = true }]
+
+[[row.expect]]
+id = "header"
+text = "the first line names pet, template, owner and summoning ability"
+source = "chat"
+since = "info"
+matches = '\.pet info: pet [0-9]+, template [0-9]+, owner'
+
+[[row.expect]]
+id = "abilities"
+text = "the abilities list is [221, 1156]"
+source = "chat"
+since = "info"
+contains = "221, 1156"
+
+[[row.expect]]
+id = "never-teleported"
+text = "last teleport reads never"
+source = "chat"
+since = "info"
+contains = "never"
+
+[[row]]
+id = "U16"
+title = "Pet-bar click on an unimplemented ability"
+expected = "The pet does nothing; chat says \"Your pet can't use that ability yet.\""
+blocked = "clicking a pet-bar button needs its CEGUI window name mapped (matrix L10); the refusal text also needs the extended typing charset for a check phrase"
+
+[[row]]
+id = "U13"
+title = "Non-GM summon is refused"
+expected = "One chat line: \".pet is a GM command; you do not have GM rights\"."
+blocked = "needs a non-GM lab account (matrix X2)"
