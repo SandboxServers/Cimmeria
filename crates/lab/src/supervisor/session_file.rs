@@ -14,7 +14,6 @@ use std::path::{Path, PathBuf};
 
 use serde::{Deserialize, Serialize};
 
-use super::autologin::LabCreds;
 use super::telemetry_session::{TelemetryGrant, LAB_INSTALL_ID};
 
 /// Bridge default port (mirrors the DLL's `default_lab_port`). 8770 —
@@ -63,21 +62,16 @@ pub struct CurrentSession {
 /// Lab account credentials, read from `lab-account.json`.
 #[derive(Debug, Clone, Deserialize, PartialEq, Eq)]
 pub struct LabAccount {
+    /// Server row to pick at server select (`lab_login` falls back to the
+    /// preselected row when this name is not in the list).
+    #[serde(default)]
     pub server: String,
     pub username: String,
     pub password: String,
+    /// The lab character: always protected by `lab_ensure_character_slot`
+    /// and played after a crash relaunch.
+    #[serde(default)]
     pub character: String,
-}
-
-impl LabAccount {
-    pub fn into_creds(self) -> LabCreds {
-        LabCreds {
-            server: self.server,
-            username: self.username,
-            password: self.password,
-            character: self.character,
-        }
-    }
 }
 
 /// `<install>/Binaries/sessions/`.
@@ -280,8 +274,7 @@ mod tests {
         let acct = read_lab_account(install).unwrap();
         assert_eq!(acct.server, "Cimmeria");
         assert_eq!(acct.character, "LabRat");
-        let creds = acct.into_creds();
-        assert_eq!(creds.username, "lab");
+        assert_eq!(acct.username, "lab");
     }
 
     #[test]

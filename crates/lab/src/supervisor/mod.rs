@@ -1,5 +1,5 @@
 //! The Live Research Lab **supervisor**: owns the SGW.exe process for
-//! the session, drives autologin, watches the heartbeat, and recovers
+//! the session, drives the client flows, watches the heartbeat, and recovers
 //! from crashes (ADR §3.4, §6; issue #685).
 //!
 //! Layout (directory from day one — 4+ siblings per the file-org rule):
@@ -12,14 +12,17 @@
 //! - [`heartbeat`] — the staleness watchdog decision (pure, tested).
 //! - [`recovery`] — command journal (+ quarantine) and the 3-in-10-min
 //!   relaunch cap (pure, tested).
-//! - [`autologin`] — the Lua-driven login state machine (pure, tested);
-//!   [`autologin_bridge`] adapts it onto the async bridge.
+//! - [`input`] / [`keys`] — native input: clicks, key taps, typing.
+//! - [`flows`] — login, character select, play, dialog and logout flows
+//!   over the native input, plus UI reads (`client_ui_state`,
+//!   `client_wait_for`).
+//! - [`entity_table`] — the client's BigWorld entity maps.
 //! - [`screenshot`] — GDI window capture → PNG.
 //! - [`crash_report`] — assemble `lab_crash_report`.
 
-pub mod autologin;
-pub mod autologin_bridge;
 pub mod crash_report;
+pub mod entity_table;
+pub mod flows;
 pub mod heartbeat;
 pub mod input;
 pub mod keys;
@@ -41,8 +44,8 @@ use crate::client::BridgeClient;
 use crate::timeline::client_events::HeartbeatSample;
 use crate::timeline::clock::ClockOffset;
 
-use autologin::LoginOutcome;
-use heartbeat::{HeartbeatState, HeartbeatWatchdog};
+use flows::login::LoginRequest;
+use heartbeat::{HeartbeatState, HeartbeatWatchdog, BUSY_GRACE_MS};
 use recovery::{CommandJournal, PersistentHooks, RecoveryTracker};
 use session_file::{DEFAULT_BRIDGE_BIND, DEFAULT_BRIDGE_PORT};
 
@@ -55,8 +58,6 @@ const HEARTBEAT_STALE_AFTER: Duration = Duration::from_secs(8);
 const MAX_HEARTBEAT_FAILS: u32 = 5;
 /// Command-journal ring depth surfaced by `lab_crash_report`.
 const JOURNAL_CAP: usize = 64;
-/// Autologin poll budget.
-const AUTOLOGIN_MAX_POLLS: u32 = 120;
 /// Heartbeat-observation ring depth fed to `lab_timeline` as the client
 /// event source that exists today (ADR §5; the full #686 event ring
 /// plugs in later — see `timeline::client_events`).
@@ -148,6 +149,8 @@ impl SupervisorConfig {
 pub enum LoginState {
     NotStarted,
     LoggingIn,
+    /// At character select (after `lab_login` or `lab_logout`).
+    CharSelect,
     InWorld,
     Failed,
     Crashed,
@@ -158,6 +161,7 @@ impl LoginState {
         match self {
             LoginState::NotStarted => "not_started",
             LoginState::LoggingIn => "logging_in",
+            LoginState::CharSelect => "character_select",
             LoginState::InWorld => "in_world",
             LoginState::Failed => "failed",
             LoginState::Crashed => "crashed",
@@ -470,60 +474,59 @@ impl Supervisor {
         }))
     }
 
-    /// `lab_login` — drive the Lua autologin state machine over the
-    /// bridge. See [`autologin_bridge`] for the live-capture caveat.
-    pub async fn login(&self, server_override: Option<String>) -> Result<Value, String> {
-        let install_dir = self
+    /// Record login progress for `lab_client_status`.
+    pub(crate) async fn set_login_state(&self, login: LoginState) {
+        self.state.lock().await.login = login;
+    }
+
+    /// After a crash relaunch: log in with the native flow (Escape skips
+    /// the intro movies) and play the lab account's character if it names
+    /// one. Best effort; a failure is logged and leaves the client at
+    /// whatever screen it reached.
+    async fn relogin_after_crash(&self) {
+        if let Err(e) = self.login_flow(LoginRequest::default()).await {
+            tracing::warn!(error = %e.summary(), "post-crash login failed");
+            return;
+        }
+        let character = self
             .config
             .install_dir
-            .clone()
-            .ok_or("CIMMERIA_LAB_INSTALL_DIR is unset")?;
-        let mut creds = session_file::read_lab_account(&install_dir)?.into_creds();
-        if let Some(server) = server_override {
-            creds.server = server;
-        }
-
-        {
-            let mut st = self.state.lock().await;
-            st.login = LoginState::LoggingIn;
-        }
-
-        let bridge = self.bridge.clone();
-        let handle = tokio::runtime::Handle::current();
-        let outcome = tokio::task::spawn_blocking(move || {
-            let mut screen = autologin_bridge::BridgeScreen { bridge, handle };
-            autologin::run(&mut screen, &creds, AUTOLOGIN_MAX_POLLS)
-        })
-        .await
-        .map_err(|e| format!("autologin task: {e}"))?;
-
-        let mut st = self.state.lock().await;
-        match &outcome {
-            Ok(LoginOutcome::EnteredWorld) => st.login = LoginState::InWorld,
-            _ => st.login = LoginState::Failed,
-        }
-        match outcome {
-            Ok(o) => Ok(json!({ "outcome": format!("{o:?}"), "login_state": st.login.as_str() })),
-            Err(e) => Err(e),
+            .as_ref()
+            .and_then(|d| session_file::read_lab_account(d).ok())
+            .map(|a| a.character)
+            .filter(|c| !c.is_empty());
+        if let Some(name) = character {
+            if let Err(e) = self
+                .play_flow(&name, true, flows::world::DEFAULT_PLAY_TIMEOUT)
+                .await
+            {
+                tracing::warn!(error = %e.summary(), "post-crash play failed");
+            }
         }
     }
 
     /// `lab_screenshot` — capture the client window as PNG bytes +
     /// base64, for the caller to wrap in an MCP image block.
     pub async fn screenshot(&self) -> Result<(String, u32, u32), String> {
-        let pid = {
-            let st = self.state.lock().await;
-            st.pid.ok_or("no client running")?
-        };
-        let captured = tokio::task::spawn_blocking(move || screenshot::capture_pid(pid))
-            .await
-            .map_err(|e| format!("screenshot task: {e}"))??;
+        let captured = self.capture().await?;
         let png = screenshot::encode_png(&captured)?;
         Ok((
             screenshot::png_to_base64(&png),
             captured.width,
             captured.height,
         ))
+    }
+
+    /// Capture the client window as RGBA (for screenshots, crops and
+    /// pixel probes).
+    pub async fn capture(&self) -> Result<screenshot::CapturedImage, String> {
+        let pid = {
+            let st = self.state.lock().await;
+            st.pid.ok_or("no client running")?
+        };
+        tokio::task::spawn_blocking(move || screenshot::capture_pid(pid))
+            .await
+            .map_err(|e| format!("screenshot task: {e}"))?
     }
 
     /// `lab_crash_report` — last minidump, last N commands, quarantined
@@ -595,7 +598,11 @@ impl Supervisor {
                     }
                 }
                 Err(_) => {
-                    fails += 1;
+                    fails = heartbeat::next_fail_count(
+                        fails,
+                        self.bridge.ms_since_last_ok(),
+                        BUSY_GRACE_MS,
+                    );
                     if !process::is_alive(my_pid) || fails >= MAX_HEARTBEAT_FAILS {
                         tracing::warn!(pid = my_pid, fails, "client dead/unreachable");
                         self.handle_death(my_pid).await;
@@ -608,7 +615,7 @@ impl Supervisor {
 
     /// A death/hang was detected: terminate (in case it's hung),
     /// quarantine the in-flight command, record the crash, and — if
-    /// under the recovery cap — relaunch and re-autologin.
+    /// under the recovery cap — relaunch and log back in.
     async fn handle_death(&self, dead_pid: u32) {
         let _ = tokio::task::spawn_blocking(move || process::terminate(dead_pid)).await;
 
@@ -628,11 +635,9 @@ impl Supervisor {
 
         match self.launch_client(None).await {
             Ok(new_pid) => {
-                tracing::info!(new_pid, "relaunched after crash; re-running autologin");
+                tracing::info!(new_pid, "relaunched after crash; logging back in");
                 self.spawn_watchdog(new_pid);
-                if let Err(e) = self.login(None).await {
-                    tracing::warn!(error = %e, "post-crash autologin failed");
-                }
+                self.relogin_after_crash().await;
                 // Restore probes: re-apply persistent hooks (never writes
                 // or native calls — the quarantined in-flight command stays
                 // quarantined). ADR §6 "Restore probes".

@@ -3,8 +3,13 @@
 //! Phase 1 (#684): three probe tools that proxy to the client bridge
 //! (`client_lua_eval`, `client_module_info`, `client_mem_read`).
 //! Phase 2 (#685): the supervisor tools that own the SGW.exe process
-//! lifecycle — start/stop/restart/status, autologin, screenshot, and
-//! crash reporting.
+//! lifecycle — start/stop/restart/status, screenshot, and crash
+//! reporting.
+//!
+//! Two more routers live in submodules and are added in [`LabServer::new`]:
+//! [`flows`] (the `lab_*` login / character / play / dialog / logout
+//! flows) and [`client_state`] (UI reads, condition waits, the entity
+//! table, region screenshots and pixel probes).
 //!
 //! All bridge traffic goes through the [`Supervisor`], which journals
 //! probe commands (for crash quarantine) and re-points the bridge at
@@ -21,6 +26,9 @@ use serde_json::{json, Value};
 
 use crate::supervisor::Supervisor;
 use crate::timeline::{Timeline, TimelineArgs};
+
+mod client_state;
+mod flows;
 
 #[derive(Debug, serde::Deserialize, schemars::JsonSchema)]
 pub struct LuaEvalArgs {
@@ -238,7 +246,7 @@ impl LabServer {
         Self {
             supervisor,
             timeline: Arc::new(Timeline::from_env()),
-            tool_router: Self::tool_router(),
+            tool_router: Self::tool_router() + Self::flows_router() + Self::client_state_router(),
         }
     }
 
@@ -414,16 +422,6 @@ impl LabServer {
         self.wrap(self.supervisor.status().await)
     }
 
-    #[tool(
-        description = "Drive Lua autologin (EULA/login/server-select/character-select) to enter the world on the lab character. NOTE: the screen reads need client_lua_eval return-value capture (a Phase-3 bridge TODO); the fire-and-forget actions work today."
-    )]
-    async fn lab_login(
-        &self,
-        Parameters(args): Parameters<ServerArg>,
-    ) -> Result<CallToolResult, McpError> {
-        self.wrap(self.supervisor.login(args.server).await)
-    }
-
     // ---- Native input: DirectInput keys/buttons, window-message cursor/text
 
     #[tool(
@@ -578,8 +576,8 @@ impl ServerHandler for LabServer {
                  client_module_info, client_mem_read) forward to the injected \
                  cimmeria-client-telemetry DLL over a token-gated loopback TCP \
                  channel. Supervisor tools (lab_client_start/stop/restart/status, \
-                 lab_login, lab_screenshot, lab_crash_report) own the SGW.exe \
-                 process lifecycle and crash recovery. lab_timeline merges \
+                 lab_screenshot, lab_crash_report, and the lab_* flows) own the \
+                 SGW.exe process lifecycle and crash recovery. lab_timeline merges \
                  local client events with server packet-tap rows (from \
                  cimmeria-lab-mcp over HTTP) into one clock-aligned window."
                     .to_string(),

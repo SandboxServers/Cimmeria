@@ -21,7 +21,7 @@
     "                 x96dbg.exe launched with the x64dbg-automate plugin loaded.",
     "  cimmeria-lab : Live Research Lab supervisor (stdio). Drives a running",
     "                 SGW.exe on this dev box: Lua eval, non-freezing hooks,",
-    "                 screenshots, autologin, and the merged timeline. Windows",
+    "                 screenshots, client UI flows, and the timeline. Windows",
     "                 only. Build once: cargo build -p cimmeria-lab. See",
     "                 docs/guides/live-research-lab.md and re-toolchain-setup.md.",
     "  lab-server   : In-server lab endpoint (http, token-gated). Live entity /",
