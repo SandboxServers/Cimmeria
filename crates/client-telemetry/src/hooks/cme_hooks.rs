@@ -226,6 +226,29 @@ unsafe extern "thiscall" fn on_client_ready_thunk(_this: *mut c_void, _event_dat
                 "client.network.on_client_ready",
                 "info",
             ));
+            emit_session_identity(p);
         }
     });
+}
+
+/// The client↔server join key (see [`crate::identity`]). `onClientReady`
+/// is the client's own ack that it is in world — the same trigger the
+/// server pairs against `world_entry.init_player_state` — so it is the
+/// natural place to read `ServerConnection::playerEntityID_` back out
+/// and ship it once per world entry (including a relog: `onClientReady`
+/// fires again then, with a fresh id).
+///
+/// Account name and server address are not included: neither survives
+/// to client-side memory this crate can verify statically today — see
+/// `crate::identity`'s module docs and
+/// `docs/reverse-engineering/findings/client-telemetry-seam-survey.md`.
+#[cfg(all(target_os = "windows", target_arch = "x86"))]
+fn emit_session_identity(producer: &Producer) {
+    let Some(player_entity_id) = crate::identity::read_local_player_entity_id() else {
+        return;
+    };
+    producer.try_emit(
+        ClientNativeEvent::builder("client.session.identity", "info")
+            .field("player_entity_id", serde_json::json!(player_entity_id)),
+    );
 }

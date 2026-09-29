@@ -140,8 +140,41 @@ pub const CME_INVOKE_MEMBER_CALLBACK: Site = code_site(
     ],
 );
 
+/// `Mercury_Nub_handleMessage` (Ghidra's own name for it, confirmed
+/// 2026-09-28 — see #989): `push -1; push 0x0170e978; mov eax,
+/// fs:[0]`. Re-resolved from the old anchor, `0x01b18be0`, which was
+/// the log string this function prints on a malformed message, not
+/// code.
+pub const MERCURY_DISPATCH: Site = code_site(
+    "Mercury_Nub_handleMessage",
+    0x0157_bd30,
+    &[
+        0x6A, 0xFF, 0x68, 0x78, 0xE9, 0x70, 0x01, 0x64, 0xA1, 0x00, 0x00, 0x00,
+    ],
+);
+
+/// `ServerConnection_forcedPosition`: `sub esp, 0x10; push ebx; push
+/// ebp; push esi; mov esi, [esp+0x20]; push edi; mov edi, ecx`.
+pub const FORCED_POSITION: Site = code_site(
+    "ServerConnection_forcedPosition",
+    0x00dd_9ee0,
+    &[
+        0x83, 0xEC, 0x10, 0x53, 0x55, 0x56, 0x8B, 0x74, 0x24, 0x20, 0x57, 0x8B,
+    ],
+);
+
+/// `ServerConnection_createBasePlayer`: `sub esp, 0x8; push ebx; push
+/// ebp; push esi; mov esi, [esp+0x18]; mov eax, [esi]`.
+pub const CREATE_BASE_PLAYER: Site = code_site(
+    "ServerConnection_createBasePlayer",
+    0x00dd_dca0,
+    &[
+        0x83, 0xEC, 0x08, 0x53, 0x55, 0x56, 0x8B, 0x74, 0x24, 0x18, 0x8B, 0x06,
+    ],
+);
+
 /// Every function the gate checks.
-pub const CODE_SITES: [Site; 14] = [
+pub const CODE_SITES: [Site; 17] = [
     cimmeria_client_hookgate::ENGINE_TICK,
     cimmeria_client_hookgate::DROP_CALLEE,
     BINK_TICK,
@@ -156,6 +189,9 @@ pub const CODE_SITES: [Site; 14] = [
     CME_LOOKUP_BY_NAME,
     CME_SUBSCRIBE,
     CME_INVOKE_MEMBER_CALLBACK,
+    MERCURY_DISPATCH,
+    FORCED_POSITION,
+    CREATE_BASE_PLAYER,
 ];
 
 const fn code_site(name: &'static str, address: usize, expected: &'static [u8]) -> Site {

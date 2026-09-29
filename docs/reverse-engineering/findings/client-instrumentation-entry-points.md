@@ -2,7 +2,7 @@
 
 > **Diátaxis type**: reference
 > **Audience**: engineers implementing Phases 3-6 of `cimmeria-client-telemetry`
-> **Last updated**: 2026-06-04
+> **Last updated**: 2026-09-28
 > **Companion docs**: [`client-instrumentation-hookpoints.md`](client-instrumentation-hookpoints.md) (the original anchor catalog), [`docs/architecture/client-telemetry.md`](../../architecture/client-telemetry.md) (the design)
 
 Every Phase 3-6 inline/IAT/vtable hook from the anchor catalog, resolved to its function entry or IAT slot via Ghidra on 2026-06-04. Use this as the single source of truth when wiring future hooks — no per-anchor RE pass needed, just pick the address and detour signature.
@@ -45,7 +45,7 @@ Two functions because UE3's animation system has both `Notify` (generic) and `No
 
 | Target | Address | Signature | Hook role |
 |---|---|---|---|
-| Cooked-data category load entry | ~~`0x00420074`~~ | unresolved | **Wrong (2026-09-27):** `0x00420074` is `0xA54` bytes inside a function (`lea ecx,[esp+0x88]; call ...`), not an entry. The nearest entry, an SEH-guarded prologue, is `0x0041f620` (about 9.4 KB before its first `ret`); its signature is unresolved. The telemetry hook was removed; #989 tracks re-adding it. |
+| Cooked-data category load entry | ~~`0x00420074`~~ — **corrected 2026-09-28 (#989)**: it IS a real function entry (Ghidra names it and decompiles it cleanly), but it's `Detail::` the **one-time startup constructor** that builds all ~20 `LibCategory<LibCategoryKey<N,...>>` descriptors (`CookedDataKismetSetEvent.pak`, `CookedDataKismetSeqEvent.pak`, etc.) — called once at launch, never again. Hooking it gives zero per-load signal. `0x0041f620` (the earlier "nearest padding entry" guess) is also wrong: it's an unrelated `LaunchMisc.cpp` engine-startup function (shader/XML config init), nothing to do with cooked data. | n/a — see correction | **Still not re-added.** The real per-load runtime signal is `Event_NetIn_onVersionInfo` (CME-subscribable, per [`cooked-data-pipeline.md`](cooked-data-pipeline.md) Finding 4), template-instantiated once per category (e.g. `ServerSource_onVersionInfo_Handler_cat6` @ `0x00441630`) — full coverage needs the deferred CME RTTI auto-discovery scanner, or resolving+subscribing each category's instance by hand. See [`client-telemetry-seam-survey.md`](client-telemetry-seam-survey.md). |
 
 ---
 
@@ -227,7 +227,7 @@ This is more work than a simple IAT walk and warrants its own PR.
 | 3 | 3 | `GameBeing::onStateFieldUpdate` | `0x00e01c90` | Inline |
 | 3 | 3 | `USGWAnimNotify_Event::Notify` (A) | `0x00e974b0` | Inline |
 | 3 | 3 | `USGWAnimNotify_Event::Notify` (B) | `0x00e97070` | Inline |
-| 3 | 3 | Cooked-data PAK load | `0x00420074` | Inline |
+| 3 | 3 | Cooked-data PAK load | ~~`0x00420074`~~ — real entry, wrong purpose (#989); not re-added | Inline (deferred) |
 | 3 | 4 | `APlayerController::execConsoleCommand` | `0x00539850` | Inline |
 | 3 | 4 | `UObject::ProcessEvent` | vtable `0x0180fe54`, slot TBD (5 candidates ruled out) | Vtable swap |
 | 3 | 4 | `AActor::Tick` | **`0x005e4200` (slot 88)** | Vtable swap |
