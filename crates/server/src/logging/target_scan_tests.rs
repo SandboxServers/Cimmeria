@@ -42,6 +42,7 @@ pub(super) const IN_PROCESS_CRATES: &[&str] = &[
     "cell-pets",
     "cell-duel",
     "cell-org",
+    "cell-effect-scripts",
     "commands",
     "common",
     "content-engine",

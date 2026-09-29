@@ -15,7 +15,7 @@ use super::*;
 use crate::cell::effects::effect_pulse_tick;
 use crate::cell::spawner::AmmoCatalog;
 use crate::test_support::NoContentEvents;
-use cimmeria_cell_world::cell::effects::ammo_incendiary::{
+use cimmeria_cell_effect_scripts::cell::effects::ammo_incendiary::{
     incendiary_burn_effect, incendiary_modifier, INCENDIARY_BURN_EFFECT,
     INCENDIARY_BURN_FOCUS_DAMAGE, INCENDIARY_BURN_HEALTH_DAMAGE, INCENDIARY_BURN_PULSES,
 };

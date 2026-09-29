@@ -2,7 +2,7 @@
 //! EMP rounds (toggle ability 1445), the on-hit effect.
 //!
 //! Created empty by AM-F so each family packet adds its script here and one
-//! `match` arm in `registry.rs`, and never edits `effects/mod.rs`.
+//! `EFFECT_SCRIPTS` row in `registry.rs`, and never edits `effects/mod.rs`.
 //!
 //! # What an EMP round does on a hit
 //!

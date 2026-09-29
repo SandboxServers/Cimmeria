@@ -37,4 +37,7 @@ pub(crate) use cimmeria_wire::mercury;
 mod test_support {
     pub(crate) use cimmeria_cell_world::test_fixtures::*;
     pub(crate) use cimmeria_test_support::*;
+    // The effect scripts (#962 step 4): tests that dispatch one install the
+    // registry on the manager they build, as the cell does at startup.
+    pub(crate) use cimmeria_cell_effect_scripts::cell::effects::registry::install as install_effect_scripts;
 }

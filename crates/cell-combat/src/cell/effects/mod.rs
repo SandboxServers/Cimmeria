@@ -1,11 +1,14 @@
 //! Effect scripts and active-effect pulsing, at their old path.
 //!
 //! The synchronous effect-script layer (`EffectScript`, `EffectContext`,
-//! `dispatch_by_name` / `dispatch_on_remove`, the `registry` and the
-//! `scripts`, `cover_stance` included) is in `cimmeria-cell-world` (wave C1 of
+//! `dispatch_by_name` / `dispatch_on_remove` and the `registry` type) is in
+//! `cimmeria-cell-world` (wave C1 of
 //! `docs/architecture/services-crate-split.md`), because the spawn-time cover
 //! hold runs Cover Stance through it. This module re-exports all of it, so
-//! every `crate::cell::effects::X` path compiles unchanged.
+//! every `crate::cell::effects::X` path compiles unchanged. The scripts
+//! themselves are in `cimmeria-cell-effect-scripts` (#962 step 4), which only
+//! the composition root and test code depend on; dispatch finds them in the
+//! registry the cell installs on its `SpaceManager`.
 //!
 //! [`pulsing`] — the async DoT/HoT/channel scheduler — is combat and stays
 //! here, beside [`stat_buffs`], the async half of the stat-buff ledger

@@ -51,6 +51,11 @@ test-support = ["cimmeria-cell-world/test-support"]
 # duel's death hook (#962). A dev-dependency only: `cimmeria-cell-duel` does
 # not depend on this crate, so there is no cycle, and combat never names it.
 cimmeria-cell-duel = { workspace = true }
+# The effect scripts (#962 step 4), installed on the managers of the tests
+# that dispatch one (damage, pulsing, the ammo families, the owner-pet
+# scripts), and the ammo families' constants. A dev-dependency only, the same
+# way: the scripts crate depends on cell-world, not on combat.
+cimmeria-cell-effect-scripts = { workspace = true }
 # The live-DB gate, `LogCapture` and the source-scan walker, re-exported from
 # the `#[cfg(test)] mod test_support` shim in lib.rs. Every crate with this
 # dev-dependency must be listed in tools/test-live-db.{sh,ps1};

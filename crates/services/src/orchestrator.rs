@@ -108,6 +108,18 @@ impl Orchestrator {
                 "the cell plugin table does not build -- the server will refuse to start"
             ),
         }
+        // The effect scripts (#962 step 4), the same way: a table that does
+        // not build leaves the cell's registry empty, and `start_all` refuses
+        // to start.
+        match crate::plugins::effect_scripts() {
+            Ok(scripts) => cell.set_effect_scripts(scripts),
+            Err(e) => tracing::error!(
+                target: "abilities",
+                reason = "effect_scripts_invalid",
+                error = %e,
+                "the effect script table does not build -- the server will refuse to start"
+            ),
+        }
 
         // Wire Base↔Cell inter-service channels
         let (base_to_cell_tx, base_to_cell_rx) = mpsc::channel::<BaseToCellMsg>(256);
@@ -239,6 +251,16 @@ impl Orchestrator {
                 "Cell service refused to start: the plugin table is incomplete");
             OrchestratorError::CellStartFailed(e.to_string())
         })?;
+        // No effect scripts means every scripted effect (heals, shields,
+        // stuns, stat buffs, cover stance) silently falls back to the legacy
+        // NVP path: refuse, as for an incomplete plugin table.
+        if state.cell.effect_scripts().is_empty() {
+            tracing::error!(target: "abilities", reason = "effect_scripts_empty",
+                "Cell service refused to start: no effect scripts are registered");
+            return Err(OrchestratorError::CellStartFailed(
+                "no effect scripts are registered".to_string(),
+            ));
+        }
         tracing::trace!(addr = %state.cell.listener_addr, "Starting cell service");
         state.cell.start().await.map_err(|e| {
             tracing::error!(error = %e, "Cell service failed to start");

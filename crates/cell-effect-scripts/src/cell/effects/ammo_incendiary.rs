@@ -2,7 +2,7 @@
 //! Incendiary rounds (toggle ability 723), the on-hit effect.
 //!
 //! Created empty by AM-F so each family packet adds its script here and one
-//! `match` arm in `registry.rs`, and never edits `effects/mod.rs`.
+//! `EFFECT_SCRIPTS` row in `registry.rs`, and never edits `effects/mod.rs`.
 //!
 //! # No new script
 //!
@@ -14,7 +14,7 @@
 //! `FocusDamage` and `HealthDamage` from both pools with no Focus-first
 //! gate, and its `pulse_count` of 4 makes it a DoT through the ordinary
 //! pulsing machinery (`damage_apply` fires the first pulse on the hit and
-//! registers the other three). So `registry.rs` has no arm for this family.
+//! registers the other three). So `EFFECT_SCRIPTS` has no row for this family.
 //!
 //! Stacking is the effects ADR's decision 4, unchanged: a second hit from the
 //! same shooter refreshes the burn (the remaining pulses never shrink, and

@@ -980,6 +980,7 @@ dependencies = [
  "cimmeria-cell-console",
  "cimmeria-cell-content",
  "cimmeria-cell-duel",
+ "cimmeria-cell-effect-scripts",
  "cimmeria-cell-interactions",
  "cimmeria-cell-methods",
  "cimmeria-cell-org",
@@ -1019,6 +1020,7 @@ version = "0.1.0"
 dependencies = [
  "cimmeria-cell-catalog",
  "cimmeria-cell-duel",
+ "cimmeria-cell-effect-scripts",
  "cimmeria-cell-world",
  "cimmeria-common",
  "cimmeria-discord",
@@ -1065,6 +1067,7 @@ version = "0.1.0"
 dependencies = [
  "cimmeria-cell-catalog",
  "cimmeria-cell-combat",
+ "cimmeria-cell-effect-scripts",
  "cimmeria-cell-world",
  "cimmeria-common",
  "cimmeria-content-engine",
@@ -1106,6 +1109,21 @@ dependencies = [
  "cimmeria-test-support",
  "cimmeria-wire",
  "cimmeria-workspace-hack",
+ "tokio",
+ "tracing",
+]
+
+[[package]]
+name = "cimmeria-cell-effect-scripts"
+version = "0.1.0"
+dependencies = [
+ "cimmeria-cell-catalog",
+ "cimmeria-cell-world",
+ "cimmeria-entity",
+ "cimmeria-test-support",
+ "cimmeria-wire",
+ "cimmeria-workspace-hack",
+ "sqlx",
  "tokio",
  "tracing",
 ]
@@ -1554,6 +1572,7 @@ dependencies = [
  "cimmeria-cell-console",
  "cimmeria-cell-content",
  "cimmeria-cell-duel",
+ "cimmeria-cell-effect-scripts",
  "cimmeria-cell-interactions",
  "cimmeria-cell-methods",
  "cimmeria-cell-org",

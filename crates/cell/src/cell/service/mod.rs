@@ -13,6 +13,7 @@ use sqlx::PgPool;
 use tokio::sync::{mpsc, Notify};
 use tokio::task::JoinHandle;
 
+use cimmeria_cell_world::cell::effects::registry::EffectScripts;
 use cimmeria_cell_world::cell::plugin::CellPlugins;
 use cimmeria_common::ServerConfig;
 
@@ -68,6 +69,11 @@ pub struct CellService {
     /// loop starts. Set by the orchestrator from its plugin table; empty
     /// until then.
     pub(crate) plugins: CellPlugins,
+
+    /// The effect scripts (#962 step 4), installed on the `SpaceManager`
+    /// beside the plugins. Set by the orchestrator from the registry it
+    /// built from `cimmeria-cell-effect-scripts`; empty until then.
+    pub(crate) effect_scripts: EffectScripts,
 }
 
 impl CellService {
@@ -87,7 +93,19 @@ impl CellService {
             cell_loop_handle: None,
             shutdown_signal: None,
             plugins: CellPlugins::empty(),
+            effect_scripts: EffectScripts::empty(),
         }
+    }
+
+    /// Set the effect scripts the cell loop installs on its `SpaceManager`.
+    /// Called by the orchestrator before `start()`.
+    pub fn set_effect_scripts(&mut self, scripts: EffectScripts) {
+        self.effect_scripts = scripts;
+    }
+
+    /// The effect scripts `start()` will install.
+    pub fn effect_scripts(&self) -> &EffectScripts {
+        &self.effect_scripts
     }
 
     /// Set the feature plugins the cell loop installs on its `SpaceManager`.

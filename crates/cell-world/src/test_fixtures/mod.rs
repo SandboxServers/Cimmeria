@@ -19,11 +19,14 @@
 //!   `drain_*_for` / [`assert_pet_fully_gone`] helpers read its results.
 //! - [`seed_deployable`] and the `DEPLOYABLE_*` constants: the seeded 1012
 //!   Microwave Emitter (ability, effects, template 400, deployables row).
+//! - [`make_mgr_with_target`] and [`effect_with_nvp`]: the effect-script
+//!   target world (a player with room in both pools) and a one-NVP effect.
 //! - [`npc_spawn_record`]: a template-shaped `SpawnRecord` for spawning an
 //!   NPC through the real spawn-time derivations.
 
 mod content_events;
 mod deployables;
+mod effects;
 pub mod occluder_fixtures;
 mod pets;
 mod space_manager;
@@ -35,6 +38,7 @@ pub use deployables::{
     DEPLOYABLE_ABILITY, DEPLOYABLE_FLAGS, DEPLOYABLE_LIFETIME_EFFECT, DEPLOYABLE_MAX_RANGE,
     DEPLOYABLE_PULSE_EFFECT, DEPLOYABLE_SPEC, DEPLOYABLE_TEMPLATE, DEPLOYABLE_WARMUP,
 };
+pub use effects::{effect_with_nvp, make_mgr_with_target};
 pub use pets::{
     add_pet_owner, assert_pet_fully_gone, drain_entity_moved_for, drain_left_aoi_for,
     make_pet_world, pet_template_record, seed_pet_template, watched_pet_world,

@@ -106,7 +106,7 @@ fn world_crate_events_keep_their_file_and_index() {
         }
     }
     for target in [
-        "cimmeria_cell_world::cell::effects::scripts",
+        "cimmeria_cell_world::cell::effects::passives",
         "cimmeria_cell_world::cell::cover::stance",
         "cimmeria_cell_world::cell::arrival",
         "cimmeria_cell_world::cell::playtest_friction_watch",
@@ -294,6 +294,39 @@ fn content_crate_events_keep_their_file_and_index() {
             assert_eq!(
                 sinks(lvl),
                 set(&[file, SERVER_LOG, OTLP_SERVER]),
+                "{target} at {lvl}"
+            );
+        }
+    }
+}
+
+/// The effect scripts moved from `cimmeria_cell_world::cell::effects` to the
+/// `cimmeria-cell-effect-scripts` crate (#962 step 4), which changed the
+/// `module_path!()` of any untargeted row in them. No file layer named them
+/// before the move and none names them now; the crate's own row keeps DEBUG
+/// reaching SigNoz and INFO `server.log`, as `cimmeria_cell_world=debug` did.
+/// The runtime that stayed (`cell::effects::passives`) is pinned above.
+#[test]
+fn effect_scripts_crate_events_keep_their_index() {
+    let (dispatch, hits) = harness(FILE_LAYERS);
+    let set =
+        |names: &[&str]| -> BTreeSet<String> { names.iter().map(|s| s.to_string()).collect() };
+    for target in [
+        "cimmeria_cell_effect_scripts::cell::effects::scripts",
+        "cimmeria_cell_effect_scripts::cell::effects::pet_scripts",
+        "cimmeria_cell_effect_scripts::cell::effects::ammo_emp",
+    ] {
+        let sinks = |lvl| sinks_for(&dispatch, &hits, target, lvl);
+        assert!(sinks(Level::TRACE).is_empty(), "{target} at TRACE");
+        assert_eq!(
+            sinks(Level::DEBUG),
+            set(&[OTLP_SERVER]),
+            "{target} at DEBUG"
+        );
+        for lvl in [Level::INFO, Level::WARN, Level::ERROR] {
+            assert_eq!(
+                sinks(lvl),
+                set(&[SERVER_LOG, OTLP_SERVER]),
                 "{target} at {lvl}"
             );
         }

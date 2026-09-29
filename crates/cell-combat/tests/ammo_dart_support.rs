@@ -13,8 +13,8 @@ use std::collections::HashMap;
 
 use cimmeria_cell_catalog::cell::spawner::{AmmoCatalog, AmmoModifier};
 use cimmeria_cell_combat::cell::abilities::handle_use_ability;
+use cimmeria_cell_effect_scripts::cell::effects::ammo_dart_support::DART_SUPPORT_DAMAGE_MULT;
 use cimmeria_cell_world::cell::combat::faction_reaction::HOSTILE_FACTION;
-use cimmeria_cell_world::cell::effects::ammo_dart_support::DART_SUPPORT_DAMAGE_MULT;
 use cimmeria_cell_world::cell::space_manager::SpaceManager;
 use cimmeria_entity::abilities::{AbilityDef, EffectDef};
 use cimmeria_entity::ammo_type::{DART_DEFAULT, DART_STIM};
@@ -37,6 +37,7 @@ const TARGET_FOCUS_MAX: i32 = 1000;
 fn world(ammo_type: i32, target_is_player: bool) -> SpaceManager {
     cimmeria_entity::ammo_feature::set_finite_special(true);
     let mut mgr = SpaceManager::new(1);
+    cimmeria_cell_effect_scripts::cell::effects::registry::install(&mut mgr);
     mgr.parse_spaces_xml(
         r#"<?xml version="1.0"?><Spaces><Space WorldName="Castle" Instanced="false" MinX="-800" MaxX="800" MinY="-800" MaxY="800" /></Spaces>"#,
     )

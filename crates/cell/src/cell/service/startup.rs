@@ -44,6 +44,31 @@ impl CellService {
             );
         }
         space_mgr.install_plugins(self.plugins.clone());
+
+        // Effect scripts (#962 step 4). Installed before anything spawns: the
+        // spawn-time cover hold runs Cover Stance through the registry. The
+        // orchestrator refuses to start with an empty registry; a bare
+        // `CellService` (a test harness) starts anyway, and this WARN says
+        // every scripted effect falls back to the legacy NVP path.
+        if self.effect_scripts.is_empty() {
+            tracing::warn!(
+                target: "abilities",
+                event = "effect_scripts_empty",
+                reason = "effect_scripts_not_installed",
+                "cell service starting with no effect scripts -- every effect with a \
+                 script_name falls back to the legacy NVP path (no heals, shields, stuns, \
+                 stat buffs or cover stance)"
+            );
+        } else {
+            tracing::info!(
+                target: "abilities",
+                event = "effect_scripts_installed",
+                count = self.effect_scripts.len(),
+                scripts = ?self.effect_scripts.names().collect::<Vec<_>>(),
+                "effect scripts installed"
+            );
+        }
+        space_mgr.install_effect_scripts(self.effect_scripts.clone());
         match space_mgr.load_from_xml(&self.entities_dir) {
             Ok(()) => {
                 tracing::info!(
@@ -279,6 +304,27 @@ impl CellService {
             match spawner::load_effect_defs(pool).await {
                 Ok(defs) => {
                     space_mgr.effect_defs = defs;
+                    // #962 step 4: a script name the data carries and no
+                    // registered script answers is a missing registration.
+                    // Dispatch still falls back per call; this names them
+                    // once, in one row (the shipped seed has two such rows,
+                    // pinned by the scripts crate's live-DB guard).
+                    let missing = space_mgr
+                        .effect_scripts()
+                        .unregistered(space_mgr.effect_defs.values());
+                    if !missing.is_empty() {
+                        tracing::warn!(
+                            target: "abilities",
+                            event = "effect_script_unregistered",
+                            reason = "no_registered_script",
+                            count = missing.len(),
+                            scripts = ?missing,
+                            "effect rows name a script no registered script answers -- \
+                             they fall back to the legacy NVP path; add the script to \
+                             cimmeria-cell-effect-scripts' EFFECT_SCRIPTS or fix the \
+                             effects.script_name seed"
+                        );
+                    }
                 }
                 Err(e) => {
                     tracing::warn!("Failed to load effect defs: {e}");

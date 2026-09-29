@@ -86,6 +86,10 @@ cimmeria-cell-pets = { workspace = true }
 cimmeria-cell-duel = { workspace = true }
 # Squads and org creation (#962 step 3): OrgPlugin, the same way.
 cimmeria-cell-org = { workspace = true }
+# The effect scripts (#962 step 4, a registry move rather than a plugin):
+# `plugins::effect_scripts` builds the cell's EffectScripts registry from its
+# table, and nothing below the facade depends on it.
+cimmeria-cell-effect-scripts = { workspace = true }
 tokio = { workspace = true }
 sqlx = { workspace = true }
 serde_json = { workspace = true }
