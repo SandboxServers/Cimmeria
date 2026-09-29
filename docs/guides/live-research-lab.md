@@ -275,6 +275,13 @@ Its tools show up under the second server's name, so an agent addresses a player
 
 **When to use `wireclient` instead.** A second player that only has to exist and answer (a duel partner, a body to be visible, a trade or squad counterpart driven with `cell_method`/`base_method`) needs no window at all: use `sparbot` or `GameSession` from `crates/wireclient` ([wireclient.md](../architecture/wireclient.md)). It has no throttling and no shared client cache, and needs its own account too. Use a second full client when the second player's UI is part of what is being tested.
 
+## The display: screensaver and D3D
+
+Lab input goes through the client's hooked DirectInput, which never resets Windows' idle timer, so an unattended run reaches the screensaver after about ten minutes. While a screensaver owns the display, Direct3D 9 reports no adapter (`D3DERR_NOTAVAILABLE` from `GetDeviceCaps`): a client launched then dies on a "GetDeviceCaps failed" message box and an R6025 box, each with a Windows error sound, and the watchdog relaunches it until its cap. The supervisor prevents this:
+
+- While any `SGW.exe` runs, a supervisor thread holds `ES_DISPLAY_REQUIRED` (released when none runs), so the screensaver doesn't start.
+- Before every launch (including watchdog relaunches) it probes Direct3D. If the display is unavailable and a screensaver that is not password-protected is running, it dismisses it and probes again; otherwise the launch is refused with the reason (screensaver still running, password-protected screensaver, or display off/locked) instead of starting a client that can only show an error box.
+
 ## Client flows
 
 The `lab_*` flow tools turn the scripts agents kept rewriting (log in, make a fresh character, play it, click through the intro dialog, log out) into single calls. Each is supervisor-side orchestration over the input tools above: every button press is a real click or key, and Lua only reads (visibility, widget text, the character list). The one Lua-driven step is picking a server row by name, because list rows are not named windows; the Select button is still clicked.

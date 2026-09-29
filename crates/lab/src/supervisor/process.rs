@@ -214,6 +214,12 @@ mod win {
     /// whoever started it. Two clients on one machine misbehave, so the
     /// supervisor refuses to launch while this is non-empty.
     pub fn running_sgw_pids() -> Vec<u32> {
+        running_pids_where(super::is_sgw_image)
+    }
+
+    /// Pids of processes with a top-level window whose image path passes
+    /// `keep` (e.g. a running screensaver, `*.scr`).
+    pub fn running_pids_where(keep: impl Fn(&str) -> bool) -> Vec<u32> {
         let mut ctx = EnumCtx {
             candidates: Vec::new(),
         };
@@ -224,7 +230,7 @@ mod win {
         let mut pids: Vec<u32> = ctx.candidates.iter().map(|c| c.pid).collect();
         pids.sort_unstable();
         pids.dedup();
-        pids.retain(|&pid| image_path(pid).is_some_and(|p| super::is_sgw_image(&p)));
+        pids.retain(|&pid| image_path(pid).is_some_and(|p| keep(&p)));
         pids
     }
 
@@ -258,7 +264,10 @@ mod win {
 }
 
 #[cfg(windows)]
-pub use win::{find_main_window, is_alive, launch, post_message, running_sgw_pids, terminate};
+pub use win::{
+    find_main_window, is_alive, launch, post_message, running_pids_where, running_sgw_pids,
+    terminate,
+};
 
 // Non-Windows stubs so the crate compiles on Linux dev hosts / coverage
 // and the portable supervisor tests still run. The lab only runs on the
@@ -275,6 +284,10 @@ pub fn launch(
 }
 #[cfg(not(windows))]
 pub fn running_sgw_pids() -> Vec<u32> {
+    Vec::new()
+}
+#[cfg(not(windows))]
+pub fn running_pids_where(_keep: impl Fn(&str) -> bool) -> Vec<u32> {
     Vec::new()
 }
 #[cfg(not(windows))]
