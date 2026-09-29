@@ -9,6 +9,7 @@ use super::data::{MailOp, NpcAoIData, PlayerAoIData};
 use super::item_use::ConsumeItemForUse;
 use super::mail_gm_cell_to_base::MailGmCellToBase;
 use super::org_cell_to_base::OrgCellToBase;
+use super::plugin_msg::PluginMsg;
 use crate::cell::vault::VaultAccess;
 use crate::crafting::{CraftRequest, CraftingStations, GmAllCraft, GmCraftGrant, RespecCraftOpen};
 
@@ -901,4 +902,9 @@ pub enum CellToBaseMsg {
     /// Special-ammo reserve traffic (AM-02): a reload draw or a switch
     /// return. See `ammo_reserve.rs`.
     AmmoReserve(AmmoReserveRequest),
+
+    /// A migrated feature's message (#962, plugin ADR §3.4): a feature-owned
+    /// payload the base plugin registered for consumes. New feature
+    /// messages go here instead of growing this enum. See `plugin_msg.rs`.
+    Plugin(PluginMsg),
 }

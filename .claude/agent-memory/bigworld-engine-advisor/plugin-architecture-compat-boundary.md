@@ -41,5 +41,18 @@ Confirmed as advisor for #962 (2026-09-28); canonical text is ADR §2 (C1-C8).
   Python `open()` without `encoding='utf-8'` silently mis-matches or
   mis-encodes non-ASCII (`–`, `§`) in Rust docs; always pass the encoding and
   assert each replacement landed.
+- Step 5 part A (BasePlugin core, `cimmeria-base-session` `base::plugin`,
+  2026-09-28, ADR §4.5): crafting's verbs 95-100 are SGWPlayer CELL methods
+  (`SGWPlayer.def:916-948` sits in `<CellMethods>` 564-1109), not base
+  methods, so the brief's "register 95-100 as base methods" was wrong;
+  check the def section before trusting a ticket's index space. SGWPlayer
+  has 30 exposed base methods (0xC0-0xDD). The base has no hub like
+  `SpaceManager`, so each `ConnectedClientState` carries the registry
+  (`plugins`, stamped at login) and hook sites read it via
+  `session_plugins(connected, addr)`; the cell-message loop takes it as an
+  argument (`route_cell_message`; `handle_cell_message` became a
+  test-support wrapper with an empty table so ~50 tests kept their calls).
+  Some `.rs` files have mixed CRLF/LF lines (`server/src/logging/filters.rs`
+  filter string): a CRLF-normalizing replace misses them; use Edit there.
 
 Related: [[na38-client-orders-reliable-stream]], [[entity-def-and-pak-ground-truth]].

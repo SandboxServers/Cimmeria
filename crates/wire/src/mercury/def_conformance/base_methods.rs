@@ -45,6 +45,34 @@ fn sgw_player_base_constants_match_the_flattened_exposed_base_methods() {
     );
 }
 
+/// F, by name: `base_method_name` (the table the base plugin registry
+/// validates registrations against, #962) names every flattened exposed
+/// SGWPlayer base method at its index, and nothing past the last one.
+#[test]
+fn base_method_names_are_the_flattened_exposed_base_methods() {
+    use crate::base::names::{base_method_name, BASE_METHOD_COUNT};
+
+    let base = flatten("SGWPlayer", Section::Base);
+    let wrong: Vec<String> = base
+        .iter()
+        .enumerate()
+        .filter(|(i, name)| base_method_name(*i as u8) != name.as_str())
+        .map(|(i, name)| {
+            format!(
+                "{i}: def {name}, base_method_name {}",
+                base_method_name(i as u8)
+            )
+        })
+        .collect();
+    assert!(
+        wrong.is_empty(),
+        "base_method_name disagrees with entities/defs:\n  {}",
+        wrong.join("\n  ")
+    );
+    assert_eq!(BASE_METHOD_COUNT as usize, base.len());
+    assert_eq!(base_method_name(base.len() as u8), "unknown");
+}
+
 #[test]
 fn basemsg_constants_match_the_flattened_account_client_methods() {
     let account = flatten("Account", Section::Client);

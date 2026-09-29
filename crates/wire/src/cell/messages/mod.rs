@@ -27,6 +27,8 @@
 //!   special-ammo reload draw and switch return (ammo campaign AM-02).
 //! - `item_use` — `ConsumeItemForUse` and `ItemUseConsumed`, the native
 //!   consumable round trip (the base consumes, then the cell applies).
+//! - `plugin_msg` — `PluginMsg`, the feature-message envelope carried by
+//!   `CellToBaseMsg::Plugin` (#962, plugin ADR §3.4).
 
 mod ammo_gm_cell_to_base;
 mod ammo_reserve;
@@ -45,6 +47,7 @@ mod loot_grant;
 mod mail_gm_cell_to_base;
 mod org_base_to_cell;
 mod org_cell_to_base;
+mod plugin_msg;
 
 pub use crate::crafting::{
     CraftRequest, CraftVerb, CraftingStations, GmAllCraft, GmCraftGrant, GmCraftGrantKind,
@@ -72,6 +75,7 @@ pub use loot_grant::{GrantRefusal, LootGrantSource};
 pub use mail_gm_cell_to_base::{MailGmActor, MailGmCellToBase};
 pub use org_base_to_cell::OrgBaseToCell;
 pub use org_cell_to_base::OrgCellToBase;
+pub use plugin_msg::PluginMsg;
 
 #[cfg(test)]
 mod tests;

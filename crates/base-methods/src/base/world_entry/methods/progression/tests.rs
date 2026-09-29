@@ -80,6 +80,8 @@ pub(super) fn make_connected_state(active_player_id: Option<i32>) -> ConnectedCl
             "127.0.0.1:9999".parse().unwrap(),
         )),
         crafting_options: Default::default(),
+        extensions: Default::default(),
+        plugins: Default::default(),
     }
 }
 

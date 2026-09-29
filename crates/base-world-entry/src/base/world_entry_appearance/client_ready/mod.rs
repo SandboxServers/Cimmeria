@@ -11,6 +11,7 @@ use std::collections::HashMap;
 use std::net::SocketAddr;
 use std::sync::{Arc, Mutex};
 
+use cimmeria_base_session::base::plugin::{BaseCtx, WorldEntryCall, WorldEntryHookPoint};
 use cimmeria_mercury::transport::Transport;
 use tokio::sync::mpsc;
 
@@ -123,7 +124,7 @@ pub async fn handle_on_client_ready(
     // still awaiting DB reads — a hold armed any later (say, next to
     // `send_cinematic`) lets those creates reach a client that is about to
     // play a fullscreen movie. See `cinematic_aoi_hold`.
-    let (pending, player_name, access_level, account_id, aoi_hold) = {
+    let (pending, player_name, access_level, account_id, aoi_hold, plugins) = {
         let mut clients = connected.lock().map_err(|_| "connected lock poisoned")?;
         let entry = clients.get_mut(&addr);
         match entry {
@@ -152,12 +153,13 @@ pub async fn handle_on_client_ready(
                     c.access_level,
                     c.account_id,
                     aoi_hold,
+                    c.plugins.clone(),
                 )
             }
             // No session for this addr: `pending` is `None` so we bail below
             // before `account_id` is ever read. The 0 is unreachable filler,
             // not a sentinel any log will carry.
-            None => (None, None, 0, 0, None),
+            None => (None, None, 0, 0, None, Default::default()),
         }
     };
 
@@ -493,6 +495,25 @@ pub async fn handle_on_client_ready(
     )
     .await;
 
+    // The base plugins' world-entry work (#962 step 5), at the same point.
+    plugins
+        .run_world_entry_hook(
+            WorldEntryHookPoint::ClientReadyAfterOrgRestore,
+            WorldEntryCall {
+                addr,
+                entity_id,
+                player_id: pending.player_id,
+                ctx: BaseCtx {
+                    db_pool,
+                    cell_tx,
+                    transport,
+                    connected,
+                    entity_to_addr,
+                },
+            },
+        )
+        .await;
+
     // Cache this character's Ignore list on the session (tells) and push it
     // to the cell entity (spatial chat), D-SS15. Here, after InitPlayerState,
     // so every world entry re-seeds it: gate travel creates a fresh cell
@@ -635,5 +656,7 @@ pub async fn handle_on_client_ready(
     Ok(())
 }
 
+#[cfg(test)]
+mod plugin_hook_tests;
 #[cfg(test)]
 mod tests;

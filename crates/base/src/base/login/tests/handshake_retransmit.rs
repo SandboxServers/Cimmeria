@@ -87,6 +87,7 @@ async fn login_puts_connect_reply_and_time_sync_in_the_tx_window() {
         &entity_to_addr,
         &None,
         cimmeria_mercury::encryption::EncryptionVersion::V1,
+        &cimmeria_base_session::base::plugin::BasePlugins::empty(),
     )
     .await
     .expect("Phase 3 handoff");
@@ -221,6 +222,7 @@ async fn lost_handshake_packet_is_resent(drop_seq: u32) {
         Arc::new(Mutex::new(EntityManager::new())),
         Arc::new(Mutex::new(HashMap::new())),
         cimmeria_mercury::encryption::EncryptionVersion::V1,
+        cimmeria_base_session::base::plugin::BasePlugins::empty(),
     ));
 
     client

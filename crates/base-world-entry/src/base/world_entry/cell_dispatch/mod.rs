@@ -40,6 +40,8 @@ use cimmeria_mercury::transport::Transport;
 use sqlx::PgPool;
 use tokio::sync::mpsc;
 
+use cimmeria_base_session::base::plugin::{BaseCtx, BasePlugins};
+
 use crate::cell::messages::{BaseToCellMsg, CellToBaseMsg};
 
 use super::super::ConnectedClientState;
@@ -86,6 +88,9 @@ pub(super) struct DispatchCtx<'a> {
     pub minigame_registry: &'a Option<crate::minigame::SessionRegistry>,
     pub minigame_external_host: &'a str,
     pub minigame_external_port: u16,
+    /// The base plugin table (#962 step 5): the consumers of
+    /// `CellToBaseMsg::Plugin`.
+    pub plugins: &'a BasePlugins,
 }
 
 /// The crafting handlers' view of the dispatch context.
@@ -99,7 +104,14 @@ fn craft_ctx<'a>(ctx: &DispatchCtx<'a>) -> crate::base::crafting::request::Craft
     }
 }
 
-/// Handle a message from CellService -- dispatches AoI packets to witness clients.
+/// Handle a message from CellService with no base plugin installed: every
+/// `CellToBaseMsg::Plugin` envelope is dropped with the no-consumer WARN.
+///
+/// For the dispatch tests (`test-support`), which predate the plugin table
+/// and exercise the static arms; production goes through
+/// [`route_cell_message`] with the service's table, and so does a test that
+/// needs a plugin.
+#[cfg(any(test, feature = "test-support"))]
 pub async fn handle_cell_message(
     msg: CellToBaseMsg,
     transport: &Arc<dyn Transport>,
@@ -111,6 +123,36 @@ pub async fn handle_cell_message(
     minigame_external_host: &str,
     minigame_external_port: u16,
 ) {
+    route_cell_message(
+        msg,
+        transport,
+        connected,
+        entity_to_addr,
+        cell_tx,
+        db_pool,
+        minigame_registry,
+        minigame_external_host,
+        minigame_external_port,
+        &BasePlugins::empty(),
+    )
+    .await
+}
+
+/// Handle a message from CellService -- dispatches AoI packets to witness
+/// clients. `plugins` is the base plugin table, which consumes the
+/// `CellToBaseMsg::Plugin` envelopes (#962 step 5).
+pub async fn route_cell_message(
+    msg: CellToBaseMsg,
+    transport: &Arc<dyn Transport>,
+    connected: &Arc<Mutex<HashMap<SocketAddr, ConnectedClientState>>>,
+    entity_to_addr: &Arc<Mutex<HashMap<u32, SocketAddr>>>,
+    cell_tx: &Option<mpsc::Sender<BaseToCellMsg>>,
+    db_pool: &Option<Arc<PgPool>>,
+    minigame_registry: &Option<crate::minigame::SessionRegistry>,
+    minigame_external_host: &str,
+    minigame_external_port: u16,
+    plugins: &BasePlugins,
+) {
     let ctx = DispatchCtx {
         transport,
         connected,
@@ -120,6 +162,7 @@ pub async fn handle_cell_message(
         minigame_registry,
         minigame_external_host,
         minigame_external_port,
+        plugins,
     };
 
     // Two-level routing: the outer match only decides which family owns the
@@ -245,6 +288,24 @@ pub async fn handle_cell_message(
         }
 
         CellToBaseMsg::Bank(bank) => bank_dispatch::route(bank, &ctx).await,
+
+        // A migrated feature's message (#962, plugin ADR §3.4): the base
+        // plugin that consumes its payload type handles it; one nobody
+        // consumes is dropped with a WARN (`reason = "no_consumer"`).
+        CellToBaseMsg::Plugin(msg) => {
+            ctx.plugins
+                .dispatch_cell_message(
+                    msg,
+                    BaseCtx {
+                        db_pool: ctx.db_pool,
+                        cell_tx: ctx.cell_tx,
+                        transport: ctx.transport,
+                        connected: ctx.connected,
+                        entity_to_addr: ctx.entity_to_addr,
+                    },
+                )
+                .await;
+        }
 
         // The special-ammo reserve round trip (ammo campaign AM-02).
         CellToBaseMsg::AmmoReserve(req) => {
