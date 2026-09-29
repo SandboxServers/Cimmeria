@@ -32,7 +32,7 @@ username = "Cimmeria"
 # Accounts whose events never post: login names (any case) or numeric
 # account ids. Characters those accounts log in with are muted too, so a
 # lab or test account can play through content without flooding channels.
-# muted_accounts = ["lab"]
+# muted_accounts = ["lab", "lab2", "lab3", "lab4", "lab5"]
 
 # ─── Channels ──────────────────────────────────────────────────────────
 #

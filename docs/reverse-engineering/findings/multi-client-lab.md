@@ -80,7 +80,7 @@ Tests: 14 unit tests in `instance.rs` (name validation, paths, environment, the 
 
 ## Needs an owner decision
 
-1. **A `lab2` account.** Only `lab` exists, and a duplicate login evicts the first client, so a true two-player run needs a second account. Proposed, not committed (seeds ship with a release, and the account list is the owner's call):
+1. **A `lab2` account.** *Done 2026-09-29: `lab2` to `lab5` are seeded (ids 11 to 14) and muted in Discord.* Before that only `lab` existed, and a duplicate login evicts the first client, so a true two-player run needs a second account. Proposed, not committed (seeds ship with a release, and the account list is the owner's call):
 
    ```sql
    -- db/sgw/Accounts/Seed/account.sql, after account_id 10

@@ -269,7 +269,7 @@ Its tools show up under the second server's name, so an agent addresses a player
 
 `CIMMERIA_LAB_MAX_CLIENTS` caps the clients (default 2, ceiling 4). The start guard still refuses when an `SGW.exe` the lab does not own is running.
 
-**Two accounts.** A second login on the same account evicts the first client (`duplicate_login`), so the second instance needs its own account and `lab-account.p2.json`. Only `lab` exists today; a `lab2` seed is proposed in the finding and waits for an owner decision. Until it ships, a single-account run can still check everything that does not need two players online.
+**Two accounts.** A second login on the same account evicts the first client (`duplicate_login`), so the second instance needs its own account and `lab-account.p2.json`. The seed has `lab` plus `lab2` to `lab5` (account ids 10 to 14, same password as the other seed accounts); give each instance its own account in its `lab-account.<instance>.json`, and keep all five in the Discord `muted_accounts` list.
 
 **Focus.** A client whose window is not in the foreground runs at below-normal priority with a 5 ms sleep per tick (`FEngineLoop::Tick`). Turn on `client_input_focus` (virtual focus) for both instances: it answers `GetForegroundWindow` per process, so neither is throttled and each keeps reading its own lab input. Real keyboard and mouse still go to the window in front, so do not type while a scenario runs. Both windows open at the same place and size; screenshots use `PrintWindow` per window, so an overlapped window still captures.
 

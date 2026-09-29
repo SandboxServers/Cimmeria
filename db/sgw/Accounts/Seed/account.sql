@@ -28,6 +28,11 @@ INSERT INTO account (account_id, account_name, password, accesslevel, enabled) V
 -- lab_create_character). Its characters are disposable test characters;
 -- the automation keeps it under the client's 8-character cap.
 INSERT INTO account (account_id, account_name, password, accesslevel, enabled) VALUES (10, 'lab',     'a94a8fe5ccb19ba61c4c0873d391e987982fbbd3', 2, true);
+-- extra lab accounts for multi-client (two-player) scenarios; same rules as lab.
+INSERT INTO account (account_id, account_name, password, accesslevel, enabled) VALUES (11, 'lab2',    'a94a8fe5ccb19ba61c4c0873d391e987982fbbd3', 2, true);
+INSERT INTO account (account_id, account_name, password, accesslevel, enabled) VALUES (12, 'lab3',    'a94a8fe5ccb19ba61c4c0873d391e987982fbbd3', 2, true);
+INSERT INTO account (account_id, account_name, password, accesslevel, enabled) VALUES (13, 'lab4',    'a94a8fe5ccb19ba61c4c0873d391e987982fbbd3', 2, true);
+INSERT INTO account (account_id, account_name, password, accesslevel, enabled) VALUES (14, 'lab5',    'a94a8fe5ccb19ba61c4c0873d391e987982fbbd3', 2, true);
 
 --
 -- TOC entry 2709 (class 0 OID 0)
@@ -35,4 +40,4 @@ INSERT INTO account (account_id, account_name, password, accesslevel, enabled) V
 -- Name: accounts_account_id_seq; Type: SEQUENCE SET; Schema: public; Owner: -
 --
 
-SELECT pg_catalog.setval('accounts_account_id_seq', 10, true);
+SELECT pg_catalog.setval('accounts_account_id_seq', 14, true);
