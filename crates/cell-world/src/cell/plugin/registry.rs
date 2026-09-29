@@ -8,7 +8,7 @@ use tokio::sync::mpsc;
 
 use super::{
     CellMethodHandler, CellPlugin, DeathHook, DeathHookPoint, EntityHook, EntityHookPoint,
-    TickHook, TickStage, PLUGIN_OWNED_CELL_METHODS,
+    PlayerHook, PlayerHookPoint, TickHook, TickStage, PLUGIN_OWNED_CELL_METHODS,
 };
 use crate::cell::messages::CellToBaseMsg;
 use crate::cell::space_manager::SpaceManager;
@@ -75,6 +75,12 @@ impl CellPluginBuilder<'_> {
         self.registry.death_hooks.push((point, self.plugin, hook));
         self
     }
+
+    /// Run `hook` for a player entity and its character id at `point`.
+    pub fn player_hook(&mut self, point: PlayerHookPoint, hook: PlayerHook) -> &mut Self {
+        self.registry.player_hooks.push((point, self.plugin, hook));
+        self
+    }
 }
 
 #[derive(Default)]
@@ -86,6 +92,7 @@ struct Registry {
     ticks: Vec<(TickStage, &'static str, TickHook)>,
     entity_hooks: Vec<(EntityHookPoint, &'static str, EntityHook)>,
     death_hooks: Vec<(DeathHookPoint, &'static str, DeathHook)>,
+    player_hooks: Vec<(PlayerHookPoint, &'static str, PlayerHook)>,
 }
 
 /// The validated plugin registry. Cheap to clone (one `Arc`).
@@ -219,6 +226,23 @@ impl CellPlugins {
             }
         }
     }
+
+    /// Fire every hook registered for `point` for the player entity
+    /// `entity_id` and its character `player_id`, in table order.
+    pub async fn run_player_hook(
+        &self,
+        point: PlayerHookPoint,
+        entity_id: u32,
+        player_id: i32,
+        tx: &mpsc::Sender<CellToBaseMsg>,
+        space_mgr: &mut SpaceManager,
+    ) {
+        for (p, _, hook) in &self.inner.player_hooks {
+            if *p == point {
+                hook(entity_id, player_id, tx, space_mgr).await;
+            }
+        }
+    }
 }
 
 impl std::fmt::Debug for CellPlugins {
@@ -232,6 +256,7 @@ impl std::fmt::Debug for CellPlugins {
             .field("ticks", &self.inner.ticks.len())
             .field("entity_hooks", &self.inner.entity_hooks.len())
             .field("death_hooks", &self.inner.death_hooks.len())
+            .field("player_hooks", &self.inner.player_hooks.len())
             .finish()
     }
 }

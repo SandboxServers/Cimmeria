@@ -29,10 +29,6 @@ cimmeria-cell-world = { workspace = true }
 # The Base<->Cell message contract, the Mercury method indices, the chat
 # channel ids and the client method indices.
 cimmeria-wire = { workspace = true }
-# The squad handlers the `.squad_*` commands reuse (ORG-04): the invite
-# checks and the join fanout live beside the squad cell methods. The only
-# console -> cell-methods edge; cell-methods never names the console.
-cimmeria-cell-methods = { workspace = true }
 # The chain engine every handler threads through.
 cimmeria-content-engine = { workspace = true }
 cimmeria-common = { workspace = true }

@@ -1,41 +1,42 @@
-//! Founding a Team or Command, cell side (ORG-05).
+//! Founding a Team or Command, cell side (ORG-05): the half the
+//! base-message handler calls.
 //!
 //! - [`on_registrar_eligible`]: `OrgBaseToCell::RegistrarEligible`. The base
 //!   found the player eligible after a registrar click
 //!   (`interactions::org_registrar`); record the pending creation and open
 //!   the naming dialog, `launchOrganizationCreation` [135].
-//! - [`on_organization_creation`]: cell method 94. Honoured only against
-//!   the player's pending creation, whose type it uses (the wire carries
-//!   only the name); the name must pass D-ORG10; then
+//! - Cell method 94 (the name) is the org plugin's (`cimmeria-cell-org`,
+//!   `cell::organization::creation::on_organization_creation`). Honoured
+//!   only against the player's pending creation, whose type it uses (the
+//!   wire carries only the name); the name must pass D-ORG10; then
 //!   `OrgCellToBase::Create` goes to the base, which creates, answers the
-//!   client and replies with [`on_create_result`].
+//!   client and replies with [`on_create_result`]. The plugin also drops
+//!   the offer on disconnect.
 //! - [`on_create_result`]: `OrgBaseToCell::CreateResult`, which closes the
 //!   pending creation or charges it an attempt.
-//! - [`on_disconnect`]: the `DisconnectEntity` arm drops the offer.
 //!
-//! Every refusal decided here answers the client with
+//! Every refusal decided on the cell answers the client with
 //! `onOrganizationCreationResult` [134] `(0, RetCode)` and a feedback line
 //! (the client shows no text for either byte, ORG-E1 Q4), and writes one
-//! outcome row ([`telemetry`]). State: `SpaceManager::org_creations`.
+//! outcome row ([`telemetry`]). State: the pending creations, a
+//! `SpaceManager` resource (`cell::org_creation::OrgCreationResources`).
 
-mod telemetry;
+pub mod telemetry;
 
 use std::time::Instant;
 
 use tokio::sync::mpsc;
 
 use cimmeria_entity::cell_entity::PlayerIdentity;
-use cimmeria_entity::organization::{org_text, OrgType, TextField};
-use cimmeria_wire::cell::cell_methods::organization::decode_on_organization_creation;
+use cimmeria_entity::organization::OrgType;
 use cimmeria_wire::cell::client_methods::player::{
     build_launch_organization_creation, build_on_organization_creation_result,
-    org_creation_ret_code as rc, LAUNCH_ORGANIZATION_CREATION, ON_ORGANIZATION_CREATION_RESULT,
-    ORG_CREATION_RESULT_REFUSED,
+    LAUNCH_ORGANIZATION_CREATION, ON_ORGANIZATION_CREATION_RESULT, ORG_CREATION_RESULT_REFUSED,
 };
 
-use super::forward::feedback_line;
-use crate::cell::messages::{CellToBaseMsg, OrgCellToBase};
-use crate::cell::org_creation::{OpenReject, Opened, TakeMiss};
+use super::feedback_line;
+use crate::cell::messages::CellToBaseMsg;
+use crate::cell::org_creation::{OpenReject, Opened, OrgCreationResources};
 use crate::cell::space_manager::SpaceManager;
 use telemetry::{Action, Outcome};
 
@@ -56,7 +57,7 @@ pub const NAME_INVALID_TEXT: &str =
 pub const UNAVAILABLE_TEXT: &str = "The registrar cannot help you right now. Try again later.";
 
 /// Queue one client call; WARN if the base channel is closed.
-async fn send(
+pub async fn send(
     tx: &mpsc::Sender<CellToBaseMsg>,
     entity_id: u32,
     method_index: u16,
@@ -84,7 +85,7 @@ async fn send(
 }
 
 /// The refusal pair: 134 `(0, code)` then the line.
-async fn refuse(tx: &mpsc::Sender<CellToBaseMsg>, entity_id: u32, code: u8, text: &str) {
+pub async fn refuse(tx: &mpsc::Sender<CellToBaseMsg>, entity_id: u32, code: u8, text: &str) {
     send(
         tx,
         entity_id,
@@ -96,7 +97,7 @@ async fn refuse(tx: &mpsc::Sender<CellToBaseMsg>, entity_id: u32, code: u8, text
 }
 
 /// `text` on the feedback channel.
-async fn say(tx: &mpsc::Sender<CellToBaseMsg>, entity_id: u32, text: &str) {
+pub async fn say(tx: &mpsc::Sender<CellToBaseMsg>, entity_id: u32, text: &str) {
     if tx.send(feedback_line(entity_id, text)).await.is_err() {
         tracing::warn!(
             target: "org",
@@ -106,129 +107,6 @@ async fn say(tx: &mpsc::Sender<CellToBaseMsg>, entity_id: u32, text: &str) {
             "organization creation line could not be queued"
         );
     }
-}
-
-/// The 134 code and line for a pending-creation miss.
-fn miss_reply(miss: TakeMiss) -> (u8, &'static str) {
-    match miss {
-        TakeMiss::NoPending => (rc::NO_PENDING_CREATION, NO_PENDING_TEXT),
-        TakeMiss::Expired | TakeMiss::SpaceChanged => {
-            (rc::NO_PENDING_CREATION, PENDING_EXPIRED_TEXT)
-        }
-        TakeMiss::Exhausted => (rc::RATE_LIMITED, RATE_LIMITED_TEXT),
-        TakeMiss::InFlight => (rc::RATE_LIMITED, IN_FLIGHT_TEXT),
-    }
-}
-
-/// Cell method 94 `onOrganizationCreation(WSTRING name)`.
-#[tracing::instrument(name = "org.create", level = "info", skip_all, fields(entity_id))]
-pub async fn on_organization_creation(
-    entity_id: u32,
-    args: &[u8],
-    tx: &mpsc::Sender<CellToBaseMsg>,
-    space_mgr: &mut SpaceManager,
-) {
-    let name = match decode_on_organization_creation(args) {
-        Ok(name) => name,
-        Err(e) => {
-            // A real client always sends the `.def` shape: a forged or
-            // corrupted call, logged and not answered.
-            tracing::warn!(
-                target: "org",
-                event = "org.cell_method_malformed",
-                entity_id,
-                method_index = 94u16,
-                reason = e.reason(),
-                error = %e,
-                "organization cell method payload did not decode"
-            );
-            return;
-        }
-    };
-    let actor = space_mgr.player_identity(entity_id);
-    let mut row = Outcome::new(Action::Create, actor, entity_id);
-    row.name_units = Some(name.encode_utf16().count());
-
-    let (Some(player_id), Some(space_id)) =
-        (actor.player_id, space_mgr.get_entity_space_id(entity_id))
-    else {
-        row.rejected("not_ready");
-        refuse(tx, entity_id, rc::SERVER_ERROR, UNAVAILABLE_TEXT).await;
-        return;
-    };
-
-    let org_type = match space_mgr
-        .org_creations
-        .begin_attempt(player_id, space_id, Instant::now())
-    {
-        Ok(t) => t,
-        Err((miss, pending)) => {
-            if let Some(p) = pending.as_ref() {
-                row.org_type = Some(p.org_type);
-                row.attempts_left = Some(p.attempts_left);
-                match miss {
-                    TakeMiss::Expired => telemetry::pending_expired(actor, p, "ttl"),
-                    TakeMiss::SpaceChanged => telemetry::pending_expired(actor, p, "space_changed"),
-                    _ => {}
-                }
-            }
-            row.rejected(miss.reason());
-            let (code, text) = miss_reply(miss);
-            refuse(tx, entity_id, code, text).await;
-            return;
-        }
-    };
-    row.org_type = Some(org_type);
-
-    let name = match org_text::validate(TextField::Name, &name) {
-        Ok(n) => n,
-        Err(reject) => {
-            let left = space_mgr.org_creations.charge_attempt(player_id);
-            telemetry::attempt_charged(actor, left, "cell_text_check");
-            row.attempts_left = left;
-            row.text_reason = Some(reject.reason());
-            row.rejected("text_invalid");
-            refuse(tx, entity_id, rc::NAME_INVALID, NAME_INVALID_TEXT).await;
-            return;
-        }
-    };
-
-    let forwarded = tx
-        .send(CellToBaseMsg::Org(OrgCellToBase::Create {
-            player_id,
-            entity_id,
-            org_type,
-            name,
-        }))
-        .await
-        .is_ok();
-    if !forwarded {
-        tracing::warn!(
-            target: "org",
-            event = "org.create_forward_failed",
-            reason = "cell_to_base_closed",
-            account_id = actor.account_id,
-            player_id,
-            entity_id,
-            "organization creation could not reach the base"
-        );
-        let left = space_mgr.org_creations.charge_attempt(player_id);
-        row.attempts_left = left;
-        row.rejected("base_unreachable");
-        refuse(tx, entity_id, rc::SERVER_ERROR, UNAVAILABLE_TEXT).await;
-        return;
-    }
-    // The base writes this action's outcome row once it has decided.
-    tracing::debug!(
-        target: "org",
-        event = "org.create_forwarded",
-        account_id = actor.account_id,
-        player_id,
-        entity_id,
-        org_type = org_type.name(),
-        name_units = row.name_units,
-        "organization name forwarded to the base"
-    );
 }
 
 /// The entity's identity, if it is still character `player_id` (a message
@@ -292,10 +170,13 @@ pub async fn on_registrar_eligible(
         row.rejected("not_ready");
         return;
     };
-    let opened =
-        space_mgr
-            .org_creations
-            .open(player_id, org_type, npc_entity_id, space_id, Instant::now());
+    let opened = space_mgr.resources.org_creations_mut().open(
+        player_id,
+        org_type,
+        npc_entity_id,
+        space_id,
+        Instant::now(),
+    );
     let refreshed = match opened {
         Ok(Opened::Created) => false,
         Ok(Opened::Refreshed) => true,
@@ -307,7 +188,8 @@ pub async fn on_registrar_eligible(
         }
     };
     let pending = *space_mgr
-        .org_creations
+        .resources
+        .org_creations()
         .get(player_id)
         .expect("open just recorded the offer");
     telemetry::pending_created(actor, &pending, refreshed);
@@ -321,7 +203,7 @@ pub async fn on_registrar_eligible(
     .await
     {
         // The dialog never opened; do not leave an offer behind it.
-        if let Some(p) = space_mgr.org_creations.clear(player_id) {
+        if let Some(p) = space_mgr.resources.org_creations_mut().clear(player_id) {
             telemetry::pending_expired(actor, &p, "send_failed");
         }
         row.rejected("base_unreachable");
@@ -345,7 +227,7 @@ pub fn on_create_result(
         ..space_mgr.player_identity(entity_id)
     };
     if created {
-        match space_mgr.org_creations.consume(player_id) {
+        match space_mgr.resources.org_creations_mut().consume(player_id) {
             Some(p) => telemetry::pending_consumed(actor, &p),
             None => tracing::debug!(
                 target: "org",
@@ -357,18 +239,10 @@ pub fn on_create_result(
             ),
         }
     } else {
-        let left = space_mgr.org_creations.charge_attempt(player_id);
+        let left = space_mgr
+            .resources
+            .org_creations_mut()
+            .charge_attempt(player_id);
         telemetry::attempt_charged(actor, left, "base");
-    }
-}
-
-/// `DisconnectEntity`: drop the player's offer.
-pub fn on_disconnect(entity_id: u32, space_mgr: &mut SpaceManager) {
-    let actor = space_mgr.player_identity(entity_id);
-    let Some(player_id) = actor.player_id else {
-        return;
-    };
-    if let Some(p) = space_mgr.org_creations.clear(player_id) {
-        telemetry::pending_expired(actor, &p, "disconnect");
     }
 }

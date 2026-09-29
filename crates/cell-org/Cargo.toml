@@ -1,0 +1,42 @@
+[package]
+name = "cimmeria-cell-org"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+publish = false
+description = "Squads and organization creation as a cell plugin for the Cimmeria server emulator: the OrganizationMember cell methods (8-19) and onOrganizationCreation (94), and the disconnect and world-entry hooks, registered with the cell at startup"
+
+# Step 3 of the plugin migration in docs/architecture/plugin-architecture.md
+# (#962). A feature leaf: it depends on the cell systems it calls, and only the
+# composition root (cimmeria-services, which lists OrgPlugin in the plugin
+# table) and test code depend on it. It must never become a dependency of a
+# cell crate: that would put it back under the long rebuild tail the plugin
+# model removes.
+[dependencies]
+# SpaceManager, the plugin API (`cell::plugin`) and the squad and
+# pending-creation registries (`cell::squad`, `cell::org_creation`).
+cimmeria-cell-world = { workspace = true }
+# The organization half the lower crates still call
+# (`cell::organization`): the base-forwarded squad invite and kick, the GM
+# squad commands, the registrar reply and the create result, with the shared
+# fanout, feedback and telemetry the plugin's handlers build on.
+cimmeria-cell-interactions = { workspace = true }
+# The Base<->Cell message contract, the organization cell-method and
+# client-method indices and codecs.
+cimmeria-wire = { workspace = true }
+# The organization id routing, the text rules and the player identity.
+cimmeria-entity = { workspace = true }
+tokio = { workspace = true }
+tracing = { workspace = true }
+cimmeria-workspace-hack = { version = "0.1", path = "../workspace-hack" }
+
+[dev-dependencies]
+# The live-DB gate, `LogCapture` and the source-scan walker, re-exported from
+# the `#[cfg(test)] mod test_support` shim in lib.rs. Every crate with this
+# dev-dependency must be listed in tools/test-live-db.{sh,ps1};
+# `live_db_wrapper_lists_every_test_support_crate` enforces it.
+cimmeria-test-support = { workspace = true }
+# The world fixtures (`make_space_manager*`).
+cimmeria-cell-world = { workspace = true, features = ["test-support"] }
+# The chain engine the registration tests hand the plugin's handlers.
+cimmeria-content-engine = { workspace = true }

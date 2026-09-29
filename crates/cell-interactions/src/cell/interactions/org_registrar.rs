@@ -16,7 +16,7 @@
 //! base, which checks D-ORG18 eligibility (the cell does not know a
 //! character's Teams and Commands). An eligible player comes back as
 //! `OrgBaseToCell::RegistrarEligible`, and
-//! `cell_methods::organization::creation` then records the pending
+//! `cell::organization::creation` then records the pending
 //! creation and sends `launchOrganizationCreation` [135]. An ineligible
 //! player gets a line from the base instead of a dialog.
 //!

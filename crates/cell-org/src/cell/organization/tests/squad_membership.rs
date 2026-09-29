@@ -1,6 +1,8 @@
 //! Leaving a squad: CM 9, the leader's kick, disconnects, promotion and
 //! disband.
 
+use cimmeria_cell_world::cell::squad::entity_squad_id;
+use cimmeria_cell_world::cell::squad::SquadResources;
 use cimmeria_entity::organization::{OrgLeaveReason, OrgRank, SQUAD_ORG_ID_MIN};
 use cimmeria_wire::cell::client_methods::organization::{
     build_on_member_left_organization, build_on_member_rank_changed_organization,
@@ -47,8 +49,8 @@ async fn member_leave_sends_36_to_the_leaver_and_39_to_the_rest() {
     assert_eq!(to(&sent, 11), std::slice::from_ref(&bye));
     assert_eq!(to(&sent, 12), [bye]);
     assert_eq!(sent.len(), 3);
-    assert_eq!(mgr.get_entity(13).unwrap().squad_id, None);
-    assert_eq!(mgr.squads.squad_of(3), None);
+    assert_eq!(entity_squad_id(mgr.get_entity(13).unwrap()), None);
+    assert_eq!(mgr.resources.squads().squad_of(3), None);
 }
 
 /// The leader leaving promotes the longest-standing member (D-ORG12): the
@@ -67,7 +69,14 @@ async fn leader_leave_promotes_the_longest_standing_member() {
     assert_eq!(to(&sent, 12), expect);
     assert_eq!(to(&sent, 13), expect);
     assert_eq!(to(&sent, 11), [left(OrgLeaveReason::Requested)]);
-    assert_eq!(mgr.squads.squad(SID).unwrap().leader_player_id(), 2);
+    assert_eq!(
+        mgr.resources
+            .squads()
+            .squad(SID)
+            .unwrap()
+            .leader_player_id(),
+        2
+    );
 }
 
 /// A leader leaving a pair: no promotion; the one left gets [39] for the
@@ -87,8 +96,8 @@ async fn leaving_a_pair_disbands_it() {
         ]
     );
     assert_eq!(to(&sent, 11), [left(OrgLeaveReason::Requested)]);
-    assert_eq!(mgr.squads.squad_count(), 0);
-    assert_eq!(mgr.get_entity(12).unwrap().squad_id, None);
+    assert_eq!(mgr.resources.squads().squad_count(), 0);
+    assert_eq!(entity_squad_id(mgr.get_entity(12).unwrap()), None);
 }
 
 /// CAT-M-04: leave names a squad the caller is not in. Refused, logged at
@@ -114,9 +123,20 @@ async fn squad_leave_rejects_foreign_squad_id() {
         "squad.leave",
         "wrong_squad"
     ));
-    assert_eq!(mgr.squads.squad(mine).unwrap().members().len(), 2);
-    assert_eq!(mgr.squads.squad(theirs).unwrap().members().len(), 2);
-    assert_eq!(mgr.squads.squad_of(2), Some(mine));
+    assert_eq!(
+        mgr.resources.squads().squad(mine).unwrap().members().len(),
+        2
+    );
+    assert_eq!(
+        mgr.resources
+            .squads()
+            .squad(theirs)
+            .unwrap()
+            .members()
+            .len(),
+        2
+    );
+    assert_eq!(mgr.resources.squads().squad_of(2), Some(mine));
 }
 
 #[tokio::test]
@@ -130,7 +150,7 @@ async fn leader_kick_removes_the_member_with_kicked() {
     let bye = member_left(12, OrgLeaveReason::Kicked, "Bob");
     assert_eq!(to(&sent, 11), std::slice::from_ref(&bye));
     assert_eq!(to(&sent, 13), [bye]);
-    assert_eq!(mgr.squads.squad_of(2), None);
+    assert_eq!(mgr.resources.squads().squad_of(2), None);
 }
 
 /// Every kick refusal: feedback to the actor, membership unchanged.
@@ -188,7 +208,10 @@ async fn kick_refusals_change_nothing() {
             "{reason}"
         );
     }
-    assert_eq!(mgr.squads.squad(sid).unwrap().members().len(), 3);
+    assert_eq!(
+        mgr.resources.squads().squad(sid).unwrap().members().len(),
+        3
+    );
 }
 
 /// A forwarded call whose entity is no longer that character is dropped.
@@ -200,7 +223,10 @@ async fn forwarded_kick_with_a_stale_entity_is_dropped() {
     // Base says character 9 is on entity 11; the cell knows 11 is Alice (1).
     squad::handle_kick(9, 11, SID, "Bob", &tx, &mut mgr).await;
     assert!(drain(&mut rx).is_empty());
-    assert_eq!(mgr.squads.squad(SID).unwrap().members().len(), 2);
+    assert_eq!(
+        mgr.resources.squads().squad(SID).unwrap().members().len(),
+        2
+    );
 }
 
 /// The leader of three disconnects: the rest get [39] `Logout` and the
@@ -219,7 +245,7 @@ async fn leader_disconnect_promotes_and_says_logout() {
     assert_eq!(to(&sent, 12), expect);
     assert_eq!(to(&sent, 13), expect);
     assert!(to(&sent, 11).is_empty());
-    assert_eq!(mgr.squads.squad_of(1), None);
+    assert_eq!(mgr.resources.squads().squad_of(1), None);
 }
 
 #[tokio::test]
@@ -236,7 +262,7 @@ async fn disconnect_from_a_pair_disbands_it() {
             left(OrgLeaveReason::Disbanded)
         ]
     );
-    assert_eq!(mgr.squads.squad_count(), 0);
+    assert_eq!(mgr.resources.squads().squad_count(), 0);
 }
 
 /// A member kicked while in gate transit cannot be told then; the [36] is

@@ -4,18 +4,19 @@
 //! type 12): the row, its `reason`, what the client got, and that nothing
 //! reached the base.
 
+use cimmeria_cell_world::cell::org_creation::OrgCreationResources;
 use std::time::{Duration, Instant};
 
 use cimmeria_entity::organization::OrgType;
 use cimmeria_wire::cell::client_methods::player::build_launch_organization_creation;
 
 use super::*;
-use crate::cell::cell_methods::organization::creation::{
+use crate::cell::messages::OrgCellToBase;
+use crate::cell::org_creation::{PENDING_CREATION_ATTEMPTS, PENDING_CREATION_TTL};
+use crate::cell::organization::creation::{
     self, IN_FLIGHT_TEXT, NAME_INVALID_TEXT, NO_PENDING_TEXT, PENDING_EXPIRED_TEXT,
     RATE_LIMITED_TEXT,
 };
-use crate::cell::messages::OrgCellToBase;
-use crate::cell::org_creation::{PENDING_CREATION_ATTEMPTS, PENDING_CREATION_TTL};
 use crate::test_support::LogCapture;
 
 const ALICE: u32 = 11;
@@ -88,7 +89,11 @@ async fn registrar_eligible_opens_the_dialog_and_records_the_offer() {
     let mut mgr = world(&["Alice"]);
     offered(&mut mgr, OrgType::Team).await;
 
-    let p = mgr.org_creations.get(ALICE_PID).expect("the offer");
+    let p = mgr
+        .resources
+        .org_creations()
+        .get(ALICE_PID)
+        .expect("the offer");
     assert_eq!((p.org_type, p.npc_entity_id), (OrgType::Team, NPC));
     assert_eq!(p.attempts_left, PENDING_CREATION_ATTEMPTS);
     let rows = creation_rows(&capture, "org.registrar_open");
@@ -180,7 +185,14 @@ async fn create_rejects_invalid_names() {
     }
     want.extend(refusal(6, RATE_LIMITED_TEXT));
     assert_eq!(to(&calls, ALICE), want);
-    assert_eq!(mgr.org_creations.get(ALICE_PID).unwrap().attempts_left, 0);
+    assert_eq!(
+        mgr.resources
+            .org_creations()
+            .get(ALICE_PID)
+            .unwrap()
+            .attempts_left,
+        0
+    );
     let rows = creation_rows(&capture, "org.create");
     let reasons: Vec<_> = rows
         .iter()
@@ -211,7 +223,7 @@ async fn create_result_charges_or_closes_the_offer() {
 
     creation::on_organization_creation(ALICE, &cm94("Taken"), &tx, &mut mgr).await;
     creation::on_create_result(ALICE_PID, ALICE, false, &mut mgr);
-    let p = *mgr.org_creations.get(ALICE_PID).unwrap();
+    let p = *mgr.resources.org_creations().get(ALICE_PID).unwrap();
     assert_eq!(
         (p.attempts_left, p.in_flight),
         (PENDING_CREATION_ATTEMPTS - 1, false)
@@ -219,7 +231,7 @@ async fn create_result_charges_or_closes_the_offer() {
 
     creation::on_organization_creation(ALICE, &cm94("Free"), &tx, &mut mgr).await;
     creation::on_create_result(ALICE_PID, ALICE, true, &mut mgr);
-    assert!(mgr.org_creations.get(ALICE_PID).is_none());
+    assert!(mgr.resources.org_creations().get(ALICE_PID).is_none());
     let (_, org) = split(&mut rx);
     assert_eq!(org.len(), 2, "both names reached the base");
     assert!(capture
@@ -246,8 +258,9 @@ async fn an_offer_from_another_space_or_too_old_is_expired() {
 
     // Move the offer's space off Alice's, as if she had gated since.
     let here = mgr.get_entity_space_id(ALICE).unwrap();
-    mgr.org_creations.clear(ALICE_PID);
-    mgr.org_creations
+    mgr.resources.org_creations_mut().clear(ALICE_PID);
+    mgr.resources
+        .org_creations_mut()
         .open(ALICE_PID, OrgType::Team, NPC, here + 1, Instant::now())
         .unwrap();
     creation::on_organization_creation(ALICE, &cm94("Moved"), &tx, &mut mgr).await;
@@ -255,7 +268,8 @@ async fn an_offer_from_another_space_or_too_old_is_expired() {
     let long_ago = Instant::now()
         .checked_sub(PENDING_CREATION_TTL + Duration::from_secs(1))
         .expect("uptime exceeds the offer window");
-    mgr.org_creations
+    mgr.resources
+        .org_creations_mut()
         .open(ALICE_PID, OrgType::Team, NPC, here, long_ago)
         .unwrap();
     creation::on_organization_creation(ALICE, &cm94("Late"), &tx, &mut mgr).await;
@@ -287,7 +301,7 @@ async fn eligible_for_a_recycled_entity_opens_nothing() {
 
     let (calls, org) = split(&mut rx);
     assert!(calls.is_empty() && org.is_empty());
-    assert!(mgr.org_creations.is_empty());
+    assert!(mgr.resources.org_creations().is_empty());
     assert!(capture
         .all()
         .iter()
@@ -325,7 +339,7 @@ async fn disconnect_drops_the_offer() {
     let mut mgr = world(&["Alice"]);
     offered(&mut mgr, OrgType::Team).await;
     creation::on_disconnect(ALICE, &mut mgr);
-    assert!(mgr.org_creations.is_empty());
+    assert!(mgr.resources.org_creations().is_empty());
 }
 
 /// Negative seam: a name that cannot reach the base (the channel is
@@ -342,7 +356,7 @@ async fn a_closed_base_channel_warns_and_charges_the_attempt() {
 
     creation::on_organization_creation(ALICE, &cm94("Lost"), &tx, &mut mgr).await;
 
-    let p = *mgr.org_creations.get(ALICE_PID).unwrap();
+    let p = *mgr.resources.org_creations().get(ALICE_PID).unwrap();
     assert_eq!(
         (p.attempts_left, p.in_flight),
         (PENDING_CREATION_ATTEMPTS - 1, false)

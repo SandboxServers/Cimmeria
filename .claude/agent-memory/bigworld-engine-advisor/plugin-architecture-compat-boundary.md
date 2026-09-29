@@ -28,5 +28,18 @@ Confirmed as advisor for #962 (2026-09-28); canonical text is ADR §2 (C1-C8).
   base-message handlers (`BaseToCellMsg::Duel`) - those parts stay in cell-world.
   Space-wide feature state goes in `SpaceManager::resources` via an extension
   trait called on the field, so borrows stay field-disjoint.
+- Step 3 (org, `cimmeria-cell-org`, 2026-09-28, ADR §4.3): two different
+  disconnect points exist - the base's `DisconnectEntity` handler
+  (`AfterDisconnectTradeCancel`, squad leave) fires before
+  `SpaceManager::disconnect_entity` (`BeforeDisconnectTeardown`, duel end);
+  pick the one at the inline call's line, not the nearest name. When a hook
+  needs an id the message carries but the entity may have lost (InitPlayerState
+  player_id), add a hook kind with that argument (`PlayerHook`) rather than
+  reading it off the entity. What the base-message handler and the console
+  still call goes to the lowest crate both reach (`cell-interactions`), which
+  also removed the console -> cell-methods edge. Windows gotcha while editing:
+  Python `open()` without `encoding='utf-8'` silently mis-matches or
+  mis-encodes non-ASCII (`–`, `§`) in Rust docs; always pass the encoding and
+  assert each replacement landed.
 
 Related: [[na38-client-orders-reliable-stream]], [[entity-def-and-pak-ground-truth]].

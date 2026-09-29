@@ -18,6 +18,7 @@
 //! `squad_actions_total{action = "chat"}`; WARN `squad.send_failed` for a
 //! line that could not be queued.
 
+use cimmeria_cell_world::cell::squad::SquadResources;
 use tokio::sync::mpsc;
 
 use cimmeria_entity::cell_entity::PlayerIdentity;
@@ -88,7 +89,7 @@ pub(super) async fn relay_to_squad(
     };
     let squad = who
         .player_id
-        .and_then(|pid| space_mgr.squads.squad_for(pid));
+        .and_then(|pid| space_mgr.resources.squads().squad_for(pid));
     let Some(squad) = squad else {
         row.emit(Some("not_in_squad"));
         send_channel_feedback(entity_id, NOT_IN_SQUAD_TEXT, tx).await;

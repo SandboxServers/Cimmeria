@@ -124,13 +124,6 @@ pub struct CellEntity {
     /// entity id. `None` for NPCs and until `InitPlayerState` arrives.
     pub character_name: Option<String>,
 
-    /// The squad this player is in (ORG-03). Stands in for the `squad`
-    /// `CELL_PUBLIC` property, which is never sent to clients (audit A-19).
-    /// A mirror of the cell's `SquadRegistry`, which is authoritative: set
-    /// and cleared with membership, and re-stamped on every world entry
-    /// because gate travel re-creates the entity.
-    pub squad_id: Option<i32>,
-
     /// Mission tracking for player entities.
     pub missions: MissionManager,
 

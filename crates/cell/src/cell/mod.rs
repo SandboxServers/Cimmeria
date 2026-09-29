@@ -22,7 +22,9 @@ pub(crate) use cimmeria_cell_catalog::cell::spawner;
 pub(crate) use cimmeria_cell_combat::cell::{abilities, combat, effects};
 pub(crate) use cimmeria_cell_console::cell::console::{self, chat};
 pub(crate) use cimmeria_cell_content::cell::{content, missions, ring_transport};
-pub(crate) use cimmeria_cell_interactions::cell::{gate_travel, interactions, respawn};
+pub(crate) use cimmeria_cell_interactions::cell::{
+    gate_travel, interactions, organization, respawn,
+};
 pub(crate) use cimmeria_cell_methods::cell::cell_methods;
 pub(crate) use cimmeria_cell_world::cell::{
     cover, duel, playtest_friction, space_manager, CellError,

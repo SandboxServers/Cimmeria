@@ -143,6 +143,17 @@ use crate::otel;
 /// `duel=debug` row exports; this row covers any untargeted row. No other
 /// crate's row is a prefix of it, and it is a prefix of none.
 ///
+/// `cimmeria_cell_org=debug` (#962 step 3) does the same for the org plugin
+/// crate: the organization router (cell methods 8-19), the Team and Command
+/// forward, the squad answer, leave, loot mode, ping, disconnect and
+/// world-entry replay, the creation name check (cell method 94) and
+/// `OrgPlugin`. Most rows name the `org` or `squad` target, which the
+/// `org=debug,squad=debug` rows export; the untargeted `org.create` span
+/// takes the module path, which this row covers. No other crate's row is a
+/// prefix of it, and it is a prefix of none. The half that stayed below
+/// moved from `cimmeria_cell_methods` to `cimmeria_cell_interactions`
+/// (`cell::organization`), whose row already covers it.
+///
 /// `cimmeria_cell::cell=debug` (wave C6) does the same for the cell service:
 /// `CellService`, the cell loop, the base-message handlers, the ticks and the
 /// cell-method router. Like `cimmeria_base::base` it names the crate's one
@@ -262,6 +273,7 @@ pub(crate) const OTEL_FILTER: &str = "info,\
                 cimmeria_cell_methods=debug,\
                 cimmeria_cell_pets=debug,\
                 cimmeria_cell_duel=debug,\
+                cimmeria_cell_org=debug,\
                 cimmeria_cell::cell=debug,\
                 cimmeria_mercury=debug,\
                 mercury.packet=info,\

@@ -5,13 +5,17 @@
 //! session. The squad handlers re-check that the entity is still that
 //! character before acting. Later packets add their handlers to this file
 //! rather than to `mod.rs`.
+//!
+//! The handlers are `cimmeria-cell-interactions`' `cell::organization`, not
+//! the org plugin's: there is no base-message seam for a plugin until the
+//! envelope of `docs/architecture/plugin-architecture.md` §3.4 lands.
 
 use cimmeria_entity::cell_entity::VaultCloseReason;
 use cimmeria_entity::organization::OrgLeaveReason;
 use tokio::sync::mpsc;
 
-use super::super::super::cell_methods::organization::{creation, squad};
 use super::super::super::messages::{CellToBaseMsg, OrgBaseToCell};
+use super::super::super::organization::{creation, squad};
 use super::super::super::space_manager::SpaceManager;
 
 /// Handle one organization message from the base.

@@ -1,6 +1,8 @@
 //! ORG-04: CM 10 `BroadcastMinimapPing` for squads (validated and logged,
 //! never fanned out) and the GM console's squad commands.
 
+use cimmeria_cell_world::cell::squad::entity_squad_id;
+use cimmeria_cell_world::cell::squad::SquadResources;
 use std::time::{Duration, Instant};
 
 use cimmeria_entity::organization::{OrgType, SQUAD_ORG_ID_MIN};
@@ -197,11 +199,22 @@ async fn gm_join_founds_a_squad_with_the_host_leading() {
 
     let out = squad::gm_join(11, 12, &tx, &mut mgr).await;
 
-    let squad = mgr.squads.squad_for(1).expect("GM is in a squad").clone();
+    let squad = mgr
+        .resources
+        .squads()
+        .squad_for(1)
+        .expect("GM is in a squad")
+        .clone();
     assert_eq!(out, ok_in(squad.id()));
     assert_eq!(squad.leader_player_id(), 2);
-    assert_eq!(mgr.get_entity(11).unwrap().squad_id, Some(squad.id()));
-    assert_eq!(mgr.get_entity(12).unwrap().squad_id, Some(squad.id()));
+    assert_eq!(
+        entity_squad_id(mgr.get_entity(11).unwrap()),
+        Some(squad.id())
+    );
+    assert_eq!(
+        entity_squad_id(mgr.get_entity(12).unwrap()),
+        Some(squad.id())
+    );
 
     let sent = drain(&mut rx);
     let gm: Vec<u16> = to(&sent, 11).into_iter().map(|m| m.0).collect();
@@ -233,7 +246,7 @@ async fn gm_join_enters_an_existing_squad_through_any_member() {
 
     assert_eq!(squad::gm_join(13, 12, &tx, &mut mgr).await, ok_in(sid));
 
-    assert_eq!(mgr.squads.squad_of(3), Some(sid));
+    assert_eq!(mgr.resources.squads().squad_of(3), Some(sid));
     let sent = drain(&mut rx);
     for e in [11, 12] {
         let got: Vec<u16> = to(&sent, e).into_iter().map(|m| m.0).collect();
@@ -259,8 +272,11 @@ async fn gm_join_refuses_a_gm_already_in_a_squad() {
             reason: Some("already_in_squad")
         }
     );
-    assert_eq!(mgr.squads.squad_of(3), Some(own));
-    assert_eq!(mgr.squads.squad(sid).unwrap().members().len(), 2);
+    assert_eq!(mgr.resources.squads().squad_of(3), Some(own));
+    assert_eq!(
+        mgr.resources.squads().squad(sid).unwrap().members().len(),
+        2
+    );
     assert_eq!(
         to(&drain(&mut rx), 13),
         rejection(sid, "You are already in a squad. Leave it first.")
@@ -275,7 +291,7 @@ async fn gm_join_refuses_a_host_that_is_not_a_player() {
     let (tx, _rx) = channel();
     let out = squad::gm_join(11, 12, &tx, &mut mgr).await;
     assert_eq!(out.reason, Some("not_a_player"));
-    assert_eq!(mgr.squads.squad_count(), 0);
+    assert_eq!(mgr.resources.squads().squad_count(), 0);
 }
 
 /// `gm_invite` is the `/squadinvite` path: the target gets the ordinary
@@ -294,7 +310,7 @@ async fn gm_invite_issues_a_real_invite() {
             reason: None
         }
     );
-    assert_eq!(mgr.squads.pending_for(2, Instant::now()), 1);
+    assert_eq!(mgr.resources.squads().pending_for(2, Instant::now()), 1);
     let sent = drain(&mut rx);
     assert_eq!(to(&sent, 12)[0].0, ON_ORGANIZATION_INVITE);
     assert_eq!(

@@ -1,5 +1,6 @@
 //! CM 18 `squadSetLootMode` (D-ORG16, CAT-M-11).
 
+use cimmeria_cell_world::cell::squad::SquadResources;
 use tokio::sync::mpsc;
 
 use crate::cell::messages::CellToBaseMsg;
@@ -38,12 +39,17 @@ pub async fn set_loot_mode(
         return reject(tx, entity_id, 0, feedback::NOT_READY).await;
     };
     let player_id = me.player_id;
-    out.squad_id = space_mgr.squads.squad_of(player_id);
-    let before = space_mgr.squads.squad_for(player_id).map(|s| s.loot());
-    match space_mgr.squads.set_loot(player_id, raw) {
+    out.squad_id = space_mgr.resources.squads().squad_of(player_id);
+    let before = space_mgr
+        .resources
+        .squads()
+        .squad_for(player_id)
+        .map(|s| s.loot());
+    match space_mgr.resources.squads_mut().set_loot(player_id, raw) {
         Ok(squad_id) => {
             let squad = space_mgr
-                .squads
+                .resources
+                .squads()
                 .squad(squad_id)
                 .cloned()
                 .expect("set_loot returned it");
@@ -71,7 +77,7 @@ pub async fn set_loot_mode(
                 feedback::loot_rejected(r),
             )
             .await;
-            if let Some(squad) = squad_id.and_then(|id| space_mgr.squads.squad(id)) {
+            if let Some(squad) = squad_id.and_then(|id| space_mgr.resources.squads().squad(id)) {
                 fanout::send_loot_type(tx, entity_id, squad).await;
             }
         }

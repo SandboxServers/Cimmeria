@@ -8,7 +8,7 @@ The cell-side and base-side server logic lives in the crates split out of `crate
 
 ## Cell vs base split
 
-- **Cell** (the cell-track crates: `crates/cell/`, `crates/cell-world/`, `crates/cell-combat/`, `crates/cell-content/`, `crates/cell-interactions/`, `crates/cell-methods/`, `crates/cell-console/`, the feature plugins `crates/cell-pets/` and `crates/cell-duel/` (#962), with `cell-catalog` and `cell-cover` below them) — entity state, content engine, AoI, NPC AI, abilities. One cell per space.
+- **Cell** (the cell-track crates: `crates/cell/`, `crates/cell-world/`, `crates/cell-combat/`, `crates/cell-content/`, `crates/cell-interactions/`, `crates/cell-methods/`, `crates/cell-console/`, the feature plugins `crates/cell-pets/`, `crates/cell-duel/` and `crates/cell-org/` (#962), with `cell-catalog` and `cell-cover` below them) — entity state, content engine, AoI, NPC AI, abilities. One cell per space.
 - **Base** (the base-track crates: `crates/base/`, `crates/base-world-entry/`, `crates/base-methods/`, `crates/base-session/`) — client connection lifecycle, world entry, client-method dispatch, persistence, witness broadcasts to the connected client.
 - They communicate by enum messages (`crates/wire/src/cell/messages/`). Don't reach across the boundary directly — add a message variant if you need a new interaction.
 

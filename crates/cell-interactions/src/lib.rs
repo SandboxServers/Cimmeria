@@ -15,6 +15,10 @@
 //! - [`cell::trade`]: the player-to-player trade session state and its
 //!   outbound wire, which the departure paths cancel.
 //! - [`cell::mail`]: the mail requests the cell forwards to the base.
+//! - [`cell::organization`]: the organization half the base-message handler
+//!   and the console call (the base-forwarded squad invite and kick, the GM
+//!   squad commands, the registrar reply and the create result) and the
+//!   squad fanout the org plugin (`cimmeria-cell-org`) builds on.
 //!
 //! Split out of `cimmeria-services` (wave C4 of
 //! `docs/architecture/services-crate-split.md`). The module tree keeps its old

@@ -41,6 +41,15 @@ pub enum EntityHookPoint {
     /// travel end runs here; `every_travel_site_fires_the_travel_hook`
     /// (`cimmeria-cell-duel`) scans for the call.
     BeforeTravelSend,
+    /// The base's `DisconnectEntity` handler (`cimmeria-cell`'s
+    /// `base_messages::lifecycle::handle_disconnect_entity`), after the open
+    /// trade is cancelled and before the Black Market session end, the
+    /// last-position save and `SpaceManager::disconnect_entity` (so before
+    /// [`BeforeDisconnectTeardown`](Self::BeforeDisconnectTeardown)). Only
+    /// this arm: `DestroyEntity` is also the gate-travel teardown. The
+    /// entity may already be gone (a player in gate transit). The squad
+    /// leave and the registrar offer's end run here.
+    AfterDisconnectTradeCancel,
 }
 
 /// A position in the death resolver for a killed entity, with its killer.
@@ -51,4 +60,16 @@ pub enum DeathHookPoint {
     /// pets leave. The victim is dead and still exists. The duel's death end
     /// (a duelist killed by anyone but the partner loses) runs here.
     AfterPlayerThreatPurge,
+}
+
+/// A per-player position in core's base-message handlers, with the
+/// character id the base sent (which holds even when the cell entity is
+/// gone).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum PlayerHookPoint {
+    /// The base's `InitPlayerState` (every world entry: the first login and
+    /// every gate arrival), after `handle_init_player_state`, which stamps
+    /// `player_id` on the entity, and before the next base message. The
+    /// squad's world-entry replay runs here.
+    AfterInitPlayerState,
 }

@@ -8,8 +8,8 @@ use tokio::sync::mpsc;
 use super::*;
 use crate::cell::messages::CellToBaseMsg;
 use cimmeria_wire::cell::cell_methods::player::constants::{
-    DUEL_FORFEIT, PET_ABILITY_TOGGLE, PET_CHANGE_STANCE, PET_INVOKE_ABILITY, SEND_DUEL_RESPONSE,
-    WHO,
+    DUEL_FORFEIT, ORG_CREATION, PET_ABILITY_TOGGLE, PET_CHANGE_STANCE, PET_INVOKE_ABILITY,
+    SEND_DUEL_RESPONSE, WHO,
 };
 
 fn mark<'a>(marker: u16, entity_id: u32, tx: &'a mpsc::Sender<CellToBaseMsg>) -> BoxFuture<'a, ()> {
@@ -75,21 +75,33 @@ impl CellPlugin for Methods {
 
 const PET_OWNED: &[u16] = &[PET_INVOKE_ABILITY, PET_ABILITY_TOGGLE, PET_CHANGE_STANCE];
 const DUEL_OWNED: &[u16] = &[SEND_DUEL_RESPONSE, DUEL_FORFEIT];
+const ORG_OWNED: &[u16] = &[8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, ORG_CREATION];
 
 #[test]
-fn the_plugin_owned_list_is_the_pet_and_duel_commands() {
-    assert_eq!(PLUGIN_OWNED_CELL_METHODS, &[88, 89, 90, 102, 103]);
+fn the_plugin_owned_list_is_the_pet_duel_and_org_methods() {
+    assert_eq!(
+        PLUGIN_OWNED_CELL_METHODS,
+        &[8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 88, 89, 90, 94, 102, 103]
+    );
+    assert!(
+        PLUGIN_OWNED_CELL_METHODS.windows(2).all(|w| w[0] < w[1]),
+        "ascending, as `cell_method_indices` returns them"
+    );
 }
 
 #[test]
 fn a_complete_registration_builds_and_resolves_each_index() {
-    let plugins =
-        CellPlugins::build(&[&Methods("pets", PET_OWNED), &Methods("duel", DUEL_OWNED)]).unwrap();
+    let plugins = CellPlugins::build(&[
+        &Methods("pets", PET_OWNED),
+        &Methods("duel", DUEL_OWNED),
+        &Methods("org", ORG_OWNED),
+    ])
+    .unwrap();
     plugins.check_complete().unwrap();
-    assert_eq!(plugins.plugin_names(), &["pets", "duel"]);
+    assert_eq!(plugins.plugin_names(), &["pets", "duel", "org"]);
     assert_eq!(
         plugins.cell_method_indices().collect::<Vec<_>>(),
-        vec![88, 89, 90, 102, 103]
+        PLUGIN_OWNED_CELL_METHODS.to_vec()
     );
     assert!(plugins.cell_method(88).is_some());
     assert!(
@@ -99,8 +111,8 @@ fn a_complete_registration_builds_and_resolves_each_index() {
 }
 
 /// #962 test rule: a feature that never registers must fail the startup
-/// assertion, not silently no-op. An empty table leaves 88-90 and 102-103
-/// unhandled.
+/// assertion, not silently no-op. An empty table leaves 8-19, 88-90, 94
+/// and 102-103 unhandled.
 #[test]
 fn a_missing_plugin_fails_check_complete_with_every_unhandled_index() {
     let err = CellPlugins::build(&[])
@@ -111,19 +123,36 @@ fn a_missing_plugin_fails_check_complete_with_every_unhandled_index() {
         err,
         PluginError::MissingCellMethods {
             missing: vec![
+                (8, "organizationInviteResponse"),
+                (9, "organizationLeave"),
+                (10, "BroadcastMinimapPing"),
+                (11, "strikeTeamResponse"),
+                (12, "pvpOrganizationLeaveResponse"),
+                (13, "organizationMOTD"),
+                (14, "organizationNote"),
+                (15, "organizationOfficerNote"),
+                (16, "organizationSetRankPermissions"),
+                (17, "organizationSetRankName"),
+                (18, "squadSetLootMode"),
+                (19, "organizationTransferCash"),
                 (88, "petInvokeAbility"),
                 (89, "petAbilityToggle"),
                 (90, "petChangeStance"),
+                (94, "onOrganizationCreation"),
                 (102, "sendDuelResponse"),
                 (103, "duelForfeit"),
             ]
         }
     );
     // A partial registration names only the gap.
-    let err = CellPlugins::build(&[&Methods("pets", &[88, 90]), &Methods("duel", DUEL_OWNED)])
-        .unwrap()
-        .check_complete()
-        .unwrap_err();
+    let err = CellPlugins::build(&[
+        &Methods("pets", &[88, 90]),
+        &Methods("duel", DUEL_OWNED),
+        &Methods("org", ORG_OWNED),
+    ])
+    .unwrap()
+    .check_complete()
+    .unwrap_err();
     assert_eq!(
         err,
         PluginError::MissingCellMethods {
@@ -305,4 +334,43 @@ async fn death_hooks_get_the_victim_and_the_killer() {
     mgr.fire_death_hook(DeathHookPoint::AfterPlayerThreatPurge, 42, 9, &tx)
         .await;
     assert_eq!(drain_markers(&mut rx), vec![(9, 42)]);
+}
+
+struct Entry;
+impl CellPlugin for Entry {
+    fn name(&self) -> &'static str {
+        "entry"
+    }
+    fn build(&self, plugin: &mut CellPluginBuilder<'_>) {
+        plugin.player_hook(PlayerHookPoint::AfterInitPlayerState, entry_hook);
+    }
+}
+
+fn entry_hook<'a>(
+    entity_id: u32,
+    player_id: i32,
+    tx: &'a mpsc::Sender<CellToBaseMsg>,
+    _: &'a mut SpaceManager,
+) -> BoxFuture<'a, ()> {
+    mark(player_id as u16, entity_id, tx)
+}
+
+/// A player hook gets the entity and the character id the base sent, and
+/// fires only at its point.
+#[tokio::test]
+async fn player_hooks_get_the_entity_and_the_character() {
+    let plugins = CellPlugins::build(&[&Entry, &Destroy]).unwrap();
+    let mut mgr = SpaceManager::new(1);
+    let (tx, mut rx) = mpsc::channel(8);
+    plugins
+        .run_player_hook(PlayerHookPoint::AfterInitPlayerState, 42, 77, &tx, &mut mgr)
+        .await;
+    assert_eq!(drain_markers(&mut rx), vec![(77, 42)]);
+    mgr.install_plugins(plugins);
+    mgr.fire_entity_hook(EntityHookPoint::AfterDisconnectTradeCancel, 42, &tx)
+        .await;
+    assert!(
+        drain_markers(&mut rx).is_empty(),
+        "nothing subscribes to the disconnect point"
+    );
 }

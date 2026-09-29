@@ -14,6 +14,7 @@
 //!   inline tick calls used to occupy;
 //! - the base-message handlers, `SpaceManager::disconnect_entity` and every
 //!   travel site fire [`EntityHookPoint`] hooks;
+//! - the base's `InitPlayerState` handler fires [`PlayerHookPoint`] hooks;
 //! - the death resolver fires [`DeathHookPoint`] hooks.
 //!
 //! A hook call site clones the registry's `Arc` first
@@ -48,7 +49,7 @@ use tokio::sync::mpsc;
 use crate::cell::messages::CellToBaseMsg;
 use crate::cell::space_manager::SpaceManager;
 
-pub use hook_points::{DeathHookPoint, EntityHookPoint, TickStage};
+pub use hook_points::{DeathHookPoint, EntityHookPoint, PlayerHookPoint, TickStage};
 pub use registry::{CellPluginBuilder, CellPlugins, PluginError};
 
 /// The cell-method indices whose handlers are registered by plugins rather
@@ -58,11 +59,30 @@ pub use registry::{CellPluginBuilder, CellPlugins, PluginError};
 ///
 /// - 88-90: `petInvokeAbility`, `petAbilityToggle`, `petChangeStance`
 ///   (`cimmeria-cell-pets`).
+/// - 8-19: the OrganizationMember interface (`organizationInviteResponse`
+///   .. `organizationTransferCash`) and 94 `onOrganizationCreation`
+///   (`cimmeria-cell-org`).
 /// - 102-103: `sendDuelResponse`, `duelForfeit` (`cimmeria-cell-duel`).
+///
+/// Ascending, so it reads in the order `CellPlugins::cell_method_indices`
+/// returns.
 pub const PLUGIN_OWNED_CELL_METHODS: &[u16] = &[
+    cimmeria_wire::cell::cell_methods::organization::INVITE_RESPONSE,
+    cimmeria_wire::cell::cell_methods::organization::LEAVE,
+    cimmeria_wire::cell::cell_methods::organization::BROADCAST_MINIMAP_PING,
+    cimmeria_wire::cell::cell_methods::organization::STRIKE_TEAM_RESPONSE,
+    cimmeria_wire::cell::cell_methods::organization::PVP_LEAVE_RESPONSE,
+    cimmeria_wire::cell::cell_methods::organization::MOTD,
+    cimmeria_wire::cell::cell_methods::organization::NOTE,
+    cimmeria_wire::cell::cell_methods::organization::OFFICER_NOTE,
+    cimmeria_wire::cell::cell_methods::organization::SET_RANK_PERMISSIONS,
+    cimmeria_wire::cell::cell_methods::organization::SET_RANK_NAME,
+    cimmeria_wire::cell::cell_methods::organization::SQUAD_SET_LOOT_MODE,
+    cimmeria_wire::cell::cell_methods::organization::TRANSFER_CASH,
     cimmeria_wire::cell::cell_methods::player::constants::PET_INVOKE_ABILITY,
     cimmeria_wire::cell::cell_methods::player::constants::PET_ABILITY_TOGGLE,
     cimmeria_wire::cell::cell_methods::player::constants::PET_CHANGE_STANCE,
+    cimmeria_wire::cell::cell_methods::player::constants::ORG_CREATION,
     cimmeria_wire::cell::cell_methods::player::constants::SEND_DUEL_RESPONSE,
     cimmeria_wire::cell::cell_methods::player::constants::DUEL_FORFEIT,
 ];
@@ -98,6 +118,15 @@ pub type EntityHook =
 pub type DeathHook = for<'a> fn(
     u32,
     u32,
+    &'a mpsc::Sender<CellToBaseMsg>,
+    &'a mut SpaceManager,
+) -> BoxFuture<'a, ()>;
+
+/// A hook fired for one player entity and the character id the base sent at
+/// its [`PlayerHookPoint`].
+pub type PlayerHook = for<'a> fn(
+    u32,
+    i32,
     &'a mpsc::Sender<CellToBaseMsg>,
     &'a mut SpaceManager,
 ) -> BoxFuture<'a, ()>;

@@ -2,6 +2,7 @@
 //! through the chat interceptor, GM-gated like every `.` command, and each
 //! writes one `org.gm_action` row (TESTING.md type 12).
 
+use cimmeria_cell_world::cell::squad::SquadResources;
 use cimmeria_content_engine::chain::ChainEngine;
 use tokio::sync::mpsc;
 
@@ -88,9 +89,20 @@ async fn gm_squad_join_then_info() {
     let capture = LogCapture::install();
 
     let msgs = say(&mut mgr, gm, ".squad_join Sentinel").await;
-    let sid = mgr.squads.squad_of(7001).expect("the GM joined a squad");
-    assert_eq!(mgr.squads.squad_of(7002), Some(sid));
-    assert_eq!(mgr.squads.squad(sid).unwrap().leader_player_id(), 7002);
+    let sid = mgr
+        .resources
+        .squads()
+        .squad_of(7001)
+        .expect("the GM joined a squad");
+    assert_eq!(mgr.resources.squads().squad_of(7002), Some(sid));
+    assert_eq!(
+        mgr.resources
+            .squads()
+            .squad(sid)
+            .unwrap()
+            .leader_player_id(),
+        7002
+    );
     assert!(
         feedback_to(&msgs, gm).contains(&"You joined Sentinel's squad.".to_owned()),
         "{msgs:?}"
@@ -149,7 +161,7 @@ async fn gm_squad_join_unknown_name_is_refused() {
     let (mut mgr, gm) = fixture(2);
     let capture = LogCapture::install();
     let msgs = say(&mut mgr, gm, ".squad_join Nobody").await;
-    assert_eq!(mgr.squads.squad_count(), 0);
+    assert_eq!(mgr.resources.squads().squad_count(), 0);
     assert_eq!(
         feedback_to(&msgs, gm),
         vec!["No player named Nobody is online.".to_owned()]
@@ -177,7 +189,7 @@ async fn squad_commands_check_gm_themselves() {
         &ChainEngine::new(),
     )
     .await;
-    assert_eq!(mgr.squads.squad_count(), 0);
+    assert_eq!(mgr.resources.squads().squad_count(), 0);
     assert!(rx.try_recv().is_ok(), "the caller gets a line");
     assert_fields(
         &gm_row(&capture),
@@ -192,7 +204,9 @@ async fn gm_squad_invite_issues_an_invite() {
     let capture = LogCapture::install();
     let msgs = say(&mut mgr, gm, ".squad_invite Sentinel").await;
     assert_eq!(
-        mgr.squads.pending_for(7002, std::time::Instant::now()),
+        mgr.resources
+            .squads()
+            .pending_for(7002, std::time::Instant::now()),
         1,
         "{msgs:?}"
     );
@@ -212,7 +226,7 @@ async fn gm_squad_invite_issues_an_invite() {
 async fn non_gm_squad_join_is_refused() {
     let (mut mgr, player) = fixture(0);
     let msgs = say(&mut mgr, player, ".squad_join Sentinel").await;
-    assert_eq!(mgr.squads.squad_count(), 0);
+    assert_eq!(mgr.resources.squads().squad_count(), 0);
     assert!(
         feedback_to(&msgs, player)
             .iter()

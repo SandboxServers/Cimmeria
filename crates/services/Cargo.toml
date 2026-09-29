@@ -84,6 +84,8 @@ cimmeria-cell = { workspace = true }
 cimmeria-cell-pets = { workspace = true }
 # Duels as a cell plugin (#962 step 2), in the plugin table beside pets.
 cimmeria-cell-duel = { workspace = true }
+# Squads and org creation (#962 step 3): OrgPlugin, the same way.
+cimmeria-cell-org = { workspace = true }
 tokio = { workspace = true }
 sqlx = { workspace = true }
 serde_json = { workspace = true }

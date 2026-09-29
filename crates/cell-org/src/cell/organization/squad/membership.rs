@@ -1,13 +1,15 @@
-//! Leaving a squad: CM 9 `organizationLeave`, the leader's kick (base 0xD1
-//! with a squad id), and a disconnect.
+//! Leaving a squad: CM 9 `organizationLeave` and a disconnect. The leader's
+//! kick (base 0xD1 with a squad id) is `cimmeria-cell-interactions`'
+//! `cell::organization::squad` (the base forwards it).
 
+use cimmeria_cell_world::cell::squad::SquadResources;
 use tokio::sync::mpsc;
 
 use crate::cell::messages::CellToBaseMsg;
 use crate::cell::space_manager::SpaceManager;
 
 use super::telemetry::{self as tm, Action, Outcome, Reason};
-use super::{actor, fanout, feedback, forwarded_actor, reject};
+use super::{actor, fanout, feedback, reject};
 
 /// CM 9 `organizationLeave` with a squad-range id (or one that routes
 /// nowhere). The id must be the caller's own squad (CAT-M-04): routing on
@@ -35,7 +37,7 @@ pub async fn leave(
         out.rejected(Reason::NotReady);
         return reject(tx, entity_id, org_id, feedback::NOT_READY).await;
     };
-    let own = space_mgr.squads.squad_of(me.player_id);
+    let own = space_mgr.resources.squads().squad_of(me.player_id);
     if own != Some(org_id) {
         out.rejected(if own.is_some() {
             Reason::WrongSquad
@@ -45,57 +47,12 @@ pub async fn leave(
         return reject(tx, entity_id, org_id, feedback::NOT_IN_THAT_SQUAD).await;
     }
     let d = space_mgr
-        .squads
+        .resources
+        .squads_mut()
         .leave(me.player_id)
         .expect("membership checked above");
     out.ok();
     fanout::announce_departure(tx, space_mgr, &d).await;
-}
-
-/// `organizationKick(org_id, target_name)` with a squad-range id, forwarded
-/// by the base with the actor's ids. Only the leader of that squad may
-/// kick, the target is found by name among its members (so a member in
-/// gate transit can be kicked too), and nobody kicks themselves.
-#[tracing::instrument(
-    name = "squad.kick",
-    level = "info",
-    target = "squad",
-    skip_all,
-    fields(player_id = player_id, entity_id = entity_id, squad_id = org_id)
-)]
-pub async fn handle_kick(
-    player_id: i32,
-    entity_id: u32,
-    org_id: i32,
-    target_name: &str,
-    tx: &mpsc::Sender<CellToBaseMsg>,
-    space_mgr: &mut SpaceManager,
-) {
-    if forwarded_actor(space_mgr, player_id, entity_id).is_none() {
-        let mut out = Outcome::new(Action::Kick, entity_id, tm::claimed(player_id));
-        out.squad_id = Some(org_id);
-        return out.rejected(Reason::ActorMismatch);
-    }
-    let mut out = Outcome::new(Action::Kick, entity_id, tm::of_entity(space_mgr, entity_id));
-    out.squad_id = Some(org_id);
-    // The target, when the name is one of that squad's members.
-    out.target = space_mgr
-        .squads
-        .squad(org_id)
-        .and_then(|s| s.members().iter().find(|m| m.name == target_name))
-        .map(|m| tm::of_player(space_mgr, m.player_id));
-    let in_a_squad = space_mgr.squads.squad_of(player_id).is_some();
-    match space_mgr.squads.kick(player_id, org_id, target_name) {
-        Ok(d) => {
-            out.ok();
-            fanout::announce_departure(tx, space_mgr, &d).await;
-        }
-        Err(r) => {
-            out.rejected(Reason::from_kick(r, in_a_squad));
-            let text = feedback::kick_rejected(r, target_name);
-            reject(tx, entity_id, org_id, &text).await;
-        }
-    }
 }
 
 /// The `DisconnectEntity` arm: the player is gone (log off, crash, timeout
@@ -122,7 +79,7 @@ pub async fn on_disconnect(
     let Some(player_id) = live.or_else(|| in_transit_member(space_mgr, entity_id)) else {
         return;
     };
-    if let Some(d) = space_mgr.squads.remove_player(player_id) {
+    if let Some(d) = space_mgr.resources.squads_mut().remove_player(player_id) {
         fanout::announce_departure(tx, space_mgr, &d).await;
     }
 }
@@ -130,7 +87,7 @@ pub async fn on_disconnect(
 /// The squad member whose last entity was `entity_id`, when that entity is
 /// gone (gate transit). `None`, logged, otherwise.
 fn in_transit_member(space_mgr: &SpaceManager, entity_id: u32) -> Option<i32> {
-    let Some(player_id) = space_mgr.squads.member_by_entity(entity_id) else {
+    let Some(player_id) = space_mgr.resources.squads().member_by_entity(entity_id) else {
         // Not a squad member, or already removed: a full-exit logOff sends
         // DisconnectEntity and the socket close sends it again, so the
         // second one lands here for every player. Nothing to do.
