@@ -199,14 +199,16 @@ fn launch_changes(inputs: &ChangeInputs<'_>) -> Vec<ClientChange> {
          cimmeria-client-patches.dll and the Black Market window stays unavailable."
     };
     let telemetry_description = if inputs.telemetry_opted_in {
-        "On, because you opted in. While the game runs, the launcher reads the client's \
-         log files and uploads them, with this install's random id, to the Cimmeria \
-         server so crashes and bugs can be traced. It writes \
-         Working\\Binaries\\sessions\\current-session.json for that. It adds no code to \
-         SGW.exe."
+        "On, because you opted in. Before the game starts, the launcher writes \
+         Working\\Binaries\\sessions\\current-session.json with an upload token, then \
+         loads cimmeria-client-telemetry.dll into SGW.exe after the client patches. The \
+         module records in-game events (the game messages the client handles, interface \
+         errors, its own status); it changes nothing in the game. While the game runs, \
+         the launcher also reads the client's log files. Both go, with this install's \
+         random id, to the Cimmeria server so crashes and bugs can be traced."
     } else {
-        "Off. Telemetry is opt-in: the launcher reads and sends nothing unless you turn it \
-         on."
+        "Off. Telemetry is opt-in: the launcher reads and sends nothing, and loads no \
+         telemetry module into SGW.exe, unless you turn it on."
     };
     vec![
         ClientChange {
@@ -408,6 +410,28 @@ mod tests {
         let on = list(&inputs(&[], &state, true, true));
         assert_eq!(find(&on, "Client patches DLL"), ChangeStatus::OnLaunch);
         assert_eq!(find(&on, "Telemetry"), ChangeStatus::OnLaunch);
+    }
+
+    /// Opting in loads a DLL into SGW.exe; the list must say so, and must
+    /// not say it loads nothing (it did until 2026-09-29).
+    #[test]
+    fn the_telemetry_row_names_the_dll_it_loads() {
+        let state = InstalledState::default();
+        let describe = |rows: &[ClientChange]| {
+            rows.iter()
+                .find(|r| r.title == "Telemetry")
+                .unwrap()
+                .description
+                .clone()
+        };
+        let on = describe(&list(&inputs(&[], &state, true, true)));
+        assert!(
+            on.contains(crate::client_telemetry_dll::DLL_FILE_NAME),
+            "{on}"
+        );
+        assert!(!on.contains("no code"), "{on}");
+        let off = describe(&list(&inputs(&[], &state, true, false)));
+        assert!(off.contains("loads no telemetry module"), "{off}");
     }
 
     /// The launcher's own changes are listed before the manifest is

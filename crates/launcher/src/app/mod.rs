@@ -151,6 +151,7 @@ impl LauncherApp {
                 | Event::Launched(..)
                 | Event::LaunchError(_)
                 | Event::ClientPatchesNote(_)
+                | Event::ClientTelemetryNote(_)
                 | Event::UploadStarted
                 | Event::UploadSkipped(_)
                 | Event::UploadComplete { .. }
@@ -306,6 +307,7 @@ fn status_line_for(event: &Event) -> Option<String> {
         Event::Launched(name, pid) => format!("Launched {name} (pid {pid})"),
         Event::LaunchError(e) => format!("Launch failed: {e}"),
         Event::ClientPatchesNote(n) => format!("Client patches: {n}"),
+        Event::ClientTelemetryNote(n) => format!("In-game telemetry: {n}"),
         Event::UploadStarted => "Uploading logs…".into(),
         Event::UploadSkipped(why) => format!("Log upload skipped: {why}"),
         Event::UploadComplete { blob, bytes } => format!("Uploaded {bytes} bytes to {blob}"),
@@ -472,6 +474,12 @@ mod tests {
         let line =
             status_line_for(&Event::ClientPatchesNote("off (launcher setting).".into())).unwrap();
         assert_eq!(line, "Client patches: off (launcher setting).");
+    }
+
+    #[test]
+    fn status_line_for_formats_client_telemetry_note() {
+        let line = status_line_for(&Event::ClientTelemetryNote("unavailable: x.".into())).unwrap();
+        assert_eq!(line, "In-game telemetry: unavailable: x.");
     }
 
     #[test]

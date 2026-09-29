@@ -9,8 +9,10 @@ use eframe::egui;
 use super::LauncherApp;
 
 const WHAT_IT_SENDS: &str = "While the game runs, the launcher uploads the client's log \
-    files, with this install's random id, to the Cimmeria server, so crashes and bugs can \
-    be traced. Nothing is sent while it is off.";
+    files, and a small telemetry module loaded into the game records in-game events \
+    (the game messages it receives, interface errors, the module's own status); both go, with this install's random id, to the \
+    Cimmeria server, so crashes and bugs can be traced. Nothing is sent, and the module \
+    is not loaded, while it is off. A change applies from the next launch.";
 
 impl LauncherApp {
     /// The first-run question. Hidden once answered either way.

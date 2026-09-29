@@ -5,6 +5,7 @@
 //! polls the channel each frame via `events_rx.try_recv()`.
 
 mod launch_sgw;
+mod launch_telemetry;
 mod messages;
 
 pub use messages::{Command, Event, LaunchSgwRequest, LaunchTelemetryConfig};
@@ -91,11 +92,6 @@ impl Worker {
             Command::LaunchAteraFixAslr(dir) => {
                 self.spawn_launch("AtreaFixASLR.bat", move || launch_atera_fix_aslr(&dir))
             }
-            Command::LaunchSgwWithClientTelemetry {
-                install_dir,
-                dll_path,
-                client_patches,
-            } => self.spawn_launch_with_client_telemetry(install_dir, dll_path, client_patches),
             Command::UploadLogs {
                 install_dir,
                 sas_url,

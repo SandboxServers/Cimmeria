@@ -10,9 +10,11 @@ name: launcher-release
 #
 # The launcher stays a 64-bit build, but SGW.exe is 32-bit, and injection
 # must run at the target's bitness (it hands a remote thread the injector's
-# own LoadLibraryW). So the launcher carries two i686 artifacts, built first
-# and embedded through crates/launcher/build.rs: cimmeria-client-patches.dll
-# and the sgw-start32.exe helper that injects it. The build runs in stages
+# own LoadLibraryW). So the launcher carries three i686 artifacts, built first
+# and embedded through crates/launcher/build.rs: cimmeria-client-patches.dll,
+# cimmeria-client-telemetry.dll (the player build, without the lab-bridge
+# feature; injected only for players who opted in to telemetry) and the
+# sgw-start32.exe helper that injects them. The build runs in stages
 # from tools/launcher-release/build.sh, the same stages launcher-build.yml
 # dry-runs on every launcher PR, so this workflow's build is exercised before
 # a release needs it.
@@ -82,11 +84,11 @@ jobs:
       - uses: Swatinem/rust-cache@e18b497796c12c097a38f9edb9d0641fb99eee32  # v2
         with:
           shared-key: launcher-release
-      - name: build the i686 client-patches DLL and sgw-start32 helper
+      - name: build the i686 client-patches and client-telemetry DLLs and sgw-start32 helper
         shell: bash
         run: tools/launcher-release/build.sh i686
 
-      - name: build the 64-bit launcher, embedding both
+      - name: build the 64-bit launcher, embedding them
         shell: bash
         run: tools/launcher-release/build.sh launcher
 

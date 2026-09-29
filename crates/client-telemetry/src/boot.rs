@@ -229,6 +229,9 @@ fn bootstrap_phase2() {
             .and_then(|d| d.dll_path.as_deref())
             .map_or_else(|| "?".into(), |p| p.display().to_string())
     ));
+    // Which build this is, as a literal the packaging checks read back
+    // out of the image: a player must never get the lab-bridge build.
+    crate::log::line(crate::BUILD_MARKER);
 
     // Step 2: load `current-session.json`. Errors here include
     // file-missing (launcher didn't write it — likely user
@@ -286,6 +289,12 @@ fn bootstrap_phase2() {
     builder = builder.field(
         "dll_version",
         serde_json::Value::String(env!("CARGO_PKG_VERSION").to_string()),
+    );
+    // `player` or `lab-bridge`: which build a session ran, since only
+    // the player build may reach a player's machine.
+    builder = builder.field(
+        "dll_flavor",
+        serde_json::Value::String(crate::BUILD_FLAVOR.to_string()),
     );
     let _ = producer.try_emit(builder);
 
