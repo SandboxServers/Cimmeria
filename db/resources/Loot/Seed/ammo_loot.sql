@@ -18,7 +18,8 @@ SET search_path = resources, pg_catalog;
 
 -- D-AM06, the debug hub crate (table 3, chain 7020, re-rolled on every
 -- open): a full stack of every bullet special at probability 1, so one open
--- gives a tester every type. Darts join when AM-11a/b/c land. Debug hub only.
+-- gives a tester every type. The dart gun and the ten dart stacks are in
+-- ammo_dart_loot.sql (AM-11a). Debug hub only.
 INSERT INTO loot (loot_table_id, design_id, min_quantity, probability, max_quantity)
 SELECT 3, a.item_id, i.max_stack_size, 1, i.max_stack_size
   FROM ammo_item_types a
@@ -37,9 +38,10 @@ VALUES (3, 3235, 1, 1, 1),
 
 -- D-AM03, the Castle pre-Romney chest (tables 8 non-Jaffa and 9 Jaffa, once
 -- per character, mission 703 active): 50-75 Hollow Point rounds, certain,
--- beside the #1031 rows. Neither archetype weapon in the chest (3127 High
--- Capacity SMG, 3472 Serpent Staff) is a widened family, so the rounds are
--- for a Standard Pistol or SMG the player carries or finds.
+-- beside the #1031 rows. The non-Jaffa chest's SGHC 6 SMG (3127) takes them:
+-- the High Capacity SMG family was widened by the D-AM10 amendment
+-- (ammo_weapon_widening.sql, #1052). The Jaffa chest's Serpent Staff (3472)
+-- does not, so a Jaffa uses them in a Standard Pistol or SMG.
 INSERT INTO loot (loot_table_id, design_id, min_quantity, probability, max_quantity)
 SELECT t.loot_table_id, a.item_id, 50, 1, 75
   FROM ammo_item_types a
@@ -50,8 +52,9 @@ SELECT t.loot_table_id, a.item_id, 50, 1, 75
 -- NPC drops (#1026 "ammo items drop from NPC loot tables"), Castle NID only:
 -- they are the Castle's gun-carrying humans and its tables are where a
 -- level 3-4 player meets Standard Pistols and SMGs. Hollow Point and Armor
--- Piercing only (D-AM04's first pair); the other three stay debug-crate and
--- GM-only until their Wave-2 damage packet ships. Not on table 2 (the
+-- Piercing only (D-AM04's first pair); Incendiary, EMP and Explosive come
+-- only from the debug crate and .giveammo, and no NPC table drops darts.
+-- Not on table 2 (the
 -- Cellblock tutorial guard: nothing there fires bullets) nor 6 (PRU drones:
 -- salvage only).
 --

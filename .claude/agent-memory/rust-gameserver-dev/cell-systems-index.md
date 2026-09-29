@@ -50,3 +50,18 @@ Moved out of MEMORY.md to keep the index under its read limit. One line per topi
 - [deployable-pulse-and-seed-traps.md](deployable-pulse-and-seed-traps.md) — `apply_damage_to_target` registers every pulsing effect of its def; DeploymentBar flag is not a spawn marker; templates 200-409 taken.
 - [entity-recreate-and-tautological-expectations](entity-recreate-and-tautological-expectations.md) — death pose needs a re-create (NPC: LeftAoI + introduction_events); don't build expectations via the builder under test.
 - [stored-target-lifetime-and-gm-view-check](stored-target-lifetime-and-gm-view-check.md) — #844 clears current_target_id; GM targets must be in view.
+- [live-loot-containers-and-tag-state.md](live-loot-containers-and-tag-state.md) — open_loot rolls per player_id on a live chest; once flags in sgw_player.looted_containers; entity_tag_state reads live_tags.
+- [grantitem-overcap-and-process-wide-gm-switches.md](grantitem-overcap-and-process-wide-gm-switches.md) — GrantItem over-cap row (#1045), use return_rounds; player_id-keyed GM switches in cimmeria-entity.
+
+## Ammo campaign (#1026)
+
+Moved out of MEMORY.md on 2026-09-28 (AM-12 compaction).
+
+- [per-shot-damage-seam-is-damage-apply.md](per-shot-damage-seam-is-damage-apply.md) — per-shot modifiers hook damage_apply, not effect scripts; MITIGATION cap 0 makes armour inert.
+- [ammo-reserve-round-trip.md](ammo-reserve-round-trip.md) — AM-02: base loop is sequential, so flush then trust the weapon row; load rounds at draw commit, not in the tick.
+- [support-shot-inverse-gate.md](support-shot-inverse-gate.md) — client useAbility has no friend/foe check; beneficial ammo's inverse #444 gate lives at launch, warmup and fire.
+- [ammo-on-hit-effect-needs-a-script.md](ammo-on-hit-effect-needs-a-script.md) — ammo on-hit effects need a script_name or the hit pulse never fires; no Radioactive dart toggle exists.
+- [effect-category-and-friendly-target-gaps.md](effect-category-and-friendly-target-gaps.md) — cleanses key on an `EffectCategory` NVP; no ally targeting (#444); new effect ids must not reach the client.
+- [pulsing-script-reapply-and-npc-cc.md](pulsing-script-reapply-and-npc-cc.md) — a pulsing script's on_apply runs per pulse/refresh, on_remove once: guard stateful scripts; NPCs ignore BSF_MOVEMENT_LOCK (#1049).
+- [mechanical-target-signal-is-body-set](mechanical-target-signal-is-body-set.md) — no mechanical flag exists; use `ammo_emp::is_mechanical` (body_set prefixes); EMP split from grenade 2864.
+- [on-hit-fanout-and-recursive-async-send](on-hit-fanout-and-recursive-async-send.md) — scripts can't damage secondaries (no wire/death); fan out in damage_apply; box recursion as a named dyn Send.

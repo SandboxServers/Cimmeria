@@ -40,9 +40,9 @@ async fn reload_while_holstered_phase_a_defers_reload() {
                 instance_id: 0,
                 item_id: 1,
                 clip_size: 30,
-                default_ammo_type: 2,
+                default_ammo_type: 1,
                 current_ammo: 0,
-                cur_ammo_type: 2,
+                cur_ammo_type: 1,
             },
         );
         e.active_bandolier_slot = 0;
@@ -118,9 +118,9 @@ async fn reload_phase_a_to_phase_b_clears_pending_and_starts_reload() {
                 instance_id: 0,
                 item_id: 1,
                 clip_size: 30,
-                default_ammo_type: 2,
+                default_ammo_type: 1,
                 current_ammo: 0,
-                cur_ammo_type: 2,
+                cur_ammo_type: 1,
             },
         );
         e.active_bandolier_slot = 0;
@@ -180,9 +180,9 @@ async fn reload_during_ooc_grace_resets_holster_timer() {
                 instance_id: 0,
                 item_id: 1,
                 clip_size: 30,
-                default_ammo_type: 2,
+                default_ammo_type: 1,
                 current_ammo: 0,
-                cur_ammo_type: 2,
+                cur_ammo_type: 1,
             },
         );
         e.active_bandolier_slot = 0;
@@ -227,9 +227,9 @@ async fn reload_second_press_during_draw_window_is_ignored() {
                 instance_id: 0,
                 item_id: 1,
                 clip_size: 30,
-                default_ammo_type: 2,
+                default_ammo_type: 1,
                 current_ammo: 0,
-                cur_ammo_type: 2,
+                cur_ammo_type: 1,
             },
         );
         e.active_bandolier_slot = 0;
@@ -277,9 +277,9 @@ async fn reload_in_isolation_does_not_flip_bsf_in_combat() {
                 instance_id: 0,
                 item_id: 1,
                 clip_size: 30,
-                default_ammo_type: 2,
+                default_ammo_type: 1,
                 current_ammo: 0,
-                cur_ammo_type: 2,
+                cur_ammo_type: 1,
             },
         );
         e.active_bandolier_slot = 0;
@@ -356,9 +356,9 @@ async fn handle_reload_phase_b_cancels_in_flight_holster_phase_2() {
                 instance_id: 0,
                 item_id: 1,
                 clip_size: 30,
-                default_ammo_type: 2,
+                default_ammo_type: 1,
                 current_ammo: 0, // empty → reload will arm
-                cur_ammo_type: 2,
+                cur_ammo_type: 1,
             },
         );
         e.active_bandolier_slot = 0;

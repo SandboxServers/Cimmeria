@@ -2,13 +2,13 @@
 title: "Weapon Ammo & Reload"
 type: reference
 audience: engineers
-last_updated: 2026-05-27
+last_updated: 2026-09-28
 ---
 
 # Weapon Ammo & Reload
 
-> **Last updated**: 2026-04-29
-> **Status**: Implemented (player fire/reload + bandolier persistence)
+> **Last updated**: 2026-09-28
+> **Status**: Implemented (player fire/reload, bandolier persistence, and finite special ammo from the [ammo campaign](../analysis/ammo/README.md), #1026)
 
 ## Overview
 
@@ -134,25 +134,70 @@ The fire-path **only** reads `active_ammo()`; it does not promote pending refill
 
 Matches legacy [`Reload.py`](../../deprecated/python/cell/effects/Reload.py): the effect resolves at warmup completion and runs `setCurrent(max)` on the ammo stat. Legacy ammo consumption was at warmup completion ([`AbilityManager.py:669-670`](../../deprecated/python/cell/AbilityManager.py#L669)); the Rust port consumes at fire-gate time instead, since there is no warmup state machine for typical fires.
 
+The flow above is the **default-ammo** reload (`Bullet_Default`, `Dart_Default`, `Dagger_Default`): it is free, and the completion tick refills to `clip_size`. A reload of a special type draws its rounds from the bags first; see [Special ammo](#special-ammo-finite-reserve).
+
+## Special ammo (finite reserve)
+
+The [ammo campaign](../analysis/ammo/README.md) (#1026) made the 15 special types finite. Default ammo stays free (D-AM02). Everything in this section runs only while the `ammo.finite_special` flag is on.
+
+**The flag.** `ammo.finite_special` is **on by default** (D-AM11, since AM-12). `CIMMERIA_AMMO_FINITE_SPECIAL=0` on the server is the rollback lever: reloads go back to free refills and every shot fires unmodified. The lever does not withdraw the pushed ammo item definitions (9000-9014), the loot rows or the GM commands, so the stacks stay in your bags as ordinary items. The flag lives in [`crates/entity/src/ammo_feature.rs`](../../crates/entity/src/ammo_feature.rs); the env row is at the top of [`crates/server/src/main.rs`](../../crates/server/src/main.rs).
+
+**The reserve is ordinary bag stacks** (D-AM01). Each special type is one stackable item, ids 9000-9014 (`ammo_items.sql`, 500 rounds a stack), mapped from its `EAmmoType` through `resources.ammo_item_types`. Nothing hardcodes an item id: the cell resolves `SpaceManager::ammo_catalog.item_id_for(ammo_type)`, and the base resolves the item in SQL. Only the main bag (1) and the crafting bag (15) count; the personal vault (17) never does. The `AmmoReserve` module ([`crates/base-methods/src/base/world_entry/methods/inventory/ammo_reserve/`](../../crates/base-methods/src/base/world_entry/methods/inventory/ammo_reserve/)) does the counting, drawing and returning inside one transaction.
+
+**Rounds, never punish** (D-AM05). Clips and stacks both count individual rounds.
+
+| Case | What happens |
+|---|---|
+| Reload, stack big enough | The cell flushes the clip, sends `ReloadDraw`, and starts no warmup yet. The base locks the weapon row, draws `clip_size - row.ammo` rounds (counted from the row, not the cell's number), and writes them into the row in the same commit. The answer loads the clip, then the ordinary warmup starts; the completion tick leaves that clip as it is. 18/30 with 100 in the bags gives 30/30. |
+| Partial reload | The rounds already in the clip stay; only the gap is drawn. |
+| Short stack | You get what is there: 18/30 with 5 in the bags gives 23/30, and the tick adds nothing. |
+| Empty stack | Refused before any warmup: `onErrorCode(Ability, 596, 61)` (`CONDITION_FEEDBACK_AmmoCountLessThan`) plus a feedback line, "You have no Hollow Point rounds left." The clip is unchanged. |
+| Second press in flight | Ignored; the base also counts from the locked row, so a duplicate request draws nothing. |
+| Switch type (`requestAmmoChange`) with special rounds loaded | The unfired rounds go back to their bag stack (topping up existing stacks, then free slots) and the slot takes the new type with an empty clip. |
+| Switch, bags full | The rounds that fit go back; the rest stay loaded **as the old type**, and the switch is refused with "Your bags are full: 7 Hollow Point rounds stay loaded. Make room and switch again." Nothing is deleted or relabelled. |
+| Default clip switched to a special type | The free default rounds are emptied (they would otherwise fire as free special rounds). |
+
+Loading at draw-commit time, not at warmup end, is the "never punish" guarantee: a slot swap, death or a cancelled warmup cannot lose rounds that already left the bags. Code: [`reload_reserve.rs`](../../crates/cell-combat/src/cell/cell_methods/player/world/reload_reserve.rs) and [`switch_return.rs`](../../crates/cell-combat/src/cell/cell_methods/inventory/bandolier/switch_return.rs) on the cell, `ammo_reserve/commits.rs` and `requests.rs` on the base; the wire is `CellToBaseMsg::AmmoReserve` / `BaseToCellMsg::AmmoReserve` ([`crates/wire/src/cell/messages/ammo_reserve.rs`](../../crates/wire/src/cell/messages/ammo_reserve.rs)).
+
+**Infinite ammo** (D-AM09). `.infiniteammo` (alias `.gmsetinfiniteammo`, see [commands.md](../commands.md)) frees only the reserve: a special reload draws nothing from the bags, but the clip still empties and still needs a reload. The switch is per character and lasts until a server restart ([`crates/entity/src/ammo_infinite.rs`](../../crates/entity/src/ammo_infinite.rs)).
+
+**Which weapons take special ammo.** The client's picker lists what the weapon's `ammo_types` column allows, and that list comes from the server-populated inventory cache, so widening a weapon needs no client patch (AM-01). The campaign widened:
+
+| Family | Ids | Takes |
+|---|---|---|
+| Standard Pistol | 27 | the 5 bullet specials (D-AM10) |
+| Standard SMG | 25 | the 5 bullet specials (D-AM10) |
+| High Capacity SMG | 27 | the 5 bullet specials (D-AM10 amendment, #1052) |
+| Dart guns | 19 | the 10 dart specials (AM-11a) |
+
+What each type does to the shot is in [combat-system.md § Special ammo](combat-system.md#special-ammo-in-the-damage-pipeline) and [ADR § 31](../architecture/abilities-and-effects-system.md#31-special-ammo-modifies-the-shot-directly-from-resourcesammo_modifiers-ammo-campaign-am-04-d-am07).
+
 ## `requestAmmoChange` flow
 
 ```text
 Client (player clicks an ammo subtype icon)
   │
-  │ requestAmmoChange(item_id, ammo_type) ──▶ Cell
-  │                                              │ scan bandolier_items for matching item_id
+  │ requestAmmoChange(weapon_instance_id, ammo_type) ──▶ Cell
+  │                                              │ ammo_type <= 0          → refuse
+  │                                              │ slot = bandolier slot whose instance id matches
+  │                                              │   (none → refuse; two → refuse, corrupt state)
+  │                                              │ WeaponDef for the slot's design id
+  │                                              │   (missing → refuse, fail closed)
+  │                                              │ ammo_type not in its ammo_types → refuse
+  │                                              │   every refusal: one CHAN_FEEDBACK line + WARN
+  │                                              │ special rounds loaded → switch return (above)
   │                                              │ item.cur_ammo_type = ammo_type
-  │                                              │ (mark + immediately drain dirty for this slot)
-  │                                              │
   │                                              │ ──── BandolierAmmoUpdate ─▶ DB (immediate)
   │                                              │
   │                                              │ if slot == active_bandolier_slot:
   │ ◀── onEntityProperty(AmmoTypeId, ammo_type) ─│   refreshes the ammo-type indicator
 ```
 
-The persistence emit is **immediate**, not batched, because subtype is a deliberate user action and we want it durable before the next packet. The legacy validator was literally `pass`; we reject `ammo_type == 0` as obvious junk, with a TODO to whitelist against `Item.ammo_types` ([`crates/entity/src/inventory.rs:81`](../../crates/entity/src/inventory.rs#L81)).
+The client sends the weapon's **instance** id (`InvItem.id`, `sgw_inventory.item_id`), not its design id (#534). The handler matches the slot on the instance id and reads the whitelist by that slot's design id, never by the wire value. A type the weapon does not list is refused, and a weapon with no `WeaponDef` fails closed (#602, CAT-D-06). Each refusal sends exactly one feedback line ("That weapon cannot use that ammo type.", "That weapon cannot change ammo type.") and logs `ammo_type_change_rejected` with a `reason=` on target `ammo`. The legacy validator was literally `pass`; AM-03 (#1051) added the checks.
 
-Def: [`entities/defs/interfaces/SGWInventoryManager.def:190-194`](../../entities/defs/interfaces/SGWInventoryManager.def#L190). Implementation: [`crates/cell-combat/src/cell/cell_methods/inventory/bandolier/ammo_change.rs:41-245`](../../crates/cell-combat/src/cell/cell_methods/inventory/bandolier/ammo_change.rs#L41).
+The persistence emit is **immediate**, not batched, because subtype is a deliberate user action and we want it durable before the next packet.
+
+Def: [`entities/defs/interfaces/SGWInventoryManager.def:190-194`](../../entities/defs/interfaces/SGWInventoryManager.def#L190). Implementation: [`crates/cell-combat/src/cell/cell_methods/inventory/bandolier/ammo_change.rs`](../../crates/cell-combat/src/cell/cell_methods/inventory/bandolier/ammo_change.rs).
 
 ## Active slot swap
 
@@ -298,6 +343,9 @@ Client                       Cell                              Base / DB
 
 ## Related docs
 
+- [Ammo campaign ledger](../analysis/ammo/README.md) — decisions D-AM01 to D-AM11, known issues and follow-ups
+- [abilities-and-effects-system.md § 31](../architecture/abilities-and-effects-system.md#31-special-ammo-modifies-the-shot-directly-from-resourcesammo_modifiers-ammo-campaign-am-04-d-am07) — how special ammo modifies the shot
+- [ammo-system.md](../reverse-engineering/findings/ammo-system.md) — AM-01's client findings (no client reserve model, picker source, no client gates)
 - [inventory-system.md § Bandolier and ammo](inventory-system.md#bandolier-and-ammo) — Bandolier container layout and DB schema
 - [combat-system.md](combat-system.md) — Ability fire pipeline, where the ammo gate sits
 - [ability-system.md](ability-system.md) — Ability warmup/cooldown semantics, `ABILITY_RELOAD_WEAPON = 596`

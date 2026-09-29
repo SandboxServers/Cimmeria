@@ -160,6 +160,28 @@ Decision (@Cadacious, 2026-09-28). A chest or crate opens the corpse loot window
 
 Not client-verified yet: `Loot.lua` has no dead-target check, but a loot window on a live entity has not been seen in the client ([unified UAT guide](../guides/unified-uat.md), K22).
 
+## Special ammo loot
+
+The [ammo campaign](../analysis/ammo/README.md) (#1026) made special ammo a lootable, finite resource. Ammo is ordinary stackable items (ids 9000-9014, 500 rounds a stack), so it shows in the normal loot window and lands in your bags like any other item. Quantities are rounds. The rows live in their own seed files, `db/resources/Loot/Seed/ammo_loot.sql` (AM-05) and `ammo_dart_loot.sql` (AM-11a), and name every ammo item through `resources.ammo_item_types`, never by id.
+
+| Table | Who drops it | What | Chance | Rounds |
+|---|---|---|---|---|
+| 3 | Debug-hub crate (D-AM06, debug only) | Hollow Point, Armor Piercing, Incendiary, EMP, Explosive | 100 % each | a full stack, 500 |
+| 3 | | SI 3 9mm Pistol 3235 (Standard Pistol) and MPX 77 SMG 3147 (Standard SMG), both take all five bullet specials | 100 % | 1 each |
+| 3 | | CO2 Pistol Dartgun 3584 and a stack of each of the ten dart specials | 100 % | 1 gun, 500 each |
+| 8, 9 | Castle pre-Romney chest | Hollow Point (D-AM03) | 100 % | 50-75 |
+| 4 | Castle NID guard | Hollow Point | 5 % | 10-25 |
+| 5 | Castle NID veteran | Hollow Point / Armor Piercing | 6 % / 3 % | 15-30 / 10-20 |
+| 7 | Castle hall NID guard | Hollow Point | 10 % | 10-25 |
+
+- **The chest's rounds.** The non-Jaffa chest's SGHC 6 SMG (3127) takes them: the High Capacity SMG family was widened to the five bullet specials (#1052). The Jaffa chest's Serpent Staff (3472) does not, so a Jaffa fires them from a Standard Pistol or SMG.
+- **Empty corpses.** With the ammo rows, the chance that a corpse drops nothing is 29.0 % (table 4), 16.0 % (table 5) and 31.5 % (table 7); `ammo_loot.sql` shows the arithmetic, and `live_db_castle_loot` holds each inside its band.
+- **Only Hollow Point and Armor Piercing drop from NPCs.** Incendiary, EMP, Explosive and every dart come only from the debug crate and `.giveammo`. Tables 2 (Cellblock tutorial guard) and 6 (PRU drones) drop no ammo.
+- **One open of the debug crate** fills 18 bag slots with certain entries (15 stacks and 3 weapons), plus the table's chance rows. With full bags, the rest stays pending in the crate with the "left in the container" line.
+- **Over-cap stacks (#1045).** `GrantItem` writes the looted count as one stack when it does not merge, uncapped. Every ammo row therefore stays at or below the item's `max_stack_size`, and `live_db_ammo_loot::ammo_loot_live_db_npc_drop_rows_are_the_decided_modest_ones` checks it on every table. `.giveammo` does not use `GrantItem` and splits at the cap.
+
+**Telemetry.** When `lootItem` sends the `GrantItem` for an item that `SpaceManager::ammo_catalog` knows as special ammo, `handle_loot_item` ([`crates/cell-interactions/src/cell/interactions/loot/mod.rs`](../../crates/cell-interactions/src/cell/interactions/loot/mod.rs)) logs `ammo_loot_dropped` (DEBUG, target `ammo`) with `account_id`, `player_id`, `entity_id`, `item_id`, `ammo_type`, `ammo_label`, `quantity` (rounds), `corpse_id`, `corpse_template_id` and `loot_table_id`. A grant the base then refuses (bags full) puts the rounds back on the corpse and logs its own refusal. Guard: `loot::tests::looting_special_ammo_logs_ammo_loot_dropped`.
+
 ---
 
 ## Integration with Mob Death

@@ -2,12 +2,14 @@
 
 > **Type**: explanation
 > **Audience**: engineers
-> **Last updated**: 2026-09-26
+> **Last updated**: 2026-09-28
 > **Companion docs**: [docs/engine/cooked-data-pak-format.md](../engine/cooked-data-pak-format.md), [docs/protocol/message-catalog.md](../protocol/message-catalog.md), [docs/content/mission-chains.md](../content/mission-chains.md), [docs/content/equip-from-inventory-pattern.md](../content/equip-from-inventory-pattern.md), [TESTING.md](../../TESTING.md)
 
 This document explains how Cimmeria adds **new mission steps** that the client renders in its quest log without reshipping `CookedDataMissions.pak` to every player. If you only need the operator runbook ("I want to add an Equip-the-X step to mission N"), skip to [Adding a new override](#adding-a-new-override).
 
 The same in-memory-override mechanism carries Cimmeria's item, dialog, Kismet sequence and world-info changes. The mission case is the worked example throughout; [Dialog overrides](#dialog-overrides) covers what is different about dialogs, which is the only category with two distinct override kinds, and [World info overrides](#world-info-overrides-category-12) covers new worlds.
+
+Items (category 4) also have two kinds. The Slappack `ItemOverride` rows patch attributes of an entry the PAK already ships (the icon and the stack cap). Since the ammo campaign's AM-07 (#1044), `ITEM_ADDITIONS` in [`crates/resources/src/base/item_overrides/`](../../crates/resources/src/base/item_overrides/) adds **whole new entries** for ids the PAK does not ship: `new_items.rs` generates the `COOKED_ITEM` bytes and `ammo_items.rs` lists the 15 special-ammo items, 9000-9014. An addition that collides with a shipped id is skipped (`reason = "id_ships_in_pak"`), and the additions feed the items metadata bump, so every client resyncs the category once. That a client renders a wholly new id is unproven in game; the ammo UAT's first step checks it.
 
 ## The problem
 

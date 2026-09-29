@@ -211,6 +211,15 @@ pub async fn handle_loot_item(
             // The base never saw the grant, so the item is still ours to put
             // back.
             restore::return_unsent(entity_id, player_id, source, removed_item, space_mgr);
+        } else {
+            log_ammo_loot(
+                entity_id,
+                player_id,
+                design_id,
+                &removed_item,
+                &source,
+                space_mgr,
+            );
         }
     } else {
         // Cash (naquadah) — send GrantCash to base for persistence + onCashChanged
@@ -282,6 +291,43 @@ pub async fn handle_loot_item(
         // Send updated loot list to refresh the open window
         send_loot_display(entity_id, target_eid as i32, 0, tx, space_mgr).await;
     }
+}
+
+/// Log `ammo_loot_dropped` (ammo campaign, #1026) when a looted item is a
+/// special-ammo reserve item, resolved through `SpaceManager::ammo_catalog`.
+/// Emitted once the `GrantItem` is on its way to the base; a refused grant
+/// (bags full) logs its own refusal and puts the rounds back on the corpse.
+/// Any other item logs nothing here.
+fn log_ammo_loot(
+    entity_id: u32,
+    player_id: i32,
+    design_id: i32,
+    item: &cimmeria_entity::cell_entity::LootItem,
+    source: &LootGrantSource,
+    space_mgr: &SpaceManager,
+) {
+    let Some(ammo_type) = space_mgr.ammo_catalog.ammo_type_for_item(design_id) else {
+        return;
+    };
+    let account_id = space_mgr.get_entity(entity_id).and_then(|e| e.account_id);
+    let loot_table_id = space_mgr
+        .get_entity(source.corpse_id)
+        .and_then(|e| e.loot_table_id);
+    tracing::debug!(
+        target: "ammo",
+        event = "ammo_loot_dropped",
+        account_id,
+        player_id,
+        entity_id,
+        item_id = design_id,
+        ammo_type,
+        ammo_label = cimmeria_entity::ammo_type::label(ammo_type).unwrap_or(""),
+        quantity = item.quantity,
+        corpse_id = source.corpse_id,
+        corpse_template_id = source.corpse_template_id,
+        loot_table_id,
+        "special ammo looted"
+    );
 }
 
 #[cfg(test)]

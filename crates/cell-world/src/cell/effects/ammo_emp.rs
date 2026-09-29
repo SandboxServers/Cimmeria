@@ -279,6 +279,46 @@ mod tests {
         );
     }
 
+    /// Type 12 guard (AM-12 close-out): every EMP hit logs one DEBUG
+    /// `ammo_emp_disrupt` on target `ammo` with the split it took, and a
+    /// missing target logs the same event with `reason=target_missing`.
+    #[test]
+    fn emp_hit_logs_ammo_emp_disrupt() {
+        let logs = crate::test_support::LogCapture::install();
+        let rows = |logs: &crate::test_support::LogCaptureGuard| {
+            logs.all()
+                .into_iter()
+                .filter(|c| c.target == "ammo" && c.has_field("event", "ammo_emp_disrupt"))
+                .collect::<Vec<_>>()
+        };
+
+        hit(Some("MOB_CA_DroneTank.BS_MOB_DroneFlyer"), false);
+        let hit_rows = rows(&logs);
+        assert_eq!(hit_rows.len(), 1, "{:#?}", logs.all());
+        let row = &hit_rows[0];
+        assert_eq!(row.level, tracing::Level::DEBUG);
+        assert!(row.has_field("mechanical", "true"), "{row:#?}");
+        assert!(row.has_field("health_damage", &MECH_DAMAGE.to_string()));
+        assert!(row.has_field("focus_drained", "0"));
+        assert!(row.has_field("effect_id", "9120"));
+
+        let mut mgr = make_mgr_with_target();
+        let effect = emp_effect();
+        EmpDisrupt.on_apply(&mut EffectContext {
+            source_id: 1,
+            target_id: 999,
+            effect: &effect,
+            space_mgr: &mut mgr,
+        });
+        assert!(
+            rows(&logs)
+                .iter()
+                .any(|c| c.has_field("reason", "target_missing")),
+            "{:#?}",
+            logs.all()
+        );
+    }
+
     /// `ammo_modifiers_emp.sql` loads through the startup loaders: the EMP
     /// row with its reconstructed numbers and on-hit effect 9120, and effect
     /// 9120 with script `EmpDisrupt` and the two NVPs the unit tests above

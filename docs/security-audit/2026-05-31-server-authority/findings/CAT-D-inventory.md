@@ -327,10 +327,14 @@ No — static.
 
 ### CAT-D-06 — `requestAmmoChange` falls through to "any positive ammo_type" when the weapon's `item_defs` cache row is missing
 
-> **Fixed but UNMERGED (2026-07-25).** Tracked as issue #448; the
-> fail-closed fix is commit `2b26e208` on branch
-> `fix/448-ammo-change-fail-closed` (PR #602), which is **not** an ancestor
-> of `origin/main`. Still live on `main` until that merges.
+> **Resolved (2026-09-28) by the ammo campaign's AM-03 (PR #1051).** AM-03
+> absorbed #602's fail-closed fix (issue #448): a `requestAmmoChange` for a
+> weapon with no `WeaponDef` is refused with a feedback line and
+> `ammo_type_change_rejected reason=weapon_def_cache_miss`, and the requested
+> type must be in the weapon's `ammo_types`. Guard:
+> `request_ammo_change_rejects_missing_weapon_def`
+> (`crates/cell-methods/src/cell/cell_methods/inventory/tests/ammo_change/`).
+> The historical finding below is kept as written.
 
 **Severity**: Medium
 **Class**: Missing whitelist on edge case

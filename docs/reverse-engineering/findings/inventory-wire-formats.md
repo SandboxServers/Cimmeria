@@ -244,6 +244,8 @@ Alias for INT32 — 4 bytes.
 
 **Total**: 9 bytes
 
+`ItemId` is the weapon's **instance** id (`InvItem.id`, `sgw_inventory.item_id`), not its design id: the sender `FUN_00e1ee10` writes `item+0x0C`, which the item constructor `FUN_00d21750` fills from `id` (issue #534's decompile). The server matches the bandolier slot on it and reads the ammo whitelist by that slot's design id (ammo campaign AM-03, PR #1051).
+
 ---
 
 ### Store Operations
