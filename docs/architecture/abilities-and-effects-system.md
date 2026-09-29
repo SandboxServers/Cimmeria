@@ -817,9 +817,28 @@ The object is an `SGWBeing` (class 0x01) with its owner's faction. Its lifetime 
 
 Tests: `range.rs` (`use_weapon_range_takes_the_weapons_reach` and three more), `use_ability/tests/weapon_range.rs` (a 40 m weapon: in range at 35 m, refused at 45 m; the minimum; no weapon; the warmup fire), `ticks/auto_cycle_range_tests.rs::auto_cycle_tick_uses_the_weapons_reach_for_a_weapon_range_ability`, and the live-DB `spawner/tests/live_db_weapon_ranges.rs`.
 
-### 31. Special ammo modifies the shot directly, from `resources.ammo_modifiers` (ammo campaign, forward pointer)
+### 31. Special ammo modifies the shot directly, from `resources.ammo_modifiers` (ammo campaign AM-04, D-AM07)
 
-**Decision (D-AM07, ammo campaign):** a shot fired with a special ammo type loaded applies that type's `resources.ammo_modifiers` row (damage and penetration multipliers, an optional damage-type override, an optional on-hit effect) on the server. There is no cast and no cooldown, and the toggle abilities (715 Hollow Point, 719 Armor Piercing, ...) are never launched; `toggle_ability_id` records only where the reconstructed numbers came from. AM-F (the campaign's foundation packet) created the empty table and its loader, `spawner::load_ammo_catalog` into `SpaceManager::ammo_catalog` (`AmmoCatalog::modifier(ammo_type)`); AM-04 adds the effect-side read in `cell/effects/ammo_damage.rs` and seeds the first rows. This entry is a pointer until AM-04 lands and replaces it with the real decision record. Plan and contract: [docs/analysis/ammo/work-packets.md](../analysis/ammo/work-packets.md).
+**Decision:** a player's weapon shot fired with a special ammo type loaded applies that type's `resources.ammo_modifiers` row on the server. There is no cast and no cooldown, and the toggle abilities (715 Hollow Point, 719 Armor Piercing, ...) are never launched; `toggle_ability_id` records only where the reconstructed numbers came from. The table loads at startup into `SpaceManager::ammo_catalog` (AM-F).
+
+**Where it applies.** In the damage pipeline, not in an effect script: `damage_apply::apply_damage_to_target` asks `effects::ammo_damage::shot_ammo` for the shot's row once, after the QR roll. Effect scripts such as `RangedPhysicalDamage` run only for effects that set `script_name`, so a script wrapper would have modified a handful of abilities rather than every shot.
+
+| Column | Effect on the shot |
+|---|---|
+| `damage_mult` | Multiplies the pre-armour damage, next to the cover scale (`cover_scale * damage_mult`), for both the HEALTH and the FOCUS component. |
+| `penetration_mult` | Divides the armour mitigation `af * max(mitigation - penetration, 0) / 100` (`combat::calculate_damage_penetrating`). 2.0 lets half the armour stand, 0.5 twice as much. It scales the armour term, not the attacker's `PENETRATION` stat, because that stat is 0 on every player and a multiple of 0 would leave the column dead. |
+| `damage_type` | Replaces the shot's damage type (today always `DT_PHYSICAL`) when set to a valid `EDamageType` ordinal. |
+| `on_hit_effect_id` | On a hit (not `RC_MISS`), runs that effect on the target through the ordinary machinery: its `script_name` dispatches with the ability's scripts, after the damage, and a pulsing effect registers on the target like an ability effect. |
+
+**When a shot is modified.** All of: `ammo.finite_special` is on; the attacker is a player; the ability is a weapon shot (`required_ammo > 0`, the same test `use_ability` uses); the active bandolier slot's `cur_ammo_type` has a row. Otherwise the pipeline is unchanged. NPCs fire unmodified. The flag gate keeps the packet dark: while the flag is off, special reloads are free and AM-F's widening already offers Hollow Point on every Standard Pistol and SMG, so an ungated modifier would be free extra damage. AM-12 turns the reserve draw and the modifier on together.
+
+**Rows.** Hollow Point 1.25 damage / 0.5 penetration and Armor Piercing 0.9 / 2.0, both `DT_Physical`, in `db/resources/Abilities/Seed/ammo_modifiers_hp_ap.sql`. RECONSTRUCTION: the cooked text of 715, 719 and effect 747 gives only the directions ("Damage: Increased, Penetration: Decreased" and the reverse), no numbers.
+
+**Known limits.** `MITIGATION` is capped at 0 in the default stat list, so the armour term, and with it `penetration_mult`, is 0 in live play until mitigation is populated; Armor Piercing is a plain 10% damage cut until then. The Focus-pierce bleed that `RangedPhysicalDamage` adds on top of the pipeline damage (effect 641, Pistol Auto Attack) is not scaled. Cover is not affected by penetration.
+
+**Extending it (Wave-2 families).** A family adds rows in its own `ammo_modifiers_<family>.sql` (one `\ir` line after `Effects/Seed/effects.sql`), may seed its on-hit `effects` / `effect_nvps` rows in the same file from its reserved id block, and, only when no existing script fits, writes one `EffectScript` in its `cell/effects/ammo_<family>.rs` with one `match` arm in `registry.rs`. Nothing in the pipeline changes per family.
+
+Telemetry: `ammo_damage_applied` (DEBUG, target `ammo`) per modified shot, and `ammo_on_hit_effect_missing` (WARN) when a row names an effect that is not loaded. Tests: `effects::ammo_damage::tests` (the resolution rules, and the live-DB seed guard `live_db_hp_ap_seed_rows`) and `damage_apply::ammo_tests` (the factors, default ammo unchanged, penetration against armour, the on-hit effect, the log row). Plan: [docs/analysis/ammo/work-packets.md](../analysis/ammo/work-packets.md).
 
 ## Cross-cutting follow-ups
 
