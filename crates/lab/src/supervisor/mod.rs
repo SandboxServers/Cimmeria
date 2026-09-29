@@ -34,6 +34,7 @@ pub mod screenshot;
 pub mod session_file;
 pub mod telemetry_session;
 mod watchdog;
+pub mod world;
 
 use std::collections::VecDeque;
 use std::path::PathBuf;

@@ -2,7 +2,7 @@
 title: Live Research Lab — the research rulebook
 type: how-to
 audience: engineers and AI agents doing RE / live verification against a running SGW.exe + cimmeria-server
-last_updated: 2026-09-19
+last_updated: 2026-09-29
 companion_docs:
   - ../architecture/live-research-lab.md
   - ../architecture/client-telemetry.md
@@ -220,6 +220,10 @@ Supervisor (`cimmeria-lab`, stdio MCP on the dev box):
 | `client_input_key` / `client_type_text` | Key presses and typing as `WM_KEYDOWN`/`WM_KEYUP` (the game translates them; Shift is virtual). Types letters, digits, space, `-_/.`, so `/logout` and `.`-console lines work through chat. |
 | `client_input_mouse` | DirectInput relative motion (mouse-look) and button clicks at the UI cursor. |
 | `client_input_focus` / `client_input_status` / `client_input_release` | Virtual focus (the game keeps reading input in the background), hook counters, let go of everything. |
+| `client_entity_find` | Entities the client knows, by id, name, mob id (the client's template id), hostility or distance: name, level, hostility, rendered, targetable, position (client and server coordinates), distance, screen point. Read-only. See [World tools](#world-tools). |
+| `client_world_click` / `client_target` | Click an entity or world point in the 3D view with real input (camera turned onto it if needed, mouse-over checked for occluders), then report the target and windows it changed. `client_target` left-clicks and requires `Unit.Target` to become the entity. |
+| `client_move_to` | Walk to a point, an entity or through waypoints with `W` and mouse-look, closed loop on the player's position; stuck detection, arrival radius, timeout. |
+| `client_camera` | Mouse-look yaw/pitch, wheel zoom, face an entity or point. |
 
 Server endpoint (`cimmeria-lab-mcp`, in-server, token-gated HTTP —
 WireGuard-only on the colo): `server_console_*`, `server_sessions`,
@@ -308,6 +312,45 @@ Typing covers letters, digits, space and `-_/.`; a password with other character
 `client_entity_table` reads the `GameEntityManager` singleton (VA `0x01EF244C` plus the ASLR slide) and walks its three `std::map`s with one memory read per tree node and one per entity. Hundreds of small reads once starved the watchdog's heartbeat and got a healthy client killed; the watchdog now forgives a missed heartbeat while other bridge calls are completing (`heartbeat::BUSY_GRACE_MS`), and a crash relaunch logs back in with `lab_login` and plays the `lab-account.json` character.
 
 Not yet proven on the live client (the prototype scripts these port were): the EULA path, the server-row selection by name, the `SelfStatusWin`/`MinimapWin` world-HUD test for a returning character (the prototype only played new characters, whose intro dialog marks the world as loaded), `client_ui_state`'s root-window and chat sections, and `isReady()` through the vtable.
+
+## World tools
+
+The world tools drive the 3D view the way a player does, so an automated UAT step exercises the client's own picking, targeting and movement code:
+
+| Tool | Arguments | Result |
+|---|---|---|
+| `client_entity_find` | `entity_id`, `name` (substring, `exact`), `mob_id`, `hostility` (an `AggressionLevel` name), `max_distance_m`, `rendered_only`, `include_player`, `limit` (10), `project` (true) | Nearest first: `id`, `name`, `level`, `hostility`, `is_friend`, `mob_id`, `rendered`, `targetable`, `position` (`client` UE3 units, `server` metres, `yaw_deg`), `distance_m`, `screen`, `on_screen` |
+| `client_target` | `entity_id` or `name`; `rotate_camera` (true), `force`, `allow_fallback`, `settle_ms` (1200) | Left-click; passes when `Unit.Target` becomes the entity. `result` has the target before and after, windows opened and closed; `hover_verified`; `camera` when it had to turn |
+| `client_world_click` | as above plus `point`, `button` (`right`), `expect` (`target`, `window`, `any` (default), `nothing`) | Same shape; `expect: nothing` reports what changed without failing (for "nothing should happen" steps) |
+| `client_move_to` | `point`, `entity_id` or `name`; `waypoints`; `arrival_m` (1.5, or 2.5 for an entity); `timeout_ms` (60000) | `arrived`, `start`, `end`, per-leg outcome and unstick attempts, the learned mouse-look gain, a path sampled every second |
+| `client_camera` | `yaw_counts`, `pitch_counts`, `zoom_notches`; `face_entity_id`, `face_name` or `face_point`; `max_steps` (10) | Camera actor pose before and after; for a face, whether the target ended up centred |
+
+Points are server coordinates (BigWorld metres, Y up, as `.location` and `server_entity_get` print them) unless the point says `"space": "client"`; the client uses UE3 units with Z up, `client = (z, x, y) * 100`.
+
+**Native level.** Every result carries `native_level` (`read`, `real_input` or `ui_lua`), its UAT tier (`N1`, `N3`) and `counts_as_native_pass`. The only fallback is `client_target {allow_fallback: true}`: when the click does not change the target it calls the stock `targetUnit()` and reports `ui_lua` / N3, so a runner can refuse to count it. A failure is an MCP error naming the tool, the step (`resolve_target`, `on_screen`, `hover`, `observe`, `leg_N`, ...), the entity or point, the evidence at that moment (mouse-over at each height tried, target and windows before and after, position and distance left) and the steps done so far with timings.
+
+How they work:
+
+- **Positions** come from memory, not Lua: each entity's actor (`Entity + 0x08`) holds UE3 `AActor::Location` at `+0xDC` and the `FRotator` at `+0xE8`, which is exactly what the stock `unitPosition` and `unitOrientation` read (`FUN_00aeb960`, `BW__unknown_00e685c0`). One 0x18-byte read per actor, so the walk loop polls the player's position every 100 ms without touching Lua.
+- **Names, level, hostility, mob id** come from the stock `unit*` Lua functions. Lua units are *slots*, not entity ids: `GameEntityManager + 0x130` is a `std::map<int, int>` from slot (`Unit.Target`, `Unit.MouseOver`, `Unit.Pet1` = 10, `Unit.Dialog` = 17, ...) to entity id. `client_entity_find` points private slots (7700 and up, which no stock code uses) at the nearest 48 entities with the client's own slot writer (`FUN_00c67bd0`, a journaled native call), then reads all of them in one Lua call. The slot writer raises `Event_UI_UnitMappingChanged`; the only stock handler ignores slots it does not track.
+- **Projection** uses the game's own `view:worldToPixel`, which only exists inside `Events.PreRender`. The tools re-subscribe `SCTWin`'s PreRender to `LabWorld.pre`, which calls `SCTMod.onPreRender` first (combat text keeps working) and then projects the queued points. `MinimapWin` is the fallback host. If the frame counter stops moving (a UI reload), the chain is re-installed once.
+- **Clicking** places the CEGUI cursor on the projected point (plus a `WM_MOUSEMOVE` when the mouse-over does not follow), reads `Unit.MouseOver` from the slot map, tries the body centre, chest, legs and head, and fails as occluded when another entity answers at every height. Then it presses and releases the real button and polls the target slot and the visible windows.
+- **Walking** holds `W` and turns with DirectInput mouse-look. The mouse-look gain and its sign are learned from each motion (`steer::TurnModel`), and so is whether the pawn turns while standing (if not, it turns while walking). No progress for 2.5 s while walking is a snag: jump, strafe right (`D`), strafe left (`A`), then fail. More than 30 m in one tick fails as a teleport. Every exit releases `W`, `A` and `D`.
+- **Facing** turns until the target projects within a quarter of the half-width of the centre. While it is behind the camera, it turns by the bearing from the camera actor (see below), or a quarter turn when that is unknown.
+
+### Not yet verified on the live client
+
+These tools were written and tested against a simulated client only (the lab lock was not available); the Ghidra facts above are static. The first live run should check, in this order:
+
+1. `client_entity_find {include_player: true}`: the player's `position.client` equals `unitPosition(Unit.Player)` from `client_lua_eval`, and `yaw_deg` matches `unitOrientation(Unit.Player) * 360` (a fraction of a turn, per `FUN_00aeb9b0`). Compare `position.server` with `.location` to confirm the swizzle.
+2. The private-slot pin: debug-hub NPC names and levels read correctly; no Lua error or UI glitch after `Event_UI_UnitMappingChanged` for slots 7700+. Check `call_native` returns cleanly for the thiscall slot writer.
+3. Projection: `on_screen` and `screen` match where the NPC is in `lab_screenshot`; `SCTWin` combat text still shows after the chain is installed.
+4. Mouse-over: does `Unit.MouseOver` follow the CEGUI cursor alone, or only after the posted `WM_MOUSEMOVE`? `client_target`'s `hover` step records which one worked.
+5. `client_target` on a debug-hub NPC changes the target frame; `client_world_click` (right) opens its dialog or greet window.
+6. Mouse-look: does DirectInput motion turn the camera without a mouse button held? If a button must be held, the tools need a `look_button` option (not implemented). Record the learned `counts_per_rad` and update `steer::DEFAULT_COUNTS_PER_RAD`.
+7. The camera chain `[[[[g_pGLevel + 0x50] + 0x3C]] + 0x35C]`: is that actor the player controller (its yaw follows mouse-look) or the pawn? `client_camera` reports it as `camera_before` / `camera_after`.
+8. `client_move_to` a few metres across the stasis room: the character walks with `W`, turns toward the point, stops inside the radius, and `W` is released. Then a point behind a wall to see the unstick sequence and the `leg_0` failure.
+9. Movement keys: `A`/`D` strafe (per `SGWInput.ini`) rather than turn.
 
 ## Trust, audit, and the colo
 

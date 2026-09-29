@@ -29,6 +29,7 @@ use crate::timeline::{Timeline, TimelineArgs};
 
 mod client_state;
 mod flows;
+mod world;
 
 #[derive(Debug, serde::Deserialize, schemars::JsonSchema)]
 pub struct LuaEvalArgs {
@@ -246,7 +247,10 @@ impl LabServer {
         Self {
             supervisor,
             timeline: Arc::new(Timeline::from_env()),
-            tool_router: Self::tool_router() + Self::flows_router() + Self::client_state_router(),
+            tool_router: Self::tool_router()
+                + Self::flows_router()
+                + Self::client_state_router()
+                + Self::world_router(),
         }
     }
 
