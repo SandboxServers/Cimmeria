@@ -50,6 +50,10 @@ cimmeria-workspace-hack = { version = "0.1", path = "../workspace-hack" }
 test-support = ["cimmeria-cell-combat/test-support"]
 
 [dev-dependencies]
+# The effect scripts (#962 step 4), installed on the managers of the tests
+# that dispatch one. A dev-dependency only: the scripts crate depends on
+# cell-world alone, so there is no cycle.
+cimmeria-cell-effect-scripts = { workspace = true }
 # The live-DB gate, `LogCapture` and the source-scan walker, re-exported from
 # the `#[cfg(test)] mod test_support` shim in lib.rs. Every crate with this
 # dev-dependency must be listed in tools/test-live-db.{sh,ps1};

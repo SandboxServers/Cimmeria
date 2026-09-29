@@ -1,0 +1,40 @@
+[package]
+name = "cimmeria-cell-effect-scripts"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+publish = false
+description = "The effect scripts for the Cimmeria server emulator: every EffectScript implementation (heals, damage, shields, stuns, cover stance, pet scripts, stat buffs, the special-ammo scripts) and the table the composition root registers with the cell at startup"
+
+# Step 4 of the plugin migration in docs/architecture/plugin-architecture.md
+# (#962): a registry move rather than a plugin. A leaf: it depends on
+# cimmeria-cell-world (the EffectScript trait, EffectContext, the effect
+# runtime and SpaceManager), and only the composition root (cimmeria-services,
+# which builds the cell's EffectScripts registry from EFFECT_SCRIPTS) and test
+# code depend on it. It must never become a dependency of a cell crate: that
+# would put it back under the long rebuild tail the move removes.
+[dependencies]
+# The EffectScript trait, EffectContext, the registry type, SpaceManager and
+# the world halves the scripts call (pets' buff ledger, the stat-buff ledger,
+# the spawner-backed world state).
+cimmeria-cell-world = { workspace = true }
+# The spawner caches the ammo scripts read (`AmmoModifier`, the ammo
+# catalog) and the effect-def loader the live-DB guards use.
+cimmeria-cell-catalog = { workspace = true }
+cimmeria-entity = { workspace = true }
+# BSF_MOVEMENT_LOCK for Stun.
+cimmeria-wire = { workspace = true }
+tracing = { workspace = true }
+cimmeria-workspace-hack = { version = "0.1", path = "../workspace-hack" }
+
+[dev-dependencies]
+# The live-DB gate and `LogCapture`, re-exported from the
+# `#[cfg(test)] mod test_support` shim in lib.rs. Every crate with this
+# dev-dependency must be listed in tools/test-live-db.{sh,ps1};
+# `live_db_wrapper_lists_every_test_support_crate` enforces it.
+cimmeria-test-support = { workspace = true }
+# The world fixtures (`make_space_manager*`, the pet fixtures, the effect
+# target world).
+cimmeria-cell-world = { workspace = true, features = ["test-support"] }
+tokio = { workspace = true }
+sqlx = { workspace = true }

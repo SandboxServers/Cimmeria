@@ -12,7 +12,8 @@
 //! `script_name` and no NVPs, so the effect pipeline had nothing to run for
 //! them. NA22 names the scripts on the two rows. The server grants the
 //! stance when an NPC reaches its reserved cover slot and removes it when
-//! the NPC leaves the slot, leashes or dies ([`crate::cell::cover::stance`]).
+//! the NPC leaves the slot, leashes or dies
+//! ([`cimmeria_cell_world::cell::cover::stance`]).
 //!
 //! The magnitude is 100, from effect 4565's own description. The ability's
 //! "+200" is not used (D-NA15): the effect row is the thing that applies,
@@ -173,5 +174,37 @@ mod tests {
             .insert("CoverDefense".to_string(), "40".to_string());
         run(&mut mgr, &CoverStance, &effect);
         assert_eq!(cover_defense(&mgr, 1), (40, 40));
+    }
+}
+
+/// Live-DB guard, moved from `cimmeria-cell-world`'s `live_db_use_cover`
+/// with the scripts it checks.
+#[cfg(test)]
+mod live_db_tests {
+    use cimmeria_cell_world::cell::cover::{self, COVER_STANCE_EFFECT, COVER_STANCE_REMOVE_EFFECT};
+
+    use crate::cell::spawner::load_effect_defs;
+    use crate::test_support::require_db_or_skip;
+
+    /// Effects 4565 and 1742 name the Cover Stance scripts. Without them the
+    /// stance is tracked but no stat changes (`cover.stance event=effect_missing`).
+    #[tokio::test]
+    async fn cover_stance_effect_rows_name_their_scripts() {
+        let pool = require_db_or_skip!();
+        let defs = load_effect_defs(&pool).await.expect("load_effect_defs");
+        for (id, script) in [
+            (COVER_STANCE_EFFECT, "CoverStance"),
+            (COVER_STANCE_REMOVE_EFFECT, "RemoveCoverStance"),
+        ] {
+            let def = defs
+                .get(&id)
+                .unwrap_or_else(|| panic!("effect {id} seeded"));
+            assert_eq!(def.ability_id, cover::COVER_STANCE_ABILITY);
+            assert_eq!(def.script_name.as_deref(), Some(script), "effect {id}");
+            assert!(
+                crate::cell::effects::registry::lookup(script).is_some(),
+                "{script} must be registered"
+            );
+        }
     }
 }

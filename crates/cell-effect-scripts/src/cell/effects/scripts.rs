@@ -18,8 +18,9 @@
 //!
 //! ## Adding a new script
 //!
-//! 1. Add a zero-sized struct here with an `impl EffectScript`.
-//! 2. Wire it into [`super::registry::lookup`].
+//! 1. Add a zero-sized struct here (or in its family's module) with an
+//!    `impl EffectScript`.
+//! 2. Add its row to [`super::registry::EFFECT_SCRIPTS`].
 //! 3. Add a unit test in this file covering the happy path + edge cases
 //!    (missing target, zero/negative NVP, missing stat).
 //! 4. Seed an effect row with `script_name = "YourScriptName"` if you

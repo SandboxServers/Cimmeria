@@ -220,6 +220,7 @@ component_management:
         - "crates/cell-pets/**"
         - "crates/cell-duel/**"
         - "crates/cell-org/**"
+        - "crates/cell-effect-scripts/**"
         - "crates/cell/**"
       statuses:
         - type: project

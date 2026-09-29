@@ -1,82 +1,60 @@
 //! Effect-script dispatcher.
 //!
-//! `EffectDef.script_name: Option<String>` has been loaded from the DB for
-//! some time but never dispatched — the field was dead. This module wires
-//! it up: when an effect with a non-NULL `script_name` fires, the registry
-//! looks up the named script and runs it. Scripts decide their own
+//! When an effect with a non-NULL `EffectDef.script_name` fires, the
+//! registry looks up the named script and runs it. Scripts decide their own
 //! behavior (heal, damage, buff) without each call site having to hand-
 //! roll the NVP read + stat mutate + wire packet send.
 //!
 //! ## Architecture
 //!
-//! - **[`EffectScript`]** trait — one method (`on_apply`) for the v1
-//!   single-shot model. The Python reference (`AbilityManager.py`) calls
-//!   `EffectInstance.doAction` once per pulse with the full ctx; we
-//!   collapse to `on_apply` for now since the cell has no continuous
-//!   pulse-tick infrastructure yet. Channelled / multi-pulse effects
-//!   are tracked as a v2 follow-up that adds `on_pulse_begin` /
-//!   `on_pulse_end` + a pulse-tick loop.
+//! - **[`EffectScript`]** trait: `on_apply`, called once per pulse fire,
+//!   and `on_remove`, called once when an active instance is swept
+//!   (decision 1 of `docs/architecture/abilities-and-effects-system.md`).
 //!
-//! - **[`EffectContext`]** — carries the source/target ids, the effect's
+//! - **[`EffectContext`]**: carries the source/target ids, the effect's
 //!   parameters (NVP bag from `effect.params`), and the mutable
 //!   [`SpaceManager`] handle so scripts can read stats + mutate the
 //!   target.
 //!
-//! - **[`registry::dispatch`]** — static `HashMap<&'static str, &dyn
-//!   EffectScript>` keyed by `script_name`. Unknown names hit the warn
-//!   log and no-op (don't crash). Match the script-naming scheme that
-//!   the original game's content was authored against — `HealHealth`,
-//!   `HealFocus`, `MeleeDamage`, and the rest as they're added.
+//! - **[`registry::EffectScripts`]**: the `script_name` to script map.
+//!   The composition root builds it at startup and the cell installs it on
+//!   its `SpaceManager`; [`dispatch_by_name`] and [`dispatch_on_remove`]
+//!   look scripts up there. Unknown names hit the warn log and no-op (don't
+//!   crash). Names match the scheme the original game's content was
+//!   authored against: `HealHealth`, `HealFocus`, `MeleeDamage`, and so on.
 //!
-//! ## v1 scope (this PR)
+//! ## Where the scripts are
 //!
-//! Three scripts are seeded:
-//! - [`scripts::HealFocus`] — `HealPercentage` NVP × max focus, or a flat
-//!   `HealAmount` (see [`heal`])
-//! - [`scripts::HealHealth`] — the same for health
-//! - [`scripts::MeleeDamage`] — `HealthDamage` NVP through the damage
-//!   pipeline
+//! The `EffectScript` implementations are in `cimmeria-cell-effect-scripts`
+//! (#962 step 4, `docs/architecture/plugin-architecture.md` §4.4), a leaf
+//! only the composition root depends on, so adding or editing a script
+//! rebuilds that crate and the root, not the cell track. A new script is an
+//! `impl EffectScript` in that crate plus one row in its `EFFECT_SCRIPTS`
+//! table; nothing here changes.
 //!
-//! ## What's NOT here (intentional)
-//!
-//! - **No DB seed for `script_name` values.** Existing effect rows
-//!   continue to flow through the legacy `HealthDamage`/`FocusDamage`
-//!   NVP path in `damage_apply`. Operators opt in per-effect by
-//!   setting `script_name` to one of the registered strings. A future
-//!   migration can promote heal effects (659, 1383, 1215) en masse.
-//! - **No pulse-tick model.** v1 fires `on_apply` once per use; the
-//!   pulse-tick + `on_pulse_begin` extension lands when the first
-//!   channelled effect goes in.
-//! - **No effect_nvps DB schema migration.** The existing
-//!   `effect.params` HashMap is already loaded from `resources.effect_nvps`
-//!   by `load_effect_defs`. Scripts read it directly via `ctx.effect.param_*`.
+//! What stays here is the runtime the scripts plug into and the pieces the
+//! layers below the leaf call directly: the trait, the context, dispatch,
+//! the registry type, the passive pass ([`passives`]), the pet-script name
+//! predicates ([`pet_scripts`]), the stat-buff ledger ([`stat_buff`]) and
+//! the special-ammo shot helpers combat's damage path reads
+//! ([`ammo_damage`], [`ammo_explosive`]).
 //!
 //! ## Crate split
 //!
-//! This synchronous layer (the trait, the context, the registry and the
-//! scripts) is in `cimmeria-cell-world`, because the spawn-time cover hold
-//! runs Cover Stance through it. The async pulsing layer (`pulsing`: register,
-//! tick, channel cancellation) is combat: `cimmeria-cell-combat` declares it
-//! beside a re-export of this module at `cell::effects`.
+//! This synchronous layer is in `cimmeria-cell-world`, because the
+//! spawn-time cover hold runs Cover Stance through it. The async pulsing
+//! layer (`pulsing`: register, tick, channel cancellation) is combat:
+//! `cimmeria-cell-combat` declares it beside a re-export of this module at
+//! `cell::effects`.
 
-// Special-ammo scripts (ammo campaign; created empty by AM-F, one file per
-// packet: AM-04, AM-08, AM-09, AM-10, AM-11a/b/c).
+// The special-ammo shot helpers the damage path reads (ammo campaign AM-04,
+// AM-10). The ammo families' scripts are in `cimmeria-cell-effect-scripts`.
 pub mod ammo_damage;
-pub mod ammo_dart_cc;
-pub mod ammo_dart_support;
-pub mod ammo_dart_tech;
-pub mod ammo_emp;
 pub mod ammo_explosive;
-pub mod ammo_incendiary;
-pub mod cover_stance;
-pub mod heal;
 pub mod passives;
 pub mod pet_scripts;
 pub mod registry;
-pub mod scripts;
 pub mod stat_buff;
-#[cfg(test)]
-mod test_fixtures;
 
 use crate::cell::space_manager::SpaceManager;
 use cimmeria_entity::abilities::EffectDef;
@@ -101,8 +79,8 @@ pub struct EffectContext<'a> {
 }
 
 /// One executable behavior keyed by `script_name`. Implementors live in
-/// [`scripts`] and register themselves via the [`registry::dispatch`]
-/// static table.
+/// `cimmeria-cell-effect-scripts` and are registered in the
+/// [`registry::EffectScripts`] the cell installs on its `SpaceManager`.
 ///
 /// `on_apply` is called once per pulse fire (initial or re-pulse from
 /// the per-tick scheduler) — it returns `()`, not a `Result`. Scripts
@@ -131,7 +109,7 @@ pub trait EffectScript: Send + Sync {
 /// ran, `false` when no script was registered for the name (caller
 /// should fall through to legacy NVP path). Unknown names log at warn.
 pub fn dispatch_by_name(name: &str, ctx: &mut EffectContext) -> bool {
-    match registry::lookup(name) {
+    match ctx.space_mgr.effect_scripts().lookup(name) {
         Some(script) => {
             tracing::debug!(
                 target: "abilities",
@@ -154,8 +132,9 @@ pub fn dispatch_by_name(name: &str, ctx: &mut EffectContext) -> bool {
                 target_id = ctx.target_id,
                 effect_id = ctx.effect.effect_id,
                 "Effect has script_name but no script registered — falling \
-                 back to legacy NVP path; add a script to cell/effects/scripts/ \
-                 or correct the effect's script_name value"
+                 back to legacy NVP path; add the script to the EFFECT_SCRIPTS \
+                 table in cimmeria-cell-effect-scripts or correct the effect's \
+                 script_name value"
             );
             false
         }
@@ -167,7 +146,7 @@ pub fn dispatch_by_name(name: &str, ctx: &mut EffectContext) -> bool {
 /// don't have a script_name OR whose script isn't registered — these
 /// don't need cleanup.
 pub fn dispatch_on_remove(name: &str, ctx: &mut EffectContext) -> bool {
-    match registry::lookup(name) {
+    match ctx.space_mgr.effect_scripts().lookup(name) {
         Some(script) => {
             tracing::debug!(
                 target: "abilities",

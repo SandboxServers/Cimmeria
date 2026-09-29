@@ -40,6 +40,7 @@ const SUPPORT_DAMAGE_MULT: f32 = 0.0001;
 fn support_mgr(ammo_type: i32, beneficial: bool) -> SpaceManager {
     cimmeria_entity::ammo_feature::set_finite_special(true);
     let mut mgr = duel_mgr();
+    crate::test_support::install_effect_scripts(&mut mgr);
     let mut shot = cast_ability(SHOT, 0.0);
     shot.required_ammo = 1;
     mgr.ability_defs.insert(SHOT, shot);

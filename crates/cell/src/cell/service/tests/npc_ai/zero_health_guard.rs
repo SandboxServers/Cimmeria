@@ -72,6 +72,7 @@ async fn npc_killed_by_an_effect_bleed_does_not_shoot_back() {
     use cimmeria_entity::abilities::EffectDef;
 
     let mut mgr = make_ai_fixture([0.0; 3], [0.0; 3]);
+    crate::test_support::install_effect_scripts(&mut mgr);
     // Give the NPC a real, in-range, off-cooldown ability so "did it
     // attack?" is observable rather than vacuously false.
     seed_default_ability(&mut mgr, /* min */ 0, /* max */ 30);

@@ -12,13 +12,13 @@
 
 use super::tests::{make_ability, make_mgr_player_vs_npc};
 use super::*;
-use crate::cell::effects::ammo_dart_tech::{
+use crate::cell::spawner::{AmmoCatalog, AmmoModifier};
+use crate::test_support::NoContentEvents;
+use cimmeria_cell_effect_scripts::cell::effects::ammo_dart_tech::{
     DART_EMP_DAMAGE_MULT, DART_EMP_EFFECT_ID, DART_EMP_FOCUS_DRAIN, DART_EMP_PENETRATION_MULT,
     DART_EMP_TOGGLE_ABILITY, DART_RADIOACTIVE_EFFECT_ID, DART_RADIOACTIVE_PULSES,
     DART_RADIOACTIVE_PULSE_DAMAGE, DART_RADIOACTIVE_PULSE_SECS, DART_RADIOACTIVE_TOGGLE_ABILITY,
 };
-use crate::cell::spawner::{AmmoCatalog, AmmoModifier};
-use crate::test_support::NoContentEvents;
 use cimmeria_entity::abilities::{EffectDef, RC_HIT};
 use cimmeria_entity::ammo_type::{DART_DEFAULT, DART_EMP, DART_RADIOACTIVE};
 use cimmeria_entity::cell_entity::BandolierItem;

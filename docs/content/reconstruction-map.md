@@ -345,7 +345,7 @@ implemented at [crates/cell-combat/src/cell/abilities/cone_aoe/](../../crates/ce
 `is_channeled` / `pulse_count` columns through
 [cell/effects/pulsing/](../../crates/cell-combat/src/cell/effects/pulsing/). Nine effect
 scripts are registered in
-[cell/effects/registry.rs](../../crates/cell-world/src/cell/effects/registry.rs) —
+[the `EFFECT_SCRIPTS` table](../../crates/cell-effect-scripts/src/cell/effects/registry.rs) (`cimmeria-cell-effect-scripts`) —
 `HealHealth`, `HealFocus`, `MeleeDamage`, `MeleePhysicalDamage`, `AbsorbShield`, `Stun`,
 `Suppression`, `RangedPhysicalDamage`, `RangedEnergyDamage`.
 

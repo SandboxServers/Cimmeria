@@ -2,7 +2,7 @@
 //! Explosive rounds (toggle ability 1446), the on-hit effect.
 //!
 //! Created empty by AM-F so each family packet adds its script here and one
-//! `match` arm in `registry.rs`, and never edits `effects/mod.rs`.
+//! `EFFECT_SCRIPTS` row in `registry.rs`, and never edits `effects/mod.rs`.
 //!
 //! # Explosive rounds splash; they need no script
 //!
@@ -22,7 +22,7 @@
 //! effect is recognised by its target collection method, `TCM_AERadius`,
 //! the method every seeded blast effect uses; its radius is the
 //! `tcm_param1` range tier (`EffectDef::tcm_range_meters`) and its share of
-//! the shot is the [`SPLASH_FRACTION_NVP`] NVP. So no `registry.rs` arm.
+//! the shot is the [`SPLASH_FRACTION_NVP`] NVP. So no `EFFECT_SCRIPTS` row.
 
 use cimmeria_entity::abilities::{EffectDef, TCM_AE_RADIUS};
 

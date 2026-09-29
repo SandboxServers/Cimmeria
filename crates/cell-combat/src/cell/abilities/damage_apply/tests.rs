@@ -21,6 +21,7 @@ use cimmeria_entity::abilities::EffectDef;
 /// silently fail.
 pub(super) fn make_mgr_player_vs_npc() -> SpaceManager {
     let mut mgr = SpaceManager::new(1);
+    crate::test_support::install_effect_scripts(&mut mgr);
     let xml = r#"<?xml version="1.0"?><Spaces><Space WorldName="Castle" Instanced="false" MinX="-800" MaxX="800" MinY="-800" MaxY="800" /></Spaces>"#;
     mgr.parse_spaces_xml(xml).unwrap();
     mgr.create_startup_spaces(

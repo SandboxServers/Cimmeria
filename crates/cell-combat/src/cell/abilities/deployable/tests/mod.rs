@@ -39,6 +39,7 @@ const FULL: i32 = 100_000;
 /// fixture.
 fn deploy_mgr() -> SpaceManager {
     let mut mgr = SpaceManager::new(1);
+    crate::test_support::install_effect_scripts(&mut mgr);
     mgr.parse_spaces_xml(
         r#"<?xml version="1.0"?><Spaces><Space WorldName="Castle" Instanced="false" MinX="-800" MaxX="800" MinY="-800" MaxY="800" /></Spaces>"#,
     )

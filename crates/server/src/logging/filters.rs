@@ -154,6 +154,15 @@ use crate::otel;
 /// moved from `cimmeria_cell_methods` to `cimmeria_cell_interactions`
 /// (`cell::organization`), whose row already covers it.
 ///
+/// `cimmeria_cell_effect_scripts=debug` (#962 step 4) does the same for the
+/// effect scripts crate: every `EffectScript` implementation and the table
+/// the composition root registers. Their rows name the `abilities`,
+/// `pets.buff` and `ammo` targets, which those rows export; this row covers
+/// any untargeted row, whose module path moved from `cimmeria_cell_world`.
+/// No other crate's row is a prefix of it, and it is a prefix of none. The
+/// effect runtime that stayed below (dispatch, the registry type, the
+/// passive pass, the stat-buff ledger) keeps `cimmeria_cell_world=debug`.
+///
 /// `cimmeria_cell::cell=debug` (wave C6) does the same for the cell service:
 /// `CellService`, the cell loop, the base-message handlers, the ticks and the
 /// cell-method router. Like `cimmeria_base::base` it names the crate's one
@@ -274,6 +283,7 @@ pub(crate) const OTEL_FILTER: &str = "info,\
                 cimmeria_cell_pets=debug,\
                 cimmeria_cell_duel=debug,\
                 cimmeria_cell_org=debug,\
+                cimmeria_cell_effect_scripts=debug,\
                 cimmeria_cell::cell=debug,\
                 cimmeria_mercury=debug,\
                 mercury.packet=info,\

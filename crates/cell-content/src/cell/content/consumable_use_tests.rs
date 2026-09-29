@@ -86,6 +86,7 @@ fn effect(
 
 fn mgr() -> SpaceManager {
     let mut mgr = SpaceManager::new(1);
+    crate::test_support::install_effect_scripts(&mut mgr);
     let xml = r#"<?xml version="1.0"?><Spaces><Space WorldName="W" Instanced="false" MinX="-100" MaxX="100" MinY="-100" MaxY="100" /></Spaces>"#;
     let cxml = r#"<?xml version="1.0"?><Spaces><Space WorldName="W" /></Spaces>"#;
     mgr.parse_spaces_xml(xml).unwrap();

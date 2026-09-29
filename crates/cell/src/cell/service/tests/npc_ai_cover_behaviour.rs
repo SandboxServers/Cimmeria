@@ -29,6 +29,7 @@ const SLOT: CoverSlotKey = CoverSlotKey {
 /// The seeded Cover Stance effect rows (`effects.sql` 4565 / 1742), which
 /// the live-DB test pins against the seed.
 pub(super) fn seed_cover_stance_effects(mgr: &mut SpaceManager) {
+    crate::test_support::install_effect_scripts(mgr);
     for (effect_id, script) in [
         (COVER_STANCE_EFFECT, "CoverStance"),
         (COVER_STANCE_REMOVE_EFFECT, "RemoveCoverStance"),
