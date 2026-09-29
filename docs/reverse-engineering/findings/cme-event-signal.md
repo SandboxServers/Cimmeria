@@ -2,7 +2,7 @@
 
 > **Diátaxis type**: reference
 > **Audience**: engineers working on protocol decompilation or Cimmeria's CME-bridge surface
-> **Last updated**: 2026-09-27
+> **Last updated**: 2026-09-28
 > **Confidence**: HIGH (decompiled across W1 + W2 + W3 of V5 Documentation Campaign session 1)
 
 Every `CME::EventSignal` emit on the client side follows a fixed five-call pipeline; every `TypedEmitInfo__vfunc_0` is the MSVC scalar destructor (not a name accessor); every `CallbackImpl__vfunc_2` is the RTTI type-name accessor (returning a `TypeDescriptor*`, not a name string).
@@ -17,11 +17,11 @@ Every client-side `Event_NetOut_*` emit funnels through the addresses below. Two
 
 | Address | Name | Role |
 |---------|------|------|
-| `0x0155f790` | `CmeEventSignal_GetSystem` | Singleton accessor for the CME EventSignal system. |
-| `0x00a5c0f0` | `CmeEventSignal_LookupByName` | Resolve a signal handle from a name string. |
+| `0x0155f790` | `CmeEventSignal_GetSystem` | Returns the event registry singleton. See [the 2026-09-28 correction](#correction-2026-09-28-the-registry-is-an-event-factory-not-a-subscriber-api). |
+| `0x00a5c0f0` | `CmeEventSignal_LookupByName` | Creates a new event object from its class name (`const std::string&`). See the correction. |
 | `0x0043b850` | `CmeEventSignal_SetField` | Set a key/value field on a signal object. |
 | `0x00cb1f00` | `CmeEventSignal_SetFieldHelper` | SetField wrapper: acquires handle via `FUN_004410d0`, calls SetField, releases handle. Used by emitters that do not hold the handle directly. |
-| `0x00a5c150` | `CmeEventSignal_Subscribe` | Subscriber insertion: registers a callback object into a signal's subscriber set. Returns true if newly inserted. Distinct from LookupByName. |
+| `0x00a5c150` | `CmeEventSignal_Subscribe` | **Not a subscribe.** `count(name)` on the event registry: returns whether a class name is registered and inserts nothing. See the correction. |
 | `0x005783b0` | `CmeEventData_GetField` | Extract a named field from an event data object (receiving side / emitters copying fields between signals). |
 | `0x00c79120` | `EmitNetOut_DebugMinigameInstance` | Canonical 154-line emitter exemplar — only non-stub in W1's V5 scope. |
 
@@ -33,6 +33,20 @@ Call sequence for an emit (Pattern A):
 4. **Dispatch via vtable** — call the signal's primary virtual emit slot to run the bound subscribers.
 
 `SGWNetworkManager` is the canonical NetOut subscriber; it converts the populated signal into a Mercury entity-method call through the universal RPC dispatcher at `0x00c6fc40` (see [`combat-wire-formats.md`](combat-wire-formats.md)).
+
+## Correction (2026-09-28): the registry is an event factory, not a subscriber API
+
+Disassembly of the QA `SGW.exe` and a headless-Ghidra decompile show that the "system" these names describe is an **event factory registry**, and that nothing at these addresses subscribes to anything.
+
+- `0x0155f790` returns `0x01f11fc4`, a function-local static `std::map<std::string, factory>`. The first call builds it empty (constructor `0x00a5c1d0`) and registers its destructor with `atexit`. `CMERegistry__RegisterAllEventEmitHandlers` (`0x005c75d0`) fills it at startup, keyed by full event class name (`Event_Action_MouseClick` at `0x01840754`, `Event_Action_MouseLook`, …).
+- `0x00a5c0f0` is `__thiscall(registry, const std::string& name) -> event*`, `ret 4`. It runs the map's `find` (`FUN_0158ea90`, which compares `std::string` keys: size at `+0x14`, capacity at `+0x18`, inline below 16), and on a hit calls the stored factory at `node+0x28` and returns the new event object. On a miss it returns 0.
+- `0x00a5c150` is `__thiscall(registry, const std::string& name) -> bool`, `ret 4`: `find(name) != end()`. It inserts nothing.
+- `Client_NetIn_EntityMethodDispatch` (`0x00c6f8f0`) calls `0x00a5c0f0` for every inbound entity method it routes, with the event name stored in the method's handler-map node, then fills the arguments and fires the event through the event's vtable slot 2. That makes `0x00a5c0f0` the positive half of the dispatch oracle whose negative half is the drop callee `0x01590f30`.
+- Real native subscriptions construct a `MemberCallback` (for example the constructor at `0x00d34cb0`, called from `FUN_00d351d0` and `FUN_00d35260`) and pass it to `FUN_00a37790` or `FUN_00a374a0`. Those two are the subscribe candidates; neither is named or verified yet.
+
+Consequence for the telemetry DLL: its CME subscriber install called `0x00a5c0f0` with a C string where the function takes a `std::string`, then called `0x00a5c150` as "subscribe". At best the lookup found nothing (the registry is still empty when the DLL boots) and nothing was subscribed; at worst the key compare read a garbage pointer out of the string bytes. The install was removed on 2026-09-28 and replaced with an inline hook on `0x00a5c0f0` (`client.cme.event`), which names every event the client creates through the registry. See [client-instrumentation-hookpoints.md](client-instrumentation-hookpoints.md) and `crates/client-telemetry/src/hooks/inline_hooks/cme_event_factory.rs`.
+
+The claim below that Pattern A emitters "look up the signal handle by name" should be read as "create the event object by name".
 
 ## Pattern B emitters
 

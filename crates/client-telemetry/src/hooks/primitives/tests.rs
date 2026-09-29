@@ -17,6 +17,13 @@ extern "C" fn add_one(base: i32) -> i32 {
 static mut DETOUR_TRAMPOLINE: usize = 0;
 static DETOUR_HITS: std::sync::atomic::AtomicU32 = std::sync::atomic::AtomicU32::new(0);
 
+/// Both inline-hook tests patch the same `add_one` prologue. The test
+/// harness runs them on parallel threads, so without this lock one test
+/// could call `add_one` while the other has it patched (or half
+/// restored) and fail, or fault (seen 2026-09-28 as a 1-in-6
+/// STATUS_ACCESS_VIOLATION on the i686 test run).
+static ADD_ONE_LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
+
 /// Detour for `add_one`: record a hit, then call the original via
 /// the trampoline and add 100 to its result. So a hooked
 /// `add_one(x)` returns `(x + 1) + 100`.
@@ -31,6 +38,7 @@ extern "C" fn add_one_detour(base: i32) -> i32 {
 
 #[test]
 fn inline_hook_detours_and_chains_to_original() {
+    let _serial = ADD_ONE_LOCK.lock().unwrap_or_else(|e| e.into_inner());
     // Baseline: unhooked.
     assert_eq!(add_one(5), 6);
 
@@ -71,6 +79,7 @@ fn inline_hook_detours_and_chains_to_original() {
 
 #[test]
 fn inline_hook_explicit_remove_restores() {
+    let _serial = ADD_ONE_LOCK.lock().unwrap_or_else(|e| e.into_inner());
     assert_eq!(add_one(7), 8);
     let mut hook = unsafe {
         install_inline_hook(

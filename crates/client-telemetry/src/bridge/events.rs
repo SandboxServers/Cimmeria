@@ -7,11 +7,16 @@
 //! - **hook hits** — from dynamic logging hooks ([`super::dynamic_hooks`]);
 //! - **Lua prints** — captured `print` output from `lua_eval`
 //!   ([`super::lua_eval`]);
-//! - **Mercury dispatch events** — pushed best-effort from the existing
-//!   `mercury_dispatch` detour under the `lab-bridge` feature.
+//! - **CME events** (`cme.event`) — every event the client creates by
+//!   name, each routed inbound server method included, from the
+//!   event-registry hook (`hooks::inline_hooks::cme_event_factory`);
+//! - **CEGUI log lines** (`cegui.log`) — with their text, from the CEGUI
+//!   logger tee (`hooks::cegui_log`).
 //!
-//! CEGUI log lines are a documented gap: the ring accepts them via
-//! [`push`], but the CEGUI log tee is not yet wired to it (a follow-up).
+//! Both are throttled per name before they reach the ring, and carry the
+//! same fields as their SigNoz events. The `mercury.dispatch` kind named
+//! in earlier docs was never pushed; the drop oracle reports to SigNoz
+//! only.
 //!
 //! # Threading
 //!
@@ -40,7 +45,7 @@ pub const DEFAULT_DRAIN: usize = 512;
 /// One local event.
 #[derive(Debug, Clone, Serialize, PartialEq, Eq)]
 pub struct LabEvent {
-    /// Event kind, e.g. `hook.hit`, `lua.print`, `mercury.dispatch`.
+    /// Event kind, e.g. `hook.hit`, `lua.print`, `cme.event`, `cegui.log`.
     pub kind: String,
     /// Client wall-clock time, ms since epoch.
     pub ts_ms: i64,

@@ -90,13 +90,12 @@ pub unsafe extern "system" fn DllMain(
             spawn_bootstrap_thread();
         }
         DLL_PROCESS_DETACH => {
-            // Phase 1 contract: the DLL never unloads in normal
-            // operation (process-lifetime CME subscribers can't be
-            // safely unsubscribed without a follow-up decompile of
-            // the Unsubscribe path near 0x00a5c150). Detach is a
-            // best-effort no-op for now; a future phase replaces
-            // this with the proper unsubscribe + uploader-drain
-            // sequence.
+            // The DLL never unloads in normal operation: MinHook
+            // detours and swapped vtable/IAT slots point into this
+            // image, so unloading it would leave the game jumping
+            // into freed code. Detach is a deliberate no-op. (The
+            // CME subscribers this comment used to cite are gone;
+            // 0x00a5c150 was never a subscribe.)
         }
         _ => {}
     }

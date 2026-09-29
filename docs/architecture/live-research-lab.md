@@ -104,7 +104,7 @@ Lives at `crates/client-telemetry/src/bridge/` (directory from day one: `mod.rs`
 | `client_mem_read` / `client_mem_write` | Typed or raw. Writes are journaled (§6). |
 | `client_hook_install` / `_remove` / `_list` | Non-freezing logging hook at an address with a capture spec: registers, stack args, typed dereferences, optional hit limit and sample rate. Cannot stall the heartbeat. |
 | `client_call_native` | Call a function by address with a stated calling convention, on the main thread, exception-guarded. Journaled. |
-| `client_events_read` | Drain the local event ring: hook hits, Lua prints, CEGUI log lines, Mercury dispatch events. Same events still upload to SigNoz. |
+| `client_events_read` | Drain the local event ring: hook hits (`hook.hit`), Lua prints (`lua.print`), CEGUI log lines with text (`cegui.log`), and every CME event the client creates by name, each routed inbound server method included (`cme.event`, 2026-09-28). Same events still upload to SigNoz. |
 | `client_console` | Submit a native slash command, for the GM console path. |
 
 ### 3.4 Lab supervisor (`crates/lab`, binary `cimmeria-lab`)

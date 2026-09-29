@@ -21,10 +21,13 @@
 //!   BSF_* flags via one dispatcher hook).
 //! - [`anim_notify`] — `USGWAnimNotify_Event::Notify` A + B.
 //! - [`console_command`] — `APlayerController::execConsoleCommand`.
+//! - [`cme_event_factory`] — the CME event-registry lookup: every event
+//!   the client creates by name, including each inbound entity method it
+//!   routed (2026-09-28).
 //!
 //! # What's installed
 //!
-//! 10 hooks. Every address below was re-checked against the QA
+//! 11 hooks. Every address below was re-checked against the QA
 //! `SGW.exe` on 2026-09-27 (function entry, `ret N` against the detour's
 //! argument count) and is covered by the [fingerprint
 //! gate](crate::fingerprint), which installs none of them on a build
@@ -52,6 +55,7 @@
 //! | `APlayerController::execConsoleCommand` (`this, FFrame&, Result*`) | `0x00539850` | `client.input.console_command` | 1/1 |
 //! | `FFullScreenMovieBink::Tick` (vtbl slot 1) | `0x0050bbc0` | `client.engine.bink_tick` (with `delta_seconds` field) | 1/30 (~1/sec during cinematics) |
 //! | `EntityDescription_GetExposedClientMethodByIndex` (silent-drop oracle) | `0x01590f30` | `client.dispatch.method_dropped` (with `method_index` field) | 1/1 unsampled — drops are the finding |
+//! | CME event-registry lookup (`thiscall(registry, const std::string&)`) | `0x00a5c0f0` | `client.cme.event` (`event`, `kind`; `info` for `net_in`, else `debug`) | per-name token bucket: burst 8, 4/s, `suppressed` count on the next emit |
 //!
 //! # Why MinHook
 //!
@@ -63,6 +67,9 @@
 #![allow(clippy::missing_safety_doc)] // FFI bindings — safety doc in fn-level
 
 mod anim_notify;
+// Its pure helpers (kind/level/throttle) run only from the i686 detour.
+#[cfg_attr(not(target_arch = "x86"), allow(dead_code))]
+mod cme_event_factory;
 mod console_command;
 mod engine_frame;
 mod engine_loading;
@@ -117,11 +124,12 @@ unsafe fn install_inner(producer: Producer) {
     console_command::install_console_command(&producer);
     engine_frame::install_bink_tick(&producer);
     mercury_dispatch::install_entity_method_not_found(&producer);
+    cme_event_factory::install_cme_event_factory(&producer);
 
     super::emit_info(
         &producer,
         "client.hooks.inline.install_complete",
-        [("hook_count", serde_json::json!(10))],
+        [("hook_count", serde_json::json!(11))],
     );
 }
 
@@ -222,6 +230,9 @@ mod tests {
                 super::mercury_dispatch::ADDR_ENTITY_METHOD_NOT_FOUND,
                 0x01590f30
             );
+            // CME event-registry lookup: `thiscall(registry, const
+            // std::string&) -> event*`, `ret 4` (2026-09-28).
+            assert_eq!(super::cme_event_factory::ADDR_CME_EVENT_FACTORY, 0x00a5c0f0);
         }
     }
     /// Every inline-hooked address is a fingerprinted site, so a build
@@ -240,6 +251,7 @@ mod tests {
             super::anim_notify::ADDR_ANIM_NOTIFY_A,
             super::anim_notify::ADDR_ANIM_NOTIFY_B,
             super::console_command::ADDR_CONSOLE_COMMAND,
+            super::cme_event_factory::ADDR_CME_EVENT_FACTORY,
         ];
         for addr in hooked {
             assert!(

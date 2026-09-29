@@ -155,6 +155,27 @@ to keep or share; use `lab_timeline` for the fast inner loop.
 > side, and the clock offset is a coarse estimate from the packet-tap
 > round trip (there is no dedicated server ping tool yet).
 
+### Did the client accept what the server sent?
+
+Two client events answer this without a probe (2026-09-28, see
+[client-telemetry.md](../architecture/client-telemetry.md#gameplay-seams-what-the-client-accepted-and-what-its-ui-complained-about)):
+
+- `client.cme.event` with `kind = net_in` names every inbound entity
+  method the client routed (`event = Event_NetIn_onDialogDisplay`, …).
+  `client.dispatch.method_dropped` names the ones it discarded. If the
+  server's packet tap shows the method sent and neither event appears, it
+  was lost below the dispatcher.
+- `client.ui.cegui_log` at `error` carries the text of CEGUI errors,
+  including `ScriptException`s from failed UI Lua binding calls.
+
+Both reach SigNoz (`service_name = 'cimmeria-client'`, the target in
+`client_target`) and, with the bridge, the local ring
+(`client_events_read`, kinds `cme.event` and `cegui.log`). Both are
+throttled per name: a hot name gets 8 in a burst then 4 a second, and the
+next event that gets through carries `suppressed`. The backlog of further
+client seams is
+[docs/analysis/lab-automation/tooling-backlog.md](../analysis/lab-automation/tooling-backlog.md).
+
 ### The free Lua-VM check (SigNoz Q1)
 
 Before you build any autologin probe, answer the open question from the
