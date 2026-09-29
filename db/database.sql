@@ -303,6 +303,7 @@
 \ir resources/Abilities/Seed/ammo_modifiers_dart_support.sql
 \ir resources/Abilities/Seed/ammo_modifiers_emp.sql
 \ir resources/Abilities/Seed/ammo_modifiers_dart_cc.sql
+\ir resources/Abilities/Seed/ammo_modifiers_explosive.sql
 \ir resources/Entities/Seed/blueprints.sql
 \ir resources/Entities/Seed/blueprints_components.sql
 \ir resources/Entities/Seed/deployables.sql
