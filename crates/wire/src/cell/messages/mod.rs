@@ -23,10 +23,13 @@
 //!   action (SS-U3), carried by `CellToBaseMsg::ContentSystemMail`.
 //! - `loot_grant` — `LootGrantSource` and `GrantRefusal`, the loot-grant
 //!   round trip that returns a refused item to its corpse.
+//! - `ammo_reserve` — `AmmoReserveRequest` and `AmmoReserveAnswer`, the
+//!   special-ammo reload draw and switch return (ammo campaign AM-02).
 //! - `item_use` — `ConsumeItemForUse` and `ItemUseConsumed`, the native
 //!   consumable round trip (the base consumes, then the cell applies).
 
 mod ammo_gm_cell_to_base;
+mod ammo_reserve;
 mod bank_base_to_cell;
 mod bank_cell_to_base;
 mod base_to_cell;
@@ -48,6 +51,7 @@ pub use crate::crafting::{
     RespecCraftOpen, StationChangeCause, StationSet,
 };
 pub use ammo_gm_cell_to_base::GmGiveAmmo;
+pub use ammo_reserve::{AmmoReserveAnswer, AmmoReserveRequest, ReserveRefusal};
 pub use bank_base_to_cell::BankBaseToCell;
 pub use bank_cell_to_base::{BankCellToBase, BankSubject, ExpandTrigger};
 pub use base_to_cell::{BaseToCellMsg, LabConsoleResult};

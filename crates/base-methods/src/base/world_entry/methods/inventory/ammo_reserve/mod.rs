@@ -31,10 +31,19 @@
 //! Nothing here reads the `ammo.finite_special` flag: the caller decides
 //! whether to draw at all.
 
+mod commits;
 mod plan;
+mod requests;
 
 #[cfg(test)]
 mod live_db_tests;
+#[cfg(test)]
+mod requests_live_db_tests;
+#[cfg(test)]
+mod requests_shell_live_db_tests;
+
+pub use commits::{commit_reload_draw, commit_switch_return, DrawCommit, ReturnCommit};
+pub use requests::{handle_ammo_reserve_request, ReserveIo};
 
 use cimmeria_entity::inventory::{INV_CRAFTING, INV_MAIN};
 use sqlx::{Postgres, Transaction};

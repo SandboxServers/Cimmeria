@@ -1,5 +1,6 @@
 //! `BaseToCellMsg` — messages sent from BaseApp to CellApp.
 
+use super::ammo_reserve::AmmoReserveAnswer;
 use super::bank_base_to_cell::BankBaseToCell;
 use super::data::SavedMission;
 use super::duel_base_to_cell::DuelBaseToCell;
@@ -495,6 +496,10 @@ pub enum BaseToCellMsg {
     /// asked for; the cell now applies the item's ability. Sent at most
     /// once per consumed unit (see `item_use.rs`).
     ItemUseConsumed(ItemUseConsumed),
+
+    /// The answer to a `CellToBaseMsg::AmmoReserve` request (AM-02), sent
+    /// after the base commits. See `ammo_reserve.rs`.
+    AmmoReserve(AmmoReserveAnswer),
 
     /// Replace a player entity's cell-side Ignore set: the character names
     /// on the player's contact-list Ignore list (flags 301), which the base

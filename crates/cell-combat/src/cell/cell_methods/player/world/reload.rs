@@ -67,15 +67,26 @@ pub async fn maybe_trigger_reload_on_activate(
     handle_reload(entity_id, tx, space_mgr).await;
 }
 
+/// `requestReload`. Reads `ammo.finite_special` once here and passes it
+/// down (ammo campaign AM-02): with the flag off, every reload refills for
+/// free exactly as before the campaign.
 pub async fn handle_reload(
     entity_id: u32,
     tx: &mpsc::Sender<CellToBaseMsg>,
     space_mgr: &mut SpaceManager,
 ) {
-    let reload_def = space_mgr.ability_defs.get(&ABILITY_RELOAD_WEAPON).cloned();
-    let warmup = reload_def.as_ref().map_or(2.0f32, |d| d.warmup);
-    let cooldown = reload_def.as_ref().map_or(1.0f32, |d| d.cooldown);
+    let finite = cimmeria_entity::ammo_feature::finite_special();
+    handle_reload_with(entity_id, finite, tx, space_mgr).await;
+}
 
+/// [`handle_reload`] with the `ammo.finite_special` value passed in, so
+/// tests can drive both modes without the process-wide switch.
+pub async fn handle_reload_with(
+    entity_id: u32,
+    finite_special: bool,
+    tx: &mpsc::Sender<CellToBaseMsg>,
+    space_mgr: &mut SpaceManager,
+) {
     // Phase A — reload-while-holstered: defer the actual reload until
     // the draw animation has had time to play. Fires `Item_Equip`
     // (event 4000), the bandolier-equip animation, as a stand-in for an
@@ -183,6 +194,43 @@ pub async fn handle_reload(
         return;
     }
 
+    // Special ammo under `ammo.finite_special` (AM-02, D-AM05): the rounds
+    // come from the bags. The base draws them and loads the weapon before
+    // the warmup starts; its answer (`reload_reserve::handle_reload_drawn`)
+    // starts the warmup, or refuses with feedback and leaves the clip as
+    // it was. Default ammo and infinite-ammo players fall through.
+    match super::reload_reserve::reload_gate(space_mgr, entity_id, finite_special) {
+        super::reload_reserve::ReloadGate::Free => {}
+        super::reload_reserve::ReloadGate::Blocked => {
+            tracing::debug!(
+                entity_id,
+                "requestReload: a reserve request is in flight, ignoring"
+            );
+            return;
+        }
+        super::reload_reserve::ReloadGate::Draw => {
+            super::reload_reserve::request_draw(entity_id, tx, space_mgr).await;
+            return;
+        }
+    }
+
+    start_reload_warmup(entity_id, tx, space_mgr).await;
+}
+
+/// Phase B proper: start the reload cooldown and the warmup deadline pinned
+/// to the active slot, and play the `Item_Reload` sequence. The refill
+/// itself happens in the reload-completion tick. Returns the deadline, or
+/// `None` when the entity is gone.
+pub async fn start_reload_warmup(
+    entity_id: u32,
+    tx: &mpsc::Sender<CellToBaseMsg>,
+    space_mgr: &mut SpaceManager,
+) -> Option<std::time::Instant> {
+    let reload_def = space_mgr.ability_defs.get(&ABILITY_RELOAD_WEAPON).cloned();
+    let warmup = reload_def.as_ref().map_or(2.0f32, |d| d.warmup);
+    let cooldown = reload_def.as_ref().map_or(1.0f32, |d| d.cooldown);
+    let entity = space_mgr.get_entity_mut(entity_id)?;
+
     let old = entity.active_ammo();
     let target_ammo = entity.active_clip_size();
 
@@ -200,7 +248,8 @@ pub async fn handle_reload(
     // mid-reload, the tick must refill *this* slot — not whatever slot is
     // active when the deadline elapses.
     let warmup_duration = std::time::Duration::from_secs_f32(warmup.max(0.0));
-    entity.reload_complete_at = Some(std::time::Instant::now() + warmup_duration);
+    let deadline = std::time::Instant::now() + warmup_duration;
+    entity.reload_complete_at = Some(deadline);
     entity.reload_slot_id = Some(entity.active_bandolier_slot);
 
     tracing::info!(
@@ -281,4 +330,5 @@ pub async fn handle_reload(
             args,
         })
         .await;
+    Some(deadline)
 }

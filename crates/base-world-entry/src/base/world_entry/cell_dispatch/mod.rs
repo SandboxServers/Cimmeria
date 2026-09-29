@@ -246,6 +246,21 @@ pub async fn handle_cell_message(
 
         CellToBaseMsg::Bank(bank) => bank_dispatch::route(bank, &ctx).await,
 
+        // The special-ammo reserve round trip (ammo campaign AM-02).
+        CellToBaseMsg::AmmoReserve(req) => {
+            super::methods::inventory::ammo_reserve::handle_ammo_reserve_request(
+                req,
+                super::methods::inventory::ammo_reserve::ReserveIo {
+                    db_pool: ctx.db_pool,
+                    cell_tx: ctx.cell_tx,
+                    transport: ctx.transport,
+                    connected: ctx.connected,
+                    entity_to_addr: ctx.entity_to_addr,
+                },
+            )
+            .await
+        }
+
         // The content engine's `send_system_mail` action (SS-U3).
         CellToBaseMsg::ContentSystemMail(msg) => {
             super::methods::mail::handle_content_system_mail(
