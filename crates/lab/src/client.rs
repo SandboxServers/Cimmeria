@@ -71,18 +71,27 @@ impl BridgeClient {
     /// surfaces as `Err` (and drops the connection so the next call
     /// reconnects).
     pub async fn call(&self, method: &str, params: Value) -> Result<Value> {
+        let v = self.call_untracked(method, params).await?;
+        self.mark_ok();
+        Ok(v)
+    }
+
+    /// [`Self::call`] without refreshing `last_ok_ms`: for callers that
+    /// must validate the result before it counts as a live bridge.
+    async fn call_untracked(&self, method: &str, params: Value) -> Result<Value> {
         let mut guard = self.state.lock().await;
         match self.call_inner(&mut guard, method, params).await {
-            Ok(v) => {
-                self.last_ok_ms.store(now_ms(), Ordering::Relaxed);
-                Ok(v)
-            }
+            Ok(v) => Ok(v),
             Err(e) => {
                 // Force a fresh connect + re-auth next time.
                 guard.stream = None;
                 Err(e)
             }
         }
+    }
+
+    fn mark_ok(&self) {
+        self.last_ok_ms.store(now_ms(), Ordering::Relaxed);
     }
 
     async fn call_inner(
@@ -134,11 +143,15 @@ impl BridgeClient {
     /// watchdog: a value that stops advancing (or a call that fails)
     /// means the client's main thread is wedged.
     pub async fn heartbeat(&self) -> Result<u64> {
-        let result = self.call("heartbeat", json!({})).await?;
-        result
+        // Only a well-formed heartbeat refreshes `last_ok_ms`: a malformed
+        // one must not reset the watchdog's failure count every poll.
+        let result = self.call_untracked("heartbeat", json!({})).await?;
+        let ticks = result
             .get("tick_count")
             .and_then(Value::as_u64)
-            .ok_or_else(|| anyhow!("heartbeat result missing tick_count: {result}"))
+            .ok_or_else(|| anyhow!("heartbeat result missing tick_count: {result}"))?;
+        self.mark_ok();
+        Ok(ticks)
     }
 }
 

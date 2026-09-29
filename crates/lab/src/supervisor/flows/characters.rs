@@ -184,10 +184,9 @@ impl Supervisor {
                 )
                 .await);
         }
-        Ok(rows
-            .into_iter()
+        rows.into_iter()
             .find(|r| r.index == index)
-            .expect("slot_of found it"))
+            .ok_or_else(|| run.fail("find_character", format!("slot {index} vanished")))
     }
 
     /// `lab_create_character`.

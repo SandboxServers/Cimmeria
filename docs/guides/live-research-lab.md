@@ -302,7 +302,11 @@ The lab is wired into `.mcp.json` alongside Ghidra and x64dbg — see
 vars, and [reverse-engineering-with-claude.md](reverse-engineering-with-claude.md)
 for where the lab sits in the RE workflow (the "ask the running game"
 path). Lab-account credentials live in
-`<install>/Binaries/sessions/lab-account.json`, gitignored.
+`<install>/Binaries/sessions/lab-account.json`, gitignored. `lab_login`
+types them with native key presses, which cover letters, digits, space and
+`-_/.` only: an account name or password with any other character (`!`,
+`@`, ...) fails `lab_login` and the post-crash relogin, so give the lab
+account a password inside that set.
 
 `lab_client_start` needs the i686 `sgw-start32.exe` helper beside
 `cimmeria-lab.exe` (or at `CIMMERIA_LAB_START32`). The supervisor is 64-bit

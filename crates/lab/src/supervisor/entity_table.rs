@@ -95,7 +95,16 @@ pub struct MapWalk {
     pub truncated: bool,
 }
 
+/// Extra node reads allowed beyond the entry cap: the left chain an
+/// in-order walk reads ahead of its first entry. An MSVC red-black tree
+/// of 2^32 nodes is at most 64 deep, so a sane map never hits this; a
+/// stale or corrupt one (a long acyclic chain) stops here instead of
+/// issuing unbounded `mem_read`s behind the heartbeat.
+const MAX_TREE_DEPTH: usize = 64;
+
 /// In-order walk of an MSVC `std::map` given its head node and size.
+/// Emits at most `max_nodes` entries and reads at most `max_nodes` +
+/// [`MAX_TREE_DEPTH`] nodes.
 pub async fn walk_tree<M: Memory>(
     mem: &mut M,
     head: u32,
@@ -111,9 +120,14 @@ pub async fn walk_tree<M: Memory>(
     let mut stack: Vec<Node> = Vec::new();
     let mut cur = root;
     let limit = max_nodes.min(size as usize);
+    let read_budget = limit.saturating_add(MAX_TREE_DEPTH);
     let mut truncated = false;
     'walk: loop {
         while cur != head && cur != 0 {
+            if seen.len() >= read_budget {
+                truncated = true;
+                break 'walk;
+            }
             if !seen.insert(cur) {
                 return Err(format!("tree cycle at node {cur:#x} (map changing?)"));
             }
@@ -471,6 +485,26 @@ mod tests {
         let w = walk_tree(&mut m, 0x1000, 3, 2).await.unwrap();
         assert_eq!(w.entries.len(), 2);
         assert!(w.truncated);
+    }
+
+    /// A corrupt map whose left chain runs far past any real tree depth
+    /// stops at the read budget instead of reading the whole chain.
+    #[tokio::test]
+    async fn a_long_left_chain_stops_at_the_read_budget() {
+        let mut m = FakeMem::default();
+        let head = 0x1000;
+        let chain = 1_000u32;
+        m.head(head, 0x10_0000);
+        for i in 0..chain {
+            let at = 0x10_0000 + i * 0x20;
+            let left = if i + 1 == chain { head } else { at + 0x20 };
+            m.node(at, left, head, head, chain - i, i);
+        }
+        let w = walk_tree(&mut m, head, chain, 5).await.unwrap();
+        assert!(w.truncated);
+        assert!(w.entries.is_empty());
+        // Head + the budget, not the 1000-node chain.
+        assert_eq!(m.reads.len(), 1 + 5 + MAX_TREE_DEPTH);
     }
 
     /// A corrupt tree (a child pointing back at an ancestor) is an error,
