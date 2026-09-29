@@ -67,6 +67,26 @@ same zip bytes. The command prints the manifest entry; the `sha256` must
 match the committed zip. To try a patch on a copy of a client:
 `cargo run -p cimmeria-patchset -- apply data/client-patches/<id>.zip --install <client>`.
 
+**Spec paths use the stock spelling.** Every `target`, source `path` and
+`files` path must be spelled exactly as the stock client spells it (the
+2009 cabinets' `Data\DATA.INF` file list is the reference), down to the
+case: the game looks some files up case-sensitively even on Windows.
+`005-login-delay` shipped with `eula.lua` for the stock `EULA.lua`, and
+the launcher that applied it renamed the file, so the game never showed
+its login screen. `cimmeria-patchset build` now refuses a path the stock
+tree spells in another case, `apply` keeps whatever name the file
+already has on disk, the launcher renames `eula.lua` back on existing
+installs, and the launcher test `every_patch_target_is_listed` checks
+every op target against its stock-spelled `PATCH_TARGETS` list.
+
+The specs for `004-log-config` (`Working/binaries`), `005-login-delay`
+(`EULA.lua`) and `006-gate-sound-bank` (`Content/audio/ui`) were
+corrected to the stock spelling on 2026-09-29, after their zips were
+published. The published zips keep the old spelling, which `apply` now
+resolves to the files on disk, so they install correctly and stay as
+they are (append-only, below). A rebuild from a corrected spec gives
+different bytes; publish it under a new patch id, if ever.
+
 Once published, a patch is append-only: fix it with a new patch id, never
 by rebuilding a published zip (see the launcher guide's
 [append-only invariants](../../docs/client/launcher-guide.md#append-only-invariants)).

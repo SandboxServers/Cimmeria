@@ -6,6 +6,7 @@ use std::path::{Path, PathBuf};
 use serde::Deserialize;
 use zip::write::SimpleFileOptions;
 
+use crate::case_path::resolve_existing_case;
 use crate::recipe::{safe_relative, Op, Recipe, Source, Transform, RECIPE_NAME, RECIPE_SCHEMA};
 use crate::{io_err, sha256_hex, transform, PatchsetError, Result};
 
@@ -73,6 +74,11 @@ impl Spec {
 /// Build the patch zip for `spec`. Sources are read from `stock_root`,
 /// targets from `patched_root`, and overlay files from `spec_dir`.
 ///
+/// Every spec path must be spelled as the stock client spells whatever
+/// part of it exists there ([`PatchsetError::CaseMismatch`]). The game
+/// looks some files up case-sensitively, and a recipe spelled `eula.lua`
+/// for the stock `EULA.lua` is how 005-login-delay shipped.
+///
 /// The zip is deterministic: entries in a fixed order, stored, with a fixed
 /// timestamp, so rebuilding an unchanged patch gives the same bytes and the
 /// same manifest hash.
@@ -88,6 +94,16 @@ pub fn build(
     };
     let mut entries: Vec<(String, Vec<u8>)> = Vec::new();
     let mut deltas = Vec::new();
+
+    for op in &spec.ops {
+        check_stock_case(stock_root, &op.target)?;
+        for s in &op.sources {
+            check_stock_case(stock_root, &s.path)?;
+        }
+    }
+    for f in &spec.files {
+        check_stock_case(stock_root, &f.path)?;
+    }
 
     for (n, op) in spec.ops.iter().enumerate() {
         let mut image = Vec::new();
@@ -159,6 +175,27 @@ pub fn build(
     Ok(BuildReport {
         zip: zip_bytes,
         deltas,
+    })
+}
+
+/// Refuse a spec path whose existing part the stock tree spells in
+/// another case.
+fn check_stock_case(stock_root: &Path, spec_path: &str) -> Result<()> {
+    let rel = safe_relative(spec_path)?;
+    let spelled = stock_root.join(&rel);
+    let on_disk = resolve_existing_case(stock_root, &rel);
+    // Path equality compares components byte for byte, so case counts.
+    if on_disk == spelled {
+        return Ok(());
+    }
+    let on_disk = on_disk
+        .strip_prefix(stock_root)
+        .unwrap_or(&on_disk)
+        .to_string_lossy()
+        .replace('\\', "/");
+    Err(PatchsetError::CaseMismatch {
+        path: spec_path.to_string(),
+        on_disk,
     })
 }
 
