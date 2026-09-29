@@ -221,9 +221,9 @@ mod live_db {
     /// Every hub NPC is a world 12 spawn inside the stasis room's polygon, at
     /// the respawner's floor height, clear of the respawner and of every
     /// other spawn in the room (the pet trainer and any later corner
-    /// included, not only the hub's own). None of them respawns, holds
-    /// position by flag or carries an aggression override: the crate used to
-    /// (a killable mob), and is an unkillable container now.
+    /// included, not only the hub's own). None of them respawns or
+    /// carries an aggression override (the crate used to, as a killable mob),
+    /// and every one holds position by flag (`is_stationary`).
     #[tokio::test]
     async fn debug_hub_spawns_sit_inside_the_stasis_room() {
         let pool = require_db_or_skip!();
@@ -294,7 +294,7 @@ mod live_db {
 
         for s in &spawns {
             assert_eq!(s.respawn_secs, None, "{:?}: nothing respawns", s.tag);
-            assert!(!s.is_stationary, "{:?}: no hold flag", s.tag);
+            assert!(s.is_stationary, "{:?}: holds position by flag", s.tag);
             assert_eq!(
                 s.aggression_override, None,
                 "{:?}: no aggression override",

@@ -34,7 +34,7 @@ impl MockSender {
     }
 
     /// Cheap handle to the underlying call log, for assertion helpers
-    /// in cross-module tests (layer.rs, integration tests, …).
+    /// in cross-module tests (layer/tests.rs, integration tests, …).
     pub fn calls_handle(&self) -> Arc<Mutex<Vec<(String, Value)>>> {
         self.calls.clone()
     }

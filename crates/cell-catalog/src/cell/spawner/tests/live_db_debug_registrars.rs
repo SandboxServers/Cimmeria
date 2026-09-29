@@ -150,7 +150,8 @@ mod live_db {
     /// Spawns 430 and 431 are the one placement of each registrar: world 12,
     /// inside the stasis room, on its floor, clear of the respawner and of
     /// every other NPC standing there, loading with the registrar's bit and
-    /// set, and not a respawning, holding or aggression-overridden mob.
+    /// set, and not a respawning or aggression-overridden mob; they hold
+    /// position by flag (`is_stationary`).
     #[tokio::test]
     async fn registrar_spawns_sit_in_the_stasis_room_hub() {
         let pool = require_db_or_skip!();
@@ -223,7 +224,7 @@ mod live_db {
                 );
             }
             assert_eq!(s.respawn_secs, None);
-            assert!(!s.is_stationary);
+            assert!(s.is_stationary, "every hub spawn holds position");
             assert_eq!(s.aggression_override, None);
         }
     }

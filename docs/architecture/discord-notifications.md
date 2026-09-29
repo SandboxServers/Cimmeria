@@ -202,7 +202,7 @@ validator emits warn-only telemetry (`movement.speed_warning`,
 calibration data destined for SigNoz (to compute the legitimate p99.9 speed
 before the speed layer is ever promoted to snap-back) and it fires during
 normal play — sub-tick deltas produce huge / infinite implied-speed ratios.
-[`DiscordLayer::on_event`](../../crates/discord/src/layer.rs) drops this target
+[`DiscordLayer::on_event`](../../crates/discord/src/layer/mod.rs) drops this target
 outright (same mechanism as the recursion guard) so it never floods the errors
 channel; the data still flows to logs and SigNoz. Pinned by
 `movement_validation_target_filtered`.
@@ -216,6 +216,32 @@ the client's own warn/error stream, so `DiscordLayer::on_event` drops them
 the errors channel on 2026-09-29. They still reach SigNoz. The server's own
 ingest records (`launcher.ingest`, `launcher.bundle`) still post. Pinned by
 `client_telemetry_replays_are_filtered`.
+
+**Content-quality events are SigNoz-only.** `SIGNOZ_ONLY_EVENTS` lists
+`(target, event)` pairs that stay WARN in the logs and SigNoz but never post.
+The match is on the structured `event` field, so every other event on the
+same target still posts. Each row is a data gap that repeats on every deploy
+or every instance and has nothing new for an operator to act on:
+
+| Target | Event | Why it is SigNoz-only |
+|---|---|---|
+| `spawner.npc_behaviour` | `spawn_off_mesh` | Seed-placement data, read from the SigNoz views. It is deduplicated per spawn id per process, but the colo restarts on every deploy and Castle_CellBlock is instanced per login, so the same spawns posted all day (90 posts in 7 days, 2026-09-29). |
+| `abilities` | `effect_script_unregistered` | One row per boot for a known seed gap that a live-DB guard pins, so it posted once per deploy (12 in 7 days). |
+
+Pinned by `signoz_only_events_are_filtered`, which also checks that another
+event on the same target still posts. Add a row only for an event that is
+data, not a fault; a fault that repeats needs fixing at its source.
+
+**The logOff teardown race logs at DEBUG.** When a player logs off or
+disconnects, the base unmaps the player's entity id at once, but the cell may
+already have queued a tick of position relays for that player. Each of them
+missed the address map and posted `AoI: no client addr for witness` with
+`reason=entity_to_addr_miss`: 23 posts from one logOff on 2026-09-29. The two
+teardown paths now record the departed witness
+(`base-session` `helpers/departed_witnesses.rs`), and a miss for a witness
+whose session ended in the last 30 s logs at DEBUG with
+`reason=witness_session_ended`. A miss for a live witness still posts. This is
+a fix at the source, not a Discord filter.
 
 **Cell-side name cache.** The cell service has no character/GM display name of
 its own — names live in the base `ConnectedClientState`. `GmCommand` and the

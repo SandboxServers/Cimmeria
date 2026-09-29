@@ -269,6 +269,36 @@ fn a_hovering_stationary_spawn_is_not_spawn_off_mesh() {
     );
 }
 
+/// A hovering prop (`static_mesh`: a terminal, a weapon pickup) never paths
+/// either: no WARN, a `reason=prop` skip. Castle_CellBlock's five props
+/// warned on every instance of that per-login world (colo, 2026-09-29).
+/// Revert-proof: dropping the `static_mesh` skip in `check_spawn` brings
+/// the WARN back.
+#[test]
+fn a_hovering_prop_is_not_spawn_off_mesh() {
+    let (mut mgr, _) = cellblock_mgr();
+    add_npc(
+        &mut mgr,
+        "Castle_CellBlock",
+        [MESSHALL[0], MESSHALL[1] + 2.0, MESSHALL[2]],
+        None,
+        AiState::Idle,
+    );
+    let e = mgr.get_entity_mut(NPC).unwrap();
+    e.spawn_id = Some(34);
+    e.static_mesh = Some("Em-Props.EM-ViewScreen02".to_owned());
+    let logs = LogCapture::install();
+    crate::cell::service::npc_ai::detectors::spawn::check_spawn(&mut mgr, NPC);
+    assert!(
+        rows(&logs, "spawner.npc_behaviour", "spawn_off_mesh").is_empty(),
+        "{:#?}",
+        logs.all()
+    );
+    let skipped = rows(&logs, "spawner.npc_behaviour", "spawn_off_mesh_skipped");
+    assert_eq!(skipped.len(), 1, "{:#?}", logs.all());
+    assert!(skipped[0].has_field("reason", "prop"), "{:?}", skipped[0]);
+}
+
 /// An NPC that never gets a route at all (meshless space, no stale path)
 /// is stuck too: `no_path` counts without a path. Revert-proof: requiring
 /// a non-empty path for `no_path` again leaves no row.

@@ -111,6 +111,14 @@ registrar the trainer's armour.
 > the respawner's floor height. Check in the client that each NPC stands on the
 > floor, clear of the walls and the stasis pods, before relying on the layout.
 
+Every spawn in the room is `is_stationary` (2026-09-29). None of them walks:
+they keep their authored height and never take cover or request a path.
+The flag also keeps them out of the
+spawner's `spawn_off_mesh` check. The navmesh covers this room only in
+patches, so the vendor, the pet trainer and the Banker warned on every
+instance of this per-login world. `live_db_debug_hub_stationary` fails if a
+spawn in the room is not stationary, so a new hub NPC needs the flag too.
+
 ## What each NPC tests
 
 ### Vendor (template 300)

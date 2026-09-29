@@ -1051,27 +1051,30 @@ INSERT INTO spawnlist (spawn_id, x, y, z, heading, world_id, template_id, tag, s
 -- yaw = atan2(dx, dz). There is no navmesh or occluder data for this room:
 -- the placement still needs an in-client check.
 --
--- Only the crate is a mob that can die, so only it carries respawn_secs,
--- is_stationary and an aggression override (NEUTRAL, 3: no proximity aggro).
--- Its tag is unique so no entity_dead_tag chain or kill objective can match.
+-- None of them respawns or carries an aggression override (the crate is an
+-- unkillable container). Every spawn in this room is is_stationary: service
+-- NPCs never walk, and the navmesh covers this room only in patches, so a
+-- mobile spawn here can fail find_path's start box and posted a spawn_off_mesh WARN on every instance
+-- of this per-login world (2026-09-29). The crate's tag is unique so no
+-- entity_dead_tag chain or kill objective can match.
 --
-INSERT INTO spawnlist (spawn_id, x, y, z, heading, world_id, template_id, tag, set_name) VALUES (400, -343.9, 73.472, -228.49, 1.4638, 12, 300, 'DebugHub_Vendor', NULL);
+INSERT INTO spawnlist (spawn_id, x, y, z, heading, world_id, template_id, tag, set_name, is_stationary) VALUES (400, -343.9, 73.472, -228.49, 1.4638, 12, 300, 'DebugHub_Vendor', NULL, true);
 
-INSERT INTO spawnlist (spawn_id, x, y, z, heading, world_id, template_id, tag, set_name) VALUES (401, -341.26, 73.472, -229.92, 1.2651, 12, 301, 'DebugHub_Trainer', NULL);
+INSERT INTO spawnlist (spawn_id, x, y, z, heading, world_id, template_id, tag, set_name, is_stationary) VALUES (401, -341.26, 73.472, -229.92, 1.2651, 12, 301, 'DebugHub_Trainer', NULL, true);
 
-INSERT INTO spawnlist (spawn_id, x, y, z, heading, world_id, template_id, tag, set_name) VALUES (402, -338.63, 73.472, -231.35, 0.9473, 12, 302, 'DebugHub_DialogNpc', NULL);
+INSERT INTO spawnlist (spawn_id, x, y, z, heading, world_id, template_id, tag, set_name, is_stationary) VALUES (402, -338.63, 73.472, -231.35, 0.9473, 12, 302, 'DebugHub_DialogNpc', NULL, true);
 
-INSERT INTO spawnlist (spawn_id, x, y, z, heading, world_id, template_id, tag, set_name) VALUES (403, -333.35, 73.472, -234.21, 0.0464, 12, 303, 'DebugHub_LivewireTerminal', NULL);
+INSERT INTO spawnlist (spawn_id, x, y, z, heading, world_id, template_id, tag, set_name, is_stationary) VALUES (403, -333.35, 73.472, -234.21, 0.0464, 12, 303, 'DebugHub_LivewireTerminal', NULL, true);
 
-INSERT INTO spawnlist (spawn_id, x, y, z, heading, world_id, template_id, tag, set_name) VALUES (404, -330.72, 73.472, -235.64, -0.271, 12, 304, 'DebugHub_LootCrate', NULL);
+INSERT INTO spawnlist (spawn_id, x, y, z, heading, world_id, template_id, tag, set_name, is_stationary) VALUES (404, -330.72, 73.472, -235.64, -0.271, 12, 304, 'DebugHub_LootCrate', NULL, true);
 
 -- Pets campaign, PT-07: spawn 450, the debug hub's pet trainer (template 360,
 -- docs/content/debug-hub.md). Pets own spawns 450-469. It takes the next slot
 -- on the hub line after the crate: 3 units in from the A-B wall, 3 units past
 -- spawn 404, about 2.1 units in from the B-C wall and 10.9 from the respawner.
 -- Heading faces the room centre, yaw = atan2(dx, dz). It cannot die, so no
--- respawn_secs, is_stationary or aggression override.
-INSERT INTO spawnlist (spawn_id, x, y, z, heading, world_id, template_id, tag, set_name) VALUES (450, -328.08, 73.472, -237.07, -0.4698, 12, 360, 'DebugHub_PetTrainer', NULL);
+-- respawn_secs or aggression override; stationary like every hub spawn.
+INSERT INTO spawnlist (spawn_id, x, y, z, heading, world_id, template_id, tag, set_name, is_stationary) VALUES (450, -328.08, 73.472, -237.07, -0.4698, 12, 360, 'DebugHub_PetTrainer', NULL, true);
 
 -- Bank and Vault campaign, BV-04: spawn 470, the debug hub's Banker (template
 -- 370, docs/content/debug-hub.md). The bank campaign owns spawns 470-489. The
@@ -1079,9 +1082,8 @@ INSERT INTO spawnlist (spawn_id, x, y, z, heading, world_id, template_id, tag, s
 -- 410-414) takes the A-D side, so the Banker stands at the middle of the B-C
 -- wall, 3 units in: 8.9 units from the respawner, at least 6.3 from every
 -- other hub NPC, 9.2 from the C-D exit wall. Heading faces the room centre,
--- yaw = atan2(dx, dz). It cannot die, so no respawn_secs, is_stationary or
--- aggression override.
-INSERT INTO spawnlist (spawn_id, x, y, z, heading, world_id, template_id, tag, set_name) VALUES (470, -325.92, 73.472, -231.18, -1.0739, 12, 370, 'DebugHub_Banker', NULL);
+-- yaw = atan2(dx, dz). It cannot die, so no respawn_secs or aggression override; stationary like every hub spawn.
+INSERT INTO spawnlist (spawn_id, x, y, z, heading, world_id, template_id, tag, set_name, is_stationary) VALUES (470, -325.92, 73.472, -231.18, -1.0739, 12, 370, 'DebugHub_Banker', NULL, true);
 
 -- BV-10a: spawns 471 and 472, the debug hub's Team and Command Bankers
 -- (templates 371 and 372, docs/content/debug-hub.md). The B-C wall line
@@ -1094,10 +1096,10 @@ INSERT INTO spawnlist (spawn_id, x, y, z, heading, world_id, template_id, tag, s
 -- XZ: 471 is 3.55 from 470 and from 490, 3.8 from 472, 5.0 from 431 and 6.6
 -- from the respawner; 472 is 3.55 from 490, 6.4 from 470, 3.5 from the C-D
 -- wall and 9.0 from the respawner. Headings face the room centre (-333.03,
--- -227.32), yaw = atan2(dx, dz). They cannot die, so no respawn_secs,
--- is_stationary or aggression override.
-INSERT INTO spawnlist (spawn_id, x, y, z, heading, world_id, template_id, tag, set_name) VALUES (471, -327.65, 73.472, -228.09, -1.4294, 12, 371, 'DebugHub_TeamBanker', NULL);
-INSERT INTO spawnlist (spawn_id, x, y, z, heading, world_id, template_id, tag, set_name) VALUES (472, -325.84, 73.472, -224.74, -1.9148, 12, 372, 'DebugHub_CommandBanker', NULL);
+-- -227.32), yaw = atan2(dx, dz). They cannot die, so no respawn_secs
+-- or aggression override; stationary like every hub spawn.
+INSERT INTO spawnlist (spawn_id, x, y, z, heading, world_id, template_id, tag, set_name, is_stationary) VALUES (471, -327.65, 73.472, -228.09, -1.4294, 12, 371, 'DebugHub_TeamBanker', NULL, true);
+INSERT INTO spawnlist (spawn_id, x, y, z, heading, world_id, template_id, tag, set_name, is_stationary) VALUES (472, -325.84, 73.472, -224.74, -1.9148, 12, 372, 'DebugHub_CommandBanker', NULL, true);
 
 -- Social-systems campaign, SS-U3: spawn 490, the debug hub's Gate Mail Clerk
 -- (template 390, docs/content/debug-hub.md). Social owns spawns 490-499;
@@ -1107,8 +1109,8 @@ INSERT INTO spawnlist (spawn_id, x, y, z, heading, world_id, template_id, tag, s
 -- wall past the Banker, towards C: 3 units in from it and 13 units along it
 -- from B, which is 3.8 from the Banker, 5.4 from the C-D exit wall and 10.1
 -- from the respawner. Heading faces the room centre, yaw = atan2(dx, dz). He
--- cannot die, so no respawn_secs, is_stationary or aggression override.
-INSERT INTO spawnlist (spawn_id, x, y, z, heading, world_id, template_id, tag, set_name) VALUES (490, -324.11, 73.472, -227.84, -1.5123, 12, 390, 'DebugHub_MailClerk', NULL);
+-- cannot die, so no respawn_secs or aggression override; stationary like every hub spawn.
+INSERT INTO spawnlist (spawn_id, x, y, z, heading, world_id, template_id, tag, set_name, is_stationary) VALUES (490, -324.11, 73.472, -227.84, -1.5123, 12, 390, 'DebugHub_MailClerk', NULL, true);
 
 -- Organizations campaign, ORG-05: spawns 430 and 431, the debug hub's Team and
 -- Command registrars (templates 330 and 331, docs/content/debug-hub.md).
@@ -1121,9 +1123,9 @@ INSERT INTO spawnlist (spawn_id, x, y, z, heading, world_id, template_id, tag, s
 -- at least 3.1 from every other NPC (the Banker, the pet trainer and
 -- the crate) and 6.1 from the
 -- respawner. Heading faces the room centre, yaw = atan2(dx, dz). They cannot
--- die, so no respawn_secs, is_stationary or aggression override.
-INSERT INTO spawnlist (spawn_id, x, y, z, heading, world_id, template_id, tag, set_name) VALUES (430, -327.40, 73.472, -233.91, -0.7086, 12, 330, 'DebugHub_TeamRegistrar', NULL);
-INSERT INTO spawnlist (spawn_id, x, y, z, heading, world_id, template_id, tag, set_name) VALUES (431, -330.04, 73.472, -232.48, -0.5276, 12, 331, 'DebugHub_CommandRegistrar', NULL);
+-- die, so no respawn_secs or aggression override; stationary like every hub spawn.
+INSERT INTO spawnlist (spawn_id, x, y, z, heading, world_id, template_id, tag, set_name, is_stationary) VALUES (430, -327.40, 73.472, -233.91, -0.7086, 12, 330, 'DebugHub_TeamRegistrar', NULL, true);
+INSERT INTO spawnlist (spawn_id, x, y, z, heading, world_id, template_id, tag, set_name, is_stationary) VALUES (431, -330.04, 73.472, -232.48, -0.5276, 12, 331, 'DebugHub_CommandRegistrar', NULL, true);
 
 --
 -- NEW CONTENT (debug hub, crafting): spawns 410-414, the crafting stations
@@ -1141,15 +1143,15 @@ INSERT INTO spawnlist (spawn_id, x, y, z, heading, world_id, template_id, tag, s
 -- As for 400-404, there is no navmesh or occluder data for this room: the
 -- placement still needs an in-client check.
 --
-INSERT INTO spawnlist (spawn_id, x, y, z, heading, world_id, template_id, tag, set_name) VALUES (414, -341.67, 73.472, -226.29, 1.6889, 12, 314, 'CraftHub_Supplies', NULL);
+INSERT INTO spawnlist (spawn_id, x, y, z, heading, world_id, template_id, tag, set_name, is_stationary) VALUES (414, -341.67, 73.472, -226.29, 1.6889, 12, 314, 'CraftHub_Supplies', NULL, true);
 
-INSERT INTO spawnlist (spawn_id, x, y, z, heading, world_id, template_id, tag, set_name) VALUES (410, -340.43, 73.472, -224.01, 1.9913, 12, 310, 'CraftHub_Station_BioMedical', NULL);
+INSERT INTO spawnlist (spawn_id, x, y, z, heading, world_id, template_id, tag, set_name, is_stationary) VALUES (410, -340.43, 73.472, -224.01, 1.9913, 12, 310, 'CraftHub_Station_BioMedical', NULL, true);
 
-INSERT INTO spawnlist (spawn_id, x, y, z, heading, world_id, template_id, tag, set_name) VALUES (411, -339.2, 73.472, -221.72, 2.3079, 12, 311, 'CraftHub_Station_Electronics', NULL);
+INSERT INTO spawnlist (spawn_id, x, y, z, heading, world_id, template_id, tag, set_name, is_stationary) VALUES (411, -339.2, 73.472, -221.72, 2.3079, 12, 311, 'CraftHub_Station_Electronics', NULL, true);
 
-INSERT INTO spawnlist (spawn_id, x, y, z, heading, world_id, template_id, tag, set_name) VALUES (412, -337.96, 73.472, -219.44, 2.583, 12, 312, 'CraftHub_Station_PowerSystems', NULL);
+INSERT INTO spawnlist (spawn_id, x, y, z, heading, world_id, template_id, tag, set_name, is_stationary) VALUES (412, -337.96, 73.472, -219.44, 2.583, 12, 312, 'CraftHub_Station_PowerSystems', NULL, true);
 
-INSERT INTO spawnlist (spawn_id, x, y, z, heading, world_id, template_id, tag, set_name) VALUES (413, -336.72, 73.472, -217.15, 2.7937, 12, 313, 'CraftHub_Station_Materials', NULL);
+INSERT INTO spawnlist (spawn_id, x, y, z, heading, world_id, template_id, tag, set_name, is_stationary) VALUES (413, -336.72, 73.472, -217.15, 2.7937, 12, 313, 'CraftHub_Station_Materials', NULL, true);
 
 --
 -- Black Market campaign, BM-07: spawn 405, the debug hub's Black Market
@@ -1172,7 +1174,7 @@ INSERT INTO spawnlist (spawn_id, x, y, z, heading, world_id, template_id, tag, s
 -- no auctioneer anywhere; the Black Market's own trader, Machra, belongs to
 -- Tollana (world 19), which has no spawns here.
 --
-INSERT INTO spawnlist (spawn_id, x, y, z, heading, world_id, template_id, tag, set_name) VALUES (405, -328.48, 73.472, -222.52, -2.3829, 12, 305, 'BlackMarket_Auctioneer', NULL);
+INSERT INTO spawnlist (spawn_id, x, y, z, heading, world_id, template_id, tag, set_name, is_stationary) VALUES (405, -328.48, 73.472, -222.52, -2.3829, 12, 305, 'BlackMarket_Auctioneer', NULL, true);
 
 --
 -- TOC entry 3335 (class 0 OID 0)

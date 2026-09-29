@@ -6,7 +6,8 @@
 //! hovering more than half a unit over its floor passes the first and fails
 //! every path it ever asks for — and the leash returns it to that same
 //! point. Reported once per `spawn_id`, so respawns stay quiet.
-//! Stationary spawns are skipped: they never request a path.
+//! Stationary spawns and props (`static_mesh`) are skipped: they never
+//! request a path.
 
 use super::{MoveSource, NpcIdent};
 use crate::cell::space_manager::SpaceManager;
@@ -25,14 +26,26 @@ pub fn check_spawn(space_mgr: &mut SpaceManager, npc_id: u32) {
     // box cannot fail it. Its Y is usually a measured floor the navmesh only
     // approximates (the Harset consoles), and warning on it put five
     // false alarms on every boot into SigNoz and Discord.
-    if e.is_stationary {
+    //
+    // A prop (`static_mesh`: a terminal, a door button, a weapon pickup)
+    // never paths either, and spawn grounding already keeps its authored Y
+    // for the same reason. Five Castle_CellBlock props warned on every
+    // instance of that per-login world (colo, 2026-09-29).
+    let skip = if e.is_stationary {
+        Some("stationary")
+    } else if e.static_mesh.is_some() {
+        Some("prop")
+    } else {
+        None
+    };
+    if let Some(reason) = skip {
         tracing::debug!(
             target: "spawner.npc_behaviour",
             event = "spawn_off_mesh_skipped",
             npc_id,
             spawn_id,
-            reason = "stationary",
-            "spawner: start-box check skipped; stationary NPCs never path"
+            reason,
+            "spawner: start-box check skipped; stationary NPCs and props never path"
         );
         return;
     }
