@@ -88,6 +88,17 @@ running cimmeria-server process env.
 
 ## Pointing the launcher at a non-localhost server
 
+The launcher sends telemetry only to `https://` addresses, or to plain
+`http://` on the player's own machine (`localhost`, `127.x`, `::1`). That
+applies to the auth URL in `launcher-config.json` (`telemetry.auth_url`,
+default `http://localhost:8443/api`) and to every `upload_endpoint` the
+server hands back. Anything else fails the session before a byte is sent,
+with "telemetry needs an https:// server address" in the status log
+([`telemetry/endpoint.rs`](../../crates/launcher/src/telemetry/endpoint.rs)).
+A remote server therefore needs TLS in front of its admin port, for
+example the Cloudflare Tunnel below; the colo's plain `8443` is not
+enough.
+
 The dev-session mint hands the launcher a `upload_endpoint` URL.
 Default is `http://localhost:8443/api/telemetry` — fine when the
 launcher and the server share a host. For any other topology, set:

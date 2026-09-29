@@ -517,6 +517,7 @@ crates/launcher/
     │   ├── events.rs           # parsed event shapes
     │   ├── queue.rs            # buffering
     │   ├── chunk.rs            # upload-chunk
+    │   ├── endpoint.rs         # telemetry's own client + https/loopback policy
     │   ├── bundle.rs           # end-of-session upload-bundle
     │   ├── patch_log.rs        # client.patches.boot from the DLL's log
     │   └── process_watch.rs    # game-exit detection
