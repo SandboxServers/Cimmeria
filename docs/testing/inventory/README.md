@@ -35,9 +35,9 @@ many tests also updates the catalogue.
 
 | Metric | Count |
 |---|---:|
-| Tests (`#[test]` / `#[tokio::test]`) | 9,673 |
-| Files with tests | 1,628 |
-| Gated in CI (every crate but CI's exclude list) | 8,355 |
+| Tests (`#[test]` / `#[tokio::test]`) | 9,677 |
+| Files with tests | 1,629 |
+| Gated in CI (every crate but CI's exclude list) | 8,359 |
 | Live-DB tests (`require_db_or_skip!` in the body) | 1,519 |
 | Inventory threshold (5% of the tests) | 484 |
 
@@ -131,8 +131,8 @@ with no file in this directory yet.
 | `crates/occluder` | `cimmeria-occluder` | 30 | 3 | 0 | yes | none |
 | `crates/commands` | `cimmeria-commands` | 29 | 3 | 0 | yes | [commands.md](commands.md) |
 | `crates/wire-log` | `cimmeria-wire-log` | 27 | 6 | 0 | yes | none |
+| `crates/patchset` | `cimmeria-patchset` | 23 | 5 | 0 | yes | none |
 | `crates/client-hookgate` | `cimmeria-client-hookgate` | 20 | 2 | 0 | yes | none |
-| `crates/patchset` | `cimmeria-patchset` | 19 | 4 | 0 | yes | none |
 | `crates/sgw-testhost` | `cimmeria-sgw-testhost` | 12 | 2 | 0 | yes | none |
 | `crates/upk` | `cimmeria-upk` | 12 | 3 | 0 | yes | none |
 | `tools/ContentEditor` | `cimmeria-content-editor` | 12 | 1 | 0 | no | [tools-contenteditor.md](tools-contenteditor.md) |
