@@ -51,8 +51,13 @@ pub(super) fn compute_metadata_bump(
 /// Companion of [`compute_metadata_bump`] for the items category.
 /// Same deterministic-hash + low-bit-set discipline so two server
 /// starts on identical override content produce identical bumps.
+///
+/// Hashes both kinds: the attribute patches and every field of each
+/// generated addition, so editing an added item's name, icon or stack cap
+/// makes clients resync the category.
 pub(super) fn compute_item_metadata_bump(
     overrides: &[crate::base::item_overrides::ItemOverride],
+    additions: &[crate::base::item_overrides::NewItem],
 ) -> u32 {
     use std::hash::{Hash, Hasher};
     let mut hasher = std::collections::hash_map::DefaultHasher::new();
@@ -60,6 +65,16 @@ pub(super) fn compute_item_metadata_bump(
         ov.item_id.hash(&mut hasher);
         ov.new_icon_location.hash(&mut hasher);
         ov.new_max_stack_size.hash(&mut hasher);
+    }
+    for item in additions {
+        item.item_id.hash(&mut hasher);
+        item.name.hash(&mut hasher);
+        item.description.hash(&mut hasher);
+        item.icon_location.hash(&mut hasher);
+        item.max_stack_size.hash(&mut hasher);
+        item.tech_comp.hash(&mut hasher);
+        item.is_sellable.hash(&mut hasher);
+        item.container_sets.hash(&mut hasher);
     }
     ((hasher.finish() as u32) & 0xFFFF) | 0x1
 }

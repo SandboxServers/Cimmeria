@@ -380,14 +380,62 @@ fn apply_item_overrides_patches_entries_and_bumps_metadata() {
         "unrelated item 9999 must keep its MaxStackSize=5"
     );
 
+    // The patched slappacks, then every item Cimmeria adds (absent from
+    // this hand-built category, so all of them are inserted), ascending.
+    let mut expected = vec![2893u32, 4735u32];
+    expected.extend(
+        crate::base::item_overrides::ITEM_ADDITIONS
+            .iter()
+            .map(|item| item.item_id),
+    );
+    expected.sort_unstable();
     let ids = overridden
         .get(&CATEGORY_ITEMS)
         .expect("items must appear in returned map");
     assert_eq!(
-        ids.as_slice(),
-        &[2893u32, 4735u32],
-        "overridden_elements must name both slappack ids in ascending order",
+        ids, &expected,
+        "overridden_elements must name the slappack ids and every addition, ascending",
     );
+}
+
+/// An addition whose id the PAK already ships must not replace the shipped
+/// entry: it is skipped with `reason = "id_ships_in_pak"`, kept out of the
+/// overridden list, and the entry's bytes survive. Without the guard a
+/// careless id in `ITEM_ADDITIONS` would silently rename a real item.
+#[test]
+fn apply_item_overrides_never_replaces_a_shipped_id_with_an_addition() {
+    use crate::test_support::LogCapture;
+    let capture = LogCapture::install();
+    let taken = crate::base::item_overrides::ITEM_ADDITIONS[0].item_id;
+    let mut categories: HashMap<u32, CategoryData> = HashMap::new();
+    categories.insert(
+        CATEGORY_ITEMS,
+        items_category_with(&[(taken, "set:ItemIcon001 image:Shipped", 3)], 7542),
+    );
+    let before = categories[&CATEGORY_ITEMS].elements[&taken].clone();
+
+    let overridden = ResourceCache::apply_item_overrides(&mut categories);
+
+    assert_eq!(
+        categories[&CATEGORY_ITEMS].elements[&taken], before,
+        "the shipped entry {taken} must keep its bytes"
+    );
+    let ids = &overridden[&CATEGORY_ITEMS];
+    assert!(!ids.contains(&taken), "{taken} must not be listed: {ids:?}");
+    // The other additions still go in.
+    assert_eq!(
+        ids.len(),
+        crate::base::item_overrides::ITEM_ADDITIONS.len() - 1,
+        "{ids:?}"
+    );
+    let event = capture
+        .find_event(
+            tracing::Level::WARN,
+            "item addition skipped",
+            "id_ships_in_pak",
+        )
+        .expect("a shadowing addition must warn with reason=id_ships_in_pak");
+    assert!(event.has_field("item_id", &taken.to_string()));
 }
 
 /// Defensive path: items category absent (PAK missing) → no-op
@@ -414,8 +462,8 @@ fn compute_item_metadata_bump_is_deterministic_and_low_bit_set() {
         new_icon_location: Some("set:ItemIcon001 image:Medkit"),
         new_max_stack_size: Some(10),
     }];
-    let a = compute_item_metadata_bump(&overrides);
-    let b = compute_item_metadata_bump(&overrides);
+    let a = compute_item_metadata_bump(&overrides, &[]);
+    let b = compute_item_metadata_bump(&overrides, &[]);
     assert_eq!(a, b, "same overrides must hash to the same bump");
     assert_eq!(a & 0x1, 0x1, "low bit must be set");
 
@@ -426,8 +474,8 @@ fn compute_item_metadata_bump_is_deterministic_and_low_bit_set() {
         new_max_stack_size: Some(10),
     }];
     assert_ne!(
-        compute_item_metadata_bump(&overrides),
-        compute_item_metadata_bump(&different_icon),
+        compute_item_metadata_bump(&overrides, &[]),
+        compute_item_metadata_bump(&different_icon, &[]),
         "icon edit must change the bump",
     );
     let different_stack = [ItemOverride {
@@ -436,8 +484,48 @@ fn compute_item_metadata_bump_is_deterministic_and_low_bit_set() {
         new_max_stack_size: Some(99),
     }];
     assert_ne!(
-        compute_item_metadata_bump(&overrides),
-        compute_item_metadata_bump(&different_stack),
+        compute_item_metadata_bump(&overrides, &[]),
+        compute_item_metadata_bump(&different_stack, &[]),
         "stack-size edit must change the bump",
+    );
+}
+
+/// Additions are part of the items bump: adding one, or editing any field a
+/// client sees (here the name and the stack cap), changes the version, so a
+/// client that already holds the previous additions resyncs.
+#[test]
+fn compute_item_metadata_bump_covers_additions() {
+    use crate::base::item_overrides::NewItem;
+    fn item(name: &'static str, max_stack_size: u32) -> NewItem {
+        NewItem {
+            item_id: 9001,
+            name,
+            description: "d",
+            icon_location: "set:AmmoType_Icons image:Bullet_Hollow_Point",
+            max_stack_size,
+            tech_comp: 1,
+            is_sellable: true,
+            container_sets: &[1, 15, 17],
+        }
+    }
+    let base = compute_item_metadata_bump(&[], &[item("Hollow Point Rounds", 500)]);
+    assert_eq!(
+        base,
+        compute_item_metadata_bump(&[], &[item("Hollow Point Rounds", 500)])
+    );
+    assert_ne!(
+        base,
+        compute_item_metadata_bump(&[], &[]),
+        "adding one must change it"
+    );
+    assert_ne!(
+        base,
+        compute_item_metadata_bump(&[], &[item("Hollow Points", 500)]),
+        "a name edit must change it"
+    );
+    assert_ne!(
+        base,
+        compute_item_metadata_bump(&[], &[item("Hollow Point Rounds", 250)]),
+        "a stack-cap edit must change it"
     );
 }

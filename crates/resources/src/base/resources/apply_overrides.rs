@@ -21,9 +21,13 @@ use super::{
 
 impl ResourceCache {
     /// Patch the freshly-loaded `CookedDataItems` category with
-    /// Cimmeria's icon + stack-size overrides, bumping the category
-    /// metadata so the client's next `versionInfoRequest` sees a
-    /// fresh value and triggers the per-key invalidation handshake.
+    /// Cimmeria's icon + stack-size overrides, add the items the PAK does
+    /// not ship at all (`ITEM_ADDITIONS`), and bump the category metadata
+    /// so the client's next `versionInfoRequest` sees a fresh value and
+    /// resyncs the category, additions included (#840).
+    ///
+    /// An addition whose id the PAK already ships is skipped with a warn:
+    /// generating it would replace a real item the client knows.
     ///
     /// Same shape as [`Self::apply_mission_overrides`] — the cooked
     /// data wire path is category-agnostic; only the per-category
@@ -31,7 +35,9 @@ impl ResourceCache {
     pub(super) fn apply_item_overrides(
         categories: &mut HashMap<u32, CategoryData>,
     ) -> HashMap<u32, Vec<u32>> {
-        use crate::base::item_overrides::{apply_override, ITEM_OVERRIDES};
+        use crate::base::item_overrides::{
+            apply_override, generate_item_xml, ITEM_ADDITIONS, ITEM_OVERRIDES,
+        };
 
         let mut overridden: HashMap<u32, Vec<u32>> = HashMap::new();
         let Some(items) = categories.get_mut(&CATEGORY_ITEMS) else {
@@ -42,7 +48,7 @@ impl ResourceCache {
             return overridden;
         };
 
-        let mut applied: Vec<u32> = Vec::with_capacity(ITEM_OVERRIDES.len());
+        let mut applied: Vec<u32> = Vec::with_capacity(ITEM_OVERRIDES.len() + ITEM_ADDITIONS.len());
         for ov in ITEM_OVERRIDES {
             let Some(original) = items.elements.get(&ov.item_id) else {
                 tracing::warn!(
@@ -71,8 +77,28 @@ impl ResourceCache {
             }
         }
 
+        for item in ITEM_ADDITIONS {
+            if items.elements.contains_key(&item.item_id) {
+                tracing::warn!(
+                    item_id = item.item_id,
+                    reason = "id_ships_in_pak",
+                    "item addition skipped: the PAK already ships this id",
+                );
+                continue;
+            }
+            items.elements.insert(item.item_id, generate_item_xml(item));
+            applied.push(item.item_id);
+            tracing::info!(
+                item_id = item.item_id,
+                name = item.name,
+                icon = item.icon_location,
+                max_stack_size = item.max_stack_size,
+                "Added Cimmeria item definition",
+            );
+        }
+
         if !applied.is_empty() {
-            let bump = compute_item_metadata_bump(ITEM_OVERRIDES);
+            let bump = compute_item_metadata_bump(ITEM_OVERRIDES, ITEM_ADDITIONS);
             items.metadata = items.metadata.wrapping_add(bump);
             applied.sort_unstable();
             tracing::info!(

@@ -19,11 +19,25 @@
 //!
 //! This module produces patched XML bytes for items whose canonical
 //! cooked entry shipped with the wrong icon or a stack cap that
-//! doesn't match Cimmeria's chosen value. The XML shape follows the
-//! Server-Build conventions documented in
-//! [`docs/engine/cooked-data-pak-format.md`]: alphabetized attributes
-//! on `<COOKED_ITEM>`, `MaxStackSize` attribute on the nested
-//! `<InventorySet>` element.
+//! doesn't match Cimmeria's chosen value. The patcher only needs one
+//! `IconLocation` on `<COOKED_ITEM>` and one `MaxStackSize` on the nested
+//! `<InventorySet>`; it does not depend on attribute order. (The committed
+//! `CookedDataItems.pak` is not alphabetized, whatever the test fixture
+//! below suggests: see `new_items.rs` for the real shipped shape.)
+//!
+//! Items the shipped PAK does not contain at all are not patched but
+//! generated whole: [`ITEM_ADDITIONS`] (see `new_items.rs`).
+
+mod ammo_items;
+mod new_items;
+
+pub use ammo_items::AMMO_ITEMS;
+pub use new_items::{generate_item_xml, NewItem};
+
+/// Every item Cimmeria adds to `CookedDataItems`, as opposed to patching
+/// ([`ITEM_OVERRIDES`]). Today that is only the ammo campaign's reserve
+/// items; emptying this slice withdraws them from the push.
+pub const ITEM_ADDITIONS: &[NewItem] = AMMO_ITEMS;
 
 /// One item's override: which item to patch and which display
 /// attributes to rewrite. Either / both of `new_icon_location` and
@@ -155,6 +169,9 @@ fn patch_attr(xml: &str, attr_name: &str, new_value: &str) -> Option<String> {
     out.push_str(&xml[value_end..]);
     Some(out)
 }
+
+#[cfg(test)]
+mod new_items_tests;
 
 #[cfg(test)]
 mod tests {
