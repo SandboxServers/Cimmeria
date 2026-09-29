@@ -1,4 +1,5 @@
-//! The base's entry point for `CellToBaseMsg::Crafting`.
+//! The base's entry point for a crafting request: a `CraftRequest` in the
+//! `CellToBaseMsg::Plugin` envelope (#962 step 5).
 
 use std::collections::HashMap;
 use std::net::SocketAddr;

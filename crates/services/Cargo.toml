@@ -90,6 +90,9 @@ cimmeria-cell-org = { workspace = true }
 # `plugins::effect_scripts` builds the cell's EffectScripts registry from its
 # table, and nothing below the facade depends on it.
 cimmeria-cell-effect-scripts = { workspace = true }
+# Crafting as a base plugin (#962 step 5): `plugins::base_plugin_table` lists
+# CraftingPlugin, and nothing below the facade depends on it.
+cimmeria-base-crafting = { workspace = true }
 tokio = { workspace = true }
 sqlx = { workspace = true }
 serde_json = { workspace = true }

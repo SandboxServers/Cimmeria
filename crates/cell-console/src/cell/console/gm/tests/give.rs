@@ -1,5 +1,5 @@
 use super::*; // shared helpers from tests/mod.rs
-use crate::cell::messages::CellToBaseMsg;
+use crate::cell::messages::{CellToBaseMsg, GmGrantAppliedSciencePoints, GmGrantExpertise};
 use cimmeria_entity::inventory::INV_MAIN;
 use tokio::sync::mpsc;
 
@@ -371,22 +371,22 @@ async fn gm_give_expertise_emits_grant() {
 
     let args = give_expertise_args(7, 25);
     assert!(dispatch(1, GM_GIVE_EXPERTISE, &args, &tx, &mut mgr, &test_engine()).await);
-    match rx
+    let msg = rx
         .try_recv()
-        .expect("gmGiveExpertise must emit GrantExpertise")
-    {
-        CellToBaseMsg::GrantExpertise {
+        .expect("gmGiveExpertise must emit GrantExpertise");
+    match msg.plugin_payload::<GmGrantExpertise>() {
+        Some(&GmGrantExpertise {
             entity_id,
             player_id,
             discipline_id,
             amount,
-        } => {
+        }) => {
             assert_eq!(entity_id, 1);
             assert_eq!(player_id, 100);
             assert_eq!(discipline_id, 7);
             assert_eq!(amount, 25);
         }
-        other => panic!("expected GrantExpertise, got {other:?}"),
+        None => panic!("expected GrantExpertise, got {msg:?}"),
     }
 }
 
@@ -411,7 +411,7 @@ async fn gm_give_expertise_rejects_nonpositive_fields() {
     assert!(
         !msgs
             .iter()
-            .any(|m| matches!(m, CellToBaseMsg::GrantExpertise { .. })),
+            .any(|m| m.plugin_payload::<GmGrantExpertise>().is_some()),
         "expertise 0 must not grant"
     );
     assert!(
@@ -435,7 +435,7 @@ async fn gm_give_expertise_rejects_nonpositive_fields() {
     assert!(
         !msgs
             .iter()
-            .any(|m| matches!(m, CellToBaseMsg::GrantExpertise { .. })),
+            .any(|m| m.plugin_payload::<GmGrantExpertise>().is_some()),
         "discipline id 0 must not grant"
     );
     assert!(
@@ -459,7 +459,7 @@ async fn gm_give_expertise_rejects_nonpositive_fields() {
     assert!(
         !msgs
             .iter()
-            .any(|m| matches!(m, CellToBaseMsg::GrantExpertise { .. })),
+            .any(|m| m.plugin_payload::<GmGrantExpertise>().is_some()),
         "truncated expertise args must not grant"
     );
     assert!(
@@ -484,20 +484,20 @@ async fn gm_give_applied_science_emits_grant_and_rejects_nonpositive() {
         )
         .await
     );
-    match rx
+    let msg = rx
         .try_recv()
-        .expect("gmGiveAppliedSciencePoints must emit GrantAppliedSciencePoints")
-    {
-        CellToBaseMsg::GrantAppliedSciencePoints {
+        .expect("gmGiveAppliedSciencePoints must emit GrantAppliedSciencePoints");
+    match msg.plugin_payload::<GmGrantAppliedSciencePoints>() {
+        Some(&GmGrantAppliedSciencePoints {
             entity_id,
             player_id,
             amount,
-        } => {
+        }) => {
             assert_eq!(entity_id, 1);
             assert_eq!(player_id, 100);
             assert_eq!(amount, 15);
         }
-        other => panic!("expected GrantAppliedSciencePoints, got {other:?}"),
+        None => panic!("expected GrantAppliedSciencePoints, got {msg:?}"),
     }
 
     assert!(
@@ -515,7 +515,7 @@ async fn gm_give_applied_science_emits_grant_and_rejects_nonpositive() {
     assert!(
         !msgs
             .iter()
-            .any(|m| matches!(m, CellToBaseMsg::GrantAppliedSciencePoints { .. })),
+            .any(|m| m.plugin_payload::<GmGrantAppliedSciencePoints>().is_some()),
         "zero ASP must not grant"
     );
     assert!(feedback_text(&msgs, 1).is_some(), "zero ASP must feed back");
@@ -551,10 +551,10 @@ async fn crafting_grants_require_player_id() {
     );
     let msgs = drain(&mut rx);
     assert!(
-        !msgs.iter().any(|m| matches!(
-            m,
-            CellToBaseMsg::GrantExpertise { .. } | CellToBaseMsg::GrantAppliedSciencePoints { .. }
-        )),
+        !msgs.iter().any(|m| {
+            m.plugin_payload::<GmGrantExpertise>().is_some()
+                || m.plugin_payload::<GmGrantAppliedSciencePoints>().is_some()
+        }),
         "no player_id must block both crafting grants"
     );
     assert!(

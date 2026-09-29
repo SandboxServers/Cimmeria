@@ -9,7 +9,7 @@ use cimmeria_content_engine::chain::ChainEngine;
 use tokio::sync::mpsc;
 
 use super::*;
-use crate::cell::messages::CellToBaseMsg;
+use crate::cell::messages::{CellToBaseMsg, GmGrantExpertise};
 use crate::cell::space_manager::SpaceManager;
 
 mod am06_ammo;
@@ -488,7 +488,7 @@ fn drain_grant_and_feedback(rx: &mut mpsc::Receiver<CellToBaseMsg>) -> (bool, Op
     let mut saw_grant = false;
     let mut feedback = None;
     while let Ok(msg) = rx.try_recv() {
-        if matches!(msg, CellToBaseMsg::GrantExpertise { .. }) {
+        if msg.plugin_payload::<GmGrantExpertise>().is_some() {
             saw_grant = true;
         }
         if let Some(t) = decode_feedback(&msg) {
@@ -499,7 +499,7 @@ fn drain_grant_and_feedback(rx: &mut mpsc::Receiver<CellToBaseMsg>) -> (bool, Op
 }
 
 /// `.learndiscipline` / `.forgetdiscipline` must reject a non-positive
-/// disciplineId BEFORE sending a `GrantExpertise`, so an invalid key can't be
+/// disciplineId BEFORE sending a `GmGrantExpertise`, so an invalid key can't be
 /// written to the target's expertise rows.
 #[tokio::test]
 async fn discipline_commands_reject_non_positive_id() {

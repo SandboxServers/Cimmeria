@@ -14,12 +14,14 @@
 
 use super::super::*;
 use super::one_session;
-use crate::base::crafting::feedback::feedback_text_args;
+use crate::cell::messages::PluginMsg;
 use crate::cell::messages::{
     CraftRequest, CraftVerb, CraftingStations, GmAllCraft, StationChangeCause,
 };
 use crate::mercury::{build_player_entity_method_packet, method_idx};
 use crate::test_support::{LogCapture, TestTransport};
+use cimmeria_base_crafting::base::crafting::feedback::feedback_text_args;
+use cimmeria_base_crafting::base::crafting::options::CraftingOptionsExt;
 use cimmeria_mercury::encryption::EncryptionVersion;
 use cimmeria_wire::cell::client_methods::player::ON_UPDATE_CRAFTING_OPTIONS;
 use cimmeria_wire::crafting::{crafting_options_args, CraftingInfo, CraftingOptions};
@@ -40,7 +42,7 @@ fn with_identity(
 }
 
 fn craft(allowed: u8) -> CellToBaseMsg {
-    CellToBaseMsg::Crafting(CraftRequest {
+    CellToBaseMsg::Plugin(PluginMsg::new(CraftRequest {
         entity_id: ENTITY,
         player_id: PLAYER_ID,
         verb: CraftVerb::Craft {
@@ -49,7 +51,7 @@ fn craft(allowed: u8) -> CellToBaseMsg {
             quantity: 1,
         },
         allowed,
-    })
+    }))
 }
 
 async fn dispatch(
@@ -58,7 +60,7 @@ async fn dispatch(
     connected: &Arc<Mutex<HashMap<SocketAddr, ConnectedClientState>>>,
     entity_to_addr: &Arc<Mutex<HashMap<u32, SocketAddr>>>,
 ) {
-    handle_cell_message(
+    route_cell_message(
         msg,
         transport,
         connected,
@@ -68,6 +70,7 @@ async fn dispatch(
         &None,
         "127.0.0.1",
         7777,
+        &super::crafting_plugins(),
     )
     .await;
 }
@@ -144,7 +147,7 @@ async fn a_failed_tool_lookup_warns_and_refuses() {
         .expect("lazy pool");
     let db_pool = Some(Arc::new(unreachable));
 
-    handle_cell_message(
+    route_cell_message(
         craft(0),
         &transport,
         &connected,
@@ -154,6 +157,7 @@ async fn a_failed_tool_lookup_warns_and_refuses() {
         &None,
         "127.0.0.1",
         7777,
+        &super::crafting_plugins(),
     )
     .await;
 
@@ -211,7 +215,7 @@ async fn craft_anywhere_passes_the_gate() {
         .unwrap()
         .get_mut(&addr)
         .unwrap()
-        .crafting_options
+        .crafting_options_mut()
         .craft_anywhere = true;
 
     dispatch(craft(0), &transport, &connected, &entity_to_addr).await;
@@ -232,12 +236,12 @@ async fn spend_is_not_gated() {
     let typed = Arc::new(TestTransport::new());
     let transport: Arc<dyn Transport> = typed.clone();
     let (addr, connected, entity_to_addr) = one_session(ENTITY, false);
-    let spend = CellToBaseMsg::Crafting(CraftRequest {
+    let spend = CellToBaseMsg::Plugin(PluginMsg::new(CraftRequest {
         entity_id: ENTITY,
         player_id: PLAYER_ID,
         verb: CraftVerb::Spend { discipline_id: 21 },
         allowed: 0,
-    });
+    }));
 
     dispatch(spend, &transport, &connected, &entity_to_addr).await;
 
@@ -258,12 +262,12 @@ async fn station_report_sends_options_only_after_login_and_on_change() {
     let transport: Arc<dyn Transport> = typed.clone();
     let (addr, connected, entity_to_addr) = one_session(ENTITY, false);
     let report = |stations| {
-        CellToBaseMsg::CraftingStations(CraftingStations {
+        CellToBaseMsg::Plugin(PluginMsg::new(CraftingStations {
             entity_id: ENTITY,
             player_id: PLAYER_ID,
             stations,
             cause: StationChangeCause::Moved,
-        })
+        }))
     };
 
     dispatch(
@@ -278,7 +282,7 @@ async fn station_report_sends_options_only_after_login_and_on_change() {
     // The login send has happened (all sections empty).
     {
         let mut clients = connected.lock().unwrap();
-        let inputs = &mut clients.get_mut(&addr).unwrap().crafting_options;
+        let inputs = clients.get_mut(&addr).unwrap().crafting_options_mut();
         inputs.armed = true;
         inputs.last_sent = Some(CraftingOptions::default());
     }
@@ -341,11 +345,11 @@ async fn allcraft_from_a_non_gm_is_refused() {
     let (addr, connected, entity_to_addr) = one_session(ENTITY, false);
     assert_eq!(connected.lock().unwrap()[&addr].access_level, 0);
 
-    let grant = CellToBaseMsg::GmAllCraft(GmAllCraft {
+    let grant = CellToBaseMsg::Plugin(PluginMsg::new(GmAllCraft {
         entity_id: ENTITY,
         player_id: PLAYER_ID,
         gm_entity_id: ENTITY,
-    });
+    }));
     dispatch(grant, &transport, &connected, &entity_to_addr).await;
 
     assert_eq!(
@@ -356,7 +360,7 @@ async fn allcraft_from_a_non_gm_is_refused() {
     );
     assert!(
         !connected.lock().unwrap()[&addr]
-            .crafting_options
+            .crafting_options()
             .craft_anywhere
     );
     let event = capture

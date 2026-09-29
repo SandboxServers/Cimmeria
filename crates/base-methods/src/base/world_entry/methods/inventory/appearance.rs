@@ -186,7 +186,6 @@ mod tests {
             channel: Mutex::new(cimmeria_mercury::channel::Channel::new(
                 "127.0.0.1:9999".parse().unwrap(),
             )),
-            crafting_options: Default::default(),
             extensions: Default::default(),
             plugins: Default::default(),
         }

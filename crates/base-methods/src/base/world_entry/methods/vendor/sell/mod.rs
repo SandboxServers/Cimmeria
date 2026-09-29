@@ -13,7 +13,7 @@ use super::purchase_helpers::load_vendor_template_lists;
 use super::purchase_helpers::normalize_item_quantities;
 use super::serializers::reserve_free_inventory_slots;
 use super::store::handle_open_vendor_store;
-use crate::base::crafting::inventory_locks::take_inventory_locks;
+use crate::base::inventory_locks::take_inventory_locks;
 use crate::base::outbox::{self, CellOutboxPayload};
 use crate::cell::messages::BaseToCellMsg;
 
@@ -87,7 +87,7 @@ pub async fn handle_sell_vendor_items(
         }
     };
 
-    // Shared inventory lock order (`crate::base::crafting::inventory_locks`):
+    // Shared inventory lock order (`crate::base::inventory_locks`):
     // the player-wide key 0 and the buyback bag's key before any row, then
     // the sold rows, the buyback rows, and `sgw_player` last. Without key 0 a
     // sale locked the sold row and then waited for the buyback key, while a

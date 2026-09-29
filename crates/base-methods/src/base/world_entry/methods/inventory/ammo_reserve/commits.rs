@@ -13,7 +13,7 @@ use cimmeria_entity::inventory::{INV_BANDOLIER, INV_CRAFTING, INV_MAIN};
 use sqlx::{PgPool, Postgres, Transaction};
 
 use super::{draw, return_rounds, AmmoDraw, AmmoReturn};
-use crate::base::crafting::inventory_locks::take_inventory_locks;
+use crate::base::inventory_locks::take_inventory_locks;
 use crate::cell::messages::ReserveRefusal;
 
 /// A committed reload draw.

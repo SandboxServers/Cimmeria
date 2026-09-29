@@ -503,6 +503,15 @@ async fn destroying_the_client_drops_its_crafting_queue() {
         .get_mut(&h.addr)
         .unwrap()
         .player_entity_id = Some(HOOK_ENTITY);
+    // The drop is the crafting plugin's teardown hook (#962 step 5).
+    h.env
+        .connected
+        .lock()
+        .unwrap()
+        .get_mut(&h.addr)
+        .unwrap()
+        .plugins =
+        cimmeria_base_session::base::plugin::BasePlugins::build(&[&crate::CraftingPlugin]).unwrap();
     // `active_player_id` is already `PLAYER_ID`.
     let global = crafting_sessions();
     assert_eq!(

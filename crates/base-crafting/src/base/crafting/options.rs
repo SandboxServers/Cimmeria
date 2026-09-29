@@ -4,7 +4,7 @@
 //! The base owns the message. Its three inputs are:
 //!
 //! - the stations in reach, reported by the cell on change
-//!   (`CellToBaseMsg::CraftingStations`);
+//!   (a `CraftingStations` in the `CellToBaseMsg::Plugin` envelope);
 //! - the Field Crafting Tools in the crafting bag, re-read after every
 //!   inventory commit (`send_full_inventory_update` is the shared post-commit
 //!   seam) and at login;
@@ -42,8 +42,8 @@ use crate::base::ConnectedClientState;
 use crate::mercury::build_player_entity_method_packet;
 
 /// A session's crafting-options inputs and the last options sent. One per
-/// connection (`ConnectedClientState::crafting_options`), so it dies with
-/// the connection. A world entry clears the stations and disarms the
+/// connection, in the session's extensions ([`session_options`],
+/// [`session_options_mut`]), so it dies with the connection. A world entry clears the stations and disarms the
 /// change sends ([`Self::begin_world_entry`]); the tools and "craft
 /// anywhere" carry over a world change.
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
@@ -66,6 +66,47 @@ pub struct CraftingSessionOptions {
     /// confirmed yet. Not an input to 140: it lives here because this is
     /// the session's crafting state, and it dies with the connection.
     pub pending_respec: Option<PendingRespec>,
+}
+
+/// The session's crafting options, from `ConnectedClientState::extensions`
+/// (#962 step 5). `None` for a session crafting has not touched yet, which
+/// reads as the defaults: no station, no tool, no "craft anywhere", not
+/// armed, nothing sent.
+pub fn session_options(client: &ConnectedClientState) -> Option<&CraftingSessionOptions> {
+    client.extensions.get::<CraftingSessionOptions>()
+}
+
+/// The session's crafting options, mutably; stores the defaults on first
+/// use, so a write always lands.
+pub fn session_options_mut(client: &mut ConnectedClientState) -> &mut CraftingSessionOptions {
+    if !client.extensions.contains::<CraftingSessionOptions>() {
+        client.extensions.insert(CraftingSessionOptions::default());
+    }
+    client
+        .extensions
+        .get_mut::<CraftingSessionOptions>()
+        .expect("inserted above")
+}
+
+/// The session's crafting options as methods on `ConnectedClientState`,
+/// where they used to be a field (`crafting_options`), for code and tests
+/// that read or set one input.
+pub trait CraftingOptionsExt {
+    /// A copy of the session's crafting options (the defaults when crafting
+    /// has not touched the session).
+    fn crafting_options(&self) -> CraftingSessionOptions;
+    /// The session's crafting options, mutably ([`session_options_mut`]).
+    fn crafting_options_mut(&mut self) -> &mut CraftingSessionOptions;
+}
+
+impl CraftingOptionsExt for ConnectedClientState {
+    fn crafting_options(&self) -> CraftingSessionOptions {
+        session_options(self).cloned().unwrap_or_default()
+    }
+
+    fn crafting_options_mut(&mut self) -> &mut CraftingSessionOptions {
+        session_options_mut(self)
+    }
 }
 
 impl CraftingSessionOptions {
@@ -183,7 +224,7 @@ fn update_options(
         let mut clients = connected.lock().ok()?;
         let client = clients.get_mut(&addr)?;
         let identity = (client.account_id, client.active_player_id);
-        let inputs = &mut client.crafting_options;
+        let inputs = session_options_mut(client);
         update(inputs);
         let options = build_options(entity_id, inputs);
         let due = force || (inputs.armed && inputs.last_sent.as_ref() != Some(&options));
@@ -274,7 +315,7 @@ pub fn record_sent(
         .as_mut()
         .and_then(|c| c.get_mut(&addr))
     {
-        client.crafting_options.last_sent = Some(options);
+        session_options_mut(client).last_sent = Some(options);
     }
 }
 
@@ -324,7 +365,8 @@ async fn send_options(
     false
 }
 
-/// The cell reported a new station set (`CellToBaseMsg::CraftingStations`).
+/// The cell reported a new station set (a `CraftingStations` in the
+/// `CellToBaseMsg::Plugin` envelope).
 pub async fn handle_station_report(
     report: CraftingStations,
     transport: &Arc<dyn Transport>,
@@ -420,7 +462,10 @@ pub fn craft_anywhere(
     connected
         .lock()
         .ok()
-        .and_then(|c| c.get(&addr).map(|c| c.crafting_options.craft_anywhere))
+        .and_then(|c| {
+            c.get(&addr)
+                .map(|c| session_options(c).is_some_and(|o| o.craft_anywhere))
+        })
         .unwrap_or(false)
 }
 

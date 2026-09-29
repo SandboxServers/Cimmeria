@@ -11,10 +11,10 @@ use std::collections::HashMap;
 use std::net::SocketAddr;
 use std::sync::{Arc, Mutex};
 
+use cimmeria_base_session::base::plugin::{entity_plugins, InventoryCall, InventoryHookPoint};
 use cimmeria_mercury::transport::Transport;
 use sqlx::PgPool;
 
-use super::super::super::super::crafting::options::refresh_tools_from_rows;
 use super::super::super::super::helpers::send_to_witness_reliable;
 use super::super::super::super::ConnectedClientState;
 use crate::mercury::{build_player_entity_method_packet, method_idx};
@@ -331,22 +331,29 @@ pub async fn send_full_inventory_update(
 
     send_update_item(entity_id, &all_items, transport, connected, entity_to_addr).await;
 
-    // Every inventory commit ends in this resync, so it is where the
-    // crafting options learn that a Field Crafting Tool entered or left the
-    // crafting bag. No second query: the rows above carry the
-    // container.
-    refresh_tools_from_rows(
-        entity_id,
-        player_id,
-        pool,
-        all_items
-            .iter()
-            .map(|r| (r.item_id, r.type_id, r.container_id)),
-        transport,
-        connected,
-        entity_to_addr,
-    )
-    .await;
+    // Every inventory commit ends in this resync, so it is where the base
+    // plugins see the new inventory (#962 step 5): the crafting options
+    // learn that a Field Crafting Tool entered or left the crafting bag. No
+    // second query: the rows above carry the container.
+    let plugins = entity_plugins(connected, entity_to_addr, entity_id);
+    let rows: Vec<(i32, i32, i32)> = all_items
+        .iter()
+        .map(|r| (r.item_id, r.type_id, r.container_id))
+        .collect();
+    plugins
+        .run_inventory_hook(
+            InventoryHookPoint::AfterFullInventoryUpdate,
+            InventoryCall {
+                entity_id,
+                player_id,
+                pool,
+                rows: &rows,
+                transport,
+                connected,
+                entity_to_addr,
+            },
+        )
+        .await;
 
     all_items.len()
 }

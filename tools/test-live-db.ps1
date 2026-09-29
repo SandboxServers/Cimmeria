@@ -35,6 +35,7 @@ $LiveDbCrates = @(
     'cimmeria-base-world-entry'
     'cimmeria-cell-combat'
     'cimmeria-base'
+    'cimmeria-base-crafting'
     'cimmeria-cell-content'
     'cimmeria-cell-console'
     'cimmeria-cell-interactions'

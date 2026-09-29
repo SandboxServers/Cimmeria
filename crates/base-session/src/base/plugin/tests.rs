@@ -208,16 +208,29 @@ impl World {
 // ── Startup checks ───────────────────────────────────────────────────────
 
 #[test]
-fn the_production_lists_are_empty_and_an_empty_table_is_complete() {
+fn the_production_lists_name_crafting_and_an_empty_table_is_incomplete() {
     assert!(PLUGIN_OWNED_BASE_METHODS.is_empty());
-    assert!(PLUGIN_CELL_MESSAGES.is_empty());
+    let declared: Vec<&str> = PLUGIN_CELL_MESSAGES.iter().map(|k| k.type_name()).collect();
+    assert_eq!(declared.len(), 7, "{declared:?}");
+    assert!(
+        declared
+            .iter()
+            .all(|t| t.starts_with("cimmeria_wire::crafting::")),
+        "{declared:?}"
+    );
     let plugins = BasePlugins::build(&[]).expect("an empty table builds");
-    plugins
-        .check_complete()
-        .expect("nothing is plugin-owned yet");
     assert!(plugins.plugin_names().is_empty());
     assert_eq!(plugins.base_method_indices().count(), 0);
-    BasePlugins::empty().check_complete().unwrap();
+    // Without crafting nothing consumes its payloads: the orchestrator must
+    // refuse to start, and a bare registry says the same.
+    for empty in [plugins, BasePlugins::empty()] {
+        match empty.check_complete() {
+            Err(BasePluginError::MissingCellMessageConsumers { missing }) => {
+                assert_eq!(missing, declared);
+            }
+            other => panic!("an empty table must miss the crafting consumers: {other:?}"),
+        }
+    }
 }
 
 #[test]

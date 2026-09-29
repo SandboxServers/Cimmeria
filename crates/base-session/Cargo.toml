@@ -4,7 +4,7 @@ version.workspace = true
 edition.workspace = true
 license.workspace = true
 publish = false
-description = "The BaseApp's per-connection session layer for the Cimmeria server emulator: the connected-client state, the per-session send helpers, the deferred-AoI buffer, the durable base->cell outbox, tick sync, cooked-data delivery and the session-scoped handlers (contact list, crafting, GM spawn and feedback, console authoring)"
+description = "The BaseApp's per-connection session layer for the Cimmeria server emulator: the connected-client state, the per-session send helpers, the deferred-AoI buffer, the durable base->cell outbox, tick sync, cooked-data delivery and the session-scoped handlers (contact list, GM spawn and feedback, console authoring), and the base plugin API"
 
 # Split out of cimmeria-services (wave B1 of
 # docs/architecture/services-crate-split.md), the bottom of the base track:
@@ -25,11 +25,9 @@ cimmeria-entity = { workspace = true }
 cimmeria-mercury = { workspace = true }
 # The player-disconnect and Mercury-timeout notifications.
 cimmeria-discord = { workspace = true }
-# `mercury_rx_stalls_total` and the crafting persistence counters.
+# `mercury_rx_stalls_total` and the cooked-data counters.
 cimmeria-observability = { workspace = true }
 tokio = { workspace = true }
-# The crafting verbs' rolls, behind the injectable `CraftRng` seam.
-rand = { workspace = true }
 sqlx = { workspace = true }
 serde = { workspace = true }
 tracing = { workspace = true }
@@ -51,5 +49,5 @@ serde_json = { workspace = true }
 # tools/test-live-db.{sh,ps1}; `live_db_wrapper_lists_every_test_support_crate`
 # enforces it.
 cimmeria-test-support = { workspace = true }
-# `testing::install` / `counter_total`: the crafting counter-emission tests.
+# `testing::install` / `counter_total`: the organization counter tests.
 cimmeria-observability = { workspace = true, features = ["testing"] }

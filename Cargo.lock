@@ -886,6 +886,7 @@ version = "0.1.0"
 dependencies = [
  "async-trait",
  "cimmeria-auth",
+ "cimmeria-base-crafting",
  "cimmeria-base-methods",
  "cimmeria-base-session",
  "cimmeria-base-world-entry",
@@ -907,9 +908,29 @@ dependencies = [
 ]
 
 [[package]]
+name = "cimmeria-base-crafting"
+version = "0.1.0"
+dependencies = [
+ "cimmeria-base-session",
+ "cimmeria-cell-catalog",
+ "cimmeria-entity",
+ "cimmeria-mercury",
+ "cimmeria-observability",
+ "cimmeria-resources",
+ "cimmeria-test-support",
+ "cimmeria-wire",
+ "cimmeria-workspace-hack",
+ "rand 0.10.3",
+ "sqlx",
+ "tokio",
+ "tracing",
+]
+
+[[package]]
 name = "cimmeria-base-methods"
 version = "0.1.0"
 dependencies = [
+ "cimmeria-base-crafting",
  "cimmeria-base-session",
  "cimmeria-cell-catalog",
  "cimmeria-discord",
@@ -940,7 +961,6 @@ dependencies = [
  "cimmeria-test-support",
  "cimmeria-wire",
  "cimmeria-workspace-hack",
- "rand 0.10.3",
  "serde",
  "serde_json",
  "sqlx",
@@ -955,6 +975,7 @@ version = "0.1.0"
 dependencies = [
  "async-trait",
  "cimmeria-auth",
+ "cimmeria-base-crafting",
  "cimmeria-base-methods",
  "cimmeria-base-session",
  "cimmeria-discord",
@@ -1564,6 +1585,7 @@ version = "0.1.0"
 dependencies = [
  "cimmeria-auth",
  "cimmeria-base",
+ "cimmeria-base-crafting",
  "cimmeria-base-session",
  "cimmeria-base-world-entry",
  "cimmeria-cell",

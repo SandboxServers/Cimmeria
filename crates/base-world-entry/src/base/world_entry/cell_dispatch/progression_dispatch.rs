@@ -232,40 +232,6 @@ pub(super) async fn route(msg: CellToBaseMsg, ctx: &DispatchCtx<'_>) {
             )
             .await
         }
-        CellToBaseMsg::GrantExpertise {
-            entity_id,
-            player_id,
-            discipline_id,
-            amount,
-        } => {
-            grant_expertise(
-                entity_id,
-                player_id,
-                discipline_id,
-                amount,
-                ctx.db_pool,
-                ctx.transport,
-                ctx.connected,
-                ctx.entity_to_addr,
-            )
-            .await
-        }
-        CellToBaseMsg::GrantAppliedSciencePoints {
-            entity_id,
-            player_id,
-            amount,
-        } => {
-            grant_applied_science_points(
-                entity_id,
-                player_id,
-                amount,
-                ctx.db_pool,
-                ctx.transport,
-                ctx.connected,
-                ctx.entity_to_addr,
-            )
-            .await
-        }
         CellToBaseMsg::ExecuteAuthoringSql {
             entity_id,
             label,
@@ -489,52 +455,6 @@ pub(super) async fn grant_cash(
         player_id,
         amount,
         gm_feedback_to,
-        db_pool,
-        transport,
-        connected,
-        entity_to_addr,
-    )
-    .await;
-}
-
-/// `CellToBaseMsg::GrantExpertise`.
-pub(super) async fn grant_expertise(
-    entity_id: u32,
-    player_id: i32,
-    discipline_id: i32,
-    amount: i32,
-    db_pool: &Option<Arc<PgPool>>,
-    transport: &Arc<dyn Transport>,
-    connected: &Arc<Mutex<HashMap<SocketAddr, ConnectedClientState>>>,
-    entity_to_addr: &Arc<Mutex<HashMap<u32, SocketAddr>>>,
-) {
-    crate::base::crafting::handlers::handle_grant_expertise(
-        entity_id,
-        player_id,
-        discipline_id,
-        amount,
-        db_pool,
-        transport,
-        connected,
-        entity_to_addr,
-    )
-    .await;
-}
-
-/// `CellToBaseMsg::GrantAppliedSciencePoints`.
-pub(super) async fn grant_applied_science_points(
-    entity_id: u32,
-    player_id: i32,
-    amount: i32,
-    db_pool: &Option<Arc<PgPool>>,
-    transport: &Arc<dyn Transport>,
-    connected: &Arc<Mutex<HashMap<SocketAddr, ConnectedClientState>>>,
-    entity_to_addr: &Arc<Mutex<HashMap<u32, SocketAddr>>>,
-) {
-    crate::base::crafting::handlers::handle_grant_applied_science(
-        entity_id,
-        player_id,
-        amount,
         db_pool,
         transport,
         connected,

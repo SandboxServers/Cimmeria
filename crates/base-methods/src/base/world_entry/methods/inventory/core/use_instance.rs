@@ -37,11 +37,12 @@ use tokio::sync::mpsc;
 
 use super::super::move_::{handle_move_inventory_item, player_accessible};
 use super::access::{refuse_inaccessible, AccessOp};
-use super::use_crafting_item::{crafting_item_miss, use_crafting_item};
+use super::use_crafting_item::offer_item_use;
 use crate::base::outbox::{self, CellOutboxPayload};
 use crate::base::resources::bag_max_slots;
 use crate::base::ConnectedClientState;
 use crate::cell::messages::BaseToCellMsg;
+use cimmeria_base_session::base::plugin::ItemUseHookPoint;
 use cimmeria_wire::cell::vault::VaultAccess;
 
 // Re-export the canonical container ids the auto-equip router cares
@@ -147,29 +148,22 @@ pub async fn handle_use_inventory_item(
         Ok(Some(r)) => r,
         Ok(None) => {
             // A crafting item that is not (or no longer) this player's gets
-            // the crafting refusal line; any other item stays a silent WARN.
-            if crafting_item_miss(
-                pool,
+            // the crafting refusal line from the crafting plugin (#962 step
+            // 5); any other item stays a silent WARN.
+            if offer_item_use(
+                ItemUseHookPoint::InstanceNotFound,
                 entity_id,
                 player_id,
                 item_id,
+                pool,
+                db_pool,
+                cell_tx,
+                transport,
                 connected,
                 entity_to_addr,
             )
             .await
             {
-                use_crafting_item(
-                    entity_id,
-                    player_id,
-                    item_id,
-                    pool,
-                    db_pool,
-                    cell_tx,
-                    transport,
-                    connected,
-                    entity_to_addr,
-                )
-                .await;
                 return;
             }
             tracing::warn!(
@@ -276,10 +270,12 @@ pub async fn handle_use_inventory_item(
         return;
     }
 
-    // Crafting items: the crafting use decides and consumes. `target_id`
-    // plays no part; the effect always applies to the user.
+    // Crafting items: the crafting plugin (#962 step 5) decides and
+    // consumes. `target_id` plays no part; the effect always applies to the
+    // user. With no plugin to take it, the use does nothing and says why.
     if row.is_crafting_item {
-        use_crafting_item(
+        let handled = offer_item_use(
+            ItemUseHookPoint::CraftingItem,
             entity_id,
             player_id,
             item_id,
@@ -291,6 +287,18 @@ pub async fn handle_use_inventory_item(
             entity_to_addr,
         )
         .await;
+        if !handled {
+            tracing::warn!(
+                target: "base.plugin",
+                reason = "no_plugin",
+                entity_id,
+                player_id,
+                item_id,
+                type_id,
+                "UseInventoryItem: crafting item but no base plugin takes it -- the use does \
+                 nothing (is the crafting plugin missing from the table?)"
+            );
+        }
         return;
     }
 

@@ -1,5 +1,6 @@
 //! The GM crafting grants for UAT: `.craftkit <blueprint> [count]` and
-//! `.learnblueprint <id>` (`CellToBaseMsg::GmCraftGrant`).
+//! `.learnblueprint <id>` (a `GmCraftGrant` in the `CellToBaseMsg::Plugin`
+//! envelope).
 //!
 //! The cell's `.`-console is GM-gated already; the base checks the caller's
 //! session `access_level` again before writing anything, as `.allcraft`
@@ -33,7 +34,7 @@ pub(crate) struct GrantIds {
     pub gm_entity_id: u32,
 }
 
-/// Handle `CellToBaseMsg::GmCraftGrant`.
+/// Handle a [`GmCraftGrant`] from the `CellToBaseMsg::Plugin` envelope.
 pub async fn handle_gm_craft_grant(msg: GmCraftGrant, ctx: &CraftCtx<'_>) {
     let ids = GrantIds {
         account_id: account_id_of(msg.entity_id, ctx.connected, ctx.entity_to_addr),

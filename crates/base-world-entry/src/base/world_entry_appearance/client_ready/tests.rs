@@ -207,7 +207,7 @@ async fn live_db_on_client_ready_pushes_the_stored_crafting_state() {
     use crate::test_support::{
         require_db_or_skip, test_default_connected_client_state, TestTransport,
     };
-    use cimmeria_base_session::base::crafting::sync::build_login_bundle;
+    use cimmeria_base_crafting::base::crafting::sync::build_login_bundle;
     use cimmeria_entity::crafting::CraftingState;
     use cimmeria_mercury::encryption::EncryptionVersion;
     use cimmeria_mercury::packet::{FLAG_ON_CHANNEL, FLAG_RELIABLE};
@@ -259,6 +259,10 @@ async fn live_db_on_client_ready_pushes_the_stored_crafting_state() {
     let addr: SocketAddr = "127.0.0.1:55710".parse().unwrap();
     let entity_id: u32 = 9998;
     let mut state = test_default_connected_client_state();
+    state.plugins = cimmeria_base_session::base::plugin::BasePlugins::build(&[
+        &cimmeria_base_crafting::CraftingPlugin,
+    ])
+    .unwrap();
     state.player_entity_id = Some(entity_id);
     state.pending_client_ready = Some(crate::base::PendingClientReadyInfo {
         entity_id,

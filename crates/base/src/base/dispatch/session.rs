@@ -129,12 +129,8 @@ pub(super) async fn handle_log_off(
         // Remove entity→addr mapping
         entity_to_addr.lock().unwrap().remove(&entity_id);
 
-        // Logging off drops any queued crafting without consuming it.
-        cimmeria_base_session::base::crafting::session::drop_player_inductions(
-            entity_id,
-            cimmeria_base_session::base::crafting::session::DropReason::Logout,
-            "log_off",
-        );
+        // The base plugins' logOff work (#962 step 5): crafting drops any
+        // queued induction without consuming it.
         plugins.run_session_hook(
             SessionHookPoint::LogOffAfterEntityUnmapped,
             SessionEvent {

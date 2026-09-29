@@ -29,7 +29,6 @@ pub mod console_authoring;
 pub mod contact_list;
 pub mod cooked_data;
 pub mod cooked_sync;
-pub mod crafting;
 pub mod deferred_aoi;
 pub mod deferred_aoi_lifecycle;
 pub mod feedback;
@@ -37,6 +36,7 @@ pub mod gm_broadcast;
 pub mod gm_feedback;
 pub mod gm_spawn;
 pub mod helpers;
+pub mod inventory_locks;
 pub mod mutes;
 pub mod org_cash;
 pub mod organization;
@@ -325,11 +325,6 @@ pub struct ConnectedClientState {
     /// and `check_timeouts` all need `&mut self` and run from different
     /// code paths (receive loop, per-send-site call sites, retransmit tick).
     pub channel: Mutex<Channel>,
-
-    /// Crafting stations, tools and "craft anywhere" behind this session's
-    /// `onUpdateCraftingOptions`, the options last sent, and an open
-    /// crafting respec.
-    pub crafting_options: crafting::options::CraftingSessionOptions,
 
     /// Per-session feature state, one slot per feature type (#962, plugin
     /// ADR §3.5). A base plugin keeps its session state here instead of

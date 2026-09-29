@@ -229,7 +229,7 @@ async fn options_changed_carries_identity_cause_and_ids() {
         .unwrap()
         .get_mut(&addr)
         .unwrap()
-        .crafting_options
+        .crafting_options_mut()
         .tools = vec![tool(20_002, 35)];
 
     assert!(
@@ -390,7 +390,7 @@ async fn a_failed_login_tool_read_sends_no_tool() {
         .unwrap()
         .get_mut(&addr)
         .unwrap()
-        .crafting_options
+        .crafting_options_mut()
         .tools = vec![tool(20_002, 35)];
     // Nothing listens on port 1, so the bag read fails fast.
     let unreachable = sqlx::postgres::PgPoolOptions::new()
@@ -410,7 +410,7 @@ async fn a_failed_login_tool_read_sends_no_tool() {
 
     assert_eq!(options, CraftingOptions::default(), "no tool named");
     assert!(connected.lock().unwrap()[&addr]
-        .crafting_options
+        .crafting_options()
         .tools
         .is_empty());
 }
