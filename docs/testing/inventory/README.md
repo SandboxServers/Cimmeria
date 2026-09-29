@@ -35,9 +35,9 @@ many tests also updates the catalogue.
 
 | Metric | Count |
 |---|---:|
-| Tests (`#[test]` / `#[tokio::test]`) | 8,758 |
-| Files with tests | 1,462 |
-| Gated in CI (every crate but CI's exclude list) | 8,174 |
+| Tests (`#[test]` / `#[tokio::test]`) | 8,764 |
+| Files with tests | 1,463 |
+| Gated in CI (every crate but CI's exclude list) | 8,180 |
 | Live-DB tests (`require_db_or_skip!` in the body) | 1,516 |
 | Inventory threshold (5% of the tests) | 438 |
 
@@ -89,7 +89,7 @@ with no file in this directory yet.
 |---|---|---:|---:|---:|---|---|
 | `crates/cell-content` | `cimmeria-cell-content` | 829 | 120 | 477 | yes | none |
 | `crates/base-session` | `cimmeria-base-session` | 697 | 127 | 327 | yes | none |
-| `crates/cell-combat` | `cimmeria-cell-combat` | 625 | 103 | 39 | yes | none |
+| `crates/cell-combat` | `cimmeria-cell-combat` | 626 | 103 | 39 | yes | none |
 | `crates/base-methods` | `cimmeria-base-methods` | 579 | 123 | 418 | yes | none |
 | `crates/cell-world` | `cimmeria-cell-world` | 573 | 91 | 38 | yes | none |
 | `crates/cell` | `cimmeria-cell` | 509 | 109 | 18 | yes | none |
@@ -111,7 +111,7 @@ with no file in this directory yet.
 | `crates/upk-objects` | `cimmeria-upk-objects` | 78 | 9 | 0 | yes | [upk-objects.md](upk-objects.md) |
 | `crates/discord` | `cimmeria-discord` | 76 | 15 | 0 | yes | none |
 | `crates/cell-cover` | `cimmeria-cell-cover` | 71 | 5 | 6 | yes | none |
-| `crates/server` | `cimmeria-server` | 64 | 13 | 0 | yes | [server.md](server.md) |
+| `crates/server` | `cimmeria-server` | 67 | 14 | 0 | yes | [server.md](server.md) |
 | `crates/lab` | `cimmeria-lab` | 61 | 14 | 0 | no | none |
 | `crates/wireclient` | `cimmeria-wireclient` | 61 | 16 | 0 | yes | [wireclient.md](wireclient.md) |
 | `crates/auth` | `cimmeria-auth` | 54 | 11 | 9 | yes | none |
@@ -132,8 +132,8 @@ with no file in this directory yet.
 | `crates/patchset` | `cimmeria-patchset` | 15 | 3 | 0 | yes | none |
 | `crates/upk` | `cimmeria-upk` | 12 | 3 | 0 | yes | none |
 | `tools/ContentEditor` | `cimmeria-content-editor` | 12 | 1 | 0 | no | [tools-contenteditor.md](tools-contenteditor.md) |
+| `crates/lab-mcp` | `cimmeria-lab-mcp` | 9 | 2 | 0 | yes | none |
 | `crates/observability` | `cimmeria-observability` | 8 | 2 | 0 | yes | none |
-| `crates/lab-mcp` | `cimmeria-lab-mcp` | 7 | 2 | 0 | yes | none |
 | `src-tauri` | `cimmeria-app` | 6 | 2 | 0 | no | [tauri-app.md](tauri-app.md) |
 | `crates/defs` | `cimmeria-defs` | 5 | 1 | 0 | yes | [defs.md](defs.md) |
 
