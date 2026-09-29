@@ -32,3 +32,7 @@ docs/readme.md merge=union
 # The client reads them as-is, so they keep their CRLF line endings on every
 # checkout and are never converted.
 crates/client-patches/overlay/Content/** -text
+# Whole stock-derived client files shipped by patch 008: byte-exact, never converted.
+data/client-patches/008-dialog-portraits/*.scheme -text
+data/client-patches/008-dialog-portraits/*.layout -text
+data/client-patches/008-dialog-portraits/*.lua -text

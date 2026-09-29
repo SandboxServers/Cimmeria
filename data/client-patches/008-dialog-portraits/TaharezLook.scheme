@@ -1,0 +1,618 @@
+<?xml version="1.0" ?>
+<GUIScheme Name="TaharezLook">
+
+<!--    <Imageset Name="Test" Filename="Test.imageset" /> -->
+    
+    <Imageset Name="TaharezLook" Filename="TaharezLook.imageset" />
+    <Imageset Name="MouseCursors" Filename="MouseCursors.imageset" />
+    <Imageset Name="CoreWidgets" Filename="CoreWidgets.imageset" />
+    <Imageset Name="ProgrammerArt" Filename="ProgrammerArt.imageset" />
+    <!--<Imageset Name="SoldierAbility_Icons32" Filename="SoldierAbility_Icons32.imageset" />-->
+    <Imageset Name="ExternalWindow" Filename="ExternalWindow.imageset" />
+
+    
+    
+    
+    
+    <!--| The Latest UI Theme Files |-->
+    <Imageset Name="ProgrammerArt_2" Filename="ProgrammerArt_2.imageset" />
+    <Imageset Name="System_Icons" Filename="System_Icons.imageset" />
+    <Imageset Name="CoreWidgets_2" Filename="CoreWidgets_2.imageset" />
+    <Imageset Name="CoreWidgets2_2" Filename="CoreWidgets2_2.imageset" />
+    <Imageset Name="CoreWidgets_3" Filename="CoreWidgets_3.imageset" />
+    <Imageset Name="MinimapBlips" Filename="MinimapBlips.imageset" />
+    <Imageset Name="AmmoType_Icons" Filename="AmmoType_Icons.imageset" />
+    <Imageset Name="AbilityIcons001" Filename="AbilityIcons001.imageset" />
+    <Imageset Name="AbilityIcons002" Filename="AbilityIcons002.imageset" />
+    <Imageset Name="ArmorIcon001" Filename="ArmorIcons001.imageset" />
+    <Imageset Name="ArmorIcon002" Filename="ArmorIcons002.imageset" />
+    <Imageset Name="ArmorIcon003" Filename="ArmorIcons003.imageset" />
+    <Imageset Name="ArmorIcon004" Filename="ArmorIcons004.imageset" />
+    <Imageset Name="ArmorIcon005" Filename="ArmorIcons005.imageset" />
+    <Imageset Name="ItemIcon001" Filename="ItemIcons001.imageset" />
+    <Imageset Name="ItemIcon002" Filename="ItemIcons002.imageset" />
+    <Imageset Name="ItemIcon003" Filename="ItemIcons003.imageset" />
+    <Imageset Name="ItemIcon004" Filename="ItemIcons004.imageset" />
+    <Imageset Name="WeaponIcons001" Filename="WeaponIcons001.imageset" />
+    <Imageset Name="WeaponIcon002" Filename="WeaponIcons002.imageset" />
+    <Imageset Name="WeaponIcon003" Filename="WeaponIcons003.imageset" />
+    <Imageset Name="WeaponIcon004" Filename="WeaponIcons004.imageset" />
+    <Imageset Name="MinimapIcons" Filename="MinimapIcons.imageset" />
+    <Imageset Name="Dyes_Base_Atlas_001" Filename="Dyes_Base_Atlas_001.imageset" />
+    <Imageset Name="Dyes_Highlight_Atlas_001" Filename="Dyes_Highlight_Atlas_001.imageset" />
+    
+
+    
+    <ImagesetFromImage Name="CoreMaterial_CooldownMask_Square" Filename="UI-CoolDown_Masks-Square" />
+    <ImagesetFromImage Name="CoreMaterial_CooldownMask_Octagon" Filename="UI-CoolDown_Masks-Octagon" />
+    <ImagesetFromImage Name="CoreMaterial_CooldownMask_Circle" Filename="UI-CoolDown_Masks-Circle" />
+
+    <ImagesetFromImage Name="CoreMaterial_SelfStatus_Large" Filename="UI_SelfStatus_LG_MI.material" />
+    <ImagesetFromImage Name="CoreMaterial_SelfStatus_Small" Filename="UI_SelfStatus_SM_MI.material" />
+
+    <ImagesetFromImage Name="CoreMaterial_Target" Filename="UI_UnitMeters_MI.material" />
+    <ImagesetFromImage Name="CoreMaterial_Portrait" Filename="UI_Portrait_MI.material" />
+    <ImagesetFromImage Name="CoreMaterial_TargetPortrait" Filename="UI_PortraitTarget_MI.material" />
+    <ImagesetFromImage Name="CoreMaterial_TrainerPortrait" Filename="UI_PortraitTarget_MI.material" />
+    <!-- Cimmeria: render targets for the dialog/blurb speaker portrait -->
+    <ImagesetFromImage Name="CoreMaterial_DialogPortrait" Filename="UI_PortraitTarget_MI.material" />
+    <ImagesetFromImage Name="CoreMaterial_BlurbPortrait" Filename="UI_PortraitTarget_MI.material" />
+
+    <ImagesetFromImage Name="CoreMaterial_UnitHealthMeters1"  Filename="UI_UnitMeters_MI.material" />
+    <ImagesetFromImage Name="CoreMaterial_UnitHealthMeters2"  Filename="UI_UnitMeters_MI.material" />
+    <ImagesetFromImage Name="CoreMaterial_UnitHealthMeters3"  Filename="UI_UnitMeters_MI.material" />
+    <ImagesetFromImage Name="CoreMaterial_UnitHealthMeters4"  Filename="UI_UnitMeters_MI.material" />
+    <ImagesetFromImage Name="CoreMaterial_UnitHealthMeters5"  Filename="UI_UnitMeters_MI.material" />
+    <ImagesetFromImage Name="CoreMaterial_UnitHealthMeters6"  Filename="UI_UnitMeters_MI.material" />
+    <ImagesetFromImage Name="CoreMaterial_UnitHealthMeters7"  Filename="UI_UnitMeters_MI.material" />
+    <ImagesetFromImage Name="CoreMaterial_UnitHealthMeters8"  Filename="UI_UnitMeters_MI.material" />
+    <ImagesetFromImage Name="CoreMaterial_UnitHealthMeters9"  Filename="UI_UnitMeters_MI.material" />
+    <ImagesetFromImage Name="CoreMaterial_UnitHealthMeters10" Filename="UI_UnitMeters_MI.material" />
+    <ImagesetFromImage Name="CoreMaterial_UnitHealthMeters11" Filename="UI_UnitMeters_MI.material" />
+    <ImagesetFromImage Name="CoreMaterial_UnitHealthMeters12" Filename="UI_UnitMeters_MI.material" />
+    <ImagesetFromImage Name="CoreMaterial_UnitHealthMeters13" Filename="UI_UnitMeters_MI.material" />
+    <ImagesetFromImage Name="CoreMaterial_UnitHealthMeters14" Filename="UI_UnitMeters_MI.material" />
+    <ImagesetFromImage Name="CoreMaterial_UnitHealthMeters15" Filename="UI_UnitMeters_MI.material" />
+
+    <ImagesetFromImage Name="CoreMaterial_UnitPortrait1"  Filename="UI_PortraitTarget_MI.material" />
+    <ImagesetFromImage Name="CoreMaterial_UnitPortrait2"  Filename="UI_PortraitTarget_MI.material" />
+    <ImagesetFromImage Name="CoreMaterial_UnitPortrait3"  Filename="UI_PortraitTarget_MI.material" />
+    <ImagesetFromImage Name="CoreMaterial_UnitPortrait4"  Filename="UI_PortraitTarget_MI.material" />
+    <ImagesetFromImage Name="CoreMaterial_UnitPortrait5"  Filename="UI_PortraitTarget_MI.material" />
+    <ImagesetFromImage Name="CoreMaterial_UnitPortrait6"  Filename="UI_PortraitTarget_MI.material" />
+    <ImagesetFromImage Name="CoreMaterial_UnitPortrait7"  Filename="UI_PortraitTarget_MI.material" />
+    <ImagesetFromImage Name="CoreMaterial_UnitPortrait8"  Filename="UI_PortraitTarget_MI.material" />
+    <ImagesetFromImage Name="CoreMaterial_UnitPortrait9"  Filename="UI_PortraitTarget_MI.material" />
+    <ImagesetFromImage Name="CoreMaterial_UnitPortrait10" Filename="UI_PortraitTarget_MI.material" />
+    <ImagesetFromImage Name="CoreMaterial_UnitPortrait11" Filename="UI_PortraitTarget_MI.material" />
+    <ImagesetFromImage Name="CoreMaterial_UnitPortrait12" Filename="UI_PortraitTarget_MI.material" />
+    <ImagesetFromImage Name="CoreMaterial_UnitPortrait13" Filename="UI_PortraitTarget_MI.material" />
+    <ImagesetFromImage Name="CoreMaterial_UnitPortrait14" Filename="UI_PortraitTarget_MI.material" />
+    <ImagesetFromImage Name="CoreMaterial_UnitPortrait15" Filename="UI_PortraitTarget_MI.material" />
+
+    <ImagesetFromImage Name="CoreMaterial_SelfWindowPortrait" Filename="UI_PortraitTarget_MI.material" />
+    <ImagesetFromImage Name="CoreMaterial_SquadPortrait_1" Filename="UI_PortraitTarget_MI.material" />
+    <ImagesetFromImage Name="CoreMaterial_SquadPortrait_2" Filename="UI_PortraitTarget_MI.material" />
+    <ImagesetFromImage Name="CoreMaterial_SquadPortrait_3" Filename="UI_PortraitTarget_MI.material" />
+    <ImagesetFromImage Name="CoreMaterial_SquadPortrait_4" Filename="UI_PortraitTarget_MI.material" />
+    <ImagesetFromImage Name="CoreMaterial_SquadPortrait_5" Filename="UI_PortraitTarget_MI.material" />
+
+    <ImagesetFromImage Name="CoreMaterial_SelfWindowMeters" Filename="UI_UnitMeters_MI.material" />
+    <ImagesetFromImage Name="CoreMaterial_SquadMeters_1" Filename="UI_UnitMeters_MI.material" />
+    <ImagesetFromImage Name="CoreMaterial_SquadMeters_2" Filename="UI_UnitMeters_MI.material" />
+    <ImagesetFromImage Name="CoreMaterial_SquadMeters_3" Filename="UI_UnitMeters_MI.material" />
+    <ImagesetFromImage Name="CoreMaterial_SquadMeters_4" Filename="UI_UnitMeters_MI.material" />
+    <ImagesetFromImage Name="CoreMaterial_SquadMeters_5" Filename="UI_UnitMeters_MI.material" />
+
+
+    <ImagesetFromImage Name="CoreMaterial_PetMeters_9" Filename="UI_UnitMeters_MI.material" />
+    <ImagesetFromImage Name="CoreMaterial_PetMeters_10" Filename="UI_UnitMeters_MI.material" />
+    <ImagesetFromImage Name="CoreMaterial_PetMeters_11" Filename="UI_UnitMeters_MI.material" />
+    <ImagesetFromImage Name="CoreMaterial_PetMeters_12" Filename="UI_UnitMeters_MI.material" />
+
+    <ImagesetFromImage Name="CoreMaterial_PetPortrait_9" Filename="UI_PortraitTarget_MI.material" />
+    <ImagesetFromImage Name="CoreMaterial_PetPortrait_10" Filename="UI_PortraitTarget_MI.material" />
+    <ImagesetFromImage Name="CoreMaterial_PetPortrait_11" Filename="UI_PortraitTarget_MI.material" />
+    <ImagesetFromImage Name="CoreMaterial_PetPortrait_12" Filename="UI_PortraitTarget_MI.material" />
+    
+    <ImagesetFromImage Name="CoreMaterial_CoverNode_1" Filename="UI_CoverIndicator_MI.material" />
+    <ImagesetFromImage Name="CoreMaterial_CoverNode_2" Filename="UI_CoverIndicator_MI.material" />
+    <ImagesetFromImage Name="CoreMaterial_CoverNode_3" Filename="UI_CoverIndicator_MI.material" />
+
+    <ImagesetFromImage Name="CoreMaterial_CombatEffect_1" Filename="UI_AttackIndicator_MI.material" />
+    <ImagesetFromImage Name="CoreMaterial_CombatEffect_2" Filename="UI_AttackIndicator_MI.material" />
+    <ImagesetFromImage Name="CoreMaterial_CombatEffect_3" Filename="UI_AttackIndicator_MI.material" />
+    <ImagesetFromImage Name="CoreMaterial_CombatEffect_4" Filename="UI_AttackIndicator_MI.material" />
+
+    <ImagesetFromImage Name="CoreMaterial_EffectTimer_B0" Filename="UI_PieTimer_MI.material" />
+    <ImagesetFromImage Name="CoreMaterial_EffectTimer_B1" Filename="UI_PieTimer_MI.material" />
+    <ImagesetFromImage Name="CoreMaterial_EffectTimer_B2" Filename="UI_PieTimer_MI.material" />
+    <ImagesetFromImage Name="CoreMaterial_EffectTimer_B3" Filename="UI_PieTimer_MI.material" />
+    <ImagesetFromImage Name="CoreMaterial_EffectTimer_B4" Filename="UI_PieTimer_MI.material" />
+    <ImagesetFromImage Name="CoreMaterial_EffectTimer_B5" Filename="UI_PieTimer_MI.material" />
+    <ImagesetFromImage Name="CoreMaterial_EffectTimer_B6" Filename="UI_PieTimer_MI.material" />
+    <ImagesetFromImage Name="CoreMaterial_EffectTimer_B7" Filename="UI_PieTimer_MI.material" />
+    <ImagesetFromImage Name="CoreMaterial_EffectTimer_B8" Filename="UI_PieTimer_MI.material" />
+    <ImagesetFromImage Name="CoreMaterial_EffectTimer_B9" Filename="UI_PieTimer_MI.material" />
+    <ImagesetFromImage Name="CoreMaterial_EffectTimer_B10" Filename="UI_PieTimer_MI.material" />
+    <ImagesetFromImage Name="CoreMaterial_EffectTimer_B11" Filename="UI_PieTimer_MI.material" />
+    <ImagesetFromImage Name="CoreMaterial_EffectTimer_B12" Filename="UI_PieTimer_MI.material" />
+    <ImagesetFromImage Name="CoreMaterial_EffectTimer_B13" Filename="UI_PieTimer_MI.material" />
+
+    <ImagesetFromImage Name="CoreMaterial_EffectTimer_H0" Filename="UI_PieTimer_MI.material" />
+    <ImagesetFromImage Name="CoreMaterial_EffectTimer_H1" Filename="UI_PieTimer_MI.material" />
+    <ImagesetFromImage Name="CoreMaterial_EffectTimer_H2" Filename="UI_PieTimer_MI.material" />
+    <ImagesetFromImage Name="CoreMaterial_EffectTimer_H3" Filename="UI_PieTimer_MI.material" />
+    <ImagesetFromImage Name="CoreMaterial_EffectTimer_H4" Filename="UI_PieTimer_MI.material" />
+    <ImagesetFromImage Name="CoreMaterial_EffectTimer_H5" Filename="UI_PieTimer_MI.material" />
+    <ImagesetFromImage Name="CoreMaterial_EffectTimer_H6" Filename="UI_PieTimer_MI.material" />
+    <ImagesetFromImage Name="CoreMaterial_EffectTimer_H7" Filename="UI_PieTimer_MI.material" />
+    <ImagesetFromImage Name="CoreMaterial_EffectTimer_H8" Filename="UI_PieTimer_MI.material" />
+    <ImagesetFromImage Name="CoreMaterial_EffectTimer_H9" Filename="UI_PieTimer_MI.material" />
+    <ImagesetFromImage Name="CoreMaterial_EffectTimer_H10" Filename="UI_PieTimer_MI.material" />
+    <ImagesetFromImage Name="CoreMaterial_EffectTimer_H11" Filename="UI_PieTimer_MI.material" />
+    <ImagesetFromImage Name="CoreMaterial_EffectTimer_H12" Filename="UI_PieTimer_MI.material" />
+    <ImagesetFromImage Name="CoreMaterial_EffectTimer_H13" Filename="UI_PieTimer_MI.material" />
+    
+    <ImagesetFromImage Name="CoreMaterial_ButtonTimer1" Filename="UI_PieTimer_MI.material" />
+    <ImagesetFromImage Name="CoreMaterial_ButtonTimer2" Filename="UI_PieTimer_MI.material" />
+    <ImagesetFromImage Name="CoreMaterial_ButtonTimer3" Filename="UI_PieTimer_MI.material" />
+    <ImagesetFromImage Name="CoreMaterial_ButtonTimer4" Filename="UI_PieTimer_MI.material" />
+    <ImagesetFromImage Name="CoreMaterial_ButtonTimer5" Filename="UI_PieTimer_MI.material" />
+    <ImagesetFromImage Name="CoreMaterial_ButtonTimer6" Filename="UI_PieTimer_MI.material" />
+    <ImagesetFromImage Name="CoreMaterial_ButtonTimer7" Filename="UI_PieTimer_MI.material" />
+    <ImagesetFromImage Name="CoreMaterial_ButtonTimer8" Filename="UI_PieTimer_MI.material" />
+    <ImagesetFromImage Name="CoreMaterial_ButtonTimer9" Filename="UI_PieTimer_MI.material" />
+    <ImagesetFromImage Name="CoreMaterial_ButtonTimer10" Filename="UI_PieTimer_MI.material" />
+
+    <ImagesetFromImage Name="CoreMaterial_ButtonTimer11" Filename="UI_PieTimer_MI.material" />
+    <ImagesetFromImage Name="CoreMaterial_ButtonTimer12" Filename="UI_PieTimer_MI.material" />
+    <ImagesetFromImage Name="CoreMaterial_ButtonTimer13" Filename="UI_PieTimer_MI.material" />
+    <ImagesetFromImage Name="CoreMaterial_ButtonTimer14" Filename="UI_PieTimer_MI.material" />
+    <ImagesetFromImage Name="CoreMaterial_ButtonTimer15" Filename="UI_PieTimer_MI.material" />
+    <ImagesetFromImage Name="CoreMaterial_ButtonTimer16" Filename="UI_PieTimer_MI.material" />
+    <ImagesetFromImage Name="CoreMaterial_ButtonTimer17" Filename="UI_PieTimer_MI.material" />
+    <ImagesetFromImage Name="CoreMaterial_ButtonTimer18" Filename="UI_PieTimer_MI.material" />
+    <ImagesetFromImage Name="CoreMaterial_ButtonTimer19" Filename="UI_PieTimer_MI.material" />
+    <ImagesetFromImage Name="CoreMaterial_ButtonTimer20" Filename="UI_PieTimer_MI.material" />
+
+    <ImagesetFromImage Name="CoreMaterial_ButtonTimer21" Filename="UI_PieTimer_MI.material" />
+    <ImagesetFromImage Name="CoreMaterial_ButtonTimer22" Filename="UI_PieTimer_MI.material" />
+    <ImagesetFromImage Name="CoreMaterial_ButtonTimer23" Filename="UI_PieTimer_MI.material" />
+    <ImagesetFromImage Name="CoreMaterial_ButtonTimer24" Filename="UI_PieTimer_MI.material" />
+    <ImagesetFromImage Name="CoreMaterial_ButtonTimer25" Filename="UI_PieTimer_MI.material" />
+    <ImagesetFromImage Name="CoreMaterial_ButtonTimer26" Filename="UI_PieTimer_MI.material" />
+    <ImagesetFromImage Name="CoreMaterial_ButtonTimer27" Filename="UI_PieTimer_MI.material" />
+    <ImagesetFromImage Name="CoreMaterial_ButtonTimer28" Filename="UI_PieTimer_MI.material" />
+    <ImagesetFromImage Name="CoreMaterial_ButtonTimer29" Filename="UI_PieTimer_MI.material" />
+    <ImagesetFromImage Name="CoreMaterial_ButtonTimer30" Filename="UI_PieTimer_MI.material" />
+
+    <ImagesetFromImage Name="CoreMaterial_ButtonTimer31" Filename="UI_PieTimer_MI.material" />
+    <ImagesetFromImage Name="CoreMaterial_ButtonTimer32" Filename="UI_PieTimer_MI.material" />
+    <ImagesetFromImage Name="CoreMaterial_ButtonTimer33" Filename="UI_PieTimer_MI.material" />
+    <ImagesetFromImage Name="CoreMaterial_ButtonTimer34" Filename="UI_PieTimer_MI.material" />
+    <ImagesetFromImage Name="CoreMaterial_ButtonTimer35" Filename="UI_PieTimer_MI.material" />
+    <ImagesetFromImage Name="CoreMaterial_ButtonTimer36" Filename="UI_PieTimer_MI.material" />
+    <ImagesetFromImage Name="CoreMaterial_ButtonTimer37" Filename="UI_PieTimer_MI.material" />
+    <ImagesetFromImage Name="CoreMaterial_ButtonTimer38" Filename="UI_PieTimer_MI.material" />
+    <ImagesetFromImage Name="CoreMaterial_ButtonTimer39" Filename="UI_PieTimer_MI.material" />
+    <ImagesetFromImage Name="CoreMaterial_ButtonTimer40" Filename="UI_PieTimer_MI.material" />
+
+    <ImagesetFromImage Name="CoreMaterial_ButtonTimer41" Filename="UI_PieTimer_MI.material" />
+    <ImagesetFromImage Name="CoreMaterial_ButtonTimer42" Filename="UI_PieTimer_MI.material" />
+    <ImagesetFromImage Name="CoreMaterial_ButtonTimer43" Filename="UI_PieTimer_MI.material" />
+    <ImagesetFromImage Name="CoreMaterial_ButtonTimer44" Filename="UI_PieTimer_MI.material" />
+    <ImagesetFromImage Name="CoreMaterial_ButtonTimer45" Filename="UI_PieTimer_MI.material" />
+    <ImagesetFromImage Name="CoreMaterial_ButtonTimer46" Filename="UI_PieTimer_MI.material" />
+    <ImagesetFromImage Name="CoreMaterial_ButtonTimer47" Filename="UI_PieTimer_MI.material" />
+    <ImagesetFromImage Name="CoreMaterial_ButtonTimer48" Filename="UI_PieTimer_MI.material" />
+    <ImagesetFromImage Name="CoreMaterial_ButtonTimer49" Filename="UI_PieTimer_MI.material" />
+    <ImagesetFromImage Name="CoreMaterial_ButtonTimer50" Filename="UI_PieTimer_MI.material" />
+
+    <ImagesetFromImage Name="CoreMaterial_ButtonTimer51" Filename="UI_PieTimer_MI.material" />
+    <ImagesetFromImage Name="CoreMaterial_ButtonTimer52" Filename="UI_PieTimer_MI.material" />
+    <ImagesetFromImage Name="CoreMaterial_ButtonTimer53" Filename="UI_PieTimer_MI.material" />
+    <ImagesetFromImage Name="CoreMaterial_ButtonTimer54" Filename="UI_PieTimer_MI.material" />
+    <ImagesetFromImage Name="CoreMaterial_ButtonTimer55" Filename="UI_PieTimer_MI.material" />
+    <ImagesetFromImage Name="CoreMaterial_ButtonTimer56" Filename="UI_PieTimer_MI.material" />
+    <ImagesetFromImage Name="CoreMaterial_ButtonTimer57" Filename="UI_PieTimer_MI.material" />
+    <ImagesetFromImage Name="CoreMaterial_ButtonTimer58" Filename="UI_PieTimer_MI.material" />
+    <ImagesetFromImage Name="CoreMaterial_ButtonTimer59" Filename="UI_PieTimer_MI.material" />
+    <ImagesetFromImage Name="CoreMaterial_ButtonTimer60" Filename="UI_PieTimer_MI.material" />
+
+    <ImagesetFromImage Name="CoreMaterial_ButtonTimer61" Filename="UI_PieTimer_MI.material" />
+    <ImagesetFromImage Name="CoreMaterial_ButtonTimer62" Filename="UI_PieTimer_MI.material" />
+    <ImagesetFromImage Name="CoreMaterial_ButtonTimer63" Filename="UI_PieTimer_MI.material" />
+    <ImagesetFromImage Name="CoreMaterial_ButtonTimer64" Filename="UI_PieTimer_MI.material" />
+    <ImagesetFromImage Name="CoreMaterial_ButtonTimer65" Filename="UI_PieTimer_MI.material" />
+    <ImagesetFromImage Name="CoreMaterial_ButtonTimer66" Filename="UI_PieTimer_MI.material" />
+    <ImagesetFromImage Name="CoreMaterial_ButtonTimer67" Filename="UI_PieTimer_MI.material" />
+    <ImagesetFromImage Name="CoreMaterial_ButtonTimer68" Filename="UI_PieTimer_MI.material" />
+    <ImagesetFromImage Name="CoreMaterial_ButtonTimer69" Filename="UI_PieTimer_MI.material" />
+    <ImagesetFromImage Name="CoreMaterial_ButtonTimer70" Filename="UI_PieTimer_MI.material" />
+
+    <ImagesetFromImage Name="CoreMaterial_ButtonTimer71" Filename="UI_PieTimer_MI.material" />
+    <ImagesetFromImage Name="CoreMaterial_ButtonTimer72" Filename="UI_PieTimer_MI.material" />
+    <ImagesetFromImage Name="CoreMaterial_ButtonTimer73" Filename="UI_PieTimer_MI.material" />
+    <ImagesetFromImage Name="CoreMaterial_ButtonTimer74" Filename="UI_PieTimer_MI.material" />
+    <ImagesetFromImage Name="CoreMaterial_ButtonTimer75" Filename="UI_PieTimer_MI.material" />
+    <ImagesetFromImage Name="CoreMaterial_ButtonTimer76" Filename="UI_PieTimer_MI.material" />
+    <ImagesetFromImage Name="CoreMaterial_ButtonTimer77" Filename="UI_PieTimer_MI.material" />
+    <ImagesetFromImage Name="CoreMaterial_ButtonTimer78" Filename="UI_PieTimer_MI.material" />
+    <ImagesetFromImage Name="CoreMaterial_ButtonTimer79" Filename="UI_PieTimer_MI.material" />
+    <ImagesetFromImage Name="CoreMaterial_ButtonTimer80" Filename="UI_PieTimer_MI.material" />
+
+    <ImagesetFromImage Name="CoreMaterial_ButtonTimer81" Filename="UI_PieTimer_MI.material" />
+    <ImagesetFromImage Name="CoreMaterial_ButtonTimer82" Filename="UI_PieTimer_MI.material" />
+    <ImagesetFromImage Name="CoreMaterial_ButtonTimer83" Filename="UI_PieTimer_MI.material" />
+    <ImagesetFromImage Name="CoreMaterial_ButtonTimer84" Filename="UI_PieTimer_MI.material" />
+    <ImagesetFromImage Name="CoreMaterial_ButtonTimer85" Filename="UI_PieTimer_MI.material" />
+    <ImagesetFromImage Name="CoreMaterial_ButtonTimer86" Filename="UI_PieTimer_MI.material" />
+    <ImagesetFromImage Name="CoreMaterial_ButtonTimer87" Filename="UI_PieTimer_MI.material" />
+    <ImagesetFromImage Name="CoreMaterial_ButtonTimer88" Filename="UI_PieTimer_MI.material" />
+    <ImagesetFromImage Name="CoreMaterial_ButtonTimer89" Filename="UI_PieTimer_MI.material" />
+    <ImagesetFromImage Name="CoreMaterial_ButtonTimer90" Filename="UI_PieTimer_MI.material" />
+
+    <ImagesetFromImage Name="CoreMaterial_ButtonTimer91" Filename="UI_PieTimer_MI.material" />
+    <ImagesetFromImage Name="CoreMaterial_ButtonTimer92" Filename="UI_PieTimer_MI.material" />
+    <ImagesetFromImage Name="CoreMaterial_ButtonTimer93" Filename="UI_PieTimer_MI.material" />
+    <ImagesetFromImage Name="CoreMaterial_ButtonTimer94" Filename="UI_PieTimer_MI.material" />
+    <ImagesetFromImage Name="CoreMaterial_ButtonTimer95" Filename="UI_PieTimer_MI.material" />
+    <ImagesetFromImage Name="CoreMaterial_ButtonTimer96" Filename="UI_PieTimer_MI.material" />
+    <ImagesetFromImage Name="CoreMaterial_ButtonTimer97" Filename="UI_PieTimer_MI.material" />
+    <ImagesetFromImage Name="CoreMaterial_ButtonTimer98" Filename="UI_PieTimer_MI.material" />
+    <ImagesetFromImage Name="CoreMaterial_ButtonTimer99" Filename="UI_PieTimer_MI.material" />
+    <ImagesetFromImage Name="CoreMaterial_ButtonTimer100" Filename="UI_PieTimer_MI.material" />
+
+
+    <ImagesetFromImage Name="CoreMaterial_MinimapPlayer" Filename="UI_MinimapPlayer_MI.material" />
+    
+    <ImagesetFromImage Name="CoreMaterial_MissionDirection1" Filename="UI_MissionDirection_MI.material" />
+    <ImagesetFromImage Name="CoreMaterial_MissionDirection2" Filename="UI_MissionDirection_MI.material" />
+    <ImagesetFromImage Name="CoreMaterial_MissionDirection3" Filename="UI_MissionDirection_MI.material" />
+    <ImagesetFromImage Name="CoreMaterial_MissionDirection4" Filename="UI_MissionDirection_MI.material" />
+    <ImagesetFromImage Name="CoreMaterial_MissionDirection5" Filename="UI_MissionDirection_MI.material" />
+    <ImagesetFromImage Name="CoreMaterial_MissionDirection6" Filename="UI_MissionDirection_MI.material" />
+    <ImagesetFromImage Name="CoreMaterial_MissionDirection7" Filename="UI_MissionDirection_MI.material" />
+    <ImagesetFromImage Name="CoreMaterial_MissionDirection8" Filename="UI_MissionDirection_MI.material" />
+    <ImagesetFromImage Name="CoreMaterial_MissionDirection9" Filename="UI_MissionDirection_MI.material" />
+    <ImagesetFromImage Name="CoreMaterial_MissionDirection10" Filename="UI_MissionDirection_MI.material" />
+    
+    <ImagesetFromImage Name="CoreMaterial_Minimap" Filename="UI_Minimap_MI.material" />
+    <ImagesetFromImage Name="CoreMaterial_Worldmap" Filename="UI_Worldmap_MI.material" />
+    
+    <ImagesetFromImage Name="CoreMaterial_AlloyComponent" Filename="UI_PieTimer_MI.material" />
+    <ImagesetFromImage Name="CoreMaterial_CraftComponent1" Filename="UI_PieTimer_MI.material" />
+    <ImagesetFromImage Name="CoreMaterial_CraftComponent2" Filename="UI_PieTimer_MI.material" />
+    <ImagesetFromImage Name="CoreMaterial_CraftComponent3" Filename="UI_PieTimer_MI.material" />
+    <ImagesetFromImage Name="CoreMaterial_CraftComponent4" Filename="UI_PieTimer_MI.material" />
+    <ImagesetFromImage Name="CoreMaterial_CraftComponent5" Filename="UI_PieTimer_MI.material" />
+    <ImagesetFromImage Name="CoreMaterial_CraftComponent6" Filename="UI_PieTimer_MI.material" />
+
+    <ImagesetFromImage Name="CoreMaterial_Movie" Filename="UI_MoviePlayer_MI.material" />
+
+    <ImagesetFromImage Name="CoreMaterial_AmmoMeter1" Filename="UI_CircleMeter_MI.material" />
+    <ImagesetFromImage Name="CoreMaterial_AmmoMeter2" Filename="UI_CircleMeter_MI.material" />
+    <ImagesetFromImage Name="CoreMaterial_AmmoMeter3" Filename="UI_CircleMeter_MI.material" />
+    <ImagesetFromImage Name="CoreMaterial_AmmoMeter4" Filename="UI_CircleMeter_MI.material" />
+    <ImagesetFromImage Name="CoreMaterial_AmmoMeter5" Filename="UI_CircleMeter_MI.material" />
+
+    <LookNFeel Filename="SGW_2.looknfeel" />
+    <LookNFeel Filename="SGW_3.looknfeel" />
+    
+    <!--| ************************* |-->
+    
+    
+    <LookNFeel Filename="TaharezLook.looknfeel" />
+    <LookNFeel Filename="SGW.looknfeel" />
+    <LookNFeel Filename="ProgrammerArt.looknfeel" />
+  
+    <Font Name="Verdana-10" Filename="Verdana-10.font" />
+    <Font Name="VerdanaBold-10" Filename="VerdanaBold-10.font" />
+    <Font Name="VerdanaBold-12" Filename="VerdanaBold-12.font" />
+    <Font Name="VerdanaBold-18" Filename="VerdanaBold-18.font" />
+
+    <Font Name="Lucida_Console-10" Filename="Lucida_Console-10.font" />
+    <!--<Font Name="Commonwealth-10" Filename="Commonwealth-10.font" />-->
+    <Font Name="Commonwealth-10" Filename="Lucida_Console-10-copy.font" />
+
+    <!-- New Fonts For Latest Theme ******************************************** -->
+    <Font Name="BankGothic_8pt" Filename="BankGothic_8pt.font" />
+    <Font Name="BankGothic_10pt" Filename="BankGothic_10pt.font" />
+    <Font Name="BankGothic_12pt" Filename="BankGothic_12pt.font" />
+
+    <Font Name="Verdana_6pt" Filename="Verdana_6pt.font" />
+    <Font Name="Verdana_8pt" Filename="Verdana_8pt.font" />
+    <Font Name="Verdana_12pt" Filename="Verdana_12pt.font" />
+    <Font Name="CenturyGothic_12pt" Filename="CenturyGothic_12pt.font" />
+    <Font Name="CenturyGothic_12pt_Bold" Filename="CenturyGothic_12pt_Bold.font" />
+    <Font Name="CenturyGothic_20pt" Filename="CenturyGothic_20pt.font" />
+    <Font Name="CenturyGothic_24pt" Filename="CenturyGothic_24pt.font" />
+    
+    <!-- *********************************************************************** -->
+
+    <!--
+    **********************************************************************************************************
+    The WindowRendererSet and FalagardMapping tags shouldn't be changed without consulting an engineer first
+    **********************************************************************************************************
+    -->
+    <WindowRendererSet Filename="SGWWidgets" />
+    <WindowRendererSet Filename="CEGUIFalagardWRBase" />
+    <FalagardMapping WindowType="TaharezLook/Button"      TargetType="CEGUI/PushButton"  Renderer="Falagard/Button"       LookNFeel="TaharezLook/Button" />
+    <FalagardMapping WindowType="TaharezLook/RotateRightButton"      TargetType="CEGUI/PushButton"  Renderer="Falagard/Button"       LookNFeel="TaharezLook/RotateRightButton" />
+    <FalagardMapping WindowType="TaharezLook/RotateLeftButton"      TargetType="CEGUI/PushButton"  Renderer="Falagard/Button"       LookNFeel="TaharezLook/RotateLeftButton" />
+    <FalagardMapping WindowType="TaharezLook/TransparentButton"      TargetType="CEGUI/PushButton"  Renderer="Falagard/Button"       LookNFeel="TaharezLook/TransparentButton" />
+    <FalagardMapping WindowType="TaharezLook/AbilitySocketButton"      TargetType="CEGUI/PushButton"  Renderer="Falagard/Button"       LookNFeel="TaharezLook/AbilitySocketButton" />
+	<FalagardMapping WindowType="TaharezLook/ButtonTest"      TargetType="CEGUI/PushButton"  Renderer="Falagard/Button"       LookNFeel="TaharezLook/ButtonTest" />
+    <FalagardMapping WindowType="TaharezLook/Checkbox"    TargetType="CEGUI/Checkbox"    Renderer="Falagard/ToggleButton" LookNFeel="TaharezLook/Checkbox" />
+    <FalagardMapping WindowType="TaharezLook/ImageButton" TargetType="CEGUI/PushButton"  Renderer="Falagard/Button"       LookNFeel="TaharezLook/ImageButton" />
+	<FalagardMapping WindowType="TaharezLook/RadioButton" TargetType="CEGUI/RadioButton" Renderer="Falagard/ToggleButton" LookNFeel="TaharezLook/RadioButton" />
+	<FalagardMapping WindowType="TaharezLook/FemRadioButton" TargetType="CEGUI/RadioButton" Renderer="Falagard/ToggleButton" LookNFeel="TaharezLook/FemRadioButton" />
+	<FalagardMapping WindowType="TaharezLook/MaleRadioButton" TargetType="CEGUI/RadioButton" Renderer="Falagard/ToggleButton" LookNFeel="TaharezLook/MaleRadioButton" />
+    <FalagardMapping WindowType="TaharezLook/FrameWindow"  TargetType="CEGUI/FrameWindow" Renderer="Falagard/FrameWindow"  LookNFeel="TaharezLook/FrameWindow" />
+    <!-- <FalagardMapping WindowType="TaharezLook/SleekFrameWindow"  TargetType="CEGUI/FrameWindow" Renderer="Falagard/FrameWindow"  LookNFeel="TaharezLook/SleekFrameWindow" /> -->
+    <FalagardMapping WindowType="TaharezLook/CharSelectFrame"  TargetType="CEGUI/FrameWindow" Renderer="Falagard/FrameWindow"  LookNFeel="TaharezLook/CharSelectFrame" />
+    <FalagardMapping WindowType="TaharezLook/LoginFrame"  TargetType="CEGUI/FrameWindow" Renderer="Falagard/FrameWindow"  LookNFeel="TaharezLook/LoginFrame" />
+    <FalagardMapping WindowType="TaharezLook/WeaponFrame"  TargetType="CEGUI/FrameWindow" Renderer="Falagard/FrameWindow"  LookNFeel="TaharezLook/WeaponFrame" />
+    <FalagardMapping WindowType="TaharezLook/AbilityFrame"  TargetType="CEGUI/FrameWindow" Renderer="Falagard/FrameWindow"  LookNFeel="TaharezLook/AbilityFrame" />
+    <FalagardMapping WindowType="TaharezLook/ChatFrameWindow"  TargetType="CEGUI/FrameWindow" Renderer="Falagard/FrameWindow"  LookNFeel="TaharezLook/ChatFrameWindow" />
+    <FalagardMapping WindowType="TaharezLook/ExperimentalFrame"  TargetType="CEGUI/FrameWindow" Renderer="Falagard/FrameWindow"  LookNFeel="TaharezLook/ExperimentalFrame" />
+    <FalagardMapping WindowType="TaharezLook/MinimapFrame"  TargetType="CEGUI/FrameWindow" Renderer="Falagard/FrameWindow"  LookNFeel="TaharezLook/MinimapFrame" />
+	<FalagardMapping WindowType="TaharezLook/Titlebar"     TargetType="CEGUI/Titlebar"    Renderer="Falagard/Titlebar"     LookNFeel="TaharezLook/Titlebar" />
+	<FalagardMapping WindowType="TaharezLook/DragWidget"     TargetType="CEGUI/Titlebar"    Renderer="Falagard/Titlebar"     LookNFeel="TaharezLook/DragWidget" />
+	<!--<FalagardMapping WindowType="TaharezLook/SleekTitlebar"     TargetType="CEGUI/Titlebar"    Renderer="Falagard/Titlebar"     LookNFeel="TaharezLook/SleekTitlebar" /> -->
+	<FalagardMapping WindowType="TaharezLook/SystemButton" TargetType="CEGUI/PushButton"  Renderer="Falagard/SystemButton" LookNFeel="TaharezLook/Button" />
+	<FalagardMapping WindowType="TaharezLook/Editbox"          TargetType="CEGUI/Editbox"          Renderer="Falagard/Editbox"          LookNFeel="TaharezLook/Editbox" />
+	<FalagardMapping WindowType="TaharezLook/LoginEditbox"          TargetType="CEGUI/Editbox"          Renderer="Falagard/Editbox"          LookNFeel="TaharezLook/LoginEditbox" />
+	<FalagardMapping WindowType="TaharezLook/ChatEditbox"          TargetType="CEGUI/Editbox"          Renderer="Falagard/Editbox"          LookNFeel="TaharezLook/ChatEditbox" />
+	<FalagardMapping WindowType="TaharezLook/MultiLineEditbox" TargetType="CEGUI/MultiLineEditbox" Renderer="Falagard/MultiLineEditbox" LookNFeel="TaharezLook/MultiLineEditbox" />
+	<!--<FalagardMapping WindowType="TaharezLook/Menubar"   TargetType="CEGUI/Menubar"   Renderer="Falagard/Menubar"   LookNFeel="TaharezLook/Menubar" />-->
+	<FalagardMapping WindowType="TaharezLook/Menubar"   TargetType="CEGUI/FrameWindow"   Renderer="Falagard/FrameWindow"   LookNFeel="TaharezLook/Menubar" />
+	<FalagardMapping WindowType="TaharezLook/PopupMenu" TargetType="CEGUI/PopupMenu" Renderer="Falagard/PopupMenu" LookNFeel="TaharezLook/PopupMenu" />
+	<FalagardMapping WindowType="TaharezLook/MenuItem"  TargetType="CEGUI/MenuItem"  Renderer="Falagard/MenuItem"  LookNFeel="TaharezLook/MenuItem" />
+	<FalagardMapping WindowType="TaharezLook/AlternateProgressBar" TargetType="CEGUI/ProgressBar" Renderer="Falagard/ProgressBar" LookNFeel="TaharezLook/AltProgressBar" />
+	<FalagardMapping WindowType="TaharezLook/ProgressBar"          TargetType="CEGUI/ProgressBar" Renderer="Falagard/ProgressBar" LookNFeel="TaharezLook/ProgressBar" />
+	<FalagardMapping WindowType="TaharezLook/FocusProgressBar"          TargetType="CEGUI/ProgressBar" Renderer="Falagard/ProgressBar" LookNFeel="TaharezLook/FocusProgressBar" />
+	<FalagardMapping WindowType="TaharezLook/VUMeter"              TargetType="CEGUI/ProgressBar" Renderer="Falagard/ProgressBar" LookNFeel="TaharezLook/VUMeter" />
+	<FalagardMapping WindowType="TaharezLook/VerticalScrollbar"   TargetType="CEGUI/Scrollbar" Renderer="Falagard/Scrollbar" LookNFeel="TaharezLook/VerticalScrollbar" />
+	<FalagardMapping WindowType="TaharezLook/HorizontalScrollbar" TargetType="CEGUI/Scrollbar" Renderer="Falagard/Scrollbar" LookNFeel="TaharezLook/HorizontalScrollbar" />
+	<FalagardMapping WindowType="TaharezLook/VerticalScrollbarThumb"   TargetType="CEGUI/Thumb" Renderer="Falagard/Button" LookNFeel="TaharezLook/VerticalScrollbarThumb" />
+	<FalagardMapping WindowType="TaharezLook/HorizontalScrollbarThumb" TargetType="CEGUI/Thumb" Renderer="Falagard/Button" LookNFeel="TaharezLook/HorizontalScrollbarThumb" />
+	<FalagardMapping WindowType="TaharezLook/LargeVerticalScrollbar"      TargetType="CEGUI/Scrollbar" Renderer="Falagard/Scrollbar" LookNFeel="TaharezLook/LargeVerticalScrollbar" />
+	<FalagardMapping WindowType="TaharezLook/LargeVerticalScrollbarThumb" TargetType="CEGUI/Thumb"     Renderer="Falagard/Button"    LookNFeel="TaharezLook/LargeVerticalScrollbarThumb" />
+	<FalagardMapping WindowType="TaharezLook/TabButton"  TargetType="CEGUI/TabButton"  Renderer="Falagard/TabButton"  LookNFeel="TaharezLook/TabButton" />
+	<FalagardMapping WindowType="TaharezLook/TabControl" TargetType="CEGUI/TabControl" Renderer="Falagard/TabControl" LookNFeel="TaharezLook/TabControl" />
+	<FalagardMapping WindowType="TaharezLook/TabContentPane"    TargetType="DefaultWindow"    Renderer="Falagard/Default"    LookNFeel="TaharezLook/TabContentPane" />
+	<FalagardMapping WindowType="TaharezLook/TabButtonPane"    TargetType="DefaultWindow"    Renderer="Falagard/Default"    LookNFeel="TaharezLook/TabButtonPane" />
+	<FalagardMapping WindowType="TaharezLook/ComboDropList" TargetType="CEGUI/ComboDropList" Renderer="Falagard/Listbox" LookNFeel="TaharezLook/ComboDropList" />
+	<FalagardMapping WindowType="TaharezLook/ComboEditbox"  TargetType="CEGUI/Editbox"	 Renderer="Falagard/Editbox" LookNFeel="TaharezLook/ComboEditbox" />
+	<FalagardMapping WindowType="TaharezLook/Combobox"	TargetType="CEGUI/Combobox"	 Renderer="Falagard/Default" LookNFeel="TaharezLook/Combobox" />
+	<FalagardMapping WindowType="TaharezLook/Listbox"           TargetType="CEGUI/Listbox"           Renderer="Falagard/Listbox"           LookNFeel="TaharezLook/Listbox" />
+	<FalagardMapping WindowType="TaharezLook/ChatListbox"           TargetType="CEGUI/Listbox"           Renderer="Falagard/Listbox"           LookNFeel="TaharezLook/ChatListbox" />
+	<FalagardMapping WindowType="TaharezLook/ListHeader"        TargetType="CEGUI/ListHeader"        Renderer="Falagard/ListHeader"        LookNFeel="TaharezLook/ListHeader" />
+	<FalagardMapping WindowType="TaharezLook/ListHeaderSegment" TargetType="CEGUI/ListHeaderSegment" Renderer="Falagard/ListHeaderSegment" LookNFeel="TaharezLook/ListHeaderSegment" />
+	<FalagardMapping WindowType="TaharezLook/MultiColumnList"   TargetType="CEGUI/MultiColumnList"   Renderer="Falagard/MultiColumnList"   LookNFeel="TaharezLook/MultiColumnList" />
+	<FalagardMapping WindowType="TaharezLook/Slider"      TargetType="CEGUI/Slider"      Renderer="Falagard/Slider"  LookNFeel="TaharezLook/Slider" />
+	<FalagardMapping WindowType="TaharezLook/SliderThumb" TargetType="CEGUI/Thumb" Renderer="Falagard/Button"  LookNFeel="TaharezLook/SliderThumb" />
+	<FalagardMapping WindowType="TaharezLook/ScrollablePane" TargetType="CEGUI/ScrollablePane" Renderer="Falagard/ScrollablePane" LookNFeel="TaharezLook/ScrollablePane" />
+	<FalagardMapping WindowType="TaharezLook/Spinner" TargetType="CEGUI/Spinner" Renderer="Falagard/Default" LookNFeel="TaharezLook/Spinner" />
+	<FalagardMapping WindowType="TaharezLook/Tooltip" TargetType="CEGUI/Tooltip" Renderer="Falagard/Tooltip" LookNFeel="TaharezLook/Tooltip" />
+	<FalagardMapping WindowType="TaharezLook/StaticImageNothing" TargetType="DefaultWindow" Renderer="Falagard/StaticImage" LookNFeel="TaharezLook/StaticImageNothing" />
+	<FalagardMapping WindowType="TaharezLook/StaticTextNothing"  TargetType="DefaultWindow" Renderer="Falagard/StaticText"  LookNFeel="TaharezLook/StaticTextNothing" />
+    <FalagardMapping WindowType="TaharezLook/StaticImage" TargetType="DefaultWindow" Renderer="Falagard/StaticImage" LookNFeel="TaharezLook/StaticImage" />
+	<FalagardMapping WindowType="TaharezLook/StaticText"  TargetType="DefaultWindow" Renderer="Falagard/StaticText"  LookNFeel="TaharezLook/StaticText" />
+    <FalagardMapping WindowType="TaharezLook/ItemListbox" TargetType="CEGUI/ItemListbox" Renderer="Falagard/ItemListbox" LookNFeel="TaharezLook/ItemListbox" />
+    <FalagardMapping WindowType="TaharezLook/ListboxItem" TargetType="CEGUI/ItemEntry"   Renderer="Falagard/ItemEntry"   LookNFeel="TaharezLook/ListboxItem" />
+    <!--
+    **********************************************************************************************************
+    
+    **********************************************************************************************************
+    -->    
+    <FalagardMapping WindowType="Listbox"           TargetType="CEGUI/Listbox"           Renderer="Falagard/Listbox"           LookNFeel="SGWLook/Listbox" />
+    <FalagardMapping WindowType="RoundedTextButton"      TargetType="CEGUI/PushButton"  Renderer="Falagard/Button"       LookNFeel="SGWLook/RoundedTextButton" />
+    <FalagardMapping WindowType="ConceptA_Frame"      TargetType="CEGUI/FrameWindow"  Renderer="Falagard/FrameWindow"       LookNFeel="SGWLook/ConceptA_Frame" />
+    <FalagardMapping WindowType="ConceptA_Titlebar"     TargetType="CEGUI/Titlebar"    Renderer="Falagard/Titlebar"     LookNFeel="SGWLook/ConceptA_Titlebar" />
+    <FalagardMapping WindowType="ComboBoxButton" TargetType="CEGUI/PushButton"  Renderer="Falagard/Button"       LookNFeel="SGWLook/ComboBoxButton" />
+    <FalagardMapping WindowType="Combobox"	TargetType="CEGUI/Combobox"	 Renderer="Falagard/Default" LookNFeel="SGWLook/Combobox" />
+    <FalagardMapping WindowType="ComboDropList" TargetType="CEGUI/ComboDropList" Renderer="Falagard/Listbox" LookNFeel="SGWLook/ComboDropList" />
+    <FalagardMapping WindowType="ComboEditbox"  TargetType="CEGUI/Editbox"	 Renderer="Falagard/Editbox" LookNFeel="SGWLook/ComboEditbox" />
+    <FalagardMapping WindowType="RadioButton" TargetType="CEGUI/RadioButton" Renderer="Falagard/ToggleButton" LookNFeel="SGWLook/RadioButton" />
+    <FalagardMapping WindowType="Editbox"          TargetType="CEGUI/Editbox"          Renderer="Falagard/Editbox"          LookNFeel="SGWLook/Editbox" />
+    <FalagardMapping WindowType="SliderThumb" TargetType="CEGUI/Thumb" Renderer="Falagard/Button"  LookNFeel="SGWLook/SliderThumb" />
+    <FalagardMapping WindowType="Tooltip" TargetType="CEGUI/Tooltip" Renderer="Falagard/Tooltip" LookNFeel="SGWLook/Tooltip2" />
+    <FalagardMapping WindowType="ScrollablePane" TargetType="CEGUI/ScrollablePane" Renderer="Falagard/ScrollablePane" LookNFeel="SGWLook/ScrollablePane" />
+    <FalagardMapping WindowType="PDATitlebar"     TargetType="CEGUI/Titlebar"    Renderer="Falagard/Titlebar"     LookNFeel="SGWLook/PDATitlebar" />
+    <FalagardMapping WindowType="PDAFrame"      TargetType="CEGUI/FrameWindow"  Renderer="Falagard/FrameWindow"       LookNFeel="SGWLook/PDAFrame" />
+    <FalagardMapping WindowType="StaticImage" TargetType="DefaultWindow" Renderer="Falagard/StaticImage" LookNFeel="SGWLook/StaticImage" />
+    <!--FalagardMapping WindowType="MissionWidget_AStory"      TargetType="CEGUI/PushButton"  Renderer="Falagard/Button"       LookNFeel="SGWLook/MissionWidget_AStory" /-->
+    <FalagardMapping WindowType="MissionWidget_BStory"      TargetType="CEGUI/PushButton"  Renderer="Falagard/Button"       LookNFeel="SGWLook/MissionWidget_BStory" />
+    <FalagardMapping WindowType="MissionWidget_AStory"      TargetType="DefaultWindow"    Renderer="Falagard/Default"       LookNFeel="SGWLook/MissionWidget_AStory" />
+    <FalagardMapping WindowType="Checkbox"    TargetType="CEGUI/Checkbox"    Renderer="Falagard/ToggleButton" LookNFeel="SGWLook/Checkbox" />
+    <FalagardMapping WindowType="TextButton"      TargetType="CEGUI/PushButton"  Renderer="Falagard/Button"       LookNFeel="SGWLook/TextButton" />
+    <FalagardMapping WindowType="ImageButton" TargetType="CEGUI/PushButton"  Renderer="Falagard/Button"       LookNFeel="SGWLook/ImageButton" />
+    <FalagardMapping WindowType="VerticalScrollbar"   TargetType="CEGUI/Scrollbar" Renderer="Falagard/Scrollbar" LookNFeel="SGWLook/VerticalScrollbar" />
+    <FalagardMapping WindowType="HorizontalScrollbar" TargetType="CEGUI/Scrollbar" Renderer="Falagard/Scrollbar" LookNFeel="SGWLook/HorizontalScrollbar" />
+    <FalagardMapping WindowType="VerticalScrollbarThumb"   TargetType="CEGUI/Thumb" Renderer="Falagard/Button" LookNFeel="SGWLook/VerticalScrollbarThumb" />
+    <FalagardMapping WindowType="HorizontalScrollbarThumb" TargetType="CEGUI/Thumb" Renderer="Falagard/Button" LookNFeel="SGWLook/HorizontalScrollbarThumb" />
+    <FalagardMapping WindowType="StaticText"  TargetType="DefaultWindow" Renderer="Falagard/StaticText"  LookNFeel="SGWLook/StaticText" />
+    <FalagardMapping WindowType="MultiLineEditbox" TargetType="CEGUI/MultiLineEditbox" Renderer="Falagard/MultiLineEditbox" LookNFeel="SGWLook/MultiLineEditbox" />
+    <FalagardMapping WindowType="IconButton16"      TargetType="CEGUI/PushButton"  Renderer="Falagard/Button"       LookNFeel="SGWLook/IconButton16" />
+    <FalagardMapping WindowType="IconButton"      TargetType="CEGUI/PushButton"  Renderer="Falagard/Button"       LookNFeel="SGWLook/IconButton" />
+    <FalagardMapping WindowType="AccessIconButton"      TargetType="CEGUI/PushButton"  Renderer="Falagard/Button"       LookNFeel="SGWLook/AccessIconButton" />
+    <FalagardMapping WindowType="ProgressBar"          TargetType="CEGUI/ProgressBar" Renderer="Falagard/ProgressBar" LookNFeel="SGWLook/ProgressBar" />
+    <FalagardMapping WindowType="MyButton"      TargetType="CEGUI/PushButton"  Renderer="Falagard/Button"       LookNFeel="SGWLook/MyButton" />
+    <!--<FalagardMapping WindowType="GenericFrame" TargetType="DefaultWindow"  Renderer="Falagard/Default" LookNFeel="SGWLook/GenericFrame" /> -->
+    <FalagardMapping WindowType="ComplexFrame"      TargetType="CEGUI/FrameWindow"  Renderer="Falagard/FrameWindow"       LookNFeel="SGWLook/ComplexFrame" />
+    <FalagardMapping WindowType="Titlebar"     TargetType="CEGUI/Titlebar"    Renderer="Falagard/Titlebar"     LookNFeel="SGWLook/Titlebar" />
+    <FalagardMapping WindowType="CloseButton" TargetType="CEGUI/PushButton"  Renderer="Falagard/SystemButton" LookNFeel="SGWLook/CloseButton" />
+    <FalagardMapping WindowType="ProgFull_Button" TargetType="CEGUI/PushButton" Renderer="Falagard/Button" LookNFeel="ProgrammerArt/ProgFull_Button" />
+    <FalagardMapping WindowType="ProgOpenTop_Button" TargetType="CEGUI/PushButton" Renderer="Falagard/Button" LookNFeel="ProgrammerArt/ProgOpenTop_Button" />
+    <FalagardMapping WindowType="ProgCutTop_Button" TargetType="CEGUI/PushButton" Renderer="Falagard/Button" LookNFeel="ProgrammerArt/ProgCutTop_Button" />
+    <FalagardMapping WindowType="ProgOpenBottom_Button" TargetType="CEGUI/PushButton" Renderer="Falagard/Button" LookNFeel="ProgrammerArt/ProgOpenBottom_Button" />
+    <FalagardMapping WindowType="ProgCutBottom_Button" TargetType="CEGUI/PushButton" Renderer="Falagard/Button" LookNFeel="ProgrammerArt/ProgCutBottom_Button" />
+    <FalagardMapping WindowType="ProgOpenBottom_LitButton" TargetType="CEGUI/PushButton" Renderer="Falagard/Button" LookNFeel="ProgrammerArt/ProgOpenBottom_LitButton" />
+	<FalagardMapping WindowType="ProgrammerArt/ListHeader"        TargetType="CEGUI/ListHeader"        Renderer="Falagard/ListHeader"        LookNFeel="ProgrammerArt/ListHeader" />
+	<FalagardMapping WindowType="ProgrammerArt/ListHeaderSegment" TargetType="CEGUI/ListHeaderSegment" Renderer="Falagard/ListHeaderSegment" LookNFeel="ProgrammerArt/ListHeaderSegment" />
+	<FalagardMapping WindowType="ProgrammerArt/MultiColumnList"   TargetType="CEGUI/MultiColumnList"   Renderer="Falagard/MultiColumnList"   LookNFeel="ProgrammerArt/MultiColumnList" />
+    <FalagardMapping WindowType="ProgrammerArt/DefaultFrameWindow"      TargetType="CEGUI/FrameWindow"  Renderer="Falagard/FrameWindow"       LookNFeel="ProgrammerArt/DefaultFrameWindow" />
+    <FalagardMapping WindowType="ProgrammerArt/MultiLineEditbox" TargetType="CEGUI/MultiLineEditbox" Renderer="Falagard/MultiLineEditbox" LookNFeel="ProgrammerArt/MultiLineEditbox" />
+    <FalagardMapping WindowType="ExternalWindow" TargetType="CEGUI/ExternalWindow" Renderer="Falagard/ExternalWindow" LookNFeel="ProgrammerArt/ExternalWindow" />
+
+    <!--| ************************* The Latest UI Theme Files ************************* |-->
+    <FalagardMapping WindowType="ComplexFrame_2"      TargetType="CEGUI/FrameWindow"  Renderer="Falagard/FrameWindow"       LookNFeel="SGWLook_2/ComplexFrame_2" />
+    <FalagardMapping WindowType="Titlebar_2"     TargetType="CEGUI/Titlebar"    Renderer="Falagard/Titlebar"     LookNFeel="SGWLook_2/Titlebar_2" />
+    <FalagardMapping WindowType="CloseButton_2" TargetType="CEGUI/PushButton"  Renderer="Falagard/SystemButton" LookNFeel="SGWLook_2/CloseButton_2" />
+    <FalagardMapping WindowType="TextButton_2"      TargetType="CEGUI/PushButton"  Renderer="Falagard/Button"       LookNFeel="SGWLook_2/TextButton_2" />
+    <FalagardMapping WindowType="ImageButton_2" TargetType="CEGUI/PushButton"  Renderer="Falagard/Button"       LookNFeel="SGWLook_2/ImageButton_2" />
+    <FalagardMapping WindowType="ColorButton_2" TargetType="CEGUI/PushButton"  Renderer="Falagard/Button"       LookNFeel="SGWLook_2/ColorButton_2" />
+    <FalagardMapping WindowType="RichTextEditbox"          TargetType="SGWWidgets/RichTextEditbox"          Renderer="SGWWidgets/RichTextEditbox"          LookNFeel="SGWLook_2/RichTextEditbox" />
+    <FalagardMapping WindowType="Editbox_2"          TargetType="CEGUI/Editbox"          Renderer="Falagard/Editbox"          LookNFeel="SGWLook_2/Editbox_2" />
+    <FalagardMapping WindowType="Editbox_20px_2"          TargetType="CEGUI/Editbox"          Renderer="Falagard/Editbox"          LookNFeel="SGWLook_2/Editbox_20px_2" />
+    <FalagardMapping WindowType="Editbox_NoBg_2"          TargetType="CEGUI/Editbox"          Renderer="Falagard/Editbox"          LookNFeel="SGWLook_2/Editbox_NoBg_2" />
+    <FalagardMapping WindowType="StaticText_2"  TargetType="DefaultWindow" Renderer="Falagard/StaticText"  LookNFeel="SGWLook_2/StaticText_2" />
+    <FalagardMapping WindowType="StaticImage_2" TargetType="DefaultWindow" Renderer="Falagard/StaticImage" LookNFeel="SGWLook_2/StaticImage_2" />
+    <FalagardMapping WindowType="VerticalScrollbar_2"   TargetType="CEGUI/Scrollbar" Renderer="Falagard/Scrollbar" LookNFeel="SGWLook_2/VerticalScrollbar_2" />
+    <FalagardMapping WindowType="VerticalScrollbarThumb_2"   TargetType="CEGUI/Thumb" Renderer="Falagard/Button" LookNFeel="SGWLook_2/VerticalScrollbarThumb_2" />
+    <FalagardMapping WindowType="HorizontalScrollbar_2" TargetType="CEGUI/Scrollbar" Renderer="Falagard/Scrollbar" LookNFeel="SGWLook_2/HorizontalScrollbar_2" />
+    <FalagardMapping WindowType="HorizontalScrollbarThumb_2" TargetType="CEGUI/Thumb" Renderer="Falagard/Button" LookNFeel="SGWLook_2/HorizontalScrollbarThumb_2" />
+    <FalagardMapping WindowType="ComboDropList_2" TargetType="CEGUI/ComboDropList" Renderer="Falagard/Listbox" LookNFeel="SGWLook_2/ComboDropList_2" />
+    <FalagardMapping WindowType="ComboEditbox_2"  TargetType="CEGUI/Editbox"	 Renderer="Falagard/Editbox" LookNFeel="SGWLook_2/ComboEditbox_2" />
+    <FalagardMapping WindowType="Combobox_2"	TargetType="CEGUI/Combobox"	 Renderer="Falagard/Default" LookNFeel="SGWLook_2/Combobox_2" />
+    <FalagardMapping WindowType="RadioButton_2" TargetType="CEGUI/RadioButton" Renderer="Falagard/ToggleButton" LookNFeel="SGWLook_2/RadioButton_2" />
+    <FalagardMapping WindowType="Checkbox_2"    TargetType="CEGUI/Checkbox"    Renderer="Falagard/ToggleButton" LookNFeel="SGWLook_2/Checkbox_2" />
+    <FalagardMapping WindowType="RichTextItemEntry" TargetType="SGWWidgets/RichTextItemEntry"   Renderer="SGWWidgets/RichTextItemEntry"   LookNFeel="SGWLook_2/RichTextItemEntry" />
+    <FalagardMapping WindowType="ItemListbox_2" TargetType="CEGUI/ItemListbox" Renderer="Falagard/ItemListbox" LookNFeel="SGWLook_2/ItemListbox_2" />
+    <FalagardMapping WindowType="Listbox_2"           TargetType="CEGUI/Listbox"           Renderer="Falagard/Listbox"           LookNFeel="SGWLook_2/Listbox_2" />
+    <FalagardMapping WindowType="ListHeader_2"        TargetType="CEGUI/ListHeader"        Renderer="Falagard/ListHeader"        LookNFeel="SGWLook_2/ListHeader_2" />
+    <FalagardMapping WindowType="ListHeaderSegment_2" TargetType="CEGUI/ListHeaderSegment" Renderer="Falagard/ListHeaderSegment" LookNFeel="SGWLook_2/ListHeaderSegment_2" />
+    <FalagardMapping WindowType="MultiColumnList_2"   TargetType="CEGUI/MultiColumnList"   Renderer="Falagard/MultiColumnList"   LookNFeel="SGWLook_2/MultiColumnList_2" />
+    <FalagardMapping WindowType="ScrollablePane_2" TargetType="CEGUI/ScrollablePane" Renderer="Falagard/ScrollablePane" LookNFeel="SGWLook_2/ScrollablePane_2" />
+    <FalagardMapping WindowType="IconButton_2"      TargetType="CEGUI/PushButton"  Renderer="Falagard/Button"       LookNFeel="SGWLook_2/IconButton_2" />
+    <FalagardMapping WindowType="TabButton_2"  TargetType="CEGUI/TabButton"  Renderer="Falagard/TabButton"  LookNFeel="SGWLook_2/TabButton_2" />
+    <FalagardMapping WindowType="TabControl_2" TargetType="CEGUI/TabControl" Renderer="Falagard/TabControl" LookNFeel="SGWLook_2/TabControl_2" />
+    <FalagardMapping WindowType="TabContentPane_2"    TargetType="DefaultWindow"    Renderer="Falagard/Default"    LookNFeel="SGWLook_2/TabContentPane_2" />
+    <FalagardMapping WindowType="TabButtonPane_2"    TargetType="DefaultWindow"    Renderer="Falagard/Default"    LookNFeel="SGWLook_2/TabButtonPane_2" />
+    <FalagardMapping WindowType="SystemButton_2" TargetType="CEGUI/PushButton"  Renderer="Falagard/SystemButton" LookNFeel="SGWLook_2/Button_2" />
+    <FalagardMapping WindowType="CheckboxB_2"    TargetType="CEGUI/Checkbox"    Renderer="Falagard/ToggleButton" LookNFeel="SGWLook_2/CheckboxB_2" />
+    <FalagardMapping WindowType="Spinner_2" TargetType="CEGUI/Spinner" Renderer="Falagard/Default" LookNFeel="SGWLook_2/Spinner_2" />
+    <FalagardMapping WindowType="DefaultFrameWindow_2"      TargetType="CEGUI/FrameWindow"  Renderer="Falagard/FrameWindow"       LookNFeel="SGWLook_2/DefaultFrameWindow_2" />
+    <FalagardMapping WindowType="Slider_2"      TargetType="CEGUI/Slider"      Renderer="Falagard/Slider"  LookNFeel="SGWLook_2/Slider_2" />
+    <FalagardMapping WindowType="SliderThumb_2" TargetType="CEGUI/Thumb" Renderer="Falagard/Button"  LookNFeel="SGWLook_2/SliderThumb_2" />
+    <FalagardMapping WindowType="OctagonIconButton_2"      TargetType="CEGUI/PushButton"  Renderer="Falagard/Button"       LookNFeel="SGWLook_2/OctagonIconButton_2" />
+    <FalagardMapping WindowType="DiskIconButton_2"      TargetType="CEGUI/PushButton"  Renderer="Falagard/Button"       LookNFeel="SGWLook_2/DiskIconButton_2" />
+    <FalagardMapping WindowType="ImageCheckbox_2"    TargetType="CEGUI/Checkbox"    Renderer="Falagard/ToggleButton" LookNFeel="SGWLook_2/ImageCheckbox_2" />
+    <FalagardMapping WindowType="PopupMenu_2" TargetType="CEGUI/PopupMenu" Renderer="Falagard/PopupMenu" LookNFeel="SGWLook_2/PopupMenu_2" />
+    <FalagardMapping WindowType="MenuItem_2"  TargetType="CEGUI/MenuItem"  Renderer="Falagard/MenuItem"  LookNFeel="SGWLook_2/MenuItem_2" />
+    <FalagardMapping WindowType="ProgressBar30px"          TargetType="CEGUI/ProgressBar" Renderer="Falagard/ProgressBar" LookNFeel="SGWLook_2/ProgressBar30px" />
+    <FalagardMapping WindowType="ProgressBar20px"          TargetType="CEGUI/ProgressBar" Renderer="Falagard/ProgressBar" LookNFeel="SGWLook_2/ProgressBar20px" />
+    <FalagardMapping WindowType="ProgressBar10px"          TargetType="CEGUI/ProgressBar" Renderer="Falagard/ProgressBar" LookNFeel="SGWLook_2/ProgressBar10px" />
+    <FalagardMapping WindowType="IconImageButton_2"      TargetType="CEGUI/PushButton"  Renderer="Falagard/Button"       LookNFeel="SGWLook_2/IconImageButton_2" />
+    <FalagardMapping WindowType="ImageButton_ShiftWhenPushed_2" TargetType="CEGUI/PushButton"  Renderer="Falagard/Button"       LookNFeel="SGWLook_2/ImageButton_ShiftWhenPushed_2" />
+    <FalagardMapping WindowType="MultiLineEditbox_2" TargetType="CEGUI/MultiLineEditbox" Renderer="Falagard/MultiLineEditbox" LookNFeel="SGWLook_2/MultiLineEditbox_2" />
+    <FalagardMapping WindowType="BlkComplexFrame_2"      TargetType="CEGUI/FrameWindow"  Renderer="Falagard/FrameWindow"       LookNFeel="SGWLook_2/BlkComplexFrame_2" />
+    <FalagardMapping WindowType="BlkTitlebar_2"     TargetType="CEGUI/Titlebar"    Renderer="Falagard/Titlebar"     LookNFeel="SGWLook_2/BlkTitlebar_2" />
+    <FalagardMapping WindowType="RedCloseButton_2" TargetType="CEGUI/PushButton"  Renderer="Falagard/SystemButton" LookNFeel="SGWLook_2/RedCloseButton_2" />
+    <FalagardMapping WindowType="Highlight"    TargetType="DefaultWindow"    Renderer="Falagard/Default"    LookNFeel="SGWLook_2/Highlight" />
+    <FalagardMapping WindowType="SolidHighlight"    TargetType="DefaultWindow"    Renderer="Falagard/Default"    LookNFeel="SGWLook_2/SolidHighlight" />
+    <FalagardMapping WindowType="CapsuleHighlight"    TargetType="DefaultWindow"    Renderer="Falagard/Default"    LookNFeel="SGWLook_2/CapsuleHighlight" />
+    <FalagardMapping WindowType="StaticBackground"    TargetType="DefaultWindow"    Renderer="Falagard/Default"    LookNFeel="SGWLook_2/StaticBackground" />
+    <FalagardMapping WindowType="StaticTab_Temp"    TargetType="DefaultWindow"    Renderer="Falagard/Default"    LookNFeel="SGWLook_2/StaticTab_Temp" />
+    <FalagardMapping WindowType="BlkStaticBackground"    TargetType="DefaultWindow"    Renderer="Falagard/Default"    LookNFeel="SGWLook_2/BlkStaticBackground" />
+    <FalagardMapping WindowType="BlkBevelStaticBackground"    TargetType="DefaultWindow"    Renderer="Falagard/Default"    LookNFeel="SGWLook_2/BlkBevelStaticBackground" />
+    <FalagardMapping WindowType="BlkBevelStaticBackground_20%"    TargetType="DefaultWindow"    Renderer="Falagard/Default"    LookNFeel="SGWLook_2/BlkBevelStaticBackground_20%" />
+    <FalagardMapping WindowType="FramedCapsuleBackground"    TargetType="DefaultWindow"    Renderer="Falagard/Default"    LookNFeel="SGWLook_2/FramedCapsuleBackground" />
+    <FalagardMapping WindowType="SpinnerMini_2" TargetType="CEGUI/Spinner" Renderer="Falagard/Default" LookNFeel="SGWLook_2/SpinnerMini_2" />
+    <FalagardMapping WindowType="Portrait_Frame_2"      TargetType="CEGUI/FrameWindow"  Renderer="Falagard/FrameWindow"       LookNFeel="SGWLook_2/Portrait_Frame_2" />
+    <FalagardMapping WindowType="Portrait_Titlebar_A_2"     TargetType="CEGUI/Titlebar"    Renderer="Falagard/Titlebar"     LookNFeel="SGWLook_2/Portrait_Titlebar_A_2" />
+    <FalagardMapping WindowType="Portrait_Container_2"    TargetType="DefaultWindow"    Renderer="Falagard/Default"    LookNFeel="SGWLook_2/Portrait_Container_2" />
+    <FalagardMapping WindowType="Portrait_Container64_2"    TargetType="DefaultWindow"    Renderer="Falagard/Default"    LookNFeel="SGWLook_2/Portrait_Container64_2" />
+    <FalagardMapping WindowType="Portrait_Container128_2"    TargetType="DefaultWindow"    Renderer="Falagard/Default"    LookNFeel="SGWLook_2/Portrait_Container128_2" />
+    <FalagardMapping WindowType="MiniPortrait_Container_2"    TargetType="DefaultWindow"    Renderer="Falagard/Default"    LookNFeel="SGWLook_2/MiniPortrait_Container_2" />
+    <FalagardMapping WindowType="Basic_Frame_2"      TargetType="CEGUI/FrameWindow"  Renderer="Falagard/FrameWindow"       LookNFeel="SGWLook_2/Basic_Frame_2" />
+    <FalagardMapping WindowType="Portrait_Titlebar_B_2"     TargetType="CEGUI/Titlebar"    Renderer="Falagard/Titlebar"     LookNFeel="SGWLook_2/Portrait_Titlebar_B_2" />
+    <FalagardMapping WindowType="Bracketed_Frame"    TargetType="DefaultWindow"    Renderer="Falagard/Default"    LookNFeel="SGWLook_2/Bracketed_Frame" />
+    <FalagardMapping WindowType="Bracketed_Frame_WorldMap"    TargetType="DefaultWindow"    Renderer="Falagard/Default"    LookNFeel="SGWLook_2/Bracketed_Frame_WorldMap" />
+    <FalagardMapping WindowType="MiniPortrait_Frame_2"      TargetType="CEGUI/FrameWindow"  Renderer="Falagard/FrameWindow"       LookNFeel="SGWLook_2/MiniPortrait_Frame_2" />
+    <FalagardMapping WindowType="MiniPortrait_Frame2_2"      TargetType="CEGUI/FrameWindow"  Renderer="Falagard/FrameWindow"       LookNFeel="SGWLook_2/MiniPortrait_Frame2_2" />
+    <FalagardMapping WindowType="MiniPortrait_Frame3_2"      TargetType="CEGUI/FrameWindow"  Renderer="Falagard/FrameWindow"       LookNFeel="SGWLook_2/MiniPortrait_Frame3_2" />
+    <FalagardMapping WindowType="StaticText_SingleRow_2"  TargetType="DefaultWindow" Renderer="Falagard/StaticText"  LookNFeel="SGWLook_2/StaticText_SingleRow_2" />
+    <FalagardMapping WindowType="IconImageButton16_2"      TargetType="CEGUI/PushButton"  Renderer="Falagard/Button"       LookNFeel="SGWLook_2/IconImageButton16_2" />
+    <FalagardMapping WindowType="IconImageButton24_2"      TargetType="CEGUI/PushButton"  Renderer="Falagard/Button"       LookNFeel="SGWLook_2/IconImageButton24_2" />
+    <FalagardMapping WindowType="IconImageButton48_2"      TargetType="CEGUI/PushButton"  Renderer="Falagard/Button"       LookNFeel="SGWLook_2/IconImageButton48_2" />
+    <FalagardMapping WindowType="IconImageButton64_2"      TargetType="CEGUI/PushButton"  Renderer="Falagard/Button"       LookNFeel="SGWLook_2/IconImageButton64_2" />
+    <FalagardMapping WindowType="IconImageButton128_2"      TargetType="CEGUI/PushButton"  Renderer="Falagard/Button"       LookNFeel="SGWLook_2/IconImageButton128_2" />
+    <FalagardMapping WindowType="CheckboxC_2"    TargetType="CEGUI/Checkbox"    Renderer="Falagard/ToggleButton" LookNFeel="SGWLook_2/CheckboxC_2" />
+    <FalagardMapping WindowType="GlassCapsule"    TargetType="DefaultWindow"    Renderer="Falagard/Default"    LookNFeel="SGWLook_2/GlassCapsule" />
+    <FalagardMapping WindowType="ChatBubble"    TargetType="DefaultWindow"    Renderer="Falagard/Default"    LookNFeel="SGWLook_2/ChatBubble" />
+    <FalagardMapping WindowType="ChatBubble_Left"    TargetType="DefaultWindow"    Renderer="Falagard/Default"    LookNFeel="SGWLook_2/ChatBubble_Left" />
+    <FalagardMapping WindowType="ChatBubble_Right"    TargetType="DefaultWindow"    Renderer="Falagard/Default"    LookNFeel="SGWLook_2/ChatBubble_Right" />
+    <FalagardMapping WindowType="GlassCapsule_LeftBulb"    TargetType="DefaultWindow"    Renderer="Falagard/Default"    LookNFeel="SGWLook_2/GlassCapsule_LeftBulb" />
+    <FalagardMapping WindowType="GlassCapsule_RightBulb"    TargetType="DefaultWindow"    Renderer="Falagard/Default"    LookNFeel="SGWLook_2/GlassCapsule_RightBulb" />
+    <FalagardMapping WindowType="GlassCapsule_CenterBulb"    TargetType="DefaultWindow"    Renderer="Falagard/Default"    LookNFeel="SGWLook_2/GlassCapsule_CenterBulb" />
+    <FalagardMapping WindowType="Blk_VerticalScrollbar_2"   TargetType="CEGUI/Scrollbar" Renderer="Falagard/Scrollbar" LookNFeel="SGWLook_2/Blk_VerticalScrollbar_2" />
+    <FalagardMapping WindowType="Blk_HorizontalScrollbar_2" TargetType="CEGUI/Scrollbar" Renderer="Falagard/Scrollbar" LookNFeel="SGWLook_2/Blk_HorizontalScrollbar_2" />
+    <FalagardMapping WindowType="Blk_TabButton_2"  TargetType="CEGUI/TabButton"  Renderer="Falagard/TabButton"  LookNFeel="SGWLook_2/Blk_TabButton_2" />
+    <FalagardMapping WindowType="Blk_TabControl_2" TargetType="CEGUI/TabControl" Renderer="Falagard/TabControl" LookNFeel="SGWLook_2/Blk_TabControl_2" />
+    <FalagardMapping WindowType="Blk_TabContentPane_2"    TargetType="DefaultWindow"    Renderer="Falagard/Default"    LookNFeel="SGWLook_2/Blk_TabContentPane_2" />
+    <FalagardMapping WindowType="Blk_TabButtonPane_2"    TargetType="DefaultWindow"    Renderer="Falagard/Default"    LookNFeel="SGWLook_2/Blk_TabButtonPane_2" />
+    <FalagardMapping WindowType="Blk_ItemListbox_2" TargetType="CEGUI/ItemListbox" Renderer="Falagard/ItemListbox" LookNFeel="SGWLook_2/Blk_ItemListbox_2" />
+    <FalagardMapping WindowType="Checkbox_Delete_2"    TargetType="CEGUI/Checkbox"    Renderer="Falagard/ToggleButton" LookNFeel="SGWLook_2/Checkbox_Delete_2" />
+    <FalagardMapping WindowType="Sm_VerticalScrollbarThumb_2"   TargetType="CEGUI/Thumb" Renderer="Falagard/Button" LookNFeel="SGWLook_2/Sm_VerticalScrollbarThumb_2" />
+    <FalagardMapping WindowType="Sm_HorizontalScrollbarThumb_2" TargetType="CEGUI/Thumb" Renderer="Falagard/Button" LookNFeel="SGWLook_2/Sm_HorizontalScrollbarThumb_2" />
+
+
+    <!--| ***************************************************************************** |-->
+
+    <FalagardMapping WindowType="ComplexFrame_3"                TargetType="CEGUI/FrameWindow"          Renderer="Falagard/FrameWindow"         LookNFeel="SGWLook_3/ComplexFrame_3" />
+    <FalagardMapping WindowType="Titlebar_3"                    TargetType="CEGUI/Titlebar"             Renderer="Falagard/Titlebar"            LookNFeel="SGWLook_3/Titlebar_3" />
+    <FalagardMapping WindowType="CloseButton_3"                 TargetType="CEGUI/PushButton"           Renderer="Falagard/SystemButton"        LookNFeel="SGWLook_3/CloseButton_3" />
+    <FalagardMapping WindowType="TextButton_3"                  TargetType="CEGUI/PushButton"           Renderer="Falagard/Button"              LookNFeel="SGWLook_3/TextButton_3" />
+    <FalagardMapping WindowType="Editbox_3"                     TargetType="CEGUI/Editbox"              Renderer="Falagard/Editbox"             LookNFeel="SGWLook_3/Editbox_3" />
+    <FalagardMapping WindowType="ImageButton_3"                 TargetType="CEGUI/PushButton"           Renderer="Falagard/Button"              LookNFeel="SGWLook_3/ImageButton_3" />
+    <FalagardMapping WindowType="VerticalScrollbar_3"           TargetType="CEGUI/Scrollbar"            Renderer="Falagard/Scrollbar"           LookNFeel="SGWLook_3/VerticalScrollbar_3" />
+    <FalagardMapping WindowType="VerticalScrollbarThumb_3"      TargetType="CEGUI/Thumb"                Renderer="Falagard/Button"              LookNFeel="SGWLook_3/VerticalScrollbarThumb_3" />
+    <FalagardMapping WindowType="HorizontalScrollbar_3"         TargetType="CEGUI/Scrollbar"            Renderer="Falagard/Scrollbar"           LookNFeel="SGWLook_3/HorizontalScrollbar_3" />
+    <FalagardMapping WindowType="HorizontalScrollbarThumb_3"    TargetType="CEGUI/Thumb"                Renderer="Falagard/Button"              LookNFeel="SGWLook_3/HorizontalScrollbarThumb_3" />
+    <FalagardMapping WindowType="MultiLineEditbox_3"            TargetType="CEGUI/MultiLineEditbox"     Renderer="Falagard/MultiLineEditbox"    LookNFeel="SGWLook_3/MultiLineEditbox_3" />
+    <FalagardMapping WindowType="StaticText_3"                  TargetType="DefaultWindow"              Renderer="Falagard/StaticText"          LookNFeel="SGWLook_3/StaticText_3" />
+    <FalagardMapping WindowType="StaticImage_3"                 TargetType="DefaultWindow"              Renderer="Falagard/StaticImage"         LookNFeel="SGWLook_3/StaticImage_3" />
+    <FalagardMapping WindowType="VerticalScrollbar2_3"          TargetType="CEGUI/Scrollbar"            Renderer="Falagard/Scrollbar"           LookNFeel="SGWLook_3/VerticalScrollbar2_3" />
+    <FalagardMapping WindowType="HorizontalScrollbar2_3"        TargetType="CEGUI/Scrollbar"            Renderer="Falagard/Scrollbar"           LookNFeel="SGWLook_3/HorizontalScrollbar2_3" />
+    <FalagardMapping WindowType="Listbox_3"                     TargetType="CEGUI/Listbox"              Renderer="Falagard/Listbox"             LookNFeel="SGWLook_3/Listbox_3" />
+    <FalagardMapping WindowType="ListHeader_3"                  TargetType="CEGUI/ListHeader"           Renderer="Falagard/ListHeader"          LookNFeel="SGWLook_3/ListHeader_3" />
+    <FalagardMapping WindowType="ListHeaderSegment_3"           TargetType="CEGUI/ListHeaderSegment"    Renderer="Falagard/ListHeaderSegment"   LookNFeel="SGWLook_3/ListHeaderSegment_3" />
+    <FalagardMapping WindowType="MultiColumnList_3"             TargetType="CEGUI/MultiColumnList"      Renderer="Falagard/MultiColumnList"     LookNFeel="SGWLook_3/MultiColumnList_3" />
+    <FalagardMapping WindowType="SpinnerEditbox_3"              TargetType="CEGUI/Editbox"              Renderer="Falagard/Editbox"             LookNFeel="SGWLook_3/SpinnerEditbox_3" />
+    <FalagardMapping WindowType="Spinner_3"                     TargetType="CEGUI/Spinner"              Renderer="Falagard/Default"             LookNFeel="SGWLook_3/Spinner_3" />
+    <FalagardMapping WindowType="RadioButton_3"                 TargetType="CEGUI/RadioButton"          Renderer="Falagard/ToggleButton"        LookNFeel="SGWLook_3/RadioButton_3" />
+    <FalagardMapping WindowType="Checkbox_3"                    TargetType="CEGUI/Checkbox"             Renderer="Falagard/ToggleButton"        LookNFeel="SGWLook_3/Checkbox_3" />
+    <FalagardMapping WindowType="ComboDropList_3"               TargetType="CEGUI/ComboDropList"        Renderer="Falagard/Listbox"             LookNFeel="SGWLook_3/ComboDropList_3" />
+    <FalagardMapping WindowType="ComboEditbox_3"                TargetType="CEGUI/Editbox"              Renderer="Falagard/Editbox"             LookNFeel="SGWLook_3/ComboEditbox_3" />
+    <FalagardMapping WindowType="Combobox_3"                    TargetType="CEGUI/Combobox"             Renderer="Falagard/Default"             LookNFeel="SGWLook_3/Combobox_3" />
+    <FalagardMapping WindowType="PopupMenu_3"                   TargetType="CEGUI/PopupMenu"            Renderer="Falagard/PopupMenu"           LookNFeel="SGWLook_3/PopupMenu_3" />
+    <FalagardMapping WindowType="MenuItem_3"                    TargetType="CEGUI/MenuItem"             Renderer="Falagard/MenuItem"            LookNFeel="SGWLook_3/MenuItem_3" />
+    <FalagardMapping WindowType="Tooltip_3"                     TargetType="CEGUI/Tooltip"              Renderer="Falagard/Tooltip"             LookNFeel="SGWLook_3/Tooltip_3" />
+    <FalagardMapping WindowType="ScrollablePane_3"              TargetType="CEGUI/ScrollablePane"       Renderer="Falagard/ScrollablePane"      LookNFeel="SGWLook_3/ScrollablePane_3" />
+    <FalagardMapping WindowType="SliderThumb_3"                 TargetType="CEGUI/Thumb"                Renderer="Falagard/Button"              LookNFeel="SGWLook_3/SliderThumb_3" />
+    <FalagardMapping WindowType="Slider_3"                      TargetType="CEGUI/Slider"               Renderer="Falagard/Slider"              LookNFeel="SGWLook_3/Slider_3" />
+    <FalagardMapping WindowType="Button_3"                      TargetType="CEGUI/PushButton"           Renderer="Falagard/Button"              LookNFeel="SGWLook_3/Button_3" />
+    <FalagardMapping WindowType="SystemButton_3"                TargetType="CEGUI/PushButton"           Renderer="Falagard/Button"              LookNFeel="SGWLook_3/ImageButton_3" />
+    <FalagardMapping WindowType="TabButton_3"                   TargetType="CEGUI/TabButton"            Renderer="Falagard/TabButton"           LookNFeel="SGWLook_3/TabButton_3" />
+    <FalagardMapping WindowType="TabControl_3"                  TargetType="CEGUI/TabControl"           Renderer="Falagard/TabControl"          LookNFeel="SGWLook_3/TabControl_3" />
+    <FalagardMapping WindowType="TabContentPane_3"              TargetType="DefaultWindow"              Renderer="Falagard/Default"             LookNFeel="SGWLook_3/TabContentPane_3" />
+    <FalagardMapping WindowType="TabButtonPane_3"               TargetType="DefaultWindow"              Renderer="Falagard/Default"             LookNFeel="SGWLook_3/TabButtonPane_3" />
+    <FalagardMapping WindowType="TabbedTitlebar_3"              TargetType="CEGUI/Titlebar"             Renderer="Falagard/Titlebar"            LookNFeel="SGWLook_3/TabbedTitlebar_3" />
+    <FalagardMapping WindowType="TabbedWindowFrame_3"           TargetType="CEGUI/FrameWindow"          Renderer="Falagard/FrameWindow"         LookNFeel="SGWLook_3/TabbedWindowFrame_3" />
+    <FalagardMapping WindowType="TabControlBottom_3"            TargetType="DefaultWindow"              Renderer="Falagard/Default"             LookNFeel="SGWLook_3/TabControlBottom_3" />
+    <FalagardMapping WindowType="DialogCreative_3"              TargetType="DefaultWindow"              Renderer="Falagard/Default"             LookNFeel="SGWLook_3/DialogCreative_3" />
+    <FalagardMapping WindowType="DialogPortraitContainer_3"     TargetType="DefaultWindow"              Renderer="Falagard/Default"             LookNFeel="SGWLook_3/DialogPortraitContainer_3" />
+    <FalagardMapping WindowType="DialogTitlebar_3"              TargetType="CEGUI/Titlebar"             Renderer="Falagard/Titlebar"            LookNFeel="SGWLook_3/DialogTitlebar_3" />
+    <FalagardMapping WindowType="DialogFrame_3"                 TargetType="CEGUI/FrameWindow"          Renderer="Falagard/FrameWindow"         LookNFeel="SGWLook_3/DialogFrame_3" />
+    <FalagardMapping WindowType="VerticalScrollbar_Mini_3"      TargetType="CEGUI/Scrollbar"            Renderer="Falagard/Scrollbar"           LookNFeel="SGWLook_3/VerticalScrollbar_Mini_3" />
+    <FalagardMapping WindowType="VerticalScrollbarThumb_Mini_3" TargetType="CEGUI/Thumb"                Renderer="Falagard/Button"              LookNFeel="SGWLook_3/VerticalScrollbarThumb_Mini_3" />
+    <FalagardMapping WindowType="Dialog_StaticText_3"           TargetType="DefaultWindow"              Renderer="Falagard/StaticText"          LookNFeel="SGWLook_3/Dialog_StaticText_3" />
+    <FalagardMapping WindowType="DialogButtonTab_3"             TargetType="DefaultWindow"              Renderer="Falagard/Default"             LookNFeel="SGWLook_3/DialogButtonTab_3" />
+    <FalagardMapping WindowType="DefaultFrameWindow_3"          TargetType="CEGUI/FrameWindow"          Renderer="Falagard/FrameWindow"         LookNFeel="SGWLook_3/DefaultFrameWindow_3" />
+
+
+</GUIScheme>

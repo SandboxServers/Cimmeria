@@ -1,0 +1,12 @@
+{
+  "id": "008-dialog-portraits",
+  "title": "Dialog portraits",
+  "description": "Shows the speaker's portrait in NPC dialog windows, which the stock UI never displays. Replaces TaharezLook.scheme and the Dialog and Blurb window layouts and scripts with whole files, so it applies whatever state those files are in. Supersedes 001.",
+  "files": [
+    {"path": "Working/SGWGame/Content/UI/CEGUIData/schemes/TaharezLook.scheme", "from": "TaharezLook.scheme"},
+    {"path": "Working/SGWGame/Content/UI/Core/Dialog/Blurb.layout", "from": "Blurb.layout"},
+    {"path": "Working/SGWGame/Content/UI/Core/Dialog/Blurb.lua", "from": "Blurb.lua"},
+    {"path": "Working/SGWGame/Content/UI/Core/Dialog/Dialog.layout", "from": "Dialog.layout"},
+    {"path": "Working/SGWGame/Content/UI/Core/Dialog/Dialog.lua", "from": "Dialog.lua"}
+  ]
+}
