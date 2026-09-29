@@ -452,9 +452,9 @@ The auction house: search, bid, buyout, create and cancel listings.
 | U0 | `.bm_seed` | "Listed 8 Black Market auction(s) from the system seller: ids A to B." | server |
 | U1 | `.bm_list` | The newest auctions, each with its `#id`, seller, price and time left | server |
 | U2 | Right-click Machra | The chat line "The auctioneer opens the Black Market. (No window? ...)"; with the patch, the window opens | server (line), patch (window) |
-| U3-U5 | Search with no filter, then `pistol` with tech competency 10-20, then page through after `.bm_seed 40` | Seeded rows with names and icons; the filters narrow them; paging keeps the total | patch |
+| U3-U5 | Search with no filter, then `pistol` with tech competency 10-20, then page through after `.bm_seed 40` | Seeded rows with names and icons; a listing with no bid shows `Min <price>`, one with no buyout shows `Bid only`, and Buyout on it explains why at once; the filters narrow them; paging keeps the total | patch |
 | U6-U10 | Create a listing, bid, outbid from the second client, buy out the 40-naquadah pistol, cancel a listing | Items and cash move at once, each row updates | patch |
-| U11-U13 | `.bm_expire <id>` on a listing with a bid, and on one without; then open both mailboxes | The GM line says sold (to whom, for how much) or returned; the item, and the seller's cash, arrive by mail from "Black Market" | server (settlement and mail), patch (to list and bid) |
+| U11-U13 | `.bm_expire <id>` on a listing with a bid, and on one without; then open both mailboxes | The GM line says sold (to whom, for how much) or returned; the item, and the seller's cash, arrive by mail from "Black Market", sent today and expiring in 30 days | server (settlement and mail), patch (to list and bid) |
 | U14-U20 | Bid too low, bid without the cash, bid on your own listing, list a 21st item, list a bound item, bid after walking away, press Watch | The window shows the refusal and nothing changes | patch |
 | U21 | Without the patch, click Machra and log out | Only the chat line; the server records that the client never answered | server |
 | U22-U23 | `.bm_expire 999999`; `.bm_seed` on a non-GM character | "no auction has id 999999"; "is a GM command" | server |

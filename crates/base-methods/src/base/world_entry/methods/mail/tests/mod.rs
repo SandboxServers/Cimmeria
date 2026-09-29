@@ -29,6 +29,7 @@ mod delete_guard;
 mod expiry_live;
 mod expiry_race;
 mod gm_live;
+mod header_time_live;
 mod notify_live;
 mod packets;
 mod placement_gate;

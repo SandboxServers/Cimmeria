@@ -565,6 +565,81 @@ scenario('reopening while open refreshes; reopening during the search delay says
     eq(env.BlackMarketMod.getAuctionVisibleCount(0), 0, 'store starts clean')
 end)
 
+-- A player's click: CEGUI fires EventClicked only on an enabled button.
+local function press( env, name )
+    if env.windows[name].enabled then
+        return click(env, name)
+    end
+end
+
+scenario('bid-only listing: Min bid, "Bid only", and Buyout answers on the first press (all views)', function()
+    -- The seeded Health Slappack: starting bid 30, no buyout, no bid yet.
+    local bidOnly = function() return item(1, { currentBid = 0, buyoutPrice = 0, nextMinBidPrice = 30 }) end
+    local env = newClient()
+    openWithResults(env, { bidOnly(), item(2) }, 2)
+    eq(row(env, 'Search', 1, 'CurrentBidText'):getText(), 'Min 30', 'no bid yet: the Bid column shows the minimum')
+    eq(row(env, 'Search', 1, 'BuyoutText'):getText(), 'Bid only', 'no buyout: the Buyout column says so')
+    eq(row(env, 'Search', 2, 'CurrentBidText'):getText(), '20', 'a standing bid is shown as it is')
+    eq(row(env, 'Search', 2, 'BuyoutText'):getText(), '100', 'a buyout price is shown as it is')
+
+    row(env, 'Search', 1):fire('EventMouseButtonDown')
+    eq(env.BlackMarket_NewBidText:getText(), '30', 'the bid box holds the minimum')
+    local before = callCount(env)
+    press(env, 'BlackMarket_SearchBuyoutButton')
+    eq(status(env), 'This auction is bid only. Enter at least 30 and press Bid.', 'Buyout on a bid-only row explains itself')
+    eq(callCount(env), before, 'nothing sent')
+    press(env, 'BlackMarket_SearchBidButton')
+    eq(lastCall(env).op, 'bid', 'Bid still works'); eq(lastCall(env).args[2], 30, 'at the minimum')
+
+    -- My Auctions and My Bids use the same row population.
+    click(env, 'BlackMarket_TabButton2')
+    env.CimmeriaBM.onAuctions({ bidOnly() }, 1, 1)
+    eq(row(env, 'MyAuction', 1, 'CurrentBidText'):getText(), 'Min 30', 'My Auctions Bid column')
+    eq(row(env, 'MyAuction', 1, 'BuyoutText'):getText(), 'Bid only', 'My Auctions Buyout column')
+    click(env, 'BlackMarket_TabButton3')
+    env.CimmeriaBM.onAuctions({ bidOnly() }, 1, 2)
+    eq(row(env, 'MyBids', 1, 'CurrentBidText'):getText(), 'Min 30', 'My Bids Bid column')
+    eq(row(env, 'MyBids', 1, 'BuyoutText'):getText(), 'Bid only', 'My Bids Buyout column')
+    -- Watched rows are item definitions, not auctions: no prices at all.
+    env.CimmeriaBM.onWatchedItems({ 101 })
+    eq(row(env, 'Watched', 1, 'CurrentBidText'):getText(), '', 'Watched Bid column blank')
+    eq(row(env, 'Watched', 1, 'BuyoutText'):getText(), '', 'Watched Buyout column blank')
+end)
+
+scenario('Create tab: Short/Medium/Long labels fit their slots and do not overlap', function()
+    -- "SHORMEDIUM ONG" on the first live run: the stock labels were 32, 60
+    -- and 24 px wide, with Medium's box over Short's, so CEGUI clipped them.
+    local xml = Stubs.readFile(LAYOUT):gsub('<!%-%-.-%-%->', '')
+    local WIDTH = 160 -- the duration container, {{0,285},..,{0,445},..}
+    local function span( rect )
+        local sx, ox, ex, eo = rect:match('^{{([%d.%-]+),([%d.%-]+)},{[^}]+},{([%d.%-]+),([%d.%-]+)}')
+        ok(sx, 'unparsed rect '..tostring(rect))
+        return tonumber(sx) * WIDTH + tonumber(ox), tonumber(ex) * WIDTH + tonumber(eo)
+    end
+    local labels = {}
+    for text, rect in xml:gmatch('<Property Name="Text" Value="([^"]*)" />%s*<Property Name="Font" Value="Verdana_6pt" />.-<Property Name="UnifiedAreaRect" Value="([^"]*)" />') do
+        local key = text:lower()
+        if key == 'short' or key == 'medium' or key == 'long' then
+            labels[#labels + 1] = { key = key, text = text, left = select(1, span(rect)), right = select(2, span(rect)) }
+        end
+    end
+    eq(#labels, 3, 'three duration labels')
+    for i, l in ipairs(labels) do
+        -- About 7 px per character at Verdana 6pt covers capitals too.
+        ok(l.right - l.left >= 7 * string.len(l.text), l.text..' label is '..(l.right - l.left)..' px, too narrow')
+        ok(l.left >= 0 and l.right <= WIDTH, l.text..' label leaves the container')
+        local name = 'BlackMarket_Duration'..l.key:sub(1, 1):upper()..l.key:sub(2)
+        local bl, br = span(xml:match('Name="'..name..'Image".-<Property Name="UnifiedAreaRect" Value="([^"]*)"'))
+        ok(bl >= l.left and br <= l.right, l.text..' button is not under its label')
+        local hl, hr = span(xml:match('Name="'..name..'HighlightImage".-<Property Name="UnifiedAreaRect" Value="([^"]*)"'))
+        ok(hl <= bl and hr >= br, l.text..' highlight does not cover its button')
+        for j = i + 1, #labels do
+            local m = labels[j]
+            ok(l.right <= m.left or m.right <= l.left, l.text..' and '..m.text..' labels overlap')
+        end
+    end
+end)
+
 -- The Access-bar suite (access.lua) registers its scenarios here too.
 dofile(here..'/access.lua')(here, scenario, eq, ok)
 

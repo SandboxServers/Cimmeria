@@ -561,7 +561,10 @@ function BlackMarketMod.updateBidInfo( auctionId )
         if itemInfo.auctionId then
             local myCash = tonumber(getCash()) or 0
             BlackMarket_SearchBidButton:setEnabled( not bidPending and myCash >= itemInfo.nextBidPrice )
-            BlackMarket_SearchBuyoutButton:setEnabled( not bidPending and itemInfo.buyoutPrice > 0 and myCash >= itemInfo.buyoutPrice )
+            -- A bid-only auction keeps Buyout pressable, so the press can
+            -- say why there is nothing to buy out (a disabled button is
+            -- silent on the first press).
+            BlackMarket_SearchBuyoutButton:setEnabled( not bidPending and (itemInfo.buyoutPrice <= 0 or myCash >= itemInfo.buyoutPrice) )
             return
         end
     end
@@ -724,7 +727,7 @@ function BlackMarketMod.onBuyoutClicked( this, window )
     local auctionId = BlackMarketMod.viewData[UIAuctionView.SearchResults].selectedAuctionId
     local itemInfo = BlackMarketMod.getAuctionItemInfo( auctionId )
     if itemInfo.auctionId and itemInfo.buyoutPrice <= 0 then
-        BlackMarketMod.setStatus( 'That auction has no buyout price.', true )
+        BlackMarketMod.setStatus( 'This auction is bid only. Enter at least '..itemInfo.nextBidPrice..' and press Bid.', true )
         return
     end
     BlackMarketMod.placeBid( itemInfo.buyoutPrice, 'Buyout sent...' )
@@ -1155,20 +1158,16 @@ function BlackMarketMod.populateRow( viewType, rowId, auctionId )
             end
         end
 
-        -- Current Bid
+        -- Current Bid (the lowest bid accepted while nobody has bid)
         local curBidText = _G[rowPrefix..'CurrentBidText']
         if curBidText then
-            curBidText:setText( itemInfo.currentBid )
+            curBidText:setText( BlackMarketMod.bidColumnText( itemInfo ) )
         end
 
-        -- Buyout
+        -- Buyout ("Bid only" when the auction has none)
         local buyoutText = _G[rowPrefix..'BuyoutText']
         if buyoutText then
-            if itemInfo.buyoutPrice > 0 then
-                buyoutText:setText( itemInfo.buyoutPrice )
-            else
-                buyoutText:setText( '' )
-            end
+            buyoutText:setText( BlackMarketMod.buyoutColumnText( itemInfo ) )
         end
 
         -- Top Bidder
@@ -1192,6 +1191,33 @@ function BlackMarketMod.populateRow( viewType, rowId, auctionId )
         rowWin:setID( 0 )
         rowWin:hide()
     end
+end
+
+-- The Bid column: the standing bid, or, before anyone bids, the lowest bid
+-- the server accepts (the starting price) as "Min <price>". A 0 read as
+-- "free" or "no price" on the first live run.
+function BlackMarketMod.bidColumnText( itemInfo )
+    if not itemInfo.auctionId then
+        return ''
+    end
+    if (tonumber(itemInfo.currentBid) or 0) > 0 then
+        return tostring(itemInfo.currentBid)
+    end
+    if (tonumber(itemInfo.nextBidPrice) or 0) > 0 then
+        return 'Min '..tostring(itemInfo.nextBidPrice)
+    end
+    return ''
+end
+
+-- The Buyout column: the price, or "Bid only" for an auction without one.
+function BlackMarketMod.buyoutColumnText( itemInfo )
+    if (tonumber(itemInfo.buyoutPrice) or 0) > 0 then
+        return tostring(itemInfo.buyoutPrice)
+    end
+    if itemInfo.auctionId then
+        return 'Bid only'
+    end
+    return ''
 end
 
 -- A Watched row shows an item definition, not an auction.

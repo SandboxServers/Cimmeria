@@ -337,6 +337,8 @@ cached on the record) for the client's date display — confirming (again) that 
 fields are needed for the "Sent: <date>" display either; it is entirely reconstructed client-side
 from the wire `sentTime` float, as the existing research report already concluded.
 
+**Time base (CLOSED 2026-09-29, HIGH).** The disassembly settles the MEDIUM part. The constructor's 7th argument is `sentTime`: `FLD float ptr [ESP+0x3c]` then `CALL 0x012379f6` (`__ftol2`, float to 64-bit integer) gives `age`. `FUN_00eb5a10(age)` takes local now (`GetSystemTime`, `SystemTimeToTzSpecificLocalTime`), subtracts `age * 10^7` from its `FILETIME`, and stores the result as the Sent `SYSTEMTIME`. ExpiresHours is `720 - age / 3600`. So **`sentTime` is the mail's age in seconds, not an epoch timestamp**: an epoch value shows Sent as 1 January 1970 (plus the rounding of a large `f32`) and Expires as "Soon", which is what the first live Black Market payout mail showed. The server sends `now - sent_time` (`mail/headers.rs`). The 8th argument, `readTime`, is compared with `0.0` (`COMISS` against `0x017f94b8`, which holds 0): `HasBeenRead` (record offset `0xb6`) is set when `readTime >= 0.0`. The server sends the stored `read_time`, 0 for unread, so every mail shows as read and the inbox's "New" marker never appears. Sending a negative `readTime` for unread mail would fix it; not yet done, because what the client does to its own record after `onMailRead` is unverified.
+
 **Recommendation for SS-M4: set `expires_at = sent_time + 30 days` exactly (D-SS04's fallback),
 not a different value.**
 
