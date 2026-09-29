@@ -297,6 +297,7 @@
 \ir resources/Dialogs/Seed/special_words.sql
 \ir resources/Effects/Seed/effect_nvps.sql
 \ir resources/Effects/Seed/effects.sql
+\ir resources/Abilities/Seed/ammo_modifiers_hp_ap.sql
 \ir resources/Entities/Seed/blueprints.sql
 \ir resources/Entities/Seed/blueprints_components.sql
 \ir resources/Entities/Seed/deployables.sql

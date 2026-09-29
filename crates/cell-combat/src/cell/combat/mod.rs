@@ -34,8 +34,8 @@ pub use auto_cycle::{
     arm_auto_cycle, clear_auto_cycle, clear_auto_cycle_for_target, is_auto_cycle_target_valid,
 };
 pub use damage::{
-    attacker_cover_qr, calculate_damage, calculate_damage_scaled, calculate_qr, calculate_result,
-    cover_reduction, CoverReduction, CoverSide, QrResult,
+    attacker_cover_qr, calculate_damage, calculate_damage_penetrating, calculate_damage_scaled,
+    calculate_qr, calculate_result, cover_reduction, CoverReduction, CoverSide, QrResult,
 };
 pub use damage_credit::{note_pre_damage_health, HealthBelowSample};
 pub use health_threshold::{health_pct, health_pct_from, HealthPct};

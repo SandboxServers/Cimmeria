@@ -63,6 +63,35 @@ pub fn calculate_damage_scaled(
     attacker: &StatList,
     defender: &mut StatList,
 ) -> (Vec<ClientEffectResult>, i32) {
+    calculate_damage_penetrating(
+        qr_result,
+        base_damage,
+        scale,
+        1.0,
+        damage_type,
+        stat_id,
+        attacker,
+        defender,
+    )
+}
+
+/// [`calculate_damage_scaled`] with the armour mitigation divided by
+/// `penetration_mult`: a special ammo type's `ammo_modifiers.penetration_mult`
+/// (AM-04, D-AM07; `cimmeria_cell_world::cell::effects::ammo_damage`). 2.0
+/// lets half the armour stand against the shot, 0.5 twice as much, 1.0 is
+/// the unmodified pipeline. It scales the armour term, not the attacker's
+/// `PENETRATION` stat, which is 0 on every player. A non-positive value
+/// reads as 1.0.
+pub fn calculate_damage_penetrating(
+    qr_result: &QrResult,
+    base_damage: i32,
+    scale: f64,
+    penetration_mult: f64,
+    damage_type: i8,
+    stat_id: i32,
+    attacker: &StatList,
+    defender: &mut StatList,
+) -> (Vec<ClientEffectResult>, i32) {
     let mut results = Vec::new();
 
     // Base damage * qrRand * QR_DAMAGE_MULTIPLIER
@@ -81,7 +110,13 @@ pub fn calculate_damage_scaled(
     let af = calculate_armor_factor(defender, damage_type);
     let miti = stat_cur(defender, MITIGATION) as f64;
     let pen = stat_cur(attacker, PENETRATION) as f64;
-    let af_mitigation = (af as f64 * (miti - pen).max(0.0) / 100.0).round() as i32;
+    let penetration_mult = if penetration_mult > 0.0 && penetration_mult.is_finite() {
+        penetration_mult
+    } else {
+        1.0
+    };
+    let af_mitigation =
+        (af as f64 * (miti - pen).max(0.0) / 100.0 / penetration_mult).round() as i32;
 
     // Pipeline up to absorption
     let res_damage = raw * damage_bonus * (1.0 - stat_resist);

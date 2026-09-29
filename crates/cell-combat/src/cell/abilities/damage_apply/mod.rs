@@ -11,13 +11,14 @@
 
 use tokio::sync::mpsc;
 
-use cimmeria_entity::abilities::{serialize_effect_results, AbilityDef, DT_PHYSICAL};
+use cimmeria_entity::abilities::{serialize_effect_results, AbilityDef, DT_PHYSICAL, RC_MISS};
 use cimmeria_entity::stats::HEALTH;
 
 use super::super::combat;
 use super::super::messages::CellToBaseMsg;
 use super::super::space_manager::SpaceManager;
 use cimmeria_cell_world::cell::duel;
+use cimmeria_cell_world::cell::effects::ammo_damage;
 
 use super::messaging::{
     flush_attacker_ammo_stat, send_entity_method, send_entity_method_to_self_and_witnesses,
@@ -149,6 +150,27 @@ pub(super) async fn apply_damage_to_target(
     let seed = pseudo_random_seed(entity_id, ability_id, effect_seq);
     let qr_result = combat::calculate_result(qr, seed);
 
+    // Special ammo (AM-04, D-AM07): a player's weapon shot with a modified
+    // ammo type loaded scales its damage, divides the armour by its
+    // penetration, may change its damage type, and runs an on-hit effect.
+    // `None` (flag off, NPC, default ammo, not a shot) is the old pipeline.
+    let shot = ammo_damage::shot_ammo(
+        space_mgr,
+        entity_id,
+        ability_def.as_ref(),
+        cimmeria_entity::ammo_feature::finite_special(),
+    );
+    let (ammo_scale, penetration_mult, damage_type) = shot.map_or((1.0, 1.0, DT_PHYSICAL), |s| {
+        (
+            s.damage_scale(),
+            s.penetration_mult(),
+            s.damage_type(DT_PHYSICAL),
+        )
+    });
+    let on_hit_effect_id = shot
+        .filter(|_| qr_result.result_code != RC_MISS)
+        .and_then(|s| s.on_hit_effect_id(space_mgr));
+
     // Look up damage values from the ability's effect NVPs. When the
     // ability is known but exposes no positive HealthDamage (e.g. focus
     // drains, heals, buff-only abilities) we keep health_base_damage at 0
@@ -182,6 +204,15 @@ pub(super) async fn apply_damage_to_target(
     } else {
         (15, 0)
     };
+    if let Some(eid) = on_hit_effect_id {
+        if space_mgr
+            .effect_defs
+            .get(&eid)
+            .is_some_and(|e| e.script_name.is_some())
+        {
+            script_effect_ids.push(eid);
+        }
+    }
     // ── `entity_health_below` pre-hit sample ──
     //
     // This is the one seam every ability-driven health mutation passes
@@ -208,11 +239,12 @@ pub(super) async fn apply_damage_to_target(
         }
     };
 
-    let (effect_results, _total_health_damage) = combat::calculate_damage_scaled(
+    let (effect_results, _total_health_damage) = combat::calculate_damage_penetrating(
         &qr_result,
         health_base_damage,
-        cover_scale,
-        DT_PHYSICAL,
+        cover_scale * ammo_scale,
+        penetration_mult,
+        damage_type,
         HEALTH,
         &attacker_stats,
         &mut target.stats,
@@ -220,14 +252,28 @@ pub(super) async fn apply_damage_to_target(
 
     // Apply focus damage if present
     if focus_base_damage > 0 {
-        let _ = combat::calculate_damage_scaled(
+        let _ = combat::calculate_damage_penetrating(
             &qr_result,
             focus_base_damage,
-            cover_scale,
-            DT_PHYSICAL,
+            cover_scale * ammo_scale,
+            penetration_mult,
+            damage_type,
             cimmeria_entity::stats::FOCUS,
             &attacker_stats,
             &mut target.stats,
+        );
+    }
+
+    if let Some(shot) = &shot {
+        ammo_damage::log_applied(
+            space_mgr,
+            shot,
+            entity_id,
+            target_eid,
+            ability_id,
+            damage_type,
+            _total_health_damage,
+            on_hit_effect_id,
         );
     }
 
@@ -502,7 +548,7 @@ pub(super) async fn apply_damage_to_target(
     // per-tick fire loop.
     if let Some(def) = ability_def {
         let now = std::time::Instant::now();
-        for &eid in &def.effect_ids {
+        for eid in def.effect_ids.iter().copied().chain(on_hit_effect_id) {
             let effect_clone = match space_mgr.effect_defs.get(&eid) {
                 Some(e) if e.is_pulsing() => e.clone(),
                 _ => continue,
@@ -560,6 +606,8 @@ mod cover_roll;
 
 #[cfg(test)]
 mod aggro_cause_tests;
+#[cfg(test)]
+mod ammo_tests;
 #[cfg(test)]
 mod bleed_death_tests;
 #[cfg(test)]
