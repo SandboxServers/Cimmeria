@@ -192,6 +192,7 @@
 \ir resources/Abilities/Tables/applied_science.sql
 \ir resources/Abilities/Tables/trainer_abilities.sql
 \ir resources/Abilities/Tables/trainer_ability_lists.sql
+\ir resources/Abilities/Tables/ammo_modifiers.sql
 \ir resources/Archetypes/Tables/archetype_ability_tree.sql
 \ir resources/Archetypes/Tables/archetypes.sql
 \ir resources/Archetypes/Tables/char_creation.sql
@@ -319,6 +320,13 @@
 \ir resources/Items/Seed/item_lists.sql
 \ir resources/Items/Seed/items.sql
 \ir resources/Items/Seed/items_event_sets.sql
+-- Ammo campaign (AM-F): the reserve items, then their mapping table
+-- (its FK needs items' primary key, so it loads here, not with the tables),
+-- then the Standard Pistol / SMG ammo_types widening.
+\ir resources/Items/Seed/ammo_items.sql
+\ir resources/Items/Tables/ammo_item_types.sql
+\ir resources/Items/Seed/ammo_item_types.sql
+\ir resources/Items/Seed/ammo_weapon_widening.sql
 \ir resources/Loot/Seed/loot.sql
 \ir resources/Loot/Seed/loot_tables.sql
 \ir resources/Missions/Seed/mission_objectives.sql

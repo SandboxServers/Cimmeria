@@ -50,53 +50,65 @@ Parallel packets build against these names. A worker who needs to change one rai
 **Reserved item ids and the ammo-type mapping (AM-F).**
 
 - Item ids `9000`-`9014` reserved for special-ammo items: `9000` Bullet_Armor_Piercing, `9001` Bullet_Hollow_Point, `9002` Bullet_Incendiary, `9003` Bullet_EMP, `9004` Bullet_Explosive, `9005`-`9014` the ten `Dart_*` specials (`Dart_Poison, Dart_Disease, Dart_Tranquilizer, Dart_EMP, Dart_Radioactive, Dart_Stim, Dart_Coagulant, Dart_Nanites, Dart_Antidote, Dart_Adrenaline`, in that enum order). Confirmed unclaimed against every `Items/Seed/*.sql` file (audit A-15). `9015`-`9099` held in reserve for anything this plan missed.
-- New file `db/resources/Items/Seed/ammo_items.sql`: one `INSERT INTO items (...)` row per id above. Stackable (`max_stack_size` a real cap, not 1), `container_sets = '{1,15,17}'` (matches D-AM01: carried bags, the crafting bag is a valid mail/carry source per the Bank ledger, and the personal vault), `clip_size = 0` (these are reserve stacks, not weapons — `load_item_defs`'s `WHERE clip_size > 0` correctly excludes them from the `WeaponDef` cache), `ammo_types = '{}'`.
-- New table `resources.ammo_item_types` (`db/resources/Items/Tables/ammo_item_types.sql`): `ammo_type "EAmmoType" PRIMARY KEY, item_id integer NOT NULL REFERENCES resources.items(item_id)`, seeded in `db/resources/Items/Seed/ammo_item_types.sql`. This is the one indirection every packet uses instead of a hardcoded item id (see above).
-- One new Rust module, `crates/entity/src/ammo_type.rs`, with named `i32` constants matching `EAmmoType`'s enum ordinal exactly (`AMMO_NONE = 0, BULLET_DEFAULT = 1, BULLET_ARMOR_PIERCING = 2, BULLET_HOLLOW_POINT = 3, BULLET_INCENDIARY = 4, BULLET_EMP = 5, BULLET_EXPLOSIVE = 6, DAGGER_DEFAULT = 7 .. DART_DEFAULT = 13, DART_POISON = 14 .. DART_ADRENALINE = 23`, per the `CREATE TYPE` order in `db/resources/Abilities/Types/EAmmoType.sql`) plus `pub const fn is_special(ammo_type: i32) -> bool` (D-AM02: true for anything except `AMMO_NONE`, `BULLET_DEFAULT`, `DART_DEFAULT`). A live-DB test pins the ordinals against `SELECT enumlabel, enumsortorder FROM pg_enum WHERE enumtypid = 'resources."EAmmoType"'::regtype` so a future enum edit fails loudly instead of silently drifting (audit A-14 flagged nothing pins this today).
-- New file `db/resources/Items/Seed/ammo_weapon_widening.sql`: `UPDATE resources.items SET ammo_types = ammo_types || ARRAY['Bullet_Armor_Piercing','Bullet_Hollow_Point','Bullet_Incendiary','Bullet_EMP','Bullet_Explosive']::resources."EAmmoType"[] WHERE description IN ('Standard Pistol', 'Standard SMG');` (pending the owner's confirmation of the family choice, README open question 5) — a mutating `UPDATE`, not a pure `INSERT`, but it lives in its own new file so it never conflicts with `items.sql` itself; the real goal is zero merge conflicts in the giant shared file, which an own-file `UPDATE` satisfies exactly as well as a pure `INSERT` would.
-- Four new `\ir` lines added to `db/database.sql`, once, by AM-F: the three files above plus the `ammo_item_types` table file. This is AM-F's one shared-file touch.
+- New file `db/resources/Items/Seed/ammo_items.sql`: one `INSERT INTO items (...)` row per id above. Stackable (`max_stack_size` a real cap, not 1), `container_sets = '{1,15,17}'` (matches D-AM01: carried bags, the crafting bag is a valid mail/carry source per the Bank ledger, and the personal vault), `clip_size = 0` (these are reserve stacks, not weapons — `load_item_defs`'s `WHERE clip_size > 0` correctly excludes them from the `WeaponDef` cache), `ammo_types = '{}'`. **As shipped by AM-F:** `max_stack_size = 500` rounds, `flags = 3072` (`CanBeSold | CanBeDeleted`, not bound), the stock `IconMissing` placeholder icon until AM-07, names such as "Hollow Point Rounds".
+- New table `resources.ammo_item_types` (`db/resources/Items/Tables/ammo_item_types.sql`): `ammo_type "EAmmoType" PRIMARY KEY, item_id integer NOT NULL UNIQUE REFERENCES resources.items(item_id)`, plus a CHECK that excludes the four free types, seeded in `db/resources/Items/Seed/ammo_item_types.sql`. Because of the foreign key the table file loads in `db/database.sql`'s seed section, right after the items seed, not with the other tables. This is the one indirection every packet uses instead of a hardcoded item id (see above).
+- One new Rust module, `crates/entity/src/ammo_type.rs`, with named `i32` constants matching `EAmmoType`'s enum ordinal exactly (`AMMO_NONE = 0, BULLET_DEFAULT = 1, BULLET_ARMOR_PIERCING = 2, BULLET_HOLLOW_POINT = 3, BULLET_INCENDIARY = 4, BULLET_EMP = 5, BULLET_EXPLOSIVE = 6, DAGGER_DEFAULT = 7 .. DART_DEFAULT = 13, DART_POISON = 14 .. DART_ADRENALINE = 23`, per the `CREATE TYPE` order in `db/resources/Abilities/Types/EAmmoType.sql`) plus `LABELS: [&str; 24]`, `label(i32) -> Option<&'static str>` and `pub const fn is_special(ammo_type: i32) -> bool` (D-AM02: false for `AMMO_NONE`, `BULLET_DEFAULT`, `DAGGER_DEFAULT`, `DART_DEFAULT` and anything outside `0..=23`, true for every other ordinal). **AM-F change:** `Dagger_Default` is free default ammo too, so it is not special; the table CHECK constraints below exclude the same four. A live-DB test (`cimmeria-cell-catalog`, `spawner/tests/live_db_ammo_catalog.rs::ammo_type_ordinals_match_pg_enum`) pins the ordinals against `pg_enum` so a future enum edit fails loudly instead of silently drifting (audit A-14).
+- New file `db/resources/Items/Seed/ammo_weapon_widening.sql`: `UPDATE resources.items SET ammo_types = ammo_types || <the five bullet specials not already listed> WHERE description IN ('Standard Pistol', 'Standard SMG');` (confirmed by D-AM10) — a mutating `UPDATE`, not a pure `INSERT`, but it lives in its own new file so it never conflicts with `items.sql` itself; the real goal is zero merge conflicts in the giant shared file, which an own-file `UPDATE` satisfies exactly as well as a pure `INSERT` would.
+- Five new `\ir` lines added to `db/database.sql`, once, by AM-F: the three seed files above, the `ammo_item_types` table file (in the seed section, after `items.sql`), and the `ammo_modifiers` table file (with the other `Abilities/Tables` files).
 
-**The `AmmoReserve` API (AM-F, real implementation, not a stub).**
+**The `AmmoReserve` API (AM-F, real implementation, not a stub).** As merged; the fields beyond `drawn` / `returned` / `remainder` were added by AM-F so the caller can update the client and write the telemetry's before/after values without re-reading.
 
 ```rust
-// crates/base-methods/src/base/world_entry/methods/inventory/ammo_reserve.rs
+// crates/base-methods/src/base/world_entry/methods/inventory/ammo_reserve/mod.rs
+// module path: cimmeria_base_methods::base::world_entry::methods::inventory::ammo_reserve
+pub const RESERVE_BAGS: [i32; 2] = [INV_MAIN, INV_CRAFTING]; // 1, then 15; the vault (17) never counts
+
+pub struct StackChange {        // one sgw_inventory row touched
+    pub instance_id: i32,       // sgw_inventory.item_id
+    pub container_id: i32,
+    pub slot_id: i32,
+    pub before: i32,            // 0 = the call opened this stack
+    pub after: i32,             // 0 = the call emptied and deleted it
+}
 pub struct AmmoDraw {
-    pub drawn: i32,       // rounds actually removed from the stack; may be < requested
+    pub item_id: Option<i32>,   // ammo item design id; None = no reserve item (default ammo, daggers)
+    pub drawn: i32,             // rounds actually removed; may be < requested
+    pub stack_before: i32,      // rounds of this type in RESERVE_BAGS, before and after
+    pub stack_after: i32,
+    pub changes: Vec<StackChange>,
 }
 pub struct AmmoReturn {
-    pub returned: i32,    // rounds actually added back to the stack; < requested if bag-capped
-    pub remainder: i32,   // rounds that did not fit and must stay in the clip (D-AM05: never deleted)
+    pub item_id: Option<i32>,
+    pub returned: i32,          // rounds actually added back
+    pub remainder: i32,         // rounds that did not fit; the caller keeps them in the clip (D-AM05)
+    pub stack_before: i32,
+    pub stack_after: i32,
+    pub changes: Vec<StackChange>,
 }
 
-/// Count of `ammo_type` rounds in the player's carried bags (1, 15), summed
-/// across every matching stack. Read-only, no lock — callers that need a
-/// consistent read-then-write take the lock themselves (see `draw`).
 pub async fn count(tx: &mut Transaction<'_, Postgres>, player_id: i32, ammo_type: i32) -> Result<i32, sqlx::Error>;
-
-/// Remove up to `n` rounds of `ammo_type` from the player's carried bags,
-/// across as many stacks as needed, oldest slot first. Takes `FOR UPDATE`
-/// on every touched `sgw_inventory` row before decrementing, deletes a
-/// stack that hits zero, and never removes more than is present — the
-/// caller reads `drawn` to know how many rounds actually loaded (D-AM05:
-/// "if the stack is short, the reload loads what is there").
 pub async fn draw(tx: &mut Transaction<'_, Postgres>, player_id: i32, ammo_type: i32, n: i32) -> Result<AmmoDraw, sqlx::Error>;
-
-/// Add up to `n` rounds of `ammo_type` back to the player's carried bags:
-/// merge into an existing stack first (room under `max_stack_size`), else
-/// open a new stack in a free slot. `remainder` is what didn't fit — the
-/// caller keeps those rounds in the clip rather than delete them (D-AM05).
 pub async fn return_rounds(tx: &mut Transaction<'_, Postgres>, player_id: i32, ammo_type: i32, n: i32) -> Result<AmmoReturn, sqlx::Error>;
 ```
+
+- `ammo_type` is the `EAmmoType` ordinal; the item comes from `ammo_item_types` in SQL. A type with no row draws nothing and returns everything as `remainder`.
+- `draw` and `return_rounds` take the shared inventory advisory locks first (`take_inventory_locks(player, &[1, 15])`), then `FOR UPDATE` on each stack, so they keep the repo-wide order advisory, then item rows, then `sgw_player`. `count` takes no lock. Stacks are visited bag 1 then 15, slot order.
+- `draw` deletes a stack that reaches 0. `return_rounds` tops up unbound stacks to `max_stack_size` first, then opens new stacks in free slots (bag 1 first).
+- Database only. After the commit the caller pushes each `StackChange` to the client (`onUpdateItem` / `onRemoveItem`, or `send_full_inventory_resync`) and writes the catalog event. Nothing here reads `ammo.finite_special`.
 
 Built as a real, tested module (not a stub) in AM-F rather than left for AM-02, because the stack find/lock/decrement pattern already has a proven shape in this codebase (the Bank campaign's `D-BV25` stack-merge rules, and the vault move path's row-locking discipline) — shipping it once, real and tested, in the foundation packet means AM-02 only has to wire it into reload, not invent bag-stack locking from scratch under Wave-1 time pressure.
 
 **The `AmmoModifier` shape (AM-F creates the table and the Rust loader; Wave-1/Wave-2 packets seed their own rows in their own files).**
 
-- New table `resources.ammo_modifiers` (`db/resources/Abilities/Tables/ammo_modifiers.sql`): `ammo_type "EAmmoType" PRIMARY KEY, damage_mult real NOT NULL DEFAULT 1.0, penetration_mult real NOT NULL DEFAULT 1.0, on_hit_effect_id integer, toggle_ability_id integer NOT NULL`. Empty at AM-F time — no seed file yet. Per AM-04's design decision (README open question 1, recommendation option (a)), `toggle_ability_id` is **provenance-only**: it records which cooked ability's description/effect text the reconstructed `damage_mult`/`penetration_mult` numbers came from. It is never cast or engaged by the server — the modifier applies directly whenever the ammo type is loaded.
-- Rust loader (`crates/cell-catalog/src/cell/spawner/ammo_modifiers.rs` or beside `load_item_defs` in `loot.rs`, coordinator's call at AM-F time): `load_ammo_modifiers(pool) -> HashMap<i32, AmmoModifier>`, cached the same way `WeaponDef` is.
+- New table `resources.ammo_modifiers` (`db/resources/Abilities/Tables/ammo_modifiers.sql`): `ammo_type "EAmmoType" PRIMARY KEY, damage_mult real NOT NULL DEFAULT 1.0, penetration_mult real NOT NULL DEFAULT 1.0, damage_type "EDamageType" (NULL = keep the ability's), on_hit_effect_id integer, toggle_ability_id integer NOT NULL`, with CHECKs that both multipliers are `> 0` and that the row is not one of the four free types. **AM-F added `damage_type`**, because D-AM07 names the damage type as part of the modifier. No foreign keys (the effect and ability seeds load later); each family packet's live-DB test checks its own rows. Empty at AM-F time — no seed file yet. Per AM-04's design decision (README open question 1, recommendation option (a)), `toggle_ability_id` is **provenance-only**: it records which cooked ability's description/effect text the reconstructed `damage_mult`/`penetration_mult` numbers came from. It is never cast or engaged by the server — the modifier applies directly whenever the ammo type is loaded.
+- Rust loader, as merged: `crates/cell-catalog/src/cell/spawner/ammo_catalog.rs`, re-exported from `cimmeria_cell_catalog::cell::spawner` (and so from `cimmeria_cell_world::cell::spawner`):
+  - `pub struct AmmoModifier { pub ammo_type: i32, pub damage_mult: f32, pub penetration_mult: f32, pub damage_type: Option<i32>, pub on_hit_effect_id: Option<i32>, pub toggle_ability_id: i32 }` (ordinals for both enums);
+  - `pub struct AmmoCatalog` with `modifier(&self, ammo_type: i32) -> Option<&AmmoModifier>`, `item_id_for(&self, ammo_type: i32) -> Option<i32>`, `ammo_type_for_item(&self, item_id: i32) -> Option<i32>`, `modifier_count()`, `item_type_count()`, `from_rows(modifiers, item_types)`;
+  - `load_ammo_modifiers(&PgPool) -> Result<HashMap<i32, AmmoModifier>, sqlx::Error>`, `load_ammo_item_types(&PgPool) -> Result<Vec<(i32, i32)>, sqlx::Error>`, `load_ammo_catalog(&PgPool) -> Result<AmmoCatalog, sqlx::Error>`;
+  - loaded at cell startup (`crates/cell/src/cell/service/startup.rs`) into **`SpaceManager::ammo_catalog`**, the way `item_defs` holds `WeaponDef`. This is where `ammo_item_types::item_id_for(ammo_type)` in the packets below resolves on the cell: `space_mgr.ammo_catalog.item_id_for(ammo_type)`. On the base, `AmmoReserve` resolves the item in SQL.
 - Each family packet (AM-04 for HP/AP, AM-08 Incendiary, AM-09 EMP, AM-10 Explosive, AM-11a/b/c darts) ships its **own** seed file (`ammo_modifiers_hp_ap.sql`, `ammo_modifiers_incendiary.sql`, …) with its own `\ir` line in `db/database.sql` — each packet's one shared-file touch, sequenced by the merge train.
 
-**Feature flag (AM-F).** `ammo.finite_special` (a bool in the existing config/feature-flag surface — coordinator confirms the exact mechanism used elsewhere in the repo before AM-F ships), default **off**. While off: `requestAmmoChange` and the reload path behave exactly as they do on `main` today (special types validate the same as AM-03 makes them, but reload still refills for free — the flag gates only the reserve **draw**, not the whitelist fix, since the whitelist fix is a security fix that should ship regardless). AM-12 flips it on after every packet through AM-11c is merged and the debug-hub UAT (D-AM06) has passed.
+**Feature flag (AM-F).** `ammo.finite_special`, default **off**. The repo had no feature-flag surface, so AM-F made one: `crates/entity/src/ammo_feature.rs`, a process-wide switch read once at startup from `CIMMERIA_AMMO_FINITE_SPECIAL` (`1`/`true`/`on`/`yes`; documented in `crates/server/src/main.rs`'s env table). Read it with `cimmeria_entity::ammo_feature::finite_special() -> bool` at the dispatch entrypoint and pass the `bool` into the logic under test; `set_finite_special(bool)` exists for nextest-only handler tests (one process per test). AM-12 flips `FINITE_SPECIAL_DEFAULT`. While off: `requestAmmoChange` and the reload path behave exactly as they do on `main` today (special types validate the same as AM-03 makes them, but reload still refills for free — the flag gates only the reserve **draw**, not the whitelist fix, since the whitelist fix is a security fix that should ship regardless). AM-12 flips it on after every packet through AM-11c is merged and the debug-hub UAT (D-AM06) has passed.
 
 **Telemetry contract.** Every packet satisfies all of the following; a worker who needs a new event adds a row here through the coordinator.
 
@@ -105,7 +117,7 @@ Built as a real, tested module (not a stub) in AM-F rather than left for AM-02, 
 - **Refusals:** a stable `reason=` string from the packet's reject enum.
 - **Before and after:** every event that changes state records the prior and new values (`clip_before`/`after`, `stack_before`/`after`).
 - **Guards:** every event row has a `LogCapture` test (TESTING.md type 12).
-- **Filter:** `ammo` at `debug` needs an `OTEL_FILTER` row plus its pinning assertion in `crates/server/src/logging/`, added by whichever packet first emits a debug `ammo` event (AM-02).
+- **Filter:** AM-F added the `ammo=debug` `OTEL_FILTER` row and its pin (`target_scan_tests.rs::ammo_target_reaches_otlp_at_debug_info_and_warn`), so no Wave-1 packet edits `crates/server/src/logging/`. Write the target as the literal `target: "ammo"` (a constant hides the call from `target_scan_tests`). Event and reason strings are mirrored as constants in `cimmeria_entity::ammo_telemetry::{events, reasons}`; a new row goes in both, through the coordinator.
 - **Spans:** an info span per dispatch entrypoint (`ammo.reload_draw`, `ammo.ammo_change`, `ammo.gm_give`, …), named by each owning packet in its worknote and recorded here by the coordinator once merged.
 
 | Event | Level | Packet | Fields beyond the correlators |
@@ -114,10 +126,12 @@ Built as a real, tested module (not a stub) in AM-F rather than left for AM-02, 
 | `reload_refused` | warn | AM-02 | `reason` (`stack_empty`) |
 | `ammo_switch_return` | debug | AM-02 | `returned`, `remainder`, `stack_before`, `stack_after` |
 | `ammo_type_change_rejected` | warn | AM-03 | `reason` (`weapon_def_cache_miss`, `not_in_allowed_types`, `ambiguous_slot`, `item_not_in_bandolier`, `non_positive_ammo_type`) |
-| `ammo_damage_applied` | debug | AM-04+ | `damage_mult`, `penetration_mult`, `toggle_ability_id`, `on_hit_effect_id` (when present) |
+| `ammo_damage_applied` | debug | AM-04+ | `damage_mult`, `penetration_mult`, `damage_type` (when present), `toggle_ability_id`, `on_hit_effect_id` (when present) |
 | `ammo_loot_dropped` | debug | AM-05 | `loot_table_id`, `quantity` |
 | `gm_give_ammo` | info; warn on refusal | AM-06 | `quantity`, `reason` on refusal |
 | `gm_infinite_ammo_toggled` | info | AM-06 | `on` |
+| `feature_flag` / `feature_flag_invalid` | info / warn | AM-F | `flag`, `on`, `value` (invalid only); startup, no player correlators |
+| `catalog_loaded` / `catalog_load_failed` | info / error | AM-F | `modifiers`, `item_types` / `error`; cell startup, no player correlators |
 
 ## File-ownership matrix
 
@@ -125,23 +139,23 @@ Every packet lists the files it may edit. A file not listed for a packet must no
 
 | Packet | Owned files | Must not touch |
 |---|---|---|
-| AM-F | `db/resources/Items/Seed/ammo_items.sql` (new), `db/resources/Items/Tables/ammo_item_types.sql` (new), `db/resources/Items/Seed/ammo_item_types.sql` (new), `db/resources/Items/Seed/ammo_weapon_widening.sql` (new), `db/resources/Abilities/Tables/ammo_modifiers.sql` (new), `db/database.sql` (4 new `\ir` lines), `crates/entity/src/ammo_type.rs` (new), `crates/base-methods/.../inventory/ammo_reserve.rs` (new), `crates/cell-catalog/.../ammo_modifiers.rs` (new), the feature-flag surface (wherever the repo's existing flag mechanism lives) | `ammo_change.rs`, `reload.rs`, `active_slot.rs`, `scripts.rs`, `registry.rs`, `items.sql`, `loot.sql` |
+| AM-F (merged) | `db/resources/Items/Seed/ammo_items.sql` (new), `db/resources/Items/Tables/ammo_item_types.sql` (new), `db/resources/Items/Seed/ammo_item_types.sql` (new), `db/resources/Items/Seed/ammo_weapon_widening.sql` (new), `db/resources/Abilities/Tables/ammo_modifiers.sql` (new), `db/database.sql` (5 new `\ir` lines), `crates/entity/src/{ammo_type,ammo_feature,ammo_telemetry}.rs` (new) + `lib.rs`, `crates/base-methods/.../inventory/ammo_reserve/` (new: `mod.rs`, `plan.rs`, `live_db_tests.rs`) + `inventory/mod.rs`, `crates/cell-catalog/src/cell/spawner/ammo_catalog.rs` (new) + `spawner/mod.rs` + `spawner/tests/{live_db_ammo_catalog.rs,mod.rs}`, `crates/cell-world/src/cell/space_manager/mod.rs` (the `ammo_catalog` field), `crates/cell/src/cell/service/startup.rs` (its load), `crates/server/src/main.rs` + `Cargo.toml` (flag init), `crates/server/src/logging/{filters.rs,target_scan_tests.rs}` (the `ammo` row and pin), and the empty pre-split files listed under AM-02, AM-04 and AM-08..AM-11c below with their `mod` lines | `ammo_change.rs`, `reload.rs`, `active_slot.rs`, `scripts.rs`, `registry.rs`, `items.sql`, `loot.sql` |
 | AM-01 | `docs/reverse-engineering/findings/ammo-model.md` (new) | Everything else — read-only research packet |
-| AM-02 Reserve | `crates/cell-combat/.../player/world/reload.rs` (split: reserve-draw logic into a new sibling `reload_reserve.rs`), `crates/cell-combat/.../bandolier/active_slot.rs` (split: switch-return logic into a new sibling `switch_return.rs`), `crates/wire/src/cell/messages/mod.rs` (new `CellToBaseMsg` variant if the reserve draw needs its own base round trip beyond `BandolierAmmoUpdate`) | `ammo_change.rs` (AM-03), `scripts.rs`/`registry.rs` (AM-04) |
+| AM-02 Reserve | `crates/cell-combat/.../player/world/reload.rs`, `crates/cell-combat/.../player/world/reload_reserve.rs` (created empty and declared `pub mod` by AM-F; fill it, do not touch `world/mod.rs`), `crates/cell-combat/.../bandolier/switch_return.rs` (created empty and declared by AM-F; fill it, do not touch `bandolier/mod.rs`), `crates/cell-combat/.../bandolier/active_slot.rs`, the base-side handler that calls `ammo_reserve::draw` / `return_rounds`, `crates/wire/src/cell/messages/mod.rs` (new `CellToBaseMsg` variant if the reserve draw needs its own base round trip beyond `BandolierAmmoUpdate`) | `ammo_change.rs` (AM-03), `scripts.rs`/`registry.rs` (AM-04) |
 | AM-03 Validation | `crates/cell-combat/.../bandolier/ammo_change.rs` | `reload.rs`, `active_slot.rs`, `scripts.rs`/`registry.rs` |
-| AM-04 Damage framework | `crates/cell-world/src/cell/effects/ammo_damage.rs` (new), one match arm in `crates/cell-world/src/cell/effects/registry.rs`, `crates/cell-combat/src/cell/abilities/resolve.rs` (thread real ammo type through instead of the `0` placeholder), `db/resources/Abilities/Seed/ammo_modifiers_hp_ap.sql` (new), `db/database.sql` (1 new `\ir` line) | `scripts.rs` itself (new file only), `ammo_change.rs`, `reload.rs` |
+| AM-04 Damage framework | `crates/cell-world/src/cell/effects/ammo_damage.rs` (created empty and declared by AM-F), one match arm in `crates/cell-world/src/cell/effects/registry.rs`, `crates/cell-combat/src/cell/abilities/resolve.rs` (thread real ammo type through instead of the `0` placeholder), `db/resources/Abilities/Seed/ammo_modifiers_hp_ap.sql` (new), `db/database.sql` (1 new `\ir` line) | `scripts.rs` itself (new file only), `ammo_change.rs`, `reload.rs` |
 | AM-05 Loot and crates | `db/resources/Loot/Seed/ammo_loot.sql` (new, covers table 3 and tables 8/9), `db/database.sql` (1 new `\ir` line) | Any Rust file — this packet should be pure data if `open_loot`/`roll_loot_entries` already handle arbitrary `design_id`s, which the loot-system doc suggests they do |
 | AM-06 GM tooling | New files under `crates/cell-console/src/cell/console/gm/` (`give_ammo.rs`, `set_infinite_ammo.rs`, following the existing `give.rs`/`give_training_points.rs` pattern), `docs/commands.md` (flip the two rows to "Yes," and note they ship as `.`-console commands, not the native opcode) | `ammo_change.rs`, `reload.rs`, `registry.rs`, `gm_gate.rs` (native dispatch is not this packet's path — see the AM-06 scope note) |
 | AM-07 Client push | `crates/resources/src/base/item_overrides.rs` (or a parallel new module if the spike finds new-id injection needs different plumbing than an attribute override) — scope is now only the 15 new ammo item definitions, never the widened weapons | Everything else, `ammo_items.sql`/`ammo_item_types.sql` (AM-F's; only touched if the spike fails and ids must be repointed, coordinated with AM-F's owner) |
-| AM-08 Incendiary | `crates/cell-world/src/cell/effects/ammo_incendiary.rs` (new), one match arm in `registry.rs`, `db/resources/Abilities/Seed/ammo_modifiers_incendiary.sql` (new), `db/database.sql` (1 line) | `ammo_damage.rs`, every other family's file |
-| AM-09 EMP | `crates/cell-world/src/cell/effects/ammo_emp.rs` (new), one match arm in `registry.rs`, `db/resources/Abilities/Seed/ammo_modifiers_emp.sql` (new), `db/database.sql` (1 line) | Same isolation as AM-08 |
-| AM-10 Explosive | `crates/cell-world/src/cell/effects/ammo_explosive.rs` (new), one match arm in `registry.rs`, `db/resources/Abilities/Seed/ammo_modifiers_explosive.sql` (new), `db/database.sql` (1 line) | Same isolation as AM-08 |
-| AM-11a Darts (crowd-control: Poison, Disease, Tranquilizer) | `crates/cell-world/src/cell/effects/ammo_dart_cc.rs` (new), one match arm in `registry.rs`, its own seed file, `db/database.sql` (1 line) | Same isolation |
-| AM-11b Darts (tech-disable: EMP, Radioactive) | `crates/cell-world/src/cell/effects/ammo_dart_tech.rs` (new), one match arm in `registry.rs`, its own seed file, `db/database.sql` (1 line) | Same isolation |
-| AM-11c Darts (buff/heal: Stim, Coagulant, Nanites, Antidote, Adrenaline) | `crates/cell-world/src/cell/effects/ammo_dart_support.rs` (new), one match arm in `registry.rs`, its own seed file, `db/database.sql` (1 line) | Same isolation |
+| AM-08 Incendiary | `crates/cell-world/src/cell/effects/ammo_incendiary.rs` (created empty and declared by AM-F), one match arm in `registry.rs`, `db/resources/Abilities/Seed/ammo_modifiers_incendiary.sql` (new), `db/database.sql` (1 line) | `ammo_damage.rs`, every other family's file |
+| AM-09 EMP | `crates/cell-world/src/cell/effects/ammo_emp.rs` (created empty and declared by AM-F), one match arm in `registry.rs`, `db/resources/Abilities/Seed/ammo_modifiers_emp.sql` (new), `db/database.sql` (1 line) | Same isolation as AM-08 |
+| AM-10 Explosive | `crates/cell-world/src/cell/effects/ammo_explosive.rs` (created empty and declared by AM-F), one match arm in `registry.rs`, `db/resources/Abilities/Seed/ammo_modifiers_explosive.sql` (new), `db/database.sql` (1 line) | Same isolation as AM-08 |
+| AM-11a Darts (crowd-control: Poison, Disease, Tranquilizer) | `crates/cell-world/src/cell/effects/ammo_dart_cc.rs` (created empty and declared by AM-F), one match arm in `registry.rs`, its own seed file, `db/database.sql` (1 line) | Same isolation |
+| AM-11b Darts (tech-disable: EMP, Radioactive) | `crates/cell-world/src/cell/effects/ammo_dart_tech.rs` (created empty and declared by AM-F), one match arm in `registry.rs`, its own seed file, `db/database.sql` (1 line) | Same isolation |
+| AM-11c Darts (buff/heal: Stim, Coagulant, Nanites, Antidote, Adrenaline) | `crates/cell-world/src/cell/effects/ammo_dart_support.rs` (created empty and declared by AM-F), one match arm in `registry.rs`, its own seed file, `db/database.sql` (1 line) | Same isolation |
 | AM-12 Close-out | `docs/gameplay/weapon-ammo-reload.md`, `docs/gameplay/combat-system.md`, `docs/gameplay/loot-system.md`, `docs/commands.md` (if not already flipped by AM-06), `docs/architecture/abilities-and-effects-system.md`, `docs/gap-analysis.md`, `docs/project-status.md`, `docs/guides/unified-uat.md`, the feature-flag flip | Nothing else — pure doc + flag packet |
 
-**Shared contended file: `registry.rs` (80 lines today).** Every Wave-2 family packet adds exactly one `match` arm. This cannot be fully parallelized away — it is the one place the effects system centralizes dispatch — but each edit is a single line, so the merge train's "whoever merges second rebases" rule keeps the cost to a one-line conflict, not a redesign. **`db/database.sql`** is the same shape: many packets each add one or two `\ir` lines; same mitigation.
+**No packet edits `effects/mod.rs`, `bandolier/mod.rs`, `player/world/mod.rs`, `SpaceManager`, the cell startup loader or the logging filters:** AM-F already declared every ammo module and loaded the catalog. **Shared contended file: `registry.rs` (80 lines today).** Every Wave-2 family packet adds exactly one `match` arm. This cannot be fully parallelized away — it is the one place the effects system centralizes dispatch — but each edit is a single line, so the merge train's "whoever merges second rebases" rule keeps the cost to a one-line conflict, not a redesign. **`db/database.sql`** is the same shape: many packets each add one or two `\ir` lines; same mitigation.
 
 ## Dependency graph and waves
 
@@ -168,7 +182,7 @@ Wave 1 is 6 packets in parallel (AM-02 through AM-07); AM-01 already shipped and
 
 ## AM-F: foundation
 
-**Status: Ready.** The only serial gate. Scope, contract and file list are fully specified above. No player-visible behavior changes — `ammo.finite_special` stays off, `requestAmmoChange`'s whitelist logic is untouched (AM-03's job), reload is untouched (AM-02's job).
+**Status: Ready.** The only serial gate. Scope, contract and file list are specified above, updated to what the AM-F PR ships; [worknotes/AM-F.md](worknotes/AM-F.md) lists every change from the original plan. No player-visible behavior changes — `ammo.finite_special` stays off, `requestAmmoChange`'s whitelist logic is untouched (AM-03's job), reload is untouched (AM-02's job).
 
 Tests:
 

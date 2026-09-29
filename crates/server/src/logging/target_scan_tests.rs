@@ -440,3 +440,21 @@ fn bank_target_reaches_otlp_at_debug_and_warn() {
         assert_eq!(n, 1, "bank at {level} must reach one OTLP index: {sinks:?}");
     }
 }
+
+/// Ammo campaign (AM-F): the `ammo` target reaches exactly one OTLP log
+/// index at DEBUG (the Wave-1 packets' reserve and damage rows), INFO (the
+/// startup flag and catalog rows) and WARN (refusals). Fails if the
+/// `ammo=debug` row leaves `OTEL_FILTER`: AM-F adds it before any DEBUG
+/// emitter exists, so the source scan alone would not notice.
+#[test]
+fn ammo_target_reaches_otlp_at_debug_info_and_warn() {
+    let (dispatch, hits) = harness(FILE_LAYERS);
+    for level in [Level::DEBUG, Level::INFO, Level::WARN] {
+        let sinks = sinks_for(&dispatch, &hits, "ammo", level);
+        let n = OTLP_LOG_SINKS
+            .iter()
+            .filter(|s| sinks.contains(**s))
+            .count();
+        assert_eq!(n, 1, "ammo at {level} must reach one OTLP index: {sinks:?}");
+    }
+}

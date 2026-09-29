@@ -451,6 +451,22 @@ impl CellService {
                     );
                 }
             }
+            // Special ammo catalog (ammo campaign AM-F). Not fatal: with no
+            // catalog every shot fires unmodified and no ammo type has a
+            // reserve item, which is today's behaviour.
+            match spawner::load_ammo_catalog(pool).await {
+                Ok(catalog) => {
+                    space_mgr.ammo_catalog = catalog;
+                }
+                Err(e) => {
+                    tracing::error!(
+                        target: "ammo",
+                        event = "catalog_load_failed",
+                        error = %e,
+                        "Failed to load the ammo catalog -- special ammo has no \n                         modifiers or reserve items for this process lifetime"
+                    );
+                }
+            }
             match super::super::ring_transport::load_ring_regions(pool).await {
                 Ok(regions) => {
                     space_mgr.ring_transporters.load(&regions);

@@ -309,6 +309,12 @@ pub struct SpaceManager {
     /// `deployable_specs.deployable_for(ability_id)` whether a fired ability
     /// places a deployable.
     pub deployable_specs: super::spawner::DeployableCatalog,
+    /// Special ammo (ammo campaign, `docs/analysis/ammo/`): the reserve item
+    /// per `EAmmoType` and the per-shot modifier, loaded at startup by
+    /// [`super::spawner::load_ammo_catalog`]. The damage path asks
+    /// `ammo_catalog.modifier(ammo_type)` (AM-04, D-AM07) and the GM tooling
+    /// asks `ammo_catalog.item_id_for(ammo_type)` (AM-06).
+    pub ammo_catalog: super::spawner::AmmoCatalog,
     /// Ring transporter region definitions keyed by `region_id` (cross-world unique).
     /// Loaded once at startup from `resources.ring_transport_regions`.
     pub ring_regions: HashMap<i32, super::ring_transport::RingRegion>,
@@ -517,6 +523,7 @@ impl SpaceManager {
             spawn_templates: HashMap::new(),
             pet_summons: super::spawner::PetSummonCatalog::default(),
             deployable_specs: super::spawner::DeployableCatalog::default(),
+            ammo_catalog: super::spawner::AmmoCatalog::default(),
             ring_regions: HashMap::new(),
             ring_point_set_to_region: HashMap::new(),
             ring_transporters: super::ring_transport::RingTransporterManager::new(),

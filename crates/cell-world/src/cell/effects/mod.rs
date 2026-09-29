@@ -59,6 +59,15 @@
 //! tick, channel cancellation) is combat: `cimmeria-cell-combat` declares it
 //! beside a re-export of this module at `cell::effects`.
 
+// Special-ammo scripts (ammo campaign; created empty by AM-F, one file per
+// packet: AM-04, AM-08, AM-09, AM-10, AM-11a/b/c).
+pub mod ammo_damage;
+pub mod ammo_dart_cc;
+pub mod ammo_dart_support;
+pub mod ammo_dart_tech;
+pub mod ammo_emp;
+pub mod ammo_explosive;
+pub mod ammo_incendiary;
 pub mod cover_stance;
 pub mod heal;
 pub mod passives;

@@ -4,6 +4,8 @@
 
 pub mod item_sequence;
 pub mod reload;
+// Ammo campaign AM-02 (created empty by AM-F).
+pub mod reload_reserve;
 
 // Re-export discipline: keep every cross-module call site's import path
 // identical after the split. `reload`/`item_sequence` items are consumed

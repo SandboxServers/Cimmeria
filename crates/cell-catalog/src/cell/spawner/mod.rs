@@ -19,6 +19,8 @@
 //! - `regions` — generic region (AreaSet) loading.
 //! - `abilities` — ability/effect defs + event-set sequence map.
 //! - `loot` — loot tables + item container map + weapon defs.
+//! - `ammo_catalog` — special ammo: reserve item per type and the per-shot
+//!   modifier (`resources.ammo_item_types`, `resources.ammo_modifiers`).
 //! - `pet_summons` — summon ability → pet template (`resources.pet_summons`).
 //! - `deployables` — deployable ability → template and its timing and pulse
 //!   effects (`resources.deployables`).
@@ -30,6 +32,7 @@
 //!            `python/cell/SGWSpawnableEntity.py`
 
 mod abilities;
+mod ammo_catalog;
 mod deployables;
 mod dialogs;
 mod eye_heights;
@@ -55,6 +58,9 @@ pub use abilities::{
     EVENT_ABILITY_BEGIN, EVENT_ABILITY_END, EVENT_ABILITY_INTERRUPT, EVENT_ITEM_EQUIP,
     EVENT_ITEM_MELEE, EVENT_ITEM_RANGED, EVENT_ITEM_RELOAD, EVENT_ITEM_UNEQUIP, EVENT_ITEM_USE,
     EVENT_ITEM_USE_ABILITY,
+};
+pub use ammo_catalog::{
+    load_ammo_catalog, load_ammo_item_types, load_ammo_modifiers, AmmoCatalog, AmmoModifier,
 };
 pub use deployables::{load_deployables, DeployableCatalog, DeployableSpec};
 pub use dialogs::{
