@@ -2,18 +2,20 @@
 title: "Project Status"
 type: reference
 audience: anyone tracking the project
-last_updated: 2026-09-27
+last_updated: 2026-09-28
 ---
 
 # Project Status
 
 Where the Cimmeria server emulator stands today and what's ahead.
 
-> This document summarizes the findings of the [Gap Analysis](gap-analysis.md), which tracks **486 individual features across 45 systems** (37 gameplay + 8 infrastructure) against the active Rust codebase on `main`.
+> This document summarizes the findings of the [Gap Analysis](gap-analysis.md), which tracks **491 individual features across 45 systems** (37 gameplay + 8 infrastructure) against the active Rust codebase on `main`.
 >
 > **Re-verified 2026-09-25** against the code at `acbcc22e`, after about 160 PRs landed since the previous (2026-07-25) edition. Every row was re-read, and a feature counts as Confirmed Working only when there is a written record of an in-client test: the 2026-09-18 colo playtest, the 2026-09-25 NPC AI UAT, a PR or issue note, or a recorded confirmation. That stricter bar moved some rows down (vendors, spawn population, mission cash, mail sending, effect clear-flags) while the playtest moved others up (character creation, minigames, ring trips, damage, loot). The previous edition's headline also did not match its own table: it printed 443 / CW 159 / KM 128 against rows that summed to 444 / CW 164 / KM 124. The figures below are recomputed from the rows.
 >
-> **2026-09-27 update**: the headline and the Chat, Mail, Dueling, Rate limiting and Admin / GM rows follow the social-systems close-out ([ledger](analysis/social-systems/README.md)), which also recounted the gap-analysis matrix from its feature tables (World entry, XP, Crafting and Anti-cheat counts changed with it). The Inventory notes also follow the Bank and Vault campaign's personal-bank close-out ([ledger](analysis/bank-vault/README.md)). The headline and the Organizations, Groups and Chat rows then follow the organizations close-out (ORG-11, [ledger](analysis/organizations/README.md)), which recounted §21, §23 and §30. The headline, and the Inventory and Organizations rows, then follow the Bank and Vault campaign's org close-out (BV-10, [ledger](analysis/bank-vault/README.md)), which moved §23's treasury and vault rows from KM to NT. The headline, the Crafting row, the crafting content row and known issue, the critical path and the roadmap then follow the crafting close-out (CR-13, [ledger](analysis/crafting/README.md)), which moved all nine §19 rows to NT. Other rows keep their 2026-09-25 prose.
+> **2026-09-27 update**: the headline and the Chat, Mail, Dueling, Rate limiting and Admin / GM rows follow the social-systems close-out ([ledger](analysis/social-systems/README.md)), which also recounted the gap-analysis matrix from its feature tables (World entry, XP, Crafting and Anti-cheat counts changed with it). The Inventory notes also follow the Bank and Vault campaign's personal-bank close-out ([ledger](analysis/bank-vault/README.md)). The headline and the Organizations, Groups and Chat rows then follow the organizations close-out (ORG-11, [ledger](analysis/organizations/README.md)), which recounted §21, §23 and §30. The headline, and the Inventory and Organizations rows, then follow the Bank and Vault campaign's org close-out (BV-10, [ledger](analysis/bank-vault/README.md)), which moved §23's treasury and vault rows from KM to NT. The headline, the Crafting row, the crafting content row and known issue, the critical path and the roadmap then follow the crafting close-out (CR-13, [ledger](analysis/crafting/README.md)), which moved all nine §19 rows to NT.
+>
+> **2026-09-28 update**: the headline and the Combat, Inventory and Loot rows follow the ammo close-out (AM-12, [ledger](analysis/ammo/README.md)), which added five new special-ammo rows to §9, §12 and §14 (four NT, one IM) and changed no existing row. Other rows keep their 2026-09-25 prose.
 >
 > **Scope note**: only work merged to `main` is counted. The black-market implementation on `feat/571-black-market-phase1` (PR #586) is real but unmerged, and is counted as missing until it lands.
 
@@ -31,18 +33,18 @@ Where the Cimmeria server emulator stands today and what's ahead.
 
 | Status | Features | Percentage |
 |--------|----------|-----------|
-| Confirmed Working (CW) | 167 | 34.4% |
-| Needs Test (NT) | 121 | 24.9% |
-| Implemented (IM) | 101 | 20.8% |
-| Known/Missing (KM) | 94 | 19.3% |
+| Confirmed Working (CW) | 167 | 34.0% |
+| Needs Test (NT) | 125 | 25.5% |
+| Implemented (IM) | 102 | 20.8% |
+| Known/Missing (KM) | 94 | 19.1% |
 | Needed/Unknown (NU) | 3 | 0.6% |
-| **Total** | **486** | |
+| **Total** | **491** | |
 
-**Code exists (CW + NT + IM)**: 389 features (80.0%)  
-**Missing (KM + NU)**: 97 features (20.0%)  
-**Tested end-to-end (CW)**: 167 features (34.4%)
+**Code exists (CW + NT + IM)**: 394 features (80.2%)  
+**Missing (KM + NU)**: 97 features (19.8%)  
+**Tested end-to-end (CW)**: 167 features (34.0%)
 
-The story of this quarter is the Needs Test column, which tripled from 18 to 58 by 2026-09-25 and reached 121 on 2026-09-27, when the social-systems, pets, organizations, bank and crafting campaigns merged. Castle Cellblock and Castle were rebuilt and played end to end in the 2026-09-18 colo playtest, Harset was rebuilt, and the NPC AI restoration campaign replaced aggro, leash, cover and line of sight. Most of that merged with unit, live-DB and wire-format coverage but has not yet been run in a client. A tester working through the NT rows is now the fastest way to move the headline.
+The story of this quarter is the Needs Test column, which tripled from 18 to 58 by 2026-09-25 and reached 121 on 2026-09-27, when the social-systems, pets, organizations, bank and crafting campaigns merged, and 125 on 2026-09-28 with the ammo campaign. Castle Cellblock and Castle were rebuilt and played end to end in the 2026-09-18 colo playtest, Harset was rebuilt, and the NPC AI restoration campaign replaced aggro, leash, cover and line of sight. Most of that merged with unit, live-DB and wire-format coverage but has not yet been run in a client. A tester working through the NT rows is now the fastest way to move the headline.
 
 ## System Status
 
@@ -63,12 +65,12 @@ The story of this quarter is the Needs Test column, which tripled from 18 to 58 
 | World entry & spaces | CW | 12 (7 CW, 4 NT, 1 IM) | About 32,500 lines across 95 files. Castle Cellblock and Castle end-to-end. Same-world respawn resync added (#756). Open: fresh clients logging straight into Castle or SGC_W1 hang (recorded in #756, no issue filed yet) |
 | Movement & navigation | IM | 11 (1 CW, 3 NT, 7 IM) | **Every world now has a navmesh** (#794), with tiled meshes for the large exteriors (#796) and per-world containment modes. Four-layer movement validation (#437/#478). Open: the speed check divides by per-packet time and can produce Inf; Castle's navmesh does not connect its interior to its exterior |
 | Entity lifecycle (AoI) | IM | 10 (6 CW, 2 NT, 1 IM, 1 KM) | Grid-based AoI and witness lifecycle work, but an entity a witness was correctly introduced to can still fail to render (invisible corpse until relog). The first-login cinematic hold (#747) is the experiment on it and **has not been observed in game**. Player-to-player introduction (#737) is implemented and **awaiting two-client validation** — see [architecture/player-ghost-aoi-cascade.md](architecture/player-ghost-aoi-cascade.md) |
-| Combat & abilities | IM | 24 (6 CW, 14 IM, 4 KM) | About 11,400 production lines and 194 tests. Damage application is CW (26 kills and 19 player deaths in the colo playtest). Line of sight is enforced on the NPC side but **not** on player `useAbility`; no facing check, min range, prerequisite monikers or threat decay. Two #673 divergences (`EF_DONT_USE_QR` value, damage-type wire values) are still open |
+| Combat & abilities | IM | 26 (6 CW, 1 NT, 15 IM, 4 KM) | About 11,400 production lines and 194 tests. Damage application is CW (26 kills and 19 player deaths in the colo playtest). Line of sight is enforced on the NPC side but **not** on player `useAbility`; no facing check, min range, prerequisite monikers or threat decay. Two #673 divergences (`EF_DONT_USE_QR` value, damage-type wire values) are still open. **Special ammo (ammo campaign, 2026-09-28, [ledger](analysis/ammo/README.md))**: the loaded ammo type modifies every player weapon shot (Hollow Point, Armor Piercing, Incendiary, EMP, Explosive and ten dart types), and support darts heal or cleanse allies. On by default (`ammo.finite_special`); penetration stays inert while `MITIGATION` is 0 |
 | Effects & buffs | IM | 13 (3 CW, 5 IM, 5 KM) | Framework works. The clear-on-damage, clear-on-revive and clear-on-bandolier-swap flags do not exist; permanent vs non-permanent stat tracking does not exist. Long tail of 3,216 effect rows needs script coverage |
 | Stats | IM | 8 (5 CW, 2 KM, 1 NU) | Stat list + dirty sync + per-level scaling shipped. Equipment bonuses + derived formulas pending |
-| Inventory & items | IM | 13 (8 CW, 3 NT, 1 IM, 1 KM) | About 5,600-line dispatcher with stacking (#405), bandolier discipline, Slappack PAK override. Item binding is respected by trade, sell and stack. **Bank and vault done server-side 2026-09-27, awaiting the owner's UAT** (Bank and Vault campaign BV-01 to BV-10, [ledger](analysis/bank-vault/README.md); release 1 carried the personal bank, release 2 the organization vaults): a Banker or GM `.bank` opens the personal vault, every move re-checks the session and the Banker's range, and the vault grows from 40 to 100 slots. The Team and Command vaults open at their own Bankers and take moves under the organization lock, and the Team vault grows from 40 to 100, paid from the treasury. Players cannot buy a step of either yet (the Expand dialog is quarantined after #943), so only GM `.bankexpand` and `.orgvaultexpand` buy |
+| Inventory & items | IM | 15 (8 CW, 5 NT, 1 IM, 1 KM) | About 5,600-line dispatcher with stacking (#405), bandolier discipline, Slappack PAK override. Item binding is respected by trade, sell and stack. **Bank and vault done server-side 2026-09-27, awaiting the owner's UAT** (Bank and Vault campaign BV-01 to BV-10, [ledger](analysis/bank-vault/README.md); release 1 carried the personal bank, release 2 the organization vaults): a Banker or GM `.bank` opens the personal vault, every move re-checks the session and the Banker's range, and the vault grows from 40 to 100 slots. The Team and Command vaults open at their own Bankers and take moves under the organization lock, and the Team vault grows from 40 to 100, paid from the treasury. Players cannot buy a step of either yet (the Expand dialog is quarantined after #943), so only GM `.bankexpand` and `.orgvaultexpand` buy. **Special ammo is a finite bag resource** (ammo campaign AM-02/AM-03, [ledger](analysis/ammo/README.md)): a special reload draws rounds from bag stacks, switching type returns them, and `requestAmmoChange` checks the weapon's allowed types and fails closed; awaiting the owner's UAT |
 | Missions | IM | 12 (7 CW, 3 IM, 2 KM) | Content-engine driven. About 30 missions have content chains and about 22 were played in the client (Castle Cellblock, Castle 701-706). Completion works, but **missions pay no cash or items** (#310) and mission XP is 0 in the data. #657 (objectives lost on relog) is fixed on `main` (#682) and awaiting a relog test |
-| Loot | IM | 9 (4 CW, 1 NT, 4 KM) | Loot generation, take-all and bag drop verified in the colo playtest; looter distance re-validated per item (#446). Tables mostly empty; there is **no** per-player eligibility list in Rust |
+| Loot | IM | 10 (4 CW, 2 NT, 4 KM) | Loot generation, take-all and bag drop verified in the colo playtest; looter distance re-validated per item (#446). Tables mostly empty; there is **no** per-player eligibility list in Rust. Castle NID corpses, the Castle pre-Romney chest and the debug-hub crate now drop special ammo (AM-05) |
 | Vendors | NT | 8 (1 CW, 6 NT, 1 IM) | About 7,450 lines across buyback / purchase / sell / paid_repair / paid_recharge. #609 found that the vendor window had been routed to the mission handler, so earlier vendor testing was void, and no client has tested the store since. **No world currently spawns a vendor** (`.spawn 25` is the only way to reach one) |
 
 ### NPC Systems — Partial
@@ -194,13 +196,13 @@ The crafting campaign restored the whole activity layer on the Phase 1 state (#4
 
 ### September landings await client verification
 
-121 rows are Needs Test: the NPC AI changes merged after the 2026-09-25 UAT, the social-systems rows (mail, chat, duels; the owner's [SS-UAT](analysis/social-systems/work-packets.md#ss-uat-owner-uat-colo-after-the-release) covers them), the organizations and bank rows, the nine crafting rows (the owner's [CR-14](analysis/crafting/handoffs/session-resume.md#cr-14-owner-uat-checklist)), gate dial/open/cross with a second observer, the dialog-UI buttons and barks, two-client chat and player visibility, relog position and objectives, and vendors (untested since #609). The per-row tester actions are in the [Gap Analysis](gap-analysis.md).
+125 rows are Needs Test: the NPC AI changes merged after the 2026-09-25 UAT, the four special-ammo rows (the [unified UAT guide § Special ammo](guides/unified-uat.md#special-ammo)), the social-systems rows (mail, chat, duels; the owner's [SS-UAT](analysis/social-systems/work-packets.md#ss-uat-owner-uat-colo-after-the-release) covers them), the organizations and bank rows, the nine crafting rows (the owner's [CR-14](analysis/crafting/handoffs/session-resume.md#cr-14-owner-uat-checklist)), gate dial/open/cross with a second observer, the dialog-UI buttons and barks, two-client chat and player visibility, relog position and objectives, and vendors (untested since #609). The per-row tester actions are in the [Gap Analysis](gap-analysis.md).
 
 ## Critical Path for Playability
 
 Re-ranked 2026-09-25.
 
-1. **Client-test the September landings** — the 121 NT rows above; the cheapest way to move the headline
+1. **Client-test the September landings** — the 125 NT rows above; the cheapest way to move the headline
 2. **Effect-script content coverage** — the 3,216 effect rows need script authoring for the long tail, plus the missing clear-on flags
 3. **AoI entity-introduction drop** — needs an in-game look at the #747 hold, not more code
 4. **Mission rewards** — a reward formula for XP, and cash and item dispatch (#310)
@@ -208,7 +210,7 @@ Re-ranked 2026-09-25.
 6. **Multi-zone end-to-end** — Harset's first playtest; content campaigns for the next zones
 7. **Two-client verification** — trading, player-to-player introduction, chat, mail, duels, squads, Teams and Commands between players
 
-Quality-of-life items (black market merge, remaining minigame ports, group loot and member info) follow the above and can be picked up independently. Contact lists and GM tooling have shipped; mail, chat and 1v1 duels (the social-systems campaign), pets, squads, Teams and Commands (the organizations campaign), the personal and organization vaults with the treasury (the Bank and Vault campaign), and crafting are restored server-side and waiting for the owner's in-game UAT.
+Quality-of-life items (black market merge, remaining minigame ports, group loot and member info) follow the above and can be picked up independently. Contact lists and GM tooling have shipped; mail, chat and 1v1 duels (the social-systems campaign), pets, squads, Teams and Commands (the organizations campaign), the personal and organization vaults with the treasury (the Bank and Vault campaign), crafting, and finite special ammo (the ammo campaign) are restored server-side and waiting for the owner's in-game UAT.
 
 ## Roadmap
 

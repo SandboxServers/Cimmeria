@@ -59,9 +59,9 @@ async fn sync_bandolier_items_active_slot_gained_partial_clip_triggers_reload_on
         instance_id: 0,
         item_id: 55,
         clip_size: 15,
-        default_ammo_type: 2,
+        default_ammo_type: 1,
         current_ammo: 10,
-        cur_ammo_type: 2,
+        cur_ammo_type: 1,
     };
 
     let (tx, _rx) = mpsc::channel(32);
@@ -134,9 +134,9 @@ async fn sync_bandolier_items_with_option_off_does_not_reload_on_activate() {
         instance_id: 0,
         item_id: 55,
         clip_size: 15,
-        default_ammo_type: 2,
+        default_ammo_type: 1,
         current_ammo: 10,
-        cur_ammo_type: 2,
+        cur_ammo_type: 1,
     };
 
     let (tx, _rx) = mpsc::channel(32);

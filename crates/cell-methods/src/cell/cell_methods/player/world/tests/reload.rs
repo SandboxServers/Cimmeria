@@ -1,6 +1,12 @@
 //! `handle_reload` core dispatch tests: full-clip no-op, reload-slot
 //! pinning, and the byte-exact Item_Reload sequence + ammo-type propId
 //! wire layout. Holster/phase choreography lives in `reload_holster.rs`.
+//!
+//! The fixtures load `Bullet_Default` (1). They used 2 before the ammo
+//! campaign, which is `Bullet_Armor_Piercing`: with `ammo.finite_special` on
+//! by default (AM-12) a special type takes AM-02's reserve draw instead of
+//! the free reload these tests pin (that path is `reload_reserve_tests` in
+//! `cimmeria-cell-combat`).
 
 use super::super::*;
 use super::make_mgr_with_player;
@@ -21,9 +27,9 @@ async fn handle_reload_no_op_when_already_full() {
                 instance_id: 0,
                 item_id: 1,
                 clip_size: 30,
-                default_ammo_type: 2,
+                default_ammo_type: 1,
                 current_ammo: 30, // full
-                cur_ammo_type: 2,
+                cur_ammo_type: 1,
             },
         );
         e.active_bandolier_slot = 0;
@@ -57,9 +63,9 @@ async fn handle_reload_pins_reload_slot_id_to_current_active_slot() {
                 instance_id: 0,
                 item_id: 1,
                 clip_size: 30,
-                default_ammo_type: 2,
+                default_ammo_type: 1,
                 current_ammo: 0,
-                cur_ammo_type: 2,
+                cur_ammo_type: 1,
             },
         );
         e.active_bandolier_slot = 2;
@@ -129,9 +135,9 @@ async fn handle_reload_sends_item_reload_sequence() {
                 instance_id: 0,
                 item_id: 1,
                 clip_size: 30,
-                default_ammo_type: 2,
+                default_ammo_type: 1,
                 current_ammo: 0,
-                cur_ammo_type: 2,
+                cur_ammo_type: 1,
             },
         );
         e.active_bandolier_slot = 0;
@@ -337,9 +343,9 @@ async fn handle_reload_timer_expiry_is_absolute_on_the_game_clock() {
                 instance_id: 0,
                 item_id: 1,
                 clip_size: 30,
-                default_ammo_type: 2,
+                default_ammo_type: 1,
                 current_ammo: 0,
-                cur_ammo_type: 2,
+                cur_ammo_type: 1,
             },
         );
         e.active_bandolier_slot = 0;

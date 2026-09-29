@@ -74,7 +74,10 @@ INSERT INTO loot (loot_id, loot_table_id, design_id, min_quantity, probability, 
 --        worth of bio-medical stock; a drone salvages to electronics and power.
 -- There is no grenade item in the client item table, so no grenades.
 --
--- Chance a corpse drops nothing (product of the misses):
+-- Chance a corpse drops nothing from the rows in this file (product of the
+-- misses). Tables 4, 5 and 7 also carry special-ammo rows, so the full
+-- figures, after those, are in Loot/Seed/ammo_loot.sql (29.0 %, 16.0 % and
+-- 31.5 %):
 --   table 4 guard    0.50 * 0.85 * 0.92^2 * 0.90 * 0.99^6 = 30.5%
 --   table 5 veteran  0.40 * 0.75 * 0.88^2 * 0.85 * 0.98^6 = 17.5%
 --   table 6 PRU      0.70 * 0.80                          = 56%
@@ -118,7 +121,8 @@ INSERT INTO loot (loot_id, loot_table_id, design_id, min_quantity, probability, 
 
 -- Tables 8/9, the Castle pre-Romney chest (Decision (@Cadacious, 2026-09-28)):
 -- the archetype weapon, 2-3 Health Slappacks, two Focus Heals and 25-75
--- naquadah. TODO(#1026): Hollow Point ammo joins both tables when #1026 lands.
+-- naquadah. Both tables also hand out 50-75 Hollow Point rounds; that row is
+-- in Loot/Seed/ammo_loot.sql (ammo campaign, D-AM03).
 INSERT INTO loot (loot_id, loot_table_id, design_id, min_quantity, probability, max_quantity) VALUES (50, 8, 3127, 1, 1, 1);
 INSERT INTO loot (loot_id, loot_table_id, design_id, min_quantity, probability, max_quantity) VALUES (51, 8, 2893, 2, 1, 3);
 INSERT INTO loot (loot_id, loot_table_id, design_id, min_quantity, probability, max_quantity) VALUES (52, 8, 6106, 2, 1, 2);

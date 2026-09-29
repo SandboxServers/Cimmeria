@@ -240,3 +240,88 @@ async fn loot_item_out_of_range_is_denied() {
         "out-of-range loot must emit the documented rejection warn (#446)"
     );
 }
+
+// ── ammo campaign: `ammo_loot_dropped` (#1026, AM-12) ─────────────
+
+/// Loot one item with design id `design_id` (20 of them) off a corpse whose
+/// template names loot table 4, with Hollow Point (9001) in the ammo
+/// catalog. Returns the log capture, installed just before the take.
+async fn loot_one_item(design_id: i32) -> crate::test_support::LogCaptureGuard {
+    use super::*;
+    use crate::test_support::LogCapture;
+    use cimmeria_cell_catalog::cell::spawner::{AmmoCatalog, AmmoModifier};
+    use cimmeria_entity::ammo_type::BULLET_HOLLOW_POINT;
+    use cimmeria_entity::cell_entity::LootItem;
+    use tokio::sync::mpsc;
+
+    let mut mgr = make_loot_mgr([2.0, 0.0, 0.0]);
+    let npc_id = mgr.get_entity(1).and_then(|e| e.looting_entity).unwrap();
+    mgr.ammo_catalog =
+        AmmoCatalog::from_rows(Vec::<AmmoModifier>::new(), [(BULLET_HOLLOW_POINT, 9001)]);
+    if let Some(p) = mgr.get_entity_mut(1) {
+        p.account_id = Some(7);
+    }
+    if let Some(npc) = mgr.get_entity_mut(npc_id) {
+        npc.loot_table_id = Some(4);
+        npc.loot = vec![LootItem {
+            design_id: Some(design_id),
+            quantity: 20,
+            index: 1,
+        }];
+    }
+
+    let capture = LogCapture::install();
+    let (tx, mut rx) = mpsc::channel(16);
+    handle_loot_item(1, 1, &tx, &mut mgr).await;
+    let granted = std::iter::from_fn(|| rx.try_recv().ok()).any(|m| {
+        matches!(
+            m,
+            CellToBaseMsg::GrantItem { item_id, count: 20, .. } if item_id == design_id
+        )
+    });
+    assert!(granted, "the looted item must be granted");
+    capture
+}
+
+/// **Type 12 guard.** Looting a special-ammo reserve item logs one DEBUG
+/// `ammo_loot_dropped` on target `ammo` with the account and player
+/// correlators, the ammo type, the rounds and the corpse. Removing the
+/// emission, or resolving the type any other way than the ammo catalog,
+/// fails this test.
+#[tokio::test]
+async fn looting_special_ammo_logs_ammo_loot_dropped() {
+    let capture = loot_one_item(9001).await;
+    let row = capture
+        .all()
+        .into_iter()
+        .find(|c| c.target == "ammo" && c.has_field("event", "ammo_loot_dropped"))
+        .unwrap_or_else(|| panic!("no ammo_loot_dropped row: {:#?}", capture.all()));
+    assert_eq!(row.level, tracing::Level::DEBUG);
+    for (key, value) in [
+        ("account_id", "7"),
+        ("player_id", "42"),
+        ("entity_id", "1"),
+        ("item_id", "9001"),
+        ("ammo_type", "3"),
+        ("ammo_label", "Bullet_Hollow_Point"),
+        ("quantity", "20"),
+        ("loot_table_id", "4"),
+    ] {
+        assert!(row.has_field(key, value), "{key} != {value}: {row:#?}");
+    }
+    assert!(row.fields.contains_key("corpse_id"), "{row:#?}");
+}
+
+/// Any other item logs no `ammo_loot_dropped`.
+#[tokio::test]
+async fn looting_other_items_logs_no_ammo_row() {
+    let capture = loot_one_item(3235).await;
+    assert!(
+        !capture
+            .all()
+            .iter()
+            .any(|c| c.has_field("event", "ammo_loot_dropped")),
+        "a weapon is not ammo: {:#?}",
+        capture.all()
+    );
+}

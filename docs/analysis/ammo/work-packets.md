@@ -108,7 +108,7 @@ Built as a real, tested module (not a stub) in AM-F rather than left for AM-02, 
   - loaded at cell startup (`crates/cell/src/cell/service/startup.rs`) into **`SpaceManager::ammo_catalog`**, the way `item_defs` holds `WeaponDef`. This is where `ammo_item_types::item_id_for(ammo_type)` in the packets below resolves on the cell: `space_mgr.ammo_catalog.item_id_for(ammo_type)`. On the base, `AmmoReserve` resolves the item in SQL.
 - Each family packet (AM-04 for HP/AP, AM-08 Incendiary, AM-09 EMP, AM-10 Explosive, AM-11a/b/c darts) ships its **own** seed file (`ammo_modifiers_hp_ap.sql`, `ammo_modifiers_incendiary.sql`, …) with its own `\ir` line in `db/database.sql` — each packet's one shared-file touch, sequenced by the merge train.
 
-**Feature flag (AM-F).** `ammo.finite_special`, default **off**. The repo had no feature-flag surface, so AM-F made one: `crates/entity/src/ammo_feature.rs`, a process-wide switch read once at startup from `CIMMERIA_AMMO_FINITE_SPECIAL` (`1`/`true`/`on`/`yes`; documented in `crates/server/src/main.rs`'s env table). Read it with `cimmeria_entity::ammo_feature::finite_special() -> bool` at the dispatch entrypoint and pass the `bool` into the logic under test; `set_finite_special(bool)` exists for nextest-only handler tests (one process per test). AM-12 flips `FINITE_SPECIAL_DEFAULT`. While off: `requestAmmoChange` and the reload path behave exactly as they do on `main` today (special types validate the same as AM-03 makes them, but reload still refills for free — the flag gates only the reserve **draw**, not the whitelist fix, since the whitelist fix is a security fix that should ship regardless). AM-12 flips it on after every packet through AM-11c is merged and the debug-hub UAT (D-AM06) has passed.
+**Feature flag (AM-F).** `ammo.finite_special`, default **off**. The repo had no feature-flag surface, so AM-F made one: `crates/entity/src/ammo_feature.rs`, a process-wide switch read once at startup from `CIMMERIA_AMMO_FINITE_SPECIAL` (`1`/`true`/`on`/`yes`; documented in `crates/server/src/main.rs`'s env table). Read it with `cimmeria_entity::ammo_feature::finite_special() -> bool` at the dispatch entrypoint and pass the `bool` into the logic under test; `set_finite_special(bool)` exists for nextest-only handler tests (one process per test). AM-12 flips `FINITE_SPECIAL_DEFAULT`. While off: `requestAmmoChange` and the reload path behave exactly as they do on `main` today (special types validate the same as AM-03 makes them, but reload still refills for free — the flag gates only the reserve **draw**, not the whitelist fix, since the whitelist fix is a security fix that should ship regardless). AM-12 flips it on after every packet through AM-11c is merged and the debug-hub UAT (D-AM06) has passed. **As shipped (AM-12, D-AM11):** `FINITE_SPECIAL_DEFAULT` is `true`, so the flag is on unless `CIMMERIA_AMMO_FINITE_SPECIAL` is `0`/`false`/`off`/`no`; an unrecognised value turns it off (`FINITE_SPECIAL_ON_INVALID`). It gates the reserve (AM-02), every `ammo_modifiers` row on the shot (AM-04, AM-08 to AM-11c) and the support-dart ally path (AM-11d). The owner decided to ship it on before the debug-hub UAT, so the UAT's first three steps are that choice's risks.
 
 **Telemetry contract.** Every packet satisfies all of the following; a worker who needs a new event adds a row here through the coordinator.
 
@@ -132,6 +132,28 @@ Built as a real, tested module (not a stub) in AM-F rather than left for AM-02, 
 | `gm_infinite_ammo_toggled` | info | AM-06 | `on` |
 | `feature_flag` / `feature_flag_invalid` | info / warn | AM-F | `flag`, `on`, `value` (invalid only); startup, no player correlators |
 | `catalog_loaded` / `catalog_load_failed` | info / error | AM-F | `modifiers`, `item_types` / `error`; cell startup, no player correlators |
+
+Rows added at close-out (AM-12), from the worknotes. `cimmeria_entity::ammo_telemetry` names all of them, and its test `catalog_covers_every_ammo_event_in_the_workspace` fails when code emits an `ammo` event the catalog does not list.
+
+| Event | Level | Packet | Fields beyond the correlators |
+|---|---|---|---|
+| `reload_draw_requested` / `reload_drawn_loaded` | debug | AM-02 (cell) | `slot_id`, `instance_id`, `clip_before` / `drawn`, `clip_after`, `stack_after` |
+| `reload_refused_feedback` | info | AM-02 (cell) | `reason` (`stack_empty`, `weapon_changed`, `db_error`); the player saw the line |
+| `reload_drawn_stale` / `switch_returned_stale` | info | AM-02 (cell) | `reason` (`entity_gone`, `slot_changed`) |
+| `reload_draw_clip_mismatch` / `switch_return_clip_mismatch` | warn | AM-02 (base) | the row's clip against the cell's |
+| `ammo_switch_return_requested` / `ammo_switch_default_emptied` | debug | AM-02 (cell) | `slot_id`, rounds |
+| `ammo_switch_refused` | info | AM-02 (cell) | `reason` (`bags_full`, or a reserve refusal), `returned`, `remainder`, `to_ammo_type` |
+| `ammo_switch_dropped` | debug | AM-02 (cell) | `reason` (`request_in_flight`) |
+| `reserve_request_send_failed` / `feedback_send_failed` | warn | AM-02 (cell) | `reason` (`base_channel_closed`) |
+| `reserve_answer_send_failed` | warn | AM-02 (base) | `reason` (`cell_channel_closed`) |
+| `ammo_feedback_send_failed` | warn | AM-03 | the refusal line could not be queued |
+| `ammo_on_hit_effect_missing` | warn | AM-04 | `on_hit_effect_id` not in `effect_defs` |
+| `ammo_emp_disrupt` | debug | AM-09 | `target_entity_id`, `target_template_id`, `effect_id`, `mechanical`, `focus_before`, `focus_drained`, `health_before`, `health_damage`; `reason` (`target_missing`) |
+| `ammo_splash` / `ammo_splash_bad_fraction` | debug / warn | AM-10 | `target_entity_id`, `ability_id`, `effect_id`, `radius`, `fraction`, `splash_count`, `los_blocked`, `targets` |
+| `ammo_support_applied` / `ammo_support_refused` | debug | AM-11d | `decision_outcome`, `target_entity_id`, `target_player_id`, `self_target`, `ability_id`, `on_hit_effect_id`, before/after Health and Focus / `stage`, `reason` (`hostile_target`, `target_gone`, `not_an_ally`) |
+| `ammo_support_feedback_send_failed` | warn | AM-11d | `reason` (`cell_to_base_closed`) |
+
+`ammo_loot_dropped` (AM-05's row) is emitted since AM-12, from `handle_loot_item` once the `GrantItem` is sent, with `quantity` (rounds), `ammo_label`, `corpse_id`, `corpse_template_id` and `loot_table_id`.
 
 ## File-ownership matrix
 
@@ -182,7 +204,7 @@ Wave 1 is 6 packets in parallel (AM-02 through AM-07); AM-01 already shipped and
 
 ## AM-F: foundation
 
-**Status: Ready.** The only serial gate. Scope, contract and file list are specified above, updated to what the AM-F PR ships; [worknotes/AM-F.md](worknotes/AM-F.md) lists every change from the original plan. No player-visible behavior changes — `ammo.finite_special` stays off, `requestAmmoChange`'s whitelist logic is untouched (AM-03's job), reload is untouched (AM-02's job).
+**Status: Done** (PR [#1042](https://github.com/SandboxServers/Cimmeria/pull/1042)). The only serial gate. Scope, contract and file list are specified above, updated to what the AM-F PR ships; [worknotes/AM-F.md](worknotes/AM-F.md) lists every change from the original plan. No player-visible behavior changes — `ammo.finite_special` stays off, `requestAmmoChange`'s whitelist logic is untouched (AM-03's job), reload is untouched (AM-02's job).
 
 Tests:
 
@@ -208,7 +230,7 @@ Follow-up open items the finding itself could not close in its time budget (not 
 
 ## AM-02: reserve
 
-**Status: BlockedDependency (AM-F).**
+**Status: Done** (PR [#1056](https://github.com/SandboxServers/Cimmeria/pull/1056); [worknote](worknotes/AM-02.md)).
 
 Scope:
 
@@ -230,7 +252,7 @@ Review by `server-authority-enforcer` (a stack decrement under concurrent access
 
 ## AM-03: validation
 
-**Status: BlockedDependency (AM-F).**
+**Status: Done** (PR [#1051](https://github.com/SandboxServers/Cimmeria/pull/1051); [worknote](worknotes/AM-03.md)).
 
 Scope:
 
@@ -249,7 +271,7 @@ Review by `items-systems-advisor` and `server-authority-enforcer`.
 
 ## AM-04: damage framework
 
-**Status: BlockedDependency (AM-F, and the owner's sign-off on the design decision below).**
+**Status: Done** (PR [#1047](https://github.com/SandboxServers/Cimmeria/pull/1047); the owner signed off on option (a) as D-AM07; [worknote](worknotes/AM-04.md)).
 
 **Design decision (needs owner confirmation, README open question 1): option (a), direct modifier application.** AM-01 found 715/719 are architecturally independent of `requestAmmoChange` in the client — nothing auto-engages a toggle ability when the player picks an ammo type. Rather than build that missing link (option b: server-launches the toggle ability on ammo-type selection, which entangles ammo switching with ability cooldowns — 719's is 30 s — for no benefit anything in the issue or the client asks for), AM-04 applies the ammo type's damage/penetration modifier **directly and automatically** whenever a shot fires with that type loaded. The toggle abilities 715/719 stay exactly as seeded, untouched; `ammo_modifiers.toggle_ability_id` is provenance-only, recording which ability's description/effect text the reconstructed multiplier came from. Ability 715 has empty `effect_ids` (reconstruct from its description text); 719's effect 747 exists but is shaped for a flat ability-cast (`FocusDamage`/`HealthDamage`), not obviously a multiplier — treat its numbers as a starting point for the reconstructed multiplier, labelled as reconstruction per acceptance criterion 4, not a direct port.
 
@@ -271,7 +293,7 @@ Review by `combat-systems-advisor`.
 
 ## AM-05: loot and crates
 
-**Status: BlockedDependency (AM-F).**
+**Status: Done** (PR [#1050](https://github.com/SandboxServers/Cimmeria/pull/1050); [worknote](worknotes/AM-05.md)).
 
 Scope:
 
@@ -289,7 +311,7 @@ Review by `items-systems-advisor`.
 
 ## AM-06: GM tooling (revised: console-first)
 
-**Status: BlockedDependency (AM-F).**
+**Status: Done** (PR [#1048](https://github.com/SandboxServers/Cimmeria/pull/1048); [worknote](worknotes/AM-06.md)).
 
 AM-01 found no recoverable server-side receiver for the native `GiveAmmo` opcode (audit A-22: the event is registered and client-emittable, but no `.def` entry exists, and the wire byte layout is unrecovered). Per the project's existing split — a command with a native index uses the client's `/` console, a command with no recovered native binding uses the GM-gated `.`-console — this packet ships as `.`-console commands, not a native-opcode handler.
 
@@ -310,7 +332,7 @@ Review by `server-authority-enforcer` (a new privileged console command).
 
 ## AM-07: client push (narrowed scope, early spike)
 
-**Status: BlockedDependency (AM-F).** No longer gated on AM-01 (it already shipped); AM-01's finding narrowed this packet's scope and added an internal ordering.
+**Status: Done** (PR [#1044](https://github.com/SandboxServers/Cimmeria/pull/1044); code; the in-client spike is UAT step AMMO-01; [worknote](worknotes/AM-07.md)). No longer gated on AM-01 (it already shipped); AM-01's finding narrowed this packet's scope and added an internal ordering.
 
 **Scope narrowed by AM-01 (audit A-22): this packet covers only the 15 new ammo item definitions (icon, name, stack cap). The widened pistol/SMG `ammo_types` need no client push at all** — `getAmmoTypes`/`requestAmmoChange` read the live server-populated container cache, not cooked data, so AM-F's DB-only widening is already sufficient.
 
@@ -324,7 +346,7 @@ Tests: a wire-format test for the resource-fragment push (byte-exact, per the ex
 
 ## AM-08 through AM-11c: the remaining families
 
-**Status: BlockedDependency (AM-04).** Each is a small, symmetric packet: one new effect file, one `registry.rs` match arm, one `ammo_modifiers` seed file, one `db/database.sql` line, plus whatever on-hit effect the ability's cooked text (or reconstruction, labelled as such per acceptance criterion 4) calls for:
+**Status: Done** (PR [#1053](https://github.com/SandboxServers/Cimmeria/pull/1053), [#1054](https://github.com/SandboxServers/Cimmeria/pull/1054), [#1063](https://github.com/SandboxServers/Cimmeria/pull/1063), [#1069](https://github.com/SandboxServers/Cimmeria/pull/1069); AM-08 #1053, AM-11b #1054, AM-09 / AM-10 / AM-11a / AM-11c through the Wave-2 integration #1063, and the follow-up AM-11d (support darts target allies) #1069; worknotes AM-08 to AM-11d). Each is a small, symmetric packet: one new effect file, one `registry.rs` match arm, one `ammo_modifiers` seed file, one `db/database.sql` line, plus whatever on-hit effect the ability's cooked text (or reconstruction, labelled as such per acceptance criterion 4) calls for:
 
 - **AM-08 Incendiary** (723): likely a DoT-shaped `on_hit_effect_id`, following the existing DoT effect-script pattern in `scripts.rs` if one exists, else a new minimal one.
 - **AM-09 EMP** (1445): likely a tech/shield-disable-shaped effect against mechanical targets; check `resources.effects` for 1445 first (audit § toggle abilities).
@@ -337,7 +359,7 @@ Review by `combat-systems-advisor` for all six.
 
 ## AM-12: close-out
 
-**Status: BlockedDependency (every packet above).**
+**Status: Done** (this PR; [worknote](worknotes/AM-12.md)).
 
 Scope:
 
