@@ -71,6 +71,7 @@
         "CIMMERIA_LAB_INSTALL_DIR": "<SGW_INSTALL_DIR>",
         "CIMMERIA_LAB_START32": "<CIMMERIA_ROOT>\\target\\i686-pc-windows-msvc\\debug\\sgw-start32.exe",
         "CIMMERIA_LAB_BRIDGE": "127.0.0.1:8770",
+        "CIMMERIA_LAB_PATCHES_DLL": "<CIMMERIA_ROOT>\\target\\i686-pc-windows-msvc\\debug\\cimmeria_client_patches.dll",
         "CIMMERIA_LAB_MCP_URL": "http://127.0.0.1:8444/mcp",
         "CIMMERIA_LAB_MCP_TOKEN": "REPLACE_WITH_LAB_MCP_TOKEN_32B_MIN"
       }

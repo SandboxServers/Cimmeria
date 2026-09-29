@@ -210,12 +210,26 @@ Supervisor (`cimmeria-lab`, stdio MCP on the dev box):
 | `lab_crash_report` | Last minidump, last N commands, quarantined command. |
 | `lab_timeline` | Merged client+server window (above). |
 | `client_lua_eval` / `client_module_info` / `client_mem_read` | Probe tools proxied to the bridge. |
+| `client_ui_click` / `client_cursor_move` | Click a named UI window (`Name` or `Parent/Child`) like a player: cursor onto its centre, real button messages. |
+| `client_input_key` / `client_type_text` | Key presses and typing as `WM_KEYDOWN`/`WM_KEYUP` (the game translates them; Shift is virtual). Types letters, digits, space, `-_/.`, so `/logout` and `.`-console lines work through chat. |
+| `client_input_mouse` | DirectInput relative motion (mouse-look) and button clicks at the UI cursor. |
+| `client_input_focus` / `client_input_status` / `client_input_release` | Virtual focus (the game keeps reading input in the background), hook counters, let go of everything. |
 
 Server endpoint (`cimmeria-lab-mcp`, in-server, token-gated HTTP —
 WireGuard-only on the colo): `server_console_*`, `server_sessions`,
 `server_entity_*`, `server_witnesses`, `server_packet_tap_*`,
 `server_log_tail`, `server_content_reload`, `server_db_query`. See ADR
 §3.5 for the full set; `docs/operations/colo-deploy.md` for the port.
+
+## Driving the client with its own input
+
+The input tools press nothing through Lua: Lua only reads where a widget is and places the UI cursor. What the live client showed (2026-09-29):
+
+- Keys and typing are window messages. A posted `WM_KEYDOWN`/`WM_KEYUP` reaches the game; a bare posted `WM_CHAR` is ignored, because the game turns keys into characters itself with `GetKeyboardState` + `ToUnicodeEx`. The bridge makes Shift virtual by answering those two calls.
+- Mouse buttons are window messages, applied at CEGUI's cursor position, not at the message's coordinates. The cursor does not follow posted mouse moves or DirectInput motion, so the supervisor places it through CEGUI's own cursor and mirrors it into a virtual `GetCursorPos`.
+- The DirectInput keyboard is created but never read. The mouse is read while the viewport has it captured (mouse-look), and only while the game thinks it is focused: virtual focus answers `GetForegroundWindow`, `GetFocus`, `GetActiveWindow`, and lets a background `Acquire` succeed.
+- Launch skips the intro movies with Escape; on a new character Escape also skips the arrival cutscene, and dialogs are paged with Next to the green checkmark (`Dialog_DoneButton`).
+- `lab_client_start` refuses while any `SGW.exe` is running (two clients on one machine misbehave), and injects `cimmeria-client-patches.dll` first when `CIMMERIA_LAB_PATCHES_DLL` is set, as the launcher does.
 
 ## Trust, audit, and the colo
 

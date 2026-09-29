@@ -227,7 +227,7 @@ unsafe fn prime_device_vtables(di8_create: usize) -> usize {
         // SAFETY: documented DirectInput8Create call.
         let hr = unsafe {
             create(
-                hinst as *mut c_void,
+                hinst,
                 0x0800,
                 iid.as_ptr().cast(),
                 &mut di,
