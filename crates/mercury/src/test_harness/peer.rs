@@ -324,7 +324,7 @@ impl LoopbackPeer {
             // Reserve the sequence space for all fragments up front so a
             // concurrent send can't interleave its own seq into the middle
             // of this bundle.
-            let num_frags = body.len().div_ceil(FRAGMENT_BODY_SIZE) as u32;
+            let num_frags = crate::packet::fragment_count(body) as u32;
             channel.next_tx_seq =
                 channel.next_tx_seq.wrapping_add(num_frags) & crate::packet::SEQUENCE_MASK;
             seq

@@ -174,8 +174,11 @@ goes through `crate::packet::build_fragmented_bundle` which:
   is what keeps the encrypted datagram under the 1472-byte
   PACKET_MAX_SIZE = UDP MTU-safe size. See the constant doc in
   [crates/mercury/src/packet/build.rs](../../crates/mercury/src/packet/build.rs).);
-- otherwise emits `ceil(body / 1300)` fragments, each carrying
-  `FLAG_FRAGMENTED` + matching `frag_begin` / `frag_end` footers;
+- otherwise cuts the body into fragments of at most 1300 bytes, each
+  carrying `FLAG_FRAGMENTED` + matching `frag_begin` / `frag_end` footers.
+  The cuts are **message-aware**: a cut that would land inside a message
+  header (see "Fragment cuts and message headers" below) moves back to the
+  message start, so the count can exceed `ceil(body / 1300)`;
 - piggybacks the bundle's ACKs **only on the first fragment**;
 - masks every per-fragment seq, `frag_begin`, and `frag_end` against
   `SEQUENCE_MASK` so a `base_seq` near the 28-bit wrap point cannot
@@ -186,6 +189,50 @@ Byte-equivalence with the standalone-packet builders is pinned by tests in
 [crates/wire/src/mercury/aoi/tests.rs](../../crates/wire/src/mercury/aoi/tests.rs)
 (`compose_create_entity_base_body_matches_build_create_entity_base_body`
 and the cascade variant).
+
+## Fragment cuts and message headers
+
+The client reads a reassembled bundle with `Bundle::iterator::unpack`
+(`ghidra://SGW.exe@0x01579830`). A message **header** (the id byte, plus the
+`u16` length of a `WORD_LENGTH` message: 3 bytes in all) must lie inside one
+packet. A header that crosses the end of a fragment makes the client stop the
+bundle (`Error unpacking header length`, then "Discarding bundle due to
+corrupted header"): every message after it is silently lost, although every
+fragment was ACKed and reassembly completed. A message **body** may straddle
+fragments; a continuation fragment resumes it at `data[1]` with no header. The
+original server enforced the same rule with `expandAtomic` ("BW has trouble
+unpacking bundles where header fields are in different packets",
+`deprecated/cpp/src/mercury/bundle.cpp`). Full client-side rules:
+`docs/reverse-engineering/findings/client-mercury-receive-path.md`.
+
+`crate::packet::plan_fragments` frames the body with the server-to-client
+message table (`server_message_framing`) and moves a cut that would fall on
+`start + 1` or `start + 2` of a `WORD_LENGTH` message back to that message's
+start. A body it cannot frame (unknown id, overrunning length) is cut raw from
+that point, as before. `ChannelBundle::estimated_packet_count` and
+`fragment_count` use the same plan, so the sequence reservation always matches
+what `finalize` emits.
+
+This is the root cause of the "Cellblock NPCs never rendered" bug
+(#838): a 24-NPC world-entry cascade is one ~18 KB, 15-fragment bundle, and
+about one login in four had a raw cut inside a header, abandoning every NPC
+after it. Regression guards: `packet/fragmenting_wire_tests.rs` (wire format,
+through `crate::client_model`, a model of the client's bundle iterator),
+`test_harness/tests/fragment_header_guard.rs` (loopback, with duplicated,
+reordered and lost fragments) and
+`base-world-entry/.../cell_dispatch/tests_flush_fragmentation.rs` (the 24-NPC
+flush).
+
+Two more client rules the sender relies on: the client keeps **one fragment
+group per channel, matched by `lastFrag`** and drops a reliable fragment of any
+other group, so a fragment group must own a contiguous, uninterrupted seq range
+(the sender reserves it with one atomic `fetch_add`), and the client ACKs a
+fragment before it decides to drop it, so an ACK never proves a fragment was
+used.
+
+Flush shape is visible in SigNoz: the `AoI bundle: flushed` event carries
+`packets`, `fragmented`, `packet_bytes` (body bytes per packet) and
+`header_guarded_cuts`.
 
 ## TX-window interaction
 

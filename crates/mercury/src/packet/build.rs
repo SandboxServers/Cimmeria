@@ -120,7 +120,9 @@ pub const FRAGMENT_BODY_SIZE: usize = 1300;
 
 /// Fragment a large message body into multiple encrypted Mercury packets.
 ///
-/// Splits `body` into chunks of [`FRAGMENT_BODY_SIZE`] bytes, wraps each in a
+/// Splits `body` into chunks of at most [`FRAGMENT_BODY_SIZE`] bytes (cut on a
+/// message boundary where a raw cut would split a message header, see
+/// [`super::plan_fragments`]), wraps each in a
 /// Mercury packet with `FLAG_FRAGMENTED` + sequential sequence IDs, and encrypts
 /// with the session key.
 ///
@@ -154,8 +156,11 @@ pub fn build_fragmented_bundle(
         return (vec![encrypt(&plaintext)], 1);
     }
 
-    // Calculate fragment count and sequence range.
-    let num_frags = body.len().div_ceil(FRAGMENT_BODY_SIZE);
+    // Calculate fragment count and sequence range. The cuts are planned on
+    // message boundaries where a raw cut would split a message header (the
+    // client discards the rest of a bundle whose header straddles packets).
+    let plan = super::plan_fragments(body);
+    let num_frags = plan.ranges.len();
     let frag_begin = base_seq;
     // `wrapping_add` + mask: if `base_seq + num_frags - 1` straddles the 28-bit
     // wrap point, the wrap-and-mask combo keeps `frag_end` inside the valid
@@ -163,7 +168,8 @@ pub fn build_fragmented_bundle(
     let frag_end = base_seq.wrapping_add(num_frags as u32 - 1) & super::SEQUENCE_MASK;
 
     let mut packets = Vec::with_capacity(num_frags);
-    for (i, chunk) in body.chunks(FRAGMENT_BODY_SIZE).enumerate() {
+    for (i, range) in plan.ranges.iter().enumerate() {
+        let chunk = &body[range.clone()];
         let seq = base_seq.wrapping_add(i as u32) & super::SEQUENCE_MASK;
         // Only first fragment carries acks.
         let pkt_acks: &[u32] = if i == 0 { acks } else { &[] };
