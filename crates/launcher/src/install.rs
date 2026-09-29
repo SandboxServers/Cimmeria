@@ -126,12 +126,11 @@ pub async fn install_all(ctx: InstallContext<'_>) -> Result<(), InstallError> {
     }
 
     for patch in &ctx.manifest.patches {
-        let key = patch.state_key();
-        if state.has_applied(&key) {
+        if state.has_applied_patch(patch) {
             continue;
         }
         apply_patch(&ctx, patch).await?;
-        state.applied_patches.push(key);
+        state.applied_patches.push(patch.state_key());
         state.save(ctx.install_dir)?;
     }
 

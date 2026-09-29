@@ -10,10 +10,9 @@ use std::path::PathBuf;
 use std::sync::Arc;
 use std::time::Duration;
 
-use tokio::sync::mpsc;
 use tracing::{error, info, warn};
 
-use super::{Event, LaunchTelemetryConfig};
+use super::{Event, EventSender, LaunchTelemetryConfig};
 use crate::client_telemetry_dll::{DllOutcome, TelemetryDll};
 use crate::telemetry::auth::DevSessionRequest;
 use crate::telemetry::endpoint::EndpointPolicy;
@@ -50,7 +49,7 @@ pub(super) async fn start_player_session(
     http: &reqwest::Client,
     install_dir: &std::path::Path,
     cfg: LaunchTelemetryConfig,
-    events_tx: &mpsc::UnboundedSender<Event>,
+    events_tx: &EventSender,
 ) -> PlayerSession {
     let req = DevSessionRequest {
         install_id: cfg.install_id,
@@ -100,7 +99,7 @@ pub(super) async fn follow_with_telemetry(
     dll_outcome: Option<DllOutcome>,
     exit: ExitWaiter,
     patch_log: PatchLogWatcher,
-    events_tx: &mpsc::UnboundedSender<Event>,
+    events_tx: &EventSender,
 ) {
     let Ok(telemetry) = session.telemetry else {
         return;

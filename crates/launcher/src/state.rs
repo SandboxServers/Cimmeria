@@ -11,6 +11,8 @@ use std::path::{Path, PathBuf};
 use serde::{Deserialize, Serialize};
 use thiserror::Error;
 
+use crate::manifest::PatchEntry;
+
 #[derive(Debug, Error)]
 pub enum StateError {
     #[error("IO error: {0}")]
@@ -79,8 +81,25 @@ impl InstalledState {
         Ok(())
     }
 
-    pub fn has_applied(&self, patch_id: &str) -> bool {
-        self.applied_patches.iter().any(|p| p == patch_id)
+    /// Whether `patch` is recorded as applied. The record is the patch's
+    /// [`PatchEntry::state_key`], not its bare id: a `sgw_game` patch is
+    /// stored as `<id>@sgw_game`. Looking one up by id reported it
+    /// missing forever and kept "Install / Update" lit with nothing to do,
+    /// so every caller goes through this method.
+    pub fn has_applied_patch(&self, patch: &PatchEntry) -> bool {
+        self.has_applied_key(&patch.state_key())
+    }
+
+    /// The manifest patches not yet applied, in manifest order.
+    pub fn missing_patches<'a>(&self, patches: &'a [PatchEntry]) -> Vec<&'a PatchEntry> {
+        patches
+            .iter()
+            .filter(|p| !self.has_applied_patch(p))
+            .collect()
+    }
+
+    fn has_applied_key(&self, key: &str) -> bool {
+        self.applied_patches.iter().any(|p| p == key)
     }
 }
 
@@ -174,8 +193,8 @@ mod tests {
         assert_eq!(loaded.applied_patches, vec!["a", "b"]);
         assert_eq!(loaded.seed_sha256.as_deref(), Some("h"));
         assert!(!loaded.seed_adopted);
-        assert!(loaded.has_applied("a"));
-        assert!(!loaded.has_applied("c"));
+        assert!(loaded.has_applied_key("a"));
+        assert!(!loaded.has_applied_key("c"));
     }
 
     // Adopt-existing-install path writes `seed_adopted: true` alongside
@@ -318,6 +337,56 @@ mod tests {
         let s = TelemetryState::load(&path);
         assert!(s.kill_switch_active);
         assert_eq!(s.last_upload_ms, None);
+    }
+
+    fn sgw_game_patch(id: &str) -> PatchEntry {
+        PatchEntry {
+            id: id.into(),
+            blob: format!("p/{id}.zip"),
+            size: 1,
+            sha256: format!("h-{id}"),
+            after: None,
+            root: crate::manifest::PatchRoot::SgwGame,
+            title: None,
+            description: None,
+        }
+    }
+
+    // Bug shape: the install panel looked patches up by bare id, but a
+    // `sgw_game` patch is recorded as `<id>@sgw_game`, so the overlay
+    // stayed "missing" after a good install and Install / Update stayed
+    // lit with nothing to apply.
+    #[test]
+    fn an_applied_sgw_game_patch_is_not_missing() {
+        let overlay = sgw_game_patch("bm-ui-overlay-11b3bae0a2b7");
+        let state = InstalledState {
+            applied_patches: vec!["base".into(), "bm-ui-overlay-11b3bae0a2b7@sgw_game".into()],
+            seed_sha256: Some("h".into()),
+            seed_adopted: false,
+        };
+        assert!(state.has_applied_patch(&overlay));
+        let mut base = sgw_game_patch("base");
+        base.root = crate::manifest::PatchRoot::InstallDir;
+        let patches = vec![base, overlay];
+        assert!(state.missing_patches(&patches).is_empty());
+    }
+
+    /// The other direction: a bare-id record (written by a launcher that
+    /// predates `root`, which extracted into the wrong directory) must
+    /// still count as missing so the patch is applied again.
+    #[test]
+    fn a_bare_id_record_does_not_satisfy_an_sgw_game_patch() {
+        let overlay = sgw_game_patch("overlay");
+        let state = InstalledState {
+            applied_patches: vec!["overlay".into()],
+            seed_sha256: Some("h".into()),
+            seed_adopted: false,
+        };
+        assert!(!state.has_applied_patch(&overlay));
+        let patches = vec![overlay];
+        let missing = state.missing_patches(&patches);
+        assert_eq!(missing.len(), 1);
+        assert_eq!(missing[0].id, "overlay");
     }
 
     #[test]

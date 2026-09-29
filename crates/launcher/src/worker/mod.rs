@@ -2,13 +2,19 @@
 //!
 //! Hosts the tokio runtime and turns UI [`Command`]s into spawned tasks
 //! that emit [`Event`]s back on an unbounded channel. The egui app
-//! polls the channel each frame via `events_rx.try_recv()`.
+//! polls the channel each frame via `events_rx.try_recv()`; every send
+//! goes through [`EventSender`], which wakes the UI so that frame happens
+//! without mouse input.
 
+mod event_sender;
 mod launch_sgw;
 mod launch_telemetry;
 mod messages;
 mod self_update;
 
+#[cfg(test)]
+use event_sender::no_waker;
+pub use event_sender::{EventSender, Waker};
 pub use messages::{Command, Event, LaunchSgwRequest, LaunchTelemetryConfig};
 pub use self_update::UpdateEvent;
 
@@ -46,7 +52,7 @@ enum WipeTarget {
 pub struct Worker {
     runtime: Arc<Runtime>,
     pub events_rx: mpsc::UnboundedReceiver<Event>,
-    events_tx: mpsc::UnboundedSender<Event>,
+    events_tx: EventSender,
     /// Cancel token for the currently-running install, if any. Replaced
     /// at the start of every new install (after cancelling the previous
     /// one) so two installs cannot run concurrently and race on temp
@@ -67,7 +73,9 @@ pub struct Worker {
 }
 
 impl Worker {
-    pub fn new(runtime: Arc<Runtime>) -> Self {
+    /// `wake` runs after every event the worker queues; the app passes
+    /// one that requests an egui repaint (see [`EventSender`]).
+    pub fn new(runtime: Arc<Runtime>, wake: Waker) -> Self {
         let (tx, rx) = mpsc::unbounded_channel();
         let http = reqwest::Client::builder()
             .https_only(true)
@@ -76,7 +84,7 @@ impl Worker {
         Self {
             runtime,
             events_rx: rx,
-            events_tx: tx,
+            events_tx: EventSender::new(tx, wake),
             current_install_cancel: None,
             http,
             telemetry_http: crate::telemetry::endpoint::client(),
@@ -333,7 +341,7 @@ async fn upload_logs_task(
     install_dir: &std::path::Path,
     sas_url: &str,
     ledger_path: &std::path::Path,
-    events_tx: &mpsc::UnboundedSender<Event>,
+    events_tx: &EventSender,
 ) -> Result<(), LogError> {
     let digest = match compute_content_digest(install_dir)? {
         Some(d) => d,
@@ -374,7 +382,7 @@ async fn upload_logs_task(
 /// Fallback launch path when telemetry's auth handshake fails — fire
 /// the bat normally so the dev still gets to play. Mirrors
 /// `spawn_launch`'s shape.
-fn launch_legacy_atera(install_dir: &Path, events_tx: &mpsc::UnboundedSender<Event>) {
+fn launch_legacy_atera(install_dir: &Path, events_tx: &EventSender) {
     match launch_atera_debug(install_dir) {
         Ok(pid) => {
             let _ = events_tx.send(Event::Launched("AtreaGameDebug.bat".into(), pid));
@@ -413,7 +421,7 @@ mod tests {
 
     pub(super) fn make_worker() -> (Worker, Arc<Runtime>) {
         let rt = Arc::new(Runtime::new().unwrap());
-        let worker = Worker::new(rt.clone());
+        let worker = Worker::new(rt.clone(), no_waker());
         (worker, rt)
     }
 

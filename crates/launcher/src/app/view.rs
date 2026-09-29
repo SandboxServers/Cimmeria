@@ -180,10 +180,10 @@ impl LauncherApp {
         }
 
         let seed_ok = self.installed.seed_sha256.as_deref() == Some(manifest.seed.sha256.as_str());
-        let missing_patches: Vec<String> = manifest
-            .patches
-            .iter()
-            .filter(|p| !self.installed.has_applied(&p.id))
+        let missing_patches: Vec<String> = self
+            .installed
+            .missing_patches(&manifest.patches)
+            .into_iter()
             .map(|p| p.id.clone())
             .collect();
 
