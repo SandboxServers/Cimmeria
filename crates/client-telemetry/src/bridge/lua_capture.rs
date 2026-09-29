@@ -48,6 +48,24 @@ pub const REQUIRED_SYMBOLS: [&str; 5] = [
     "lua_tolstring",
 ];
 
+/// The same five entry points as SGW's `lua51.dll` exports them: a wide
+/// (UTF-16) build of Lua 5.1 compiled as C++, so the names are MSVC-mangled
+/// and every string is `const wchar_t*`. Tried when the plain C names are
+/// absent. The mangled names were read from the client's export table.
+pub const WIDE_SYMBOLS: [(&str, &str); 5] = [
+    (
+        "luaL_loadbuffer",
+        "?luaL_loadbuffer@@YAHPAUlua_State@@PB_WI1@Z",
+    ),
+    ("lua_pcall", "?lua_pcall@@YAHPAUlua_State@@HHH@Z"),
+    ("lua_gettop", "?lua_gettop@@YAHPAUlua_State@@@Z"),
+    ("lua_settop", "?lua_settop@@YAXPAUlua_State@@H@Z"),
+    (
+        "lua_tolstring",
+        "?lua_tolstring@@YAPB_WPAUlua_State@@HPAI@Z",
+    ),
+];
+
 /// `LUA_MULTRET` — ask `lua_pcall` to leave every return value on the
 /// stack so `lua_gettop` can count them.
 pub const LUA_MULTRET: i32 = -1;
@@ -78,6 +96,10 @@ pub struct LuaCApi {
     pub settop: usize,
     /// `const char* lua_tolstring(lua_State*, int idx, size_t* len)`
     pub tolstring: usize,
+    /// The wide build ([`WIDE_SYMBOLS`]): `luaL_loadbuffer` takes a UTF-16
+    /// buffer and a length in characters, and `lua_tolstring` returns
+    /// UTF-16 with its length in characters.
+    pub wide: bool,
 }
 
 impl LuaCApi {
@@ -85,6 +107,39 @@ impl LuaCApi {
     /// one so the caller can degrade with a specific reason (this is the
     /// "verify the export before calling" contract).
     pub fn resolve(resolver: &dyn SymbolResolver) -> Result<Self, String> {
+        let narrow = Self::resolve_narrow(resolver);
+        if narrow.is_ok() {
+            return narrow;
+        }
+        let wide = |plain: &str| {
+            WIDE_SYMBOLS
+                .iter()
+                .find(|(p, _)| *p == plain)
+                .and_then(|(_, mangled)| resolver.resolve(mangled))
+        };
+        match (
+            wide("luaL_loadbuffer"),
+            wide("lua_pcall"),
+            wide("lua_gettop"),
+            wide("lua_settop"),
+            wide("lua_tolstring"),
+        ) {
+            (Some(loadbuffer), Some(pcall), Some(gettop), Some(settop), Some(tolstring)) => {
+                Ok(Self {
+                    loadbuffer,
+                    pcall,
+                    gettop,
+                    settop,
+                    tolstring,
+                    wide: true,
+                })
+            }
+            // Neither build is complete: report the plain name, as before.
+            _ => narrow,
+        }
+    }
+
+    fn resolve_narrow(resolver: &dyn SymbolResolver) -> Result<Self, String> {
         let get = |name: &str| -> Result<usize, String> {
             resolver.resolve(name).ok_or_else(|| {
                 format!(
@@ -99,6 +154,7 @@ impl LuaCApi {
             gettop: get("lua_gettop")?,
             settop: get("lua_settop")?,
             tolstring: get("lua_tolstring")?,
+            wide: false,
         })
     }
 }
@@ -190,6 +246,10 @@ mod win {
     type FnSetTop = unsafe extern "cdecl" fn(l: usize, idx: i32);
     type FnToLString =
         unsafe extern "cdecl" fn(l: usize, idx: i32, len: *mut usize) -> *const c_char;
+    // The wide build (`WIDE_SYMBOLS`): UTF-16 strings, lengths in characters.
+    type FnLoadBufferW =
+        unsafe extern "cdecl" fn(l: usize, buf: *const u16, sz: usize, name: *const u16) -> i32;
+    type FnToLStringW = unsafe extern "cdecl" fn(l: usize, idx: i32, len: *mut usize) -> *const u16;
 
     /// Live resolver: `GetProcAddress` across the modules that might carry
     /// the Lua C API. The client could static-link into `SGW.exe` (module
@@ -233,6 +293,15 @@ mod win {
     /// `api.tolstring` must be the real `lua_tolstring` and `l` a valid
     /// `lua_State` on the main thread; `idx` must be a valid stack index.
     unsafe fn slot_to_string(api: &LuaCApi, l: usize, idx: i32) -> String {
+        if api.wide {
+            let tolstring: FnToLStringW = core::mem::transmute(api.tolstring);
+            let mut len: usize = 0;
+            let ptr = tolstring(l, idx, &mut len);
+            if ptr.is_null() || len == 0 {
+                return String::new();
+            }
+            return String::from_utf16_lossy(core::slice::from_raw_parts(ptr, len));
+        }
         let tolstring: FnToLString = core::mem::transmute(api.tolstring);
         let mut len: usize = 0;
         let ptr = tolstring(l, idx, &mut len);
@@ -292,12 +361,22 @@ mod win {
         let wrapper = build_capture_wrapper(chunk.unwrap_or(""));
         let name = CString::new(CAPTURE_CHUNK_NAME).map_err(|_| "bad chunk name".to_string())?;
 
-        let load_status = loadbuffer(
-            l,
-            wrapper.as_ptr() as *const c_char,
-            wrapper.len(),
-            name.as_ptr(),
-        );
+        let load_status = if api.wide {
+            let loadbuffer_w: FnLoadBufferW = core::mem::transmute(api.loadbuffer);
+            let wbuf: Vec<u16> = wrapper.encode_utf16().collect();
+            let wname: Vec<u16> = CAPTURE_CHUNK_NAME
+                .encode_utf16()
+                .chain(core::iter::once(0))
+                .collect();
+            loadbuffer_w(l, wbuf.as_ptr(), wbuf.len(), wname.as_ptr())
+        } else {
+            loadbuffer(
+                l,
+                wrapper.as_ptr() as *const c_char,
+                wrapper.len(),
+                name.as_ptr(),
+            )
+        };
         if load_status != 0 {
             let err = slot_to_string(&api, l, -1);
             settop(l, base);
@@ -376,6 +455,22 @@ mod tests {
             .enumerate()
             .map(|(i, &s)| (s, 0x1000 + i))
             .collect()
+    }
+
+    /// SGW's lua51.dll exports only the mangled wide names. Resolution
+    /// must find them (regression: capture reported "luaL_loadbuffer not
+    /// exported" on the live client and every screen read came back empty).
+    #[test]
+    fn resolve_falls_back_to_the_wide_mangled_exports() {
+        let map: HashMap<&'static str, usize> = WIDE_SYMBOLS
+            .iter()
+            .enumerate()
+            .map(|(i, (_, mangled))| (*mangled, 0x1000 + i))
+            .collect();
+        let api = LuaCApi::resolve(&StubResolver(map)).expect("wide build resolves");
+        assert!(api.wide);
+        assert_eq!(api.loadbuffer, 0x1000);
+        assert_eq!(api.tolstring, 0x1004);
     }
 
     #[test]

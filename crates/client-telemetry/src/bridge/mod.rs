@@ -39,6 +39,7 @@ pub mod crash;
 pub mod dispatch;
 pub mod dynamic_hooks;
 pub mod events;
+pub mod input;
 pub mod journal;
 pub mod lua_capture;
 pub mod lua_eval;

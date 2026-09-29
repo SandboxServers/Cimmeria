@@ -325,6 +325,12 @@ fn bootstrap_phase2() {
                 }
             ));
             let _ = crate::bridge::install_handle(handle);
+            // Lab input: hook DirectInput before the game creates its
+            // keyboard and mouse, so the lab can drive it without focus.
+            match crate::bridge::input::install() {
+                Ok(()) => crate::log::line("lab input: DirectInput8Create hooked"),
+                Err(e) => crate::log::line(format_args!("lab input: not hooked: {e}")),
+            }
             // Outer-tier crash capture (ADR §6 / #685 scope 4). Only in
             // a lab session — a normal telemetry launch must not replace
             // UE3's unhandled-exception filter. Evidence lands in the

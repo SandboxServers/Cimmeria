@@ -193,6 +193,14 @@ pub fn dispatch(req: &RpcRequest) -> RpcResponse {
         "hook_list" => dynamic_hooks::dispatch_list(id),
         "events_read" => events::dispatch_read(id, &req.params),
         "console" => console::dispatch(id, &req.params),
+        // ── Lab input injection (DirectInput) ───────────────────────
+        "input_key" => super::input::dispatch_key(id, &req.params),
+        "input_mouse" => super::input::dispatch_mouse(id, &req.params),
+        "input_release" => super::input::dispatch_release(id),
+        "input_focus" => super::input::dispatch_focus(id, &req.params),
+        "input_cursor" => super::input::dispatch_cursor(id, &req.params),
+        "input_modifiers" => super::input::dispatch_modifiers(id, &req.params),
+        "input_status" => super::input::dispatch_status(id),
         other => RpcResponse::error(id, METHOD_NOT_FOUND, format!("unknown method: {other}")),
     }
 }

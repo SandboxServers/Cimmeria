@@ -37,15 +37,32 @@ pub fn resolve_helper(override_path: Option<PathBuf>, exe_dir: Option<&Path>) ->
 /// The helper request for one supervised launch: start `exe` suspended in
 /// `install_dir`, inject the bridge DLL (the only DLL), resume. Pure so the
 /// command line the helper receives is testable without Windows.
-pub fn launch_request(install_dir: &Path, exe: &Path, dll_path: &Path) -> Request {
+pub fn launch_request(
+    install_dir: &Path,
+    exe: &Path,
+    dll_path: &Path,
+    patches_dll: Option<&Path>,
+) -> Request {
+    // Same order as the launcher: client-patches first, then telemetry, so
+    // a lab client runs the patched code paths a player's client runs.
+    let mut dlls: Vec<PathBuf> = patches_dll.map(Path::to_path_buf).into_iter().collect();
+    dlls.push(dll_path.to_path_buf());
     Request {
         target: Target::Spawn {
             exe: exe.to_path_buf(),
             cwd: Some(install_dir.to_path_buf()),
             args: Vec::new(),
         },
-        dlls: vec![dll_path.to_path_buf()],
+        dlls,
     }
+}
+
+/// Whether a process image path names the game client (`SGW.exe`, any
+/// directory, any case). Pure so the match is testable off Windows.
+pub fn is_sgw_image(path: &str) -> bool {
+    path.rsplit(['\\', '/'])
+        .next()
+        .is_some_and(|name| name.eq_ignore_ascii_case("SGW.exe"))
 }
 
 /// A top-level window candidate gathered during the `EnumWindows` walk.
@@ -81,11 +98,11 @@ mod win {
 
     use windows_sys::Win32::Foundation::{CloseHandle, FALSE, HWND, LPARAM};
     use windows_sys::Win32::System::Threading::{
-        GetExitCodeProcess, OpenProcess, TerminateProcess, PROCESS_QUERY_INFORMATION,
-        PROCESS_TERMINATE,
+        GetExitCodeProcess, OpenProcess, QueryFullProcessImageNameW, TerminateProcess,
+        PROCESS_QUERY_INFORMATION, PROCESS_QUERY_LIMITED_INFORMATION, PROCESS_TERMINATE,
     };
     use windows_sys::Win32::UI::WindowsAndMessaging::{
-        EnumWindows, GetWindowTextLengthW, GetWindowThreadProcessId, IsWindowVisible,
+        EnumWindows, GetWindowTextLengthW, GetWindowThreadProcessId, IsWindowVisible, PostMessageW,
     };
 
     const STILL_ACTIVE: u32 = 259;
@@ -96,12 +113,23 @@ mod win {
     ///
     /// A failed injection comes back as the helper's `error kind=...` line;
     /// the helper has already terminated the suspended process by then.
-    pub fn launch(install_dir: &Path, dll_path: &Path, helper: &Path) -> Result<u32, String> {
+    pub fn launch(
+        install_dir: &Path,
+        dll_path: &Path,
+        helper: &Path,
+        patches_dll: Option<&Path>,
+    ) -> Result<u32, String> {
         let (dir, exe) = checked_sgw_exe(install_dir).map_err(|e| format!("launch: {e}"))?;
         if !dll_path.is_file() {
             return Err(format!(
                 "launch: bridge DLL not found at {}",
                 dll_path.display()
+            ));
+        }
+        if let Some(p) = patches_dll.filter(|p| !p.is_file()) {
+            return Err(format!(
+                "launch: client-patches DLL not found at {}",
+                p.display()
             ));
         }
         if !helper.is_file() {
@@ -112,7 +140,7 @@ mod win {
                 helper.display()
             ));
         }
-        let pid = start32::run(helper, &launch_request(&dir, &exe, dll_path))
+        let pid = start32::run(helper, &launch_request(&dir, &exe, dll_path, patches_dll))
             .map_err(|e| format!("launch+inject via {HELPER_EXE_NAME}: {e}"))?;
         // The helper exits as soon as the game is resumed. Opening the pid
         // confirms it names a process this supervisor can follow before the
@@ -165,6 +193,52 @@ mod win {
         1 // continue enumeration (TRUE)
     }
 
+    /// Post a window message to the game (no focus needed; delivered on
+    /// the game's own message loop).
+    pub fn post_message(hwnd: isize, msg: u32, wparam: usize, lparam: isize) -> Result<(), String> {
+        // SAFETY: PostMessageW only queues; a stale hwnd fails cleanly.
+        let ok = unsafe { PostMessageW(hwnd as HWND, msg, wparam, lparam) };
+        if ok == 0 {
+            Err(format!("PostMessageW(0x{msg:04x}) failed"))
+        } else {
+            Ok(())
+        }
+    }
+
+    /// PIDs of every running `SGW.exe` that owns a top-level window,
+    /// whoever started it. Two clients on one machine misbehave, so the
+    /// supervisor refuses to launch while this is non-empty.
+    pub fn running_sgw_pids() -> Vec<u32> {
+        let mut ctx = EnumCtx {
+            candidates: Vec::new(),
+        };
+        // SAFETY: enum_cb is a valid callback; ctx outlives the call.
+        unsafe {
+            EnumWindows(Some(enum_cb), &mut ctx as *mut EnumCtx as LPARAM);
+        }
+        let mut pids: Vec<u32> = ctx.candidates.iter().map(|c| c.pid).collect();
+        pids.sort_unstable();
+        pids.dedup();
+        pids.retain(|&pid| image_path(pid).is_some_and(|p| super::is_sgw_image(&p)));
+        pids
+    }
+
+    fn image_path(pid: u32) -> Option<String> {
+        // SAFETY: OpenProcess/QueryFullProcessImageNameW/CloseHandle with a
+        // correctly sized buffer; the handle is closed on every path.
+        unsafe {
+            let h = OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, FALSE, pid);
+            if h.is_null() {
+                return None;
+            }
+            let mut buf = [0u16; 1024];
+            let mut len = buf.len() as u32;
+            let ok = QueryFullProcessImageNameW(h, 0, buf.as_mut_ptr(), &mut len);
+            CloseHandle(h);
+            (ok != 0).then(|| String::from_utf16_lossy(&buf[..len as usize]))
+        }
+    }
+
     /// Resolve the main top-level window for a PID.
     pub fn find_main_window(pid: u32) -> Option<isize> {
         let mut ctx = EnumCtx {
@@ -179,14 +253,27 @@ mod win {
 }
 
 #[cfg(windows)]
-pub use win::{find_main_window, is_alive, launch, terminate};
+pub use win::{find_main_window, is_alive, launch, post_message, running_sgw_pids, terminate};
 
 // Non-Windows stubs so the crate compiles on Linux dev hosts / coverage
 // and the portable supervisor tests still run. The lab only runs on the
 // owner's Windows box.
 #[cfg(not(windows))]
-pub fn launch(_install_dir: &Path, _dll_path: &Path, _helper: &Path) -> Result<u32, String> {
+pub fn launch(
+    _install_dir: &Path,
+    _dll_path: &Path,
+    _helper: &Path,
+    _patches_dll: Option<&Path>,
+) -> Result<u32, String> {
     Err("process launch is Windows-only".to_string())
+}
+#[cfg(not(windows))]
+pub fn running_sgw_pids() -> Vec<u32> {
+    Vec::new()
+}
+#[cfg(not(windows))]
+pub fn post_message(_hwnd: isize, _msg: u32, _wparam: usize, _lparam: isize) -> Result<(), String> {
+    Err("window messages are Windows-only".to_string())
 }
 #[cfg(not(windows))]
 pub fn is_alive(_pid: u32) -> bool {
@@ -221,7 +308,7 @@ mod tests {
         let install = Path::new("C:/SGW");
         let exe = Path::new("C:/SGW/SGW.exe");
         let dll = Path::new("C:/lab/cimmeria-client-telemetry.dll");
-        let req = launch_request(install, exe, dll);
+        let req = launch_request(install, exe, dll, None);
         assert_eq!(req.dlls, vec![dll.to_path_buf()]);
         let args: Vec<String> = req
             .to_args()
@@ -239,6 +326,17 @@ mod tests {
                 "C:/lab/cimmeria-client-telemetry.dll"
             ]
         );
+    }
+
+    /// With a client-patches DLL configured, it goes in first, as the
+    /// launcher injects it, so the lab client runs the patched paths.
+    #[test]
+    fn the_client_patches_dll_is_injected_before_the_bridge_dll() {
+        let exe = Path::new("C:/SGW/SGW.exe");
+        let dll = Path::new("C:/lab/cimmeria-client-telemetry.dll");
+        let patches = Path::new("C:/lab/cimmeria-client-patches.dll");
+        let req = launch_request(Path::new("C:/SGW"), exe, dll, Some(patches));
+        assert_eq!(req.dlls, vec![patches.to_path_buf(), dll.to_path_buf()]);
     }
 
     #[test]
@@ -265,7 +363,7 @@ mod tests {
         std::fs::write(dir.path().join("SGW.exe"), b"MZ").unwrap();
         let dll = dir.path().join("bridge.dll");
         std::fs::write(&dll, b"MZ").unwrap();
-        let err = launch(dir.path(), &dll, &dir.path().join("sgw-start32.exe")).unwrap_err();
+        let err = launch(dir.path(), &dll, &dir.path().join("sgw-start32.exe"), None).unwrap_err();
         assert!(err.contains("sgw-start32.exe not found"), "{err}");
         assert!(err.contains("CIMMERIA_LAB_START32"), "{err}");
     }
@@ -310,10 +408,18 @@ mod tests {
         std::fs::create_dir(dir.path().join("en-US")).unwrap();
         std::fs::copy(&mui, dir.path().join("en-US").join("SGW.exe.mui")).unwrap();
 
-        let pid = launch(dir.path(), &dll, &helper).expect("launch through the helper");
+        let pid = launch(dir.path(), &dll, &helper, None).expect("launch through the helper");
         let alive = is_alive(pid);
         terminate(pid);
         assert!(alive, "the injected program is still running after launch");
+    }
+
+    #[test]
+    fn is_sgw_image_matches_the_client_exe_only() {
+        assert!(super::is_sgw_image(r"C:\SGW\Working\Binaries\SGW.exe"));
+        assert!(super::is_sgw_image("C:/x/sgw.EXE"));
+        assert!(!super::is_sgw_image(r"C:\SGW\sgw-launcher.exe"));
+        assert!(!super::is_sgw_image(r"C:\SGW.exe\other.exe"));
     }
 
     #[test]
