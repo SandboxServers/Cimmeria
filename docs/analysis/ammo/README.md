@@ -71,7 +71,7 @@ Every packet is merged on `main`. AM-09, AM-10, AM-11a and AM-11c landed togethe
 | AM-11b Tech-disable darts | **Done** | [#1054](https://github.com/SandboxServers/Cimmeria/pull/1054) | [AM-11b](worknotes/AM-11b.md) |
 | AM-11c Support darts | **Done** | [#1063](https://github.com/SandboxServers/Cimmeria/pull/1063) (Wave-2 integration) | [AM-11c](worknotes/AM-11c.md) |
 | AM-11d Support darts target allies | **Done** | [#1069](https://github.com/SandboxServers/Cimmeria/pull/1069) | [AM-11d](worknotes/AM-11d.md) |
-| AM-12 Close-out | **Done** (this PR; owner UAT pending) | this PR | [AM-12](worknotes/AM-12.md) |
+| AM-12 Close-out | **Done** (owner UAT pending) | [#1072](https://github.com/SandboxServers/Cimmeria/pull/1072) | [AM-12](worknotes/AM-12.md) |
 
 Full scope, contract and test-type table: [work-packets.md](work-packets.md).
 

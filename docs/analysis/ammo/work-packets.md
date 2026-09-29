@@ -359,7 +359,7 @@ Review by `combat-systems-advisor` for all six.
 
 ## AM-12: close-out
 
-**Status: Done** (this PR; [worknote](worknotes/AM-12.md)).
+**Status: Done** (PR [#1072](https://github.com/SandboxServers/Cimmeria/pull/1072); [worknote](worknotes/AM-12.md)).
 
 Scope:
 
