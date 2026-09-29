@@ -39,7 +39,8 @@ pub(super) fn vendor_context(entity_id: u32, space_mgr: &SpaceManager) -> Option
 /// logging the mismatch.
 pub(super) fn validate_template_id(
     entity_id: u32,
-    op: &str,
+    account_id: Option<u32>,
+    action: &'static str,
     session: &VendorSession,
     client_template_id: i32,
 ) -> Option<i32> {
@@ -47,8 +48,13 @@ pub(super) fn validate_template_id(
         Some(server_id) if server_id == client_template_id => Some(server_id),
         Some(server_id) => {
             tracing::warn!(
+                target: "vendor",
+                event = "refused",
+                action,
+                reason = "template_mismatch",
+                account_id,
+                player_id = session.player_id,
                 entity_id,
-                op,
                 server_template_id = server_id,
                 client_template_id,
                 vendor_entity_id = session.vendor_entity_id,
@@ -58,8 +64,13 @@ pub(super) fn validate_template_id(
         }
         None => {
             tracing::warn!(
+                target: "vendor",
+                event = "refused",
+                action,
+                reason = "vendor_has_no_template",
+                account_id,
+                player_id = session.player_id,
                 entity_id,
-                op,
                 client_template_id,
                 vendor_entity_id = session.vendor_entity_id,
                 "vendor op rejected: opened vendor has no template id (server cannot validate)"
@@ -172,5 +183,40 @@ mod vendor_context_tests {
             p.vendor_entity = Some(123456); // no entity at this id
         }
         assert_session(vendor_context(1, &mgr), 4242, 123456, None);
+    }
+}
+
+#[cfg(test)]
+mod refusal_telemetry_tests {
+    use super::{validate_template_id, VendorSession};
+    use crate::test_support::LogCapture;
+    use tracing::Level;
+
+    /// A spoofed template id is refused on the `vendor` target with the
+    /// player's identity and `reason = template_mismatch` (2026-09-29: vendor
+    /// refusals carried neither).
+    #[test]
+    fn template_mismatch_is_a_vendor_refusal_with_identity() {
+        let session = VendorSession {
+            player_id: 72,
+            vendor_entity_id: 4100,
+            server_template_id: Some(31),
+        };
+        let capture = LogCapture::install();
+        assert_eq!(validate_template_id(9, Some(6), "sell", &session, 99), None);
+        let row = capture
+            .find_event(Level::WARN, "vendor op rejected", "template_mismatch")
+            .expect("refusal row");
+        assert_eq!(row.target, "vendor");
+        for (k, v) in [
+            ("event", "refused"),
+            ("action", "sell"),
+            ("account_id", "6"),
+            ("player_id", "72"),
+            ("vendor_entity_id", "4100"),
+            ("client_template_id", "99"),
+        ] {
+            assert_eq!(row.fields.get(k).map(String::as_str), Some(v), "field {k}");
+        }
     }
 }

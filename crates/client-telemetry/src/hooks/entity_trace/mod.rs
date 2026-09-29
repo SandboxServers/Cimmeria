@@ -17,6 +17,9 @@
 //! `entity_messages` and `net_out`.
 
 pub(crate) mod map;
+// The SequenceManager's silent drops of a server `onSequence`
+// (`client.sequence.dropped`), driven by `inline_hooks::sequence_manager`.
+pub(crate) mod sequences;
 
 use std::cell::Cell;
 use std::sync::Mutex;

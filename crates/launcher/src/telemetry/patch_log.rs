@@ -15,9 +15,10 @@
 //! writes. Its README lists them as a contract with this parser.
 
 use std::path::{Path, PathBuf};
-use std::time::{Duration, SystemTime};
+use std::time::{Duration, Instant, SystemTime};
 
 use super::events::{ClientNativeEvent, TelemetryEvent};
+use super::patch_counts::{self, CountsTracker};
 use crate::client_patches::PatchInjection;
 
 /// The DLL's log file name, next to `SGW.exe`.
@@ -130,7 +131,7 @@ pub fn parse(text: &str) -> PatchLogSummary {
 }
 
 /// The message part of one DLL log line.
-fn message_of(line: &str) -> Option<&str> {
+pub(super) fn message_of(line: &str) -> Option<&str> {
     let rest = line.trim_end_matches('\r').strip_prefix(LINE_PREFIX)?;
     let (_elapsed, message) = rest.split_once("ms] ")?;
     Some(message)
@@ -167,6 +168,8 @@ pub struct PatchLogWatcher {
     launched_at: SystemTime,
     injection: PatchInjection,
     emitted: bool,
+    /// When to send `client.patches.counts` (see [`super::patch_counts`]).
+    counts: CountsTracker,
 }
 
 impl PatchLogWatcher {
@@ -179,7 +182,28 @@ impl PatchLogWatcher {
             launched_at,
             injection,
             emitted: false,
+            counts: CountsTracker::default(),
         }
+    }
+
+    /// Called every telemetry tick. Yields a `client.patches.counts`
+    /// event at most once a minute, when a count moved. Reads the log
+    /// only when a report is due.
+    pub fn poll_counts(&mut self, now: Instant) -> Option<TelemetryEvent> {
+        if self.injection != PatchInjection::Injected || !self.counts.due(now) {
+            return None;
+        }
+        let counts = patch_counts::parse(&self.read_text()?);
+        self.counts.periodic(now, &counts)
+    }
+
+    /// Called once when the game exits: the end-of-session counts.
+    pub fn finish_counts(&mut self) -> Option<TelemetryEvent> {
+        if self.injection != PatchInjection::Injected {
+            return None;
+        }
+        let counts = self.read_text().map(|t| patch_counts::parse(&t));
+        self.counts.finish(counts.as_ref())
     }
 
     /// Called every telemetry tick. Yields the event as soon as the
@@ -212,12 +236,17 @@ impl PatchLogWatcher {
 
     /// This launch's log, if the DLL has written one.
     fn read(&self) -> Option<PatchLogSummary> {
+        Some(parse(&self.read_text()?))
+    }
+
+    /// This launch's log text, if the DLL has written one.
+    fn read_text(&self) -> Option<String> {
         let modified = std::fs::metadata(&self.path).ok()?.modified().ok()?;
         if modified + MTIME_SLACK < self.launched_at {
             return None;
         }
         let bytes = std::fs::read(&self.path).ok()?;
-        Some(parse(&String::from_utf8_lossy(&bytes)))
+        Some(String::from_utf8_lossy(&bytes).into_owned())
     }
 
     fn emit(&mut self, summary: Option<PatchLogSummary>) -> Option<TelemetryEvent> {
@@ -497,5 +526,33 @@ mod tests {
         assert_eq!(level, "warn");
         assert_eq!(f["verdict"], "none");
         assert_eq!(f["dll_version"], "0.1.0");
+    }
+
+    /// The counts event comes from this launch's log, periodically and
+    /// once at exit, and never for a DLL that was not injected.
+    #[test]
+    fn watcher_reports_counts_periodically_and_at_exit() {
+        let dir = tempfile::tempdir().unwrap();
+        std::fs::write(
+            dir.path().join(LOG_FILE_NAME),
+            "[cimmeria-client-patches +9ms] claimed onBMOpen (#1 received)\r\n\
+             [cimmeria-client-patches +9ms] onBMOpen dropped: the global CimmeriaBM is not defined, so the UI overlay is not installed (#1)\r\n",
+        )
+        .unwrap();
+        let launched = SystemTime::now() - Duration::from_secs(1);
+        let mut w = PatchLogWatcher::new(dir.path(), launched, PatchInjection::Injected);
+        let now = Instant::now();
+        let TelemetryEvent::ClientNative(e) = w.poll_counts(now).expect("counts moved") else {
+            panic!()
+        };
+        assert_eq!(e.target, patch_counts::EVENT_TARGET);
+        assert_eq!(e.fields["dropped_no_overlay"], 1);
+        assert!(w.poll_counts(now).is_none(), "not due again yet");
+        assert!(w.finish_counts().is_some());
+        assert!(w.finish_counts().is_none());
+
+        let mut off = PatchLogWatcher::new(dir.path(), launched, PatchInjection::OptedOut);
+        assert!(off.poll_counts(now).is_none());
+        assert!(off.finish_counts().is_none());
     }
 }

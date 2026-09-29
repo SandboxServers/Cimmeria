@@ -14,6 +14,7 @@ use super::data::{
 use super::serializers::{
     serialize_empty_store_open, serialize_store_open, serialize_store_update, StoreItemCostUpdate,
 };
+use super::telemetry::{VendorItem, VendorLog};
 use crate::cell::client_methods::player::{ON_STORE_OPEN, ON_STORE_UPDATE};
 use crate::mercury::build_player_entity_method_packet;
 
@@ -42,6 +43,15 @@ pub async fn handle_open_vendor_store(
     connected: &Arc<Mutex<HashMap<SocketAddr, ConnectedClientState>>>,
     entity_to_addr: &Arc<Mutex<HashMap<u32, SocketAddr>>>,
 ) {
+    let tel = VendorLog::new(
+        "open",
+        entity_id,
+        player_id,
+        Some(vendor_entity_id),
+        vendor_template_id,
+        connected,
+        entity_to_addr,
+    );
     let Some(pool) = db_pool else {
         send_store_open_to_client(
             entity_id,
@@ -52,7 +62,7 @@ pub async fn handle_open_vendor_store(
             entity_to_addr,
         )
         .await;
-        tracing::debug!(entity_id, vendor_entity_id, "OpenVendorStore: no DB pool");
+        tel.failed("no_database", VendorItem::default(), &"no database pool");
         return;
     };
 
@@ -66,11 +76,7 @@ pub async fn handle_open_vendor_store(
             entity_to_addr,
         )
         .await;
-        tracing::debug!(
-            entity_id,
-            vendor_entity_id,
-            "OpenVendorStore: vendor template missing"
-        );
+        tel.refused("no_vendor_template", VendorItem::default());
         return;
     };
 
@@ -84,7 +90,11 @@ pub async fn handle_open_vendor_store(
     {
         Ok(Some(row)) => row,
         Ok(None) => {
-            tracing::warn!(template_id, "OpenVendorStore: template not found");
+            tel.failed(
+                "template_not_found",
+                VendorItem::default(),
+                &"no resources.entity_templates row",
+            );
             VendorTemplateLists {
                 buy_item_list: None,
                 sell_item_list: None,
@@ -93,7 +103,7 @@ pub async fn handle_open_vendor_store(
             }
         }
         Err(e) => {
-            tracing::error!(template_id, "OpenVendorStore: template query failed: {e}");
+            tel.failed("template_query_failed", VendorItem::default(), &e);
             VendorTemplateLists {
                 buy_item_list: None,
                 sell_item_list: None,
@@ -134,18 +144,13 @@ pub async fn handle_open_vendor_store(
         entity_to_addr,
     )
     .await;
-    tracing::debug!(
-        entity_id,
-        player_id,
-        vendor_entity_id,
-        template_id,
+    tel.opened([
         buy_count,
         sell_count,
         buyback_count,
         repair_count,
         recharge_count,
-        "OpenVendorStore: sent"
-    );
+    ]);
 }
 
 /// Send vendor store open to client.

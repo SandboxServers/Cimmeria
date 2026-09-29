@@ -5,6 +5,8 @@ pub mod bundle;
 pub mod chunk;
 pub mod endpoint;
 pub mod events;
+pub mod install_result;
+pub mod patch_counts;
 pub mod patch_log;
 pub mod process_watch;
 pub mod queue;

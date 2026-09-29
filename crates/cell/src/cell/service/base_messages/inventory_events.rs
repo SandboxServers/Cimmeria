@@ -63,16 +63,28 @@ pub(super) fn handle_inventory_item_removed(
 }
 
 /// Handle `BaseToCellMsg::InventoryItemGranted`.
+///
+/// `item_id` on this message is the item's design (type) id — every sender
+/// (`grant::persist`, `vendor::purchase`, the crafting transaction) fills it
+/// from the grant's type id. It is logged as `design_id` so the row joins the
+/// cell's `Player looted item` and the base's `inventory`
+/// `grant_container_chosen` row (which also carries `item_name`); the old
+/// `item_id` field name stays for existing saved queries.
 pub(super) fn handle_inventory_item_granted(
     entity_id: u32,
     item_id: i32,
     container_id: i32,
     slot_id: i32,
     quantity: i32,
+    space_mgr: &SpaceManager,
 ) {
+    let identity = space_mgr.player_identity(entity_id);
     tracing::debug!(
+        account_id = identity.account_id,
+        player_id = identity.player_id,
         entity_id,
         item_id,
+        design_id = item_id,
         container_id,
         slot_id,
         quantity,

@@ -14,6 +14,7 @@ use super::purchase_helpers::{
     consume_design_quantity, load_vendor_purchase_lines, normalize_item_quantities,
 };
 use super::store::handle_open_vendor_store;
+use super::telemetry::{VendorItem, VendorLog};
 use crate::base::outbox::{self, CellOutboxPayload};
 use crate::cell::messages::BaseToCellMsg;
 
@@ -47,31 +48,49 @@ pub async fn handle_purchase_vendor_items(
     connected: &Arc<Mutex<HashMap<SocketAddr, ConnectedClientState>>>,
     entity_to_addr: &Arc<Mutex<HashMap<u32, SocketAddr>>>,
 ) {
+    let tel = VendorLog::new(
+        "buy",
+        entity_id,
+        player_id,
+        Some(vendor_entity_id),
+        Some(vendor_template_id),
+        connected,
+        entity_to_addr,
+    );
     let pool = match db_pool {
         Some(pool) => pool,
         None => {
-            tracing::debug!(entity_id, player_id, "PurchaseVendorItems: no DB pool");
+            tel.failed("no_database", VendorItem::default(), &"no database pool");
             return;
         }
     };
 
     let items = normalize_item_quantities(items, true);
     if items.is_empty() {
-        tracing::debug!(entity_id, player_id, "PurchaseVendorItems: empty item list");
+        tel.refused("empty_request", VendorItem::default());
         return;
     }
+    // The single line a one-item purchase names, for the rows below.
+    let only = match items.as_slice() {
+        [(_, qty)] => VendorItem::default().quantity(*qty),
+        _ => VendorItem::default(),
+    };
 
     let Some(lines) = load_vendor_purchase_lines(pool, vendor_template_id, &items).await else {
+        tel.refused("not_on_vendor_list", only);
         return;
+    };
+    let only = match lines.as_slice() {
+        [line] => VendorItem {
+            design_id: Some(line.design_id),
+            quantity: Some(line.grant_quantity),
+            ..only
+        },
+        _ => only,
     };
 
     if lines.iter().any(|line| line.cash_cost < 0) {
-        tracing::warn!(
-            entity_id,
-            player_id,
-            vendor_template_id,
-            "PurchaseVendorItems: rejecting purchase containing negative cash_cost line"
-        );
+        tel.refused("negative_price", only);
         return;
     }
 
@@ -81,34 +100,20 @@ pub async fn handle_purchase_vendor_items(
     {
         Some(total) if total >= 0 => total,
         Some(total) => {
-            tracing::warn!(
-                entity_id,
-                player_id,
-                vendor_template_id,
-                total,
-                "PurchaseVendorItems: rejecting negative aggregate cash cost"
-            );
+            tel.refused("negative_price", only.price(total));
             return;
         }
         None => {
-            tracing::warn!(
-                entity_id,
-                player_id,
-                vendor_template_id,
-                "PurchaseVendorItems: cash cost overflow"
-            );
+            tel.refused("price_overflow", only);
             return;
         }
     };
+    let only = only.price(total_cash_cost);
 
     let mut tx = match pool.begin().await {
         Ok(tx) => tx,
         Err(e) => {
-            tracing::error!(
-                entity_id,
-                player_id,
-                "PurchaseVendorItems: begin failed: {e}"
-            );
+            tel.failed("db_error", only, &e);
             return;
         }
     };
@@ -125,11 +130,7 @@ pub async fn handle_purchase_vendor_items(
         .await
     {
         let _ = tx.rollback().await;
-        tracing::error!(
-            entity_id,
-            player_id,
-            "PurchaseVendorItems: player inventory lock failed: {e}"
-        );
+        tel.failed("inventory_lock_failed", only, &e);
         return;
     }
 
@@ -145,23 +146,20 @@ pub async fn handle_purchase_vendor_items(
                 Ok(true) => {}
                 Ok(false) => {
                     let _ = tx.rollback().await;
-                    tracing::warn!(
-                        entity_id,
-                        player_id,
-                        design_id,
-                        quantity,
-                        "PurchaseVendorItems: missing item prerequisite"
+                    // `design_id` / `quantity` here are the item the vendor
+                    // asks in payment, which the player lacks.
+                    tel.refused(
+                        "missing_item_cost",
+                        VendorItem::design(*design_id).quantity(*quantity),
                     );
                     return;
                 }
                 Err(e) => {
                     let _ = tx.rollback().await;
-                    tracing::error!(
-                        entity_id,
-                        player_id,
-                        design_id,
-                        quantity,
-                        "PurchaseVendorItems: item prerequisite consume failed: {e}"
+                    tel.failed(
+                        "db_error",
+                        VendorItem::design(*design_id).quantity(*quantity),
+                        &e,
                     );
                     return;
                 }
@@ -178,34 +176,20 @@ pub async fn handle_purchase_vendor_items(
             Ok(balance) => balance,
             Err(e) => {
                 let _ = tx.rollback().await;
-                tracing::error!(
-                    entity_id,
-                    player_id,
-                    "PurchaseVendorItems: balance query failed: {e}"
-                );
+                tel.failed("db_error", only, &e);
                 return;
             }
         };
 
     let Some(balance) = balance else {
         let _ = tx.rollback().await;
-        tracing::warn!(
-            entity_id,
-            player_id,
-            "PurchaseVendorItems: player not found"
-        );
+        tel.failed("player_missing", only, &"no sgw_player row");
         return;
     };
 
     if balance < total_cash_cost {
         let _ = tx.rollback().await;
-        tracing::warn!(
-            entity_id,
-            player_id,
-            balance,
-            total_cash_cost,
-            "PurchaseVendorItems: insufficient naquadah"
-        );
+        tel.refused("insufficient_cash", only.cash(balance));
         return;
     }
 
@@ -221,12 +205,12 @@ pub async fn handle_purchase_vendor_items(
             Ok(Some(total)) => total,
             Ok(None) => {
                 let _ = tx.rollback().await;
-                tracing::warn!(entity_id, player_id, "PurchaseVendorItems: player disappeared before cash update");
+                tel.failed("player_missing", only, &"player row gone before the cash update");
                 return;
             }
             Err(e) => {
                 let _ = tx.rollback().await;
-                tracing::error!(entity_id, player_id, "PurchaseVendorItems: cash update failed: {e}");
+                tel.failed("db_error", only, &e);
                 return;
             }
         }
@@ -239,11 +223,7 @@ pub async fn handle_purchase_vendor_items(
         Ok(p) => p,
         Err(e) => {
             let _ = tx.rollback().await;
-            tracing::error!(
-                entity_id,
-                player_id,
-                "PurchaseVendorItems: container_sets lookup failed: {e}"
-            );
+            tel.failed("db_error", only, &e);
             return;
         }
     };
@@ -252,22 +232,12 @@ pub async fn handle_purchase_vendor_items(
             Ok(Some(slots)) => slots,
             Ok(None) => {
                 let _ = tx.rollback().await;
-                tracing::warn!(
-                    entity_id,
-                    player_id,
-                    requested_items = lines.len(),
-                    containers = ?placement.containers,
-                    "PurchaseVendorItems: not enough free inventory slots"
-                );
+                tel.refused("bags_full", only);
                 return;
             }
             Err(e) => {
                 let _ = tx.rollback().await;
-                tracing::error!(
-                    entity_id,
-                    player_id,
-                    "PurchaseVendorItems: slot query failed: {e}"
-                );
+                tel.failed("db_error", only, &e);
                 return;
             }
         };
@@ -303,22 +273,16 @@ pub async fn handle_purchase_vendor_items(
             Ok(r) if r.rows_affected() == 1 => {}
             Ok(_) => {
                 let _ = tx.rollback().await;
-                tracing::warn!(
-                    entity_id,
-                    player_id,
-                    design_id = line.design_id,
-                    "PurchaseVendorItems: item design missing"
+                tel.failed(
+                    "design_missing",
+                    VendorItem::design(line.design_id),
+                    &"no resources.items row",
                 );
                 return;
             }
             Err(e) => {
                 let _ = tx.rollback().await;
-                tracing::error!(
-                    entity_id,
-                    player_id,
-                    design_id = line.design_id,
-                    "PurchaseVendorItems: inventory insert failed: {e}"
-                );
+                tel.failed("db_error", VendorItem::design(line.design_id), &e);
                 return;
             }
         }
@@ -340,25 +304,22 @@ pub async fn handle_purchase_vendor_items(
             Ok(id) => outbox_pending.push((id, payload)),
             Err(e) => {
                 let _ = tx.rollback().await;
-                tracing::error!(
-                    entity_id,
-                    player_id,
-                    design_id,
-                    "PurchaseVendorItems: outbox enqueue failed, aborting: {e}"
-                );
+                tel.failed("outbox_enqueue_failed", VendorItem::design(*design_id), &e);
                 return;
             }
         }
     }
 
     if let Err(e) = tx.commit().await {
-        tracing::error!(
-            entity_id,
-            player_id,
-            "PurchaseVendorItems: commit failed: {e}"
-        );
+        tel.failed("commit_failed", only, &e);
         return;
     }
+    tel.completed(
+        only,
+        lines.len(),
+        Some(i64::from(balance)),
+        Some(i64::from(new_cash_total)),
+    );
 
     for (design_id, container_id, slot_id, quantity) in &granted {
         tracing::info!(

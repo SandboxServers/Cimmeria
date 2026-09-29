@@ -321,6 +321,10 @@ async fn grant(
         player_id,
         entity_id,
         type_id = item_id,
+        // `design_id` is the same number under the name the cell's loot and
+        // "Item granted to player" rows use, so one SigNoz filter joins them.
+        design_id = item_id,
+        item_name = placement.item_name.as_deref(),
         quantity = count,
         container_sets = %format_container_sets(&placement.container_sets),
         requested_container_id = placement.requested,

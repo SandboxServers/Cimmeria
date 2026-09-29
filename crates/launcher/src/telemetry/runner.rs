@@ -49,7 +49,8 @@ pub struct SessionOutcome {
 /// 1. Tail the sessions dir + sgwdebuglog* alongside the game.
 /// 2. Tick at `flush_interval_ms` cadence: parse new lines, enqueue,
 ///    POST chunk. With `patch_log`, also record the client-patches
-///    DLL's boot summary once (see [`super::patch_log`]).
+///    DLL's boot summary once and its claimed / delivered / dropped
+///    counts (see [`super::patch_log`], [`super::patch_counts`]).
 /// 3. When the game exits: final tick, final flush, bundle upload.
 ///
 /// Drop-safety: `exit` waits on the game without owning its lifetime
@@ -102,6 +103,9 @@ pub async fn run_session(
             _ = ticker.tick() => {
                 let patch_event = patch_log.as_mut().and_then(PatchLogWatcher::poll);
                 event_count = event_count.saturating_add(enqueue_patch_event(&telemetry, patch_event).await);
+                let now = std::time::Instant::now();
+                let counts_event = patch_log.as_mut().and_then(|w| w.poll_counts(now));
+                event_count = event_count.saturating_add(enqueue_patch_event(&telemetry, counts_event).await);
                 event_count = event_count.saturating_add(
                     tick_once(&telemetry, &http, &mut tailer, &sessions_dir, &binaries_dir).await,
                 );
@@ -111,6 +115,8 @@ pub async fn run_session(
 
     let patch_event = patch_log.as_mut().and_then(PatchLogWatcher::finish);
     event_count = event_count.saturating_add(enqueue_patch_event(&telemetry, patch_event).await);
+    let counts_event = patch_log.as_mut().and_then(PatchLogWatcher::finish_counts);
+    event_count = event_count.saturating_add(enqueue_patch_event(&telemetry, counts_event).await);
     event_count = event_count.saturating_add(
         tick_once(&telemetry, &http, &mut tailer, &sessions_dir, &binaries_dir).await,
     );
@@ -140,7 +146,8 @@ pub async fn run_session(
     Ok(outcome)
 }
 
-/// Enqueue the client-patches boot summary, if this tick produced it.
+/// Enqueue a client-patches event (boot summary or counts), if this tick
+/// produced one.
 /// Returns the number of events enqueued (0 or 1).
 async fn enqueue_patch_event(telemetry: &Telemetry, event: Option<TelemetryEvent>) -> u64 {
     let Some(event) = event else {
@@ -149,7 +156,7 @@ async fn enqueue_patch_event(telemetry: &Telemetry, event: Option<TelemetryEvent
     match telemetry.enqueue(event).await {
         Ok(()) => 1,
         Err(e) => {
-            tracing::warn!(error = %e, "client-patches boot summary not queued");
+            tracing::warn!(error = %e, "client-patches event not queued");
             0
         }
     }

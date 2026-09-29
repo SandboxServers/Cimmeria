@@ -291,7 +291,13 @@ impl Worker {
                 progress: prog_tx,
                 http: &http,
             };
-            match install_all(ctx).await {
+            let (result, report) = install_all(ctx).await;
+            crate::telemetry::install_result::queue_install_result(
+                &report,
+                config.telemetry.opted_in,
+                &crate::config::exe_dir(),
+            );
+            match result {
                 Ok(_) => {
                     let _ = events_tx.send(Event::InstallComplete);
                 }

@@ -5,7 +5,28 @@ use std::path::Path;
 use super::{dos_time, UnpackError, UnpackSink};
 
 fn patchset_err(e: cimmeria_patchset::PatchsetError) -> UnpackError {
-    UnpackError::Patchset(e.to_string())
+    use cimmeria_patchset::PatchsetError as P;
+    let message = e.to_string();
+    let (kind, path, expected, actual) = match e {
+        P::SourceMismatch {
+            path,
+            expected,
+            actual,
+        } => ("source_mismatch", path, expected, actual),
+        P::ResultMismatch {
+            path,
+            expected,
+            actual,
+        } => ("result_mismatch", path, expected, actual),
+        _ => return UnpackError::Patchset(message),
+    };
+    UnpackError::PatchsetHash {
+        kind,
+        path,
+        expected,
+        actual,
+        message,
+    }
 }
 
 /// Extract every entry of `zip_path` into `dest`, overwriting existing
@@ -130,5 +151,37 @@ mod tests {
         let mtime = |p: &str| std::fs::metadata(out.join(p)).unwrap().modified().unwrap();
         assert_eq!(mtime("Config/DefaultEngine.ini"), fixture_mtime());
         assert!(mtime("unstamped.txt") >= started);
+    }
+
+    /// A stock-source mismatch keeps its path and both hashes for the
+    /// install-result telemetry event, and the same message text as
+    /// every other patch-set error.
+    #[test]
+    fn a_source_mismatch_keeps_its_path_and_hashes() {
+        let e = patchset_err(cimmeria_patchset::PatchsetError::SourceMismatch {
+            path: "SGWGame/CookedPC/x.upk".into(),
+            expected: "aa".into(),
+            actual: "bb".into(),
+        });
+        match &e {
+            UnpackError::PatchsetHash {
+                kind,
+                path,
+                expected,
+                actual,
+                ..
+            } => {
+                assert_eq!(
+                    (*kind, path.as_str(), expected.as_str(), actual.as_str()),
+                    ("source_mismatch", "SGWGame/CookedPC/x.upk", "aa", "bb")
+                );
+            }
+            other => panic!("expected PatchsetHash, got {other:?}"),
+        }
+        assert!(e
+            .to_string()
+            .starts_with("Patch set error: SGWGame/CookedPC/x.upk does not match"));
+        let other = patchset_err(cimmeria_patchset::PatchsetError::Invalid("bad".into()));
+        assert!(matches!(other, UnpackError::Patchset(m) if m == "bad"));
     }
 }

@@ -11,6 +11,7 @@ mod config;
 mod identity;
 mod install;
 mod install_layout;
+mod install_report;
 mod instance_lock;
 mod logs;
 mod manifest;

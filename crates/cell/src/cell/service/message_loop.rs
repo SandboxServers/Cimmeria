@@ -216,6 +216,12 @@ pub(super) async fn run_cell_loop(
                 // `npc_ai::npc_ai_retry_sweep` for the rationale.
                 super::npc_ai::npc_ai_retry_sweep(tx, &mut space_mgr, &content::EngineEvents(&engine)).await;
 
+                // In-combat player vitals sample (`vitals` `combat_sample`),
+                // every 2 s; see `ticks::vitals` for the budget.
+                if aoi_tick_counter.is_multiple_of(super::ticks::VITALS_SAMPLE_EVERY_TICKS) {
+                    super::ticks::vitals_sample_tick(&space_mgr);
+                }
+
                 // Out-of-combat HP/focus regen — 1 Hz (every 10th 100ms tick).
                 // Cadence is wired here so the per-call delta in `regen_tick`
                 // can stay "points per second" without an internal time check.

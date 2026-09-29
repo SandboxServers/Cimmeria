@@ -146,6 +146,15 @@ async fn live_db_bank_first_component_lands_in_the_crafting_bag_for_every_caller
     ] {
         assert_eq!(event.fields.get(key), Some(&value), "field `{key}`");
     }
+    // The row names the item (2026-09-29 playtest: grant rows carried only a
+    // number): `design_id` numeric, `item_name` from the same placement read.
+    let name: String = sqlx::query_scalar("SELECT name FROM resources.items WHERE item_id = $1")
+        .bind(type_id)
+        .fetch_one(&pool)
+        .await
+        .expect("item name");
+    assert_eq!(event.fields.get("design_id"), Some(&type_id.to_string()));
+    assert_eq!(event.fields.get("item_name"), Some(&name), "{event:#?}");
     assert!(
         capture
             .find_event(

@@ -119,8 +119,11 @@ The launcher side is BM-06; the operator detail is in
 - **Telemetry.** With telemetry on, the launcher reads this DLL's log
   and records one `client.patches.boot` event per session: the
   injection outcome, the DLL version, the fingerprint result per site
-  and whether the hooks went in. The log lines it parses are a contract,
-  listed in the crate README.
+  and whether the hooks went in. It also records `client.patches.counts`
+  (at most once a minute while a count moves, and at game exit): the
+  claimed / delivered / dropped counters taken from the `(#n)` of the
+  per-call lines, with the last reason per counter. The log lines it
+  parses are a contract, listed in the crate README.
 - **The UI overlay** ships as a manifest patch with `"root":
   "sgw_game"`, extracted into the client's `SGWGame/` directory, packed
   by `pack-client-overlay` in the launcher release.
