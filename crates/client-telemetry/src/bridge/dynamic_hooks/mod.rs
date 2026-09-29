@@ -325,10 +325,12 @@ mod tests {
     /// Off-target, install routes to the native stub and returns an
     /// INTERNAL_ERROR (patch unavailable) with the id echoed — but the
     /// registry rollback means no ghost entry is left behind.
-    // Off-target only: on the i686 DLL target (`windows` + `x86`) `native::patch`
-    // is the real MinHook install, not the erroring stub, so there is no
-    // rollback to observe. #991 started running these tests on i686 with
-    // `--features lab-bridge`, which is how this surfaced.
+    // Off-target only. On the i686 DLL target (`windows` + `x86`) `native::patch`
+    // is the real MinHook install, and a fixed address such as 0x00abc100 can
+    // fall inside the test binary's own .text (a 32-bit image loads at
+    // 0x400000 and this one grew past 0xabc100 with #991), so MinHook would
+    // hook live code. The i686 rollback is covered by
+    // `real_install_on_data_address_rolls_back` below.
     #[cfg(not(all(target_os = "windows", target_arch = "x86")))]
     #[test]
     fn install_offtarget_rolls_back_and_echoes_id() {
@@ -394,6 +396,27 @@ mod tests {
             .take_while(|&u| u != 0)
             .collect();
         assert_eq!(String::from_utf16_lossy(&units), "hi");
+    }
+
+    /// The real (i686) install path: MinHook refuses a target that isn't
+    /// executable, so `dispatch_install` must return an error, echo the id and
+    /// roll the registry entry back. A `static` buffer lives in a data section,
+    /// never executable, so unlike a fixed address it can't land in code.
+    #[cfg(all(target_os = "windows", target_arch = "x86"))]
+    #[test]
+    fn real_install_on_data_address_rolls_back() {
+        static NOT_CODE: [u8; 64] = [0; 64];
+        let addr = NOT_CODE.as_ptr() as usize;
+        let r = dispatch_install(
+            json!(7),
+            &json!({ "addr": format!("{addr:#x}"), "conv": "cdecl" }),
+        );
+        assert_eq!(r.id, json!(7));
+        let e = r
+            .error
+            .expect("MinHook must refuse a non-executable target");
+        assert_eq!(e.code, INTERNAL_ERROR, "{}", e.message);
+        assert!(!registry().lock().unwrap().contains_addr(addr));
     }
 
     /// A dynamic hook on a function that opens like most of SGW.exe's
