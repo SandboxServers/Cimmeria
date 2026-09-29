@@ -39,6 +39,8 @@ pub fn lookup(name: &str) -> Option<&'static dyn EffectScript> {
         "PetSummonSpeed" => Some(&super::pet_scripts::PetSummonSpeed),
         // Timed primary-attribute buffs: the consumable stimpacks.
         "StatBuff" => Some(&super::stat_buff::StatBuff),
+        // EMP rounds' on-hit effect 9120 (ammo campaign AM-09).
+        "EmpDisrupt" => Some(&super::ammo_emp::EmpDisrupt),
         _ => None,
     }
 }

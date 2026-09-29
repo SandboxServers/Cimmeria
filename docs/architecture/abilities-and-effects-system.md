@@ -845,6 +845,7 @@ Telemetry: `ammo_damage_applied` (DEBUG, target `ammo`) per modified shot, and `
 | Family (packet) | Row | On-hit effect | Script | Stacking |
 |---|---|---|---|---|
 | Incendiary (AM-08, toggle 723) | 1.0 damage / 1.0 penetration, `DT_Energy` | 9110 Incendiary Burn: 4 pulses, 1 s apart, 15 Focus and 3 Health each; `EffectCategory` = `Burning` for AM-11c's cleanse | existing `RangedEnergyDamage`, no new script | decision 4: the same shooter refreshes, another shooter stacks |
+| EMP (AM-09, toggle 1445) | 1.1 damage / 0.75 penetration, `DT_Physical` | 9120 EMP Rounds Disruption: a living target loses 10 Focus; a mechanical one (its body set is in `MECHANICAL_BODY_SETS`: the Prisoner Retrieval Unit, the drones, the BattleWalker, deployables; never a player) loses 5 Health and no Focus, the split the EMP Grenade (2864, effects 4200/4202) makes. No disable. | new [`EmpDisrupt`](../../crates/cell-world/src/cell/effects/ammo_emp.rs) | single-shot (`pulse_count` 1): nothing registers, nothing is sent to the client |
 
 ## Cross-cutting follow-ups
 
