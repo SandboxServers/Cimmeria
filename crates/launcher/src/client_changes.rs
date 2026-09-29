@@ -181,7 +181,7 @@ fn patch_change(patch: &PatchEntry, installed: &InstalledState) -> ClientChange 
                 patch.id
             )
         });
-    let status = if installed.has_applied(&patch.state_key()) {
+    let status = if installed.has_applied_patch(patch) {
         ChangeStatus::Applied
     } else {
         ChangeStatus::Pending

@@ -25,7 +25,7 @@ use crate::install::Progress;
 use crate::launch::LaunchOptions;
 use crate::manifest::Manifest;
 use crate::state::InstalledState;
-use crate::worker::{Event, LaunchTelemetryConfig, Worker};
+use crate::worker::{Event, LaunchTelemetryConfig, Waker, Worker};
 
 /// Upper bound on the status-log history kept in memory. Display already
 /// caps at the last 100 entries; this prevents the underlying Vec from
@@ -63,10 +63,12 @@ pub struct LauncherApp {
 }
 
 impl LauncherApp {
-    pub fn new(runtime: Arc<Runtime>) -> Self {
+    /// `ctx` lets the worker wake the UI when a background job posts an
+    /// event; without it a result waits for the next mouse move.
+    pub fn new(runtime: Arc<Runtime>, ctx: egui::Context) -> Self {
         let cp = config_path();
         let config = LauncherConfig::load(&cp).unwrap_or_default();
-        let worker = Worker::new(runtime);
+        let worker = Worker::new(runtime, repaint_waker(ctx));
         let installed = if path_is_empty(&config.install_path) {
             InstalledState::default()
         } else {
@@ -252,6 +254,13 @@ fn setup_status_lines(
             vec![format!("Not launching: client setup failed: {e}")],
         ),
     }
+}
+
+/// The worker's wake hook: one repaint per event. `request_repaint` is
+/// thread-safe and wakes eframe's event loop, so the next frame drains
+/// the channel (see `crate::worker::EventSender`).
+fn repaint_waker(ctx: egui::Context) -> Waker {
+    Arc::new(move || ctx.request_repaint())
 }
 
 /// True iff `p` is an empty path (no components). Replaces the

@@ -23,11 +23,10 @@ use std::time::SystemTime;
 
 use cimmeria_client_launch::inject::RunningProcess;
 use cimmeria_client_launch::start32::{self, Request, Target};
-use tokio::sync::mpsc;
 use tracing::{info, warn};
 
 use super::launch_telemetry::{follow_with_telemetry, start_player_session};
-use super::{Event, LaunchSgwRequest, Worker};
+use super::{Event, EventSender, LaunchSgwRequest, Worker};
 use crate::client_patches::{decide, dll_source, injection_order, InjectDecision, PatchInjection};
 use crate::client_telemetry_dll::{self, DllOutcome, TelemetryDll};
 use crate::config::{exe_dir, ClientPatchesSettings};
@@ -189,7 +188,7 @@ fn start_game(
     sgw_dir: &Path,
     settings: &ClientPatchesSettings,
     telemetry: &TelemetryDll,
-    events_tx: &mpsc::UnboundedSender<Event>,
+    events_tx: &EventSender,
 ) -> Option<StartedGame> {
     let decision = decide(settings, || dll_source::resolve(settings, &exe_dir()));
     report_skipped(&decision, events_tx);
@@ -273,7 +272,7 @@ fn launched_label(patches: bool, telemetry: bool) -> String {
 }
 
 /// Tell the player, and the launcher log, why the patches are not going in.
-fn report_skipped(decision: &InjectDecision, events_tx: &mpsc::UnboundedSender<Event>) {
+fn report_skipped(decision: &InjectDecision, events_tx: &EventSender) {
     let note = match decision {
         InjectDecision::Inject(_) => return,
         InjectDecision::OptedOut => {
@@ -290,7 +289,7 @@ fn report_skipped(decision: &InjectDecision, events_tx: &mpsc::UnboundedSender<E
 
 /// Tell the player why an opted-in launch goes without the telemetry DLL.
 /// A failed session start was already reported as a session error.
-fn report_telemetry_skipped(telemetry: &TelemetryDll, events_tx: &mpsc::UnboundedSender<Event>) {
+fn report_telemetry_skipped(telemetry: &TelemetryDll, events_tx: &EventSender) {
     if let TelemetryDll::Unavailable(why) = telemetry {
         warn!(reason = %why, "client telemetry DLL unavailable; launching without it");
         let _ = events_tx.send(Event::ClientTelemetryNote(format!(

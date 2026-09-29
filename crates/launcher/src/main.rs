@@ -131,7 +131,12 @@ fn main() -> eframe::Result<()> {
     let result = eframe::run_native(
         "Stargate Worlds Launcher",
         options,
-        Box::new(move |_cc| Ok(Box::new(LauncherApp::new(runtime_for_app)))),
+        Box::new(move |cc| {
+            Ok(Box::new(LauncherApp::new(
+                runtime_for_app,
+                cc.egui_ctx.clone(),
+            )))
+        }),
     );
 
     drop(runtime);
