@@ -21,6 +21,7 @@
 //! - [`crash_report`] — assemble `lab_crash_report`.
 
 pub mod crash_report;
+pub mod display;
 pub mod entity_table;
 pub mod flows;
 pub mod heartbeat;
@@ -238,6 +239,7 @@ pub struct Supervisor {
 
 impl Supervisor {
     pub fn new(bridge: Arc<BridgeClient>, config: SupervisorConfig) -> Self {
+        display::spawn_keep_awake();
         Self {
             bridge,
             config,
@@ -327,6 +329,11 @@ impl Supervisor {
     /// file, launch+inject, and re-point the bridge. Shared by `start`
     /// and the watchdog's recovery path.
     async fn launch_client(&self, _server_override: Option<String>) -> Result<u32, String> {
+        // A client launched without a usable display dies on an error box
+        // (and the watchdog relaunches it); refuse with the reason instead.
+        tokio::task::spawn_blocking(display::ensure_display_for_launch)
+            .await
+            .map_err(|e| format!("display check: {e}"))??;
         let install_dir = self
             .config
             .install_dir
