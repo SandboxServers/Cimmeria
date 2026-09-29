@@ -63,7 +63,12 @@ pub async fn upload_bundle(
     install_dir: &Path,
     mut metadata: BundleMetadata,
 ) -> Result<BundleOutcome, BundleError> {
-    let Some(zip) = build_log_zip(install_dir)? else {
+    // Only this session's files: old captures stay on the machine.
+    let since = (metadata.session_started_at_ms > 0).then(|| {
+        std::time::UNIX_EPOCH
+            + std::time::Duration::from_millis(metadata.session_started_at_ms as u64)
+    });
+    let Some(zip) = build_log_zip(install_dir, since)? else {
         return Err(BundleError::Empty);
     };
     let mut hasher = Sha256::new();

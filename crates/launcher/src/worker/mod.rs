@@ -341,7 +341,7 @@ async fn upload_logs_task(
     }
 
     let _ = events_tx.send(Event::UploadStarted);
-    let zip_bytes = match build_log_zip(install_dir)? {
+    let zip_bytes = match build_log_zip(install_dir, None)? {
         Some(b) => b,
         None => {
             let _ = events_tx.send(Event::UploadSkipped("No log files found.".into()));

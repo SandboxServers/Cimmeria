@@ -3,7 +3,12 @@
 //! Inputs (in `<install_dir>/Binaries/`):
 //! - any file whose name starts with `sgwdebuglog` (BigWorld Mercury
 //!   unicode log; may have no extension or be `sgwdebuglog.txt`)
-//! - everything recursively under `sessions/`
+//! - everything recursively under `sessions/`, except `.json` files:
+//!   `current-session.json` holds the live telemetry token and
+//!   `lab-account.json` the research lab's account, and neither is a log.
+//!   The telemetry bundle also takes only files changed since its session
+//!   began ([`build_log_zip`]'s `since`), so old captures and key dumps are
+//!   not re-sent every session.
 //!
 //! Output: a single zip uploaded via one PUT to the SAS URL, named
 //! `logs/<hostname>-<utc>-<digest-prefix>.zip`.
@@ -17,6 +22,7 @@
 
 use std::io::Write;
 use std::path::{Path, PathBuf};
+use std::time::SystemTime;
 
 use sha2::{Digest, Sha256};
 use thiserror::Error;
@@ -39,7 +45,28 @@ pub enum LogError {
     Walk(#[from] walkdir::Error),
 }
 
-fn collect_log_inputs(install_dir: &Path) -> Result<Vec<PathBuf>, LogError> {
+/// True for a file under `sessions/` that is never uploaded (see the
+/// module docs).
+fn is_private(path: &Path) -> bool {
+    path.extension()
+        .is_some_and(|e| e.eq_ignore_ascii_case("json"))
+}
+
+/// True when `path` was modified at or after `since` (always, without one).
+/// A file whose time can't be read is kept: losing a log is worse.
+fn changed_since(path: &Path, since: Option<SystemTime>) -> bool {
+    let Some(since) = since else {
+        return true;
+    };
+    std::fs::metadata(path)
+        .and_then(|m| m.modified())
+        .map_or(true, |t| t >= since)
+}
+
+fn collect_log_inputs(
+    install_dir: &Path,
+    since: Option<SystemTime>,
+) -> Result<Vec<PathBuf>, LogError> {
     let binaries = crate::install_layout::binaries_dir(install_dir);
     let mut files = Vec::new();
 
@@ -48,7 +75,10 @@ fn collect_log_inputs(install_dir: &Path) -> Result<Vec<PathBuf>, LogError> {
             let p = e.path();
             if let Some(name) = p.file_name().and_then(|n| n.to_str()) {
                 // The client writes `SGWDebugLog.log`; match case-blind.
-                if name.to_ascii_lowercase().starts_with("sgwdebuglog") && p.is_file() {
+                if name.to_ascii_lowercase().starts_with("sgwdebuglog")
+                    && p.is_file()
+                    && changed_since(&p, since)
+                {
                     files.push(p);
                 }
             }
@@ -63,7 +93,10 @@ fn collect_log_inputs(install_dir: &Path) -> Result<Vec<PathBuf>, LogError> {
         // success would actively mislead anyone triaging.
         for entry in WalkDir::new(&sessions) {
             let entry = entry?;
-            if entry.file_type().is_file() {
+            if entry.file_type().is_file()
+                && !is_private(entry.path())
+                && changed_since(entry.path(), since)
+            {
                 files.push(entry.path().to_path_buf());
             }
         }
@@ -76,7 +109,7 @@ fn collect_log_inputs(install_dir: &Path) -> Result<Vec<PathBuf>, LogError> {
 /// Stable hash over (rel_path, contents) pairs in canonical sort order.
 /// Independent of zip-time so dedup ledger checks survive re-zipping.
 pub fn compute_content_digest(install_dir: &Path) -> Result<Option<String>, LogError> {
-    let files = collect_log_inputs(install_dir)?;
+    let files = collect_log_inputs(install_dir, None)?;
     if files.is_empty() {
         return Ok(None);
     }
@@ -101,8 +134,13 @@ pub fn compute_content_digest(install_dir: &Path) -> Result<Option<String>, LogE
     ))
 }
 
-pub fn build_log_zip(install_dir: &Path) -> Result<Option<Vec<u8>>, LogError> {
-    let files = collect_log_inputs(install_dir)?;
+/// Zip the log inputs. `since` limits them to files changed at or after it
+/// (the telemetry bundle passes its session's start); `None` takes all.
+pub fn build_log_zip(
+    install_dir: &Path,
+    since: Option<SystemTime>,
+) -> Result<Option<Vec<u8>>, LogError> {
+    let files = collect_log_inputs(install_dir, since)?;
     if files.is_empty() {
         return Ok(None);
     }
@@ -210,7 +248,7 @@ mod tests {
     fn collect_picks_up_logs_and_sessions() {
         let dir = tempfile::tempdir().unwrap();
         setup_logs(dir.path());
-        let files = collect_log_inputs(dir.path()).unwrap();
+        let files = collect_log_inputs(dir.path(), None).unwrap();
         assert_eq!(files.len(), 3);
     }
 
@@ -224,7 +262,7 @@ mod tests {
         std::fs::create_dir_all(&bin).unwrap();
         std::fs::write(bin.join("SGW.exe"), b"").unwrap();
         std::fs::write(bin.join("SGWDebugLog.log"), b"log").unwrap();
-        let files = collect_log_inputs(dir.path()).unwrap();
+        let files = collect_log_inputs(dir.path(), None).unwrap();
         assert_eq!(files, vec![bin.join("SGWDebugLog.log")]);
     }
 
@@ -232,28 +270,28 @@ mod tests {
     fn collect_is_sorted_for_stable_digest() {
         let dir = tempfile::tempdir().unwrap();
         setup_logs(dir.path());
-        let a = collect_log_inputs(dir.path()).unwrap();
-        let b = collect_log_inputs(dir.path()).unwrap();
+        let a = collect_log_inputs(dir.path(), None).unwrap();
+        let b = collect_log_inputs(dir.path(), None).unwrap();
         assert_eq!(a, b);
     }
 
     #[test]
     fn collect_empty_when_dirs_missing() {
         let dir = tempfile::tempdir().unwrap();
-        assert!(collect_log_inputs(dir.path()).unwrap().is_empty());
+        assert!(collect_log_inputs(dir.path(), None).unwrap().is_empty());
     }
 
     #[test]
     fn build_zip_returns_none_when_no_logs() {
         let dir = tempfile::tempdir().unwrap();
-        assert!(build_log_zip(dir.path()).unwrap().is_none());
+        assert!(build_log_zip(dir.path(), None).unwrap().is_none());
     }
 
     #[test]
     fn build_zip_round_trips_through_zip_reader() {
         let dir = tempfile::tempdir().unwrap();
         setup_logs(dir.path());
-        let bytes = build_log_zip(dir.path()).unwrap().unwrap();
+        let bytes = build_log_zip(dir.path(), None).unwrap().unwrap();
         assert!(!bytes.is_empty());
         let cursor = std::io::Cursor::new(bytes);
         let mut zr = zip::ZipArchive::new(cursor).unwrap();
@@ -328,5 +366,36 @@ mod tests {
         let n = blob_name_for("abcdef1234567890");
         assert!(n.starts_with("logs/"));
         assert!(n.ends_with("abcdef123456.zip"));
+    }
+
+    /// Token and account files in `sessions/` never leave the machine.
+    #[test]
+    fn json_files_in_sessions_are_never_collected() {
+        let dir = tempfile::tempdir().unwrap();
+        let sessions = dir.path().join("Binaries/sessions");
+        std::fs::create_dir_all(&sessions).unwrap();
+        std::fs::write(sessions.join("current-session.json"), b"{\"token\":\"t\"}").unwrap();
+        std::fs::write(sessions.join("lab-account.json"), b"{}").unwrap();
+        std::fs::write(sessions.join("run.log"), b"log").unwrap();
+        let files = collect_log_inputs(dir.path(), None).unwrap();
+        let names: Vec<_> = files
+            .iter()
+            .map(|p| p.file_name().unwrap().to_string_lossy().into_owned())
+            .collect();
+        assert_eq!(names, ["run.log"]);
+    }
+
+    /// The telemetry bundle takes only this session's files.
+    #[test]
+    fn since_skips_files_older_than_the_session() {
+        let dir = tempfile::tempdir().unwrap();
+        let sessions = dir.path().join("Binaries/sessions");
+        std::fs::create_dir_all(&sessions).unwrap();
+        std::fs::write(sessions.join("old-keys.txt"), b"old").unwrap();
+        let later = std::time::SystemTime::now() + std::time::Duration::from_secs(3600);
+        assert!(collect_log_inputs(dir.path(), Some(later))
+            .unwrap()
+            .is_empty());
+        assert_eq!(collect_log_inputs(dir.path(), None).unwrap().len(), 1);
     }
 }
