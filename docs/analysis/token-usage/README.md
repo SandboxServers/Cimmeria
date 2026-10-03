@@ -49,7 +49,7 @@ From the 2026-10-03 quick pass (throwaway scripts, not the profiler; TP-05 repla
 
 | Packet | Wave | Owns | Status | PR |
 |---|---|---|---|---|
-| TP-00 Ledger, data contract, attribution contract, worker and notification rules, RAG cleanup | 0 | this folder, `tools/token-profile/{schema.sql,*.md,fixtures/,test_contract.py}`, `development-workflow.md`, `.mcp.json.example` | In review | this PR |
+| TP-00 Ledger, data contract, attribution contract, worker and notification rules, RAG cleanup | 0 | this folder, `tools/token-profile/{schema.sql,*.md,fixtures/,test_contract.py}`, `development-workflow.md`, `.mcp.json.example` | In review | [#1122](https://github.com/SandboxServers/Cimmeria/pull/1122) |
 | TP-01a Profiler ingest | 1 | `tools/token-profile/ingest/` | Not started | |
 | TP-01b Profiler reports and privacy scrubber | 1 | `tools/token-profile/report/` | Not started | |
 | TP-02 Quiet build and test output (B) | 1 | `tools/build-lane/`, `tools/test-live-db.*` | Not started | |
@@ -72,7 +72,7 @@ Each packet that changes behaviour adds a row when it merges. A before-and-after
 
 | Packet | PR | Merged (UTC) | What changed at the cut |
 |---|---|---|---|
-| TP-00 | | | Worker lifetime cap and notification rules take effect; `cimmeria-rag` leaves the example MCP config |
+| TP-00 | [#1122](https://github.com/SandboxServers/Cimmeria/pull/1122) | | Worker lifetime cap and notification rules take effect; `cimmeria-rag` leaves the example MCP config |
 
 ## Acceptance criteria
 
