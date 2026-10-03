@@ -335,6 +335,8 @@ Copy-Item .\target\debug\cimmeria-server.exe .
 
 ## Tests & CI
 
+For a one-line fix per CI check (`fmt`, `clippy`, `build-and-test`, `test-live-db`, the figure checks), see [agents/pre-pr-checks.md § When a check fails](agents/pre-pr-checks.md#when-a-check-fails). The entries below cover the cases that need more than a line.
+
 ### Local tests pass but CI fails on `clippy`
 
 **Symptom.** Your PR is failing the `cargo clippy --workspace ... -- -D warnings` job in CI but `cargo clippy` succeeds locally.
@@ -455,7 +457,7 @@ retained as a historical reference for the deprecated server only.
 
 ### "Where does this doc go?"
 
-See the **doc-update map** in [`CLAUDE.md`](../CLAUDE.md) → "Required documentation for every PR." It maps `if you change X → update Y`. Reviewers will check this and send the PR back if a required update is missing.
+See the **doc-update map**, [`docs/agents/doc-update-map.md`](agents/doc-update-map.md). It maps `if you change X → update Y`. Reviewers will check this and send the PR back if a required update is missing.
 
 ---
 

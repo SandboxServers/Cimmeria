@@ -60,7 +60,7 @@ If a single feature touches several layers (handler logic + serializer + SQL + c
 
 ## Required docs on every PR
 
-A PR that changes user-visible behaviour, public surface, file layout, build steps, or test policy must update the corresponding doc(s). For non-trivial doc work, prefer the **Documentation Writer** agent over freehand edits — it follows the Diátaxis framework (tutorials / how-to / reference / explanations) and keeps voice consistent with the rest of `docs/`. The mapping of "what changed → what to update" is in [CLAUDE.md](../CLAUDE.md) under "Required documentation for every PR". Index entries in `docs/readme.md` and per-section `README.md` files must stay in sync with the documents they list — adding or renaming a doc means updating the index in the same PR.
+A PR that changes user-visible behaviour, public surface, file layout, build steps, or test policy must update the corresponding doc(s). For non-trivial doc work, prefer the **Documentation Writer** agent over freehand edits — it follows the Diátaxis framework (tutorials / how-to / reference / explanations) and keeps voice consistent with the rest of `docs/`. The mapping of "what changed → what to update" is [docs/agents/doc-update-map.md](../docs/agents/doc-update-map.md). Index entries in `docs/readme.md` and per-section `README.md` files must stay in sync with the documents they list — adding or renaming a doc means updating the index in the same PR.
 
 Two rules keep shared docs from conflicting between PRs; flag PRs that break them:
 

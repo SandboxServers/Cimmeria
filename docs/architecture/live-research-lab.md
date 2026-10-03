@@ -206,7 +206,7 @@ Phases 1 to 3 and Phases 4 to 5 touch disjoint crates and can run as parallel tr
 
 - **Tests.** Bridge framing, token check, and queue overflow are unit-testable off-process. Hook capture-spec parsing and slide math are unit tests. `LabQuery` and `LabConsoleExec` get cell-loop tests in the style of the `CreateEntity` reply test. The fail-closed startup rules get a regression guard each. `server_db_query` read-only enforcement needs a live-DB test. See [TESTING.md](../../TESTING.md) for the picker.
 - **Build rules.** `cimmeria-lab` is Windows-only and joins the workspace exclusion list in [CLAUDE.md](../../CLAUDE.md) and `.github/copilot-instructions.md`.
-- **Docs to touch as phases land.** [crates/README.md](../../crates/README.md) rows for the two new crates and the `cimmeria-client-telemetry` row; [client-telemetry.md](client-telemetry.md) (no longer emit-only under the feature); the env-var table in `crates/server/src/main.rs`; [../operations/colo-deploy.md](../operations/colo-deploy.md); [../guides/re-toolchain-setup.md](../guides/re-toolchain-setup.md); a new row in the CLAUDE.md doc-update map.
+- **Docs to touch as phases land.** [crates/README.md](../../crates/README.md) rows for the two new crates and the `cimmeria-client-telemetry` row; [client-telemetry.md](client-telemetry.md) (no longer emit-only under the feature); the env-var table in `crates/server/src/main.rs`; [../operations/colo-deploy.md](../operations/colo-deploy.md); [../guides/re-toolchain-setup.md](../guides/re-toolchain-setup.md); a new row in the [doc-update map](../agents/doc-update-map.md).
 
 ## 10. Open questions
 

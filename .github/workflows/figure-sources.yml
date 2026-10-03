@@ -8,7 +8,7 @@ name: figure-sources-in-sync
 #   - tools/check-figure-sources.sh (the implementation)
 #   - tools/check-figure-sources.ps1 (Windows variant — same logic)
 #   - docs/drafts/spec/figures/sources/README.md (renderer commands)
-#   - CLAUDE.md "Pre-PR checklist" and the doc-update map
+#   - CLAUDE.md "Pre-PR checklist", docs/agents/pre-pr-checks.md and the doc-update map (docs/agents/doc-update-map.md)
 
 on:
   pull_request:

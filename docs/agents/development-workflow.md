@@ -8,7 +8,8 @@ How a change moves from ticket to merged PR in this repo when an AI harness is d
 
 The repo already ships the pieces. Anyone who clones it with Claude Code gets them automatically:
 
-- [`CLAUDE.md`](../../CLAUDE.md): build rules, pre-PR checklist, test policy, doc-update map, file organization.
+- [`CLAUDE.md`](../../CLAUDE.md): build rules, pre-PR checklist, test policy, file organization.
+- [`doc-update-map.md`](doc-update-map.md): which docs a change has to update. [`pre-pr-checks.md`](pre-pr-checks.md): what each CI check gates, and how to fix a red one.
 - [`AGENTS.md`](../../AGENTS.md) and [`.github/copilot-instructions.md`](../../.github/copilot-instructions.md): the same policy for other harnesses and for review bots.
 - [`.claude/agents/`](../../.claude/agents/): sixteen domain subagents (roster below).
 - `.claude/agent-memory/<agent>/`: what those agents learned on earlier runs, and `.claude/agent-memory/main-session/`: what top-level sessions learned. Committed on purpose; see [Project memory](#project-memory).
@@ -24,8 +25,8 @@ The repo already ships the pieces. Anyone who clones it with Claude Code gets th
 5. **Implement** with `rust-gameserver-dev` (or directly), iterating with `cargo check -p <crate>` on the crate you changed, through the build lane (see [Builds, worktrees and test databases](#builds-worktrees-and-test-databases)). The review rules for code under `crates/services/` are in [`.github/instructions/rust-services.instructions.md`](../../.github/instructions/rust-services.instructions.md); content chains have their own in [`content-chains.instructions.md`](../../.github/instructions/content-chains.instructions.md).
 6. **Ask "what if the client lies?"** Run `server-authority-enforcer` over any handler that takes client-supplied data into server state.
 7. **Prove the guard.** First commit your work (a WIP commit is fine). Then undo only the fix by editing it out of the one file, run the test, and confirm it fails. Restore with `git checkout HEAD -- <that one file>`. Never restore with `git checkout .`, `git reset --hard`, or `git stash`: other sessions may share the checkout and the stash. `testing-validation-engineer` does this review.
-8. **Update the docs** named by the `CLAUDE.md` doc-update map, preferably with `documentation-writer`, and keep `docs/readme.md` and the section `README.md` indexes in sync. Leave generated blocks and the status docs alone; see [Shared docs without conflicts](#shared-docs-without-conflicts).
-9. **Run the pre-PR checklist** from `CLAUDE.md`. `rust-toolchain.toml` pins the toolchain CI uses, so your clippy run is CI's.
+8. **Update the docs** named by the [doc-update map](doc-update-map.md), preferably with `documentation-writer`, and keep `docs/readme.md` and the section `README.md` indexes in sync. Leave generated blocks and the status docs alone; see [Shared docs without conflicts](#shared-docs-without-conflicts).
+9. **Run the pre-PR checklist** from `CLAUDE.md` ([pre-pr-checks.md](pre-pr-checks.md) when a check fails). `rust-toolchain.toml` pins the toolchain CI uses, so your clippy run is CI's.
 10. **Open the PR** with the template filled in, including what you could not test.
 11. **Commit project memory.** If a subagent or the main session wrote findings under `.claude/agent-memory/`, stage them with the change. Check the root checkout too: subagents that worked in a worktree have been seen writing their memory files into the root checkout's `.claude/agent-memory/` instead (observed through 2026-09). Rules for what belongs there: [Project memory](#project-memory).
 

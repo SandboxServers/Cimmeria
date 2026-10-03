@@ -318,6 +318,8 @@ What an AI-assisted contributor (or their agents) needs that the code does not s
 | Document | Description | Status |
 |----------|-------------|--------|
 | [development-workflow.md](agents/development-workflow.md) | Ticket-to-PR pipeline, the roster of domain advisors under `.claude/agents/`, rules for running agents in parallel (worktrees, the build lane, one test DB each, Dev Drive seeding, cleanup), definition of done | Complete |
+| [doc-update-map.md](agents/doc-update-map.md) | The "what changed → what to update" map every PR is reviewed against; moved out of `CLAUDE.md` so it loads only when a PR is being finished or reviewed | Complete |
+| [pre-pr-checks.md](agents/pre-pr-checks.md) | What each CI check gates and when it runs, the full annotated pre-PR command list, and the fix for each failing check; the long form of the `CLAUDE.md` checklist | Complete |
 | [rules-and-gotchas.md](agents/rules-and-gotchas.md) | Maintainer decisions and known traps: evidence rules, protocol traps (entity clientIndex), "free" vs client-patch scoping, UI feedback, GM command channels, seeds over migrations, the pinned toolchain and build-lane traps, Windows/CRLF/Git Bash traps, client assets and RE tooling | Complete |
 | [domain.md](agents/domain.md) | Where domain docs live (glossary = `spec/glossary.md`, ADRs = `architecture/`; no `CONTEXT.md` or `docs/adr/`), what to read before exploring, and what to do when sources disagree | Complete |
 | [issue-tracker.md](agents/issue-tracker.md) | GitHub Issues via the `gh` CLI; repo-specific `gh` traps; the ticket body contract; PRs-as-request-surface flag (off); wayfinder map / child / blocking conventions | Complete |
@@ -587,6 +589,6 @@ When adding or updating documentation specifically:
 3. Tag every claim with a confidence level (HIGH / MEDIUM / LOW).
 4. Include Ghidra addresses or source references where applicable.
 5. Update this README when adding new documents.
-6. Update the doc-update map in [../CLAUDE.md](../CLAUDE.md) so reviewers can verify the right files were touched.
+6. Update the doc-update map in [agents/doc-update-map.md](agents/doc-update-map.md) so reviewers can verify the right files were touched.
 
 Reporting a security issue? See **[../SECURITY.md](../SECURITY.md)** for the private reporting path. Project conduct expectations are in **[../CODE_OF_CONDUCT.md](../CODE_OF_CONDUCT.md)**.

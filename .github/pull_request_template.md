@@ -12,7 +12,7 @@
 
 ## Doc updates
 
-<!-- Rows of the CLAUDE.md doc-update map this PR touches, or "none" with a reason. -->
+<!-- Rows of the doc-update map (docs/agents/doc-update-map.md) this PR touches, or "none" with a reason. -->
 
 - [ ] `docs/readme.md` and section `README.md` indexes are in sync with any added or renamed doc
 
