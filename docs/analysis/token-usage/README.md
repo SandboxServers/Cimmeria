@@ -1,7 +1,7 @@
 # Token Usage Profiling
 
 > Type: how-to. Audience: the Claude Code coordinator and the packet workers.
-> Updated: 2026-10-03 (Wave 1 merged). Tracking issue: [#957](https://github.com/SandboxServers/Cimmeria/issues/957); the plan is the [2026-10-03 comment](https://github.com/SandboxServers/Cimmeria/issues/957#issuecomment-5968451932), which supersedes the issue's phase list. Tool: [tools/token-profile/](../../../tools/token-profile/README.md). Workflow rules: [development-workflow.md § Worker lifetime and notifications](../../agents/development-workflow.md#worker-lifetime-and-notifications).
+> Updated: 2026-10-03 (Wave 2 merged). Tracking issue: [#957](https://github.com/SandboxServers/Cimmeria/issues/957); the plan is the [2026-10-03 comment](https://github.com/SandboxServers/Cimmeria/issues/957#issuecomment-5968451932), which supersedes the issue's phase list. Tool: [tools/token-profile/](../../../tools/token-profile/README.md). Workflow rules: [development-workflow.md § Worker lifetime and notifications](../../agents/development-workflow.md#worker-lifetime-and-notifications).
 
 ## Purpose
 
@@ -14,7 +14,7 @@ The target is not fewer tokens for their own sake. A cheaper worker that needs m
 | ID | Decision |
 |---|---|
 | D-TP1 | **Billing: Max subscription, within plan.** Reports give estimated list-price USD as a plan-usage proxy and always label it so. It is not a bill. |
-| D-TP2 | **OTel sink: the colo SigNoz**, behind Cloudflare Access. `OTEL_LOG_TOOL_DETAILS=1`; prompt logging off. No endpoint or credential is committed. |
+| D-TP2 | **OTel sink: the colo SigNoz**, exported directly over the private network (runbook Path A). Revised after Wave 1: the SigNoz ports are reachable only over WireGuard, so no Cloudflare tunnel is needed. `OTEL_LOG_TOOL_DETAILS=1`; prompt logging off; the colo collector drops `user.email`; `OTEL_METRICS_INCLUDE_ACCOUNT_UUID=false`. No endpoint or credential is committed. |
 | D-TP3 | **Quick wins ship before the profiler.** Transcripts are kept 365 days, so the "before" already exists. Each packet records its merge time in the [cut-line log](#cut-line-log). |
 | D-TP4 | **Cap worker lifetime now.** The rules are in [development-workflow.md](../../agents/development-workflow.md#worker-lifetime-and-notifications). |
 | D-TP5 | **Every merged PR gets a stats comment** with a `cimmeria-pr-stats/1` JSON block, kept idempotent (edited in place, never duplicated). Past PRs since 2026-09-13 are backfilled once TP-05 has validated attribution. |
@@ -55,12 +55,13 @@ From the 2026-10-03 quick pass (throwaway scripts, not the profiler; TP-05 repla
 | TP-02 Quiet build and test output (B) | 1 | `tools/build-lane/`, `tools/test-live-db.*` | Merged | [#1127](https://github.com/SandboxServers/Cimmeria/pull/1127) |
 | TP-03 Static context trim (H), target first request ≤55k for main sessions | 1 | `CLAUDE.md`, `.claude/agents/*.md`, memory indexes, MCP and skill config | Merged (repo side); the user-level part is open, see [Wave 1 results](#wave-1-results) | [#1124](https://github.com/SandboxServers/Cimmeria/pull/1124) |
 | TP-04 OTel to the colo SigNoz | 1 | local Claude Code settings, `docs/operations/` | Merged (runbook); telemetry not live yet, see [Wave 1 results](#wave-1-results) | [#1125](https://github.com/SandboxServers/Cimmeria/pull/1125) |
-| TP-05 Baseline and reconciliation | 2 (after TP-01) | this folder | Not started | |
-| TP-06 Per-agent cache TTL (A) | 2 | `.claude/agents/*.md` frontmatter | Not started | |
-| TP-07 Read discipline (C) | 2 | rules, the most-exposed docs | Not started | |
-| TP-08 Experiment G (Ghidra MCP vs headless; SigNoz search vs aggregate) | 2 | this folder | Not started | |
-| TP-09 Rebase churn (F) | 2 | a rebase script under `tools/` | Not started | |
-| TP-10 Per-PR stats comments | 2 | `tools/token-profile/pr_stats.py` | Not started | |
+| TP-05 Baseline and reconciliation | 2 (after TP-01) | this folder | Merged; cost-state reconciled, OTel arm waits for data, see [Wave 2 results](#wave-2-results) | [#1134](https://github.com/SandboxServers/Cimmeria/pull/1134) |
+| TP-06 Per-agent cache TTL (A) | 2 | `.claude/agents/*.md` frontmatter | Merged | [#1130](https://github.com/SandboxServers/Cimmeria/pull/1130) |
+| TP-07 Read discipline (C) | 2 | rules, the most-exposed docs | Merged | [#1133](https://github.com/SandboxServers/Cimmeria/pull/1133) |
+| TP-08 Experiment G (Ghidra MCP vs headless; SigNoz search vs aggregate) | 2 | this folder | Merged; [write-up](experiment-g.md) | [#1132](https://github.com/SandboxServers/Cimmeria/pull/1132) |
+| TP-09 Rebase churn (F) | 2 | a rebase script under `tools/` | Merged | [#1135](https://github.com/SandboxServers/Cimmeria/pull/1135) |
+| TP-10 Per-PR stats comments | 2 | `tools/token-profile/pr_stats/` | Merged; nothing posted yet, see TP-05b | [#1131](https://github.com/SandboxServers/Cimmeria/pull/1131) |
+| TP-05b Attribution validation | 2 | `tools/token-profile/ingest/attribution*` | Not started; gates the first live post and the backfill | |
 | TP-11 Retro cost study | 2 (after TP-10 backfill) | this folder | Not started | |
 | TP-12 Close-out | 3 | guide, rules, status docs | Not started | |
 
@@ -110,6 +111,27 @@ All five packets merged on 2026-10-03. Worknotes: [worknotes/](worknotes/).
 - **TP-03 context trim.** `CLAUDE.md` went from about 9.9k to 3.6k tokens and the 16 agent descriptions from 8.1k to 0.9k, about 13.7k in all; subagents lose about 6k each as well. The baseline first request (11 recent main sessions) was 83.0k at the median, projected about 69k after the cut, so the repo side alone misses the ≤55k target. The rest is user-level and awaits the user: MCP servers off by default (about 3k), claude.ai connectors (about 1k), the personal memory index (2.5k-3k), document skills (about 1.5k).
 - **TP-04 telemetry.** The runbook, settings templates, a Key Vault header helper and a dashboard are in `docs/operations/`. The colo has no Cloudflare Tunnel, so D-TP2's route needs operator work first; the open questions (an interim private-network export, scrubbing the login email, whether the SigNoz ports are reachable from outside) are with the user. TP-05 needs the time telemetry goes live.
 
+### Wave 2 results
+
+All six packets merged on 2026-10-03. Worknotes: [worknotes/](worknotes/). USD is list price, a plan-usage proxy (D-TP1).
+
+- **TP-05 reconciliation and baseline.** The profiler is **10.2% under** Claude Code's `cost-state` totals over the same process windows ($10,053 against $11,198, 93 sessions). Wave 1's 0.9% agreement was two errors of about $1.2k cancelling: `cost-state` misses everything before a resume, and transcripts miss requests (mostly cache reads, growing with subagent use, correlation 0.83). Repricing `cost-state`'s own tokens with our table agrees to 0.03%, so prices are not the cause. Until OTel's `query_source` explains the missing requests, **profiler USD is a floor**. `python tools/token-profile/reconcile` checks five tolerances and exits 4 on a failure; it passes. The 878 duplicate `requestId`s are fork subagents that open with a copy of the parent's history, and the ingest now reads forks after their parents. Schema version 3 (`cost_states.process_start`). Teammate names no longer reach reports as agent types. The scrubbed baseline is in [baseline/](baseline/README.md): 90,466 requests, about $11,265, 79% subagents; per merged PR (408) median $7.61, p90 $38.20, max $1,274 (#662); the top 10% of PRs hold 56%; 28% is unattributed. The OTel comparison is built and tested on a synthetic export; it runs once telemetry data exists.
+- **TP-06 cache TTL.** The cache simulator's model of a cold request was wrong (it used the smallest cold read, often 0; held-out prediction 0.38 of real) and now uses the mean (0.91). Only `rust-gameserver-dev` passes the rule (estimate, assumption range and bootstrap interval all favour 1h): about -$512, -9.5%, over three weeks; it now has `experimental.cacheTtl: 1h`. Cache writes after a gap over 5 minutes fall from an estimated 14.6% to 5.0% of subagent spend, about $170 a week. The main session's 1h TTL is confirmed (5m would have cost $3,357 instead of $1,958).
+- **TP-07 read discipline.** Correction to the baseline: `sed -n` slices are mostly narrow (median 41 lines); the volume is their count. The waste is whole-file reads of large docs and lines too long for Grep. Experiment C (10 lookups, key written first): whole-file reads returned 757k characters, Grep then a narrow `Read` 25k, both 10/10. `observability.md`, `content-engine.md`, the abilities ADR and `services-crate-split.md` were split along their seams; a "Reading files" rule is in `development-workflow.md`. `docs/gap-analysis.md` (1,476 lines) is left for TP-12.
+- **TP-08 experiment G.** Both arms of both comparisons scored full marks; cost followed the request count. Ghidra MCP beat headless (7 against 9 requests, 47 s against 88 s) and SigNoz `aggregate_logs` beat `search_logs` (4 against 9 requests, 7k against 32.5k characters). Ghidra and SigNoz are 1.3% and 2.2% of all exposure, `Read` 25%, so neither is a workflow-wide lever. The runs corrected two caller counts in the RE docs. Whether the guidance becomes a rule is open for TP-12.
+- **TP-09 rebase churn.** 607 rebase episodes, at most 6.9% of spend; only 9 conflicted in generated or lock files alone. [`tools/build-lane/rebase-pr.sh`](../../../tools/build-lane/rebase-pr.sh) turns a clean rebase into one call (about $440 per 17 days, an upper bound) and stops on a semantic conflict with the branch untouched. It also fixes a `merge=union` duplicate-row bug on generated count lines in `docs/readme.md`. Its first real use, on #1131, stopped correctly on a three-file semantic conflict with TP-05, which a fresh worker resolved.
+- **TP-10 per-PR stats.** `pr_stats <PR> [--post]` and `--backfill`, idempotent by marker; a dry run over 416 merged PRs built 392 comments with no gate refusals. **Nothing is posted yet.** Checking Wave 2's own workers against the PRs they produced shows attribution errors: TP-10's worker is split half onto #1128, and its rebase worker and 43 of TP-05's 101 requests are unattributed. TP-05b fixes attribution, using known packet-to-PR pairs like Wave 2's as ground truth, before the first live post and the backfill.
+- **Telemetry.** Path A was set up on the coordinator workstation on 2026-10-03 at about 13:20 UTC, and the colo collector drops `user.email` (see [claude-code-telemetry.md](../../operations/claude-code-telemetry.md#optional-scrub-the-login-email-at-the-collector-operator)). It exports from the next Claude Code start; that time opens the OTel reconciliation window.
+- **Static context, main session.** A main session started on 2026-10-03 at about 13:05 UTC still measured a first request of 83,006 tokens, because the main checkout was 16 commits behind `origin/main` and had not loaded TP-03. The first post-TP-03 main session gives the real number. Subagent first requests fell from a median of 64.6k to 61.4k (n=17). `disabledMcpjsonServers` in the local settings did not stop the disabled servers' tools from loading (deferred), which needs a look.
+
+### Open questions for the owner (Wave 2)
+
+1. Reconciliation: keep the 15% undercount limit, or show the `cost-state` total next to the profiler's in reports?
+2. Does a campaign's integration PR (#662) carry its packets' spend in its stats comment, or only its own?
+3. Run `rebase-pr.sh` before every merge, or only when GitHub says the PR is behind?
+4. Keep `docs/readme.md` at `merge=union`?
+5. Make experiment G's guidance (Ghidra MCP over headless, SigNoz `aggregate_logs` over `search_logs`) a rule?
+
 ## Cut-line log
 
 Each packet that changes behaviour adds a row when it merges. A before-and-after comparison uses requests on either side of the cut, and states which other cuts fall inside its window.
@@ -119,6 +141,9 @@ Each packet that changes behaviour adds a row when it merges. A before-and-after
 | TP-00 | [#1122](https://github.com/SandboxServers/Cimmeria/pull/1122) | 2026-10-03 11:39:49 | Worker lifetime cap and notification rules take effect; `cimmeria-rag` leaves the example MCP config |
 | TP-03 | [#1124](https://github.com/SandboxServers/Cimmeria/pull/1124) | 2026-10-03 12:04:06 | `CLAUDE.md` and agent descriptions trimmed by about 13.7k tokens per main session |
 | TP-02 | [#1127](https://github.com/SandboxServers/Cimmeria/pull/1127) | 2026-10-03 12:33:56 | Lane prints a summary, not the full cargo output, when stdout is not a terminal |
+| TP-06 | [#1130](https://github.com/SandboxServers/Cimmeria/pull/1130) | 2026-10-03 13:43:26 | `rust-gameserver-dev` requests use the 1-hour cache TTL; check that its new transcripts show `cache_write_1h > 0`, teammates included |
+| TP-07 | [#1133](https://github.com/SandboxServers/Cimmeria/pull/1133) | 2026-10-03 13:44:55 | "Reading files" rule; four oversized docs split |
+| TP-09 | [#1135](https://github.com/SandboxServers/Cimmeria/pull/1135) | 2026-10-03 13:57:11 | Mechanical rebases go through `rebase-pr.sh` |
 
 ## Acceptance criteria
 
@@ -128,7 +153,7 @@ The profiler is trusted only when all of these hold (the issue's 2026-09-30 Phas
 - [x] Thinking tokens are not double-counted (test: `test_thinking_is_a_subset_of_output`, plus an ingest test). (TP-01a)
 - [x] A final-record dedupe test fails a first-record dedupe (the fixture is built for it). (TP-01a)
 - [x] Model-specific USD, including the Opus 5.5 and Fable 5.1 cache-read prices. (TP-01a)
-- [ ] Transcript totals reconcile with both OTel and `cost-state` for a controlled session, within a documented tolerance.
+- [ ] Transcript totals reconcile with both OTel and `cost-state` for a controlled session, within a documented tolerance. (`cost-state`: done in TP-05; OTel: waits for telemetry data.)
 - [x] Unknown transcript shapes fail visibly or land in a counted bucket. (TP-01a)
 - [x] Main, subagent and agent-type attribution is tested. (TP-01a)
 - [x] Trigger attribution includes `unknown` and `mixed`. (TP-01a)
