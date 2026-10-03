@@ -6,8 +6,9 @@ metadata:
 ---
 
 Reviewed 2026-10-02 in SigNoz `cimmeria-server` logs (14-day window), against
-`SGW_FINAL_DEVELOPER_HANDOFF.zip` world dossiers. Full, sanitized timeline and
-query anchors: `docs/analysis/playtests/2026-10-02-castle-signoz-dossier/README.md`.
+`SGW_FINAL_DEVELOPER_HANDOFF.zip` world dossiers. Added `cimmeria-client`
+telemetry on 2026-10-03 UTC. Full, sanitized timeline and query anchors:
+`docs/analysis/playtests/2026-10-02-castle-signoz-dossier/README.md`.
 
 - Sep 28 dev: zero-mission CellBlock entry → mission 688 completion → Castle
   missions 701, 702, 703, 704, 706, 708 completion → accepted Harset dial,
@@ -29,3 +30,18 @@ query anchors: `docs/analysis/playtests/2026-10-02-castle-signoz-dossier/README.
   have no Castle content chains under `db/resources/Content/Seed/castle*.sql`.
 - Every sampled Castle world-entry log reports `access_level=2`; do not
   generalize these playtests into an ordinary-player completion rate.
+- Sep 29 colo client: both CellBlock ring Matinees (`SeqAct_Interp_0`, 6.05 s)
+  and the Straegis Matinee (`SeqAct_Interp_1`, 10.01 s) activated and reached
+  full length with `cut_short=false`; Castle chunks became visible at world
+  entry. The 704 CommsRoom step and objective updates reached the client.
+  This supports client execution, not exact rendered frames or audio.
+- The same client logged 303 `UnitFrames.lua` nil-`colors` errors during Castle
+  combat, plus repeated reticule and Castle player-controller load failures.
+  No 704 Zuritska `DialogDisplay` event was found around three server dialog
+  sends; the same hook did capture an earlier CellBlock dialog. Treat this as
+  a bounded delivery/instrumentation question, not proof of a soft-lock.
+  Follow-up interact bursts targeted a hostile NPC during combat.
+- No client capture was found for the three successful dev Castle gate runs;
+  gate vortex, chevrons, crossing presentation and sound remain unverified.
+  Native client `ts_ms` is event time; ingest timestamp can lag. Governor
+  rollups make absent hot-stream events inconclusive.

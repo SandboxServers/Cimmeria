@@ -1,7 +1,8 @@
 # CellBlock and Castle: recent SigNoz sessions against the Lomiada dossiers
 
-> Investigation dated 2026-10-02. All times below are UTC. This is a server-log
-> analysis, not a client visual or audio acceptance test.
+> Investigation dated 2026-10-02, with client telemetry added 2026-10-03 UTC.
+> All times below are UTC. Client event logs show that some sequences ran, but
+> they are not a visual or audio acceptance test.
 
 ## Evidence and scope
 
@@ -29,6 +30,14 @@ The 14-day search found 16 Castle `Gate travel: sending RESET_ENTITIES` records
 The September 29 colo arrivals include repeated world entries from one
 high-level character with only two missions, so those are not evidence of a
 fresh story playthrough.
+
+For the September 29 run, `service.name = cimmeria-client` native logs were
+correlated to the same client session. The client's `ts_ms` field is the event
+time; the log timestamp may be delayed by upload. Client session and install
+identifiers are intentionally omitted here. The telemetry governor rolls up
+some high-volume events, so an absent event is weaker evidence than a recorded
+one. The observed client captures begin on September 29; none of the three
+earlier successful dev Castle gate runs has matching client capture.
 
 ## Session A — September 28, dev: full journey to Harset
 
@@ -72,6 +81,32 @@ the queried following hours. This shows a successful arrival and early Castle
 mission path; it does not establish a 704 soft-lock or completion of the Castle
 arc.
 
+## What the September 29 client actually recorded
+
+| UTC | Client event | What it establishes |
+|---|---|---|
+| 18:51:32–18:51:38; 18:53:28–18:53:34 | Both CellBlock ring `SeqAct_Interp_0` Matinees activated and deactivated at their full 6.05 s length, `cut_short=false`. | The ring presentation sequence ran to completion twice on this client, matching the server's two ring transfers. It does not establish the appearance of each rendered frame or sound. |
+| 18:59:56–19:00:06 | `SeqAct_Interp_1` activated after the server sent Straegis sequence 1751, then deactivated at its full 10.01 s length, `cut_short=false`. | This directly strengthens the dossier EventSet 747 `StraegisAttack` camera-root match: the client played a full Matinee, not just received a server request. Camera composition and audio remain unobserved. |
+| 19:05:02 | Castle level chunks, including `Castle-00070002` through `Castle-000a0002`, reported visible. | The client streamed Castle content at the server's world-entry time. This is stronger than an entry message alone, though it does not certify every Castle asset. |
+| 19:20:46 | `Event_NetIn_onStepUpdate` and `Event_NetIn_onObjectiveUpdate` arrived as mission 704 entered CommsRoom. | The client received the 704 objective/step advance. The run ended before a 704 completion. |
+| 19:15:42–19:27:42 | 303 `client.lua.error` records report `UnitFrames.lua` lines 159, 163 or 235 indexing a nil `colors` value during Castle combat. | A repeatable client HUD error is visible in this run. Its cause and effect on mission progress are unproven; it deserves a focused client UI investigation. |
+| Castle entry and later respawns | Five `client.engine.load_failed` records name `VFX-Weapons.Wep-CombatReticule00`; two name `Castle.TheWorld.Castle.SGWController_Player_2`. | Possible presentation or asset-loading follow-up. The logs do not show whether these failures were visible to the player. |
+
+The server logged dialog 4866 for Zuritska at 19:20:47 and again at 19:21:25
+and 19:21:27. A narrow client search around these sends found the 704 step and
+objective updates but no corresponding `DialogDisplay` event. The same client
+did record `Event_NetIn_DialogDisplay` earlier in CellBlock, so this is a
+specific delivery or instrumentation question for a future replay. It is not
+enough to call the 704 state a soft-lock: server dialog-send logs are not
+client delivery receipts, the logger can roll up events, and the later rapid
+`interact` calls were aimed at a hostile NPC during combat, not Zuritska.
+
+The client also logged dropped SGWMob method 12 (`onTimerUpdate`), already
+described in
+[`client-instrumentation-hookpoints.md`](../../../reverse-engineering/findings/client-instrumentation-hookpoints.md)
+as an unbound client method. Those drops are not evidence that the Castle
+mission chain failed.
+
 ## Successful Castle gate crossings and timing
 
 | Run (UTC) | Accepted dial | MakeGate 6100 | CrossGate 6113 and 708 completion | Harset entry |
@@ -114,9 +149,10 @@ are not evidence of a failed Castle crossing.
    None appears in `db/resources/Content/Seed/castle*.sql`, and these sampled
    archetype-1 sessions did not exercise them. The core route's success does
    not verify those branches or the alternate 708 diagnosis/crystal sources.
-4. **Presentation still needs client evidence.** Server logs establish the
-   Straegis and gate sequence sends, ring destinations and mission state. A
-   short captured client pass should confirm the camera, ring and gate visuals
-   and the provisional timing before declaring visual fidelity complete.
+4. **Client evidence now confirms sequence execution, with a narrower visual
+   gap.** The September 29 client ran both CellBlock ring Matinees and the
+   Straegis Matinee to full length and streamed Castle chunks. A captured
+   Castle-to-Harset client pass is still needed for the gate visuals and sound,
+   and a replay should inspect the 704 dialog and UnitFrames errors.
 
 No runtime or seed change was made for this investigation.
