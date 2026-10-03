@@ -3,7 +3,9 @@
 For each labelled request the attribution's weight is split four ways:
 `correct` (on the true PR), `wrong` (on another PR), `campaign` (charged to
 a campaign, not a PR) and `unattributed`. Precision is correct over correct
-plus wrong; recall is correct over everything labelled.
+plus wrong; recall is correct over everything labelled. Weight a request's
+rows don't account for (no rows, or rows summing under 1, which the ingest
+refuses but a hand-edited database may hold) counts as unattributed.
 """
 
 PARTS = ("correct", "wrong", "campaign", "unattributed")
@@ -23,10 +25,9 @@ def score(db, truth, usd=None):
     acc = {"usd": {p: 0.0 for p in PARTS}, "requests": {p: 0.0 for p in PARTS}}
     wrong_by_method, missing = {}, 0
     for rid, pr_true in truth.items():
-        got = rows.get(rid)
+        got = rows.get(rid, [])
         if not got:
             missing += 1
-            continue
         u = usd.get(rid, 0.0)
         for pr, method, w in got:
             part = ("unattributed" if method == "unattributed" else "campaign" if method == "campaign"
@@ -35,7 +36,10 @@ def score(db, truth, usd=None):
             acc["requests"][part] += w
             if part == "wrong":
                 wrong_by_method[method] = wrong_by_method.get(method, 0.0) + w * u
-    out = {"labelled_requests": len(truth) - missing, "requests_missing": missing}
+        unassigned = max(0.0, 1.0 - sum(w for _, _, w in got))
+        acc["usd"]["unattributed"] += unassigned * u
+        acc["requests"]["unattributed"] += unassigned
+    out = {"labelled_requests": len(truth), "requests_missing": missing}
     for unit in ("usd", "requests"):
         a = acc[unit]
         total = sum(a.values())

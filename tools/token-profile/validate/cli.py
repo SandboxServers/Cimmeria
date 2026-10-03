@@ -70,10 +70,10 @@ def main(argv=None):
     args = ap.parse_args(argv)
     try:
         report = build(args.db, args.labels, args.truth_db)
+        if args.out:
+            Path(args.out).write_text(json.dumps(report, indent=1) + "\n", encoding="utf-8")
     except (dbmod.ReportError, OSError, ValueError) as e:
         print(f"status=error {e}", file=sys.stderr)
         return 2
     print(text(report))
-    if args.out:
-        Path(args.out).write_text(json.dumps(report, indent=1) + "\n", encoding="utf-8")
     return 0

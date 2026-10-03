@@ -71,9 +71,18 @@ Cost-state next to profiler (D-TP6), whole history: Claude Code's cost-state $11
 
 What stays unattributed ($1,530): teammates and subagents that never ran git or touched a PR, such as research, review and RE workers whose parent turn is itself unattributed ($1,072), and main-session turns with no PR activity ($458, of which $173 is on `main`). Main-session attribution has no independent ground truth here; it improves only through A1, which follows the workers.
 
-### Backfill dry run
+### Backfill
 
-BACKFILL_PLACEHOLDER
+Posted on 2026-10-03 between about 16:20 and 17:00 UTC with `pr_stats --backfill --post`, over the 426 PRs the database had merged since 2026-09-13. The first run, at the default 6 a minute, was stopped after 140 PRs; the second resumed from the state file at 30 a minute and skipped those 140.
+
+| Outcome | PRs |
+|---|---:|
+| Comment created | 404 |
+| Comment already current (`unchanged`, from the TP-10 live posts) | 2 |
+| No attributed request (`no-data`, nothing posted) | 20 |
+| `gh` error or privacy-gate refusal | 0 |
+
+The 20 no-data PRs are #621-#637 (eight), #697-#702 (four), #758-#764 (six), #972 and #975: no request in the database is attributed to them.
 
 ## Judgment
 
