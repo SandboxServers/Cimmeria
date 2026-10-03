@@ -17,7 +17,12 @@ The target is not fewer tokens for their own sake. A cheaper worker that needs m
 | D-TP2 | **OTel sink: the colo SigNoz**, exported directly over the private network (runbook Path A). Revised after Wave 1: the SigNoz ports are reachable only over WireGuard, so no Cloudflare tunnel is needed. `OTEL_LOG_TOOL_DETAILS=1`; prompt logging off; the colo collector drops `user.email`; `OTEL_METRICS_INCLUDE_ACCOUNT_UUID=false`. No endpoint or credential is committed. |
 | D-TP3 | **Quick wins ship before the profiler.** Transcripts are kept 365 days, so the "before" already exists. Each packet records its merge time in the [cut-line log](#cut-line-log). |
 | D-TP4 | **Cap worker lifetime now.** The rules are in [development-workflow.md](../../agents/development-workflow.md#worker-lifetime-and-notifications). |
-| D-TP5 | **Every merged PR gets a stats comment** with a `cimmeria-pr-stats/1` JSON block, kept idempotent (edited in place, never duplicated). Past PRs since 2026-09-13 are backfilled once TP-05 has validated attribution. |
+| D-TP5 | **Every merged PR gets a stats comment** with a `cimmeria-pr-stats/1` JSON block, kept idempotent (edited in place, never duplicated). Past PRs since 2026-09-13 are backfilled once attribution is validated (TP-05b). |
+| D-TP6 | **Reports show both totals.** Claude Code's own `cost-state` total stands next to the profiler's (the profiler is about 10% under; it is a floor). (2026-10-03, after Wave 2) |
+| D-TP7 | **An integration PR carries only its own spend.** A packet PR that merges into an integration branch keeps its own spend; a campaign's cost is the sum over its PRs. Ancestry no longer charges packet work to the integration PR. (2026-10-03, after Wave 2) |
+| D-TP8 | **Rebase only when needed.** `rebase-pr.sh` runs when GitHub reports a PR behind or conflicting, not before every merge. (2026-10-03, after Wave 2) |
+| D-TP9 | **`docs/readme.md` keeps `merge=union`**; `rebase-pr.sh` handles its generated count lines. (2026-10-03, after Wave 2) |
+| D-TP10 | **Experiment G's guidance is a rule:** the Ghidra MCP over the headless probe when Ghidra's GUI is up, and SigNoz `aggregate_logs` over `search_logs` unless line bodies are needed. Written into `reverse-engineering-with-claude.md` and the SigNoz log-mining memory. (2026-10-03, after Wave 2) |
 
 ## Corrections to the issue
 
@@ -61,7 +66,7 @@ From the 2026-10-03 quick pass (throwaway scripts, not the profiler; TP-05 repla
 | TP-08 Experiment G (Ghidra MCP vs headless; SigNoz search vs aggregate) | 2 | this folder | Merged; [write-up](experiment-g.md) | [#1132](https://github.com/SandboxServers/Cimmeria/pull/1132) |
 | TP-09 Rebase churn (F) | 2 | a rebase script under `tools/` | Merged | [#1135](https://github.com/SandboxServers/Cimmeria/pull/1135) |
 | TP-10 Per-PR stats comments | 2 | `tools/token-profile/pr_stats/` | Merged; nothing posted yet, see TP-05b | [#1131](https://github.com/SandboxServers/Cimmeria/pull/1131) |
-| TP-05b Attribution validation | 2 | `tools/token-profile/ingest/attribution*` | Not started; gates the first live post and the backfill | |
+| TP-05b Attribution validation, D-TP6 both totals, D-TP7 integration PRs and campaign rollup | 2 | `tools/token-profile/ingest/`, `report/`, `pr_stats/` | In progress; gates the first live post and the backfill | |
 | TP-11 Retro cost study | 2 (after TP-10 backfill) | this folder | Not started | |
 | TP-12 Close-out | 3 | guide, rules, status docs | Not started | |
 
@@ -125,6 +130,8 @@ All six packets merged on 2026-10-03. Worknotes: [worknotes/](worknotes/). USD i
 - **Static context, main session.** A main session started on 2026-10-03 at about 13:05 UTC still measured a first request of 83,006 tokens, because the main checkout was 16 commits behind `origin/main` and had not loaded TP-03. The first post-TP-03 main session gives the real number. Subagent first requests fell from a median of 64.6k to 61.4k (n=17). `disabledMcpjsonServers` in the local settings did not stop the disabled servers' tools from loading (deferred), which needs a look.
 
 ### Open questions for the owner (Wave 2)
+
+Answered on 2026-10-03 as D-TP6 to D-TP10 above. TP-05b implements D-TP6 and D-TP7. The questions were:
 
 1. Reconciliation: keep the 15% undercount limit, or show the `cost-state` total next to the profiler's in reports?
 2. Does a campaign's integration PR (#662) carry its packets' spend in its stats comment, or only its own?

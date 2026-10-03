@@ -8,6 +8,7 @@ metadata:
 For agents with the SigNoz MCP connected (setup: `docs/operations/signoz-remote-access.md`). Written 2026-09-20; the three indexes (`cimmeria-server`, `cimmeria-network`, `cimmeria-trace` for TRACE only) are from 2026-09-25.
 
 - **Size:** `signoz_search_logs` returns one large JSON line. Anything over about 25k tokens is written to a tool-results file under the session directory. Read it through a condense script (JSON → `HH:MM:SS.mmm LEVEL scope | body | k=v …`), never by reading the raw file.
+- **Prefer `signoz_aggregate_logs` (or a builder query) over `signoz_search_logs`** for counts, distributions and "did X happen" questions; use `search_logs` only when you need the bodies of specific lines. In experiment G (2026-10-03, `docs/analysis/token-usage/experiment-g.md`) both answered 12/12, but aggregate took 4 requests and 7k characters against 9 requests and 32.5k. Aggregate calls fail more often on a bad filter (14 errors against 1 historically), so check the filter syntax below first.
 - **Never call `signoz_get_field_keys` unfiltered.** The key list is huge.
 - **Filters that work:**
   - `body = 'wire_inbound' AND peer = '<ip:port>'`, `msg_name IN (...)`

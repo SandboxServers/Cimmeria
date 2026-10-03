@@ -164,6 +164,8 @@ The agent should *self-rate* its findings — if it produces a packet with no co
 
 ## When MCP-driven flows don't work — the manual fallback
 
+**Prefer the Ghidra MCP whenever Ghidra's GUI is up.** In [experiment G](../analysis/token-usage/experiment-g.md) both routes answered every question correctly, but the MCP took 7 requests and 47 s against the headless probe's 9 requests and 88 s; cost follows the request count. The headless probe below is the fallback, not an alternative.
+
 The MCP bridges are convenient but not omnipotent. Reach for the manual flow when:
 
 - **pybag (the Ghidra MCP debugger plugin) freezes SGW.** This is a known compatibility issue documented in [`sgw-live-debugging.md`](sgw-live-debugging.md). For dynamic analysis on SGW, use x32dbg manually (or via the x64dbg-automate MCP) — never pybag.
