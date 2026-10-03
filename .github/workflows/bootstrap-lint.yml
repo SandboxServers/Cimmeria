@@ -47,7 +47,7 @@ jobs:
           with open('.mcp.json.example') as f:
               doc = json.load(f)
           servers = doc.get('mcpServers', {})
-          expected = {'cimmeria-rag', 'ghidra', 'x64dbg'}
+          expected = {'ghidra', 'x64dbg'}
           missing = expected - set(servers.keys())
           if missing:
               print(f'.mcp.json.example missing required mcpServers entries: {sorted(missing)}', file=sys.stderr)

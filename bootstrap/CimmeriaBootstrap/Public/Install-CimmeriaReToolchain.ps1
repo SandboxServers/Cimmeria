@@ -40,14 +40,6 @@ function Install-CimmeriaReToolchain {
         Re-run every step even if the install looks complete. Does NOT overwrite
         an existing .mcp.json — that's always protected.
 
-    .PARAMETER CimmeriaRagKey
-        Optional. If supplied, written into the cimmeria-rag block of the
-        generated .mcp.json as the x-functions-key value (the Azure Functions
-        key issued for the cimmeria-rag MCP server — ask in the project
-        Discord / Slack if you don't have one). Otherwise the
-        REPLACE_WITH_FUNCTIONS_KEY placeholder is left in place for you to
-        substitute manually.
-
     .EXAMPLE
         Install-CimmeriaReToolchain
 
@@ -68,9 +60,7 @@ function Install-CimmeriaReToolchain {
     param(
         [switch]$SkipDownload,
         [switch]$SkipPrereqCheck,
-        [switch]$Force,
-        [Alias("GhidraServerKey")]
-        [string]$CimmeriaRagKey
+        [switch]$Force
     )
 
     $ErrorActionPreference = "Stop"
@@ -575,19 +565,11 @@ function Install-CimmeriaReToolchain {
     } else {
         if ($PSCmdlet.ShouldProcess($mcpJsonPath, "Generate .mcp.json")) {
             $template = Get-Content $mcpExamplePath -Raw
-            # Use literal .Replace() rather than -replace: the cimmeria-rag
-            # functions key can contain `$` sequences that -replace would
-            # interpret as backreferences and silently corrupt.
+            # Literal .Replace() rather than -replace: a path can contain `$`
+            # sequences that -replace would read as backreferences.
             $resolved = $template.Replace('<CIMMERIA_ROOT>', ($ProjectRoot -replace '\\', '\\\\'))
-            if ($CimmeriaRagKey) {
-                $resolved = $resolved.Replace('REPLACE_WITH_FUNCTIONS_KEY', $CimmeriaRagKey)
-            }
             Set-Content -Path $mcpJsonPath -Value $resolved -Encoding UTF8
             Write-Status ".mcp.json: generated from .mcp.json.example" "Green"
-            if (-not $CimmeriaRagKey) {
-                Write-Status "  Note: cimmeria-rag key left as REPLACE_WITH_FUNCTIONS_KEY." "DarkGray"
-                Write-Status "  Edit .mcp.json and replace it, or delete the cimmeria-rag block if not using it." "DarkGray"
-            }
         }
     }
 
