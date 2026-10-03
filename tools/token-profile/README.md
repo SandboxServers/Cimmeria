@@ -2,7 +2,7 @@
 
 Measures what AI-assisted work in this repo costs: tokens, estimated list-price USD, context pressure and orchestration overhead, per session, agent, campaign and PR. It reads local Claude Code transcripts into a local SQLite store; nothing it reads leaves the machine except scrubbed aggregates.
 
-Status: **Wave 2.** The data contract, the ingest (TP-01a), the reports (TP-01b), the reconciliation against Claude Code's own totals (TP-05) and the attribution validation (TP-05b) are in place. The plan, the decisions and the cut-line log are in the ledger, [docs/analysis/token-usage/](../../docs/analysis/token-usage/README.md); the issue is [#957](https://github.com/SandboxServers/Cimmeria/issues/957).
+Status: **Campaign closed (2026-10-03).** The data contract, ingest, reports, reconciliation against Claude Code's own totals, attribution validation, per-PR stats comments (backfilled since 2026-09-13) and the scheduled jobs are in place. How-to: [docs/guides/token-profiling.md](../../docs/guides/token-profiling.md). The plan, decisions, cut lines and open levers are in the ledger, [docs/analysis/token-usage/](../../docs/analysis/token-usage/README.md).
 
 | File | What it is |
 |---|---|
