@@ -2,19 +2,21 @@
 
 Measures what AI-assisted work in this repo costs: tokens, estimated list-price USD, context pressure and orchestration overhead, per session, agent, campaign and PR. It reads local Claude Code transcripts into a local SQLite store; nothing it reads leaves the machine except scrubbed aggregates.
 
-Status: **Wave 2.** The data contract, the ingest (TP-01a), the reports (TP-01b) and the reconciliation against Claude Code's own totals (TP-05) are in place. The plan, the decisions and the cut-line log are in the ledger, [docs/analysis/token-usage/](../../docs/analysis/token-usage/README.md); the issue is [#957](https://github.com/SandboxServers/Cimmeria/issues/957).
+Status: **Wave 2.** The data contract, the ingest (TP-01a), the reports (TP-01b), the reconciliation against Claude Code's own totals (TP-05) and the attribution validation (TP-05b) are in place. The plan, the decisions and the cut-line log are in the ledger, [docs/analysis/token-usage/](../../docs/analysis/token-usage/README.md); the issue is [#957](https://github.com/SandboxServers/Cimmeria/issues/957).
 
 | File | What it is |
 |---|---|
-| [`schema.sql`](schema.sql) | The SQLite schema the ingest writes and the reports read. Version 3. |
+| [`schema.sql`](schema.sql) | The SQLite schema the ingest writes and the reports read. Version 4. |
 | [`transcript-format.md`](transcript-format.md) | The transcript shapes the profiler depends on, and the trigger classification rules. |
-| [`attribution.md`](attribution.md) | How a request is charged to a PR, and the invariants every attribution keeps. |
+| [`attribution.md`](attribution.md) | How a request is charged to a PR or a campaign, and the invariants every attribution keeps. |
+| [`campaigns.json`](campaigns.json) | Which branches, branch prefixes and tracking issues belong to which campaign (a `docs/analysis/<campaign>/` folder). |
 | [`fixtures/build_fixtures.py`](fixtures/build_fixtures.py) | Builds a synthetic transcript tree, with an `expected.json` of what a correct ingest produces and hostile values a report must never show. |
 | [`ingest/`](ingest/) | The ingest: transcripts into the schema, incrementally, with trigger classification, prices and PR attribution. Its tests are `ingest/test_*.py`. |
 | [`report/`](report/) | The reports: raw tokens, estimated USD, context pressure, tool exposure, cost per merged PR and a cache-policy simulator, behind a privacy scrubber. See [Reports](#reports). |
 | [`reconcile/`](reconcile/) | Checks the profiler against Claude Code's `cost-state` records and OTel `api_request` events, with tolerances. See [Reconciliation](#reconciliation). |
 | [`cutlines/`](cutlines/) | Before-and-after measures across the ledger's cut lines. See [Cut lines](#cut-lines). |
 | [`pr_stats/`](pr_stats/) | The per-PR stats comments: one idempotent `cimmeria-pr-stats/1` comment per PR, and the backfill. See [Per-PR stats comments](#per-pr-stats-comments). |
+| [`validate/`](validate/) | Scores PR attribution against ground truth. See [Validating attribution](#validating-attribution). |
 | [`test_contract.py`](test_contract.py) | Checks the schema's constraints and that the fixture tells a correct ingest from a wrong one. CI runs it. |
 
 ```bash
@@ -46,10 +48,11 @@ python tools/token-profile/ingest --db ~/token-profile.sqlite --repo . --fetch-p
 | `--project-prefix <name>` | Which project directories to read; default the main checkout's path in Claude Code's naming, which also covers sessions started in its worktrees. |
 | `--repo <checkout>` | Read branch heads (ref snapshot, merge subjects) and commit ancestry from this checkout. Without it, rule A3 places nothing. |
 | `--fetch-prs` or `--prs-json <file>` | Load the `prs` table from `gh pr list --state all`, live or from a saved file. Without PRs every request is unattributed. |
-| `--lane-log <file>` | The build lane's job log, for branch heads; default the lane's own `jobs.jsonl` if present. |
+| `--lane-log <file>` | The build lane's job log, for branch heads and which branch each worktree had; default the lane's own `jobs.jsonl` if present. |
+| `--campaigns <file>` | Campaign tags; default [`campaigns.json`](campaigns.json). |
 | `--allow-unknown` | Exit 0 although `unknown_shapes` has rows. |
 
-Re-running is cheap: each file is read from where the last run stopped, and a run with nothing new adds nothing. Attribution is rebuilt on every run, so a PR opened later places requests made before it. The run prints a JSON summary of counts (never transcript content) and exits 1 when unknown transcript shapes are recorded, 2 when `attribution_imbalance` is not empty.
+Re-running is cheap: each file is read from where the last run stopped, and a run with nothing new adds nothing. Attribution and campaign tags are rebuilt on every run, so a PR opened later places requests made before it. A database of an older schema version is refused: start a new one (about two minutes). The run prints a JSON summary of counts (never transcript content) and exits 1 when unknown transcript shapes are recorded, 2 when `attribution_imbalance` is not empty.
 
 USD is computed from `price_tables` by the reports, never stored per request; `ingest/prices.py` holds the versioned table and `estimate_usd()`.
 
@@ -67,10 +70,11 @@ The layers stay separate:
 | Section | What it reports | Unit |
 |---|---|---|
 | Raw tokens | Each category on its own (input, output, thinking as part of output, cache read, 5m and 1h cache writes, context), by model, main or subagent, agent type and trigger kind, with per-request distributions | tokens |
-| Estimated USD | The same breakdowns priced per model from the stamped price table, plus requests whose model has no price. Always labelled a plan-usage proxy, not a bill (D-TP1) | USD |
+| Estimated USD | The same breakdowns priced per model from the stamped price table, plus requests whose model has no price, and Claude Code's own `cost-state` total for the window next to the profiler's over the same process windows (D-TP6). Always labelled a plan-usage proxy, not a bill (D-TP1) | USD |
 | Context pressure | Context per request and peak per transcript, requests per transcript, the first request of each transcript by agent type (static context), cache writes by idle gap, and compactions | tokens |
 | Tool results and exposure | Result characters and exposure (characters x later requests) by tool, by command or path fingerprint, and by MCP server | characters, never USD |
 | Cost per merged PR | For PRs merged in the window, each PR's whole attributed spend, its distribution and top-10% share, the unattributed share of window spend, and the method mix. Unattributed spend is reported, never spread onto PRs | USD |
+| Cost per campaign | Each campaign with spend in the window: its PRs' spend, the packet work that reached it without a PR, and the total (D-TP7). Needs a schema version 4 database | USD |
 | Cache-policy simulation | Each transcript replayed under a 5m and a 1h TTL over its real idle gaps, by agent type, with a calibration ratio against the observed cache cost and the 1h-minus-5m range over the model's least certain input, the cache read on a cold request | USD |
 
 Every distribution gives n, p50, p75, p90, p95, p99, max and mean. Every report opens with its stamp: window, profiler commit, report commit, price table, Claude Code versions, models, schema version, unknown-record counts, and how many values the privacy filter rejected.
@@ -85,7 +89,7 @@ The repo is public, so a report is built to be safe to commit. [`report/scrub.py
 2. **Redaction.** Every string is scrubbed of URL credentials and query strings, non-public hosts, auth headers, secret flags and assignments, known token formats, high-entropy tokens, emails, IP addresses, absolute local paths, and the deny words: the local user and machine names, `--deny` and the comma-separated `TOKEN_PROFILE_DENY`.
 3. **The gate.** The rendered Markdown and JSON are searched again with the same detectors. A hit names the detector, never the value, and nothing is written (exit code 3).
 
-Session ids, agent ids, project directories, branch names, teammate names and message text never reach a report. Claude Code writes an in-process teammate's name as its `agentType`, so a teammate with no `.claude/agents` definition is reported as `teammate`.
+Session ids, agent ids, project directories, branch names, teammate names and message text never reach a report; a campaign is named after its ledger folder or its integration PR (`pr-<N>`), never a branch. Claude Code writes an in-process teammate's name as its `agentType`, so a teammate with no `.claude/agents` definition is reported as `teammate`.
 
 ## Reconciliation
 
@@ -105,7 +109,7 @@ Compares the profiler with Claude Code's own records and exits 4 when a check is
 | `overcount` | the profiler is above the cost-state at all (a double count) | 1% | 0% |
 | `session_overcount` | any session with 20 or more requests is more than 2% above its cost-state | 0 sessions | 0 of 69 |
 
-The undercount is real and expected: the cost-state holds requests that no transcript records. By model (Haiku aside), the transcripts hold 1-10% of the cost-state's input tokens, 73-97% of its cache reads, 91-100% of its cache writes and 98-99% of its output: the missing requests read a large cached context, send fresh input and write little. The gap grows with subagent activity (correlation 0.83 with a session's subagent requests). The OTel `query_source` of those requests should name them; until it does, the profiler's USD is a floor about 10% under Claude Code's.
+The undercount is real and expected: the cost-state holds requests that no transcript records. So the report's USD section shows the cost-state total next to the profiler's wherever a cost-state covers the window (D-TP6). By model (Haiku aside), the transcripts hold 1-10% of the cost-state's input tokens, 73-97% of its cache reads, 91-100% of its cache writes and 98-99% of its output: the missing requests read a large cached context, send fresh input and write little. The gap grows with subagent activity (correlation 0.83 with a session's subagent requests). The OTel `query_source` of those requests should name them; until it does, the profiler's USD is a floor about 10% under Claude Code's.
 
 **Against OTel.** `--otel` takes `claude_code.api_request` events from a file: an OTLP JSON log export, a SigNoz log search result saved as JSON, or JSON Lines of flat attributes. Events join to requests on `request_id`.
 
@@ -157,8 +161,18 @@ Run the ingest first, so the database has the PR's merge time and its latest req
 | `quality.reverted` | A merged PR titled `Revert ...` cross-references this PR |
 | `diff` | Additions, deletions and changed files from `gh pr view`, the database's copy when `gh` has none |
 
+**Cost-state and campaign (D-TP6, D-TP7).** Claude Code's `cost-state` total is per process, and one process spans several PRs, so it cannot be split by PR and the comment never invents a per-PR number: `cost_state.usd` is always null. Instead the block says how far the profiler fell short of the cost-state totals of the sessions this PR's spend came from (`sessions_gap_share`) and how much of the PR's spend they cover (`covered_share`), and the comment reads its USD as a floor. `campaign` names the PR's campaign; an integration PR's number excludes the packets merged into it, which the report's campaign section adds up. Both keys come after the plan's.
+
 The table's wall clock runs from the PR's first attributed request to its merge. Fields are only ever added; a breaking change bumps the schema version. `pr_stats.block.parse(body)` reads a block back for the aggregation.
 
 **Privacy.** The block goes through the same scrubber as the reports (field validation and redaction), and the rendered comment through its gate before anything is printed or posted. A gate hit names the detector, exits 3 and posts nothing.
 
-**Backfill.** `--backfill` walks the database's PRs merged since `--since` (default 2026-09-13), oldest first. It is a dry run unless `--post` is given, and prints one `pr=N status=...` line per PR. A PR with no data costs no `gh` call; every other PR waits its turn under `--rate` (default 6 a minute, `N/h` also works). Each outcome goes into a state file next to the database (`--state` to move it), per mode, so a stopped run resumes where it left off: successes and no-data PRs are skipped, errors and gate refusals are retried. `--restart` forgets the mode's outcomes, `--limit N` stops after N PRs, and three `gh` errors in a row stop the run. The backfill is posted only after TP-05 has validated attribution.
+**Backfill.** `--backfill` walks the database's PRs merged since `--since` (default 2026-09-13), oldest first. It is a dry run unless `--post` is given, and prints one `pr=N status=...` line per PR. A PR with no data costs no `gh` call; every other PR waits its turn under `--rate` (default 6 a minute, `N/h` also works). Each outcome goes into a state file next to the database (`--state` to move it), per mode, so a stopped run resumes where it left off: successes and no-data PRs are skipped, errors and gate refusals are retried. `--restart` forgets the mode's outcomes, `--limit N` stops after N PRs, and three `gh` errors in a row stop the run. The backfill is posted only after attribution is validated; TP-05b did that on 2026-10-03, see [Validating attribution](#validating-attribution).
+
+## Validating attribution
+
+```bash
+python tools/token-profile/validate --db <profile.sqlite> [--labels <labels.csv>] [--truth-db <older.sqlite>] [--out <file.json>]
+```
+
+Scores the database's PR attribution against ground truth, by estimated USD and by request count: precision, recall, and the wrong, campaign and unattributed shares, with the wrong share by method. The ground-truth sets (a local labels CSV of worker name, day and PR; workers that created exactly one PR) and the rule that a method misplacing more than 10% of labelled spend is fixed first are in [attribution.md § Validating the rules](attribution.md#validating-the-rules). `--truth-db` takes the ground truth from another database, to score an older database on the same requests. The output holds shares and totals only, never names or ids.

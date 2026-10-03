@@ -38,4 +38,17 @@ def build(db, sc):
         "by": by,
         "per_request": distribution([r[0] for r in db.execute("SELECT usd FROM wcost WHERE priced")]),
         "per_transcript": distribution(per_transcript),
+        "cost_state": cost_state_totals(db, sc),
     }
+
+
+def cost_state_totals(db, sc):
+    """Claude Code's own cost-state total for the window, next to the profiler's (D-TP6). None before schema 3."""
+    if int(db.execute("SELECT value FROM meta WHERE key = 'schema_version'").fetchone()[0]) < 3:
+        return None
+    from reconcile import cost_state
+    since, until = db.execute("SELECT since, until FROM report_window").fetchone()
+    r = cost_state.build(db, sc, since or None, until)
+    return {"sessions": r["sessions"], "cost_state_usd": r["totals"]["cost_state_usd"],
+            "profiler_usd": r["totals"]["profiler_usd"], "gap_share": r["totals"]["gap_share"],
+            "uncovered_usd": r["uncovered"]["usd"]}

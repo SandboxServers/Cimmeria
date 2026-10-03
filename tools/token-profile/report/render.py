@@ -75,6 +75,7 @@ def cost_md(c):
              table(["", "total", "input", "output", "cache read", "cache write 5m", "cache write 1h"],
                    [["all", usd(t["usd"]), usd(t["usd_input"]), usd(t["usd_output"]), usd(t["usd_cache_read"]),
                      usd(t["usd_cache_write_5m"]), usd(t["usd_cache_write_1h"])]]),
+             cost_state_line(c.get("cost_state")),
              f"\nPriced requests: {num(t['priced_requests'])}. Unpriced: {num(t['unpriced_requests'])}"
              + (f" (models with no price: {', '.join(c['unpriced_models'])})" if c["unpriced_models"] else "")
              + f". Not priced at all: {num(c['not_priced']['web_search_requests'])} web searches,"
@@ -86,6 +87,16 @@ def cost_md(c):
     parts.append("\nDistributions:\n")
     parts.append(dist_table([("per request", c["per_request"]), ("per transcript", c["per_transcript"])], usd))
     return "\n".join(parts)
+
+
+def cost_state_line(cs):
+    """D-TP6: Claude Code's own total next to the profiler's, wherever a cost-state covers the window."""
+    if not cs or not cs["sessions"]:
+        return "\nClaude Code's own cost-state total: no cost-state record covers this window."
+    return (f"\nClaude Code's own cost-state total: **{usd(cs['cost_state_usd'])}** over {num(cs['sessions'])}"
+            f" sessions. The profiler over the same process windows: {usd(cs['profiler_usd'])}"
+            f" ({pct(abs(cs['gap_share']))} {'under' if cs['gap_share'] < 0 else 'over'}); profiler USD is a floor."
+            f" Profiler spend no cost-state covers: {usd(cs['uncovered_usd'])}.")
 
 
 def context_md(c):
@@ -144,7 +155,7 @@ def prs_md(p):
              "\nSpend in the window by where it was attributed:\n",
              table(["attributed to", "est. USD", "share"],
                    [[k.replace("_", " "), usd(w[k]["usd"]), pct(w[k]["share"])]
-                    for k in ("merged_in_window", "other_prs", "unattributed")]),
+                    for k in ("merged_in_window", "other_prs", "campaign", "unattributed")]),
              "\nBy attribution method:\n",
              table(["method", "est. USD", "share"], [[m, usd(v["usd"]), pct(v["share"])]
                                                      for m, v in p["method_mix"].items()]),
@@ -155,6 +166,18 @@ def prs_md(p):
                      sum(a["count"] for a in r["agents"].values()), num(r["context"]["peak"]),
                      r["attribution"]["method"] or "-", f"{r['attribution']['confidence']:.2f}",
                      pct(r["attribution"]["unattributed_share"])] for r in p["top"]])]
+    return "\n".join(parts)
+
+
+def campaigns_md(c):
+    parts = [f"## Cost per campaign\n\n**{c['label']}** {c['note']}\n"]
+    if not c["available"]:
+        return "\n".join(parts + ["Needs a schema version 4 database."])
+    parts.append(table(["campaign", "PRs", "merged", "PR spend", "packets without a PR", "total", "largest PRs"],
+                       [[r["campaign"], num(r["prs"]), num(r["merged_prs"]), usd(r["pr_usd_est"]),
+                         usd(r["no_pr_usd_est"]), usd(r["usd_est"]),
+                         ", ".join(f"#{p['pr']} {usd(p['usd_est'])}" for p in r["top_prs"][:3]) or "-"]
+                        for r in c["campaigns"]]))
     return "\n".join(parts)
 
 
@@ -178,5 +201,6 @@ def markdown(report):
             f" transcript text, absolute paths or credentials. Estimated USD is list price, a plan-usage proxy on a"
             f" Max subscription, not a bill.\n\n{stamp_block(s)}\n")
     body = [tokens_md(report["tokens"]), cost_md(report["cost"]), context_md(report["context"]),
-            tools_md(report["tools"]), prs_md(report["prs"]), cache_md(report["cache_policy"])]
+            tools_md(report["tools"]), prs_md(report["prs"]), campaigns_md(report["campaigns"]),
+            cache_md(report["cache_policy"])]
     return head + "\n" + "\n\n".join(body) + "\n"

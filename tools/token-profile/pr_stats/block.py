@@ -8,6 +8,7 @@ Fields are only ever added; a breaking change bumps the schema version.
 
 import json
 import re
+import sqlite3
 from datetime import datetime
 
 from report import db as dbmod
@@ -19,6 +20,10 @@ SCHEMA = "cimmeria-pr-stats/1"
 # No #fragment: the gate allows a public URL only without query or fragment.
 README = "https://github.com/SandboxServers/Cimmeria/blob/main/tools/token-profile/README.md"
 LABEL = "Estimated list-price USD, a plan-usage proxy, not a bill (D-TP1)."
+# Keys added after the plan's, in this order (fields are only ever appended).
+APPENDED = ("campaign", "cost_state")
+COST_STATE_REASON = ("Claude Code's cost-state total is per process, and a process spans several PRs,"
+                     " so it is not split by PR")
 _BLOCK = re.compile(r"```json\n(\{.*?\})\n```", re.S)
 
 
@@ -51,6 +56,7 @@ def db_fields(db, sc, pr, price_table):
         "SELECT DISTINCT r.cc_version FROM pr_attribution a JOIN requests r ON r.request_id = a.request_id"
         " WHERE a.pr_number = ? AND r.cc_version IS NOT NULL", (pr,))]
     claude_code = max(versions, key=_version_key) if versions else None
+    campaign = _campaign(db, pr)
     return {
         "schema": SCHEMA,
         "pr": pr,
@@ -59,12 +65,51 @@ def db_fields(db, sc, pr, price_table):
         "claude_code": sc.label(claude_code, "cc_version"),
         "price_table": sc.label(price_table, "price_table"),
         **{k: v for k, v in rec.items() if k != "pr"},
+        "campaign": sc.label(campaign, "campaign"),
+        "cost_state": cost_state(db, pr),
     }
+
+
+def _campaign(db, pr):
+    try:
+        row = db.execute("SELECT campaign FROM prs WHERE pr_number = ?", (pr,)).fetchone()
+    except sqlite3.OperationalError:        # schema before version 4
+        return None
+    return row[0] if row else None
+
+
+def cost_state(db, pr):
+    """D-TP6 for one PR: no per-PR cost-state number (there is none), but how far the profiler fell short of
+    Claude Code's own total over the sessions this PR's spend came from, and how much of the spend they cover."""
+    out = {"usd": None, "reason": COST_STATE_REASON, "sessions": 0, "covered_share": 0.0, "sessions_gap_share": None}
+    try:
+        rows = db.execute(
+            "SELECT r.session_id, SUM(a.weight * COALESCE(c.usd, 0)),"
+            " SUM(CASE WHEN cs.session_id IS NOT NULL AND r.ts >= COALESCE(cs.process_start, '')"
+            "     THEN a.weight * COALESCE(c.usd, 0) ELSE 0 END)"
+            " FROM pr_attribution a JOIN requests r USING (request_id) JOIN rcost c USING (request_id)"
+            " LEFT JOIN cost_states cs ON cs.session_id = r.session_id"
+            " WHERE a.pr_number = ? GROUP BY r.session_id", (pr,)).fetchall()
+        spend = sum(r[1] or 0 for r in rows)
+        covered = sum(r[2] or 0 for r in rows)
+        sessions = [r[0] for r in rows if r[2]]
+        cs_total = prof_total = 0.0
+        for s in sessions:
+            total, start = db.execute("SELECT total_cost_usd, process_start FROM cost_states WHERE session_id = ?",
+                                      (s,)).fetchone()
+            cs_total += total or 0
+            prof_total += db.execute("SELECT COALESCE(SUM(c.usd), 0) FROM requests r JOIN rcost c USING (request_id)"
+                                     " WHERE r.session_id = ? AND r.ts >= ?", (s, start or "")).fetchone()[0]
+    except sqlite3.OperationalError:        # schema before version 3: no process_start
+        return out
+    out.update(sessions=len(sessions), covered_share=round(covered / spend, 4) if spend else 0.0,
+               sessions_gap_share=round((prof_total - cs_total) / cs_total, 4) if cs_total else None)
+    return out
 
 
 def assemble(fields, quality, gh_pr):
     """Add the gh-backed fields. The plan's key order is kept: quality goes before diff."""
-    block = {k: v for k, v in fields.items() if k != "diff"}
+    block = {k: v for k, v in fields.items() if k != "diff" and k not in APPENDED}
     if gh_pr.get("mergedAt") and not block["window"].get("merged"):
         block["window"] = {**block["window"], "merged": gh_pr["mergedAt"]}
     block["quality"] = quality
@@ -73,7 +118,19 @@ def assemble(fields, quality, gh_pr):
                          "files": gh_pr.get("changedFiles")}
     else:
         block["diff"] = fields.get("diff") or {}
+    for key in APPENDED:
+        if key in fields:
+            block[key] = fields[key]
     return block
+
+
+def cost_state_sentence(cs):
+    if not cs or not cs.get("sessions") or cs.get("sessions_gap_share") is None:
+        return "No Claude Code cost-state record covers this PR's sessions, so there is no total to compare."
+    gap = cs["sessions_gap_share"]
+    return (f"Claude Code's own cost-state total is per process and is not split by PR; over the {cs['sessions']}"
+            f" sessions this PR's spend came from ({cs['covered_share'] * 100:.0f}% of it), the profiler was"
+            f" {abs(gap) * 100:.1f}% {'under' if gap < 0 else 'over'} it, so read the USD as a floor.")
 
 
 def _ts(s):
@@ -112,7 +169,10 @@ def render(block):
         f"Attribution: {a['method'] or '-'}, confidence {a['confidence']:.2f}; "
         f"{a['unattributed_share'] * 100:.1f}% of the same sessions' spend over this PR's window is unattributed. "
         f"Review rounds: {q['review_rounds']}. Follow-up fix PRs: {fixes}. "
-        f"Reverted: {'yes' if q['reverted'] else 'no'}.",
+        f"Reverted: {'yes' if q['reverted'] else 'no'}."
+        + (f" Campaign: {block['campaign']}." if block.get("campaign") else ""),
+        "",
+        cost_state_sentence(block.get("cost_state")),
         "",
         f"Profiler {block['profiler'] or '-'}, Claude Code {block['claude_code'] or '-'}, "
         f"price table {block['price_table'] or '-'}. [How this is measured]({README})",
