@@ -1,6 +1,6 @@
 # TP-12 worknote: docs and status close-out
 
-> Type: worknote. Packet TP-12 (docs half) of [#957](https://github.com/SandboxServers/Cimmeria/issues/957); ledger [README.md](../README.md). Written 2026-10-03 by the TP-12 docs worker. Branch `docs/token-usage-closeout`. The scheduled jobs (`tools/token-profile/scheduled/`) are the other TP-12 worker's.
+> Type: worknote. Packet TP-12 (docs half) of [#957](https://github.com/SandboxServers/Cimmeria/issues/957); ledger [README.md](../README.md). Written 2026-10-03 by the TP-12 docs worker. Branch `docs/token-usage-closeout`, PR [#1142](https://github.com/SandboxServers/Cimmeria/pull/1142). The scheduled jobs (`tools/token-profile/scheduled/`) are the other TP-12 worker's.
 
 ## Done
 
@@ -17,7 +17,7 @@
 
 ## Left / open
 
-- The ledger's TP-12 rows say "this PR"; fill in the PR number and the TP-12 cut-line merge time when it merges.
+- Fill in the TP-12 cut-line merge time in the ledger when #1142 merges.
 - The scheduled-job details in the guide (script names, 07:30 daily, 08:00 Mondays, results outside the repo) were written from the brief before the scripts existed; check them against the tools worker's PR.
 - `tools/token-profile/README.md` still says "Status: Wave 2". It belongs to the tools worker.
 - Pre-existing broken links in the moved gap-analysis sections, left as they were: `crates/resources/src/base/item_overrides.rs` (§3), and two organization paths in §23 (`cell_methods/organization/`, `organization/squad/`; the code is now in `crates/cell-org/` and `crates/cell-interactions/`). Three clear ones were fixed in the move (the cover, crafting and black-market paths).
