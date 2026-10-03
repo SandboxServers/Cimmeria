@@ -166,21 +166,51 @@ class CacheSimTest(unittest.TestCase):
 
     def test_replay_over_idle_gaps(self):
         run = [self.req(0, 100, None), self.req(100, 50, 60), self.req(0, 150, 600)]
-        out = cache_sim.replay(run, self.PRICE, floor=0)
+        out = cache_sim.replay(run, self.PRICE, cold_read=0)
         self.assertAlmostEqual(out["observed"] * 1e6, 200 + 200 + 300)
         self.assertAlmostEqual(out["5m"] * 1e6, 200 + 200 + 300)  # the 10-minute gap expired the 5m cache
         self.assertAlmostEqual(out["1h"] * 1e6, 300 + 250 + 150)  # 1h writes cost more but the gap stays warm
 
     def test_compaction_is_cold_under_both(self):
         run = [self.req(0, 100, None), self.req(0, 100, 10, after_compaction=True)]
-        out = cache_sim.replay(run, self.PRICE, floor=0)
+        out = cache_sim.replay(run, self.PRICE, cold_read=0)
         self.assertAlmostEqual(out["1h"] * 1e6, 300 + 300)
 
-    def test_floor_is_read_when_cold(self):
+    def test_cold_read_is_read_when_cold(self):
         run = [self.req(40, 60, None), self.req(40, 60, 4000)]
-        self.assertEqual(cache_sim.cold_floor(run), 40)
-        out = cache_sim.replay(run, self.PRICE, floor=40)
+        self.assertEqual(cache_sim.cold_read(run), 40)
+        out = cache_sim.replay(run, self.PRICE, cold_read=40)
         self.assertAlmostEqual(out["5m"] * 1e6, 2 * (40 + 120))
+
+    def test_cold_read_is_the_mean_not_the_minimum(self):
+        # Real cold requests find the shared prefix warm on some and not others. One that found nothing
+        # must not zero the estimate for all of them: the minimum predicted 0.38 of real cold reads,
+        # the mean 0.91 (leave-one-out, 2026-10-03 transcripts).
+        run = [self.req(40, 60, None), self.req(0, 100, 600), self.req(40, 60, 600), self.req(100, 0, 60)]
+        self.assertEqual(cache_sim.cold_reads(run), [40, 0, 40])
+        self.assertAlmostEqual(cache_sim.cold_read(run), 80 / 3)
+
+    def test_cold_reads_follow_the_observed_ttl(self):
+        # A 10-minute gap is cold for a 5m transcript but warm for a 1h one.
+        one_hour = [{"cache_read": 30, "cache_write_5m": 0, "cache_write_1h": 70, "prev_gap_s": None,
+                     "after_compaction": False},
+                    {"cache_read": 100, "cache_write_5m": 0, "cache_write_1h": 10, "prev_gap_s": 600,
+                     "after_compaction": False}]
+        self.assertEqual(cache_sim.cold_reads(one_hour), [30])
+        self.assertEqual(cache_sim.cold_reads([self.req(30, 70, None), self.req(0, 110, 600)]), [30, 0])
+
+    def test_delta_range_brackets_the_estimate(self):
+        tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(tmp.cleanup)
+        path, _ = fixture_db.build(tmp.name)
+        db = dbmod.open_db(path)
+        dbmod.scope(db)
+        rows = cache_sim.build(db, Scrubber(use_local=False))["by_agent_type"]
+        db.close()
+        for r in rows:
+            lo, hi = r["delta_range_usd"]
+            self.assertLessEqual(lo, r["delta_1h_minus_5m_usd"] + 1e-12)
+            self.assertGreaterEqual(hi, r["delta_1h_minus_5m_usd"] - 1e-12)
 
     def test_report_has_both_policies_and_calibration(self):
         tmp = tempfile.TemporaryDirectory()
