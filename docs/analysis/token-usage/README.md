@@ -1,7 +1,7 @@
 # Token Usage Profiling
 
 > Type: how-to. Audience: the Claude Code coordinator and the packet workers.
-> Updated: 2026-10-03 (Wave 0 merged; Wave 1 started). Tracking issue: [#957](https://github.com/SandboxServers/Cimmeria/issues/957); the plan is the [2026-10-03 comment](https://github.com/SandboxServers/Cimmeria/issues/957#issuecomment-5968451932), which supersedes the issue's phase list. Tool: [tools/token-profile/](../../../tools/token-profile/README.md). Workflow rules: [development-workflow.md § Worker lifetime and notifications](../../agents/development-workflow.md#worker-lifetime-and-notifications).
+> Updated: 2026-10-03 (Wave 1 merged). Tracking issue: [#957](https://github.com/SandboxServers/Cimmeria/issues/957); the plan is the [2026-10-03 comment](https://github.com/SandboxServers/Cimmeria/issues/957#issuecomment-5968451932), which supersedes the issue's phase list. Tool: [tools/token-profile/](../../../tools/token-profile/README.md). Workflow rules: [development-workflow.md § Worker lifetime and notifications](../../agents/development-workflow.md#worker-lifetime-and-notifications).
 
 ## Purpose
 
@@ -50,11 +50,11 @@ From the 2026-10-03 quick pass (throwaway scripts, not the profiler; TP-05 repla
 | Packet | Wave | Owns | Status | PR |
 |---|---|---|---|---|
 | TP-00 Ledger, data contract, attribution contract, worker and notification rules, RAG cleanup | 0 | this folder, `tools/token-profile/{schema.sql,*.md,fixtures/,test_contract.py}`, `development-workflow.md`, `.mcp.json.example` | Merged | [#1122](https://github.com/SandboxServers/Cimmeria/pull/1122) |
-| TP-01a Profiler ingest | 1 | `tools/token-profile/ingest/` | In progress (worktree `tp01a`, branch `feat/token-profile-ingest`) | |
-| TP-01b Profiler reports and privacy scrubber | 1 | `tools/token-profile/report/` | In progress (worktree `tp01b`, branch `feat/token-profile-report`) | |
-| TP-02 Quiet build and test output (B) | 1 | `tools/build-lane/`, `tools/test-live-db.*` | In progress (worktree `tp02`, branch `feat/quiet-build-output`) | |
-| TP-03 Static context trim (H), target first request ≤55k for main sessions | 1 | `CLAUDE.md`, `.claude/agents/*.md`, memory indexes, MCP and skill config | In progress (worktree `tp03`, branch `docs/static-context-trim`); scope revised, see [below](#tp-03-scope-revised-2026-10-03) | |
-| TP-04 OTel to the colo SigNoz | 1 | local Claude Code settings, `docs/operations/` | In progress (worktree `tp04`, branch `docs/claude-code-otel`) | |
+| TP-01a Profiler ingest | 1 | `tools/token-profile/ingest/` | Merged; schema version 2, see [Wave 1 results](#wave-1-results) | [#1128](https://github.com/SandboxServers/Cimmeria/pull/1128) |
+| TP-01b Profiler reports and privacy scrubber | 1 | `tools/token-profile/report/` | Merged | [#1126](https://github.com/SandboxServers/Cimmeria/pull/1126) |
+| TP-02 Quiet build and test output (B) | 1 | `tools/build-lane/`, `tools/test-live-db.*` | Merged | [#1127](https://github.com/SandboxServers/Cimmeria/pull/1127) |
+| TP-03 Static context trim (H), target first request ≤55k for main sessions | 1 | `CLAUDE.md`, `.claude/agents/*.md`, memory indexes, MCP and skill config | Merged (repo side); the user-level part is open, see [Wave 1 results](#wave-1-results) | [#1124](https://github.com/SandboxServers/Cimmeria/pull/1124) |
+| TP-04 OTel to the colo SigNoz | 1 | local Claude Code settings, `docs/operations/` | Merged (runbook); telemetry not live yet, see [Wave 1 results](#wave-1-results) | [#1125](https://github.com/SandboxServers/Cimmeria/pull/1125) |
 | TP-05 Baseline and reconciliation | 2 (after TP-01) | this folder | Not started | |
 | TP-06 Per-agent cache TTL (A) | 2 | `.claude/agents/*.md` frontmatter | Not started | |
 | TP-07 Read discipline (C) | 2 | rules, the most-exposed docs | Not started | |
@@ -97,6 +97,19 @@ The first request of the 11 most recent main sessions was **77k-88k tokens**, up
 
 The **target is now a first request of ≤55k for main sessions**, replacing "≤45k, from ~68k". The fixed part is roughly a fifth of each request's cost, so this cut is worth about 7-8% of spend, around $800 at list price per three weeks on current numbers. That is smaller than the history that builds up in long sessions, which the worker-lifetime cap and TP-02 address, but it is permanent and applies to every session. TP-03 measures each part with `/context` before and after, and moves content into linked docs rather than deleting it, then checks that agents still follow the moved rules.
 
+### Wave 1 results
+
+All five packets merged on 2026-10-03. Worknotes: [worknotes/](worknotes/).
+
+- **TP-01a ingest.** Over the local transcripts (915 files, 90,825 requests, no unknown shapes, no attribution imbalance) the estimate is $11,301 at list price against $11,198 in Claude Code's own `cost-state` records, 0.9% apart; TP-05 makes that a controlled reconciliation. Attribution places 72.4% of spend: branch 38.8%, ancestry 11.4%, `pr-link` and split 10.9%, parent session 6.4%, trigger 4.9%; 27.6% stays unattributed. A first run takes 77 s, a re-run about 5 s.
+  - Contract changes, written into the contract files: schema version 2 (additive: `ingest_files.parse_state`, `tool_calls.task_id`, `tool_calls.pr_ref`, `prs.closed_at`); A3 tests the PR's head commit, because a squash merge never has the packet's commits as ancestors; `ref-snapshot` heads are dated by commit date; a harness `isMeta` record no longer replaces the human prompt before it.
+  - For TP-05: 878 records repeat a `requestId` already stored from another file; the first file keeps the request and the copies are counted. Campaign attribution has no column and would need schema version 3.
+- **TP-01b reports.** Raw, USD and context layers, distributions, cost per merged PR, the cache-policy simulator and the three-layer privacy scrubber, 40 tests. For TP-06: the simulator's model of how much cache stays warm after a long gap is calibrated only on the synthetic fixture. Web search and fetch are counted but not priced. Nothing reads `cost_states` yet (TP-05).
+- **Integration.** TP-01a's schema version 2 broke TP-01b's positional fixture inserts and its exact version check once both were on `main`; the coordinator fixed both in #1128 (named columns; reports read versions 1 and 2). All 105 token-profile tests pass, and an ingest of the fixture feeds a clean report.
+- **TP-02 quiet build output.** For the same command through the lane, agent-facing stdout fell from 36,765 to about 270 characters (`cargo nextest run -p cimmeria-wire`, 296 tests) and from 2,524 to 267 (`cargo test -p cimmeria-commands`, warm); a failing test still shows its panic in about 700. CI keeps full output. One unexplained failure in 8 local runs of the build-lane tests; watch for a flaky test.
+- **TP-03 context trim.** `CLAUDE.md` went from about 9.9k to 3.6k tokens and the 16 agent descriptions from 8.1k to 0.9k, about 13.7k in all; subagents lose about 6k each as well. The baseline first request (11 recent main sessions) was 83.0k at the median, projected about 69k after the cut, so the repo side alone misses the ≤55k target. The rest is user-level and awaits the user: MCP servers off by default (about 3k), claude.ai connectors (about 1k), the personal memory index (2.5k-3k), document skills (about 1.5k).
+- **TP-04 telemetry.** The runbook, settings templates, a Key Vault header helper and a dashboard are in `docs/operations/`. The colo has no Cloudflare Tunnel, so D-TP2's route needs operator work first; the open questions (an interim private-network export, scrubbing the login email, whether the SigNoz ports are reachable from outside) are with the user. TP-05 needs the time telemetry goes live.
+
 ## Cut-line log
 
 Each packet that changes behaviour adds a row when it merges. A before-and-after comparison uses requests on either side of the cut, and states which other cuts fall inside its window.
@@ -104,24 +117,26 @@ Each packet that changes behaviour adds a row when it merges. A before-and-after
 | Packet | PR | Merged (UTC) | What changed at the cut |
 |---|---|---|---|
 | TP-00 | [#1122](https://github.com/SandboxServers/Cimmeria/pull/1122) | 2026-10-03 11:39:49 | Worker lifetime cap and notification rules take effect; `cimmeria-rag` leaves the example MCP config |
+| TP-03 | [#1124](https://github.com/SandboxServers/Cimmeria/pull/1124) | 2026-10-03 12:04:06 | `CLAUDE.md` and agent descriptions trimmed by about 13.7k tokens per main session |
+| TP-02 | [#1127](https://github.com/SandboxServers/Cimmeria/pull/1127) | 2026-10-03 12:33:56 | Lane prints a summary, not the full cargo output, when stdout is not a terminal |
 
 ## Acceptance criteria
 
 The profiler is trusted only when all of these hold (the issue's 2026-09-30 Phase 0 list plus the 2026-10-03 additions):
 
-- [ ] Raw token categories are reported independently.
-- [ ] Thinking tokens are not double-counted (test: `test_thinking_is_a_subset_of_output`, plus an ingest test).
-- [ ] A final-record dedupe test fails a first-record dedupe (the fixture is built for it).
-- [ ] Model-specific USD, including the Opus 5.5 and Fable 5.1 cache-read prices.
+- [x] Raw token categories are reported independently. (TP-01b)
+- [x] Thinking tokens are not double-counted (test: `test_thinking_is_a_subset_of_output`, plus an ingest test). (TP-01a)
+- [x] A final-record dedupe test fails a first-record dedupe (the fixture is built for it). (TP-01a)
+- [x] Model-specific USD, including the Opus 5.5 and Fable 5.1 cache-read prices. (TP-01a)
 - [ ] Transcript totals reconcile with both OTel and `cost-state` for a controlled session, within a documented tolerance.
-- [ ] Unknown transcript shapes fail visibly or land in a counted bucket.
-- [ ] Main, subagent and agent-type attribution is tested.
-- [ ] Trigger attribution includes `unknown` and `mixed`.
-- [ ] Compactions are modelled.
-- [ ] Context exposure is kept apart from monetary cost.
-- [ ] Reports give p50/p75/p90/p95/p99/max, not only means.
-- [ ] At least one outcome-normalized metric (cost per merged PR).
-- [ ] Synthetic privacy fixtures prove secrets and private machine data cannot reach a committed report.
-- [ ] Every report states its window and version metadata.
-- [ ] Ingest is incremental, so raw transcripts need not be kept forever.
+- [x] Unknown transcript shapes fail visibly or land in a counted bucket. (TP-01a)
+- [x] Main, subagent and agent-type attribution is tested. (TP-01a)
+- [x] Trigger attribution includes `unknown` and `mixed`. (TP-01a)
+- [x] Compactions are modelled. (TP-01a, TP-01b)
+- [x] Context exposure is kept apart from monetary cost. (TP-01b)
+- [x] Reports give p50/p75/p90/p95/p99/max, not only means. (TP-01b)
+- [x] At least one outcome-normalized metric (cost per merged PR). (TP-01b)
+- [x] Synthetic privacy fixtures prove secrets and private machine data cannot reach a committed report. (TP-01b)
+- [x] Every report states its window and version metadata. (TP-01b)
+- [x] Ingest is incremental, so raw transcripts need not be kept forever. (TP-01a)
 - [ ] Every PR merged after TP-10 has one idempotent stats comment with the `cimmeria-pr-stats/1` block, and the backfill is posted.
