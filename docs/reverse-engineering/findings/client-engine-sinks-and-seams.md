@@ -25,8 +25,8 @@ The engine layer of the client (BigWorld, UE3, the C runtime, the OS and the mid
 
 `DebugMsgHelper::message` at `0x00a36460`: `__thiscall(this, const int* header, const char* fmt, va_list)`, `ret 0xc`. Two xrefs, both wrappers:
 
-- `0x00a35210` (cdecl varargs, 30 callers, all in `ServerConnection`, `EntityManager` and `Mercury::Nub`) builds the `va_list` and calls it;
-- `0x00a351d0` (the assertion wrapper, 14 callers) -> `0x00a36ac0` -> `0x00a36900` (formats with `vsprintf`, shows "Do you want to enter debugger?" for a critical one) -> `0x00a36650` -> `0x00a36460` with the format `"%s"`.
+- `0x00a35210` (cdecl varargs, 51 call sites in 32 functions, mostly `ServerConnection`, `EntityManager` and `Mercury::Nub`, plus 4 `Catch` blocks) builds the `va_list` and calls it;
+- `0x00a351d0` (the assertion wrapper, 41 call sites in 36 functions across `Mercury`, `ServerConnection`, `BWResource` and `EntityDescription`) -> `0x00a36ac0` -> `0x00a36900` (formats with `vsprintf`, shows "Do you want to enter debugger?" for a critical one) -> `0x00a36650` -> `0x00a36460` with the format `"%s"`.
 
 `header` is `{ component_priority, message_priority }`. The function locks the implementation object (`*this`; its first field is the critical section) and passes a message only when `header[0] + impl[0x3c] <= header[1]`; otherwise it returns without calling any output. Past the filter it runs the message callbacks (`impl + 0x30`) and, if none handled it, the default output `0x00a353b0` -> `0x00a352f0`, which builds `"<PRIORITY>: "` from the table at `0x01922380` and calls `_vsnprintf`, `OutputDebugStringA`, and (when `0x01ef0713` is set) `fprintf(stderr, ...)`.
 
