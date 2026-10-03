@@ -12,7 +12,7 @@ Decision D-TP2 sets the rules: the sink is the colo SigNoz behind Cloudflare Acc
 | Question | Answer |
 |---|---|
 | Is a Cloudflare Tunnel running on the colo? | **No.** There is no `cloudflared` container, service or config on the colo. [signoz-remote-access.md](signoz-remote-access.md) describes a setup that was never deployed there. |
-| How does the colo run SigNoz? | From SigNoz's own upstream compose project (`signoz`), not from [`docker/compose.yml`](../../docker/compose.yml). Its collector publishes OTLP gRPC `4317` and OTLP HTTP `4318`, and the UI publishes `8080`, on every host interface, with no authentication. The repo compose's `OTLP_BIND=127.0.0.1` default does not apply there. |
+| How does the colo run SigNoz? | From SigNoz's own upstream compose project (`signoz`), not from [`docker/compose.yml`](../../docker/compose.yml). Its collector publishes OTLP gRPC `4317` and OTLP HTTP `4318`, and the UI publishes `8080`, to the colo's private network. The repo compose's `OTLP_BIND=127.0.0.1` default does not apply there. |
 | How do workstations reach it today? | Over the private network. The SigNoz MCP container on the main workstation already uses that route to the UI port, and the OTLP ports answer on it too (an OTLP/HTTP `GET /v1/logs` returns 405, gRPC `4317` accepts connections). |
 | Is OTLP ingest exposed through Cloudflare Access? | **No.** Nothing is. |
 | Does any Claude Code data arrive yet? | No. SigNoz has no `claude_code.*` metric. |
@@ -74,7 +74,7 @@ The data lives only in the colo ClickHouse, under SigNoz's log and metric retent
 
 These are changes to the colo and to Cloudflare. TP-04 did not make any of them.
 
-0. **Confirm the edge does not forward the SigNoz ports.** From outside the private network, `4317`, `4318` and `8080` on the colo's public address must not answer. If they do, remove the forwards first; that is an open write path into the collector whatever happens here.
+0. **Confirm the edge does not forward the SigNoz ports.** From outside the private network, `4317`, `4318` and `8080` on the colo's public address must not answer. If they do, remove the forwards before anything else.
 1. **Run `cloudflared` on the colo.** Either finish [signoz-remote-access.md](signoz-remote-access.md) (its UI ingress must point at `http://signoz:8080`, the colo's actual UI service, not `frontend:3301`), or create a separate tunnel. The container has to reach the collector: attach it to the SigNoz compose project's network (`docker network ls` on the colo lists it) and use the collector's service name, `signoz-otel-collector`.
 2. **Add an OTLP ingress rule** above the catch-all in the tunnel config:
 
