@@ -45,7 +45,7 @@ Observable outcomes: a byte string, a DB row, a log field, a client-visible beha
 One or more of the types in TESTING.md, with the bug shape the guard must reproduce.
 
 ## Docs to update
-The rows of the CLAUDE.md doc-update map this change touches.
+The rows of the [doc-update map](doc-update-map.md) this change touches.
 
 ## Client impact
 "Free" (server-authoritative, reuses messages the client already speaks) or

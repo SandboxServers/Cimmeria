@@ -1,6 +1,6 @@
 ---
 name: database-persistence
-description: "Use this agent when working with PostgreSQL schema changes, query optimization, new persistent data types, database migration scripts, entity serialization/deserialization, connection pooling, or transaction management. This includes any work touching `db/sgw/`, `db/resources/`, or `db/scripts/`.\\n\\nExamples:\\n\\n- User: \"Add a new column to the characters table to track last login timestamp\"\\n  Assistant: \"I'll use the database-persistence agent to design and implement this schema change properly.\"\\n  (Use the Agent tool to launch the database-persistence agent to handle the schema modification and migration script.)\\n\\n- User: \"The query for loading character inventory is slow, can we optimize it?\"\\n  Assistant: \"Let me use the database-persistence agent to analyze and optimize this query.\"\\n  (Use the Agent tool to launch the database-persistence agent to examine the query and suggest indexes.)\\n\\n- User: \"We need to persist a new mission rewards system with multiple reward types\"\\n  Assistant: \"I'll use the database-persistence agent to design the schema and persistence layer for mission rewards.\"\\n  (Use the Agent tool to launch the database-persistence agent to design the tables and write migration scripts.)\\n\\n- User: \"Write a migration script to add an effects table linked to characters\"\\n  Assistant: \"Let me launch the database-persistence agent to create this migration properly.\"\\n  (Use the Agent tool to launch the database-persistence agent to write the migration SQL.)\\n\\n- User: \"I'm getting connection pool exhaustion errors under load\"\\n  Assistant: \"I'll use the database-persistence agent to diagnose and fix the connection pooling issue.\"\\n  (Use the Agent tool to launch the database-persistence agent to analyze connection management patterns and recommend fixes.)"
+description: "PostgreSQL schema, seed and query work: new persistent data, entity (de)serialization, query tuning, pooling and transactions, anything under db/sgw/, db/resources/ or db/scripts/."
 model: opus
 memory: project
 ---
@@ -144,3 +144,13 @@ Use narrow search terms (error messages, file paths, function names) rather than
 ## MEMORY.md
 
 Your MEMORY.md is currently empty. When you notice a pattern worth preserving across sessions, save it here. Anything in MEMORY.md will be included in your system prompt next time.
+
+## When the coordinator picks this agent
+
+Use this agent when working with PostgreSQL schema changes, query optimization, new persistent data types, database migration scripts, entity serialization/deserialization, connection pooling, or transaction management. This includes any work touching `db/sgw/`, `db/resources/`, or `db/scripts/`.
+
+- User: "Add a new column to the characters table to track last login timestamp" Assistant: "I'll use the database-persistence agent to design and implement this schema change properly." (Use the Agent tool to launch the database-persistence agent to handle the schema modification and migration script.)
+- User: "The query for loading character inventory is slow, can we optimize it?" Assistant: "Let me use the database-persistence agent to analyze and optimize this query." (Use the Agent tool to launch the database-persistence agent to examine the query and suggest indexes.)
+- User: "We need to persist a new mission rewards system with multiple reward types" Assistant: "I'll use the database-persistence agent to design the schema and persistence layer for mission rewards." (Use the Agent tool to launch the database-persistence agent to design the tables and write migration scripts.)
+- User: "Write a migration script to add an effects table linked to characters" Assistant: "Let me launch the database-persistence agent to create this migration properly." (Use the Agent tool to launch the database-persistence agent to write the migration SQL.)
+- User: "I'm getting connection pool exhaustion errors under load" Assistant: "I'll use the database-persistence agent to diagnose and fix the connection pooling issue." (Use the Agent tool to launch the database-persistence agent to analyze connection management patterns and recommend fixes.)

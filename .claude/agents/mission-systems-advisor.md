@@ -1,6 +1,6 @@
 ---
 name: mission-systems-advisor
-description: "Use this agent when working on the mission/quest pipeline — mission lifecycle (accept/active/complete/fail), step and objective primitives (KillCount, CollectItem, VisitRegion, TalkToNpc, UseObject, Timer), reward dispatch, mission script files, or the Atrea-Script-Editor format quirks that the original SGW content was authored in. This includes content-engine chain authoring (the Rust replacement for Atrea scripts), the dialog/dialog-set system, and per-player mission state (the `MissionManager` / saved-missions persistence path).\\n\\nExamples:\\n\\n- user: \"How do I add a 'kill 5 goa'uld' objective to a new mission?\"\\n  assistant: \"Let me consult the mission systems advisor for the objective primitives and how the content engine wires triggers.\"\\n  <uses Agent tool to launch mission-systems-advisor>\\n\\n- user: \"The Find Ambernol mission is stalling at step 2343 — the use-vial event isn't progressing the chain\"\\n  assistant: \"This is a chain-condition / step-status question — let me get the mission systems advisor on it.\"\\n  <uses Agent tool to launch mission-systems-advisor>\\n\\n- user: \"What does the `repeats` field on a mission row do, and why is it missing from the UPSERT?\"\\n  assistant: \"Mission persistence territory — let me consult the mission systems advisor.\"\\n  <uses Agent tool to launch mission-systems-advisor>\\n\\n- user: \"I want to convert the Castle Cellblock python mission script to a content-engine chain\"\\n  assistant: \"Let me ask the mission systems advisor about the chain action set and how the python primitives map across.\"\\n  <uses Agent tool to launch mission-systems-advisor>"
+description: "Advisor for missions: lifecycle, step and objective primitives, rewards, content-engine chains (the Atrea script replacement), dialogs, and per-player mission persistence."
 model: opus
 memory: project
 ---
@@ -119,3 +119,12 @@ Use narrow search terms (error messages, file paths, function names) rather than
 ## MEMORY.md
 
 Your MEMORY.md is currently empty. When you notice a pattern worth preserving across sessions, save it here. Anything in MEMORY.md will be included in your system prompt next time.
+
+## When the coordinator picks this agent
+
+Use this agent when working on the mission/quest pipeline — mission lifecycle (accept/active/complete/fail), step and objective primitives (KillCount, CollectItem, VisitRegion, TalkToNpc, UseObject, Timer), reward dispatch, mission script files, or the Atrea-Script-Editor format quirks that the original SGW content was authored in. This includes content-engine chain authoring (the Rust replacement for Atrea scripts), the dialog/dialog-set system, and per-player mission state (the `MissionManager` / saved-missions persistence path).
+
+- user: "How do I add a 'kill 5 goa'uld' objective to a new mission?" assistant: "Let me consult the mission systems advisor for the objective primitives and how the content engine wires triggers." <uses Agent tool to launch mission-systems-advisor>
+- user: "The Find Ambernol mission is stalling at step 2343 — the use-vial event isn't progressing the chain" assistant: "This is a chain-condition / step-status question — let me get the mission systems advisor on it." <uses Agent tool to launch mission-systems-advisor>
+- user: "What does the `repeats` field on a mission row do, and why is it missing from the UPSERT?" assistant: "Mission persistence territory — let me consult the mission systems advisor." <uses Agent tool to launch mission-systems-advisor>
+- user: "I want to convert the Castle Cellblock python mission script to a content-engine chain" assistant: "Let me ask the mission systems advisor about the chain action set and how the python primitives map across." <uses Agent tool to launch mission-systems-advisor>

@@ -13,7 +13,7 @@ Skills that default to a root `CONTEXT.md` and a `docs/adr/` directory (the Matt
 | Role | Location | Notes |
 |---|---|---|
 | Glossary | [`docs/spec/glossary.md`](../spec/glossary.md) | Use its terms in issue titles, test names, and proposals. Add missing terms here, not in a new file. |
-| Architecture decisions (ADRs) | [`docs/architecture/`](../architecture/) | Every doc here is decision-bearing, whether or not it has a `Status` header. New decisions are a new or amended doc in this directory, per the doc-update map in [`CLAUDE.md`](../../CLAUDE.md). |
+| Architecture decisions (ADRs) | [`docs/architecture/`](../architecture/) | Every doc here is decision-bearing, whether or not it has a `Status` header. New decisions are a new or amended doc in this directory, per the [doc-update map](doc-update-map.md). |
 | Documentation index | [`docs/readme.md`](../readme.md) | Start here to find the doc for a system. Keep it in sync when adding or renaming a doc. |
 | Wire protocol (authoritative) | [`docs/protocol/`](../protocol/) | Dispatch tables, message catalog, and [`client-verified-wire-formats.md`](../protocol/client-verified-wire-formats.md). |
 | Reverse-engineering findings | [`docs/reverse-engineering/findings/`](../reverse-engineering/findings/) | Address-cited findings. Confidence rules: [`evidence-standards.md`](../reverse-engineering/evidence-standards.md). |

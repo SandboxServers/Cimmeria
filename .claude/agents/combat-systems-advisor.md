@@ -1,6 +1,6 @@
 ---
 name: combat-systems-advisor
-description: "Use this agent when working on the combat pipeline — damage calculation, abilities, cooldowns, effects/buffs/debuffs, threat/aggro, archetypes-as-they-affect-combat, or anywhere combat math intersects gameplay. This includes questions about QR (Quality Rating) hit/crit/miss, ammo consumption, the BSF_InCombat lifecycle, attack-range and leash distances, effect stacking semantics, and combat-state transitions on death.\\n\\nExamples:\\n\\n- user: \"How does damage falloff work for ground-targeted abilities?\"\\n  assistant: \"Let me consult the combat systems advisor for the canonical damage pipeline and falloff curves.\"\\n  <uses Agent tool to launch combat-systems-advisor>\\n\\n- user: \"BSF_InCombat is clearing too aggressively when there are multiple mobs aggroed\"\\n  assistant: \"This is a per-player threat-tracking question — let me get the combat systems advisor's read on the threatened_mobs lifecycle.\"\\n  <uses Agent tool to launch combat-systems-advisor>\\n\\n- user: \"I'm adding a new debuff effect — what does the effect system expect?\"\\n  assistant: \"Let me ask the combat systems advisor about the effect dispatch and stacking rules before we wire this up.\"\\n  <uses Agent tool to launch combat-systems-advisor>\\n\\n- user: \"What's the difference between QR result codes 0-4 and how do they map to damage?\"\\n  assistant: \"Combat math territory — let me consult the combat systems advisor.\"\\n  <uses Agent tool to launch combat-systems-advisor>"
+description: "Advisor for the combat pipeline: damage math, QR hit/crit/miss, abilities, cooldowns, effects and stacking, threat and aggro, ammo use, BSF_InCombat and death transitions."
 model: opus
 memory: project
 ---
@@ -124,3 +124,12 @@ Use narrow search terms (error messages, file paths, function names) rather than
 ## MEMORY.md
 
 Your MEMORY.md is currently empty. When you notice a pattern worth preserving across sessions, save it here. Anything in MEMORY.md will be included in your system prompt next time.
+
+## When the coordinator picks this agent
+
+Use this agent when working on the combat pipeline — damage calculation, abilities, cooldowns, effects/buffs/debuffs, threat/aggro, archetypes-as-they-affect-combat, or anywhere combat math intersects gameplay. This includes questions about QR (Quality Rating) hit/crit/miss, ammo consumption, the BSF_InCombat lifecycle, attack-range and leash distances, effect stacking semantics, and combat-state transitions on death.
+
+- user: "How does damage falloff work for ground-targeted abilities?" assistant: "Let me consult the combat systems advisor for the canonical damage pipeline and falloff curves." <uses Agent tool to launch combat-systems-advisor>
+- user: "BSF_InCombat is clearing too aggressively when there are multiple mobs aggroed" assistant: "This is a per-player threat-tracking question — let me get the combat systems advisor's read on the threatened_mobs lifecycle." <uses Agent tool to launch combat-systems-advisor>
+- user: "I'm adding a new debuff effect — what does the effect system expect?" assistant: "Let me ask the combat systems advisor about the effect dispatch and stacking rules before we wire this up." <uses Agent tool to launch combat-systems-advisor>
+- user: "What's the difference between QR result codes 0-4 and how do they map to damage?" assistant: "Combat math territory — let me consult the combat systems advisor." <uses Agent tool to launch combat-systems-advisor>

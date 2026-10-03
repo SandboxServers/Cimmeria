@@ -206,7 +206,7 @@ If step 4 errors, your migration isn't idempotent. Fix it before pushing — ope
 
 ## Update the docs
 
-Per the CLAUDE.md doc-update map, schema changes that operators need to know about update:
+Per the [doc-update map](../agents/doc-update-map.md), schema changes that operators need to know about update:
 
 - [`db/README.md`](../../db/README.md) — if you're adding a new schema directory or table family.
 - The relevant runbook in [`docs/operations/`](../operations/) — if operators need to apply the migration as part of an upgrade.

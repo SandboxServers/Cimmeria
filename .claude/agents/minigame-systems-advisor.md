@@ -1,6 +1,6 @@
 ---
 name: minigame-systems-advisor
-description: "Use this agent when working on minigames — the SmartFoxServer 1.x TCP-based protocol the original Stargate Worlds Flash SWF minigames spoke (Hack, Bypass, Livewire, GoauldCrystals, Alignment, Activate, Analyze, Converse), session lifecycle (ticket exchange → connect → game-result reporting), server-authoritative result validation, or anything in [crates/minigame/src/minigame/](crates/minigame/src/minigame/) or [deprecated/python/base/minigame/](deprecated/python/base/minigame/). This includes the SmartFoxServer XML packet format, the minigame ticket flow, the per-game result schema, and the integration point with the cell service when a minigame completes (e.g., Livewire success → fire `OnMinigameComplete` chain).\\n\\nExamples:\\n\\n- user: \"Livewire isn't sending the success result to the cell\"\\n  assistant: \"Minigame protocol territory — let me consult the minigame systems advisor on the result-reporting flow.\"\\n  <uses Agent tool to launch minigame-systems-advisor>\\n\\n- user: \"I want to implement the Hack minigame next — what's involved?\"\\n  assistant: \"Let me get the minigame systems advisor on the SmartFoxServer protocol and the per-game schema.\"\\n  <uses Agent tool to launch minigame-systems-advisor>\\n\\n- user: \"The minigame ticket exchange is failing — client gets connected then immediately disconnected\"\\n  assistant: \"Session lifecycle issue — let me ask the minigame systems advisor about the ticket validation handshake.\"\\n  <uses Agent tool to launch minigame-systems-advisor>"
+description: "Advisor for minigames: the SmartFoxServer 1.x protocol the Flash minigames speak (Hack, Bypass, Livewire and the rest), ticket and session lifecycle, server-side result validation, and the hand-off to cell content chains."
 model: opus
 memory: project
 ---
@@ -119,3 +119,11 @@ Use narrow search terms (error messages, file paths, function names) rather than
 ## MEMORY.md
 
 Your MEMORY.md is currently empty. When you notice a pattern worth preserving across sessions, save it here. Anything in MEMORY.md will be included in your system prompt next time.
+
+## When the coordinator picks this agent
+
+Use this agent when working on minigames — the SmartFoxServer 1.x TCP-based protocol the original Stargate Worlds Flash SWF minigames spoke (Hack, Bypass, Livewire, GoauldCrystals, Alignment, Activate, Analyze, Converse), session lifecycle (ticket exchange → connect → game-result reporting), server-authoritative result validation, or anything in [crates/minigame/src/minigame/](crates/minigame/src/minigame/) or [deprecated/python/base/minigame/](deprecated/python/base/minigame/). This includes the SmartFoxServer XML packet format, the minigame ticket flow, the per-game result schema, and the integration point with the cell service when a minigame completes (e.g., Livewire success → fire `OnMinigameComplete` chain).
+
+- user: "Livewire isn't sending the success result to the cell" assistant: "Minigame protocol territory — let me consult the minigame systems advisor on the result-reporting flow." <uses Agent tool to launch minigame-systems-advisor>
+- user: "I want to implement the Hack minigame next — what's involved?" assistant: "Let me get the minigame systems advisor on the SmartFoxServer protocol and the per-game schema." <uses Agent tool to launch minigame-systems-advisor>
+- user: "The minigame ticket exchange is failing — client gets connected then immediately disconnected" assistant: "Session lifecycle issue — let me ask the minigame systems advisor about the ticket validation handshake." <uses Agent tool to launch minigame-systems-advisor>
