@@ -44,3 +44,21 @@ is outside git at `../SGW/Stargate Worlds-QA/Working/SGWGame/Content/UI/Core/Aut
 - Existing docs `docs/analysis/cellblock-autoplay/scenario-map.md` had a stale
   claim that the BSF bit only arms on first ability; current code lights it
   immediately. Corrected with this investigation.
+- Colo UAT 2026-10-03 (release v2026-10-03.1 = #1144), fresh Praxis soldier
+  in Cellblock, verified by lab packet tap: (1) right-click hostile then icon
+  keeps firing every ~1.5 s until the kill, then clears; (2) friendly NPC
+  plus icon: bit 0x2 set, cleared 92 ms later, zero useAbility; (3) no prior
+  shot, Tab target, icon: fires 579 at once; behind a wall it gets error 39
+  (no LOS) and waits armed, then resumes when LOS clears.
+- Bug found in that UAT, fixed the same day (branch
+  fix/auto-cycle-persist-clear): only the setAutoCycle handler sent
+  `CellToBaseMsg::StateFieldUpdate`. Tick and death clears never persist, so
+  `sgw_player.state_field` stays 2 and the next login restores a lit button
+  with `auto_cycle = true` (player_init). Nit: a no-LOS press shows the
+  "no Line of Sight" line twice (press fire path, then first tick). Fix:
+  every transition goes through `send_auto_cycle_state`
+  (cell-combat abilities/auto_cycle_state.rs), which broadcasts and saves;
+  the press marks `auto_cycle_los_notified`. Tests:
+  ticks/auto_cycle_persist_tests.rs. #412's claim that the original game
+  persisted the bit is unsupported: SGWBeing.def bStateField is CELL_PUBLIC,
+  not Persistent.

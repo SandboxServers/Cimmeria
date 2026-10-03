@@ -261,14 +261,8 @@ pub(super) async fn npc_ai_submit(
     let auto_cycle_exits = combat::clear_auto_cycle_for_target(space_mgr, npc_id);
     let auto_cycle_exit_count = auto_cycle_exits.len();
     for (player_entity_id, new_state) in auto_cycle_exits {
-        send_entity_method(
-            player_entity_id,
-            crate::mercury::method_idx::ON_STATE_FIELD_UPDATE,
-            new_state.to_le_bytes().to_vec(),
-            tx,
-            space_mgr,
-        )
-        .await;
+        crate::cell::abilities::send_auto_cycle_state(player_entity_id, new_state, tx, space_mgr)
+            .await;
     }
 
     // `None` is the codebase-wide "stopped" convention for the

@@ -409,14 +409,7 @@ pub async fn handle_request_active_slot_change(
     // transition fired — `Option::is_some` was set above only on a
     // genuine bit drop.
     if let Some(new_state) = auto_cycle_clear_state {
-        crate::cell::abilities::send_entity_method(
-            entity_id,
-            crate::mercury::method_idx::ON_STATE_FIELD_UPDATE,
-            new_state.to_le_bytes().to_vec(),
-            tx,
-            space_mgr,
-        )
-        .await;
+        crate::cell::abilities::send_auto_cycle_state(entity_id, new_state, tx, space_mgr).await;
     }
 
     // Phase 2: send messages now that the borrow is released. Clear the

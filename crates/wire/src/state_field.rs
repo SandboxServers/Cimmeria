@@ -48,9 +48,14 @@ pub const BSF_AUTO_CYCLING: u32 = 1 << 1;
 /// `BSF_InCombat`, `BSF_MovementLock` all describe the current fight and
 /// must reset on world entry (relog is a fresh combat slate; see the
 /// cooldown-wipe rationale in PR #410). `BSF_AutoCycling` is the
-/// exception: it's a player preference toggle the original game kept
-/// across sessions, so the `setAutoCycle` handler persists it through
-/// `CellToBaseMsg::StateFieldUpdate` and `InitPlayerState` restores it.
+/// exception: #412 keeps it across sessions as a player preference. That
+/// choice is ours, not proven original behaviour: the legacy
+/// `SGWBeing.def` declares `bStateField` `CELL_PUBLIC` with no
+/// `<Persistent/>`. Every transition of it is saved through
+/// `CellToBaseMsg::StateFieldUpdate` (`send_auto_cycle_state` in
+/// cell-combat) and `InitPlayerState` restores it. Saving every transition,
+/// not just the button press, keeps the restored value equal to what the
+/// button last showed.
 ///
 /// Both the cell-side send site and the base-side DB write mask with
 /// this constant, so growing the persisted set is a one-line change

@@ -145,7 +145,8 @@ pub(crate) async fn interrupt_pending_cast(
 
     if loop_was_on_this_ability {
         if let Some(new_state) = combat::clear_auto_cycle(space_mgr, entity_id) {
-            super::super::handle::send_state_field(entity_id, new_state, tx, space_mgr).await;
+            crate::cell::abilities::send_auto_cycle_state(entity_id, new_state, tx, space_mgr)
+                .await;
         }
     }
     true

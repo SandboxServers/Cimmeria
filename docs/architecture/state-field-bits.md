@@ -36,18 +36,25 @@ An NPC's `BSF_InCombat` bit is derived from its AI state, never set on its own: 
 
 ## Persistence across relogs
 
-`state_field` is transient combat state with one exception: `BSF_AutoCycling`
-is a player preference toggle the original game kept across sessions. The
+`state_field` is transient combat state with one exception: `BSF_AutoCycling`,
+which #412 keeps across sessions as a player preference. That is our choice,
+not proven original behaviour: the legacy `SGWBeing.def` declares
+`bStateField` `CELL_PUBLIC` with no `<Persistent/>`. The
 persisted subset is defined by `PERSISTED_STATE_FIELD_MASK` in
 [crates/cell-combat/src/cell/combat/state.rs](../../crates/cell-combat/src/cell/combat/state.rs)
 (today: `BSF_AutoCycling` alone) and stored in `sgw_player.state_field`:
 
-- **Write**: the explicit `setAutoCycle` toggle (player method 83) sends
-  `CellToBaseMsg::StateFieldUpdate` with the masked value; the base-side
-  handler masks again defensively before the `UPDATE`. In-combat
-  auto-clears (target death, manual fire of a different ability,
-  `AF_DEACTIVATE_AUTO_CYCLE`) deliberately do **not** persist — the stored
-  value tracks the player's deliberate button choice, not loop mechanics.
+- **Write**: every transition of the bit sends
+  `CellToBaseMsg::StateFieldUpdate` with the masked value, through
+  `send_auto_cycle_state` (`crates/cell-combat/src/cell/abilities/auto_cycle_state.rs`):
+  the `setAutoCycle` toggle (player method 83), the first-commit arm, and
+  every server-side stop (target death or surrender, the player's own death,
+  a manual fire of a different ability, `AF_DEACTIVATE_AUTO_CYCLE`, an
+  interrupted cast, a bandolier swap, and the tick's stop reasons). The
+  base-side handler masks again defensively before the `UPDATE`. The stored
+  value is therefore what the button last showed. Until 2026-10-03 only the
+  toggle saved, so a loop the server stopped still read as on, and the next
+  login lit the button and armed a loop the player had watched switch off.
 - **Read**: `InitPlayerState` masks the loaded value, ORs it onto
   `CellEntity::state_field`, re-arms `abilities.auto_cycle`, and
   re-broadcasts `onStateFieldUpdate` so the client's gun-icon highlight
@@ -55,7 +62,8 @@ persisted subset is defined by `PERSISTED_STATE_FIELD_MASK` in
   `BSF_MovementLock`, …) are stripped — a relog is always a clean combat
   slate, matching the cooldown wipe from PR #410.
 
-History: #412 (auto-cycle bit lost on relog).
+History: #412 (auto-cycle bit lost on relog); 2026-10-03 (server-side stops
+not saved, so the button relit on login).
 
 ## Bit 8 retirement (`BSF_Holster`)
 

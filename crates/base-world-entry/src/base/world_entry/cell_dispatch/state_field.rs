@@ -2,11 +2,11 @@
 //! of the player's `state_field` bitmask.
 //!
 //! The cell side owns the in-memory `state_field` on every `CellEntity`;
-//! the base side owns DB writes. When the player presses the auto-cycle
-//! button (`setAutoCycle`, player method 83) and `BSF_AutoCycling`
-//! transitions, the cell handler broadcasts `onStateFieldUpdate` to the
-//! client, then sends this message so base persists the row. On next
-//! login, the hydrate path in
+//! the base side owns DB writes. Whenever `BSF_AutoCycling` transitions
+//! (the `setAutoCycle` button, the first-commit arm, or any server-side
+//! stop such as the target's death), the cell's `send_auto_cycle_state`
+//! broadcasts `onStateFieldUpdate` to the client, then sends this message
+//! so base persists the row. On next login, the hydrate path in
 //! `crates/base-world-entry/src/base/world_entry_appearance/client_ready/mod.rs` reads the column
 //! back into `InitPlayerState` and the preference survives the relog. (#412)
 //!

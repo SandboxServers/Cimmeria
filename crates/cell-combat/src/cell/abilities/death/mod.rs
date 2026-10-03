@@ -205,14 +205,8 @@ pub(super) async fn apply_death_transition(
             new_state,
             "death: clearing player auto-cycle loop (target died)"
         );
-        send_entity_method(
-            player_entity_id,
-            crate::mercury::method_idx::ON_STATE_FIELD_UPDATE,
-            new_state.to_le_bytes().to_vec(),
-            tx,
-            space_mgr,
-        )
-        .await;
+        crate::cell::abilities::send_auto_cycle_state(player_entity_id, new_state, tx, space_mgr)
+            .await;
     }
 
     // 2b'. The killer's stored target goes with the reticle dropped in 1
@@ -246,14 +240,8 @@ pub(super) async fn apply_death_transition(
                 new_state,
                 "death: clearing dying player's own auto-cycle loop"
             );
-            send_entity_method(
-                target_eid,
-                crate::mercury::method_idx::ON_STATE_FIELD_UPDATE,
-                new_state.to_le_bytes().to_vec(),
-                tx,
-                space_mgr,
-            )
-            .await;
+            crate::cell::abilities::send_auto_cycle_state(target_eid, new_state, tx, space_mgr)
+                .await;
         }
     }
 
