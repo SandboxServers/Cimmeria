@@ -453,7 +453,7 @@ Verified from the client files `Common/Bindings/Bindings.toc` and `Core/AutoAtta
   - Alternatives: `client_input_key {key:"T"}` (N1), or `client_window_click {target:"AutoAttack_AutoAttackButton"}` (N1).
   - `/toggleAutoCycleAbility` also exists (N2).
 - **Server behaviour** (`cell-combat/combat/auto_cycle.rs`):
-  - `setAutoCycle(1)` only sets a flag. The loop and `BSF_AUTO_CYCLING` (0x2) **arm on the first committed ability**, so fire once after pressing T.
+  - `setAutoCycle(1)` lights `BSF_AUTO_CYCLING` (0x2) immediately. It fires immediately only if the server has both a selected `current_target_id` and a `last_fired_ability_id`; otherwise the first committed manual ability supplies the loop ability. The icon alone does not choose a target. See [auto-cycle-button.md](../../protocol/auto-cycle-button.md#observed-button-failure-and-telemetry-recipe-2026-09-29-colo).
   - It re-fires on each cooldown at the live `current_target_id`.
   - **It clears on target death, despawn, deselect, a manual different ability or `setAutoCycle(0)`, and NOT when the target is out of range** (the loop stays armed so the player can walk back in).
 - **Assert:**

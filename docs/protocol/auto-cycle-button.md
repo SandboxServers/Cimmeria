@@ -2,7 +2,7 @@
 title: "Auto-Cycle (Auto-Fire) Button — Protocol and Behavior Reference"
 type: reference
 audience: engineers
-last_updated: 2026-05-27
+last_updated: 2026-10-03
 ---
 
 # Auto-Cycle (Auto-Fire) Button — Protocol and Behavior Reference
@@ -236,8 +236,76 @@ Phase 2 added two server-side player state fields that didn't exist before. They
 
 ### Known gaps / follow-ups
 
-- **The `interact` path arming auto-cycle.** Python `SGWPlayer.py:1175-1178` had `interact` against a hostile NPC set `BSF_AutoCycling` and call `launchAbility(autoCycle=True)` implicitly. Cimmeria's `interact` does not do this yet — the explicit `setAutoCycle(1)` button is currently the only entry point. With Phase 2's immediate-fire, the button + a target selection now produces the same end-result UX without the interact-path arming. Could still be wired for parity.
+- **The `interact` path arming auto-cycle.** Python `SGWPlayer.py:1175-1178` had `interact` against a hostile NPC set `BSF_AutoCycling` and call `launchAbility(autoCycle=True)` implicitly. Cimmeria's `interact` fires the weapon's `items_event_sets` ranged ability directly but does not arm auto-cycle. It sends `onTargetUpdate` to the client without writing the player's server-side `current_target_id`. Thus a right-click can visibly select and attack an NPC while the auto-cycle tick still sees target 0. See the observed trace below; this is a concrete parity/UX follow-up.
 - **`DoNotActivate_AutoCycle` ability flag (mask `0x200`).** Only meaningful on the `interact` path (it suppresses the implicit auto-cycle arming when interacting with a hostile). Will land alongside the interact-path work.
+
+### Observed button failure and telemetry recipe (2026-09-29 colo)
+
+The shipped client Lua at `Working/SGWGame/Content/UI/Core/AutoAttack/AutoAttack.lua`
+has two actions. Clicking `AutoAttack_AutoAttackButton` calls only
+`setAutoAttack(not AutoAttackMod.autoEnabled)`; it does not acquire a target or
+choose a weapon ability. `Actions.AttackTarget` (the **T** binding) calls
+`targetNextEnemy()` first if `Unit.Target` does not exist, then makes the same
+toggle call. `autoEnabled` changes only on `Events.AutoCycle` from the server,
+which also changes the button overlay. The Lua therefore makes the icon more
+dependent on an existing target than T. These are client-file facts; no new
+binary inference is needed beyond the verified method-83 path above.
+
+In a fresh CellBlock-to-Castle playthrough, the client logged ten
+`client.net.out` `setAutoCycle` sends. All ten reached `cimmeria-server` as
+`setAutoCycle enabled=true`; none was a disable. At 18:49:48 UTC, hostile
+right-click launched ability 579 (`Pistol Auto Attack`). The first toggle
+arrived at 18:49:49, with no earlier `setTargetID` in that player session.
+At 18:50:13 the tick cleared the loop with `target_id=0`. Later, the client
+explicitly sent `setTargetID(0)` at 19:09:55, then enabled auto-cycle 0.26 s
+later; the tick again cleared with `target_id=0` at 19:10:06. A later Castle
+press at 19:24:38 cleared at 19:24:39 with the same reason. The right-click
+route continued to launch weapon abilities independently. These observations
+explain the reported pattern without claiming every auto-cycle failure has
+the same cause.
+
+Another button press at 19:20:07 had a selected but non-hostile NPC. The
+auto-cycle driver did run: in the 19:20:40–19:20:46 slice it logged 62
+`auto_cycle_tick: re-firing` attempts at that target and 62
+`useAbility rejected -- player single-target ability against a non-hostile
+target` results. The loop only cleared when its target became 0 at 19:20:46.
+This is a second distinct "button lit but no damage" path. The tick's
+validity filter catches dead, missing, surrendered, and unauthorized player
+targets, but it does not pre-filter friendly NPCs; `handle_use_ability` rejects
+them downstream on every tick. A future fix should stop or skip this loop
+without repeated rejected ability calls.
+
+To recognize this in another playthrough, correlate the same client session
+and player entity across these records, using `ts_ms` as the client event time
+because upload can lag:
+
+1. On `cimmeria-client`, filter `client_target = 'client.net.out'` and
+   `fields CONTAINS 'setAutoCycle'` or `fields CONTAINS 'setTargetID'`.
+   `setAutoCycle` uses `msg_id=61, sub_index=22` in this capture. This hook
+   proves the client attempted the RPC, but records neither the enabled byte
+   nor the `setTargetID` argument.
+2. On `cimmeria-server`, search `setAutoCycle` and inspect its `enabled`
+   attribute; search `setTargetID` and inspect `target_id`; search
+   `auto_cycle_tick: target gone or disengaged` and inspect `target_id`.
+   A `setAutoCycle enabled=true` followed by a clear with `target_id=0` is
+   the observed target-loss signature. `useAbility: launched` beside
+   `interact: targeting hostile NPC for combat` is a direct right-click
+   shot, not proof of an auto-cycle re-fire. `auto_cycle_tick: re-firing`
+   must be paired with a committed `useAbility: launched`; repeated
+   `useAbility rejected -- ... non-hostile target` instead identifies the
+   friendly-target loop seen in this capture.
+3. `client.state.field_update` confirms the client entered its state-field
+   handler but currently carries no flag value. The client CME event hook
+   also does not reliably provide an `Events.AutoCycle` delivery record.
+   Use the server's BSF transition and the visible button in a targeted UAT
+   to settle whether the overlay changed.
+
+For better future diagnosis, the `setAutoCycle` server event should include
+the stored `current_target_id`, `last_fired_ability_id` and selected
+`auto_cycle_ability_id` plus the immediate-fire decision. The clear event
+should name its reason (`no_target`, `dead`, `despawned`, `surrendered`, or
+invalid player target) rather than combining them in one message. These
+fields are not present in the September 29 deployment.
 
 ---
 
@@ -253,7 +321,7 @@ Phase 2 added two server-side player state fields that didn't exist before. They
 
 ## Summary
 
-The gun-icon button is the **auto-cycle / auto-fire toggle** (`setAutoCycle`, cell method 83). Pressing it sends a 2-byte packet (`methodID|0x80 + int8 enabled`). When enabled, the server re-fires the player's current weapon ability at the stashed target every time the cooldown expires — no further client input required. The client receives the same `onTimerUpdate` + `onSequence` + `onEffectResults` packets a manual shot would produce, indistinguishable on the wire.
+The gun-icon button is the **auto-cycle / auto-fire toggle** (`setAutoCycle`, cell method 83). Pressing it sends a 2-byte packet (`methodID|0x80 + int8 enabled`). After a weapon ability has committed, the server re-fires that ability at the live `current_target_id` on cooldown expiry — no further client input required. The toggle alone carries neither a target nor an ability ID. A successful repeat produces the same `onTimerUpdate` + `onSequence` + `onEffectResults` packets as a manual shot, indistinguishable on the wire.
 
 The loop stops on: target death (death-transition sweep), target despawn (tick's defensive sweep), manual fire of a different ability (entry gate in `handle_use_ability`), an `AF_DEACTIVATE_AUTO_CYCLE`-flagged ability firing (commit-time gate), or explicit `setAutoCycle(0)` (button toggle off).
 
