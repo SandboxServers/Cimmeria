@@ -761,3 +761,47 @@ async fn send_bundle_to_witness_reliable_returns_sent_outcome_on_success() {
         other => panic!("expected Sent, got {other:?}"),
     }
 }
+
+/// Regression guard for the 2026-09-29 colo stall: a witness bundle sent
+/// with a long ACK backlog drained every pending ACK onto its first
+/// fragment, and a full 1300-byte fragment plus 40 ACKs encrypted to 1488
+/// bytes. The client reads 1472 at most and never received it, retransmits
+/// included. Every datagram must fit, and the ACKs that did not ride this
+/// send stay pending for the next one.
+#[tokio::test]
+async fn bundle_send_with_long_ack_backlog_keeps_every_datagram_within_the_client_buffer() {
+    use cimmeria_mercury::channel_bundle::{ChannelBundle, IDBASE_SGW_PLAYER};
+    use cimmeria_mercury::consts::PACKET_MAX_SIZE;
+
+    let addr: SocketAddr = "127.0.0.1:40123".parse().unwrap();
+    let state = crate::test_support::test_default_connected_client_state();
+    state.pending_acks.lock().unwrap().extend(100..140u32);
+    let connected = Arc::new(Mutex::new(HashMap::from([(addr, state)])));
+    let entity_to_addr = Arc::new(Mutex::new(HashMap::from([(7u32, addr)])));
+    let sink = Arc::new(TestTransport::default());
+    let transport: Arc<dyn cimmeria_mercury::transport::Transport> = sink.clone();
+
+    // 24 x 107 bytes: a bundle that fills its first fragment.
+    let mut bundle = ChannelBundle::new(true);
+    for entity_id in 0u32..24 {
+        bundle.append_entity_method(12, IDBASE_SGW_PLAYER, entity_id, &[0xAB; 100]);
+    }
+    send_bundle_to_witness_reliable(&transport, &connected, &entity_to_addr, 7, bundle).await;
+
+    let sent = sink.filter_to(addr);
+    assert!(!sent.is_empty());
+    for datagram in &sent {
+        assert!(
+            datagram.len() <= PACKET_MAX_SIZE,
+            "datagram of {} bytes exceeds the client's {PACKET_MAX_SIZE}-byte receive buffer",
+            datagram.len()
+        );
+    }
+    let clients = connected.lock().unwrap();
+    let left = clients[&addr].pending_acks.lock().unwrap().clone();
+    assert_eq!(
+        left,
+        (110..140u32).collect::<Vec<_>>(),
+        "overflow ACKs stay queued, oldest sent first"
+    );
+}

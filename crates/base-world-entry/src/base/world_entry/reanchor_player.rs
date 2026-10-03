@@ -201,7 +201,7 @@ pub(crate) async fn handle_reanchor_player(
 
     let acks: Vec<u32> = {
         let mut pending = pending_acks_arc.lock().unwrap();
-        pending.drain(..).collect()
+        cimmeria_mercury::packet::take_piggyback_acks(&mut pending, enc_version)
     };
     let base_seq =
         next_seq.fetch_add(total_seqs, Ordering::Relaxed) & cimmeria_mercury::packet::SEQUENCE_MASK;

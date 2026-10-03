@@ -21,6 +21,7 @@
 //! non-happy one). A non-happy outcome bypasses every throttle.
 
 use std::cell::{Cell, RefCell};
+use std::collections::HashMap;
 use std::ffi::c_void;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::OnceLock;
@@ -38,7 +39,7 @@ use crate::hooks::mercury_recv::{
     nub, packet,
     report::{self, Report, WindowNote},
     tail::{self, flag, Gate, Tail},
-    window::WindowState,
+    window::{self, GapTracker, WindowState},
     Fields, MAX_DATAGRAM,
 };
 use crate::queue::Producer;
@@ -94,6 +95,9 @@ thread_local! {
     /// What `queueAckForPacket` did with the packet the filter is on
     /// (network thread).
     static NOTE: Cell<Option<WindowNote>> = const { Cell::new(None) };
+    /// Each channel has its own expected reliable sequence. Entries leave
+    /// when the gap closes, so reconnects cannot inherit stale state.
+    static GAPS: RefCell<HashMap<u32, GapTracker>> = RefCell::new(HashMap::new());
     /// The bundle the message loop is walking (game thread).
     static BUNDLE: RefCell<Option<BundleTrace>> = const { RefCell::new(None) };
 }
@@ -192,13 +196,20 @@ unsafe extern "thiscall-unwind" fn filtered_detour(
         return 0;
     };
     let original: FilteredFn = std::mem::transmute(t);
-    let parsed: Option<Tail> =
-        guarded(|| packet_bytes(pkt as u32).map(|(_, b)| tail::parse(&b))).flatten();
+    let parsed: Option<(Tail, String)> = guarded(|| {
+        packet_bytes(pkt as u32).map(|(_, b)| {
+            (
+                tail::parse(&b),
+                crate::hooks::mercury_recv::wire::fingerprint(&b),
+            )
+        })
+    })
+    .flatten();
     let _ = NOTE.try_with(|c| c.set(None));
     let bad_before = LiveMem.u32_at((this as u32).wrapping_add(nub::BAD_PACKETS));
     let result = original(this, addr, pkt);
     guarded(|| {
-        let Some(tail) = parsed else {
+        let Some((tail, fingerprint)) = parsed else {
             return;
         };
         let note = NOTE.try_with(Cell::take).unwrap_or(None);
@@ -206,7 +217,10 @@ unsafe extern "thiscall-unwind" fn filtered_detour(
             bad_before,
             LiveMem.u32_at((this as u32).wrapping_add(nub::BAD_PACKETS)),
         );
-        let r = report::packet(&tail, note.as_ref(), result, bad, group_in_flight());
+        let r = report::with_filter_input_fingerprint(
+            report::packet(&tail, note.as_ref(), result, bad, group_in_flight()),
+            &fingerprint,
+        );
         emit_report(r, "packet");
     });
     result
@@ -249,6 +263,28 @@ unsafe extern "thiscall-unwind" fn queue_ack_detour(
                 window,
             }))
         });
+        let events = GAPS.try_with(|cell| {
+            let mut gaps = cell.borrow_mut();
+            let tracker = gaps.entry(chan).or_default();
+            let events = tracker.observe(before, after, now_ms());
+            if !tracker.is_open() {
+                gaps.remove(&chan);
+            }
+            events
+        });
+        if let Ok(events) = events {
+            for gap in events {
+                emit(
+                    "client.mercury.rx_gap",
+                    if gap.event == "rx_gap_stall" {
+                        "warn"
+                    } else {
+                        "info"
+                    },
+                    window::gap_fields(gap, chan, a4 as u32),
+                );
+            }
+        }
     });
     result
 }

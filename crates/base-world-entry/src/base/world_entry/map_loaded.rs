@@ -92,7 +92,10 @@ pub async fn handle_map_loaded(
     let (acks, base_seq, enc_version) = {
         let mut clients = connected.lock().map_err(|_| "connected lock poisoned")?;
         let c = clients.get_mut(&addr).ok_or("addr not in connected map")?;
-        let acks: Vec<u32> = c.pending_acks.lock().unwrap().drain(..).collect();
+        let acks: Vec<u32> = cimmeria_mercury::packet::take_piggyback_acks(
+            &mut c.pending_acks.lock().unwrap(),
+            c.enc_version,
+        );
         let seq = c.next_seq.fetch_add(total_seqs, Ordering::Relaxed)
             & cimmeria_mercury::packet::SEQUENCE_MASK;
         (acks, seq, c.enc_version)

@@ -18,6 +18,7 @@ fn iat_slots_match_manifest() {
         assert_eq!(IAT_LOAD_LIBRARY_W.slot, 0x017EF26C);
         assert_eq!(IAT_LOAD_LIBRARY_A.slot, 0x017EF268);
         assert_eq!(IAT_GET_FOREGROUND_WINDOW.slot, 0x017EFDF8);
+        assert_eq!(IAT_RECVFROM.slot, 0x017EFF60);
         for import in [
             IAT_LUA_PCALL,
             IAT_LUA_CALL,
@@ -26,6 +27,7 @@ fn iat_slots_match_manifest() {
             IAT_LOAD_LIBRARY_W,
             IAT_LOAD_LIBRARY_A,
             IAT_GET_FOREGROUND_WINDOW,
+            IAT_RECVFROM,
         ] {
             assert_eq!(import.slot % 4, 0, "{:?}", import.symbol);
         }

@@ -348,6 +348,11 @@ impl Channel {
             last_sent: now,
             retransmit_count: 0,
             raw_bytes,
+            send_site: None,
+            send_kind: None,
+            fragment_index: None,
+            fragment_count: None,
+            message_count: None,
             retransmit_cap: None,
         };
 
@@ -396,6 +401,33 @@ impl Channel {
         // active in the send direction.
         self.last_sent = now;
         Ok(())
+    }
+
+    /// Attach the service dispatch site to a packet registered after its
+    /// socket send. Called while the session lock is still held, before an
+    /// ACK can retire the entry.
+    pub fn set_sent_packet_context(
+        &mut self,
+        seq: u32,
+        site: String,
+        kind: &'static str,
+        fragment: Option<(usize, usize)>,
+        message_count: Option<usize>,
+    ) {
+        if let Some(entry) = self
+            .tx_window
+            .iter_mut()
+            .chain(self.unsent_packets.iter_mut())
+            .find(|e| e.packet.sequence == seq)
+        {
+            entry.send_site = Some(site);
+            entry.send_kind = Some(kind);
+            if let Some((index, count)) = fragment {
+                entry.fragment_index = Some(index);
+                entry.fragment_count = Some(count);
+            }
+            entry.message_count = message_count;
+        }
     }
 
     /// Queue a packet for reliable transmission.
@@ -464,6 +496,11 @@ impl Channel {
             // encrypted yet (the seq was just stamped). Such entries
             // are silently skipped during the retransmit scan.
             raw_bytes: Bytes::new(),
+            send_site: None,
+            send_kind: None,
+            fragment_index: None,
+            fragment_count: None,
+            message_count: None,
             retransmit_cap: None,
         });
         self.last_sent = now;

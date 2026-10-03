@@ -221,14 +221,53 @@ pub use cimmeria_wire::hex::to_hex;
 ///
 /// [`unsent_packets`]: cimmeria_mercury::channel::Channel::unsent_packets
 /// [`MAX_UNSENT_PACKETS`]: cimmeria_mercury::consts::MAX_UNSENT_PACKETS
+#[track_caller]
 pub fn shadow_register_reliable_send(
     connected: &Arc<Mutex<HashMap<SocketAddr, ConnectedClientState>>>,
     addr: SocketAddr,
     seq: u32,
     raw_bytes: cimmeria_mercury::packet::Bytes,
 ) {
+    shadow_register_reliable_send_with_details(
+        connected,
+        addr,
+        seq,
+        raw_bytes,
+        ReliableSendDetails::default(),
+    );
+}
+
+#[derive(Clone, Copy)]
+struct ReliableSendDetails {
+    kind: &'static str,
+    fragment: Option<(usize, usize)>,
+    message_count: Option<usize>,
+}
+
+impl Default for ReliableSendDetails {
+    fn default() -> Self {
+        Self {
+            kind: "direct",
+            fragment: None,
+            message_count: None,
+        }
+    }
+}
+
+#[track_caller]
+fn shadow_register_reliable_send_with_details(
+    connected: &Arc<Mutex<HashMap<SocketAddr, ConnectedClientState>>>,
+    addr: SocketAddr,
+    seq: u32,
+    raw_bytes: cimmeria_mercury::packet::Bytes,
+    details: ReliableSendDetails,
+) {
     use cimmeria_mercury::packet::{Bytes, Packet, PacketFlags};
 
+    let wire_len = raw_bytes.len();
+    let wire_fingerprint = cimmeria_mercury::instrumentation::wire_fingerprint(&raw_bytes);
+    let caller = std::panic::Location::caller();
+    let send_site = format!("{}:{}", caller.file(), caller.line());
     let pkt = Packet::new(PacketFlags::default(), seq, Bytes::new());
     let Ok(clients) = connected.lock() else {
         return;
@@ -252,6 +291,52 @@ pub fn shadow_register_reliable_send(
             "shadow_register_reliable_send: packet bookkeeping rejected \
              (invalid seq or unsent-queue cap exceeded); reliability cannot \
              be tracked for this packet"
+        );
+        return;
+    }
+    channel.set_sent_packet_context(
+        seq,
+        send_site.clone(),
+        details.kind,
+        details.fragment,
+        details.message_count,
+    );
+    let (fragment_index, fragment_count) = details.fragment.unzip();
+    let packet_max_size = cimmeria_mercury::consts::PACKET_MAX_SIZE;
+    if wire_len > packet_max_size {
+        tracing::warn!(
+            target: "mercury.reliable_send",
+            event = "reliable_send",
+            peer = %addr,
+            seq,
+            wire_len,
+            packet_max_size,
+            wire_fingerprint = %wire_fingerprint,
+            %send_site,
+            send_kind = details.kind,
+            ?fragment_index,
+            ?fragment_count,
+            message_count = ?details.message_count,
+            player_entity_id = ?state.player_entity_id,
+            account_id = state.account_id,
+            "encrypted reliable datagram exceeds the Mercury UDP payload limit"
+        );
+    } else {
+        tracing::info!(
+            target: "mercury.reliable_send",
+            event = "reliable_send",
+            peer = %addr,
+            seq,
+            wire_len,
+            wire_fingerprint = %wire_fingerprint,
+            %send_site,
+            send_kind = details.kind,
+            ?fragment_index,
+            ?fragment_count,
+            message_count = ?details.message_count,
+            player_entity_id = ?state.player_entity_id,
+            account_id = state.account_id,
+            "encrypted reliable datagram sent"
         );
     }
 }
@@ -337,7 +422,10 @@ pub fn drain_acks_and_seq(
 ) -> Result<(Vec<u32>, u32), Box<dyn std::error::Error + Send + Sync>> {
     let mut clients = connected.lock().map_err(|_| "connected lock poisoned")?;
     let c = clients.get_mut(&addr).ok_or("addr not in connected map")?;
-    let acks: Vec<u32> = c.pending_acks.lock().unwrap().drain(..).collect();
+    let acks: Vec<u32> = cimmeria_mercury::packet::take_piggyback_acks(
+        &mut c.pending_acks.lock().unwrap(),
+        c.enc_version,
+    );
     let seq = c.next_seq.fetch_add(1, Ordering::Relaxed) & cimmeria_mercury::packet::SEQUENCE_MASK;
     Ok((acks, seq))
 }
@@ -716,7 +804,10 @@ where
                 // `ConnectedClientState::next_unreliable_seq` for the
                 // encapsulated fetch-add + mask.
                 let seq = c.next_unreliable_seq();
-                let acks: Vec<u32> = c.pending_acks.lock().unwrap().drain(..).collect();
+                let acks: Vec<u32> = cimmeria_mercury::packet::take_piggyback_acks(
+                    &mut c.pending_acks.lock().unwrap(),
+                    c.enc_version,
+                );
                 Some((addr, key, version, seq, acks))
             }
             None => {
@@ -804,7 +895,10 @@ where
                 let version = c.enc_version;
                 let seq = c.next_seq.fetch_add(1, Ordering::Relaxed)
                     & cimmeria_mercury::packet::SEQUENCE_MASK;
-                let acks: Vec<u32> = c.pending_acks.lock().unwrap().drain(..).collect();
+                let acks: Vec<u32> = cimmeria_mercury::packet::take_piggyback_acks(
+                    &mut c.pending_acks.lock().unwrap(),
+                    c.enc_version,
+                );
                 Some((addr, key, version, seq, acks))
             }
             None => {
@@ -830,11 +924,16 @@ where
     }
     // Register the encrypted bytes with the per-session Channel so
     // the retransmit driver in tick_sync re-sends on RTO expiry.
-    shadow_register_reliable_send(
+    shadow_register_reliable_send_with_details(
         connected,
         addr,
         seq,
         cimmeria_mercury::packet::Bytes::copy_from_slice(&packet),
+        ReliableSendDetails {
+            kind: "witness_single",
+            fragment: None,
+            message_count: None,
+        },
     );
     WitnessSendOutcome::Sent { addr, seq, bytes }
 }
@@ -920,7 +1019,10 @@ pub async fn send_bundle_to_witness_reliable(
         // Drain pending ACKs into the bundle so they ride the first
         // finalized packet. Done under the same lock window as the seq
         // reservation so a concurrent ACK-pumping send doesn't race.
-        let drained_acks: Vec<u32> = c.pending_acks.lock().unwrap().drain(..).collect();
+        let drained_acks: Vec<u32> = cimmeria_mercury::packet::take_piggyback_acks(
+            &mut c.pending_acks.lock().unwrap(),
+            c.enc_version,
+        );
         bundle.add_acks(&drained_acks);
 
         // Now that ACKs are in, estimated_packet_count reflects the true
@@ -1012,11 +1114,16 @@ pub async fn send_bundle_to_witness_reliable(
             );
             return BundleSendOutcome::SendError;
         }
-        shadow_register_reliable_send(
+        shadow_register_reliable_send_with_details(
             connected,
             addr,
             frag_seq,
             cimmeria_mercury::packet::Bytes::copy_from_slice(pkt),
+            ReliableSendDetails {
+                kind: "witness_bundle",
+                fragment: (packets.len() > 1).then_some((i + 1, packets.len())),
+                message_count: Some(num_messages),
+            },
         );
     }
 

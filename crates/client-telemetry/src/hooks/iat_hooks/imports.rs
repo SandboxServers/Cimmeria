@@ -47,6 +47,16 @@ pub(super) const IAT_GET_FOREGROUND_WINDOW: Import = Import {
     symbol: c"GetForegroundWindow",
 };
 
+/// `recvfrom` (WS2_32 ordinal 17), the socket boundary before Mercury's
+/// packet object and filter. Ghidra's import thunk at `0x012f3d8c` jumps
+/// through this slot; its callers include the Mercury receive loop.
+#[cfg(all(target_os = "windows", target_arch = "x86"))]
+pub(super) const IAT_RECVFROM: Import = Import {
+    slot: 0x017E_FF60,
+    module: "ws2_32.dll",
+    symbol: c"recvfrom",
+};
+
 /// One imported function: its IAT slot in `SGW.exe` and what it imports.
 #[cfg(all(target_os = "windows", target_arch = "x86"))]
 #[derive(Debug, Clone, Copy)]

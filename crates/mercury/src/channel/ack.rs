@@ -74,6 +74,17 @@ pub struct TxHoleStall {
     pub retransmit_count: u32,
     /// Reliable packets still outstanding (TX window plus deferred queue).
     pub outstanding: usize,
+    /// Size of the encrypted UDP payload initially sent for the missing seq.
+    pub wire_len: usize,
+    /// FNV-1a key of that exact payload, shared with client socket logs.
+    pub wire_fingerprint: String,
+    /// Service dispatch site that sent the packet, when known.
+    pub send_site: Option<String>,
+    /// Send path and bundle position, if the service supplied them.
+    pub send_kind: Option<&'static str>,
+    pub fragment_index: Option<usize>,
+    pub fragment_count: Option<usize>,
+    pub message_count: Option<usize>,
     /// True on the first warning for this hole. False on the throttled
     /// repeats.
     pub first_warning: bool,
@@ -257,12 +268,26 @@ impl Channel {
             .chain(self.unsent_packets.iter())
             .find(|e| e.packet.sequence == hole.seq)
             .map_or(0, |e| e.retransmit_count);
+        let entry = self
+            .tx_window
+            .iter()
+            .chain(self.unsent_packets.iter())
+            .find(|e| e.packet.sequence == hole.seq);
         let stall = TxHoleStall {
             seq: hole.seq,
             stalled_for,
             highest_acked: self.highest_acked.unwrap_or(hole.seq),
             retransmit_count,
             outstanding: self.tx_window.len() + self.unsent_packets.len(),
+            wire_len: entry.map_or(0, |e| e.raw_bytes.len()),
+            wire_fingerprint: entry.map_or_else(String::new, |e| {
+                crate::instrumentation::wire_fingerprint(&e.raw_bytes)
+            }),
+            send_site: entry.and_then(|e| e.send_site.clone()),
+            send_kind: entry.and_then(|e| e.send_kind),
+            fragment_index: entry.and_then(|e| e.fragment_index),
+            fragment_count: entry.and_then(|e| e.fragment_count),
+            message_count: entry.and_then(|e| e.message_count),
             first_warning,
         };
         tracing::warn!(
@@ -274,6 +299,13 @@ impl Channel {
             highest_acked = stall.highest_acked,
             retransmit_count = stall.retransmit_count,
             outstanding = stall.outstanding,
+            wire_len = stall.wire_len,
+            wire_fingerprint = %stall.wire_fingerprint,
+            send_site = stall.send_site.as_deref().unwrap_or(""),
+            send_kind = stall.send_kind.unwrap_or(""),
+            fragment_index = ?stall.fragment_index,
+            fragment_count = ?stall.fragment_count,
+            message_count = ?stall.message_count,
             stalled_ms = stall.stalled_for.as_millis() as u64,
             first_warning,
             "peer has acked later reliable packets but not this one -- it is holding every \

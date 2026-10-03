@@ -511,6 +511,14 @@ Until 2026-09-27 the server drained its send window cumulatively up to each ACK.
 
 When the client has acked a packet sent after one it has not acked, the server records a transmit hole (`mercury.tx_hole`). It logs `tx_hole_open` at DEBUG for each hole, `tx_hole_stall` at WARN when one stays open for 2 s, and `tx_hole_closed` at INFO when a reported one closes. See [observability.md](../architecture/observability.md).
 
+The service's initial reliable send also logs `mercury.reliable_send` with `peer`, `seq`, encrypted UDP `wire_len`, `wire_fingerprint` (16 hex digits, FNV-1a of the exact datagram), `send_site` (the Rust call site that registered the send; for witness sends this is the witness helper, and `send_kind` says which), `send_kind` (`direct`, `witness_single`, `witness_bundle`), `player_entity_id` and `account_id`. Witness bundles also identify `fragment_index` (one-based), `fragment_count` and `message_count`. A datagram above `PACKET_MAX_SIZE` (1472 bytes) is a WARN; others are INFO. `tx_hole_stall` repeats the missing entry's size, fingerprint and send context so the log remains useful even when the initial send falls outside the query window. The fingerprint joins to the client's raw Winsock `client.mercury.socket_recv` event; see [client-telemetry.md](../architecture/client-telemetry.md#mercury-receive-path-packets-fragments-bundles). The size warning identifies a datagram above the client's 1472-byte receive buffer; it does not, by itself, prove where a packet was lost.
+
+#### Piggybacked ACK budget
+
+The client's Mercury socket reader passes `recvfrom` a 1472-byte buffer (`FUN_0158a200`; see [client-mercury-receive-path.md](../reverse-engineering/findings/client-mercury-receive-path.md#socket-receive-cap-verified-2026-09-29)). A larger datagram fails with `WSAEMSGSIZE` before Mercury sees it, and because a retransmit resends the same cached bytes, one oversized reliable packet wedges the stream for good. Bodies are bounded when they are built; ACK footers were not, and every send used to drain the whole pending list onto itself. A 2026-09-29 colo session stalled on 1488-byte datagrams this way.
+
+Every send now takes its ACKs through `cimmeria_mercury::packet::take_piggyback_acks`, oldest first. The budget assumes the largest data plaintext before ACKs, 1411 bytes (a cooked-data resource fragment), and allows **10 ACKs under v1 and 2 under v2**; tickSync, whose body is tiny, takes up to 255 (the one-byte count's limit). ACKs over budget stay pending for the next send or the next tickSync, at most 100 ms later. `ack_budget.rs` pins the budget against the real cipher.
+
 ### BigWorld: Individual ACKs + Cumulative ACKs
 
 BigWorld supports both individual and cumulative ACKs:

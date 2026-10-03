@@ -40,6 +40,10 @@ The client receives a datagram on the network thread, strips its footers from th
 | `0x0158aa40` | header length of an `InterfaceElement` (1 fixed, `1+width` variable, `-1` unknown style) | game | `fastcall(Element*) -> int` |
 | `0x0158b770` | `InterfaceElement::expandLength` (reads the inline length) | game | |
 
+### Socket receive cap (verified 2026-09-29)
+
+Ghidra decompilation of `FUN_0158a200` shows the game Mercury socket reader calls `recvfrom(socket, Packet+0x54, 0x5c0, 0, &address, &address_len)`: **the receive buffer is 1472 bytes**. It copies the returned length into `Packet+0x24` only when `recvfrom` returns nonnegative. The `recvfrom` import thunk at `0x012f3d8c` jumps through IAT slot `0x017eff60`; `FUN_0158a200` is one of its callers. An incoming 1488-byte UDP payload exceeds this buffer and should produce Winsock `WSAEMSGSIZE` (10040), leaving the packet length unset and bypassing the packet filter. The live client event `client.mercury.socket_recv` distinguishes that outcome from a datagram lost before the socket.
+
 The log function every `[Mercury] ...` string is passed to is `0x0081c2e0`. **In this build it is a one-byte stub (`c3`, followed by `int3` padding), so every Mercury log line is discarded.** The strings are still useful as anchors; they never print.
 
 ## Packet and channel layouts used

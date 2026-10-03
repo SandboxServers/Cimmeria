@@ -195,7 +195,10 @@ async fn send_method(
                 };
                 let seq = c.next_seq.fetch_add(1, Ordering::Relaxed)
                     & cimmeria_mercury::packet::SEQUENCE_MASK;
-                let acks: Vec<u32> = c.pending_acks.lock().unwrap().drain(..).collect();
+                let acks: Vec<u32> = cimmeria_mercury::packet::take_piggyback_acks(
+                    &mut c.pending_acks.lock().unwrap(),
+                    c.enc_version,
+                );
                 Some((entity_id, c.key, c.enc_version, seq, acks))
             }
         }

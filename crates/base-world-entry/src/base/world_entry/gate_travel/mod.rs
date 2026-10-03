@@ -421,7 +421,7 @@ pub async fn handle_gate_travel(
     // Entity teardown: Send RESET_ENTITIES
     let acks: Vec<u32> = {
         let mut pending = pending_acks_arc.lock().unwrap();
-        pending.drain(..).collect()
+        cimmeria_mercury::packet::take_piggyback_acks(&mut pending, enc_version)
     };
     let seq = next_seq.fetch_add(1, Ordering::Relaxed) & cimmeria_mercury::packet::SEQUENCE_MASK;
     let pkt = build_reset_entities(&key, seq, &acks, enc_version);

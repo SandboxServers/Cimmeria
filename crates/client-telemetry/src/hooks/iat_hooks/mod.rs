@@ -105,6 +105,8 @@ static ORIG_LOAD_LIBRARY_W: AtomicUsize = AtomicUsize::new(0);
 static ORIG_LOAD_LIBRARY_A: AtomicUsize = AtomicUsize::new(0);
 #[cfg(all(target_os = "windows", target_arch = "x86"))]
 static ORIG_GET_FOREGROUND_WINDOW: AtomicUsize = AtomicUsize::new(0);
+#[cfg(all(target_os = "windows", target_arch = "x86"))]
+static ORIG_RECVFROM: AtomicUsize = AtomicUsize::new(0);
 
 /// Install every IAT hook. Best-effort: each slot swap reports its
 /// own success/failure event; one failure doesn't block the others.
@@ -166,11 +168,18 @@ unsafe fn install_inner(producer: Producer) {
         get_foreground_window_detour as *const c_void as usize,
         &ORIG_GET_FOREGROUND_WINDOW,
     );
+    install_one(
+        &producer,
+        "recvfrom",
+        IAT_RECVFROM,
+        recvfrom_detour as *const c_void as usize,
+        &ORIG_RECVFROM,
+    );
 
     super::emit_info(
         &producer,
         "client.hooks.iat.install_complete",
-        [("hook_count", serde_json::json!(7))],
+        [("hook_count", serde_json::json!(8))],
     );
 }
 
@@ -499,6 +508,66 @@ unsafe extern "stdcall-unwind" fn get_foreground_window_detour() -> *mut c_void 
     let original: unsafe extern "stdcall-unwind" fn() -> *mut c_void =
         unsafe { std::mem::transmute(orig_addr) };
     original()
+}
+
+#[cfg(all(target_os = "windows", target_arch = "x86"))]
+#[link(name = "Ws2_32")]
+unsafe extern "system" {
+    fn WSAGetLastError() -> i32;
+    fn WSASetLastError(error: i32);
+}
+
+/// `recvfrom(SOCKET, char*, int, int, sockaddr*, int*) -> int` — the
+/// Winsock boundary. The original runs first, before we inspect the raw
+/// encrypted bytes or the socket's failure code. Restore the thread's WSA
+/// error after telemetry so the client observes exactly the original result.
+#[cfg(all(target_os = "windows", target_arch = "x86"))]
+#[allow(improper_ctypes_definitions)]
+unsafe extern "stdcall-unwind" fn recvfrom_detour(
+    socket: usize,
+    buf: *mut u8,
+    len: i32,
+    flags: i32,
+    from: *mut c_void,
+    from_len: *mut i32,
+) -> i32 {
+    let orig_addr = ORIG_RECVFROM.load(Ordering::Acquire);
+    if orig_addr == 0 {
+        return -1;
+    }
+    let original: unsafe extern "stdcall-unwind" fn(
+        usize,
+        *mut u8,
+        i32,
+        i32,
+        *mut c_void,
+        *mut i32,
+    ) -> i32 = unsafe { std::mem::transmute(orig_addr) };
+    let result = unsafe { original(socket, buf, len, flags, from, from_len) };
+    let error = (result < 0).then(|| unsafe { WSAGetLastError() });
+    let _ = std::panic::catch_unwind(|| {
+        let wire = if result >= 0 && result <= len && !buf.is_null() {
+            Some(unsafe { std::slice::from_raw_parts(buf, result as usize) })
+        } else {
+            None
+        };
+        let peer =
+            if result >= 0 && !from.is_null() && !from_len.is_null() && unsafe { *from_len } >= 8 {
+                let bytes = unsafe { std::slice::from_raw_parts(from.cast::<u8>(), 8) };
+                super::mercury_recv::wire::ipv4_peer(bytes)
+            } else {
+                None
+            };
+        if let Some((level, fields)) =
+            super::mercury_recv::wire::recv_event(socket, len, wire, error, peer.as_deref())
+        {
+            super::emit::emit("client.mercury.socket_recv", level, fields);
+        }
+    });
+    if let Some(error) = error {
+        unsafe { WSASetLastError(error) };
+    }
+    result
 }
 
 /// ASCII-bounded string read for `LoadLibraryA` — same safety
