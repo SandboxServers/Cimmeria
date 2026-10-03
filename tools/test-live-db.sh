@@ -135,4 +135,7 @@ if ! "$PSQL" "$ADMIN_URL" -q -v ON_ERROR_STOP=1 "${args[@]}" > /dev/null; then
 fi
 echo "test-live-db: cloned $TEMPLATE_DB into ${TEMPLATE_DB}_0..${TEMPLATE_DB}_$((SLOTS - 1)) in $(( $(date +%s) - start ))s"
 
+# Reporter settings come from the caller. Under the build lane's quiet mode (an agent,
+# through live-db-test.sh) the NEXTEST_* variables report failures only and the lane
+# summarises; CI runs this script directly, so its log keeps nextest's full output.
 exec "${nextest[@]}" "$@"

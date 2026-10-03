@@ -34,6 +34,16 @@
 #    run time, exit code, worktree, commit, settings, lowest free RAM, sccache hits and
 #    misses, free disk at the start, MB pruned). tools/build-lane/lane_stats.py reports on
 #    it. LANE_METRICS=0 turns it off.
+#  * Quiet output for agents: when stdout is not a terminal (an agent's Bash tool), the
+#    command's whole output goes to a log, $LANE_ROOT/logs/<worktree>/<time>-<pid>.log,
+#    and stdout gets only a summary from lane_summary.py: `status=`, the exit code, test
+#    counts, the compiler errors and the failing tests with the first lines of each, the
+#    failures file (every failure in full) and the log path. nextest runs with
+#    `--status-level fail --show-progress=none --failure-output final` (through its
+#    NEXTEST_* variables, which a caller can still set). LANE_VERBOSE=1, or CI=true,
+#    keeps the full output on stdout, as at a terminal. Each worktree keeps its newest
+#    LANE_LOG_KEEP logs (default 20), none older than LANE_LOG_DAYS days (default 7);
+#    rm-worktree.sh deletes the rest.
 #
 # Lock layout: $LANE_ROOT/lane/slot.N directories (mkdir is atomic). A dead holder pid
 # breaks its own slot.
@@ -143,6 +153,42 @@ if [ -z "${CARGO_BUILD_JOBS:-}" ]; then
   CARGO_BUILD_JOBS=$(( cores / SLOTS )); [ "$CARGO_BUILD_JOBS" -lt 4 ] && CARGO_BUILD_JOBS=4
 fi
 export CARGO_BUILD_JOBS
+
+# --- quiet output (see the header) ---------------------------------------------------
+quiet=0
+if [ ! -t 1 ] && [ "${LANE_VERBOSE:-0}" != 1 ] && [ "${CI:-}" != true ]; then quiet=1; fi
+LOG_DIR="$LANE_ROOT/logs/$NAME"
+job_log=""; failures_file=""
+if [ $quiet -eq 1 ]; then
+  mkdir -p "$LOG_DIR"
+  job_base="$LOG_DIR/$(date '+%Y%m%d-%H%M%S')-$$"
+  job_log="$job_base.log"; failures_file="$job_base.failures.txt"
+  export NEXTEST_STATUS_LEVEL="${NEXTEST_STATUS_LEVEL:-fail}"
+  export NEXTEST_SHOW_PROGRESS="${NEXTEST_SHOW_PROGRESS:-none}"
+  export NEXTEST_FAILURE_OUTPUT="${NEXTEST_FAILURE_OUTPUT:-final}"
+fi
+
+# Delete this worktree's logs beyond the newest LANE_LOG_KEEP, and every worktree's logs
+# older than LANE_LOG_DAYS days, so a busy agent can't fill the disk with them.
+prune_logs() {
+  local keep="${LANE_LOG_KEEP:-20}" days="${LANE_LOG_DAYS:-7}" old
+  [ -d "$LANE_ROOT/logs" ] || return 0
+  [ "$keep" -ge 1 ] 2>/dev/null || keep=1    # never the log of the job that just ran
+  find "$LANE_ROOT/logs" -mindepth 2 -maxdepth 2 -type f -mmin +"$((days * 1440))" -delete 2>/dev/null
+  find "$LANE_ROOT/logs" -mindepth 1 -maxdepth 1 -type d -empty -delete 2>/dev/null
+  [ -d "$LOG_DIR" ] || return 0
+  while IFS= read -r old; do
+    rm -f "$old" "${old%.log}.failures.txt"
+  done < <(ls -1t "$LOG_DIR"/*.log 2>/dev/null | tail -n +"$((keep + 1))")
+}
+
+# A Python that runs (on Windows, `python3` is often the Store's stub, which doesn't).
+find_python() {
+  local p
+  for p in python3 python py; do
+    command -v "$p" >/dev/null 2>&1 && "$p" -c '' >/dev/null 2>&1 && { echo "$p"; return; }
+  done
+}
 
 # --- acquire ------------------------------------------------------------------------
 held=()
@@ -265,7 +311,14 @@ EOF
 disk_guard
 
 t_start="$(now_us)"
-echo "[lane] acquired ${#held[@]}/$SLOTS slot(s) after ${waited}s; target=${CARGO_TARGET_DIR:-$TOP/target}; free=${free_start:-?}GB; jobs=$CARGO_BUILD_JOBS; incremental=${CARGO_INCREMENTAL:-default} :: $*" >&2
+acquired="[lane] acquired ${#held[@]}/$SLOTS slot(s) after ${waited}s; target=${CARGO_TARGET_DIR:-$TOP/target}; free=${free_start:-?}GB; jobs=$CARGO_BUILD_JOBS; incremental=${CARGO_INCREMENTAL:-default} :: $*"
+if [ $quiet -eq 1 ]; then
+  echo "$acquired" > "$job_log"
+  # One line up front, so a caller whose tool times out mid-build still has the log.
+  echo "[lane] running; log: $(win_path "$job_log")" >&2
+else
+  echo "$acquired" >&2
+fi
 
 # --- job log ------------------------------------------------------------------------
 METRICS="${LANE_METRICS:-1}"
@@ -325,19 +378,39 @@ record_job() {  # $1 = exit code, $2 = wait ms, $3 = run ms
   line+=",\"dev_drive\":$(json_bool $use_dev_drive),\"target\":$(json_str "${CARGO_TARGET_DIR:-$TOP/target}")"
   line+=",\"sccache\":$(json_bool $use_sccache),\"sccache_hits\":$(json_num "$dh"),\"sccache_misses\":$(json_num "$dm")"
   line+=",\"min_free_mb\":$(json_num "${min_kb:+$((min_kb / 1024))}"),\"mem_total_mb\":$(json_num "${total_kb:+$((total_kb / 1024))}")"
-  line+=",\"disk_free_gb\":$(json_num "$free_start"),\"pruned_mb\":$((pruned_kb / 1024))}"
+  line+=",\"disk_free_gb\":$(json_num "$free_start"),\"pruned_mb\":$((pruned_kb / 1024))"
+  line+=",\"quiet\":$(json_bool $quiet),\"log\":$(json_str "${job_log:+$(win_path "$job_log")}")}"
   # mkdir is the lock; a holder that died leaves it behind, so give up waiting after ~5 s.
   while ! mkdir "$METRICS_DIR/.lock" 2>/dev/null; do i=$((i + 1)); [ $i -ge 50 ] && break; sleep 0.1; done
   printf '%s\n' "$line" >> "$METRICS_DIR/jobs.jsonl"
   rmdir "$METRICS_DIR/.lock" 2>/dev/null
 }
 
-"$@"
+if [ $quiet -eq 1 ]; then
+  "$@" >> "$job_log" 2>&1
+else
+  "$@"
+fi
 rc=$?
 t_end="$(now_us)"
 run_ms=$(( (t_end - t_start) / 1000 )); wait_ms=$(( (t_start - t_request) / 1000 ))
 prune_incremental
 pruned_note=""; [ "$pruned_kb" -gt 0 ] && pruned_note="; pruned $((pruned_kb / 1024)) MB of stale incremental sessions"
-echo "[lane] released (exit $rc, ran $(secs $run_ms)s$pruned_note)" >&2
+if [ $quiet -eq 1 ]; then
+  echo "[lane] released (exit $rc, ran $(secs $run_ms)s$pruned_note)" >> "$job_log"
+  # The summary is the job's stdout. Without Python it falls back to the log's tail, so
+  # a failure is never reduced to a bare exit code.
+  py="$(find_python)"
+  if [ -z "$py" ] || ! "$py" "$(win_path "$LANE_DIR/lane_summary.py")" --log "$(win_path "$job_log")" \
+        --exit "$rc" --failures "$(win_path "$failures_file")" --ran "$(secs $run_ms)" \
+        $([ "$pruned_kb" -ge 1024 ] && echo "--note pruned=$((pruned_kb / 1024))MB"); then
+    echo "[lane] status=$([ $rc -eq 0 ] && echo ok || echo failed) exit=$rc ran=$(secs $run_ms)s (no summary: lane_summary.py did not run)"
+    [ $rc -eq 0 ] || tail -n 40 "$job_log"
+    echo "log: $(win_path "$job_log")"
+  fi
+  prune_logs
+else
+  echo "[lane] released (exit $rc, ran $(secs $run_ms)s$pruned_note)" >&2
+fi
 [ "$METRICS" != 0 ] && record_job "$rc" "$wait_ms" "$run_ms"
 exit $rc
