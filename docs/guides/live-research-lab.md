@@ -442,16 +442,23 @@ Quirks to keep in mind:
 ## Trust, audit, and the colo
 
 - **Lab telemetry reaches SigNoz under a real token.** Each
-  `lab_client_start` mints a dev-session token from
-  `CIMMERIA_LAB_SERVER_URL` (default `http://127.0.0.1:8443`, the local
-  server's admin port) with `session_kind = lab`, and writes it and the
-  server's upload endpoint into `current-session.json`
+  `lab_client_start` mints a dev-session token with `session_kind = lab`
+  from the server the client logs into: the login URL of the server row
+  (the `server` argument, else `lab-account.json`'s `server`) in the
+  install's `LoginInternal.lua`, whose login port serves the mint route,
+  as it does for the launcher. With one row, that row is used whatever
+  the name. `CIMMERIA_LAB_SERVER_URL` overrides the server. The token and
+  the server's upload endpoint go into `current-session.json`
   (`CIMMERIA_LAB_UPLOAD_ENDPOINT` overrides the endpoint). The client's
   events then land in `service.name = 'cimmeria-client'` tagged
-  `cimmeria.session_kind = 'lab'`. The start result's `telemetry` block
-  says whether the mint worked and, if not, why (a server without
-  `CIMMERIA_TELEMETRY_HMAC_SECRET` answers 500); the launch goes ahead
-  either way. The telemetry token is not the bridge token, which never
+  `cimmeria.session_kind = 'lab'`. **A failed mint stops the launch**,
+  and the error says why (a server without
+  `CIMMERIA_TELEMETRY_HMAC_SECRET` answers 500).
+  `CIMMERIA_LAB_TELEMETRY=optional` launches without uploads instead, and
+  the start result's `telemetry` block reports the reason. Until
+  2026-10-03 the default was `http://127.0.0.1:8443`, a local admin API,
+  so a lab client playing on the colo launched with telemetry silently
+  off. The telemetry token is not the bridge token, which never
   leaves the machine. The minted token is cached next to the session file
   (`lab-telemetry-grant.json`, one per lab instance) and reused while it
   has at least 30 minutes left, so relaunches don't mint again: the server

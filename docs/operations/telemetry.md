@@ -202,7 +202,9 @@ logs the same reason at ERROR. When it is working, the startup line is
    and login server already point at the colo; the player only ticks the
    telemetry opt-in (see [Player opt-in](#player-opt-in)).
 
-The lab supervisor mints the same way against `CIMMERIA_LAB_SERVER_URL`;
+The lab supervisor mints the same way, from the login server in the
+client's `LoginInternal.lua` (`CIMMERIA_LAB_SERVER_URL` overrides it), and
+refuses to launch without a token unless `CIMMERIA_LAB_TELEMETRY=optional`;
 see [the lab guide](../guides/live-research-lab.md).
 
 ## Kill switch
