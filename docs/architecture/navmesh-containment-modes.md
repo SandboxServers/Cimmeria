@@ -6,7 +6,7 @@
 > **Owner**: Movement / space management
 > **Status**: Accepted (shipped in work packet H53)
 > **Confidence**: High — the Harset coverage holes are measured, not inferred; every decision below is backed by code and regression guards in the same change
-> **Companions**: [movement-validation.md](movement-validation.md) (the four validation layers this gates layer 4 of), [observability.md](observability.md) (the `movement.navmesh` target catalog), [integration-test-infra.md](integration-test-infra.md)
+> **Companions**: [movement-validation.md](movement-validation.md) (the four validation layers this gates layer 4 of), [observability-target-catalog.md](observability-target-catalog.md) (the `movement.navmesh` targets), [integration-test-infra.md](integration-test-infra.md)
 
 ## Context
 

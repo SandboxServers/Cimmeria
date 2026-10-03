@@ -1,7 +1,7 @@
 # NPC AI saved views and dashboard (SigNoz export)
 
 > Type: reference. Audience: operators and packet workers who need to rebuild or audit the NPC AI SigNoz objects.
-> Updated: 2026-09-25 (NA03). Companions: [NPC AI telemetry runbook](../npc-ai-telemetry-runbook.md) (how to use these), [observability ADR](../../architecture/observability.md) (target catalog and metric names), [SigNoz deployment](../signoz-deployment.md), [NPC AI telemetry plan](../../analysis/npc-ai-restoration/telemetry.md).
+> Updated: 2026-09-25 (NA03). Companions: [NPC AI telemetry runbook](../npc-ai-telemetry-runbook.md) (how to use these), [observability ADR](../../architecture/observability.md) (metric names), [target catalog](../../architecture/observability-target-catalog.md), [SigNoz deployment](../signoz-deployment.md), [NPC AI telemetry plan](../../analysis/npc-ai-restoration/telemetry.md).
 
 This page is the source of truth for the NPC AI objects in the colo SigNoz. If the SigNoz volume is lost or you stand up a second SigNoz, recreate them from here.
 

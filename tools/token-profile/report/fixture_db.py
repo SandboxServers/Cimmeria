@@ -169,7 +169,8 @@ def load(db, root, expected, hostile):
                 main_order[idx - 1], main_order[idx]))
     db.execute("INSERT INTO pr_links VALUES (?, ?, 'SandboxServers/Cimmeria', '2026-10-01T12:01:10.000Z')",
                (session, PR_MAIN))
-    db.execute("INSERT INTO cost_states VALUES (?, NULL, 12.5, 0, 10, 2, '{}')", (session,))
+    db.execute("INSERT INTO cost_states (session_id, observed_ts, total_cost_usd, has_unknown_cost, lines_added,"
+               " lines_removed, model_usage_json) VALUES (?, NULL, 12.5, 0, 10, 2, '{}')", (session,))
     db.execute(PR_INSERT + " VALUES (?, ?, NULL, NULL, '2026-10-01T11:00:00.000Z', ?, ?, 'MERGED', 120, 30, 4)",
                (PR_MAIN, bad[0] if hostile else build_fixtures.WORKER_BRANCH, MERGED_AT, MERGED_AT))
     db.execute(PR_INSERT + " VALUES (?, 'docs/other', NULL, NULL, '2026-10-01T11:30:00.000Z', ?, ?, 'MERGED',"

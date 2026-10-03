@@ -15,7 +15,7 @@ a *working* code path, where does the span go, what level does the
 event get, and which fields are safe to attach?"
 
 The rules pin the implicit guidance scattered across
-[`observability.md`](observability.md) (hot-path cost, target catalog)
+[`observability.md`](observability.md) (hot-path cost) and its target catalog
 into one greppable surface so a new contributor doesn't have to grep
 the codebase to learn the convention.
 
@@ -86,7 +86,7 @@ tracing::debug!(
   has to grep message bodies — fragile against wording changes.
 - **`target:`** — same `dotted.lowercase` system name as the parent
   span. Targets stay in the catalog at
-  [`observability.md`](observability.md#stable-target-catalog).
+  [`observability-target-catalog.md`](observability-target-catalog.md).
 
 **Reference:** the `npc_ai` state handlers in
 [`crates/cell-combat/src/cell/service/npc_ai/mod.rs`](../../crates/cell-combat/src/cell/service/npc_ai/mod.rs)
@@ -419,8 +419,9 @@ the test.
 
 ## Related
 
-- [observability.md](observability.md) — OTLP exporter design, target
-  catalog, sampler choice, `decision_outcome` enum.
+- [observability.md](observability.md) — OTLP exporter design, sampler
+  choice. Its target catalog and the `decision_outcome` enum are in
+  [observability-target-catalog.md](observability-target-catalog.md).
 - [negative-logging-convention.md](negative-logging-convention.md) —
   Companion: failure-side rules, `LogCapture` helper, field-naming.
 - [TESTING.md](../../TESTING.md) — Test-type picker; regression-guard

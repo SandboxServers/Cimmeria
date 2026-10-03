@@ -71,6 +71,7 @@ Every request re-reads the agent's whole context, so a long-lived agent pays for
 **Worker lifetime:**
 
 - **One phase per worker.** One worker implements. Review fixes go to a fresh worker, and a mechanical rebase to a fresh worker or to the coordinator using git alone. Don't send the implementing worker back for round two.
+- **Rebase with the script before spawning anyone.** `bash tools/build-lane/rebase-pr.sh <PR> --push` rebases the branch onto `origin/main` in a throwaway worktree. It is silent when the rebase is clean, resolves generated doc blocks and `Cargo.lock` by itself, and otherwise aborts, leaves the branch as it was, and prints `status=conflict` with the `semantic` files. Spawn a worker only for those, and give it that summary. In the three weeks to 2026-10-03, 494 of 607 rebases had no conflict at all, yet each cost a median of 4 requests at about 390k tokens of context ([TP-09](../analysis/token-usage/worknotes/TP-09.md)).
 - **The handoff is a worknote.** Before a worker stops, it writes `docs/analysis/<campaign>/worknotes/<packet>.md`: what is done, what is left, the branch and worktree, the commands to rerun, and the open questions. The next worker starts from the worknote, not from the old transcript.
 - **Hand off early.** At about 200 requests, or about 250k tokens of context, a worker writes its worknote and stops, and the coordinator starts a fresh one. Don't wait for an automatic compaction.
 - **Coordinators compact at wave boundaries.** Once the ledger and the resume note are current, compact with a pointer to them (`/compact` followed by the ledger path).
@@ -81,6 +82,16 @@ Every request re-reads the agent's whole context, so a long-lived agent pays for
 - **Report results, not progress.** Don't message a coordinator that work is still running; it hears when the work finishes.
 - **Monitors use `python` or `gh --jq`, not `jq`.** `jq` is not installed on every workstation; a watcher that pipes into it fails every poll and expires silently after 30 minutes.
 - **Batch cross-session messages.** Send a peer session one message per decision or wave, not one per event, and nothing it will see anyway in git or on the PR.
+
+## Reading files
+
+A tool result stays in the agent's context and is paid for again on every later request, so a 50k-character read costs 50k characters a turn until the agent stops. Reads are the largest share of what agents carry: in the three weeks to 2026-10-03, `Read` and Bash `sed -n` / `cat` / `head` / `tail` returned 146M characters. The measurements and the experiment behind these rules are in the [TP-07 worknote](../analysis/token-usage/worknotes/TP-07.md).
+
+- **Grep, then read the slice.** Find the line with `Grep` (`output_mode: content`, line numbers, a small `-C`), then `Read` with `offset` and `limit` around the hit. On ten real lookups this returned 30 times fewer characters than reading each file whole, in fewer calls, with the same answers.
+- **Don't read a file over about 300 lines whole without a reason**, such as editing most of it or reviewing all of it. A whole-file `Read` stops at about 25k tokens anyway, so on a large file it isn't whole.
+- **Prefer `Read` with `offset` and `limit` to `sed -n`, `cat`, `head` or `tail`** for files in the checkout: the same slice, and `Edit` needs a `Read` first anyway. Shell slicing is fine for piped output and files outside the checkout.
+- **Grep hides long lines.** It prints `[Omitted long matching line]` for a line over about 500 characters. Read that line with `offset` at its number and `limit: 1`, not the whole file.
+- **Write docs that can be sliced.** Keep table rows under 2,000 characters, the length past which `Read` cuts a line; put long descriptions in prose under the table. Split a doc that passes 700 lines along a seam ([`CLAUDE.md` § File organization](../../CLAUDE.md#file-organization)).
 
 ## Project memory
 

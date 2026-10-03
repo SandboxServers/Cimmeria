@@ -1,7 +1,7 @@
 # NPC AI telemetry runbook
 
 > Type: how-to. Audience: whoever plays a session and then has to explain what the NPCs did (the owner, packet workers, reviewers).
-> Updated: 2026-09-25 (NA25). Companions: [NPC AI views and dashboard export](signoz/npc-ai-views.md) (reference for every object used here), [observability ADR](../architecture/observability.md) (target catalog, field meanings, metric names), [SigNoz deployment](signoz-deployment.md), [SigNoz remote access](signoz-remote-access.md), [NPC AI telemetry plan](../analysis/npc-ai-restoration/telemetry.md) (why each event exists), [work packets](../analysis/npc-ai-restoration/work-packets.md).
+> Updated: 2026-09-25 (NA25). Companions: [NPC AI views and dashboard export](signoz/npc-ai-views.md) (reference for every object used here), [observability ADR](../architecture/observability.md) (metric names), [target catalog](../architecture/observability-target-catalog.md) (targets, field meanings), [SigNoz deployment](signoz-deployment.md), [SigNoz remote access](signoz-remote-access.md), [NPC AI telemetry plan](../analysis/npc-ai-restoration/telemetry.md) (why each event exists), [work packets](../analysis/npc-ai-restoration/work-packets.md).
 
 You use this after a play session to answer "what did that NPC do, and why?" from SigNoz alone, with no debugger and no code reading. Every question has one saved view or one dashboard panel that answers it.
 

@@ -163,11 +163,12 @@ def cache_md(c):
              ", ".join(f"{k} {v}" for k, v in sorted(r["observed_policy"].items())),
              " / ".join(num(r["gaps"][b]) for b in r["gaps"]), usd(r["observed_usd"]), usd(r["sim_5m_usd"]),
              usd(r["sim_1h_usd"]), r["better_policy"], usd(r["saving_vs_other_usd"]),
+             " to ".join(usd(v) for v in r["delta_range_usd"]),
              "-" if r["calibration"] is None else f"{r['calibration']:.2f}"] for r in c["by_agent_type"]]
     return "\n".join([f"## Cache-policy simulation\n\n{c['note']}\n",
                       table(["agent type", "transcripts", "requests", "observed TTL",
                              "gaps first / <=5m / 5m-1h / >1h", "observed", "replay 5m", "replay 1h", "better",
-                             "difference", "calibration"], rows),
+                             "difference", "1h - 5m range", "calibration"], rows),
                       f"\nRequests skipped for want of a price: {num(c['unpriced_requests'])}."])
 
 

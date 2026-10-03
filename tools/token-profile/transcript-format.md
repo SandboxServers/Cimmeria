@@ -71,7 +71,7 @@ An assistant record carries `requestId`, `message.model`, `message.usage`, `time
 
 Context size of a request is `input + cache_read + cache_write_5m + cache_write_1h`.
 
-**A request can appear in two files.** About 900 of 443k records on 2026-10-03 repeated a `requestId` already stored from another transcript (copied history). The first transcript that stored it owns it; the copies are counted (`duplicate_request_records`) and not stored again. A turn-start uuid that another transcript already owns gets the suffix `@<agent or session id>`, so every transcript's triggers stay its own.
+**A request can appear in two files.** A fork subagent (`meta.json` `agentType: "fork"`, `isFork: true`, `parentAgentId`, absent when the parent is the main session) starts with a copy of its parent's history: the copied assistant records keep their `requestId` and `uuid` but carry the fork's `agentId`. On 2026-10-03 that was 856 records in 150 requests, every repeat in the data, all within one session. The parent owns the request, so the ingest reads every fork after its parent (the main session first, then subagents by fork depth) and the first transcript that stored a request keeps it; copies in a fork are counted as `fork_copied_records`, any other repeat as `duplicate_request_records` (0 on 2026-10-03), and neither is stored again. Before this order, 58 of the 150 were charged to a fork whose file name sorted before its parent's. Copies never change a session's total, only which transcript a request is charged to. A turn-start uuid that another transcript already owns gets the suffix `@<agent or session id>`, so every transcript's triggers stay its own.
 
 ### `user`: triggers and tool results
 
@@ -98,6 +98,8 @@ Subtypes seen: `turn_duration`, `away_summary`, `local_command`, `bridge_status`
 ### `cost-state`
 
 Claude Code's own running total for the session: `totalCostUSD`, `hasUnknownModelCost`, `totalAPIDuration`, `totalToolDuration`, `totalDuration`, `totalLinesAdded`, `totalLinesRemoved`, `startTime`, and `modelUsage` keyed by model (`inputTokens`, `outputTokens`, `thinkingTokens`, `cacheReadInputTokens`, `cacheCreationInputTokens`, `webSearchRequests`, `costUSD`). Keep the last record per session. Its model keys can carry a suffix such as `claude-opus-5[1m]`. It does not split cache writes into 5m and 1h.
+
+The record has no `timestamp`. A process writes it at least when it ends, sometimes earlier too, and it covers that process only, subagents included: `startTime` (epoch milliseconds, stored as `cost_states.process_start`) is when the process started. A resumed session's record leaves out everything before the resume; on 2026-10-03, 6 resumed sessions' records read `$0` because the resumed process made no request. It also holds requests no transcript records (about 10% of the spend; see [README.md § Reconciliation](README.md#reconciliation)).
 
 ## Trigger classification
 

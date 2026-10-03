@@ -38,7 +38,7 @@ Want to start contributing? Read **[../CONTRIBUTING.md](../CONTRIBUTING.md)** �
 | Python game logic scripts | 164 |
 | Database rows (game data) | 112,626 |
 | Abilities / Items / Missions / Effects | 1,887 / 6,060 / 1,041 / 3,217 |
-| Documentation files | <!-- gen:docs-md-count -->656<!-- /gen:docs-md-count --> (`find docs -name '*.md' \| wc -l`) |
+| Documentation files | <!-- gen:docs-md-count -->671<!-- /gen:docs-md-count --> (`find docs -name '*.md' \| wc -l`) |
 | Rust tests (`#[test]` / `#[tokio::test]`) | <!-- gen:tests-total -->9,766<!-- /gen:tests-total --> across <!-- gen:tests-files -->1,648<!-- /gen:tests-files --> files (<!-- gen:tests-ci-gated -->8,393<!-- /gen:tests-ci-gated --> gated in CI) |
 | Live-DB regression guards | <!-- gen:tests-live-db -->1,520<!-- /gen:tests-live-db --> |
 | End-to-end PL/pgSQL smoke scripts | 3 |
@@ -136,7 +136,8 @@ Content-level audit of all game data plus the cradle-to-grave reference for the 
 | [equip-from-inventory-pattern.md](content/equip-from-inventory-pattern.md) | **EXPLANATION** — chain shape for granting weapons via a manual equip step instead of force-equipping into the bandolier (mission 622 / 641 worked examples) | Complete |
 | [debug-hub.md](content/debug-hub.md) | **REFERENCE** — the five stasis-room debug NPCs in Castle_CellBlock: what each tests, placement, and what the hub cannot test | Complete |
 | [consumable-via-onitemuse-pattern.md](content/consumable-via-onitemuse-pattern.md) | **EXPLANATION** — when `item_use` should pair with `remove_item` (consumables) vs omit it (reusable tools); baseline audit + regression lint | Complete |
-| [content-engine.md](content/content-engine.md) | **REFERENCE** — the runtime: architecture, vocabulary, schema, lifecycle, observability, performance | Complete |
+| [content-engine.md](content/content-engine.md) | **REFERENCE** — the runtime: architecture, schema, lifecycle, observability, performance | Complete |
+| [content-engine-vocabulary.md](content/content-engine-vocabulary.md) | **REFERENCE** — the triggers, conditions and actions a chain is written in | Complete |
 | [extending-the-engine.md](content/extending-the-engine.md) | **HOW-TO** — add a new trigger / condition / action variant | Complete |
 | [proposed-extensions.md](content/proposed-extensions.md) | **ROADMAP** — justified engine extensions tied to recent direction or shipped content | Complete |
 | [serverEd-comparison.md](content/serverEd-comparison.md) | Gap analysis vs. the legacy SGW visual-graph editor | Complete |
@@ -233,13 +234,14 @@ See also: [technical/bigworld-version-analysis.md](technical/bigworld-version-an
 
 ### `architecture/` -- Cimmeria Server Architecture
 
-How the Cimmeria emulator itself is structured. <!-- gen:section-table-rows -->42<!-- /gen:section-table-rows --> documents.
+How the Cimmeria emulator itself is structured. <!-- gen:section-table-rows -->46<!-- /gen:section-table-rows --> documents.
 
 | Document | Description | Status |
 |----------|-------------|--------|
 | [build-system.md](architecture/build-system.md) | **2026-09 decision record.** How the workspace is built: the pinned toolchain, dev profiles, the build lane, Dev Drive, artifact sweeping, cargo-hakari, test-binary and dependency hygiene, with the measured baseline and results | In progress |
 | [plugin-architecture.md](architecture/plugin-architecture.md) | **2026-09 decision record (#962).** Features as plugins over `CellEntity` and `SpaceManager`, without an ECS: the `CellPlugin` trait, registration order, the method-index startup assertion, the message envelope, the extension map, the client-compatibility boundary, crate layout and migration order (pets first) | Accepted |
 | [services-crate-split.md](architecture/services-crate-split.md) | Splitting `cimmeria-services` into an acyclic set of crates: target crate map and planned dependency graph, every cycle edge and its fix, test-support strategy, migration waves and per-wave status | In progress |
+| [services-crate-split-deviations.md](architecture/services-crate-split-deviations.md) | The crate split's per-wave log of where the code departed from the plan, W0 to the close-out | Complete |
 | [service-architecture.md](architecture/service-architecture.md) | Auth, Base, Cell service topology, inter-service protocol, developer mode, console commands | Complete |
 | [server-infrastructure-proposals.md](architecture/server-infrastructure-proposals.md) | The five unbuilt server-only systems, with a concrete design for each: session resume across a network blip, per-player rate limiting, world-state persistence, a global event scheduler, and economy instrumentation. Sequenced by test-session pain, not cost | Proposed |
 | [server-systems.md](architecture/server-systems.md) | **Superseded pointer page.** Routing table showing where each of the original eight server-system sections went, plus the four stale claims most likely to be re-quoted from it | Superseded |
@@ -251,7 +253,9 @@ How the Cimmeria emulator itself is structured. <!-- gen:section-table-rows -->4
 | [tauri-rewrite.md](architecture/tauri-rewrite.md) | Tauri desktop app rewrite analysis: replacing Qt ServerEd with a modern Rust+TypeScript stack | Complete |
 | [migration-roadmap.md](architecture/migration-roadmap.md) | **Historical.** C++-only dependency upgrade plan (MSVC ✅, PostgreSQL ✅ 17.9; the rest unexecuted and unneeded by Rust). Its "CRITICAL OpenSSL" row is **not** a Cimmeria finding — see [project-status.md](project-status.md) for the real roadmap | Historical |
 | [state-flag-conventions.md](architecture/state-flag-conventions.md) | Reference for state-flag write conventions: refcounted vs raw, who can clear, auth flow | Complete |
-| [abilities-and-effects-system.md](architecture/abilities-and-effects-system.md) | ADR for the abilities + effects design decisions shipped in PR #420: EffectScript trait shape, stacking semantics, channel cancellation triggers, absorption pool drain ordering, TCM dispatch routing, AF_CHANNEL_ALLOWS_MOVEMENT default | Complete |
+| [abilities-and-effects-system.md](architecture/abilities-and-effects-system.md) | ADR for the abilities + effects design decisions shipped in PR #420: EffectScript trait shape, stacking semantics, channel cancellation triggers, absorption pool drain ordering, TCM dispatch routing, AF_CHANNEL_ALLOWS_MOVEMENT default; decisions 1-15 and the index of all 33 | Complete |
+| [abilities-and-effects-decisions-16-22.md](architecture/abilities-and-effects-decisions-16-22.md) | Abilities ADR decisions 16-22: content-initiated effects, health-band triggers, surrender, death resolution, line of sight, warmup, timers | Complete |
+| [abilities-and-effects-decisions-23-33.md](architecture/abilities-and-effects-decisions-23-33.md) | Abilities ADR decisions 23-33: pets, duels, range units, consumables, deployables, special ammo, NPC-vs-NPC targeting, the effect-script leaf crate | Complete |
 | [cover-system.md](architecture/cover-system.md) | ADR for NPC cover (NA22): cover as a firing position, the in-range seek and its hysteresis, the spawn hold, arrival stop + Cover Stance (ability 1451 via effect scripts), no pose wire (D-NA10), `entity_templates.use_cover`, distance-based squad affinity | Accepted |
 | [state-field-bits.md](architecture/state-field-bits.md) | Verified `bStateField` bit layout (bits 0-7 only), client dispatch table, BSF_Holster retirement notice with Ghidra anchors, relog persistence of `BSF_AutoCycling` | Complete |
 | [gm-cell-method-gating.md](architecture/gm-cell-method-gating.md) | ADR for the server-authoritative GM gate (#475 / CAT-N-03): `access_level` plumbing into `CellEntity`, the dispatch-layer `gm_gate`, how to add the next `gm*` method | Complete |
@@ -266,7 +270,8 @@ How the Cimmeria emulator itself is structured. <!-- gen:section-table-rows -->4
 | [negative-logging-convention.md](architecture/negative-logging-convention.md) | Negative-logging convention (issue #304): three patterns, field-naming rules, level discipline, defensible silent sends, `LogCapture` regression-guard helper | Complete |
 | [instrumentation-discipline.md](architecture/instrumentation-discipline.md) | Instrumentation discipline (issue #482): success-side rules — dispatch-entrypoint info spans, debug-event discriminators, hot-loop span discipline, metric-label cardinality | Complete |
 | [encryption-modernization.md](architecture/encryption-modernization.md) | ADR (Proposed) for issue #434: auth TLS (rustls loopback proxy around libcurl), argon2id passwords, Mercury v2 wire crypto (HKDF/random-IV/HMAC-SHA256, version-gated). RE targets in [findings/auth-and-crypto-modernization-targets.md](reverse-engineering/findings/auth-and-crypto-modernization-targets.md) | Proposed |
-| [observability.md](architecture/observability.md) | ADR for server-side observability: OTLP exporter, Mercury packet instrumentation, SigNoz overlay, target catalog, `decision_outcome` enum | Complete |
+| [observability.md](architecture/observability.md) | ADR for server-side observability: OTLP exporter, Mercury packet instrumentation, SigNoz overlay, metrics | Complete |
+| [observability-target-catalog.md](architecture/observability-target-catalog.md) | Stable tracing targets (one row each: level, where emitted, what it answers), the `OTEL_FILTER` rule, saved SigNoz views, `decision_outcome` enum | Complete |
 | [dev-session-telemetry.md](architecture/dev-session-telemetry.md) | Dev-session telemetry pipeline: the `/auth/dev-session` HMAC token, launcher `telemetry/` capture, storage layout | Complete |
 | [client-telemetry.md](architecture/client-telemetry.md) | Client-side telemetry architecture: from-scratch instrumentation hookpoints in the launcher, capture surface, transport | Complete |
 | [client-patches.md](architecture/client-patches.md) | ADR for `cimmeria-client-patches`, the always-injected DLL for client fixes gameplay needs (separate from telemetry): build fingerprint gate, claim-by-name receive hooks on the dispatcher's drop path, main-thread delivery to the UI Lua, native send functions over `startEntityMessage`, MinHook chaining with the telemetry DLL, the shared `cimmeria-patch-wire` codec | Accepted |
