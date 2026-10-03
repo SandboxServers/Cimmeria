@@ -2,7 +2,7 @@
 
 > Type: explanation. Audience: the #957 coordinator and anyone choosing an RE or log-mining tool.
 > Packet: TP-08 (Wave 2 of [#957](https://github.com/SandboxServers/Cimmeria/issues/957)). Ledger: [README.md](README.md). Worknote: [worknotes/TP-08.md](worknotes/TP-08.md).
-> Status: **pre-registered** (tasks, answer key and scoring committed before any controlled run). Results follow in a later commit of the same PR.
+> Status: **complete** (2026-10-03). The tasks, answer key and scoring were committed before any controlled run; the [results](#results) and the [guidance](#guidance) were added afterwards. Git history of this file shows the pre-registered version.
 
 ## Question
 
@@ -123,4 +123,65 @@ Total 12. Arm rules:
 
 ## Results
 
-Pending: the controlled runs follow this commit.
+All eight runs ran on 2026-10-03 in the pre-registered order, one fresh subagent each. Every agent kept to its arm's tools (checked in the transcripts). Measures come from each subagent's transcript: requests deduplicated by `requestId`, list-price USD from the profiler's 2026-10-03 price table, result characters as returned into context, and wall time from the first to the last record.
+
+### Answer-key correction (G2)
+
+All four Ghidra runs counted **51** call sites to `0x00a35210` and **41** to `0x00a351d0`, not the 30 and 14 in the key. A check with `get_function_callers` gives 32 and 36 distinct calling functions, so the doc's numbers are wrong whichever way "callers" is read; the project has gained functions since the doc was written. As the protocol says, the loser was fixed in this PR: [client-engine-sinks-and-seams.md](../../reverse-engineering/findings/client-engine-sinks-and-seams.md#bigworld-message-helper) and [address-map.md](../../reverse-engineering/address-map.md) now give both counts. Scored against the pre-registered key every run gets 12/14; against the corrected key every run gets 14/14.
+
+### Ghidra
+
+| Run (order) | Requests | Tool calls | Result chars | Wall time | USD | Score |
+|---|---:|---|---:|---:|---:|---:|
+| HL-2 (1st) | 9 | 8 Bash (3 probe runs) | 22,046 | 77 s | 0.58 | 14/14 |
+| MCP-2 (2nd) | 7 | 14 Ghidra MCP + 1 ToolSearch | 18,706 | 50 s | 0.54 | 14/14 |
+| MCP-1 (3rd) | 7 | 15 Ghidra MCP + 1 ToolSearch | 18,787 | 44 s | 0.53 | 14/14 |
+| HL-1 (4th) | 9 | 8 Bash (4 probe runs) | 16,719 | 98 s | 0.59 | 14/14 |
+| **MCP mean** | **7** | **15.5** | **18,747** | **47 s** | **0.535** | |
+| **HL mean** | **9** | **8** | **19,383** | **88 s** | **0.585** | |
+
+- **Correctness is the same.** Every run found every answer, including the four-hop chain and the `"%s"` format, and cited tool evidence for it.
+- **Completeness differs a little, in both arms.** Only MCP-1 read all eight priority-name strings; HL-1 read three and the other two runs inferred the order from Ghidra's `PTR_s_TRACE_` label. All three said so in their answers.
+- **Headless took 86% longer and 2 more requests.** Each dependent hop costs a JVM start, so the four-hop chain took 3-4 probe runs. The MCP agents issued several lookups per request, 7 requests in all.
+- **Result characters are the same:** 18.7k against 19.4k, because the headless agents grepped their output files instead of reading them whole. This matches the historical cut (about 1.5k characters per lookup either way).
+- **Cost follows requests, not result size.** Every run started at 61.5k-62.2k tokens of context, the static context TP-03 measures, so each extra request re-reads about 90k tokens, more than all of a run's tool results add up to over every later request. Headless was 9% more expensive.
+- **No order effect is visible.** The first and last runs were both headless, and the last one was the slowest.
+- **Probe usability bug.** A token with a comma (`VT:<addr>,<n>`, `I:<addr>,<n>`) loses its count when it passes through `analyzeHeadless.bat`, quoted or not; HL-1 hit this and a repro confirmed it. The [probe README](../../../tools/re/ghidra-headless/README.md) now says so. A warm probe run took 7 s, a cold one 27 s.
+
+### SigNoz
+
+| Run (order) | Requests | Tool calls | Result chars in context | Raw rows fetched | Wall time | USD | Score |
+|---|---:|---|---:|---:|---:|---:|---:|
+| AGG-2 (1st) | 4 | 7 aggregate, 1 search (limit 10) | 6,719 | none | 21 s | 0.40 | 12/12 |
+| AGG-1 (2nd) | 4 | 4 aggregate, 1 builder, 1 search (limit 10) | 7,291 | none | 24 s | 0.41 | 12/12 |
+| SEARCH-1 (3rd) | 9 | 4 search, 3 Bash | 32,435 | 402k chars | 36 s | 0.57 | 12/12 |
+| SEARCH-2 (4th) | 9 | 4 search, 3 Bash | 32,540 | 402k chars | 34 s | 0.56 | 12/12 |
+
+- **Correctness is the same.** All four runs answered all four questions exactly.
+- **Search cost 39% more:** 9 requests against 4, 4.6x the characters in context, and 56% more wall time. Two of its four calls (the 115 and 270 rows) were too big to show inline. They were saved to files (104k and 298k characters) and counted with a script; the search agents followed the documented habit. Without that habit the rows would have entered context.
+- **The aggregate arm checked itself.** Both aggregate runs compared each grouped count with an ungrouped total, and one also counted ERROR logs with no `client_target` (0). The search arm's counts are only right because each result fitted in one page; at this window's 8,159 WARN rows, search would need paging.
+- **A search with a small limit is still the right tool for rows.** Both aggregate runs got S4's timestamps from one `search_logs` call with limit 10 (3.8k characters).
+
+### Limits
+
+- Two runs per arm on small task sets. The direction is the same in every pair, but the size of the gap is not tight.
+- Agents were told which route to use, so this measures the tools, not an agent's choice of tool.
+- The Ghidra tasks all sit in one subsystem, and the decompiles are small. A task set heavy in large decompiles favours whichever route avoids reading them whole. That is the headless route only if its agent greps narrowly, and the historical cut says it usually does not save anything.
+- The headless arm needed a 2.5 GB copy of the project because the GUI held it. Without the GUI open, there is no MCP arm at all, so in practice the two routes cover different situations more than they compete.
+
+## Guidance
+
+For the coordinator to adopt or not. Evidence is from the sections above.
+
+| Situation | Use | Why |
+|---|---|---|
+| Ghidra GUI open with SGW.exe; dependent lookups (call chains, follow an xref, then decompile) | **Ghidra MCP** | Same correctness, 47 s against 88 s, 7 requests against 9, 9% cheaper. Dependent hops are where a JVM start per run hurts. |
+| GUI closed, nobody at the machine, or a long batch of independent lookups known in advance | **Headless probe**, output to a file, grepped narrowly | It is the only route without the GUI. One run batches many tokens. Per lookup it puts the same text into context as MCP, so it is no cheaper, but no dearer either. Run it on a project copy if the GUI holds the lock. |
+| Large decompiles, either route | Read or grep the part you need | Decompiles are 59% of Ghidra MCP characters, p99 28k per call. |
+| Ghidra MCP housekeeping | Skip `list_tool_groups` (10k characters) and repeated `list_open_programs` | 49 calls and 5.7M exposure for no answer. |
+| SigNoz counts, group-bys, distinct values, totals | **`signoz_aggregate_logs`** (scalar, `groupBy`), checked against an ungrouped total | Same correctness, 4 requests against 9, a fifth of the characters, 39% cheaper. Its cost does not grow with the number of rows. |
+| SigNoz individual rows (timestamps, a field's shape, a handful of events) | **`signoz_search_logs` with a small `limit`** (10 or less) | One limit-10 search gave S4's timestamps for 3.8k characters. |
+| SigNoz rows in bulk (a session timeline, wire traces) | `signoz_search_logs`, with the saved result condensed by a script | Never read the raw saved file. Inline results go up to about 50k characters (historical max 49.7k). |
+| SigNoz field discovery | `signoz_get_field_keys` only with `searchText` | Unfiltered, a call can return 45k characters. |
+
+Scale check: Ghidra is about 1.3% and SigNoz about 2.2% of all context exposure in the window, against 25% for `Read`. Following this table saves real context in the sessions that use these tools, but it is not a workflow-wide lever. The issue asks for the Ghidra recommendation in [reverse-engineering-with-claude.md](../../guides/reverse-engineering-with-claude.md); that guide is unchanged here, pending the coordinator's decision.

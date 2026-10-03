@@ -2,7 +2,7 @@
 title: Headless Ghidra probe
 type: how-to
 audience: contributors and agents doing static RE on SGW.exe without the Ghidra GUI or the Ghidra MCP bridge
-last_updated: 2026-09-27
+last_updated: 2026-10-03
 companion_docs:
   - ../../../docs/guides/re-toolchain-setup.md
   - ../../../docs/guides/reverse-engineering-with-claude.md
@@ -68,7 +68,8 @@ For example, to look for native subscribers to the trade-result event (the kind 
 - **`FINDPTR` is not reliable for RTTI chains in this binary.** It is fine for ordinary pointer references. For the RTTI Complete Object Locator chain it gives false positives: a scan for the `Trade` trade-result callback's locator led to vtable `0x019d8928`, which belongs to an unrelated `MemberCallback` specialization. Treat its hits as leads to check, never as results.
 - **`DEM` does not demangle raw RTTI type-name strings** (`.?AV?$...`). Demangle those by hand; the finding docs show worked examples.
 - **Always pass `-readOnly`.** It guarantees nothing in the project changes. The project is still opened exclusively: a killed or crashed run can leave `SGW.lock` and `SGW.lock~` in the project folder. If no Ghidra or `java` process is running, delete those two files and retry.
-- **Each run costs a minute or two** of JVM start and project open, whatever the token count. Batch tokens into one run.
+- **Each run pays JVM start and project open**, whatever the token count: 7-30 s in [experiment G](../../../docs/analysis/token-usage/experiment-g.md) on a warm machine, up to a minute or two cold. Batch tokens into one run.
+- **A comma ends the token.** `analyzeHeadless.bat` passes its arguments through `cmd`, which splits at commas even inside quotes, so `VT:<addr>,<n>` and `I:<addr>,<n>` lose `<n>` and fall back to 12 slots and 30 instructions.
 - **A compile error skips the whole script** but the run still exits 0. Check the output for `error:` before trusting a quiet result.
 - The Java class name must match the file name (`Probe`).
 

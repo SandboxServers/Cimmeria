@@ -1998,8 +1998,8 @@ Source: [findings/client-engine-sinks-and-seams.md](findings/client-engine-sinks
 | Address | Name | Notes |
 |---------|------|-------|
 | `0x00a36460` | `DebugMsgHelper::message` | BigWorld message choke point. `__thiscall(this, int* {component, priority}, const char* fmt, va_list)`, `ret 0xc`. Passes when `header[0] + impl[0x3c] <= header[1]`. Hook: `client.bw.message` |
-| `0x00a35210` | BigWorld `DEBUG_MSG`-family varargs wrapper | cdecl; 30 callers in `ServerConnection` / `EntityManager` / `Mercury::Nub` |
-| `0x00a351d0` | BigWorld assertion wrapper | cdecl; 14 callers; -> `0x00a36ac0` -> `0x00a36900` (formats, debugger box) -> `0x00a36650` -> `0x00a36460` |
+| `0x00a35210` | BigWorld `DEBUG_MSG`-family varargs wrapper | cdecl; 51 call sites in 32 functions, mostly `ServerConnection` / `EntityManager` / `Mercury::Nub` |
+| `0x00a351d0` | BigWorld assertion wrapper | cdecl; 41 call sites in 36 functions; -> `0x00a36ac0` -> `0x00a36900` (formats, debugger box) -> `0x00a36650` -> `0x00a36460` |
 | `0x00a353b0` / `0x00a352f0` | default message output | `"<PRIORITY>: "` + `_vsnprintf` + `OutputDebugStringA` (+ stderr when `0x01ef0713`) |
 | `0x01922380` | priority-name table | `TRACE`, `DEBUG`, `INFO`, `NOTICE`, `WARNING`, `ERROR`, `CRITICAL`, `HACK`, null |
 | `0x004ce0b0` | `FOutputDeviceRedirector::Serialize` (`GLog`) | vtable `0x01815188` slot 1; `__thiscall(this, const TCHAR*, EName)`, `ret 8`. Hook: `client.ue3.log` |
