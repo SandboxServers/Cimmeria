@@ -13,7 +13,6 @@ pub(super) struct PlayerInitRow {
     pub(super) bandolier_slot: i32,
     pub(super) auto_reload: bool,
     pub(super) reload_on_activate: bool,
-    pub(super) state_field: i32,
     pub(super) known_stargates: Vec<i32>,
     pub(super) trained_abilities: Vec<i32>,
     pub(super) tree_points_spent: i32,
@@ -35,7 +34,7 @@ pub(super) async fn load_player_init_row(
     player_id: i32,
 ) -> sqlx::Result<Option<PlayerInitRow>> {
     sqlx::query_as::<_, PlayerInitRow>(
-        "SELECT bandolier_slot, auto_reload, reload_on_activate, state_field, \
+        "SELECT bandolier_slot, auto_reload, reload_on_activate, \
                 known_stargates, trained_abilities, tree_points_spent, \
                 training_points, level, bodyset, \
                 looted_containers::text[] AS looted_containers \

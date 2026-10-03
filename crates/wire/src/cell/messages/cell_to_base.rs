@@ -401,7 +401,7 @@ pub enum CellToBaseMsg {
     /// written only by gate travel and the GM teleport, so a returning
     /// character spawned at the last gate arrival — or the creation point —
     /// regardless of where they logged out. Same cell-mutates /
-    /// base-persists split as `StateFieldUpdate`; the base handler resolves
+    /// base-persists split as `SystemOptionsUpdate`; the base handler resolves
     /// `world_id` from `resources.worlds` the way gate travel does.
     PersistPosition {
         player_id: i32,
@@ -433,18 +433,6 @@ pub enum CellToBaseMsg {
         auto_reload: bool,
         reload_on_activate: bool,
     },
-
-    /// Persist the user-preference bits of the player's `state_field`
-    /// after a toggle (today: `setAutoCycle`, player method 83, flipping
-    /// `BSF_AutoCycling`). Same cell-mutates / base-persists split as
-    /// `SystemOptionsUpdate`. The cell side sends the value already
-    /// masked to `PERSISTED_STATE_FIELD_MASK`; the base-side handler
-    /// masks again defensively so transient combat bits (BSF_Dead,
-    /// BSF_InCombat, BSF_MovementLock) can never reach the DB even if a
-    /// future send site forgets. Restored onto the entity (and
-    /// re-broadcast to the client) by `InitPlayerState` on the next
-    /// world entry. (#412)
-    StateFieldUpdate { player_id: i32, state_field: u32 },
 
     /// Re-broadcast `BeingAppearance` to the player's AoI with a fresh
     /// holster state. Used by the combat enter/exit path (and any other

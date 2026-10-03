@@ -24,7 +24,7 @@ The server handles all combat resolution; the client sends ability requests and 
 | QR hit/miss/crit calculation | DONE | Beta distribution model in `DamageCalc` |
 | Damage pipeline (base -> resist -> QR -> AF -> absorb) | DONE | `calculateDamage()` |
 | Warmup / cooldown timers | DONE | Timer-based with client sync |
-| Auto-cycle (auto-attack) | DONE | Loops ability on cooldown expiry; toggle persists across relog via `sgw_player.state_field` (#412 — see [state-field-bits.md](../architecture/state-field-bits.md)) |
+| Auto-cycle (auto-attack) | DONE | Loops ability on cooldown expiry; starts off on every login and respawn; nothing is saved (owner decision 2026-10-03, reversing #412 — see [state-field-bits.md](../architecture/state-field-bits.md)) |
 | Effect application / removal | DONE | `EffectInstance` class |
 | Death / revive | DONE | `PLAYER_STATE_Dead` flag, `onDead()` / `onRevived()` |
 | Crouch / cover stance | PARTIAL | Cover is a 10-60% damage reduction rated by the node, when it faces the attacker (NA32, see [Cover as damage reduction](#cover-as-damage-reduction-na32)); crouch terms not read yet |
@@ -191,7 +191,7 @@ The extra rays also absorb the occluder's own error: rays that graze within 0.1 
 
 **The refusal.** The player gets `onErrorCode` with `SystemID 0`, `InstanceID` = the ability id, and `ErrorCodeID 39` (`CONDITION_FEEDBACK_LOS`). The client's text for it is "You do not have Line of Sight to your target"; it is the only line-of-sight code with authored text, since `NoLOS` (40) has only its moniker. The refused shot consumes no cooldown or ammo and draws no weapon. It logs one `abilities` DEBUG row, `event=los_refused`, with the source, both eye heights, the ray endpoints and the hit point. It also counts `abilities_los_refused_total{world}`.
 
-**Auto-cycle.** When the loop's target goes behind a wall, the next loop shot is refused with error 39, once. The loop then stays armed and silent until the line clears (`AbilityManager::auto_cycle_los_notified`). It works like the out-of-range skip, so a player who steps out of cover resumes firing without pressing anything.
+**Auto-cycle.** When the loop's target goes behind a wall, the next loop shot is refused with error 39, once. A button press whose immediate shot is refused counts as that one notice. The loop then stays armed and silent until the line clears (`AbilityManager::auto_cycle_los_notified`). It works like the out-of-range skip, so a player who steps out of cover resumes firing without pressing anything.
 
 **A target in another space (#906).** Before any ray, the target must be in the player's own space; an instance is its own space. The server looks entities up across every space, so without this a target id from another instance at nearby coordinates passed the range check and took the shot. The cast is refused with `onErrorCode(0, ability_id, 0)` (`CONDITION_FEEDBACK_InvalidEntity`, the code the pet bar sends for the same refusal) at no cost, and logs one `abilities` DEBUG row, `event=cast_refused reason=target_other_space`, with the caster's `account_id` and `player_id` and both space ids. It applies whatever the ability's target type and whether or not the world has an occluder. A warmup cast whose target changes space is interrupted at fire, as before, and an auto-cycle loop whose target is in another space stops like one whose target is gone.
 

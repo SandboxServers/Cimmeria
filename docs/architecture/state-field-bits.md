@@ -36,26 +36,27 @@ An NPC's `BSF_InCombat` bit is derived from its AI state, never set on its own: 
 
 ## Persistence across relogs
 
-`state_field` is transient combat state with one exception: `BSF_AutoCycling`
-is a player preference toggle the original game kept across sessions. The
-persisted subset is defined by `PERSISTED_STATE_FIELD_MASK` in
-[crates/cell-combat/src/cell/combat/state.rs](../../crates/cell-combat/src/cell/combat/state.rs)
-(today: `BSF_AutoCycling` alone) and stored in `sgw_player.state_field`:
+No `state_field` bit is persisted. Every login and every respawn starts with
+the word cleared, `BSF_AutoCycling` included: the auto-attack loop is off and
+its button unlit until the player presses it or right-clicks an enemy (owner
+decision, 2026-10-03).
 
-- **Write**: the explicit `setAutoCycle` toggle (player method 83) sends
-  `CellToBaseMsg::StateFieldUpdate` with the masked value; the base-side
-  handler masks again defensively before the `UPDATE`. In-combat
-  auto-clears (target death, manual fire of a different ability,
-  `AF_DEACTIVATE_AUTO_CYCLE`) deliberately do **not** persist — the stored
-  value tracks the player's deliberate button choice, not loop mechanics.
-- **Read**: `InitPlayerState` masks the loaded value, ORs it onto
-  `CellEntity::state_field`, re-arms `abilities.auto_cycle`, and
-  re-broadcasts `onStateFieldUpdate` so the client's gun-icon highlight
-  survives the relog. Transient bits in a corrupt row (`BSF_Dead`,
-  `BSF_MovementLock`, …) are stripped — a relog is always a clean combat
-  slate, matching the cooldown wipe from PR #410.
+#412 had saved `BSF_AutoCycling` to `sgw_player.state_field` as a player
+preference and restored it in `InitPlayerState`. Two things went against it:
 
-History: #412 (auto-cycle bit lost on relog).
+- The server clears the bit on every kill and every other loop stop, so in a
+  session the button never behaved like a sticky preference. Only the button
+  press was saved, so the stored value was usually a loop the player had
+  already watched switch off, and the next login relit it (colo UAT,
+  2026-10-03).
+- The claim that the original game persisted it has no evidence: the legacy
+  `entities/defs/interfaces/SGWBeing.def` declares `bStateField`
+  `CELL_PUBLIC`, with no `<Persistent/>`.
+
+The `sgw_player.state_field` column is still in the schema but nothing reads
+or writes it; dropping it is a schema change for the owner to approve.
+
+History: #412 (saved on relog); 2026-10-03 (removed: always off on login).
 
 ## Bit 8 retirement (`BSF_Holster`)
 

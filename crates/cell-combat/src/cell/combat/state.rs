@@ -10,7 +10,6 @@ pub const PLAYER_STATE_DEAD: u32 = 1;
 // `cimmeria_wire::state_field` and are re-exported here at their old paths.
 pub use cimmeria_wire::state_field::{
     BSF_AUTO_CYCLING, BSF_DEAD, BSF_DEAD_BIT, BSF_IN_COMBAT, BSF_MOVEMENT_LOCK,
-    PERSISTED_STATE_FIELD_MASK,
 };
 
 /// Check if a state field indicates the entity is dead. Reads are fine

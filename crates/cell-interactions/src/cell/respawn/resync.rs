@@ -14,8 +14,7 @@
 //!   region-hint list the second (no region triggers for the rest of the
 //!   session). Both are already replayed after the reanchor; this module
 //!   covers the rest of the same wipe: the hotbar ability list, the active
-//!   bandolier slot, the mission journal and the `state_field` preference
-//!   bits.
+//!   bandolier slot, the mission journal and the `state_field`.
 
 use tokio::sync::mpsc;
 

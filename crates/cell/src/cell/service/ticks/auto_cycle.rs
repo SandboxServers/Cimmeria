@@ -278,14 +278,8 @@ pub(in crate::cell::service) async fn auto_cycle_tick(
                         "auto_cycle_tick: clearing loop"
                     );
                 }
-                crate::cell::abilities::send_entity_method(
-                    entity_id,
-                    crate::mercury::method_idx::ON_STATE_FIELD_UPDATE,
-                    new_state.to_le_bytes().to_vec(),
-                    tx,
-                    space_mgr,
-                )
-                .await;
+                crate::cell::abilities::send_auto_cycle_state(entity_id, new_state, tx, space_mgr)
+                    .await;
             }
             continue;
         }
@@ -327,3 +321,7 @@ mod duel_tests;
 #[cfg(test)]
 #[path = "auto_cycle_range_tests.rs"]
 mod range_tests;
+
+#[cfg(test)]
+#[path = "auto_cycle_press_tests.rs"]
+mod press_tests;

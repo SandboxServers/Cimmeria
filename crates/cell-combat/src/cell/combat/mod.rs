@@ -50,7 +50,7 @@ pub use faction_reaction::HOSTILE_FACTION;
 
 pub use state::{
     is_dead_state, mark_npc_dead, BSF_AUTO_CYCLING, BSF_DEAD, BSF_IN_COMBAT, BSF_MOVEMENT_LOCK,
-    PERSISTED_STATE_FIELD_MASK, PLAYER_STATE_DEAD,
+    PLAYER_STATE_DEAD,
 };
 pub use threat::{
     clear_dead_npc_from_all_player_threat, drain_npc_from_player_combat, enter_player_combat,

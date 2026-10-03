@@ -120,7 +120,6 @@ async fn init_player_state_triggers_reload_on_activate_when_clip_partial() {
         slot,
         items,
         sys_opts,
-        0, // state_field
         0, // access_level
         &tx,
         &mut mgr,
@@ -203,7 +202,6 @@ async fn init_player_state_triggers_reload_on_activate_when_holstered() {
         slot,
         items,
         sys_opts,
-        0, // state_field
         0, // access_level
         &tx,
         &mut mgr,
@@ -254,7 +252,6 @@ async fn init_player_state_does_not_reload_when_option_off() {
         slot,
         items,
         sys_opts,
-        0, // state_field
         0, // access_level
         &tx,
         &mut mgr,
@@ -298,7 +295,6 @@ async fn init_player_state_does_not_reload_when_clip_full() {
         slot,
         items,
         sys_opts,
-        0, // state_field
         0, // access_level
         &tx,
         &mut mgr,

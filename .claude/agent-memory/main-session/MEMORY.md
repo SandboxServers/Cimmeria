@@ -18,7 +18,9 @@ Dated, sourced facts from top-level sessions, committed with the change that pro
 
 ## Reference
 
-- [reference_auto_cycle_client_telemetry_2026_10_03.md](reference_auto_cycle_client_telemetry_2026_10_03.md) — AutoAttack.lua icon vs T binding, Sep 29 client/server target-0 clears, SigNoz diagnosis fields and missing payloads
+- [reference_lab_client_controls.md](reference_lab_client_controls.md) — lab driving: Q/E rotate, B bag, Tab target; mouse-look broken (no DI button); .gotoxyz moves the selected target; inventory reader fallback
+
+- [reference_auto_cycle_client_telemetry_2026_10_03.md](reference_auto_cycle_client_telemetry_2026_10_03.md) — AutoAttack.lua icon vs T binding, Sep 29 target-0 clears; #1144 colo UAT passed 2026-10-03; auto-cycle no longer persisted (owner: always off on login, #1148)
 - [reference_castle_signoz_dossier_2026_10_02.md](reference_castle_signoz_dossier_2026_10_02.md) — full CellBlock→Castle→Harset dev run, partial colo Castle run, three gate crossings, dossier coverage limits; detailed report in docs/analysis/playtests/
 - [reference_mercury_selective_acks.md](reference_mercury_selective_acks.md) — client ACKs are per-packet incl. buffered-behind-gap; old cumulative drain wedged reliable streams (fixed 2026-09-27); `mercury.tx_hole` diagnoses a stuck client
 - [reference_mercury_selective_acks.md](reference_mercury_selective_acks.md) — client ACKs are per-packet, incl. buffered-behind-gap; cumulative drain wedged streams (fixed 2026-09-27); `mercury.tx_hole` finds a stuck client

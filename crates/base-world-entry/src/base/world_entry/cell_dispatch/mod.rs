@@ -62,7 +62,6 @@ mod org_dispatch;
 mod player_ghost;
 mod position;
 mod progression_dispatch;
-mod state_field;
 mod system_options;
 mod vendor_dispatch;
 
@@ -231,7 +230,6 @@ pub async fn route_cell_message(
         | CellToBaseMsg::RechargeInventoryItems { .. }
         | CellToBaseMsg::ActiveSlotUpdate { .. }
         | CellToBaseMsg::SystemOptionsUpdate { .. }
-        | CellToBaseMsg::StateFieldUpdate { .. }
         | CellToBaseMsg::PersistPosition { .. }
         | CellToBaseMsg::RefreshAppearance { .. }
         | CellToBaseMsg::BandolierAmmoUpdate { .. } => inventory_dispatch::route(msg, &ctx).await,

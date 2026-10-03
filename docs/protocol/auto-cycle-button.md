@@ -188,7 +188,7 @@ No explicit `onTimerUpdate` handshake is required to start or stop the loop. The
 
 ## Implementation in Cimmeria
 
-The loop is fully wired. The code lives in nine locations:
+The loop is fully wired. The code lives in ten locations:
 
 | File | What it owns |
 |---|---|
@@ -200,6 +200,7 @@ The loop is fully wired. The code lives in nine locations:
 | `crates/cell-methods/src/cell/cell_methods/player/world/mod.rs` | `SET_AUTO_CYCLE` handler: enable sets the flag AND lights `BSF_AUTO_CYCLING` immediately, stashes the loop ability (`last_fired_ability_id`, or the active weapon's `EVENT_ITEM_RANGED` ability when nothing has fired yet), AND fires immediately if that ability and `current_target_id` are both Some; disable drops the stash, clears the BSF bit, and broadcasts `onStateFieldUpdate`. |
 | `crates/cell-combat/src/cell/abilities/use_ability/mod.rs` | Manual-override gate at function entry (different ability ⇒ clear loop), arm/AF_DEACTIVATE branch at commit time, AND stashes `last_fired_ability_id` on every commit regardless of `auto_cycle` state. |
 | `crates/cell/src/cell/service/ticks/auto_cycle.rs` | `auto_cycle_tick` — every 100 ms AoI tick, scans armed players and re-invokes `handle_use_ability` against the LIVE `current_target_id`. Cursor switches mid-loop redirect automatically. Out of range or on cooldown skips silently and keeps the loop armed. No target, a missing, dead or surrendered target, a target in another space, an NPC the player may not attack, or a player who is not the duel opponent clears the loop and logs `auto_cycle_tick: clearing loop` with a `reason`. |
+| `crates/cell-combat/src/cell/abilities/auto_cycle_state.rs` | `send_auto_cycle_state`, the one exit for every `BSF_AUTO_CYCLING` transition: broadcasts `onStateFieldUpdate` to the player. The bit is not saved; every login and respawn starts with the loop off. See [state-field-bits.md](../architecture/state-field-bits.md#persistence-across-relogs). |
 | `crates/cell-combat/src/cell/abilities/death.rs` | `apply_death_transition` calls `clear_auto_cycle_for_target` so every player auto-firing at the dying entity gets their loop cleared (matches against LIVE `current_target_id`, not an arm-time stash). **Plus** clears the dying player's OWN auto-cycle — prevents the loop from auto-resuming on respawn. |
 
 ### Bit management — raw ops, NOT the ref-counted helpers
@@ -224,6 +225,8 @@ Using the ref-counted helpers would be a correctness bug: every tick-driven re-f
 - **Target despawn (no death message):** the tick's secondary sweep catches missing target ids. Pin: `auto_cycle_tick_clears_loop_when_target_missing`.
 - **Explicit disable (`setAutoCycle(0)`):** clears flag + ability stash + BSF, broadcasts. Pin: `set_auto_cycle_disable_clears_stash_and_bsf`.
 - **Duplicate disable presses:** idempotent — same transition-gate pattern as enable. Pin: `set_auto_cycle_disable_spam_does_not_re_broadcast`.
+- **Login and respawn start off:** the bit is never saved, so world entry leaves `auto_cycle` false and the button unlit, and a respawn clears it with the combat bits. Pins: `login_leaves_auto_cycle_off_and_the_button_unlit` (`player_init/tests/auto_cycle_starts_off.rs`), `same_world_respawn_replays_hotbar_active_slot_journal_and_state_field`.
+- **Press at a target behind a wall:** the press's immediate shot sends the one no-line-of-sight notice (39) and marks it sent, so the tick's NA31 gate stays silent until the line clears. Before 2026-10-03 the first tick repeated it and chat showed the line twice. Pin: `press_at_a_target_behind_a_wall_notifies_once` (`ticks/auto_cycle_press_tests.rs`).
 
 ### `current_target_id` vs `last_fired_ability_id` — Phase 2 fields
 

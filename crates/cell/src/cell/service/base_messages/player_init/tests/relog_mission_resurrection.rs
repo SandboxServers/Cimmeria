@@ -72,7 +72,6 @@ async fn mis_gated_player_loaded_chain_cannot_resurrect_completed_mission() {
         0,
         vec![],
         cimmeria_entity::cell_entity::SystemOptions::default(),
-        0, // state_field
         0, // access_level
         &tx,
         &mut mgr,

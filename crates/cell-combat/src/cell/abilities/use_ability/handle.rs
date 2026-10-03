@@ -21,29 +21,10 @@ use super::super::super::messages::CellToBaseMsg;
 use super::super::super::space_manager::SpaceManager;
 use crate::mercury::game_clock;
 
-use super::super::messaging::send_entity_method;
+use super::super::auto_cycle_state::send_auto_cycle_state;
 use super::super::timer_update::send_timer_update;
 
 use super::weapon_redirect::resolve_weapon_redirect;
-
-/// Broadcast `onStateFieldUpdate` after a `BSF_AUTO_CYCLING` transition.
-/// Self-only routing (like BSF_InCombat changes) — kept in one place so
-/// arm/clear sites don't drift apart on the wire rule.
-pub(super) async fn send_state_field(
-    entity_id: u32,
-    new_state: u32,
-    tx: &mpsc::Sender<CellToBaseMsg>,
-    space_mgr: &SpaceManager,
-) {
-    send_entity_method(
-        entity_id,
-        crate::mercury::method_idx::ON_STATE_FIELD_UPDATE,
-        new_state.to_le_bytes().to_vec(),
-        tx,
-        space_mgr,
-    )
-    .await;
-}
 
 /// Handle a `useAbility(abilityId, targetId)` cell method call.
 ///
@@ -136,7 +117,7 @@ pub async fn handle_use_ability(
                 ability_id,
                 "auto-cycle: cleared by manual override (different ability fired)"
             );
-            send_state_field(entity_id, new_state, tx, space_mgr).await;
+            send_auto_cycle_state(entity_id, new_state, tx, space_mgr).await;
         }
     }
 
@@ -333,7 +314,7 @@ pub async fn handle_use_ability(
         // A loop re-firing support rounds at a hostile would only repeat
         // the refusal every cooldown.
         if let Some(new_state) = combat::clear_auto_cycle(space_mgr, entity_id) {
-            send_state_field(entity_id, new_state, tx, space_mgr).await;
+            send_auto_cycle_state(entity_id, new_state, tx, space_mgr).await;
         }
         return false;
     }
@@ -629,7 +610,7 @@ pub async fn handle_use_ability(
                     ability_id,
                     "auto-cycle: cleared by AF_DEACTIVATE_AUTO_CYCLE flag"
                 );
-                send_state_field(entity_id, new_state, tx, space_mgr).await;
+                send_auto_cycle_state(entity_id, new_state, tx, space_mgr).await;
             }
         } else if let Some(new_state) =
             combat::arm_auto_cycle(space_mgr, entity_id, ability_id, target_id)
@@ -640,7 +621,7 @@ pub async fn handle_use_ability(
                 target_id,
                 "auto-cycle: armed (first commit) — BSF_AUTO_CYCLING set"
             );
-            send_state_field(entity_id, new_state, tx, space_mgr).await;
+            send_auto_cycle_state(entity_id, new_state, tx, space_mgr).await;
         }
         // Bit-already-set path: `arm_auto_cycle` updates the stash
         // unconditionally; only the `Some(new_state)` branch needs to

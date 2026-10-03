@@ -1,5 +1,6 @@
 //! `setAutoCycle` toggle: BSF_AUTO_CYCLING bit management, the immediate
-//! fire-on-enable path, and the user-preference state_field persist.
+//! fire-on-enable path. The bit is broadcast and saved through
+//! [`crate::cell::abilities::send_auto_cycle_state`].
 
 use crate::cell::messages::CellToBaseMsg;
 use crate::cell::space_manager::SpaceManager;
@@ -8,7 +9,7 @@ use tokio::sync::mpsc;
 
 /// Handle the `setAutoCycle(enabled)` toggle. Lights / clears
 /// `BSF_AUTO_CYCLING`, optionally fires an immediate shot on enable, and
-/// persists the deliberate button choice.
+/// saves the new state for the next login.
 pub(super) async fn handle_set_auto_cycle(
     entity_id: u32,
     args: &[u8],
@@ -93,15 +94,8 @@ pub(super) async fn handle_set_auto_cycle(
             (new_state, immediate_fire)
         };
         if let Some(new_state) = new_state {
-            crate::cell::abilities::send_entity_method(
-                entity_id,
-                crate::mercury::method_idx::ON_STATE_FIELD_UPDATE,
-                new_state.to_le_bytes().to_vec(),
-                tx,
-                space_mgr,
-            )
-            .await;
-            persist_state_field_bits(entity_id, new_state, tx, space_mgr).await;
+            crate::cell::abilities::send_auto_cycle_state(entity_id, new_state, tx, space_mgr)
+                .await;
         }
         // Gated on bit transition. CEGUI fires the Lua
         // binding 3-4× per physical click (~150µs apart);
@@ -153,6 +147,23 @@ pub(super) async fn handle_set_auto_cycle(
                 target_id,
                 "setAutoCycle: immediate fire on enable (loop ability + current_target ready)"
             );
+            // A target behind a wall gets its one no-line-of-sight notice
+            // from this shot; mark it sent so the tick's NA31 gate does not
+            // repeat it on its next pass.
+            let los_refused = matches!(
+                crate::cell::abilities::fire_line_of_sight(
+                    space_mgr,
+                    entity_id,
+                    target_id as u32,
+                    space_mgr.ability_defs.get(&ability_id),
+                ),
+                crate::cell::abilities::FireLos::Refused(_)
+            );
+            if los_refused {
+                if let Some(e) = space_mgr.get_entity_mut(entity_id) {
+                    e.abilities.auto_cycle_los_notified = true;
+                }
+            }
             // The immediate-fire on auto-cycle toggle ON
             // is a player-driven kill path — route through
             // the kill-credit wrapper so a tap of the
@@ -175,15 +186,8 @@ pub(super) async fn handle_set_auto_cycle(
         // transition — re-broadcasting for an already-off
         // player would be wire noise.
         if let Some(new_state) = crate::cell::combat::clear_auto_cycle(space_mgr, entity_id) {
-            crate::cell::abilities::send_entity_method(
-                entity_id,
-                crate::mercury::method_idx::ON_STATE_FIELD_UPDATE,
-                new_state.to_le_bytes().to_vec(),
-                tx,
-                space_mgr,
-            )
-            .await;
-            persist_state_field_bits(entity_id, new_state, tx, space_mgr).await;
+            crate::cell::abilities::send_auto_cycle_state(entity_id, new_state, tx, space_mgr)
+                .await;
         }
     }
 }
@@ -194,49 +198,4 @@ fn loop_ability_missing(space_mgr: &SpaceManager, entity_id: u32) -> bool {
     space_mgr
         .get_entity(entity_id)
         .is_none_or(|e| e.abilities.auto_cycle_ability_id.is_none())
-}
-
-/// Fire-and-forget persist of the user-preference `state_field` bits
-/// after an explicit `setAutoCycle` toggle flipped `BSF_AutoCycling`.
-///
-/// Masks to [`crate::cell::combat::PERSISTED_STATE_FIELD_MASK`] so
-/// transient combat bits riding the same broadcast value (BSF_Dead,
-/// BSF_InCombat, BSF_MovementLock) never reach the DB — a relog must
-/// always be a clean combat slate (#412).
-///
-/// Deliberately called from the explicit toggle site only, NOT from the
-/// in-combat auto-clear paths (target death, manual fire of a different
-/// ability, AF_DEACTIVATE_AUTO_CYCLE): those are session mechanics, and
-/// mirroring them to the DB would make the post-relog state depend on
-/// whether the player's last target happened to die — the persisted
-/// value tracks the player's deliberate button choice.
-///
-/// Silent no-op for entities without a `player_id` (NPCs / test
-/// fixtures shouldn't persist).
-async fn persist_state_field_bits(
-    entity_id: u32,
-    state_field: u32,
-    tx: &mpsc::Sender<CellToBaseMsg>,
-    space_mgr: &SpaceManager,
-) {
-    let Some(player_id) = space_mgr.get_entity(entity_id).and_then(|e| e.player_id) else {
-        return;
-    };
-    if let Err(e) = tx
-        .send(CellToBaseMsg::StateFieldUpdate {
-            player_id,
-            state_field: state_field & crate::cell::combat::PERSISTED_STATE_FIELD_MASK,
-        })
-        .await
-    {
-        // Channel closed — the toggle still applies in-memory for this
-        // session but won't survive the relog. Same level rationale as
-        // the SystemOptionsUpdate persist failure path.
-        tracing::warn!(
-            entity_id,
-            player_id,
-            error = %e,
-            "StateFieldUpdate send to base failed -- auto-cycle preference not persisted"
-        );
-    }
 }

@@ -44,3 +44,20 @@ is outside git at `../SGW/Stargate Worlds-QA/Working/SGWGame/Content/UI/Core/Aut
 - Existing docs `docs/analysis/cellblock-autoplay/scenario-map.md` had a stale
   claim that the BSF bit only arms on first ability; current code lights it
   immediately. Corrected with this investigation.
+- Colo UAT 2026-10-03 (release v2026-10-03.1 = #1144), fresh Praxis soldier
+  in Cellblock, verified by lab packet tap: (1) right-click hostile then icon
+  keeps firing every ~1.5 s until the kill, then clears; (2) friendly NPC
+  plus icon: bit 0x2 set, cleared 92 ms later, zero useAbility; (3) no prior
+  shot, Tab target, icon: fires 579 at once; behind a wall it gets error 39
+  (no LOS) and waits armed, then resumes when LOS clears.
+- Bug found in that UAT: only the setAutoCycle button saved the bit, so a
+  loop the server stopped stayed saved as on and relit on the next login.
+  Owner decision 2026-10-03: auto-cycle is NOT persisted; every login and
+  respawn starts off. #412's save/restore pipeline was removed (PR #1148);
+  the `sgw_player.state_field` column stays, unused, until the owner OKs a
+  schema change. #412's "original game persisted it" had no evidence:
+  SGWBeing.def bStateField is CELL_PUBLIC, not Persistent.
+- Same PR: a press at a target behind a wall now shows the no-LOS line once
+  (the press marks `auto_cycle_los_notified`). Every BSF_AUTO_CYCLING
+  broadcast goes through `send_auto_cycle_state` (cell-combat
+  abilities/auto_cycle_state.rs).
