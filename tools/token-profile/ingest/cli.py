@@ -17,7 +17,9 @@ from pathlib import Path
 from . import prices
 from . import store
 from .attribution import Attributor
-from .gitsources import Ancestry, fetch_prs, lane_log, merge_subjects, snapshot_refs, store_prs
+from .campaigns import Campaigns, tag_prs
+from .gitsources import (Ancestry, fetch_prs, lane_log, merge_subjects, request_cwds, snapshot_refs, store_prs,
+                         worktree_snapshot)
 
 HERE = Path(__file__).resolve().parent
 
@@ -73,16 +75,20 @@ def _run(db, args):
         stats["prs"] = store_prs(db, json.loads(Path(args.prs_json).read_text(encoding="utf-8")))
     elif args.fetch_prs:
         stats["prs"] = store_prs(db, fetch_prs(args.repo or HERE))
+    campaigns = Campaigns.load(args.campaigns)
+    stats["prs_with_campaign"] = tag_prs(db, campaigns)
     ancestry = None
     if args.repo:
         stats["heads_ref_snapshot"] = snapshot_refs(db, args.repo)
         stats["heads_merge_subject"] = merge_subjects(db, args.repo)
+        stats["worktrees_listed"] = worktree_snapshot(db, args.repo, store.now_iso())
         ancestry = Ancestry(args.repo)
     lane = Path(args.lane_log) if args.lane_log else default_lane_log()
     if lane.exists():
         stats["heads_lane_log"] = lane_log(db, lane)
+    stats["worktree_request_cwd"] = request_cwds(db)
 
-    attributor = Attributor(db, ancestry)
+    attributor = Attributor(db, ancestry, campaigns)
     imbalance = attributor.run()
     unknown = db.execute("SELECT COALESCE(SUM(count), 0) FROM unknown_shapes").fetchone()[0]
     failed = imbalance > 0 or (unknown > 0 and not args.allow_unknown)
@@ -126,6 +132,7 @@ def parser():
     g.add_argument("--prs-json", help="output of `gh pr list --state all --json " + "...` to load into prs")
     g.add_argument("--fetch-prs", action="store_true", help="run `gh pr list` in --repo")
     p.add_argument("--lane-log", help="build lane jobs.jsonl (default: the lane's own, if present)")
+    p.add_argument("--campaigns", help="campaign tags (default: tools/token-profile/campaigns.json)")
     p.add_argument("--allow-unknown", action="store_true", help="exit 0 even with unknown shapes recorded")
     p.add_argument("--profiler-commit", help=argparse.SUPPRESS)
     p.add_argument("--quiet", action="store_true")

@@ -12,6 +12,7 @@ from datetime import datetime, timezone
 
 from . import classify as cls
 from . import fingerprint as fp
+from . import workbranch as wb
 from .shapes import SYNTHETIC_MODEL, unknown_shape
 
 WORKTREE = re.compile(r"[\\/]\.claude[\\/]worktrees[\\/]([^\\/]+)")
@@ -87,7 +88,7 @@ class Transcript:
         self.session_id = session_id
         self.agent_id = agent_id
         self.st = {"cur": None, "retry": False, "sched": False, "seen_turn": False, "last_req": None,
-                   "compaction": None, "gh_create": [], "last_ts": None, **state}
+                   "compaction": None, "gh_create": [], "git_calls": [], "last_ts": None, **state}
         self.stats = stats
         self.is_fork = agent_id is not None and db.execute(
             "SELECT agent_type = 'fork' FROM agents WHERE agent_id = ?", (agent_id,)).fetchone() == (1,)
@@ -247,18 +248,22 @@ class Transcript:
             name = b.get("name") or ""
             inp = b.get("input") if isinstance(b.get("input"), dict) else {}
             fprint, server = fp.fingerprint(name, inp, root)
-            pr_ref = None
+            pr_ref = verb = None
+            worktree = wb.worktree_ref(inp)
             if name in fp.SHELL_TOOLS:
                 pr_ref, is_gh = fp.gh_pr_ref(inp.get("command"))
+                verb = fp.gh_pr_verb(inp.get("command"))
                 if is_gh and pr_ref is None:
                     self.st["gh_create"] = (self.st["gh_create"] + [b["id"]])[-50:]
                 if not is_gh and inp.get("run_in_background"):
                     pr_ref = fp.description_pr_ref(inp.get("description"))
+                if wb.is_git_command(inp.get("command")) and not inp.get("run_in_background"):
+                    self.st["git_calls"] = (self.st["git_calls"] + [[b["id"], worktree]])[-50:]
             self.db.execute(
                 "INSERT OR IGNORE INTO tool_calls (tool_use_id, request_id, session_id, agent_id, ts, tool_name,"
-                " mcp_server, fingerprint, pr_ref) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                " mcp_server, fingerprint, pr_ref, pr_verb, worktree) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
                 (b["id"], rid, self.session_id, self.agent_id, rec.get("timestamp") or "", name, server, fprint,
-                 pr_ref))
+                 pr_ref, verb, worktree))
 
     def _user(self, rec):
         msg = rec.get("message") if isinstance(rec.get("message"), dict) else {}
@@ -310,13 +315,31 @@ class Transcript:
             if tid in self.st["gh_create"]:
                 self.st["gh_create"].remove(tid)
                 pr_ref = fp.result_pr_ref(text)
+            branch = self._git_result(rec, tid, text)
             cur = self.db.execute(
                 "UPDATE tool_calls SET result_chars = ?, result_is_error = ?, result_persisted = ?,"
-                " task_id = COALESCE(?, task_id), pr_ref = COALESCE(pr_ref, ?) WHERE tool_use_id = ?",
+                " task_id = COALESCE(?, task_id), pr_ref = COALESCE(pr_ref, ?), branch_seen = COALESCE(?, branch_seen)"
+                " WHERE tool_use_id = ?",
                 (len(text), 1 if b.get("is_error") else 0, 1 if PERSISTED.search(text) else 0,
-                 task_id if len(results) == 1 else None, pr_ref, tid))
+                 task_id if len(results) == 1 else None, pr_ref, branch, tid))
             if cur.rowcount == 0:
                 self.stats["orphan_tool_results"] += 1
+
+    def _git_result(self, rec, tid, text):
+        """The branch a git command's output names; worktree-to-branch pairs go to worktree_branches."""
+        call = next((c for c in self.st["git_calls"] if c[0] == tid), None)
+        if call is None:
+            return None
+        self.st["git_calls"].remove(call)
+        when = rec.get("timestamp") or ""
+        pairs = wb.worktree_list(text)
+        branch = wb.branch_seen(text)
+        if branch and call[1]:
+            pairs.append((call[1], branch))
+        self.db.executemany(
+            "INSERT OR IGNORE INTO worktree_branches (worktree, branch, observed_at, source) VALUES (?, ?, ?, ?)",
+            [(w, br, when, "worktree-list" if (w, br) != (call[1], branch) else "tool-result") for w, br in pairs])
+        return branch
 
     def _system(self, rec):
         sub = rec.get("subtype")

@@ -1,4 +1,4 @@
--- Token profiler data contract, schema version 3.
+-- Token profiler data contract, schema version 4.
 --
 -- The ingest (TP-01a, tools/token-profile/ingest/) writes these tables from
 -- Claude Code transcripts; the reports (TP-01b, tools/token-profile/report/)
@@ -19,6 +19,14 @@
 -- process_start; a resumed session's earlier requests are not in it. See
 -- README.md § Reconciliation.
 --
+-- Version 4 (TP-05b): tool_calls.worktree, tool_calls.branch_seen and
+-- tool_calls.pr_verb; prs.title, prs.base_branch and prs.campaign; the
+-- worktree_branches table; pr_attribution.campaign and the methods
+-- 'worktree' and 'campaign'. An in-process teammate's records carry the
+-- coordinator process's cwd and branch, so its branch comes from its own
+-- tool calls; and a packet merged into an integration branch is charged to
+-- its campaign, not to the integration PR. See attribution.md.
+--
 -- Token columns are raw counts. thinking_tokens is a SUBSET of
 -- output_tokens and is never added on top of it.
 
@@ -28,7 +36,7 @@ CREATE TABLE meta (
     key   TEXT PRIMARY KEY,
     value TEXT NOT NULL
 );
-INSERT INTO meta (key, value) VALUES ('schema_version', '3');
+INSERT INTO meta (key, value) VALUES ('schema_version', '4');
 
 -- One row per ingest run, for version-stamping every report.
 CREATE TABLE profiler_runs (
@@ -176,8 +184,13 @@ CREATE TABLE tool_calls (
     mcp_server        TEXT,
     fingerprint       TEXT,                   -- scrubbed: command head or repo-relative path, see transcript-format.md
     task_id           TEXT,                   -- agent id (Agent/Task) or background task id (Bash) the call started
-    pr_ref            INTEGER,                -- the one PR the call names: `gh pr create|merge|checks|view N`,
+    pr_ref            INTEGER,                -- the one PR the call names: `gh pr <verb> N` (pr_verb),
                                               -- or a single #N in a background command's description
+    pr_verb           TEXT CHECK (pr_verb IN ('create', 'merge', 'checks', 'view', 'diff', 'comment', 'edit',
+                                              'review', 'ready', 'close')),  -- the gh pr subcommand (version 4)
+    worktree          TEXT,                   -- the one .claude/worktrees/<name> the input names (path or command)
+    branch_seen       TEXT,                   -- the one branch a git command's result names (status, commit, push,
+                                              -- rebase); see attribution.md § Work branch (version 4)
     result_chars      INTEGER,                -- NULL until the result is seen
     result_is_error   INTEGER CHECK (result_is_error IN (0, 1)),
     result_persisted  INTEGER NOT NULL DEFAULT 0 CHECK (result_persisted IN (0, 1)),  -- spilled to tool-results/
@@ -237,7 +250,10 @@ CREATE TABLE prs (
     state             TEXT NOT NULL CHECK (state IN ('MERGED', 'CLOSED', 'OPEN')),
     additions         INTEGER,
     deletions         INTEGER,
-    changed_files     INTEGER
+    changed_files     INTEGER,
+    title             TEXT,                   -- version 4: campaign tagging reads a tracking issue from it
+    base_branch       TEXT,                   -- version 4: 'main', or the integration branch a packet PR targets
+    campaign          TEXT                    -- version 4: docs/analysis/<campaign>, see campaigns.json
 );
 
 -- Commits seen at the head of a branch, so ancestry attribution still works
@@ -253,6 +269,17 @@ CREATE TABLE branch_heads (
     PRIMARY KEY (branch, commit_sha, source)
 );
 
+-- Which branch a worktree had checked out, and when it was seen, so a
+-- request whose work is in .claude/worktrees/<name> can be placed after
+-- rm-worktree.sh removed the worktree. Version 4; attribution.md § Work branch.
+CREATE TABLE worktree_branches (
+    worktree          TEXT NOT NULL,          -- .claude/worktrees/<name>
+    branch            TEXT NOT NULL,
+    observed_at       TEXT NOT NULL,
+    source            TEXT NOT NULL CHECK (source IN ('lane-log', 'request-cwd', 'tool-result', 'worktree-list')),
+    PRIMARY KEY (worktree, branch, observed_at, source)
+);
+
 -- Request-to-PR attribution. For every request, the weights of its rows sum
 -- to 1; the unattributed share is a row with pr_number NULL. Methods and
 -- their precedence: attribution.md. attribution_imbalance must be empty at
@@ -261,13 +288,15 @@ CREATE TABLE pr_attribution (
     request_id        TEXT NOT NULL REFERENCES requests (request_id),
     pr_number         INTEGER REFERENCES prs (pr_number),
     method            TEXT NOT NULL CHECK (method IN (
-                          'branch', 'ancestry', 'parent-session',
-                          'trigger', 'pr-link', 'split', 'unattributed')),
+                          'branch', 'worktree', 'ancestry', 'parent-session',
+                          'trigger', 'pr-link', 'split', 'campaign', 'unattributed')),
     weight            REAL NOT NULL CHECK (weight > 0 AND weight <= 1),
     confidence        REAL NOT NULL CHECK (confidence >= 0 AND confidence <= 1),
-    CHECK ((method = 'unattributed') = (pr_number IS NULL))
+    campaign          TEXT,                   -- set on 'campaign' rows only: packet work with no PR of its own
+    CHECK ((method IN ('unattributed', 'campaign')) = (pr_number IS NULL)),
+    CHECK ((method = 'campaign') = (campaign IS NOT NULL))
 );
-CREATE UNIQUE INDEX pr_attribution_key ON pr_attribution (request_id, COALESCE(pr_number, -1));
+CREATE UNIQUE INDEX pr_attribution_key ON pr_attribution (request_id, COALESCE(pr_number, -1), COALESCE(campaign, ''));
 
 -- Requests whose attribution is missing or whose weights do not sum to 1.
 CREATE VIEW attribution_imbalance AS

@@ -109,23 +109,31 @@ def fingerprint(tool_name, tool_input, root=None):
     return None, None
 
 
-GH_PR = re.compile(r"\bgh\s+pr\s+(create|merge|checks|view)\b([^&|;\n]*)")
+GH_PR = re.compile(r"\bgh\s+pr\s+(create|merge|checks|view|diff|comment|edit|review|ready|close)\b([^&|;\n]*)")
 PR_NUMBER = re.compile(r"(?:^|\s)#?(\d{1,6})(?=\s|$)")
 PR_URL = re.compile(r"/pull/(\d{1,6})\b")
 HASH_NUMBER = re.compile(r"#(\d{1,6})\b")
 
 
 def gh_pr_ref(command):
-    """The PR number a `gh pr create|merge|checks|view N` names, and whether it was a gh pr command.
+    """The PR number a `gh pr <verb> N` names (GH_PR's verbs), and whether it was a gh pr command.
 
     `gh pr create` names no number; its result does (see result_pr_ref).
     """
     m = GH_PR.search(command or "")
     if not m:
         return None, False
+    if m.group(1) == "create":
+        return None, True           # a number in its title or body is not the PR's
     args = m.group(2)
     n = PR_NUMBER.search(args) or PR_URL.search(args)
     return (int(n.group(1)) if n else None), True
+
+
+def gh_pr_verb(command):
+    """The subcommand of a `gh pr <verb>` call (GH_PR's verbs), else None."""
+    m = GH_PR.search(command or "")
+    return m.group(1) if m else None
 
 
 def result_pr_ref(text):

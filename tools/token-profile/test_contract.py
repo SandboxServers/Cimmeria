@@ -54,7 +54,7 @@ def seed_request(db, request_id="r1", output=100, thinking=50, inp=1, read=2, w5
 class SchemaTest(unittest.TestCase):
     def test_schema_loads_with_version(self):
         db = load_schema()
-        self.assertEqual(db.execute("SELECT value FROM meta WHERE key = 'schema_version'").fetchone()[0], "3")
+        self.assertEqual(db.execute("SELECT value FROM meta WHERE key = 'schema_version'").fetchone()[0], "4")
 
     def test_thinking_is_a_subset_of_output(self):
         db = load_schema()
@@ -71,12 +71,12 @@ class SchemaTest(unittest.TestCase):
         db = load_schema()
         seed_request(db)
         db.execute("INSERT INTO prs (pr_number, head_branch, created_at, state) VALUES (7, 'b', 't', 'MERGED')")
-        db.execute("INSERT INTO pr_attribution VALUES ('r1', 7, 'branch', 0.5, 1.0)")
-        db.execute("INSERT INTO pr_attribution VALUES ('r1', NULL, 'unattributed', 0.5, 0.0)")
+        db.execute("INSERT INTO pr_attribution (request_id, pr_number, method, weight, confidence) VALUES ('r1', 7, 'branch', 0.5, 1.0)")
+        db.execute("INSERT INTO pr_attribution (request_id, pr_number, method, weight, confidence) VALUES ('r1', NULL, 'unattributed', 0.5, 0.0)")
         with self.assertRaises(sqlite3.IntegrityError):
-            db.execute("INSERT INTO pr_attribution VALUES ('r1', NULL, 'branch', 0.1, 1.0)")
+            db.execute("INSERT INTO pr_attribution (request_id, pr_number, method, weight, confidence) VALUES ('r1', NULL, 'branch', 0.1, 1.0)")
         with self.assertRaises(sqlite3.IntegrityError):
-            db.execute("INSERT INTO pr_attribution VALUES ('r1', 7, 'unattributed', 0.1, 0.0)")
+            db.execute("INSERT INTO pr_attribution (request_id, pr_number, method, weight, confidence) VALUES ('r1', 7, 'unattributed', 0.1, 0.0)")
 
     def test_every_request_has_a_trigger(self):
         db = load_schema()
@@ -91,20 +91,20 @@ class SchemaTest(unittest.TestCase):
         seed_request(db, "ok")
         db.execute("INSERT INTO prs (pr_number, head_branch, created_at, state) VALUES (7, 'b', 't', 'MERGED')")
         db.execute("INSERT INTO prs (pr_number, head_branch, created_at, state) VALUES (8, 'c', 't', 'MERGED')")
-        db.execute("INSERT INTO pr_attribution VALUES ('partial', 7, 'branch', 0.5, 1.0)")
-        db.execute("INSERT INTO pr_attribution VALUES ('over', 7, 'split', 0.7, 0.6)")
-        db.execute("INSERT INTO pr_attribution VALUES ('over', 8, 'split', 0.7, 0.6)")
-        db.execute("INSERT INTO pr_attribution VALUES ('ok', 7, 'split', 0.5, 0.6)")
-        db.execute("INSERT INTO pr_attribution VALUES ('ok', NULL, 'unattributed', 0.5, 0.0)")
+        db.execute("INSERT INTO pr_attribution (request_id, pr_number, method, weight, confidence) VALUES ('partial', 7, 'branch', 0.5, 1.0)")
+        db.execute("INSERT INTO pr_attribution (request_id, pr_number, method, weight, confidence) VALUES ('over', 7, 'split', 0.7, 0.6)")
+        db.execute("INSERT INTO pr_attribution (request_id, pr_number, method, weight, confidence) VALUES ('over', 8, 'split', 0.7, 0.6)")
+        db.execute("INSERT INTO pr_attribution (request_id, pr_number, method, weight, confidence) VALUES ('ok', 7, 'split', 0.5, 0.6)")
+        db.execute("INSERT INTO pr_attribution (request_id, pr_number, method, weight, confidence) VALUES ('ok', NULL, 'unattributed', 0.5, 0.0)")
         bad = {row[0] for row in db.execute("SELECT request_id FROM attribution_imbalance")}
         self.assertEqual(bad, {"missing", "partial", "over"})
 
     def test_one_unattributed_row_per_request(self):
         db = load_schema()
         seed_request(db)
-        db.execute("INSERT INTO pr_attribution VALUES ('r1', NULL, 'unattributed', 0.5, 0.0)")
+        db.execute("INSERT INTO pr_attribution (request_id, pr_number, method, weight, confidence) VALUES ('r1', NULL, 'unattributed', 0.5, 0.0)")
         with self.assertRaises(sqlite3.IntegrityError):
-            db.execute("INSERT INTO pr_attribution VALUES ('r1', NULL, 'unattributed', 0.5, 0.0)")
+            db.execute("INSERT INTO pr_attribution (request_id, pr_number, method, weight, confidence) VALUES ('r1', NULL, 'unattributed', 0.5, 0.0)")
 
     def test_trigger_kinds_match_the_classification_table(self):
         db = load_schema()

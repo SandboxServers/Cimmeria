@@ -179,9 +179,9 @@ def load(db, root, expected, hostile):
     attributed = set()
     for rid, rows in ATTRIBUTION.items():
         for pr, method, weight, conf in rows:
-            db.execute("INSERT INTO pr_attribution VALUES (?, ?, ?, ?, ?)", (rid, pr, method, weight, conf))
+            db.execute("INSERT INTO pr_attribution (request_id, pr_number, method, weight, confidence) VALUES (?, ?, ?, ?, ?)", (rid, pr, method, weight, conf))
         attributed.add(rid)
     for row in request_rows:
         if row[0] not in attributed:
-            db.execute("INSERT INTO pr_attribution VALUES (?, NULL, 'unattributed', 1.0, 0.0)", (row[0],))
+            db.execute("INSERT INTO pr_attribution (request_id, pr_number, method, weight, confidence) VALUES (?, NULL, 'unattributed', 1.0, 0.0)", (row[0],))
     assert not db.execute("SELECT * FROM attribution_imbalance").fetchall()

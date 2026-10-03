@@ -1,5 +1,6 @@
 """Attribution rules A1-A6 on small synthetic sessions, and the imbalance check."""
 
+import json
 import os
 import sqlite3
 import subprocess
@@ -20,6 +21,14 @@ T = bf.ts
 
 def usage():
     return bf.usage(1, 10, 0, 100, 10, 0)
+
+
+def on_branch(t, when, rid, branch, u=None):
+    """A subagent request whose own `git status` shows the branch it works on (attribution.md § Work branch)."""
+    tid = f"tu_status_{rid}"
+    bf.request(t, when, rid, u or usage(), content=[
+        {"type": "tool_use", "id": tid, "name": "Bash", "input": {"command": "git status"}}])
+    t.tool_result(when, tid, f"On branch {branch}\n")
 
 
 def day(d, hour=12):
@@ -141,7 +150,7 @@ class AttributionTest(unittest.TestCase):
         w = transcript(S1, agent_id="aW", branch="feat/worker")
         w.user_text(T(2), "work", origin={"kind": "coordinator"})
         for i in range(3):
-            bf.request(w, T(3 + i), f"r_w{i}", usage())
+            on_branch(w, T(3 + i), f"r_w{i}", "feat/worker")
         write_session(self.projects, S1, m, agents=[("aW", w, {"agentType": "worker", "name": "w"})])
         got = self.ingest([pr(70, "feat/worker", day(1)), pr(71, "docs/parked", day(1))])
         self.assertEqual(got["r_go"], [(71, "branch", 1.0, 1.0)])
@@ -171,7 +180,7 @@ class AttributionTest(unittest.TestCase):
         m.user_text(T(1), "x", origin={"kind": "human"})
         bf.request(m, T(1, 5), "r1", usage())
         write_session(self.projects, S1, m)
-        half = [(None, "unattributed", 0.5)]
+        half = [(None, "unattributed", 0.5, None)]
         with mock.patch.object(attribution.Attributor, "final", lambda self, req, depth=0: half):
             status = run_ingest(self.projects, self.base / "bad.sqlite", prs=[])
         self.assertEqual(status, 2)
@@ -187,7 +196,12 @@ def git(repo, *args, when=None):
 
 
 class AncestryTest(unittest.TestCase):
-    """A3: a packet branch with no PR of its own, squash-merged into main through an integration PR."""
+    """A3: a packet branch with no PR of its own, squash-merged into main through an integration PR.
+
+    The packet is merged into the integration branch, so its work is the campaign's, not the
+    integration PR's (D-TP7). A branch whose commits are the integration branch's own line of work
+    (a local name for it) is still charged to the PR.
+    """
 
     def setUp(self):
         self.tmp = tempfile.TemporaryDirectory()
@@ -198,6 +212,8 @@ class AncestryTest(unittest.TestCase):
         git(repo, "init", "-q", "-b", "main")
         git(repo, "commit", "-q", "--allow-empty", "-m", "base", when="2026-10-01T09:00:00Z")
         git(repo, "checkout", "-q", "-b", "integ")
+        git(repo, "commit", "-q", "--allow-empty", "-m", "integ own work", when="2026-10-01T12:30:00Z")
+        git(repo, "branch", "integ-local")                             # the same line of work under another name
         git(repo, "checkout", "-q", "-b", "packet")
         git(repo, "commit", "-q", "--allow-empty", "-m", "packet work", when="2026-10-01T13:00:00Z")
         git(repo, "checkout", "-q", "main")
@@ -213,35 +229,61 @@ class AncestryTest(unittest.TestCase):
         git(repo, "commit", "-q", "--allow-empty", "-m", "integ (#90)", when="2026-10-03T09:00:00Z")
         self.squash = git(repo, "rev-parse", "HEAD")
         git(repo, "branch", "-D", "-q", "packet")                       # rm-worktree.sh deletes merged packets
+        self.write_sessions()
 
     def tearDown(self):
         self.tmp.cleanup()
 
-    def test_packet_commit_reaches_the_integration_pr(self):
+    def write_sessions(self):
         m = transcript(S3)
         m.user_text(T(0), "x", origin={"kind": "human"})
         bf.request(m, T(1), "r_coord", bf.usage(1, 1, 0, 1, 1, 0))
         s = transcript(S3, agent_id="aP", branch="packet")
         s.user_text(T(2), "x", origin={"kind": "coordinator"})
-        bf.request(s, T(3), "r_packet", bf.usage(1, 1, 0, 1, 1, 0))
+        on_branch(s, T(3), "r_packet", "packet")
         st = transcript(S3, agent_id="aS", branch="stale")
         st.user_text(T(2), "x", origin={"kind": "coordinator"})
-        bf.request(st, T(4), "r_stale", bf.usage(1, 1, 0, 1, 1, 0))
-        write_session(self.projects, S3, m, agents=[("aP", s, None), ("aS", st, None)])
+        on_branch(st, T(4), "r_stale", "stale")
+        lo = transcript(S3, agent_id="aL", branch="integ-local")
+        lo.user_text(T(2), "x", origin={"kind": "coordinator"})
+        on_branch(lo, T(5), "r_local", "integ-local")
+        write_session(self.projects, S3, m, agents=[("aP", s, None), ("aS", st, None), ("aL", lo, None)])
+
+    def ingest(self, *extra):
         prs = [pr(90, "integ", "2026-10-01T10:00:00Z", merged="2026-10-03T09:00:00Z", head=self.integ_head,
                   merge=self.squash)]
         db = Path(self.tmp.name) / "a.sqlite"
-        self.assertEqual(run_ingest(self.projects, db, prs=prs, repo=self.repo), 0)
+        if db.exists():
+            db.unlink()
+        self.assertEqual(run_ingest(self.projects, db, *extra, prs=prs, repo=self.repo), 0)
         conn = sqlite3.connect(db)
-        got = dict(((r, (n, m_)) for r, n, m_ in conn.execute(
-            "SELECT request_id, pr_number, method FROM pr_attribution")))
+        got = {r: (n, m_, c) for r, n, m_, c in conn.execute(
+            "SELECT request_id, pr_number, method, campaign FROM pr_attribution")}
         heads = conn.execute("SELECT source FROM branch_heads WHERE branch = 'packet'").fetchall()
+        got["pr_campaign"] = conn.execute("SELECT campaign FROM prs WHERE pr_number = 90").fetchone()[0]
         conn.close()
         # The packet branch is gone; its commit is known from the merge subject.
         self.assertEqual(heads, [("merge-subject",)])
-        self.assertEqual(got["r_packet"], (90, "ancestry"))
+        return got
+
+    def test_packet_merged_into_an_integration_branch_is_its_campaigns(self):
+        got = self.ingest()
+        # D-TP7: the integration PR carries only its own spend. With no campaign configured the
+        # integration PR forms one, named after its number.
+        self.assertEqual(got["r_packet"], (None, "campaign", "pr-90"))
+        # The integration PR belongs to the campaign it formed, so the rollup counts it.
+        self.assertEqual(got["pr_campaign"], "pr-90")
+        # The integration branch's own line of work, under another name, is still the PR's.
+        self.assertEqual(got["r_local"], (90, "ancestry", None))
         # A branch whose head main already had before the merge is not that PR's work.
-        self.assertEqual(got["r_stale"], (None, "unattributed"))
+        self.assertEqual(got["r_stale"], (None, "unattributed", None))
+
+    def test_a_configured_campaign_names_the_packet_work(self):
+        config = Path(self.tmp.name) / "campaigns.json"
+        config.write_text(json.dumps({"some-campaign": {"prefixes": ["pack"]}}), encoding="utf-8")
+        got = self.ingest("--campaigns", str(config))
+        self.assertEqual(got["r_packet"], (None, "campaign", "some-campaign"))
+        self.assertEqual(got["pr_campaign"], "some-campaign")
 
 
 if __name__ == "__main__":
