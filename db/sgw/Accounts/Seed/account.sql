@@ -33,6 +33,7 @@ INSERT INTO account (account_id, account_name, password, accesslevel, enabled) V
 INSERT INTO account (account_id, account_name, password, accesslevel, enabled) VALUES (12, 'lab3',    'a94a8fe5ccb19ba61c4c0873d391e987982fbbd3', 2, true);
 INSERT INTO account (account_id, account_name, password, accesslevel, enabled) VALUES (13, 'lab4',    'a94a8fe5ccb19ba61c4c0873d391e987982fbbd3', 2, true);
 INSERT INTO account (account_id, account_name, password, accesslevel, enabled) VALUES (14, 'lab5',    'a94a8fe5ccb19ba61c4c0873d391e987982fbbd3', 2, true);
+INSERT INTO account (account_id, account_name, password, accesslevel, enabled) VALUES (15, 'charlie', 'a94a8fe5ccb19ba61c4c0873d391e987982fbbd3', 2, true);
 
 --
 -- TOC entry 2709 (class 0 OID 0)
@@ -40,4 +41,4 @@ INSERT INTO account (account_id, account_name, password, accesslevel, enabled) V
 -- Name: accounts_account_id_seq; Type: SEQUENCE SET; Schema: public; Owner: -
 --
 
-SELECT pg_catalog.setval('accounts_account_id_seq', 14, true);
+SELECT pg_catalog.setval('accounts_account_id_seq', 15, true);
