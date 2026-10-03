@@ -638,3 +638,41 @@ async fn set_auto_cycle_immediate_fire_credits_quest_kill_on_tagged_npc_death() 
         "test fixture: target must be dead after the lethal immediate fire",
     );
 }
+
+/// **Weapon-ability fallback (2026-09-29 colo capture).** A player who
+/// arms auto-cycle before firing anything this session must still get a
+/// loop: the press stashes the active weapon's ranged attack. Before the
+/// fix the stash came only from `last_fired_ability_id`, so the button
+/// lit and the tick, which needs an ability id, never fired.
+#[tokio::test]
+async fn set_auto_cycle_enable_without_prior_shot_stashes_weapon_ability() {
+    use cimmeria_entity::cell_entity::BandolierItem;
+    let mut mgr = make_mgr_with_player();
+    mgr.item_event_set_abilities
+        .insert((1200, crate::cell::spawner::EVENT_ITEM_RANGED), 579);
+    if let Some(e) = mgr.get_entity_mut(1) {
+        assert!(e.abilities.last_fired_ability_id.is_none());
+        e.bandolier_items.insert(
+            0,
+            BandolierItem {
+                instance_id: 0,
+                item_id: 1200,
+                clip_size: 12,
+                default_ammo_type: 1,
+                current_ammo: 12,
+                cur_ammo_type: 1,
+            },
+        );
+        e.active_bandolier_slot = 0;
+    }
+    let engine = ChainEngine::new();
+    let (tx, _rx) = mpsc::channel(16);
+
+    dispatch(1, SET_AUTO_CYCLE, &[1], &tx, &mut mgr, &engine).await;
+
+    assert_eq!(
+        mgr.get_entity(1).unwrap().abilities.auto_cycle_ability_id,
+        Some(579),
+        "enable with no prior shot must stash the active weapon's attack"
+    );
+}

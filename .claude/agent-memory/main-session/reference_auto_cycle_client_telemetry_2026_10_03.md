@@ -36,6 +36,11 @@ is outside git at `../SGW/Stargate Worlds-QA/Working/SGWGame/Content/UI/Core/Aut
   server `setAutoCycle enabled`, `setTargetID target_id`, `useAbility:
   launched`, and `auto_cycle_tick: target gone or disengaged target_id`.
   Client `ts_ms` is event time. Do not publish session/install identifiers.
+- Fixed 2026-10-03 (branch fix/auto-cycle-target-state): hostile interact
+  writes `current_target_id`; the tick clears a not-hostile NPC loop
+  (`reason=not_hostile`); a press with no prior shot stashes the weapon's
+  ranged ability; clear and enable events carry the reason and decision
+  fields. Search `auto_cycle_tick: clearing loop` from then on.
 - Existing docs `docs/analysis/cellblock-autoplay/scenario-map.md` had a stale
   claim that the BSF bit only arms on first ability; current code lights it
   immediately. Corrected with this investigation.

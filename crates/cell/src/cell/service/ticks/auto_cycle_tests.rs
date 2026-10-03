@@ -605,3 +605,28 @@ async fn auto_cycle_tick_credits_quest_kill_on_tagged_npc_death() {
         "test fixture: target must be dead after the lethal re-fire",
     );
 }
+
+/// **Friendly-NPC loop (2026-09-29 Castle capture).** A loop aimed at an
+/// NPC the player may not attack must stop on the first tick, un-light
+/// the button, and never reach `handle_use_ability`. Before the fix the
+/// tick re-fired into the #444 refusal ten times a second while the
+/// button stayed lit.
+#[tokio::test]
+async fn auto_cycle_tick_clears_loop_on_non_hostile_npc_target() {
+    use cimmeria_wire::state_field::BSF_AUTO_CYCLING;
+    let mut mgr = make_auto_cycle_mgr();
+    mgr.get_entity_mut(50).unwrap().faction = 1;
+    mgr.get_entity_mut(1).unwrap().state_field |= BSF_AUTO_CYCLING;
+
+    let (tx, _rx) = mpsc::channel(64);
+    auto_cycle_tick(&tx, &mut mgr, &empty_engine()).await;
+
+    let p = mgr.get_entity(1).unwrap();
+    assert!(!p.abilities.auto_cycle, "loop must stop on a friendly NPC");
+    assert_eq!(p.abilities.auto_cycle_ability_id, None);
+    assert_eq!(p.state_field & BSF_AUTO_CYCLING, 0, "button must un-light");
+    assert!(
+        !p.abilities.is_on_cooldown(7),
+        "the tick must not re-fire at a friendly NPC"
+    );
+}
