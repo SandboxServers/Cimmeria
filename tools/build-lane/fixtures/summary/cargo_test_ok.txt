@@ -1,0 +1,49 @@
+   Compiling proc-macro2 v1.0.106
+   Compiling quote v1.0.45
+   Compiling unicode-ident v1.0.24
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 3m 39s
+     Running unittests src\lib.rs (C:\work\target\debug\deps\cimmeria_commands-cdc1a2466cfa09f6.exe)
+
+running 29 tests
+test parser::tests::parse_command_empty_input ... ok
+test parser::tests::parse_command_extra_whitespace ... ok
+test parser::tests::parse_command_no_args ... ok
+test parser::tests::parse_command_only_slash ... ok
+test registry::tests::execute_empty_input ... ok
+test registry::tests::console_context_no_entity_id ... ok
+test registry::tests::execute_passes_args ... ok
+test registry::tests::execute_permission_denied ... ok
+test registry::tests::register_and_execute ... ok
+test registry::tests::execute_permission_granted_higher_level ... ok
+test registry::tests::execute_unknown_command ... ok
+test registry::tests::list_commands_filters_by_access ... ok
+test registry::tests::list_commands_sorted_alphabetically ... ok
+test parser::tests::parse_command_with_slash ... ok
+test parser::tests::parse_command_without_slash ... ok
+test parser::tests::parse_entity_id_hash_prefix ... ok
+test parser::tests::parse_entity_id_negative ... ok
+test parser::tests::parse_vector3_extra_args_ignored ... ok
+test parser::tests::parse_vector3_non_numeric ... ok
+test parser::tests::parse_entity_id_invalid ... ok
+test permissions::tests::access_level_ordering ... ok
+test permissions::tests::can_execute_higher_level ... ok
+test permissions::tests::cannot_execute_insufficient_level ... ok
+test parser::tests::parse_entity_id_plain ... ok
+test parser::tests::parse_vector3_too_few_args ... ok
+test parser::tests::parse_vector3_valid ... ok
+test permissions::tests::can_execute_same_level ... ok
+test parser::tests::parse_vector3_integers ... ok
+test registry::tests::command_name_case_insensitive ... ok
+
+test result: ok. 29 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.04s
+
+   Doc-tests cimmeria_commands
+
+running 4 tests
+test crates\commands\src\parser.rs - parser::parse_entity_id (line 49) ... ok
+test crates\commands\src\permissions.rs - permissions::AccessLevel::can_execute (line 29) ... ok
+test crates\commands\src\parser.rs - parser::parse_vector3 (line 71) ... ok
+test crates\commands\src\parser.rs - parser::parse_command (line 13) ... ok
+
+test result: ok. 4 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.29s
+

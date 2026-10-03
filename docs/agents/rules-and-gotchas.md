@@ -6,7 +6,7 @@
 
 Decisions the maintainers have already made, and traps contributors have already hit. None of this is derivable from reading the code, which is why it is written down. Read it before proposing an approach. If a rule here blocks something you think is right, say so in the PR or issue; do not work around it.
 
-Each entry says what to do and why. Build commands, the pre-PR checklist, the test policy, and the doc-update map stay in [`CLAUDE.md`](../../CLAUDE.md) and [`TESTING.md`](../../TESTING.md) and are not repeated here.
+Each entry says what to do and why. Build commands, the pre-PR checklist and the test policy stay in [`CLAUDE.md`](../../CLAUDE.md) and [`TESTING.md`](../../TESTING.md), the doc-update map in [doc-update-map.md](doc-update-map.md), and the CI-failure notes in [pre-pr-checks.md](pre-pr-checks.md); none of them are repeated here.
 
 ## Evidence and reverse engineering
 

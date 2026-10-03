@@ -11,7 +11,7 @@ A PR that adds or removes **≥5% of the workspace test count** (the threshold i
 
 Sweeps are scripted: run [`tools/extract_tests.py --write`](#how-to-regenerate). The catalogue has nonetheless drifted well past the ≥5% threshold — 1,351 rows against 2,936 tests as of 2026-07-25 — because for a long stretch the generator was not in the repo at all. That is fixed; the backfill sweep is still outstanding.
 
-Inventory drift up to ~5% is acceptable between sweeps — see [.github/copilot-instructions.md](../../../.github/copilot-instructions.md) and [CLAUDE.md](../../../CLAUDE.md) for the doc-update map. A CI drift-check is now *possible* (`--check` and `--verify-links` both exit non-zero on drift) but is **not yet wired into a workflow**; for now, reviewers eyeball the diff against the threshold.
+Inventory drift up to ~5% is acceptable between sweeps — see [.github/copilot-instructions.md](../../../.github/copilot-instructions.md) and the [doc-update map](../../agents/doc-update-map.md). A CI drift-check is now *possible* (`--check` and `--verify-links` both exit non-zero on drift) but is **not yet wired into a workflow**; for now, reviewers eyeball the diff against the threshold.
 
 ## How to regenerate
 

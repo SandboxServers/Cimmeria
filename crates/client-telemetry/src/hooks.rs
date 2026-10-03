@@ -71,6 +71,10 @@ mod emit;
 pub(crate) mod entity_trace;
 mod iat_hooks;
 mod inline_hooks;
+// Read-only Lua stack readers shared by the `lua_pcall` error report and
+// the `Debug:log` forwarder; the readers run only in the i686 detours.
+#[cfg_attr(not(target_arch = "x86"), allow(dead_code))]
+pub(crate) mod lua_stack;
 // Mercury receive-path readers and classifiers behind the
 // `client.mercury.packet_in|fragment|bundle` events; driven only by the
 // i686 detours.

@@ -32,10 +32,15 @@
 //!   deferred-message queue and its replay (`client.mercury.entity_*`),
 //!   which also set the dispatch context the CME and drop events read.
 //! - [`net_out`] — the outgoing entity-method router (`client.net.out`).
+//! - [`sequence_manager`] — the `SequenceManager`'s silent drops of a
+//!   server `onSequence` (`client.sequence.dropped`, 2026-09-29).
+//! - [`lua_debug_log`] — the UI's `Debug:log` / `warn` / `error` lines,
+//!   which the shipping client discards (`client.lua.debug_log`,
+//!   2026-09-29).
 //!
 //! # What's installed
 //!
-//! 27 hooks. Every address below was re-checked against the QA
+//! 33 hooks. Every address below was re-checked against the QA
 //! `SGW.exe` on 2026-09-27 (function entry, `ret N` against the detour's
 //! argument count) and is covered by the [fingerprint
 //! gate](crate::fingerprint), which installs none of them on a build
@@ -80,6 +85,10 @@
 //! | `Nub::processPacket` (`this, addr, packet, channel`, `ret 0xc`) | `0x0157fd20` | `client.mercury.fragment` (+ `client.mercury.error`) | fragments only, unthrottled |
 //! | `Nub::processOrderedPacket` (`this, message`, `ret 4`, game thread) | `0x0157c820` | `client.mercury.bundle` `phase=start|end` (+ `client.mercury.error`) | assembled and non-happy bundles unthrottled; clean single-packet bundles: bucket |
 //! | `Bundle::iterator::unpack` (`this, element`, `ret 4`, game thread) | `0x01579830` | (feeds the bundle summary; no event) | - |
+//! | `SequenceManager` `Event_Cache_ElementReady` (`this, evt, arg`, `ret 8`) | `0x00d06f30` | `client.sequence.dropped` (`no_source_entity`, `no_source_pawn`, `no_cooked_data`, `expired`) | per (path, Source entity) bucket |
+//! | sequence play step (`this, data, request, source`, `ret 0xc`) | `0x00d06dd0` | `client.sequence.dropped` (`culled_by_distance` at `debug`, `instance_refused`) | per (path, Source entity) bucket |
+//! | Kismet sequence instantiate (`this, out, name, pawn`, `ret 0xc`) | `0x00d067e0` | (records the play step's result; no event) | - |
+//! | `ScriptedDebug` `log` / `warn` / `error` tolua bindings (`Debug:log` etc., `cdecl int(lua_State*)`; the logger they call, `0x0081c2e0`, is a bare `ret`) | `0x00aa1620`, `0x00aa1710`, `0x00aa1800` | `client.lua.debug_log` (`channel`, `source`, `text`) | per (channel, message shape) bucket |
 //!
 //! # Why MinHook
 //!
@@ -103,11 +112,16 @@ pub(crate) use cme_event_factory::kind_of as event_kind;
 mod entity_lifecycle;
 #[cfg(all(target_os = "windows", target_arch = "x86"))]
 mod entity_messages;
+// Its pure helpers (level/source/throttle) run only from the i686 detours.
+#[cfg_attr(not(all(target_os = "windows", target_arch = "x86")), allow(dead_code))]
+mod lua_debug_log;
 mod mercury_dispatch;
 #[cfg(all(target_os = "windows", target_arch = "x86"))]
 mod mercury_recv;
 #[cfg(all(target_os = "windows", target_arch = "x86"))]
 mod net_out;
+#[cfg(all(target_os = "windows", target_arch = "x86"))]
+mod sequence_manager;
 mod state_flags;
 
 use crate::queue::Producer;
@@ -171,11 +185,13 @@ unsafe fn install_inner(producer: Producer) {
     entity_messages::install_all(&producer);
     net_out::install_all(&producer);
     mercury_recv::install_all(&producer);
+    sequence_manager::install_all(&producer);
+    lua_debug_log::install_all(&producer);
 
     super::emit_info(
         &producer,
         "client.hooks.inline.install_complete",
-        [("hook_count", serde_json::json!(27))],
+        [("hook_count", serde_json::json!(33))],
     );
 }
 
@@ -445,6 +461,12 @@ mod tests {
             super::mercury_recv::ADDR_PROCESS_PACKET,
             super::mercury_recv::ADDR_PROCESS_ORDERED_PACKET,
             super::mercury_recv::ADDR_BUNDLE_UNPACK,
+            super::sequence_manager::ADDR_CACHE_READY,
+            super::sequence_manager::ADDR_PLAY,
+            super::sequence_manager::ADDR_INSTANTIATE,
+            super::lua_debug_log::ADDR_DEBUG_LOG,
+            super::lua_debug_log::ADDR_DEBUG_WARN,
+            super::lua_debug_log::ADDR_DEBUG_ERROR,
         ];
         for addr in hooked {
             assert!(

@@ -91,6 +91,7 @@ fn per_entity_streams_keep_a_first_k() {
         "client.mercury.entity_method",
         "client.mercury.entity_property",
         "client.net.out",
+        "client.sequence.dropped",
     ] {
         assert!(
             matches!(class_of(target), Class::PerEntity { first_k } if first_k > 0),

@@ -251,6 +251,26 @@ async fn live_db_pure_cash_purchase_debits_balance_and_grants_inventory_row() {
         5_000 - PURE_CASH_PRICE,
         "balance must drop by exactly per-line cash_cost",
     );
+    // The `vendor` transaction row (2026-09-29: vendor rows had no identity).
+    let row = capture
+        .find_message(tracing::Level::INFO, "vendor: transaction committed")
+        .expect("a purchase logs a vendor transaction row");
+    assert_eq!(row.target, "vendor");
+    for (key, value) in [
+        ("action", "buy".to_string()),
+        ("player_id", player_id.to_string()),
+        ("vendor_entity_id", "99".to_string()),
+        (
+            "vendor_template_id",
+            SEEDED_BUY_VENDOR_TEMPLATE_ID.to_string(),
+        ),
+        ("design_id", PURE_CASH_DESIGN_ID.to_string()),
+        ("price", PURE_CASH_PRICE.to_string()),
+        ("cash_before", "5000".to_string()),
+        ("cash_after", (5_000 - PURE_CASH_PRICE).to_string()),
+    ] {
+        assert_eq!(row.fields.get(key), Some(&value), "vendor field `{key}`");
+    }
 
     cleanup(&pool, entity_id, account_id, player_id).await;
 }
@@ -332,6 +352,7 @@ async fn live_db_purchase_rejected_when_player_cannot_afford() {
 
     let (transport, e2a, conn) = make_state(entity_id as u32);
     let db_pool = Some(Arc::new(pool.clone()));
+    let capture = crate::test_support::LogCapture::install();
 
     handle_purchase_vendor_items(
         entity_id as u32,
@@ -357,6 +378,20 @@ async fn live_db_purchase_rejected_when_player_cannot_afford() {
         PURE_CASH_PRICE - 1,
         "balance must not change when the purchase is rolled back",
     );
+    let row = capture
+        .find_event(
+            tracing::Level::INFO,
+            "vendor: request refused",
+            "insufficient_cash",
+        )
+        .expect("an unaffordable purchase logs reason=insufficient_cash");
+    assert!(
+        row.has_field("player_id", &player_id.to_string()),
+        "{row:#?}"
+    );
+    assert!(row.has_field("price", &PURE_CASH_PRICE.to_string()));
+    assert!(row.has_field("cash", &(PURE_CASH_PRICE - 1).to_string()));
+    assert!(row.has_field("design_id", &PURE_CASH_DESIGN_ID.to_string()));
 
     cleanup(&pool, entity_id, account_id, player_id).await;
 }

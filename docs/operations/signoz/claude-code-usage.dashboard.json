@@ -1,0 +1,1221 @@
+{
+  "title": "Cimmeria — Claude Code usage",
+  "description": "Token-usage profiling (#957, TP-04). Claude Code OTel metrics and events from the workstations: estimated cost by model, main vs subagent, agent type, MCP server, session and workstation; tokens by type; tool calls, decisions and API errors. USD is an estimated list-price plan-usage proxy, not a bill. Runbook: docs/operations/claude-code-telemetry.md.",
+  "tags": [
+    "cimmeria",
+    "claude-code",
+    "token-usage",
+    "tp04"
+  ],
+  "version": "v5",
+  "variables": {},
+  "layout": [
+    {
+      "h": 6,
+      "i": "cost-by-model",
+      "w": 6,
+      "x": 0,
+      "y": 0
+    },
+    {
+      "h": 6,
+      "i": "cost-by-query-source",
+      "w": 6,
+      "x": 6,
+      "y": 0
+    },
+    {
+      "h": 6,
+      "i": "tokens-by-type",
+      "w": 6,
+      "x": 0,
+      "y": 6
+    },
+    {
+      "h": 6,
+      "i": "tokens-by-model-type",
+      "w": 6,
+      "x": 6,
+      "y": 6
+    },
+    {
+      "h": 6,
+      "i": "cost-by-agent",
+      "w": 6,
+      "x": 0,
+      "y": 12
+    },
+    {
+      "h": 6,
+      "i": "cost-by-mcp",
+      "w": 6,
+      "x": 6,
+      "y": 12
+    },
+    {
+      "h": 6,
+      "i": "cost-by-session",
+      "w": 6,
+      "x": 0,
+      "y": 18
+    },
+    {
+      "h": 6,
+      "i": "cost-by-workstation",
+      "w": 6,
+      "x": 6,
+      "y": 18
+    },
+    {
+      "h": 6,
+      "i": "requests-by-agent",
+      "w": 6,
+      "x": 0,
+      "y": 24
+    },
+    {
+      "h": 6,
+      "i": "tool-calls",
+      "w": 6,
+      "x": 6,
+      "y": 24
+    },
+    {
+      "h": 6,
+      "i": "tool-decisions",
+      "w": 6,
+      "x": 0,
+      "y": 30
+    },
+    {
+      "h": 6,
+      "i": "api-errors",
+      "w": 6,
+      "x": 6,
+      "y": 30
+    },
+    {
+      "h": 6,
+      "i": "sessions",
+      "w": 6,
+      "x": 0,
+      "y": 36
+    }
+  ],
+  "widgets": [
+    {
+      "contextLinks": {
+        "linksData": []
+      },
+      "description": "Estimated list-price USD per model. A plan-usage proxy under the Max subscription (D-TP1), not a bill.",
+      "fillSpans": false,
+      "id": "cost-by-model",
+      "nullZeroValues": "zero",
+      "opacity": "1",
+      "panelTypes": "graph",
+      "query": {
+        "builder": {
+          "queryData": [
+            {
+              "aggregations": [
+                {
+                  "metricName": "claude_code.cost.usage",
+                  "spaceAggregation": "sum",
+                  "temporality": "delta",
+                  "timeAggregation": "sum"
+                }
+              ],
+              "dataSource": "metrics",
+              "disabled": false,
+              "expression": "A",
+              "filter": {
+                "expression": ""
+              },
+              "functions": [],
+              "groupBy": [
+                {
+                  "dataType": "string",
+                  "fieldContext": "attribute",
+                  "fieldDataType": "string",
+                  "isColumn": false,
+                  "isJSON": false,
+                  "key": "model",
+                  "name": "model",
+                  "signal": "metrics",
+                  "type": "tag"
+                }
+              ],
+              "having": [],
+              "legend": "{{model}}",
+              "orderBy": [],
+              "queryName": "A",
+              "selectColumns": [],
+              "stepInterval": 60
+            }
+          ],
+          "queryFormulas": []
+        },
+        "clickhouse_sql": [
+          {
+            "disabled": false,
+            "legend": "",
+            "name": "A",
+            "query": ""
+          }
+        ],
+        "promql": [
+          {
+            "disabled": false,
+            "legend": "",
+            "name": "A",
+            "query": ""
+          }
+        ],
+        "queryType": "builder"
+      },
+      "selectedLogFields": [],
+      "selectedTracesFields": [],
+      "softMax": 0,
+      "softMin": 0,
+      "thresholds": [],
+      "timePreferance": "GLOBAL_TIME",
+      "title": "Estimated cost by model (claude_code.cost.usage)",
+      "yAxisUnit": "none"
+    },
+    {
+      "contextLinks": {
+        "linksData": []
+      },
+      "description": "claude_code.cost.usage split by query_source. Subagents use a 5-minute cache TTL, main sessions 1 hour.",
+      "fillSpans": false,
+      "id": "cost-by-query-source",
+      "nullZeroValues": "zero",
+      "opacity": "1",
+      "panelTypes": "graph",
+      "query": {
+        "builder": {
+          "queryData": [
+            {
+              "aggregations": [
+                {
+                  "metricName": "claude_code.cost.usage",
+                  "spaceAggregation": "sum",
+                  "temporality": "delta",
+                  "timeAggregation": "sum"
+                }
+              ],
+              "dataSource": "metrics",
+              "disabled": false,
+              "expression": "A",
+              "filter": {
+                "expression": ""
+              },
+              "functions": [],
+              "groupBy": [
+                {
+                  "dataType": "string",
+                  "fieldContext": "attribute",
+                  "fieldDataType": "string",
+                  "isColumn": false,
+                  "isJSON": false,
+                  "key": "query_source",
+                  "name": "query_source",
+                  "signal": "metrics",
+                  "type": "tag"
+                }
+              ],
+              "having": [],
+              "legend": "{{query_source}}",
+              "orderBy": [],
+              "queryName": "A",
+              "selectColumns": [],
+              "stepInterval": 60
+            }
+          ],
+          "queryFormulas": []
+        },
+        "clickhouse_sql": [
+          {
+            "disabled": false,
+            "legend": "",
+            "name": "A",
+            "query": ""
+          }
+        ],
+        "promql": [
+          {
+            "disabled": false,
+            "legend": "",
+            "name": "A",
+            "query": ""
+          }
+        ],
+        "queryType": "builder"
+      },
+      "selectedLogFields": [],
+      "selectedTracesFields": [],
+      "softMax": 0,
+      "softMin": 0,
+      "thresholds": [],
+      "timePreferance": "GLOBAL_TIME",
+      "title": "Estimated cost: main vs subagent vs auxiliary",
+      "yAxisUnit": "none"
+    },
+    {
+      "contextLinks": {
+        "linksData": []
+      },
+      "description": "claude_code.token.usage by type. Cache writes are not split 5m/1h here; the transcript profiler has that split.",
+      "fillSpans": false,
+      "id": "tokens-by-type",
+      "nullZeroValues": "zero",
+      "opacity": "1",
+      "panelTypes": "graph",
+      "query": {
+        "builder": {
+          "queryData": [
+            {
+              "aggregations": [
+                {
+                  "metricName": "claude_code.token.usage",
+                  "spaceAggregation": "sum",
+                  "temporality": "delta",
+                  "timeAggregation": "sum"
+                }
+              ],
+              "dataSource": "metrics",
+              "disabled": false,
+              "expression": "A",
+              "filter": {
+                "expression": ""
+              },
+              "functions": [],
+              "groupBy": [
+                {
+                  "dataType": "string",
+                  "fieldContext": "attribute",
+                  "fieldDataType": "string",
+                  "isColumn": false,
+                  "isJSON": false,
+                  "key": "type",
+                  "name": "type",
+                  "signal": "metrics",
+                  "type": "tag"
+                }
+              ],
+              "having": [],
+              "legend": "{{type}}",
+              "orderBy": [],
+              "queryName": "A",
+              "selectColumns": [],
+              "stepInterval": 60
+            }
+          ],
+          "queryFormulas": []
+        },
+        "clickhouse_sql": [
+          {
+            "disabled": false,
+            "legend": "",
+            "name": "A",
+            "query": ""
+          }
+        ],
+        "promql": [
+          {
+            "disabled": false,
+            "legend": "",
+            "name": "A",
+            "query": ""
+          }
+        ],
+        "queryType": "builder"
+      },
+      "selectedLogFields": [],
+      "selectedTracesFields": [],
+      "softMax": 0,
+      "softMin": 0,
+      "thresholds": [],
+      "timePreferance": "GLOBAL_TIME",
+      "title": "Tokens by type (input, output, cacheRead, cacheCreation)",
+      "yAxisUnit": "none"
+    },
+    {
+      "contextLinks": {
+        "linksData": []
+      },
+      "description": "Window totals per model and token type. Cache reads are priced per model (0.05x input on Opus 5.5).",
+      "fillSpans": false,
+      "id": "tokens-by-model-type",
+      "nullZeroValues": "zero",
+      "opacity": "1",
+      "panelTypes": "table",
+      "query": {
+        "builder": {
+          "queryData": [
+            {
+              "aggregations": [
+                {
+                  "metricName": "claude_code.token.usage",
+                  "spaceAggregation": "sum",
+                  "temporality": "delta",
+                  "timeAggregation": "sum",
+                  "reduceTo": "sum"
+                }
+              ],
+              "dataSource": "metrics",
+              "disabled": false,
+              "expression": "A",
+              "filter": {
+                "expression": ""
+              },
+              "functions": [],
+              "groupBy": [
+                {
+                  "dataType": "string",
+                  "fieldContext": "attribute",
+                  "fieldDataType": "string",
+                  "isColumn": false,
+                  "isJSON": false,
+                  "key": "model",
+                  "name": "model",
+                  "signal": "metrics",
+                  "type": "tag"
+                },
+                {
+                  "dataType": "string",
+                  "fieldContext": "attribute",
+                  "fieldDataType": "string",
+                  "isColumn": false,
+                  "isJSON": false,
+                  "key": "type",
+                  "name": "type",
+                  "signal": "metrics",
+                  "type": "tag"
+                }
+              ],
+              "having": [],
+              "legend": "tokens",
+              "orderBy": [],
+              "queryName": "A",
+              "selectColumns": [],
+              "stepInterval": 60,
+              "reduceTo": "sum"
+            }
+          ],
+          "queryFormulas": []
+        },
+        "clickhouse_sql": [
+          {
+            "disabled": false,
+            "legend": "",
+            "name": "A",
+            "query": ""
+          }
+        ],
+        "promql": [
+          {
+            "disabled": false,
+            "legend": "",
+            "name": "A",
+            "query": ""
+          }
+        ],
+        "queryType": "builder"
+      },
+      "selectedLogFields": [],
+      "selectedTracesFields": [],
+      "softMax": 0,
+      "softMin": 0,
+      "thresholds": [],
+      "timePreferance": "GLOBAL_TIME",
+      "title": "Tokens by model and type (window total)",
+      "yAxisUnit": "none"
+    },
+    {
+      "contextLinks": {
+        "linksData": []
+      },
+      "description": "Needs OTEL_LOG_TOOL_DETAILS=1, or every custom agent reads 'custom'. Empty agent.name is the main session.",
+      "fillSpans": false,
+      "id": "cost-by-agent",
+      "nullZeroValues": "zero",
+      "opacity": "1",
+      "panelTypes": "table",
+      "query": {
+        "builder": {
+          "queryData": [
+            {
+              "aggregations": [
+                {
+                  "metricName": "claude_code.cost.usage",
+                  "spaceAggregation": "sum",
+                  "temporality": "delta",
+                  "timeAggregation": "sum",
+                  "reduceTo": "sum"
+                }
+              ],
+              "dataSource": "metrics",
+              "disabled": false,
+              "expression": "A",
+              "filter": {
+                "expression": ""
+              },
+              "functions": [],
+              "groupBy": [
+                {
+                  "dataType": "string",
+                  "fieldContext": "attribute",
+                  "fieldDataType": "string",
+                  "isColumn": false,
+                  "isJSON": false,
+                  "key": "agent.name",
+                  "name": "agent.name",
+                  "signal": "metrics",
+                  "type": "tag"
+                },
+                {
+                  "dataType": "string",
+                  "fieldContext": "attribute",
+                  "fieldDataType": "string",
+                  "isColumn": false,
+                  "isJSON": false,
+                  "key": "query_source",
+                  "name": "query_source",
+                  "signal": "metrics",
+                  "type": "tag"
+                }
+              ],
+              "having": [],
+              "legend": "usd",
+              "orderBy": [],
+              "queryName": "A",
+              "selectColumns": [],
+              "stepInterval": 60,
+              "reduceTo": "sum"
+            }
+          ],
+          "queryFormulas": []
+        },
+        "clickhouse_sql": [
+          {
+            "disabled": false,
+            "legend": "",
+            "name": "A",
+            "query": ""
+          }
+        ],
+        "promql": [
+          {
+            "disabled": false,
+            "legend": "",
+            "name": "A",
+            "query": ""
+          }
+        ],
+        "queryType": "builder"
+      },
+      "selectedLogFields": [],
+      "selectedTracesFields": [],
+      "softMax": 0,
+      "softMin": 0,
+      "thresholds": [],
+      "timePreferance": "GLOBAL_TIME",
+      "title": "Estimated cost by agent type (agent.name)",
+      "yAxisUnit": "none"
+    },
+    {
+      "contextLinks": {
+        "linksData": []
+      },
+      "description": "claude_code.cost.usage by mcp_server.name and mcp_tool.name. Empty means no MCP result in that request.",
+      "fillSpans": false,
+      "id": "cost-by-mcp",
+      "nullZeroValues": "zero",
+      "opacity": "1",
+      "panelTypes": "table",
+      "query": {
+        "builder": {
+          "queryData": [
+            {
+              "aggregations": [
+                {
+                  "metricName": "claude_code.cost.usage",
+                  "spaceAggregation": "sum",
+                  "temporality": "delta",
+                  "timeAggregation": "sum",
+                  "reduceTo": "sum"
+                }
+              ],
+              "dataSource": "metrics",
+              "disabled": false,
+              "expression": "A",
+              "filter": {
+                "expression": ""
+              },
+              "functions": [],
+              "groupBy": [
+                {
+                  "dataType": "string",
+                  "fieldContext": "attribute",
+                  "fieldDataType": "string",
+                  "isColumn": false,
+                  "isJSON": false,
+                  "key": "mcp_server.name",
+                  "name": "mcp_server.name",
+                  "signal": "metrics",
+                  "type": "tag"
+                },
+                {
+                  "dataType": "string",
+                  "fieldContext": "attribute",
+                  "fieldDataType": "string",
+                  "isColumn": false,
+                  "isJSON": false,
+                  "key": "mcp_tool.name",
+                  "name": "mcp_tool.name",
+                  "signal": "metrics",
+                  "type": "tag"
+                }
+              ],
+              "having": [],
+              "legend": "usd",
+              "orderBy": [],
+              "queryName": "A",
+              "selectColumns": [],
+              "stepInterval": 60,
+              "reduceTo": "sum"
+            }
+          ],
+          "queryFormulas": []
+        },
+        "clickhouse_sql": [
+          {
+            "disabled": false,
+            "legend": "",
+            "name": "A",
+            "query": ""
+          }
+        ],
+        "promql": [
+          {
+            "disabled": false,
+            "legend": "",
+            "name": "A",
+            "query": ""
+          }
+        ],
+        "queryType": "builder"
+      },
+      "selectedLogFields": [],
+      "selectedTracesFields": [],
+      "softMax": 0,
+      "softMin": 0,
+      "thresholds": [],
+      "timePreferance": "GLOBAL_TIME",
+      "title": "Estimated cost by MCP server whose result was consumed",
+      "yAxisUnit": "none"
+    },
+    {
+      "contextLinks": {
+        "linksData": []
+      },
+      "description": "Window total per session.id. Match a session id to its transcript file name to find the worktree and PR.",
+      "fillSpans": false,
+      "id": "cost-by-session",
+      "nullZeroValues": "zero",
+      "opacity": "1",
+      "panelTypes": "table",
+      "query": {
+        "builder": {
+          "queryData": [
+            {
+              "aggregations": [
+                {
+                  "metricName": "claude_code.cost.usage",
+                  "spaceAggregation": "sum",
+                  "temporality": "delta",
+                  "timeAggregation": "sum",
+                  "reduceTo": "sum"
+                }
+              ],
+              "dataSource": "metrics",
+              "disabled": false,
+              "expression": "A",
+              "filter": {
+                "expression": ""
+              },
+              "functions": [],
+              "groupBy": [
+                {
+                  "dataType": "string",
+                  "fieldContext": "attribute",
+                  "fieldDataType": "string",
+                  "isColumn": false,
+                  "isJSON": false,
+                  "key": "session.id",
+                  "name": "session.id",
+                  "signal": "metrics",
+                  "type": "tag"
+                }
+              ],
+              "having": [],
+              "legend": "usd",
+              "orderBy": [],
+              "queryName": "A",
+              "selectColumns": [],
+              "stepInterval": 60,
+              "reduceTo": "sum"
+            }
+          ],
+          "queryFormulas": []
+        },
+        "clickhouse_sql": [
+          {
+            "disabled": false,
+            "legend": "",
+            "name": "A",
+            "query": ""
+          }
+        ],
+        "promql": [
+          {
+            "disabled": false,
+            "legend": "",
+            "name": "A",
+            "query": ""
+          }
+        ],
+        "queryType": "builder"
+      },
+      "selectedLogFields": [],
+      "selectedTracesFields": [],
+      "softMax": 0,
+      "softMin": 0,
+      "thresholds": [],
+      "timePreferance": "GLOBAL_TIME",
+      "title": "Estimated cost by session",
+      "yAxisUnit": "none"
+    },
+    {
+      "contextLinks": {
+        "linksData": []
+      },
+      "description": "Groups by the cimmeria.workstation resource attribute each machine sets in OTEL_RESOURCE_ATTRIBUTES.",
+      "fillSpans": false,
+      "id": "cost-by-workstation",
+      "nullZeroValues": "zero",
+      "opacity": "1",
+      "panelTypes": "table",
+      "query": {
+        "builder": {
+          "queryData": [
+            {
+              "aggregations": [
+                {
+                  "metricName": "claude_code.cost.usage",
+                  "spaceAggregation": "sum",
+                  "temporality": "delta",
+                  "timeAggregation": "sum",
+                  "reduceTo": "sum"
+                }
+              ],
+              "dataSource": "metrics",
+              "disabled": false,
+              "expression": "A",
+              "filter": {
+                "expression": ""
+              },
+              "functions": [],
+              "groupBy": [
+                {
+                  "dataType": "string",
+                  "fieldContext": "attribute",
+                  "fieldDataType": "string",
+                  "isColumn": false,
+                  "isJSON": false,
+                  "key": "cimmeria.workstation",
+                  "name": "cimmeria.workstation",
+                  "signal": "metrics",
+                  "type": "tag"
+                }
+              ],
+              "having": [],
+              "legend": "usd",
+              "orderBy": [],
+              "queryName": "A",
+              "selectColumns": [],
+              "stepInterval": 60,
+              "reduceTo": "sum"
+            }
+          ],
+          "queryFormulas": []
+        },
+        "clickhouse_sql": [
+          {
+            "disabled": false,
+            "legend": "",
+            "name": "A",
+            "query": ""
+          }
+        ],
+        "promql": [
+          {
+            "disabled": false,
+            "legend": "",
+            "name": "A",
+            "query": ""
+          }
+        ],
+        "queryType": "builder"
+      },
+      "selectedLogFields": [],
+      "selectedTracesFields": [],
+      "softMax": 0,
+      "softMin": 0,
+      "thresholds": [],
+      "timePreferance": "GLOBAL_TIME",
+      "title": "Estimated cost by workstation label",
+      "yAxisUnit": "none"
+    },
+    {
+      "contextLinks": {
+        "linksData": []
+      },
+      "description": "Count of claude_code.api_request events per agent.name and model.",
+      "fillSpans": false,
+      "id": "requests-by-agent",
+      "nullZeroValues": "zero",
+      "opacity": "1",
+      "panelTypes": "table",
+      "query": {
+        "builder": {
+          "queryData": [
+            {
+              "aggregations": [
+                {
+                  "expression": "count()"
+                }
+              ],
+              "dataSource": "logs",
+              "disabled": false,
+              "expression": "A",
+              "filter": {
+                "expression": "body = 'claude_code.api_request'"
+              },
+              "functions": [],
+              "groupBy": [
+                {
+                  "dataType": "string",
+                  "fieldContext": "attribute",
+                  "fieldDataType": "string",
+                  "isColumn": false,
+                  "isJSON": false,
+                  "key": "agent.name",
+                  "name": "agent.name",
+                  "signal": "logs",
+                  "type": "tag"
+                },
+                {
+                  "dataType": "string",
+                  "fieldContext": "attribute",
+                  "fieldDataType": "string",
+                  "isColumn": false,
+                  "isJSON": false,
+                  "key": "model",
+                  "name": "model",
+                  "signal": "logs",
+                  "type": "tag"
+                }
+              ],
+              "having": [],
+              "legend": "",
+              "orderBy": [],
+              "queryName": "A",
+              "reduceTo": "sum",
+              "selectColumns": [],
+              "stepInterval": 60
+            }
+          ],
+          "queryFormulas": []
+        },
+        "clickhouse_sql": [
+          {
+            "disabled": false,
+            "legend": "",
+            "name": "A",
+            "query": ""
+          }
+        ],
+        "promql": [
+          {
+            "disabled": false,
+            "legend": "",
+            "name": "A",
+            "query": ""
+          }
+        ],
+        "queryType": "builder"
+      },
+      "selectedLogFields": [],
+      "selectedTracesFields": [],
+      "softMax": 0,
+      "softMin": 0,
+      "thresholds": [],
+      "timePreferance": "GLOBAL_TIME",
+      "title": "API requests by agent and model",
+      "yAxisUnit": "none"
+    },
+    {
+      "contextLinks": {
+        "linksData": []
+      },
+      "description": "claude_code.tool_result per tool_name. tool_result_size_bytes is the context a tool adds; duration_ms includes execution only.",
+      "fillSpans": false,
+      "id": "tool-calls",
+      "nullZeroValues": "zero",
+      "opacity": "1",
+      "panelTypes": "table",
+      "query": {
+        "builder": {
+          "queryData": [
+            {
+              "aggregations": [
+                {
+                  "expression": "count()"
+                },
+                {
+                  "expression": "p95(duration_ms)"
+                },
+                {
+                  "expression": "sum(tool_result_size_bytes)"
+                }
+              ],
+              "dataSource": "logs",
+              "disabled": false,
+              "expression": "A",
+              "filter": {
+                "expression": "body = 'claude_code.tool_result'"
+              },
+              "functions": [],
+              "groupBy": [
+                {
+                  "dataType": "string",
+                  "fieldContext": "attribute",
+                  "fieldDataType": "string",
+                  "isColumn": false,
+                  "isJSON": false,
+                  "key": "tool_name",
+                  "name": "tool_name",
+                  "signal": "logs",
+                  "type": "tag"
+                },
+                {
+                  "dataType": "string",
+                  "fieldContext": "attribute",
+                  "fieldDataType": "string",
+                  "isColumn": false,
+                  "isJSON": false,
+                  "key": "success",
+                  "name": "success",
+                  "signal": "logs",
+                  "type": "tag"
+                }
+              ],
+              "having": [],
+              "legend": "",
+              "orderBy": [],
+              "queryName": "A",
+              "reduceTo": "sum",
+              "selectColumns": [],
+              "stepInterval": 60
+            }
+          ],
+          "queryFormulas": []
+        },
+        "clickhouse_sql": [
+          {
+            "disabled": false,
+            "legend": "",
+            "name": "A",
+            "query": ""
+          }
+        ],
+        "promql": [
+          {
+            "disabled": false,
+            "legend": "",
+            "name": "A",
+            "query": ""
+          }
+        ],
+        "queryType": "builder"
+      },
+      "selectedLogFields": [],
+      "selectedTracesFields": [],
+      "softMax": 0,
+      "softMin": 0,
+      "thresholds": [],
+      "timePreferance": "GLOBAL_TIME",
+      "title": "Tool calls: count, p95 duration, result bytes",
+      "yAxisUnit": "none"
+    },
+    {
+      "contextLinks": {
+        "linksData": []
+      },
+      "description": "claude_code.tool_decision by decision and source. 'user_*' sources are human interventions.",
+      "fillSpans": false,
+      "id": "tool-decisions",
+      "nullZeroValues": "zero",
+      "opacity": "1",
+      "panelTypes": "table",
+      "query": {
+        "builder": {
+          "queryData": [
+            {
+              "aggregations": [
+                {
+                  "expression": "count()"
+                }
+              ],
+              "dataSource": "logs",
+              "disabled": false,
+              "expression": "A",
+              "filter": {
+                "expression": "body = 'claude_code.tool_decision'"
+              },
+              "functions": [],
+              "groupBy": [
+                {
+                  "dataType": "string",
+                  "fieldContext": "attribute",
+                  "fieldDataType": "string",
+                  "isColumn": false,
+                  "isJSON": false,
+                  "key": "decision",
+                  "name": "decision",
+                  "signal": "logs",
+                  "type": "tag"
+                },
+                {
+                  "dataType": "string",
+                  "fieldContext": "attribute",
+                  "fieldDataType": "string",
+                  "isColumn": false,
+                  "isJSON": false,
+                  "key": "source",
+                  "name": "source",
+                  "signal": "logs",
+                  "type": "tag"
+                }
+              ],
+              "having": [],
+              "legend": "",
+              "orderBy": [],
+              "queryName": "A",
+              "reduceTo": "sum",
+              "selectColumns": [],
+              "stepInterval": 60
+            }
+          ],
+          "queryFormulas": []
+        },
+        "clickhouse_sql": [
+          {
+            "disabled": false,
+            "legend": "",
+            "name": "A",
+            "query": ""
+          }
+        ],
+        "promql": [
+          {
+            "disabled": false,
+            "legend": "",
+            "name": "A",
+            "query": ""
+          }
+        ],
+        "queryType": "builder"
+      },
+      "selectedLogFields": [],
+      "selectedTracesFields": [],
+      "softMax": 0,
+      "softMin": 0,
+      "thresholds": [],
+      "timePreferance": "GLOBAL_TIME",
+      "title": "Tool permission decisions",
+      "yAxisUnit": "none"
+    },
+    {
+      "contextLinks": {
+        "linksData": []
+      },
+      "description": "claude_code.api_error per status_code and model. A failed call is retried; its tokens are not billed twice.",
+      "fillSpans": false,
+      "id": "api-errors",
+      "nullZeroValues": "zero",
+      "opacity": "1",
+      "panelTypes": "table",
+      "query": {
+        "builder": {
+          "queryData": [
+            {
+              "aggregations": [
+                {
+                  "expression": "count()"
+                }
+              ],
+              "dataSource": "logs",
+              "disabled": false,
+              "expression": "A",
+              "filter": {
+                "expression": "body = 'claude_code.api_error'"
+              },
+              "functions": [],
+              "groupBy": [
+                {
+                  "dataType": "string",
+                  "fieldContext": "attribute",
+                  "fieldDataType": "string",
+                  "isColumn": false,
+                  "isJSON": false,
+                  "key": "status_code",
+                  "name": "status_code",
+                  "signal": "logs",
+                  "type": "tag"
+                },
+                {
+                  "dataType": "string",
+                  "fieldContext": "attribute",
+                  "fieldDataType": "string",
+                  "isColumn": false,
+                  "isJSON": false,
+                  "key": "model",
+                  "name": "model",
+                  "signal": "logs",
+                  "type": "tag"
+                }
+              ],
+              "having": [],
+              "legend": "",
+              "orderBy": [],
+              "queryName": "A",
+              "reduceTo": "sum",
+              "selectColumns": [],
+              "stepInterval": 60
+            }
+          ],
+          "queryFormulas": []
+        },
+        "clickhouse_sql": [
+          {
+            "disabled": false,
+            "legend": "",
+            "name": "A",
+            "query": ""
+          }
+        ],
+        "promql": [
+          {
+            "disabled": false,
+            "legend": "",
+            "name": "A",
+            "query": ""
+          }
+        ],
+        "queryType": "builder"
+      },
+      "selectedLogFields": [],
+      "selectedTracesFields": [],
+      "softMax": 0,
+      "softMin": 0,
+      "thresholds": [],
+      "timePreferance": "GLOBAL_TIME",
+      "title": "API errors by status code",
+      "yAxisUnit": "none"
+    },
+    {
+      "contextLinks": {
+        "linksData": []
+      },
+      "description": "claude_code.session.count by start_type (fresh, resume, continue).",
+      "fillSpans": false,
+      "id": "sessions",
+      "nullZeroValues": "zero",
+      "opacity": "1",
+      "panelTypes": "table",
+      "query": {
+        "builder": {
+          "queryData": [
+            {
+              "aggregations": [
+                {
+                  "metricName": "claude_code.session.count",
+                  "spaceAggregation": "sum",
+                  "temporality": "delta",
+                  "timeAggregation": "sum",
+                  "reduceTo": "sum"
+                }
+              ],
+              "dataSource": "metrics",
+              "disabled": false,
+              "expression": "A",
+              "filter": {
+                "expression": ""
+              },
+              "functions": [],
+              "groupBy": [
+                {
+                  "dataType": "string",
+                  "fieldContext": "attribute",
+                  "fieldDataType": "string",
+                  "isColumn": false,
+                  "isJSON": false,
+                  "key": "start_type",
+                  "name": "start_type",
+                  "signal": "metrics",
+                  "type": "tag"
+                }
+              ],
+              "having": [],
+              "legend": "sessions",
+              "orderBy": [],
+              "queryName": "A",
+              "selectColumns": [],
+              "stepInterval": 60,
+              "reduceTo": "sum"
+            }
+          ],
+          "queryFormulas": []
+        },
+        "clickhouse_sql": [
+          {
+            "disabled": false,
+            "legend": "",
+            "name": "A",
+            "query": ""
+          }
+        ],
+        "promql": [
+          {
+            "disabled": false,
+            "legend": "",
+            "name": "A",
+            "query": ""
+          }
+        ],
+        "queryType": "builder"
+      },
+      "selectedLogFields": [],
+      "selectedTracesFields": [],
+      "softMax": 0,
+      "softMin": 0,
+      "thresholds": [],
+      "timePreferance": "GLOBAL_TIME",
+      "title": "Sessions started by start type",
+      "yAxisUnit": "none"
+    }
+  ]
+}

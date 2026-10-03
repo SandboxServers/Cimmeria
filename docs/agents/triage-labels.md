@@ -27,7 +27,7 @@ An issue is `ready-for-agent` only when all of these hold. If any is missing, it
 - **The premise is reconciled with the docs.** Any claim that a constant, index, or wire layout is wrong has been checked against [`docs/protocol/`](../protocol/) and the RE findings, per "When sources disagree" in [`domain.md`](domain.md). An unverified claim is the most expensive kind of ticket to hand an agent.
 - **Acceptance criteria are observable.** A reviewer can tell from a test or a byte string whether it is done.
 - **The test type is named**, using the picker in [`TESTING.md`](../../TESTING.md).
-- **The doc-update map rows are named**, from [`CLAUDE.md`](../../CLAUDE.md).
+- **The doc-update map rows are named**, from [doc-update-map.md](doc-update-map.md).
 - **Nothing in it needs tools an unattended agent does not have.** See the next section.
 
 The ticket body should follow the contract in [`issue-tracker.md`](issue-tracker.md).

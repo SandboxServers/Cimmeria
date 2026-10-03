@@ -1,6 +1,6 @@
 # Development Workflow for AI-Assisted Work
 
-> **Last updated**: 2026-09-27
+> **Last updated**: 2026-10-03
 > **Audience**: Contributors doing AI-assisted work, and their agents
 > **Type**: How-to
 
@@ -8,7 +8,8 @@ How a change moves from ticket to merged PR in this repo when an AI harness is d
 
 The repo already ships the pieces. Anyone who clones it with Claude Code gets them automatically:
 
-- [`CLAUDE.md`](../../CLAUDE.md): build rules, pre-PR checklist, test policy, doc-update map, file organization.
+- [`CLAUDE.md`](../../CLAUDE.md): build rules, pre-PR checklist, test policy, file organization.
+- [`doc-update-map.md`](doc-update-map.md): which docs a change has to update. [`pre-pr-checks.md`](pre-pr-checks.md): what each CI check gates, and how to fix a red one.
 - [`AGENTS.md`](../../AGENTS.md) and [`.github/copilot-instructions.md`](../../.github/copilot-instructions.md): the same policy for other harnesses and for review bots.
 - [`.claude/agents/`](../../.claude/agents/): sixteen domain subagents (roster below).
 - `.claude/agent-memory/<agent>/`: what those agents learned on earlier runs, and `.claude/agent-memory/main-session/`: what top-level sessions learned. Committed on purpose; see [Project memory](#project-memory).
@@ -24,8 +25,8 @@ The repo already ships the pieces. Anyone who clones it with Claude Code gets th
 5. **Implement** with `rust-gameserver-dev` (or directly), iterating with `cargo check -p <crate>` on the crate you changed, through the build lane (see [Builds, worktrees and test databases](#builds-worktrees-and-test-databases)). The review rules for code under `crates/services/` are in [`.github/instructions/rust-services.instructions.md`](../../.github/instructions/rust-services.instructions.md); content chains have their own in [`content-chains.instructions.md`](../../.github/instructions/content-chains.instructions.md).
 6. **Ask "what if the client lies?"** Run `server-authority-enforcer` over any handler that takes client-supplied data into server state.
 7. **Prove the guard.** First commit your work (a WIP commit is fine). Then undo only the fix by editing it out of the one file, run the test, and confirm it fails. Restore with `git checkout HEAD -- <that one file>`. Never restore with `git checkout .`, `git reset --hard`, or `git stash`: other sessions may share the checkout and the stash. `testing-validation-engineer` does this review.
-8. **Update the docs** named by the `CLAUDE.md` doc-update map, preferably with `documentation-writer`, and keep `docs/readme.md` and the section `README.md` indexes in sync. Leave generated blocks and the status docs alone; see [Shared docs without conflicts](#shared-docs-without-conflicts).
-9. **Run the pre-PR checklist** from `CLAUDE.md`. `rust-toolchain.toml` pins the toolchain CI uses, so your clippy run is CI's.
+8. **Update the docs** named by the [doc-update map](doc-update-map.md), preferably with `documentation-writer`, and keep `docs/readme.md` and the section `README.md` indexes in sync. Leave generated blocks and the status docs alone; see [Shared docs without conflicts](#shared-docs-without-conflicts).
+9. **Run the pre-PR checklist** from `CLAUDE.md` ([pre-pr-checks.md](pre-pr-checks.md) when a check fails). `rust-toolchain.toml` pins the toolchain CI uses, so your clippy run is CI's.
 10. **Open the PR** with the template filled in, including what you could not test.
 11. **Commit project memory.** If a subagent or the main session wrote findings under `.claude/agent-memory/`, stage them with the change. Check the root checkout too: subagents that worked in a worktree have been seen writing their memory files into the root checkout's `.claude/agent-memory/` instead (observed through 2026-09). Rules for what belongs there: [Project memory](#project-memory).
 
@@ -62,6 +63,24 @@ Definitions and trigger descriptions are in [`.claude/agents/`](../../.claude/ag
 - **Do not switch branches in a checkout someone else is using.** Do integration work from a dedicated worktree.
 - **Run the advisors on the model they were defined for.** They are tuned for judgment-heavy review; routing them to a smaller model to save tokens costs more in rework than it saves.
 - **Agent memory is a deliverable.** Files under `.claude/agent-memory/` are committed alongside the work that produced them. `.claude/settings.local.json` and `.mcp.json` are per-machine and are not. (`settings.local.json` is still tracked by mistake; see #845.)
+
+## Worker lifetime and notifications
+
+Every request re-reads the agent's whole context, so a long-lived agent pays for its history on every turn. In the three weeks to 2026-10-03 the median main-session request carried 349k tokens of context, workers ran as long as 1,036 requests, and only 6 of 899 transcripts ever compacted. About half of coordinator spend went on turns started by an event rather than a person. The measurements are in [the token-usage ledger](../analysis/token-usage/README.md); these rules are its decision D-TP4 and apply until its close-out confirms or revises them.
+
+**Worker lifetime:**
+
+- **One phase per worker.** One worker implements. Review fixes go to a fresh worker, and a mechanical rebase to a fresh worker or to the coordinator using git alone. Don't send the implementing worker back for round two.
+- **The handoff is a worknote.** Before a worker stops, it writes `docs/analysis/<campaign>/worknotes/<packet>.md`: what is done, what is left, the branch and worktree, the commands to rerun, and the open questions. The next worker starts from the worknote, not from the old transcript.
+- **Hand off early.** At about 200 requests, or about 250k tokens of context, a worker writes its worknote and stops, and the coordinator starts a fresh one. Don't wait for an automatic compaction.
+- **Coordinators compact at wave boundaries.** Once the ledger and the resume note are current, compact with a pointer to them (`/compact` followed by the ledger path).
+
+**Notifications:** each one wakes a context that may be hundreds of thousands of tokens.
+
+- **A worker reports once.** Either the final `SendMessage` or the completion notice carries the result, never both. A background subagent's last message already is the completion notice, so it does not also message the coordinator.
+- **Report results, not progress.** Don't message a coordinator that work is still running; it hears when the work finishes.
+- **Monitors use `python` or `gh --jq`, not `jq`.** `jq` is not installed on every workstation; a watcher that pipes into it fails every poll and expires silently after 30 minutes.
+- **Batch cross-session messages.** Send a peer session one message per decision or wave, not one per event, and nothing it will see anyway in git or on the PR.
 
 ## Project memory
 
@@ -136,8 +155,9 @@ bash tools/build-lane/lane.sh --exclusive cargo nextest run --profile=ci --works
 - **It sets up the build environment.** `CARGO_BUILD_JOBS` defaults to cores ÷ slots (at least 4). Workspace crates build incrementally, and sccache, when installed, caches third-party crates in one shared cache, so a third-party crate one worktree compiled is a cache hit in the next. Each worktree builds into its own target dir: `<worktree>\target`, or `$CIMMERIA_TARGET_ROOT\<worktree>` on the Dev Drive. The lane runs sccache through a small wrapper that hides that per-worktree `CARGO_TARGET_DIR` from it; set `RUSTC_WRAPPER` yourself and you lose that.
 - **It refuses to start on a nearly full disk.** Below `LANE_MIN_FREE_GB` free (default 10) on the target dir's drive, a job exits with code 28 and names the cleanup commands, instead of failing part-way with "os error 112". See [troubleshooting](../troubleshooting.md#lane-refuses-to-start-lane-refusing-to-start-n-gb-free-or-builds-fail-with-os-error-112).
 - **It prunes stale incremental sessions after each job** in its own worktree, unless another lane job is building there. rustc keeps the previous session of every unit next to the newest one, and never reads it again. `LANE_PRUNE=0` turns this off.
+- **An agent gets a summary, not the build output.** When stdout isn't a terminal, the lane writes the command's output to a log under `%LOCALAPPDATA%\cimmeria-build\logs\<worktree>\` and prints `[lane] status=`, the exit code, the test counts, the compiler errors and failing tests with their first lines, a failures file and the log path. Read the failures file or grep the log when the summary isn't enough; don't rerun the build to see its output. `LANE_VERBOSE=1` prints everything, as at a terminal.
 - **Don't set `CARGO_INCREMENTAL=1`.** sccache refuses to run under it, so the lane drops sccache for that job. Workspace crates already build incrementally without it.
-- **Every job is logged** to `%LOCALAPPDATA%\cimmeria-build\metrics\jobs.jsonl`: wait and run time, exit code, worktree, commit, settings, the lowest free RAM, the sccache hits and misses, the free disk at the start and the MB of incremental sessions it pruned. `python tools/build-lane/lane_stats.py` reports on it; `--recent 20` lists the last jobs, `--kind` and `--match` compare like with like, `--html` draws run time over time, and `--csv` exports every field. `LANE_METRICS=0` turns the log off.
+- **Every job is logged** to `%LOCALAPPDATA%\cimmeria-build\metrics\jobs.jsonl`: wait and run time, exit code, worktree, commit, settings, the lowest free RAM, the sccache hits and misses, the free disk at the start, the MB of incremental sessions it pruned and, for a summarised job, its log path. `python tools/build-lane/lane_stats.py` reports on it; `--recent 20` lists the last jobs, `--kind` and `--match` compare like with like, `--html` draws run time over time, and `--csv` exports every field. `LANE_METRICS=0` turns the log off.
 - **Iterate per crate.** `cimmeria-services` is a small facade over about 20 crates, so `-p cimmeria-services` no longer covers the code you changed. Name the crate you edited: `-p cimmeria-cell`, `-p cimmeria-cell-content`, `-p cimmeria-base-methods`, and so on.
 
 ### Dev Drive (optional, recommended)

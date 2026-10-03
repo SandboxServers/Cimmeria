@@ -58,6 +58,8 @@ Launcher-mediated credentials, HMAC-token auth, single-party verifier.
 | `crates/launcher/src/telemetry/session.rs` | `current-session.json` writer (reserved for future Lua-side hook). |
 | `crates/launcher/src/telemetry/process_watch.rs` | `spawn_blocking` wait on the game (`Child::wait` for a plain launch, `RunningProcess::wait` for an injected one) — game-exit signal without burning an async worker. |
 | `crates/launcher/src/telemetry/patch_log.rs` | Reads the client-patches DLL's `cimmeria-client-patches.log` and yields one `client.patches.boot` event per session. |
+| `crates/launcher/src/telemetry/patch_counts.rs` | Parses the same log's per-call lines into the DLL's claimed / delivered / dropped counters and yields `client.patches.counts` (at most once a minute when a count moved, and once at game exit). |
+| `crates/launcher/src/telemetry/install_result.rs` | Builds `client.launcher.install_result` from an `install_report::InstallReport` (one outcome per manifest patch) and writes it to the on-disk queue after each Install / Update run when the player opted in. |
 | `crates/launcher/src/telemetry/runner.rs` | Per-session loop: tail → enqueue → flush → on-exit bundle. |
 | `crates/launcher/src/telemetry/mod.rs` | `Telemetry` orchestrator (`start_session` / `enqueue` / `flush` / `refresh_if_due` / `upload_bundle`). |
 | `crates/admin-api/src/routes/dev_session/` | Server-side `/api/auth/dev-session` + `/refresh` endpoints (mint + verify), quota tables. |
@@ -224,6 +226,57 @@ The level is `info` when the DLL was injected and installed its hooks,
 "why did the Black Market window not open for this player" without a
 repro. The log lines this parses are listed in the client-patches
 [README](../../crates/client-patches/README.md#log).
+
+### Client-patches counts event
+
+The same watcher also reports what the DLL did after it booted: target
+`client.patches.counts`, added 2026-09-29 after a playtest where the
+only evidence that `onBMOpen` was dropped (the overlay's global
+`CimmeriaBM` was not defined) was the player's local log file. Every
+per-call line the DLL writes ends in `(#n)`, the running value of one
+of its session counters, and the DLL writes only the 1st, 10th, 100th
+... occurrence (the send path also the first 100). The highest `n` per
+counter is therefore a **lower bound**, and the event says so with
+`counts_are_lower_bounds = true`.
+
+| Field | Meaning |
+|---|---|
+| `claimed`, `not_local_player`, `decode_failed`, `dropped_queue_full`, `delivered`, `dropped_no_overlay`, `dropped_no_handler`, `handler_failed`, `sent`, `send_refused`, `tech_competency_nil`, `natives_registered`, `register_failed` | Highest count seen per DLL counter (0 when never logged) |
+| `<counter>.methods` | Comma list of the method, handler or native names those lines named (at most 16) |
+| `<counter>.last_reason` | The last line's reason, e.g. `the global CimmeriaBM is not defined, so the UI overlay is not installed`, a decode error, or a send refusal (`offline (…)`) |
+| `dropped_total` | Sum of the five drop counters (claimed calls the overlay never got) |
+| `lines`, `log_capped` | DLL lines read; `true` once the DLL's 2,000-line cap was reached, so later counts may be missing |
+| `final` | `false` for a periodic row, `true` for the one at game exit |
+
+It is sent at most once a minute while a count moves, and once at game
+exit, only when the DLL was injected and counted something. The level
+is `warn` when any drop, send refusal or registration failure was
+counted, `info` otherwise.
+
+### Install result event
+
+Every **Install / Update** run fills an `InstallReport`
+([`install_report.rs`](../../crates/launcher/src/install_report.rs)):
+the seed step, one outcome per manifest patch, and how the run ended.
+When the player opted in to telemetry, the launcher writes one
+`client_native` event with target `client.launcher.install_result` to
+its on-disk telemetry queue, stamped with the install time. No session
+exists during an install, so the event ships with the first flush of
+the next telemetry session.
+
+| Field | Meaning |
+|---|---|
+| `result` | `ok`, `patches_failed`, `cancelled` or `error` (the run stopped early) |
+| `seed_applied` | this run downloaded and unpacked the seed |
+| `patch_count`, `applied`, `already`, `failed`, `skipped_dependency` | patches in the manifest, and how many ended each way |
+| `patch.<id>` | that patch's outcome: `applied`, `already`, `failed` or `skipped_dependency` |
+| `patch.<id>.reason` | why it failed or was skipped (at most 512 characters) |
+| `patch.<id>.mismatch`, `.path`, `.expected_sha256`, `.actual_sha256` | for a failed hash check: `source_mismatch` (a stock file a patch set rebuilds from is not stock, with its path), `result_mismatch` (a rebuilt file came out wrong) or `download` (the blob failed its manifest sha256) |
+| `error`, `error.mismatch`, `error.path`, … | the same for a run that stopped early (a seed hash mismatch) |
+
+The level is `info` for `ok` and `cancelled`, `warn` otherwise. Patch
+ids become key segments with anything outside `[A-Za-z0-9_-]` replaced
+by `_`.
 
 ### Telemetry DLL launch event
 

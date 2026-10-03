@@ -35,7 +35,8 @@ jobs:
   # Decides whether the Rust jobs run. A PR whose every changed file is
   # Markdown, agent config under .claude/, or an image under docs/ skips
   # them; a skipped job reports as passed. docs/protocol/ always counts as
-  # code, because cimmeria-patch-wire's tests read the dispatch tables there.
+  # code, because cimmeria-patch-wire's tests read the dispatch tables there,
+  # and so does tools/token-profile/, whose contract tests read its Markdown.
   # Pushes to main always run everything. Any doubt (API error, empty list,
   # the API's 3000-file cap) runs everything.
   changes:
@@ -59,7 +60,8 @@ jobs:
             && [ -n "$files" ] && [ "$(echo "$files" | wc -l)" -lt 3000 ]; then
             nocode='\.md$|^\.claude/|^docs/.*\.(svg|png|jpe?g|gif)$'
             if ! echo "$files" | grep -Ev "$nocode" | grep -q . \
-              && ! echo "$files" | grep -q '^docs/protocol/'; then
+              && ! echo "$files" | grep -q '^docs/protocol/' \
+              && ! echo "$files" | grep -q '^tools/token-profile/'; then
               code=false
             fi
           fi
@@ -150,6 +152,8 @@ jobs:
         run: python3 -m unittest discover -s tools/build-lane -p "test_*.py"
       - name: docs-gen tests
         run: python3 -m unittest discover -s tools/docs-gen -p "test_*.py"
+      - name: token-profile contract and ingest tests
+        run: python3 -m unittest discover -s tools/token-profile -p "test_*.py"
       - uses: ./.github/actions/rust-toolchain
       # Generated doc blocks (test counts, crate graph, ...) are regenerated on
       # main by regen-docs.yml after the merge, so a stale block never fails a PR.

@@ -65,7 +65,7 @@ pub(super) fn make_ability(id: i32, effect_ids: Vec<i32>) -> AbilityDef {
     }
 }
 
-fn make_effect(id: i32, health_damage: i32) -> EffectDef {
+pub(super) fn make_effect(id: i32, health_damage: i32) -> EffectDef {
     let mut params = std::collections::HashMap::new();
     params.insert("HealthDamage".to_string(), health_damage.to_string());
     EffectDef {

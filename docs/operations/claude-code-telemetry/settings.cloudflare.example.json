@@ -1,0 +1,15 @@
+{
+  "otelHeadersHelper": "pwsh -NoProfile -NonInteractive -File <ABSOLUTE-PATH-TO-REPO>/docs/operations/claude-code-telemetry/otel-headers.ps1",
+  "env": {
+    "CLAUDE_CODE_ENABLE_TELEMETRY": "1",
+    "OTEL_METRICS_EXPORTER": "otlp",
+    "OTEL_LOGS_EXPORTER": "otlp",
+    "OTEL_EXPORTER_OTLP_PROTOCOL": "http/protobuf",
+    "OTEL_EXPORTER_OTLP_ENDPOINT": "https://<OTLP-HOSTNAME>",
+    "OTEL_EXPORTER_OTLP_METRICS_TEMPORALITY_PREFERENCE": "delta",
+    "OTEL_LOG_TOOL_DETAILS": "1",
+    "OTEL_METRICS_INCLUDE_ACCOUNT_UUID": "false",
+    "OTEL_METRICS_INCLUDE_VERSION": "true",
+    "OTEL_RESOURCE_ATTRIBUTES": "deployment.environment=cimmeria-dev,cimmeria.workstation=<WORKSTATION-LABEL>"
+  }
+}

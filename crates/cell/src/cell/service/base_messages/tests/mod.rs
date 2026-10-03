@@ -40,4 +40,5 @@ mod org;
 mod passive_abilities;
 mod request_entity_update;
 mod respec_burst;
+mod telemetry_fields;
 mod trade_disconnect;

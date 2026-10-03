@@ -1,6 +1,6 @@
 ---
 name: rust-gameserver-dev
-description: "Use this agent when implementing server-side game systems in Rust, wiring up network protocols, building entity systems, handling serialization/deserialization of game data, implementing Mercury protocol messages, writing database persistence layers, or translating C++ MMO server patterns into idiomatic Rust. This is the agent that turns design specs and protocol docs into working code.\\n\\nExamples:\\n\\n- user: \"We need to implement the inventory system - items need to be serialized over the wire and persisted to the database\"\\n  assistant: \"Let me use the rust-gameserver-dev agent to implement the inventory serialization and persistence layer.\"\\n\\n- user: \"The client is sending avatar movement packets but we're not handling them correctly\"\\n  assistant: \"I'll use the rust-gameserver-dev agent to debug and fix the movement packet handling.\"\\n\\n- user: \"We need to add support for the ability cooldown system on the server side\"\\n  assistant: \"Let me use the rust-gameserver-dev agent to implement the cooldown tracking and synchronization.\"\\n\\n- user: \"Port the BaseApp entity creation flow from C++ to our Rust server\"\\n  assistant: \"I'll use the rust-gameserver-dev agent to translate the C++ entity creation logic into Rust, matching the wire behavior exactly.\"\\n\\n- user: \"The tick sync is drifting and clients are desyncing after 5 minutes\"\\n  assistant: \"Let me use the rust-gameserver-dev agent to investigate and fix the tick synchronization timing issue.\""
+description: "Implementation agent that turns specs and protocol docs into working Rust server code: game systems, Mercury messages, entity systems, wire (de)serialization, persistence and C++ ports."
 model: opus
 memory: project
 ---
@@ -157,3 +157,13 @@ Use narrow search terms (error messages, file paths, function names) rather than
 ## MEMORY.md
 
 Your MEMORY.md is currently empty. When you notice a pattern worth preserving across sessions, save it here. Anything in MEMORY.md will be included in your system prompt next time.
+
+## When the coordinator picks this agent
+
+Use this agent when implementing server-side game systems in Rust, wiring up network protocols, building entity systems, handling serialization/deserialization of game data, implementing Mercury protocol messages, writing database persistence layers, or translating C++ MMO server patterns into idiomatic Rust. This is the agent that turns design specs and protocol docs into working code.
+
+- user: "We need to implement the inventory system - items need to be serialized over the wire and persisted to the database" assistant: "Let me use the rust-gameserver-dev agent to implement the inventory serialization and persistence layer."
+- user: "The client is sending avatar movement packets but we're not handling them correctly" assistant: "I'll use the rust-gameserver-dev agent to debug and fix the movement packet handling."
+- user: "We need to add support for the ability cooldown system on the server side" assistant: "Let me use the rust-gameserver-dev agent to implement the cooldown tracking and synchronization."
+- user: "Port the BaseApp entity creation flow from C++ to our Rust server" assistant: "I'll use the rust-gameserver-dev agent to translate the C++ entity creation logic into Rust, matching the wire behavior exactly."
+- user: "The tick sync is drifting and clients are desyncing after 5 minutes" assistant: "Let me use the rust-gameserver-dev agent to investigate and fix the tick synchronization timing issue."

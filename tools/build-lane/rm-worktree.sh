@@ -12,7 +12,7 @@
 # registered worktree owns any more.
 #
 # For each worktree it deletes the build output ($CIMMERIA_TARGET_ROOT/<name> and
-# <worktree>/target), unlinks the external/ junction, runs `git worktree remove`,
+# <worktree>/target) and its lane job logs ($LANE_ROOT/logs/<name>), unlinks the external/ junction, runs `git worktree remove`,
 # deletes the local branch, and drops the worktree's own test database (sgw_<name>, the
 # name reload-db.sh gives it) when the bundled Postgres is reachable. It refuses, unless --force, when:
 #  * a lane job is building in that worktree right now (--force does not override this);
@@ -202,6 +202,7 @@ retire_marked() {
     run cmd //c rmdir "$(cygpath -w "$wt/external")"
   fi
   [ -d "$wt/target" ] && run rm -rf "$wt/target"
+  [ -d "$LANE_ROOT/logs/$name" ] && run rm -rf "$LANE_ROOT/logs/$name"
   if [ $DRY -eq 0 ] && [ -e "$wt/external" ]; then
     echo "  external/ is still there; stopping before git removes the worktree" >&2; skipped=$((skipped+1)); return
   fi

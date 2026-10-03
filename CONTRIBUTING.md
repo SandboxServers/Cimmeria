@@ -11,7 +11,7 @@ The maintainers prioritise:
 1. **Correctness over speed.** A change that works on the happy path but breaks under reconnect is a regression, not a feature.
 2. **Tests that reproduce the bug shape.** A regression guard that passes when the fix is reverted is theatre, not protection. [`TESTING.md`](TESTING.md) explains the picker and the test-types catalog.
 3. **Evidence over confidence.** When you claim "the client expects X," cite the Ghidra address, the `.def` field, or the BigWorld reference source. The tier system in [`docs/reverse-engineering/evidence-standards.md`](docs/reverse-engineering/evidence-standards.md) is how we keep speculation out of the docs.
-4. **Documentation that matches the code.** A PR that changes user-visible behaviour without updating the corresponding doc will be sent back. See "Required documentation" in [`CLAUDE.md`](CLAUDE.md) for the doc-update map.
+4. **Documentation that matches the code.** A PR that changes user-visible behaviour without updating the corresponding doc will be sent back. The doc-update map is [`docs/agents/doc-update-map.md`](docs/agents/doc-update-map.md).
 
 ## Before you start coding
 
@@ -95,7 +95,7 @@ cargo nextest run --profile=ci --workspace \
 DATABASE_URL=postgres://w-testing:w-testing@localhost:5433/sgw \
   tools/test-live-db.sh
 
-# 6. Update the doc-update-map entries CLAUDE.md identifies for your change
+# 6. Update the docs that docs/agents/doc-update-map.md names for your change
 
 # 7. Commit and push
 git add . && git commit -m "fix(area): short description (closes #NNN)"
@@ -105,7 +105,7 @@ git push -u origin your-handle/short-description
 gh pr create
 ```
 
-See [`CLAUDE.md`](CLAUDE.md) for the full pre-PR checklist, the build rules (Windows-native builds on a pinned toolchain, and the build lane agents use), and the doc-update map.
+See [`CLAUDE.md`](CLAUDE.md) for the full pre-PR checklist, the build rules (Windows-native builds on a pinned toolchain, and the build lane agents use). The doc-update map is [`docs/agents/doc-update-map.md`](docs/agents/doc-update-map.md), and what each CI check gates and how to fix a red one is [`docs/agents/pre-pr-checks.md`](docs/agents/pre-pr-checks.md).
 
 ## Code style
 

@@ -411,6 +411,14 @@ the telemetry DLL reads its session file first, then chains on top.
 site, `fingerprint_ok`, and the `verdict` (`installed`,
 `nothing_installed`, `hook_failed`). See
 [`telemetry/patch_log.rs`](../../crates/launcher/src/telemetry/patch_log.rs).
+The same session records `client.patches.counts`, the DLL's claimed /
+delivered / dropped counts with reasons
+([`telemetry/patch_counts.rs`](../../crates/launcher/src/telemetry/patch_counts.rs)),
+and an Install / Update run by an opted-in player queues one
+`client.launcher.install_result` event with every patch's outcome
+([`telemetry/install_result.rs`](../../crates/launcher/src/telemetry/install_result.rs)).
+Both are described in
+[dev-session-telemetry.md](../architecture/dev-session-telemetry.md#client-patches-counts-event).
 
 ---
 
@@ -668,6 +676,8 @@ crates/launcher/
     ├── config.rs               # LauncherConfig (next to .exe)
     ├── manifest.rs             # Manifest schema + fetch + Ed25519 verify
     ├── install.rs              # seed + patches + client setup orchestration
+    ├── install_tests.rs        # its tests
+    ├── install_report.rs       # per-patch outcomes of one install run (telemetry)
     ├── client_setup/
     │   ├── mod.rs              # prepare(): run the three steps
     │   ├── stock_case.rs       # rename eula.lua etc. back to the stock case
@@ -721,6 +731,8 @@ crates/launcher/
     │   ├── endpoint.rs         # telemetry's own client + https/loopback policy
     │   ├── bundle.rs           # end-of-session upload-bundle
     │   ├── patch_log.rs        # client.patches.boot from the DLL's log
+    │   ├── patch_counts.rs     # client.patches.counts (claimed / delivered / dropped)
+    │   ├── install_result.rs   # client.launcher.install_result, queued after an install
     │   └── process_watch.rs    # game-exit detection
     └── worker/
         ├── mod.rs              # tokio worker

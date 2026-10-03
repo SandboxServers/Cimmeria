@@ -178,10 +178,26 @@ pub async fn handle_loot_item(
         (item, source)
     };
 
+    // `design_id` is numeric and absent for cash, never a Debug-formatted
+    // `"Some(5224)"` / `"None"` string (2026-09-29 playtest): SigNoz types a
+    // field by its first values, and a string design id cannot be joined to
+    // the base's `inventory` `grant_container_chosen` row, which carries the
+    // same `design_id` plus the `item_name`.
+    let identity = space_mgr.player_identity(entity_id);
     tracing::info!(
-        entity_id, target_eid, index,
-        design_id = ?removed_item.design_id,
+        account_id = identity.account_id,
+        player_id,
+        entity_id,
+        target_eid,
+        index,
+        design_id = removed_item.design_id,
+        loot_kind = if removed_item.design_id.is_some() {
+            "item"
+        } else {
+            "cash"
+        },
         quantity = removed_item.quantity,
+        corpse_template_id = source.corpse_template_id,
         "Player looted item"
     );
 

@@ -27,7 +27,7 @@ The persona lives at [`.claude/agents/game-archaeology-specialist.md`](../../.cl
 
 It is the *wrong* agent when:
 
-- You just want to read a doc — use a normal Read or the `cimmeria-rag` MCP.
+- You just want to read a doc — use Grep and a targeted Read.
 - The recovery work has already been done and lives under [`docs/reverse-engineering/findings/`](../reverse-engineering/findings/) — cite the finding doc; don't re-dig.
 - You need a working PR — the specialist produces evidence, not implementation. Hand the evidence to a domain advisor (combat, mission, inventory, etc.) for the actual code.
 - The question is "should we modernize X" — that's an architecture decision, not archaeology. Use `bigworld-engine-advisor` or open an architecture issue.
@@ -195,7 +195,7 @@ Three runtime-facing surfaces, and when to reach for each:
 
 The governing rule (the lab's rulebook, [`live-research-lab.md`](live-research-lab.md)): **do not infer client behavior when the running client can answer the question.** Ghidra finds the candidate; the lab places a non-freezing probe, you cause the behavior (a slash command, a Lua call, a server-side spawn beside the lab character), and `lab_timeline` / `lab_screenshot` / the packet tap show what actually happened. Every finding cites its probe, the dev-session id, and the client build, so it is replayable — a finding without a probe is marked `inferred`. Prefer the lab over x64dbg for anything that isn't strict single-stepping: the lab's hooks are log-and-continue and cannot stall the heartbeat.
 
-Setup for the lab MCPs is in [`re-toolchain-setup.md`](re-toolchain-setup.md#live-research-lab-optional-fourth--fifth-mcps); the full tool set and experiment loop are in [`live-research-lab.md`](live-research-lab.md).
+Setup for the lab MCPs is in [`re-toolchain-setup.md`](re-toolchain-setup.md#live-research-lab-optional-third--fourth-mcps); the full tool set and experiment loop are in [`live-research-lab.md`](live-research-lab.md).
 
 ## A typical session shape
 

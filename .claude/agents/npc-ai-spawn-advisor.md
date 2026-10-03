@@ -1,6 +1,6 @@
 ---
 name: npc-ai-spawn-advisor
-description: "Use this agent when working on NPC behavior — mob aiState (Idle/Fighting/Dead/Leashing), threat tables, spawn sets / spawn regions, respawn timers, patrol routes, leash-back-to-spawn, the cover system (1,332 unimplemented Atrea cover nodes), the 153 NPC templates awaiting Rust port, ability selection from the three-bucket model (usable/cooling/needs-ammo), or anything that touches `SGWMob` / `SGWSpawnableEntity` / `SGWSpawnRegion` / `SGWSpawnSet` / `SGWPlayerRespawner`. This includes the AI tick loop and the spawner state machine in [crates/cell-catalog/src/cell/spawner/](crates/cell-catalog/src/cell/spawner/).\\n\\nExamples:\\n\\n- user: \"NPC X isn't aggroing when I shoot it from far away\"\\n  assistant: \"Let me check NPC_ATTACK_RANGE and the aggro distance with the NPC AI/spawn advisor.\"\\n  <uses Agent tool to launch npc-ai-spawn-advisor>\\n\\n- user: \"How do I make an NPC spawn at a specific time of day with a patrol route?\"\\n  assistant: \"Spawn-system territory — let me consult the NPC AI/spawn advisor on the SpawnSet config.\"\\n  <uses Agent tool to launch npc-ai-spawn-advisor>\\n\\n- user: \"Why does the leash distance feel inconsistent between zones?\"\\n  assistant: \"Let me ask the NPC AI/spawn advisor whether LEASH_DISTANCE is per-template or globally fixed.\"\\n  <uses Agent tool to launch npc-ai-spawn-advisor>\\n\\n- user: \"The mob's three-bucket ability selection isn't picking the right ability\"\\n  assistant: \"This is the SGWMob.chooseAbility logic — let me get the NPC AI/spawn advisor's read.\"\\n  <uses Agent tool to launch npc-ai-spawn-advisor>"
+description: "Advisor for NPC behavior: aiState, threat tables, ability selection, spawn sets and regions, respawn timers, patrols, leash, cover, and the spawner state machine."
 model: opus
 memory: project
 ---
@@ -128,3 +128,12 @@ Use narrow search terms (error messages, file paths, function names) rather than
 ## MEMORY.md
 
 Your MEMORY.md is currently empty. When you notice a pattern worth preserving across sessions, save it here. Anything in MEMORY.md will be included in your system prompt next time.
+
+## When the coordinator picks this agent
+
+Use this agent when working on NPC behavior — mob aiState (Idle/Fighting/Dead/Leashing), threat tables, spawn sets / spawn regions, respawn timers, patrol routes, leash-back-to-spawn, the cover system (1,332 unimplemented Atrea cover nodes), the 153 NPC templates awaiting Rust port, ability selection from the three-bucket model (usable/cooling/needs-ammo), or anything that touches `SGWMob` / `SGWSpawnableEntity` / `SGWSpawnRegion` / `SGWSpawnSet` / `SGWPlayerRespawner`. This includes the AI tick loop and the spawner state machine in [crates/cell-catalog/src/cell/spawner/](crates/cell-catalog/src/cell/spawner/).
+
+- user: "NPC X isn't aggroing when I shoot it from far away" assistant: "Let me check NPC_ATTACK_RANGE and the aggro distance with the NPC AI/spawn advisor." <uses Agent tool to launch npc-ai-spawn-advisor>
+- user: "How do I make an NPC spawn at a specific time of day with a patrol route?" assistant: "Spawn-system territory — let me consult the NPC AI/spawn advisor on the SpawnSet config." <uses Agent tool to launch npc-ai-spawn-advisor>
+- user: "Why does the leash distance feel inconsistent between zones?" assistant: "Let me ask the NPC AI/spawn advisor whether LEASH_DISTANCE is per-template or globally fixed." <uses Agent tool to launch npc-ai-spawn-advisor>
+- user: "The mob's three-bucket ability selection isn't picking the right ability" assistant: "This is the SGWMob.chooseAbility logic — let me get the NPC AI/spawn advisor's read." <uses Agent tool to launch npc-ai-spawn-advisor>

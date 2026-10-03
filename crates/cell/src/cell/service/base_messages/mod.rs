@@ -412,6 +412,7 @@ pub(super) async fn handle_base_message(
                 container_id,
                 slot_id,
                 quantity,
+                space_mgr,
             );
         }
 

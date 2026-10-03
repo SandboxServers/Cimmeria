@@ -38,8 +38,8 @@ Want to start contributing? Read **[../CONTRIBUTING.md](../CONTRIBUTING.md)** â€
 | Python game logic scripts | 164 |
 | Database rows (game data) | 112,626 |
 | Abilities / Items / Missions / Effects | 1,887 / 6,060 / 1,041 / 3,217 |
-| Documentation files | <!-- gen:docs-md-count -->647<!-- /gen:docs-md-count --> (`find docs -name '*.md' \| wc -l`) |
-| Rust tests (`#[test]` / `#[tokio::test]`) | <!-- gen:tests-total -->9,712<!-- /gen:tests-total --> across <!-- gen:tests-files -->1,636<!-- /gen:tests-files --> files (<!-- gen:tests-ci-gated -->8,376<!-- /gen:tests-ci-gated --> gated in CI) |
+| Documentation files | <!-- gen:docs-md-count -->656<!-- /gen:docs-md-count --> (`find docs -name '*.md' \| wc -l`) |
+| Rust tests (`#[test]` / `#[tokio::test]`) | <!-- gen:tests-total -->9,766<!-- /gen:tests-total --> across <!-- gen:tests-files -->1,648<!-- /gen:tests-files --> files (<!-- gen:tests-ci-gated -->8,393<!-- /gen:tests-ci-gated --> gated in CI) |
 | Live-DB regression guards | <!-- gen:tests-live-db -->1,520<!-- /gen:tests-live-db --> |
 | End-to-end PL/pgSQL smoke scripts | 3 |
 
@@ -57,6 +57,7 @@ Want to start contributing? Read **[../CONTRIBUTING.md](../CONTRIBUTING.md)** â€
 | [Dev-Session Telemetry](operations/telemetry.md) | `CIMMERIA_TELEMETRY_HMAC_SECRET` provisioning + rotation, kill switch, storage layout. Design lives in [architecture/dev-session-telemetry.md](architecture/dev-session-telemetry.md). |
 | [SigNoz Deployment](operations/signoz-deployment.md) | Server logs + Mercury packet shipping via OTLP to a self-hosted SigNoz (ClickHouse-backed). Local + colo bring-up, retention, troubleshooting. Design lives in [architecture/observability.md](architecture/observability.md). |
 | [NPC AI Telemetry Runbook](operations/npc-ai-telemetry-runbook.md) | After a play session: which SigNoz view or dashboard panel answers each "what did that NPC do, and why?" question, the `.bug` bookmark workflow, and the helper scripts for large pulls. The views and dashboard JSON export live in [operations/signoz/](operations/signoz/npc-ai-views.md). |
+| [Claude Code Telemetry](operations/claude-code-telemetry.md) | Export Claude Code's OTel metrics and events (cost, tokens, tool calls) to the colo SigNoz for token-usage profiling: colo state, the Cloudflare Access route, workstation settings templates, privacy, dashboards, kill switch. |
 | [SigNoz Remote Access](operations/signoz-remote-access.md) | Cloudflare Tunnel + Cloudflare Access for secure UI access and Cimmeria-MCP service-token auth â€” no inbound firewall ports. |
 | [Testing Guide](../TESTING.md) | Test types, picker for which to use when, gotchas mined from PR reviews |
 | [Test Inventory](testing/inventory/README.md) | Catalogue of every test in the workspace, one file per crate, with kind / system / first-commit date / what-it-tests |
@@ -87,6 +88,7 @@ Want to start contributing? Read **[../CONTRIBUTING.md](../CONTRIBUTING.md)** â€
 | [CellBlock to Castle Ring Transport](analysis/ring-transport-cellblock-castle/README.md) | Audit of mission 688's CellBlock â†’ Castle transfer against the cooked client maps (both pads are placed but un-wired ring stations), and a gated feasibility plan for a client map patch that clones a ring rig into the two chunks |
 | [Open-Issue Triage 2026-09-25](analysis/issue-triage-2026-09-25/README.md) | Evidence-backed verdict (keep / rewrite / close / needs-owner) and priority for all 123 open GitHub issues against main, with ready-to-post comments and replacement bodies, owner answers, and the execution checklist for the follow-up session |
 | [Ammo Restoration](analysis/ammo/README.md) | Campaign ledger for finite, lootable special ammo (Hollow Point, Armor Piercing, Incendiary, EMP, Explosive, darts): reload/bandolier and cooked-data-push audit, RE findings on the reserve model and toggle-ability linkage, owner decisions, and a wide-fan-out packet ledger with a file-ownership matrix |
+| [Token Usage Profiling](analysis/token-usage/README.md) | Campaign ledger for #957: what AI-assisted work here costs in tokens, estimated USD, context and orchestration overhead; owner decisions, corrections to the issue, the pre-profiler baseline, the packet table and the cut-line log for before-and-after comparisons |
 | [Connection Flow](connection-flow.md) | End-to-end login and world entry sequence |
 | [Network Messages](network-messages.md) | High-level catalog of client-server messages |
 | [Project Status](project-status.md) | What works, what is left, and the roadmap |
@@ -318,6 +320,8 @@ What an AI-assisted contributor (or their agents) needs that the code does not s
 | Document | Description | Status |
 |----------|-------------|--------|
 | [development-workflow.md](agents/development-workflow.md) | Ticket-to-PR pipeline, the roster of domain advisors under `.claude/agents/`, rules for running agents in parallel (worktrees, the build lane, one test DB each, Dev Drive seeding, cleanup), definition of done | Complete |
+| [doc-update-map.md](agents/doc-update-map.md) | The "what changed â†’ what to update" map every PR is reviewed against; moved out of `CLAUDE.md` so it loads only when a PR is being finished or reviewed | Complete |
+| [pre-pr-checks.md](agents/pre-pr-checks.md) | What each CI check gates and when it runs, the full annotated pre-PR command list, and the fix for each failing check; the long form of the `CLAUDE.md` checklist | Complete |
 | [rules-and-gotchas.md](agents/rules-and-gotchas.md) | Maintainer decisions and known traps: evidence rules, protocol traps (entity clientIndex), "free" vs client-patch scoping, UI feedback, GM command channels, seeds over migrations, the pinned toolchain and build-lane traps, Windows/CRLF/Git Bash traps, client assets and RE tooling | Complete |
 | [domain.md](agents/domain.md) | Where domain docs live (glossary = `spec/glossary.md`, ADRs = `architecture/`; no `CONTEXT.md` or `docs/adr/`), what to read before exploring, and what to do when sources disagree | Complete |
 | [issue-tracker.md](agents/issue-tracker.md) | GitHub Issues via the `gh` CLI; repo-specific `gh` traps; the ticket body contract; PRs-as-request-surface flag (off); wayfinder map / child / blocking conventions | Complete |
@@ -587,6 +591,6 @@ When adding or updating documentation specifically:
 3. Tag every claim with a confidence level (HIGH / MEDIUM / LOW).
 4. Include Ghidra addresses or source references where applicable.
 5. Update this README when adding new documents.
-6. Update the doc-update map in [../CLAUDE.md](../CLAUDE.md) so reviewers can verify the right files were touched.
+6. Update the doc-update map in [agents/doc-update-map.md](agents/doc-update-map.md) so reviewers can verify the right files were touched.
 
 Reporting a security issue? See **[../SECURITY.md](../SECURITY.md)** for the private reporting path. Project conduct expectations are in **[../CODE_OF_CONDUCT.md](../CODE_OF_CONDUCT.md)**.

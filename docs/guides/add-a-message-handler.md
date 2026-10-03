@@ -192,7 +192,7 @@ Don't skip a layer because "the next one will catch it." That's the bug shape TE
 
 ## Update the docs
 
-Per the CLAUDE.md doc-update map, every PR that touches a method index, dispatch table, or wire format updates:
+Per the [doc-update map](../agents/doc-update-map.md), every PR that touches a method index, dispatch table, or wire format updates:
 
 - [`docs/protocol/client-method-dispatch-table.md`](../protocol/client-method-dispatch-table.md) — for client-direction methods.
 - [`docs/protocol/message-catalog.md`](../protocol/message-catalog.md) — add the new entry.

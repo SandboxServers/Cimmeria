@@ -28,26 +28,34 @@ pub(super) struct Placement {
     /// The player's account, for the telemetry; `None` when the player row
     /// is missing.
     pub account_id: Option<i32>,
+    /// The item's `resources.items.name`, for the telemetry; `None` when the
+    /// item has no row. Read in the same round trip as `container_sets`, so
+    /// a grant row names the item without a second query.
+    pub item_name: Option<String>,
 }
 
-/// Read the item's `container_sets` and the player's account id, and choose
-/// the container. One round trip; `Err` is a database error.
+/// Read the item's `container_sets` and name and the player's account id,
+/// and choose the container. One round trip; `Err` is a database error.
 pub(super) async fn resolve_placement(
     pool: &Arc<PgPool>,
     player_id: i32,
     type_id: i32,
     requested: i32,
 ) -> Result<Placement, sqlx::Error> {
-    let (container_sets, account_id): (Option<Vec<i32>>, Option<i32>) = sqlx::query_as(
-        "SELECT (SELECT container_sets FROM resources.items WHERE item_id = $1), \
-                (SELECT account_id FROM sgw_player WHERE player_id = $2)",
-    )
-    .bind(type_id)
-    .bind(player_id)
-    .fetch_one(pool.as_ref())
-    .await?;
+    let (container_sets, item_name, account_id): (Option<Vec<i32>>, Option<String>, Option<i32>) =
+        sqlx::query_as(
+            "SELECT (SELECT container_sets FROM resources.items WHERE item_id = $1), \
+                    (SELECT name FROM resources.items WHERE item_id = $1), \
+                    (SELECT account_id FROM sgw_player WHERE player_id = $2)",
+        )
+        .bind(type_id)
+        .bind(player_id)
+        .fetch_one(pool.as_ref())
+        .await?;
     let container_sets = container_sets.unwrap_or_default();
-    Ok(place(container_sets, requested, account_id))
+    let mut placement = place(container_sets, requested, account_id);
+    placement.item_name = item_name;
+    Ok(placement)
 }
 
 /// The pure half of [`resolve_placement`].
@@ -63,6 +71,7 @@ pub(super) fn place(
         skipped_storage: skipped_storage(&container_sets, requested, container_id),
         container_sets,
         account_id,
+        item_name: None,
     }
 }
 

@@ -1,0 +1,11 @@
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 16.49s
+────────────
+ Nextest run ID 9e3a2d17-6dad-4bab-8bf5-b9f37e094cc9 with nextest profile: default
+    Starting 296 tests across 1 binary
+        PASS [   0.044s] (  1/296) cimmeria-wire ability_tree::tests::respec::respec_price_is_d_at10s_1000_naquadah
+        PASS [   0.045s] (  2/296) cimmeria-wire base::duel::tests::rejects_truncated_trailing_and_forged_length
+        PASS [   0.046s] (  3/296) cimmeria-wire base::organization::tests::invite_by_type_decodes_a_uint8_type
+        PASS [   0.044s] (  4/296) cimmeria-wire ability_tree::tests::points_property::prop_id_matches_enumerations_xml
+        PASS [  33.258s] (296/296) cimmeria-wire cell::chat::tests::no_player_communication_call_uses_a_literal_channel
+────────────
+     Summary [  33.574s] 296 tests run: 296 passed, 0 skipped
