@@ -41,6 +41,10 @@ ATTRIBUTION = {
 }
 
 
+# Named columns, so an additive schema change does not shift the values.
+PR_INSERT = ("INSERT INTO prs (pr_number, head_branch, head_sha, merge_sha, created_at, merged_at, closed_at,"
+             " state, additions, deletions, changed_files)")
+
 def parse_ts(s):
     return datetime.fromisoformat(s.replace("Z", "+00:00"))
 
@@ -150,7 +154,9 @@ def load(db, root, expected, hostile):
         else:
             fp, name = fingerprints[tid], block["name"]
         later = total - n - 1
-        db.execute("INSERT INTO tool_calls VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 0, ?, ?, ?)",
+        db.execute("INSERT INTO tool_calls (tool_use_id, request_id, session_id, agent_id, ts, tool_name, mcp_server,"
+                   " fingerprint, result_chars, result_is_error, result_persisted, later_requests, exposure_chars)"
+                   " VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 0, ?, ?, ?)",
                    (tid, rid, session, aid, ts, name, bad[4] if hostile and name.startswith("mcp__") else None,
                     fp, chars, 1 if chars and chars > 10000 else 0, later, (chars or 0) * later))
 
@@ -164,10 +170,10 @@ def load(db, root, expected, hostile):
     db.execute("INSERT INTO pr_links VALUES (?, ?, 'SandboxServers/Cimmeria', '2026-10-01T12:01:10.000Z')",
                (session, PR_MAIN))
     db.execute("INSERT INTO cost_states VALUES (?, NULL, 12.5, 0, 10, 2, '{}')", (session,))
-    db.execute("INSERT INTO prs VALUES (?, ?, NULL, NULL, '2026-10-01T11:00:00.000Z', ?, 'MERGED', 120, 30, 4)",
-               (PR_MAIN, bad[0] if hostile else build_fixtures.WORKER_BRANCH, MERGED_AT))
-    db.execute("INSERT INTO prs VALUES (?, 'docs/other', NULL, NULL, '2026-10-01T11:30:00.000Z', ?, 'MERGED',"
-               " 5, 1, 1)", (PR_OTHER, MERGED_AT))
+    db.execute(PR_INSERT + " VALUES (?, ?, NULL, NULL, '2026-10-01T11:00:00.000Z', ?, ?, 'MERGED', 120, 30, 4)",
+               (PR_MAIN, bad[0] if hostile else build_fixtures.WORKER_BRANCH, MERGED_AT, MERGED_AT))
+    db.execute(PR_INSERT + " VALUES (?, 'docs/other', NULL, NULL, '2026-10-01T11:30:00.000Z', ?, ?, 'MERGED',"
+               " 5, 1, 1)", (PR_OTHER, MERGED_AT, MERGED_AT))
 
     attributed = set()
     for rid, rows in ATTRIBUTION.items():

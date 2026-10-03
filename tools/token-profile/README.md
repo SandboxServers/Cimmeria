@@ -2,14 +2,15 @@
 
 Measures what AI-assisted work in this repo costs: tokens, estimated list-price USD, context pressure and orchestration overhead, per session, agent, campaign and PR. It reads local Claude Code transcripts into a local SQLite store; nothing it reads leaves the machine except scrubbed aggregates.
 
-Status: **Wave 1.** The data contract is in place and the reports (TP-01b) read it; the ingest (TP-01a) is in progress. The plan, the decisions and the cut-line log are in the ledger, [docs/analysis/token-usage/](../../docs/analysis/token-usage/README.md); the issue is [#957](https://github.com/SandboxServers/Cimmeria/issues/957).
+Status: **Wave 1.** The data contract, the ingest (TP-01a) and the reports (TP-01b) are in place. The plan, the decisions and the cut-line log are in the ledger, [docs/analysis/token-usage/](../../docs/analysis/token-usage/README.md); the issue is [#957](https://github.com/SandboxServers/Cimmeria/issues/957).
 
 | File | What it is |
 |---|---|
-| [`schema.sql`](schema.sql) | The SQLite schema the ingest writes and the reports read. Version 1. |
+| [`schema.sql`](schema.sql) | The SQLite schema the ingest writes and the reports read. Version 2. |
 | [`transcript-format.md`](transcript-format.md) | The transcript shapes the profiler depends on, and the trigger classification rules. |
 | [`attribution.md`](attribution.md) | How a request is charged to a PR, and the invariants every attribution keeps. |
 | [`fixtures/build_fixtures.py`](fixtures/build_fixtures.py) | Builds a synthetic transcript tree, with an `expected.json` of what a correct ingest produces and hostile values a report must never show. |
+| [`ingest/`](ingest/) | The ingest: transcripts into the schema, incrementally, with trigger classification, prices and PR attribution. Its tests are `ingest/test_*.py`. |
 | [`report/`](report/) | The reports: raw tokens, estimated USD, context pressure, tool exposure, cost per merged PR and a cache-policy simulator, behind a privacy scrubber. See [Reports](#reports). |
 | [`test_contract.py`](test_contract.py) | Checks the schema's constraints and that the fixture tells a correct ingest from a wrong one. CI runs it. |
 
@@ -28,6 +29,26 @@ Stock Python 3.11+, no dependencies.
 - **Unknown transcript shapes fail the run.** They are counted, never dropped.
 - **Context exposure is not cost.** `result_chars × later requests` ranks offenders; it is never reported as dollars.
 - **Reports carry their window and versions** (Claude Code, profiler commit, price table, models seen) and contain no commands, transcript text, absolute paths or credentials.
+
+## Ingest
+
+```bash
+python tools/token-profile/ingest --db ~/token-profile.sqlite --repo . --fetch-prs
+```
+
+| Option | Does |
+|---|---|
+| `--db <file>` | The SQLite store, created on first use. Keep it outside the repo and never commit it: it holds local paths and session ids. |
+| `--projects <dir>` | Where the transcripts are; default `~/.claude/projects`. |
+| `--project-prefix <name>` | Which project directories to read; default the main checkout's path in Claude Code's naming, which also covers sessions started in its worktrees. |
+| `--repo <checkout>` | Read branch heads (ref snapshot, merge subjects) and commit ancestry from this checkout. Without it, rule A3 places nothing. |
+| `--fetch-prs` or `--prs-json <file>` | Load the `prs` table from `gh pr list --state all`, live or from a saved file. Without PRs every request is unattributed. |
+| `--lane-log <file>` | The build lane's job log, for branch heads; default the lane's own `jobs.jsonl` if present. |
+| `--allow-unknown` | Exit 0 although `unknown_shapes` has rows. |
+
+Re-running is cheap: each file is read from where the last run stopped, and a run with nothing new adds nothing. Attribution is rebuilt on every run, so a PR opened later places requests made before it. The run prints a JSON summary of counts (never transcript content) and exits 1 when unknown transcript shapes are recorded, 2 when `attribution_imbalance` is not empty.
+
+USD is computed from `price_tables` by the reports, never stored per request; `ingest/prices.py` holds the versioned table and `estimate_usd()`.
 
 ## Reports
 

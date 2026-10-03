@@ -1,4 +1,4 @@
--- Token profiler data contract, schema version 1.
+-- Token profiler data contract, schema version 2.
 --
 -- The ingest (TP-01a, tools/token-profile/ingest/) writes these tables from
 -- Claude Code transcripts; the reports (TP-01b, tools/token-profile/report/)
@@ -10,6 +10,10 @@
 -- Transcript shapes this schema is built from: transcript-format.md.
 -- How requests map to PRs: attribution.md.
 --
+-- Version 2 (TP-01a): ingest_files.parse_state, tool_calls.task_id and
+-- tool_calls.pr_ref, prs.closed_at. All additive; see attribution.md and
+-- transcript-format.md for what fills them.
+--
 -- Token columns are raw counts. thinking_tokens is a SUBSET of
 -- output_tokens and is never added on top of it.
 
@@ -19,7 +23,7 @@ CREATE TABLE meta (
     key   TEXT PRIMARY KEY,
     value TEXT NOT NULL
 );
-INSERT INTO meta (key, value) VALUES ('schema_version', '1');
+INSERT INTO meta (key, value) VALUES ('schema_version', '2');
 
 -- One row per ingest run, for version-stamping every report.
 CREATE TABLE profiler_runs (
@@ -44,6 +48,8 @@ CREATE TABLE ingest_files (
     mtime             TEXT NOT NULL,
     head_sha1         TEXT NOT NULL,          -- sha1 of the first line
     byte_offset       INTEGER NOT NULL,       -- next unread byte
+    parse_state       TEXT NOT NULL DEFAULT '{}',  -- JSON: the classifier state at byte_offset, so an
+                                              -- appended file resumes mid-turn (open trigger, retry flag, ...)
     last_run_id       INTEGER NOT NULL REFERENCES profiler_runs (run_id)
 );
 
@@ -164,6 +170,9 @@ CREATE TABLE tool_calls (
     tool_name         TEXT NOT NULL,          -- 'Bash', 'Read', 'mcp__ghidra__decompile_function', ...
     mcp_server        TEXT,
     fingerprint       TEXT,                   -- scrubbed: command head or repo-relative path, see transcript-format.md
+    task_id           TEXT,                   -- agent id (Agent/Task) or background task id (Bash) the call started
+    pr_ref            INTEGER,                -- the one PR the call names: `gh pr create|merge|checks|view N`,
+                                              -- or a single #N in a background command's description
     result_chars      INTEGER,                -- NULL until the result is seen
     result_is_error   INTEGER CHECK (result_is_error IN (0, 1)),
     result_persisted  INTEGER NOT NULL DEFAULT 0 CHECK (result_persisted IN (0, 1)),  -- spilled to tool-results/
@@ -171,6 +180,7 @@ CREATE TABLE tool_calls (
     exposure_chars    INTEGER                 -- result_chars * later_requests ("context exposure", not cost)
 );
 CREATE INDEX tool_calls_request ON tool_calls (request_id);
+CREATE INDEX tool_calls_task ON tool_calls (task_id);
 
 -- compact_boundary records.
 CREATE TABLE compactions (
@@ -208,7 +218,7 @@ CREATE TABLE cost_states (
     model_usage_json  TEXT NOT NULL           -- modelUsage verbatim (numbers only)
 );
 
--- Merged PRs, from `gh pr list --state merged --json ...`.
+-- PRs, from `gh pr list --state all --json ...`.
 CREATE TABLE prs (
     pr_number         INTEGER PRIMARY KEY,
     head_branch       TEXT NOT NULL,
@@ -216,6 +226,7 @@ CREATE TABLE prs (
     merge_sha         TEXT,
     created_at        TEXT NOT NULL,
     merged_at         TEXT,
+    closed_at         TEXT,                   -- set for MERGED and CLOSED; ends the branch-match window
     state             TEXT NOT NULL CHECK (state IN ('MERGED', 'CLOSED', 'OPEN')),
     additions         INTEGER,
     deletions         INTEGER,

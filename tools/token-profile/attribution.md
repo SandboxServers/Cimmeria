@@ -1,7 +1,7 @@
 # How a request is attributed to a PR
 
 > Type: reference. Audience: whoever works on `tools/token-profile/`, and readers of the per-PR stats comments.
-> Contract version 1, 2026-10-03. Issue [#957](https://github.com/SandboxServers/Cimmeria/issues/957). Ledger: [docs/analysis/token-usage/](../../docs/analysis/token-usage/README.md).
+> Contract version 2 (schema 2), 2026-10-03. Issue [#957](https://github.com/SandboxServers/Cimmeria/issues/957). Ledger: [docs/analysis/token-usage/](../../docs/analysis/token-usage/README.md).
 
 The per-PR stats comments (TP-10) and the retro cost study (TP-11) both depend on charging each API request to the PR it was spent on. This page is the rule set. The ingest writes the result to `pr_attribution` in [`schema.sql`](schema.sql), and the transcript fields it uses are described in [`transcript-format.md`](transcript-format.md).
 
@@ -18,26 +18,35 @@ The first rule that places a request wins. Each rule says how a request's weight
 
 ### A1: trigger (coordinator sessions only)
 
-A coordinator is a session that spawned at least one agent or received a notification from one (`sessions.is_coordinator`). When a coordinator's turn was started by an event about a specific piece of work, the turn is charged to that work's PR, whatever branch the coordinator was parked on:
+A coordinator is a session that spawned at least one agent or received a notification from one, or a background completion of its own shell command (`sessions.is_coordinator`). When a coordinator's turn was started by an event about a specific piece of work, the turn is charged to that work's PR, whatever branch the coordinator was parked on:
 
 - a `background_completion` or `idle_notification` from an agent, or a `teammate_message` or `agent_message` from one: the PR that agent's own requests are attributed to (their weighted mix, by request count);
 - a `background_completion` for a background shell command: the PR named in the command's description if exactly one `#NNN` appears, otherwise no match.
+
+The agent is found by `triggers.source_ref`: an agent id (task notifications name it as the task id), or else an agent name in the same session (teammate messages name the teammate). Only the agent's requests placed by A2 or A3 count, so A1 and A4 never feed each other. A shell command is found through the `tool_calls.task_id` its result carried, and its PR through `tool_calls.pr_ref`.
 
 Method `trigger`, confidence 0.9. This rule exists because the first quick pass on 2026-10-03 charged every coordinator turn to the docs branch the coordinator sat on, which inflated PRs such as #647 and #674.
 
 ### A2: branch
 
-The request's `gitBranch` (or the branch of the worktree in its `cwd`) is the head branch of exactly one PR in `prs`, and the request's time falls between 24 hours before that PR was created and the moment it was merged or closed. When two PRs reused the branch name, the time window picks the one. Method `branch`, confidence 1.0.
+The request's `gitBranch` is the head branch of exactly one PR in `prs`, and the request's time falls between 24 hours before that PR was created and the moment it was merged or closed (`prs.closed_at`; an open PR's window has no end). When two PRs reused the branch name, the time window picks the one; if windows still overlap, the most recently created PR wins. Method `branch`, confidence 1.0.
+
+The branch of the worktree in the request's `cwd` is not used: every request observed carries `gitBranch`, and resolving a worktree's branch later would hit the same deleted-branch problem A3 avoids.
 
 `main` and the default branch never match.
 
 ### A3: ancestry
 
-The request's branch has no PR of its own, but its commits reached `main` through another PR: a packet branch merged into an integration branch whose PR merged. The test is `git merge-base --is-ancestor <commit> <PR merge commit>` for PRs merged after the request; when several qualify, the earliest merged wins. Method `ancestry`, confidence 0.8.
+The request's branch has no PR of its own, but its commits reached `main` through another PR: a packet branch merged into an integration branch whose PR merged. The test is `git merge-base --is-ancestor <commit> <PR head commit>` for PRs merged after the request, and not more than 60 days after it; when several qualify, the earliest merged wins. Method `ancestry`, confidence 0.8.
+
+- **The PR's head commit, not its merge commit.** `main` takes PRs as squash merges, and a squash commit has none of the packet's commits as ancestors, so testing the merge commit would almost never match.
+- **Work `main` already had is not the PR's.** A commit that is also an ancestor of the merge commit's first parent (`main` just before the merge) is skipped for that PR. Otherwise a branch with no commits of its own, whose head is a `main` commit, would be charged to the next PR that merged `main`.
+
+The ingest answers these questions from one `git rev-list --parents --all` of the checkout, plus the PR head and merge commits fed to it on stdin, rather than one `git merge-base` per question.
 
 The commit comes from `branch_heads`, never from resolving the branch name at report time: `rm-worktree.sh` deletes a merged packet branch, so a backfill run later may find no ref. `branch_heads` is filled from three sources, and the latest commit observed for the branch within 14 days after the request is used, since the work a request did is committed after it:
 
-1. `ref-snapshot`: every ingest run records the head of every local and remote-tracking branch.
+1. `ref-snapshot`: every ingest run records the head of every local and remote-tracking branch. Its `observed_at` is the head commit's committer date, not the run time: the commit was at the head from then until now, and the earlier date lets a backfill place requests made long before the run.
 2. `lane-log`: the build lane's job log records the worktree and commit of every build; joined to the request through its worktree and time.
 3. `merge-subject`: a merge commit on `main` or an integration branch whose subject names the branch (`Merge branch '<name>'`) supplies its second parent.
 
@@ -45,11 +54,13 @@ A request whose branch has no commit in any source is not placed by A3.
 
 ### A4: parent session (subagents only)
 
-A subagent whose own requests match none of A2 and A3 inherits the attribution of the parent turn that spawned it: the main-session request that made the `Agent` call. Method `parent-session`, confidence 0.7.
+A subagent whose own requests match none of A2 and A3 inherits the attribution of the parent turn that spawned it: the main-session request that made the `Agent` call (found through the call's `tool_calls.task_id`). The parent's PR rows become `parent-session` rows with the same weights; its unattributed share stays unattributed. A parent with no PR rows doesn't place the subagent. Method `parent-session`, confidence 0.7.
 
 ### A5: pr-link
 
 A request in a turn that wrote a `pr-link` record for PR N, or whose tool calls ran `gh pr create`, `gh pr merge`, `gh pr checks` or `gh pr view` naming N, is charged to N. Several distinct PRs in one turn share it equally, method `split`; one PR gets method `pr-link`. Confidence 0.6.
+
+A turn is a trigger. A `pr-link` record belongs to the main-session turn open at its timestamp. `gh pr create` names no number, so its number comes from the `/pull/N` in its result. A background command doesn't count here: its PR is only known from its description, and A1 charges its completion.
 
 ### A6: unattributed
 
