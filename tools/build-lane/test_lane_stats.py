@@ -207,7 +207,7 @@ class LaneDiskTests(unittest.TestCase):
         self.assertEqual(left, sorted([newest.name, live_working.name, "s-hmptxz1mr4-1oq5s11.lock",
                                        "s-hmpuaaaaaa-2222222.lock"]),
                          "keeps the newest finished session and a recent -working one, with their locks")
-        self.assertIn("pruned", r.stderr)
+        self.assertIn("pruned", r.stdout + r.stderr)   # the summary line in quiet mode
         self.assertGreaterEqual(self.jobs()[-1]["pruned_mb"], 3)
 
         # LANE_PRUNE=0 leaves a stale session alone.

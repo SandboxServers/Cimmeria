@@ -1,0 +1,50 @@
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 0.01s
+────────────
+ Nextest run ID 201027b9-d9d2-4a8a-9c4a-e7eadf63ac70 with nextest profile: default
+    Starting 3 tests across 1 binary (1 test skipped)
+        FAIL [   0.008s] demo tests::explodes
+  Cancelling due to test failure: 2 tests still running
+        FAIL [   0.011s] demo tests::wrong_sum
+────────────
+     Summary [   0.015s] 3 tests run: 1 passed, 2 failed, 1 skipped
+        FAIL [   0.008s] demo tests::explodes
+  stdout ───
+
+    running 1 test
+    test tests::explodes ... FAILED
+
+    failures:
+
+    failures:
+        tests::explodes
+
+    test result: FAILED. 0 passed; 1 failed; 0 ignored; 0 measured; 3 filtered out; finished in 0.00s
+
+  stderr ───
+
+    thread 'tests::explodes' (2260832) panicked at src\lib.rs:22:18:
+    index out of bounds: the len is 0 but the index is 3
+    note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+
+        FAIL [   0.011s] demo tests::wrong_sum
+  stdout ───
+
+    running 1 test
+    test tests::wrong_sum ... FAILED
+
+    failures:
+
+    failures:
+        tests::wrong_sum
+
+    test result: FAILED. 0 passed; 1 failed; 0 ignored; 0 measured; 3 filtered out; finished in 0.00s
+
+  stderr ───
+
+    thread 'tests::wrong_sum' (2287988) panicked at src\lib.rs:16:9:
+    assertion `left == right` failed: sum of 2 and 2
+      left: 4
+     right: 5
+    note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+
+error: test run failed

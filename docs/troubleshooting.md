@@ -2,7 +2,7 @@
 title: Troubleshooting
 type: how-to
 audience: new contributors, operators
-last_updated: 2026-09-29
+last_updated: 2026-10-03
 companion_docs:
   - building.md
   - architecture/build-system.md
@@ -100,6 +100,26 @@ Check free space with `(Get-Volume -DriveLetter B).SizeRemaining / 1GB` in Power
 **Root cause.** Other builds hold every lane slot. The brackets show each slot's worktree and command, so you can see who is building what.
 
 **Fix.** Wait: the lane starts your build as soon as a slot frees. You don't need to clean up after a crashed build, because a slot whose holder died is freed by the next caller (`[lane] breaking stale slot ...`). Leave other sessions' builds alone. To see which jobs are slow, run `python tools/build-lane/lane_stats.py --recent 20`. Don't raise the slot count in `%LOCALAPPDATA%\cimmeria-build\lane\SLOTS` without measuring first. The job log's lowest-free-RAM figure and `tools/build-metrics/measure-build.ps1` are how you measure; see [`architecture/build-system.md`](architecture/build-system.md) §10.
+
+---
+
+### A lane build prints only `[lane] status=...` and a log path
+
+**Symptom.** A build or test run through the lane from an agent, a pipe or a redirect prints a few lines instead of cargo's output:
+
+```text
+[lane] status=failed exit=101 ran=2.289s
+tests (libtest): 28 passed, 1 failed
+failed tests: 1
+FAIL parser::tests::parse_command_with_slash
+  ...
+failures: C:/Users/<you>/AppData/Local/cimmeria-build/logs/<worktree>/<time>-<pid>.failures.txt
+log: C:/Users/<you>/AppData/Local/cimmeria-build/logs/<worktree>/<time>-<pid>.log
+```
+
+**Root cause.** This is the lane's quiet mode. When its stdout isn't a terminal it writes the command's whole output to the log and prints a summary, so a build doesn't fill an agent's context. It shows each compiler error and each failing test's panic message; when it recognises neither, it prints the log's last 25 lines.
+
+**Fix.** Nothing is lost. Open the failures file for every error in full, or search the log. To see the output as it runs, set `LANE_VERBOSE=1`. A run from a terminal, or with `CI=true`, is never summarised. A worktree keeps its newest 20 logs (`LANE_LOG_KEEP`), for at most 7 days (`LANE_LOG_DAYS`).
 
 ---
 

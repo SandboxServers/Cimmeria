@@ -1,0 +1,23 @@
+    Checking demo v0.1.0 (C:\work\demo)
+error[E0425]: cannot find function `undefined_fn` in this scope
+  --> src\lib.rs:32:5
+   |
+32 |     undefined_fn() + "x"
+   |     ^^^^^^^^^^^^ not found in this scope
+
+error[E0308]: mismatched types
+  --> src\lib.rs:36:5
+   |
+35 | pub fn broken2() -> String {
+   |                     ------ expected `String` because of return type
+36 |     42
+   |     ^^ expected `String`, found integer
+   |
+help: try using a conversion method
+   |
+36 |     42.to_string()
+   |       ++++++++++++
+
+Some errors have detailed explanations: E0308, E0425.
+For more information about an error, try `rustc --explain E0308`.
+error: could not compile `demo` (lib) due to 2 previous errors

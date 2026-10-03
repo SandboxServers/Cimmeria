@@ -1,0 +1,33 @@
+   Compiling demo v0.1.0 (C:\work\demo)
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 0.80s
+     Running unittests src\lib.rs (C:\work\target\debug\deps\demo-e8540b4fbdadd262.exe)
+
+running 4 tests
+test tests::ignored_one ... ignored
+test tests::adds ... ok
+test tests::wrong_sum ... FAILED
+test tests::explodes ... FAILED
+
+failures:
+
+---- tests::wrong_sum stdout ----
+
+thread 'tests::wrong_sum' (2287708) panicked at src\lib.rs:16:9:
+assertion `left == right` failed: sum of 2 and 2
+  left: 4
+ right: 5
+
+---- tests::explodes stdout ----
+
+thread 'tests::explodes' (2287704) panicked at src\lib.rs:22:18:
+index out of bounds: the len is 0 but the index is 3
+note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+
+
+failures:
+    tests::explodes
+    tests::wrong_sum
+
+test result: FAILED. 1 passed; 2 failed; 1 ignored; 0 measured; 0 filtered out; finished in 0.01s
+
+error: test failed, to rerun pass `--lib`
