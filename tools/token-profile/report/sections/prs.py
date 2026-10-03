@@ -10,6 +10,7 @@ database can answer. TP-10's pr_stats.py adds the version stamp and the
 quality fields (CI and review rounds) on top.
 """
 
+from ..db import agent_type_sql
 from ..stats import distribution, percentile, share, top_share
 from .cost import LABEL
 from .grouping import TOKEN_COLUMNS
@@ -69,7 +70,7 @@ def pr_records(db, sc, pr_numbers):
                r.model, r.trigger_id, r.context_tokens, r.prev_gap_s, r.input_tokens, r.output_tokens,
                r.thinking_tokens, r.cache_read, r.cache_write_5m, r.cache_write_1h,
                COALESCE(c.usd, 0) AS usd, t.kind AS trigger_kind,
-               COALESCE(ag.custom_agent_type, ag.agent_type) AS agent_type
+               """ + agent_type_sql("ag") + """ AS agent_type
         FROM pr_attribution a
         JOIN report_prs p ON p.pr_number = a.pr_number
         JOIN requests r ON r.request_id = a.request_id

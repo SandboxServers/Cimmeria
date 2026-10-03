@@ -8,8 +8,15 @@ Prices come from one price-table version, chosen here and stamped on the report.
 import sqlite3
 from pathlib import Path
 
-# Schema versions the reports read. Version 2 (TP-01a) only added columns.
-SUPPORTED_SCHEMAS = ("1", "2")
+# Schema versions the reports read. Versions 2 (TP-01a) and 3 (TP-05) only added columns.
+SUPPORTED_SCHEMAS = ("1", "2", "3")
+
+
+def agent_type_sql(alias, default="NULL"):
+    """A subagent's agent type: its .claude/agents definition, else meta.agentType. A teammate's
+    meta.agentType is its name, which no report may show, so a teammate with no definition is 'teammate'."""
+    return (f"COALESCE({alias}.custom_agent_type, CASE WHEN {alias}.task_kind = 'in_process_teammate'"
+            f" THEN 'teammate' ELSE {alias}.agent_type END, {default})")
 
 
 class ReportError(Exception):
@@ -50,7 +57,7 @@ def scope(db, since=None, until=None, price_table=None):
                    CASE WHEN r.agent_id IS NULL THEN 'main' ELSE 'subagent' END AS scope,
                    CASE WHEN r.agent_id IS NULL
                         THEN CASE WHEN s.is_coordinator = 1 THEN 'main (coordinator)' ELSE 'main' END
-                        ELSE COALESCE(a.custom_agent_type, a.agent_type, 'unknown-agent') END AS agent_type,
+                        ELSE """ + agent_type_sql("a", "'unknown-agent'") + """ END AS agent_type,
                    t.kind AS trigger_kind
             FROM requests r
             JOIN sessions s ON s.session_id = r.session_id
@@ -75,7 +82,10 @@ def scope(db, since=None, until=None, price_table=None):
                    r.cache_write_1h * p.cache_write_1h / 1e6 AS usd_cache_write_1h,
                    (r.input_tokens * p.input + r.output_tokens * p.output + r.cache_read * p.cache_read
                     + r.cache_write_5m * p.cache_write_5m + r.cache_write_1h * p.cache_write_1h) / 1e6 AS usd
-            FROM requests r LEFT JOIN wprice p ON p.model = r.model;
+            -- A dated model id ('claude-haiku-4-5-20251001') takes its undated row's price.
+            FROM requests r LEFT JOIN wprice p ON p.model = r.model
+                 OR (r.model LIKE p.model || '-________'
+                     AND substr(r.model, -8) GLOB '[0-9][0-9][0-9][0-9][0-9][0-9][0-9][0-9]');
         CREATE TEMP VIEW wcost AS
             SELECT w.*, c.priced, c.usd_input, c.usd_output, c.usd_cache_read,
                    c.usd_cache_write_5m, c.usd_cache_write_1h, c.usd

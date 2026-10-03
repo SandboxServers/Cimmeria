@@ -1,0 +1,256 @@
+{
+ "schema": "cimmeria-token-reconcile/1",
+ "window": {
+  "since": "2026-09-14T00:00:00Z",
+  "until": "2026-10-03T11:39:49Z"
+ },
+ "price_table": "2026-10-03",
+ "cost_state": {
+  "source": "cost-state",
+  "sessions": 93,
+  "sessions_checked_individually": 68,
+  "min_session_requests": 20,
+  "totals": {
+   "cost_state_usd": 11197.843161800003,
+   "profiler_usd": 10053.406647300002,
+   "repriced_usd": 11201.269949947056,
+   "unpriced_cost_state_usd": 0.0,
+   "gap_share": -0.10220151309174418
+  },
+  "uncovered": {
+   "requests": 11591,
+   "usd": 1211.848758099996,
+   "sessions_without_cost_state": 1,
+   "resumed_sessions": 7
+  },
+  "by_model": [
+   {
+    "model": "claude-opus-5-5",
+    "requests": 44488,
+    "cost_state_usd": 5156.879219200001,
+    "profiler_usd": 4690.925580000002,
+    "repriced_usd": 5159.695709385981,
+    "priced": true,
+    "cost_state": {
+     "input": 8303795,
+     "output": 34702837,
+     "cache_read": 15125717886,
+     "cache_write": 265041858
+    },
+    "profiler": {
+     "input": 92132,
+     "output": 34490117,
+     "cache_read": 13223728825,
+     "cache_write": 255447995
+    },
+    "gap": {
+     "input": -0.9889048320677474,
+     "output": -0.0061297582096818196,
+     "cache_read": -0.12574537455577134,
+     "cache_write": -0.03619753903174041
+    }
+   },
+   {
+    "model": "claude-opus-5",
+    "requests": 17307,
+    "cost_state_usd": 3875.8493309999994,
+    "profiler_usd": 3409.1223489999998,
+    "repriced_usd": 3875.849330999999,
+    "priced": true,
+    "cost_state": {
+     "input": 4794394,
+     "output": 13643280,
+     "cache_read": 5523226272,
+     "cache_write": 119869156
+    },
+    "profiler": {
+     "input": 34535,
+     "output": 13428360,
+     "cache_read": 4715816348,
+     "cache_write": 114453200
+    },
+    "gap": {
+     "input": -0.9927967955908504,
+     "output": -0.015752810174679402,
+     "cache_read": -0.1461844733925107,
+     "cache_write": -0.0451822318662192
+    }
+   },
+   {
+    "model": "claude-sonnet-5",
+    "requests": 11943,
+    "cost_state_usd": 1066.201793900001,
+    "profiler_usd": 934.5257367000002,
+    "repriced_usd": 1066.4762384593166,
+    "priced": true,
+    "cost_state": {
+     "input": 3582257,
+     "output": 8924956,
+     "cache_read": 4127386872,
+     "cache_write": 53099421
+    },
+    "profiler": {
+     "input": 24094,
+     "output": 8763129,
+     "cache_read": 3546335371,
+     "cache_write": 50417693
+    },
+    "gap": {
+     "input": -0.993274072742408,
+     "output": -0.018131966140785456,
+     "cache_read": -0.1407795098980971,
+     "cache_write": -0.05050390285799915
+    }
+   },
+   {
+    "model": "claude-fable-5-1",
+    "requests": 3413,
+    "cost_state_usd": 804.82125725,
+    "profiler_usd": 791.0167880000001,
+    "repriced_usd": 804.9541996977994,
+    "priced": true,
+    "cost_state": {
+     "input": 220478,
+     "output": 3680997,
+     "cache_read": 1247795859,
+     "cache_write": 15772587
+    },
+    "profiler": {
+     "input": 22364,
+     "output": 3649482,
+     "cache_read": 1206983612,
+     "cache_write": 15760931
+    },
+    "gap": {
+     "input": -0.8985658433040938,
+     "output": -0.008561539169958573,
+     "cache_read": -0.032707471102450585,
+     "cache_write": -0.0007390036903901688
+    }
+   },
+   {
+    "model": "claude-opus-4-8",
+    "requests": 812,
+    "cost_state_usd": 183.1290857500002,
+    "profiler_usd": 143.03298725,
+    "repriced_usd": 183.3319967039578,
+    "priced": true,
+    "cost_state": {
+     "input": 372531,
+     "output": 1006129,
+     "cache_read": 266045404,
+     "cache_write": 3282802
+    },
+    "profiler": {
+     "input": 1616,
+     "output": 986353,
+     "cache_read": 193149607,
+     "cache_write": 3074926
+    },
+    "gap": {
+     "input": -0.9956621059723889,
+     "output": -0.019655531248975032,
+     "cache_read": -0.27399758050321366,
+     "cache_write": -0.06332273466386337
+    }
+   },
+   {
+    "model": "claude-sonnet-5-5",
+    "requests": 900,
+    "cost_state_usd": 109.22210779999997,
+    "profiler_usd": 84.4848424,
+    "repriced_usd": 109.2221078,
+    "priced": true,
+    "cost_state": {
+     "input": 478340,
+     "output": 1076849,
+     "cache_read": 428807789,
+     "cache_write": 4694152
+    },
+    "profiler": {
+     "input": 1802,
+     "output": 1062167,
+     "cache_read": 316001517,
+     "cache_write": 4263706
+    },
+    "gap": {
+     "input": -0.9962328051176987,
+     "output": -0.013634223554091614,
+     "cache_read": -0.2630695497930892,
+     "cache_write": -0.09169835148073603
+    }
+   },
+   {
+    "model": "claude-haiku-4-5",
+    "requests": 12,
+    "cost_state_usd": 1.7403668999999995,
+    "profiler_usd": 0.29836395,
+    "repriced_usd": 1.7403668999999995,
+    "priced": true,
+    "cost_state": {
+     "input": 967436,
+     "output": 48689,
+     "cache_read": 812684,
+     "cache_write": 174574
+    },
+    "profiler": {
+     "input": 100,
+     "output": 3433,
+     "cache_read": 632527,
+     "cache_write": 174277
+    },
+    "gap": {
+     "input": -0.9998966339892251,
+     "output": -0.9294912608597424,
+     "cache_read": -0.2216814899764238,
+     "cache_write": -0.0017012842691351518
+    }
+   }
+  ],
+  "per_session_gap_share": {
+   "n": 68,
+   "sum": -4.210767865719295,
+   "mean": -0.06192305684881316,
+   "p50": -0.032575031798479356,
+   "p75": -0.005847469022402848,
+   "p90": -0.00020980811603577143,
+   "p95": -9.635270832761178e-05,
+   "p99": -3.044760260575326e-05,
+   "max": -2.3010611990486033e-05
+  },
+  "checks": [
+   {
+    "name": "price_residual",
+    "value": 0.00030602215958366657,
+    "limit": 0.01,
+    "ok": true
+   },
+   {
+    "name": "output_gap",
+    "value": 0.011107395238807745,
+    "limit": 0.03,
+    "ok": true
+   },
+   {
+    "name": "undercount",
+    "value": 0.10220151309174418,
+    "limit": 0.15,
+    "ok": true
+   },
+   {
+    "name": "overcount",
+    "value": 0.0,
+    "limit": 0.01,
+    "ok": true
+   },
+   {
+    "name": "session_overcount",
+    "value": 0,
+    "limit": 0,
+    "ok": true
+   }
+  ],
+  "ok": true
+ },
+ "ok": true
+}

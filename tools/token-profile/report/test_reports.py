@@ -1,6 +1,7 @@
 """The report layers over the synthetic fixture, loaded into schema.sql by fixture_db."""
 
 import json
+import sqlite3
 import tempfile
 import unittest
 
@@ -155,6 +156,19 @@ class ReportTest(unittest.TestCase):
         with self.assertRaises(dbmod.ReportError):
             dbmod.scope(db)
         db.close()
+
+    def test_teammate_names_never_reach_a_report(self):
+        # Claude Code writes an in-process teammate's name as its meta.agentType.
+        with tempfile.TemporaryDirectory() as tmp:
+            db_path, _ = fixture_db.build(tmp)
+            db = sqlite3.connect(db_path)
+            db.execute("UPDATE agents SET agent_type = 'tm-alpha-name', custom_agent_type = NULL,"
+                       " name = 'tm-alpha-name', task_kind = 'in_process_teammate'")
+            db.commit()
+            db.close()
+            md, js = generate.generate(db_path, use_local_deny=False)
+        self.assertNotIn("tm-alpha-name", md + js)
+        self.assertIn("teammate", {r["key"] for r in json.loads(js)["cost"]["by"]["agent_type"]})
 
 
 class CacheSimTest(unittest.TestCase):

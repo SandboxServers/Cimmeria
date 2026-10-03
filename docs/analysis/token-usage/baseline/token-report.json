@@ -1,0 +1,7024 @@
+{
+ "schema": "cimmeria-token-report/1",
+ "stamp": {
+  "schema_version": "3",
+  "profiler_commit": "820709c150f9",
+  "report_commit": "820709c150f9",
+  "ingest_runs": 1,
+  "last_ingest": "2026-10-03T13:42:59.821Z",
+  "price_table": "2026-10-03",
+  "window": {
+   "since": "2026-09-14T00:00:00Z",
+   "until": "2026-10-03T11:39:49Z",
+   "first_request": "2026-09-17T02:04:37.495Z",
+   "last_request": "2026-10-03T11:37:00.923Z",
+   "requests": 90466
+  },
+  "claude_code": {
+   "first": "2.1.274",
+   "last": "2.1.288",
+   "all": [
+    "2.1.274",
+    "2.1.275",
+    "2.1.276",
+    "2.1.277",
+    "2.1.278",
+    "2.1.280",
+    "2.1.282",
+    "2.1.283",
+    "2.1.284",
+    "2.1.288"
+   ]
+  },
+  "models": [
+   "claude-fable-5-1",
+   "claude-haiku-4-5-20251001",
+   "claude-opus-4-8",
+   "claude-opus-5",
+   "claude-opus-5-5",
+   "claude-sonnet-5",
+   "claude-sonnet-5-5"
+  ],
+  "unknown_records": 0,
+  "unknown_shapes": {
+   "shapes": 0,
+   "records": 0
+  },
+  "rejected": {
+   "fingerprint": 2414
+  }
+ },
+ "tokens": {
+  "layer": "raw tokens",
+  "note": "Raw token counts. thinking_tokens is part of output_tokens and is never added on top. Context is input plus cache read plus both cache writes.",
+  "totals": {
+   "requests": 90466,
+   "input_tokens": 200435,
+   "output_tokens": 71327547,
+   "thinking_tokens": 21347541,
+   "cache_read": 26522981985,
+   "cache_write_5m": 468737851,
+   "cache_write_1h": 55794318,
+   "context_tokens": 27047714589,
+   "web_search": 0,
+   "web_fetch": 0
+  },
+  "by": {
+   "model": [
+    {
+     "key": "claude-opus-5-5",
+     "requests": 53434,
+     "input_tokens": 110634,
+     "output_tokens": 41425156,
+     "thinking_tokens": 10758880,
+     "cache_read": 15804816299,
+     "cache_write_5m": 292149921,
+     "cache_write_1h": 31088103,
+     "context_tokens": 16128164957,
+     "web_search": 0,
+     "web_fetch": 0
+    },
+    {
+     "key": "claude-opus-5",
+     "requests": 17307,
+     "input_tokens": 34535,
+     "output_tokens": 13428360,
+     "thinking_tokens": 3706775,
+     "cache_read": 4715816348,
+     "cache_write_5m": 114453200,
+     "cache_write_1h": 0,
+     "context_tokens": 4830304083,
+     "web_search": 0,
+     "web_fetch": 0
+    },
+    {
+     "key": "claude-sonnet-5",
+     "requests": 14588,
+     "input_tokens": 29384,
+     "output_tokens": 10772596,
+     "thinking_tokens": 4979284,
+     "cache_read": 4285582075,
+     "cache_write_5m": 54155222,
+     "cache_write_1h": 9411883,
+     "context_tokens": 4349178564,
+     "web_search": 0,
+     "web_fetch": 0
+    },
+    {
+     "key": "claude-fable-5-1",
+     "requests": 3413,
+     "input_tokens": 22364,
+     "output_tokens": 3649482,
+     "thinking_tokens": 1034643,
+     "cache_read": 1206983612,
+     "cache_write_5m": 1152730,
+     "cache_write_1h": 14608201,
+     "context_tokens": 1222766907,
+     "web_search": 0,
+     "web_fetch": 0
+    },
+    {
+     "key": "claude-sonnet-5-5",
+     "requests": 900,
+     "input_tokens": 1802,
+     "output_tokens": 1062167,
+     "thinking_tokens": 403989,
+     "cache_read": 316001517,
+     "cache_write_5m": 4263706,
+     "cache_write_1h": 0,
+     "context_tokens": 320267025,
+     "web_search": 0,
+     "web_fetch": 0
+    },
+    {
+     "key": "claude-opus-4-8",
+     "requests": 812,
+     "input_tokens": 1616,
+     "output_tokens": 986353,
+     "thinking_tokens": 462966,
+     "cache_read": 193149607,
+     "cache_write_5m": 2388795,
+     "cache_write_1h": 686131,
+     "context_tokens": 196226149,
+     "web_search": 0,
+     "web_fetch": 0
+    },
+    {
+     "key": "claude-haiku-4-5-20251001",
+     "requests": 12,
+     "input_tokens": 100,
+     "output_tokens": 3433,
+     "thinking_tokens": 1004,
+     "cache_read": 632527,
+     "cache_write_5m": 174277,
+     "cache_write_1h": 0,
+     "context_tokens": 806904,
+     "web_search": 0,
+     "web_fetch": 0
+    }
+   ],
+   "scope": [
+    {
+     "key": "subagent",
+     "requests": 72860,
+     "input_tokens": 147104,
+     "output_tokens": 58047875,
+     "thinking_tokens": 17610903,
+     "cache_read": 19835928878,
+     "cache_write_5m": 468737851,
+     "cache_write_1h": 0,
+     "context_tokens": 20304813833,
+     "web_search": 0,
+     "web_fetch": 0
+    },
+    {
+     "key": "main",
+     "requests": 17606,
+     "input_tokens": 53331,
+     "output_tokens": 13279672,
+     "thinking_tokens": 3736638,
+     "cache_read": 6687053107,
+     "cache_write_5m": 0,
+     "cache_write_1h": 55794318,
+     "context_tokens": 6742900756,
+     "web_search": 0,
+     "web_fetch": 0
+    }
+   ],
+   "agent_type": [
+    {
+     "key": "rust-gameserver-dev",
+     "requests": 43924,
+     "input_tokens": 88309,
+     "output_tokens": 35346834,
+     "thinking_tokens": 9239751,
+     "cache_read": 13272113858,
+     "cache_write_5m": 301495688,
+     "cache_write_1h": 0,
+     "context_tokens": 13573697855,
+     "web_search": 0,
+     "web_fetch": 0
+    },
+    {
+     "key": "main (coordinator)",
+     "requests": 17157,
+     "input_tokens": 50605,
+     "output_tokens": 12820261,
+     "thinking_tokens": 3530725,
+     "cache_read": 6596731898,
+     "cache_write_5m": 0,
+     "cache_write_1h": 53181376,
+     "context_tokens": 6649963879,
+     "web_search": 0,
+     "web_fetch": 0
+    },
+    {
+     "key": "game-archaeology-specialist",
+     "requests": 4991,
+     "input_tokens": 9990,
+     "output_tokens": 4747451,
+     "thinking_tokens": 2223277,
+     "cache_read": 1455693290,
+     "cache_write_5m": 23929598,
+     "cache_write_1h": 0,
+     "context_tokens": 1479632878,
+     "web_search": 0,
+     "web_fetch": 0
+    },
+    {
+     "key": "npc-ai-spawn-advisor",
+     "requests": 2122,
+     "input_tokens": 4256,
+     "output_tokens": 1669246,
+     "thinking_tokens": 451613,
+     "cache_read": 592086871,
+     "cache_write_5m": 16688397,
+     "cache_write_1h": 0,
+     "context_tokens": 608779524,
+     "web_search": 0,
+     "web_fetch": 0
+    },
+    {
+     "key": "aoi-witness-broadcast",
+     "requests": 1788,
+     "input_tokens": 3576,
+     "output_tokens": 1258036,
+     "thinking_tokens": 613589,
+     "cache_read": 568092686,
+     "cache_write_5m": 9472299,
+     "cache_write_1h": 0,
+     "context_tokens": 577568561,
+     "web_search": 0,
+     "web_fetch": 0
+    },
+    {
+     "key": "testing-validation-engineer",
+     "requests": 2136,
+     "input_tokens": 4270,
+     "output_tokens": 1363869,
+     "thinking_tokens": 503356,
+     "cache_read": 532049192,
+     "cache_write_5m": 10426084,
+     "cache_write_1h": 0,
+     "context_tokens": 542479546,
+     "web_search": 0,
+     "web_fetch": 0
+    },
+    {
+     "key": "general-purpose",
+     "requests": 3438,
+     "input_tokens": 7605,
+     "output_tokens": 2454930,
+     "thinking_tokens": 778136,
+     "cache_read": 485894249,
+     "cache_write_5m": 13031287,
+     "cache_write_1h": 0,
+     "context_tokens": 498933141,
+     "web_search": 0,
+     "web_fetch": 0
+    },
+    {
+     "key": "combat-systems-advisor",
+     "requests": 1905,
+     "input_tokens": 3821,
+     "output_tokens": 1363581,
+     "thinking_tokens": 380449,
+     "cache_read": 415767133,
+     "cache_write_5m": 11385641,
+     "cache_write_1h": 0,
+     "context_tokens": 427156595,
+     "web_search": 0,
+     "web_fetch": 0
+    },
+    {
+     "key": "bigworld-engine-advisor",
+     "requests": 1116,
+     "input_tokens": 2234,
+     "output_tokens": 836285,
+     "thinking_tokens": 220919,
+     "cache_read": 376948093,
+     "cache_write_5m": 5623416,
+     "cache_write_1h": 0,
+     "context_tokens": 382573743,
+     "web_search": 0,
+     "web_fetch": 0
+    },
+    {
+     "key": "documentation-writer",
+     "requests": 1710,
+     "input_tokens": 3440,
+     "output_tokens": 1361670,
+     "thinking_tokens": 302412,
+     "cache_read": 369103077,
+     "cache_write_5m": 7666379,
+     "cache_write_1h": 0,
+     "context_tokens": 376772896,
+     "web_search": 0,
+     "web_fetch": 0
+    },
+    {
+     "key": "movement-teleport-advisor",
+     "requests": 1419,
+     "input_tokens": 2842,
+     "output_tokens": 1184301,
+     "thinking_tokens": 385785,
+     "cache_read": 347158570,
+     "cache_write_5m": 5729339,
+     "cache_write_1h": 0,
+     "context_tokens": 352890751,
+     "web_search": 0,
+     "web_fetch": 0
+    },
+    {
+     "key": "teammate",
+     "requests": 1658,
+     "input_tokens": 3346,
+     "output_tokens": 1254755,
+     "thinking_tokens": 489114,
+     "cache_read": 299344866,
+     "cache_write_5m": 13955135,
+     "cache_write_1h": 0,
+     "context_tokens": 313303347,
+     "web_search": 0,
+     "web_fetch": 0
+    },
+    {
+     "key": "fork",
+     "requests": 987,
+     "input_tokens": 1990,
+     "output_tokens": 780290,
+     "thinking_tokens": 276020,
+     "cache_read": 247750108,
+     "cache_write_5m": 6940579,
+     "cache_write_1h": 0,
+     "context_tokens": 254692677,
+     "web_search": 0,
+     "web_fetch": 0
+    },
+    {
+     "key": "items-systems-advisor",
+     "requests": 900,
+     "input_tokens": 1800,
+     "output_tokens": 759986,
+     "thinking_tokens": 351123,
+     "cache_read": 178509089,
+     "cache_write_5m": 5121918,
+     "cache_write_1h": 0,
+     "context_tokens": 183632807,
+     "web_search": 0,
+     "web_fetch": 0
+    },
+    {
+     "key": "mission-systems-advisor",
+     "requests": 1020,
+     "input_tokens": 2049,
+     "output_tokens": 743892,
+     "thinking_tokens": 286242,
+     "cache_read": 160251183,
+     "cache_write_5m": 7725303,
+     "cache_write_1h": 0,
+     "context_tokens": 167978535,
+     "web_search": 0,
+     "web_fetch": 0
+    },
+    {
+     "key": "server-authority-enforcer",
+     "requests": 1017,
+     "input_tokens": 2032,
+     "output_tokens": 810021,
+     "thinking_tokens": 391419,
+     "cache_read": 126137016,
+     "cache_write_5m": 6563823,
+     "cache_write_1h": 0,
+     "context_tokens": 132702871,
+     "web_search": 0,
+     "web_fetch": 0
+    },
+    {
+     "key": "workflow-subagent",
+     "requests": 745,
+     "input_tokens": 1490,
+     "output_tokens": 439734,
+     "thinking_tokens": 116813,
+     "cache_read": 117747140,
+     "cache_write_5m": 11212788,
+     "cache_write_1h": 0,
+     "context_tokens": 128961418,
+     "web_search": 0,
+     "web_fetch": 0
+    },
+    {
+     "key": "social-systems-engineer",
+     "requests": 523,
+     "input_tokens": 1046,
+     "output_tokens": 350939,
+     "thinking_tokens": 155075,
+     "cache_read": 118570339,
+     "cache_write_5m": 3608962,
+     "cache_write_1h": 0,
+     "context_tokens": 122180347,
+     "web_search": 0,
+     "web_fetch": 0
+    },
+    {
+     "key": "main",
+     "requests": 449,
+     "input_tokens": 2726,
+     "output_tokens": 459411,
+     "thinking_tokens": 205913,
+     "cache_read": 90321209,
+     "cache_write_5m": 0,
+     "cache_write_1h": 2612942,
+     "context_tokens": 92936877,
+     "web_search": 0,
+     "web_fetch": 0
+    },
+    {
+     "key": "Explore",
+     "requests": 706,
+     "input_tokens": 1410,
+     "output_tokens": 525681,
+     "thinking_tokens": 86682,
+     "cache_read": 59250506,
+     "cache_write_5m": 3258289,
+     "cache_write_1h": 0,
+     "context_tokens": 62510205,
+     "web_search": 0,
+     "web_fetch": 0
+    },
+    {
+     "key": "network-security-auth",
+     "requests": 311,
+     "input_tokens": 634,
+     "output_tokens": 233254,
+     "thinking_tokens": 95831,
+     "cache_read": 45570669,
+     "cache_write_5m": 2449454,
+     "cache_write_1h": 0,
+     "context_tokens": 48020757,
+     "web_search": 0,
+     "web_fetch": 0
+    },
+    {
+     "key": "minigame-systems-advisor",
+     "requests": 189,
+     "input_tokens": 378,
+     "output_tokens": 169692,
+     "thinking_tokens": 56611,
+     "cache_read": 30931496,
+     "cache_write_5m": 832153,
+     "cache_write_1h": 0,
+     "context_tokens": 31764027,
+     "web_search": 0,
+     "web_fetch": 0
+    },
+    {
+     "key": "Plan",
+     "requests": 108,
+     "input_tokens": 216,
+     "output_tokens": 229968,
+     "thinking_tokens": 151449,
+     "cache_read": 21949607,
+     "cache_write_5m": 398639,
+     "cache_write_1h": 0,
+     "context_tokens": 22348462,
+     "web_search": 0,
+     "web_fetch": 0
+    },
+    {
+     "key": "database-persistence",
+     "requests": 135,
+     "input_tokens": 270,
+     "output_tokens": 160027,
+     "thinking_tokens": 54233,
+     "cache_read": 14377313,
+     "cache_write_5m": 1048403,
+     "cache_write_1h": 0,
+     "context_tokens": 15425986,
+     "web_search": 0,
+     "web_fetch": 0
+    },
+    {
+     "key": "claude-code-guide",
+     "requests": 12,
+     "input_tokens": 100,
+     "output_tokens": 3433,
+     "thinking_tokens": 1004,
+     "cache_read": 632527,
+     "cache_write_5m": 174277,
+     "cache_write_1h": 0,
+     "context_tokens": 806904,
+     "web_search": 0,
+     "web_fetch": 0
+    }
+   ],
+   "trigger": [
+    {
+     "key": "background_completion",
+     "requests": 20311,
+     "input_tokens": 45302,
+     "output_tokens": 14238339,
+     "thinking_tokens": 3309241,
+     "cache_read": 7557298311,
+     "cache_write_5m": 120008095,
+     "cache_write_1h": 9982103,
+     "context_tokens": 7687333811,
+     "web_search": 0,
+     "web_fetch": 0
+    },
+    {
+     "key": "teammate_message",
+     "requests": 26889,
+     "input_tokens": 54955,
+     "output_tokens": 22689614,
+     "thinking_tokens": 6576075,
+     "cache_read": 7385668172,
+     "cache_write_5m": 184867455,
+     "cache_write_1h": 1691974,
+     "context_tokens": 7572282556,
+     "web_search": 0,
+     "web_fetch": 0
+    },
+    {
+     "key": "subagent_prompt",
+     "requests": 28067,
+     "input_tokens": 56978,
+     "output_tokens": 22872852,
+     "thinking_tokens": 8124139,
+     "cache_read": 6273072132,
+     "cache_write_5m": 131234720,
+     "cache_write_1h": 0,
+     "context_tokens": 6404363830,
+     "web_search": 0,
+     "web_fetch": 0
+    },
+    {
+     "key": "human_prompt",
+     "requests": 6971,
+     "input_tokens": 19065,
+     "output_tokens": 6221641,
+     "thinking_tokens": 2098064,
+     "cache_read": 2269442903,
+     "cache_write_5m": 893916,
+     "cache_write_1h": 30481416,
+     "context_tokens": 2300837300,
+     "web_search": 0,
+     "web_fetch": 0
+    },
+    {
+     "key": "monitor_event",
+     "requests": 2488,
+     "input_tokens": 6072,
+     "output_tokens": 1211084,
+     "thinking_tokens": 318956,
+     "cache_read": 963219444,
+     "cache_write_5m": 9341782,
+     "cache_write_1h": 1491213,
+     "context_tokens": 974058511,
+     "web_search": 0,
+     "web_fetch": 0
+    },
+    {
+     "key": "mixed",
+     "requests": 1679,
+     "input_tokens": 3718,
+     "output_tokens": 1323118,
+     "thinking_tokens": 281182,
+     "cache_read": 620885392,
+     "cache_write_5m": 13090673,
+     "cache_write_1h": 713440,
+     "context_tokens": 634693223,
+     "web_search": 0,
+     "web_fetch": 0
+    },
+    {
+     "key": "idle_notification",
+     "requests": 1700,
+     "input_tokens": 7522,
+     "output_tokens": 967247,
+     "thinking_tokens": 195712,
+     "cache_read": 609452267,
+     "cache_write_5m": 0,
+     "cache_write_1h": 3063915,
+     "context_tokens": 612523704,
+     "web_search": 0,
+     "web_fetch": 0
+    },
+    {
+     "key": "cross_session_message",
+     "requests": 1287,
+     "input_tokens": 3398,
+     "output_tokens": 982247,
+     "thinking_tokens": 219229,
+     "cache_read": 449332760,
+     "cache_write_5m": 0,
+     "cache_write_1h": 6982192,
+     "context_tokens": 456318350,
+     "web_search": 0,
+     "web_fetch": 0
+    },
+    {
+     "key": "agent_message",
+     "requests": 612,
+     "input_tokens": 1422,
+     "output_tokens": 480839,
+     "thinking_tokens": 126203,
+     "cache_read": 213445430,
+     "cache_write_5m": 7031900,
+     "cache_write_1h": 155292,
+     "context_tokens": 220634044,
+     "web_search": 0,
+     "web_fetch": 0
+    },
+    {
+     "key": "unknown",
+     "requests": 201,
+     "input_tokens": 406,
+     "output_tokens": 132439,
+     "thinking_tokens": 40033,
+     "cache_read": 114636232,
+     "cache_write_5m": 1484271,
+     "cache_write_1h": 0,
+     "context_tokens": 116120909,
+     "web_search": 0,
+     "web_fetch": 0
+    },
+    {
+     "key": "auxiliary",
+     "requests": 100,
+     "input_tokens": 1276,
+     "output_tokens": 127437,
+     "thinking_tokens": 35640,
+     "cache_read": 30078232,
+     "cache_write_5m": 557590,
+     "cache_write_1h": 714975,
+     "context_tokens": 31352073,
+     "web_search": 0,
+     "web_fetch": 0
+    },
+    {
+     "key": "scheduled_task",
+     "requests": 43,
+     "input_tokens": 86,
+     "output_tokens": 20011,
+     "thinking_tokens": 10157,
+     "cache_read": 21031570,
+     "cache_write_5m": 0,
+     "cache_write_1h": 53341,
+     "context_tokens": 21084997,
+     "web_search": 0,
+     "web_fetch": 0
+    },
+    {
+     "key": "compact_summary",
+     "requests": 118,
+     "input_tokens": 235,
+     "output_tokens": 60679,
+     "thinking_tokens": 12910,
+     "cache_read": 15419140,
+     "cache_write_5m": 227449,
+     "cache_write_1h": 464457,
+     "context_tokens": 16111281,
+     "web_search": 0,
+     "web_fetch": 0
+    }
+   ]
+  },
+  "per_request": {
+   "input_tokens": {
+    "n": 90466,
+    "sum": 200435,
+    "mean": 2.2155837552229567,
+    "p50": 2.0,
+    "p75": 2.0,
+    "p90": 2.0,
+    "p95": 2.0,
+    "p99": 4.0,
+    "max": 34
+   },
+   "output_tokens": {
+    "n": 90466,
+    "sum": 71327547,
+    "mean": 788.4459023279464,
+    "p50": 397.0,
+    "p75": 801.0,
+    "p90": 1732.0,
+    "p95": 2779.75,
+    "p99": 6098.350000000006,
+    "max": 52334
+   },
+   "thinking_tokens": {
+    "n": 90466,
+    "sum": 21347541,
+    "mean": 235.97308381049234,
+    "p50": 60.0,
+    "p75": 209.0,
+    "p90": 560.0,
+    "p95": 1035.0,
+    "p99": 2950.350000000006,
+    "max": 20314
+   },
+   "cache_read": {
+    "n": 90466,
+    "sum": 26522981985,
+    "mean": 293181.76978091215,
+    "p50": 260699.0,
+    "p75": 384641.5,
+    "p90": 525610.5,
+    "p95": 619893.0,
+    "p99": 804280.9000000004,
+    "max": 965936
+   },
+   "cache_write_5m": {
+    "n": 90466,
+    "sum": 468737851,
+    "mean": 5181.370360135299,
+    "p50": 943.0,
+    "p75": 2226.0,
+    "p90": 4757.5,
+    "p95": 9235.0,
+    "p99": 63268.25000000137,
+    "max": 807457
+   },
+   "cache_write_1h": {
+    "n": 90466,
+    "sum": 55794318,
+    "mean": 616.7435058475007,
+    "p50": 0.0,
+    "p75": 0.0,
+    "p90": 1063.0,
+    "p95": 2035.75,
+    "p99": 6268.400000000023,
+    "max": 879540
+   },
+   "context_tokens": {
+    "n": 90466,
+    "sum": 27047714589,
+    "mean": 298982.0992306502,
+    "p50": 265100.5,
+    "p75": 388767.75,
+    "p90": 529170.5,
+    "p95": 623606.0,
+    "p99": 807445.3500000007,
+    "max": 966844
+   }
+  }
+ },
+ "cost": {
+  "layer": "estimated USD",
+  "label": "Estimated list-price USD, priced per model from the stamped price table. The project is on a Max subscription, so this is a plan-usage proxy, not a bill (D-TP1).",
+  "totals": {
+   "usd": 11265.255405400001,
+   "usd_input": 0.909403,
+   "usd_output": 1489.70984,
+   "usd_cache_read": 6837.5721114,
+   "usd_cache_write_5m": 2351.686365,
+   "usd_cache_write_1h": 585.377686,
+   "priced_requests": 90466,
+   "unpriced_requests": 0
+  },
+  "unpriced_models": [],
+  "not_priced": {
+   "web_search_requests": 0,
+   "web_fetch_requests": 0
+  },
+  "by": {
+   "model": [
+    {
+     "key": "claude-opus-5-5",
+     "requests": 53434,
+     "usd": 5699.3633448,
+     "usd_input": 0.442536,
+     "usd_output": 828.50312,
+     "usd_cache_read": 3160.9632598000003,
+     "usd_cache_write_5m": 1460.749605,
+     "usd_cache_write_1h": 248.704824,
+     "share": 0.505924023885691
+    },
+    {
+     "key": "claude-opus-5",
+     "requests": 17307,
+     "usd": 3409.122349,
+     "usd_input": 0.17267500000000002,
+     "usd_output": 335.709,
+     "usd_cache_read": 2357.908174,
+     "usd_cache_write_5m": 715.3325,
+     "usd_cache_write_1h": 0,
+     "share": 0.3026227303613407
+    },
+    {
+     "key": "claude-sonnet-5",
+     "requests": 14588,
+     "usd": 1137.9367300000001,
+     "usd_input": 0.058768,
+     "usd_output": 107.72596,
+     "usd_cache_read": 857.1164150000001,
+     "usd_cache_write_5m": 135.388055,
+     "usd_cache_write_1h": 37.647532,
+     "share": 0.10101295434939984
+    },
+    {
+     "key": "claude-fable-5-1",
+     "requests": 3413,
+     "usd": 791.016788,
+     "usd_input": 0.22364,
+     "usd_output": 182.4741,
+     "usd_cache_read": 301.745903,
+     "usd_cache_write_5m": 14.409125,
+     "usd_cache_write_1h": 292.16402,
+     "share": 0.07021738607194171
+    },
+    {
+     "key": "claude-opus-4-8",
+     "requests": 812,
+     "usd": 143.03298725,
+     "usd_input": 0.00808,
+     "usd_output": 24.658825,
+     "usd_cache_read": 96.5748035,
+     "usd_cache_write_5m": 14.92996875,
+     "usd_cache_write_1h": 6.8613100000000005,
+     "share": 0.01269682595757546
+    },
+    {
+     "key": "claude-sonnet-5-5",
+     "requests": 900,
+     "usd": 84.4848424,
+     "usd_input": 0.003604,
+     "usd_output": 10.62167,
+     "usd_cache_read": 63.2003034,
+     "usd_cache_write_5m": 10.659265,
+     "usd_cache_write_1h": 0,
+     "share": 0.0074995940491062625
+    },
+    {
+     "key": "claude-haiku-4-5-20251001",
+     "requests": 12,
+     "usd": 0.29836395,
+     "usd_input": 9.999999999999999e-05,
+     "usd_output": 0.017165,
+     "usd_cache_read": 0.06325270000000001,
+     "usd_cache_write_5m": 0.21784625,
+     "usd_cache_write_1h": 0,
+     "share": 2.648532494496123e-05
+    }
+   ],
+   "scope": [
+    {
+     "key": "subagent",
+     "requests": 72860,
+     "usd": 8921.52993925,
+     "usd_input": 0.5830649999999999,
+     "usd_output": 1142.87462,
+     "usd_cache_read": 5426.38588925,
+     "usd_cache_write_5m": 2351.686365,
+     "usd_cache_write_1h": 0,
+     "share": 0.7919509694359406
+    },
+    {
+     "key": "main",
+     "requests": 17606,
+     "usd": 2343.72546615,
+     "usd_input": 0.326338,
+     "usd_output": 346.83522,
+     "usd_cache_read": 1411.18622215,
+     "usd_cache_write_5m": 0,
+     "usd_cache_write_1h": 585.377686,
+     "share": 0.20804903056405938
+    }
+   ],
+   "agent_type": [
+    {
+     "key": "rust-gameserver-dev",
+     "requests": 43924,
+     "usd": 6189.59835025,
+     "usd_input": 0.371075,
+     "usd_output": 744.338185,
+     "usd_cache_read": 3840.247894,
+     "usd_cache_write_5m": 1604.64119625,
+     "usd_cache_write_1h": 0,
+     "share": 0.5494414576062799
+    },
+    {
+     "key": "main (coordinator)",
+     "requests": 17157,
+     "usd": 2273.6989632,
+     "usd_input": 0.303202,
+     "usd_output": 332.12776,
+     "usd_cache_read": 1391.0350552,
+     "usd_cache_write_5m": 0,
+     "usd_cache_write_1h": 550.232946,
+     "share": 0.20183288184572382
+    },
+    {
+     "key": "game-archaeology-specialist",
+     "requests": 4991,
+     "usd": 398.45714300000003,
+     "usd_input": 0.019979999999999998,
+     "usd_output": 47.47451,
+     "usd_cache_read": 291.138658,
+     "usd_cache_write_5m": 59.823995,
+     "usd_cache_write_1h": 0,
+     "share": 0.03537044910752752
+    },
+    {
+     "key": "testing-validation-engineer",
+     "requests": 2136,
+     "usd": 330.07679635,
+     "usd_input": 0.019964000000000003,
+     "usd_output": 31.630885,
+     "usd_cache_read": 238.1638111,
+     "usd_cache_write_5m": 60.26213625,
+     "usd_cache_write_1h": 0,
+     "share": 0.02930042724036045
+    },
+    {
+     "key": "npc-ai-spawn-advisor",
+     "requests": 2122,
+     "usd": 251.52421535,
+     "usd_input": 0.017646,
+     "usd_output": 34.952905,
+     "usd_cache_read": 130.8725156,
+     "usd_cache_write_5m": 85.68114875,
+     "usd_cache_write_1h": 0,
+     "share": 0.022327431229782136
+    },
+    {
+     "key": "general-purpose",
+     "requests": 3438,
+     "usd": 229.49905305000001,
+     "usd_input": 0.035334,
+     "usd_output": 53.71941,
+     "usd_cache_read": 107.0003203,
+     "usd_cache_write_5m": 68.74398875,
+     "usd_cache_write_1h": 0,
+     "share": 0.0203722902669379
+    },
+    {
+     "key": "combat-systems-advisor",
+     "requests": 1905,
+     "usd": 180.32944835,
+     "usd_input": 0.015767,
+     "usd_output": 28.6986,
+     "usd_cache_read": 92.9223851,
+     "usd_cache_write_5m": 58.69269625,
+     "usd_cache_write_1h": 0,
+     "share": 0.016007577445919165
+    },
+    {
+     "key": "documentation-writer",
+     "requests": 1710,
+     "usd": 164.94276415000002,
+     "usd_input": 0.01453,
+     "usd_output": 28.635275,
+     "usd_cache_read": 95.8820079,
+     "usd_cache_write_5m": 40.41095125,
+     "usd_cache_write_1h": 0,
+     "share": 0.014641724329741755
+    },
+    {
+     "key": "movement-teleport-advisor",
+     "requests": 1419,
+     "usd": 160.3590649,
+     "usd_input": 0.012476000000000001,
+     "usd_output": 26.29867,
+     "usd_cache_read": 102.8710964,
+     "usd_cache_write_5m": 31.1768225,
+     "usd_cache_write_1h": 0,
+     "share": 0.014234836151440639
+    },
+    {
+     "key": "aoi-witness-broadcast",
+     "requests": 1788,
+     "usd": 149.88679670000002,
+     "usd_input": 0.0071519999999999995,
+     "usd_output": 12.58036,
+     "usd_cache_read": 113.6185372,
+     "usd_cache_write_5m": 23.6807475,
+     "usd_cache_write_1h": 0,
+     "share": 0.01330522844854026
+    },
+    {
+     "key": "teammate",
+     "requests": 1658,
+     "usd": 145.40489705000002,
+     "usd_input": 0.011976,
+     "usd_output": 22.78436,
+     "usd_cache_read": 60.804433550000006,
+     "usd_cache_write_5m": 61.8041275,
+     "usd_cache_write_1h": 0,
+     "share": 0.012907376869618079
+    },
+    {
+     "key": "bigworld-engine-advisor",
+     "requests": 1116,
+     "usd": 120.2413346,
+     "usd_input": 0.008936,
+     "usd_output": 16.7257,
+     "usd_cache_read": 75.3896186,
+     "usd_cache_write_5m": 28.11708,
+     "usd_cache_write_1h": 0,
+     "share": 0.010673644784153079
+    },
+    {
+     "key": "mission-systems-advisor",
+     "requests": 1020,
+     "usd": 116.2989772,
+     "usd_input": 0.009301,
+     "usd_output": 17.467565,
+     "usd_cache_read": 56.5215612,
+     "usd_cache_write_5m": 42.30055,
+     "usd_cache_write_1h": 0,
+     "share": 0.010323687569857676
+    },
+    {
+     "key": "fork",
+     "requests": 987,
+     "usd": 90.4495181,
+     "usd_input": 0.005863999999999999,
+     "usd_output": 11.19638,
+     "usd_cache_read": 49.5500216,
+     "usd_cache_write_5m": 29.6972525,
+     "usd_cache_write_1h": 0,
+     "share": 0.00802906945692887
+    },
+    {
+     "key": "workflow-subagent",
+     "requests": 745,
+     "usd": 88.414008,
+     "usd_input": 0.00596,
+     "usd_output": 8.79468,
+     "usd_cache_read": 23.549428000000002,
+     "usd_cache_write_5m": 56.06394,
+     "usd_cache_write_1h": 0,
+     "share": 0.007848380246897796
+    },
+    {
+     "key": "server-authority-enforcer",
+     "requests": 1017,
+     "usd": 84.41258375,
+     "usd_input": 0.008316,
+     "usd_output": 16.896435,
+     "usd_cache_read": 33.7560765,
+     "usd_cache_write_5m": 33.75175625,
+     "usd_cache_write_1h": 0,
+     "share": 0.007493179756007735
+    },
+    {
+     "key": "main",
+     "requests": 449,
+     "usd": 70.02650295,
+     "usd_input": 0.023136,
+     "usd_output": 14.70746,
+     "usd_cache_read": 20.15116695,
+     "usd_cache_write_5m": 0,
+     "usd_cache_write_1h": 35.14474,
+     "share": 0.006216148718335563
+    },
+    {
+     "key": "items-systems-advisor",
+     "requests": 900,
+     "usd": 56.110072800000005,
+     "usd_input": 0.0036,
+     "usd_output": 7.59986,
+     "usd_cache_read": 35.7018178,
+     "usd_cache_write_5m": 12.804795,
+     "usd_cache_write_1h": 0,
+     "share": 0.004980807871706454
+    },
+    {
+     "key": "Explore",
+     "requests": 706,
+     "usd": 52.9749402,
+     "usd_input": 0.006416,
+     "usd_output": 12.271915,
+     "usd_cache_read": 21.699096700000002,
+     "usd_cache_write_5m": 18.9975125,
+     "usd_cache_write_1h": 0,
+     "share": 0.004702506804648784
+    },
+    {
+     "key": "social-systems-engineer",
+     "requests": 523,
+     "usd": 36.2479548,
+     "usd_input": 0.002092,
+     "usd_output": 3.50939,
+     "usd_cache_read": 23.714067800000002,
+     "usd_cache_write_5m": 9.022405000000001,
+     "usd_cache_write_1h": 0,
+     "share": 0.003217677140513347
+    },
+    {
+     "key": "network-security-auth",
+     "requests": 311,
+     "usd": 33.24354915,
+     "usd_input": 0.002832,
+     "usd_output": 5.354935,
+     "usd_cache_read": 14.6361384,
+     "usd_cache_write_5m": 13.24964375,
+     "usd_cache_write_1h": 0,
+     "share": 0.002950980510753862
+    },
+    {
+     "key": "minigame-systems-advisor",
+     "requests": 189,
+     "usd": 17.98150895,
+     "usd_input": 0.001698,
+     "usd_output": 3.797465,
+     "usd_cache_read": 9.3661822,
+     "usd_cache_write_5m": 4.81616375,
+     "usd_cache_write_1h": 0,
+     "share": 0.0015961918574327715
+    },
+    {
+     "key": "database-persistence",
+     "requests": 135,
+     "usd": 13.7952582,
+     "usd_input": 0.001186,
+     "usd_output": 3.53061,
+     "usd_cache_read": 4.5270472,
+     "usd_cache_write_5m": 5.736415,
+     "usd_cache_write_1h": 0,
+     "share": 0.0012245845924973207
+    },
+    {
+     "key": "Plan",
+     "requests": 108,
+     "usd": 10.9833404,
+     "usd_input": 0.000864,
+     "usd_output": 4.59936,
+     "usd_cache_read": 4.3899214,
+     "usd_cache_write_5m": 1.993195,
+     "usd_cache_write_1h": 0,
+     "share": 0.0009749748234500865
+    },
+    {
+     "key": "claude-code-guide",
+     "requests": 12,
+     "usd": 0.29836395,
+     "usd_input": 9.999999999999999e-05,
+     "usd_output": 0.017165,
+     "usd_cache_read": 0.06325270000000001,
+     "usd_cache_write_5m": 0.21784625,
+     "usd_cache_write_1h": 0,
+     "share": 2.648532494496123e-05
+    }
+   ],
+   "trigger": [
+    {
+     "key": "teammate_message",
+     "requests": 26889,
+     "usd": 3270.3086105,
+     "usd_input": 0.217317,
+     "usd_output": 446.15545,
+     "usd_cache_read": 1887.9308215,
+     "usd_cache_write_5m": 922.73355,
+     "usd_cache_write_1h": 13.271472,
+     "share": 0.2903004408521779
+    },
+    {
+     "key": "background_completion",
+     "requests": 20311,
+     "usd": 3090.7616373,
+     "usd_input": 0.21041300000000002,
+     "usd_output": 311.37771,
+     "usd_cache_read": 2057.37363155,
+     "usd_cache_write_5m": 623.68533875,
+     "usd_cache_write_1h": 98.114544,
+     "share": 0.2743623225638047
+    },
+    {
+     "key": "subagent_prompt",
+     "requests": 28067,
+     "usd": 2707.9549451000003,
+     "usd_input": 0.221831,
+     "usd_output": 438.96366,
+     "usd_cache_read": 1627.5870916000001,
+     "usd_cache_write_5m": 641.1823625,
+     "usd_cache_write_1h": 0,
+     "share": 0.240381140741997
+    },
+    {
+     "key": "human_prompt",
+     "requests": 6971,
+     "usd": 1016.922552,
+     "usd_input": 0.12214,
+     "usd_output": 172.085915,
+     "usd_cache_read": 489.736899,
+     "usd_cache_write_5m": 4.46958,
+     "usd_cache_write_1h": 350.508018,
+     "share": 0.09027070540385068
+    },
+    {
+     "key": "monitor_event",
+     "requests": 2488,
+     "usd": 376.52260805000003,
+     "usd_input": 0.030638000000000002,
+     "usd_output": 24.73735,
+     "usd_cache_read": 295.90602105,
+     "usd_cache_write_5m": 45.792095,
+     "usd_cache_write_1h": 10.056504,
+     "share": 0.033423353000014
+    },
+    {
+     "key": "mixed",
+     "requests": 1679,
+     "usd": 266.07916225,
+     "usd_input": 0.01688,
+     "usd_output": 27.65835,
+     "usd_cache_read": 162.45163125,
+     "usd_cache_write_5m": 70.077825,
+     "usd_cache_write_1h": 5.874476,
+     "share": 0.02361945226048359
+    },
+    {
+     "key": "idle_notification",
+     "requests": 1700,
+     "usd": 189.97435845,
+     "usd_input": 0.052852,
+     "usd_output": 27.562355,
+     "usd_cache_read": 129.87786545,
+     "usd_cache_write_5m": 0,
+     "usd_cache_write_1h": 32.481286,
+     "share": 0.016863741798427027
+    },
+    {
+     "key": "cross_session_message",
+     "requests": 1287,
+     "usd": 169.15513065000002,
+     "usd_input": 0.016192,
+     "usd_output": 21.83869,
+     "usd_cache_read": 91.80421465,
+     "usd_cache_write_5m": 0,
+     "usd_cache_write_1h": 55.496034,
+     "share": 0.015015649851038041
+    },
+    {
+     "key": "agent_message",
+     "requests": 612,
+     "usd": 100.92411575,
+     "usd_input": 0.006466,
+     "usd_output": 9.856575,
+     "usd_cache_read": 56.719764000000005,
+     "usd_cache_write_5m": 32.88721875,
+     "usd_cache_write_1h": 1.454092,
+     "share": 0.008958883941647875
+    },
+    {
+     "key": "unknown",
+     "requests": 201,
+     "usd": 31.9210129,
+     "usd_input": 0.001204,
+     "usd_output": 2.03946,
+     "usd_cache_read": 22.9272464,
+     "usd_cache_write_5m": 6.9531025,
+     "usd_cache_write_1h": 0,
+     "share": 0.00283358093103674
+    },
+    {
+     "key": "auxiliary",
+     "requests": 100,
+     "usd": 28.41059685,
+     "usd_input": 0.011940000000000001,
+     "usd_output": 5.063925,
+     "usd_cache_read": 7.521157850000001,
+     "usd_cache_write_5m": 3.3366700000000002,
+     "usd_cache_write_1h": 12.476904,
+     "share": 0.0025219665091997276
+    },
+    {
+     "key": "compact_summary",
+     "requests": 118,
+     "usd": 11.7007156,
+     "usd_input": 0.001358,
+     "usd_output": 2.17029,
+     "usd_cache_read": 3.5294531,
+     "usd_cache_write_5m": 0.5686225,
+     "usd_cache_write_1h": 5.430992,
+     "share": 0.0010386551550700983
+    },
+    {
+     "key": "scheduled_task",
+     "requests": 43,
+     "usd": 4.61996,
+     "usd_input": 0.00017199999999999998,
+     "usd_output": 0.20011,
+     "usd_cache_read": 4.206314,
+     "usd_cache_write_5m": 0,
+     "usd_cache_write_1h": 0.213364,
+     "share": 0.00041010699125253934
+    }
+   ]
+  },
+  "per_request": {
+   "n": 90466,
+   "sum": 11265.255405400001,
+   "mean": 0.12452474305706013,
+   "p50": 0.09059645,
+   "p75": 0.1373761,
+   "p90": 0.1975135,
+   "p95": 0.2530739375,
+   "p99": 0.6148224625000137,
+   "max": 17.60402
+  },
+  "per_transcript": {
+   "n": 900,
+   "sum": 11265.255405400001,
+   "mean": 12.516950450444446,
+   "p50": 5.057983350000001,
+   "p75": 16.2139324625,
+   "p90": 31.074533340000002,
+   "p95": 46.17129658749998,
+   "p99": 91.44864574399986,
+   "max": 309.454287
+  }
+ },
+ "context": {
+  "layer": "context pressure",
+  "note": "Context pressure: how much each request re-read. These are token counts, not cost; the cost of carrying context is already inside the cost layer.",
+  "per_request": {
+   "all": {
+    "n": 90466,
+    "sum": 27047714589,
+    "mean": 298982.0992306502,
+    "p50": 265100.5,
+    "p75": 388767.75,
+    "p90": 529170.5,
+    "p95": 623606.0,
+    "p99": 807445.3500000007,
+    "max": 966844
+   },
+   "main": {
+    "n": 17606,
+    "sum": 6742900756,
+    "mean": 382988.7967738271,
+    "p50": 349168.0,
+    "p75": 521199.25,
+    "p90": 682182.5,
+    "p95": 780196.75,
+    "p99": 927263.1500000001,
+    "max": 966844
+   },
+   "subagent": {
+    "n": 72860,
+    "sum": 20304813833,
+    "mean": 278682.59446884436,
+    "p50": 251302.5,
+    "p75": 360791.5,
+    "p90": 481590.1,
+    "p95": 562897.7000000001,
+    "p99": 716270.6200000003,
+    "max": 959800
+   }
+  },
+  "peak_per_transcript": {
+   "all": {
+    "n": 900,
+    "sum": 264529116,
+    "mean": 293921.24,
+    "p50": 245700.0,
+    "p75": 389050.25,
+    "p90": 542657.0,
+    "p95": 638599.2999999995,
+    "p99": 850024.5599999998,
+    "max": 966844
+   },
+   "main": {
+    "n": 92,
+    "sum": 37378519,
+    "mean": 406288.25,
+    "p50": 380533.5,
+    "p75": 611610.75,
+    "p90": 765503.8,
+    "p95": 929152.0000000001,
+    "p99": 966662.91,
+    "max": 966844
+   },
+   "subagent": {
+    "n": 808,
+    "sum": 227150597,
+    "mean": 281126.97648514854,
+    "p50": 238183.0,
+    "p75": 367206.5,
+    "p90": 501866.79999999993,
+    "p95": 601473.5,
+    "p99": 778053.8499999995,
+    "max": 959800
+   }
+  },
+  "requests_per_transcript": {
+   "all": {
+    "n": 900,
+    "sum": 90466,
+    "mean": 100.51777777777778,
+    "p50": 63.5,
+    "p75": 144.25,
+    "p90": 223.0,
+    "p95": 274.0,
+    "p99": 535.06,
+    "max": 1395
+   },
+   "main": {
+    "n": 92,
+    "sum": 17606,
+    "mean": 191.3695652173913,
+    "p50": 136.5,
+    "p75": 245.0,
+    "p90": 401.60000000000014,
+    "p95": 537.7,
+    "p99": 951.8300000000016,
+    "max": 1395
+   },
+   "subagent": {
+    "n": 808,
+    "sum": 72860,
+    "mean": 90.17326732673267,
+    "p50": 61.0,
+    "p75": 136.0,
+    "p90": 203.0,
+    "p95": 250.0,
+    "p99": 349.78999999999985,
+    "max": 1035
+   }
+  },
+  "first_request_by_agent_type": {
+   "Explore": {
+    "n": 28,
+    "sum": 592918,
+    "mean": 21175.64285714286,
+    "p50": 21098.0,
+    "p75": 21286.0,
+    "p90": 24431.3,
+    "p95": 24534.7,
+    "p99": 24745.4,
+    "max": 24821
+   },
+   "Plan": {
+    "n": 1,
+    "sum": 21172,
+    "mean": 21172.0,
+    "p50": 21172,
+    "p75": 21172,
+    "p90": 21172,
+    "p95": 21172,
+    "p99": 21172,
+    "max": 21172
+   },
+   "aoi-witness-broadcast": {
+    "n": 16,
+    "sum": 1092452,
+    "mean": 68278.25,
+    "p50": 68339.0,
+    "p75": 70153.75,
+    "p90": 72635.5,
+    "p95": 74525.25,
+    "p99": 74753.85,
+    "max": 74811
+   },
+   "bigworld-engine-advisor": {
+    "n": 6,
+    "sum": 407576,
+    "mean": 67929.33333333333,
+    "p50": 69627.0,
+    "p75": 69665.25,
+    "p90": 69919.0,
+    "p95": 70044.5,
+    "p99": 70144.9,
+    "max": 70170
+   },
+   "claude-code-guide": {
+    "n": 2,
+    "sum": 77739,
+    "mean": 38869.5,
+    "p50": 38869.5,
+    "p75": 40499.75,
+    "p90": 41477.9,
+    "p95": 41803.95,
+    "p99": 42064.79,
+    "max": 42130
+   },
+   "combat-systems-advisor": {
+    "n": 24,
+    "sum": 1444467,
+    "mean": 60186.125,
+    "p50": 59605.0,
+    "p75": 62289.0,
+    "p90": 66638.4,
+    "p95": 67231.35,
+    "p99": 68663.65,
+    "max": 69065
+   },
+   "database-persistence": {
+    "n": 9,
+    "sum": 541444,
+    "mean": 60160.444444444445,
+    "p50": 61152.0,
+    "p75": 61524.0,
+    "p90": 62848.0,
+    "p95": 63586.0,
+    "p99": 64176.4,
+    "max": 64324
+   },
+   "documentation-writer": {
+    "n": 24,
+    "sum": 1402912,
+    "mean": 58454.666666666664,
+    "p50": 58335.0,
+    "p75": 60322.5,
+    "p90": 61745.2,
+    "p95": 62502.700000000004,
+    "p99": 63077.94,
+    "max": 63221
+   },
+   "fork": {
+    "n": 39,
+    "sum": 7440371,
+    "mean": 190778.7435897436,
+    "p50": 87424.0,
+    "p75": 203936.5,
+    "p90": 551453.2000000003,
+    "p95": 663748.1,
+    "p99": 793741.6999999995,
+    "max": 865841
+   },
+   "game-archaeology-specialist": {
+    "n": 63,
+    "sum": 4755419,
+    "mean": 75482.84126984127,
+    "p50": 75600.0,
+    "p75": 77719.5,
+    "p90": 79728.2,
+    "p95": 80726.3,
+    "p99": 82168.16,
+    "max": 82219
+   },
+   "general-purpose": {
+    "n": 73,
+    "sum": 3707541,
+    "mean": 50788.232876712325,
+    "p50": 48916.0,
+    "p75": 52961.0,
+    "p90": 58844.399999999994,
+    "p95": 62893.4,
+    "p99": 63423.56,
+    "max": 63533
+   },
+   "items-systems-advisor": {
+    "n": 22,
+    "sum": 1511755,
+    "mean": 68716.13636363637,
+    "p50": 68667.5,
+    "p75": 71201.25,
+    "p90": 74202.0,
+    "p95": 74862.35,
+    "p99": 74957.68,
+    "max": 74977
+   },
+   "main": {
+    "n": 18,
+    "sum": 1355435,
+    "mean": 75301.94444444444,
+    "p50": 74699.5,
+    "p75": 80084.5,
+    "p90": 82972.8,
+    "p95": 83003.45,
+    "p99": 83059.89,
+    "max": 83074
+   },
+   "main (coordinator)": {
+    "n": 74,
+    "sum": 5395788,
+    "mean": 72916.05405405405,
+    "p50": 72889.0,
+    "p75": 75861.0,
+    "p90": 81193.4,
+    "p95": 84766.55,
+    "p99": 87779.23,
+    "max": 87815
+   },
+   "minigame-systems-advisor": {
+    "n": 5,
+    "sum": 292382,
+    "mean": 58476.4,
+    "p50": 57658.0,
+    "p75": 57771.0,
+    "p90": 63169.8,
+    "p95": 64969.4,
+    "p99": 66409.08,
+    "max": 66769
+   },
+   "mission-systems-advisor": {
+    "n": 22,
+    "sum": 1287564,
+    "mean": 58525.63636363636,
+    "p50": 58900.5,
+    "p75": 59792.25,
+    "p90": 61427.0,
+    "p95": 61486.85,
+    "p99": 65004.869999999995,
+    "max": 65940
+   },
+   "movement-teleport-advisor": {
+    "n": 18,
+    "sum": 1135248,
+    "mean": 63069.333333333336,
+    "p50": 63396.5,
+    "p75": 65233.0,
+    "p90": 66940.5,
+    "p95": 68606.25,
+    "p99": 68970.05,
+    "max": 69061
+   },
+   "network-security-auth": {
+    "n": 7,
+    "sum": 415091,
+    "mean": 59298.71428571428,
+    "p50": 57967.0,
+    "p75": 61892.5,
+    "p90": 62833.6,
+    "p95": 63029.8,
+    "p99": 63186.76,
+    "max": 63226
+   },
+   "npc-ai-spawn-advisor": {
+    "n": 23,
+    "sum": 1394248,
+    "mean": 60619.47826086957,
+    "p50": 60469.0,
+    "p75": 61966.0,
+    "p90": 63519.8,
+    "p95": 67837.0,
+    "p99": 68965.1,
+    "max": 69151
+   },
+   "rust-gameserver-dev": {
+    "n": 289,
+    "sum": 22028038,
+    "mean": 76221.5847750865,
+    "p50": 67667.0,
+    "p75": 70318.0,
+    "p90": 72402.6,
+    "p95": 75400.2,
+    "p99": 520997.0800000003,
+    "max": 847800
+   },
+   "server-authority-enforcer": {
+    "n": 49,
+    "sum": 3228710,
+    "mean": 65892.04081632652,
+    "p50": 65496.0,
+    "p75": 66992.0,
+    "p90": 67782.0,
+    "p95": 69151.8,
+    "p99": 73610.52,
+    "max": 74871
+   },
+   "social-systems-engineer": {
+    "n": 8,
+    "sum": 550368,
+    "mean": 68796.0,
+    "p50": 68830.5,
+    "p75": 72466.5,
+    "p90": 73635.6,
+    "p95": 74581.3,
+    "p99": 75337.86,
+    "max": 75527
+   },
+   "teammate": {
+    "n": 38,
+    "sum": 2152185,
+    "mean": 56636.44736842105,
+    "p50": 59650.0,
+    "p75": 59975.5,
+    "p90": 60718.5,
+    "p95": 60948.95,
+    "p99": 61113.67,
+    "max": 61154
+   },
+   "testing-validation-engineer": {
+    "n": 33,
+    "sum": 1939044,
+    "mean": 58758.90909090909,
+    "p50": 57939.0,
+    "p75": 59644.0,
+    "p90": 63168.4,
+    "p95": 72479.8,
+    "p99": 73332.88,
+    "max": 73546
+   },
+   "workflow-subagent": {
+    "n": 9,
+    "sum": 478084,
+    "mean": 53120.444444444445,
+    "p50": 52578.0,
+    "p75": 53675.0,
+    "p90": 53973.6,
+    "p95": 54156.8,
+    "p99": 54303.36,
+    "max": 54340
+   }
+  },
+  "cache_writes_by_idle_gap": {
+   "main": [
+    {
+     "gap": "first",
+     "requests": 92,
+     "cache_write": 4365859,
+     "write_share": 0.07824916866982763
+    },
+    {
+     "gap": "<=5m",
+     "requests": 16592,
+     "cache_write": 32068186,
+     "write_share": 0.5747572001865853
+    },
+    {
+     "gap": "5m-1h",
+     "requests": 863,
+     "cache_write": 1124315,
+     "write_share": 0.02015106627882789
+    },
+    {
+     "gap": ">1h",
+     "requests": 59,
+     "cache_write": 18235958,
+     "write_share": 0.32684256486475916
+    }
+   ],
+   "subagent": [
+    {
+     "gap": "first",
+     "requests": 808,
+     "cache_write": 36103082,
+     "write_share": 0.07702190451011817
+    },
+    {
+     "gap": "<=5m",
+     "requests": 71280,
+     "cache_write": 183261490,
+     "write_share": 0.39096797838926817
+    },
+    {
+     "gap": "5m-1h",
+     "requests": 720,
+     "cache_write": 232077513,
+     "write_share": 0.49511152663453245
+    },
+    {
+     "gap": ">1h",
+     "requests": 52,
+     "cache_write": 17295766,
+     "write_share": 0.036898590466081224
+    }
+   ]
+  },
+  "compactions": {
+   "count": 6,
+   "transcripts_in_window": 900,
+   "by_trigger": {
+    "auto": 6
+   },
+   "by_scope": {
+    "main": 5,
+    "subagent": 1
+   },
+   "pre_tokens": {
+    "n": 6,
+    "sum": 5805600,
+    "mean": 967600.0,
+    "p50": 967238.0,
+    "p75": 968003.75,
+    "p90": 968908.5,
+    "p95": 969233.25,
+    "p99": 969493.05,
+    "max": 969558
+   },
+   "post_tokens": {
+    "n": 6,
+    "sum": 140996,
+    "mean": 23499.333333333332,
+    "p50": 22753.5,
+    "p75": 24366.5,
+    "p90": 25899.5,
+    "p95": 26410.25,
+    "p99": 26818.85,
+    "max": 26921
+   },
+   "dropped_tokens": {
+    "n": 6,
+    "sum": 5664604,
+    "mean": 944100.6666666666,
+    "p50": 944456.5,
+    "p75": 945368.75,
+    "p90": 945823.5,
+    "p95": 945943.25,
+    "p99": 946039.05,
+    "max": 946063
+   },
+   "duration_ms": {
+    "n": 6,
+    "sum": 765269,
+    "mean": 127544.83333333333,
+    "p50": 125942.5,
+    "p75": 155007.25,
+    "p90": 164786.5,
+    "p95": 166817.75,
+    "p99": 168442.75,
+    "max": 168849
+   }
+  }
+ },
+ "tools": {
+  "layer": "tool results and exposure",
+  "note": "Context exposure = result characters x requests that re-read them. A ranking of what fills context, not a cost.",
+  "totals": {
+   "calls": 99586,
+   "result_chars": 231453905,
+   "exposure_chars": 23910351721,
+   "results_pending": 11
+  },
+  "by_tool": [
+   {
+    "tool": "Bash",
+    "calls": 67452,
+    "errors": 1746,
+    "persisted": 259,
+    "result_chars": {
+     "n": 67444,
+     "sum": 150272513,
+     "mean": 2228.107956230354,
+     "p50": 869.0,
+     "p75": 2658.0,
+     "p90": 5773.0,
+     "p95": 8885.0,
+     "p99": 18693.570000000007,
+     "max": 29863
+    },
+    "chars_share": 0.6492546021204525,
+    "exposure_chars": 16072842833,
+    "exposure_share": 0.6722127311445416
+   },
+   {
+    "tool": "Read",
+    "calls": 8373,
+    "errors": 88,
+    "persisted": 0,
+    "result_chars": {
+     "n": 8373,
+     "sum": 61891251,
+     "mean": 7391.765317090649,
+     "p50": 3304.0,
+     "p75": 9175.0,
+     "p90": 21398.0,
+     "p95": 30865.399999999936,
+     "p99": 48679.72000000003,
+     "max": 65598
+    },
+    "chars_share": 0.2674020600343727,
+    "exposure_chars": 5997694246,
+    "exposure_share": 0.25084090422360206
+   },
+   {
+    "tool": "mcp__signoz__signoz_search_logs",
+    "calls": 396,
+    "errors": 1,
+    "persisted": 2,
+    "result_chars": {
+     "n": 396,
+     "sum": 3578620,
+     "mean": 9036.919191919193,
+     "p50": 2976.5,
+     "p75": 13389.5,
+     "p90": 28942.5,
+     "p95": 34914.75,
+     "p99": 45693.75000000001,
+     "max": 49673
+    },
+    "chars_share": 0.015461480332336583,
+    "exposure_chars": 446078746,
+    "exposure_share": 0.018656302140809482
+   },
+   {
+    "tool": "Grep",
+    "calls": 1958,
+    "errors": 32,
+    "persisted": 31,
+    "result_chars": {
+     "n": 1958,
+     "sum": 4679863,
+     "mean": 2390.1241062308477,
+     "p50": 1078.0,
+     "p75": 3127.0,
+     "p90": 6748.299999999999,
+     "p95": 9441.0,
+     "p99": 15005.38000000001,
+     "max": 19993
+    },
+    "chars_share": 0.020219416907223925,
+    "exposure_chars": 308753417,
+    "exposure_share": 0.012912960068622824
+   },
+   {
+    "tool": "Edit",
+    "calls": 8079,
+    "errors": 62,
+    "persisted": 0,
+    "result_chars": {
+     "n": 8078,
+     "sum": 1649808,
+     "mean": 204.23471156226788,
+     "p50": 211.0,
+     "p75": 233.0,
+     "p90": 247.0,
+     "p95": 255.0,
+     "p99": 371.0,
+     "max": 1254
+    },
+    "chars_share": 0.007128019723840909,
+    "exposure_chars": 167589937,
+    "exposure_share": 0.007009095430947132
+   },
+   {
+    "tool": "Agent",
+    "calls": 829,
+    "errors": 49,
+    "persisted": 0,
+    "result_chars": {
+     "n": 829,
+     "sum": 1130695,
+     "mean": 1363.9264173703257,
+     "p50": 1089.0,
+     "p75": 1089.0,
+     "p90": 1089.0,
+     "p95": 6417.800000000007,
+     "p99": 15689.280000000008,
+     "max": 33346
+    },
+    "chars_share": 0.004885184373968544,
+    "exposure_chars": 164807534,
+    "exposure_share": 0.006892727297493191
+   },
+   {
+    "tool": "mcp__ghidra__decompile_function",
+    "calls": 675,
+    "errors": 2,
+    "persisted": 0,
+    "result_chars": {
+     "n": 675,
+     "sum": 1806655,
+     "mean": 2676.525925925926,
+     "p50": 926.0,
+     "p75": 2759.0,
+     "p90": 6455.0,
+     "p95": 10630.99999999996,
+     "p99": 28216.53999999999,
+     "max": 36565
+    },
+    "chars_share": 0.007805679493720359,
+    "exposure_chars": 145869840,
+    "exposure_share": 0.006100698212309664
+   },
+   {
+    "tool": "PowerShell",
+    "calls": 1551,
+    "errors": 192,
+    "persisted": 3,
+    "result_chars": {
+     "n": 1551,
+     "sum": 1484934,
+     "mean": 957.4042553191489,
+     "p50": 257.0,
+     "p75": 799.0,
+     "p90": 2413.0,
+     "p95": 4211.0,
+     "p99": 10860.5,
+     "max": 25108
+    },
+    "chars_share": 0.006415679182427274,
+    "exposure_chars": 127092259,
+    "exposure_share": 0.005315365515446488
+   },
+   {
+    "tool": "Write",
+    "calls": 5207,
+    "errors": 12,
+    "persisted": 0,
+    "result_chars": {
+     "n": 5206,
+     "sum": 1177105,
+     "mean": 226.10545524394928,
+     "p50": 234.0,
+     "p75": 240.0,
+     "p90": 246.0,
+     "p95": 251.0,
+     "p99": 262.0,
+     "max": 285
+    },
+    "chars_share": 0.005085699461411118,
+    "exposure_chars": 106928450,
+    "exposure_share": 0.0044720567579977005
+   },
+   {
+    "tool": "SendMessage",
+    "calls": 1640,
+    "errors": 1,
+    "persisted": 0,
+    "result_chars": {
+     "n": 1640,
+     "sum": 493234,
+     "mean": 300.75243902439024,
+     "p50": 314.0,
+     "p75": 334.0,
+     "p90": 370.0,
+     "p95": 454.0,
+     "p99": 529.0,
+     "max": 2709
+    },
+    "chars_share": 0.002131024749830857,
+    "exposure_chars": 63035599,
+    "exposure_share": 0.0026363308969912414
+   },
+   {
+    "tool": "mcp__signoz__signoz_aggregate_logs",
+    "calls": 324,
+    "errors": 14,
+    "persisted": 0,
+    "result_chars": {
+     "n": 324,
+     "sum": 562445,
+     "mean": 1735.9413580246915,
+     "p50": 831.0,
+     "p75": 2053.25,
+     "p90": 4273.7,
+     "p95": 6371.300000000002,
+     "p99": 9898.859999999993,
+     "max": 17616
+    },
+    "chars_share": 0.0024300518930540404,
+    "exposure_chars": 60469703,
+    "exposure_share": 0.0025290177118929887
+   },
+   {
+    "tool": "ListAgents",
+    "calls": 85,
+    "errors": 0,
+    "persisted": 0,
+    "result_chars": {
+     "n": 85,
+     "sum": 239716,
+     "mean": 2820.1882352941175,
+     "p50": 2086.0,
+     "p75": 5183.0,
+     "p90": 5252.0,
+     "p95": 5386.0,
+     "p99": 5388.32,
+     "max": 5390
+    },
+    "chars_share": 0.0010356965029386738,
+    "exposure_chars": 33471401,
+    "exposure_share": 0.0013998707083259974
+   },
+   {
+    "tool": "mcp__ghidra__search_strings",
+    "calls": 168,
+    "errors": 3,
+    "persisted": 0,
+    "result_chars": {
+     "n": 168,
+     "sum": 274548,
+     "mean": 1634.2142857142858,
+     "p50": 399.0,
+     "p75": 1410.75,
+     "p90": 3913.4000000000005,
+     "p95": 8067.35,
+     "p99": 19173.77000000005,
+     "max": 24468
+    },
+    "chars_share": 0.0011861886711308674,
+    "exposure_chars": 25145688,
+    "exposure_share": 0.0010516653327987237
+   },
+   {
+    "tool": "mcp__ghidra__disassemble_function",
+    "calls": 64,
+    "errors": 0,
+    "persisted": 0,
+    "result_chars": {
+     "n": 64,
+     "sum": 211181,
+     "mean": 3299.703125,
+     "p50": 1056.0,
+     "p75": 4015.75,
+     "p90": 8401.0,
+     "p95": 17747.10000000001,
+     "p99": 23967.669999999987,
+     "max": 26860
+    },
+    "chars_share": 0.0009124106158416294,
+    "exposure_chars": 22378953,
+    "exposure_share": 0.0009359524803788226
+   },
+   {
+    "tool": "mcp__ghidra__disassemble_bytes",
+    "calls": 72,
+    "errors": 3,
+    "persisted": 0,
+    "result_chars": {
+     "n": 72,
+     "sum": 317095,
+     "mean": 4404.097222222223,
+     "p50": 3592.5,
+     "p75": 4903.75,
+     "p90": 8848.1,
+     "p95": 13346.750000000005,
+     "p99": 20860.17000000004,
+     "max": 25101
+    },
+    "chars_share": 0.0013700136102693969,
+    "exposure_chars": 21798544,
+    "exposure_share": 0.0009116780988568545
+   },
+   {
+    "tool": "WebSearch",
+    "calls": 27,
+    "errors": 0,
+    "persisted": 0,
+    "result_chars": {
+     "n": 27,
+     "sum": 78067,
+     "mean": 2891.3703703703704,
+     "p50": 2922.0,
+     "p75": 3106.0,
+     "p90": 3209.0,
+     "p95": 3315.9,
+     "p99": 3379.7799999999997,
+     "max": 3392
+    },
+    "chars_share": 0.0003372896214475189,
+    "exposure_chars": 20245166,
+    "exposure_share": 0.0008467113422768709
+   },
+   {
+    "tool": "TaskStop",
+    "calls": 241,
+    "errors": 8,
+    "persisted": 0,
+    "result_chars": {
+     "n": 241,
+     "sum": 172529,
+     "mean": 715.8879668049792,
+     "p50": 595.0,
+     "p75": 941.0,
+     "p90": 1365.0,
+     "p95": 1779.0,
+     "p99": 2436.6,
+     "max": 3155
+    },
+    "chars_share": 0.0007454140814776921,
+    "exposure_chars": 19707269,
+    "exposure_share": 0.000824214935437001
+   },
+   {
+    "tool": "Glob",
+    "calls": 168,
+    "errors": 26,
+    "persisted": 0,
+    "result_chars": {
+     "n": 168,
+     "sum": 174327,
+     "mean": 1037.6607142857142,
+     "p50": 168.0,
+     "p75": 816.0,
+     "p90": 4384.700000000001,
+     "p95": 5500.950000000001,
+     "p99": 8891.070000000016,
+     "max": 10581
+    },
+    "chars_share": 0.0007531823669166437,
+    "exposure_chars": 13092978,
+    "exposure_share": 0.0005475861732515081
+   },
+   {
+    "tool": "mcp__signoz__signoz_get_field_keys",
+    "calls": 10,
+    "errors": 0,
+    "persisted": 0,
+    "result_chars": {
+     "n": 10,
+     "sum": 52959,
+     "mean": 5295.9,
+     "p50": 912.5,
+     "p75": 1574.0,
+     "p90": 6313.199999999984,
+     "p95": 25776.60000000003,
+     "p99": 41347.32000000001,
+     "max": 45240
+    },
+    "chars_share": 0.00022881013824329298,
+    "exposure_chars": 11635794,
+    "exposure_share": 0.0004866425277124011
+   },
+   {
+    "tool": "Monitor",
+    "calls": 291,
+    "errors": 14,
+    "persisted": 0,
+    "result_chars": {
+     "n": 291,
+     "sum": 99634,
+     "mean": 342.3848797250859,
+     "p50": 302.0,
+     "p75": 302.0,
+     "p90": 302.0,
+     "p95": 306.0,
+     "p99": 1613.0,
+     "max": 1613
+    },
+    "chars_share": 0.000430470162082597,
+    "exposure_chars": 10521165,
+    "exposure_share": 0.0004400255221155724
+   },
+   {
+    "tool": "AskUserQuestion",
+    "calls": 70,
+    "errors": 3,
+    "persisted": 0,
+    "result_chars": {
+     "n": 69,
+     "sum": 40063,
+     "mean": 580.6231884057971,
+     "p50": 518.0,
+     "p75": 746.0,
+     "p90": 906.6,
+     "p95": 1056.6,
+     "p99": 1561.079999999995,
+     "max": 2067
+    },
+    "chars_share": 0.00017309278061219144,
+    "exposure_chars": 9756653,
+    "exposure_share": 0.00040805142115207446
+   },
+   {
+    "tool": "WebFetch",
+    "calls": 80,
+    "errors": 1,
+    "persisted": 5,
+    "result_chars": {
+     "n": 80,
+     "sum": 420630,
+     "mean": 5257.875,
+     "p50": 1471.0,
+     "p75": 2222.5,
+     "p90": 13402.69999999996,
+     "p95": 41232.799999999996,
+     "p99": 43658.40999999997,
+     "max": 47941
+    },
+    "chars_share": 0.0018173381002148138,
+    "exposure_chars": 9230626,
+    "exposure_share": 0.00038605145201159546
+   },
+   {
+    "tool": "TaskOutput",
+    "calls": 14,
+    "errors": 0,
+    "persisted": 0,
+    "result_chars": {
+     "n": 14,
+     "sum": 32496,
+     "mean": 2321.1428571428573,
+     "p50": 790.5,
+     "p75": 1231.25,
+     "p90": 7595.699999999998,
+     "p95": 9413.999999999998,
+     "p99": 10942.799999999997,
+     "max": 11325
+    },
+    "chars_share": 0.00014039944584214294,
+    "exposure_chars": 6027177,
+    "exposure_share": 0.00025207395818884783
+   },
+   {
+    "tool": "mcp__ghidra__list_tool_groups",
+    "calls": 5,
+    "errors": 0,
+    "persisted": 0,
+    "result_chars": {
+     "n": 5,
+     "sum": 41006,
+     "mean": 8201.2,
+     "p50": 10231.0,
+     "p75": 10231.0,
+     "p90": 10231.0,
+     "p95": 10231.0,
+     "p99": 10231.0,
+     "max": 10231
+    },
+    "chars_share": 0.00017716702597867165,
+    "exposure_chars": 4536925,
+    "exposure_share": 0.00018974731333689694
+   },
+   {
+    "tool": "mcp__ghidra__get_xrefs_to",
+    "calls": 264,
+    "errors": 2,
+    "persisted": 0,
+    "result_chars": {
+     "n": 264,
+     "sum": 32169,
+     "mean": 121.85227272727273,
+     "p50": 55.0,
+     "p75": 87.0,
+     "p90": 162.7,
+     "p95": 270.09999999999997,
+     "p99": 1754.4200000000008,
+     "max": 4541
+    },
+    "chars_share": 0.00013898663753372404,
+    "exposure_chars": 3588046,
+    "exposure_share": 0.00015006245168901837
+   },
+   {
+    "tool": "mcp__ghidra__search_functions_enhanced",
+    "calls": 42,
+    "errors": 0,
+    "persisted": 0,
+    "result_chars": {
+     "n": 42,
+     "sum": 44117,
+     "mean": 1050.404761904762,
+     "p50": 351.0,
+     "p75": 781.0,
+     "p90": 2760.899999999998,
+     "p95": 4308.2000000000035,
+     "p99": 10299.700000000003,
+     "max": 10681
+    },
+    "chars_share": 0.00019060814722482214,
+    "exposure_chars": 3434808,
+    "exposure_share": 0.00014365359573457358
+   },
+   {
+    "tool": "mcp__ghidra__read_memory",
+    "calls": 118,
+    "errors": 1,
+    "persisted": 0,
+    "result_chars": {
+     "n": 118,
+     "sum": 32992,
+     "mean": 279.59322033898303,
+     "p50": 160.5,
+     "p75": 275.25,
+     "p90": 558.1999999999999,
+     "p95": 712.4500000000008,
+     "p99": 2186.369999999999,
+     "max": 2570
+    },
+    "chars_share": 0.00014254242113564687,
+    "exposure_chars": 3048036,
+    "exposure_share": 0.00012747767308345234
+   },
+   {
+    "tool": "mcp__ghidra__search_instructions",
+    "calls": 19,
+    "errors": 0,
+    "persisted": 0,
+    "result_chars": {
+     "n": 19,
+     "sum": 26910,
+     "mean": 1416.3157894736842,
+     "p50": 371.0,
+     "p75": 1416.5,
+     "p90": 2544.999999999999,
+     "p95": 4237.600000000011,
+     "p99": 9713.920000000002,
+     "max": 11083
+    },
+    "chars_share": 0.00011626505070199615,
+    "exposure_chars": 2819099,
+    "exposure_share": 0.00011790286621020468
+   },
+   {
+    "tool": "mcp__ghidra__search_functions",
+    "calls": 91,
+    "errors": 0,
+    "persisted": 0,
+    "result_chars": {
+     "n": 91,
+     "sum": 49147,
+     "mean": 540.0769230769231,
+     "p50": 74.0,
+     "p75": 238.5,
+     "p90": 1161.0,
+     "p95": 2092.0,
+     "p99": 7319.899999999942,
+     "max": 16508
+    },
+    "chars_share": 0.00021234033618918634,
+    "exposure_chars": 2205992,
+    "exposure_share": 9.226095984453963e-05
+   },
+   {
+    "tool": "mcp__ghidra__inspect_memory_content",
+    "calls": 19,
+    "errors": 0,
+    "persisted": 0,
+    "result_chars": {
+     "n": 19,
+     "sum": 17414,
+     "mean": 916.5263157894736,
+     "p50": 465.0,
+     "p75": 476.0,
+     "p90": 1337.3999999999994,
+     "p95": 2503.1000000000067,
+     "p99": 5844.620000000001,
+     "max": 6680
+    },
+    "chars_share": 7.523744306668752e-05,
+    "exposure_chars": 2185461,
+    "exposure_share": 9.140229409844071e-05
+   },
+   {
+    "tool": "mcp__x64dbg__read_memory",
+    "calls": 1,
+    "errors": 0,
+    "persisted": 0,
+    "result_chars": {
+     "n": 1,
+     "sum": 5068,
+     "mean": 5068.0,
+     "p50": 5068,
+     "p75": 5068,
+     "p90": 5068,
+     "p95": 5068,
+     "p99": 5068,
+     "max": 5068
+    },
+    "chars_share": 2.189636852314071e-05,
+    "exposure_chars": 1824480,
+    "exposure_share": 7.630502559264298e-05
+   },
+   {
+    "tool": "mcp__lab-server__server_entity_query",
+    "calls": 1,
+    "errors": 0,
+    "persisted": 0,
+    "result_chars": {
+     "n": 1,
+     "sum": 14130,
+     "mean": 14130.0,
+     "p50": 14130,
+     "p75": 14130,
+     "p90": 14130,
+     "p95": 14130,
+     "p99": 14130,
+     "max": 14130
+    },
+    "chars_share": 6.104887277663342e-05,
+    "exposure_chars": 1822770,
+    "exposure_share": 7.623350845145019e-05
+   },
+   {
+    "tool": "mcp__signoz__signoz_search_traces",
+    "calls": 3,
+    "errors": 0,
+    "persisted": 0,
+    "result_chars": {
+     "n": 3,
+     "sum": 29880,
+     "mean": 9960.0,
+     "p50": 10508.0,
+     "p75": 12376.0,
+     "p90": 13496.8,
+     "p95": 13870.4,
+     "p99": 14169.279999999999,
+     "max": 14244
+    },
+    "chars_share": 0.0001290969793747917,
+    "exposure_chars": 1614780,
+    "exposure_share": 6.753476564636939e-05
+   },
+   {
+    "tool": "mcp__ghidra__rename_function_by_address",
+    "calls": 22,
+    "errors": 11,
+    "persisted": 0,
+    "result_chars": {
+     "n": 22,
+     "sum": 10895,
+     "mean": 495.22727272727275,
+     "p50": 460.0,
+     "p75": 687.75,
+     "p90": 701.3,
+     "p95": 727.65,
+     "p99": 740.85,
+     "max": 744
+    },
+    "chars_share": 4.707200770710695e-05,
+    "exposure_chars": 1605041,
+    "exposure_share": 6.712745252468718e-05
+   },
+   {
+    "tool": "mcp__ghidra__list_instances",
+    "calls": 32,
+    "errors": 0,
+    "persisted": 0,
+    "result_chars": {
+     "n": 32,
+     "sum": 12115,
+     "mean": 378.59375,
+     "p50": 82.0,
+     "p75": 495.0,
+     "p90": 1229.0,
+     "p95": 1229.0,
+     "p99": 1229.0,
+     "max": 1229
+    },
+    "chars_share": 5.234303564677381e-05,
+    "exposure_chars": 1595305,
+    "exposure_share": 6.672026487167373e-05
+   },
+   {
+    "tool": "mcp__ghidra__list_open_programs",
+    "calls": 44,
+    "errors": 0,
+    "persisted": 0,
+    "result_chars": {
+     "n": 44,
+     "sum": 16242,
+     "mean": 369.1363636363636,
+     "p50": 419.0,
+     "p75": 419.0,
+     "p90": 419.0,
+     "p95": 419.0,
+     "p99": 419.0,
+     "max": 419
+    },
+    "chars_share": 7.01737998328436e-05,
+    "exposure_chars": 1211422,
+    "exposure_share": 5.0665168548567664e-05
+   },
+   {
+    "tool": "mcp__ghidra__get_function_xrefs",
+    "calls": 11,
+    "errors": 0,
+    "persisted": 0,
+    "result_chars": {
+     "n": 11,
+     "sum": 13134,
+     "mean": 1194.0,
+     "p50": 115.0,
+     "p75": 1056.5,
+     "p90": 4475.0,
+     "p95": 5215.0,
+     "p99": 5807.0,
+     "max": 5955
+    },
+    "chars_share": 5.674564013080704e-05,
+    "exposure_chars": 1197678,
+    "exposure_share": 5.009035475409183e-05
+   },
+   {
+    "tool": "mcp__signoz__signoz_list_services",
+    "calls": 7,
+    "errors": 0,
+    "persisted": 0,
+    "result_chars": {
+     "n": 7,
+     "sum": 5936,
+     "mean": 848.0,
+     "p50": 921.0,
+     "p75": 933.5,
+     "p90": 944.4,
+     "p95": 949.2,
+     "p99": 953.04,
+     "max": 954
+    },
+    "chars_share": 2.5646575286772543e-05,
+    "exposure_chars": 1083679,
+    "exposure_share": 4.532258716412882e-05
+   },
+   {
+    "tool": "Artifact",
+    "calls": 8,
+    "errors": 0,
+    "persisted": 0,
+    "result_chars": {
+     "n": 8,
+     "sum": 56685,
+     "mean": 7085.625,
+     "p50": 1401.5,
+     "p75": 7483.0,
+     "p90": 24862.0,
+     "p95": 24862.0,
+     "p99": 24862.0,
+     "max": 24862
+    },
+    "chars_share": 0.0002449083760328001,
+    "exposure_chars": 1076617,
+    "exposure_share": 4.502723391786948e-05
+   },
+   {
+    "tool": "mcp__ghidra__batch_decompile",
+    "calls": 3,
+    "errors": 0,
+    "persisted": 0,
+    "result_chars": {
+     "n": 3,
+     "sum": 60276,
+     "mean": 20092.0,
+     "p50": 20904.0,
+     "p75": 22011.0,
+     "p90": 22675.2,
+     "p95": 22896.6,
+     "p99": 23073.72,
+     "max": 23118
+    },
+    "chars_share": 0.0002604233443371802,
+    "exposure_chars": 836910,
+    "exposure_share": 3.5001994523776e-05
+   },
+   {
+    "tool": "mcp__ghidra__list_imports",
+    "calls": 3,
+    "errors": 0,
+    "persisted": 0,
+    "result_chars": {
+     "n": 3,
+     "sum": 4051,
+     "mean": 1350.3333333333333,
+     "p50": 1350.0,
+     "p75": 1350.5,
+     "p90": 1350.8,
+     "p95": 1350.9,
+     "p99": 1350.98,
+     "max": 1351
+    },
+    "chars_share": 1.7502405068516774e-05,
+    "exposure_chars": 799440,
+    "exposure_share": 3.3434890850972606e-05
+   },
+   {
+    "tool": "mcp__ghidra__get_function_by_address",
+    "calls": 70,
+    "errors": 0,
+    "persisted": 0,
+    "result_chars": {
+     "n": 70,
+     "sum": 8658,
+     "mean": 123.68571428571428,
+     "p50": 143.0,
+     "p75": 186.75,
+     "p90": 233.0,
+     "p95": 257.0,
+     "p99": 262.55,
+     "max": 266
+    },
+    "chars_share": 3.740701631281615e-05,
+    "exposure_chars": 629400,
+    "exposure_share": 2.6323326705696684e-05
+   },
+   {
+    "tool": "mcp__ghidra__list_globals",
+    "calls": 5,
+    "errors": 0,
+    "persisted": 0,
+    "result_chars": {
+     "n": 5,
+     "sum": 7956,
+     "mean": 1591.2,
+     "p50": 475.0,
+     "p75": 1354.0,
+     "p90": 3935.8,
+     "p95": 4796.4,
+     "p99": 5484.88,
+     "max": 5657
+    },
+    "chars_share": 3.4374014990155384e-05,
+    "exposure_chars": 625830,
+    "exposure_share": 2.6174018989873144e-05
+   },
+   {
+    "tool": "ScheduleWakeup",
+    "calls": 9,
+    "errors": 0,
+    "persisted": 0,
+    "result_chars": {
+     "n": 9,
+     "sum": 1494,
+     "mean": 166.0,
+     "p50": 158.0,
+     "p75": 183.0,
+     "p90": 183.0,
+     "p95": 183.0,
+     "p99": 183.0,
+     "max": 183
+    },
+    "chars_share": 6.454848968739585e-06,
+    "exposure_chars": 610291,
+    "exposure_share": 2.5524133108589667e-05
+   },
+   {
+    "tool": "ToolSearch",
+    "calls": 779,
+    "errors": 0,
+    "persisted": 0,
+    "result_chars": {
+     "n": 779,
+     "sum": 3791,
+     "mean": 4.866495507060334,
+     "p50": 0.0,
+     "p75": 0.0,
+     "p90": 0.0,
+     "p95": 0.0,
+     "p99": 32.0,
+     "max": 584
+    },
+    "chars_share": 1.637907124530908e-05,
+    "exposure_chars": 560517,
+    "exposure_share": 2.3442440602314887e-05
+   },
+   {
+    "tool": "mcp__signoz__signoz_create_dashboard",
+    "calls": 1,
+    "errors": 0,
+    "persisted": 0,
+    "result_chars": {
+     "n": 1,
+     "sum": 25953,
+     "mean": 25953.0,
+     "p50": 25953,
+     "p75": 25953,
+     "p90": 25953,
+     "p95": 25953,
+     "p99": 25953,
+     "max": 25953
+    },
+    "chars_share": 0.00011213031812965092,
+    "exposure_chars": 545013,
+    "exposure_share": 2.2794018522166933e-05
+   },
+   {
+    "tool": "mcp__x64dbg__get_memory_map",
+    "calls": 1,
+    "errors": 0,
+    "persisted": 0,
+    "result_chars": {
+     "n": 1,
+     "sum": 1355,
+     "mean": 1355.0,
+     "p50": 1355,
+     "p75": 1355,
+     "p90": 1355,
+     "p95": 1355,
+     "p99": 1355,
+     "max": 1355
+    },
+    "chars_share": 5.854297424793935e-06,
+    "exposure_chars": 485090,
+    "exposure_share": 2.0287865509479513e-05
+   },
+   {
+    "tool": "Workflow",
+    "calls": 2,
+    "errors": 0,
+    "persisted": 0,
+    "result_chars": {
+     "n": 2,
+     "sum": 2624,
+     "mean": 1312.0,
+     "p50": 1312.0,
+     "p75": 1312.5,
+     "p90": 1312.8,
+     "p95": 1312.9,
+     "p99": 1312.98,
+     "max": 1313
+    },
+    "chars_share": 1.1337030584988401e-05,
+    "exposure_chars": 469704,
+    "exposure_share": 1.964437853030276e-05
+   },
+   {
+    "tool": "mcp__ghidra__load_tool_group",
+    "calls": 2,
+    "errors": 0,
+    "persisted": 0,
+    "result_chars": {
+     "n": 2,
+     "sum": 1662,
+     "mean": 831.0,
+     "p50": 831.0,
+     "p75": 962.0,
+     "p90": 1040.6,
+     "p95": 1066.8,
+     "p99": 1087.76,
+     "max": 1093
+    },
+    "chars_share": 7.1806954391199405e-06,
+    "exposure_chars": 427089,
+    "exposure_share": 1.7862096090577203e-05
+   },
+   {
+    "tool": "mcp__ghidra__get_function_callers",
+    "calls": 48,
+    "errors": 0,
+    "persisted": 0,
+    "result_chars": {
+     "n": 48,
+     "sum": 4978,
+     "mean": 103.70833333333333,
+     "p50": 48.0,
+     "p75": 75.5,
+     "p90": 152.3,
+     "p95": 338.29999999999967,
+     "p99": 897.3100000000006,
+     "max": 1145
+    },
+    "chars_share": 2.150752219972266e-05,
+    "exposure_chars": 367519,
+    "exposure_share": 1.537070655791379e-05
+   },
+   {
+    "tool": "ReadMcpResourceTool",
+    "calls": 1,
+    "errors": 0,
+    "persisted": 0,
+    "result_chars": {
+     "n": 1,
+     "sum": 4071,
+     "mean": 4071.0,
+     "p50": 4071,
+     "p75": 4071,
+     "p90": 4071,
+     "p95": 4071,
+     "p99": 4071,
+     "max": 4071
+    },
+    "chars_share": 1.7588815362609673e-05,
+    "exposure_chars": 358248,
+    "exposure_share": 1.4982966548558033e-05
+   },
+   {
+    "tool": "mcp__ghidra__get_current_program_info",
+    "calls": 6,
+    "errors": 0,
+    "persisted": 0,
+    "result_chars": {
+     "n": 6,
+     "sum": 3348,
+     "mean": 558.0,
+     "p50": 795.0,
+     "p75": 795.0,
+     "p90": 795.0,
+     "p95": 795.0,
+     "p99": 795.0,
+     "max": 795
+    },
+    "chars_share": 1.4465083231151361e-05,
+    "exposure_chars": 317597,
+    "exposure_share": 1.328282426398022e-05
+   },
+   {
+    "tool": "mcp__ghidra__create_function",
+    "calls": 25,
+    "errors": 0,
+    "persisted": 0,
+    "result_chars": {
+     "n": 25,
+     "sum": 6668,
+     "mean": 266.72,
+     "p50": 195.0,
+     "p75": 196.0,
+     "p90": 523.0000000000008,
+     "p95": 757.8000000000001,
+     "p99": 847.1200000000001,
+     "max": 874
+    },
+    "chars_share": 2.880919205057266e-05,
+    "exposure_chars": 284207,
+    "exposure_share": 1.1886357980689447e-05
+   },
+   {
+    "tool": "mcp__signoz__signoz_get_field_values",
+    "calls": 9,
+    "errors": 0,
+    "persisted": 0,
+    "result_chars": {
+     "n": 9,
+     "sum": 2490,
+     "mean": 276.6666666666667,
+     "p50": 110.0,
+     "p75": 161.0,
+     "p90": 812.8000000000001,
+     "p95": 898.3999999999999,
+     "p99": 966.88,
+     "max": 984
+    },
+    "chars_share": 1.0758081614565976e-05,
+    "exposure_chars": 271124,
+    "exposure_share": 1.1339189116230232e-05
+   },
+   {
+    "tool": "EnterWorktree",
+    "calls": 7,
+    "errors": 0,
+    "persisted": 0,
+    "result_chars": {
+     "n": 7,
+     "sum": 1737,
+     "mean": 248.14285714285714,
+     "p50": 243.0,
+     "p75": 253.5,
+     "p90": 263.4,
+     "p95": 263.7,
+     "p99": 263.94,
+     "max": 264
+    },
+    "chars_share": 7.504734041968313e-06,
+    "exposure_chars": 269435,
+    "exposure_share": 1.1268550255718758e-05
+   },
+   {
+    "tool": "ExitWorktree",
+    "calls": 3,
+    "errors": 2,
+    "persisted": 0,
+    "result_chars": {
+     "n": 3,
+     "sum": 808,
+     "mean": 269.3333333333333,
+     "p50": 280.0,
+     "p75": 286.5,
+     "p90": 290.4,
+     "p95": 291.7,
+     "p99": 292.74,
+     "max": 293
+    },
+    "chars_share": 3.490975881353136e-06,
+    "exposure_chars": 249618,
+    "exposure_share": 1.0439746052784549e-05
+   },
+   {
+    "tool": "mcp__ghidra__connect_instance",
+    "calls": 6,
+    "errors": 0,
+    "persisted": 0,
+    "result_chars": {
+     "n": 6,
+     "sum": 2412,
+     "mean": 402.0,
+     "p50": 402.0,
+     "p75": 402.0,
+     "p90": 402.0,
+     "p95": 402.0,
+     "p99": 402.0,
+     "max": 402
+    },
+    "chars_share": 1.0421081467603668e-05,
+    "exposure_chars": 235170,
+    "exposure_share": 9.835488944039863e-06
+   },
+   {
+    "tool": "mcp__signoz__signoz_list_views",
+    "calls": 1,
+    "errors": 0,
+    "persisted": 0,
+    "result_chars": {
+     "n": 1,
+     "sum": 7711,
+     "mean": 7711.0,
+     "p50": 7711,
+     "p75": 7711,
+     "p90": 7711,
+     "p95": 7711,
+     "p99": 7711,
+     "max": 7711
+    },
+    "chars_share": 3.3315488887517365e-05,
+    "exposure_chars": 200486,
+    "exposure_share": 8.384903841624254e-06
+   },
+   {
+    "tool": "Skill",
+    "calls": 23,
+    "errors": 6,
+    "persisted": 0,
+    "result_chars": {
+     "n": 23,
+     "sum": 2741,
+     "mean": 119.17391304347827,
+     "p50": 118.0,
+     "p75": 169.0,
+     "p90": 220.0,
+     "p95": 220.0,
+     "p99": 220.0,
+     "max": 220
+    },
+    "chars_share": 1.1842530805431864e-05,
+    "exposure_chars": 198439,
+    "exposure_share": 8.29929238664084e-06
+   },
+   {
+    "tool": "mcp__x64dbg__get_all_registers",
+    "calls": 1,
+    "errors": 0,
+    "persisted": 0,
+    "result_chars": {
+     "n": 1,
+     "sum": 478,
+     "mean": 478.0,
+     "p50": 478,
+     "p75": 478,
+     "p90": 478,
+     "p95": 478,
+     "p99": 478,
+     "max": 478
+    },
+    "chars_share": 2.065206028820296e-06,
+    "exposure_chars": 173036,
+    "exposure_share": 7.2368655224768535e-06
+   },
+   {
+    "tool": "mcp__signoz__signoz_get_trace_details",
+    "calls": 2,
+    "errors": 0,
+    "persisted": 0,
+    "result_chars": {
+     "n": 2,
+     "sum": 2970,
+     "mean": 1485.0,
+     "p50": 1485.0,
+     "p75": 2131.5,
+     "p90": 2519.4,
+     "p95": 2648.7,
+     "p99": 2752.14,
+     "max": 2778
+    },
+    "chars_share": 1.2831928672795561e-05,
+    "exposure_chars": 171876,
+    "exposure_share": 7.188350970556599e-06
+   },
+   {
+    "tool": "mcp__ghidra__list_data_items",
+    "calls": 4,
+    "errors": 0,
+    "persisted": 0,
+    "result_chars": {
+     "n": 4,
+     "sum": 4562,
+     "mean": 1140.5,
+     "p50": 1140.5,
+     "p75": 1936.0,
+     "p90": 1936.0,
+     "p95": 1936.0,
+     "p99": 1936.0,
+     "max": 1936
+    },
+    "chars_share": 1.9710188082590354e-05,
+    "exposure_chars": 159125,
+    "exposure_share": 6.655067305440078e-06
+   },
+   {
+    "tool": "SendUserFile",
+    "calls": 6,
+    "errors": 0,
+    "persisted": 0,
+    "result_chars": {
+     "n": 6,
+     "sum": 1046,
+     "mean": 174.33333333333334,
+     "p50": 146.5,
+     "p75": 210.25,
+     "p90": 236.5,
+     "p95": 239.75,
+     "p99": 242.35,
+     "max": 243
+    },
+    "chars_share": 4.519258381058639e-06,
+    "exposure_chars": 152822,
+    "exposure_share": 6.391457632376833e-06
+   },
+   {
+    "tool": "mcp__lab-server__server_entity_get",
+    "calls": 2,
+    "errors": 0,
+    "persisted": 0,
+    "result_chars": {
+     "n": 2,
+     "sum": 1211,
+     "mean": 605.5,
+     "p50": 605.5,
+     "p75": 611.25,
+     "p90": 614.7,
+     "p95": 615.85,
+     "p99": 616.77,
+     "max": 617
+    },
+    "chars_share": 5.232143307325059e-06,
+    "exposure_chars": 150873,
+    "exposure_share": 6.309944820572888e-06
+   },
+   {
+    "tool": "mcp__ghidra__list_external_locations",
+    "calls": 1,
+    "errors": 0,
+    "persisted": 0,
+    "result_chars": {
+     "n": 1,
+     "sum": 1450,
+     "mean": 1450.0,
+     "p50": 1450,
+     "p75": 1450,
+     "p90": 1450,
+     "p95": 1450,
+     "p99": 1450,
+     "max": 1450
+    },
+    "chars_share": 6.264746321735207e-06,
+    "exposure_chars": 150800,
+    "exposure_share": 6.306891749633079e-06
+   },
+   {
+    "tool": "mcp__ghidra__rename_function",
+    "calls": 5,
+    "errors": 0,
+    "persisted": 0,
+    "result_chars": {
+     "n": 5,
+     "sum": 2069,
+     "mean": 413.8,
+     "p50": 435.0,
+     "p75": 435.0,
+     "p90": 441.0,
+     "p95": 443.0,
+     "p99": 444.6,
+     "max": 445
+    },
+    "chars_share": 8.939144923910443e-06,
+    "exposure_chars": 148968,
+    "exposure_share": 6.230272215910747e-06
+   },
+   {
+    "tool": "mcp__ghidra__get_assembly_context",
+    "calls": 5,
+    "errors": 0,
+    "persisted": 0,
+    "result_chars": {
+     "n": 5,
+     "sum": 5763,
+     "mean": 1152.6,
+     "p50": 826.0,
+     "p75": 2096.0,
+     "p90": 2145.8,
+     "p95": 2162.4,
+     "p99": 2175.68,
+     "max": 2179
+    },
+    "chars_share": 2.4899126242868962e-05,
+    "exposure_chars": 139847,
+    "exposure_share": 5.848805639992953e-06
+   },
+   {
+    "tool": "mcp__ghidra__get_function_callees",
+    "calls": 2,
+    "errors": 0,
+    "persisted": 0,
+    "result_chars": {
+     "n": 2,
+     "sum": 1688,
+     "mean": 844.0,
+     "p50": 844.0,
+     "p75": 938.5,
+     "p90": 995.2,
+     "p95": 1014.0999999999999,
+     "p99": 1029.22,
+     "max": 1033
+    },
+    "chars_share": 7.29302882144071e-06,
+    "exposure_chars": 137986,
+    "exposure_share": 5.7709732424726135e-06
+   },
+   {
+    "tool": "mcp__ghidra__set_plate_comment",
+    "calls": 7,
+    "errors": 0,
+    "persisted": 0,
+    "result_chars": {
+     "n": 7,
+     "sum": 1708,
+     "mean": 244.0,
+     "p50": 244.0,
+     "p75": 244.0,
+     "p90": 244.0,
+     "p95": 244.0,
+     "p99": 244.0,
+     "max": 244
+    },
+    "chars_share": 7.379439115533609e-06,
+    "exposure_chars": 128344,
+    "exposure_share": 5.367716941080292e-06
+   },
+   {
+    "tool": "mcp__ghidra__check_tools",
+    "calls": 1,
+    "errors": 0,
+    "persisted": 0,
+    "result_chars": {
+     "n": 1,
+     "sum": 431,
+     "mean": 431.0,
+     "p50": 431,
+     "p75": 431,
+     "p90": 431,
+     "p95": 431,
+     "p99": 431,
+     "max": 431
+    },
+    "chars_share": 1.8621418377019821e-06,
+    "exposure_chars": 109043,
+    "exposure_share": 4.560493349172678e-06
+   },
+   {
+    "tool": "mcp__ghidra__unload_tool_group",
+    "calls": 2,
+    "errors": 0,
+    "persisted": 0,
+    "result_chars": {
+     "n": 2,
+     "sum": 413,
+     "mean": 206.5,
+     "p50": 206.5,
+     "p75": 244.75,
+     "p90": 267.70000000000005,
+     "p95": 275.35,
+     "p99": 281.47,
+     "max": 283
+    },
+    "chars_share": 1.7843725730183727e-06,
+    "exposure_chars": 105858,
+    "exposure_share": 4.42728744583991e-06
+   },
+   {
+    "tool": "mcp__signoz__signoz_aggregate_traces",
+    "calls": 2,
+    "errors": 0,
+    "persisted": 0,
+    "result_chars": {
+     "n": 2,
+     "sum": 2043,
+     "mean": 1021.5,
+     "p50": 1021.5,
+     "p75": 1220.25,
+     "p90": 1339.5,
+     "p95": 1379.25,
+     "p99": 1411.05,
+     "max": 1419
+    },
+    "chars_share": 8.826811541589675e-06,
+    "exposure_chars": 71505,
+    "exposure_share": 2.9905457198774096e-06
+   },
+   {
+    "tool": "mcp__ghidra__list_strings",
+    "calls": 5,
+    "errors": 0,
+    "persisted": 0,
+    "result_chars": {
+     "n": 5,
+     "sum": 5402,
+     "mean": 1080.4,
+     "p50": 743.0,
+     "p75": 1377.0,
+     "p90": 2335.8,
+     "p95": 2655.3999999999996,
+     "p99": 2911.08,
+     "max": 2975
+    },
+    "chars_share": 2.333942043449213e-05,
+    "exposure_chars": 70022,
+    "exposure_share": 2.9285223746207393e-06
+   },
+   {
+    "tool": "mcp__x64dbg__get_debugger_status",
+    "calls": 6,
+    "errors": 0,
+    "persisted": 0,
+    "result_chars": {
+     "n": 6,
+     "sum": 557,
+     "mean": 92.83333333333333,
+     "p50": 94.0,
+     "p75": 94.0,
+     "p90": 94.0,
+     "p95": 94.0,
+     "p99": 94.0,
+     "max": 94
+    },
+    "chars_share": 2.4065266904872483e-06,
+    "exposure_chars": 64849,
+    "exposure_share": 2.7121725667901562e-06
+   },
+   {
+    "tool": "mcp__x64dbg__execute_command",
+    "calls": 6,
+    "errors": 0,
+    "persisted": 0,
+    "result_chars": {
+     "n": 6,
+     "sum": 266,
+     "mean": 44.333333333333336,
+     "p50": 44.0,
+     "p75": 44.75,
+     "p90": 45.0,
+     "p95": 45.0,
+     "p99": 45.0,
+     "max": 45
+    },
+    "chars_share": 1.1492569114355622e-06,
+    "exposure_chars": 56919,
+    "exposure_share": 2.380517052369796e-06
+   },
+   {
+    "tool": "mcp__signoz__signoz_search_docs",
+    "calls": 1,
+    "errors": 0,
+    "persisted": 0,
+    "result_chars": {
+     "n": 1,
+     "sum": 2387,
+     "mean": 2387.0,
+     "p50": 2387,
+     "p75": 2387,
+     "p90": 2387,
+     "p95": 2387,
+     "p99": 2387,
+     "max": 2387
+    },
+    "chars_share": 1.0313068599987544e-05,
+    "exposure_chars": 54901,
+    "exposure_share": 2.296118461184388e-06
+   },
+   {
+    "tool": "mcp__lab-server__server_sessions",
+    "calls": 2,
+    "errors": 0,
+    "persisted": 0,
+    "result_chars": {
+     "n": 2,
+     "sum": 471,
+     "mean": 235.5,
+     "p50": 235.5,
+     "p75": 270.25,
+     "p90": 291.1,
+     "p95": 298.04999999999995,
+     "p99": 303.61,
+     "max": 305
+    },
+    "chars_share": 2.034962425887781e-06,
+    "exposure_chars": 51165,
+    "exposure_share": 2.1398681456894992e-06
+   },
+   {
+    "tool": "mcp__ghidra__get_function_signature",
+    "calls": 1,
+    "errors": 0,
+    "persisted": 0,
+    "result_chars": {
+     "n": 1,
+     "sum": 5286,
+     "mean": 5286.0,
+     "p50": 5286,
+     "p75": 5286,
+     "p90": 5286,
+     "p95": 5286,
+     "p99": 5286,
+     "max": 5286
+    },
+    "chars_share": 2.2838240728753314e-05,
+    "exposure_chars": 47574,
+    "exposure_share": 1.9896821491846427e-06
+   },
+   {
+    "tool": "mcp__ghidra__search_byte_patterns",
+    "calls": 8,
+    "errors": 0,
+    "persisted": 0,
+    "result_chars": {
+     "n": 8,
+     "sum": 451,
+     "mean": 56.375,
+     "p50": 46.0,
+     "p75": 51.5,
+     "p90": 84.19999999999999,
+     "p95": 103.10000000000002,
+     "p99": 118.21999999999998,
+     "max": 122
+    },
+    "chars_share": 1.9485521317948815e-06,
+    "exposure_chars": 41456,
+    "exposure_share": 1.7338097106948869e-06
+   },
+   {
+    "tool": "mcp__ghidra__get_plate_comment",
+    "calls": 2,
+    "errors": 0,
+    "persisted": 0,
+    "result_chars": {
+     "n": 2,
+     "sum": 478,
+     "mean": 239.0,
+     "p50": 239.0,
+     "p75": 239.0,
+     "p90": 239.0,
+     "p95": 239.0,
+     "p99": 239.0,
+     "max": 239
+    },
+    "chars_share": 2.065206028820296e-06,
+    "exposure_chars": 35611,
+    "exposure_share": 1.4893549210622253e-06
+   },
+   {
+    "tool": "mcp__ghidra__run_script_inline",
+    "calls": 2,
+    "errors": 0,
+    "persisted": 0,
+    "result_chars": {
+     "n": 2,
+     "sum": 448,
+     "mean": 224.0,
+     "p50": 224.0,
+     "p75": 224.0,
+     "p90": 224.0,
+     "p95": 224.0,
+     "p99": 224.0,
+     "max": 224
+    },
+    "chars_share": 1.9355905876809467e-06,
+    "exposure_chars": 34944,
+    "exposure_share": 1.461459053708079e-06
+   },
+   {
+    "tool": "mcp__signoz__signoz_create_view",
+    "calls": 16,
+    "errors": 0,
+    "persisted": 0,
+    "result_chars": {
+     "n": 16,
+     "sum": 1056,
+     "mean": 66.0,
+     "p50": 66.0,
+     "p75": 66.0,
+     "p90": 66.0,
+     "p95": 66.0,
+     "p99": 66.0,
+     "max": 66
+    },
+    "chars_share": 4.562463528105089e-06,
+    "exposure_chars": 33330,
+    "exposure_share": 1.3939569099155871e-06
+   },
+   {
+    "tool": "mcp__x64dbg__start_session",
+    "calls": 2,
+    "errors": 0,
+    "persisted": 0,
+    "result_chars": {
+     "n": 2,
+     "sum": 130,
+     "mean": 65.0,
+     "p50": 65.0,
+     "p75": 65.0,
+     "p90": 65.0,
+     "p95": 65.0,
+     "p99": 65.0,
+     "max": 65
+    },
+    "chars_share": 5.616669116038462e-07,
+    "exposure_chars": 29120,
+    "exposure_share": 1.2178825447567325e-06
+   },
+   {
+    "tool": "mcp__ghidra__get_bulk_xrefs",
+    "calls": 1,
+    "errors": 0,
+    "persisted": 0,
+    "result_chars": {
+     "n": 1,
+     "sum": 464,
+     "mean": 464.0,
+     "p50": 464,
+     "p75": 464,
+     "p90": 464,
+     "p95": 464,
+     "p99": 464,
+     "max": 464
+    },
+    "chars_share": 2.0047188229552663e-06,
+    "exposure_chars": 24128,
+    "exposure_share": 1.0091026799412928e-06
+   },
+   {
+    "tool": "mcp__x64dbg__list_sessions",
+    "calls": 3,
+    "errors": 0,
+    "persisted": 0,
+    "result_chars": {
+     "n": 3,
+     "sum": 135,
+     "mean": 45.0,
+     "p50": 45.0,
+     "p75": 45.0,
+     "p90": 45.0,
+     "p95": 45.0,
+     "p99": 45.0,
+     "max": 45
+    },
+    "chars_share": 5.83269485127071e-07,
+    "exposure_chars": 23985,
+    "exposure_share": 1.0031220067304337e-06
+   },
+   {
+    "tool": "mcp__x64dbg__get_log",
+    "calls": 3,
+    "errors": 0,
+    "persisted": 0,
+    "result_chars": {
+     "n": 3,
+     "sum": 138,
+     "mean": 46.0,
+     "p50": 46.0,
+     "p75": 46.0,
+     "p90": 46.0,
+     "p95": 46.0,
+     "p99": 46.0,
+     "max": 46
+    },
+    "chars_share": 5.962310292410059e-07,
+    "exposure_chars": 23322,
+    "exposure_share": 9.753934309346332e-07
+   },
+   {
+    "tool": "mcp__cimmeria-lab__lab_client_status",
+    "calls": 1,
+    "errors": 0,
+    "persisted": 0,
+    "result_chars": {
+     "n": 1,
+     "sum": 228,
+     "mean": 228.0,
+     "p50": 228,
+     "p75": 228,
+     "p90": 228,
+     "p95": 228,
+     "p99": 228,
+     "max": 228
+    },
+    "chars_share": 9.850773526590532e-07,
+    "exposure_chars": 22116,
+    "exposure_share": 9.249550260934031e-07
+   },
+   {
+    "tool": "mcp__ghidra__set_decompiler_comment",
+    "calls": 4,
+    "errors": 0,
+    "persisted": 0,
+    "result_chars": {
+     "n": 4,
+     "sum": 290,
+     "mean": 72.5,
+     "p50": 79.0,
+     "p75": 79.0,
+     "p90": 79.0,
+     "p95": 79.0,
+     "p99": 79.0,
+     "max": 79
+    },
+    "chars_share": 1.2529492643470413e-06,
+    "exposure_chars": 21012,
+    "exposure_share": 8.787825559899885e-07
+   },
+   {
+    "tool": "mcp__ghidra__list_classes",
+    "calls": 1,
+    "errors": 0,
+    "persisted": 0,
+    "result_chars": {
+     "n": 1,
+     "sum": 1680,
+     "mean": 1680.0,
+     "p50": 1680,
+     "p75": 1680,
+     "p90": 1680,
+     "p95": 1680,
+     "p99": 1680,
+     "max": 1680
+    },
+    "chars_share": 7.25846470380355e-06,
+    "exposure_chars": 20160,
+    "exposure_share": 8.431494540623533e-07
+   },
+   {
+    "tool": "mcp__signoz__signoz_query_metrics",
+    "calls": 1,
+    "errors": 0,
+    "persisted": 0,
+    "result_chars": {
+     "n": 1,
+     "sum": 907,
+     "mean": 907.0,
+     "p50": 907,
+     "p75": 907,
+     "p90": 907,
+     "p95": 907,
+     "p99": 907,
+     "max": 907
+    },
+    "chars_share": 3.918706837112988e-06,
+    "exposure_chars": 17233,
+    "exposure_share": 7.207338562428837e-07
+   },
+   {
+    "tool": "mcp__signoz__signoz_update_view",
+    "calls": 1,
+    "errors": 0,
+    "persisted": 0,
+    "result_chars": {
+     "n": 1,
+     "sum": 1130,
+     "mean": 1130.0,
+     "p50": 1130,
+     "p75": 1130,
+     "p90": 1130,
+     "p95": 1130,
+     "p99": 1130,
+     "max": 1130
+    },
+    "chars_share": 4.882181616248817e-06,
+    "exposure_chars": 15820,
+    "exposure_share": 6.616381132572634e-07
+   },
+   {
+    "tool": "mcp__x64dbg__switch_thread",
+    "calls": 1,
+    "errors": 0,
+    "persisted": 0,
+    "result_chars": {
+     "n": 1,
+     "sum": 37,
+     "mean": 37.0,
+     "p50": 37,
+     "p75": 37,
+     "p90": 37,
+     "p95": 37,
+     "p99": 37,
+     "max": 37
+    },
+    "chars_share": 1.598590440718639e-07,
+    "exposure_chars": 13394,
+    "exposure_share": 5.601757831205932e-07
+   },
+   {
+    "tool": "mcp__x64dbg__get_symbol",
+    "calls": 1,
+    "errors": 0,
+    "persisted": 0,
+    "result_chars": {
+     "n": 1,
+     "sum": 37,
+     "mean": 37.0,
+     "p50": 37,
+     "p75": 37,
+     "p90": 37,
+     "p95": 37,
+     "p99": 37,
+     "max": 37
+    },
+    "chars_share": 1.598590440718639e-07,
+    "exposure_chars": 13320,
+    "exposure_share": 5.570808892911977e-07
+   },
+   {
+    "tool": "ReadNotifications",
+    "calls": 2,
+    "errors": 0,
+    "persisted": 0,
+    "result_chars": {
+     "n": 2,
+     "sum": 48,
+     "mean": 24.0,
+     "p50": 24.0,
+     "p75": 24.0,
+     "p90": 24.0,
+     "p95": 24.0,
+     "p99": 24.0,
+     "max": 24
+    },
+    "chars_share": 2.0738470582295857e-07,
+    "exposure_chars": 12912,
+    "exposure_share": 5.400171503399358e-07
+   },
+   {
+    "tool": "mcp__signoz__signoz_get_view",
+    "calls": 1,
+    "errors": 0,
+    "persisted": 0,
+    "result_chars": {
+     "n": 1,
+     "sum": 1381,
+     "mean": 1381.0,
+     "p50": 1381,
+     "p75": 1381,
+     "p90": 1381,
+     "p95": 1381,
+     "p99": 1381,
+     "max": 1381
+    },
+    "chars_share": 5.966630807114704e-06,
+    "exposure_chars": 11048,
+    "exposure_share": 4.620592841508373e-07
+   },
+   {
+    "tool": "mcp__signoz__signoz_list_metrics",
+    "calls": 1,
+    "errors": 0,
+    "persisted": 0,
+    "result_chars": {
+     "n": 1,
+     "sum": 412,
+     "mean": 412.0,
+     "p50": 412,
+     "p75": 412,
+     "p90": 412,
+     "p95": 412,
+     "p99": 412,
+     "max": 412
+    },
+    "chars_share": 1.7800520583137277e-06,
+    "exposure_chars": 10712,
+    "exposure_share": 4.480067932497981e-07
+   },
+   {
+    "tool": "mcp__ghidra__get_metadata",
+    "calls": 2,
+    "errors": 0,
+    "persisted": 0,
+    "result_chars": {
+     "n": 2,
+     "sum": 726,
+     "mean": 363.0,
+     "p50": 363.0,
+     "p75": 363.0,
+     "p90": 363.0,
+     "p95": 363.0,
+     "p99": 363.0,
+     "max": 363
+    },
+    "chars_share": 3.1366936755722483e-06,
+    "exposure_chars": 10164,
+    "exposure_share": 4.2508784975643646e-07
+   },
+   {
+    "tool": "mcp__x64dbg__pause",
+    "calls": 1,
+    "errors": 0,
+    "persisted": 0,
+    "result_chars": {
+     "n": 1,
+     "sum": 20,
+     "mean": 20.0,
+     "p50": 20,
+     "p75": 20,
+     "p90": 20,
+     "p95": 20,
+     "p99": 20,
+     "max": 20
+    },
+    "chars_share": 8.641029409289941e-08,
+    "exposure_chars": 7280,
+    "exposure_share": 3.044706361891831e-07
+   },
+   {
+    "tool": "mcp__ghidra__save_program",
+    "calls": 1,
+    "errors": 0,
+    "persisted": 0,
+    "result_chars": {
+     "n": 1,
+     "sum": 98,
+     "mean": 98.0,
+     "p50": 98,
+     "p75": 98,
+     "p90": 98,
+     "p95": 98,
+     "p99": 98,
+     "max": 98
+    },
+    "chars_share": 4.234104410552071e-07,
+    "exposure_chars": 6958,
+    "exposure_share": 2.9100366574235387e-07
+   },
+   {
+    "tool": "mcp__ghidra__list_project_files",
+    "calls": 1,
+    "errors": 0,
+    "persisted": 0,
+    "result_chars": {
+     "n": 1,
+     "sum": 57,
+     "mean": 57.0,
+     "p50": 57,
+     "p75": 57,
+     "p90": 57,
+     "p95": 57,
+     "p99": 57,
+     "max": 57
+    },
+    "chars_share": 2.462693381647633e-07,
+    "exposure_chars": 6897,
+    "exposure_share": 2.884524694775819e-07
+   },
+   {
+    "tool": "mcp__ghidra__list_functions_enhanced",
+    "calls": 1,
+    "errors": 0,
+    "persisted": 0,
+    "result_chars": {
+     "n": 1,
+     "sum": 159,
+     "mean": 159.0,
+     "p50": 159,
+     "p75": 159,
+     "p90": 159,
+     "p95": 159,
+     "p99": 159,
+     "max": 159
+    },
+    "chars_share": 6.869618380385503e-07,
+    "exposure_chars": 2862,
+    "exposure_share": 1.1969710999635195e-07
+   },
+   {
+    "tool": "mcp__signoz__signoz_list_dashboards",
+    "calls": 1,
+    "errors": 0,
+    "persisted": 0,
+    "result_chars": {
+     "n": 1,
+     "sum": 90,
+     "mean": 90.0,
+     "p50": 90,
+     "p75": 90,
+     "p90": 90,
+     "p95": 90,
+     "p99": 90,
+     "max": 90
+    },
+    "chars_share": 3.8884632341804733e-07,
+    "exposure_chars": 2340,
+    "exposure_share": 9.786556163223744e-08
+   },
+   {
+    "tool": "mcp__ghidra__list_functions",
+    "calls": 1,
+    "errors": 1,
+    "persisted": 0,
+    "result_chars": {
+     "n": 1,
+     "sum": 91,
+     "mean": 91.0,
+     "p50": 91,
+     "p75": 91,
+     "p90": 91,
+     "p95": 91,
+     "p99": 91,
+     "max": 91
+    },
+    "chars_share": 3.931668381226923e-07,
+    "exposure_chars": 819,
+    "exposure_share": 3.4252946571283103e-08
+   },
+   {
+    "tool": "ReportFindings",
+    "calls": 1,
+    "errors": 0,
+    "persisted": 0,
+    "result_chars": {
+     "n": 1,
+     "sum": 21,
+     "mean": 21.0,
+     "p50": 21,
+     "p75": 21,
+     "p90": 21,
+     "p95": 21,
+     "p99": 21,
+     "max": 21
+    },
+    "chars_share": 9.073080879754437e-08,
+    "exposure_chars": 21,
+    "exposure_share": 8.782806813149514e-10
+   }
+  ],
+  "by_fingerprint": [
+   {
+    "tool": "Bash",
+    "fingerprint": "sed -n",
+    "calls": 9027,
+    "errors": 36,
+    "persisted": 20,
+    "result_chars": {
+     "n": 9027,
+     "sum": 39086635,
+     "mean": 4329.969535836934,
+     "p50": 3310.0,
+     "p75": 5684.5,
+     "p90": 8917.4,
+     "p95": 11734.000000000007,
+     "p99": 19256.97999999998,
+     "max": 29766
+    },
+    "chars_share": 0.16887438127259075,
+    "exposure_chars": 4334568687,
+    "exposure_share": 0.18128418760118162
+   },
+   {
+    "tool": "Bash",
+    "fingerprint": "cat",
+    "calls": 4534,
+    "errors": 203,
+    "persisted": 99,
+    "result_chars": {
+     "n": 4533,
+     "sum": 22402239,
+     "mean": 4942.033752481801,
+     "p50": 1877.0,
+     "p75": 7193.0,
+     "p90": 15325.800000000003,
+     "p95": 20680.6,
+     "p99": 26928.480000000032,
+     "max": 29863
+    },
+    "chars_share": 0.09678920301647104,
+    "exposure_chars": 3028270978,
+    "exposure_share": 0.12665104275067304
+   },
+   {
+    "tool": "Bash",
+    "fingerprint": "grep",
+    "calls": 13621,
+    "errors": 99,
+    "persisted": 26,
+    "result_chars": {
+     "n": 13621,
+     "sum": 27435676,
+     "mean": 2014.2189266573673,
+     "p50": 1155.0,
+     "p75": 2565.0,
+     "p90": 4753.0,
+     "p95": 6627.0,
+     "p99": 13539.599999999897,
+     "max": 29604
+    },
+    "chars_share": 0.1185362415898751,
+    "exposure_chars": 2766293040,
+    "exposure_share": 0.11569436837561943
+   },
+   {
+    "tool": "Read",
+    "fingerprint": "<external>",
+    "calls": 2838,
+    "errors": 42,
+    "persisted": 0,
+    "result_chars": {
+     "n": 2838,
+     "sum": 17601636,
+     "mean": 6202.126849894292,
+     "p50": 100.0,
+     "p75": 5771.0,
+     "p90": 23552.200000000008,
+     "p95": 35908.1,
+     "p99": 50460.160000000025,
+     "max": 65598
+    },
+    "chars_share": 0.07604812716380828,
+    "exposure_chars": 1385019779,
+    "exposure_share": 0.057925529292133494
+   },
+   {
+    "tool": "Bash",
+    "fingerprint": "ls",
+    "calls": 2484,
+    "errors": 83,
+    "persisted": 6,
+    "result_chars": {
+     "n": 2484,
+     "sum": 5205502,
+     "mean": 2095.612721417069,
+     "p50": 921.0,
+     "p75": 2545.75,
+     "p90": 5353.599999999991,
+     "p95": 8041.099999999996,
+     "p99": 14789.530000000022,
+     "max": 29698
+    },
+    "chars_share": 0.0224904479360588,
+    "exposure_chars": 611358424,
+    "exposure_share": 0.025568775864683566
+   },
+   {
+    "tool": "Bash",
+    "fingerprint": "python",
+    "calls": 7067,
+    "errors": 318,
+    "persisted": 18,
+    "result_chars": {
+     "n": 7066,
+     "sum": 6313931,
+     "mean": 893.5651004811775,
+     "p50": 340.0,
+     "p75": 915.75,
+     "p90": 2131.0,
+     "p95": 3377.5,
+     "p99": 8580.150000000003,
+     "max": 27472
+    },
+    "chars_share": 0.02727943172961372,
+    "exposure_chars": 564186378,
+    "exposure_share": 0.023595904593259748
+   },
+   {
+    "tool": "mcp__signoz__signoz_search_logs",
+    "fingerprint": "mcp__signoz__signoz_search_logs",
+    "calls": 396,
+    "errors": 1,
+    "persisted": 2,
+    "result_chars": {
+     "n": 396,
+     "sum": 3578620,
+     "mean": 9036.919191919193,
+     "p50": 2976.5,
+     "p75": 13389.5,
+     "p90": 28942.5,
+     "p95": 34914.75,
+     "p99": 45693.75000000001,
+     "max": 49673
+    },
+    "chars_share": 0.015461480332336583,
+    "exposure_chars": 446078746,
+    "exposure_share": 0.018656302140809482
+   },
+   {
+    "tool": "Bash",
+    "fingerprint": "git show",
+    "calls": 1252,
+    "errors": 23,
+    "persisted": 11,
+    "result_chars": {
+     "n": 1252,
+     "sum": 5111358,
+     "mean": 4082.5543130990413,
+     "p50": 2667.0,
+     "p75": 5319.5,
+     "p90": 9752.000000000007,
+     "p95": 13720.800000000003,
+     "p99": 21714.440000000002,
+     "max": 29513
+    },
+    "chars_share": 0.022083697399704706,
+    "exposure_chars": 380336046,
+    "exposure_share": 0.015906752457595937
+   },
+   {
+    "tool": "Bash",
+    "fingerprint": "git diff",
+    "calls": 1287,
+    "errors": 15,
+    "persisted": 19,
+    "result_chars": {
+     "n": 1287,
+     "sum": 3580360,
+     "mean": 2781.942501942502,
+     "p50": 1237.0,
+     "p75": 3168.0,
+     "p90": 7558.2000000000035,
+     "p95": 11667.700000000003,
+     "p99": 20889.38000000003,
+     "max": 29773
+    },
+    "chars_share": 0.015468998027922665,
+    "exposure_chars": 372344958,
+    "exposure_share": 0.015572542066496522
+   },
+   {
+    "tool": "Bash",
+    "fingerprint": "for",
+    "calls": 1518,
+    "errors": 115,
+    "persisted": 12,
+    "result_chars": {
+     "n": 1518,
+     "sum": 3793957,
+     "mean": 2499.312911725955,
+     "p50": 813.0,
+     "p75": 2848.0,
+     "p90": 6268.099999999999,
+     "p95": 10686.300000000021,
+     "p99": 22054.319999999992,
+     "max": 29680
+    },
+    "chars_share": 0.016391847007290718,
+    "exposure_chars": 320878336,
+    "exposure_share": 0.013420059217204185
+   },
+   {
+    "tool": "Bash",
+    "fingerprint": "wc",
+    "calls": 791,
+    "errors": 8,
+    "persisted": 7,
+    "result_chars": {
+     "n": 791,
+     "sum": 2442257,
+     "mean": 3087.556257901391,
+     "p50": 1009.0,
+     "p75": 3791.0,
+     "p90": 8664.0,
+     "p95": 13336.0,
+     "p99": 23484.800000000017,
+     "max": 29314
+    },
+    "chars_share": 0.010551807281022112,
+    "exposure_chars": 301536768,
+    "exposure_share": 0.01261113895431183
+   },
+   {
+    "tool": "Bash",
+    "fingerprint": "gh pr",
+    "calls": 1283,
+    "errors": 37,
+    "persisted": 0,
+    "result_chars": {
+     "n": 1283,
+     "sum": 2081489,
+     "mean": 1622.360872954014,
+     "p50": 216.0,
+     "p75": 1334.5,
+     "p90": 5231.399999999998,
+     "p95": 9146.10000000002,
+     "p99": 17286.880000000037,
+     "max": 26480
+    },
+    "chars_share": 0.008993103832056754,
+    "exposure_chars": 219172601,
+    "exposure_share": 0.009166431491992857
+   },
+   {
+    "tool": "Read",
+    "fingerprint": "docs/architecture/services-crate-split.md",
+    "calls": 45,
+    "errors": 7,
+    "persisted": 0,
+    "result_chars": {
+     "n": 45,
+     "sum": 1293511,
+     "mean": 28744.68888888889,
+     "p50": 30502.0,
+     "p75": 40591.0,
+     "p90": 49334.0,
+     "p95": 52495.2,
+     "p99": 59637.92,
+     "max": 59971
+    },
+    "chars_share": 0.00558863329612002,
+    "exposure_chars": 211800818,
+    "exposure_share": 0.008858122225528762
+   },
+   {
+    "tool": "Bash",
+    "fingerprint": null,
+    "calls": 624,
+    "errors": 11,
+    "persisted": 0,
+    "result_chars": {
+     "n": 624,
+     "sum": 1096900,
+     "mean": 1757.8525641025642,
+     "p50": 705.5,
+     "p75": 1928.0,
+     "p90": 4550.800000000001,
+     "p95": 6942.250000000007,
+     "p99": 15424.67999999997,
+     "max": 23702
+    },
+    "chars_share": 0.0047391725795250675,
+    "exposure_chars": 195335328,
+    "exposure_share": 0.008169487855272358
+   },
+   {
+    "tool": "Read",
+    "fingerprint": "docs/analysis/harset-rebuild/work-packets.md",
+    "calls": 16,
+    "errors": 0,
+    "persisted": 0,
+    "result_chars": {
+     "n": 16,
+     "sum": 747072,
+     "mean": 46692.0,
+     "p50": 55681.0,
+     "p75": 55968.0,
+     "p90": 55968.0,
+     "p95": 55968.0,
+     "p99": 55968.0,
+     "max": 55968
+    },
+    "chars_share": 0.003227735561428527,
+    "exposure_chars": 189126031,
+    "exposure_share": 0.007909797112432029
+   },
+   {
+    "tool": "Bash",
+    "fingerprint": "git fetch",
+    "calls": 908,
+    "errors": 23,
+    "persisted": 1,
+    "result_chars": {
+     "n": 908,
+     "sum": 1428629,
+     "mean": 1573.3799559471365,
+     "p50": 582.0,
+     "p75": 1699.5,
+     "p90": 4052.5,
+     "p95": 6549.699999999996,
+     "p99": 12712.669999999998,
+     "max": 28627
+    },
+    "chars_share": 0.00617241260198224,
+    "exposure_chars": 180038548,
+    "exposure_share": 0.007529732314304503
+   },
+   {
+    "tool": "Agent",
+    "fingerprint": null,
+    "calls": 829,
+    "errors": 49,
+    "persisted": 0,
+    "result_chars": {
+     "n": 829,
+     "sum": 1130695,
+     "mean": 1363.9264173703257,
+     "p50": 1089.0,
+     "p75": 1089.0,
+     "p90": 1089.0,
+     "p95": 6417.800000000007,
+     "p99": 15689.280000000008,
+     "max": 33346
+    },
+    "chars_share": 0.004885184373968544,
+    "exposure_chars": 164807534,
+    "exposure_share": 0.006892727297493191
+   },
+   {
+    "tool": "Bash",
+    "fingerprint": "<invalid>",
+    "calls": 1209,
+    "errors": 88,
+    "persisted": 2,
+    "result_chars": {
+     "n": 1208,
+     "sum": 1728344,
+     "mean": 1430.7483443708609,
+     "p50": 528.0,
+     "p75": 1412.75,
+     "p90": 3473.5,
+     "p95": 5270.800000000001,
+     "p99": 15938.060000000003,
+     "max": 26965
+    },
+    "chars_share": 0.007467335666684906,
+    "exposure_chars": 151177431,
+    "exposure_share": 0.006322677004672574
+   },
+   {
+    "tool": "Bash",
+    "fingerprint": "echo",
+    "calls": 1465,
+    "errors": 24,
+    "persisted": 6,
+    "result_chars": {
+     "n": 1465,
+     "sum": 3043271,
+     "mean": 2077.3180887372014,
+     "p50": 869.0,
+     "p75": 2745.0,
+     "p90": 5545.4,
+     "p95": 7825.399999999997,
+     "p99": 14741.879999999997,
+     "max": 29568
+    },
+    "chars_share": 0.013148497105719604,
+    "exposure_chars": 150856777,
+    "exposure_share": 0.006309266327835128
+   },
+   {
+    "tool": "mcp__ghidra__decompile_function",
+    "fingerprint": "mcp__ghidra__decompile_function",
+    "calls": 675,
+    "errors": 2,
+    "persisted": 0,
+    "result_chars": {
+     "n": 675,
+     "sum": 1806655,
+     "mean": 2676.525925925926,
+     "p50": 926.0,
+     "p75": 2759.0,
+     "p90": 6455.0,
+     "p95": 10630.99999999996,
+     "p99": 28216.53999999999,
+     "max": 36565
+    },
+    "chars_share": 0.007805679493720359,
+    "exposure_chars": 145869840,
+    "exposure_share": 0.006100698212309664
+   }
+  ],
+  "by_mcp_server": [
+   {
+    "server": "signoz",
+    "calls": 777,
+    "errors": 15,
+    "persisted": 2,
+    "result_chars": {
+     "n": 777,
+     "sum": 4278370,
+     "mean": 5506.267696267696,
+     "p50": 1531.0,
+     "p75": 4860.0,
+     "p90": 16707.99999999999,
+     "p95": 29232.600000000002,
+     "p99": 44572.72,
+     "max": 49673
+    },
+    "chars_share": 0.0184847604969119,
+    "exposure_chars": 522288090,
+    "exposure_share": 0.02184359712037546
+   },
+   {
+    "server": "ghidra",
+    "calls": 1871,
+    "errors": 23,
+    "persisted": 0,
+    "result_chars": {
+     "n": 1871,
+     "sum": 3039343,
+     "mean": 1624.4484233030464,
+     "p50": 363.0,
+     "p75": 1350.5,
+     "p90": 4311.0,
+     "p95": 7866.0,
+     "p99": 19034.199999999993,
+     "max": 36565
+    },
+    "chars_share": 0.013131526123959758,
+    "exposure_chars": 248546578,
+    "exposure_share": 0.01039493608877808
+   },
+   {
+    "server": "x64dbg",
+    "calls": 26,
+    "errors": 0,
+    "persisted": 0,
+    "result_chars": {
+     "n": 26,
+     "sum": 8221,
+     "mean": 316.1923076923077,
+     "p50": 46.0,
+     "p75": 93.25,
+     "p90": 286.0,
+     "p95": 1135.75,
+     "p99": 4139.75,
+     "max": 5068
+    },
+    "chars_share": 3.55189513868863e-05,
+    "exposure_chars": 2714795,
+    "exposure_share": 0.00011354057153478207
+   },
+   {
+    "server": "lab-server",
+    "calls": 5,
+    "errors": 0,
+    "persisted": 0,
+    "result_chars": {
+     "n": 5,
+     "sum": 15812,
+     "mean": 3162.4,
+     "p50": 594.0,
+     "p75": 617.0,
+     "p90": 8724.800000000001,
+     "p95": 11427.399999999998,
+     "p99": 13589.48,
+     "max": 14130
+    },
+    "chars_share": 6.831597850984627e-05,
+    "exposure_chars": 2024808,
+    "exposure_share": 8.468332141771257e-05
+   },
+   {
+    "server": "cimmeria-lab",
+    "calls": 1,
+    "errors": 0,
+    "persisted": 0,
+    "result_chars": {
+     "n": 1,
+     "sum": 228,
+     "mean": 228.0,
+     "p50": 228,
+     "p75": 228,
+     "p90": 228,
+     "p95": 228,
+     "p99": 228,
+     "max": 228
+    },
+    "chars_share": 9.850773526590532e-07,
+    "exposure_chars": 22116,
+    "exposure_share": 9.249550260934031e-07
+   }
+  ],
+  "per_call_result_chars": {
+   "n": 99575,
+   "sum": 231453905,
+   "mean": 2324.4178257594776,
+   "p50": 575.0,
+   "p75": 2378.0,
+   "p90": 5954.200000000012,
+   "p95": 10015.300000000003,
+   "p99": 23911.03999999998,
+   "max": 65598
+  }
+ },
+ "prs": {
+  "layer": "cost per merged PR",
+  "label": "Estimated list-price USD, priced per model from the stamped price table. The project is on a Max subscription, so this is a plan-usage proxy, not a bill (D-TP1).",
+  "merged_prs": 408,
+  "per_pr": {
+   "usd_est": {
+    "n": 408,
+    "sum": 8007.8888,
+    "mean": 19.62717843137255,
+    "p50": 7.6072,
+    "p75": 20.535875,
+    "p90": 38.195730000000005,
+    "p95": 59.03587499999987,
+    "p99": 140.37364100000013,
+    "max": 1273.5297
+   },
+   "requests": {
+    "n": 408,
+    "sum": 62565.73,
+    "mean": 153.3473774509804,
+    "p50": 66.96000000000001,
+    "p75": 176.6275,
+    "p90": 349.447,
+    "p95": 434.4049999999998,
+    "p99": 1404.0468000000014,
+    "max": 5894.0
+   },
+   "peak_context": {
+    "n": 408,
+    "sum": 198664666,
+    "mean": 486923.20098039217,
+    "p50": 500754.0,
+    "p75": 646886.0,
+    "p90": 777164.0,
+    "p95": 820169.7999999999,
+    "p99": 961423.78,
+    "max": 966645
+   },
+   "unattributed_share": {
+    "n": 408,
+    "sum": 100.47710000000001,
+    "mean": 0.24626740196078434,
+    "p50": 0.0034000000000000002,
+    "p75": 0.4989,
+    "p90": 0.84893,
+    "p95": 0.9173,
+    "p99": 0.957076,
+    "max": 0.9855
+   }
+  },
+  "top_10pct_share": 0.55613305968984,
+  "window_spend": {
+   "usd": 11265.255405400005,
+   "merged_in_window": {
+    "usd": 8007.888616761099,
+    "share": 0.7108483854633704
+   },
+   "other_prs": {
+    "usd": 155.63117823890562,
+    "share": 0.013815148670690924
+   },
+   "unattributed": {
+    "usd": 3101.7356104,
+    "share": 0.27533646586593874
+   }
+  },
+  "method_mix": {
+   "branch": {
+    "usd": 4382.7531335,
+    "share": 0.38905048982725465
+   },
+   "unattributed": {
+    "usd": 3101.7356104,
+    "share": 0.27533646586593874
+   },
+   "ancestry": {
+    "usd": 1290.409307,
+    "share": 0.11454771867679464
+   },
+   "pr-link": {
+    "usd": 900.6831393,
+    "share": 0.07995230528623942
+   },
+   "parent-session": {
+    "usd": 725.5130735,
+    "share": 0.06440271857060827
+   },
+   "trigger": {
+    "usd": 552.16107105,
+    "share": 0.04901451863979235
+   },
+   "split": {
+    "usd": 312.00007065,
+    "share": 0.027695783133371538
+   }
+  },
+  "top": [
+   {
+    "pr": 662,
+    "window": {
+     "first": "2026-09-18T01:25:50.081Z",
+     "merged": "2026-09-19T12:51:53Z"
+    },
+    "attribution": {
+     "method": "ancestry",
+     "confidence": 0.839,
+     "unattributed_share": 0.0777
+    },
+    "usd_est": 1273.5297,
+    "by_model": {
+     "claude-opus-5": 1195.6544,
+     "claude-fable-5-1": 68.6195,
+     "claude-sonnet-5": 9.2558
+    },
+    "tokens": {
+     "input": 15773,
+     "output": 3719213,
+     "thinking": 1107059,
+     "cache_read": 1874223576,
+     "cache_write_5m": 38218134,
+     "cache_write_1h": 1749429
+    },
+    "requests": 5894.0,
+    "turns": 272,
+    "human_prompts": 10,
+    "event_triggers": {
+     "background_completion": 122,
+     "monitor_event": 40,
+     "agent_message": 2,
+     "cross_session_message": 9
+    },
+    "agents": {
+     "rust-gameserver-dev": {
+      "count": 17,
+      "requests": 3701.0,
+      "usd_est": 916.0353
+     },
+     "testing-validation-engineer": {
+      "count": 10,
+      "requests": 1146.0,
+      "usd_est": 198.9098
+     },
+     "mission-systems-advisor": {
+      "count": 7,
+      "requests": 184.0,
+      "usd_est": 22.8419
+     },
+     "documentation-writer": {
+      "count": 1,
+      "requests": 92.0,
+      "usd_est": 14.4966
+     },
+     "npc-ai-spawn-advisor": {
+      "count": 4,
+      "requests": 108.0,
+      "usd_est": 13.42
+     },
+     "combat-systems-advisor": {
+      "count": 4,
+      "requests": 85.0,
+      "usd_est": 10.2908
+     },
+     "movement-teleport-advisor": {
+      "count": 3,
+      "requests": 68.0,
+      "usd_est": 8.6367
+     },
+     "general-purpose": {
+      "count": 1,
+      "requests": 25.0,
+      "usd_est": 8.4369
+     },
+     "server-authority-enforcer": {
+      "count": 2,
+      "requests": 37.0,
+      "usd_est": 4.9376
+     },
+     "database-persistence": {
+      "count": 2,
+      "requests": 25.0,
+      "usd_est": 3.5791
+     },
+     "network-security-auth": {
+      "count": 1,
+      "requests": 17.0,
+      "usd_est": 2.5066
+     },
+     "items-systems-advisor": {
+      "count": 2,
+      "requests": 55.0,
+      "usd_est": 2.2992
+     },
+     "aoi-witness-broadcast": {
+      "count": 2,
+      "requests": 43.0,
+      "usd_est": 2.2221
+     },
+     "social-systems-engineer": {
+      "count": 1,
+      "requests": 21.0,
+      "usd_est": 0.833
+     }
+    },
+    "context": {
+     "peak": 741585,
+     "p50": 306324.5,
+     "compactions": 0,
+     "idle_gap_write_share": 0.6433
+    },
+    "tools": {
+     "bash_chars": 5182627,
+     "read_chars": 6934379,
+     "top_exposure": [
+      {
+       "tool": "Bash",
+       "fingerprint": "sed -n",
+       "exposure_chars": 194078940
+      },
+      {
+       "tool": "Read",
+       "fingerprint": "docs/analysis/harset-rebuild/work-packets.md",
+       "exposure_chars": 179219695
+      },
+      {
+       "tool": "Bash",
+       "fingerprint": "grep",
+       "exposure_chars": 126604711
+      },
+      {
+       "tool": "Read",
+       "fingerprint": "<external>",
+       "exposure_chars": 106545579
+      },
+      {
+       "tool": "Read",
+       "fingerprint": "docs/analysis/harset-rebuild/README.md",
+       "exposure_chars": 93196744
+      }
+     ]
+    },
+    "diff": {
+     "additions": 20182,
+     "deletions": 1252,
+     "files": 179
+    }
+   },
+   {
+    "pr": 642,
+    "window": {
+     "first": "2026-09-17T02:08:27.424Z",
+     "merged": "2026-09-17T18:42:47Z"
+    },
+    "attribution": {
+     "method": "branch",
+     "confidence": 0.963,
+     "unattributed_share": 0.0094
+    },
+    "usd_est": 336.1505,
+    "by_model": {
+     "claude-sonnet-5": 214.1672,
+     "claude-opus-5": 120.1435,
+     "claude-fable-5-1": 1.8397
+    },
+    "tokens": {
+     "input": 5695,
+     "output": 1893469,
+     "thinking": 641958,
+     "cache_read": 1082251918,
+     "cache_write_5m": 6948915,
+     "cache_write_1h": 2475112
+    },
+    "requests": 2797.67,
+    "turns": 191,
+    "human_prompts": 17,
+    "event_triggers": {
+     "background_completion": 27,
+     "monitor_event": 67,
+     "idle_notification": 21,
+     "teammate_message": 42,
+     "agent_message": 2,
+     "scheduled_task": 2
+    },
+    "agents": {
+     "rust-gameserver-dev": {
+      "count": 14,
+      "requests": 1343.0,
+      "usd_est": 158.6493
+     },
+     "server-authority-enforcer": {
+      "count": 2,
+      "requests": 80.0,
+      "usd_est": 6.9777
+     },
+     "testing-validation-engineer": {
+      "count": 4,
+      "requests": 126.0,
+      "usd_est": 6.6009
+     },
+     "fork": {
+      "count": 1,
+      "requests": 30.0,
+      "usd_est": 5.5127
+     },
+     "game-archaeology-specialist": {
+      "count": 1,
+      "requests": 25.0,
+      "usd_est": 1.3104
+     }
+    },
+    "context": {
+     "peak": 966645,
+     "p50": 302782.0,
+     "compactions": 1,
+     "idle_gap_write_share": 0.3022
+    },
+    "tools": {
+     "bash_chars": 1909688,
+     "read_chars": 3507211,
+     "top_exposure": [
+      {
+       "tool": "Read",
+       "fingerprint": "<external>",
+       "exposure_chars": 158274840
+      },
+      {
+       "tool": "Bash",
+       "fingerprint": "git diff",
+       "exposure_chars": 61687498
+      },
+      {
+       "tool": "Bash",
+       "fingerprint": "grep",
+       "exposure_chars": 59689117
+      },
+      {
+       "tool": "Bash",
+       "fingerprint": "sed -n",
+       "exposure_chars": 55337155
+      },
+      {
+       "tool": "Read",
+       "fingerprint": "docs/analysis/legacy-command-parity/work-packets.md",
+       "exposure_chars": 37185357
+      }
+     ]
+    },
+    "diff": {
+     "additions": 5254,
+     "deletions": 148,
+     "files": 32
+    }
+   },
+   {
+    "pr": 683,
+    "window": {
+     "first": "2026-09-19T10:21:18.114Z",
+     "merged": "2026-09-19T19:18:07Z"
+    },
+    "attribution": {
+     "method": "ancestry",
+     "confidence": 0.809,
+     "unattributed_share": 0.0
+    },
+    "usd_est": 308.1625,
+    "by_model": {
+     "claude-opus-5": 252.9925,
+     "claude-fable-5-1": 51.9275,
+     "claude-sonnet-5": 3.2425
+    },
+    "tokens": {
+     "input": 3155,
+     "output": 1486680,
+     "thinking": 367468,
+     "cache_read": 502537100,
+     "cache_write_5m": 5539183,
+     "cache_write_1h": 336907
+    },
+    "requests": 1564.71,
+    "turns": 70,
+    "human_prompts": 15,
+    "event_triggers": {
+     "background_completion": 24,
+     "agent_message": 8,
+     "cross_session_message": 2
+    },
+    "agents": {
+     "rust-gameserver-dev": {
+      "count": 8,
+      "requests": 1037.0,
+      "usd_est": 223.6893
+     },
+     "testing-validation-engineer": {
+      "count": 1,
+      "requests": 157.0,
+      "usd_est": 29.3031
+     },
+     "general-purpose": {
+      "count": 1,
+      "requests": 146.0,
+      "usd_est": 18.0336
+     },
+     "game-archaeology-specialist": {
+      "count": 1,
+      "requests": 40.0,
+      "usd_est": 3.2425
+     }
+    },
+    "context": {
+     "peak": 688670,
+     "p50": 321541.0,
+     "compactions": 0,
+     "idle_gap_write_share": 0.2024
+    },
+    "tools": {
+     "bash_chars": 1223663,
+     "read_chars": 1262125,
+     "top_exposure": [
+      {
+       "tool": "Bash",
+       "fingerprint": "sed -n",
+       "exposure_chars": 26918058
+      },
+      {
+       "tool": "Bash",
+       "fingerprint": "lane.sh",
+       "exposure_chars": 20662973
+      },
+      {
+       "tool": "Read",
+       "fingerprint": "crates/navmesh-extractor/src/lib.rs",
+       "exposure_chars": 18694726
+      },
+      {
+       "tool": "Bash",
+       "fingerprint": "grep",
+       "exposure_chars": 16303462
+      },
+      {
+       "tool": "Bash",
+       "fingerprint": "cat",
+       "exposure_chars": 12554252
+      }
+     ]
+    },
+    "diff": {
+     "additions": 25719,
+     "deletions": 1000,
+     "files": 110
+    }
+   },
+   {
+    "pr": 682,
+    "window": {
+     "first": "2026-09-18T16:25:32.355Z",
+     "merged": "2026-09-19T19:08:13Z"
+    },
+    "attribution": {
+     "method": "branch",
+     "confidence": 0.967,
+     "unattributed_share": 0.417
+    },
+    "usd_est": 219.0631,
+    "by_model": {
+     "claude-opus-5": 184.9626,
+     "claude-fable-5-1": 29.2949,
+     "claude-sonnet-5": 4.3265,
+     "claude-opus-5-5": 0.4791
+    },
+    "tokens": {
+     "input": 2906,
+     "output": 1049919,
+     "thinking": 236228,
+     "cache_read": 352599588,
+     "cache_write_5m": 4229064,
+     "cache_write_1h": 457480
+    },
+    "requests": 1419.43,
+    "turns": 87,
+    "human_prompts": 4,
+    "event_triggers": {
+     "background_completion": 26,
+     "monitor_event": 2,
+     "idle_notification": 20,
+     "teammate_message": 19,
+     "cross_session_message": 10
+    },
+    "agents": {
+     "rust-gameserver-dev": {
+      "count": 13,
+      "requests": 1125.0,
+      "usd_est": 179.4932
+     },
+     "Explore": {
+      "count": 2,
+      "requests": 30.0,
+      "usd_est": 2.7369
+     },
+     "documentation-writer": {
+      "count": 1,
+      "requests": 23.0,
+      "usd_est": 2.7324
+     },
+     "general-purpose": {
+      "count": 1,
+      "requests": 8.43,
+      "usd_est": 0.4791
+     }
+    },
+    "context": {
+     "peak": 548821,
+     "p50": 236353.5,
+     "compactions": 0,
+     "idle_gap_write_share": 0.3913
+    },
+    "tools": {
+     "bash_chars": 1727540,
+     "read_chars": 749414,
+     "top_exposure": [
+      {
+       "tool": "Bash",
+       "fingerprint": "grep",
+       "exposure_chars": 34418194
+      },
+      {
+       "tool": "Bash",
+       "fingerprint": "sed -n",
+       "exposure_chars": 26592450
+      },
+      {
+       "tool": "Bash",
+       "fingerprint": "cat",
+       "exposure_chars": 9878502
+      },
+      {
+       "tool": "Bash",
+       "fingerprint": "lane.sh",
+       "exposure_chars": 7560397
+      },
+      {
+       "tool": "Read",
+       "fingerprint": "docs/analysis/harset-rebuild/worknotes/H06.md",
+       "exposure_chars": 6434866
+      }
+     ]
+    },
+    "diff": {
+     "additions": 26740,
+     "deletions": 846,
+     "files": 187
+    }
+   },
+   {
+    "pr": 647,
+    "window": {
+     "first": "2026-09-18T01:40:40.870Z",
+     "merged": "2026-09-18T05:33:31Z"
+    },
+    "attribution": {
+     "method": "branch",
+     "confidence": 0.969,
+     "unattributed_share": 0.127
+    },
+    "usd_est": 141.7452,
+    "by_model": {
+     "claude-opus-5": 112.7186,
+     "claude-fable-5-1": 21.4646,
+     "claude-sonnet-5": 7.562
+    },
+    "tokens": {
+     "input": 3143,
+     "output": 689829,
+     "thinking": 211540,
+     "cache_read": 187670504,
+     "cache_write_5m": 6426442,
+     "cache_write_1h": 441156
+    },
+    "requests": 735.35,
+    "turns": 78,
+    "human_prompts": 1,
+    "event_triggers": {
+     "background_completion": 13,
+     "idle_notification": 38,
+     "teammate_message": 17,
+     "cross_session_message": 1
+    },
+    "agents": {
+     "rust-gameserver-dev": {
+      "count": 6,
+      "requests": 441.0,
+      "usd_est": 94.3608
+     },
+     "game-archaeology-specialist": {
+      "count": 1,
+      "requests": 72.0,
+      "usd_est": 7.562
+     },
+     "mission-systems-advisor": {
+      "count": 2,
+      "requests": 42.0,
+      "usd_est": 7.2678
+     },
+     "npc-ai-spawn-advisor": {
+      "count": 1,
+      "requests": 45.0,
+      "usd_est": 5.3255
+     },
+     "minigame-systems-advisor": {
+      "count": 2,
+      "requests": 39.0,
+      "usd_est": 4.8958
+     },
+     "Explore": {
+      "count": 1,
+      "requests": 8.0,
+      "usd_est": 0.8687
+     }
+    },
+    "context": {
+     "peak": 615589,
+     "p50": 254491.0,
+     "compactions": 0,
+     "idle_gap_write_share": 0.7063
+    },
+    "tools": {
+     "bash_chars": 670264,
+     "read_chars": 806805,
+     "top_exposure": [
+      {
+       "tool": "Bash",
+       "fingerprint": "sed -n",
+       "exposure_chars": 22914478
+      },
+      {
+       "tool": "Bash",
+       "fingerprint": "grep",
+       "exposure_chars": 21412811
+      },
+      {
+       "tool": "Agent",
+       "fingerprint": null,
+       "exposure_chars": 13228407
+      },
+      {
+       "tool": "Read",
+       "fingerprint": "crates/services/src/minigame/server.rs",
+       "exposure_chars": 9219676
+      },
+      {
+       "tool": "Bash",
+       "fingerprint": "ls",
+       "exposure_chars": 6497620
+      }
+     ]
+    },
+    "diff": {
+     "additions": 156,
+     "deletions": 20,
+     "files": 4
+    }
+   },
+   {
+    "pr": 717,
+    "window": {
+     "first": "2026-09-19T19:32:48.019Z",
+     "merged": "2026-09-19T22:13:10Z"
+    },
+    "attribution": {
+     "method": "branch",
+     "confidence": 0.989,
+     "unattributed_share": 0.0
+    },
+    "usd_est": 122.1515,
+    "by_model": {
+     "claude-opus-5": 104.3502,
+     "claude-sonnet-5": 17.8013
+    },
+    "tokens": {
+     "input": 1395,
+     "output": 670652,
+     "thinking": 237098,
+     "cache_read": 223571926,
+     "cache_write_5m": 2765870,
+     "cache_write_1h": 300745
+    },
+    "requests": 685.0,
+    "turns": 27,
+    "human_prompts": 6,
+    "event_triggers": {
+     "background_completion": 5,
+     "idle_notification": 6,
+     "teammate_message": 7,
+     "cross_session_message": 3
+    },
+    "agents": {
+     "rust-gameserver-dev": {
+      "count": 3,
+      "requests": 530.0,
+      "usd_est": 104.3502
+     }
+    },
+    "context": {
+     "peak": 620143,
+     "p50": 330015.0,
+     "compactions": 0,
+     "idle_gap_write_share": 0.503
+    },
+    "tools": {
+     "bash_chars": 976966,
+     "read_chars": 175961,
+     "top_exposure": [
+      {
+       "tool": "Bash",
+       "fingerprint": "grep",
+       "exposure_chars": 26030987
+      },
+      {
+       "tool": "Bash",
+       "fingerprint": "sed -n",
+       "exposure_chars": 18747781
+      },
+      {
+       "tool": "Bash",
+       "fingerprint": "python",
+       "exposure_chars": 8972309
+      },
+      {
+       "tool": "Read",
+       "fingerprint": "docs/analysis/harset-rebuild/worknotes/H10.md",
+       "exposure_chars": 7384619
+      },
+      {
+       "tool": "Read",
+       "fingerprint": "crates/services/src/cell/arrival.rs",
+       "exposure_chars": 5960500
+      }
+     ]
+    },
+    "diff": {
+     "additions": 4991,
+     "deletions": 253,
+     "files": 39
+    }
+   },
+   {
+    "pr": 644,
+    "window": {
+     "first": "2026-09-17T20:50:54.663Z",
+     "merged": "2026-09-17T22:40:08Z"
+    },
+    "attribution": {
+     "method": "branch",
+     "confidence": 0.944,
+     "unattributed_share": 0.0
+    },
+    "usd_est": 120.9868,
+    "by_model": {
+     "claude-sonnet-5": 72.2925,
+     "claude-opus-5": 32.6653,
+     "claude-fable-5-1": 15.2283,
+     "claude-opus-5-5": 0.8008
+    },
+    "tokens": {
+     "input": 3892,
+     "output": 1041296,
+     "thinking": 479190,
+     "cache_read": 315039202,
+     "cache_write_5m": 5379901,
+     "cache_write_1h": 862565
+    },
+    "requests": 1586.0,
+    "turns": 105,
+    "human_prompts": 10,
+    "event_triggers": {
+     "background_completion": 19,
+     "monitor_event": 3,
+     "idle_notification": 20,
+     "teammate_message": 33,
+     "agent_message": 6
+    },
+    "agents": {
+     "movement-teleport-advisor": {
+      "count": 3,
+      "requests": 222.0,
+      "usd_est": 32.6653
+     },
+     "teammate": {
+      "count": 19,
+      "requests": 479.0,
+      "usd_est": 23.8917
+     },
+     "rust-gameserver-dev": {
+      "count": 2,
+      "requests": 315.0,
+      "usd_est": 21.4791
+     },
+     "general-purpose": {
+      "count": 2,
+      "requests": 227.0,
+      "usd_est": 7.2758
+     },
+     "fork": {
+      "count": 8,
+      "requests": 134.0,
+      "usd_est": 6.1675
+     },
+     "items-systems-advisor": {
+      "count": 1,
+      "requests": 1.0,
+      "usd_est": 0.1268
+     }
+    },
+    "context": {
+     "peak": 498970,
+     "p50": 172129.0,
+     "compactions": 0,
+     "idle_gap_write_share": 0.0022
+    },
+    "tools": {
+     "bash_chars": 836171,
+     "read_chars": 6402254,
+     "top_exposure": [
+      {
+       "tool": "Read",
+       "fingerprint": "<external>",
+       "exposure_chars": 79129744
+      },
+      {
+       "tool": "Read",
+       "fingerprint": "docs/analysis/castle-cellblock-rebuild/work-packets.md",
+       "exposure_chars": 20969022
+      },
+      {
+       "tool": "Bash",
+       "fingerprint": "grep",
+       "exposure_chars": 18260735
+      },
+      {
+       "tool": "Read",
+       "fingerprint": "docs/analysis/castle-cellblock-rebuild/audit.md",
+       "exposure_chars": 14997151
+      },
+      {
+       "tool": "ListAgents",
+       "fingerprint": null,
+       "exposure_chars": 14834962
+      }
+     ]
+    },
+    "diff": {
+     "additions": 4061,
+     "deletions": 422,
+     "files": 53
+    }
+   },
+   {
+    "pr": 993,
+    "window": {
+     "first": "2026-09-28T00:34:12.089Z",
+     "merged": "2026-09-28T02:59:10Z"
+    },
+    "attribution": {
+     "method": "branch",
+     "confidence": 0.973,
+     "unattributed_share": 0.2586
+    },
+    "usd_est": 120.0643,
+    "by_model": {
+     "claude-opus-5-5": 120.0643
+    },
+    "tokens": {
+     "input": 2133,
+     "output": 800141,
+     "thinking": 206742,
+     "cache_read": 338240273,
+     "cache_write_5m": 6310378,
+     "cache_write_1h": 606626
+    },
+    "requests": 1010.99,
+    "turns": 116,
+    "human_prompts": 30,
+    "event_triggers": {
+     "background_completion": 19,
+     "monitor_event": 3,
+     "idle_notification": 24,
+     "teammate_message": 34
+    },
+    "agents": {
+     "rust-gameserver-dev": {
+      "count": 7,
+      "requests": 458.0,
+      "usd_est": 74.539
+     },
+     "testing-validation-engineer": {
+      "count": 1,
+      "requests": 91.0,
+      "usd_est": 6.9008
+     },
+     "general-purpose": {
+      "count": 2,
+      "requests": 114.0,
+      "usd_est": 5.8268
+     },
+     "teammate": {
+      "count": 1,
+      "requests": 16.0,
+      "usd_est": 3.8951
+     }
+    },
+    "context": {
+     "peak": 812989,
+     "p50": 306534.0,
+     "compactions": 0,
+     "idle_gap_write_share": 0.5957
+    },
+    "tools": {
+     "bash_chars": 1620500,
+     "read_chars": 25767,
+     "top_exposure": [
+      {
+       "tool": "Bash",
+       "fingerprint": "sed -n",
+       "exposure_chars": 43663205
+      },
+      {
+       "tool": "Bash",
+       "fingerprint": "grep",
+       "exposure_chars": 31112514
+      },
+      {
+       "tool": "Bash",
+       "fingerprint": "cat",
+       "exposure_chars": 18170201
+      },
+      {
+       "tool": "Bash",
+       "fingerprint": "python",
+       "exposure_chars": 7250599
+      },
+      {
+       "tool": "Bash",
+       "fingerprint": "ls",
+       "exposure_chars": 5206477
+      }
+     ]
+    },
+    "diff": {
+     "additions": 928,
+     "deletions": 40,
+     "files": 22
+    }
+   },
+   {
+    "pr": 1076,
+    "window": {
+     "first": "2026-09-29T02:28:46.862Z",
+     "merged": "2026-09-29T03:39:13Z"
+    },
+    "attribution": {
+     "method": "split",
+     "confidence": 0.847,
+     "unattributed_share": 0.0
+    },
+    "usd_est": 111.8661,
+    "by_model": {
+     "claude-opus-5-5": 80.8333,
+     "claude-sonnet-5-5": 31.0328
+    },
+    "tokens": {
+     "input": 1903,
+     "output": 854493,
+     "thinking": 256711,
+     "cache_read": 409154006,
+     "cache_write_5m": 3260478,
+     "cache_write_1h": 668028
+    },
+    "requests": 950.43,
+    "turns": 56,
+    "human_prompts": 21,
+    "event_triggers": {
+     "background_completion": 21,
+     "agent_message": 2
+    },
+    "agents": {
+     "game-archaeology-specialist": {
+      "count": 2,
+      "requests": 262.0,
+      "usd_est": 31.0328
+     },
+     "rust-gameserver-dev": {
+      "count": 3,
+      "requests": 278.0,
+      "usd_est": 23.1568
+     },
+     "Explore": {
+      "count": 1,
+      "requests": 61.0,
+      "usd_est": 2.731
+     }
+    },
+    "context": {
+     "peak": 951556,
+     "p50": 412827.0,
+     "compactions": 1,
+     "idle_gap_write_share": 0.3163
+    },
+    "tools": {
+     "bash_chars": 1975147,
+     "read_chars": 151512,
+     "top_exposure": [
+      {
+       "tool": "Bash",
+       "fingerprint": "sed -n",
+       "exposure_chars": 74200405
+      },
+      {
+       "tool": "Bash",
+       "fingerprint": "cat",
+       "exposure_chars": 70756943
+      },
+      {
+       "tool": "Bash",
+       "fingerprint": "grep",
+       "exposure_chars": 31694073
+      },
+      {
+       "tool": "Bash",
+       "fingerprint": "python",
+       "exposure_chars": 15313630
+      },
+      {
+       "tool": "mcp__ghidra__decompile_function",
+       "fingerprint": "mcp__ghidra__decompile_function",
+       "exposure_chars": 15235168
+      }
+     ]
+    },
+    "diff": {
+     "additions": 4054,
+     "deletions": 624,
+     "files": 54
+    }
+   },
+   {
+    "pr": 1046,
+    "window": {
+     "first": "2026-09-28T21:10:03.510Z",
+     "merged": "2026-09-29T01:18:17Z"
+    },
+    "attribution": {
+     "method": "branch",
+     "confidence": 0.959,
+     "unattributed_share": 0.001
+    },
+    "usd_est": 96.6521,
+    "by_model": {
+     "claude-opus-5-5": 79.105,
+     "claude-sonnet-5": 17.5471
+    },
+    "tokens": {
+     "input": 1425,
+     "output": 530829,
+     "thinking": 164941,
+     "cache_read": 249353824,
+     "cache_write_5m": 8150792,
+     "cache_write_1h": 46852
+    },
+    "requests": 703.74,
+    "turns": 47,
+    "human_prompts": 9,
+    "event_triggers": {
+     "background_completion": 25,
+     "monitor_event": 4,
+     "agent_message": 2
+    },
+    "agents": {
+     "npc-ai-spawn-advisor": {
+      "count": 1,
+      "requests": 199.0,
+      "usd_est": 42.1636
+     },
+     "bigworld-engine-advisor": {
+      "count": 2,
+      "requests": 222.09,
+      "usd_est": 22.7668
+     },
+     "social-systems-engineer": {
+      "count": 1,
+      "requests": 202.0,
+      "usd_est": 17.5471
+     },
+     "rust-gameserver-dev": {
+      "count": 1,
+      "requests": 41.0,
+      "usd_est": 9.7579
+     }
+    },
+    "context": {
+     "peak": 727817,
+     "p50": 345479.5,
+     "compactions": 0,
+     "idle_gap_write_share": 0.7081
+    },
+    "tools": {
+     "bash_chars": 1241661,
+     "read_chars": 223863,
+     "top_exposure": [
+      {
+       "tool": "Bash",
+       "fingerprint": "cat",
+       "exposure_chars": 54040648
+      },
+      {
+       "tool": "Bash",
+       "fingerprint": "sed -n",
+       "exposure_chars": 53923939
+      },
+      {
+       "tool": "Bash",
+       "fingerprint": "grep",
+       "exposure_chars": 29894439
+      },
+      {
+       "tool": "Bash",
+       "fingerprint": "cd",
+       "exposure_chars": 17789721
+      },
+      {
+       "tool": "Bash",
+       "fingerprint": "ls",
+       "exposure_chars": 12667782
+      }
+     ]
+    },
+    "diff": {
+     "additions": 2359,
+     "deletions": 175,
+     "files": 39
+    }
+   },
+   {
+    "pr": 652,
+    "window": {
+     "first": "2026-09-18T02:10:21.694Z",
+     "merged": "2026-09-18T16:57:28Z"
+    },
+    "attribution": {
+     "method": "branch",
+     "confidence": 0.899,
+     "unattributed_share": 0.8057
+    },
+    "usd_est": 89.4997,
+    "by_model": {
+     "claude-opus-5": 74.2804,
+     "claude-fable-5-1": 11.371,
+     "claude-sonnet-5": 3.3693,
+     "claude-opus-5-5": 0.4791
+    },
+    "tokens": {
+     "input": 1138,
+     "output": 215229,
+     "thinking": 62076,
+     "cache_read": 80708240,
+     "cache_write_5m": 6776343,
+     "cache_write_1h": 458172
+    },
+    "requests": 350.61,
+    "turns": 87,
+    "human_prompts": 1,
+    "event_triggers": {
+     "background_completion": 9,
+     "monitor_event": 1,
+     "idle_notification": 55,
+     "teammate_message": 17
+    },
+    "agents": {
+     "rust-gameserver-dev": {
+      "count": 10,
+      "requests": 254.0,
+      "usd_est": 71.5535
+     },
+     "testing-validation-engineer": {
+      "count": 2,
+      "requests": 16.0,
+      "usd_est": 2.7268
+     },
+     "game-archaeology-specialist": {
+      "count": 1,
+      "requests": 7.0,
+      "usd_est": 1.6339
+     },
+     "general-purpose": {
+      "count": 1,
+      "requests": 8.43,
+      "usd_est": 0.4791
+     }
+    },
+    "context": {
+     "peak": 615589,
+     "p50": 200243.0,
+     "compactions": 0,
+     "idle_gap_write_share": 0.8844
+    },
+    "tools": {
+     "bash_chars": 395017,
+     "read_chars": 288592,
+     "top_exposure": [
+      {
+       "tool": "Read",
+       "fingerprint": "<external>",
+       "exposure_chars": 5983790
+      },
+      {
+       "tool": "Bash",
+       "fingerprint": "sed -n",
+       "exposure_chars": 5276141
+      },
+      {
+       "tool": "Bash",
+       "fingerprint": "<invalid>",
+       "exposure_chars": 3059156
+      },
+      {
+       "tool": "Bash",
+       "fingerprint": "git diff",
+       "exposure_chars": 2798442
+      },
+      {
+       "tool": "Bash",
+       "fingerprint": "grep",
+       "exposure_chars": 2611843
+      }
+     ]
+    },
+    "diff": {
+     "additions": 3193,
+     "deletions": 611,
+     "files": 32
+    }
+   },
+   {
+    "pr": 646,
+    "window": {
+     "first": "2026-09-17T23:52:54.591Z",
+     "merged": "2026-09-18T01:12:02Z"
+    },
+    "attribution": {
+     "method": "parent-session",
+     "confidence": 0.8,
+     "unattributed_share": 0.0
+    },
+    "usd_est": 88.8511,
+    "by_model": {
+     "claude-sonnet-5": 85.6504,
+     "claude-fable-5-1": 3.2007
+    },
+    "tokens": {
+     "input": 2634,
+     "output": 770825,
+     "thinking": 351361,
+     "cache_read": 331785485,
+     "cache_write_5m": 4581170,
+     "cache_write_1h": 261765
+    },
+    "requests": 1199.67,
+    "turns": 73,
+    "human_prompts": 6,
+    "event_triggers": {
+     "background_completion": 45,
+     "monitor_event": 2,
+     "teammate_message": 1
+    },
+    "agents": {
+     "rust-gameserver-dev": {
+      "count": 9,
+      "requests": 1064.0,
+      "usd_est": 69.7941
+     },
+     "game-archaeology-specialist": {
+      "count": 1,
+      "requests": 29.0,
+      "usd_est": 1.7452
+     }
+    },
+    "context": {
+     "peak": 798934,
+     "p50": 258035.0,
+     "compactions": 0,
+     "idle_gap_write_share": 0.0851
+    },
+    "tools": {
+     "bash_chars": 880824,
+     "read_chars": 2241768,
+     "top_exposure": [
+      {
+       "tool": "Read",
+       "fingerprint": "docs/analysis/castle-cellblock-rebuild/work-packets.md",
+       "exposure_chars": 29562034
+      },
+      {
+       "tool": "Bash",
+       "fingerprint": "grep",
+       "exposure_chars": 24710271
+      },
+      {
+       "tool": "Read",
+       "fingerprint": "db/resources/Content/Seed/castle_cellblock_chains.sql",
+       "exposure_chars": 19321947
+      },
+      {
+       "tool": "Read",
+       "fingerprint": "docs/analysis/castle-cellblock-rebuild/README.md",
+       "exposure_chars": 15924396
+      },
+      {
+       "tool": "Bash",
+       "fingerprint": "sed -n",
+       "exposure_chars": 14847686
+      }
+     ]
+    },
+    "diff": {
+     "additions": 5399,
+     "deletions": 1555,
+     "files": 68
+    }
+   },
+   {
+    "pr": 700,
+    "window": {
+     "first": "2026-09-19T18:08:46.106Z",
+     "merged": "2026-09-19T19:55:58Z"
+    },
+    "attribution": {
+     "method": "split",
+     "confidence": 0.866,
+     "unattributed_share": 0.0077
+    },
+    "usd_est": 88.5115,
+    "by_model": {
+     "claude-opus-5": 71.729,
+     "claude-fable-5-1": 16.7826
+    },
+    "tokens": {
+     "input": 776,
+     "output": 329811,
+     "thinking": 75192,
+     "cache_read": 164201691,
+     "cache_write_5m": 793286,
+     "cache_write_1h": 129472
+    },
+    "requests": 384.77,
+    "turns": 10,
+    "human_prompts": 3,
+    "event_triggers": {
+     "background_completion": 2,
+     "cross_session_message": 1
+    },
+    "agents": {
+     "rust-gameserver-dev": {
+      "count": 2,
+      "requests": 313.0,
+      "usd_est": 71.729
+     }
+    },
+    "context": {
+     "peak": 688670,
+     "p50": 424512.0,
+     "compactions": 0,
+     "idle_gap_write_share": 0.003
+    },
+    "tools": {
+     "bash_chars": 241953,
+     "read_chars": 680608,
+     "top_exposure": [
+      {
+       "tool": "Read",
+       "fingerprint": "<external>",
+       "exposure_chars": 12147042
+      },
+      {
+       "tool": "Bash",
+       "fingerprint": "sed -n",
+       "exposure_chars": 9319732
+      },
+      {
+       "tool": "Read",
+       "fingerprint": "crates/navmesh-extractor/src/lib.rs",
+       "exposure_chars": 6264709
+      },
+      {
+       "tool": "Read",
+       "fingerprint": "crates/navmesh-extractor/src/staticmesh/archetype/mod.rs",
+       "exposure_chars": 5830263
+      },
+      {
+       "tool": "Read",
+       "fingerprint": "crates/navmesh-extractor/src/bin/archetype_census.rs",
+       "exposure_chars": 5829285
+      }
+     ]
+    },
+    "diff": {
+     "additions": 3417,
+     "deletions": 337,
+     "files": 34
+    }
+   },
+   {
+    "pr": 674,
+    "window": {
+     "first": "2026-09-19T02:00:54.143Z",
+     "merged": "2026-09-19T02:38:11Z"
+    },
+    "attribution": {
+     "method": "split",
+     "confidence": 0.829,
+     "unattributed_share": 0.0
+    },
+    "usd_est": 78.2213,
+    "by_model": {
+     "claude-opus-4-8": 46.2187,
+     "claude-opus-5": 18.618,
+     "claude-fable-5-1": 9.6495,
+     "claude-sonnet-5": 3.7351
+    },
+    "tokens": {
+     "input": 1848,
+     "output": 584111,
+     "thinking": 207693,
+     "cache_read": 95371913,
+     "cache_write_5m": 1743833,
+     "cache_write_1h": 1054876
+    },
+    "requests": 515.07,
+    "turns": 59,
+    "human_prompts": 15,
+    "event_triggers": {
+     "background_completion": 6,
+     "idle_notification": 16,
+     "teammate_message": 15
+    },
+    "agents": {
+     "rust-gameserver-dev": {
+      "count": 4,
+      "requests": 232.33,
+      "usd_est": 34.6458
+     },
+     "Explore": {
+      "count": 2,
+      "requests": 38.0,
+      "usd_est": 3.5083
+     },
+     "database-persistence": {
+      "count": 1,
+      "requests": 28.0,
+      "usd_est": 3.2964
+     },
+     "combat-systems-advisor": {
+      "count": 1,
+      "requests": 20.0,
+      "usd_est": 2.9369
+     },
+     "mission-systems-advisor": {
+      "count": 1,
+      "requests": 15.0,
+      "usd_est": 2.4257
+     },
+     "items-systems-advisor": {
+      "count": 1,
+      "requests": 53.0,
+      "usd_est": 2.2152
+     },
+     "general-purpose": {
+      "count": 1,
+      "requests": 12.0,
+      "usd_est": 1.5372
+     }
+    },
+    "context": {
+     "peak": 448685,
+     "p50": 176838.5,
+     "compactions": 0,
+     "idle_gap_write_share": 0.3026
+    },
+    "tools": {
+     "bash_chars": 690385,
+     "read_chars": 905555,
+     "top_exposure": [
+      {
+       "tool": "Read",
+       "fingerprint": "<external>",
+       "exposure_chars": 4425518
+      },
+      {
+       "tool": "Bash",
+       "fingerprint": "echo",
+       "exposure_chars": 3404878
+      },
+      {
+       "tool": "Bash",
+       "fingerprint": "grep",
+       "exposure_chars": 3223065
+      },
+      {
+       "tool": "Read",
+       "fingerprint": "docs/reverse-engineering/findings/black-market-client-window-patch.md",
+       "exposure_chars": 2569381
+      },
+      {
+       "tool": "Read",
+       "fingerprint": "crates/server/src/main.rs",
+       "exposure_chars": 1992482
+      }
+     ]
+    },
+    "diff": {
+     "additions": 241894,
+     "deletions": 4,
+     "files": 75
+    }
+   },
+   {
+    "pr": 896,
+    "window": {
+     "first": "2026-09-27T03:27:25.827Z",
+     "merged": "2026-09-27T13:26:05Z"
+    },
+    "attribution": {
+     "method": "branch",
+     "confidence": 0.931,
+     "unattributed_share": 0.6956
+    },
+    "usd_est": 72.0948,
+    "by_model": {
+     "claude-opus-5-5": 69.0221,
+     "claude-sonnet-5": 3.0727
+    },
+    "tokens": {
+     "input": 1038,
+     "output": 461106,
+     "thinking": 85903,
+     "cache_read": 190267016,
+     "cache_write_5m": 5082796,
+     "cache_write_1h": 95083
+    },
+    "requests": 497.7,
+    "turns": 65,
+    "human_prompts": 0,
+    "event_triggers": {
+     "background_completion": 37,
+     "monitor_event": 2,
+     "idle_notification": 1,
+     "teammate_message": 4,
+     "agent_message": 1,
+     "cross_session_message": 2
+    },
+    "agents": {
+     "rust-gameserver-dev": {
+      "count": 9,
+      "requests": 407.23,
+      "usd_est": 59.9474
+     },
+     "game-archaeology-specialist": {
+      "count": 1,
+      "requests": 20.0,
+      "usd_est": 2.9968
+     },
+     "aoi-witness-broadcast": {
+      "count": 1,
+      "requests": 1.0,
+      "usd_est": 0.0759
+     }
+    },
+    "context": {
+     "peak": 777164,
+     "p50": 381191.0,
+     "compactions": 0,
+     "idle_gap_write_share": 0.6988
+    },
+    "tools": {
+     "bash_chars": 536619,
+     "read_chars": 104566,
+     "top_exposure": [
+      {
+       "tool": "Bash",
+       "fingerprint": "cat",
+       "exposure_chars": 15803080
+      },
+      {
+       "tool": "Bash",
+       "fingerprint": "git diff",
+       "exposure_chars": 12702982
+      },
+      {
+       "tool": "Bash",
+       "fingerprint": "git show",
+       "exposure_chars": 11302004
+      },
+      {
+       "tool": "Bash",
+       "fingerprint": "sed -n",
+       "exposure_chars": 10264736
+      },
+      {
+       "tool": "Bash",
+       "fingerprint": "grep",
+       "exposure_chars": 8645711
+      }
+     ]
+    },
+    "diff": {
+     "additions": 3686,
+     "deletions": 47,
+     "files": 42
+    }
+   },
+   {
+    "pr": 823,
+    "window": {
+     "first": "2026-09-26T12:04:16.968Z",
+     "merged": "2026-09-27T00:38:36Z"
+    },
+    "attribution": {
+     "method": "branch",
+     "confidence": 0.937,
+     "unattributed_share": 0.1832
+    },
+    "usd_est": 67.4632,
+    "by_model": {
+     "claude-opus-5-5": 65.1187,
+     "claude-sonnet-5": 2.3445
+    },
+    "tokens": {
+     "input": 697,
+     "output": 228844,
+     "thinking": 44411,
+     "cache_read": 75924992,
+     "cache_write_5m": 9246816,
+     "cache_write_1h": 212560
+    },
+    "requests": 343.92,
+    "turns": 41,
+    "human_prompts": 1,
+    "event_triggers": {
+     "background_completion": 22,
+     "monitor_event": 5,
+     "idle_notification": 4,
+     "teammate_message": 2
+    },
+    "agents": {
+     "workflow-subagent": {
+      "count": 4,
+      "requests": 203.0,
+      "usd_est": 42.5992
+     },
+     "teammate": {
+      "count": 1,
+      "requests": 34.0,
+      "usd_est": 16.2135
+     },
+     "combat-systems-advisor": {
+      "count": 1,
+      "requests": 38.0,
+      "usd_est": 2.8376
+     },
+     "aoi-witness-broadcast": {
+      "count": 1,
+      "requests": 36.0,
+      "usd_est": 2.3445
+     }
+    },
+    "context": {
+     "peak": 444345,
+     "p50": 248029.0,
+     "compactions": 0,
+     "idle_gap_write_share": 0.9349
+    },
+    "tools": {
+     "bash_chars": 570821,
+     "read_chars": 71987,
+     "top_exposure": [
+      {
+       "tool": "Bash",
+       "fingerprint": "sed -n",
+       "exposure_chars": 11149836
+      },
+      {
+       "tool": "Read",
+       "fingerprint": "<external>",
+       "exposure_chars": 8374818
+      },
+      {
+       "tool": "Bash",
+       "fingerprint": "cat",
+       "exposure_chars": 7224820
+      },
+      {
+       "tool": "Bash",
+       "fingerprint": "grep",
+       "exposure_chars": 3470782
+      },
+      {
+       "tool": "Bash",
+       "fingerprint": "git show",
+       "exposure_chars": 1408095
+      }
+     ]
+    },
+    "diff": {
+     "additions": 1327,
+     "deletions": 85,
+     "files": 16
+    }
+   },
+   {
+    "pr": 874,
+    "window": {
+     "first": "2026-09-27T04:15:19.091Z",
+     "merged": "2026-09-27T14:38:13Z"
+    },
+    "attribution": {
+     "method": "branch",
+     "confidence": 0.992,
+     "unattributed_share": 0.126
+    },
+    "usd_est": 65.4943,
+    "by_model": {
+     "claude-opus-5-5": 65.4943
+    },
+    "tokens": {
+     "input": 887,
+     "output": 436881,
+     "thinking": 135659,
+     "cache_read": 201596775,
+     "cache_write_5m": 2972194,
+     "cache_write_1h": 196606
+    },
+    "requests": 440.01,
+    "turns": 22,
+    "human_prompts": 3,
+    "event_triggers": {
+     "background_completion": 7,
+     "monitor_event": 2,
+     "teammate_message": 4,
+     "cross_session_message": 4
+    },
+    "agents": {
+     "rust-gameserver-dev": {
+      "count": 2,
+      "requests": 370.0,
+      "usd_est": 56.6114
+     }
+    },
+    "context": {
+     "peak": 664252,
+     "p50": 483471.0,
+     "compactions": 0,
+     "idle_gap_write_share": 0.7044
+    },
+    "tools": {
+     "bash_chars": 667553,
+     "read_chars": 21245,
+     "top_exposure": [
+      {
+       "tool": "Bash",
+       "fingerprint": "cat",
+       "exposure_chars": 27102677
+      },
+      {
+       "tool": "Bash",
+       "fingerprint": "grep",
+       "exposure_chars": 9414416
+      },
+      {
+       "tool": "Bash",
+       "fingerprint": "sed -n",
+       "exposure_chars": 8248947
+      },
+      {
+       "tool": "Bash",
+       "fingerprint": "for",
+       "exposure_chars": 5176427
+      },
+      {
+       "tool": "Bash",
+       "fingerprint": "python",
+       "exposure_chars": 5057843
+      }
+     ]
+    },
+    "diff": {
+     "additions": 364,
+     "deletions": 24,
+     "files": 10
+    }
+   },
+   {
+    "pr": 909,
+    "window": {
+     "first": "2026-09-27T12:58:23.065Z",
+     "merged": "2026-09-27T17:22:16Z"
+    },
+    "attribution": {
+     "method": "branch",
+     "confidence": 0.832,
+     "unattributed_share": 0.5605
+    },
+    "usd_est": 65.1938,
+    "by_model": {
+     "claude-opus-5-5": 65.1938
+    },
+    "tokens": {
+     "input": 829,
+     "output": 239788,
+     "thinking": 39752,
+     "cache_read": 162500936,
+     "cache_write_5m": 5396844,
+     "cache_write_1h": 113787
+    },
+    "requests": 379.97,
+    "turns": 62,
+    "human_prompts": 0,
+    "event_triggers": {
+     "background_completion": 1,
+     "monitor_event": 5,
+     "idle_notification": 22,
+     "teammate_message": 21,
+     "cross_session_message": 12
+    },
+    "agents": {
+     "rust-gameserver-dev": {
+      "count": 4,
+      "requests": 276.0,
+      "usd_est": 54.5387
+     }
+    },
+    "context": {
+     "peak": 654183,
+     "p50": 415818.0,
+     "compactions": 0,
+     "idle_gap_write_share": 0.9054
+    },
+    "tools": {
+     "bash_chars": 326350,
+     "read_chars": 25280,
+     "top_exposure": [
+      {
+       "tool": "Bash",
+       "fingerprint": "sed -n",
+       "exposure_chars": 8518228
+      },
+      {
+       "tool": "Bash",
+       "fingerprint": "grep",
+       "exposure_chars": 7681655
+      },
+      {
+       "tool": "Bash",
+       "fingerprint": "cat",
+       "exposure_chars": 3942321
+      },
+      {
+       "tool": "Read",
+       "fingerprint": "<external>",
+       "exposure_chars": 2878132
+      },
+      {
+       "tool": "SendMessage",
+       "fingerprint": null,
+       "exposure_chars": 2790406
+      }
+     ]
+    },
+    "diff": {
+     "additions": 3026,
+     "deletions": 23,
+     "files": 54
+    }
+   },
+   {
+    "pr": 816,
+    "window": {
+     "first": "2026-09-25T22:03:13.695Z",
+     "merged": "2026-09-26T00:52:32Z"
+    },
+    "attribution": {
+     "method": "branch",
+     "confidence": 0.979,
+     "unattributed_share": 0.0175
+    },
+    "usd_est": 61.6935,
+    "by_model": {
+     "claude-sonnet-5": 52.8005,
+     "claude-opus-5-5": 8.893
+    },
+    "tokens": {
+     "input": 1382,
+     "output": 472550,
+     "thinking": 189333,
+     "cache_read": 259454805,
+     "cache_write_5m": 1674924,
+     "cache_write_1h": 36788
+    },
+    "requests": 679.83,
+    "turns": 37,
+    "human_prompts": 0,
+    "event_triggers": {
+     "background_completion": 27,
+     "monitor_event": 2
+    },
+    "agents": {
+     "game-archaeology-specialist": {
+      "count": 2,
+      "requests": 391.0,
+      "usd_est": 31.1883
+     },
+     "aoi-witness-broadcast": {
+      "count": 1,
+      "requests": 219.0,
+      "usd_est": 21.6122
+     },
+     "bigworld-engine-advisor": {
+      "count": 1,
+      "requests": 41.92,
+      "usd_est": 3.6623
+     }
+    },
+    "context": {
+     "peak": 881009,
+     "p50": 373999.0,
+     "compactions": 0,
+     "idle_gap_write_share": 0.0024
+    },
+    "tools": {
+     "bash_chars": 844293,
+     "read_chars": 422440,
+     "top_exposure": [
+      {
+       "tool": "Bash",
+       "fingerprint": null,
+       "exposure_chars": 107125059
+      },
+      {
+       "tool": "Bash",
+       "fingerprint": "sed -n",
+       "exposure_chars": 34133390
+      },
+      {
+       "tool": "Bash",
+       "fingerprint": "grep",
+       "exposure_chars": 23802690
+      },
+      {
+       "tool": "Read",
+       "fingerprint": "crates/wireclient/tests/two_client_castle_visibility.rs",
+       "exposure_chars": 16666889
+      },
+      {
+       "tool": "Read",
+       "fingerprint": "crates/mercury/src/test_harness/peer.rs",
+       "exposure_chars": 14901867
+      }
+     ]
+    },
+    "diff": {
+     "additions": 2860,
+     "deletions": 100,
+     "files": 20
+    }
+   },
+   {
+    "pr": 815,
+    "window": {
+     "first": "2026-09-25T22:57:51.258Z",
+     "merged": "2026-09-25T23:49:14Z"
+    },
+    "attribution": {
+     "method": "branch",
+     "confidence": 0.969,
+     "unattributed_share": 0.0
+    },
+    "usd_est": 61.066,
+    "by_model": {
+     "claude-sonnet-5": 53.0437,
+     "claude-opus-5-5": 8.0222
+    },
+    "tokens": {
+     "input": 896,
+     "output": 322847,
+     "thinking": 123896,
+     "cache_read": 273547207,
+     "cache_write_5m": 985558,
+     "cache_write_1h": 21644
+    },
+    "requests": 437.31,
+    "turns": 23,
+    "human_prompts": 1,
+    "event_triggers": {
+     "background_completion": 18
+    },
+    "agents": {
+     "aoi-witness-broadcast": {
+      "count": 1,
+      "requests": 178.0,
+      "usd_est": 29.52
+     },
+     "game-archaeology-specialist": {
+      "count": 1,
+      "requests": 198.0,
+      "usd_est": 23.5238
+     },
+     "bigworld-engine-advisor": {
+      "count": 1,
+      "requests": 34.08,
+      "usd_est": 2.9767
+     }
+    },
+    "context": {
+     "peak": 898153,
+     "p50": 615406.0,
+     "compactions": 0,
+     "idle_gap_write_share": 0.0041
+    },
+    "tools": {
+     "bash_chars": 370468,
+     "read_chars": 106680,
+     "top_exposure": [
+      {
+       "tool": "Bash",
+       "fingerprint": null,
+       "exposure_chars": 18455393
+      },
+      {
+       "tool": "Bash",
+       "fingerprint": "sed -n",
+       "exposure_chars": 8072177
+      },
+      {
+       "tool": "Bash",
+       "fingerprint": "lane.sh",
+       "exposure_chars": 5516567
+      },
+      {
+       "tool": "Read",
+       "fingerprint": "crates/wireclient/tests/two_client_castle_visibility.rs",
+       "exposure_chars": 5076261
+      },
+      {
+       "tool": "Read",
+       "fingerprint": "crates/mercury/src/lossy_transport.rs",
+       "exposure_chars": 4424314
+      }
+     ]
+    },
+    "diff": {
+     "additions": 1351,
+     "deletions": 81,
+     "files": 27
+    }
+   }
+  ]
+ },
+ "cache_policy": {
+  "layer": "cache-policy simulation",
+  "note": "Cache read and write USD per agent type, replayed under 5m and 1h TTLs over the observed idle gaps. calibration = replay under the observed TTL / observed cache USD (1.0 is exact). Estimated list price, a plan-usage proxy.",
+  "by_agent_type": [
+   {
+    "agent_type": "rust-gameserver-dev",
+    "transcripts": 289,
+    "requests": 43924,
+    "observed_policy": {
+     "5m": 290
+    },
+    "gaps": {
+     "first": 289,
+     "<=5m": 43088,
+     "5m-1h": 504,
+     ">1h": 43
+    },
+    "observed_usd": 5444.889090250002,
+    "sim_5m_usd": 5495.240601249995,
+    "sim_1h_usd": 4927.244018700002,
+    "better_policy": "1h",
+    "saving_vs_other_usd": 567.996582549993,
+    "calibration": 1.0092474814758223
+   },
+   {
+    "agent_type": "main (coordinator)",
+    "transcripts": 74,
+    "requests": 17157,
+    "observed_policy": {
+     "1h": 75
+    },
+    "gaps": {
+     "first": 74,
+     "<=5m": 16170,
+     "5m-1h": 855,
+     ">1h": 58
+    },
+    "observed_usd": 1941.2680012000008,
+    "sim_5m_usd": 3453.087659500001,
+    "sim_1h_usd": 1957.3531917999999,
+    "better_policy": "1h",
+    "saving_vs_other_usd": 1495.734467700001,
+    "calibration": 1.0082859196103042
+   },
+   {
+    "agent_type": "game-archaeology-specialist",
+    "transcripts": 63,
+    "requests": 4991,
+    "observed_policy": {
+     "5m": 63
+    },
+    "gaps": {
+     "first": 63,
+     "<=5m": 4911,
+     "5m-1h": 13,
+     ">1h": 4
+    },
+    "observed_usd": 350.96265299999993,
+    "sim_5m_usd": 350.9708294999999,
+    "sim_1h_usd": 368.98157639999994,
+    "better_policy": "5m",
+    "saving_vs_other_usd": 18.010746900000015,
+    "calibration": 1.0000232973506729
+   },
+   {
+    "agent_type": "testing-validation-engineer",
+    "transcripts": 33,
+    "requests": 2136,
+    "observed_policy": {
+     "5m": 33
+    },
+    "gaps": {
+     "first": 33,
+     "<=5m": 2082,
+     "5m-1h": 21,
+     ">1h": 0
+    },
+    "observed_usd": 298.4259473499998,
+    "sim_5m_usd": 302.6314881999998,
+    "sim_1h_usd": 295.2045944999999,
+    "better_policy": "1h",
+    "saving_vs_other_usd": 7.42689369999988,
+    "calibration": 1.0140924101518147
+   },
+   {
+    "agent_type": "npc-ai-spawn-advisor",
+    "transcripts": 23,
+    "requests": 2122,
+    "observed_policy": {
+     "5m": 23
+    },
+    "gaps": {
+     "first": 23,
+     "<=5m": 2077,
+     "5m-1h": 21,
+     ">1h": 1
+    },
+    "observed_usd": 216.55366435,
+    "sim_5m_usd": 213.29503445,
+    "sim_1h_usd": 189.25704130000003,
+    "better_policy": "1h",
+    "saving_vs_other_usd": 24.037993149999977,
+    "calibration": 0.9849523215883648
+   },
+   {
+    "agent_type": "general-purpose",
+    "transcripts": 73,
+    "requests": 3438,
+    "observed_policy": {
+     "5m": 74
+    },
+    "gaps": {
+     "first": 73,
+     "<=5m": 3358,
+     "5m-1h": 7,
+     ">1h": 0
+    },
+    "observed_usd": 175.74430905000003,
+    "sim_5m_usd": 176.10565505000005,
+    "sim_1h_usd": 209.18538515,
+    "better_policy": "5m",
+    "saving_vs_other_usd": 33.07973009999995,
+    "calibration": 1.0020560893377048
+   },
+   {
+    "agent_type": "combat-systems-advisor",
+    "transcripts": 24,
+    "requests": 1905,
+    "observed_policy": {
+     "5m": 24
+    },
+    "gaps": {
+     "first": 24,
+     "<=5m": 1861,
+     "5m-1h": 20,
+     ">1h": 0
+    },
+    "observed_usd": 151.61508134999997,
+    "sim_5m_usd": 153.85528885,
+    "sim_1h_usd": 140.11220080000004,
+    "better_policy": "1h",
+    "saving_vs_other_usd": 13.743088049999955,
+    "calibration": 1.01477562443032
+   },
+   {
+    "agent_type": "aoi-witness-broadcast",
+    "transcripts": 16,
+    "requests": 1788,
+    "observed_policy": {
+     "5m": 16
+    },
+    "gaps": {
+     "first": 16,
+     "<=5m": 1759,
+     "5m-1h": 13,
+     ">1h": 0
+    },
+    "observed_usd": 137.2992847,
+    "sim_5m_usd": 133.7622044,
+    "sim_1h_usd": 133.76544199999998,
+    "better_policy": "5m",
+    "saving_vs_other_usd": 0.003237599999977192,
+    "calibration": 0.9742381738715643
+   },
+   {
+    "agent_type": "documentation-writer",
+    "transcripts": 24,
+    "requests": 1710,
+    "observed_policy": {
+     "5m": 24
+    },
+    "gaps": {
+     "first": 24,
+     "<=5m": 1679,
+     "5m-1h": 7,
+     ">1h": 0
+    },
+    "observed_usd": 136.29295915,
+    "sim_5m_usd": 136.30965955,
+    "sim_1h_usd": 146.0489324,
+    "better_policy": "5m",
+    "saving_vs_other_usd": 9.73927285000002,
+    "calibration": 1.0001225331088572
+   },
+   {
+    "agent_type": "movement-teleport-advisor",
+    "transcripts": 18,
+    "requests": 1419,
+    "observed_policy": {
+     "5m": 18
+    },
+    "gaps": {
+     "first": 18,
+     "<=5m": 1396,
+     "5m-1h": 5,
+     ">1h": 0
+    },
+    "observed_usd": 134.04791889999998,
+    "sim_5m_usd": 134.47299504999998,
+    "sim_1h_usd": 142.40257329999997,
+    "better_policy": "5m",
+    "saving_vs_other_usd": 7.929578249999992,
+    "calibration": 1.0031710760859862
+   },
+   {
+    "agent_type": "teammate",
+    "transcripts": 38,
+    "requests": 1658,
+    "observed_policy": {
+     "5m": 38
+    },
+    "gaps": {
+     "first": 38,
+     "<=5m": 1599,
+     "5m-1h": 20,
+     ">1h": 1
+    },
+    "observed_usd": 122.60856104999998,
+    "sim_5m_usd": 123.80002664999998,
+    "sim_1h_usd": 108.17974694999997,
+    "better_policy": "1h",
+    "saving_vs_other_usd": 15.620279700000012,
+    "calibration": 1.0097176379022514
+   },
+   {
+    "agent_type": "bigworld-engine-advisor",
+    "transcripts": 6,
+    "requests": 1116,
+    "observed_policy": {
+     "5m": 6
+    },
+    "gaps": {
+     "first": 6,
+     "<=5m": 1103,
+     "5m-1h": 7,
+     ">1h": 0
+    },
+    "observed_usd": 103.50669860000002,
+    "sim_5m_usd": 102.45114500000003,
+    "sim_1h_usd": 95.9163728,
+    "better_policy": "1h",
+    "saving_vs_other_usd": 6.53477220000002,
+    "calibration": 0.9898020745103738
+   },
+   {
+    "agent_type": "mission-systems-advisor",
+    "transcripts": 22,
+    "requests": 1020,
+    "observed_policy": {
+     "5m": 22
+    },
+    "gaps": {
+     "first": 22,
+     "<=5m": 979,
+     "5m-1h": 19,
+     ">1h": 0
+    },
+    "observed_usd": 98.8221112,
+    "sim_5m_usd": 100.03951284999998,
+    "sim_1h_usd": 94.7755816,
+    "better_policy": "1h",
+    "saving_vs_other_usd": 5.263931249999985,
+    "calibration": 1.012319122058991
+   },
+   {
+    "agent_type": "workflow-subagent",
+    "transcripts": 9,
+    "requests": 745,
+    "observed_policy": {
+     "5m": 9
+    },
+    "gaps": {
+     "first": 9,
+     "<=5m": 697,
+     "5m-1h": 39,
+     ">1h": 0
+    },
+    "observed_usd": 79.61336799999998,
+    "sim_5m_usd": 81.79084959999999,
+    "sim_1h_usd": 41.041032400000006,
+    "better_policy": "1h",
+    "saving_vs_other_usd": 40.74981719999998,
+    "calibration": 1.027350703213561
+   },
+   {
+    "agent_type": "fork",
+    "transcripts": 39,
+    "requests": 987,
+    "observed_policy": {
+     "5m": 40
+    },
+    "gaps": {
+     "first": 39,
+     "<=5m": 941,
+     "5m-1h": 6,
+     ">1h": 1
+    },
+    "observed_usd": 79.24727410000003,
+    "sim_5m_usd": 82.69126740000003,
+    "sim_1h_usd": 76.62628340000002,
+    "better_policy": "1h",
+    "saving_vs_other_usd": 6.06498400000001,
+    "calibration": 1.043458823525641
+   },
+   {
+    "agent_type": "server-authority-enforcer",
+    "transcripts": 49,
+    "requests": 1017,
+    "observed_policy": {
+     "5m": 49
+    },
+    "gaps": {
+     "first": 49,
+     "<=5m": 968,
+     "5m-1h": 0,
+     ">1h": 0
+    },
+    "observed_usd": 67.50783275,
+    "sim_5m_usd": 67.51311245000001,
+    "sim_1h_usd": 87.76759070000001,
+    "better_policy": "5m",
+    "saving_vs_other_usd": 20.254478250000005,
+    "calibration": 1.000078208702382
+   },
+   {
+    "agent_type": "main",
+    "transcripts": 18,
+    "requests": 449,
+    "observed_policy": {
+     "1h": 18
+    },
+    "gaps": {
+     "first": 18,
+     "<=5m": 422,
+     "5m-1h": 8,
+     ">1h": 1
+    },
+    "observed_usd": 55.29590695000002,
+    "sim_5m_usd": 53.52250254999999,
+    "sim_1h_usd": 55.36205980000002,
+    "better_policy": "5m",
+    "saving_vs_other_usd": 1.839557250000027,
+    "calibration": 1.0011963426164583
+   },
+   {
+    "agent_type": "items-systems-advisor",
+    "transcripts": 22,
+    "requests": 900,
+    "observed_policy": {
+     "5m": 22
+    },
+    "gaps": {
+     "first": 22,
+     "<=5m": 874,
+     "5m-1h": 2,
+     ">1h": 2
+    },
+    "observed_usd": 48.506612800000006,
+    "sim_5m_usd": 48.6763321,
+    "sim_1h_usd": 53.55372619999998,
+    "better_policy": "5m",
+    "saving_vs_other_usd": 4.877394099999975,
+    "calibration": 1.0034988899492896
+   },
+   {
+    "agent_type": "Explore",
+    "transcripts": 28,
+    "requests": 706,
+    "observed_policy": {
+     "5m": 28
+    },
+    "gaps": {
+     "first": 28,
+     "<=5m": 672,
+     "5m-1h": 6,
+     ">1h": 0
+    },
+    "observed_usd": 40.69660919999999,
+    "sim_5m_usd": 41.04578945,
+    "sim_1h_usd": 51.902266700000006,
+    "better_policy": "5m",
+    "saving_vs_other_usd": 10.856477250000005,
+    "calibration": 1.0085800821460087
+   },
+   {
+    "agent_type": "social-systems-engineer",
+    "transcripts": 8,
+    "requests": 523,
+    "observed_policy": {
+     "5m": 8
+    },
+    "gaps": {
+     "first": 8,
+     "<=5m": 511,
+     "5m-1h": 4,
+     ">1h": 0
+    },
+    "observed_usd": 32.7364728,
+    "sim_5m_usd": 30.921713,
+    "sim_1h_usd": 30.679989800000012,
+    "better_policy": "1h",
+    "saving_vs_other_usd": 0.24172319999998848,
+    "calibration": 0.9445645897440729
+   },
+   {
+    "agent_type": "network-security-auth",
+    "transcripts": 7,
+    "requests": 311,
+    "observed_policy": {
+     "5m": 7
+    },
+    "gaps": {
+     "first": 7,
+     "<=5m": 298,
+     "5m-1h": 6,
+     ">1h": 0
+    },
+    "observed_usd": 27.88578215,
+    "sim_5m_usd": 28.1678237,
+    "sim_1h_usd": 25.624999600000006,
+    "better_policy": "1h",
+    "saving_vs_other_usd": 2.5428240999999936,
+    "calibration": 1.0101141703138492
+   },
+   {
+    "agent_type": "minigame-systems-advisor",
+    "transcripts": 5,
+    "requests": 189,
+    "observed_policy": {
+     "5m": 5
+    },
+    "gaps": {
+     "first": 5,
+     "<=5m": 184,
+     "5m-1h": 0,
+     ">1h": 0
+    },
+    "observed_usd": 14.182345950000002,
+    "sim_5m_usd": 14.184602050000002,
+    "sim_1h_usd": 17.075768800000002,
+    "better_policy": "5m",
+    "saving_vs_other_usd": 2.89116675,
+    "calibration": 1.000159078054361
+   },
+   {
+    "agent_type": "database-persistence",
+    "transcripts": 9,
+    "requests": 135,
+    "observed_policy": {
+     "5m": 9
+    },
+    "gaps": {
+     "first": 9,
+     "<=5m": 126,
+     "5m-1h": 0,
+     ">1h": 0
+    },
+    "observed_usd": 10.263462200000001,
+    "sim_5m_usd": 10.263462200000001,
+    "sim_1h_usd": 13.7053112,
+    "better_policy": "5m",
+    "saving_vs_other_usd": 3.4418489999999995,
+    "calibration": 1.0
+   },
+   {
+    "agent_type": "Plan",
+    "transcripts": 1,
+    "requests": 108,
+    "observed_policy": {
+     "5m": 1
+    },
+    "gaps": {
+     "first": 1,
+     "<=5m": 107,
+     "5m-1h": 0,
+     ">1h": 0
+    },
+    "observed_usd": 6.3831164000000005,
+    "sim_5m_usd": 6.3831164000000005,
+    "sim_1h_usd": 7.579033399999999,
+    "better_policy": "5m",
+    "saving_vs_other_usd": 1.1959169999999988,
+    "calibration": 1.0
+   },
+   {
+    "agent_type": "claude-code-guide",
+    "transcripts": 2,
+    "requests": 0,
+    "observed_policy": {},
+    "gaps": {
+     "first": 2,
+     "<=5m": 10,
+     "5m-1h": 0,
+     ">1h": 0
+    },
+    "observed_usd": 0.0,
+    "sim_5m_usd": 0.0,
+    "sim_1h_usd": 0.0,
+    "better_policy": "5m",
+    "saving_vs_other_usd": 0.0,
+    "calibration": null
+   }
+  ],
+  "unpriced_requests": 12
+ }
+}
