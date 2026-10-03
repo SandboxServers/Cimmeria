@@ -1,12 +1,13 @@
 """Command line: score a profiler database's PR attribution against ground truth.
 
     python tools/token-profile/validate --db <profile.sqlite> [--labels <labels.csv>]
-        [--truth-db <profile.sqlite>] [--out <file.json>]
+        [--truth-db <profile.sqlite>] [--out <file.json>] [--max-wrong-share 0.10]
 
 Ground truth is derived from --truth-db (default --db), so an older database
 can be scored on the same requests as a newer one. The output holds shares
 and dollar totals only, never names or ids; the labels file and the
-databases stay local. Exit status: 0 ok, 2 error.
+databases stay local. Exit status: 0 ok, 2 error, 4 a method misplaces more
+than --max-wrong-share of a set's spend.
 """
 
 import argparse
@@ -67,13 +68,27 @@ def main(argv=None):
     ap.add_argument("--labels", help="CSV of name,date,pr rows (see validate/truth.py); stays local")
     ap.add_argument("--truth-db", help="derive ground truth from this database instead (same requests)")
     ap.add_argument("--out", help="also write the JSON report here")
+    ap.add_argument("--max-wrong-share", type=float,
+                    help="exit 4 when one method misplaces more than this share of a set's USD (the rule: 0.10)")
     args = ap.parse_args(argv)
     try:
         report = build(args.db, args.labels, args.truth_db)
+        if args.out:
+            Path(args.out).write_text(json.dumps(report, indent=1) + "\n", encoding="utf-8")
     except (dbmod.ReportError, OSError, ValueError) as e:
         print(f"status=error {e}", file=sys.stderr)
         return 2
     print(text(report))
-    if args.out:
-        Path(args.out).write_text(json.dumps(report, indent=1) + "\n", encoding="utf-8")
+    over = over_limit(report, args.max_wrong_share)
+    if over:
+        print("status=over-limit " + " ".join(over), file=sys.stderr)
+        return 4
     return 0
+
+
+def over_limit(report, limit):
+    """['set.method=share', ...] for each method whose wrong USD share exceeds limit (none if limit is None)."""
+    if limit is None:
+        return []
+    return [f"{name}.{m}={v:.3f}" for name, s in report["sets"].items()
+            for m, v in s["wrong_usd_share_by_method"].items() if v > limit]
