@@ -193,6 +193,10 @@ CIMMERIA_TELEMETRY_UPLOAD_ENDPOINT=http://play.cimmeria.app:8081/api/telemetry
 
 The telemetry routes are also served on the public login port (8081), and players' launchers accept plain HTTP to the host and port of a login server they use, so no tunnel is needed (decision @Cadacious, 2026-09-29). A Cloudflare Tunnel hostname limited to `^/api/(auth/dev-session|telemetry/)` at `http://cimmeria:8443` is optional. Then `docker compose -f compose.yml up -d cimmeria`, and check `docker logs cimmeria 2>&1 | grep "dev-session telemetry"` says `mint and ingest enabled`. A missing or short secret does not stop the game server; it logs `dev_session_secret_unusable` at startup instead. The full steps, the optional tunnel rule and the checks are in [telemetry.md → Enable client telemetry on the colo](telemetry.md#enable-client-telemetry-on-the-colo).
 
+## Optional: Claude Code telemetry
+
+Workstations can export Claude Code's own usage telemetry to the colo SigNoz over the private network; the setup is in [claude-code-telemetry.md](claude-code-telemetry.md). Since 2026-10-03 the colo's SigNoz collector config (`otel-collector-config.yaml` in the SigNoz deploy directory) carries the `transform/claude-code-scrub` processor, which drops `user.email` from logs and metrics. A SigNoz upgrade that replaces that file drops the processor: re-add it as the runbook shows and restart the collector.
+
 ## Optional: watchtower notifications
 
 Watchtower itself can ping Discord / Slack / email / Matrix via [shoutrrr](https://containrrr.dev/watchtower/notifications/) every time it swaps a container. This is independent of the cimmeria-discord crate above — watchtower notifications announce *image swaps*, while cimmeria-discord notifications announce *server events*. Set `WATCHTOWER_NOTIFICATIONS` and `WATCHTOWER_NOTIFICATION_URL` in the compose file if you want both.

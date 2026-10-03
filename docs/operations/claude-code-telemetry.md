@@ -134,6 +134,8 @@ processors:
 
 Restart the collector afterwards. Record the change in [colo-deploy.md](colo-deploy.md), because a SigNoz upgrade that replaces the deploy directory would drop it.
 
+Applied on the colo on 2026-10-03 (processor `transform/claude-code-scrub`, in the `metrics` and `logs` pipelines before `batch`); see [colo-deploy.md](colo-deploy.md#optional-claude-code-telemetry).
+
 ## Workstation setup (coordinator, with the user)
 
 Put the settings in the **user** settings file (`~/.claude/settings.json`), not in the repo's `.claude/settings.json`: a committed setting would switch telemetry on for every contributor, and every worktree inherits the user file anyway. Merge the `env` keys into any `env` block already there.
