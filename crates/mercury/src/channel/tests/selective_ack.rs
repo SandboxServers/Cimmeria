@@ -199,6 +199,13 @@ fn watchdog_is_quiet_before_the_threshold() {
 fn watchdog_warns_once_then_throttles_and_counts_the_hole_once() {
     let (mut ch, clock) = clocked();
     register(&mut ch, 1148..=1150);
+    ch.set_sent_packet_context(
+        1148,
+        "crates/base-session/src/base/helpers/mod.rs:800".into(),
+        "witness_bundle",
+        Some((2, 4)),
+        Some(7),
+    );
     ch.process_ack_footer(&[1149, 1150]);
 
     clock.advance(JUST_OVER);
@@ -206,6 +213,19 @@ fn watchdog_warns_once_then_throttles_and_counts_the_hole_once() {
     assert_eq!(stall.seq, 1148);
     assert_eq!(stall.highest_acked, 1150);
     assert_eq!(stall.outstanding, 1);
+    assert_eq!(stall.wire_len, 8);
+    assert_eq!(
+        stall.wire_fingerprint,
+        crate::instrumentation::wire_fingerprint(b"pkt-1148")
+    );
+    assert_eq!(
+        stall.send_site.as_deref(),
+        Some("crates/base-session/src/base/helpers/mod.rs:800")
+    );
+    assert_eq!(stall.send_kind, Some("witness_bundle"));
+    assert_eq!(stall.fragment_index, Some(2));
+    assert_eq!(stall.fragment_count, Some(4));
+    assert_eq!(stall.message_count, Some(7));
     assert!(stall.first_warning);
     assert_eq!(ch.tx_hole_stalls, 1);
 

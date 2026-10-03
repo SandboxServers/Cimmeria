@@ -174,6 +174,7 @@ pub const RULES: &[Rule] = &[
     keep(Prefix("client.entity."), KeepReason::EntityLifecycle),
     // Mercury receive-path anomalies (#1088) and the drop oracle.
     keep(Exact("client.mercury.error"), KeepReason::MercuryAnomaly),
+    keep(Exact("client.mercury.rx_gap"), KeepReason::MercuryAnomaly),
     keep(
         Prefix("client.mercury.fragment"),
         KeepReason::MercuryAnomaly,

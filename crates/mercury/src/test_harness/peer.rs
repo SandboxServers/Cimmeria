@@ -193,6 +193,19 @@ impl LoopbackPeer {
     /// Centralizes the encrypt-side branch so the send paths
     /// ([`Self::build_and_register`], [`Self::send_large_bundle`], the keepalive
     /// in [`Self::tick`]) all honor an in-progress rotation identically.
+    /// Wire version for the ACK budget. Rotation runs only on v2; a
+    /// plaintext harness uses the v1 budget.
+    fn enc_version(&self) -> crate::encryption::EncryptionVersion {
+        use crate::encryption::EncryptionVersion;
+        if self.rotation.is_some() {
+            return EncryptionVersion::V2;
+        }
+        match &self.encryption {
+            Some(enc) if enc.is_v2() => EncryptionVersion::V2,
+            _ => EncryptionVersion::V1,
+        }
+    }
+
     fn encrypt_outbound(&self, plaintext: &[u8]) -> Vec<u8> {
         if let Some(rot) = &self.rotation {
             return rot
@@ -332,7 +345,7 @@ impl LoopbackPeer {
 
         let acks: Vec<u32> = {
             let mut pending = self.pending_acks.lock().expect("pending_acks poisoned");
-            let mut out = std::mem::take(&mut *pending);
+            let mut out = crate::packet::take_piggyback_acks(&mut pending, self.enc_version());
             out.reverse();
             out
         };
@@ -376,7 +389,9 @@ impl LoopbackPeer {
         let mut channel = self.channel.lock().expect("channel poisoned");
         let mut acks = {
             let mut pending = self.pending_acks.lock().expect("pending_acks poisoned");
-            std::mem::take(&mut *pending)
+            // Same per-packet ACK budget as the server's send sites; the
+            // rest wait for the next carrier.
+            crate::packet::take_piggyback_acks(&mut pending, self.enc_version())
         };
 
         let mut flags = FLAG_ON_CHANNEL;

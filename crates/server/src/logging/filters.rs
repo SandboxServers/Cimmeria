@@ -224,6 +224,12 @@ use crate::otel;
 /// `tx_hole_closed` when a reported stall ends. `debug` so the per-loss rows
 /// reach SigNoz: they are the server-to-client loss rate per peer.
 ///
+/// `mercury.reliable_send` records each reliable datagram's encrypted size,
+/// wire fingerprint and send site, the key that joins a `tx_hole_stall` to
+/// the client's `client.mercury.socket_recv`. DEBUG per send, WARN when a
+/// datagram exceeds the client's 1472-byte receive buffer. `debug` because
+/// the ordinary rows are the join key a stall investigation needs.
+///
 /// `org` and `squad` (organizations campaign, ORG-01) are the Team/Command
 /// and Squad targets. Both are `debug`: the per-call "no handler yet" rows
 /// and the later routing decisions are DEBUG, and the coordinator reads
@@ -310,6 +316,7 @@ pub(crate) const OTEL_FILTER: &str = "info,\
                 mercury.lossy_transport=debug,\
                 mercury.rx_order=debug,\
                 mercury.tx_hole=debug,\
+                mercury.reliable_send=debug,\
                 wire.in=info,wire.out=info,\
                 wire.out.avatar_update=debug,\
                 wire.out.forced_position=debug,\

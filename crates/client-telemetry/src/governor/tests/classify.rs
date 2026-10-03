@@ -39,6 +39,7 @@ fn the_must_keep_targets_are_never_summarized() {
         ),
         ("client.entity.queue_replay", KeepReason::EntityLifecycle),
         ("client.mercury.error", KeepReason::MercuryAnomaly),
+        ("client.mercury.rx_gap", KeepReason::MercuryAnomaly),
         ("client.mercury.fragment", KeepReason::MercuryAnomaly),
         ("client.mercury.bundle", KeepReason::MercuryAnomaly),
         (

@@ -184,78 +184,6 @@ impl BundleSendOutcome {
 /// The packet hex formatter for trace logs; shared with the wire firehose.
 pub use cimmeria_wire::hex::to_hex;
 
-/// Register an outgoing reliable packet's sequence number AND its
-/// encrypted on-wire bytes with the per-session
-/// [`Channel`](cimmeria_mercury::channel::Channel).
-///
-/// The Channel records the entry in its TX window for two purposes:
-/// 1. **ACK tracking** — when the client acks this seq, the entry
-///    drains and an RTT sample feeds the per-peer adaptive RTO.
-/// 2. **Retransmit** — if the RTO fires before the ack arrives, the
-///    tick driver re-sends `raw_bytes` verbatim (no re-encryption).
-///
-/// Callers should invoke this AFTER `transport.send_to` succeeds, so a
-/// failed send never appears as in-flight in the TX window.
-///
-/// `raw_bytes` should be the exact encrypted datagram that just went
-/// on the wire. Pass `cimmeria_mercury::packet::Bytes::new()` if you
-/// only want shadow-mode observability (ACK consumption + RTO sampling)
-/// without retransmit support — the channel silently skips bytes-empty
-/// entries during the retransmit scan.
-///
-/// **Overflow behavior.** When the TX window is full, the Channel queues
-/// the entry in its per-session [`unsent_packets`] deque rather than
-/// rejecting it (or — as a prior, broken implementation did — silently
-/// downgrading the packet's reliable-delivery contract to best-effort).
-/// Queued entries are dispatched on the wire at register time but the
-/// retransmit scan only walks the TX window, so a queued entry becomes
-/// eligible for retransmit only once an ACK frees a window slot and
-/// promotion moves it across. ACKs that cover a still-queued seq drain
-/// it from the queue directly without going through promotion.
-///
-/// The only remaining error condition routed through this helper is the
-/// unsent-packets queue hitting its [`MAX_UNSENT_PACKETS`] cap, which
-/// indicates the peer has stopped acking entirely and the channel is on
-/// its way to the inactivity-timeout reap. That is surfaced at WARN so
-/// it remains observable as a precursor to the channel-dead detection.
-///
-/// [`unsent_packets`]: cimmeria_mercury::channel::Channel::unsent_packets
-/// [`MAX_UNSENT_PACKETS`]: cimmeria_mercury::consts::MAX_UNSENT_PACKETS
-pub fn shadow_register_reliable_send(
-    connected: &Arc<Mutex<HashMap<SocketAddr, ConnectedClientState>>>,
-    addr: SocketAddr,
-    seq: u32,
-    raw_bytes: cimmeria_mercury::packet::Bytes,
-) {
-    use cimmeria_mercury::packet::{Bytes, Packet, PacketFlags};
-
-    let pkt = Packet::new(PacketFlags::default(), seq, Bytes::new());
-    let Ok(clients) = connected.lock() else {
-        return;
-    };
-    let Some(state) = clients.get(&addr) else {
-        return;
-    };
-    let Ok(mut channel) = state.channel.lock() else {
-        return;
-    };
-    if let Err(e) = channel.register_sent_packet(pkt, raw_bytes) {
-        // After the deferred-send queue landed, the only paths that
-        // return Err from here are: out-of-range sequence (a programming
-        // bug — the seq should have come from the masked counter), and
-        // the unsent-packets queue cap. Both are channel-dead-class
-        // signals, so WARN remains the right level.
-        tracing::warn!(
-            %addr,
-            seq,
-            error = %e,
-            "shadow_register_reliable_send: packet bookkeeping rejected \
-             (invalid seq or unsent-queue cap exceeded); reliability cannot \
-             be tracked for this packet"
-        );
-    }
-}
-
 /// Drain the per-session [`Channel`]'s retransmit queue: scan the TX
 /// window for entries past the adaptive RTO and return the encrypted
 /// bytes to re-send.
@@ -337,7 +265,10 @@ pub fn drain_acks_and_seq(
 ) -> Result<(Vec<u32>, u32), Box<dyn std::error::Error + Send + Sync>> {
     let mut clients = connected.lock().map_err(|_| "connected lock poisoned")?;
     let c = clients.get_mut(&addr).ok_or("addr not in connected map")?;
-    let acks: Vec<u32> = c.pending_acks.lock().unwrap().drain(..).collect();
+    let acks: Vec<u32> = cimmeria_mercury::packet::take_piggyback_acks(
+        &mut c.pending_acks.lock().unwrap(),
+        c.enc_version,
+    );
     let seq = c.next_seq.fetch_add(1, Ordering::Relaxed) & cimmeria_mercury::packet::SEQUENCE_MASK;
     Ok((acks, seq))
 }
@@ -716,7 +647,10 @@ where
                 // `ConnectedClientState::next_unreliable_seq` for the
                 // encapsulated fetch-add + mask.
                 let seq = c.next_unreliable_seq();
-                let acks: Vec<u32> = c.pending_acks.lock().unwrap().drain(..).collect();
+                let acks: Vec<u32> = cimmeria_mercury::packet::take_piggyback_acks(
+                    &mut c.pending_acks.lock().unwrap(),
+                    c.enc_version,
+                );
                 Some((addr, key, version, seq, acks))
             }
             None => {
@@ -804,7 +738,10 @@ where
                 let version = c.enc_version;
                 let seq = c.next_seq.fetch_add(1, Ordering::Relaxed)
                     & cimmeria_mercury::packet::SEQUENCE_MASK;
-                let acks: Vec<u32> = c.pending_acks.lock().unwrap().drain(..).collect();
+                let acks: Vec<u32> = cimmeria_mercury::packet::take_piggyback_acks(
+                    &mut c.pending_acks.lock().unwrap(),
+                    c.enc_version,
+                );
                 Some((addr, key, version, seq, acks))
             }
             None => {
@@ -830,11 +767,16 @@ where
     }
     // Register the encrypted bytes with the per-session Channel so
     // the retransmit driver in tick_sync re-sends on RTO expiry.
-    shadow_register_reliable_send(
+    shadow_register_reliable_send_with_details(
         connected,
         addr,
         seq,
         cimmeria_mercury::packet::Bytes::copy_from_slice(&packet),
+        ReliableSendDetails {
+            kind: "witness_single",
+            fragment: None,
+            message_count: None,
+        },
     );
     WitnessSendOutcome::Sent { addr, seq, bytes }
 }
@@ -920,7 +862,10 @@ pub async fn send_bundle_to_witness_reliable(
         // Drain pending ACKs into the bundle so they ride the first
         // finalized packet. Done under the same lock window as the seq
         // reservation so a concurrent ACK-pumping send doesn't race.
-        let drained_acks: Vec<u32> = c.pending_acks.lock().unwrap().drain(..).collect();
+        let drained_acks: Vec<u32> = cimmeria_mercury::packet::take_piggyback_acks(
+            &mut c.pending_acks.lock().unwrap(),
+            c.enc_version,
+        );
         bundle.add_acks(&drained_acks);
 
         // Now that ACKs are in, estimated_packet_count reflects the true
@@ -1012,11 +957,16 @@ pub async fn send_bundle_to_witness_reliable(
             );
             return BundleSendOutcome::SendError;
         }
-        shadow_register_reliable_send(
+        shadow_register_reliable_send_with_details(
             connected,
             addr,
             frag_seq,
             cimmeria_mercury::packet::Bytes::copy_from_slice(pkt),
+            ReliableSendDetails {
+                kind: "witness_bundle",
+                fragment: (packets.len() > 1).then_some((i + 1, packets.len())),
+                message_count: Some(num_messages),
+            },
         );
     }
 
@@ -1027,6 +977,10 @@ pub async fn send_bundle_to_witness_reliable(
         bytes: body_len,
     }
 }
+
+mod reliable_send;
+pub use reliable_send::shadow_register_reliable_send;
+use reliable_send::{shadow_register_reliable_send_with_details, ReliableSendDetails};
 
 mod departed_witnesses;
 pub use departed_witnesses::{

@@ -21,6 +21,134 @@ pub(crate) struct WindowState {
     pub buffered: u32,
 }
 
+/// The missing sequence behind a non-empty reorder buffer. The detour owns
+/// one tracker per channel pointer on its network thread.
+#[derive(Debug, Default, Clone, Copy)]
+pub(crate) struct GapTracker {
+    open: Option<OpenGap>,
+    last_seen_ms: u64,
+}
+
+/// A tracker with no reliable packet for this long belongs to a channel
+/// that went away (the client's own inactivity timeout is 15 s); it is
+/// dropped so a new channel at the same address starts clean.
+pub(crate) const GAP_TRACKER_IDLE_MS: u64 = 60_000;
+
+#[derive(Debug, Clone, Copy)]
+struct OpenGap {
+    expected_seq: u32,
+    since_ms: u64,
+    peak_buffered: u32,
+    stalled: bool,
+}
+
+/// One change to the client's receive gap, emitted without throttling.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) struct GapEvent {
+    pub event: &'static str,
+    pub expected_seq: u32,
+    pub buffered_count: u32,
+    pub duration_ms: Option<u64>,
+    pub peak_buffered: u32,
+    pub next_expected: Option<u32>,
+}
+
+impl GapTracker {
+    pub(crate) fn is_open(&self) -> bool {
+        self.open.is_some()
+    }
+
+    /// True once the channel has been silent for [`GAP_TRACKER_IDLE_MS`].
+    pub(crate) fn is_idle(&self, now_ms: u64) -> bool {
+        now_ms.saturating_sub(self.last_seen_ms) >= GAP_TRACKER_IDLE_MS
+    }
+
+    /// Observe the reliable-window words around one packet. A gap can
+    /// close and another open on the same call when buffered followers
+    /// drain but a newer sequence is still missing.
+    pub(crate) fn observe(
+        &mut self,
+        before: WindowState,
+        after: WindowState,
+        now_ms: u64,
+    ) -> Vec<GapEvent> {
+        let mut events = Vec::new();
+        self.last_seen_ms = now_ms;
+        if self.open.is_none() && before.buffered > 0 {
+            self.open = Some(OpenGap {
+                expected_seq: before.in_seq_at,
+                since_ms: now_ms,
+                peak_buffered: before.buffered,
+                stalled: false,
+            });
+        }
+        if let Some(mut gap) = self.open {
+            gap.peak_buffered = gap.peak_buffered.max(after.buffered);
+            if after.buffered == 0 || after.in_seq_at != gap.expected_seq {
+                events.push(GapEvent {
+                    event: "rx_gap_closed",
+                    expected_seq: gap.expected_seq,
+                    buffered_count: after.buffered,
+                    duration_ms: Some(now_ms.saturating_sub(gap.since_ms)),
+                    peak_buffered: gap.peak_buffered,
+                    next_expected: Some(after.in_seq_at),
+                });
+                self.open = None;
+            } else {
+                let duration = now_ms.saturating_sub(gap.since_ms);
+                if duration >= 2_000 && !gap.stalled {
+                    events.push(GapEvent {
+                        event: "rx_gap_stall",
+                        expected_seq: gap.expected_seq,
+                        buffered_count: after.buffered,
+                        duration_ms: Some(duration),
+                        peak_buffered: gap.peak_buffered,
+                        next_expected: None,
+                    });
+                    gap.stalled = true;
+                }
+                self.open = Some(gap);
+            }
+        }
+        if self.open.is_none() && after.buffered > 0 {
+            self.open = Some(OpenGap {
+                expected_seq: after.in_seq_at,
+                since_ms: now_ms,
+                peak_buffered: after.buffered,
+                stalled: false,
+            });
+            events.push(GapEvent {
+                event: "rx_gap_open",
+                expected_seq: after.in_seq_at,
+                buffered_count: after.buffered,
+                duration_ms: None,
+                peak_buffered: after.buffered,
+                next_expected: None,
+            });
+        }
+        events
+    }
+}
+
+/// `queueAckForPacket`'s stack arguments are unconfirmed (see
+/// `client-mercury-receive-path.md`), so no field is read from them.
+pub(crate) fn gap_fields(gap: GapEvent, channel_ptr: u32) -> Fields {
+    let mut fields = vec![
+        ("event", json!(gap.event)),
+        ("channel_ptr", json!(format!("0x{channel_ptr:08x}"))),
+        ("expected_seq", json!(gap.expected_seq)),
+        ("buffered_count", json!(gap.buffered_count)),
+        ("peak_buffered", json!(gap.peak_buffered)),
+    ];
+    if let Some(duration) = gap.duration_ms {
+        fields.push(("duration_ms", json!(duration)));
+    }
+    if let Some(next) = gap.next_expected {
+        fields.push(("next_expected", json!(next)));
+    }
+    fields
+}
+
 /// What became of a reliable packet.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum Disposition {
@@ -129,6 +257,47 @@ mod tests {
             in_seq_at,
             buffered,
         }
+    }
+
+    #[test]
+    fn gap_open_stall_and_close_are_once_per_missing_sequence() {
+        let mut tracker = GapTracker::default();
+        let open = tracker.observe(st(1949, 0), st(1949, 1), 100);
+        assert_eq!(open.len(), 1);
+        assert_eq!(open[0].event, "rx_gap_open");
+        assert_eq!(open[0].expected_seq, 1949);
+        assert!(tracker.observe(st(1949, 1), st(1949, 2), 1_000).is_empty());
+        let stalled = tracker.observe(st(1949, 2), st(1949, 3), 2_101);
+        assert_eq!(stalled.len(), 1);
+        assert_eq!(stalled[0].event, "rx_gap_stall");
+        assert_eq!(stalled[0].duration_ms, Some(2_001));
+        assert!(tracker.observe(st(1949, 3), st(1949, 4), 3_000).is_empty());
+        let closed = tracker.observe(st(1949, 4), st(1954, 0), 3_100);
+        assert_eq!(closed.len(), 1);
+        assert_eq!(closed[0].event, "rx_gap_closed");
+        assert_eq!(closed[0].duration_ms, Some(3_000));
+        assert_eq!(closed[0].peak_buffered, 4);
+        assert!(!tracker.is_open());
+    }
+
+    #[test]
+    fn a_tracker_left_open_by_a_dead_channel_expires() {
+        let mut tracker = GapTracker::default();
+        tracker.observe(st(1949, 0), st(1949, 3), 1_000);
+        assert!(tracker.is_open());
+        assert!(!tracker.is_idle(1_000 + GAP_TRACKER_IDLE_MS - 1));
+        assert!(tracker.is_idle(1_000 + GAP_TRACKER_IDLE_MS));
+    }
+
+    #[test]
+    fn a_new_gap_opens_when_the_expected_sequence_moves() {
+        let mut tracker = GapTracker::default();
+        tracker.observe(st(10, 0), st(10, 2), 10);
+        let changes = tracker.observe(st(10, 2), st(12, 1), 20);
+        assert_eq!(changes.len(), 2);
+        assert_eq!(changes[0].event, "rx_gap_closed");
+        assert_eq!(changes[1].event, "rx_gap_open");
+        assert_eq!(changes[1].expected_seq, 12);
     }
 
     #[test]

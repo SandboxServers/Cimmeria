@@ -88,12 +88,10 @@ async fn tx_window_overflow_drains_via_deferred_queue() {
         "B owes an ack for the delivered prefix and nothing else"
     );
 
-    // B sends one packet so the piggybacked acks ride back.
+    // B's carriers bring the piggybacked acks back, one ACK budget each.
     // A's pump runs `process_ack_footer` before it delivers the carrier to
     // the inbox, so receiving the carrier means the ack has applied.
-    session.b.send_bundle(b"ack carrier", false).await.unwrap();
-    let carrier = session.a.recv_n_bundles(1, Duration::from_secs(5)).await;
-    assert_eq!(carrier.len(), 1, "prefix-ack carrier must reach A");
+    session.flush_b_acks().await;
 
     // The prefix ack freed every TX-window slot; each freed slot
     // promotes one deferred entry so the retransmit scan can see it.
@@ -147,14 +145,8 @@ async fn tx_window_overflow_drains_via_deferred_queue() {
         );
     }
 
-    // Second carrier acks the promoted entries.
-    session
-        .b
-        .send_bundle(b"ack carrier 2", false)
-        .await
-        .unwrap();
-    let carrier = session.a.recv_n_bundles(1, Duration::from_secs(5)).await;
-    assert_eq!(carrier.len(), 1, "final-ack carrier must reach A");
+    // Further carriers ack the promoted entries.
+    session.flush_b_acks().await;
 
     let quiet = session.quiesce(Duration::from_millis(500)).await;
     assert!(quiet, "session must quiesce after the final acks");

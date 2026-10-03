@@ -21,6 +21,7 @@
 //! non-happy one). A non-happy outcome bypasses every throttle.
 
 use std::cell::{Cell, RefCell};
+use std::collections::HashMap;
 use std::ffi::c_void;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::OnceLock;
@@ -38,7 +39,7 @@ use crate::hooks::mercury_recv::{
     nub, packet,
     report::{self, Report, WindowNote},
     tail::{self, flag, Gate, Tail},
-    window::WindowState,
+    window::{self, GapTracker, WindowState},
     Fields, MAX_DATAGRAM,
 };
 use crate::queue::Producer;
@@ -94,6 +95,11 @@ thread_local! {
     /// What `queueAckForPacket` did with the packet the filter is on
     /// (network thread).
     static NOTE: Cell<Option<WindowNote>> = const { Cell::new(None) };
+    /// Each channel has its own expected reliable sequence. Entries leave
+    /// when the gap closes, or when a channel goes quiet for
+    /// [`window::GAP_TRACKER_IDLE_MS`] (a disconnect with a gap still open),
+    /// so a reused channel address cannot inherit a dead session's gap.
+    static GAPS: RefCell<HashMap<u32, GapTracker>> = RefCell::new(HashMap::new());
     /// The bundle the message loop is walking (game thread).
     static BUNDLE: RefCell<Option<BundleTrace>> = const { RefCell::new(None) };
 }
@@ -249,6 +255,30 @@ unsafe extern "thiscall-unwind" fn queue_ack_detour(
                 window,
             }))
         });
+        let events = GAPS.try_with(|cell| {
+            let mut gaps = cell.borrow_mut();
+            let now = now_ms();
+            gaps.retain(|_, t| !t.is_idle(now));
+            let tracker = gaps.entry(chan).or_default();
+            let events = tracker.observe(before, after, now);
+            if !tracker.is_open() {
+                gaps.remove(&chan);
+            }
+            events
+        });
+        if let Ok(events) = events {
+            for gap in events {
+                emit(
+                    "client.mercury.rx_gap",
+                    if gap.event == "rx_gap_stall" {
+                        "warn"
+                    } else {
+                        "info"
+                    },
+                    window::gap_fields(gap, chan),
+                );
+            }
+        }
     });
     result
 }

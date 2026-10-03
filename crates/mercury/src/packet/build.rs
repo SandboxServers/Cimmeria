@@ -113,7 +113,7 @@ pub fn build_outgoing_fragmented(
 /// Maximum body bytes per Mercury UDP datagram (plaintext, before encryption).
 ///
 /// Mercury `MAX_BODY_LENGTH` is 1411 bytes. With footer overhead (flags=1,
-/// frag_begin=4, frag_end=4, seq_id=4, plus ack headroom) and AES-CBC
+/// frag_begin=4, frag_end=4, seq_id=4, plus the ACK budget in `ack_budget.rs`) and AES-CBC
 /// encryption overhead (PKCS7 padding up to 16 bytes + 16-byte HMAC), we use
 /// 1300 bytes to stay safely under the UDP MTU.
 pub const FRAGMENT_BODY_SIZE: usize = 1300;

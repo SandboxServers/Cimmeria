@@ -127,7 +127,13 @@ pub async fn run_tick_loop(
 
         let acks: Vec<u32> = {
             let mut pending = pending_acks.lock().unwrap();
-            pending.drain(..).collect()
+            cimmeria_mercury::packet::take_acks(
+                &mut pending,
+                cimmeria_mercury::packet::ack_budget(
+                    cimmeria_mercury::packet::TICK_SYNC_PLAINTEXT_BEFORE_ACKS,
+                    enc_version,
+                ),
+            )
         };
         if !acks.is_empty() {
             tracing::trace!(%addr, ?acks, "Piggybacking ACKs on tick_sync");

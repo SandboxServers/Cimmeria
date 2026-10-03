@@ -126,9 +126,26 @@ pub fn record_tcp_frame(dir: Direction, msg_id: u8, payload_len: usize) {
     );
 }
 
+/// A short, stable fingerprint of the exact encrypted UDP payload. The
+/// client socket hook uses the same FNV-1a calculation so the two records
+/// can be joined without logging packet contents. This is a diagnostic key,
+/// not an authentication hash.
+pub fn wire_fingerprint(bytes: &[u8]) -> String {
+    let hash = bytes.iter().fold(0xcbf2_9ce4_8422_2325u64, |hash, byte| {
+        (hash ^ u64::from(*byte)).wrapping_mul(0x100_0000_01b3)
+    });
+    format!("{hash:016x}")
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn wire_fingerprint_is_stable_for_client_join() {
+        assert_eq!(wire_fingerprint(b"hello"), "a430d84680aabd0b");
+        assert_ne!(wire_fingerprint(b"hello"), wire_fingerprint(b"hellO"));
+    }
 
     /// Direction labels must be stable strings — downstream consumers
     /// (SigNoz dashboards, Cimmeria-MCP queries) key off these literal

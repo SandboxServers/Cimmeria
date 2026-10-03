@@ -24,6 +24,7 @@ pub(crate) mod iterator;
 pub(crate) mod report;
 pub(crate) mod tail;
 pub(crate) mod window;
+pub(crate) mod wire;
 
 use serde_json::Value;
 

@@ -116,7 +116,10 @@ pub(crate) async fn handle_login(
             let (acks, seq) = {
                 let mut clients = connected.lock().map_err(|_| "connected lock poisoned")?;
                 if let Some(c) = clients.get_mut(&old_addr) {
-                    let acks: Vec<u32> = c.pending_acks.lock().unwrap().drain(..).collect();
+                    let acks: Vec<u32> = cimmeria_mercury::packet::take_piggyback_acks(
+                        &mut c.pending_acks.lock().unwrap(),
+                        c.enc_version,
+                    );
                     let seq = c
                         .next_seq
                         .fetch_add(1, std::sync::atomic::Ordering::Relaxed)
@@ -510,7 +513,10 @@ pub(crate) async fn handle_log_off(
         client
             .cancelled
             .store(true, std::sync::atomic::Ordering::Relaxed);
-        let acks: Vec<u32> = client.pending_acks.lock().unwrap().drain(..).collect();
+        let acks: Vec<u32> = cimmeria_mercury::packet::take_piggyback_acks(
+            &mut client.pending_acks.lock().unwrap(),
+            client.enc_version,
+        );
         let seq = client
             .next_seq
             .fetch_add(1, std::sync::atomic::Ordering::Relaxed)

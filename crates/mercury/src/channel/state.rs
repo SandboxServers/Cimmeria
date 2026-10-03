@@ -45,6 +45,16 @@ pub struct TxEntry {
     /// `check_timeouts` silently skips bytes-empty entries during the
     /// retransmit scan.
     pub raw_bytes: bytes::Bytes,
+    /// Dispatch site recorded by the service when the encrypted datagram
+    /// was first sent. Absent for sends owned entirely by the channel.
+    pub send_site: Option<String>,
+    /// Broad send path; the call site narrows it to the handler.
+    pub send_kind: Option<&'static str>,
+    /// One-based fragment position and total, for a witness bundle.
+    pub fragment_index: Option<usize>,
+    pub fragment_count: Option<usize>,
+    /// Message count in a bundled witness send.
+    pub message_count: Option<usize>,
     /// Most retransmits this entry gets before the channel gives up on
     /// it and drops it from the window unacked. `None` (every ordinary
     /// reliable packet) resends until acked. Set through
