@@ -1,7 +1,7 @@
 # Token Usage Profiling
 
 > Type: how-to. Audience: the Claude Code coordinator and the packet workers.
-> Updated: 2026-10-03 (Wave 0 review round 1; TP-03 target revised). Tracking issue: [#957](https://github.com/SandboxServers/Cimmeria/issues/957); the plan is the [2026-10-03 comment](https://github.com/SandboxServers/Cimmeria/issues/957#issuecomment-5968451932), which supersedes the issue's phase list. Tool: [tools/token-profile/](../../../tools/token-profile/README.md). Workflow rules: [development-workflow.md § Worker lifetime and notifications](../../agents/development-workflow.md#worker-lifetime-and-notifications).
+> Updated: 2026-10-03 (Wave 0 merged; Wave 1 started). Tracking issue: [#957](https://github.com/SandboxServers/Cimmeria/issues/957); the plan is the [2026-10-03 comment](https://github.com/SandboxServers/Cimmeria/issues/957#issuecomment-5968451932), which supersedes the issue's phase list. Tool: [tools/token-profile/](../../../tools/token-profile/README.md). Workflow rules: [development-workflow.md § Worker lifetime and notifications](../../agents/development-workflow.md#worker-lifetime-and-notifications).
 
 ## Purpose
 
@@ -49,12 +49,12 @@ From the 2026-10-03 quick pass (throwaway scripts, not the profiler; TP-05 repla
 
 | Packet | Wave | Owns | Status | PR |
 |---|---|---|---|---|
-| TP-00 Ledger, data contract, attribution contract, worker and notification rules, RAG cleanup | 0 | this folder, `tools/token-profile/{schema.sql,*.md,fixtures/,test_contract.py}`, `development-workflow.md`, `.mcp.json.example` | In review: CodeRabbit and Copilot round 1 addressed, see [review round 1](#tp-00-review-round-1) | [#1122](https://github.com/SandboxServers/Cimmeria/pull/1122) |
-| TP-01a Profiler ingest | 1 | `tools/token-profile/ingest/` | Not started | |
-| TP-01b Profiler reports and privacy scrubber | 1 | `tools/token-profile/report/` | Not started | |
-| TP-02 Quiet build and test output (B) | 1 | `tools/build-lane/`, `tools/test-live-db.*` | Not started | |
-| TP-03 Static context trim (H), target first request ≤55k for main sessions | 1 | `CLAUDE.md`, `.claude/agents/*.md`, memory indexes, MCP and skill config | Not started; scope revised, see [below](#tp-03-scope-revised-2026-10-03) | |
-| TP-04 OTel to the colo SigNoz | 1 | local Claude Code settings, `docs/operations/` | Not started | |
+| TP-00 Ledger, data contract, attribution contract, worker and notification rules, RAG cleanup | 0 | this folder, `tools/token-profile/{schema.sql,*.md,fixtures/,test_contract.py}`, `development-workflow.md`, `.mcp.json.example` | Merged | [#1122](https://github.com/SandboxServers/Cimmeria/pull/1122) |
+| TP-01a Profiler ingest | 1 | `tools/token-profile/ingest/` | In progress (worktree `tp01a`, branch `feat/token-profile-ingest`) | |
+| TP-01b Profiler reports and privacy scrubber | 1 | `tools/token-profile/report/` | In progress (worktree `tp01b`, branch `feat/token-profile-report`) | |
+| TP-02 Quiet build and test output (B) | 1 | `tools/build-lane/`, `tools/test-live-db.*` | In progress (worktree `tp02`, branch `feat/quiet-build-output`) | |
+| TP-03 Static context trim (H), target first request ≤55k for main sessions | 1 | `CLAUDE.md`, `.claude/agents/*.md`, memory indexes, MCP and skill config | In progress (worktree `tp03`, branch `docs/static-context-trim`); scope revised, see [below](#tp-03-scope-revised-2026-10-03) | |
+| TP-04 OTel to the colo SigNoz | 1 | local Claude Code settings, `docs/operations/` | In progress (worktree `tp04`, branch `docs/claude-code-otel`) | |
 | TP-05 Baseline and reconciliation | 2 (after TP-01) | this folder | Not started | |
 | TP-06 Per-agent cache TTL (A) | 2 | `.claude/agents/*.md` frontmatter | Not started | |
 | TP-07 Read discipline (C) | 2 | rules, the most-exposed docs | Not started | |
@@ -103,7 +103,7 @@ Each packet that changes behaviour adds a row when it merges. A before-and-after
 
 | Packet | PR | Merged (UTC) | What changed at the cut |
 |---|---|---|---|
-| TP-00 | [#1122](https://github.com/SandboxServers/Cimmeria/pull/1122) | | Worker lifetime cap and notification rules take effect; `cimmeria-rag` leaves the example MCP config |
+| TP-00 | [#1122](https://github.com/SandboxServers/Cimmeria/pull/1122) | 2026-10-03 11:39:49 | Worker lifetime cap and notification rules take effect; `cimmeria-rag` leaves the example MCP config |
 
 ## Acceptance criteria
 
