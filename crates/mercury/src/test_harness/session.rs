@@ -141,6 +141,24 @@ impl LoopbackSession {
         Ok((a, b))
     }
 
+    /// B sends unreliable ACK carriers until it owes A nothing, and A
+    /// receives each one, so every ACK has applied on return. A carrier
+    /// holds at most one packet's ACK budget (`take_piggyback_acks`), so a
+    /// long backlog takes several. Returns the carrier count.
+    pub async fn flush_b_acks(&self) -> usize {
+        let mut carriers = 0;
+        while self.b.pending_acks_len() > 0 {
+            self.b
+                .send_bundle(b"ack carrier", false)
+                .await
+                .expect("ack carrier send");
+            let got = self.a.recv_n_bundles(1, Duration::from_secs(5)).await;
+            assert_eq!(got.len(), 1, "ack carrier must reach A");
+            carriers += 1;
+        }
+        carriers
+    }
+
     /// Wait until both peers have empty TX windows and zero pending
     /// acks, or `timeout` elapses. Returns `true` if quiescent,
     /// `false` if the timeout fired first.

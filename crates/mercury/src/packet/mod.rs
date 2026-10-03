@@ -49,8 +49,8 @@ mod replay_smoke;
 mod tests;
 
 pub use ack_budget::{
-    ack_budget, data_ack_budget, encrypted_len, take_acks, take_piggyback_acks,
-    MAX_DATA_PLAINTEXT_BEFORE_ACKS, TICK_SYNC_PLAINTEXT_BEFORE_ACKS,
+    ack_budget, data_ack_budget, encrypted_len, take_acks, take_acks_for_plaintext,
+    take_piggyback_acks, MAX_DATA_PLAINTEXT_BEFORE_ACKS, TICK_SYNC_PLAINTEXT_BEFORE_ACKS,
 };
 pub use build::{
     build_fragmented_bundle, build_outgoing, build_outgoing_fragmented, FRAGMENT_BODY_SIZE,

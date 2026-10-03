@@ -26,7 +26,13 @@ pub(crate) struct WindowState {
 #[derive(Debug, Default, Clone, Copy)]
 pub(crate) struct GapTracker {
     open: Option<OpenGap>,
+    last_seen_ms: u64,
 }
+
+/// A tracker with no reliable packet for this long belongs to a channel
+/// that went away (the client's own inactivity timeout is 15 s); it is
+/// dropped so a new channel at the same address starts clean.
+pub(crate) const GAP_TRACKER_IDLE_MS: u64 = 60_000;
 
 #[derive(Debug, Clone, Copy)]
 struct OpenGap {
@@ -52,6 +58,11 @@ impl GapTracker {
         self.open.is_some()
     }
 
+    /// True once the channel has been silent for [`GAP_TRACKER_IDLE_MS`].
+    pub(crate) fn is_idle(&self, now_ms: u64) -> bool {
+        now_ms.saturating_sub(self.last_seen_ms) >= GAP_TRACKER_IDLE_MS
+    }
+
     /// Observe the reliable-window words around one packet. A gap can
     /// close and another open on the same call when buffered followers
     /// drain but a newer sequence is still missing.
@@ -62,6 +73,7 @@ impl GapTracker {
         now_ms: u64,
     ) -> Vec<GapEvent> {
         let mut events = Vec::new();
+        self.last_seen_ms = now_ms;
         if self.open.is_none() && before.buffered > 0 {
             self.open = Some(OpenGap {
                 expected_seq: before.in_seq_at,
@@ -118,11 +130,12 @@ impl GapTracker {
     }
 }
 
-pub(crate) fn gap_fields(gap: GapEvent, channel_ptr: u32, trigger_seq: u32) -> Fields {
+/// `queueAckForPacket`'s stack arguments are unconfirmed (see
+/// `client-mercury-receive-path.md`), so no field is read from them.
+pub(crate) fn gap_fields(gap: GapEvent, channel_ptr: u32) -> Fields {
     let mut fields = vec![
         ("event", json!(gap.event)),
         ("channel_ptr", json!(format!("0x{channel_ptr:08x}"))),
-        ("trigger_seq", json!(trigger_seq)),
         ("expected_seq", json!(gap.expected_seq)),
         ("buffered_count", json!(gap.buffered_count)),
         ("peak_buffered", json!(gap.peak_buffered)),
@@ -265,6 +278,15 @@ mod tests {
         assert_eq!(closed[0].duration_ms, Some(3_000));
         assert_eq!(closed[0].peak_buffered, 4);
         assert!(!tracker.is_open());
+    }
+
+    #[test]
+    fn a_tracker_left_open_by_a_dead_channel_expires() {
+        let mut tracker = GapTracker::default();
+        tracker.observe(st(1949, 0), st(1949, 3), 1_000);
+        assert!(tracker.is_open());
+        assert!(!tracker.is_idle(1_000 + GAP_TRACKER_IDLE_MS - 1));
+        assert!(tracker.is_idle(1_000 + GAP_TRACKER_IDLE_MS));
     }
 
     #[test]

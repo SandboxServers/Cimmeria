@@ -49,15 +49,6 @@ pub(crate) fn error_fields(stage: &'static str, reason: &str, of: &Fields) -> Fi
     f
 }
 
-/// Identify the bytes at the packet-filter entry. When this equals the
-/// Winsock `wire_fingerprint`, the raw datagram reached this filter intact.
-pub(crate) fn with_filter_input_fingerprint(mut report: Report, fingerprint: &str) -> Report {
-    report
-        .fields
-        .push(("filter_input_fingerprint", json!(fingerprint)));
-    report
-}
-
 /// `client.mercury.packet_in` for the datagram `tail`, given the window note
 /// (reliable packets) and the packet filter's `result`.
 pub(crate) fn packet(
@@ -212,16 +203,6 @@ mod tests {
             .iter()
             .find(|(n, _)| *n == k)
             .map(|(_, v)| v.clone())
-    }
-
-    #[test]
-    fn packet_filter_fingerprint_can_join_the_socket_boundary() {
-        let t = dg(0x58, 70, None);
-        let r = with_filter_input_fingerprint(packet(&t, None, 0, None, false), "a430d84680aabd0b");
-        assert_eq!(
-            get(&r, "filter_input_fingerprint"),
-            Some(json!("a430d84680aabd0b"))
-        );
     }
 
     #[test]

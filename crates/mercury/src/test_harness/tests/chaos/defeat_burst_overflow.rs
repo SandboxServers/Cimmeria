@@ -62,11 +62,9 @@ async fn defeat_burst_does_not_lose_packets_under_tx_window_pressure() {
         "B must receive the whole burst exactly once"
     );
 
-    // The ack carrier from B drains A's TX window. A's pump
-    // applies the ack before it delivers the carrier.
-    session.b.send_bundle(b"ack carrier", false).await.unwrap();
-    let carrier = session.a.recv_n_bundles(1, Duration::from_secs(5)).await;
-    assert_eq!(carrier.len(), 1, "ack carrier must reach A");
+    // B's ack carriers drain A's TX window. A's pump applies each
+    // carrier's acks before it delivers the carrier.
+    session.flush_b_acks().await;
 
     // Safety invariants persist after the ack-drain phase, and the
     // full set of acks leaves nothing tracked.

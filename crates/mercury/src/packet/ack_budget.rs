@@ -52,7 +52,7 @@ pub const fn ack_budget(plaintext_before_acks: usize, version: EncryptionVersion
     let mut n = u8::MAX as usize;
     loop {
         let len = plaintext_before_acks + ACK_COUNT_LEN + n * ACK_LEN;
-        if n == 0 || encrypted_len(len, version) <= PACKET_MAX_SIZE {
+        if encrypted_len(len, version) <= PACKET_MAX_SIZE || n == 0 {
             return n;
         }
         n -= 1;
@@ -68,6 +68,20 @@ pub const fn data_ack_budget(version: EncryptionVersion) -> usize {
 /// The rest stay in `pending`.
 pub fn take_piggyback_acks(pending: &mut Vec<u32>, version: EncryptionVersion) -> Vec<u32> {
     take_acks(pending, data_ack_budget(version))
+}
+
+/// ACKs for a packet whose plaintext before ACKs is known exactly (flags,
+/// body and every other footer). Use it where the body can exceed the
+/// [`MAX_DATA_PLAINTEXT_BEFORE_ACKS`] assumption, such as a long feedback
+/// line or a large enter-world packet; a body that already overflows on its
+/// own gets no ACKs. Capped at the data budget like every other send.
+pub fn take_acks_for_plaintext(
+    pending: &mut Vec<u32>,
+    plaintext_before_acks: usize,
+    version: EncryptionVersion,
+) -> Vec<u32> {
+    let max = ack_budget(plaintext_before_acks, version).min(data_ack_budget(version));
+    take_acks(pending, max)
 }
 
 /// Remove up to `max` of the oldest pending ACKs and return them.
@@ -148,6 +162,28 @@ mod tests {
             .encrypt(&build_outgoing(flags, &body, Some(1), &taken, None))
             .unwrap();
         assert!(new.len() <= PACKET_MAX_SIZE);
+    }
+
+    /// A body past the 1411-byte assumption gets a smaller budget, and
+    /// one that cannot fit even one ACK gets none.
+    #[test]
+    fn exact_plaintext_budget_shrinks_for_a_large_body() {
+        let v2 = EncryptionVersion::V2;
+        let mut pending: Vec<u32> = (1..=20).collect();
+        // 1420 bytes before ACKs under v2: one ACK pads to 1440 + 33.
+        assert!(take_acks_for_plaintext(&mut pending, 1420, v2).is_empty());
+        assert_eq!(take_acks_for_plaintext(&mut pending, 1415, v2), vec![1]);
+        assert_eq!(take_acks_for_plaintext(&mut pending, 100, v2).len(), 2);
+        let body = vec![0x11; 1420 - 1 - 4];
+        let flags = FLAG_RELIABLE | FLAG_HAS_SEQUENCE | FLAG_HAS_ACKS;
+        let wire = enc(v2)
+            .encrypt(&build_outgoing(flags, &body, Some(9), &[1], None))
+            .unwrap();
+        assert!(
+            wire.len() > PACKET_MAX_SIZE,
+            "one ACK would overflow: {}",
+            wire.len()
+        );
     }
 
     #[test]

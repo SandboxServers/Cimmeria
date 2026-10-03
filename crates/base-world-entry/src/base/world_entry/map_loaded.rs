@@ -89,11 +89,18 @@ pub async fn handle_map_loaded(
     // Reserve 1 seq for the standalone enter-world packet + N seqs for map fragments.
     let total_seqs = 1 + map_frags;
 
+    // The enter-world packet carries the full appearance, so its body can
+    // pass the generic ACK budget's 1411-byte assumption: size its ACKs
+    // to the real plaintext (flags + body + seq).
+    let enter_world_plaintext =
+        1 + crate::mercury::build_enter_world_body(&entry_info, Some(&player_data)).len() + 4;
+
     let (acks, base_seq, enc_version) = {
         let mut clients = connected.lock().map_err(|_| "connected lock poisoned")?;
         let c = clients.get_mut(&addr).ok_or("addr not in connected map")?;
-        let acks: Vec<u32> = cimmeria_mercury::packet::take_piggyback_acks(
+        let acks: Vec<u32> = cimmeria_mercury::packet::take_acks_for_plaintext(
             &mut c.pending_acks.lock().unwrap(),
+            enter_world_plaintext,
             c.enc_version,
         );
         let seq = c.next_seq.fetch_add(total_seqs, Ordering::Relaxed)

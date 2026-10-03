@@ -96,7 +96,9 @@ thread_local! {
     /// (network thread).
     static NOTE: Cell<Option<WindowNote>> = const { Cell::new(None) };
     /// Each channel has its own expected reliable sequence. Entries leave
-    /// when the gap closes, so reconnects cannot inherit stale state.
+    /// when the gap closes, or when a channel goes quiet for
+    /// [`window::GAP_TRACKER_IDLE_MS`] (a disconnect with a gap still open),
+    /// so a reused channel address cannot inherit a dead session's gap.
     static GAPS: RefCell<HashMap<u32, GapTracker>> = RefCell::new(HashMap::new());
     /// The bundle the message loop is walking (game thread).
     static BUNDLE: RefCell<Option<BundleTrace>> = const { RefCell::new(None) };
@@ -196,20 +198,13 @@ unsafe extern "thiscall-unwind" fn filtered_detour(
         return 0;
     };
     let original: FilteredFn = std::mem::transmute(t);
-    let parsed: Option<(Tail, String)> = guarded(|| {
-        packet_bytes(pkt as u32).map(|(_, b)| {
-            (
-                tail::parse(&b),
-                crate::hooks::mercury_recv::wire::fingerprint(&b),
-            )
-        })
-    })
-    .flatten();
+    let parsed: Option<Tail> =
+        guarded(|| packet_bytes(pkt as u32).map(|(_, b)| tail::parse(&b))).flatten();
     let _ = NOTE.try_with(|c| c.set(None));
     let bad_before = LiveMem.u32_at((this as u32).wrapping_add(nub::BAD_PACKETS));
     let result = original(this, addr, pkt);
     guarded(|| {
-        let Some((tail, fingerprint)) = parsed else {
+        let Some(tail) = parsed else {
             return;
         };
         let note = NOTE.try_with(Cell::take).unwrap_or(None);
@@ -217,10 +212,7 @@ unsafe extern "thiscall-unwind" fn filtered_detour(
             bad_before,
             LiveMem.u32_at((this as u32).wrapping_add(nub::BAD_PACKETS)),
         );
-        let r = report::with_filter_input_fingerprint(
-            report::packet(&tail, note.as_ref(), result, bad, group_in_flight()),
-            &fingerprint,
-        );
+        let r = report::packet(&tail, note.as_ref(), result, bad, group_in_flight());
         emit_report(r, "packet");
     });
     result
@@ -265,8 +257,10 @@ unsafe extern "thiscall-unwind" fn queue_ack_detour(
         });
         let events = GAPS.try_with(|cell| {
             let mut gaps = cell.borrow_mut();
+            let now = now_ms();
+            gaps.retain(|_, t| !t.is_idle(now));
             let tracker = gaps.entry(chan).or_default();
-            let events = tracker.observe(before, after, now_ms());
+            let events = tracker.observe(before, after, now);
             if !tracker.is_open() {
                 gaps.remove(&chan);
             }
@@ -281,7 +275,7 @@ unsafe extern "thiscall-unwind" fn queue_ack_detour(
                     } else {
                         "info"
                     },
-                    window::gap_fields(gap, chan, a4 as u32),
+                    window::gap_fields(gap, chan),
                 );
             }
         }

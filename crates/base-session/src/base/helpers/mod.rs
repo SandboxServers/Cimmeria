@@ -184,163 +184,6 @@ impl BundleSendOutcome {
 /// The packet hex formatter for trace logs; shared with the wire firehose.
 pub use cimmeria_wire::hex::to_hex;
 
-/// Register an outgoing reliable packet's sequence number AND its
-/// encrypted on-wire bytes with the per-session
-/// [`Channel`](cimmeria_mercury::channel::Channel).
-///
-/// The Channel records the entry in its TX window for two purposes:
-/// 1. **ACK tracking** — when the client acks this seq, the entry
-///    drains and an RTT sample feeds the per-peer adaptive RTO.
-/// 2. **Retransmit** — if the RTO fires before the ack arrives, the
-///    tick driver re-sends `raw_bytes` verbatim (no re-encryption).
-///
-/// Callers should invoke this AFTER `transport.send_to` succeeds, so a
-/// failed send never appears as in-flight in the TX window.
-///
-/// `raw_bytes` should be the exact encrypted datagram that just went
-/// on the wire. Pass `cimmeria_mercury::packet::Bytes::new()` if you
-/// only want shadow-mode observability (ACK consumption + RTO sampling)
-/// without retransmit support — the channel silently skips bytes-empty
-/// entries during the retransmit scan.
-///
-/// **Overflow behavior.** When the TX window is full, the Channel queues
-/// the entry in its per-session [`unsent_packets`] deque rather than
-/// rejecting it (or — as a prior, broken implementation did — silently
-/// downgrading the packet's reliable-delivery contract to best-effort).
-/// Queued entries are dispatched on the wire at register time but the
-/// retransmit scan only walks the TX window, so a queued entry becomes
-/// eligible for retransmit only once an ACK frees a window slot and
-/// promotion moves it across. ACKs that cover a still-queued seq drain
-/// it from the queue directly without going through promotion.
-///
-/// The only remaining error condition routed through this helper is the
-/// unsent-packets queue hitting its [`MAX_UNSENT_PACKETS`] cap, which
-/// indicates the peer has stopped acking entirely and the channel is on
-/// its way to the inactivity-timeout reap. That is surfaced at WARN so
-/// it remains observable as a precursor to the channel-dead detection.
-///
-/// [`unsent_packets`]: cimmeria_mercury::channel::Channel::unsent_packets
-/// [`MAX_UNSENT_PACKETS`]: cimmeria_mercury::consts::MAX_UNSENT_PACKETS
-#[track_caller]
-pub fn shadow_register_reliable_send(
-    connected: &Arc<Mutex<HashMap<SocketAddr, ConnectedClientState>>>,
-    addr: SocketAddr,
-    seq: u32,
-    raw_bytes: cimmeria_mercury::packet::Bytes,
-) {
-    shadow_register_reliable_send_with_details(
-        connected,
-        addr,
-        seq,
-        raw_bytes,
-        ReliableSendDetails::default(),
-    );
-}
-
-#[derive(Clone, Copy)]
-struct ReliableSendDetails {
-    kind: &'static str,
-    fragment: Option<(usize, usize)>,
-    message_count: Option<usize>,
-}
-
-impl Default for ReliableSendDetails {
-    fn default() -> Self {
-        Self {
-            kind: "direct",
-            fragment: None,
-            message_count: None,
-        }
-    }
-}
-
-#[track_caller]
-fn shadow_register_reliable_send_with_details(
-    connected: &Arc<Mutex<HashMap<SocketAddr, ConnectedClientState>>>,
-    addr: SocketAddr,
-    seq: u32,
-    raw_bytes: cimmeria_mercury::packet::Bytes,
-    details: ReliableSendDetails,
-) {
-    use cimmeria_mercury::packet::{Bytes, Packet, PacketFlags};
-
-    let wire_len = raw_bytes.len();
-    let wire_fingerprint = cimmeria_mercury::instrumentation::wire_fingerprint(&raw_bytes);
-    let caller = std::panic::Location::caller();
-    let send_site = format!("{}:{}", caller.file(), caller.line());
-    let pkt = Packet::new(PacketFlags::default(), seq, Bytes::new());
-    let Ok(clients) = connected.lock() else {
-        return;
-    };
-    let Some(state) = clients.get(&addr) else {
-        return;
-    };
-    let Ok(mut channel) = state.channel.lock() else {
-        return;
-    };
-    if let Err(e) = channel.register_sent_packet(pkt, raw_bytes) {
-        // After the deferred-send queue landed, the only paths that
-        // return Err from here are: out-of-range sequence (a programming
-        // bug — the seq should have come from the masked counter), and
-        // the unsent-packets queue cap. Both are channel-dead-class
-        // signals, so WARN remains the right level.
-        tracing::warn!(
-            %addr,
-            seq,
-            error = %e,
-            "shadow_register_reliable_send: packet bookkeeping rejected \
-             (invalid seq or unsent-queue cap exceeded); reliability cannot \
-             be tracked for this packet"
-        );
-        return;
-    }
-    channel.set_sent_packet_context(
-        seq,
-        send_site.clone(),
-        details.kind,
-        details.fragment,
-        details.message_count,
-    );
-    let (fragment_index, fragment_count) = details.fragment.unzip();
-    let packet_max_size = cimmeria_mercury::consts::PACKET_MAX_SIZE;
-    if wire_len > packet_max_size {
-        tracing::warn!(
-            target: "mercury.reliable_send",
-            event = "reliable_send",
-            peer = %addr,
-            seq,
-            wire_len,
-            packet_max_size,
-            wire_fingerprint = %wire_fingerprint,
-            %send_site,
-            send_kind = details.kind,
-            ?fragment_index,
-            ?fragment_count,
-            message_count = ?details.message_count,
-            player_entity_id = ?state.player_entity_id,
-            account_id = state.account_id,
-            "encrypted reliable datagram exceeds the Mercury UDP payload limit"
-        );
-    } else {
-        tracing::info!(
-            target: "mercury.reliable_send",
-            event = "reliable_send",
-            peer = %addr,
-            seq,
-            wire_len,
-            wire_fingerprint = %wire_fingerprint,
-            %send_site,
-            send_kind = details.kind,
-            ?fragment_index,
-            ?fragment_count,
-            message_count = ?details.message_count,
-            player_entity_id = ?state.player_entity_id,
-            account_id = state.account_id,
-            "encrypted reliable datagram sent"
-        );
-    }
-}
-
 /// Drain the per-session [`Channel`]'s retransmit queue: scan the TX
 /// window for entries past the adaptive RTO and return the encrypted
 /// bytes to re-send.
@@ -1134,6 +977,10 @@ pub async fn send_bundle_to_witness_reliable(
         bytes: body_len,
     }
 }
+
+mod reliable_send;
+pub use reliable_send::shadow_register_reliable_send;
+use reliable_send::{shadow_register_reliable_send_with_details, ReliableSendDetails};
 
 mod departed_witnesses;
 pub use departed_witnesses::{

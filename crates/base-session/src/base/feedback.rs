@@ -195,8 +195,20 @@ async fn send_method(
                 };
                 let seq = c.next_seq.fetch_add(1, Ordering::Relaxed)
                     & cimmeria_mercury::packet::SEQUENCE_MASK;
-                let acks: Vec<u32> = cimmeria_mercury::packet::take_piggyback_acks(
+                // A feedback line echoes player input (a GM search, a
+                // /tell target), so its body can exceed the generic ACK
+                // budget's size assumption: size the ACKs to this packet.
+                let mut body = Vec::with_capacity(16 + payload.len());
+                crate::mercury::append_entity_method(
+                    &mut body,
+                    method_index,
+                    cimmeria_mercury::channel_bundle::IDBASE_SGW_PLAYER,
+                    entity_id,
+                    payload,
+                );
+                let acks: Vec<u32> = cimmeria_mercury::packet::take_acks_for_plaintext(
                     &mut c.pending_acks.lock().unwrap(),
+                    1 + body.len() + 4,
                     c.enc_version,
                 );
                 Some((entity_id, c.key, c.enc_version, seq, acks))
