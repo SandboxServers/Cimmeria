@@ -14,6 +14,7 @@ Status: **Wave 2.** The data contract, the ingest (TP-01a), the reports (TP-01b)
 | [`report/`](report/) | The reports: raw tokens, estimated USD, context pressure, tool exposure, cost per merged PR and a cache-policy simulator, behind a privacy scrubber. See [Reports](#reports). |
 | [`reconcile/`](reconcile/) | Checks the profiler against Claude Code's `cost-state` records and OTel `api_request` events, with tolerances. See [Reconciliation](#reconciliation). |
 | [`cutlines/`](cutlines/) | Before-and-after measures across the ledger's cut lines. See [Cut lines](#cut-lines). |
+| [`pr_stats/`](pr_stats/) | The per-PR stats comments: one idempotent `cimmeria-pr-stats/1` comment per PR, and the backfill. See [Per-PR stats comments](#per-pr-stats-comments). |
 | [`test_contract.py`](test_contract.py) | Checks the schema's constraints and that the fixture tells a correct ingest from a wrong one. CI runs it. |
 
 ```bash
@@ -123,3 +124,41 @@ python tools/token-profile/cutlines --db <profile.sqlite> [--out <dir>] [--since
 ```
 
 Splits three measures at the cut of the packet that targeted them (defaults from the ledger's cut-line log): the first request of each transcript by agent type (TP-03), the result size of `lane.sh` calls, foreground and background apart (TP-02), and requests and peak context per subagent transcript (TP-00). A transcript still running at ingest is cut short, so a recent "after" side is a floor. Output goes through the same privacy gate as the reports.
+
+## Per-PR stats comments
+
+Every merged PR gets one comment with its numbers (D-TP5): a short table for people and a `cimmeria-pr-stats/1` JSON block for the trend aggregation, under the `<!-- cimmeria-pr-stats:v1 -->` marker. The stats are built locally because the transcripts are local.
+
+```bash
+python tools/token-profile/pr_stats <PR>                    # print the comment, write nothing
+python tools/token-profile/pr_stats <PR> --post             # create it, or edit it in place
+python tools/token-profile/pr_stats --backfill [--since 2026-09-13] [--post] [--rate 6/min]
+```
+
+Run the ingest first, so the database has the PR's merge time and its latest requests. `--db` defaults to `~/token-profile.sqlite`; `--repo`, `--price-table` and `--deny` work as for the reports, and `--out <dir>` also writes each body to `<dir>/<PR>.md`.
+
+| Exit code | Meaning |
+|---|---|
+| 0 | Printed (dry run), or posted: `status=created`, `updated` or `unchanged` on stderr |
+| 2 | Error: no database, or a `gh` call failed. Nothing was posted |
+| 3 | The privacy gate refused the comment. Nothing was posted |
+| 4 | No request in the database is attributed to the PR. Nothing was posted |
+
+**Idempotent.** `--post` lists the PR's comments and takes the ones whose body starts with the marker. None: it creates one. One: it edits it in place (`gh api -X PATCH`), or leaves it alone when the body is unchanged. Several, from some earlier bug: it edits the oldest and reports the rest as `duplicates=N` without touching them. Without `--post` it makes no write call.
+
+**Where each field comes from.** The database-backed fields are `report.sections.prs.pr_records()`; the stamp adds the profiler commit of the last ingest, the newest Claude Code version among the PR's requests, and the price table. `gh` answers the rest:
+
+| Field | Meaning |
+|---|---|
+| `quality.ci_rounds` | Head commits of the PR that ran any workflow |
+| `quality.ci_fail_rounds` | Those where at least one run failed, timed out or failed to start (`cancelled` is not a failure) |
+| `quality.review_rounds` | Commits that received at least one submitted review, so two bots reviewing one push are one round |
+| `quality.followup_fix_prs` | Merged PRs titled `fix:`/`fix(...):` that cross-reference this PR after it merged |
+| `quality.reverted` | A merged PR titled `Revert ...` cross-references this PR |
+| `diff` | Additions, deletions and changed files from `gh pr view`, the database's copy when `gh` has none |
+
+The table's wall clock runs from the PR's first attributed request to its merge. Fields are only ever added; a breaking change bumps the schema version. `pr_stats.block.parse(body)` reads a block back for the aggregation.
+
+**Privacy.** The block goes through the same scrubber as the reports (field validation and redaction), and the rendered comment through its gate before anything is printed or posted. A gate hit names the detector, exits 3 and posts nothing.
+
+**Backfill.** `--backfill` walks the database's PRs merged since `--since` (default 2026-09-13), oldest first. It is a dry run unless `--post` is given, and prints one `pr=N status=...` line per PR. A PR with no data costs no `gh` call; every other PR waits its turn under `--rate` (default 6 a minute, `N/h` also works). Each outcome goes into a state file next to the database (`--state` to move it), per mode, so a stopped run resumes where it left off: successes and no-data PRs are skipped, errors and gate refusals are retried. `--restart` forgets the mode's outcomes, `--limit N` stops after N PRs, and three `gh` errors in a row stop the run. The backfill is posted only after TP-05 has validated attribution.
