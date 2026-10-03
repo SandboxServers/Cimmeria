@@ -8,7 +8,8 @@ Prices come from one price-table version, chosen here and stamped on the report.
 import sqlite3
 from pathlib import Path
 
-SUPPORTED_SCHEMA = "1"
+# Schema versions the reports read. Version 2 (TP-01a) only added columns.
+SUPPORTED_SCHEMAS = ("1", "2")
 
 
 class ReportError(Exception):
@@ -28,8 +29,8 @@ def open_db(path):
 def scope(db, since=None, until=None, price_table=None):
     """Create the window views and pick the price table. Returns the chosen price-table version."""
     version = db.execute("SELECT value FROM meta WHERE key = 'schema_version'").fetchone()
-    if version is None or version[0] != SUPPORTED_SCHEMA:
-        raise ReportError(f"schema_version {version[0] if version else None!r}, reports support {SUPPORTED_SCHEMA}")
+    if version is None or version[0] not in SUPPORTED_SCHEMAS:
+        raise ReportError(f"schema_version {version[0] if version else None!r}, reports support {', '.join(SUPPORTED_SCHEMAS)}")
     db.execute("DROP TABLE IF EXISTS temp.report_window")
     db.execute("CREATE TEMP TABLE report_window (since TEXT NOT NULL, until TEXT NOT NULL, price_table TEXT)")
     if price_table is None:
@@ -94,7 +95,7 @@ def stamp(db, price_table, report_commit=None, since=None, until=None):
     unknown_records = db.execute("SELECT COALESCE(SUM(unknown_records), 0) FROM profiler_runs").fetchone()[0]
     unknown_shapes = db.execute("SELECT COUNT(*), COALESCE(SUM(count), 0) FROM unknown_shapes").fetchone()
     return {
-        "schema_version": SUPPORTED_SCHEMA,
+        "schema_version": db.execute("SELECT value FROM meta WHERE key = 'schema_version'").fetchone()[0],
         "profiler_commit": _short(runs[0]["profiler_commit"]) if runs else None,
         "report_commit": _short(report_commit),
         "ingest_runs": len(runs),
