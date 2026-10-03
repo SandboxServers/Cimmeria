@@ -26,6 +26,8 @@ data/spaces/*.occ binary
 # are deliberately not listed; see docs/agents/development-workflow.md.
 .claude/agent-memory/*/MEMORY.md merge=union
 docs/reverse-engineering/findings/README.md merge=union
+# docs/readme.md also holds generated counts; union would keep both versions of a
+# count line, so tools/build-lane/rebase-pr.sh merges it without union.
 docs/readme.md merge=union
 
 # Client UI overlay (BM-05): byte-for-byte copies of stock client files, patched.
