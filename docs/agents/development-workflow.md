@@ -1,6 +1,6 @@
 # Development Workflow for AI-Assisted Work
 
-> **Last updated**: 2026-09-27
+> **Last updated**: 2026-10-03
 > **Audience**: Contributors doing AI-assisted work, and their agents
 > **Type**: How-to
 
@@ -62,6 +62,24 @@ Definitions and trigger descriptions are in [`.claude/agents/`](../../.claude/ag
 - **Do not switch branches in a checkout someone else is using.** Do integration work from a dedicated worktree.
 - **Run the advisors on the model they were defined for.** They are tuned for judgment-heavy review; routing them to a smaller model to save tokens costs more in rework than it saves.
 - **Agent memory is a deliverable.** Files under `.claude/agent-memory/` are committed alongside the work that produced them. `.claude/settings.local.json` and `.mcp.json` are per-machine and are not. (`settings.local.json` is still tracked by mistake; see #845.)
+
+## Worker lifetime and notifications
+
+Every request re-reads the agent's whole context, so a long-lived agent pays for its history on every turn. In the three weeks to 2026-10-03 the median main-session request carried 349k tokens of context, workers ran as long as 1,036 requests, and only 6 of 899 transcripts ever compacted. About half of coordinator spend went on turns started by an event rather than a person. The measurements are in [the token-usage ledger](../analysis/token-usage/README.md); these rules are its decision D-TP4 and apply until its close-out confirms or revises them.
+
+**Worker lifetime:**
+
+- **One phase per worker.** One worker implements. Review fixes go to a fresh worker, and a mechanical rebase to a fresh worker or to the coordinator using git alone. Don't send the implementing worker back for round two.
+- **The handoff is a worknote.** Before a worker stops, it writes `docs/analysis/<campaign>/worknotes/<packet>.md`: what is done, what is left, the branch and worktree, the commands to rerun, and the open questions. The next worker starts from the worknote, not from the old transcript.
+- **Hand off early.** At about 200 requests, or about 250k tokens of context, a worker writes its worknote and stops, and the coordinator starts a fresh one. Don't wait for an automatic compaction.
+- **Coordinators compact at wave boundaries.** Once the ledger and the resume note are current, compact with a pointer to them (`/compact` followed by the ledger path).
+
+**Notifications:** each one wakes a context that may be hundreds of thousands of tokens.
+
+- **A worker reports once.** Either the final `SendMessage` or the completion notice carries the result, never both. A background subagent's last message already is the completion notice, so it does not also message the coordinator.
+- **Report results, not progress.** Don't message a coordinator that work is still running; it hears when the work finishes.
+- **Monitors use `python` or `gh --jq`, not `jq`.** `jq` is not installed on every workstation; a watcher that pipes into it fails every poll and expires silently after 30 minutes.
+- **Batch cross-session messages.** Send a peer session one message per decision or wave, not one per event, and nothing it will see anyway in git or on the PR.
 
 ## Project memory
 

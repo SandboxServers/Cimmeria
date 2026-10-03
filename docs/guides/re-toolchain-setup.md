@@ -143,8 +143,6 @@ Copy-Item .mcp.json.example .mcp.json
 
 Open `.mcp.json` and replace every `<CIMMERIA_ROOT>` with the absolute path to your Cimmeria checkout (e.g. `C:\\Users\\you\\source\\projects\\Cimmeria` — Windows paths inside JSON need double backslashes).
 
-For the `cimmeria-rag` block: replace `REPLACE_WITH_FUNCTIONS_KEY` with the Azure Functions key for the project's RAG MCP. The key isn't checked into git — ask in the project chat (or, if you're a contributor without access, just delete the entire `cimmeria-rag` block; the Ghidra and x64dbg MCPs work standalone). When the bootstrap generates `.mcp.json` for you it leaves the placeholder in place unless you pass `-CimmeriaRagKey <value>` — note that's a parameter of the `Install-CimmeriaReToolchain` bootstrap function, not of `setup.ps1`, so to use it you invoke the function directly rather than going through `setup.ps1 -WithReToolchain`.
-
 Verify the Ghidra `GHIDRA_MCP_URL` port matches the port Ghidra's plugin actually bound to (see the port-note in [install-ghidra-mcp.md](../reverse-engineering/toolchain/install-ghidra-mcp.md#3-install-the-ghidramcp-plugin)).
 
 `.mcp.json` is gitignored — never commit it.
@@ -161,7 +159,7 @@ Verify the Ghidra `GHIDRA_MCP_URL` port matches the port Ghidra's plugin actuall
    List the MCP tools you have available. Group them by server prefix.
    ```
 
-   You should see three groups: `mcp__cimmeria-rag__*` (~34 tools), `mcp__ghidra__*` (~245 tools), and `mcp__x64dbg__*` (~60 tools).
+   You should see at least these two groups: `mcp__ghidra__*` (~245 tools) and `mcp__x64dbg__*` (~60 tools). The optional lab entries add more.
 
 If a server is missing, re-read its section above. The most common failure is a path mismatch in `.mcp.json` — the bridge process spawns silently and the error only surfaces as "no tools from this server."
 
@@ -180,16 +178,15 @@ If a server is missing, re-read its section above. The most common failure is a 
 
 ## What this enables
 
-With all three MCPs wired, Claude Code can:
+With both MCPs wired, Claude Code can:
 
 - Run static analysis through Ghidra: decompile, follow xrefs, rename functions, extract strings, dump structs — see [`docs/reverse-engineering/`](../reverse-engineering/) for the methodology and [`docs/guides/reading-decompiled-code.md`](reading-decompiled-code.md) for interpreting output.
 - Run read-only static analysis **without** the Ghidra GUI or MCP bridge: [`tools/re/ghidra-headless/`](../../tools/re/ghidra-headless/README.md) is a `GhidraScript` you run through `analyzeHeadless.bat -noanalysis -readOnly` against the analyzed `SGW` project (decompile, xrefs, string and function-name search, vtable dumps). It needs only the Ghidra install, not the plugin or `.mcp.json`.
 - Run dynamic analysis through x64dbg: set log breakpoints, read memory, attach to the live SGW process — see [`docs/guides/sgw-live-debugging.md`](sgw-live-debugging.md) for the techniques and gotchas.
-- Search the Cimmeria knowledge graph: code, docs, entity defs, findings — through the cloud-hosted `cimmeria-rag` server.
 - Structurally verify a reconstruction against the binary with the [`/re-verify`](../../.claude/commands/re-verify.md) slash command, which pairs Ghidra MCP ground truth with the LLM-free parity engine at [`tools/re_parity.py`](../../tools/re_parity.py). No extra setup beyond the MCPs above and a Python 3 on PATH — the engine is pure Python with no network calls. Details in the workflow doc. **Note:** as of 2026-07-25 neither file is on `main` yet, so a fresh `main` checkout won't have them.
 - **Ask the running game** through the Live Research Lab: evaluate Lua on the live client, install non-freezing logging hooks, screenshot the window, and read live server entity/witness/packet state — see the two extra MCP entries below and the rulebook at [`docs/guides/live-research-lab.md`](live-research-lab.md).
 
-### Live Research Lab (optional fourth + fifth MCPs)
+### Live Research Lab (optional third + fourth MCPs)
 
 The lab is the runtime complement to Ghidra's static view: Ghidra finds the *where*, the lab proves the *what* (see [`reverse-engineering-with-claude.md`](reverse-engineering-with-claude.md#static-vs-runtime--ghidra-x64dbg-and-the-lab)). Two entries in `.mcp.json` wire it (both are in [`.mcp.json.example`](../../.mcp.json.example)):
 

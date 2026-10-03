@@ -12,8 +12,6 @@
     "  docs/guides/reverse-engineering-with-claude.md  -- the workflow doc",
     "",
     "Five servers are wired:",
-    "  cimmeria-rag : Azure-hosted RAG over the Cimmeria repo + docs + RE notes.",
-    "                 Read-only. No local dependencies. Always reachable.",
     "  ghidra       : Static analysis of SGW.exe via the bethington/ghidra-mcp",
     "                 bridge. Requires Ghidra GUI running with the GhidraMCP",
     "                 plugin server started.",
@@ -43,13 +41,6 @@
     "(upstream display bug shows the configured port, not the bound one)."
   ],
   "mcpServers": {
-    "cimmeria-rag": {
-      "type": "http",
-      "url": "https://cimmeria-mcp.azurewebsites.net/runtime/webhooks/mcp",
-      "headers": {
-        "x-functions-key": "REPLACE_WITH_FUNCTIONS_KEY"
-      }
-    },
     "ghidra": {
       "type": "stdio",
       "command": "<CIMMERIA_ROOT>\\.venvs\\ghidra-mcp\\Scripts\\python.exe",
