@@ -8,7 +8,7 @@ so an appended file resumes exactly where the last run stopped.
 
 import json
 import re
-from datetime import datetime
+from datetime import datetime, timezone
 
 from . import classify as cls
 from . import fingerprint as fp
@@ -29,6 +29,13 @@ def epoch(ts):
         return datetime.fromisoformat(ts.replace("Z", "+00:00")).timestamp()
     except (AttributeError, ValueError):
         return None
+
+
+def ms_iso(ms):
+    """Epoch milliseconds (cost-state startTime) as ISO-8601 UTC; None unless a positive number."""
+    if not isinstance(ms, (int, float)) or isinstance(ms, bool) or ms <= 0:
+        return None
+    return datetime.fromtimestamp(ms / 1000, timezone.utc).strftime("%Y-%m-%dT%H:%M:%S.%f")[:-3] + "Z"
 
 
 def usage_columns(u, stats):
@@ -82,6 +89,8 @@ class Transcript:
         self.st = {"cur": None, "retry": False, "sched": False, "seen_turn": False, "last_req": None,
                    "compaction": None, "gh_create": [], "last_ts": None, **state}
         self.stats = stats
+        self.is_fork = agent_id is not None and db.execute(
+            "SELECT agent_type = 'fork' FROM agents WHERE agent_id = ?", (agent_id,)).fetchone() == (1,)
         self.info = {"first_ts": None, "last_ts": None, "versions": [], "entrypoint": None, "worktree": None,
                      "forked_from": None}
 
@@ -178,7 +187,9 @@ class Transcript:
         row = self.db.execute("SELECT session_id, agent_id FROM requests WHERE request_id = ?", (rid,)).fetchone()
         if row is not None:
             if row != (self.session_id, self.agent_id):
-                self.stats["duplicate_request_records"] += 1
+                # A fork's transcript opens with a copy of its parent's history; discover() reads
+                # parents first, so the parent already owns these requests.
+                self.stats["fork_copied_records" if self.is_fork else "duplicate_request_records"] += 1
                 return
             # A later record of the same request: keep the final usage.
             sets = ", ".join(f"{k} = ?" for k in cols)
@@ -336,14 +347,14 @@ class Transcript:
                    for m, u in usage.items() if isinstance(u, dict)}
         self.db.execute(
             "INSERT INTO cost_states (session_id, observed_ts, total_cost_usd, has_unknown_cost, lines_added,"
-            " lines_removed, model_usage_json) VALUES (?, ?, ?, ?, ?, ?, ?)"
+            " lines_removed, model_usage_json, process_start) VALUES (?, ?, ?, ?, ?, ?, ?, ?)"
             " ON CONFLICT (session_id) DO UPDATE SET observed_ts = excluded.observed_ts,"
             " total_cost_usd = excluded.total_cost_usd, has_unknown_cost = excluded.has_unknown_cost,"
             " lines_added = excluded.lines_added, lines_removed = excluded.lines_removed,"
-            " model_usage_json = excluded.model_usage_json",
+            " model_usage_json = excluded.model_usage_json, process_start = excluded.process_start",
             (self.session_id, rec.get("timestamp") or self.st["last_ts"], float(rec.get("totalCostUSD") or 0),
              1 if rec.get("hasUnknownModelCost") else 0, rec.get("totalLinesAdded"), rec.get("totalLinesRemoved"),
-             json.dumps(numbers, sort_keys=True)))
+             json.dumps(numbers, sort_keys=True), ms_iso(rec.get("startTime"))))
 
     def state(self):
         return self.st

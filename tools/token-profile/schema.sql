@@ -1,4 +1,4 @@
--- Token profiler data contract, schema version 2.
+-- Token profiler data contract, schema version 3.
 --
 -- The ingest (TP-01a, tools/token-profile/ingest/) writes these tables from
 -- Claude Code transcripts; the reports (TP-01b, tools/token-profile/report/)
@@ -14,6 +14,11 @@
 -- tool_calls.pr_ref, prs.closed_at. All additive; see attribution.md and
 -- transcript-format.md for what fills them.
 --
+-- Version 3 (TP-05): cost_states.process_start. A cost-state total covers
+-- only the Claude Code process that wrote it, which started at
+-- process_start; a resumed session's earlier requests are not in it. See
+-- README.md § Reconciliation.
+--
 -- Token columns are raw counts. thinking_tokens is a SUBSET of
 -- output_tokens and is never added on top of it.
 
@@ -23,7 +28,7 @@ CREATE TABLE meta (
     key   TEXT PRIMARY KEY,
     value TEXT NOT NULL
 );
-INSERT INTO meta (key, value) VALUES ('schema_version', '2');
+INSERT INTO meta (key, value) VALUES ('schema_version', '3');
 
 -- One row per ingest run, for version-stamping every report.
 CREATE TABLE profiler_runs (
@@ -207,7 +212,8 @@ CREATE TABLE pr_links (
 );
 
 -- The LAST cost-state record of each session: Claude Code's own running
--- total, a reconciliation source besides OTel.
+-- total, a reconciliation source besides OTel. It covers every request of
+-- the process that wrote it (from process_start on), subagents included.
 CREATE TABLE cost_states (
     session_id        TEXT PRIMARY KEY REFERENCES sessions (session_id),
     observed_ts       TEXT,
@@ -215,7 +221,8 @@ CREATE TABLE cost_states (
     has_unknown_cost  INTEGER NOT NULL CHECK (has_unknown_cost IN (0, 1)),
     lines_added       INTEGER,
     lines_removed     INTEGER,
-    model_usage_json  TEXT NOT NULL           -- modelUsage verbatim (numbers only)
+    model_usage_json  TEXT NOT NULL,          -- modelUsage verbatim (numbers only)
+    process_start     TEXT                    -- startTime as ISO-8601 UTC, NULL when absent (version 3)
 );
 
 -- PRs, from `gh pr list --state all --json ...`.

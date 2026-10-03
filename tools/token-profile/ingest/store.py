@@ -13,7 +13,7 @@ from pathlib import Path
 from .transcript import Transcript
 
 SCHEMA = Path(__file__).resolve().parent.parent / "schema.sql"
-SCHEMA_VERSION = "2"
+SCHEMA_VERSION = "3"
 
 
 def now_iso():
@@ -48,15 +48,44 @@ def discover(projects_root, prefix):
     Main sessions are <dir>/<session>.jsonl; subagents are any agent-<id>.jsonl
     under <dir>/<session>/subagents/, including workflow agents one level down.
     Other files (workflow journals, forked-skill markers, tool-results) are not transcripts.
+
+    A fork's transcript starts with a copy of its parent's history, and the
+    first transcript read owns a request. So within a session every fork is
+    read after its parent (the main session, or the subagent its meta names).
     """
     root = Path(projects_root)
     out = []
     for d in sorted(p for p in root.iterdir() if p.is_dir() and p.name.lower().startswith(prefix.lower())):
         for f in sorted(d.glob("*.jsonl")):
             out.append(("main", f, d.name, f.stem, None))
-        for f in sorted(d.glob("*/subagents/**/agent-*.jsonl")):
-            out.append(("subagent", f, d.name, f.relative_to(d).parts[0], f.stem[len("agent-"):]))
+        subs = [(f.relative_to(d).parts[0], f.stem[len("agent-"):], f)
+                for f in sorted(d.glob("*/subagents/**/agent-*.jsonl"))]
+        parents = {(s, a): _fork_parent(f) for s, a, f in subs}
+        for s, a, f in sorted(subs, key=lambda x: (x[0], _fork_depth(parents, x[0], x[1]), str(x[2]))):
+            out.append(("subagent", f, d.name, s, a))
     return out
+
+
+def _fork_parent(transcript):
+    """The parent agent id of a fork ('' for the main session), or None if the transcript is not a fork."""
+    try:
+        meta = json.loads(transcript.with_name(transcript.stem + ".meta.json").read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return None
+    if not isinstance(meta, dict) or not meta.get("isFork"):
+        return None
+    parent = meta.get("parentAgentId")
+    return parent if isinstance(parent, str) else ""
+
+
+def _fork_depth(parents, session_id, agent_id):
+    """How many forks deep a subagent is: 0 for a non-fork, 1 for a fork of a non-fork, ..."""
+    depth, seen = 0, set()
+    while agent_id and parents.get((session_id, agent_id)) is not None and agent_id not in seen:
+        seen.add(agent_id)
+        depth += 1
+        agent_id = parents[(session_id, agent_id)]
+    return depth
 
 
 def _head_sha1(path):

@@ -124,5 +124,51 @@ class ClassifyTest(unittest.TestCase):
         self.assertEqual(got, {"r_h": "human_prompt", "r_aux": "auxiliary"})
 
 
+class ForkAndCostStateTest(unittest.TestCase):
+    def setUp(self):
+        tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(tmp.cleanup)
+        self.root = Path(tmp.name)
+
+    def test_copied_history_belongs_to_the_forks_parent(self):
+        # Observed 2026-10-03: forks copy their parent's requests, and a parent subagent's
+        # file name can sort after its forks' ("afec..." after "a1fc...").
+        sid = "55555555-0000-4000-8000-000000000005"
+        m = transcript(sid)
+        m.user_text(bf.ts(1), "go", origin={"kind": "human"})
+        bf.request(m, bf.ts(1, 5), "r_main", bf.usage(1, 1, 0, 1, 1, 0))
+        parent = transcript(sid, agent_id="zz-parent")
+        parent.user_text(bf.ts(2), "work", isMeta=True)
+        bf.request(parent, bf.ts(2, 5), "r_parent", bf.usage(1, 50, 0, 1, 1, 0))
+        fork = transcript(sid, agent_id="aa-fork")
+        bf.request(fork, bf.ts(2, 5), "r_parent", bf.usage(1, 50, 0, 1, 1, 0))  # the copy
+        fork.user_text(bf.ts(3), "forked task", isMeta=True)
+        bf.request(fork, bf.ts(3, 5), "r_fork", bf.usage(1, 7, 0, 1, 1, 0))
+        write_session(self.root / "p", sid, m, [
+            ("zz-parent", parent, {"agentType": "general-purpose"}),
+            ("aa-fork", fork, {"agentType": "fork", "isFork": True, "parentAgentId": "zz-parent"})])
+        db = self.root / "d.sqlite"
+        self.assertEqual(run_ingest(self.root / "p", db, prs=[]), 0)
+        conn = sqlite3.connect(db)
+        got = dict(conn.execute("SELECT request_id, agent_id FROM requests"))
+        conn.close()
+        self.assertEqual(got, {"r_main": None, "r_parent": "zz-parent", "r_fork": "aa-fork"})
+
+    def test_cost_state_keeps_its_process_start(self):
+        sid = "66666666-0000-4000-8000-000000000006"
+        m = transcript(sid)
+        m.user_text(bf.ts(1), "go", origin={"kind": "human"})
+        bf.request(m, bf.ts(1, 5), "r_1", bf.usage(1, 1, 0, 1, 1, 0))
+        m.raw({"type": "cost-state", "sessionId": sid, "totalCostUSD": 1.5, "hasUnknownModelCost": False,
+               "startTime": 1790502074327, "modelUsage": {}})
+        write_session(self.root / "p", sid, m)
+        db = self.root / "d.sqlite"
+        self.assertEqual(run_ingest(self.root / "p", db, prs=[]), 0)
+        conn = sqlite3.connect(db)
+        row = conn.execute("SELECT total_cost_usd, process_start FROM cost_states").fetchone()
+        conn.close()
+        self.assertEqual(row, (1.5, "2026-09-27T09:41:14.327Z"))
+
+
 if __name__ == "__main__":
     unittest.main()

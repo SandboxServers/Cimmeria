@@ -2,16 +2,18 @@
 
 Measures what AI-assisted work in this repo costs: tokens, estimated list-price USD, context pressure and orchestration overhead, per session, agent, campaign and PR. It reads local Claude Code transcripts into a local SQLite store; nothing it reads leaves the machine except scrubbed aggregates.
 
-Status: **Wave 1.** The data contract, the ingest (TP-01a) and the reports (TP-01b) are in place. The plan, the decisions and the cut-line log are in the ledger, [docs/analysis/token-usage/](../../docs/analysis/token-usage/README.md); the issue is [#957](https://github.com/SandboxServers/Cimmeria/issues/957).
+Status: **Wave 2.** The data contract, the ingest (TP-01a), the reports (TP-01b) and the reconciliation against Claude Code's own totals (TP-05) are in place. The plan, the decisions and the cut-line log are in the ledger, [docs/analysis/token-usage/](../../docs/analysis/token-usage/README.md); the issue is [#957](https://github.com/SandboxServers/Cimmeria/issues/957).
 
 | File | What it is |
 |---|---|
-| [`schema.sql`](schema.sql) | The SQLite schema the ingest writes and the reports read. Version 2. |
+| [`schema.sql`](schema.sql) | The SQLite schema the ingest writes and the reports read. Version 3. |
 | [`transcript-format.md`](transcript-format.md) | The transcript shapes the profiler depends on, and the trigger classification rules. |
 | [`attribution.md`](attribution.md) | How a request is charged to a PR, and the invariants every attribution keeps. |
 | [`fixtures/build_fixtures.py`](fixtures/build_fixtures.py) | Builds a synthetic transcript tree, with an `expected.json` of what a correct ingest produces and hostile values a report must never show. |
 | [`ingest/`](ingest/) | The ingest: transcripts into the schema, incrementally, with trigger classification, prices and PR attribution. Its tests are `ingest/test_*.py`. |
 | [`report/`](report/) | The reports: raw tokens, estimated USD, context pressure, tool exposure, cost per merged PR and a cache-policy simulator, behind a privacy scrubber. See [Reports](#reports). |
+| [`reconcile/`](reconcile/) | Checks the profiler against Claude Code's `cost-state` records and OTel `api_request` events, with tolerances. See [Reconciliation](#reconciliation). |
+| [`cutlines/`](cutlines/) | Before-and-after measures across the ledger's cut lines. See [Cut lines](#cut-lines). |
 | [`test_contract.py`](test_contract.py) | Checks the schema's constraints and that the fixture tells a correct ingest from a wrong one. CI runs it. |
 
 ```bash
@@ -82,4 +84,42 @@ The repo is public, so a report is built to be safe to commit. [`report/scrub.py
 2. **Redaction.** Every string is scrubbed of URL credentials and query strings, non-public hosts, auth headers, secret flags and assignments, known token formats, high-entropy tokens, emails, IP addresses, absolute local paths, and the deny words: the local user and machine names, `--deny` and the comma-separated `TOKEN_PROFILE_DENY`.
 3. **The gate.** The rendered Markdown and JSON are searched again with the same detectors. A hit names the detector, never the value, and nothing is written (exit code 3).
 
-Session ids, agent ids, project directories, branch names, teammate names and message text never reach a report.
+Session ids, agent ids, project directories, branch names, teammate names and message text never reach a report. Claude Code writes an in-process teammate's name as its `agentType`, so a teammate with no `.claude/agents` definition is reported as `teammate`.
+
+## Reconciliation
+
+```bash
+python tools/token-profile/reconcile --db <profile.sqlite> [--out <dir>] [--since ISO] [--until ISO] [--otel <events.json>]
+```
+
+Compares the profiler with Claude Code's own records and exits 4 when a check is out of tolerance (0 when all pass, 3 if the privacy gate refuses, 2 on an input error). With `--out` it writes `reconcile.md` and `reconcile.json`, aggregates only. `--since` and `--until` select sessions by the start of the process that wrote their cost-state.
+
+**Against `cost-state`.** A cost-state record covers one Claude Code process, subagents included, from its start (`cost_states.process_start`, schema version 3) on. Each is compared with the same session's requests from that time on; spend outside every such window (sessions with no record, a resumed session's requests from before the resume) is reported as uncovered, not compared.
+
+| Check | Fails when | Limit | 2026-10-03 |
+|---|---|---:|---:|
+| `price_residual` | the cost-state's own tokens, repriced with the profiler's table (its 5m/1h split, web search at $0.01), miss the cost-state's USD | 1% | 0.03% |
+| `output_gap` | profiler output tokens differ from the cost-state's; a dedupe bug shows here first | 3% | 1.1% |
+| `undercount` | the profiler is below the cost-state by more than this | 15% | 10.2% |
+| `overcount` | the profiler is above the cost-state at all (a double count) | 1% | 0% |
+| `session_overcount` | any session with 20 or more requests is more than 2% above its cost-state | 0 sessions | 0 of 69 |
+
+The undercount is real and expected: the cost-state holds requests that no transcript records. By model (Haiku aside), the transcripts hold 1-10% of the cost-state's input tokens, 73-97% of its cache reads, 91-100% of its cache writes and 98-99% of its output: the missing requests read a large cached context, send fresh input and write little. The gap grows with subagent activity (correlation 0.83 with a session's subagent requests). The OTel `query_source` of those requests should name them; until it does, the profiler's USD is a floor about 10% under Claude Code's.
+
+**Against OTel.** `--otel` takes `claude_code.api_request` events from a file: an OTLP JSON log export, a SigNoz log search result saved as JSON, or JSON Lines of flat attributes. Events join to requests on `request_id`.
+
+| Check | Fails when | Limit |
+|---|---|---:|
+| `matched_token_mismatch` | matched requests carry different token counts (OTel's cache creation against the profiler's 5m plus 1h writes) | 0.5% of requests |
+| `matched_cost_residual` | OTel `cost_usd` and the profiler's USD differ over matched requests | 1% |
+| `profiler_only` | profiler spend inside the time span OTel covers for a session has no event (lost telemetry) | 2% |
+
+OTel-only requests are not a failure: they are the requests the transcripts don't record, listed by `query_source` and model. The OTel total is also set against the cost-state for the sessions both have.
+
+## Cut lines
+
+```bash
+python tools/token-profile/cutlines --db <profile.sqlite> [--out <dir>] [--since ISO] [--cut TP-03=ISO ...]
+```
+
+Splits three measures at the cut of the packet that targeted them (defaults from the ledger's cut-line log): the first request of each transcript by agent type (TP-03), the result size of `lane.sh` calls, foreground and background apart (TP-02), and requests and peak context per subagent transcript (TP-00). A transcript still running at ingest is cut short, so a recent "after" side is a floor. Output goes through the same privacy gate as the reports.
