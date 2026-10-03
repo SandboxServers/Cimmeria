@@ -356,6 +356,10 @@ class RetireTests(MergeCase):
         (stale / "gitdir").write_text("/no/such/place/.git\n")
         (stale / "commondir").write_text("../..\n")
         (stale / "HEAD").write_text("ref: refs/heads/main\n")
+        # A real entry has an index. Without one, auto maintenance on git 2.55 (whose
+        # geometric strategy runs worktree-prune) drops the entry during any commit;
+        # with a fresh one only an explicit `git worktree prune` (no expiry) deletes it.
+        (stale / "index").write_bytes(b"")
         self.stale = stale
         self.add_pr(["src.rs"], checks=[GREEN])
 
