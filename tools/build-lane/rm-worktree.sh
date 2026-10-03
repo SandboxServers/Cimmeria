@@ -2,8 +2,8 @@
 # Retire worktrees whose work has merged: the counterpart of mk-worktree.sh.
 #
 # Usage:
-#   tools/build-lane/rm-worktree.sh [--dry-run] [--force] <name> [<name>...]
-#   tools/build-lane/rm-worktree.sh [--dry-run] --merged
+#   tools/build-lane/rm-worktree.sh [--dry-run] [--force] [--prune] <name> [<name>...]
+#   tools/build-lane/rm-worktree.sh [--dry-run] [--prune] --merged
 #
 # <name> is the folder under .claude/worktrees/ (mk-worktree.sh names, agent-*, wf_*).
 # --merged retires every worktree there whose branch's PR has merged and that nothing
@@ -23,22 +23,31 @@
 #    it, only branches already on origin/main count as merged.
 #
 # external/ is removed with a non-recursive rmdir before anything else: a recursive
-# delete can follow the junction and empty the real external/ directory.
+# delete can follow the junction and empty the real external/ directory. The script then
+# checks that the main checkout's external/ survived, and stops if it did not.
+#
+# It no longer runs `git worktree prune` unless --prune is given (--no-prune, the default,
+# is accepted for callers that want to say so): `git worktree remove` already deletes the
+# retired worktree's own entry, and a prune deletes every entry whose recorded path the
+# pruning git cannot resolve. On 2026-10-03 the entries of about 22 live worktrees vanished
+# while their directories stayed; a prune is the first suspect.
 set -uo pipefail
 
-DRY=0; FORCE=0; MERGED=0; NAMES=()
+DRY=0; FORCE=0; MERGED=0; PRUNE=0; NAMES=()
 for a in "$@"; do
   case "$a" in
     --dry-run) DRY=1 ;;
     --force) FORCE=1 ;;
     --merged) MERGED=1 ;;
-    -h|--help) sed -n '2,26p' "$0"; exit 0 ;;
+    --prune) PRUNE=1 ;;
+    --no-prune) PRUNE=0 ;;
+    -h|--help) sed -n '2,33p' "$0"; exit 0 ;;
     -*) echo "unknown option: $a" >&2; exit 2 ;;
     *) NAMES+=("$a") ;;
   esac
 done
 if [ $MERGED -eq 0 ] && [ ${#NAMES[@]} -eq 0 ]; then
-  echo "usage: rm-worktree.sh [--dry-run] [--force] <name>... | --merged" >&2; exit 2
+  echo "usage: rm-worktree.sh [--dry-run] [--force] [--prune] <name>... | --merged" >&2; exit 2
 fi
 
 # Paths in the form `git worktree list` prints them (C:/... on Windows), so they compare.
@@ -197,15 +206,26 @@ retire_marked() {
   esac
 
   echo "retire $name (${br:-detached}, $state)"
-  [ -n "$TROOT" ] && [ -d "$TROOT/$name" ] && run rm -rf "$TROOT/$name"
-  if [ -e "$wt/external" ]; then
-    run cmd //c rmdir "$(cygpath -w "$wt/external")"
+  # The junction goes first, before any recursive delete runs near it.
+  local main_ext=0
+  [ -n "$(ls -A "$MAIN/external" 2>/dev/null | head -1)" ] && main_ext=1
+  if [ -e "$wt/external" ] || [ -L "$wt/external" ]; then
+    if command -v cmd >/dev/null 2>&1; then
+      run cmd //c rmdir "$(cygpath -w "$wt/external")"
+    else   # a symlink (rm never follows it) or an empty directory
+      run rm -f "$wt/external" 2>/dev/null || run rmdir "$wt/external"
+    fi
   fi
-  [ -d "$wt/target" ] && run rm -rf "$wt/target"
-  [ -d "$LANE_ROOT/logs/$name" ] && run rm -rf "$LANE_ROOT/logs/$name"
-  if [ $DRY -eq 0 ] && [ -e "$wt/external" ]; then
+  if [ $DRY -eq 0 ] && { [ -e "$wt/external" ] || [ -L "$wt/external" ]; }; then
     echo "  external/ is still there; stopping before git removes the worktree" >&2; skipped=$((skipped+1)); return
   fi
+  if [ $main_ext -eq 1 ] && [ -z "$(ls -A "$MAIN/external" 2>/dev/null | head -1)" ]; then
+    echo "  the main checkout's external/ is gone or empty after unlinking $name's; stopping" >&2
+    skipped=$((skipped+1)); return
+  fi
+  [ -n "$TROOT" ] && [ -d "$TROOT/$name" ] && run rm -rf "$TROOT/$name"
+  [ -d "$wt/target" ] && run rm -rf "$wt/target"
+  [ -d "$LANE_ROOT/logs/$name" ] && run rm -rf "$LANE_ROOT/logs/$name"
   [ -n "$locked" ] && run git worktree unlock "$wt"
   local rm_args=(remove); [ $FORCE -eq 1 ] && rm_args+=(--force)
   if ! run git worktree "${rm_args[@]}" "$wt"; then
@@ -245,5 +265,5 @@ else
   for n in "${NAMES[@]}"; do retire "$n"; done
 fi
 
-[ $DRY -eq 1 ] || git worktree prune
+[ $DRY -eq 1 ] || [ $PRUNE -eq 0 ] || git worktree prune
 if [ $DRY -eq 1 ]; then echo "dry run: would retire $retired, skip $skipped"; else echo "retired $retired, skipped $skipped"; fi

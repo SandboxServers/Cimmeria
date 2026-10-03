@@ -116,6 +116,21 @@ class CleanRebaseTests(RebaseCase):
         self.assertEqual(sh("git", "status", "--porcelain", cwd=self.wt), "")
         self.assert_no_scratch_left()
 
+    def test_other_worktree_entries_are_not_pruned(self):
+        """A prune deletes every entry whose path this git cannot resolve; on 2026-10-03
+        live worktrees lost their entries that way. Only the scratch entry may go."""
+        stale = self.repo.main / ".git" / "worktrees" / "elsewhere"
+        stale.mkdir(parents=True)
+        (stale / "gitdir").write_text("/no/such/place/.git\n")
+        (stale / "commondir").write_text("../..\n")
+        (stale / "HEAD").write_text("ref: refs/heads/main\n")
+        self.repo.commit(self.wt, {"new.rs": "fn n() {}\n"}, "feature")
+        self.main_moves({"other.rs": "fn o() {}\n"})
+        self.assertEqual(self.run_tool(), (0, ""))
+        self.assertTrue(stale.exists())
+        entries = sorted(p.name for p in stale.parent.iterdir())
+        self.assertEqual(entries, ["elsewhere", "feat"], "the scratch entry is removed, nothing else")
+
     def test_up_to_date_branch_is_left_alone(self):
         self.repo.commit(self.wt, {"new.rs": "x\n"})
         before = self.head()
