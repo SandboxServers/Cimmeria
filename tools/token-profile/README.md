@@ -68,7 +68,7 @@ The layers stay separate:
 | Context pressure | Context per request and peak per transcript, requests per transcript, the first request of each transcript by agent type (static context), cache writes by idle gap, and compactions | tokens |
 | Tool results and exposure | Result characters and exposure (characters x later requests) by tool, by command or path fingerprint, and by MCP server | characters, never USD |
 | Cost per merged PR | For PRs merged in the window, each PR's whole attributed spend, its distribution and top-10% share, the unattributed share of window spend, and the method mix. Unattributed spend is reported, never spread onto PRs | USD |
-| Cache-policy simulation | Each transcript replayed under a 5m and a 1h TTL over its real idle gaps, by agent type, with a calibration ratio against the observed cache cost | USD |
+| Cache-policy simulation | Each transcript replayed under a 5m and a 1h TTL over its real idle gaps, by agent type, with a calibration ratio against the observed cache cost and the 1h-minus-5m range over the model's least certain input, the cache read on a cold request | USD |
 
 Every distribution gives n, p50, p75, p90, p95, p99, max and mean. Every report opens with its stamp: window, profiler commit, report commit, price table, Claude Code versions, models, schema version, unknown-record counts, and how many values the privacy filter rejected.
 
