@@ -21,6 +21,9 @@
 //!   injects the DLL (#985); default: beside this executable.
 //! - `CIMMERIA_LAB_BRIDGE_BIND` / `_PORT`, `CIMMERIA_LAB_UPLOAD_ENDPOINT`
 //!   — written into the session file the supervisor generates.
+//! - `CIMMERIA_LAB_SERVER_URL`, `CIMMERIA_LAB_TELEMETRY` — where each
+//!   launch mints its telemetry token (default: the client's login server)
+//!   and whether a failed mint stops the launch (`supervisor::telemetry_session`).
 //! - `CIMMERIA_LAB_INSTANCE` — names this supervisor's client (`p2`) so a
 //!   second `cimmeria-lab` can drive a second client: its own session file,
 //!   `lab-account.<name>.json`, logs and (with `_PORT`) bridge port.

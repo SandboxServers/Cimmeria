@@ -7,6 +7,8 @@
 //!   fresh token; read `lab-account.json`.
 //! - [`telemetry_session`] — mint the launch's dev-session telemetry token
 //!   (`session_kind = lab`) so the client's events reach SigNoz.
+//! - [`login_servers`] — the client's `LoginInternal.lua` server rows,
+//!   which name the server to mint from.
 //! - [`process`] — native launch/inject/status/terminate + window
 //!   resolution by PID.
 //! - [`heartbeat`] — the staleness watchdog decision (pure, tested).
@@ -33,6 +35,7 @@ pub mod heartbeat;
 pub mod input;
 pub mod instance;
 pub mod keys;
+pub mod login_servers;
 pub mod process;
 pub mod recovery;
 pub mod screenshot;
@@ -338,7 +341,7 @@ impl Supervisor {
     /// Launch (or relaunch) the client: mint a token, write the session
     /// file, launch+inject, and re-point the bridge. Shared by `start`
     /// and the watchdog's recovery path.
-    async fn launch_client(&self, _server_override: Option<String>) -> Result<u32, String> {
+    async fn launch_client(&self, server_override: Option<String>) -> Result<u32, String> {
         // A client launched without a usable display dies on an error box
         // (and the watchdog relaunches it); refuse with the reason instead.
         tokio::task::spawn_blocking(display::ensure_display_for_launch)
@@ -363,11 +366,26 @@ impl Supervisor {
         let token = session_file::generate_token();
         let inst = self.config.instance.as_deref();
         let session_path = instance::session_path(&install_dir, inst);
-        let telemetry = telemetry_session::grant_for_launch_cached(
-            &self.config.telemetry,
-            &session_path.with_file_name("lab-telemetry-grant.json"),
-        )
-        .await;
+        // Mint from the server the client logs into: the server row the
+        // login flow will pick (override, else lab-account.json).
+        let server = server_override.or_else(|| self.lab_account().map(|a| a.server));
+        let telemetry_cfg = self
+            .config
+            .telemetry
+            .for_launch(&install_dir, server.as_deref());
+        let telemetry = match &telemetry_cfg {
+            Ok(cfg) => {
+                telemetry_session::grant_for_launch_cached(
+                    cfg,
+                    &session_path.with_file_name("lab-telemetry-grant.json"),
+                )
+                .await
+            }
+            Err(why) => {
+                telemetry_session::TelemetryGrant::unavailable(why.clone(), &self.config.telemetry)
+            }
+        };
+        self.config.telemetry.check(&telemetry)?;
         let mut session =
             session_file::build_session(&token, &self.config.bind, self.config.port, &telemetry);
         if let Some(name) = inst {

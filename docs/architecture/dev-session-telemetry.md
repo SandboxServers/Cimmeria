@@ -150,15 +150,18 @@ kept.
 
 ## Lab sessions
 
-The lab supervisor mints from `CIMMERIA_LAB_SERVER_URL` (default
-`http://127.0.0.1:8443`) with `session_kind = "lab"`, and writes the
+The lab supervisor mints with `session_kind = "lab"` from the login URL
+of the client's server row in `LoginInternal.lua`, the same login port a
+launcher mints from (`CIMMERIA_LAB_SERVER_URL` overrides it), and writes the
 token, the server's `session_id` and the upload endpoint into the
 session file (`CIMMERIA_LAB_UPLOAD_ENDPOINT` overrides the endpoint).
 The lab bridge's own per-launch token stays in the `lab` block and never
 leaves the machine: the telemetry token is a different value. A failed
-mint does not stop the launch; the file then carries an empty token (the
-bridge still starts, because `telemetry.enabled` stays true) and
-`lab_client_start` reports why under `telemetry`.
+mint stops the launch with the reason. With
+`CIMMERIA_LAB_TELEMETRY=optional` the launch goes ahead instead; the file
+then carries an empty token (the bridge still starts, because
+`telemetry.enabled` stays true) and `lab_client_start` reports why under
+`telemetry`.
 
 ## Session lifecycle
 

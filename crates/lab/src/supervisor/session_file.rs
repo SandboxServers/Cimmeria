@@ -269,7 +269,11 @@ mod tests {
     /// the bridge never starts), with an empty token the server refuses.
     #[test]
     fn a_failed_mint_keeps_the_bridge_reachable() {
-        let grant = TelemetryGrant::unavailable("down".into(), &TelemetryConfig::default());
+        let cfg = TelemetryConfig {
+            server_url: "http://127.0.0.1:8443".into(),
+            ..TelemetryConfig::default()
+        };
+        let grant = TelemetryGrant::unavailable("down".into(), &cfg);
         let s = build_session(
             &"c".repeat(64),
             DEFAULT_BRIDGE_BIND,

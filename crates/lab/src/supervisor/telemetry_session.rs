@@ -13,17 +13,27 @@
 //! token (the `lab` block) is still generated locally and never leaves the
 //! machine; the double activation gate is unchanged.
 //!
-//! A failed mint never stops a launch: the bridge works without telemetry.
-//! The session file then carries an empty token (`telemetry.enabled` stays
-//! true, or the DLL would park before starting the bridge), the uploads are
-//! refused, and `lab_client_start` reports why.
+//! The mint goes to the login server the client will log into, read from
+//! the install's `LoginInternal.lua` ([`super::login_servers`]): its login
+//! port serves `/api/auth/dev-session` too, exactly as for the launcher.
+//! The old default, a local admin API on `127.0.0.1:8443`, minted nothing
+//! for a lab client playing on the colo, and the launch went ahead with
+//! telemetry silently off (2026-10-03).
+//!
+//! A failed mint **stops the launch** with the reason, because a lab
+//! session must reach SigNoz. `CIMMERIA_LAB_TELEMETRY=optional` lets it go
+//! ahead without uploads for offline work: the session file then carries
+//! an empty token (`telemetry.enabled` stays true, or the DLL would park
+//! before starting the bridge), the uploads are refused, and
+//! `lab_client_start` reports why.
 //!
 //! # Environment
 //!
 //! | Variable | Default | Meaning |
 //! |---|---|---|
-//! | `CIMMERIA_LAB_SERVER_URL` | `http://127.0.0.1:8443` | The cimmeria-server admin API to mint from. A trailing `/api` is accepted. |
+//! | `CIMMERIA_LAB_SERVER_URL` | unset: the login URL of the client's server row in `LoginInternal.lua` | The server to mint from: a login port or an admin API. A trailing `/api` is accepted. |
 //! | `CIMMERIA_LAB_UPLOAD_ENDPOINT` | unset | Overrides the upload endpoint the server returns (e.g. when the lab reaches the server by another address than the one it advertises). |
+//! | `CIMMERIA_LAB_TELEMETRY` | `required` | `optional` launches without uploads when the mint fails. |
 
 use std::time::Duration;
 
@@ -31,9 +41,6 @@ use std::path::Path;
 
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
-
-/// Admin API of a server on this machine.
-pub const DEFAULT_SERVER_URL: &str = "http://127.0.0.1:8443";
 
 /// The `install_id` every lab session mints under. The server's per-install
 /// mint quota then counts lab relaunches on their own.
@@ -45,17 +52,23 @@ const MINT_TIMEOUT: Duration = Duration::from_secs(5);
 /// Where the supervisor mints telemetry tokens.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct TelemetryConfig {
-    /// Admin API base (`CIMMERIA_LAB_SERVER_URL`).
+    /// Server base to mint from (`CIMMERIA_LAB_SERVER_URL`). Empty means
+    /// "the client's login server", filled in per launch by
+    /// [`TelemetryConfig::for_launch`].
     pub server_url: String,
     /// Upload endpoint override (`CIMMERIA_LAB_UPLOAD_ENDPOINT`).
     pub upload_endpoint_override: Option<String>,
+    /// Refuse a launch whose mint failed (`CIMMERIA_LAB_TELEMETRY`,
+    /// anything but `optional`).
+    pub required: bool,
 }
 
 impl Default for TelemetryConfig {
     fn default() -> Self {
         Self {
-            server_url: DEFAULT_SERVER_URL.to_string(),
+            server_url: String::new(),
             upload_endpoint_override: None,
+            required: true,
         }
     }
 }
@@ -64,9 +77,35 @@ impl TelemetryConfig {
     pub fn from_env() -> Self {
         let non_empty = |k: &str| std::env::var(k).ok().filter(|v| !v.trim().is_empty());
         Self {
-            server_url: non_empty("CIMMERIA_LAB_SERVER_URL")
-                .unwrap_or_else(|| DEFAULT_SERVER_URL.to_string()),
+            server_url: non_empty("CIMMERIA_LAB_SERVER_URL").unwrap_or_default(),
             upload_endpoint_override: non_empty("CIMMERIA_LAB_UPLOAD_ENDPOINT"),
+            required: !non_empty("CIMMERIA_LAB_TELEMETRY")
+                .is_some_and(|v| v.trim().eq_ignore_ascii_case("optional")),
+        }
+    }
+
+    /// This config with `server_url` set for one launch: the override when
+    /// there is one, else the login URL of server row `server` in the
+    /// install's `LoginInternal.lua`.
+    pub fn for_launch(&self, install_dir: &Path, server: Option<&str>) -> Result<Self, String> {
+        if !self.server_url.trim().is_empty() {
+            return Ok(self.clone());
+        }
+        let url = super::login_servers::login_url(install_dir, server)?;
+        Ok(Self {
+            server_url: url,
+            ..self.clone()
+        })
+    }
+
+    /// `Err` with the reason when `grant` has no token and telemetry is
+    /// required, so the launch stops instead of running blind.
+    pub fn check(&self, grant: &TelemetryGrant) -> Result<(), String> {
+        match (&grant.unavailable, self.required) {
+            (Some(why), true) => Err(format!(
+                "lab telemetry unavailable, not launching: {why}                  (set CIMMERIA_LAB_TELEMETRY=optional to launch without uploads)"
+            )),
+            _ => Ok(()),
         }
     }
 }
@@ -222,7 +261,7 @@ pub async fn grant_for_launch(cfg: &TelemetryConfig) -> TelemetryGrant {
             tracing::warn!(
                 server = %cfg.server_url,
                 reason = %why,
-                "lab telemetry unavailable; launching without uploads"
+                "lab telemetry unavailable"
             );
             TelemetryGrant::unavailable(why, cfg)
         }
@@ -291,7 +330,7 @@ pub async fn grant_for_launch_cached(cfg: &TelemetryConfig, cache: &Path) -> Tel
             tracing::warn!(
                 server = %cfg.server_url,
                 reason = %why,
-                "lab telemetry unavailable; launching without uploads"
+                "lab telemetry unavailable"
             );
             TelemetryGrant::unavailable(why, cfg)
         }

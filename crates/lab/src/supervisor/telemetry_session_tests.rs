@@ -75,7 +75,7 @@ fn a_minted_grant_uses_the_server_endpoint_unless_overridden() {
 fn an_unavailable_grant_says_why_and_points_at_the_configured_server() {
     let cfg = TelemetryConfig {
         server_url: "http://192.0.2.1:8443/api".into(),
-        upload_endpoint_override: None,
+        ..TelemetryConfig::default()
     };
     let g = TelemetryGrant::unavailable("refused".into(), &cfg);
     assert!(g.token.is_empty());
@@ -126,7 +126,7 @@ async fn grant_for_launch_mints_from_the_configured_server() {
     .await;
     let cfg = TelemetryConfig {
         server_url: base,
-        upload_endpoint_override: None,
+        ..TelemetryConfig::default()
     };
     let g = grant_for_launch(&cfg).await;
     let req = server.await.unwrap();
@@ -151,7 +151,7 @@ async fn a_refused_mint_is_reported_not_fatal() {
     .await;
     let cfg = TelemetryConfig {
         server_url: base,
-        upload_endpoint_override: None,
+        ..TelemetryConfig::default()
     };
     let g = grant_for_launch(&cfg).await;
     server.await.unwrap();
@@ -181,7 +181,7 @@ async fn a_valid_cached_token_is_reused_without_minting() {
     let cache = dir.path().join("lab-telemetry-grant.json");
     let cfg = TelemetryConfig {
         server_url: "http://127.0.0.1:9".into(),
-        upload_endpoint_override: None,
+        ..TelemetryConfig::default()
     };
     let cached = CachedMint {
         server_url: cfg.server_url.clone(),
@@ -201,7 +201,7 @@ fn a_stale_or_foreign_cached_token_is_not_reused() {
     let cache = dir.path().join("g.json");
     let cfg = TelemetryConfig {
         server_url: "http://a:8443".into(),
-        upload_endpoint_override: None,
+        ..TelemetryConfig::default()
     };
     let now = 1_000_000_000;
     let write = |server: &str, exp: i64| {
@@ -231,7 +231,7 @@ async fn a_fresh_mint_is_cached_for_the_next_launch() {
     let cache = dir.path().join("lab-telemetry-grant.json");
     let cfg = TelemetryConfig {
         server_url: base,
-        upload_endpoint_override: None,
+        ..TelemetryConfig::default()
     };
     let g = grant_for_launch_cached(&cfg, &cache).await;
     server.await.unwrap();
@@ -240,4 +240,63 @@ async fn a_fresh_mint_is_cached_for_the_next_launch() {
         cached_mint(&cache, &cfg, now_ms()).map(|m| m.session_id),
         Some("sid-2".into())
     );
+}
+
+/// No `CIMMERIA_LAB_SERVER_URL`: the launch mints from the login URL of the
+/// client's server row, not a local admin API (the 2026-10-03 lab session
+/// on the colo minted from `127.0.0.1:8443` and uploaded nothing).
+#[test]
+fn for_launch_mints_from_the_clients_login_server() {
+    let dir = tempfile::tempdir().unwrap();
+    let lua = super::super::login_servers::login_internal_path(dir.path());
+    std::fs::create_dir_all(lua.parent().unwrap()).unwrap();
+    std::fs::write(
+        &lua,
+        "    LoginMod.servers[\"Cimmeria\"] = \"http://play.example:8081\"
+",
+    )
+    .unwrap();
+
+    let cfg = TelemetryConfig::default()
+        .for_launch(dir.path(), Some("Cimmeria"))
+        .unwrap();
+    assert_eq!(cfg.server_url, "http://play.example:8081");
+    assert_eq!(
+        dev_session_url(&cfg.server_url),
+        "http://play.example:8081/api/auth/dev-session"
+    );
+
+    let pinned = TelemetryConfig {
+        server_url: "http://10.0.0.2:8443".into(),
+        ..TelemetryConfig::default()
+    };
+    assert_eq!(
+        pinned
+            .for_launch(dir.path(), Some("Cimmeria"))
+            .unwrap()
+            .server_url,
+        "http://10.0.0.2:8443"
+    );
+
+    let empty = tempfile::tempdir().unwrap();
+    assert!(TelemetryConfig::default()
+        .for_launch(empty.path(), None)
+        .is_err());
+}
+
+/// A launch without a token is refused unless telemetry is optional.
+#[test]
+fn a_failed_mint_stops_the_launch_unless_telemetry_is_optional() {
+    let cfg = TelemetryConfig::default();
+    let failed = TelemetryGrant::unavailable("connection refused".into(), &cfg);
+    let err = cfg.check(&failed).unwrap_err();
+    assert!(err.contains("connection refused"), "{err}");
+    assert!(err.contains("CIMMERIA_LAB_TELEMETRY=optional"), "{err}");
+
+    let optional = TelemetryConfig {
+        required: false,
+        ..TelemetryConfig::default()
+    };
+    assert!(optional.check(&failed).is_ok());
+    assert!(cfg.check(&TelemetryGrant::minted(response(), &cfg)).is_ok());
 }
