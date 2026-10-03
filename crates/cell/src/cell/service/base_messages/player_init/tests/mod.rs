@@ -3,10 +3,10 @@
 //! file under the size cap; pure test-code move (no logic changes).
 
 #[cfg(test)]
+mod auto_cycle_starts_off;
+#[cfg(test)]
 mod reload_on_activate;
 #[cfg(test)]
 mod relog_mission_resurrection;
-#[cfg(test)]
-mod state_field_restore;
 #[cfg(test)]
 mod system_options_assignment;

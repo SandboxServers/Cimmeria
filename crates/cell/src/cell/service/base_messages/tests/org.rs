@@ -231,7 +231,6 @@ async fn init_player_state_replays_the_squad() {
             active_bandolier_slot: 0,
             bandolier_items: vec![],
             system_options: cimmeria_entity::cell_entity::SystemOptions::default(),
-            state_field: 0,
             access_level: 0,
             known_stargates: vec![],
             tree_progress: Default::default(),

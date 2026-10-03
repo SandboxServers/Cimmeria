@@ -231,16 +231,10 @@ pub async fn handle_respawn(
 
     // Hard-reset state flags + their refcounts. A raw `state_field = 0`
     // would clear the bits but leave stale counters, which the next
-    // ref-counted unset would interpret as still-positive.
-    //
-    // The persisted preference bits (`BSF_AutoCycling`) survive the reset:
-    // they are a player setting, not combat state, and a relog keeps them
-    // too. `BSF_AutoCycling` is a single-source flag that bypasses the
-    // ref-counted helpers, so the raw `|=` is the same write
-    // `InitPlayerState` uses to restore it.
-    let preference_bits = entity.state_field & crate::cell::combat::PERSISTED_STATE_FIELD_MASK;
+    // ref-counted unset would interpret as still-positive. `BSF_AutoCycling`
+    // goes with the rest: the death burst already stopped the dying player's
+    // own loop, and a respawn, like a relog, starts with it off.
     entity.clear_all_state_flags();
-    entity.state_field |= preference_bits;
     entity.abilities.clear_all_cooldowns();
 
     // Re-establish the BSF_IN_COMBAT ↔ threatened_mobs invariant. The

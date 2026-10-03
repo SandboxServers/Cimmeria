@@ -24,7 +24,7 @@ The server handles all combat resolution; the client sends ability requests and 
 | QR hit/miss/crit calculation | DONE | Beta distribution model in `DamageCalc` |
 | Damage pipeline (base -> resist -> QR -> AF -> absorb) | DONE | `calculateDamage()` |
 | Warmup / cooldown timers | DONE | Timer-based with client sync |
-| Auto-cycle (auto-attack) | DONE | Loops ability on cooldown expiry; button state persists across relog via `sgw_player.state_field`, saved on every on/off change including server-side stops (#412 — see [state-field-bits.md](../architecture/state-field-bits.md)) |
+| Auto-cycle (auto-attack) | DONE | Loops ability on cooldown expiry; starts off on every login and respawn; nothing is saved (owner decision 2026-10-03, reversing #412 — see [state-field-bits.md](../architecture/state-field-bits.md)) |
 | Effect application / removal | DONE | `EffectInstance` class |
 | Death / revive | DONE | `PLAYER_STATE_Dead` flag, `onDead()` / `onRevived()` |
 | Crouch / cover stance | PARTIAL | Cover is a 10-60% damage reduction rated by the node, when it faces the attacker (NA32, see [Cover as damage reduction](#cover-as-damage-reduction-na32)); crouch terms not read yet |

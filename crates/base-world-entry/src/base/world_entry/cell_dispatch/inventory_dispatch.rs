@@ -4,8 +4,7 @@
 //! [`super::handle_cell_message`] match. These route inventory mutations and
 //! per-player option/state persistence into the existing
 //! [`super::super::methods`] handlers and the sibling
-//! [`super::bandolier`] / [`super::system_options`] / [`super::state_field`]
-//! modules.
+//! [`super::bandolier`] / [`super::system_options`] modules.
 
 use std::collections::HashMap;
 use std::net::SocketAddr;
@@ -24,7 +23,7 @@ use super::super::methods::{
     handle_repair_inventory_item, handle_repair_inventory_items, handle_use_inventory_item,
     send_full_inventory_resync,
 };
-use super::{bandolier, position, state_field, system_options, DispatchCtx};
+use super::{bandolier, position, system_options, DispatchCtx};
 
 /// Route the inventory / bandolier / persisted-options family of
 /// `CellToBaseMsg`.
@@ -213,10 +212,6 @@ pub(super) async fn route(msg: CellToBaseMsg, ctx: &DispatchCtx<'_>) {
             auto_reload,
             reload_on_activate,
         } => system_options_update(player_id, auto_reload, reload_on_activate, ctx.db_pool).await,
-        CellToBaseMsg::StateFieldUpdate {
-            player_id,
-            state_field,
-        } => state_field_update(player_id, state_field, ctx.db_pool).await,
         CellToBaseMsg::PersistPosition {
             player_id,
             world_name,
@@ -529,15 +524,6 @@ pub(super) async fn system_options_update(
 ) {
     system_options::persist_system_options(player_id, auto_reload, reload_on_activate, db_pool)
         .await;
-}
-
-/// `CellToBaseMsg::StateFieldUpdate`.
-pub(super) async fn state_field_update(
-    player_id: i32,
-    state_field: u32,
-    db_pool: &Option<Arc<PgPool>>,
-) {
-    state_field::persist_state_field(player_id, state_field, db_pool).await;
 }
 
 /// `CellToBaseMsg::RefreshAppearance`.

@@ -12,7 +12,7 @@
 //! The cell owns the live position (movement validation writes it on every
 //! accepted client move) and sends this once, from the `DisconnectEntity`
 //! arm, before the entity is torn down. The base owns the DB write. Same
-//! "cell mutates in memory, base persists" split as `StateFieldUpdate`.
+//! "cell mutates in memory, base persists" split as `SystemOptionsUpdate`.
 //!
 //! Columns written: `world_location`, `world_id` (resolved from
 //! `resources.worlds` by name) and `pos_x` / `pos_y` / `pos_z` — the same

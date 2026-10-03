@@ -39,29 +39,15 @@ pub const BSF_DEAD: u32 = 1 << BSF_DEAD_BIT;
 /// `cimmeria_cell::cell::service::ticks::auto_cycle_tick` for the driver
 /// loop.
 ///
+/// Not persisted: every login starts with the loop off (owner decision
+/// 2026-10-03). #412 had saved it to `sgw_player.state_field` as a player
+/// preference, but the server clears it on every kill, so a saved "on" was
+/// a loop the player had already watched switch off; and the legacy
+/// `SGWBeing.def` declares `bStateField` `CELL_PUBLIC` with no
+/// `<Persistent/>`. No `state_field` bit is persisted.
+///
 /// From python `Atrea.enums.BSF_AutoCycling = 1`.
 pub const BSF_AUTO_CYCLING: u32 = 1 << 1;
-
-/// The subset of `state_field` bits that persist across logins.
-///
-/// `state_field` is mostly transient combat state — `BSF_Dead`,
-/// `BSF_InCombat`, `BSF_MovementLock` all describe the current fight and
-/// must reset on world entry (relog is a fresh combat slate; see the
-/// cooldown-wipe rationale in PR #410). `BSF_AutoCycling` is the
-/// exception: #412 keeps it across sessions as a player preference. That
-/// choice is ours, not proven original behaviour: the legacy
-/// `SGWBeing.def` declares `bStateField` `CELL_PUBLIC` with no
-/// `<Persistent/>`. Every transition of it is saved through
-/// `CellToBaseMsg::StateFieldUpdate` (`send_auto_cycle_state` in
-/// cell-combat) and `InitPlayerState` restores it. Saving every transition,
-/// not just the button press, keeps the restored value equal to what the
-/// button last showed.
-///
-/// Both the cell-side send site and the base-side DB write mask with
-/// this constant, so growing the persisted set is a one-line change
-/// here — and a transient bit can never leak into `sgw_player.state_field`
-/// even if a send site passes an unmasked value. (#412)
-pub const PERSISTED_STATE_FIELD_MASK: u32 = BSF_AUTO_CYCLING;
 
 /// `BSF_Crouching` mask, set and cleared by the `setCrouched` cell method.
 /// From python `Atrea.enums.BSF_Crouching = 2`.

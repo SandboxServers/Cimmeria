@@ -239,7 +239,6 @@ pub async fn handle_on_client_ready(
         active_bandolier_slot,
         bandolier_items,
         system_options,
-        state_field,
         (known_stargates, tree_progress, level, looted_containers),
         body_set,
     ) = if let Some(pool) = db_pool {
@@ -254,17 +253,13 @@ pub async fn handle_on_client_ready(
                     None
                 }
             };
-        let (slot, opts, state_field, known, body_set) = match row {
+        let (slot, opts, known, body_set) = match row {
             Some(r) => (
                 r.bandolier_slot,
                 cimmeria_entity::cell_entity::SystemOptions {
                     auto_reload: r.auto_reload,
                     reload_on_activate: r.reload_on_activate,
                 },
-                // Stored masked (PERSISTED_STATE_FIELD_MASK + the
-                // schema's non-negative CHECK), so the lossless cast
-                // back to the in-memory u32 bitmask is safe.
-                r.state_field as u32,
                 (
                     r.known_stargates,
                     cimmeria_entity::cell_entity::TreeProgress {
@@ -292,7 +287,6 @@ pub async fn handle_on_client_ready(
                 (
                     0,
                     cimmeria_entity::cell_entity::SystemOptions::default(),
-                    0,
                     (Vec::new(), Default::default(), 1, Vec::new()),
                     None,
                 )
@@ -305,13 +299,12 @@ pub async fn handle_on_client_ready(
         )
         .await;
 
-        (slot, items, opts, state_field, known, body_set)
+        (slot, items, opts, known, body_set)
     } else {
         (
             0,
             Vec::new(),
             cimmeria_entity::cell_entity::SystemOptions::default(),
-            0,
             (Vec::new(), Default::default(), 1, Vec::new()),
             None,
         )
@@ -355,7 +348,6 @@ pub async fn handle_on_client_ready(
                 active_bandolier_slot,
                 bandolier_items,
                 system_options,
-                state_field,
                 access_level,
                 known_stargates,
                 tree_progress,

@@ -15,7 +15,9 @@ pub mod trade;
 
 // Lower crates, at the `cell::` paths the moved code names them by.
 pub(crate) use cimmeria_cell_catalog::cell::spawner;
-pub(crate) use cimmeria_cell_combat::cell::{abilities, combat};
+pub(crate) use cimmeria_cell_combat::cell::abilities;
+#[cfg(test)]
+pub(crate) use cimmeria_cell_combat::cell::combat;
 pub(crate) use cimmeria_cell_content::cell::{content, missions, ring_transport};
 pub(crate) use cimmeria_cell_world::cell::{
     arrival, org_creation, playtest_friction, space_manager, squad,

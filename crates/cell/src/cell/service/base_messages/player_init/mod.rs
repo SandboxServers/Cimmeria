@@ -79,7 +79,6 @@ pub(in crate::cell::service) async fn handle_init_player_state(
     active_bandolier_slot: i32,
     bandolier_items: Vec<(i32, cimmeria_entity::cell_entity::BandolierItem)>,
     system_options: cimmeria_entity::cell_entity::SystemOptions,
-    state_field: u32,
     access_level: u32,
     tx: &mpsc::Sender<CellToBaseMsg>,
     space_mgr: &mut SpaceManager,
@@ -220,31 +219,6 @@ pub(in crate::cell::service) async fn handle_init_player_state(
         // cooldown state during the initial-load burst — one less thing
         // the client has to chew on. (PR #410)
         entity.abilities.clear_all_cooldowns();
-
-        // Restore the persisted user-preference state bits (#412). The
-        // mask strips anything a corrupt / hand-edited row might carry —
-        // restoring a saved BSF_Dead or BSF_MovementLock would spawn the
-        // player frozen, the exact "relog is a fresh combat slate"
-        // violation the cooldown wipe above exists to prevent. Raw `|=`
-        // because BSF_AutoCycling is a single-source flag that bypasses
-        // the ref-counted helpers (see cell::combat::auto_cycle's module
-        // doc). When the bit is set we also re-arm `abilities.auto_cycle`
-        // so the player's first attack of the new session enters
-        // `arm_auto_cycle` and the server-driven re-fire loop starts —
-        // the loop's ability stash (`auto_cycle_ability_id`) stays None
-        // until that first commit, by design.
-        let restored_state = state_field & crate::cell::combat::PERSISTED_STATE_FIELD_MASK;
-        if restored_state != 0 {
-            entity.state_field |= restored_state;
-            if restored_state & crate::cell::combat::BSF_AUTO_CYCLING != 0 {
-                entity.abilities.auto_cycle = true;
-            }
-            tracing::info!(
-                entity_id,
-                state_field = restored_state,
-                "Restored persisted state_field preference bits"
-            );
-        }
     }
 
     // Passive abilities (`EF_AlwaysPersist` effects, e.g. 2852 Heed Our
@@ -256,40 +230,6 @@ pub(in crate::cell::service) async fn handle_init_player_state(
         &abilities,
         crate::cell::effects::passives::PassiveChange::Learned,
     );
-
-    // Re-broadcast the restored state field so the client's UI reflects
-    // the preference immediately (the auto-cycle gun-icon button
-    // highlight listens on the BSF_AutoCycling transition — see the
-    // Ghidra note on `BSF_AUTO_CYCLING`). The client initialises its
-    // cached state_field to 0, so without this send the bit is armed
-    // server-side but the button looks off until the first in-session
-    // toggle. Sent post-onClientReady for the same ordering reason as
-    // the onActiveSlotUpdate resync below.
-    {
-        // Broadcast the FULL current state_field (the client's XOR-delta
-        // dispatcher diffs against its cached value), but gate the send
-        // on a preference bit actually having been restored — a fresh
-        // character with state_field 0 needs no packet.
-        let (full_state, restored) = space_mgr
-            .get_entity(entity_id)
-            .map(|e| {
-                (
-                    e.state_field,
-                    e.state_field & crate::cell::combat::PERSISTED_STATE_FIELD_MASK,
-                )
-            })
-            .unwrap_or((0, 0));
-        if restored != 0 {
-            crate::cell::abilities::send_entity_method(
-                entity_id,
-                crate::mercury::method_idx::ON_STATE_FIELD_UPDATE,
-                full_state.to_le_bytes().to_vec(),
-                tx,
-                space_mgr,
-            )
-            .await;
-        }
-    }
 
     // Resend active mission state to the client so the journal UI is
     // populated with the player's in-progress missions immediately on

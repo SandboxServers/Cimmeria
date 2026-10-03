@@ -47,7 +47,6 @@ async fn init_player_state_assigns_system_options() {
         0,
         vec![],
         hydrated.clone(),
-        0, // state_field
         0, // access_level
         &tx,
         &mut mgr,
@@ -89,7 +88,6 @@ async fn init_player_state_assigns_access_level() {
         0,
         vec![],
         SystemOptions::default(),
-        0, // state_field
         GM_LEVEL,
         &tx,
         &mut mgr,
@@ -137,7 +135,6 @@ async fn init_player_state_seeds_stats_from_archetype() {
         0,
         vec![],
         SystemOptions::default(),
-        0, // state_field
         0, // access_level
         &tx,
         &mut mgr,
@@ -218,7 +215,6 @@ async fn init_player_state_resends_active_slot_update_for_resync() {
         SERVER_SLOT,
         vec![], // no bandolier items (slot can still be active over an empty slot)
         SystemOptions::default(),
-        0, // state_field
         0, // access_level
         &tx,
         &mut mgr,
@@ -286,7 +282,6 @@ async fn init_player_state_assigns_default_values_explicitly() {
         0,
         vec![],
         SystemOptions::default(),
-        0, // state_field
         0, // access_level
         &tx,
         &mut mgr,

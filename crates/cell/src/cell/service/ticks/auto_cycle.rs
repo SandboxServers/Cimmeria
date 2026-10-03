@@ -323,5 +323,5 @@ mod duel_tests;
 mod range_tests;
 
 #[cfg(test)]
-#[path = "auto_cycle_persist_tests.rs"]
-mod persist_tests;
+#[path = "auto_cycle_press_tests.rs"]
+mod press_tests;

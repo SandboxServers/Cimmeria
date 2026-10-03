@@ -8,7 +8,7 @@
 //! - Colo session 2026-09-19 00:37 UTC, entity 2: after the reanchor the
 //!   server sent the reanchor burst, appearance/tint and the inventory
 //!   snapshot, and nothing else. The hotbar and journal were whatever the
-//!   fresh entity defaulted to, and the auto-cycle preference was gone.
+//!   fresh entity defaulted to.
 //! - Colo playtest 2026-09-28 (Castle, entity 2): the HEALTH/FOCUS
 //!   `onStatUpdate` and the `onStateFieldUpdate` went out *before* the
 //!   reanchor, to the pawn the client was about to destroy, and nothing
@@ -114,7 +114,7 @@ const STAT_OR_STATE_METHODS: [u16; 6] = [
 ];
 
 #[tokio::test]
-async fn same_world_respawn_replays_hotbar_active_slot_journal_and_preference_bits() {
+async fn same_world_respawn_replays_hotbar_active_slot_journal_and_state_field() {
     let mut mgr = make_mgr_with_player("Castle_CellBlock");
     if let Some(e) = mgr.get_entity_mut(1) {
         e.abilities.add_ability(592);
@@ -130,8 +130,8 @@ async fn same_world_respawn_replays_hotbar_active_slot_journal_and_preference_bi
                 optional: false,
             }],
         ));
-        // Died mid-fight with auto-cycle switched on. The combat bits go
-        // through the ref-counted helpers; the preference bit is single-source.
+        // Died mid-fight with auto-cycle still lit. The combat bits go
+        // through the ref-counted helpers; the auto-cycle bit is single-source.
         e.set_state_flag(BSF_DEAD);
         e.set_state_flag(BSF_MOVEMENT_LOCK);
         e.state_field |= BSF_AUTO_CYCLING;
@@ -144,9 +144,9 @@ async fn same_world_respawn_replays_hotbar_active_slot_journal_and_preference_bi
         .get_entity(1)
         .expect("cell entity survives same-world respawn");
     assert_eq!(
-        entity.state_field, BSF_AUTO_CYCLING,
-        "respawn must drop the combat bits but keep the persisted preference bit — \
-         a relog keeps it too, and the player did not ask to turn auto-cycle off"
+        entity.state_field, 0,
+        "respawn must drop every bit, auto-cycle included: like a relog, a respawn \
+         starts with the loop off (owner decision 2026-10-03)"
     );
     assert!(
         entity.state_flag_counts.is_empty(),
@@ -203,16 +203,16 @@ async fn same_world_respawn_replays_hotbar_active_slot_journal_and_preference_bi
         .collect();
     assert_eq!(
         post_state,
-        vec![BSF_AUTO_CYCLING],
-        "after the reanchor the client's cached state_field is 0 again, so the preserved \
-         preference bit must be re-broadcast once or the auto-cycle button stays unlit"
+        vec![0],
+        "after the reanchor the client's cached state_field is 0 again; one \
+         onStateFieldUpdate(0) keeps it in step and leaves the auto-cycle button unlit"
     );
 }
 
-/// With no preference bit set the post-reanchor state field is a plain 0,
+/// With only combat bits set the post-reanchor state field is a plain 0,
 /// sent once, as the login burst does. Nothing goes before the reanchor.
 #[tokio::test]
-async fn respawn_without_preference_bits_replays_a_zero_state_field_after_the_reanchor() {
+async fn respawn_with_only_combat_bits_replays_a_zero_state_field_after_the_reanchor() {
     let mut mgr = make_mgr_with_player("Castle_CellBlock");
     if let Some(e) = mgr.get_entity_mut(1) {
         e.abilities.add_ability(592);

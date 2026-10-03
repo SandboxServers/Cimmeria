@@ -14,8 +14,8 @@
 //! - `death` — ordered wire protocol burst when a target dies.
 //! - `deployable` — deployable abilities (Phase 0): the ground-point
 //!   launch, the fire that places the object, and its pulse tick.
-//! - `auto_cycle_state` — the broadcast-and-save exit every `BSF_AUTO_CYCLING`
-//!   transition goes through.
+//! - `auto_cycle_state` — the broadcast every `BSF_AUTO_CYCLING` transition
+//!   goes through.
 //! - `messaging` — entity-method routing (player vs witness) + dirty-stat flush.
 //! - `timer_update` — `onTimerUpdate` goes to the owning player's client only.
 //! - `loot_drop` — on-death loot generation + interaction-flag updates.
