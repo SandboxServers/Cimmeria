@@ -331,15 +331,19 @@ def build(out):
                                               "cacheReadInputTokens": 1, "cacheCreationInputTokens": 1,
                                               "webSearchRequests": 0, "costUSD": 12.5}}})
 
-    # Subagent: a worker on its own branch, 5m cache, one Read with a local path.
+    # Subagent: an in-process teammate, 5m cache, one Read with a local path. Its own git call in its
+    # worktree names the branch it works on (attribution.md § Work branch).
     s = Transcript(agent_id=AGENT, branch=WORKER_BRANCH)
     s.user_text(ts(2), "Implement the fixture packet", origin={"kind": "coordinator"}, isMeta=True)
     u = usage(6, 300, 200, 21000, 40000, 0)
     read = {"type": "tool_use", "id": "toolu_fixture_read", "name": "Read",
             "input": {"file_path": "C:\\Users\\Steve\\source\\projects\\Cimmeria\\.claude\\worktrees\\fx\\docs\\gap-analysis.md"}}
-    request(s, ts(2, 5), "req_S1", u, content=[read])
+    status = {"type": "tool_use", "id": "toolu_fixture_git", "name": "Bash",
+              "input": {"command": "git -C .claude/worktrees/fx status"}}
+    request(s, ts(2, 5), "req_S1", u, content=[read, status])
     expect("req_S1", "subagent_prompt", "R11", u, agent=AGENT)
     s.tool_result(ts(2, 10), "toolu_fixture_read", "y" * 20000)
+    s.tool_result(ts(2, 11), "toolu_fixture_git", f"On branch {WORKER_BRANCH}\nnothing to commit\n")
     u = usage(3, 900, 0, 61000, 20000, 0)
     request(s, ts(9, 0), "req_S2", u)  # 7 minutes idle: the 5m cache was rewritten
     expect("req_S2", "subagent_prompt", "R11", u, agent=AGENT)
@@ -354,6 +358,7 @@ def build(out):
         "toolu_fixture_bash": "cargo nextest",
         "toolu_fixture_gh": "gh pr",
         "toolu_fixture_read": "docs/gap-analysis.md",
+        "toolu_fixture_git": "git",
         "toolu_fixture_curl": "curl",
         "toolu_fixture_echo": "echo",
         "toolu_fixture_py": "python",

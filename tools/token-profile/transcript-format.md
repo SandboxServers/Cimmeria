@@ -143,7 +143,12 @@ Never store message text in `triggers`. `source_ref` holds the task id, the team
 - **MCP tools:** the tool name only. `mcp_server` is the segment after `mcp__`.
 - **Everything else:** NULL.
 
-`tool_calls.pr_ref` is the one other number taken from tool input: the PR a `gh pr create|merge|checks|view` command names (for `create`, the `/pull/N` in its result), or, for a background command, the PR its description names when exactly one `#N` appears. It feeds attribution rules A1 and A5 and is never shown as text.
+`tool_calls.pr_ref` is the one other number taken from tool input: the PR a `gh pr merge|checks|view|diff|comment|edit|review|ready|close` command names, the `/pull/N` in a `gh pr create` result (never a number in its title or body), or, for a background command, the PR its description names when exactly one `#N` appears. `tool_calls.pr_verb` keeps the `gh pr` subcommand (schema version 4), so attribution can tell a PR a call created from one it only read. Both feed attribution rules A1 and A5 and are never shown as text.
+
+Two more columns say where a call's work happened, for [attribution.md § Work branch](attribution.md#work-branch) (schema version 4). Neither reaches a report.
+
+- `tool_calls.worktree`: the one `.claude/worktrees/<name>` the call's `command`, `file_path`, `path`, `notebook_path` or `cwd` names, absolute or relative. A call naming two worktrees gets NULL.
+- `tool_calls.branch_seen`: for a foreground shell call whose command runs `git`, the one branch its output names (`git status`, `git status -sb`, `git commit`, `git checkout`/`switch`, `git rebase`, and `git push` ref updates under `To <remote>`). Output naming several branches gets NULL; fetch output (`From <remote>`) never counts. `git worktree list` output, and a branch paired with the worktree the same command names, go to `worktree_branches` instead.
 
 The TP-01b privacy scrubber runs over every report anyway; the fixtures in `fixtures/` carry hostile values, including hostile second words, that must never come through.
 

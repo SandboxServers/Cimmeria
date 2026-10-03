@@ -145,8 +145,8 @@ class FixtureIngestTest(unittest.TestCase):
     def test_fixture_attribution(self):
         got = {rid: (pr_number, method) for rid, pr_number, method in
                self.q("SELECT request_id, pr_number, method FROM pr_attribution")}
-        # The worker's own branch is PR 4242's head.
-        self.assertEqual(got["req_S1"], (4242, "branch"))
+        # The teammate's own git call shows it on PR 4242's head branch.
+        self.assertEqual(got["req_S1"], (4242, "worktree"))
         # Coordinator turns started by that worker: A1.
         for rid in ("req_C", "req_E", "req_K"):
             self.assertEqual(got[rid], (4242, "trigger"), rid)

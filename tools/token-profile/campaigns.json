@@ -1,0 +1,19 @@
+{
+  "_doc": "Campaign tags for PRs and branches, read by the ingest. Each key is a campaign ledger folder under docs/analysis/. A PR's campaign is the first match of: its head branch (exact, then prefix), a tracking issue in its title, its base branch. An untagged integration PR forms its own campaign, pr-<N>. See attribution.md section Campaigns.",
+  "ability-trees": {"prefixes": ["trees/"]},
+  "ammo": {"prefixes": ["ammo/"], "issues": [1026]},
+  "bank-vault": {"prefixes": ["bank/"]},
+  "black-market": {"prefixes": ["bm/"]},
+  "castle-cellblock-rebuild": {"branches": ["content/castle-cellblock-rebuild"]},
+  "castle-population": {"branches": ["content/castle-population"]},
+  "castle-rebuild": {"prefixes": ["castle/"]},
+  "crafting": {"prefixes": ["craft/"]},
+  "dialog-ui-redesign": {"prefixes": ["dialog-ui/"]},
+  "harset-rebuild": {"branches": ["content/harset-rebuild", "content/harset-wave2"], "prefixes": ["harset/"]},
+  "legacy-command-parity": {"branches": ["legacy-command-parity"], "prefixes": ["legacy-command-parity/"]},
+  "npc-ai-restoration": {"prefixes": ["npcai/"]},
+  "organizations": {"prefixes": ["org/"]},
+  "pets": {"prefixes": ["pets/"]},
+  "social-systems": {"prefixes": ["social/"]},
+  "token-usage": {"issues": [957]}
+}

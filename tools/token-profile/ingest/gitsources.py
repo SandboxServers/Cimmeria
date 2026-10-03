@@ -5,7 +5,10 @@ import json
 import re
 import subprocess
 
-GH_FIELDS = "number,headRefName,headRefOid,mergeCommit,createdAt,mergedAt,closedAt,state,additions,deletions,changedFiles"
+from .workbranch import worktree_list
+
+GH_FIELDS = ("number,headRefName,headRefOid,mergeCommit,createdAt,mergedAt,closedAt,state,additions,deletions,"
+             "changedFiles,title,baseRefName")
 MERGE_SUBJECT = re.compile(r"^Merge (?:remote-tracking )?branch '([^']+)'")
 
 
@@ -28,14 +31,14 @@ def store_prs(db, prs):
         merge = p.get("mergeCommit") or {}
         db.execute(
             "INSERT INTO prs (pr_number, head_branch, head_sha, merge_sha, created_at, merged_at, closed_at, state,"
-            " additions, deletions, changed_files) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)"
+            " additions, deletions, changed_files, title, base_branch) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)"
             " ON CONFLICT (pr_number) DO UPDATE SET head_branch = excluded.head_branch, head_sha = excluded.head_sha,"
             " merge_sha = excluded.merge_sha, merged_at = excluded.merged_at, closed_at = excluded.closed_at,"
             " state = excluded.state, additions = excluded.additions, deletions = excluded.deletions,"
-            " changed_files = excluded.changed_files",
+            " changed_files = excluded.changed_files, title = excluded.title, base_branch = excluded.base_branch",
             (p["number"], p["headRefName"], p.get("headRefOid"), merge.get("oid") if isinstance(merge, dict) else None,
              p["createdAt"], p.get("mergedAt") or None, p.get("closedAt") or None, p["state"], p.get("additions"),
-             p.get("deletions"), p.get("changedFiles")))
+             p.get("deletions"), p.get("changedFiles"), p.get("title"), p.get("baseRefName")))
     return len(prs)
 
 
@@ -93,7 +96,7 @@ def merge_subjects(db, repo):
 
 
 def lane_log(db, path):
-    """lane-log: the build lane's jobs.jsonl records the branch and commit of every build."""
+    """lane-log: the build lane's jobs.jsonl records the worktree, branch and commit of every build."""
     n = 0
     try:
         fh = open(path, encoding="utf-8", errors="replace")
@@ -107,7 +110,35 @@ def lane_log(db, path):
                 continue
             if isinstance(job, dict):
                 n += _add_head(db, job.get("branch"), job.get("commit"), job.get("start") or "", "lane-log")
+                _add_worktree(db, job.get("worktree"), job.get("branch"), job.get("start"), "lane-log")
     return n
+
+
+def _add_worktree(db, name, branch, observed_at, source):
+    if not isinstance(name, str) or not name or not isinstance(branch, str) or not branch or not observed_at:
+        return 0
+    name = name if name.startswith(".claude/worktrees/") else f".claude/worktrees/{name}"
+    return db.execute("INSERT OR IGNORE INTO worktree_branches (worktree, branch, observed_at, source)"
+                      " VALUES (?, ?, ?, ?)", (name, branch, observed_at, source)).rowcount
+
+
+def worktree_snapshot(db, repo, observed_at):
+    """worktree-list: the branch every live worktree of repo has checked out now."""
+    code, out = git(repo, "worktree", "list", "--porcelain")
+    if code != 0:
+        return 0
+    return sum(_add_worktree(db, name, branch, observed_at, "worktree-list") for name, branch in worktree_list(out))
+
+
+def request_cwds(db):
+    """request-cwd: a main session run in a worktree records that worktree's branch. One row per worktree,
+    branch and day. A subagent's record is not used: its gitBranch is the process checkout's, not its cwd's."""
+    return db.execute(
+        "INSERT OR IGNORE INTO worktree_branches (worktree, branch, observed_at, source)"
+        " SELECT cwd_worktree, git_branch, MIN(ts), 'request-cwd' FROM requests"
+        " WHERE agent_id IS NULL AND cwd_worktree IS NOT NULL AND git_branch IS NOT NULL"
+        " AND git_branch NOT IN ('', 'HEAD')"
+        " GROUP BY cwd_worktree, git_branch, substr(ts, 1, 10)").rowcount
 
 
 class Ancestry:
@@ -168,6 +199,20 @@ class Ancestry:
                         stack.append(child)
             self.desc_cache[sha] = seen
         return self.desc_cache[sha]
+
+    def on_first_parent(self, commit, head):
+        """True if commit is on head's first-parent chain: the line of work head's own branch made, not a branch
+        merged into it. Walks back from head and stops as soon as commit is no longer an ancestor."""
+        commit, node = self.resolve(commit), self.resolve(head)
+        if not commit or not node:
+            return False
+        desc = self.descendants(commit)
+        while node and node in desc:
+            if node == commit:
+                return True
+            parents = self.parents.get(node)
+            node = parents[0] if parents else None
+        return False
 
     def is_ancestor(self, commit, of):
         """git merge-base --is-ancestor commit of (a commit is its own ancestor)."""

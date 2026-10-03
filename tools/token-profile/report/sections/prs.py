@@ -28,11 +28,14 @@ def build(db, sc, top=20):
     records = pr_records(db, sc, merged)
     usd = [r["usd_est"] for r in records]
 
-    coverage = {k: 0.0 for k in ("merged_in_window", "other_prs", "unattributed")}
+    coverage = {k: 0.0 for k in ("merged_in_window", "other_prs", "campaign", "unattributed")}
     merged_set = set(merged)
-    for pr, spend in db.execute("SELECT a.pr_number, SUM(a.weight * COALESCE(c.usd, 0)) FROM wcost c"
-                                " JOIN pr_attribution a ON a.request_id = c.request_id GROUP BY a.pr_number"):
-        key = "unattributed" if pr is None else "merged_in_window" if pr in merged_set else "other_prs"
+    # A campaign row (D-TP7, schema 4) has no PR but is attributed: packet work charged to its campaign.
+    for pr, method, spend in db.execute(
+            "SELECT a.pr_number, a.method, SUM(a.weight * COALESCE(c.usd, 0)) FROM wcost c"
+            " JOIN pr_attribution a ON a.request_id = c.request_id GROUP BY a.pr_number, a.method"):
+        key = (method if pr is None and method in ("campaign", "unattributed") else "merged_in_window"
+               if pr in merged_set else "other_prs")
         coverage[key] += spend or 0.0
     window_usd = sum(coverage.values())
     method_mix = {sc.label(m, "method"): {"usd": u or 0.0, "share": share(u or 0.0, window_usd)}
@@ -116,7 +119,7 @@ def pr_records(db, sc, pr_numbers):
         FROM sess s
         JOIN win w ON w.pr_number = s.pr_number
         JOIN requests r ON r.session_id = s.session_id AND r.ts >= w.first_ts AND r.ts <= w.end_ts
-        JOIN pr_attribution u ON u.request_id = r.request_id AND u.pr_number IS NULL
+        JOIN pr_attribution u ON u.request_id = r.request_id AND u.method = 'unattributed'
         JOIN rcost c ON c.request_id = r.request_id
         GROUP BY s.pr_number""").fetchall())
 

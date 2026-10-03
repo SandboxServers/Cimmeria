@@ -13,7 +13,7 @@ from pathlib import Path
 from .transcript import Transcript
 
 SCHEMA = Path(__file__).resolve().parent.parent / "schema.sql"
-SCHEMA_VERSION = "3"
+SCHEMA_VERSION = "4"
 
 
 def now_iso():

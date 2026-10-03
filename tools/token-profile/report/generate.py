@@ -5,7 +5,7 @@ import json
 from . import db as dbmod
 from . import render
 from .scrub import Scrubber
-from .sections import cache_sim, context, cost, prs, tokens, tools
+from .sections import cache_sim, campaigns, context, cost, prs, tokens, tools
 
 
 def build(db, sc, since=None, until=None, price_table=None, report_commit=None, top=20):
@@ -19,6 +19,7 @@ def build(db, sc, since=None, until=None, price_table=None, report_commit=None, 
         "context": context.build(db, sc),
         "tools": tools.build(db, sc, top=top),
         "prs": prs.build(db, sc, top=top),
+        "campaigns": campaigns.build(db, sc, top=top),
         "cache_policy": cache_sim.build(db, sc),
     }
     stamp = dbmod.stamp(db, chosen, report_commit, since, until)
