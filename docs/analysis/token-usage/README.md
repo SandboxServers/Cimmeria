@@ -1,7 +1,7 @@
 # Token Usage Profiling
 
 > Type: how-to. Audience: the Claude Code coordinator and the packet workers.
-> Updated: 2026-10-03 (Wave 2 merged). Tracking issue: [#957](https://github.com/SandboxServers/Cimmeria/issues/957); the plan is the [2026-10-03 comment](https://github.com/SandboxServers/Cimmeria/issues/957#issuecomment-5968451932), which supersedes the issue's phase list. Tool: [tools/token-profile/](../../../tools/token-profile/README.md). Workflow rules: [development-workflow.md § Worker lifetime and notifications](../../agents/development-workflow.md#worker-lifetime-and-notifications).
+> Updated: 2026-10-03 (**campaign closed**, TP-12; open levers are follow-ups, see [Close-out](#close-out)). How-to: [docs/guides/token-profiling.md](../../guides/token-profiling.md). Tracking issue: [#957](https://github.com/SandboxServers/Cimmeria/issues/957); the plan is the [2026-10-03 comment](https://github.com/SandboxServers/Cimmeria/issues/957#issuecomment-5968451932), which supersedes the issue's phase list. Tool: [tools/token-profile/](../../../tools/token-profile/README.md). Workflow rules: [development-workflow.md § Worker lifetime and notifications](../../agents/development-workflow.md#worker-lifetime-and-notifications).
 
 ## Purpose
 
@@ -65,10 +65,12 @@ From the 2026-10-03 quick pass (throwaway scripts, not the profiler; TP-05 repla
 | TP-07 Read discipline (C) | 2 | rules, the most-exposed docs | Merged | [#1133](https://github.com/SandboxServers/Cimmeria/pull/1133) |
 | TP-08 Experiment G (Ghidra MCP vs headless; SigNoz search vs aggregate) | 2 | this folder | Merged; [write-up](experiment-g.md) | [#1132](https://github.com/SandboxServers/Cimmeria/pull/1132) |
 | TP-09 Rebase churn (F) | 2 | a rebase script under `tools/` | Merged | [#1135](https://github.com/SandboxServers/Cimmeria/pull/1135) |
-| TP-10 Per-PR stats comments | 2 | `tools/token-profile/pr_stats/` | Merged; nothing posted yet, see TP-05b | [#1131](https://github.com/SandboxServers/Cimmeria/pull/1131) |
-| TP-05b Attribution validation, D-TP6 both totals, D-TP7 integration PRs and campaign rollup | 2 | `tools/token-profile/ingest/`, `report/`, `pr_stats/` | In progress; gates the first live post and the backfill | |
-| TP-11 Retro cost study | 2 (after TP-10 backfill) | this folder | Not started | |
-| TP-12 Close-out | 3 | guide, rules, status docs | Not started | |
+| TP-10 Per-PR stats comments | 2 | `tools/token-profile/pr_stats/` | Merged; posting began after TP-05b, see [Close-out](#close-out) | [#1131](https://github.com/SandboxServers/Cimmeria/pull/1131) |
+| TP-05b Attribution validation, D-TP6 both totals, D-TP7 integration PRs and campaign rollup | 2 | `tools/token-profile/ingest/`, `report/`, `pr_stats/`, `validate/` | Merged 2026-10-03 16:11:11Z; schema version 4, [worknote](worknotes/TP-05b.md) | [#1138](https://github.com/SandboxServers/Cimmeria/pull/1138) |
+| TP-05b review fix: the cache simulator's range is three scenarios, not a bound | 2 | `tools/token-profile/report/` | Merged 2026-10-03 16:11:23Z (CodeRabbit finding) | [#1139](https://github.com/SandboxServers/Cimmeria/pull/1139) |
+| TP-11 Retro cost study | 2 (after TP-10 backfill) | this folder | Merged 2026-10-03 16:29:54Z; [study](retro-cost-study.md) | [#1140](https://github.com/SandboxServers/Cimmeria/pull/1140) |
+| TP-12 Close-out: docs and status | 3 | the [how-to guide](../../guides/token-profiling.md), rules, status docs, the `gap-analysis.md` split | Open; [worknote](worknotes/TP-12-docs.md) | [#1142](https://github.com/SandboxServers/Cimmeria/pull/1142) |
+| TP-12 Close-out: scheduled jobs | 3 | `tools/token-profile/scheduled/` | Open, parallel worker | |
 
 Wave 1 packets run in parallel, one worktree each; their files are disjoint. TP-01a and TP-01b build against [`schema.sql`](../../../tools/token-profile/schema.sql) and the fixture, so neither waits for the other. Packet scopes are in the [plan comment](https://github.com/SandboxServers/Cimmeria/issues/957#issuecomment-5968451932).
 
@@ -139,6 +141,52 @@ Answered on 2026-10-03 as D-TP6 to D-TP10 above. TP-05b implements D-TP6 and D-T
 4. Keep `docs/readme.md` at `merge=union`?
 5. Make experiment G's guidance (Ghidra MCP over headless, SigNoz `aggregate_logs` over `search_logs`) a rule?
 
+## Close-out
+
+Wave 3 closed the campaign on 2026-10-03. Worknotes: [TP-05b](worknotes/TP-05b.md), [TP-11](worknotes/TP-11.md), [TP-12-docs](worknotes/TP-12-docs.md). USD is list price, a plan-usage proxy and a floor about 10% under Claude Code's own total (D-TP1, D-TP6).
+
+### TP-05b: attribution validated
+
+Scored against 91 workers' known PRs (labels) and against every worker that created exactly one PR, precision by USD went from 0.41 to **0.99** and recall from 0.22 to 0.98; no rule misplaces more than 1% of labelled spend, against the 10% limit. Five failure classes were found and fixed. The main one: a subagent's transcript records the coordinator's branch, not its own, so a subagent's branch now comes from its own git output and worktree paths. Unattributed spend fell from 27.5% to 13.5%, and 18.5% now sits on a campaign with no PR (D-TP7). So the Harset integration PR #662 dropped from $1,274 to $63, and its packets moved to the `harset-rebuild` rollup. Schema version 4; a new database is needed. Details: [worknote](worknotes/TP-05b.md).
+
+### Stats comments and the backfill
+
+Live posting started after #1138 merged. The backfill of every PR merged since 2026-09-13 finished at about 17:00 UTC on 2026-10-03: **406 PRs posted, 20 with no data** (dependency bumps and human-only work), **0 errors**; a spot check found no duplicate comments. From here the merging agent posts each PR's comment, and a daily local sweep catches what it misses ([how-to](../../guides/token-profiling.md#let-the-scheduled-jobs-keep-it-current)).
+
+### TP-11: what work costs, and what didn't buy quality
+
+The [retro cost study](retro-cost-study.md) covers the 426 PRs merged from 2026-09-13 to 2026-10-03. Every Wave 0-2 cut merged after its data, so it is the **before** for all of them.
+
+- **Per PR:** p50 $11.38, p90 $41.09, max $279 (#642). Size explains more than type: under 300 changed lines p50 $3.27, 1.5k-5k lines $23.23. Features p50 $20.62, fixes $10.10, docs $3.22.
+- **Spend did not buy quality.** Within the same type and size, the dearer half cost three times as much (p50 $23.51 against $7.74, 172 PRs a side) with the same CI-failure rate (6%) and follow-up-fix rate (9% against 10%), and twice the review rounds. Its extra went on idle cache rewrites (18.3% of its spend against 7.0%), mechanical steps (13.5% against 9.8%) and rebases (6.9% against 4.6%).
+- **Campaigns:** harset-rebuild $1,689 (93% of it packet work with no PR of its own), npc-ai-restoration $817, castle-rebuild $705; this campaign $107 over 17 PRs.
+- **Defects that shipped** cost $496 in 31 follow-up fix PRs, 6.5% of PR spend; spending more per PR did not lower it.
+
+### Before and after, so far
+
+The cuts are hours old, so these "after" samples are small: early signals, not results. From `python tools/token-profile/cutlines` and direct queries on a copy of the database, ingested at 17:27 UTC on 2026-10-03. Letters are the issue's lever names.
+
+| Lever | Measure | Before | After | Reading |
+|---|---|---:|---:|---|
+| H, static context (TP-03) | Main-session first request, p50 tokens | 73.1k (n=93) | 64.8k (n=5) | Down about 8k; still above the ≤55k target, because the user-level part is not cut |
+| H | Subagent first request, p50 tokens | 64.6k (n=813) | 61.3k (n=22) | Down about 3k |
+| D, worker lifetime (TP-00) | Requests per subagent transcript, p50 / p90 | 61 / 204 (n=803) | 38 / 73 (n=27) | Shorter workers; none over 200 requests after the cut, against 86 before |
+| D | Peak context per subagent transcript, p50 / p90 | 238k / 500k | 182k / 317k | Lower. A transcript still running at ingest is cut short, so "after" is a floor |
+| E, notifications (TP-00) | Share of main-session spend in turns an event started | 53.7% (of $2,344) | 47.5% (of $25) | Lower, on one coordinator's afternoon |
+| B, quiet build output (TP-02) | `lane.sh` foreground result, p50 characters | 490 (n=1,599) | 526 (n=1) | No sample yet; the controlled run in [Wave 1 results](#wave-1-results) stands (36,765 to about 270) |
+| A, cache TTL (TP-06) | `rust-gameserver-dev` requests that wrote a 1-hour cache | 0 of 23,571 | none yet | No `rust-gameserver-dev` request since the cut; unverified |
+| A | Generic teammates: idle 5-minute rewrites, share of their spend | 10.8% | 34% (305 requests, $37) | Teammates without an agent definition still use the 5-minute TTL |
+
+### Open levers (follow-ups)
+
+The campaign closes with these open. Each has a number from the study, so a follow-up can measure its own cut.
+
+1. **Idle cache rewrites, 13.2% of all spend ($1,498).** 90% of the subagent part would stay warm under a 1-hour TTL. TP-06 gave `rust-gameserver-dev` (72% of it) the 1-hour TTL, but no request has confirmed it works yet, teammates included. Teammates with no agent definition stay on 5 minutes, and whether `experimental.cacheTtl` can reach them is unchecked. Until then, the workflow rule is not to park workers ([development-workflow.md](../../agents/development-workflow.md#worker-lifetime-and-notifications)).
+2. **Mechanical steps in large contexts, 11.2% ($1,272).** Plumbing calls (`git status`, `git add`, `git fetch`, `ls`, `date`) run one per request at over 200k tokens. TP-12 added the batching rule; the candidate tool is one ship script that stages, commits, pushes and opens or updates the PR with a one-line status.
+3. **Static context, about 15% of PR spend.** TP-03's repo-side trim held (above). The user-level part (MCP servers, claude.ai connectors, the personal memory index, document skills) was applied locally and then reverted on 2026-10-03 when the local settings were discarded, so it is open again. `disabledMcpjsonServers` not stopping deferred tools from loading belongs to it.
+4. **OTel reconciliation.** Waits for the first telemetry export, which needs a Claude Code restart on the configured workstation.
+5. **Small ones.** The study's type rule files unprefixed PR titles as chore (a required prefix or label would fix that at the source), and failed CI rounds are undercounted after a force-push.
+
 ## Cut-line log
 
 Each packet that changes behaviour adds a row when it merges. A before-and-after comparison uses requests on either side of the cut, and states which other cuts fall inside its window.
@@ -151,6 +199,8 @@ Each packet that changes behaviour adds a row when it merges. A before-and-after
 | TP-06 | [#1130](https://github.com/SandboxServers/Cimmeria/pull/1130) | 2026-10-03 13:43:26 | `rust-gameserver-dev` requests use the 1-hour cache TTL; check that its new transcripts show `cache_write_1h > 0`, teammates included |
 | TP-07 | [#1133](https://github.com/SandboxServers/Cimmeria/pull/1133) | 2026-10-03 13:44:55 | "Reading files" rule; four oversized docs split |
 | TP-09 | [#1135](https://github.com/SandboxServers/Cimmeria/pull/1135) | 2026-10-03 13:57:11 | Mechanical rebases go through `rebase-pr.sh` |
+| TP-05b | [#1138](https://github.com/SandboxServers/Cimmeria/pull/1138) | 2026-10-03 16:11:11 | Attribution rebuilt (schema version 4: a subagent's branch from its own git output; packet work to the campaign, not the integration PR); per-PR stats comments go live and the backfill starts. Per-PR numbers from before and after this cut use different rules, so re-ingest before comparing a PR across it |
+| TP-12 | [#1142](https://github.com/SandboxServers/Cimmeria/pull/1142) | on merge | "Batch mechanical steps" and "don't park a worker" rules; worker worktree safety rules |
 
 ## Acceptance criteria
 
@@ -160,7 +210,7 @@ The profiler is trusted only when all of these hold (the issue's 2026-09-30 Phas
 - [x] Thinking tokens are not double-counted (test: `test_thinking_is_a_subset_of_output`, plus an ingest test). (TP-01a)
 - [x] A final-record dedupe test fails a first-record dedupe (the fixture is built for it). (TP-01a)
 - [x] Model-specific USD, including the Opus 5.5 and Fable 5.1 cache-read prices. (TP-01a)
-- [ ] Transcript totals reconcile with both OTel and `cost-state` for a controlled session, within a documented tolerance. (`cost-state`: done in TP-05; OTel: waits for telemetry data.)
+- [ ] Transcript totals reconcile with both OTel and `cost-state` for a controlled session, within a documented tolerance. (`cost-state`: done in TP-05. OTel: still open at close-out, a follow-up. Telemetry exports only after a Claude Code restart on the configured workstation, and none has happened yet.)
 - [x] Unknown transcript shapes fail visibly or land in a counted bucket. (TP-01a)
 - [x] Main, subagent and agent-type attribution is tested. (TP-01a)
 - [x] Trigger attribution includes `unknown` and `mixed`. (TP-01a)
@@ -171,4 +221,4 @@ The profiler is trusted only when all of these hold (the issue's 2026-09-30 Phas
 - [x] Synthetic privacy fixtures prove secrets and private machine data cannot reach a committed report. (TP-01b)
 - [x] Every report states its window and version metadata. (TP-01b)
 - [x] Ingest is incremental, so raw transcripts need not be kept forever. (TP-01a)
-- [ ] Every PR merged after TP-10 has one idempotent stats comment with the `cimmeria-pr-stats/1` block, and the backfill is posted.
+- [x] Every PR merged after TP-10 has one idempotent stats comment with the `cimmeria-pr-stats/1` block, and the backfill is posted. (TP-05b, then the backfill: 406 posted, 20 no data, 0 errors, no duplicates on a spot check, finished about 17:00 UTC 2026-10-03.)

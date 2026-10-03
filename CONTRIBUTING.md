@@ -69,6 +69,8 @@ For playtest acceptance of a restored system, the UAT guides script each step wi
 
 Content authors placing NPCs and objects in-game, and the developers who merge their work into the seeds, start with [`docs/guides/placing-npcs-and-objects.md`](docs/guides/placing-npcs-and-objects.md).
 
+To measure what AI-assisted work costs, or to post and read a merged PR's token-stats comment, follow [`docs/guides/token-profiling.md`](docs/guides/token-profiling.md).
+
 For unattended AI-agent sessions that pick their own issues, the kickoff prompt and its worktree, build, and PR protocol live in [`docs/guides/autonomous-agent-kickoff.md`](docs/guides/autonomous-agent-kickoff.md).
 
 ## The development loop
