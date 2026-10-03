@@ -1,6 +1,6 @@
 # Project Rules and Gotchas
 
-> **Last updated**: 2026-09-28
+> **Last updated**: 2026-10-03
 > **Audience**: Contributors and their agents, before proposing an approach
 > **Type**: Reference
 
@@ -74,6 +74,18 @@ Classify before you design.
 - **Revert-verification wipes uncommitted work.** Commit (or make a WIP commit) before you `git checkout` a file to prove a guard fails.
 - **Retire worktrees with `tools/build-lane/rm-worktree.sh`, the day the PR merges.** It unlinks the `external/` junction first; a hand-rolled recursive delete can follow the junction and empty the real `external/`. Leaving merged worktrees around is not harmless either: their target dirs filled the Dev Drive on 2026-09-26 and stopped every lane build. See [`development-workflow.md`](development-workflow.md#retire-it-when-its-pr-merges).
 
+- **Worktree admin entries can vanish under a running worker.** On 2026-10-03 the `.git/worktrees/<name>` entries of about 22 worktrees disappeared twice while their directories stayed, so git no longer saw those directories as worktrees. The cause is not confirmed; `rm-worktree.sh` and `rebase_pr.py` both end with `git worktree prune`, which is the first suspect. A worker whose worktree had been removed then ran `git push` from the main checkout. So: never remove a worker's worktree before it has reported; workers run `git -C <own worktree>` and stop if it's gone ([development-workflow.md](development-workflow.md#running-agents)). To repair a worktree whose directory is intact, recreate `.git/worktrees/<name>/` with three files, `gitdir` (the absolute path of `<worktree>/.git`), `commondir` (`../..`) and `HEAD` (`ref: refs/heads/<branch>`), then run `git -C <worktree> reset -q` to rebuild its index. The worktree's own `.git` file must still point at that entry.
+
+## AI-assisted work and token cost
+
+What AI-assisted work costs here is measured by the token profiler ([how-to](../guides/token-profiling.md), [ledger](../analysis/token-usage/README.md)). The rules it produced are in [development-workflow.md](development-workflow.md#worker-lifetime-and-notifications); the ones contributors miss most:
+
+- **One phase per worker, and hand off by worknote** at about 200 requests or 250k tokens. Every request re-reads the whole context.
+- **Batch mechanical steps.** One git or `ls` call per request in a large context was 11.2% of all spend. Chain them, or hand them to a fresh context.
+- **Don't park workers.** A worker that waits more than five minutes rewrites its whole cache when it wakes; that was 13.2% of spend.
+- **Grep, then read the slice**, not the whole file ([Reading files](development-workflow.md#reading-files)).
+- **Post the stats comment after a merge** with `pr_stats <PR> --post`. Its USD is list price and a floor, not a bill.
+
 ## Client assets and RE tooling
 
 - **The game client is not in the repo.** `game/sgw/` is a placeholder. Map recon, prefab positions, navmesh extraction, and any `crates/upk-objects` or `crates/navmesh-extractor` work needs your own copy of the client; point the tool at its `SGWGame/CookedPC/` directory. Do not conclude that assets are missing because the repo does not contain them.
@@ -84,7 +96,7 @@ Classify before you design.
 
 ## Where project state lives
 
-- Status and gaps: [`docs/project-status.md`](../project-status.md), [`docs/gap-analysis.md`](../gap-analysis.md). Not `docs/architecture/migration-roadmap.md`, which describes the deprecated C++ tree.
+- Status and gaps: [`docs/project-status.md`](../project-status.md), [`docs/gap-analysis.md`](../gap-analysis.md) (the index and matrix; each area's feature tables are in [`docs/gap-analysis/`](../gap-analysis/)). Not `docs/architecture/migration-roadmap.md`, which describes the deprecated C++ tree.
 - **Update the status docs once per campaign, in its close-out or release packet.** Per-packet progress goes in the campaign's own ledger under `docs/analysis/<campaign>/`. Why: on 2026-09-27 most rebase conflicts came from shared docs rather than code, with parallel packets each editing the same status rows and totals.
 - Long-running campaigns keep their own ledgers and resume notes under `docs/analysis/` (for example `docs/analysis/castle-rebuild/handoffs/`). Read the newest resume note before continuing one.
 - **A ledger that says "not started" does not mean nobody is on it.** Before dispatching workers for a ledgered campaign, look for campaign branches and worktrees created or committed in the last few hours (`git worktree list`, `git log --since`), and ask whether another session owns the work. A packet that was dispatched minutes ago looks exactly like an abandoned one: a clean worktree at `main`'s head.

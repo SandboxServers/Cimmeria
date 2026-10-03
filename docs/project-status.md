@@ -2,7 +2,7 @@
 title: "Project Status"
 type: reference
 audience: anyone tracking the project
-last_updated: 2026-09-28
+last_updated: 2026-10-03
 ---
 
 # Project Status
@@ -16,6 +16,8 @@ Where the Cimmeria server emulator stands today and what's ahead.
 > **2026-09-27 update**: the headline and the Chat, Mail, Dueling, Rate limiting and Admin / GM rows follow the social-systems close-out ([ledger](analysis/social-systems/README.md)), which also recounted the gap-analysis matrix from its feature tables (World entry, XP, Crafting and Anti-cheat counts changed with it). The Inventory notes also follow the Bank and Vault campaign's personal-bank close-out ([ledger](analysis/bank-vault/README.md)). The headline and the Organizations, Groups and Chat rows then follow the organizations close-out (ORG-11, [ledger](analysis/organizations/README.md)), which recounted §21, §23 and §30. The headline, and the Inventory and Organizations rows, then follow the Bank and Vault campaign's org close-out (BV-10, [ledger](analysis/bank-vault/README.md)), which moved §23's treasury and vault rows from KM to NT. The headline, the Crafting row, the crafting content row and known issue, the critical path and the roadmap then follow the crafting close-out (CR-13, [ledger](analysis/crafting/README.md)), which moved all nine §19 rows to NT.
 >
 > **2026-09-28 update**: the headline and the Combat, Inventory and Loot rows follow the ammo close-out (AM-12, [ledger](analysis/ammo/README.md)), which added five new special-ammo rows to §9, §12 and §14 (four NT, one IM) and changed no existing row. Other rows keep their 2026-09-25 prose.
+>
+> **2026-10-03 update**: the token-usage close-out (TP-12, [ledger](analysis/token-usage/README.md)) adds [Development Tooling](#development-tooling) and changes no gameplay row. The same close-out split the gap analysis into an index and [one file per area](gap-analysis/); its numbers did not change.
 >
 > **Scope note**: only work merged to `main` is counted. The black-market implementation on `feat/571-black-market-phase1` (PR #586) is real but unmerged, and is counted as missing until it lands.
 
@@ -130,6 +132,14 @@ These didn't exist in the Python codebase and so weren't tracked. They're substa
 | Admin / GM | IM | 13 (4 CW, 2 NT, 5 IM, 2 KM) | Teleport and item-grant via the client's native `/` console (the SGWGmPlayer class flip, #518). About 6,070 lines of GM handlers plus a 12,730-line dev/authoring `.`-console with 89 commands (#523). The legacy command-parity campaign has integrated 12 of 49 packets. Access-level gate enforced server-side; GM surface confirmed working 2026-06-20. GM broadcast (`/gmshout`, `.announce`) and a chat mute (`.mute` / `.unmute`, not saved across a restart) landed with the social-systems campaign. **Ban is still missing** |
 | Metrics / telemetry | CW | 9 (4 CW, 3 NT, 2 IM) | Full OTLP pipeline. New: the NPC AI health dashboard (#782) and disk-to-SigNoz log parity (#792) |
 
+## Development Tooling
+
+Tools for working on the project rather than features of the server. They have no rows in the gap analysis.
+
+| Tool | Status | Notes |
+|------|--------|-------|
+| Token profiler (`tools/token-profile/`) | Working | Measures what AI-assisted work costs: ingests local Claude Code transcripts, reports tokens, list-price USD (a floor about 10% under Claude Code's own total), context pressure and attribution per PR and campaign, and reconciles against Claude Code's `cost-state` totals. Every merged PR gets one stats comment (406 backfilled on 2026-10-03), and local scheduled jobs post missed comments daily and write a weekly report. The OTel reconciliation waits for the first telemetry export. How-to: [guides/token-profiling.md](guides/token-profiling.md); findings: [retro cost study](analysis/token-usage/retro-cost-study.md) |
+
 ## Content Coverage
 
 | Content Type | Total in DB | Tested/Verified | Notes |
@@ -242,7 +252,8 @@ Quality-of-life items (black market merge, remaining minigame ports, group loot 
 
 ## Related Documents
 
-- [Gap Analysis](gap-analysis.md) — per-feature status tracking (source of truth)
+- [Gap Analysis](gap-analysis.md) — per-feature status tracking (source of truth); the feature tables are in [gap-analysis/](gap-analysis/)
+- [Token profiling](guides/token-profiling.md) — measuring what AI-assisted work costs
 - [Gameplay Dashboard](gameplay/README.md) — per-system gameplay breakdowns
 - [Content Engine](content/content-engine.md) — the data-driven runtime
 - [NPC AI](gameplay/npc-ai.md) — AI state machine and threat system

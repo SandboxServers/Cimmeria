@@ -65,7 +65,7 @@ A PR that changes user-visible behaviour, public surface, file layout, build ste
 Two rules keep shared docs from conflicting between PRs; flag PRs that break them:
 
 - **Generated blocks are not hand-edited.** Text between `<!-- gen:NAME -->` and `<!-- /gen:NAME -->` markers (test counts, findings counts, the gap-analysis totals) and the crate graph between the `crate-graph` markers belong to `tools/docs-gen/regen.py`. The `regen-docs` workflow reruns it on `main` after every merge. A PR changes a generated block only when it adds the marker.
-- **Status docs change once per campaign.** `docs/gap-analysis.md` and `docs/project-status.md` are updated in a campaign's close-out or release packet. Per-packet progress goes in the campaign's ledger under `docs/analysis/<campaign>/`.
+- **Status docs change once per campaign.** `docs/gap-analysis.md` (with its area files in `docs/gap-analysis/`) and `docs/project-status.md` are updated in a campaign's close-out or release packet. Per-packet progress goes in the campaign's ledger under `docs/analysis/<campaign>/`.
 
 Run the markdown lint as the doc-side equivalent of `cargo clippy`: `tools/lint-md.sh` (or `.ps1` on Windows). Same ruleset CodeRabbit applies in PR review — local catches every cosmetic finding before the bot has to type it. Warn-only in CI for now; Phase 2 hardens to blocking. Config: [.markdownlint-cli2.yaml](../.markdownlint-cli2.yaml).
 

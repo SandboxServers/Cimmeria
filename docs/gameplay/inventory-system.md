@@ -45,7 +45,7 @@ Inventory splits across the two services: cell-side operations live in [`cell/ce
 
 The vendor rows above (store open/close through vendor bag allowlist) are server-side DONE, not client-verified. Until #609 (2026-07-26) the store payload went out on SGWPlayer indices 80/81, which are the Missionary `onMissionUpdate` / `onStepUpdate` methods, so the store window could never open and earlier manual vendor testing is void. No client has tested a vendor since #609. Coverage is live-DB tests plus the server-side PL/pgSQL smoke [`tools/vendor_store_smoke.sql`](../../tools/vendor_store_smoke.sql).
 
-No world spawns a vendor today. Template 25 ("Interaction Debug NPC - DO NOT USE") is the only vendor template, and Harset packet H13 removed its only spawn row, so `.spawn 25` is the only way to reach a store. Only two test item lists are seeded. Status detail: [gap-analysis.md §15](../gap-analysis.md#15-stores--vendors----nt).
+No world spawns a vendor today. Template 25 ("Interaction Debug NPC - DO NOT USE") is the only vendor template, and Harset packet H13 removed its only spawn row, so `.spawn 25` is the only way to reach a store. Only two test item lists are seeded. Status detail: [gap-analysis.md §15](../gap-analysis/core-gameplay.md#15-stores--vendors-----nt).
 
 ## Entity Definition (SGWInventoryManager.def)
 
