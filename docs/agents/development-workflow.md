@@ -204,3 +204,4 @@ Starting the bundled Postgres is documented in [`docs/architecture/integration-t
 - The PR body says what was not tested.
 - For anything with a client UI element: the player gets visible feedback on the first press (see `rules-and-gotchas.md`). Otherwise it is not done, whatever the original server did.
 - After the merge: the worktree is retired with `rm-worktree.sh`, and so is every worker worktree the session dispatched for it.
+- After the merge: the merging agent runs the token-profile ingest, then `python tools/token-profile/pr_stats <PR> --post`, which writes or updates the PR's one stats comment ([how](../../tools/token-profile/README.md#per-pr-stats-comments)). A local scheduled sweep catches PRs it missed; Wave 3 of [#957](https://github.com/SandboxServers/Cimmeria/issues/957) sets up that schedule.
