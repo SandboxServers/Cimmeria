@@ -17,6 +17,7 @@ Status: **Wave 2.** The data contract, the ingest (TP-01a), the reports (TP-01b)
 | [`cutlines/`](cutlines/) | Before-and-after measures across the ledger's cut lines. See [Cut lines](#cut-lines). |
 | [`pr_stats/`](pr_stats/) | The per-PR stats comments: one idempotent `cimmeria-pr-stats/1` comment per PR, and the backfill. See [Per-PR stats comments](#per-pr-stats-comments). |
 | [`validate/`](validate/) | Scores PR attribution against ground truth. See [Validating attribution](#validating-attribution). |
+| [`scheduled/`](scheduled/) | The weekly report and the daily per-PR stats sweep, and the script that puts them in Task Scheduler. See [Scheduled jobs](#scheduled-jobs). |
 | [`test_contract.py`](test_contract.py) | Checks the schema's constraints and that the fixture tells a correct ingest from a wrong one. CI runs it. |
 
 ```bash
@@ -173,6 +174,31 @@ The table's wall clock runs from the PR's first attributed request to its merge.
 
 ```bash
 python tools/token-profile/validate --db <profile.sqlite> [--labels <labels.csv>] [--truth-db <older.sqlite>] [--out <file.json>]
+    [--max-wrong-share 0.10]
 ```
 
-Scores the database's PR attribution against ground truth, by estimated USD and by request count: precision, recall, and the wrong, campaign and unattributed shares, with the wrong share by method. The ground-truth sets (a local labels CSV of worker name, day and PR; workers that created exactly one PR) and the rule that a method misplacing more than 10% of labelled spend is fixed first are in [attribution.md § Validating the rules](attribution.md#validating-the-rules). `--truth-db` takes the ground truth from another database, to score an older database on the same requests. The output holds shares and totals only, never names or ids.
+Scores the database's PR attribution against ground truth, by estimated USD and by request count: precision, recall, and the wrong, campaign and unattributed shares, with the wrong share by method. The ground-truth sets (a local labels CSV of worker name, day and PR; workers that created exactly one PR) and the rule that a method misplacing more than 10% of labelled spend is fixed first are in [attribution.md § Validating the rules](attribution.md#validating-the-rules). `--truth-db` takes the ground truth from another database, to score an older database on the same requests. The output holds shares and totals only, never names or ids. A labelled request's weight that its attribution rows don't account for counts as unattributed. `--max-wrong-share` makes the run exit 4 when one method misplaces more than that share of a set's USD; the weekly job passes 0.10. Exit code 2 is an input error, including an `--out` it can't write.
+
+## Scheduled jobs
+
+Two jobs keep the profile current without anyone running it by hand. Both run the commands above as child processes, from the main checkout, and write only to a local folder outside the repo, the job home: `TOKEN_PROFILE_HOME`, else `%LOCALAPPDATA%\cimmeria-token-profile`.
+
+| Script | When | Does |
+|---|---|---|
+| [`scheduled/weekly.ps1`](scheduled/weekly.ps1) | Mondays 08:00 local | Incremental ingest with `--fetch-prs`; then `reconcile` and `report` over the 7 whole UTC days before today, and `validate --max-wrong-share 0.10` over the whole database. Output in `<home>\reports\<YYYY-MM-DD>\`: the reports, each step's log, `weekly-summary.txt` |
+| [`scheduled/pr-sweep.ps1`](scheduled/pr-sweep.ps1) | Daily 07:30 local | Incremental ingest with `--fetch-prs`; then `pr_stats --backfill --post --restart` over the PRs merged in the last 3 whole UTC days, at 6 a minute. Logs in `<home>\logs\pr-sweep-<YYYY-MM-DD>*` |
+| [`scheduled/register-tasks.ps1`](scheduled/register-tasks.ps1) | Once, after the scripts are on `main` | Registers or updates `\Cimmeria\TokenProfile-Weekly` and `\Cimmeria\TokenProfile-PrSweep` for the current user; `-WhatIf` prints them, `-Unregister` removes them |
+
+```powershell
+pwsh tools/token-profile/scheduled/weekly.ps1 [--days 7] [--until YYYY-MM-DD] [--labels <csv>] [--skip-ingest]
+pwsh tools/token-profile/scheduled/pr-sweep.ps1 [--days 3] [--rate 6/min] [--dry-run] [--skip-ingest]
+pwsh tools/token-profile/scheduled/register-tasks.ps1 [-WhatIf] [-Unregister]
+```
+
+The `.ps1` files find Python (`TOKEN_PROFILE_PYTHON`, else `python`, else `py -3`) and run `python tools/token-profile/scheduled weekly|pr-sweep`, whose logic is in [`scheduled/jobs.py`](scheduled/jobs.py); every option after the script name is passed through, so `--home`, `--db` (default `TOKEN_PROFILE_DB`, else `~/token-profile.sqlite`) and `--repo` (default the main checkout) work too. The weekly job's `--labels` defaults to `TOKEN_PROFILE_LABELS`.
+
+**Exit status.** 0 every step passed; 1 a step failed; 2 a usage error, no Python, or another job holds `<home>\job.lock` (both jobs write the database; a lock older than six hours is taken over). A failed step does not stop the others: the weekly job still writes the report when reconcile is out of tolerance. The last line, and the summary file, name each failed step and what its exit code means: ingest 1 unknown transcript shapes, 2 attribution imbalance; reconcile 4 out of tolerance; validate 4 a method over the 10% limit; any 3 the privacy gate; pr_stats 2 `gh` errors.
+
+**The sweep is idempotent.** pr_stats finds each PR's comment by its marker: it creates a missing one, edits a stale one in place and leaves a current one alone. `--restart` makes every run look at every PR in the window again, using the sweep's own state file (`<home>\pr-sweep-state.json`), never the backfill's. So the sweep both fills in comments for newly merged PRs and refreshes a comment whose numbers moved, for example because requests made after the merge were ingested later. A comment's stamp holds the profiler commit, so after the main checkout pulls a profiler change every comment in the window is edited once.
+
+**The tasks** run as the current user only while that user is logged on, so no password is stored, without elevation. They start late if the machine was off at the set time, and a run still going when the next is due makes it wait. They use the user's own `gh` login and environment. Register them from the main checkout's copy, never a worktree's; the script refuses if the scripts are not on the main checkout yet. Reconcile on a short window (a day or two) can fail its tolerances on few sessions; the weekly 7-day window passed on 2026-10-03.

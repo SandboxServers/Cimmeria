@@ -6,6 +6,7 @@ import sqlite3
 import tempfile
 import unittest
 from pathlib import Path
+from unittest import mock
 
 from report import fixture_db
 
@@ -73,6 +74,20 @@ class CliTest(unittest.TestCase):
         self.assertEqual(code, 2)
         self.assertIn("status=error", err)
         self.assertEqual(out, "")
+
+    def test_max_wrong_share(self):
+        report = {"sets": {"labels": {"wrong_usd_share_by_method": {"split": 0.2, "branch": 0.05}}}}
+        self.assertEqual(cli.over_limit(report, 0.1), ["labels.split=0.200"])
+        self.assertEqual(cli.over_limit(report, 0.25), [])
+        self.assertEqual(cli.over_limit(report, None), [])
+        code, _, _ = self.run_cli("--max-wrong-share", "0.10")
+        self.assertEqual(code, 0)
+        with mock.patch.object(cli, "build", return_value={**report, "overall": {"usd": 1.0, "method_share": {}},
+                                                           "labels_unmatched": 0}):
+            with mock.patch.object(cli, "text", return_value=""):
+                code, _, err = self.run_cli("--max-wrong-share", "0.10")
+        self.assertEqual(code, 4)
+        self.assertIn("status=over-limit labels.split=0.200", err)
 
 
 if __name__ == "__main__":
