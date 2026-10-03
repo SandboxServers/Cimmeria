@@ -54,7 +54,7 @@ def seed_request(db, request_id="r1", output=100, thinking=50, inp=1, read=2, w5
 class SchemaTest(unittest.TestCase):
     def test_schema_loads_with_version(self):
         db = load_schema()
-        self.assertEqual(db.execute("SELECT value FROM meta WHERE key = 'schema_version'").fetchone()[0], "1")
+        self.assertEqual(db.execute("SELECT value FROM meta WHERE key = 'schema_version'").fetchone()[0], "2")
 
     def test_thinking_is_a_subset_of_output(self):
         db = load_schema()
