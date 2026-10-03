@@ -20,8 +20,15 @@ pub(super) async fn handle_set_auto_cycle(
         return;
     }
     let enabled = args[0] != 0;
+    let id = space_mgr.player_identity(entity_id);
     if !enabled {
-        tracing::info!(entity_id, enabled, "setAutoCycle");
+        tracing::info!(
+            account_id = id.account_id,
+            player_id = id.player_id,
+            entity_id,
+            enabled,
+            "setAutoCycle"
+        );
     }
     if enabled {
         // The weapon's own attack, for a player who arms the loop before
@@ -73,6 +80,8 @@ pub(super) async fn handle_set_auto_cycle(
                 entity.abilities.auto_cycle_ability_id = Some(ability_id);
             }
             tracing::info!(
+                account_id = id.account_id,
+                player_id = id.player_id,
                 entity_id,
                 enabled,
                 current_target_id = current_target_id.unwrap_or(0),
@@ -126,11 +135,19 @@ pub(super) async fn handle_set_auto_cycle(
             (Some(_), Some(_), false) => "on_cooldown",
             (Some(_), Some(_), true) => "fire",
         };
-        tracing::info!(entity_id, decision, "setAutoCycle: enable decision");
+        tracing::info!(
+            account_id = id.account_id,
+            player_id = id.player_id,
+            entity_id,
+            decision,
+            "setAutoCycle: enable decision"
+        );
         if let (Some(_), true, Some((ability_id, target_id))) =
             (new_state, stash_ready, immediate_fire)
         {
             tracing::info!(
+                account_id = id.account_id,
+                player_id = id.player_id,
                 entity_id,
                 ability_id,
                 target_id,

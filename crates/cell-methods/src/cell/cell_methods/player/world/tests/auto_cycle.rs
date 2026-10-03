@@ -368,14 +368,17 @@ async fn set_auto_cycle_enable_persists_ability_even_when_immediate_fire_rejects
 }
 
 /// Phase 2: if the player has never fired an ability this session
-/// (`last_fired_ability_id == None`), pressing the button just
-/// lights BSF — no immediate fire.
+/// (`last_fired_ability_id == None`) AND has no weapon bound to a ranged
+/// attack, pressing the button just lights BSF — no immediate fire. With
+/// a bound weapon the press falls back to it; see
+/// `set_auto_cycle_enable_without_prior_shot_stashes_weapon_ability`.
 #[tokio::test]
-async fn set_auto_cycle_enable_does_not_fire_without_last_ability() {
+async fn set_auto_cycle_enable_does_not_fire_without_last_ability_or_weapon() {
     let mut mgr = make_mgr_with_player();
     if let Some(p) = mgr.get_entity_mut(1) {
         p.current_target_id = Some(50);
-        // last_fired_ability_id stays None.
+        // last_fired_ability_id stays None, and the fixture has no
+        // weapon in the active bandolier slot, so there is no fallback.
         p.weapon_holstered = false;
     }
     let engine = ChainEngine::new();
@@ -387,7 +390,7 @@ async fn set_auto_cycle_enable_does_not_fire_without_last_ability() {
     assert!(p.abilities.auto_cycle, "flag must still arm");
     assert!(
         p.abilities.auto_cycle_ability_id.is_none(),
-        "no immediate fire happened → loop ability stash stays empty",
+        "no prior shot and no bound weapon → loop ability stash stays empty",
     );
 }
 

@@ -267,7 +267,10 @@ pub(in crate::cell::service) async fn auto_cycle_tick(
                     )
                     .await;
                 } else {
+                    let id = space_mgr.player_identity(entity_id);
                     tracing::info!(
+                        account_id = id.account_id,
+                        player_id = id.player_id,
                         entity_id,
                         ability_id,
                         target_id,
