@@ -190,6 +190,7 @@ class Scratch:
     sparse: bool
     union_gen: frozenset[str]   # merge=union files with generated blocks; see attr_override
     opts: tuple[str, ...] = ()
+    admin: str = ""             # its .git/worktrees/<id> entry
 
     def git(self, *args: str, **kw) -> subprocess.CompletedProcess:
         return git(*args, cwd=self.path, opts=self.opts, **kw)
@@ -304,6 +305,7 @@ def scratch_worktree(repo: str, source: str, sparse: bool, attr_tree: str,
     opts += ("--attr-source", attr_tree)   # main's attributes, not the empty worktree's
     wt = Scratch(path, sparse, union_gen, opts)
     git("worktree", "add", "-q", "--no-checkout", "--detach", path, source, cwd=repo)
+    wt.admin = out("rev-parse", "--absolute-git-dir", cwd=path)
     if not sparse:
         wt.git("read-tree", "-mu", "HEAD")
         return wt
@@ -317,9 +319,13 @@ def scratch_worktree(repo: str, source: str, sparse: bool, attr_tree: str,
 
 
 def drop_worktree(repo: str, wt: Scratch) -> None:
+    """Remove the scratch worktree and its own admin entry, never anyone else's: no
+    `git worktree prune`, which deletes every entry whose path this git cannot resolve
+    (see the 2026-10-03 gotcha in docs/agents/rules-and-gotchas.md)."""
     git("worktree", "remove", "--force", wt.path, cwd=repo, check=False)
     shutil.rmtree(os.path.dirname(wt.path), ignore_errors=True)
-    git("worktree", "prune", cwd=repo, check=False)
+    if wt.admin and os.path.basename(os.path.dirname(wt.admin)) == "worktrees":
+        shutil.rmtree(wt.admin, ignore_errors=True)
 
 
 def run(args: argparse.Namespace) -> Result:
