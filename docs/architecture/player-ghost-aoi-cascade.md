@@ -12,7 +12,7 @@
 > hold that stretches the deferred window on a first login),
 > [negative-logging-convention.md](negative-logging-convention.md)
 > (the seam `aoi.player_ghost_incomplete` follows),
-> [observability.md](observability.md) (target catalog),
+> [observability-target-catalog.md](observability-target-catalog.md) (target catalog),
 > [state-field-bits.md](state-field-bits.md) (what `onStateFieldUpdate`
 > carries), [wireclient.md](wireclient.md) (the two-real-client wire-level
 > test, NA37), [../gap-analysis.md](../gap-analysis.md) §8

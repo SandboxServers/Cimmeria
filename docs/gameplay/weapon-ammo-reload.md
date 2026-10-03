@@ -170,7 +170,7 @@ Loading at draw-commit time, not at warmup end, is the "never punish" guarantee:
 | High Capacity SMG | 27 | the 5 bullet specials (D-AM10 amendment, #1052) |
 | Dart guns | 19 | the 10 dart specials (AM-11a) |
 
-What each type does to the shot is in [combat-system.md § Special ammo](combat-system.md#special-ammo-in-the-damage-pipeline) and [ADR § 31](../architecture/abilities-and-effects-system.md#31-special-ammo-modifies-the-shot-directly-from-resourcesammo_modifiers-ammo-campaign-am-04-d-am07).
+What each type does to the shot is in [combat-system.md § Special ammo](combat-system.md#special-ammo-in-the-damage-pipeline) and [ADR § 31](../architecture/abilities-and-effects-decisions-23-33.md#31-special-ammo-modifies-the-shot-directly-from-resourcesammo_modifiers-ammo-campaign-am-04-d-am07).
 
 ## `requestAmmoChange` flow
 
@@ -344,7 +344,7 @@ Client                       Cell                              Base / DB
 ## Related docs
 
 - [Ammo campaign ledger](../analysis/ammo/README.md) — decisions D-AM01 to D-AM11, known issues and follow-ups
-- [abilities-and-effects-system.md § 31](../architecture/abilities-and-effects-system.md#31-special-ammo-modifies-the-shot-directly-from-resourcesammo_modifiers-ammo-campaign-am-04-d-am07) — how special ammo modifies the shot
+- [abilities-and-effects-system.md § 31](../architecture/abilities-and-effects-decisions-23-33.md#31-special-ammo-modifies-the-shot-directly-from-resourcesammo_modifiers-ammo-campaign-am-04-d-am07) — how special ammo modifies the shot
 - [ammo-system.md](../reverse-engineering/findings/ammo-system.md) — AM-01's client findings (no client reserve model, picker source, no client gates)
 - [inventory-system.md § Bandolier and ammo](inventory-system.md#bandolier-and-ammo) — Bandolier container layout and DB schema
 - [combat-system.md](combat-system.md) — Ability fire pipeline, where the ammo gate sits

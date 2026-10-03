@@ -1,7 +1,7 @@
 # AM-11b Worknotes
 
 > Type: reference. Audience: the ammo coordinator and the AM-12 close-out.
-> Companions: [README.md](../README.md), [work-packets.md](../work-packets.md), [AM-04 worknotes](AM-04.md), [ADR § 31](../../../architecture/abilities-and-effects-system.md#31-special-ammo-modifies-the-shot-directly-from-resourcesammo_modifiers-ammo-campaign-am-04-d-am07).
+> Companions: [README.md](../README.md), [work-packets.md](../work-packets.md), [AM-04 worknotes](AM-04.md), [ADR § 31](../../../architecture/abilities-and-effects-decisions-23-33.md#31-special-ammo-modifies-the-shot-directly-from-resourcesammo_modifiers-ammo-campaign-am-04-d-am07).
 
 ## Contract
 
