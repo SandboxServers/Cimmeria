@@ -86,7 +86,21 @@ use super::state::{is_dead_state, BSF_AUTO_CYCLING};
 /// loop stops.
 #[must_use]
 pub fn is_auto_cycle_target_valid(target: &CellEntity) -> bool {
-    !is_dead_state(target.state_field) && target.ai_state() != AiState::Submit
+    auto_cycle_target_stop_reason(target).is_none()
+}
+
+/// Why [`is_auto_cycle_target_valid`] refuses `target`: `"dead"` or
+/// `"surrendered"`, or `None` when the loop may keep firing. The tick
+/// driver logs it as the `reason` of its clear event.
+#[must_use]
+pub fn auto_cycle_target_stop_reason(target: &CellEntity) -> Option<&'static str> {
+    if is_dead_state(target.state_field) {
+        Some("dead")
+    } else if target.ai_state() == AiState::Submit {
+        Some("surrendered")
+    } else {
+        None
+    }
 }
 
 /// Arm the auto-cycle loop on `player_id` with the given ability.

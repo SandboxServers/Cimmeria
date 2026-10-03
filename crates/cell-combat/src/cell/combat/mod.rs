@@ -34,7 +34,8 @@ pub use aggression::{
     DEFAULT_ASSIST_RADIUS, PLAYER_REACTION_FACTION,
 };
 pub use auto_cycle::{
-    arm_auto_cycle, clear_auto_cycle, clear_auto_cycle_for_target, is_auto_cycle_target_valid,
+    arm_auto_cycle, auto_cycle_target_stop_reason, clear_auto_cycle, clear_auto_cycle_for_target,
+    is_auto_cycle_target_valid,
 };
 pub use damage::{
     attacker_cover_qr, calculate_damage, calculate_damage_penetrating, calculate_damage_scaled,

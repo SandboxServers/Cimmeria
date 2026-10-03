@@ -30,9 +30,16 @@ use crate::cell::space_manager::SpaceManager;
 ///   a loop still aimed at the ex-partner would otherwise re-invoke
 ///   `handle_use_ability` every tick and trip its #444 "forged target"
 ///   WARN about ten times a second with the button still lit.
+/// - **An NPC target the caster may not harm** (a vendor, a friendly or
+///   quest NPC) → clear the loop. `handle_use_ability` refuses every shot
+///   at one (#444), so a loop left armed there looked lit, did no damage
+///   and logged ten rejected calls a second (2026-09-29 Castle capture).
 /// - **No target / invalid target** → clear the loop. Invalid means
 ///   despawned, in another space (#906), dead, or surrendered — see
-///   [`crate::cell::combat::is_auto_cycle_target_valid`]. The death
+///   [`crate::cell::combat::auto_cycle_target_stop_reason`]. Every clear
+///   logs `auto_cycle_tick: clearing loop` with a `reason`: `no_target`,
+///   `target_gone`, `other_space`, `dead`, `surrendered`, `not_hostile`
+///   or `not_duel_opponent`. The death
 ///   sweep and the AI-side submit handler usually get there first; the
 ///   tick is the safety net for despawn / instance cleanup paths that
 ///   bypass the death-transition broadcast, and the *primary* stop for
@@ -83,7 +90,9 @@ pub(in crate::cell::service) async fn auto_cycle_tick(
     // Loops stopped because their player target is not a duel partner:
     // `(caster, target player_id)`, for the feedback line and the log.
     let mut pvp_stops: Vec<(u32, Option<i32>)> = Vec::new();
-    let ready: Vec<(u32, i32, i32, bool)> = space_mgr
+    // `(entity, ability, target, stop reason)`: `None` re-fires, `Some`
+    // clears the loop and is logged as the clear's `reason`.
+    let ready: Vec<(u32, i32, i32, Option<&'static str>)> = space_mgr
         .all_player_entity_ids()
         .into_iter()
         .filter_map(|eid| {
@@ -94,23 +103,27 @@ pub(in crate::cell::service) async fn auto_cycle_tick(
             let ability_id = e.abilities.auto_cycle_ability_id?;
             // LIVE target read — mirrors python `self.entity().targetId`
             // in `abilityCooledDown`. None falls through to `target_id = 0`,
-            // which the `!target_alive_or_existed` branch below treats
-            // as "clear the loop".
+            // which the stop-reason check below treats as "clear the loop".
             let target_id = e.current_target_id.unwrap_or(0);
             // A target in another space (#906) stops the loop like a gone
             // one: `get_entity` searches every space, and
             // `handle_use_ability` would refuse each re-fire.
-            let target = if target_id > 0 {
-                space_mgr.get_entity(target_id as u32).filter(|_| {
-                    space_mgr.get_entity_space_id(eid)
-                        == space_mgr.get_entity_space_id(target_id as u32)
-                })
+            let (target, missing_reason) = if target_id <= 0 {
+                (None, Some("no_target"))
             } else {
-                None
+                match space_mgr.get_entity(target_id as u32) {
+                    None => (None, Some("target_gone")),
+                    Some(_)
+                        if space_mgr.get_entity_space_id(eid)
+                            != space_mgr.get_entity_space_id(target_id as u32) =>
+                    {
+                        (None, Some("other_space"))
+                    }
+                    Some(t) => (Some(t), None),
+                }
             };
-            let target_alive_or_existed = target
-                .as_ref()
-                .is_some_and(|t| crate::cell::combat::is_auto_cycle_target_valid(t));
+            let stop_reason = missing_reason
+                .or_else(|| target.and_then(crate::cell::combat::auto_cycle_target_stop_reason));
 
             // Invalid target → push for clearing regardless of cooldown.
             // The clear path is correctness (BSF must un-light on
@@ -120,15 +133,20 @@ pub(in crate::cell::service) async fn auto_cycle_tick(
             // up to a full cooldown AND let a player re-select a
             // different target before cooldown expires and get an
             // unintended re-fire at the new target.
-            if !target_alive_or_existed {
-                return Some((eid, ability_id, target_id, false));
+            if stop_reason.is_some() {
+                return Some((eid, ability_id, target_id, stop_reason));
             }
             // A player target is legal only as the caster's engaged duel
-            // partner; anything else stops the loop (SS-D2).
-            if let Some(t) = target.filter(|t| t.is_player) {
+            // partner; anything else stops the loop (SS-D2). An NPC target
+            // the caster may not harm stops it too: the #444 gate in
+            // `handle_use_ability` would refuse every re-fire.
+            if let Some(t) = target {
                 if !crate::cell::combat::player_may_attack(e, t, space_mgr.resources.duels()) {
-                    pvp_stops.push((eid, t.player_id));
-                    return Some((eid, ability_id, target_id, false));
+                    if t.is_player {
+                        pvp_stops.push((eid, t.player_id));
+                        return Some((eid, ability_id, target_id, Some("not_duel_opponent")));
+                    }
+                    return Some((eid, ability_id, target_id, Some("not_hostile")));
                 }
             }
 
@@ -203,7 +221,7 @@ pub(in crate::cell::service) async fn auto_cycle_tick(
             if los_blocked {
                 los_notices.push((eid, true));
             }
-            Some((eid, ability_id, target_id, true))
+            Some((eid, ability_id, target_id, None))
         })
         .collect();
     for (eid, notified) in los_notices {
@@ -217,11 +235,11 @@ pub(in crate::cell::service) async fn auto_cycle_tick(
     // attack actually firing?" Empty snapshots dominate but cost ~0.
     tracing::Span::current().record("ready_count", ready.len());
 
-    for (entity_id, ability_id, target_id, target_alive) in ready {
-        if !target_alive {
-            // Target despawned, died without the death sweep catching
-            // it, or surrendered. Clear the loop and broadcast so the
-            // client un-highlights the button.
+    for (entity_id, ability_id, target_id, stop_reason) in ready {
+        if let Some(reason) = stop_reason {
+            // No target, target despawned, died without the death sweep
+            // catching it, surrendered, or not hostile. Clear the loop and
+            // broadcast so the client un-highlights the button.
             let pvp = pvp_stops
                 .iter()
                 .find(|(e, _)| *e == entity_id)
@@ -249,10 +267,15 @@ pub(in crate::cell::service) async fn auto_cycle_tick(
                     )
                     .await;
                 } else {
+                    let id = space_mgr.player_identity(entity_id);
                     tracing::info!(
+                        account_id = id.account_id,
+                        player_id = id.player_id,
                         entity_id,
+                        ability_id,
                         target_id,
-                        "auto_cycle_tick: target gone or disengaged — clearing loop"
+                        reason,
+                        "auto_cycle_tick: clearing loop"
                     );
                 }
                 crate::cell::abilities::send_entity_method(

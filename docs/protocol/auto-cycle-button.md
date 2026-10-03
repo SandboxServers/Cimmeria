@@ -196,10 +196,10 @@ The loop is fully wired. The code lives in nine locations:
 | `crates/entity/src/cell_entity/mod.rs` | `current_target_id` field — the player's live cursor selection, written by `setTargetID` (cell method 0). The auto-cycle tick + death sweep read this as the LIVE target instead of stashing one at arm-time. |
 | `crates/cell-combat/src/cell/combat/state.rs` | `BSF_AUTO_CYCLING` constant (mask `0x002`, bit 1). |
 | `crates/cell-combat/src/cell/combat/auto_cycle.rs` | Lifecycle primitives: `arm_auto_cycle`, `clear_auto_cycle`, `clear_auto_cycle_for_target`. Manipulate `BSF_AUTO_CYCLING` with **raw `\|=` / `&= !mask` ops** (NOT the ref-counted `set_state_flag` / `unset_state_flag` helpers — see "Bit management" below). All three return `Some(new_state_field)` only when the bit actually transitioned. |
-| `crates/cell-methods/src/cell/cell_methods/being.rs` | `SET_TARGET_ID` handler (cell method 0) — persists the target id to `current_target_id` on the player entity so the auto-cycle tick can read it as the live re-fire target. |
-| `crates/cell-methods/src/cell/cell_methods/player/world/mod.rs` | `SET_AUTO_CYCLE` handler: enable sets the flag AND lights `BSF_AUTO_CYCLING` immediately AND fires immediately if `(last_fired_ability_id, current_target_id)` are both Some; disable drops the stash, clears the BSF bit, and broadcasts `onStateFieldUpdate`. |
+| `crates/cell-methods/src/cell/cell_methods/being.rs` | `SET_TARGET_ID` handler (cell method 0) — persists the target id to `current_target_id` on the player entity so the auto-cycle tick can read it as the live re-fire target. A hostile right-click (`player/interaction/interact.rs`) writes the same field, because the client sends no `setTargetID` for it. |
+| `crates/cell-methods/src/cell/cell_methods/player/world/mod.rs` | `SET_AUTO_CYCLE` handler: enable sets the flag AND lights `BSF_AUTO_CYCLING` immediately, stashes the loop ability (`last_fired_ability_id`, or the active weapon's `EVENT_ITEM_RANGED` ability when nothing has fired yet), AND fires immediately if that ability and `current_target_id` are both Some; disable drops the stash, clears the BSF bit, and broadcasts `onStateFieldUpdate`. |
 | `crates/cell-combat/src/cell/abilities/use_ability/mod.rs` | Manual-override gate at function entry (different ability ⇒ clear loop), arm/AF_DEACTIVATE branch at commit time, AND stashes `last_fired_ability_id` on every commit regardless of `auto_cycle` state. |
-| `crates/cell/src/cell/service/ticks/auto_cycle.rs` | `auto_cycle_tick` — every 100 ms AoI tick, scans armed players and re-invokes `handle_use_ability` against the LIVE `current_target_id`. Cursor switches mid-loop redirect automatically; target deselect (`current_target_id = None`), dead/missing target, or out-of-range silently skips (no error packet, loop stays armed for resume). |
+| `crates/cell/src/cell/service/ticks/auto_cycle.rs` | `auto_cycle_tick` — every 100 ms AoI tick, scans armed players and re-invokes `handle_use_ability` against the LIVE `current_target_id`. Cursor switches mid-loop redirect automatically. Out of range or on cooldown skips silently and keeps the loop armed. No target, a missing, dead or surrendered target, a target in another space, an NPC the player may not attack, or a player who is not the duel opponent clears the loop and logs `auto_cycle_tick: clearing loop` with a `reason`. |
 | `crates/cell-combat/src/cell/abilities/death.rs` | `apply_death_transition` calls `clear_auto_cycle_for_target` so every player auto-firing at the dying entity gets their loop cleared (matches against LIVE `current_target_id`, not an arm-time stash). **Plus** clears the dying player's OWN auto-cycle — prevents the loop from auto-resuming on respawn. |
 
 ### Bit management — raw ops, NOT the ref-counted helpers
@@ -210,7 +210,7 @@ Using the ref-counted helpers would be a correctness bug: every tick-driven re-f
 
 ### Loop semantics (what the tests pin)
 
-- **Enable (button press):** sets `auto_cycle = true` AND lights `BSF_AUTO_CYCLING` immediately so the button highlights on the very first press. **Phase 2: if the player has a target selected (`current_target_id`) AND has fired any ability in this session (`last_fired_ability_id`), the button press ALSO fires that ability immediately at the target** — the MMO auto-attack feel. Pins: `set_auto_cycle_enable_lights_bsf_and_broadcasts` (base behavior), `set_auto_cycle_enable_fires_immediately_when_target_and_last_ability_set` (immediate-fire path), `set_auto_cycle_enable_does_not_fire_without_last_ability` / `set_auto_cycle_enable_does_not_fire_without_target` (degradation paths).
+- **Enable (button press):** sets `auto_cycle = true` AND lights `BSF_AUTO_CYCLING` immediately so the button highlights on the very first press. **Phase 2: if the player has a target selected (`current_target_id`) AND has a loop ability (`last_fired_ability_id`, or the active weapon's ranged ability when nothing has fired this session), the button press ALSO fires that ability immediately at the target** — the MMO auto-attack feel. Pins: `set_auto_cycle_enable_lights_bsf_and_broadcasts` (base behavior), `set_auto_cycle_enable_fires_immediately_when_target_and_last_ability_set` (immediate-fire path), `set_auto_cycle_enable_does_not_fire_without_last_ability_or_weapon` / `set_auto_cycle_enable_does_not_fire_without_target` (degradation paths).
 - **Duplicate enable presses (CEGUI fires the Lua function 3-4× per click, observed within ~150µs):** idempotent — the bit-transition gate suppresses re-broadcast AND the immediate-fire path is gated on the same transition so duplicates don't refire. Pin: `set_auto_cycle_enable_spam_does_not_re_broadcast`.
 - **First commit while armed:** `arm_auto_cycle` stashes ability. BSF was already set by enable so no second broadcast fires. Pin: `auto_cycle_first_commit_arms_loop_and_broadcasts_state_field`.
 - **Tick-driven re-fire:** every 100 ms, eligible players (armed, cursor target alive, cooldown clear) get a re-invocation of `handle_use_ability` against `current_target_id`. Pins: `auto_cycle_tick_refires_when_cooldown_clear`, `auto_cycle_tick_skips_when_on_cooldown`.
@@ -236,7 +236,7 @@ Phase 2 added two server-side player state fields that didn't exist before. They
 
 ### Known gaps / follow-ups
 
-- **The `interact` path arming auto-cycle.** Python `SGWPlayer.py:1175-1178` had `interact` against a hostile NPC set `BSF_AutoCycling` and call `launchAbility(autoCycle=True)` implicitly. Cimmeria's `interact` fires the weapon's `items_event_sets` ranged ability directly but does not arm auto-cycle. It sends `onTargetUpdate` to the client without writing the player's server-side `current_target_id`. Thus a right-click can visibly select and attack an NPC while the auto-cycle tick still sees target 0. See the observed trace below; this is a concrete parity/UX follow-up.
+- **The `interact` path arming auto-cycle.** Python `SGWPlayer.py:1175-1178` had `interact` against a hostile NPC set `BSF_AutoCycling` and call `launchAbility(autoCycle=True)` implicitly. Cimmeria's `interact` fires the weapon's `items_event_sets` ranged ability directly but does not arm auto-cycle. Since 2026-10-03 it also writes the player's `current_target_id` beside the `onTargetUpdate`, so a loop armed after a right-click fires at that NPC (see the observed trace below).
 - **`DoNotActivate_AutoCycle` ability flag (mask `0x200`).** Only meaningful on the `interact` path (it suppresses the implicit auto-cycle arming when interacting with a hostile). Will land alongside the interact-path work.
 
 ### Observed button failure and telemetry recipe (2026-09-29 colo)
@@ -272,8 +272,18 @@ target` results. The loop only cleared when its target became 0 at 19:20:46.
 This is a second distinct "button lit but no damage" path. The tick's
 validity filter catches dead, missing, surrendered, and unauthorized player
 targets, but it does not pre-filter friendly NPCs; `handle_use_ability` rejects
-them downstream on every tick. A future fix should stop or skip this loop
-without repeated rejected ability calls.
+them downstream on every tick.
+
+**Fixed 2026-10-03.** The hostile right-click now writes `current_target_id`,
+so the first signature (clear with `target_id=0` after a right-click) no
+longer occurs unless the player really has no target. The tick stops a loop
+aimed at an NPC the player may not attack on its first pass (`reason =
+not_hostile`), so the friendly-target loop no longer reaches
+`handle_use_ability`. A press before any shot this session stashes the
+active weapon's ranged ability, so the loop has something to fire. Pins:
+`hostile_right_click_records_current_target`,
+`auto_cycle_tick_clears_loop_on_non_hostile_npc_target`,
+`set_auto_cycle_enable_without_prior_shot_stashes_weapon_ability`.
 
 To recognize this in another playthrough, correlate the same client session
 and player entity across these records, using `ts_ms` as the client event time
@@ -286,7 +296,8 @@ because upload can lag:
    nor the `setTargetID` argument.
 2. On `cimmeria-server`, search `setAutoCycle` and inspect its `enabled`
    attribute; search `setTargetID` and inspect `target_id`; search
-   `auto_cycle_tick: target gone or disengaged` and inspect `target_id`.
+   `auto_cycle_tick: clearing loop` and inspect `target_id` and `reason`
+   (`auto_cycle_tick: target gone or disengaged` before 2026-10-03).
    A `setAutoCycle enabled=true` followed by a clear with `target_id=0` is
    the observed target-loss signature. `useAbility: launched` beside
    `interact: targeting hostile NPC for combat` is a direct right-click
@@ -300,12 +311,14 @@ because upload can lag:
    Use the server's BSF transition and the visible button in a targeted UAT
    to settle whether the overlay changed.
 
-For better future diagnosis, the `setAutoCycle` server event should include
-the stored `current_target_id`, `last_fired_ability_id` and selected
-`auto_cycle_ability_id` plus the immediate-fire decision. The clear event
-should name its reason (`no_target`, `dead`, `despawned`, `surrendered`, or
-invalid player target) rather than combining them in one message. These
-fields are not present in the September 29 deployment.
+Since 2026-10-03 the enable event `setAutoCycle` carries
+`current_target_id`, `last_fired_ability_id`, `weapon_ability_id` and the
+stashed `auto_cycle_ability_id` (0 means none), and the next line,
+`setAutoCycle: enable decision`, names what the press did: `fire`,
+`on_cooldown`, `no_target`, `no_ability` or `already_armed`. The tick's clear
+event names its `reason`: `no_target`, `target_gone`, `other_space`, `dead`,
+`surrendered`, `not_hostile` or `not_duel_opponent`. The September 29
+deployment had none of these fields.
 
 ---
 
@@ -313,7 +326,7 @@ fields are not present in the September 29 deployment.
 
 | # | Question | Evidence needed |
 |---|----------|-----------------|
-| OQ-1 | Does the CEGUI button widget gate clicks on having a hostile targeted, or does it accept clicks unconditionally? | Live-debugger evidence: clicking the button reaches the outbound emit (`0x00e02700`) even with no target. Cimmeria handles the empty-target case at TWO independent checks: (a) the `setAutoCycle(1)` immediate-fire path skips when `current_target_id.is_none()` (zip of two Options returns None); (b) the `auto_cycle_tick` driver clears the loop + un-lights BSF when `current_target_id.is_none()` (treats deselect same as dead/despawned target). The loop CAN be armed without a target (BSF lights, button highlights), but no fire occurs until a target is selected — and the moment one is, the next tick re-fire commits the loop. Behavior is correct either way; the Lua-side gate is a UX nicety, not a correctness requirement. |
+| OQ-1 | Does the CEGUI button widget gate clicks on having a hostile targeted, or does it accept clicks unconditionally? | Live-debugger evidence: clicking the button reaches the outbound emit (`0x00e02700`) even with no target. Cimmeria handles the empty-target case at TWO independent checks: (a) the `setAutoCycle(1)` immediate-fire path skips when `current_target_id.is_none()` (zip of two Options returns None); (b) the `auto_cycle_tick` driver clears the loop + un-lights BSF when `current_target_id.is_none()` (treats deselect same as dead/despawned target). A press with no target lights the button, and the next tick (within 100 ms) clears the loop with `reason = no_target`, so the button flashes and goes dark. Behavior is correct either way; the Lua-side gate is a UX nicety, not a correctness requirement. |
 | OQ-2 | What was `startAutoCycleAbility` (a base method in `SGWPlayer.def:694`) called by, and how does it differ from `setAutoCycle`? It has no args — is it a server-to-client signal or a server-internal trigger? | No Python implementation found in the deprecation tree. The def entry has no `<Exposed/>` tag, so it was a server-to-server or internal call, not a client RPC. Currently unused in Cimmeria; revisit if a future feature needs it. |
 | OQ-3 | Does the client send `setAutoCycle(0)` when the user toggles off, or does it rely solely on `BSF_AutoCycling` clearing? | Confirmed via live debugger: every button click hits the outbound emit regardless of state, and the byte argument toggles between `0` and `1`. The wire is symmetric — the client always sends the new value rather than relying on a server-side toggle. |
 

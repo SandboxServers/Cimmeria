@@ -20,8 +20,25 @@ pub(super) async fn handle_set_auto_cycle(
         return;
     }
     let enabled = args[0] != 0;
-    tracing::info!(entity_id, enabled, "setAutoCycle");
+    let id = space_mgr.player_identity(entity_id);
+    if !enabled {
+        tracing::info!(
+            account_id = id.account_id,
+            player_id = id.player_id,
+            entity_id,
+            enabled,
+            "setAutoCycle"
+        );
+    }
     if enabled {
+        // The weapon's own attack, for a player who arms the loop before
+        // firing anything this session: without it the button lit but the
+        // loop had no ability to re-fire until a manual shot committed.
+        let weapon_ability = crate::cell::abilities::ability_for_active_weapon(
+            space_mgr,
+            entity_id,
+            crate::cell::spawner::EVENT_ITEM_RANGED,
+        );
         // Light BSF_AUTO_CYCLING immediately so the button
         // highlights on the very first press; without this
         // the button looks broken until the player happens
@@ -44,10 +61,10 @@ pub(super) async fn handle_set_auto_cycle(
             let old = entity.state_field;
             entity.state_field |= crate::cell::combat::BSF_AUTO_CYCLING;
             let new_state = (entity.state_field != old).then_some(entity.state_field);
-            let immediate_fire = entity
-                .abilities
-                .last_fired_ability_id
-                .zip(entity.current_target_id);
+            let current_target_id = entity.current_target_id;
+            let last_fired_ability_id = entity.abilities.last_fired_ability_id;
+            let loop_ability = last_fired_ability_id.or(weapon_ability);
+            let immediate_fire = loop_ability.zip(current_target_id);
             // Persist the loop's committed ability BEFORE
             // calling handle_use_ability. If that call
             // rejects (out of range / cooldown / no ammo),
@@ -57,9 +74,22 @@ pub(super) async fn handle_set_auto_cycle(
             // dead. Stashing here lets the next
             // cooldown-clear tick pick up the loop
             // regardless of immediate-fire outcome.
-            if let Some((ability_id, _)) = immediate_fire {
+            // The stash does not need a target: the tick reads the live
+            // one, so a target picked after the press still starts the loop.
+            if let Some(ability_id) = loop_ability {
                 entity.abilities.auto_cycle_ability_id = Some(ability_id);
             }
+            tracing::info!(
+                account_id = id.account_id,
+                player_id = id.player_id,
+                entity_id,
+                enabled,
+                current_target_id = current_target_id.unwrap_or(0),
+                last_fired_ability_id = last_fired_ability_id.unwrap_or(0),
+                weapon_ability_id = weapon_ability.unwrap_or(0),
+                auto_cycle_ability_id = entity.abilities.auto_cycle_ability_id.unwrap_or(0),
+                "setAutoCycle"
+            );
             (new_state, immediate_fire)
         };
         if let Some(new_state) = new_state {
@@ -96,14 +126,32 @@ pub(super) async fn handle_set_auto_cycle(
                 .is_some_and(|e| !e.abilities.is_on_cooldown(ability_id)),
             None => false,
         };
+        // One line per press naming what the press did, so a "lit but no
+        // shot" report reads straight off SigNoz.
+        let decision = match (new_state, immediate_fire, stash_ready) {
+            (None, _, _) => "already_armed",
+            (Some(_), None, _) if loop_ability_missing(space_mgr, entity_id) => "no_ability",
+            (Some(_), None, _) => "no_target",
+            (Some(_), Some(_), false) => "on_cooldown",
+            (Some(_), Some(_), true) => "fire",
+        };
+        tracing::info!(
+            account_id = id.account_id,
+            player_id = id.player_id,
+            entity_id,
+            decision,
+            "setAutoCycle: enable decision"
+        );
         if let (Some(_), true, Some((ability_id, target_id))) =
             (new_state, stash_ready, immediate_fire)
         {
             tracing::info!(
+                account_id = id.account_id,
+                player_id = id.player_id,
                 entity_id,
                 ability_id,
                 target_id,
-                "setAutoCycle: immediate fire on enable (last_fired + current_target ready)"
+                "setAutoCycle: immediate fire on enable (loop ability + current_target ready)"
             );
             // The immediate-fire on auto-cycle toggle ON
             // is a player-driven kill path — route through
@@ -138,6 +186,14 @@ pub(super) async fn handle_set_auto_cycle(
             persist_state_field_bits(entity_id, new_state, tx, space_mgr).await;
         }
     }
+}
+
+/// Whether the press left the loop with no ability to re-fire: nothing fired
+/// this session and no weapon bound to a ranged attack.
+fn loop_ability_missing(space_mgr: &SpaceManager, entity_id: u32) -> bool {
+    space_mgr
+        .get_entity(entity_id)
+        .is_none_or(|e| e.abilities.auto_cycle_ability_id.is_none())
 }
 
 /// Fire-and-forget persist of the user-preference `state_field` bits

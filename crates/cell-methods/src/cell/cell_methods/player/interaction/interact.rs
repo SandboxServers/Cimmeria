@@ -57,6 +57,14 @@ pub(super) async fn handle_interact(
             target_entity_id,
             "interact: targeting hostile NPC for combat"
         );
+        // The onTargetUpdate below tells the client this NPC is its
+        // target; record the same thing server-side. The auto-cycle loop
+        // reads `current_target_id`, and the client sends no `setTargetID`
+        // for a right-click, so a loop armed after a right-click saw no
+        // target and cleared itself (2026-09-29 colo capture).
+        if let Some(actor) = space_mgr.get_entity_mut(entity_id) {
+            actor.current_target_id = Some(target_entity_id);
+        }
         let mut reply = Vec::with_capacity(4);
         reply.extend_from_slice(&target_entity_id.to_le_bytes());
         if let Err(e) = tx
@@ -438,5 +446,48 @@ mod liveness_tests {
             assert_eq!(actor.last_interaction_target, Some(npc_id), "{route:?}");
             assert_eq!(actor.counters.get("alive_probe"), Some(&8), "{route:?}");
         }
+    }
+}
+
+#[cfg(test)]
+mod hostile_target_tests {
+    use super::*;
+    use crate::test_support::make_space_manager;
+
+    /// **Right-click target (2026-09-29 colo capture).** A hostile
+    /// right-click tells the client the NPC is its target, and the server
+    /// must record the same target: the auto-cycle loop reads
+    /// `current_target_id`, and the client sends no `setTargetID` for a
+    /// right-click. Before the fix a loop armed after a right-click
+    /// cleared itself with `target_id=0`.
+    #[tokio::test]
+    async fn hostile_right_click_records_current_target() {
+        let mut mgr = make_space_manager();
+        mgr.create_entity(1, "Agnos", [0.0; 3], [0.0; 3]).unwrap();
+        let actor = mgr.get_entity_mut(1).unwrap();
+        actor.is_player = true;
+        actor.player_id = Some(42);
+        actor.clear_all_state_flags();
+        let npc_id = mgr.allocate_npc_id();
+        mgr.spawn_npc(npc_id, "Agnos", [2.0, 0.0, 0.0], [0.0; 3])
+            .unwrap();
+        let npc = mgr.get_entity_mut(npc_id).unwrap();
+        npc.faction = crate::cell::combat::HOSTILE_FACTION;
+        npc.clear_all_state_flags();
+        let (tx, _rx) = mpsc::channel(64);
+
+        handle_interact(
+            1,
+            &(npc_id as i32).to_le_bytes(),
+            &tx,
+            &mut mgr,
+            &ChainEngine::new(),
+        )
+        .await;
+
+        assert_eq!(
+            mgr.get_entity(1).unwrap().current_target_id,
+            Some(npc_id as i32)
+        );
     }
 }
