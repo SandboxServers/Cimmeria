@@ -2,8 +2,9 @@
 
 The tree mimics ~/.claude/projects/ with one main session and one subagent,
 covering every shape in transcript-format.md that the ingest must handle:
-streaming partials, thinking tokens, each trigger kind, a compaction, pr-link,
-cost-state and one deliberately unknown record. Values that must never reach
+streaming partials, thinking tokens, every trigger kind (one request each at
+least), an API error and its retry, a compaction, pr-link, cost-state and one
+deliberately unknown record type. Values that must never reach
 a report (local paths, credentials, tokens, private addresses) are planted in
 tool inputs and results.
 
@@ -33,6 +34,7 @@ HOSTILE = [
     "--token supersecret",
     "10.0.0.5",
     "supersecret",
+    "abc123def456ghi789",
 ]
 
 
@@ -174,12 +176,12 @@ def build(out):
                    "cargo nextest run --token supersecret",
         "description": "Run tests"}}
     request(m, ts(0, 5), "req_A", u, content=[bash])
-    expect("req_A", "human_prompt", "R11", u)
+    expect("req_A", "human_prompt", "R13", u)
     m.tool_result(ts(1), "toolu_fixture_bash",
                   "Authorization: Bearer abc123def456ghi789\nfetching https://user:pass@example.internal/\n" + "x" * 5000)
     u = usage(3, 50, 0, 62000, 500, 0)
     request(m, ts(1, 5), "req_B", u)
-    expect("req_B", "human_prompt", "R11", u)
+    expect("req_B", "human_prompt", "R13", u)
     m.raw({"type": "pr-link", "sessionId": SESSION, "prNumber": 4242,
            "prUrl": "https://github.com/SandboxServers/Cimmeria/pull/4242",
            "prRepository": "SandboxServers/Cimmeria", "timestamp": ts(1, 10)})
@@ -190,7 +192,7 @@ def build(out):
                 origin={"kind": "task-notification"}, promptSource="system")
     u = usage(4, 30, None, 64000, 300, 0)  # older record: no output_tokens_details
     request(m, ts(10, 3), "req_C", u)
-    expect("req_C", "background_completion", "R4", u)
+    expect("req_C", "background_completion", "R6", u)
 
     # Turn 3: monitor event (cache expired: large 5m write after a long gap).
     m.user_text(ts(30), "<task-notification>\n<task-id>bmonitor01</task-id>\n<summary>Monitor event: \"CI checks\""
@@ -198,7 +200,7 @@ def build(out):
                 origin={"kind": "task-notification"})
     u = usage(4, 20, 0, 0, 64500, 0)
     request(m, ts(30, 2), "req_D", u)
-    expect("req_D", "monitor_event", "R3", u)
+    expect("req_D", "monitor_event", "R5", u)
 
     # Turn 4: teammate idle notification (no origin field, as observed).
     m.user_text(ts(31), "Another Claude session sent a message:\n<teammate-message teammate_id=\"fixture-worker\">\n"
@@ -206,7 +208,7 @@ def build(out):
                 + "\n</teammate-message>")
     u = usage(4, 10, 0, 64600, 100, 0)
     request(m, ts(31, 2), "req_E", u)
-    expect("req_E", "idle_notification", "R5", u)
+    expect("req_E", "idle_notification", "R7", u)
 
     # Turn 5: cross-session message from a peer session.
     m.user_text(ts(32), "Another Claude session sent a message:\n<cross-session-message from=\"uds:fixture\" "
@@ -214,7 +216,7 @@ def build(out):
                 origin={"kind": "peer", "name": "cimmeria-zz", "body": "FYI"}, isMeta=True)
     u = usage(4, 15, 0, 64700, 100, 0)
     request(m, ts(32, 2), "req_F", u)
-    expect("req_F", "cross_session_message", "R7", u)
+    expect("req_F", "cross_session_message", "R9", u)
 
     # Turn 6: human prompt; mid-turn a queued task notification arrives.
     m.user_text(ts(33), "Check the PR", origin={"kind": "human"})
@@ -222,7 +224,7 @@ def build(out):
     gh = {"type": "tool_use", "id": "toolu_fixture_gh", "name": "Bash",
           "input": {"command": "gh pr checks 4242", "description": "Check CI"}}
     request(m, ts(33, 2), "req_G", u, content=[gh])
-    expect("req_G", "human_prompt", "R11", u)
+    expect("req_G", "human_prompt", "R13", u)
     m.tool_result(ts(33, 30), "toolu_fixture_gh", "all checks passed")
     m.attachment(ts(33, 31), {"type": "queued_command", "commandMode": "task-notification",
                               "prompt": "<task-notification>\n<task-id>bshell01</task-id>\n<status>completed"
@@ -230,7 +232,86 @@ def build(out):
                               "source_uuid": "q-0001", "timestamp": ts(33, 31)})
     u = usage(4, 25, 0, 65000, 150, 0)
     request(m, ts(33, 35), "req_H", u)
-    expect("req_H", "background_completion", "R4", u)
+    expect("req_H", "background_completion", "R6", u)
+
+    # Turn 7: a scheduled task fires.
+    m.system(ts(34), "scheduled_task_fire", content="Scheduled task fired", taskId="sched01", cron="0 * * * *")
+    m.user_text(ts(34, 1), "Run the weekly report", scheduledTaskId="sched01", isMeta=True)
+    u = usage(4, 30, 0, 65100, 100, 0)
+    request(m, ts(34, 3), "req_J", u)
+    expect("req_J", "scheduled_task", "R4", u)
+
+    # Turn 8: a teammate message that is not an idle notification.
+    m.user_text(ts(35), "Another Claude session sent a message:\n<teammate-message teammate_id=\"fixture-worker\" "
+                "summary=\"question\">Which branch?</teammate-message>")
+    u = usage(4, 30, 0, 65200, 100, 0)
+    request(m, ts(35, 2), "req_K", u)
+    expect("req_K", "teammate_message", "R8", u)
+
+    # Turn 9: an agent message from a peer agent.
+    m.user_text(ts(36), "<agent-message from=\"na10\">evidence ready</agent-message>",
+                origin={"kind": "peer", "from": "na10", "senderTaskId": "a0peer", "name": "na10", "body": "x"},
+                isMeta=True)
+    u = usage(4, 30, 0, 65300, 100, 0)
+    request(m, ts(36, 2), "req_L", u)
+    expect("req_L", "agent_message", "R10", u)
+
+    # Turn 10: a local slash command.
+    m.user_text(ts(37), "<command-name>/model</command-name>\n<command-message>model</command-message>\n"
+                "<command-args></command-args>")
+    u = usage(4, 30, 0, 65400, 100, 0)
+    request(m, ts(37, 2), "req_M", u)
+    expect("req_M", "local_command", "R12", u)
+
+    # Turn 11: harness-injected meta content with no origin.
+    m.user_text(ts(37, 30), "<system-reminder>context</system-reminder>", isMeta=True)
+    u = usage(4, 30, 0, 65500, 100, 0)
+    request(m, ts(37, 32), "req_N", u)
+    expect("req_N", "auxiliary", "R14", u)
+
+    # Turn 12: hostile second words in shell commands, then an API error and a retry.
+    m.user_text(ts(38), "Fetch the thing", origin={"kind": "human"})
+    hostile_cmds = [
+        ("toolu_fixture_curl", "curl https://user:pass@example.internal/"),
+        ("toolu_fixture_echo", "echo abc123def456ghi789"),
+        ("toolu_fixture_py", "C:\\Python\\python.exe C:\\Users\\Steve\\secret-project\\x.py"),
+    ]
+    u = usage(4, 70, 0, 65600, 100, 0)
+    request(m, ts(38, 2), "req_O", u, content=[
+        {"type": "tool_use", "id": tid, "name": "Bash", "input": {"command": cmd}} for tid, cmd in hostile_cmds])
+    expect("req_O", "human_prompt", "R13", u)
+    for tid, _ in hostile_cmds:
+        m.tool_result(ts(38, 5), tid, "done")
+    err = m.assistant(ts(38, 6), "req_ERR", usage(0, 0, 0, 0, 0, 0), model="<synthetic>",
+                      content=[{"type": "text", "text": "API Error: overloaded"}])
+    err["isApiErrorMessage"] = True
+    u = usage(4, 40, 0, 65700, 100, 0)
+    request(m, ts(38, 20), "req_R", u)
+    expect("req_R", "retry", "R1", u)
+    expected["requests"]["req_R"]["trigger_id"] = "req_R:retry"
+
+    # Turn 13: one delivery carrying a task notification and a peer message.
+    m.user_text(ts(39), "Keep going", origin={"kind": "human"})
+    u = usage(4, 20, 0, 65800, 100, 0)
+    request(m, ts(39, 2), "req_P", u, content=[{"type": "tool_use", "id": "toolu_fixture_ls", "name": "Glob",
+                                                "input": {"pattern": "*.md"}}])
+    expect("req_P", "human_prompt", "R13", u)
+    m.tool_result(ts(39, 3), "toolu_fixture_ls", "a.md")
+    m.attachment(ts(39, 4), {"type": "queued_command", "commandMode": "task-notification",
+                             "prompt": "<task-notification>\n<task-id>bshell02</task-id>\n</task-notification>",
+                             "source_uuid": "q-0002", "timestamp": ts(39, 4)})
+    m.attachment(ts(39, 4), {"type": "queued_command", "commandMode": "prompt", "origin": {"kind": "peer"},
+                             "prompt": "<cross-session-message from=\"uds:fixture\">hi</cross-session-message>",
+                             "source_uuid": "q-0003", "timestamp": ts(39, 4)})
+    u = usage(4, 20, 0, 65900, 100, 0)
+    request(m, ts(39, 6), "req_Q", u)
+    expect("req_Q", "mixed", "R2", u)
+
+    # Turn 14: an origin kind this contract does not know.
+    m.user_text(ts(39, 30), "something new", origin={"kind": "future-origin"})
+    u = usage(4, 20, 0, 66000, 100, 0)
+    request(m, ts(39, 32), "req_U", u)
+    expect("req_U", "unknown", "R15", u)
 
     # Compaction, then the summary starts the next turn.
     m.system(ts(40), "compact_boundary", content="Conversation compacted", level="info",
@@ -240,7 +321,7 @@ def build(out):
                 isCompactSummary=True, isVisibleInTranscriptOnly=True)
     u = usage(9000, 40, 0, 0, 9100, 0)
     request(m, ts(40, 35), "req_I", u)
-    expect("req_I", "compact_summary", "R1", u)
+    expect("req_I", "compact_summary", "R3", u)
 
     # A record type this contract does not know.
     m.raw({"type": "future-record-type", "sessionId": SESSION, "payload": 1})
@@ -257,11 +338,11 @@ def build(out):
     read = {"type": "tool_use", "id": "toolu_fixture_read", "name": "Read",
             "input": {"file_path": "C:\\Users\\Steve\\source\\projects\\Cimmeria\\.claude\\worktrees\\fx\\docs\\gap-analysis.md"}}
     request(s, ts(2, 5), "req_S1", u, content=[read])
-    expect("req_S1", "subagent_prompt", "R9", u, agent=AGENT)
+    expect("req_S1", "subagent_prompt", "R11", u, agent=AGENT)
     s.tool_result(ts(2, 10), "toolu_fixture_read", "y" * 20000)
     u = usage(3, 900, 0, 61000, 20000, 0)
     request(s, ts(9, 0), "req_S2", u)  # 7 minutes idle: the 5m cache was rewritten
-    expect("req_S2", "subagent_prompt", "R9", u, agent=AGENT)
+    expect("req_S2", "subagent_prompt", "R11", u, agent=AGENT)
 
     meta = {"agentType": "fixture-worker", "customAgentType": "rust-gameserver-dev", "name": "fixture-worker",
             "spawnDepth": 0, "requestShape": "background", "model": "opus", "taskKind": "in_process_teammate"}
@@ -273,6 +354,10 @@ def build(out):
         "toolu_fixture_bash": "cargo nextest",
         "toolu_fixture_gh": "gh pr",
         "toolu_fixture_read": "docs/gap-analysis.md",
+        "toolu_fixture_curl": "curl",
+        "toolu_fixture_echo": "echo",
+        "toolu_fixture_py": "python",
+        "toolu_fixture_ls": None,
     }
     expected["agents"] = {AGENT: {"custom_agent_type": "rust-gameserver-dev", "branch": WORKER_BRANCH}}
     (out / "expected.json").write_text(json.dumps(expected, indent=1, sort_keys=True), encoding="utf-8")

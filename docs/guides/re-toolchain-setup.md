@@ -159,7 +159,7 @@ Verify the Ghidra `GHIDRA_MCP_URL` port matches the port Ghidra's plugin actuall
    List the MCP tools you have available. Group them by server prefix.
    ```
 
-   You should see two groups: `mcp__ghidra__*` (~245 tools) and `mcp__x64dbg__*` (~60 tools).
+   You should see at least these two groups: `mcp__ghidra__*` (~245 tools) and `mcp__x64dbg__*` (~60 tools). The optional lab entries add more.
 
 If a server is missing, re-read its section above. The most common failure is a path mismatch in `.mcp.json` — the bridge process spawns silently and the error only surfaces as "no tools from this server."
 

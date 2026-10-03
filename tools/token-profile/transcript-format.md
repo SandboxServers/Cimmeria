@@ -59,6 +59,8 @@ An assistant record carries `requestId`, `message.model`, `message.usage`, `time
 | `server_tool_use.web_search_requests`, `.web_fetch_requests` | `web_search`, `web_fetch` | |
 | `service_tier`, `speed`, `inference_geo`, `iterations`, `fallback_credit` | not stored | |
 
+**API errors are not requests.** A failed call is written as an assistant record with `isApiErrorMessage: true` and model `<synthetic>` (91 of them observed, all with zero usage). It is not stored in `requests`; it only marks the next request in the same turn as a retry (rule R1).
+
 Context size of a request is `input + cache_read + cache_write_5m + cache_write_1h`.
 
 ### `user`: triggers and tool results
@@ -89,41 +91,43 @@ Claude Code's own running total for the session: `totalCostUSD`, `hasUnknownMode
 
 ## Trigger classification
 
-Every request belongs to the trigger that started its turn: the nearest turn-starting `user` record or `queued_command` attachment before it in the same transcript. Tool results continue a turn; they never start one. The rules are applied in order, and the first that matches wins. The rule id is stored in `triggers.rule`.
+Every request belongs to one trigger. Normally that is the turn start it follows: the nearest turn-starting `user` record or `queued_command` attachment before it in the same transcript. Tool results continue a turn; they never start one. A `queued_command` is something delivered into a turn already running, so the requests after it, up to the next turn start, belong to it rather than to the turn's original trigger: the injected event is what they were spent on.
+
+The rules are applied in order and the first match wins. R1 and R2 are overrides and are checked before the per-record rules, which would otherwise always match first. The rule id is stored in `triggers.rule`.
 
 | Rule | Matches | `kind` |
 |---|---|---|
-| R1 | `isCompactSummary` is true | `compact_summary` |
-| R2 | `scheduledTaskId` is set, or the record follows a `system/scheduled_task_fire` | `scheduled_task` |
-| R3 | `origin.kind == "task-notification"`, or the text starts with `<task-notification>`, and it contains `<event>` or a `Monitor event:` summary | `monitor_event` |
-| R4 | as R3 without the monitor markers | `background_completion` |
-| R5 | the text contains `<teammate-message` and its JSON payload has `"type":"idle_notification"` | `idle_notification` |
-| R6 | the text contains `<teammate-message` otherwise | `teammate_message` |
-| R7 | `origin.kind == "peer"` and the text contains `<cross-session-message` | `cross_session_message` |
-| R8 | `origin.kind == "peer"` otherwise (`<agent-message`, `senderTaskId`) | `agent_message` |
-| R9 | `origin.kind == "coordinator"`, or the first turn start in a subagent file | `subagent_prompt` |
-| R10 | the text starts with `<command-name>` or `<local-command-caveat>` | `local_command` |
-| R11 | `origin.kind == "human"`, or no `origin`, not `isMeta`, and none of the tags above | `human_prompt` |
-| R12 | `isMeta` and none of the above | `auxiliary` |
-| R13 | a request whose previous request in the same turn was an API error (`isApiErrorMessage`) | `retry` (the request gets its own trigger row) |
-| R14 | one `queued_command` delivery carries items of different kinds | `mixed` |
-| R15 | anything else | `unknown` |
+| R1 | a request whose previous request in the same turn was an API error (`isApiErrorMessage`). The retry gets its own trigger, id `<request_id>:retry`. | `retry` |
+| R2 | one `queued_command` delivery (consecutive `queued_command` attachments with no request between them) whose items would classify as different kinds under R3-R14 | `mixed` |
+| R3 | `isCompactSummary` is true | `compact_summary` |
+| R4 | `scheduledTaskId` is set, or the record follows a `system/scheduled_task_fire` | `scheduled_task` |
+| R5 | `origin.kind == "task-notification"`, `commandMode == "task-notification"` or text starting `<task-notification>`, that contains `<event>` or a `Monitor event:` summary | `monitor_event` |
+| R6 | as R5 without the monitor markers | `background_completion` |
+| R7 | text containing `<teammate-message` whose JSON payload has `"type":"idle_notification"` | `idle_notification` |
+| R8 | text containing `<teammate-message` otherwise | `teammate_message` |
+| R9 | `origin.kind == "peer"` and text containing `<cross-session-message` | `cross_session_message` |
+| R10 | `origin.kind == "peer"` otherwise (`<agent-message`, `senderTaskId`) | `agent_message` |
+| R11 | `origin.kind == "coordinator"`, or the first turn start in a subagent file | `subagent_prompt` |
+| R12 | text starting `<command-name>` or `<local-command-caveat>` | `local_command` |
+| R13 | `origin.kind == "human"`, or no `origin`, not `isMeta`, and none of the tags above | `human_prompt` |
+| R14 | `isMeta` and none of the above | `auxiliary` |
+| R15 | anything else, such as an `origin.kind` this page does not list | `unknown` |
 
-A `queued_command` is classified by the same rules applied to its `prompt` and `origin`, with `commandMode == "task-notification"` counting as R3/R4. The requests after it, up to the next turn start, belong to it rather than to the turn's original trigger: the injected event is what those requests were spent on.
+A `queued_command` is classified by the same rules applied to its `prompt` and `origin`.
 
 Never store message text in `triggers`. `source_ref` holds the task id, the teammate id or the peer name only.
 
 ## Tool-call fingerprints
 
-`tool_calls.fingerprint` is the only place tool input reaches the database, and it is built so a report can show it:
+`tool_calls.fingerprint` is the only place tool input reaches the database, and it is built so a report can show it. Nothing from a command's arguments is kept unless it is on an allowlist, because any argument can carry a credential, a URL or a local path.
 
-- **Bash and PowerShell:** the first two words of the command after dropping leading `VAR=value` assignments and any leading `cd <dir> &&`, for example `cargo nextest`, `sed -n`, `gh pr`, `bash tools/build-lane/lane.sh`. Never the arguments.
+- **Bash and PowerShell:** drop leading `VAR=value` assignments and a leading `cd <dir> &&` (or `;`), then take the executable's base name (`C:\Python\python.exe` gives `python`). If the executable and its first argument form a pair on the allowlist, keep both, for example `cargo nextest`, `cargo clippy`, `git rebase`, `gh pr`, `sed -n`, `bash tools/build-lane/lane.sh`. Otherwise keep the executable alone: `curl https://user:pass@host` gives `curl`, `echo <token>` gives `echo`, `python C:\Users\...\x.py` gives `python`. The allowlist lives in the ingest, and adding to it is a reviewed change.
 - **Read, Edit, Write, Grep, Glob:** the path made repo-relative by cutting everything up to and including the checkout root or `.claude/worktrees/<name>/`. A path outside a checkout becomes `<external>`.
 - **MCP tools:** the tool name only. `mcp_server` is the segment after `mcp__`.
 - **Everything else:** NULL.
 
-The TP-01b privacy scrubber runs over every report anyway; the fixtures in `fixtures/` carry hostile values that must never come through.
+The TP-01b privacy scrubber runs over every report anyway; the fixtures in `fixtures/` carry hostile values, including hostile second words, that must never come through.
 
 ## Unknown shapes
 
-A record is unknown when its `type`, its `system` subtype or its `attachment.type` is not listed on this page, or when an `assistant` record lacks `requestId` or `message.usage`. The ingest counts each unknown shape once per Claude Code version in `unknown_shapes` and exits non-zero unless `--allow-unknown` is given. Report totals always say how many records were unknown.
+A record is unknown when its `type`, its `system` subtype or its `attachment.type` is not listed on this page, or when an `assistant` record that is not `<synthetic>` lacks `requestId` or `message.usage`. The ingest counts each unknown shape once per Claude Code version in `unknown_shapes` and exits non-zero unless `--allow-unknown` is given. Report totals always say how many records were unknown.

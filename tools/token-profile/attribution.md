@@ -33,7 +33,15 @@ The request's `gitBranch` (or the branch of the worktree in its `cwd`) is the he
 
 ### A3: ancestry
 
-The request's branch has no PR of its own, but its commits reached `main` through another PR: a packet branch merged into an integration branch whose PR merged. Found with `git merge-base --is-ancestor <branch head> <PR head>` against PRs merged after the request. When several PRs qualify, the earliest merged wins. Method `ancestry`, confidence 0.8.
+The request's branch has no PR of its own, but its commits reached `main` through another PR: a packet branch merged into an integration branch whose PR merged. The test is `git merge-base --is-ancestor <commit> <PR merge commit>` for PRs merged after the request; when several qualify, the earliest merged wins. Method `ancestry`, confidence 0.8.
+
+The commit comes from `branch_heads`, never from resolving the branch name at report time: `rm-worktree.sh` deletes a merged packet branch, so a backfill run later may find no ref. `branch_heads` is filled from three sources, and the latest commit observed for the branch within 14 days after the request is used, since the work a request did is committed after it:
+
+1. `ref-snapshot`: every ingest run records the head of every local and remote-tracking branch.
+2. `lane-log`: the build lane's job log records the worktree and commit of every build; joined to the request through its worktree and time.
+3. `merge-subject`: a merge commit on `main` or an integration branch whose subject names the branch (`Merge branch '<name>'`) supplies its second parent.
+
+A request whose branch has no commit in any source is not placed by A3.
 
 ### A4: parent session (subagents only)
 
@@ -53,7 +61,7 @@ A PR's totals are the weighted sums of its rows. Its machine block carries:
 
 - `attribution.method`: the method with the largest weighted share, or `split` when none has more than half;
 - `attribution.confidence`: the weighted mean confidence;
-- `attribution.unattributed_share`: unattributed spend in the same sessions over the PR's window, divided by the PR's total. A high share means the PR's own number is probably low.
+- `attribution.unattributed_share`: unattributed spend in the PR's sessions over its window, divided by that unattributed spend plus the PR's own total. It is always between 0 and 1; a high value means the PR's own number is probably low.
 
 ## Validating the rules
 

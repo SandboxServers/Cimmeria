@@ -1,4 +1,4 @@
--- Token profiler data contract, schema version 1 (issue #957, Wave 0).
+-- Token profiler data contract, schema version 1.
 --
 -- The ingest (TP-01a, tools/token-profile/ingest/) writes these tables from
 -- Claude Code transcripts; the reports (TP-01b, tools/token-profile/report/)
@@ -93,11 +93,12 @@ CREATE TABLE agents (
     meta_missing      INTEGER NOT NULL DEFAULT 0 CHECK (meta_missing IN (0, 1))
 );
 
--- What started a turn. Every request belongs to exactly one trigger: the
--- user-role record that began its turn. Precedence and buckets are in
--- transcript-format.md § Trigger classification.
+-- What a request was spent on. Every request belongs to exactly one trigger.
+-- Precedence and buckets are in transcript-format.md § Trigger classification.
+-- trigger_id is the uuid of the turn-starting user record or queued_command
+-- attachment, or '<request_id>:retry' for a retry, which has no record of its own.
 CREATE TABLE triggers (
-    trigger_uuid      TEXT PRIMARY KEY,       -- uuid of the user/attachment record
+    trigger_id        TEXT PRIMARY KEY,
     session_id        TEXT NOT NULL REFERENCES sessions (session_id),
     agent_id          TEXT REFERENCES agents (agent_id),
     ts                TEXT NOT NULL,
@@ -128,7 +129,7 @@ CREATE TABLE requests (
     request_id        TEXT PRIMARY KEY,
     session_id        TEXT NOT NULL REFERENCES sessions (session_id),
     agent_id          TEXT REFERENCES agents (agent_id),
-    trigger_uuid      TEXT REFERENCES triggers (trigger_uuid),
+    trigger_id        TEXT NOT NULL REFERENCES triggers (trigger_id),
     message_uuid      TEXT NOT NULL,          -- uuid of the final record kept
     records_seen      INTEGER NOT NULL CHECK (records_seen >= 1),
     ts                TEXT NOT NULL,
@@ -221,9 +222,23 @@ CREATE TABLE prs (
     changed_files     INTEGER
 );
 
+-- Commits seen at the head of a branch, so ancestry attribution still works
+-- after rm-worktree.sh has deleted a merged packet branch. Filled from three
+-- sources, in attribution.md § A3: a ref snapshot on every ingest run, the
+-- build lane's job log (worktree + commit per build), and the
+-- "Merge branch '<name>'" subjects of merge commits on main.
+CREATE TABLE branch_heads (
+    branch            TEXT NOT NULL,
+    commit_sha        TEXT NOT NULL,
+    observed_at       TEXT NOT NULL,
+    source            TEXT NOT NULL CHECK (source IN ('ref-snapshot', 'lane-log', 'merge-subject')),
+    PRIMARY KEY (branch, commit_sha, source)
+);
+
 -- Request-to-PR attribution. For every request, the weights of its rows sum
 -- to 1; the unattributed share is a row with pr_number NULL. Methods and
--- their precedence: attribution.md.
+-- their precedence: attribution.md. attribution_imbalance must be empty at
+-- the end of every ingest run, or the run fails.
 CREATE TABLE pr_attribution (
     request_id        TEXT NOT NULL REFERENCES requests (request_id),
     pr_number         INTEGER REFERENCES prs (pr_number),
@@ -235,6 +250,14 @@ CREATE TABLE pr_attribution (
     CHECK ((method = 'unattributed') = (pr_number IS NULL))
 );
 CREATE UNIQUE INDEX pr_attribution_key ON pr_attribution (request_id, COALESCE(pr_number, -1));
+
+-- Requests whose attribution is missing or whose weights do not sum to 1.
+CREATE VIEW attribution_imbalance AS
+SELECT r.request_id, COALESCE(SUM(a.weight), 0) AS total_weight
+FROM requests r
+LEFT JOIN pr_attribution a ON a.request_id = r.request_id
+GROUP BY r.request_id
+HAVING ABS(COALESCE(SUM(a.weight), 0) - 1.0) > 1e-6;
 
 -- Records whose shape the ingest does not recognise. A run with rows here
 -- exits non-zero unless --allow-unknown is passed; they are never dropped silently.
