@@ -121,7 +121,7 @@ The GM tools use the same writer (see [commands](../commands.md)):
 - `.mail_expire <mailId>` makes any mail that can expire due now and expires it at once, by the sweep's own path, then says which path it took. Archived and quarantined mail are refused.
 
 Content chains use the same writer through the `send_system_mail` action (SS-U3,
-[content-engine.md](../content/content-engine.md#send_system_mail-params)). Its first
+[content-engine.md](../content/content-engine-vocabulary.md#send_system_mail-params)). Its first
 user is the Gate Mail Clerk in the stasis-room debug hub
 ([debug-hub.md](../content/debug-hub.md#gate-mail-clerk-template-390)): a dialog button
 mails the player 5 Health Slappack TC1 and 50 naquadah, at most once per character
@@ -324,7 +324,7 @@ It is a standalone table, not `INHERITS (sgw_inventory_base)`, so no inventory q
 - **Gate Mail Clerk.** In the stasis-room debug hub, Sgt. Harriman's "Send me a mail" button mails you 5 Health Slappacks and 50 naquadah, at most once every 10 minutes, so a non-GM can test taking cash and items. See [debug-hub.md](../content/debug-hub.md#gate-mail-clerk-template-390).
 - **GM tools.** `.mail`, `.mailbox` and `.mail_expire` ([Server and GM mail](#server-and-gm-mail-ss-u1), [commands.md](../commands.md)).
 - **Two-client test.** `two_client_mail_cod` in `crates/wireclient/tests/it/` runs a COD round trip between two wire clients (type 11, not run in CI).
-- **SigNoz.** Everything logs on the `mail` target, with `mail_id`, the actor's `account_id` and `player_id`, and the other player as `target_player_id`: `mail.sent`, `mail.send_refused` and `mail.op_refused` (each with `reason`), `mail.cash_taken`, `mail.item_taken`, `mail.cod_paid` and `mail.returned` (with before and after cash), `mail.expired` (with `path`), and `mail.notified`. See the `mail` row of the target catalog in [observability.md](../architecture/observability.md).
+- **SigNoz.** Everything logs on the `mail` target, with `mail_id`, the actor's `account_id` and `player_id`, and the other player as `target_player_id`: `mail.sent`, `mail.send_refused` and `mail.op_refused` (each with `reason`), `mail.cash_taken`, `mail.item_taken`, `mail.cod_paid` and `mail.returned` (with before and after cash), `mail.expired` (with `path`), and `mail.notified`. See the `mail` row of the [target catalog](../architecture/observability-target-catalog.md).
 
 ### Known client-side limits
 

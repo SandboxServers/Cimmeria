@@ -428,7 +428,7 @@ and take the naquadah and the slappacks.
 - Closing the dialog with X sends nothing, so nothing is mailed. Click the
   clerk again to get the dialog back.
 - Chain 7010 opens the dialog. Chain 7011 runs the `send_system_mail` content
-  action ([content-engine.md](content-engine.md#send_system_mail-params)).
+  action ([content-engine.md](content-engine-vocabulary.md#send_system_mail-params)).
 - Deviation from plain intent: none. The cooldown is per character, not per
   account, because mail is per character.
 

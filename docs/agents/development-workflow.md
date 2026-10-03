@@ -82,6 +82,16 @@ Every request re-reads the agent's whole context, so a long-lived agent pays for
 - **Monitors use `python` or `gh --jq`, not `jq`.** `jq` is not installed on every workstation; a watcher that pipes into it fails every poll and expires silently after 30 minutes.
 - **Batch cross-session messages.** Send a peer session one message per decision or wave, not one per event, and nothing it will see anyway in git or on the PR.
 
+## Reading files
+
+A tool result stays in the agent's context and is paid for again on every later request, so a 50k-character read costs 50k characters a turn until the agent stops. Reads are the largest share of what agents carry: in the three weeks to 2026-10-03, `Read` and Bash `sed -n` / `cat` / `head` / `tail` returned 146M characters. The measurements and the experiment behind these rules are in the [TP-07 worknote](../analysis/token-usage/worknotes/TP-07.md).
+
+- **Grep, then read the slice.** Find the line with `Grep` (`output_mode: content`, line numbers, a small `-C`), then `Read` with `offset` and `limit` around the hit. On ten real lookups this returned 30 times fewer characters than reading each file whole, in fewer calls, with the same answers.
+- **Don't read a file over about 300 lines whole without a reason**, such as editing most of it or reviewing all of it. A whole-file `Read` stops at about 25k tokens anyway, so on a large file it isn't whole.
+- **Prefer `Read` with `offset` and `limit` to `sed -n`, `cat`, `head` or `tail`** for files in the checkout: the same slice, and `Edit` needs a `Read` first anyway. Shell slicing is fine for piped output and files outside the checkout.
+- **Grep hides long lines.** It prints `[Omitted long matching line]` for a line over about 500 characters. Read that line with `offset` at its number and `limit: 1`, not the whole file.
+- **Write docs that can be sliced.** Keep table rows under 2,000 characters, the length past which `Read` cuts a line; put long descriptions in prose under the table. Split a doc that passes 700 lines along a seam ([`CLAUDE.md` § File organization](../../CLAUDE.md#file-organization)).
+
 ## Project memory
 
 What agents learn lives in two tiers with different bars:

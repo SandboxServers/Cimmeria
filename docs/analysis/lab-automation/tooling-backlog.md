@@ -34,7 +34,7 @@ A colo playtest could only be diagnosed by asking the player for local files. Th
 | C10 | Built for all players (see the table below). | `crates/client-telemetry/src/hooks/inline_hooks/lua_debug_log.rs` |
 | C15 | `client.sequence.dropped`: the SequenceManager's silent drop paths (no Source entity, no pawn, no cooked data, expired, culled by distance, instance refused) with `sequence_id`, `entity_id`, `path`. The cache-ready handler (`0x00d06f30`) and the play step (`0x00d06dd0`) are hooked; the `onSequence` handler (`0x00d05790`) is a proposal only, because its drop branch holds the ids only inside an unverified CME property tree. | `crates/client-telemetry/src/hooks/inline_hooks/sequence_manager.rs`, [client-telemetry.md](../../architecture/client-telemetry.md) |
 | — | Launcher: `client.launcher.install_result` (one row per install run, every patch's outcome and a patchset hash mismatch's path and hashes) and `client.patches.counts` (the client-patches DLL's claimed, delivered and dropped counts with the last reason). | [dev-session-telemetry.md](../../architecture/dev-session-telemetry.md) |
-| — | Server: player vitals samples, vendor interactions and refusals, numeric `player_id` and item ids on loot and grant rows. | [observability.md](../../architecture/observability.md#stable-target-catalog) |
+| — | Server: player vitals samples, vendor interactions and refusals, numeric `player_id` and item ids on loot and grant rows. | [observability-target-catalog.md](../../architecture/observability-target-catalog.md) |
 
 ## What exists today
 

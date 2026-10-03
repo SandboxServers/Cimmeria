@@ -113,7 +113,7 @@ Two rules this example follows:
   a project rule.
 
 The params and the telemetry are in
-[content-engine.md, `send_system_mail` params](../content/content-engine.md#send_system_mail-params).
+[content-engine.md, `send_system_mail` params](../content/content-engine-vocabulary.md#send_system_mail-params).
 
 ## When something doesn't fit
 

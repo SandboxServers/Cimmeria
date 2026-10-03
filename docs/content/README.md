@@ -103,7 +103,8 @@ Plus 67 DB-only worlds (not in spaces.xml) including 27 planned game zones, 25 M
 
 | Document | Description |
 |----------|-------------|
-| [content-engine.md](content-engine.md) | **REFERENCE** — cradle-to-grave reference for the data-driven runtime. Architecture, vocabulary, schema, lifecycle, observability, performance. |
+| [content-engine.md](content-engine.md) | **REFERENCE** — cradle-to-grave reference for the data-driven runtime. Architecture, schema, lifecycle, observability, performance. |
+| [content-engine-vocabulary.md](content-engine-vocabulary.md) | **REFERENCE** — the vocabulary: every trigger, condition and action, with params and status. |
 | [extending-the-engine.md](extending-the-engine.md) | **HOW-TO** — step-by-step guide to adding a new trigger, condition, or action variant, with the `ChangeStat` walkthrough. |
 | [dialog-ui-client-contract.md](dialog-ui-client-contract.md) | **REFERENCE** — what the 2009 dialog window actually does, and the authoring rules that follow: window types, which buttons each window can draw, close semantics and the two hard rules, immediate-versus-lure delivery, one-dialog-at-a-time eviction. |
 | [equip-from-inventory-pattern.md](equip-from-inventory-pattern.md) | **EXPLANATION** — when a quest grants a weapon, route it through a manual equip step instead of force-equipping into the bandolier. Mission 622 / 641 worked examples. |
