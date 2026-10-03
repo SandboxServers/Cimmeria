@@ -69,8 +69,8 @@ From the 2026-10-03 quick pass (throwaway scripts, not the profiler; TP-05 repla
 | TP-05b Attribution validation, D-TP6 both totals, D-TP7 integration PRs and campaign rollup | 2 | `tools/token-profile/ingest/`, `report/`, `pr_stats/`, `validate/` | Merged 2026-10-03 16:11:11Z; schema version 4, [worknote](worknotes/TP-05b.md) | [#1138](https://github.com/SandboxServers/Cimmeria/pull/1138) |
 | TP-05b review fix: the cache simulator's range is three scenarios, not a bound | 2 | `tools/token-profile/report/` | Merged 2026-10-03 16:11:23Z (CodeRabbit finding) | [#1139](https://github.com/SandboxServers/Cimmeria/pull/1139) |
 | TP-11 Retro cost study | 2 (after TP-10 backfill) | this folder | Merged 2026-10-03 16:29:54Z; [study](retro-cost-study.md) | [#1140](https://github.com/SandboxServers/Cimmeria/pull/1140) |
-| TP-12 Close-out: docs and status | 3 | the [how-to guide](../../guides/token-profiling.md), rules, status docs, the `gap-analysis.md` split | Open; [worknote](worknotes/TP-12-docs.md) | [#1142](https://github.com/SandboxServers/Cimmeria/pull/1142) |
-| TP-12 Close-out: scheduled jobs | 3 | `tools/token-profile/scheduled/` | Open, parallel worker | |
+| TP-12 Close-out: docs and status | 3 | the [how-to guide](../../guides/token-profiling.md), rules, status docs, the `gap-analysis.md` split | Merged; [worknote](worknotes/TP-12-docs.md) | [#1142](https://github.com/SandboxServers/Cimmeria/pull/1142) |
+| TP-12 Close-out: scheduled jobs | 3 | `tools/token-profile/scheduled/` | Merged; tasks registered on the coordinator workstation 2026-10-03 (first sweep 2026-10-04 07:30, first weekly report 2026-10-05 08:00, local time); [worknote](worknotes/TP-12-tools.md) | [#1143](https://github.com/SandboxServers/Cimmeria/pull/1143) |
 
 Wave 1 packets run in parallel, one worktree each; their files are disjoint. TP-01a and TP-01b build against [`schema.sql`](../../../tools/token-profile/schema.sql) and the fixture, so neither waits for the other. Packet scopes are in the [plan comment](https://github.com/SandboxServers/Cimmeria/issues/957#issuecomment-5968451932).
 
@@ -200,7 +200,8 @@ Each packet that changes behaviour adds a row when it merges. A before-and-after
 | TP-07 | [#1133](https://github.com/SandboxServers/Cimmeria/pull/1133) | 2026-10-03 13:44:55 | "Reading files" rule; four oversized docs split |
 | TP-09 | [#1135](https://github.com/SandboxServers/Cimmeria/pull/1135) | 2026-10-03 13:57:11 | Mechanical rebases go through `rebase-pr.sh` |
 | TP-05b | [#1138](https://github.com/SandboxServers/Cimmeria/pull/1138) | 2026-10-03 16:11:11 | Attribution rebuilt (schema version 4: a subagent's branch from its own git output; packet work to the campaign, not the integration PR); per-PR stats comments go live and the backfill starts. Per-PR numbers from before and after this cut use different rules, so re-ingest before comparing a PR across it |
-| TP-12 | [#1142](https://github.com/SandboxServers/Cimmeria/pull/1142) | on merge | "Batch mechanical steps" and "don't park a worker" rules; worker worktree safety rules |
+| TP-12 | [#1142](https://github.com/SandboxServers/Cimmeria/pull/1142) | 2026-10-03 17:34:01 | "Batch mechanical steps" and "don't park a worker" rules; worker worktree safety rules |
+| TP-12 | [#1143](https://github.com/SandboxServers/Cimmeria/pull/1143) | 2026-10-03 17:41:14 | Daily PR-stats sweep and weekly report run from Windows Task Scheduler; the sweep re-edits recent comments once after each profiler change |
 
 ## Acceptance criteria
 
