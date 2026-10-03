@@ -150,7 +150,8 @@ def build(db, sc):
         "layer": "cache-policy simulation",
         "note": ("Cache read and write USD per agent type, replayed under 5m and 1h TTLs over the observed idle "
                  "gaps. calibration = replay under the observed TTL / observed cache USD (1.0 is exact). "
-                 "1h - 5m range = the difference with no cold read, the mean and the largest observed one, "
+                 "1h - 5m three-scenario range = the difference with no cold read, the mean and the largest observed one; "
+                 "it does not bound intermediate cold reads, "
                  "the model's least certain input. Estimated list price, a plan-usage proxy."),
         "by_agent_type": out,
         "unpriced_requests": unpriced,
