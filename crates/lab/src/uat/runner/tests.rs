@@ -34,6 +34,8 @@ pub(super) struct Fake {
     /// call or typed line adds to it (see `ability_tests`).
     pub(super) events: Mutex<Vec<Value>>,
     pub(super) triggers: Mutex<Vec<(String, String, Value)>>,
+    /// How long after the call the fake press "goes out" (`press_ms`).
+    pub(super) press_delay_ms: Mutex<i64>,
 }
 
 const BASE_TOOLS: [&str; 9] = [
@@ -66,6 +68,7 @@ impl Fake {
             name: "Labone".into(),
             events: Mutex::new(vec![]),
             triggers: Mutex::new(vec![]),
+            press_delay_ms: Mutex::new(0),
         }
     }
 

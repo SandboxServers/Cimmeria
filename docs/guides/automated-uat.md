@@ -173,7 +173,7 @@ matches = "searchitem 'pistol': [0-9]+ match"
 | `optional` | An error is recorded but does not fail the row |
 | `client` | `p1` (default) or `p2`: which lab client runs it. `p2` needs `players = 2` |
 
-`${character}`, `${run_id}`, `${row_id}`, `${section}`, `${bookmark_id}`, `${p2_character}` (two-player rows), `${player_entity_id}` (rows with packet clauses or an `@ability_state` read of the lab character), `${cast_id}` and `${cast_id_<label>}` (after an ability press, [below](#client-event-clauses-and-cast_id)), `${dummy_id}` (after `@dummy`), the run's `vars` and captured values substitute into every string. A string that is exactly one `${var}` takes the variable's own type, so `entity_id = "${dummy_id}"` reaches a tool as a number. A captured whole number (a mail or entity id) is stored as a number for the same reason.
+`${character}`, `${run_id}`, `${row_id}`, `${section}`, `${bookmark_id}`, `${p2_character}` (two-player rows), `${player_entity_id}` (rows with packet clauses or an `@ability_state` read of the lab character), `${cast_id}`, `${cast_entity_id}`, `${cast_player_id}` and `${cast_key}`, each also as `..._<label>` (after an ability press, [below](#client-event-clauses-and-cast_id)), `${dummy_id}` (after `@dummy`), the run's `vars` and captured values substitute into every string. A string that is exactly one `${var}` takes the variable's own type, so `entity_id = "${dummy_id}"` reaches a tool as a number. A captured whole number (a mail or entity id) is stored as a number for the same reason.
 
 **Expected clauses** (`[[row.expect]]`): `id`, `text`, `source`, `required` (default true), `at` (evaluate right after that step; default after all steps), `client` (`chat`, `tool`, `lua`, `wait` and `client_event` clauses: read `p2` instead of `p1`).
 
@@ -250,15 +250,30 @@ op = "eq"
 value = 0
 ```
 
-The runner reads the store through `client_wait_event` with an explicit `since_seq`: it marks the store head at the row start and before every step a clause names in `since`, and never calls `client_events_read`, whose cursor belongs to whoever drives the lab. A clause is UNVERIFIED when no mark could be taken. When the store evicted events after the mark (`gap`), or a matched event carries the client throttle's `suppressed` count (burst 8, then 4 a second per name), a PASS that rests on an upper bound or on every event becomes UNVERIFIED: the missing events were never checked.
+The runner reads the store through `client_wait_event` with an explicit `since_seq`: it marks the store head at the row start and before every step a clause names in `since`, and never calls `client_events_read`, whose cursor belongs to whoever drives the lab. A clause is UNVERIFIED when no mark could be taken. A PASS that rests on an upper bound (`max_rows`) or on every event (`field`) becomes UNVERIFIED when events may be missing, because the missing ones were never checked. The runner reads the loss signals apart from the clause's own match:
 
-**`${cast_id}`.** After every `@use_ability` press in setup or the steps, the runner finds the cast it became, so SigNoz and server clauses can name it (`filter = "cast_id = ${cast_id}"`). It tries, in order:
+- the store evicted events after the mark (`gap`);
+- the bridge ring dropped events before the store saw them (`bridge_dropped`);
+- the client throttle suppressed rows of the clause's family (burst 8, then 4 a second).
 
-1. `client_recv`: the client's `client.ability.recv` `onEffectResults` for the pressed ability, after the press (its `cast_id` is the effect id the server sent).
-2. `seq_join`: the press's `client.ability.sent`, its `client.ability.sent_seq` packet range (28-bit, wrapping), the server's `use_ability_recv` row whose `mercury_seq` is in that range, and the same entity's next `ability_launched` for the ability, from `server_log_tail` (the server's DEBUG ring, 500 rows).
-3. `press_window`: the `ability_launched` for (the pressing character's entity, the ability) nearest the press on the server clock (the anchor's offset), within 2 s.
+The throttle decides a press and its answers together and puts the count of suppressed presses only on the *next* `client.ability.press` row, so a dropped `client.ability.sent` leaves no row of its own. A clause on any `client.ability.*` kind is therefore checked against every `client.ability.*` row since its mark. A suppression at the very end of the window, with no row after it, cannot be seen: do not bound a burst of more than 8 presses a second.
 
-The press's action records which path found it (`calls: [{cast_id, via}]`) or every reason none did. The value goes into `${cast_id}` (the latest press) and, for a labelled press, `${cast_id_<label>}`. A press with no cast found clears `${cast_id}`; a SigNoz clause that still names it is written with the literal and says so.
+**`${cast_id}` and the cast's caster.** After every `@use_ability` press in setup or the steps, the runner finds the cast it became, so SigNoz and server clauses can name it. A `cast_id` is the caster's own `effect_seq`, so it is unique per caster, not across the server: two players can hold the same number in the same minute. A cast is therefore named by the pair (caster, `cast_id`). The runner stores:
+
+| Var | Value |
+|---|---|
+| `${cast_id}` | the cast's id |
+| `${cast_entity_id}` | the caster's entity (the receipt's `source_id`, or the pressing character's session) |
+| `${cast_player_id}` | the caster's `player_id`, when the server log tail still holds the cast's `ability_launched` row |
+| `${cast_key}` | both halves as one SigNoz fragment: `cast_id = C AND (entity_id = E OR source_id = E OR invoker_id = E)`. Cast rows name their caster under one of those three fields (heals as `source_id`, pulses as `invoker_id`) |
+
+Write SigNoz clauses with the key, never `cast_id` alone: `filter = "event = 'ability_launched' AND ${cast_key}"`. The runner tries, in order:
+
+1. `client_recv`: the client's `client.ability.recv` `onEffectResults` for the pressed ability, after the press. Its `cast_id` is the effect id the server sent, and its `source_id` is the caster.
+2. `seq_join`: the press's `client.ability.sent`, its `client.ability.sent_seq` packet range (28-bit, wrapping), the **pressing entity's** `use_ability_recv` row whose `mercury_seq` is in that range (packet seqs are per connection), and that entity's next `ability_launched` for the ability, from `server_log_tail` (the server's DEBUG ring, 500 rows).
+3. `press_window`: the `ability_launched` for (the pressing entity, the ability) nearest the press on the server clock (the anchor's offset), within 2 s. The press time is `client_use_ability`'s own `press_ms`, taken just before the key or click went out; else the client's `client.ability.press` row; else the action's start, which is early by the tool's lookup and placement time.
+
+The press's action records which path found it and when the press went out (`calls: [{cast_id, cast_entity_id, cast_player_id, via, press_ms, press_time_from}]`), or every reason none did. Every value also goes into a `_<label>` var for a labelled press. All of them are cleared before each press's attempt, so a press with no cast found leaves none behind, and a SigNoz clause that still names one is written with the literal and says so.
 
 ### Two-player rows
 

@@ -438,8 +438,14 @@ impl<'a, I: ToolInvoker> Runner<'a, I> {
             .filter(|c| c.source == Source::Chat)
             .map(|c| (Who::of(c.client.as_deref()), c.since.as_deref()))
             .collect();
-        let mut readers: Vec<Who> = chat.iter().map(|c| c.0).collect();
-        readers.dedup();
+        let mut readers: Vec<Who> = Vec::new();
+        for (who, _) in &chat {
+            // Not `dedup`: it drops only neighbours, and a second read of
+            // the same client would move its mark past lines to count.
+            if !readers.contains(who) {
+                readers.push(*who);
+            }
+        }
         for who in &readers {
             let tail = self.read_chat_of(*who).await.unwrap_or_default();
             ctx.chat_marks.insert(who.mark(""), tail);

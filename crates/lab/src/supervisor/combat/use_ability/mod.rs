@@ -345,6 +345,9 @@ impl Supervisor {
             "cooldown_after": cooldown_after,
             "player_after": after.map(|a| a.to_json()),
             "event_seq": { "before": seq_before, "after": last_head },
+            // Host epoch ms just before the key or click went out: the
+            // UAT runner centres its cast-id press window on it.
+            "press_ms": press_ms,
             "rings": pump.to_json(),
         })))
     }

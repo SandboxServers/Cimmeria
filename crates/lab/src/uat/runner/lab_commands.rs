@@ -46,7 +46,12 @@ impl<I: ToolInvoker> Runner<'_, I> {
                 );
             }
         }
-        let before = self.read_chat_of(who).await.unwrap_or_default();
+        // Without a baseline every visible line would count as new, and an
+        // old reply (an old dummy id) could pass the action.
+        let before = match self.read_chat_of(who).await {
+            Ok(b) => b,
+            Err(e) => return fail(rec, format!("chat baseline before {}: {e}", cmd.line)),
+        };
         self.send_chat(who, &cmd.line, rec).await;
         if !rec.ok {
             return;

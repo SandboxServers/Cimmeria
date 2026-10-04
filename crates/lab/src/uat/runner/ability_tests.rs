@@ -103,6 +103,7 @@ impl Fake {
             "native_level": { "tier": "N1", "label": "real_input" },
             "result": { "verdict": "effect_applied" },
             "event_seq": { "before": before, "after": self.head() },
+            "press_ms": chrono::Utc::now().timestamp_millis() + *self.press_delay_ms.lock().unwrap(),
         })
     }
 }
@@ -254,7 +255,7 @@ async fn client_event_clauses_read_only_what_arrived_after_their_mark() {
         .on_call(
             "client_use_ability",
             "ability.recv",
-            json!({ "method": "onEffectResults", "ability_id": 597, "cast_id": 4242 }),
+            json!({ "method": "onEffectResults", "ability_id": 597, "cast_id": 4242, "source_id": 7 }),
         )
         .on_call("chat:.help", "lua.print", json!({ "text": "help" }));
     let row = run(&fake, None, PRESS_ROW).await;
@@ -273,6 +274,12 @@ async fn client_event_clauses_read_only_what_arrived_after_their_mark() {
     assert_eq!(cast_note(&row)["via"], "client_recv");
     assert_eq!(row.vars["cast_id"], 4242);
     assert_eq!(row.vars["cast_id_press"], 4242);
+    // A cast_id is per caster: the composite names the caster too.
+    assert_eq!(row.vars["cast_entity_id"], 7);
+    assert_eq!(
+        row.vars["cast_key"],
+        "cast_id = 4242 AND (entity_id = 7 OR source_id = 7 OR invoker_id = 7)"
+    );
     let q = clause(&row, "signoz").query.as_ref().unwrap();
     assert!(q["filter"].as_str().unwrap().contains("cast_id = 4242"));
     // The runner never drains the operator's client_events_read cursor.
@@ -292,8 +299,10 @@ async fn a_dropped_press_fails_and_a_missing_reader_blocks() {
     assert_eq!(row.result, RowResult::Fail);
     assert_eq!(clause(&row, "no-drop").verdict, Verdict::Fail);
     assert_eq!(clause(&row, "sent").verdict, Verdict::Fail);
-    // No cast found anywhere: the var is cleared and the SigNoz clause says so.
-    assert!(row.vars.get("cast_id").is_none());
+    // No cast found anywhere: the vars are cleared and the SigNoz clause says so.
+    for v in ["cast_id", "cast_entity_id", "cast_key", "cast_id_press"] {
+        assert!(row.vars.get(v).is_none(), "{v}");
+    }
     assert!(cast_note(&row)["tried"].as_array().unwrap().len() >= 2);
     let s = clause(&row, "signoz");
     assert!(s
@@ -345,6 +354,12 @@ async fn the_cast_id_falls_back_to_the_packet_seq_join() {
             json!({ "send_id": 5, "mercury_seq_first": 200, "mercury_seq_last": 201 }),
         );
     let server = FakeServer::new(vec![
+        // Another connection with the same packet seq and ability, first:
+        // packet seqs are per connection, so it is not this press's.
+        log_row(
+            0,
+            json!({ "event": "use_ability_recv", "entity_id": 9, "ability_id": 637, "mercury_seq": 201 }),
+        ),
         log_row(
             1,
             json!({ "event": "use_ability_recv", "entity_id": 7, "ability_id": 637, "mercury_seq": 201 }),
@@ -355,12 +370,14 @@ async fn the_cast_id_falls_back_to_the_packet_seq_join() {
         ),
         log_row(
             3,
-            json!({ "event": "ability_launched", "entity_id": 7, "ability_id": 637, "cast_id": 77 }),
+            json!({ "event": "ability_launched", "entity_id": 7, "ability_id": 637, "cast_id": 77, "player_id": 700 }),
         ),
     ]);
     let row = run(&fake, Some(&server), CAST_ROW).await;
     assert_eq!(cast_note(&row)["via"], "seq_join", "{}", cast_note(&row));
     assert_eq!(row.vars["cast_id"], 77);
+    assert_eq!(row.vars["cast_player_id"], 700);
+    assert_eq!(row.vars["cast_entity_id"], 7);
 }
 
 /// Nothing from the client at all: the launch of (lab entity, ability)
@@ -369,6 +386,10 @@ async fn the_cast_id_falls_back_to_the_packet_seq_join() {
 #[tokio::test]
 async fn the_cast_id_falls_back_to_the_press_window() {
     let fake = ability_client();
+    // The key goes out 5 s after the tool was called (lookup, placement):
+    // the window is centred on the tool's `press_ms`, not the action start
+    // (Copilot, #1183). Centred on the start it would pick cast 54.
+    *fake.press_delay_ms.lock().unwrap() = 5000;
     // The fake's bookmark id is the server clock at the anchor, a moment
     // before the press.
     let at = 1_790_650_000_000_i64;
@@ -379,10 +400,14 @@ async fn the_cast_id_falls_back_to_the_press_window() {
         ),
         log_row(
             at + 300,
+            json!({ "event": "ability_launched", "entity_id": 7, "ability_id": 637, "cast_id": 54 }),
+        ),
+        log_row(
+            at + 5300,
             json!({ "event": "ability_launched", "entity_id": 7, "ability_id": 637, "cast_id": 55 }),
         ),
         log_row(
-            at + 300,
+            at + 5300,
             json!({ "event": "ability_launched", "entity_id": 9, "ability_id": 637, "cast_id": 56 }),
         ),
     ]);
@@ -394,6 +419,45 @@ async fn the_cast_id_falls_back_to_the_press_window() {
         cast_note(&row)
     );
     assert_eq!(row.vars["cast_id"], 55);
+    assert_eq!(cast_note(&row)["press_time_from"], "tool");
+}
+
+/// A suppressed press shows only as `suppressed` on a later press row, and
+/// its `sent` is gone without a trace: an upper bound on `sent` must not
+/// pass (Copilot, #1183).
+#[tokio::test]
+async fn a_throttled_press_makes_an_upper_bound_on_sends_unverified() {
+    let rows = r#"
+[[row]]
+id = "AB-U6"
+title = "one send"
+expected = "x"
+step = [{ tool = "@use_ability", args = { ability_id = 2944 }, label = "press" }]
+[[row.expect]]
+id = "one-send"
+text = "exactly one send"
+source = "client_event"
+event = "client.ability.sent"
+match_fields = { ability_id = 2944 }
+since = "press"
+max_rows = 1
+timeout_ms = 0
+"#;
+    let fake = ability_client()
+        .on_call(
+            "client_use_ability",
+            "ability.sent",
+            json!({ "ability_id": 2944 }),
+        )
+        .on_call(
+            "client_use_ability",
+            "ability.press",
+            json!({ "ability_id": 2944, "suppressed": 3 }),
+        );
+    let row = run(&fake, None, rows).await;
+    let c = clause(&row, "one-send");
+    assert_eq!(c.verdict, Verdict::Unverified, "{:?}", c.observed);
+    assert!(c.detail.as_ref().unwrap().contains("suppressed 3"));
 }
 
 const LAB_ROW: &str = r#"
