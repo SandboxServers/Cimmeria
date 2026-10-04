@@ -333,3 +333,11 @@ The uncertainty regression guard was mutation-checked after the storage commit:
 disabling its reopen gate made the test fail; restoring it made the same test
 pass. This proves that guard detects loss of the gate, not complete recovery
 correctness. Next: signed release-manifest integration and actual game workers.
+
+### 2026-10-04: Windows shell resource correction
+
+CI run `37182338053` passed the Mac shell build, tests and clippy. Windows
+passed engine tests and JS persistence UAT, then failed the shell build script:
+`icons/icon.ico` was missing. Added the existing launcher ICO to the standalone
+shell and listed both icon formats explicitly. Native Windows validation of
+this correction is pending the next run; no cross-compilation was attempted.

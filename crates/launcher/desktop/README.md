@@ -178,3 +178,7 @@ and implement authoritative reconciliation, cancellation and progress through
 Effect. Manifest loading and all game actions remain unimplemented. Platform
 provisioning, telemetry, migration/updater and final self-contained startup and
 release gates remain open.
+
+The shell includes PNG and Windows ICO resources. Tauri compiles the ICO into
+the Windows executable even for shell tests; native Windows CI is the check for
+that resource step. The ICO is copied from the existing Windows launcher.

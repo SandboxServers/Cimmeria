@@ -32,3 +32,7 @@ to the approved interface and Effect settings workflow. File-manager reveal
 accepts only the saved existing directory, avoiding arbitrary-path IPC and
 file-association launch. CI run37181383914 proved engine/JS persistence on
 Windows+Mac before the shell; shell/visual/game gates remain separate.
+
+- Windows shell CI requires `shell/icons/icon.ico` even for tests; the initial
+  PNG-only shell passed Mac CI but failed Windows tauri-build resource creation
+  (run `37182338053`). The existing launcher ICO is now included explicitly.

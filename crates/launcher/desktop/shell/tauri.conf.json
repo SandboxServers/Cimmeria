@@ -9,5 +9,5 @@
     "windows": [{"label":"main","title":"Stargate Worlds — development","theme":"Dark","width":620,"height":700,"minWidth":480,"minHeight":560}],
     "security": {"csp":"default-src 'self'; connect-src 'self' ipc: http://ipc.localhost; script-src 'self'; style-src 'self'; img-src 'self' data:; object-src 'none'; base-uri 'none'; frame-src 'none'"}
   },
-  "bundle": {"active":true,"targets":"all","icon":[],"macOS":{"minimumSystemVersion":"12.0"}}
+  "bundle": {"active":true,"targets":"all","icon":["icons/icon.png","icons/icon.ico"],"macOS":{"minimumSystemVersion":"12.0"}}
 }
