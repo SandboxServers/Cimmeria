@@ -5,6 +5,13 @@
 > **Last updated:** 2026-10-03, after saving the launcher workaround
 > **Companions:** [Experimental Mac guide](../../../guides/macos.md), [current issues and status #1151](https://github.com/SandboxServers/Cimmeria/issues/1151), [Mac prerequisites #1150](https://github.com/SandboxServers/Cimmeria/issues/1150), [Windows legacy runtimes #1121](https://github.com/SandboxServers/Cimmeria/issues/1121)
 
+## Native launcher implementation
+
+For the later Tauri work, use the [implementation plan](launcher-implementation-plan.md),
+[delivery ledger](launcher-implementation-ledger.md), and
+[delegation plan with Codex/Claude prompts](launcher-delegation-plan.md).
+The Wine playtest notes below describe the earlier launcher workaround.
+
 ## Resume here
 
 **The launcher window blocker is resolved. The game is not installed yet.**

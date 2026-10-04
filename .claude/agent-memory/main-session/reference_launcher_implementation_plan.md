@@ -494,3 +494,7 @@ post-promotion recovery/cleanup smoke passed 27.245s (20261004-094105-62166),
 not actual process-crash proof. Full engine294/15ignored passed094147-62543;
 strict clippy passed094534-63498. Canonical evidence and limitations:
 crates/launcher/desktop/docs/repair.md.
+
+Delegation mechanics verified 2026-10-04: mk-worktree.sh assumes Windows/main;
+ship.sh creates against main. Feature-base worktrees and worker ownership:
+docs/analysis/playtests/2026-10-03-macos-wine/launcher-delegation-plan.md.
