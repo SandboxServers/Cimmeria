@@ -41,6 +41,7 @@ pub mod helper_supervisor;
 
 pub use storage::install_recovery;
 pub use storage::install_worker;
+pub use storage::repair;
 pub use storage::runtime_setup;
 pub use storage::uninstall;
 pub use storage::EvidenceError;

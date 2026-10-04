@@ -474,3 +474,14 @@ Twelve persistence tests and enhanced headless reopen/reconcile/uninstall smoke
 (28.060s) pass. Native Windows CI 37205534527 caught a Mac-only state_root test
 accessor used by portable persistence tests; cfg now includes test builds.
 Windows revalidation remains pending; no cross-compile was performed.
+
+
+### Repair admission (2026-10-04)
+
+Native admit_repair now binds a separate work UUID to the permanent installed
+identity and original cached signed release, records old-game presence and
+reserves derived stage/backup names without creating them. Confirmation/revision,
+owner lock and absent-path checks precede durable admission; duplicate/reopened
+IDs never redispatch. Three targeted tests pass. This is not a Repair worker or
+UI: reconstruction, commit checkpoints, resource/prefix ownership and recovery
+remain required. Canonical contract: desktop docs/repair.md.

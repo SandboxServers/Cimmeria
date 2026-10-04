@@ -1,8 +1,9 @@
 # Repair design contract
 
-**Status: planned, not implemented.** This contract defines a future replacement
-workflow. Current installed-content identity is groundwork, not an available
-Repair command. See [maintenance](maintenance.md) for implemented uninstall.
+**Status: native admission implemented; reconstruction, commit/recovery and UI
+remain planned.** This contract defines the replacement workflow and its gates.
+Repair is not yet an available user command. See
+[maintenance](maintenance.md) for implemented uninstall.
 
 ## Identity and reconstruction
 
@@ -85,4 +86,30 @@ Before UI release, run real Effect service logic UAT through native persistence:
 confirmation/dismissal, preinspection, one mutation under duplicate clicks,
 precommit cancellation, no replay after timeout/reconnect, explicit recovery and
 preserved consent. Add visual/manual UAT separately and state its coverage.
-No implementation or passing Repair validation is claimed by this document.
+Only the admission layer below is implemented; the reconstruction, commit,
+fault-recovery and UI validation gates above are still open.
+
+## Implemented admission boundary
+
+`DesktopState::admit_repair` requires explicit confirmation, the inspected
+operation revision and the original installation ID. It reverifies installed
+identity and cached signed-release evidence, locks/rechecks the permanent root
+owner during admission, and writes `repair-plan-<work-id>.json` before beginning
+a Repair operation. The original `InstallIntent` is unchanged; `install_intent()`
+does not reinterpret repair work as a first installation.
+
+The plan records original-game presence and derives sibling
+`.cimmeria-repair-<work-id>` / `.cimmeria-backup-<work-id>` paths under that
+installation. Those paths must be absent and are not created by admission.
+A missing game is repairable identity, not lost ownership. Preferences are not
+used to redirect repair. Matching duplicate IDs return `dispatch: false`,
+including after reopen; identity conflicts and orphan plans are refused.
+
+Three admission tests passed (`20261004-084102-41373`): modified content remains
+untouched, missing content is recorded, confirmation/revision/owner mismatches
+and held locks refuse admission, conflicting stages are preserved, plan tampering
+fails validation, and reopen retains reconciliation gating and consent. These
+are persistence/ownership fixtures, not reconstruction or platform rename tests.
+The admission lock ends when the call returns; the future retained worker must
+reacquire and revalidate all resources before touching game files. No frontend
+behavior or JS/visual UAT is claimed for this internal API packet.
