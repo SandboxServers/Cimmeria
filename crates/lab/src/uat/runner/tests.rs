@@ -15,14 +15,14 @@ use crate::uat::invoke::{ToolInvoker, ToolOutcome};
 use crate::uat::spec;
 
 /// A pretend client.
-struct Fake {
+pub(super) struct Fake {
     tools: HashSet<String>,
     /// Typed chat line → lines the "server" answers with.
     replies: HashMap<String, Vec<String>>,
     chat: Mutex<Vec<String>>,
     typed: Mutex<String>,
     lua: Value,
-    calls: Mutex<Vec<String>>,
+    pub(super) calls: Mutex<Vec<String>>,
 }
 
 const BASE_TOOLS: [&str; 9] = [
@@ -38,7 +38,7 @@ const BASE_TOOLS: [&str; 9] = [
 ];
 
 impl Fake {
-    fn new(replies: &[(&str, &[&str])]) -> Self {
+    pub(super) fn new(replies: &[(&str, &[&str])]) -> Self {
         Self {
             tools: BASE_TOOLS.iter().map(|s| s.to_string()).collect(),
             replies: replies
@@ -54,6 +54,11 @@ impl Fake {
 
     fn without(mut self, tool: &str) -> Self {
         self.tools.remove(tool);
+        self
+    }
+
+    pub(super) fn with(mut self, tool: &str) -> Self {
+        self.tools.insert(tool.to_string());
         self
     }
 }
@@ -101,6 +106,7 @@ impl ToolInvoker for Fake {
             "client_ui_state" => ok(json!({ "chat_tail": *self.chat.lock().unwrap() })),
             "client_lua_eval" => ok(self.lua.clone()),
             "client_wait_for" => ok(json!({ "met": true, "elapsed_ms": 5 })),
+            "lab_fail" => ToolOutcome::err("scripted failure"),
             "client_target" => {
                 ok(json!({ "native_level": "ui_lua", "counts_as_native_pass": false }))
             }
@@ -115,7 +121,7 @@ impl ToolInvoker for Fake {
     }
 }
 
-const HEAD: &str = r#"
+pub(super) const HEAD: &str = r#"
 schema = 1
 [section]
 id = "gm-parity"
@@ -124,7 +130,7 @@ guide = "unified-uat.md#gm-console-command-parity"
 ledger = "legacy-command-parity/README.md"
 "#;
 
-fn request(root: &std::path::Path, rows: &str) -> RunRequest {
+pub(super) fn request(root: &std::path::Path, rows: &str) -> RunRequest {
     let text = format!("{HEAD}{rows}");
     let spec = spec::parse(&text).unwrap();
     RunRequest {

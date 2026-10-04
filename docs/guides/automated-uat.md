@@ -24,7 +24,7 @@ The runner never decides a row passed on weaker evidence than a tester would hav
 2. **One `SGW.exe`, the `lab` account.** `lab_client_start` refuses while another client runs. The account and character come from `lab-account.json` ([live research lab, Setup](live-research-lab.md)).
 3. **Colo rule 6.** `.announce`, `/gmshout`, `.bm_seed`, `.mute` and content reloads need the owner's say-so in this session. The runner refuses them (the row is BLOCKED) unless the run passes that word in `owner_approvals`.
 4. **The screensaver.** A secure screensaver locks the desktop and stops the client rendering. Keep the display awake (hold `ES_DISPLAY_REQUIRED`) or stop a non-secure `*.scr` before launching.
-5. **Server evidence.** The runner reads `server_*` tools from `cimmeria-lab-mcp` when `CIMMERIA_LAB_MCP_URL` and `CIMMERIA_LAB_MCP_TOKEN` are set. When that endpoint is unreachable (the colo answered HTTP 403 "Host header is not allowed" on 2026-09-29), server clauses are UNVERIFIED and the row rests on its SigNoz clauses, which you attest (below).
+5. **Server evidence.** The runner reads `server_*` tools from `cimmeria-lab-mcp` when `CIMMERIA_LAB_MCP_URL` and `CIMMERIA_LAB_MCP_TOKEN` are set. When that endpoint is unreachable (the colo answered HTTP 403 "Host header is not allowed" on 2026-09-29), server and packet clauses are UNVERIFIED and the row rests on its SigNoz clauses, which you attest (below).
 
 ## Run rows
 
@@ -104,7 +104,7 @@ One directory per run under `CIMMERIA_LAB_UAT_DIR`, default `%LOCALAPPDATA%\cimm
 <date>-<build8>-<run id>/
   run.json                       builds, clocks, account, characters, tools, specs
   rows/<section>/<row>.json      one row's evidence
-  rows/<section>/<row>/          final.png, other screenshots, tool reads (.json)
+  rows/<section>/<row>/          final.png, other screenshots, tool reads (.json), packet-tap.json
   ledger.md                      summary table + one Recording-results block per row
 ```
 
@@ -119,7 +119,7 @@ Each row JSON holds:
 | `actions[]` | Every action with its role (`setup`, `step`, `teardown`, `anchor`), the tool that ran (and whether a fallback did), its arguments, tier and where the tier came from, host start time, elapsed ms, result or error, and the individual calls a chat line expanded into |
 | `clauses[]` | Every expected clause: its text, source, what it expects, the observed value, the verdict, and for SigNoz the exact query and window |
 | `anchor` | The `.bug` note, the bookmark id, host send and seen times, and the server offset |
-| `attachments[]` | Screenshots and tool reads, with the tool and host time |
+| `attachments[]` | Screenshots and tool reads, with the tool and host time; `packet_tap` (`packet-tap.json`) holds every message the row's packet tap captured |
 | `character`, `account_kind`, `started_utc`, `ended_utc`, `host_*_ms` | Who ran it and when, on both clocks |
 | `attestations[]` | Every `lab_uat_attest` applied to the row |
 
@@ -185,9 +185,38 @@ matches = "searchitem 'pistol': [0-9]+ match"
 | `timing` | `action` (a label), `max_ms` | That step's elapsed time |
 | `signoz` | `filter`, `min_rows`, `max_rows`, `field` + `op` + `value` | PENDING until attested |
 | `server` | `tool`, `args`, `pointer`, `op`, `value` | A `cimmeria-lab-mcp` tool; UNVERIFIED when unreachable |
+| `packet` | `message`, `direction`, `entity`, `min_rows`, `max_rows`, `field` + `op` + `value` (+ `tolerance`) | Decoded Mercury messages from the row's packet tap (below); UNVERIFIED when the endpoint is unreachable |
 | `human` | `question` | NEEDS_HUMAN until answered |
 
-`op` is one of `eq`, `ne`, `contains`, `not_contains`, `matches`, `gt`, `gte`, `lt`, `lte`, `exists`, `absent`, `truthy`, `falsy`, `len_gte`. Numbers compare numerically even when Lua returns them as strings.
+`op` is one of `eq`, `ne`, `contains`, `not_contains`, `matches`, `gt`, `gte`, `lt`, `lte`, `exists`, `absent`, `truthy`, `falsy`, `len_gte`, `approx`. Numbers compare numerically even when Lua returns them as strings. `approx` takes a numeric `value` and a `tolerance`: `op = "approx"`, `value = 15`, `tolerance = 1` passes 14 to 16, the spec form of `complete_in_s ~ 15 ± 1`.
+
+### Packet clauses
+
+A `packet` clause asserts what crossed the wire, as the server decoded it. When any clause in a row has `source = "packet"`, the runner starts a packet tap (`server_packet_tap_start`) on the lab character's session right after the row's `.bug` anchor, and before teardown reads it once (`server_packet_tap_read`) and stops it (`server_packet_tap_stop`). It stops the tap on every path that started one, including a failed setup or step, so a row never leaves a tap buffering. The three calls are recorded on the row as setup and teardown actions, and the full read is the row's `packet_tap` attachment.
+
+| Field | Meaning |
+|---|---|
+| `message` | The message name as the tap decodes it (its `msg_name`, the dispatch-table name); case does not matter |
+| `direction` | `to_client` (the server sent it) or `to_server` (the client sent it) |
+| `entity` | Only messages sent for this entity (an outbound row's `target_entity_id`): a number or a `${var}`, usually `"${player_entity_id}"` |
+| `min_rows`, `max_rows` | How many matching messages; default at least one. `max_rows = 0` asserts the message was never sent |
+| `field` + `op` + `value` (+ `tolerance`) | Every matching message must satisfy it. `field` is a decoded argument name, a tap column (`ts_ms`, `method_index`, `args_len`, `args_hex`), or a JSON pointer (`/decoded/...`) |
+
+```toml
+[[row.expect]]
+id = "cooldown-sent"
+text = "the server sends a 15 s cooldown to the caster"
+source = "packet"
+message = "onTimerUpdate"
+direction = "to_client"
+entity = "${player_entity_id}"
+field = "complete_in_s"
+op = "approx"
+value = 15
+tolerance = 1
+```
+
+The session is found by the character's name in `server_sessions`; pass `vars.player_entity_id` to skip that lookup. The runner sets `${player_entity_id}` once it knows it. A packet clause is graded over the whole row, so it takes no `at` or `since`. A clause is UNVERIFIED, naming the reason, when the endpoint is not configured or refuses, the session is not found, or the tap could not be read. When the tap's ring dropped messages (`dropped` in the read), a PASS that depends on an upper bound or on every row becomes UNVERIFIED, because the dropped messages were never checked. Packet clauses cross-check the client's own decode (ability-mechanics AB-C3): the tap and a `client_event` clause on the same row must agree.
 
 **Evidence** (`[[row.evidence]]`): `name`, `tool`, `args`, `at`. Images become PNG attachments; JSON results become `.json` attachments. Every row that ran also gets `final.png`.
 

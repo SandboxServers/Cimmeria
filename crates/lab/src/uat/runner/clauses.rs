@@ -100,7 +100,7 @@ impl<I: ToolInvoker> Runner<'_, I> {
                     // the spec's rules without re-reading the spec.
                     "grading": {
                         "min_rows": c.min_rows, "max_rows": c.max_rows,
-                        "field": c.field, "op": c.op, "value": c.value,
+                        "field": c.field, "op": c.op, "value": c.value, "tolerance": c.tolerance,
                     },
                 }));
                 r.detail =
@@ -126,6 +126,10 @@ impl<I: ToolInvoker> Runner<'_, I> {
                     );
                 }
             },
+            Source::Packet => {
+                // Graded from the tap read before teardown (`packet.rs`).
+                r.detail = Some("a packet clause is graded from the row's tap".into());
+            }
             Source::Human => {
                 r.verdict = Verdict::NeedsHuman;
                 r.evidence_refs = ctx.attachments.iter().map(|a| a.path.clone()).collect();

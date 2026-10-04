@@ -439,7 +439,8 @@ AB-L0 smoke, AB-L4, AB-L6 ──────────────────
 | AB-N0 | Ready | | |
 | AB-N1 | BlockedDependency (AB-N0, AB-T3) | | |
 | AB-N2 | Ready | | |
-| AB-L0, AB-L4, AB-L6 | Ready | | |
+| AB-L0, AB-L6 | Ready | | |
+| AB-L4 | InReview | (this PR) | `source = "packet"` clauses and the `approx` op (`value` ± `tolerance`); one tap per row from the anchor to teardown, stopped on every path; rows kept as the `packet_tap` attachment; UNVERIFIED when the endpoint is unreachable. Guide: automated-uat.md "Packet clauses". |
 | AB-L1, AB-L2 | BlockedDependency (AB-T5); `.qr` BlockedDecision (D-AU2) | | |
 | AB-L3 | BlockedDependency (AB-L1, AB-T1, AB-C1) | | |
 | AB-R0 | Ready (draft rows; clauses fill in as tools land) | | |

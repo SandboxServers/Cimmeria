@@ -21,7 +21,7 @@ use super::LabServer;
 use crate::supervisor::{instance, session_file};
 use crate::uat::attest::{attest, AttestRequest};
 use crate::uat::evidence::{default_root, RunDir, Verdict};
-use crate::uat::invoke::{normalize_result, ServerTools, ToolInvoker, ToolOutcome};
+use crate::uat::invoke::{normalize_result, ServerInvoker, ServerTools, ToolInvoker, ToolOutcome};
 use crate::uat::runner::{client_fingerprint, RunRequest, Runner};
 use crate::uat::{latest_run, ledger, load_sections, specs_dir};
 
@@ -254,8 +254,9 @@ impl LabServer {
             names,
         };
         let server_tools = ServerTools::from_env();
-        let runner = Runner::new(&inv, server_tools.as_ref(), req)
-            .map_err(|e| McpError::internal_error(e, None))?;
+        let server = server_tools.as_ref().map(|s| s as &dyn ServerInvoker);
+        let runner =
+            Runner::new(&inv, server, req).map_err(|e| McpError::internal_error(e, None))?;
         let out = runner
             .run_all()
             .await
