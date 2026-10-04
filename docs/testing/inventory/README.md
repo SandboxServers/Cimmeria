@@ -35,8 +35,8 @@ many tests also updates the catalogue.
 
 | Metric | Count |
 |---|---:|
-| Tests (`#[test]` / `#[tokio::test]`) | 10,016 |
-| Files with tests | 1,696 |
+| Tests (`#[test]` / `#[tokio::test]`) | 10,028 |
+| Files with tests | 1,698 |
 | Gated in CI (every crate but CI's exclude list) | 8,629 |
 | Live-DB tests (`require_db_or_skip!` in the body) | 1,538 |
 | Inventory threshold (5% of the tests) | 501 |
@@ -98,7 +98,7 @@ with no file in this directory yet.
 | `crates/entity` | `cimmeria-entity` | 437 | 55 | 0 | yes | [entity.md](entity.md) |
 | `crates/base-session` | `cimmeria-base-session` | 404 | 72 | 185 | yes | none |
 | `crates/launcher` | `sgw-launcher` | 396 | 54 | 0 | no | [launcher.md](launcher.md) |
-| `crates/lab` | `cimmeria-lab` | 362 | 76 | 0 | no | none |
+| `crates/lab` | `cimmeria-lab` | 374 | 78 | 0 | no | none |
 | `crates/mercury` | `cimmeria-mercury` | 333 | 55 | 0 | yes | [mercury.md](mercury.md) |
 | `crates/base-crafting` | `cimmeria-base-crafting` | 321 | 59 | 142 | yes | none |
 | `crates/wire` | `cimmeria-wire` | 296 | 52 | 0 | yes | none |
