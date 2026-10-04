@@ -1,6 +1,7 @@
 use super::*;
 use crate::{catalog::verify_release, AdmissionRequest, OperationState};
 use ed25519_dalek::{Signer, SigningKey};
+use std::io::Write;
 #[tokio::test]
 #[ignore = "downloads pinned Wine and runs the Windows CI helper headlessly in a private temporary prefix"]
 async fn native_windows_helper_extracts_zip_under_managed_wine() {

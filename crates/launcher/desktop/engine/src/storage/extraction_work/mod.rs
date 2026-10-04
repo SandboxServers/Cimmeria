@@ -3,7 +3,8 @@ use super::*;
 use crate::OperationKind;
 use uuid::Uuid;
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub(crate) struct ExtractionWork {
     pub operation_id: Uuid,
     pub intent_digest: [u8; 32],
@@ -12,6 +13,18 @@ pub(crate) struct ExtractionWork {
     pub cache: PathBuf,
 }
 impl DesktopState {
+    pub(crate) fn cached_extraction_release(
+        &self,
+        id: Uuid,
+    ) -> Result<crate::catalog::VerifiedRelease, IntentError> {
+        let work = self.extraction_work(id)?;
+        self.release_for_intent(&work.installation)
+            .map_err(|error| match error {
+                EvidenceError::Storage(error) => IntentError::Storage(error),
+                _ => IntentError::Storage(StorageError::Corrupt),
+            })
+    }
+
     /// Reverify the current durable plan; never accept work paths from the UI.
     /// This describes identity only, not admission, launch permission or quiescence.
     pub(crate) fn extraction_work(&self, id: Uuid) -> Result<ExtractionWork, IntentError> {

@@ -8,12 +8,20 @@ fn fixture() -> (tempfile::TempDir, DesktopState, InstallIntent) {
 pub(crate) fn fixture_with_runtime(
     runtime: [u8; 32],
 ) -> (tempfile::TempDir, DesktopState, InstallIntent) {
+    fixture_with_backend(runtime, [8; 32], &"a".repeat(64), 1)
+}
+pub(crate) fn fixture_with_backend(
+    runtime: [u8; 32],
+    helper: [u8; 32],
+    seed_sha: &str,
+    seed_size: usize,
+) -> (tempfile::TempDir, DesktopState, InstallIntent) {
     let root = tempfile::tempdir().unwrap();
     let mut state = DesktopState::open(&root.path().join("state")).unwrap();
     state
         .save_preferences(Some(root.path().join("install")), false, 0)
         .unwrap();
-    let body = serde_json::to_vec(&serde_json::json!({"schema":1,"seed":{"blob":"seed.zip","size":1,"sha256":"a".repeat(64)},"patches":[]})).unwrap();
+    let body = serde_json::to_vec(&serde_json::json!({"schema":1,"seed":{"blob":"seed.zip","size":seed_size,"sha256":seed_sha},"patches":[]})).unwrap();
     let sig = SigningKey::from_bytes(&crate::manifest::DEV_MANIFEST_PRIVKEY).sign(&body);
     let sig: String = sig.to_bytes().iter().map(|b| format!("{b:02x}")).collect();
     let release = verify_release(&body, sig.as_bytes()).unwrap();
@@ -27,7 +35,7 @@ pub(crate) fn fixture_with_runtime(
             login_servers: vec![],
             backend: ExtractionBackend::Wine {
                 runtime_sha256: runtime,
-                helper_sha256: [8; 32],
+                helper_sha256: helper,
             },
         })
         .unwrap()
@@ -42,7 +50,7 @@ pub(crate) fn fixture_with_runtime(
     std::fs::create_dir_all(game.join("Working/SGWGame")).unwrap();
     std::fs::write(game.join("Working/Binaries/SGW.exe"), b"inert fixture").unwrap();
     InstalledState {
-        seed_sha256: Some("a".repeat(64)),
+        seed_sha256: Some(seed_sha.into()),
         ..Default::default()
     }
     .save(&game)

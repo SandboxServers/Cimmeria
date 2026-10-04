@@ -296,10 +296,10 @@ original installation owner. Helper journaling uses this descriptor to bind Wine
 attempts; extraction rechecks it before accepting paths. This describes identity,
 not admission, ownership locks or process quiescence.
 
-The Wine extractor's preparation guard still accepts only first installation;
-Repair Wine dispatch is not enabled. The next adapter step must retain the repair
-work ID separately through prefix ownership, helper requests and journal calls.
-The permanent installation ID cannot substitute for that work ID.
+The Wine extractor now retains the descriptor through prefix ownership, helper
+requests and journal calls, as described below. The permanent installation ID
+cannot substitute for the repair work ID. End-to-end Wine repair orchestration
+is still unfinished.
 
 Three new identity tests passed (`20261004-091918-53906`), covering distinct repair
 and installation identities, helper checkpoints/reopen, changed-plan refusal and
@@ -308,3 +308,47 @@ native-backend refusal. The full engine suite passed 288 tests with 12 ignored
 fixtures; no new real Wine repair extraction or frontend UAT is claimed.
 
 Strict clippy passed (`20261004-092031-54581`).
+
+
+## Mac Wine repair extraction adapter
+
+The adapter retains the complete `ExtractionWork` descriptor for a current
+Running or CancelRequested Install/Repair operation. Extraction revalidates that
+descriptor and uses the work ID for helper requests and journaling, preserving the
+permanent installation identity. Install prefixes retain their existing path and
+marker format. Repair uses a fresh `wine-repair-prefixes/<work-id>/bottle` with a
+schema-1 owner record containing its descriptor. Existing prefixes are never
+adopted or replayed. The supervisor reverifies the original cached signed release
+and seed hash before helper admission.
+
+Two new adapter fixtures verify isolated prefix ownership, refused readoption,
+correct repair request/journal identity, rejection of original-install paths and
+rejection of an unsigned seed hash before spawning. Eighteen Mac adapter tests
+passed (`20261004-092636-56544`, five environment-dependent tests ignored).
+
+The real Windows-native archive helper also extracted a signed ZIP fixture with
+a Unicode path in a fresh headless repair prefix. Its work-ID journal completed,
+the adapter stopped/waited for that prefix, and the existing inert game fixture
+remained unchanged (`20261004-092639-56502`, 18.194 seconds). The helper binary was
+built natively on Windows from `1fa1a13ce38fda449bc4e34037050612173271c6` and its
+SHA-256 was rechecked as
+`d0c89fad444cb4dc6478f1db8a5e62bc54d5696ee2a84a63d740bf3a5b92c6a3`.
+Reproduce with `CIMMERIA_WINE_HELPER` pointing to that verified artifact and run
+through the build lane:
+
+```bash
+bash tools/build-lane/lane.sh cargo test --locked \
+  --manifest-path crates/launcher/desktop/Cargo.toml \
+  -p cimmeria-launcher-engine --lib \
+  mac_wine::prefix::tests::native_helper_extracts_zip_with_repair_work_identity \
+  -- --exact --ignored --nocapture
+```
+
+This validates the extraction adapter, not original-client repair, game launch
+or graphics. The repair orchestrator remains native-only; installation/work-tree
+locks across Wine extraction, repair-prefix crash recovery and Repair UI remain
+unfinished. No desktop window was opened and no frontend/visual UAT is claimed.
+
+After the final seed-refusal test, the full engine suite passed 290 tests with
+13 environment-dependent cases ignored (`20261004-092727-57278`); strict clippy
+passed (`20261004-092751-57236`).

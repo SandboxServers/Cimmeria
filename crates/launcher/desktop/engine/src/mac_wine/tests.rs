@@ -112,9 +112,14 @@ fn extraction_environment_is_headless_and_does_not_inherit_host_values() {
         &intent,
     )
     .unwrap();
+    let work = state
+        .lock()
+        .unwrap()
+        .extraction_work(intent.operation_id)
+        .unwrap();
     let adapter = WineSeedExtractor {
         state,
-        intent,
+        work,
         runtime: PathBuf::from("/runtime"),
         helper: PathBuf::from("/bundle/helper.exe"),
         prefix: prefix.clone(),
@@ -198,9 +203,14 @@ printf '%s\n' '{}'
     let stage = intent.destination.join(format!(".cimmeria-stage-{id}"));
     std::fs::create_dir_all(&cache).unwrap();
     let archive = cache.join("seed.zip");
+    let work = state
+        .lock()
+        .unwrap()
+        .extraction_work(intent.operation_id)
+        .unwrap();
     let adapter = WineSeedExtractor {
         state,
-        intent,
+        work,
         runtime,
         helper: PathBuf::from("/fixture/helper.exe"),
         prefix: prefix.clone(),
@@ -259,9 +269,14 @@ async fn cancelled_before_dispatch_never_starts_helper_or_server_cleanup() {
     let stage = intent.destination.join(format!(".cimmeria-stage-{id}"));
     let cache = intent.destination.join(format!(".cimmeria-cache-{id}"));
     let archive = cache.join("seed.zip");
+    let work = state
+        .lock()
+        .unwrap()
+        .extraction_work(intent.operation_id)
+        .unwrap();
     let adapter = WineSeedExtractor {
         state: state.clone(),
-        intent,
+        work,
         runtime: PathBuf::from("/must-not-run"),
         helper: PathBuf::from("/missing-helper.exe"),
         prefix,

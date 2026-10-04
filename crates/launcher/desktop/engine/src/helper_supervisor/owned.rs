@@ -19,12 +19,7 @@ pub async fn run_owned(
     let id = request.operation_id;
     let record = {
         let mut owner = state.lock().map_err(|_| StorageError::Io)?;
-        let release = owner
-            .cached_install_release()
-            .map_err(|error| match error {
-                crate::EvidenceError::Storage(error) => IntentError::Storage(error),
-                _ => IntentError::Storage(StorageError::Corrupt),
-            })?;
+        let release = owner.cached_extraction_release(id)?;
         if request.schema_version != 1 || request.sha256 != release.manifest().seed.sha256 {
             return Err(ContractError::IdentityConflict.into());
         }

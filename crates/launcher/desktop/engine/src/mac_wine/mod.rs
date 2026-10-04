@@ -14,7 +14,7 @@ use std::{
     ffi::OsString,
     fs::{File, OpenOptions},
     future::Future,
-    io::{Read, Write},
+    io::Read,
     path::{Component, Path, PathBuf},
     pin::Pin,
     sync::{Arc, Mutex},
@@ -22,6 +22,11 @@ use std::{
 use tokio_util::sync::CancellationToken;
 use uuid::Uuid;
 mod paths;
+mod prefix;
+use crate::storage::extraction_work::ExtractionWork;
+#[cfg(test)]
+use prefix::claim_prefix;
+use prefix::claim_work_prefix;
 pub mod prerequisites;
 pub(crate) mod recovery;
 mod resource;
@@ -37,7 +42,7 @@ pub enum WineError {
 }
 pub struct WineSeedExtractor {
     state: Arc<Mutex<DesktopState>>,
-    intent: InstallIntent,
+    work: ExtractionWork,
     runtime: PathBuf,
     helper: PathBuf,
     prefix: PathBuf,
@@ -55,24 +60,30 @@ impl WineSeedExtractor {
         cancel: CancellationToken,
         progress: ProgressSink,
     ) -> Result<Self, WineError> {
-        let (intent, state_root) = {
+        let (work, state_root) = {
             let owner = state.lock().map_err(|_| WineError::Invalid)?;
             if owner.requires_reopen() {
                 return Err(WineError::Invalid);
             }
-            let intent = owner
-                .install_intent()
-                .map_err(|_| WineError::Invalid)?
+            let work = owner.extraction_work(id).map_err(|_| WineError::Invalid)?;
+            let operation = owner
+                .operations()
+                .snapshot()
+                .operation
+                .as_ref()
                 .ok_or(WineError::Invalid)?;
-            if intent.operation_id != id {
+            if !matches!(
+                operation.state,
+                crate::OperationState::Running | crate::OperationState::CancelRequested
+            ) {
                 return Err(WineError::Invalid);
             }
-            (intent, owner.state_root().to_path_buf())
+            (work, owner.state_root().to_path_buf())
         };
         let ExtractionBackend::Wine {
             runtime_sha256,
             helper_sha256,
-        } = &intent.backend
+        } = &work.installation.backend
         else {
             return Err(WineError::Invalid);
         };
@@ -104,15 +115,14 @@ impl WineSeedExtractor {
         if cancel.is_cancelled() {
             return Err(mac_runtime::RuntimeError::Cancelled.into());
         }
-        let prefix_root = state_root.join("wine-prefixes");
-        let evidence = intent.clone();
+        let evidence = work.clone();
         let (prefix, owner) =
-            tokio::task::spawn_blocking(move || claim_prefix(&prefix_root, &evidence))
+            tokio::task::spawn_blocking(move || claim_work_prefix(&state_root, &evidence))
                 .await
                 .map_err(|_| WineError::Invalid)??;
         Ok(Self {
             state,
-            intent,
+            work,
             runtime,
             helper,
             prefix,
@@ -211,9 +221,9 @@ impl SeedExtractor for WineSeedExtractor {
                 .state
                 .lock()
                 .map_err(|_| uncertain())?
-                .extraction_work(self.intent.operation_id)
+                .extraction_work(self.work.operation_id)
                 .map_err(|_| uncertain())?;
-            if work.operation_id != self.intent.operation_id || work.installation != self.intent {
+            if work != self.work {
                 return Err(uncertain());
             }
             let stage = work.stage;
@@ -232,7 +242,7 @@ impl SeedExtractor for WineSeedExtractor {
             }
             let guest = ExtractRequest {
                 schema_version: 1,
-                operation_id: self.intent.operation_id,
+                operation_id: self.work.operation_id,
                 archive: paths::guest(request.archive)
                     .map_err(|_| uncertain())?
                     .into(),
@@ -310,38 +320,6 @@ fn verify_file(path: &Path, expected: &[u8; 32]) -> Result<(), WineError> {
         return Err(WineError::Invalid);
     }
     Ok(())
-}
-fn claim_prefix(root: &Path, intent: &InstallIntent) -> Result<(PathBuf, File), WineError> {
-    let io = |_| WineError::Invalid;
-    std::fs::create_dir_all(root).map_err(io)?;
-    if root.canonicalize().map_err(io)? != root {
-        return Err(WineError::Invalid);
-    }
-    let owned = root.join(intent.operation_id.to_string());
-    // Existing prefix owners cannot silently be adopted or replayed after restart.
-    std::fs::create_dir(&owned).map_err(io)?;
-    let mut marker = OpenOptions::new()
-        .read(true)
-        .write(true)
-        .create_new(true)
-        .open(owned.join("owner.json"))
-        .map_err(io)?;
-    marker.try_lock().map_err(|_| WineError::Invalid)?;
-    marker
-        .write_all(&serde_json::to_vec(intent).map_err(|_| WineError::Invalid)?)
-        .map_err(io)?;
-    marker.sync_all().map_err(io)?;
-    let prefix = owned.join("bottle");
-    std::fs::create_dir(&prefix).map_err(io)?;
-    std::fs::create_dir(prefix.join("drive_c")).map_err(io)?;
-    std::fs::create_dir(prefix.join("dosdevices")).map_err(io)?;
-    // Creating dosdevices ourselves suppresses Wine's default drive setup.
-    // Supply C: as well as Z: before first boot can populate Windows files.
-    std::os::unix::fs::symlink("../drive_c", prefix.join("dosdevices/c:")).map_err(io)?;
-    std::os::unix::fs::symlink("/", prefix.join("dosdevices/z:")).map_err(io)?;
-    File::open(&owned).map_err(io)?.sync_all().map_err(io)?;
-    File::open(root).map_err(io)?.sync_all().map_err(io)?;
-    Ok((prefix, marker))
 }
 #[cfg(test)]
 mod tests;
