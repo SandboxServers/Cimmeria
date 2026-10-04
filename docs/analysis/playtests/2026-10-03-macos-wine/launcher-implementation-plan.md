@@ -628,3 +628,29 @@ The engine suite passed 195 tests before the wrapper addition; five journal test
 passed after PID-retention correction. All thirteen real-stdio scenarios passed,
 including the owned-checkpoint fixture; strict clippy and formatting passed. No production Wine adapter, prefix or frontend change was added;
 PID records do not prove guest death or permit automatic redispatch.
+
+
+### 2026-10-04: experimental headless Wine seed adapter
+
+Added an experimental adapter with pinned runtime/helper identity checks,
+Rosetta probing, private prefix ownership, guest-path mapping and durable helper
+supervision. It is not wired into shell installation; Mac remains disabled.
+Five ordinary tests passed. The explicitly run Windows-helper ZIP smoke failed
+after approximately 307 seconds and persisted `HelperResult::Uncertain`; no
+successful extraction was established. No Wine processes remained after adapter
+cleanup. Cause is undiagnosed; concurrent duplicate-ownership coverage is being
+added. No frontend changed or frontend UAT was rerun. Helper/cabinet compatibility,
+production coordination, prerequisites and game readiness remain open.
+
+
+Wine smoke follow-up: a minimal diagnostic isolated the missing C-drive/system32
+path. Adding `drive_c` and `dosdevices/c:` → `../drive_c` changed the diagnostic
+to successful terminal/extraction; the original full managed-runtime Windows CI
+helper ZIP smoke then passed in 19.574 seconds. The C-drive unit regression was
+observed red before the fix. Six ordinary adapter tests include concurrent
+ownership. After the final mapping correction, 201 library tests passed with
+five ignored entries and strict all-target engine clippy passed. Final process
+inspection found no test Wineboot/wineserver processes. The earlier uncertain failure is historical, not
+the current smoke outcome. Actual client RAR/FDI chains and gameplay remain
+unverified. Seed CI `37190303728` passed macOS and Windows at `cd7366c61`; that
+revision does not validate the newer Wine adapter.

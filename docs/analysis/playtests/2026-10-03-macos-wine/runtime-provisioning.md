@@ -193,3 +193,29 @@ verification, native host-to-guest path mapping, cache/staging identity, exclusi
 prefix provisioning and guest-aware recovery remain to be connected. A recorded
 PID is not kill authorization or guest-death proof. No Wine execution or runtime
 readiness is established by the helper-journal fixtures.
+
+
+## Experimental Wine adapter and ZIP smoke — 2026-10-04
+
+`engine/src/mac_wine/` now provides an experimental headless seed adapter with
+intent-bound artifact hashes, a Rosetta probe, new operation-private prefix
+ownership, explicit host-to-guest paths and durable helper supervision. Its
+explicit environment disables graphics drivers; it is not suitable evidence for
+a game-launch configuration. The normal path attempts prefix-scoped server
+shutdown/wait after supervision; general interruption recovery remains open.
+
+The initial ZIP smoke timed out after about 307 seconds with durable `Uncertain`
+evidence; cleanup left no Wine processes. A same-configuration minimal diagnostic
+failed on the missing C-drive/system32 path. Creating `drive_c` and mapping
+`dosdevices/c:` to `../drive_c` produced a successful helper terminal and extracted
+fixture. The original managed-runtime Windows CI helper smoke then passed in
+19.574 seconds. A C-drive unit regression failed before the fix. Six ordinary
+adapter tests include concurrent ownership. After the mapping fix, 201 library
+tests passed with five ignored entries and strict all-target engine clippy
+passed. No test Wineboot/wineserver processes remained in the final inspection. This validates a
+fixture ZIP through Wine, not the real client RAR or FDI cabinet chain.
+
+The experimental adapter is not selected by the production coordinator or shell;
+Mac installation remains disabled. Do not treat this packet as functional Mac
+installation or relax cabinet-chain, prerequisite, gameplay, licensing or final
+startup gates on its basis.

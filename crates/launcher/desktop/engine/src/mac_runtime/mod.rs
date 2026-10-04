@@ -14,7 +14,8 @@ use tokio_util::sync::CancellationToken;
 
 const URL:&str="https://github.com/WoWSilicon/WoWSilicon/releases/download/wine-runtime-r17/WoWSilicon-WineRuntime-r17.tar.xz";
 const SIZE: u64 = 63_744_856;
-const SHA: &str = "dc67cf0c2dd1e4c1cfaffe924f4737aaa594645b135a7973ac3505c83c70f882";
+pub(crate) const ARCHIVE_SHA256: &str =
+    "dc67cf0c2dd1e4c1cfaffe924f4737aaa594645b135a7973ac3505c83c70f882";
 const TREE: &str = "b46591cfa9e72d197b46851b3c884bdd353293a1ff78df5714860c26fe88ada9";
 const NAME: &str = "wine-r17-dc67cf0c2dd1e4c1";
 #[derive(Debug, thiserror::Error, PartialEq, Eq)]
@@ -80,7 +81,7 @@ fn verify_archive(file: &mut File) -> Result<(), RuntimeError> {
         }
         hash.update(&buffer[..n]);
     }
-    if hex(&hash.finalize()) != SHA {
+    if hex(&hash.finalize()) != ARCHIVE_SHA256 {
         return Err(RuntimeError::Verification);
     }
     Ok(())

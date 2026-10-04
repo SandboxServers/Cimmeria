@@ -147,6 +147,11 @@ impl DesktopState {
         })
     }
 
+    #[cfg(target_os = "macos")]
+    pub(crate) fn state_root(&self) -> &Path {
+        &self.directory.root
+    }
+
     pub fn operations(&self) -> &Operations<FileJournal> {
         &self.operations
     }

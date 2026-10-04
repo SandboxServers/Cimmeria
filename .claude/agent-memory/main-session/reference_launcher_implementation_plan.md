@@ -154,3 +154,14 @@ Windows+Mac before the shell; shell/visual/game gates remain separate.
   No automatic replay or PID kill/guest-death inference. Production Wine adapter
   and prefix remain unconnected. Tests195 pre-wrapper and five journal tests
   passed; all thirteen real-stdio scenarios, strict clippy and fmt passed.
+
+
+- Experimental mac_wine seed adapter added (not shell/coordinator-selected):
+  artifact identity, Rosetta probe, new private headless prefix, path mapping and
+  durable supervisor. Initial ZIP smoke timed out. Minimal diagnostic exposed missing C-drive/system32;
+  adding drive_c and dosdevices/c: -> ../drive_c produced successful extraction.
+  Original Windows CI helper ZIP smoke then passed in 19.574 seconds; C-drive unit
+  regression observed red before fix. Six ordinary adapter tests include concurrent
+  ownership; final library suite: 201 passed, five ignored and strict all-target clippy
+  passed after mapping fix. No test Wineboot/wineserver processes remained.
+  No real RAR/FDI chain or gameplay proof. Mac installation stays disabled.

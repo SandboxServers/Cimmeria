@@ -45,3 +45,6 @@ pub use storage::EvidenceError;
 
 #[cfg(target_os = "macos")]
 pub mod mac_runtime;
+
+#[cfg(target_os = "macos")]
+pub mod mac_wine;
