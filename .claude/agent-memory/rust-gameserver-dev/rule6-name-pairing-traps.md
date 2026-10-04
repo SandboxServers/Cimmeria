@@ -11,6 +11,10 @@ Facts learned sweeping base-methods inventory for Rule 6 (NT-22a, 2026-10-04):
   `cimmeria_entity::known_names::{player_name, account_name, org_name}` (filled at login,
   `playCharacter`, and every org row read in base-session). They take `i32`, `u32`, `i64` or an
   `Option` of those. A player's own `entity_id` pairs with `entity_name = known_names::player_name(player_id)`.
+- **Never take an extra base lock to name a line** (`connected` / `entity_to_addr`, e.g. via
+  `identity_for_entity`): OTEL exports every cimmeria crate at DEBUG and file layers write TRACE, so
+  a debug-level field is not free. Use `known_names`, `space_registry::world_of_space`, or a lock you
+  already hold; otherwise mark the field id-only.
 - **`cimmeria_names::book().item(id)` borrows the guard**: inline in a tracing field it works, but
   `opt.and_then(|t| book().item(t))` does not compile. Use `cimmeria_names::owned::{item, container}`
   (copies; the field expression only runs when the event is enabled).

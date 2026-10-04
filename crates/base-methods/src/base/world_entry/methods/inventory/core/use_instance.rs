@@ -41,7 +41,6 @@ use super::access::{refuse_inaccessible, AccessOp};
 use super::use_crafting_item::offer_item_use;
 use crate::base::outbox::{self, CellOutboxPayload};
 use crate::base::resources::bag_max_slots;
-use crate::base::session_identity::identity_for_entity;
 use crate::base::ConnectedClientState;
 use crate::cell::messages::BaseToCellMsg;
 use cimmeria_base_session::base::plugin::ItemUseHookPoint;
@@ -336,8 +335,7 @@ pub async fn handle_use_inventory_item(
         item_id,
         item_type_id = type_id,
         item_name = cimmeria_names::book().item(type_id),
-        target_id,
-        target_name = target_name(target_id, entity_to_addr, connected),
+        target_id, // nt:id-only use target entity, unnamed on base
         "UseInventoryItem: firing ItemUsed (no consumption — chain decides)"
     );
 
@@ -487,16 +485,4 @@ pub(super) fn discord_item_target(
     Some(
         player.unwrap_or_else(|| cimmeria_discord::Named::name_only(format!("entity:{target_id}"))),
     )
-}
-
-/// The use target's name for a log line (Rule 6): the character name when
-/// the target is a connected player's entity. The base has no
-/// `SpaceManager`, so an NPC target is left unnamed, and `0` is no target.
-fn target_name(
-    target_id: i32,
-    entity_to_addr: &Arc<Mutex<HashMap<u32, SocketAddr>>>,
-    connected: &Arc<Mutex<HashMap<SocketAddr, ConnectedClientState>>>,
-) -> Option<&'static str> {
-    let eid = u32::try_from(target_id).ok().filter(|&eid| eid != 0)?;
-    identity_for_entity(connected, entity_to_addr, eid).player_name
 }

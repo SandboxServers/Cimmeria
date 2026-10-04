@@ -28,6 +28,7 @@ use super::super::core::{send_org_vault_items_via, OrgVaultSend};
 use super::access::{lock_actor, team_vault_slots, OrgLockMiss, OrgVaultActor};
 use crate::base::feedback::{send_feedback_line, FeedbackCtx};
 use crate::base::helpers::send_to_witness_reliable;
+use crate::base::world_entry::space_registry;
 use crate::base::ConnectedClientState;
 use crate::cell::messages::{BankBaseToCell, BaseToCellMsg};
 use crate::mercury::{build_player_entity_method_packet, method_idx};
@@ -270,7 +271,7 @@ async fn granted(
         item_count,
         banker_id = req.banker_id, // nt:id-only banker NPC, unnamed on the base
         space_id = req.space_id,
-        world = session_world(io, req.entity_id),
+        world = space_registry::world_for_space(req.space_id),
         distance = req.distance,
         "org_vault_opened: size and contents sent, asking the cell to open the window"
     );
@@ -326,7 +327,7 @@ async fn refuse(
         scope = req.scope.as_str(),
         banker_id = req.banker_id, // nt:id-only banker NPC, unnamed on the base
         space_id = req.space_id,
-        world = session_world(io, req.entity_id),
+        world = space_registry::world_for_space(req.space_id),
         distance = req.distance,
         reason = refusal.reason(),
         "org_vault_open_rejected: the vault did not open -- the player sees a chat line saying why"
@@ -356,12 +357,4 @@ async fn refuse(
         connected: io.connected,
     };
     send_feedback_line(&ctx, addr, &refusal.feedback(req.scope)).await;
-}
-
-/// The world the opener's session is in, which pairs with the request's
-/// `space_id` on a log line (Rule 6): the banker stands in the player's
-/// space. `None` when the session is gone or has no world yet.
-fn session_world(io: &OrgVaultIo<'_>, entity_id: u32) -> Option<String> {
-    let addr = io.entity_to_addr.lock().ok()?.get(&entity_id).copied()?;
-    io.connected.lock().ok()?.get(&addr)?.world_name.clone()
 }
