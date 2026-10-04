@@ -1,10 +1,11 @@
 //! Effect-driven death guards for `apply_damage_to_target` — a HEALTH bleed
-//! written by an effect script, after the direct-damage death check has
-//! already run, must still produce a death in the same ability resolution.
+//! written by an effect script must produce a death in the same ability
+//! resolution.
 //!
 //! Split from `tests.rs` along the one seam that file has: everything here
 //! shares `make_bleed_fixture`, and nothing in `tests.rs` uses it.
 
+use super::single_damage_path_tests::seq_rolling;
 use super::tests::{drain, has_method, make_ability, make_mgr_player_vs_npc};
 use super::*;
 use crate::cell::space_manager::SpaceManager;
@@ -14,24 +15,31 @@ use cimmeria_entity::abilities::EffectDef;
 // ──────────────────────────────────────────────────────────────────────
 // Effect-driven death (playtest 2026-09-19, MessHall_Guard1/2)
 //
-// Bug shape: the ability's DIRECT damage leaves the NPC standing, but an
-// effect script's HEALTH bleed — dispatched at the bottom of
-// `apply_damage_to_target`, long after the `target_died` check — takes it
-// to zero. Pre-fix nothing noticed: the NPC sat at 0 HP with `ai_state`
-// still `Fighting`, kept shooting back, dropped no loot and granted no
-// XP. It only died on the attacker's NEXT shot, when the direct-damage
-// arm re-ran the health check against an already-zeroed target.
+// Bug shape: the ability's NVP damage leaves the NPC standing, but an
+// effect script's HEALTH bleed takes it to zero. Pre-fix nothing noticed:
+// the NPC sat at 0 HP with `ai_state` still `Fighting`, kept shooting
+// back, dropped no loot and granted no XP.
 //
 // `make_bleed_fixture` reproduces the live shape (pistol auto attack 579
 // / effect 641 = `RangedPhysicalDamage`): a `FocusDamage` NVP and NO
-// `HealthDamage` NVP, so the legacy direct-damage path contributes ZERO
-// health damage (`calculate_damage` returns early on base 0) and every
-// point of health loss comes from the script's Focus-pierce spillover.
+// `HealthDamage` NVP, so every point of health loss comes from the
+// script's Focus-pierce spillover. With `FocusDamage = 80` against an
+// empty Focus pool the script's two-step truncation gives
+// `(80*100/80) * 80 / 300 = 26` health damage — see
+// `scripts::RangedPhysicalDamage`. An NPC at 20 HP dies to the bleed.
 //
-// With `FocusDamage = 80` against an empty Focus pool the script's
-// two-step truncation gives `(80*100/80) * 80 / 300 = 26` health damage —
-// see `scripts::RangedPhysicalDamage`. An NPC at 20 HP therefore survives
-// the direct damage and dies to the bleed.
+// **AB-06 (D-AB07) changed where the bleed runs.** A damage script is now
+// its effect's only damage path and runs with the direct damage, before
+// the hit's death check, so these kills resolve through the direct
+// `target_died` arm; the post-script sweep still covers after-hit
+// scripts (`Suppression`, the last test). Two changes to the fixtures:
+// - each shot uses an `effect_seq` whose roll is a hit ([`seq_rolling`]).
+//   Before AB-06 a missed roll still ran the script, so the player-victim
+//   guard passed on seq 1, which is a miss for NPC 2 with ability 579; a
+//   miss now runs no script and deals nothing;
+// - the guards fail without either death path, not only the sweep: they
+//   pin "a script bleed to zero kills in the same resolution" whichever
+//   arm resolves it.
 // ──────────────────────────────────────────────────────────────────────
 
 /// Kismet sequence id the fixture registers for `Entity_Death` so the
@@ -87,10 +95,9 @@ fn make_bleed_fixture(script: &str) -> (SpaceManager, AbilityDef) {
 /// damage is zero and whose bleed is lethal must produce a complete
 /// corpse inside that single ability resolution — not on the next shot.
 ///
-/// Reverting the post-effect-script `resolve_death` sweep in
-/// `damage_apply` leaves the NPC alive at 0 HP with `ai_state ==
-/// Fighting`, no `BSF_DEAD`, no XP, no loot flip and no death animation:
-/// every assertion below fails.
+/// Without a death path for script damage the NPC is left alive at 0 HP
+/// with `ai_state == Fighting`, no `BSF_DEAD`, no XP, no loot flip and no
+/// death animation: every assertion below fails.
 #[tokio::test]
 async fn effect_script_bleed_to_zero_runs_death_transition_in_same_resolution() {
     use crate::cell::combat::is_dead_state;
@@ -99,7 +106,8 @@ async fn effect_script_bleed_to_zero_runs_death_transition_in_same_resolution() 
     let (mut mgr, ability) = make_bleed_fixture("RangedPhysicalDamage");
     let (tx, mut rx) = mpsc::channel(64);
 
-    apply_damage_to_target(1, 2, 579, &Some(ability), 1, false, &tx, &mut mgr).await;
+    let seq = seq_rolling(&mgr, (1, 2), 579, false);
+    apply_damage_to_target(1, 2, 579, &Some(ability), seq, false, &tx, &mut mgr).await;
 
     let npc = mgr.get_entity(2).unwrap();
     assert_eq!(
@@ -156,7 +164,8 @@ async fn melee_script_bleed_to_zero_runs_death_transition_in_same_resolution() {
     let (mut mgr, ability) = make_bleed_fixture("MeleePhysicalDamage");
     let (tx, mut rx) = mpsc::channel(64);
 
-    apply_damage_to_target(1, 2, 579, &Some(ability), 1, false, &tx, &mut mgr).await;
+    let seq = seq_rolling(&mgr, (1, 2), 579, false);
+    apply_damage_to_target(1, 2, 579, &Some(ability), seq, false, &tx, &mut mgr).await;
 
     let npc = mgr.get_entity(2).unwrap();
     assert!(
@@ -187,7 +196,8 @@ async fn effect_script_bleed_kill_does_not_re_kill_on_a_follow_up_shot() {
     let (mut mgr, ability) = make_bleed_fixture("RangedPhysicalDamage");
     let (tx, mut rx) = mpsc::channel(64);
 
-    apply_damage_to_target(1, 2, 579, &Some(ability.clone()), 1, false, &tx, &mut mgr).await;
+    let seq = seq_rolling(&mgr, (1, 2), 579, false);
+    apply_damage_to_target(1, 2, 579, &Some(ability.clone()), seq, false, &tx, &mut mgr).await;
     let first = drain(&mut rx);
     assert_eq!(
         first
@@ -198,7 +208,7 @@ async fn effect_script_bleed_kill_does_not_re_kill_on_a_follow_up_shot() {
         "pre-condition: the killing shot pays XP exactly once; got {first:?}"
     );
 
-    apply_damage_to_target(1, 2, 579, &Some(ability), 2, false, &tx, &mut mgr).await;
+    apply_damage_to_target(1, 2, 579, &Some(ability), seq + 1, false, &tx, &mut mgr).await;
     let second = drain(&mut rx);
 
     assert!(
@@ -225,9 +235,9 @@ async fn effect_script_bleed_kill_does_not_re_kill_on_a_follow_up_shot() {
 /// re-aggro" every six seconds.
 ///
 /// Same gap as the NPC guards above, with the roles reversed: NPC attacker,
-/// player victim, lethal bleed, non-lethal direct damage. Reverting the
-/// post-effect-script `resolve_death` sweep leaves the player at 0 HP with no
-/// `BSF_DEAD`, no movement lock and no Defeat Window.
+/// player victim, lethal bleed. Without a death path for script damage the
+/// player is left at 0 HP with no `BSF_DEAD`, no movement lock and no
+/// Defeat Window.
 #[tokio::test]
 async fn effect_script_bleed_to_zero_kills_a_player_victim_in_same_resolution() {
     use crate::cell::combat::{is_dead_state, BSF_MOVEMENT_LOCK};
@@ -245,8 +255,9 @@ async fn effect_script_bleed_to_zero_kills_a_player_victim_in_same_resolution() 
     }
     let (tx, mut rx) = mpsc::channel(64);
 
-    // NPC 2 shoots player 1.
-    apply_damage_to_target(2, 1, 579, &Some(ability), 1, false, &tx, &mut mgr).await;
+    // NPC 2 shoots player 1, on a roll that hits.
+    let seq = seq_rolling(&mgr, (2, 1), 579, false);
+    apply_damage_to_target(2, 1, 579, &Some(ability), seq, false, &tx, &mut mgr).await;
 
     let player = mgr.get_entity(1).unwrap();
     assert_eq!(
@@ -289,5 +300,40 @@ async fn effect_script_bleed_to_zero_kills_a_player_victim_in_same_resolution() 
             .iter()
             .any(|m| matches!(m, CellToBaseMsg::GrantXP { .. })),
         "an NPC killing a player pays nobody XP; got {msgs:?}"
+    );
+}
+
+/// **The sweep guard.** An after-hit script (`Suppression`, not a damage
+/// script, so it runs after the hit's death check) chips the last 5
+/// HEALTH: the post-script `resolve_death` sweep must still make the
+/// corpse in the same resolution. Without the sweep the NPC is left at
+/// 0 HP without `BSF_DEAD`.
+#[tokio::test]
+async fn after_hit_script_to_zero_is_swept_into_a_death() {
+    use crate::cell::combat::is_dead_state;
+
+    let (mut mgr, ability) = make_bleed_fixture("Suppression");
+    if let Some(h) = mgr
+        .get_entity_mut(2)
+        .and_then(|npc| npc.stats.get_mut(cimmeria_entity::stats::HEALTH))
+    {
+        // Suppression's default chip is 5 (the fixture has no HealthDamage).
+        h.update(0, 5, 100);
+        h.clear_dirty();
+    }
+    let (tx, _rx) = mpsc::channel(64);
+    let seq = seq_rolling(&mgr, (1, 2), 579, false);
+
+    apply_damage_to_target(1, 2, 579, &Some(ability), seq, false, &tx, &mut mgr).await;
+
+    let npc = mgr.get_entity(2).unwrap();
+    assert_eq!(
+        npc.stats.get(cimmeria_entity::stats::HEALTH).unwrap().cur,
+        0,
+        "pre-condition: the Suppression chip zeroed HEALTH"
+    );
+    assert!(
+        is_dead_state(npc.state_field),
+        "the sweep must resolve a death an after-hit script caused"
     );
 }

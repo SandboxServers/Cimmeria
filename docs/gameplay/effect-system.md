@@ -84,7 +84,7 @@ AbilityManager.addEffect(effect, invokerId)
 | `EF_ClearOnRez` | -- | NO | Remove effect on revive |
 | `EF_RemoveOnBandolierSlotChange` | -- | NO | Remove on weapon swap |
 | `EF_OnlySendToSelf` | -- | NO | Don't broadcast to witnesses |
-| `EF_DontUseQR` | `EF_DONT_USE_QR` (32, `crates/entity/src/abilities/defs.rs`) | NO | Skip QR calculation. The constant is defined but never read |
+| `EF_DontUseQR` | `EF_DONT_USE_QR` (16, `crates/entity/src/abilities/defs.rs`) | YES | Skip QR calculation: the effect never misses, and a hit whose every effect carries it takes no roll (`damage_apply/qr_gate.rs`, AB-06) |
 | `EF_Beneficial_Effect` | -- | NO | AI: is this hostile? |
 | `EF_Offline_Time_Counts` | -- | NO | Count cooldown while offline |
 | `EF_HasInductionBar` | -- | NO | Show deploy/grenade bar |

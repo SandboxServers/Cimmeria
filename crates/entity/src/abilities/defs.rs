@@ -65,18 +65,21 @@ pub const TCM_SINGLE: &str = "TCM_Single";
 pub const TCM_AE_RADIUS: &str = "TCM_AERadius";
 pub const TCM_AE_CONE: &str = "TCM_AECone";
 
-// ── Effect flags (subset of `resources.effects.flags` bitmask) ───────────
+// ── Effect flags (`resources.effects.flags`, client `EEffectFlag`) ──────
 //
-// Authored as a packed integer per-effect. The bits we honor today:
-pub const EF_INTERRUPT_CHANCE: u32 = 16; // category: interrupt roll
-pub const EF_STUN: u32 = 12; // category: stun on apply (target loses controls)
-pub const EF_DONT_USE_QR: u32 = 32; // category: bypass QR (always-hit)
-pub const EF_MENTAL_RESIST_ROLL: u32 = 64; // category: target rolls resist
-pub const EF_SUPPRESSION: u32 = 76; // category: movement slow + accuracy debuff
-pub const EF_EXTRA_DAMAGE: u32 = 512; // category: bonus damage on second pulse
-pub const EF_DOT: u32 = 516; // category: damage-over-time (pulses)
+// A packed bitmask per effect; the values are the client's
+// `entities/defs/enumerations.xml` `EEffectFlag` tokens. Only the bits the
+// server reads have a constant here. The old "category" constants
+// (`EF_STUN = 12`, `EF_DOT = 516`, ...) were not client bits and are gone
+// (ability-mechanics B-25); `cone_aoe/flag_categories.rs` names every bit
+// for the logs.
+/// `EF_DontUseQR` (`EEffectFlag` 16, already 16 in client build 0.58674):
+/// the effect never rolls QR and always lands as `RC_Hit` (D-AB07). Read by
+/// `damage_apply::qr_gate`. It was 32 (`EF_HasInductionBar`) and unread
+/// before AB-06 (B-24).
+pub const EF_DONT_USE_QR: u32 = 16;
 /// `EF_AlwaysPersist` (`entities/defs/enumerations.xml` `EEffectFlag`, a
-/// real client bit, unlike the category values above): the effect of a
+/// real client bit): the effect of a
 /// passive ability, held for as long as the ability is known. The server
 /// applies such an effect when the ability is learned and removes it when
 /// the ability is unlearned (pets PT-08, 4968 "Pet Summon Speed increase").

@@ -68,7 +68,7 @@ What we **do** have, all verified, is the *unit system and vocabulary* the formu
 
 Cross-checking `crates/` against the original enumerations found two concrete divergences. Both were verified against the client copy of `enumerations.xml`:
 
-1. **`EF_DONT_USE_QR`** — `crates/entity/src/abilities/defs.rs:58` is `32`. The original bit is **16** (`enumerations.xml:1101`); 32 is `EF_HasInductionBar`. The constant is also not read, so the QR bypass on 754 effects is not honoured and every `+200 Accuracy` buff is rolled as if it could miss.
+1. **`EF_DONT_USE_QR`** — **Fixed 2026-10-03 (ability-mechanics AB-06).** The constant was `32`; the original bit is **16** (`enumerations.xml:1101`, already 16 in client build 0.58674); 32 is `EF_HasInductionBar`. It was also not read, so the QR bypass on 754 effects was not honoured and every `+200 Accuracy` buff was rolled as if it could miss. It is now 16 and read by `crates/cell-combat/src/cell/abilities/damage_apply/qr_gate.rs`: such an effect never misses.
 2. **`EDamageType` numbering** — the original values are `DT_Untyped=13, DT_Physical=14, DT_Energy=15, DT_Hazmat=16, DT_Psionic=18` (`enumerations.xml`, `EDamageType`); `defs.rs:82-86` uses 0–4 and `pipeline.rs` sends that as the wire `damage_code`. **Check against a client capture before changing it** — a pcap of what the client accepts takes precedence over the declaration.
 
 Everything else the server does for these seven areas (QR distribution parameters, the `0.05`/`0.01` coefficients, AF/mitigation ordering, resistance as flat percentages, the Focus→Health spillover divisor) is **FAN-GUESS or UNKNOWN**; the resistance-as-flat-percent model in particular conflicts with the shipped structure (resistance as a gating QR roll).

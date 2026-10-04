@@ -31,10 +31,13 @@ use duel_gate::{clamp_source, player_hit_refusal};
 ///
 /// Performs:
 ///   - Snapshot attacker stats; bail if attacker missing.
-///   - Read damage NVPs from the ability's effect definitions.
 ///   - Compute QR + roll a hit result for this attacker/target pair, with
-///     the attacker's cover QR, and scale the damage by the defender's cover
-///     reduction (NA32).
+///     the attacker's cover QR (no roll when every effect carries
+///     `EF_DontUseQR`, [`qr_gate`]), and scale the damage by the
+///     defender's cover reduction (NA32).
+///   - Sort the effects into damage paths ([`effect_scripts`]): a damage
+///     script is its effect's only damage; NVP damage for the rest; a
+///     missed QR-rolled effect lands nothing (AB-06, D-AB07).
 ///   - Apply health/focus damage to the target.
 ///   - Detect death (direct damage).
 ///   - Send `onEffectResults` to the attacker (witnesses pick it up via
@@ -177,8 +180,17 @@ async fn apply_hit(
     // Per-(entity, ability, effect_seq) determinism — a fresh effect_seq per
     // AoE secondary target gives independent rolls without losing replay
     // reproducibility.
+    // An ability whose every effect carries `EF_DontUseQR` takes no roll
+    // (AB-06, `qr_gate`).
     let seed = pseudo_random_seed(entity_id, ability_id, effect_seq);
-    let qr_result = combat::calculate_result(qr, seed);
+    let ids = HitIds {
+        entity_id,
+        target_eid,
+        ability_id,
+        actor: space_mgr.player_identity(entity_id),
+        target: space_mgr.player_identity(target_eid),
+    };
+    let qr_result = qr_gate::roll_hit(ability_def.as_ref(), space_mgr, qr, seed, ids);
 
     // Special ammo (AM-04, D-AM07): a player's weapon shot with a modified
     // ammo type loaded scales its damage, divides the armour by its
@@ -213,53 +225,20 @@ async fn apply_hit(
     // a splash target's share.
     let damage_scale = cover_scale * ammo_scale * kind.damage_scale();
 
-    // Look up damage values from the ability's effect NVPs. When the
-    // ability is known but exposes no positive HealthDamage (e.g. focus
-    // drains, heals, buff-only abilities) we keep health_base_damage at 0
-    // so the ability doesn't accidentally read as a 15-HP physical hit.
-    // The 15-HP fallback is reserved for the unknown-ability case.
-    //
-    // Effects with a `script_name` are collected here and dispatched after
-    // the legacy NVP damage path completes (so heals/buffs see the
-    // post-hit state). See `cell::effects` for the dispatcher and the
-    // registered scripts.
-    let mut script_effect_ids: Vec<i32> = Vec::new();
-    let (health_base_damage, focus_base_damage) = if let Some(def) = ability_def {
-        let mut h_dmg = 0i32;
-        let mut f_dmg = 0i32;
-        for &eid in &def.effect_ids {
-            if let Some(effect) = space_mgr.effect_defs.get(&eid) {
-                let hd = effect.param_i32("HealthDamage");
-                let fd = effect.param_i32("FocusDamage");
-                if hd > 0 {
-                    h_dmg = hd;
-                }
-                if fd > 0 {
-                    f_dmg = fd;
-                }
-                if effect.script_name.is_some() {
-                    script_effect_ids.push(eid);
-                }
-            }
-        }
-        (h_dmg, f_dmg)
-    } else {
-        (15, 0)
-    };
-    if let Some(eid) = on_hit_effect_id {
-        if space_mgr
-            .effect_defs
-            .get(&eid)
-            .is_some_and(|e| e.script_name.is_some())
-        {
-            script_effect_ids.push(eid);
-        }
-    }
-    // A splash target takes blast damage only, not the shot's own scripts
-    // (a bleed, a stun) a second time.
-    if !kind.is_direct() {
-        script_effect_ids.clear();
-    }
+    // Sort the effects into the hit's damage paths (AB-06, D-AB07): NVP
+    // base damage for effects with no damage script (0 when the ability is
+    // known but has none, 15 HP for an unknown ability), damage scripts as
+    // the only damage of their effects, and every other script for after
+    // the hit. A missed QR-rolled effect lands in none of them.
+    let plan = effect_scripts::plan_hit_effects(
+        space_mgr,
+        ability_def.as_ref(),
+        on_hit_effect_id,
+        kind.is_direct(),
+        qr_result.result_code,
+        ids,
+    );
+    let (health_base_damage, focus_base_damage) = (plan.health_base, plan.focus_base);
     // ── `entity_health_below` pre-hit sample ──
     //
     // This is the one seam every ability-driven health mutation passes
@@ -289,7 +268,7 @@ async fn apply_hit(
         }
     };
 
-    let (effect_results, _total_health_damage) = combat::calculate_damage_penetrating(
+    let (mut effect_results, mut total_health_damage) = combat::calculate_damage_penetrating(
         &qr_result,
         health_base_damage,
         damage_scale,
@@ -314,6 +293,19 @@ async fn apply_hit(
         );
     }
 
+    // The damage scripts' damage, at the same point and the same scale as
+    // the NVP damage, so the death check, `onEffectResults` and the threat
+    // below all see it.
+    let (script_results, script_health_damage) = effect_scripts::apply_damage_scripts(
+        space_mgr,
+        ids,
+        &plan.damage_scripts,
+        damage_scale,
+        damage_type,
+    );
+    effect_results.extend(script_results);
+    total_health_damage += script_health_damage;
+
     if let Some(shot) = &shot {
         ammo_damage::log_applied(
             space_mgr,
@@ -322,7 +314,7 @@ async fn apply_hit(
             target_eid,
             ability_id,
             damage_type,
-            _total_health_damage,
+            total_health_damage,
             on_hit_effect_id,
         );
     }
@@ -485,7 +477,7 @@ async fn apply_hit(
             space_mgr,
             entity_id,
             target_eid,
-            _total_health_damage as f32,
+            total_health_damage as f32,
             crate::cell::combat::AggroCause::Damage,
         ) {
             super::messaging::request_appearance_refresh(entity_id, tx, space_mgr).await;
@@ -503,34 +495,14 @@ async fn apply_hit(
         }
     }
 
-    // ── Effect scripts ──
+    // ── Effect scripts (after the hit) ──
     //
-    // Dispatch any effects on this ability that have a `script_name` set.
-    // Scripts run AFTER the legacy damage path so heals see the post-hit
-    // state. They mutate the target via the shared `space_mgr` borrow;
-    // any stat changes are flushed in a follow-up onStatUpdate so the
-    // client picks up the heal/buff/debuff alongside the damage packet.
-    //
-    // Scripts that need wire-side fan-out (effect anims, buff icons) own
-    // their own send calls — v1 only ships HealHealth / HealFocus /
-    // MeleeDamage which are stat-mutation-only.
-    if !script_effect_ids.is_empty() {
-        for eid in &script_effect_ids {
-            let effect_def = match space_mgr.effect_defs.get(eid) {
-                Some(e) => e.clone(),
-                None => continue,
-            };
-            let Some(script_name) = effect_def.script_name.clone() else {
-                continue;
-            };
-            let mut ctx = crate::cell::effects::EffectContext {
-                source_id: entity_id,
-                target_id: target_eid,
-                effect: &effect_def,
-                space_mgr,
-            };
-            crate::cell::effects::dispatch_by_name(&script_name, &mut ctx);
-        }
+    // Every landing script that is not a damage script (those ran with the
+    // direct damage above) runs here, so a heal sees the post-hit state.
+    // Their stat changes are flushed in a follow-up onStatUpdate. Scripts
+    // that need wire-side fan-out own their own sends.
+    if !plan.after_scripts.is_empty() {
+        effect_scripts::run_scripts(space_mgr, ids, &plan.after_scripts);
         // D-SS20 again: a script's own HEALTH write (a bleed) from the
         // partner is held at 1 too, before the flush below and before the
         // effect-driven death sweep reads it.
@@ -560,11 +532,12 @@ async fn apply_hit(
 
     // ── Death resolution (effect-driven) ──
     //
-    // Effect scripts write HEALTH directly — `RangedPhysicalDamage`'s
-    // Focus-pierce bleed, `MeleePhysicalDamage`, `RangedEnergyDamage`,
-    // `Suppression` — so a shot whose *direct* damage left the target
-    // standing can still take it to zero down here, long after the
-    // `target_died` check above has run. Playtest 2026-09-19: pistol auto
+    // An after-hit script can write HEALTH directly (`Suppression`, a
+    // special round's on-hit burn), so a shot whose direct damage left the
+    // target standing can still take it to zero down here, after the
+    // `target_died` check above has run. Before AB-06 the damage scripts
+    // (`RangedPhysicalDamage`'s Focus-pierce bleed and its siblings) ran
+    // here too; they now run with the direct damage. Playtest 2026-09-19: pistol auto
     // attack (ability 579 / effect 641) bled MessHall_Guard1 to 0 HP, the
     // mission's `entity_dead_tag` trigger fired off the health probe in
     // `handle_use_ability_with_kill_credit`, and then nothing else
@@ -578,7 +551,7 @@ async fn apply_hit(
     // idempotent on `BSF_DEAD`, so the common case — direct damage already
     // killed — costs one entity lookup and returns.
     //
-    // Unconditional rather than gated on `!script_effect_ids.is_empty()`:
+    // Unconditional rather than gated on `!plan.after_scripts.is_empty()`:
     // any post-`calculate_damage` step that zeroes HEALTH should produce a
     // corpse, and a target that arrives here already at 0 HP without
     // `BSF_DEAD` is a bug we would rather fail safe on than propagate.
@@ -605,12 +578,16 @@ async fn apply_hit(
     // on the target. The initial pulse already fired (above, via NVP
     // damage or script dispatch); registration carries the remaining
     // pulses. See `cell::effects::pulsing::effect_pulse_tick` for the
-    // per-tick fire loop. Not on a splash target (blast damage only).
+    // per-tick fire loop. Not on a splash target (blast damage only), and
+    // not for a QR-rolled effect the roll missed (AB-06: a missed DoT
+    // must not tick; `plan_hit_effects` logged the skip).
     if let Some(def) = ability_def.as_ref().filter(|_| kind.is_direct()) {
         let now = std::time::Instant::now();
         for eid in def.effect_ids.iter().copied().chain(on_hit_effect_id) {
             let effect_clone = match space_mgr.effect_defs.get(&eid) {
-                Some(e) if e.is_pulsing() => e.clone(),
+                Some(e) if e.is_pulsing() && qr_gate::effect_lands(e, qr_result.result_code) => {
+                    e.clone()
+                }
                 _ => continue,
             };
             let _ = crate::cell::effects::register_active_effect(
@@ -655,6 +632,21 @@ async fn apply_hit(
 mod ammo_splash;
 mod cover_roll;
 mod duel_gate;
+mod effect_scripts;
+mod qr_gate;
+
+/// One attacker → target hit, carried into the submodules' logs. The
+/// identities are the canonical `account_id`/`player_id` correlators
+/// (instrumentation-discipline rule 5): the actor's pair and the target's
+/// `player_id`, both empty (and so omitted from the log) for an NPC.
+#[derive(Debug, Clone, Copy)]
+struct HitIds {
+    entity_id: u32,
+    target_eid: u32,
+    ability_id: i32,
+    actor: cimmeria_entity::cell_entity::PlayerIdentity,
+    target: cimmeria_entity::cell_entity::PlayerIdentity,
+}
 
 #[cfg(test)]
 mod aggro_cause_tests;
@@ -676,6 +668,8 @@ mod ammo_tests;
 mod bleed_death_tests;
 #[cfg(test)]
 mod cover_tests;
+#[cfg(test)]
+mod single_damage_path_tests;
 #[cfg(test)]
 mod tests;
 #[cfg(test)]

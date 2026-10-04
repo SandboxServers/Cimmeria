@@ -159,25 +159,36 @@ fn log_effect_flag_categories_no_op_on_zero_flags() {
     log_effect_flag_categories(10, 20, 30, &effect);
 }
 
+/// The log names the client's `EEffectFlag` bits (B-25). The old category
+/// constants read 144 (deployable pulse row 5066) as "stun" +
+/// "interrupt_chance" and 12 as "stun"; the real bits are named here.
 #[test]
-fn log_effect_flag_categories_recognizes_each_category_bit() {
-    // Exercise each EF_* path so the match arms aren't dark code.
-    // The assertion is structural — the function returns without
-    // panic when each flag is set in isolation.
-    use cimmeria_entity::abilities::{
-        EF_DOT, EF_INTERRUPT_CHANCE, EF_MENTAL_RESIST_ROLL, EF_STUN, EF_SUPPRESSION,
-    };
-    for flag in [
-        EF_STUN,
-        EF_INTERRUPT_CHANCE,
-        EF_MENTAL_RESIST_ROLL,
-        EF_SUPPRESSION,
-        EF_DOT,
-    ] {
+fn effect_flag_names_are_the_client_eeffectflag_tokens() {
+    use super::flag_categories::{effect_flag_names, EFFECT_FLAG_NAMES};
+    // The whole table, against the client's declaration (not a copy).
+    let client: Vec<(i64, String)> =
+        crate::cell::abilities::enumerations_xml::tokens("EEffectFlag");
+    let ours: Vec<(i64, String)> = EFFECT_FLAG_NAMES
+        .iter()
+        .map(|&(bit, name)| (i64::from(bit), name.to_string()))
+        .collect();
+    assert_eq!(ours, client, "EFFECT_FLAG_NAMES must equal EEffectFlag");
+    // And the lookup reads it: one bit per name, mixed rows split.
+    for (bit, name) in &client {
+        assert_eq!(effect_flag_names(*bit as u32), vec![name.as_str()]);
+    }
+    assert_eq!(
+        effect_flag_names(144),
+        vec!["EF_DontUseQR", "EF_SequenceOnPulse"]
+    );
+    let past_last = client.last().map(|(v, _)| (*v as u32) << 1).unwrap();
+    assert!(effect_flag_names(past_last).is_empty());
+    // Every bit is logged without panicking, unknown ones included.
+    for bit in 0..32 {
         let effect = EffectDef {
             effect_id: 1,
             ability_id: 1,
-            flags: flag,
+            flags: 1 << bit,
             ..Default::default()
         };
         log_effect_flag_categories(10, 20, 30, &effect);

@@ -274,3 +274,32 @@ async fn covered_player_takes_less_from_an_npc() {
     assert!(covered < exposed, "{covered} vs {exposed}");
     assert_eq!(covered, want, "the nearest node's 25% plus the buff's 10%");
 }
+
+/// AB-06: a damage script is scaled by cover too. Pistol Shot's script
+/// (150 Focus / 15 Health) against an empty Focus pool bleeds 65 in the
+/// open. Behind the guard slot with the stance (35% off, scale 0.65) its
+/// NVPs become round(97.5) = 98 and round(9.75) = 10, so the bleed is
+/// `(98*100/98)*98/300 = 32`, plus 10 = 42. Without the scale it stays 65.
+#[tokio::test]
+async fn cover_scales_a_damage_script() {
+    let scripted = |mgr: &mut SpaceManager| {
+        let effect = mgr.effect_defs.get_mut(&EFFECT).unwrap();
+        effect.script_name = Some("RangedPhysicalDamage".to_string());
+        effect.params = [("FocusDamage", "150"), ("HealthDamage", "15")]
+            .into_iter()
+            .map(|(k, v)| (k.to_string(), v.to_string()))
+            .collect();
+        set_stat(
+            &mut mgr.get_entity_mut(NPC).unwrap().stats,
+            cimmeria_entity::stats::FOCUS,
+            0,
+        );
+    };
+    let mut open = fixture([20.0, 0.0, 0.0], GUARD_SLOT, false, 0);
+    scripted(&mut open);
+    let mut covered = fixture([20.0, 0.0, 0.0], GUARD_SLOT, true, 100);
+    scripted(&mut covered);
+
+    assert_eq!(damage(&mut open, PLAYER, NPC).await, 65, "in the open");
+    assert_eq!(damage(&mut covered, PLAYER, NPC).await, 42, "35% cover");
+}

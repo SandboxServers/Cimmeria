@@ -14,7 +14,7 @@
 //! nobody).
 
 use cimmeria_entity::cell_entity::AiState;
-use cimmeria_entity::stats::HEALTH;
+use cimmeria_entity::stats::{FOCUS, HEALTH};
 use tokio::sync::mpsc;
 
 use crate::cell::messages::CellToBaseMsg;
@@ -37,6 +37,10 @@ async fn live_db_castle_standoff_marine_and_guard_fight_to_a_death() {
         .await
         .expect("load_spawn_templates must succeed");
     let mut mgr = SpaceManager::new(1);
+    // The production script table (`startup.rs` installs it). Pistol Shot's
+    // damage is its `RangedPhysicalDamage` script since AB-06, so without
+    // the table the friendly deals nothing.
+    crate::test_support::install_effect_scripts(&mut mgr);
     mgr.parse_spaces_xml(
         r#"<?xml version="1.0"?><Spaces><Space WorldName="Castle" Instanced="false" MinX="-800" MaxX="800" MinY="-800" MaxY="800" /></Spaces>"#,
     )
@@ -93,21 +97,26 @@ async fn live_db_castle_standoff_marine_and_guard_fight_to_a_death() {
     mgr.connect_entity(PLAYER);
     let _ = mgr.compute_aoi_changes();
 
-    let max_hp = |mgr: &SpaceManager, id: u32| {
-        let h = mgr.get_entity(id).unwrap().stats.get(HEALTH).unwrap();
-        (h.cur, h.max)
+    // Health + Focus: Pistol Shot is a `RangedPhysicalDamage` script, which
+    // since AB-06 (D-AB07) is its only damage path, so a hit on a target
+    // with Focus left drains Focus first and Health only once Focus runs
+    // out (before AB-06 the NVP pipeline also took Health on every hit).
+    // "Damage" here is a drop in either pool.
+    let pools = |mgr: &SpaceManager, id: u32| {
+        let stats = &mgr.get_entity(id).unwrap().stats;
+        stats.get(HEALTH).unwrap().cur + stats.get(FOCUS).map_or(0, |f| f.cur)
     };
-    let (f0, _) = max_hp(&mgr, FRIENDLY);
-    let (g0, _) = max_hp(&mgr, GUARD);
+    let f0 = pools(&mgr, FRIENDLY);
+    let g0 = pools(&mgr, GUARD);
 
     let events =
         crate::cell::content::EngineEvents(&cimmeria_content_engine::chain::ChainEngine::new());
     let (tx, mut rx) = mpsc::channel(65_536);
     let mut grants = 0usize;
     let mut dead = None;
-    // The lowest health each side reached. Measured every pass, because the
-    // survivor walks home and resets to full health (NA12) once the fight
-    // ends, which in this meshless space can be the same tick.
+    // The lowest Health + Focus each side reached. Measured every pass,
+    // because the survivor walks home and resets to full health (NA12) once
+    // the fight ends, which in this meshless space can be the same tick.
     let (mut f_min, mut g_min) = (f0, g0);
     for _ in 0..400 {
         crate::cell::service::npc_ai::npc_ai_tick(&tx, &mut mgr, &events).await;
@@ -119,8 +128,8 @@ async fn live_db_castle_standoff_marine_and_guard_fight_to_a_death() {
             }
         }
         crate::cell::abilities::warmup_tick(&tx, &mut mgr, &events).await;
-        f_min = f_min.min(max_hp(&mgr, FRIENDLY).0);
-        g_min = g_min.min(max_hp(&mgr, GUARD).0);
+        f_min = f_min.min(pools(&mgr, FRIENDLY));
+        g_min = g_min.min(pools(&mgr, GUARD));
         while let Ok(m) = rx.try_recv() {
             if matches!(m, CellToBaseMsg::GrantXP { .. }) {
                 grants += 1;

@@ -15,3 +15,4 @@
 - [ability-range-units.md](ability-range-units.md) — ability ranges UE3 units -> metres (#919); caster_range_bounds choke point, player min_range (#1016), UseWeaponRange fallback (#1017)
 - [effect-script-registry-seam.md](effect-script-registry-seam.md) — #962 step 4: scripts in cell-effect-scripts, looked up on SpaceManager; bare test managers have no scripts
 - [ability-mechanics-gaps.md](ability-mechanics-gaps.md) — why most player abilities do nothing: no Self substitution, NVP-less damage=0, timed 1-pulse effects unregistered, regen stats are %
+- [damage-scripts-bypass-mitigation.md](damage-scripts-bypass-mitigation.md) — Rust damage scripts are raw (no QR/armour/absorb, python used qrCombatDamage); AB-06 made them the only path; mixed-QR abilities
