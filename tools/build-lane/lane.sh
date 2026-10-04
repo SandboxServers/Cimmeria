@@ -163,6 +163,9 @@ if [ $quiet -eq 1 ]; then
   mkdir -p "$LOG_DIR"
   job_base="$LOG_DIR/$(date '+%Y%m%d-%H%M%S')-$$"
   job_log="$job_base.log"; failures_file="$job_base.failures.txt"
+  # Create the log now: another lane's prune_logs deletes empty log dirs, and this job may
+  # wait minutes for a slot before it writes anything.
+  : > "$job_log"
   export NEXTEST_STATUS_LEVEL="${NEXTEST_STATUS_LEVEL:-fail}"
   export NEXTEST_SHOW_PROGRESS="${NEXTEST_SHOW_PROGRESS:-none}"
   export NEXTEST_FAILURE_OUTPUT="${NEXTEST_FAILURE_OUTPUT:-final}"
@@ -313,6 +316,7 @@ disk_guard
 t_start="$(now_us)"
 acquired="[lane] acquired ${#held[@]}/$SLOTS slot(s) after ${waited}s; target=${CARGO_TARGET_DIR:-$TOP/target}; free=${free_start:-?}GB; jobs=$CARGO_BUILD_JOBS; incremental=${CARGO_INCREMENTAL:-default} :: $*"
 if [ $quiet -eq 1 ]; then
+  mkdir -p "$LOG_DIR"   # in case the dir was pruned anyway while we waited
   echo "$acquired" > "$job_log"
   # One line up front, so a caller whose tool times out mid-build still has the log.
   echo "[lane] running; log: $(win_path "$job_log")" >&2
