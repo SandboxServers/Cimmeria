@@ -332,3 +332,37 @@ it does not validate actual power loss or an unobserved helper crash.
 Three local tests passed (`20261004-080135-28262`), as did strict clippy
 (`20261004-080139-28218`). No UI admission, packaged prerequisite resource or
 visual validation is claimed; prerequisite success still cannot enable Play.
+
+
+## Prerequisite helper resource staging
+
+The shared staging tool now accepts `--kind prerequisite` for the native Windows
+x86 helper. It requires the full trusted build revision and an independently
+supplied SHA-256, checks PE32/i386 headers, and writes
+`shell/resources/windows/cimmeria-prerequisite-worker.exe` plus ignored
+`prerequisite-helper-build.json`. The default `archive` mode still requires
+AMD64/PE32+ and uses separate filenames. Both executables are public bundle
+resources with mode `0644`; neither receipt authorizes execution.
+
+From the repository root, after downloading the native Windows CI artifact:
+
+```bash
+python3 crates/launcher/desktop/tools/stage-helper.py "$SGW_PREREQUISITE_WORKER" \
+  --kind prerequisite --sha256 "$SGW_PREREQUISITE_WORKER_SHA256" \
+  --revision 10d67a2b9ed146357779e633725441675ea5f7b7
+python3 -m unittest discover -s crates/launcher/desktop/tools -p test_stage_helper.py
+```
+
+Windows run `37203128166` succeeded for that revision. Its downloaded worker,
+SHA-256 `215e40924ce44d194af63c32da8de3347cfb983440cf554faaf0aec98b694815`,
+passed staging. Two Python tests cover independent resources/provenance and
+wrong hash, revision and architecture rejection. Two native resource tests
+passed (`20261004-081125-30919`), including rejection after replacement and
+refusal to use the archive identity or receipt as the prerequisite trust source.
+The engine's distinct `PrerequisiteResource` exposes path, identity and
+reverification without an archive-backend conversion.
+
+The printed `CIMMERIA_PREREQUISITE_HELPER_SHA256` is reserved for the upcoming
+shell binding; the current shell does not consume it yet. Staging alone does
+not connect runtime setup to the Install button, test a finished app bundle,
+or establish self-contained startup. Those remain separate validation gates.

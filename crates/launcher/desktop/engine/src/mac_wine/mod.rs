@@ -25,7 +25,7 @@ mod paths;
 pub mod prerequisites;
 pub(crate) mod recovery;
 mod resource;
-pub use resource::HelperResource;
+pub use resource::{HelperResource, PrerequisiteResource};
 #[derive(Debug, thiserror::Error)]
 pub enum WineError {
     #[error("Wine adapter ownership or resource validation failed")]

@@ -431,3 +431,16 @@ Windows+Mac before the shell; shell/visual/game gates remain separate.
   by explicit reconciliation, no installer replay or consent change. Threelocal
   guards and strictclippy pass080135-28262/080139-28218. UI dispatch, packagedworker
   resource and general crash recovery remain unfinished; no gameplay evidence.
+
+
+### Separate prerequisite resource staging (2026-10-04)
+
+`stage-helper.py --kind prerequisite` checks i386/PE32 and writes independent
+ignored executable/provenance filenames; archive mode remains AMD64/PE32+.
+Native Windows run 37203128166 succeeded at 10d67a2b9; downloaded prerequisite
+SHA256 215e40924ce44d194af63c32da8de3347cfb983440cf554faaf0aec98b694815
+passed staging. Two Python staging and two native identity tests passed.
+`PrerequisiteResource` prevents accidental archive-backend conversion; receipts
+remain non-authoritative. The printed prerequisite build variable is reserved:
+shell binding and Effect admission are not implemented in this packet.
+See desktop `docs/prerequisites.md` for commands and evidence boundaries.

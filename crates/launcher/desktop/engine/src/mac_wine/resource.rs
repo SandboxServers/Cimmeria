@@ -25,6 +25,25 @@ impl HelperResource {
         }
     }
 }
+/// Independently pinned x86 prerequisite worker. Deliberately exposes no archive
+/// backend identity: the two Windows helpers are not interchangeable.
+#[derive(Clone)]
+pub struct PrerequisiteResource(HelperResource);
+impl PrerequisiteResource {
+    pub fn open(path: PathBuf, expected_hex: &str) -> Result<Self, WineError> {
+        HelperResource::open(path, expected_hex).map(Self)
+    }
+    pub fn verify(&self) -> Result<(), WineError> {
+        self.0.verify()
+    }
+    pub fn path(&self) -> &Path {
+        self.0.path()
+    }
+    pub fn sha256(&self) -> [u8; 32] {
+        self.0.sha256
+    }
+}
+
 fn decode(value: &str) -> Result<[u8; 32], WineError> {
     if value.len() != 64 || !value.bytes().all(|b| b.is_ascii_hexdigit()) {
         return Err(WineError::Invalid);
@@ -56,6 +75,22 @@ mod tests {
             matches!(resource.backend(),ExtractionBackend::Wine{helper_sha256,..} if hex(&helper_sha256)==hash)
         );
         std::fs::write(path, b"replacement").unwrap();
+        assert!(resource.verify().is_err());
+    }
+    #[test]
+    fn prerequisite_identity_cannot_be_borrowed_from_archive_or_receipt() {
+        let root = tempfile::tempdir().unwrap();
+        let path = root.path().join("cimmeria-prerequisite-worker.exe");
+        std::fs::write(&path, b"prerequisite").unwrap();
+        let hash = hex(&Sha256::digest(b"prerequisite"));
+        let archive_hash = hex(&Sha256::digest(b"archive"));
+        std::fs::write(root.path().join("prerequisite-helper-build.json"), &hash).unwrap();
+        assert!(PrerequisiteResource::open(path.clone(), &archive_hash).is_err());
+        assert!(PrerequisiteResource::open(path.clone(), "").is_err());
+        let resource = PrerequisiteResource::open(path.clone(), &hash).unwrap();
+        assert_eq!(resource.path(), path);
+        assert_eq!(hex(&resource.sha256()), hash);
+        std::fs::write(&path, b"replacement").unwrap();
         assert!(resource.verify().is_err());
     }
 }
