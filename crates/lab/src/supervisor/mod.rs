@@ -57,7 +57,6 @@ use crate::client::BridgeClient;
 use crate::timeline::client_events::HeartbeatSample;
 use crate::timeline::clock::ClockOffset;
 
-use flows::login::LoginRequest;
 use heartbeat::{HeartbeatState, HeartbeatWatchdog};
 use recovery::{CommandJournal, PersistentHooks, RecoveryTracker};
 use session_file::{DEFAULT_BRIDGE_BIND, DEFAULT_BRIDGE_PORT};
@@ -247,6 +246,9 @@ pub struct Supervisor {
     state: Arc<Mutex<SupervisorState>>,
     /// Client-event history (the bridge ring's only drainer).
     events: Arc<events::store::EventStore>,
+    /// The lab lease ([`crate::lease`]): the watchdog relaunches a dead
+    /// client only while one is held.
+    leases: Arc<crate::lease::LeaseBook>,
 }
 
 impl Supervisor {
@@ -257,13 +259,29 @@ impl Supervisor {
             config,
             state: Arc::new(Mutex::new(SupervisorState::new())),
             events: Arc::new(events::store::EventStore::default()),
+            leases: crate::lease::global(),
         }
+    }
+
+    /// Use `leases` instead of the process-wide book (tests).
+    #[cfg(test)]
+    pub fn with_leases(mut self, leases: Arc<crate::lease::LeaseBook>) -> Self {
+        self.leases = leases;
+        self
+    }
+
+    /// The lease book this supervisor's watchdog consults.
+    pub fn leases(&self) -> &Arc<crate::lease::LeaseBook> {
+        &self.leases
     }
 
     /// Proxy a phase-1 client tool call through the bridge, journaling it
     /// so `lab_crash_report` can show the last N and quarantine the
     /// in-flight one on a crash.
     pub async fn bridge_call(&self, method: &str, params: Value) -> Result<Value, String> {
+        // Every client action of a lease-guarded tool passes here: stop
+        // before it when the tool's lease was revoked (lease::permit).
+        crate::lease::permit::ensure(&format!("bridge {method}"))?;
         let seq = {
             let mut st = self.state.lock().await;
             st.journal.record(method, now_ms())
@@ -298,44 +316,6 @@ impl Supervisor {
             }
         }
         result
-    }
-
-    /// Re-apply persistent hooks after a crash relaunch (ADR §6): replay
-    /// each recorded `hook_install`, then re-key the set with the fresh ids
-    /// the relaunched client assigns (the old ids died with the crash).
-    /// Best-effort — a hook that fails to re-apply is dropped from tracking
-    /// rather than retried forever. Writes and native calls are **never**
-    /// replayed; only persistent hooks reach here.
-    async fn reapply_persistent_hooks(&self) {
-        let to_reapply = {
-            let st = self.state.lock().await;
-            st.persistent_hooks.to_reapply()
-        };
-        if to_reapply.is_empty() {
-            return;
-        }
-        tracing::info!(
-            count = to_reapply.len(),
-            "re-applying persistent hooks after crash"
-        );
-
-        let mut refreshed: Vec<(u32, Value)> = Vec::new();
-        for params in to_reapply {
-            match self.bridge.call("hook_install", params.clone()).await {
-                Ok(res) => {
-                    if let Some(hid) = res.get("id").and_then(Value::as_u64) {
-                        refreshed.push((hid as u32, params));
-                    }
-                }
-                Err(e) => tracing::warn!(error = %e, "persistent hook re-apply failed"),
-            }
-        }
-
-        let mut st = self.state.lock().await;
-        st.persistent_hooks.clear();
-        for (hid, params) in refreshed {
-            st.persistent_hooks.note_install(hid, &params);
-        }
     }
 
     /// Launch (or relaunch) the client: mint a token, write the session
@@ -399,6 +379,9 @@ impl Supervisor {
         // was just written to; the launcher starts it there too.
         let (bin2, dll2) = (install_dir.join("Binaries"), dll_path.clone());
         let patches = self.config.patches_dll.clone();
+        // Last check before a process exists: preparation (display probe,
+        // telemetry mint) takes seconds, and the lease may be gone by now.
+        crate::lease::permit::ensure("launch SGW.exe")?;
         let pid = tokio::task::spawn_blocking(move || {
             process::launch(&bin2, &dll2, &helper, patches.as_deref(), &envs)
         })
@@ -547,29 +530,6 @@ impl Supervisor {
     /// Record login progress for `lab_client_status`.
     pub(crate) async fn set_login_state(&self, login: LoginState) {
         self.state.lock().await.login = login;
-    }
-
-    /// After a crash relaunch: log in with the native flow (Escape skips
-    /// the intro movies) and play the lab account's character if it names
-    /// one. Best effort; a failure is logged and leaves the client at
-    /// whatever screen it reached.
-    async fn relogin_after_crash(&self) {
-        if let Err(e) = self.login_flow(LoginRequest::default()).await {
-            tracing::warn!(error = %e.summary(), "post-crash login failed");
-            return;
-        }
-        let character = self
-            .lab_account()
-            .map(|a| a.character)
-            .filter(|c| !c.is_empty());
-        if let Some(name) = character {
-            if let Err(e) = self
-                .play_flow(&name, true, flows::world::DEFAULT_PLAY_TIMEOUT)
-                .await
-            {
-                tracing::warn!(error = %e.summary(), "post-crash play failed");
-            }
-        }
     }
 
     /// This instance's credentials (`lab-account.json`, or

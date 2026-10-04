@@ -17,7 +17,10 @@ pub(crate) fn test_server() -> LabServer {
     let bridge = Arc::new(BridgeClient::new("127.0.0.1:1", String::new()));
     let mut config = SupervisorConfig::from_env();
     config.install_dir = None;
-    LabServer::new(Arc::new(Supervisor::new(bridge, config)))
+    // Its own lease book: the process-wide one is shared by parallel tests.
+    let sup =
+        Supervisor::new(bridge, config).with_leases(Arc::new(crate::lease::LeaseBook::default()));
+    LabServer::new(Arc::new(sup))
 }
 
 /// Serve the daemon router on 127.0.0.1:0; returns the `/mcp` URL.
