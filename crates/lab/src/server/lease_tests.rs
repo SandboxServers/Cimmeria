@@ -104,6 +104,69 @@ async fn a_second_session_is_refused_while_the_first_holds_the_lease() {
     assert!(!error_text(&r).contains("lease"), "{r}");
 }
 
+/// Regression guard (review 2026-10-04): a force takeover in the middle of
+/// an admitted flow stops its next action. `client_wait_event` polls the
+/// bridge until its timeout; the fake bridge forces a takeover on the first
+/// poll, and the flow must fail "lease revoked" at once and send nothing
+/// more, instead of polling on to its 5 s timeout under a lease it lost.
+#[tokio::test]
+async fn a_takeover_mid_flow_stops_the_next_action() {
+    use std::sync::atomic::{AtomicU32, Ordering};
+    use std::sync::Arc;
+
+    use crate::lease::{AcquireRequest, LeaseBook};
+    use crate::supervisor::events::fake_bridge::{
+        self, empty_rings, events, is_ring_pump, lua_ok, Responder,
+    };
+
+    let book = Arc::new(LeaseBook::default());
+    let calls = Arc::new(AtomicU32::new(0));
+    let after_takeover = Arc::new(AtomicU32::new(0));
+    let (b2, c2, a2) = (book.clone(), calls.clone(), after_takeover.clone());
+    let responder: Responder = Arc::new(move |method, params| {
+        if c2.fetch_add(1, Ordering::SeqCst) == 0 {
+            b2.acquire(AcquireRequest {
+                owner: "session-b".into(),
+                purpose: "takeover".into(),
+                force: true,
+                reason: Some("mid-flow test".into()),
+                ..Default::default()
+            })
+            .unwrap();
+        } else {
+            a2.fetch_add(1, Ordering::SeqCst);
+        }
+        Ok(match method {
+            "events_read" => events(vec![]),
+            "lua_eval" if is_ring_pump(params) => empty_rings(),
+            _ => lua_ok(&["false"]),
+        })
+    });
+    let sup = fake_bridge::supervisor(responder)
+        .await
+        .with_leases(book.clone());
+    let url = spawn_daemon(crate::server::LabServer::new(Arc::new(sup))).await;
+    let mut a = McpSession::open(&url).await;
+    let a_id = lease_id(&acquire(&mut a, "session-a").await);
+
+    let started = std::time::Instant::now();
+    let r = a
+        .call(
+            "client_wait_event",
+            json!({ "name": "never", "timeout_ms": 5000, "lease_id": a_id }),
+        )
+        .await;
+    let e = error_text(&r);
+    assert!(e.contains("lease revoked"), "{r}");
+    assert!(e.contains("session-b"), "{r}");
+    assert_eq!(
+        after_takeover.load(Ordering::SeqCst),
+        0,
+        "no bridge call after the takeover"
+    );
+    assert!(started.elapsed() < std::time::Duration::from_secs(4));
+}
+
 /// `tools/list` advertises `lease_id` as a required argument exactly on the
 /// guarded tools.
 #[tokio::test]

@@ -12,6 +12,7 @@ use rmcp::{
 use serde_json::{json, Value};
 
 use super::LabServer;
+use crate::lease::permit::Permit;
 use crate::lease::policy::{self, Gate};
 use crate::lease::{grant_json, AcquireRequest, DEFAULT_TTL_S, MAX_TTL_S};
 
@@ -120,21 +121,28 @@ impl LabServer {
     /// The lease gate for one `tools/call`. Open tools pass untouched. A
     /// guarded tool must carry the current `lease_id`, which is then taken
     /// out of the arguments (the tools' own argument types do not know it)
-    /// and the lease renewed.
-    pub(super) fn gate_call(&self, request: &mut CallToolRequestParams) -> Result<(), McpError> {
+    /// and the lease renewed. Returns the [`Permit`] the tool then runs
+    /// under, so every action it takes re-checks that lease.
+    pub(super) fn gate_call(
+        &self,
+        request: &mut CallToolRequestParams,
+    ) -> Result<Option<Permit>, McpError> {
         let tool = request.name.as_ref();
         if policy::gate(tool) == Gate::Open {
-            return Ok(());
+            return Ok(None);
         }
         let id = request
             .arguments
             .as_mut()
             .and_then(|args| args.remove(LEASE_ARG))
             .and_then(|v| v.as_str().map(String::from));
-        self.supervisor
-            .leases()
-            .check(id.as_deref(), tool)
-            .map_err(|e| McpError::invalid_params(e, Some(self.supervisor.leases().status())))
+        let book = self.supervisor.leases();
+        book.check(id.as_deref(), tool)
+            .map_err(|e| McpError::invalid_params(e, Some(book.status())))?;
+        Ok(id.map(|id| Permit::Lease {
+            book: book.clone(),
+            id,
+        }))
     }
 }
 

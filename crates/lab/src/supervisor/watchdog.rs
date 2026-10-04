@@ -4,6 +4,9 @@
 //! (ADR section 6). Split out of `mod.rs` to keep it under the file-size cap.
 
 use super::heartbeat::{self, HeartbeatState, BUSY_GRACE_MS};
+use serde_json::Value;
+
+use super::flows::{self, login::LoginRequest};
 use super::{now_ms, process, LoginState, Supervisor, MAX_HEARTBEAT_FAILS, WATCHDOG_POLL};
 
 impl Supervisor {
@@ -67,6 +70,16 @@ impl Supervisor {
         if self.after_death(dead_pid).await != AfterDeath::Relaunch {
             return;
         }
+        // Recovery acts only while a lease is held: re-checked before the
+        // spawn, every relogin step and every hook re-apply, so a release
+        // during the launch preparation stops it (lease::permit).
+        let permit = crate::lease::permit::Permit::AnyHolder {
+            book: self.leases().clone(),
+        };
+        crate::lease::permit::scope(permit, self.relaunch()).await;
+    }
+
+    async fn relaunch(&self) {
         match self.launch_client(None).await {
             Ok(new_pid) => {
                 tracing::info!(new_pid, "relaunched after crash; logging back in");
@@ -109,6 +122,75 @@ impl Supervisor {
             return AfterDeath::IdleNoLease;
         }
         AfterDeath::Relaunch
+    }
+}
+
+/// Crash recovery steps, moved here from `mod.rs` beside the watchdog
+/// that runs them.
+impl Supervisor {
+    /// Re-apply persistent hooks after a crash relaunch (ADR §6): replay
+    /// each recorded `hook_install`, then re-key the set with the fresh ids
+    /// the relaunched client assigns (the old ids died with the crash).
+    /// Best-effort — a hook that fails to re-apply is dropped from tracking
+    /// rather than retried forever. Writes and native calls are **never**
+    /// replayed; only persistent hooks reach here.
+    async fn reapply_persistent_hooks(&self) {
+        let to_reapply = {
+            let st = self.state.lock().await;
+            st.persistent_hooks.to_reapply()
+        };
+        if to_reapply.is_empty() {
+            return;
+        }
+        tracing::info!(
+            count = to_reapply.len(),
+            "re-applying persistent hooks after crash"
+        );
+
+        let mut refreshed: Vec<(u32, Value)> = Vec::new();
+        for params in to_reapply {
+            if let Err(e) = crate::lease::permit::ensure("hook re-apply") {
+                tracing::info!(target: "lab.lease", reason = %e, "stopping hook re-apply");
+                break;
+            }
+            match self.bridge.call("hook_install", params.clone()).await {
+                Ok(res) => {
+                    if let Some(hid) = res.get("id").and_then(Value::as_u64) {
+                        refreshed.push((hid as u32, params));
+                    }
+                }
+                Err(e) => tracing::warn!(error = %e, "persistent hook re-apply failed"),
+            }
+        }
+
+        let mut st = self.state.lock().await;
+        st.persistent_hooks.clear();
+        for (hid, params) in refreshed {
+            st.persistent_hooks.note_install(hid, &params);
+        }
+    }
+
+    /// After a crash relaunch: log in with the native flow (Escape skips
+    /// the intro movies) and play the lab account's character if it names
+    /// one. Best effort; a failure is logged and leaves the client at
+    /// whatever screen it reached.
+    async fn relogin_after_crash(&self) {
+        if let Err(e) = self.login_flow(LoginRequest::default()).await {
+            tracing::warn!(error = %e.summary(), "post-crash login failed");
+            return;
+        }
+        let character = self
+            .lab_account()
+            .map(|a| a.character)
+            .filter(|c| !c.is_empty());
+        if let Some(name) = character {
+            if let Err(e) = self
+                .play_flow(&name, true, flows::world::DEFAULT_PLAY_TIMEOUT)
+                .await
+            {
+                tracing::warn!(error = %e.summary(), "post-crash play failed");
+            }
+        }
     }
 }
 

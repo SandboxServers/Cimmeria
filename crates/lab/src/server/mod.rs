@@ -605,9 +605,14 @@ impl ServerHandler for LabServer {
         mut request: CallToolRequestParams,
         context: rmcp::service::RequestContext<rmcp::RoleServer>,
     ) -> Result<CallToolResponse, McpError> {
-        self.gate_call(&mut request)?;
+        let permit = self.gate_call(&mut request)?;
         let tcc = rmcp::handler::server::tool::ToolCallContext::new(self, request, context);
-        self.tool_router.call(tcc).await
+        match permit {
+            // The gate admits once; the permit makes every action of the
+            // tool re-check the lease, so a takeover stops it mid-flow.
+            Some(p) => crate::lease::permit::scope(p, self.tool_router.call(tcc)).await,
+            None => self.tool_router.call(tcc).await,
+        }
     }
 
     async fn list_tools(

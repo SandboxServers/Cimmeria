@@ -15,6 +15,12 @@
 //!
 //! `client_wait_for` is guarded because its predicate is caller-chosen Lua.
 //!
+//! Hidden writes (review 2026-10-04): `client_entity_find` pins shared unit
+//! slots and the single projection request slot, and `client_inventory`
+//! stores named snapshots; both are leased. The other open tools run fixed
+//! read-only Lua (their only global writes are the idempotent `__jenc` /
+//! `__jcall` helper definitions), memory reads or window captures.
+//!
 //! Anything not in [`OPEN`] needs the lease, so a new tool is guarded until
 //! someone decides otherwise; `every_routed_tool_is_classified` makes that
 //! decision explicit.
@@ -49,11 +55,9 @@ pub const OPEN: &[&str] = &[
     "client_mem_read",
     "client_hook_list",
     "client_input_status",
-    "client_entity_find",
     "client_entity_table",
     "client_ui_state",
     "client_window_read",
-    "client_inventory",
     "client_player_state",
     "client_hotbar",
     "lab_characters",
@@ -76,6 +80,13 @@ pub const LEASED: &[&str] = &[
     "client_console",
     "client_hook_install",
     "client_hook_remove",
+    // Hidden shared writes: entity_find pins the shared private unit slots
+    // and the one LabWorld projection request (supervisor/world/find.rs,
+    // world/lua.rs), so an observer's call can rename or time out the
+    // driver's lookup; inventory's `snapshot` writes the supervisor's
+    // shared snapshot table.
+    "client_entity_find",
+    "client_inventory",
     // Shared cursors.
     "client_events_read",
     "client_wait_event",
@@ -130,6 +141,14 @@ mod tests {
         assert_eq!(gate("client_some_future_tool"), Gate::Lease);
         assert_eq!(gate("lab_client_status"), Gate::Open);
         assert_eq!(gate("client_lua_eval"), Gate::Lease);
+    }
+
+    /// Regression guard (review 2026-10-04): tools with hidden shared
+    /// writes are not open.
+    #[test]
+    fn tools_with_hidden_writes_need_the_lease() {
+        assert_eq!(gate("client_entity_find"), Gate::Lease);
+        assert_eq!(gate("client_inventory"), Gate::Lease);
     }
 
     #[test]

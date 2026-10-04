@@ -25,6 +25,7 @@
 //! force (target `lab.lease`, field `event`), with owner and purpose. A touch
 //! is `debug`, not a row: it happens on every guarded call.
 
+pub mod permit;
 pub mod policy;
 
 use std::collections::VecDeque;

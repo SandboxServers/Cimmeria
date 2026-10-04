@@ -821,8 +821,9 @@ lab_lease_release {lease_id: "lease-..."}
 | `lab_lease_acquire` while someone holds the lease | refused, naming the holder, their purpose and since when |
 | `lab_lease_acquire {force: true, reason}` | takes the lease over; logged at `WARN`; the new lease and `lab_lease_status` record the previous holder |
 | any guarded call with the current lease | renews the lease for its `ttl_s` (a touch) |
+| the lease is taken over, released or expires while a guarded tool is still running | the tool stops before its next bridge call, key or click press, or process launch, with an error starting `lease revoked`; key and button releases still go through, so nothing is left held |
 | no call for `ttl_s` seconds (default 600, 30 to 3600) | the lease expires and is logged; `lab_lease_renew` extends it explicitly |
-| the client dies while nobody holds a lease | the watchdog leaves it down and logs `watchdog_idle_no_lease`; with a lease it relaunches and logs back in as before |
+| the client dies while nobody holds a lease | the watchdog leaves it down and logs `watchdog_idle_no_lease`; with a lease it relaunches and logs back in as before, and stops if the last lease goes during the relaunch |
 
 `lab_lease_status` shows the holder, purpose, since, expiry and the last few
 leases with how they ended. It never shows a lease id: the id is what lets
@@ -840,7 +841,7 @@ a test fails until every routed tool is classified. Guarded tools list
 | `lab_lease_*`, `lab_client_status`, `lab_crash_report`, `lab_timeline`, `lab_uat_report` | `lab_client_start` / `stop` / `restart` |
 | `lab_screenshot`, `lab_screenshot_region`, `lab_pixel_probe` | `client_lua_eval`, `client_wait_for` (its predicate is Lua), `client_mem_write`, `client_call_native`, `client_console`, `client_hook_install` / `remove` |
 | `client_module_info`, `client_mem_read`, `client_hook_list`, `client_input_status` | `client_events_read`, `client_wait_event`, `client_chat_log`, `client_combat_log` (shared cursors) |
-| `client_entity_find`, `client_entity_table`, `client_ui_state`, `client_window_read`, `client_inventory`, `client_player_state`, `client_hotbar`, `lab_characters` | every input, click, drag, world, combat and item tool; the `lab_*` login, character, play, dialog and logout flows; `lab_uat_run`, `lab_uat_attest` |
+| `client_entity_table`, `client_ui_state`, `client_window_read`, `client_player_state`, `client_hotbar`, `lab_characters` | `client_entity_find` (it pins the shared unit slots and the one projection slot), `client_inventory` (its `snapshot` writes a shared table); every input, click, drag, world, combat and item tool; the `lab_*` login, character, play, dialog and logout flows; `lab_uat_run`, `lab_uat_attest` |
 
 The four cursor reads are leased because they share one event store: two
 sessions reading through the same named cursor take events from each other,
