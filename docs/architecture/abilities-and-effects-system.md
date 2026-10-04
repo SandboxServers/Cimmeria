@@ -146,7 +146,12 @@ For channelled effects (`pulse_count = 0`), we register with `MAX_CHANNEL_PULSES
 
 **Reversibility:** Drain order is per-damage-type table inside `drain_absorption_pools`; trivially swapped. Changing the HEALTH-only rule means understanding the FOCUS-drain content semantics first.
 
-**Code:** [`crates/cell-combat/src/cell/combat/damage/pipeline.rs`](../../crates/cell-combat/src/cell/combat/damage/pipeline.rs) — `drain_absorption_pools` + `calculate_damage`.
+**Code:** [`crates/cell-combat/src/cell/combat/damage/absorb.rs`](../../crates/cell-combat/src/cell/combat/damage/absorb.rs) — `drain_absorption_pools`, called from `calculate_damage` in [`pipeline.rs`](../../crates/cell-combat/src/cell/combat/damage/pipeline.rs).
+
+**Addendum (ability mechanics AB-10, 2026-10-03).** Two changes:
+
+- **Focus damage absorbs too.** SGW's Focus is the outer damage pool, so a shield behind it did nothing until Focus was gone, and every authored shield ("Absorption: 500 Physical") was inert. The drain now applies to Focus and Health damage alike, in the pool's own points, Focus first where a seam deals both (a Focus-gated script, `RangedPhysicalDamage` or `MeleePhysicalDamage`, passes only its Focus half, since its Health half lands only when Focus breaks; a scripted pulse takes its damage type from its script): the pipeline (NVP hits and unscripted DoT pulses), and `absorb_damage_nvps`, which runs a damage script's `FocusDamage` / `HealthDamage` through the shields before the script writes the pools (scripted hits and scripted pulses). This departs from the Python reference on purpose.
+- **A shield is a timed effect ledger entry.** `AbsorbShield` puts one entry per `(effect, caster)` on the ledger with one mutable pool per damage type, and adds each pool to its `absorb*` stat (the client's view). Every seam that drains the stats then calls `SpaceManager::settle_absorb_shields`, which charges the drain to the pools, oldest entry first, and takes off an empty shield (`StatBuffRemoval::Drained`, logged `drained`). Removing an entry for any other reason (expiry, death, refresh, a cleanse) takes its unspent pool back off the stat, so a timed shield no longer outlives itself (audit B-33). Capacity on the stat that no pool owns is spent first. [Decision 28](abilities-and-effects-decisions-23-33.md#28-native-consumables-the-base-consumes-before-the-cell-applies-and-timed-stat-buffs-live-in-their-own-ledger) has the ledger side.
 
 ### 10. Script-name dispatch over flag-bit dispatch for effect categories
 

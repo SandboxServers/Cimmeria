@@ -30,6 +30,7 @@ mod effect_monikers;
 mod implemented;
 mod manager;
 mod range;
+mod shield_nvps;
 mod wire;
 
 pub use ability_type::AbilityType;
@@ -48,5 +49,8 @@ pub use range::{
     ability_max_range, ability_range_bounds, ability_range_to_metres, active_weapon_ranges,
     ae_radius_metres, caster_range_bounds, RangeBounds, RangeRefusal, RangeSource, WeaponRanges,
     ABILITY_RANGE_UNITS_PER_METRE, DEFAULT_ABILITY_MAX_RANGE,
+};
+pub use shield_nvps::{
+    shield_pool_id, shield_pools, shield_types, SHIELD_AMOUNT_NVP, SHIELD_TYPE_NVP,
 };
 pub use wire::{serialize_effect_results, serialize_timer_update, ClientEffectResult};

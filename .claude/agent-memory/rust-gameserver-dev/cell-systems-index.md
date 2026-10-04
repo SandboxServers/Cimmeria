@@ -70,3 +70,4 @@ Moved out of MEMORY.md on 2026-09-28 (AM-12 compaction).
 - [timed-effect-ledger-and-stat-routing](timed-effect-ledger-and-stat-routing.md) — AB-04 ledger keyed (effect, invoker); script writes it; routing traps for binding stat effects; ability monikers are broad.
 - [effect-routing-and-scoped-defs](effect-routing-and-scoped-defs.md) — AB-07 per-effect routing: user/area halves land after the target part; ground/splash scoped defs; routing.py mirror.
 - [held-toggles-and-stance-moniker](held-toggles-and-stance-moniker.md) — AB-08 held entries: toggle switch is the last held effect, EFFECT_Stance = CRC-32 via EffectMoniker NVP, held icon horizon.
+- [absorb-shield-ledger-and-cleanse-categories](absorb-shield-ledger-and-cleanse-categories.md) — AB-10: shields mirror into absorb* stats, every drain seam must settle; categories from co-sequenced resist rolls; shield rows lack the beneficial bit.

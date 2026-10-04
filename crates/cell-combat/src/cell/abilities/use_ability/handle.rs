@@ -148,6 +148,7 @@ pub async fn handle_use_ability(
     // A known ability with no mechanic yet (AB-12): answered below, before
     // any target or range check could refuse the press silently.
     let mut no_mechanics = false;
+    let mut shield_full = false;
     // Beneficial ammo (AM-11d): a support shot may land on an ally or the
     // shooter and never on a hostile target. `None` for every other cast,
     // whose targeting is exactly the #444 rule below.
@@ -242,6 +243,15 @@ pub async fn handle_use_ability(
             no_mechanics = true;
             break 'validate;
         }
+        if super::shield_full::shield_has_no_room(
+            entity_id,
+            ability_def.as_ref(),
+            target_id,
+            space_mgr,
+        ) {
+            shield_full = true;
+            break 'validate;
+        }
 
         // Range + target validation
         if target_id > 0 {
@@ -322,6 +332,14 @@ pub async fn handle_use_ability(
             }
         }
         super::not_known::send_not_known_feedback(entity_id, ability_id, tx).await;
+        return false;
+    }
+
+    // A shield whose every pool is already full: feedback, no cooldown.
+    if shield_full {
+        if let Some(def) = ability_def.as_ref() {
+            super::shield_full::refuse_shield_full(entity_id, def, tx, space_mgr).await;
+        }
         return false;
     }
 

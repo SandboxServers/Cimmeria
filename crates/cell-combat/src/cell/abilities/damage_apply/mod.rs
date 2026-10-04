@@ -293,6 +293,9 @@ async fn apply_hit(
     );
     effect_results.extend(script_results);
     total_health_damage += script_health_damage;
+    // AB-10: charge what the hit drained from the absorb stats to the
+    // shields on the ledger; an emptied one comes off (icon clear below).
+    space_mgr.settle_absorb_shields(target_eid);
 
     if let Some(shot) = &shot {
         ammo_damage::log_applied(
@@ -490,7 +493,8 @@ async fn apply_hit(
     // Their stat changes are flushed in a follow-up onStatUpdate. Scripts
     // that need wire-side fan-out own their own sends.
     if !plan.after_scripts.is_empty() {
-        effect_scripts::run_scripts(space_mgr, ids, &plan.after_scripts);
+        effect_scripts::run_scripts(space_mgr, ids, &plan.after_scripts, damage_type);
+        space_mgr.settle_absorb_shields(target_eid);
         // D-SS20 again: a script's own HEALTH write (a bleed) from the
         // partner is held at 1 too, before the flush below and before the
         // effect-driven death sweep reads it.
@@ -665,6 +669,8 @@ mod cover_tests;
 mod damage_seed_live_db_tests;
 #[cfg(test)]
 mod per_effect_damage_tests;
+#[cfg(test)]
+mod shield_tests;
 #[cfg(test)]
 mod single_damage_path_tests;
 #[cfg(test)]

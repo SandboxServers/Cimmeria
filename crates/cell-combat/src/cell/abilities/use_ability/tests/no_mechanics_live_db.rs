@@ -2,7 +2,7 @@
 //! and the abilities that work today must never be refused.
 //!
 //! The count moves as the generator packets land (AB-03 damage numbers,
-//! AB-04 stat effects): update [`HAS_MECHANICS_TODAY`] after each merge.
+//! AB-04 stat effects, AB-10 shields and purges): update [`HAS_MECHANICS_TODAY`] after each merge.
 //! The test prints the count it sees, so the new value is in the output.
 
 use cimmeria_entity::abilities::{ability_effects_have_mechanics, AbilityDef};
@@ -17,9 +17,11 @@ use crate::cell::spawner::{
 };
 use crate::test_support::require_db_or_skip;
 
-/// Seeded abilities with a mechanic on `main` after AB-01, AB-02, AB-03, AB-04, AB-06, AB-07 and AB-08.
-/// The one number to update when a packet lights up more abilities.
-const HAS_MECHANICS_TODAY: usize = 276;
+/// Seeded abilities with a mechanic on `main` after AB-01, AB-02, AB-03, AB-04, AB-06,
+/// AB-07, AB-08 and AB-10 (AB-10 adds Personal Shield 1013, the mitigation
+/// toggles 1016, 1017, 1018, 1235 and the purges 2027, 2099, 2865). The one
+/// number to update when a packet lights up more abilities.
+const HAS_MECHANICS_TODAY: usize = 284;
 
 /// The archetype starters every new character holds: Pistol Shot, Strike,
 /// Heal Focus, Health Heal, Recuperation.

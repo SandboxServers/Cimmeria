@@ -158,6 +158,7 @@ pub(super) fn apply_damage_scripts(
             continue;
         };
         scale_damage_nvps(&mut effect, scale);
+        absorb_script_damage(space_mgr, ids, &mut effect, damage_type);
         dispatch(space_mgr, ids, &effect);
     }
     let (health_after, focus_after) = pools(space_mgr, ids.target_eid).unwrap_or_default();
@@ -193,12 +194,54 @@ pub(super) fn apply_damage_scripts(
     (vec![result], -health_delta)
 }
 
-/// Run each effect's script on the target, unscaled.
-pub(super) fn run_scripts(space_mgr: &mut SpaceManager, ids: HitIds, effect_ids: &[i32]) {
+/// Let the target's absorb shields take the script's damage first
+/// (AB-10, `combat::damage::absorb`): the script then deals what got
+/// through. The hit settles the shields' ledger entries afterwards.
+fn absorb_script_damage(
+    space_mgr: &mut SpaceManager,
+    ids: HitIds,
+    effect: &mut EffectDef,
+    damage_type: i8,
+) {
+    let Some(target) = space_mgr.get_entity_mut(ids.target_eid) else {
+        return;
+    };
+    let absorbed = crate::cell::combat::absorb_damage_nvps(&mut target.stats, effect, damage_type);
+    if absorbed > 0 {
+        tracing::debug!(
+            target: "abilities",
+            event = "shield_absorbed_damage",
+            account_id = ids.actor.account_id,
+            player_id = ids.actor.player_id,
+            entity_id = ids.entity_id,
+            target_player_id = ids.target.player_id,
+            target_id = ids.target_eid,
+            ability_id = ids.ability_id,
+            effect_id = effect.effect_id,
+            damage_type,
+            absorbed,
+            focus_through = effect.param_i32("FocusDamage"),
+            health_through = effect.param_i32("HealthDamage"),
+            "a shield absorbed a damage script's damage"
+        );
+    }
+}
+
+/// Run each effect's script on the target, unscaled. A script that deals
+/// damage (an on-hit burn, a Suppression chip) passes the target's shields
+/// first at the shot's `damage_type`, as the hit's own damage scripts do;
+/// the caller settles the shields after.
+pub(super) fn run_scripts(
+    space_mgr: &mut SpaceManager,
+    ids: HitIds,
+    effect_ids: &[i32],
+    damage_type: i8,
+) {
     for eid in effect_ids {
-        let Some(effect) = space_mgr.effect_defs.get(eid).cloned() else {
+        let Some(mut effect) = space_mgr.effect_defs.get(eid).cloned() else {
             continue;
         };
+        absorb_script_damage(space_mgr, ids, &mut effect, damage_type);
         dispatch(space_mgr, ids, &effect);
     }
 }

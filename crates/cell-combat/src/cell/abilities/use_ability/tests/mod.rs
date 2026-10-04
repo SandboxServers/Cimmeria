@@ -35,6 +35,7 @@ mod range_units_live_db;
 mod registered_pet_kill_credit;
 mod sequence;
 mod sequence_phases;
+mod shield_full;
 mod summon;
 mod summon_live_db;
 mod summon_logs;

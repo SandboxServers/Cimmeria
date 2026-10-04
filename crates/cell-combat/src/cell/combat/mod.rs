@@ -37,6 +37,7 @@ pub use auto_cycle::{
     arm_auto_cycle, auto_cycle_target_stop_reason, clear_auto_cycle, clear_auto_cycle_for_target,
     is_auto_cycle_target_valid,
 };
+pub(crate) use damage::{absorb_damage_nvps, drain_absorption_pools, script_damage_type};
 pub use damage::{
     attacker_cover_qr, calculate_damage, calculate_damage_penetrating, calculate_damage_scaled,
     calculate_qr, calculate_result, cover_reduction, CoverReduction, CoverSide, QrResult,

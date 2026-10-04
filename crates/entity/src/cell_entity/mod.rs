@@ -49,6 +49,9 @@ pub struct ActiveEffectInstance {
     pub invoker_position_at_register: Option<Vector3>,
 }
 
+mod absorb_pool;
+#[cfg(test)]
+mod absorb_pool_tests;
 mod aggression;
 mod ai_state;
 mod appearance;
@@ -72,6 +75,7 @@ mod vault_session;
 mod weapon_action;
 mod witness_aoi;
 
+pub use absorb_pool::{AbsorbPool, AbsorbSettlement};
 pub use aggression::{AggroProfile, MobAggression};
 pub use appearance::filter_holstered_weapon;
 pub use crafting_stations::CraftingStationState;
