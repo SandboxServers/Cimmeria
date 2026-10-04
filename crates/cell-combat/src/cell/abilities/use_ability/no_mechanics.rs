@@ -71,31 +71,37 @@ pub(crate) fn ability_has_mechanics(space_mgr: &SpaceManager, def: &AbilityDef) 
         || space_mgr.ammo_catalog.is_toggle_ability(id)
 }
 
-/// Refuse a player's press of an ability with no mechanics: `onErrorCode`
-/// plus the feedback line, one DEBUG `abilities` row, and `true`. The
-/// caller returns before the cooldown, so nothing is charged and no timer is
-/// sent. `false` (nothing sent) for an NPC, an ability the server has no
-/// def for (the caller's own unknown-id path handles that), an ability the
-/// active weapon grants (the basic attack never goes quiet), and every
-/// ability with a mechanic.
-pub(super) async fn refuse_without_mechanics(
+/// Whether a press of `ability_id` must get the no-effect refusal: a player
+/// caster, an ability the server has a def for, no mechanic, and not granted
+/// by the active weapon (the basic attack never goes quiet). `false` for an
+/// NPC and for an ability with no def (the caller's own unknown-id path
+/// handles that). Checked right after the known-ability and cooldown checks,
+/// so a dead, missing or friendly target never swallows the answer.
+pub(super) fn lacks_mechanics(
     entity_id: u32,
     ability_id: i32,
     def: Option<&AbilityDef>,
-    tx: &mpsc::Sender<CellToBaseMsg>,
     space_mgr: &SpaceManager,
 ) -> bool {
-    let Some(def) = def else {
-        return false;
-    };
-    if !space_mgr.get_entity(entity_id).is_some_and(|e| e.is_player)
-        || ability_has_mechanics(space_mgr, def)
-        || super::super::resolve::is_ability_granted_by_active_weapon(
-            space_mgr, entity_id, ability_id,
-        )
-    {
-        return false;
-    }
+    def.is_some_and(|def| {
+        space_mgr.get_entity(entity_id).is_some_and(|e| e.is_player)
+            && !ability_has_mechanics(space_mgr, def)
+            && !super::super::resolve::is_ability_granted_by_active_weapon(
+                space_mgr, entity_id, ability_id,
+            )
+    })
+}
+
+/// Refuse a press [`lacks_mechanics`] flagged: one DEBUG `abilities` row,
+/// then `onErrorCode` plus the feedback line. The caller returns before the
+/// cooldown, so nothing is charged and no timer is sent.
+pub(super) async fn refuse_without_mechanics(
+    entity_id: u32,
+    def: &AbilityDef,
+    tx: &mpsc::Sender<CellToBaseMsg>,
+    space_mgr: &SpaceManager,
+) {
+    let ability_id = def.ability_id;
     let id = space_mgr.player_identity(entity_id);
     // DEBUG: any client can press any bar button at will, and the
     // `abilities=debug` OTEL_FILTER row exports it.
@@ -114,7 +120,6 @@ pub(super) async fn refuse_without_mechanics(
         "useAbility: the ability has no mechanic yet; refused with feedback, no cooldown charged"
     );
     send_no_effect_feedback(entity_id, ability_id, tx).await;
-    true
 }
 
 /// `onErrorCode(ERRORCODE_SYSTEM_Ability, ability_id, 167)` and the

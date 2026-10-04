@@ -175,7 +175,7 @@ mod tests {
         ));
     }
 
-    /// Copilot on #1158: seed effect 2907 (ability 2134) carries
+    /// Seed effect 2907 (ability 2134) carries
     /// `script_name = ''`, which no script answers. A blank name is not a
     /// script for either predicate, and a name the registry does not answer
     /// (`Reload`, effect 658) is not a mechanic for the launch gate.

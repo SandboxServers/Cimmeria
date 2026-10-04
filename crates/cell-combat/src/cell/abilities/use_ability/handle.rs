@@ -145,6 +145,9 @@ pub async fn handle_use_ability(
     // A player pressed a server-known ability they do not know: answered
     // with `onErrorCode` below, once the entity borrow ends.
     let mut not_known = false;
+    // A known ability with no mechanic yet (AB-12): answered below, before
+    // any target or range check could refuse the press silently.
+    let mut no_mechanics = false;
     // Beneficial ammo (AM-11d): a support shot may land on an ally or the
     // shooter and never on a hostile target. `None` for every other cast,
     // whose targeting is exactly the #444 rule below.
@@ -230,6 +233,15 @@ pub async fn handle_use_ability(
             tracing::debug!(entity_id, ability_id, "useAbility: ability on cooldown");
             return false;
         }
+        if super::no_mechanics::lacks_mechanics(
+            entity_id,
+            ability_id,
+            ability_def.as_ref(),
+            space_mgr,
+        ) {
+            no_mechanics = true;
+            break 'validate;
+        }
 
         // Range + target validation
         if target_id > 0 {
@@ -314,15 +326,10 @@ pub async fn handle_use_ability(
     }
 
     // A known ability with no mechanic yet: feedback, no cooldown (AB-12).
-    if super::no_mechanics::refuse_without_mechanics(
-        entity_id,
-        ability_id,
-        ability_def.as_ref(),
-        tx,
-        space_mgr,
-    )
-    .await
-    {
+    if no_mechanics {
+        if let Some(def) = ability_def.as_ref() {
+            super::no_mechanics::refuse_without_mechanics(entity_id, def, tx, space_mgr).await;
+        }
         return false;
     }
 

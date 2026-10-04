@@ -157,6 +157,36 @@ async fn a_press_with_no_mechanic_is_refused_with_feedback_and_no_timer() {
     assert_eq!(calls(&drain(&mut rx)), expected_feedback(SILENT));
 }
 
+/// The refusal comes before the target checks: with a target the launch
+/// would reject silently selected (a dead mob, a friendly player the #444
+/// gate refuses, a mob out of range), the press still gets the no-effect
+/// answer and nothing else. Fails if the gate runs after target validation.
+#[tokio::test]
+async fn a_rejected_target_does_not_swallow_the_no_effect_answer() {
+    const DEAD_MOB: u32 = 20;
+    const FRIEND: u32 = 21;
+    const FAR_MOB: u32 = 22;
+    let mut mgr = scene();
+    for (id, x) in [(DEAD_MOB, 3.0), (FAR_MOB, 500.0)] {
+        mgr.create_entity(id, "Castle_CellBlock", [x, 0.0, 0.0], [0.0; 3])
+            .unwrap();
+        mgr.get_entity_mut(id).unwrap().faction = crate::cell::combat::HOSTILE_FACTION;
+    }
+    mgr.get_entity_mut(DEAD_MOB).unwrap().state_field |= cimmeria_wire::state_field::BSF_DEAD;
+    make_player(&mut mgr, FRIEND, [2.0, 0.0, 0.0]);
+    let (tx, mut rx) = mpsc::channel(64);
+
+    for target in [DEAD_MOB, FRIEND, FAR_MOB] {
+        assert!(!handle_use_ability(PLAYER, SILENT, target as i32, &tx, &mut mgr).await);
+        let msgs = drain(&mut rx);
+        assert_eq!(
+            calls(&msgs),
+            expected_feedback(SILENT),
+            "target {target}: the no-effect answer, and only it"
+        );
+    }
+}
+
 /// Control: the same ability with one effect that runs a script commits
 /// and sends its timer, so the guard above refuses for the right reason.
 #[tokio::test]

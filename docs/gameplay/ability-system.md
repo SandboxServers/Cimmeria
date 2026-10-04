@@ -172,7 +172,7 @@ Each resolution logs one `abilities` row, `event=beneficial_cast`: DEBUG at `sta
 
 ### Presses with no mechanic (AB-12)
 
-Most seeded abilities have nothing the server can resolve yet (ability-mechanics audit B-02). Before AB-12 a press of one charged the cooldown, sent the timer, maybe played an animation, and did nothing else. Now a player's press of an ability with no mechanic is refused at launch, after the dead, warming-up, known-ability and cooldown checks and before the range check and the cooldown (`use_ability/no_mechanics.rs`):
+Most seeded abilities have nothing the server can resolve yet (ability-mechanics audit B-02). Before AB-12 a press of one charged the cooldown, sent the timer, maybe played an animation, and did nothing else. Now a player's press of an ability with no mechanic is refused at launch, right after the dead, warming-up, known-ability and cooldown checks, so a dead, friendly or out-of-range target never swallows the answer (`use_ability/no_mechanics.rs`):
 
 - `onErrorCode` with `SystemID 0` (`ERRORCODE_SYSTEM_Ability`), `InstanceID` = the ability id and `ErrorCodeID 167` (`EntityDoesNotHaveAbility`, the code the pet-order gate already sends for an unimplemented pet ability; the client enum has no "no effect" value);
 - then `onPlayerCommunication("SYSTEM", 0, CHAN_FEEDBACK, "That ability has no effect yet.")`, the line the player reads, since no client Lua renders `onErrorCode`;
