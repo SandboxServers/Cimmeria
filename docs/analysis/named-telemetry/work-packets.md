@@ -42,7 +42,8 @@
   | `org_id` | `org_name` | organizations |
   | `archetype` | `archetype_name` | `archetype_name()` |
   | `error_code`, `moniker_id` | `error_name`, `moniker_name` | `error_texts.moniker_name`, `monikers.name` |
-  | `opcode`, `msg_id`, `method_id`, `method_index` | `method_name` | NT-30 table |
+  | `opcode`, `msg_id` | `msg_name` | NT-30 message table |
+  | `method_id`, `method_index` | `method_name` | NT-30 method table, per entity type |
 
   Existing names that disagree (`character_name` vs `player_name`) are listed with the one to keep. Sweeps converge on it.
 - The metric-label prohibition (a cross-reference to Rule 4) and the Discord rules (`Name (#id)`, no internal links).
@@ -127,7 +128,7 @@ Update [negative-logging-convention.md](../../architecture/negative-logging-conv
 **Depends:** NT-00. **Effort:** S.
 
 - In the `TracingEvent` formatter (`crates/discord/src/embed/format.rs`), fold each `<p>_id`/`<p>_name` pair, and the `target`/`target_name` style pairs from the NT-00 table, into one embed field `<p>: Name (#id)`. Each pair then costs one of the 25 slots, not two. Order: identity first, then the event's object fields, then the rest.
-- Fold `account_id`/`player_id`/`player_name` into one "Who" field.
+- Fold `player_id`/`player_name` and `account_id`/`account_name` into one "Who" field, rendered `Name (#player_id) · login (#account_id)`; either half renders by the usual `Name (#id)` / `#id` rules when its name is missing.
 - **No internal links:** add a guard over the rendered embed JSON that rejects any `http(s)://` URL. Allowlist only public, team-reachable hosts (none today). Strip `trace_id`/`span_id` *URLs*. Put the trace ID in the footer as plain text (D-NT3).
 - Update [discord-notifications.md](../../architecture/discord-notifications.md): the naming section and a "no internal links" section next to the privacy sections.
 
@@ -172,7 +173,7 @@ Sweep notes:
 **Depends:** none. **Effort:** M. **Agent:** rust-gameserver-dev. Check `docs/protocol/*-dispatch-table.md` first.
 
 - One generated table, `wire::names`: Mercury message ID → name, and base/cell/client entity-method index → name, per entity type (clientIndex keyed, per the typeID rule). Reuse the existing per-module `method_name()` fns as its source where they already exist (`wire/src/base/organization.rs`, `cell_methods/organization/decode.rs`, `crafting/request.rs`, `cell-world/.../plugin/registry.rs`).
-- Every log field `opcode`, `msg_id`, `method_id`, `method_index` gets a `method_name` pair (about 48 sites today). `wire-log` and `mercury.tx_hole` output include the name.
+- Every log field `opcode`/`msg_id` gets a `msg_name` pair, and every `method_id`/`method_index` a `method_name` pair (about 48 sites today). A `msg_id` in an entity-method range gets both. `wire::names` exposes the two lookups separately. `wire-log` and `mercury.tx_hole` output include the name.
 - A test that every index in the dispatch tables resolves, and that the table agrees with the dispatch-table docs (a disagreement fails and names the row).
 
 ### NT-31 Flag, enum and error-code names

@@ -408,7 +408,8 @@ comes from, so every call site resolves it the same way.
 | `org_id` | `org_name` | Organizations |
 | `archetype` | `archetype_name` | `archetype_name()` |
 | `error_code`, `moniker_id` | `error_name`, `moniker_name` | `error_texts.moniker_name`, `monikers.name` |
-| `opcode`, `msg_id`, `method_id`, `method_index` | `method_name` | The NT-30 method table |
+| `opcode`, `msg_id` | `msg_name` | The NT-30 Mercury message table (system frames such as `AUTHENTICATE` included; `wire-log` already uses `msg_name`) |
+| `method_id`, `method_index` | `method_name` | The NT-30 method table, per entity type (clientIndex). A `msg_id` in an entity-method range carries both `msg_name` and `method_name` |
 
 **Generic keys name their domain first.** `type_id` and `design_id` are not item keys everywhere: `abilities.type_id`
 is logged in the spawner, and the GM console uses `design_id` for mission and template input. A key that
