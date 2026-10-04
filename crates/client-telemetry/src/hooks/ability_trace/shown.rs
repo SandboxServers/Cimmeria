@@ -153,8 +153,65 @@ pub(crate) fn wanted(handler: &Handler, args: &[LuaArg]) -> bool {
     args.get(3).and_then(LuaArg::as_number) == Some(f64::from(CHAN_FEEDBACK))
 }
 
-/// The event for one handler call. `status` is the `lua_pcall` result
-/// (`None` under `lua_call`, which has none). Arguments are named by the
+/// How a handler call ended.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum Completion {
+    /// Under `lua_pcall`, which returned this status (0 is success).
+    Pcall(i32),
+    /// Under `lua_call`, which returned normally.
+    Returned,
+    /// Under `lua_call`, and the Lua error unwound through the detour (a
+    /// C++ throw: the client's `lua51.dll` is C++-compiled).
+    Raised,
+}
+
+/// Reports a handler call when it ends, including when a Lua error unwinds
+/// through the `lua_call` detour that holds it.
+///
+/// Why a drop guard is sound here: the detour and the trampoline type it
+/// calls the original through are `extern "C-unwind"`, so a foreign (C++)
+/// exception may unwind through the detour's frame, and Rust runs that
+/// frame's destructors on the way (the `C-unwind` contract). On
+/// `i686-pc-windows-msvc` the destructors are SEH cleanup funclets, which
+/// the MSVC C++ runtime runs for any C++ throw: the same mechanism the
+/// entity-dispatch and sequence scopes (`CtxScope`, `Restore`) already
+/// rely on. What runs in the drop must not unwind and must not touch the
+/// Lua state, which is mid-error: `report` is the arguments already read
+/// before the call, a throttle check and a queue push, each panic-contained
+/// by the caller's `report` (`native::after_call`).
+pub(crate) struct ReportOnExit<T, F: FnMut(T, Completion)> {
+    pending: Option<T>,
+    report: F,
+}
+
+impl<T, F: FnMut(T, Completion)> ReportOnExit<T, F> {
+    /// Hold `pending` until the call ends.
+    pub(crate) fn new(pending: T, report: F) -> Self {
+        Self {
+            pending: Some(pending),
+            report,
+        }
+    }
+
+    /// The call returned: report it as `completion`.
+    pub(crate) fn finish(mut self, completion: Completion) {
+        if let Some(p) = self.pending.take() {
+            (self.report)(p, completion);
+        }
+    }
+}
+
+impl<T, F: FnMut(T, Completion)> Drop for ReportOnExit<T, F> {
+    fn drop(&mut self) {
+        // Reached with `pending` still set only when the call did not
+        // return: it is being unwound.
+        if let Some(p) = self.pending.take() {
+            (self.report)(p, Completion::Raised);
+        }
+    }
+}
+
+/// The event for one handler call, with how it ended. Arguments are named by the
 /// handler's parameters when the call passed exactly that many (the
 /// window or `this` is not reported); otherwise they go out as `args`
 /// with `arity_mismatch`, which is evidence the native side passes
@@ -163,21 +220,18 @@ pub(crate) fn shown_fields(
     handler: &Handler,
     nargs: i32,
     args: &[LuaArg],
-    status: Option<i32>,
+    completion: Completion,
 ) -> Fields {
+    let ok = matches!(completion, Completion::Pcall(0) | Completion::Returned);
     let mut f: Fields = vec![
         ("kind", json!(handler.kind)),
         ("handler", json!(handler.function)),
-        (
-            "status",
-            json!(match status {
-                Some(0) | None => "ok",
-                Some(_) => "failed",
-            }),
-        ),
+        ("status", json!(if ok { "ok" } else { "failed" })),
     ];
-    if let Some(s) = status.filter(|&s| s != 0) {
-        f.push(("lua_status", json!(s)));
+    match completion {
+        Completion::Pcall(s) if s != 0 => f.push(("lua_status", json!(s))),
+        Completion::Raised => f.push(("raised", json!(true))),
+        _ => {}
     }
     if nargs as usize == handler.params.len() && args.len() == handler.params.len() {
         for (name, a) in handler.params.iter().zip(args).skip(1) {
@@ -297,13 +351,17 @@ mod native {
     }
 
     /// After the call returned: report it. `status` is `lua_pcall`'s.
-    pub(crate) fn after_call(p: Pending, status: Option<i32>) {
-        let key = format!("shown:{}", p.handler.kind);
-        if let Some(f) = crate::hooks::ability_trace::admit(&key, || {
-            shown_fields(p.handler, p.nargs, &p.args, status)
-        }) {
-            crate::hooks::emit::emit(TARGET_SHOWN, "info", f);
-        }
+    /// After the call ended: report it. Never unwinds (it runs from
+    /// [`ReportOnExit`]'s drop while a Lua error is in flight).
+    pub(crate) fn after_call(p: Pending, completion: Completion) {
+        let _ = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+            let key = format!("shown:{}", p.handler.kind);
+            if let Some(f) = crate::hooks::ability_trace::admit(&key, || {
+                shown_fields(p.handler, p.nargs, &p.args, completion)
+            }) {
+                crate::hooks::emit::emit(TARGET_SHOWN, "info", f);
+            }
+        }));
     }
 }
 
@@ -453,7 +511,7 @@ mod tests {
             LuaArg::Number(2.0),
             LuaArg::Other("table"),
         ];
-        let f = shown_fields(h, 4, &args, Some(0));
+        let f = shown_fields(h, 4, &args, Completion::Pcall(0));
         assert_eq!(get(&f, "kind"), json!("combat_text"));
         assert_eq!(get(&f, "handler"), json!("SCTMod.onUnitCombat"));
         assert_eq!(get(&f, "status"), json!("ok"));
@@ -468,7 +526,7 @@ mod tests {
     fn an_unexpected_arity_is_reported_raw() {
         let h = identify("SCT.lua", 83).unwrap();
         let args = [LuaArg::Number(597.0), LuaArg::Number(1.5)];
-        let f = shown_fields(h, 2, &args, Some(2));
+        let f = shown_fields(h, 2, &args, Completion::Pcall(2));
         assert_eq!(get(&f, "arity_mismatch"), json!(true));
         assert_eq!(get(&f, "args"), json!([597, 1.5]));
         assert_eq!(get(&f, "status"), json!("failed"));
@@ -491,7 +549,7 @@ mod tests {
             ]
         };
         assert!(wanted(chat, &line(9.0)));
-        let f = shown_fields(chat, 6, &line(9.0), None);
+        let f = shown_fields(chat, 6, &line(9.0), Completion::Returned);
         assert_eq!(get(&f, "text"), json!("You cannot do that yet."));
         assert_eq!(get(&f, "channel_id"), json!(9));
         for other in [0.0, 3.0, 8.0, 10.0, 12.0] {
@@ -525,6 +583,41 @@ mod tests {
         );
         assert_eq!(get(&begin, "interrupt"), json!(false));
         assert_eq!(get(&begin, "cast_id"), Value::Null);
+    }
+
+    /// A handler under `lua_call` whose Lua error unwinds through the
+    /// detour is still reported, as `raised`; one that returns is reported
+    /// once, as returned. A Rust panic stands in for the client's C++
+    /// throw, as in the other unwind tests: both run the frame's drops.
+    #[test]
+    fn a_handler_that_raises_is_still_reported() {
+        use std::cell::RefCell;
+        let seen: RefCell<Vec<(u32, Completion)>> = RefCell::new(Vec::new());
+        let record = |p: u32, c: Completion| seen.borrow_mut().push((p, c));
+
+        // The detour's shape: hold the guard, call the original, finish.
+        fn lua_call_original(raises: bool) {
+            if raises {
+                panic!("Lua error thrown by lua51.dll");
+            }
+        }
+        let caught = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+            let guard = ReportOnExit::new(7u32, record);
+            lua_call_original(true);
+            guard.finish(Completion::Returned);
+        }));
+        assert!(caught.is_err());
+        assert_eq!(*seen.borrow(), vec![(7, Completion::Raised)]);
+
+        seen.borrow_mut().clear();
+        ReportOnExit::new(8u32, record).finish(Completion::Returned);
+        assert_eq!(*seen.borrow(), vec![(8, Completion::Returned)]);
+
+        let h = identify("SCT.lua", 83).unwrap();
+        let f = shown_fields(h, 0, &[], Completion::Raised);
+        assert_eq!(get(&f, "status"), json!("failed"));
+        assert_eq!(get(&f, "raised"), json!(true));
+        assert_eq!(get(&f, "lua_status"), Value::Null);
     }
 
     #[test]

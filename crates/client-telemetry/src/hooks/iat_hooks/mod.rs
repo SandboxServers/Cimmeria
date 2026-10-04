@@ -340,9 +340,7 @@ unsafe extern "C-unwind" fn lua_pcall_detour(
         .flatten();
     let status = original(l, nargs, nresults, errfunc);
     if let Some(p) = shown {
-        let _ = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-            shown::after_call(p, Some(status))
-        }));
+        shown::after_call(p, shown::Completion::Pcall(status));
     }
     if status != 0 {
         // The error value is on top of the stack. Read it after the call
@@ -377,12 +375,14 @@ unsafe extern "C-unwind" fn lua_call_detour(l: *mut c_void, nargs: i32, nresults
     let shown = std::panic::catch_unwind(|| shown::before_call(l, nargs))
         .ok()
         .flatten();
+    // A Lua error inside the handler is a C++ throw that unwinds through
+    // this frame; the guard's drop reports the call as `raised` on the way
+    // (see `shown::ReportOnExit` for why that is sound). The enclosing
+    // `lua_pcall` still reports the error itself as `client.lua.error`.
+    let guard = shown.map(|p| shown::ReportOnExit::new(p, shown::after_call));
     original(l, nargs, nresults);
-    // Reached only when the call returned; a Lua error unwinds past it and
-    // is reported by the enclosing `lua_pcall` as `client.lua.error`.
-    if let Some(p) = shown {
-        let _ =
-            std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| shown::after_call(p, None)));
+    if let Some(g) = guard {
+        g.finish(shown::Completion::Returned);
     }
 }
 
