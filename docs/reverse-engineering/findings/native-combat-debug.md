@@ -38,7 +38,7 @@ The client binds each of these in its outgoing-method bind sweep (`FUN_00db3390`
 | `Event_SlashCmd_AbilityDebug` | `Event_NetOut_AbilityDebug` | `gmDebugAbility` (`0x019c3770`) | 169 | `INT32 aAbilityId` | bind at `0x00dc555e`, thunk `0x00d71b30`, handler ctor `0x00d618f0` (vtable symbol names the event): VERIFIED |
 | `Event_SlashCmd_CombatDebug` | `Event_NetOut_CombatDebug` | `gmDebugCombat` (`0x019c378c`) | 170 | none | bind `0x00dc55d8`, thunk `0x00d71c00`, ctor `0x00d61a30`: VERIFIED |
 | `Event_SlashCmd_CombatDebugVerbose` | `Event_NetOut_CombatDebugVerbose` | `gmDebugCombatVerbose` (`0x019c37a8`) | 171 | none | bind `0x00dc5652`, thunk `0x00d71cd0`, ctor `0x00d61b70`: VERIFIED |
-| (heal) | `Event_NetOut_HealDebug` | `gmDebugHeal` (`0x019c37cc`) | 172 | none | bind `0x00dc56cc`, ctor `0x00d61cb0` names `HealDebug`; the bind-to-ctor link is INFERRED from sequence |
+| (heal) | `Event_NetOut_HealDebug` | `gmDebugHeal` (`0x019c37cc`) | 172 | none | bind `0x00dc56cc`, thunk `0x00d71da0`, ctor `0x00d61cb0` (vtable symbol names `HealDebug`): VERIFIED |
 | `Event_SlashCmd_DebugAbilityOnMob` | `Event_NetOut_DebugAbilityOnMob` | `gmDebugAbilityOnMob` (`0x019c384c`) | 176 | `INT32 AbilityID` | bind `0x00dc58b4`, thunk `0x00d720e0`, ctor `0x00d621b0`: VERIFIED |
 
 The cell indices are the flat indices in [cell-method-dispatch-table.md](../../protocol/cell-method-dispatch-table.md) (rows 169 to 172 and 176). The argument key names are the `.def` `ArgName`s (`SGWGmPlayer.def`: `aAbilityId`, `AbilityID`), which is what the bag lookup uses ([ability-client-hook-anchors.md](ability-client-hook-anchors.md#the-event-bag)). Note the two different spellings.
@@ -63,7 +63,7 @@ The command names are the runtime keywords captured from the live client's `SGWT
 | `/gmdebugcombat` | `Event_SlashCmd_CombatDebug` (`0x01841ec8`, vtable `0x01844380`) | none |
 | `/gmdebugcombatverbose` | `Event_SlashCmd_CombatDebugVerbose` (`0x01841ee4`, vtable `0x0184439c`) | none |
 | `/gmdebugabilityonmob` | `Event_SlashCmd_DebugAbilityOnMob` (`0x01841c24`, vtable `0x01844118`) | `<abilityId>` |
-| `/gmdebugheal` | (heal debug event) | none |
+| `/gmdebugheal` | not looked up (the NetOut side is verified) | none |
 
 `SGWTextCommandMgr` is the subscriber of each slash event (the `MemberCallback<NoSubject, SGWTextCommandMgr, ...Event_SlashCmd_AbilityDebug...>` type descriptor is at `0x01e04840`, VERIFIED), and its handler builds the matching `Event_NetOut_*`. The keyword-to-class pairing is by name: the keyword is `/` plus the lowercased `.def` method name (`gmDebugCombat` becomes `/gmdebugcombat`), which is also how `/gmsetgodmode` follows from `gmSetGodMode`. That the keyword is derived this way is INFERRED. The keywords are **not** present in the image as ASCII or UTF-16 literals (searched for `gmdebugcombat`, `gmdebugability`, `debugcombat`, `abilitydebug`, `gmdebugheal`), so the map is built at runtime. **Next action** to prove the derivation: decompile `SGWTextCommandMgr`'s constructor (`0x00c8d0f0`) around the `Event_SlashCmd_CombatDebug` registration thunk, or read the map again on a live client.
 
@@ -93,4 +93,4 @@ There is no native debug window. The existing text paths into the client are:
 |---|---|---|
 | Is a GM account's avatar really an `SGWGmPlayer` on the client, so the walk at `0x00c6fcf5` succeeds? | a live `client.net.out` for `gmDebugCombat` from a GM account | first lab run with a GM character; the `client.net.out` hook already reports the method name |
 | Is the slash keyword really derived from the method name? | the registration thunk or a live map read | decompile `0x00c8d0f0`'s thunk for `CombatDebug` |
-| Which function builds `Event_NetOut_HealDebug` and does `/gmdebugheal` reach it? | the bind at `0x00dc56cc` and its thunk | read the call after `0x00dc56cc` |
+| Which `Event_SlashCmd_*` class backs `/gmdebugheal`? | the `SGWTextCommandMgr` registration thunk | search `Event_SlashCmd_HealDebug` and read its subscriber |

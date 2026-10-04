@@ -142,8 +142,7 @@ public class Probe extends GhidraScript {
         } else if (s.startsWith("U16:")) {
           // UTF-16LE literal search: wide strings in this binary are mostly not defined as string data.
           String text = s.substring(4);
-          byte[] pat = new byte[text.length() * 2];
-          for (int i = 0; i < text.length(); i++) { pat[i * 2] = (byte) text.charAt(i); pat[i * 2 + 1] = 0; }
+          byte[] pat = text.getBytes(java.nio.charset.StandardCharsets.UTF_16LE); // surrogate pairs included
           println("=== UTF16 SEARCH '" + text + "'");
           Address from = currentProgram.getMinAddress();
           int hits = 0;
