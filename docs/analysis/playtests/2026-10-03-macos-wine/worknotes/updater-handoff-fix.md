@@ -21,7 +21,6 @@ IPC/exit/restart and Windows installer/UAC/cancellation remain release gates; no
 real application bundle or game was launched. This native-only fix changes no
 frontend logic, so a new JS REPL pass is not applicable.
 
-
 ## Validation
 
 - Engine/shell library and binary tests through the build lane: 412 passed,

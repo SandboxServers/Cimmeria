@@ -174,5 +174,7 @@ Windows-helper ownership requirements. It does not establish game compatibility.
 - [Verified existing-user adoption contract](worknotes/adoption-contract-audit.md)
 - [Permanent owner and current release](worknotes/owner-current-release.md)
 - [Signed updater implementation and evidence](worknotes/signed-updater.md)
+- [Native updater Apply and restart](worknotes/updater-apply.md)
+- [Post-handoff persistence failure fix](worknotes/updater-handoff-fix.md)
 - [Desktop updater contract](../../../../crates/launcher/desktop/docs/updater.md)
 - [Native verified-copy adoption foundation](worknotes/native-verified-copy-adoption.md)

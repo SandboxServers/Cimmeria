@@ -20,6 +20,9 @@ native resources and observes helper/game lifecycle; process start does not prov
 login or world entry. Platform validation remains open; see the
 [desktop contracts](../../crates/launcher/desktop/README.md) and
 [repair evidence](../../crates/launcher/desktop/docs/repair.md).
+The desktop [signed updater](../../crates/launcher/desktop/docs/updater.md) supports
+native Apply/restart with retained ownership and startup version acknowledgment;
+production configuration stays disabled and packaged upgrade validation is open.
 The remaining document describes the Windows egui launcher.
 
 ---

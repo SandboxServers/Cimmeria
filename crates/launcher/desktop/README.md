@@ -696,4 +696,4 @@ experimental Windows x86 module-load helper and remaining integration gates.
 
 See [legacy migration](docs/migration.md) for the native preview/confirmed import API,
 identity and consent preservation, historical ledger limits and crash recovery.
-Shell import controls and updater migration remain separate integration work.
+Current import controls and signed launcher Apply/restart are documented in [migration](docs/migration.md) and [updater](docs/updater.md); production updater configuration remains disabled.

@@ -18,6 +18,8 @@ Dated, sourced facts from top-level sessions, committed with the change that pro
 
 ## Reference
 
+- [Native updater handoff](../updater-handoff-fix/reference_native_handoff.md) — shutdown follows successful spawn even if later persistence fails; fixture regression and platform limits.
+
 - [reference_current_release_identity_2026_10_04.md](reference_current_release_identity_2026_10_04.md) — immutable owner with separate signed current-release reference; Update publication remains required.
 
 - [reference_owner_lock_release_2026_10_04.md](reference_owner_lock_release_2026_10_04.md) — explicit unlock at Repair/prefix logical-owner drop; duplicate-handle regression and native CI boundary.

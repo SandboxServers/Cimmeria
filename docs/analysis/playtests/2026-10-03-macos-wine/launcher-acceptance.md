@@ -11,6 +11,15 @@ scope. This checklist tracks current evidence and remaining acceptance work;
 historical ledger entries are not substitutes for validation of the integrated
 revision. The root checkout is outside this campaign's write scope.
 
+## Combined validation checkpoint
+
+`launcher/combined-validation` combines owner/current-release separation and Update
+admission with [updater Apply](worknotes/updater-apply.md) and the
+[post-handoff save-failure fix](worknotes/updater-handoff-fix.md). Combined native checks pass 429 tests (25 ignored), frontend tests pass 56,
+and both updater native Effect UATs pass. These checks ran separately from the rebuild checkpoint. These changes have not
+yet advanced PR #1164's integration branch. Game Update execution/UI, effective
+settings, observability and real packaged upgrade gates remain required.
+
 ## Current wave
 
 Original campaign base: `0b10d869c869793ab506dbf9215ddb91714a244b`.
@@ -19,7 +28,7 @@ No merge, deployment, release publication or force-push is authorized.
 
 | Owner / branch | Exclusive surface | Next acceptance evidence |
 |---|---|---|
-| Updater / `launcher/updater-apply` | Updater apply engine, platform handoff, host and Settings wiring | Verified native package Apply, restart/version acknowledgment and failure recovery |
+| Game Update / `launcher/game-update` | Retained preparation, replacement, recovery and rollback | Complete native two-release journey; coordinator connects shell/UI |
 | Integration owner | Shared extraction preflight, contracts, registrations, CI, indexes and integrated UAT | Windows cabinet validation; adoption integration; updater Apply/recovery; effective configuration and game Update |
 | External Windows observability track | Summary schema, queue/export, ingestion and query fixtures | Discovery integrated; fresh implementation assignment recorded; do not duplicate reserved work |
 

@@ -16,7 +16,7 @@ backend setup (GitHub Releases for content, manifest signing keypair,
 Azure Blob SAS for log uploads) see
 [launcher-distribution-setup.md](launcher-distribution-setup.md).
 
-### Play and Repair in the desktop replacement
+## Play and Repair in the desktop replacement
 
 The development Tauri launcher enables **Play** after installation and compatibility
 checks when its bundled helper, client patches and Mac graphics resource verify.
@@ -34,6 +34,12 @@ status**. Recovery and abandonment require separate confirmation and may be refu
 when native evidence is insufficient. Removing the old backup is a separate
 permanent-deletion action. See the [repair contract](../../crates/launcher/desktop/docs/repair.md)
 for boundaries. Original-client and platform release validation remain open.
+
+The desktop Settings updater supports signed download, Apply and restart when
+native release configuration is enabled. Ordinary development builds leave it
+disabled. A started installer is pending until the expected launcher version
+reopens; packaged Mac and Windows upgrade validation remain open. See the
+[desktop updater contract](../../crates/launcher/desktop/docs/updater.md).
 
 > **Audience split:**
 > [Part 1 — Players](#part-1--for-players) is for anyone running the

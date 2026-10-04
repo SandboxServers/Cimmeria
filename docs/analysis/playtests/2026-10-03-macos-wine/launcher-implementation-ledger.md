@@ -9,6 +9,8 @@ These dated entries preserve what each packet established at its exact revision.
 Older pending statements are historical; later entries record subsequent results.
 Requirements and release gates stay in the implementation plan.
 
+## Implementation packets
+
 ### 2026-10-04: operation contract (packet 1, partial)
 
 Added the standalone [desktop engine scaffold](../../../../crates/launcher/desktop/README.md)
@@ -148,7 +150,6 @@ as a seven-day debug artifact for later supervised validation. Installation
 remains disabled until parent ownership, deadlines, staging promotion and
 reconciliation are connected. The helper is not a game launch worker.
 
-
 ### 2026-10-04: native helper supervision
 
 Added native-owned process configuration and a host-PID recording callback before
@@ -171,7 +172,6 @@ Validation: 142 engine tests and all twelve process-harness scenarios passed on
 macOS through the build lane; strict all-target clippy passed. Three default
 ignores retain the previously documented parent-fixture/real-client distinction.
 
-
 ### 2026-10-04: verified release identity and durable install admission
 
 Added `VerifiedRelease`, binding validated manifest data to its original signed
@@ -192,7 +192,6 @@ the later supervisor commit `04b03a158` has its own CI run `37185555998`.
 Local admission packet checks: 152 engine tests and the twelve-scenario process
 harness passed; strict all-target clippy and formatting passed. Native Windows
 validation for these new admission cases remains pending.
-
 
 ### 2026-10-04: native first-install content worker
 
@@ -218,7 +217,6 @@ Worker packet validation: 160 engine tests plus twelve process scenarios passed
 on macOS; strict all-target clippy and root/desktop formatting passed. Native
 Windows worker validation remains pending.
 
-
 ### 2026-10-04: interrupted-content reconciliation
 
 Added native inspection for operations awaiting reconciliation. Missing/empty
@@ -236,7 +234,6 @@ No downloads, resume, cleanup or frontend changes were added. Exact authenticate
 release input is still required; offline signed-release caching remains open.
 Wine guest lifecycle and runtime/gameplay readiness remain separate gates.
 
-
 ### 2026-10-04: persisted signed release evidence
 
 Admission now saves bounded per-operation original manifest/signature bytes
@@ -252,7 +249,6 @@ remain explicit concerns; no trust-policy bypass was added.
 clippy and formatting passed. Native Windows validation remains pending.
 Automatic resume and frontend installation remain open. No frontend behavior
 changed, so JS REPL/visual UAT does not apply to this packet.
-
 
 ### 2026-10-04: explicit interrupted-install resume
 
@@ -270,7 +266,6 @@ formatting passed. Native Windows resume validation remains pending. Repeated
 milestone pushes cancelled preceding native runs, so desktop CI now retains
 active work and queues the latest pending revision. This changes scheduling,
 not what checks run or which commit their results validate.
-
 
 ### 2026-10-04: restricted native installation IPC
 
@@ -290,7 +285,6 @@ Prior native CI `37187754913` passed both platforms at `117344e76`. Resume CI
 `37188326146` at `bf8029e28` subsequently passed both platforms. Shell CI
 `37189445603` at `17b949f4c` passed macOS and Windows. These runs do not validate the
 newer frontend installation controls.
-
 
 ### 2026-10-04: Effect installation controls
 
@@ -313,7 +307,6 @@ also passed its disk/restart checks. CI now runs the installation logic UAT. The
 visual/keyboard inspection and actual Tauri installation IPC are still unverified.
 No game/runtime readiness or final startup validation is claimed.
 
-
 ### 2026-10-04: seed extraction adapter boundary
 
 Added `install_all_with_seed_extractor` with a separate native-owned download
@@ -328,7 +321,6 @@ seed subset also passed native-overlay/reuse checks. Strict all-target engine
 clippy and root formatting passed. Native backend/cache ownership, durable process identity, helper/Wine
 invocation and backend-aware recovery remain integration gates. No frontend
 behavior changed; frontend JS REPL/visual UAT does not apply to this packet.
-
 
 ### 2026-10-04: pinned managed Mac runtime cache
 
@@ -349,7 +341,6 @@ The pending frontend run for `9947a1003` was superseded/cancelled; seed run
 `37190303728` at `cd7366c61`, which also contains that frontend work, is running.
 These earlier revisions do not validate the managed runtime-cache packet.
 
-
 ### 2026-10-04: extraction identity and durable helper checkpoints
 
 Bound native/Wine backend selection into immutable install intent, preserving
@@ -365,7 +356,6 @@ passed after PID-retention correction. All thirteen real-stdio scenarios passed,
 including the owned-checkpoint fixture; strict clippy and formatting passed. No production Wine adapter, prefix or frontend change was added;
 PID records do not prove guest death or permit automatic redispatch.
 
-
 ### 2026-10-04: experimental headless Wine seed adapter
 
 Added an experimental adapter with pinned runtime/helper identity checks,
@@ -377,7 +367,6 @@ successful extraction was established. No Wine processes remained after adapter
 cleanup. Cause is undiagnosed; concurrent duplicate-ownership coverage is being
 added. No frontend changed or frontend UAT was rerun. Helper/cabinet compatibility,
 production coordination, prerequisites and game readiness remain open.
-
 
 Wine smoke follow-up: a minimal diagnostic isolated the missing C-drive/system32
 path. Adding `drive_c` and `dosdevices/c:` → `../drive_c` changed the diagnostic
@@ -396,7 +385,6 @@ commands](../../../../crates/launcher/desktop/docs/wine-validation.md) from its
 README. Latest ordinary checks passed 201 library tests with six ignored entries
 and strict clippy; the real-archive smoke result remains pending.
 
-
 ### 2026-10-04: original client RAR through managed Wine passed
 
 The supervised real-archive smoke passed in 299.64 seconds (301.146 seconds lane
@@ -412,7 +400,6 @@ prerequisites, launch, login or gameplay. The debug-helper duration is not a
 release performance benchmark; Mac shell installation remains disabled.
 Helper-journal CI `37191310279` passed both platforms at `ef10c31f9`; that earlier
 revision does not validate subsequent Wine changes.
-
 
 ### 2026-10-04: retained native Wine worker integration
 
@@ -432,7 +419,6 @@ disabled pending
 trusted resource binding; native Wine recovery remains rejected. No end-user
 Mac-install or game-readiness claim follows from this native API.
 
-
 ### 2026-10-04: packaged Windows helper binding for Mac content installation
 
 Added guarded artifact staging and fixed-resource resolution against a compiled
@@ -449,7 +435,6 @@ separately. Final development bundling and embedded-helper hash verification
 passed; packaged permission verification remains pending. No visual UAT or
 final self-contained startup occurred. Wine recovery and gameplay remain open.
 
-
 ### 2026-10-04: durable installation outcome reporting
 
 Added bounded schema-1 `install-result.json`, written before terminal commit and
@@ -465,7 +450,6 @@ exports the shared install module publicly to resolve unused/dead-code lint
 failures reported by CI `37194260466`; native Windows validation awaits the next
 run. Wine recovery and terminal-attempt retry remain unsupported.
 
-
 ### 2026-10-04: conservative Mac Wine reconciliation
 
 Added recovery inspection for absent helper records or observed finished results
@@ -480,7 +464,6 @@ output and unresolved recovery state. Final checks passed 212 engine tests/eight
 ignored, 15 shell tests/one ignored and combined strict clippy. JS logic UAT
 passed enabled inspection without resume or inferred success; native IPC remains
 mocked. No native visual/gameplay proof is claimed.
-
 
 ### 2026-10-04: confirmed failed-attempt cleanup and retry
 
@@ -501,7 +484,6 @@ Native visual UAT was not exercised. Reconcile/cleanup observation timeout is no
 
 Earlier desktop CI `37194260496` passed macOS and Windows at `ba765f95`. The
 new cleanup revision awaits its own CI; the older result does not validate it.
-
 
 ### 2026-10-04: initial folder preference and authenticated seed-cache reuse
 
@@ -525,7 +507,6 @@ with ten ignored and 17 shell tests with one ignored (235 total). JS installatio
 UAT passed the default-folder/enabled-install/unchanged-consent case using mocked
 native IPC. Strict clippy and the real-release content smoke remain pending.
 
-
 Real-release update: the full-content test itself passed in 314.73 seconds,
 covering authenticated original seed, seven patches, production claim, shared
 client setup, content checks, promotion and receipt, with consent false. The
@@ -534,7 +515,6 @@ process harness to run under the production key. Correct library-only rerun is
 pending; do not report the first invocation as wholly green. Strict clippy passed.
 The [smoke recipe](../../../../crates/launcher/desktop/docs/wine-validation.md#original-signed-release-content-smoke)
 now requires `--lib`; ordinary fixture suites must not use the production key.
-
 
 Final scoped full-content result: the exact `--lib` smoke passed in 312.55 seconds
 (lane315.308s, exit0; `20261004-054057-59469`). It confirmed authenticated original
@@ -657,7 +637,6 @@ pending. No local Windows compilation or real-game probe is claimed. Managed
 integration still requires helper hash/owned-root binding and supervisor deadlines.
 See [probe contracts](../../../../crates/launcher/desktop/docs/prerequisites.md).
 
-
 ### 2026-10-04: Settings Repair journey
 
 Settings connects confirmation against the saved installation identity, retained
@@ -688,3 +667,11 @@ the coordinator's RAR/FDI preflight (`198573ce7`). Current helper rebuild, full
 published seed, effective settings/UI and owner/current-release parity remain
 required. Latest integrated local engine tests pass 363, with 18 ignored;
 this includes the owner-lock correction described in the acceptance checklist.
+
+### 2026-10-04: Combined validation checkpoint
+
+The separate combined branch includes [owner/current-release and Update admission](worknotes/owner-current-release.md),
+[updater Apply](worknotes/updater-apply.md), and its [post-handoff persistence fix](worknotes/updater-handoff-fix.md).
+It preserves the development rebuild checkpoint; PR #1164 integration is pending.
+Fixture evidence does not establish game Update execution/UI, effective settings,
+production updater configuration or signed packaged Mac/Windows upgrade readiness.
