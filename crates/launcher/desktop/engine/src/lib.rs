@@ -61,3 +61,4 @@ pub mod launcher_compatibility;
 pub use storage::migration;
 
 pub use storage::updater;
+pub use storage::adoption;

@@ -10,6 +10,8 @@ const NAME: &str = "installed-content.json";
 struct Record {
     schema_version: u32,
     intent: InstallIntent,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    adoption: Option<super::adoption::Provenance>,
 }
 
 /// Reverified ownership and signed release identity, independent of preferences
@@ -44,7 +46,7 @@ impl DesktopState {
             record = read(&self.directory.root.join(NAME))?;
         }
         let record = record.ok_or(StorageError::Corrupt)?;
-        if record.schema_version != 1 || record.intent.schema_version != 1 {
+        if !matches!(record.schema_version, 1 | 2) || record.intent.schema_version != 1 {
             return Err(StorageError::UnsupportedSchema);
         }
         if self
@@ -58,6 +60,7 @@ impl DesktopState {
         {
             return Err(StorageError::Busy);
         }
+        self.verify_adoption_record(&record)?;
         self.verify_installed_identity(record.intent, None)
             .map(Some)
     }
@@ -73,7 +76,7 @@ impl DesktopState {
         let record: Option<Record> = read(&self.directory.root.join(NAME))?;
         let intent = match record {
             Some(record) => {
-                if record.schema_version != 1 || record.intent.schema_version != 1 {
+                if !matches!(record.schema_version, 1 | 2) || record.intent.schema_version != 1 {
                     return Err(StorageError::UnsupportedSchema);
                 }
                 if self
@@ -85,6 +88,12 @@ impl DesktopState {
                         op.id == record.intent.operation_id && op.state != OperationState::Succeeded
                     })
                 {
+                    return Err(StorageError::Busy);
+                }
+                self.verify_adoption_record(&record)?;
+                // Content-only adoption has no effective-config/runtime parity
+                // receipt yet. Do not let the existing Play path bypass that gate.
+                if record.adoption.is_some() {
                     return Err(StorageError::Busy);
                 }
                 record.intent
@@ -145,6 +154,7 @@ impl DesktopState {
             &Record {
                 schema_version: 1,
                 intent,
+                adoption: None,
             },
         );
         if result == Err(StorageError::PersistenceUncertain) {
@@ -159,7 +169,7 @@ impl DesktopState {
     ) -> Result<(), StorageError> {
         let path = self.directory.root.join(NAME);
         if let Some(record) = read::<Record>(&path)? {
-            if record.schema_version != 1 {
+            if !matches!(record.schema_version, 1 | 2) {
                 return Err(StorageError::UnsupportedSchema);
             }
             if record.intent != *intent {
@@ -176,6 +186,32 @@ impl DesktopState {
             }
         }
         Ok(())
+    }
+
+    pub(super) fn remember_adopted_content(
+        &mut self,
+        intent: &InstallIntent,
+        provenance: &super::adoption::Provenance,
+    ) -> Result<(), StorageError> {
+        atomic::write(
+            &self.directory.root,
+            NAME,
+            &Record {
+                schema_version: 2,
+                intent: intent.clone(),
+                adoption: Some(provenance.clone()),
+            },
+        )
+    }
+
+    fn verify_adoption_record(&self, record: &Record) -> Result<(), StorageError> {
+        match (record.schema_version, record.adoption.as_ref()) {
+            (1, None) => Ok(()),
+            (2, Some(provenance)) => {
+                super::adoption::verify_provenance(self, &record.intent, provenance)
+            }
+            _ => Err(StorageError::Corrupt),
+        }
     }
 
     fn verify_installed_identity(

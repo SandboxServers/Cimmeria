@@ -1,4 +1,5 @@
 //! Exclusive state-directory ownership and bounded, crash-aware persistence.
+pub mod adoption;
 mod atomic;
 pub(crate) mod extraction_work;
 mod failed_cleanup;
