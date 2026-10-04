@@ -151,6 +151,7 @@ async fn absolution_purges_exactly_two_health_effects_live_db() {
             .unwrap()
             .active_effects
             .push(ActiveEffectInstance {
+                cast_id: None,
                 effect_id: 4237,
                 ability_id: 716,
                 invoker_id: invoker,

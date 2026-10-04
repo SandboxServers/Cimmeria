@@ -137,6 +137,10 @@ pub struct TimedEffect {
     /// removal logged after the invoker left still names them
     /// (instrumentation-discipline rule 5).
     pub invoker_identity: PlayerIdentity,
+    /// The invoker's cast that applied it (AB-T1), so its apply, absorb,
+    /// expiry and removal rows join the launch row. `None` outside a cast (a
+    /// consumable, a test).
+    pub cast_id: Option<i32>,
 }
 
 impl TimedEffect {
@@ -188,6 +192,9 @@ pub struct TimedEffectSpec {
     pub stacking: TimedStacking,
     /// The invoker's identity; `SpaceManager::apply_timed_effect` fills it.
     pub invoker_identity: PlayerIdentity,
+    /// The resolving cast (AB-T1); `SpaceManager::apply_timed_effect` fills
+    /// it from the cast scope.
+    pub cast_id: Option<i32>,
 }
 
 /// The stat-changing effects on an entity plus the client timer clears the
@@ -349,6 +356,7 @@ impl CellEntity {
                 .map(|d| now + Duration::from_secs_f32(d.max(0.0))),
             timer_sent: false,
             invoker_identity: spec.invoker_identity,
+            cast_id: spec.cast_id,
         };
         self.stat_buffs.entries.push(applied.clone());
         // After the replaced entries released theirs: a refresh drops the

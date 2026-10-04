@@ -97,6 +97,10 @@ impl SpaceManager {
         let who = self.player_identity(spec.invoker_id);
         // Snapshot now: a removal logged after the invoker left still names them.
         spec.invoker_identity = who;
+        // The cast resolving now (AB-T1): the entry's later rows (absorb,
+        // expiry, removal) carry it after the scope has closed.
+        spec.cast_id = self.current_cast_id();
+        let cast_id = spec.cast_id;
         let target_who = self.player_identity(target);
         let (effect_id, ability_id, invoker_id) =
             (spec.effect_id, spec.ability_id, spec.invoker_id);
@@ -113,6 +117,7 @@ impl SpaceManager {
                 source_id = invoker_id,
                 effect_id,
                 ability_id,
+                cast_id,
                 "timed effect target entity is gone; nothing applied"
             );
             return None;
@@ -129,6 +134,7 @@ impl SpaceManager {
                 target_player_id = target_who.player_id,
                 effect_id,
                 ability_id,
+                cast_id,
                 "clear-on-death timed effect on a dead target; nothing applied"
             );
             return None;
@@ -161,6 +167,7 @@ impl SpaceManager {
                 source_id = invoker_id,
                 effect_id,
                 ability_id,
+                cast_id,
                 stat_ids = ?stat_ids,
                 "timed effect names only stats the entity does not have; nothing applied"
             );
@@ -195,6 +202,7 @@ impl SpaceManager {
             source_id = invoker_id,
             effect_id,
             ability_id,
+            cast_id,
             stats = ?out.applied.stats.iter().map(|s| (s.stat_id, s.requested, s.shift.cur)).collect::<Vec<_>>(),
             stat_before = ?before,
             stat_after = ?after,
@@ -220,6 +228,7 @@ impl SpaceManager {
                 target_player_id = target_who.player_id,
                 effect_id,
                 ability_id,
+                cast_id,
                 beneficial,
                 icons,
                 slots = EFFECT_BAR_SLOTS_PER_SIDE,
@@ -344,6 +353,7 @@ pub(super) fn log_removed(
         source_id = entry.invoker_id,
         effect_id = entry.effect_id,
         ability_id = entry.ability_id,
+        cast_id = entry.cast_id,
         stat_ids = ?entry.stats.iter().map(|s| s.stat_id).collect::<Vec<_>>(),
         restored = ?entry.stats.iter().map(|s| (s.stat_id, -s.requested)).collect::<Vec<_>>(),
         absorb_left = ?entry.absorb.iter().map(|p| (p.stat_id, p.remaining)).collect::<Vec<_>>(),

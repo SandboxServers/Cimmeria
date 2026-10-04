@@ -430,7 +430,7 @@ AB-L0 smoke, AB-L4, AB-L6 ──────────────────
 
 | Packet | Status | PR | Notes |
 |---|---|---|---|
-| AB-T1 | Ready | | |
+| AB-T1 | Review | | `cast_id` via a cast scope on `SpaceManager`; spans `combat.cast_fire`, `combat.effect_tick`. Not reached: the receipt row's packet seq (needs a `packet_seq` on `BaseToCellMsg::CellMethodCall`, threaded from `receive_in_order`'s per-bundle seq through `dispatch_cell_method` and the cell's method dispatch: AB-T2), and zero-warmup ground-cast AoE secondaries (they resolve after the launch returns, outside the scope) |
 | AB-T2 to AB-T5 | BlockedDependency (AB-T1) | | |
 | AB-T6, AB-T7 | BlockedDependency | | |
 | AB-C0 (anchor RE) | Ready | | |

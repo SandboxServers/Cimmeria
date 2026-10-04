@@ -55,7 +55,10 @@ pub(super) async fn maybe_trigger_auto_reload(
     if !should_reload {
         return;
     }
+    let who = space_mgr.player_identity(entity_id);
     tracing::info!(
+        account_id = who.account_id,
+        player_id = who.player_id,
         entity_id,
         ability_id,
         "useAbility: auto-reload triggered (autoReload + clip empty)"

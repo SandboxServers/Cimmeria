@@ -245,12 +245,43 @@ async fn fire_time_refusal(
 
 /// Fire an expired, re-validated cast through the post-warmup path.
 ///
+/// The `combat.cast_fire` span and the cast scope (AB-T1) wrap the whole
+/// fire, kill credit included, so every row it causes carries the cast's
+/// `cast_id`, the one its launch row logged. One span per fired cast, not
+/// per tick: the tick itself opens nothing (instrumentation-discipline
+/// rule 3).
+#[tracing::instrument(
+    name = "combat.cast_fire",
+    level = "info",
+    skip_all,
+    fields(
+        entity_id = entity_id,
+        cast_id = pc.cast_id(),
+        ability_id = pc.ability_id,
+        target_id = pc.target_id
+    )
+)]
+async fn fire_due_cast(
+    entity_id: u32,
+    pc: PendingCast,
+    ability_def: &Option<AbilityDef>,
+    tx: &mpsc::Sender<CellToBaseMsg>,
+    space_mgr: &mut SpaceManager,
+    events: &dyn ContentEvents,
+) {
+    let outer_cast = space_mgr.enter_cast_scope(Some(pc.cast_id()));
+    fire_and_credit(entity_id, pc, ability_def, tx, space_mgr, events).await;
+    space_mgr.exit_cast_scope(outer_cast);
+}
+
+/// The body of [`fire_due_cast`].
+///
 /// Player casts go through the same kill credit the launch entry points
 /// use (`EntityDeath` for tagged kills, the `entity_health_below` drain), so
 /// a quest kill made by a charged ability still counts. NPC casts do not:
 /// NPC kills credit nothing, as with the bare `handle_use_ability` the NPC
 /// fight tick calls.
-async fn fire_due_cast(
+async fn fire_and_credit(
     entity_id: u32,
     pc: PendingCast,
     ability_def: &Option<AbilityDef>,
@@ -270,10 +301,15 @@ async fn fire_due_cast(
     // warmed-up cast credits nobody.
     let is_player = space_mgr.credit_recipient_quiet(entity_id).is_some();
 
+    let who = space_mgr.player_identity(entity_id);
     tracing::debug!(
         target: "abilities",
         event = "warmup_complete",
+        stage = "fire",
+        account_id = who.account_id,
+        player_id = who.player_id,
         entity_id,
+        cast_id = pc.cast_id(),
         ability_id = pc.ability_id,
         target_id = pc.target_id,
         warmup_secs = pc.warmup_secs,

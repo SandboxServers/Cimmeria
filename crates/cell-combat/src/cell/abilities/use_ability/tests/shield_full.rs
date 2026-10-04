@@ -59,6 +59,7 @@ fn fill(mgr: &mut SpaceManager) {
     mgr.apply_timed_effect(
         PLAYER,
         TimedEffectSpec {
+            cast_id: None,
             effect_id: 9999,
             ability_id: 9999,
             invoker_id: PLAYER,

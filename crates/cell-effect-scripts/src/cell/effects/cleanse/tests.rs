@@ -65,6 +65,7 @@ fn pulsing(mgr: &mut SpaceManager, target: u32, effect_id: i32, invoker_id: u32)
         .unwrap()
         .active_effects
         .push(ActiveEffectInstance {
+            cast_id: None,
             effect_id,
             ability_id: 0,
             invoker_id,
@@ -89,6 +90,7 @@ fn timed(
     mgr.apply_timed_effect(
         target,
         TimedEffectSpec {
+            cast_id: None,
             effect_id,
             ability_id: effect_id + 10_000,
             invoker_id,

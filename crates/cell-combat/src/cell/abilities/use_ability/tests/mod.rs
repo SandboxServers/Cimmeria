@@ -15,6 +15,7 @@ use tokio::sync::mpsc;
 mod auto_cycle;
 mod beneficial;
 mod beneficial_live_db;
+mod cast_correlation;
 mod content_events;
 mod duel_end;
 mod duel_end_cc;

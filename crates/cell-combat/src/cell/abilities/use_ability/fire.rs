@@ -103,8 +103,12 @@ pub(in crate::cell::abilities) async fn fire_cast(
             let slot = entity.active_bandolier_slot;
             entity.set_slot_ammo(slot, new_ammo);
             needs_ammo_stat_send = true;
+            let who = entity.identity();
             tracing::debug!(
+                account_id = who.account_id,
+                player_id = who.player_id,
                 entity_id,
+                cast_id = effect_seq,
                 ability_id,
                 ammo_remaining = entity.active_ammo(),
                 "useAbility: consumed ammo"
@@ -343,6 +347,7 @@ async fn land_routed(
         account_id = who.account_id,
         player_id = who.player_id,
         entity_id,
+        cast_id = space_mgr.current_cast_id(),
         ability_id,
         landed = ?landed,
         landed_player_ids = ?routed

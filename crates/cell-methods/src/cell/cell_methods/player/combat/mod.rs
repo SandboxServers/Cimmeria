@@ -86,7 +86,23 @@ pub async fn dispatch(
             if args.len() >= 8 {
                 let ability_id = i32::from_le_bytes([args[0], args[1], args[2], args[3]]);
                 let target_id = i32::from_le_bytes([args[4], args[5], args[6], args[7]]);
-                tracing::debug!(entity_id, ability_id, target_id, "useAbility");
+                // The receipt row (AB-T1, stage `recv`). The inbound Mercury
+                // packet seq that carried the call is not here: the base
+                // decodes it (`connect_loop::encrypted`) and forwards only
+                // `BaseToCellMsg::CellMethodCall { entity_id, method_index,
+                // args }`. Carrying it is AB-T2's plumbing.
+                let who = space_mgr.player_identity(entity_id);
+                tracing::debug!(
+                    target: "abilities",
+                    event = "use_ability_recv",
+                    stage = "recv",
+                    account_id = who.account_id,
+                    player_id = who.player_id,
+                    entity_id,
+                    ability_id,
+                    wire_target_id = target_id,
+                    "useAbility"
+                );
 
                 // Single canonical kill-credit path — see
                 // `handle_use_ability_with_kill_credit` for the
@@ -111,7 +127,20 @@ pub async fn dispatch(
                 let x = f32::from_le_bytes([args[4], args[5], args[6], args[7]]);
                 let y = f32::from_le_bytes([args[8], args[9], args[10], args[11]]);
                 let z = f32::from_le_bytes([args[12], args[13], args[14], args[15]]);
-                tracing::debug!(entity_id, ability_id, x, y, z, "useAbilityOnGroundTarget");
+                let who = space_mgr.player_identity(entity_id);
+                tracing::debug!(
+                    target: "abilities",
+                    event = "use_ability_on_ground_recv",
+                    stage = "recv",
+                    account_id = who.account_id,
+                    player_id = who.player_id,
+                    entity_id,
+                    ability_id,
+                    x,
+                    y,
+                    z,
+                    "useAbilityOnGroundTarget"
+                );
 
                 // handle_use_ability_on_ground returns the entity IDs of every
                 // NPC that died during this cast (primary + AoE secondaries).

@@ -41,11 +41,14 @@ pub(super) async fn hold_weapon_attack(
     if !is_weapon_attack {
         return false;
     }
+    let who = space_mgr.player_identity(entity_id);
     let queued_attack_already_pending = space_mgr
         .get_entity(entity_id)
         .is_some_and(|e| e.pending_attack_at.is_some());
     if queued_attack_already_pending {
         tracing::debug!(
+            account_id = who.account_id,
+            player_id = who.player_id,
             entity_id,
             ability_id,
             "useAbility: weapon attack already queued (mid-draw), ignoring input"
@@ -65,6 +68,8 @@ pub(super) async fn hold_weapon_attack(
     });
     if slot_swap_in_progress {
         tracing::debug!(
+            account_id = who.account_id,
+            player_id = who.player_id,
             entity_id,
             ability_id,
             "useAbility: bandolier slot swap in progress, weapon attack blocked"
@@ -90,6 +95,8 @@ pub(super) async fn hold_weapon_attack(
         e.pending_attack_target_id = Some(target_id);
     }
     tracing::info!(
+        account_id = who.account_id,
+        player_id = who.player_id,
         entity_id,
         ability_id,
         target_id,

@@ -112,7 +112,10 @@ pub(super) fn resolve_weapon_redirect(
     // behavior. The `combat.use_ability` span (INFO)
     // already records every commit; this DEBUG just
     // discriminates the redirect path inside it.
+    let who = space_mgr.player_identity(entity_id);
     tracing::debug!(
+        account_id = who.account_id,
+        player_id = who.player_id,
         entity_id,
         original_ability_id = ability_id,
         weapon_ability_id = weapon_ranged_ability,

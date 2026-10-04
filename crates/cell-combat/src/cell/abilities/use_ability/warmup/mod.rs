@@ -159,6 +159,7 @@ pub(super) async fn begin_warmup(
         return;
     };
     let is_player = caster.is_player;
+    let who = caster.identity();
     let weapon_instance = active_weapon_instance(caster);
     caster.pending_cast = Some(PendingCast {
         ability_id,
@@ -177,7 +178,11 @@ pub(super) async fn begin_warmup(
     tracing::debug!(
         target: "abilities",
         event = "warmup_started",
+        stage = "warmup",
+        account_id = who.account_id,
+        player_id = who.player_id,
         entity_id,
+        cast_id = effect_seq,
         ability_id,
         target_id,
         warmup_secs,

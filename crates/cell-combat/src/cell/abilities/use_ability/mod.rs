@@ -2,8 +2,11 @@
 //!
 //! Submodule layout:
 //! - `handle` — the main `handle_use_ability` validate → consume → fire →
-//!   resolve flow (incl. the archetype-default weapon redirect and the
-//!   auto-cycle arm/clear classification).
+//!   resolve flow (incl. the archetype-default weapon redirect). It mints
+//!   the cast's `cast_id` (AB-T1) and opens the cast scope around a
+//!   zero-warmup fire.
+//! - `auto_cycle_commit` — the launch's auto-cycle arm / deactivate-flag
+//!   clear, once the cooldown has started.
 //! - `beneficial` — who a player's cast lands on (AB-01): the #444 target
 //!   gate, `resolve_cast_target` (Self casts on the caster, heals on allies,
 //!   the D-AB02 fallback) and the damage-free `fire_beneficial`.
@@ -39,6 +42,7 @@
 //!   `onSequence`: shared packing, owner + witnesses routing, and the NPC
 //!   attack-animation WARNs (NA43).
 
+mod auto_cycle_commit;
 mod auto_reload;
 mod beneficial;
 mod cast_range;

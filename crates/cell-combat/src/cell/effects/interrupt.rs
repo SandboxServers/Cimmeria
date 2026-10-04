@@ -154,6 +154,7 @@ async fn resolve_one(
             target_player_id = target_who.player_id,
             effect_id = r.effect_id,
             ability_id = r.ability_id,
+            cast_id = r.cast_id,
             "interrupt landed on a target with no warmup and no channel"
         );
         return;
@@ -191,6 +192,10 @@ async fn resolve_one(
         target_player_id = target_who.player_id,
         effect_id = r.effect_id,
         ability_id = r.ability_id,
+        // AB-T1: the interrupting cast, and the warmup it broke (the
+        // target's `cast_id`, which its `warmup_interrupted` row logs).
+        cast_id = r.cast_id,
+        interrupted_cast_id = warming.map(|w| w.1),
         cause = if incapacitated { "incapacitated" } else { "effect" },
         nonce = r.nonce,
         interrupted_ability_id = warming.map(|w| w.0),

@@ -41,6 +41,39 @@ async fn dispatch_returns_false_for_unknown_method() {
     assert!(!handled);
 }
 
+/// **Regression guard (AB-T1, rule 5).** The `useAbility` receipt row is
+/// queryable under the `abilities` target with its stable `event`, the
+/// player's ids, and the target id the client sent. Before AB-T1 it logged
+/// under the module path with no player identity.
+#[tokio::test]
+async fn use_ability_receipt_row_names_the_player() {
+    let mut mgr = make_mgr_with_player("Castle_CellBlock");
+    mgr.get_entity_mut(1).unwrap().account_id = Some(900);
+    let engine = ChainEngine::new();
+    let (tx, _rx) = mpsc::channel(8);
+    let logs = crate::test_support::LogCapture::install();
+    let mut args = 7i32.to_le_bytes().to_vec();
+    args.extend_from_slice(&42i32.to_le_bytes());
+
+    assert!(dispatch(1, USE_ABILITY, &args, &tx, &mut mgr, &engine).await);
+
+    let recv = logs
+        .all()
+        .into_iter()
+        .find(|c| c.has_field("event", "use_ability_recv"))
+        .expect("the receipt row");
+    assert_eq!(recv.target, "abilities");
+    for (k, v) in [
+        ("stage", "recv"),
+        ("account_id", "900"),
+        ("player_id", "100"),
+        ("ability_id", "7"),
+        ("wire_target_id", "42"),
+    ] {
+        assert!(recv.has_field(k, v), "{k} = {v}: {recv:?}");
+    }
+}
+
 /// USE_ABILITY with a too-short payload (< 8 bytes) must return
 /// true (handler took the method) but not start any cooldown,
 /// not consume any state, and not emit packets — the args are

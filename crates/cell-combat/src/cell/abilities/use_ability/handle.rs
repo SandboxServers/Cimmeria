@@ -51,7 +51,7 @@ use super::weapon_redirect::resolve_weapon_redirect;
     name = "combat.use_ability",
     level = "info",
     skip_all,
-    fields(entity_id, ability_id, target_id)
+    fields(entity_id, ability_id, target_id, cast_id = tracing::field::Empty)
 )]
 pub async fn handle_use_ability(
     entity_id: u32,
@@ -71,6 +71,8 @@ pub async fn handle_use_ability(
     // + scope limits.
     let (ability_id, ability_def) =
         resolve_weapon_redirect(entity_id, ability_id, ability_def, space_mgr);
+    // Rule 5: every row below names the player (`None` for an NPC caster).
+    let who = space_mgr.player_identity(entity_id);
 
     // ── Pet summon (pets PT-03) ──
     //
@@ -130,6 +132,8 @@ pub async fn handle_use_ability(
     if override_clears_loop {
         if let Some(new_state) = combat::clear_auto_cycle(space_mgr, entity_id) {
             tracing::info!(
+                account_id = who.account_id,
+                player_id = who.player_id,
                 entity_id,
                 ability_id,
                 "auto-cycle: cleared by manual override (different ability fired)"
@@ -162,7 +166,12 @@ pub async fn handle_use_ability(
         let entity = match space_mgr.get_entity(entity_id) {
             Some(e) => e,
             None => {
-                tracing::warn!(entity_id, "useAbility: entity not found");
+                tracing::warn!(
+                    account_id = who.account_id,
+                    player_id = who.player_id,
+                    entity_id,
+                    "useAbility: entity not found"
+                );
                 return false;
             }
         };
@@ -179,9 +188,12 @@ pub async fn handle_use_ability(
         // is silent, like the cooldown refusal below (AT-10).
         if let Some(pending) = entity.pending_cast.as_ref() {
             tracing::debug!(
+                account_id = who.account_id,
+                player_id = who.player_id,
                 entity_id,
                 ability_id,
                 warming_ability_id = pending.ability_id,
+                warming_cast_id = pending.cast_id(),
                 "useAbility: already warming up an ability"
             );
             return false;
@@ -214,6 +226,8 @@ pub async fn handle_use_ability(
                 //   ability ids on this client-controlled path.
                 if ability_def.is_some() {
                     tracing::warn!(
+                        account_id = who.account_id,
+                        player_id = who.player_id,
                         entity_id,
                         ability_id,
                         "useAbility: ability not in known set and not granted by active weapon"
@@ -228,6 +242,8 @@ pub async fn handle_use_ability(
                     }
                 } else {
                     tracing::debug!(
+                        account_id = who.account_id,
+                        player_id = who.player_id,
                         entity_id,
                         ability_id,
                         "useAbility: unknown ability_id (no server def — likely client-forged or stale)"
@@ -237,7 +253,13 @@ pub async fn handle_use_ability(
             }
         }
         if entity.abilities.is_on_cooldown(ability_id) {
-            tracing::debug!(entity_id, ability_id, "useAbility: ability on cooldown");
+            tracing::debug!(
+                account_id = who.account_id,
+                player_id = who.player_id,
+                entity_id,
+                ability_id,
+                "useAbility: ability on cooldown"
+            );
             return false;
         }
         if super::no_mechanics::lacks_mechanics(
@@ -265,6 +287,8 @@ pub async fn handle_use_ability(
                 // Don't attack dead targets
                 if combat::is_dead_state(target.state_field) {
                     tracing::debug!(
+                        account_id = who.account_id,
+                        player_id = who.player_id,
                         entity_id,
                         ability_id,
                         target_id,
@@ -343,7 +367,7 @@ pub async fn handle_use_ability(
                 return false;
             }
         }
-        super::not_known::send_not_known_feedback(entity_id, ability_id, tx).await;
+        super::not_known::send_not_known_feedback(entity_id, who, ability_id, tx).await;
         return false;
     }
 
@@ -447,6 +471,8 @@ pub async fn handle_use_ability(
     // clears `reload_complete_at`, so we gate on its presence.
     if required_ammo > 0 && entity.is_player && entity.reload_complete_at.is_some() {
         tracing::debug!(
+            account_id = who.account_id,
+            player_id = who.player_id,
             entity_id,
             ability_id,
             "useAbility: reload in progress, blocking fire"
@@ -457,6 +483,8 @@ pub async fn handle_use_ability(
     let current_ammo = entity.active_ammo();
     if required_ammo > 0 && entity.is_player && current_ammo < required_ammo {
         tracing::debug!(
+            account_id = who.account_id,
+            player_id = who.player_id,
             entity_id,
             ability_id,
             current = current_ammo,
@@ -499,37 +527,23 @@ pub async fn handle_use_ability(
         entity.abilities.last_fired_ability_id = Some(ability_id);
     }
 
-    // ── Auto-cycle commit-time arm / deactivate classification ──
-    //
-    // Three cases after the cooldown has started:
-    //
-    //   1. `AF_DEACTIVATE_AUTO_CYCLE` flag (mask `0x400`) on the firing
-    //      ability — break the loop. One-shot specials that mustn't
-    //      auto-repeat.
-    //   2. `auto_cycle == true` (button armed) — stash the ability id
-    //      AND set `BSF_AUTO_CYCLING`. The driver tick reads
-    //      `current_target_id` LIVE at re-fire time so target stash
-    //      isn't needed here.
-    //   3. `auto_cycle == false` — no-op.
-    //
-    // Mutation + broadcast run AFTER the cooldown-timer send below
-    // (which would re-acquire the immutable borrow).
-    let is_player = entity.is_player;
-    let auto_cycle_armed = entity.abilities.auto_cycle;
-    // A `DoNotActivate_AutoCycle` (512) ability neither arms nor clears the
-    // loop: python passed `autoCycle = False` for it (`SGWPlayer.py:1177`).
-    let (has_deactivate_flag, never_arms) = ability_def.as_ref().map_or((false, false), |d| {
-        let deactivate = d.flags & AF_DEACTIVATE_AUTO_CYCLE != 0;
-        (deactivate, d.flags & AF_DO_NOT_ACTIVATE_AUTO_CYCLE != 0)
-    });
-
-    // Get effect sequence ID for this ability invocation
+    // The cast's sequence id: the `InstanceId` of its sequences, the effect
+    // id the client receives, and its telemetry `cast_id` (AB-T1). Every row
+    // the cast causes, here or later from a tick, carries it.
     let effect_seq = entity.abilities.next_effect_id();
+    tracing::Span::current().record("cast_id", effect_seq);
 
     tracing::info!(
+        target: "abilities",
+        event = "ability_launched",
+        stage = "launch",
+        account_id = who.account_id,
+        player_id = who.player_id,
         entity_id,
+        cast_id = effect_seq,
         ability_id,
         target_id,
+        wire_target_id,
         cooldown_secs,
         warmup_secs,
         ability_name = ability_def.as_ref().map_or("unknown", |d| &d.name),
@@ -556,37 +570,18 @@ pub async fn handle_use_ability(
     send_timer_update(entity_id, timer_args, tx, space_mgr).await;
 
     // ── Auto-cycle commit: arm or DEACTIVATE-flag clear ──
-    //
-    // Classification was captured before the mutable borrow ended.
-    // Run the actual state mutation + broadcast now that the cooldown
-    // timer send is past.
-    // A support shot at an ally never arms the loop: auto-cycle is an
-    // attack loop, and its tick stops on any player it may not attack.
-    if is_player && auto_cycle_armed && !friendly_cast && (has_deactivate_flag || !never_arms) {
-        if has_deactivate_flag {
-            if let Some(new_state) = combat::clear_auto_cycle(space_mgr, entity_id) {
-                tracing::info!(
-                    entity_id,
-                    ability_id,
-                    "auto-cycle: cleared by AF_DEACTIVATE_AUTO_CYCLE flag"
-                );
-                send_auto_cycle_state(entity_id, new_state, tx, space_mgr).await;
-            }
-        } else if let Some(new_state) =
-            combat::arm_auto_cycle(space_mgr, entity_id, ability_id, target_id)
-        {
-            tracing::info!(
-                entity_id,
-                ability_id,
-                target_id,
-                "auto-cycle: armed (first commit) — BSF_AUTO_CYCLING set"
-            );
-            send_auto_cycle_state(entity_id, new_state, tx, space_mgr).await;
-        }
-        // Bit-already-set path: `arm_auto_cycle` updates the stash
-        // unconditionally; only the `Some(new_state)` branch needs to
-        // broadcast.
-    }
+    super::auto_cycle_commit::commit_auto_cycle(
+        super::auto_cycle_commit::CommitCast {
+            entity_id,
+            ability_id,
+            target_id,
+            friendly_cast,
+        },
+        ability_def.as_ref(),
+        tx,
+        space_mgr,
+    )
+    .await;
 
     if let Some(summon) = summon {
         super::summon::log_summon_launched(
@@ -634,6 +629,8 @@ pub async fn handle_use_ability(
     // Zero warmup: fire in this pass. Cooldown + ammo are consumed and the
     // cast committed even when no target resolves; ground-target callers
     // see this as "primary succeeded" and proceed with any AoE secondaries.
+    // The cast scope stamps `cast_id` on whatever the fire lands (AB-T1).
+    let outer_cast = space_mgr.enter_cast_scope(Some(effect_seq));
     super::fire::fire_cast(
         entity_id,
         ability_id,
@@ -645,5 +642,6 @@ pub async fn handle_use_ability(
         space_mgr,
     )
     .await;
+    space_mgr.exit_cast_scope(outer_cast);
     true
 }

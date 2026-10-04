@@ -27,7 +27,8 @@ pub struct PendingCast {
     /// collect the AoE secondaries when the cast fires.
     pub ground: Option<[f32; 3]>,
     /// `InstanceId` minted at launch. `Ability_Begin`, `Ability_End` and
-    /// `Ability_Interrupt` of one cast share it.
+    /// `Ability_Interrupt` of one cast share it. It is also the cast's
+    /// telemetry `cast_id` ([`PendingCast::cast_id`], AB-T1).
     pub effect_seq: i32,
     /// When the warmup expires.
     pub fire_at: std::time::Instant,
@@ -41,4 +42,14 @@ pub struct PendingCast {
     /// launch, if any. A different weapon at fire time interrupts the cast,
     /// so a swapped-in weapon never pays for the old one's shot.
     pub weapon_instance: Option<i32>,
+}
+
+impl PendingCast {
+    /// The cast's telemetry correlator (ability-mechanics AB-T1): the
+    /// `effect_seq` the launch minted, which the launch row, the warmup and
+    /// fire rows and every effect the cast lands all log as `cast_id`. It is
+    /// the effect id the client receives too, so no wire change is needed.
+    pub fn cast_id(&self) -> i32 {
+        self.effect_seq
+    }
 }

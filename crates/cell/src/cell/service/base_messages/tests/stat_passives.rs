@@ -159,6 +159,7 @@ async fn a_second_world_entry_neither_stacks_a_passive_nor_orphans_a_stance() {
     mgr.apply_timed_effect(
         PLAYER,
         TimedEffectSpec {
+            cast_id: None,
             effect_id: 2003,
             ability_id: 1642,
             invoker_id: PLAYER,

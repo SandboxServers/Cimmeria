@@ -437,10 +437,14 @@ pub(super) async fn fire_beneficial(
     let pulsing = land_effects(caster_id, &routed.landings, tx, space_mgr).await;
 
     let after = pools(space_mgr, target_id);
+    let who = space_mgr.player_identity(caster_id);
     tracing::debug!(
         target: "abilities",
         event = "beneficial_cast_applied",
+        account_id = who.account_id,
+        player_id = who.player_id,
         entity_id = caster_id,
+        cast_id = space_mgr.current_cast_id(),
         ability_id = def.ability_id,
         effect_ids = ?def.effect_ids,
         resolved_target_id = target_id,
