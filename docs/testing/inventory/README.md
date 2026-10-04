@@ -35,9 +35,9 @@ many tests also updates the catalogue.
 
 | Metric | Count |
 |---|---:|
-| Tests (`#[test]` / `#[tokio::test]`) | 10,658 |
-| Files with tests | 1,832 |
-| Gated in CI (every crate but CI's exclude list) | 9,033 |
+| Tests (`#[test]` / `#[tokio::test]`) | 10,661 |
+| Files with tests | 1,834 |
+| Gated in CI (every crate but CI's exclude list) | 9,036 |
 | Live-DB tests (`require_db_or_skip!` in the body) | 1,551 |
 | Inventory threshold (5% of the tests) | 533 |
 
@@ -92,7 +92,7 @@ with no file in this directory yet.
 | `crates/client-telemetry` | `cimmeria-client-telemetry` | 649 | 126 | 0 | no | none |
 | `crates/base-methods` | `cimmeria-base-methods` | 596 | 128 | 427 | yes | none |
 | `crates/cell` | `cimmeria-cell` | 552 | 126 | 19 | yes | none |
-| `crates/cell-world` | `cimmeria-cell-world` | 524 | 89 | 32 | yes | none |
+| `crates/cell-world` | `cimmeria-cell-world` | 525 | 90 | 32 | yes | none |
 | `crates/cell-console` | `cimmeria-cell-console` | 497 | 81 | 1 | yes | none |
 | `crates/lab` | `cimmeria-lab` | 469 | 98 | 0 | no | none |
 | `crates/navmesh-extractor` | `cimmeria-navmesh-extractor` | 449 | 52 | 0 | yes | none |
@@ -104,10 +104,10 @@ with no file in this directory yet.
 | `crates/wire` | `cimmeria-wire` | 313 | 57 | 0 | yes | none |
 | `crates/cell-methods` | `cimmeria-cell-methods` | 277 | 45 | 8 | yes | none |
 | `crates/content-engine` | `cimmeria-content-engine` | 271 | 24 | 0 | yes | [content-engine.md](content-engine.md) |
-| `crates/cell-interactions` | `cimmeria-cell-interactions` | 203 | 34 | 0 | yes | none |
+| `crates/cell-interactions` | `cimmeria-cell-interactions` | 204 | 35 | 0 | yes | none |
 | `crates/cell-catalog` | `cimmeria-cell-catalog` | 195 | 50 | 110 | yes | none |
 | `crates/base` | `cimmeria-base` | 182 | 32 | 10 | yes | none |
-| `crates/base-world-entry` | `cimmeria-base-world-entry` | 179 | 49 | 27 | yes | none |
+| `crates/base-world-entry` | `cimmeria-base-world-entry` | 180 | 49 | 27 | yes | none |
 | `crates/cell-effect-scripts` | `cimmeria-cell-effect-scripts` | 162 | 19 | 21 | yes | none |
 | `crates/resources` | `cimmeria-resources` | 137 | 20 | 0 | yes | none |
 | `crates/server` | `cimmeria-server` | 111 | 19 | 0 | yes | [server.md](server.md) |
