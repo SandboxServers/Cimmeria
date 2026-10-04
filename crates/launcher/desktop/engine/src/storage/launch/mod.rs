@@ -104,9 +104,14 @@ impl DesktopState {
             return Err(ContractError::Busy.into());
         }
         resources.verify()?;
-        let installed = self.installed_content()?.ok_or(StorageError::Corrupt)?;
+        let installed = self
+            .installed_content_readonly()?
+            .ok_or(StorageError::Corrupt)?;
         if installed.intent.operation_id != installation_id {
             return Err(ContractError::IdentityConflict.into());
+        }
+        if self.compatibility.for_release(&installed.release).blocks() {
+            return Err(IntentError::LauncherTooOld);
         }
         if !install_worker::content_valid(
             &installed.intent.destination.join("game"),

@@ -101,6 +101,7 @@ impl Journal for FileJournal {
 /// Own this object for the application's lifetime, behind one command mutex.
 /// The root is selected by native app-data resolution, never by an IPC caller.
 pub struct DesktopState {
+    compatibility: crate::launcher_compatibility::CompatibilityPolicy,
     operations: Operations<FileJournal>,
     preferences: Preferences,
     directory: Arc<Directory>,
@@ -109,6 +110,14 @@ pub struct DesktopState {
 
 impl DesktopState {
     pub fn open(root: &Path) -> Result<Self, StorageError> {
+        Self::open_with_compatibility(root, Default::default())
+    }
+
+    /// Native composition root only. Identity/order are not renderer input.
+    pub fn open_with_compatibility(
+        root: &Path,
+        compatibility: crate::launcher_compatibility::CompatibilityPolicy,
+    ) -> Result<Self, StorageError> {
         std::fs::create_dir_all(root).map_err(|_| StorageError::Io)?;
         if std::fs::symlink_metadata(root)
             .map_err(|_| StorageError::Io)?
@@ -150,6 +159,7 @@ impl DesktopState {
             _ => StorageError::Io,
         })?;
         let mut state = Self {
+            compatibility,
             operations,
             preferences,
             directory,
@@ -157,6 +167,10 @@ impl DesktopState {
         };
         state.recover_legacy_import()?;
         Ok(state)
+    }
+
+    pub fn launcher_compatibility(&self) -> &crate::launcher_compatibility::CompatibilityPolicy {
+        &self.compatibility
     }
 
     pub(crate) fn state_root(&self) -> &Path {
@@ -288,3 +302,6 @@ fn read_open<T: serde::de::DeserializeOwned>(file: &File) -> Result<T, StorageEr
     }
     serde_json::from_slice(&bytes).map_err(|_| StorageError::Corrupt)
 }
+
+#[cfg(test)]
+mod launcher_minimum_tests;

@@ -62,6 +62,61 @@ impl DesktopState {
             .map(Some)
     }
 
+    /// Read-only admission view. Older successful installs can be checked without
+    /// materializing the installed-content index before a minimum gate rejects.
+    pub(super) fn installed_content_readonly(
+        &self,
+    ) -> Result<Option<InstalledContent>, StorageError> {
+        if self.requires_reopen() {
+            return Err(StorageError::PersistenceUncertain);
+        }
+        let record: Option<Record> = read(&self.directory.root.join(NAME))?;
+        let intent = match record {
+            Some(record) => {
+                if record.schema_version != 1 || record.intent.schema_version != 1 {
+                    return Err(StorageError::UnsupportedSchema);
+                }
+                if self
+                    .operations
+                    .snapshot()
+                    .operation
+                    .as_ref()
+                    .is_some_and(|op| {
+                        op.id == record.intent.operation_id && op.state != OperationState::Succeeded
+                    })
+                {
+                    return Err(StorageError::Busy);
+                }
+                record.intent
+            }
+            None => {
+                if !self
+                    .operations
+                    .snapshot()
+                    .operation
+                    .as_ref()
+                    .is_some_and(|op| {
+                        op.kind == OperationKind::Install && op.state == OperationState::Succeeded
+                    })
+                {
+                    return Ok(None);
+                }
+                self.install_intent()?.ok_or(StorageError::Corrupt)?
+            }
+        };
+        self.verify_installed_identity(intent, None).map(Some)
+    }
+
+    /// Offline status re-verifies retained signed bytes against the installation
+    /// digest on every call. No latest-catalog or network fallback is implied.
+    pub fn installed_launcher_minimum(
+        &self,
+    ) -> Result<Option<crate::launcher_compatibility::MinimumStatus>, StorageError> {
+        Ok(self
+            .installed_content_readonly()?
+            .map(|installed| self.compatibility.for_release(&installed.release)))
+    }
+
     /// Called only after content validation/promotion, before committing success.
     /// A write failure keeps the operation in recovery. The reference alone is
     /// deliberately insufficient to bypass the current operation's recovery gate.

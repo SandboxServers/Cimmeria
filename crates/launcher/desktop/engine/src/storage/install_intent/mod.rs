@@ -59,6 +59,7 @@ pub struct InstallAdmission {
 }
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum IntentError {
+    LauncherTooOld,
     Storage(StorageError),
     Operation(ContractError),
 }
@@ -126,6 +127,9 @@ impl DesktopState {
         } = request;
         if self.requires_reopen() {
             return Err(StorageError::PersistenceUncertain.into());
+        }
+        if self.compatibility.for_release(release).blocks() {
+            return Err(IntentError::LauncherTooOld);
         }
         if let Some(operation) = &self.operations.snapshot().operation {
             if operation.id == id {
