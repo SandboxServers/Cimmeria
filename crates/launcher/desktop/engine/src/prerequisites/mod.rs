@@ -3,3 +3,5 @@
 pub use cimmeria_runtime_probe::prerequisite::package::{
     physx_msi, PackageError, PHYSX_EXE_BYTES, PHYSX_EXE_SHA256,
 };
+
+pub mod supervisor;

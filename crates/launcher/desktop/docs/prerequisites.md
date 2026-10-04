@@ -192,7 +192,10 @@ restart recovery, graphics, game launch or readiness.
 
 `cimmeria-prerequisite-worker` now implements a one-shot Windows x86 install/probe
 sequence. Schema-1 requests are bounded to 8 KiB and bind non-nil operation and
-prefix-generation UUIDs to absolute game/package/fresh-scratch paths. It validates
+prefix-generation UUIDs to absolute Windows guest game/package/fresh-scratch
+paths. Validation uses Windows drive-path syntax on both hosts; macOS native
+`Path::is_absolute` cannot validate a Wine request. Device/UNC paths, traversal,
+alternate streams and NULs are refused. It validates
 the exact package before creating scratch, writes the authenticated MSI and holds
 its deny-write/delete sharing handle through installation. Existing scratch is
 refused; failed attempts retain evidence rather than overlaying another attempt.
@@ -212,11 +215,37 @@ contains both probe and prerequisite-worker executables. To exercise the worker
 inside the vendor fixture above, additionally set `SGW_PREREQUISITE_WORKER` and
 `SGW_PREREQUISITE_WORKER_SHA256` to that artifact and its verified digest.
 
-Fourteen portable tests passed (`20261004-073512-15727`) before one additional
-assertion; final tests/clippy, native Windows CI and real Wine worker execution
-remain pending. Earlier EXE/msiexec experiments do not validate this new native
-MSI API path. Production admission, journaling, supervision and cancellation are
-still unfinished; no frontend behavior changed.
+Fifteen portable tests pass (`20261004-074214-19556`), including the Windows-path
+regression. Strict engine/probe clippy passes (`20261004-074248-20069`). Native
+Windows x86 CI passed at `dc69f3e93`, run `37202769972`, artifact `11303288407`.
+That artifact predates the host-independent path-validation correction; final
+revision Windows validation remains required. Its executable hashes are:
+
+- Prerequisite worker: `94edc387f16263c49019e118f45d41b9e23741cdfe88d6189845e5687bc78c24`.
+- Runtime probe: `0e41b5cb34351c8f59b8e88d8955f7b1b852d5871df1285a113574eabd191b3a`.
+
+The real worker smoke passed in 28.252 seconds (`20261004-074227-19820`) using
+those Windows-built artifacts and the corrected Mac supervisor. The clean-prefix
+SDK failed with code 1; the worker installed the original MSI through the native
+API and reported initialized-and-released. After prefix stop/wait and restart,
+an independent probe also initialized/released it. All runs kept `game_started`
+false. This proves the API path in the fixture, not durable launcher integration.
+
+## Host transport supervision
+
+`engine::prerequisites::supervisor::run` bounds requests/results, requires a host
+identity callback before dispatch, and observes both strict result decoding and
+successful process exit. `Observed` can contain installer or SDK failure; it is
+not a success/ready state. Nonzero process exit, malformed/duplicate output,
+wrong identities, deadlines and cancellation after dispatch require reconciliation.
+Only the owned host child is stopped; caller-owned prefix shutdown remains required.
+
+The subprocess harness passes (`20261004-074153-19316`), exercising those cases,
+pre-dispatch cancellation, refused host recording and recording before request
+consumption. It uses real subprocesses with inert fixture results, not MSI or game
+execution. The real Wine smoke now exercises this supervisor too. Durable admission,
+atomic host/result journaling, restart recovery and UI integration are unfinished;
+no frontend state/persistence or visual UAT coverage is claimed.
 
 ## Planned production integration boundary
 
@@ -234,7 +263,8 @@ alone is insufficient. Uncertain requests/results require explicit reconciliatio
 verify ownership and identity, stop/wait for that exact prefix, then inspect the
 recorded outcome. Host exit is never proof that Wine guests have stopped.
 
-Supervision still needs bounded input/output, deadlines, cancellation policy and
-crash/reopen tests spanning each durable transition. Preserve consent/preferences
+The bounded transport is implemented; the platform coordinator still needs
+prefix-scoped cancellation policy and crash/reopen tests spanning each durable
+transition. Preserve consent/preferences
 and keep diagnostic results distinct from launch permission. Verified PhysX alone
 cannot enable Play while graphics and the remaining launch gates are pending.

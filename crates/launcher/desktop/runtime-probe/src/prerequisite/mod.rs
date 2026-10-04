@@ -6,7 +6,7 @@ pub mod package;
 pub mod windows;
 use crate::{decode_report, Report, MAX_REQUEST};
 use serde::{Deserialize, Serialize};
-use std::path::{Component, Path, PathBuf};
+use std::path::{Path, PathBuf};
 use uuid::Uuid;
 
 pub const MAX_RESULT: usize = 16_384;
@@ -32,17 +32,31 @@ pub fn decode_request(bytes: &[u8]) -> Result<PrepareRequest, &'static str> {
         || [&request.game_binaries, &request.package, &request.scratch]
             .iter()
             .any(|p| !absolute(p))
-        || request.scratch.file_name().is_none()
     {
         return Err("invalid_request");
     }
     Ok(request)
 }
 fn absolute(path: &Path) -> bool {
-    path.is_absolute()
-        && !path.components().any(|c| matches!(c, Component::ParentDir))
-        && !path.as_os_str().to_string_lossy().contains('\0')
+    // This wire contract always carries Windows guest paths, including when the
+    // native host validates it on macOS. Never use host Path::is_absolute here.
+    let Some(value) = path.to_str() else {
+        return false;
+    };
+    let bytes = value.as_bytes();
+    if bytes.len() < 4
+        || !bytes[0].is_ascii_alphabetic()
+        || bytes[1] != b':'
+        || bytes[2] != b'\\'
+        || value.contains('\0')
+    {
+        return false;
+    }
+    value[3..]
+        .split(['\\', '/'])
+        .all(|part| !part.is_empty() && part != "." && part != ".." && !part.contains(':'))
 }
+
 #[derive(Debug, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "snake_case")]
 pub enum Failure {

@@ -399,3 +399,12 @@ Windows+Mac before the shell; shell/visual/game gates remain separate.
   Fourteen portable tests pass lane073637-16670; strict engine/probe clippy
   passes073616-16359. Windows native compile/API execution still pending.
   No production admission/journal or UI changes in this packet.
+
+- Prerequisite transport now bounds request/result and requires host identity
+  before dispatch; observed protocol+exit is distinct from SDK success. Actual
+  subprocess fault/cancel/identity tests pass074153-19316. First Wine run caught
+  host-native absolute-path validation rejecting Windows guest paths before
+  dispatch; Windows drive-path parser now works on both hosts, 15 portable tests
+  pass074214-19556; strict clippy074248-20069. Native worker dc69f3e93 CI37202769972
+  passed; artifact11303288407. Real supervised MSI/API→SDK lifecycle and restart
+  probe pass28.252s074227-19820. No game started or durable coordinator claimed.

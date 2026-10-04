@@ -69,7 +69,7 @@ fn host_rejects_stale_identity_forged_success_and_unknown_fields() {
 }
 #[test]
 fn request_rejects_retargeting_unbounded_and_unowned_inputs() {
-    let root = std::env::current_dir().unwrap();
+    let root = PathBuf::from(r"C:\fixture");
     let valid = PrepareRequest {
         schema_version: 1,
         operation_id: Uuid::from_u128(1),
@@ -98,4 +98,20 @@ fn request_rejects_retargeting_unbounded_and_unowned_inputs() {
         );
     }
     assert!(decode_request(&vec![b' '; MAX_REQUEST + 1]).is_err());
+}
+
+#[test]
+fn windows_guest_path_validation_is_independent_of_the_host_os() {
+    assert!(absolute(Path::new(r"Z:\private\game\Working\Binaries")));
+    for path in [
+        "/private/game",
+        r"C:relative",
+        r"C:\",
+        r"C:\game\..\other",
+        r"C:\game:stream",
+        r"\\server\share\game",
+        r"\\?\C:\game",
+    ] {
+        assert!(!absolute(Path::new(path)), "{path}");
+    }
 }

@@ -299,9 +299,8 @@ async fn run_prerequisite_worker(
     package: &Path,
     game: &Path,
 ) {
-    use cimmeria_runtime_probe::prerequisite::{
-        decode_result, PrepareRequest, ResultKind, MAX_RESULT,
-    };
+    use crate::prerequisites::supervisor;
+    use cimmeria_runtime_probe::prerequisite::{PrepareRequest, ResultKind};
     let digest = std::env::var("SGW_PREREQUISITE_WORKER_SHA256").expect("worker artifact SHA256");
     let bytes = std::fs::read(worker).unwrap();
     assert_eq!(hex(&Sha256::digest(&bytes)), digest);
@@ -318,40 +317,34 @@ async fn run_prerequisite_worker(
             .into(),
     };
     let env = environment(runtime, prefix).unwrap();
-    let mut child = tokio::process::Command::new(runtime.join("bin/wine"))
-        .arg(paths::guest(worker).unwrap())
-        .current_dir(prefix.parent().unwrap())
-        .env_clear()
-        .envs(&env)
-        .stdin(Stdio::piped())
-        .stdout(Stdio::piped())
-        .stderr(Stdio::null())
-        .kill_on_drop(true)
-        .spawn()
-        .unwrap();
-    let mut input = child.stdin.take().unwrap();
-    let output = child.stdout.take().unwrap();
-    let attempt = tokio::time::timeout(std::time::Duration::from_secs(180), async {
-        input
-            .write_all(&serde_json::to_vec(&request).unwrap())
-            .await?;
-        drop(input);
-        let mut bytes = Vec::new();
-        output
-            .take(MAX_RESULT as u64 + 1)
-            .read_to_end(&mut bytes)
-            .await?;
-        let status = child.wait().await?;
-        Ok::<_, std::io::Error>((status, bytes))
-    })
+    let spec = HelperCommand {
+        executable: runtime.join("bin/wine"),
+        arguments: vec![paths::guest(worker).unwrap().into()],
+        directory: prefix.parent().unwrap().into(),
+        environment: env.clone(),
+    };
+    let outcome = supervisor::run(
+        spec,
+        request,
+        CancellationToken::new(),
+        Deadlines {
+            operation: std::time::Duration::from_secs(180),
+            ..Deadlines::default()
+        },
+        |pid| {
+            // Fixture-local evidence only; production needs atomic durable admission.
+            std::fs::write(
+                prefix.parent().unwrap().join("worker-host"),
+                pid.to_string(),
+            )
+            .map_err(|_| ())
+        },
+    )
     .await;
-    let stopped = stop_prefix(runtime, &env).await;
-    let _ = child.kill().await;
-    let _ = child.wait().await;
-    stopped.unwrap();
-    let (status, bytes) = attempt.expect("bounded prerequisite worker").unwrap();
-    assert!(status.success(), "worker process: {status}");
-    let result = decode_result(&bytes, operation, generation).unwrap();
+    stop_prefix(runtime, &env).await.unwrap();
+    let supervisor::Outcome::Observed(result) = outcome else {
+        panic!("prerequisite worker did not complete: {outcome:?}");
+    };
     eprintln!("private prerequisite worker evidence: {result:?}");
     assert!(matches!(result.result, ResultKind::Probed { report }
         if report.physx_sdk == (cimmeria_runtime_probe::physx::SdkResult::InitializedAndReleased {})));

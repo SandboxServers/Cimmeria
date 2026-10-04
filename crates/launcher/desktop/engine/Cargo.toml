@@ -40,3 +40,8 @@ crc32fast = "1"
 name = "helper_supervisor_process"
 path = "tests/helper_supervisor_process.rs"
 harness = false
+
+[[test]]
+name = "prerequisite_supervisor_process"
+path = "tests/prerequisite_supervisor_process.rs"
+harness = false
