@@ -97,6 +97,7 @@ pub(crate) async fn interrupt_pending_cast(
     };
     let cooldown_refunded = caster.abilities.clear_ability_cooldown(pc.ability_id);
     let is_player = caster.is_player;
+    let who = caster.identity();
     let loop_was_on_this_ability =
         is_player && caster.abilities.auto_cycle_ability_id == Some(pc.ability_id);
     space_mgr.pending_casts.remove(&entity_id);
@@ -104,7 +105,11 @@ pub(crate) async fn interrupt_pending_cast(
     tracing::info!(
         target: "abilities",
         event = "warmup_interrupted",
+        stage = "end",
+        account_id = who.account_id,
+        player_id = who.player_id,
         entity_id,
+        cast_id = pc.cast_id(),
         ability_id = pc.ability_id,
         target_id = pc.target_id,
         reason = reason.as_str(),

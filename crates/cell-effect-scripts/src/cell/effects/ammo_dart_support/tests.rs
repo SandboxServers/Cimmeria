@@ -112,6 +112,8 @@ fn dot(id: i32, category: Option<&str>, script: Option<&str>) -> EffectDef {
 
 fn instance(effect_id: i32, invoker_id: u32) -> ActiveEffectInstance {
     ActiveEffectInstance {
+        invoker_identity: Default::default(),
+        cast_id: None,
         effect_id,
         ability_id: 0,
         invoker_id,

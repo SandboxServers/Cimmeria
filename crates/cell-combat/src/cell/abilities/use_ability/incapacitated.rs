@@ -68,6 +68,7 @@ pub(super) async fn refuse_while_incapacitated(
     }
     super::no_mechanics::send_ability_refusal(
         entity_id,
+        id,
         ability_id,
         INCAPACITATED_ERROR_CODE,
         INCAPACITATED_TEXT,

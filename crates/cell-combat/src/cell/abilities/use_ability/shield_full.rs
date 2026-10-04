@@ -95,6 +95,6 @@ pub(super) async fn refuse_shield_full(
         ability_id = def.ability_id,
         "useAbility: every pool the shield would fill is full; refused with feedback, no cooldown charged"
     );
-    super::no_mechanics::send_ability_feedback(entity_id, def.ability_id, SHIELD_FULL_TEXT, tx)
+    super::no_mechanics::send_ability_feedback(entity_id, id, def.ability_id, SHIELD_FULL_TEXT, tx)
         .await;
 }

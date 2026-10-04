@@ -124,6 +124,7 @@ pub fn stat_mods(effect: &EffectDef) -> Vec<(i32, i32)> {
 pub fn timed_spec(ctx: &EffectContext, stacking: TimedStacking) -> TimedEffectSpec {
     let effect = ctx.effect;
     TimedEffectSpec {
+        cast_id: None, // stamped from the cast scope by SpaceManager::apply_timed_effect
         effect_id: effect.effect_id,
         ability_id: effect.ability_id,
         invoker_id: ctx.source_id,

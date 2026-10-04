@@ -47,6 +47,18 @@ pub struct ActiveEffectInstance {
     /// `invoker.position` and cancels the channel if the caster moved
     /// more than `CHANNEL_INTERRUPT_DISTANCE` from this anchor.
     pub invoker_position_at_register: Option<Vector3>,
+    /// The cast that registered (or last refreshed) it: the invoker's
+    /// `effect_seq` for that launch (ability-mechanics AB-T1), so every pulse
+    /// row joins its launch row. `None` when no cast was resolving (a test
+    /// fixture, a content-applied effect). A cast id is per invoker, so the
+    /// join key is `(invoker_id, cast_id)`.
+    pub cast_id: Option<i32>,
+    /// The invoker's canonical identity, snapshotted when the cast registered
+    /// (or last refreshed) it. A pulse outlives its invoker (a disconnect,
+    /// a despawn) and entity ids are recycled, so the pulse and end rows log
+    /// this, never a lookup of `invoker_id` at fire time
+    /// (instrumentation-discipline rule 5).
+    pub invoker_identity: PlayerIdentity,
 }
 
 mod absorb_pool;

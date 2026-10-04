@@ -46,6 +46,10 @@ pub struct InterruptRequest {
     /// resistance roll's seed includes it, so two attempts on one cast (or
     /// on a channel, which has no warmup instance) roll independently.
     pub nonce: u64,
+    /// The interrupting cast (AB-T1): the actor's `cast_id`, stamped from the
+    /// cast scope by [`SpaceManager::request_interrupt`]. `None` outside a
+    /// cast (a stun from a pulse whose instance had none).
+    pub cast_id: Option<i32>,
 }
 
 impl SpaceManager {
@@ -53,6 +57,7 @@ impl SpaceManager {
     pub fn request_interrupt(&mut self, mut request: InterruptRequest) {
         self.interrupt_nonce = self.interrupt_nonce.wrapping_add(1);
         request.nonce = self.interrupt_nonce;
+        request.cast_id = self.current_cast_id();
         self.pending_interrupts.push(request);
     }
 
@@ -87,6 +92,7 @@ mod tests {
             chance_pct: 100,
             cause: InterruptCause::Effect,
             nonce: 0,
+            cast_id: None,
         }
     }
 

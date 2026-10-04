@@ -36,6 +36,7 @@ fn entity() -> CellEntity {
 /// A stimpack effect: one stat, an hour, the stat-keyed rule.
 fn stim(stat_id: i32, delta: i32, effect_id: i32) -> TimedEffectSpec {
     TimedEffectSpec {
+        cast_id: None,
         effect_id,
         ability_id: effect_id + 10_000,
         invoker_id: 1,
@@ -53,6 +54,7 @@ fn stim(stat_id: i32, delta: i32, effect_id: i32) -> TimedEffectSpec {
 /// An ability buff (Aim, effect 700): per source, 15 s.
 fn aim(invoker_id: u32) -> TimedEffectSpec {
     TimedEffectSpec {
+        cast_id: None,
         effect_id: 700,
         ability_id: 637,
         invoker_id,
@@ -253,6 +255,7 @@ fn removal_reverts_exactly_what_was_applied() {
 fn one_entry_moves_several_stats_and_restores_them_together() {
     let mut e = entity();
     let spec = TimedEffectSpec {
+        cast_id: None,
         effect_id: 1980,
         ability_id: 1630,
         invoker_id: 9,

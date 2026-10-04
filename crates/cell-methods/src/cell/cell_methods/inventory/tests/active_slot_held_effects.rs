@@ -21,6 +21,7 @@ const EVENT_RANGED: i32 = 7;
 
 fn held(effect_id: i32, ability_id: i32, stat: i32) -> TimedEffectSpec {
     TimedEffectSpec {
+        cast_id: None,
         effect_id,
         ability_id,
         invoker_id: 1,

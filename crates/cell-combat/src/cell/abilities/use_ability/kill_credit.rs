@@ -167,7 +167,9 @@ pub(super) async fn credit_single_target(
     // A killer that credits no player (a plain NPC, or a pet whose owner
     // already left) skips with a warn so the unexpected case stays visible.
     let Some((credited, player_id)) = credited_player(space_mgr, entity_id) else {
+        let who = space_mgr.player_identity(entity_id);
         tracing::warn!(
+            account_id = who.account_id, player_id = who.player_id,
             entity_id, npc_tag = ?primary_tag, aoe_kills = aoe_dead_ids.len(),
             reason = "no_credited_player",
             "handle_use_ability_with_kill_credit: killer credits no player — skipping EntityDeath event"
@@ -243,7 +245,9 @@ pub async fn credit_ground_deaths(
                         .await;
                 }
                 None => {
+                    let who = space_mgr.player_identity(entity_id);
                     tracing::warn!(
+                        account_id = who.account_id, player_id = who.player_id,
                         entity_id, npc_tag = %tag, dead_eid, reason = "no_credited_player",
                         "Skipping entity_death event (ground target): killer entity has no player_id"
                     );

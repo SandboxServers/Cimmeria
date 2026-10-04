@@ -58,6 +58,8 @@ fn start_channel(mgr: &mut SpaceManager) {
         .unwrap()
         .active_effects
         .push(ActiveEffectInstance {
+            invoker_identity: Default::default(),
+            cast_id: None,
             effect_id: CHANNEL_EFFECT,
             ability_id: 1234,
             invoker_id: CHANNELLER,
@@ -81,6 +83,7 @@ fn channelling(mgr: &SpaceManager) -> bool {
 async fn attempt(mgr: &mut SpaceManager, chance_pct: i32) -> bool {
     let (tx, _rx) = mpsc::channel(512);
     mgr.request_interrupt(InterruptRequest {
+        cast_id: None,
         source_id: 9,
         target_id: CHANNELLER,
         effect_id: 9120,
@@ -153,6 +156,7 @@ async fn each_hit_on_one_warmup_rolls_afresh() {
         }
         let (tx, _rx) = mpsc::channel(512);
         mgr.request_interrupt(InterruptRequest {
+            cast_id: None,
             source_id: 9,
             target_id: CHANNELLER,
             effect_id: 9120,

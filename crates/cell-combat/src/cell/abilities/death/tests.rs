@@ -422,6 +422,8 @@ async fn channeller_death_cancels_active_channels() {
         .insert(channel_effect.effect_id, channel_effect.clone());
     if let Some(target) = mgr.get_entity_mut(2) {
         target.active_effects.push(ActiveEffectInstance {
+            invoker_identity: Default::default(),
+            cast_id: None,
             effect_id: 12345,
             ability_id: 9999,
             invoker_id: 2, // dying entity is its own channel source

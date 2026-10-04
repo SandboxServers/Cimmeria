@@ -40,12 +40,14 @@ impl SpaceManager {
                 .iter()
                 .find(|b| b.key() == (effect_id, invoker_id))
                 .map_or(0, |b| b.absorb_remaining());
-            let who = settled
+            // The shield's entry names who put it up and with which cast
+            // (AB-T1): the pools live on the entry, so its `cast_id` is theirs.
+            let (who, cast_id) = settled
                 .drained
                 .iter()
                 .chain(entity.stat_buffs.entries.iter())
                 .find(|b| b.key() == (effect_id, invoker_id))
-                .map(|b| b.invoker_identity)
+                .map(|b| (b.invoker_identity, b.cast_id))
                 .unwrap_or_default();
             tracing::debug!(
                 target: "abilities",
@@ -56,6 +58,7 @@ impl SpaceManager {
                 target_id = target,
                 target_player_id = target_who.player_id,
                 effect_id,
+                cast_id,
                 stat_id,
                 absorbed,
                 absorb_left = left,

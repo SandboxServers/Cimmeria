@@ -18,6 +18,7 @@
 use tokio::sync::mpsc;
 
 use cimmeria_entity::abilities::{ability_effects_have_mechanics, AbilityDef, EF_ALWAYS_PERSIST};
+use cimmeria_entity::cell_entity::PlayerIdentity;
 use cimmeria_wire::cell::chat::{serialize_on_player_communication, CHAN_FEEDBACK};
 
 use crate::cell::cell_methods::player::world::reload::ABILITY_RELOAD_WEAPON;
@@ -151,7 +152,7 @@ pub(super) async fn refuse_without_mechanics(
         animates = def.event_set_id.is_some(),
         "useAbility: the ability has no mechanic yet, or is a passive; refused with feedback, no cooldown charged"
     );
-    send_ability_feedback(entity_id, ability_id, text, tx).await;
+    send_ability_feedback(entity_id, id, ability_id, text, tx).await;
 }
 
 /// `onErrorCode(ERRORCODE_SYSTEM_Ability, ability_id, 167)` and the
@@ -159,11 +160,20 @@ pub(super) async fn refuse_without_mechanics(
 /// (no mechanic here, a full shield in `shield_full.rs`).
 pub(super) async fn send_ability_feedback(
     entity_id: u32,
+    who: PlayerIdentity,
     ability_id: i32,
     text: &str,
     tx: &mpsc::Sender<CellToBaseMsg>,
 ) {
-    send_ability_refusal(entity_id, ability_id, NO_MECHANICS_ERROR_CODE, text, tx).await;
+    send_ability_refusal(
+        entity_id,
+        who,
+        ability_id,
+        NO_MECHANICS_ERROR_CODE,
+        text,
+        tx,
+    )
+    .await;
 }
 
 /// `onErrorCode(ERRORCODE_SYSTEM_Ability, ability_id, code)` and the
@@ -171,6 +181,7 @@ pub(super) async fn send_ability_feedback(
 /// code (a stunned caster in `incapacitated.rs`).
 pub(super) async fn send_ability_refusal(
     entity_id: u32,
+    who: PlayerIdentity,
     ability_id: i32,
     code: u16,
     text: &str,
@@ -197,6 +208,8 @@ pub(super) async fn send_ability_refusal(
             tracing::warn!(
                 target: "abilities",
                 event = "no_mechanics_feedback_send_failed",
+                account_id = who.account_id,
+                player_id = who.player_id,
                 entity_id,
                 ability_id,
                 method_index,

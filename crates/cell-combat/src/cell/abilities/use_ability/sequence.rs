@@ -223,11 +223,15 @@ pub(in crate::cell::abilities) async fn play_ability_sequence(
                 "no_end_sequence",
             );
         } else if warns {
+            let who = space_mgr.player_identity(entity_id);
             tracing::debug!(
                 target: "abilities.sequence",
                 event = "ability_end",
                 outcome = "no_end_sequence",
+                account_id = who.account_id,
+                player_id = who.player_id,
                 source_id = entity_id,
+                cast_id = instance_id,
                 ability_id,
                 event_set_id,
                 "onSequence: no Ability_End sequence found for event_set"
@@ -252,10 +256,15 @@ pub(in crate::cell::abilities) async fn play_ability_sequence(
         space_mgr,
     )
     .await;
+    let who = space_mgr.player_identity(entity_id);
     tracing::debug!(
         target: "abilities.sequence",
         event = phase.event(),
+        account_id = who.account_id,
+        player_id = who.player_id,
         source_id = entity_id,
+        // The sequence's InstanceId is the cast's `cast_id` (AB-T1).
+        cast_id = instance_id,
         target_id,
         ability_id,
         sequence_id,

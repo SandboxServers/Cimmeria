@@ -16,6 +16,7 @@ fn entity() -> CellEntity {
 /// Personal Shield's shape: 30 s, one pool per listed type.
 fn shield(effect_id: i32, invoker_id: u32, pools: Vec<(i32, i32)>) -> TimedEffectSpec {
     TimedEffectSpec {
+        cast_id: None,
         effect_id,
         ability_id: 1013,
         invoker_id,

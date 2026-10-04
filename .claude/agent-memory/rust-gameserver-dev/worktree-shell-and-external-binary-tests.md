@@ -90,6 +90,13 @@ PowerShell tool's `New-Item -ItemType Junction -Path <wt>\external -Target
 `$TMP` path, a pipe into `sed`, or a second command is refused; run
 `git diff --stat` / `git status --short` as their own calls.
 
+AB-T1 (2026-10-04): `bash tools/build-lane/ship.sh pr ...` is refused ("runs
+bash in a plain command"), even though `bash tools/build-lane/lane.sh cargo ...`
+is accepted. Run the same script through the PowerShell tool as
+`python tools/build-lane/ship.py pr -C <worktree> -F <msg> --body-file <md>`,
+which works. Bash also refuses a command whose script argument comes from a
+shell variable (`python $S/rep.py`): spell out the absolute scratchpad path.
+
 Also, when the Dev Drive that holds the build-lane target dirs fills up
 ("no space on device"), delete only your own worktree's target dir under
 `CIMMERIA_TARGET_ROOT` and point `CIMMERIA_TARGET_ROOT` at a scratch

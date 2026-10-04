@@ -29,6 +29,7 @@ fn shielded(capacity: i32) -> SpaceManager {
     mgr.apply_timed_effect(
         PLAYER,
         TimedEffectSpec {
+            cast_id: None,
             effect_id: SHIELD_EFFECT,
             ability_id: 1013,
             invoker_id: PLAYER,
@@ -183,6 +184,8 @@ async fn a_dot_pulse_drains_the_shield_first() {
         .unwrap()
         .active_effects
         .push(ActiveEffectInstance {
+            invoker_identity: Default::default(),
+            cast_id: None,
             effect_id: ATTACK_EFFECT,
             ability_id: ATTACK,
             invoker_id: NPC,
@@ -211,6 +214,8 @@ async fn an_energy_pulse_leaves_a_physical_shield_alone() {
         .unwrap()
         .active_effects
         .push(ActiveEffectInstance {
+            invoker_identity: Default::default(),
+            cast_id: None,
             effect_id: ATTACK_EFFECT,
             ability_id: ATTACK,
             invoker_id: NPC,
@@ -250,6 +255,8 @@ fn due_pulse(mgr: &mut SpaceManager, invoker: u32) {
         .unwrap()
         .active_effects
         .push(ActiveEffectInstance {
+            invoker_identity: Default::default(),
+            cast_id: None,
             effect_id: ATTACK_EFFECT,
             ability_id: ATTACK,
             invoker_id: invoker,

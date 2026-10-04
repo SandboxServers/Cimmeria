@@ -17,8 +17,8 @@ use super::warmup::calls;
 use super::*;
 use crate::cell::client_methods::being::ON_TIMER_UPDATE;
 
-const AIM: i32 = 637;
-const AIM_EFFECT: i32 = 700;
+pub(super) const AIM: i32 = 637;
+pub(super) const AIM_EFFECT: i32 = 700;
 const COMBAT_SPRINT: i32 = 1619;
 const SPRINT_RUN: i32 = 1962;
 const SPRINT_PENALTY: i32 = 2002;
@@ -36,7 +36,7 @@ fn timed(id: i32, ability: i32, nvp: &str, value: &str, secs: f32, flags: u32) -
     }
 }
 
-fn buff_mgr() -> SpaceManager {
+pub(super) fn buff_mgr() -> SpaceManager {
     let mut mgr = duel_mgr();
     crate::test_support::install_effect_scripts(&mut mgr);
     for (id, effects) in [

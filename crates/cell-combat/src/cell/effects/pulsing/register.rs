@@ -79,6 +79,12 @@ pub async fn register_active_effect(
     } else {
         None
     };
+    // AB-T1: the cast resolving now. Every later pulse row logs it, so the
+    // ticks join their launch row. A refresh takes the refreshing cast's.
+    let cast_id = space_mgr.current_cast_id();
+    // Snapshot now: the pulse and end rows log it after the invoker may have
+    // left and its entity id been reused (rule 5).
+    let who = space_mgr.player_identity(invoker_id);
 
     let was_refresh = {
         let Some(target) = space_mgr.get_entity_mut(target_id) else {
@@ -105,6 +111,9 @@ pub async fn register_active_effect(
             // Refresh also re-anchors the channel-start position so
             // standing still after a re-channel doesn't trigger interrupt.
             existing.invoker_position_at_register = invoker_position_for_channel;
+            existing.cast_id = cast_id;
+            // The refreshing cast's invoker, snapshotted with its cast id.
+            existing.invoker_identity = who;
             true
         } else {
             target.active_effects.push(ActiveEffectInstance {
@@ -116,6 +125,8 @@ pub async fn register_active_effect(
                 next_pulse_at: next_at,
                 pulse_interval_secs: pulse_secs,
                 invoker_position_at_register: invoker_position_for_channel,
+                cast_id,
+                invoker_identity: who,
             });
             false
         }
@@ -124,8 +135,12 @@ pub async fn register_active_effect(
     tracing::info!(
         target: "abilities",
         event = if was_refresh { "active_effect_refreshed" } else { "active_effect_registered" },
+        stage = "pulse",
+        account_id = who.account_id,
+        player_id = who.player_id,
         target_id,
         invoker_id,
+        cast_id,
         effect_id = effect.effect_id,
         ability_id = effect.ability_id,
         remaining_pulses = remaining,

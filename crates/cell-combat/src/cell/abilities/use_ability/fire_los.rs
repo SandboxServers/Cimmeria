@@ -258,9 +258,12 @@ pub(crate) async fn refuse_without_line_of_sight(
         ),
         _ => ([0.0; 3], [0.0; 3]),
     };
+    let who = space_mgr.player_identity(shooter_id);
     tracing::debug!(
         target: "abilities",
         event = "los_refused",
+        account_id = who.account_id,
+        player_id = who.player_id,
         entity_id = shooter_id,
         ability_id,
         target_id,
@@ -294,6 +297,8 @@ pub(crate) async fn refuse_without_line_of_sight(
         tracing::warn!(
             target: "abilities",
             event = "los_refused_send_failed",
+            account_id = who.account_id,
+            player_id = who.player_id,
             entity_id = shooter_id,
             ability_id,
             "useAbility: the no-line-of-sight onErrorCode could not be queued (base channel closed)"

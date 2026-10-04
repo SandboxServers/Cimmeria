@@ -189,6 +189,7 @@ pub fn queue_interrupt(ctx: &mut EffectContext, chance_pct: i32) {
 
 fn queue(ctx: &mut EffectContext, chance_pct: i32, cause: InterruptCause) {
     let request = InterruptRequest {
+        cast_id: None, // stamped from the cast scope by request_interrupt
         source_id: ctx.source_id,
         target_id: ctx.target_id,
         effect_id: ctx.effect.effect_id,

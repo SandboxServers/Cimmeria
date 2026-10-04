@@ -2,6 +2,8 @@
 
 use tokio::sync::mpsc;
 
+use cimmeria_entity::cell_entity::PlayerIdentity;
+
 use super::super::super::messages::CellToBaseMsg;
 
 /// `CONDITION_FEEDBACK_EntityDoesNotHaveAbility`
@@ -16,6 +18,7 @@ const CONDITION_FEEDBACK_ENTITY_DOES_NOT_HAVE_ABILITY: u16 = 167;
 /// this the press was refused silently.
 pub(super) async fn send_not_known_feedback(
     entity_id: u32,
+    who: PlayerIdentity,
     ability_id: i32,
     tx: &mpsc::Sender<CellToBaseMsg>,
 ) {
@@ -35,6 +38,8 @@ pub(super) async fn send_not_known_feedback(
         tracing::warn!(
             target: "abilities",
             event = "not_known_feedback_send_failed",
+            account_id = who.account_id,
+            player_id = who.player_id,
             entity_id,
             ability_id,
             "useAbility: the not-known onErrorCode could not be queued (base channel closed)"
