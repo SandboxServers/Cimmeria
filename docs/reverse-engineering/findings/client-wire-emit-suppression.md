@@ -30,6 +30,9 @@ patch.
 
 ## Failure 1 — Heal Focus
 
+> **Correction (2026-10-04, AB-C0).** The call-chain table and diagnosis below misread three things. (1) `0x00d2a000` is a map lookup of an ability by id in the client's `AbilitySet` (`std::map<int, AbilityData*>` at `AbilitySet+0x28`), not the head of an in-flight queue, and `0x00d2b020` is `addAbilityIfAbsent`, not a gate: nothing on the press path checks an in-flight queue. (2) The `useAbility` Lua thunk `0x00aa2910` fails when a **third** argument is present (`0x00403280` is `tolua_isnoobj`), not when it is absent. (3) A hotbar press does not use the `useAbility` thunk; it goes `useAction` (`0x00aa94e0`) -> `AbilityAction::execute` (`0x00e3cd90`) -> `FUN_00d2afc0`. The silent drop that fits "press produces nothing" is `FUN_00d2afc0`'s not-found branch at `0x00d2afcf`: the ability is not in the client's `AbilitySet`. See [ability-client-hook-anchors.md](ability-client-hook-anchors.md).
+
+
 ### Call chain (Ghidra)
 
 | Step | Address | What it does |

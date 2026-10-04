@@ -323,6 +323,10 @@ Every method in this block has an argument serializer, `build_on_<method>`, in [
 
 `onErrorCode` (121), `onOrganizationCreationResult` (134) and `launchOrganizationCreation` (135) have serializers in [`crates/wire/src/cell/client_methods/player.rs`](../../crates/wire/src/cell/client_methods/player.rs) (`build_on_error_code`, `build_on_organization_creation_result`, `build_launch_organization_creation`), each with a byte test. 134 and 135 go out with the extended encoding (sub-slot 73 and 74). Since ORG-05 the cell sends 135 when an eligible player right-clicks an organization registrar, and the base sends 134 for every named creation: `(1, 0)` on success, or `(0, RetCode)` on a refusal. The `Result` and `RetCode` values are project policy, not recovered data (`org_creation_ret_code` in `player.rs`; [organization-system.md § Creation](../gameplay/organization-system.md#creation-org-05)).
 
+#### Names that look like client methods but are not
+
+`onSendCombatDebug` and `onSendEventDebug` are declared in `SGWPlayer.def` under `<CellMethods>` without `<Exposed/>` (lines 685 and 690), so they are server-internal cell methods with no client method index. The client has no handler, event or string for either, so a server cannot show a debug line through them. Debug text reaches a player only as a chat line, `onPlayerCommunication` (28) on the feedback channel. Evidence: [native-combat-debug.md](../reverse-engineering/findings/native-combat-debug.md).
+
 #### Crafting payloads (112, 136-140)
 
 The server-side serializers are in `crates/wire/src/crafting/client_methods.rs`, each byte-exact tested. Integers are little-endian; an `ARRAY` is a `u32` element count followed by the elements.

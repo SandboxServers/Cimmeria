@@ -72,9 +72,9 @@ Source: `entities/defs/interfaces/SGWAbilityManager.def`
 
 | Index | Method | Exposed | Args |
 |-------|--------|---------|------|
-| 2 | toggleCombatDebug | YES | (none) |
-| 3 | toggleCombatVerboseDebug | YES | (none) |
-| 4 | confirmationResponse | YES | INT8 choice |
+| 2 | toggleCombatDebug | YES | (none). The stock client has no event bound to this method and cannot send it ([native-combat-debug.md](../reverse-engineering/findings/native-combat-debug.md)) |
+| 3 | toggleCombatVerboseDebug | YES | (none). Same: the stock client cannot send it |
+| 4 | confirmationResponse | YES | INT32 aEffectId, UINT8 aAccepted (the client sends it from `Event_NetOut_ConfirmEffect`; an earlier revision of this row said `INT8 choice`) |
 | - | onHealthZeroed | no | |
 | - | invokeAbility | no | |
 | - | resolveAbility | no | |
@@ -297,8 +297,8 @@ Source: `entities/defs/SGWPlayer.def` lines 564-1109
 | 82 | rechargeItems | YES | ARRAY\<INT32\> itemIds | 667 |
 | - | requestAdditionalLoot | no | | 672 |
 | - | operateGateLoc | no | | 680 |
-| - | onSendCombatDebug | no | | 685 |
-| - | onSendEventDebug | no | | 690 |
+| - | onSendCombatDebug | no | WSTRING simple, WSTRING verbose. Server-internal: not a client method, no client handler or renderer exists (the client has no such method name) | 685 |
+| - | onSendEventDebug | no | STRING. Server-internal, as above | 690 |
 | - | startAutoCycleAbility | no | | 694 |
 | - | clearAbilities | no | | 698 |
 | 83 | setAutoCycle | YES | INT8 enabled | 701 |
@@ -712,6 +712,8 @@ explicitly in `requires_gm` (see [gm-cell-method-gating.md](../architecture/gm-c
 `2 toggleCombatDebug`, `3 toggleCombatVerboseDebug`, `6 toggleHealDebug` (log-only
 stubs today), and `92 onWorldInstanceReset` (CAT-N-01, High — destroys + recreates
 the space instance; **NEW**, keep gated, no handler).
+
+The `gmDebug*` methods (169 to 172, 176) are sent by the stock client only from an `SGWGmPlayer` avatar: the client drops the call before the wire for any other class ([native-combat-debug.md](../reverse-engineering/findings/native-combat-debug.md#can-a-non-gm-account-send-them)).
 
 #### How to add a handler
 

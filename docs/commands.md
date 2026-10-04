@@ -380,6 +380,8 @@ Assign, advance, and inspect missions on yourself.
 
 Combat, AI, and minigame debug switches.
 
+The five ability and combat debug commands (`/gmdebugability`, `/gmdebugabilityonmob`, `/gmdebugcombat`, `/gmdebugcombatverbose`, `/gmdebugheal`; the heal one's keyword is name-derived, like the others) are sent by the game only from a Game Master character; from a normal character the game drops them silently before they leave your computer. The game has no combat-debug window: any text a server returns for them arrives as an ordinary chat line. Details: [native-combat-debug.md](reverse-engineering/findings/native-combat-debug.md).
+
 | Command | What it does | Works now? | Parameters | Example |
 |---|---|---|---|---|
 | `/gmaddbehavioreventset` | Add a behavior event set | ❌ Not yet | `<id>` | `/gmaddbehavioreventset` |

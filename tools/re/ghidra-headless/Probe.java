@@ -16,8 +16,12 @@ import java.util.*;
  *   ND:<name>         decompile the function with this exact name
  *   PREVFN:<addr>     decompile the nearest function that starts before <addr>
  *   PTR:<addr>        read the 4-byte pointer at <addr>, then decompile its target
- *   I:<addr>[,<n>]    disassemble <n> instructions from <addr> (default 30)
+ *   I:<addr>[,<n>]    disassemble <n> instructions from <addr> (default 30); "+" also separates, since cmd splits at commas
+ *   IF:<addr>         disassemble the whole function containing <addr>
  *   X:<addr>          list references TO <addr>, with the containing function
+ *   U16:<text>        find <text> as UTF-16LE (exact case) in initialized memory and list each hit with its references; for wide literals the string search does not define
+ *   BYTES:<addr>+<n>  hex dump <n> bytes at <addr> (default 64) even where no code or function is defined
+ *   RE:<regex>        scan every instruction text for <regex> (e.g. RE:^MOV dword ptr \[[A-Z]{3} \+ 0xfc\],); prints function + address, capped at 400 hits
  *   NX:<name>         list references to the function with this exact name
  *   S:<text>          case-insensitive substring search over defined strings
  *   FNSUB:<text>      case-insensitive substring search over function names
@@ -108,9 +112,70 @@ public class Probe extends GhidraScript {
           DecompileResults r = d.decompileFunction(f, 60, monitor);
           println("=== DECOMPILE(F) " + f.getName() + " @ " + f.getEntryPoint() + " (asked " + addr + ")");
           println(r.decompileCompleted() ? r.getDecompiledFunction().getC() : "FAIL " + r.getErrorMessage());
+        } else if (s.startsWith("RE:")) {
+          // Instruction-text scan over the whole program: finds writers/readers of a struct offset.
+          java.util.regex.Pattern pat = java.util.regex.Pattern.compile(s.substring(3));
+          println("=== INSTRUCTION SCAN /" + s.substring(3) + "/");
+          int hits = 0;
+          ghidra.program.model.listing.InstructionIterator it2 = currentProgram.getListing().getInstructions(true);
+          while (it2.hasNext() && hits < 400) {
+            ghidra.program.model.listing.Instruction ins = it2.next();
+            if (pat.matcher(ins.toString()).find()) {
+              Function f = getFunctionContaining(ins.getAddress());
+              println("  " + ins.getAddress() + ": " + ins + "   in " + (f != null ? f.getName() + "@" + f.getEntryPoint() : "NONE"));
+              hits++;
+            }
+          }
+          println("  hits=" + hits);
+        } else if (s.startsWith("BYTES:")) {
+          // Raw byte dump for undefined regions (code the auto-analysis never turned into functions).
+          String[] parts = s.substring(6).split("[,+]");
+          Address a0 = toAddr(parts[0]);
+          int n = parts.length > 1 ? Integer.parseInt(parts[1]) : 64;
+          println("=== BYTES " + parts[0] + " x" + n);
+          StringBuilder sb = new StringBuilder();
+          for (int i = 0; i < n; i++) {
+            if (i % 16 == 0) { if (i > 0) { println("  " + sb); sb.setLength(0); } sb.append(a0.add(i)).append(": "); }
+            sb.append(String.format("%02x ", getByte(a0.add(i)) & 0xff));
+          }
+          println("  " + sb);
+        } else if (s.startsWith("U16:")) {
+          // UTF-16LE literal search: wide strings in this binary are mostly not defined as string data.
+          String text = s.substring(4);
+          byte[] pat = text.getBytes(java.nio.charset.StandardCharsets.UTF_16LE); // surrogate pairs included
+          println("=== UTF16 SEARCH '" + text + "'");
+          Address from = currentProgram.getMinAddress();
+          int hits = 0;
+          while (hits < 40) {
+            Address hit = currentProgram.getMemory().findBytes(from, pat, null, true, monitor);
+            if (hit == null) break;
+            println("  hit " + hit);
+            for (ghidra.program.model.symbol.Reference r : currentProgram.getReferenceManager().getReferencesTo(hit)) {
+              Function f = getFunctionContaining(r.getFromAddress());
+              println("    ref from " + r.getFromAddress() + " in " + (f != null ? f.getName() + "@" + f.getEntryPoint() : "NONE"));
+            }
+            hits++;
+            from = hit.add(1);
+          }
+        } else if (s.startsWith("IF:")) {
+          // Whole-function disassembly (all instructions in the function body, in address order).
+          Address addrObj = toAddr(s.substring(3));
+          Function f = getFunctionContaining(addrObj);
+          println("=== DISASM FUNCTION " + s.substring(3));
+          if (f == null) {
+            println("  NO FUNCTION CONTAINING " + s.substring(3));
+          } else {
+            println("  function: " + f.getName() + "@" + f.getEntryPoint());
+            ghidra.program.model.listing.InstructionIterator it =
+                currentProgram.getListing().getInstructions(f.getBody(), true);
+            while (it.hasNext()) {
+              ghidra.program.model.listing.Instruction ins = it.next();
+              println("  " + ins.getAddress() + ": " + ins.toString());
+            }
+          }
         } else if (s.startsWith("I:")) {
           // Raw disassembly window: addr, then N instructions forward (default 30).
-          String[] parts = s.substring(2).split(",");
+          String[] parts = s.substring(2).split("[,+]");
           String addr = parts[0];
           int n = parts.length > 1 ? Integer.parseInt(parts[1]) : 30;
           Address addrObj = toAddr(addr);
@@ -228,7 +293,7 @@ public class Probe extends GhidraScript {
           if (found == 0) println("  (no hits)");
         } else if (s.startsWith("VT:")) {
           // Dump N consecutive 4-byte pointer slots starting at addr as a vtable.
-          String[] parts = s.substring(3).split(",");
+          String[] parts = s.substring(3).split("[,+]");
           String addr = parts[0];
           int n = parts.length > 1 ? Integer.parseInt(parts[1]) : 12;
           Address a2 = toAddr(addr);
