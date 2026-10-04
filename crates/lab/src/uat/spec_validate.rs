@@ -144,11 +144,11 @@ fn check_players(row: &RowSpec, errs: &mut Vec<String>) {
     for c in &row.expect {
         let reads_client = matches!(
             c.source,
-            Source::Chat | Source::Tool | Source::Lua | Source::Wait
+            Source::Chat | Source::Tool | Source::Lua | Source::Wait | Source::ClientEvent
         );
         if c.client.is_some() && !reads_client {
             errs.push(format!(
-                "{r}/{}: client applies to chat, tool, lua and wait clauses",
+                "{r}/{}: client applies to chat, tool, lua, wait and client_event clauses",
                 c.id
             ));
         }
@@ -164,6 +164,15 @@ fn check_action(row: &str, a: &ActionSpec, errs: &mut Vec<String>) {
             }
             if a.capture.as_deref() != Some("chat") {
                 errs.push(format!("{row}: capture source must be \"chat\""));
+            }
+        }
+        Ok(ActionKind::Tool) => {
+            // The ability lab commands are chat lines the runner builds:
+            // a bad disposition or id is a spec error, not a typed typo.
+            if let Some(t) = a.tool.as_deref() {
+                if let Err(e) = super::lab_commands::check(t, a.args.as_ref()) {
+                    errs.push(format!("{row}: {e}"));
+                }
             }
         }
         Ok(_) => {}
@@ -239,7 +248,21 @@ fn check_clause(c: &ExpectSpec) -> Result<(), String> {
                 "a packet clause's op, value and tolerance need a field",
             )?;
         }
+        Source::ClientEvent => {
+            need(
+                c.event.as_deref().is_some_and(|e| e.starts_with("client.")),
+                "a client_event clause needs event = \"client.<kind>\" (the telemetry target)",
+            )?;
+            // As for packets: op/value without a field would pass on any event.
+            need(
+                c.field.is_some() || (c.op.is_none() && c.value.is_none() && c.tolerance.is_none()),
+                "a client_event clause's op, value and tolerance need a field",
+            )?;
+        }
         Source::Human => need(c.question.is_some(), "a human clause needs question")?,
+    }
+    if c.source != Source::ClientEvent && (c.event.is_some() || c.match_fields.is_some()) {
+        return Err("event and match_fields belong to client_event clauses".into());
     }
     if matches!(c.source, Source::Tool | Source::Server | Source::Lua)
         && c.op.is_none()

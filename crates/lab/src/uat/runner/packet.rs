@@ -128,7 +128,7 @@ impl<I: ToolInvoker> Runner<'_, I> {
 
     /// The player entity the tap goes on: `vars.player_entity_id`, else
     /// the character's row in `server_sessions`.
-    async fn tap_entity(
+    pub(crate) async fn tap_entity(
         &self,
         server: &dyn ServerInvoker,
         ctx: &mut RowCtx,

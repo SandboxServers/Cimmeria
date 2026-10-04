@@ -30,6 +30,12 @@ pub(super) struct Fake {
     login: Mutex<String>,
     /// The character `client_player_state` reports.
     name: String,
+    /// The lab event store (`client_wait_event`), and the events a tool
+    /// call or typed line adds to it (see `ability_tests`).
+    pub(super) events: Mutex<Vec<Value>>,
+    pub(super) triggers: Mutex<Vec<(String, String, Value)>>,
+    /// How long after the call the fake press "goes out" (`press_ms`).
+    pub(super) press_delay_ms: Mutex<i64>,
 }
 
 const BASE_TOOLS: [&str; 9] = [
@@ -60,6 +66,9 @@ impl Fake {
             running: Mutex::new(true),
             login: Mutex::new("in_world".into()),
             name: "Labone".into(),
+            events: Mutex::new(vec![]),
+            triggers: Mutex::new(vec![]),
+            press_delay_ms: Mutex::new(0),
         }
     }
 
@@ -105,6 +114,10 @@ impl ToolInvoker for Fake {
 
     async fn call(&self, name: &str, args: Value) -> ToolOutcome {
         self.calls.lock().unwrap().push(name.to_string());
+        // A press fires its events itself, after noting the seq before.
+        if name != "client_use_ability" {
+            self.fire(name);
+        }
         self.log
             .lock()
             .unwrap()
@@ -140,6 +153,7 @@ impl ToolInvoker for Fake {
                 let mut typed = self.typed.lock().unwrap();
                 if !typed.is_empty() {
                     let line = std::mem::take(&mut *typed);
+                    self.fire(&format!("chat:{line}"));
                     let mut chat = self.chat.lock().unwrap();
                     if let Some(note) = line.strip_prefix(".bug ") {
                         chat.push(format!(
@@ -155,9 +169,14 @@ impl ToolInvoker for Fake {
             "client_ui_state" => ok(json!({ "chat_tail": *self.chat.lock().unwrap() })),
             "client_lua_eval" => ok(self.lua.clone()),
             "client_wait_for" => ok(json!({ "met": true, "elapsed_ms": 5 })),
+            "client_wait_event" => ok(self.wait_event(&args)),
+            "client_use_ability" => ok(self.use_ability(&args)),
             "lab_fail" => ToolOutcome::err("scripted failure"),
             // The click lands unless the spec allows the targetUnit fallback,
             // which this fake then reports taking.
+            "client_target" if args["name"] == "Nobody" => {
+                ToolOutcome::err("no entity named Nobody")
+            }
             "client_target" if args["allow_fallback"] == true => {
                 ok(json!({ "native_level": "ui_lua", "counts_as_native_pass": false }))
             }
@@ -461,7 +480,8 @@ contains = "deleted"
     ]);
     let (row, _) = run_one(&fake, rows).await;
     assert_eq!(row.result, RowResult::Pass, "{:?}", row.reasons);
-    assert_eq!(row.vars["mail_id"], "42");
+    // A whole number is kept as one (it still types as "42").
+    assert_eq!(row.vars["mail_id"], 42);
 }
 
 /// Plan-only drives nothing and reports every row SKIPPED or BLOCKED.

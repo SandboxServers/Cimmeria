@@ -233,7 +233,13 @@ pub enum Source {
     /// A SigNoz query: recorded PENDING until `lab_uat_attest` fills it.
     Signoz,
     /// A server lab-mcp tool over HTTP (UNVERIFIED when unreachable).
+    /// `server_ability_state` without an `entity_id` reads the lab
+    /// character's own entity.
     Server,
+    /// The client's own telemetry events (`client.ability.*` and the rest)
+    /// from the lab event store, since the row's anchor or a step label:
+    /// counted and field-checked like a packet clause.
+    ClientEvent,
     /// Decoded Mercury messages from the server packet tap, captured for
     /// the lab character's session from the anchor to teardown
     /// (UNVERIFIED when the endpoint is unreachable).
@@ -280,7 +286,8 @@ pub struct ExpectSpec {
     /// every step action).
     #[serde(default)]
     pub at: Option<String>,
-    /// Chat: only lines after the action with this label.
+    /// Chat and client_event: only lines (events) after the action with
+    /// this label started.
     #[serde(default)]
     pub since: Option<String>,
     // chat
@@ -312,6 +319,9 @@ pub struct ExpectSpec {
     // wait
     #[serde(default)]
     pub lua_condition: Option<String>,
+    /// Wait: how long to wait for the condition. Client_event: how long
+    /// to wait for `min_rows` events (or, with `max_rows`, for one too
+    /// many) before grading; default 5000.
     #[serde(default)]
     pub timeout_ms: Option<u64>,
     // timing
@@ -344,8 +354,17 @@ pub struct ExpectSpec {
     /// `target_entity_id`); a number or a `${var}`.
     #[serde(default)]
     pub entity: Option<Value>,
-    /// Chat, tool, lua and wait clauses: read this client (`p1` default,
-    /// `p2` on a `players = 2` row).
+    // client_event
+    /// The telemetry target (`client.ability.sent`); the lab ring stores it
+    /// without the `client.` prefix. A glob (`client.ability.*`) is fine.
+    #[serde(default)]
+    pub event: Option<String>,
+    /// Only events whose fields equal these (strings are globs, numbers
+    /// compare numerically): `{ method = "onEffectResults", ability_id = 597 }`.
+    #[serde(default)]
+    pub match_fields: Option<serde_json::Map<String, Value>>,
+    /// Chat, tool, lua, wait and client_event clauses: read this client
+    /// (`p1` default, `p2` on a `players = 2` row).
     #[serde(default)]
     pub client: Option<String>,
     // human
@@ -384,168 +403,5 @@ pub fn parse(text: &str) -> Result<SectionSpec, String> {
 }
 
 #[cfg(test)]
-mod tests {
-    use super::*;
-
-    const MINI: &str = r#"
-schema = 1
-[section]
-id = "gm-parity"
-system = "GM console command parity"
-guide = "unified-uat.md#gm-console-command-parity"
-ledger = "legacy-command-parity/README.md"
-
-[[row]]
-id = "M1-1"
-title = "help answers"
-expected = "Each answers in chat."
-step = [{ chat = ".help", label = "help" }]
-
-[[row.expect]]
-id = "help"
-text = ".help lists commands"
-source = "chat"
-since = "help"
-contains = "help"
-"#;
-
-    #[test]
-    fn a_minimal_section_parses_with_defaults() {
-        let s = parse(MINI).unwrap();
-        let row = &s.rows[0];
-        assert_eq!(row.required_native, Tier::N1);
-        assert_eq!(row.state, "in_world");
-        assert_eq!(row.players, 1);
-        assert_eq!(s.section.character, "lab");
-        assert_eq!(row.steps[0].kind().unwrap(), ActionKind::Chat);
-    }
-
-    #[test]
-    fn a_dangling_label_and_a_bare_clause_are_rejected() {
-        let bad = MINI.replace("since = \"help\"", "since = \"nope\"");
-        let e = parse(&bad).unwrap_err();
-        assert!(e.contains("M1-1/help: no action labelled \"nope\""), "{e}");
-        let bad = MINI.replace("contains = \"help\"", "");
-        assert!(parse(&bad).unwrap_err().contains("contains or matches"));
-    }
-
-    #[test]
-    fn an_action_with_two_kinds_is_rejected() {
-        let bad = MINI.replace(
-            "{ chat = \".help\", label = \"help\" }",
-            "{ chat = \".help\", wait_ms = 5, label = \"help\" }",
-        );
-        assert!(parse(&bad).unwrap_err().contains("more than one"));
-    }
-
-    #[test]
-    fn unknown_fields_are_errors_not_silently_ignored() {
-        let bad = MINI.replace("title = \"help answers\"", "title = \"x\"\ntypo = 1");
-        assert!(parse(&bad).is_err());
-    }
-
-    const PACKET: &str = r#"
-[[row.expect]]
-id = "timer"
-text = "a 15 s timer"
-source = "packet"
-message = "onTimerUpdate"
-direction = "to_client"
-entity = "${player_entity_id}"
-field = "complete_in_s"
-op = "approx"
-value = 15
-tolerance = 1
-"#;
-
-    #[test]
-    fn the_second_player_needs_a_two_player_row() {
-        let two = MINI.replace(
-            "title = \"help answers\"",
-            "title = \"help answers\"\nplayers = 2",
-        );
-        let p2_step = "{ chat = \".help\", label = \"help\", client = \"p2\" }";
-        let ok = two.replace("{ chat = \".help\", label = \"help\" }", p2_step);
-        parse(&ok).unwrap();
-        // The same step on a one-player row, an unknown client, and
-        // @target_player without a second player are all spec errors.
-        let one = MINI.replace("{ chat = \".help\", label = \"help\" }", p2_step);
-        assert!(parse(&one).unwrap_err().contains("players = 2"));
-        let p3 = ok.replace("client = \"p2\"", "client = \"p3\"");
-        assert!(parse(&p3).unwrap_err().contains("p1 or p2"));
-        let target = MINI.replace(
-            "step = [{ chat = \".help\", label = \"help\" }]",
-            "step = [{ tool = \"@target_player\" }, { chat = \".help\", label = \"help\" }]",
-        );
-        assert!(parse(&target).unwrap_err().contains("players = 2"));
-        let resolved =
-            parse(&target.replace("title = \"help answers\"", "title = \"x\"\nplayers = 2"))
-                .unwrap();
-        assert_eq!(
-            resolved.rows[0].steps[0].tool.as_deref(),
-            Some("uat_target_player")
-        );
-        // A fallback runs on its action's client: it may not name another
-        // one, an unknown one, or p2 on a one-player row, at any depth.
-        let fb = |client: &str| {
-            ok.replace(
-                p2_step,
-                &format!(
-                    "{{ tool = \"lab_x\", tier = \"N1\", label = \"help\", fallback = [{{ chat = \".help\", fallback = [{{ chat = \".h\", client = \"{client}\" }}] }}] }}"
-                ),
-            )
-        };
-        parse(&fb("p1")).unwrap();
-        assert!(parse(&fb("p2"))
-            .unwrap_err()
-            .contains("runs on its action's client"));
-        assert!(parse(&fb("p3")).unwrap_err().contains("p1 or p2"));
-        let one = fb("p2").replace("players = 2", "players = 1");
-        assert!(parse(&one).unwrap_err().contains("players = 2"));
-        // Only clauses that read a client take one.
-        let signoz = format!(
-            "{two}\n[[row.expect]]\nid = \"s\"\ntext = \"t\"\nsource = \"signoz\"\nfilter = \"x\"\nclient = \"p2\"\n"
-        );
-        assert!(parse(&signoz).unwrap_err().contains("client applies to"));
-    }
-
-    #[test]
-    fn a_packet_clause_parses_and_its_rules_hold() {
-        let s = parse(&format!("{MINI}{PACKET}")).unwrap();
-        let c = &s.rows[0].expect[1];
-        assert_eq!(c.source, Source::Packet);
-        assert_eq!(c.message.as_deref(), Some("onTimerUpdate"));
-        assert_eq!(c.op, Some(Op::Approx));
-        assert_eq!(c.tolerance, Some(1.0));
-
-        let bad = format!("{MINI}{}", PACKET.replace("to_client", "outbound"));
-        assert!(parse(&bad).unwrap_err().contains("to_client"));
-        let bad = format!(
-            "{MINI}{}",
-            PACKET.replace("message = \"onTimerUpdate\"\n", "")
-        );
-        assert!(parse(&bad).unwrap_err().contains("needs message"));
-        // One tap per row, read at teardown: a step-anchored clause is wrong.
-        let bad = format!(
-            "{MINI}{}",
-            PACKET.replace("source = \"packet\"", "source = \"packet\"\nat = \"help\"")
-        );
-        assert!(parse(&bad).unwrap_err().contains("no at or since"));
-        let bad = format!("{MINI}{}", PACKET.replace("tolerance = 1\n", ""));
-        assert!(parse(&bad).unwrap_err().contains("tolerance"));
-        // Non-finite and negative tolerances would pass anything or nothing.
-        for t in ["inf", "+inf", "nan", "-1"] {
-            let bad = format!(
-                "{MINI}{}",
-                PACKET.replace("tolerance = 1", &format!("tolerance = {t}"))
-            );
-            assert!(parse(&bad).unwrap_err().contains("finite tolerance"), "{t}");
-        }
-        // op/value without field would pass on any matching message.
-        let bad = format!(
-            "{MINI}{}",
-            PACKET.replace("field = \"complete_in_s\"\n", "")
-        );
-        assert!(parse(&bad).unwrap_err().contains("need a field"));
-    }
-}
+#[path = "spec_tests.rs"]
+mod tests;

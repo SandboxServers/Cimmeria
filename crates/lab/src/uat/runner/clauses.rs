@@ -3,13 +3,17 @@
 
 use serde_json::{json, Value};
 
-use super::actions::{subst, subst_str, CHAT_READ_TOOL};
+use super::actions::{captured_value, subst, subst_str, unresolved, CHAT_READ_TOOL};
+use super::packet::ENTITY_VAR;
 use super::players::Who;
 use super::{now_ms, utc_of, RowCtx, Runner};
 use crate::uat::clause::{compare_tol, describe, eval_chat, json_at, new_lines};
 use crate::uat::evidence::{clip, ClauseResult, Verdict};
 use crate::uat::invoke::ToolInvoker;
 use crate::uat::spec::{ExpectSpec, Source};
+
+/// The server read `@ability_state` resolves to (AB-L1).
+const ABILITY_STATE_TOOL: &str = "server_ability_state";
 
 /// How far around the row the SigNoz window reaches: a little before the
 /// anchor, and long enough after for batched log export to land.
@@ -106,13 +110,37 @@ impl<I: ToolInvoker> Runner<'_, I> {
                         "field": c.field, "op": c.op, "value": c.value, "tolerance": c.tolerance,
                     },
                 }));
-                r.detail =
-                    Some("run the query, then lab_uat_attest the row count and key rows".into());
+                r.detail = Some(match unresolved(&filter) {
+                    // A `${cast_id}` the press never captured: the query is
+                    // still written, but it must be filled in by hand.
+                    Some(v) => format!(
+                        "{v} was not captured this row: fill it in from the press (its action's calls, or SigNoz) before running the query, then lab_uat_attest"
+                    ),
+                    None => "run the query, then lab_uat_attest the row count and key rows".into(),
+                });
             }
+            Source::ClientEvent => self.eval_client_event(who, c, ctx, &mut r).await,
             Source::Server => match self.server {
                 Some(server) => {
                     let tool = c.tool.clone().unwrap_or_default();
-                    let args = subst(c.args.as_ref().unwrap_or(&json!({})), &ctx.vars);
+                    let mut args = subst(c.args.as_ref().unwrap_or(&json!({})), &ctx.vars);
+                    // `server_ability_state` with no entity reads the lab
+                    // character's own (found by name, as the packet tap is).
+                    if tool == ABILITY_STATE_TOOL && args.get("entity_id").is_none() {
+                        match self.tap_entity(server, ctx).await {
+                            Ok(e) => {
+                                ctx.vars.insert(ENTITY_VAR.into(), json!(e));
+                                if !args.is_object() {
+                                    args = json!({});
+                                }
+                                args["entity_id"] = json!(e);
+                            }
+                            Err(e) => {
+                                r.detail = Some(format!("{tool}: {e}"));
+                                return r;
+                            }
+                        }
+                    }
                     let out = server.call(&tool, args).await;
                     if out.ok {
                         let v = json_at(&out.json, c.pointer.as_deref()).cloned();
@@ -169,7 +197,8 @@ impl<I: ToolInvoker> Runner<'_, I> {
             );
         }
         if let (Some(var), Some(v)) = (&c.capture_var, captured) {
-            ctx.vars.insert(var.clone(), json!(v));
+            let v = captured_value(&v);
+            ctx.vars.insert(var.clone(), v.clone());
             observed["captured"] = json!({ var: v });
         }
         r.verdict = verdict;

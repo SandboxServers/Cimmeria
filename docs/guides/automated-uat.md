@@ -2,7 +2,7 @@
 title: Automated in-game UAT with the lab
 type: how-to
 audience: agents and developers running unified-UAT rows through the live research lab
-last_updated: 2026-09-29
+last_updated: 2026-10-04
 companion_docs:
   - unified-uat.md
   - live-research-lab.md
@@ -12,7 +12,7 @@ companion_docs:
 # Automated in-game UAT with the lab
 
 > Type: how-to, with the spec and bundle formats as reference. Audience: an agent or developer with the `cimmeria-lab` MCP server running.
-> Updated: 2026-09-29. Companions: [unified UAT guide](unified-uat.md), [live research lab](live-research-lab.md).
+> Updated: 2026-10-04. Companions: [unified UAT guide](unified-uat.md), [live research lab](live-research-lab.md).
 
 The [unified UAT guide](unified-uat.md) is written for a person at the keyboard. This page runs the same rows from the lab: each row is data in a TOML spec, the `lab_uat_run` tool drives the client through the lab tools, checks every expected clause, and writes an evidence bundle plus the guide's "Recording results" blocks, ready to paste into the campaign ledger.
 
@@ -173,9 +173,9 @@ matches = "searchitem 'pistol': [0-9]+ match"
 | `optional` | An error is recorded but does not fail the row |
 | `client` | `p1` (default) or `p2`: which lab client runs it. `p2` needs `players = 2` |
 
-`${character}`, `${run_id}`, `${row_id}`, `${section}`, `${bookmark_id}`, `${p2_character}` (two-player rows), `${player_entity_id}` (rows with packet clauses), the run's `vars` and captured values substitute into every string.
+`${character}`, `${run_id}`, `${row_id}`, `${section}`, `${bookmark_id}`, `${p2_character}` (two-player rows), `${player_entity_id}` (rows with packet clauses or an `@ability_state` read of the lab character), `${cast_id}`, `${cast_entity_id}`, `${cast_player_id}` and `${cast_key}`, each also as `..._<label>` (after an ability press, [below](#client-event-clauses-and-cast_id)), `${dummy_id}` (after `@dummy`), the run's `vars` and captured values substitute into every string. A string that is exactly one `${var}` takes the variable's own type, so `entity_id = "${dummy_id}"` reaches a tool as a number. A captured whole number (a mail or entity id) is stored as a number for the same reason.
 
-**Expected clauses** (`[[row.expect]]`): `id`, `text`, `source`, `required` (default true), `at` (evaluate right after that step; default after all steps), `client` (`chat`, `tool`, `lua` and `wait` clauses: read `p2` instead of `p1`).
+**Expected clauses** (`[[row.expect]]`): `id`, `text`, `source`, `required` (default true), `at` (evaluate right after that step; default after all steps), `client` (`chat`, `tool`, `lua`, `wait` and `client_event` clauses: read `p2` instead of `p1`).
 
 | `source` | Fields | Verdict |
 |---|---|---|
@@ -185,11 +185,14 @@ matches = "searchitem 'pistol': [0-9]+ match"
 | `wait` | `lua_condition`, `timeout_ms` | `client_wait_for` met or not |
 | `timing` | `action` (a label), `max_ms` | That step's elapsed time |
 | `signoz` | `filter`, `min_rows`, `max_rows`, `field` + `op` + `value` | PENDING until attested |
-| `server` | `tool`, `args`, `pointer`, `op`, `value` | A `cimmeria-lab-mcp` tool; UNVERIFIED when unreachable |
+| `server` | `tool`, `args`, `pointer`, `op`, `value` | A `cimmeria-lab-mcp` tool; UNVERIFIED when unreachable. `@ability_state` (`server_ability_state`) with no `entity_id` reads the lab character |
+| `client_event` | `event`, `match_fields`, `since`, `min_rows`, `max_rows`, `field` + `op` + `value` (+ `tolerance`), `timeout_ms` | The client's own telemetry events (`client.ability.*`) from the lab event store ([below](#client-event-clauses-and-cast_id)) |
 | `packet` | `message`, `direction`, `entity`, `min_rows`, `max_rows`, `field` + `op` + `value` (+ `tolerance`) | Decoded Mercury messages from the row's packet tap (below); UNVERIFIED when the endpoint is unreachable |
 | `human` | `question` | NEEDS_HUMAN until answered |
 
 `op` is one of `eq`, `ne`, `contains`, `not_contains`, `matches`, `gt`, `gte`, `lt`, `lte`, `exists`, `absent`, `truthy`, `falsy`, `len_gte`, `approx`. Numbers compare numerically even when Lua returns them as strings. `approx` takes a numeric `value` and a `tolerance`: `op = "approx"`, `value = 15`, `tolerance = 1` passes 14 to 16, the spec form of `complete_in_s ~ 15 ± 1`.
+
+A `pointer` may select an array element by a field: `[key=value]` after a segment picks the first element whose `key` equals `value` (numbers numerically). `server_ability_state` lists stats and ledger entries as arrays, so `/state/stats[stat_id=22]/cur` reads one stat and `/state/ledger[ability_id=637]/expires_in_secs` one effect, wherever they sit in the list.
 
 ### Packet clauses
 
@@ -220,6 +223,57 @@ tolerance = 1
 The session is found by the character's name in `server_sessions`; pass `vars.player_entity_id` to skip that lookup. The runner sets `${player_entity_id}` once it knows it. A packet clause is graded over the whole row, so it takes no `at` or `since`. A clause is UNVERIFIED, naming the reason, when the endpoint is not configured or refuses, the session is not found, or the tap could not be read. When the tap's ring dropped messages (`dropped` in the read), a PASS that depends on an upper bound or on every row becomes UNVERIFIED, because the dropped messages were never checked. Packet clauses cross-check the client's own decode (ability-mechanics AB-C3): the tap and a `client_event` clause on the same row must agree.
 
 **Evidence** (`[[row.evidence]]`): `name`, `tool`, `args`, `at`, `client`. Images become PNG attachments; JSON results become `.json` attachments. Every row that ran also gets `final.png`, and a two-player row gets `final-p2.png` as well.
+
+### Client event clauses and `${cast_id}`
+
+A `client_event` clause asserts what the client itself did, from the `client.ability.*` events the telemetry DLL pushes to the lab ring (ability-mechanics AB-C1 to AB-C5): the press and its gate (`client.ability.press`, `.press_dropped`), the send (`.sent`, `.sent_seq`), what arrived (`.recv`), what the client applied (`.applied`) and what it showed (`.shown`). Any other `client.*` target the DLL pushes works the same way. The fields are the DLL's own; [client-telemetry.md](../architecture/client-telemetry.md#ability-presses-and-sends-clientability) lists them (the receive, apply and show rows are added there by AB-C3 to AB-C5).
+
+| Field | Meaning |
+|---|---|
+| `event` | The telemetry target, `client.` included (`client.ability.sent`); a glob (`client.ability.*`) is fine. The ring stores it without the prefix |
+| `match_fields` | Only events whose fields equal these: `{ method = "onEffectResults", ability_id = 597 }`. Strings are globs, numbers compare numerically, `${var}`s are filled in |
+| `since` | Only events after that step started (default: the row start, after the anchor) |
+| `min_rows`, `max_rows` | How many matching events; default at least one. `max_rows = 0` asserts the client never did it |
+| `field` + `op` + `value` (+ `tolerance`) | Every matching event must satisfy it. `field` is an event field (`target_id`), a store column (`store_seq`, `store_kind`, `store_ts_ms`) or a JSON pointer |
+| `timeout_ms` | How long to wait first for `min_rows` events, or for one more than `max_rows` (default 5000) |
+
+```toml
+[[row.expect]]
+id = "sent-no-target"
+text = "the press leaves the client, aimed at nobody (B-15)"
+source = "client_event"
+event = "client.ability.sent"
+match_fields = { ability_id = 597 }
+since = "press"
+field = "target_id"
+op = "eq"
+value = 0
+```
+
+The runner reads the store through `client_wait_event` with an explicit `since_seq`: it marks the store head at the row start and before every step a clause names in `since`, and never calls `client_events_read`, whose cursor belongs to whoever drives the lab. A clause is UNVERIFIED when no mark could be taken. A PASS that rests on an upper bound (`max_rows`) or on every event (`field`) becomes UNVERIFIED when events may be missing, because the missing ones were never checked. The runner reads the loss signals apart from the clause's own match:
+
+- the store evicted events after the mark (`gap`);
+- the bridge ring dropped events before the store saw them (`bridge_dropped`);
+- the client throttle suppressed rows of the clause's family (burst 8, then 4 a second).
+
+The throttle decides a press and its answers together and puts the count of suppressed presses only on the *next* `client.ability.press` row, so a dropped `client.ability.sent` leaves no row of its own. A clause on any `client.ability.*` kind is therefore checked against every `client.ability.*` row since its mark. A suppression at the very end of the window, with no row after it, cannot be seen: do not bound a burst of more than 8 presses a second.
+
+**`${cast_id}` and the cast's caster.** After every `@use_ability` press in setup or the steps, the runner finds the cast it became, so SigNoz and server clauses can name it. A `cast_id` is the caster's own `effect_seq`, so it is unique per caster, not across the server: two players can hold the same number in the same minute. A cast is therefore named by the pair (caster, `cast_id`). The runner stores:
+
+| Var | Value |
+|---|---|
+| `${cast_id}` | the cast's id |
+| `${cast_entity_id}` | the caster's entity (the receipt's `source_id`, or the pressing character's session) |
+| `${cast_player_id}` | the caster's `player_id`, when the server log tail still holds the cast's `ability_launched` row |
+| `${cast_key}` | both halves as one SigNoz fragment: `cast_id = C AND (entity_id = E OR source_id = E OR invoker_id = E)`. Cast rows name their caster under one of those three fields (heals as `source_id`, pulses as `invoker_id`) |
+
+Write SigNoz clauses with the key, never `cast_id` alone: `filter = "event = 'ability_launched' AND ${cast_key}"`. The runner tries, in order:
+
+1. `client_recv`: the client's `client.ability.recv` `onEffectResults` for the pressed ability, after the press. Its `cast_id` is the effect id the server sent, and its `source_id` is the caster.
+2. `seq_join`: the press's `client.ability.sent`, its `client.ability.sent_seq` packet range (28-bit, wrapping), the **pressing entity's** `use_ability_recv` row whose `mercury_seq` is in that range (packet seqs are per connection), and that entity's next `ability_launched` for the ability, from `server_log_tail` (the server's DEBUG ring, 500 rows).
+3. `press_window`: the `ability_launched` for (the pressing entity, the ability) nearest the press on the server clock (the anchor's offset), within 2 s. The press time is `client_use_ability`'s own `press_ms`, taken just before the key or click went out; else the client's `client.ability.press` row; else the action's start, which is early by the tool's lookup and placement time.
+
+The press's action records which path found it and when the press went out (`calls: [{cast_id, cast_entity_id, cast_player_id, via, press_ms, press_time_from}]`), or every reason none did. Every value also goes into a `_<label>` var for a labelled press. All of them are cleared before each press's attempt, so a press with no cast found leaves none behind, and a SigNoz clause that still names one is written with the literal and says so.
 
 ### Two-player rows
 
@@ -264,7 +318,16 @@ p2's account and character come from `lab-account.p2.json`. The section's `chara
 
 ### The capability table
 
-`crates/lab/src/uat/tools.rs` maps each capability to the tool that provides it and the most native tier it can claim: `@world_click` is `client_world_click` at N1, `@inventory` is the read `client_inventory`. It lists the tools on `main`, including the world tools (#1099: `@entity_find`, `@world_click`, `@target`, `@move_to`, `@camera`; and `@target_player`, which the runner expands for [two-player rows](#two-player-rows)) and the combat tools (#1100: `@use_ability`, `@combat_log`, `@die_and_respawn`, `@wait_event`, `@hotbar`), and the planned ones (UI and items: `@window_read`, `@window_click_row`, `@chat_log`, `@inventory`, `@player_state`, `@item_action`, `@drag_drop`; and `@chat_send`, `@cache_files`). Write planned tools by alias in specs: when one lands under another name, the fix is one line in the table. A tool that reports how it drove the game (`native_level` as a word, `real_input` / `slash_command` / `ui_lua` / `server_shortcut`, as the world tools do, or as `{tier: "N1".."X"}`, as the combat tools do) overrides its table tier when it fell back lower, so a `client_target` that used `targetUnit` counts as N3.
+`crates/lab/src/uat/tools.rs` maps each capability to the tool that provides it and the most native tier it can claim: `@world_click` is `client_world_click` at N1, `@inventory` is the read `client_inventory`. It lists the tools on `main`, including the world tools (#1099: `@entity_find`, `@world_click`, `@target`, `@move_to`, `@camera`; and `@target_player`, which the runner expands for [two-player rows](#two-player-rows)) and the combat tools (#1100: `@use_ability`, `@combat_log`, `@die_and_respawn`, `@wait_event`, `@hotbar`), the ability lab capabilities (AB-L3: `@dummy`, `@cooldowns_reset`, `@clear_effects` and the server read `@ability_state`, below), and the planned ones (UI and items: `@window_read`, `@window_click_row`, `@chat_log`, `@inventory`, `@player_state`, `@item_action`, `@drag_drop`; and `@chat_send`, `@cache_files`). Write planned tools by alias in specs: when one lands under another name, the fix is one line in the table. A tool that reports how it drove the game (`native_level` as a word, `real_input` / `slash_command` / `ui_lua` / `server_shortcut`, as the world tools do, or as `{tier: "N1".."X"}`, as the combat tools do) overrides its table tier when it fell back lower, so a `client_target` that used `targetUnit` counts as N3.
+
+The ability lab capabilities are the AB-L2 dot commands, typed into chat at tier G. The runner builds the line from `args`, types it, and waits up to 5 s for the command's own feedback line; a refusal (`.dummy: ...`) or no reply fails the action, so a teardown that cleared nothing is flagged, not trusted.
+
+| Capability | `args` | Types | Confirms with |
+|---|---|---|---|
+| `@dummy` | `disposition` (`hostile` default, `friendly`, `clear`), `template_id` | `.dummy friendly 34` | `dummy [<id>] placed`, and stores `${dummy_id}` (a number) |
+| `@cooldowns_reset` | `ability_id` (optional) | `.cooldowns reset [id]` | `cooldowns reset ...:` |
+| `@clear_effects` | `name` (optional) | targets `name` with real input first, then `.cleareffects` (it acts on the selection, else the caller) | `cleareffects [<id>]`. A target that does not take fails the action with nothing typed |
+| `@ability_state` | `entity_id` (default: the lab character) | the server read `server_ability_state`, for `source = "server"` clauses | |
 
 `cargo test -p cimmeria-lab` parses and validates every committed spec, so a typo in a field name or a dangling label fails the build.
 
