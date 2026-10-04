@@ -487,10 +487,10 @@ UI: reconstruction, commit checkpoints, resource/prefix ownership and recovery
 remain required. Canonical contract: desktop docs/repair.md.
 
 
-Repair staging now reconstructs a fresh signed seed through the shared installer,
-preserving the old tree and handing root/work locks to the future commit owner.
-Pre-cancel performs no download; lost observation retains output behind recovery.
-Seven focused tests pass, including delivered-handoff abandonment and late
-cancellation. Dropping Prepared notifies a retained observer without locking state
-in Drop; recovery is published without restart. Native Wine repair binding,
-replacement/recovery and UI remain open. `docs/repair.md` records the staging validation boundary.
+Repair staging reconstructs a fresh signed seed and retains root/work locks.
+Retained native commit now checkpoints the two renames, preserves the old backup
+through durable success and republishes the original identity receipt. Recorded
+precommit cancellation preserves the old tree; lost observers never abort commit.
+Thirteen focused tests cover rename boundaries, failed terminal persistence,
+foreign paths and Unix links. Backup cleanup, restart recovery, Wine binding and
+UI remain open. Canonical contract/evidence: desktop docs/repair.md.

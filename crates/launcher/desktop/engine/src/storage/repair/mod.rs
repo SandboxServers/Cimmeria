@@ -1,5 +1,6 @@
 //! Same-release reconstruction identity. Admission never mutates game content.
 use super::*;
+pub mod commit;
 pub mod preparation;
 use crate::OperationKind;
 use sha2::{Digest, Sha256};

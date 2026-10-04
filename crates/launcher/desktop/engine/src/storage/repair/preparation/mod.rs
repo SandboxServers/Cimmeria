@@ -9,8 +9,8 @@ use tokio_util::sync::CancellationToken;
 
 pub struct Prepared {
     pub plan: Plan,
-    _root_owner: File,
-    _work_owner: File,
+    pub(super) _root_owner: File,
+    pub(super) _work_owner: File,
     // Dropping a delivered handoff notifies a retained observer without taking
     // the state mutex in Drop (the caller may already hold it).
     _handoff: Option<oneshot::Sender<()>>,
@@ -57,7 +57,7 @@ pub fn prepare_native(
         .map_err(|_| StorageError::Io)?;
     start(state, id, http, catalog::URL.into())
 }
-fn start(
+pub(super) fn start(
     state: Arc<Mutex<DesktopState>>,
     id: Uuid,
     http: reqwest::Client,
@@ -230,7 +230,7 @@ fn claim(plan: Plan) -> Result<Prepared, StorageError> {
         _handoff: None,
     })
 }
-fn finish_failure(state: &Mutex<DesktopState>, id: Uuid, failure: Failure) -> Failure {
+pub(super) fn finish_failure(state: &Mutex<DesktopState>, id: Uuid, failure: Failure) -> Failure {
     let Ok(mut owner) = state.lock() else {
         return Failure::ReconciliationRequired;
     };

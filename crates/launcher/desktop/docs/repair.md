@@ -1,7 +1,7 @@
 # Repair design contract
 
-**Status: native admission and fresh reconstruction implemented; replacement,
-recovery and UI remain planned.** This contract defines the replacement workflow and its gates.
+**Status: native admission, reconstruction and retained replacement implemented;
+backup cleanup, restart recovery, Wine repair and UI remain unfinished.** This contract defines the replacement workflow and its gates.
 Repair is not yet an available user command. See
 [maintenance](maintenance.md) for implemented uninstall.
 
@@ -86,8 +86,8 @@ Before UI release, run real Effect service logic UAT through native persistence:
 confirmation/dismissal, preinspection, one mutation under duplicate clicks,
 precommit cancellation, no replay after timeout/reconnect, explicit recovery and
 preserved consent. Add visual/manual UAT separately and state its coverage.
-Admission and native staging below are implemented; Wine repair adaptation,
-replacement, fault-recovery and UI validation gates above are still open.
+Admission, native staging and retained replacement below are implemented. Wine
+repair adaptation, restart recovery, cleanup and UI validation gates remain open.
 
 ## Implemented admission boundary
 
@@ -111,8 +111,8 @@ untouched, missing content is recorded, confirmation/revision/owner mismatches
 and held locks refuse admission, conflicting stages are preserved, plan tampering
 fails validation, and reopen retains reconciliation gating and consent. These
 are persistence/ownership fixtures, not reconstruction or platform rename tests.
-The admission lock ends when the call returns; the future retained worker must
-reacquire and revalidate all resources before touching game files. No frontend
+The admission lock ends when the call returns; the retained worker reacquires
+and revalidates ownership before touching game files. No frontend
 behavior or JS/visual UAT is claimed for this internal API packet.
 
 ## Implemented preparation boundary
@@ -124,7 +124,7 @@ input. The permanent installation identity remains unchanged.
 
 Preparation rechecks original-tree presence, refuses an existing backup/work
 path, and holds the installed-root and work-owner locks. Successful handoff
-returns `Prepared` with both locks retained for a future commit coordinator.
+returns `Prepared` with both locks retained for the commit coordinator.
 `repair-prepared-<work-id>.json` records completed staging. This layer never
 renames, replaces or deletes the existing game. Pre-cancellation avoids staging
 and downloads. A receiver lost before handoff preserves output and marks the
@@ -143,7 +143,44 @@ notification does not acquire the state mutex, so callers may release a handoff
 while holding that mutex. Both trees remain unchanged, including when cancellation
 arrives after staging. Seven focused repair tests pass
 (`20261004-085543-45495`), including abandonment after delivery and cancellation.
-The commit coordinator must still retain the handoff and recheck cancellation
-before the first commit mutation. Receiving
-`Prepared` alone is not permission to replace the game. The Wine repair adapter,
-replacement/recovery and UI remain unfinished. No frontend/visual UAT is claimed.
+The commit coordinator retains the handoff and checks recorded cancellation
+before the first commit mutation. Receiving `Prepared` alone is not permission
+to replace the game. The Wine repair adapter, restart recovery, cleanup and UI
+remain unfinished. No frontend/visual UAT is claimed.
+
+## Implemented replacement boundary
+
+`commit_native` consumes `Prepared`, retaining its root/work locks throughout
+replacement. It rewinds and rereads ownership through those locked handles and
+validates the current plan, prepared record, signed release and stage. Recursive
+checks reject links, reparse points and special files in both work and original
+trees. Reopening a locked owner file is avoided for Windows compatibility.
+
+Cancellation is serialized with commit entry: an already-recorded cancellation
+preserves the original game. Once commit holds the state lock, queued cancellation
+cannot interrupt replacement. Dropping the result observer does not abort it.
+Checkpoints advance Planned → OriginalMoved → Promoted → Published. Existing
+`game` moves to the owned backup, then the prepared stage becomes `game`; an
+originally missing game needs no backup. The replacement is checked and its
+receipt published with the unchanged installation identity before terminal
+success. These are separate renames, not an atomic swap.
+
+Errors retain reconciliation gating; an existing commit record refuses replay.
+The old backup remains even after success. Backup cleanup and explicit restart
+recovery are not implemented. Public entry is native-Windows-only; private Mac
+fixtures do not establish Windows rename or power-loss behavior. Unix directory
+syncs are issued; Windows directory power-loss durability remains a validation
+gate. Content checks remain ledger/layout evidence, not an exhaustive corruption
+scan or runtime/game readiness.
+
+Thirteen focused repair tests passed (`20261004-090059-47640`). The replacement
+fixtures cover damaged and absent originals, unchanged identity/preferences,
+observer loss, precommit cancellation, all eight injected rename/checkpoint
+boundaries, refused replay, failed terminal persistence, conflicting backup or
+checkpoint paths, and nested Unix links in either tree. Each injected boundary
+asserts it was actually reached. This is native ZIP-fixture evidence on macOS,
+not full-client repair, native Windows rename validation or frontend/visual UAT.
+
+The full engine suite passed 269 tests with 12 ignored environment-dependent
+cases (`20261004-090148-48013`); strict clippy passed
+(`20261004-090110-47779`).
