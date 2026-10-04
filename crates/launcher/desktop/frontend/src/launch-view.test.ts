@@ -37,3 +37,11 @@ test('Play timeout leaves one attempt uncertain and refuses another mutation', {
  assert.equal(Result.isFailure(yield* Effect.result(service.play('another'))),true);assert.equal(calls,1);
  }).pipe(Effect.provide(launchBridgeLayer(async request=>{if(request.command==='inspect')return initial();calls++;return new Promise(()=>{});})),Effect.provide(TestClock.layer()))));
 });
+
+test('minimum-version Play rejection is distinct from transport uncertainty',async()=>{
+ const status=initial();let plays=0;const {document,window}=parseHTML(html);
+ const app=mountLaunch(document,async(_,{request}:any)=>{if(request.command==='play'){plays++;throw 'launcher_too_old';}return status;});
+ try{await app.ready;await new Promise(resolve=>setImmediate(resolve));document.getElementById('launch')!.dispatchEvent(new window.Event('click'));await app.settled();await new Promise(resolve=>setImmediate(resolve));
+ assert.equal(plays,1);assert.match(document.getElementById('launch-status')!.textContent!,/Update the launcher/);assert.deepEqual(status,initial());
+ }finally{await app.dispose();}
+});

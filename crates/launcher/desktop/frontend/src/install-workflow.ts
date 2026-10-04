@@ -20,7 +20,7 @@ export type InstallRequest = {command:'inspect';schema_version:1} |
   {command:'recover_repair'|'abandon_repair'|'cleanup_repair';schema_version:1;operation_id:string;operation_revision:number;confirmed:true} |
   {command:'cancel';schema_version:1;operation_id:string} |
   {command:'resume'|'reconcile';schema_version:1;operation_id:string;operation_revision:number};
-const codes = ['unsupported_schema','platform_unavailable','io','corrupt_state','invalid_directory','stale_revision',
+const codes = ['launcher_too_old','unsupported_schema','platform_unavailable','io','corrupt_state','invalid_directory','stale_revision',
   'busy','unknown_operation','identity_conflict','recovery_required','persistence_uncertain','manifest_unavailable',
   'invalid_manifest','signing_key_unavailable','transport','schema'] as const;
 export class InstallFailure extends Data.TaggedError('InstallFailure')<{readonly code:typeof codes[number]}> {}

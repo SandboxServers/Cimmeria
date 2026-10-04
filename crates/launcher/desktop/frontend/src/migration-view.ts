@@ -8,7 +8,7 @@ export function migrationText(s:MigrationState):string {
   if(s.error==='source_changed'||s.error==='stale_revision')return 'The source or settings changed. Select the folders again and review a fresh preview.';
   if(s.error==='busy'||s.error==='in_use')return 'Close the old launcher and wait for other operations to finish, then recheck.';
   if(s.error==='conflict')return 'Import conflicts with saved identity or desktop installation history. Existing settings and files are preserved.';
-  if(['missing_source','invalid_source','too_large','unsafe_file','unsupported_schema'].includes(s.error))return 'These folders do not contain supported legacy records. Check launcher-config.json, install.json and launcher-installed.json, then choose again.';
+  if(['corrupt','missing_source','invalid_source','too_large','unsafe_file','unsupported_schema'].includes(s.error))return 'These folders do not contain supported legacy records. Check launcher-config.json, install.json and launcher-installed.json, then choose again.';
   return 'Import result could not be confirmed. Recheck saved status before continuing; import was not retried. Restart the launcher if storage requires reopening.';
  }
  if(s.status?.native.requires_reopen)return 'Restart the launcher to recover saved import state before continuing.';

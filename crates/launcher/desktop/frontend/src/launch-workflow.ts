@@ -14,7 +14,7 @@ export type Request={command:'inspect';schema_version:1}|{command:'play';schema_
 export class LaunchFailure extends Data.TaggedError('LaunchFailure')<{readonly code:string}> {}
 export class LaunchBridge extends Context.Service<LaunchBridge,{invoke:(request:Request)=>Effect.Effect<LaunchStatus,LaunchFailure>}>()('launcher/LaunchBridge') {}
 export const launchBridgeLayer=(invoke:(request:Request)=>Promise<unknown>)=>Layer.succeed(LaunchBridge,{
-  invoke:(request)=>Effect.tryPromise({try:()=>invoke(request),catch:()=>new LaunchFailure({code:'transport'})}).pipe(
+  invoke:(request)=>Effect.tryPromise({try:()=>invoke(request),catch:error=>new LaunchFailure({code:error==='launcher_too_old'?'launcher_too_old':'transport'})}).pipe(
     Effect.timeout('5 seconds'),Effect.catchTag('TimeoutError',()=>Effect.fail(new LaunchFailure({code:'transport'}))),
     Effect.flatMap(value=>Schema.decodeUnknownEffect(LaunchStatus,{onExcessProperty:'error'})(value).pipe(Effect.mapError(()=>new LaunchFailure({code:'schema'})))),
   )});

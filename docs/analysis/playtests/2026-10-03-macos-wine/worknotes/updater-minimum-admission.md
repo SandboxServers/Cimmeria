@@ -92,3 +92,11 @@ version validation, trusted release discovery, signed updater artifacts,
 platform installation/relaunch, rollback and native Windows proof remain
 separate release gates. No live game, production network, telemetry or updater
 execution is exercised.
+
+## Shell integration
+
+The native minimum rejection maps to `launcher_too_old` at IPC. Install and Play
+show an explicit update requirement rather than a transport failure. Frontend
+guards assert one dispatch and unchanged state. Network update/download/apply
+controls remain a separate packet. Migration corruption decoding was also
+corrected during combined integration after independent review.

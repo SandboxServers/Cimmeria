@@ -216,3 +216,13 @@ early exit, lost reply, reopened unknown state and unchanged consent.
 These checks do not validate real injection, Wine/Windows execution, D3D9/x87,
 login, world entry or packaged visual/keyboard behavior. Keep the human checklist
 above as a separate gate.
+
+## Local lab development tools
+
+The runtime-probe workflow separately builds Windows-native `cimmeria-lab`,
+`sgw-start32` and the lab-bridge telemetry DLL for supervised game UAT. They are
+retained as `windows-local-lab-tools` and never enter the player app bundle.
+Follow the [lab rulebook](../../../../docs/guides/live-research-lab.md). A local
+UAT session must use a fresh loopback bridge token and an empty upload endpoint;
+no live mint, telemetry upload or server-side lab access is part of this campaign.
+Native Windows compilation does not establish Wine bridge compatibility.

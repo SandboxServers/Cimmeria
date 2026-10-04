@@ -164,3 +164,8 @@ Windows-helper ownership requirements. It does not establish game compatibility.
 - [Play controls and native lifecycle](worknotes/play-integration.md)
 - [Repair review fixes and production-host UAT](worknotes/repair-review-fixes.md)
 - [Updater parity research](worknotes/updater-parity-research.md)
+
+- [Migration Settings UI](worknotes/migration-settings-ui.md)
+- [Minimum-launcher native admission gates](worknotes/updater-minimum-admission.md)
+- [Observability discovery](worknotes/observability-discovery.md)
+- [Fresh observability implementation assignment](worknotes/observability-implementation-assignment.md)

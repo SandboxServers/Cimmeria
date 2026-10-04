@@ -15,7 +15,7 @@ export const MigrationStatus=Schema.Struct({schema_version:Schema.Literal(1),nat
 export type MigrationStatus=typeof MigrationStatus.Type;
 export type Request={command:'inspect'|'dismiss';schema_version:1}|{command:'confirm';schema_version:1;confirmation:string;preferences_revision:number;confirmed:true};
 export class MigrationFailure extends Data.TaggedError('MigrationFailure')<{readonly code:string}> {}
-const codes=new Set(['busy','missing_source','unsupported_schema','invalid_source','source_changed','conflict','io','stale_revision','persistence_uncertain','too_large','unsafe_file','in_use']);
+const codes=new Set(['corrupt','busy','missing_source','unsupported_schema','invalid_source','source_changed','conflict','io','stale_revision','persistence_uncertain','too_large','unsafe_file','in_use']);
 const failure=(e:unknown)=>{const v=typeof e==='object'&&e!==null&&'storage' in e?e.storage:e;return new MigrationFailure({code:typeof v==='string'&&codes.has(v)?v:'transport'});};
 export class MigrationBridge extends Context.Service<MigrationBridge,{call:(request:Request|'choose')=>Effect.Effect<MigrationStatus,MigrationFailure>}>()('launcher/MigrationBridge') {}
 export const migrationBridgeLayer=(call:(request:Request|'choose')=>Promise<unknown>)=>Layer.succeed(MigrationBridge,{

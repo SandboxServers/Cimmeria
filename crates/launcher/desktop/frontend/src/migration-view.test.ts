@@ -31,3 +31,18 @@ test('cancelled chooser and dismissed preview cannot commit; source errors deman
  click('choose-legacy');await app.settled();await settle();click('confirm-migration');await app.settled();await settle();assert.match(get('migration-status').textContent!,/fresh preview/);click('confirm-migration');assert.equal(commits,1);
  }finally{await app.dispose();}
 });
+
+test('malformed legacy source is actionable and cannot be confirmed',async()=>{
+ const status=initial();let confirms=0;const {document,window}=parseHTML(html);
+ const app=mountMigration(document,async(command,args:any)=>{
+  if(command==='choose_legacy_source')throw {storage:'corrupt'};
+  if(args.request.command==='confirm')confirms++;
+  return status;
+ });
+ try{await app.ready;await settle();document.getElementById('choose-legacy')!.dispatchEvent(new window.Event('click'));await app.settled();await settle();
+ assert.match(document.getElementById('migration-status')!.textContent!,/supported legacy records/);
+ assert.doesNotMatch(document.getElementById('migration-status')!.textContent!,/Restart/);
+ document.getElementById('confirm-migration')!.dispatchEvent(new window.Event('click'));assert.equal(confirms,0);
+ assert.deepEqual(status,initial());
+ }finally{await app.dispose();}
+});

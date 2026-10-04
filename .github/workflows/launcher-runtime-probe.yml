@@ -5,6 +5,8 @@ on:
     paths:
       - 'crates/launcher/desktop/runtime-probe/**'
       - 'crates/client-launch/**'
+      - 'crates/lab/**'
+      - 'crates/client-telemetry/**'
       - 'crates/client-patches/**'
       - 'crates/client-hookgate/**'
       - 'crates/patch-wire/**'
@@ -19,6 +21,8 @@ on:
     paths:
       - 'crates/launcher/desktop/runtime-probe/**'
       - 'crates/client-launch/**'
+      - 'crates/lab/**'
+      - 'crates/client-telemetry/**'
       - 'crates/client-patches/**'
       - 'crates/client-hookgate/**'
       - 'crates/patch-wire/**'
@@ -71,4 +75,32 @@ jobs:
             target/runtime-probe/i686-pc-windows-msvc/debug/cimmeria-prerequisite-worker.exe
             target/runtime-probe/i686-pc-windows-msvc/debug/cimmeria-launch-worker.exe
             target/client-patches/i686-pc-windows-msvc/debug/cimmeria_client_patches.dll
+          retention-days: 7
+
+  local-lab-tools:
+    # Development UAT only: these never enter the player launcher bundle.
+    runs-on: windows-latest
+    timeout-minutes: 30
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@v7
+      - uses: ./.github/actions/rust-toolchain
+        with:
+          targets: i686-pc-windows-msvc
+      - name: Build native lab supervisor and injection tools
+        run: |
+          bash tools/build-lane/lane.sh cargo build --locked -p cimmeria-lab --target-dir target/local-lab
+          bash tools/build-lane/lane.sh cargo build --locked -p cimmeria-client-launch --bin sgw-start32 --target i686-pc-windows-msvc --target-dir target/local-lab
+          bash tools/build-lane/lane.sh cargo build --locked -p cimmeria-client-telemetry --features lab-bridge --target i686-pc-windows-msvc --target-dir target/local-lab
+          sha256sum target/local-lab/debug/cimmeria-lab.exe target/local-lab/i686-pc-windows-msvc/debug/sgw-start32.exe target/local-lab/i686-pc-windows-msvc/debug/cimmeria_client_telemetry.dll
+      - name: Retain local-only UAT tools
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        with:
+          name: windows-local-lab-tools
+          path: |
+            target/local-lab/debug/cimmeria-lab.exe
+            target/local-lab/i686-pc-windows-msvc/debug/sgw-start32.exe
+            target/local-lab/i686-pc-windows-msvc/debug/cimmeria_client_telemetry.dll
           retention-days: 7

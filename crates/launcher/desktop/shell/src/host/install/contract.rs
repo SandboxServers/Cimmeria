@@ -106,6 +106,7 @@ impl InstallCommand {
 pub enum JobError {
     UnsupportedSchema,
     PlatformUnavailable,
+    LauncherTooOld,
     Io,
     CorruptState,
     InvalidDirectory,
@@ -153,6 +154,7 @@ impl From<IntentError> for JobError {
         match error {
             IntentError::Storage(e) => e.into(),
             IntentError::Operation(e) => e.into(),
+            IntentError::LauncherTooOld => Self::LauncherTooOld,
         }
     }
 }

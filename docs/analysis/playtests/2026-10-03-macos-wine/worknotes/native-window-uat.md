@@ -75,3 +75,20 @@ code requirement did not match the newly rebuilt development app and issued a
 new `AUTHREQ_PROMPTING`. A process sample placed inspection in installed-owner
 file reading. This is an unresolved OS permission wait, not a failed game launch;
 Play has not been pressed. The operator was asked to resolve the protected prompt.
+
+## First Play and graphics diagnosis
+
+After the second access decision, the unchanged app session reached Ready to
+Play. One Play request observed a guest process and an early exit with code 3;
+the UI reported the early exit and enabled a new explicit attempt. The patch
+DLL log proved hook installation, not rendering. No telemetry DLL was loaded.
+
+A separate controlled diagnostic, with the launcher closed and installation,
+prefix, runtime-cache and launcher locks retained, reproduced the same exit.
+Local bounded Wine stderr reported D9VK missing `VK_KHR_surface`. Selecting
+only the bundled `lib/vulkan/icd.d/MoltenVK_icd.json` through `VK_DRIVER_FILES`
+kept the game running. The operator reported an SGW login screen and fullscreen
+minimization on focus loss. These are operator observations: the computer-use
+provider rejected both Wine and SGW application names. Login/world entry has
+not been confirmed. The new production environment guard is in `wine.rs` with
+revert-verified tests; a rebuilt production-path Play pass is still required.

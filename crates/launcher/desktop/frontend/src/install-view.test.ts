@@ -260,3 +260,11 @@ for(const state of ['running','succeeded','reconciliation_required'] as const)te
  try{await app.ready;await flush();assert.equal(ui.get('install').hidden,true);assert.equal(ui.get('install-status').textContent,'');}
  finally{await app.dispose();}
 });
+
+test('minimum-version rejection preserves state and reports update requirement',async()=>{
+ const ui=dom();const status=initial();let installs=0;
+ const app=mountInstall(ui.document,async(_,{request}:any)=>{if(request.command==='install'){installs++;throw 'launcher_too_old';}return status;});
+ try{await app.ready;await flush();ui.click('install');ui.click('install');await app.settled();await flush();
+ assert.equal(installs,1);assert.match(ui.get('install-status').textContent!,/Update the launcher/);assert.deepEqual(status,initial());
+ }finally{await app.dispose();}
+});

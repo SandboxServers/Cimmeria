@@ -4,6 +4,7 @@ import { installBridgeLayer, InstallFailure, InstallStatus, InstallViewState, ma
 import type { Invoke } from './view';
 class Installation extends Context.Service<Installation,Effect.Success<typeof makeInstallWorkflow>>()('launcher/Installation') {}
 const errors:Record<InstallFailure['code'],string>={
+  launcher_too_old:'Update the launcher before installing or playing this release. Your game files are preserved.',
   transport:'Could not confirm the operation. Recheck status before continuing.',
   schema:'The interface and installer versions do not match.',unsupported_schema:'This installer state requires a different launcher version.',
   platform_unavailable:'The compatibility helper is unavailable. Check that the launcher files are intact.',io:'Cannot read or write installation state. Check disk space and permissions.',
