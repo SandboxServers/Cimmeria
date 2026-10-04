@@ -35,9 +35,9 @@ many tests also updates the catalogue.
 
 | Metric | Count |
 |---|---:|
-| Tests (`#[test]` / `#[tokio::test]`) | 10,083 |
-| Files with tests | 1,713 |
-| Gated in CI (every crate but CI's exclude list) | 8,674 |
+| Tests (`#[test]` / `#[tokio::test]`) | 10,089 |
+| Files with tests | 1,715 |
+| Gated in CI (every crate but CI's exclude list) | 8,680 |
 | Live-DB tests (`require_db_or_skip!` in the body) | 1,546 |
 | Inventory threshold (5% of the tests) | 504 |
 
@@ -90,7 +90,7 @@ with no file in this directory yet.
 | `crates/cell-content` | `cimmeria-cell-content` | 830 | 121 | 477 | yes | none |
 | `crates/cell-combat` | `cimmeria-cell-combat` | 790 | 137 | 45 | yes | none |
 | `crates/base-methods` | `cimmeria-base-methods` | 593 | 127 | 427 | yes | none |
-| `crates/cell` | `cimmeria-cell` | 535 | 119 | 19 | yes | none |
+| `crates/cell` | `cimmeria-cell` | 537 | 120 | 19 | yes | none |
 | `crates/client-telemetry` | `cimmeria-client-telemetry` | 518 | 101 | 0 | no | none |
 | `crates/cell-world` | `cimmeria-cell-world` | 485 | 85 | 32 | yes | none |
 | `crates/cell-console` | `cimmeria-cell-console` | 458 | 71 | 0 | yes | none |
@@ -133,10 +133,10 @@ with no file in this directory yet.
 | `crates/wire-log` | `cimmeria-wire-log` | 27 | 6 | 0 | yes | none |
 | `crates/patchset` | `cimmeria-patchset` | 23 | 5 | 0 | yes | none |
 | `crates/client-hookgate` | `cimmeria-client-hookgate` | 20 | 2 | 0 | yes | none |
+| `crates/lab-mcp` | `cimmeria-lab-mcp` | 13 | 3 | 0 | yes | none |
 | `crates/sgw-testhost` | `cimmeria-sgw-testhost` | 12 | 2 | 0 | yes | none |
 | `crates/upk` | `cimmeria-upk` | 12 | 3 | 0 | yes | none |
 | `tools/ContentEditor` | `cimmeria-content-editor` | 12 | 1 | 0 | no | [tools-contenteditor.md](tools-contenteditor.md) |
-| `crates/lab-mcp` | `cimmeria-lab-mcp` | 9 | 2 | 0 | yes | none |
 | `crates/observability` | `cimmeria-observability` | 8 | 2 | 0 | yes | none |
 | `src-tauri` | `cimmeria-app` | 6 | 2 | 0 | no | [tauri-app.md](tauri-app.md) |
 | `crates/defs` | `cimmeria-defs` | 5 | 1 | 0 | yes | [defs.md](defs.md) |
