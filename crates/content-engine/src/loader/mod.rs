@@ -133,13 +133,10 @@ pub fn build_chains_from_rows(
         // The description is the chain's name in logs (`chain_name`). A
         // chain without one gets an empty name, never a made-up
         // `chain_<id>`: Rule 6 leaves an unknown name off the line.
-        let name = row
-            .description
-            .as_deref()
-            .map(str::trim)
-            .unwrap_or_default()
-            .to_owned();
-        let chain_name = (!name.is_empty()).then_some(name.as_str());
+        // A blank or placeholder description is no name (the NameBook's
+        // check, so `chain_name` agrees with `book().chain(id)`).
+        let chain_name = cimmeria_names::classify(row.description.as_deref()).ok();
+        let name = chain_name.unwrap_or_default().to_owned();
 
         // Build conditions (shared across all triggers for this chain).
         let mut cond_list = conditions_by_chain.remove(&chain_id).unwrap_or_default();

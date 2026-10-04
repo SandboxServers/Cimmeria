@@ -90,10 +90,10 @@ pub struct Chain {
 
 impl Chain {
     /// The name for a `chain_name` log field: `None` when the chain has
-    /// none, so the field is left off rather than written blank (Rule 6).
+    /// none or only a seed placeholder (the NameBook's check), so the field
+    /// is left off rather than written blank (Rule 6).
     pub fn label(&self) -> Option<&str> {
-        let name = self.name.trim();
-        (!name.is_empty()).then_some(name)
+        cimmeria_names::classify(Some(&self.name)).ok()
     }
 
     /// Is at least one of this chain's conditions a read of per-player
