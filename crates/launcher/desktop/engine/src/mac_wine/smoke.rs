@@ -96,6 +96,41 @@ async fn native_windows_helper_extracts_zip_under_managed_wine() {
             result: crate::HelperResult::Completed
         }
     );
+    // Simulate reopening after extraction but before a content terminal commit.
+    drop(adapter);
+    let state_root = state.lock().unwrap().state_root().to_path_buf();
+    drop(state);
+    tokio::task::spawn_blocking(move || {
+        let reopened = DesktopState::open(&state_root).unwrap();
+        assert_eq!(
+            reopened
+                .operations()
+                .snapshot()
+                .operation
+                .as_ref()
+                .unwrap()
+                .state,
+            OperationState::ReconciliationRequired
+        );
+        let _stopped = recovery::stop_for_recovery(&reopened).unwrap();
+        assert_eq!(
+            std::fs::read(stage.join("Unicode 星門/hello.txt")).unwrap(),
+            b"headless fixture"
+        );
+        // Quiescence neither deletes content nor marks the operation complete.
+        assert_eq!(
+            reopened
+                .operations()
+                .snapshot()
+                .operation
+                .as_ref()
+                .unwrap()
+                .state,
+            OperationState::ReconciliationRequired
+        );
+    })
+    .await
+    .unwrap();
 }
 
 fn file_digest(path: &Path) -> [u8; 32] {

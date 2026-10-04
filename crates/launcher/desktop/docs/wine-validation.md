@@ -290,3 +290,26 @@ were verified. The resource-resolver admission/cancellation smoke also passed
 against that actual app resource directory in 1.872 seconds, without opening a
 window. This does not establish final startup or gameplay readiness.
 The app was not opened.
+
+
+## Mac Wine recovery inspection
+
+Reconciliation distinguishes absent launch evidence from ambiguous launches.
+No helper journal permits content inspection without a runtime or spawn. An
+observed Finished result (Completed, Cancelled, Failed or NotStarted) requires
+recorded-host absence; signal zero never sends a terminating signal. Live/reused
+PIDs, LaunchIntent, HostStarted and Uncertain results stay gated. A NotStarted
+result may legitimately have no PID.
+
+The stop path verifies the pinned backend, exact canonical prefix ownership and
+cached runtime tree, holding prefix/cache locks while running bounded `-k/-w`
+and through the subsequent content/receipt checks and journal commit. There is no
+network fallback, shared-profile access, deletion or resume. Ambiguous startup
+and descendant crash cases require further evidence before enabling recovery.
+
+The explicitly rerun ZIP smoke passed in 22.685 seconds after dropping/reopening
+state; it stopped the verified prefix and preserved extracted output and the
+recovery gate. Final checks, including stop/wait failure and timeout guards,
+passed 212 engine tests/eight ignored, 15 shell tests/one ignored and combined
+strict clippy. JS logic UAT passed reconciliation availability without resume or
+success inference; native IPC was mocked and visual behavior was not exercised.

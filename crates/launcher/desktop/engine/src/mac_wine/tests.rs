@@ -7,7 +7,7 @@ use ed25519_dalek::{Signer, SigningKey};
 fn digest(path: &Path) -> [u8; 32] {
     Sha256::digest(std::fs::read(path).unwrap()).into()
 }
-fn fixture() -> (
+pub(super) fn fixture() -> (
     tempfile::TempDir,
     Arc<Mutex<DesktopState>>,
     Uuid,

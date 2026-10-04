@@ -1,4 +1,4 @@
-//! Reconcile interrupted native content work without replaying a mutation.
+//! Reconcile interrupted content work without replaying a mutation.
 use super::*;
 use crate::{catalog::VerifiedRelease, OperationState};
 
@@ -12,9 +12,10 @@ pub enum Recovery {
     Partial,
 }
 
-/// Native-only and serialized with command admission. Applies only to this
-/// launcher's in-process content worker, not an unobserved Wine guest process.
-/// Never downloads, extracts, deletes or resumes anything.
+/// Serialized with command admission on a native blocking thread. Mac Wine
+/// recovery first proves the recorded host absent, verifies the cached runtime,
+/// then stops and waits for the exclusively owned extraction prefix.
+/// Never downloads, extracts, deletes or resumes content.
 pub fn reconcile(
     state: &mut DesktopState,
     release: &VerifiedRelease,
@@ -35,6 +36,13 @@ pub fn reconcile(
     if release.digest() != intent.manifest_digest {
         return Err(ContractError::IdentityConflict.into());
     }
+    #[cfg(target_os = "macos")]
+    let _stopped_prefix = if !intent.backend.is_native() {
+        Some(crate::mac_wine::recovery::stop_for_recovery(state)?)
+    } else {
+        None
+    };
+    #[cfg(not(target_os = "macos"))]
     if !intent.backend.is_native() {
         return Err(ContractError::InvalidTransition.into());
     }

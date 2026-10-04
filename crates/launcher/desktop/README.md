@@ -562,8 +562,9 @@ publication follow extraction. Observer disposal does not abort the task.
 
 `RosettaRequired` and `RuntimeUnavailable` outcomes now have typed frontend
 messages, distinct from cancellation and uncertainty. Packaged resource binding now enables Mac content installation when verified;
-Wine resume/recovery remains unsupported. A caller hashing
-a local helper file is not an artifact trust policy. Native Wine recovery remains
+Wine resume remains unsupported; conservative Mac reconciliation is described
+below. A caller hashing
+a local helper file is not an artifact trust policy. Native Windows replay of Wine intents remains
 rejected; this API alone does not establish packaged startup or game readiness.
 
 An explicitly run retained-worker fixture passed in 22.596 seconds, combining
@@ -583,8 +584,8 @@ The shell resolves only `resource_dir/windows/cimmeria-archive-worker.exe` and
 checks it against compile-time `CIMMERIA_WINDOWS_HELPER_SHA256`. It verifies again
 before release fetching/admission and persists the immutable Wine backend.
 Missing, mismatched or unconfigured helpers leave Mac installation unavailable.
-Status now declares `can_resume`/`can_reconcile`; unsupported Wine recovery
-controls stay hidden and status rechecks do not invoke native recovery.
+Status now declares `can_resume`/`can_reconcile`; Wine resume stays hidden; eligible Mac reconciliation is now exposed as
+described below.
 The engine continues to reject native replay of Wine intents.
 
 See the [repeatable helper staging and Mac build recipe](docs/wine-validation.md#packaged-helper-staging-and-mac-build).
@@ -617,4 +618,27 @@ Final engine checks passed 209 tests with eight ignored entries; combined strict
 clippy and `npm run uat:install` passed. That JS pass uses mocked installation
 IPC, not native filesystem/Wine or visual UAT. The existing Windows launcher now
 exports the shared install module publicly, matching its progress API and fixing
-unused/dead-code lint failures; native Windows verification awaits the next CI.
+unused/dead-code lint failures; native Windows clippy passed on commit `b2032cc63` (run 37194766086);
+final-revision Windows build/tests remain required.
+
+## Conservative Mac Wine reconciliation
+
+Mac Wine operations awaiting reconciliation now expose inspection through
+`can_reconcile`; `can_resume` remains false. With no helper journal, the durable
+protocol establishes that no helper was spawned, so inspection needs no runtime
+or download. Otherwise, only observed finished helper results are eligible.
+Recorded hosts must be absent: signal zero checks liveness but never kills a PID,
+and live/reused PIDs keep recovery gated. LaunchIntent, HostStarted and Uncertain
+records remain blocked pending startup/descendant crash validation.
+
+Recovery locks the canonical, intent-matching private prefix, verifies the full
+cached runtime under its cache lock, then runs prefix-scoped `wineserver -k/-w`
+with ten-second limits per command. Both ownership guards remain held through
+content/receipt inspection and the journal decision. It never downloads, deletes,
+resumes or targets shared profiles. Stop/wait failure cannot authorize success.
+
+The reopened-state managed-Wine ZIP smoke passed in 22.685 seconds, stopping the
+verified prefix while preserving output and unresolved recovery state. This is
+not proof of arbitrary crash recovery. Final checks passed 212 engine tests/eight ignored, 15 shell tests/one ignored
+and combined strict clippy. JS logic UAT passed enabled reconciliation without
+resume or inferred success, using mocked native IPC. No native visual or gameplay UAT is claimed.

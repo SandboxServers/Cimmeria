@@ -22,6 +22,7 @@ use std::{
 use tokio_util::sync::CancellationToken;
 use uuid::Uuid;
 mod paths;
+pub(crate) mod recovery;
 mod resource;
 pub use resource::HelperResource;
 #[derive(Debug, thiserror::Error)]
@@ -120,60 +121,10 @@ impl WineSeedExtractor {
         })
     }
     async fn stop_prefix(&self) -> Result<(), WineError> {
-        let environment = self.command()?.environment;
-        // This prefix is exclusive to the extraction attempt, never a user's
-        // existing profile or a running game. -w confirms server lock release.
-        for argument in ["-k", "-w"] {
-            let result = tokio::process::Command::new(self.runtime.join("bin/wineserver"))
-                .arg(argument)
-                .env_clear()
-                .envs(&environment)
-                .stdin(std::process::Stdio::null())
-                .stdout(std::process::Stdio::null())
-                .stderr(std::process::Stdio::null())
-                .kill_on_drop(true)
-                .status();
-            let status = tokio::time::timeout(std::time::Duration::from_secs(10), result)
-                .await
-                .map_err(|_| WineError::Invalid)?
-                .map_err(|_| WineError::Invalid)?;
-            // A server may already be absent when -k runs; -w is authoritative.
-            if argument == "-w" && !status.success() {
-                return Err(WineError::Invalid);
-            }
-        }
-        Ok(())
+        stop_prefix(&self.runtime, &environment(&self.runtime, &self.prefix)?).await
     }
     fn command(&self) -> Result<HelperCommand, WineError> {
-        let mut environment = BTreeMap::<OsString, OsString>::new();
-        for (key, value) in [
-            ("WINEPREFIX", self.prefix.clone().into_os_string()),
-            (
-                "WINESERVER",
-                self.runtime.join("bin/wineserver").into_os_string(),
-            ),
-            (
-                "DYLD_LIBRARY_PATH",
-                self.runtime.join("lib/external").into_os_string(),
-            ),
-            (
-                "HOME",
-                self.prefix
-                    .parent()
-                    .ok_or(WineError::Invalid)?
-                    .as_os_str()
-                    .to_owned(),
-            ),
-            ("PATH", "/usr/bin:/bin".into()),
-            ("WINEDEBUG", "-all".into()),
-            (
-                "WINEDLLOVERRIDES",
-                "winemac.drv,winex11.drv,winewayland.drv,winemenubuilder.exe,mscoree,mshtml=d"
-                    .into(),
-            ),
-        ] {
-            environment.insert(key.into(), value);
-        }
+        let environment = environment(&self.runtime, &self.prefix)?;
         Ok(HelperCommand {
             executable: self.runtime.join("bin/wine"),
             arguments: vec![paths::guest(&self.helper)?.into()],
@@ -185,6 +136,68 @@ impl WineSeedExtractor {
             environment,
         })
     }
+}
+fn environment(runtime: &Path, prefix: &Path) -> Result<BTreeMap<OsString, OsString>, WineError> {
+    let mut environment = BTreeMap::<OsString, OsString>::new();
+    for (key, value) in [
+        ("WINEPREFIX", prefix.as_os_str().to_owned()),
+        (
+            "WINESERVER",
+            runtime.join("bin/wineserver").into_os_string(),
+        ),
+        (
+            "DYLD_LIBRARY_PATH",
+            runtime.join("lib/external").into_os_string(),
+        ),
+        (
+            "HOME",
+            prefix
+                .parent()
+                .ok_or(WineError::Invalid)?
+                .as_os_str()
+                .to_owned(),
+        ),
+        ("PATH", "/usr/bin:/bin".into()),
+        ("WINEDEBUG", "-all".into()),
+        (
+            "WINEDLLOVERRIDES",
+            "winemac.drv,winex11.drv,winewayland.drv,winemenubuilder.exe,mscoree,mshtml=d".into(),
+        ),
+    ] {
+        environment.insert(key.into(), value);
+    }
+    Ok(environment)
+}
+async fn stop_prefix(
+    runtime: &Path,
+    environment: &BTreeMap<OsString, OsString>,
+) -> Result<(), WineError> {
+    stop_prefix_with_limit(runtime, environment, std::time::Duration::from_secs(10)).await
+}
+async fn stop_prefix_with_limit(
+    runtime: &Path,
+    environment: &BTreeMap<OsString, OsString>,
+    limit: std::time::Duration,
+) -> Result<(), WineError> {
+    for argument in ["-k", "-w"] {
+        let result = tokio::process::Command::new(runtime.join("bin/wineserver"))
+            .arg(argument)
+            .env_clear()
+            .envs(environment)
+            .stdin(std::process::Stdio::null())
+            .stdout(std::process::Stdio::null())
+            .stderr(std::process::Stdio::null())
+            .kill_on_drop(true)
+            .status();
+        let status = tokio::time::timeout(limit, result)
+            .await
+            .map_err(|_| WineError::Invalid)?
+            .map_err(|_| WineError::Invalid)?;
+        if argument == "-w" && !status.success() {
+            return Err(WineError::Invalid);
+        }
+    }
+    Ok(())
 }
 impl SeedExtractor for WineSeedExtractor {
     fn extract<'a>(

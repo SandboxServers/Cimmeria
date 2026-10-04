@@ -728,3 +728,19 @@ native filesystem/Wine or visual UAT evidence. The existing Windows launcher
 exports the shared install module publicly to resolve unused/dead-code lint
 failures reported by CI `37194260466`; native Windows validation awaits the next
 run. Wine recovery and terminal-attempt retry remain unsupported.
+
+
+### 2026-10-04: conservative Mac Wine reconciliation
+
+Added recovery inspection for absent helper records or observed finished results
+with recorded host absence. Canonical intent-owned prefix and verified cached
+runtime stay locked through bounded prefix stop/wait, content inspection and the
+journal decision. Ambiguous launch/host/uncertain records remain gated; no PID
+kill, download, deletion, shared-profile access or resume was added. Mac exposes
+reconciliation capability while Wine resume remains false.
+
+The real ZIP recovery smoke passed in 22.685 seconds after state reopen, retaining
+output and unresolved recovery state. Final checks passed 212 engine tests/eight
+ignored, 15 shell tests/one ignored and combined strict clippy. JS logic UAT
+passed enabled inspection without resume or inferred success; native IPC remains
+mocked. No native visual/gameplay proof is claimed.

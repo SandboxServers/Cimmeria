@@ -36,7 +36,7 @@ fn changed_resource_rejects_before_opening_state() {
     assert!(!root.path().join("state").exists());
 }
 #[test]
-fn wine_recovery_capabilities_and_commands_refuse_native_replay() {
+fn wine_pre_dispatch_recovery_reconciles_without_native_replay() {
     let (root, host, _) = fixture();
     host.dispatch(NativeCommand::SavePreferences {
         schema_version: 1,
@@ -66,7 +66,7 @@ fn wine_recovery_capabilities_and_commands_refuse_native_replay() {
     let status = host.install_status().unwrap();
     assert!(status.install_supported);
     assert!(!status.can_resume);
-    assert!(!status.can_reconcile);
+    assert!(status.can_reconcile);
     let revision = status.native.operation.revision;
     assert!(host
         .install_command(
@@ -78,20 +78,23 @@ fn wine_recovery_capabilities_and_commands_refuse_native_replay() {
             None
         )
         .is_err());
-    assert!(host
+    let recovered = host
         .install_command(
             InstallCommand::Reconcile {
                 schema_version: 1,
                 operation_id: id,
-                operation_revision: revision
+                operation_revision: revision,
             },
-            None
+            None,
         )
-        .is_err());
+        .unwrap();
     assert_eq!(
-        host.install_status().unwrap().native.operation.revision,
-        revision
+        recovered.native.operation.operation.unwrap().state,
+        cimmeria_launcher_engine::OperationState::Failed
     );
+    assert_eq!(recovered.native.operation.revision, revision + 1);
+    assert!(!root.path().join("install").exists());
+    assert!(!root.path().join("state/runtimes").exists());
 }
 
 #[tokio::test]

@@ -229,8 +229,7 @@ impl NativeHost {
                 state.install_outcome()?,
             ))
         })?;
-        let recovery = native_backend
-            && !native.requires_reopen
+        let recovery = !native.requires_reopen
             && native.operation.operation.as_ref().is_some_and(|op| {
                 op.state == cimmeria_launcher_engine::OperationState::ReconciliationRequired
             });
@@ -247,8 +246,8 @@ impl NativeHost {
             schema_version: 1,
             native,
             install_supported: self.platform_backend().is_ok(),
-            can_resume: recovery && cfg!(windows),
-            can_reconcile: recovery,
+            can_resume: recovery && native_backend && cfg!(windows),
+            can_reconcile: recovery && (native_backend || cfg!(target_os = "macos")),
             progress: observed,
             outcome,
         })

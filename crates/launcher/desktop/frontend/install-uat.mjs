@@ -57,5 +57,14 @@ ui.document.getElementById('inspect-install').dispatchEvent(new ui.window.Event(
 assert.equal(calls.includes('reconcile'),false);assert.equal(calls.includes('resume'),false);
 assert.equal(status.native.preferences.launcher_summary_consent,false);
 await ui.app.dispose();
-console.log('PASS: unsupported Wine recovery only inspects;  Rosetta/runtime failure decoding and reopened feedback;  install, progress, explicit cancel, reconnect without replay, completion wins cancellation, no Play/consent inference.');
+status={...status,can_reconcile:true};
+ui=mount();await ui.app.ready;await settle(ui.app);
+assert.equal(ui.document.getElementById('resume-install').hidden,true);
+ui.document.getElementById('inspect-install').dispatchEvent(new ui.window.Event('click'));await settle(ui.app);
+assert.equal(calls.filter(x=>x==='reconcile').length,1);
+assert.equal(calls.includes('resume'),false);
+assert.equal(status.native.operation.operation.state,'reconciliation_required');
+assert.equal(status.native.preferences.launcher_summary_consent,false);
+await ui.app.dispose();
+console.log('PASS: enabled recovery explicitly reconciles without resume or completion inference; unsupported Wine recovery only inspects;  Rosetta/runtime failure decoding and reopened feedback;  install, progress, explicit cancel, reconnect without replay, completion wins cancellation, no Play/consent inference.');
 console.log('NOT COVERED: native install IPC/filesystem, actual downloads/Wine, visual layout, OS dialogs, login/gameplay.');

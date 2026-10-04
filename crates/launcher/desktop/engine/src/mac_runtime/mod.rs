@@ -133,6 +133,18 @@ pub async fn prepare(
     .map_err(|_| RuntimeError::Io)?
 }
 
+/// Recovery never downloads or repairs a runtime. Retain its cache lock while
+/// executing the verified server and inspecting the stopped prefix.
+pub(crate) fn verified_cached(root: &Path) -> Result<(PathBuf, File), RuntimeError> {
+    if !root.is_dir() || root.canonicalize()? != root {
+        return Err(RuntimeError::Verification);
+    }
+    let owner = lock(root)?;
+    let runtime = root.join(NAME);
+    tree::verify(&runtime, TREE, &CancellationToken::new())?;
+    Ok((runtime, owner))
+}
+
 fn publish(
     root: &Path,
     destination: &Path,

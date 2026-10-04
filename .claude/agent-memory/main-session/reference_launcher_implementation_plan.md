@@ -205,3 +205,12 @@ Windows+Mac before the shell; shell/visual/game gates remain separate.
   clippy and mock-install JS UAT passed. Windows launcher shared install API
   is now public for lint parity; native Windows verification pending.
   This does not implement Wine recovery or terminal retry.
+
+
+- Mac Wine reconciliation now supports no-journal/no-spawn or observed-finished
+  helper evidence with host absence. Signal0 checks, never kills PIDs; live/reused
+  PID and LaunchIntent/HostStarted/Uncertain stay gated. Exact prefix ownership and
+  verified cached runtime locks survive bounded -k/-w and content/journal checks.
+  No download/delete/resume/shared profiles. ZIP reopen/stop smoke passed in 22.685s;
+  final engine212/eight ignored, shell15/one ignored, combined strict clippy and
+  mocked-IPC reconciliation/no-resume/no-success-inference JS UAT passed.
