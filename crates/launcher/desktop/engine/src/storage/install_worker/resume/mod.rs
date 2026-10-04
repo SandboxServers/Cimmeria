@@ -67,6 +67,9 @@ fn resume_with(
         }
         let release = owner.cached_install_release()?;
         let intent = owner.install_intent()?.ok_or(StorageError::Corrupt)?;
+        if !intent.backend.is_native() {
+            return Err(ContractError::InvalidTransition.into());
+        }
         let ownership = lock_and_validate(&intent, &release)?;
         owner
             .operations_mut()?

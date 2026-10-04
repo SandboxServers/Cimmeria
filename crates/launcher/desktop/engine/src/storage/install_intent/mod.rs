@@ -4,6 +4,33 @@ use crate::{catalog::VerifiedRelease, client_setup::LoginServer, OperationKind};
 use sha2::{Digest, Sha256};
 use uuid::Uuid;
 
+/// The extraction backend is immutable operation input, never inferred from the
+/// host OS during recovery. Native is omitted to preserve schema-1 intent hashes.
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(tag = "kind", rename_all = "snake_case", deny_unknown_fields)]
+pub enum ExtractionBackend {
+    #[default]
+    Native,
+    Wine {
+        runtime_sha256: [u8; 32],
+        helper_sha256: [u8; 32],
+    },
+}
+impl ExtractionBackend {
+    pub fn is_native(&self) -> bool {
+        matches!(self, Self::Native)
+    }
+}
+
+pub struct AdmissionRequest<'a> {
+    pub id: Uuid,
+    pub operation_revision: u64,
+    pub preferences_revision: u64,
+    pub release: &'a VerifiedRelease,
+    pub login_servers: Vec<LoginServer>,
+    pub backend: ExtractionBackend,
+}
+
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct InstallIntent {
@@ -14,6 +41,8 @@ pub struct InstallIntent {
     pub destination: PathBuf,
     pub manifest_digest: [u8; 32],
     pub login_servers: Vec<LoginServer>,
+    #[serde(default, skip_serializing_if = "ExtractionBackend::is_native")]
+    pub backend: ExtractionBackend,
 }
 impl InstallIntent {
     fn digest(&self) -> Result<[u8; 32], StorageError> {
@@ -56,27 +85,30 @@ impl DesktopState {
         release: &VerifiedRelease,
         login_servers: Vec<LoginServer>,
     ) -> Result<InstallAdmission, IntentError> {
-        self.admit_install_with(
+        self.admit_install_backend(AdmissionRequest {
             id,
-            expected_operation_revision,
-            expected_preferences_revision,
+            operation_revision: expected_operation_revision,
+            preferences_revision: expected_preferences_revision,
             release,
             login_servers,
-            |operations, id, digest, revision| {
-                operations
-                    .begin(id, OperationKind::Install, digest, revision)
-                    .map(|(_, dispatch)| dispatch)
-            },
-        )
+            backend: ExtractionBackend::Native,
+        })
+    }
+
+    pub fn admit_install_backend(
+        &mut self,
+        request: AdmissionRequest<'_>,
+    ) -> Result<InstallAdmission, IntentError> {
+        self.admit_install_with(request, |operations, id, digest, revision| {
+            operations
+                .begin(id, OperationKind::Install, digest, revision)
+                .map(|(_, dispatch)| dispatch)
+        })
     }
 
     fn admit_install_with(
         &mut self,
-        id: Uuid,
-        expected_operation_revision: u64,
-        expected_preferences_revision: u64,
-        release: &VerifiedRelease,
-        login_servers: Vec<LoginServer>,
+        request: AdmissionRequest<'_>,
         commit: impl FnOnce(
             &mut Operations<FileJournal>,
             Uuid,
@@ -84,6 +116,14 @@ impl DesktopState {
             u64,
         ) -> Result<bool, ContractError>,
     ) -> Result<InstallAdmission, IntentError> {
+        let AdmissionRequest {
+            id,
+            operation_revision: expected_operation_revision,
+            preferences_revision: expected_preferences_revision,
+            release,
+            login_servers,
+            backend,
+        } = request;
         if self.requires_reopen() {
             return Err(StorageError::PersistenceUncertain.into());
         }
@@ -93,6 +133,7 @@ impl DesktopState {
                 if intent.preferences_revision != expected_preferences_revision
                     || intent.manifest_digest != release.digest()
                     || intent.login_servers != login_servers
+                    || intent.backend != backend
                 {
                     return Err(ContractError::IdentityConflict.into());
                 }
@@ -130,6 +171,7 @@ impl DesktopState {
             destination,
             manifest_digest: release.digest(),
             login_servers,
+            backend,
         };
         let digest = intent.digest()?;
         // Preserve authenticated original bytes before intent/admission. Never

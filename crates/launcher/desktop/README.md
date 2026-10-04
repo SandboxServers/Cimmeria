@@ -631,3 +631,34 @@ and transport bounds/stalls. The complete engine suite passed 189 tests with fou
 runtime-archive smoke was explicitly run and passed separately. Strict all-target engine clippy also passed after the test-only read-count
 correction. Licensing/distribution and real game gates remain
 open.
+
+
+## Extraction identity and helper journal
+
+Native admission now takes `AdmissionRequest`, including immutable extraction
+backend identity. `Native` remains the default and is omitted when serializing
+intent, preserving existing schema-1 intent digests. `Wine` binds runtime and
+helper SHA-256 values into the intent. Reusing an operation ID with a different
+backend conflicts. Native dispatch, resume and recovery reject Wine intents,
+even when no output exists; restart never silently substitutes native extraction.
+
+`storage/helper_journal/` persists launch intent, host-started and finished
+checkpoints with operation ID, attempt ID and intent digest. Host PID is retained
+independently of the phase, including an uncertain finish. It is diagnostic
+identity evidence, not authority to kill a reused PID or proof of Wine guest
+termination. An existing helper record blocks automatic redispatch.
+
+`helper_supervisor::run_owned` verifies the request's seed hash against cached
+signed evidence, persists launch intent before spawning, records the host through
+the supervisor callback before request delivery, and persists the observed
+result before returning it. Callers must map journal errors to reconciliation.
+They must still validate runtime/helper artifacts and host-to-guest paths and
+keep this future in native operation scope. The production Wine adapter and
+prefix lifecycle are not connected.
+
+Validation before the wrapper addition passed 195 engine tests. Five helper
+journal tests passed after the PID-retention fix. A real-stdio wrapper scenario
+checks that the child sees `HostStarted` before receiving extraction input and
+that completion is persisted. All thirteen real-stdio scenarios passed, as did
+strict clippy and formatting. These are fixture boundaries, not Wine execution
+or game-readiness evidence.

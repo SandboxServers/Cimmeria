@@ -1,11 +1,15 @@
 //! Exclusive state-directory ownership and bounded, crash-aware persistence.
 mod atomic;
+mod helper_journal;
+pub use helper_journal::{HelperPhase, HelperRecord, HelperResult};
 mod release_evidence;
 pub use release_evidence::EvidenceError;
 mod install_intent;
 pub mod install_recovery;
 pub mod install_worker;
-pub use install_intent::{InstallAdmission, InstallIntent, IntentError};
+pub use install_intent::{
+    AdmissionRequest, ExtractionBackend, InstallAdmission, InstallIntent, IntentError,
+};
 #[cfg(test)]
 mod tests;
 

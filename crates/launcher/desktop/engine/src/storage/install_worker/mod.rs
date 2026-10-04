@@ -78,6 +78,9 @@ fn dispatch_with(
         if intent.operation_id != id || intent.manifest_digest != release.digest() {
             return Err(ContractError::IdentityConflict.into());
         }
+        if !intent.backend.is_native() {
+            return Err(ContractError::InvalidTransition.into());
+        }
         // Running is durable before claim/extraction. A second dispatch is rejected.
         owner
             .operations_mut()?

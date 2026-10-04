@@ -144,3 +144,13 @@ Windows+Mac before the shell; shell/visual/game gates remain separate.
   execution. Eight ordinary runtime tests included in 189 passing engine tests; four ignored
   entries, with runtime-archive smoke explicitly passed. Strict engine clippy passed.
   No production caller/prefix/helper or game prerequisites connected.
+
+
+- ExtractionBackend is immutable intent input: Native default omitted to preserve
+  schema-1 digest; Wine binds runtime/helper hashes. Native dispatch/resume/recovery
+  refuses Wine, including no-output recovery. Helper journal records attempt,
+  intent digest, phase and separately retained PID. run_owned commits launch,
+  host-before-request and result-before-return; caller gates journal failures.
+  No automatic replay or PID kill/guest-death inference. Production Wine adapter
+  and prefix remain unconnected. Tests195 pre-wrapper and five journal tests
+  passed; all thirteen real-stdio scenarios, strict clippy and fmt passed.

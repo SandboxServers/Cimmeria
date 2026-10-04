@@ -1,5 +1,8 @@
 //! Native-owned helper supervision. No UI command accepts an executable/env map.
 //! A lost protocol/process is uncertain; it is never promoted to installation success.
+mod owned;
+pub use owned::run_owned;
+
 use crate::archive_worker::{
     CancelRequest, EventKind, ExtractError, ExtractRequest, WorkerEvent, MAX_FRAME,
 };

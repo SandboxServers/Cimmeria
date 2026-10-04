@@ -35,6 +35,9 @@ pub fn reconcile(
     if release.digest() != intent.manifest_digest {
         return Err(ContractError::IdentityConflict.into());
     }
+    if !intent.backend.is_native() {
+        return Err(ContractError::InvalidTransition.into());
+    }
     // Refuse a redirected parent, even when the resulting tree looks plausible.
     let parent = intent
         .destination

@@ -612,3 +612,19 @@ Native CI update: shell run `37189445603` passed both platforms at `17b949f4c`.
 The pending frontend run for `9947a1003` was superseded/cancelled; seed run
 `37190303728` at `cd7366c61`, which also contains that frontend work, is running.
 These earlier revisions do not validate the managed runtime-cache packet.
+
+
+### 2026-10-04: extraction identity and durable helper checkpoints
+
+Bound native/Wine backend selection into immutable install intent, preserving
+legacy digests by omitting the default native value. Wine identity includes
+runtime/helper hashes; native dispatch/resume/recovery rejects those intents
+rather than falling back after restart. Added operation/attempt-bound helper
+launch, host-started and finished records, retaining PID across uncertain finish.
+The owned supervisor wrapper commits checkpoints around spawn, request delivery
+and outcome return; journal failure requires caller reconciliation.
+
+The engine suite passed 195 tests before the wrapper addition; five journal tests
+passed after PID-retention correction. All thirteen real-stdio scenarios passed,
+including the owned-checkpoint fixture; strict clippy and formatting passed. No production Wine adapter, prefix or frontend change was added;
+PID records do not prove guest death or permit automatic redispatch.

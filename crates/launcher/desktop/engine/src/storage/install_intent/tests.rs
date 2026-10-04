@@ -178,9 +178,17 @@ fn failed_replacement_admission_preserves_previous_terminal_intent_on_restart() 
         .unwrap();
     let revision = state.operations().snapshot().revision;
     let next = Uuid::new_v4();
-    let result = state.admit_install_with(next, revision, 1, &release, vec![], |_, _, _, _| {
-        Err(ContractError::PersistenceFailed)
-    });
+    let result = state.admit_install_with(
+        AdmissionRequest {
+            id: next,
+            operation_revision: revision,
+            preferences_revision: 1,
+            release: &release,
+            login_servers: vec![],
+            backend: ExtractionBackend::Native,
+        },
+        |_, _, _, _| Err(ContractError::PersistenceFailed),
+    );
     assert_eq!(
         result.unwrap_err(),
         IntentError::Operation(ContractError::PersistenceFailed)
@@ -243,4 +251,35 @@ fn destination_symlink_is_rejected_even_when_target_is_empty() {
             .unwrap_err(),
         IntentError::Storage(StorageError::InvalidDirectory)
     );
+}
+
+#[test]
+fn native_intent_retains_legacy_encoding_and_backend_changes_conflict() {
+    let (_root, mut state) = setup();
+    let id = Uuid::new_v4();
+    let release = release("seed.zip");
+    let intent = state
+        .admit_install(id, 0, 1, &release, vec![])
+        .unwrap()
+        .intent;
+    let bytes = serde_json::to_vec(&intent).unwrap();
+    assert!(!String::from_utf8_lossy(&bytes).contains("backend"));
+    let restored: InstallIntent = serde_json::from_slice(&bytes).unwrap();
+    assert!(restored.backend.is_native());
+    assert_eq!(restored.digest().unwrap(), intent.digest().unwrap());
+    let result = state.admit_install_backend(AdmissionRequest {
+        id,
+        operation_revision: 0,
+        preferences_revision: 1,
+        release: &release,
+        login_servers: vec![],
+        backend: ExtractionBackend::Wine {
+            runtime_sha256: [1; 32],
+            helper_sha256: [2; 32],
+        },
+    });
+    assert!(matches!(
+        result,
+        Err(IntentError::Operation(ContractError::IdentityConflict))
+    ));
 }

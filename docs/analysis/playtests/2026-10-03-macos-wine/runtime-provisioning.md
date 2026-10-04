@@ -177,3 +177,19 @@ No production caller, Wine prefix, helper invocation or game-prerequisite flow
 is connected. The cache contains the pinned Wine archive, not the complete
 accelerator/patch payload inventory. Fresh-prefix compatibility, complete runtime
 assembly, redistribution evidence and final packaged startup remain open.
+
+
+## Backend identity and helper checkpoints — 2026-10-04
+
+Install intents now bind native versus Wine extraction, including Wine runtime
+and helper hashes. Native recovery refuses Wine intents even for missing output;
+it cannot infer that an unobserved guest has stopped. Durable helper checkpoints
+record launch intent, attempt identity, host PID and observed result. The owned
+supervisor wrapper writes them before spawn, before request dispatch and before
+returning its outcome. Journal failures must retain reconciliation gating.
+
+This implements ownership evidence, not the production Wine adapter. Artifact
+verification, native host-to-guest path mapping, cache/staging identity, exclusive
+prefix provisioning and guest-aware recovery remain to be connected. A recorded
+PID is not kill authorization or guest-death proof. No Wine execution or runtime
+readiness is established by the helper-journal fixtures.
