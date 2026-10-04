@@ -45,6 +45,7 @@ members = [
     "crates/wire-log",
     "crates/cell-cover",
     "crates/cell-catalog",
+    "crates/names",
     "crates/minigame",
     "crates/base-session",
     "crates/cell-world",
@@ -90,6 +91,7 @@ default-members = [
     "crates/wire-log",
     "crates/cell-cover",
     "crates/cell-catalog",
+    "crates/names",
     "crates/minigame",
     "crates/base-session",
     "crates/cell-world",
@@ -262,6 +264,7 @@ cimmeria-wire = { path = "crates/wire" }
 cimmeria-wire-log = { path = "crates/wire-log" }
 cimmeria-cell-cover = { path = "crates/cell-cover" }
 cimmeria-cell-catalog = { path = "crates/cell-catalog" }
+cimmeria-names = { path = "crates/names" }
 cimmeria-minigame = { path = "crates/minigame" }
 cimmeria-base-session = { path = "crates/base-session" }
 cimmeria-cell-world = { path = "crates/cell-world" }

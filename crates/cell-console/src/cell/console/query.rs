@@ -190,23 +190,14 @@ pub(super) async fn list_abilities(
 
 // ---- .info / .facing / .combatinfo (category I) ---------------------------
 
-/// Legacy `ARCHETYPE_*` names (`deprecated/python/Atrea/enums.py:218-226`).
-/// A small, closed, stable table — safe to port directly (unlike faction,
-/// where this codebase's `faction: u8` already uses a different, simplified
-/// numbering than legacy's 34-entry table; see [`faction_name`]).
+/// `ARCHETYPE_*` names, in the legacy enum's order
+/// (`deprecated/python/Atrea/enums.py:218-226`), spelled as the seed's
+/// `archetypes.name` spells them ([`cimmeria_names::archetype_name`]). A
+/// small, closed, stable table (unlike faction, where this codebase's
+/// `faction: u8` already uses a different, simplified numbering than
+/// legacy's 34-entry table; see [`faction_name`]).
 fn archetype_name(id: i32) -> &'static str {
-    match id {
-        0 => "Any",
-        1 => "Soldier",
-        2 => "Commando",
-        3 => "Scientist",
-        4 => "Archeologist",
-        5 => "Asgard",
-        6 => "Goauld",
-        7 => "Sholva",
-        8 => "Jaffa",
-        _ => "unknown",
-    }
+    cimmeria_names::archetype_name(id).unwrap_or("unknown")
 }
 
 /// Alignment names, matching the lowercase tokens `.alignment` already

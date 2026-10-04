@@ -164,7 +164,7 @@ async fn legacy_p02_info_present_fields_are_shown() {
         "{lines:?}"
     );
     assert!(
-        lines.iter().any(|l| l == "Archetype: Goauld (6)"),
+        lines.iter().any(|l| l == "Archetype: Goa'uld (6)"),
         "{lines:?}"
     );
     assert!(

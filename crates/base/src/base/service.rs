@@ -233,6 +233,11 @@ impl BaseService {
 
         let pending_logins = Arc::clone(&self.pending_logins);
         let db_pool = self.db_pool.clone();
+        // The process name book (NT-01), shared with the cell: whichever
+        // service starts first reads the database.
+        if let Some(pool) = db_pool.as_deref() {
+            cimmeria_names::load_at_boot(pool).await;
+        }
 
         let resource_cache = match ResourceCache::load_all(&self.data_dir) {
             Ok(cache) => Some(Arc::new(cache)),
