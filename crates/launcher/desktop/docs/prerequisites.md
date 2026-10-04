@@ -288,6 +288,26 @@ library suite passed 247 tests with 11 explicit ignored smokes
 (`20261004-075146-24072`) and the frontend build passed. Earlier worker CI/smokes
 do not validate this new state integration on Windows.
 
+### Persistent prerequisite evidence
+
+Admission writes `runtime-selection.json` after the immutable plan and before
+beginning the operation. A new attempt supersedes earlier success even if
+admission or dispatch then fails; lookup never falls back to an older prefix.
+`prepared_runtime()` validates the selected plan/digest, strict historical record
+and nested report. It requires Quiescent evidence with successful activation,
+module loading and SDK creation/release, matching installed identity and the
+existing content checks (not a complete corruption scan). Active/recovery work
+hides evidence; corrupt records error and uncertain storage requires reopening.
+Preferences do not transfer evidence, and another installation cannot inherit it.
+This is historical prerequisite evidence, not current prefix/process/graphics
+validation or permission to launch. Launch must independently lock and check
+those resources. Twelve persistence tests passed (`20261004-083537-39624`);
+the enhanced headless smoke passed in 28.060s (`20261004-083607-39880`), covering
+lookup after reopen/reconciliation and invalidation after confirmed uninstall.
+The full engine suite passed 255 tests with 12 opt-in tests ignored before the
+additional installation-identity test. No frontend behavior changed here.
+
+
 ## Retained Mac coordinator
 
 `mac_wine::prerequisites::dispatch` validates the planned helper hash and pinned

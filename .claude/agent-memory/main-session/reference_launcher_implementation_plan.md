@@ -461,3 +461,16 @@ setup, never replays the installer or enables Play. Unknown outcomes stay gated.
 The updated original-file headless smoke passed in 27.470s with Windows helper
 10d67a2b9; 4 focused engine, 22 shell and 37 frontend tests plus JS logic UAT pass.
 See desktop prerequisites reference for the synthetic-write-gap evidence limit.
+
+
+### Persistent prerequisite selection (2026-10-04)
+
+Runtime admission now writes runtime-selection.json before beginning work;
+prepared_runtime validates its plan, strict quiescent result, installed identity
+and existing content checks independently of the latest operation. New attempts
+supersede old success; recovery, changed installation and missing content gate
+lookup. Historical proof still requires launch-time prefix/graphics validation.
+Twelve persistence tests and enhanced headless reopen/reconcile/uninstall smoke
+(28.060s) pass. Native Windows CI 37205534527 caught a Mac-only state_root test
+accessor used by portable persistence tests; cfg now includes test builds.
+Windows revalidation remains pending; no cross-compile was performed.

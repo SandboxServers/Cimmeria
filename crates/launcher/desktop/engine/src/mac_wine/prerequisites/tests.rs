@@ -139,6 +139,7 @@ async fn retained_coordinator_installs_checks_and_persists_owned_runtime() {
         state.installed_content().unwrap().unwrap().intent,
         installed
     );
+    assert_eq!(state.prepared_runtime().unwrap().unwrap().plan, plan);
     assert!(!state.preferences().launcher_summary_consent);
     drop(marker);
     drop(state);
@@ -163,6 +164,7 @@ async fn retained_coordinator_installs_checks_and_persists_owned_runtime() {
             .state,
         OperationState::ReconciliationRequired
     );
+    assert!(state.lock().unwrap().prepared_runtime().unwrap().is_none());
     assert!(can_reconcile(&state.lock().unwrap()));
     assert!(reconcile(state.clone(), id, revision - 1).await.is_err());
     assert_eq!(
@@ -181,8 +183,27 @@ async fn retained_coordinator_installs_checks_and_persists_owned_runtime() {
             .state,
         OperationState::Succeeded
     );
+    assert_eq!(
+        state
+            .lock()
+            .unwrap()
+            .prepared_runtime()
+            .unwrap()
+            .unwrap()
+            .plan,
+        plan
+    );
     assert!(!can_reconcile(&state.lock().unwrap()));
     assert!(!state.lock().unwrap().preferences().launcher_summary_consent);
+    {
+        let mut owner = state.lock().unwrap();
+        let revision = owner.operations().snapshot().revision;
+        owner
+            .uninstall(Uuid::new_v4(), revision, installed.operation_id, true)
+            .unwrap();
+        assert!(owner.prepared_runtime().unwrap().is_none());
+        assert!(!installed.destination.exists());
+    }
     drop(state);
     drop(root);
 }

@@ -3,6 +3,8 @@
 use super::*;
 use crate::{OperationKind, OperationState};
 use cimmeria_runtime_probe::prerequisite::{decode_result, PrepareResult, ResultKind};
+mod prepared;
+pub use prepared::PreparedRuntime;
 use sha2::{Digest, Sha256};
 use uuid::Uuid;
 
@@ -136,6 +138,7 @@ impl DesktopState {
             return Err(ContractError::IdentityConflict.into());
         }
         self.write_runtime(&plan_name(id), &plan)?;
+        self.select_runtime_attempt(&plan)?;
         let (_, dispatch) = self.operations_mut()?.begin(
             id,
             OperationKind::PrepareRuntime,
@@ -165,26 +168,9 @@ impl DesktopState {
         let plan = self
             .runtime_plan()?
             .ok_or(ContractError::UnknownOperation)?;
-        let record: Option<Record> = read(&self.directory.root.join(record_name(plan.id)))?;
-        if let Some(record) = &record {
-            if record.schema_version != 1
-                || record.operation_id != plan.id
-                || record.plan_digest != plan.digest()?
-                || record.host_pid == Some(0)
-                || (record.phase == Phase::LaunchIntent) != record.host_pid.is_none()
-                || matches!(record.phase, Phase::Observed | Phase::Quiescent)
-                    != record.result.is_some()
-            {
-                return Err(StorageError::Corrupt.into());
-            }
-            if let Some(result) = &record.result {
-                let bytes = serde_json::to_vec(result).map_err(|_| StorageError::Corrupt)?;
-                decode_result(&bytes, plan.id, plan.prefix_generation)
-                    .map_err(|_| StorageError::Corrupt)?;
-            }
-        }
-        Ok(record)
+        read_record(&self.directory.root, &plan)
     }
+
     /// Persist dispatch intent before spawning. Repeated dispatch is refused even
     /// when the previous host was never observed; recovery must inspect that gap.
     pub fn begin_runtime_dispatch(&mut self, id: Uuid) -> Result<Plan, IntentError> {
@@ -275,10 +261,7 @@ impl DesktopState {
             return Err(ContractError::InvalidTransition.into());
         }
         let result = record.result.as_ref().ok_or(StorageError::Corrupt)?;
-        let verified = matches!(&result.result, ResultKind::Probed { report }
-            if report.activation_context == (cimmeria_runtime_probe::LoadResult::Loaded {})
-            && report.modules.iter().all(|module| module.result == (cimmeria_runtime_probe::LoadResult::Loaded {}))
-            && report.physx_sdk == (cimmeria_runtime_probe::physx::SdkResult::InitializedAndReleased {}));
+        let verified = verified_result(result);
         record.phase = Phase::Quiescent;
         self.write_runtime(&record_name(id), &record)?;
         before_commit()?;
@@ -317,3 +300,31 @@ impl DesktopState {
 }
 #[cfg(test)]
 pub(crate) mod tests;
+
+fn read_record(root: &Path, plan: &Plan) -> Result<Option<Record>, IntentError> {
+    let record: Option<Record> = read(&root.join(record_name(plan.id)))?;
+    if let Some(record) = &record {
+        if record.schema_version != 1
+            || record.operation_id != plan.id
+            || record.plan_digest != plan.digest()?
+            || record.host_pid == Some(0)
+            || (record.phase == Phase::LaunchIntent) != record.host_pid.is_none()
+            || matches!(record.phase, Phase::Observed | Phase::Quiescent) != record.result.is_some()
+        {
+            return Err(StorageError::Corrupt.into());
+        }
+        if let Some(result) = &record.result {
+            let bytes = serde_json::to_vec(result).map_err(|_| StorageError::Corrupt)?;
+            decode_result(&bytes, plan.id, plan.prefix_generation)
+                .map_err(|_| StorageError::Corrupt)?;
+        }
+    }
+    Ok(record)
+}
+
+fn verified_result(result: &PrepareResult) -> bool {
+    matches!(&result.result, ResultKind::Probed { report }
+            if report.activation_context == (cimmeria_runtime_probe::LoadResult::Loaded {})
+            && report.modules.iter().all(|module| module.result == (cimmeria_runtime_probe::LoadResult::Loaded {}))
+            && report.physx_sdk == (cimmeria_runtime_probe::physx::SdkResult::InitializedAndReleased {}))
+}

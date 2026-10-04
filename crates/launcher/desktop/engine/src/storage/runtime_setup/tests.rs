@@ -209,6 +209,7 @@ fn only_observed_complete_checks_after_stop_can_commit_success() {
             state.installed_content().unwrap().unwrap().intent,
             installed
         );
+        assert_eq!(state.prepared_runtime().unwrap().is_some(), verified);
         assert!(!state.preferences().launcher_summary_consent);
     }
 }
@@ -331,6 +332,7 @@ fn crash_between_quiescent_record_and_terminal_commit_stays_gated_on_reopen() {
             .state,
         OperationState::Running
     );
+    assert!(state.prepared_runtime().unwrap().is_none());
     drop(state);
     let mut state = DesktopState::open(&root.path().join("state")).unwrap();
     assert_eq!(
@@ -347,8 +349,10 @@ fn crash_between_quiescent_record_and_terminal_commit_stays_gated_on_reopen() {
         state.runtime_record().unwrap().unwrap().phase,
         Phase::Quiescent
     );
+    assert!(state.prepared_runtime().unwrap().is_none());
     // Explicit native reconciliation after a new prefix stop/wait observation.
     state.finish_runtime_after_stop(plan.id).unwrap();
+    assert_eq!(state.prepared_runtime().unwrap().unwrap().plan, plan);
     assert_eq!(
         state
             .operations
