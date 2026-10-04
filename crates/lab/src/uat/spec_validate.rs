@@ -102,17 +102,37 @@ fn check_players(row: &RowSpec, errs: &mut Vec<String>) {
             errs.push(format!("{r}/{what}: the second player needs players = 2"));
         }
     };
-    for a in row.setup.iter().chain(&row.steps).chain(&row.teardown) {
+    // Fallbacks run on their action's client (the runner never switches
+    // client mid-action), so a fallback may repeat that client but not
+    // name another one. Checked at every depth.
+    fn walk(
+        a: &ActionSpec,
+        parent: Option<&str>,
+        check: &mut dyn FnMut(&str, Option<&str>, bool),
+        errs_out: &mut Vec<String>,
+    ) {
         let what = a
             .label
             .as_deref()
             .or(a.tool.as_deref())
-            .or(a.chat.as_deref());
-        let targets = a.tool.as_deref() == Some(TARGET_PLAYER_TOOL)
-            || a.fallback
-                .iter()
-                .any(|f| f.tool.as_deref() == Some(TARGET_PLAYER_TOOL));
-        check(what.unwrap_or("action"), a.client.as_deref(), targets);
+            .or(a.chat.as_deref())
+            .unwrap_or("action");
+        let client = a.client.as_deref().or(parent);
+        if parent.is_some() && a.client.is_some() && a.client.as_deref() != parent {
+            errs_out.push(format!(
+                "{what}: a fallback runs on its action's client ({}), not {:?}",
+                parent.unwrap_or("p1"),
+                a.client.as_deref().unwrap_or_default()
+            ));
+        }
+        check(what, client, a.tool.as_deref() == Some(TARGET_PLAYER_TOOL));
+        for f in &a.fallback {
+            walk(f, Some(client.unwrap_or("p1")), check, errs_out);
+        }
+    }
+    let mut nested = Vec::new();
+    for a in row.setup.iter().chain(&row.steps).chain(&row.teardown) {
+        walk(a, None, &mut check, &mut nested);
     }
     for c in &row.expect {
         check(&c.id, c.client.as_deref(), false);
@@ -120,6 +140,7 @@ fn check_players(row: &RowSpec, errs: &mut Vec<String>) {
     for e in &row.evidence {
         check(&format!("evidence {}", e.name), e.client.as_deref(), false);
     }
+    errs.extend(nested.into_iter().map(|e| format!("{r}/{e}")));
     for c in &row.expect {
         let reads_client = matches!(
             c.source,

@@ -485,6 +485,23 @@ tolerance = 1
             resolved.rows[0].steps[0].tool.as_deref(),
             Some("uat_target_player")
         );
+        // A fallback runs on its action's client: it may not name another
+        // one, an unknown one, or p2 on a one-player row, at any depth.
+        let fb = |client: &str| {
+            ok.replace(
+                p2_step,
+                &format!(
+                    "{{ tool = \"lab_x\", tier = \"N1\", label = \"help\", fallback = [{{ chat = \".help\", fallback = [{{ chat = \".h\", client = \"{client}\" }}] }}] }}"
+                ),
+            )
+        };
+        parse(&fb("p1")).unwrap();
+        assert!(parse(&fb("p2"))
+            .unwrap_err()
+            .contains("runs on its action's client"));
+        assert!(parse(&fb("p3")).unwrap_err().contains("p1 or p2"));
+        let one = fb("p2").replace("players = 2", "players = 1");
+        assert!(parse(&one).unwrap_err().contains("players = 2"));
         // Only clauses that read a client take one.
         let signoz = format!(
             "{two}\n[[row.expect]]\nid = \"s\"\ntext = \"t\"\nsource = \"signoz\"\nfilter = \"x\"\nclient = \"p2\"\n"

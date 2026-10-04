@@ -167,7 +167,28 @@ title = "Readouts describe the selected player"
 expected = "Readouts describe the selected player, not you."
 players = 2
 known_issues = ["Derived"]
-step = [{ tool = "@target_player" }, { chat = ".info" }]
+notes = "p1 may be anywhere (M4-1b leaves it in the per-login Castle_CellBlock instance): .summon brings p2 to p1's instance and position, and see-p2 proves p1's client has p2 before the target click."
+# `.summon <name>` always brings the player to the caller's instance and
+# position (docs/commands.md, Travel), so the two clients share a space.
+setup = [
+  { chat = ".summon ${p2_character}", tier = "G" },
+  { wait_ms = 5000 },
+]
+step = [
+  { tool = "@entity_find", args = { name = "${p2_character}", exact = true }, label = "see-p2" },
+  { tool = "@target_player" },
+  { chat = ".info" },
+]
+[[row.expect]]
+id = "p2-visible"
+text = "p1's client sees p2 after the summon"
+source = "tool"
+at = "see-p2"
+tool = "@entity_find"
+args = { name = "${p2_character}", exact = true }
+pointer = "/count"
+op = "gte"
+value = 1
 [[row.expect]]
 id = "readout"
 text = "the readout names the selected player"

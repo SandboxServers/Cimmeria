@@ -71,6 +71,12 @@ impl Fake {
         self
     }
 
+    /// An in-world client whose player state reports `name`.
+    pub(super) fn named(mut self, name: &str) -> Self {
+        self.name = name.to_string();
+        self
+    }
+
     pub(super) fn names(&self) -> Vec<String> {
         self.calls.lock().unwrap().clone()
     }

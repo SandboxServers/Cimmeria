@@ -102,6 +102,20 @@ impl<'a, I: ToolInvoker> Runner<'a, I> {
             0 | 1 => vec![],
             2 => match &self.p2 {
                 Err(why) => vec![why.clone()],
+                // One account cannot be logged in twice: p2's login would
+                // evict p1 (`duplicate_login`) mid-row. Refuse up front.
+                Ok(p) if p
+                    .account
+                    .as_deref()
+                    .zip(self.req.account_name.as_deref())
+                    .is_some_and(|(a, b)| a.eq_ignore_ascii_case(b)) =>
+                {
+                    vec![format!(
+                        "p2 logs in as {:?}, p1's own account (the second login evicts the first): give lab-account.{}.json its own account",
+                        p.account.as_deref().unwrap_or_default(),
+                        p.instance
+                    )]
+                }
                 Ok(p) if p1_character.is_some_and(|c| c.eq_ignore_ascii_case(&p.character)) => {
                     vec![format!(
                         "p2 plays {:?}, the same character as p1: give lab-account.{}.json its own account and character",
@@ -175,10 +189,13 @@ impl<'a, I: ToolInvoker> Runner<'a, I> {
             login = "character_select".into();
         }
         if login == "in_world" {
-            // A p2 found in world before this run is taken to be its own
-            // character, as p1's is (`ensure_state`).
-            let current = self.p2_in_world_as.clone().unwrap_or_else(|| name.clone());
-            if current == name {
+            // The p2 supervisor outlives a run, so a fresh runner does not
+            // know who p2 is playing: ask the client before reusing it.
+            let current = match self.p2_in_world_as.clone() {
+                Some(c) => Some(c),
+                None => self.p2_playing(ctx).await,
+            };
+            if current.is_some_and(|c| c.eq_ignore_ascii_case(&name)) {
                 self.p2_in_world_as = Some(name);
                 return Ok(());
             }
@@ -189,6 +206,24 @@ impl<'a, I: ToolInvoker> Runner<'a, I> {
             .await?;
         self.p2_in_world_as = Some(name);
         Ok(())
+    }
+
+    /// The character p2's client says it is playing, or `None` when it
+    /// cannot say (no reader, an error, no name): the caller then logs out
+    /// and re-selects rather than guess.
+    async fn p2_playing(&mut self, ctx: &mut RowCtx) -> Option<String> {
+        if !self.on(Who::P2).has_tool("client_player_state") {
+            return None;
+        }
+        let state = self
+            .setup_call_on(Who::P2, "client_player_state", json!({}), ctx)
+            .await
+            .ok()?;
+        state
+            .get("name")
+            .and_then(Value::as_str)
+            .filter(|n| !n.is_empty())
+            .map(str::to_string)
     }
 
     /// One setup call on `who`, recorded on the row.

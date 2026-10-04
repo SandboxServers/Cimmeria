@@ -195,7 +195,7 @@ fn p2_account() -> Result<(String, Option<String>, String), String> {
         .unwrap_or_else(|| "p2".into());
     let name = instance::validate_name(name.trim())?;
     let dir = install_dir().ok_or("players = 2: CIMMERIA_LAB_INSTALL_DIR is unset")?;
-    if instance::from_env().ok().flatten().as_deref() == Some(name.as_str()) {
+    if is_same_instance(instance::from_env().ok().flatten().as_deref(), &name) {
         return Err(format!(
             "players = 2: this lab is instance {name} itself; run two-player rows from the default instance"
         ));
@@ -214,6 +214,13 @@ fn p2_account() -> Result<(String, Option<String>, String), String> {
         ));
     }
     Ok((name, Some(account.username), account.character))
+}
+
+/// Whether this lab is itself the instance `p2` names. Instance names
+/// become directory names, and the Windows filesystem ignores case, so
+/// `P2` and `p2` are the same instance.
+fn is_same_instance(own: Option<&str>, p2: &str) -> bool {
+    own.is_some_and(|o| o.eq_ignore_ascii_case(p2))
 }
 
 /// An in-process supervisor for the second instance, made on first use
@@ -426,5 +433,19 @@ impl LabServer {
         attest(&req)
             .map(|v| text(&v))
             .map_err(|e| McpError::invalid_params(e, None))
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn the_self_instance_check_ignores_case() {
+        assert!(is_same_instance(Some("p2"), "p2"));
+        assert!(is_same_instance(Some("P2"), "p2"));
+        assert!(is_same_instance(Some("p2"), "P2"));
+        assert!(!is_same_instance(None, "p2"));
+        assert!(!is_same_instance(Some("p3"), "p2"));
     }
 }

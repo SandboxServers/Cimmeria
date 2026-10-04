@@ -223,10 +223,10 @@ The session is found by the character's name in `server_sessions`; pass `vars.pl
 
 ### Two-player rows
 
-A row with `players = 2` drives a second lab client, `p2`, alongside the lab character. Before the row's anchor the runner brings p2 in world, starting its client, logging in and playing its character as needed. It reuses a p2 that is already in world as that character. Every call is recorded as a p2 setup action. Then:
+A row with `players = 2` drives a second lab client, `p2`, alongside the lab character. Before the row's anchor the runner brings p2 in world, starting its client, logging in and playing its character as needed. It reuses a p2 that is already in world only after p2's client confirms, through `client_player_state`, that it is playing that character. Otherwise, or when the client cannot say, it logs out and re-selects. Every call is recorded as a p2 setup action. Then:
 
 - steps, clauses and evidence with `client = "p2"` run on p2's client. Everything else runs on p1, as in a one-player row. Each client's chat box has its own marks, so a p2 chat clause counts only p2's new lines;
-- `@target_player` targets the other player's character by name with real input. It is `client_target` with `name` set to `${p2_character}` when p1 runs it, and to `${character}` when p2 runs it. Its other `args` (`allow_fallback`, `settle_ms`) pass through. A `targetUnit` fallback reports N3, which costs the row its PASS as usual;
+- `@target_player` targets the other player's character by name with real input. A fallback runs on its action's client: it may repeat that client but not name another one. It is `client_target` with `name` set to `${p2_character}` when p1 runs it, and to `${character}` when p2 runs it. Its other `args` (`allow_fallback`, `settle_ms`) pass through. A `targetUnit` fallback reports N3, which costs the row its PASS as usual;
 - to read p2's own state, use `{ source = "tool", tool = "@player_state", client = "p2", ... }`.
 
 ```toml
@@ -235,7 +235,22 @@ id = "M1-2"
 title = "Readouts describe the selected player"
 expected = "Readouts describe the selected player, not you."
 players = 2
-step = [{ tool = "@target_player" }, { chat = ".info" }]
+setup = [{ chat = ".summon ${p2_character}", tier = "G" }, { wait_ms = 5000 }]
+step = [
+  { tool = "@entity_find", args = { name = "${p2_character}", exact = true }, label = "see-p2" },
+  { tool = "@target_player" },
+  { chat = ".info" },
+]
+[[row.expect]]
+id = "p2-visible"
+text = "p1's client sees p2 after the summon"
+source = "tool"
+at = "see-p2"
+tool = "@entity_find"
+args = { name = "${p2_character}", exact = true }
+pointer = "/count"
+op = "gte"
+value = 1
 [[row.expect]]
 id = "names-p2"
 text = "the readout is about p2"
@@ -243,7 +258,9 @@ source = "chat"
 contains = "${p2_character}"
 ```
 
-p2's account and character come from `lab-account.p2.json`. The section's `character` and `fresh` settings apply to p1 only. The row is BLOCKED, naming the reason, when that file is missing or names no character, when it names p1's own character (the second login would evict the first), when `lab_uat_run` is itself running in instance p2, or when a tool a p2 action or clause needs is not routed on p2. Set-up: [Two clients](live-research-lab.md#two-clients-two-player-scenarios). Both players need to be in the same world for targeting, and the row's setup moves them there.
+The runner does not put the two players in one place. Do that in the row's setup: `.summon <name>` always brings the player to the caller's instance and position, which also covers instanced maps such as `Castle_CellBlock`. Then add a visibility check before any targeting step, so a missing p2 FAILs on a clear clause rather than on a target click.
+
+p2's account and character come from `lab-account.p2.json`. The section's `character` and `fresh` settings apply to p1 only. The row is BLOCKED, naming the reason, when that file is missing or names no character, when it names p1's own account or character, ignoring case (the second login would evict the first), when `lab_uat_run` is itself running in instance p2, or when a tool a p2 action or clause needs is not routed on p2. Set-up: [Two clients](live-research-lab.md#two-clients-two-player-scenarios). Both players need to be in the same world for targeting, and the row's setup moves them there.
 
 ### The capability table
 
