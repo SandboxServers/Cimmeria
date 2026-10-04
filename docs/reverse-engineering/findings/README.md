@@ -1,6 +1,6 @@
 # RE Findings
 
-This directory contains <!-- gen:re-findings-count -->93<!-- /gen:re-findings-count --> per-system reverse engineering findings with evidence.
+This directory contains <!-- gen:re-findings-count -->95<!-- /gen:re-findings-count --> per-system reverse engineering findings with evidence.
 
 ## Documents
 
