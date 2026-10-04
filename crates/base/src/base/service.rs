@@ -135,6 +135,9 @@ impl BaseService {
             .map(|(addr, c)| OnlinePlayer {
                 id: c.player_entity_id.unwrap_or(0),
                 name: c.player_name.clone().unwrap_or_default(),
+                player_id: c.active_player_id,
+                account_id: c.account_id,
+                account_name: c.account_name.clone(),
                 archetype: archetype_name(c.player_archetype.unwrap_or(0)),
                 level: c.player_level.unwrap_or(1),
                 zone: c.world_name.clone().unwrap_or_default(),

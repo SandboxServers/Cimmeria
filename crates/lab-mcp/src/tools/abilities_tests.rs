@@ -65,7 +65,9 @@ fn ab_l1_a_mismatched_reply_is_a_tool_error() {
     let reply = LabQueryReply::Witnesses {
         report: LabWitnessReport {
             entity_id: 1,
+            names: Default::default(),
             space_id: 1,
+            world: None,
             witnessed_by: vec![],
             witnesses: vec![],
         },

@@ -95,5 +95,5 @@ Coordinator launch: 2026-10-04 at `7e7ba5779` (baseline `a679e748c`). The cited 
 | NT-30 Opcode and method names | Ready | | |
 | NT-31 Flag, enum and error-code names | BlockedDependency (NT-01) | | |
 | NT-40 Client telemetry resolved at ingest | BlockedDependency (NT-01, NT-02, NT-30) | | |
-| NT-41 Lab tools return names | BlockedDependency (NT-01) | | |
+| NT-41 Lab tools return names | InReview | | The four server tools pair every ID with its name; the cell fills live names, the lab endpoint the NameBook ones. `server_witnesses` lists became `{ entity_id, entity_name, … }` objects. `client_entity_table` / `client_inventory` are served by the lab daemon from client memory, not the server, so they are left as they are. `spawn_id`, `class_id`, `stat_id` have no name table yet |
 | NT-50 Close-out | BlockedDependency (all) | | |

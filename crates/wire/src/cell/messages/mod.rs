@@ -72,8 +72,8 @@ pub use data::{
 pub use duel_base_to_cell::DuelBaseToCell;
 pub use item_use::{ConsumeItemForUse, ItemUseConsumed};
 pub use lab::{
-    LabEntityFilter, LabEntitySnapshot, LabQuery, LabQueryReply, LabQueryResult, LabRadius,
-    LabRadiusCenter, LabWitnessReport, LAB_ENTITY_QUERY_CAP,
+    LabEntityFilter, LabEntityNames, LabEntityRef, LabEntitySnapshot, LabQuery, LabQueryReply,
+    LabQueryResult, LabRadius, LabRadiusCenter, LabWitnessReport, LAB_ENTITY_QUERY_CAP,
 };
 pub use loot_grant::{GrantRefusal, LootGrantSource};
 pub use mail_gm_cell_to_base::{MailGmActor, MailGmCellToBase};

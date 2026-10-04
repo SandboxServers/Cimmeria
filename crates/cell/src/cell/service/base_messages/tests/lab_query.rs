@@ -12,7 +12,8 @@ use super::*;
 use tokio::sync::oneshot;
 
 use crate::cell::messages::{
-    LabEntityFilter, LabQuery, LabQueryReply, LabRadius, LabRadiusCenter, LAB_ENTITY_QUERY_CAP,
+    LabEntityFilter, LabEntityNames, LabEntityRef, LabQuery, LabQueryReply, LabRadius,
+    LabRadiusCenter, LAB_ENTITY_QUERY_CAP,
 };
 
 /// One non-instanced space, empty.
@@ -251,8 +252,9 @@ async fn witnesses_report_resolves_both_directions() {
     let LabQueryReply::Witnesses { report } = reply else {
         panic!("expected Witnesses reply");
     };
+    let ids = |refs: &[LabEntityRef]| refs.iter().map(|r| r.entity_id).collect::<Vec<_>>();
     assert_eq!(
-        report.witnessed_by,
+        ids(&report.witnessed_by),
         vec![100],
         "player 100 witnesses the NPC"
     );
@@ -265,7 +267,7 @@ async fn witnesses_report_resolves_both_directions() {
         panic!("expected Witnesses reply");
     };
     assert!(
-        report.witnesses.contains(&900),
+        ids(&report.witnesses).contains(&900),
         "player's witness set includes the nearby NPC, got {:?}",
         report.witnesses
     );
@@ -273,4 +275,87 @@ async fn witnesses_report_resolves_both_directions() {
     // Unknown entity → Err.
     let result = query(&mut mgr, LabQuery::Witnesses { entity_id: 55555 }).await;
     assert!(result.is_err(), "unknown entity witness query errors");
+}
+
+/// NT-41 (Rule 6): the cell pairs every entity id it reports with the live
+/// name it holds. The player's snapshot carries `entity_name`, `world` and
+/// its target's name; an NPC with no `npc_name` gets no `entity_name` (the
+/// lab endpoint resolves that one from the NameBook), never a placeholder.
+#[tokio::test]
+async fn nt41_snapshots_pair_entity_ids_with_live_names() {
+    let mut mgr = make_manager();
+    mgr.create_entity(100, "Agnos", [10.0, 0.0, 10.0], [0.0; 3])
+        .unwrap();
+    mgr.create_entity(900, "Agnos", [12.0, 0.0, 12.0], [0.0; 3])
+        .unwrap();
+    mgr.create_entity(901, "Agnos", [14.0, 0.0, 14.0], [0.0; 3])
+        .unwrap();
+    if let Some(e) = mgr.get_entity_mut(100) {
+        e.is_player = true;
+        e.character_name = Some("Tealc".to_string());
+        e.current_target_id = Some(900);
+    }
+    if let Some(e) = mgr.get_entity_mut(900) {
+        e.class_id = 0x04;
+        e.npc_name = Some("Jaffa Guard".to_string());
+        e.template_id = Some(7001);
+    }
+    if let Some(e) = mgr.get_entity_mut(901) {
+        e.class_id = 0x04;
+        e.template_id = Some(7002);
+    }
+    mgr.connect_entity(100);
+    let _ = mgr.compute_aoi_changes();
+
+    let LabQueryReply::Entity { entity } = query(&mut mgr, LabQuery::EntityGet { entity_id: 100 })
+        .await
+        .unwrap()
+    else {
+        panic!("expected Entity reply");
+    };
+    let snap = entity.unwrap();
+    assert_eq!(snap.entity_name.as_deref(), Some("Tealc"));
+    assert_eq!(snap.world.as_deref(), Some("Agnos"));
+    assert_eq!(snap.current_target_name.as_deref(), Some("Jaffa Guard"));
+
+    let LabQueryReply::Entity { entity } = query(&mut mgr, LabQuery::EntityGet { entity_id: 901 })
+        .await
+        .unwrap()
+    else {
+        panic!("expected Entity reply");
+    };
+    let snap = entity.unwrap();
+    assert_eq!(snap.entity_name, None, "no npc_name: left for the NameBook");
+    assert_eq!(snap.current_target_name, None, "no target, no target name");
+
+    let LabQueryReply::Witnesses { report } =
+        query(&mut mgr, LabQuery::Witnesses { entity_id: 100 })
+            .await
+            .unwrap()
+    else {
+        panic!("expected Witnesses reply");
+    };
+    assert_eq!(report.names.entity_name.as_deref(), Some("Tealc"));
+    assert_eq!(report.names.template_id, None, "a player has no template");
+    assert_eq!(report.world.as_deref(), Some("Agnos"));
+    let guard = report
+        .witnesses
+        .iter()
+        .find(|r| r.entity_id == 900)
+        .unwrap();
+    assert_eq!(
+        guard.names,
+        LabEntityNames {
+            entity_name: Some("Jaffa Guard".to_string()),
+            template_id: Some(7001),
+            template_name: None,
+        }
+    );
+    let unnamed = report
+        .witnesses
+        .iter()
+        .find(|r| r.entity_id == 901)
+        .unwrap();
+    assert_eq!(unnamed.names.entity_name, None);
+    assert_eq!(unnamed.names.template_id, Some(7002));
 }

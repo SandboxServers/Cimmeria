@@ -130,7 +130,18 @@ pub enum LabQueryReply {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct LabEntitySnapshot {
     pub entity_id: u32,
+    /// Rule 6 pair for `entity_id` (`docs/architecture/instrumentation-discipline.md`):
+    /// the character name for a player; for an NPC its `npc_name`, filled by
+    /// the cell, else the text of its template's `name_id`, filled by the lab
+    /// endpoint from the NameBook. Left out when nothing resolves.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub entity_name: Option<String>,
     pub space_id: u32,
+    /// Rule 6 pair for `space_id`: the space's world, left out when the space
+    /// has none. Same value as `world_name`, which predates Rule 6 and stays
+    /// for existing callers.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub world: Option<String>,
     pub world_name: String,
     pub position: [f32; 3],
     /// `[pitch, yaw, roll]` in radians (players and NPCs both — see
@@ -145,17 +156,30 @@ pub struct LabEntitySnapshot {
     pub alignment: u8,
     pub level: u32,
     /// `character_name` for players, `npc_name` for NPCs; `None` if unset.
+    /// Predates Rule 6: `entity_name` is the paired key, and it also falls
+    /// back to the NameBook.
     pub name: Option<String>,
     pub template_id: Option<i32>,
+    /// `entity_templates.template_name`, filled by the lab endpoint from the
+    /// NameBook. Left out for a player or an unnamed template.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub template_name: Option<String>,
     pub spawn_id: Option<i32>,
     pub tag: Option<String>,
     pub name_id: Option<i32>,
     pub archetype_id: Option<i32>,
+    /// `archetype_name()` of `archetype_id`, filled by the lab endpoint.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub archetype_name: Option<String>,
     pub access_level: u32,
     /// Debug label of the NPC AI state (`Idle`, `Fighting`, `Dead`, …).
     /// Meaningful only for NPCs; present for all entities.
     pub ai_state: String,
     pub current_target_id: Option<i32>,
+    /// The current target's entity name, when the target is a live entity in
+    /// the same space and has one.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub current_target_name: Option<String>,
     pub aoi_radius: f32,
     pub state_field: u32,
     pub interaction_type_flags: i64,
@@ -193,11 +217,42 @@ pub struct LabEntitySnapshot {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct LabWitnessReport {
     pub entity_id: u32,
+    /// `entity_id`'s names (Rule 6), filled like a [`LabEntityRef`]'s.
+    #[serde(flatten)]
+    pub names: LabEntityNames,
     pub space_id: u32,
-    /// Player entity ids that currently have `entity_id` in their AoI —
+    /// Rule 6 pair for `space_id`: the space's world, left out when unset.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub world: Option<String>,
+    /// Player entities that currently have `entity_id` in their AoI —
     /// the observers of X. Resolved via `SpaceManager::get_witnesses_of`.
-    pub witnessed_by: Vec<u32>,
-    /// Entity ids `entity_id` currently sees. Populated only when `entity_id`
+    pub witnessed_by: Vec<LabEntityRef>,
+    /// Entities `entity_id` currently sees. Populated only when `entity_id`
     /// is a player (only players carry a witness set); empty for NPCs.
-    pub witnesses: Vec<u32>,
+    pub witnesses: Vec<LabEntityRef>,
+}
+
+/// An entity id in a lab reply's list, with the names Rule 6 pairs with it
+/// (`docs/architecture/instrumentation-discipline.md`).
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct LabEntityRef {
+    pub entity_id: u32,
+    #[serde(flatten)]
+    pub names: LabEntityNames,
+}
+
+/// The names that go next to an entity id. A field that does not resolve is
+/// left out of the JSON, never written as a placeholder.
+#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
+pub struct LabEntityNames {
+    /// A player's character name or an NPC's `npc_name` (cell), else the text
+    /// of the template's `name_id` (lab endpoint, NameBook).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub entity_name: Option<String>,
+    /// An NPC's template; `None` for a player.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub template_id: Option<i32>,
+    /// `entity_templates.template_name` (lab endpoint, NameBook).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub template_name: Option<String>,
 }
