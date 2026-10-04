@@ -16,4 +16,4 @@
 - [effect-script-registry-seam.md](effect-script-registry-seam.md) — #962 step 4: scripts in cell-effect-scripts, looked up on SpaceManager; bare test managers have no scripts
 - [ability-mechanics-gaps.md](ability-mechanics-gaps.md) — why most player abilities do nothing: no Self substitution, NVP-less damage=0, timed 1-pulse effects unregistered, regen stats are %
 - [damage-scripts-bypass-mitigation.md](damage-scripts-bypass-mitigation.md) — Rust damage scripts are raw (no QR/armour/absorb, python used qrCombatDamage); AB-06 made them the only path; mixed-QR abilities
-- [per-effect-nvp-resolution.md](per-effect-nvp-resolution.md) — AB-03 per-effect NVP damage: area-collapse rule, full-def callers (ground/splash) vs scoped cone fan-out, double SRC_MORTAL
+- [per-effect-nvp-resolution.md](per-effect-nvp-resolution.md) — AB-03 per-effect NVP damage: area-collapse rule, full-def callers (ground/splash) vs scoped cone fan-out, one SRC_MORTAL per hit

@@ -1,6 +1,6 @@
 ---
 name: per-effect-nvp-resolution
-description: AB-03 (PR #1157) per-effect NVP damage model in damage_apply/nvp_damage.rs — area-collapse rule, which callers pass the full def, multi-MORTAL entries
+description: AB-03 (PR #1157) per-effect NVP damage model in damage_apply/nvp_damage.rs — area-collapse rule, which callers pass the full def, entries stop after the first lethal one
 metadata:
   type: project
 ---
@@ -15,7 +15,7 @@ scoped one-effect def, so secondaries get the cone. The ground path (`dispatch/m
 and ammo splash pass the FULL def, so every radius target gets the single-target effects and a DoT's
 first pulse (splash does not register the DoT). No radius fan-out exists for entity-targeted casts.
 
-**How to apply:** when reviewing damage changes, check all three callers. Known quirks: a second entry
-on an already-dead target emits a second `SRC_MORTAL` entry with delta 0. Flat armour mitigation is now
+**How to apply:** when reviewing damage changes, check all three callers. Known quirks: entries stop once
+an earlier one kills the target, so a hit carries one `SRC_MORTAL` (guarded by `a_killing_effect_ends_the_hit_with_one_mortal_entry`; before the review fix it emitted two). Flat armour mitigation is now
 subtracted per effect, so small H values (10-30) can round to 0. NPC ability sets (15 abilities) had no
 multi-NVP abilities at review time, so NPC damage was unchanged. See [[npc-ability-sets]].
