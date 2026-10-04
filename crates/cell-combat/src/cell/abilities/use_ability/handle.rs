@@ -24,6 +24,7 @@ use super::super::auto_cycle_state::send_auto_cycle_state;
 use super::super::timer_update::send_timer_update_ctx;
 use super::super::wire_ledger::WireCtx;
 
+use super::super::metrics::{self, FirePath, RefusalReason};
 use super::gate_rows::{LaunchRefusal, LaunchRow};
 use super::weapon_redirect::resolve_weapon_redirect;
 
@@ -62,6 +63,8 @@ pub async fn handle_use_ability(
     tx: &mpsc::Sender<CellToBaseMsg>,
     space_mgr: &mut SpaceManager,
 ) -> bool {
+    // The press reached the cell: `abilities_press_to_fire_ms` starts here.
+    let pressed_at = std::time::Instant::now();
     // ── Look up ability definition from DB (before mutable borrow) ──
     let ability_def = space_mgr.ability_defs.get(&ability_id).cloned();
 
@@ -83,6 +86,8 @@ pub async fn handle_use_ability(
         ability_name: ability_def.as_ref().map_or("unknown", |d| d.name.as_str()),
         wire_target_id: target_id,
         target_id,
+        caster: metrics::caster_kind(space_mgr, entity_id),
+        world: metrics::world_of(space_mgr, entity_id),
     };
 
     // ── Pet summon (pets PT-03) ──
@@ -316,12 +321,14 @@ pub async fn handle_use_ability(
         if let Some(new_state) = combat::clear_auto_cycle(space_mgr, entity_id) {
             send_auto_cycle_state(entity_id, new_state, tx, space_mgr).await;
         }
+        row.count(RefusalReason::SupportHostileTarget);
         return false;
     }
 
     if incapacitated {
         super::incapacitated::refuse_while_incapacitated(entity_id, ability_id, tx, space_mgr)
             .await;
+        row.count(RefusalReason::Incapacitated);
         return false;
     }
 
@@ -345,6 +352,7 @@ pub async fn handle_use_ability(
         if let Some(def) = ability_def.as_ref() {
             super::shield_full::refuse_shield_full(entity_id, def, tx, space_mgr).await;
         }
+        row.count(RefusalReason::ShieldFull);
         return false;
     }
 
@@ -353,6 +361,7 @@ pub async fn handle_use_ability(
         if let Some(def) = ability_def.as_ref() {
             super::no_mechanics::refuse_without_mechanics(entity_id, def, tx, space_mgr).await;
         }
+        row.count(RefusalReason::NoMechanics);
         return false;
     }
 
@@ -367,19 +376,23 @@ pub async fn handle_use_ability(
             space_mgr,
         )
         .await;
+        row.count(RefusalReason::from_range(failure.refusal));
         return false;
     }
 
     if let Some(summon) = summon {
         if super::summon::refuse_summon_launch(entity_id, ability_id, summon, tx, space_mgr).await {
+            row.count(RefusalReason::SummonRefused);
             return false;
         }
     }
     if owner_pet
         && super::owner_pet::refuse_owner_pet_launch(entity_id, ability_id, tx, space_mgr).await
     {
+        row.count(RefusalReason::OwnerPetRefused);
         return false;
     }
+    // A deployable refusal counts itself (`deployable::launch::refuse`).
     if deploy.is_some()
         && super::super::deployable::refuse_unstaged_launch(entity_id, ability_id, tx, space_mgr)
             .await
@@ -390,8 +403,8 @@ pub async fn handle_use_ability(
     // Fire-time target checks, players only: a target in another space is
     // refused with onErrorCode 0 (#906), a wall between the eyes with 39
     // (NA31, D-NA14). See `fire_los` for where they apply.
-    if target_id > 0
-        && super::fire_los::refuse_without_line_of_sight(
+    if target_id > 0 {
+        if let Some(reason) = super::fire_los::refuse_without_line_of_sight(
             entity_id,
             ability_id,
             target_id as u32,
@@ -400,11 +413,14 @@ pub async fn handle_use_ability(
             space_mgr,
         )
         .await
-    {
-        return false;
+        {
+            row.count(reason);
+            return false;
+        }
     }
 
-    // Weapon attacks: the holstered-draw queue and the slot-swap lockout.
+    // Weapon attacks: the holstered-draw queue and the slot-swap lockout,
+    // each counting its own refusal or hold.
     if super::weapon_gate::hold_weapon_attack(
         entity_id,
         ability_id,
@@ -581,6 +597,7 @@ pub async fn handle_use_ability(
                 effect_seq,
                 warmup_secs,
                 event_set_id: ability_def.as_ref().and_then(|d| d.event_set_id),
+                received_at: pressed_at,
             },
             tx,
             space_mgr,
@@ -593,6 +610,12 @@ pub async fn handle_use_ability(
     // cast committed even when no target resolves; ground-target callers
     // see this as "primary succeeded" and proceed with any AoE secondaries.
     // The cast scope stamps `cast_id` on whatever the fire lands (AB-T1).
+    metrics::fired(
+        FirePath::Instant,
+        pressed_at.elapsed(),
+        row.caster,
+        row.world,
+    );
     let outer_cast = space_mgr.enter_cast_scope(Some(effect_seq));
     super::fire::fire_cast(
         entity_id,

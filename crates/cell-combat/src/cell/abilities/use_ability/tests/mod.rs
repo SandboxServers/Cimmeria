@@ -30,6 +30,7 @@ mod holster_queue;
 mod incapacitated;
 mod interrupt_effect;
 mod launch_timer_rows;
+mod metrics;
 mod min_range;
 mod no_mechanics;
 mod no_mechanics_live_db;

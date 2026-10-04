@@ -49,7 +49,9 @@
 
 // The special-ammo shot helpers the damage path reads (ammo campaign AM-04,
 // AM-10). The ammo families' scripts are in `cimmeria-cell-effect-scripts`.
-// The AB-T5 state snapshot row (`abilities.snapshot`).
+// The AB-T5 state snapshot row (`abilities.snapshot`) and the AB-T6 damage,
+// heal and ledger metrics.
+pub mod ability_metrics;
 pub mod ability_snapshot;
 pub mod ammo_damage;
 pub mod ammo_explosive;
@@ -124,7 +126,18 @@ pub fn dispatch_by_name(name: &str, ctx: &mut EffectContext) -> bool {
                 effect_id = ctx.effect.effect_id,
                 "Dispatching effect script"
             );
+            // AB-T6: what the script did to its target's pools is the
+            // damage and heal histograms' scripted share (heals, damage
+            // scripts, scripted pulses). The NVP paths record their own.
+            let before = ability_metrics::PoolSample::take(ctx.space_mgr, ctx.target_id);
             script.on_apply(ctx);
+            if let (Some(before), Some(after)) = (
+                before,
+                ability_metrics::PoolSample::take(ctx.space_mgr, ctx.target_id),
+            ) {
+                let world = ability_metrics::world_of(ctx.space_mgr, ctx.target_id);
+                before.record_change(after, world);
+            }
             true
         }
         None => {

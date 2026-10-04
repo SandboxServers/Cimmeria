@@ -21,6 +21,7 @@ fn ids() -> HitIds {
         target: PlayerIdentity::UNKNOWN,
         cast_id: None,
         god_mode: false,
+        world: "unknown",
     }
 }
 

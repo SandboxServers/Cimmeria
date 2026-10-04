@@ -295,6 +295,54 @@ macro_rules! gauge_add {
     }};
 }
 
+/// Declare an enumerated metric label: a `Copy` enum whose variants are the
+/// only values the label can take (Rule 4), with `ALL` (every variant, in
+/// declaration order) and `label()` (the string sent to the exporter).
+///
+/// Call sites pass the enum, never a string, so a label set cannot grow
+/// without a new variant; a pinning test can compare `ALL` with the code's
+/// own list of reasons.
+///
+/// ```ignore
+/// cimmeria_observability::metric_label! {
+///     /// Why a trade ended.
+///     pub enum TradeOutcome {
+///         Completed => "completed",
+///         Cancelled => "cancelled",
+///     }
+/// }
+/// counter!("trade_swaps_total", "outcome" => TradeOutcome::Completed.label());
+/// ```
+#[macro_export]
+macro_rules! metric_label {
+    (
+        $(#[$meta:meta])*
+        $vis:vis enum $name:ident {
+            $( $(#[$vmeta:meta])* $variant:ident => $label:literal ),+ $(,)?
+        }
+    ) => {
+        $(#[$meta])*
+        #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+        $vis enum $name {
+            $( $(#[$vmeta])* $variant ),+
+        }
+
+        impl $name {
+            /// Every value of the label, in declaration order.
+            #[allow(dead_code)]
+            $vis const ALL: &'static [Self] = &[ $( Self::$variant ),+ ];
+
+            /// The label value the exporter receives.
+            #[allow(dead_code)]
+            $vis const fn label(self) -> &'static str {
+                match self {
+                    $( Self::$variant => $label ),+
+                }
+            }
+        }
+    };
+}
+
 #[cfg(test)]
 mod tests {
     //! Self-tests for the facade.

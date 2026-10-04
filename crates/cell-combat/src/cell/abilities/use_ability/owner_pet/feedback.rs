@@ -89,6 +89,10 @@ async fn send(
         .await
         .is_err()
     {
+        crate::cell::abilities::metrics::wire_send_failed(
+            crate::cell::abilities::metrics::WireMessage::from_method(method_index),
+            crate::cell::abilities::metrics::UNKNOWN_WORLD,
+        );
         tracing::warn!(
             target: "pets.buff",
             event = "feedback_send_failed",

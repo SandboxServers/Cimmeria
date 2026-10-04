@@ -1,0 +1,40 @@
+{
+  "name": "Abilities — One cast, in order (add cast_id = N AND player_id = P)",
+  "sourcePage": "logs",
+  "category": "abilities",
+  "tags": [
+    "abilities",
+    "ab-t7",
+    "forensics"
+  ],
+  "compositeQuery": {
+    "queryType": "builder",
+    "panelType": "list",
+    "queries": [
+      {
+        "type": "builder_query",
+        "spec": {
+          "name": "A",
+          "signal": "logs",
+          "source": "",
+          "stepInterval": 0,
+          "filter": {
+            "expression": "service.name = 'cimmeria-server' AND (scope_name = 'abilities' OR scope_name LIKE 'abilities.%' OR scope_name = 'base.entity_method') AND cast_id EXISTS"
+          },
+          "having": {
+            "expression": ""
+          },
+          "order": [
+            {
+              "key": {
+                "name": "timestamp"
+              },
+              "direction": "asc"
+            }
+          ]
+        }
+      }
+    ]
+  },
+  "extraData": "{\"selectColumns\": [{\"name\": \"scope_name\", \"signal\": \"logs\"}, {\"name\": \"event\", \"signal\": \"logs\"}, {\"name\": \"stage\", \"signal\": \"logs\"}, {\"name\": \"cast_id\", \"signal\": \"logs\"}, {\"name\": \"ability_id\", \"signal\": \"logs\"}, {\"name\": \"ability_name\", \"signal\": \"logs\"}, {\"name\": \"effect_id\", \"signal\": \"logs\"}, {\"name\": \"entity_id\", \"signal\": \"logs\"}, {\"name\": \"target_id\", \"signal\": \"logs\"}, {\"name\": \"player_id\", \"signal\": \"logs\"}, {\"name\": \"target_player_id\", \"signal\": \"logs\"}, {\"name\": \"path\", \"signal\": \"logs\"}, {\"name\": \"reason\", \"signal\": \"logs\"}, {\"name\": \"result\", \"signal\": \"logs\"}, {\"name\": \"result_code\", \"signal\": \"logs\"}, {\"name\": \"method\", \"signal\": \"logs\"}, {\"name\": \"origin\", \"signal\": \"logs\"}, {\"name\": \"action\", \"signal\": \"logs\"}, {\"name\": \"witness_count\", \"signal\": \"logs\"}, {\"name\": \"mercury_seq\", \"signal\": \"logs\"}, {\"name\": \"body\", \"signal\": \"logs\"}]}"
+}

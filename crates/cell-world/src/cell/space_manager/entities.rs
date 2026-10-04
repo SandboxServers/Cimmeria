@@ -115,6 +115,13 @@ impl SpaceManager {
         // teardown to an account. `entity_id` alone is not enough here of all
         // places: the id is released for reuse the moment this returns.
         let id = self.player_identity(entity_id);
+        // AB-T6: a cast still in its warmup ends here with an `abandoned`
+        // outcome (a logout took it already, as `caster_disconnected`).
+        crate::cell::effects::ability_metrics::abandon_pending_cast(
+            self,
+            entity_id,
+            crate::cell::effects::ability_metrics::ABANDONED_DESTROYED,
+        );
         // GM-only session buffers are keyed by entity_id; drop them so a
         // destroyed (and possibly later reused) id can't inherit stale pending
         // authoring SQL or the autosave-spawn flag.
@@ -392,6 +399,13 @@ impl SpaceManager {
         // Snapshot identity up front: `destroy_entity` below removes the
         // entity, so the closing log can no longer resolve it.
         let id = self.player_identity(entity_id);
+        // AB-T6: a logout mid-warmup abandons the cast, named as such before
+        // `destroy_entity` below would call it a plain destroy.
+        crate::cell::effects::ability_metrics::abandon_pending_cast(
+            self,
+            entity_id,
+            crate::cell::effects::ability_metrics::ABANDONED_DISCONNECTED,
+        );
         // Drop GM-only session buffers (keyed by entity_id) on disconnect so
         // pending authoring SQL / the autosave-spawn flag don't outlive the
         // session. Same rationale as `destroy_entity`.

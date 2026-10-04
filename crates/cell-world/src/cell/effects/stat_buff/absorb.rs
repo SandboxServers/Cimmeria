@@ -29,6 +29,7 @@ impl SpaceManager {
             return 0;
         }
         let target_who = self.player_identity(target);
+        let world = crate::cell::effects::ability_metrics::world_of(self, target);
         let Some(entity) = self.get_entity_mut(target) else {
             return 0;
         };
@@ -78,8 +79,8 @@ impl SpaceManager {
                 target_who,
                 entry,
                 StatBuffRemoval::Drained,
-                restored.clone(),
-                restored,
+                (restored.clone(), restored),
+                world,
             );
         }
         settled.drained.len()

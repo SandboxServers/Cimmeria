@@ -14,6 +14,8 @@
 
 use cimmeria_entity::cell_entity::PlayerIdentity;
 
+use super::super::metrics::{self, CasterKind, RefusalReason};
+
 /// Why a launch stopped. Each variant is one `event`.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(super) enum LaunchRefusal {
@@ -42,6 +44,25 @@ pub(super) enum LaunchRefusal {
     NoAmmo { current: i32, required: i32 },
 }
 
+impl From<LaunchRefusal> for RefusalReason {
+    /// The metric reason: the row's `reason`, which `metrics::tests` pins.
+    fn from(why: LaunchRefusal) -> Self {
+        match why {
+            LaunchRefusal::CasterMissing => Self::CasterMissing,
+            LaunchRefusal::CasterDead => Self::CasterDead,
+            LaunchRefusal::AlreadyWarming { .. } => Self::AlreadyWarming,
+            LaunchRefusal::NotKnown => Self::NotKnown,
+            LaunchRefusal::UnknownAbilityId => Self::UnknownAbilityId,
+            LaunchRefusal::OnCooldown => Self::OnCooldown,
+            LaunchRefusal::TargetDead => Self::TargetDead,
+            LaunchRefusal::NoBeneficialTarget => Self::NoBeneficialTarget,
+            LaunchRefusal::CasterVanished => Self::CasterMissingAtCommit,
+            LaunchRefusal::Reloading => Self::ReloadInFlight,
+            LaunchRefusal::NoAmmo { .. } => Self::NoAmmo,
+        }
+    }
+}
+
 struct Shape {
     event: &'static str,
     stage: &'static str,
@@ -52,6 +73,34 @@ struct Shape {
 }
 
 impl LaunchRefusal {
+    /// The row's `reason` (for `metrics::tests`).
+    #[cfg(test)]
+    pub(super) fn reason(self) -> &'static str {
+        self.shape().reason
+    }
+
+    /// One of each variant (for `metrics::tests`).
+    #[cfg(test)]
+    pub(super) const ALL: [Self; 11] = [
+        Self::CasterMissing,
+        Self::CasterDead,
+        Self::AlreadyWarming {
+            ability_id: 0,
+            cast_id: 0,
+        },
+        Self::NotKnown,
+        Self::UnknownAbilityId,
+        Self::OnCooldown,
+        Self::TargetDead,
+        Self::NoBeneficialTarget,
+        Self::CasterVanished,
+        Self::Reloading,
+        Self::NoAmmo {
+            current: 0,
+            required: 0,
+        },
+    ];
+
     fn shape(self) -> Shape {
         let (event, stage, reason, warn, message) = match self {
             Self::CasterMissing => (
@@ -164,6 +213,9 @@ pub(super) struct LaunchRow<'a> {
     pub wire_target_id: i32,
     /// The target the launch resolved (the wire target until it has).
     pub target_id: i32,
+    /// The AB-T6 metrics' `caster` and `world` labels.
+    pub caster: CasterKind,
+    pub world: &'static str,
 }
 
 impl LaunchRow<'_> {
@@ -177,8 +229,24 @@ impl LaunchRow<'_> {
         }
     }
 
-    /// Log why the launch stopped.
+    /// Count a refusal whose row and answer are another module's
+    /// (`abilities_refused_total`, AB-T6).
+    pub(super) fn count(&self, reason: RefusalReason) {
+        metrics::refused(
+            reason,
+            metrics::RefusedCast {
+                entity_id: self.entity_id,
+                ability_id: self.ability_id,
+                who: self.who,
+                caster: self.caster,
+                world: self.world,
+            },
+        );
+    }
+
+    /// Log why the launch stopped, and count it.
     pub(super) fn refused(&self, why: LaunchRefusal) {
+        self.count(why.into());
         let Shape {
             event,
             stage,

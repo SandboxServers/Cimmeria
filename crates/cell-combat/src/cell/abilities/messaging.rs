@@ -131,6 +131,7 @@ fn refuse_unbound_npc_method(entity_id: u32, method_index: u16, via: &'static st
         return false;
     }
     tracing::warn!(
+        target: "abilities.wire",
         entity_id,
         method_index,
         via,
@@ -224,6 +225,7 @@ fn witness_audience(
             let witnesses = space_mgr.get_witnesses_of(entity_id);
             if witnesses.is_empty() {
                 tracing::warn!(
+                    target: "abilities.wire",
                     entity_id,
                     method_index,
                     "send_entity_method: NPC has no witnesses, method dropped"
@@ -235,6 +237,7 @@ fn witness_audience(
             let witnesses = space_mgr.get_witnesses_of(entity_id);
             if witnesses.is_empty() {
                 tracing::debug!(
+                    target: "abilities.wire",
                     entity_id,
                     method_index,
                     "send_entity_method_to_witnesses: no witnesses; nothing emitted"
@@ -296,6 +299,11 @@ pub(crate) async fn deliver(
         } else {
             out.failed += 1;
             let who = space_mgr.player_identity(entity_id);
+            crate::cell::abilities::metrics::wire_send_failed_in(
+                space_mgr,
+                entity_id,
+                crate::cell::abilities::metrics::WireMessage::from_method(method_index),
+            );
             tracing::warn!(
                 target: "abilities.wire",
                 event = "wire_send_failed",
@@ -316,7 +324,10 @@ pub(crate) async fn deliver(
     let mut witness_failed = 0usize;
     for witness_id in witnesses {
         if route == WireRoute::EntityDefault {
-            tracing::debug!(
+            // TRACE: one row per witness per send. The fan-out's one
+            // `wire_sent` row (AB-T4) carries the witness count at DEBUG.
+            tracing::trace!(
+                target: "abilities.wire",
                 witness_id,
                 entity_id,
                 method_index,
@@ -344,6 +355,11 @@ pub(crate) async fn deliver(
         // One row per fan-out, not per witness: a closed channel refuses
         // every witness in the loop the same way.
         out.failed += witness_failed;
+        crate::cell::abilities::metrics::wire_send_failed_in(
+            space_mgr,
+            entity_id,
+            crate::cell::abilities::metrics::WireMessage::from_method(method_index),
+        );
         tracing::warn!(
             target: "abilities.wire",
             event = "wire_send_failed",
@@ -362,6 +378,7 @@ pub(crate) async fn deliver(
         && out.witnesses_addressed > 0
     {
         tracing::debug!(
+            target: "abilities.wire",
             entity_id,
             method_index,
             witness_count = out.witnesses_addressed,
@@ -390,6 +407,7 @@ pub async fn request_appearance_refresh(
             Some(pid) => (pid, e.weapon_holstered),
             None => {
                 tracing::debug!(
+                    target: "abilities.wire",
                     entity_id,
                     "request_appearance_refresh: player entity has no DB player_id (pre-load?), skipping"
                 );
@@ -398,6 +416,7 @@ pub async fn request_appearance_refresh(
         },
         Some(_) => {
             tracing::debug!(
+                target: "abilities.wire",
                 entity_id,
                 "request_appearance_refresh: entity is not a player, skipping"
             );
@@ -405,6 +424,7 @@ pub async fn request_appearance_refresh(
         }
         None => {
             tracing::debug!(
+                target: "abilities.wire",
                 entity_id,
                 "request_appearance_refresh: entity not found in space_mgr, skipping"
             );
@@ -420,6 +440,11 @@ pub async fn request_appearance_refresh(
         .await
         .is_err()
     {
+        crate::cell::abilities::metrics::wire_send_failed_in(
+            space_mgr,
+            entity_id,
+            crate::cell::abilities::metrics::WireMessage::RefreshAppearance,
+        );
         tracing::warn!(
             target: "abilities.wire",
             event = "wire_send_failed",

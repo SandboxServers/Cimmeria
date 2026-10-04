@@ -1,0 +1,32 @@
+{
+  "name": "Abilities — Refusals by reason",
+  "sourcePage": "logs",
+  "category": "abilities",
+  "tags": [
+    "abilities",
+    "ab-t7",
+    "refusals"
+  ],
+  "compositeQuery": {
+    "queryType": "builder",
+    "panelType": "list",
+    "queries": [
+      {
+        "type": "builder_query",
+        "spec": {
+          "name": "A",
+          "signal": "logs",
+          "source": "",
+          "stepInterval": 0,
+          "filter": {
+            "expression": "service.name = 'cimmeria-server' AND scope_name = 'abilities' AND event = 'ability_refused'"
+          },
+          "having": {
+            "expression": ""
+          }
+        }
+      }
+    ]
+  },
+  "extraData": "{\"selectColumns\": [{\"name\": \"reason\", \"signal\": \"logs\"}, {\"name\": \"caster\", \"signal\": \"logs\"}, {\"name\": \"world\", \"signal\": \"logs\"}, {\"name\": \"ability_id\", \"signal\": \"logs\"}, {\"name\": \"player_id\", \"signal\": \"logs\"}, {\"name\": \"entity_id\", \"signal\": \"logs\"}, {\"name\": \"account_id\", \"signal\": \"logs\"}, {\"name\": \"body\", \"signal\": \"logs\"}]}"
+}

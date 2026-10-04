@@ -523,6 +523,26 @@ the cell's WARN refusals `no_vendor_session` | `malformed_args` | `template_mism
 The `vendor.*` INFO spans are unchanged.
 Covered by `OTEL_FILTER`'s `vendor=info`
 
+### `abilities` metrics (AB-T6) and targets (AB-T7)
+
+The ability rows use named targets only: `abilities` (receipt, gates, launch, refusals, fire, and the death, loot and dispatch rows of the ability modules), `abilities.qr`, `abilities.effect`, `abilities.ledger`, `abilities.pulse`, `abilities.wire`, `abilities.sequence`, `abilities.snapshot`, `abilities.gm`, and AB-N1's `abilities.debug`; regen is `vitals`, and the base's delivery of a cell's client method is `base.entity_method`. AB-T7 moved the last 43 rows that logged under a module path (`cimmeria_cell_combat::cell::abilities::*`) onto `abilities` or `abilities.wire` (the NPC movement-type cache warning onto `movement.movement_type`), demoted the per-witness routing row to TRACE, and added `abilities=trace` to `combat.log` so those rows stay in that file. `crates/server/src/logging/abilities_target_tests.rs` pins every ability `(target, level)` to exactly one OTLP index, pins the `abilities=debug`, `vitals=debug` and `base.entity_method=debug` rows in `OTEL_FILTER`, and fails when a row under the ability source directories has no `target:`.
+
+Metrics, each with `world` (`crates/cell-combat/src/cell/abilities/metrics/`; the damage, heal and ledger ones are recorded in `cimmeria-cell-world`'s `effects::ability_metrics`). Every label is an enum; `metrics/tests.rs` pins each set against the reasons the rows log:
+
+| Metric | Kind | Labels | Counted at |
+|---|---|---|---|
+| `abilities_cast_total` | counter | `outcome` (`fired` \| `interrupted` \| `refused` \| `held` \| `abandoned`), `caster` (`player` \| `npc`) | Once per cast: a launch refusal, the holstered-weapon queue, the fire (launch pass or warmup tick), the warmup interrupt, or the caster's teardown mid-warmup (`abandoned`, counted in `cimmeria-cell-world`'s `ability_metrics::abandon_pending_cast` with an `abilities` `warmup_abandoned` row: `reason` = `caster_disconnected` \| `caster_destroyed`, `cast_id`) |
+| `abilities_refused_total` | counter | `reason` (26 values: the 11 `use_ability_*` gate reasons, `incapacitated`, `no_mechanics`, `shield_full`, `target_out_of_range`, `target_too_close`, `support_hostile_target`, `beneficial_non_ally_target`, `non_hostile_target`, `summon_refused`, `owner_pet_refused`, `deployable_refused`, `target_other_space`, `no_line_of_sight`, `weapon_attack_queued`, `slot_swap_in_progress`), `caster` | Each launch refusal, in `metrics::refused`, which also writes one `abilities` DEBUG `event = ability_refused` row with the same `reason`, `caster` and `world` (plus `entity_id`, `ability_id`, `account_id`, `player_id`); the refusing module's own row keeps the detail |
+| `abilities_effect_applied_total` | counter | `path` (`effect_planned`'s seven paths) | Each `effect_planned` row |
+| `abilities_ledger_removed_total` | counter | `reason` (`StatBuffRemoval`: `expired`, `replaced`, `removed`, `toggled_off`, `removed_by_moniker`, `died`, `damage`, `revive`, `bandolier_swap`, `cleansed`, `drained`, `duel_ended`) | Each `stat_buff_removed` row |
+| `abilities_qr_total` | counter | `result` (`qr_rolled`'s `result`) | Each hit's roll |
+| `abilities_wire_send_failed_total` | counter | `message` (`wire_ledger::method_name`'s values plus `RefreshAppearance`, `ContactListPresenceEvent`) | Each `wire_send_failed` WARN and each ability feedback `*_send_failed` WARN: a send the closed cell-to-base channel refused. A full queue makes the send wait, not fail, so queue saturation never shows here |
+| `abilities_press_to_fire_ms` | histogram | `path` (`instant` \| `warmup`), `caster` | The cell's receipt of the press to the fire; a warmed cast carries the receipt on `PendingCast::received_at`, so its sample is any launch delay plus the warmup plus the tick's lateness |
+| `abilities_damage_dealt` | histogram | `pool` (`health` \| `focus` \| `absorb`) | Per effect per target: NVP hits, NVP pulses, and any script's pool change (before a god-mode restore) |
+| `abilities_heal_done` | histogram | `pool` (`health` \| `focus`) | Per effect per target: any script's pool rise |
+
+The SigNoz views (**Abilities — One cast, in order**, **Refusals by reason**, **Wire sends for a player**) and the **Cimmeria — Ability metrics** dashboard are defined in [tools/signoz/abilities/](../../tools/signoz/abilities/README.md); the query recipe is [ability-system.md, "Reading one cast"](../gameplay/ability-system.md#reading-one-cast).
+
 ## Saved views for reading a playtest
 
 Three Logs Explorer views live under the `playtest` category in SigNoz: **Playtest: bookmarks (.bug notes)** — start here, pick a `bookmark_id`; **Playtest: friction (stuck-player detectors)** — every `playtest.friction` and `movement.navmesh` warning; **Playtest: position trail** — `movement.player`, `movement.npc`, `wire.out.avatar_update`, `movement.movement_type` and bookmark rows interleaved with position / waypoint / `yaw_byte` columns, so narrowing the time range to ±30 s around a bookmark shows where everyone was, where they were going, and what the client was sent. Add `AND entity_id = <id>` or `AND npc_id = <id>` to follow one actor.

@@ -6,8 +6,9 @@
 //! measurement to an in-memory table, then calls [`crate::init`]. After that
 //! [`counter_total`] reads what a code path emitted.
 //!
-//! Only `u64` counters are recorded; other instrument kinds fall back to the
-//! API's no-op instruments.
+//! `u64` counters and `f64` histograms are recorded ([`counter_total`],
+//! [`histogram_count`], [`histogram_sum`]); other instrument kinds fall back
+//! to the API's no-op instruments.
 //!
 //! The table is process-wide. nextest runs each test in its own process;
 //! under `cargo test` tests share it, so assert on the change across the
@@ -19,7 +20,8 @@ use std::collections::HashMap;
 use std::sync::{Arc, Mutex, OnceLock};
 
 use opentelemetry::metrics::{
-    Counter, InstrumentBuilder, InstrumentProvider, Meter, MeterProvider, SyncInstrument,
+    Counter, Histogram, HistogramBuilder, InstrumentBuilder, InstrumentProvider, Meter,
+    MeterProvider, SyncInstrument,
 };
 use opentelemetry::{InstrumentationScope, KeyValue};
 
@@ -31,19 +33,47 @@ fn table() -> &'static Table {
     TABLE.get_or_init(|| Mutex::new(HashMap::new()))
 }
 
+/// `(metric name, sorted labels)` → every value recorded, in order.
+type HistTable = Mutex<HashMap<(String, Vec<(String, String)>), Vec<f64>>>;
+
+fn hist_table() -> &'static HistTable {
+    static TABLE: OnceLock<HistTable> = OnceLock::new();
+    TABLE.get_or_init(|| Mutex::new(HashMap::new()))
+}
+
+fn sorted_labels(attributes: &[KeyValue]) -> Vec<(String, String)> {
+    let mut labels: Vec<(String, String)> = attributes
+        .iter()
+        .map(|kv| (kv.key.to_string(), kv.value.to_string()))
+        .collect();
+    labels.sort();
+    labels
+}
+
 struct RecordingCounter {
     name: Cow<'static, str>,
 }
 
 impl SyncInstrument<u64> for RecordingCounter {
     fn measure(&self, measurement: u64, attributes: &[KeyValue]) {
-        let mut labels: Vec<(String, String)> = attributes
-            .iter()
-            .map(|kv| (kv.key.to_string(), kv.value.to_string()))
-            .collect();
-        labels.sort();
+        let labels = sorted_labels(attributes);
         let mut table = table().lock().unwrap_or_else(|e| e.into_inner());
         *table.entry((self.name.to_string(), labels)).or_default() += measurement;
+    }
+}
+
+struct RecordingHistogram {
+    name: Cow<'static, str>,
+}
+
+impl SyncInstrument<f64> for RecordingHistogram {
+    fn measure(&self, measurement: f64, attributes: &[KeyValue]) {
+        let labels = sorted_labels(attributes);
+        let mut table = hist_table().lock().unwrap_or_else(|e| e.into_inner());
+        table
+            .entry((self.name.to_string(), labels))
+            .or_default()
+            .push(measurement);
     }
 }
 
@@ -52,6 +82,10 @@ struct RecordingInstruments;
 impl InstrumentProvider for RecordingInstruments {
     fn u64_counter(&self, builder: InstrumentBuilder<'_, Counter<u64>>) -> Counter<u64> {
         Counter::new(Arc::new(RecordingCounter { name: builder.name }))
+    }
+
+    fn f64_histogram(&self, builder: HistogramBuilder<'_, Histogram<f64>>) -> Histogram<f64> {
+        Histogram::new(Arc::new(RecordingHistogram { name: builder.name }))
     }
 }
 
@@ -100,6 +134,34 @@ pub fn counter_total(name: &str, labels: &[(&str, &str)]) -> u64 {
         .sum()
 }
 
+/// Every value recorded on histogram `name` over every label set that
+/// contains all of `labels`.
+fn histogram_values(name: &str, labels: &[(&str, &str)]) -> Vec<f64> {
+    let table = hist_table().lock().unwrap_or_else(|e| e.into_inner());
+    table
+        .iter()
+        .filter(|((metric, set), _)| {
+            metric == name
+                && labels
+                    .iter()
+                    .all(|&(k, v)| set.iter().any(|(sk, sv)| sk == k && sv == v))
+        })
+        .flat_map(|(_, values)| values.iter().copied())
+        .collect()
+}
+
+/// How many values histogram `name` recorded over every label set that
+/// contains all of `labels`.
+pub fn histogram_count(name: &str, labels: &[(&str, &str)]) -> u64 {
+    histogram_values(name, labels).len() as u64
+}
+
+/// The sum of the values histogram `name` recorded over every label set
+/// that contains all of `labels`.
+pub fn histogram_sum(name: &str, labels: &[(&str, &str)]) -> f64 {
+    histogram_values(name, labels).iter().sum()
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -128,5 +190,23 @@ mod tests {
             ),
             "label order does not matter"
         );
+    }
+
+    /// A `histogram!` call made after `install` is recorded under its labels.
+    #[test]
+    fn histogram_macro_is_recorded_after_install() {
+        install();
+        let probe = [("probe", "testing_histogram")];
+        let (n0, s0) = (
+            histogram_count("observability_testing_hist", &probe),
+            histogram_sum("observability_testing_hist", &probe),
+        );
+        crate::histogram!("observability_testing_hist", 2.5, "probe" => "testing_histogram");
+        crate::histogram!("observability_testing_hist", 4.0, "probe" => "testing_histogram", "k" => "v");
+        assert_eq!(
+            histogram_count("observability_testing_hist", &probe) - n0,
+            2
+        );
+        assert!((histogram_sum("observability_testing_hist", &probe) - s0 - 6.5).abs() < 1e-9);
     }
 }

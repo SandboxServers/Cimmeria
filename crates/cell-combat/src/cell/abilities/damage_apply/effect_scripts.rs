@@ -272,6 +272,9 @@ fn absorb_script_damage(
         return;
     };
     let absorbed = crate::cell::combat::absorb_damage_nvps(&mut target.stats, effect, damage_type);
+    // AB-T6: the shield's share. The script's own Health/Focus change is
+    // sampled around its dispatch; what the shield took never reaches it.
+    super::super::metrics::damage_dealt(super::super::metrics::Pool::Absorb, absorbed, ids.world);
     if absorbed > 0 {
         tracing::debug!(
             target: "abilities",

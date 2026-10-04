@@ -124,6 +124,12 @@ async fn refuse(
         caster_pos = ?caster_pos,
         "deployable cast refused; nothing charged"
     );
+    crate::cell::abilities::metrics::refused_in(
+        space_mgr,
+        entity_id,
+        ability_id,
+        crate::cell::abilities::metrics::RefusalReason::DeployableRefused,
+    );
     send_refusal(entity_id, id, ability_id, refusal, tx).await;
 }
 

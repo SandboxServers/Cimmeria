@@ -99,6 +99,11 @@ pub(crate) async fn refuse_out_of_range(
         .await
         .is_err()
     {
+        crate::cell::abilities::metrics::wire_send_failed_in(
+            space_mgr,
+            entity_id,
+            crate::cell::abilities::metrics::WireMessage::OnErrorCode,
+        );
         tracing::warn!(
             target: "abilities",
             event = "cast_refused_send_failed",

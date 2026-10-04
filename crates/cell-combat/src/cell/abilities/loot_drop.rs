@@ -42,7 +42,7 @@ pub(super) fn generate_loot_on_death(target_eid: u32, space_mgr: &mut SpaceManag
     let entries = match space_mgr.loot_tables.get(&loot_table_id) {
         Some(entries) => entries.clone(),
         None => {
-            tracing::debug!(target_eid, loot_table_id, "No loot table entries found");
+            tracing::debug!(target: "abilities", target_eid, loot_table_id, "No loot table entries found");
             return;
         }
     };
@@ -70,6 +70,7 @@ pub(super) fn generate_loot_on_death(target_eid: u32, space_mgr: &mut SpaceManag
         target.interaction_type_flags |= INT_NORMAL_LOOT;
         target.interaction_type = Some(cimmeria_entity::cell_entity::NpcInteractionType::Loot);
         tracing::debug!(
+            target: "abilities",
             target_eid,
             items = target.loot.len(),
             "NPC has loot — set INT_NormalLoot interaction"
@@ -104,6 +105,7 @@ pub fn roll_loot_entries(
             entry.min_quantity
         } else if entry.min_quantity > entry.max_quantity {
             tracing::warn!(
+                target: "abilities",
                 owner,
                 loot_table_id,
                 design_id = ?entry.design_id,
@@ -118,6 +120,7 @@ pub fn roll_loot_entries(
         };
         if quantity > 0 {
             tracing::debug!(
+                target: "abilities",
                 owner,
                 loot_table_id,
                 design_id = ?entry.design_id,

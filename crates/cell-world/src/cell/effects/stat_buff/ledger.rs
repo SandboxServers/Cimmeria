@@ -63,6 +63,43 @@ pub enum StatBuffRemoval {
 }
 
 impl StatBuffRemoval {
+    /// Every reason, in declaration order: the `reason` label set of
+    /// `abilities_ledger_removed_total` (AB-T6). [`Self::index`]'s
+    /// exhaustive match makes a new variant fail to compile until it is
+    /// added here.
+    pub const ALL: [Self; 12] = [
+        Self::Expired,
+        Self::Replaced,
+        Self::Removed,
+        Self::ToggledOff,
+        Self::RemovedByMoniker,
+        Self::Death,
+        Self::Damage,
+        Self::Revive,
+        Self::BandolierSwap,
+        Self::Cleansed,
+        Self::Drained,
+        Self::DuelEnded,
+    ];
+
+    /// The variant's position in [`Self::ALL`].
+    pub const fn index(self) -> usize {
+        match self {
+            Self::Expired => 0,
+            Self::Replaced => 1,
+            Self::Removed => 2,
+            Self::ToggledOff => 3,
+            Self::RemovedByMoniker => 4,
+            Self::Death => 5,
+            Self::Damage => 6,
+            Self::Revive => 7,
+            Self::BandolierSwap => 8,
+            Self::Cleansed => 9,
+            Self::Drained => 10,
+            Self::DuelEnded => 11,
+        }
+    }
+
     /// Stable `reason` value for logs.
     pub fn reason(self) -> &'static str {
         match self {
@@ -102,6 +139,7 @@ impl SpaceManager {
         spec.cast_id = self.current_cast_id();
         let cast_id = spec.cast_id;
         let target_who = self.player_identity(target);
+        let world = crate::cell::effects::ability_metrics::world_of(self, target);
         let (effect_id, ability_id, invoker_id) =
             (spec.effect_id, spec.ability_id, spec.invoker_id);
         let Some(entity) = self.get_entity_mut(target) else {
@@ -188,7 +226,14 @@ impl SpaceManager {
                 .iter()
                 .map(|s| entity.stats.get(s.stat_id).map(|st| st.cur))
                 .collect();
-            log_removed(target, target_who, old, StatBuffRemoval::Replaced, b, a);
+            log_removed(
+                target,
+                target_who,
+                old,
+                StatBuffRemoval::Replaced,
+                (b, a),
+                world,
+            );
         }
         tracing::info!(
             target: "abilities",
@@ -267,6 +312,7 @@ impl SpaceManager {
     ) -> Vec<TimedEffect> {
         let target_who = self.player_identity(target);
         let cast_id = self.current_cast_id();
+        let world = crate::cell::effects::ability_metrics::world_of(self, target);
         let Some(entity) = self.get_entity_mut(target) else {
             log_nothing_removed(target, target_who, why, cast_id, "target_gone");
             return Vec::new();
@@ -284,7 +330,7 @@ impl SpaceManager {
             let before = cur(entity, &entity.stat_buffs.entries[idx]);
             let entry = entity.remove_timed_effect_at(idx);
             let after = cur(entity, &entry);
-            log_removed(target, target_who, &entry, why, before, after);
+            log_removed(target, target_who, &entry, why, (before, after), world);
             removed.push(entry);
         }
         if removed.is_empty() {
@@ -354,14 +400,16 @@ fn cur_of(snapshot: &[(i32, i32)], entry: &TimedEffect) -> Vec<Option<i32>> {
 
 /// The `stat_buff_removed` row. `account_id` / `player_id` are the invoker
 /// identity the entry snapshotted when it went on.
+/// It also counts `abilities_ledger_removed_total` in `world` (AB-T6).
 pub(super) fn log_removed(
     target: u32,
     target_who: PlayerIdentity,
     entry: &TimedEffect,
     why: StatBuffRemoval,
-    stat_before: Vec<Option<i32>>,
-    stat_after: Vec<Option<i32>>,
+    (stat_before, stat_after): (Vec<Option<i32>>, Vec<Option<i32>>),
+    world: &'static str,
 ) {
+    crate::cell::effects::ability_metrics::ledger_removed(why, world);
     let who = entry.invoker_identity;
     tracing::info!(
         target: "abilities",

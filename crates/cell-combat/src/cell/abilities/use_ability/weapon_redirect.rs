@@ -114,6 +114,7 @@ pub(super) fn resolve_weapon_redirect(
     // discriminates the redirect path inside it.
     let who = space_mgr.player_identity(entity_id);
     tracing::debug!(
+        target: "abilities",
         account_id = who.account_id,
         player_id = who.player_id,
         entity_id,

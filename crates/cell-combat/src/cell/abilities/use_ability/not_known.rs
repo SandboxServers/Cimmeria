@@ -37,6 +37,10 @@ pub(super) async fn send_not_known_feedback(
         .await
         .is_err()
     {
+        crate::cell::abilities::metrics::wire_send_failed(
+            crate::cell::abilities::metrics::WireMessage::OnErrorCode,
+            crate::cell::abilities::metrics::UNKNOWN_WORLD,
+        );
         tracing::warn!(
             target: "abilities",
             event = "not_known_feedback_send_failed",

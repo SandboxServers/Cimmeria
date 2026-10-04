@@ -108,6 +108,7 @@ pub async fn handle_use_ability_on_ground(
         Some(e) => e.space_id,
         None => {
             tracing::warn!(
+                target: "abilities",
                 entity_id,
                 "useAbilityOnGroundTarget: attacker entity not found"
             );
@@ -153,6 +154,7 @@ pub async fn handle_use_ability_on_ground(
 
     if targets.is_empty() {
         tracing::debug!(
+            target: "abilities",
             entity_id, ability_id, ?ground, radius,
             "useAbilityOnGroundTarget: no enemy in AoE radius; consuming cooldown/ammo without damage"
         );
@@ -163,6 +165,7 @@ pub async fn handle_use_ability_on_ground(
     if !primary_in_range {
         let (primary_eid, _) = targets[0];
         tracing::debug!(
+            target: "abilities",
             entity_id, ability_id, ?ground, primary_eid, max_range,
             "useAbilityOnGroundTarget: nearest target outside attacker's ability max_range; charging cooldown/ammo only"
         );
@@ -179,6 +182,7 @@ pub async fn handle_use_ability_on_ground(
     // starts cooldown, sends timer/sequence/state-field, applies damage).
     let (primary_eid, _) = targets[0];
     tracing::debug!(
+        target: "abilities",
         entity_id,
         ability_id,
         ?ground,
@@ -195,6 +199,7 @@ pub async fn handle_use_ability_on_ground(
         // Don't apply secondary damage — that would deal free hits despite
         // the primary failing validation. Empty Vec means no kills.
         tracing::debug!(
+            target: "abilities",
             entity_id,
             ability_id,
             primary_eid,
@@ -209,6 +214,7 @@ pub async fn handle_use_ability_on_ground(
     // (`fire_ground_cast_after_warmup`).
     if super::use_ability::attach_ground_point(space_mgr, entity_id, ground) {
         tracing::debug!(
+            target: "abilities",
             entity_id,
             ability_id,
             primary_eid,
@@ -381,6 +387,7 @@ async fn apply_secondaries(
             .map(|e| e.abilities.next_effect_id())
             .unwrap_or(0);
         tracing::debug!(
+            target: "abilities",
             entity_id,
             ability_id,
             secondary_eid,

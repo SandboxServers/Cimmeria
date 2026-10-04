@@ -121,7 +121,7 @@ const OUT_OF_PROCESS_CRATES: &[(&str, &str)] = &[
 /// emitted by tests. Each names its file.
 const TEST_FIXTURE_TARGETS: &[(&str, &str)] = &[];
 
-fn crates_dir() -> PathBuf {
+pub(super) fn crates_dir() -> PathBuf {
     Path::new(env!("CARGO_MANIFEST_DIR"))
         .parent()
         .expect("crates/ is the manifest's parent")
@@ -133,7 +133,7 @@ fn crates_dir() -> PathBuf {
 /// `examples` directory, and everything after a file's
 /// `#[cfg(test)] mod` (the repo keeps the test module last; clippy's
 /// `items_after_test_module` enforces it).
-fn is_test_path(rel: &Path) -> bool {
+pub(super) fn is_test_path(rel: &Path) -> bool {
     rel.components().any(|c| {
         let s = c.as_os_str().to_string_lossy();
         s == "tests"
@@ -147,7 +147,7 @@ fn is_test_path(rel: &Path) -> bool {
     })
 }
 
-fn strip_test_module(src: &str) -> &str {
+pub(super) fn strip_test_module(src: &str) -> &str {
     let mut from = 0;
     while let Some(i) = src[from..].find("#[cfg(test)]") {
         let at = from + i;
@@ -160,7 +160,7 @@ fn strip_test_module(src: &str) -> &str {
     src
 }
 
-fn rs_files(dir: &Path, out: &mut Vec<PathBuf>) {
+pub(super) fn rs_files(dir: &Path, out: &mut Vec<PathBuf>) {
     let Ok(entries) = std::fs::read_dir(dir) else {
         return;
     };
@@ -177,7 +177,7 @@ fn rs_files(dir: &Path, out: &mut Vec<PathBuf>) {
     }
 }
 
-fn parse_level(s: &str) -> Option<Level> {
+pub(super) fn parse_level(s: &str) -> Option<Level> {
     Some(match s {
         "trace" | "TRACE" => Level::TRACE,
         "debug" | "DEBUG" => Level::DEBUG,
@@ -233,7 +233,7 @@ fn scan(src: &str) -> Vec<(String, Level, usize)> {
 }
 
 /// Every `(target, level)` emitted in-process, with one `file:line` each.
-fn emitted_targets() -> BTreeMap<(String, Level), String> {
+pub(super) fn emitted_targets() -> BTreeMap<(String, Level), String> {
     let root = crates_dir();
     let mut sites = BTreeMap::new();
     for krate in IN_PROCESS_CRATES {

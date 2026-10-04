@@ -18,6 +18,8 @@ use cimmeria_admin_api::ws::broadcast_layer::{BroadcastLayer, LogBuffer, LogEntr
 use crate::otel;
 
 #[cfg(test)]
+mod abilities_target_tests;
+#[cfg(test)]
 mod client_index_tests;
 #[cfg(test)]
 mod deployables_target_tests;

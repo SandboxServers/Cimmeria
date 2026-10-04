@@ -23,6 +23,7 @@ use cimmeria_entity::abilities::{ClientEffectResult, EffectDef, EF_DONT_USE_QR, 
 use cimmeria_entity::stats::{StatList, FOCUS, HEALTH};
 
 use super::super::effect_plan::{REASON_AREA_COLLAPSED, REASON_AREA_LEFT_TO_FAN_OUT};
+use super::super::metrics::{self, Pool};
 use super::qr_gate::unrolled_qr;
 use super::HitIds;
 use crate::cell::combat::{self, QrResult};
@@ -298,6 +299,14 @@ pub(super) fn apply_nvp_damage(
                     "hit_roll"
                 },
             });
+        }
+        // AB-T6: what the effect took, per pool, before a god-mode restore.
+        for (pool, amount) in [
+            (Pool::Health, health.dealt),
+            (Pool::Focus, focus.dealt),
+            (Pool::Absorb, absorbed),
+        ] {
+            metrics::damage_dealt(pool, amount, ids.world);
         }
         results.extend(health.results);
         total_health += health.dealt;

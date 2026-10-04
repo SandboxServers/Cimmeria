@@ -51,15 +51,23 @@ pub(super) fn cast_ability(id: i32, warmup: f32) -> AbilityDef {
 /// check all see them together. The NPC has enough health that no test
 /// kills it by accident.
 pub(super) fn warmup_mgr() -> SpaceManager {
+    warmup_mgr_in("Castle")
+}
+
+/// [`warmup_mgr`] in a world of the caller's naming (the AB-T6 metric tests
+/// give each test its own `world` label).
+pub(super) fn warmup_mgr_in(world: &str) -> SpaceManager {
     let mut mgr = SpaceManager::new(1);
-    let xml = r#"<?xml version="1.0"?><Spaces><Space WorldName="Castle" Instanced="false" MinX="-800" MaxX="800" MinY="-800" MaxY="800" /></Spaces>"#;
-    mgr.parse_spaces_xml(xml).unwrap();
-    mgr.create_startup_spaces(
-        r#"<?xml version="1.0"?><Spaces><Space WorldName="Castle" /></Spaces>"#,
-    )
+    let xml = format!(
+        r#"<?xml version="1.0"?><Spaces><Space WorldName="{world}" Instanced="false" MinX="-800" MaxX="800" MinY="-800" MaxY="800" /></Spaces>"#
+    );
+    mgr.parse_spaces_xml(&xml).unwrap();
+    mgr.create_startup_spaces(&format!(
+        r#"<?xml version="1.0"?><Spaces><Space WorldName="{world}" /></Spaces>"#
+    ))
     .unwrap();
-    mgr.create_entity(1, "Castle", [0.0; 3], [0.0; 3]).unwrap();
-    mgr.create_entity(2, "Castle", [3.0, 0.0, 0.0], [0.0; 3])
+    mgr.create_entity(1, world, [0.0; 3], [0.0; 3]).unwrap();
+    mgr.create_entity(2, world, [3.0, 0.0, 0.0], [0.0; 3])
         .unwrap();
     if let Some(p) = mgr.get_entity_mut(1) {
         p.is_player = true;

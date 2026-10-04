@@ -20,6 +20,8 @@ pub(super) struct HitIds {
     /// logged before `GodModeGuard` puts the loss back, and its
     /// `god_mode_absorbed` row says what was restored.
     pub(super) god_mode: bool,
+    /// The target's world: the AB-T6 metrics' `world` label.
+    pub(super) world: &'static str,
 }
 
 impl HitIds {
@@ -32,6 +34,7 @@ impl HitIds {
             cast_id: self.cast_id,
             caster: self.actor,
             target: self.target,
+            world: self.world,
         }
     }
 }

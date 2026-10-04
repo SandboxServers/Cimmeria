@@ -234,6 +234,50 @@ async fn a_shielded_damage_script_logs_the_absorb_in_its_cast() {
     }
 }
 
+/// **Guard (AB-T6).** What a shield absorbs of a damage script's hit is an
+/// `abilities_damage_dealt{pool=absorb}` sample. The script's own pool
+/// sample (around its dispatch) never sees it: with a shield big enough to
+/// take the whole hit, Health and Focus do not move at all.
+#[tokio::test]
+async fn a_shielded_damage_script_records_the_absorb_sample() {
+    use cimmeria_cell_world::cell::effects::ability_metrics::DAMAGE_DEALT;
+    use cimmeria_observability::testing::{histogram_count, histogram_sum, install};
+    install();
+    let effect = damage_effect(PISTOL_SHOT_EFFECT, Some("RangedPhysicalDamage"), 15, 150, 0);
+    let (mut mgr, ability) = fixture(PISTOL_SHOT, effect, 0);
+    mgr.get_entity_mut(NPC)
+        .unwrap()
+        .stats
+        .get_mut(ABSORB_PHYSICAL)
+        .unwrap()
+        .update(0, 10_000, 10_000);
+    let seq = seq_rolling(&mgr, (1, NPC), PISTOL_SHOT, false);
+    let absorb = [("pool", "absorb")];
+    let (n0, s0) = (
+        histogram_count(DAMAGE_DEALT, &absorb),
+        histogram_sum(DAMAGE_DEALT, &absorb),
+    );
+    let logs = LogCapture::install();
+
+    fire(&mut mgr, &ability, seq).await;
+
+    let all = logs.all();
+    let row = the_one(
+        rows(&all, "shield_absorbed_damage"),
+        "shield_absorbed_damage",
+    );
+    let absorbed: f64 = row.fields["absorbed"].parse().unwrap();
+    assert!(absorbed > 0.0, "{row:?}");
+    assert!(
+        histogram_count(DAMAGE_DEALT, &absorb) > n0,
+        "no absorb sample"
+    );
+    assert!(
+        histogram_sum(DAMAGE_DEALT, &absorb) - s0 >= absorbed,
+        "the absorb sample is what the shield took"
+    );
+}
+
 /// **Guard (AB-T3 review, the area collapse).** The seed's Point Blank Fire
 /// shape: two radius effects that both deal Health, no direct single. The
 /// legacy collapse keeps the last one's value, so only it resolves; the

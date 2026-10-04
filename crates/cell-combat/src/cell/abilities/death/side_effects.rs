@@ -109,6 +109,7 @@ pub(super) async fn grant_kill_xp(
         }
     };
     tracing::info!(
+        target: "abilities",
         attacker = attacker_id,
         credited = recipient,
         via_pet = recipient != attacker_id,
@@ -133,6 +134,7 @@ pub(super) async fn grant_kill_xp(
     else {
         if let Err(e) = sent {
             tracing::error!(
+                target: "abilities",
                 attacker = attacker_id, credited = recipient, target = target_eid, xp,
                 error = %e,
                 "GrantXP send to base failed -- player kill credit lost"
@@ -375,6 +377,7 @@ fn log_no_kill_xp(
         // A player's (scale 1.0) kill whose `kill_xp` alone overflows: a
         // corrupt victim level. No pet, so the module target.
         tracing::warn!(
+            target: "abilities",
             event = "kill_xp_not_granted",
             reason,
             attacker = attacker_id,
@@ -400,6 +403,7 @@ fn log_no_kill_xp(
         );
     } else {
         tracing::debug!(
+            target: "abilities",
             event = "kill_xp_not_granted",
             reason,
             attacker = attacker_id,
@@ -483,6 +487,7 @@ pub(super) async fn send_begin_aid_wait(
     )
     .await;
     tracing::info!(
+        target: "abilities",
         target = target_eid,
         world = ?world_name,
         respawner_count = if matching_respawners.is_empty() { 1 } else { matching_respawners.len() },

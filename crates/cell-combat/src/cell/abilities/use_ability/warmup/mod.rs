@@ -131,6 +131,8 @@ pub(super) struct WarmupStart {
     pub effect_seq: i32,
     pub warmup_secs: f32,
     pub event_set_id: Option<i32>,
+    /// When the cell received the press (`abilities_press_to_fire_ms`).
+    pub received_at: std::time::Instant,
 }
 
 /// Start a committed cast's warmup: park it on the caster, play
@@ -154,6 +156,7 @@ pub(super) async fn begin_warmup(
         effect_seq,
         warmup_secs,
         event_set_id,
+        received_at,
     } = start;
 
     let Some(caster) = space_mgr.get_entity_mut(entity_id) else {
@@ -168,6 +171,7 @@ pub(super) async fn begin_warmup(
         wire_target_id,
         ground: None,
         effect_seq,
+        received_at,
         fire_at: std::time::Instant::now() + std::time::Duration::from_secs_f32(warmup_secs),
         warmup_secs,
         anchor: caster.position,

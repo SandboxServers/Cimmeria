@@ -43,6 +43,7 @@ use super::super::super::messages::CellToBaseMsg;
 use super::super::super::space_manager::SpaceManager;
 use super::super::effect_routing::{land_effects, plan_cast, Landing};
 use super::support_shot::{classify, SupportTarget};
+use crate::cell::abilities::metrics::{self, RefusalReason};
 use crate::cell::abilities::wire_ledger::{self, WireCtx};
 
 /// `event` of every beneficial-cast resolution (target `abilities`).
@@ -292,6 +293,11 @@ async fn send_no_ally_feedback(
         .is_err()
     {
         let who = space_mgr.player_identity(caster_id);
+        crate::cell::abilities::metrics::wire_send_failed_in(
+            space_mgr,
+            caster_id,
+            crate::cell::abilities::metrics::WireMessage::OnPlayerCommunication,
+        );
         tracing::warn!(
             target: "abilities",
             event = "beneficial_feedback_send_failed",
@@ -383,10 +389,17 @@ pub(super) fn target_gate(
             "useAbility rejected -- beneficial cast aimed at a non-ally after resolution; \
              nothing applied"
         );
+        metrics::refused_in(
+            space_mgr,
+            caster.entity_id.0 as u32,
+            ability_id,
+            RefusalReason::BeneficialNonAllyTarget,
+        );
         return TargetGate::Refused;
     }
     if caster.is_player && !combat::player_may_attack(caster, target, duels) {
         tracing::warn!(
+            target: "abilities",
             account_id = who.account_id,
             player_id = who.player_id,
             entity_id = caster.entity_id.0,
@@ -398,6 +411,12 @@ pub(super) fn target_gate(
             "useAbility rejected -- player single-target ability against a \
              non-hostile target (friendly-fire / forged target); \
              damage pipeline not entered (#444)"
+        );
+        metrics::refused_in(
+            space_mgr,
+            caster.entity_id.0 as u32,
+            ability_id,
+            RefusalReason::NonHostileTarget,
         );
         return TargetGate::Refused;
     }
