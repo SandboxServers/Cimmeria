@@ -37,10 +37,16 @@
 //! - [`lua_debug_log`] — the UI's `Debug:log` / `warn` / `error` lines,
 //!   which the shipping client discards (`client.lua.debug_log`,
 //!   2026-09-29).
+//! - `ability` — the ability press chain and its silent drops, the
+//!   router's send decision with decoded arguments, and the Mercury
+//!   sequence range of the carrying bundle (`client.ability.*`,
+//!   2026-10-04).
 //!
 //! # What's installed
 //!
-//! 33 hooks. Every address below was re-checked against the QA
+//! 45 hooks: 33 in the table below, and the 12 ability hooks listed in
+//! `ability/mod.rs` (2026-10-04, static anchors, live status UNVERIFIED).
+//! Every address in the table was re-checked against the QA
 //! `SGW.exe` on 2026-09-27 (function entry, `ret N` against the detour's
 //! argument count) and is covered by the [fingerprint
 //! gate](crate::fingerprint), which installs none of them on a build
@@ -99,6 +105,10 @@
 
 #![allow(clippy::missing_safety_doc)] // FFI bindings — safety doc in fn-level
 
+// The ability press chain, router send and Mercury sequence join
+// (`client.ability.*`, AB-C1/AB-C2, 2026-10-04).
+#[cfg(all(target_os = "windows", target_arch = "x86"))]
+mod ability;
 mod anim_notify;
 // Its pure helpers (kind/level/throttle) run only from the i686 detour.
 #[cfg_attr(not(target_arch = "x86"), allow(dead_code))]
@@ -187,11 +197,12 @@ unsafe fn install_inner(producer: Producer) {
     mercury_recv::install_all(&producer);
     sequence_manager::install_all(&producer);
     lua_debug_log::install_all(&producer);
+    ability::install_all(&producer);
 
     super::emit_info(
         &producer,
         "client.hooks.inline.install_complete",
-        [("hook_count", serde_json::json!(33))],
+        [("hook_count", serde_json::json!(33 + ability::HOOK_COUNT))],
     );
 }
 
@@ -426,6 +437,23 @@ mod tests {
             assert_eq!(super::mercury_recv::ADDR_PROCESS_PACKET, 0x0157fd20);
             assert_eq!(super::mercury_recv::ADDR_PROCESS_ORDERED_PACKET, 0x0157c820);
             assert_eq!(super::mercury_recv::ADDR_BUNDLE_UNPACK, 0x01579830);
+            // Ability press chain, router exits and sequence join
+            // (findings/ability-client-hook-anchors.md, 2026-10-04).
+            assert_eq!(super::ability::ADDR_USE_ACTION_THUNK, 0x00aa94e0);
+            assert_eq!(super::ability::ADDR_USE_ABILITY_THUNK, 0x00aa2910);
+            assert_eq!(super::ability::ADDR_SLOT, 0x00ad9580);
+            assert_eq!(super::ability::ADDR_LOOKUP, 0x00d2afc0);
+            assert_eq!(super::ability::ADDR_SEND_BUILDER, 0x00d2ae40);
+            assert_eq!(super::ability::ADDR_PET_ACTION_EXECUTE, 0x00e3cf40);
+            assert_eq!(super::ability::ADDR_GAME_PET_SEND, 0x00d3a820);
+            assert_eq!(super::ability::ADDR_START_ENTITY_MESSAGE, 0x00dd6a60);
+            assert_eq!(super::ability::ADDR_START_PROXY_MESSAGE, 0x00dd6980);
+            assert_eq!(super::ability::ADDR_CHANNEL_SEND, 0x01576f90);
+            assert_eq!(super::ability::ADDR_NUB_SEND, 0x01582160);
+            assert_eq!(super::ability::ADDR_SEQ_NEXT, 0x0158bb40);
+            assert_eq!(super::ability::ADDR_GET_INT, 0x00e3cba0);
+            assert_eq!(super::ability::ADDR_GET_FLOAT, 0x00e3cc20);
+            assert_eq!(super::ability::ADDR_GET_BYTE, 0x00d434d0);
         }
     }
     /// Every inline-hooked address is a fingerprinted site, so a build
@@ -467,6 +495,22 @@ mod tests {
             super::lua_debug_log::ADDR_DEBUG_LOG,
             super::lua_debug_log::ADDR_DEBUG_WARN,
             super::lua_debug_log::ADDR_DEBUG_ERROR,
+            super::ability::ADDR_USE_ACTION_THUNK,
+            super::ability::ADDR_USE_ABILITY_THUNK,
+            super::ability::ADDR_SLOT,
+            super::ability::ADDR_LOOKUP,
+            super::ability::ADDR_SEND_BUILDER,
+            super::ability::ADDR_PET_ACTION_EXECUTE,
+            super::ability::ADDR_GAME_PET_SEND,
+            super::ability::ADDR_START_ENTITY_MESSAGE,
+            super::ability::ADDR_START_PROXY_MESSAGE,
+            super::ability::ADDR_CHANNEL_SEND,
+            super::ability::ADDR_NUB_SEND,
+            super::ability::ADDR_SEQ_NEXT,
+            // Called, not hooked: the event-bag readers.
+            super::ability::ADDR_GET_INT,
+            super::ability::ADDR_GET_FLOAT,
+            super::ability::ADDR_GET_BYTE,
         ];
         for addr in hooked {
             assert!(

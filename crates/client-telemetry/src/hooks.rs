@@ -56,6 +56,10 @@
 use crate::events::ClientNativeEvent;
 use crate::queue::Producer;
 
+// Ability press / send tracing (`client.ability.*`): the state machine,
+// decode, memory readers and sequence join behind the i686 detours.
+#[cfg_attr(not(target_arch = "x86"), allow(dead_code))]
+pub(crate) mod ability_trace;
 // Pure helpers run only from the i686 CEGUI logger detour.
 #[cfg_attr(not(target_arch = "x86"), allow(dead_code))]
 mod cegui_log;

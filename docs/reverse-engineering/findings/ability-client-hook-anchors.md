@@ -179,7 +179,7 @@ Row 10 is how the client refuses a method it should not send. A non-GM player en
 
 **Not checked by the client on this path** (VERIFIED by reading `0x00ad9580`, `0x00e3cd90`, `0x00d2afc0`, `0x00d2ae40` in full): cooldown, global cooldown, range, line of sight, target hostility or presence, caster dead, resources, and any in-flight cast. Those refusals are the server's alone, and the client shows them only through `onErrorCode` and the cooldown overlay.
 
-`client.ability.press_dropped` reasons that follow from this: `no_action` (rows 1, 3), `bad_args` (row 2), `not_known` (row 5), `pet_missing` (row 4), `not_connected` (rows 6 to 9), `class_mismatch` (row 10). `on_cooldown`, `no_target`, `out_of_range` and `dead` **do not exist on the client** and should not be offered as reasons.
+`client.ability.press_dropped` reasons that follow from this: `no_action` (rows 1, 3), `bad_args` (row 2), `not_known` (row 5), `pet_missing` (row 4), `not_connected` (rows 6 to 9), `class_mismatch` (row 10). The GamePet send behind row 4 has three more drops, found while implementing AB-C2 ([addendum](#addendum-reads-made-while-implementing-ab-c1-and-ab-c2)). As implemented, rows 9 and 10 are reported together as `class_mismatch`: both return before a `start*Message`, and only game code tells them apart. `on_cooldown`, `no_target`, `out_of_range` and `dead` **do not exist on the client** and should not be offered as reasons.
 
 ## AB-C3: inbound payloads
 
@@ -275,10 +275,43 @@ The first 16 bytes of each function, read from the QA image (`0x` addresses are 
 
 ## Corrections to earlier documents
 
+- The signatures of every function AB-C1 and AB-C2 hook or call were re-read from the image, with each `ret N` and the `ECX` evidence, in the [addendum](#addendum-reads-made-while-implementing-ab-c1-and-ab-c2). All of them match this document.
 - [client-wire-emit-suppression.md](client-wire-emit-suppression.md) names `0x00d2b020` the **in-flight queue gate** and says `FUN_00d2a000` "returns the head of an in-flight ability queue at `this+0x228`". Both are wrong. `0x00d2a000` is a map lookup by ability id (`std::map<int, AbilityData*>` at `AbilitySet+0x28`, `thiscall(set, id)`, `ret 4`), and `0x00d2b020` is `addAbilityIfAbsent`. The real silent drop is the not-found branch at `0x00d2afcf`. The same document says the `useAbility` thunk requires the third argument to **exist**; `0x00403280` is `tolua_isnoobj`, so the call fails when a third argument is **present**. And the hotbar does not go through the `useAbility` thunk at all; it goes through `useAction`.
 - [ability-resolution-pipeline.md](ability-resolution-pipeline.md) calls `0x00d2a000` `AbilitySet_GetSlotByIndex`; it is a find by id.
 - The `client-instrumentation-hookpoints.md` statement that `0x00c6fc40` is the single exit is **confirmed** with the caller evidence above.
 - The cell dispatch table gave `confirmationResponse` the arguments `INT8 choice`. The `.def`, the client event (`aEffectId` int, `aAccepted` byte) and the server decoder agree on `INT32 aEffectId, UINT8 aAccepted`; the table is fixed in the same pull request.
+
+## Addendum: reads made while implementing AB-C1 and AB-C2
+
+Added 2026-10-04 by the AB-C1/AB-C2 implementation. Method: the QA `SGW.exe` image on disk, disassembled with capstone (no debugger, no live client). Every fingerprint in the [table above](#hook-gate-fingerprints) matched the image byte for byte.
+
+- **The GamePet send has three more silent drops (VERIFIED code, meanings UNRESOLVED).** Row 4's `PetAbilityAction::execute` calls `0x00d3a820` (`thiscall(GamePet*, abilityId, targetId)`, `ret 8`; callers `0x00e3cfba` and `0x00ad7bfe`), which returns without sending when: `[pet+0x38] & 0x400` is clear (`JE` at `0x00d3a84a`); the ability is not in the pet's own `AbilitySet` at `[pet+0x174]` (`FUN_00d2a000`, `JE` at `0x00d3a862`); or the ability record has bit `0x8` of `+0x98` set (`JNE` at `0x00d3a875`). Otherwise it builds the event with the keys `aAbilityId`, `aEntityId`, `aTargetId` (strings at `0x019bbe34`) and posts it through `0x00cb0350`, not `0x00cacd50`. The telemetry reports these as `not_known` (the pet's set) and as `pet_state_flag` / `pet_ability_flag`. **Next action:** find the writers of `GamePet+0x38` bit `0x400` and of `AbilityData+0x98` bit `0x8`.
+- **The router's third exit is a wrapper.** `0x00dd8010` is 15 bytes: `startEntityMessage(msgId, 0)` with the same `this`, then `ret 4`. So observing `startEntityMessage` (`0x00dd6a60`, `thiscall(conn, msgId, entityId)`, `ret 8`) and `startProxyMessage` (`0x00dd6980`, `thiscall(conn, msgId)`, `ret 4`) covers every send; both return the message stream. Prologues: `64 a1 00 00 00 00 6a ff 68 38 55 70 01 50 64 89` and `64 a1 00 00 00 00 6a ff 68 20 55 70 01 50 64 89`.
+- **A base-route branch the drop table lacks.** For a base method (`flags & 3 == 2`) whose entity is not the local player (the id from `[EM+0x14]` against `[entity+0xc]`, `0x00c6fd62`), the router logs `"The subject of an outgoing base rpc '%s..."` (wide string `0x019abae8`, through `0x00482ff0`) and goes on to the argument loop with a null stream. Every method in the AB-C1 allowlist is a cell method, so the telemetry does not need it; what the argument writers do with a null stream is UNRESOLVED.
+- **Row 2 is a Lua error, not a silent return.** The `useAction` thunk's failure target `0x00aa9569` calls `tolua_error` (`0x00402f40`) with `#ferror in function 'useAction'.`, which raises through the C++-compiled `lua51.dll`. The `useAbility` thunk (`0x00aa2910`) has the same shape (failure target `0x00aa2997`), checks its second argument with `tolua_isnumber` (`0x00403330`), and calls `0x00ad78e0` as `cdecl(abilityId, unitSlot)`.
+- **`Channel::send` can return without detaching the bundle.** `0x01576f90` is `thiscall(Channel*) -> int` with no stack arguments; it returns 0 at `0x01576fd6` when the bundle is empty and not forced, leaving it at `channel+0x28`. A join must tag the bundle before the call (the network thread may send it before the caller regains control) and undo the tag on this path.
+- **`Nub::send` frees the bundle before it returns.** Its epilogue calls a virtual on the bundle (`0x01582d96`) just before `ret 0xc`. The join keys on the pointer value only and never reads the bundle after the call.
+
+- **Calling conventions re-verified for every AB-C1/AB-C2 hook (2026-10-04).** A sibling packet found three handlers in this document listed with one argument where they take two (`ret 8`), so every function the AB-C1/AB-C2 DLL hooks or calls was checked against the image rather than this document. Method: follow every reachable branch from the entry and collect each `ret`; `this` is shown by the first read of `ECX` before any write. All of them match the signatures above and in `hooks/inline_hooks/ability/mod.rs`. The cdecl argument counts come from the `[esp+N]` reads (two for `0x00ad9580`, one `lua_State*` for each thunk).
+
+  | Function | Address | Every `ret` observed | `this` (ECX) evidence | Convention used by the detour |
+  |---|---|---|---|---|
+  | `useAction` thunk | `0x00aa94e0` | `0x00aa9568 ret`, `0x00aa9582 ret` | none (cdecl) | `cdecl int(lua_State*)` |
+  | `useAbility` thunk | `0x00aa2910` | `0x00aa2996 ret`, `0x00aa29b0 ret` | none (cdecl) | `cdecl int(lua_State*)` |
+  | `FUN_00ad9580` | `0x00ad9580` | `0x00ad95ae ret` | none (cdecl; reads `[esp+4]`, `[esp+8]`) | `cdecl (actionId, self)` |
+  | `FUN_00d2afc0` | `0x00d2afc0` | `0x00d2afdf ret 8` | `mov esi, ecx` at `0x00d2afc6` | `thiscall`, 2 stack args |
+  | `FUN_00d2ae40` | `0x00d2ae40` | `0x00d2aec2 ret 8`, `0x00d2afb5 ret 8` | `mov esi, ecx` at `0x00d2ae60` | `thiscall`, 2 stack args |
+  | `PetAbilityAction::execute` | `0x00e3cf40` | `0x00e3cfc1 ret 4` | `mov edi, ecx` at `0x00e3cf42` | `thiscall`, 1 stack arg |
+  | GamePet send | `0x00d3a820` | `0x00d3a97b ret 8` | `mov edi, ecx` at `0x00d3a83a` | `thiscall`, 2 stack args |
+  | `startEntityMessage` | `0x00dd6a60` | `0x00dd6b4a ret 8` | `mov esi, ecx` at `0x00dd6a79` | `thiscall`, 2 stack args, returns the stream |
+  | `startProxyMessage` | `0x00dd6980` | `0x00dd6a52 ret 4` | `mov esi, ecx` at `0x00dd6999` | `thiscall`, 1 stack arg, returns the stream |
+  | `Channel::send` | `0x01576f90` | `0x01576fe8 ret`, `0x0157704c ret` | `mov esi, ecx` at `0x01576fa7` | `thiscall`, no stack args, returns int |
+  | `Nub::send` | `0x01582160` | `0x01582db6 ret 0xc` | `mov [esp+0x60], ecx` at `0x01582192` | `thiscall`, 3 stack args |
+  | sequence counter | `0x0158bb40` | `0x0158bb4f ret` | `mov eax, [ecx+0x4c]` at `0x0158bb40` | `thiscall`, no stack args, returns the seq |
+  | `RouteOutgoingEntityRpc` | `0x00c6fc40` | `0x00c6ffa5 ret 0x10` | none (stdcall) | `stdcall`, 4 args |
+  | `GetInt` / `GetFloat` / `GetByte` (called) | `0x00e3cba0` / `0x00e3cc20` / `0x00d434d0` | `0x00e3cc16` / `0x00e3cc9d` / `0x00d43546`, each `ret 8` | `push ecx` at `0x00e3cbb9` / `0x00e3cc39` / `0x00d434e9` | `thiscall(event, name, out)`, result in `AL` |
+
+  The functions the press chain hooks have no meaningful return value, but each leaves something in `EAX` (`FUN_00d2afc0` leaves `FUN_00d2a000`'s result). The detours return the original's `EAX` unchanged instead of clobbering it.
 
 ## Open questions
 

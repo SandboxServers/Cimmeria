@@ -22,7 +22,9 @@ use core::ops::Range;
 
 pub use cimmeria_client_hookgate::{classify, hex, Prologue, Site};
 
+mod ability_sites;
 mod code_sites;
+pub use ability_sites::*;
 pub use code_sites::*;
 
 /// A vtable slot the DLL swaps, and the function pointer it holds in this

@@ -182,6 +182,9 @@ const PRIORITY_PREFIXES: &[&str] = &[
     "client.mercury.request_misparse",
     "client.mercury.unpack_fault",
     "client.dispatch.method_dropped",
+    // Ability press / send rows (AB-C1, AB-C2): must-keep in the DLL's
+    // governor, already held to a per-name budget at the hook.
+    "client.ability.",
 ];
 
 /// Replay one chunk for `claims.sid` at `now_secs` under the process-wide

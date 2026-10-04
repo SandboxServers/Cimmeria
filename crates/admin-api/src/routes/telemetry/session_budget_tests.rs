@@ -101,6 +101,8 @@ fn priority_is_level_and_the_must_keep_families() {
     assert!(!is_priority(&native("client.lua.pcall", "debug")));
     assert!(is_priority(&native("client.entity.create", "info")));
     assert!(is_priority(&native("client.mercury.bundle", "debug")));
+    assert!(is_priority(&native("client.ability.press_dropped", "info")));
+    assert!(is_priority(&native("client.ability.sent_seq", "info")));
     assert!(is_priority(&native(
         "client.mercury.request_misparse",
         "info"

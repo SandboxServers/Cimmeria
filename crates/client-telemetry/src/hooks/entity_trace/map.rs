@@ -87,7 +87,7 @@ pub mod entity {
 }
 
 /// Node field offsets of a `std::map<int, T>`.
-mod node {
+pub mod node {
     pub const LEFT: u32 = 0x00;
     pub const PARENT: u32 = 0x04;
     pub const RIGHT: u32 = 0x08;
