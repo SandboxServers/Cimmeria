@@ -17,7 +17,7 @@ use crate::cell::messages::CellToBaseMsg;
 use crate::cell::space_manager::SpaceManager;
 
 use super::super::loot_drop::kill_xp;
-use super::super::messaging::{send_entity_method, WireRoute};
+use super::super::messaging::WireRoute;
 use super::super::wire_ledger::{self, WireCtx};
 
 /// Kismet event id for the death animation. Event set 1025 (Mob) drives
@@ -472,10 +472,12 @@ pub(super) async fn send_begin_aid_wait(
         }
     }
 
-    send_entity_method(
+    wire_ledger::send(
         target_eid,
         crate::mercury::method_idx::ON_BEGIN_AID_WAIT,
         aid_args,
+        WireRoute::EntityDefault,
+        WireCtx::new("death").reason("aid_wait"),
         tx,
         space_mgr,
     )

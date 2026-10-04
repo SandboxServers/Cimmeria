@@ -25,12 +25,12 @@ use cimmeria_entity::abilities::{
 };
 
 use crate::cell::client_methods::being::{
-    ON_EFFECT_RESULTS, ON_STATE_FIELD_UPDATE, ON_TIMER_UPDATE,
+    ON_EFFECT_RESULTS, ON_STATE_FIELD_UPDATE, ON_TARGET_UPDATE, ON_TIMER_UPDATE,
 };
 use crate::cell::client_methods::combatant::ON_STAT_UPDATE;
 use crate::cell::client_methods::communicator::ON_PLAYER_COMMUNICATION;
-use crate::cell::client_methods::player::ON_ERROR_CODE;
-use crate::cell::client_methods::spawnable_entity::ON_SEQUENCE;
+use crate::cell::client_methods::player::{ON_BEGIN_AID_WAIT, ON_ERROR_CODE};
+use crate::cell::client_methods::spawnable_entity::{INTERACTION_TYPE, ON_SEQUENCE};
 
 /// One decoded payload. `Short` is a payload too small for its layout (a
 /// caller bug the row still reports, with the length).
@@ -101,6 +101,9 @@ pub(crate) fn method_name(method_index: u16) -> &'static str {
         ON_STAT_UPDATE => "onStatUpdate",
         ON_ERROR_CODE => "onErrorCode",
         ON_PLAYER_COMMUNICATION => "onPlayerCommunication",
+        ON_TARGET_UPDATE => "onTargetUpdate",
+        INTERACTION_TYPE => "InteractionType",
+        ON_BEGIN_AID_WAIT => "onBeginAidWait",
         _ => "other",
     }
 }

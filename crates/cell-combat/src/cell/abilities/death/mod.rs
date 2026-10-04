@@ -36,7 +36,7 @@ use cimmeria_wire::base::contact_list::wire::EVENT_DEATH;
 use super::super::messages::CellToBaseMsg;
 use super::super::space_manager::SpaceManager;
 use super::loot_drop::generate_loot_on_death;
-use super::messaging::{send_entity_method, WireRoute};
+use super::messaging::WireRoute;
 use super::wire_ledger::{self, WireCtx};
 
 /// Apply the death-transition message sequence for a target that just died.
@@ -152,10 +152,12 @@ pub(super) async fn apply_death_transition(
     // 1. Attacker side: clear targeting reticle. The server's stored copy
     //    is dropped at 2b', after the auto-cycle sweep that matches on it.
     if attacker_is_player {
-        send_entity_method(
+        wire_ledger::send(
             attacker_id,
             crate::mercury::method_idx::ON_TARGET_UPDATE,
             0i32.to_le_bytes().to_vec(),
+            WireRoute::EntityDefault,
+            WireCtx::new("death").reason("target_cleared"),
             tx,
             space_mgr,
         )
@@ -276,10 +278,12 @@ pub(super) async fn apply_death_transition(
         let interaction_flags = space_mgr
             .get_entity(target_eid)
             .map_or(0i64, |e| e.interaction_type_flags);
-        send_entity_method(
+        wire_ledger::send(
             target_eid,
             crate::mercury::method_idx::INTERACTION_TYPE,
             (interaction_flags as u64).to_le_bytes().to_vec(),
+            WireRoute::EntityDefault,
+            WireCtx::new("death").reason("corpse_interaction"),
             tx,
             space_mgr,
         )

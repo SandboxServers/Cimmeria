@@ -135,7 +135,7 @@ pub(super) fn emit(
                 result_code,
                 results_count = count,
                 results = results.as_str(),
-                "onEffectResults sent"
+                "onEffectResults queued for the client"
             );
         }
         Decoded::StatUpdate { count, ref stats } => wire_row!(
@@ -143,7 +143,7 @@ pub(super) fn emit(
             ability_id = ctx.ability_id,
             stat_count = count,
             stats = stats.as_str(),
-            "onStatUpdate sent"
+            "onStatUpdate queued for the client"
         ),
         Decoded::Timer {
             id,
@@ -173,7 +173,7 @@ pub(super) fn emit(
                 total_secs = f64::from(total_secs),
                 complete_at = f64::from(complete_at),
                 action,
-                "onTimerUpdate sent"
+                "onTimerUpdate queued for the client"
             );
         }
         Decoded::ErrorCode {
@@ -194,7 +194,7 @@ pub(super) fn emit(
                 instance_id,
                 error_code,
                 reason = ctx.reason,
-                "onErrorCode sent"
+                "onErrorCode queued for the client"
             );
         }
         Decoded::StateField { state_field } => {
@@ -210,7 +210,7 @@ pub(super) fn emit(
                     .unwrap_or_default()
                     .as_str(),
                 reason = ctx.reason,
-                "onStateFieldUpdate sent"
+                "onStateFieldUpdate queued for the client"
             );
         }
         Decoded::Sequence {
@@ -226,17 +226,18 @@ pub(super) fn emit(
             target_id,
             instance_id,
             reason = ctx.reason,
-            "onSequence sent"
+            "onSequence queued for the client"
         ),
         Decoded::Other | Decoded::Short => wire_row!(
             c,
             ability_id = ctx.ability_id,
+            reason = ctx.reason,
             decode = if matches!(decoded, Decoded::Short) {
                 "short"
             } else {
                 "none"
             },
-            "client method sent"
+            "client method queued"
         ),
     }
 }

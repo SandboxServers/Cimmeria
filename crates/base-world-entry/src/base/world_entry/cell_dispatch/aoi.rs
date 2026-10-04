@@ -246,7 +246,10 @@ pub(super) async fn entity_method_call_batch(
     // entity_id is the routing key (the player entity owning the session)
     // AND the witness — entity-method calls are dispatched to the entity's
     // own client, identical to the per-call variant.
-    send_bundle_to_witness_reliable(transport, connected, entity_to_addr, entity_id, bundle).await;
+    let outcome =
+        send_bundle_to_witness_reliable(transport, connected, entity_to_addr, entity_id, bundle)
+            .await;
+    method_delivery::log_batch_outcome(outcome, entity_id, &calls);
 }
 
 pub(super) async fn entity_method_call(

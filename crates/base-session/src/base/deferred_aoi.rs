@@ -198,16 +198,19 @@ pub fn cinematic_hold_active(
 /// cannot grow further. Dropping pre-ready AoI is equivalent to the cell
 /// having fired the event a tick later (after onClientReady), which the
 /// client tolerates as long as the missing entity isn't load-bearing.
+///
+/// Returns what became of the message, so a caller that buffers an entity
+/// method can log the buffering or the drop against that method (AB-T4).
 pub fn push_deferred(
     connected: &Arc<Mutex<HashMap<SocketAddr, ConnectedClientState>>>,
     addr: SocketAddr,
     msg: DeferredAoiMsg,
-) {
+) -> DeferOutcome {
     let Ok(mut clients) = connected.lock() else {
-        return;
+        return DeferOutcome::SessionGone;
     };
     let Some(state) = clients.get_mut(&addr) else {
-        return;
+        return DeferOutcome::SessionGone;
     };
     if state.deferred_aoi_msgs.len() >= MAX_DEFERRED_AOI_MSGS {
         tracing::warn!(
@@ -215,9 +218,76 @@ pub fn push_deferred(
             buffered = state.deferred_aoi_msgs.len(),
             "Deferred-AoI buffer at cap; dropping message (session stuck pre-onClientReady?)"
         );
-        return;
+        return DeferOutcome::BufferFull;
     }
     state.deferred_aoi_msgs.push(msg);
+    DeferOutcome::Buffered {
+        depth: state.deferred_aoi_msgs.len(),
+    }
+}
+
+/// What [`push_deferred`] did with one message.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum DeferOutcome {
+    /// Held; `depth` is the buffer length after the push.
+    Buffered { depth: usize },
+    /// Dropped: the buffer is at [`MAX_DEFERRED_AOI_MSGS`].
+    BufferFull,
+    /// Dropped: the session left `connected` between the check and the push.
+    SessionGone,
+}
+
+impl DeferOutcome {
+    /// Stable `reason` token for a drop, `None` when buffered.
+    pub fn drop_reason(self) -> Option<&'static str> {
+        match self {
+            Self::Buffered { .. } => None,
+            Self::BufferFull => Some("deferred_buffer_full"),
+            Self::SessionGone => Some("client_disconnected"),
+        }
+    }
+}
+
+/// The entity methods in `msgs` (owner and witness), as a count and a
+/// `method_index:count,...` summary sorted by index. Everything else in the
+/// buffer (introductions, leaves) is not counted.
+pub fn method_summary(msgs: &[DeferredAoiMsg]) -> (usize, String) {
+    let mut counts: std::collections::BTreeMap<u16, usize> = std::collections::BTreeMap::new();
+    for m in msgs {
+        if let DeferredAoiMsg::EntityMethodCall { method_index, .. }
+        | DeferredAoiMsg::WitnessEntityMethod { method_index, .. } = m
+        {
+            *counts.entry(*method_index).or_default() += 1;
+        }
+    }
+    let total = counts.values().sum();
+    let summary = counts
+        .iter()
+        .map(|(m, n)| format!("{m}:{n}"))
+        .collect::<Vec<_>>()
+        .join(",");
+    (total, summary)
+}
+
+/// Log the entity methods a session's buffer still held when the session
+/// ended: they never reach a client. One `base.entity_method`
+/// `deferred_discarded` row per session, none for an empty buffer.
+pub fn log_discarded_on_teardown(addr: SocketAddr, c: &ConnectedClientState, reason: &str) {
+    let (methods, summary) = method_summary(&c.deferred_aoi_msgs);
+    if methods == 0 {
+        return;
+    }
+    tracing::debug!(
+        target: "base.entity_method",
+        event = "deferred_discarded",
+        %addr,
+        account_id = c.account_id,
+        player_id = c.active_player_id,
+        methods,
+        method_counts = summary.as_str(),
+        reason,
+        "buffered entity methods discarded: the session ended before its client was ready"
+    );
 }
 
 /// Drain and return all buffered AoI messages for this session, leaving

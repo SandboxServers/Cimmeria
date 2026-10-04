@@ -341,6 +341,38 @@ async fn a_failed_send_writes_no_wire_row() {
     assert_eq!(send_failures(&logs).len(), 1);
 }
 
+// ── Death ─────────────────────────────────────────────────────────────────
+
+/// The death burst's three non-ability-family sends write rows too (Copilot
+/// on #1175): the killer's cleared target, the corpse's interaction flags
+/// and the dead player's aid-wait window. Fails if any goes back to the
+/// plain `send_entity_method`.
+#[tokio::test]
+async fn a_death_logs_target_clear_interaction_and_aid_wait_rows() {
+    let mut mgr = scene();
+    let (tx, _rx) = mpsc::channel(256);
+    let logs = LogCapture::install();
+
+    super::super::death::resolve_death(NPC, PLAYER, None, true, false, &tx, &mut mgr).await;
+    super::super::death::resolve_death(OTHER_PLAYER, NPC, None, false, false, &tx, &mut mgr).await;
+
+    let target = wire_rows(&logs, "onTargetUpdate");
+    assert_eq!(target.len(), 1, "{:#?}", logs.all());
+    assert_eq!(field(&target[0], "entity_id"), "1");
+    assert_eq!(field(&target[0], "reason"), "target_cleared");
+    assert_eq!(field(&target[0], "origin"), "death");
+
+    let interaction = wire_rows(&logs, "InteractionType");
+    assert_eq!(interaction.len(), 1, "{:#?}", logs.all());
+    assert_eq!(field(&interaction[0], "entity_id"), "3");
+    assert_eq!(field(&interaction[0], "witness_count"), "2");
+
+    let aid = wire_rows(&logs, "onBeginAidWait");
+    assert_eq!(aid.len(), 1, "{:#?}", logs.all());
+    assert_eq!(field(&aid[0], "entity_id"), "2");
+    assert_eq!(field(&aid[0], "player_id"), "102");
+}
+
 // ── Pattern A: a closed channel is a WARN ─────────────────────────────────
 
 /// `messaging.rs` used to `let _` the owner's send.
