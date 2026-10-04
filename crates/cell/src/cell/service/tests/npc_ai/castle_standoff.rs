@@ -51,7 +51,7 @@ pub(super) fn parse_insert(line: &str, table: &str) -> Option<HashMap<String, St
     (cols.len() == vals.len()).then(|| cols.into_iter().zip(vals).collect())
 }
 
-fn seed(rel: &str) -> String {
+pub(super) fn seed(rel: &str) -> String {
     std::fs::read_to_string(std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join(rel))
         .unwrap_or_else(|e| panic!("read {rel}: {e}"))
 }
