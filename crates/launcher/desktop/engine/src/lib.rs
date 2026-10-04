@@ -58,3 +58,4 @@ pub mod prerequisites;
 pub use storage::launch;
 
 pub mod launcher_compatibility;
+pub use storage::migration;
