@@ -12,7 +12,7 @@ use tokio::sync::oneshot;
 
 #[derive(Clone, Copy, Debug, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "snake_case")]
-enum Phase {
+pub(super) enum Phase {
     Planned,
     OriginalMoved,
     Promoted,
@@ -20,13 +20,15 @@ enum Phase {
 }
 #[derive(Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
-struct Record {
-    schema_version: u32,
-    plan: Plan,
-    phase: Phase,
+pub(super) struct Record {
+    pub(super) schema_version: u32,
+    pub(super) plan: Plan,
+    pub(super) phase: Phase,
 }
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-enum Point {
+pub(super) enum Point {
+    OriginalMarked,
+    ReplacementMarked,
     Planned,
     BeforeOriginalRename,
     AfterOriginalRename,
@@ -67,7 +69,7 @@ fn start(
     });
     Ok(observed)
 }
-fn replace(
+pub(super) fn replace(
     state: &Mutex<DesktopState>,
     prepared: &Prepared,
     mut hook: impl FnMut(Point) -> Result<(), StorageError>,
@@ -142,6 +144,16 @@ fn replace(
         if read::<Record>(&state.directory.root.join(&checkpoint))?.is_some() {
             return Err(StorageError::Corrupt.into()); // explicit recovery only
         }
+        // Markers move with the trees and distinguish interrupted renames from
+        // unrelated replacements during explicit restart recovery.
+        tree_identity::absent(&plan.stage(), plan)?;
+        if plan.original_present {
+            tree_identity::absent(&game, plan)?;
+            tree_identity::write(&game, plan, tree_identity::Role::Original)?;
+            hook(Point::OriginalMarked)?;
+        }
+        tree_identity::write(&plan.stage(), plan, tree_identity::Role::Replacement)?;
+        hook(Point::ReplacementMarked)?;
         record(&mut state, plan, Phase::Planned)?;
         hook(Point::Planned)?;
         if plan.original_present {
@@ -172,12 +184,16 @@ fn replace(
     })();
     result.map_err(|_| Failure::ReconciliationRequired)
 }
-fn record(state: &mut DesktopState, plan: &Plan, phase: Phase) -> Result<(), StorageError> {
+pub(super) fn record(
+    state: &mut DesktopState,
+    plan: &Plan,
+    phase: Phase,
+) -> Result<(), StorageError> {
     let result = atomic::write(
         &state.directory.root,
         &format!("repair-commit-{}.json", plan.id),
         &Record {
-            schema_version: 1,
+            schema_version: 2,
             plan: plan.clone(),
             phase,
         },
@@ -185,7 +201,7 @@ fn record(state: &mut DesktopState, plan: &Plan, phase: Phase) -> Result<(), Sto
     state.preferences_uncertain |= result == Err(StorageError::PersistenceUncertain);
     result
 }
-fn sync(path: &Path) -> Result<(), StorageError> {
+pub(super) fn sync(path: &Path) -> Result<(), StorageError> {
     #[cfg(unix)]
     File::open(path)
         .and_then(|f| f.sync_all())
@@ -195,4 +211,4 @@ fn sync(path: &Path) -> Result<(), StorageError> {
     Ok(())
 }
 #[cfg(test)]
-mod tests;
+pub(super) mod tests;

@@ -1,7 +1,9 @@
 use super::*;
 use std::time::Duration;
 
-async fn fixture(missing: bool) -> (tempfile::TempDir, Arc<Mutex<DesktopState>>, Prepared) {
+pub(crate) async fn fixture(
+    missing: bool,
+) -> (tempfile::TempDir, Arc<Mutex<DesktopState>>, Prepared) {
     let (root, state, installation, server) = install_worker::tests::prepared_fixture().await;
     let plan = {
         let mut owner = state.lock().unwrap();

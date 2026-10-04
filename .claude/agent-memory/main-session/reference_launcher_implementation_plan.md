@@ -487,10 +487,10 @@ UI: reconstruction, commit checkpoints, resource/prefix ownership and recovery
 remain required. Canonical contract: desktop docs/repair.md.
 
 
-Repair staging reconstructs a fresh signed seed and retains root/work locks.
-Retained native commit now checkpoints the two renames, preserves the old backup
-through durable success and republishes the original identity receipt. Recorded
-precommit cancellation preserves the old tree; lost observers never abort commit.
-Thirteen focused tests cover rename boundaries, failed terminal persistence,
-foreign paths and Unix links. Backup cleanup, restart recovery, Wine binding and
-UI remain open. Canonical contract/evidence: desktop docs/repair.md.
+Repair reconstructs a fresh signed seed, retaining root/work locks. Retained
+commit checkpoints two renames and preserves the old backup through success.
+Schema-2 commit records plus operation/role markers now support explicit native
+restart recovery without downloads, including interruption during recovery.
+Foreign shapes, stale requests, legacy unmarked records and pre-checkpoint marker
+interruptions remain gated. Backup cleanup, pre-checkpoint recovery, Wine binding
+and UI remain open. Canonical contract/evidence: desktop docs/repair.md.

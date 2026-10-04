@@ -1,7 +1,8 @@
 # Repair design contract
 
 **Status: native admission, reconstruction and retained replacement implemented;
-backup cleanup, restart recovery, Wine repair and UI remain unfinished.** This contract defines the replacement workflow and its gates.
+checkpointed native restart recovery is implemented. Backup cleanup, Wine repair
+and UI remain unfinished.** This contract defines the replacement workflow and its gates.
 Repair is not yet an available user command. See
 [maintenance](maintenance.md) for implemented uninstall.
 
@@ -87,7 +88,7 @@ confirmation/dismissal, preinspection, one mutation under duplicate clicks,
 precommit cancellation, no replay after timeout/reconnect, explicit recovery and
 preserved consent. Add visual/manual UAT separately and state its coverage.
 Admission, native staging and retained replacement below are implemented. Wine
-repair adaptation, restart recovery, cleanup and UI validation gates remain open.
+repair adaptation, pre-checkpoint recovery, cleanup and UI validation gates remain open.
 
 ## Implemented admission boundary
 
@@ -145,7 +146,7 @@ arrives after staging. Seven focused repair tests pass
 (`20261004-085543-45495`), including abandonment after delivery and cancellation.
 The commit coordinator retains the handoff and checks recorded cancellation
 before the first commit mutation. Receiving `Prepared` alone is not permission
-to replace the game. The Wine repair adapter, restart recovery, cleanup and UI
+to replace the game. The Wine repair adapter, pre-checkpoint recovery, cleanup and UI
 remain unfinished. No frontend/visual UAT is claimed.
 
 ## Implemented replacement boundary
@@ -166,8 +167,8 @@ receipt published with the unchanged installation identity before terminal
 success. These are separate renames, not an atomic swap.
 
 Errors retain reconciliation gating; an existing commit record refuses replay.
-The old backup remains even after success. Backup cleanup and explicit restart
-recovery are not implemented. Public entry is native-Windows-only; private Mac
+The old backup remains even after success. Backup cleanup is not implemented;
+checkpointed restart recovery is described below. Public entry is native-Windows-only; private Mac
 fixtures do not establish Windows rename or power-loss behavior. Unix directory
 syncs are issued; Windows directory power-loss durability remains a validation
 gate. Content checks remain ledger/layout evidence, not an exhaustive corruption
@@ -184,3 +185,41 @@ not full-client repair, native Windows rename validation or frontend/visual UAT.
 The full engine suite passed 269 tests with 12 ignored environment-dependent
 cases (`20261004-090148-48013`); strict clippy passed
 (`20261004-090110-47779`).
+
+
+## Explicit native restart recovery
+
+Commit writes operation-specific Original/Replacement markers into the respective
+trees before its schema-2 Planned checkpoint. Markers move with renamed trees and
+bind their roles to the exact repair plan. They establish ownership correspondence,
+not cryptographic integrity of all tree contents. Writing the Original marker
+modifies the old tree during commit; preparation and precommit cancellation still
+leave that tree untouched.
+
+`recover_native` requires the current Repair operation ID, inspected revision and
+reconciliation state. Under root/work ownership locks, it verifies the prepared
+record, schema-2 commit record, cached signed release and permitted game/stage/
+backup role combinations. It finishes interrupted renames or republishes validated
+promoted content, then explicitly reconciles success. It does not download or
+reconstruct again. The retained worker does not depend on its response observer;
+recovery offers no cancellation after entry.
+
+Missing/conflicting ownership, unexpected tree shapes, unsafe entries and legacy
+schema-1 commit records remain gated. Backup content is preserved. An interruption
+between writing tree markers and the Planned checkpoint also remains gated: this
+entry point requires a complete commit record. It cannot yet resolve every
+commit-entry interruption or interrupted preparation. Those paths, backup cleanup,
+Wine repair and UI integration remain unfinished. Native Windows rename/locking
+and power-loss validation remain separate gates.
+
+The recovery tests reopen state across the checkpoint/rename matrix for both
+present and absent originals. They also interrupt recovery itself at seven
+mutation/checkpoint boundaries, reopen again, and finish without losing the old
+backup. Negative cases cover stale IDs/revisions, foreign game folders, missing
+backups, mismatched roles, legacy records and interruptions during marker writes.
+Each fault asserts it was reached. These are signed ZIP fixtures on macOS, not
+full-client repair or frontend/visual UAT.
+
+Nineteen focused repair tests passed (`20261004-090713-49685`); the full
+engine suite passed 275 tests with 12 environment-dependent cases ignored
+(`20261004-090800-50062`). Strict clippy passed (`20261004-090750-49925`).

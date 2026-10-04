@@ -2,6 +2,8 @@
 use super::*;
 pub mod commit;
 pub mod preparation;
+pub mod recovery;
+mod tree_identity;
 use crate::OperationKind;
 use sha2::{Digest, Sha256};
 use uuid::Uuid;
