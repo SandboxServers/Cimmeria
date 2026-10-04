@@ -20,7 +20,7 @@ The runner never decides a row passed on weaker evidence than a tester would hav
 
 ## Before you start
 
-1. **Hold the lab lock.** Only one agent drives a client at a time. Create `%LOCALAPPDATA%\cimmeria-lab\live.lock` as a directory (creating a directory is atomic), write your name and purpose into `live.lock\owner`, and remove the directory when you finish. If it already exists, someone else is live: wait and retry every minute.
+1. **Hold the lab lock.** Only one agent drives a client at a time. Create `%LOCALAPPDATA%\cimmeria-lab\live.lock` as a directory (creating a directory is atomic), write your name and purpose into `live.lock\owner`, and remove the directory when you finish. If it already exists, someone else is live: wait and retry every minute. Another session's supervisor relaunches a client you kill, so find its owner and ask for `lab_client_stop` instead ([live research lab, the lab lock and other sessions](live-research-lab.md#before-you-drive-the-client-the-lab-lock-and-other-sessions)). Install the lab binaries from the commit you test ([Install or update the lab](live-research-lab.md#install-or-update-the-lab)).
 2. **One `SGW.exe`, the `lab` account.** `lab_client_start` refuses while another client runs. The account and character come from `lab-account.json` ([live research lab, Setup](live-research-lab.md)). A two-player row adds a second client, `p2`, on its own account ([Two-player rows](#two-player-rows)).
 3. **Colo rule 6.** `.announce`, `/gmshout`, `.bm_seed`, `.mute` and content reloads need the owner's say-so in this session. The runner refuses them (the row is BLOCKED) unless the run passes that word in `owner_approvals`.
 4. **The screensaver.** A secure screensaver locks the desktop and stops the client rendering. Keep the display awake (hold `ES_DISPLAY_REQUIRED`) or stop a non-secure `*.scr` before launching.
@@ -229,7 +229,7 @@ The session is found by the character's name in `server_sessions`; pass `vars.pl
 
 ### Client event clauses and `${cast_id}`
 
-A `client_event` clause asserts what the client itself did, from the `client.ability.*` events the telemetry DLL pushes to the lab ring (ability-mechanics AB-C1 to AB-C5): the press and its gate (`client.ability.press`, `.press_dropped`), the send (`.sent`, `.sent_seq`), what arrived (`.recv`), what the client applied (`.applied`) and what it showed (`.shown`). Any other `client.*` target the DLL pushes works the same way. The fields are the DLL's own; [client-telemetry.md](../architecture/client-telemetry.md#ability-presses-and-sends-clientability) lists them (the receive, apply and show rows are added there by AB-C3 to AB-C5).
+A `client_event` clause asserts what the client itself did, from the `client.ability.*` events the telemetry DLL pushes to the lab ring (ability-mechanics AB-C1 to AB-C5): the press and its gate (`client.ability.press`, `.press_dropped`), the send (`.sent`, `.sent_seq`), what arrived (`.recv`), what the client applied (`.applied`) and what it showed (`.shown`). Any other `client.*` target the DLL pushes works the same way. The fields are the DLL's own; [client-telemetry.md](../architecture/client-telemetry.md#ability-telemetry-clientability) lists them (the receive, apply and show rows are added there by AB-C3 to AB-C5).
 
 | Field | Meaning |
 |---|---|

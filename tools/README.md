@@ -78,6 +78,12 @@ How the Rust workspace is built on developer and agent machines. Why each piece 
 | `build-hygiene/sweep.ps1` | Runs `cargo-sweep` over every target dir on the machine. Don't run it while anything builds. |
 | `build-metrics/measure-build.ps1` | Controlled build measurements: cold build, edit loop, `cargo check`, peak memory, target size. |
 
+## Lab Tooling
+
+| Script | Purpose |
+|---|---|
+| `lab/install.ps1` | Builds the Live Research Lab from a worktree through the build lane (`cimmeria-lab`; the `lab-bridge` telemetry DLL, `sgw-start32` and the patch DLL for i686) and installs them to `%LOCALAPPDATA%\cimmeria-lab\bin\` and the game's `Binaries\`. Refuses while an `SGW.exe` runs and names its supervisor; keeps each replaced file as `<name>.<yyyymmdd>.old`; `-DryRun` changes nothing. See [Install or update the lab](../docs/guides/live-research-lab.md#install-or-update-the-lab). |
+
 ## Lint & Check Scripts
 
 Load-bearing scripts run as part of the pre-PR checklist (see [`CLAUDE.md`](../CLAUDE.md)). Each ships in both a POSIX (`.sh`) and PowerShell (`.ps1`) flavor:
