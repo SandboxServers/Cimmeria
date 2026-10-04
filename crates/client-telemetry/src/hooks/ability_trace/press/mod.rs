@@ -23,12 +23,20 @@
 //! client checks no cooldown, range, target or death, so there are no
 //! such reasons here.
 
-use std::collections::VecDeque;
-
 use serde_json::{json, Value};
 
-use super::layout::{PetGate, RoutePre};
+use super::layout::PetGate;
 use super::{Out, TARGET_DROPPED, TARGET_PRESS};
+
+mod pending;
+mod route_outcome;
+
+// Used by the i686 detours (and the tests); the host build has no caller.
+#[cfg_attr(not(target_arch = "x86"), allow(unused_imports))]
+pub(crate) use pending::{PendingSend, PendingTable, GROUND_TTL_MS, SEND_TTL_MS};
+// Used by the i686 detours (and the tests); the host build has no caller.
+#[cfg_attr(not(target_arch = "x86"), allow(unused_imports))]
+pub(crate) use route_outcome::{route_dropped, route_outcome, RouteOutcome};
 
 /// Which Lua binding started the press.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -148,7 +156,7 @@ pub(crate) struct Press {
     resolved: bool,
 }
 
-fn opt<T: Into<Value>>(v: Option<T>) -> Value {
+pub(super) fn opt<T: Into<Value>>(v: Option<T>) -> Value {
     v.map(Into::into).unwrap_or(Value::Null)
 }
 
@@ -367,139 +375,6 @@ impl Press {
             }
             _ => Vec::new(),
         }
-    }
-}
-
-/// How long a posted press waits for the router before it is counted as
-/// expired. The router runs on the next pump of the same thread, so a
-/// healthy client claims it within a frame.
-pub(crate) const SEND_TTL_MS: u64 = 5_000;
-
-/// A ground reticle waits for the player to place it.
-pub(crate) const GROUND_TTL_MS: u64 = 60_000;
-
-/// Unclaimed presses kept at most.
-pub(crate) const MAX_PENDING: usize = 32;
-
-/// A press whose event was posted, waiting for the router.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) struct PendingSend {
-    /// The press.
-    pub press_id: u32,
-    /// Its source, for a router-side drop row.
-    pub source: Source,
-    /// The method the router will see.
-    pub method: &'static str,
-    /// Its ability.
-    pub ability_id: Option<i32>,
-    /// When it was posted.
-    pub at_ms: u64,
-    /// How long it may wait.
-    pub ttl_ms: u64,
-}
-
-/// Posted presses, oldest first.
-#[derive(Debug, Default)]
-pub(crate) struct PendingTable {
-    q: VecDeque<PendingSend>,
-    expired: u64,
-}
-
-impl PendingTable {
-    fn expire(&mut self, now_ms: u64) {
-        let before = self.q.len();
-        self.q
-            .retain(|p| now_ms.saturating_sub(p.at_ms) <= p.ttl_ms);
-        self.expired += (before - self.q.len()) as u64;
-    }
-
-    /// Add a posted press.
-    pub(crate) fn push(&mut self, p: PendingSend) {
-        self.expire(p.at_ms);
-        if self.q.len() >= MAX_PENDING {
-            self.q.pop_front();
-            self.expired += 1;
-        }
-        self.q.push_back(p);
-    }
-
-    /// Claim the oldest press for `method` and `ability_id`.
-    pub(crate) fn take(
-        &mut self,
-        method: &str,
-        ability_id: Option<i32>,
-        now_ms: u64,
-    ) -> Option<PendingSend> {
-        self.expire(now_ms);
-        let i = self
-            .q
-            .iter()
-            .position(|p| p.method == method && p.ability_id == ability_id)?;
-        self.q.remove(i)
-    }
-
-    /// Presses that expired unclaimed since the last call.
-    pub(crate) fn take_expired(&mut self, now_ms: u64) -> u64 {
-        self.expire(now_ms);
-        std::mem::take(&mut self.expired)
-    }
-}
-
-/// What the router did with an allowlisted call.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) enum RouteOutcome {
-    /// A `start*Message` ran: the method went on the wire.
-    Sent,
-    /// The router returned first.
-    Dropped(DropReason, &'static str),
-}
-
-/// Classify a router call. `reached_start` is observed; `pre` is what
-/// memory showed before the call.
-pub(crate) fn route_outcome(reached_start: bool, pre: RoutePre) -> RouteOutcome {
-    if reached_start {
-        return RouteOutcome::Sent;
-    }
-    let (reason, at) = if pre.has_connection == Some(false) {
-        (DropReason::NotConnected, site::NO_CONNECTION)
-    } else if pre.connected == Some(false) {
-        (DropReason::NotConnected, site::NOT_CONNECTED)
-    } else if pre.local_player_found == Some(false) {
-        (DropReason::NotConnected, site::NO_LOCAL_PLAYER)
-    } else {
-        (DropReason::ClassMismatch, site::CLASS)
-    };
-    RouteOutcome::Dropped(reason, at)
-}
-
-/// `client.ability.press_dropped` for a router refusal. `pending` is the
-/// press it settles, if one was waiting; a send with no press (a GM slash
-/// command, the respec button) reports `press_id: null`.
-pub(crate) fn route_dropped(
-    method: &'static str,
-    ability_id: Option<i32>,
-    pending: Option<PendingSend>,
-    reason: DropReason,
-    at: &'static str,
-) -> Out {
-    let mut f = vec![
-        ("press_id", opt(pending.map(|p| p.press_id))),
-        ("source", opt(pending.map(|p| p.source.as_str()))),
-        ("method", json!(method)),
-        ("ability_id", opt(ability_id)),
-        ("reason", json!(reason.as_str())),
-        ("drop_site", json!(at)),
-    ];
-    if reason == DropReason::ClassMismatch {
-        // Row 9 (no type mapping) and row 10 (class chain) both return
-        // before a start*Message, and only game code tells them apart.
-        f.push(("route_rows", json!("9|10")));
-    }
-    Out {
-        target: TARGET_DROPPED,
-        level: "info",
-        key: format!("{TARGET_DROPPED}:{}", reason.as_str()),
-        fields: f,
     }
 }
 

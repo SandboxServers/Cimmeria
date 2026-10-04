@@ -1,4 +1,6 @@
 use super::super::field;
+use super::super::layout::RoutePre;
+use super::pending::MAX_PENDING;
 use super::*;
 
 fn targets(outs: &[Out]) -> Vec<&'static str> {
