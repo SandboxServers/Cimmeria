@@ -26,7 +26,7 @@ use cimmeria_client_launch::start32::{self, Request, Target};
 use tracing::{info, warn};
 
 use super::launch_telemetry::{follow_with_telemetry, start_player_session};
-use super::{Activity, Event, EventSender, LaunchSgwRequest, Worker};
+use super::{client_prep, Activity, Event, EventSender, LaunchSgwRequest, Worker};
 use crate::client_patches::{decide, dll_source, injection_order, InjectDecision, PatchInjection};
 use crate::client_telemetry_dll::{self, DllOutcome, TelemetryDll};
 use crate::config::{exe_dir, ClientPatchesSettings};
@@ -82,6 +82,13 @@ impl Worker {
         // Only the telemetry session uses it.
         let http = self.telemetry_http.clone();
         self.runtime.spawn(async move {
+            if let Some(prep) = &req.prep {
+                if let Err(why) = client_prep::run(prep, &events_tx).await {
+                    let _ = events_tx.send(Event::LaunchError(why));
+                    activity.game_ended();
+                    return;
+                }
+            }
             let launched_at = SystemTime::now();
             let sgw_dir = sgw_dir(&req.install_dir);
             // Opted in: session first, then the DLL that reads it.
@@ -141,8 +148,9 @@ impl Worker {
 
 /// Wrap the game's exit future so that, however the game was launched
 /// and whether or not telemetry follows it, its exit reaches the UI as
-/// [`Event::GameExited`] and frees the worker's game slot.
-fn notify_exit(
+/// [`Event::GameExited`] and frees the worker's game slot. A failed wait
+/// is [`Event::GameUntracked`]: the game may still be running.
+pub(super) fn notify_exit(
     exit: ExitWaiter,
     pid: u32,
     events_tx: EventSender,
@@ -151,15 +159,21 @@ fn notify_exit(
     Box::pin(async move {
         let res = exit.await;
         activity.game_ended();
-        let exit_code = match &res {
-            Ok(report) => report.exit_code,
+        match &res {
+            Ok(report) => {
+                info!(pid, exit_code = ?report.exit_code, "game exited");
+                let _ = events_tx.send(Event::GameExited {
+                    pid,
+                    exit_code: report.exit_code,
+                });
+            }
+            // Losing track is not an exit: the probe takes over and keeps
+            // showing (and guarding) the game while it still runs.
             Err(e) => {
                 warn!(pid, error = %e, "lost track of the game while waiting for it to exit");
-                None
+                let _ = events_tx.send(Event::GameUntracked { pid });
             }
-        };
-        info!(pid, ?exit_code, "game exited");
-        let _ = events_tx.send(Event::GameExited { pid, exit_code });
+        }
         res
     })
 }

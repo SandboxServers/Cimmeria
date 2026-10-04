@@ -1,4 +1,4 @@
-//! Reducer and guard tests for the Install/Play surface (#1153). Each
+//! Reducer and guard tests for the Install/Play surface. Each
 //! drives the production [`PlayState`] the way the app does.
 
 use super::*;
@@ -360,4 +360,16 @@ fn up_to_date_without_sgw_exe_is_not_playable() {
     let mut i = inputs(InstallStatus::UpToDate);
     i.sgw_present = false;
     assert!(matches!(primary_action(&s, &i), Primary::Unavailable(_)));
+}
+
+// Bug shape: editing the manifest URL left the old verified manifest in
+// place, and an install paired it with the new URL's host.
+#[test]
+fn an_install_only_gets_the_manifest_from_the_url_in_use() {
+    let s = loaded();
+    assert!(s.manifest.for_url(URL).is_some());
+    assert!(s
+        .manifest
+        .for_url("https://other.test/manifest.json")
+        .is_none());
 }

@@ -218,6 +218,12 @@ pub fn launch_atera_fix_aslr(install_dir: &Path) -> Result<u32, LaunchError> {
     spawn(install_dir, "AtreaFixASLR.bat", true).map(|c| c.id())
 }
 
+/// Same as [`launch_atera_fix_aslr`] but returns the [`Child`], so the
+/// caller can hold off other work on `SGW.exe` until the bat finishes.
+pub fn launch_atera_fix_aslr_with_child(install_dir: &Path) -> Result<Child, LaunchError> {
+    spawn(install_dir, "AtreaFixASLR.bat", true)
+}
+
 /// Same as [`launch_atera_debug`] but returns the [`Child`] handle so
 /// the telemetry pipeline can wait on game exit. Dropping the Child
 /// does NOT kill the child process on std::process — launcher death

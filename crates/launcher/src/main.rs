@@ -144,7 +144,7 @@ fn main() -> eframe::Result<()> {
 
     let options = eframe::NativeOptions {
         viewport: egui::ViewportBuilder::default()
-            // Layout A (#1153): a gate panel beside the main column. Below
+            // Layout A: a gate panel beside the main column. Below
             // 760 px wide the panel folds away, as in the prototype.
             .with_inner_size([1030.0, 720.0])
             .with_min_inner_size([560.0, 520.0])

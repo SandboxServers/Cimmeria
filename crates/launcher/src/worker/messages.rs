@@ -4,6 +4,7 @@
 
 use std::path::PathBuf;
 
+use super::ClientPrep;
 use crate::client_paths::WipeReport;
 use crate::config::{ClientPatchesSettings, LauncherConfig};
 use crate::install::Progress;
@@ -30,7 +31,12 @@ pub enum Command {
     /// telemetry session starts first, the telemetry DLL goes in after
     /// the patches, and the session follows the game.
     LaunchSgw(LaunchSgwRequest),
-    LaunchAteraDebug(PathBuf),
+    /// The Atera debug bat, after client setup. The bat starts SGW.exe
+    /// itself; see `worker::atera`.
+    LaunchAteraDebug {
+        dir: PathBuf,
+        prep: ClientPrep,
+    },
     LaunchAteraFixAslr(PathBuf),
     /// Launch the Atera debug bat AND run the telemetry pipeline for
     /// the lifetime of the spawned game process. The telemetry config
@@ -39,7 +45,11 @@ pub enum Command {
     LaunchAteraDebugWithTelemetry {
         install_dir: PathBuf,
         telemetry: LaunchTelemetryConfig,
+        prep: ClientPrep,
     },
+    /// Apply the login-server list and client setup to the installed
+    /// client now (after the list is saved), under the maintenance slot.
+    PrepareClient(ClientPrep),
     UploadLogs {
         install_dir: PathBuf,
         sas_url: String,
@@ -113,6 +123,9 @@ pub enum Event {
         reason: String,
     },
     OpenFolderError(String),
+    /// One change client setup made (a renamed file, the server list,
+    /// ASLR), for the activity log.
+    SetupNote(String),
     /// What happened to the client-patches DLL on a launch, when it did
     /// not simply go in: opted out, unavailable, or injection failed.
     ClientPatchesNote(String),
@@ -144,6 +157,9 @@ pub enum Event {
 #[derive(Debug, Clone)]
 pub struct LaunchSgwRequest {
     pub install_dir: PathBuf,
+    /// Client setup to run once the launch slot is claimed. `None` only
+    /// in tests that start a stand-in game.
+    pub prep: Option<ClientPrep>,
     pub client_patches: ClientPatchesSettings,
     pub telemetry: Option<LaunchTelemetryConfig>,
 }

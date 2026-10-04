@@ -1,5 +1,5 @@
 //! Settings › Advanced: every configuration and debug tool the launcher
-//! had before the redesign, moved out of the player's way (#1153).
+//! had before the redesign, moved out of the player's way.
 //!
 //! Login servers, the manifest URL, manual Install / Update and adoption,
 //! the client-patches opt-out, the Atera debug launches and Fix ASLR, log
@@ -56,15 +56,21 @@ impl LauncherApp {
     }
 
     fn show_manifest_source(&mut self, ui: &mut egui::Ui) {
+        // Edits stay pending until Refresh: changing the URL in place would
+        // pair the last verified manifest with another host's blobs.
         ui.horizontal(|ui| {
             ui.add(
-                egui::TextEdit::singleline(&mut self.config.manifest_url)
+                egui::TextEdit::singleline(&mut self.manifest_url_text)
                     .desired_width(ui.available_width() - 90.0),
             );
             if ui.button("Refresh").clicked() {
+                self.config.manifest_url = self.manifest_url_text.trim().to_owned();
                 self.refresh_manifest();
             }
         });
+        if self.manifest_url_text.trim() != self.config.manifest_url {
+            ui.label(theme::muted("Not in use until you press Refresh."));
+        }
         let slot = &self.play.manifest;
         match (&slot.manifest, &slot.error) {
             (Some(m), _) => {
@@ -193,9 +199,11 @@ impl LauncherApp {
                     egui::Button::new("Launch Atera Debug"),
                 )
                 .clicked()
-                && self.prepare_client_for_launch()
             {
-                self.worker.dispatch(Command::LaunchAteraDebug(dir.clone()));
+                self.worker.dispatch(Command::LaunchAteraDebug {
+                    dir: dir.clone(),
+                    prep: self.client_prep(),
+                });
             }
             // Telemetry-enabled launch needs identity + opt-in + Atera.
             let telemetry_ready = allowed
@@ -209,12 +217,14 @@ impl LauncherApp {
                 )
                 .clicked()
             {
-                let ready = self.prepare_client_for_launch();
-                if let (true, Some(id)) = (ready, &self.identity) {
+                if let Some(id) = &self.identity {
+                    let telemetry = build_telemetry_config(&self.config, id);
+                    let prep = self.client_prep();
                     self.worker
                         .dispatch(Command::LaunchAteraDebugWithTelemetry {
                             install_dir: dir.clone(),
-                            telemetry: build_telemetry_config(&self.config, id),
+                            telemetry,
+                            prep,
                         });
                 }
             }

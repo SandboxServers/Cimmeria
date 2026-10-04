@@ -1,5 +1,5 @@
 //! The launcher's look: dark only, blue-gray surfaces, a cyan primary
-//! action (#1153, from the approved prototype at `e70b076a9`).
+//! action (from the approved prototype at `e70b076a9`).
 //!
 //! The palette is the prototype's CSS variables. [`apply`] locks egui to
 //! its dark theme and overwrites the dark visuals with this palette, so

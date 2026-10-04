@@ -1,6 +1,6 @@
 //! egui app: the launcher window's state and its lifecycle.
 //!
-//! The window follows the approved single-game design (#1153, layout A):
+//! The window follows the approved single-game design (layout A):
 //! a gate panel on the left, and on the right one Install/Play surface,
 //! a Patch Notes tab, a settings gear, and the diagnostics opt-in in the
 //! footer of every view. This file holds [`LauncherApp`], its
@@ -37,10 +37,12 @@ use tokio::runtime::Runtime;
 use crate::config::{config_path, LauncherConfig};
 use crate::launch::LaunchOptions;
 use crate::state::InstalledState;
-use crate::worker::{Command, Event, LaunchSgwRequest, LaunchTelemetryConfig, Waker, Worker};
+use crate::worker::{
+    ClientPrep, Command, Event, LaunchSgwRequest, LaunchTelemetryConfig, Waker, Worker,
+};
 use play_state::{file_action_block, install_status, launch_block, Inputs, Notice, PlayState};
 use settings_panel::PendingFolder;
-use status_lines::{human_bytes, setup_status_lines, status_line_for};
+use status_lines::{human_bytes, status_line_for};
 
 /// Upper bound on the status-log history kept in memory. Display already
 /// caps at the last 100 entries; this prevents the underlying Vec from
@@ -63,6 +65,9 @@ pub struct LauncherApp {
     /// The install folder as text, kept in step with
     /// `config.install_path` by the folder-change flow.
     install_path_text: String,
+    /// The manifest URL being edited in Advanced; applied to the config
+    /// only by Refresh, which fetches and verifies that URL's manifest.
+    manifest_url_text: String,
     /// Editable `Name = URL` lines for the login servers; parsed into
     /// `config.login_servers` on Save.
     login_servers_text: String,
@@ -109,11 +114,13 @@ impl LauncherApp {
         let worker = Worker::new(runtime, repaint_waker(ctx));
         let install_path_text = config.install_path.to_string_lossy().into_owned();
         let login_servers_text = crate::client_setup::login_servers::to_text(&config.login_servers);
+        let manifest_url_text = config.manifest_url.clone();
         let identity =
             crate::identity::LauncherIdentity::load_or_mint(&crate::identity::identity_path()).ok();
         let mut app = Self {
             config,
             install_path_text,
+            manifest_url_text,
             login_servers_text,
             config_path: cp,
             worker,
@@ -198,7 +205,7 @@ impl LauncherApp {
             status: install_status(
                 folder_set,
                 folder_set && should_show_adopt_button(&self.config.install_path),
-                self.play.manifest.manifest.as_ref(),
+                self.play.manifest.for_url(&self.config.manifest_url),
                 &self.installed,
             ),
             sgw_present: self.launch_opts.sgw_present,
@@ -229,8 +236,11 @@ impl LauncherApp {
             Ok(_) => {
                 self.push_status("Saved config.".into());
                 self.refresh_install_state();
+                // Apply the list to the installed client now; the worker
+                // refuses it while a game or another file job runs.
                 if self.launch_opts.sgw_present && file_action_block(&self.play).is_none() {
-                    self.prepare_client_for_launch();
+                    self.worker
+                        .dispatch(Command::PrepareClient(self.client_prep()));
                 }
             }
             Err(e) => self.push_status(format!("Save failed: {e}")),
@@ -239,7 +249,12 @@ impl LauncherApp {
 
     /// Install or update from the verified manifest.
     fn start_install(&mut self) {
-        let Some(manifest) = self.play.manifest.manifest.clone() else {
+        let Some(manifest) = self
+            .play
+            .manifest
+            .for_url(&self.config.manifest_url)
+            .cloned()
+        else {
             return;
         };
         if let Some(why) = file_action_block(&self.play) {
@@ -268,7 +283,12 @@ impl LauncherApp {
 
     /// Mark the folder's existing client as launcher-managed.
     fn start_adopt(&mut self) {
-        let Some(manifest) = self.play.manifest.manifest.clone() else {
+        let Some(manifest) = self
+            .play
+            .manifest
+            .for_url(&self.config.manifest_url)
+            .cloned()
+        else {
             return;
         };
         if file_action_block(&self.play).is_some() {
@@ -282,17 +302,12 @@ impl LauncherApp {
         });
     }
 
-    /// Play: client setup, then the launch with the client patches and,
-    /// when opted in, telemetry. The surface shows "Starting…" at once.
+    /// Play: the worker claims the launch slot, runs client setup, then
+    /// launches with the client patches and, when opted in, telemetry.
+    /// The surface shows "Starting…" at once.
     fn start_play(&mut self) {
         if let Some(why) = launch_block(&self.play, &self.inputs()) {
             self.push_status(format!("Not launching: {why}"));
-            return;
-        }
-        if !self.prepare_client_for_launch() {
-            self.play.launch_aborted(
-                "Could not prepare the game files; see Settings › Advanced › Activity log.".into(),
-            );
             return;
         }
         // Telemetry follows the game only when the player opted in and
@@ -306,23 +321,18 @@ impl LauncherApp {
         self.play.click_play(telemetry.is_some());
         self.worker.dispatch(Command::LaunchSgw(LaunchSgwRequest {
             install_dir: crate::install_layout::binaries_dir(&self.config.install_path),
+            prep: Some(self.client_prep()),
             client_patches: self.config.client_patches.clone(),
             telemetry,
         }));
     }
 
-    /// Write `LoginInternal.lua` and switch ASLR off before a launch.
-    /// Returns false when setup failed; callers then don't launch, since a
-    /// client with ASLR still on breaks the patches DLL and the RE
-    /// addresses, and one without the server list can't log in.
-    fn prepare_client_for_launch(&mut self) -> bool {
-        let result =
-            crate::client_setup::prepare(&self.config.install_path, &self.config.login_servers);
-        let (ok, lines) = setup_status_lines(&result);
-        for line in lines {
-            self.push_status(line);
+    /// What the worker needs for client setup before a launch.
+    fn client_prep(&self) -> ClientPrep {
+        ClientPrep {
+            install_root: self.config.install_path.clone(),
+            login_servers: self.config.login_servers.clone(),
         }
-        ok
     }
 }
 

@@ -7,6 +7,8 @@
 //! without mouse input.
 
 mod activity;
+mod atera;
+mod client_prep;
 mod event_sender;
 mod launch_sgw;
 mod launch_telemetry;
@@ -16,6 +18,7 @@ mod self_update;
 
 pub use activity::Busy;
 use activity::{Activity, Conflict};
+pub use client_prep::ClientPrep;
 #[cfg(test)]
 use event_sender::no_waker;
 pub use event_sender::{EventSender, Waker};
@@ -33,15 +36,9 @@ use tracing::error;
 use crate::client_paths::{cache_dir, firesky_root, wipe_dir_contents};
 use crate::config::LauncherConfig;
 use crate::install::{adopt_existing_install, install_all, InstallContext, Progress};
-use crate::launch::{launch_atera_debug, launch_atera_debug_with_child, launch_atera_fix_aslr};
 use crate::logs::{blob_name_for, build_log_zip, compute_content_digest, upload_blob, LogError};
 use crate::manifest::{fetch_manifest, Manifest};
 use crate::state::UploadedLedger;
-use crate::telemetry::auth::DevSessionRequest;
-use crate::telemetry::endpoint::EndpointPolicy;
-use crate::telemetry::process_watch::wait_for_exit;
-use crate::telemetry::runner::run_session;
-use crate::telemetry::Telemetry;
 
 /// Which user-data tree a `WipeClient*` command targets. Internal enum
 /// so the public `Command` API splits the two operations into separate
@@ -126,28 +123,12 @@ impl Worker {
                 Ok(()) => self.spawn_launch_sgw(req),
                 Err(c) => self.refuse(Busy::Launch, c),
             },
-            // The Atera bat starts SGW.exe itself, so the worker cannot
-            // follow it: the launch slot is held only until the bat starts,
-            // and the process probe guards the running game after that.
-            Command::LaunchAteraDebug(dir) => match self.activity.begin_launch(&dir) {
-                Ok(()) => {
-                    let activity = self.activity.clone();
-                    self.spawn_launch("AtreaGameDebug.bat", move || {
-                        let r = launch_atera_debug(&dir);
-                        activity.game_ended();
-                        r
-                    })
-                }
+            Command::LaunchAteraDebug { dir, prep } => match self.activity.begin_launch(&dir) {
+                Ok(()) => self.spawn_atera_debug(dir, prep),
                 Err(c) => self.refuse(Busy::Launch, c),
             },
-            // Fix ASLR rewrites SGW.exe; the resets delete the client's
-            // per-user files. Neither runs under a running game.
-            Command::LaunchAteraFixAslr(dir) => match self.activity.check_idle(&dir) {
-                Ok(()) => {
-                    self.spawn_launch("AtreaFixASLR.bat", move || launch_atera_fix_aslr(&dir))
-                }
-                Err(c) => self.refuse(Busy::Files, c),
-            },
+            Command::LaunchAteraFixAslr(dir) => self.spawn_fix_aslr(dir),
+            Command::PrepareClient(prep) => self.spawn_prepare_client(prep),
             Command::UploadLogs {
                 install_dir,
                 sas_url,
@@ -166,7 +147,9 @@ impl Worker {
                     Command::WipeClientCache => WipeTarget::CacheOnly,
                     _ => WipeTarget::EntireFiresky,
                 };
-                match self.activity.check_idle(Path::new("")) {
+                // The resets delete per-user files every install shares,
+                // so any running game counts (an empty dir).
+                match self.activity.begin_maintenance(Path::new("")) {
                     Ok(()) => self.spawn_wipe(target),
                     Err(c) => self.refuse(Busy::Files, c),
                 }
@@ -174,78 +157,14 @@ impl Worker {
             Command::LaunchAteraDebugWithTelemetry {
                 install_dir,
                 telemetry,
+                prep,
             } => match self.activity.begin_launch(&install_dir) {
-                Ok(()) => self.spawn_launch_with_telemetry(install_dir, telemetry),
+                Ok(()) => self.spawn_atera_with_telemetry(install_dir, telemetry, prep),
                 Err(c) => self.refuse(Busy::Launch, c),
             },
             Command::CheckForUpdate => self.spawn_update_check(),
             Command::ApplyUpdate(release) => self.spawn_update_apply(release),
         }
-    }
-
-    fn spawn_launch_with_telemetry(&self, install_dir: PathBuf, cfg: LaunchTelemetryConfig) {
-        let events_tx = self.events_tx.clone();
-        let http = self.telemetry_http.clone();
-        let activity = self.activity.clone();
-        self.runtime.spawn(async move {
-            let req = DevSessionRequest {
-                install_id: cfg.install_id,
-                machine_id: cfg.machine_id,
-                branch: cfg.branch,
-                git_sha: cfg.git_sha,
-                launcher_version: cfg.launcher_version.clone(),
-                tags: cfg.tags,
-            };
-            let telemetry = match Telemetry::start_session(
-                &http,
-                &cfg.auth_base_url,
-                req,
-                &install_dir,
-                &cfg.launcher_version,
-                EndpointPolicy::from_login_servers(
-                    cfg.login_server_urls.iter().map(String::as_str),
-                ),
-            )
-            .await
-            {
-                Ok(t) => Arc::new(t),
-                Err(e) => {
-                    let msg = format!("auth handshake failed: {e}");
-                    error!("telemetry session start failed: {e}");
-                    // Game still launches without telemetry — telemetry
-                    // is supplementary; never block the play action.
-                    let _ = events_tx.send(Event::TelemetrySessionError(msg));
-                    launch_legacy_atera(&install_dir, &events_tx);
-                    activity.game_ended();
-                    return;
-                }
-            };
-            let launched = launch_atera_debug_with_child(&install_dir);
-            activity.game_ended();
-            let child = match launched {
-                Ok(c) => {
-                    let _ = events_tx.send(Event::Launched("AtreaGameDebug.bat".into(), c.id()));
-                    c
-                }
-                Err(e) => {
-                    let _ = events_tx.send(Event::LaunchError(e.to_string()));
-                    return;
-                }
-            };
-            let http_arc = Arc::new(http.clone());
-            // The Atera bat starts SGW.exe itself, so the client-patches
-            // DLL cannot go in and there is no patch log to summarise.
-            let exit = Box::pin(wait_for_exit(child));
-            match run_session(telemetry, http_arc, exit, install_dir, cfg.state_dir, None).await {
-                Ok(outcome) => {
-                    let _ = events_tx.send(Event::TelemetrySessionComplete(outcome));
-                }
-                Err(e) => {
-                    error!("telemetry session error: {e}");
-                    let _ = events_tx.send(Event::TelemetrySessionError(e.to_string()));
-                }
-            }
-        });
     }
 
     fn spawn_adopt(&self, install_dir: PathBuf, manifest: Manifest) {
@@ -269,36 +188,13 @@ impl Worker {
         });
     }
 
+    /// Called with the maintenance slot claimed; releases it when done.
     fn spawn_wipe(&self, target: WipeTarget) {
         let events_tx = self.events_tx.clone();
+        let activity = self.activity.clone();
         self.runtime.spawn(async move {
-            let (kind, resolved) = match target {
-                WipeTarget::CacheOnly => ("Cache.en-US".to_string(), cache_dir()),
-                WipeTarget::EntireFiresky => ("Firesky".to_string(), firesky_root()),
-            };
-            let Some(path) = resolved else {
-                let _ = events_tx.send(Event::WipeError(
-                    "Could not resolve %USERPROFILE% or $HOME — no user profile to wipe.".into(),
-                ));
-                return;
-            };
-            // Recursive remove_dir_all + size walk is blocking IO —
-            // offload off the async worker pool so a slow disk doesn't
-            // starve concurrent download/upload tasks.
-            let result = tokio::task::spawn_blocking(move || wipe_dir_contents(&path)).await;
-            match result {
-                Ok(Ok(report)) => {
-                    let _ = events_tx.send(Event::Wiped { kind, report });
-                }
-                Ok(Err(e)) => {
-                    error!(target = ?target, "wipe failed: {e}");
-                    let _ = events_tx.send(Event::WipeError(format!("Wipe {kind} failed: {e}")));
-                }
-                Err(join_err) => {
-                    error!(target = ?target, "wipe task panicked: {join_err}");
-                    let _ = events_tx.send(Event::WipeError(format!("Wipe {kind} panicked")));
-                }
-            }
+            wipe(target, &events_tx).await;
+            activity.end_maintenance();
         });
     }
 
@@ -373,26 +269,6 @@ impl Worker {
         });
     }
 
-    fn spawn_launch<F>(&self, name: &str, f: F)
-    where
-        F: FnOnce() -> Result<u32, crate::launch::LaunchError> + Send + 'static,
-    {
-        let events_tx = self.events_tx.clone();
-        let name = name.to_string();
-        // Run on the runtime so we don't block the UI thread, even though
-        // spawning a child process is cheap.
-        self.runtime.spawn(async move {
-            match f() {
-                Ok(pid) => {
-                    let _ = events_tx.send(Event::Launched(name, pid));
-                }
-                Err(e) => {
-                    let _ = events_tx.send(Event::LaunchError(e.to_string()));
-                }
-            }
-        });
-    }
-
     fn spawn_upload(&self, install_dir: PathBuf, sas_url: String, ledger_path: PathBuf) {
         let events_tx = self.events_tx.clone();
         let http = self.http.clone();
@@ -449,16 +325,33 @@ async fn upload_logs_task(
     Ok(())
 }
 
-/// Fallback launch path when telemetry's auth handshake fails — fire
-/// the bat normally so the dev still gets to play. Mirrors
-/// `spawn_launch`'s shape.
-fn launch_legacy_atera(install_dir: &Path, events_tx: &EventSender) {
-    match launch_atera_debug(install_dir) {
-        Ok(pid) => {
-            let _ = events_tx.send(Event::Launched("AtreaGameDebug.bat".into(), pid));
+/// Wipe a per-user client tree. Runs with the maintenance slot held.
+async fn wipe(target: WipeTarget, events_tx: &EventSender) {
+    let (kind, resolved) = match target {
+        WipeTarget::CacheOnly => ("Cache.en-US".to_string(), cache_dir()),
+        WipeTarget::EntireFiresky => ("Firesky".to_string(), firesky_root()),
+    };
+    let Some(path) = resolved else {
+        let _ = events_tx.send(Event::WipeError(
+            "Could not resolve %USERPROFILE% or $HOME — no user profile to wipe.".into(),
+        ));
+        return;
+    };
+    // Recursive remove_dir_all + size walk is blocking IO —
+    // offload off the async worker pool so a slow disk doesn't
+    // starve concurrent download/upload tasks.
+    let result = tokio::task::spawn_blocking(move || wipe_dir_contents(&path)).await;
+    match result {
+        Ok(Ok(report)) => {
+            let _ = events_tx.send(Event::Wiped { kind, report });
         }
-        Err(e) => {
-            let _ = events_tx.send(Event::LaunchError(e.to_string()));
+        Ok(Err(e)) => {
+            error!(target = ?target, "wipe failed: {e}");
+            let _ = events_tx.send(Event::WipeError(format!("Wipe {kind} failed: {e}")));
+        }
+        Err(join_err) => {
+            error!(target = ?target, "wipe task panicked: {join_err}");
+            let _ = events_tx.send(Event::WipeError(format!("Wipe {kind} panicked")));
         }
     }
 }

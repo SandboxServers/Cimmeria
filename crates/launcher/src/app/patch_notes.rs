@@ -1,5 +1,5 @@
 //! The Patch Notes tab: the content manifest's patch titles and
-//! descriptions, as published (#1153).
+//! descriptions, as published.
 //!
 //! The rows come only from the manifest the worker fetched and whose
 //! Ed25519 signature verified ([`crate::manifest::fetch_manifest`]);

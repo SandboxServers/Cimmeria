@@ -1,4 +1,4 @@
-//! The Play tab: one installation surface that turns into Play (#1153).
+//! The Play tab: one installation surface that turns into Play.
 //!
 //! A status card says where things stand; under it, the primary action
 //! from [`primary_action`] and, where it helps, one secondary action.

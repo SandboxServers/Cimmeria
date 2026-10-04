@@ -131,6 +131,7 @@ fn launch_sgw_opted_out_reports_the_opt_out_then_the_missing_game() {
     let dir = tempfile::tempdir().unwrap();
     let (mut worker, rt) = make_worker();
     worker.dispatch(Command::LaunchSgw(LaunchSgwRequest {
+        prep: None,
         install_dir: dir.path().to_path_buf(),
         client_patches: opted_out(),
         telemetry: None,
@@ -163,6 +164,7 @@ fn launch_sgw_reports_a_missing_override_dll() {
     let dir = tempfile::tempdir().unwrap();
     let (mut worker, rt) = make_worker();
     worker.dispatch(Command::LaunchSgw(LaunchSgwRequest {
+        prep: None,
         install_dir: dir.path().to_path_buf(),
         client_patches: ClientPatchesSettings {
             enabled: true,
@@ -188,6 +190,7 @@ fn launch_sgw_missing_game_is_not_blamed_on_the_patches() {
     std::fs::write(&dll, b"MZ").unwrap();
     let (mut worker, rt) = make_worker();
     worker.dispatch(Command::LaunchSgw(LaunchSgwRequest {
+        prep: None,
         install_dir: dir.path().to_path_buf(),
         client_patches: ClientPatchesSettings {
             enabled: true,
@@ -219,6 +222,7 @@ fn launch_sgw_without_the_helper_reports_it_and_launches_plainly() {
     std::fs::write(&dll, b"MZ").unwrap();
     let (mut worker, rt) = make_worker();
     worker.dispatch(Command::LaunchSgw(LaunchSgwRequest {
+        prep: None,
         install_dir: dir.path().to_path_buf(),
         client_patches: ClientPatchesSettings {
             enabled: true,
@@ -302,6 +306,7 @@ fn an_opted_in_launch_with_no_telemetry_dll_warns_and_launches_without_it() {
     let (mut worker, rt) = make_worker();
     let server = rt.block_on(mock_auth());
     worker.dispatch(Command::LaunchSgw(LaunchSgwRequest {
+        prep: None,
         install_dir: dir.path().to_path_buf(),
         client_patches: opted_out(),
         telemetry: Some(telemetry_config(server.uri(), dir.path())),
@@ -348,6 +353,7 @@ fn an_opted_in_launch_whose_session_fails_still_launches() {
     // No mocks mounted: the handshake gets a 404.
     let server = rt.block_on(wiremock::MockServer::start());
     worker.dispatch(Command::LaunchSgw(LaunchSgwRequest {
+        prep: None,
         install_dir: dir.path().to_path_buf(),
         client_patches: opted_out(),
         telemetry: Some(telemetry_config(server.uri(), dir.path())),

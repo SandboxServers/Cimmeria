@@ -1,6 +1,4 @@
-//! The window frame: layout A of the approved design (#1153). The
-//! arrangement was picked on 2026-10-03 pending the maintainer's
-//! confirmation; the prototype offered A, B and C.
+//! The window frame: layout A (split) of the approved launcher design.
 //!
 //! A gate panel on the left; on the right the update banner, the heading
 //! for the current state, the Play / Patch Notes tabs with the settings
@@ -44,7 +42,7 @@ impl eframe::App for LauncherApp {
         }
         let side_margin = if wide { 44 } else { 24 };
         // The diagnostics opt-in is pinned below the main column, so it
-        // stays on screen on both tabs and with Settings open (#1153).
+        // stays on screen on both tabs and with Settings open.
         egui::Panel::bottom("telemetry-footer")
             .resizable(false)
             .show_separator_line(true)

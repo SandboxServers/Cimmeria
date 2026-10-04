@@ -1,5 +1,5 @@
 //! The Install/Play surface's state, kept apart from egui so it is
-//! testable (#1153).
+//! testable.
 //!
 //! [`PlayState`] is the reducer: worker [`Event`]s and the player's
 //! clicks move it between idle, installing, launching and running.
@@ -84,6 +84,15 @@ impl ManifestSlot {
     /// A fetch for `url` is starting. A manifest from another URL is
     /// dropped at once: its blobs would be fetched relative to the new
     /// URL, and an install must never mix the two.
+    /// The manifest, only if it came from `url`: an install or adopt
+    /// must never pair one host's manifest with another host's blobs.
+    pub(super) fn for_url(&self, url: &str) -> Option<&Manifest> {
+        match &self.source {
+            Some(src) if src == url => self.manifest.as_ref(),
+            _ => None,
+        }
+    }
+
     pub(super) fn begin_fetch(&mut self, url: &str) {
         if self.source.as_deref() != Some(url) {
             self.manifest = None;
@@ -158,12 +167,6 @@ impl PlayState {
     pub(super) fn click_play(&mut self, telemetry: bool) {
         self.game = Lifecycle::Launching { telemetry };
         self.notice = Some(Notice::info("Starting Stargate Worlds…"));
-    }
-
-    /// Client setup failed before anything was dispatched.
-    pub(super) fn launch_aborted(&mut self, why: String) {
-        self.game = Lifecycle::Idle;
-        self.notice = Some(Notice::error(why));
     }
 
     /// Apply a worker event. `manifest_url` is the URL the app uses now.

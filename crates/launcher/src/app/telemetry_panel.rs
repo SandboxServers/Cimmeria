@@ -1,5 +1,5 @@
 //! The diagnostics opt-in: one control in the footer of every view
-//! (Play, Patch Notes, and with Settings open), #1153.
+//! (Play, Patch Notes, and with Settings open).
 //!
 //! Off until the player turns it on, saved the moment it changes, and
 //! never turned on by installing or playing. A launch reads the choice

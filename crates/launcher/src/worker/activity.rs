@@ -1,5 +1,5 @@
 //! The worker's own record of what is running, so conflicting commands
-//! are refused here as well as greyed out in the UI (#1153).
+//! are refused here as well as greyed out in the UI.
 //!
 //! The UI disables Install while the game runs and Play while an install
 //! runs, but a disabled button is only a hint: a click that races a state
@@ -16,14 +16,16 @@
 
 use std::path::Path;
 use std::sync::{Arc, Mutex};
+use std::time::Duration;
 
 /// Which command was refused, so the UI can undo its first-press state.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Busy {
     Install,
     Launch,
-    /// A maintenance job on the game's or the client's files (the
-    /// client-state resets, Fix ASLR): refused while the game runs.
+    /// A maintenance job on the game's or the client's files (client
+    /// setup, the client-state resets, Fix ASLR): refused while the game
+    /// runs.
     Files,
 }
 
@@ -31,6 +33,7 @@ pub enum Busy {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Conflict {
     InstallRunning,
+    MaintenanceRunning,
     GameStarting,
     GameRunning { pid: Option<u32> },
 }
@@ -41,6 +44,10 @@ impl std::fmt::Display for Conflict {
             Conflict::InstallRunning => {
                 write!(f, "an installation is in progress; wait for it to finish")
             }
+            Conflict::MaintenanceRunning => write!(
+                f,
+                "a maintenance task is changing game files; wait for it to finish"
+            ),
             Conflict::GameStarting => write!(f, "the game is already starting"),
             Conflict::GameRunning { pid: Some(pid) } => {
                 write!(
@@ -63,9 +70,17 @@ enum Game {
     Running(u32),
 }
 
+/// A job that writes the game's or the client's files. At most one runs,
+/// and never beside a launch or a running game.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum FileJob {
+    Install,
+    Maintenance,
+}
+
 #[derive(Debug, Default)]
 struct State {
-    installing: bool,
+    files: Option<FileJob>,
     game: Game,
 }
 
@@ -98,57 +113,61 @@ impl Activity {
         self.state.lock().unwrap_or_else(|e| e.into_inner())
     }
 
-    fn game_conflict(&self, s: &State, install_dir: &Path) -> Option<Conflict> {
+    fn conflict(&self, s: &State, dir: &Path) -> Option<Conflict> {
+        match s.files {
+            Some(FileJob::Install) => return Some(Conflict::InstallRunning),
+            Some(FileJob::Maintenance) => return Some(Conflict::MaintenanceRunning),
+            None => {}
+        }
         match s.game {
             Game::Launching => return Some(Conflict::GameStarting),
             Game::Running(pid) => return Some(Conflict::GameRunning { pid: Some(pid) }),
             Game::Idle => {}
         }
-        (self.probe)(install_dir)
+        (self.probe)(dir)
             .first()
             .map(|&pid| Conflict::GameRunning { pid: Some(pid) })
     }
 
-    /// Claim the install slot: refused while an install runs or the game
-    /// runs from `install_dir`. Pair with [`Self::end_install`].
-    pub fn begin_install(&self, install_dir: &Path) -> Result<(), Conflict> {
+    /// Check and claim the file slot under one lock, so a launch cannot
+    /// slip in between the check and the file change.
+    fn begin_files(&self, dir: &Path, job: FileJob) -> Result<(), Conflict> {
         let mut s = self.lock();
-        if s.installing {
-            return Err(Conflict::InstallRunning);
-        }
-        if let Some(c) = self.game_conflict(&s, install_dir) {
+        if let Some(c) = self.conflict(&s, dir) {
             return Err(c);
         }
-        s.installing = true;
+        s.files = Some(job);
         Ok(())
     }
 
-    /// Check, without claiming anything, that nothing runs that a file
-    /// job under `dir` would conflict with. An empty `dir` means any
-    /// running game counts (the per-user client folders are shared).
-    pub fn check_idle(&self, dir: &Path) -> Result<(), Conflict> {
-        let s = self.lock();
-        if s.installing {
-            return Err(Conflict::InstallRunning);
-        }
-        match self.game_conflict(&s, dir) {
-            Some(c) => Err(c),
-            None => Ok(()),
-        }
+    /// Claim the file slot for an install or adoption: refused while any
+    /// file job, launch or game from `install_dir` runs. Pair with
+    /// [`Self::end_install`].
+    pub fn begin_install(&self, install_dir: &Path) -> Result<(), Conflict> {
+        self.begin_files(install_dir, FileJob::Install)
     }
 
     pub fn end_install(&self) {
-        self.lock().installing = false;
+        self.lock().files = None;
     }
 
-    /// Claim the game slot for a launch: refused while an install runs,
+    /// Claim the file slot for a maintenance job (client setup, Fix ASLR,
+    /// the client-state resets) until [`Self::end_maintenance`]. An empty
+    /// `dir` means any running game counts: the per-user client folders
+    /// are shared by every install.
+    pub fn begin_maintenance(&self, dir: &Path) -> Result<(), Conflict> {
+        self.begin_files(dir, FileJob::Maintenance)
+    }
+
+    pub fn end_maintenance(&self) {
+        self.lock().files = None;
+    }
+
+    /// Claim the game slot for a launch: refused while a file job runs,
     /// a launch is under way, or the game already runs.
     pub fn begin_launch(&self, install_dir: &Path) -> Result<(), Conflict> {
         let mut s = self.lock();
-        if s.installing {
-            return Err(Conflict::InstallRunning);
-        }
-        if let Some(c) = self.game_conflict(&s, install_dir) {
+        if let Some(c) = self.conflict(&s, install_dir) {
             return Err(c);
         }
         s.game = Game::Launching;
@@ -163,6 +182,23 @@ impl Activity {
     /// followed (the probe still guards it then).
     pub fn game_ended(&self) {
         self.lock().game = Game::Idle;
+    }
+
+    /// Wait until the probe sees a game under `dir`, up to `timeout`.
+    /// For a launch the worker cannot follow (an Atera bat starts
+    /// `SGW.exe` itself) the launch slot stays claimed until then, so a
+    /// second click cannot start another game.
+    pub async fn wait_for_game(&self, dir: &Path, timeout: Duration) -> bool {
+        let deadline = tokio::time::Instant::now() + timeout;
+        loop {
+            if !(self.probe)(dir).is_empty() {
+                return true;
+            }
+            if tokio::time::Instant::now() >= deadline {
+                return false;
+            }
+            tokio::time::sleep(Duration::from_millis(250)).await;
+        }
     }
 }
 
@@ -204,16 +240,27 @@ mod tests {
         a.begin_install(dir).unwrap();
     }
 
+    // Bug shape: a maintenance check that claimed nothing let a launch
+    // start between the check and the file change.
     #[test]
-    fn check_idle_claims_nothing_but_sees_conflicts() {
+    fn maintenance_and_launch_exclude_each_other() {
         let a = quiet();
         let dir = Path::new("C:/g");
-        a.check_idle(dir).unwrap();
-        a.begin_install(dir).unwrap();
-        assert_eq!(a.check_idle(dir), Err(Conflict::InstallRunning));
-        a.end_install();
-        a.check_idle(dir).unwrap();
-        a.begin_install(dir).unwrap();
+        a.begin_maintenance(dir).unwrap();
+        assert_eq!(a.begin_launch(dir), Err(Conflict::MaintenanceRunning));
+        assert_eq!(a.begin_install(dir), Err(Conflict::MaintenanceRunning));
+        assert_eq!(a.begin_maintenance(dir), Err(Conflict::MaintenanceRunning));
+        a.end_maintenance();
+        a.begin_launch(dir).unwrap();
+        assert_eq!(a.begin_maintenance(dir), Err(Conflict::GameStarting));
+    }
+
+    #[tokio::test]
+    async fn wait_for_game_sees_the_probe_or_times_out() {
+        let dir = Path::new("C:/g");
+        let seen = Activity::new(Arc::new(|_| vec![3]));
+        assert!(seen.wait_for_game(dir, Duration::from_secs(1)).await);
+        assert!(!quiet().wait_for_game(dir, Duration::from_millis(300)).await);
     }
 
     // A game this worker never started (reopened launcher, Atera bat)

@@ -215,7 +215,7 @@ before its redesign, each in its own section:
 | Section | What it holds |
 |---|---|
 | Login servers | The `Name = URL` list written into the client's `LoginInternal.lua`, and **Save login servers** (see [How the client finds its server](#how-the-client-finds-its-server)) |
-| Content manifest | The manifest URL, **Refresh**, and whether the manifest's signature verified |
+| Content manifest | The manifest URL, **Refresh**, and whether the manifest's signature verified. An edited URL is used only after **Refresh** |
 | Install, update and adopt | Manual **Install / Update** and **Cancel**, **Adopt existing install**, and what the install record says is still to apply |
 | Client patches | **Load client patches (restores the Black Market window)** |
 | Debug launches | **Launch Atera Debug**, **Launch Atera + Telemetry**, **Fix ASLR** (see [Debug launches](#debug-launches)) |

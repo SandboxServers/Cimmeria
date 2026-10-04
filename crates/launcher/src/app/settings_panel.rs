@@ -1,5 +1,5 @@
 //! The gear's settings panel: the install folder (change, open in
-//! Explorer), Repair and Uninstall, and the Advanced tools (#1153).
+//! Explorer), Repair and Uninstall, and the Advanced tools.
 //!
 //! Changing the folder only changes where the launcher looks. It never
 //! moves or deletes the old installation, and it is off while an install
@@ -248,7 +248,7 @@ impl LauncherApp {
              Uninstall will remove the game files only, after you confirm.",
         ));
         ui.horizontal(|ui| {
-            const LATER: &str = "Arrives in a later launcher update (#1153).";
+            const LATER: &str = "Arrives in a later launcher update.";
             ui.add_enabled(false, egui::Button::new("Repair game"))
                 .on_disabled_hover_text(LATER);
             ui.add_enabled(false, theme::danger_button("Uninstall…"))

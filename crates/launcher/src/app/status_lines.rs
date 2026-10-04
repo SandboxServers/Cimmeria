@@ -5,36 +5,6 @@
 use super::update_banner;
 use crate::worker::Event;
 
-/// Status lines for a client-setup result, and whether launching may go
-/// ahead. Extracted so the launch gate is testable without an egui frame.
-pub(super) fn setup_status_lines(
-    result: &std::io::Result<crate::client_setup::SetupReport>,
-) -> (bool, Vec<String>) {
-    match result {
-        Ok(report) => {
-            let mut lines = Vec::new();
-            for r in &report.restored_names {
-                lines.push(format!(
-                    "Renamed {} back to its stock name {} (the game can't find it otherwise).",
-                    r.from.display(),
-                    r.to.file_name().unwrap_or_default().to_string_lossy()
-                ));
-            }
-            if report.login_servers_written {
-                lines.push("Wrote the login server list (LoginInternal.lua).".into());
-            }
-            if report.aslr == crate::client_setup::AslrOutcome::Disabled {
-                lines.push("Switched ASLR off in SGW.exe.".into());
-            }
-            (true, lines)
-        }
-        Err(e) => (
-            false,
-            vec![format!("Not launching: client setup failed: {e}")],
-        ),
-    }
-}
-
 /// Render a worker [`Event`] into the human-readable status-log line
 /// the UI appends to its scrollback. Pure formatting — extracted from
 /// `drain_events` so each Event arm has at least minimal coverage
@@ -64,6 +34,7 @@ pub(super) fn status_line_for(event: &Event) -> Option<String> {
             "Game started (pid {pid}) but cannot be followed; watching for SGW.exe instead."
         ),
         Event::OpenFolderError(e) => format!("Could not open the folder: {e}"),
+        Event::SetupNote(n) => n.clone(),
         Event::InstallComplete => "Install complete.".into(),
         Event::InstallError(e) => format!("Install failed: {e}"),
         Event::Launched(name, pid) => format!("Launched {name} (pid {pid})"),
@@ -126,52 +97,8 @@ pub(super) fn human_bytes(n: u64) -> String {
 #[cfg(test)]
 mod tests {
     use super::super::{should_show_adopt_button, MAX_STATUS_LINES};
-    use super::{download_progress_line, human_bytes, setup_status_lines, status_line_for};
-    use crate::client_setup::{AslrOutcome, SetupReport};
+    use super::{download_progress_line, human_bytes, status_line_for};
 
-    // Bug shape: a failed client setup (SGW.exe locked, ASLR still on) used
-    // to be reported and then launched anyway.
-    #[test]
-    fn a_failed_client_setup_blocks_the_launch() {
-        let err: std::io::Result<SetupReport> = Err(std::io::Error::new(
-            std::io::ErrorKind::PermissionDenied,
-            "SGW.exe is locked",
-        ));
-        let (ok, lines) = setup_status_lines(&err);
-        assert!(!ok);
-        assert!(lines[0].starts_with("Not launching") && lines[0].contains("locked"));
-
-        let done: std::io::Result<SetupReport> = Ok(SetupReport {
-            restored_names: Vec::new(),
-            login_servers_written: true,
-            aslr: AslrOutcome::Disabled,
-        });
-        let (ok, lines) = setup_status_lines(&done);
-        assert!(ok);
-        assert_eq!(lines.len(), 2);
-    }
-
-    /// The EULA repair is visible in the status log, naming both spellings.
-    #[test]
-    fn a_restored_file_name_is_reported() {
-        let eula = std::path::Path::new("Working/SGWGame/Content/UI/Startup/EULA");
-        let done: std::io::Result<SetupReport> = Ok(SetupReport {
-            restored_names: vec![crate::client_setup::Restored {
-                from: eula.join("eula.lua"),
-                to: eula.join("EULA.lua"),
-            }],
-            login_servers_written: false,
-            aslr: AslrOutcome::AlreadyOff,
-        });
-        let (ok, lines) = setup_status_lines(&done);
-        assert!(ok);
-        assert_eq!(lines.len(), 1, "{lines:?}");
-        assert!(
-            lines[0].contains("eula.lua") && lines[0].contains("stock name EULA.lua"),
-            "{}",
-            lines[0]
-        );
-    }
     use crate::client_paths::WipeReport;
     use crate::worker::Event;
 

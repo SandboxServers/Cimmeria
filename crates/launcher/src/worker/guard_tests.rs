@@ -1,5 +1,5 @@
-//! The worker refuses conflicting commands and reports the game's exit
-//! (#1153). Each test fails if its guard or notification is removed.
+//! The worker refuses conflicting commands and reports the game's exit.
+//! Each test fails if its guard or notification is removed.
 
 use std::path::Path;
 
@@ -9,6 +9,7 @@ use crate::config::{ClientPatchesSettings, LauncherConfig};
 
 fn plain_launch(dir: &Path) -> Command {
     Command::LaunchSgw(LaunchSgwRequest {
+        prep: None,
         install_dir: dir.to_path_buf(),
         client_patches: ClientPatchesSettings {
             enabled: false,
@@ -97,7 +98,7 @@ fn install_and_adopt_are_refused_while_the_game_runs() {
     }
 }
 
-// Bug shape (#1153): a launch without telemetry dropped the game's exit
+// Bug shape: a launch without telemetry dropped the game's exit
 // future, so the launcher never learned the game had closed and could
 // not return to Play from real evidence.
 #[cfg(windows)]
@@ -159,4 +160,53 @@ fn client_state_resets_are_refused_while_the_game_runs() {
             "{ev:?}"
         );
     }
+}
+
+// Bug shape: a failed wait on the game reported "the game closed", which
+// re-enabled Play and file actions while the game might still run.
+#[test]
+fn a_lost_wait_is_untracked_not_an_exit() {
+    use crate::telemetry::process_watch::{ExitWaiter, WatchError};
+    let (mut worker, rt) = make_worker();
+    let lost: ExitWaiter = Box::pin(async { Err(WatchError::JoinPanic) });
+    let wrapped =
+        super::launch_sgw::notify_exit(lost, 77, worker.events_tx.clone(), worker.activity.clone());
+    let ev = rt.block_on(async {
+        let _ = wrapped.await;
+        recv_matching(&mut worker.events_rx, |e| {
+            matches!(e, Event::GameExited { .. } | Event::GameUntracked { .. })
+        })
+        .await
+    });
+    assert!(matches!(ev, Event::GameUntracked { pid: 77 }), "{ev:?}");
+}
+
+// Bug shape: client setup (renames, LoginInternal.lua, ASLR) ran on the
+// UI thread before the worker's claim, so it could rewrite files under a
+// running game. Now a refused launch touches nothing.
+#[test]
+fn a_refused_launch_runs_no_client_setup() {
+    let dir = tempfile::tempdir().unwrap();
+    let (mut worker, rt) = make_worker();
+    worker.activity.begin_launch(dir.path()).unwrap();
+    worker.dispatch(Command::LaunchSgw(LaunchSgwRequest {
+        prep: Some(super::ClientPrep {
+            install_root: dir.path().to_path_buf(),
+            login_servers: crate::client_setup::login_servers::default_servers(),
+        }),
+        install_dir: dir.path().to_path_buf(),
+        client_patches: ClientPatchesSettings::default(),
+        telemetry: None,
+    }));
+    let ev = rt.block_on(recv_matching(&mut worker.events_rx, |e| {
+        matches!(
+            e,
+            Event::Refused { .. } | Event::SetupNote(_) | Event::LaunchError(_)
+        )
+    }));
+    assert!(matches!(ev, Event::Refused { .. }), "{ev:?}");
+    assert!(
+        std::fs::read_dir(dir.path()).unwrap().next().is_none(),
+        "no file may be written by a refused launch"
+    );
 }

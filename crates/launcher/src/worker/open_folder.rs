@@ -1,4 +1,4 @@
-//! "Open in Explorer" for the install folder (#1153).
+//! "Open in Explorer" for the install folder.
 //!
 //! Opening a folder only shows it: a missing folder is reported, never
 //! created, so the button cannot make directories at a path the player

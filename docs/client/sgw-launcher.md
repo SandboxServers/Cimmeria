@@ -445,16 +445,25 @@ New with #1153 (all in [`worker/messages.rs`](../../crates/launcher/src/worker/m
 | `Event::InstallCancelled` | worker → UI | The player cancelled; finished steps stay recorded |
 | `Event::Refused { action: Busy, reason }` | worker → UI | A command conflicted with running work and was not started; `reason` is the player-facing `Conflict` text |
 | `Event::GameExited { pid, exit_code }` | worker → UI | A game the launcher started and followed has exited, telemetry or not |
-| `Event::GameUntracked { pid }` | worker → UI | The game started but its pid could not be opened to wait on; no `GameExited` will come, so the probe takes over |
+| `Event::GameUntracked { pid }` | worker → UI | The game started but its pid could not be opened to wait on, or the wait failed: the launcher lost track of it, which is not an exit. No `GameExited` will come, so the probe takes over |
+| `Command::PrepareClient(ClientPrep)` | UI → worker | Apply a saved login-server list to the installed client now, under the maintenance slot |
+| `Event::SetupNote(String)` | worker → UI | One change client setup made (a renamed file, the server list, ASLR), for the activity log |
 | `Event::OpenFolderError(String)` | worker → UI | Explorer could not be opened, or the folder does not exist |
 | `Event::ManifestFetched { url, manifest }`, `Event::ManifestError { url, message }` | worker → UI | Now carry the URL they were fetched for |
 
 **Following the game.** `spawn_launch_sgw` wraps the game's exit future
 in `notify_exit`, which frees the worker's game slot and sends
-`GameExited` however the game was launched. Before #1153 only a
-telemetry launch waited for the exit; a plain launch now waits too, just
+`GameExited` however the game was launched. Earlier launchers waited
+for the exit only on a telemetry launch; a plain launch now waits too, just
 to report it. If the helper's pid cannot be opened (`exit` is `None`),
-the task sends `GameUntracked` instead.
+or the wait itself fails, the task sends `GameUntracked` instead: losing
+track of the game is not an exit, so the probe keeps guarding it.
+
+**Client setup runs in the worker.** Every launch carries a `ClientPrep`
+(install root and login servers). The worker runs client setup
+(`worker/client_prep.rs`) only after it has claimed the launch slot, so
+a refused launch writes nothing. A setup failure is a `LaunchError`, and
+the game does not start.
 
 ### The activity guard (`worker/activity.rs`)
 
@@ -467,15 +476,15 @@ a conflict with `Event::Refused` instead of starting it.
 | Command | Claims | Refused while |
 |---|---|---|
 | `Install`, `AdoptExisting` | `begin_install(install_dir)` → released by `end_install` when the task ends | an install runs, a launch is starting, the worker's game runs, or the probe finds an `SGW.exe` under `install_dir` |
-| `LaunchSgw`, `LaunchAteraDebug`, `LaunchAteraDebugWithTelemetry` | `begin_launch(dir)` → `game_started(pid)` → `game_ended()` | the same |
+| `LaunchSgw`, `LaunchAteraDebug`, `LaunchAteraDebugWithTelemetry` | `begin_launch(dir)` → `game_started(pid)` → `game_ended()` | the same, or a maintenance job runs |
+| `WipeClientCache`, `WipeAllClientState`, `LaunchAteraFixAslr`, `PrepareClient` | `begin_maintenance(dir)` → released by `end_maintenance` when the job (for Fix ASLR, the bat) ends | any file job, a launch, or a game (any game for the resets, since the per-user client folders are shared); refused as `Busy::Files` |
 
-The Atera launches hold the slot only until the bat starts, because the
-bat starts `SGW.exe` itself and the worker cannot follow it; the probe
-guards that game from then on. `WipeClientCache`, `WipeAllClientState`
-and `LaunchAteraFixAslr` claim nothing but call `Activity::check_idle`
-first, and are refused with `Busy::Files` while an install runs or a
-game runs (any game for the resets, since the per-user client folders
-are shared). Changing the install folder is a config edit on the UI
+Each claim checks and claims under one lock, so nothing can start
+between the check and the file change. The Atera launches keep the
+launch slot until the probe sees `SGW.exe` (`Activity::wait_for_game`,
+up to 60 s; past that, a `LaunchError`), because the bat starts the game
+itself. A second click in the meantime is refused, and from then on the
+probe guards the game. Changing the install folder is a config edit on the UI
 thread, so it re-runs the process probe and `file_action_block` at the
 moment of the change, not only when the button was drawn.
 
