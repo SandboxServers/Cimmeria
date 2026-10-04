@@ -19,6 +19,7 @@
 //! prototype scripts this module replaces (2026-09-29, against the colo).
 
 pub mod characters;
+pub mod create_confirm;
 pub mod login;
 pub mod ui_state;
 pub mod widgets;

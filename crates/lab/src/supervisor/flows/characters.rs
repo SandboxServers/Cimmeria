@@ -239,24 +239,10 @@ impl Supervisor {
         run.type_into("last_name", CHAR_CREATE_LAST, &req.last, false)
             .await?;
         run.click("create", CHAR_CREATE_BUTTON).await?;
-        // CharCreateMod.onCreateFailed raises a prompt with the reason.
-        let back = format!(
-            "not {} and {}",
-            widgets::visible(CHAR_CREATE_WIN),
-            widgets::visible(CHAR_SELECT_WIN)
-        );
-        run.wait("created", &back, Some(PROMPT_TEXT), CREATE_TIMEOUT)
+        // Tolerates a busy client's bridge timeouts; see `create_confirm`.
+        let (created, rows) = self
+            .confirm_created(&mut run, &req.last, CREATE_TIMEOUT)
             .await?;
-        settle(1000).await;
-        let rows = self.read_characters(&mut run).await?;
-        let Some(created) = rows.iter().find(|r| r.name == req.last).cloned() else {
-            return Err(run
-                .fail_with_state(
-                    "verify_created",
-                    format!("back at character select but no {:?} in the list", req.last),
-                )
-                .await);
-        };
         Ok(run.finish(json!({ "created": created, "characters": rows })))
     }
 

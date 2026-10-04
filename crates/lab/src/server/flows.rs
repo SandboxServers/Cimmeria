@@ -160,7 +160,7 @@ impl LabServer {
     }
 
     #[tool(
-        description = "Enter the world on a character: select it, Play, Escape through the loading and arrival cutscenes (skip_cutscene, default true), and stop when the world HUD (or a new character's intro dialog) is up. Reports whether a dialog is open and its title/text/buttons."
+        description = "Enter the world on a character: select it, Play, Escape through the loading and arrival cutscenes (skip_cutscene, default true), and stop when the world HUD (SelfStatusWin) is visible; a new character's intro dialog over the arrival cutscene is not enough, Escape continues until the HUD shows or the timeout. Reports whether a dialog is open and its title/text/buttons."
     )]
     async fn lab_play_character(
         &self,

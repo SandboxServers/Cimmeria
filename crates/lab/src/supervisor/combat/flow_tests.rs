@@ -131,6 +131,84 @@ async fn an_ability_outside_the_bar_and_trees_needs_place_or_lua() {
     assert_eq!(place.step, "place");
 }
 
+/// A fresh level-1 character's bar as the live client read it
+/// (2026-10-04): all 100 buttons registered and empty (`action_id` 0, no
+/// action type), buttons 1 to 10 visible, starting with
+/// `ActionButtons_1Button`. The bound-only read lists none of them. Once
+/// the placement chunk has run, button 1 holds the ability.
+fn empty_bar_fake(placed: Arc<Mutex<bool>>) -> Responder {
+    Arc::new(move |method, params| {
+        let c = chunk(params);
+        match method {
+            "events_read" => Ok(events(vec![])),
+            "lua_eval" if is_ring_pump(params) => Ok(empty_rings()),
+            "lua_eval" if c.contains("setActionToAbility(") => {
+                *placed.lock().unwrap() = true;
+                Ok(lua_ok(&["ok", "17"]))
+            }
+            "lua_eval" if c.contains("ActionButtonMod.buttons[i]") => {
+                let include_empty = c.contains("if true or action > 0");
+                let is_placed = *placed.lock().unwrap();
+                let mut lines = vec!["profile\t1\t1".to_string()];
+                for i in 1..=100u32 {
+                    let vis = if i <= 10 { "1" } else { "0" };
+                    let key = if i <= 10 {
+                        format!("key={}\u{1f}vkeyShortText={}", 48 + i % 10, i % 10)
+                    } else {
+                        String::new()
+                    };
+                    if i == 1 && is_placed {
+                        lines.push(format!(
+                            "button\t1\tActionButtons_1Button\t1\t17\t1\tAbility\t1100\tPistol Shot\t-1\t0\t0\t{key}\t"
+                        ));
+                    } else if include_empty {
+                        lines.push(format!(
+                            "button\t{i}\tActionButtons_{i}Button\t{vis}\t0\t\t\t\t\t\t\t\t{key}\t"
+                        ));
+                    }
+                }
+                Ok(lua_ok(&lines))
+            }
+            "lua_eval" if c.contains("getTrainingTreeCount") => {
+                Ok(lua_ok(&["known\t1100\t1\t1\tPistol Shot"]))
+            }
+            "lua_eval" if c.contains("put(\"world_id\"") => {
+                Ok(lua_ok(&["world_id\t701", "health\t100"]))
+            }
+            _ => Err(format!("unexpected {method}: {c:.80}")),
+        }
+    })
+}
+
+#[tokio::test]
+async fn place_finds_an_empty_button_on_a_fresh_characters_bar() {
+    let placed = Arc::new(Mutex::new(false));
+    let sup = fake_bridge::supervisor(empty_bar_fake(placed.clone())).await;
+    // `client_hotbar include_empty=true` lists the bar the way it did live.
+    let bar = sup.hotbar(true).await.unwrap();
+    assert_eq!(bar["buttons"].as_array().unwrap().len(), 100);
+    assert_eq!(bar["buttons"][0]["window"], "ActionButtons_1Button");
+    assert_eq!(bar["buttons"][0]["visible"], true);
+    assert_eq!(bar["buttons"][0]["action_id"], 0);
+    assert_eq!(bar["buttons"][0]["action_type"], Value::Null);
+
+    // The press needs the game window, which the fake has none of, so the
+    // flow stops at focus: after placing, not at "place".
+    let e = sup
+        .use_ability_flow(use_req(Query::Id(1100), Fallback::None, true))
+        .await
+        .unwrap_err();
+    assert_eq!(e.step, "focus", "{}", e.summary());
+    assert!(*placed.lock().unwrap(), "the placement chunk ran");
+    let place = e
+        .steps
+        .iter()
+        .find(|s| s["step"] == "place")
+        .unwrap_or_else(|| panic!("no place step: {:?}", e.steps));
+    assert_eq!(place["detail"]["button"], 1);
+    assert_eq!(place["detail"]["native_level"]["tier"], "N3");
+}
+
 #[tokio::test]
 async fn an_unknown_name_fails_at_resolve_with_the_known_list() {
     let sup = fake_bridge::supervisor(ability_fake(Arc::default())).await;
