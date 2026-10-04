@@ -86,14 +86,18 @@ pub(super) fn name_key_for(key: &str) -> Option<Option<String>> {
 }
 
 /// The marker on `line`, if any: `Some(true)` with a reason, `Some(false)`
-/// without one.
+/// without one. The comment must open with the marker as a whole word; a
+/// comment that only mentions it (`// don't use nt:id-only here`) is prose.
 fn marker_on(line_comments: &[(usize, String)], line: usize) -> Option<bool> {
     line_comments
         .iter()
         .filter(|(l, _)| *l == line)
         .find_map(|(_, text)| {
-            let at = text.find(MARKER)?;
-            Some(!text[at + MARKER.len()..].trim().is_empty())
+            let rest = text.trim_start().strip_prefix(MARKER)?;
+            if !(rest.is_empty() || rest.starts_with(char::is_whitespace)) {
+                return None;
+            }
+            Some(!rest.trim().is_empty())
         })
 }
 

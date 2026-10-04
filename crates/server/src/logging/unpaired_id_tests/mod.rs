@@ -2,7 +2,9 @@
 //! name, and the files that still have unpaired ones may only get better.
 //!
 //! The scan reads the source of every crate in [`IN_PROCESS_CRATES`] (test
-//! code skipped, as in `target_scan_tests`), finds each `trace!`, `debug!`,
+//! files skipped as in `target_scan_tests`, and each `#[cfg(test)]` item
+//! blanked in place, so production code after a test module still counts),
+//! finds each `trace!`, `debug!`,
 //! `info!`, `warn!`, `error!` and `event!` call, and judges every ID-shaped
 //! field against Rule 6 in `docs/architecture/instrumentation-discipline.md`:
 //! paired, exempted by `// nt:id-only <reason>` on its line, or unpaired.
@@ -33,9 +35,7 @@ use std::path::PathBuf;
 
 use pairing::Verdict;
 
-use super::target_scan_tests::{
-    crates_dir, is_test_path, rs_files, strip_test_module, IN_PROCESS_CRATES,
-};
+use super::target_scan_tests::{crates_dir, is_test_path, rs_files, IN_PROCESS_CRATES};
 
 const BASELINE: &str = "unpaired_id_baseline.txt";
 const BLESS_VAR: &str = "NT_BASELINE_BLESS";
@@ -59,7 +59,8 @@ struct Scan {
 
 /// Judges every event call in one source text, adding to `scan`.
 fn scan_source(rel: &str, src: &str, scan: &mut Scan) {
-    let masked = lexer::mask(src);
+    let mut masked = lexer::mask(src);
+    lexer::blank_test_items(&mut masked.code);
     for call in calls::event_calls(src, &masked) {
         scan.calls += 1;
         for (line, key, verdict) in pairing::judge(&call, &masked.line_comments) {
@@ -91,7 +92,7 @@ fn scan_workspace() -> Scan {
             }
             let rel = format!("crates/{}", rel.to_string_lossy().replace('\\', "/"));
             let src = std::fs::read_to_string(&f).unwrap();
-            scan_source(&rel, strip_test_module(&src), &mut scan);
+            scan_source(&rel, &src, &mut scan);
         }
     }
     scan

@@ -34,29 +34,46 @@ fn line_at(code: &str, at: usize) -> usize {
 
 pub(super) fn event_calls(src: &str, masked: &Masked) -> Vec<Call> {
     let code = masked.code.as_str();
+    let bytes = code.as_bytes();
     let mut out = Vec::new();
-    let mut from = 0;
-    while let Some(i) = code[from..].find("!(") {
-        let bang = from + i;
-        from = bang + 2;
-        let name_start = code[..bang]
-            .rfind(|c: char| !is_ident(c))
-            .map_or(0, |p| p + 1);
-        if !EVENT_MACROS.contains(&&code[name_start..bang]) {
+    let mut i = 0;
+    while i < bytes.len() {
+        if !is_ident(char::from(bytes[i])) {
+            i += 1;
             continue;
         }
-        let Some(close) = matching_paren(code, bang + 1) else {
+        let start = i;
+        while i < bytes.len() && is_ident(char::from(bytes[i])) {
+            i += 1;
+        }
+        let preceded = start > 0 && is_ident(char::from(bytes[start - 1]));
+        if preceded || !EVENT_MACROS.contains(&&code[start..i]) {
+            continue;
+        }
+        // `info!(…)`, `info! {…}`, `info![…]`: whitespace (and masked
+        // comments) may sit on either side of the `!`.
+        let rest = code[i..].trim_start();
+        let Some(rest) = rest.strip_prefix('!') else {
+            continue;
+        };
+        let open = code.len() - rest.trim_start().len();
+        if !matches!(bytes.get(open), Some(b'(' | b'[' | b'{')) {
+            continue;
+        }
+        let Some(close) = matching_delimiter(code, open) else {
             continue;
         };
         out.push(Call {
-            fields: fields(src, code, bang + 2, close),
+            fields: fields(src, code, open + 1, close),
         });
+        i = open + 1;
     }
     out
 }
 
-/// Index of the `)` closing the `(` at `open`. Literals are already blank.
-fn matching_paren(code: &str, open: usize) -> Option<usize> {
+/// Index of the delimiter closing the one at `open`. Literals are already
+/// blank, so every bracket left is code.
+fn matching_delimiter(code: &str, open: usize) -> Option<usize> {
     let mut depth = 0usize;
     for (i, b) in code.bytes().enumerate().skip(open) {
         match b {
@@ -105,16 +122,27 @@ fn fields(src: &str, code: &str, from: usize, to: usize) -> Vec<Field> {
         if trimmed.is_empty() {
             continue;
         }
-        let raw_literal = trimmed
-            .strip_prefix('r')
-            .is_some_and(|r| r.trim_start_matches('#').starts_with('"'));
-        if trimmed.starts_with('"') || raw_literal {
-            // A string-literal key (`"a.b" = x`) or the message. The mask
-            // blanked the literal, so read it from the source.
-            let len = trimmed[1..].find('"').map_or(trimmed.len(), |p| p + 2);
-            if trimmed.starts_with('"') && is_assignment(&trimmed[len..]) {
+        if let Some(inner) = trimmed
+            .strip_prefix('{')
+            .and_then(|t| t.trim_end().strip_suffix('}'))
+        {
+            // A braced field set: `event!(Level::INFO, { a_id = x }, "m")`.
+            let inner_from = at + 1;
+            out.extend(fields(src, code, inner_from, inner_from + inner.len()));
+            continue;
+        }
+        if let Some((open_len, close_len)) = literal_delimiters(trimmed) {
+            // A string-literal key (`"a.b" = x`, `r#"a.b"# = x`) or the
+            // message. The mask blanked the literal, so read the key from the
+            // source; the mask kept the delimiters, so find the end there.
+            let body = open_len
+                + trimmed[open_len..]
+                    .find('"')
+                    .unwrap_or(trimmed.len() - open_len);
+            let end = (body + close_len).min(trimmed.len());
+            if is_assignment(&trimmed[end..]) {
                 out.push(Field {
-                    key: src[at + 1..at + len - 1].to_string(),
+                    key: src[at + open_len..at + body].to_string(),
                     line: line_at(code, at),
                 });
                 continue;
@@ -129,6 +157,17 @@ fn fields(src: &str, code: &str, from: usize, to: usize) -> Vec<Field> {
         }
     }
     out
+}
+
+/// `(opening, closing)` delimiter lengths when `arg` starts with a string
+/// literal: `"…"` is `(1, 1)`, `r##"…"##` is `(4, 3)`.
+fn literal_delimiters(arg: &str) -> Option<(usize, usize)> {
+    if arg.starts_with('"') {
+        return Some((1, 1));
+    }
+    let hashes = arg.strip_prefix('r')?;
+    let n = hashes.len() - hashes.trim_start_matches('#').len();
+    hashes[n..].starts_with('"').then_some((n + 2, n + 1))
 }
 
 /// `= value` with a single `=` (not `==` or `=>`).

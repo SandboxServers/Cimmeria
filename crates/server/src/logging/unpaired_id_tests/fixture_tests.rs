@@ -8,7 +8,8 @@ use super::{calls, compare, lexer, pairing, parse_baseline, render_baseline, sca
 
 /// `(key, verdict)` for every ID-shaped field of every event call in `src`.
 fn judged(src: &str) -> Vec<(String, Verdict)> {
-    let masked = lexer::mask(src);
+    let mut masked = lexer::mask(src);
+    lexer::blank_test_items(&mut masked.code);
     calls::event_calls(src, &masked)
         .iter()
         .flat_map(|c| pairing::judge(c, &masked.line_comments))
@@ -238,4 +239,92 @@ fn baseline_round_trips() {
         ("crates/b c.rs".to_string(), 1),
     ]);
     assert_eq!(parse_baseline(&render_baseline(&counts)), counts);
+}
+
+/// Unpaired sites in `src` as `(line, key)`, through the full per-file path
+/// (masking, test-item blanking, parsing, judging).
+fn sites(src: &str) -> Vec<(usize, String)> {
+    let mut scan = Scan::default();
+    scan_source("crates/x/src/a.rs", src, &mut scan);
+    scan.unpaired
+        .remove("crates/x/src/a.rs")
+        .unwrap_or_default()
+        .into_iter()
+        .map(|s| (s.at.rsplit(':').next().unwrap().parse().unwrap(), s.key))
+        .collect()
+}
+
+#[test]
+fn every_macro_delimiter_and_spacing_is_scanned() {
+    let src = "info! { a_id = a }\ninfo![b_id = b]\ninfo! (c_id = c)\ntracing::warn ! ( d_id = d )\nerror! /* note */ (e_id = e)\n";
+    assert_eq!(
+        keys(src),
+        [
+            vec!["a_id"],
+            vec!["b_id"],
+            vec!["c_id"],
+            vec!["d_id"],
+            vec!["e_id"]
+        ]
+    );
+    // An identifier that merely ends in a macro name is not one.
+    assert!(keys("my_info!(a_id = 1); fn info() {}").is_empty());
+}
+
+#[test]
+fn raw_string_keys_parse_and_raw_messages_stop_fields() {
+    assert_eq!(
+        keys(r###"info!(r#"player_id"# = p, account_id = a, "used");"###),
+        [vec!["player_id", "account_id"]]
+    );
+    assert_eq!(
+        keys(r###"info!(x_id = 1, r#"msg {}"#, y_id); warn!(r"m {}", z_id);"###),
+        [vec!["x_id"], vec![]]
+    );
+}
+
+#[test]
+fn braced_field_sets_are_read_with_their_lines() {
+    let src = "tracing::event!(\n    tracing::Level::INFO,\n    {\n        player_id = p,\n        npc_id = n,\n        npc_name = nn,\n    },\n    \"m\"\n);\n";
+    assert_eq!(sites(src), [(4, "player_id".to_string())]);
+}
+
+/// Production code after a `#[cfg(test)] mod tests;` declaration or a test
+/// module is still scanned, and keeps its line numbers.
+#[test]
+fn only_cfg_test_items_are_skipped() {
+    let src = "\
+fn a() { info!(a_id = 1); }
+#[cfg(test)]
+mod tests;
+fn b() { info!(b_id = 1); }
+#[cfg(test)]
+#[allow(dead_code)]
+mod t {
+    fn f() { info!(c_id = 1); }
+}
+#[cfg(test)]
+fn helper() { warn!(d_id = 1); }
+fn e() { info!(e_id = 1); }
+";
+    assert_eq!(
+        sites(src),
+        [
+            (1, "a_id".to_string()),
+            (4, "b_id".to_string()),
+            (12, "e_id".to_string())
+        ]
+    );
+}
+
+#[test]
+fn prose_mentioning_the_marker_does_not_exempt() {
+    let src = "info!(\n    entity_id = id, // do not use nt:id-only here\n    player_id = p, // nt:id-onlyish reason\n    \"m\"\n);";
+    assert_eq!(
+        judged(src),
+        [
+            v("entity_id", Verdict::Unpaired),
+            v("player_id", Verdict::Unpaired)
+        ]
+    );
 }

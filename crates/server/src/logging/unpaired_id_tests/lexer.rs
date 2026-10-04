@@ -142,3 +142,73 @@ fn char_literal_end(src: &str, i: usize) -> Option<usize> {
     let after = i + 1 + c.len_utf8();
     (src.as_bytes().get(after) == Some(&b'\'')).then_some(after)
 }
+
+/// Blanks every item gated by `#[cfg(test)]` in a masked source: a `mod
+/// tests { … }`, a test-only fn or impl, a `mod tests;` declaration. Only the
+/// item goes, so production code after a test module is still scanned, and
+/// line numbers stay put.
+pub(super) fn blank_test_items(code: &mut String) {
+    const ATTR: &str = "#[cfg(test)]";
+    let mut bytes = std::mem::take(code).into_bytes();
+    let mut from = 0;
+    while let Some(i) = find(&bytes[from..], ATTR.as_bytes()) {
+        let start = from + i;
+        let mut j = start + ATTR.len();
+        // Further attributes on the same item.
+        loop {
+            while j < bytes.len() && bytes[j].is_ascii_whitespace() {
+                j += 1;
+            }
+            if bytes[j..].starts_with(b"#[") {
+                j = close_of(&bytes, j + 1).map_or(bytes.len(), |c| c + 1);
+            } else {
+                break;
+            }
+        }
+        // The item ends at its first top-level `;`, or with the block its
+        // first top-level `{` opens.
+        let mut depth = 0usize;
+        let end = loop {
+            match bytes.get(j) {
+                None => break bytes.len(),
+                Some(b'(' | b'[') => depth += 1,
+                Some(b')' | b']') => depth = depth.saturating_sub(1),
+                Some(b';') if depth == 0 => break j + 1,
+                Some(b'{') if depth == 0 => {
+                    break close_of(&bytes, j).map_or(bytes.len(), |c| c + 1)
+                }
+                _ => {}
+            }
+            j += 1;
+        };
+        for b in &mut bytes[start..end] {
+            if *b != b'\n' {
+                *b = b' ';
+            }
+        }
+        from = end;
+    }
+    *code = String::from_utf8(bytes).expect("blanking keeps UTF-8");
+}
+
+fn find(hay: &[u8], needle: &[u8]) -> Option<usize> {
+    hay.windows(needle.len()).position(|w| w == needle)
+}
+
+/// Index of the bracket closing the one at `open`, in masked code.
+fn close_of(bytes: &[u8], open: usize) -> Option<usize> {
+    let mut depth = 0usize;
+    for (i, b) in bytes.iter().enumerate().skip(open) {
+        match b {
+            b'(' | b'[' | b'{' => depth += 1,
+            b')' | b']' | b'}' => {
+                depth = depth.checked_sub(1)?;
+                if depth == 0 {
+                    return Some(i);
+                }
+            }
+            _ => {}
+        }
+    }
+    None
+}
