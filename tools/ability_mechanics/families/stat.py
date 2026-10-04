@@ -22,11 +22,18 @@ Units are decision D-AB09's, and every converted row says so in a note:
   regen stats (AB-05: ``regen.rs`` still reads them as points per second,
   D-AB04) and the armour factors (no D-AB09 rule).
 
+Held effects (AB-08, ``families/stat_held.py``): a ``pulse_duration = 0``
+effect of an ``AF_TOGGLED`` Self ability is a toggle (a stance), and an
+``EF_AlwaysPersist`` effect of a passive ability is a passive; both bind
+``TimedStat`` as held entries. A stance's effects also get an
+``EffectMoniker EFFECT_Stance`` row, and its "Remove ... EFFECT_Stance" half
+gets ``RemoveMoniker EFFECT_Stance`` and ``RemoveByMoniker``. Any other held
+effect would never come off, and is reported.
+
 Scope rejections, before the grammar:
 
-* not a timed single pulse: a held effect (``pulse_duration = 0``, a stance)
-  or a passive (``EF_AlwaysPersist``), or an ability with ``AF_TOGGLED``, is
-  AB-08's; a multi-pulse one is not a ledger entry;
+* a timed effect that is not a single pulse is not a ledger entry, and a
+  toggle's timed effect does not fit the switch (``stat_held``'s rules);
 * ``EF_ClearOnDamage`` ("(1 hit)"): no hook takes it off on damage yet
   (AB-11), so it would last its whole duration;
 * not ``TCM_Single``, or a "Secondary" line: AE and secondary routing is
@@ -47,14 +54,22 @@ from dataclasses import dataclass
 from typing import Dict, List, Optional, Tuple
 
 from corpus import Ability, Corpus, Effect
+from families.stat_held import (
+    EFFECT_MONIKER_NVP,
+    REMOVE_MONIKER_NVP,
+    REMOVE_SCRIPT,
+    STANCE_MONIKER,
+    held_kind,
+    held_scope_rejection,
+    is_stance,
+    is_stance_removal,
+)
 from family import Family, Generated, Outcome, Rejected, desc_lines
 
 SCRIPT = "TimedStat"
 
 EF_BENEFICIAL_EFFECT = 1
 EF_CLEAR_ON_DAMAGE = 8
-EF_ALWAYS_PERSIST = 524288
-AF_TOGGLED = 8
 TARGET_SELF = 1
 
 # The NVP names this family writes. `stat_nvp_names_match_the_generator`
@@ -73,6 +88,10 @@ NVP_NAMES = (
     "MentalResistance",
     "HealthResistance",
     "MovementSpeedMod",
+    "Engagement",
+    "Fortitude",
+    "Tracking",
+    "Subtlety",
 )
 # nvp-names end
 
@@ -91,8 +110,10 @@ STATS: Dict[str, Tuple[str, str]] = {
     "crouching defense": ("CrouchingDefense", "points"),
     "response": ("Response", "points"),
     "interrupt resistance": ("InterruptResistance", "resist"),
+    "interrupt resist": ("InterruptResistance", "resist"),
     "kinetic resistance": ("KineticResistance", "resist"),
     "kinetic resist": ("KineticResistance", "resist"),
+    "kinetic resists": ("KineticResistance", "resist"),
     "mental resistance": ("MentalResistance", "resist"),
     "mental resist": ("MentalResistance", "resist"),
     "health resistance": ("HealthResistance", "resist"),
@@ -100,6 +121,10 @@ STATS: Dict[str, Tuple[str, str]] = {
     "run speed": ("MovementSpeedMod", "speed"),
     "movement speed": ("MovementSpeedMod", "speed"),
     "move": ("MovementSpeedMod", "speed"),
+    "engagement": ("Engagement", "points"),
+    "fortitude": ("Fortitude", "points"),
+    "tracking": ("Tracking", "points"),
+    "subtlety": ("Subtlety", "points"),
 }
 
 # Stats the text names that this packet deliberately leaves alone, and why.
@@ -122,10 +147,20 @@ NUM = r"(\d+(?:\.\d+)?)"
 SIGN = r"([+-])"
 DURATION = r"(?::? ?(?:for )?(\d+(?:\.\d+)?) ?(?:seconds?|sec)\.?)?"
 
-# "+200 Accuracy", "-30% Movement Speed", "+200 Cover ACC for 15 Seconds"
-SIGN_FIRST = re.compile(r"^" + SIGN + r" ?" + NUM + r"(%)? ?" + STAT_RE + DURATION + r"$", re.I)
-# "Accuracy -100", "Run Speed +50%", "Movement Speed-30%", "Cover Defense Debuff: -100"
-STAT_FIRST = re.compile(r"^" + STAT_RE + r"(?: debuff:)? ?" + SIGN + r" ?" + NUM + r"(%)?" + DURATION + r"$", re.I)
+# "+200 Accuracy", "-30% Movement Speed", "+200 Cover ACC for 15 Seconds",
+# "+10% to Interruption Resistance"
+SIGN_FIRST = re.compile(
+    r"^" + SIGN + r" ?" + NUM + r"(%)? ?(?:to )?" + STAT_RE + r"(?: buff)?" + DURATION + r"$", re.I
+)
+# "Accuracy -100", "Run Speed +50%", "Movement Speed-30%", "Cover Defense Debuff: -100",
+# "Engagement: +10", "Kinetic Resists Increased: +15%", "Interrupt Resistance Increase +10%"
+STAT_FIRST = re.compile(
+    r"^" + STAT_RE + r"(?: debuff| increased?)?:? ?" + SIGN + r" ?" + NUM + r"(%)?" + DURATION + r"$", re.I
+)
+# "+50 (5%) Mental Resist buff": points with the D-AB09 percentage beside them.
+POINTS_PCT = re.compile(r"^" + SIGN + r" ?" + NUM + r" \((\d+(?:\.\d+)?)%\) ?" + STAT_RE + r"(?: buff)?$", re.I)
+# A label around a clause: "Increased Threat Rating Subtlety -100 (10% increase to threat)".
+THREAT_LABEL = re.compile(r"^increased threat rating (.*?)(?: \(\d+% increase to threat\))?$", re.I)
 # "-200 ACC / DEF: 15 Seconds", "-200 ACC / -200 DEF", "-200ACC / -200DEF"
 PAIR = re.compile(
     r"^" + SIGN + r" ?" + NUM + r" ?" + STAT_RE + r" ?/ ?(?:" + SIGN + r" ?" + NUM + r" ?)?" + STAT_RE + DURATION + r"$",
@@ -133,17 +168,17 @@ PAIR = re.compile(
 )
 
 TARGETING_LINE = re.compile(
-    r"^(single target|target|targeted|(short|small|medium|large|long|melee) radius( ae)?|(narrow|medium|wide) cone)$",
+    r"^(single target|single|target|targeted|(short|small|medium|large|long|melee) radius( ae)?|(narrow|medium|wide) cone)$",
     re.I,
 )
 DURATION_LINE = re.compile(
     r"^(?:duration:? ?)?(\d+(?:\.\d+)?) ?(?:seconds?|sec)(?: duration)?\.?$", re.I
 )
-PREFIX = re.compile(r"^(target|user|debuff:?) ", re.I)
+PREFIX = re.compile(r"^(target|user|self|toggled:|debuff:?) ", re.I)
 
 # Loose detector: a line that puts a sign or a number next to a stat name.
 CANDIDATE = re.compile(
-    r"(?:[+-] ?\d|\d ?%?) ?" + STAT_RE + r"\b|\b" + STAT_RE + r"(?: debuff:)? ?[+-] ?\d",
+    r"(?:[+-] ?\d|\d ?%?\)?) ?(?:to )?" + STAT_RE + r"\b|\b" + STAT_RE + r"(?: debuff| increased?)?:? ?[+-] ?\d",
     re.I,
 )
 DAMAGE_TEXT = re.compile(r"-\d+ ?F\b|\bF ?-\d+|-\d+ ?H\b", re.I)
@@ -187,6 +222,14 @@ def match_clauses(line: str) -> Optional[List[Tuple[str, int, float, bool, Optio
         sign2 = sign1 if s2 is None else (-1 if s2 == "-" else 1)
         n2v = float(n1) if n2 is None else float(n2)
         return [(st1, sign1, float(n1), False, d), (st2, sign2, n2v, False, d)]
+    m = POINTS_PCT.match(line)
+    if m:
+        s, n, pct, st = m.groups()
+        stat, _ = _lookup(st)
+        # The two numbers must agree under D-AB09's 10:1 rule.
+        if stat is None or stat[1] != "resist" or abs(float(pct) * 10 - float(n)) > 1e-9:
+            return None
+        return [(st, -1 if s == "-" else 1, float(n), False, None)]
     m = SIGN_FIRST.match(line)
     if m:
         s, n, pct, st, dur = m.groups()
@@ -232,6 +275,9 @@ def parse_stat(effect: Effect) -> Outcome:
         if m:
             durations.append(float(m.group(1)))
             continue
+        m = THREAT_LABEL.match(ln)
+        if m:
+            ln = m.group(1)
         while True:
             p = PREFIX.match(ln)
             if not p:
@@ -291,14 +337,11 @@ def tooltip_stats(ability: Optional[Ability]) -> set:
 
 def scope_rejection(effect: Effect, ability: Optional[Ability]) -> Optional[str]:
     """Why a stat effect must not be bound yet, whatever its text says."""
-    if effect.pulse_count != 1:
+    why = held_scope_rejection(effect, ability)
+    if why:
+        return why
+    if held_kind(effect, ability) is None and effect.pulse_count != 1:
         return f"pulse_count {effect.pulse_count}: not a single-pulse timed effect"
-    if effect.flags & EF_ALWAYS_PERSIST:
-        return "EF_AlwaysPersist: a passive, applied at login (AB-08)"
-    if effect.pulse_duration <= 0:
-        return "held (pulse_duration 0): a stance or toggle, removed by a second press (AB-08)"
-    if ability and ability.flags & AF_TOGGLED:
-        return "an AF_TOGGLED ability: a second press must remove it (AB-08)"
     if effect.flags & EF_CLEAR_ON_DAMAGE:
         return "EF_ClearOnDamage: no damage hook removes it yet (AB-11), so it would outlast its design"
     if effect.tcm != "TCM_Single":
@@ -314,29 +357,68 @@ def scope_rejection(effect: Effect, ability: Optional[Ability]) -> Optional[str]
 
 class StatFamily(Family):
     name = "stat"
-    nvp_names = frozenset(NVP_NAMES)
-    scripts = frozenset({SCRIPT})
+    nvp_names = frozenset(NVP_NAMES) | {EFFECT_MONIKER_NVP, REMOVE_MONIKER_NVP}
+    scripts = frozenset({SCRIPT, REMOVE_SCRIPT})
 
     def is_candidate(self, effect: Effect, corpus: Corpus) -> bool:
-        return any(CANDIDATE.search(ln) for ln in desc_lines(effect.desc))
+        return is_stance_removal(effect) or any(CANDIDATE.search(ln) for ln in desc_lines(effect.desc))
 
     def parse(self, effect: Effect, corpus: Corpus) -> Outcome:
         ability = corpus.abilities.get(effect.ability_id)
+        if is_stance_removal(effect):
+            return self.parse_removal(effect, ability, corpus)
         why = scope_rejection(effect, ability)
         if why:
             return Rejected(effect, why)
         out = parse_stat(effect)
         if isinstance(out, Rejected):
             return out
-        why = self.routing_rejection(effect, ability, corpus, getattr(out, "user", False))
-        if why:
-            return Rejected(effect, why)
+        kind = held_kind(effect, ability)
+        # A passive is applied on its owner by apply_passives, never cast.
+        if kind != "passive":
+            why = self.routing_rejection(effect, ability, corpus, getattr(out, "user", False))
+            if why:
+                return Rejected(effect, why)
+        if kind == "toggle":
+            out.notes[-1] = "held: a toggle, on with one press and off with the next (AB-08)"
+            if is_stance(ability, corpus):
+                out.nvps.append((EFFECT_MONIKER_NVP, STANCE_MONIKER))
+                out.notes.append(
+                    "a stance: EffectMoniker EFFECT_Stance is RECONSTRUCTION (the seed has no effect monikers, "
+                    "B-74); a new stance takes off the entries that carry it"
+                )
+        elif kind == "passive":
+            out.notes[-1] = "held: a passive, applied while the ability is known (AB-08)"
         tip = tooltip_stats(ability)
         if tip and not set(n for n, _ in out.nvps) & tip:
             out.notes.append(
                 f"the ability tooltip names {sorted(tip)}; the effect row is what executes (as for heal 3211)"
             )
         return out
+
+    def parse_removal(self, effect: Effect, ability: Optional[Ability], corpus: Corpus) -> Outcome:
+        """A "Remove ... EFFECT_Stance" half: bound only beside a stance
+        effect this family binds on the same ability."""
+        if effect.tcm != "TCM_Single":
+            return Rejected(effect, f"{effect.tcm} stance removal: group routing is AB-07 (D-AB12)")
+        if not is_stance(ability, corpus):
+            return Rejected(effect, "a stance removal on an ability that is not a toggle")
+        siblings = [
+            e
+            for e in corpus.effects.values()
+            if e.ability_id == effect.ability_id and e.effect_id != effect.effect_id and not is_stance_removal(e)
+        ]
+        if not any(isinstance(self.parse(e, corpus), Generated) for e in siblings if self.is_candidate(e, corpus)):
+            return Rejected(
+                effect, "a stance removal whose ability binds no stance effect: alone it would only drop stances"
+            )
+        return Generated(
+            effect,
+            [(REMOVE_MONIKER_NVP, STANCE_MONIKER)],
+            REMOVE_SCRIPT,
+            " / ".join(desc_lines(effect.desc)),
+            ["takes off the other stances' EffectMoniker EFFECT_Stance entries, never an ability moniker's (B-74)"],
+        )
 
     def routing_rejection(
         self, effect: Effect, ability: Optional[Ability], corpus: Corpus, user: bool
@@ -367,7 +449,9 @@ class StatFamily(Family):
 
     def does_something(self, other: Effect, corpus: Corpus) -> bool:
         """Whether ``other`` does something today or once AB-03/AB-04 bind it."""
-        if other.script_name is not None and other.script_name != SCRIPT:
+        # A stance removal changes nothing on its own (ability_is_beneficial
+        # skips it too).
+        if other.script_name is not None and other.script_name not in (SCRIPT, REMOVE_SCRIPT):
             return True
         if any(n in ("HealthDamage", "FocusDamage") for n, _ in corpus.hand_nvps.get(other.effect_id, [])):
             return True

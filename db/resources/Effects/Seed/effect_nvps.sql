@@ -1032,102 +1032,216 @@ INSERT INTO effect_nvps (nvp_id, effect_id, name, value) VALUES (23002, 905, 'Co
 --   note: D-AB09: a bare +200 is +200 stat points (+2 QR per alias.xml)
 --   note: 15 s, the effect's pulse_duration
 INSERT INTO effect_nvps (nvp_id, effect_id, name, value) VALUES (23003, 907, 'Accuracy', '200');
+-- RECONSTRUCTION 920 Remove Current Stance (ability 857), effect_desc "Remove Effect of moniker EFFECT_Stance"
+--   from "Remove Effect of moniker EFFECT_Stance" -> RemoveByMoniker, RemoveMoniker EFFECT_Stance
+--   note: takes off the other stances' EffectMoniker EFFECT_Stance entries, never an ability moniker's (B-74)
+INSERT INTO effect_nvps (nvp_id, effect_id, name, value) VALUES (23004, 920, 'RemoveMoniker', 'EFFECT_Stance');
+-- RECONSTRUCTION 922 Stance Buff (ability 859), effect_desc "Single Target\nTarget +250 Interrupt Resistance"
+--   from "Target +250 Interrupt Resistance" -> TimedStat, InterruptResistance 250, EffectMoniker EFFECT_Stance
+--   note: D-AB09: a bare +250 is +250 points
+--   note: held: a toggle, on with one press and off with the next (AB-08)
+--   note: a stance: EffectMoniker EFFECT_Stance is RECONSTRUCTION (the seed has no effect monikers, B-74); a new stance takes off the entries that carry it
+INSERT INTO effect_nvps (nvp_id, effect_id, name, value) VALUES (23005, 922, 'InterruptResistance', '250');
+INSERT INTO effect_nvps (nvp_id, effect_id, name, value) VALUES (23006, 922, 'EffectMoniker', 'EFFECT_Stance');
 -- RECONSTRUCTION 928 Impeccable Aim Buff (ability 862), effect_desc "+1000 Accuracy for 5 seconds"
 --   from "+1000 Accuracy for 5 seconds" -> TimedStat, Accuracy 1000
 --   note: D-AB09: a bare +1000 is +1000 stat points (+10 QR per alias.xml)
 --   note: 5 s, the effect's pulse_duration
-INSERT INTO effect_nvps (nvp_id, effect_id, name, value) VALUES (23004, 928, 'Accuracy', '1000');
+INSERT INTO effect_nvps (nvp_id, effect_id, name, value) VALUES (23007, 928, 'Accuracy', '1000');
 -- RECONSTRUCTION 937 Flashbang Blind Debuff (ability 868), effect_desc "Small Radius AE\nDebuff -200 ACC / DEF: 15 Seconds"
 --   from "Debuff -200 ACC / DEF: 15 Seconds" -> TimedStat, Accuracy -200, Defense -200
 --   note: D-AB09: a bare -200 is -200 stat points (-2 QR per alias.xml)
 --   note: D-AB09: a bare -200 is -200 stat points (-2 QR per alias.xml)
 --   note: 15 s, the effect's pulse_duration
-INSERT INTO effect_nvps (nvp_id, effect_id, name, value) VALUES (23005, 937, 'Accuracy', '-200');
-INSERT INTO effect_nvps (nvp_id, effect_id, name, value) VALUES (23006, 937, 'Defense', '-200');
+INSERT INTO effect_nvps (nvp_id, effect_id, name, value) VALUES (23008, 937, 'Accuracy', '-200');
+INSERT INTO effect_nvps (nvp_id, effect_id, name, value) VALUES (23009, 937, 'Defense', '-200');
 -- RECONSTRUCTION 1460 Aimed Shot: Leg Snare (ability 855), effect_desc "Single Target\nTarget Movement Speed-30%"
 --   from "Target Movement Speed-30%" -> TimedStat, MovementSpeedMod -30
 --   note: D-AB09: -30% run speed is movementSpeedMod -30 (100 = unmodified)
 --   note: 15 s, the effect's pulse_duration
-INSERT INTO effect_nvps (nvp_id, effect_id, name, value) VALUES (23007, 1460, 'MovementSpeedMod', '-30');
+INSERT INTO effect_nvps (nvp_id, effect_id, name, value) VALUES (23010, 1460, 'MovementSpeedMod', '-30');
+-- RECONSTRUCTION 1741 Buff (ability 1450), effect_desc "Single Target\n+100 CoverAccuracy"
+--   from "+100 CoverAccuracy" -> TimedStat, CoverAccuracy 100
+--   note: D-AB09: a bare +100 is +100 stat points
+--   note: held: a passive, applied while the ability is known (AB-08)
+INSERT INTO effect_nvps (nvp_id, effect_id, name, value) VALUES (23011, 1741, 'CoverAccuracy', '100');
 -- RECONSTRUCTION 1743 Buff (ability 1452), effect_desc "Single Target\n+200 CoverDefense: 15 seconds"
 --   from "+200 CoverDefense: 15 seconds" -> TimedStat, CoverDefense 200
 --   note: D-AB09: a bare +200 is +200 stat points
 --   note: 15 s, the effect's pulse_duration
 --   note: the ability tooltip names ['CrouchingDefense']; the effect row is what executes (as for heal 3211)
-INSERT INTO effect_nvps (nvp_id, effect_id, name, value) VALUES (23008, 1743, 'CoverDefense', '200');
+INSERT INTO effect_nvps (nvp_id, effect_id, name, value) VALUES (23012, 1743, 'CoverDefense', '200');
 -- RECONSTRUCTION 1744 Buff (ability 1453), effect_desc "Single Target\n+50 Response: 15 seconds"
 --   from "+50 Response: 15 seconds" -> TimedStat, Response 50
 --   note: D-AB09: a bare +50 is +50 stat points
 --   note: 15 s, the effect's pulse_duration
-INSERT INTO effect_nvps (nvp_id, effect_id, name, value) VALUES (23009, 1744, 'Response', '50');
+INSERT INTO effect_nvps (nvp_id, effect_id, name, value) VALUES (23013, 1744, 'Response', '50');
 -- RECONSTRUCTION 1747 Buff (ability 1454), effect_desc "Single Target\n+100 Cover Defense: 15 seconds"
 --   from "+100 Cover Defense: 15 seconds" -> TimedStat, CoverDefense 100
 --   note: D-AB09: a bare +100 is +100 stat points
 --   note: 15 s, the effect's pulse_duration
-INSERT INTO effect_nvps (nvp_id, effect_id, name, value) VALUES (23010, 1747, 'CoverDefense', '100');
+INSERT INTO effect_nvps (nvp_id, effect_id, name, value) VALUES (23014, 1747, 'CoverDefense', '100');
+-- RECONSTRUCTION 1749 Buff (ability 1458), effect_desc "Single\n+100 Accuracy"
+--   from "+100 Accuracy" -> TimedStat, Accuracy 100, EffectMoniker EFFECT_Stance
+--   note: D-AB09: a bare +100 is +100 stat points (+1 QR per alias.xml)
+--   note: held: a toggle, on with one press and off with the next (AB-08)
+--   note: a stance: EffectMoniker EFFECT_Stance is RECONSTRUCTION (the seed has no effect monikers, B-74); a new stance takes off the entries that carry it
+INSERT INTO effect_nvps (nvp_id, effect_id, name, value) VALUES (23015, 1749, 'Accuracy', '100');
+INSERT INTO effect_nvps (nvp_id, effect_id, name, value) VALUES (23016, 1749, 'EffectMoniker', 'EFFECT_Stance');
 -- RECONSTRUCTION 1962 Combat Sprint Run Speed Buff (ability 1619), effect_desc "Single Target\nUser +50% Run Speed\n10 Second Duration"
 --   from "User +50% Run Speed" -> TimedStat, MovementSpeedMod 50
 --   note: D-AB09: +50% run speed is movementSpeedMod +50 (100 = unmodified)
 --   note: 10 s, the effect's pulse_duration
-INSERT INTO effect_nvps (nvp_id, effect_id, name, value) VALUES (23011, 1962, 'MovementSpeedMod', '50');
+INSERT INTO effect_nvps (nvp_id, effect_id, name, value) VALUES (23017, 1962, 'MovementSpeedMod', '50');
 -- RECONSTRUCTION 1969 Flashbang Blind Debuff (ability 1622), effect_desc "Small Radius AE\nDebuff -200 ACC / DEF: 15 Seconds"
 --   from "Debuff -200 ACC / DEF: 15 Seconds" -> TimedStat, Accuracy -200, Defense -200
 --   note: D-AB09: a bare -200 is -200 stat points (-2 QR per alias.xml)
 --   note: D-AB09: a bare -200 is -200 stat points (-2 QR per alias.xml)
 --   note: 15 s, the effect's pulse_duration
-INSERT INTO effect_nvps (nvp_id, effect_id, name, value) VALUES (23012, 1969, 'Accuracy', '-200');
-INSERT INTO effect_nvps (nvp_id, effect_id, name, value) VALUES (23013, 1969, 'Defense', '-200');
+INSERT INTO effect_nvps (nvp_id, effect_id, name, value) VALUES (23018, 1969, 'Accuracy', '-200');
+INSERT INTO effect_nvps (nvp_id, effect_id, name, value) VALUES (23019, 1969, 'Defense', '-200');
 -- RECONSTRUCTION 1980 Accuracy Debuff (ability 1630), effect_desc "Single Target\n-200 Accuracy: 15 Seconds\n-200 Defense: 15 Seconds"
 --   from "-200 Accuracy: 15 Seconds / -200 Defense: 15 Seconds" -> TimedStat, Accuracy -200, Defense -200
 --   note: D-AB09: a bare -200 is -200 stat points (-2 QR per alias.xml)
 --   note: D-AB09: a bare -200 is -200 stat points (-2 QR per alias.xml)
 --   note: 15 s, the effect's pulse_duration
-INSERT INTO effect_nvps (nvp_id, effect_id, name, value) VALUES (23014, 1980, 'Accuracy', '-200');
-INSERT INTO effect_nvps (nvp_id, effect_id, name, value) VALUES (23015, 1980, 'Defense', '-200');
+INSERT INTO effect_nvps (nvp_id, effect_id, name, value) VALUES (23020, 1980, 'Accuracy', '-200');
+INSERT INTO effect_nvps (nvp_id, effect_id, name, value) VALUES (23021, 1980, 'Defense', '-200');
+-- RECONSTRUCTION 2001 Tracking Buff (ability 714), effect_desc "+100 Tracking"
+--   from "+100 Tracking" -> TimedStat, Tracking 100, EffectMoniker EFFECT_Stance
+--   note: D-AB09: a bare +100 is +100 stat points
+--   note: held: a toggle, on with one press and off with the next (AB-08)
+--   note: a stance: EffectMoniker EFFECT_Stance is RECONSTRUCTION (the seed has no effect monikers, B-74); a new stance takes off the entries that carry it
+INSERT INTO effect_nvps (nvp_id, effect_id, name, value) VALUES (23022, 2001, 'Tracking', '100');
+INSERT INTO effect_nvps (nvp_id, effect_id, name, value) VALUES (23023, 2001, 'EffectMoniker', 'EFFECT_Stance');
+-- RECONSTRUCTION 2003 Cover Defense Buff (ability 1642), effect_desc "Single Target\nCover Defense +100"
+--   from "Cover Defense +100" -> TimedStat, CoverDefense 100, EffectMoniker EFFECT_Stance
+--   note: D-AB09: a bare +100 is +100 stat points
+--   note: held: a toggle, on with one press and off with the next (AB-08)
+--   note: a stance: EffectMoniker EFFECT_Stance is RECONSTRUCTION (the seed has no effect monikers, B-74); a new stance takes off the entries that carry it
+INSERT INTO effect_nvps (nvp_id, effect_id, name, value) VALUES (23024, 2003, 'CoverDefense', '100');
+INSERT INTO effect_nvps (nvp_id, effect_id, name, value) VALUES (23025, 2003, 'EffectMoniker', 'EFFECT_Stance');
+-- RECONSTRUCTION 2004 Mental Resist Buff (ability 1642), effect_desc "+50 (5%) Mental Resist buff"
+--   from "+50 (5%) Mental Resist buff" -> TimedStat, MentalResistance 50, EffectMoniker EFFECT_Stance
+--   note: D-AB09: a bare +50 is +50 points
+--   note: held: a toggle, on with one press and off with the next (AB-08)
+--   note: a stance: EffectMoniker EFFECT_Stance is RECONSTRUCTION (the seed has no effect monikers, B-74); a new stance takes off the entries that carry it
+INSERT INTO effect_nvps (nvp_id, effect_id, name, value) VALUES (23026, 2004, 'MentalResistance', '50');
+INSERT INTO effect_nvps (nvp_id, effect_id, name, value) VALUES (23027, 2004, 'EffectMoniker', 'EFFECT_Stance');
+-- RECONSTRUCTION 2005 Threat Rating Increase (ability 1642), effect_desc "Increased Threat Rating Subtlety -100 (10% increase to threat)"
+--   from "Increased Threat Rating Subtlety -100 (10% increase to threat)" -> TimedStat, Subtlety -100, EffectMoniker EFFECT_Stance
+--   note: D-AB09: a bare -100 is -100 stat points
+--   note: held: a toggle, on with one press and off with the next (AB-08)
+--   note: a stance: EffectMoniker EFFECT_Stance is RECONSTRUCTION (the seed has no effect monikers, B-74); a new stance takes off the entries that carry it
+INSERT INTO effect_nvps (nvp_id, effect_id, name, value) VALUES (23028, 2005, 'Subtlety', '-100');
+INSERT INTO effect_nvps (nvp_id, effect_id, name, value) VALUES (23029, 2005, 'EffectMoniker', 'EFFECT_Stance');
+-- RECONSTRUCTION 2392 Kinetic Resist Buff (ability 714), effect_desc "+15 Kinetic Resist"
+--   from "+15 Kinetic Resist" -> TimedStat, KineticResistance 15, EffectMoniker EFFECT_Stance
+--   note: D-AB09: a bare +15 is +15 points
+--   note: held: a toggle, on with one press and off with the next (AB-08)
+--   note: a stance: EffectMoniker EFFECT_Stance is RECONSTRUCTION (the seed has no effect monikers, B-74); a new stance takes off the entries that carry it
+INSERT INTO effect_nvps (nvp_id, effect_id, name, value) VALUES (23030, 2392, 'KineticResistance', '15');
+INSERT INTO effect_nvps (nvp_id, effect_id, name, value) VALUES (23031, 2392, 'EffectMoniker', 'EFFECT_Stance');
+-- RECONSTRUCTION 2645 Kinetic Resist Increased +15% (ability 1731), effect_desc "Kinetic Resists Increased: +15%"
+--   from "Kinetic Resists Increased: +15%" -> TimedStat, KineticResistance 150
+--   note: D-AB09: +15% Kinetic Resists is +150 points (10 per 1%)
+--   note: held: a passive, applied while the ability is known (AB-08)
+INSERT INTO effect_nvps (nvp_id, effect_id, name, value) VALUES (23032, 2645, 'KineticResistance', '150');
+-- RECONSTRUCTION 2743 Warrior's Stance (ability 2067), effect_desc "Engagement: +10"
+--   from "Engagement: +10" -> TimedStat, Engagement 10, EffectMoniker EFFECT_Stance
+--   note: D-AB09: a bare +10 is +10 stat points
+--   note: held: a toggle, on with one press and off with the next (AB-08)
+--   note: a stance: EffectMoniker EFFECT_Stance is RECONSTRUCTION (the seed has no effect monikers, B-74); a new stance takes off the entries that carry it
+INSERT INTO effect_nvps (nvp_id, effect_id, name, value) VALUES (23033, 2743, 'Engagement', '10');
+INSERT INTO effect_nvps (nvp_id, effect_id, name, value) VALUES (23034, 2743, 'EffectMoniker', 'EFFECT_Stance');
+-- RECONSTRUCTION 2744 Warrior's Stance (ability 2067), effect_desc "Fortitude +10"
+--   from "Fortitude +10" -> TimedStat, Fortitude 10, EffectMoniker EFFECT_Stance
+--   note: D-AB09: a bare +10 is +10 stat points
+--   note: held: a toggle, on with one press and off with the next (AB-08)
+--   note: a stance: EffectMoniker EFFECT_Stance is RECONSTRUCTION (the seed has no effect monikers, B-74); a new stance takes off the entries that carry it
+INSERT INTO effect_nvps (nvp_id, effect_id, name, value) VALUES (23035, 2744, 'Fortitude', '10');
+INSERT INTO effect_nvps (nvp_id, effect_id, name, value) VALUES (23036, 2744, 'EffectMoniker', 'EFFECT_Stance');
 -- RECONSTRUCTION 2752 Accuracy -100 (ability 2070), effect_desc "Accuracy -100"
 --   from "Accuracy -100" -> TimedStat, Accuracy -100
 --   note: D-AB09: a bare -100 is -100 stat points (-1 QR per alias.xml)
 --   note: 25 s, the effect's pulse_duration
-INSERT INTO effect_nvps (nvp_id, effect_id, name, value) VALUES (23016, 2752, 'Accuracy', '-100');
+INSERT INTO effect_nvps (nvp_id, effect_id, name, value) VALUES (23037, 2752, 'Accuracy', '-100');
+-- RECONSTRUCTION 2754 Self Defense +100 (ability 2072), effect_desc "Self Defense +100"
+--   from "Self Defense +100" -> TimedStat, Defense 100, EffectMoniker EFFECT_Stance
+--   note: D-AB09: a bare +100 is +100 stat points (+1 QR per alias.xml)
+--   note: held: a toggle, on with one press and off with the next (AB-08)
+--   note: a stance: EffectMoniker EFFECT_Stance is RECONSTRUCTION (the seed has no effect monikers, B-74); a new stance takes off the entries that carry it
+INSERT INTO effect_nvps (nvp_id, effect_id, name, value) VALUES (23038, 2754, 'Defense', '100');
+INSERT INTO effect_nvps (nvp_id, effect_id, name, value) VALUES (23039, 2754, 'EffectMoniker', 'EFFECT_Stance');
+-- RECONSTRUCTION 2994 Interrupt resist +20% (ability 2064), effect_desc "Interrupt Resist +20%"
+--   from "Interrupt Resist +20%" -> TimedStat, InterruptResistance 200, EffectMoniker EFFECT_Stance
+--   note: D-AB09: +20% Interrupt Resist is +200 points (10 per 1%)
+--   note: held: a toggle, on with one press and off with the next (AB-08)
+--   note: a stance: EffectMoniker EFFECT_Stance is RECONSTRUCTION (the seed has no effect monikers, B-74); a new stance takes off the entries that carry it
+INSERT INTO effect_nvps (nvp_id, effect_id, name, value) VALUES (23040, 2994, 'InterruptResistance', '200');
+INSERT INTO effect_nvps (nvp_id, effect_id, name, value) VALUES (23041, 2994, 'EffectMoniker', 'EFFECT_Stance');
+-- RECONSTRUCTION 4167 Stance: Predator (ability 2863), effect_desc "+20 Engagement"
+--   from "+20 Engagement" -> TimedStat, Engagement 20, EffectMoniker EFFECT_Stance
+--   note: D-AB09: a bare +20 is +20 stat points
+--   note: held: a toggle, on with one press and off with the next (AB-08)
+--   note: a stance: EffectMoniker EFFECT_Stance is RECONSTRUCTION (the seed has no effect monikers, B-74); a new stance takes off the entries that carry it
+INSERT INTO effect_nvps (nvp_id, effect_id, name, value) VALUES (23042, 4167, 'Engagement', '20');
+INSERT INTO effect_nvps (nvp_id, effect_id, name, value) VALUES (23043, 4167, 'EffectMoniker', 'EFFECT_Stance');
 -- RECONSTRUCTION 4239 Blind Debuff (ability 863), effect_desc "Single Target\nTarget -200 ACC / -200 DEF\nDuration: 15sec"
 --   from "Target -200 ACC / -200 DEF" -> TimedStat, Accuracy -200, Defense -200
 --   note: D-AB09: a bare -200 is -200 stat points (-2 QR per alias.xml)
 --   note: D-AB09: a bare -200 is -200 stat points (-2 QR per alias.xml)
 --   note: 15 s, the effect's pulse_duration
-INSERT INTO effect_nvps (nvp_id, effect_id, name, value) VALUES (23017, 4239, 'Accuracy', '-200');
-INSERT INTO effect_nvps (nvp_id, effect_id, name, value) VALUES (23018, 4239, 'Defense', '-200');
+INSERT INTO effect_nvps (nvp_id, effect_id, name, value) VALUES (23044, 4239, 'Accuracy', '-200');
+INSERT INTO effect_nvps (nvp_id, effect_id, name, value) VALUES (23045, 4239, 'Defense', '-200');
+-- RECONSTRUCTION 4292 Stance Buff (ability 857), effect_desc "Single Target\nTarget +200 Tracking"
+--   from "Target +200 Tracking" -> TimedStat, Tracking 200, EffectMoniker EFFECT_Stance
+--   note: D-AB09: a bare +200 is +200 stat points
+--   note: held: a toggle, on with one press and off with the next (AB-08)
+--   note: a stance: EffectMoniker EFFECT_Stance is RECONSTRUCTION (the seed has no effect monikers, B-74); a new stance takes off the entries that carry it
+INSERT INTO effect_nvps (nvp_id, effect_id, name, value) VALUES (23046, 4292, 'Tracking', '200');
+INSERT INTO effect_nvps (nvp_id, effect_id, name, value) VALUES (23047, 4292, 'EffectMoniker', 'EFFECT_Stance');
+-- RECONSTRUCTION 4294 Remove Current Stance (ability 859), effect_desc "Remove Effect of moniker EFFECT_Stance"
+--   from "Remove Effect of moniker EFFECT_Stance" -> RemoveByMoniker, RemoveMoniker EFFECT_Stance
+--   note: takes off the other stances' EffectMoniker EFFECT_Stance entries, never an ability moniker's (B-74)
+INSERT INTO effect_nvps (nvp_id, effect_id, name, value) VALUES (23048, 4294, 'RemoveMoniker', 'EFFECT_Stance');
 -- RECONSTRUCTION 4309 Stat Debuff (ability 1242), effect_desc "Single Target\nTarget -100 Response"
 --   from "Target -100 Response" -> TimedStat, Response -100
 --   note: D-AB09: a bare -100 is -100 stat points
 --   note: 15 s, the effect's pulse_duration
-INSERT INTO effect_nvps (nvp_id, effect_id, name, value) VALUES (23019, 4309, 'Response', '-100');
+INSERT INTO effect_nvps (nvp_id, effect_id, name, value) VALUES (23049, 4309, 'Response', '-100');
 -- RECONSTRUCTION 4333 Blind (ability 1354), effect_desc "Single Target\nTarget -200ACC / -200DEF"
 --   from "Target -200ACC / -200DEF" -> TimedStat, Accuracy -200, Defense -200
 --   note: D-AB09: a bare -200 is -200 stat points (-2 QR per alias.xml)
 --   note: D-AB09: a bare -200 is -200 stat points (-2 QR per alias.xml)
 --   note: 15 s, the effect's pulse_duration
-INSERT INTO effect_nvps (nvp_id, effect_id, name, value) VALUES (23020, 4333, 'Accuracy', '-200');
-INSERT INTO effect_nvps (nvp_id, effect_id, name, value) VALUES (23021, 4333, 'Defense', '-200');
+INSERT INTO effect_nvps (nvp_id, effect_id, name, value) VALUES (23050, 4333, 'Accuracy', '-200');
+INSERT INTO effect_nvps (nvp_id, effect_id, name, value) VALUES (23051, 4333, 'Defense', '-200');
 -- RECONSTRUCTION 4335 Slow (ability 1354), effect_desc "Single Target\nTarget -100 Response"
 --   from "Target -100 Response" -> TimedStat, Response -100
 --   note: D-AB09: a bare -100 is -100 stat points
 --   note: 15 s, the effect's pulse_duration
-INSERT INTO effect_nvps (nvp_id, effect_id, name, value) VALUES (23022, 4335, 'Response', '-100');
+INSERT INTO effect_nvps (nvp_id, effect_id, name, value) VALUES (23052, 4335, 'Response', '-100');
 -- RECONSTRUCTION 4411 Snare Debuff (ability 1474), effect_desc "Single Target\nTarget -30% Movement Speed\nDuration: 15 Seconds"
 --   from "Target -30% Movement Speed" -> TimedStat, MovementSpeedMod -30
 --   note: D-AB09: -30% run speed is movementSpeedMod -30 (100 = unmodified)
 --   note: 15 s, the effect's pulse_duration
-INSERT INTO effect_nvps (nvp_id, effect_id, name, value) VALUES (23023, 4411, 'MovementSpeedMod', '-30');
+INSERT INTO effect_nvps (nvp_id, effect_id, name, value) VALUES (23053, 4411, 'MovementSpeedMod', '-30');
 -- RECONSTRUCTION 4715 Debuff: Cooldown Timers (ability 3168), effect_desc "Response -100"
 --   from "Response -100" -> TimedStat, Response -100
 --   note: D-AB09: a bare -100 is -100 stat points
 --   note: 30 s, the effect's pulse_duration
-INSERT INTO effect_nvps (nvp_id, effect_id, name, value) VALUES (23024, 4715, 'Response', '-100');
+INSERT INTO effect_nvps (nvp_id, effect_id, name, value) VALUES (23054, 4715, 'Response', '-100');
+-- RECONSTRUCTION 4782 Defensive QR Bonus (ability 1574), effect_desc "Defense: +100"
+--   from "Defense: +100" -> TimedStat, Defense 100
+--   note: D-AB09: a bare +100 is +100 stat points (+1 QR per alias.xml)
+--   note: held: a passive, applied while the ability is known (AB-08)
+INSERT INTO effect_nvps (nvp_id, effect_id, name, value) VALUES (23055, 4782, 'Defense', '100');
 -- RECONSTRUCTION 5266 Debuff (ability 1728), effect_desc "Debuff -100 Defense\n35 seconds"
 --   from "Debuff -100 Defense" -> TimedStat, Defense -100
 --   note: D-AB09: a bare -100 is -100 stat points (-1 QR per alias.xml)
 --   note: 35 s, the effect's pulse_duration
-INSERT INTO effect_nvps (nvp_id, effect_id, name, value) VALUES (23025, 5266, 'Defense', '-100');
+INSERT INTO effect_nvps (nvp_id, effect_id, name, value) VALUES (23056, 5266, 'Defense', '-100');
 -- ability-mechanics generated stat end
 
 --

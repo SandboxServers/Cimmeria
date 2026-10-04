@@ -32,10 +32,19 @@
 //! beneficial path: an unimplemented attack must not start skipping the
 //! #444 gate because its effect list is vacuously "all beneficial", and
 //! neither may a Heal-typed debuff.
+//!
+//! **A stance's removal half is not counted** (ability mechanics AB-08).
+//! "Remove Effect of moniker EFFECT_Stance" (`RemoveByMoniker`) carries
+//! flags 0 and changes nothing on its own; it only clears the caster's
+//! previous stance. Counted, it would send every stance down the hostile
+//! path.
 
 use std::collections::HashMap;
 
-use super::{effect_is_implemented, AbilityDef, AbilityType, EffectDef, EF_BENEFICIAL_EFFECT};
+use super::{
+    effect_is_implemented, AbilityDef, AbilityType, EffectDef, EF_BENEFICIAL_EFFECT,
+    REMOVE_BY_MONIKER_SCRIPT,
+};
 
 /// The scripts that only restore a pool. On a Heal-typed ability they count
 /// as beneficial without the `EF_Beneficial_Effect` bit.
@@ -54,6 +63,10 @@ pub fn ability_is_beneficial(def: &AbilityDef, effects: &HashMap<i32, EffectDef>
         .iter()
         .filter_map(|id| effects.get(id))
         .filter(|e| effect_is_implemented(Some(e)))
+        // A stance's "Remove Effect of moniker EFFECT_Stance" half carries
+        // no beneficial bit (flags 0) but only clears the caster's previous
+        // stance: counted, it would send every stance down the hostile path.
+        .filter(|e| e.script_name.as_deref() != Some(REMOVE_BY_MONIKER_SCRIPT))
         .collect();
     if doing.is_empty() || doing.iter().any(|e| effect_deals_damage(e)) {
         return false;
@@ -215,6 +228,42 @@ mod tests {
         ));
         assert!(!ability_is_beneficial(
             &def(AbilityType::Buff, vec![5]),
+            &effects
+        ));
+    }
+
+    /// 859 Concentration's shape: a beneficial held buff (922, flags 85) and
+    /// its "Remove Effect of moniker EFFECT_Stance" half (4294, flags 0,
+    /// `RemoveByMoniker`). The removal does not make the stance hostile; on
+    /// its own it is not a beneficial cast either.
+    #[test]
+    fn a_stance_removal_half_does_not_make_the_stance_hostile() {
+        let effects = HashMap::from([
+            (
+                922,
+                effect(
+                    922,
+                    85,
+                    &[("InterruptResistance", "250")],
+                    Some("TimedStat"),
+                ),
+            ),
+            (
+                4294,
+                effect(
+                    4294,
+                    0,
+                    &[("RemoveMoniker", "EFFECT_Stance")],
+                    Some(REMOVE_BY_MONIKER_SCRIPT),
+                ),
+            ),
+        ]);
+        assert!(ability_is_beneficial(
+            &def(AbilityType::Buff, vec![922, 4294]),
+            &effects
+        ));
+        assert!(!ability_is_beneficial(
+            &def(AbilityType::Buff, vec![4294]),
             &effects
         ));
     }

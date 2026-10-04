@@ -45,6 +45,7 @@ pub(in crate::cell::service) mod lifecycle;
 mod minigame;
 mod movement;
 mod org;
+mod passive_sync;
 pub(crate) mod player_init;
 mod request_entity_update;
 mod respec;

@@ -23,24 +23,35 @@
 //!   [`StatBuffRemoval`] reason, and tells the client: the one async seam
 //!   for every clear hook. [`clear_stat_buffs_on_death`] is its
 //!   `EF_ClearOnDeath` caller (`resolve_death`, every death); AB-11's
-//!   ClearOnDamage / ClearOnRez / bandolier hooks and AB-08's toggle-off use
-//!   it the same way.
+//!   ClearOnDamage / ClearOnRez / bandolier hooks use it the same way. A
+//!   toggle-off and a stance switch remove inside the script
+//!   (`stat_buff::held`), and the caster's `fire_beneficial` flush sends
+//!   their clears.
 //!
 //! The wire is the one every duration effect already uses:
 //! `onTimerUpdate(effect_id, TIMER_DURATION_EFFECT, invoker, effect_id,
 //! TotalTime, BigWorldTimeComplete)`, the expiry absolute on the server's
 //! game clock (decision 22 of the abilities ADR), and `0.0, 0.0` to clear.
-//! A held entry (no expiry, AB-08's toggles) gets no start timer: the
-//! client's `EffectSet` handler draws an icon only while
-//! `clock < BigWorldTimeComplete`, so how a held icon is drawn waits for
-//! AB-08's client evidence. Its removal still sends the clear. The stat moves reach the client as an ordinary `onStatUpdate`.
+//! A held toggle entry (no expiry, a stance) gets a start timer with a long
+//! horizon, [`HELD_ICON_SECS`], as both its `TotalTime` and its time left.
+//! The client keeps an effect only while `clock < BigWorldTimeComplete`
+//! (`EffectSet_HandleOnTimerUpdate`, effect-execution-model.md), the stock
+//! effect bar (`Effect.lua`) draws every non-hidden entry with
+//! `TimeRemaining / TotalTime` as its sweep, so a zero `TotalTime` would
+//! divide by zero, and the action bar has no toggled state to show instead
+//! (`ActionButtons.lua` reads only cooldowns from `getActionInfo`). So the
+//! effect bar is the only stock surface, and a far expiry is how it shows an
+//! effect with none. A passive (`EF_AlwaysPersist`) gets no icon: it is a
+//! trait, not a state the player switches, and the bar has ten slots a side
+//! (B-73). Either removal still sends the clear. The stat moves reach the
+//! client as an ordinary `onStatUpdate`.
 
 use std::time::Instant;
 
 use tokio::sync::mpsc;
 
 use cimmeria_entity::abilities::{
-    serialize_timer_update, EF_CLEAR_ON_DEATH, TIMER_DURATION_EFFECT,
+    serialize_timer_update, EF_ALWAYS_PERSIST, EF_CLEAR_ON_DEATH, TIMER_DURATION_EFFECT,
 };
 
 use cimmeria_entity::cell_entity::TimedEffect;
@@ -52,6 +63,11 @@ use crate::cell::space_manager::SpaceManager;
 
 #[cfg(test)]
 mod tests;
+
+/// The horizon a held toggle's icon counts down from: a day, longer than
+/// any play session. The client shows it as the time remaining in the
+/// icon's tooltip; nothing on the server expires at the end of it.
+pub const HELD_ICON_SECS: f32 = 86_400.0;
 
 /// [`stat_buff_tick_at`] on the wall clock.
 pub async fn stat_buff_tick(tx: &mpsc::Sender<CellToBaseMsg>, space_mgr: &mut SpaceManager) {
@@ -105,7 +121,7 @@ pub async fn flush_stat_buff_timers(
     let clears = std::mem::take(&mut entity.stat_buffs.pending_timer_clears);
     // One icon per effect_id: the client keys it by SecondaryId alone, so
     // stacked casters share it. Its start carries the entry that lapses last
-    // (its source and length); held entries have no expiry to count down.
+    // (its source and length); a held toggle counts down from the horizon.
     let mut stale: Vec<i32> = entity
         .stat_buffs
         .entries
@@ -127,6 +143,12 @@ pub async fn flush_stat_buff_timers(
         if let Some((expires_at, entry)) = latest {
             let remaining = expires_at.saturating_duration_since(now).as_secs_f32();
             starts.push((effect_id, entry.invoker_id, entry.duration_secs, remaining));
+        } else if let Some(held) = entity.stat_buffs.entries.iter().find(|b| {
+            b.effect_id == effect_id
+                && b.expires_at.is_none()
+                && b.effect_flags & EF_ALWAYS_PERSIST == 0
+        }) {
+            starts.push((effect_id, held.invoker_id, HELD_ICON_SECS, HELD_ICON_SECS));
         }
         for b in entity
             .stat_buffs

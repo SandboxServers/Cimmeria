@@ -6,7 +6,7 @@ use std::time::{Duration, Instant};
 
 use tokio::sync::mpsc;
 
-use cimmeria_entity::abilities::EF_CLEAR_ON_DEATH;
+use cimmeria_entity::abilities::{EF_ALWAYS_PERSIST, EF_CLEAR_ON_DEATH};
 use cimmeria_entity::cell_entity::{TimedEffectSpec, TimedStacking};
 use cimmeria_entity::stats::{ACCURACY, COORDINATION, ENGAGEMENT};
 
@@ -348,22 +348,44 @@ async fn two_casters_share_one_icon_cleared_by_the_last() {
     );
 }
 
-/// A held entry (AB-08's toggles) never expires on the tick and sends no
-/// start timer, but its strip clears.
+/// A held toggle entry (AB-08's stances) never expires on the tick. Its
+/// icon starts once, counting down from `HELD_ICON_SECS` (the client keeps
+/// an effect only while its clock is before the expiry), and its strip
+/// clears it.
 #[tokio::test]
 async fn a_held_entry_outlasts_the_tick_until_stripped() {
+    settle_clock();
     let mut mgr = make_mgr();
     let (tx, mut rx) = mpsc::channel(64);
     let now = Instant::now();
     let mut spec = aim(PLAYER);
     spec.duration_secs = None;
     mgr.apply_timed_effect(PLAYER, spec, now);
+    let before = game_time_secs();
     let expired = stat_buff_tick_at(now + Duration::from_secs(86_400), &tx, &mut mgr).await;
+    let after = game_time_secs();
     assert_eq!(expired, 0);
-    assert!(
-        timers(&drain(&mut rx)).is_empty(),
-        "no start for a held entry"
+    let sent = drain(&mut rx);
+    let t = timers(&sent);
+    assert_eq!(t.len(), 1, "one start for the held icon: {sent:?}");
+    assert_eq!(
+        &t[0][..17],
+        &[
+            0xBC, 0x02, 0x00, 0x00, // id = 700
+            0x05, // TIMER_DURATION_EFFECT
+            0x01, 0x00, 0x00, 0x00, // source = the caster
+            0xBC, 0x02, 0x00, 0x00, // SecondaryId = 700
+            0x00, 0xC0, 0xA8, 0x47, // TotalTime 86400.0f32, the horizon
+        ][..]
     );
+    let expiry = f32::from_le_bytes(t[0][17..21].try_into().unwrap());
+    assert!(
+        (before + HELD_ICON_SECS..=after + HELD_ICON_SECS).contains(&expiry),
+        "{expiry}"
+    );
+    let again = stat_buff_tick_at(now + Duration::from_secs(90_000), &tx, &mut mgr).await;
+    assert_eq!(again, 0);
+    assert!(timers(&drain(&mut rx)).is_empty(), "the start is sent once");
 
     let removed = strip_timed_effects(
         PLAYER,
@@ -379,6 +401,21 @@ async fn a_held_entry_outlasts_the_tick_until_stripped() {
     assert!(sent
         .iter()
         .any(|(m, _)| *m == crate::mercury::method_idx::ON_STAT_UPDATE));
+}
+
+/// A passive (`EF_AlwaysPersist`) is held too, but is a trait, not a state
+/// the player switches: it never takes an effect-bar slot.
+#[tokio::test]
+async fn a_held_passive_sends_no_icon() {
+    let mut mgr = make_mgr();
+    let (tx, mut rx) = mpsc::channel(64);
+    let now = Instant::now();
+    let mut spec = aim(PLAYER);
+    spec.duration_secs = None;
+    spec.effect_flags = EF_ALWAYS_PERSIST | 1;
+    mgr.apply_timed_effect(PLAYER, spec, now);
+    flush_stat_buff_timers(PLAYER, now, &tx, &mut mgr).await;
+    assert!(timers(&drain(&mut rx)).is_empty(), "no icon for a passive");
 }
 
 /// Aim carries `EF_ClearOnDeath` (flags 21): a death takes it off.

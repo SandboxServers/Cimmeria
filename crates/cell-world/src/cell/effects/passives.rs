@@ -11,7 +11,11 @@
 //!
 //! Only scripts that declare themselves passive
 //! (`pet_scripts::is_passive_script`) run here, so an `EF_AlwaysPersist`
-//! row that happens to carry a heal script is never fired by a login.
+//! row that happens to carry a heal script is never fired by a login. Since
+//! ability mechanics AB-08 that includes `TimedStat`: a stat passive (809
+//! Mental Fortitude "+15% Mental Resist") is a held entry on the timed
+//! effect ledger, which `InitPlayerState` empties before this pass runs, so
+//! a login never stacks it on the previous session's.
 
 use cimmeria_entity::abilities::EF_ALWAYS_PERSIST;
 
