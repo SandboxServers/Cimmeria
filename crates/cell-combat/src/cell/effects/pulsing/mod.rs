@@ -51,6 +51,8 @@ mod register;
 mod tick;
 
 #[cfg(test)]
+mod stun_tests;
+#[cfg(test)]
 mod tests;
 #[cfg(test)]
 mod timer_expiry_tests;

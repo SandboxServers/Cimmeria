@@ -41,7 +41,7 @@ CI runs `--check` and the unit tests in the `test-live-db` job of [.github/workf
 - An effect that already has a hand-authored NVP of one of the family's names is left alone. The report says whether the parser agrees with it (it does for 659, 2008, 1383 and 3211).
 - An effect whose `script_name` is set, and was not set by the family's committed block, is left alone and reported. A script the family bound earlier and no longer generates is cleared back to NULL on the next run.
 - Hand ownership comes from the rows outside the markers alone. An effect the family generated, which then gains a hand row of the family's NVPs, keeps its `script_name`, even if its text no longer parses or its ability is no longer reachable. Removing that hand row later does not hand the effect back: its script now counts as hand-authored, and the report lists it.
-- `nvp_id` ranges are fixed by the campaign ledger: heal 20000-20999, damage 21000-22999, stat 23000-23999, shield 24000-24499. Allocation skips every id used outside the family's block (a generated row moved out keeps its id), and any duplicate `nvp_id` in the file fails the run with exit 2, `--check` included.
+- `nvp_id` ranges are fixed by the campaign ledger: heal 20000-20999, damage 21000-22999, stat 23000-23999, shield 24000-24499, cc 25000-25499. Allocation skips every id used outside the family's block (a generated row moved out keeps its id), and any duplicate `nvp_id` in the file fails the run with exit 2, `--check` included.
 
 ## Families
 
@@ -50,6 +50,7 @@ CI runs `--check` and the unit tests in the `test-live-db` job of [.github/workf
 | `heal` | AB-02 | `HealPercentage` (percent of the pool's max) or `HealAmount` (flat points) | `HealHealth` / `HealFocus` |
 | `damage` | AB-03 | `HealthDamage`, `FocusDamage` | none (NVP path) |
 | `stat` | AB-04 | stat names (`Accuracy`, `Defense`, `CoverDefense`, `MovementSpeedMod`, ...) | `TimedStat` |
+| `cc` | AB-09 | `CcDuration` (seconds), `MovementSpeedMod` (snares), `InterruptChance` (percent) | `Stun`, `Knockdown`, `TimedStat`, `Interrupt` |
 | `shield` | AB-10 | `ShieldAmount`, `ShieldType` | `AbsorbShield` |
 
 A family is one module under `families/` that subclasses `family.Family` (`is_candidate`, `parse`) and one entry in `families/__init__.py`. The corpus loader (`corpus.py`), the seed reader (`seed_sql.py`), the ownership rules, the block writer, `--check` and `--report` are shared.
@@ -107,3 +108,11 @@ When the ability tooltip names a different stat from the effect row, the row win
 ## Changing a family
 
 Edit the parser, run the tool, run the unit tests, and commit the parser and both seed files together. Check `--report` for effects that moved between generated and unparsed, and update the live-DB guards when the generated set changes on purpose.
+
+### cc
+
+`families/cc.py` binds the crowd control the text states as one clause: "Stun: 5 seconds", "Knockdown: / 5 Seconds", "4 second Stun", "Knockdown 3 seconds" (`Stun` / `Knockdown` with `CcDuration`), "Snare: 15 Seconds" (`TimedStat` with `MovementSpeedMod -30`) and "Interrupts target" (`Interrupt` with `InterruptChance 100`). Targeting lines and a "Target" prefix are skipped. A stated duration must equal `pulse_duration`; a bare "Knockdown" takes the row's `pulse_duration` and says so. The scripts are in `crates/cell-effect-scripts/src/cell/effects/crowd_control.rs`, and `cc_nvp_names_match_the_generator` pins the NVP names to this module's constants.
+
+The snare amount is a DESIGN default, not text: the bare snares state none, and -30 % is what every snare that does state one uses (1460, 1765, 3114, 4411, which are the `stat` family's). Each such row's note says so.
+
+Reported instead of bound, by category: `scope` (a "Secondary" line or `EF_ResolveOnAbilityUser`, AB-07; `EF_ClearOnDamage`, AB-11; a beneficial, passive or toggled effect; a deployable), `pulse shape` (more than one pulse, no duration anywhere, or a text duration that disagrees with the row), `targeting` (a group or aura method, D-AB12) and `grammar`. `TCM_AERadius` and `TCM_AECone` rows are bound: the pipeline runs every effect of the ability on every target the fan-out hits. Resist rolls are not modelled (D-AB13), so every bound CC lands on a hit that is not a miss.

@@ -114,6 +114,7 @@ pub fn timed_spec(ctx: &EffectContext, stacking: TimedStacking) -> TimedEffectSp
         effect_flags: effect.flags,
         moniker_ids: ctx.space_mgr.ability_moniker_ids(effect.ability_id),
         stats: stat_mods(effect),
+        state_flags: 0,
         duration_secs: Some(effect.pulse_duration),
         stacking,
         // `SpaceManager::apply_timed_effect` fills it from the invoker.

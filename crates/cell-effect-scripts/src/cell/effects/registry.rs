@@ -16,8 +16,8 @@ pub use cimmeria_cell_world::cell::effects::registry::*;
 
 use super::EffectScript;
 use super::{
-    ammo_dart_cc, ammo_dart_support, ammo_dart_tech, ammo_emp, cover_stance, pet_scripts, scripts,
-    stat_buff,
+    ammo_dart_cc, ammo_dart_support, ammo_dart_tech, ammo_emp, cover_stance, crowd_control,
+    pet_scripts, scripts, stat_buff,
 };
 
 /// Every effect script, in registration order. The order is the order
@@ -29,7 +29,9 @@ pub static EFFECT_SCRIPTS: &[(&str, &dyn EffectScript)] = &[
     ("MeleeDamage", &scripts::MeleeDamage),
     ("MeleePhysicalDamage", &scripts::MeleePhysicalDamage),
     ("AbsorbShield", &scripts::AbsorbShield),
-    ("Stun", &scripts::Stun),
+    // Crowd control (ability mechanics AB-09): ledger entries holding
+    // BSF_MovementLock, and the interrupt queued for combat.
+    ("Stun", &crowd_control::Stun),
     ("Suppression", &scripts::Suppression),
     ("RangedPhysicalDamage", &scripts::RangedPhysicalDamage),
     ("RangedEnergyDamage", &scripts::RangedEnergyDamage),
@@ -56,6 +58,8 @@ pub static EFFECT_SCRIPTS: &[(&str, &dyn EffectScript)] = &[
     ("EmpDisrupt", &ammo_emp::EmpDisrupt),
     // Dart_Tranquilizer's on-hit slow (ammo campaign AM-11a).
     ("MovementSlow", &ammo_dart_cc::MovementSlow),
+    ("Knockdown", &crowd_control::Knockdown),
+    ("Interrupt", &crowd_control::Interrupt),
 ];
 
 /// The cell's registry, built from [`EFFECT_SCRIPTS`]: `Err` when two rows
@@ -92,6 +96,8 @@ mod tests {
         assert!(lookup("MeleePhysicalDamage").is_some());
         assert!(lookup("AbsorbShield").is_some());
         assert!(lookup("Stun").is_some());
+        assert!(lookup("Knockdown").is_some());
+        assert!(lookup("Interrupt").is_some());
         assert!(lookup("Suppression").is_some());
         assert!(lookup("RangedPhysicalDamage").is_some());
         assert!(lookup("RangedEnergyDamage").is_some());

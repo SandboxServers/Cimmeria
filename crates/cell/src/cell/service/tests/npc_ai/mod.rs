@@ -53,6 +53,8 @@
 //! - [`combat_stance`] — a Fighting NPC is announced `BSF_InCombat` to its
 //!   witnesses before its first shot (once per fight), and announced clear
 //!   when it leaves the fight.
+//! - [`crowd_control`] — AB-09a: a stunned NPC holds its fire until the
+//!   stun's ledger entry comes off.
 //! - [`stop_hygiene`]  — NA10: a stopped NPC is broadcast with zero
 //!   velocity, and the leash snap keeps the spatial grid in sync.
 //! - [`zero_health_guard`] — a 0-HEALTH NPC gets no AI turn, and an NPC
@@ -102,6 +104,7 @@ mod attack_sequence;
 mod being_follower;
 mod castle_standoff;
 mod combat_stance;
+mod crowd_control;
 mod dead_player_drop;
 mod follow_resume;
 mod leash_reset;

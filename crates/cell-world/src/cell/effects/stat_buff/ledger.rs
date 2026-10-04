@@ -195,6 +195,7 @@ impl SpaceManager {
             missing_stats = ?out.missing_stats,
             duration_secs = out.applied.duration_secs,
             held = out.applied.expires_at.is_none(),
+            state_flags = out.applied.state_flags,
             beneficial,
             replaced_effect_ids = ?out.replaced.iter().map(|b| b.effect_id).collect::<Vec<_>>(),
             "timed effect applied"
@@ -339,6 +340,7 @@ fn log_removed(
         ability_id = entry.ability_id,
         stat_ids = ?entry.stats.iter().map(|s| s.stat_id).collect::<Vec<_>>(),
         restored = ?entry.stats.iter().map(|s| (s.stat_id, -s.requested)).collect::<Vec<_>>(),
+        state_flags = entry.state_flags,
         stat_before = ?stat_before,
         stat_after = ?stat_after,
         "timed effect removed"

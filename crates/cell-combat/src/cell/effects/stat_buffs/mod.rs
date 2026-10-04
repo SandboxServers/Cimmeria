@@ -14,7 +14,11 @@
 //!   runs an effect script calls it right after (`fire_beneficial`,
 //!   `damage_apply`, content's `apply_effect`), so the icon lands with the
 //!   stat change; the tick calls it too, as the safety net for any other
-//!   path that runs the script.
+//!   path that runs the script. Since AB-09 it also sends the
+//!   `onStateFieldUpdate` an entry's state flag owes (a stun's
+//!   `BSF_MovementLock`, to the entity and its witnesses), and resolves the
+//!   interrupts the scripts queued against the entity
+//!   (`effects::interrupt`).
 //! - [`stat_buff_tick_at`] runs every AoI tick (100 ms) from the cell loop,
 //!   beside the owner-pet tick. It takes expired entries off, flushes the
 //!   timers and the changed stats, and returns at once when no entity has
@@ -45,7 +49,9 @@ use cimmeria_entity::abilities::{
 
 use cimmeria_entity::cell_entity::TimedEffect;
 
-use crate::cell::abilities::{send_entity_method, send_timer_update};
+use crate::cell::abilities::{
+    send_entity_method, send_entity_method_to_self_and_witnesses, send_timer_update,
+};
 use crate::cell::effects::stat_buff::StatBuffRemoval;
 use crate::cell::messages::CellToBaseMsg;
 use crate::cell::space_manager::SpaceManager;
@@ -66,6 +72,8 @@ pub async fn stat_buff_tick_at(
     tx: &mpsc::Sender<CellToBaseMsg>,
     space_mgr: &mut SpaceManager,
 ) -> usize {
+    // Interrupts a script queued on a path that never flushed (a pulse).
+    super::interrupt::resolve_all_interrupts(tx, space_mgr).await;
     let work = space_mgr.entities_with_stat_buff_work();
     if work.is_empty() {
         return 0;
@@ -92,8 +100,52 @@ pub async fn stat_buff_tick_at(
 /// Send `entity_id` the duration timers its ledger owes: first the clears
 /// (an effect whose last entry came off), then one start per effect with an
 /// entry the client has not been told about, carrying the latest expiry of
-/// that effect's entries. Nothing is sent for an entity with nothing owed.
+/// that effect's entries. Then the state field, when an entry's flag changed
+/// it, and the interrupts queued against the entity. Nothing is sent for an
+/// entity with nothing owed.
 pub async fn flush_stat_buff_timers(
+    entity_id: u32,
+    now: Instant,
+    tx: &mpsc::Sender<CellToBaseMsg>,
+    space_mgr: &mut SpaceManager,
+) {
+    flush_duration_timers(entity_id, now, tx, space_mgr).await;
+    flush_ledger_state_field(entity_id, tx, space_mgr).await;
+    super::interrupt::resolve_interrupts_for(entity_id, tx, space_mgr).await;
+}
+
+/// `onStateFieldUpdate` to `entity_id` and its witnesses when ledger entries
+/// changed its state field (a stun's lock went on or came off). A witness
+/// must see it too: the client plays the lock on the entity it draws.
+async fn flush_ledger_state_field(
+    entity_id: u32,
+    tx: &mpsc::Sender<CellToBaseMsg>,
+    space_mgr: &mut SpaceManager,
+) {
+    let Some(state) = space_mgr
+        .get_entity_mut(entity_id)
+        .and_then(|e| e.take_ledger_state_change())
+    else {
+        return;
+    };
+    tracing::debug!(
+        target: "abilities",
+        event = "ledger_state_field_sent",
+        entity_id,
+        state_field = state,
+        "timed effect changed the state field; broadcasting"
+    );
+    send_entity_method_to_self_and_witnesses(
+        entity_id,
+        crate::mercury::method_idx::ON_STATE_FIELD_UPDATE,
+        state.to_le_bytes().to_vec(),
+        tx,
+        space_mgr,
+    )
+    .await;
+}
+
+async fn flush_duration_timers(
     entity_id: u32,
     now: Instant,
     tx: &mpsc::Sender<CellToBaseMsg>,
