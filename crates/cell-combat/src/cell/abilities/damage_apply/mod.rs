@@ -38,7 +38,8 @@ use duel_gate::{clamp_source, player_hit_refusal};
 ///   - Sort the effects into damage paths ([`effect_scripts`]): a damage
 ///     script is its effect's only damage; NVP damage for the rest; a
 ///     missed QR-rolled effect lands nothing (AB-06, D-AB07).
-///   - Apply health/focus damage to the target.
+///   - Apply each effect's health/focus damage to the target on its own,
+///     a `DontUseQR` effect at its base ([`nvp_damage`], AB-03).
 ///   - Detect death (direct damage).
 ///   - Send `onEffectResults` to the attacker (witnesses pick it up via
 ///     entity routing) and to the target if the target is a player.
@@ -226,10 +227,10 @@ async fn apply_hit(
     let damage_scale = cover_scale * ammo_scale * kind.damage_scale();
 
     // Sort the effects into the hit's damage paths (AB-06, D-AB07): NVP
-    // base damage for effects with no damage script (0 when the ability is
-    // known but has none, 15 HP for an unknown ability), damage scripts as
-    // the only damage of their effects, and every other script for after
-    // the hit. A missed QR-rolled effect lands in none of them.
+    // damage per effect for effects with no damage script (AB-03,
+    // `nvp_damage`; 15 HP for an unknown ability), damage scripts as the
+    // only damage of their effects, and every other script for after the
+    // hit. A missed QR-rolled effect lands in none of them.
     let plan = effect_scripts::plan_hit_effects(
         space_mgr,
         ability_def.as_ref(),
@@ -238,7 +239,6 @@ async fn apply_hit(
         qr_result.result_code,
         ids,
     );
-    let (health_base_damage, focus_base_damage) = (plan.health_base, plan.focus_base);
     // ── `entity_health_below` pre-hit sample ──
     //
     // This is the one seam every ability-driven health mutation passes
@@ -268,30 +268,17 @@ async fn apply_hit(
         }
     };
 
-    let (mut effect_results, mut total_health_damage) = combat::calculate_damage_penetrating(
+    // Each effect's NVP damage on its own, at its own QR (AB-03).
+    let (mut effect_results, mut total_health_damage) = nvp_damage::apply_nvp_damage(
+        &plan.nvp,
         &qr_result,
-        health_base_damage,
         damage_scale,
         penetration_mult,
         damage_type,
-        HEALTH,
         &attacker_stats,
         &mut target.stats,
+        ids,
     );
-
-    // Apply focus damage if present
-    if focus_base_damage > 0 {
-        let _ = combat::calculate_damage_penetrating(
-            &qr_result,
-            focus_base_damage,
-            damage_scale,
-            penetration_mult,
-            damage_type,
-            cimmeria_entity::stats::FOCUS,
-            &attacker_stats,
-            &mut target.stats,
-        );
-    }
 
     // The damage scripts' damage, at the same point and the same scale as
     // the NVP damage, so the death check, `onEffectResults` and the threat
@@ -633,6 +620,7 @@ mod ammo_splash;
 mod cover_roll;
 mod duel_gate;
 mod effect_scripts;
+mod nvp_damage;
 mod qr_gate;
 
 /// One attacker → target hit, carried into the submodules' logs. The
@@ -668,6 +656,10 @@ mod ammo_tests;
 mod bleed_death_tests;
 #[cfg(test)]
 mod cover_tests;
+#[cfg(test)]
+mod damage_seed_live_db_tests;
+#[cfg(test)]
+mod per_effect_damage_tests;
 #[cfg(test)]
 mod single_damage_path_tests;
 #[cfg(test)]

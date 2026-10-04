@@ -19,6 +19,7 @@ use cimmeria_entity::abilities::{
 };
 use cimmeria_entity::stats::{FOCUS, HEALTH};
 
+use super::nvp_damage::{NvpDamage, NvpPlanner};
 use super::qr_gate::effect_lands;
 use super::HitIds;
 use crate::cell::space_manager::SpaceManager;
@@ -46,10 +47,9 @@ pub(super) fn is_damage_script(name: &str) -> bool {
 /// How a hit's effects deal their damage.
 #[derive(Debug, Default)]
 pub(super) struct HitEffects {
-    /// NVP base damage for the legacy pipeline, from effects with no
-    /// damage script. Only the last positive value counts (B-21, AB-03).
-    pub health_base: i32,
-    pub focus_base: i32,
+    /// NVP damage from effects with no damage script, one entry per
+    /// `TCM_Single` effect (AB-03, B-21; [`super::nvp_damage`]).
+    pub nvp: Vec<NvpDamage>,
     /// Effects whose damage script is this hit's damage.
     pub damage_scripts: Vec<i32>,
     /// Every other landing script, run after the hit resolves.
@@ -72,10 +72,16 @@ pub(super) fn plan_hit_effects(
     let mut plan = HitEffects::default();
     let Some(def) = ability_def else {
         if result_code != RC_MISS {
-            plan.health_base = UNKNOWN_ABILITY_HEALTH_DAMAGE;
+            plan.nvp.push(NvpDamage {
+                effect_id: None,
+                health: UNKNOWN_ABILITY_HEALTH_DAMAGE,
+                focus: 0,
+                unrolled: false,
+            });
         }
         return plan;
     };
+    let mut nvp = NvpPlanner::default();
     for &eid in &def.effect_ids {
         let Some(effect) = space_mgr.effect_defs.get(&eid) else {
             continue;
@@ -100,20 +106,12 @@ pub(super) fn plan_hit_effects(
             plan.damage_scripts.push(eid);
             continue;
         }
-        let (hd, fd) = (
-            effect.param_i32("HealthDamage"),
-            effect.param_i32("FocusDamage"),
-        );
-        if hd > 0 {
-            plan.health_base = hd;
-        }
-        if fd > 0 {
-            plan.focus_base = fd;
-        }
+        nvp.add(effect);
         if script.is_some() {
             plan.after_scripts.push(eid);
         }
     }
+    plan.nvp = nvp.finish(ids);
     if let Some(eid) = on_hit_effect_id {
         if space_mgr
             .effect_defs

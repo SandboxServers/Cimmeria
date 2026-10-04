@@ -131,9 +131,12 @@ def render_block(result: FamilyResult, used: Set[int]) -> str:
         "-- markers are hand-authored and the tool never touches them.",
         "-- RECONSTRUCTION: the 2009 rows shipped no NVP for these effects. Each value",
         "-- is read from the effect's own effect_desc, quoted below (\\n = line break);",
-        "-- it is not recovered server data. The same run sets each effect's",
-        "-- script_name in effects.sql.",
+        "-- it is not recovered server data.",
     ]
+    if fam.scripts:
+        lines.append("-- The same run sets each effect's script_name in effects.sql.")
+    else:
+        lines.append("-- No script is bound: the server's NVP path reads these rows.")
     nvp_id = lo
     for g in result.generated:
         e = g.effect
@@ -241,6 +244,9 @@ def print_report(results: List[FamilyResult], out=sys.stdout) -> None:
         for e, note in r.hand_authored:
             print(f"  {e.effect_id:>5} {show(e.desc)} ({note})", file=out)
         print(f"unparsed: {len(r.rejected)}", file=out)
+        if r.family.reason_categories:
+            counts = {c: sum(x.reason.startswith(c + ":") for x in r.rejected) for c in r.family.reason_categories}
+            print("  by category: " + ", ".join(f"{c} {n}" for c, n in counts.items()), file=out)
         for x in r.rejected:
             e = x.effect
             print(f"  {e.effect_id:>5} (ability {e.ability_id}) {show(e.desc)}: {x.reason}", file=out)
