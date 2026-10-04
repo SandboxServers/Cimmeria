@@ -41,16 +41,14 @@ pub(super) async fn send_minigame_result(
     // `RESULT_CANCELED` is excluded: a player closing the minigame window
     // is not a game outcome, and reporting it would put a "lost" line in
     // the channel every time someone changes their mind.
-    if result_code != RESULT_CANCELED {
-        cimmeria_discord::emit_minigame_result(
-            game_name,
-            player.clone().or_entity(entity_id),
-            result_code == RESULT_VICTORY,
-            on_victory_chains
-                .iter()
-                .map(|&c| cimmeria_discord::Named::new(c, None))
-                .collect(),
-        );
+    if let Some(event) = discord_result_event(
+        game_name,
+        player,
+        entity_id,
+        result_code,
+        &on_victory_chains,
+    ) {
+        cimmeria_discord::emit(event);
     }
 
     let chain_count = on_victory_chains.len();
@@ -72,6 +70,29 @@ pub(super) async fn send_minigame_result(
             "Minigame: result delivery failed -- chains will not fire: {e}"
         );
     }
+}
+
+/// The Discord event for a minigame outcome, `None` for
+/// [`RESULT_CANCELED`]. Split out of [`send_minigame_result`] so a test can
+/// see the event without the global Discord runtime.
+pub(super) fn discord_result_event(
+    game_name: &str,
+    player: &cimmeria_discord::Named,
+    entity_id: u32,
+    result_code: u8,
+    on_victory_chains: &[i64],
+) -> Option<cimmeria_discord::Event> {
+    (result_code != RESULT_CANCELED).then(|| {
+        cimmeria_discord::minigame_result_event(
+            game_name,
+            player.clone().or_entity(entity_id),
+            result_code == RESULT_VICTORY,
+            on_victory_chains
+                .iter()
+                .map(|&c| cimmeria_discord::Named::new(c, None))
+                .collect(),
+        )
+    })
 }
 
 #[cfg(test)]
@@ -167,5 +188,63 @@ mod tests {
             other => panic!("expected MinigameResult, got {other:?}"),
         }
         assert!(rx.try_recv().is_err(), "exactly one message");
+    }
+
+    /// The character name the base hands the registry reaches the Discord
+    /// event, paired with the session's `player_id` (NT-10).
+    #[tokio::test]
+    async fn registered_player_name_reaches_the_discord_event() {
+        let reg = crate::minigame::SessionRegistry::new();
+        let ticket = reg
+            .register(
+                4401,
+                7,
+                "Hack".into(),
+                1,
+                1,
+                0,
+                0,
+                0,
+                1,
+                vec![1017],
+                Some("Hacker".into()),
+            )
+            .await
+            .unwrap();
+        let session = reg.authenticate(4401, &ticket, "Hack").await.unwrap();
+        let event = discord_result_event(
+            "Hack",
+            &session.discord_player(),
+            session.entity_id,
+            RESULT_VICTORY,
+            &session.on_victory_chains,
+        );
+        match event {
+            Some(cimmeria_discord::Event::MinigameResult {
+                character,
+                success,
+                victory_chains,
+                ..
+            }) => {
+                assert_eq!(
+                    character,
+                    cimmeria_discord::Named::new(7, Some("Hacker".into()))
+                );
+                assert!(success);
+                assert_eq!(
+                    victory_chains,
+                    vec![cimmeria_discord::Named::new(1017, None)]
+                );
+            }
+            other => panic!("expected a MinigameResult, got {other:?}"),
+        }
+        assert!(discord_result_event(
+            "Hack",
+            &session.discord_player(),
+            4401,
+            RESULT_CANCELED,
+            &[]
+        )
+        .is_none());
     }
 }

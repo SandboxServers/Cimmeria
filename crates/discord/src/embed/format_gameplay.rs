@@ -31,7 +31,7 @@ pub(super) fn format_gameplay(event: &Event) -> Formatted {
             format!("💀 Death: {}", named(character)),
             cause.clone(),
             {
-                let mut f = vec![("Killer".into(), optional(killer.as_ref()), true)];
+                let mut f = vec![(killer_label(cause), optional(killer.as_ref()), true)];
                 push_world(&mut f, world.as_ref());
                 f
             },
@@ -158,7 +158,7 @@ pub(super) fn format_gameplay(event: &Event) -> Formatted {
                 if let Some(t) = template {
                     f.push(("Template".into(), named(t), true));
                 }
-                f.push(("Killer".into(), optional(killer.as_ref()), true));
+                f.push((killer_label(cause), optional(killer.as_ref()), true));
                 f.push(("Cause".into(), cause.clone(), true));
                 push_world(&mut f, world.as_ref());
                 f
@@ -273,6 +273,19 @@ pub(super) fn format_gameplay(event: &Event) -> Formatted {
 }
 
 /// An optional object, `(none)` when absent (no killer, for instance).
+/// The killer field's label, from the death's `cause`. A player killer
+/// pairs with its `player_id` and an NPC with its `entity_id`, so the label
+/// says which ID space the `#id` is in. `pvp` / `pve` come from
+/// `PlayerDeath`, `player` / `npc` from `NpcDeath`.
+fn killer_label(cause: &str) -> String {
+    match cause {
+        "pvp" | "player" => "Killer (player)",
+        "pve" | "npc" => "Killer (NPC)",
+        _ => "Killer",
+    }
+    .to_string()
+}
+
 fn optional(n: Option<&Named>) -> String {
     n.map_or_else(|| "(none)".to_string(), named)
 }

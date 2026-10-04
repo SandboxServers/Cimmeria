@@ -92,6 +92,14 @@ impl Default for SessionRegistry {
     }
 }
 
+impl MinigameSession {
+    /// The player as a Discord pair: the character's `player_id` and the
+    /// name the base registered the session with (NT-10).
+    pub fn discord_player(&self) -> cimmeria_discord::Named {
+        cimmeria_discord::Named::new(self.player_id, self.player_name.clone())
+    }
+}
+
 impl SessionRegistry {
     pub fn new() -> Self {
         Self {

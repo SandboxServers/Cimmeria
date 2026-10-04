@@ -44,9 +44,6 @@ pub fn identity(event: &Event) -> Identity<'_> {
         }
         | Event::PlayerDisconnect {
             account, character, ..
-        }
-        | Event::MercuryTimeout {
-            account, character, ..
         } => id(Some(account), character.as_ref()),
         Event::PlayerAuthFailed { account_name, .. } => Identity {
             account_name: Some(account_name),
@@ -78,6 +75,12 @@ pub fn identity(event: &Event) -> Identity<'_> {
         | Event::GmSpawn { gm, .. }
         | Event::GmItemGrant { gm, .. } => id(None, Some(gm)),
         Event::NpcDeath { killer, .. } => id(None, killer.as_ref()),
+        // By account ID only, as before NT-10: the timeout gained its
+        // account name and character for the embed, not for muting.
+        Event::MercuryTimeout { account, .. } => Identity {
+            account_id: account_id(account),
+            ..Identity::default()
+        },
         Event::TracingEvent { fields, .. } => Identity {
             account_id: fields
                 .iter()

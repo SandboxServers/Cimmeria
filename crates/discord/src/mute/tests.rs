@@ -52,3 +52,18 @@ fn accounts_can_be_muted_by_id() {
     };
     assert!(is_muted(&muted, &tracing));
 }
+
+/// A Mercury timeout is muted by account ID only, as before NT-10; the
+/// account name and character it now carries are for the embed.
+#[test]
+fn mercury_timeout_mutes_by_account_id_only() {
+    let timeout = Event::MercuryTimeout {
+        addr: "127.0.0.1:50000".parse().unwrap(),
+        account: Named::new(99, Some("labtimeout".into())),
+        character: Some(Named::name_only("Timeout Char")),
+        silence_secs: 30,
+        timestamp: Utc::now(),
+    };
+    assert!(!is_muted(&["labtimeout".to_string()], &timeout));
+    assert!(is_muted(&["99".to_string()], &timeout));
+}

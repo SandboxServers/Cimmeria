@@ -468,8 +468,11 @@ pub(super) fn every_variant() -> Vec<(Event, Vec<String>)> {
     cases
 }
 
-/// Compile-time completeness: a new `Event` variant fails to compile
-/// here until it is added to [`every_variant`] (and to this match).
+/// An exhaustive match, so a new `Event` variant fails to compile here
+/// until it gets an arm. The arm alone does not add a row: the
+/// `EventKind::ALL` count check in the test below is what fails until
+/// [`every_variant`] has one. Neither check sees a new `Named` field on an
+/// existing variant; add its expected string to that variant's row.
 fn variant_is_covered(event: &Event) {
     match event {
         Event::ServerStartup { .. }
@@ -570,4 +573,31 @@ fn missing_names_render_as_id_then_question_mark() {
     let body = build_embed_body(&event, None, None).to_string();
     assert!(body.contains("Mission accepted: #1562"), "{body}");
     assert!(body.contains("\"value\":\"?\""), "{body}");
+}
+
+/// The killer field says which ID space its `#id` is in (review finding
+/// 4): a player killer is a `player_id`, an NPC killer an `entity_id`.
+#[test]
+fn killer_field_is_labelled_by_cause() {
+    let (killer, _) = obj(9001, "Jaffa Guard");
+    let pve = Event::PlayerDeath {
+        character: Named::new(12, Some("alice".into())),
+        killer: Some(killer.clone()),
+        cause: "pve".into(),
+        world: None,
+        timestamp: Utc::now(),
+    };
+    let body = build_embed_body(&pve, None, None).to_string();
+    assert!(body.contains("\"name\":\"Killer (NPC)\""), "{body}");
+
+    let by_player = Event::NpcDeath {
+        npc: killer,
+        template: None,
+        killer: Some(Named::new(12, Some("alice".into()))),
+        cause: "player".into(),
+        world: None,
+        timestamp: Utc::now(),
+    };
+    let body = build_embed_body(&by_player, None, None).to_string();
+    assert!(body.contains("\"name\":\"Killer (player)\""), "{body}");
 }

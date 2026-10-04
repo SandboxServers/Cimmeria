@@ -142,7 +142,7 @@ async fn run_session(
     let on_victory_chains = session.on_victory_chains.clone();
     // Who the Discord result names: the character's `player_id` and the
     // name the base handed over at registration.
-    let player = cimmeria_discord::Named::new(session.player_id, session.player_name.clone());
+    let player = session.discord_player();
 
     // Whether a `MinigameResult` was dispatched upstream. Declared out here
     // rather than beside the game loop because the teardown below is shared

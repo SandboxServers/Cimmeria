@@ -222,13 +222,30 @@ pub fn emit_minigame_result(
     success: bool,
     victory_chains: Vec<Named>,
 ) {
-    emit(Event::MinigameResult {
+    emit(minigame_result_event(
+        game,
+        character,
+        success,
+        victory_chains,
+    ));
+}
+
+/// The [`Event::MinigameResult`] [`emit_minigame_result`] posts, stamped
+/// now. Public so the minigame server can test what it would post without
+/// the global runtime.
+pub fn minigame_result_event(
+    game: impl Into<String>,
+    character: Named,
+    success: bool,
+    victory_chains: Vec<Named>,
+) -> Event {
+    Event::MinigameResult {
         game: game.into(),
         character,
         success,
         victory_chains,
         timestamp: chrono::Utc::now(),
-    });
+    }
 }
 
 pub fn emit_dialog(character: Named, dialog: Named, choice: Option<Named>) {

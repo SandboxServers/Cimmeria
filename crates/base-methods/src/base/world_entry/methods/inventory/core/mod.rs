@@ -38,6 +38,8 @@ mod use_crafting_item;
 mod use_crafting_item_tests;
 mod use_instance;
 #[cfg(test)]
+mod use_instance_discord_tests;
+#[cfg(test)]
 mod use_instance_tests;
 
 pub use consume_for_use::handle_consume_item_for_use;

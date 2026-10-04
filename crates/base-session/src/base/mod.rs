@@ -70,6 +70,10 @@ pub mod world_entry_appearance {
 #[cfg(test)]
 mod resource_fragment_tests;
 
+/// `ConnectedClientState`'s Discord pairs (NT-10). Test-only.
+#[cfg(test)]
+mod discord_pair_tests;
+
 // Cooked-data delivery serves the resource cache (`cimmeria-resources`).
 use cimmeria_resources::base::resources;
 

@@ -313,23 +313,13 @@ pub async fn handle_use_inventory_item(
 
     // Discord gameplay-channel (off by default — high volume). Resolve the
     // player through entity_to_addr → connected; skip the emit if the
-    // session isn't there. The target is an entity: base names it only when
-    // it is another player's session; otherwise it renders as `#entity_id`.
-    let session_label = |eid: u32| {
-        let a = entity_to_addr.lock().ok()?.get(&eid).copied()?;
-        let c = connected.lock().ok()?;
-        let s = c.get(&a)?;
-        Some((s.discord_character(), s.player_name.clone()))
-    };
-    if let Some((Some(character), _)) = session_label(entity_id) {
+    // session isn't there.
+    if let Some(character) = session_character(entity_id, entity_to_addr, connected) {
         let item = cimmeria_discord::Named::new(
             type_id,
             cimmeria_names::book().item(type_id).map(str::to_string),
         );
-        let target = (target_id != 0).then(|| {
-            let name = session_label(target_id as u32).and_then(|(_, n)| n);
-            cimmeria_discord::Named::new(target_id, name)
-        });
+        let target = discord_item_target(target_id, entity_to_addr, connected);
         cimmeria_discord::emit_item_used(character, item, target);
     }
 
@@ -430,4 +420,37 @@ async fn resolve_auto_equip_target(
         }
         _ => Ok(None),
     }
+}
+
+/// The character pair (`player_id` + name) of the session playing
+/// entity `eid`, if that entity is a connected player.
+fn session_character(
+    eid: u32,
+    entity_to_addr: &Arc<Mutex<HashMap<u32, SocketAddr>>>,
+    connected: &Arc<Mutex<HashMap<SocketAddr, ConnectedClientState>>>,
+) -> Option<cimmeria_discord::Named> {
+    let addr = entity_to_addr.lock().ok()?.get(&eid).copied()?;
+    let clients = connected.lock().ok()?;
+    clients.get(&addr)?.discord_character()
+}
+
+/// The `ItemUsed` target as a Discord pair. The client sends a cell entity
+/// ID. Another player's entity renders as that player's character pair
+/// (`player_id` + name), the same as in every other embed; anything else
+/// is labelled `entity:<id>`, so an entity ID never reads as a player or
+/// seed ID. `0` is "no target".
+pub(super) fn discord_item_target(
+    target_id: i32,
+    entity_to_addr: &Arc<Mutex<HashMap<u32, SocketAddr>>>,
+    connected: &Arc<Mutex<HashMap<SocketAddr, ConnectedClientState>>>,
+) -> Option<cimmeria_discord::Named> {
+    if target_id == 0 {
+        return None;
+    }
+    let player = u32::try_from(target_id)
+        .ok()
+        .and_then(|eid| session_character(eid, entity_to_addr, connected));
+    Some(
+        player.unwrap_or_else(|| cimmeria_discord::Named::name_only(format!("entity:{target_id}"))),
+    )
 }

@@ -156,9 +156,17 @@ are not objects.
 
 `every_typed_event_renders_each_object_as_name_and_id` (`embed/pairing_tests.rs`)
 builds every variant with sentinel names and IDs and asserts each `Name (#id)`
-appears in the rendered embed; a compile-time match makes a new variant fail
-until it has a row. `no_event_renders_the_player_ip` runs the same table
-against the IP rule above.
+appears in the rendered embed. A new variant fails to compile until the
+test file's exhaustive match has an arm for it, and the test fails until the
+table covers every `EventKind`; neither check notices a new `Named` field on
+an existing variant, so add its expected string to that variant's row.
+`no_event_renders_the_player_ip` runs the same table against the IP rule
+above.
+
+The killer field is labelled from the death's `cause`, `Killer (player)` or
+`Killer (NPC)`, because a player killer's `#id` is a `player_id` and an NPC
+killer's is an `entity_id`. An `ItemUsed` target that is another player
+renders as that player's character pair; any other target is `entity:<id>`.
 
 ## Naming in harvested warnings and errors
 
