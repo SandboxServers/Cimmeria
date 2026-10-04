@@ -1,6 +1,7 @@
 //! Same-release reconstruction identity. Admission never mutates game content.
 use super::*;
 pub mod abandon;
+pub mod cleanup;
 pub mod commit;
 pub mod preparation;
 pub mod recovery;

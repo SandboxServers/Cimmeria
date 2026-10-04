@@ -14,7 +14,7 @@ struct Marker {
     plan: Plan,
     role: Role,
 }
-fn name(plan: &Plan) -> String {
+pub(super) fn name(plan: &Plan) -> String {
     format!(".cimmeria-repair-tree-{}.json", plan.id)
 }
 pub(super) fn absent(tree: &Path, plan: &Plan) -> Result<(), StorageError> {

@@ -493,5 +493,6 @@ Schema-2 commit records plus operation/role markers now support explicit native
 restart recovery without downloads, including interruption during recovery.
 Foreign shapes, stale requests and legacy unmarked commits remain gated. Explicit
 confirmed abandonment now cancels pre-checkpoint work under ownership locks with
-no deletion; a new confirmed Repair can retry. Backup cleanup, Wine binding and
-UI remain open. Canonical contract/evidence: desktop docs/repair.md.
+no deletion; a new confirmed Repair can retry. Current-successful-operation
+backup cleanup now uses marker-last Deleting/Empty/Removed checkpoints. Historical
+cleanup, abandoned stages, Wine binding and UI remain open. Canonical contract/evidence: desktop docs/repair.md.

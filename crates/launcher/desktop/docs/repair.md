@@ -1,8 +1,8 @@
 # Repair design contract
 
 **Status: native admission, reconstruction and retained replacement implemented;
-checkpointed native restart recovery is implemented. Backup cleanup, Wine repair
-and UI remain unfinished.** This contract defines the replacement workflow and its gates.
+checkpointed native restart recovery and current-operation backup cleanup are
+implemented. Wine repair and UI remain unfinished.** This contract defines the replacement workflow and its gates.
 Repair is not yet an available user command. See
 [maintenance](maintenance.md) for implemented uninstall.
 
@@ -88,7 +88,7 @@ confirmation/dismissal, preinspection, one mutation under duplicate clicks,
 precommit cancellation, no replay after timeout/reconnect, explicit recovery and
 preserved consent. Add visual/manual UAT separately and state its coverage.
 Admission, native staging and retained replacement below are implemented. Wine
-repair adaptation, cleanup and UI validation gates remain open. Pre-checkpoint
+repair adaptation and UI validation gates remain open. Pre-checkpoint
 work can be explicitly abandoned as described below.
 
 ## Implemented admission boundary
@@ -147,7 +147,7 @@ arrives after staging. Seven focused repair tests pass
 (`20261004-085543-45495`), including abandonment after delivery and cancellation.
 The commit coordinator retains the handoff and checks recorded cancellation
 before the first commit mutation. Receiving `Prepared` alone is not permission
-to replace the game. The Wine repair adapter, cleanup and UI remain unfinished. No frontend/visual UAT is claimed.
+to replace the game. The Wine repair adapter and UI remain unfinished. No frontend/visual UAT is claimed.
 
 ## Implemented replacement boundary
 
@@ -167,8 +167,8 @@ receipt published with the unchanged installation identity before terminal
 success. These are separate renames, not an atomic swap.
 
 Errors retain reconciliation gating; an existing commit record refuses replay.
-The old backup remains even after success. Backup cleanup is not implemented;
-checkpointed restart recovery is described below. Public entry is native-Windows-only; private Mac
+The old backup remains after replacement success until explicit backup cleanup
+below. Checkpointed restart recovery is also described below. Public entry is native-Windows-only; private Mac
 fixtures do not establish Windows rename or power-loss behavior. Unix directory
 syncs are issued; Windows directory power-loss durability remains a validation
 gate. Content checks remain ledger/layout evidence, not an exhaustive corruption
@@ -209,7 +209,7 @@ schema-1 commit records remain gated. Backup content is preserved. An interrupti
 between writing tree markers and the Planned checkpoint also remains gated: this
 entry point requires a complete commit record. It cannot yet resolve every
 commit-entry interruption or interrupted preparation. Explicit abandonment below handles pre-checkpoint work without completing the
-repair. Backup cleanup, Wine repair and UI integration remain unfinished. Native Windows rename/locking
+repair. Wine repair and UI integration remain unfinished. Native Windows rename/locking
 and power-loss validation remain separate gates.
 
 The recovery tests reopen state across the checkpoint/rename matrix for both
@@ -241,7 +241,8 @@ work repaired or recursively validate retained bytes. A separately confirmed
 Repair with a fresh UUID may reconstruct again, preserving the abandoned attempt.
 Existing, malformed, linked or legacy commit records forbid abandonment;
 checkpointed replacement requires explicit commit recovery instead. Retained
-stages can accumulate; cleanup remains separate work.
+stages can accumulate; their cleanup remains separate work. The backup cleanup
+below does not remove abandoned stages.
 
 Tests cover admission-only interruption, partial staging without content adoption,
 both pre-checkpoint marker-write interruptions, confirmation/ID/revision refusal,
@@ -251,3 +252,36 @@ native Windows validation and frontend/visual UAT remain separate gates.
 
 Twenty-four focused repair tests passed (`20261004-091210-51600`); strict clippy
 passed (`20261004-091209-51614`).
+
+
+## Explicit backup cleanup after success
+
+Internal `cleanup_native` requires the current successful Repair ID and inspected
+revision. Under the installation-owner lock, it verifies a schema-2 Published
+commit, matching replacement-tree marker, signed release, content layout and
+receipt before deleting the operation-owned original backup. Success must already
+be durable: uncertain replacement never authorizes cleanup.
+
+A separate cleanup checkpoint advances Deleting → Empty → Removed. Remaining
+backup content is checked before deletion; its role marker is removed last.
+Empty permits recovery after marker or directory removal, while unexpected entries
+at that phase refuse deletion. Removed requires the backup to remain absent.
+Deleting removes ordinary content under the marked backup, including files added
+there later. Recursive checks are not a filesystem snapshot; ownership locks
+serialize cooperating launcher work, not arbitrary external filesystem writers.
+Cleanup preserves the successful Repair result, active game and preferences.
+
+This removes only that backup. Work directories and abandoned staging remain.
+Cleanup after another operation replaces the current journal entry is unsupported.
+There is no UI wiring; native Windows locking/rename and power-loss validation
+remain separate gates. Layout checks are not exhaustive content-integrity proof.
+
+Twenty-nine focused repair tests passed (`20261004-091547-52717`). Cleanup fixtures
+cover present/absent original backups, repeated cleanup after reopen, all six
+injected cleanup boundaries, uncertain success, stale IDs/revisions, unexpectedly
+missing backups, failed checkpoint creation, foreign entries after Empty, and
+nested Unix links. Every injected boundary asserts it was reached. These are
+native signed-ZIP fixtures on macOS; no original-client deletion or JS/visual UAT
+is claimed.
+
+Strict clippy passed (`20261004-091608-52964`).

@@ -27,7 +27,11 @@ pub fn recover_native(
     });
     Ok(result)
 }
-fn reconcile(state: &mut DesktopState, id: Uuid, revision: u64) -> Result<(), IntentError> {
+pub(super) fn reconcile(
+    state: &mut DesktopState,
+    id: Uuid,
+    revision: u64,
+) -> Result<(), IntentError> {
     reconcile_with(state, id, revision, |_| Ok(()))
 }
 fn reconcile_with(
