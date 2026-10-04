@@ -65,6 +65,7 @@ export function mountInstall(document:Document,invoke:Invoke,uuid:()=>string=()=
     cancel.hidden=!active||(operation?.kind!=='install'&&operation?.kind!=='prepare_runtime');
     cancel.disabled=!ready||operation?.state==='cancel_requested';
     resume.hidden=!recovery||!status?.can_resume; resume.disabled=!ready||!status?.can_resume;
+    recheck.textContent=runtimeSetup&&recovery&&status?.can_reconcile?'Recover compatibility setup':'Recheck status';
     recheck.hidden=!current.error&&!recovery;
     recheck.disabled=pending||current.busy||status?.native.requires_reopen===true;
     progress.hidden=!active||!status?.progress;
@@ -76,7 +77,7 @@ export function mountInstall(document:Document,invoke:Invoke,uuid:()=>string=()=
     else if(status){
       if(removed)text='Game uninstalled. You can install it again when ready.';
       else if(canPrepare)text='Game content is ready. Continue installation to check compatibility.';
-      else if(runtimeSetup)text=recovery?'Compatibility setup was interrupted. Files are preserved; recovery requires inspection.':active?(operation?.state==='cancel_requested'?'Cancellation requested. Waiting for compatibility setup to stop safely.':'Checking game compatibility…'):operation?.state==='succeeded'?'Prerequisites checked. Graphics and Play still need validation.':'Compatibility setup stopped. Game files are preserved.';
+      else if(runtimeSetup)text=recovery?(status.can_reconcile?'A saved compatibility result is available. Recover setup to finish checking its state.':'Compatibility setup was interrupted. Files are preserved; recovery requires inspection.'):active?(operation?.state==='cancel_requested'?'Cancellation requested. Waiting for compatibility setup to stop safely.':'Checking game compatibility…'):operation?.state==='succeeded'?'Prerequisites checked. Graphics and Play still need validation.':'Compatibility setup stopped. Game files are preserved.';
       else if(operation?.kind==='uninstall')text=recovery?'Uninstall was interrupted. Use Finish uninstall in Settings to confirm removal again.':active?'Removing game files…':'Inspect uninstall status before continuing.';
       else if(operation?.state==='succeeded')text='Game content prepared. This build cannot continue compatibility setup for this installation.';
       else if(recovery)text=status.can_resume||status.can_reconcile?'An interrupted installation was found. Inspect files or explicitly resume the saved attempt.':'An interrupted compatibility operation was found. Files are preserved; recovery is not available in this build. You can recheck status.';

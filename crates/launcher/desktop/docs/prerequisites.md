@@ -384,7 +384,7 @@ helper. Duplicate identical operation IDs do not redispatch. Dispatch failure
 marks the admitted operation uncertain immediately. The existing `cancel`
 command routes by operation ID to the retained prerequisite worker, which
 persists cancellation before signaling it. Setup evidence stays native; the
-webview only observes operation state. Reconciliation UI remains pending; successful prerequisites cannot enable Play.
+webview only observes operation state. Observed-result reconciliation is now exposed explicitly; successful prerequisites cannot enable Play.
 The Effect sequencing contract is described below.
 
 Native shell tests cover missing/replaced resources, forged command fields,
@@ -444,3 +444,33 @@ and admission tests passed (`20261004-082325-35183`); the full shell suite passe
 21 tests with two opt-in checks ignored (`20261004-082215-34649`). These passes do
 not exercise the actual Tauri window, Wine installation via UI, disk persistence
 through JS, graphics, login or gameplay. Those remain separate UAT gates.
+
+
+## Explicit observed-result recovery
+
+The shell exposes recovery only when the current runtime operation requires
+reconciliation, its strict saved result is Observed/Quiescent, and the recorded
+host PID is absent. This availability is advisory: execution repeats identity,
+revision, resource ownership and absence checks before stopping/waiting for the
+exact prefix and committing its result. A live/reused PID, missing plan,
+unobserved helper or uncertain result never authorizes recovery. No arbitrary
+PID is terminated and no prerequisite installer is replayed.
+
+The main button remains gated during recovery. “Recover compatibility setup”
+uses the existing Effect reconcile command with the current ID/revision. Tauri
+routes runtime operations to the retained asynchronous coordinator, leaving
+content recovery with its existing implementation. Losing the invoke reply or
+window does not cancel the retained native reconciliation. Completed recovery
+still displays prerequisite status, never Play readiness. Unknown-outcome
+recovery needs further work; it is not inferred from host absence alone.
+
+Four engine recovery/ownership tests passed (`20261004-082727-36777`), and 22
+shell tests passed with two opt-in checks ignored (`20261004-082824-37096`). The
+headless original-file coordinator smoke passed in 27.470 seconds
+(`20261004-082841-37275`) using the Windows `10d67a2b9` artifact. It verified
+availability after the synthetic interrupted-commit reopen, explicit recovery
+without installer replay, and unavailable recovery after terminal success.
+This remains a synthetic durable-write boundary, not actual power-loss proof.
+37 frontend tests, the frontend build and JS logic UAT passed; UAT verified the
+explicit action, operation/revision binding, no setup replay and unchanged
+consent through controlled IPC. No native visual or game UAT is claimed.

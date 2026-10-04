@@ -63,19 +63,27 @@ impl NativeHost {
     }
 
     pub fn install_status(&self) -> Result<InstallStatus, JobError> {
-        let (native, native_backend, outcome, can_retry, uninstall, runtime_setup) = self
-            .with_state(|state| {
-                Ok((
-                    state.inspect(),
-                    state
-                        .install_intent()?
-                        .is_some_and(|intent| intent.backend.is_native()),
-                    state.install_outcome()?,
-                    state.can_retry_install(),
-                    state.uninstall_target()?,
-                    self.runtime_setup_target(state)?,
-                ))
-            })?;
+        let (
+            native,
+            native_backend,
+            outcome,
+            can_retry,
+            uninstall,
+            runtime_setup,
+            runtime_recovery,
+        ) = self.with_state(|state| {
+            Ok((
+                state.inspect(),
+                state
+                    .install_intent()?
+                    .is_some_and(|intent| intent.backend.is_native()),
+                state.install_outcome()?,
+                state.can_retry_install(),
+                state.uninstall_target()?,
+                self.runtime_setup_target(state)?,
+                self.runtime_can_reconcile(state),
+            ))
+        })?;
         let recovery = !native.requires_reopen
             && native.operation.operation.as_ref().is_some_and(|op| {
                 op.state == cimmeria_launcher_engine::OperationState::ReconciliationRequired
@@ -100,8 +108,8 @@ impl NativeHost {
             install_supported: self.platform_backend().is_ok(),
             can_resume: recovery && native_backend && cfg!(windows),
             can_reconcile: recovery
-                && install_recovery
-                && (native_backend || cfg!(target_os = "macos")),
+                && ((install_recovery && (native_backend || cfg!(target_os = "macos")))
+                    || runtime_recovery),
             can_retry,
             uninstall,
             runtime_setup,

@@ -225,3 +225,42 @@ async fn admitted_setup_is_retained_and_duplicate_does_not_replace_worker() {
         id
     );
 }
+
+#[tokio::test]
+async fn reconciliation_routes_runtime_without_falling_back_to_content_replay() {
+    use cimmeria_launcher_engine::OperationKind;
+    let root = tempfile::tempdir().unwrap();
+    let host = Arc::new(NativeHost::new(root.path().join("state")));
+    let id = Uuid::new_v4();
+    assert!(host
+        .clone()
+        .reconcile_runtime(id, 0)
+        .await
+        .unwrap()
+        .is_none());
+    let state = host.store().unwrap();
+    let revision = {
+        let mut owner = state.lock().unwrap();
+        owner
+            .operations_mut()
+            .unwrap()
+            .begin(id, OperationKind::PrepareRuntime, [9; 32], 0)
+            .unwrap();
+        owner.operations_mut().unwrap().mark_uncertain(id).unwrap();
+        owner.operations().snapshot().revision
+    };
+    let result = host.clone().reconcile_runtime(id, revision).await;
+    assert_eq!(
+        result.unwrap_err(),
+        if cfg!(target_os = "macos") {
+            JobError::CorruptState
+        } else {
+            JobError::PlatformUnavailable
+        }
+    );
+    let status = host.install_status().unwrap();
+    assert!(!status.can_reconcile);
+    assert!(status.runtime_setup.is_none());
+    assert_eq!(status.native.operation.revision, revision);
+    assert!(!root.path().join("state/game-prefixes").exists());
+}

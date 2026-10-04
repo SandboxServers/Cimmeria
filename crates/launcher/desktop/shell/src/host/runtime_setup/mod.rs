@@ -2,6 +2,60 @@
 use super::*;
 use uuid::Uuid;
 impl NativeHost {
+    pub(super) fn runtime_can_reconcile(&self, state: &DesktopState) -> bool {
+        #[cfg(target_os = "macos")]
+        {
+            cimmeria_launcher_engine::mac_wine::prerequisites::can_reconcile(state)
+        }
+        #[cfg(not(target_os = "macos"))]
+        {
+            let _ = state;
+            false
+        }
+    }
+
+    /// The Tauri adapter retains this future independently of the webview reply.
+    /// None delegates content-install reconciliation to its existing coordinator.
+    pub async fn reconcile_runtime(
+        self: Arc<Self>,
+        id: Uuid,
+        revision: u64,
+    ) -> Result<Option<InstallStatus>, JobError> {
+        let host = self.clone();
+        let state = tauri::async_runtime::spawn_blocking(move || {
+            let state = host.store()?;
+            let is_runtime = state
+                .lock()
+                .map_err(|_| JobError::Io)?
+                .operations()
+                .snapshot()
+                .operation
+                .as_ref()
+                .is_some_and(|op| {
+                    op.kind == cimmeria_launcher_engine::OperationKind::PrepareRuntime
+                });
+            Ok::<_, JobError>(is_runtime.then_some(state))
+        })
+        .await
+        .map_err(|_| JobError::Io)??;
+        let Some(state) = state else {
+            return Ok(None);
+        };
+        #[cfg(not(target_os = "macos"))]
+        {
+            let _ = (state, id, revision);
+            Err(JobError::PlatformUnavailable)
+        }
+        #[cfg(target_os = "macos")]
+        {
+            cimmeria_launcher_engine::mac_wine::prerequisites::reconcile(state, id, revision)
+                .await?;
+            tauri::async_runtime::spawn_blocking(move || self.install_status().map(Some))
+                .await
+                .map_err(|_| JobError::Io)?
+        }
+    }
+
     pub(super) fn runtime_setup_target(
         &self,
         state: &mut DesktopState,

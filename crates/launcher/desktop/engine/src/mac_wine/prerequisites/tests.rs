@@ -163,6 +163,7 @@ async fn retained_coordinator_installs_checks_and_persists_owned_runtime() {
             .state,
         OperationState::ReconciliationRequired
     );
+    assert!(can_reconcile(&state.lock().unwrap()));
     assert!(reconcile(state.clone(), id, revision - 1).await.is_err());
     assert_eq!(
         reconcile(state.clone(), id, revision).await.unwrap(),
@@ -180,6 +181,7 @@ async fn retained_coordinator_installs_checks_and_persists_owned_runtime() {
             .state,
         OperationState::Succeeded
     );
+    assert!(!can_reconcile(&state.lock().unwrap()));
     assert!(!state.lock().unwrap().preferences().launcher_summary_consent);
     drop(state);
     drop(root);

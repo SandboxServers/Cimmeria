@@ -210,3 +210,24 @@ test('cancelled journey cannot advance if content completion wins the cancellati
   assert.equal(calls.filter(c=>c.command==='cancel').length,1);
  }finally{await app.dispose();}
 });
+
+test('observed compatibility recovery is explicit and never dispatches setup again',async()=>{
+ const ui=dom();let status:InstallStatus={...initial(),can_resume:false,can_reconcile:true,native:{...initial().native,
+  operation:{schema_version:1,revision:7,operation:{id,kind:'prepare_runtime',state:'reconciliation_required',intent_digest:Array(32).fill(0)}}}};
+ const calls:InstallRequest[]=[];
+ const app=mountInstall(ui.document,async(_command,args)=>{
+  const request=args!.request as InstallRequest;calls.push(request);
+  if(request.command==='reconcile'){
+   assert.equal(request.operation_id,id);assert.equal(request.operation_revision,7);
+   status={...status,can_reconcile:false,native:{...status.native,operation:{schema_version:1,revision:8,
+    operation:{...status.native.operation.operation!,state:'succeeded'}}}};
+  }return status;
+ });
+ try{await app.ready;await flush();assert.equal(ui.get('inspect-install').textContent,'Recover compatibility setup');
+  assert.equal(calls.every(c=>c.command==='inspect'),true);ui.click('inspect-install');await app.settled();await flush();
+  assert.equal(calls.filter(c=>c.command==='reconcile').length,1);
+  assert.ok(calls.every(c=>c.command!=='install'&&c.command!=='prepare_runtime'));
+  assert.equal(ui.get('install').disabled,true);assert.equal(ui.get('install').textContent,'Compatibility checked');
+  assert.equal(status.native.preferences.launcher_summary_consent,false);
+ }finally{await app.dispose();}
+});

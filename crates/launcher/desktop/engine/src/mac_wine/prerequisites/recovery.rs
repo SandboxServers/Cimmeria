@@ -3,6 +3,21 @@
 use super::*;
 use crate::runtime_setup::{Phase, Record};
 
+/// Advisory availability only. Reconciliation repeats every check under owned
+/// resource locks before stopping a prefix or committing a terminal result.
+pub fn can_reconcile(state: &DesktopState) -> bool {
+    let snapshot = state.operations().snapshot();
+    let Some(operation) = &snapshot.operation else {
+        return false;
+    };
+    current(state, operation.id, snapshot.revision).is_ok()
+        && state
+            .runtime_record()
+            .ok()
+            .flatten()
+            .is_some_and(|record| observed_host_absent(&record).is_ok())
+}
+
 pub async fn reconcile(
     state: Arc<Mutex<DesktopState>>,
     id: Uuid,
@@ -96,5 +111,54 @@ mod tests {
             observed_host_absent(&serde_json::from_value(value).unwrap()),
             Err(StorageError::Corrupt)
         );
+    }
+    #[test]
+    fn availability_requires_recovery_observation_and_absent_host() {
+        use cimmeria_runtime_probe::prerequisite::{Failure, PrepareResult, ResultKind};
+        for live in [false, true] {
+            let (_root, mut state, installed) =
+                crate::runtime_setup::tests::fixture_with_runtime([7; 32]);
+            let id = Uuid::new_v4();
+            let plan = state
+                .admit_runtime_setup(
+                    id,
+                    state.operations().snapshot().revision,
+                    installed.operation_id,
+                    [7; 32],
+                    [9; 32],
+                )
+                .unwrap()
+                .plan;
+            assert!(!can_reconcile(&state));
+            state.begin_runtime_dispatch(id).unwrap();
+            let pid = if live {
+                std::process::id()
+            } else {
+                let mut child = std::process::Command::new("/usr/bin/true").spawn().unwrap();
+                let pid = child.id();
+                child.wait().unwrap();
+                pid
+            };
+            state.record_runtime_host(id, pid).unwrap();
+            assert!(!can_reconcile(&state));
+            state
+                .record_runtime_observation(
+                    id,
+                    PrepareResult {
+                        schema_version: 1,
+                        operation_id: id,
+                        prefix_generation: plan.prefix_generation,
+                        result: ResultKind::Failed {
+                            reason: Failure::Probe,
+                        },
+                    },
+                )
+                .unwrap();
+            assert!(!can_reconcile(&state));
+            state.operations_mut().unwrap().mark_uncertain(id).unwrap();
+            assert_eq!(can_reconcile(&state), !live);
+            // Availability is not successful execution or permission to replay.
+            assert!(!plan.prefix_directory(state.state_root()).exists());
+        }
     }
 }

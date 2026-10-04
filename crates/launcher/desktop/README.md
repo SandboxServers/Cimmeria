@@ -539,7 +539,7 @@ lost reply is inspected without replay. Explicit cancellation prevents automatic
 advancement even if content completion wins that race. Failed content can be
 cleaned up with confirmation and retried. Prerequisite success remains distinct
 from Play readiness; see [prerequisites](docs/prerequisites.md#effect-and-main-install-flow).
-The current frontend suite has 36 passing tests; TypeScript checking and the
+The current frontend suite has 37 passing tests; TypeScript checking and the
 frontend build passed. `npm run uat:install` passed a sequential actual-DOM and
 Effect fixture flow covering installation/progress, cancellation requested,
 disposal/reconnection without replay, completion winning cancellation, and no

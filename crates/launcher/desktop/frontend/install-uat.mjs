@@ -155,6 +155,11 @@ const journeyInvoke=async(_command,{request})=>{
   journey={...journey,runtime_setup:null,outcome:null,native:{...journey.native,
    operation:{schema_version:1,revision:4,operation:{id:setupId,kind:'prepare_runtime',state:'running',intent_digest:Array(32).fill(0)}}}};
  }
+ if(request.command==='reconcile'){
+  assert.equal(request.operation_id,setupId);assert.equal(request.operation_revision,7);
+  journey={...journey,can_reconcile:false,native:{...journey.native,operation:{schema_version:1,revision:8,
+   operation:{...journey.native.operation.operation,state:'succeeded'}}}};
+ }
  return journey;
 };
 let screen=parseHTML(html);let journeyApp=mountInstall(screen.document,journeyInvoke,()=>next++===0?id:setupId);
@@ -180,3 +185,21 @@ assert.equal(journeyCalls.filter(c=>c.command==='prepare_runtime').length,2);
 assert.equal(journey.native.preferences.launcher_summary_consent,false);
 await journeyApp.dispose();
 console.log('PASS: one Install intent sequences content into native setup once; reopen requires explicit Continue; setup exposes cancellation; consent unchanged. This REPL-style pass uses fixture native state, not real Wine, disk persistence, visual layout, login or gameplay.');
+
+
+journey={...journey,can_reconcile:true,runtime_setup:null,native:{...journey.native,operation:{schema_version:1,revision:7,
+ operation:{id:setupId,kind:'prepare_runtime',state:'reconciliation_required',intent_digest:Array(32).fill(0)}}}};
+const beforeRecovery=journeyCalls.length;screen=parseHTML(html);
+journeyApp=mountInstall(screen.document,journeyInvoke,()=>setupId);
+await journeyApp.ready;await settle(journeyApp);
+assert.equal(screen.document.getElementById('inspect-install').textContent,'Recover compatibility setup');
+assert.ok(journeyCalls.slice(beforeRecovery).every(c=>c.command==='inspect'));
+screen.document.getElementById('inspect-install').dispatchEvent(new screen.window.Event('click'));
+await settle(journeyApp);
+assert.equal(journeyCalls.slice(beforeRecovery).filter(c=>c.command==='reconcile').length,1);
+assert.ok(journeyCalls.slice(beforeRecovery).every(c=>c.command!=='prepare_runtime'));
+assert.equal(screen.document.getElementById('install').textContent,'Compatibility checked');
+assert.equal(screen.document.getElementById('install').disabled,true);
+assert.equal(journey.native.preferences.launcher_summary_consent,false);
+await journeyApp.dispose();
+console.log('PASS: observed compatibility recovery requires an explicit click, binds current operation/revision, never replays setup and never enables Play. Controlled IPC only; native stop/wait and persistence are tested separately.');

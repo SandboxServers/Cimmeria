@@ -71,6 +71,24 @@ async fn install_command(
 ) -> Result<InstallStatus, JobError> {
     request.validate()?;
     let host = state.inner().clone();
+    if let InstallCommand::Reconcile {
+        operation_id,
+        operation_revision,
+        ..
+    } = &request
+    {
+        // Retain stop/wait and durable reconciliation even if the invoking window
+        // disappears. Effect timeouts only end frontend observation.
+        if let Some(status) = tauri::async_runtime::spawn(
+            host.clone()
+                .reconcile_runtime(*operation_id, *operation_revision),
+        )
+        .await
+        .map_err(|_| JobError::Io)??
+        {
+            return Ok(status);
+        }
+    }
     let release = if request.needs_release() {
         host.require_install_support()?;
         Some(

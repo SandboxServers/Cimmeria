@@ -449,3 +449,15 @@ explicit Continue, lost replies are not replayed, and cancellation clears the
 continuation. Native status exposes only eligible installed IDs. 36 frontend
 tests and JS logic UAT pass; native visual and real UI-to-Wine UAT remain open.
 See desktop `docs/prerequisites.md` for commands and evidence boundaries.
+
+
+### Observed prerequisite recovery UI (2026-10-04)
+
+Native status advertises recovery only for strict observed/quiescent evidence,
+reconciliation-required state and absent recorded host. Tauri retains the async
+reconcile task across webview reply loss; execution rechecks exact prefix locks
+and identity before stop/wait. Effect exposes explicit Recover compatibility
+setup, never replays the installer or enables Play. Unknown outcomes stay gated.
+The updated original-file headless smoke passed in 27.470s with Windows helper
+10d67a2b9; 4 focused engine, 22 shell and 37 frontend tests plus JS logic UAT pass.
+See desktop prerequisites reference for the synthetic-write-gap evidence limit.

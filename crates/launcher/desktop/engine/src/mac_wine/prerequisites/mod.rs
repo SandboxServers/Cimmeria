@@ -9,7 +9,7 @@ use std::panic::AssertUnwindSafe;
 use tokio::sync::watch;
 mod prefix;
 mod recovery;
-pub use recovery::reconcile;
+pub use recovery::{can_reconcile, reconcile};
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Outcome {
     PrerequisitesVerified,
