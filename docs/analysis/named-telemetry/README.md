@@ -83,7 +83,7 @@ Coordinator launch: 2026-10-04 at `7e7ba5779` (baseline `a679e748c`). The cited 
 | NT-02 Name helpers on the existing resolvers | BlockedDependency (NT-01) | | |
 | NT-03 Unpaired-ID scan and baseline | BlockedDependency (NT-00) | | |
 | NT-10 Discord typed events | BlockedDependency (NT-01) | | |
-| NT-11 Discord tracing layer: fold pairs, no internal links | InReview | [#1199](https://github.com/SandboxServers/Cimmeria/pull/1199) | Pairing table in `crates/discord/src/embed/naming.rs` mirrors Rule 6; NT-03 carries its own copy, to share later. Tracing target field renamed `Log target` so it doesn't collide with the folded `target` pair |
+| NT-11 Discord tracing layer: fold pairs, no internal links | InReview | [#1199](https://github.com/SandboxServers/Cimmeria/pull/1199) | Pairing table in `crates/discord/src/embed/naming.rs` mirrors Rule 6; NT-03 carries its own copy, to share later. Tracing target field renamed `Log target` so it doesn't collide with the folded `target` pair. D-NT3's trace footer shows only once a site logs `trace_id` from the span context; that is a follow-up for NT-50 (`tracing-opentelemetry` dependency) |
 | NT-20 Sweep: combat and effects | BlockedDependency (NT-02) | | |
 | NT-21 Sweep: missions, content, dialog | BlockedDependency (NT-02) | | |
 | NT-22 Sweep: inventory, loot, vendor, crafting | BlockedDependency (NT-02) | | |
