@@ -224,6 +224,13 @@ pub(crate) fn decode(
     for a in args {
         let at = r.pos;
         let Some(v) = r.value(&a.ty) else {
+            // An array cut short (a payload capped at `MAX_ARG_BYTES`, or a
+            // truncated one) still reports its declared count and the
+            // elements that are there.
+            if let Some((count, partial)) = partial_array(&a.ty, &bytes[at..]) {
+                out.push((count_field(a.field), json!(count)));
+                out.push((a.field, partial));
+            }
             return (out, Some(DecodeError::Truncated { arg: a.def_name }));
         };
         if is_array(&a.ty) {
@@ -238,6 +245,32 @@ pub(crate) fn decode(
         out,
         (left > 0).then_some(DecodeError::TrailingBytes { n: left }),
     )
+}
+
+/// The element type of an array type, through aliases.
+fn array_element(ty: &WireType) -> Option<&WireType> {
+    match ty {
+        WireType::Array(inner) => Some(inner),
+        WireType::Alias(_, inner) => array_element(inner),
+        _ => None,
+    }
+}
+
+/// An array whose elements run out before its declared count: the count
+/// and the first [`MAX_ELEMENTS`] whole elements. Every element takes at
+/// least one byte, so the loop ends when the bytes do.
+fn partial_array(ty: &WireType, bytes: &[u8]) -> Option<(u32, Value)> {
+    let inner = array_element(ty)?;
+    let count = array_count(bytes)?;
+    let mut r = Reader::new(&bytes[4..]);
+    let mut out = Vec::new();
+    for _ in 0..count {
+        let Some(v) = r.value(inner) else { break };
+        if out.len() < MAX_ELEMENTS {
+            out.push(v);
+        }
+    }
+    Some((count, Value::Array(out)))
 }
 
 fn is_array(ty: &WireType) -> bool {
@@ -388,6 +421,26 @@ mod tests {
         assert_eq!(v, vec![("a", json!(1))]);
         assert_eq!(err, Some(DecodeError::Truncated { arg: "b" }));
         assert_eq!(err.unwrap().as_text(), "truncated in b");
+    }
+
+    /// An array whose bytes stop early (a capped payload) still reports
+    /// its declared count and the elements that arrived.
+    #[test]
+    fn a_cut_array_keeps_its_count_and_prefix() {
+        let mut bytes = 2000u32.to_le_bytes().to_vec();
+        for i in 0..100i32 {
+            bytes.extend_from_slice(&i.to_le_bytes());
+        }
+        bytes.extend_from_slice(&[0xff, 0xff]); // half an element
+        let (v, err) = decode(
+            &[arg("ability_ids", WireType::Array(&WireType::I32))],
+            &bytes,
+        );
+        assert_eq!(err, Some(DecodeError::Truncated { arg: "ability_ids" }));
+        assert_eq!(v[0], ("ability_ids_count", json!(2000)));
+        let ids = v[1].1.as_array().unwrap();
+        assert_eq!(ids.len(), MAX_ELEMENTS);
+        assert_eq!(ids[31], json!(31));
     }
 
     /// Bytes left after the last argument are an error, with the count,

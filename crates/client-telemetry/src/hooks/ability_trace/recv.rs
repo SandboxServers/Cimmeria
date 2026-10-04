@@ -44,15 +44,23 @@ pub(crate) struct Message {
 
 /// The decoded event, before the throttle: `(level, throttle key, fields)`.
 /// `None` when the message is not one of ours, or is an
-/// `onPlayerCommunication` on a channel other than feedback.
+/// `onPlayerCommunication` on a channel other than feedback. One that does
+/// not decode as far as its channel is a `warn` with no decoded fields.
 pub(crate) fn event(msg: &Message, bytes: &[u8]) -> Option<(&'static str, String, Fields)> {
     let (method, skip) = recv_methods::resolve(msg.msg_id, msg.receiver, bytes.first().copied())?;
     let args = bytes.get(skip..).unwrap_or(&[]);
-    let (decoded, err) = wire_decode::decode(method.args, args);
-    if method.index == recv_methods::ON_PLAYER_COMMUNICATION
-        && value_of(&decoded, "channel").and_then(Value::as_u64) != Some(u64::from(CHAN_FEEDBACK))
-    {
-        return None;
+    let (mut decoded, err) = wire_decode::decode(method.args, args);
+    if method.index == recv_methods::ON_PLAYER_COMMUNICATION {
+        match value_of(&decoded, "channel").and_then(Value::as_u64) {
+            Some(c) if c == u64::from(CHAN_FEEDBACK) => {}
+            // Another channel: players' chat, not ours to report.
+            Some(_) => return None,
+            // The decode stopped before the channel: a layout fault, which
+            // is reported, but without the speaker or anything else read,
+            // since the line may be chat.
+            None if err.is_some() => decoded.clear(),
+            None => return None,
+        }
     }
     let mut f: Fields = vec![
         ("method", json!(method.name)),
@@ -347,6 +355,43 @@ mod tests {
         reads.borrow_mut().clear();
         let _ = report(&msg(19, Receiver::Other, 16), read);
         assert_eq!(*reads.borrow(), vec![1, 16]);
+    }
+
+    /// An `onPlayerCommunication` cut before its channel is a layout fault:
+    /// a `warn`, carrying nothing that was decoded (it may be chat).
+    #[test]
+    fn a_truncated_player_communication_is_a_sanitized_warn() {
+        let mut b = 10u32.to_le_bytes().to_vec(); // Speaker claims 10 chars
+        for u in "Bob".encode_utf16() {
+            b.extend_from_slice(&u.to_le_bytes());
+        }
+        let (level, _, f) = event(&msg(28, Receiver::Player, b.len()), &b).unwrap();
+        assert_eq!(level, "warn");
+        assert_eq!(get(&f, "decode_error"), json!("truncated in Speaker"));
+        for k in ["speaker", "speaker_flags", "channel", "text"] {
+            assert_eq!(get(&f, k), Value::Null, "{k}");
+        }
+        assert_eq!(get(&f, "method"), json!("onPlayerCommunication"));
+    }
+
+    /// A known-abilities list longer than the read cap keeps its full count
+    /// and its first ids, and is not a warn: the cap is expected.
+    #[test]
+    fn a_capped_array_keeps_its_count_and_first_ids() {
+        let mut full = vec![40u8];
+        full.extend_from_slice(&2000u32.to_le_bytes());
+        for i in 0..2000i32 {
+            full.extend_from_slice(&(1000 + i).to_le_bytes());
+        }
+        let capped = &full[..MAX_ARG_BYTES];
+        let (level, _, f) = event(&msg(61, Receiver::Player, full.len()), capped).unwrap();
+        assert_eq!(level, "info");
+        assert_eq!(get(&f, "ability_ids_count"), json!(2000));
+        let ids = get(&f, "ability_ids");
+        assert_eq!(ids.as_array().unwrap().len(), wire_decode::MAX_ELEMENTS);
+        assert_eq!(ids[0], json!(1000));
+        assert_eq!(get(&f, "bytes_capped"), json!(MAX_ARG_BYTES));
+        assert_eq!(get(&f, "decode_error"), json!("truncated in AbilityData"));
     }
 
     /// A payload longer than its `.def` is a `warn` with `trailing_bytes`,
