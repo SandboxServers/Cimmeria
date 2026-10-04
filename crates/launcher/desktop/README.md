@@ -561,7 +561,7 @@ passed macOS and Windows at `117344e76`. The resume packet's
 [run 37188326146](https://github.com/SandboxServers/Cimmeria/actions/runs/37188326146)
 at `bf8029e28` passed both native platforms. The newer shell
 [run 37189445603](https://github.com/SandboxServers/Cimmeria/actions/runs/37189445603)
-at `17b949f4c` remains in progress. These revisions do not validate the newer
+at `17b949f4c` passed macOS and Windows. These revisions do not validate the newer
 frontend installation controls.
 
 
@@ -599,3 +599,35 @@ runs this installation logic UAT. The separate `npm run uat` against the Rust
 `state_bridge` also passed, preserving real settings-disk/restart coverage. The earlier approved settings preview predates
 these controls; their native visual, keyboard and actual Tauri IPC UAT remain
 unverified. No real game or runtime readiness is established by frontend tests.
+
+
+## Managed Mac runtime cache
+
+The macOS-only `engine/src/mac_runtime/` prepares a native-selected, OS-locked
+cache for the pinned Wine runtime. Its fixed HTTPS download uses a ten-second
+connect timeout, a 300-second request timeout and at most five redirects.
+Streamed size checks and exact archive size/SHA-256 validation precede extraction.
+A temporary archive and staging directory isolate unpublished work.
+
+Extraction runs the fixed `/usr/bin/tar` command with an empty environment on a
+blocking task. Before publication, a pinned canonical tree digest checks every
+relative path, entry type, executable permission bits and file/link data. The
+expected digest was derived from the authenticated archive. Reuse repeats the
+full tree check; a damaged existing cache fails closed and is preserved.
+Publication renames the verified tree and syncs the cache root. These checks do
+not prove power-loss durability or runtime compatibility.
+
+Download waits observe cancellation. Tar extraction is not immediately
+interruptible: cancellation is checked before publication. The blocking task
+owns the lock, archive and staging directory, so dropping an observer cannot
+remove staging while tar is writing. No production coordinator calls this module
+yet; Wine execution, prefix creation and game prerequisites remain unimplemented.
+
+The pinned-archive extraction/full-tree smoke passed when explicitly invoked
+with `CIMMERIA_RUNTIME_ARCHIVE`; its normal suite entry remains ignored without
+that external asset. It did not execute Wine. Eight ordinary tests cover tree
+changes, cache locking, invalid archives, cancellation, damaged-cache retention
+and transport bounds/stalls. The complete engine suite passed 189 tests with four ignored entries; the
+runtime-archive smoke was explicitly run and passed separately. Strict all-target engine clippy also passed after the test-only read-count
+correction. Licensing/distribution and real game gates remain
+open.

@@ -134,3 +134,13 @@ Windows+Mac before the shell; shell/visual/game gates remain separate.
   retains evidence and maps to reconciliation. Existing callers stay unchanged;
   no production backend or Wine runtime is selected/invoked yet. Engine tests181
   and enhanced three-test seed subset passed; strict engine clippy/root fmt passed.
+
+
+- mac_runtime now prepares a pinned managed cache on macOS: OS lock, bounded
+  HTTPS archive, size/hash validation, staged fixed-tar extraction and full-tree
+  digest verification on publication/reuse. Corrupt cache is preserved. Blocking
+  extraction owns its lock/staging across observer loss; cancel gates publication.
+  Explicit pinned-archive smoke passed extraction/tree verification without Wine
+  execution. Eight ordinary runtime tests included in 189 passing engine tests; four ignored
+  entries, with runtime-archive smoke explicitly passed. Strict engine clippy passed.
+  No production caller/prefix/helper or game prerequisites connected.

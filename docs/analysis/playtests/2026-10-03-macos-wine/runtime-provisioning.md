@@ -151,3 +151,29 @@ materials, and does not clear redistribution. The archive was neither extracted
 nor executed. Hash and metadata checks establish artifact identity and layout,
 not runtime compatibility, successful provisioning or safe link handling by a
 future extractor.
+
+
+## Managed cache implementation — 2026-10-04
+
+`crates/launcher/desktop/engine/src/mac_runtime/` now prepares the pinned archive
+under a native-owned cache lock. Downloads are HTTPS-only, bounded to the pinned
+size, with ten-second connect/300-second request deadlines and five redirects.
+Exact size and SHA-256 are checked before fixed `/usr/bin/tar` extraction into
+staging. A canonical full-tree identity covers path bytes, type, executable bits
+and file/link data; it is checked both before rename/root-sync publication and
+on reuse. Corrupt published caches are retained rather than overwritten.
+
+An explicitly invoked pinned-archive smoke extracted and verified the tree
+successfully. This supersedes the earlier metadata-only inspection boundary for
+this later test, but no Wine executable was run. Download cancellation interrupts
+waiting network I/O; extraction finishes its blocking phase before cancellation
+can prevent promotion. That task retains staging and lock ownership if its
+observer disappears. Ordinary tests cover tree tampering, locks, corrupted
+caches, size/truncation limits and stalled-download cancellation; the full engine suite passed 189 tests with four ignored entries. The runtime
+archive smoke passed separately; strict all-target engine clippy also passed after the test-only read-count
+correction.
+
+No production caller, Wine prefix, helper invocation or game-prerequisite flow
+is connected. The cache contains the pinned Wine archive, not the complete
+accelerator/patch payload inventory. Fresh-prefix compatibility, complete runtime
+assembly, redistribution evidence and final packaged startup remain open.

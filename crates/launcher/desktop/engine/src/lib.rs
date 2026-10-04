@@ -1,4 +1,4 @@
-//! Platform-independent launcher operation ownership. No game mutations yet.
+//! Native launcher operation ownership, verified content preparation and platform adapters.
 mod operations;
 pub use operations::*;
 
@@ -41,3 +41,6 @@ pub mod helper_supervisor;
 pub use storage::install_recovery;
 pub use storage::install_worker;
 pub use storage::EvidenceError;
+
+#[cfg(target_os = "macos")]
+pub mod mac_runtime;

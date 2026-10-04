@@ -552,7 +552,7 @@ Mac install/resume is rejected before downloads until the Wine adapter exists.
 Actual Tauri interaction, runtime/game readiness and final startup remain gates.
 Prior native CI `37187754913` passed both platforms at `117344e76`. Resume CI
 `37188326146` at `bf8029e28` subsequently passed both platforms. Shell CI
-`37189445603` at `17b949f4c` remains in progress. These runs do not validate the
+`37189445603` at `17b949f4c` passed macOS and Windows. These runs do not validate the
 newer frontend installation controls.
 
 
@@ -592,3 +592,23 @@ seed subset also passed native-overlay/reuse checks. Strict all-target engine
 clippy and root formatting passed. Native backend/cache ownership, durable process identity, helper/Wine
 invocation and backend-aware recovery remain integration gates. No frontend
 behavior changed; frontend JS REPL/visual UAT does not apply to this packet.
+
+
+### 2026-10-04: pinned managed Mac runtime cache
+
+Added macOS cache preparation with native path/OS-lock ownership, bounded HTTPS
+download, pinned archive verification, blocking staged tar extraction and
+canonical full-tree validation before publication and reuse. Existing damaged
+caches are preserved. Cancellation interrupts downloads; during extraction the
+blocking task retains staging/lock ownership and checks cancellation before
+publication. The explicitly run external-archive smoke passed extraction/tree
+verification without executing Wine. Eight ordinary runtime tests are included in the 189 passing engine tests;
+four entries are ignored in the ordinary run and the runtime-archive smoke
+passed separately. Strict all-target engine clippy passed after the test-only read-count fix. No production
+caller, prefix, Wine execution or game prerequisites are connected. Licensing,
+compatibility and final startup gates remain open; no frontend behavior changed.
+
+Native CI update: shell run `37189445603` passed both platforms at `17b949f4c`.
+The pending frontend run for `9947a1003` was superseded/cancelled; seed run
+`37190303728` at `cd7366c61`, which also contains that frontend work, is running.
+These earlier revisions do not validate the managed runtime-cache packet.
