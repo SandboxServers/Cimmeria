@@ -9,3 +9,5 @@
 /shell/resources/windows/launch-helper-build.json
 /shell/resources/windows/client-patches-build.json
 /shell/resources/windows/*.dll
+
+/shell/resources/graphics/*.dll

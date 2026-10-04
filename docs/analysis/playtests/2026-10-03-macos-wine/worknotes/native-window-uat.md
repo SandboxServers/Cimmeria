@@ -39,7 +39,11 @@ The computer-use provider explicitly refused `UserNotificationCenter` access.
 The operator resolved the system prompt. The original native request then wrote
 its operation journal at revision 2 with state `running`. Clicking Recheck status
 reconnected the UI to that same operation and its real download progress without
-replaying Install. Installation completion is still unproven.
+replaying Install. The same operation subsequently reached revision 3,
+`Succeeded`, and the UI displayed “Game content is ready.” Pressing Continue
+installation admitted prerequisite preparation, which reached revision 6,
+`Succeeded`; the window displayed “Compatibility checked” and explicitly retained
+the graphics/Play validation boundary. No second Install was dispatched.
 
 ## Evidence boundaries and next pass
 
@@ -56,7 +60,8 @@ Build jobs `20261004-103212-76171`, `20261004-103333-81670` and
 they are not clean-machine, offline-startup, signing or distribution validation.
 The Tauri bundler emitted a static-CRT configuration deprecation warning.
 
-This pass does not prove installation, prerequisites, repair, uninstall,
+This pass proves native content installation and prerequisite preparation. It
+does not prove graphics/device initialization, repair, uninstall,
 migration, updater parity, game rendering, login or world entry. Keyboard focus,
 minimum-window sizing and integrated feature visuals still need their own pass.
 Later worker changes require fresh checks of their changed surface.

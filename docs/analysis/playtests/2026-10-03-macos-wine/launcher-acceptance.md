@@ -30,24 +30,29 @@ frontend before Play wiring begins. Worker worktrees remain intact during review
 
 ### Integration wave
 
-Repair, Launch and migration engine commits are integrated in draft PR #1164 at
-`d73eea0ed96e9dfbc91553101a3923300ab9e87c`. Combined engine/probe validation passed
-330 tests with 15 opt-in cases ignored; strict all-target clippy passed on Mac.
-The native x86 helper workflow passed as run `37214723035`; the Windows desktop
-engine job exposed a macOS-only accessor gate, now corrected pending native rerun.
+Repair fixes and Play controls are integrated through `4513fd8d9`. Combined
+shell tests pass 33 (five opt-in fixtures ignored), frontend tests pass 45,
+TypeScript/build and strict shell clippy pass. Play persistence UAT and the
+production Repair preparation/commit/cleanup JS UAT pass. A stale generated
+Repair UAT module was rebuilt before its passing integration run.
 
-- `launcher/repair-review-fixes` owns the actual backup-status correction and
-  production host preparation/commit/cancellation/recovery guards. Standards
-  review found two documented violations (test timeout and memory metadata);
-  Spec review found two partial requirements (backup status and native wiring
-  coverage). The coordinator fixed memory metadata; remaining fixes are active.
-- `launcher/play-integration` owns new Play host/workflow/view modules, app and
-  shell registration, and its UI. Repair fixes retain installation-status copy
-  ownership, including suppression of misleading Install labels during Launch.
-- Launch engine and migration engine workers have finished. Their handoffs are
-  `worknotes/launch-engine.md` and `worknotes/migration-engine.md`.
-- Migration UI, fresh engine reviews and updater research/implementation remain
-  queued. Observability remains reserved for the external Windows track.
+- Repair review findings are fixed: actual backup status drives cleanup and copy;
+  production host handoff/recovery have guards; timeout and memory metadata were
+  corrected. See [fix evidence](worknotes/repair-review-fixes.md).
+- Play controls are integrated; [worknote](worknotes/play-integration.md). Fresh
+  review found a Windows locked-file second-handle read; `launcher/launch-lock-fix`
+  owns the correction and regression guard. Real gameplay remains unproven.
+- Native content Install and prerequisite preparation succeeded through the real
+  app. The development Play bundle is being staged with pinned Windows-built
+  helper/patch resources and pinned D9VK, with its upstream notice retained.
+- `launcher/migration-ui` owns explicit preview/confirmed import UI and persistence
+  UAT. Migration engine independent review remains queued.
+- [Updater research](worknotes/updater-parity-research.md) is complete. Native
+  minimum-version gates, signed download and platform apply/recovery remain next
+  implementation packets. Legacy updater checksum verification is distinct from
+  signed game manifests and Tauri signed updater packages.
+- Native x86 run `37214723035` passed; Windows desktop rerun after the accessor
+  fix is pending. Observability remains reserved for the external Windows track.
 
 ## Requirement and evidence checklist
 
@@ -55,9 +60,9 @@ engine job exposed a macOS-only accessor gate, now corrected pending native reru
 |---|---|---|
 | Single-game dark-only Tauri interface | Native development window rendered; Settings chooser cancellation passed | Keyboard/focus, responsive layout and integrated feature visuals; integration |
 | Real Effect orchestration and persistent settings | Existing workflow/services and native journal; prior ledger tests | Integrated native-persistence JS UAT and failed-save/reconnect behavior; integration |
-| Installation and prerequisites | Existing retained native worker, managed runtime and packaged-helper contracts | Install through native UI into playable installation, failures and cancellation; integration |
-| Play with lifecycle observation | Not implemented at common base | Launch worker, followed by frontend integration and real game UAT |
-| Repair | Worker implementation and native-persistence Effect UAT complete; locally integrated, review pending | Repair worker, then native visual UAT |
+| Installation and prerequisites | Real native UI content installation and compatibility preparation succeeded | Graphics/Play, failures and cancellation; integration |
+| Play with lifecycle observation | Engine and UI integrated; native-persistence Effect UAT passed | Windows lock fix, real game UAT and native parity |
+| Repair | Integrated with review fixes; production preparation/commit/cleanup JS UAT passed | Native visual and original-client repair UAT |
 | Confirmed uninstall | Existing Settings confirmation and native ownership checks | Integrated confirmation/dismiss/removal/recovery UAT; integration |
 | Signed GitHub manifest patch notes | Actual Tauri tab rendered seven verified entries; wrong-key rejection observed | Refresh/reconnect after integrated changes; integration |
 | Default-off optional summary consent | Separate persisted preference; exporter absent | Consent preservation plus local exporter race/failure evidence; external track and integration |
@@ -75,5 +80,5 @@ validation remains last; development-window UAT does not satisfy that gate.
 
 Native window evidence and the resolved macOS Documents permission decision are
 recorded in [the UAT worknote](worknotes/native-window-uat.md). The original
-installation was admitted after permission and the UI reconnected to real
-download progress; completion remains unproven.
+installation completed after permission and status reconnection; prerequisite
+preparation also succeeded. Graphics, login and world entry remain unproven.

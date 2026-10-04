@@ -38,3 +38,5 @@ Dated, sourced facts from top-level sessions, committed with the change that pro
 - [reference_client_rar_and_cache_tiers.md](reference_client_rar_and_cache_tiers.md) — archive.org client RAR is the 2009 installer's MakeCAB set (hashes, layout); Cache.en-US (writable, pushed) vs SourceCache.en-us (bundled) tiers
 - [reference_signoz_log_mining.md](reference_signoz_log_mining.md) — SigNoz MCP: condense oversized results, filters and keys that work, session anchors, what is normal
 - [reference_client_idle_send_cadence.md](reference_client_idle_send_cadence.md) — idle client sends ~6 pkt/s, perfStats every 15 s; NetInactivityTimeout=15 is client-side; read before changing timeouts
+
+- [reference_desktop_updater_parity_research.md](reference_desktop_updater_parity_research.md) — legacy checksum updater and Tauri signed-package ownership/recovery differences.

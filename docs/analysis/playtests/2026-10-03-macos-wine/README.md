@@ -156,3 +156,9 @@ Windows-helper ownership requirements. It does not establish game compatibility.
 - [Repair handoff](worknotes/repair-ui.md)
 - [Acceptance checklist and current ownership](launcher-acceptance.md)
 - [Runtime provisioning evidence](runtime-provisioning.md)
+
+## Current integration evidence
+
+- [Play controls and native lifecycle](worknotes/play-integration.md)
+- [Repair review fixes and production-host UAT](worknotes/repair-review-fixes.md)
+- [Updater parity research](worknotes/updater-parity-research.md)
