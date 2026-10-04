@@ -16,3 +16,6 @@ and Mac CI remain the cross-platform verification gate.
 Stress validation with 32 test threads exceeded the local soft descriptor limit
 of 256. Raising the limit to 2048 for that command alone let the same suite pass;
 no process-global or machine configuration was changed.
+
+After committing the fix, removing only the explicit `unlock` made the duplicate-
+handle regression fail with `WouldBlock`. Restoring it made the same test pass.
