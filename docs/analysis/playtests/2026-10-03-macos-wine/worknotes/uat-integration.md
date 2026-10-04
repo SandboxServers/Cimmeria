@@ -159,3 +159,20 @@ Remaining gates, in order:
 4. `CIMMERIA_WINE_APP_IDENTITY=1` Play and the computer-use binding checks in the
    [Wine app identity worknote](wine-computer-use.md).
 5. Native Windows build and tests.
+
+## Coordinator signed-build checkpoint
+
+The development Mac app was rebuilt from `e79e99b1e` with the rebuilt frontend,
+production manifest verification key, and the existing verified archive,
+prerequisite, launch, patch and D3D9 artifacts. The lane completed successfully
+and `codesign --verify --deep --strict` passed using the existing Apple
+Development identity. This is not Developer ID notarization or a release. The
+previous app bundle remains available for rollback. The archive helper is still
+the previously verified artifact described above; it was not rebuilt here.
+
+The new app started with `CIMMERIA_WINE_APP_IDENTITY=1`. Native UI verification
+could not begin: macOS reported its screen locked, and computer use returned
+`cgWindowNotFound` for the launcher. The process was responsive in its native
+event loop. No Play press or real SGW launch was performed in this checkpoint.
+An unlocked desktop is required to finish native adoption/folder-dialog checks,
+Play/status UAT and actual SGW screenshot/input verification.
