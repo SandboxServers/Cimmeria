@@ -92,6 +92,8 @@ Want to start contributing? Read **[../CONTRIBUTING.md](../CONTRIBUTING.md)** â€
 | [Launcher acceptance and ownership](analysis/playtests/2026-10-03-macos-wine/launcher-acceptance.md) | Current delivery responsibilities, required journeys and release evidence |
 | [Launcher delegation plan](analysis/playtests/2026-10-03-macos-wine/launcher-delegation-plan.md) | Isolated Codex/Claude workstreams, file ownership, copy-ready assignments and integration gates |
 | [Desktop launcher engine](../crates/launcher/desktop/README.md) | Tauri settings shell, native state and Effect workflows, persistence UAT and remaining game integration gates |
+| [Desktop Play integration](analysis/playtests/2026-10-03-macos-wine/worknotes/play-integration.md) | Native-owned launch, Effect lifecycle controls and persistence UAT boundaries |
+| [Desktop updater parity research](analysis/playtests/2026-10-03-macos-wine/worknotes/updater-parity-research.md) | Legacy checksum trust, signed Tauri packages and remaining native recovery contracts |
 | [Native launch ownership fix](analysis/playtests/2026-10-03-macos-wine/worknotes/launcher-launch-lock-fix.md) | Locked-handle launch preparation regression and native Windows validation handoff |
 | [Desktop legacy import](../crates/launcher/desktop/docs/migration.md) | Native confirmed import, preserved identity and consent, recoverable persistence and historical ownership limits |
 | [Launcher packaging proof](../crates/launcher/prototype-packaging/README.md) | Authorized, throwaway Mac egui/Tauri packaging comparison: build and actual-model UAT commands, offline first-open criteria and Windows-native handoff; no production adoption |

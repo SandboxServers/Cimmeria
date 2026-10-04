@@ -16,9 +16,15 @@ backend setup (GitHub Releases for content, manifest signing keypair,
 Azure Blob SAS for log uploads) see
 [launcher-distribution-setup.md](launcher-distribution-setup.md).
 
-### Repair in the desktop replacement
+### Play and Repair in the desktop replacement
 
-The development Tauri launcher provides **Settings → Repair game** for its recorded
+The development Tauri launcher enables **Play** after installation and compatibility
+checks when its bundled helper, client patches and Mac graphics resource verify.
+It reports process start and exit separately from login or world entry. After a
+lost reply, recheck status; an unknown game lifecycle keeps conflicting operations
+blocked. See the [launch contract](../../crates/launcher/desktop/docs/launch.md).
+
+It provides **Settings → Repair game** for its recorded
 installation. Confirm the displayed installed directory: Repair reconstructs the
 saved authenticated release and replaces modifications inside `game`. Changing
 the selected folder does not redirect Repair.

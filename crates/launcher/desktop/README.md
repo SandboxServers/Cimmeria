@@ -14,8 +14,8 @@ a helper verified against its compiled artifact identity. Mac builds without
 that resource retain settings and patch notes but cannot install. Content preparation does not establish runtime or
 Play readiness. Confirmed uninstall and interrupted-removal recovery are wired
 through Settings. Settings also connects confirmed [Repair](docs/repair.md),
-precommit cancellation, recovery/abandonment and current-backup cleanup. Launch
-and telemetry export remain pending; platform and real-client validation remain open.
+precommit cancellation, recovery/abandonment and current-backup cleanup. [Play](docs/launch.md)
+now observes native game lifecycle; telemetry export and real-client/platform gates remain open.
 
 ## Native operation and storage contracts
 
@@ -512,8 +512,8 @@ newer frontend installation controls.
 controls to native IPC on Windows and verified-helper Mac builds. Install
 requires a selected folder and no current operation. Mac builds without the
 verified packaged helper cannot install. Settings saves refresh installation status.
-Verified Mac builds sequence content completion into prerequisite checks. Play
-remains unavailable; Settings Repair follows the [repair contract](docs/repair.md). Confirmed uninstall uses the saved
+Verified Mac builds sequence content completion into prerequisite checks. [Play](docs/launch.md)
+requires pinned native resources; Settings Repair follows the [repair contract](docs/repair.md). Confirmed uninstall uses the saved
 installation identity; see [maintenance](docs/maintenance.md).
 
 The application-scoped Effect service inspects native state before each

@@ -65,3 +65,13 @@ does not prove graphics/device initialization, repair, uninstall,
 migration, updater parity, game rendering, login or world entry. Keyboard focus,
 minimum-window sizing and integrated feature visuals still need their own pass.
 Later worker changes require fresh checks of their changed surface.
+
+## Integrated Play bundle admission
+
+Build job `20261004-110836-27950` produced the integrated Play development bundle
+with pinned native Windows helper/client-patches and upstream D9VK. The initial
+inspection waited on Documents access again: macOS logged that the existing
+code requirement did not match the newly rebuilt development app and issued a
+new `AUTHREQ_PROMPTING`. A process sample placed inspection in installed-owner
+file reading. This is an unresolved OS permission wait, not a failed game launch;
+Play has not been pressed. The operator was asked to resolve the protected prompt.

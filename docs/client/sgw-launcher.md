@@ -15,8 +15,9 @@ and uploads debug logs to an Azure Blob SAS URL.
 The desktop replacement connects installation and Settings maintenance through
 native IPC and Effect. Confirmed uninstall and Repair use the recorded installation
 identity. Repair includes retained reconstruction/replacement, precommit cancellation
-and explicitly validated recovery/abandonment/backup cleanup. These controls do not
-establish runtime readiness or complete platform validation; see the
+and explicitly validated recovery/abandonment/backup cleanup. Play binds pinned
+native resources and observes helper/game lifecycle; process start does not prove
+login or world entry. Platform validation remains open; see the
 [desktop contracts](../../crates/launcher/desktop/README.md) and
 [repair evidence](../../crates/launcher/desktop/docs/repair.md).
 The remaining document describes the Windows egui launcher.
