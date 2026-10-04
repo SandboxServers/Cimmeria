@@ -134,6 +134,7 @@ R_TABLE: dict[str, str] = {
     'archetype_ability_tree': 'Archetypes', 'archetypes': 'Archetypes',
     'char_creation': 'Archetypes',      'char_creation_abilities': 'Archetypes',
     'char_creation_choices': 'Archetypes','char_creation_visgroups': 'Archetypes',
+    'char_creation_items': 'Archetypes',
     'disciplines': 'Archetypes',        'racial_paradigm': 'Archetypes',
     # Dialogs
     'dialog_screen_buttons': 'Dialogs', 'dialog_screens': 'Dialogs',

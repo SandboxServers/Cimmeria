@@ -2,7 +2,7 @@
 title: "Character Creation"
 type: reference
 audience: engineers
-last_updated: 2026-09-25
+last_updated: 2026-10-04
 ---
 
 # Character Creation
@@ -106,6 +106,34 @@ Entry point: `createCharacter(name, extraName, charDefId, visualChoices, skinTin
    - `access_level` inherited from the parent account record
 
 6. **Insert starting items** - Iterates the starting equipment list from `charDef` and inserts each item into `sgw_inventory`. Slot placement follows the `BagFillOrder` priority rules.
+
+### Starter kit (Rust server)
+
+The Rust handler is `crates/base/src/base/character_create/` (`mod.rs` parses and validates, `starter_kit.rs` grants). Every class starts with:
+
+| What | Source | Notes |
+|---|---|---|
+| Abilities 592 Pistol Shot, 594 Strike, 597 Heal Focus, 1218 Medical Attention: Recuperation, 1646 Health Heal | `resources.char_creation_abilities` | Written to `sgw_player.abilities` in ability-id order. 597 restores Focus; 1646 and 1218 restore Health. With nothing selected they land on the caster (AB-01). |
+| Item 55, SI 3 9mm Pistol | `resources.char_creation_items` | Placed by the same bag fill order as the clothing, so it lands in bandolier (container 3) slot 0, the active slot. Its magazine is loaded: `sgw_inventory.ammo` = `items.clip_size` (15 Bullet_Default rounds). Reloads of default ammo are free. |
+| Clothing and accessories | `char_creation_choices.item_id` of the chosen (or forced) visual choices | Praxis characters get the prison set (3440 jacket, 3437 legs, 3438 boots); glasses and accessories follow the choices. |
+
+Item 55 is the starter pistol because it is the lowest-grade pistol in the seed (tier 1, tech_comp 1), it is the pistol both tutorials hand out (Castle Cellblock chain 1005, SGC chain 3008), and buy list 1 sells it. With it drawn, Pistol Shot (592) fires the pistol's RANGED binding, 579 Pistol Auto Attack (`use_ability/weapon_redirect.rs`). Without a loaded weapon, 592 (`required_ammo = 1`) is refused with NoAmmo, which is what new characters got before 2026-10-04.
+
+Every class gets the 9mm pistol, the Jaffa, Goa'uld and Asgard char_defs included: `items.discipline_ids` does not gate equipping. A per-class weapon is one `char_creation_items` row per char_def.
+
+Visual groups resolve in group-id order, so the components array and the item placement are the same on every run. Two item choices can compete for one bag: the first choice's glasses (3497) and accessory (4343) both want the Face slot (5), so the accessory overflows to the backpack (container 1).
+
+**Deviation from the tutorial design.** Castle Cellblock mission 622 ("arm yourself") is built around the prisoner finding a pistol: chain 1005 gives a second item 55 to the backpack when the Guard's body is searched, and chain 1004 completes the mission and opens the stasis-room door when an item 55 arrives in the bandolier (`item_equipped`). Both still work. The player ends up with two pistols, and the equip step is met by dragging either pistol into the bandolier from another container, the looted one or the starter one moved out and back. The narrative of an unarmed prisoner no longer holds; the maintainer asked for every class to spawn able to fire.
+
+One INFO line per creation, `event = "character_created"`, names everything the character starts with: `abilities` ("592 Pistol Shot, 594 Strike, ...") and `items` ("3440 Prison Jacket @7/0, ..., 55 SI 3 9mm Pistol @3/0 ammo 15", container/slot after the `@`), plus `armed` (true when a loaded weapon is in the bandolier). A dropped item logs `starter_item_dropped` with its reason.
+
+### Seeded playtest characters
+
+`db/sgw/Players/Seed/sgw_player.sql` seeds one character per dev account (player ids 62-70: Test Soldier, cady, jorsh, cake, lomiada1, nonwo1984, ishido972, Friendly, Annoying). The colo rebuilds its database from this seed on every deploy. Each is the Praxis Commando (char_def 3, male human) that `createCharacter` makes for an account at access level 2 that takes the first choice in every optional visual group and skin tint 0: the same five abilities, the same inventory (`db/sgw/Inventory/Seed/sgw_inventory.sql`, starter pistol loaded), level 1, the Praxis start in Castle_CellBlock, `first_login = 1` and every other column at the table default. The seed's column list is the handler's INSERT plus `player_id`, so a column the handler leaves to its default stays at the default.
+
+The live-DB guard `character_create::seed_parity_live_db_tests::seeded_characters_match_a_fresh_praxis_commando_live_db` creates a fresh char_def-3 character through the real handler and fails when a seeded row (ids, names and account aside) or its inventory differs. A change to character creation therefore fails it until the seed is updated to match.
+
+Before 2026-10-04 the seeded characters were hand-written SGU Soldiers in SGC_W1 with only 592, 594 and 597, no weapon and access level 0, so the playtesters' characters had no health regen and could not fire Pistol Shot.
 
 ### Completion
 
@@ -242,6 +270,8 @@ CREATE TABLE sgw_player (
 - Visual choice validation against character definition data
 - Starting equipment assignment with `BagFillOrder` slot placement
 - Starting ability assignment from character definition
+- Starter pistol, loaded, in the active bandolier slot for every class (`char_creation_items`)
+- Seeded playtest characters identical to a created Praxis Commando, guarded by a live-DB parity test
 - Character list display with lazy-loaded equipment visuals for preview
 - Character deletion with proper foreign key cascade handling
 - GM player entity creation for elevated-access accounts

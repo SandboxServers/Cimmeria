@@ -198,6 +198,7 @@
 \ir resources/Archetypes/Tables/char_creation.sql
 \ir resources/Archetypes/Tables/char_creation_abilities.sql
 \ir resources/Archetypes/Tables/char_creation_choices.sql
+\ir resources/Archetypes/Tables/char_creation_items.sql
 \ir resources/Archetypes/Tables/char_creation_visgroups.sql
 \ir resources/Archetypes/Tables/disciplines.sql
 \ir resources/Archetypes/Tables/racial_paradigm.sql
@@ -285,6 +286,7 @@
 \ir resources/Archetypes/Seed/char_creation.sql
 \ir resources/Archetypes/Seed/char_creation_abilities.sql
 \ir resources/Archetypes/Seed/char_creation_choices.sql
+\ir resources/Archetypes/Seed/char_creation_items.sql
 \ir resources/Archetypes/Seed/char_creation_visgroups.sql
 \ir resources/Archetypes/Seed/disciplines.sql
 \ir resources/Archetypes/Seed/racial_paradigm.sql
