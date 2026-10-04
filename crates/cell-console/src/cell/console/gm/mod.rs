@@ -32,16 +32,25 @@
 //!   `/gmsetfly`, `/gmsetghost`).
 //! - [`shout`] — `sendGMShout` GM broadcast (backs `/gmshout`; `.announce`
 //!   calls the same [`shout::broadcast`]).
+//! - [`abilities`] — the GM's own ability set: give one, give the whole
+//!   tree, reset to the starters (AB-N2).
+//! - [`god_mode`] — `gmSetGodMode`, the damage-seam flag (AB-N2).
+//! - [`mob_ability_set`] — `gmSetMobAbilitySet` on the selected mob (AB-N2).
+//! - [`command_log`] — the one `gm_command` row each AB-N2 command writes.
 //!
 //! The full 117-method inventory + handler-status map (DONE/REUSE/ADAPT/NEW)
 //! lives in `docs/protocol/cell-method-dispatch-table.md`; the ADAPT roadmap
 //! is in `docs/architecture/gm-cell-method-adapt-plan.md`.
 
+mod abilities;
+mod command_log;
 pub mod feedback;
 mod give;
 pub(crate) mod give_ammo;
 mod give_training_points;
+mod god_mode;
 mod missions;
+mod mob_ability_set;
 mod organizations;
 mod physics;
 mod query;
@@ -94,6 +103,17 @@ pub const GM_GIVE_CASH: u16 = 134;
 /// `ItemID` resolves to INT32 (`entities/defs/alias.xml`).
 pub const GM_REMOVE_ITEM: u16 = 135;
 
+// -- Abilities (136, 153, 154) -----------------------------------------------
+/// `gmGiveAbility(INT32 aAbilityID)` — def line 202. Offset 27. Grants one
+/// ability to the caller without a training point (AB-N2).
+pub const GM_GIVE_ABILITY: u16 = 136;
+/// `gmResetAbilities()` — def line 293. Offset 44. The caller's abilities
+/// back to the archetype starters, spend refunded (AB-N2).
+pub const GM_RESET_ABILITIES: u16 = 153;
+/// `gmGiveAllAbilities()` — def line 296. Offset 45. Every ability in the
+/// caller's archetype tree (AB-N2).
+pub const GM_GIVE_ALL_ABILITIES: u16 = 154;
+
 // -- Training points (137) ---------------------------------------------------
 /// `gmGiveTrainingPoints(INT32 aNumTrainingPoints)` — def line 207. Offset 28.
 /// Grants ability-tree training points to the caller. Routes through
@@ -113,6 +133,11 @@ pub const GM_GIVE_EXPERTISE: u16 = 139;
 /// `cimmeria-base-crafting`'s `handlers::handle_grant_applied_science`.
 pub const GM_GIVE_APPLIED_SCIENCE_POINTS: u16 = 140;
 
+// -- God mode (142) -------------------------------------------------------------
+/// `gmSetGodMode(UINT8 bTurnOn)` — def line 236. Offset 33. The caller takes
+/// no Health or Focus damage while on (AB-N2).
+pub const GM_SET_GOD_MODE: u16 = 142;
+
 // -- Set health / focus (147–150) ---------------------------------------------
 /// `gmSetHealth(INT32 Amount, INT64 TargetId)` — def line 259. Offset 38.
 pub const GM_SET_HEALTH: u16 = 147;
@@ -127,6 +152,11 @@ pub const GM_SET_FOCUS_MAX: u16 = 150;
 /// `gmSetTarget(WSTRING aNameOrID)` — def line 302. Offset 47. Numeric-id form
 /// only (name resolution is not wired into the cell).
 pub const GM_SET_TARGET: u16 = 156;
+
+// -- Mob ability set (158) ------------------------------------------------------
+/// `gmSetMobAbilitySet(INT32 aAbilitySetId)` — def line 318. Offset 49. Swaps
+/// the selected mob onto an NPC ability set (AB-N2).
+pub const GM_SET_MOB_ABILITY_SET: u16 = 158;
 
 // -- Travel (159, 162, 163) ---------------------------------------------------
 /// `gmDHD(INT8 aGateAddress)` — def line 325. Offset 50. Dials a stargate.
@@ -242,6 +272,16 @@ pub async fn dispatch(
         GM_GIVE_EXPERTISE => give::handle_give_expertise(entity_id, args, tx, space_mgr).await,
         GM_GIVE_APPLIED_SCIENCE_POINTS => {
             give::handle_give_applied_science(entity_id, args, tx, space_mgr).await
+        }
+        // -- abilities (AB-N2) --
+        GM_GIVE_ABILITY => abilities::handle_give_ability(entity_id, args, tx, space_mgr).await,
+        GM_RESET_ABILITIES => abilities::handle_reset_abilities(entity_id, tx, space_mgr).await,
+        GM_GIVE_ALL_ABILITIES => {
+            abilities::handle_give_all_abilities(entity_id, tx, space_mgr).await
+        }
+        GM_SET_GOD_MODE => god_mode::handle_set_god_mode(entity_id, args, tx, space_mgr).await,
+        GM_SET_MOB_ABILITY_SET => {
+            mob_ability_set::handle_set_mob_ability_set(entity_id, args, tx, space_mgr).await
         }
         // -- stats --
         GM_SET_HEALTH => stats::handle_set_health(entity_id, args, false, tx, space_mgr).await,

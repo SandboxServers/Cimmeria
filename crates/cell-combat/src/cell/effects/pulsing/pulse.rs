@@ -175,6 +175,8 @@ async fn fire_pulse(
     // attacker is the effect's invoker, not whoever is shooting the target
     // this tick. See `combat::damage_credit`.
     crate::cell::combat::note_pre_damage_health(space_mgr, inst.invoker_id, target_id);
+    // GM god mode (142): snapshot the pools, put back any loss below.
+    let god_mode = crate::cell::combat::god_mode::GodModeGuard::arm(space_mgr, target_id);
 
     // Script path takes precedence over NVP path so a registered
     // script can fully decide what happens on each pulse.
@@ -283,6 +285,15 @@ async fn fire_pulse(
     // shields on the ledger; an emptied one comes off, and the stat-buff
     // tick sends its icon clear.
     space_mgr.settle_absorb_shields(target_id);
+    if let Some(guard) = &god_mode {
+        let source = crate::cell::combat::god_mode::DamageSource {
+            source_id: inst.invoker_id,
+            ability_id: Some(inst.ability_id),
+            effect_id: Some(inst.effect_id),
+            seam: "effect_pulse",
+        };
+        guard.restore(space_mgr, source);
+    }
 
     // Surrender floor: an automatic damage source may wound a
     // surrendered NPC but may never finish it. See

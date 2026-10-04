@@ -569,7 +569,7 @@ beyond the 3 verified handlers above.
 | 133 | `gmGiveItem(WSTRING DesignId, INT32 qty)` | `/GiveItem` | **`gm/give.rs` → `GrantItem`** | **DONE** |
 | 134 | `gmGiveCash(INT32 amount)` | `/GiveNaqahdah` | `cell/console/gm/give.rs` → `GrantCash` | **DONE** |
 | 135 | `gmRemoveItem(ItemID id, INT16 qty)` | — | `cell/console/gm/give.rs` → `RemoveInventoryItem` | **DONE** |
-| 136 | `gmGiveAbility(INT32 abilityID)` | `/GiveAbility` | `progression/mod.rs:400 handle_train_ability` (debits a point; need no-debit variant) | ADAPT |
+| 136 | `gmGiveAbility(INT32 abilityID)` | `/GiveAbility` | `cell/console/gm/abilities.rs` → the `.giveability` grant (`give_ability::plan_grant`, caller only) → `CellToBaseMsg::GmGrantAbility` → `progression/grant_ability.rs` (appends to `abilities`, no point debit) → `GmAbilityGranted` burst (AB-N2) | **DONE** |
 | 137 | `gmGiveTrainingPoints(INT32 n)` | — | `cell/console/gm/give_training_points.rs` → `CellToBaseMsg::GrantTrainingPoints` → `progression/grant_training_points.rs handle_grant_training_points` (one guarded `UPDATE ... RETURNING`, refused past `i32::MAX`) → `BaseToCellMsg::TrainingPointsGranted` (cell mirrors `tree_progress.training_points`, sends `onEntityProperty(TrainingPoints)`, re-sends a pinned trainer) | **DONE** |
 | 138 | `gmGiveRespawner(INT32 mobID)` | `/GiveRespawner` | — (respawner persistence not implemented) | NEW |
 | 139 | `gmGiveExpertise(INT32 disc, INT32 amt)` | — | `cell/console/gm/give.rs handle_give_expertise` → `CellToBaseMsg::GrantExpertise` → `base/crafting/handlers.rs handle_grant_expertise` (load/clamp/save + `onUpdateDiscipline` 136) | **DONE** |
@@ -580,7 +580,7 @@ beyond the 3 verified handlers above.
 
 | Idx | Method (args) | Stock cmd | Cimmeria primitive | Status |
 |-----|---------------|-----------|--------------------|--------|
-| 142 | `gmSetGodMode(UINT8 on)` | `/SetGodMode` | — (no godmode flag; gate would live in `cell/combat/damage.rs:161`) | NEW |
+| 142 | `gmSetGodMode(UINT8 on)` | `/SetGodMode` | `cell/console/gm/god_mode.rs` → `CellEntity::god_mode` (caller only); `cell-combat` `combat/god_mode.rs` puts Health/Focus back at the hit and pulse seams, logs `god_mode_absorbed` (AB-N2) | **DONE** |
 | 143 | `gmSetNoXP()` | `/SetNoXP` | — (no XP-immunity flag) | NEW |
 | 144 | `gmSetNoDamage()` | `/SetNoDamageTimedMode` | — (no damage-immunity flag) | NEW |
 | 145 | `gmSetNoAggro(UINT8 on)` | `/SetNoAggro` | — (NPC threat seeding has no gate) | NEW |
@@ -591,12 +591,12 @@ beyond the 3 verified handlers above.
 | 150 | `gmSetFocusMax(INT32 amt, INT64 target)` | — | `cell/console/gm/stats.rs` → `set_max(FOCUS)` | **DONE** |
 | 151 | `gmSetFlag(INT32 flagId, UINT8 force)` | — | `state_flags.rs:36 set_state_flag` (ref-counted; raw force-set caveat) | ADAPT |
 | 152 | `gmSetLevel(INT32 level)` | — | `stat_list.rs:305 scale_for_level` + level write + recompute (no single fn) | ADAPT |
-| 153 | `gmResetAbilities()` | — | — | NEW |
-| 154 | `gmGiveAllAbilities()` | — | — (enumerate archetype tree + bulk insert + burst) | NEW |
+| 153 | `gmResetAbilities()` | — | `cell/console/gm/abilities.rs` → `CellToBaseMsg::GmAbilityBulk(Reset)` → `progression/gm_ability_bulk.rs` (abilities = archetype starters from `char_creation_abilities`, spend refunded, no trainer, no charge) → `GmAbilitiesChanged` burst (AB-N2) | **DONE** |
+| 154 | `gmGiveAllAbilities()` | — | `cell/console/gm/abilities.rs` → `ability_tree_catalog.tree(archetype)` → `GmAbilityBulk(GrantAll)` → `progression/gm_ability_bulk.rs` (one `UPDATE`, no points) → one `GmAbilitiesChanged` burst (AB-N2) | **DONE** |
 | 155 | `gmRespec()` | — | — | NEW |
 | 156 | `gmSetTarget(WSTRING nameOrID)` | — | `cell/console/gm/world.rs` → `current_target_id` + onTargetUpdate (numeric id only) | **DONE** |
 | 157 | `gmSetMobStance(INT32 stance)` | — | — (no stance field separate from `AiState`) | NEW |
-| 158 | `gmSetMobAbilitySet(INT32 setId)` | — | `entity/abilities.rs` mutate `known_abilities` (player-oriented) | ADAPT |
+| 158 | `gmSetMobAbilitySet(INT32 setId)` | — | `cell/console/gm/mob_ability_set.rs` → selected NPC's known set = `SpaceManager::ability_sets[setId]` (`resources.ability_set_abilities`, in memory until respawn) (AB-N2) | **DONE** |
 
 #### Travel (159–163)
 

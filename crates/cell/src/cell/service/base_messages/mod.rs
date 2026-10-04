@@ -9,6 +9,8 @@
 //! - [`player_init`] — `InitPlayerState` (mission/ability/bandolier restore)
 //! - [`ability_granted`] — `AbilityGranted` (hotbar refresh + trainer resend)
 //! - [`respec`] — `AbilitiesReset` (trainer respec mirror + burst, AT-08)
+//! - [`gm_abilities`] — `GmAbilitiesChanged` (GM give-all / reset mirror +
+//!   burst, AB-N2)
 //! - [`inventory_events`] — `InventoryItemMoveApplied` / `InventoryItemRemoved` /
 //!   `InventoryItemGranted` / `ItemUsed`
 //! - `ItemUseConsumed` goes straight to `cell::content::apply_consumed_item`
@@ -36,6 +38,7 @@ use super::super::{chat, dispatch, spawner};
 mod ability_granted;
 mod bandolier;
 mod bank;
+mod gm_abilities;
 mod gm_spawn;
 mod ignore;
 mod inventory_events;
@@ -477,6 +480,10 @@ pub(super) async fn handle_base_message(
             outcome,
         } => {
             respec::handle_abilities_reset(entity_id, player_id, outcome, tx, space_mgr).await;
+        }
+
+        BaseToCellMsg::GmAbilitiesChanged(changed) => {
+            gm_abilities::handle_gm_abilities_changed(changed, tx, space_mgr).await;
         }
 
         BaseToCellMsg::ItemUsed {

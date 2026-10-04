@@ -470,6 +470,18 @@ impl CellService {
                     );
                 }
             }
+            // NPC ability sets for `gmSetMobAbilitySet`. Not fatal: the GM
+            // command refuses with `no_ability_set_data` until a restart.
+            match spawner::load_ability_sets(pool).await {
+                Ok(sets) => {
+                    space_mgr.ability_sets = sets;
+                }
+                Err(e) => {
+                    tracing::warn!(
+                        "Failed to load NPC ability sets: {e} -- gmSetMobAbilitySet                          refuses for this process lifetime"
+                    );
+                }
+            }
             // Summon ability → pet template. Not fatal: with no catalog every
             // summon ability fails as a non-damage ability does today.
             match spawner::load_pet_summons(pool).await {

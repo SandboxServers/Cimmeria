@@ -257,6 +257,7 @@ Later decisions live in two sibling files, with their numbers and text unchanged
 - [33. The scripts live in a leaf crate and register with the cell at startup (#962 step 4)](abilities-and-effects-decisions-23-33.md#33-the-scripts-live-in-a-leaf-crate-and-register-with-the-cell-at-startup-962-step-4)
 - [34. A beneficial cast lands on the caster or an ally, never on a hostile (ability mechanics AB-01)](abilities-and-effects-decisions-23-33.md#34-a-beneficial-cast-lands-on-the-caster-or-an-ally-never-on-a-hostile-ability-mechanics-ab-01)
 - [35. Each effect of a cast lands where its routing says (ability mechanics AB-07)](abilities-and-effects-decisions-23-33.md#35-each-effect-of-a-cast-lands-where-its-routing-says-ability-mechanics-ab-07)
+- [36. GM god mode puts Health and Focus back at the two damage seams (ability mechanics AB-N2)](abilities-and-effects-decisions-23-33.md#36-gm-god-mode-puts-health-and-focus-back-at-the-two-damage-seams-ability-mechanics-ab-n2)
 
 ## Cross-cutting follow-ups
 

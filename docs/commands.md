@@ -252,8 +252,8 @@ XP, money, items, abilities, and more.
 
 | Command | What it does | Works now? | Parameters | Example |
 |---|---|---|---|---|
-| `/gmgiveability` | Give a specific ability | ❌ Not yet | `<abilityId>` | `/gmgiveability` |
-| `/gmgiveallabilities` | Give every ability | ❌ Not yet | none | `/gmgiveallabilities` |
+| `/gmgiveability` | Give yourself one ability without spending a training point. It is saved to your character, survives relog and a trainer respec, and your ability window updates at once. Refused, with a line saying why, for an unknown id or one you already know | ✅ Yes | `<abilityId>` | `/gmgiveability 2826` |
+| `/gmgiveallabilities` | Give yourself every ability in your archetype's tree (all three branches) in one go. Saved, no training points spent, one ability-window refresh, and a line with the count | ✅ Yes | none | `/gmgiveallabilities` |
 | `/gmgiveammo` | Give special-ammo rounds | ✅ Yes, as `.giveammo` | `<ammo type> <rounds>` | `.giveammo hollowpoint 500` |
 | `/gmgiveappliedsciencepoints` | Give yourself applied-science points | ✅ Yes | `<points>` (positive int) | `/gmgiveappliedsciencepoints 25` |
 | `/gmgiveblueprint` | Give a crafting blueprint | ❌ Not yet | `<blueprintId>` | `/gmgiveblueprint` |
@@ -282,8 +282,8 @@ Set health/focus, target, and debug toggles.
 | Command | What it does | Works now? | Parameters | Example |
 |---|---|---|---|---|
 | `/gmchangeammo` | Switch ammo type | ✅ Yes | `<itemId> <ammoType>` | `/gmchangeammo 8800 3` |
-| `/gminvokeability` | Use an ability on a target | ✅ Yes | `<abilityId> <targetId>` | `/gminvokeability 4201 5310` |
-| `/gmresetabilities` | Reset abilities (GM) | ❌ Not yet | none | `/gmresetabilities` |
+| `/gminvokeability` | Use an ability on a target. No exposed cell method exists for it (`SGWAbilityManager.invokeAbility` is server-only), so the server never receives it; earlier versions of this page wrongly said it worked | ❌ No | `<abilityId> <targetId>` | `/gminvokeability 4201 5310` |
+| `/gmresetabilities` | Reset your abilities to your archetype's starters: trained, quest and GM-given abilities are removed and your spent tree points come back. No trainer needed and no naquadah charged (unlike the trainer's Respec) | ✅ Yes | none | `/gmresetabilities` |
 | `/gmrespec` | Full respec (GM) | ❌ Not yet | none | `/gmrespec` |
 | `/gmsetarchetype` | Set a character's archetype | ❌ Not yet | `<archetypeId>` | `/gmsetarchetype` |
 | `/gmsetflag` | Force-set a state flag | ❌ Not yet | `<flagId> <force>` | `/gmsetflag` |
@@ -291,7 +291,7 @@ Set health/focus, target, and debug toggles.
 | `/gmsetfocus` | Set current focus | ✅ Yes | `<amount> <targetId>` | `/gmsetfocus 300 0` |
 | `/gmsetfocusmax` | Set maximum focus | ✅ Yes | `<amount> <targetId>` | `/gmsetfocusmax 400 0` |
 | `/gmsetghost` | Toggle ghost (no-collision) mode | ❌ Not yet | `<on>` (0/1) | `/gmsetghost` |
-| `/gmsetgodmode` | Toggle invincibility | ❌ Not yet | `<on>` (0/1) | `/gmsetgodmode` |
+| `/gmsetgodmode` | Take no Health or Focus damage from ability hits and damage over time; hits show "Absorbed". Heals, buffs and debuffs still land. Only ever on yourself, and off again when you relog | ✅ Yes | `<on>` (0/1) | `/gmsetgodmode 1` |
 | `/gmsethealth` | Set current health on yourself or a target | ✅ Yes | `<amount> <targetId>` (amount ≥ 0; target 0 = self) | `/gmsethealth 500 0` |
 | `/gmsethealthmax` | Set maximum health | ✅ Yes | `<amount> <targetId>` | `/gmsethealthmax 1000 0` |
 | `/gmsethidegm` | Toggle GM visibility | ❌ Not yet | `<on>` (0/1) | `/gmsethidegm` |
@@ -300,7 +300,7 @@ Set health/focus, target, and debug toggles.
 | `/gmsetinfiniteammo` | Special-ammo reloads take nothing from your bags | ✅ Yes, as `.infiniteammo` | `[on\|off]` | `.infiniteammo on` |
 | `/gmsetinvulnerable` | Toggle invulnerability | ❌ Not yet | `<on>` (0/1) | `/gmsetinvulnerable` |
 | `/gmsetlevel` | Set a character's level | ❌ Not yet | `<level>` | `/gmsetlevel` |
-| `/gmsetmobabilityset` | Set an NPC's ability set | ❌ Not yet | `<setId>` | `/gmsetmobabilityset` |
+| `/gmsetmobabilityset` | Give your selected mob the abilities of an NPC ability set (`resources.ability_set_abilities`) until it respawns. Refused for a player, a mob in another area, or an unknown set | ✅ Yes | `<setId>` | `/gmsetmobabilityset 350` |
 | `/gmsetmobattribute` | Set an NPC attribute | ❌ Not yet | `<target> <attr> <type> <value>` | `/gmsetmobattribute` |
 | `/gmsetmobstance` | Set an NPC's stance | ❌ Not yet | `<stance>` | `/gmsetmobstance` |
 | `/gmsetmobvariable` | Set a generic NPC variable | ❌ Not yet | `<var> <value>` | `/gmsetmobvariable` |

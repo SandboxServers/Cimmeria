@@ -533,6 +533,11 @@ pub enum CellToBaseMsg {
     /// `.giveammo` for a player (ammo AM-06); see [`super::GmGiveAmmo`].
     GmGiveAmmo(super::GmGiveAmmo),
 
+    /// `gmGiveAllAbilities` / `gmResetAbilities` for the calling GM (AB-N2);
+    /// see [`super::GmAbilityBulk`]. Answered with
+    /// [`crate::cell::messages::BaseToCellMsg::GmAbilitiesChanged`].
+    GmAbilityBulk(super::GmAbilityBulk),
+
     /// Execute a server-generated authoring SQL statement against the live DB
     /// (`.`-console). The cell has no DB pool, so the spawn/patrol
     /// authoring commands hand their `INSERT`/`UPDATE`/`DELETE` to the base,

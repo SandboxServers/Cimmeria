@@ -441,7 +441,7 @@ AB-L0 smoke, AB-L4, AB-L6 ──────────────────
 | AB-C6, AB-C7 | BlockedDependency | | |
 | AB-N0 | Done | | [native-combat-debug.md](../../reverse-engineering/findings/native-combat-debug.md): premise corrected, AB-N1 design must change |
 | AB-N1 | BlockedDependency (AB-T3); redesign from the AB-N0 result | | |
-| AB-N2 | Ready | | |
+| AB-N2 | Review | #1170 | 136, 142, 153, 154, 158 native handlers; G8 fixed in `docs/commands.md`. God mode restores Health/Focus at the hit and pulse seams (decision 36); reset is to the archetype's `char_creation_abilities` starters with the spend refunded |
 | AB-L0 | Ready | | |
 | AB-L4 | Merged 2026-10-04 | #1167 | `source = "packet"` clauses and the `approx` op (`value` ± `tolerance`); one tap per row from the anchor to teardown, stopped on every path; rows kept as the `packet_tap` attachment; UNVERIFIED when the endpoint is unreachable. Guide: automated-uat.md "Packet clauses". |
 | AB-L6 | InReview | #1169 | `players = 2` rows drive the second lab instance (`lab-account.p2.json`, default `p2`) through an in-process supervisor; `client = "p2"` on actions, clauses and evidence; `@target_player` = real-input `client_target` on the other player's character; still BLOCKED, with the reason, when no p2 is configured. gm-parity M1-2 uses it. Guides: automated-uat.md "Two-player rows", live-research-lab.md "Two clients". |

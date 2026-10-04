@@ -22,6 +22,7 @@ pub use cimmeria_cell_world::cell::combat::{aggression, faction_reaction, health
 pub mod auto_cycle;
 pub mod damage;
 pub mod damage_credit;
+pub mod god_mode;
 pub mod state;
 pub mod threat;
 pub mod vitals;
