@@ -111,7 +111,19 @@ async fn point_blank_shot_lands_its_hit_and_its_dot_live_db() {
     let entries = u32::from_le_bytes(args[17..21].try_into().unwrap());
     assert_eq!(entries, 2, "one HEALTH entry per damage effect");
     let npc = mgr.get_entity(2).unwrap();
-    assert!(npc.stats.get(HEALTH).unwrap().cur < 5000);
-    assert!(npc.stats.get(FOCUS).unwrap().cur < 5000);
+    // Exact for this deterministic roll (ChaCha8 seeded by entity, ability
+    // and seq 1) against the fixture NPC's resists: the hit's 20 H / 200 F
+    // and the DoT's first tick of 30 H / 150 F, both scaled by the same
+    // roll. With only one effect resolved (the B-21 bug) both pools end
+    // higher; with no NVPs (before AB-03) both stay at 5000.
+    assert_eq!(seq, 1, "the first seq rolls a hit");
+    assert_eq!(
+        (
+            npc.stats.get(HEALTH).unwrap().cur,
+            npc.stats.get(FOCUS).unwrap().cur
+        ),
+        (4983, 4884),
+        "Health and Focus after the hit and the DoT's first tick"
+    );
     assert_eq!(npc.active_effects.len(), 1, "the DoT ticks on");
 }

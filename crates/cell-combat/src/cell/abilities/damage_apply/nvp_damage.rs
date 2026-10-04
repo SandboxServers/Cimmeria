@@ -106,13 +106,31 @@ impl NvpPlanner {
             );
             return self.singles;
         }
-        let same_effect = source_ids.windows(2).all(|w| w[0] == w[1]);
-        self.singles.push(NvpDamage {
-            effect_id: same_effect.then_some(source_ids[0]),
-            health: self.area_health.map_or(0, |a| a.0),
-            focus: self.area_focus.map_or(0, |a| a.0),
-            unrolled: sources.iter().all(|s| s.2),
-        });
+        // Each pool keeps its own QR provenance: when the collapsed Health
+        // and Focus came from effects with different `EF_DontUseQR` policies,
+        // they resolve as two entries, so a flagged pool is never rolled.
+        match (self.area_health, self.area_focus) {
+            (Some(h), Some(f)) if h.2 == f.2 => self.singles.push(NvpDamage {
+                effect_id: (h.1 == f.1).then_some(h.1),
+                health: h.0,
+                focus: f.0,
+                unrolled: h.2,
+            }),
+            (h, f) => {
+                self.singles.extend(h.map(|h| NvpDamage {
+                    effect_id: Some(h.1),
+                    health: h.0,
+                    focus: 0,
+                    unrolled: h.2,
+                }));
+                self.singles.extend(f.map(|f| NvpDamage {
+                    effect_id: Some(f.1),
+                    health: 0,
+                    focus: f.0,
+                    unrolled: f.2,
+                }));
+            }
+        }
         self.singles
     }
 }
@@ -137,7 +155,25 @@ pub(super) fn apply_nvp_damage(
     let unrolled = unrolled_qr();
     let mut results = Vec::new();
     let mut total_health = 0;
-    for entry in entries {
+    for (i, entry) in entries.iter().enumerate() {
+        // A target an earlier entry killed takes nothing more: the hit
+        // carries one SRC_MORTAL entry, not one per remaining effect.
+        if defender.get(HEALTH).is_some_and(|s| s.cur <= 0) {
+            tracing::debug!(
+                target: "abilities",
+                event = "effect_path_skipped",
+                account_id = ids.actor.account_id,
+                player_id = ids.actor.player_id,
+                entity_id = ids.entity_id,
+                target_player_id = ids.target.player_id,
+                target_id = ids.target_eid,
+                ability_id = ids.ability_id,
+                effect_ids = ?entries[i..].iter().map(|e| e.effect_id).collect::<Vec<_>>(),
+                reason = "target_dead",
+                "remaining NVP damage skipped: an earlier effect of this hit killed the target"
+            );
+            break;
+        }
         let qr = if entry.unrolled { &unrolled } else { hit_qr };
         let (health_results, health_dealt) = combat::calculate_damage_penetrating(
             qr,

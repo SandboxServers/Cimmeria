@@ -17,11 +17,12 @@ What is reported instead of written (the reason starts with its category):
 
 * ``conditional``: a variant that only applies against a kind of target or
   from a position ("Mechanical Target Damage", "Flank Position Damage",
-  "Assassin Stance Bonus Damage", Execution's damage vs low Focus). No
-  conditional NVP exists, and the pipeline would apply the variant on every
-  hit, on top of the base damage.
+  "Assassin Stance Bonus Damage", "while moving"). No conditional NVP
+  exists, and the pipeline would apply the variant on every hit, on top of
+  the base damage.
 * ``sequenced``: a single-shot effect carrying ``EF_SequenceOnFinish`` (64).
-  It is the follow-up of a sequence (a check's outcome, a chain-lightning
+  It is the follow-up of a sequence (a check's outcome such as Execution's
+  and Red Mist's damage vs low Focus, a chain-lightning
   jump, a grenade barrage's extra shell), which the pipeline does not model;
   applying it on every hit would stack it on the base damage.
 * ``targeting``: the text names a shape the row does not have ("Medium Cone"

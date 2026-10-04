@@ -14,7 +14,8 @@ use super::*;
 use crate::cell::space_manager::SpaceManager;
 use crate::mercury::method_idx;
 use cimmeria_entity::abilities::{
-    ClientEffectResult, EffectDef, EF_DONT_USE_QR, RC_HIT, SRC_NONE, TCM_AE_CONE, TCM_AE_RADIUS,
+    ClientEffectResult, EffectDef, EF_DONT_USE_QR, RC_HIT, SRC_MORTAL, SRC_NONE, TCM_AE_CONE,
+    TCM_AE_RADIUS,
 };
 use cimmeria_entity::stats::{FOCUS, FORTITUDE, INTELLIGENCE};
 
@@ -182,22 +183,90 @@ async fn dont_use_qr_effect_in_a_rolled_hit_deals_its_base() {
     let flagged = nvp_effect(7331, 100, 0, EF_DONT_USE_QR);
     let snare = nvp_effect(7332, 0, 0, 0);
     let (mut mgr, ability) = fixture(7330, vec![flagged, snare]);
+    let seq = seq_off_midpoint(&mgr, 7330);
+
+    fire(&mut mgr, &ability, seq).await;
+
+    assert_eq!(pools(&mgr).0, 900);
+}
+
+/// The seq of a hit on `ability_id` whose roll is not the midpoint, so a
+/// rolled base differs from the authored one.
+fn seq_off_midpoint(mgr: &SpaceManager, ability_id: i32) -> u32 {
     let qr = combat::calculate_qr(
         &mgr.get_entity(1).unwrap().stats,
         &mgr.get_entity(NPC).unwrap().stats,
         false,
     );
-    // A hit whose roll is not the midpoint, so a rolled base would differ.
-    let seq = (1..10_000)
+    (1..10_000)
         .find(|&s| {
-            let r = combat::calculate_result(qr, pseudo_random_seed(1, 7330, s));
+            let r = combat::calculate_result(qr, pseudo_random_seed(1, ability_id, s));
             r.result_code != RC_MISS && (r.qr_rand * 2.0 * (1.0 + qr) - 1.0).abs() > 0.05
         })
-        .unwrap();
+        .unwrap()
+}
+
+/// **Guard (review: QR provenance per collapsed pool).** A cone-only
+/// ability whose Health comes from a `DontUseQR` cone and whose Focus comes
+/// from a rolled cone: the Health pool still lands at its base (900) on a
+/// rolled hit. On revert (one collapsed entry, rolled unless every source
+/// is flagged) the Health base takes the roll.
+#[tokio::test]
+async fn mixed_area_pools_keep_their_own_qr_policy() {
+    let flagged = with_tcm(nvp_effect(7381, 100, 0, EF_DONT_USE_QR), TCM_AE_CONE);
+    let rolled = with_tcm(nvp_effect(7382, 0, 200, 0), TCM_AE_CONE);
+    let (mut mgr, ability) = fixture(7380, vec![flagged, rolled]);
+    let seq = seq_off_midpoint(&mgr, 7380);
 
     fire(&mut mgr, &ability, seq).await;
 
-    assert_eq!(pools(&mgr).0, 900);
+    assert_eq!(pools(&mgr).0, 900, "the flagged Health pool is not rolled");
+    assert!(pools(&mgr).1 < 1000, "the rolled Focus pool still lands");
+}
+
+/// **Guard (combat review: one mortal entry).** Two single-target effects
+/// against a 50-Health target: the first kills it, the second is not
+/// applied, and `onEffectResults` carries one HEALTH entry, `SRC_MORTAL`,
+/// byte-exact. On revert the dead target takes the second effect too and
+/// the list carries a second `SRC_MORTAL` entry.
+#[tokio::test]
+async fn a_killing_effect_ends_the_hit_with_one_mortal_entry() {
+    let (mut mgr, ability) = fixture(
+        7390,
+        vec![
+            nvp_effect(7391, 100, 0, EF_DONT_USE_QR),
+            nvp_effect(7392, 100, 0, EF_DONT_USE_QR),
+        ],
+    );
+    let health = mgr
+        .get_entity_mut(NPC)
+        .unwrap()
+        .stats
+        .get_mut(HEALTH)
+        .unwrap();
+    health.update(0, 50, 1000);
+    health.clear_dirty();
+
+    let msgs = fire(&mut mgr, &ability, 1).await;
+
+    let expected = serialize_effect_results(
+        1,
+        7390,
+        1,
+        NPC as i32,
+        RC_HIT,
+        &[ClientEffectResult {
+            stat_id: HEALTH as i8,
+            delta: -50,
+            damage_code: DT_PHYSICAL,
+            stat_result_code: SRC_MORTAL,
+        }],
+    );
+    assert_eq!(
+        effect_results_args(&msgs),
+        expected,
+        "one mortal HEALTH entry"
+    );
 }
 
 /// **Guard (cone and radius stay with their fan-outs).** A direct
