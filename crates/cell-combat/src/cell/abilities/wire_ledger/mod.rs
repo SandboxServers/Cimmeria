@@ -1,6 +1,15 @@
 //! The wire-send ledger (ability-mechanics AB-T4): one `abilities.wire`
 //! DEBUG row for every client-bound send the ability subsystem makes,
-//! logged after the send and only when it reached at least one client.
+//! logged after the cell-to-base queue accepted it for at least one client.
+//!
+//! **Queued, not delivered.** The row carries `delivery = "queued_to_base"`:
+//! the in-process queue took the message, nothing more. The base can still
+//! drop it (the recipient's session ended, the socket send failed), and
+//! says so in its own row: `base.entity_method` `client_send_dropped`
+//! (`world_entry::cell_dispatch::method_delivery`), with the same `method`
+//! and `entity_id`. The base also logs `abilities.wire` `client_sent` (with
+//! the Mercury seq) for `onEffectResults`, `onTimerUpdate` and
+//! `onErrorCode`. `self_sent` / `witness_count` count queued sends.
 //!
 //! **What the row says.** The fields come from the bytes that went out
 //! ([`decode`]), so a row is the client's view of the message, not the
@@ -25,7 +34,8 @@
 //! filter without `abilities=debug` pays one interest check per send.
 //!
 //! **Failures** are the router's WARN (`messaging::deliver`, `event =
-//! "wire_send_failed"`); a send that reached nobody writes no row.
+//! "wire_send_failed"`); a send the queue refused for every recipient
+//! writes no row.
 
 mod decode;
 mod row;

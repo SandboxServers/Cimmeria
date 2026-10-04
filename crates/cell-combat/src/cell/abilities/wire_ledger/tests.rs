@@ -126,6 +126,8 @@ async fn a_cooldown_start_and_clear_each_write_a_timer_row() {
         assert_eq!(field(row, "player_id"), "101");
         assert_eq!(field(row, "account_id"), "11");
         assert_eq!(field(row, "stage"), "wire");
+        // The queue took it; the base logs delivery or the drop itself.
+        assert_eq!(field(row, "delivery"), "queued_to_base");
     }
     assert_eq!(field(&rows[0], "complete_at"), "100.0");
 }

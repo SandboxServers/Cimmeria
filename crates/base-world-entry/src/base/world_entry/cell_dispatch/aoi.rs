@@ -20,7 +20,7 @@ use super::super::super::helpers::{
     send_bundle_to_witness_reliable, send_to_witness, send_to_witness_reliable, WitnessSendOutcome,
 };
 use super::super::super::ConnectedClientState;
-use super::player_ghost;
+use super::{method_delivery, player_ghost};
 
 /// Emit the success-side (`aoi.create_emit`, DEBUG) or failure-side
 /// (`aoi.create_send_failed`, WARN) observability seam for one packet of
@@ -270,7 +270,7 @@ pub(super) async fn entity_method_call(
     // `entity_id` here is the entity the cell wants to address and is also
     // the routing key in `entity_to_addr` — that map only holds player
     // entries, so `entity_id` is always a SGWPlayer. Use that idbase.
-    send_to_witness_reliable(
+    let outcome = send_to_witness_reliable(
         transport,
         connected,
         entity_to_addr,
@@ -289,6 +289,14 @@ pub(super) async fn entity_method_call(
         },
     )
     .await;
+    method_delivery::log_method_outcome(
+        outcome,
+        entity_id,
+        entity_id,
+        method_index,
+        connected,
+        entity_to_addr,
+    );
 }
 
 /// `CellToBaseMsg::WitnessEntityMethod` — broadcast a server-driven entity
@@ -326,7 +334,7 @@ pub(super) async fn witness_entity_method(
     } else {
         IDBASE_NPC_DEFAULT
     };
-    send_to_witness_reliable(
+    let outcome = send_to_witness_reliable(
         transport,
         connected,
         entity_to_addr,
@@ -345,6 +353,14 @@ pub(super) async fn witness_entity_method(
         },
     )
     .await;
+    method_delivery::log_method_outcome(
+        outcome,
+        witness_id,
+        entity_id,
+        method_index,
+        connected,
+        entity_to_addr,
+    );
 }
 
 /// `CellToBaseMsg::EntityInvisible` — temporary visual hide that keeps the

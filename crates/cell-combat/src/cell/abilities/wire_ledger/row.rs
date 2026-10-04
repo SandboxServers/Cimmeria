@@ -15,6 +15,7 @@ macro_rules! wire_row {
             target: "abilities.wire",
             event = "wire_sent",
             stage = "wire",
+            delivery = "queued_to_base",
             method = $c.method,
             method_index = $c.method_index,
             origin = $c.origin,
