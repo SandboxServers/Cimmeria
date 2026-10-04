@@ -35,11 +35,11 @@ many tests also updates the catalogue.
 
 | Metric | Count |
 |---|---:|
-| Tests (`#[test]` / `#[tokio::test]`) | 10,586 |
-| Files with tests | 1,813 |
-| Gated in CI (every crate but CI's exclude list) | 8,961 |
+| Tests (`#[test]` / `#[tokio::test]`) | 10,609 |
+| Files with tests | 1,820 |
+| Gated in CI (every crate but CI's exclude list) | 8,984 |
 | Live-DB tests (`require_db_or_skip!` in the body) | 1,551 |
-| Inventory threshold (5% of the tests) | 529 |
+| Inventory threshold (5% of the tests) | 530 |
 
 <!-- /gen:tests-totals -->
 
@@ -88,16 +88,16 @@ with no file in this directory yet.
 | Crate | Package | Tests | Files | Live-DB | In CI | Catalogue |
 |---|---|---:|---:|---:|---|---|
 | `crates/cell-combat` | `cimmeria-cell-combat` | 873 | 154 | 45 | yes | none |
-| `crates/cell-content` | `cimmeria-cell-content` | 831 | 121 | 477 | yes | none |
+| `crates/cell-content` | `cimmeria-cell-content` | 832 | 122 | 477 | yes | none |
 | `crates/client-telemetry` | `cimmeria-client-telemetry` | 649 | 126 | 0 | no | none |
-| `crates/base-methods` | `cimmeria-base-methods` | 593 | 127 | 427 | yes | none |
+| `crates/base-methods` | `cimmeria-base-methods` | 596 | 128 | 427 | yes | none |
 | `crates/cell` | `cimmeria-cell` | 551 | 126 | 19 | yes | none |
-| `crates/cell-world` | `cimmeria-cell-world` | 506 | 86 | 32 | yes | none |
+| `crates/cell-world` | `cimmeria-cell-world` | 511 | 87 | 32 | yes | none |
 | `crates/cell-console` | `cimmeria-cell-console` | 497 | 81 | 1 | yes | none |
 | `crates/lab` | `cimmeria-lab` | 469 | 98 | 0 | no | none |
 | `crates/navmesh-extractor` | `cimmeria-navmesh-extractor` | 449 | 52 | 0 | yes | none |
 | `crates/entity` | `cimmeria-entity` | 441 | 56 | 0 | yes | [entity.md](entity.md) |
-| `crates/base-session` | `cimmeria-base-session` | 405 | 72 | 185 | yes | none |
+| `crates/base-session` | `cimmeria-base-session` | 409 | 73 | 185 | yes | none |
 | `crates/launcher` | `sgw-launcher` | 396 | 54 | 0 | no | [launcher.md](launcher.md) |
 | `crates/mercury` | `cimmeria-mercury` | 335 | 55 | 0 | yes | [mercury.md](mercury.md) |
 | `crates/base-crafting` | `cimmeria-base-crafting` | 321 | 59 | 142 | yes | none |
@@ -111,7 +111,7 @@ with no file in this directory yet.
 | `crates/cell-effect-scripts` | `cimmeria-cell-effect-scripts` | 162 | 19 | 21 | yes | none |
 | `crates/resources` | `cimmeria-resources` | 137 | 20 | 0 | yes | none |
 | `crates/server` | `cimmeria-server` | 111 | 19 | 0 | yes | [server.md](server.md) |
-| `crates/discord` | `cimmeria-discord` | 101 | 19 | 0 | yes | none |
+| `crates/discord` | `cimmeria-discord` | 109 | 22 | 0 | yes | none |
 | `crates/client-patches` | `cimmeria-client-patches` | 93 | 14 | 0 | no | none |
 | `crates/upk-objects` | `cimmeria-upk-objects` | 78 | 9 | 0 | yes | [upk-objects.md](upk-objects.md) |
 | `crates/admin-api` | `cimmeria-admin-api` | 77 | 8 | 0 | yes | none |
@@ -127,13 +127,13 @@ with no file in this directory yet.
 | `crates/services` | `cimmeria-services` | 45 | 13 | 20 | yes | [services.md](services.md) |
 | `crates/common` | `cimmeria-common` | 43 | 5 | 0 | yes | [common.md](common.md) |
 | `crates/client-launch` | `cimmeria-client-launch` | 41 | 4 | 0 | yes | none |
-| `crates/minigame` | `cimmeria-minigame` | 38 | 5 | 0 | yes | none |
+| `crates/minigame` | `cimmeria-minigame` | 39 | 5 | 0 | yes | none |
 | `crates/occluder` | `cimmeria-occluder` | 30 | 3 | 0 | yes | none |
 | `crates/commands` | `cimmeria-commands` | 29 | 3 | 0 | yes | [commands.md](commands.md) |
 | `crates/wire-log` | `cimmeria-wire-log` | 27 | 6 | 0 | yes | none |
+| `crates/names` | `cimmeria-names` | 23 | 6 | 4 | yes | none |
 | `crates/patchset` | `cimmeria-patchset` | 23 | 5 | 0 | yes | none |
 | `crates/lab-mcp` | `cimmeria-lab-mcp` | 22 | 6 | 0 | yes | none |
-| `crates/names` | `cimmeria-names` | 22 | 6 | 4 | yes | none |
 | `crates/client-hookgate` | `cimmeria-client-hookgate` | 20 | 2 | 0 | yes | none |
 | `crates/sgw-testhost` | `cimmeria-sgw-testhost` | 12 | 2 | 0 | yes | none |
 | `crates/upk` | `cimmeria-upk` | 12 | 3 | 0 | yes | none |
