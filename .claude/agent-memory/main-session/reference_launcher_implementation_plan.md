@@ -441,6 +441,8 @@ Native Windows run 37203128166 succeeded at 10d67a2b9; downloaded prerequisite
 SHA256 215e40924ce44d194af63c32da8de3347cfb983440cf554faaf0aec98b694815
 passed staging. Two Python staging and two native identity tests passed.
 `PrerequisiteResource` prevents accidental archive-backend conversion; receipts
-remain non-authoritative. The printed prerequisite build variable is reserved:
-shell binding and Effect admission are not implemented in this packet.
+remain non-authoritative. The prerequisite build variable now feeds the native shell resource binding.
+The strict prepare_runtime command retains the Mac coordinator, refuses forged
+resource fields and routes cancellation by operation ID. Effect admission and
+UI sequencing remain pending.
 See desktop `docs/prerequisites.md` for commands and evidence boundaries.

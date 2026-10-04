@@ -6,6 +6,7 @@ use std::{
 };
 
 mod install;
+mod runtime_setup;
 pub use install::{InstallCommand, InstallStatus, JobError};
 
 pub struct NativeHost {
@@ -13,6 +14,10 @@ pub struct NativeHost {
     default_install_directory: Option<PathBuf>,
     #[cfg(target_os = "macos")]
     helper: Option<cimmeria_launcher_engine::mac_wine::HelperResource>,
+    #[cfg(target_os = "macos")]
+    prerequisite_helper: Option<cimmeria_launcher_engine::mac_wine::PrerequisiteResource>,
+    #[cfg(target_os = "macos")]
+    runtime_worker: Mutex<Option<cimmeria_launcher_engine::mac_wine::prerequisites::Worker>>,
     state: Mutex<Option<Arc<Mutex<DesktopState>>>>,
     worker: Mutex<Option<cimmeria_launcher_engine::install_worker::Worker>>,
 }
@@ -23,6 +28,10 @@ impl NativeHost {
             default_install_directory: None,
             #[cfg(target_os = "macos")]
             helper: None,
+            #[cfg(target_os = "macos")]
+            prerequisite_helper: None,
+            #[cfg(target_os = "macos")]
+            runtime_worker: Mutex::new(None),
             state: Mutex::new(None),
             worker: Mutex::new(None),
         }
@@ -44,6 +53,14 @@ impl NativeHost {
             )
             .ok()
         });
+        self.prerequisite_helper =
+            option_env!("CIMMERIA_PREREQUISITE_HELPER_SHA256").and_then(|expected| {
+                cimmeria_launcher_engine::mac_wine::PrerequisiteResource::open(
+                    resource_directory.join("windows/cimmeria-prerequisite-worker.exe"),
+                    expected,
+                )
+                .ok()
+            });
         self
     }
 

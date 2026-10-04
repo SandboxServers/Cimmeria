@@ -249,7 +249,7 @@ nonexistent helper. That early exit also avoids starting prefix cleanup commands
 regular-file input, hash and AMD64 PE32+ headers before replacing the ignored
 resource. `helper-build.json` records provenance; it is not a trust source.
 The optional `--kind prerequisite` selects the separate x86/PE32 helper; its
-staging contract and current shell-binding limitation are documented in
+staging contract and current UI-sequencing limitation are documented in
 [prerequisites](prerequisites.md#prerequisite-helper-resource-staging).
 The shell embeds the expected hash at compile time and resolves a fixed resource
 path, verifying again before release fetching/admission.

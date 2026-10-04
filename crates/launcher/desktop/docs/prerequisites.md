@@ -362,7 +362,53 @@ refusal to use the archive identity or receipt as the prerequisite trust source.
 The engine's distinct `PrerequisiteResource` exposes path, identity and
 reverification without an archive-backend conversion.
 
-The printed `CIMMERIA_PREREQUISITE_HELPER_SHA256` is reserved for the upcoming
-shell binding; the current shell does not consume it yet. Staging alone does
-not connect runtime setup to the Install button, test a finished app bundle,
-or establish self-contained startup. Those remain separate validation gates.
+The Mac shell now consumes `CIMMERIA_PREREQUISITE_HELPER_SHA256` at compile time
+and resolves only `windows/cimmeria-prerequisite-worker.exe` from native bundle
+resources. It verifies the resource at resolution and again before admission.
+Supply that same digest when invoking the lane build. Staging/compilation alone
+does not connect setup to the Install button or establish self-contained startup.
+
+## Native shell setup command
+
+`install_command` accepts `prepare_runtime` with schema version 1, a fresh
+operation ID, the observed operation revision and the installed content ID.
+There are no webview-selected paths, executables, hashes, URLs, prefix generations
+or success reports. This command performs no release fetch. Missing/replaced
+resources fail before state initialization; a selected Settings directory alone
+cannot authorize setup. Windows currently returns `platform_unavailable` for
+this Mac compatibility operation; it does not run Wine or a Mac recipe.
+
+Admission uses the durable installed identity and its native-selected runtime
+hash. The retained coordinator receives the independently pinned prerequisite
+helper. Duplicate identical operation IDs do not redispatch. Dispatch failure
+marks the admitted operation uncertain immediately. The existing `cancel`
+command routes by operation ID to the retained prerequisite worker, which
+persists cancellation before signaling it. Setup evidence stays native; the
+webview only observes operation state. Reconciliation UI and automatic Effect
+sequencing are still pending; successful prerequisites cannot enable Play.
+
+Native shell tests cover missing/replaced resources, forged command fields,
+selected-folder refusal, consent preservation, retained dispatch, duplicate
+requests, cancellation routing and durable terminal observation. The dispatch
+fixture uses signed inert content and a missing runtime cache, so it proves
+ownership/failure handling without executing Wine or authenticating game files.
+The opt-in resource-binding test resolves the staged Windows CI worker with the
+compile-time digest and proves no state or worker is created by resolution.
+
+The shell suite passed 21 tests with two opt-in tests ignored
+(`20261004-081707-32965`). The separate compiled resource-binding test passed
+(`20261004-081747-33227`) with the staged x86 artifact:
+
+```bash
+export CIMMERIA_PREREQUISITE_HELPER_SHA256=215e40924ce44d194af63c32da8de3347cfb983440cf554faaf0aec98b694815
+export CIMMERIA_TEST_RESOURCE_DIR="$PWD/crates/launcher/desktop/shell/resources"
+bash tools/build-lane/lane.sh cargo test --locked \
+  --manifest-path crates/launcher/desktop/Cargo.toml \
+  -p cimmeria-launcher-desktop \
+  host::runtime_setup::tests::compiled_prerequisite_resource_resolves_without_starting_work \
+  -- --exact --ignored
+```
+
+No frontend code changed in this native-boundary packet; no new JS or visual UAT
+is claimed. The Effect/UI integration requires its own logic and interaction
+verification. No application window, game or live telemetry endpoint was opened.

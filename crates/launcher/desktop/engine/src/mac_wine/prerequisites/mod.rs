@@ -24,6 +24,9 @@ pub struct Worker {
     pub result: watch::Receiver<Option<Outcome>>,
 }
 impl Worker {
+    pub fn operation_id(&self) -> Uuid {
+        self.id
+    }
     pub fn request_cancel(&self) -> Result<(), IntentError> {
         let mut state = self.state.lock().map_err(|_| StorageError::Io)?;
         state.operations_mut()?.request_cancel(self.id)?;

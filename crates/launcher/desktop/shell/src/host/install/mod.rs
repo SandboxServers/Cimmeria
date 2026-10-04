@@ -1,190 +1,16 @@
 //! Restricted operation IPC. Executables, URLs, manifests and paths stay native.
 use super::*;
 use cimmeria_launcher_engine::{
-    catalog::{CatalogError, VerifiedRelease},
-    install::Progress,
+    catalog::VerifiedRelease,
     install_recovery,
-    install_worker::{self, Outcome, ResumeError},
-    ContractError, EvidenceError, IntentError,
+    install_worker::{self, Outcome},
+    IntentError,
 };
-use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
-#[derive(Debug, Clone, Deserialize)]
-#[serde(tag = "command", rename_all = "snake_case", deny_unknown_fields)]
-pub enum InstallCommand {
-    Inspect {
-        schema_version: u32,
-    },
-    Install {
-        schema_version: u32,
-        operation_id: Uuid,
-        operation_revision: u64,
-        preferences_revision: u64,
-    },
-    Uninstall {
-        schema_version: u32,
-        operation_id: Uuid,
-        operation_revision: u64,
-        installation_id: Uuid,
-        confirmed: bool,
-    },
-    CleanFailed {
-        schema_version: u32,
-        operation_id: Uuid,
-        operation_revision: u64,
-        confirmed: bool,
-    },
-    Cancel {
-        schema_version: u32,
-        operation_id: Uuid,
-    },
-    Resume {
-        schema_version: u32,
-        operation_id: Uuid,
-        operation_revision: u64,
-    },
-    Reconcile {
-        schema_version: u32,
-        operation_id: Uuid,
-        operation_revision: u64,
-    },
-}
-impl InstallCommand {
-    pub fn validate(&self) -> Result<(), JobError> {
-        let version = match self {
-            Self::Inspect { schema_version }
-            | Self::Install { schema_version, .. }
-            | Self::Uninstall { schema_version, .. }
-            | Self::CleanFailed { schema_version, .. }
-            | Self::Cancel { schema_version, .. }
-            | Self::Resume { schema_version, .. }
-            | Self::Reconcile { schema_version, .. } => *schema_version,
-        };
-        if version != 1 {
-            return Err(JobError::UnsupportedSchema);
-        }
-        Ok(())
-    }
-    pub fn needs_release(&self) -> bool {
-        matches!(self, Self::Install { .. })
-    }
-}
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
-#[serde(rename_all = "snake_case")]
-pub enum JobError {
-    UnsupportedSchema,
-    PlatformUnavailable,
-    Io,
-    CorruptState,
-    InvalidDirectory,
-    StaleRevision,
-    Busy,
-    UnknownOperation,
-    IdentityConflict,
-    RecoveryRequired,
-    PersistenceUncertain,
-    ManifestUnavailable,
-    InvalidManifest,
-    SigningKeyUnavailable,
-}
-impl From<StorageError> for JobError {
-    fn from(error: StorageError) -> Self {
-        match error {
-            StorageError::InUse | StorageError::Busy => Self::Busy,
-            StorageError::Io => Self::Io,
-            StorageError::Corrupt | StorageError::TooLarge | StorageError::UnsafeFile => {
-                Self::CorruptState
-            }
-            StorageError::UnsupportedSchema => Self::UnsupportedSchema,
-            StorageError::InvalidDirectory => Self::InvalidDirectory,
-            StorageError::StaleRevision => Self::StaleRevision,
-            StorageError::PersistenceUncertain => Self::PersistenceUncertain,
-        }
-    }
-}
-impl From<ContractError> for JobError {
-    fn from(error: ContractError) -> Self {
-        match error {
-            ContractError::UnsupportedSchema => Self::UnsupportedSchema,
-            ContractError::InvalidRevision | ContractError::StaleRevision => Self::StaleRevision,
-            ContractError::Busy => Self::Busy,
-            ContractError::IdentityConflict => Self::IdentityConflict,
-            ContractError::UnknownOperation => Self::UnknownOperation,
-            ContractError::InvalidTransition => Self::RecoveryRequired,
-            ContractError::PersistenceFailed => Self::Io,
-            ContractError::PersistenceUncertain => Self::PersistenceUncertain,
-        }
-    }
-}
-impl From<IntentError> for JobError {
-    fn from(error: IntentError) -> Self {
-        match error {
-            IntentError::Storage(e) => e.into(),
-            IntentError::Operation(e) => e.into(),
-        }
-    }
-}
-impl From<CatalogError> for JobError {
-    fn from(error: CatalogError) -> Self {
-        match error {
-            CatalogError::Network => Self::ManifestUnavailable,
-            CatalogError::SigningKeyUnavailable => Self::SigningKeyUnavailable,
-            _ => Self::InvalidManifest,
-        }
-    }
-}
-impl From<EvidenceError> for JobError {
-    fn from(error: EvidenceError) -> Self {
-        match error {
-            EvidenceError::Storage(e) => e.into(),
-            EvidenceError::Verification(e) => e.into(),
-            EvidenceError::IdentityMismatch => Self::IdentityConflict,
-        }
-    }
-}
-impl From<ResumeError> for JobError {
-    fn from(error: ResumeError) -> Self {
-        match error {
-            ResumeError::Evidence(e) => e.into(),
-            ResumeError::Intent(e) => e.into(),
-        }
-    }
-}
-
-#[derive(Debug, Serialize)]
-pub struct InstallStatus {
-    pub schema_version: u32,
-    pub native: NativeSnapshot,
-    pub install_supported: bool,
-    pub can_resume: bool,
-    pub can_reconcile: bool,
-    pub can_retry: bool,
-    pub uninstall: Option<cimmeria_launcher_engine::uninstall::Target>,
-    pub progress: Option<JobProgress>,
-    pub outcome: Option<Outcome>,
-}
-#[derive(Debug, Serialize)]
-#[serde(tag = "phase", rename_all = "snake_case")]
-pub enum JobProgress {
-    Download { current: u64, total: u64 },
-    Extraction { current: u64, total: u64 },
-}
-fn progress(value: &Progress) -> JobProgress {
-    const MAX: u64 = 9_007_199_254_740_991;
-    match value {
-        Progress::Downloading {
-            downloaded, total, ..
-        } => JobProgress::Download {
-            current: (*downloaded).min(MAX),
-            total: (*total).min(MAX),
-        },
-        Progress::Extracting { current, total, .. } => JobProgress::Extraction {
-            current: (*current as u64).min(MAX),
-            total: (*total as u64).min(MAX),
-        },
-    }
-}
+mod contract;
+use contract::progress;
+pub use contract::{InstallCommand, InstallStatus, JobError};
 
 impl NativeHost {
     /// Missing or changed native resources reject before any release fetch.
@@ -298,6 +124,16 @@ impl NativeHost {
         ) {
             self.require_install_support()?;
         }
+        if let InstallCommand::PrepareRuntime {
+            operation_id,
+            operation_revision,
+            installation_id,
+            ..
+        } = request
+        {
+            self.prepare_runtime(operation_id, operation_revision, installation_id)?;
+            return self.install_status();
+        }
         let state = self.store()?;
         let mut worker = self.worker.lock().map_err(|_| JobError::Io)?;
         match request {
@@ -349,6 +185,10 @@ impl NativeHost {
                 *worker = None;
             }
             InstallCommand::Cancel { operation_id, .. } => {
+                if self.cancel_runtime(operation_id)? {
+                    drop(worker);
+                    return self.install_status();
+                }
                 let active = worker
                     .as_ref()
                     .filter(|worker| worker.operation_id() == operation_id)
@@ -392,7 +232,9 @@ impl NativeHost {
                 // Recovery supersedes the completed worker's old observation.
                 *worker = None;
             }
-            InstallCommand::Inspect { .. } => unreachable!(),
+            InstallCommand::Inspect { .. } | InstallCommand::PrepareRuntime { .. } => {
+                unreachable!()
+            }
         }
         drop(worker);
         self.install_status()
@@ -439,7 +281,7 @@ fn start_install_with(
 }
 
 #[cfg(test)]
-mod tests;
+pub(super) mod tests;
 
 #[cfg(test)]
 fn start_install(

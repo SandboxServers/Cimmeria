@@ -1,4 +1,5 @@
 use super::*;
+use cimmeria_launcher_engine::{catalog::CatalogError, install::Progress};
 
 #[test]
 fn ipc_rejects_paths_urls_and_forged_outcomes() {
@@ -151,7 +152,7 @@ fn shared_native_owner_outlives_host_while_worker_retains_it() {
     assert!(DesktopState::open(&path).is_ok());
 }
 
-pub(super) fn fixture_release() -> VerifiedRelease {
+pub(crate) fn fixture_release() -> VerifiedRelease {
     fixture_release_padded(0)
 }
 fn fixture_release_padded(padding: usize) -> VerifiedRelease {
