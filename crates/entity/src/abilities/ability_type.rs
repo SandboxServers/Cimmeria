@@ -3,8 +3,10 @@
 //! The column is the Postgres enum `"EAbilityTypes"`
 //! (`db/resources/Abilities/Types/EAbilityTypes.sql`), the same six tokens
 //! the client's `EAbilityType` carries. The server reads it for one rule so
-//! far: an `ABILITY_TYPE_Heal` ability is beneficial (ability-mechanics
-//! D-AB02, [`super::ability_is_beneficial`]).
+//! far: on an `ABILITY_TYPE_Heal` ability a recognised heal script stands in
+//! for the `EF_Beneficial_Effect` bit (ability-mechanics D-AB02,
+//! [`super::ability_is_beneficial`]). The type alone never makes an ability
+//! beneficial: empty, debuff or damaging Heal abilities stay non-beneficial.
 
 /// An ability's `type_id`. [`AbilityType::Undefined`] is the default, so a
 /// hand-built test def is neither a heal nor anything else.

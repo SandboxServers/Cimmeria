@@ -3,8 +3,9 @@
 //!
 //! `beneficial.rs` builds its defs by hand; this guard takes the loaders'
 //! output, so it also fails if `load_ability_defs` stops reading `type_id`
-//! (597's effect 659 carries no `EF_Beneficial_Effect` bit, so only the type
-//! makes it beneficial).
+//! (597's effect 659 carries no `EF_Beneficial_Effect` bit: the Heal type lets
+//! its `HealFocus` script stand in for the bit; empty, debuff or damaging Heal
+//! abilities stay non-beneficial).
 
 use cimmeria_entity::abilities::{ability_is_beneficial, AbilityType, TARGET_SELF};
 
@@ -34,7 +35,7 @@ async fn seeded_starter_heals_load_as_beneficial_live_db() {
     assert_eq!(
         effects[&659].flags & cimmeria_entity::abilities::EF_BENEFICIAL_EFFECT,
         0,
-        "659 has no beneficial bit: the type is what makes 597 beneficial"
+        "659 has no beneficial bit: on Heal-typed 597 its heal script stands in for it"
     );
 
     // 592 Pistol Shot and 559 Auto Attack are attacks; 2228 is Heal-typed but

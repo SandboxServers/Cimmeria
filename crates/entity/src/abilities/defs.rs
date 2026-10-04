@@ -159,8 +159,9 @@ pub struct AbilityDef {
     pub required_ammo: i32,
     pub event_set_id: Option<i32>,
     pub velocity: f32,
-    /// `resources.abilities.type_id`. Only `Heal` changes anything today:
-    /// it makes the ability beneficial ([`super::ability_is_beneficial`]).
+    /// `resources.abilities.type_id`. Only `Heal` changes anything today: it
+    /// lets a heal script stand in for the beneficial bit
+    /// ([`super::ability_is_beneficial`]); it is never enough on its own.
     pub type_id: super::AbilityType,
 }
 
