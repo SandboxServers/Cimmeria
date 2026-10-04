@@ -33,3 +33,20 @@ test('launcher minimum prevents game Apply and background inspection keeps check
   finish();await pending;
  }finally{finish();await app.dispose();}
 });
+test('rollback binds both signed identities even when native revision is unchanged',async()=>{
+ const status={...initial(),offer:null,maintenance:{operation_id:'completed',directory:'/fixture',previous_digest:'old',target_digest:'new',recovery:false,discard:false,rollback:true,backup:'retained'}};
+ const calls:string[]=[];
+ const {document,window}=parseHTML(html);
+ const app=mountGameUpdate(document,async(_,{request}:any)=>{calls.push(request.command);return status;});
+ const click=async(id:string)=>{document.getElementById(id)!.dispatchEvent(new window.Event('click'));await app.settled();await tick();};
+ try{
+  await app.ready;await tick();await click('rollback-game-update');
+  assert.equal(document.getElementById('game-update-review')!.hidden,false);
+  assert.match(document.getElementById('game-update-consequences')!.textContent!,/does not restore local modifications/);
+  status.maintenance.previous_digest='changed-signed-release';
+  await click('confirm-game-update');
+  assert(!calls.includes('rollback'),'changed signed rollback destination invalidates confirmation');
+  assert.equal(document.getElementById('game-update-review')!.hidden,true);
+  assert.match(document.getElementById('game-update-status')!.textContent!,/could not be confirmed/);
+ }finally{await app.dispose();}
+});

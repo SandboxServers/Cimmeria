@@ -126,7 +126,12 @@ impl NativeHost {
                     MaintenanceAction::Cleanup => {
                         update::test_support::cleanup(state, id, revision)
                     }
-                    _ => return Err(JobError::RecoveryRequired),
+                    MaintenanceAction::Abandon => {
+                        update::test_support::abandon(state, id, revision)
+                    }
+                    MaintenanceAction::Discard => {
+                        update::test_support::discard(state, id, revision)
+                    }
                 }
                 .map_err(JobError::from)?
             } else {

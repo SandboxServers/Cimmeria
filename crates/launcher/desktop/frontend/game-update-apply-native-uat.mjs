@@ -19,11 +19,12 @@ const send=request=>new Promise((resolve,reject)=>{
 });
 const {document,window}=parseHTML(await readFile(new URL('./ui/index.html',import.meta.url),'utf8'));
 const get=id=>document.getElementById(id),calls=[];
-let loseApply=true;
+let loseApply=true,loseRollback=true;
 const app=mountGameUpdate(document,async(name,args)=>{
  assert.equal(name,'game_update_command');calls.push(args.request);
  const result=await send(args.request);
  if(args.request.command==='apply'&&loseApply){loseApply=false;throw 'transport';}
+ if(args.request.command==='rollback'&&loseRollback){loseRollback=false;throw 'transport';}
  return result;
 });
 const tick=()=>new Promise(resolve=>setTimeout(resolve,10));
@@ -46,6 +47,19 @@ try {
  assert.deepEqual(completed.native.preferences,initial.native.preferences);
  assert.equal(get('cleanup-game-update').hidden,false);
  assert.equal(get('rollback-game-update').hidden,false);
+ await send({command:'reopen'});await app.refresh();await tick();
+ await click('rollback-game-update');
+ assert.match(get('game-update-consequences').textContent,/does not restore local modifications/);
+ assert.equal(calls.filter(x=>x.command==='rollback').length,0);
+ await click('confirm-game-update');
+ assert.match(get('game-update-status').textContent,/could not be confirmed/);
+ const rolledBack=await send({command:'wait'});
+ assert.equal(rolledBack.native.operation.operation.state,'succeeded');
+ assert.equal(rolledBack.maintenance.target_digest,initial.offer.current_digest);
+ assert.equal(rolledBack.maintenance.previous_digest,initial.offer.target_digest);
+ assert.notEqual(rolledBack.maintenance.operation_id,completed.maintenance.operation_id);
+ await send({command:'reopen'});await app.refresh();await tick();
+ assert.equal(calls.filter(x=>x.command==='rollback').length,1,'lost rollback reply never redispatches');
  await click('cleanup-game-update');
  assert.match(get('game-update-consequences').textContent,/Permanently remove/);
  await click('dismiss-game-update');
@@ -57,5 +71,5 @@ try {
  assert.equal(reopened.maintenance.backup,'removed');
  assert.equal(reopened.native.operation.operation.state,'succeeded');
  assert.equal(calls.filter(x=>x.command==='apply').length,1,'lost apply reply never redispatches');
- console.log('Game Update Apply UAT passed: rendered confirmation, signed identities, actual download/replacement, lost-reply inspection, confirmed cleanup, persistent reopen. Actual game, platform-specific helpers, rollback execution and visual webview not covered.');
+ console.log('Game Update Apply UAT passed: rendered confirmation, signed identities, actual download/replacement, lost-reply inspection, confirmed signed rollback with lost reply, confirmed cleanup, persistent reopen. Actual game, platform-specific helpers and visual webview not covered.');
 } finally {await app.dispose();child.stdin.end();await exit;}
