@@ -22,6 +22,7 @@ use std::{
 use tokio_util::sync::CancellationToken;
 use uuid::Uuid;
 pub(crate) mod app_identity;
+pub(crate) mod desktop_host;
 pub(crate) mod paths;
 mod prefix;
 use crate::storage::extraction_work::ExtractionWork;

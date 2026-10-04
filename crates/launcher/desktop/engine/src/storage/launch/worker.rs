@@ -138,9 +138,11 @@ async fn execute(
         return Ok(Observation::NotStarted);
     }
     let prepared = plan.clone();
-    let setup = tokio::task::spawn_blocking(move || prepare(&prepared, &root))
-        .await
-        .map_err(|_| StorageError::Io)?;
+    let stop = cancel.clone();
+    let setup =
+        tokio::task::spawn_blocking(move || prepare(&prepared, &root, &|| stop.is_cancelled()))
+            .await
+            .map_err(|_| StorageError::Io)?;
     let Ok((spec, request, _ownership)) = setup else {
         return Ok(Observation::NotStarted);
     };
@@ -171,12 +173,13 @@ enum Ownership {
     },
     #[cfg(target_os = "macos")]
     Wine {
-        _resources: crate::mac_wine::prerequisites::prefix::Resources,
+        _ownership: wine::Ownership,
     },
 }
 fn prepare(
     plan: &Plan,
     root: &Path,
+    cancelled: &dyn Fn() -> bool,
 ) -> Result<
     (
         crate::helper_supervisor::HelperCommand,
@@ -188,19 +191,19 @@ fn prepare(
     if plan.runtime.is_some() {
         #[cfg(target_os = "macos")]
         {
-            let (spec, request, resources) = wine::prepare(plan, root)?;
+            let (spec, request, ownership) = wine::prepare(plan, root, cancelled)?;
             return Ok((
                 spec,
                 request,
                 Ownership::Wine {
-                    _resources: resources,
+                    _ownership: ownership,
                 },
             ));
         }
         #[cfg(not(target_os = "macos"))]
         return Err(StorageError::Corrupt.into());
     }
-    let _ = root;
+    let _ = (root, cancelled);
     if !cfg!(windows) {
         return Err(StorageError::Corrupt.into());
     }
@@ -288,7 +291,7 @@ mod tests {
         // Windows exercises the dispatch preparation entry point; other hosts
         // exercise the same native preparation without enabling native dispatch.
         let prepared = if cfg!(windows) {
-            prepare(&plan, root.path())
+            prepare(&plan, root.path(), &|| false)
         } else {
             prepare_native(&plan)
         };

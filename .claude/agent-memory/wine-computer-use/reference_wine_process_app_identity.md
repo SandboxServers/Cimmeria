@@ -8,7 +8,8 @@ type: reference
 
 Observed on macOS 26.6.1 with the pinned WoWSilicon runtime (Wine fork commit
 `37540b5d`), using native fixtures and Wine's Notepad from an isolated runtime
-clone and throwaway prefix. Nothing here was observed with the game.
+clone and throwaway prefix. Only the item dated with the game was observed with
+the game.
 
 - **Windows belong to the Wine guest process.** A stock guest registers with
   Launch Services as `wine`: no bundle identifier, no bundle URL. A bundled
@@ -31,9 +32,28 @@ clone and throwaway prefix. Nothing here was observed with the game.
 - **`LSUIElement` is required.** Without it the windowless `explorer.exe`
   desktop host becomes a second Foreground application with the same
   identifier. With it, only a process that shows a window is promoted.
-- **Two processes still share the identifier**, and `explorer.exe` registers
-  first. A tool that takes the first running application for a bundle
-  identifier gets no window.
+- **Staged loader alone: two processes share the identifier**, and
+  `explorer.exe` registers first. Seen with the game on 2026-10-04; the
+  computer-use tool's `getApp` then timed out by identifier and by path.
+- **The desktop host takes the loader of whoever asks first.** Wine starts
+  `explorer.exe /desktop` from the first process that needs the desktop window
+  (`get_desktop_window`). A stock-loader keeper started before the staged
+  launch leaves exactly one application with the identifier, the window owner.
+- **A desktop closes one second after its last user leaves**
+  (`remove_desktop_user`). A keeper blocked on its input therefore needs no
+  cleanup: closing the pipe ends it and Wine ends the session. An
+  `explorer.exe /desktop` started directly never closes if no user ever joins.
+- **Keeper that works:** `cmd /d /c "rundll32.exe && echo READY && pause"` from
+  the stock loader. Bare `rundll32` creates a hidden window and exits; `cmd /c`
+  waits for it. `start /wait X && echo` still echoes when X is missing. A
+  console program started by `explorer.exe /desktop <command>` gets a visible
+  console window, not the caller's pipes.
+- **Creating or updating a prefix starts the desktop host** from the first
+  loader (its progress window), whatever else is done. A test of the keeper
+  must initialise the prefix first or it passes without the keeper.
+- **A window on an inactive Space is missing from the accessibility window
+  list.** With another application's full-screen Space active, the game and a
+  fixture Notepad both listed zero windows; Notepad listed one once visible.
 - **`lsregister -f` on a bundle under `/tmp` does not make it resolvable** by
   identifier; under the user Library it does.
 - **The runtime tree digest forbids adding files to the runtime**, so an

@@ -173,12 +173,57 @@ reason to the launcher's standard error. The environment, the 30 FPS
 `DXVK_FRAME_RATE` limit, the helper protocol and host supervision are the same
 on both paths: the host PID is still the real Wine process.
 
-`LSUIElement` matters. Every Wine process of the session shares the bundle.
+`LSUIElement` matters. Every Wine process started from the bundle shares it.
 Wine's Mac driver promotes a process to a regular application only when it
 shows a window
 ([`cocoa_app.m`](https://github.com/WineAndAqua/wine/blob/37540b5d94ac1c86e2599ef55d7f3a15e3237ce8/dlls/winemac.drv/cocoa_app.m#L312));
-without the key the windowless desktop host `explorer.exe` also becomes a
+without the key a windowless Wine process from the bundle also becomes a
 foreground application with the same identifier.
+
+### The desktop host stays on the stock loader
+
+Every Wine desktop has one windowless `explorer.exe /desktop` process. Wine
+starts it from the loader of the first process that asks for the desktop window
+([`get_desktop_window`](https://github.com/WineAndAqua/wine/blob/37540b5d94ac1c86e2599ef55d7f3a15e3237ce8/dlls/win32u/winstation.c#L790-L898)).
+When that process is the game, the desktop host runs from the bundle and is a
+second running application with the game's identifier. It also registers first.
+The first game run with the opt-in showed exactly that, and a tool that asked
+for the application by identifier or by bundle path timed out.
+
+So before the launch worker starts, Play starts a keeper from the stock loader
+(`engine/src/mac_wine/desktop_host.rs`), with the game's environment:
+
+```text
+<runtime>/bin/wine C:\windows\system32\cmd.exe /d /c
+  "C:\windows\system32\rundll32.exe && echo CIMMERIA-DESKTOP-READY && pause"
+```
+
+- `rundll32` with no arguments creates its hidden owner window and exits.
+  Creating a window makes Wine start the desktop host and wait for it. The
+  desktop host therefore runs from the stock loader: name `wine`, no bundle
+  identifier.
+- `cmd /c` waits for `rundll32`, prints the ready line only if it succeeded,
+  and then blocks in `pause`. Play waits up to 60 seconds for that line. The
+  wait is part of preparation, so the operation is still Starting, and a
+  cancellation ends the wait at once.
+- The keeper holds the desktop open until the launch worker's observation
+  ends. Wine closes a desktop one second after its last user leaves
+  ([`remove_desktop_user`](https://github.com/WineAndAqua/wine/blob/37540b5d94ac1c86e2599ef55d7f3a15e3237ce8/server/winstation.c#L446-L456)),
+  so nothing ever stops the desktop host. A running game keeps it; a game that
+  never started does not.
+- The keeper ends when its input closes. That is how Play releases it, and it
+  also happens when the launcher exits or dies, so no Wine process is orphaned.
+  A keeper that has not ended ten seconds after release is killed. It is a
+  windowless `cmd`, never the game.
+- If the keeper cannot start, ends early or does not report in time, Play waits
+  for it to end and uses the stock loader, as if the opt-in were off. The staged
+  loader is never used without a stock desktop host: two applications with one
+  identifier are worse than none.
+
+The keeper does not change which process the launcher supervises, the helper
+protocol, the environment or the 30 FPS limit. Session start-up that used to
+happen inside the launch worker's 60-second first reply now happens under the
+keeper's own 60-second bound, before the worker starts.
 
 What was observed on macOS 26.6.1 with the pinned runtime, never with the game:
 
@@ -186,14 +231,26 @@ What was observed on macOS 26.6.1 with the pinned runtime, never with the game:
 |---|---|
 | Stock loader, Wine Notepad | name `wine`, no bundle identifier, no bundle |
 | Foreground wrapper application starting a separate window-owning process (native fixture) | wrapper has the identifier and zero windows; the child owns the window and has no identifier |
-| Staged bundle loader, 32-bit `cmd` starting 32-bit Notepad | Notepad process is `Stargate Worlds`, `app.cimmeria.stargate-worlds`, type Foreground, one accessibility window; `explorer.exe` has the same identifier, type UIElement, no accessibility window |
+| Staged bundle loader alone, 32-bit `cmd` starting 32-bit Notepad | Two running applications have the bundle identifier: `explorer.exe /desktop`, type UIElement, registered first, and Notepad, type Foreground, which owns the window |
+| Stock keeper first, then the same staged launch | One running application has the bundle identifier: Notepad, type Foreground, one titled window and one accessibility window. `explorer.exe /desktop` is `wine`, no identifier, type BackgroundOnly |
+| Same, keeper released while Notepad runs | The keeper ends; the desktop host and Notepad stay |
+| Same, Notepad then closed | The desktop host ends within two seconds and `wineserver` within five; nothing is left |
+| Keeper alone, then released | The same teardown; no application of type Foreground appeared at any point |
 | `lsregister -f` on a fixture bundle under the user Library | `NSWorkspace` resolves the identifier to the bundle path; the same bundle under `/tmp` does not resolve |
+| The game with the opt-in, before the keeper existed (2026-10-04) | `explorer.exe` UIElement and `SGW.exe` Foreground, both `app.cimmeria.stargate-worlds`; no x87 accelerator was staged |
 
-The last case is the ignored engine test
-`real_wine_window_owner_carries_the_bundle_identity`. It needs
+The stock-keeper rows are the ignored engine test
+`real_wine_window_owner_alone_carries_the_bundle_identity`. It uses the
+production staging and keeper code with a bundle labelled as a fixture
+(`app.cimmeria.fixture.wine-identity`), never the game's identifier. It needs
 `CIMMERIA_WINE_RUNTIME_CLONE` set to a copy of the managed runtime directory,
-uses a throwaway prefix, shows a Notepad window and stops only that prefix's
-wineserver:
+uses a throwaway prefix and shows a Notepad window. It asserts that exactly one
+running application has the identifier, that it is the 32-bit Notepad started
+by a 32-bit parent, that it owns a window, that the desktop host has no
+identifier, and that the Wine session ends by itself once Notepad closes and
+the keeper is released. Without the `rundll32` step it fails with two
+applications. It initialises the prefix first, because creating a prefix
+starts the desktop host from the first loader whatever the keeper does.
 
 ```bash
 CIMMERIA_WINE_RUNTIME_CLONE=<copy of the runtime directory> \
@@ -209,12 +266,18 @@ Still unproved, and the reason this is opt-in:
 - The optional x87 accelerator. Wine executes `ROSETTA_X87_PATH` in place of the
   loader for 32-bit processes; whether the process that ends up owning the
   window still runs from the bundle has not been observed.
-- Whether a given automation tool binds the window owner. Two running
-  processes share the identifier and the windowless one registers first. A tool
-  that takes the first match instead of the regular application gets no window.
+- Whether the automation tool that timed out now binds the game. With the
+  keeper only one running application has the identifier, but that was observed
+  with Notepad, not with the game or the tool. Separately, while the active
+  Space was another application's full-screen Space, the accessibility window
+  lists of both the game and a fixture Notepad were empty, and the Notepad's
+  list had one window once its Space was active. That may be a second cause.
+- The desktop host and the game running from different paths of the same
+  loader bytes, with the game itself: display mode changes, clipboard and input.
+  Notepad showed no difference.
 
-To roll back, start the launcher without the variable. The staged bundle is
-inert; delete `wine-app-identity/` under the state root and run
+To roll back, start the launcher without the variable. No keeper is started
+then. The staged bundle is inert; delete `wine-app-identity/` under the state root and run
 `lsregister -u` on the bundle path to drop the registration. Opening the bundle
 directly runs the loader with no arguments, which prints its usage and exits
 without creating a prefix.

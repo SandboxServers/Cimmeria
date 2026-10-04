@@ -6,63 +6,83 @@
 //! only when its real path is `<bundle>.app/Contents/MacOS/`. This stages such a
 //! bundle from the verified runtime: real copies of the loader directory, links back
 //! to the runtime for everything else. A separate wrapper process never owns a window.
-use super::*;
+use super::{desktop_host::DesktopHost, *};
 use std::{
     ffi::OsStr,
     fs, io,
     os::unix::fs::{symlink, OpenOptionsExt, PermissionsExt},
 };
 
-pub(crate) const BUNDLE_IDENTIFIER: &str = "app.cimmeria.stargate-worlds";
-pub(crate) const DISPLAY_NAME: &str = "Stargate Worlds";
+struct Identity {
+    identifier: &'static str,
+    name: &'static str,
+}
+const GAME: Identity = Identity {
+    identifier: "app.cimmeria.stargate-worlds",
+    name: "Stargate Worlds",
+};
 /// Set to `1` in the launcher's own environment. Never read from the webview.
 const OPT_IN: &str = "CIMMERIA_WINE_APP_IDENTITY";
 const DIRECTORY: &str = "wine-app-identity";
-const BUNDLE: &str = "Stargate Worlds.app";
 const UNIX_LIBRARIES: &str = "x86_64-unix";
 const LOADER: &str = "wine";
 const LSREGISTER: &str = "/System/Library/Frameworks/CoreServices.framework/Frameworks/LaunchServices.framework/Support/lsregister";
 
-/// The loader Play executes. Called only after the runtime is verified and locked.
-/// Anything short of a fully staged bundle keeps the stock loader, so Play never
-/// depends on this.
-pub(crate) fn loader(runtime: &Path, state_root: &Path) -> PathBuf {
+/// What Play executes, and what must outlive it. Called only after the runtime is
+/// verified and locked. Anything short of a staged bundle with a stock desktop host
+/// keeps the stock loader, so Play never depends on this.
+pub(crate) fn launch(
+    runtime: &Path,
+    state_root: &Path,
+    environment: &BTreeMap<OsString, OsString>,
+    cancelled: &dyn Fn() -> bool,
+) -> (PathBuf, Option<DesktopHost>) {
     let requested = requested(std::env::var_os(OPT_IN).as_deref());
-    select(requested, runtime, state_root, register)
+    select(requested, runtime, state_root, register, |stock| {
+        DesktopHost::start(stock, environment, cancelled, desktop_host::LIMITS)
+    })
 }
 
 fn requested(value: Option<&OsStr>) -> bool {
     value == Some(OsStr::new("1"))
 }
 
-fn select(
+fn select<Host>(
     requested: bool,
     runtime: &Path,
     state_root: &Path,
     register: impl FnOnce(&Path) -> io::Result<()>,
-) -> PathBuf {
+    host: impl FnOnce(&Path) -> io::Result<Host>,
+) -> (PathBuf, Option<Host>) {
     let stock = runtime.join("bin/wine");
     if !requested {
-        return stock;
+        return (stock, None);
     }
-    match stage(state_root, runtime) {
-        Ok(bundle) => {
-            // Launch Services lookups by name or identifier need the registration; the
-            // running process has its identity without it.
-            if let Err(error) = register(&bundle) {
-                eprintln!("{OPT_IN}: bundle staged but not registered: {error}");
-            }
-            bundle.join("Contents/MacOS").join(LOADER)
-        }
+    let bundle = match stage(state_root, runtime, &GAME) {
+        Ok(bundle) => bundle,
         Err(error) => {
             eprintln!("{OPT_IN}: using the stock Wine loader: {error}");
-            stock
+            return (stock, None);
+        }
+    };
+    // Launch Services lookups by name or identifier need the registration; the
+    // running process has its identity without it.
+    if let Err(error) = register(&bundle) {
+        eprintln!("{OPT_IN}: bundle staged but not registered: {error}");
+    }
+    // Without a stock desktop host the game starts one from the bundle, and two
+    // running applications share the identifier. That is worse than none.
+    match host(&stock) {
+        Ok(host) => (bundle.join("Contents/MacOS").join(LOADER), Some(host)),
+        Err(error) => {
+            eprintln!("{OPT_IN}: using the stock Wine loader: {error}");
+            (stock, None)
         }
     }
 }
 
 /// Rebuilds the bundle from the runtime and returns its path.
-fn stage(state_root: &Path, runtime: &Path) -> io::Result<PathBuf> {
+fn stage(state_root: &Path, runtime: &Path, identity: &Identity) -> io::Result<PathBuf> {
     let libraries = runtime.join("lib/wine");
     let unix = libraries.join(UNIX_LIBRARIES);
     plain_directory(&unix)?;
@@ -77,11 +97,12 @@ fn stage(state_root: &Path, runtime: &Path) -> io::Result<PathBuf> {
     let staging = tempfile::Builder::new()
         .prefix(".staging-")
         .tempdir_in(&root)?;
-    let bundle = staging.path().join(BUNDLE);
+    let name = format!("{}.app", identity.name);
+    let bundle = staging.path().join(&name);
     let contents = bundle.join("Contents");
     let macos = contents.join("MacOS");
     fs::create_dir_all(&macos)?;
-    plist::Value::Dictionary(info())
+    plist::Value::Dictionary(info(identity))
         .to_file_xml(contents.join("Info.plist"))
         .map_err(io::Error::other)?;
     for entry in fs::read_dir(&unix)? {
@@ -115,7 +136,7 @@ fn stage(state_root: &Path, runtime: &Path) -> io::Result<PathBuf> {
         }
     }
     symlink(&data, bundle.join("share"))?;
-    let destination = root.join(BUNDLE);
+    let destination = root.join(name);
     match fs::symlink_metadata(&destination) {
         // Removes links inside the old bundle without following them.
         Ok(existing) if existing.is_dir() => fs::remove_dir_all(&destination)?,
@@ -127,17 +148,17 @@ fn stage(state_root: &Path, runtime: &Path) -> io::Result<PathBuf> {
     Ok(destination)
 }
 
-fn info() -> plist::Dictionary {
+fn info(identity: &Identity) -> plist::Dictionary {
     let text = |value: &str| plist::Value::String(value.into());
     plist::Dictionary::from_iter([
-        ("CFBundleIdentifier", text(BUNDLE_IDENTIFIER)),
-        ("CFBundleName", text(DISPLAY_NAME)),
-        ("CFBundleDisplayName", text(DISPLAY_NAME)),
+        ("CFBundleIdentifier", text(identity.identifier)),
+        ("CFBundleName", text(identity.name)),
+        ("CFBundleDisplayName", text(identity.name)),
         ("CFBundleExecutable", text(LOADER)),
         ("CFBundlePackageType", text("APPL")),
         ("CFBundleInfoDictionaryVersion", text("6.0")),
-        // Every Wine process shares this bundle. Only one that shows a window is
-        // promoted by Wine's Mac driver; the rest stay out of the Dock as before.
+        // Every Wine process started from this bundle shares it. Only one that shows
+        // a window is promoted by Wine's Mac driver; the rest stay out of the Dock.
         ("LSUIElement", plist::Value::Boolean(true)),
     ])
 }
@@ -186,6 +207,9 @@ fn register(bundle: &Path) -> io::Result<()> {
     Ok(())
 }
 
+#[cfg(test)]
+#[path = "app_identity_real_wine_tests.rs"]
+mod real_wine_tests;
 #[cfg(test)]
 #[path = "app_identity_tests.rs"]
 mod tests;
