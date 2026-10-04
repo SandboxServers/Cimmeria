@@ -169,3 +169,7 @@ Windows-helper ownership requirements. It does not establish game compatibility.
 - [Minimum-launcher native admission gates](worknotes/updater-minimum-admission.md)
 - [Observability discovery](worknotes/observability-discovery.md)
 - [Fresh observability implementation assignment](worknotes/observability-implementation-assignment.md)
+
+- [Verified existing-user adoption contract](worknotes/adoption-contract-audit.md)
+- [Signed updater implementation and evidence](worknotes/signed-updater.md)
+- [Desktop updater contract](../../../../crates/launcher/desktop/docs/updater.md)

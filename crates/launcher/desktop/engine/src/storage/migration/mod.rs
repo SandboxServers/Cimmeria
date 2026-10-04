@@ -82,6 +82,7 @@ impl DesktopState {
         expected_revision: u64,
         write: impl FnOnce(&Path, &str, &Record) -> Result<(), StorageError>,
     ) -> Result<LegacyImport, MigrationError> {
+        self.ensure_updater_idle()?;
         self.migration_idle()?;
         let source = source::canonical(source)?;
         if source.launcher_directory == self.directory.root {

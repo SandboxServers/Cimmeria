@@ -303,6 +303,20 @@ async fn updater_native_uat_bridge() {
                     state.mark_launcher_update_verifying(&mut ticket)?;
                     state.finish_launcher_update_prepare(&config, ticket, bytes)?;
                 }
+                "advance_operation" => {
+                    let id = Uuid::new_v4();
+                    let revision = state.operations().snapshot().revision;
+                    let operations = state.operations_mut().unwrap();
+                    operations
+                        .begin(id, crate::OperationKind::Launch, [1; 32], revision)
+                        .unwrap();
+                    operations
+                        .observe(id, crate::OperationState::Running)
+                        .unwrap();
+                    operations
+                        .observe(id, crate::OperationState::Succeeded)
+                        .unwrap();
+                }
                 "tamper" => {
                     std::fs::write(root.path().join(ARTIFACT), b"tampered").unwrap();
                 }
@@ -358,4 +372,95 @@ async fn transport_deadline_and_stream_cap_reject_responses() {
         .unwrap_err(),
         Error::Timeout
     );
+}
+
+#[test]
+fn active_updater_refuses_early_mutation_but_preserves_consent_control() {
+    use crate::{
+        launch,
+        migration::{LegacySource, MigrationError},
+        IntentError,
+    };
+    fn files(path: &std::path::Path) -> std::collections::BTreeMap<String, Vec<u8>> {
+        let mut out = std::collections::BTreeMap::new();
+        for entry in std::fs::read_dir(path).unwrap() {
+            let entry = entry.unwrap();
+            assert!(entry.file_type().unwrap().is_file());
+            out.insert(
+                entry.file_name().to_str().unwrap().to_owned(),
+                std::fs::read(entry.path()).unwrap(),
+            );
+        }
+        out
+    }
+    let root = tempfile::tempdir().unwrap();
+    let state_path = root.path().join("state");
+    let destination = root.path().join("game");
+    let mut state = DesktopState::open(&state_path).unwrap();
+    state
+        .save_preferences(Some(destination.clone()), true, 0)
+        .unwrap();
+    let (config, _) = fixture("1.1.0");
+    let _ticket = state
+        .begin_launcher_update_check(Some(&config), 0, 0)
+        .unwrap();
+    let before = files(&state_path);
+    let seed = crate::install_worker::fixtures::archive(true);
+    let release = crate::install_worker::fixtures::verified(&seed);
+    let id = Uuid::new_v4();
+    let busy = IntentError::Storage(StorageError::Busy);
+    assert_eq!(
+        state.admit_install(id, 0, 1, &release, vec![]).unwrap_err(),
+        busy
+    );
+    assert!(matches!(
+        state.admit_repair(id, 0, id, true),
+        Err(IntentError::Storage(StorageError::Busy))
+    ));
+    assert_eq!(state.uninstall(id, 0, id, true), Err(busy));
+    assert!(matches!(
+        state.admit_runtime_setup(id, 0, id, [0; 32], [0; 32]),
+        Err(IntentError::Storage(StorageError::Busy))
+    ));
+    assert_eq!(state.clean_failed_install(id, 0), Err(busy));
+    let inert = root.path().join("inert");
+    std::fs::write(&inert, b"").unwrap();
+    let artifact = launch::Artifact::open(
+        inert.canonicalize().unwrap(),
+        "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    )
+    .unwrap();
+    assert_eq!(
+        state
+            .admit_launch(
+                id,
+                0,
+                id,
+                launch::Resources {
+                    helper: artifact,
+                    client_patches: None,
+                    graphics: None
+                }
+            )
+            .unwrap_err(),
+        busy
+    );
+    let source = LegacySource {
+        launcher_directory: root.path().join("legacy"),
+        game_directory: root.path().join("old-game"),
+    };
+    assert!(matches!(
+        state.import_legacy(&source, "unused", 1),
+        Err(MigrationError::Storage(StorageError::Busy))
+    ));
+    assert_eq!(
+        state.save_preferences(Some(root.path().join("other")), true, 1),
+        Err(StorageError::Busy)
+    );
+    assert_eq!(files(&state_path), before);
+    assert!(!destination.exists());
+    let saved = state.save_preferences(Some(destination), false, 1).unwrap();
+    assert!(!saved.launcher_summary_consent);
+    assert_eq!(saved.revision, 2);
+    assert_eq!(state.operations().snapshot().revision, 0);
 }

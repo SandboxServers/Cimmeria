@@ -29,6 +29,7 @@ impl DesktopState {
     /// to the inspected attempt. Repeating after a lost reply is safe only after
     /// inspecting state again; this method never admits a replacement install.
     pub fn clean_failed_install(&mut self, id: Uuid, revision: u64) -> Result<(), IntentError> {
+        self.ensure_updater_idle()?;
         if self.requires_reopen() {
             return Err(StorageError::PersistenceUncertain.into());
         }

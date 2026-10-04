@@ -92,3 +92,20 @@ player-facing wording changes.
 Excluded: real production endpoint/key, publication/deployment, release signing,
 packaged visuals/IPC, Windows-native behavior, package apply/install, relaunch,
 rollback and healthy-start confirmation. No production keys were generated.
+
+## Coordinator integration
+
+The early admission and cleanup guards are now wired, with a regression checking
+that blocked calls leave state bytes and the destination unchanged. Summary
+consent can still be withdrawn while an update owns the mutation gate. Settings
+controls and application composition are wired. Independent review found a stale
+updater revision after other operations; the launch observer's existing revision
+callback now refreshes updater state without an unconditional refresh cycle.
+
+Integrated checks: engine 335 passed/16 ignored, shell 40 passed/6 ignored,
+frontend 53 passed and build passed; strict engine/shell all-target Clippy passed.
+The native signed-feed/disk UAT now mounts the actual application composition
+and verifies downloading after another native journal operation without manual
+recheck. Other view payloads are inert fixtures; packaged visuals and Apply remain
+outstanding. A later scoped updater rerun passed 10 tests with its one opt-in
+bridge exercised separately by that UAT.

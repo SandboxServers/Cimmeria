@@ -57,6 +57,7 @@ impl DesktopState {
         installation_id: Uuid,
         confirmed: bool,
     ) -> Result<Admission, IntentError> {
+        self.ensure_updater_idle()?;
         if !confirmed {
             return Err(ContractError::InvalidTransition.into());
         }

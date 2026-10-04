@@ -117,6 +117,7 @@ impl DesktopState {
             u64,
         ) -> Result<bool, ContractError>,
     ) -> Result<InstallAdmission, IntentError> {
+        self.ensure_updater_idle()?;
         let AdmissionRequest {
             id,
             operation_revision: expected_operation_revision,

@@ -10,7 +10,7 @@
     "uat:install": "esbuild src/install-view.ts --bundle --platform=node --format=esm --packages=external --outfile=.test-build/install-view.mjs && node install-uat.mjs",
     "uat:launch": "esbuild src/launch-view.ts --bundle --platform=node --format=esm --packages=external --outfile=.test-build/launch-view.mjs && node launch-uat.mjs",
     "uat:migration": "esbuild src/migration-view.ts --bundle --platform=node --format=esm --packages=external --outfile=.test-build/migration-view.mjs && node migration-native-uat.mjs",
-    "uat:updater": "esbuild src/updater-view.ts --bundle --platform=node --format=esm --packages=external --outfile=.test-build/updater-view.mjs && node updater-native-uat.mjs"
+    "uat:updater": "esbuild src/updater-view.ts src/composition.ts --bundle --platform=node --format=esm --packages=external --outdir=.test-build --out-extension:.js=.mjs && node updater-native-uat.mjs"
   },
   "dependencies": {
     "effect": "4.0.0"

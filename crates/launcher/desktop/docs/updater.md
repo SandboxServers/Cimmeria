@@ -44,8 +44,10 @@ finishes before an atomic native staging write.
 `launcher-update.json` records revisioned checking, available, downloading,
 verifying, ready and failed states. It shares DesktopState's process lock and
 mutex. Updater admission rejects every nonterminal game/setup operation,
-including reconciliation-required. Other mutation admissions must call
-`ensure_updater_idle()` before writing any plan or changing files. A dropped
+including reconciliation-required. Install, Play, Repair, uninstall, runtime setup, legacy import and failed-install
+cleanup call `ensure_updater_idle()` before preparatory writes. Repair-backup
+cleanup uses the same gate. Directory changes are blocked while updates run;
+summary consent remains editable. New mutation paths must preserve this rule. A dropped
 renderer request does not cancel the native task. An interrupted process is not
 a successful update: reopen changes an in-progress phase to failed/interrupted.
 Ready inspection rereads and reverifies the native staging file, including after
@@ -68,3 +70,13 @@ rollback. Apply/recovery work must retain native ownership until safe handoff,
 reverify saved bytes, record durable intent, and prove failure recovery on each
 platform. Production key custody, updater-compatible CLI signing, release
 publication, OS signing/notarization and release ordering remain separate gates.
+
+## Settings integration
+
+Settings provides Check, Download and Recheck controls. The application owns all
+views for its lifetime; native operation-revision changes refresh updater
+capabilities, so a completed game/setup operation does not strand an old offer
+behind a stale revision. No update mutation is replayed automatically. The
+composition UAT mounts the real views, completes a native fixture journal
+operation while an offer is displayed, then downloads once using the refreshed
+revision. Non-updater view payloads in that UAT remain inert fixtures.

@@ -79,6 +79,7 @@ impl DesktopState {
         runtime_sha256: [u8; 32],
         helper_sha256: [u8; 32],
     ) -> Result<Admission, IntentError> {
+        self.ensure_updater_idle()?;
         if self.requires_reopen() {
             return Err(StorageError::PersistenceUncertain.into());
         }

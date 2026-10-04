@@ -220,6 +220,9 @@ impl DesktopState {
         expected_revision: u64,
         write: impl FnOnce(&Path, &Preferences) -> Result<(), StorageError>,
     ) -> Result<Preferences, StorageError> {
+        if install_directory != self.preferences.install_directory {
+            self.ensure_updater_idle()?;
+        }
         if self.requires_reopen() {
             return Err(StorageError::PersistenceUncertain);
         }
