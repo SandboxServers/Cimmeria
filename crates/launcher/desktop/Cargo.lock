@@ -596,6 +596,7 @@ dependencies = [
  "tempfile",
  "tokio",
  "uuid",
+ "wiremock",
 ]
 
 [[package]]

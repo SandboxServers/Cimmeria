@@ -20,6 +20,8 @@ pub struct NativeHost {
     #[cfg(target_os = "macos")]
     runtime_worker: Mutex<Option<cimmeria_launcher_engine::mac_wine::prerequisites::Worker>>,
     state: Mutex<Option<Arc<Mutex<DesktopState>>>>,
+    #[cfg(test)]
+    repair_fixture: Option<repair::TestDispatch>,
     repair_worker: Mutex<Option<repair::Worker>>,
     worker: Mutex<Option<cimmeria_launcher_engine::install_worker::Worker>>,
 }
@@ -35,6 +37,8 @@ impl NativeHost {
             #[cfg(target_os = "macos")]
             runtime_worker: Mutex::new(None),
             state: Mutex::new(None),
+            #[cfg(test)]
+            repair_fixture: None,
             repair_worker: Mutex::new(None),
             worker: Mutex::new(None),
         }
