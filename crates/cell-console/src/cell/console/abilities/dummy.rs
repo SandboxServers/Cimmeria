@@ -1,5 +1,7 @@
 //! `.dummy [hostile|friendly|clear] [templateId]` — a lab target that holds
-//! still and never fights back (ability-mechanics AB-L2, D-AU6).
+//! still and never fights back (ability-mechanics AB-L2, D-AU6). Its
+//! variant `.dummy caster <abilityId> [intervalSecs]`, a dummy that casts one
+//! ability at its owner, is [`super::dummy_caster`].
 //!
 //! `.dummy` (hostile) and `.dummy friendly` place one template NPC three
 //! metres in front of the caller, facing them, with:
@@ -32,7 +34,7 @@
 //! when its owner logs out ([`despawn_lab_dummies_of`]). `.dummy clear`
 //! removes the caller's own dummies and no one else's (colo rule: a GM
 //! touches only what their own lab characters spawned), and a GM may have at
-//! most [`LAB_DUMMY_MAX_PER_OWNER`] standing.
+//! most [`LAB_DUMMY_MAX_PER_OWNER`] standing, casters included.
 
 use std::time::Instant;
 
@@ -66,12 +68,12 @@ pub(crate) fn dummy_faction(disposition: MobAggression) -> u8 {
 }
 
 /// How far in front of the caller a dummy is placed, in metres.
-const PLACE_DISTANCE: f32 = 3.0;
+pub(super) const PLACE_DISTANCE: f32 = 3.0;
 
 /// The `tag` every dummy carries, so `.info` and the bookmark rows name it.
 pub(crate) const DUMMY_TAG: &str = "lab_dummy";
 
-const USAGE: &str = ".dummy: usage .dummy [hostile|friendly] [templateId] | .dummy clear";
+const USAGE: &str = ".dummy: usage .dummy [hostile|friendly] [templateId] | .dummy caster <abilityId> [intervalSecs] | .dummy clear";
 
 /// Why a dummy went away: the `reason` of its `lab_dummy_despawned` row.
 #[derive(Clone, Copy)]
@@ -99,6 +101,9 @@ pub(super) async fn run(
 ) {
     let (disposition, template_arg) = match args {
         ["clear"] => return clear(caller_id, tx, space_mgr).await,
+        [word, rest @ ..] if word.eq_ignore_ascii_case("caster") => {
+            return super::dummy_caster::run(caller_id, rest, tx, space_mgr).await
+        }
         [] => (MobAggression::Hostile, None),
         [word] | [word, _] if parse_disposition(word).is_some() => (
             parse_disposition(word).unwrap_or(MobAggression::Hostile),
@@ -134,15 +139,52 @@ async fn place(
     tx: &mpsc::Sender<CellToBaseMsg>,
     space_mgr: &mut SpaceManager,
 ) {
+    let Some(placed) = spawn_dummy(caller_id, disposition, template_id, tx, space_mgr).await else {
+        return;
+    };
+    let Placed {
+        dummy_id,
+        name,
+        defense,
+        accuracy,
+    } = placed;
+    let line = format!(
+        "dummy [{dummy_id}] placed: {} {name} (template {template_id}), Health {LAB_DUMMY_HEALTH}, Defense {defense}, Accuracy {accuracy}; it never attacks; gone in {} min, when you log out, or on .dummy clear",
+        disposition.label(),
+        LAB_DUMMY_LIFETIME.as_secs() / 60
+    );
+    send_gm_feedback(caller_id, &line, tx).await;
+}
+
+/// A dummy [`spawn_dummy`] placed, for the caller's feedback line.
+pub(super) struct Placed {
+    pub(super) dummy_id: u32,
+    pub(super) name: String,
+    pub(super) defense: i32,
+    pub(super) accuracy: i32,
+}
+
+/// Place one marked dummy in front of `caller_id` and log
+/// `lab_dummy_spawned`. On a refusal (the cap, no space, a template that
+/// does not spawn) the caller gets the reason and `None` comes back.
+pub(super) async fn spawn_dummy(
+    caller_id: u32,
+    disposition: MobAggression,
+    template_id: i32,
+    tx: &mpsc::Sender<CellToBaseMsg>,
+    space_mgr: &mut SpaceManager,
+) -> Option<Placed> {
     let standing = space_mgr.lab_dummies_of(caller_id).len();
     if standing >= LAB_DUMMY_MAX_PER_OWNER {
         let line = format!(
             ".dummy: you already have {standing} dummies (the most is {LAB_DUMMY_MAX_PER_OWNER}); .dummy clear removes them"
         );
-        return send_gm_feedback(caller_id, &line, tx).await;
+        send_gm_feedback(caller_id, &line, tx).await;
+        return None;
     }
     let Some((space_id, world_name, position, heading)) = placement(caller_id, space_mgr) else {
-        return send_gm_feedback(caller_id, ".dummy: you are not in a space", tx).await;
+        send_gm_feedback(caller_id, ".dummy: you are not in a space", tx).await;
+        return None;
     };
     let dummy_id = match space_mgr.spawn_npc_from_template(
         template_id,
@@ -165,13 +207,12 @@ async fn place(
                 error = %e,
                 "GM .dummy refused: the template did not spawn"
             );
-            return send_gm_feedback(caller_id, &format!(".dummy: {e}"), tx).await;
+            send_gm_feedback(caller_id, &format!(".dummy: {e}"), tx).await;
+            return None;
         }
     };
     let owner_identity = space_mgr.player_identity(caller_id);
-    let Some(dummy) = space_mgr.get_entity_mut(dummy_id) else {
-        return;
-    };
+    let dummy = space_mgr.get_entity_mut(dummy_id)?;
     if let Some(h) = dummy.stats.get_mut(HEALTH) {
         h.update(0, LAB_DUMMY_HEALTH, LAB_DUMMY_HEALTH);
     }
@@ -203,12 +244,12 @@ async fn place(
         lifetime_secs = LAB_DUMMY_LIFETIME.as_secs(),
         "GM placed a lab dummy"
     );
-    let line = format!(
-        "dummy [{dummy_id}] placed: {} {name} (template {template_id}), Health {LAB_DUMMY_HEALTH}, Defense {defense}, Accuracy {accuracy}; it never attacks; gone in {} min, when you log out, or on .dummy clear",
-        disposition.label(),
-        LAB_DUMMY_LIFETIME.as_secs() / 60
-    );
-    send_gm_feedback(caller_id, &line, tx).await;
+    Some(Placed {
+        dummy_id,
+        name,
+        defense,
+        accuracy,
+    })
 }
 
 /// The caller's space and world, a point [`PLACE_DISTANCE`] in front of them,
@@ -243,9 +284,15 @@ async fn clear(caller_id: u32, tx: &mpsc::Sender<CellToBaseMsg>, space_mgr: &mut
     send_gm_feedback(caller_id, &line, tx).await;
 }
 
-/// Despawn the dummies whose lifetime ran out, telling each online owner.
-/// Called from the cell loop about once a second.
+/// Despawn the dummies whose lifetime ran out, telling each online owner,
+/// then let every due caster dummy cast ([`super::dummy_caster`]). Called
+/// from the cell loop about once a second.
 pub async fn lab_dummy_tick(tx: &mpsc::Sender<CellToBaseMsg>, space_mgr: &mut SpaceManager) {
+    expire(tx, space_mgr).await;
+    super::dummy_caster::cast_due(Instant::now(), tx, space_mgr).await;
+}
+
+async fn expire(tx: &mpsc::Sender<CellToBaseMsg>, space_mgr: &mut SpaceManager) {
     for id in space_mgr.expired_lab_dummies(Instant::now()) {
         let owner = space_mgr
             .get_entity(id)

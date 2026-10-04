@@ -9,7 +9,7 @@ use super::*;
 use crate::cell::messages::CellToBaseMsg;
 use crate::cell::spawner::EVENT_ABILITY_END;
 use crate::mercury::method_idx::ON_SEQUENCE;
-use cimmeria_cell_world::cell::space_manager::LabDummy;
+use cimmeria_cell_world::cell::space_manager::{LabCaster, LabDummy};
 use cimmeria_entity::cell_entity::{MobAggression, PlayerIdentity};
 use tokio::sync::mpsc;
 
@@ -17,6 +17,12 @@ const NPC: u32 = 200;
 const TARGET: u32 = 101;
 
 fn fixture(marked: bool) -> SpaceManager {
+    fixture_with(marked, false)
+}
+
+/// `caster` also gives the dummy a [`LabCaster`] mark (`.dummy caster`),
+/// due long ago, casting the ability the AI would fire.
+fn fixture_with(marked: bool, caster: bool) -> SpaceManager {
     let mut mgr = make_ai_fixture([0.0; 3], [0.0; 3]);
     seed_default_ability(&mut mgr, 0, 30);
     // Pistol Shot's seeded Ability_End sequence, so a shot is visible on the
@@ -46,6 +52,13 @@ fn fixture(marked: bool) -> SpaceManager {
             owner_identity: PlayerIdentity::UNKNOWN,
             disposition: MobAggression::Hostile,
             expires_at: std::time::Instant::now() + std::time::Duration::from_secs(600),
+        });
+    }
+    if caster {
+        npc.extensions.insert(LabCaster {
+            ability_id: crate::cell::combat::NPC_DEFAULT_ABILITY,
+            interval: std::time::Duration::from_secs(8),
+            next_cast_at: std::time::Instant::now(),
         });
     }
     let _ = mgr.compute_aoi_changes();
@@ -109,4 +122,20 @@ async fn ab_l2_a_lab_dummy_never_attacks_its_threat_target() {
     );
     let target = dummy.get_entity(TARGET).unwrap();
     assert_eq!(target.stats.get(HEALTH).unwrap().cur, 100);
+}
+
+/// A `.dummy caster` is still out of the AI tick: its casts come only from
+/// the console's caster sweep, at its owner, never from a fight turn at a
+/// threat target. Revert proof: admit a `LabCaster` NPC in
+/// `ai_driven_npc_entity_ids` and it shoots its threat target here.
+#[tokio::test]
+async fn ab_l2_a_caster_lab_dummy_gets_no_ai_turn_either() {
+    let mut dummy = fixture_with(true, true);
+    assert!(!dummy.ai_driven_npc_entity_ids().contains(&NPC));
+    assert_eq!(tick(&mut dummy).await, 0, "no AI attack");
+    let npc = dummy.get_entity(NPC).unwrap();
+    assert!(!npc
+        .abilities
+        .is_on_cooldown(crate::cell::combat::NPC_DEFAULT_ABILITY));
+    assert!(npc.nav_path.is_empty());
 }

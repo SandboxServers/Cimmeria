@@ -9,6 +9,9 @@
 //! - [`dummy`] — `.dummy [hostile|friendly|clear] [templateId]`: a lab
 //!   target that never fights back (D-AU6), and the sweeps that take it
 //!   away after ten minutes or when its owner logs out.
+//! - [`dummy_caster`] — `.dummy caster <abilityId> [intervalSecs]`: the same
+//!   dummy, casting one ability at its owner every interval through the
+//!   real launch (AB-U20 interrupts, AB-U22 cleanses).
 //! - [`clear_effects`] — `.cleareffects`: strip the selected target's (else
 //!   the caller's) ledger entries and pulsing effects, reason `cleansed`,
 //!   with the client's icon clears.
@@ -26,6 +29,7 @@
 mod clear_effects;
 pub(crate) mod cooldowns;
 pub(crate) mod dummy;
+pub(crate) mod dummy_caster;
 pub(crate) mod effects;
 
 use tokio::sync::mpsc;

@@ -11,6 +11,11 @@
 //! - **A lifetime and an owner.** It despawns [`LAB_DUMMY_LIFETIME`] after
 //!   it was placed, or when its owner logs out; the sweeps live with the
 //!   command in `cimmeria-cell-console`.
+//! - **Optionally, one ability.** A `.dummy caster` also carries a
+//!   [`LabCaster`]: still no AI turn, but the console's 1 Hz sweep launches
+//!   that one ability at the owner every interval, through the same
+//!   `handle_use_ability` launch the NPC fight tick uses, so warmups,
+//!   interrupts, effects and telemetry are the real ones (AB-U20, AB-U22).
 //!
 //! The extension is runtime only: nothing reaches the client or the
 //! database, and a dummy has no `spawnlist` row and never respawns.
@@ -47,6 +52,23 @@ pub struct LabDummy {
     pub expires_at: Instant,
 }
 
+/// How often a caster dummy casts when no interval is named.
+pub const LAB_CASTER_DEFAULT_INTERVAL: Duration = Duration::from_secs(8);
+
+/// The second mark on a `.dummy caster`: the one ability it casts at its
+/// owner, and when. Only ever beside a [`LabDummy`].
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct LabCaster {
+    /// The ability it casts. It is also in the dummy's known abilities, or
+    /// the launch would refuse it.
+    pub ability_id: i32,
+    /// Time between two cast attempts.
+    pub interval: Duration,
+    /// When it next tries. Advanced by one interval on every attempt, cast
+    /// or held, so a held caster never bursts when it resumes.
+    pub next_cast_at: Instant,
+}
+
 impl SpaceManager {
     /// Whether `entity_id` is a lab dummy.
     pub fn is_lab_dummy(&self, entity_id: u32) -> bool {
@@ -62,6 +84,24 @@ impl SpaceManager {
     /// The dummies whose lifetime ran out by `now`, sorted.
     pub fn expired_lab_dummies(&self, now: Instant) -> Vec<u32> {
         self.lab_dummies_where(|d| d.expires_at <= now)
+    }
+
+    /// The caster dummies whose next cast is due by `now`, sorted.
+    pub fn lab_casters_due(&self, now: Instant) -> Vec<u32> {
+        let mut out: Vec<u32> = self
+            .spaces
+            .values()
+            .flat_map(|s| s.entities.values())
+            .filter(|e| e.extensions.contains::<LabDummy>())
+            .filter(|e| {
+                e.extensions
+                    .get::<LabCaster>()
+                    .is_some_and(|c| c.next_cast_at <= now)
+            })
+            .map(|e| e.entity_id.0 as u32)
+            .collect();
+        out.sort_unstable();
+        out
     }
 
     fn lab_dummies_where(&self, pred: impl Fn(&LabDummy) -> bool) -> Vec<u32> {

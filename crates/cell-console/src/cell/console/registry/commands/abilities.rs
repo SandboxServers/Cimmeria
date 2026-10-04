@@ -22,9 +22,9 @@ pub(super) const SPECS: &[Spec] = &[
     spec(
         "dummy",
         0,
-        2,
+        3,
         Target::None,
-        "Place a lab target that never attacks: .dummy [hostile|friendly] [templateId]; 1,000,000 Health, gone after 10 min or at logout; .dummy clear removes yours",
+        "Place a lab target that never attacks: .dummy [hostile|friendly] [templateId]; 1,000,000 Health, gone after 10 min or at logout; .dummy caster <abilityId> [intervalSecs] casts that ability at you every interval (default 8 s); .dummy clear removes yours",
     ),
     spec(
         "cleareffects",
