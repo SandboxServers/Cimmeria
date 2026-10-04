@@ -571,6 +571,7 @@ Wine seed extraction, a native ZIP patch and content receipt after its observer
 was dropped. Both strengthened ignored checks passed in a 19.090-second run: duplicate
 dispatch was rejected, and immediate cancellation preceded runtime cache, prefix,
 helper and network work. Strict engine clippy and thirteen shell tests passed; the final engine suite
-passed 204 tests with eight ignored entries. Twenty-five frontend tests, checking/build and sequential JS logic UAT passed,
+passed 204 tests with eight ignored entries. Twenty-five frontend tests,
+checking/build and sequential JS logic UAT passed,
 including new failure decoding and preserved consent. Native visual UAT was not
 performed. These fixtures do not establish real game prerequisites or readiness.

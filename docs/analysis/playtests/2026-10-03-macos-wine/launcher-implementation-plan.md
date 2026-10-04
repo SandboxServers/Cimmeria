@@ -689,6 +689,9 @@ outcomes now decode to frontend messages without altering diagnostics consent.
 The explicit retained-worker fixture passed in 22.596 seconds with Wine seed,
 native ZIP patch and receipt after observer drop. Both strengthened ignored checks passed in a 19.090-second run: duplicate
 rejection and cancellation before runtime cache/prefix/helper/network. Strict
-engine clippy and thirteen shell tests passed; final engine suite passed 204 tests with eight ignored entries. Frontend tests 25, check/build and sequential logic UAT passed. No visual UAT was performed. Mac shell install remains disabled pending
+engine clippy and thirteen shell tests passed; final engine suite passed 204
+tests with eight ignored entries. Frontend tests 25, check/build and sequential
+logic UAT passed. No visual UAT was performed. Mac shell install remains
+disabled pending
 trusted resource binding; native Wine recovery remains rejected. No end-user
 Mac-install or game-readiness claim follows from this native API.

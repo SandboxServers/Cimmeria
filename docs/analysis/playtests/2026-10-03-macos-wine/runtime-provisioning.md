@@ -244,7 +244,8 @@ before Running and connects retained destination ownership, Wine provisioning,
 fresh-stage seed extraction, native patch/client setup and checked promotion.
 A fixture passed this chain after observer disposal in 22.596 seconds. Strengthened duplicate/cancellation checks also passed (19.090-second run),
 including cancellation before runtime/cache/prefix/helper/network work. Strict
-engine clippy and thirteen shell tests passed; final engine suite passed 204 tests with eight ignored entries. Typed Rosetta/runtime preparation
+engine clippy and thirteen shell tests passed; final engine suite passed 204
+tests with eight ignored entries. Typed Rosetta/runtime preparation
 failures are decoded in the frontend, with consent unaffected in logic UAT.
 
 The shell still lacks build-pinned resource binding and rejects Mac installation.

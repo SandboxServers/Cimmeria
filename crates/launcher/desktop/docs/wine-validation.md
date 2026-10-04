@@ -230,7 +230,9 @@ The retained-worker fixture additionally passed Wine seed extraction followed by
 a native ZIP patch, client preparation and receipt publication after observer
 disposal (22.596 seconds). Both strengthened ignored checks passed in a 19.090-second run, including
 duplicate rejection and cancellation before cache/prefix/helper/network work.
-Strict engine clippy and thirteen shell tests passed; final engine suite passed 204 tests with eight ignored entries. This is distinct from the original-RAR extraction smoke:
+Strict engine clippy and thirteen shell tests passed; final engine suite passed
+204 tests with eight ignored entries. This is distinct from the original-RAR
+extraction smoke:
 no original-client patch/prerequisite/gameplay result is implied.
 
 The adapter checks cancellation before helper dispatch and preserves a supervisor

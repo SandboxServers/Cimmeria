@@ -180,6 +180,7 @@ Windows+Mac before the shell; shell/visual/game gates remain separate.
   Running, claims destination and runs Wine seed then native patch/setup/promotion.
   Explicit fixture passed in 22.596 seconds after observer drop; strengthened duplicate and
   pre-runtime cancellation checks passed in 19.090 seconds. Strict engine clippy passed;
-  thirteen shell tests passed; final engine suite passed 204 tests with eight ignored entries. Frontend 25
+  thirteen shell tests passed; final engine suite passed 204 tests with eight
+  ignored entries. Frontend 25
   tests/check/build plus sequential failure/consent UAT passed. No visual UAT.
   Mac shell stays disabled pending trusted resource binding; Wine recovery refused.
