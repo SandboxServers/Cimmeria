@@ -82,6 +82,8 @@ export function mountLauncher(document: Document, invoke: Invoke, onSettingsChan
     listeners.push(() => get(id).removeEventListener(type, listener));
   };
   const showTab = (notes: boolean) => {
+    get('gear').hidden = true;
+    get('settings').setAttribute('aria-expanded', 'false');
     get('patches').hidden = !notes; get('play').hidden = notes;
     get('home').setAttribute('aria-pressed', String(!notes));
     get('notes').setAttribute('aria-pressed', String(notes));
@@ -90,7 +92,10 @@ export function mountLauncher(document: Document, invoke: Invoke, onSettingsChan
   on('notes', 'click', () => {showTab(true); patchNotes.open();});
   on('settings', 'click', () => {
     get('gear').hidden = !get('gear').hidden;
-    get('settings').setAttribute('aria-expanded', String(!get('gear').hidden));
+    const opened = !get('gear').hidden;
+    get('settings').setAttribute('aria-expanded', String(opened));
+    get('play').hidden = opened || get('notes').getAttribute('aria-pressed') === 'true';
+    get('patches').hidden = opened || get('notes').getAttribute('aria-pressed') !== 'true';
   });
   on('retry', 'click', () => run(Effect.flatMap(Launcher, launcher => launcher.inspect),
     'Checking saved state…', 'Saved state checked.'));

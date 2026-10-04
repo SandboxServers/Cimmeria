@@ -30,12 +30,15 @@ test('approved tabs and settings work without inventing installed state', {timeo
     assert.equal(ui.get<HTMLButtonElement>('uninstall').disabled, true);
     ui.click('notes'); assert.equal(ui.get('play').hidden, true); assert.equal(ui.get('patches').hidden, false);
     ui.click('settings'); assert.equal(ui.get('gear').hidden, false);
+    assert.equal(ui.get('play').hidden, true);
+    assert.equal(ui.get('patches').hidden, true, 'settings occupies the content panel');
     ui.click('home'); assert.equal(ui.get('play').hidden, false);
-    assert.equal(ui.get('gear').hidden, false);
+    assert.equal(ui.get('gear').hidden, true);
+    assert.equal(ui.get('settings').getAttribute('aria-expanded'), 'false');
     await app.settled();
     assert.deepEqual(calls, ['launcher_command', 'fetch_patch_notes']);
   } finally { await app.dispose(); }
-  ui.click('settings'); assert.equal(ui.get('gear').hidden, false, 'dispose removes handlers');
+  ui.click('settings'); assert.equal(ui.get('gear').hidden, true, 'dispose removes handlers');
 });
 
 test('consent waits for native acknowledgement and rolls back on failed save', {timeout:5000}, async () => {

@@ -58,3 +58,17 @@ test('native minimum gate survives successful status polls and blocks repeated P
  assert.equal((document.getElementById('launch') as HTMLButtonElement).disabled,false);
  }finally{await app.dispose();}
 });
+
+test('failed status read stops automatic polling until explicit recheck succeeds', {timeout:5000},async()=>{
+ const {document}=parseHTML(html);let reads=0;let unavailable=true;
+ const app=mountLaunch(document,async()=>{reads++;if(unavailable)throw 'transport';return initial();});
+ try {
+  await app.ready;await new Promise(resolve=>setImmediate(resolve));
+  assert.match(document.getElementById('launch-status')!.textContent!,/folder-access prompt/);
+  await new Promise(resolve=>setTimeout(resolve,1100));
+  assert.equal(reads,1,'a stalled native read is not multiplied by the polling timer');
+  unavailable=false;await app.refresh();await new Promise(resolve=>setImmediate(resolve));
+  assert.equal(reads,2);
+  assert.equal((document.getElementById('launch') as HTMLButtonElement).disabled,false);
+ } finally {await app.dispose();}
+});

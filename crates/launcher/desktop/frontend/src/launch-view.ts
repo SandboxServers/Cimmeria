@@ -5,7 +5,7 @@ class Launch extends Context.Service<Launch,Effect.Success<typeof makeLaunchWork
 export function launchText(s:LaunchState):string {
  if(s.pending)return 'Starting game…';
  if(s.error==='launcher_too_old'||s.status?.launcher_update_required)return 'Update the launcher before playing this release. Your game files are preserved.';
- if(s.error)return 'Could not confirm game status. Recheck before continuing; Play was not retried.';
+ if(s.error)return 'Could not read game status. Resolve any folder-access prompt, then recheck.';
  const status=s.status;if(!status)return 'Checking Play availability…';
  const o=status.observation;
  if(o?.phase==='unknown')return 'Game status is unknown. Play, Repair and removal remain blocked. Preserve files and restart to inspect.';
@@ -23,7 +23,7 @@ export function mountLaunch(document:Document,invoke:Invoke,onChange:()=>void=()
  const recheck=document.getElementById('inspect-launch') as HTMLButtonElement;
  let current:LaunchState={status:null,pending:false,uncertain:true,error:null};let disposed=false;let pending=false;let playing=false;
  let mutation:Promise<void>=Promise.resolve();let revision=-1;
- const render=()=>{if(disposed)return;button.disabled=pending||current.pending||current.uncertain||!current.status?.installation_id||launchBlocked(current.status);
+ const render=()=>{if(disposed)return;button.hidden=!!current.status&&!current.status.installation_id&&!current.status.observation&&!current.status.launcher_update_required;button.disabled=pending||current.pending||current.uncertain||!current.status?.installation_id||launchBlocked(current.status);
  button.textContent=playing||current.pending?'Starting…':'Play';button.setAttribute('aria-busy',String(pending||current.pending));
  document.getElementById('launch-status')!.textContent=playing?'Starting game…':launchText(current);
  recheck.disabled=pending||current.pending;};
@@ -34,7 +34,7 @@ export function mountLaunch(document:Document,invoke:Invoke,onChange:()=>void=()
  const click=()=>{if(!button.disabled)void run(true);};const check=()=>{if(!recheck.disabled)void run(false);};
  button.addEventListener('click',click);recheck.addEventListener('click',check);
  // Observation belongs to the mounted application, including Settings navigation.
- const poll=setInterval(()=>{if(!disposed&&!pending)void run(false);},1000);
+ const poll=setInterval(()=>{if(!disposed&&!pending&&!current.uncertain&&!current.error)void run(false);},1000);
  const ready=run(false);
  return {ready,refresh:()=>run(false),settled:()=>mutation,dispose:async()=>{disposed=true;clearInterval(poll);button.removeEventListener('click',click);recheck.removeEventListener('click',check);await Effect.runPromise(Fiber.interrupt(watcher));await mutation;await runtime.dispose();}};
 }

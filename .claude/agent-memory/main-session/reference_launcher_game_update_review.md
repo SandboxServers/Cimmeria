@@ -16,3 +16,8 @@ The first review milestone exposes inspect/check IPC and an Effect workflow, wit
 native-persistence JS UAT, but no mounted Apply controls. Continue through complete
 confirmation and retained engine execution before claiming a usable Update flow.
 See [owner/current release evidence](../../../docs/analysis/playtests/2026-10-03-macos-wine/worknotes/owner-current-release.md).
+
+Native UAT also found rebuilt ad-hoc bundles can require fresh Documents-folder
+permission. Confirm TCC logs before treating an open-file wait as corrupt saved
+state. Stop automatic Play polling after a failed read; require explicit recheck.
+See the campaign's native-window UAT evidence for this development-build limit.
