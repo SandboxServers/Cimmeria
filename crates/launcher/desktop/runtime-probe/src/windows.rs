@@ -10,7 +10,7 @@ use windows_sys::Win32::{
     },
 };
 
-fn wide(value: &OsStr) -> Result<Vec<u16>, &'static str> {
+pub(super) fn wide(value: &OsStr) -> Result<Vec<u16>, &'static str> {
     let mut bytes: Vec<u16> = value.encode_wide().collect();
     if bytes.contains(&0) {
         return Err("invalid_directory");
@@ -106,13 +106,15 @@ pub fn probe(request: Request) -> Result<Report, &'static str> {
             win32_error: *error,
         },
     };
-    Ok(collect(result, |dll| {
+    let mut report = collect(result, |dll| {
         if dll == "PhysXLoader.dll" {
             load_path(directory.join(dll).as_os_str())
         } else {
             load(dll)
         }
-    }))
+    });
+    report.physx_sdk = crate::windows_physx::probe(&directory);
+    Ok(report)
 }
 
 /// CI exercises actual x86 loader success/failure without game code or a window.
@@ -163,7 +165,11 @@ mod tests {
             report.modules[4].result,
             LoadResult::Unavailable { .. }
         ));
-        assert!(!report.physx_engine_checked && !report.game_started);
+        assert_eq!(
+            report.physx_sdk,
+            crate::physx::SdkResult::UnverifiedLoader {}
+        );
+        assert!(!report.game_started);
         assert!(self_test());
     }
 }

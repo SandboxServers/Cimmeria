@@ -1,0 +1,56 @@
+name: launcher runtime probe
+
+on:
+  pull_request:
+    paths:
+      - 'crates/launcher/desktop/runtime-probe/**'
+      - 'crates/launcher/desktop/Cargo.toml'
+      - 'crates/launcher/desktop/Cargo.lock'
+      - '.github/workflows/launcher-runtime-probe.yml'
+      - '.github/actions/rust-toolchain/**'
+      - 'rust-toolchain.toml'
+      - 'tools/build-lane/**'
+  push:
+    branches: [main]
+    paths:
+      - 'crates/launcher/desktop/runtime-probe/**'
+      - 'crates/launcher/desktop/Cargo.toml'
+      - 'crates/launcher/desktop/Cargo.lock'
+      - '.github/workflows/launcher-runtime-probe.yml'
+      - '.github/actions/rust-toolchain/**'
+      - 'rust-toolchain.toml'
+      - 'tools/build-lane/**'
+
+permissions:
+  contents: read
+
+# The small native x86 helper should not wait for unrelated desktop builds.
+concurrency:
+  group: launcher-runtime-probe-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  runtime-probe:
+    runs-on: windows-latest
+    timeout-minutes: 15
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@v7
+      - uses: ./.github/actions/rust-toolchain
+        with:
+          components: clippy
+          targets: i686-pc-windows-msvc
+      - name: Check and test native 32-bit runtime probe
+        run: |
+          bash tools/build-lane/lane.sh cargo clippy --locked --manifest-path crates/launcher/desktop/Cargo.toml -p cimmeria-runtime-probe --target i686-pc-windows-msvc --all-targets -- -D warnings
+          bash tools/build-lane/lane.sh cargo test --locked --manifest-path crates/launcher/desktop/Cargo.toml -p cimmeria-runtime-probe --target i686-pc-windows-msvc
+          bash tools/build-lane/lane.sh cargo build --locked --manifest-path crates/launcher/desktop/Cargo.toml -p cimmeria-runtime-probe --target i686-pc-windows-msvc --target-dir target/runtime-probe
+          target/runtime-probe/i686-pc-windows-msvc/debug/cimmeria-runtime-probe.exe --self-test
+      - name: Retain x86 probe for managed Wine validation
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        with:
+          name: windows-runtime-probe
+          path: target/runtime-probe/i686-pc-windows-msvc/debug/cimmeria-runtime-probe.exe
+          retention-days: 7

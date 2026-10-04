@@ -352,3 +352,11 @@ Windows+Mac before the shell; shell/visual/game gates remain separate.
   five DLLs loaded with no vendor installers. Module loads cannot determine
   installer necessity or game readiness; actual PhysX SDK remains unchecked.
   Earlier e18cb0e51 desktop CI37198857452 passed both Mac and Windows.
+
+- SDK experiment uses pinned original PhysXLoader and recovered cdecl create/release
+  ABI, version 0x02060300 and 16-byte descriptor [65536,256,2048,0]. Resolve both first,
+  release exactly once on non-null and keep the module loaded through teardown. Null allocator/
+  output defaults are documented in 2.8, not yet verified for 2.6.3. Report schema 2
+  replaces physx_engine_checked with tagged physx_sdk evidence; game_started remains false.
+  Eight portable tests pass lane070649-1979. New native Windows/real SDK run pending.
+  Standalone launcher-runtime-probe CI removes desktop queue dependency.

@@ -91,9 +91,12 @@ async fn original_client_module_probe_in_private_wine_prefix() {
     let (status, bytes) = attempt.expect("bounded probe deadline").unwrap();
     assert!(status.success(), "probe exit: {status}");
     let report = cimmeria_runtime_probe::decode_report(&bytes).unwrap();
-    assert_eq!(report.schema_version, 1);
+    assert_eq!(report.schema_version, 2);
     assert_eq!(report.architecture, "x86");
-    assert!(!report.physx_engine_checked);
+    assert!(!matches!(
+        report.physx_sdk,
+        cimmeria_runtime_probe::physx::SdkResult::NotChecked {}
+    ));
     assert!(!report.game_started);
     let modules = &report.modules;
     assert_eq!(modules.len(), 5);
