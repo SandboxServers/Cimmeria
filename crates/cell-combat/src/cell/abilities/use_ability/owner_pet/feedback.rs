@@ -13,6 +13,7 @@ use cimmeria_entity::cell_entity::PlayerIdentity;
 use cimmeria_wire::cell::chat::{serialize_on_player_communication, CHAN_FEEDBACK};
 
 use super::super::super::super::messages::CellToBaseMsg;
+use crate::cell::abilities::wire_ledger::{self, WireCtx};
 
 /// `ERRORCODE_SYSTEM_Ability`, the only `EErrorCodeSystem` value.
 const ERRORCODE_SYSTEM_ABILITY: u8 = 0;
@@ -78,6 +79,7 @@ async fn send(
     args: Vec<u8>,
     tx: &mpsc::Sender<CellToBaseMsg>,
 ) {
+    let row = wire_ledger::prepare(method_index, &args);
     if tx
         .send(CellToBaseMsg::EntityMethodCall {
             entity_id: owner,
@@ -100,5 +102,7 @@ async fn send(
             method_index,
             "owner-pet ability feedback could not be queued (base channel closed)"
         );
+    } else {
+        row.sent_to_owner_as(id, owner, WireCtx::new("owner_pet").ability(ability_id));
     }
 }

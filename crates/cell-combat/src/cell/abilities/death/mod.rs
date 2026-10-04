@@ -36,7 +36,8 @@ use cimmeria_wire::base::contact_list::wire::EVENT_DEATH;
 use super::super::messages::CellToBaseMsg;
 use super::super::space_manager::SpaceManager;
 use super::loot_drop::generate_loot_on_death;
-use super::messaging::{send_entity_method, send_entity_method_to_self_and_witnesses};
+use super::messaging::{send_entity_method, WireRoute};
+use super::wire_ledger::{self, WireCtx};
 
 /// Apply the death-transition message sequence for a target that just died.
 ///
@@ -92,13 +93,27 @@ pub(super) async fn apply_death_transition(
             // Contact-list Death fanout — cell→base hop. The base handler calls
             // `fanout_contact_event` with the player's name and EVENT_DEATH.
             // data_value=0 per spec (client ignores it; shows "{Name} has died").
-            let _ = tx
+            if tx
                 .send(CellToBaseMsg::ContactListPresenceEvent {
                     player_name: character_name,
                     event_id: EVENT_DEATH,
                     data_value: 0,
                 })
-                .await;
+                .await
+                .is_err()
+            {
+                let who = space_mgr.player_identity(target_eid);
+                tracing::warn!(
+                    target: "abilities.wire",
+                    event = "wire_send_failed",
+                    method = "ContactListPresenceEvent",
+                    entity_id = target_eid,
+                    account_id = who.account_id,
+                    player_id = who.player_id,
+                    reason = "cell_to_base_closed",
+                    "death presence event not queued: the cell-to-base channel is closed, so                      contacts never see \"has died\""
+                );
+            }
         } else {
             // NPC / mob death (off by default — high volume during combat).
             let npc_name = space_mgr
@@ -173,10 +188,12 @@ pub(super) async fn apply_death_transition(
                 new_state,
                 "death: clearing player BSF_InCombat (last threatened mob died)"
             );
-            send_entity_method(
+            wire_ledger::send(
                 player_entity_id,
                 crate::mercury::method_idx::ON_STATE_FIELD_UPDATE,
                 new_state.to_le_bytes().to_vec(),
+                WireRoute::EntityDefault,
+                WireCtx::new("death").reason("left_combat"),
                 tx,
                 space_mgr,
             )
@@ -273,10 +290,12 @@ pub(super) async fn apply_death_transition(
     // Fan to self+witnesses so a spectator sees the entity become a corpse.
     // For NPC targets the self send is a no-op; for player targets it notifies
     // the dying player and all observers simultaneously.
-    send_entity_method_to_self_and_witnesses(
+    wire_ledger::send(
         target_eid,
         crate::mercury::method_idx::ON_STATE_FIELD_UPDATE,
         target_state.to_le_bytes().to_vec(),
+        WireRoute::SelfAndWitnesses,
+        WireCtx::new("death").reason("dead"),
         tx,
         space_mgr,
     )

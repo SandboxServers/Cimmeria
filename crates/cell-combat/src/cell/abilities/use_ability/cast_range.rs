@@ -16,6 +16,7 @@ use tokio::sync::mpsc;
 
 use cimmeria_entity::abilities::{RangeBounds, RangeRefusal};
 
+use crate::cell::abilities::wire_ledger::{self, WireCtx};
 use crate::cell::messages::CellToBaseMsg;
 use crate::cell::space_manager::SpaceManager;
 
@@ -87,11 +88,13 @@ pub(crate) async fn refuse_out_of_range(
     if !is_player {
         return;
     }
+    let args = out_of_range_error_args(ability_id);
+    let row = wire_ledger::prepare(crate::mercury::method_idx::ON_ERROR_CODE, &args);
     if tx
         .send(CellToBaseMsg::EntityMethodCall {
             entity_id,
             method_index: crate::mercury::method_idx::ON_ERROR_CODE,
-            args: out_of_range_error_args(ability_id),
+            args,
         })
         .await
         .is_err()
@@ -105,6 +108,12 @@ pub(crate) async fn refuse_out_of_range(
             player_id = id.player_id,
             ability_id,
             "useAbility: the out-of-range onErrorCode could not be queued (base channel closed)"
+        );
+    } else {
+        row.sent_to_owner(
+            space_mgr,
+            entity_id,
+            WireCtx::new("cast_range").reason(failure.refusal.reason()),
         );
     }
 }

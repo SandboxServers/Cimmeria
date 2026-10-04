@@ -18,7 +18,8 @@ use cimmeria_entity::abilities::{
     serialize_timer_update, AF_CHANNEL_ALLOWS_MOVEMENT, TIMER_DURATION_EFFECT,
 };
 
-use crate::cell::abilities::{send_entity_method, send_timer_update};
+use crate::cell::abilities::wire_ledger::{self, WireCtx};
+use crate::cell::abilities::{send_timer_update, WireRoute};
 use crate::cell::messages::CellToBaseMsg;
 use crate::cell::space_manager::SpaceManager;
 
@@ -122,10 +123,12 @@ pub async fn cancel_channels_from_attacker(
                 let dirty = target.stats.serialize_dirty();
                 target.stats.clear_dirty();
                 if !dirty.is_empty() {
-                    send_entity_method(
+                    wire_ledger::send(
                         target_eid,
                         crate::mercury::method_idx::ON_STAT_UPDATE,
                         dirty,
+                        WireRoute::EntityDefault,
+                        WireCtx::new("channel_cancel"),
                         tx,
                         space_mgr,
                     )
@@ -305,10 +308,12 @@ pub async fn cancel_channels_for_invoker_ability(
                 let dirty = target.stats.serialize_dirty();
                 target.stats.clear_dirty();
                 if !dirty.is_empty() {
-                    send_entity_method(
+                    wire_ledger::send(
                         target_eid,
                         crate::mercury::method_idx::ON_STAT_UPDATE,
                         dirty,
+                        WireRoute::EntityDefault,
+                        WireCtx::new("channel_cancel"),
                         tx,
                         space_mgr,
                     )

@@ -37,7 +37,8 @@ use super::super::super::combat;
 use super::super::super::messages::CellToBaseMsg;
 use super::super::super::space_manager::SpaceManager;
 use super::super::effect_plan::{PlanIds, PlannedEffect, REASON_SUPPORT_SHOT};
-use super::super::messaging::{flush_attacker_ammo_stat, send_entity_method_to_self_and_witnesses};
+use super::super::messaging::{flush_attacker_ammo_stat, WireRoute};
+use super::super::wire_ledger::{self, WireCtx};
 
 /// `event` of a support shot that landed on an ally (DEBUG, target `ammo`).
 pub(crate) const EVENT_APPLIED: &str = "ammo_support_applied";
@@ -148,11 +149,13 @@ pub(crate) async fn refuse(
         return;
     }
     let chat = serialize_on_player_communication("SYSTEM", 0, CHAN_FEEDBACK, HOSTILE_FEEDBACK);
+    let args = chat;
+    let row = wire_ledger::prepare(crate::mercury::method_idx::ON_PLAYER_COMMUNICATION, &args);
     if tx
         .send(CellToBaseMsg::EntityMethodCall {
             entity_id,
             method_index: crate::mercury::method_idx::ON_PLAYER_COMMUNICATION,
-            args: chat,
+            args,
         })
         .await
         .is_err()
@@ -166,6 +169,14 @@ pub(crate) async fn refuse(
             ammo_type = shot.ammo_type,
             reason = "cell_to_base_closed",
             "support ammo refusal feedback could not be queued (base channel closed)"
+        );
+    } else {
+        row.sent_to_owner_as(
+            who,
+            entity_id,
+            WireCtx::new("support_shot")
+                .ability(ability_id)
+                .reason(REASON_HOSTILE_TARGET),
         );
     }
 }
@@ -278,10 +289,12 @@ pub(super) async fn fire_support(
         None => Vec::new(),
     };
     if !stat_update.is_empty() {
-        send_entity_method_to_self_and_witnesses(
+        wire_ledger::send(
             target_id,
             crate::mercury::method_idx::ON_STAT_UPDATE,
             stat_update,
+            WireRoute::SelfAndWitnesses,
+            WireCtx::new("support_shot"),
             tx,
             space_mgr,
         )

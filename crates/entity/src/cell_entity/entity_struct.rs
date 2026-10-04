@@ -517,7 +517,7 @@ pub struct CellEntity {
     /// bookmark's `last_movement_type` field.
     ///
     /// **Ownership**: written only by
-    /// [`cell::abilities::messaging::broadcast_movement_type`], which
+    /// [`cell::abilities::movement_type::broadcast_movement_type`], which
     /// dedups and logs each change. Its callers are the NPC AI state
     /// entries and the inbound `setMovementType` cell-method handler.
     /// Write through the helper, not directly, so the change is logged.

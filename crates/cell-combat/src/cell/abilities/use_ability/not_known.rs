@@ -5,6 +5,7 @@ use tokio::sync::mpsc;
 use cimmeria_entity::cell_entity::PlayerIdentity;
 
 use super::super::super::messages::CellToBaseMsg;
+use crate::cell::abilities::wire_ledger::{self, WireCtx};
 
 /// `CONDITION_FEEDBACK_EntityDoesNotHaveAbility`
 /// (`entities/defs/enumerations.xml`). Exact fit: the caster does not have
@@ -26,6 +27,7 @@ pub(super) async fn send_not_known_feedback(
     args.push(0u8); // SystemID: ERRORCODE_SYSTEM_Ability
     args.extend_from_slice(&ability_id.to_le_bytes()); // InstanceID
     args.extend_from_slice(&CONDITION_FEEDBACK_ENTITY_DOES_NOT_HAVE_ABILITY.to_le_bytes());
+    let row = wire_ledger::prepare(crate::mercury::method_idx::ON_ERROR_CODE, &args);
     if tx
         .send(CellToBaseMsg::EntityMethodCall {
             entity_id,
@@ -43,6 +45,12 @@ pub(super) async fn send_not_known_feedback(
             entity_id,
             ability_id,
             "useAbility: the not-known onErrorCode could not be queued (base channel closed)"
+        );
+    } else {
+        row.sent_to_owner_as(
+            who,
+            entity_id,
+            WireCtx::new("not_known").reason("ability_not_known"),
         );
     }
 }

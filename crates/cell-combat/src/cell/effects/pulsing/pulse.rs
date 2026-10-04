@@ -9,7 +9,8 @@ use cimmeria_entity::abilities::{EffectDef, DT_PHYSICAL};
 use cimmeria_entity::cell_entity::{ActiveEffectInstance, AiState};
 use cimmeria_entity::stats::{FOCUS, HEALTH};
 
-use crate::cell::abilities::send_entity_method;
+use crate::cell::abilities::wire_ledger::{self, WireCtx};
+use crate::cell::abilities::WireRoute;
 use crate::cell::content_events::ContentEvents;
 use crate::cell::messages::CellToBaseMsg;
 use crate::cell::space_manager::SpaceManager;
@@ -388,10 +389,14 @@ async fn fire_pulse(
     });
     if let Some(bytes) = dirty {
         if !bytes.is_empty() {
-            send_entity_method(
+            wire_ledger::send(
                 target_id,
                 crate::mercury::method_idx::ON_STAT_UPDATE,
                 bytes,
+                WireRoute::EntityDefault,
+                WireCtx::new("pulse")
+                    .cast(inst.cast_id)
+                    .ability(inst.ability_id),
                 tx,
                 space_mgr,
             )

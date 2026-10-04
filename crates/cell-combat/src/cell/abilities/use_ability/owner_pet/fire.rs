@@ -11,7 +11,8 @@ use cimmeria_entity::abilities::{AbilityDef, EffectDef, AF_TOGGLED, TCM_SINGLE};
 
 use super::super::super::super::messages::CellToBaseMsg;
 use super::super::super::super::space_manager::SpaceManager;
-use super::super::super::messaging::send_entity_method_to_witnesses;
+use super::super::super::messaging::WireRoute;
+use super::super::super::wire_ledger::{self, WireCtx};
 use super::super::sequence::{play_ability_sequence, AbilityPhase, PhaseSequence};
 use super::feedback::send_line;
 use super::launch::{dooms_pet, refuse, resolve};
@@ -184,10 +185,12 @@ pub(super) async fn flush_pet_stats(
     let dirty = entity.stats.serialize_dirty();
     entity.stats.clear_dirty();
     if !dirty.is_empty() {
-        let _ = send_entity_method_to_witnesses(
+        wire_ledger::send(
             pet,
             crate::mercury::method_idx::ON_STAT_UPDATE,
             dirty,
+            WireRoute::Witnesses,
+            WireCtx::new("owner_pet"),
             tx,
             space_mgr,
         )

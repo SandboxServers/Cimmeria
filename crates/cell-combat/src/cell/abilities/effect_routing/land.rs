@@ -21,7 +21,8 @@ use super::super::effect_plan::{
 
 use super::super::super::messages::CellToBaseMsg;
 use super::super::super::space_manager::SpaceManager;
-use super::super::messaging::send_entity_method_to_self_and_witnesses;
+use super::super::messaging::WireRoute;
+use super::super::wire_ledger::{self, WireCtx};
 
 /// One effect and the entity it lands on.
 #[derive(Debug, Clone)]
@@ -168,10 +169,12 @@ async fn flush_stats(
         None => Vec::new(),
     };
     if !stat_update.is_empty() {
-        send_entity_method_to_self_and_witnesses(
+        wire_ledger::send(
             entity_id,
             crate::mercury::method_idx::ON_STAT_UPDATE,
             stat_update,
+            WireRoute::SelfAndWitnesses,
+            WireCtx::new("effect_routing"),
             tx,
             space_mgr,
         )

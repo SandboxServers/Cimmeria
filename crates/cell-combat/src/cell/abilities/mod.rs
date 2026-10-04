@@ -22,7 +22,10 @@
 //! - `auto_cycle_state` — the broadcast every `BSF_AUTO_CYCLING` transition
 //!   goes through.
 //! - `messaging` — entity-method routing (player vs witness) + dirty-stat flush.
+//! - `movement_type` — the NPC movement-type cache (nothing goes on the wire).
 //! - `timer_update` — `onTimerUpdate` goes to the owning player's client only.
+//! - `wire_ledger` — the `abilities.wire` row for every client-bound ability
+//!   send (AB-T4).
 //! - `loot_drop` — on-death loot generation + interaction-flag updates.
 //! - `resolve` — per-weapon ability resolution (items_event_sets lookup).
 //! - `rng` — deterministic pseudo-random for combat rolls.
@@ -41,12 +44,14 @@ mod effect_routing;
 mod enumerations_xml;
 mod loot_drop;
 mod messaging;
+mod movement_type;
 #[cfg(test)]
 mod movement_type_log_tests;
 mod resolve;
 mod rng;
 mod timer_update;
 mod use_ability;
+pub(crate) mod wire_ledger;
 
 #[cfg(test)]
 mod tests;
@@ -62,9 +67,11 @@ pub use deployable::{deployable_tick, deployable_tick_at};
 pub use dispatch::handle_use_ability_on_ground;
 pub use loot_drop::{roll_loot_entries, INT_NORMAL_LOOT};
 pub use messaging::{
-    broadcast_movement_type, request_appearance_refresh, send_entity_method,
-    send_entity_method_to_self_and_witnesses, send_entity_method_to_witnesses,
+    request_appearance_refresh, send_entity_method, send_entity_method_to_self_and_witnesses,
+    send_entity_method_to_witnesses, Delivery, WireRoute,
 };
+pub use movement_type::broadcast_movement_type;
+pub use wire_ledger::WireCtx;
 // `send_entity_method_to_witnesses` and `send_entity_method_to_self_and_witnesses`
 // land here for #278 child PRs to adopt. They stay private to the `messaging`
 // module until the first child callsite migrates — at which point the
@@ -72,7 +79,7 @@ pub use messaging::{
 pub use resolve::{
     ability_for_active_weapon, ability_for_item, is_ability_granted_by_active_weapon,
 };
-pub use timer_update::{send_timer_update, TimerRoute};
+pub use timer_update::{send_timer_update, send_timer_update_ctx, TimerRoute};
 pub use use_ability::{
     credit_ground_deaths, fire_line_of_sight, interrupt_unlearned_cast, warmup_tick, FireLos,
 };

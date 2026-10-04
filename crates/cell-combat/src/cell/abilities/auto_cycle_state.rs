@@ -15,7 +15,8 @@ use tokio::sync::mpsc;
 
 use super::super::messages::CellToBaseMsg;
 use super::super::space_manager::SpaceManager;
-use super::messaging::send_entity_method;
+use super::messaging::WireRoute;
+use super::wire_ledger::{self, WireCtx};
 
 /// Broadcast `onStateFieldUpdate` after a `BSF_AUTO_CYCLING` transition.
 ///
@@ -27,10 +28,12 @@ pub async fn send_auto_cycle_state(
     tx: &mpsc::Sender<CellToBaseMsg>,
     space_mgr: &SpaceManager,
 ) {
-    send_entity_method(
+    wire_ledger::send(
         entity_id,
         crate::mercury::method_idx::ON_STATE_FIELD_UPDATE,
         new_state.to_le_bytes().to_vec(),
+        WireRoute::EntityDefault,
+        WireCtx::new("auto_cycle").reason("auto_cycle"),
         tx,
         space_mgr,
     )

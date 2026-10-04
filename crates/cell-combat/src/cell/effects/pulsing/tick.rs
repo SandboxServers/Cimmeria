@@ -12,7 +12,8 @@ use tokio::sync::mpsc;
 use cimmeria_entity::abilities::{serialize_timer_update, EffectDef, TIMER_DURATION_EFFECT};
 use cimmeria_entity::cell_entity::{ActiveEffectInstance, PlayerIdentity};
 
-use crate::cell::abilities::{send_entity_method, send_timer_update};
+use crate::cell::abilities::wire_ledger::{self, WireCtx};
+use crate::cell::abilities::{send_timer_update_ctx, WireRoute};
 use crate::cell::content_events::ContentEvents;
 use crate::cell::messages::CellToBaseMsg;
 use crate::cell::space_manager::SpaceManager;
@@ -198,10 +199,12 @@ pub async fn effect_pulse_tick(
                     let dirty = entity.stats.serialize_dirty();
                     entity.stats.clear_dirty();
                     if !dirty.is_empty() {
-                        send_entity_method(
+                        wire_ledger::send(
                             entity_id,
                             crate::mercury::method_idx::ON_STAT_UPDATE,
                             dirty,
+                            WireRoute::EntityDefault,
+                            WireCtx::new("pulse_end").cast(cast_id).ability(ability_id),
                             tx,
                             space_mgr,
                         )
@@ -217,7 +220,14 @@ pub async fn effect_pulse_tick(
                 0.0,
                 0.0,
             );
-            send_timer_update(entity_id, zero_timer, tx, space_mgr).await;
+            send_timer_update_ctx(
+                entity_id,
+                zero_timer,
+                WireCtx::new("pulse_end").cast(cast_id).ability(ability_id),
+                tx,
+                space_mgr,
+            )
+            .await;
         }
     }
 }

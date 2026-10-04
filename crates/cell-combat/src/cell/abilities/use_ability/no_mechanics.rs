@@ -21,6 +21,7 @@ use cimmeria_entity::abilities::{ability_effects_have_mechanics, AbilityDef, EF_
 use cimmeria_entity::cell_entity::PlayerIdentity;
 use cimmeria_wire::cell::chat::{serialize_on_player_communication, CHAN_FEEDBACK};
 
+use crate::cell::abilities::wire_ledger::{self, WireCtx};
 use crate::cell::cell_methods::player::world::reload::ABILITY_RELOAD_WEAPON;
 use crate::cell::cover::COVER_STANCE_ABILITY;
 use crate::cell::messages::CellToBaseMsg;
@@ -196,6 +197,7 @@ pub(super) async fn send_ability_refusal(
         (crate::mercury::method_idx::ON_ERROR_CODE, err),
         (crate::mercury::method_idx::ON_PLAYER_COMMUNICATION, chat),
     ] {
+        let row = wire_ledger::prepare(method_index, &args);
         if tx
             .send(CellToBaseMsg::EntityMethodCall {
                 entity_id,
@@ -215,6 +217,8 @@ pub(super) async fn send_ability_refusal(
                 method_index,
                 "useAbility: the no-effect feedback could not be queued (base channel closed)"
             );
+        } else {
+            row.sent_to_owner_as(who, entity_id, WireCtx::new("ability_refusal"));
         }
     }
 }

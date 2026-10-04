@@ -22,6 +22,7 @@ use cimmeria_entity::cell_entity::PetState;
 use cimmeria_wire::cell::chat::{serialize_on_player_communication, CHAN_FEEDBACK};
 use tokio::sync::mpsc;
 
+use crate::cell::abilities::wire_ledger::{self, WireCtx};
 use crate::cell::messages::CellToBaseMsg;
 use crate::cell::service::npc_ai::pet::{
     engage_pet_target, fight_refusal, target_state_refusal, PetEngagement,
@@ -173,6 +174,7 @@ async fn send_order_feedback(
         (crate::mercury::method_idx::ON_ERROR_CODE, err),
         (crate::mercury::method_idx::ON_PLAYER_COMMUNICATION, chat),
     ] {
+        let row = wire_ledger::prepare(method_index, &args);
         let msg = CellToBaseMsg::EntityMethodCall {
             entity_id: owner_id,
             method_index,
@@ -194,5 +196,10 @@ async fn send_order_feedback(
             );
             return;
         }
+        row.sent_to_owner(
+            space_mgr,
+            owner_id,
+            WireCtx::new("pet_order").ability(ability_id),
+        );
     }
 }
