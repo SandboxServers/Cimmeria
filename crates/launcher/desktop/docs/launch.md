@@ -112,7 +112,12 @@ its cache lock. Wine's game environment enables its graphics driver and sets
 `d3d9=n`; the pinned `Graphics.d3d9` is staged beside the actual `SGW.exe`.
 An existing matching DLL is reused. An existing different DLL is refused rather
 than silently overwritten. `CX_FWD_COMPAT_GL_CTX=1` preserves the experimentally
-established Mac OpenGL compatibility workaround.
+established Mac OpenGL compatibility workaround. Game preparation also sets
+`VK_DRIVER_FILES` to `lib/vulkan/icd.d/MoltenVK_icd.json` inside that verified
+runtime, so D9VK discovers the bundled MoltenVK surface implementation. A missing,
+non-file or redirected descriptor fails preparation before any helper spawn.
+This selection is native-owned; the webview cannot supply a driver path.
+Extraction and prerequisite operations retain their headless environment.
 
 `Graphics.rosetta_x87` optionally binds an independently pinned accelerator and
 its adjacent companion library; it sets `ROSETTA_X87_PATH`. `None` uses stock
@@ -136,6 +141,13 @@ Windows it exercises the dispatch preparation entry point; on other hosts it
 exercises the same native preparation implementation without enabling dispatch.
 The locked-handle read regression requires a native Windows run because Unix
 locks do not forbid reads through another handle.
+Mac-only environment regressions exercise the production game environment builder:
+exact bundled descriptor selection, interactive overrides, headless policy
+isolation, and refusal of missing, directory, symlink or redirected-ancestor
+descriptors before spawn. Removing the driver selection makes the selection
+regression fail. These inert filesystem fixtures do not execute Wine or validate
+runtime archive contents, device creation, rendering, login or world entry.
+
 Those host fixtures are Python protocol actors, not Wine or SGW. Windows x86
 helper compilation/injection, managed Wine launch and rendering require separate
 native validation. No frontend code changes in this packet; JS REPL and visual

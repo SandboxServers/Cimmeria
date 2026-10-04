@@ -22,19 +22,7 @@ pub(super) fn prepare(
         .as_ref()
         .ok_or(StorageError::Corrupt)?;
     graphics.d3d9.stage(&binaries.join("d3d9.dll"))?;
-    let mut environment = mac_wine::environment(&resources.runtime, &resources.prefix)
-        .map_err(|_| StorageError::Corrupt)?;
-    environment.insert(
-        "WINEDLLOVERRIDES".into(),
-        "d3d9=n;winemenubuilder.exe,mscoree,mshtml=d".into(),
-    );
-    environment.insert("CX_FWD_COMPAT_GL_CTX".into(), "1".into());
-    if let Some((executable, _)) = &graphics.rosetta_x87 {
-        environment.insert(
-            "ROSETTA_X87_PATH".into(),
-            executable.path().as_os_str().to_owned(),
-        );
-    }
+    let environment = game_environment(&resources.runtime, &resources.prefix, graphics)?;
     let guest = |p: &Path| {
         mac_wine::paths::guest(p)
             .map(PathBuf::from)
@@ -60,3 +48,39 @@ pub(super) fn prepare(
     };
     Ok((spec, request, resources))
 }
+
+// Called only after Resources::reopen verifies and locks the pinned runtime.
+fn game_environment(
+    runtime: &Path,
+    prefix: &Path,
+    graphics: &Graphics,
+) -> Result<std::collections::BTreeMap<std::ffi::OsString, std::ffi::OsString>, IntentError> {
+    let descriptor = runtime.join("lib/vulkan/icd.d/MoltenVK_icd.json");
+    if !std::fs::symlink_metadata(&descriptor).is_ok_and(|metadata| metadata.is_file())
+        || descriptor
+            .canonicalize()
+            .map_err(|_| StorageError::UnsafeFile)?
+            != descriptor
+    {
+        return Err(StorageError::UnsafeFile.into());
+    }
+    let mut environment =
+        mac_wine::environment(runtime, prefix).map_err(|_| StorageError::Corrupt)?;
+    environment.insert(
+        "WINEDLLOVERRIDES".into(),
+        "d3d9=n;winemenubuilder.exe,mscoree,mshtml=d".into(),
+    );
+    environment.insert("CX_FWD_COMPAT_GL_CTX".into(), "1".into());
+    if let Some((executable, _)) = &graphics.rosetta_x87 {
+        environment.insert(
+            "ROSETTA_X87_PATH".into(),
+            executable.path().as_os_str().to_owned(),
+        );
+    }
+    environment.insert("VK_DRIVER_FILES".into(), descriptor.into_os_string());
+    Ok(environment)
+}
+
+#[cfg(test)]
+#[path = "wine_tests.rs"]
+mod tests;
