@@ -256,6 +256,7 @@ pub(crate) async fn refuse(
             pet_id,
             reason = refusal.reason,
             error_code = refusal.error_code,
+            error_name = cimmeria_names::book().error_code(refusal.error_code),
             instance_id = refusal.instance_id,
             "pet command rejected: {} -- the pet does nothing, onErrorCode sent to the owner",
             refusal.reason
@@ -270,6 +271,7 @@ pub(crate) async fn refuse(
             pet_id,
             reason = refusal.reason,
             error_code = refusal.error_code,
+            error_name = cimmeria_names::book().error_code(refusal.error_code),
             instance_id = refusal.instance_id,
             "pet command rejected: {} -- the pet does nothing, onErrorCode sent to the owner",
             refusal.reason
@@ -319,6 +321,7 @@ async fn send_error_code(
             account_id = caller.account_id,
             player_id = caller.player_id,
             error_code,
+            error_name = cimmeria_names::book().error_code(error_code),
             reason = "feedback_send_failed",
             "pet command feedback: onErrorCode could not be queued (base channel closed) -- \
              the owner sees no reaction to the press"

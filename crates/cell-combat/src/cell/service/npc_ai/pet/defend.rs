@@ -60,6 +60,7 @@ pub(super) async fn sync_owner_combat(
                 player_id = id.player_id,
                 target_id = mob_id,
                 new_state = state,
+                new_state_names = %cimmeria_wire::state_field::STATE_FLAGS.render(state),
                 "pet: the pet's fight put its owner in combat"
             );
             // Appearance first, then the state bit: the same order and
@@ -116,6 +117,7 @@ pub(super) async fn sync_owner_combat(
                 player_id = id.player_id,
                 target_id = mob_id,
                 new_state = state,
+                new_state_names = %cimmeria_wire::state_field::STATE_FLAGS.render(state),
                 "pet: the pet's fight ended, its owner left combat"
             );
             // To the owner's own client only, as `leash::send_combat_exits`

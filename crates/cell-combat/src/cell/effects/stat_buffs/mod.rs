@@ -148,6 +148,7 @@ async fn flush_ledger_state_field(
         event = "ledger_state_field_sent",
         entity_id,
         state_field = state,
+        state_field_names = %cimmeria_wire::state_field::STATE_FLAGS.render(state),
         "timed effect changed the state field; broadcasting"
     );
     wire_ledger::send(

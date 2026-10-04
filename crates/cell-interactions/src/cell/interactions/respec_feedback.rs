@@ -44,6 +44,7 @@ pub async fn send_respec_rejection(
             entity_id,
             reason,
             error_code = code,
+            error_name = cimmeria_names::book().error_code(code),
             error = %e,
             "resetMyAbilities: rejection onErrorCode could not be queued (base channel closed)"
         );

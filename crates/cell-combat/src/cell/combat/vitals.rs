@@ -87,6 +87,7 @@ pub fn log_damage_taken(
         attacker_player_id = space_mgr.player_identity(attacker_eid).player_id,
         ability_id,
         result_code,
+        result = crate::cell::abilities::metrics::QrOutcome::from_code(result_code).label(),
         health_before = before.health,
         health = after.health,
         health_max = after.health_max,

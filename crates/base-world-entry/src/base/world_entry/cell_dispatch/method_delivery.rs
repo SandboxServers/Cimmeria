@@ -224,6 +224,7 @@ pub(super) fn log_method_outcome(
                     system_id = j.system_id,
                     instance_id = j.instance_id,
                     error_code = j.error_code,
+                    error_name = j.error_code.and_then(|c| cimmeria_names::book().error_code(c).map(str::to_owned)),
                     "entity method sent to the client"
                 );
             }

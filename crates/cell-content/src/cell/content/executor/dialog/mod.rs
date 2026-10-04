@@ -185,6 +185,7 @@ pub(super) async fn add_dialog_set(
             dialog_id = ?entry.dialog_id,
             interaction_only = entry.dialog_id.is_none(),
             interaction_flags = entry.interaction_flags,
+            interaction_flags_names = %cimmeria_entity::interaction_flags::INTERACTION_FLAGS.render(entry.interaction_flags),
             "add_dialog_set: resolved dialog_set_map entry"
         );
 
@@ -354,6 +355,7 @@ pub(super) async fn add_dialog(
             dialog_id = ?entry.dialog_id,
             interaction_only = entry.dialog_id.is_none(),
             interaction_flags = entry.interaction_flags,
+            interaction_flags_names = %cimmeria_entity::interaction_flags::INTERACTION_FLAGS.render(entry.interaction_flags),
             "add_dialog: resolved dialog_set_map entry"
         );
 
@@ -434,8 +436,11 @@ async fn send_interaction_update_if_visible(
                 target_id,
                 dialog_id = ?dialog_id,
                 base_flags,
+                base_flags_names = %cimmeria_entity::interaction_flags::INTERACTION_FLAGS.render(base_flags),
                 player_flags,
+                player_flags_names = %cimmeria_entity::interaction_flags::INTERACTION_FLAGS.render(player_flags),
                 merged,
+                merged_names = %cimmeria_entity::interaction_flags::INTERACTION_FLAGS.render(merged),
                 "Sending per-player InteractionType for {}",
                 label
             );

@@ -130,9 +130,13 @@ pub async fn gm_set_perms(
         org_type = row.org_type,
         rank,
         from_mask = edit.from.bits(),
+        from_mask_names = %cimmeria_entity::organization::ORG_PERMISSIONS.render(edit.from.bits()),
         to_mask = edit.to.bits(),
+        to_mask_names = %cimmeria_entity::organization::ORG_PERMISSIONS.render(edit.to.bits()),
         wire_mask = mask,
+        wire_mask_names = %cimmeria_entity::organization::ORG_PERMISSIONS.render(mask),
         ignored_bits = edit.ignored.bits(),
+        ignored_bits_names = %cimmeria_entity::organization::ORG_PERMISSIONS.render(edit.ignored.bits()),
         "organization rank permissions changed"
     );
     // The whole rank table as read under the lock, then the officer-note

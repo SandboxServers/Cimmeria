@@ -28,6 +28,7 @@ async fn send_combat_exits(
             npc_id,
             player_id,
             new_state,
+            new_state_names = %cimmeria_wire::state_field::STATE_FLAGS.render(new_state),
             "NPC gave up: player's last threatening mob drained, BSF_InCombat cleared"
         );
         crate::cell::abilities::send_entity_method(

@@ -135,6 +135,7 @@ pub(super) async fn sync_combat_stance(
         npc_id,
         template_id,
         state_field,
+        state_field_names = %cimmeria_wire::state_field::STATE_FLAGS.render(state_field),
         witness_count,
         "npc_ai: combat stance announced ({})",
         if fighting { "in combat" } else { "out of combat" },

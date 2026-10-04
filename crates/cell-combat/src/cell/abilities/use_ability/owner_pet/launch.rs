@@ -111,6 +111,7 @@ pub(super) async fn refuse(
             pet_ids = ?pet_ids,
             reason = refusal.reason(),
             error_code = refusal.code(),
+            error_name = cimmeria_names::book().error_code(refusal.code()),
             "owner ability on a pet refused"
         );
     } else {
@@ -127,6 +128,7 @@ pub(super) async fn refuse(
             pet_ids = ?pet_ids,
             reason = refusal.reason(),
             error_code = refusal.code(),
+            error_name = cimmeria_names::book().error_code(refusal.code()),
             "owner ability on a pet refused"
         );
     }

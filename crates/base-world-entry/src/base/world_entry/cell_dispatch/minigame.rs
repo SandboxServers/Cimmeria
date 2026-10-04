@@ -104,7 +104,12 @@ pub(super) async fn minigame_result(
     entity_to_addr: &Arc<Mutex<HashMap<u32, SocketAddr>>>,
     cell_tx: &Option<mpsc::Sender<BaseToCellMsg>>,
 ) {
-    tracing::info!(entity_id, result_code, "Minigame result received");
+    tracing::info!(
+        entity_id,
+        result_code,
+        result = cimmeria_wire::cell::client_methods::minigame::minigame_result_name(result_code),
+        "Minigame result received"
+    );
     // Send onEndMinigame to client
     let method = crate::cell::dispatch::CLIENT_MG_ON_END_MINIGAME;
     send_to_witness_reliable(

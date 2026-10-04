@@ -83,6 +83,7 @@ pub(crate) async fn refuse_out_of_range(
         min_range = failure.bounds.min,
         max_range = failure.bounds.max,
         error_code = CONDITION_FEEDBACK_OUTSIDE_WEAPON_RANGE,
+        error_name = cimmeria_names::book().error_code(CONDITION_FEEDBACK_OUTSIDE_WEAPON_RANGE),
         "useAbility refused: the target is outside the ability's range (onErrorCode 42)"
     );
     if !is_player {

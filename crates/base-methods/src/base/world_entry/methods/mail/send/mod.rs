@@ -396,6 +396,7 @@ async fn refuse_about(
         result = refusal.result.token(),
         failed_recipients = refusal.failed_recipients.len(),
         failed_flags = refusal.failed_flags,
+        failed_flags_names = %flags::MAIL_FLAGS.render(refusal.failed_flags),
         "sendMailMessage refused",
     );
     let args = serialize_send_mail_result(

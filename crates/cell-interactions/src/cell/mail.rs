@@ -194,6 +194,7 @@ pub async fn handle_send_mail(
                 player_id,
                 recipients = send.recipients.len(),
                 recipient_flags = send.recipient_flags,
+                recipient_flags_names = %cimmeria_wire::cell::mail::codes::flags::MAIL_FLAGS.render(send.recipient_flags),
                 subject_units = send.subject.encode_utf16().count(),
                 body_units = send.body.encode_utf16().count(),
                 cash = send.cash,

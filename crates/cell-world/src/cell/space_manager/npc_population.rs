@@ -153,6 +153,7 @@ fn log_spawn_behaviour(space_mgr: &mut SpaceManager, npc_id: u32) {
         patrol_len = e.patrol_path.len(),
         wander_radius = e.wander_radius,
         interaction_flags = e.interaction_type_flags,
+        interaction_flags_names = %cimmeria_entity::interaction_flags::INTERACTION_FLAGS.render(e.interaction_type_flags),
         loot_table_id = ?e.loot_table_id,
         ability_ids = ?ability_ids,
         event_set_ids = ?event_set_ids,

@@ -196,6 +196,7 @@ pub(crate) async fn resync_after_pawn_recreate(
         level,
         archetype_id,
         state_field,
+        state_field_names = %cimmeria_wire::state_field::STATE_FLAGS.render(state_field),
         replayed = RESYNC_REPLAYED,
         "Resynced client entity state after pawn recreate"
     );

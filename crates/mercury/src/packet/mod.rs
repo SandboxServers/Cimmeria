@@ -112,6 +112,20 @@ pub const FLAG_HAS_SEQUENCE: u8 = 0x40;
 /// See `docs/audits/mercury-rust-conformance-2026-05-15.md` §11.1.
 pub const FLAG_INDEXED: u8 = 0x80;
 
+/// The flag byte's names, for log lines (`flags_names`, NT-31), spelled as
+/// the constants above.
+pub const PACKET_FLAGS: cimmeria_common::flag_names::FlagSet =
+    cimmeria_common::flag_names::FlagSet::new(&[
+        (FLAG_HAS_REQUESTS as u64, "FLAG_HAS_REQUESTS"),
+        (FLAG_PIGGYBACK as u64, "FLAG_PIGGYBACK"),
+        (FLAG_HAS_ACKS as u64, "FLAG_HAS_ACKS"),
+        (FLAG_ON_CHANNEL as u64, "FLAG_ON_CHANNEL"),
+        (FLAG_RELIABLE as u64, "FLAG_RELIABLE"),
+        (FLAG_FRAGMENTED as u64, "FLAG_FRAGMENTED"),
+        (FLAG_HAS_SEQUENCE as u64, "FLAG_HAS_SEQUENCE"),
+        (FLAG_INDEXED as u64, "FLAG_INDEXED"),
+    ]);
+
 /// Valid Mercury sequence-number range is 28 bits — `0x00000000` through
 /// `0x0FFFFFFF` inclusive. Mask any candidate sequence with this value
 /// to keep it inside the spec'd range; counters that overflow into the

@@ -197,7 +197,9 @@ pub async fn set_rank_permissions(
             org_id,
             rank = rank.as_u8(),
             from_mask = old.bits(),
+            from_mask_names = %cimmeria_entity::organization::ORG_PERMISSIONS.render(old.bits()),
             to_mask = permissions.bits(),
+            to_mask_names = %cimmeria_entity::organization::ORG_PERMISSIONS.render(permissions.bits()),
             rows_affected = 1u64,
             "Organization rank permissions changed"
         );

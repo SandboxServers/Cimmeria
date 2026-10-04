@@ -101,6 +101,7 @@ async fn refuse(
         method = method.name(),
         reason = error.reason(),
         error_id = error.id(),
+        error_name = ?error,
         access = access.map(BlackMarketReject::label),
         distance,
         "Black Market request refused on the cell"

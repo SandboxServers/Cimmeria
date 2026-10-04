@@ -93,7 +93,7 @@ Coordinator launch: 2026-10-04 at `7e7ba5779` (baseline `a679e748c`). The cited 
 | NT-26 Sweep: social, orgs, mail, trade, BM, duel | BlockedDependency (NT-02) | | |
 | NT-27 Sweep: GM console and minigames | BlockedDependency (NT-02) | | |
 | NT-30 Opcode and method names | Ready | | |
-| NT-31 Flag, enum and error-code names | BlockedDependency (NT-01) | | |
+| NT-31 Flag, enum and error-code names | InReview | PR TBD | `cimmeria_common::flag_names::FlagSet` (const `(mask, name)` table, `render()` is a `Display`, no `bitflags` dependency). Six flag sets, each pinned to `enumerations.xml`: BSF 22 events, `EInteractionNotificationType` 8, `EOrganizationPermission` 5, `EEffectFlag` 2, `EMailFlags` 2, Mercury packet flags 2 (41). Enum codes 20: `error_code`→`error_name` 11, BM `error_name = ?BMError` 3, QR `result` 2, minigame `result` 3, duel `defeat_reason_name` 1. The effect-flag row's `categories`/`unknown_bits` became `flags_names`. Not done: the per-packet `mercury.packet` INFO row (a string per packet into SigNoz), contact-list and BM `filter_flags` (no client definition), item flags (no log site), chat `channel` numbers, `timer_type_code`; positions (optional) not touched |
 | NT-40 Client telemetry resolved at ingest | BlockedDependency (NT-01, NT-02, NT-30) | | |
 | NT-41 Lab tools return names | InReview | | The four server tools pair every ID with its name; the cell fills live names, the lab endpoint the NameBook ones. `server_witnesses` lists became `{ entity_id, entity_name, … }` objects. `client_entity_table` / `client_inventory` are served by the lab daemon from client memory, not the server, so they are left as they are. `spawn_id`, `class_id`, `stat_id` have no name table yet |
 | NT-50 Close-out | BlockedDependency (all) | | |

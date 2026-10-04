@@ -62,6 +62,7 @@ pub fn enter_player_combat(
                 player_id,
                 mob_id,
                 new_state = player.state_field,
+                new_state_names = %cimmeria_wire::state_field::STATE_FLAGS.render(player.state_field),
                 weapon_holstered = player.weapon_holstered,
                 "enter_player_combat: BSF_InCombat set (first threatened mob); weapon drawn"
             );
@@ -112,6 +113,7 @@ pub fn exit_player_combat(
                 player_id,
                 mob_id,
                 new_state = player.state_field,
+                new_state_names = %cimmeria_wire::state_field::STATE_FLAGS.render(player.state_field),
                 weapon_holstered = player.weapon_holstered,
                 "exit_player_combat: BSF_InCombat cleared; OOC holster timer armed"
             );

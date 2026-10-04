@@ -282,6 +282,7 @@ pub(crate) async fn refuse_without_line_of_sight(
         hit_xyz = ?r.probe.hit,
         rays = r.rays,
         error_code = CONDITION_FEEDBACK_LOS,
+        error_name = cimmeria_names::book().error_code(CONDITION_FEEDBACK_LOS),
         "useAbility refused: no line of sight to the target (onErrorCode 39)"
     );
     cimmeria_observability::counter!(
@@ -346,6 +347,7 @@ async fn refuse_other_space(
         caster_space_id = shooter_space,
         target_space_id = target_space,
         error_code = CONDITION_FEEDBACK_INVALID_ENTITY,
+        error_name = cimmeria_names::book().error_code(CONDITION_FEEDBACK_INVALID_ENTITY),
         "useAbility refused: the target is not in the caster's space (onErrorCode 0)"
     );
     let args = other_space_error_args(ability_id);

@@ -288,6 +288,7 @@ fn log_route(
         effect_id = effect.effect_id,
         tcm = effect.target_collection_method.as_str(),
         effect_flags = effect.flags,
+        effect_flags_names = %crate::cell::abilities::cone_aoe::EFFECT_FLAGS.render(effect.flags),
         route = ?route,
         reason,
         "effect routed: user halves land on the caster, beneficial area halves on its allies"

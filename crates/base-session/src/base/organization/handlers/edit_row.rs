@@ -64,8 +64,11 @@ impl EditRow {
             target_rank = self.target_rank,
             rank = self.rank,
             from_mask = self.from_mask,
+            from_mask_names = self.from_mask.map(|m| tracing::field::display(cimmeria_entity::organization::ORG_PERMISSIONS.render(m))),
             to_mask = self.to_mask,
+            to_mask_names = self.to_mask.map(|m| tracing::field::display(cimmeria_entity::organization::ORG_PERMISSIONS.render(m))),
             wire_mask = self.wire_mask,
+            wire_mask_names = self.wire_mask.map(|m| tracing::field::display(cimmeria_entity::organization::ORG_PERMISSIONS.render(m))),
             "organization edit succeeded"
         );
         count(self.action, "ok", "none");
@@ -92,9 +95,13 @@ impl EditRow {
             target_rank = self.target_rank,
             rank = self.rank,
             from_mask = self.from_mask,
+            from_mask_names = self.from_mask.map(|m| tracing::field::display(cimmeria_entity::organization::ORG_PERMISSIONS.render(m))),
             to_mask = self.to_mask,
+            to_mask_names = self.to_mask.map(|m| tracing::field::display(cimmeria_entity::organization::ORG_PERMISSIONS.render(m))),
             wire_mask = self.wire_mask,
+            wire_mask_names = self.wire_mask.map(|m| tracing::field::display(cimmeria_entity::organization::ORG_PERMISSIONS.render(m))),
             unheld_mask = self.unheld_mask,
+            unheld_mask_names = self.unheld_mask.map(|m| tracing::field::display(cimmeria_entity::organization::ORG_PERMISSIONS.render(m))),
             "organization edit rejected"
         );
         count(self.action, "rejected", why.reason());
