@@ -1,7 +1,7 @@
 # Unpaired ID fields per file (Rule 6, NT-03). Only ever lowered.
 # Regenerate after pairing fields: NT_BASELINE_BLESS=1 cargo nextest run -p cimmeria-server unpaired_id
 # See crates/server/src/logging/unpaired_id_tests/mod.rs.
-# total 5488
+# total 5156
 crates/admin-api/src/routes/dev_session/handlers.rs 2
 crates/admin-api/src/routes/telemetry/handlers.rs 14
 crates/admin-api/src/routes/telemetry/replay.rs 33
@@ -204,9 +204,6 @@ crates/base/src/base/dispatch/tell.rs 13
 crates/base/src/base/login/mod.rs 3
 crates/base/src/base/service.rs 1
 crates/cell-catalog/src/ability_tree/tree_info.rs 5
-crates/cell-catalog/src/cell/spawner/abilities.rs 2
-crates/cell-catalog/src/cell/spawner/stargates.rs 1
-crates/cell-catalog/src/cell/spawner/templates.rs 1
 crates/cell-catalog/src/crafting/catalog.rs 3
 crates/cell-combat/src/cell/abilities/cone_aoe/fan_out.rs 6
 crates/cell-combat/src/cell/abilities/cone_aoe/flag_categories.rs 4
@@ -279,30 +276,6 @@ crates/cell-combat/src/cell/effects/pulsing/pulse.rs 27
 crates/cell-combat/src/cell/effects/pulsing/register.rs 7
 crates/cell-combat/src/cell/effects/pulsing/tick.rs 9
 crates/cell-combat/src/cell/effects/stat_buffs/mod.rs 1
-crates/cell-combat/src/cell/service/npc_ai/aggro_acquired.rs 5
-crates/cell-combat/src/cell/service/npc_ai/assist.rs 4
-crates/cell-combat/src/cell/service/npc_ai/chase/mod.rs 9
-crates/cell-combat/src/cell/service/npc_ai/combat_stance.rs 2
-crates/cell-combat/src/cell/service/npc_ai/dispatch.rs 3
-crates/cell-combat/src/cell/service/npc_ai/fight.rs 14
-crates/cell-combat/src/cell/service/npc_ai/fight_cover.rs 24
-crates/cell-combat/src/cell/service/npc_ai/fight_target.rs 4
-crates/cell-combat/src/cell/service/npc_ai/follow.rs 7
-crates/cell-combat/src/cell/service/npc_ai/idle_aggro.rs 2
-crates/cell-combat/src/cell/service/npc_ai/investigate.rs 2
-crates/cell-combat/src/cell/service/npc_ai/leash/begin.rs 4
-crates/cell-combat/src/cell/service/npc_ai/leash/mod.rs 3
-crates/cell-combat/src/cell/service/npc_ai/lifecycle/mod.rs 7
-crates/cell-combat/src/cell/service/npc_ai/path_failure/mod.rs 2
-crates/cell-combat/src/cell/service/npc_ai/path_request.rs 3
-crates/cell-combat/src/cell/service/npc_ai/patrol.rs 2
-crates/cell-combat/src/cell/service/npc_ai/pet/defend.rs 12
-crates/cell-combat/src/cell/service/npc_ai/pet/disengage.rs 16
-crates/cell-combat/src/cell/service/npc_ai/pet/engage.rs 20
-crates/cell-combat/src/cell/service/npc_ai/pet/mod.rs 17
-crates/cell-combat/src/cell/service/npc_ai/pet/owner_follow.rs 15
-crates/cell-combat/src/cell/service/npc_ai/step_back.rs 3
-crates/cell-combat/src/cell/service/npc_ai/wander.rs 2
 crates/cell-console/src/cell/console/abilities/clear_effects.rs 5
 crates/cell-console/src/cell/console/abilities/cooldowns.rs 4
 crates/cell-console/src/cell/console/abilities/dummy.rs 12
@@ -349,9 +322,6 @@ crates/cell-console/src/cell/console/squad.rs 6
 crates/cell-console/src/cell/console/stats.rs 5
 crates/cell-console/src/cell/console/travel/mod.rs 17
 crates/cell-console/src/cell/console/travel/named_destination.rs 6
-crates/cell-cover/src/cell/cover/ai_integration.rs 4
-crates/cell-cover/src/cell/cover/loader.rs 6
-crates/cell-cover/src/cell/cover/types.rs 1
 crates/cell-duel/src/cell/duel/engage.rs 15
 crates/cell-duel/src/cell/duel/forfeit.rs 7
 crates/cell-duel/src/cell/duel/response.rs 36
@@ -403,10 +373,6 @@ crates/cell-org/src/cell/organization/mod.rs 1
 crates/cell-org/src/cell/organization/squad/membership.rs 6
 crates/cell-org/src/cell/organization/squad/ping.rs 4
 crates/cell-org/src/cell/organization/squad/world_entry.rs 3
-crates/cell-pets/src/cell/cell_methods/player/pet/invoke.rs 7
-crates/cell-pets/src/cell/cell_methods/player/pet/mod.rs 20
-crates/cell-pets/src/cell/cell_methods/player/pet/stance.rs 9
-crates/cell-pets/src/cell/cell_methods/player/pet/toggle.rs 11
 crates/cell-world/src/cell/combat_debug/commands.rs 3
 crates/cell-world/src/cell/combat_debug/deliver.rs 14
 crates/cell-world/src/cell/combat_debug/mod.rs 8
@@ -429,20 +395,7 @@ crates/cell-world/src/cell/pets/buffs.rs 16
 crates/cell-world/src/cell/pets/create_on_client.rs 9
 crates/cell-world/src/cell/pets/owner_hooks.rs 46
 crates/cell-world/src/cell/pets/registry.rs 13
-crates/cell-world/src/cell/pets/spawn.rs 14
 crates/cell-world/src/cell/pets/teardown.rs 31
-crates/cell-world/src/cell/playtest_friction_watch.rs 13
-crates/cell-world/src/cell/service/npc_ai/detectors/aggro_scan.rs 12
-crates/cell-world/src/cell/service/npc_ai/detectors/idle_parked.rs 2
-crates/cell-world/src/cell/service/npc_ai/detectors/leash.rs 11
-crates/cell-world/src/cell/service/npc_ai/detectors/los.rs 3
-crates/cell-world/src/cell/service/npc_ai/detectors/movement.rs 4
-crates/cell-world/src/cell/service/npc_ai/detectors/spawn.rs 5
-crates/cell-world/src/cell/service/npc_ai/detectors/sweep.rs 3
-crates/cell-world/src/cell/service/npc_ai/detectors/threat.rs 4
-crates/cell-world/src/cell/service/npc_ai/movement_stop/mod.rs 1
-crates/cell-world/src/cell/service/npc_ai/transition.rs 2
-crates/cell-world/src/cell/space_manager/npc_population.rs 9
 crates/cell-world/src/cell/space_manager/vault_session_end.rs 6
 crates/cell/src/cell/dispatch/ability_receipt.rs 3
 crates/cell/src/cell/service/base_messages/ability_granted.rs 17
@@ -461,7 +414,6 @@ crates/cell/src/cell/service/ticks/auto_cycle.rs 13
 crates/cell/src/cell/service/ticks/cover.rs 3
 crates/cell/src/cell/service/ticks/crafting_stations.rs 3
 crates/cell/src/cell/service/ticks/holster.rs 4
-crates/cell/src/cell/service/ticks/npc_respawn/mod.rs 5
 crates/cell/src/cell/service/ticks/pending_holster.rs 4
 crates/cell/src/cell/service/ticks/regen.rs 16
 crates/cell/src/cell/service/ticks/reload_completion.rs 3
