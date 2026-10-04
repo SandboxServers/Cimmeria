@@ -344,3 +344,6 @@ mod tests;
 
 #[cfg(test)]
 mod smoke;
+
+#[cfg(test)]
+mod probe_smoke;

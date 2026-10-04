@@ -75,3 +75,28 @@ binaries from `DATA1.CAB` with the other volumes alongside it. Inspect the
 manifest with `7zz x -so SGW.exe .rsrc/1033/MANIFEST/1` and imports with
 `objdump -p SGW.exe`. Hash the original bytes before client setup changes the
 ASLR flag. Keep proprietary binary artifacts outside the repository.
+
+## Private Wine probe smoke
+
+The ignored engine test `mac_wine::probe_smoke::original_client_module_probe_in_private_wine_prefix`
+uses the pinned, tree-verified Wine runtime in a disposable prefix. Supply
+`CIMMERIA_RUNTIME_PROBE` and `CIMMERIA_RUNTIME_PROBE_SHA256` from the same native
+Windows CI artifact, and `SGW_PROBE_BINARIES` pointing to the original unmodified
+client binaries. The test verifies the probe hash and both client-file hashes
+before Wine starts, copies only the two client binaries into its private tree,
+and disables window drivers. It bounds execution to 120 seconds and stdout to
+8 KiB, then stops/waits for the private prefix before evaluating the report.
+It never installs prerequisites or runs the game. It is not the production
+supervisor and does not validate cancellation or launcher-restart recovery.
+
+```bash
+bash tools/build-lane/lane.sh cargo test --locked \
+  --manifest-path crates/launcher/desktop/Cargo.toml \
+  -p cimmeria-launcher-engine --lib \
+  mac_wine::probe_smoke::original_client_module_probe_in_private_wine_prefix \
+  -- --exact --ignored --nocapture
+```
+
+The harness passes native Mac strict clippy (lane `20261004-064521-91420`).
+Execution awaits the native Windows probe artifact; compilation alone does not
+prove Wine compatibility.

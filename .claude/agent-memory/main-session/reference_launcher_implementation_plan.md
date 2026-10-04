@@ -330,3 +330,9 @@ Windows+Mac before the shell; shell/visual/game gates remain separate.
   portable tests pass; native i686 CI and real-game execution remain unproven.
   Before managed integration bind helper hash/owned root and supervisor deadline.
   Reference: `crates/launcher/desktop/docs/prerequisites.md`.
+
+- Added explicit ignored private-prefix module-probe smoke: hash-check native x86
+  helper plus original SGW/PhysXLoader, pinned Wine tree/cache lock, disabled window
+  drivers, 120s/8KiB bounds and stop/wait before assertions. Native Mac strict
+  clippy passed lane064521-91420; execution pending native probe artifact.
+  This is test supervision only, not production prerequisite integration.
