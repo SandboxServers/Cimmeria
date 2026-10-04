@@ -46,7 +46,7 @@ Nothing has been built yet. What the planning pass found:
 The full contract is NT-00 (Rule 6). All five decisions were settled on 2026-10-04. In short:
 
 1. **Pair, don't replace.** The ID stays the join key. The name sits next to it under the same prefix: `ability_id` + `ability_name`, `target` + `target_name`, `space_id` + `world_name`. NT-00 publishes the canonical key table.
-2. **One lookup path.** A `NameBook` is loaded at boot from `db/resources`, shared by base and cell, and refreshed on content reload (NT-01). Lookups return `Option<&str>`. tracing records an `Option` field only when it is `Some`, so an unresolved name is left out, never written as `"unknown"`.
+2. **One lookup path per kind of ID.** Static content IDs go through a `NameBook` loaded at boot from `db/resources`, shared by base and cell, and refreshed on content reload (NT-01). Seed placeholders such as `NO ITEM NAME` count as unresolved. Runtime entity IDs are recycled slots, so they resolve through the live `SpaceManager` plus a bounded ring of recently departed entities (NT-02), never through the NameBook. Lookups return `Option<&str>`. tracing records an `Option` field only when it is `Some`, so an unresolved name is left out, never written as `"unknown"`.
 3. **A missing name means bad data.** A log line with `template_id` but no `template_name` points at a seed hole. NT-50 ships a saved SigNoz query for this.
 4. **Names are never metric labels.** Rule 4 stands. `world_name` stays the one approved label.
 5. **Resolve late, and before teardown.** Same as Rule 5. The 10 Hz movement accept path pays nothing.
@@ -92,6 +92,6 @@ You coordinate this campaign. Work from [work-packets.md](work-packets.md) one p
 | NT-27 Sweep: GM console and minigames | BlockedDependency (NT-02) | | |
 | NT-30 Opcode and method names | Ready | | |
 | NT-31 Flag, enum and error-code names | BlockedDependency (NT-01) | | |
-| NT-40 Client telemetry resolved at ingest | BlockedDependency (NT-01, NT-30) | | |
+| NT-40 Client telemetry resolved at ingest | BlockedDependency (NT-01, NT-02, NT-30) | | |
 | NT-41 Lab tools return names | BlockedDependency (NT-01) | | |
 | NT-50 Close-out | BlockedDependency (all) | | |

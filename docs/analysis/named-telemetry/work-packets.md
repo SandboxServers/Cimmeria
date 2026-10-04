@@ -24,7 +24,8 @@
 **Scope.** Add **Rule 6 — Every ID field is paired with its name** to [instrumentation-discipline.md](../../architecture/instrumentation-discipline.md). It covers:
 
 - The pairing contract: same prefix, ID kept, name next to it, `Option` left out when unresolved, never `"unknown"`, `""` or `"None"`.
-- The canonical key table:
+- **The default pairing rule:** every field whose key ends in `_id`, plus the bare entity keys `target`, `attacker`, `entity` and `witness`, pairs with the same prefix ending in `_name` (`witness_id` → `witness_name`, `subject_player_id` → `subject_player_name`, `target_player_id` → `target_player_name`). The table below lists only the **exceptions**, where the name key or the lookup differs. A key that fits neither the rule nor the table needs an explicit exemption (NT-03).
+- The canonical key table (exceptions and lookup sources):
 
   | ID key | Name key | Source |
   |---|---|---|
@@ -41,7 +42,7 @@
   | `org_id` | `org_name` | organizations |
   | `archetype` | `archetype_name` | `archetype_name()` |
   | `error_code`, `moniker_id` | `error_name`, `moniker_name` | `error_texts.moniker_name`, `monikers.name` |
-  | `opcode`, `method_id` | `method_name` | NT-30 table |
+  | `opcode`, `msg_id`, `method_id`, `method_index` | `method_name` | NT-30 table |
 
   Existing names that disagree (`character_name` vs `player_name`) are listed with the one to keep. Sweeps converge on it.
 - The metric-label prohibition (a cross-reference to Rule 4) and the Discord rules (`Name (#id)`, no internal links).
@@ -62,6 +63,7 @@ Update [negative-logging-convention.md](../../architecture/negative-logging-conv
   - `entity_templates`, `monikers`, `texts`, `error_texts`
   - `stargates`, `respawners`, `spawn_sets`, `containers`, `item_lists`, `applied_science`
   - world names
+- **Placeholders are unresolved.** Seed rows whose name is a placeholder load as `None`, not as a name. As of `a679e748c` that covers `NO ITEM NAME` (89 rows), `UNUSED DIALOGUE`/`UNUSED DIALOG` and variants (about 265), `NO MISSION DISPLAY NAME` (4), `UNUSED. DELETED.` (2), `UNUSED ERROR CODE` (1). Match them with one case-insensitive pattern list in the crate (`^(NO .*NAME|UNUSED.*)$`), so new placeholders of the same shape are caught too.
 - Typed lookups returning `Option<&str>`: `item(type_id)`, `ability(id)`, `template(id)`, `text(name_id)`, and so on.
 - Fold in the ad-hoc helpers as thin wrappers or re-exports: `archetype_name`, `ammo_name`, `racial_paradigm_name`. Existing call sites keep compiling.
 - Wired into base and cell startup, and into the existing content-reload path (`server_content_reload`), so a seed edit renames without a restart.
@@ -70,7 +72,8 @@ Update [negative-logging-convention.md](../../architecture/negative-logging-conv
 **Tests.**
 
 - Unit: every lookup returns `None` for an unknown ID; reload swaps atomically.
-- Live-DB (`live_db_namebook_*`): every seeded row in each table resolves to a non-empty name. Rows with blank seed names are listed as a known gap in the test, not silently skipped.
+- Unit: each placeholder form (`NO ITEM NAME`, `UNUSED DIALOGUE.`, …) resolves to `None`.
+- Live-DB (`live_db_namebook_*`): every seeded row in each table resolves to a non-empty, non-placeholder name, except the pinned gap list: blank and placeholder rows, by table and ID. A new blank or placeholder row fails the test until it's added to the list or given a real name.
 
 ### NT-02 Name helpers on the existing resolvers
 
@@ -79,13 +82,15 @@ Update [negative-logging-convention.md](../../architecture/negative-logging-conv
 - Extend `PlayerIdentity` with `player_name` and `account_name` on both resolvers. Rule 5 call sites get names for free.
 - `SpaceManager::entity_label(entity_id) -> Option<&str>`: character name for players, `name_id` text for NPCs. NPC log lines carry this **and** `template_id` + `template_name` (D-NT5).
 - Snapshot the label at the top of `destroy_entity` / `disconnect_entity`, next to the identity snapshot.
+- **Departed-entity ring.** Entity IDs are recycled runtime slots (Rule 5), so the static NameBook can't name them. Each space keeps a bounded ring of recently destroyed entities: `(entity_id, label, template_id, created_at, destroyed_at)`. Keep about 10 minutes or 4,096 rows, whichever is smaller. `SpaceManager::entity_label_at(space_id, entity_id, at)` answers from the live entity when `at` falls in its lifetime, from the ring when it falls in a departed one's, and `None` otherwise. A recycled slot is never named after the wrong occupant. NT-40 uses this for delayed client rows.
+- **Tests:** a recycled ID resolves to the old occupant for a timestamp before the recycle and to the new one after; a timestamp older than the ring returns `None`.
 - Convert the Rule 5 guard `identity_propagation.rs` to assert the names as well.
 
 ### NT-03 Unpaired-ID scan and baseline
 
 **Depends:** NT-00 (D-NT4: blocking). **Effort:** M. **Reviewer:** testing-validation-engineer.
 
-- A source-scan test in the style of `crates/server/src/logging/target_scan_tests.rs`. It parses every `trace!/debug!/info!/warn!/error!/event!/info_span!`… call in `IN_PROCESS_CRATES`, and finds each field whose key is in the NT-00 table's ID column without its paired name key in the same call.
+- A source-scan test in the style of `crates/server/src/logging/target_scan_tests.rs`. It parses every `trace!/debug!/info!/warn!/error!/event!/info_span!`… call in `IN_PROCESS_CRATES`, and classifies **every** ID-shaped key (NT-00's default rule: any `*_id`, plus the bare entity keys), not just the keys the table lists. Each one must have its paired name key (default `<prefix>_name`, or the table's exception) in the same call, or an exemption. A table-only scan would let `witness_id` or `method_index` stay unpaired.
 - `crates/server/src/logging/unpaired_id_baseline.txt`: `path count` per file. The test fails if any file's count rises or a new file appears, and prints the offending call. It also fails if a count falls without the baseline being lowered, so the ratchet stays tight.
 - An inline `// nt:id-only <reason>` marker exempts one field: a pure slot counter, a test-only log, a hot path proven unreadable.
 - The first run's totals go into the ledger as the campaign baseline.
@@ -182,16 +187,17 @@ Sweep notes:
 
 ### NT-40 Client telemetry resolved at ingest
 
-**Depends:** NT-01, NT-30. **Effort:** M. **No client patch.**
+**Depends:** NT-01, NT-02, NT-30. **Effort:** M. **No client patch.**
 
 - In the replay ingest (`crates/admin-api/src/routes/telemetry/replay.rs`), resolve before re-emitting:
-  - entity IDs, item and ability IDs in client rows → names, from the NameBook
+  - item and ability IDs → names, from the NameBook
+  - entity IDs → labels, from NT-02's `entity_label_at(space_id, entity_id, row_timestamp)`, never from the NameBook. A row whose timestamp falls outside every known lifetime stays unnamed. The worker confirms the ingest route can reach the cell's `SpaceManager` (in process, through the existing admin-api state), or adds a narrow query channel for it.
   - native addresses → symbol names, from a committed symbol table (`docs/protocol/client-symbols.tsv` or similar), seeded from the addresses already documented in `docs/` and project memory (`Channel::send`, `curl_easy_setopt`, …)
   - Mercury method indexes → NT-30 names
 - The DLL keeps sending raw values. Resolving on the server means the launcher's installed DLLs don't need updating.
 - Client replay targets still never post to Discord (`CLIENT_REPLAY_TARGETS` is unchanged).
 
-**Tests.** Ingest a fixture row with a known entity ID, item ID and address; assert the re-emitted event carries all three names. Assert an unknown address passes through unnamed.
+**Tests.** Ingest a fixture row with a known entity ID, item ID and address; assert the re-emitted event carries all three names. Assert an unknown address passes through unnamed, and that a row timestamped after its entity was destroyed and its slot reused names the original occupant.
 
 ### NT-41 Lab tools return names
 
