@@ -574,6 +574,14 @@ dependencies = [
 ]
 
 [[package]]
+name = "cimmeria-client-launch"
+version = "0.1.0"
+dependencies = [
+ "thiserror 2.0.21",
+ "windows-sys 0.61.2",
+]
+
+[[package]]
 name = "cimmeria-launcher-desktop"
 version = "0.1.0"
 dependencies = [
@@ -636,6 +644,7 @@ dependencies = [
 name = "cimmeria-runtime-probe"
 version = "0.1.0"
 dependencies = [
+ "cimmeria-client-launch",
  "serde",
  "serde_json",
  "sha2 0.11.0",

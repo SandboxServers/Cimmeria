@@ -2,7 +2,7 @@
 //! pre-existing generation, and retain installation/prefix/cache ownership.
 use super::*;
 use std::io::{Read, Write};
-pub(super) struct Resources {
+pub(crate) struct Resources {
     pub runtime: PathBuf,
     pub prefix: PathBuf,
     pub root: PathBuf,

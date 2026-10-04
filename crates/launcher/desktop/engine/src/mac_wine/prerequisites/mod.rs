@@ -7,7 +7,7 @@ use cimmeria_runtime_probe::prerequisite::PrepareRequest;
 use futures_util::FutureExt;
 use std::panic::AssertUnwindSafe;
 use tokio::sync::watch;
-mod prefix;
+pub(crate) mod prefix;
 mod recovery;
 pub use recovery::{can_reconcile, reconcile};
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

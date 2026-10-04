@@ -12,4 +12,5 @@ serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 
 [target.'cfg(windows)'.dependencies]
+cimmeria-client-launch = { path = "../../../client-launch" }
 windows-sys = { version = "0.61", features = ["Win32_Foundation", "Win32_Storage_FileSystem", "Win32_System_LibraryLoader", "Win32_System_ApplicationInstallationAndServicing", "Win32_System_Diagnostics_Debug", "Win32_System_WindowsProgramming"] }

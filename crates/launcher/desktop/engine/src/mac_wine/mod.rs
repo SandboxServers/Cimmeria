@@ -21,7 +21,7 @@ use std::{
 };
 use tokio_util::sync::CancellationToken;
 use uuid::Uuid;
-mod paths;
+pub(crate) mod paths;
 mod prefix;
 use crate::storage::extraction_work::ExtractionWork;
 #[cfg(test)]
@@ -149,7 +149,10 @@ impl WineSeedExtractor {
         })
     }
 }
-fn environment(runtime: &Path, prefix: &Path) -> Result<BTreeMap<OsString, OsString>, WineError> {
+pub(crate) fn environment(
+    runtime: &Path,
+    prefix: &Path,
+) -> Result<BTreeMap<OsString, OsString>, WineError> {
     let mut environment = BTreeMap::<OsString, OsString>::new();
     for (key, value) in [
         ("WINEPREFIX", prefix.as_os_str().to_owned()),

@@ -3,6 +3,7 @@ mod atomic;
 pub(crate) mod extraction_work;
 mod failed_cleanup;
 mod helper_journal;
+pub mod launch;
 pub mod repair;
 pub mod runtime_setup;
 pub mod uninstall;

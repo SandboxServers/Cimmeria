@@ -54,3 +54,5 @@ pub mod mac_wine;
 
 /// Authenticated prerequisite package inputs; execution is a separate operation.
 pub mod prerequisites;
+
+pub use storage::launch;

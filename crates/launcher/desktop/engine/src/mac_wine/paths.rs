@@ -1,7 +1,7 @@
 use super::*;
 /// Matches the private prefix's explicit Z: -> / mapping. Windows-invalid path
 /// spellings are rejected rather than normalized to a different target.
-pub(super) fn guest(path: &Path) -> Result<String, WineError> {
+pub(crate) fn guest(path: &Path) -> Result<String, WineError> {
     if !path.is_absolute() {
         return Err(WineError::Invalid);
     }

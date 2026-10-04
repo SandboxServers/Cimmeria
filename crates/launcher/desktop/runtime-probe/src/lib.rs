@@ -1,5 +1,6 @@
 //! Path-free module and experimental SDK evidence from a Windows x86 process.
 //! Neither establishes graphics-device creation or game readiness.
+pub mod game_launch;
 pub mod physx;
 pub mod prerequisite;
 use physx::SdkResult;
