@@ -266,7 +266,7 @@ impl<I: ToolInvoker> Runner<'_, I> {
         };
         let matched = matched.clone();
         // The loss signals, read apart from the clause's match: every row
-        // of the throttle family since the mark (Copilot, #1183).
+        // of the throttle family since the mark.
         let family = throttle_family(&kind);
         let fam = inv
             .call(
@@ -388,7 +388,7 @@ mod tests {
         assert!(why.unwrap().contains("evicted"));
         // The suppression sits on a later *press* row the clause does not
         // match, and the suppressed send left no row at all: the family
-        // read still sees it (Copilot, #1183).
+        // read still sees it.
         let family = [
             json!({ "seq": 4, "kind": "ability.press", "fields": { "ability_id": 1 } }),
             json!({ "seq": 9, "kind": "ability.press", "fields": { "ability_id": 1, "suppressed": 4 } }),

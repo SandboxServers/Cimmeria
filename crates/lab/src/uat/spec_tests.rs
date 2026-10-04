@@ -201,7 +201,7 @@ fn a_client_event_clause_parses_and_its_rules_hold() {
             )
             .replace("field = \"target_id\"\nop = \"eq\"\nvalue = 0\n", "")
     );
-    assert!(parse(&bad).unwrap_err().contains("belong to client_event"));
+    assert!(parse(&bad).unwrap_err().contains("belongs to client_event"));
 }
 
 #[test]

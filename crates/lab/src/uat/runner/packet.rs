@@ -273,6 +273,7 @@ impl<I: ToolInvoker> Runner<'_, I> {
 }
 
 fn packet_clause(c: &ExpectSpec, ctx: &RowCtx) -> ClauseResult {
+    let c = &super::clauses::with_vars(c, &ctx.vars);
     let mut r = ClauseResult {
         id: c.id.clone(),
         text: c.text.clone(),

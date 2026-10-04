@@ -526,7 +526,8 @@ lab_client_status lab_client_stop lab_crash_report lab_create_character lab_dele
 lab_ensure_character_slot lab_finish_dialog lab_login lab_logout lab_pixel_probe \
 lab_play_character lab_screenshot lab_screenshot_region lab_timeline \
 client_entity_find client_target client_world_click client_move_to client_camera \
-client_hotbar client_use_ability client_combat_log client_die_and_respawn client_wait_event";
+client_hotbar client_use_ability client_combat_log client_die_and_respawn client_wait_event \
+client_player_state";
 
 /// Plan every committed spec against today's tools: the rows the lab can
 /// drive now come back SKIPPED (ready), and the rows waiting on a planned
@@ -536,6 +537,12 @@ client_hotbar client_use_ability client_combat_log client_die_and_respawn client
 async fn committed_specs_plan_against_main_tools() {
     let dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../docs/guides/uat-specs");
     let sections = crate::uat::load_sections(&dir, None).unwrap();
+    let abilities = sections
+        .iter()
+        .find(|s| s.spec.section.id == "ability-mechanics")
+        .expect("abilities.toml is committed")
+        .spec
+        .clone();
     let mut fake = Fake::new(&[]);
     fake.tools = MAIN_TOOLS.split_whitespace().map(str::to_string).collect();
     let tmp = tempfile::tempdir().unwrap().keep();
@@ -583,6 +590,29 @@ async fn committed_specs_plan_against_main_tools() {
         "BLOCKED",
         "rule 6 without approval"
     );
+    // Ability mechanics (AB-R0), every row: a one-player row with no
+    // standing reason plans as ready against today's tools (so a row that
+    // picks up an unrouted tool fails here); every other row is BLOCKED
+    // with its own reason, or the second-player one.
+    for row in &abilities.rows {
+        let got = result("ability-mechanics", &row.id);
+        let want = if row.blocked.is_some() || row.players > 1 {
+            "BLOCKED"
+        } else {
+            "SKIPPED"
+        };
+        assert_eq!(got.result, want, "{}: {:?}", row.id, got.reasons);
+        let why = row.blocked.as_deref().unwrap_or("second lab instance");
+        if want == "BLOCKED" {
+            assert!(
+                got.reasons.iter().any(|x| x.contains(why)),
+                "{}: {:?}",
+                row.id,
+                got.reasons
+            );
+        }
+    }
+    assert!(abilities.rows.len() >= 33, "the section lost rows");
     // Two players: BLOCKED until a second lab instance is configured.
     let m12 = result("gm-parity", "M1-2");
     assert_eq!(m12.result, "BLOCKED");
@@ -630,4 +660,43 @@ lua_condition = "true"
         .find(|a| a.tool.as_deref() == Some("client_target"))
         .unwrap();
     assert_eq!(step.tier_source.as_deref(), Some("reported:ui_lua"));
+}
+
+/// AB-U20 and AB-U22 wait only on the `.dummy caster` GM command (a lab
+/// dummy that casts one ability at its owner through the real launch),
+/// which is not on the server yet: with their `blocked` line deleted they
+/// plan as ready, so unblocking them is that one-line change and nothing
+/// else in the rows is missing.
+#[tokio::test]
+async fn the_caster_dummy_rows_are_ready_once_unblocked() {
+    let path = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join("../../docs/guides/uat-specs/abilities.toml");
+    let text = std::fs::read_to_string(&path)
+        .unwrap()
+        .replace("blocked = \".dummy caster (not merged)\"", "");
+    let spec = crate::uat::spec::parse(&text).unwrap();
+    let mut fake = Fake::new(&[]);
+    fake.tools = MAIN_TOOLS.split_whitespace().map(str::to_string).collect();
+    let req = RunRequest {
+        sections: vec![LoadedSpec {
+            path: "abilities.toml".into(),
+            sha256: "0".into(),
+            spec,
+        }],
+        rows: Some(vec!["AB-U20".into(), "AB-U22".into()]),
+        root: tempfile::tempdir().unwrap().keep(),
+        lab_character: Some("Labone".into()),
+        plan_only: true,
+        no_settle: true,
+        ..Default::default()
+    };
+    let out = Runner::new(&fake, None, req)
+        .unwrap()
+        .run_all()
+        .await
+        .unwrap();
+    assert_eq!(out.rows.len(), 2);
+    for r in &out.rows {
+        assert_eq!(r.result, "SKIPPED", "{}: {:?}", r.row, r.reasons);
+    }
 }

@@ -261,8 +261,11 @@ fn check_clause(c: &ExpectSpec) -> Result<(), String> {
         }
         Source::Human => need(c.question.is_some(), "a human clause needs question")?,
     }
-    if c.source != Source::ClientEvent && (c.event.is_some() || c.match_fields.is_some()) {
-        return Err("event and match_fields belong to client_event clauses".into());
+    if c.source != Source::ClientEvent && c.event.is_some() {
+        return Err("event belongs to client_event clauses".into());
+    }
+    if !matches!(c.source, Source::ClientEvent | Source::Packet) && c.match_fields.is_some() {
+        return Err("match_fields belongs to client_event and packet clauses".into());
     }
     if matches!(c.source, Source::Tool | Source::Server | Source::Lua)
         && c.op.is_none()

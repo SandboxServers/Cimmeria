@@ -524,7 +524,7 @@ mod tests {
     fn the_seq_join_takes_only_the_pressing_entitys_receipt() {
         let log = [
             // Another connection's receipt with the same seq and ability,
-            // earlier: packet seqs are per connection (Copilot, #1183).
+            // earlier: packet seqs are per connection.
             row(
                 1,
                 json!({ "event": "use_ability_recv", "entity_id": 9, "ability_id": 597, "mercury_seq": 120 }),
