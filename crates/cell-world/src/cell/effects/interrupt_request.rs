@@ -13,6 +13,18 @@
 
 use crate::cell::space_manager::SpaceManager;
 
+/// What asks for the interrupt.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum InterruptCause {
+    /// An interrupt effect ("Interrupts target", an EMP round): rolled
+    /// against the target's interrupt resistance.
+    #[default]
+    Effect,
+    /// A stun or knockdown landed: an incapacitated entity cannot keep
+    /// casting, so it is never rolled.
+    Incapacitated,
+}
+
 /// One queued interrupt: `source_id`'s effect asks to break `target_id`'s
 /// cast.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -28,11 +40,19 @@ pub struct InterruptRequest {
     /// The effect's own chance to interrupt, in percent (100 = certain),
     /// before the target's resistance.
     pub chance_pct: i32,
+    /// Why it was queued.
+    pub cause: InterruptCause,
+    /// Unique per request, set by [`SpaceManager::request_interrupt`]: the
+    /// resistance roll's seed includes it, so two attempts on one cast (or
+    /// on a channel, which has no warmup instance) roll independently.
+    pub nonce: u64,
 }
 
 impl SpaceManager {
     /// Queue an interrupt for combat to resolve.
-    pub fn request_interrupt(&mut self, request: InterruptRequest) {
+    pub fn request_interrupt(&mut self, mut request: InterruptRequest) {
+        self.interrupt_nonce = self.interrupt_nonce.wrapping_add(1);
+        request.nonce = self.interrupt_nonce;
         self.pending_interrupts.push(request);
     }
 
@@ -65,6 +85,8 @@ mod tests {
             effect_id: 723,
             ability_id: 657,
             chance_pct: 100,
+            cause: InterruptCause::Effect,
+            nonce: 0,
         }
     }
 
@@ -74,8 +96,14 @@ mod tests {
         mgr.request_interrupt(req(2));
         mgr.request_interrupt(req(3));
         mgr.request_interrupt(req(2));
-        assert_eq!(mgr.take_interrupt_requests_for(2), vec![req(2), req(2)]);
-        assert_eq!(mgr.take_all_interrupt_requests(), vec![req(3)]);
+        let mine = mgr.take_interrupt_requests_for(2);
+        assert_eq!(mine.iter().map(|r| r.target_id).collect::<Vec<_>>(), [2, 2]);
+        assert_ne!(
+            mine[0].nonce, mine[1].nonce,
+            "each request has its own nonce"
+        );
+        let rest = mgr.take_all_interrupt_requests();
+        assert_eq!(rest.iter().map(|r| r.target_id).collect::<Vec<_>>(), [3]);
         assert!(mgr.take_all_interrupt_requests().is_empty());
     }
 }

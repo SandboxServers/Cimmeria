@@ -18,6 +18,8 @@
 pub use cimmeria_cell_world::cell::effects::*;
 
 pub mod interrupt;
+#[cfg(test)]
+mod interrupt_tests;
 pub mod pulsing;
 pub mod stat_buffs;
 

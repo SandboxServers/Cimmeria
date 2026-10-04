@@ -163,10 +163,23 @@ pub(super) async fn send_ability_feedback(
     text: &str,
     tx: &mpsc::Sender<CellToBaseMsg>,
 ) {
+    send_ability_refusal(entity_id, ability_id, NO_MECHANICS_ERROR_CODE, text, tx).await;
+}
+
+/// `onErrorCode(ERRORCODE_SYSTEM_Ability, ability_id, code)` and the
+/// `CHAN_FEEDBACK` line `text`, in that order, for a refusal with its own
+/// code (a stunned caster in `incapacitated.rs`).
+pub(super) async fn send_ability_refusal(
+    entity_id: u32,
+    ability_id: i32,
+    code: u16,
+    text: &str,
+    tx: &mpsc::Sender<CellToBaseMsg>,
+) {
     let mut err = Vec::with_capacity(7);
     err.push(ERRORCODE_SYSTEM_ABILITY); // SystemID
     err.extend_from_slice(&ability_id.to_le_bytes()); // InstanceID
-    err.extend_from_slice(&NO_MECHANICS_ERROR_CODE.to_le_bytes());
+    err.extend_from_slice(&code.to_le_bytes());
     let chat = serialize_on_player_communication("SYSTEM", 0, CHAN_FEEDBACK, text);
     for (method_index, args) in [
         (crate::mercury::method_idx::ON_ERROR_CODE, err),

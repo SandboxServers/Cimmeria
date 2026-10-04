@@ -25,8 +25,14 @@
 //! artefact gives the formula. Movement interrupts (AT-10) never roll.
 //!
 //! The roll is seeded from `(source, target, effect, the target's warmup
-//! instance)`, so a test, or a replay, sees the same outcome for the same
-//! input.
+//! instance, the request's nonce)`. The nonce is a per-request counter on
+//! the `SpaceManager`, so every attempt rolls afresh (a channel has no
+//! warmup instance, and repeated EMP hits share one), while a test or a
+//! replay with the same requests in the same order sees the same outcome.
+//!
+//! **A landed stun or knockdown** queues an `Incapacitated` request: never
+//! rolled, it breaks the warmup (reason `incapacitated`) and the channels,
+//! and logs nothing when the target was doing neither.
 //!
 //! Log target `abilities`: one `interrupt_effect` row per request, with
 //! `decision_outcome` `interrupted`, `resisted` or `nothing_to_interrupt`.
@@ -38,7 +44,7 @@ use tokio::sync::mpsc;
 use cimmeria_entity::stats::{COORDINATION, INTERRUPT_RES};
 
 use crate::cell::abilities::{interrupt_pending_cast, InterruptReason};
-use crate::cell::effects::interrupt_request::InterruptRequest;
+use crate::cell::effects::interrupt_request::{InterruptCause, InterruptRequest};
 use crate::cell::messages::CellToBaseMsg;
 use crate::cell::space_manager::SpaceManager;
 
@@ -69,7 +75,8 @@ fn roll_seed(r: &InterruptRequest, instance: i32) -> u64 {
         ^ u64::from(r.effect_id as u32)
             .wrapping_mul(0x1656_67B1_9E37_79F9)
             .rotate_left(31)
-        ^ u64::from(instance as u32).rotate_left(47);
+        ^ u64::from(instance as u32).rotate_left(47)
+        ^ r.nonce.wrapping_mul(0xD6E8_FEB8_6659_FD93);
     h = (h ^ (h >> 30)).wrapping_mul(0xbf58_476d_1ce4_e5b9);
     h = (h ^ (h >> 27)).wrapping_mul(0x94d0_49bb_1331_11eb);
     h ^ (h >> 31)
@@ -130,7 +137,12 @@ async fn resolve_one(
         .map(|pc| (pc.ability_id, pc.effect_seq));
     let channelling = is_channelling(space_mgr, r.target_id);
 
+    let incapacitated = r.cause == InterruptCause::Incapacitated;
     if warming.is_none() && !channelling {
+        if incapacitated {
+            // Every stun queues one; most land on an entity doing nothing.
+            return;
+        }
         tracing::debug!(
             target: "abilities",
             event = "interrupt_effect",
@@ -147,12 +159,22 @@ async fn resolve_one(
         return;
     }
 
-    let resist = interrupt_resist_chance(interrupt_res, coordination);
+    // A stun is not resisted here: its own resist roll is D-AB13's.
+    let resist = if incapacitated {
+        0.0
+    } else {
+        interrupt_resist_chance(interrupt_res, coordination)
+    };
     let roll: f64 = ChaCha8Rng::seed_from_u64(roll_seed(&r, warming.map_or(0, |w| w.1))).random();
-    let lands = interrupt_lands(r.chance_pct, resist, roll);
+    let lands = incapacitated || interrupt_lands(r.chance_pct, resist, roll);
+    let reason = if incapacitated {
+        InterruptReason::Incapacitated
+    } else {
+        InterruptReason::Interrupted
+    };
     let (warmup_interrupted, channels_cancelled) = if lands {
         (
-            interrupt_pending_cast(r.target_id, InterruptReason::Interrupted, tx, space_mgr).await,
+            interrupt_pending_cast(r.target_id, reason, tx, space_mgr).await,
             cancel_channels_from_attacker(r.target_id, None, tx, space_mgr).await,
         )
     } else {
@@ -169,6 +191,8 @@ async fn resolve_one(
         target_player_id = target_who.player_id,
         effect_id = r.effect_id,
         ability_id = r.ability_id,
+        cause = if incapacitated { "incapacitated" } else { "effect" },
+        nonce = r.nonce,
         interrupted_ability_id = warming.map(|w| w.0),
         chance_pct = r.chance_pct,
         interrupt_res,

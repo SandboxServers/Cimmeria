@@ -42,6 +42,8 @@ pub(crate) enum InterruptReason {
     /// Another entity's interrupt effect broke it (ability mechanics
     /// AB-09c, `effects::interrupt`).
     Interrupted,
+    /// A stun or knockdown landed on the caster (AB-09a).
+    Incapacitated,
 }
 
 impl InterruptReason {
@@ -56,6 +58,7 @@ impl InterruptReason {
             Self::AmmoUnavailable => "ammo_unavailable",
             Self::AbilityUnlearned => "ability_unlearned",
             Self::Interrupted => "interrupt_effect",
+            Self::Incapacitated => "incapacitated",
         }
     }
 }

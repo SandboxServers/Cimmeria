@@ -30,6 +30,12 @@
 //! nothing, so every landed stun or knockdown applies. The
 //! `crowd_control_applied` row says so (`resist_roll = "always_pass"`).
 //!
+//! A landed stun or knockdown also queues an unrolled interrupt
+//! (`InterruptCause::Incapacitated`): a warmup the target had started, and
+//! its channels, end with the lock. Combat also refuses a stunned player's
+//! `useAbility` and consumable use (the "no ability/item use" half of
+//! python's `PLAYER_STATE_Stun`).
+//!
 //! **Interrupt queues, combat resolves.** [`Interrupt`] cannot reach the
 //! warmup table, so it queues an `InterruptRequest`; combat rolls the
 //! target's `interruptRes` and breaks its warmup and channels
@@ -43,7 +49,7 @@ use cimmeria_entity::abilities::EffectDef;
 use cimmeria_entity::cell_entity::{TimedEffectSpec, TimedStacking};
 use cimmeria_wire::state_field::BSF_MOVEMENT_LOCK;
 
-use super::interrupt_request::InterruptRequest;
+use super::interrupt_request::{InterruptCause, InterruptRequest};
 use super::stat_buff::StatBuffRemoval;
 use super::{EffectContext, EffectScript};
 
@@ -133,6 +139,10 @@ fn apply_lock(ctx: &mut EffectContext, kind: &'static str) {
         resist_roll = "always_pass",
         "{kind} applied: movement locked"
     );
+    // An incapacitated entity cannot keep casting: break its warmup and
+    // channels too, unrolled (python's `PLAYER_STATE_Stun` is "no ability
+    // use"). Combat resolves it in the same flush as the stun.
+    queue(ctx, 100, InterruptCause::Incapacitated);
 }
 
 /// Take `ctx`'s caster's entry of its effect off the target.
@@ -174,12 +184,19 @@ impl EffectScript for Knockdown {
 
 /// Queue an interrupt of `ctx`'s target by `ctx`'s effect at `chance_pct`.
 pub fn queue_interrupt(ctx: &mut EffectContext, chance_pct: i32) {
+    queue(ctx, chance_pct, InterruptCause::Effect);
+}
+
+fn queue(ctx: &mut EffectContext, chance_pct: i32, cause: InterruptCause) {
     let request = InterruptRequest {
         source_id: ctx.source_id,
         target_id: ctx.target_id,
         effect_id: ctx.effect.effect_id,
         ability_id: ctx.effect.ability_id,
         chance_pct,
+        cause,
+        // `request_interrupt` assigns it.
+        nonce: 0,
     };
     tracing::debug!(
         target: "abilities",
@@ -189,6 +206,7 @@ pub fn queue_interrupt(ctx: &mut EffectContext, chance_pct: i32) {
         effect_id = request.effect_id,
         ability_id = request.ability_id,
         chance_pct,
+        cause = ?cause,
         "interrupt queued for combat to resolve"
     );
     ctx.space_mgr.request_interrupt(request);
@@ -351,5 +369,20 @@ mod tests {
                 .collect::<Vec<_>>(),
             vec![(7, 1, 723, 100), (7, 1, 723, 40)]
         );
+        assert!(queued.iter().all(|r| r.cause == InterruptCause::Effect));
+    }
+
+    /// A landed stun queues an unrolled interrupt of the target's cast.
+    #[test]
+    fn a_landed_stun_queues_an_incapacitating_interrupt() {
+        let mut mgr = make_mgr_with_target();
+        run(&mut mgr, &lock("Knockdown", 2608, 5.0), 7, false);
+        let queued = mgr.take_all_interrupt_requests();
+        assert_eq!(queued.len(), 1);
+        assert_eq!(queued[0].cause, InterruptCause::Incapacitated);
+        assert_eq!((queued[0].source_id, queued[0].target_id), (7, 1));
+        // Nothing lands, nothing is queued.
+        run(&mut mgr, &lock("Stun", 3200, 0.0), 7, false);
+        assert!(mgr.take_all_interrupt_requests().is_empty());
     }
 }

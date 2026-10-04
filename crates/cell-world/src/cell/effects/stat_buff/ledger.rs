@@ -58,6 +58,8 @@ pub enum StatBuffRemoval {
     Cleansed,
     /// A shield whose every absorb pool damage emptied (AB-10).
     Drained,
+    /// The duel its invoker was fighting the entity in ended.
+    DuelEnded,
 }
 
 impl StatBuffRemoval {
@@ -76,6 +78,7 @@ impl StatBuffRemoval {
             Self::BandolierSwap => "bandolier_swap",
             Self::Cleansed => "cleansed",
             Self::Drained => "drained",
+            Self::DuelEnded => "duel_ended",
         }
     }
 }

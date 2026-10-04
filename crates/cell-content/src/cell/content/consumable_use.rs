@@ -91,6 +91,7 @@ pub(super) const FEEDBACK_NOT_LIVING: u16 = 14;
 pub(super) const FULL_HEALTH_TEXT: &str = "You are already at full health.";
 pub(super) const FULL_FOCUS_TEXT: &str = "You are already at full focus.";
 pub(super) const DEAD_TEXT: &str = "You cannot use that while dead.";
+pub(super) const INCAPACITATED_TEXT: &str = "You cannot use that while stunned.";
 pub(super) const NOT_IMPLEMENTED_TEXT: &str = "This item has no effect yet.";
 
 /// What an item's event-5 ability does, when this path can apply it.
@@ -161,6 +162,9 @@ pub(super) fn classify(type_id: i32, space_mgr: &SpaceManager) -> Classification
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(super) enum Refusal {
     Dead,
+    /// Stunned or knocked down: python's `PLAYER_STATE_Stun` is "no
+    /// ability/item use" (ability mechanics AB-09a).
+    Incapacitated,
     /// Every pool the item heals is full; carries the first one.
     AtMax(i32),
     /// A bag consumable whose event-5 ability this path cannot apply yet
@@ -172,6 +176,7 @@ impl Refusal {
     fn reason(self) -> &'static str {
         match self {
             Self::Dead => "dead",
+            Self::Incapacitated => "incapacitated",
             Self::AtMax(_) => "already_at_max",
             Self::NotImplemented => "consumable_not_implemented",
         }
@@ -185,13 +190,14 @@ impl Refusal {
         match self {
             Self::Dead => Some(FEEDBACK_NOT_LIVING),
             Self::AtMax(_) => Some(FEEDBACK_STAT_AT_MAX),
-            Self::NotImplemented => None,
+            Self::NotImplemented | Self::Incapacitated => None,
         }
     }
 
     fn text(self) -> &'static str {
         match self {
             Self::Dead => DEAD_TEXT,
+            Self::Incapacitated => INCAPACITATED_TEXT,
             Self::AtMax(FOCUS) => FULL_FOCUS_TEXT,
             Self::AtMax(_) => FULL_HEALTH_TEXT,
             Self::NotImplemented => NOT_IMPLEMENTED_TEXT,
@@ -223,6 +229,11 @@ pub(super) fn refusal(
     let entity = space_mgr.get_entity(entity_id)?;
     if crate::cell::combat::is_dead_state(entity.state_field) {
         return Some(Refusal::Dead);
+    }
+    // A stun's or knockdown's timed-effect entry, not the bare bit: ring
+    // transport sets the lock too.
+    if entity.holds_ledger_flag(crate::cell::combat::BSF_MOVEMENT_LOCK) {
+        return Some(Refusal::Incapacitated);
     }
     if plan.buffs || plan.heals.is_empty() {
         return None;
@@ -312,7 +323,7 @@ pub(super) async fn try_native_use(
     if let Some(refused) = refusal(&plan, entity_id, space_mgr) {
         let stat = match refused {
             Refusal::AtMax(stat) => Some(stat),
-            Refusal::Dead | Refusal::NotImplemented => None,
+            Refusal::Dead | Refusal::Incapacitated | Refusal::NotImplemented => None,
         };
         let (cur, max) = stat
             .and_then(|s| {

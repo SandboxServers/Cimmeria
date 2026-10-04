@@ -70,6 +70,16 @@ impl CellEntity {
         (before != self.state_field).then_some(self.state_field)
     }
 
+    /// Whether a live ledger entry holds any bit of `mask` (a stun's or a
+    /// knockdown's `BSF_MovementLock`, as opposed to death's or ring
+    /// transport's).
+    pub fn holds_ledger_flag(&self, mask: u32) -> bool {
+        self.stat_buffs
+            .entries
+            .iter()
+            .any(|e| e.state_flags & mask != 0)
+    }
+
     /// Drop every entry's flag holds without touching the counters: the
     /// counters were just reset by [`CellEntity::clear_all_state_flags`].
     pub(super) fn forfeit_ledger_flag_holds(&mut self) {
@@ -135,18 +145,23 @@ mod tests {
         assert!(!e.has_state_flag(LOCK), "the lock clears with the stun");
     }
 
-    /// Two casters' stuns stack: the bit stays until the second comes off.
+    /// Two casters' stuns stack: the bit stays until the second comes off,
+    /// even when the first caster refreshed theirs in between. A reference
+    /// per application (the old script) leaves 3 and the bit set after both
+    /// are gone (`lock after both` fails).
     #[test]
     fn two_casters_stuns_keep_the_lock_until_both_go() {
         let mut e = entity();
         let now = Instant::now();
         e.apply_timed_effect(stun(1, 1599), now).unwrap();
         e.apply_timed_effect(stun(2, 1599), now).unwrap();
-        assert_eq!(refs(&e), 2);
+        e.apply_timed_effect(stun(1, 1599), now).unwrap(); // caster 1 re-hits
+        assert_eq!(refs(&e), 2, "one per caster");
         e.remove_timed_effects_where(|t| t.invoker_id == 1);
         assert!(e.has_state_flag(LOCK), "the other caster's stun holds it");
         e.remove_timed_effects_where(|t| t.invoker_id == 2);
-        assert!(!e.has_state_flag(LOCK));
+        assert!(!e.has_state_flag(LOCK), "lock after both");
+        assert_eq!(refs(&e), 0);
     }
 
     /// A knockdown and a stun are different effects on the same lock, each
@@ -157,7 +172,12 @@ mod tests {
         let mut e = entity();
         e.set_state_flag(LOCK); // death's reference
         let now = Instant::now();
-        e.apply_timed_effect(stun(1, 2608), now).unwrap();
+        // Applied, refreshed twice, removed: the ledger's references net to
+        // zero and death's one is left. A reference per application leaves 3
+        // (`refs` fails); releasing with a raw bit clear drops death's.
+        for _ in 0..3 {
+            e.apply_timed_effect(stun(1, 2608), now).unwrap();
+        }
         e.remove_timed_effects_where(|_| true);
         assert!(e.has_state_flag(LOCK), "death's reference survives");
         assert_eq!(refs(&e), 1);
