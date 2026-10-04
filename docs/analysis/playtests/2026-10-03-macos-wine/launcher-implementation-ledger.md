@@ -717,3 +717,25 @@ open: the signed Mac rebuild, native window UAT of adoption, real prerequisite
 preparation and Play of an adopted copy, the `CIMMERIA_WINE_APP_IDENTITY=1`
 runtime and computer-use checks, the published RAR/CAB seed with a rebuilt
 helper, and native Windows validation.
+
+
+### 2026-10-04: MacBook testing stopped; repository checkpoint
+
+The [MacBook testing checkpoint](worknotes/macbook-testing-checkpoint.md) records
+integration through `d36dbebfa`, the normal signed `e79e99b1e` build and the
+hidden-panel fix native-verified in a separate signed UAT app. Native Play
+started SGW and the operator confirmed its login screen; launcher status and
+rechecks stayed stable. Authentication/world entry and actual game computer use
+remain unverified.
+
+Isolated native legacy import preserved diagnostics consent false and created
+no installed owner. Verified-copy preparation ended interrupted with explicit
+cleanup offered; cleanup was not pressed, and no completed adoption,
+prerequisites or adopted Play is claimed. The cause and inconsistent recovery
+feedback remain open. Preserve test state and files; MacBook testing and builds
+stop at the user's request. The existing Wine identity investigation may finish
+its current assignment, but receives no new work and is not integrated here.
+
+Full launcher/release acceptance, the current Windows helper, Windows parity,
+production updater configuration, clean-machine/notarization and reserved
+observability work remain open. This checkpoint does not close the campaign.

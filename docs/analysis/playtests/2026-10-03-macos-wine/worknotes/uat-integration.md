@@ -2,8 +2,10 @@
 
 2026-10-04, branch `launcher/uat-integration`. This note records how three
 launcher branches were combined and what the combined tree was checked against.
-It is fixture evidence. No game was started, no package was rebuilt, and native
-window UAT is still open.
+The original integration checks below are fixture evidence: they started no game
+and rebuilt no package. Later signed-build and partial native observations are
+recorded at the end and in the [MacBook testing checkpoint](macbook-testing-checkpoint.md),
+which is the current stop-state reference.
 
 ## What was combined
 
@@ -181,4 +183,7 @@ After unlock, native UAT exposed a markup regression: the legacy import section
 was not closed before adoption, leaving Play and Patch Notes nested in hidden
 Settings. The missing boundary was restored. The tab regression test now checks
 hidden ancestors and that adoption is a direct Settings child, rather than only
-the panel's own `hidden` property. Native verification requires the rebuilt app.
+the panel's own `hidden` property. Native verification subsequently passed in the separately identified signed UAT
+app; the normal app still carries the earlier frontend. See the
+[MacBook testing checkpoint](macbook-testing-checkpoint.md) for the partial native
+journeys and the explicit stop point.

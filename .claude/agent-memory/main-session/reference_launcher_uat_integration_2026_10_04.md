@@ -42,3 +42,16 @@ conflicts; every problem below was semantic. Handoff:
 - **A `wine` test-name filter with `--ignored` also runs
   `packaged_resource_admits_wine_and_retains_cancellation`**, which needs a staged
   packaged resources directory and fails without one.
+
+- **Frontend visibility must include hidden ancestors.** A missing closing
+  section nested Play and Patch Notes inside hidden Settings. The panel's own
+  `hidden` property missed it. `d36dbebfa` adds an ancestor check and verifies
+  adoption is a direct Settings child; the corrected signed UAT app rendered it.
+- **A successful settings import is not an adopted installation.** Native import
+  preserved consent false and created no installed owner. Subsequent real-copy
+  preparation stopped interrupted; prerequisites/adopted Play were not verified.
+- **Wine app registration does not prove computer-use access.** Actual SGW and
+  Wine explorer shared the game bundle identifier, but lookup by identifier and
+  full path timed out. Shared identity is only a cause hypothesis. See
+  `docs/analysis/playtests/2026-10-03-macos-wine/worknotes/macbook-testing-checkpoint.md`
+  for the bounded native evidence; login was operator-confirmed, not automated.

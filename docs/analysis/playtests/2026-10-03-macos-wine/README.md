@@ -7,6 +7,11 @@
 
 ## Native launcher implementation
 
+**Current stop point:** [MacBook testing checkpoint](worknotes/macbook-testing-checkpoint.md).
+MacBook testing is stopped; native adoption and SGW computer-use acceptance remain
+open. Preserve the interrupted preparation state.
+
+
 For the later Tauri work, use the [implementation plan](launcher-implementation-plan.md),
 [delivery ledger](launcher-implementation-ledger.md), and
 [delegation plan with Codex/Claude prompts](launcher-delegation-plan.md).
@@ -184,3 +189,6 @@ Windows-helper ownership requirements. It does not establish game compatibility.
 - [Effective imported settings for adopted Play](worknotes/effective-settings.md)
 - [Opt-in Mac app identity for the Wine process](worknotes/wine-computer-use.md)
 - [Adoption, settings and Wine identity integration](worknotes/uat-integration.md)
+
+- [MacBook testing checkpoint and remaining acceptance](worknotes/macbook-testing-checkpoint.md)
+- [Historical native launcher research (SwiftUI proposal, superseded)](native-launcher-research.md)
