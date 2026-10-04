@@ -1,6 +1,6 @@
 ---
 name: lab-caster-dummy-and-mental-cleanse-gap
-description: .dummy caster drives handle_use_ability from the 1 Hz lab sweep (no AI turn); zero cooldown is charged 0.5 s real time; no seeded Mental effect holds, so Clear: Mind (2827) removes nothing.
+description: .dummy caster drives handle_use_ability from the 1 Hz lab sweep (no AI turn); zero cooldown is charged 0.5 s real time; no seeded Mental effect holds, so Clear: Mind (ability 2099, effect 2827) removes nothing.
 metadata:
   type: project
 ---
@@ -25,7 +25,7 @@ extension. It stays out of `ai_driven_npc_entity_ids`; `lab_dummy_tick` calls
 **Seed fact (AB-U22).** Every `EffectCategory = Mental` effect is either
 unscripted (Suppression/Disorient/Fear/Confuse CC, mechanics UNKNOWN) or the
 one-shot 1475 Suppression chip, so nothing Mental is ever held on a target and
-Clear: Mind removes 0. Disabling Shot (1354: 4 s warmup, two Health
+Clear: Mind (ability 2099, effect 2827) removes 0. Disabling Shot (1354: 4 s warmup, two Health
 `TimedStat`s 4333/4335) + Absolution (4169 `Health:2`) is the working cleanse
 pair; pinned by `ab_l2_dummy_caster_uat_picks_live_db`. See
 [[absorb-shield-ledger-and-cleanse-categories]].

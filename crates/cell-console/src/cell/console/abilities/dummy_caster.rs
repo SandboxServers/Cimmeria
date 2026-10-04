@@ -43,8 +43,11 @@ use crate::cell::space_manager::{
 
 const USAGE: &str = ".dummy caster: usage .dummy caster <abilityId> [intervalSecs]";
 
-/// The longest interval: a dummy lives ten minutes.
-const MAX_INTERVAL_SECS: u64 = LAB_DUMMY_LIFETIME.as_secs();
+/// The longest interval. The first cast comes one interval after placement
+/// and the next ones on that schedule, so 290 s fits two casts (at 290 s and
+/// 580 s) before the ten-minute expiry, with 20 s to spare for the 1 Hz
+/// sweep. A 600 s interval would never have cast at all.
+pub(crate) const MAX_INTERVAL_SECS: u64 = (LAB_DUMMY_LIFETIME.as_secs() - 20) / 2;
 
 pub(super) async fn run(
     caller_id: u32,
@@ -218,8 +221,15 @@ pub(crate) async fn cast_due(
         ) else {
             continue;
         };
-        // One attempt per interval, cast or held.
-        caster.next_cast_at = now + caster.interval;
+        // One attempt per interval, cast or held, on the placement schedule
+        // (the 1 Hz sweep's lateness does not accumulate). A schedule left
+        // behind (a stalled loop) restarts from now instead of bursting.
+        let next = caster.next_cast_at + caster.interval;
+        caster.next_cast_at = if next > now {
+            next
+        } else {
+            now + caster.interval
+        };
         let ability_id = caster.ability_id;
         let owner_id = mark.owner_id;
 

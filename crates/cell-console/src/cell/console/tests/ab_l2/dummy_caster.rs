@@ -19,7 +19,7 @@ use super::dummy::dummy_world;
 use super::{console, lines, EntityCount, CALLER};
 use crate::cell::client_methods::spawnable_entity::ON_SEQUENCE;
 use crate::cell::combat::BSF_DEAD;
-use crate::cell::console::abilities::dummy_caster::cast_due;
+use crate::cell::console::abilities::dummy_caster::{cast_due, MAX_INTERVAL_SECS};
 use crate::cell::messages::CellToBaseMsg;
 use crate::cell::space_manager::{LabCaster, SpaceManager, LAB_DUMMY_MAX_PER_OWNER};
 use crate::cell::spawner::{EVENT_ABILITY_BEGIN, EVENT_ABILITY_END, EVENT_ABILITY_INTERRUPT};
@@ -152,8 +152,8 @@ async fn ab_l2_dummy_caster_fires_on_its_interval_at_its_owner() {
     let yaw = mgr.get_entity(dummy).unwrap().direction.y;
     assert!((yaw.abs() - std::f32::consts::PI).abs() < 1e-3, "yaw {yaw}");
     assert!(
-        sweep(&mut mgr, secs(t0, 16.0), dummy).await.is_empty(),
-        "one interval after the last attempt, not before"
+        sweep(&mut mgr, secs(t0, 15.5), dummy).await.is_empty(),
+        "on the placement schedule (16 s), not before"
     );
     // Cooldowns run on the real clock (a zero cooldown is charged 0.5 s);
     // the sweep's clock is the test's. Expire it as 8 s would have.
@@ -290,12 +290,41 @@ async fn ab_l2_dummy_caster_holds_while_its_owner_is_dead() {
     // Revived: casting resumes on the schedule, one interval on.
     mgr.get_entity_mut(CALLER).unwrap().state_field &= !BSF_DEAD;
     assert!(
-        sweep(&mut mgr, secs(t0, 16.0), dummy).await.is_empty(),
+        sweep(&mut mgr, secs(t0, 15.5), dummy).await.is_empty(),
         "no burst on revival"
     );
     assert_eq!(
         sweep(&mut mgr, secs(t0, 17.5), dummy).await,
         vec![(SEQ_END, CALLER)]
+    );
+}
+
+/// Copilot finding (#1188): the longest accepted interval still casts twice
+/// before the dummy's ten minutes are up, on the placement schedule. Revert
+/// proof: cap at the lifetime (600 s) or schedule from the sweep's `now`
+/// and the second cast misses or lands after the expiry.
+#[tokio::test]
+async fn ab_l2_dummy_caster_longest_interval_casts_twice_before_expiry() {
+    let mut mgr = caster_world();
+    let (dummy, t0) = place(
+        &mut mgr,
+        &format!(".dummy caster {SHOT} {MAX_INTERVAL_SECS}"),
+    )
+    .await;
+    let max = MAX_INTERVAL_SECS as f32;
+    // The 1 Hz sweep runs up to a second late each time.
+    let first = secs(t0, max + 1.0);
+    assert_eq!(sweep(&mut mgr, first, dummy).await, vec![(SEQ_END, CALLER)]);
+    expire_cooldown(&mut mgr, dummy, SHOT);
+    let second = secs(t0, 2.0 * max + 1.0);
+    assert!(
+        mgr.expired_lab_dummies(second).is_empty(),
+        "still standing at the second cast"
+    );
+    assert_eq!(
+        sweep(&mut mgr, second, dummy).await,
+        vec![(SEQ_END, CALLER)],
+        "the second cast fits"
     );
 }
 
@@ -316,7 +345,9 @@ async fn ab_l2_dummy_caster_refusals_spawn_nothing() {
         (".dummy caster 777777".to_string(), "no ability 777777"),
         (".dummy caster 9202".to_string(), "passive"),
         (".dummy caster 9203".to_string(), "reaches 2 m"),
-        (format!(".dummy caster {SHOT} 0"), "from 1 to 600"),
+        (format!(".dummy caster {SHOT} 0"), "from 1 to 290"),
+        (format!(".dummy caster {SHOT} 291"), "from 1 to 290"),
+        (format!(".dummy caster {SHOT} 600"), "from 1 to 290"),
         (
             format!(".dummy caster {CHARGED} 4"),
             "use an interval of at least 5 s",

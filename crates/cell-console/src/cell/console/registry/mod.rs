@@ -267,7 +267,7 @@ const DUMMY_ARGS: &[ArgSpec] = &[
     arg(
         "intervalSecs",
         "int",
-        "Optional, `caster` only. Seconds between casts (default 8, 1-600); at least the ability's cooldown and longer than its warmup",
+        "Optional, `caster` only. Seconds between casts (default 8, 1-290, so two casts fit its 10 minutes); at least the ability's cooldown and longer than its warmup",
     ),
 ];
 
