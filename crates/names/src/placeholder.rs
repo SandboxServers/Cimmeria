@@ -23,6 +23,10 @@ enum Shape {
 /// Every placeholder shape, case-insensitive. `UNUSED` alone is not enough:
 /// mission 819 is really called "Unused Explosive", so only the seed's own
 /// stand-ins (`UNUSED`, `UNUSED.`, `UNUSED DIALOG*`, `UNUSED ERROR*`) count.
+/// Deletion markers are `DELETE` as a word or `DELETED`/`DELETEME`
+/// (`DELETE.`, `DELETE THIS. UNUSED.`, `Delete me`, `DELETE_ME`,
+/// `DELETEDONOTUSE`, `DELETE The Great Plant Exodus`); a word that merely
+/// starts with the letters, such as "Deleterious", is still a name.
 /// No `regex` dependency for a handful of shapes.
 const SHAPES: &[Shape] = &[
     Shape::Exact("UNUSED"),
@@ -30,6 +34,12 @@ const SHAPES: &[Shape] = &[
     Shape::Prefix("UNUSED DIALOG"),
     Shape::Prefix("UNUSEDDIALOG"),
     Shape::Prefix("UNUSED ERROR"),
+    Shape::Exact("DELETE"),
+    Shape::Prefix("DELETED"),
+    Shape::Prefix("DELETE "),
+    Shape::Prefix("DELETE."),
+    Shape::Prefix("DELETE_"),
+    Shape::Prefix("DELETEME"),
     Shape::Framed("NO ", "NAME"),
     Shape::Framed("NO ", "LABEL"),
 ];
@@ -91,6 +101,18 @@ mod tests {
             "UNUSED ERROR CODE",
             "UNUSED DIALOG. Text is a result of a shared minigame",
             "Unused",
+            "DELETED",
+            "DELETED.",
+            "DELETE",
+            "DELETE.",
+            "DELETE THIS. UNUSED.",
+            "DELETED NOT USED",
+            "DELETED DIALOGUE",
+            "DELETEDONOTUSE",
+            "DELETE_ME",
+            "Delete me",
+            "deleteme",
+            "DELETE The Great Plant Exodus",
             "  NO ITEM NAME  ",
         ] {
             assert!(is_placeholder(form), "{form:?} is a placeholder");
@@ -115,6 +137,7 @@ mod tests {
             "Noble Gas",
             "Name of the Game",
             "Reused Parts",
+            "Deleterious Toxin",
             // Mission 819's real name.
             "Unused Explosive",
             "Unused explosive charge from the modified Unas.",

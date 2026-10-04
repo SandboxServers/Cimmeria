@@ -213,6 +213,36 @@ mod tests {
         );
     }
 
+    /// A reload whose database read fails keeps the current book whole and
+    /// says so: `names.load_failed` with `reason = db_error`, and the error
+    /// comes back to the caller. A closed pool fails every query at once, so
+    /// no database is needed.
+    #[tokio::test]
+    async fn failed_reload_keeps_the_current_book_and_warns() {
+        let capture = crate::test_support::LogCapture::install();
+        let handle = NameBookHandle::new(book_with("Old Rifle"));
+        let pool = sqlx::postgres::PgPoolOptions::new()
+            .connect_lazy("postgres://nobody@127.0.0.1:1/none")
+            .expect("lazy pool");
+        pool.close().await;
+
+        let result = handle.reload(&pool, Trigger::ContentReload).await;
+
+        assert!(result.is_err(), "the error reaches the caller");
+        assert_eq!(handle.book().item(5), Some("Old Rifle"));
+        assert_eq!(handle.book().world(1), Some("CombatSim"));
+        let warn = capture
+            .find_event(tracing::Level::WARN, "name book load failed", "db_error")
+            .expect("names.load_failed");
+        assert_eq!(warn.target, "names");
+        assert!(warn.has_field("event", "names.load_failed"));
+        assert!(warn.has_field("trigger", "content_reload"));
+        assert!(warn.fields.contains_key("error"));
+        assert!(capture
+            .find_message(tracing::Level::INFO, "name book loaded")
+            .is_none());
+    }
+
     #[test]
     fn a_new_handle_is_empty() {
         let handle = NameBookHandle::default();

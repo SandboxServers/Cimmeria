@@ -17,9 +17,15 @@ Learned building the NameBook (`crates/names`, named telemetry NT-01, 2026-10-04
   `name_id` -> `texts` the player-facing one). `spawn_sets` has **zero** seed rows.
   The NameBook names a dialog from its first `dialog_set_maps.topic_text` instead.
 - **`UNUSED.*` is not a safe placeholder rule:** mission 819 is really called
-  "Unused Explosive". The real stand-ins are `UNUSED`, `UNUSED.`, `UNUSED DIALOG*`,
-  `UnusedDialog`, `UNUSED ERROR*`, plus `NO … NAME` / `NO … LABEL`. The
+  "Unused Explosive". The stand-ins are `UNUSED`, `UNUSED.`, `UNUSED DIALOG*`,
+  `UnusedDialog`, `UNUSED ERROR*`, `NO … NAME` / `NO … LABEL`, and the deletion
+  markers: `DELETE`, `DELETE.`, `DELETED`, `DELETED.`, `DELETE THIS. UNUSED.`,
+  `DELETED NOT USED`, `DELETEDONOTUSE`, `DELETE_ME`, `Delete me`, `DELETE <old name>`
+  (mission 1421, mission_steps 3377/3770, texts 10991/14662/14931 among them).
+  Match `DELETE` as a word, not a prefix ("Deleterious" is a name). The
   `UNUSED DIALOGUE` strings are in `dialog_screens`/`dialog_set_maps`, not `dialogs`.
+  Grep the seed (`grep -rhoiE "'(DELETE|UNUSED|NO )[^']*'" db/resources`) before
+  trusting any placeholder list, this one included.
 - **`archetype` ints are `EArchetype` ordinals:** 0 Any … 6 Goauld, 7 Sholva,
   8 Jaffa. `base-session::archetype_name` had 7 = Jaffa and no 8 until NT-01.
 
