@@ -2,26 +2,32 @@
 //!
 //! The patched `ActionProfileDefault1.lua` is the stock file with
 //! `data/client-patches/009-starter-hotbar/StarterHotbar.lua` appended byte
-//! for byte. CI has no stock client, so these tests pin what can be checked
-//! without one: the op's stock source and result hashes, and that the delta
-//! builds a file exactly as long as the stock file plus the committed hook.
-//! An edit to the hook without a rebuilt zip fails here; a rebuilt zip must
-//! ship under a new patch id once 009 is published (append-only).
+//! for byte. CI has no stock client, so the delta is decoded against two
+//! synthetic sources of the stock length, all `0x00` and all `0x01`. A byte
+//! the delta adds from its extra block comes out the same from both; a byte
+//! it derives from the source comes out as `diff + 0` and `diff + 1`. That
+//! pins, without the stock file:
+//!
+//! - the first 3470 output bytes are the source copied unchanged (diff 0), so
+//!   the delta never alters a stock byte and stores none;
+//! - every extra-block byte equals the hook byte at the same offset, and
+//!   extra-block bytes cover nearly all of the hook.
+//!
+//! A hook edit without a rebuilt zip fails here. Once 009 is published, a
+//! rebuilt zip must ship under a new patch id (append-only).
 
 use std::io::Read;
 use std::path::{Path, PathBuf};
 
+use crate::apply::bspatch;
 use crate::recipe::{Recipe, RECIPE_NAME};
-use crate::sha256_hex;
 
 const TARGET: &str = "Working/SGWGame/Content/UI/Core/ActionButtons/ActionProfileDefault1.lua";
 /// The stock 2009 file (3470 bytes), as the cabinets ship it.
 const STOCK_SHA256: &str = "a09eb055d5d806018c4307e1371e5851480a51b06db380b0afc8755c8c151387";
-const STOCK_LEN: u64 = 3470;
+const STOCK_LEN: usize = 3470;
 /// Stock bytes followed by `StarterHotbar.lua`.
-const RESULT_SHA256: &str = "9139475b0884be6e3af926548dff0853c9d6dadbb2db43807dfdd6b083e83912";
-/// `StarterHotbar.lua` as built into the committed zip.
-const HOOK_SHA256: &str = "f3eeecf2579b5806cc666d133db58f6f3c3be49160f5cb318c2392571f7a53f3";
+const RESULT_SHA256: &str = "159bf4e8424586abccd593bea8fbfece5b389d8ace0ceada550a550df2e53414";
 
 fn patch_dir() -> PathBuf {
     Path::new(env!("CARGO_MANIFEST_DIR")).join("../../data/client-patches")
@@ -40,6 +46,10 @@ fn committed() -> (Recipe, Vec<u8>) {
     (recipe, delta)
 }
 
+fn hook() -> Vec<u8> {
+    std::fs::read(patch_dir().join("009-starter-hotbar/StarterHotbar.lua")).unwrap()
+}
+
 /// One op, on the stock-spelled file, pinned to the stock source.
 #[test]
 fn committed_009_patches_only_the_stock_default_profile_script() {
@@ -53,30 +63,58 @@ fn committed_009_patches_only_the_stock_default_profile_script() {
     assert_eq!(op.result_sha256, RESULT_SHA256);
 }
 
-/// The delta's target is the stock file plus the hook in the repo, and
-/// the hook is stored the way the client's UI scripts are: ASCII, CRLF.
+/// The hook is stored the way the client's UI scripts are: ASCII, CRLF.
 #[test]
-fn committed_009_appends_the_committed_hook() {
-    let hook = std::fs::read(patch_dir().join("009-starter-hotbar/StarterHotbar.lua")).unwrap();
+fn starter_hotbar_hook_is_ascii_crlf() {
+    let hook = hook();
     assert!(hook.is_ascii(), "the hook must be ASCII");
-    assert!(
-        hook.windows(2).filter(|w| w == b"\r\n").count()
-            == hook.iter().filter(|&&b| b == b'\n').count(),
+    let lf = hook.iter().filter(|&&b| b == b'\n').count();
+    let crlf = hook.windows(2).filter(|w| w == b"\r\n").count();
+    assert_eq!(
+        crlf, lf,
         "the hook must use CRLF line endings (.gitattributes keeps them)"
     );
+}
 
+/// Decode the delta and compare the bytes it adds against the hook source.
+#[test]
+fn committed_009_delta_adds_exactly_the_committed_hook() {
+    let hook = hook();
     let (_, delta) = committed();
-    let target_len = qbsdiff::Bspatch::new(&delta).unwrap().hint_target_size();
+    let zeros = bspatch(&vec![0u8; STOCK_LEN], &delta).unwrap();
+    let ones = bspatch(&vec![1u8; STOCK_LEN], &delta).unwrap();
+
     assert_eq!(
-        target_len,
-        STOCK_LEN + hook.len() as u64,
-        "StarterHotbar.lua changed without a rebuilt 009 zip"
+        zeros.len(),
+        STOCK_LEN + hook.len(),
+        "the delta builds a file of another length: StarterHotbar.lua changed without a rebuilt 009 zip"
     );
 
-    // Catches an edit that keeps the length.
-    assert_eq!(
-        sha256_hex(&hook),
-        HOOK_SHA256,
-        "StarterHotbar.lua changed without a rebuilt 009 zip"
+    // The stock part is the source, copied unchanged.
+    for i in 0..STOCK_LEN {
+        assert!(
+            zeros[i] == 0 && ones[i] == 1,
+            "output byte {i} is not a plain copy of the stock byte"
+        );
+    }
+
+    // Every byte the delta stores is the hook's byte at that offset.
+    let mut from_extra = 0usize;
+    for (k, &want) in hook.iter().enumerate() {
+        let i = STOCK_LEN + k;
+        if zeros[i] == ones[i] {
+            assert_eq!(
+                zeros[i], want,
+                "hook byte {k} differs from the delta: StarterHotbar.lua changed without a rebuilt 009 zip"
+            );
+            from_extra += 1;
+        }
+    }
+    // The rest of the hook is derived from stock bytes by bsdiff, which this
+    // test cannot check without the stock file; keep that share small.
+    assert!(
+        from_extra * 10 >= hook.len() * 9,
+        "only {from_extra} of {} hook bytes are pinned",
+        hook.len()
     );
 }

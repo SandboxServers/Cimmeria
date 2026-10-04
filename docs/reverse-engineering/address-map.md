@@ -1303,7 +1303,7 @@ See [`findings/ability-resolution-pipeline.md`](findings/ability-resolution-pipe
 | Address | Function | Notes |
 |---------|----------|-------|
 | `0x00aa2910` | Lua `useAbility` thunk | Entry point from Lua VM → forwards to AbilitySet_InvokeAbility. Error string at `0x01940b70`: `"#ferror in function 'useAbility'"` |
-| `0x00d2a000` | `AbilitySet_GetSlotByIndex` | Looks up AbilitySlot pointer by zero-based index; returns null if out of range |
+| `0x00d2a000` | `AbilitySet` find by id | `thiscall(set, abilityId)`, `ret 4`: finds the ability in the `std::map<int, AbilityData*>` at `set+0x28`; returns null when the client does not know it. Earlier named `AbilitySet_GetSlotByIndex` (a lookup by index), which was wrong (corrected 2026-10-04) |
 | `0x00d2ae40` | `AbilitySet_EmitUseAbilityOrGroundTarget` | Branch on targetType (slot+0x48): 3=TargetGround → reticle flow; else → Pattern B emit for `Event_NetOut_UseAbility` |
 | `0x00dea330` | `AbilitySet_ActivateGroundTargetReticle` | Asserts TCM_AERadius==2 AND TargetGround==3; shows AE reticle; subscribes to `Event_Player_GroundTargetingEnd` |
 | `0x00d29d40` | `AbilityInfo_GetAERadius` | Returns the int at param_1+0xa0 (UE3 units, from `0x00d29e90`); asserts TCM==TCM_AERadius(2). Effective score 87. |
@@ -1598,7 +1598,8 @@ Native Lua bindings behind `Content/UI/Core/Ability/Ability.lua`. Full writeup: 
 |---------|------|-------|
 | `0x00aa2ac0` / `0x00ad8700` | `getTrainingTreeCount` shim / inner | Returns outer-array size of the `+0x8c → +0x50` ability-tree cache |
 | `0x00aa2ba0` / `0x00add0a0` | `getTrainableList` shim / inner | Walks the tree cache's inner array in stored (tree) order — not the trainer's offered-list order |
-| `0x00aa2c20` / `0x00add1b0` | `getTrainableInfo` shim / inner | Joins the `+0x8c → +0x3c` trainer-offered map with the client's own known-abilities lookup; writes no Lua field when the id isn't in the trainer map (confirms hidden-not-greyed) |
+| `0x00aa2c20` / `0x00add1b0` | `getTrainableInfo` shim / inner | Looks the id up in the `+0x8c → +0x50` trainer-offered map (`FUN_00e19890`) and computes `haveIt` from the `+0x8c → +0x3c` known-abilities `AbilitySet` (`0x00d2a000`); writes no Lua field when the id isn't in the trainer map (confirms hidden-not-greyed) |
+| `0x00aa2740` / `0x00adb810` | `getAbilityList` shim / inner | **Zero arguments** (`tolua_isnoobj(L,1)`; any argument raises). Returns the known-ability ids from `+0x8c → +0x3c → +0xc` as a Lua array. Unused by the stock UI; client patch 009 calls it |
 | `0x00aa2ca0` / `0x00ad8720` | `buyTrainable` shim / sender | |
 | `0x00aa2d80` / `0x00aeacd0` | `respecAbilities` shim / sender | Zero-argument cell method 72 `resetMyAbilities` call |
 | `0x00c66ad0` | `GameEntityManager::instance()` | Asserts against `.\Src\GameEntityManager.cpp`; singleton is `g_EntityManager` at `0x01ef244c` (already listed above) |

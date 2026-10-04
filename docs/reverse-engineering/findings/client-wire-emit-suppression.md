@@ -41,7 +41,7 @@ patch.
 | 2 | `0x00aa2910` (`CEGUI__unknown_00aa2910`) | Lua → C++ thunk. Validates **three arguments**: arg1 + arg2 must be numbers (`CEGUI__unknown_00403330` @ `0x00403330`), arg3 must exist (`CEGUI__unknown_00403280` @ `0x00403280`). |
 | 3 | `0x00ad78e0` (`FUN_00ad78e0`) | Resolves local player entity via `FUN_00c66ad0()`, resolves target via `FUN_00dd0de0` @ `0x00dd0de0` (entity-map lookup). |
 | 4 | `0x00d2afc0` → `0x00d2ae40` (`FUN_00d2ae40`) | Reads target type discriminant at `param_1[0x12]` (offset 0x48). Allocates event object, sets `AbilityID` + `TargetID`, calls `FUN_00cacd50` to emit. |
-| 5 | `0x00d2b020` (`FUN_00d2b020`) | **In-flight queue gate**: `if ((0 < abilityId) && (FUN_00d2a000(this+200) == 0))`. `FUN_00d2a000` returns the head of an in-flight ability queue at `this+0x228`. **If the queue is non-empty, the packet is suppressed.** |
+| 5 | `0x00d2b020` (`FUN_00d2b020`) | `addAbilityIfAbsent` (corrected 2026-10-04; first read as an in-flight queue gate): `if ((0 < abilityId) && (FUN_00d2a000(this+200) == 0))` adds the ability when `FUN_00d2a000`, the `AbilitySet` find by id (`std::map<int, AbilityData*>` at `+0x28`), does not have it. Nothing here suppresses a packet. |
 | 6 | `FUN_00cacd50` | Mercury wire emit. `useAbility` Mercury method = `0x3a0` (928). |
 
 ### Diagnosis
@@ -162,8 +162,8 @@ useAbility Lua binding                      0x00aa2910
 useAbility emit path                        0x00ad78e0
   target resolve                            0x00dd0de0
   event build + emit                        0x00d2ae40
-  in-flight queue gate                      0x00d2b020
-    queue head accessor                     0x00d2a000
+  addAbilityIfAbsent                        0x00d2b020
+    AbilitySet find by id                   0x00d2a000
 useAbility Mercury method                   0x3a0 (928)
 
 requestActiveSlotChange Mercury method      0x3ec (1004)

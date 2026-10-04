@@ -5,9 +5,11 @@
 --
 -- Modelled: the three button bindings, a two-profile-template table whose
 -- template 2 has buttons 1-10 bandolier-bound, 11-20 layer-bound and 21-23
--- never-bound; createProfile, loadProfile, onModLoaded, getButtonInfo,
--- getButtonWindow, setButtonCurrentAction, and the button binding and redraw
--- calls the hook uses.
+-- never-bound; createProfile, loadProfile, onModLoaded (with the module
+-- version wipe and one refreshProfileTemplateCombo call before the profile
+-- is created or loaded), getButtonInfo, getButtonWindow,
+-- setButtonCurrentAction, and the button binding and redraw calls the hook
+-- uses.
 
 ActionButtonMod = { buttons = {}, actionMap = {} }
 
@@ -140,10 +142,21 @@ function ActionProfileMod.setButtonCurrentAction( buttonId, actionId )
     ActionButtonMod.bindButtonToAction(buttonId, actionId)
 end
 
+function ActionProfileMod.refreshProfileTemplateCombo()
+end
+
 function ActionProfileMod.onModLoaded( window )
     for i = 1, ActionProfileMod.MaxButtons do
         ActionButtonMod.registerButton(i, _G[string.format('ActionButtons_%dButton', i)])
     end
+    -- Saved profiles from an older module version are dropped.
+    local version = getModuleInfo('ActionButtons').version
+    if GActionProfilesModVersion and GActionProfilesModVersion < version then
+        writeLocalFeedback('Action profiles were reset.')
+        GActionProfiles = {}
+    end
+    GActionProfilesModVersion = version
+    ActionProfileMod.refreshProfileTemplateCombo()
     if not GActionProfiles[GActionCurrentProfileId] then
         GActionCurrentProfileId = ActionProfileMod.createProfile('Default', ActionProfileMod.SafetyTemplate)
     end

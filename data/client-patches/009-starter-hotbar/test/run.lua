@@ -169,11 +169,46 @@ local function deepEqual( a, b, path )
     return true
 end
 
+local function ourFeedback( client )
+    local n = 0
+    for _, line in ipairs(client.feedback) do
+        if line:find('starting abilities', 1, true) then
+            n = n + 1
+        end
+    end
+    return n
+end
+
+local function logged( client, text )
+    for _, line in ipairs(client.log) do
+        if line:find(text, 1, true) then
+            return true
+        end
+    end
+    return false
+end
+
+local function listening( client )
+    return client.subscribed('Events.AbilityUpdate') or client.subscribed('Events.PropertyUpdated')
+end
+
 --=============================================================================
 local scenarios = {}
 local function scenario( name, fn )
     scenarios[#scenarios + 1] = { name = name, fn = fn }
 end
+
+scenario('the stub natives raise on a wrong argument count, like the tolua shims', function()
+    local c = boot({ known = STARTERS })
+    local env = c.env
+    ok(not pcall(env.getAbilityList, 2), 'getAbilityList(2) raises')
+    ok(not pcall(env.getUnusedAction, 1), 'getUnusedAction(1) raises')
+    ok(not pcall(env.setActionToAbility, 1), 'setActionToAbility(1) raises')
+    ok(not pcall(env.getActionInfo), 'getActionInfo() raises')
+    ok(not pcall(env.unitsEqual, env.Unit.Player), 'unitsEqual(1) raises')
+    ok(pcall(env.getAbilityList), 'getAbilityList() works')
+    say('arity checked: getAbilityList(), getUnusedAction(), setActionToAbility(n,n), getActionInfo(n), unitsEqual(n,n)')
+end)
 
 scenario('fresh character, abilities known at load: seeded once, attacks first', function()
     local known = { 9999, 1218, 597, 592, 1646, 594 }
@@ -183,6 +218,7 @@ scenario('fresh character, abilities known at load: seeded once, attacks first',
     expectEmpty(c, range(16, 23), 'first login, other ability not placed')
     eq(#c.feedback, 1, 'one feedback line')
     eq(state(c), 'done', 'state after first login (every starting ability placed)')
+    ok(not listening(c), 'no event subscriptions once done')
     say('buttons 11-15: 592 594 597 1646 1218, each with its icon and pressable; feedback "'..c.feedback[1]..'"')
 
     local actions = countActions(c)
@@ -191,27 +227,39 @@ scenario('fresh character, abilities known at load: seeded once, attacks first',
     expectBar(c2, 11, STARTERS, 'relog')
     eq(countActions(c2), actions, 'no new actions on relog')
     eq(#c2.feedback, 0, 'no feedback on relog')
-    c2.learn({ 4242 })
-    eq(countActions(c2), actions, 'no new actions after relog ability update')
-    say('relog: state done, same five buttons, no new actions, no feedback')
+    ok(not listening(c2), 'no event subscriptions on relog')
+    say('relog: state done, same five buttons, no new actions, no feedback, no subscriptions')
 end)
 
-scenario('abilities arrive after the module loads (Events.AbilityUpdate)', function()
+scenario('abilities arrive one by one after the module loads (Events.AbilityUpdate)', function()
     local c = boot({ known = {} })
     expectEmpty(c, range(1, 23), 'before abilities')
     eq(state(c), 'pending', 'state before abilities')
+    ok(listening(c), 'subscribed while pending')
     eq(#c.feedback, 0, 'no feedback before abilities')
     c.learn(STARTERS)
     expectBar(c, 11, STARTERS, 'after AbilityUpdate')
-    eq(#c.feedback, 1, 'one feedback line')
-    say('pending until onKnownAbilitiesUpdate, then buttons 11-15 seeded')
+    eq(ourFeedback(c), 1, 'one feedback line across five top-ups')
+    eq(state(c), 'done', 'done')
+    ok(not listening(c), 'unsubscribed once done')
+    say('pending until the abilities arrive, one event each; one feedback line; then unsubscribed')
 end)
 
 scenario('abilities arrive without an AbilityUpdate (PropertyUpdated fallback)', function()
     local c = boot({ known = {} })
     c.learn(STARTERS, 'property')
     expectBar(c, 11, STARTERS, 'after PropertyUpdated')
-    say('seeded from the throttled PropertyUpdated fallback')
+    say('seeded from the player PropertyUpdated fallback')
+end)
+
+scenario('a non-starting ability arrives first: still seeds when the starters follow', function()
+    local c = boot({ known = {} })
+    c.learn({ 4242 })
+    eq(state(c), 'pending', 'still pending after a non-starter')
+    expectEmpty(c, range(1, 23), 'non-starter not placed')
+    c.learn(STARTERS)
+    expectBar(c, 11, STARTERS, 'after the starters')
+    say('4242 first leaves the profile pending; the starters then land on 11-15')
 end)
 
 scenario('abilities arrive in pieces: topped up this session, never in the next', function()
@@ -220,11 +268,61 @@ scenario('abilities arrive in pieces: topped up this session, never in the next'
     c.learn({ 594 })
     expectBar(c, 11, { 592, 597, 594 }, 'topped up')
     eq(state(c), 'seeding', 'still seeding this session')
+    eq(ourFeedback(c), 1, 'feedback not repeated on the top-up')
     local c2 = boot({ known = { 597, 592, 594 }, saved = c.save() })
     eq(state(c2), 'done', 'done on relog')
     c2.learn({ 1646, 1218 })
     expectEmpty(c2, { 14, 15 }, 'nothing added in a later session')
+    eq(ourFeedback(c2), 0, 'no feedback in a later session')
     say('592 597 at load, 594 later the same session; 1646/1218 learned next session stay off the bar')
+end)
+
+scenario('nothing known in the first session: pending expires, a later session never seeds', function()
+    local c = boot({ known = {} })
+    eq(state(c), 'pending', 'pending in the first session')
+    -- Weeks of play: the player builds a bar by hand.
+    local c2 = boot({ known = {}, saved = c.save() })
+    eq(state(c2), 'done', 'pending expired at the next login')
+    ok(not listening(c2), 'not listening after expiry')
+    drag(c2, 11, 4242)
+    drag(c2, 16, 4343)
+    local saved = c2.save()
+    -- A later patch or server change makes the starters known.
+    local c3 = boot({ known = STARTERS, saved = saved })
+    c3.learn({ 7001 })
+    c3.learn({ 7002 }, 'property')
+    local same, where = deepEqual(c3.save().GActionProfiles, saved.GActionProfiles, 'GActionProfiles')
+    ok(same, 'customised bar changed at '..tostring(where))
+    eq(ourFeedback(c3), 0, 'no feedback')
+    say('pending -> done at the second login; the hand-built bar is never seeded later')
+end)
+
+scenario('Lua state kept across logout to character select: still first session only', function()
+    local c = boot({ known = { 592, 597 } })
+    expectBar(c, 11, { 592, 597 }, 'first session')
+    eq(state(c), 'seeding', 'seeding in the first session')
+    c.relogKeepingLuaState()
+    eq(state(c), 'done', 'done at the second login in the same Lua state')
+    c.learn({ 594, 1646 })
+    expectEmpty(c, { 13, 14 }, 'nothing added after the relog')
+    eq(ourFeedback(c), 1, 'no second feedback line')
+
+    local p = boot({ known = {} })
+    p.relogKeepingLuaState()
+    eq(state(p), 'done', 'pending expired in the same Lua state')
+    p.learn(STARTERS)
+    expectEmpty(p, range(11, 20), 'pending profile not seeded after the relog')
+    say('the login marker is stored in the profile, so a kept Lua state cannot extend the first session')
+end)
+
+scenario('the stock version-2 wipe: the recreated profile is seeded', function()
+    local pre = boot({ known = STARTERS }, false)
+    drag(pre, 12, 4242)
+    local c = boot({ known = STARTERS, saved = pre.save(), modVersion = 1 })
+    expectBar(c, 11, STARTERS, 'after the wipe')
+    eq(ourFeedback(c), 1, 'one starter feedback line')
+    eq(state(c), 'done', 'done')
+    say('profiles from module version 1 are wiped by the client; the new Default profile is seeded')
 end)
 
 scenario('existing customised profile from before the patch: untouched', function()
@@ -238,6 +336,7 @@ scenario('existing customised profile from before the patch: untouched', functio
     ok(same, 'profile changed at '..tostring(where))
     eq(#c.feedback, 0, 'no feedback')
     eq(c.abilityOnButton(11), nil, 'button 11 stays empty')
+    ok(not listening(c), 'not listening on an unmarked profile')
     say('custom bar (12=1646, 17=592) byte-for-byte the same after load and an ability update')
 end)
 
@@ -276,6 +375,33 @@ scenario('the player fills the bar before the abilities arrive: nothing replaced
     say('all ten layer buttons kept; state done')
 end)
 
+scenario('bar fills up while a starter is still missing: done, no further listening', function()
+    local c = boot({ known = {} })
+    for b = 11, 18 do
+        drag(c, b, 7000 + b)
+    end
+    -- A class without Strike (594): one starter missing ahead of the rest.
+    c.learn({ 592, 597, 1646, 1218 })
+    eq(c.abilityOnButton(19), 592, 'button 19')
+    eq(c.abilityOnButton(20), 597, 'button 20')
+    eq(state(c), 'done', 'done when the bar is full, with 594 still unknown')
+    ok(not listening(c), 'unsubscribed once full')
+    say('592/597 on the last two free buttons; full -> done although 594 never arrived')
+end)
+
+scenario('only known-ability updates trigger a seed (UIAbilityGroup filter)', function()
+    local c = boot({ known = {} })
+    c.learn(STARTERS, 'silent')
+    local env = c.env
+    for _, id in ipairs(STARTERS) do
+        c.fire('Events.AbilityUpdate', env.UIAbilityGroup.Training, id)
+    end
+    expectEmpty(c, range(11, 20), 'training-group updates ignored')
+    c.fire('Events.AbilityUpdate', env.UIAbilityGroup.KnownAbility, 592)
+    expectBar(c, 11, STARTERS, 'after a known-ability update')
+    say('Training-group AbilityUpdate events are ignored; a KnownAbility one seeds')
+end)
+
 scenario('the player already placed a starting ability: no duplicate', function()
     local c = boot({ known = {} })
     drag(c, 13, 592)
@@ -289,11 +415,46 @@ scenario('the player already placed a starting ability: no duplicate', function(
     say('592 stays on 13 once; the other four fill 11, 12, 14, 15')
 end)
 
-scenario('a weapon is active: bandolier buttons are still left alone', function()
-    local c = boot({ known = STARTERS, weaponItemId = 555 })
-    expectBar(c, 11, STARTERS, 'with weapon')
-    expectEmpty(c, range(1, 10), 'bandolier buttons')
-    say('layer buttons only, whatever the active weapon')
+scenario('rebound buttons: only layer-bound buttons 11-20 with nothing on them are used', function()
+    local c = boot({ known = {}, weaponItemId = 555 })
+    local env = c.env
+    local p = c.profile()
+    local Layer, Bandolier = env.ActionProfileMod.ButtonBinding_Layer, env.ActionProfileMod.ButtonBinding_Bandolier
+    -- Button 3 rebound to the layer bar: outside 11-20, so never used.
+    p.buttonInfo[3].binding = Layer
+    -- Button 11 rebound to the bandolier: not a layer button.
+    p.buttonInfo[11].binding = Bandolier
+    -- Button 12 was a bandolier button with a weapon action and is now
+    -- layer-bound; it still shows the old action until the profile reloads.
+    local old = env.getUnusedAction()
+    env.setActionToAbility(old, 7777)
+    p.buttonInfo[12].actions = { [555] = old }
+    p.buttonInfo[12].binding = Layer
+    env.ActionButtonMod.bindButtonToAction(12, old)
+    c.learn(STARTERS)
+    eq(c.abilityOnButton(3), nil, 'button 3 (layer-bound, below 11) empty')
+    eq(c.abilityOnButton(11), nil, 'button 11 (bandolier-bound) empty')
+    eq(p.buttonInfo[11].actions[555], nil, 'no weapon-keyed action on 11')
+    eq(c.abilityOnButton(12), 7777, 'button 12 keeps its old action')
+    expectBar(c, 13, STARTERS, 'starters from 13')
+    say('3 and 11 skipped by the binding/range rule, 12 skipped while it still shows an action')
+end)
+
+scenario('PropertyUpdated fallback: player only, at most once a second', function()
+    local c = boot({ known = {} })
+    local base = c.listCalls
+    c.advance(5)
+    c.propertyUpdate()
+    eq(c.listCalls, base + 1, 'first player update polls')
+    c.advance(0.5)
+    c.propertyUpdate()
+    eq(c.listCalls, base + 1, 'second update within 1 s is skipped')
+    c.advance(0.6)
+    c.propertyUpdate(c.env.Unit.Target)
+    eq(c.listCalls, base + 1, "another unit's update is ignored")
+    c.propertyUpdate()
+    eq(c.listCalls, base + 2, 'player update after 1.1 s polls')
+    say('one list read per second of player updates; NPC updates ignored')
 end)
 
 scenario('no getAbilityList native: no error, waits', function()
@@ -303,16 +464,25 @@ scenario('no getAbilityList native: no error, waits', function()
     say('module loads normally; nothing placed')
 end)
 
+scenario('getAbilityList raises: logged once, module still loads', function()
+    local c = boot({ known = STARTERS, brokenAbilityList = true })
+    c.learn({ 4242 })
+    c.learn({ 4343 }, 'property')
+    expectEmpty(c, range(1, 23), 'nothing placed')
+    local n = 0
+    for _, line in ipairs(c.log) do
+        if line:find('getAbilityList failed', 1, true) then
+            n = n + 1
+        end
+    end
+    eq(n, 1, 'one log line for the failing native')
+    say('the native error reaches Debug:log once')
+end)
+
 scenario('setActionToAbility raises: module still loads, never retried', function()
     local c = boot({ known = STARTERS, failSetAction = true })
     eq(state(c), 'done', 'done after an error')
-    local logged = false
-    for _, line in ipairs(c.log) do
-        if line:find('starter hotbar: error', 1, true) then
-            logged = true
-        end
-    end
-    ok(logged, 'the error is logged')
+    ok(logged(c, 'starter hotbar: error'), 'the error is logged')
     say('onModLoaded finished; error logged; state done')
 end)
 
@@ -330,6 +500,7 @@ scenario('button layout is never changed by the hook', function()
             info.actions = nil
         end
         p[1].cimmeriaStarterHotbar = nil
+        p[1].cimmeriaStarterLoad = nil
     end
     local same, where = deepEqual(with, without, 'GActionProfiles')
     ok(same, 'layout differs at '..tostring(where))
@@ -364,5 +535,5 @@ if #skipped > 0 and os.getenv('STARTER_HOTBAR_REQUIRE_REAL') == '1' then
     print('real variants skipped and STARTER_HOTBAR_REQUIRE_REAL=1')
     os.exit(1)
 end
-print('all scenarios passed ('..#variants..' variant(s))')
+print('all scenarios passed ('..#variants..' variant(s) x '..#scenarios..' scenarios)')
 os.exit(0)

@@ -28,7 +28,7 @@ for the format and [crates/patchset](../../crates/patchset/) for the code.
 | `006-gate-sound-bank` | Copies the stock `audio/genprp/prp_gen.fev` and `prp_gen_gate.fsb` into `Audio/UI/`, where the known-good client has them (byte-identical); the sources are the player's own stock files | 2 near-empty deltas | 1.5 KB |
 | `007-castle-armory-ring` | The ring rig on the CellBlock Armory pad (mission 688). This is 002's Armory op with the same source, delta and result, so installs that applied 002 skip it | 1 map delta against the normalized stock map | 2.6 KB |
 | `008-dialog-portraits` | **Supersedes 001.** The same five dialog-portrait files, shipped whole instead of as deltas, so it applies to any client: stock, Project Giza, or one that already carries a hand-installed portrait fix | 5 whole files | 93 KB |
-| `009-starter-hotbar` | Puts a new character's starting abilities on its action bar at first login (see below) | 1 delta (`ActionProfileDefault1.lua`) | 4.1 KB |
+| `009-starter-hotbar` | Puts a new character's starting abilities on its action bar at first login (see below) | 1 delta (`ActionProfileDefault1.lua`) | 4.7 KB |
 
 `002-castle-ring-transport` was **removed from the signed content
 manifest on 2026-09-29**, and `007-castle-armory-ring` supersedes it.
@@ -57,33 +57,42 @@ buttons. 009 appends [StarterHotbar.lua](009-starter-hotbar/StarterHotbar.lua)
 to the stock `ActionProfileDefault1.lua`, byte for byte. The ActionButtons
 module loads that file after `ActionProfiles.lua`.
 
-- **What it does.** On the profile the client creates at a character's
-  first login (when `GActionProfiles` is empty), it binds each known
-  starting ability (Pistol Shot 592, Strike 594, Heal Focus 597, Health
-  Heal 1646, Recuperation 1218, in that order) to the next empty
-  layer-bound button from 11 to 20 (default keys Alt+1 to Alt+0), using the
-  same calls as dropping an ability from the Ability window. It reads the
-  known abilities with the native `getAbilityList(UIAbilityGroup.KnownAbility)`
-  and tops up on `Events.AbilityUpdate` (and, throttled, on
-  `Events.PropertyUpdated`) until the first session ends. The profile then
-  records `cimmeriaStarterHotbar = 'done'` and is never touched again. A
-  profile that existed before the patch, or one made with the editor's
-  New Profile button, has no such mark and is left alone.
+- **What it does.** The client creates a profile when a character has no
+  saved UI variables: its first login on this machine (a new character, or
+  an existing one on a new machine or Windows profile), or after the stock
+  version-2 wipe. On that profile it binds each known starting ability
+  (Pistol Shot 592, Strike 594, Heal Focus 597, Health Heal 1646,
+  Recuperation 1218, in that order) to the next empty layer-bound button
+  from 11 to 20 (default keys Alt+1 to Alt+0), using the same calls as
+  dropping an ability from the Ability window. It reads the known abilities
+  with the zero-argument native `getAbilityList()` and, while there is
+  something to place, listens to `Events.AbilityUpdate` and (the player's
+  own updates, at most once a second) `Events.PropertyUpdated`.
+- **Only in the first session.** The profile stores the module load (login)
+  that created it. At any later login the profile is marked
+  `cimmeriaStarterHotbar = 'done'`, whatever was placed, and the patch
+  never touches it again, even if the starting abilities become known
+  later. It also stops listening as soon as it is done. A profile that
+  existed before the patch, or one made with the editor's New Profile
+  button, has no mark and is left alone.
 - **Compatible with UI packs.** It never creates, moves or resizes a
   button, and it patches no file that the WQHD v26 UI pack replaces
   (`ActionProfiles.lua`, `ActionButton.layout`). It wraps
-  `ActionProfileMod.createProfile` and `ActionProfileMod.loadProfile`,
-  which the stock file and the v26 replacement both define.
+  `ActionProfileMod.refreshProfileTemplateCombo` (called once per module
+  load, from `onModLoaded`), `createProfile` and `loadProfile`, which the
+  stock file and the v26 replacement both define.
 - **Rebuilding.** Build a patched tree whose `ActionProfileDefault1.lua` is
   the stock file (sha256 `a09eb055...`) followed by `StarterHotbar.lua`, then
   run `cimmeria-patchset build` as below. `starter_hotbar_tests.rs` in
-  `crates/patchset` fails when the hook changes without a rebuilt zip.
+  `crates/patchset` decodes the committed delta and fails when the bytes it
+  adds differ from `StarterHotbar.lua`.
 - **Logic UAT.** `lua5.1 data/client-patches/009-starter-hotbar/test/run.lua`,
   or `python .../test/run_lupa.py` on Windows. CI runs it against a
   clean-room model of the ActionButtons module. Set `SGW_UI_DIR` to a stock
   client's `Working/SGWGame/Content/UI`, and `SGW_V26_ACTIONPROFILES` to
   the v26 pack's `ActionProfiles.lua`, to also run it against the real
-  scripts.
+  scripts. Its stub natives raise on a wrong argument count, as the client's
+  tolua shims do.
 
 Each spec carries a `title` and `description` for the launcher's
 **Changes to your client** list. `cimmeria-patchset build` copies them

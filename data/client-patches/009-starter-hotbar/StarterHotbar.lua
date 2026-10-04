@@ -9,21 +9,25 @@
 -- the stock ActionProfileDefault1.lua, which ActionButtons.toc loads after
 -- ActionProfiles.lua. It places the starting abilities the character knows
 -- on the empty layer-bound buttons (11-20) of the profile the client creates
--- at the character's first login, and never touches any other profile.
+-- when the character has no saved UI variables (its first login on this
+-- machine), and never touches any other profile.
 --
 -- It only binds actions to buttons that already exist. It never creates,
 -- moves or resizes a button, and it changes no file a UI pack replaces: it
--- wraps ActionProfileMod.createProfile and ActionProfileMod.loadProfile, which
--- the stock ActionProfiles.lua and the WQHD v26 replacement both define.
+-- wraps ActionProfileMod.refreshProfileTemplateCombo, createProfile and
+-- loadProfile, which the stock ActionProfiles.lua and the WQHD v26
+-- replacement both define (refreshProfileTemplateCombo is called once, from
+-- onModLoaded, in both).
 --
 -- State, kept in the profile (persisted with GActionProfiles):
---   nil        a profile this patch did not create: never touched
---   'pending'  created fresh at first login; nothing placed yet
---   'seeding'  placed abilities this session; tops up as more arrive
---   'done'     finished; never runs again for this profile
--- 'seeding' turns into 'done' at the next load of the module (the next login),
--- so a starting ability that arrives late in the first session still lands,
--- and nothing is ever added in a later session.
+--   cimmeriaStarterHotbar  nil        a profile this patch did not create
+--                          'pending'  created fresh, nothing placed yet
+--                          'seeding'  placed abilities, tops up as more arrive
+--                          'done'     finished; never runs again
+--   cimmeriaStarterLoad    the module load (login) that created the profile
+-- Seeding happens only during the module load that created the profile. At
+-- any later load, 'pending' and 'seeding' both become 'done', so nothing is
+-- ever added to a bar after the character's first session.
 --=============================================================================
 ActionProfileMod.StarterHotbar = {
     -- Attacks first, then heals: Pistol Shot, Strike, Heal Focus,
@@ -32,14 +36,18 @@ ActionProfileMod.StarterHotbar = {
     FirstButton = 11,
     LastButton = 20,
     StateKey = 'cimmeriaStarterHotbar',
+    LoadKey = 'cimmeriaStarterLoad',
     Pending = 'pending',
     Seeding = 'seeding',
     Done = 'done',
     PollSeconds = 1.0,
 
-    sessionActive = false,  -- this Lua session placed something
+    loadToken = nil,        -- this module load; see newLoadToken
+    loadCount = 0,
     busy = false,
     lastPoll = nil,
+    subscribed = false,
+    listErrorLogged = false,
 }
 
 --=============================================================================
@@ -48,20 +56,47 @@ function ActionProfileMod.StarterHotbar.log( text )
 end
 
 --=============================================================================
+-- A token naming this module load. Stored in the profile it creates, so the
+-- "first session" test does not depend on whether the client rebuilds the
+-- Lua state between logins. The counter separates loads in one Lua state;
+-- the clocks separate Lua states.
+function ActionProfileMod.StarterHotbar.newLoadToken()
+    local SH = ActionProfileMod.StarterHotbar
+    SH.loadCount = SH.loadCount + 1
+    local sys, wall = '', ''
+    if type(getSystemTime) == 'function' then
+        local ok, t = pcall( getSystemTime )
+        if ok then sys = tostring(t) end
+    end
+    if os and type(os.time) == 'function' then
+        local ok, t = pcall( os.time )
+        if ok then wall = tostring(t) end
+    end
+    SH.loadToken = wall..'/'..sys..'/'..SH.loadCount
+    return SH.loadToken
+end
+
+function ActionProfileMod.StarterHotbar.currentLoad()
+    local SH = ActionProfileMod.StarterHotbar
+    return SH.loadToken or SH.newLoadToken()
+end
+
+--=============================================================================
 -- The ids in the client's known-abilities cache (filled by
 -- onKnownAbilitiesUpdate), or nil when the client has no such list.
--- getAbilityList is a native the stock UI never calls; it ignores its
--- argument and returns the known-ability ids as an array.
+-- getAbilityList is a zero-argument native the stock UI never calls: its
+-- tolua shim raises if it is given any argument.
 function ActionProfileMod.StarterHotbar.knownAbilities()
+    local SH = ActionProfileMod.StarterHotbar
     if type(getAbilityList) ~= 'function' then
         return nil
     end
-    local group = 2
-    if UIAbilityGroup and UIAbilityGroup.KnownAbility then
-        group = UIAbilityGroup.KnownAbility
-    end
-    local ok, list = pcall( getAbilityList, group )
+    local ok, list = pcall( getAbilityList )
     if not ok or type(list) ~= 'table' then
+        if not SH.listErrorLogged then
+            SH.listErrorLogged = true
+            SH.log( 'getAbilityList failed: '..tostring(list) )
+        end
         return nil
     end
     local known = {}
@@ -104,7 +139,9 @@ function ActionProfileMod.StarterHotbar.abilitiesOnBar( profile )
 end
 
 --=============================================================================
--- A layer-bound button of the profile with no action on the current layer.
+-- A layer-bound button of the profile with nothing on it: no action stored
+-- for the current layer, and no action bound to the button (a button rebound
+-- in the editor keeps its old action until the profile reloads).
 function ActionProfileMod.StarterHotbar.isEmptyLayerButton( profile, buttonId )
     local info = profile.buttonInfo and profile.buttonInfo[buttonId]
     if type(info) ~= 'table' or info.binding ~= ActionProfileMod.ButtonBinding_Layer then
@@ -142,13 +179,12 @@ end
 
 --=============================================================================
 -- Place every known starting ability not yet on the bar.
--- Returns placed, missing (not known), full (no button or action left),
--- knownCount (nil when the client has no known-ability list).
+-- Returns placed, missing (not known yet), full (no button or action left).
 function ActionProfileMod.StarterHotbar.seed( profile )
     local SH = ActionProfileMod.StarterHotbar
-    local known, knownCount = SH.knownAbilities()
+    local known = SH.knownAbilities()
     if not known then
-        return 0, #SH.Abilities, false, nil
+        return 0, #SH.Abilities, false
     end
     local onBar = SH.abilitiesOnBar( profile )
     local placed, missing, full = 0, 0, false
@@ -172,19 +208,47 @@ function ActionProfileMod.StarterHotbar.seed( profile )
             end
         end
     end
-    return placed, missing, full, knownCount
+    return placed, missing, full
 end
 
 --=============================================================================
--- Is the current profile one this session may still add to?
-function ActionProfileMod.StarterHotbar.watching()
-    local SH = ActionProfileMod.StarterHotbar
+function ActionProfileMod.StarterHotbar.currentProfile()
     local profile = GActionProfiles and GActionProfiles[GActionCurrentProfileId]
     if type(profile) ~= 'table' then
+        return nil
+    end
+    return profile
+end
+
+-- Is the current profile one this module load may still add to?
+function ActionProfileMod.StarterHotbar.watching()
+    local SH = ActionProfileMod.StarterHotbar
+    local profile = SH.currentProfile()
+    if not profile then
         return false
     end
     local state = profile[SH.StateKey]
-    return state == SH.Pending or ( state == SH.Seeding and SH.sessionActive )
+    return ( state == SH.Pending or state == SH.Seeding )
+       and profile[SH.LoadKey] == SH.currentLoad()
+end
+
+--=============================================================================
+-- Listen for late abilities only while there is something to do.
+function ActionProfileMod.StarterHotbar.updateSubscriptions()
+    local SH = ActionProfileMod.StarterHotbar
+    if not ( ActionButtonsWin and Events and Events.AbilityUpdate and Events.PropertyUpdated ) then
+        return
+    end
+    local want = SH.watching()
+    if want and not SH.subscribed then
+        ActionButtonsWin:subscribe( Events.AbilityUpdate, 'ActionProfileMod.onStarterHotbarAbilityUpdate' )
+        ActionButtonsWin:subscribe( Events.PropertyUpdated, 'ActionProfileMod.onStarterHotbarPropertyUpdated' )
+        SH.subscribed = true
+    elseif not want and SH.subscribed then
+        ActionButtonsWin:unsubscribe( Events.AbilityUpdate )
+        ActionButtonsWin:unsubscribe( Events.PropertyUpdated )
+        SH.subscribed = false
+    end
 end
 
 --=============================================================================
@@ -193,54 +257,58 @@ function ActionProfileMod.StarterHotbar.run( reason )
     if SH.busy then
         return
     end
-    local profile = GActionProfiles and GActionProfiles[GActionCurrentProfileId]
-    if type(profile) ~= 'table' then
+    local profile = SH.currentProfile()
+    if not profile then
         return
     end
     local state = profile[SH.StateKey]
-    if state == SH.Seeding and not SH.sessionActive then
+    if ( state == SH.Pending or state == SH.Seeding ) and profile[SH.LoadKey] ~= SH.currentLoad() then
         profile[SH.StateKey] = SH.Done
-        SH.log( 'done: seeded in an earlier session' )
-        return
-    end
-    if not SH.watching() then
-        return
-    end
+        SH.log( 'done: the first session ended in state '..state )
+    elseif SH.watching() then
+        SH.busy = true
+        local ok, placed, missing, full = pcall( SH.seed, profile )
+        SH.busy = false
 
-    SH.busy = true
-    local ok, placed, missing, full, knownCount = pcall( SH.seed, profile )
-    SH.busy = false
-
-    if not ok then
-        -- Never retry a failing seed on every event; the bar stays as it is.
-        profile[SH.StateKey] = SH.Done
-        SH.log( 'error ('..tostring(reason)..'): '..tostring(placed) )
-        return
-    end
-
-    if placed > 0 then
-        if state == SH.Pending and type(writeLocalFeedback) == 'function' then
-            pcall( writeLocalFeedback, 'Your starting abilities are on your action bar.' )
+        if not ok then
+            -- Never retry a failing seed on every event; the bar stays as it is.
+            profile[SH.StateKey] = SH.Done
+            SH.log( 'error ('..tostring(reason)..'): '..tostring(placed) )
+        else
+            if placed > 0 then
+                if state == SH.Pending then
+                    pcall( writeLocalFeedback, 'Your starting abilities are on your action bar.' )
+                end
+                profile[SH.StateKey] = SH.Seeding
+                SH.log( 'placed '..placed..' ('..tostring(reason)..')' )
+            end
+            if missing == 0 or full then
+                profile[SH.StateKey] = SH.Done
+                SH.log( 'done: '..(full and 'no empty button or action left' or 'all starting abilities on the bar') )
+            end
         end
-        profile[SH.StateKey] = SH.Seeding
-        SH.sessionActive = true
-        SH.log( 'placed '..placed..' ('..tostring(reason)..')' )
     end
+    SH.updateSubscriptions()
+end
 
-    if missing == 0 or full then
-        profile[SH.StateKey] = SH.Done
-        SH.log( 'done: '..(full and 'no empty button or action left' or 'all starting abilities on the bar') )
-    elseif placed == 0 and state == SH.Pending and knownCount and knownCount > 0 then
-        -- The known list has arrived and holds none of the starting abilities.
-        profile[SH.StateKey] = SH.Done
-        SH.log( 'done: no starting ability known' )
-    end
+--=============================================================================
+-- onModLoaded calls refreshProfileTemplateCombo once per module load, after
+-- the stock version wipe and before it creates or loads a profile: the point
+-- where a new login begins.
+ActionProfileMod.StarterHotbar.stockRefreshProfileTemplateCombo = ActionProfileMod.refreshProfileTemplateCombo
+function ActionProfileMod.refreshProfileTemplateCombo()
+    local SH = ActionProfileMod.StarterHotbar
+    SH.newLoadToken()
+    SH.lastPoll = nil
+    SH.listErrorLogged = false
+    return SH.stockRefreshProfileTemplateCombo()
 end
 
 --=============================================================================
 -- Mark the first profile a character gets as fresh. The client creates it
--- when GActionProfiles is empty: a new character, or the stock version-2
--- wipe. A profile made from the editor's New Profile button is never first.
+-- when GActionProfiles is empty: no saved UI variables for this character on
+-- this machine, or the stock version-2 wipe. A profile made from the
+-- editor's New Profile button is never first.
 ActionProfileMod.StarterHotbar.stockCreateProfile = ActionProfileMod.createProfile
 function ActionProfileMod.createProfile( profileName, templateId )
     local SH = ActionProfileMod.StarterHotbar
@@ -248,6 +316,7 @@ function ActionProfileMod.createProfile( profileName, templateId )
     local profileId = SH.stockCreateProfile( profileName, templateId )
     if first and profileId and profileId > 0 and type(GActionProfiles[profileId]) == 'table' then
         GActionProfiles[profileId][SH.StateKey] = SH.Pending
+        GActionProfiles[profileId][SH.LoadKey] = SH.currentLoad()
     end
     return profileId
 end
@@ -271,12 +340,18 @@ function ActionProfileMod.onStarterHotbarAbilityUpdate( this, groupId, abilityId
     pcall( ActionProfileMod.StarterHotbar.run, 'ability update' )
 end
 
--- Fallback trigger, throttled, in case the known list changes without an
--- Events.AbilityUpdate the patch can see.
-function ActionProfileMod.onStarterHotbarPropertyUpdated( this )
+-- Fallback trigger, the player's own updates only, at most once a second, in
+-- case the known list changes without an Events.AbilityUpdate.
+function ActionProfileMod.onStarterHotbarPropertyUpdated( this, unitId )
     local SH = ActionProfileMod.StarterHotbar
     if not SH.watching() then
         return
+    end
+    if type(unitsEqual) == 'function' and Unit and Unit.Player and type(unitId) == 'number' then
+        local ok, mine = pcall( unitsEqual, Unit.Player, unitId )
+        if ok and not mine then
+            return
+        end
     end
     if type(getSystemTime) == 'function' then
         local ok, now = pcall( getSystemTime )
@@ -288,13 +363,4 @@ function ActionProfileMod.onStarterHotbarPropertyUpdated( this )
         end
     end
     pcall( SH.run, 'property update' )
-end
-
-if ActionButtonsWin and Events then
-    if Events.AbilityUpdate then
-        ActionButtonsWin:subscribe( Events.AbilityUpdate, 'ActionProfileMod.onStarterHotbarAbilityUpdate' )
-    end
-    if Events.PropertyUpdated then
-        ActionButtonsWin:subscribe( Events.PropertyUpdated, 'ActionProfileMod.onStarterHotbarPropertyUpdated' )
-    end
 end
