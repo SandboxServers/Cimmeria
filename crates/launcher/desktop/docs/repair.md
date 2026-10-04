@@ -88,7 +88,8 @@ confirmation/dismissal, preinspection, one mutation under duplicate clicks,
 precommit cancellation, no replay after timeout/reconnect, explicit recovery and
 preserved consent. Add visual/manual UAT separately and state its coverage.
 Admission, native staging and retained replacement below are implemented. Wine
-repair adaptation, pre-checkpoint recovery, cleanup and UI validation gates remain open.
+repair adaptation, cleanup and UI validation gates remain open. Pre-checkpoint
+work can be explicitly abandoned as described below.
 
 ## Implemented admission boundary
 
@@ -146,8 +147,7 @@ arrives after staging. Seven focused repair tests pass
 (`20261004-085543-45495`), including abandonment after delivery and cancellation.
 The commit coordinator retains the handoff and checks recorded cancellation
 before the first commit mutation. Receiving `Prepared` alone is not permission
-to replace the game. The Wine repair adapter, pre-checkpoint recovery, cleanup and UI
-remain unfinished. No frontend/visual UAT is claimed.
+to replace the game. The Wine repair adapter, cleanup and UI remain unfinished. No frontend/visual UAT is claimed.
 
 ## Implemented replacement boundary
 
@@ -208,8 +208,8 @@ Missing/conflicting ownership, unexpected tree shapes, unsafe entries and legacy
 schema-1 commit records remain gated. Backup content is preserved. An interruption
 between writing tree markers and the Planned checkpoint also remains gated: this
 entry point requires a complete commit record. It cannot yet resolve every
-commit-entry interruption or interrupted preparation. Those paths, backup cleanup,
-Wine repair and UI integration remain unfinished. Native Windows rename/locking
+commit-entry interruption or interrupted preparation. Explicit abandonment below handles pre-checkpoint work without completing the
+repair. Backup cleanup, Wine repair and UI integration remain unfinished. Native Windows rename/locking
 and power-loss validation remain separate gates.
 
 The recovery tests reopen state across the checkpoint/rename matrix for both
@@ -223,3 +223,31 @@ full-client repair or frontend/visual UAT.
 Nineteen focused repair tests passed (`20261004-090713-49685`); the full
 engine suite passed 275 tests with 12 environment-dependent cases ignored
 (`20261004-090800-50062`). Strict clippy passed (`20261004-090750-49925`).
+
+
+## Explicit abandonment before commit
+
+`abandon_native` requires confirmation and the current recovery operation ID and
+revision. It accepts only native Repair plans with no commit-record entry of any
+kind and no backup. Under the root ownership lock, it verifies the canonical root
+and recorded original-game presence. If a work directory exists, its matching
+work-owner lock is also held. An optional prepared record must match the plan.
+Missing work ownership, contradictory prepared evidence or changed original-tree
+presence refuses abandonment.
+
+Abandonment reconciles the operation to Cancelled without deleting or changing
+game/stage content, markers, caches or evidence. It does not declare incomplete
+work repaired or recursively validate retained bytes. A separately confirmed
+Repair with a fresh UUID may reconstruct again, preserving the abandoned attempt.
+Existing, malformed, linked or legacy commit records forbid abandonment;
+checkpointed replacement requires explicit commit recovery instead. Retained
+stages can accumulate; cleanup remains separate work.
+
+Tests cover admission-only interruption, partial staging without content adoption,
+both pre-checkpoint marker-write interruptions, confirmation/ID/revision refusal,
+held ownership, ambiguous backup/original paths, failed terminal persistence,
+reopen and new-operation admission. These are internal native-engine fixtures;
+native Windows validation and frontend/visual UAT remain separate gates.
+
+Twenty-four focused repair tests passed (`20261004-091210-51600`); strict clippy
+passed (`20261004-091209-51614`).

@@ -491,6 +491,7 @@ Repair reconstructs a fresh signed seed, retaining root/work locks. Retained
 commit checkpoints two renames and preserves the old backup through success.
 Schema-2 commit records plus operation/role markers now support explicit native
 restart recovery without downloads, including interruption during recovery.
-Foreign shapes, stale requests, legacy unmarked records and pre-checkpoint marker
-interruptions remain gated. Backup cleanup, pre-checkpoint recovery, Wine binding
-and UI remain open. Canonical contract/evidence: desktop docs/repair.md.
+Foreign shapes, stale requests and legacy unmarked commits remain gated. Explicit
+confirmed abandonment now cancels pre-checkpoint work under ownership locks with
+no deletion; a new confirmed Repair can retry. Backup cleanup, Wine binding and
+UI remain open. Canonical contract/evidence: desktop docs/repair.md.

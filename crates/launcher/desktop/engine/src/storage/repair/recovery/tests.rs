@@ -1,7 +1,10 @@
 use super::*;
 use commit::Point;
 use std::time::Duration;
-async fn interrupted(point: Point, missing: bool) -> (tempfile::TempDir, DesktopState, Plan) {
+pub(crate) async fn interrupted(
+    point: Point,
+    missing: bool,
+) -> (tempfile::TempDir, DesktopState, Plan) {
     let (root, state, prepared) = commit::tests::fixture(missing).await;
     let plan = prepared.plan.clone();
     let mut reached = false;
