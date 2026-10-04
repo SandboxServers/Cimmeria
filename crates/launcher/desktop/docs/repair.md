@@ -137,9 +137,13 @@ a damaged old tree and current ledger, retained locks, pre-cancel, lost receiver
 and failed terminal persistence. Strict clippy passed (`20261004-085024-44236`).
 These results do not establish original-client or native Windows extraction.
 
-The commit coordinator must handle two remaining handoff boundaries: dropping
-an already-delivered `Prepared` releases its locks but leaves Running until
-reopen, and cancellation can race with completed staging. It must retain the
-handoff and recheck cancellation before the first commit mutation. Receiving
+Dropping an already-delivered `Prepared` now notifies a retained observer that
+marks the operation for reconciliation without waiting for restart. The drop
+notification does not acquire the state mutex, so callers may release a handoff
+while holding that mutex. Both trees remain unchanged, including when cancellation
+arrives after staging. Seven focused repair tests pass
+(`20261004-085543-45495`), including abandonment after delivery and cancellation.
+The commit coordinator must still retain the handoff and recheck cancellation
+before the first commit mutation. Receiving
 `Prepared` alone is not permission to replace the game. The Wine repair adapter,
 replacement/recovery and UI remain unfinished. No frontend/visual UAT is claimed.

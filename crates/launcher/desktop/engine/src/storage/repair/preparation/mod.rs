@@ -11,6 +11,9 @@ pub struct Prepared {
     pub plan: Plan,
     _root_owner: File,
     _work_owner: File,
+    // Dropping a delivered handoff notifies a retained observer without taking
+    // the state mutex in Drop (the caller may already hold it).
+    _handoff: Option<oneshot::Sender<()>>,
 }
 pub struct Preparation {
     state: Arc<Mutex<DesktopState>>,
@@ -116,7 +119,7 @@ fn start(
     })
 }
 async fn reconstruct(
-    state: &Mutex<DesktopState>,
+    state: &Arc<Mutex<DesktopState>>,
     plan: Plan,
     release: catalog::VerifiedRelease,
     http: reqwest::Client,
@@ -128,7 +131,7 @@ async fn reconstruct(
         return Err(Failure::Cancelled);
     }
     let candidate = plan.clone();
-    let prepared = tokio::task::spawn_blocking(move || claim(candidate))
+    let mut prepared = tokio::task::spawn_blocking(move || claim(candidate))
         .await
         .map_err(|_| Failure::ReconciliationRequired)?
         .map_err(|_| Failure::Failed)?;
@@ -170,6 +173,16 @@ async fn reconstruct(
     );
     owner.preferences_uncertain |= result == Err(StorageError::PersistenceUncertain);
     result.map_err(|_| Failure::ReconciliationRequired)?;
+    drop(owner);
+    let (handoff, abandoned) = oneshot::channel();
+    let observed_state = state.clone();
+    let id = plan.id;
+    tokio::spawn(async move {
+        if abandoned.await.is_err() {
+            finish_failure(&observed_state, id, Failure::ReconciliationRequired);
+        }
+    });
+    prepared._handoff = Some(handoff);
     Ok(prepared)
 }
 fn claim(plan: Plan) -> Result<Prepared, StorageError> {
@@ -214,6 +227,7 @@ fn claim(plan: Plan) -> Result<Prepared, StorageError> {
         plan,
         _root_owner: root_owner,
         _work_owner: work_owner,
+        _handoff: None,
     })
 }
 fn finish_failure(state: &Mutex<DesktopState>, id: Uuid, failure: Failure) -> Failure {

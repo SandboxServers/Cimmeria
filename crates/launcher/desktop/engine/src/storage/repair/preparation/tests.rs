@@ -31,8 +31,15 @@ async fn reconstructs_real_signed_seed_fresh_and_retains_both_locks_for_commit()
     assert!(!plan.backup().exists());
     assert_eq!(server.received_requests().await.unwrap().len(), 2);
     assert!(!state.lock().unwrap().preferences().launcher_summary_consent);
-    drop(prepared);
+    // Drop under the state lock must not deadlock. The retained observer will
+    // classify abandonment after this guard is released.
+    {
+        let _owner = state.lock().unwrap();
+        drop(prepared);
+    }
     assert!(lock_owner(&plan.installation).is_ok());
+    wait_for_recovery(&state).await;
+    assert_eq!(std::fs::read(&old).unwrap(), b"damaged old tree");
 }
 #[tokio::test]
 async fn pre_cancel_does_not_create_work_or_download_and_observer_loss_preserves_old_tree() {
@@ -102,4 +109,58 @@ async fn failed_terminal_persistence_is_reported_as_uncertain() {
         .destination
         .join("game/later.txt")
         .is_file());
+}
+
+async fn wait_for_recovery(state: &Mutex<DesktopState>) {
+    tokio::time::timeout(Duration::from_secs(5), async {
+        loop {
+            if state
+                .lock()
+                .unwrap()
+                .operations()
+                .snapshot()
+                .operation
+                .as_ref()
+                .unwrap()
+                .state
+                == OperationState::ReconciliationRequired
+            {
+                break;
+            }
+            tokio::time::sleep(Duration::from_millis(5)).await;
+        }
+    })
+    .await
+    .unwrap();
+}
+
+#[tokio::test]
+async fn cancellation_after_delivery_then_abandonment_preserves_both_trees() {
+    let (_root, state, installation, server) = install_worker::tests::prepared_fixture().await;
+    let plan = admit(&state, installation);
+    let preparation = start(
+        state.clone(),
+        plan.id,
+        reqwest::Client::new(),
+        format!("{}/manifest.json", server.uri()),
+    )
+    .unwrap();
+    let prepared = preparation.result.await.unwrap().unwrap();
+    state
+        .lock()
+        .unwrap()
+        .operations_mut()
+        .unwrap()
+        .request_cancel(plan.id)
+        .unwrap();
+    drop(prepared);
+    wait_for_recovery(&state).await;
+    assert!(plan.stage().join("later.txt").is_file());
+    assert!(plan
+        .installation
+        .destination
+        .join("game/later.txt")
+        .is_file());
+    assert!(!plan.backup().exists());
+    assert!(!state.lock().unwrap().preferences().launcher_summary_consent);
 }

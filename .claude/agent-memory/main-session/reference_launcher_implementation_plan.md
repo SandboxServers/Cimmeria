@@ -490,5 +490,7 @@ remain required. Canonical contract: desktop docs/repair.md.
 Repair staging now reconstructs a fresh signed seed through the shared installer,
 preserving the old tree and handing root/work locks to the future commit owner.
 Pre-cancel performs no download; lost observation retains output behind recovery.
-Six focused tests pass; native Wine repair binding, replacement/recovery and UI
-remain open. `docs/repair.md` records the staging validation boundary.
+Seven focused tests pass, including delivered-handoff abandonment and late
+cancellation. Dropping Prepared notifies a retained observer without locking state
+in Drop; recovery is published without restart. Native Wine repair binding,
+replacement/recovery and UI remain open. `docs/repair.md` records the staging validation boundary.
