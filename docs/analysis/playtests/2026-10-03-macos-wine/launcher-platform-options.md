@@ -7,6 +7,35 @@
 
 ## Recommendation
 
+### Accepted first-open requirement
+
+Confirmed with the product owner on 2026-10-03: after downloading the platform
+package, the launcher must open and display its interface without downloading
+additional software or requiring separately installed tools. Its UI assets and
+required non-system runtime components must ship in that package. Offline opening
+must remain usable and explain unavailable network operations.
+
+Selecting Install starts automated game preparation: preflight checks, obtaining
+and configuring game prerequisites and the compatibility runtime, downloading
+and verifying content, applying patches, and checking readiness for Play.
+Players should not need a separate prerequisite-installation guide.
+
+Keeping the installer engine in Rust is **not a hard requirement**. Reuse remains
+an engineering tradeoff, not a constraint on the chosen implementation language.
+The framework recommendations below are provisional under this product contract.
+
+The next experiment should prove offline first-open from release packages on
+clean Windows and Apple Silicon environments before investing in the full UI.
+For Tauri, evaluate bundled fixed-version WebView2 on Windows; an online
+bootstrapper cannot satisfy the requirement. An offline WebView2 installer avoids
+downloads but adds a runtime-install step, whereas a bundled runtime better fits
+the desired immediate opening. macOS uses its system WKWebView. These are
+documented packaging paths, not validated Cimmeria packages: see
+[Windows distribution](https://v2.tauri.app/distribute/windows-installer/) and
+[webview providers](https://v2.tauri.app/reference/webview-versions/).
+
+### Provisional framework recommendation
+
 A shared launcher can run natively on Apple Silicon and Windows and can plausibly
 meet the desired responsiveness. SwiftUI is not a prerequisite for native
 execution or native GPU rendering. No implementation here has been benchmarked
