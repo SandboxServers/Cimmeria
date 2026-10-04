@@ -88,6 +88,7 @@ fn stale_identity_and_foreign_owner_lock_cannot_admit_repair() {
         assert!(state.admit_repair(id, rev, owner, true).is_err());
     }
     let lock = lock_owner(&installed).unwrap();
+    let duplicate = lock.try_clone().unwrap();
     assert!(state
         .admit_repair(Uuid::new_v4(), revision, installed.operation_id, true)
         .is_err());
@@ -99,4 +100,5 @@ fn stale_identity_and_foreign_owner_lock_cannot_admit_repair() {
             .unwrap()
             .dispatch
     );
+    drop(duplicate);
 }

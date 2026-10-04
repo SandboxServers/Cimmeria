@@ -9,8 +9,8 @@ use tokio_util::sync::CancellationToken;
 
 pub struct Prepared {
     pub plan: Plan,
-    pub(super) _root_owner: File,
-    pub(super) _work_owner: File,
+    pub(super) _root_owner: OwnerLock,
+    pub(super) _work_owner: OwnerLock,
     #[cfg(target_os = "macos")]
     pub(super) wine: Option<crate::mac_wine::WineSeedExtractor>,
     // Dropping a delivered handoff notifies a retained observer without taking
@@ -284,13 +284,13 @@ fn claim(plan: Plan) -> Result<Prepared, StorageError> {
     }
     let work = plan.work_directory();
     std::fs::create_dir(&work).map_err(|_| StorageError::InUse)?;
-    let mut work_owner = OpenOptions::new()
+    let work_owner = OpenOptions::new()
         .read(true)
         .write(true)
         .create_new(true)
         .open(work.join("owner.json"))
         .map_err(|_| StorageError::Io)?;
-    work_owner.try_lock().map_err(|_| StorageError::InUse)?;
+    let mut work_owner = OwnerLock::acquire(work_owner).map_err(|_| StorageError::InUse)?;
     work_owner
         .write_all(&serde_json::to_vec(&plan).map_err(|_| StorageError::Corrupt)?)
         .map_err(|_| StorageError::Io)?;

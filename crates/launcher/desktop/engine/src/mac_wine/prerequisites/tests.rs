@@ -32,6 +32,7 @@ fn prefix_identity_locks_and_canonical_parents_refuse_aliases() {
     let marker = canonical.join("owner.json");
     std::fs::write(&marker, b"{}").unwrap();
     let guard = prefix::lock_owner(&marker).unwrap();
+    let duplicate = guard.try_clone().unwrap();
     assert!(prefix::lock_owner(&marker).is_err());
     let alias = canonical.join("alias");
     std::os::unix::fs::symlink(&canonical, &alias).unwrap();
@@ -41,6 +42,7 @@ fn prefix_identity_locks_and_canonical_parents_refuse_aliases() {
     assert!(prefix::lock_owner(&file_alias).is_err());
     drop(guard);
     assert!(prefix::lock_owner(&marker).is_ok());
+    drop(duplicate);
 }
 #[tokio::test]
 #[ignore = "requires original SGW files and native Windows prerequisite worker; provisions owned headless Wine"]

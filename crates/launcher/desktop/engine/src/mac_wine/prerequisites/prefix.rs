@@ -1,13 +1,14 @@
 //! Generation-specific game prefix. Never adopt the extraction prefix or a
 //! pre-existing generation, and retain installation/prefix/cache ownership.
 use super::*;
+use crate::owner_lock::OwnerLock;
 use std::io::{Read, Write};
 pub(crate) struct Resources {
     pub runtime: PathBuf,
     pub prefix: PathBuf,
     pub root: PathBuf,
-    _installation: File,
-    _prefix: File,
+    _installation: OwnerLock,
+    _prefix: OwnerLock,
     _cache: File,
 }
 impl Resources {
@@ -59,13 +60,13 @@ impl Resources {
         create_parent(&installation_root)?;
         let root = plan.prefix_directory(state_root);
         std::fs::create_dir(&root).map_err(|_| StorageError::InUse)?;
-        let mut marker = OpenOptions::new()
+        let marker = OpenOptions::new()
             .read(true)
             .write(true)
             .create_new(true)
             .open(root.join("owner.json"))
             .map_err(|_| StorageError::Io)?;
-        marker.try_lock().map_err(|_| StorageError::InUse)?;
+        let mut marker = OwnerLock::acquire(marker).map_err(|_| StorageError::InUse)?;
         marker
             .write_all(&serde_json::to_vec(plan).map_err(|_| StorageError::Corrupt)?)
             .map_err(|_| StorageError::Io)?;
@@ -109,7 +110,7 @@ pub(super) fn directory(path: &Path) -> Result<PathBuf, StorageError> {
     }
     Ok(path.into())
 }
-pub(super) fn lock_owner(path: &Path) -> Result<File, StorageError> {
+pub(super) fn lock_owner(path: &Path) -> Result<OwnerLock, StorageError> {
     if !std::fs::symlink_metadata(path).is_ok_and(|m| m.is_file() && m.len() <= 65536) {
         return Err(StorageError::UnsafeFile);
     }
@@ -118,8 +119,7 @@ pub(super) fn lock_owner(path: &Path) -> Result<File, StorageError> {
         .write(true)
         .open(path)
         .map_err(|_| StorageError::Io)?;
-    file.try_lock().map_err(|_| StorageError::InUse)?;
-    Ok(file)
+    OwnerLock::acquire(file).map_err(|_| StorageError::InUse)
 }
 pub(super) fn read_owner<T: serde::de::DeserializeOwned>(file: &File) -> Result<T, StorageError> {
     let mut bytes = Vec::new();

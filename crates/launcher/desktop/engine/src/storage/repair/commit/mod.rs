@@ -94,10 +94,10 @@ pub(super) fn replace(
     let checked = || -> Result<(), IntentError> {
         // Reuse the locked handles on Windows; both have already been read or
         // written during preparation and therefore need an explicit rewind.
-        (&prepared._root_owner)
+        (&*prepared._root_owner)
             .seek(SeekFrom::Start(0))
             .map_err(|_| StorageError::Io)?;
-        (&prepared._work_owner)
+        (&*prepared._work_owner)
             .seek(SeekFrom::Start(0))
             .map_err(|_| StorageError::Io)?;
         if state.repair_plan()?.as_ref() != Some(plan)

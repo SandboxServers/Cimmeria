@@ -19,12 +19,12 @@ No merge, deployment, release publication or force-push is authorized.
 
 | Owner / branch | Exclusive surface | Next acceptance evidence |
 |---|---|---|
-| Adoption / `launcher/published-adoption` | Retained reference preparation and existing Wine extraction adapter; adoption publication recovery | Authenticated published-client reconstruction before preview, cancellation/reopen exclusion and safe preparation cleanup |
+| Updater / `launcher/updater-apply` | Updater apply engine, platform handoff, host and Settings wiring | Verified native package Apply, restart/version acknowledgment and failure recovery |
 | Integration owner | Shared extraction preflight, contracts, registrations, CI, indexes and integrated UAT | Windows cabinet validation; adoption integration; updater Apply/recovery; effective configuration and game Update |
 | External Windows observability track | Summary schema, queue/export, ingestion and query fixtures | Discovery integrated; fresh implementation assignment recorded; do not duplicate reserved work |
 
-Repair, Launch, migration-import UI and signed updater check/download workers
-have completed their packets. Workers isolate shared-file changes in separate
+Repair, Launch, migration-import UI, adoption reference preparation and signed
+updater check/download workers have completed their packets. Workers isolate shared-file changes in separate
 commits; their worktrees remain intact during review. The game is closed while
 the operator adjusts framerate settings; independent implementation continues.
 
@@ -58,8 +58,15 @@ documented fixture scopes. These are not gameplay or release evidence.
 - Windows-built lab MCP, starter and injected DLL artifacts passed their build
   and hash checks. No lab injection or authentication/world-entry UAT is claimed.
 - Shared RAR/cabinet name preflight is committed in `198573ce7`. Mac tests and
-  engine clippy passed; Windows FDI and rebuilt-helper Wine validation are pending.
+  engine clippy passed; Windows FDI tests passed in run `37219800831`, while the
+  rebuilt-helper Wine validation is pending.
   Observability remains reserved for the external Windows track.
+- Retained adoption references are integrated as `211226a8`/`2857705a7`; isolated
+  real RAR/CAB helper fixtures passed on the worker's earlier helper. Latest local
+  engine suite passes 363 tests (18 ignored) after a narrow lock-release fix.
+  Mac CI failed two immediate owner-lock reacquisition checks. A duplicated-handle
+  regression demonstrates the corresponding lifetime hazard; the affected guards
+  now explicitly unlock at logical-owner drop. Native CI revalidation is pending.
 
 ## Requirement and evidence checklist
 
