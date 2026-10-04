@@ -142,6 +142,7 @@ async fn reload_phase_a_to_phase_b_clears_pending_and_starts_reload() {
             required_ammo: 0,
             event_set_id: None,
             velocity: 0.0,
+            type_id: Default::default(),
         },
     );
 
@@ -302,6 +303,7 @@ async fn reload_in_isolation_does_not_flip_bsf_in_combat() {
             required_ammo: 0,
             event_set_id: None,
             velocity: 0.0,
+            type_id: Default::default(),
         },
     );
 
@@ -384,6 +386,7 @@ async fn handle_reload_phase_b_cancels_in_flight_holster_phase_2() {
             required_ammo: 0,
             event_set_id: None,
             velocity: 0.0,
+            type_id: Default::default(),
         },
     );
 

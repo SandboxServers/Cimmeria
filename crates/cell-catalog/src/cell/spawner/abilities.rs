@@ -93,7 +93,7 @@ pub async fn load_ability_defs(
     let rows = sqlx::query_as::<_, AbilityRow>(
         "SELECT ability_id, name, cooldown, warmup, flags, is_ranged, \
          min_range, max_range, target_type_id, effect_ids, \
-         required_ammo, event_set_id, velocity \
+         required_ammo, event_set_id, velocity, type_id::text AS type_id \
          FROM resources.abilities",
     )
     .fetch_all(pool)
@@ -123,6 +123,8 @@ struct AbilityRow {
     required_ammo: i32,
     event_set_id: Option<i32>,
     velocity: f32,
+    /// The `"EAbilityTypes"` label, read as text (`ABILITY_TYPE_Heal`).
+    type_id: String,
 }
 
 impl AbilityRow {
@@ -130,7 +132,21 @@ impl AbilityRow {
     /// The range columns are UE3 units (100 per metre, the client's cooked
     /// `MaxRange`); `AbilityDef` holds metres (#919).
     fn into_def(self) -> cimmeria_entity::abilities::AbilityDef {
-        use cimmeria_entity::abilities::ability_range_to_metres;
+        use cimmeria_entity::abilities::{ability_range_to_metres, AbilityType};
+        // The column is a Postgres enum, so an unknown label means the enum
+        // gained a token this server does not know. Undefined is the safe
+        // reading: it never makes an ability beneficial (D-AB02).
+        let type_id = AbilityType::from_db_label(&self.type_id).unwrap_or_else(|| {
+            tracing::warn!(
+                target: "abilities",
+                event = "ability_type_unknown",
+                ability_id = self.ability_id,
+                type_id = %self.type_id,
+                reason = "unknown_ability_type",
+                "resources.abilities.type_id label unknown to the server; loaded as Undefined"
+            );
+            AbilityType::Undefined
+        });
         cimmeria_entity::abilities::AbilityDef {
             ability_id: self.ability_id,
             name: self.name,
@@ -146,6 +162,7 @@ impl AbilityRow {
             required_ammo: self.required_ammo,
             event_set_id: self.event_set_id,
             velocity: self.velocity,
+            type_id,
         }
     }
 }
@@ -405,6 +422,7 @@ mod range_unit_tests {
             required_ammo: 0,
             event_set_id: None,
             velocity: 100.0,
+            type_id: "ABILITY_TYPE_DD".into(),
         }
     }
 

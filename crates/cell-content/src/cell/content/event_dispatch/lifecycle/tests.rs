@@ -381,6 +381,7 @@ fn arm_player_with_ability(mgr: &mut SpaceManager, health_damage: i32) {
             required_ammo: 0,
             event_set_id: None,
             velocity: 0.0,
+            type_id: Default::default(),
         },
     );
     if let Some(p) = mgr.get_entity_mut(PLAYER_EID) {

@@ -4,6 +4,9 @@
 //! - `handle` — the main `handle_use_ability` validate → consume → fire →
 //!   resolve flow (incl. the archetype-default weapon redirect and the
 //!   auto-cycle arm/clear classification).
+//! - `beneficial` — who a player's cast lands on (AB-01): the #444 target
+//!   gate, `resolve_cast_target` (Self casts on the caster, heals on allies,
+//!   the D-AB02 fallback) and the damage-free `fire_beneficial`.
 //! - `cast_range` — the range gate shared by the launch and the warmup
 //!   fire: the maximum for every caster, the `min_range` for players
 //!   (#1016), and the `onErrorCode` 42 refusal.
@@ -32,6 +35,7 @@
 //!   attack-animation WARNs (NA43).
 
 mod auto_reload;
+mod beneficial;
 mod cast_range;
 mod fire;
 mod fire_los;

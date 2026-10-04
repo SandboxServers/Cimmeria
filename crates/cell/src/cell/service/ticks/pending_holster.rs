@@ -301,6 +301,7 @@ mod tests {
                 required_ammo: 0,
                 event_set_id: None,
                 velocity: 0.0,
+                type_id: Default::default(),
             },
         );
         if let Some(npc) = mgr.get_entity_mut(50) {

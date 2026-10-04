@@ -132,6 +132,18 @@ pub(in crate::cell::abilities) async fn fire_cast(
         ),
     }
 
+    // A beneficial cast (a heal, a buff: AB-01) lands on the caster or an
+    // ally through its own resolve, never the damage pipeline below: no QR,
+    // no threat, no in-combat state, no channel cancel.
+    if super::beneficial::is_player_beneficial(space_mgr, entity_id, ability_def.as_ref()) {
+        super::beneficial::fire_beneficial(entity_id, target_id, ability_def, tx, space_mgr).await;
+        if needs_ammo_stat_send {
+            flush_attacker_ammo_stat(entity_id, tx, space_mgr).await;
+        }
+        maybe_trigger_auto_reload(entity_id, needs_ammo_stat_send, ability_id, tx, space_mgr).await;
+        return;
+    }
+
     // ── Combat resolution (if target specified) ──
 
     if target_id <= 0 {

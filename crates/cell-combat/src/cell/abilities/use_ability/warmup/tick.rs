@@ -145,6 +145,20 @@ async fn fire_time_refusal(
         return Some(InterruptReason::AmmoUnavailable);
     }
 
+    // A beneficial cast (AB-01) re-resolves through the launch's resolver:
+    // on the caster it fires with no target checks; on an ally it takes the
+    // range and sight checks below but not the hostility gate.
+    let beneficial =
+        super::super::beneficial::is_player_beneficial(space_mgr, entity_id, ability_def);
+    if beneficial {
+        use super::super::beneficial::{resolve_cast_target, CastTarget};
+        match resolve_cast_target(space_mgr, entity_id, ability_def, pc.target_id) {
+            CastTarget::Caster => return None,
+            CastTarget::Ally(_) => {}
+            CastTarget::Hostile(_) | CastTarget::None => return Some(InterruptReason::TargetLost),
+        }
+    }
+
     if pc.target_id <= 0 {
         return None;
     }
@@ -163,6 +177,7 @@ async fn fire_time_refusal(
     // A support shot at an ally (beneficial ammo, AM-11d) is the one
     // exception; `fire_support` re-classifies the target when it fires.
     if caster.is_player
+        && !beneficial
         && !super::super::support_shot::is_support_ally(space_mgr, caster, target, ability_def)
         && !combat::player_may_attack(caster, target, space_mgr.resources.duels())
     {

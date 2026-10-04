@@ -40,6 +40,7 @@ fn make_player_with_ability() -> SpaceManager {
             required_ammo: 1,
             event_set_id: None,
             velocity: 0.0,
+            type_id: Default::default(),
         },
     );
     // Reload ability used by handle_reload's looked-up def.
@@ -60,6 +61,7 @@ fn make_player_with_ability() -> SpaceManager {
             required_ammo: 0,
             event_set_id: None,
             velocity: 0.0,
+            type_id: Default::default(),
         },
     );
     if let Some(p) = mgr.get_entity_mut(1) {

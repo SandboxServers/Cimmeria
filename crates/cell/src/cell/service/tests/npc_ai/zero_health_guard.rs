@@ -123,6 +123,7 @@ async fn npc_killed_by_an_effect_bleed_does_not_shoot_back() {
             required_ammo: 0,
             event_set_id: None,
             velocity: 0.0,
+            type_id: Default::default(),
         },
     );
     if let Some(p) = mgr.get_entity_mut(100) {

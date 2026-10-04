@@ -303,15 +303,22 @@ server-authority guard against forged `useAbility` packets that would
 otherwise grief vendors, quest NPCs, party members, or other players
 (#444 / CAT-C-03). The check is scoped to player attackers because NPC AI
 fight calls the same entry point to attack a *player*, which is
-legitimate. Single-target abilities resolve as damage unconditionally,
-with one exception: a weapon shot with beneficial ammo loaded (a support
-dart, `ammo_modifiers.beneficial`, AM-11d) reverses the gate. It lands on
-an ally player or the shooter, runs only the ammo's heal or cleanse with no
-damage, threat or combat state, and is refused with a feedback line at a
-hostile target. Supportive single-target *abilities* (heal/buff an ally)
-still need the inverse gate once an offensive/supportive ability field
-exists. See [abilities-and-effects-system.md
-§ 31](../architecture/abilities-and-effects-decisions-23-33.md#31-special-ammo-modifies-the-shot-directly-from-resourcesammo_modifiers-ammo-campaign-am-04-d-am07).
+legitimate. Single-target abilities resolve as damage, with two
+exceptions that reverse the gate. A weapon shot with beneficial ammo loaded
+(a support dart, `ammo_modifiers.beneficial`, AM-11d) lands on an ally
+player or the shooter, runs only the ammo's heal or cleanse with no damage,
+threat or combat state, and is refused with a feedback line at a hostile
+target. A player's beneficial ability (a heal or buff, AB-01) is resolved
+before the gate: a Self ability lands on the caster whatever the client
+sent, and a Target one on the caster or an ally it names, or else falls back
+to the caster (D-AB02's proposed default). It never reaches a hostile and
+never enters the damage pipeline. The gate, both reversals and the resolver
+live in
+[`use_ability/beneficial.rs`](../../crates/cell-combat/src/cell/abilities/use_ability/beneficial.rs).
+See [abilities-and-effects-system.md
+§ 31](../architecture/abilities-and-effects-decisions-23-33.md#31-special-ammo-modifies-the-shot-directly-from-resourcesammo_modifiers-ammo-campaign-am-04-d-am07)
+and [§ 34](../architecture/abilities-and-effects-decisions-23-33.md#34-a-beneficial-cast-lands-on-the-caster-or-an-ally-never-on-a-hostile-ability-mechanics-ab-01),
+and [ability-system.md, beneficial casts](ability-system.md#beneficial-casts-ab-01).
 
 `handle_use_ability_with_kill_credit` wraps `handle_use_ability` with
 an alive→dead transition detector that fires the content-engine

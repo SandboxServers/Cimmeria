@@ -56,6 +56,7 @@ mod tests {
             required_ammo: 0,
             event_set_id,
             velocity: 100.0,
+            type_id: Default::default(),
         }
     }
 

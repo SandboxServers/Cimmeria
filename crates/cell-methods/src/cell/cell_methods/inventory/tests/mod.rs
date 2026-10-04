@@ -44,6 +44,7 @@ fn register_test_fire_ability(mgr: &mut SpaceManager, ability_id: i32) {
             required_ammo: 1,
             event_set_id: None,
             velocity: 0.0,
+            type_id: Default::default(),
         },
     );
 }

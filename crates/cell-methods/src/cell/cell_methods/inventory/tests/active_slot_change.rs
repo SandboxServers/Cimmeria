@@ -582,6 +582,7 @@ async fn weapon_attack_blocked_while_slot_swap_in_progress() {
             required_ammo: 1,
             event_set_id: None,
             velocity: 0.0,
+            type_id: Default::default(),
         },
     );
 

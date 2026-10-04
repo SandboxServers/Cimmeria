@@ -13,6 +13,8 @@ use cimmeria_entity::abilities::AbilityDef;
 use tokio::sync::mpsc;
 
 mod auto_cycle;
+mod beneficial;
+mod beneficial_live_db;
 mod content_events;
 mod duel_end;
 mod duel_gate;
@@ -56,6 +58,7 @@ fn make_ability(id: i32, required_ammo: i32, max_range: i32) -> AbilityDef {
         required_ammo,
         event_set_id: None,
         velocity: 0.0,
+        type_id: Default::default(),
     }
 }
 

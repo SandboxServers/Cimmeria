@@ -73,6 +73,7 @@ fn ability(
         required_ammo: 0,
         event_set_id: None,
         velocity: 100.0,
+        type_id: Default::default(),
     }
 }
 

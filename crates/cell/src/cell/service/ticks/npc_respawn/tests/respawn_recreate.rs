@@ -84,6 +84,7 @@ fn world() -> SpaceManager {
             required_ammo: 0,
             event_set_id: None,
             velocity: 0.0,
+            type_id: Default::default(),
         },
     );
     for id in [NEAR, ALSO_NEAR, FAR] {

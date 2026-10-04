@@ -20,7 +20,7 @@ The `AbilityManager` class (in `deprecated/python/cell/AbilityManager.py`) manag
 
 | Feature | Status | Notes |
 |---------|--------|-------|
-| Single-target ability launch | DONE | `TargetSelf`, `TargetTarget` |
+| Single-target ability launch | DONE | `TargetSelf`, `TargetTarget`. A beneficial cast (a heal or buff) lands on the caster or an ally, never a hostile (AB-01). See [beneficial casts](#beneficial-casts-ab-01) |
 | Ability warmup timer | DONE | AT-10 (2026-09-26). A warmup ability sends `Ability_Begin` and fires after the warmup, not at launch. The speed stats (grenade, deploy, attack) shorten it. See [Warmup in the Rust server](#warmup-in-the-rust-server) |
 | Ability cooldown timer | DONE | Moniker-based shared cooldowns |
 | Effect dispatch on resolve | DONE | Effects applied to all collected targets |
@@ -145,11 +145,29 @@ server-authoritative additions. The design record is decision 21 of
 
 | Mode | Constant | Status | Description |
 |------|----------|--------|-------------|
-| Self | `TargetSelf` | DONE | Targets the caster |
+| Self | `TargetSelf` | DONE | Lands on the caster, whatever target the client sent (AB-01, D-AB01). The client sends its current target for every non-ground ability, Self ones included. Before AB-01 the server took that id at its word, so this row's "DONE" was wrong (audit B-17): a Self heal with nothing selected did nothing, with yourself or an ally selected was refused by #444, and with a mob selected healed the mob. See [beneficial casts](#beneficial-casts-ab-01) |
 | Single target | `TargetTarget` | DONE | Targets selected entity |
 | Ground position | `TargetPosition` | NOT IMPL | AoE at position |
 | Cone | unknown | NOT IMPL | Frontal cone AoE |
 | Chain | unknown | NOT IMPL | Bounces between targets |
+
+### Beneficial casts (AB-01)
+
+A player's ability is **beneficial** when its `type_id` is `ABILITY_TYPE_Heal`, or when at least one of its effects does something and every effect that does something carries `EF_Beneficial_Effect` (1). An ability with an effect that deals damage (`HealthDamage` or `FocusDamage` above 0) is never beneficial, whatever its type: the seed has a Heal-typed attack, 2228. The rule is `cimmeria_entity::abilities::ability_is_beneficial`. 597 Heal Focus, 1646 Health Heal and 1218 Recuperation are beneficial by their type; their effects carry no beneficial bit.
+
+A beneficial cast lands here:
+
+| The ability | The client's target | Lands on | `resolution` |
+|-------------|---------------------|----------|--------------|
+| `TargetSelf` (597) | anything, or nothing | the caster | `self_ability` |
+| `TargetTarget` (1646, 1218) | the caster, or another player the caster may not attack, alive, in the same space | that player | `ally` |
+| `TargetTarget` | a hostile, a neutral NPC, a dead or missing entity, or nothing | the caster | `fallback_to_caster` |
+
+The last row is the proposed default of D-AB02, which the owner has not yet confirmed. The alternative refuses the cast with a feedback line ("That ability needs a friendly target.") before the cooldown is charged; it is one constant, `FALLBACK_TO_CASTER` in [`use_ability/beneficial.rs`](../../crates/cell-combat/src/cell/abilities/use_ability/beneficial.rs). Friendly NPCs and pets stay out, as for support darts.
+
+The cast then runs each effect's script on that entity, with no QR roll, no `onEffectResults`, no threat, no in-combat state and no channel cancel. The stat change goes to that entity and its witnesses, a `StatBuff` timer goes with it, and a pulsing effect (Recuperation's 25 pulses) is registered on it with the caster as invoker. The warmup's fire-time re-check runs the same resolver, so an ally who dies or turns hostile during the warmup takes the cast to the fallback. NPC casts and every non-beneficial cast keep the #444 gate and the damage pipeline unchanged. The heal shows as the bars moving; there is no floating heal number yet (AB-11).
+
+Each resolution logs one `abilities` INFO row, `event=beneficial_cast`, at `stage=launch` and again at `stage=fire`, with `ability_id`, `effect_ids`, `wire_target_id`, `resolved_target_id` and `resolution`; `event=beneficial_cast_applied` (DEBUG) carries the target's Health and Focus before and after. The design record is [decision 34](../architecture/abilities-and-effects-decisions-23-33.md#34-a-beneficial-cast-lands-on-the-caster-or-an-ally-never-on-a-hostile-ability-mechanics-ab-01).
 
 ## Condition Feedback Codes
 
