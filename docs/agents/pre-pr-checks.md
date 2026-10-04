@@ -28,7 +28,10 @@ Changes under `crates/launcher/desktop/` also run the native Mac/Windows workflo
 Effect frontend, native Tauri shell, and JS logic UAT against the state harness. Root
 workspace checks do not cover this directory; follow the
 [desktop README](../../crates/launcher/desktop/README.md) commands as well.
-Passing these jobs is not packaged UI, signing or game UAT.
+The separate `.github/workflows/launcher-runtime-probe.yml` builds and tests the
+x86 prerequisite probe on native Windows; it does not wait for the desktop matrix.
+Its artifact still needs managed Wine/SDK validation. Passing these jobs is not
+packaged UI, signing or game UAT.
 
 ## The full checklist
 

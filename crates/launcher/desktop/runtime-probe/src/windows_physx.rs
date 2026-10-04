@@ -37,7 +37,11 @@ pub fn probe(directory: &Path) -> SdkResult {
     }
     let mut bytes = Vec::new();
     if (&mut file).take(52257).read_to_end(&mut bytes).is_err()
-        || format!("{:x}", Sha256::digest(&bytes)) != LOADER_SHA256
+        || Sha256::digest(&bytes)
+            .iter()
+            .map(|byte| format!("{byte:02x}"))
+            .collect::<String>()
+            != LOADER_SHA256
     {
         return SdkResult::UnverifiedLoader {};
     }

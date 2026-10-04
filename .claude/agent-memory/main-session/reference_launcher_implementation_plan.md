@@ -360,3 +360,7 @@ Windows+Mac before the shell; shell/visual/game gates remain separate.
   replaces physx_engine_checked with tagged physx_sdk evidence; game_started remains false.
   Eight portable tests pass lane070649-1979. New native Windows/real SDK run pending.
   Standalone launcher-runtime-probe CI removes desktop queue dependency.
+
+- First SDK native Windows build caught sha2 0.11 digest lacking LowerHex in the
+  Windows-only hash guard; changed to explicit per-byte hex formatting. This was
+  a compile failure, not evidence that the SDK call ran. Native rerun required.
