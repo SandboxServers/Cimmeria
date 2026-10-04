@@ -15,6 +15,23 @@ pub fn abandon_native(
     if !cfg!(windows) {
         return Err(ContractError::InvalidTransition.into());
     }
+    dispatch(state, id, revision, confirmed)
+}
+#[cfg(target_os = "macos")]
+pub fn abandon_wine(
+    state: Arc<Mutex<DesktopState>>,
+    id: Uuid,
+    revision: u64,
+    confirmed: bool,
+) -> Result<oneshot::Receiver<Result<(), IntentError>>, IntentError> {
+    dispatch(state, id, revision, confirmed)
+}
+fn dispatch(
+    state: Arc<Mutex<DesktopState>>,
+    id: Uuid,
+    revision: u64,
+    confirmed: bool,
+) -> Result<oneshot::Receiver<Result<(), IntentError>>, IntentError> {
     let runtime = tokio::runtime::Handle::try_current().map_err(|_| StorageError::Io)?;
     let (send, result) = oneshot::channel();
     runtime.spawn_blocking(move || {
@@ -53,11 +70,18 @@ fn abandon(
         return Err(ContractError::InvalidTransition.into());
     }
     let plan = state.repair_plan()?.ok_or(StorageError::Corrupt)?;
+    #[cfg(not(target_os = "macos"))]
     if !plan.installation.backend.is_native() {
         return Err(ContractError::InvalidTransition.into());
     }
     let root = &plan.installation.destination;
     let _root_owner = lock_owner(&plan.installation)?;
+    #[cfg(target_os = "macos")]
+    let _stopped_prefix = if plan.installation.backend.is_native() {
+        None
+    } else {
+        Some(crate::mac_wine::repair_recovery::stop(state, id, false)?)
+    };
     // Absence must be unambiguous. Corrupt, linked, partial and legacy commit
     // records still forbid abandonment; they may describe a visible rename.
     absent(

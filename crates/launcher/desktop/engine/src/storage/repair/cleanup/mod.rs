@@ -38,6 +38,21 @@ pub fn cleanup_native(
     if !cfg!(windows) {
         return Err(ContractError::InvalidTransition.into());
     }
+    dispatch(state, id, revision)
+}
+#[cfg(target_os = "macos")]
+pub fn cleanup_wine(
+    state: Arc<Mutex<DesktopState>>,
+    id: Uuid,
+    revision: u64,
+) -> Result<oneshot::Receiver<Result<(), IntentError>>, IntentError> {
+    dispatch(state, id, revision)
+}
+fn dispatch(
+    state: Arc<Mutex<DesktopState>>,
+    id: Uuid,
+    revision: u64,
+) -> Result<oneshot::Receiver<Result<(), IntentError>>, IntentError> {
     let runtime = tokio::runtime::Handle::try_current().map_err(|_| StorageError::Io)?;
     let (send, result) = oneshot::channel();
     runtime.spawn_blocking(move || {
@@ -73,11 +88,18 @@ fn cleanup(
         return Err(ContractError::InvalidTransition.into());
     }
     let plan = state.repair_plan()?.ok_or(StorageError::Corrupt)?;
+    #[cfg(not(target_os = "macos"))]
     if !plan.installation.backend.is_native() {
         return Err(ContractError::InvalidTransition.into());
     }
     let root = &plan.installation.destination;
     let _owner = lock_owner(&plan.installation)?;
+    #[cfg(target_os = "macos")]
+    let _stopped_prefix = if plan.installation.backend.is_native() {
+        None
+    } else {
+        Some(crate::mac_wine::repair_recovery::stop(state, id, true)?)
+    };
     if root.canonicalize().map_err(|_| StorageError::Io)? != *root
         || directory_or_absent(&plan.stage())?
     {

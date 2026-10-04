@@ -4,8 +4,8 @@ use super::*;
 use crate::{HelperPhase, HelperResult, IntentError, StorageError};
 
 pub(crate) struct StoppedPrefix {
-    _prefix_owner: Option<File>,
-    _runtime_owner: Option<File>,
+    pub(super) _prefix_owner: Option<File>,
+    pub(super) _runtime_owner: Option<File>,
 }
 
 /// Called on the native blocking command thread with DesktopState locked.
@@ -63,7 +63,7 @@ pub(crate) fn stop_for_install(
     })
 }
 
-fn host_absent(record: &crate::HelperRecord) -> Result<(), StorageError> {
+pub(super) fn host_absent(record: &crate::HelperRecord) -> Result<(), StorageError> {
     // Unobserved startup/extraction descendants need dedicated crash validation.
     // Only an observed terminal helper result can enter the current stop path.
     if !matches!(

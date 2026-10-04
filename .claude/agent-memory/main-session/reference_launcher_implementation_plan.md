@@ -485,6 +485,12 @@ Confirmed precommit abandonment preserves files; marker-last backup cleanup is
 resumable for the current successful operation. Historical/abandoned-stage cleanup
 remains open. ExtractionWork binds helper requests to work identity and original
 signed release. Mac prepare_wine now retains root/work/prefix ownership through
-reconstruction; commit_wine consumes that handoff. Wine restart recovery,
-abandonment, cleanup and UI are still gated. Canonical evidence and limitations:
+reconstruction; commit_wine consumes that handoff. Observed-result Wine recovery,
+abandonment and cleanup now validate exact prefix ownership and cached runtime
+under retained locks before bounded stop/wait and filesystem changes. Promotion/
+cleanup require Completed plus absent host; no-journal abandonment starts no Wine.
+Ambiguous helper loss remains gated; UI remains unconnected. The real simulated
+post-promotion recovery/cleanup smoke passed 27.245s (20261004-094105-62166),
+not actual process-crash proof. Full engine294/15ignored passed094147-62543;
+strict clippy passed094534-63498. Canonical evidence and limitations:
 crates/launcher/desktop/docs/repair.md.

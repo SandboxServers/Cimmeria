@@ -29,6 +29,7 @@ use prefix::claim_prefix;
 use prefix::claim_work_prefix;
 pub mod prerequisites;
 pub(crate) mod recovery;
+pub(crate) mod repair_recovery;
 mod resource;
 pub use resource::{HelperResource, PrerequisiteResource};
 #[derive(Debug, thiserror::Error)]

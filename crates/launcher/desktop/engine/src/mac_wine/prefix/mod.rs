@@ -67,5 +67,34 @@ fn claim_record(
     Ok((prefix, marker))
 }
 
+/// Reopen only the exact repair descriptor; no existing prefix adoption.
+pub(super) fn open_repair(root: &Path, work: &ExtractionWork) -> Result<File, crate::StorageError> {
+    use crate::StorageError;
+    if root.canonicalize().map_err(|_| StorageError::UnsafeFile)? != root {
+        return Err(StorageError::UnsafeFile);
+    }
+    let path = root.join("owner.json");
+    let meta = std::fs::symlink_metadata(&path).map_err(|_| StorageError::UnsafeFile)?;
+    if !meta.is_file() || meta.file_type().is_symlink() || meta.len() > 65536 {
+        return Err(StorageError::UnsafeFile);
+    }
+    let mut file = OpenOptions::new()
+        .read(true)
+        .write(true)
+        .open(path)
+        .map_err(|_| StorageError::Io)?;
+    file.try_lock().map_err(|_| StorageError::InUse)?;
+    let mut bytes = Vec::new();
+    (&mut file)
+        .take(65537)
+        .read_to_end(&mut bytes)
+        .map_err(|_| StorageError::Io)?;
+    let owner: RepairOwner = serde_json::from_slice(&bytes).map_err(|_| StorageError::Corrupt)?;
+    if bytes.len() > 65536 || owner.schema_version != 1 || owner.work != *work {
+        return Err(StorageError::Corrupt);
+    }
+    Ok(file)
+}
+
 #[cfg(test)]
 mod tests;

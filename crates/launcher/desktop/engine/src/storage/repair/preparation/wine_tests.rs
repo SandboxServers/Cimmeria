@@ -71,6 +71,14 @@ async fn missing_resource_refuses_dispatch_and_precancel_never_downloads_or_clai
 #[tokio::test]
 #[ignore = "downloads pinned Wine and reconstructs/commits a signed ZIP through the Windows-native helper headlessly"]
 async fn retained_wine_repair_reconstructs_and_commits_under_all_ownership_locks() {
+    retained_case(false).await;
+}
+#[tokio::test]
+#[ignore = "runs a Windows-native helper headlessly, interrupts promotion, then stops/reconciles and cleans its owned backup"]
+async fn retained_wine_repair_recovers_promotion_and_cleans_backup() {
+    retained_case(true).await;
+}
+async fn retained_case(recover: bool) {
     use wiremock::{matchers::path, Mock, MockServer, ResponseTemplate};
     let helper = HelperResource::open(
         PathBuf::from(
@@ -126,11 +134,51 @@ async fn retained_wine_repair_reconstructs_and_commits_under_all_ownership_locks
         .unwrap(),
         b"inert fixture"
     );
-    let result = commit::commit_wine(state.clone(), prepared)
-        .unwrap()
+    if recover {
+        assert_eq!(
+            commit::replace(&state, &prepared, |point| {
+                if point == commit::Point::AfterPromotion {
+                    Err(StorageError::Io)
+                } else {
+                    Ok(())
+                }
+            }),
+            Err(Failure::ReconciliationRequired)
+        );
+        drop(prepared);
+        tokio::time::timeout(Duration::from_secs(5), async {
+            loop {
+                if state
+                    .lock()
+                    .unwrap()
+                    .operations()
+                    .snapshot()
+                    .operation
+                    .as_ref()
+                    .unwrap()
+                    .state
+                    == OperationState::ReconciliationRequired
+                {
+                    break;
+                }
+                tokio::time::sleep(Duration::from_millis(5)).await;
+            }
+        })
         .await
         .unwrap();
-    assert_eq!(result, Ok(()));
+        let revision = state.lock().unwrap().operations().snapshot().revision;
+        recovery::recover_wine(state.clone(), plan.id, revision)
+            .unwrap()
+            .await
+            .unwrap()
+            .unwrap();
+    } else {
+        let result = commit::commit_wine(state.clone(), prepared)
+            .unwrap()
+            .await
+            .unwrap();
+        assert_eq!(result, Ok(()));
+    }
     assert_eq!(
         std::fs::read(plan.installation.destination.join("game/later.txt")).unwrap(),
         b"later entry"
@@ -171,6 +219,20 @@ async fn retained_wine_repair_reconstructs_and_commits_under_all_ownership_locks
         .try_lock()
         .is_ok());
     assert_eq!(server.received_requests().await.unwrap().len(), 1);
+    if recover {
+        let revision = state.lock().unwrap().operations().snapshot().revision;
+        cleanup::cleanup_wine(state.clone(), plan.id, revision)
+            .unwrap()
+            .await
+            .unwrap()
+            .unwrap();
+        assert!(!plan.backup().exists());
+        assert_eq!(
+            std::fs::read(plan.installation.destination.join("game/later.txt")).unwrap(),
+            b"later entry"
+        );
+        assert!(!state.lock().unwrap().preferences().launcher_summary_consent);
+    }
 }
 
 fn digest(bytes: &[u8]) -> String {

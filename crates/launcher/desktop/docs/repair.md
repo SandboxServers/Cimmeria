@@ -2,8 +2,8 @@
 
 **Status: native admission, reconstruction and retained replacement implemented;
 checkpointed native restart recovery and current-operation backup cleanup are
-implemented. Retained Mac Wine reconstruction/commit is implemented; Wine restart
-recovery, cleanup and UI remain unfinished.** This contract defines the replacement workflow and its gates.
+implemented. Retained Mac Wine reconstruction/commit and observed-result recovery,
+abandonment and backup cleanup are implemented; UI remains unconnected.** This contract defines the replacement workflow and its gates.
 Repair is not yet an available user command. See
 [maintenance](maintenance.md) for implemented uninstall.
 
@@ -88,8 +88,8 @@ Before UI release, run real Effect service logic UAT through native persistence:
 confirmation/dismissal, preinspection, one mutation under duplicate clicks,
 precommit cancellation, no replay after timeout/reconnect, explicit recovery and
 preserved consent. Add visual/manual UAT separately and state its coverage.
-Admission, native staging and retained replacement below are implemented. Wine
-repair adaptation and UI validation gates remain open. Pre-checkpoint
+Admission, staging, retained replacement and constrained Wine recovery below are
+implemented. UI and broader process-crash validation gates remain open. Pre-checkpoint
 work can be explicitly abandoned as described below.
 
 ## Implemented admission boundary
@@ -148,7 +148,7 @@ arrives after staging. Seven focused repair tests pass
 (`20261004-085543-45495`), including abandonment after delivery and cancellation.
 The commit coordinator retains the handoff and checks recorded cancellation
 before the first commit mutation. Receiving `Prepared` alone is not permission
-to replace the game. The Wine repair adapter and UI remain unfinished. No frontend/visual UAT is claimed.
+to replace the game. The Wine repair adapter is described below; UI remains unfinished. No frontend/visual UAT is claimed.
 
 ## Implemented replacement boundary
 
@@ -210,7 +210,7 @@ schema-1 commit records remain gated. Backup content is preserved. An interrupti
 between writing tree markers and the Planned checkpoint also remains gated: this
 entry point requires a complete commit record. It cannot yet resolve every
 commit-entry interruption or interrupted preparation. Explicit abandonment below handles pre-checkpoint work without completing the
-repair. Wine repair and UI integration remain unfinished. Native Windows rename/locking
+repair. Wine recovery is described below; UI integration remains unfinished. Native Windows rename/locking
 and power-loss validation remain separate gates.
 
 The recovery tests reopen state across the checkpoint/rename matrix for both
@@ -299,8 +299,8 @@ not admission, ownership locks or process quiescence.
 
 The Wine extractor now retains the descriptor through prefix ownership, helper
 requests and journal calls, as described below. The permanent installation ID
-cannot substitute for the repair work ID. End-to-end Wine repair orchestration
-is still unfinished.
+cannot substitute for the repair work ID. Retained Wine preparation/commit and
+observed-result recovery are described below.
 
 Three new identity tests passed (`20261004-091918-53906`), covering distinct repair
 and installation identities, helper checkpoints/reopen, changed-plan refusal and
@@ -347,8 +347,8 @@ bash tools/build-lane/lane.sh cargo test --locked \
 
 This validates the extraction adapter, not original-client repair, game launch
 or graphics. The retained worker below adds installation/work-tree ownership
-across Wine extraction; repair-prefix crash recovery and Repair UI remain
-unfinished. No desktop window was opened and no frontend/visual UAT is claimed.
+across Wine extraction; constrained observed-result recovery is described below.
+Broader process-crash recovery and Repair UI remain unfinished. No desktop window was opened and no frontend/visual UAT is claimed.
 
 After the final seed-refusal test, the full engine suite passed 290 tests with
 13 environment-dependent cases ignored (`20261004-092727-57278`); strict clippy
@@ -372,11 +372,9 @@ stop/wait uncertainty remains reconciliation-gated; successful staging alone
 never authorizes replacement after cancellation. The retained prefix lock is not
 a runtime-cache lock.
 
-Repair remains unavailable in the UI. Restart recovery, abandonment and backup
-cleanup still reject Wine plans. An interruption or lost handoff can therefore
-leave retained files behind a gate without an available Wine continuation; those
-paths must be implemented before exposing Repair. Gameplay/graphics readiness
-remains separate from reconstructed content.
+Repair remains unavailable in the UI. Explicit Wine recovery, abandonment and
+backup cleanup now use the observed-result gates below; ambiguous helper loss
+remains gated. Gameplay/graphics readiness is separate from reconstructed content.
 
 
 The retained signed-ZIP Wine repair smoke passed (`20261004-093516-60234`,
@@ -402,3 +400,29 @@ passed 291 tests with 14 ignored (`20261004-093530-60393`). This is not an
 original-client RAR repair, native Windows validation or in-game UAT.
 
 Strict clippy passed (`20261004-093618-60749`).
+
+## Observed-result Wine recovery and cleanup
+
+`recover_wine`, `abandon_wine` and `cleanup_wine` reuse the filesystem workflows
+above. After installation ownership is locked, they validate the current repair
+descriptor, pinned runtime and exact repair-prefix owner. Promotion and backup
+cleanup require an observed Completed helper result and recorded-host absence.
+Abandonment also accepts observed Cancelled/Failed/NotStarted results; NotStarted
+may legitimately have no PID. Signal zero checks absence without terminating a
+PID; live/reused hosts and LaunchIntent/HostStarted/Uncertain outcomes stay gated.
+
+Without a helper journal, only abandonment can proceed without starting Wine,
+retaining any existing valid prefix-owner lock. Otherwise the gate reopens the
+verified cached runtime and performs bounded stop/wait for the exact repair prefix
+on a native blocking thread. Prefix/cache guards remain held through filesystem
+reconciliation or cleanup. No runtime download or fallback bypasses failed checks.
+Host absence alone never proves Wine guests have stopped.
+
+The real `retained_wine_repair_recovers_promotion_and_cleans_backup` smoke passed
+in 27.245 seconds (`20261004-094105-62166`). It exercised a simulated interruption
+after promotion, explicit recovery and backup cleanup through the retained Wine
+fixture. This is not proof of an actual process crash, arbitrary descendant loss,
+original-client RAR repair or gameplay. Full engine validation passed 294 tests
+with 15 ignored (`20261004-094147-62543`); strict clippy passed (`20261004-094534-63498`).
+Earlier counts above remain dated evidence for their respective packets. Repair
+UI remains unconnected; no frontend or visual UAT is claimed.
