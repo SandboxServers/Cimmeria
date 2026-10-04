@@ -17,7 +17,9 @@
 #   reads `since = "press"`. Packet clauses cover the whole row (one tap per
 #   row), so they assert only what both presses share.
 # - `${cast_id}` is the step press's cast (automated-uat.md, "Client event
-#   clauses and `${cast_id}`"); every SigNoz clause names it.
+#   clauses and `${cast_id}`"). A cast_id is per caster, so every SigNoz
+#   clause names the cast by `${cast_key}` (cast_id and its caster), never
+#   by cast_id alone.
 # - A row that needs several graded presses of a 30 s cooldown is split into
 #   lettered rows (AB-U1a to AB-U1d): a cooldown reset between presses is a
 #   GM action, and a GM step costs the row its N1 grade.
@@ -134,7 +136,7 @@ entity = "${player_entity_id}"
 id = "resolution"
 text = "the cast resolved as a Self ability"
 source = "signoz"
-filter = "event = 'beneficial_cast' AND cast_id = ${cast_id}"
+filter = "event = 'beneficial_cast' AND ${cast_key}"
 field = "resolution"
 op = "eq"
 value = "self_ability"
@@ -142,7 +144,7 @@ value = "self_ability"
 id = "heal-row"
 text = "heal_focus ran for this cast"
 source = "signoz"
-filter = "event = 'heal_focus' AND cast_id = ${cast_id}"
+filter = "event = 'heal_focus' AND ${cast_key}"
 
 [[row]]
 id = "AB-U1b"
@@ -199,7 +201,7 @@ entity = "${player_entity_id}"
 id = "resolution"
 text = "the cast resolved as a Self ability"
 source = "signoz"
-filter = "event = 'beneficial_cast' AND cast_id = ${cast_id}"
+filter = "event = 'beneficial_cast' AND ${cast_key}"
 field = "resolution"
 op = "eq"
 value = "self_ability"
@@ -254,7 +256,7 @@ max_rows = 0
 id = "resolution"
 text = "the cast resolved as a Self ability, not at the dummy"
 source = "signoz"
-filter = "event = 'beneficial_cast' AND cast_id = ${cast_id}"
+filter = "event = 'beneficial_cast' AND ${cast_key}"
 field = "resolution"
 op = "eq"
 value = "self_ability"
@@ -311,7 +313,7 @@ value = 150
 id = "resolution"
 text = "the cast resolved as a Self ability"
 source = "signoz"
-filter = "event = 'beneficial_cast' AND cast_id = ${cast_id}"
+filter = "event = 'beneficial_cast' AND ${cast_key}"
 field = "resolution"
 op = "eq"
 value = "self_ability"
@@ -375,7 +377,7 @@ direction = "to_server"
 id = "resolution"
 text = "the cast resolved to the ally"
 source = "signoz"
-filter = "event = 'beneficial_cast' AND cast_id = ${cast_id}"
+filter = "event = 'beneficial_cast' AND ${cast_key}"
 field = "resolution"
 op = "eq"
 value = "ally"
@@ -383,7 +385,7 @@ value = "ally"
 id = "heal-row"
 text = "heal_health ran for this cast"
 source = "signoz"
-filter = "event = 'heal_health' AND cast_id = ${cast_id}"
+filter = "event = 'heal_health' AND ${cast_key}"
 
 # ---------------------------------------------------------------- AB-U3
 # AB-01 / D-AB02 default: a Target heal with no ally falls back to the caster.
@@ -440,7 +442,7 @@ entity = "${player_entity_id}"
 id = "resolution"
 text = "a Target heal at yourself resolves as an ally (the caster)"
 source = "signoz"
-filter = "event = 'beneficial_cast' AND cast_id = ${cast_id}"
+filter = "event = 'beneficial_cast' AND ${cast_key}"
 field = "resolution"
 op = "eq"
 value = "ally"
@@ -492,7 +494,7 @@ max_rows = 0
 id = "resolution"
 text = "the cast fell back to the caster"
 source = "signoz"
-filter = "event = 'beneficial_cast' AND cast_id = ${cast_id}"
+filter = "event = 'beneficial_cast' AND ${cast_key}"
 field = "resolution"
 op = "eq"
 value = "fallback_to_caster"
@@ -541,7 +543,7 @@ entity = "${player_entity_id}"
 id = "resolution"
 text = "the cast fell back to the caster"
 source = "signoz"
-filter = "event = 'beneficial_cast' AND cast_id = ${cast_id}"
+filter = "event = 'beneficial_cast' AND ${cast_key}"
 field = "resolution"
 op = "eq"
 value = "fallback_to_caster"
@@ -603,14 +605,14 @@ value = 400
 id = "pulses"
 text = "exactly 25 pulse_ticked rows for this cast"
 source = "signoz"
-filter = "event = 'pulse_ticked' AND cast_id = ${cast_id}"
+filter = "event = 'pulse_ticked' AND ${cast_key}"
 min_rows = 25
 max_rows = 25
 [[row.expect]]
 id = "pulse-ended"
 text = "then pulse_ended"
 source = "signoz"
-filter = "event = 'pulse_ended' AND cast_id = ${cast_id}"
+filter = "event = 'pulse_ended' AND ${cast_key}"
 [[row.expect]]
 id = "wire-sent"
 text = "useAbility reached the server"
@@ -844,7 +846,7 @@ filter = "event = 'stat_buff_removed' AND effect_id = 700 AND reason = 'replaced
 id = "applied-row"
 text = "stat_buff_applied for this cast"
 source = "signoz"
-filter = "event = 'stat_buff_applied' AND effect_id = 700 AND cast_id = ${cast_id}"
+filter = "event = 'stat_buff_applied' AND effect_id = 700 AND ${cast_key}"
 [[row.expect]]
 id = "expired-row"
 text = "stat_buff_removed with reason expired at the end"
@@ -910,7 +912,7 @@ entity = "${player_entity_id}"
 id = "both-halves"
 text = "two stat_buff_applied rows for this cast"
 source = "signoz"
-filter = "event = 'stat_buff_applied' AND cast_id = ${cast_id}"
+filter = "event = 'stat_buff_applied' AND ${cast_key}"
 min_rows = 2
 
 # ---------------------------------------------------------------- AB-U9
@@ -967,7 +969,7 @@ value = 847
 id = "applied-row"
 text = "stat_buff_applied on the dummy for this cast"
 source = "signoz"
-filter = "event = 'stat_buff_applied' AND effect_id = 903 AND cast_id = ${cast_id}"
+filter = "event = 'stat_buff_applied' AND effect_id = 903 AND ${cast_key}"
 field = "target_id"
 op = "eq"
 value = "${dummy_id}"
@@ -1089,7 +1091,7 @@ value = 598
 id = "resolved"
 text = "nvp_damage_resolved for this cast"
 source = "signoz"
-filter = "event = 'nvp_damage_resolved' AND cast_id = ${cast_id}"
+filter = "event = 'nvp_damage_resolved' AND ${cast_key}"
 
 # ---------------------------------------------------------------- AB-U12
 # AB-03: 1879 Point Blank Shot (2393 direct 200/20; 2394 DoT 150/30 per tick,
@@ -1129,14 +1131,14 @@ value = 150
 id = "pulses"
 text = "the DoT ticks for this cast"
 source = "signoz"
-filter = "event = 'pulse_ticked' AND effect_id = 2394 AND cast_id = ${cast_id}"
+filter = "event = 'pulse_ticked' AND effect_id = 2394 AND ${cast_key}"
 min_rows = 7
 max_rows = 8
 [[row.expect]]
 id = "pulse-ended"
 text = "then pulse_ended"
 source = "signoz"
-filter = "event = 'pulse_ended' AND effect_id = 2394 AND cast_id = ${cast_id}"
+filter = "event = 'pulse_ended' AND effect_id = 2394 AND ${cast_key}"
 [[row.expect]]
 id = "combat-text"
 text = "the client shows combat text for the ticks"
@@ -1187,7 +1189,7 @@ teardown = [
 id = "fanout"
 text = "the radius heal fanned out to an ally"
 source = "signoz"
-filter = "event = 'effect_planned' AND path = 'ally_fanout' AND cast_id = ${cast_id}"
+filter = "event = 'effect_planned' AND path = 'ally_fanout' AND ${cast_key}"
 [[row.expect]]
 id = "p2-focus"
 text = "p2's client shows Focus above 100"
@@ -1246,7 +1248,7 @@ teardown = [
 id = "no-fanout"
 text = "no ally_fanout for this cast"
 source = "signoz"
-filter = "event = 'effect_planned' AND path = 'ally_fanout' AND cast_id = ${cast_id}"
+filter = "event = 'effect_planned' AND path = 'ally_fanout' AND ${cast_key}"
 max_rows = 0
 [[row.expect]]
 id = "p2-focus"
@@ -1552,7 +1554,7 @@ min_rows = 2
 id = "cc-row"
 text = "crowd_control_applied for this cast"
 source = "signoz"
-filter = "event = 'crowd_control_applied' AND cast_id = ${cast_id}"
+filter = "event = 'crowd_control_applied' AND ${cast_key}"
 
 # ---------------------------------------------------------------- AB-U18
 
@@ -1603,7 +1605,7 @@ entity = "${mob_id}"
 id = "cc-row"
 text = "crowd_control_applied for this cast"
 source = "signoz"
-filter = "event = 'crowd_control_applied' AND cast_id = ${cast_id}"
+filter = "event = 'crowd_control_applied' AND ${cast_key}"
 
 # ---------------------------------------------------------------- AB-U19
 # AB-09b: 717 Snare Shot (effect 1462, TimedStat MovementSpeedMod -30 for
@@ -1672,7 +1674,7 @@ value = 717
 id = "applied-row"
 text = "stat_buff_applied for the snare"
 source = "signoz"
-filter = "event = 'stat_buff_applied' AND effect_id = 1462 AND cast_id = ${cast_id}"
+filter = "event = 'stat_buff_applied' AND effect_id = 1462 AND ${cast_key}"
 
 # ---------------------------------------------------------------- AB-U20
 
@@ -1723,7 +1725,7 @@ filter = "event IN ('shield_absorbed', 'shield_absorbed_damage') AND target_id =
 id = "granted"
 text = "the shield was granted for this cast"
 source = "signoz"
-filter = "event = 'shield_granted' AND cast_id = ${cast_id}"
+filter = "event = 'shield_granted' AND ${cast_key}"
 [[row.expect]]
 id = "pool-drained"
 text = "the first pool holds less than 500"
