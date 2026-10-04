@@ -76,8 +76,11 @@ pub(super) async fn handle_entity_move(
             tracing::warn!(
                 target: "movement.validation",
                 entity_id,
+                entity_name = id.player_name,
                 account_id = id.account_id,
+                account_name = id.account_name,
                 player_id = id.player_id,
+                player_name = id.player_name,
                 claimed_space_id,
                 actual_space_id,
                 world = %world,
@@ -260,8 +263,11 @@ async fn send_snap_back(
     {
         tracing::warn!(
             entity_id,
+            entity_name = id.player_name,
             account_id = id.account_id,
+            account_name = id.account_name,
             player_id = id.player_id,
+            player_name = id.player_name,
             space_id,
             error = %e,
             reason = "snap_back_send_failed",

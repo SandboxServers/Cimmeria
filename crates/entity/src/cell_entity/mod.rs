@@ -101,7 +101,7 @@ pub use appearance::filter_holstered_weapon;
 pub use crafting_stations::CraftingStationState;
 pub use entity_struct::CellEntity;
 pub use extensions::EntityExtensions;
-pub use identity::PlayerIdentity;
+pub use identity::{LogNames, PlayerIdentity};
 pub use leash_state::{ChaseRoute, LeashState};
 pub use offered_dialogs::MAX_OFFERED_DIALOGS;
 pub use pending_cast::PendingCast;

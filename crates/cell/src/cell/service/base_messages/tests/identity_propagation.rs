@@ -1,5 +1,7 @@
 //! Regression guards for the stable-identity log convention
-//! (`docs/architecture/instrumentation-discipline.md` §Rule 5).
+//! (`docs/architecture/instrumentation-discipline.md` §Rule 5), and for the
+//! names that pair with it (§Rule 6: `player_name`, `account_name`, and
+//! `entity_name` next to `entity_id`).
 //!
 //! # The bug shape these reproduce
 //!
@@ -24,6 +26,8 @@
 //! |---|---|
 //! | drop `account_id`/`player_id` from the movement reject warn | [`movement_reject_carries_account_and_player_id`] |
 //! | drop the `CreateEntity` identity stamp | [`movement_reject_carries_account_and_player_id`] |
+//! | drop the names from `PlayerIdentity` or the `CreateEntity` name stamp | every player guard (each asserts the names via [`assert_identity`]) |
+//! | emit `""` / `"unknown"` for an NPC's missing name | [`npc_movement_reject_emits_no_identity_fields`] |
 //! | `unwrap_or(0)` instead of passing the `Option` through | [`npc_movement_reject_emits_no_identity_fields`] |
 //! | drop identity from the disconnect teardown log | [`disconnect_carries_identity_resolved_before_teardown`] |
 //! | resolve identity *after* teardown instead of before | [`disconnect_carries_identity_resolved_before_teardown`] |
@@ -47,6 +51,26 @@ const SPACES_XML: &str = r#"<?xml version="1.0"?><Spaces><Space WorldName="Castl
 /// account from the SigNoz investigation that motivated the convention.
 const ACCOUNT_ID: u32 = 6;
 const PLAYER_ID: i32 = 12;
+/// The names that pair with the two IDs (Rule 6).
+const ACCOUNT_NAME: &str = "sgc_login";
+const PLAYER_NAME: &str = "Teal'c";
+
+/// Assert the full Rule 5 + Rule 6 identity on one event: both IDs, both
+/// names, and the entity's name next to `entity_id`.
+fn assert_identity(event: &crate::test_support::Captured, why: &str) {
+    for (key, want) in [
+        ("account_id", "6"),
+        ("player_id", "12"),
+        ("account_name", ACCOUNT_NAME),
+        ("player_name", PLAYER_NAME),
+        ("entity_name", PLAYER_NAME),
+    ] {
+        assert!(
+            event.has_field(key, want),
+            "{why}: expected {key}={want}; got {event:#?}"
+        );
+    }
+}
 
 /// Far outside the fallback AABB (`[-10_000, 10_000]` per axis), so the
 /// bounds layer rejects and the warn fires.
@@ -64,11 +88,13 @@ fn manager() -> SpaceManager {
 /// Drive the real `BaseToCellMsg::CreateEntity` arm rather than calling
 /// `SpaceManager::create_entity` directly — the identity stamp lives in the
 /// message handler, so a direct create would bypass the thing under test.
+///
+/// `player` stamps the fixture's IDs and names, as the login path does; an
+/// NPC create carries none, as the spawner does.
 async fn create_via_base_message(
     mgr: &mut SpaceManager,
     entity_id: u32,
-    account_id: Option<u32>,
-    player_id: Option<i32>,
+    player: bool,
     tx: &mpsc::Sender<CellToBaseMsg>,
 ) {
     let (reply_tx, reply_rx) = tokio::sync::oneshot::channel();
@@ -79,8 +105,10 @@ async fn create_via_base_message(
             position: SPAWN,
             rotation: [0.0; 3],
             destination_space_id: None,
-            account_id,
-            player_id,
+            account_id: player.then_some(ACCOUNT_ID),
+            player_id: player.then_some(PLAYER_ID),
+            account_name: player.then(|| ACCOUNT_NAME.to_string()),
+            player_name: player.then(|| PLAYER_NAME.to_string()),
             reply_tx,
         },
         tx,
@@ -126,23 +154,19 @@ async fn movement_reject_carries_account_and_player_id() {
     let mut mgr = manager();
     let (tx, _rx) = mpsc::channel(16);
 
-    create_via_base_message(&mut mgr, 7777, Some(ACCOUNT_ID), Some(PLAYER_ID), &tx).await;
+    create_via_base_message(&mut mgr, 7777, true, &tx).await;
     send_out_of_bounds_move(&mut mgr, 7777, &tx).await;
 
     let event = capture
         .find_event(Level::WARN, "movement.validation_reject", "bounds")
         .expect("the bounds reject warn must still fire");
 
-    assert!(
-        event.has_field("account_id", "6"),
-        "movement reject must carry account_id=6 -- without it, a snap-back \
-         cannot be attributed to an account and `entity_id` alone is a \
-         recycled slot that another player may hold later; got {event:#?}"
-    );
-    assert!(
-        event.has_field("player_id", "12"),
-        "movement reject must carry player_id=12 so the specific character is \
-         identifiable on a multi-character account; got {event:#?}"
+    // Without the IDs a snap-back cannot be attributed to an account, and
+    // `entity_id` alone is a recycled slot another player may hold later;
+    // without the names nobody reading the line knows who it was.
+    assert_identity(
+        &event,
+        "movement reject must name the account and character",
     );
     // The pre-existing correlator must survive alongside the new ones --
     // this is additive, not a replacement.
@@ -166,7 +190,7 @@ async fn npc_movement_reject_emits_no_identity_fields() {
     let (tx, _rx) = mpsc::channel(16);
 
     // No identity on the create -- exactly what the spawner path does.
-    create_via_base_message(&mut mgr, 4242, None, None, &tx).await;
+    create_via_base_message(&mut mgr, 4242, false, &tx).await;
     send_out_of_bounds_move(&mut mgr, 4242, &tx).await;
 
     let event = capture
@@ -183,6 +207,13 @@ async fn npc_movement_reject_emits_no_identity_fields() {
         !event.fields.contains_key("player_id"),
         "an NPC reject must omit player_id entirely; got {event:#?}"
     );
+    for key in ["account_name", "player_name", "entity_name"] {
+        assert!(
+            !event.fields.contains_key(key),
+            "an NPC with no name must omit {key} entirely -- a missing name is \
+             left out, never written as \"\" or \"unknown\"; got {event:#?}"
+        );
+    }
     assert!(
         event.has_field("entity_id", "4242"),
         "entity_id is still the right correlator for an NPC; got {event:#?}"
@@ -199,18 +230,45 @@ async fn identity_is_available_before_init_player_state() {
     let mut mgr = manager();
     let (tx, _rx) = mpsc::channel(16);
 
-    create_via_base_message(&mut mgr, 7777, Some(ACCOUNT_ID), Some(PLAYER_ID), &tx).await;
+    create_via_base_message(&mut mgr, 7777, true, &tx).await;
     // Deliberately NO InitPlayerState here.
     send_out_of_bounds_move(&mut mgr, 7777, &tx).await;
 
     let event = capture
         .find_event(Level::WARN, "movement.validation_reject", "bounds")
         .expect("reject warn must fire");
-    assert!(
-        event.has_field("account_id", "6") && event.has_field("player_id", "12"),
+    assert_identity(
+        &event,
         "identity must come from the CreateEntity stamp, not InitPlayerState -- \
          otherwise every log in the multi-second world-entry window (and the \
-         fresh entity a gate-travel creates) is un-attributable; got {event:#?}"
+         fresh entity a gate-travel creates) is un-attributable",
+    );
+}
+
+/// The names `CreateEntity` carries are for logs only. Game lookups by
+/// name (`.goto`, `.summon`, tells) must see a loading player exactly as
+/// before NT-02: not found until `InitPlayerState` sets `character_name`.
+#[tokio::test]
+async fn birth_names_do_not_change_name_lookups_while_loading() {
+    let mut mgr = manager();
+    let (tx, _rx) = mpsc::channel(16);
+
+    create_via_base_message(&mut mgr, 7777, true, &tx).await;
+
+    assert_eq!(
+        mgr.find_online_player_by_name(PLAYER_NAME),
+        cimmeria_cell_world::cell::space_manager::PlayerNameLookup::NotFound,
+        "a player still loading was NotFound before NT-02 and must stay so"
+    );
+    assert_eq!(
+        mgr.get_entity(7777).unwrap().character_name,
+        None,
+        "the game's name is InitPlayerState's to set"
+    );
+    assert_eq!(
+        mgr.player_identity(7777).player_name,
+        Some(PLAYER_NAME),
+        "while the log identity is named from birth"
     );
 }
 
@@ -223,7 +281,7 @@ async fn disconnect_carries_identity_resolved_before_teardown() {
     let mut mgr = manager();
     let (tx, _rx) = mpsc::channel(64);
 
-    create_via_base_message(&mut mgr, 7777, Some(ACCOUNT_ID), Some(PLAYER_ID), &tx).await;
+    create_via_base_message(&mut mgr, 7777, true, &tx).await;
     handle_base_message(
         BaseToCellMsg::ConnectEntity { entity_id: 7777 },
         &tx,
@@ -251,11 +309,11 @@ async fn disconnect_carries_identity_resolved_before_teardown() {
     let event = capture
         .find_message(Level::DEBUG, "Entity disconnected and destroyed")
         .expect("the disconnect teardown log must still fire");
-    assert!(
-        event.has_field("account_id", "6") && event.has_field("player_id", "12"),
+    assert_identity(
+        &event,
         "the session-closing log must be attributable to the account; moving \
          the identity lookup after the teardown silently degrades it to \
-         UNKNOWN and reintroduces the gap; got {event:#?}"
+         UNKNOWN and reintroduces the gap",
     );
 }
 
@@ -267,7 +325,7 @@ async fn connect_carries_identity() {
     let mut mgr = manager();
     let (tx, _rx) = mpsc::channel(64);
 
-    create_via_base_message(&mut mgr, 7777, Some(ACCOUNT_ID), Some(PLAYER_ID), &tx).await;
+    create_via_base_message(&mut mgr, 7777, true, &tx).await;
     handle_base_message(
         BaseToCellMsg::ConnectEntity { entity_id: 7777 },
         &tx,
@@ -280,10 +338,10 @@ async fn connect_carries_identity() {
     let event = capture
         .find_message(Level::DEBUG, "Entity connected (player)")
         .expect("the space-manager connect log must still fire");
-    assert!(
-        event.has_field("account_id", "6") && event.has_field("player_id", "12"),
+    assert_identity(
+        &event,
         "connect must name the account so a session's in-world span is \
-         bounded by two attributable log lines; got {event:#?}"
+         bounded by two attributable log lines",
     );
 }
 
@@ -304,7 +362,7 @@ async fn movement_recovery_carries_account_and_player_id() {
     let mut mgr = manager();
     let (tx, _rx) = mpsc::channel(16);
 
-    create_via_base_message(&mut mgr, 7777, Some(ACCOUNT_ID), Some(PLAYER_ID), &tx).await;
+    create_via_base_message(&mut mgr, 7777, true, &tx).await;
     // Server-authoritative write that strands the entity outside the AABB —
     // the `.gotoxyz` / stale-persisted-position shape.
     mgr.update_entity_position(7777, STRANDED, [0, 0, 0], [0.0; 3]);
@@ -313,10 +371,10 @@ async fn movement_recovery_carries_account_and_player_id() {
     let event = capture
         .find_event(Level::WARN, "movement.validation_recovered", "bounds")
         .expect("the recovery warn must fire when the snap target is unusable");
-    assert!(
-        event.has_field("account_id", "6") && event.has_field("player_id", "12"),
+    assert_identity(
+        &event,
         "a server-initiated relocation must be attributable to the account \
-         whose avatar was moved; got {event:#?}"
+         whose avatar was moved",
     );
 }
 
@@ -329,7 +387,7 @@ async fn correction_suppressed_carries_account_and_player_id() {
     let mut mgr = manager();
     let (tx, _rx) = mpsc::channel(64);
 
-    create_via_base_message(&mut mgr, 7777, Some(ACCOUNT_ID), Some(PLAYER_ID), &tx).await;
+    create_via_base_message(&mut mgr, 7777, true, &tx).await;
     // The entity's own position stays sound (spawn), so every reject is an
     // ordinary correction until the budget runs out and suppression kicks in.
     for _ in 0..=MovementValidator::MAX_SNAP_BACK_CORRECTIONS {
@@ -339,10 +397,10 @@ async fn correction_suppressed_carries_account_and_player_id() {
     let event = capture
         .find_event(Level::ERROR, "movement.correction_suppressed", "bounds")
         .expect("the suppression error must fire once the budget is spent");
-    assert!(
-        event.has_field("account_id", "6") && event.has_field("player_id", "12"),
+    assert_identity(
+        &event,
         "the stuck-client error must name the session an operator has to go \
-         look at; got {event:#?}"
+         look at",
     );
 }
 
@@ -356,7 +414,7 @@ async fn snap_back_send_failure_carries_account_and_player_id() {
     let capture = LogCapture::install();
     let mut mgr = manager();
     let (tx, rx) = mpsc::channel(16);
-    create_via_base_message(&mut mgr, 7777, Some(ACCOUNT_ID), Some(PLAYER_ID), &tx).await;
+    create_via_base_message(&mut mgr, 7777, true, &tx).await;
     // Base side is gone: the correction cannot be delivered.
     drop(rx);
 
@@ -369,10 +427,10 @@ async fn snap_back_send_failure_carries_account_and_player_id() {
             "snap_back_send_failed",
         )
         .expect("the undelivered-correction warn must fire on a closed channel");
-    assert!(
-        event.has_field("account_id", "6") && event.has_field("player_id", "12"),
+    assert_identity(
+        &event,
         "the player left desynced must be identifiable from this line alone — \
          it is the one an operator reaches for when a player reports being \
-         stuck; got {event:#?}"
+         stuck",
     );
 }

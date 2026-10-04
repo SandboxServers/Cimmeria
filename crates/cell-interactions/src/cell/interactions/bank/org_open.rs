@@ -264,10 +264,9 @@ impl Grant {
         // grant's player; log the grant's own player id instead.
         let live = space_mgr.player_identity(self.entity_id);
         let id = match reject {
-            OrgGrantReject::PlayerEntityMissing | OrgGrantReject::StaleEntity => PlayerIdentity {
-                account_id: None,
-                player_id: Some(self.player_id),
-            },
+            OrgGrantReject::PlayerEntityMissing | OrgGrantReject::StaleEntity => {
+                PlayerIdentity::new(None, Some(self.player_id))
+            }
             _ => live,
         };
         tracing::warn!(

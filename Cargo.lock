@@ -1243,6 +1243,7 @@ dependencies = [
  "cimmeria-discord",
  "cimmeria-entity",
  "cimmeria-mercury",
+ "cimmeria-names",
  "cimmeria-observability",
  "cimmeria-occluder",
  "cimmeria-test-support",

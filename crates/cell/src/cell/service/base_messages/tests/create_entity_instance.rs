@@ -50,6 +50,8 @@ async fn create(
             // `tests::identity_propagation`.
             account_id: None,
             player_id: None,
+            account_name: None,
+            player_name: None,
             reply_tx,
         },
         tx,

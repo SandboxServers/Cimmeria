@@ -39,6 +39,7 @@ pub const NO_ENTITY_ID: u32 = 0;
 pub async fn query_world_entry(
     db_pool: &Option<Arc<PgPool>>,
     account_id: u32,
+    account_name: Option<String>,
     player_id: i32,
     access_level: u32,
     entity_manager: &Arc<std::sync::Mutex<EntityManager>>,
@@ -88,6 +89,9 @@ pub async fn query_world_entry(
                         // cell-side log for this session is attributable.
                         account_id: Some(account_id),
                         player_id: Some(player_id),
+                        account_name: account_name.clone(),
+                        // No row is read in no-DB mode, so no name.
+                        player_name: None,
                         reply_tx,
                     })
                     .await
@@ -116,6 +120,7 @@ pub async fn query_world_entry(
 
     #[derive(sqlx::FromRow)]
     struct EntryRow {
+        player_name: String,
         world_location: String,
         pos_x: f32,
         pos_y: f32,
@@ -123,7 +128,7 @@ pub async fn query_world_entry(
     }
 
     match sqlx::query_as::<_, EntryRow>(
-        "SELECT world_location, pos_x, pos_y, pos_z \
+        "SELECT player_name, world_location, pos_x, pos_y, pos_z \
          FROM sgw_player WHERE player_id = $1 AND account_id = $2",
     )
     .bind(player_id)
@@ -153,6 +158,8 @@ pub async fn query_world_entry(
                         // cell-side log for this session is attributable.
                         account_id: Some(account_id),
                         player_id: Some(player_id),
+                        account_name: account_name.clone(),
+                        player_name: Some(row.player_name.clone()),
                         reply_tx,
                     })
                     .await
@@ -263,7 +270,7 @@ mod tests {
     async fn query_world_entry_no_db_allocates_entity_and_returns_default() {
         let mgr = Arc::new(std::sync::Mutex::new(EntityManager::new()));
         // access_level 0 → regular player → SGWPlayer class.
-        let entry = query_world_entry(&None, 1, 1, 0, &mgr, &None).await;
+        let entry = query_world_entry(&None, 1, None, 1, 0, &mgr, &None).await;
         assert_ne!(
             entry.player_entity_id, NO_ENTITY_ID,
             "no-DB mode must allocate a real entity id"
@@ -284,7 +291,7 @@ mod tests {
     async fn query_world_entry_gm_access_level_uses_gmplayer_class() {
         let mgr = Arc::new(std::sync::Mutex::new(EntityManager::new()));
         // access_level 2 = GameMaster (any non-zero level → GM class).
-        let entry = query_world_entry(&None, 1, 1, 2, &mgr, &None).await;
+        let entry = query_world_entry(&None, 1, None, 1, 2, &mgr, &None).await;
         assert_eq!(
             entry.class_id, SGWGMPLAYER_CLASS_ID,
             "GM (access_level > 0) world entry must use SGWGmPlayer class id 0x03"
@@ -306,7 +313,7 @@ mod tests {
 
         let handle = tokio::spawn(async move {
             let cell_tx = Some(cell_tx);
-            query_world_entry(&None, 1, 1, 0, &mgr, &cell_tx).await
+            query_world_entry(&None, 1, None, 1, 0, &mgr, &cell_tx).await
         });
 
         // Drive the CreateEntity round-trip so the oneshot doesn't hang.
@@ -374,7 +381,16 @@ mod tests {
         let handle = tokio::spawn(async move {
             let db = Some(Arc::new(pool));
             let cell_tx = Some(cell_tx);
-            query_world_entry(&db, account_id as u32, player_id, 0, &task_mgr, &cell_tx).await
+            query_world_entry(
+                &db,
+                account_id as u32,
+                None,
+                player_id,
+                0,
+                &task_mgr,
+                &cell_tx,
+            )
+            .await
         });
         let msg = timeout(Duration::from_secs(5), cell_rx.recv())
             .await

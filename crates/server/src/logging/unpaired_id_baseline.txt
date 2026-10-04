@@ -1,7 +1,7 @@
 # Unpaired ID fields per file (Rule 6, NT-03). Only ever lowered.
 # Regenerate after pairing fields: NT_BASELINE_BLESS=1 cargo nextest run -p cimmeria-server unpaired_id
 # See crates/server/src/logging/unpaired_id_tests/mod.rs.
-# total 7027
+# total 6969
 crates/admin-api/src/routes/dev_session/handlers.rs 2
 crates/admin-api/src/routes/telemetry/handlers.rs 14
 crates/admin-api/src/routes/telemetry/replay.rs 33
@@ -440,7 +440,7 @@ crates/cell-interactions/src/cell/interactions/trainer.rs 20
 crates/cell-interactions/src/cell/interactions/vendor.rs 7
 crates/cell-interactions/src/cell/mail.rs 10
 crates/cell-interactions/src/cell/organization/creation/mod.rs 9
-crates/cell-interactions/src/cell/organization/creation/telemetry.rs 16
+crates/cell-interactions/src/cell/organization/creation/telemetry.rs 14
 crates/cell-interactions/src/cell/organization/squad/fanout.rs 4
 crates/cell-interactions/src/cell/organization/squad/mod.rs 4
 crates/cell-interactions/src/cell/organization/squad/telemetry.rs 47
@@ -531,12 +531,10 @@ crates/cell-world/src/cell/service/npc_ai/detectors/threat.rs 4
 crates/cell-world/src/cell/service/npc_ai/movement_stop/mod.rs 1
 crates/cell-world/src/cell/service/npc_ai/transition.rs 2
 crates/cell-world/src/cell/space_manager/aoi.rs 9
-crates/cell-world/src/cell/space_manager/client_move.rs 7
+crates/cell-world/src/cell/space_manager/client_move.rs 1
 crates/cell-world/src/cell/space_manager/crossing_hold_state.rs 2
-crates/cell-world/src/cell/space_manager/entities.rs 20
+crates/cell-world/src/cell/space_manager/entities.rs 8
 crates/cell-world/src/cell/space_manager/gate_dial_state.rs 1
-crates/cell-world/src/cell/space_manager/movement_telemetry/position_sample.rs 3
-crates/cell-world/src/cell/space_manager/movement_telemetry/reject.rs 9
 crates/cell-world/src/cell/space_manager/navmesh_containment.rs 1
 crates/cell-world/src/cell/space_manager/npc_population.rs 9
 crates/cell-world/src/cell/space_manager/spawn.rs 4
@@ -551,10 +549,10 @@ crates/cell/src/cell/service/base_messages/gm_spawn.rs 5
 crates/cell/src/cell/service/base_messages/ignore.rs 14
 crates/cell/src/cell/service/base_messages/inventory_events.rs 23
 crates/cell/src/cell/service/base_messages/lab_console.rs 2
-crates/cell/src/cell/service/base_messages/lifecycle.rs 32
+crates/cell/src/cell/service/base_messages/lifecycle.rs 12
 crates/cell/src/cell/service/base_messages/minigame.rs 1
 crates/cell/src/cell/service/base_messages/mod.rs 3
-crates/cell/src/cell/service/base_messages/movement.rs 12
+crates/cell/src/cell/service/base_messages/movement.rs 6
 crates/cell/src/cell/service/base_messages/org.rs 4
 crates/cell/src/cell/service/base_messages/player_init/mission_restore.rs 6
 crates/cell/src/cell/service/base_messages/player_init/mod.rs 16

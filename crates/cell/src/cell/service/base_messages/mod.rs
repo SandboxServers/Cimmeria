@@ -73,6 +73,8 @@ pub(super) async fn handle_base_message(
             destination_space_id,
             account_id,
             player_id,
+            account_name,
+            player_name,
             reply_tx,
         } => {
             lifecycle::handle_create_entity(
@@ -81,8 +83,12 @@ pub(super) async fn handle_base_message(
                 position,
                 rotation,
                 destination_space_id,
-                account_id,
-                player_id,
+                lifecycle::BirthIdentity {
+                    account_id,
+                    player_id,
+                    account_name,
+                    player_name,
+                },
                 reply_tx,
                 tx,
                 space_mgr,
@@ -196,6 +202,10 @@ pub(super) async fn handle_base_message(
             // already exists (created by the prior `ConnectEntity`).
             if let Some(entity) = space_mgr.get_entity_mut(entity_id) {
                 entity.character_name = character_name;
+                // Re-assert the log name (Rule 6) from the same source; the
+                // login name, which this message lacks, is kept.
+                let name = entity.character_name.clone();
+                entity.stamp_log_names(name.as_deref(), None);
                 // Re-assert the account half of the stable log-correlation
                 // identity. `CreateEntity` already stamped it; this is the
                 // belt-and-braces path for any create route that didn't, so a

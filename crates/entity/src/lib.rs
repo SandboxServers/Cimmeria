@@ -26,6 +26,7 @@ pub mod manager;
 pub mod missions;
 pub mod movement;
 pub mod movement_validation;
+pub mod name_intern;
 pub mod navigation;
 pub mod organization;
 pub mod properties;

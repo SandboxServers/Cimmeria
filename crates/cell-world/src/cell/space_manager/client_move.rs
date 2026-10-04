@@ -298,8 +298,11 @@ impl SpaceManager {
                 tracing::warn!(
                     target: "movement.validation",
                     entity_id,
+                    entity_name = id.player_name,
                     account_id = id.account_id,
+                    account_name = id.account_name,
                     player_id = id.player_id,
+                    player_name = id.player_name,
                     space_id,
                     world = %world,
                     client_x = position[0],
@@ -385,8 +388,11 @@ impl SpaceManager {
             tracing::warn!(
                 target: "movement.validation",
                 entity_id,
+                entity_name = id.player_name,
                 account_id = id.account_id,
+                account_name = id.account_name,
                 player_id = id.player_id,
+                player_name = id.player_name,
                 space_id,
                 world = %world,
                 client_x = position[0],

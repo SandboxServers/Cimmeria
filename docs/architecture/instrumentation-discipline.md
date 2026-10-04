@@ -229,6 +229,11 @@ lifecycle transition — must carry both:
 right correlator for per-space and AoI debugging, and for NPCs it is
 the *only* one.
 
+Rule 6 pairs each ID with its name, and `PlayerIdentity` carries both
+names (NT-02): `account_name` (the login) and `player_name` (the
+character). A line that emits the identity emits all four fields, and
+`entity_name` next to `entity_id`.
+
 #### These go on the log EVENT, not only on a span
 
 This is the part that is easy to get wrong, because the local
@@ -272,8 +277,11 @@ let id = space_mgr.player_identity(entity_id);
 tracing::warn!(
     target: "movement.validation",
     entity_id,
-    account_id = id.account_id,   // Option<u32>
-    player_id = id.player_id,     // Option<i32>
+    entity_name = id.player_name,   // Option<&str>
+    account_id = id.account_id,     // Option<u32>
+    account_name = id.account_name, // Option<&str>
+    player_id = id.player_id,       // Option<i32>
+    player_name = id.player_name,   // Option<&str>
     reason = reason_label,
     "movement.validation_reject: ..."
 );
@@ -298,11 +306,21 @@ Two resolvers, one per side of the server. Never re-derive it inline.
 
 | Side | Resolver | Backing state |
 |---|---|---|
-| Cell | `SpaceManager::player_identity(entity_id)` | `CellEntity::account_id` / `::player_id` |
-| Base | `base::session_identity::identity_for_entity(connected, entity_to_addr, entity_id)` | `ConnectedClientState::account_id` / `::active_player_id` |
+| Cell | `SpaceManager::player_identity(entity_id)` | `CellEntity::account_id` / `::player_id`, names from `::log_names` |
+| Base | `base::session_identity::identity_for_entity(connected, entity_to_addr, entity_id)`, or `session_identity(&client)` when the session is in hand | `ConnectedClientState::account_id` / `::active_player_id`, names from `::account_name` / `::player_name` |
 
-Both return `PlayerIdentity::UNKNOWN` (both halves `None`) for an NPC
+Both return `PlayerIdentity::UNKNOWN` (every field `None`) for an NPC
 or an unresolvable id, so the caller emits nothing.
+
+The names are `Option<&'static str>`, interned once per distinct name
+(`cimmeria_entity::name_intern`), so `PlayerIdentity` stays `Copy`. A
+blank name, or one longer than 64 bytes, interns to `None`. On the cell
+the names are interned when they are stamped (`CreateEntity`,
+`InitPlayerState`) into `CellEntity::log_names`, so
+`player_identity` is a plain copy with no lock and no hashing.
+`log_names` is for logs only: the game's `character_name` is still set
+by `InitPlayerState` alone, so name lookups such as `.goto` see a
+loading player exactly as before.
 
 The cell entity is identity-stamped **at birth**, from
 `BaseToCellMsg::CreateEntity`, not at `InitPlayerState`.
@@ -310,7 +328,9 @@ The cell entity is identity-stamped **at birth**, from
 would leave the multi-second world-entry window — and the fresh entity
 a gate-travel builds in the destination world — un-attributable.
 `InitPlayerState` still re-asserts the pair as a belt-and-braces path
-for any create route that skips the stamp.
+for any create route that skips the stamp. `CreateEntity` carries the
+two names as well (`account_name`, `player_name`), into `log_names`,
+so the same window names the player, not only the IDs.
 
 #### Naming when an actor acts on someone else
 
@@ -379,6 +399,34 @@ that enforces it (NT-03).
 - **Resolve late, and before teardown.** Same as Rule 5. Look the name
   up inside the branch that logs, and snapshot it at the top of a
   function that destroys the entity.
+
+#### Naming an entity ID
+
+Entity IDs are recycled slots, so they are named from `SpaceManager`,
+never the NameBook (NT-02):
+
+| Call | Returns |
+|---|---|
+| `entity_label(entity_id)` | `Option<&str>`: the character name for a player, the `name_id` text for an NPC |
+| `entity_names(entity_id)` | `EntityNames { entity_name, template_id, template_name }`, all three fields an NPC line carries (D-NT5). A player gets only `entity_name` |
+| `entity_label_at(space_id, entity_id, at)` | The label of whoever held the slot at server time `at` (a `SystemTime`). Lifetimes are half-open, `[created_at, destroyed_at)`. The live entity answers when `at` is at or after its `created_at`; otherwise a departed-entity ring answers when `at` falls inside a departed occupant's lifetime. `None` otherwise, so a reused slot is never named after the wrong occupant |
+
+**`at` is server time.** Lifetimes are stamped with the server's wall
+clock, and two occupants of a slot can be seconds apart. A caller naming
+a client row (NT-40) maps the row's time onto the server clock first,
+from the server's receive time or a per-session clock offset. Passing a
+client timestamp raw lets clock skew name the wrong occupant, and lets a
+client choose the name by choosing the time.
+
+Each space keeps two departed rings, one for players and one for NPCs,
+each holding the entities destroyed in it for 10 minutes, up to 4,096
+rows, whichever is smaller. They are separate because NPC despawns
+outnumber player departures by orders of magnitude: in one ring they
+would push a departed player out long before its 10 minutes. The rings
+live on `SpaceManager`, so a destroyed instance's NPCs and its last
+player stay nameable after the instance is gone. `destroy_entity` and
+`destroy_space` record into them; `destroy_entity` snapshots the names
+at its top, next to the identity snapshot.
 
 #### Which key gets which name
 

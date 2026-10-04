@@ -35,6 +35,8 @@ cimmeria-common = { workspace = true }
 # `Named`, the ID + name pair the cell's Discord events carry (NT-10).
 cimmeria-discord = { workspace = true }
 cimmeria-entity = { workspace = true }
+# `book()` for NPC display and template names on entity labels (NT-02).
+cimmeria-names = { workspace = true }
 cimmeria-observability = { workspace = true }
 tokio = { workspace = true }
 quick-xml = { workspace = true }

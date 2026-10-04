@@ -151,6 +151,20 @@ pub struct CellEntity {
     /// `docs/architecture/instrumentation-discipline.md` §Rule 5.
     pub account_id: Option<u32>,
 
+    /// The names log lines pair with [`Self::account_id`] and
+    /// [`Self::player_id`] (Rule 6), interned once when they are stamped
+    /// (`CreateEntity`, `InitPlayerState`) so [`Self::identity`] is a plain
+    /// copy. Log-only: no game logic reads them. `character_name` stays the
+    /// game's name and is still set only by `InitPlayerState`, so name
+    /// lookups (`find_online_player_by_name`) are unchanged by NT-02.
+    pub log_names: super::LogNames,
+
+    /// Wall-clock time this entity was created in its space. Entity IDs are
+    /// recycled slots, so naming an ID at a past time (a delayed client
+    /// telemetry row) has to check the time against this before trusting
+    /// the live occupant: see `SpaceManager::entity_label_at`.
+    pub created_at: std::time::SystemTime,
+
     /// Archetype ID for content engine conditions. Set from character data on connect.
     pub archetype_id: Option<i32>,
 

@@ -281,10 +281,12 @@ pub async fn handle_gate_travel(
                 // Gate travel destroys the origin entity and builds a fresh
                 // one here, so without this stamp the destination entity would
                 // be anonymous until `InitPlayerState` re-arrives after the
-                // client finishes loading — the same gap `character_name`
-                // still has. Both halves are already validated above.
+                // client finishes loading. Both halves are already validated
+                // above; the names ride along (Rule 6).
                 account_id: Some(account_id),
                 player_id: Some(active_player_id),
+                account_name: account_name.clone(),
+                player_name: exit_name.clone(),
                 reply_tx,
             })
             .await

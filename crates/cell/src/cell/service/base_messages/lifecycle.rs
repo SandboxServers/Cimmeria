@@ -12,6 +12,16 @@ use crate::cell::messages::CellToBaseMsg;
 use crate::cell::space_manager::SpaceManager;
 use crate::cell::spawner;
 
+/// The session identity `BaseToCellMsg::CreateEntity` stamps on a player
+/// entity at birth: the Rule 5 IDs and their Rule 6 names. All `None` for an
+/// entity with no session.
+pub(super) struct BirthIdentity {
+    pub(super) account_id: Option<u32>,
+    pub(super) player_id: Option<i32>,
+    pub(super) account_name: Option<String>,
+    pub(super) player_name: Option<String>,
+}
+
 /// Handle `BaseToCellMsg::CreateEntity`.
 pub(super) async fn handle_create_entity(
     entity_id: u32,
@@ -19,17 +29,25 @@ pub(super) async fn handle_create_entity(
     position: [f32; 3],
     rotation: [f32; 3],
     destination_space_id: Option<u32>,
-    account_id: Option<u32>,
-    player_id: Option<i32>,
+    identity: BirthIdentity,
     reply_tx: tokio::sync::oneshot::Sender<u32>,
     tx: &mpsc::Sender<CellToBaseMsg>,
     space_mgr: &mut SpaceManager,
     spawn_records: &[spawner::SpawnRecord],
 ) {
-    tracing::debug!(
-        entity_id,
+    let BirthIdentity {
         account_id,
         player_id,
+        account_name,
+        player_name,
+    } = identity;
+    tracing::debug!(
+        entity_id,
+        entity_name = player_name.as_deref(),
+        account_id,
+        account_name = account_name.as_deref(),
+        player_id,
+        player_name = player_name.as_deref(),
         %world_name,
         ?position,
         ?destination_space_id,
@@ -83,11 +101,16 @@ pub(super) async fn handle_create_entity(
             // same pair later, but that only arrives after `onClientReady` —
             // stamping here is what lets world-entry movement rejects and the
             // gate-travel destination entity carry the account. NPCs pass
-            // `None`/`None` and are left UNKNOWN.
+            // `None`/`None` and are left UNKNOWN. The names come with the
+            // IDs (Rule 6), so the same lines can say who, not only which.
+            // They go into the log-only `log_names`, interned once here:
+            // `character_name` is the game's field and stays unset until
+            // `InitPlayerState`, as before, so name lookups don't change.
             if account_id.is_some() || player_id.is_some() {
                 if let Some(entity) = space_mgr.get_entity_mut(entity_id) {
                     entity.account_id = account_id;
                     entity.player_id = player_id;
+                    entity.stamp_log_names(player_name.as_deref(), account_name.as_deref());
                 } else {
                     // The create reported success, so the entity must be
                     // resolvable; if it isn't, every subsequent log for this
@@ -95,7 +118,9 @@ pub(super) async fn handle_create_entity(
                     tracing::warn!(
                         entity_id,
                         account_id,
+                        account_name = account_name.as_deref(),
                         player_id,
+                        player_name = player_name.as_deref(),
                         space_id,
                         reason = "identity_stamp_entity_missing",
                         "CreateEntity: entity absent immediately after a successful create -- \
@@ -145,6 +170,9 @@ pub(super) async fn handle_create_entity(
             // `Result` is the real fix and is tracked for the gate-travel owner.
             tracing::error!(
                 entity_id, account_id, player_id, %world_name, ?destination_space_id,
+                entity_name = player_name.as_deref(),
+                account_name = account_name.as_deref(),
+                player_name = player_name.as_deref(),
                 "Failed to create entity: {e} — entity is in NO space; \
                  base will fall back to a hardcoded space id"
             );
@@ -161,10 +189,16 @@ pub(super) async fn handle_destroy_entity(
     // Resolve identity BEFORE the teardown below removes the entity —
     // afterwards `player_identity` can only return UNKNOWN.
     let id = space_mgr.player_identity(entity_id);
+    let names = space_mgr.entity_names(entity_id);
     tracing::debug!(
         entity_id,
+        entity_name = names.entity_name,
+        template_id = names.template_id,
+        template_name = names.template_name,
         account_id = id.account_id,
+        account_name = id.account_name,
         player_id = id.player_id,
+        player_name = id.player_name,
         "DestroyEntity"
     );
     // Cancel any open trade BEFORE the rest of the teardown: the
@@ -189,8 +223,11 @@ pub(super) async fn handle_connect_entity(
     let id = space_mgr.player_identity(entity_id);
     tracing::debug!(
         entity_id,
+        entity_name = id.player_name,
         account_id = id.account_id,
+        account_name = id.account_name,
         player_id = id.player_id,
+        player_name = id.player_name,
         "ConnectEntity (player)"
     );
     space_mgr.connect_entity(entity_id);
@@ -205,8 +242,11 @@ pub(super) async fn handle_connect_entity(
         if let Err(e) = tx.send(event).await {
             tracing::warn!(
                 entity_id,
+                entity_name = id.player_name,
                 account_id = id.account_id,
+                account_name = id.account_name,
                 player_id = id.player_id,
+                player_name = id.player_name,
                 error = %e,
                 "ConnectEntity: AoI introduction send failed — \
                  player may see a delayed entity population"
@@ -228,8 +268,11 @@ pub(super) async fn handle_disconnect_entity(
     let id = space_mgr.player_identity(entity_id);
     tracing::debug!(
         entity_id,
+        entity_name = id.player_name,
         account_id = id.account_id,
+        account_name = id.account_name,
         player_id = id.player_id,
+        player_name = id.player_name,
         "DisconnectEntity"
     );
     // AB-T5: the ability state the player logged out with, before any of

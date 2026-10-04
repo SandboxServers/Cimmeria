@@ -35,8 +35,12 @@ mod cover_sight;
 pub use cover_sight::{NpcSight, SightOrigin};
 mod crossing_hold_state;
 mod deferred_content_actions;
+mod departed_ring;
+pub use departed_ring::{DepartedEntities, DepartedEntity, DEPARTED_CAP, DEPARTED_RETENTION};
 mod discord_labels;
 mod entities;
+mod entity_labels;
+pub use entity_labels::EntityNames;
 mod gate_dial_state;
 mod interact_range;
 pub use interact_range::{interact_range, InteractRangeFail, MAX_INTERACT_DISTANCE};
@@ -188,6 +192,9 @@ pub struct SpaceManager {
     pub(crate) world_spaces: HashMap<String, u32>,
     /// Entity ID → space_id lookup for quick entity → space resolution.
     pub entity_space: HashMap<u32, u32>,
+    /// Recently destroyed entities per space, so a late log row can still
+    /// name a recycled entity ID (NT-02; see `entity_label_at`).
+    pub departed: DepartedEntities,
     /// Next local index for space ID allocation.
     pub(crate) next_local_id: u32,
     /// Next NPC entity ID (starts at 100_000 to avoid player ID collision).
@@ -530,6 +537,7 @@ impl SpaceManager {
             spaces: HashMap::new(),
             world_spaces: HashMap::new(),
             entity_space: HashMap::new(),
+            departed: DepartedEntities::default(),
             next_local_id: 0,
             next_npc_id: 100_000,
             dialog_set_maps: HashMap::new(),
