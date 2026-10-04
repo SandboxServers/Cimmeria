@@ -101,6 +101,13 @@ corresponding docs under [CLAUDE.md](../../../../CLAUDE.md),
 [TESTING.md](../../../../TESTING.md), and the
 [doc-update map](../../../agents/doc-update-map.md).
 
+## Future launcher research
+
+[Launcher platform options](launcher-platform-options.md) compares a shared native
+UI with SwiftUI plus Rust, identifies the real porting boundaries, and proposes
+measurement gates. It is research, not an accepted architecture or permission to
+build a native Mac target.
+
 ## Copy-ready continuation prompt
 
 ```text

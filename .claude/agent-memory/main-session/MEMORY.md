@@ -18,6 +18,8 @@ Dated, sourced facts from top-level sessions, committed with the change that pro
 
 ## Reference
 
+- [reference_launcher_platform_options.md](reference_launcher_platform_options.md) — 2026-10-03 proposed egui/wgpu versus Tauri versus SwiftUI evaluation; no accepted architecture, Mac build or performance benchmark
+
 - [reference_macos_wgl_forward_compat.md](reference_macos_wgl_forward_compat.md) — 2026-10-03: WoWSilicon launcher WGL rejection is missing forward-compatible flag; CX_FWD_COMPAT_GL_CTX=1 opens launcher and manifest; game UAT pending
 
 - [reference_lab_client_controls.md](reference_lab_client_controls.md) — lab driving: Q/E rotate, B bag, Tab target; mouse-look broken (no DI button); .gotoxyz moves the selected target; inventory reader fallback
