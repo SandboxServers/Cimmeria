@@ -125,3 +125,26 @@ sources/preferences, repeat/reopen semantics and absent launch/removal ownership
 ledger and consent after reopening. This supplements frontend tests; native
 dialog interaction, packaged visual verification and Windows lock behavior
 remain separate gates.
+
+## Retained verified-copy preparation
+
+The native adoption API prepares a separately owned reference before presenting
+file comparisons. `adoption::start_preview_wine` uses the existing authenticated
+Windows helper and private Wine prefix; `start_preview` retains ZIP fixture/native
+composition support. A nonterminal Adopt operation owns reference preparation,
+so another Install, preview or launcher update cannot run beside it. Confirmation
+hands off to distinct copy work under the same native mutex. Original files and
+the imported JSON remain unchanged.
+
+`list_preparations` and `inspect_preparation` expose retained native records.
+Explicit `abandon_preparation` checks the recorded directory identity and helper
+quiescence before deleting that private reference. Interrupted helper work stays
+in reconciliation and is never replayed automatically. This API is not exposed
+in Settings yet and does not enable Play for adopted content.
+
+Signed RAR and RAR/CAB fixtures passed through the real Windows helper under Wine,
+source comparison and copy publication in isolated prefixes. That helper predates
+the new shared archive preflight. Full published multi-cabinet validation with a
+rebuilt helper, effective imported settings, permanent owner/current-release
+separation, game Update, native Windows adoption and the UI remain required.
+See the [preparation handoff](../../../../docs/analysis/playtests/2026-10-03-macos-wine/worknotes/published-adoption-preparation.md).

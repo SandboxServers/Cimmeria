@@ -8,6 +8,9 @@ publish = false
 test-support = []
 
 [dependencies]
+minisign-verify = "=0.2.4"
+base64 = "=0.22.1"
+semver = "=1.0.28"
 cimmeria-runtime-probe = { path = "../runtime-probe" }
 serde = { version = "1", features = ["derive"] }
 uuid = { version = "1", features = ["serde", "v4"] }
@@ -36,6 +39,7 @@ libc = "0.2"
 windows-sys = { version = "0.61", features = ["Win32_Foundation", "Win32_Storage_Cabinets", "Win32_Storage_FileSystem", "Win32_System_Memory", "Win32_System_WindowsProgramming"] }
 
 [dev-dependencies]
+minisign = "=0.8.0"
 wiremock = "0.6"
 crc32fast = "1"
 

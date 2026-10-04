@@ -69,6 +69,7 @@ impl DesktopState {
         installation_id: Uuid,
         resources: Resources,
     ) -> Result<Admission, IntentError> {
+        self.ensure_updater_idle()?;
         if self.requires_reopen() {
             return Err(StorageError::PersistenceUncertain.into());
         }

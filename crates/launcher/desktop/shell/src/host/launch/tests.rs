@@ -106,6 +106,10 @@ fn launch_uat_bridge() {
     for line in std::io::stdin().lock().lines() {
         let value: serde_json::Value = serde_json::from_str(&line.unwrap()).unwrap();
         let result = match value["command"].as_str().unwrap() {
+            "too_old" | "development" => {
+                host = super::fixture::reopen_identity(host, value["command"] == "too_old");
+                host.launch_command(LaunchCommand::Inspect { schema_version: 1 })
+            }
             "play" => {
                 let id = serde_json::from_value(value["operation_id"].clone()).unwrap();
                 super::fixture::admit(&host, id);
@@ -178,4 +182,29 @@ async fn retained_native_worker_reports_preparation_failure_without_replaying() 
     let after = host.launch_command(request()).unwrap();
     assert_eq!(after.observation, Some(launch::Observation::NotStarted));
     assert_eq!(after.native.preferences, before.native.preferences);
+}
+
+#[cfg(target_os = "macos")]
+#[test]
+fn signed_minimum_inspection_keeps_play_unavailable_without_mutation() {
+    let (_root, host) = super::fixture::fixture();
+    let before = host
+        .launch_command(LaunchCommand::Inspect { schema_version: 1 })
+        .unwrap();
+    let host = super::fixture::reopen_identity(host, true);
+    for _ in 0..3 {
+        let status = host
+            .launch_command(LaunchCommand::Inspect { schema_version: 1 })
+            .unwrap();
+        assert!(status.launcher_update_required);
+        assert!(status.installation_id.is_none());
+        assert_eq!(status.native.operation, before.native.operation);
+        assert_eq!(status.native.preferences, before.native.preferences);
+    }
+    let host = super::fixture::reopen_identity(host, false);
+    let status = host
+        .launch_command(LaunchCommand::Inspect { schema_version: 1 })
+        .unwrap();
+    assert!(!status.launcher_update_required);
+    assert!(status.installation_id.is_some());
 }

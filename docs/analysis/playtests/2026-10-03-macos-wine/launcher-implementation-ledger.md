@@ -677,3 +677,14 @@ real reconstruction worker, helper lifecycle, replacement or cleanup. Original-
 client Wine repair, native Windows locking/rename/power-loss behavior and packaged
 visual/focus/layout UAT remain open. The chain is locally integrated as
 `292f0678d`, `8a13518f6`, `e3709de6b`; review and integrated validation are pending.
+
+### 2026-10-04: Retained adoption references and native extraction preflight
+
+The [adoption preparation packet](worknotes/published-adoption-preparation.md)
+is integrated as `211226a8` and `2857705a7`. It owns an Adopt operation before
+Wine extraction, supports explicit preparation cleanup and preserves the source.
+Two isolated real-helper fixtures passed, including RAR/CAB; the helper predates
+the coordinator's RAR/FDI preflight (`198573ce7`). Current helper rebuild, full
+published seed, effective settings/UI and owner/current-release parity remain
+required. Latest integrated local engine tests pass 363, with 18 ignored;
+this includes the owner-lock correction described in the acceptance checklist.

@@ -25,6 +25,15 @@ login-listener mount waits for the maintainer.
 Only the full chain was built and tested. The first three commits were not
 built one by one.
 
+The integration branch moved to `ece32e585517c82c54e8991b15b3263b6aa03aff`
+while this ran, and the draft PR conflicted in
+`engine/src/storage/mod.rs`. Because a conflicted PR gets no CI, the branch
+carries one merge commit of `prototype/launcher-packaging-proof` after the four
+commits above. It keeps both sides of the two conflicting hunks (summary
+finalize first, then the new updater-idle check) and handles the new
+`OperationKind::Adopt`: adoption has no value in wire schema v1, so it is not
+tracked or reported, and a test pins that. No history was rewritten.
+
 ## Delivered behaviour
 
 - **Producer.** A journal observer in `engine/src/storage/mod.rs` tracks each
@@ -113,7 +122,7 @@ final tree.
 | `cargo nextest run -p cimmeria-admin-api -p cimmeria-server` | 212 passed |
 | `cargo test -p cimmeria-admin-api --lib` (one process) | 136 passed |
 | `cargo clippy --locked --manifest-path crates/launcher/desktop/Cargo.toml -p cimmeria-launcher-engine --target-dir target/desktop --all-targets -- -D warnings` | ok |
-| `cargo test --locked --manifest-path crates/launcher/desktop/Cargo.toml -p cimmeria-launcher-engine --target-dir target/desktop` | 407 passed, 3 ignored |
+| `cargo test --locked --manifest-path crates/launcher/desktop/Cargo.toml -p cimmeria-launcher-engine --target-dir target/desktop` | 407 passed, 3 ignored before the merge; 423 passed, 4 ignored on the merged tree |
 
 Guards that were revert-verified (the fix removed from one file, the named test
 failing, the file restored): the journal observer call, the admission-time

@@ -220,18 +220,16 @@ impl Tracker {
         if !is_admission(operation.state) || self.gate() != Gate::Open {
             return;
         }
+        let Some(kind) = SummaryOperation::for_kind(operation.kind) else {
+            return;
+        };
         let attempt_id = (self.sources.new_id)();
-        self.live = Some(Live::admitted(
-            operation.id,
-            attempt_id,
-            operation.kind.into(),
-            now,
-        ));
+        self.live = Some(Live::admitted(operation.id, attempt_id, kind, now));
         // Persisted now so that a crash is later reported as `unknown`.
         self.queue.tracking = Some(Tracking {
             local_operation_id: operation.id,
             attempt_id,
-            kind: operation.kind.into(),
+            kind,
         });
         self.store();
     }

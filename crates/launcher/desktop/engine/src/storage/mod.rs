@@ -1,4 +1,5 @@
 //! Exclusive state-directory ownership and bounded, crash-aware persistence.
+pub mod adoption;
 mod atomic;
 pub(crate) mod extraction_work;
 mod failed_cleanup;
@@ -9,6 +10,7 @@ pub mod migration;
 pub mod repair;
 pub mod runtime_setup;
 pub mod uninstall;
+pub mod updater;
 pub use helper_journal::{HelperPhase, HelperRecord, HelperResult};
 mod release_evidence;
 pub use release_evidence::EvidenceError;
@@ -37,7 +39,7 @@ const MAX_STATE_BYTES: u64 = 64 * 1024;
 const MAX_REVISION: u64 = 9_007_199_254_740_991;
 
 /// Safe codes for IPC. Detailed filesystem errors must remain local.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum StorageError {
     InUse,
@@ -177,6 +179,7 @@ impl DesktopState {
             summaries,
         };
         state.recover_legacy_import()?;
+        state.recover_launcher_update()?;
         Ok(state)
     }
 
@@ -194,6 +197,7 @@ impl DesktopState {
     /// Native adapter only; IPC exposes specific validated commands.
     pub fn operations_mut(&mut self) -> Result<&mut Operations<FileJournal>, StorageError> {
         self.finalize_summaries();
+        self.ensure_updater_idle()?;
         if self.requires_reopen() {
             return Err(StorageError::PersistenceUncertain);
         }
@@ -230,6 +234,9 @@ impl DesktopState {
         write: impl FnOnce(&Path, &Preferences) -> Result<(), StorageError>,
     ) -> Result<Preferences, StorageError> {
         self.finalize_summaries();
+        if install_directory != self.preferences.install_directory {
+            self.ensure_updater_idle()?;
+        }
         if self.requires_reopen() {
             return Err(StorageError::PersistenceUncertain);
         }

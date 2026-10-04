@@ -17,6 +17,7 @@
 
 mod cab_set;
 mod dos_time;
+mod entry_inventory;
 #[cfg(windows)]
 mod fdi;
 mod prerequisites;
@@ -51,6 +52,8 @@ pub enum UnpackError {
     UnknownFormat(PathBuf),
     #[error("Archive entry {0:?} would land outside the install directory")]
     UnsafePath(String),
+    #[error("Archive entry {0:?} conflicts with another entry")]
+    EntryConflict(String),
     #[error("Patch set error: {0}")]
     Patchset(String),
     /// A patch set met a file whose hash is not the one its recipe

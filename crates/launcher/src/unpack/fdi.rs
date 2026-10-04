@@ -16,6 +16,7 @@
 //! failure value, which makes `FDICopy` return `FALSE`.
 
 use std::cell::RefCell;
+use std::collections::BTreeSet;
 use std::ffi::{c_char, c_void, CStr, CString};
 use std::fs::File;
 use std::io::{Read, Seek, SeekFrom, Write};
@@ -29,7 +30,7 @@ use windows_sys::Win32::Storage::Cabinets::{
 };
 use windows_sys::Win32::System::Memory::{GetProcessHeap, HeapAlloc, HeapFree};
 
-use super::{dos_time, safe_relative, UnpackError, UnpackSink};
+use super::{dos_time, entry_inventory::EntryInventory, safe_relative, UnpackError, UnpackSink};
 
 /// `_A_NAME_IS_UTF`: the entry name in `psz1` is UTF-8, not the ANSI
 /// code page.
@@ -43,6 +44,9 @@ struct Ctx {
     done: usize,
     current: Option<PathBuf>,
     error: Option<UnpackError>,
+    preflight: bool,
+    inventory: EntryInventory,
+    cabinets: BTreeSet<String>,
 }
 
 thread_local! {
@@ -59,7 +63,42 @@ pub(super) fn expand_chain(
     total: usize,
     sink: &UnpackSink,
 ) -> Result<(), UnpackError> {
-    std::fs::create_dir_all(dest)?;
+    // Keep every source cabinet immutable across enumeration and expansion.
+    // FDI reopens them by name; these handles permit reads but not replacement.
+    use std::os::windows::fs::OpenOptionsExt;
+    let mut cabinet_names = EntryInventory::default();
+    let mut sources = Vec::new();
+    for name in cabinets {
+        sink.check_cancel()?;
+        if name.contains(['/', '\\']) {
+            return Err(UnpackError::UnsafePath(name.clone()));
+        }
+        cabinet_names.insert(name, false)?;
+        sources.push(
+            std::fs::OpenOptions::new()
+                .read(true)
+                .share_mode(windows_sys::Win32::Storage::FileSystem::FILE_SHARE_READ)
+                .open(cab_dir.join(name))
+                .map_err(|error| UnpackError::Cab(format!("cannot open {name}: {error}")))?,
+        );
+    }
+    run_chain(cab_dir, cabinets, dest, total, sink, true)?;
+    let result = run_chain(cab_dir, cabinets, dest, total, sink, false);
+    drop(sources);
+    result
+}
+
+fn run_chain(
+    cab_dir: &Path,
+    cabinets: &[String],
+    dest: &Path,
+    total: usize,
+    sink: &UnpackSink,
+    preflight: bool,
+) -> Result<(), UnpackError> {
+    if !preflight {
+        std::fs::create_dir_all(dest)?;
+    }
     CTX.with(|c| {
         *c.borrow_mut() = Some(Ctx {
             cab_dir: cab_dir.to_path_buf(),
@@ -69,6 +108,9 @@ pub(super) fn expand_chain(
             done: 0,
             current: None,
             error: None,
+            preflight,
+            inventory: EntryInventory::default(),
+            cabinets: cabinets.iter().map(|name| name.to_lowercase()).collect(),
         })
     });
     struct ClearCtx;
@@ -112,6 +154,7 @@ pub(super) fn expand_chain(
 
     let no_path = CString::default();
     for name in cabinets {
+        sink.check_cancel()?;
         let cname = CString::new(name.as_str())
             .map_err(|_| UnpackError::Cab(format!("cabinet name {name:?} has a NUL byte")))?;
         // SAFETY: both strings are NUL-terminated and live across the call;
@@ -136,7 +179,7 @@ pub(super) fn expand_chain(
     }
 
     let done = CTX.with(|c| c.borrow().as_ref().map_or(0, |ctx| ctx.done));
-    if done < total {
+    if done != total {
         return Err(UnpackError::Cab(format!(
             "the cabinets held {done} files but their index lists {total}"
         )));
@@ -193,7 +236,15 @@ unsafe extern "system" fn fdi_free(pv: *const c_void) {
 unsafe extern "system" fn fdi_open(psz: PCSTR, _oflag: i32, _pmode: i32) -> isize {
     // SAFETY: FDI passes a NUL-terminated name.
     let name = String::from_utf8_lossy(unsafe { cstr_bytes(psz) }).into_owned();
-    let path = CTX.with(|c| c.borrow().as_ref().map(|ctx| ctx.cab_dir.join(&name)));
+    let path = CTX.with(|c| {
+        let mut guard = c.borrow_mut();
+        let ctx = guard.as_mut()?;
+        if name.contains(['/', '\\', ':']) || !ctx.cabinets.contains(&name.to_lowercase()) {
+            ctx.error = Some(UnpackError::UnsafePath(name.clone()));
+            return None;
+        }
+        Some(ctx.cab_dir.join(&name))
+    });
     match path.map(File::open) {
         Some(Ok(f)) => into_handle(f),
         _ => -1,
@@ -316,12 +367,26 @@ fn copy_file(ctx: &mut Ctx, n: &FDINOTIFICATION) -> isize {
     // SAFETY: psz1 is the NUL-terminated entry name.
     let raw = unsafe { cstr_bytes(n.psz1) };
     let name = if n.attribs & A_NAME_IS_UTF != 0 {
-        String::from_utf8_lossy(raw).into_owned()
+        let Ok(name) = std::str::from_utf8(raw) else {
+            ctx.error = Some(UnpackError::Cab("entry name is not valid UTF-8".into()));
+            return -1;
+        };
+        name.to_owned()
     } else {
         // ANSI; the client's names are ASCII, and Latin-1 is the closest
         // total mapping for anything else.
         raw.iter().map(|&b| b as char).collect()
     };
+    if ctx.preflight {
+        if let Err(error) = ctx.inventory.insert(&name, false) {
+            ctx.error = Some(error);
+            return -1;
+        }
+        // COPY_FILE reports starts, not continued fragments. Returning zero
+        // enumerates without creating a file; each cabinet is visited in turn.
+        ctx.done += 1;
+        return 0;
+    }
     let Some(rel) = safe_relative(&name) else {
         ctx.error = Some(UnpackError::UnsafePath(name));
         return -1;
@@ -349,6 +414,63 @@ mod tests {
         fixture_mtime, incompressible as payload, make_cab_set, sink,
     };
     use super::*;
+
+    #[test]
+    fn rejects_late_case_collision_before_creating_output() {
+        let dir = tempfile::tempdir().unwrap();
+        let files = vec![("a.txt", b"a".to_vec()), ("b.txt", b"b".to_vec())];
+        let names = make_cab_set(dir.path(), &files, 1_000_000);
+        assert_eq!(names.len(), 1);
+        let path = dir.path().join(&names[0]);
+        let mut bytes = std::fs::read(&path).unwrap();
+        let offsets: Vec<_> = bytes
+            .windows(6)
+            .enumerate()
+            .filter_map(|(i, value)| (value == b"b.txt\0").then_some(i))
+            .collect();
+        assert_eq!(offsets.len(), 1);
+        bytes[offsets[0]] = b'A';
+        std::fs::write(&path, bytes).unwrap();
+        let (sink, _rx) = sink();
+        let out = dir.path().join("out");
+        assert!(matches!(
+            expand_chain(dir.path(), &names, &out, 2, &sink),
+            Err(UnpackError::EntryConflict(_))
+        ));
+        assert!(!out.exists());
+    }
+
+    #[test]
+    fn rejects_conflicts_across_cabinets_before_creating_output() {
+        let dir = tempfile::tempdir().unwrap();
+        let other = tempfile::tempdir().unwrap();
+        let mut names = make_cab_set(dir.path(), &[("a.txt", b"a".to_vec())], 1_000_000);
+        let second = make_cab_set(other.path(), &[("A.txt", b"b".to_vec())], 1_000_000);
+        assert_eq!(names.len(), 1);
+        assert_eq!(second.len(), 1);
+        std::fs::copy(other.path().join(&second[0]), dir.path().join("OTHER.CAB")).unwrap();
+        names.push("OTHER.CAB".into());
+        let (sink, _rx) = sink();
+        let out = dir.path().join("out");
+        assert!(matches!(
+            expand_chain(dir.path(), &names, &out, 2, &sink),
+            Err(UnpackError::EntryConflict(_))
+        ));
+        assert!(!out.exists());
+    }
+
+    #[test]
+    fn rejects_index_count_mismatch_before_creating_output() {
+        let dir = tempfile::tempdir().unwrap();
+        let names = make_cab_set(dir.path(), &[("a.txt", b"a".to_vec())], 1_000_000);
+        let (sink, _rx) = sink();
+        let out = dir.path().join("out");
+        assert!(matches!(
+            expand_chain(dir.path(), &names, &out, 0, &sink),
+            Err(UnpackError::Cab(_))
+        ));
+        assert!(!out.exists());
+    }
 
     // The bug shape this guards: a file that starts in DATA1.CAB and ends
     // in DATA2.CAB must come out whole, and nothing may be written twice

@@ -8,6 +8,7 @@ const MAX_REVISION: u64 = 9_007_199_254_740_991;
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum OperationKind {
+    Adopt,
     Install,
     PrepareRuntime,
     Repair,

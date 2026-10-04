@@ -53,6 +53,16 @@ impl DesktopState {
                 let cache = plan.work_directory().join("cache");
                 (plan.installation, stage, cache)
             }
+            OperationKind::Adopt => {
+                let plan = super::adoption::preparation::read_record(self, id)?
+                    .ok_or(StorageError::Corrupt)?;
+                if plan.digest().map_err(|_| StorageError::Corrupt)? != operation.intent_digest {
+                    return Err(StorageError::Corrupt.into());
+                }
+                let stage = plan.stage();
+                let cache = plan.cache();
+                (plan.descriptor, stage, cache)
+            }
             _ => return Err(ContractError::InvalidTransition.into()),
         };
         Ok(ExtractionWork {

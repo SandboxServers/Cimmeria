@@ -107,14 +107,18 @@ closed_enum!(
     }
 );
 
-impl From<OperationKind> for SummaryOperation {
-    fn from(kind: OperationKind) -> Self {
+impl SummaryOperation {
+    /// The wire operation for a journal kind. `None` means the kind has no
+    /// value in wire schema v1, so such an operation is never summarized.
+    pub(super) fn for_kind(kind: OperationKind) -> Option<Self> {
         match kind {
-            OperationKind::Install => Self::Install,
-            OperationKind::PrepareRuntime => Self::PrepareRuntime,
-            OperationKind::Repair => Self::Repair,
-            OperationKind::Uninstall => Self::Uninstall,
-            OperationKind::Launch => Self::Launch,
+            OperationKind::Install => Some(Self::Install),
+            OperationKind::PrepareRuntime => Some(Self::PrepareRuntime),
+            OperationKind::Repair => Some(Self::Repair),
+            OperationKind::Uninstall => Some(Self::Uninstall),
+            OperationKind::Launch => Some(Self::Launch),
+            // Adoption of an existing installation has no schema v1 value.
+            OperationKind::Adopt => None,
         }
     }
 }

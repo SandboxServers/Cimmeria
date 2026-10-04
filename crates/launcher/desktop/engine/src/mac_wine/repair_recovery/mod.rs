@@ -1,4 +1,4 @@
-//! Quiescence gate for explicit repair recovery on a native blocking thread.
+//! Shared quiescence gate for repair and adoption-reference recovery.
 use super::*;
 use crate::{HelperPhase, HelperResult, IntentError, StorageError};
 use recovery::{host_absent, StoppedPrefix};
@@ -14,14 +14,42 @@ pub(crate) fn stop(
     if plan.id != id {
         return Err(StorageError::Corrupt.into());
     }
+    stop_work(state, id, require_completed)
+}
+/// Reference preparation shares extraction ownership, but has no installed tree.
+pub(crate) fn stop_reference(state: &DesktopState, id: Uuid) -> Result<StoppedPrefix, IntentError> {
+    let record = crate::storage::adoption::preparation::read_record(state, id)?
+        .ok_or(StorageError::Corrupt)?;
+    let work = ExtractionWork {
+        operation_id: id,
+        intent_digest: record.digest().map_err(|_| StorageError::Corrupt)?,
+        stage: record.stage(),
+        cache: record.cache(),
+        installation: record.descriptor,
+    };
+    stop_bound_work(state, id, false, work)
+}
+fn stop_work(
+    state: &DesktopState,
+    id: Uuid,
+    require_completed: bool,
+) -> Result<StoppedPrefix, IntentError> {
     let work = state.extraction_work(id)?;
+    stop_bound_work(state, id, require_completed, work)
+}
+fn stop_bound_work(
+    state: &DesktopState,
+    id: Uuid,
+    require_completed: bool,
+    work: ExtractionWork,
+) -> Result<StoppedPrefix, IntentError> {
     let ExtractionBackend::Wine { runtime_sha256, .. } = work.installation.backend else {
         return Err(StorageError::Corrupt.into());
     };
     if hex(&runtime_sha256) != mac_runtime::ARCHIVE_SHA256 {
         return Err(StorageError::Corrupt.into());
     }
-    let record = state.helper_record(id)?;
+    let record = state.read_helper_identity(id, work.intent_digest)?;
     if require_completed
         && !record.as_ref().is_some_and(|r| {
             r.phase

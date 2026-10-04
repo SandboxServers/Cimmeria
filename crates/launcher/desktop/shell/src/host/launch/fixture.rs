@@ -27,7 +27,16 @@ pub(super) fn fixture() -> (tempfile::TempDir, NativeHost) {
         .save_preferences(Some(canonical.join("game")), true, 0)
         .unwrap();
     let id = Uuid::new_v4();
-    let release = super::super::install::tests::fixture_release();
+    use ed25519_dalek::{Signer, SigningKey};
+    let body = serde_json::to_vec(&serde_json::json!({"schema":1,"seed":{"blob":"http://127.0.0.1:9/seed","size":1,"sha256":"a".repeat(64)},"patches":[],"min_launcher":"launcher-20261004-fixture"})).unwrap();
+    let signature: String = SigningKey::from_bytes(&[0x2a; 32])
+        .sign(&body)
+        .to_bytes()
+        .iter()
+        .map(|b| format!("{b:02x}"))
+        .collect();
+    let release =
+        cimmeria_launcher_engine::catalog::verify_release(&body, signature.as_bytes()).unwrap();
     let intent = state
         .admit_install_backend(cimmeria_launcher_engine::AdmissionRequest {
             id,
@@ -163,4 +172,29 @@ pub(super) fn observe(host: &NativeHost, phase: &str) {
             .kind,
         OperationKind::Launch
     );
+}
+
+pub(super) fn reopen_identity(host: NativeHost, older: bool) -> NativeHost {
+    use cimmeria_launcher_engine::launcher_compatibility::{CompatibilityPolicy, Identity};
+    let path = host.root.clone();
+    let resources = host.launch_resources.clone();
+    drop(host);
+    let policy = if older {
+        CompatibilityPolicy::new(
+            Identity::from_parts(
+                "0.1.0",
+                None,
+                Some("launcher-20261003-fixture"),
+                Some("1791000000"),
+            ),
+            vec![],
+        )
+    } else {
+        CompatibilityPolicy::default()
+    };
+    let state = DesktopState::open_with_compatibility(&path, policy).unwrap();
+    let mut host = NativeHost::new(path);
+    host.launch_resources = resources;
+    *host.state.lock().unwrap() = Some(Arc::new(Mutex::new(state)));
+    host
 }

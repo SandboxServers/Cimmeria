@@ -115,7 +115,8 @@ fn mismatched_owner_signature_and_future_schema_are_not_adopted() {
         &root.path().join("state"),
         NAME,
         &Record {
-            schema_version: 2,
+            adoption: None,
+            schema_version: 3,
             intent,
         },
     )

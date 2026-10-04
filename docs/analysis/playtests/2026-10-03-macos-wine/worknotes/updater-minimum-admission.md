@@ -100,3 +100,13 @@ show an explicit update requirement rather than a transport failure. Frontend
 guards assert one dispatch and unchanged state. Network update/download/apply
 controls remain a separate packet. Migration corruption decoding was also
 corrected during combined integration after independent review.
+
+Native Play inspection now returns `launcher_update_required` from retained signed
+release evidence and withholds the installation capability while it blocks.
+Successful automatic polls therefore retain the update message and disabled Play.
+The signed native fixture reopens under an older compiled identity, repeats
+inspection without operation/preference mutation, then reopens under the existing
+development exemption. The production Effect/view JS UAT exercises that same
+disk-backed sequence. Validation: five scoped shell tests passed (one ignored
+bridge run separately), 51 frontend tests, TypeScript build and native Play JS UAT
+passed. Packaged visual, Windows and actual updater replacement are not covered.

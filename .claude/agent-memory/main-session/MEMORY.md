@@ -18,6 +18,10 @@ Dated, sourced facts from top-level sessions, committed with the change that pro
 
 ## Reference
 
+- [reference_owner_lock_release_2026_10_04.md](reference_owner_lock_release_2026_10_04.md) — explicit unlock at Repair/prefix logical-owner drop; duplicate-handle regression and native CI boundary.
+
+- [reference_archive_preflight_2026_10_04.md](reference_archive_preflight_2026_10_04.md) — RAR/FDI name inventory before output; rebuilt Windows helper and spanning-cabinet validation required.
+
 - [reference_launcher_repair_ui.md](reference_launcher_repair_ui.md) — Settings Repair retains preparation-to-commit ownership; native-persistence Effect UAT covers cancellation/reopen/abandonment, with real-client, Windows and visual gates open.
 
 - [reference_launcher_implementation_plan.md](reference_launcher_implementation_plan.md) — 2026-10-04 Tauri/Effect settings shell and persistent native state; game workers and summary export pending; self-contained startup gate last
@@ -40,3 +44,7 @@ Dated, sourced facts from top-level sessions, committed with the change that pro
 - [reference_client_idle_send_cadence.md](reference_client_idle_send_cadence.md) — idle client sends ~6 pkt/s, perfStats every 15 s; NetInactivityTimeout=15 is client-side; read before changing timeouts
 
 - [reference_desktop_updater_parity_research.md](reference_desktop_updater_parity_research.md) — legacy checksum updater and Tauri signed-package ownership/recovery differences.
+
+- [reference_launcher_minimum_poll_2026_10_04.md](reference_launcher_minimum_poll_2026_10_04.md) — signed minimum state must survive automatic Play inspection.
+- [reference_launcher_updater_integration_2026_10_04.md](reference_launcher_updater_integration_2026_10_04.md) — early mutation gates and updater revision refresh across other operations.
+- [reference_adoption_contract_audit_2026_10_04.md](reference_adoption_contract_audit_2026_10_04.md) — verified separate-copy adoption and effective settings remain distinct from settings import.

@@ -13,46 +13,60 @@ revision. The root checkout is outside this campaign's write scope.
 
 ## Current wave
 
-Common base: `0b10d869c869793ab506dbf9215ddb91714a244b`.
+Original campaign base: `0b10d869c869793ab506dbf9215ddb91714a244b`.
 Integration: `prototype/launcher-packaging-proof`, draft PR #1164.
 No merge, deployment, release publication or force-push is authorized.
 
 | Owner / branch | Exclusive surface | Next acceptance evidence |
 |---|---|---|
-| Repair / `launcher/repair-ui` | Repair host modules; installation workflow/view and tests; app wiring and HTML; shell host/main registration | Settings confirmation through real retained repair; cancellation/recovery; native tests and Effect UAT |
-| Launch / `launcher/launch-engine` | New launch engine/helper modules and tests; launch guide | Prepared game start, observed host/guest lifecycle, duplicate/early-exit/unknown handling |
-| Migration / `launcher/legacy-migration` | New native migration storage modules and tests | Source-preserving preview/confirmed import; audit in [worknote](worknotes/migration-audit.md) |
+| Updater / `launcher/updater-apply` | Updater apply engine, platform handoff, host and Settings wiring | Verified native package Apply, restart/version acknowledgment and failure recovery |
+| Integration owner | Shared extraction preflight, contracts, registrations, CI, indexes and integrated UAT | Windows cabinet validation; adoption integration; updater Apply/recovery; effective configuration and game Update |
 | External Windows observability track | Summary schema, queue/export, ingestion and query fixtures | Discovery integrated; fresh implementation assignment recorded; do not duplicate reserved work |
-| Integration owner | Shared contracts, dependency manifests, module registration outside Repair, CI, indexes, ledger; integration and visual UAT | Combined journey and requirement-level evidence |
 
-Workers isolate reserved-file changes in separate commits. Repair releases the
-frontend before Play wiring begins. Worker worktrees remain intact during review.
+Repair, Launch, migration-import UI, adoption reference preparation and signed
+updater check/download workers have completed their packets. Workers isolate shared-file changes in separate
+commits; their worktrees remain intact during review. The game is closed while
+the operator adjusts framerate settings; independent implementation continues.
 
 ### Integration wave
 
-Repair fixes and Play controls are integrated through `4513fd8d9`. Combined
-shell tests pass 33 (five opt-in fixtures ignored), frontend tests pass 45,
-TypeScript/build and strict shell clippy pass. Play persistence UAT and the
-production Repair preparation/commit/cleanup JS UAT pass. A stale generated
-Repair UAT module was rebuilt before its passing integration run.
+Through `b3ef86658`, Repair, Play, explicit settings import, signed updater
+check/download and the verified-copy adoption foundation are integrated.
+Combined local engine/shell validation passed 391 tests (22 opt-in/platform
+fixtures ignored); frontend tests passed 54 with TypeScript/build. Production
+Repair, Play and composed updater persistence UAT have passed within their
+documented fixture scopes. These are not gameplay or release evidence.
 
 - Repair review findings are fixed: actual backup status drives cleanup and copy;
   production host handoff/recovery have guards; timeout and memory metadata were
   corrected. See [fix evidence](worknotes/repair-review-fixes.md).
-- Play controls are integrated; [worknote](worknotes/play-integration.md). Fresh
-  review found a Windows locked-file second-handle read; `launcher/launch-lock-fix`
-  owns the correction and regression guard. Real gameplay remains unproven.
+- Play's production Windows locked-owner accessor fix passed native Windows CI
+  at `590050084`. Newer Windows runs exposed second-handle reads in test-only
+  filesystem snapshots; those fixture corrections require native revalidation.
 - Native content Install and prerequisite preparation succeeded through the real
-  app. The development Play bundle is being staged with pinned Windows-built
-  helper/patch resources and pinned D9VK, with its upstream notice retained.
-- `launcher/migration-ui` owns explicit preview/confirmed import UI and persistence
-  UAT. Migration engine independent review remains queued.
-- [Updater research](worknotes/updater-parity-research.md) is complete. Native
-  minimum-version gates, signed download and platform apply/recovery remain next
-  implementation packets. Legacy updater checksum verification is distinct from
-  signed game manifests and Tauri signed updater packages.
-- Native x86 run `37214723035` passed; Windows desktop rerun after the accessor
-  fix is pending. Observability remains reserved for the external Windows track.
+  app. The first recorded Play failed early; a separate graphics diagnostic
+  reached the login screen according to the operator and later exited cleanly.
+  The corrected production path still needs a rerun. See [native UAT](worknotes/native-window-uat.md).
+- Settings import is integrated. [Verified-copy adoption](worknotes/native-verified-copy-adoption.md)
+  has a source-preserving native foundation, but no UI or Play enablement yet.
+  Published RAR references, effective configuration and permanent-owner/current-
+  release separation remain required.
+- [Signed updater checks](worknotes/signed-updater.md) and minimum-version gates
+  are integrated. Settings can check/download/reverify with native ownership;
+  production configuration is disabled. Apply, restart, rollback and partial
+  download resume remain open.
+- Windows-built lab MCP, starter and injected DLL artifacts passed their build
+  and hash checks. No lab injection or authentication/world-entry UAT is claimed.
+- Shared RAR/cabinet name preflight is committed in `198573ce7`. Mac tests and
+  engine clippy passed; Windows FDI tests passed in run `37219800831`, while the
+  rebuilt-helper Wine validation is pending.
+  Observability remains reserved for the external Windows track.
+- Retained adoption references are integrated as `211226a8`/`2857705a7`; isolated
+  real RAR/CAB helper fixtures passed on the worker's earlier helper. Latest local
+  engine suite passes 363 tests (18 ignored) after a narrow lock-release fix.
+  Mac CI failed two immediate owner-lock reacquisition checks. A duplicated-handle
+  regression demonstrates the corresponding lifetime hazard; the affected guards
+  now explicitly unlock at logical-owner drop. Native CI revalidation is pending.
 
 ## Requirement and evidence checklist
 
@@ -61,16 +75,16 @@ Repair UAT module was rebuilt before its passing integration run.
 | Single-game dark-only Tauri interface | Native development window rendered; Settings chooser cancellation passed | Keyboard/focus, responsive layout and integrated feature visuals; integration |
 | Real Effect orchestration and persistent settings | Existing workflow/services and native journal; prior ledger tests | Integrated native-persistence JS UAT and failed-save/reconnect behavior; integration |
 | Installation and prerequisites | Real native UI content installation and compatibility preparation succeeded | Graphics/Play, failures and cancellation; integration |
-| Play with lifecycle observation | Engine and UI integrated; native-persistence Effect UAT passed | Windows lock fix, real game UAT and native parity |
+| Play with lifecycle observation | Engine/UI and minimum gate integrated; native-persistence Effect UAT and Windows locked-owner regression passed | Corrected production graphics path, real gameplay and current native parity |
 | Repair | Integrated with review fixes; production preparation/commit/cleanup JS UAT passed | Native visual and original-client repair UAT |
 | Confirmed uninstall | Existing Settings confirmation and native ownership checks | Integrated confirmation/dismiss/removal/recovery UAT; integration |
 | Signed GitHub manifest patch notes | Actual Tauri tab rendered seven verified entries; wrong-key rejection observed | Refresh/reconnect after integrated changes; integration |
 | Default-off optional summary consent | Separate persisted preference; exporter absent | Consent preservation plus local exporter race/failure evidence; external track and integration |
 | Focused observability | Discovery reviewed and integrated; implementation assignment recorded | Full bounded producer-to-local-ingestion/query fixture; external track |
-| Migration and identity/consent preservation | Read-only baseline audit complete; implementation/adoption validation pending | Existing-user fixtures and integrated adoption; migration track |
-| Single updater owner and version/asset mapping | Read-only baseline audit complete; implementation/adoption validation pending | Failure/rollback and Windows replacement parity; migration track |
+| Migration and identity/consent preservation | Explicit settings import and verified-copy foundation integrated | Published-client adoption, effective settings, UI, permanent owner/current release and game Update |
+| Single updater owner and version/asset mapping | Native minimum gates and signed check/download integrated; composed persistence UAT passed | Apply/restart/rollback, resume, production configuration and Windows replacement parity |
 | Tests, docs and project memory | Existing baseline artifacts | Per-packet guards, fresh bounded review, matching docs/indexes and findings |
-| Windows native parity | Historical checks only | Current native Windows build/tests, helper/DLL and updater evidence |
+| Windows native parity | Earlier Play checks passed; lab/helper/DLL builds verified; newer test snapshot failures identified | Corrected native tests, FDI preflight, latest helper and updater/adoption parity |
 | Actual Mac graphics/login/world | Controlled driver-selection diagnostic stayed running; operator reported login screen | Production-path rerun, windowed behavior, authentication and world entry remain separate gates |
 | Final self-contained packages (LAST) | Deferred until journeys complete | Offline first open, bundled dependencies, clean-machine checks, signing/notarization and per-OS artifacts |
 

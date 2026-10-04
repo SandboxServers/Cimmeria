@@ -98,3 +98,13 @@ Final restored-code checks passed: shell 29 passed/4 ignored
 admission/persistence JS UAT and the new real-host JS UAT passed against the final
 shell executable. The earlier bridge's cancellation remains deliberately
 journal-controlled; only the new host tests establish actual worker cancellation.
+
+## Deterministic cancellation observation
+
+Native Mac CI at `590050084` exposed a race in the cancellation fixture: its
+150 ms response and tiny archive could finish before the polling test observed
+progress. The fixture now sends a partial body over loopback and holds the rest
+until the test finishes. Cancellation therefore runs before reconstruction and
+promotion, independent of the response-completion window. The three production
+host tests pass, as does the combined 40-test shell suite; this fixture change
+does not establish additional live-game or packaged UI behavior.

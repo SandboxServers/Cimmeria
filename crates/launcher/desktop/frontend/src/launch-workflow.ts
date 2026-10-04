@@ -2,7 +2,7 @@ import { Context, Data, Effect, Layer, PubSub, Ref, Schema, Semaphore, Stream } 
 import { NativeSnapshot } from './contract';
 const Pid=Schema.Int.check(Schema.isBetween({minimum:1,maximum:4294967295}));
 export const LaunchStatus=Schema.Struct({schema_version:Schema.Literal(1),native:NativeSnapshot,
-  installation_id:Schema.NullOr(Schema.String),resources_available:Schema.Boolean,
+  installation_id:Schema.NullOr(Schema.String),resources_available:Schema.Boolean,launcher_update_required:Schema.Boolean,
   observation:Schema.NullOr(Schema.Union([
     Schema.Struct({phase:Schema.Literals(['preparing','not_started','cancelled','unknown'])}),
     Schema.Struct({phase:Schema.Literal('host_started'),host_pid:Pid}),
@@ -19,7 +19,7 @@ export const launchBridgeLayer=(invoke:(request:Request)=>Promise<unknown>)=>Lay
     Effect.flatMap(value=>Schema.decodeUnknownEffect(LaunchStatus,{onExcessProperty:'error'})(value).pipe(Effect.mapError(()=>new LaunchFailure({code:'schema'})))),
   )});
 export type LaunchState={status:LaunchStatus|null;pending:boolean;uncertain:boolean;error:string|null};
-export const launchBlocked=(status:LaunchStatus)=>status.native.requires_reopen || !!status.native.operation.operation &&
+export const launchBlocked=(status:LaunchStatus)=>status.launcher_update_required || status.native.requires_reopen || !!status.native.operation.operation &&
   !['succeeded','failed','cancelled'].includes(status.native.operation.operation.state);
 export const makeLaunchWorkflow=Effect.gen(function*(){
  const bridge=yield* LaunchBridge;const gate=yield* Semaphore.make(1);

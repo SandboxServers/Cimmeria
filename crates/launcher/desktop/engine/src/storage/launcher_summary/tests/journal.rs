@@ -169,6 +169,21 @@ fn every_operation_kind_maps_to_its_wire_operation_and_failure_code() {
     }
 }
 
+/// Adoption has no value in wire schema v1. It is neither tracked nor
+/// reported; the install beside it is the control.
+#[test]
+fn a_kind_without_a_wire_value_is_never_tracked_or_reported() {
+    for (kind, reported) in [(OperationKind::Adopt, 0), (OperationKind::Install, 1)] {
+        let (_root, mut state, _clock) = opted_in();
+        let id = begin(&mut state, kind);
+        assert_eq!(stored(&state).tracking.is_some(), reported == 1, "{kind:?}");
+        observe(&mut state, id, OperationState::Running);
+        observe(&mut state, id, OperationState::Failed);
+        state.finalize_summaries();
+        assert_eq!(queued(&state).len(), reported, "{kind:?}");
+    }
+}
+
 #[test]
 fn lost_observation_is_one_unknown_row_and_a_later_reconciled_terminal_adds_nothing() {
     let (_root, mut state, _clock) = opted_in();

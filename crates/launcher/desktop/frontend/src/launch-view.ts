@@ -4,7 +4,7 @@ import type {Invoke} from './view';
 class Launch extends Context.Service<Launch,Effect.Success<typeof makeLaunchWorkflow>>()('launcher/Play') {}
 export function launchText(s:LaunchState):string {
  if(s.pending)return 'Starting game…';
- if(s.error==='launcher_too_old')return 'Update the launcher before playing this release. Your game files are preserved.';
+ if(s.error==='launcher_too_old'||s.status?.launcher_update_required)return 'Update the launcher before playing this release. Your game files are preserved.';
  if(s.error)return 'Could not confirm game status. Recheck before continuing; Play was not retried.';
  const status=s.status;if(!status)return 'Checking Play availability…';
  const o=status.observation;

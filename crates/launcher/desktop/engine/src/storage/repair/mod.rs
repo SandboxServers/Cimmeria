@@ -6,6 +6,7 @@ pub mod commit;
 pub mod preparation;
 pub mod recovery;
 mod tree_identity;
+use crate::owner_lock::OwnerLock;
 use crate::OperationKind;
 use sha2::{Digest, Sha256};
 use uuid::Uuid;
@@ -57,6 +58,7 @@ impl DesktopState {
         installation_id: Uuid,
         confirmed: bool,
     ) -> Result<Admission, IntentError> {
+        self.ensure_updater_idle()?;
         if !confirmed {
             return Err(ContractError::InvalidTransition.into());
         }
@@ -160,7 +162,7 @@ fn ordinary(metadata: &std::fs::Metadata) -> Result<(), StorageError> {
     }
     Ok(())
 }
-fn lock_owner(intent: &InstallIntent) -> Result<File, StorageError> {
+fn lock_owner(intent: &InstallIntent) -> Result<OwnerLock, StorageError> {
     let path = intent.destination.join(".cimmeria-install.json");
     let metadata = std::fs::symlink_metadata(&path).map_err(|_| StorageError::Corrupt)?;
     ordinary(&metadata)?;
@@ -172,7 +174,7 @@ fn lock_owner(intent: &InstallIntent) -> Result<File, StorageError> {
         .write(true)
         .open(path)
         .map_err(|_| StorageError::Io)?;
-    file.try_lock().map_err(|_| StorageError::InUse)?;
+    let file = OwnerLock::acquire(file).map_err(|_| StorageError::InUse)?;
     let saved: InstallIntent = read_open(&file)?;
     if saved != *intent {
         return Err(StorageError::Corrupt);

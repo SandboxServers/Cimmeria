@@ -23,6 +23,7 @@ pub struct LaunchStatus {
     native: NativeSnapshot,
     installation_id: Option<Uuid>,
     resources_available: bool,
+    launcher_update_required: bool,
     observation: Option<launch::Observation>,
 }
 impl NativeHost {
@@ -85,7 +86,11 @@ impl NativeHost {
                 .operation
                 .as_ref()
                 .is_none_or(|op| op.state.terminal());
-        let installation_id = if idle && available {
+        let launcher_update_required = idle
+            && state
+                .installed_launcher_minimum()?
+                .is_some_and(|minimum| minimum.blocks());
+        let installation_id = if idle && available && !launcher_update_required {
             state
                 .installed_content()?
                 .filter(|installed| {
@@ -105,6 +110,7 @@ impl NativeHost {
             native,
             installation_id,
             resources_available: available,
+            launcher_update_required,
             observation,
         })
     }

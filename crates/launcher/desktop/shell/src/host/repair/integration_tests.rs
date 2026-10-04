@@ -3,6 +3,8 @@ use super::*;
 use cimmeria_launcher_engine::{install_worker::fixtures, repair::cleanup::BackupStatus};
 use std::time::Duration;
 use wiremock::{matchers::path, Mock, MockServer, ResponseTemplate};
+#[path = "held_download.rs"]
+mod held_download;
 
 async fn fixture(
     missing: bool,
@@ -167,12 +169,19 @@ async fn retained_host_handoff_commits_signed_seed_and_reports_current_backup_af
 }
 #[tokio::test]
 async fn host_progress_and_precommit_cancel_preserve_original_without_backup() {
-    let (_root, host, installation, server) = fixture(false, false).await;
+    let (_root, mut host, installation, _server) = fixture(false, false).await;
+    let download = held_download::HeldDownload::new(fixtures::archive(true));
+    Arc::get_mut(&mut host)
+        .unwrap()
+        .repair_fixture
+        .as_mut()
+        .unwrap()
+        .url = download.url.clone();
     let (id, _) = dispatch(&host, installation);
     tokio::time::timeout(Duration::from_secs(5), async {
         loop {
             let status = host.install_status().unwrap();
-            if status.progress.is_some() && !server.received_requests().await.unwrap().is_empty() {
+            if status.progress.is_some() {
                 break;
             }
             tokio::time::sleep(Duration::from_millis(2)).await;

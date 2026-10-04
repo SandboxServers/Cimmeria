@@ -60,3 +60,7 @@ pub use storage::launcher_summary;
 
 pub mod launcher_compatibility;
 pub use storage::migration;
+
+pub use storage::adoption;
+pub use storage::updater;
+mod owner_lock;

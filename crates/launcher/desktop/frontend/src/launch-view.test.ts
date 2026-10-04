@@ -4,7 +4,7 @@ import {readFileSync} from 'node:fs';
 import {parseHTML} from 'linkedom';
 import {mountLaunch} from './launch-view';
 const html=readFileSync('ui/index.html','utf8');
-const initial=()=>({schema_version:1,resources_available:true,installation_id:'owner',observation:null as unknown,native:{schema_version:1,requires_reopen:false,preferences:{schema_version:1,revision:1,install_directory:'/fixture',launcher_summary_consent:false},operation:{schema_version:1,revision:0,operation:null as unknown}}});
+const initial=()=>({schema_version:1,resources_available:true,launcher_update_required:false,installation_id:'owner',observation:null as unknown,native:{schema_version:1,requires_reopen:false,preferences:{schema_version:1,revision:1,install_directory:'/fixture',launcher_summary_consent:false},operation:{schema_version:1,revision:0,operation:null as unknown}}});
 test('Play first click gives feedback, lost reply is observed without replay, unknown stays blocked',async()=>{
  let status=initial();let plays=0;let finish!:()=>void;const wait=new Promise<void>(resolve=>{finish=resolve;});
  const {document,window}=parseHTML(html);
@@ -43,5 +43,18 @@ test('minimum-version Play rejection is distinct from transport uncertainty',asy
  const app=mountLaunch(document,async(_,{request}:any)=>{if(request.command==='play'){plays++;throw 'launcher_too_old';}return status;});
  try{await app.ready;await new Promise(resolve=>setImmediate(resolve));document.getElementById('launch')!.dispatchEvent(new window.Event('click'));await app.settled();await new Promise(resolve=>setImmediate(resolve));
  assert.equal(plays,1);assert.match(document.getElementById('launch-status')!.textContent!,/Update the launcher/);assert.deepEqual(status,initial());
+ }finally{await app.dispose();}
+});
+
+test('native minimum gate survives successful status polls and blocks repeated Play',async()=>{
+ let status={...initial(),launcher_update_required:true,installation_id:null as string|null};let plays=0;
+ const {document,window}=parseHTML(html);
+ const app=mountLaunch(document,async(_,{request}:any)=>{if(request.command==='play')plays++;return status;});
+ try{await app.ready;for(let i=0;i<3;i++){await app.refresh();await new Promise(resolve=>setImmediate(resolve));
+ assert.match(document.getElementById('launch-status')!.textContent!,/Update the launcher/);
+ assert.equal((document.getElementById('launch') as HTMLButtonElement).disabled,true);
+ document.getElementById('launch')!.dispatchEvent(new window.Event('click'));}
+ assert.equal(plays,0);status=initial();await app.refresh();await new Promise(resolve=>setImmediate(resolve));
+ assert.equal((document.getElementById('launch') as HTMLButtonElement).disabled,false);
  }finally{await app.dispose();}
 });

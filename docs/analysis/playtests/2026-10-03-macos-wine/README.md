@@ -13,6 +13,8 @@ For the later Tauri work, use the [implementation plan](launcher-implementation-
 The [native launch ownership fix worknote](worknotes/launcher-launch-lock-fix.md)
 records locked-handle preparation coverage and the pending Windows revert proof.
 The Wine playtest notes below describe the earlier launcher workaround.
+The [adoption preparation handoff](worknotes/published-adoption-preparation.md)
+records retained reference ownership and isolated real RAR/CAB helper evidence.
 
 ## Historical Windows egui/WoWSilicon track
 
@@ -169,3 +171,8 @@ Windows-helper ownership requirements. It does not establish game compatibility.
 - [Minimum-launcher native admission gates](worknotes/updater-minimum-admission.md)
 - [Observability discovery](worknotes/observability-discovery.md)
 - [Fresh observability implementation assignment](worknotes/observability-implementation-assignment.md)
+
+- [Verified existing-user adoption contract](worknotes/adoption-contract-audit.md)
+- [Signed updater implementation and evidence](worknotes/signed-updater.md)
+- [Desktop updater contract](../../../../crates/launcher/desktop/docs/updater.md)
+- [Native verified-copy adoption foundation](worknotes/native-verified-copy-adoption.md)
