@@ -123,3 +123,11 @@ and separate automated checks from human login/world/Black Market UAT.
 Do not propose a native macOS build or restart the resolved WGL investigation
 unless the saved workaround no longer works.
 ```
+
+## Tauri implementation plan
+
+The [Tauri + Effect implementation plan](launcher-implementation-plan.md) records
+the 2026-10-04 direction: reuse Rust installation/launch behavior, implement real
+Effect orchestration and focused consent-aware operation summaries, then perform
+self-contained startup testing as the final release gate. This packet is a plan,
+not production implementation or an observed login result.

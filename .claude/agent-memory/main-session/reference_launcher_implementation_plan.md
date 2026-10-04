@@ -1,0 +1,16 @@
+# Tauri launcher implementation plan — 2026-10-04
+
+The [implementation plan](../../../docs/analysis/playtests/2026-10-03-macos-wine/launcher-implementation-plan.md)
+records the requested Tauri + Effect direction, with Rust authoritative for
+install/launch mutation and real Effect workflow coordination. Self-contained
+startup checks are deferred until last but remain a release gate. No production
+code, deployment, WireGuard connection or live observability probe belongs to
+this planning packet.
+
+Inspected contracts: launcher `telemetry/install_result.rs` queues only when
+opted in and uploads in the next game telemetry session, leaving failures before
+game launch unseen remotely. Server `telemetry/replay.rs` routes ClientNative to
+structured `client.native` logs, not native phase spans. Existing game consent
+is saved for launch-time snapshots; do not claim immediate DLL revocation.
+The plan proposes narrow bounded launcher summaries, independent export consent,
+acknowledged queue and validated lifted fields; these are not yet implemented.
