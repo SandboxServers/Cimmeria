@@ -11,7 +11,7 @@ update/launch parity are separate work; this does not complete packet 8.
 
 ## Native integration
 
-Use `storage::migration::{LegacySource, LegacyImport, MigrationError}`.
+Use `cimmeria_launcher_engine::migration::{LegacySource, LegacyImport, MigrationError}`.
 `LegacySource` contains native-selected `launcher_directory` (the folder beside
 the old executable) and `game_directory` (the game root). Both must exist and be
 absolute. This explicit mapping accommodates a Windows config path on Mac;
@@ -29,10 +29,10 @@ confirmation. Do not silently infer a Windows-to-Mac path conversion.
    are idempotent, including a response lost after commit. Different imports
    conflict; the engine never replaces the saved identity.
 
-Registration requires `pub mod migration` in `storage/mod.rs` and calling
-`state.recover_legacy_import()?` in `DesktopState::open` after construction and
-before returning it. No new dependency is required. Shell IPC and frontend
-confirmation presentation are owned by the integration packet, not this module.
+The engine registers migration under storage, re-exports the public migration
+API, and calls `state.recover_legacy_import()?` in `DesktopState::open` before
+returning it. No new dependency is required. Shell IPC and confirmation
+presentation are described under Settings preview and confirmation below.
 
 ## Sources and consent
 
@@ -88,8 +88,9 @@ conflicting imports, corruption/missing/oversized files, symlinks, idempotence,
 reopen, failures before/after atomic replacement, interrupted preference and
 completion writes, and absent destructive ownership. A Unix subprocess holding
 `flock` verifies real cross-process contention against the legacy lock primitive.
-Windows-native lock interoperability, hardware power-loss durability, shell/UI
-confirmation, visual UAT and actual legacy-user installs remain unverified here.
+Windows-native lock interoperability, hardware power-loss durability, visual UAT
+and actual legacy-user installs remain unverified. Shell/UI confirmation has
+additional native fixture evidence described below.
 
 ## Settings preview and confirmation
 
