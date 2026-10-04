@@ -15,8 +15,11 @@ and uploads debug logs to an Azure Blob SAS URL.
 The approved cross-platform replacement is being implemented separately in
 [`crates/launcher/desktop/`](../../crates/launcher/desktop/README.md). Its native
 first-install worker prepares content through the shared pipeline, but its Tauri
-UI does not yet dispatch installation or launch. Runtime provisioning and game
-validation remain separate gates. The existing Windows launcher described here
+UI does not yet dispatch installation or launch. Its shell now exposes restricted
+native installation/recovery IPC, with cached evidence for identical retries;
+frontend game controls remain disabled. Mac install/resume is rejected until the
+Wine adapter is connected. Runtime provisioning and game validation remain
+separate gates. The existing Windows launcher described here
 remains the functional user-facing implementation.
 
 Located in [`crates/launcher/`](../../crates/launcher/) as the

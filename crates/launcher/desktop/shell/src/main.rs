@@ -2,7 +2,7 @@
 mod host;
 
 use cimmeria_launcher_engine::{NativeCommand, NativeSnapshot, StorageError};
-use host::NativeHost;
+use host::{InstallCommand, InstallStatus, JobError, NativeHost};
 use std::sync::Arc;
 use tauri::Manager;
 use tauri_plugin_dialog::DialogExt;
@@ -64,6 +64,53 @@ async fn fetch_patch_notes() -> Result<
     cimmeria_launcher_engine::catalog::fetch_patch_notes().await
 }
 
+#[tauri::command]
+async fn install_command(
+    request: InstallCommand,
+    state: tauri::State<'_, Arc<NativeHost>>,
+) -> Result<InstallStatus, JobError> {
+    request.validate()?;
+    let host = state.inner().clone();
+    let release = if request.needs_release() {
+        host.require_install_support()?;
+        Some(
+            select_install_release(
+                host.clone(),
+                request.clone(),
+                cimmeria_launcher_engine::catalog::fetch_release,
+            )
+            .await?,
+        )
+    } else {
+        None
+    };
+    tauri::async_runtime::spawn_blocking(move || host.install_command(request, release))
+        .await
+        .map_err(|_| JobError::Io)?
+}
+
+async fn select_install_release<F>(
+    host: Arc<NativeHost>,
+    request: InstallCommand,
+    fetch: impl FnOnce() -> F,
+) -> Result<cimmeria_launcher_engine::catalog::VerifiedRelease, JobError>
+where
+    F: std::future::Future<
+        Output = Result<
+            cimmeria_launcher_engine::catalog::VerifiedRelease,
+            cimmeria_launcher_engine::catalog::CatalogError,
+        >,
+    >,
+{
+    let cached = tauri::async_runtime::spawn_blocking(move || host.retry_release(&request))
+        .await
+        .map_err(|_| JobError::Io)??;
+    match cached {
+        Some(release) => Ok(release),
+        None => fetch().await.map_err(Into::into),
+    }
+}
+
 fn main() {
     tauri::Builder::default()
         .plugin(tauri_plugin_dialog::init())
@@ -77,7 +124,8 @@ fn main() {
             launcher_command,
             choose_install_directory,
             show_install_directory,
-            fetch_patch_notes
+            fetch_patch_notes,
+            install_command
         ])
         .run(tauri::generate_context!())
         .expect("desktop launcher could not initialize");

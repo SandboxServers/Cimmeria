@@ -1,16 +1,24 @@
 //! One native-selected store, opened lazily on a blocking worker.
 use cimmeria_launcher_engine::{DesktopState, NativeCommand, NativeSnapshot, StorageError};
-use std::{path::PathBuf, sync::Mutex};
+use std::{
+    path::PathBuf,
+    sync::{Arc, Mutex},
+};
+
+mod install;
+pub use install::{InstallCommand, InstallStatus, JobError};
 
 pub struct NativeHost {
     root: PathBuf,
-    state: Mutex<Option<DesktopState>>,
+    state: Mutex<Option<Arc<Mutex<DesktopState>>>>,
+    worker: Mutex<Option<cimmeria_launcher_engine::install_worker::Worker>>,
 }
 impl NativeHost {
     pub fn new(root: PathBuf) -> Self {
         Self {
             root,
             state: Mutex::new(None),
+            worker: Mutex::new(None),
         }
     }
 
@@ -18,11 +26,17 @@ impl NativeHost {
         &self,
         run: impl FnOnce(&mut DesktopState) -> Result<T, StorageError>,
     ) -> Result<T, StorageError> {
+        let state = self.store()?;
+        let mut state = state.lock().map_err(|_| StorageError::Io)?;
+        run(&mut state)
+    }
+
+    fn store(&self) -> Result<Arc<Mutex<DesktopState>>, StorageError> {
         let mut guard = self.state.lock().map_err(|_| StorageError::Io)?;
         if guard.is_none() {
-            *guard = Some(DesktopState::open(&self.root)?);
+            *guard = Some(Arc::new(Mutex::new(DesktopState::open(&self.root)?)));
         }
-        run(guard.as_mut().ok_or(StorageError::Io)?)
+        guard.as_ref().cloned().ok_or(StorageError::Io)
     }
 
     pub fn dispatch(&self, command: NativeCommand) -> Result<NativeSnapshot, StorageError> {

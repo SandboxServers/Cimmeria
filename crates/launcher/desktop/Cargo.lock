@@ -578,11 +578,16 @@ name = "cimmeria-launcher-desktop"
 version = "0.1.0"
 dependencies = [
  "cimmeria-launcher-engine",
+ "ed25519-dalek",
+ "serde",
+ "serde_json",
  "tauri",
  "tauri-build",
  "tauri-plugin-dialog",
  "tauri-plugin-opener",
  "tempfile",
+ "tokio",
+ "uuid",
 ]
 
 [[package]]

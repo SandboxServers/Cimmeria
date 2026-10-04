@@ -283,10 +283,8 @@ the Windows icon correction and before the catalog addition.
 ## Next integration gates
 
 Verify the native window, keyboard behavior, actual Tauri IPC, folder chooser
-and saved-folder reveal interactively. Extract existing installation/preparation
-behind validated native intents, prove worker dispatch follows persistence,
-and implement authoritative reconciliation, cancellation and progress through
-Effect. Game actions remain disconnected from the frontend. Platform
+and saved-folder reveal interactively. Connect the restricted native install,
+reconciliation, cancellation and progress commands to Effect frontend workflows. Game actions remain disconnected from the frontend. Platform
 provisioning, telemetry, migration/updater and final self-contained startup and
 release gates remain open.
 
@@ -446,8 +444,9 @@ Content checks require the expected ledger, a nonempty regular executable and
 an `SGWGame` directory, with resolved executable/game paths inside the content
 root. They do not validate every installed file, runtime prerequisites or game
 compatibility. This path covers only the native in-process worker and does not
-establish that an unobserved Wine guest exited. Resume, cleanup and UI routing remain pending. Callers can use the saved signed
-evidence below to supply the exact verified release used by the attempt.
+establish that an unobserved Wine guest exited. Explicit native resume is described
+below; cleanup and frontend routing remain pending. Callers can use saved signed
+evidence to supply the exact verified release used by the attempt.
 
 Recovery fixtures cover missing/empty output, preserved partial content,
 receipt-before-terminal recovery across reopen, missing executable, active owner
@@ -504,3 +503,40 @@ No frontend behavior changed; JS REPL/visual UAT does not apply to this packet.
 The desktop CI workflow now lets active native checks finish instead of cancelling
 on each milestone push. GitHub keeps the latest pending run for this branch;
 results for an older commit are never evidence that the latest commit passed.
+
+
+## Restricted installation IPC
+
+The shell's versioned `install_command` exposes inspect, install, cancel, resume
+and reconcile. Install carries an operation ID and operation/preference
+revisions; resume and reconcile require the currently inspected ID/revision.
+Cancel identifies the retained worker. Requests cannot supply paths, executable
+configuration, URLs, manifests or native outcomes.
+
+New installation requests fetch the fixed signed release natively. An identical
+current-operation retry first reverifies its cached release and checks the
+original preference revision and native login-server inputs. It does not fetch
+the mutable release URL again; invalid cached evidence fails without fallback.
+Resume and reconciliation also use saved signed evidence.
+
+The host shares one `DesktopState` with its retained worker. If dispatch fails
+after admission, it attempts to mark the operation for reconciliation. Successful
+reconciliation clears retained worker observations so status cannot reuse an
+old outcome. Status includes the native snapshot and platform support; progress
+projects only fixed download/extraction phases and JavaScript-safe counts, with
+no path-bearing labels. The native snapshot still includes the saved directory.
+Failures cross IPC as flat allowlisted codes.
+
+Install and resume are Windows-only until the Mac Wine adapter is connected.
+Other platforms reject them before downloads or destination mutation; install's
+async adapter checks support before fetching release evidence. Frontend game
+controls remain disabled and unconnected to this command. Native IPC availability
+does not establish interactive Tauri routing or runtime/gameplay readiness.
+
+Local validation for this packet: thirteen shell tests passed. No frontend
+behavior changed, so JS REPL/visual UAT does not apply to this native-only change.
+Prior [CI run 37187754913](https://github.com/SandboxServers/Cimmeria/actions/runs/37187754913)
+passed macOS and Windows at `117344e76`. The resume packet's
+[run 37188326146](https://github.com/SandboxServers/Cimmeria/actions/runs/37188326146)
+at `bf8029e28` passed macOS; its complete Windows result remains pending.
+Neither run validates this newer IPC change.

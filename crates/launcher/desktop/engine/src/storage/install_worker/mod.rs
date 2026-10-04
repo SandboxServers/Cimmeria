@@ -12,7 +12,8 @@ use tokio::sync::watch;
 use tokio_util::sync::CancellationToken;
 use uuid::Uuid;
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize)]
+#[serde(rename_all = "snake_case")]
 pub enum Outcome {
     /// Content preparation only; runtime prerequisites and game UAT are separate.
     ContentPrepared,
@@ -31,6 +32,9 @@ pub struct Worker {
     pub result: watch::Receiver<Option<Outcome>>,
 }
 impl Worker {
+    pub fn operation_id(&self) -> Uuid {
+        self.id
+    }
     /// Commit cancellation before signalling the worker. No JoinHandle/abort API.
     pub fn request_cancel(&self) -> Result<Snapshot, IntentError> {
         let mut state = self.state.lock().map_err(|_| StorageError::Io)?;

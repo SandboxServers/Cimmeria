@@ -534,3 +534,22 @@ formatting passed. Native Windows resume validation remains pending. Repeated
 milestone pushes cancelled preceding native runs, so desktop CI now retains
 active work and queues the latest pending revision. This changes scheduling,
 not what checks run or which commit their results validate.
+
+
+### 2026-10-04: restricted native installation IPC
+
+Added versioned inspect/install/cancel/resume/reconcile commands around shared
+native state and the retained worker. Native code owns release selection and
+login-server inputs. Identical current-operation retries use reverified cached
+evidence before considering network access; corrupt/mismatched evidence fails
+without a replacement fetch. Dispatch failure after admission attempts immediate
+reconciliation gating. Successful reconciliation clears old worker observations.
+Progress exposes static phases/counts and errors use flat safe codes.
+
+Thirteen shell tests passed locally. No frontend behavior changed: game controls
+remain disabled and unconnected, so frontend JS REPL/visual UAT does not apply.
+Mac install/resume is rejected before downloads until the Wine adapter exists.
+Actual Tauri interaction, runtime/game readiness and final startup remain gates.
+Prior native CI `37187754913` passed both platforms at `117344e76`. Resume CI
+`37188326146` at `bf8029e28` passed macOS; full Windows completion remains pending.
+Those prior revisions do not validate the new IPC packet.

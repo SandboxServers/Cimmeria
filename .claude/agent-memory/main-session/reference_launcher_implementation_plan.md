@@ -69,7 +69,8 @@ Windows+Mac before the shell; shell/visual/game gates remain separate.
   operation UUID: a failed subsequent journal commit must not overwrite prior
   retry evidence. Restart never replays work. First-install path checks accept
   absent/empty directories but do not reserve them; mutation ownership and
-  readiness remain separate coordinator gates. No install IPC is enabled yet.
+  readiness remain separate coordinator gates. Restricted install IPC was added
+  later in this sequence; frontend controls remain disconnected.
 
 - Native first-install worker dispatches only after durable Running; it owns a
   create-new marker/lock, stages content and promotes to selected-directory/game
@@ -102,3 +103,12 @@ Windows+Mac before the shell; shell/visual/game gates remain separate.
 - Desktop CI retains active native runs (cancel-in-progress false), preventing
   milestone pushes from repeatedly cancelling Windows checks. Latest pending
   revision is queued; evidence must still be attributed to its exact commit.
+
+
+- Restricted shell install IPC now exposes inspect/install/cancel/resume/reconcile
+  with native release/settings ownership and shared retained worker state.
+  Identical current-operation retries reverify cached evidence without fetching
+  the mutable release URL; successful reconciliation clears old worker observations.
+  Mac install/resume stays blocked before network until the Wine adapter exists.
+  Frontend controls remain disabled/unconnected. Thirteen local shell tests passed;
+  native Tauri interaction and this packet's Windows CI remain separate gates.
