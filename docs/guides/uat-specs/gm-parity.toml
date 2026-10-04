@@ -167,12 +167,17 @@ title = "Readouts describe the selected player"
 expected = "Readouts describe the selected player, not you."
 players = 2
 known_issues = ["Derived"]
-step = [{ chat = ".info" }]
+step = [{ tool = "@target_player" }, { chat = ".info" }]
 [[row.expect]]
 id = "readout"
 text = "the readout names the selected player"
 source = "chat"
 contains = "Name ID"
+[[row.expect]]
+id = "names-p2"
+text = "the readout is about p2, not you"
+source = "chat"
+contains = "${p2_character}"
 
 [[row]]
 id = "M1-4"

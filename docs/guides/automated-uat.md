@@ -21,7 +21,7 @@ The runner never decides a row passed on weaker evidence than a tester would hav
 ## Before you start
 
 1. **Hold the lab lock.** Only one agent drives a client at a time. Create `%LOCALAPPDATA%\cimmeria-lab\live.lock` as a directory (creating a directory is atomic), write your name and purpose into `live.lock\owner`, and remove the directory when you finish. If it already exists, someone else is live: wait and retry every minute.
-2. **One `SGW.exe`, the `lab` account.** `lab_client_start` refuses while another client runs. The account and character come from `lab-account.json` ([live research lab, Setup](live-research-lab.md)).
+2. **One `SGW.exe`, the `lab` account.** `lab_client_start` refuses while another client runs. The account and character come from `lab-account.json` ([live research lab, Setup](live-research-lab.md)). A two-player row adds a second client, `p2`, on its own account ([Two-player rows](#two-player-rows)).
 3. **Colo rule 6.** `.announce`, `/gmshout`, `.bm_seed`, `.mute` and content reloads need the owner's say-so in this session. The runner refuses them (the row is BLOCKED) unless the run passes that word in `owner_approvals`.
 4. **The screensaver.** A secure screensaver locks the desktop and stops the client rendering. Keep the display awake (hold `ES_DISPLAY_REQUIRED`) or stop a non-secure `*.scr` before launching.
 5. **Server evidence.** The runner reads `server_*` tools from `cimmeria-lab-mcp` when `CIMMERIA_LAB_MCP_URL` and `CIMMERIA_LAB_MCP_TOKEN` are set. When that endpoint is unreachable (the colo answered HTTP 403 "Host header is not allowed" on 2026-09-29), server and packet clauses are UNVERIFIED and the row rests on its SigNoz clauses, which you attest (below).
@@ -157,7 +157,7 @@ since = "searchitem"                 # only lines after that step started
 matches = "searchitem 'pistol': [0-9]+ match"
 ```
 
-**Row fields:** `id`, `title`, `expected`, `required_native`, `state`, `players` (above 1 is BLOCKED until a second player exists), `known_issues`, `blocked` (a standing reason; nothing runs), `anchor` (default true in world), `relog` (what `After relog:` says when the row checks one), `notes`, `setup`, `step`, `teardown`, `expect`, `evidence`.
+**Row fields:** `id`, `title`, `expected`, `required_native`, `state`, `players` (2 drives the second lab client, `p2`, and is BLOCKED with the reason when none is configured; above 2 is always BLOCKED), `known_issues`, `blocked` (a standing reason; nothing runs), `anchor` (default true in world), `relog` (what `After relog:` says when the row checks one), `notes`, `setup`, `step`, `teardown`, `expect`, `evidence`.
 
 **Actions** (exactly one of the first four):
 
@@ -171,10 +171,11 @@ matches = "searchitem 'pistol': [0-9]+ match"
 | `label` | A name for `at`, `since` and timing clauses |
 | `fallback` | Actions tried in order when the primary tool is not routed; their tier is what counts |
 | `optional` | An error is recorded but does not fail the row |
+| `client` | `p1` (default) or `p2`: which lab client runs it. `p2` needs `players = 2` |
 
-`${character}`, `${run_id}`, `${row_id}`, `${section}`, `${bookmark_id}`, the run's `vars` and captured values substitute into every string.
+`${character}`, `${run_id}`, `${row_id}`, `${section}`, `${bookmark_id}`, `${p2_character}` (two-player rows), `${player_entity_id}` (rows with packet clauses), the run's `vars` and captured values substitute into every string.
 
-**Expected clauses** (`[[row.expect]]`): `id`, `text`, `source`, `required` (default true), `at` (evaluate right after that step; default after all steps).
+**Expected clauses** (`[[row.expect]]`): `id`, `text`, `source`, `required` (default true), `at` (evaluate right after that step; default after all steps), `client` (`chat`, `tool`, `lua` and `wait` clauses: read `p2` instead of `p1`).
 
 | `source` | Fields | Verdict |
 |---|---|---|
@@ -218,11 +219,35 @@ tolerance = 1
 
 The session is found by the character's name in `server_sessions`; pass `vars.player_entity_id` to skip that lookup. The runner sets `${player_entity_id}` once it knows it. A packet clause is graded over the whole row, so it takes no `at` or `since`. A clause is UNVERIFIED, naming the reason, when the endpoint is not configured or refuses, the session is not found, or the tap could not be read. When the tap's ring dropped messages (`dropped` in the read), a PASS that depends on an upper bound or on every row becomes UNVERIFIED, because the dropped messages were never checked. Packet clauses cross-check the client's own decode (ability-mechanics AB-C3): the tap and a `client_event` clause on the same row must agree.
 
-**Evidence** (`[[row.evidence]]`): `name`, `tool`, `args`, `at`. Images become PNG attachments; JSON results become `.json` attachments. Every row that ran also gets `final.png`.
+**Evidence** (`[[row.evidence]]`): `name`, `tool`, `args`, `at`, `client`. Images become PNG attachments; JSON results become `.json` attachments. Every row that ran also gets `final.png`, and a two-player row gets `final-p2.png` as well.
+
+### Two-player rows
+
+A row with `players = 2` drives a second lab client, `p2`, alongside the lab character. Before the row's anchor the runner brings p2 in world, starting its client, logging in and playing its character as needed. It reuses a p2 that is already in world as that character. Every call is recorded as a p2 setup action. Then:
+
+- steps, clauses and evidence with `client = "p2"` run on p2's client. Everything else runs on p1, as in a one-player row. Each client's chat box has its own marks, so a p2 chat clause counts only p2's new lines;
+- `@target_player` targets the other player's character by name with real input. It is `client_target` with `name` set to `${p2_character}` when p1 runs it, and to `${character}` when p2 runs it. Its other `args` (`allow_fallback`, `settle_ms`) pass through. A `targetUnit` fallback reports N3, which costs the row its PASS as usual;
+- to read p2's own state, use `{ source = "tool", tool = "@player_state", client = "p2", ... }`.
+
+```toml
+[[row]]
+id = "M1-2"
+title = "Readouts describe the selected player"
+expected = "Readouts describe the selected player, not you."
+players = 2
+step = [{ tool = "@target_player" }, { chat = ".info" }]
+[[row.expect]]
+id = "names-p2"
+text = "the readout is about p2"
+source = "chat"
+contains = "${p2_character}"
+```
+
+p2's account and character come from `lab-account.p2.json`. The section's `character` and `fresh` settings apply to p1 only. The row is BLOCKED, naming the reason, when that file is missing or names no character, when it names p1's own character (the second login would evict the first), when `lab_uat_run` is itself running in instance p2, or when a tool a p2 action or clause needs is not routed on p2. Set-up: [Two clients](live-research-lab.md#two-clients-two-player-scenarios). Both players need to be in the same world for targeting, and the row's setup moves them there.
 
 ### The capability table
 
-`crates/lab/src/uat/tools.rs` maps each capability to the tool that provides it and the most native tier it can claim: `@world_click` is `client_world_click` at N1, `@inventory` is the read `client_inventory`. It lists the tools on `main`, including the world tools (#1099: `@entity_find`, `@world_click`, `@target`, `@move_to`, `@camera`) and the combat tools (#1100: `@use_ability`, `@combat_log`, `@die_and_respawn`, `@wait_event`, `@hotbar`), and the planned ones (UI and items: `@window_read`, `@window_click_row`, `@chat_log`, `@inventory`, `@player_state`, `@item_action`, `@drag_drop`; and `@chat_send`, `@cache_files`). Write planned tools by alias in specs: when one lands under another name, the fix is one line in the table. A tool that reports how it drove the game (`native_level` as a word, `real_input` / `slash_command` / `ui_lua` / `server_shortcut`, as the world tools do, or as `{tier: "N1".."X"}`, as the combat tools do) overrides its table tier when it fell back lower, so a `client_target` that used `targetUnit` counts as N3.
+`crates/lab/src/uat/tools.rs` maps each capability to the tool that provides it and the most native tier it can claim: `@world_click` is `client_world_click` at N1, `@inventory` is the read `client_inventory`. It lists the tools on `main`, including the world tools (#1099: `@entity_find`, `@world_click`, `@target`, `@move_to`, `@camera`; and `@target_player`, which the runner expands for [two-player rows](#two-player-rows)) and the combat tools (#1100: `@use_ability`, `@combat_log`, `@die_and_respawn`, `@wait_event`, `@hotbar`), and the planned ones (UI and items: `@window_read`, `@window_click_row`, `@chat_log`, `@inventory`, `@player_state`, `@item_action`, `@drag_drop`; and `@chat_send`, `@cache_files`). Write planned tools by alias in specs: when one lands under another name, the fix is one line in the table. A tool that reports how it drove the game (`native_level` as a word, `real_input` / `slash_command` / `ui_lua` / `server_shortcut`, as the world tools do, or as `{tier: "N1".."X"}`, as the combat tools do) overrides its table tier when it fell back lower, so a `client_target` that used `targetUnit` counts as N3.
 
 `cargo test -p cimmeria-lab` parses and validates every committed spec, so a typo in a field name or a dangling label fails the build.
 
@@ -252,7 +277,7 @@ Rows authored in [docs/guides/uat-specs/](uat-specs/), 2026-09-29, and what a `p
 6. `bank` 1, 12 and 2 (the first world click), `crafting` 1-19, `castle-cellblock` T01/T02: fresh characters, Lua reads (the stock bindings named there are unproven: a read that errors is UNVERIFIED, and the spec is fixed from what the client shows).
 7. `consumables` I1 and `cooked-data` CD6.
 
-The [lab tooling backlog](../analysis/lab-automation/tooling-backlog.md) lists the tools the blocked rows wait for. When one lands, a spec that names it runs with no runner change. The colo also seeds `lab2` to `lab5` now (#1093), so the two-player rows can be written against a second lab instance ([Two clients](live-research-lab.md#two-clients-two-player-scenarios)); `Castle_CellBlock` is instanced per login, so both players move to Castle (world 8) first.
+The [lab tooling backlog](../analysis/lab-automation/tooling-backlog.md) lists the tools the blocked rows wait for. When one lands, a spec that names it runs with no runner change. The colo also seeds `lab2` to `lab5` (#1093), and the runner drives a second lab instance for `players = 2` rows ([Two-player rows](#two-player-rows)). `Castle_CellBlock` is instanced per login, so both players move to Castle (world 8) first.
 
 ## Troubleshooting
 

@@ -95,6 +95,7 @@ fn server_record(index: usize, role: Role, tool: &str, args: &Value) -> ActionRe
         error: None,
         result: Value::Null,
         calls: vec![],
+        client: None,
     }
 }
 
@@ -283,6 +284,7 @@ fn packet_clause(c: &ExpectSpec, ctx: &RowCtx) -> ClauseResult {
         detail: None,
         evaluated_ms: now_ms(),
         query: None,
+        client: None,
         evidence_refs: ctx
             .attachments
             .iter()

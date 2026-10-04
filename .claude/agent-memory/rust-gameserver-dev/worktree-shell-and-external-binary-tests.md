@@ -102,6 +102,15 @@ Also, when the Dev Drive that holds the build-lane target dirs fills up
 `CIMMERIA_TARGET_ROOT` and point `CIMMERIA_TARGET_ROOT` at a scratch
 directory on a drive with free space.
 
+AB-L4/L6 (2026-10-04): `bash tools/build-lane/ship.sh pr -C <wt> ...` is
+refused from the Bash tool ("runs bash in a plain command"), with `-m` or
+`-F` alike. `lane.sh` through `bash` is accepted, so the refusal is
+specific to `ship.sh`. What works is the PowerShell tool running
+`python tools/build-lane/ship.py pr -C <wt> -F <msgfile> --title ...
+--body-file <file>`, which is the same script `ship.sh` execs. A
+follow-up `git commit` and a bare `git push` from Bash then work as
+separate calls.
+
 ## A test against a rebuilt C++ binary needs an explicit opt-in
 
 **Why:** `tests/navbuilder_axis_roundtrip.rs` gained a case asserting

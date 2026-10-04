@@ -4,6 +4,7 @@
 use serde_json::{json, Value};
 
 use super::actions::{subst, subst_str, CHAT_READ_TOOL};
+use super::players::Who;
 use super::{now_ms, utc_of, RowCtx, Runner};
 use crate::uat::clause::{compare_tol, describe, eval_chat, json_at, new_lines};
 use crate::uat::evidence::{clip, ClauseResult, Verdict};
@@ -17,6 +18,7 @@ const SIGNOZ_AFTER_MS: i64 = 120_000;
 
 impl<I: ToolInvoker> Runner<'_, I> {
     pub(crate) async fn eval_clause(&mut self, c: &ExpectSpec, ctx: &mut RowCtx) -> ClauseResult {
+        let who = Who::of(c.client.as_deref());
         let mut r = ClauseResult {
             id: c.id.clone(),
             text: c.text.clone(),
@@ -28,24 +30,25 @@ impl<I: ToolInvoker> Runner<'_, I> {
             detail: None,
             evaluated_ms: now_ms(),
             query: None,
+            client: who.tag(),
             evidence_refs: vec![],
         };
         match c.source {
-            Source::Chat => self.eval_chat_clause(c, ctx, &mut r).await,
+            Source::Chat => self.eval_chat_clause(who, c, ctx, &mut r).await,
             Source::Tool => {
                 let tool = c.tool.clone().unwrap_or_default();
                 let args = subst(c.args.as_ref().unwrap_or(&json!({})), &ctx.vars);
-                self.eval_read(&tool, args, c, &mut r).await;
+                self.eval_read(who, &tool, args, c, &mut r).await;
             }
             Source::Lua => {
                 let chunk = subst_str(c.chunk.as_deref().unwrap_or_default(), &ctx.vars);
-                self.eval_lua(&chunk, c, &mut r).await;
+                self.eval_lua(who, &chunk, c, &mut r).await;
             }
             Source::Wait => {
                 let cond = subst_str(c.lua_condition.as_deref().unwrap_or_default(), &ctx.vars);
                 let args =
                     json!({ "lua_condition": cond, "timeout_ms": c.timeout_ms.unwrap_or(10_000) });
-                let out = self.inv.call("client_wait_for", args).await;
+                let out = self.on(who).call("client_wait_for", args).await;
                 if out.ok {
                     let met = out
                         .json
@@ -138,15 +141,21 @@ impl<I: ToolInvoker> Runner<'_, I> {
         r
     }
 
-    async fn eval_chat_clause(&mut self, c: &ExpectSpec, ctx: &mut RowCtx, r: &mut ClauseResult) {
-        let after = match self.read_chat(ctx).await {
+    async fn eval_chat_clause(
+        &mut self,
+        who: Who,
+        c: &ExpectSpec,
+        ctx: &mut RowCtx,
+        r: &mut ClauseResult,
+    ) {
+        let after = match self.read_chat_of(who).await {
             Ok(a) => a,
             Err(e) => {
                 r.detail = Some(format!("{CHAT_READ_TOOL}: {e}"));
                 return;
             }
         };
-        let key = c.since.clone().unwrap_or_default();
+        let key = who.mark(c.since.as_deref().unwrap_or_default());
         let before = ctx.chat_marks.get(&key).cloned().unwrap_or_default();
         let (lines, overlap) = new_lines(&before, &after);
         // Variables may appear in the pattern (`' - ${character} \('`).
@@ -167,13 +176,20 @@ impl<I: ToolInvoker> Runner<'_, I> {
         r.observed = observed;
     }
 
-    async fn eval_read(&mut self, tool: &str, args: Value, c: &ExpectSpec, r: &mut ClauseResult) {
-        if !self.inv.has_tool(tool) {
+    async fn eval_read(
+        &mut self,
+        who: Who,
+        tool: &str,
+        args: Value,
+        c: &ExpectSpec,
+        r: &mut ClauseResult,
+    ) {
+        if !self.on(who).has_tool(tool) {
             r.verdict = Verdict::Blocked;
             r.detail = Some(format!("tool {tool} is not routed"));
             return;
         }
-        let out = self.inv.call(tool, args).await;
+        let out = self.on(who).call(tool, args).await;
         if !out.ok {
             r.detail = Some(format!("{tool}: {}", out.error.unwrap_or_default()));
             return;
@@ -184,16 +200,14 @@ impl<I: ToolInvoker> Runner<'_, I> {
 
     /// A Lua read: its first result, parsed as JSON when it is JSON. A
     /// Lua error means the reader broke, not the game: UNVERIFIED.
-    async fn eval_lua(&mut self, chunk: &str, c: &ExpectSpec, r: &mut ClauseResult) {
-        if !self.inv.has_tool("client_lua_eval") {
+    async fn eval_lua(&mut self, who: Who, chunk: &str, c: &ExpectSpec, r: &mut ClauseResult) {
+        let inv = self.on(who);
+        if !inv.has_tool("client_lua_eval") {
             r.verdict = Verdict::Blocked;
             r.detail = Some("tool client_lua_eval is not routed".into());
             return;
         }
-        let out = self
-            .inv
-            .call("client_lua_eval", json!({ "chunk": chunk }))
-            .await;
+        let out = inv.call("client_lua_eval", json!({ "chunk": chunk })).await;
         let ok = out.ok && out.json.get("ok").and_then(Value::as_bool).unwrap_or(false);
         if !ok {
             let err = out

@@ -23,6 +23,13 @@ pub(super) struct Fake {
     typed: Mutex<String>,
     lua: Value,
     pub(super) calls: Mutex<Vec<String>>,
+    /// Every call with its arguments (the two-player tests read these).
+    pub(super) log: Mutex<Vec<(String, Value)>>,
+    /// The flows' client state: running, and the login screen reached.
+    running: Mutex<bool>,
+    login: Mutex<String>,
+    /// The character `client_player_state` reports.
+    name: String,
 }
 
 const BASE_TOOLS: [&str; 9] = [
@@ -49,7 +56,23 @@ impl Fake {
             typed: Mutex::new(String::new()),
             lua: json!({ "ok": true, "results": ["40"] }),
             calls: Mutex::new(vec![]),
+            log: Mutex::new(vec![]),
+            running: Mutex::new(true),
+            login: Mutex::new("in_world".into()),
+            name: "Labone".into(),
         }
+    }
+
+    /// A client that is not running yet, playing `name` once in world.
+    pub(super) fn stopped(mut self, name: &str) -> Self {
+        *self.running.lock().unwrap() = false;
+        *self.login.lock().unwrap() = "not_started".into();
+        self.name = name.to_string();
+        self
+    }
+
+    pub(super) fn names(&self) -> Vec<String> {
+        self.calls.lock().unwrap().clone()
     }
 
     fn without(mut self, tool: &str) -> Self {
@@ -76,13 +99,33 @@ impl ToolInvoker for Fake {
 
     async fn call(&self, name: &str, args: Value) -> ToolOutcome {
         self.calls.lock().unwrap().push(name.to_string());
+        self.log
+            .lock()
+            .unwrap()
+            .push((name.to_string(), args.clone()));
         let ok = |json: Value| ToolOutcome {
             ok: true,
             json,
             ..Default::default()
         };
         match name {
-            "lab_client_status" => ok(json!({ "running": true, "login_state": "in_world" })),
+            "lab_client_status" => ok(json!({
+                "running": *self.running.lock().unwrap(),
+                "login_state": *self.login.lock().unwrap(),
+            })),
+            "lab_client_start" => {
+                *self.running.lock().unwrap() = true;
+                ok(json!({ "pid": 1 }))
+            }
+            "lab_login" | "lab_logout" => {
+                *self.login.lock().unwrap() = "character_select".into();
+                ok(json!({}))
+            }
+            "lab_play_character" => {
+                *self.login.lock().unwrap() = "in_world".into();
+                ok(json!({ "dialog_open": false }))
+            }
+            "client_player_state" => ok(json!({ "name": self.name, "level": 12 })),
             "client_type_text" => {
                 *self.typed.lock().unwrap() = args["text"].as_str().unwrap_or_default().to_string();
                 ok(json!({ "typed": true }))
@@ -107,9 +150,12 @@ impl ToolInvoker for Fake {
             "client_lua_eval" => ok(self.lua.clone()),
             "client_wait_for" => ok(json!({ "met": true, "elapsed_ms": 5 })),
             "lab_fail" => ToolOutcome::err("scripted failure"),
-            "client_target" => {
+            // The click lands unless the spec allows the targetUnit fallback,
+            // which this fake then reports taking.
+            "client_target" if args["allow_fallback"] == true => {
                 ok(json!({ "native_level": "ui_lua", "counts_as_native_pass": false }))
             }
+            "client_target" => ok(json!({ "native_level": "real_input", "target": args["name"] })),
             "lab_screenshot" => ToolOutcome {
                 ok: true,
                 json: json!("client window 8x8"),
@@ -510,6 +556,14 @@ async fn committed_specs_plan_against_main_tools() {
         result("black-market", "U0").result,
         "BLOCKED",
         "rule 6 without approval"
+    );
+    // Two players: BLOCKED until a second lab instance is configured.
+    let m12 = result("gm-parity", "M1-2");
+    assert_eq!(m12.result, "BLOCKED");
+    assert!(
+        m12.reasons[0].contains("second lab instance"),
+        "{:?}",
+        m12.reasons
     );
     assert!(fake.calls.lock().unwrap().is_empty());
     for r in &out.rows {

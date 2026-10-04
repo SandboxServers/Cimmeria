@@ -298,6 +298,7 @@ mod tests {
                 evaluated_ms: 0,
                 query: None,
                 evidence_refs: vec![],
+                client: None,
             }],
             attachments: vec![],
             known_issues: vec![],

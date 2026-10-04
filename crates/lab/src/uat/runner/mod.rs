@@ -4,14 +4,17 @@
 //!
 //! One row runs as: static checks (standing `blocked`, players, colo
 //! rule 6, tool availability) → reach the row's state (client running,
-//! logged in, in world) → the `.bug uat <row>` anchor → setup → steps
+//! logged in, in world; and p2 in world for a two-player row) → the
+//! `.bug uat <row>` anchor → setup → steps
 //! (clauses and evidence tied to a step label run right after it) → end
 //! clauses and evidence → teardown → grade → write. Rows are independent:
 //! a failed row never stops the section.
 
 mod actions;
+mod checks;
 mod clauses;
 mod packet;
+mod players;
 mod session;
 
 use std::collections::{HashMap, HashSet};
@@ -27,7 +30,9 @@ use super::invoke::{ServerInvoker, ToolInvoker};
 use super::ledger;
 use super::spec::{RowSpec, SectionSpec, Source};
 use super::tier::Role;
+use players::Who;
 
+pub use players::SecondPlayer;
 pub use session::client_fingerprint;
 
 /// A parsed spec file and where it came from.
@@ -136,6 +141,10 @@ pub struct Runner<'a, I: ToolInvoker> {
     pub(crate) characters: Vec<Value>,
     /// The character the runner last entered the world as.
     pub(crate) in_world_as: Option<String>,
+    /// The second lab client for two-player rows, or why there is none.
+    pub(crate) p2: Result<SecondPlayer<'a, I>, String>,
+    /// The character p2 last entered the world as.
+    pub(crate) p2_in_world_as: Option<String>,
 }
 
 impl<'a, I: ToolInvoker> Runner<'a, I> {
@@ -189,6 +198,8 @@ impl<'a, I: ToolInvoker> Runner<'a, I> {
             fresh: HashMap::new(),
             characters: vec![],
             in_world_as: None,
+            p2: Err(players::NO_P2.into()),
+            p2_in_world_as: None,
         };
         for s in &runner.req.sections {
             let entry = json!({ "path": s.path, "sha256": s.sha256, "section": s.spec.section.id });
@@ -363,6 +374,13 @@ impl<'a, I: ToolInvoker> Runner<'a, I> {
             return;
         }
         ctx.character = self.character_value(spec);
+        if row.players == 2 {
+            if let Err(e) = self.ensure_p2(ctx).await {
+                ctx.blocked
+                    .push(format!("could not bring p2 in world: {e}"));
+                return;
+            }
+        }
         if row.state == "in_world" && row.anchor.unwrap_or(true) {
             self.anchor(ctx).await;
         }
@@ -404,22 +422,33 @@ impl<'a, I: ToolInvoker> Runner<'a, I> {
                 return false;
             }
         }
-        let since: HashSet<&str> = row
+        // Chat marks per client: each chat clause reads its own client's box.
+        let chat: Vec<(Who, Option<&str>)> = row
             .expect
             .iter()
-            .filter_map(|c| c.since.as_deref())
+            .filter(|c| c.source == Source::Chat)
+            .map(|c| (Who::of(c.client.as_deref()), c.since.as_deref()))
             .collect();
-        let wants_chat = row.expect.iter().any(|c| c.source == Source::Chat);
-        if wants_chat {
-            let tail = self.read_chat(ctx).await.unwrap_or_default();
-            ctx.chat_marks.insert(String::new(), tail);
+        let mut readers: Vec<Who> = chat.iter().map(|c| c.0).collect();
+        readers.dedup();
+        for who in &readers {
+            let tail = self.read_chat_of(*who).await.unwrap_or_default();
+            ctx.chat_marks.insert(who.mark(""), tail);
         }
+        let since: HashSet<(Who, &str)> = chat
+            .iter()
+            .filter_map(|(w, s)| s.map(|s| (*w, s)))
+            .collect();
         for a in &row.steps {
             // `since = <label>` means "lines that arrived after this action
             // started": mark before it runs, so a fast reply is not missed.
-            if let Some(label) = a.label.as_ref().filter(|l| since.contains(l.as_str())) {
-                let tail = self.read_chat(ctx).await.unwrap_or_default();
-                ctx.chat_marks.insert(label.clone(), tail);
+            if let Some(label) = &a.label {
+                for who in [Who::P1, Who::P2] {
+                    if since.contains(&(who, label.as_str())) {
+                        let tail = self.read_chat_of(who).await.unwrap_or_default();
+                        ctx.chat_marks.insert(who.mark(label), tail);
+                    }
+                }
             }
             let rec = self.exec(a, Role::Step, ctx).await;
             let stop = !rec.ok && !a.optional;
@@ -435,6 +464,9 @@ impl<'a, I: ToolInvoker> Runner<'a, I> {
         self.clauses_at(row, None, ctx, results).await;
         self.evidence_at(row, None, ctx).await;
         self.capture_final(ctx).await;
+        if row.players == 2 {
+            self.capture_final_p2(ctx).await;
+        }
         true
     }
 
@@ -462,11 +494,16 @@ impl<'a, I: ToolInvoker> Runner<'a, I> {
         if let Some(c) = self.character_name(spec) {
             v.insert("character".into(), json!(c));
         }
+        if let (2, Ok(p)) = (row.players, &self.p2) {
+            v.insert(players::P2_CHARACTER_VAR.into(), json!(p.character));
+        }
         v
     }
 }
 
 #[cfg(test)]
 mod packet_tests;
+#[cfg(test)]
+mod players_tests;
 #[cfg(test)]
 mod tests;
