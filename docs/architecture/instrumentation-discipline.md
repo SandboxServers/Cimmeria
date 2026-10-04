@@ -451,6 +451,9 @@ does a marker with no reason.
 Rule 4 stands. An item, ability or player name has as many values as
 the ID it names, so it is a log field, never a label. `world` stays the
 one approved name-shaped label, under Rule 4's ruling.
+Declare a label with `cimmeria_observability::metric_label!` (Rule 4)
+and a call site can't pass a name into it at all: the label's values
+are a fixed enum, not a string.
 
 #### Discord
 

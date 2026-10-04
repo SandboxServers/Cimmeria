@@ -74,6 +74,8 @@ You coordinate this campaign. Work from [work-packets.md](work-packets.md) one p
 
 ## Ledger
 
+Coordinator launch: 2026-10-04 at `7e7ba5779` (baseline `a679e748c`). The cited paths changed only in AB-T6/AB-L2 additions (lab_dummy, ability metrics, the `metric_label!` note in Rule 4); none of that affects the plan.
+
 | Packet | Status | PR | Notes |
 |---|---|---|---|
 | NT-00 Rule 6 and key table | Done (PR #1191) | [#1191](https://github.com/SandboxServers/Cimmeria/pull/1191) | `space_id` pairs with `world`, not `world_name`; `player_name` kept over `character_name` |
