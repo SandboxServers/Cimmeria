@@ -26,11 +26,14 @@ use super::sequence::{
 /// `effect_seq` is the `InstanceId` minted at launch, so `Ability_End`
 /// matches the `Ability_Begin` the launch sent. The launch has already
 /// checked that a player has the ammo; the warmup tick re-checks it before
-/// a delayed fire.
+/// a delayed fire. `wire_target_id` is the target the client sent; a
+/// beneficial cast re-resolves from it (AB-01), every other cast ignores it.
+#[allow(clippy::too_many_arguments)]
 pub(in crate::cell::abilities) async fn fire_cast(
     entity_id: u32,
     ability_id: i32,
     target_id: i32,
+    wire_target_id: i32,
     effect_seq: i32,
     ability_def: &Option<AbilityDef>,
     tx: &mpsc::Sender<CellToBaseMsg>,
@@ -102,6 +105,24 @@ pub(in crate::cell::abilities) async fn fire_cast(
         }
     }
 
+    // A beneficial cast (a heal, a buff: AB-01) resolves where it lands now,
+    // before `Ability_End`, so the animation and the effects name the same
+    // entity (an ally who died in the warmup takes the cast to the caster).
+    let beneficial =
+        super::beneficial::is_player_beneficial(space_mgr, entity_id, ability_def.as_ref()).then(
+            || {
+                super::beneficial::resolve_at_fire(
+                    space_mgr,
+                    entity_id,
+                    ability_def.as_ref(),
+                    wire_target_id,
+                )
+            },
+        );
+    let target_id = beneficial.map_or(target_id, |(t, _)| {
+        super::beneficial::landing_id(entity_id, t)
+    });
+
     // ── Send the fire animation (Ability_End) to attacker + witnesses ──
     // The client expects the sequence_id from resources.sequences, NOT the
     // event_set_id. Owner + witnesses like Python `AbilityManager.playSequence`;
@@ -132,11 +153,10 @@ pub(in crate::cell::abilities) async fn fire_cast(
         ),
     }
 
-    // A beneficial cast (a heal, a buff: AB-01) lands on the caster or an
-    // ally through its own resolve, never the damage pipeline below: no QR,
-    // no threat, no in-combat state, no channel cancel.
-    if super::beneficial::is_player_beneficial(space_mgr, entity_id, ability_def.as_ref()) {
-        super::beneficial::fire_beneficial(entity_id, target_id, ability_def, tx, space_mgr).await;
+    // A beneficial cast lands through its own path, never the damage
+    // pipeline below: no QR, no threat, no in-combat state, no channel cancel.
+    if let Some(resolved) = beneficial {
+        super::beneficial::fire_beneficial(entity_id, resolved, ability_def, tx, space_mgr).await;
         if needs_ammo_stat_send {
             flush_attacker_ammo_stat(entity_id, tx, space_mgr).await;
         }

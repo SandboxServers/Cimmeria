@@ -88,6 +88,7 @@ pub async fn handle_use_ability(
     // A beneficial cast (a heal, a buff) lands on the caster or an ally,
     // whatever the client named (AB-01). See `beneficial`.
     let diverted = summon.is_some() || owner_pet || deploy.is_some();
+    let client_target_id = target_id;
     let Some((target_id, beneficial)) = super::beneficial::launch_target(
         entity_id,
         ability_def.as_ref(),
@@ -99,6 +100,12 @@ pub async fn handle_use_ability(
     .await
     else {
         return false;
+    };
+    // The fire re-resolves a beneficial cast from what the client sent.
+    let wire_target_id = if beneficial {
+        client_target_id
+    } else {
+        target_id
     };
 
     // ── Auto-cycle manual-override gate ──
@@ -630,6 +637,7 @@ pub async fn handle_use_ability(
             super::warmup::WarmupStart {
                 ability_id,
                 target_id,
+                wire_target_id,
                 effect_seq,
                 warmup_secs,
                 event_set_id: ability_def.as_ref().and_then(|d| d.event_set_id),
@@ -648,6 +656,7 @@ pub async fn handle_use_ability(
         entity_id,
         ability_id,
         target_id,
+        wire_target_id,
         effect_seq,
         &ability_def,
         tx,

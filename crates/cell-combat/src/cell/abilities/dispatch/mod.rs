@@ -268,6 +268,7 @@ pub(super) async fn fire_ground_cast_after_warmup(
         entity_id,
         ability_id,
         primary_eid as i32,
+        primary_eid as i32,
         effect_seq,
         &ability_def,
         tx,

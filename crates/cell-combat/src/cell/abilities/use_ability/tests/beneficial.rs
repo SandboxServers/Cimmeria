@@ -21,7 +21,7 @@ use cimmeria_wire::state_field::BSF_IN_COMBAT;
 
 use super::super::beneficial::{resolve_cast_target, CastTarget};
 use super::duel_gate::{duel_mgr, A, B, MOB};
-use super::warmup::{after_warmup, calls, effect_results, INSTANT_ABILITY};
+use super::warmup::{after_warmup, calls, effect_results, EVENT_SET, INSTANT_ABILITY, SEQ_END};
 use super::*;
 use crate::cell::abilities::resolve_warmups;
 use crate::test_support::{LogCapture, NoContentEvents};
@@ -314,6 +314,7 @@ async fn a_damaging_ability_at_an_ally_is_still_refused() {
 async fn a_warmed_up_heal_lands_on_the_caster_at_fire() {
     let mut mgr = heal_mgr(1.5);
     let (tx, mut rx) = mpsc::channel(256);
+    let logs = LogCapture::install();
 
     assert!(handle_use_ability(A, HEAL_FOCUS, MOB as i32, &tx, &mut mgr).await);
     assert_eq!(pool(&mgr, A, FOCUS), 0, "nothing lands at launch");
@@ -324,6 +325,97 @@ async fn a_warmed_up_heal_lands_on_the_caster_at_fire() {
     assert_eq!(fired, 1, "the warmed-up heal fires");
     assert_eq!(pool(&mgr, A, FOCUS), 350);
     assert_eq!(pool(&mgr, MOB, FOCUS), 0, "MOB's Focus must not change");
+    // The fire re-resolves from what the client sent (the mob), not from the
+    // launch's resolved caster, so the row keeps the mob and the reason.
+    let fire = logs
+        .all()
+        .into_iter()
+        .find(|c| c.has_field("event", "beneficial_cast") && c.has_field("stage", "fire"))
+        .expect("a fire-stage beneficial_cast row");
+    assert!(fire.has_field("wire_target_id", "4"), "{fire:?}");
+    assert!(fire.has_field("resolution", "self_ability"), "{fire:?}");
+}
+
+/// **Regression guard (Copilot 4175813065).** A warmed-up Target heal at a
+/// mob logs `fallback_to_caster` at fire with the mob as the wire target. If
+/// the fire re-resolves from the launch's resolved target (the caster), the
+/// reason turns into `ally` and the wire target into the caster.
+#[tokio::test]
+async fn a_warmed_up_fallback_keeps_its_reason_and_wire_target() {
+    let mut mgr = heal_mgr(0.0);
+    mgr.ability_defs.get_mut(&HEALTH_HEAL).unwrap().warmup = 1.5;
+    let (tx, _rx) = mpsc::channel(256);
+    let logs = LogCapture::install();
+
+    assert!(handle_use_ability(A, HEALTH_HEAL, MOB as i32, &tx, &mut mgr).await);
+    assert_eq!(
+        resolve_warmups(after_warmup(), &tx, &mut mgr, &NoContentEvents).await,
+        1
+    );
+
+    let fire = logs
+        .all()
+        .into_iter()
+        .find(|c| c.has_field("event", "beneficial_cast") && c.has_field("stage", "fire"))
+        .expect("a fire-stage beneficial_cast row");
+    assert!(
+        fire.has_field("resolution", "fallback_to_caster"),
+        "{fire:?}"
+    );
+    assert!(fire.has_field("wire_target_id", "4"), "{fire:?}");
+    assert!(fire.has_field("resolved_target_id", "1"), "{fire:?}");
+    assert_eq!(pool(&mgr, A, HEALTH), START_HEALTH + 100);
+    assert_eq!(
+        pool(&mgr, MOB, HEALTH),
+        START_HEALTH,
+        "MOB's Health must not change"
+    );
+}
+
+/// **Regression guard (Copilot 4175813098).** An ally who dies during the
+/// warmup takes the cast to the caster, and `Ability_End` names the caster,
+/// the entity the heal actually lands on. If the sequence goes out with the
+/// launch-time target, it names the dead ally (`Ability_End target` fails).
+#[tokio::test]
+async fn ability_end_names_the_caster_when_the_warmed_up_ally_dies() {
+    let mut mgr = heal_mgr(0.0);
+    {
+        let def = mgr.ability_defs.get_mut(&HEALTH_HEAL).unwrap();
+        def.warmup = 1.5;
+        def.event_set_id = Some(EVENT_SET);
+    }
+    let (tx, mut rx) = mpsc::channel(256);
+
+    assert!(handle_use_ability(A, HEALTH_HEAL, B as i32, &tx, &mut mgr).await);
+    mgr.get_entity_mut(B).unwrap().state_field |= cimmeria_wire::state_field::BSF_DEAD;
+    let _ = drain(&mut rx);
+
+    assert_eq!(
+        resolve_warmups(after_warmup(), &tx, &mut mgr, &NoContentEvents).await,
+        1
+    );
+    let msgs = drain(&mut rx);
+
+    let end_targets: Vec<i32> = calls(&msgs)
+        .into_iter()
+        .filter(|(e, m, a)| {
+            *e == A
+                && *m == method_idx::ON_SEQUENCE
+                && i32::from_le_bytes(a[0..4].try_into().unwrap()) == SEQ_END
+        })
+        .map(|(_, _, a)| i32::from_le_bytes(a[8..12].try_into().unwrap()))
+        .collect();
+    assert!(!end_targets.is_empty(), "Ability_End was sent");
+    assert!(
+        end_targets.iter().all(|&t| t == A as i32),
+        "Ability_End target must be the caster: {end_targets:?}"
+    );
+    assert_eq!(
+        pool(&mgr, A, HEALTH),
+        START_HEALTH + 100,
+        "the caster is healed"
+    );
+    assert_eq!(pool(&mgr, B, HEALTH), START_HEALTH, "the dead ally is not");
 }
 
 /// 1218 on an ally: the first pulse lands at once and the other 24 are
@@ -399,9 +491,15 @@ async fn a_self_heal_logs_beneficial_cast_and_no_444_warn() {
         .filter(|c| c.target == "abilities" && c.has_field("event", "beneficial_cast"))
         .collect();
     assert_eq!(rows.len(), 2, "one row at launch, one at fire: {rows:#?}");
-    for (row, stage) in rows.iter().zip(["launch", "fire"]) {
-        assert_eq!(row.level, tracing::Level::INFO);
+    // Launch is DEBUG (it runs before the dead/known/cooldown checks, so a
+    // forged packet cannot buy an INFO row); fire is INFO.
+    for (row, (stage, level)) in rows.iter().zip([
+        ("launch", tracing::Level::DEBUG),
+        ("fire", tracing::Level::INFO),
+    ]) {
+        assert_eq!(row.level, level, "{row:?}");
         assert!(row.has_field("stage", stage), "{row:?}");
+        assert!(row.has_field("target_player_id", "101"), "{row:?}");
         assert!(row.has_field("resolution", "self_ability"), "{row:?}");
         assert!(row.has_field("ability_id", "597"), "{row:?}");
         assert!(row.has_field("wire_target_id", "1"), "{row:?}");

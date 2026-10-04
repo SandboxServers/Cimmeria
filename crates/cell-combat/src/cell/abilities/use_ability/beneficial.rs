@@ -144,7 +144,9 @@ fn no_ally() -> (CastTarget, &'static str) {
     }
 }
 
-/// Log the `beneficial_cast` row. `stage` is `launch` or `fire`.
+/// Log the `beneficial_cast` row. `stage` is `launch` (DEBUG: it runs before
+/// the launch's dead, known and cooldown checks, so a forged packet must not
+/// buy an INFO row) or `fire` (INFO: once per committed cast).
 fn log_resolution(
     space_mgr: &SpaceManager,
     caster_id: u32,
@@ -160,21 +162,69 @@ fn log_resolution(
         CastTarget::Ally(id) | CastTarget::Hostile(id) => Some(id),
         CastTarget::None => None,
     };
-    tracing::info!(
-        target: "abilities",
-        event = EVENT_BENEFICIAL_CAST,
-        account_id = who.account_id,
-        player_id = who.player_id,
-        entity_id = caster_id,
-        ability_id = def.map(|d| d.ability_id),
-        effect_ids = ?def.map(|d| d.effect_ids.as_slice()),
-        target_type_id = def.map(|d| d.target_type_id),
-        wire_target_id = wire_target,
-        resolved_target_id,
+    let target_player_id =
+        resolved_target_id.and_then(|id| space_mgr.player_identity(id).player_id);
+    macro_rules! row {
+        ($level:expr) => {
+            tracing::event!(
+                target: "abilities",
+                $level,
+                event = EVENT_BENEFICIAL_CAST,
+                account_id = who.account_id,
+                player_id = who.player_id,
+                entity_id = caster_id,
+                ability_id = def.map(|d| d.ability_id),
+                effect_ids = ?def.map(|d| d.effect_ids.as_slice()),
+                target_type_id = def.map(|d| d.target_type_id),
+                wire_target_id = wire_target,
+                resolved_target_id,
+                target_player_id,
+                resolution,
+                stage,
+                "beneficial cast resolved: heals and buffs land on the caster or an ally, never a hostile"
+            )
+        };
+    }
+    if stage == "launch" {
+        row!(tracing::Level::DEBUG);
+    } else {
+        row!(tracing::Level::INFO);
+    }
+}
+
+/// A resolution and the `resolution` reason it logs.
+pub(super) type Resolved = (CastTarget, &'static str);
+
+/// The fire-time resolution of a beneficial cast, from the client's original
+/// target (not the launch's resolved one, so a `fallback_to_caster` keeps its
+/// reason), logged once at INFO. The fire uses it for both `Ability_End` and
+/// the effects, so the animation names where the cast lands.
+pub(super) fn resolve_at_fire(
+    space_mgr: &SpaceManager,
+    caster_id: u32,
+    def: Option<&AbilityDef>,
+    wire_target: i32,
+) -> Resolved {
+    let (target, resolution) = resolve(space_mgr, caster_id, def, wire_target);
+    log_resolution(
+        space_mgr,
+        caster_id,
+        def,
+        wire_target,
+        target,
         resolution,
-        stage,
-        "beneficial cast resolved: heals and buffs land on the caster or an ally, never a hostile"
+        "fire",
     );
+    (target, resolution)
+}
+
+/// The entity a resolution lands on, as an `onSequence` target id (0 for none).
+pub(super) fn landing_id(caster_id: u32, target: CastTarget) -> i32 {
+    match target {
+        CastTarget::Caster => caster_id as i32,
+        CastTarget::Ally(id) => id as i32,
+        CastTarget::Hostile(_) | CastTarget::None => 0,
+    }
 }
 
 /// The launch's view of the client's target: `Some((target_id, beneficial))`
@@ -213,13 +263,17 @@ pub(super) async fn launch_target(
         CastTarget::Caster => Some((caster_id as i32, true)),
         CastTarget::Ally(id) => Some((id as i32, true)),
         CastTarget::Hostile(_) | CastTarget::None => {
-            send_no_ally_feedback(caster_id, tx).await;
+            send_no_ally_feedback(caster_id, tx, space_mgr).await;
             None
         }
     }
 }
 
-async fn send_no_ally_feedback(caster_id: u32, tx: &mpsc::Sender<CellToBaseMsg>) {
+async fn send_no_ally_feedback(
+    caster_id: u32,
+    tx: &mpsc::Sender<CellToBaseMsg>,
+    space_mgr: &SpaceManager,
+) {
     let chat = serialize_on_player_communication("SYSTEM", 0, CHAN_FEEDBACK, NO_ALLY_FEEDBACK);
     if tx
         .send(CellToBaseMsg::EntityMethodCall {
@@ -230,9 +284,12 @@ async fn send_no_ally_feedback(caster_id: u32, tx: &mpsc::Sender<CellToBaseMsg>)
         .await
         .is_err()
     {
+        let who = space_mgr.player_identity(caster_id);
         tracing::warn!(
             target: "abilities",
             event = "beneficial_feedback_send_failed",
+            account_id = who.account_id,
+            player_id = who.player_id,
             entity_id = caster_id,
             reason = "cell_to_base_closed",
             "beneficial-cast refusal feedback could not be queued (base channel closed)"
@@ -287,6 +344,8 @@ pub(super) fn target_gate(
     space_mgr: &SpaceManager,
 ) -> TargetGate {
     let duels = space_mgr.resources.duels();
+    let who = space_mgr.player_identity(caster.entity_id.0 as u32);
+    let target_who = space_mgr.player_identity(target.entity_id.0 as u32);
     if support_shot {
         match classify(caster, target, duels) {
             SupportTarget::Hostile => return TargetGate::SupportHostile,
@@ -301,9 +360,12 @@ pub(super) fn target_gate(
         tracing::warn!(
             target: "abilities",
             event = EVENT_BENEFICIAL_CAST,
+            account_id = who.account_id,
+            player_id = who.player_id,
             entity_id = caster.entity_id.0,
             ability_id,
             target_id = target.entity_id.0,
+            target_player_id = target_who.player_id,
             reason = "beneficial_non_ally_target",
             "useAbility rejected -- beneficial cast aimed at a non-ally after resolution; \
              nothing applied"
@@ -312,9 +374,12 @@ pub(super) fn target_gate(
     }
     if caster.is_player && !combat::player_may_attack(caster, target, duels) {
         tracing::warn!(
+            account_id = who.account_id,
+            player_id = who.player_id,
             entity_id = caster.entity_id.0,
             ability_id,
             target_id = target.entity_id.0,
+            target_player_id = target_who.player_id,
             target_is_player = target.is_player,
             target_faction = target.faction,
             "useAbility rejected -- player single-target ability against a \
@@ -326,12 +391,12 @@ pub(super) fn target_gate(
     TargetGate::Admitted { friendly: false }
 }
 
-/// Fire a committed beneficial cast. `launch_target` is the entity the launch
-/// resolved; the resolver runs again because a warmup can separate the
-/// launch from the fire (the ally died, left, or turned hostile).
+/// Fire a committed beneficial cast at `resolved`, the caller's
+/// [`resolve_at_fire`] of the client's original target (a warmup can separate
+/// the launch from the fire: the ally died, left, or turned hostile).
 ///
-/// The caller (`fire::fire_cast`) has played `Ability_End` and spent any
-/// ammo. Runs every effect script on the resolved entity (an
+/// The caller (`fire::fire_cast`) has played `Ability_End` at the same
+/// resolved entity and spent any ammo. Runs every effect script on the resolved entity (an
 /// `EF_ResolveOnAbilityUser` effect on the caster), sends each touched
 /// entity's stat change to it and its witnesses, sends any buff timers, and
 /// registers pulsing effects (Recuperation's 25 pulses) with the caster as
@@ -341,31 +406,21 @@ pub(super) fn target_gate(
 /// cancel.
 pub(super) async fn fire_beneficial(
     caster_id: u32,
-    launch_target: i32,
+    resolved: Resolved,
     def: &Option<AbilityDef>,
     tx: &mpsc::Sender<CellToBaseMsg>,
     space_mgr: &mut SpaceManager,
 ) {
-    let def = def.as_ref();
-    let (target, resolution) = resolve(space_mgr, caster_id, def, launch_target);
-    log_resolution(
-        space_mgr,
-        caster_id,
-        def,
-        launch_target,
-        target,
-        resolution,
-        "fire",
-    );
+    let (target, resolution) = resolved;
     let target_id = match target {
         CastTarget::Caster => caster_id,
         CastTarget::Ally(id) => id,
         CastTarget::Hostile(_) | CastTarget::None => {
-            send_no_ally_feedback(caster_id, tx).await;
+            send_no_ally_feedback(caster_id, tx, space_mgr).await;
             return;
         }
     };
-    let Some(def) = def else { return };
+    let Some(def) = def.as_ref() else { return };
 
     let before = pools(space_mgr, target_id);
     let effects: Vec<_> = def
@@ -430,6 +485,7 @@ pub(super) async fn fire_beneficial(
         ability_id = def.ability_id,
         effect_ids = ?def.effect_ids,
         resolved_target_id = target_id,
+        target_player_id = space_mgr.player_identity(target_id).player_id,
         resolution,
         pulsing_registered = pulsing,
         target_health_before = before.0,

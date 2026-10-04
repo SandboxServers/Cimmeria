@@ -49,4 +49,17 @@ async fn seeded_starter_heals_load_as_beneficial_live_db() {
         );
     }
     assert_eq!(abilities[&2228].type_id, AbilityType::Heal);
+
+    // Server-authority review S1: Heal-typed debuffs and crowd control are
+    // not beneficial. Reverting to "the Heal type wins" fails here.
+    for id in [1874, 1937, 1988, 2090, 2154, 3253] {
+        let def = abilities
+            .get(&id)
+            .unwrap_or_else(|| panic!("{id} is seeded"));
+        assert_eq!(def.type_id, AbilityType::Heal, "{id} is Heal-typed");
+        assert!(
+            !ability_is_beneficial(def, &effects),
+            "{id} is a Heal-typed debuff and must not be beneficial"
+        );
+    }
 }

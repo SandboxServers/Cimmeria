@@ -5,13 +5,22 @@
 //! no in-combat state (`cell-combat`'s `use_ability/beneficial.rs`). Every
 //! other ability keeps the damage pipeline and its #444 target gate.
 //!
-//! The rule, from the 2009 data:
+//! The rule, from the 2009 data. At least one effect must do something
+//! ([`effect_is_implemented`]), and every effect that does something must be
+//! one of:
 //!
-//! - `type_id` is `ABILITY_TYPE_Heal` (597 Heal Focus, 1646 Health Heal,
-//!   1218 Recuperation: their effects carry no `EF_Beneficial_Effect` bit,
-//!   659 is flags 16), **or**
-//! - at least one effect does something ([`effect_is_implemented`]) and
-//!   every effect that does something carries `EF_Beneficial_Effect`.
+//! - an effect carrying `EF_Beneficial_Effect`, **or**
+//! - on an `ABILITY_TYPE_Heal` ability only, an effect whose script is a heal
+//!   ([`HEAL_SCRIPTS`]). 597 Heal Focus, 1646 Health Heal and 1218
+//!   Recuperation qualify this way: their effects carry no beneficial bit
+//!   (659 is flags 16).
+//!
+//! **The type alone is not enough.** About 200 seed abilities are typed Heal
+//! but are debuffs or crowd control (1874 Impose Weakness, 1937 FocusDegen,
+//! 1988 InduceDaze, 2090 TurnAndDie, 2154 ShutDown, 3253 ConvertEnergy:
+//! Enemy). Today their effects do nothing, so they fail the "at least one"
+//! rule; once a generator binds a debuff script to one, that script is not a
+//! heal and has no beneficial bit, so it still fails.
 //!
 //! **Damage vetoes both.** An ability with an effect that deals damage
 //! (`HealthDamage` or `FocusDamage` above zero) is never beneficial, whatever
@@ -21,11 +30,16 @@
 //!
 //! The "at least one" keeps an ability whose effects do nothing out of the
 //! beneficial path: an unimplemented attack must not start skipping the
-//! #444 gate because its effect list is vacuously "all beneficial".
+//! #444 gate because its effect list is vacuously "all beneficial", and
+//! neither may a Heal-typed debuff.
 
 use std::collections::HashMap;
 
 use super::{effect_is_implemented, AbilityDef, AbilityType, EffectDef, EF_BENEFICIAL_EFFECT};
+
+/// The scripts that only restore a pool. On a Heal-typed ability they count
+/// as beneficial without the `EF_Beneficial_Effect` bit.
+pub const HEAL_SCRIPTS: [&str; 3] = ["HealHealth", "HealFocus", "HealPetHealth"];
 
 /// `true` when `effect` deals damage from its NVPs.
 fn effect_deals_damage(effect: &EffectDef) -> bool {
@@ -41,11 +55,17 @@ pub fn ability_is_beneficial(def: &AbilityDef, effects: &HashMap<i32, EffectDef>
         .filter_map(|id| effects.get(id))
         .filter(|e| effect_is_implemented(Some(e)))
         .collect();
-    if doing.iter().any(|e| effect_deals_damage(e)) {
+    if doing.is_empty() || doing.iter().any(|e| effect_deals_damage(e)) {
         return false;
     }
-    def.type_id == AbilityType::Heal
-        || (!doing.is_empty() && doing.iter().all(|e| e.flags & EF_BENEFICIAL_EFFECT != 0))
+    let heal_typed = def.type_id == AbilityType::Heal;
+    doing.iter().all(|e| {
+        e.flags & EF_BENEFICIAL_EFFECT != 0
+            || (heal_typed
+                && e.script_name
+                    .as_deref()
+                    .is_some_and(|s| HEAL_SCRIPTS.contains(&s)))
+    })
 }
 
 #[cfg(test)]
@@ -86,7 +106,7 @@ mod tests {
     }
 
     /// 597's shape: Heal type, effect 659 `HealFocus` with flags 16 (no
-    /// beneficial bit). The type alone makes it beneficial.
+    /// beneficial bit). A heal script on a Heal-typed ability qualifies.
     #[test]
     fn a_heal_typed_ability_is_beneficial_without_the_effect_bit() {
         let effects = HashMap::from([(
@@ -123,9 +143,29 @@ mod tests {
         ));
     }
 
+    /// **Regression guard (server-authority review S1).** The Heal type is
+    /// not enough: 1874 Impose Weakness and its kin are Heal-typed debuffs.
+    /// With no effect that does something, or with a non-heal script that
+    /// lacks the beneficial bit, they are not beneficial. On revert to
+    /// "Heal type wins" the first three asserts fail.
     #[test]
-    fn nothing_that_does_something_is_not_beneficial_unless_heal_typed() {
-        let effects = HashMap::from([(3, effect(3, 1, &[], None))]);
+    fn a_heal_typed_debuff_is_not_beneficial() {
+        let effects = HashMap::from([
+            (3, effect(3, 1, &[], None)),
+            (7, effect(7, 2, &[], Some("StatBuff"))),
+        ]);
+        assert!(!ability_is_beneficial(
+            &def(AbilityType::Heal, vec![]),
+            &effects
+        ));
+        assert!(!ability_is_beneficial(
+            &def(AbilityType::Heal, vec![3]),
+            &effects
+        ));
+        assert!(!ability_is_beneficial(
+            &def(AbilityType::Heal, vec![7]),
+            &effects
+        ));
         assert!(!ability_is_beneficial(
             &def(AbilityType::Buff, vec![3]),
             &effects
@@ -134,8 +174,21 @@ mod tests {
             &def(AbilityType::DirectDamage, vec![]),
             &effects
         ));
+    }
+
+    /// A heal script without the bit counts only on a Heal-typed ability.
+    #[test]
+    fn a_heal_script_without_the_bit_needs_the_heal_type() {
+        let effects = HashMap::from([(
+            2008,
+            effect(2008, 16, &[("HealPercentage", "10")], Some("HealHealth")),
+        )]);
         assert!(ability_is_beneficial(
-            &def(AbilityType::Heal, vec![]),
+            &def(AbilityType::Heal, vec![2008]),
+            &effects
+        ));
+        assert!(!ability_is_beneficial(
+            &def(AbilityType::Buff, vec![2008]),
             &effects
         ));
     }
