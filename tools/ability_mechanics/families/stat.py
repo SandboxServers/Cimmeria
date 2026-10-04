@@ -252,7 +252,7 @@ def parse_stat(effect: Effect) -> Outcome:
     if not clauses:
         return Rejected(effect, "no stat clause")
     pd = effect.pulse_duration
-    # Every stated duration must match, not just the last (Copilot review on #1159).
+    # Every stated duration must match, not just the last.
     for duration in durations:
         if abs(duration - pd) > 1e-6:
             return Rejected(effect, f"text says {duration:g} s but pulse_duration is {pd:g}")

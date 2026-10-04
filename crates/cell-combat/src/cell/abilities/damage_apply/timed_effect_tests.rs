@@ -153,3 +153,64 @@ async fn the_same_qr_rolled_debuff_lands_on_a_hit() {
 
     assert_eq!(defense(&mgr, PLAYER), -100);
 }
+
+/// **Regression guard.** A killing hit that carries a clear-on-death debuff
+/// leaves no entry on the corpse and sends no icon. The hit's death (and its
+/// `EF_ClearOnDeath` strip) resolves before the after-hit scripts run, so on
+/// revert of the ledger's dead-target refusal the debuff lands after the
+/// strip (`no entry on the corpse` fails).
+#[tokio::test]
+async fn a_killing_hit_leaves_no_clear_on_death_debuff() {
+    const STRIKE: i32 = 7101;
+    let (mut mgr, _) = fixture(EF_CLEAR_ON_DEATH | EF_DONT_USE_QR);
+    mgr.effect_defs.insert(
+        STRIKE,
+        EffectDef {
+            effect_id: STRIKE,
+            ability_id: CALL_TARGET,
+            flags: EF_DONT_USE_QR,
+            params: [("HealthDamage".to_string(), "500".to_string())].into(),
+            ..Default::default()
+        },
+    );
+    let ability = make_ability(CALL_TARGET, vec![STRIKE, CALL_TARGET_EFFECT]);
+    mgr.ability_defs.insert(CALL_TARGET, ability.clone());
+    mgr.get_entity_mut(PLAYER)
+        .unwrap()
+        .stats
+        .get_mut(cimmeria_entity::stats::HEALTH)
+        .unwrap()
+        .update(0, 10, 100);
+    let (tx, mut rx) = mpsc::channel(512);
+
+    apply_damage_to_target(
+        NPC,
+        PLAYER,
+        CALL_TARGET,
+        &Some(ability),
+        1,
+        false,
+        &tx,
+        &mut mgr,
+    )
+    .await;
+    let msgs = drain(&mut rx);
+
+    let player = mgr.get_entity(PLAYER).unwrap();
+    assert_ne!(
+        player.state_field & cimmeria_wire::state_field::BSF_DEAD,
+        0,
+        "the hit kills"
+    );
+    assert!(
+        player.stat_buffs.entries.is_empty(),
+        "no entry on the corpse"
+    );
+    assert_eq!(defense(&mgr, PLAYER), 0);
+    assert!(
+        timers_to(&msgs, PLAYER)
+            .iter()
+            .all(|a| a[..4] != CALL_TARGET_EFFECT.to_le_bytes()),
+        "no icon for the debuff"
+    );
+}

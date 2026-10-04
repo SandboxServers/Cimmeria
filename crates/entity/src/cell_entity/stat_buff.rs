@@ -35,7 +35,7 @@
 //! `cur` is clamped into it. So Heroism (+50 Response) and a -100 Response
 //! debuff on a 0/0/0 stat end at 0/0/0 whichever expires first; undoing
 //! each entry's own bound shift would clamp the debuff's revert when the
-//! buff's widened `max` went first (Copilot review on #1159).
+//! buff's widened `max` went first.
 
 use std::time::{Duration, Instant};
 

@@ -302,7 +302,7 @@ async fn an_ability_buff_starts_and_clears_its_timer_byte_for_byte() {
     );
 }
 
-/// **Regression guard (Copilot review on #1159).** The client keys an
+/// **Regression guard.** The client keys an
 /// effect icon by SecondaryId alone, so two casters' Aims are one icon: one
 /// start carrying the later expiry (source 42), no clear when the first
 /// lapses, and the clear only when the last one does. On revert (one timer

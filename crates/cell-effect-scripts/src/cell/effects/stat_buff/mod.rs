@@ -141,7 +141,7 @@ fn apply_entry(ctx: &mut EffectContext, stacking: TimedStacking, script: &'stati
             script,
             account_id = who.account_id,
             player_id = who.player_id,
-            entity_id = ctx.target_id,
+            entity_id = ctx.source_id,
             target_id = ctx.target_id,
             target_player_id = target_who.player_id,
             source_id = ctx.source_id,

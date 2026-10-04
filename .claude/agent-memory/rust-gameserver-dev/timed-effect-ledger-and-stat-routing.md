@@ -13,9 +13,14 @@ stimpack `StatBuff` keeps decision 28's `ReplaceSameStat`.
 
 **Why the script writes the ledger, not the seam:** scripts already run where
 effects land (`fire_beneficial`, `damage_apply` after-hit scripts — miss-gated
-by `plan_hit_effects` — and content `apply_effect`), before the death sweep, so
-an `EF_ClearOnDeath` debuff on a killed target is stripped. The seams only call
+by `plan_hit_effects` — and content `apply_effect`). The seams only call
 `flush_stat_buff_timers` so the icon goes out in the same resolution.
+
+**Death ordering trap:** a lethal *direct* hit resolves death (and the
+`EF_ClearOnDeath` strip) before the after-hit scripts run, so the hit's own
+debuff would land on the corpse after the strip. `SpaceManager::apply_timed_effect`
+refuses a clear-on-death entry on a `BSF_DEAD` target (`reason = target_dead`);
+guard `a_killing_hit_leaves_no_clear_on_death_debuff`.
 
 **Routing traps for binding a stat effect (generator `families/stat.py`):**
 - Binding a non-beneficial effect on a Self ability flips `ability_is_beneficial`

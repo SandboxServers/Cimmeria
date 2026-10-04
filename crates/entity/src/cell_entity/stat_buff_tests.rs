@@ -362,7 +362,7 @@ fn the_effect_bar_counts_each_side() {
 
 /// A buff and a debuff of opposite sign on one 0/0/0 stat (Heroism +50 and
 /// a -100 Response debuff). Order-dependent reverts clamped the second
-/// removal against the first one's restored bound (Copilot review on #1159).
+/// removal against the first one's restored bound.
 fn heroism_and_debuff() -> (CellEntity, TimedEffectSpec, TimedEffectSpec) {
     let mut e = entity();
     e.stats.get_mut(RESPONSE).unwrap().update(0, 0, 0);

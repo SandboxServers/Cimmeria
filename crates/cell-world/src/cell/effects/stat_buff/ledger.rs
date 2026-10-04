@@ -4,16 +4,27 @@
 //! telemetry rows (`stat_buff_applied`, `stat_buff_removed` with a `reason`,
 //! `effect_bar_overflow`) that make an entry debuggable from SigNoz alone.
 //!
-//! Identity (instrumentation-discipline rule 5): `account_id` / `player_id`
-//! name the **invoker**, the player whose cast or consumable put the entry
-//! on; `entity_id` / `target_id` and `target_player_id` name the entity
-//! that holds it. A stimpack's user is both.
+//! Identity (instrumentation-discipline rule 5, actor on a target):
+//! `entity_id`, `account_id` and `player_id` name the **invoker**, the
+//! entity whose cast or consumable put the entry on; `target_id` and
+//! `target_player_id` name the entity that holds it. A stimpack's user is
+//! both.
+//!
+//! **A dead target takes no clear-on-death entry.** A lethal direct hit
+//! resolves the death (and its `EF_ClearOnDeath` strip) before the hit's
+//! after-hit scripts run, so a debuff landing in the same hit would outlive
+//! the strip on the corpse, icon included. `apply_timed_effect` refuses it
+//! instead (`stat_buff_skipped`, `reason = target_dead`, DEBUG: routine on
+//! every killing blow that carries a debuff).
 
 use std::time::Instant;
 
 use cimmeria_entity::cell_entity::{
     PlayerIdentity, TimedEffect, TimedEffectApplied, TimedEffectSpec, EFFECT_BAR_SLOTS_PER_SIDE,
 };
+
+use cimmeria_entity::abilities::EF_CLEAR_ON_DEATH;
+use cimmeria_wire::state_field::BSF_DEAD;
 
 use crate::cell::space_manager::SpaceManager;
 
@@ -90,7 +101,7 @@ impl SpaceManager {
                 reason = "target_missing",
                 account_id = who.account_id,
                 player_id = who.player_id,
-                entity_id = target,
+                entity_id = invoker_id,
                 target_id = target,
                 target_player_id = target_who.player_id,
                 source_id = invoker_id,
@@ -100,6 +111,22 @@ impl SpaceManager {
             );
             return None;
         };
+        if spec.effect_flags & EF_CLEAR_ON_DEATH != 0 && entity.state_field & BSF_DEAD != 0 {
+            tracing::debug!(
+                target: "abilities",
+                event = "stat_buff_skipped",
+                reason = "target_dead",
+                account_id = who.account_id,
+                player_id = who.player_id,
+                entity_id = invoker_id,
+                target_id = target,
+                target_player_id = target_who.player_id,
+                effect_id,
+                ability_id,
+                "clear-on-death timed effect on a dead target; nothing applied"
+            );
+            return None;
+        }
         let stat_ids: Vec<i32> = spec.stats.iter().map(|&(s, _)| s).collect();
         let before: Vec<Option<i32>> = stat_ids
             .iter()
@@ -122,7 +149,7 @@ impl SpaceManager {
                 reason = "stat_missing",
                 account_id = who.account_id,
                 player_id = who.player_id,
-                entity_id = target,
+                entity_id = invoker_id,
                 target_id = target,
                 target_player_id = target_who.player_id,
                 source_id = invoker_id,
@@ -156,7 +183,7 @@ impl SpaceManager {
             decision_outcome = if out.replaced.is_empty() { "applied" } else { "replaced" },
             account_id = who.account_id,
             player_id = who.player_id,
-            entity_id = target,
+            entity_id = invoker_id,
             target_id = target,
             target_player_id = target_who.player_id,
             source_id = invoker_id,
@@ -181,7 +208,7 @@ impl SpaceManager {
                 event = "effect_bar_overflow",
                 account_id = who.account_id,
                 player_id = who.player_id,
-                entity_id = target,
+                entity_id = invoker_id,
                 target_id = target,
                 target_player_id = target_who.player_id,
                 effect_id,
@@ -304,7 +331,7 @@ fn log_removed(
         reason = why.reason(),
         account_id = who.account_id,
         player_id = who.player_id,
-        entity_id = target,
+        entity_id = entry.invoker_id,
         target_id = target,
         target_player_id = target_who.player_id,
         source_id = entry.invoker_id,
