@@ -56,7 +56,8 @@ pub use aoi::{
 pub use world_data::{
     archetype_stats, build_create_player, build_enter_world, build_enter_world_body,
     build_map_loaded, build_map_loaded_body, build_on_player_data_loaded,
-    build_setup_world_parameters, fragment_count, fragment_map_loaded,
+    build_setup_world_parameters, fragment_count, fragment_map_loaded, world_entry_stat_args,
+    WORLD_ENTRY_STATE_FIELD,
 };
 
 // ── Constants ────────────────────────────────────────────────────────────────

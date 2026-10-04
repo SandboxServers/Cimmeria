@@ -53,6 +53,12 @@ fn a_reached_router_call_is_sent_with_its_press() {
     assert_eq!(outs[0].target, crate::hooks::ability_trace::TARGET_SENT);
     assert_eq!(field(f, "method"), Some(&json!("useAbility")));
     assert_eq!(field(f, "press_id"), Some(&json!(77)));
+    // AB-C6: the claimed press's age, on the client clock.
+    let press_to_sent = field(f, "press_to_sent_ms").and_then(|v| v.as_u64());
+    assert!(
+        press_to_sent.is_some_and(|ms| ms < 5_000),
+        "{press_to_sent:?}"
+    );
     assert_eq!(field(f, "msg_id"), Some(&json!(0x44)));
     assert_eq!(
         field(f, "args_missing"),

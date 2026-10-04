@@ -28,6 +28,10 @@
 //! | `onErrorCode` | `system_id`, `instance_id`, `error_code`, `reason`; `ability_id` when the system is the ability system |
 //! | `onStateFieldUpdate` | `state_field`, `prev_state_field`, `bits_set`, `bits_cleared` (when the caller knew the old value), `refcounts` (`bit:count,…` after the change), `reason` |
 //! | `onSequence` | `sequence_id`, `source_id`, `target_id`, `instance_id`, `ability_id`, `reason` (`ability_begin` \| `ability_end` \| `ability_interrupt` \| `death`) |
+//! | `onStatBaseUpdate` | as `onStatUpdate` (base values) |
+//! | `onKnownAbilitiesUpdate` | `ability_count`, `ability_ids` (the first 64), `reason` |
+//! | `onAbilityTreeInfo` | `tree_lists`, `tree_sizes` (`a/b/c`), `tree_total`, `reason` |
+//! | `onPlayerCommunication` | `channel`, `text` (the first 200 characters), `reason`: the ability feedback lines |
 //!
 //! **Volume.** A fan-out is one row with its witness count, never a row per
 //! witness. The decode runs only when the row is enabled, so a production
@@ -37,6 +41,8 @@
 //! "wire_send_failed"`); a send the queue refused for every recipient
 //! writes no row.
 
+#[cfg(test)]
+mod coverage;
 mod decode;
 mod row;
 
@@ -131,6 +137,21 @@ pub(crate) async fn send(
         );
     }
     delivery
+}
+
+/// [`send`] for callers outside this crate (the cell's player init, the
+/// respawn resync, grants, training, respec), with `ctx.origin` naming the
+/// trigger. A fan-out is one row, as for every other send.
+pub async fn send_ledgered(
+    entity_id: u32,
+    method_index: u16,
+    args: Vec<u8>,
+    route: WireRoute,
+    ctx: WireCtx,
+    tx: &mpsc::Sender<CellToBaseMsg>,
+    space_mgr: &SpaceManager,
+) -> Delivery {
+    send(entity_id, method_index, args, route, ctx, tx, space_mgr).await
 }
 
 /// The decoded payload of a send the caller makes itself (a direct

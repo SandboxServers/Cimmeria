@@ -676,10 +676,14 @@ async fn swap_weapon_granted_abilities_for_slot(
     for id in &ability_ids {
         args.extend_from_slice(&id.to_le_bytes());
     }
-    crate::cell::abilities::send_entity_method(
+    // Through the wire ledger (AB-C7): the swap's hotbar replace is
+    // accounted for like every other `onKnownAbilitiesUpdate`.
+    crate::cell::abilities::send_entity_method_ledgered(
         entity_id,
         crate::cell::client_methods::player::ON_KNOWN_ABILITIES_UPDATE,
         args,
+        crate::cell::abilities::WireRoute::EntityDefault,
+        crate::cell::abilities::WireCtx::new("weapon_swap"),
         tx,
         space_mgr,
     )

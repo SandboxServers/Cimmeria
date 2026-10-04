@@ -71,7 +71,7 @@ pub use messaging::{
     send_entity_method_to_witnesses, Delivery, WireRoute,
 };
 pub use movement_type::broadcast_movement_type;
-pub use wire_ledger::WireCtx;
+pub use wire_ledger::{send_ledgered as send_entity_method_ledgered, WireCtx};
 // `send_entity_method_to_witnesses` and `send_entity_method_to_self_and_witnesses`
 // land here for #278 child PRs to adopt. They stay private to the `messaging`
 // module until the first child callsite migrates — at which point the

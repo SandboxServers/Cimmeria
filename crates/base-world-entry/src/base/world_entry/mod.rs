@@ -25,6 +25,7 @@ mod enable_entities;
 mod gate_travel;
 pub(crate) mod looted_containers;
 mod map_loaded;
+mod map_loaded_wire_rows;
 mod play_character;
 mod reanchor_player;
 mod teleport;

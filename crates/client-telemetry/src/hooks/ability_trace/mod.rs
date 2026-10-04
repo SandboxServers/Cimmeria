@@ -45,6 +45,8 @@
 
 pub(crate) mod applied;
 pub(crate) mod clock;
+#[cfg(test)]
+pub(crate) mod coverage;
 pub(crate) mod decode;
 pub(crate) mod event_bag;
 pub(crate) mod layout;
@@ -54,6 +56,7 @@ pub(crate) mod recv_methods;
 pub(crate) mod seq_join;
 pub(crate) mod shown;
 pub(crate) mod throttle;
+pub(crate) mod timing;
 pub(crate) mod wire_decode;
 
 use std::sync::{Mutex, OnceLock};

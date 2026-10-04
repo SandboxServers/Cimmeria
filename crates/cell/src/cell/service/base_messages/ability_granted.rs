@@ -80,7 +80,7 @@ pub(super) async fn handle_ability_granted(
         tree_points_spent,
         "AbilityGranted: cell mirrored + hotbar refresh"
     );
-    send_known_abilities_update(entity_id, tx, space_mgr).await;
+    send_known_abilities_update(entity_id, "ability_granted", tx, space_mgr).await;
     send_training_points(entity_id, training_points, tx).await;
 
     // Python parity (`AbilityTrainer.onTrainAbility:128`): if the
@@ -236,7 +236,7 @@ pub(super) async fn handle_gm_ability_granted(
         ability_id,
         "GmAbilityGranted: cell mirrored + hotbar refresh"
     );
-    send_known_abilities_update(entity_id, tx, space_mgr).await;
+    send_known_abilities_update(entity_id, "gm_ability_granted", tx, space_mgr).await;
     // A granted prerequisite can unlock another node on an open trainer.
     resend_trainer_if_pinned(entity_id, training_points, tx, space_mgr).await;
 }

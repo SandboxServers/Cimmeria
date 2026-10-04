@@ -21,6 +21,7 @@ pub use phases::{
 
 pub use map_loaded::{
     build_map_loaded, build_map_loaded_body, fragment_count, fragment_map_loaded,
+    world_entry_stat_args, WORLD_ENTRY_STATE_FIELD,
 };
 
 pub use stats::archetype_stats;

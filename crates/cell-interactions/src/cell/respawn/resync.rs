@@ -21,6 +21,22 @@ use tokio::sync::mpsc;
 use crate::cell::messages::CellToBaseMsg;
 use crate::cell::space_manager::SpaceManager;
 
+/// `origin` of the `abilities.wire` rows the respawn resync writes.
+pub const ORIGIN_RESPAWN_RESYNC: &str = "respawn_resync";
+
+/// The resync's methods that belong to the ability telemetry set and so
+/// go through the wire ledger (`docs/analysis/ability-mechanics/telemetry-coverage.md`).
+fn ledgered(method_index: u16) -> bool {
+    use crate::cell::client_methods::{being, combatant, player};
+    matches!(
+        method_index,
+        being::ON_STATE_FIELD_UPDATE
+            | combatant::ON_STAT_UPDATE
+            | combatant::ON_STAT_BASE_UPDATE
+            | player::ON_ABILITY_TREE_INFO
+    )
+}
+
 /// Re-send `onActiveSlotUpdate` for the bandolier.
 ///
 /// On login this is a defensive resync against a client-side initialization
@@ -143,11 +159,32 @@ pub(crate) async fn resync_after_pawn_recreate(
         (player::ON_ABILITY_TREE_INFO, tree),
     ];
     for (method_index, args) in player_state {
-        crate::cell::abilities::send_entity_method(entity_id, method_index, args, tx, space_mgr)
+        // The ability methods write their `abilities.wire` row (AB-C7), so
+        // a respawn's stat and tree replay is accounted for like a cast's.
+        if ledgered(method_index) {
+            crate::cell::abilities::send_entity_method_ledgered(
+                entity_id,
+                method_index,
+                args,
+                crate::cell::abilities::WireRoute::EntityDefault,
+                crate::cell::abilities::WireCtx::new(ORIGIN_RESPAWN_RESYNC),
+                tx,
+                space_mgr,
+            )
             .await;
+        } else {
+            crate::cell::abilities::send_entity_method(
+                entity_id,
+                method_index,
+                args,
+                tx,
+                space_mgr,
+            )
+            .await;
+        }
     }
 
-    send_known_abilities_update(entity_id, tx, space_mgr).await;
+    send_known_abilities_update(entity_id, ORIGIN_RESPAWN_RESYNC, tx, space_mgr).await;
     send_active_slot_resend(entity_id, tx, space_mgr).await;
     crate::cell::missions::resend_missions(entity_id, tx, space_mgr).await;
 
@@ -176,8 +213,13 @@ pub(crate) async fn resync_after_pawn_recreate(
 ///
 /// Wire format: `ARRAY<INT32> AbilityData` → `u32 count` + N × `i32 ability_id`.
 /// Method index 101 (`ON_KNOWN_ABILITIES_UPDATE`).
+///
+/// `origin` names the trigger on the `abilities.wire` row (AB-C7):
+/// `world_entry`, `respawn_resync`, `ability_granted`, `gm_ability_granted`,
+/// `gm_abilities_changed`, `respec`.
 pub async fn send_known_abilities_update(
     entity_id: u32,
+    origin: &'static str,
     tx: &mpsc::Sender<CellToBaseMsg>,
     space_mgr: &SpaceManager,
 ) {
@@ -192,29 +234,33 @@ pub async fn send_known_abilities_update(
         args.extend_from_slice(&id.to_le_bytes());
     }
 
-    let send_result = tx
-        .send(CellToBaseMsg::EntityMethodCall {
-            entity_id,
-            method_index: crate::cell::client_methods::player::ON_KNOWN_ABILITIES_UPDATE,
-            args,
-        })
-        .await;
-    match send_result {
-        Ok(()) => {
+    let delivery = crate::cell::abilities::send_entity_method_ledgered(
+        entity_id,
+        crate::cell::client_methods::player::ON_KNOWN_ABILITIES_UPDATE,
+        args,
+        // The player's own client, as before: a player-only method.
+        crate::cell::abilities::WireRoute::SelfOnly,
+        crate::cell::abilities::WireCtx::new(origin),
+        tx,
+        space_mgr,
+    )
+    .await;
+    match delivery.failed {
+        0 => {
             tracing::info!(
                 entity_id,
                 count = ability_ids.len(),
                 "Sent onKnownAbilitiesUpdate (hotbar seed)"
             );
         }
-        Err(e) => {
+        _ => {
             // Channel closed — the player's hotbar will be empty until
             // they reconnect. Log at error so the symptom ("no abilities
             // on the bar") has a corresponding server-side log entry.
             tracing::error!(
                 entity_id,
                 count = ability_ids.len(),
-                error = %e,
+                origin,
                 "Failed to send onKnownAbilitiesUpdate (hotbar seed) — cell→base channel closed"
             );
         }

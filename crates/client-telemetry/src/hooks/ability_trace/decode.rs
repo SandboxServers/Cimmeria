@@ -236,6 +236,9 @@ pub(crate) struct SendCtx {
     pub send_id: u32,
     /// The press that led here, when one matched.
     pub press_id: Option<u32>,
+    /// Milliseconds from that press to this send, on the client's clock
+    /// (AB-C6; `timing`).
+    pub press_to_sent_ms: Option<u64>,
     /// `MethodDescription+0x44`.
     pub msg_id: i32,
     /// `MethodDescription+0x48`, reported when non-negative.
@@ -255,6 +258,7 @@ pub(crate) fn sent_fields(spec: &MethodSpec, call: &DecodedCall, ctx: &SendCtx) 
     let mut f: Fields = vec![
         ("send_id", json!(ctx.send_id)),
         ("press_id", opt(ctx.press_id)),
+        ("press_to_sent_ms", opt(ctx.press_to_sent_ms)),
         ("method", json!(spec.name)),
         ("cell_index", json!(spec.cell_index)),
         ("route", json!(ctx.route)),
@@ -326,6 +330,7 @@ mod tests {
         SendCtx {
             send_id: 7,
             press_id: Some(3),
+            press_to_sent_ms: Some(12),
             msg_id: 0x44,
             sub_index: -1,
             route: "cell",

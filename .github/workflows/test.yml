@@ -154,6 +154,13 @@ jobs:
         run: python3 -m unittest discover -s tools/docs-gen -p "test_*.py"
       - name: token-profile contract and ingest tests
         run: python3 -m unittest discover -s tools/token-profile -p "test_*.py"
+      # AB-C7: every ability method is accounted for on each side it travels
+      # (or excused in the script), and the committed matrix is current. Fix
+      # with `python tools/telemetry-coverage/abilities.py`.
+      - name: ability telemetry coverage (unit tests + --check)
+        run: |
+          python3 -m unittest discover -s tools/telemetry-coverage -p "test_*.py"
+          python3 tools/telemetry-coverage/abilities.py --check
       - uses: ./.github/actions/rust-toolchain
       # Generated doc blocks (test counts, crate graph, ...) are regenerated on
       # main by regen-docs.yml after the merge, so a stale block never fails a PR.
