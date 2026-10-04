@@ -75,3 +75,7 @@ pub async fn despawn_npc_releasing_combat(
     release_npc_from_player_combat(npc_id, why, tx, space_mgr).await;
     space_mgr.despawn_npc(npc_id, tx).await
 }
+
+#[cfg(test)]
+#[path = "release_tests.rs"]
+mod tests;

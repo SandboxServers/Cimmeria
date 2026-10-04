@@ -9,7 +9,8 @@
 //! fighting another NPC must stay in combat and hear nothing.
 //!
 //! Revert proof: route any of these paths back to a bare `despawn_npc` (or
-//! drop the `.respawnall` drain) and its test fails on `threatened_mobs`.
+//! drop the `.respawnall` drain) and its test fails on `threatened_mobs`;
+//! make the shared helper send to the owner only and the observer check fails.
 
 use tokio::sync::mpsc;
 
@@ -21,6 +22,8 @@ use crate::cell::messages::CellToBaseMsg;
 use crate::cell::space_manager::SpaceManager;
 
 const WITNESS: u32 = 2;
+/// A connected bystander who sees the caller (and fights nothing).
+const OBSERVER: u32 = 4;
 
 /// The caller hits `npc` only; the witness hits `npc` and a second NPC in
 /// another space (so a reset of the caller's space does not touch it).
@@ -30,6 +33,13 @@ fn fight() -> (SpaceManager, u32, u32) {
     let other = mgr.allocate_npc_id();
     mgr.spawn_npc(other, "Harset", [12.0, 0.0, 12.0], [0.0; 3])
         .unwrap();
+    mgr.create_entity(OBSERVER, "Agnos", [14.0, 0.0, 10.0], [0.0; 3])
+        .unwrap();
+    mgr.connect_entity(OBSERVER);
+    let o = mgr.get_entity_mut(OBSERVER).unwrap();
+    o.is_player = true;
+    o.player_id = Some(74);
+    o.witnesses.insert(cimmeria_common::EntityId(CALLER as i32));
     let _ = generate_threat(&mut mgr, CALLER, npc, 10.0, AggroCause::Damage);
     let _ = generate_threat(&mut mgr, WITNESS, npc, 10.0, AggroCause::Damage);
     let _ = generate_threat(&mut mgr, WITNESS, other, 10.0, AggroCause::Damage);
@@ -71,6 +81,30 @@ fn assert_released(mgr: &SpaceManager, msgs: &[CellToBaseMsg], npc: u32, other: 
         updates,
         vec![(CALLER, caller.state_field)],
         "only the caller's client is told, with its new state"
+    );
+    // Whoever sees the caller must see the in-combat bit drop too (the
+    // client draws the combat stance on the entity it renders).
+    let seen: Vec<(u32, u32, u32)> = msgs
+        .iter()
+        .filter_map(|m| match m {
+            CellToBaseMsg::WitnessEntityMethod {
+                witness_id,
+                entity_id,
+                method_index: ON_STATE_FIELD_UPDATE,
+                args,
+                ..
+            } => Some((
+                *witness_id,
+                *entity_id,
+                u32::from_le_bytes(args[..4].try_into().ok()?),
+            )),
+            _ => None,
+        })
+        .collect();
+    assert_eq!(
+        seen,
+        vec![(OBSERVER, CALLER, caller.state_field)],
+        "exactly one witness update, to the observer, about the caller"
     );
 }
 
