@@ -9,6 +9,7 @@ const MAX_REVISION: u64 = 9_007_199_254_740_991;
 #[serde(rename_all = "snake_case")]
 pub enum OperationKind {
     Install,
+    PrepareRuntime,
     Repair,
     Uninstall,
     Launch,

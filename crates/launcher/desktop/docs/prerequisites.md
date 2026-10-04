@@ -243,28 +243,47 @@ Only the owned host child is stopped; caller-owned prefix shutdown remains requi
 The subprocess harness passes (`20261004-074153-19316`), exercising those cases,
 pre-dispatch cancellation, refused host recording and recording before request
 consumption. It uses real subprocesses with inert fixture results, not MSI or game
-execution. The real Wine smoke now exercises this supervisor too. Durable admission,
-atomic host/result journaling, restart recovery and UI integration are unfinished;
-no frontend state/persistence or visual UAT coverage is claimed.
+execution. The real Wine smoke now exercises this supervisor too. Durable native
+storage is described below; production prefix coordination and recovery remain
+unconnected. The prior worker source `10d67a2b9` passed native Windows CI
+`37203128166`; this does not validate the newer storage/UI packet.
 
-## Planned production integration boundary
+## Durable runtime-setup state and integration boundary
 
-This coordination is not implemented. A separate `PrepareRuntime` operation must
-follow content installation, with an exclusive per-install game-prefix generation
-distinct from the extraction prefix. Bind immutable installation, runtime, helper
-and prerequisite-package identities before mutation; selected preferences cannot
-retarget an admitted attempt.
+Native `runtime_setup` storage now admits a separate `PrepareRuntime` operation
+from reverified installed identity/content, never the selected preferences folder.
+It binds installation identity, runtime/helper hashes, fixed package/probe policy
+and a fresh prefix-generation UUID. The plan derives a per-install game-prefix
+path distinct from extraction prefixes; admission writes state only and creates
+no prefix. Identical-ID admission never dispatches again; changed identities fail.
 
-The new worker supplies the install/probe sequence, but durable coordination is
-not implemented. Persist
-launch intent, then host identity before sending the mutating request, followed by
-installer result, SDK result and durable completion. A successful installer exit
-alone is insufficient. Uncertain requests/results require explicit reconciliation:
-verify ownership and identity, stop/wait for that exact prefix, then inspect the
-recorded outcome. Host exit is never proof that Wine guests have stopped.
+Dispatch evidence advances `LaunchIntent` → `HostStarted` → `Observed` →
+`Quiescent`, bound to the plan digest. Launch intent precedes spawn; host identity
+must be durable before the mutating request. A decoded result with matching IDs
+is only observed evidence. `finish_runtime_after_stop` is a native caller contract:
+the coordinator must actually verify ownership and stop/wait for the prefix.
+Storage does not inspect or prove process termination, and this method must not
+be exposed directly to IPC. Host exit is never proof of Wine guest termination.
 
-The bounded transport is implemented; the platform coordinator still needs
-prefix-scoped cancellation policy and crash/reopen tests spanning each durable
-transition. Preserve consent/preferences
-and keep diagnostic results distinct from launch permission. Verified PhysX alone
-cannot enable Play while graphics and the remaining launch gates are pending.
+Quiescent evidence is persisted before terminal commit. Complete module/context
+checks plus SDK creation/release can record prerequisite success; other observed
+outcomes fail. Interrupted nonterminal attempts reopen behind reconciliation,
+including a crash between Quiescent persistence and terminal commit. Neither
+reopen nor an observed successful report permits automatic replay or inferred
+success. Preferences and diagnostics consent remain unchanged.
+
+Production Mac prefix creation/ownership, worker coordination, prefix-scoped
+cancellation and an explicit recovery API remain unfinished. There is no new UI
+admission button. The Effect/view decodes compatibility-operation status for
+inspection, distinguishes interruption from completion, and keeps Play disabled:
+PhysX verification cannot bypass graphics or remaining launch gates.
+
+Eight native persistence tests passed (`20261004-075124-23735`), covering identity,
+no replay across reopen, tampering, ownership/content rechecks and persistence
+faults, including the Quiescent/terminal boundary. Thirty-one frontend tests,
+type checking and JS logic UAT through the actual Effect/view passed; IPC was
+fixture-backed, not native persistence or visual validation. The full engine
+library suite passed 247 tests with 11 explicit ignored smokes
+(`20261004-075254-24651`); strict engine/shell clippy passed
+(`20261004-075146-24072`) and the frontend build passed. Earlier worker CI/smokes
+do not validate this new state integration on Windows.

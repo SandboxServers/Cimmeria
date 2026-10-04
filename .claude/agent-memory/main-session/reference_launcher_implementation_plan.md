@@ -408,3 +408,14 @@ Windows+Mac before the shell; shell/visual/game gates remain separate.
   pass074214-19556; strict clippy074248-20069. Native worker dc69f3e93 CI37202769972
   passed; artifact11303288407. Real supervised MSI/API→SDK lifecycle and restart
   probe pass28.252s074227-19820. No game started or durable coordinator claimed.
+
+- Runtime setup now has durable native Plan/admission and LaunchIntent→HostStarted→
+  Observed→Quiescent records, separate PrepareRuntime operation. Inputs derive from
+  installed identity (not preferences), fixed policy, helper/runtime hashes and
+  fresh game-prefix generation. Reopen never replays or promotes observed success;
+  quiescent record precedes terminal commit. The native finish_after_stop contract
+  requires real coordinator prefix verification/stop; storage does not prove it.
+  Eight persistence tests pass075124-23735, full library247pass11ignored075254-24651,
+  strict engine/shell clippy075146-24072. Effect decodes states and keeps Play gated;
+  31frontendtests/logicUAT/typecheck/build pass (fixture IPC, no visual UAT).
+  Prefix coordinator, runtime admission UI and explicit recovery remain unconnected.

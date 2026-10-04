@@ -44,7 +44,8 @@ export function mountInstall(document:Document,invoke:Invoke,uuid:()=>string=()=
     const ready=!!status&&!status.native.requires_reopen&&!current.needsInspection&&!current.busy&&!pending;
     primary.disabled=!ready||!status?.install_supported||(!!operation&&!status?.can_retry)||!status.native.preferences.install_directory;
     const removed=operation?.kind==='uninstall'&&operation.state==='succeeded';
-    primary.textContent=removed?'Install Stargate Worlds':status?.can_retry?'Retry installation':operation?.state==='succeeded'?'Content prepared':active?(operation?.kind==='uninstall'?'Removing…':'Installing…'):'Install Stargate Worlds';
+    const runtimeSetup=operation?.kind==='prepare_runtime';
+    primary.textContent=runtimeSetup?(active?'Checking compatibility…':operation?.state==='succeeded'?'Compatibility checked':'Check compatibility status'):removed?'Install Stargate Worlds':status?.can_retry?'Retry installation':operation?.state==='succeeded'?'Content prepared':active?(operation?.kind==='uninstall'?'Removing…':'Installing…'):'Install Stargate Worlds';
     const failed=operation?.kind==='install'&&(operation.state==='failed'||operation.state==='cancelled');
     cleanup.hidden=!failed||status?.can_retry===true;
     cleanup.disabled=!ready;
@@ -72,6 +73,7 @@ export function mountInstall(document:Document,invoke:Invoke,uuid:()=>string=()=
     else if(pending)text='Confirming operation…';
     else if(status){
       if(removed)text='Game uninstalled. You can install it again when ready.';
+      else if(runtimeSetup)text=recovery?'Compatibility setup was interrupted. Files are preserved; recovery requires inspection.':active?'Checking game compatibility…':operation?.state==='succeeded'?'Prerequisites checked. Graphics and Play still need validation.':'Compatibility setup stopped. Game files are preserved.';
       else if(operation?.kind==='uninstall')text=recovery?'Uninstall was interrupted. Use Finish uninstall in Settings to confirm removal again.':active?'Removing game files…':'Inspect uninstall status before continuing.';
       else if(operation?.state==='succeeded')text='Game content prepared. Runtime checks and Play are not connected in this build.';
       else if(recovery)text=status.can_resume||status.can_reconcile?'An interrupted installation was found. Inspect files or explicitly resume the saved attempt.':'An interrupted compatibility operation was found. Files are preserved; recovery is not available in this build. You can recheck status.';

@@ -2,6 +2,7 @@
 mod atomic;
 mod failed_cleanup;
 mod helper_journal;
+pub mod runtime_setup;
 pub mod uninstall;
 pub use helper_journal::{HelperPhase, HelperRecord, HelperResult};
 mod release_evidence;

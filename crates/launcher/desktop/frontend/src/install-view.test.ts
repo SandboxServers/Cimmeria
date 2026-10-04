@@ -128,3 +128,20 @@ test('lost uninstall reply only inspects; explicit recovery reuses operation ide
   assert.ok(removals.every(c=>c.operation_id===removalId));assert.ok(calls.every(c=>c.command!=='reconcile'));
  }finally{await app.dispose();}
 });
+
+for (const state of ['running','succeeded','reconciliation_required'] as const) {
+ test(`runtime setup ${state} remains distinct from installation and Play`,async()=>{
+  const ui=dom();const status:InstallStatus={...initial(),can_resume:false,can_reconcile:false,
+   native:{...initial().native,operation:{schema_version:1,revision:5,
+    operation:{id,kind:'prepare_runtime',state,intent_digest:Array(32).fill(0)}}}};
+  const calls:string[]=[];const app=mountInstall(ui.document,async(_command,args)=>{
+   calls.push((args!.request as InstallRequest).command);return status;
+  });
+  try {await app.ready;await flush();assert.equal(ui.get('install').disabled,true);
+   assert.match(ui.get('install-status').textContent!,state==='succeeded'?/Graphics and Play still need validation/:/compatibility|Compatibility/);
+   ui.click('install');await flush();assert.ok(calls.every(call=>call==='inspect'));
+   assert.equal(ui.get('cancel-install').hidden,true);
+   assert.equal(status.native.preferences.launcher_summary_consent,false);
+  } finally {await app.dispose();}
+ });
+}

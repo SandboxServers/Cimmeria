@@ -3,7 +3,7 @@ import { Data, Effect, Schema } from "effect";
 const Revision = Schema.Int.check(Schema.isBetween({ minimum: 0, maximum: Number.MAX_SAFE_INTEGER }));
 const Operation = Schema.Struct({
   id: Schema.String,
-  kind: Schema.Literals(["install", "repair", "uninstall", "launch"]),
+  kind: Schema.Literals(["install", "prepare_runtime", "repair", "uninstall", "launch"]),
   intent_digest: Schema.Array(Schema.Int.check(Schema.isBetween({minimum: 0, maximum: 255})))
     .check(Schema.isBetweenLength(32, 32)),
   state: Schema.Literals(["starting", "running", "cancel_requested", "succeeded", "failed", "cancelled", "reconciliation_required"]),

@@ -122,3 +122,20 @@ assert.equal(ui.document.getElementById('install').textContent,'Install Stargate
 assert.equal(status.native.preferences.launcher_summary_consent,false);
 await ui.app.dispose();
 console.log('PASS: uninstall requires explicit confirmation of owned folder, dismissal sends nothing, double-click dispatches once, native acknowledgement enables reinstall, consent unchanged. Native disk persistence is separately covered by Rust host tests; this pass uses fixture IPC, not real deletion or visual UAT.');
+
+for (const phase of ['running','succeeded','reconciliation_required']) {
+ const before=calls.length;
+ status={...status,can_retry:false,can_resume:false,can_reconcile:false,uninstall:null,
+  native:{...status.native,operation:{schema_version:1,revision:status.native.operation.revision+1,
+   operation:{id,kind:'prepare_runtime',state:phase,intent_digest:Array(32).fill(0)}}}};
+ ui=mount();await ui.app.ready;await settle(ui.app);
+ assert.equal(ui.document.getElementById('install').disabled,true);
+ assert.equal(ui.document.getElementById('cancel-install').hidden,true);
+ assert.match(ui.document.getElementById('install-status').textContent,
+  phase==='succeeded'?/Graphics and Play still need validation/:/compatibility|Compatibility/);
+ ui.document.getElementById('install').dispatchEvent(new ui.window.Event('click'));
+ await settle(ui.app);assert.ok(calls.slice(before).every(command=>command==='inspect'));
+ assert.equal(status.native.preferences.launcher_summary_consent,false);
+ await ui.app.dispose();
+}
+console.log('PASS: Effect decodes runtime setup states; progress/success/recovery remain inspection-only, never Play or reinstall; consent preserved. Fixture IPC only; native durable runtime state is covered separately by Rust tests. No visual UAT.');
