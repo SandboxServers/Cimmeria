@@ -110,6 +110,7 @@ pub(super) async fn npc_ai_investigate(
                     target: "npc_ai",
                     event = "investigate_arrived",
                     npc_id,
+                    npc_name = space_mgr.entity_label(npc_id),
                     "NPC AI: investigate → arrived at POI, dwelling"
                 );
             }
@@ -205,6 +206,7 @@ pub(super) async fn npc_ai_investigate(
             target: "npc_ai",
             event = "investigate_routed",
             npc_id,
+            npc_name = space_mgr.entity_label(npc_id),
             poi_x = poi_pos.x,
             poi_y = poi_pos.y,
             poi_z = poi_pos.z,

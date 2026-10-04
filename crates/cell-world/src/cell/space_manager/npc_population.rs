@@ -35,8 +35,13 @@ pub fn spawn_npcs_from_records(records: &[SpawnRecord], space_mgr: &mut SpaceMan
         match space_mgr.spawn_npc_from_record(npc_id, record) {
             Ok(space_id) => {
                 tracing::debug!(
-                    npc_id, space_id, spawn_id = record.spawn_id,
-                    world = %record.world_name, name = %record.template_name,
+                    npc_id,
+                    npc_name = space_mgr.entity_label(npc_id),
+                    space_id,
+                    spawn_id = record.spawn_id, // nt:id-only spawnlist row id, the row has no name column
+                    world = %record.world_name,
+                    template_id = record.template_id,
+                    template_name = %record.template_name,
                     class = %record.class, tag = ?record.tag,
                     "Spawned NPC from DB"
                 );
@@ -45,8 +50,11 @@ pub fn spawn_npcs_from_records(records: &[SpawnRecord], space_mgr: &mut SpaceMan
             }
             Err(e) => {
                 tracing::warn!(
-                    spawn_id = record.spawn_id, world = %record.world_name,
-                    name = %record.template_name, "Failed to spawn NPC from DB: {e}"
+                    spawn_id = record.spawn_id, // nt:id-only spawnlist row id, the row has no name column
+                    world = %record.world_name,
+                    template_id = record.template_id,
+                    template_name = %record.template_name,
+                    "Failed to spawn NPC from DB: {e}"
                 );
             }
         }
@@ -83,8 +91,13 @@ pub fn spawn_instance_npcs_from_records(
         match space_mgr.spawn_npc_from_record_in_space(npc_id, record, space_id) {
             Ok(sid) => {
                 tracing::debug!(
-                    npc_id, space_id = sid, spawn_id = record.spawn_id,
-                    world = %record.world_name, name = %record.template_name,
+                    npc_id,
+                    npc_name = space_mgr.entity_label(npc_id),
+                    space_id = sid,
+                    spawn_id = record.spawn_id, // nt:id-only spawnlist row id, the row has no name column
+                    world = %record.world_name,
+                    template_id = record.template_id,
+                    template_name = %record.template_name,
                     tag = ?record.tag, "Spawned instance NPC from DB"
                 );
                 log_spawn_behaviour(space_mgr, npc_id);
@@ -92,7 +105,10 @@ pub fn spawn_instance_npcs_from_records(
             }
             Err(e) => {
                 tracing::warn!(
-                    spawn_id = record.spawn_id, name = %record.template_name,
+                    spawn_id = record.spawn_id, // nt:id-only spawnlist row id, the row has no name column
+                    world = %record.world_name,
+                    template_id = record.template_id,
+                    template_name = %record.template_name,
                     "Failed to spawn instance NPC: {e}"
                 );
             }
@@ -120,15 +136,17 @@ fn log_spawn_behaviour(space_mgr: &mut SpaceManager, npc_id: u32) {
     let ability_ids = super::npc_identity::sorted_ability_ids(e);
     let event_set_ids = super::npc_identity::ability_event_set_ids(space_mgr, &ability_ids);
     let world = space_mgr.get_entity_world_name(npc_id).unwrap_or_default();
+    let names = super::EntityNames::of(e);
     tracing::debug!(
         target: "spawner.npc_behaviour",
         npc_id,
         world = %world,
         space_id = space_mgr.get_entity_space_id(npc_id).unwrap_or(0),
-        npc_name = e.npc_name.as_deref().unwrap_or(""),
-        tag = e.tag.as_deref().unwrap_or(""),
+        npc_name = names.entity_name,
+        tag = e.tag.as_deref(),
         template_id = e.template_id.unwrap_or(0),
-        spawn_id = e.spawn_id.unwrap_or(0),
+        template_name = names.template_name,
+        spawn_id = e.spawn_id.unwrap_or(0), // nt:id-only spawnlist row id, the row has no name column
         x = e.position.x,
         y = e.position.y,
         z = e.position.z,
@@ -154,7 +172,7 @@ fn log_spawn_behaviour(space_mgr: &mut SpaceManager, npc_id: u32) {
         wander_radius = e.wander_radius,
         interaction_flags = e.interaction_type_flags,
         interaction_flags_names = %cimmeria_entity::interaction_flags::INTERACTION_FLAGS.render(e.interaction_type_flags),
-        loot_table_id = ?e.loot_table_id,
+        loot_table_id = ?e.loot_table_id, // nt:id-only the NameBook has no loot_tables lookup
         ability_ids = ?ability_ids,
         event_set_ids = ?event_set_ids,
         weapon_visual = %super::npc_identity::weapon_visual(e),

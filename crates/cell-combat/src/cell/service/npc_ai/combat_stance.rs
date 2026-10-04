@@ -129,11 +129,14 @@ pub(super) async fn sync_combat_stance(
         space_mgr,
     )
     .await;
+    let book = cimmeria_names::book();
     tracing::debug!(
         target: "npc_ai.stance",
         event = if fighting { "in_combat" } else { "out_of_combat" },
         npc_id,
+        npc_name = space_mgr.entity_label(npc_id),
         template_id,
+        template_name = template_id.and_then(|t| book.template(t)),
         state_field,
         state_field_names = %cimmeria_wire::state_field::STATE_FLAGS.render(state_field),
         witness_count,

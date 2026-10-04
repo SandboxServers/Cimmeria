@@ -81,8 +81,13 @@ pub(super) async fn handle(
                 owner_id = caller.owner_id,
                 account_id = caller.account_id,
                 player_id = caller.player_id,
+                owner_name = caller.player_name,
+                account_name = caller.account_name,
+                player_name = caller.player_name,
                 pet_id,
+                pet_name = space_mgr.entity_names(pet).entity_name,
                 ability_id,
+                ability_name = cimmeria_names::book().ability(ability_id),
                 toggle = other,
                 reason = "bad_toggle_value",
                 "pet command rejected: toggle is neither 0 (off) nor 1 (on) -- \
@@ -101,6 +106,7 @@ pub(super) async fn handle(
         refuse(
             caller,
             pet_id,
+            space_mgr.entity_names(pet).entity_name,
             super::invoke::not_in_list(space_mgr, ability_id),
             tx,
         )
@@ -123,9 +129,15 @@ pub(super) async fn handle(
         owner_id = caller.owner_id,
         account_id = caller.account_id,
         player_id = caller.player_id,
+        owner_name = caller.player_name,
+        account_name = caller.account_name,
+        player_name = caller.player_name,
         pet_id = pet,
+        pet_name = space_mgr.entity_names(pet).entity_name,
         template_id = pet_template_id(space_mgr, pet),
+        template_name = space_mgr.entity_names(pet).template_name,
         ability_id,
+        ability_name = cimmeria_names::book().ability(ability_id),
         on,
         "pet command: the owner toggled a pet ability"
     );
@@ -155,5 +167,6 @@ async fn resend_ability_list(
     else {
         return;
     };
-    send_to_owner(caller, pet, ON_PET_ABILITY_LIST, list, tx).await;
+    let pet_name = space_mgr.entity_names(pet).entity_name;
+    send_to_owner(caller, pet, pet_name, ON_PET_ABILITY_LIST, list, tx).await;
 }

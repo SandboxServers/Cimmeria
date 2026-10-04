@@ -144,7 +144,10 @@ impl AbilityRow {
                 target: "abilities",
                 event = "ability_type_unknown",
                 ability_id = self.ability_id,
-                type_id = %self.type_id,
+                ability_name = Some(self.name.as_str()).filter(|n| !n.trim().is_empty()),
+                // The `abilities.type_id` enum label, not an ID (Rule 6:
+                // generic keys name their domain).
+                ability_type = %self.type_id,
                 reason = "unknown_ability_type",
                 "resources.abilities.type_id label unknown to the server; loaded as Undefined"
             );

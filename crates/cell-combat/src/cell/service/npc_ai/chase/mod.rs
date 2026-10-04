@@ -85,7 +85,7 @@ pub(super) async fn chase(
     match (path_end, current) {
         // Still walking the route planned for this goal (partial or not).
         (Some(end), Some(r)) if r.end == end => {
-            hold_no_repath(&step);
+            hold_no_repath(&step, space_mgr);
             return;
         }
         // At the end of a route that cannot reach the goal, and the goal has
@@ -100,7 +100,7 @@ pub(super) async fn chase(
         // A route installed by something else (content, a cover move) that
         // still ends near the goal.
         (Some(end), None) if record.is_none() && !policy::goal_moved(&end, &goal) => {
-            hold_no_repath(&step);
+            hold_no_repath(&step, space_mgr);
             return;
         }
         _ => {}
@@ -108,14 +108,16 @@ pub(super) async fn chase(
     plan(&step, goal, now, tx, space_mgr).await;
 }
 
-fn hold_no_repath(step: &ChaseStep) {
+fn hold_no_repath(step: &ChaseStep, space_mgr: &SpaceManager) {
     super::note_outcome("hold_no_repath");
     tracing::debug!(
         target: "npc_ai",
         event = "decision",
         decision_outcome = "hold_no_repath",
         npc_id = step.npc_id,
+        npc_name = space_mgr.entity_label(step.npc_id),
         target_id = step.target_id,
+        target_name = space_mgr.entity_label(step.target_id),
         in_range = step.in_range,
         has_los = step.has_los,
         dist_to_target = step.dist_to_target,
@@ -150,7 +152,9 @@ async fn hold_unreachable(
         event = "decision",
         decision_outcome = "hold_unreachable",
         npc_id = step.npc_id,
+        npc_name = space_mgr.entity_label(step.npc_id),
         target_id = step.target_id,
+        target_name = space_mgr.entity_label(step.target_id),
         in_range = step.in_range,
         has_los = step.has_los,
         dist_to_target = step.dist_to_target,
@@ -174,7 +178,9 @@ async fn give_up(
         event = "decision",
         decision_outcome = "leashed",
         npc_id = step.npc_id,
+        npc_name = space_mgr.entity_label(step.npc_id),
         target_id = step.target_id,
+        target_name = space_mgr.entity_label(step.target_id),
         trigger = "unreachable",
         cause,
         held_secs,
@@ -285,6 +291,7 @@ async fn plan(
             target: "npc_ai.path",
             event = "off_mesh_snap",
             npc_id = step.npc_id,
+            npc_name = space_mgr.entity_label(step.npc_id),
             from = ?[from.x, from.y, from.z],
             to = ?[onto.x, onto.y, onto.z],
             snap_dy = onto.y - from.y,
@@ -351,7 +358,9 @@ async fn plan(
                 event = "decision",
                 decision_outcome = "chase",
                 npc_id = step.npc_id,
+                npc_name = space_mgr.entity_label(step.npc_id),
                 target_id = step.target_id,
+                target_name = space_mgr.entity_label(step.target_id),
                 in_range = step.in_range,
                 has_los = step.has_los,
                 dist_to_target = step.dist_to_target,

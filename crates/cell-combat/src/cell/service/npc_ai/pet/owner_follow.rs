@@ -68,6 +68,7 @@ pub(super) fn arm_follow(space_mgr: &mut SpaceManager, pet_id: u32, owner_id: u3
         super::super::AiTransitionReason::PetFollow,
     );
     let id = super::owner_identity(space_mgr, pet_id, owner_id);
+    let names = space_mgr.entity_names(pet_id);
     tracing::debug!(
         target: "pets.ai",
         entity_id = pet_id,
@@ -77,6 +78,13 @@ pub(super) fn arm_follow(space_mgr: &mut SpaceManager, pet_id: u32, owner_id: u3
         owner_id,
         account_id = id.account_id,
         player_id = id.player_id,
+        entity_name = names.entity_name,
+        pet_name = names.entity_name,
+        template_id = names.template_id,
+        template_name = names.template_name,
+        owner_name = id.player_name,
+        account_name = id.account_name,
+        player_name = id.player_name,
         from = from.label(),
         "pet: following its owner"
     );
@@ -122,6 +130,7 @@ pub(super) async fn teleport_if_left_behind(
         .get::<PetState>()
         .and_then(|p| p.last_teleport_at);
     let id = super::owner_identity(space_mgr, pet_id, owner_id);
+    let names = space_mgr.entity_names(pet_id);
     if let Some(last) =
         last.filter(|t| now.saturating_duration_since(*t) < PET_TELEPORT_MIN_INTERVAL)
     {
@@ -134,6 +143,13 @@ pub(super) async fn teleport_if_left_behind(
             owner_id,
             account_id = id.account_id,
             player_id = id.player_id,
+            entity_name = names.entity_name,
+            pet_name = names.entity_name,
+            template_id = names.template_id,
+            template_name = names.template_name,
+            owner_name = id.player_name,
+            account_name = id.account_name,
+            player_name = id.player_name,
             reason,
             distance,
             dy,
@@ -153,6 +169,13 @@ pub(super) async fn teleport_if_left_behind(
         owner_id,
         account_id = id.account_id,
         player_id = id.player_id,
+        entity_name = names.entity_name,
+        pet_name = names.entity_name,
+        template_id = names.template_id,
+        template_name = names.template_name,
+        owner_name = id.player_name,
+        account_name = id.account_name,
+        player_name = id.player_name,
         reason,
         distance,
         dy,

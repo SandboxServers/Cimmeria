@@ -79,6 +79,7 @@ pub(super) async fn npc_ai_follow(
             event = "decision",
             decision_outcome = "follow_dropped_no_target",
             npc_id,
+            npc_name = space_mgr.entity_label(npc_id),
             "NPC AI: follow state with no follow target -- dropping to Idle"
         );
         crate::cell::abilities::broadcast_movement_type(npc_id, None, tx, space_mgr).await;
@@ -102,7 +103,9 @@ pub(super) async fn npc_ai_follow(
             decision_outcome = "follow_target_lost",
             reason = "entity_not_found",
             npc_id,
+            npc_name = space_mgr.entity_label(npc_id),
             target_id,
+            target_name = space_mgr.entity_label(target_id),
             "NPC AI: follow target not found in space -- follow cleared, escort stands still until a chain re-arms it"
         );
         crate::cell::abilities::broadcast_movement_type(npc_id, None, tx, space_mgr).await;
@@ -151,7 +154,9 @@ pub(super) async fn npc_ai_follow(
             target: "npc_ai",
             event = "follow_repath_stale",
             npc_id,
+            npc_name = space_mgr.entity_label(npc_id),
             target_id,
+            target_name = space_mgr.entity_label(target_id),
             dist,
             end_to_target = horizontal_distance(&end, &target_pos),
             end_dy = target_pos.y - end.y,
@@ -241,7 +246,9 @@ pub(super) async fn npc_ai_follow(
         target: "npc_ai",
         event = "follow_routed",
         npc_id,
+        npc_name = space_mgr.entity_label(npc_id),
         target_id,
+        target_name = space_mgr.entity_label(target_id),
         dist,
         max_d,
         routed,

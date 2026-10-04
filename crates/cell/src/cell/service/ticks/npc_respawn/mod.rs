@@ -137,7 +137,7 @@ pub(in crate::cell::service) async fn npc_respawn_tick(
         };
         // world_name lives on the SpaceInstance, not the entity —
         // resolve via the SpaceManager. Defaulted to "unknown" so the
-        // metric label cardinality stays bounded even if a future
+        // `world` metric label cardinality stays bounded even if a future
         // refactor allows entities in spaces that aren't registered.
         let world_name = space_mgr
             .spaces
@@ -283,7 +283,9 @@ pub(in crate::cell::service) async fn npc_respawn_tick(
                 .await;
             tracing::info!(
                 player_id,
+                player_name = space_mgr.entity_label(player_id),
                 respawning_entity = entity_id,
+                respawning_entity_name = space_mgr.entity_label(entity_id),
                 "NPC respawn: closing stale loot window on player"
             );
         }
@@ -379,7 +381,9 @@ pub(in crate::cell::service) async fn npc_respawn_tick(
                     tracing::warn!(
                         target: "spawner.npc_respawn",
                         npc_id = entity_id,
+                        npc_name = space_mgr.entity_label(entity_id),
                         witness_id,
+                        witness_name = space_mgr.entity_label(witness_id),
                         reason = "cell_to_base_closed",
                         "NPC respawn: re-create could not be enqueued ({e}); the \
                          witness keeps the corpse pose until it leaves and re-enters view"
@@ -390,14 +394,19 @@ pub(in crate::cell::service) async fn npc_respawn_tick(
             recreated += 1;
         }
 
+        let names = space_mgr.entity_names(entity_id);
         tracing::info!(
             target: "spawner.npc_respawn",
             event = "npc_respawn_recreate",
             npc_id = entity_id,
+            npc_name = names.entity_name,
             template_id,
+            template_name = names.template_name,
             ?spawn_pos,
             respawn_secs,
-            world_name = %world_name,
+            // The space's world, absent (not "unknown") when unregistered.
+            world = space_mgr.world_name_for_space(space_id),
+            space_id,
             state_field,
             state_field_names = %cimmeria_wire::state_field::STATE_FLAGS.render(state_field),
             interaction_flags,
@@ -406,13 +415,14 @@ pub(in crate::cell::service) async fn npc_respawn_tick(
             recreated,
             "NPC respawned (Dead -> Idle, HP restored, position snapped, re-created on witness clients)"
         );
-        // `world_name` is bounded by the worlds.xml registry (~30
-        // entries) — low-cardinality. Useful for "is the respawn
-        // timer working as configured per world" / "are we leaking
-        // dead NPCs in Castle but not in Agnos" queries.
+        // `world` (Rule 4's world label; `world_name` before NT-25) is
+        // bounded by the worlds.xml registry (~30 entries), so it is
+        // low-cardinality. Useful for "is the respawn timer working as
+        // configured per world" / "are we leaking dead NPCs in Castle but
+        // not in Agnos" queries.
         cimmeria_observability::counter!(
             "npc_respawns_total",
-            "world_name" => world_name,
+            "world" => world_name,
         );
     }
 }

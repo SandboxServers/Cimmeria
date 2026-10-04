@@ -162,6 +162,7 @@ pub async fn load_spawn_templates(pool: &PgPool) -> Result<HashMap<i32, SpawnRec
             Err(e) => {
                 tracing::warn!(
                     template_id,
+                    template_name = row.try_get::<&str, _>("template_name").ok(),
                     error = %e,
                     "entity_templates: template row failed to decode (NULL in a \
                      non-nullable column?); spawn_entity cannot use this template"

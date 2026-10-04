@@ -127,6 +127,7 @@ pub(super) async fn npc_ai_wander(
                 target: "npc_ai",
                 event = "wander_arrived",
                 npc_id,
+                npc_name = space_mgr.entity_label(npc_id),
                 dwell_secs,
                 "NPC AI: wander → arrived, dwelling"
             );
@@ -239,6 +240,7 @@ pub(super) async fn npc_ai_wander(
         target: "npc_ai",
         event = "wander_waypoint_set",
         npc_id,
+        npc_name = space_mgr.entity_label(npc_id),
         target_x = target.x,
         target_z = target.z,
         radius,

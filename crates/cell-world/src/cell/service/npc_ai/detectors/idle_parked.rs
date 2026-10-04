@@ -9,6 +9,8 @@
 use cimmeria_entity::cell_entity::PetState;
 use cimmeria_entity::cell_entity::{AiState, CellEntity};
 
+use crate::cell::space_manager::EntityNames;
+
 /// Further than this from spawn counts as "parked away from home".
 pub(in crate::cell) const IDLE_PARKED_MIN_DIST: f32 = 2.0;
 
@@ -44,12 +46,15 @@ pub(in crate::cell) fn check(npc: &CellEntity, world: &str, from: AiState, reaso
         "world" => world.to_string(),
         "reason" => reason,
     );
+    let names = EntityNames::of(npc);
     tracing::info!(
         target: "npc_ai.idle_parked",
         event = "idle_parked",
         npc_id = npc.entity_id.0,
+        npc_name = names.entity_name,
         tag = npc.tag.as_deref().unwrap_or(""),
         template_id = npc.template_id.unwrap_or(0),
+        template_name = names.template_name,
         world,
         space_id = npc.space_id.0,
         from = from.label(),

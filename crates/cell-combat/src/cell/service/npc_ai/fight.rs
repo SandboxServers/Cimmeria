@@ -70,7 +70,9 @@ pub(super) async fn npc_ai_fight(
             event = "decision",
             decision_outcome = "stunned",
             npc_id,
+            npc_name = space_mgr.entity_label(npc_id),
             target_id,
+            target_name = space_mgr.entity_label(target_id),
             "NPC AI: movement locked (stun or knockdown), holding"
         );
         return;
@@ -105,7 +107,9 @@ pub(super) async fn npc_ai_fight(
             event = "decision",
             decision_outcome = "casting",
             npc_id,
+            npc_name = space_mgr.entity_label(npc_id),
             target_id,
+            target_name = space_mgr.entity_label(target_id),
             "NPC AI: ability warming up, holding"
         );
         return;
@@ -257,7 +261,9 @@ pub(super) async fn npc_ai_fight(
                 event = "decision",
                 decision_outcome = "stationary_holds",
                 npc_id,
+                npc_name = space_mgr.entity_label(npc_id),
                 target_id,
+                target_name = space_mgr.entity_label(target_id),
                 in_range,
                 has_los,
                 dist_to_target,
@@ -373,7 +379,9 @@ pub(super) async fn npc_ai_fight(
                 event = "decision",
                 decision_outcome = "no_ability",
                 npc_id,
+                npc_name = space_mgr.entity_label(npc_id),
                 target_id,
+                target_name = space_mgr.entity_label(target_id),
                 dist_to_target,
                 "NPC AI: no usable ability (all cooling or needs-ammo), holding fire"
             );
@@ -387,8 +395,11 @@ pub(super) async fn npc_ai_fight(
         event = "decision",
         decision_outcome = "attack_in_place",
         npc_id,
+        npc_name = space_mgr.entity_label(npc_id),
         target_id,
+        target_name = space_mgr.entity_label(target_id),
         ability_id = chosen_ability,
+        ability_name = cimmeria_names::book().ability(chosen_ability),
         dist_to_target,
         max_range,
         min_range,
@@ -428,8 +439,11 @@ pub(super) async fn npc_ai_fight(
         // standing still" can be diagnosed without attaching a profiler.
         tracing::warn!(
             npc_id,
+            npc_name = space_mgr.entity_label(npc_id),
             target = target_id,
+            target_name = space_mgr.entity_label(target_id),
             ability_id = chosen_ability,
+            ability_name = cimmeria_names::book().ability(chosen_ability),
             distance = dist_to_target,
             reason = "handle_use_ability_returned_false",
             "NPC AI: attack tick produced no ability fire -- mob may appear stuck"

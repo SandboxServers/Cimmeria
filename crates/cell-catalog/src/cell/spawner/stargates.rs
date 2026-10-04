@@ -94,7 +94,8 @@ pub async fn load_stargates(
             _ => {
                 tracing::warn!(
                     stargate_id = id,
-                    world_name = %world_name,
+                    stargate_name = cimmeria_names::book().stargate(id),
+                    world = %world_name,
                     reason = "partial_arrival_row",
                     "load_stargates: stargates.arrival_* is partially populated — \
                      ignoring the pin and arriving on the gate row, which may be \

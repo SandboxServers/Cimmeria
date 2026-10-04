@@ -120,3 +120,54 @@ fn spawn_behaviour_row_names_the_world_the_abilities_and_the_weapon() {
     );
     assert!(row.has_field("weapon_visual", "WP-Human.WP_SMG_1A"));
 }
+
+/// NT-25 (Rule 6): both spawn rows name the NPC and its template next to
+/// their ids, under `template_name` (not a bare `name`), and an unnamed
+/// field is left out rather than logged as `""`.
+///
+/// Revert proof: drop `npc_name` or `template_name` from either row and the
+/// matching assertion fails.
+#[test]
+fn spawn_behaviour_row_pairs_the_npc_and_template_ids_with_names() {
+    let mut book = cimmeria_names::NameBook::empty();
+    book.insert(cimmeria_names::Table::Templates, 24, "NID_Guard_Template");
+    book.insert(cimmeria_names::Table::Texts, 9001, "NID Guard");
+    cimmeria_names::global().store(book);
+    let mut mgr = agnos();
+    let mut record = smg_guard();
+    record.name_id = Some(9001);
+    record.tag = None;
+    let logs = LogCapture::install();
+
+    assert_eq!(spawn_npcs_from_records(&[record], &mut mgr), 1);
+
+    let behaviour = logs
+        .find_message(Level::DEBUG, "resolved behaviour")
+        .expect("spawner.npc_behaviour row");
+    assert!(
+        behaviour.has_field("npc_name", "NID Guard"),
+        "{:?}",
+        behaviour.fields
+    );
+    assert!(behaviour.has_field("template_name", "NID_Guard_Template"));
+    assert!(
+        !behaviour.fields.contains_key("tag"),
+        "an untagged NPC leaves `tag` out, never \"\": {:?}",
+        behaviour.fields
+    );
+
+    let spawned = logs
+        .find_message(Level::DEBUG, "Spawned NPC from DB")
+        .expect("spawn row");
+    assert!(
+        spawned.has_field("npc_name", "NID Guard"),
+        "{:?}",
+        spawned.fields
+    );
+    assert!(spawned.has_field("template_name", "NID Guard"));
+    assert!(
+        !spawned.fields.contains_key("name"),
+        "the bare `name` key is retired: {:?}",
+        spawned.fields
+    );
+}

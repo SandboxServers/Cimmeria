@@ -161,6 +161,7 @@ pub(super) async fn npc_ai_patrol(
                     target: "npc_ai",
                     event = "patrol_arrived",
                     npc_id,
+                    npc_name = space_mgr.entity_label(npc_id),
                     target_index,
                     delay_secs,
                     "NPC AI: patrol → arrived, dwelling"
@@ -268,6 +269,7 @@ pub(super) async fn npc_ai_patrol(
             target: "npc_ai",
             event = "patrol_waypoint_set",
             npc_id,
+            npc_name = space_mgr.entity_label(npc_id),
             target_index,
             wp_x = waypoint.x,
             wp_y = waypoint.y,

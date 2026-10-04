@@ -93,10 +93,13 @@ pub(super) async fn handle(
         return;
     };
     if let Err(refusal) = check_invoke(space_mgr, caller.owner_id, pet, ability_id, target_id) {
-        refuse(caller, pet_id, refusal, tx).await;
+        let pet_name = space_mgr.entity_names(pet).entity_name;
+        refuse(caller, pet_id, pet_name, refusal, tx).await;
         return;
     }
     let template_id = pet_template_id(space_mgr, pet);
+    // Snapshotted before the cast: it can kill the target, or the pet.
+    let pet_names = space_mgr.entity_names(pet);
 
     // PT-06 routes this wrapper's kill credit to the owner through
     // `credit_recipient`; the call is the same either way.
@@ -115,6 +118,7 @@ pub(super) async fn handle(
         refuse(
             caller,
             pet_id,
+            pet_names.entity_name,
             Refusal::warn("cast_refused", FEEDBACK_NOT_READY, ability_id),
             tx,
         )
@@ -149,7 +153,7 @@ pub(super) async fn handle(
             Err("target_dead") => {}
             Err(reason) => {
                 let refusal = Refusal::debug(reason, order_refusal_code(reason), ability_id);
-                refuse(caller, pet_id, refusal, tx).await;
+                refuse(caller, pet_id, pet_names.entity_name, refusal, tx).await;
             }
         }
     }
@@ -161,10 +165,17 @@ pub(super) async fn handle(
         owner_id = caller.owner_id,
         account_id = caller.account_id,
         player_id = caller.player_id,
+        owner_name = caller.player_name,
+        account_name = caller.account_name,
+        player_name = caller.player_name,
         pet_id = pet,
+        pet_name = pet_names.entity_name,
         template_id,
+        template_name = pet_names.template_name,
         ability_id,
+        ability_name = cimmeria_names::book().ability(ability_id),
         target_id,
+        target_name = u32::try_from(target_id).ok().and_then(|t| space_mgr.entity_label(t)),
         engaged,
         engage_deferred = deferred,
         "pet command: the pet cast the owner's ability"

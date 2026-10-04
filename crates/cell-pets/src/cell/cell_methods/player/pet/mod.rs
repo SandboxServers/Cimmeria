@@ -117,16 +117,20 @@ impl PetCommand {
 
 /// Who sent a pet command, as every `pets.command` row names them: the
 /// owner's entity id plus the owner's `account_id` / `player_id`
-/// (instrumentation Rule 5), resolved once per command through
-/// `SpaceManager::player_identity`. The identity fields are `Option`s and
-/// are logged as such; an unresolved one is omitted, never `0`.
+/// (instrumentation Rule 5), each with its name (Rule 6), resolved once per
+/// command through `SpaceManager::player_identity`. The identity fields are
+/// `Option`s and are logged as such; an unresolved one is omitted, never `0`
+/// or `""`.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) struct Caller {
     pub(crate) command: PetCommand,
     /// The caller's entity id (the owner, when the guard passes).
     pub(crate) owner_id: u32,
     pub(crate) account_id: Option<u32>,
+    pub(crate) account_name: Option<&'static str>,
     pub(crate) player_id: Option<i32>,
+    /// The character name: `owner_name` and `player_name` on every row.
+    pub(crate) player_name: Option<&'static str>,
 }
 
 impl Caller {
@@ -136,7 +140,9 @@ impl Caller {
             command,
             owner_id,
             account_id: id.account_id,
+            account_name: id.account_name,
             player_id: id.player_id,
+            player_name: id.player_name,
         }
     }
 }
@@ -185,6 +191,9 @@ fn malformed(caller: Caller, args: &[u8], expected_len: usize) {
         owner_id = caller.owner_id,
         account_id = caller.account_id,
         player_id = caller.player_id,
+        owner_name = caller.player_name,
+        account_name = caller.account_name,
+        player_name = caller.player_name,
         reason = "malformed_args",
         args_len = args.len(),
         expected_len,
@@ -239,9 +248,12 @@ impl Refusal {
 }
 
 /// Log `refusal` on `pets.command` and send its `onErrorCode` to the owner.
+/// `pet_name` is the resolved pet's label (`SpaceManager::entity_names`),
+/// taken by the caller, which still holds the space manager.
 pub(crate) async fn refuse(
     caller: Caller,
     pet_id: i32,
+    pet_name: Option<&'static str>,
     refusal: Refusal,
     tx: &mpsc::Sender<CellToBaseMsg>,
 ) {
@@ -253,11 +265,15 @@ pub(crate) async fn refuse(
             owner_id = caller.owner_id,
             account_id = caller.account_id,
             player_id = caller.player_id,
+            owner_name = caller.player_name,
+            account_name = caller.account_name,
+            player_name = caller.player_name,
             pet_id,
+            pet_name,
             reason = refusal.reason,
             error_code = refusal.error_code,
             error_name = cimmeria_names::book().error_code(refusal.error_code),
-            instance_id = refusal.instance_id,
+            instance_id = refusal.instance_id, // nt:id-only onErrorCode InstanceID: an ability id or the claimed pet id
             "pet command rejected: {} -- the pet does nothing, onErrorCode sent to the owner",
             refusal.reason
         ),
@@ -268,11 +284,15 @@ pub(crate) async fn refuse(
             owner_id = caller.owner_id,
             account_id = caller.account_id,
             player_id = caller.player_id,
+            owner_name = caller.player_name,
+            account_name = caller.account_name,
+            player_name = caller.player_name,
             pet_id,
+            pet_name,
             reason = refusal.reason,
             error_code = refusal.error_code,
             error_name = cimmeria_names::book().error_code(refusal.error_code),
-            instance_id = refusal.instance_id,
+            instance_id = refusal.instance_id, // nt:id-only onErrorCode InstanceID: an ability id or the claimed pet id
             "pet command rejected: {} -- the pet does nothing, onErrorCode sent to the owner",
             refusal.reason
         ),
@@ -320,6 +340,9 @@ async fn send_error_code(
             owner_id = caller.owner_id,
             account_id = caller.account_id,
             player_id = caller.player_id,
+            owner_name = caller.player_name,
+            account_name = caller.account_name,
+            player_name = caller.player_name,
             error_code,
             error_name = cimmeria_names::book().error_code(error_code),
             reason = "feedback_send_failed",
@@ -334,6 +357,7 @@ async fn send_error_code(
 pub(crate) async fn send_to_owner(
     caller: Caller,
     pet_id: u32,
+    pet_name: Option<&'static str>,
     method_index: u16,
     args: Vec<u8>,
     tx: &mpsc::Sender<CellToBaseMsg>,
@@ -352,7 +376,11 @@ pub(crate) async fn send_to_owner(
             owner_id = caller.owner_id,
             account_id = caller.account_id,
             player_id = caller.player_id,
+            owner_name = caller.player_name,
+            account_name = caller.account_name,
+            player_name = caller.player_name,
             pet_id,
+            pet_name,
             method_index,
             method_name = cimmeria_wire::names::client_method(cimmeria_wire::names::SGWPET_CLASS_ID, method_index),
             reason = "owner_send_failed",
@@ -400,6 +428,7 @@ pub(crate) async fn owned_pet_or_refuse(
         refuse(
             caller,
             claimed,
+            space_mgr.entity_names(pet).entity_name,
             Refusal::debug("owner_dead", FEEDBACK_NOT_LIVING, instance_id),
             tx,
         )
@@ -412,6 +441,7 @@ pub(crate) async fn owned_pet_or_refuse(
         refuse(
             caller,
             claimed,
+            space_mgr.entity_names(pet).entity_name,
             Refusal::debug("pet_other_space", FEEDBACK_DOES_NOT_HAVE_PET, instance_id),
             tx,
         )

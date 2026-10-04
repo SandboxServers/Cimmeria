@@ -146,7 +146,9 @@ pub(super) async fn select_target(
             target: "npc_ai",
             event = "target_dropped",
             npc_id,
+            npc_name = space_mgr.entity_label(npc_id),
             target_id,
+            target_name = space_mgr.entity_label(target_id),
             why = dropped.label(),
             "NPC AI: dropping threat target"
         );
@@ -196,7 +198,9 @@ pub(in crate::cell) async fn purge_dead_target_from_threat(
             target: "npc_ai",
             event = "target_dropped",
             npc_id,
+            npc_name = space_mgr.entity_label(npc_id),
             target_id = dead_id,
+            target_name = space_mgr.entity_label(dead_id),
             why = Dropped::Dead.label(),
             "NPC AI: dropping threat target (target died)"
         );

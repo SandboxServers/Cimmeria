@@ -28,6 +28,8 @@ pub(super) async fn npc_ai_despawn(
     space_mgr: &mut SpaceManager,
 ) {
     record_decision_outcome("despawn");
+    // Snapshotted before the teardown below removes the entity (Rule 6).
+    let names = space_mgr.entity_names(npc_id);
     // Clear the movement-type cache first so the wire state is clean
     // before the destroy. The broadcast itself is dedup'd on None and
     // emits nothing — this is purely a state-clean step.
@@ -38,6 +40,9 @@ pub(super) async fn npc_ai_despawn(
         DespawnOutcome::Despawned { witnesses_notified } => {
             tracing::info!(
                 npc_id,
+                npc_name = names.entity_name,
+                template_id = names.template_id,
+                template_name = names.template_name,
                 witnesses_notified,
                 "NPC AI: despawn → removed entity from space"
             );
@@ -47,11 +52,15 @@ pub(super) async fn npc_ai_despawn(
             // WARN loudly rather than silently no-opping.
             tracing::warn!(
                 npc_id,
+                npc_name = names.entity_name,
                 "NPC AI: despawn target resolved to a player entity -- refused"
             );
         }
         DespawnOutcome::NotFound => {
-            tracing::debug!(npc_id, "NPC AI: despawn target already gone");
+            tracing::debug!(
+                npc_id, // nt:id-only the entity was already gone, nothing to name
+                "NPC AI: despawn target already gone"
+            );
         }
     }
 }
@@ -236,7 +245,9 @@ pub(super) async fn npc_ai_submit(
     for (player_entity_id, new_state) in combat_exits {
         tracing::debug!(
             player_entity_id,
+            player_entity_name = space_mgr.entity_label(player_entity_id),
             npc_id,
+            npc_name = space_mgr.entity_label(npc_id),
             new_state,
             new_state_names = %cimmeria_wire::state_field::STATE_FLAGS.render(new_state),
             "NPC AI: submit — clearing attacker BSF_InCombat (surrendered NPC was their last threat)"
@@ -276,6 +287,7 @@ pub(super) async fn npc_ai_submit(
     crate::cell::abilities::broadcast_movement_type(npc_id, None, tx, space_mgr).await;
     tracing::info!(
         npc_id,
+        npc_name = space_mgr.entity_label(npc_id),
         combat_exits = combat_exit_count,
         auto_cycle_exits = auto_cycle_exit_count,
         surrender_to = ?surrender_to,
@@ -291,13 +303,17 @@ pub(super) async fn npc_ai_submit(
 pub(super) async fn npc_ai_error(
     npc_id: u32,
     _tx: &mpsc::Sender<CellToBaseMsg>,
-    _space_mgr: &mut SpaceManager,
+    space_mgr: &mut SpaceManager,
 ) {
     record_decision_outcome("error_hold");
     // No-op per tick — Error is a quiescent diagnostic state. The
     // entry log is emitted by whatever transitioned the NPC into
     // Error (typically the content action or the slash command).
-    tracing::debug!(npc_id, "NPC AI: error state — holding");
+    tracing::debug!(
+        npc_id,
+        npc_name = space_mgr.entity_label(npc_id),
+        "NPC AI: error state — holding"
+    );
 }
 
 // Must stay the LAST item in the file — clippy denies

@@ -127,6 +127,7 @@ pub fn engage_pet_target(
     );
     if pet_space.is_none() || pet_space != target_space {
         let id = super::owner_identity(space_mgr, pet_id, owner_id);
+        let names = space_mgr.entity_names(pet_id);
         tracing::debug!(
             target: "pets.ai",
             entity_id = pet_id,
@@ -137,9 +138,19 @@ pub fn engage_pet_target(
             owner_id,
             account_id = id.account_id,
             player_id = id.player_id,
+            entity_name = names.entity_name,
+            pet_name = names.entity_name,
+            template_id = names.template_id,
+            template_name = names.template_name,
+            owner_name = id.player_name,
+            account_name = id.account_name,
+            player_name = id.player_name,
             target_id,
+            target_name = space_mgr.entity_label(target_id),
             pet_space_id = pet_space,
+            pet_world = pet_space.and_then(|s| space_mgr.world_name_for_space(s)),
             target_space_id = target_space,
+            target_world = target_space.and_then(|s| space_mgr.world_name_for_space(s)),
             kind = ?kind,
             "pet: engagement refused, the target is in another space"
         );
@@ -219,6 +230,7 @@ pub(super) fn engage_stance_pick(
 ) -> bool {
     let result = engage_pet_target(space_mgr, pet_id, target_id, PetEngagement::Automatic);
     let id = super::owner_identity(space_mgr, pet_id, owner_id);
+    let names = space_mgr.entity_names(pet_id);
     match result {
         Ok(()) => {
             tracing::debug!(
@@ -230,7 +242,15 @@ pub(super) fn engage_stance_pick(
                 owner_id,
                 account_id = id.account_id,
                 player_id = id.player_id,
+                entity_name = names.entity_name,
+                pet_name = names.entity_name,
+                template_id = names.template_id,
+                template_name = names.template_name,
+                owner_name = id.player_name,
+                account_name = id.account_name,
+                player_name = id.player_name,
                 target_id,
+                target_name = space_mgr.entity_label(target_id),
                 why = why.label(),
                 "pet: stance engaged a target"
             );
@@ -250,7 +270,15 @@ pub(super) fn engage_stance_pick(
                 owner_id,
                 account_id = id.account_id,
                 player_id = id.player_id,
+                entity_name = names.entity_name,
+                pet_name = names.entity_name,
+                template_id = names.template_id,
+                template_name = names.template_name,
+                owner_name = id.player_name,
+                account_name = id.account_name,
+                player_name = id.player_name,
                 target_id,
+                target_name = space_mgr.entity_label(target_id),
                 why = why.label(),
                 "pet: stance picked a target but the engagement was refused"
             );

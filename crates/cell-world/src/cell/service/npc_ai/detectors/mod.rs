@@ -38,11 +38,13 @@ use std::time::{Duration, Instant};
 
 use cimmeria_common::Vector3;
 
-use crate::cell::space_manager::{LogThrottle, SpaceManager};
+use crate::cell::space_manager::{EntityNames, LogThrottle, SpaceManager};
 
 pub mod aggro_scan;
 pub mod idle_parked;
 pub mod leash;
+#[cfg(test)]
+mod leash_names_tests;
 pub mod los;
 pub mod movement;
 pub mod spawn;
@@ -59,7 +61,11 @@ pub mod threat;
 #[derive(Debug, Clone)]
 pub struct NpcIdent {
     pub tag: String,
+    /// The NPC's player-facing name (Rule 6, D-NT5); `None` when unnamed.
+    pub npc_name: Option<&'static str>,
     pub template_id: i32,
+    /// `entity_templates.template_name`; `None` for a seed hole.
+    pub template_name: Option<&'static str>,
     pub world: String,
     pub space_id: u32,
 }
@@ -67,9 +73,12 @@ pub struct NpcIdent {
 impl NpcIdent {
     pub fn of(space_mgr: &SpaceManager, npc_id: u32) -> Option<Self> {
         let e = space_mgr.get_entity(npc_id)?;
+        let names = EntityNames::of(e);
         Some(Self {
             tag: e.tag.clone().unwrap_or_default(),
+            npc_name: names.entity_name,
             template_id: e.template_id.unwrap_or(0),
+            template_name: names.template_name,
             world: super::world_label(space_mgr, npc_id),
             space_id: e.space_id.0 as u32,
         })

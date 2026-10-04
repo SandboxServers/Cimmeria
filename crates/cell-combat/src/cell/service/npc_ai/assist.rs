@@ -106,12 +106,16 @@ pub(in crate::cell) fn recruit_assisters(
                 target: "npc_ai.aggro_scan",
                 event = "assist_joined",
                 npc_id = assister_id,
+                npc_name = ident.npc_name,
                 tag = %ident.tag,
                 template_id = ident.template_id,
+                template_name = ident.template_name,
                 world = %ident.world,
                 space_id = ident.space_id,
                 victim_id,
+                victim_name = space_mgr.entity_label(victim_id),
                 player_id = target_id,
+                player_name = space_mgr.entity_label(target_id),
                 npc_to_victim = dist,
                 "npc_ai.aggro_scan: neighbour pulled into the fight (assist)"
             );
