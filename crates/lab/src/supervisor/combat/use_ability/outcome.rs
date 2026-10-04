@@ -20,11 +20,13 @@
 //! name, its `ability.recv` decode, its `ability.applied` handler row), so
 //! each count is the largest any one source saw, not their sum.
 //!
-//! `cme.event` and the timer and stat rows carry no ability id, so a timer
-//! or a stat change from another source in the same window (regeneration,
-//! a DoT) is counted too; the combat records, the effect results, the
-//! combat text and a dropped press do name the ability, and another
-//! ability's are skipped.
+//! `cme.event`, `ability.recv` timers and the stat rows carry no ability
+//! id, so a timer or a stat change from another source in the same window
+//! (regeneration, a DoT) is counted too. Rows that do name an ability (a
+//! send, a dropped press, an applied cooldown, the effect results, combat
+//! text, the combat records) count only for this one. Events stamped
+//! before the press are skipped: the window opens at the press, not at the
+//! flow's baseline read.
 
 use serde_json::{json, Value};
 
@@ -132,6 +134,12 @@ pub fn classify(events: &[StoredEvent], press_ms: i64, ability_id: i64) -> Outco
         Tally::default(),
     );
     for e in events {
+        // The store slice starts at the flow's baseline pump, before the
+        // hotbar reads, the resolve and any placement: an ambient timer or
+        // stat change during that setup is not an answer to the press.
+        if e.ts_ms < press_ms {
+            continue;
+        }
         let dt = e.ts_ms - press_ms;
         let name = name_of(e);
         let sub = e.fields["kind"].as_str().unwrap_or_default();
@@ -140,7 +148,7 @@ pub fn classify(events: &[StoredEvent], press_ms: i64, ability_id: i64) -> Outco
                 o.sent.push((e.seq, name));
                 first(&mut o.first_ms.sent, dt);
             }
-            "ability.sent" if glob("useAbility*", &name) => {
+            "ability.sent" if glob("useAbility*", &name) && for_ability(&e.fields, ability_id) => {
                 o.ability_sent += 1;
                 first(&mut o.first_ms.sent, dt);
             }
@@ -167,7 +175,10 @@ pub fn classify(events: &[StoredEvent], press_ms: i64, ability_id: i64) -> Outco
             }
             "ability.applied" => match sub {
                 // `other_source` is another being's timer on our manager.
-                "cooldown" if e.fields["outcome"].as_str() != Some("other_source") => {
+                "cooldown"
+                    if e.fields["outcome"].as_str() != Some("other_source")
+                        && for_ability(&e.fields, ability_id) =>
+                {
                     timers.applied += 1;
                     first(&mut o.first_ms.timer, dt);
                 }
@@ -234,6 +245,12 @@ impl Outcome {
             || self.combat_text > 0
     }
 
+    /// The server accepted the cast: an animation sequence, or a cooldown
+    /// or warmup timer. Nothing has to have landed yet.
+    pub fn cast_started(&self) -> bool {
+        self.sequences > 0 || self.timer_updates > 0
+    }
+
     /// Something final came back: an effect, a refusal, or a dropped press.
     pub fn settled(&self) -> bool {
         self.effect_applied() || self.error_codes > 0 || !self.press_dropped.is_empty()
@@ -247,9 +264,7 @@ impl Outcome {
             "refused"
         } else if !self.press_dropped.is_empty() && !self.was_sent() {
             "refused_client_side"
-        } else if self.sequences > 0 || self.timer_updates > 0 {
-            // A cooldown or warmup timer means the server accepted the
-            // cast; nothing has landed yet.
+        } else if self.cast_started() {
             "cast_started"
         } else if self.was_sent() && !self.feedback.is_empty() {
             "refused_with_feedback"
@@ -269,7 +284,7 @@ impl Outcome {
             "net_out": self.sent.iter().map(|(s, m)| json!({ "seq": s, "method": m })).collect::<Vec<_>>(),
             "ability_sent": self.ability_sent,
             "press_dropped": self.press_dropped,
-            "cast_started": self.sequences > 0,
+            "cast_started": self.cast_started(),
             "effect_applied": self.effect_applied(),
             "timer_updates": self.timer_updates,
             "sequences": self.sequences,

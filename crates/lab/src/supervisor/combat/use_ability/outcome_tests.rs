@@ -224,6 +224,86 @@ fn trace_timers_alone_mean_the_cast_was_accepted() {
     assert_eq!(o.verdict(), "cast_started");
     assert_eq!(o.timer_updates, 2);
     assert!(!o.settled(), "a stat update may still follow");
+    // The serialized flag agrees with the verdict.
+    let j = o.to_json();
+    assert_eq!(j["verdict"], "cast_started");
+    assert_eq!(j["cast_started"], true);
+    assert_eq!(j["sequences"], 0);
+}
+
+/// Copilot on #1197: the store slice starts at the baseline pump, before
+/// the hotbar reads and any placement. A regen tick or another timer
+/// during that setup must not answer the press.
+#[test]
+fn events_before_the_press_are_not_its_answer() {
+    let evs = vec![
+        ev(
+            1,
+            "ability.applied",
+            900,
+            json!({ "kind": "stat", "entity_id": 77, "stats": [[1, 0, 600, 700]] }),
+        ),
+        ev(
+            2,
+            "ability.applied",
+            950,
+            json!({ "kind": "cooldown", "outcome": "applied", "ability_id": HEAL_FOCUS }),
+        ),
+        ev(
+            3,
+            "cme.event",
+            960,
+            json!({ "event": "Event_NetIn_onEffectResults" }),
+        ),
+        ev(
+            4,
+            "ability.sent",
+            1010,
+            json!({ "method": "useAbility", "ability_id": HEAL_FOCUS }),
+        ),
+    ];
+    let o = classify(&evs, 1000, HEAL_FOCUS);
+    assert_eq!(o.verdict(), "sent_no_reply");
+    assert_eq!(
+        (o.stat_applies, o.timer_updates, o.effect_results),
+        (0, 0, 0)
+    );
+    assert_eq!(o.first_ms.effect, None);
+}
+
+/// Copilot on #1197: a send and a cooldown that name another ability (an
+/// overlapping automated cast) are not this press's.
+#[test]
+fn another_abilitys_send_and_cooldown_are_skipped() {
+    let evs = vec![
+        ev(
+            1,
+            "ability.sent",
+            5,
+            json!({ "method": "useAbility", "ability_id": 592 }),
+        ),
+        ev(
+            2,
+            "ability.applied",
+            6,
+            json!({ "kind": "cooldown", "outcome": "applied", "ability_id": 592, "timer_type": 2 }),
+        ),
+        ev(
+            3,
+            "ability.press_dropped",
+            7,
+            json!({ "ability_id": HEAL_FOCUS, "reason": "not_known" }),
+        ),
+    ];
+    let o = classify(&evs, 0, HEAL_FOCUS);
+    assert_eq!(o.ability_sent, 0);
+    assert_eq!(o.timer_updates, 0);
+    // The other cast's send no longer masks this press's drop.
+    assert_eq!(o.verdict(), "refused_client_side");
+    // Seen from the other ability, the same rows are its send and timer.
+    let other = classify(&evs, 0, 592);
+    assert_eq!(other.verdict(), "cast_started");
+    assert_eq!(other.ability_sent, 1);
 }
 
 #[test]
