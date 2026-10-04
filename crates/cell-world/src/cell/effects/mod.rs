@@ -49,6 +49,8 @@
 
 // The special-ammo shot helpers the damage path reads (ammo campaign AM-04,
 // AM-10). The ammo families' scripts are in `cimmeria-cell-effect-scripts`.
+// The AB-T5 state snapshot row (`abilities.snapshot`).
+pub mod ability_snapshot;
 pub mod ammo_damage;
 pub mod ammo_explosive;
 pub mod cast_scope;

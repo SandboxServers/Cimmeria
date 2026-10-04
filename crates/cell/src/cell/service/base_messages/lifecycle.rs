@@ -232,6 +232,16 @@ pub(super) async fn handle_disconnect_entity(
         player_id = id.player_id,
         "DisconnectEntity"
     );
+    // AB-T5: the ability state the player logged out with, before any of
+    // the teardown below touches it.
+    if space_mgr.get_entity(entity_id).is_some_and(|e| e.is_player) {
+        cimmeria_cell_world::cell::effects::ability_snapshot::log_ability_snapshot(
+            space_mgr,
+            entity_id,
+            cimmeria_cell_world::cell::effects::ability_snapshot::SnapshotTrigger::Logout,
+            None,
+        );
+    }
     // Same as DestroyEntity: tear down any open trade with
     // Cancelled before the entity is removed. The disconnect
     // path doesn't reach the DestroyEntity arm directly (it

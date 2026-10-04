@@ -434,7 +434,8 @@ AB-L0 smoke, AB-L4, AB-L6 ──────────────────
 | Packet | Status | PR | Notes |
 |---|---|---|---|
 | AB-T1 | Review | #1168 | `cast_id` via a cast scope on `SpaceManager`; spans `combat.cast_fire`, `combat.effect_tick`. Not reached: the receipt row's packet seq (needs a `packet_seq` on `BaseToCellMsg::CellMethodCall`, threaded from `receive_in_order`'s per-bundle seq through `dispatch_cell_method` and the cell's method dispatch: AB-T2), and zero-warmup ground-cast AoE secondaries (they resolve after the launch returns, outside the scope) |
-| AB-T2 to AB-T5 | BlockedDependency (AB-T1) | | |
+| AB-T2 to AB-T4 | BlockedDependency (AB-T1) | | |
+| AB-T5 | Review | | `CellEntity::ability_state` (`cimmeria-entity`, serde) and the `abilities.snapshot` INFO row (`cimmeria-cell-world` `effects::ability_snapshot`) on `.bug` (tester and selected target, on the `bookmark_id`), a player's death (before the clear-on-death strip) and logout. Deaths and logouts of NPCs write no row by design. Moniker cooldowns and owed timer clears are in the snapshot too |
 | AB-T6, AB-T7 | BlockedDependency | | |
 | AB-C0 (anchor RE) | Done (static; live checks listed in the finding) | | [ability-client-hook-anchors.md](../../reverse-engineering/findings/ability-client-hook-anchors.md): VERIFIED seams for C1, C2, C3, C4 (effect bar, cooldown, stat, state flag) and the `onSequence` drop; UNRESOLVED: bag arrays, UI event layouts, effect removal body, `onErrorCode` tail |
 | AB-C1 to AB-C5 | Ready (AB-C0 done; effect removal resolved to `0x00e0a810`, see the AB-C4 row) | | |

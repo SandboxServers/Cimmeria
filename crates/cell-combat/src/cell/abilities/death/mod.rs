@@ -402,6 +402,16 @@ pub(super) async fn resolve_death(
         is_npc = !target_is_player,
         "Target killed!"
     );
+    // AB-T5: what the player died with, before the clear-on-death strip
+    // below takes it off. Players only: see `effects::ability_snapshot`.
+    if target_is_player {
+        cimmeria_cell_world::cell::effects::ability_snapshot::log_ability_snapshot(
+            space_mgr,
+            target_eid,
+            cimmeria_cell_world::cell::effects::ability_snapshot::SnapshotTrigger::Death,
+            None,
+        );
+    }
 
     apply_death_transition(
         target_eid,
@@ -542,5 +552,7 @@ mod pet_credit_log_tests;
 mod pet_credit_tests;
 #[cfg(test)]
 mod pet_tests;
+#[cfg(test)]
+mod snapshot_tests;
 #[cfg(test)]
 mod tests;
