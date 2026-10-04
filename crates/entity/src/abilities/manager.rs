@@ -299,6 +299,23 @@ impl AbilityManager {
         }
     }
 
+    /// Drop one moniker group's cooldown. Returns whether one was running.
+    pub fn clear_moniker_cooldown(&mut self, moniker_id: i64) -> bool {
+        self.moniker_cooldowns.remove(&moniker_id).is_some()
+    }
+
+    /// Every ability cooldown entry, expired-but-unswept ones included
+    /// (`expires_at <= now`). Read-only: the AB-T5 snapshot and the GM
+    /// `.cooldowns` readout.
+    pub fn ability_cooldowns(&self) -> impl Iterator<Item = (i32, &CooldownEntry)> {
+        self.ability_cooldowns.iter().map(|(&id, c)| (id, c))
+    }
+
+    /// Every moniker cooldown entry, expired-but-unswept ones included.
+    pub fn moniker_cooldowns(&self) -> impl Iterator<Item = (i64, &CooldownEntry)> {
+        self.moniker_cooldowns.iter().map(|(&id, c)| (id, c))
+    }
+
     /// Clear all ability and moniker cooldowns (e.g., on respawn).
     pub fn clear_all_cooldowns(&mut self) {
         self.ability_cooldowns.clear();

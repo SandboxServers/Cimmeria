@@ -6,19 +6,22 @@
 //! `docs/analysis/playtests/2026-09-18-colo-castle/README.md` §9.2 for the
 //! session that motivated it.
 //!
-//! Two event shapes share a `bookmark_id` correlator:
+//! Three event shapes share a `bookmark_id` correlator:
 //!
 //! - `playtest.bookmark` — one row: the caller, their selected target, mission
 //!   and region state, and the free-text note.
 //! - `playtest.bookmark.entity` — one row per nearby entity (NPC or player),
 //!   with everything the server believes about it *and what it is telling
 //!   clients* (`yaw_byte` is the byte that actually goes on the wire).
+//! - `abilities.snapshot` (AB-T5) — the ability state of the tester and of
+//!   their selected target: warmup, cooldowns, pulses, ledger, stats.
 //!
 //! [`capture`] is pure so tests can assert on the snapshot; [`emit`] is the only
 //! place that touches `tracing`.
 
 use std::time::{Instant, SystemTime, UNIX_EPOCH};
 
+use cimmeria_cell_world::cell::effects::ability_snapshot::{log_ability_snapshot, SnapshotTrigger};
 use cimmeria_common::Vector3;
 use cimmeria_entity::cell_entity::CellEntity;
 use cimmeria_entity::stats::{FOCUS, HEALTH};
@@ -543,6 +546,23 @@ pub(crate) async fn bug(
         id.player_id.unwrap_or(0),
         access_level,
     );
+    // AB-T5: the ability state of the tester and of what they point at, on
+    // the bookmark's id, so every UAT anchor records the state its row
+    // started from.
+    log_ability_snapshot(
+        space_mgr,
+        caller_id,
+        SnapshotTrigger::Bookmark,
+        Some(b.bookmark_id),
+    );
+    if b.selected_target_id != 0 && b.selected_target_id != caller_id {
+        log_ability_snapshot(
+            space_mgr,
+            b.selected_target_id,
+            SnapshotTrigger::Bookmark,
+            Some(b.bookmark_id),
+        );
+    }
     send_gm_feedback(
         caller_id,
         &format!(

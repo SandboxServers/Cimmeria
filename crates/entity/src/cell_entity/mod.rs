@@ -61,6 +61,9 @@ pub struct ActiveEffectInstance {
     pub invoker_identity: PlayerIdentity,
 }
 
+mod ability_state;
+#[cfg(test)]
+mod ability_state_tests;
 mod absorb_pool;
 #[cfg(test)]
 mod absorb_pool_tests;
@@ -88,6 +91,10 @@ mod vault_session;
 mod weapon_action;
 mod witness_aoi;
 
+pub use ability_state::{
+    AbilityStateSnapshot, AbsorbPoolState, CooldownState, LedgerEntryState, LedgerStatDelta,
+    MonikerCooldownState, PendingCastState, PulsingEffectState, StatState, StateFlagRefcount,
+};
 pub use absorb_pool::{AbsorbPool, AbsorbSettlement};
 pub use aggression::{AggroProfile, MobAggression};
 pub use appearance::filter_holstered_weapon;

@@ -207,3 +207,57 @@ async fn playtest_bug_emits_header_and_entity_rows_and_acks() {
     }
     assert!(acked, "tester must get visible confirmation");
 }
+
+/// AB-T5: a `.bug` writes one `abilities.snapshot` row for the tester and
+/// one for the selected target, both on the bookmark's id, so a UAT anchor
+/// carries the ability state its row started from. Revert proof: drop the
+/// hook from `bookmark::bug` and neither row is found.
+#[tokio::test]
+async fn playtest_bug_writes_the_ability_snapshot_on_the_bookmark_id() {
+    let (mut mgr, gm, npc) = setup();
+    mgr.get_entity_mut(gm)
+        .unwrap()
+        .abilities
+        .start_ability_cooldown(592, std::time::Duration::from_secs(30));
+    let engine = ChainEngine::new();
+    let (tx, _rx) = mpsc::channel(16);
+    let logs = LogCapture::install();
+
+    exec(
+        "bug",
+        gm,
+        &["uat", "AB-U1"],
+        Some(npc),
+        &tx,
+        &mut mgr,
+        &engine,
+    )
+    .await;
+
+    let header = logs
+        .find_message(Level::INFO, "tester flagged this moment")
+        .expect("header row");
+    let snapshots: Vec<_> = logs
+        .all()
+        .into_iter()
+        .filter(|e| e.target == "abilities.snapshot" && e.level == Level::INFO)
+        .collect();
+    assert_eq!(snapshots.len(), 2, "tester and target: {snapshots:?}");
+    for row in &snapshots {
+        assert!(row.has_field("trigger", "bookmark"));
+        assert_eq!(
+            row.fields.get("bookmark_id"),
+            header.fields.get("bookmark_id"),
+            "joins the bookmark"
+        );
+    }
+    let tester = snapshots
+        .iter()
+        .find(|r| r.has_field("entity_id", &gm.to_string()))
+        .expect("the tester's row");
+    assert!(tester.has_field("cooldowns", "1"));
+    assert!(tester.fields["snapshot"].contains("\"ability_id\":592"));
+    assert!(snapshots
+        .iter()
+        .any(|r| r.has_field("entity_id", &npc.to_string())));
+}
