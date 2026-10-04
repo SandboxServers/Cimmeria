@@ -1,9 +1,19 @@
 //! Native-owned first-install task. Dropping a UI observer never aborts mutation.
+//!
+//! A second task watches progress for launcher summaries. Whenever the progress
+//! kind changes, it enters the matching timed phase: `download` while a blob is
+//! being fetched and `extraction` while one is being unpacked, back and forth
+//! for the seed and every patch. Each phase is the total over all blobs.
+//! Nothing reports progress after the last unpack, so `extraction` also covers
+//! what follows it until the terminal commit: content verification and
+//! promotion. Progress keeps only the newest value; a phase that was never
+//! observed is simply absent.
 use super::*;
 use crate::{
     catalog::{self, VerifiedRelease},
     install::{self, InstallContext, InstallError},
     install_progress::ProgressSink,
+    launcher_summary::TimedPhase,
     OperationState,
 };
 use futures_util::FutureExt;
@@ -131,6 +141,7 @@ fn spawn_worker(
     let (result, results) = watch::channel(None);
     let owned_state = state.clone();
     let owned_cancel = cancel.clone();
+    runtime.spawn(watch_phases(Arc::downgrade(&state), id, observed.clone()));
     // Intentionally detached from the webview. No external owner can abort it.
     runtime.spawn(async move {
         let TaskInputs {
@@ -201,10 +212,45 @@ fn spawn_worker(
     }
 }
 
+// Ends when the worker drops its progress sink. It holds no strong state
+// handle, and takes the lock only for one call, never across an await.
+async fn watch_phases(
+    state: std::sync::Weak<Mutex<DesktopState>>,
+    id: Uuid,
+    mut progress: watch::Receiver<Option<install::Progress>>,
+) {
+    let mut entered = None;
+    while progress.changed().await.is_ok() {
+        let phase = match &*progress.borrow_and_update() {
+            Some(install::Progress::Downloading { .. }) => TimedPhase::Download,
+            Some(install::Progress::Extracting { .. }) => TimedPhase::Extraction,
+            None => continue,
+        };
+        // Only a change of kind is a phase change; a patch reopens `download`.
+        if entered.replace(phase) == Some(phase) {
+            continue;
+        }
+        let Some(state) = state.upgrade() else {
+            return;
+        };
+        if let Ok(mut owner) = state.lock() {
+            owner.summary_phase(id, phase);
+        };
+    }
+}
+
 fn publish(state: &Mutex<DesktopState>, id: Uuid, outcome: Outcome) -> Outcome {
     let Ok(mut state) = state.lock() else {
         return Outcome::ReconciliationRequired;
     };
+    let published = commit_result(&mut state, id, outcome);
+    // The summary row is built now, while the result record is this attempt's.
+    // A retry is admitted without a finalize of its own and would replace it.
+    state.finalize_summaries();
+    published
+}
+
+fn commit_result(state: &mut DesktopState, id: Uuid, outcome: Outcome) -> Outcome {
     if (outcome == Outcome::ContentPrepared && state.remember_prepared_content().is_err())
         || (outcome != Outcome::ReconciliationRequired
             && state.prepare_install_result(id, outcome).is_err())
@@ -385,6 +431,11 @@ pub(super) fn content_valid(stage: &Path, release: &VerifiedRelease) -> bool {
 
 #[cfg(test)]
 pub(super) mod tests;
+
+#[cfg(test)]
+mod export_tests;
+#[cfg(test)]
+mod summary_tests;
 
 mod resume;
 pub use resume::{resume, ResumeError};

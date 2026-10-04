@@ -24,7 +24,9 @@
 //!   `cimmeria-client-telemetry` DLL's events (`client.native`) and the
 //!   game-log lines the launcher tails (`launcher.client_log`,
 //!   `launcher.debug_log`, `launcher.session_meta`), replayed by the
-//!   `/api/telemetry/upload-*` ingest. Every level, and only here: a
+//!   `/api/telemetry/upload-*` ingest, and the attempt summaries opted-in
+//!   desktop launchers report about themselves (`launcher.summary`, from
+//!   `/api/telemetry/launcher-summary`). Every level, and only here: a
 //!   client-side warning is not a server problem, so it does not land in
 //!   `cimmeria-server`. The resource carries `cimmeria.source = client`
 //!   (see [`client_resource_attributes`]).
@@ -160,6 +162,11 @@ pub const CLIENT_SERVICE_NAME: &str = "cimmeria-client";
 /// Tracing targets the telemetry ingest replays client-side data under.
 /// [`is_client_target`] matches each one and its dotted children.
 ///
+/// `launcher.summary` is the desktop launcher's self-reported attempt
+/// summaries: typed rows the server builds from validated values, but what
+/// they say is the player's machine's account, so they belong with the
+/// rest of the client's.
+///
 /// `launcher.ingest`, `launcher.bundle` and the dev-session mint rows are
 /// deliberately absent: they are the server's own account of an upload
 /// (counts, refusals, caps), so they stay in `cimmeria-server`. And
@@ -169,6 +176,7 @@ pub const CLIENT_TARGETS: &[&str] = &[
     "launcher.client_log",
     "launcher.debug_log",
     "launcher.session_meta",
+    "launcher.summary",
 ];
 
 /// Git commit this binary was built from, or `"unknown"`. Set by

@@ -12,6 +12,7 @@ pub use launch::{LaunchCommand, LaunchStatus};
 pub use migration::{MigrationCommand, MigrationStatus};
 mod repair;
 mod runtime_setup;
+mod summary;
 pub use install::{InstallCommand, InstallStatus, JobError};
 
 pub struct NativeHost {
@@ -110,7 +111,9 @@ impl NativeHost {
                     state.save_preferences(Some(directory.clone()), consent, 0)?;
                 }
             }
-            *guard = Some(Arc::new(Mutex::new(state)));
+            let state = Arc::new(Mutex::new(state));
+            summary::start(&state);
+            *guard = Some(state);
         }
         guard.as_ref().cloned().ok_or(StorageError::Io)
     }

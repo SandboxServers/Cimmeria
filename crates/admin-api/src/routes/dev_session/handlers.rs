@@ -9,9 +9,10 @@ use axum::Json;
 use serde::{Deserialize, Serialize};
 
 use super::quota::{install_key, ip_key, validate_install_id, validate_metadata, WindowTable};
+use super::summary_mint::mint_summary;
 use super::token::{
     encode_token, load_secret, AuthError, TokenClaims, SCOPE_TELEMETRY_WRITE, SESSION_KIND_LAB,
-    SESSION_KIND_PLAYER,
+    SESSION_KIND_LAUNCHER_SUMMARY, SESSION_KIND_PLAYER,
 };
 
 pub const TOKEN_TTL_SECONDS: i64 = 8 * 60 * 60;
@@ -28,8 +29,8 @@ pub const TOKEN_TTL_SECONDS: i64 = 8 * 60 * 60;
 /// which then replays the events through `tracing` so the OTLP layer
 /// ships them to SigNoz.
 const DEFAULT_UPLOAD_ENDPOINT: &str = "http://localhost:8443/api/telemetry";
-const DEFAULT_CHUNK_MAX_BYTES: u64 = 1_048_576;
-const DEFAULT_FLUSH_INTERVAL_MS: u64 = 2_000;
+pub(super) const DEFAULT_CHUNK_MAX_BYTES: u64 = 1_048_576;
+pub(super) const DEFAULT_FLUSH_INTERVAL_MS: u64 = 2_000;
 
 const DEFAULT_QUOTA_WINDOW_SECS: u64 = 3_600;
 /// Sized for a shared egress address, not for one developer: a team
@@ -61,7 +62,8 @@ pub struct DevSessionRequest {
     #[serde(default)]
     pub tags: Vec<String>,
     /// `"lab"` from the Live Research Lab supervisor; absent or
-    /// `"player"` from a player's launcher. Becomes the token's `kind`
+    /// `"player"` from a player's launcher; `"launcher_summary"` from the
+    /// desktop launcher's summary exporter. Becomes the token's `kind`
     /// claim, and every row the session uploads is tagged with it. Any
     /// other value is refused with 400 so a typo cannot silently file lab
     /// rows as player rows.
@@ -71,15 +73,19 @@ pub struct DevSessionRequest {
 
 /// The `kind` claim for a requested session kind: `None` for a player
 /// session (so the token is byte-identical to one minted before the claim
-/// existed), `Some("lab")` for a lab one.
+/// existed), `Some("lab")` for a lab one, `Some("launcher_summary")` for a
+/// summary one.
 pub(super) fn kind_claim(requested: Option<&str>) -> Result<Option<String>, AuthError> {
     match requested {
         None => Ok(None),
         Some(k) if k == SESSION_KIND_PLAYER => Ok(None),
         Some(k) if k == SESSION_KIND_LAB => Ok(Some(SESSION_KIND_LAB.to_string())),
+        Some(k) if k == SESSION_KIND_LAUNCHER_SUMMARY => {
+            Ok(Some(SESSION_KIND_LAUNCHER_SUMMARY.to_string()))
+        }
         Some(_) => Err(AuthError::BadField {
             field: "session_kind",
-            reason: "must be \"player\" or \"lab\"",
+            reason: "must be \"player\", \"lab\" or \"launcher_summary\"",
         }),
     }
 }
@@ -142,6 +148,9 @@ impl QuotaPolicy {
 /// count nothing.
 pub struct Tables {
     pub mint_ip: WindowTable,
+    /// Summary mints per peer address, apart from [`Tables::mint_ip`] so
+    /// neither kind of session can spend the other's allowance.
+    pub mint_summary_ip: WindowTable,
     pub mint_install: WindowTable,
     pub refresh_ip: WindowTable,
     pub refresh_bad: WindowTable,
@@ -151,6 +160,7 @@ impl Tables {
     pub(super) fn new() -> Self {
         Self {
             mint_ip: WindowTable::new(),
+            mint_summary_ip: WindowTable::new(),
             mint_install: WindowTable::new(),
             refresh_ip: WindowTable::new(),
             refresh_bad: WindowTable::new(),
@@ -205,6 +215,11 @@ pub(super) fn mint_inner(
 ) -> Result<DevSessionResponse, AuthError> {
     if kill_switch_active() {
         return Err(AuthError::KillSwitchActive);
+    }
+    // Decided on the raw string before any quota is charged, so a summary
+    // mint never spends the player and lab allowance, and the reverse.
+    if req.session_kind.as_deref() == Some(SESSION_KIND_LAUNCHER_SUMMARY) {
+        return mint_summary(tables, policy, peer_ip, req, now, now_unix);
     }
     // Charged before `install_id` is validated, so rotating or
     // malforming it buys nothing from one address. A body that fails
@@ -401,7 +416,7 @@ fn log_refusal(route: &'static str, peer: IpAddr, err: &AuthError) {
     }
 }
 
-pub(super) fn kill_switch_active() -> bool {
+pub(crate) fn kill_switch_active() -> bool {
     matches!(
         std::env::var("CIMMERIA_TELEMETRY_KILL_SWITCH"),
         Ok(v) if v == "1"
@@ -433,7 +448,7 @@ fn env_u64(name: &str, default: u64) -> u64 {
         .unwrap_or(default)
 }
 
-fn env_u32(name: &str, default: u32) -> u32 {
+pub(crate) fn env_u32(name: &str, default: u32) -> u32 {
     std::env::var(name)
         .ok()
         .and_then(|v| v.trim().parse().ok())

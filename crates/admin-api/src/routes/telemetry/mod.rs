@@ -42,9 +42,14 @@
 //! - [`session_budget`] — per-session accepted/suppressed totals and the
 //!   runaway-client guard (a per-minute event budget past which only
 //!   warn/error and boot events are replayed, reported at `warn`).
+//! - [`launcher_summary`] — a third endpoint with its own scope, router and
+//!   rows: `POST /api/telemetry/launcher-summary`, the desktop launcher's
+//!   attempt summaries. Not part of [`routes`]; see
+//!   [`launcher_summary_routes`].
 
 mod dto;
 mod handlers;
+mod launcher_summary;
 mod replay;
 mod session_budget;
 
@@ -55,6 +60,10 @@ mod session_budget_tests;
 #[cfg(test)]
 mod tests;
 
+pub use launcher_summary::{
+    launcher_summary_routes, LAUNCHER_SUMMARY_BATCH_TARGET, LAUNCHER_SUMMARY_TARGET,
+    MAX_SUMMARY_BODY_BYTES,
+};
 pub use replay::{replay_ndjson, ReplayCounts, ReplayError};
 
 use axum::extract::DefaultBodyLimit;

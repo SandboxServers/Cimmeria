@@ -72,8 +72,24 @@ async fn install_command(
     request: InstallCommand,
     state: tauri::State<'_, Arc<NativeHost>>,
 ) -> Result<InstallStatus, JobError> {
-    request.validate()?;
     let host = state.inner().clone();
+    let attempt = request.summary_attempt();
+    let result = run_install_command(request, host.clone()).await;
+    if let Some(error) = result.as_ref().err().copied() {
+        // Closed codes for the launcher summary only. Detached: the reply does
+        // not wait for the bookkeeping, and the result is returned unchanged.
+        drop(tauri::async_runtime::spawn_blocking(move || {
+            host.note_command_failure(attempt, error)
+        }));
+    }
+    result
+}
+
+async fn run_install_command(
+    request: InstallCommand,
+    host: Arc<NativeHost>,
+) -> Result<InstallStatus, JobError> {
+    request.validate()?;
     if let InstallCommand::Reconcile {
         operation_id,
         operation_revision,
@@ -138,9 +154,21 @@ async fn launch_command(
     state: tauri::State<'_, Arc<NativeHost>>,
 ) -> Result<LaunchStatus, JobError> {
     let host = state.inner().clone();
-    tauri::async_runtime::spawn_blocking(move || host.launch_command(request))
-        .await
-        .map_err(|_| JobError::Io)?
+    let attempt = request.summary_attempt();
+    let worker = host.clone();
+    let result =
+        match tauri::async_runtime::spawn_blocking(move || worker.launch_command(request)).await {
+            Ok(result) => result,
+            Err(_) => Err(JobError::Io),
+        };
+    if let Some(error) = result.as_ref().err().copied() {
+        // Closed codes for the launcher summary only. Detached: the reply does
+        // not wait for the bookkeeping, and the result is returned unchanged.
+        drop(tauri::async_runtime::spawn_blocking(move || {
+            host.note_command_failure(attempt, error)
+        }));
+    }
+    result
 }
 
 #[tauri::command]

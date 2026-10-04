@@ -23,15 +23,25 @@ pub const MIN_SECRET_BYTES: usize = 32;
 /// DoS-via-huge-payload on the public refresh endpoint.
 const MAX_TOKEN_LEN: usize = 4096;
 
-/// The only scope this endpoint family issues. The upload endpoints
-/// enforce it, so a token minted here can do nothing but write
-/// telemetry.
+/// The scope a player or lab session is issued. The upload endpoints
+/// enforce it, so such a token can do nothing but write telemetry.
 pub const SCOPE_TELEMETRY_WRITE: &str = "telemetry.write";
+
+/// The only scope a launcher-summary session is issued. The summary ingest
+/// (`/api/telemetry/launcher-summary`) requires it and the upload endpoints
+/// refuse it, so neither kind of token works on the other's routes.
+pub const SCOPE_LAUNCHER_SUMMARY_WRITE: &str = "launcher_summary.write";
 
 /// The value of [`TokenClaims::kind`] a lab supervisor's session carries.
 pub const SESSION_KIND_LAB: &str = "lab";
 /// What a session without a `kind` claim is: a player's launcher.
 pub const SESSION_KIND_PLAYER: &str = "player";
+/// The `kind` (and the `sub`) of a desktop launcher's summary session,
+/// which is tied to no installation. The exporter mints a token per export
+/// cycle, but the token is an ordinary one: it has the common 8 h TTL and
+/// can be refreshed like any other. What keeps it apart from a player's is
+/// its scope, not its lifetime.
+pub const SESSION_KIND_LAUNCHER_SUMMARY: &str = "launcher_summary";
 
 /// Wire format pinned: any field rename is a breaking change for the
 /// Functions-side verifier. `kind` is the one optional addition, and it is

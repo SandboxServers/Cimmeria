@@ -191,8 +191,28 @@ fn is_client_target_matches_the_replay_targets_only() {
         "launcher.ingest",
         "launcher.bundle",
         "launcher.key_dump",
+        "launcher.summaryx",
         "cimmeria_admin_api::routes::telemetry",
     ] {
         assert!(!otel::is_client_target(t), "{t}");
     }
+}
+
+/// The launcher-summary targets, by name rather than by looping over
+/// `CLIENT_TARGETS` (a loop over the list passes whatever the list holds):
+/// the self-reported summary rows are client rows, the ingest's own batch
+/// row is not. Removing `"launcher.summary"` from `CLIENT_TARGETS` fails
+/// the first assertion.
+#[test]
+fn launcher_summary_is_a_client_target_and_its_batch_row_is_not() {
+    use cimmeria_admin_api::routes::telemetry::{
+        LAUNCHER_SUMMARY_BATCH_TARGET, LAUNCHER_SUMMARY_TARGET,
+    };
+
+    assert!(otel::is_client_target("launcher.summary"));
+    assert!(otel::CLIENT_TARGETS.contains(&"launcher.summary"));
+    assert!(!otel::is_client_target("launcher.ingest"));
+    // And those are the names the ingest emits under.
+    assert!(otel::is_client_target(LAUNCHER_SUMMARY_TARGET));
+    assert!(!otel::is_client_target(LAUNCHER_SUMMARY_BATCH_TARGET));
 }
