@@ -141,3 +141,17 @@ folder prompt. A regression verifies no timer redispatch and successful explicit
 recheck. Game and install primary actions are hidden when their native capabilities
 show that they are not the relevant action. Those final polling/visibility edits
 passed tests/build but require the next packaged-window check.
+
+### Play polling flicker follow-up
+
+The actual window reproduced a Play-button dimming cycle caused by treating every
+background inspection as a launch action. The view now keeps the last confirmed
+capability during a pending read, while a real Play click immediately enters its
+starting state and waits through the Effect gate. A held-read regression verifies
+steady label/enabled/busy state, accepted click and duplicate suppression.
+
+Frontend tests: 58 passed; native-persistence Play UAT and frontend build passed.
+The corrected development app was rebuilt and reopened. After macOS reauthorized
+Documents access for its new code signature, explicit recheck restored Play; the
+button remained enabled across subsequent observed refreshes. No game was started.
+The saved earlier code-3 exit remains visible and is not a new test result.
