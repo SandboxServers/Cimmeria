@@ -322,15 +322,12 @@ fn hardlinks_and_ambiguous_layouts_fail_closed() {
 }
 
 #[test]
-fn adopted_copy_is_not_play_ready_and_uninstall_preserves_original() {
+fn adopted_copy_exposes_installed_content_and_uninstall_preserves_original() {
     let f = Fixture::new();
     let before = f.source_snapshot();
     commit(f.preview().unwrap()).unwrap();
     let mut state = f.state.lock().unwrap();
-    assert!(matches!(
-        state.installed_content_readonly(),
-        Err(StorageError::Busy)
-    ));
+    assert!(state.effective_launch_binding().unwrap().is_some());
     let target = state.uninstall_target().unwrap().unwrap();
     assert_eq!(target.directory, f.destination());
     let revision = state.operations().snapshot().revision;

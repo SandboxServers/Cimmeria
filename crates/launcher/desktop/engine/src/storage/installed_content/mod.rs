@@ -123,16 +123,19 @@ impl DesktopState {
             .map(Some)
     }
 
-    /// Read-only admission view. Older successful installs can be checked without
-    /// materializing the installed-content index before a minimum gate rejects.
-    pub(super) fn installed_content_readonly(
+    /// Read-only admission view: the verified owner and its signed release, plus
+    /// the provenance of an adopted copy. Older successful installs can be checked
+    /// without materializing the installed-content index. Imported settings are
+    /// the caller's separate check, so refusing them never hides the owner or its
+    /// signed minimum.
+    pub(super) fn installed_for_launch(
         &self,
-    ) -> Result<Option<InstalledContent>, StorageError> {
+    ) -> Result<Option<(InstalledContent, Option<super::adoption::Provenance>)>, StorageError> {
         if self.requires_reopen() {
             return Err(StorageError::PersistenceUncertain);
         }
         let record: Option<Record> = read(&self.directory.root.join(NAME))?;
-        let (intent, current_release) = match record {
+        let (intent, current_release, adoption) = match record {
             Some(record) => {
                 if !matches!(record.schema_version, 1..=3) || record.intent.schema_version != 1 {
                     return Err(StorageError::UnsupportedSchema);
@@ -152,13 +155,8 @@ impl DesktopState {
                 {
                     return Err(StorageError::Busy);
                 }
-                self.verify_adoption_record(&record)?;
-                // Content-only adoption has no effective-config/runtime parity
-                // receipt yet. Do not let the existing Play path bypass that gate.
-                if record.adoption.is_some() {
-                    return Err(StorageError::Busy);
-                }
-                (record.intent, record.current_release)
+                let adoption = adoption_shape(&record)?.cloned();
+                (record.intent, record.current_release, adoption)
             }
             None => {
                 if !self
@@ -172,11 +170,15 @@ impl DesktopState {
                 {
                     return Ok(None);
                 }
-                (self.install_intent()?.ok_or(StorageError::Corrupt)?, None)
+                (
+                    self.install_intent()?.ok_or(StorageError::Corrupt)?,
+                    None,
+                    None,
+                )
             }
         };
-        self.verify_current_identity(intent, None, current_release)
-            .map(Some)
+        let installed = self.verify_current_identity(intent, None, current_release)?;
+        Ok(Some((installed, adoption)))
     }
 
     /// Publish only a checkpointed Update's current release, retaining permanent
@@ -210,12 +212,14 @@ impl DesktopState {
 
     /// Offline status re-verifies retained signed bytes against the installation
     /// digest on every call. No latest-catalog or network fallback is implied.
+    /// The minimum belongs to the owner's signed release, so an adopted copy whose
+    /// imported settings are refused still reports it.
     pub fn installed_launcher_minimum(
         &self,
     ) -> Result<Option<crate::launcher_compatibility::MinimumStatus>, StorageError> {
         Ok(self
-            .installed_content_readonly()?
-            .map(|installed| self.compatibility.for_release(&installed.release)))
+            .installed_for_launch()?
+            .map(|(installed, _)| self.compatibility.for_release(&installed.release)))
     }
 
     /// Called only after content validation/promotion, before committing success.
@@ -299,15 +303,11 @@ impl DesktopState {
     }
 
     fn verify_adoption_record(&self, record: &Record) -> Result<(), StorageError> {
-        if (record.schema_version == 3) != record.current_release.is_some() {
-            return Err(StorageError::Corrupt);
-        }
-        match (record.schema_version, record.adoption.as_ref()) {
-            (1 | 3, None) => Ok(()),
-            (2 | 3, Some(provenance)) => {
+        match adoption_shape(record)? {
+            None => Ok(()),
+            Some(provenance) => {
                 super::adoption::verify_provenance(self, &record.intent, provenance)
             }
-            _ => Err(StorageError::Corrupt),
         }
     }
 
@@ -379,6 +379,18 @@ impl DesktopState {
             release,
             current_release,
         })
+    }
+}
+
+/// Which index schemas may carry adoption provenance.
+fn adoption_shape(record: &Record) -> Result<Option<&super::adoption::Provenance>, StorageError> {
+    if (record.schema_version == 3) != record.current_release.is_some() {
+        return Err(StorageError::Corrupt);
+    }
+    match (record.schema_version, record.adoption.as_ref()) {
+        (1 | 3, None) => Ok(None),
+        (2 | 3, Some(provenance)) => Ok(Some(provenance)),
+        _ => Err(StorageError::Corrupt),
     }
 }
 

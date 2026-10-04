@@ -97,6 +97,25 @@ fn retry_never_dispatches_twice_and_restart_never_reports_live_guest() {
     );
 }
 #[test]
+fn patch_selection_adds_no_plan_field_so_earlier_plans_keep_their_digest() {
+    let (_root, state, plan) = fixture();
+    let value = serde_json::to_value(&plan).unwrap();
+    let keys = |value: &serde_json::Value| -> Vec<String> {
+        value.as_object().unwrap().keys().cloned().collect()
+    };
+    // The effective selection is the nullable artifact already in every plan. A
+    // new field, even a defaulted one, would change the bytes this digest covers.
+    assert_eq!(keys(&value), ["id", "installation", "resources", "runtime"]);
+    assert_eq!(
+        keys(&value["resources"]),
+        ["client_patches", "graphics", "helper"]
+    );
+    assert!(value["resources"]["client_patches"].is_null());
+    let stored: Plan = serde_json::from_value(value).unwrap();
+    assert_eq!(stored.digest().unwrap(), plan.digest().unwrap());
+    assert_eq!(state.launch_plan().unwrap(), Some(plan));
+}
+#[test]
 fn resource_replacement_and_plan_tampering_fail_closed() {
     let (_root, mut state, plan) = fixture();
     std::fs::write(plan.resources.helper.path(), b"replacement").unwrap();

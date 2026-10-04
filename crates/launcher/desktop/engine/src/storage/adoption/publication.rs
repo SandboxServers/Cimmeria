@@ -517,6 +517,35 @@ pub(super) fn verify_provenance(
     intent: &InstallIntent,
     provenance: &Provenance,
 ) -> Result<(), Error> {
+    published_record(state, intent, provenance).map(|_| ())
+}
+/// Read-only view for effective settings. Beyond provenance, the Published plan
+/// must equal the checkpoint written before the operation began, and the journal
+/// digest while that operation is still the latest one.
+pub(super) fn published_plan(
+    state: &DesktopState,
+    intent: &InstallIntent,
+    provenance: &Provenance,
+) -> Result<Plan, Error> {
+    let plan = published_record(state, intent, provenance)?.plan;
+    let checkpoint: Plan = read_large(&state.directory.root.join(plan_name(provenance.work_id)))?;
+    let journal = state.operations.snapshot().operation.as_ref();
+    if checkpoint != plan
+        || journal
+            .filter(|op| op.id == provenance.work_id)
+            .is_some_and(|op| {
+                op.kind != OperationKind::Adopt || Ok(op.intent_digest) != plan.digest()
+            })
+    {
+        return Err(StorageError::Corrupt.into());
+    }
+    Ok(plan)
+}
+fn published_record(
+    state: &DesktopState,
+    intent: &InstallIntent,
+    provenance: &Provenance,
+) -> Result<Record, Error> {
     let record: Record = read_large(&state.directory.root.join(name(provenance.work_id)))?;
     if record.plan.schema_version != 1 || provenance.setup_policy_version != 1 {
         return Err(StorageError::UnsupportedSchema.into());
@@ -541,5 +570,5 @@ pub(super) fn verify_provenance(
     {
         return Err(StorageError::Busy.into());
     }
-    Ok(())
+    Ok(record)
 }

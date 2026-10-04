@@ -61,6 +61,7 @@ pub mod launcher_compatibility;
 pub use storage::migration;
 
 pub use storage::adoption;
+pub use storage::effective_settings;
 pub use storage::update;
 pub use storage::updater;
 mod owner_lock;

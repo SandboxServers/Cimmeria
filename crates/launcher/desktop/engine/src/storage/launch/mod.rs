@@ -104,15 +104,21 @@ impl DesktopState {
         {
             return Err(ContractError::Busy.into());
         }
-        resources.verify()?;
-        let installed = self
-            .installed_content_readonly()?
-            .ok_or(StorageError::Corrupt)?;
+        let (installed, adoption) = self.installed_for_launch()?.ok_or(StorageError::Corrupt)?;
         if installed.intent.operation_id != installation_id {
             return Err(ContractError::IdentityConflict.into());
         }
+        // The signed minimum is the owner's; it is reported whatever the state of
+        // an adopted copy's imported settings.
         if self.compatibility.for_release(&installed.release).blocks() {
             return Err(IntentError::LauncherTooOld);
+        }
+        match adoption {
+            Some(provenance) => super::effective_settings::verify_launch_resources(
+                super::effective_settings::launch_binding(self, &installed.intent, &provenance)?,
+                &resources,
+            )?,
+            None => resources.verify()?,
         }
         if !install_worker::content_valid(
             &installed.intent.destination.join("game"),

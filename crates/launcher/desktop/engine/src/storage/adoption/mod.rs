@@ -425,3 +425,15 @@ pub(super) fn verify_provenance(
         _ => StorageError::Corrupt,
     })
 }
+/// Read-only accessor for effective settings; adoption stays the only reader of
+/// its own records.
+pub(super) fn published_plan(
+    state: &DesktopState,
+    intent: &InstallIntent,
+    provenance: &Provenance,
+) -> Result<Plan, StorageError> {
+    publication::published_plan(state, intent, provenance).map_err(|error| match error {
+        Error::Storage(e) => e,
+        _ => StorageError::Corrupt,
+    })
+}
