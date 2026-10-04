@@ -48,6 +48,9 @@ pub static EFFECT_SCRIPTS: &[(&str, &dyn EffectScript)] = &[
     // Timed ability buffs and debuffs on the same ledger (ability mechanics
     // AB-04): one entry per (effect, invoker).
     ("TimedStat", &stat_buff::TimedStat),
+    // "Remove Effect of moniker EFFECT_Stance": a stance clears the old one
+    // (ability mechanics AB-08).
+    ("RemoveByMoniker", &stat_buff::RemoveByMoniker),
     // Radioactive dart dose (ammo AM-11b).
     ("RadiationDamage", &ammo_dart_tech::RadiationDamage),
     // Antidote and Coagulant darts (ammo AM-11c): remove effects by category.

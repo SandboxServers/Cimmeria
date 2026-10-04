@@ -87,11 +87,13 @@ async fn seeded_owner_pet_abilities_are_recognised() {
     }
 }
 
-/// Heed Our Calling's 4968 is the only `EF_AlwaysPersist` effect a login
-/// runs, with `SpeedPet` = 100. Any other passive-script row would fire on
-/// every login and grant.
+/// The `EF_AlwaysPersist` effects a login runs: Heed Our Calling's 4968
+/// (`SpeedPet` = 100) and, since ability mechanics AB-08, the three stat
+/// passives the generator binds to `TimedStat` (1741 Cover Penetration,
+/// 2645 Warrior's Resilience, 4782 Create Density: Basic). Any other
+/// passive-script row would fire on every login and grant.
 #[tokio::test]
-async fn heed_our_calling_is_the_only_seeded_passive() {
+async fn the_seeded_passives_are_exactly_these() {
     let pool = require_db_or_skip!();
     let effects = load_effect_defs(&pool).await.expect("effects load");
     let mut passives: Vec<i32> = effects
@@ -101,7 +103,7 @@ async fn heed_our_calling_is_the_only_seeded_passive() {
         .map(|e| e.effect_id)
         .collect();
     passives.sort_unstable();
-    assert_eq!(passives, vec![4968]);
+    assert_eq!(passives, vec![1741, 2645, 4782, 4968]);
     assert_eq!(effects[&4968].ability_id, 2852);
     assert_eq!(effects[&4968].param_i32("SpeedPet"), 100);
 }

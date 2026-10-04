@@ -15,6 +15,7 @@
 //! - [`beneficial`] — [`ability_is_beneficial`]: a heal or buff, resolved on
 //!   the caster or an ally (ability-mechanics D-AB02).
 //! - [`ability_type`] — [`AbilityType`], the `type_id` column.
+//! - [`effect_monikers`] — effect-moniker NVPs and ids (stance exclusivity).
 //! - [`manager`] — [`AbilityManager`] and its [`CooldownEntry`].
 //! - [`wire`] — client-message serializers ([`ClientEffectResult`],
 //!   [`serialize_timer_update`], [`serialize_effect_results`]).
@@ -25,6 +26,7 @@
 mod ability_type;
 mod beneficial;
 mod defs;
+mod effect_monikers;
 mod implemented;
 mod manager;
 mod range;
@@ -33,6 +35,10 @@ mod wire;
 pub use ability_type::AbilityType;
 pub use beneficial::{ability_is_beneficial, HEAL_SCRIPTS};
 pub use defs::*;
+pub use effect_monikers::{
+    effect_moniker_id, EFFECT_MONIKER_NVP, EFFECT_STANCE_MONIKER, KNOWN_EFFECT_MONIKERS,
+    REMOVE_BY_MONIKER_SCRIPT, REMOVE_MONIKER_NVP,
+};
 pub use implemented::{
     ability_effects_have_mechanics, ability_is_unimplemented, effect_has_mechanic,
     effect_is_implemented,

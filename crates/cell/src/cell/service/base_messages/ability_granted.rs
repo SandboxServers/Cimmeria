@@ -63,12 +63,14 @@ pub(super) async fn handle_ability_granted(
     }
     // A passive ability's effect holds from the moment it is learned
     // (pets PT-08: Heed Our Calling raises `speedPet`).
-    let _passives = crate::cell::effects::passives::apply_passives(
-        space_mgr,
+    let _passives = super::passive_sync::apply_passives_and_sync(
         entity_id,
         &[ability_id],
         crate::cell::effects::passives::PassiveChange::Learned,
-    );
+        tx,
+        space_mgr,
+    )
+    .await;
     tracing::info!(
         target: "abilities",
         event = "granted",
@@ -216,12 +218,14 @@ pub(super) async fn handle_gm_ability_granted(
     };
     // A GM-granted passive holds at once, like a trained one (pets PT-08:
     // `.giveability 2852` makes the next summon instant, which UAT relies on).
-    let _passives = crate::cell::effects::passives::apply_passives(
-        space_mgr,
+    let _passives = super::passive_sync::apply_passives_and_sync(
         entity_id,
         &[ability_id],
         crate::cell::effects::passives::PassiveChange::Learned,
-    );
+        tx,
+        space_mgr,
+    )
+    .await;
     let account_id = space_mgr.player_identity(entity_id).account_id;
     tracing::info!(
         target: "abilities",

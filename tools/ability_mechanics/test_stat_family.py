@@ -62,6 +62,23 @@ class StatGrammarOnRealStrings(unittest.TestCase):
         self.assertEqual(nvps("Single Target\nTarget -200 ACC / -200 DEF\nDuration: 15sec"), want)
         self.assertEqual(nvps("Single Target\n-200 Accuracy: 15 Seconds\n-200 Defense: 15 Seconds"), want)
 
+    def test_stance_and_passive_spellings(self):
+        # 2004, 2005, 2743, 2645, 4782, 1749, 2754, 1979.
+        self.assertEqual(nvps("+50 (5%) Mental Resist buff", pd=0.0), [("MentalResistance", "50")])
+        self.assertEqual(
+            nvps("Increased Threat Rating Subtlety -100 (10% increase to threat)", pd=0.0), [("Subtlety", "-100")]
+        )
+        self.assertEqual(nvps("Engagement: +10", pd=0.0), [("Engagement", "10")])
+        self.assertEqual(nvps("Kinetic Resists Increased: +15%", pd=0.0), [("KineticResistance", "150")])
+        self.assertEqual(nvps("Defense: +100", pd=0.0), [("Defense", "100")])
+        self.assertEqual(nvps("Single\n+100 Accuracy", pd=0.0), [("Accuracy", "100")])
+        self.assertEqual(nvps("Self Defense +100", pd=0.0), [("Defense", "100")])
+        self.assertEqual(nvps("Toggled: +100 Accuracy", pd=0.0), [("Accuracy", "100")])
+
+    def test_points_and_percent_must_agree(self):
+        out = parse_stat(effect("+50 (10%) Mental Resist buff", pd=0.0))
+        self.assertIsInstance(out, Rejected)
+
     def test_resist_percent_is_ten_points_per_percent(self):
         # D-AB09's 10:1 rule (2004 "+50 (5%) Mental Resist").
         out = parse_stat(effect("+10% Interrupt Resistance: 30 Seconds", pd=30.0))
@@ -101,11 +118,34 @@ class StatGrammarRejects(unittest.TestCase):
 
 
 class StatScope(unittest.TestCase):
-    def test_held_and_passive_are_ab08s(self):
-        self.assertIn("AB-08", scope_rejection(effect("Cover Defense +100", pd=0.0), None))
-        self.assertIn("AB-08", scope_rejection(effect("+15% Mental Resist", flags=524288 | 1), None))
-        toggled = Ability(1, "a", "", "ABILITY_TYPE_Buff", flags=8)
-        self.assertIn("AB-08", scope_rejection(effect("Run Speed +50%", pd=5.0), toggled))
+    def test_a_held_effect_needs_something_to_take_it_off(self):
+        # Neither a toggle nor a passive: nothing would ever remove it.
+        self.assertIn("nothing would ever remove it", scope_rejection(effect("Cover Defense +100", pd=0.0), None))
+        # A passive_yn ability's effect without EF_AlwaysPersist (1457 Steadfast).
+        steadfast = Ability(1457, "Steadfast", "", "ABILITY_TYPE_Buff", target_type_id=1, passive=True)
+        self.assertIn("B-36", scope_rejection(effect("Single\n+100 Mental Resistance", pd=0.0, flags=16), steadfast))
+
+    def test_a_toggle_holds_on_its_own_caster_only(self):
+        self_toggle = Ability(1642, "Stance: Soldier", "", "ABILITY_TYPE_Buff", flags=8, target_type_id=1)
+        self.assertIsNone(scope_rejection(effect("Cover Defense +100", pd=0.0), self_toggle))
+        target_toggle = Ability(1629, "Demand Accuracy", "", "ABILITY_TYPE_Buff", flags=520, target_type_id=2)
+        self.assertIn("another entity", scope_rejection(effect("Toggled: +100 Accuracy", pd=0.0), target_toggle))
+        # A toggle's timed effect (1250 Escape) does not fit the switch.
+        self.assertIn("AB-08", scope_rejection(effect("Run Speed +50%", pd=5.0), self_toggle))
+        shield = Ability(1232, "Shield: Reflective", "", "ABILITY_TYPE_Buff", flags=1560, target_type_id=1)
+        self.assertIn("AB-10", scope_rejection(effect("Health Resist +15%", pd=0.0), shield))
+
+    def test_a_passive_holds_only_on_a_passive_ability(self):
+        persist = 524288 | 1
+        passive = Ability(1731, "Warrior's Resilience", "", "ABILITY_TYPE_Buff", target_type_id=1, passive=True)
+        self.assertIsNone(scope_rejection(effect("+15% Kinetic Resist", pd=0.0, flags=persist), passive))
+        castable = Ability(2, "Castable", "", "ABILITY_TYPE_Buff", target_type_id=1)
+        self.assertIn("castable", scope_rejection(effect("+15% Mental Resist", pd=0.0, flags=persist), castable))
+        minigame = Ability(
+            809, "Mental Fortitude", "", "ABILITY_TYPE_Undefined", target_type_id=1, passive=True,
+            moniker_ids=(320218562, 1470900795),
+        )
+        self.assertIn("mini-game", scope_rejection(effect("+15% Mental Resist", pd=0.0, flags=persist), minigame))
 
     def test_clear_on_damage_waits_for_ab11(self):
         self.assertIn("AB-11", scope_rejection(effect("-200 Defense: 30 Seconds (1 hit)", flags=28, pd=30.0), None))
@@ -198,10 +238,51 @@ class CommittedStatSeed(unittest.TestCase):
         }.items():
             self.assertIn(needle, self.rejected.get(eid, ""), eid)
 
-    def test_every_generated_row_is_a_timed_single_pulse(self):
+    def test_every_timed_row_is_a_single_pulse_and_every_held_row_comes_off(self):
+        corpus = gen.load_corpus()
         for g in self.result.generated:
-            self.assertEqual(g.effect.pulse_count, 1, g.effect.effect_id)
-            self.assertGreater(g.effect.pulse_duration, 0, g.effect.effect_id)
+            e = g.effect
+            ability = corpus.abilities[e.ability_id]
+            if e.pulse_duration > 0:
+                self.assertEqual(e.pulse_count, 1, e.effect_id)
+            elif g.script == "TimedStat":
+                # Held: a Self toggle's press or a passive's respec removes it.
+                toggle = bool(ability.flags & 8) and ability.target_type_id == 1
+                passive = bool(e.flags & 524288) and ability.passive
+                self.assertTrue(toggle or passive, e.effect_id)
+
+    def test_the_stances_and_passives_are_generated(self):
+        stance = ("EffectMoniker", "EFFECT_Stance")
+        want = {
+            2003: ("TimedStat", [("CoverDefense", "100"), stance]),  # Stance: Soldier
+            2004: ("TimedStat", [("MentalResistance", "50"), stance]),
+            2005: ("TimedStat", [("Subtlety", "-100"), stance]),
+            1749: ("TimedStat", [("Accuracy", "100"), stance]),  # Stance: Ranged Specialist
+            922: ("TimedStat", [("InterruptResistance", "250"), stance]),  # Concentration
+            4294: ("RemoveByMoniker", [("RemoveMoniker", "EFFECT_Stance")]),  # its removal half
+            1741: ("TimedStat", [("CoverAccuracy", "100")]),  # Cover Penetration (passive)
+            2645: ("TimedStat", [("KineticResistance", "150")]),  # Warrior's Resilience (passive)
+            4782: ("TimedStat", [("Defense", "100")]),  # Create Density: Basic (passive)
+        }
+        for eid, row in want.items():
+            self.assertEqual(self.got.get(eid), row, eid)
+
+    def test_no_bound_effect_carries_the_stance_moniker_outside_a_stance(self):
+        corpus = gen.load_corpus()
+        for g in self.result.generated:
+            if ("EffectMoniker", "EFFECT_Stance") in g.nvps:
+                ability = corpus.abilities[g.effect.ability_id]
+                self.assertTrue(ability.flags & 8, g.effect.effect_id)
+
+    def test_the_held_effects_left_alone_are_reported(self):
+        for eid, needle in {
+            854: "mini-game",  # 809 Mental Fortitude
+            1748: "B-36",  # 1457 Steadfast: passive without EF_AlwaysPersist
+            1979: "another entity",  # 1629 Demand Accuracy (Target toggle)
+            713: "binds no stance effect",  # Reveal I's removal alone
+            3146: "AB-10",  # a shield toggle
+        }.items():
+            self.assertIn(needle, self.rejected.get(eid, ""), eid)
 
 
 if __name__ == "__main__":

@@ -224,12 +224,14 @@ pub(in crate::cell::service) async fn handle_init_player_state(
     // Passive abilities (`EF_AlwaysPersist` effects, e.g. 2852 Heed Our
     // Calling's `speedPet`) hold for as long as the ability is known, and
     // the cell's stats start fresh every session (pets PT-08).
-    let _passives = crate::cell::effects::passives::apply_passives(
-        space_mgr,
+    let _passives = super::passive_sync::apply_passives_and_sync(
         entity_id,
         &abilities,
         crate::cell::effects::passives::PassiveChange::Learned,
-    );
+        tx,
+        space_mgr,
+    )
+    .await;
 
     // Resend active mission state to the client so the journal UI is
     // populated with the player's in-progress missions immediately on
