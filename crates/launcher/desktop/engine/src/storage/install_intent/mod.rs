@@ -171,7 +171,10 @@ fn intent_name(id: Uuid) -> String {
     format!("install-intent-{id}.json")
 }
 
-fn fresh_destination(selected: &Path, state_root: &Path) -> Result<PathBuf, StorageError> {
+pub(super) fn fresh_destination(
+    selected: &Path,
+    state_root: &Path,
+) -> Result<PathBuf, StorageError> {
     use std::path::Component;
     if !selected.is_absolute()
         || selected

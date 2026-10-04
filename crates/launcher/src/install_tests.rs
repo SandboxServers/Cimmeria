@@ -496,3 +496,61 @@ async fn desktop_progress_installs_seed_and_patch_then_reuses_saved_state() {
     assert!(InstalledState::load(root.path()).has_applied_patch(&manifest.patches[0]));
     server.verify().await;
 }
+
+/// A body can stall indefinitely between chunks: cancellation must wake the
+/// downloader without waiting for another byte or the HTTP client's timeout.
+#[tokio::test]
+async fn cancelling_a_stalled_response_body_stops_the_download() {
+    use tokio::io::{AsyncReadExt, AsyncWriteExt};
+    let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let address = listener.local_addr().unwrap();
+    let (ready, received) = tokio::sync::oneshot::channel();
+    let (release, held) = tokio::sync::oneshot::channel::<()>();
+    let server = tokio::spawn(async move {
+        let (mut socket, _) = listener.accept().await.unwrap();
+        let mut request = [0u8; 4096];
+        assert!(socket.read(&mut request).await.unwrap() > 0);
+        socket
+            .write_all(b"HTTP/1.1 200 OK\r\nContent-Length: 100\r\n\r\na")
+            .await
+            .unwrap();
+        ready.send(()).unwrap();
+        let _ = held.await;
+    });
+    let root = tempfile::tempdir().unwrap();
+    let target = root.path().join("partial");
+    let observed_target = target.clone();
+    let cancel = CancellationToken::new();
+    let worker_cancel = cancel.clone();
+    let job = tokio::spawn(async move {
+        let (sink, _observed) = crate::install_progress::ProgressSink::latest();
+        download_to_file(
+            &reqwest::Client::new(),
+            &format!("http://{address}/seed"),
+            &target,
+            worker_cancel,
+            100,
+            "seed",
+            &sink,
+        )
+        .await
+    });
+    received.await.unwrap();
+    // File creation follows receipt of headers, so cancellation exercises the
+    // stalled body wait rather than merely racing header parsing.
+    tokio::time::timeout(std::time::Duration::from_secs(2), async {
+        while !observed_target.exists() {
+            tokio::time::sleep(std::time::Duration::from_millis(5)).await;
+        }
+    })
+    .await
+    .unwrap();
+    cancel.cancel();
+    let result = tokio::time::timeout(std::time::Duration::from_secs(2), job)
+        .await
+        .unwrap()
+        .unwrap();
+    assert!(matches!(result, Err(InstallError::Cancelled)));
+    let _ = release.send(());
+    server.await.unwrap();
+}

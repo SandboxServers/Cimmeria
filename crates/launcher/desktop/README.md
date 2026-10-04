@@ -10,7 +10,7 @@ Tauri settings shell. The interface connects through Tauri invoke to native
 preference persistence. Play/Patch Notes tabs and the settings panel are
 implemented; patch notes load from a signed release manifest and game actions
 remain disabled. The installer algorithms are shared and fixture-tested, but installation is not
-connected to the UI. Repair, removal, launch and telemetry export remain pending. The existing Windows egui launcher is unchanged.
+connected to the UI. Repair, removal, launch and telemetry export remain pending. The existing Windows egui launcher retains its UI and shares the downloader cancellation fixes.
 
 ## Native operation and storage contracts
 
@@ -53,8 +53,8 @@ integration yet, and no immediate-export revocation claim is made by this packet
 
 `engine/src/commands.rs` exposes versioned `inspect` and `save_preferences`
 commands. No command lets frontend callers set native operation outcomes or
-choose the state-directory root. The shell selects app data through Tauri's native resolver. Canonical game intent
-validation, digest calculation and worker integration remain pending.
+choose the state-directory root. The shell selects app data through Tauri's native resolver. Native first-install intent validation and worker dispatch are implemented below;
+frontend operation commands remain pending.
 
 ## Effect workflows
 
@@ -246,7 +246,7 @@ this nested workspace. `.github/workflows/launcher-desktop.yml` adds explicit
 native Mac/Windows checks and the frontend/native logic UAT. Shared-source
 changes also run an existing-launcher Cargo check on native Windows.
 
-On 2026-10-04, **152 engine tests**, **two shell-host tests**, **14 frontend tests**, strict clippy, TypeScript
+On 2026-10-04, **160 engine tests**, **two shell-host tests**, **14 frontend tests**, strict clippy, TypeScript
 checking and formatting passed locally on macOS. Three engine tests are ignored by default: the subprocess fixture invoked by
 its parent, plus manual real-SGW-executable and real-client-RAR checks that
 remain unrun. Coverage includes command/schema
@@ -286,7 +286,7 @@ Verify the native window, keyboard behavior, actual Tauri IPC, folder chooser
 and saved-folder reveal interactively. Extract existing installation/preparation
 behind validated native intents, prove worker dispatch follows persistence,
 and implement authoritative reconciliation, cancellation and progress through
-Effect. All game actions remain unimplemented. Platform
+Effect. Game actions remain disconnected from the frontend. Platform
 provisioning, telemetry, migration/updater and final self-contained startup and
 release gates remain open.
 
@@ -378,9 +378,51 @@ retries, release conflicts, busy/stale requests, missing/corrupt/digest-mismatch
 intent, failed writes, failed replacement admission, empty-directory acceptance
 and unsafe destination rejection (symlinks on Unix). This establishes neither
 installation readiness nor UI install behavior. No frontend behavior changed,
-so JS REPL/visual UAT does not apply to this packet. Worker dispatch, readiness,
-reconciliation and UI installation remain pending.
+so JS REPL/visual UAT does not apply to this packet. The subsequent worker
+section records dispatch implementation; runtime readiness, reconciliation and
+UI installation remain pending.
 
 Admission validation: 152 engine tests passed on macOS through the build lane,
 plus the unchanged twelve-scenario process harness; strict all-target clippy
 and formatting passed. Windows admission validation awaits native CI.
+
+
+## Native first-install worker
+
+`engine/src/storage/install_worker/` dispatches an admitted intent only after
+matching its operation ID and verified release digest. It commits `running`
+before claiming the destination; a second dispatch is rejected. The task retains
+native state independently of observers. Dropping a view or progress receiver
+does not cancel installation. Explicit cancellation commits `cancel_requested`
+before signalling the worker.
+
+The worker rechecks the canonical first-install destination, creates an exclusive
+`.cimmeria-install.json` marker and holds its OS lock. It runs the shared pipeline
+inside `.cimmeria-stage-<operation-id>`. Before promotion it reads the bounded
+installation ledger, checks expected seed and patch entries, and requires a
+nonempty regular SGW executable and an `SGWGame` directory. These are content
+checks, not a complete extracted-file inventory, executable compatibility or
+gameplay validation. Filesystem ownership is cooperative, not a hostile-user sandbox.
+
+Content moves to `<selected-directory>/game`. The worker persists
+`content-ready.json` before committing operation success and publishing
+`ContentPrepared`. Receipt or terminal-state persistence failures require
+reconciliation; visible files alone are not reported as confirmed success.
+Power-loss durability of the complete extracted tree remains unvalidated.
+
+Failure and cancellation retain the marker and partial output. Automatic retry,
+cleanup, adoption and recovery remain unimplemented. The Wine cabinet-helper
+adapter, runtime provisioning and frontend dispatch remain pending. Installation
+stays disabled in the UI; content preparation does not establish launch readiness.
+
+Fixtures cover actual HTTP/ZIP staging and promotion, observer disposal,
+duplicate dispatch, missing-executable rejection, cancellation while waiting for
+headers and at an extraction checkpoint, changed destinations/redirected parents,
+and receipt failure after promotion. The shared downloader now interrupts waits
+for HTTP headers and body chunks; extraction cancellation remains `Cancelled`
+through the install pipeline instead of becoming a generic patch failure.
+No frontend behavior changed, so JS REPL/visual UAT is not applicable here.
+
+Worker validation: 160 engine tests and the twelve-scenario process harness
+passed locally on macOS. Strict all-target engine clippy and root/desktop
+formatting passed. Native Windows worker checks await CI; no GUI UAT occurred.

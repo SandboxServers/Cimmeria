@@ -42,7 +42,7 @@ pub enum InstallError {
     #[error("IO error: {0}")]
     Io(#[from] std::io::Error),
     #[error("Unpack error: {0}")]
-    Unpack(#[from] UnpackError),
+    Unpack(#[source] UnpackError),
     #[error("State error: {0}")]
     State(#[from] StateError),
     #[error("Hash mismatch for {what}: expected {expected}, got {actual}")]
@@ -62,6 +62,15 @@ pub enum InstallError {
     /// Some patches failed; every other patch was still applied.
     #[error("{}", patches_failed_message(.0))]
     PatchesFailed(Vec<PatchFailure>),
+}
+
+impl From<UnpackError> for InstallError {
+    fn from(error: UnpackError) -> Self {
+        match error {
+            UnpackError::Cancelled => Self::Cancelled,
+            other => Self::Unpack(other),
+        }
+    }
 }
 
 /// One patch that did not apply, and why.
@@ -345,7 +354,11 @@ pub(crate) async fn download_to_file(
     if existing_len > 0 {
         req = req.header("Range", format!("bytes={existing_len}-"));
     }
-    let resp = req.send().await?;
+    let resp = tokio::select! {
+        biased;
+        _ = cancel.cancelled() => return Err(InstallError::Cancelled),
+        response = req.send() => response?,
+    };
 
     let status = resp.status();
     // 416 on a Range request for a file we already hold in full: the
@@ -391,10 +404,15 @@ pub(crate) async fn download_to_file(
     let mut downloaded = if resumed { existing_len } else { 0 };
     let mut stream = resp.bytes_stream();
     let mut last_emit = std::time::Instant::now();
-    while let Some(chunk) = stream.next().await {
-        if cancel.is_cancelled() {
-            return Err(InstallError::Cancelled);
-        }
+    loop {
+        let chunk = tokio::select! {
+            biased;
+            _ = cancel.cancelled() => return Err(InstallError::Cancelled),
+            chunk = stream.next() => chunk,
+        };
+        let Some(chunk) = chunk else {
+            break;
+        };
         let chunk = chunk?;
         file.write_all(&chunk).await?;
         downloaded += chunk.len() as u64;

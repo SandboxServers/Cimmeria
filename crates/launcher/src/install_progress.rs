@@ -14,6 +14,8 @@ impl ProgressReporter for mpsc::UnboundedSender<Progress> {
 
 #[derive(Clone)]
 pub enum ProgressSink {
+    #[cfg(test)]
+    Checkpoint(std::sync::Arc<dyn ProgressReporter>),
     /// Preserve the existing egui worker's event stream.
     Legacy(mpsc::UnboundedSender<Progress>),
     /// Bounded to one observation even when the UI is stalled or disconnected.
@@ -33,6 +35,8 @@ impl ProgressSink {
 impl ProgressReporter for ProgressSink {
     fn report(&self, value: Progress) {
         match self {
+            #[cfg(test)]
+            Self::Checkpoint(reporter) => reporter.report(value),
             Self::Legacy(sender) => sender.report(value),
             Self::Latest(sender) => {
                 sender.send_replace(Some(value));

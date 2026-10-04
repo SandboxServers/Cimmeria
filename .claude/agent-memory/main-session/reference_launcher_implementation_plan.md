@@ -70,3 +70,13 @@ Windows+Mac before the shell; shell/visual/game gates remain separate.
   retry evidence. Restart never replays work. First-install path checks accept
   absent/empty directories but do not reserve them; mutation ownership and
   readiness remain separate coordinator gates. No install IPC is enabled yet.
+
+- Native first-install worker dispatches only after durable Running; it owns a
+  create-new marker/lock, stages content and promotes to selected-directory/game
+  after bounded ledger/executable checks. Receipt/journal uncertainty requires
+  reconciliation. Observer disposal does not cancel the detached native task.
+  Failures retain partial files; recovery and UI dispatch remain pending.
+- Shared install cancellation now interrupts stalled HTTP headers/body and maps
+  UnpackError::Cancelled to InstallError::Cancelled. The previous conversion
+  incorrectly treated extraction cancellation as generic patch failure. Actual
+  partial-ZIP checkpoint and stalled-response regressions cover both fixes.

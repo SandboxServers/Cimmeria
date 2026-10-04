@@ -13,9 +13,11 @@ debug-Atera path (with or without the dev-session telemetry pipeline),
 and uploads debug logs to an Azure Blob SAS URL.
 
 The approved cross-platform replacement is being implemented separately in
-[`crates/launcher/desktop/`](../../crates/launcher/desktop/README.md). Its Tauri
-settings shell and Effect workflows do not yet install or launch the game. The existing
-Windows launcher described here remains the functional implementation.
+[`crates/launcher/desktop/`](../../crates/launcher/desktop/README.md). Its native
+first-install worker prepares content through the shared pipeline, but its Tauri
+UI does not yet dispatch installation or launch. Runtime provisioning and game
+validation remain separate gates. The existing Windows launcher described here
+remains the functional user-facing implementation.
 
 Located in [`crates/launcher/`](../../crates/launcher/) as the
 `sgw-launcher` crate. Built with **eframe (egui)** for a small, native
@@ -82,6 +84,12 @@ stale bytes) and asks the server for `bytes=<existing>-` so a killed
 seed download picks up where it left off on next run. A `416` for a
 full-length file counts as downloaded, and a file that fails its hash is
 deleted, so a bad download can't wedge every later attempt.
+
+Cancellation interrupts waits for HTTP response headers and each response-body
+chunk; a stalled response does not require another byte before stopping.
+Extraction cancellation is propagated as cancellation rather than an ordinary
+patch failure. This does not make every extraction/preparation step immediately
+interruptible.
 
 ### Unpacking (`src/unpack/`)
 

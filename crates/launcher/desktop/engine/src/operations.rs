@@ -201,6 +201,20 @@ impl<J: Journal> Operations<J> {
         self.transition(id, state)
     }
 
+    /// A native worker lost authoritative completion. Retain ownership until
+    /// explicit filesystem/process reconciliation, including without a restart.
+    pub fn mark_uncertain(&mut self, id: Uuid) -> Result<Snapshot, ContractError> {
+        self.ensure_writable()?;
+        let current = self.current(id)?;
+        if current.state.terminal() {
+            return Err(ContractError::InvalidTransition);
+        }
+        if current.state == OperationState::ReconciliationRequired {
+            return Ok(self.snapshot.clone());
+        }
+        self.transition(id, OperationState::ReconciliationRequired)
+    }
+
     /// Only an authoritative filesystem/process inspection can call this.
     pub fn reconcile(
         &mut self,

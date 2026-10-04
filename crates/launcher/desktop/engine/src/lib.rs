@@ -37,3 +37,5 @@ pub mod install_progress;
 pub mod archive_worker;
 
 pub mod helper_supervisor;
+
+pub use storage::install_worker;

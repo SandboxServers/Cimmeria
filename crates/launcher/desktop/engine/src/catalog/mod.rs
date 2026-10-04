@@ -4,7 +4,7 @@ use serde::Serialize;
 use sha2::{Digest, Sha256};
 use std::time::Duration;
 
-const URL: &str =
+pub(crate) const URL: &str =
     "https://github.com/SandboxServers/Cimmeria/releases/download/content-current/manifest.json";
 const MAX_BODY: usize = 1024 * 1024;
 const MAX_SIGNATURE: usize = 256;

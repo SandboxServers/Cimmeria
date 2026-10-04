@@ -3,7 +3,7 @@
 > **Type:** How-to (implementation plan, not a completion report)
 > **Audience:** Agents and maintainers delivering the next launcher packets
 > **Last updated:** 2026-10-04
-> **Status:** Planning authorized; this packet changes documentation only
+> **Status:** Implementation in progress; packet evidence and open gates are recorded in the ledger
 > **Companions:** [Platform research](launcher-platform-options.md), [packaging proof](../../../../crates/launcher/prototype-packaging/README.md), [playtest handoff](README.md), [test policy](../../../../TESTING.md), [telemetry operations](../../../operations/telemetry.md)
 
 ## Deliver the real workflow before the final packaging gate
@@ -456,3 +456,28 @@ the later supervisor commit `04b03a158` has its own CI run `37185555998`.
 Local admission packet checks: 152 engine tests and the twelve-scenario process
 harness passed; strict all-target clippy and formatting passed. Native Windows
 validation for these new admission cases remains pending.
+
+
+### 2026-10-04: native first-install content worker
+
+Connected durable admission to a native-owned task that commits `running`,
+claims/locks a fresh destination, installs into operation-specific staging,
+checks content evidence, then promotes `<selected-directory>/game` and writes
+a receipt before publishing success. Fixtures exercise observer disposal,
+duplicate dispatch, invalid content, changed destinations and receipt uncertainty.
+Review confirmed the corrected extraction cancellation mapping; a deterministic
+checkpoint fixture retains the first extracted file, skips the next entry,
+persists `Cancelled` and never promotes content. A stalled-download regression
+also exposed network cancellation waiting for bytes; both HTTP-header and body
+waits now observe cancellation in the shared Windows/desktop downloader.
+
+Failed/cancelled output remains for future reconciliation; retry and recovery
+are not implemented. No frontend changed, so JS REPL/visual UAT does not apply.
+UI installation, the Wine cabinet adapter, runtime prerequisites and gameplay
+validation remain pending. Content checks are not a full extracted-file audit
+or power-loss proof. No GUI, real game archive, Wine process or live telemetry
+was used.
+
+Worker packet validation: 160 engine tests plus twelve process scenarios passed
+on macOS; strict all-target clippy and root/desktop formatting passed. Native
+Windows worker validation remains pending.
