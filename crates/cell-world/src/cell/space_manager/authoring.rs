@@ -54,6 +54,10 @@ pub struct SpawnRowChange {
     /// The NPC's cell entity id. Later saves of the same NPC replace this
     /// change in the buffer instead of adding another.
     pub entity_id: u32,
+    /// The NPC's name when the GM queued the change (Rule 6). Captured then,
+    /// never at `.seedconfirm`: by confirm time a `.delspawn`ed NPC is gone
+    /// and its slot may hold another entity.
+    pub entity_name: Option<&'static str>,
     /// `None` for [`SpawnRowOp::Insert`]: the id comes from the sequence.
     pub spawn_id: Option<i32>,
     pub world: String,

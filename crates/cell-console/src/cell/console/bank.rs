@@ -96,12 +96,14 @@ pub(super) async fn dump(
         BankSubject::Player(id) => Some(*id),
         BankSubject::Name(_) => None,
     };
-    // The subject's name for the failure row: the caller's own, or the name
-    // the GM typed. Owned because `subject` moves into the message.
-    let target_player_name = match &subject {
-        BankSubject::Player(_) => id.player_name.map(str::to_owned),
+    // A typed name is GM input, not a resolved character, so the failure row
+    // logs it as `target_player_arg` (owned: `subject` moves into the
+    // message). The caller's own dump is named from their identity.
+    let target_player_arg = match &subject {
+        BankSubject::Player(_) => None,
         BankSubject::Name(name) => Some(name.clone()),
     };
+    let target_player_name = target_player_id.and(id.player_name);
     let msg = CellToBaseMsg::Bank(BankCellToBase::GmDump {
         entity_id: caller_id,
         account_id: id.account_id,
@@ -122,7 +124,8 @@ pub(super) async fn dump(
             entity_id = caller_id,
             entity_name = id.player_name,
             target_player_id,
-            target_player_name = target_player_name.as_deref(),
+            target_player_name,
+            target_player_arg = target_player_arg.as_deref(),
             error = %e,
             "gm_action: bankdump could not reach the base",
         );

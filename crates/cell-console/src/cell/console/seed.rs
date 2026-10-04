@@ -221,7 +221,7 @@ pub(crate) async fn confirm(
                 label = %c.label,
                 op = s.op.as_str(),
                 npc_entity_id = s.entity_id,
-                npc_entity_name = space_mgr.entity_label(s.entity_id),
+                npc_entity_name = s.entity_name,
                 spawn_id = s.spawn_id, // nt:id-only a spawnlist row, which has no name column
                 world = %s.world,
                 world_id = s.world_id,

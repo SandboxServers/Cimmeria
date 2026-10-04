@@ -344,8 +344,9 @@ async fn resolve_named_player(
             tracing::debug!(
                 caller_id,
                 caller_name = space_mgr.entity_label(caller_id),
-                entity_id,
-                entity_name = name,
+                subject_entity_id = entity_id,
+                subject_entity_name = name,
+                subject_player_name = name,
                 "console travel: named player is not in a space"
             );
             send_gm_feedback(caller_id, NOT_REACHABLE, tx).await;

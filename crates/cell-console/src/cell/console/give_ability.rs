@@ -131,7 +131,7 @@ pub(super) async fn give_ability(
             subject_entity_id = grant.subject,
             subject_player_id = grant.player_id,
             subject_entity_name = subject_name,
-        subject_player_name = subject_name,
+            subject_player_name = subject_name,
             ability_id,
             ability_name = cimmeria_names::book().ability(ability_id),
             error = %e,

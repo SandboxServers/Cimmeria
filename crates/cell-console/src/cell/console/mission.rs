@@ -80,11 +80,20 @@ pub(super) async fn fail(
             .await;
     }
 
+    // Rule 5: `entity_*` / `player_*` name the GM; the character whose
+    // mission failed is the `subject_*`.
+    let gm = space_mgr.player_identity(caller_id);
     tracing::info!(
-        caller_id,
-        caller_name = space_mgr.entity_label(caller_id),
-        entity_id = target,
-        entity_name = space_mgr.entity_label(target),
+        entity_id = caller_id,
+        entity_name = gm.player_name,
+        account_id = gm.account_id,
+        account_name = gm.account_name,
+        player_id = gm.player_id,
+        player_name = gm.player_name,
+        subject_entity_id = target,
+        subject_entity_name = space_mgr.entity_label(target),
+        subject_player_id = player_id,
+        subject_player_name = space_mgr.player_identity(target).player_name,
         mission_id,
         mission_name = cimmeria_names::book().mission(mission_id),
         "GM .missionfail"

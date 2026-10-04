@@ -247,7 +247,9 @@ async fn refuse(
         entity_id = caller_id,
         entity_name = gm.player_name,
         subject_player_id,
-        subject_player_name = subject_player_id.and_then(|p| space_mgr.player_entity_by_player_id(p)).and_then(|e| space_mgr.entity_label(e)),
+        subject_player_name = subject_player_id
+            .and_then(|p| space_mgr.player_entity_by_player_id(p))
+            .and_then(|e| space_mgr.entity_label(e)),
         command = cmd,
         reason = u.reason,
         "GM duel command refused: nothing was read or changed",

@@ -134,9 +134,10 @@ async fn gm_console_audit_log_names_caller_and_subject() {
     }
 
     let (tx, _rx) = mpsc::channel(32);
+    // `.givexp` takes a player target, so the selection is its subject.
     super::super::dispatch::handle_console_command(
         gm,
-        ".speed 5",
+        ".givexp 5",
         &tx,
         &mut mgr,
         &ChainEngine::new(),
@@ -159,6 +160,41 @@ async fn gm_console_audit_log_names_caller_and_subject() {
             event.has_field(key, want),
             "the GM audit line must name the caller and the subject: \
              expected {key}={want}; got {event:#?}"
+        );
+    }
+}
+
+/// A no-target command only passes the GM's selection through: the audit
+/// row must not call that selection the command's subject.
+#[tokio::test]
+async fn gm_console_audit_log_names_no_subject_for_a_no_target_command() {
+    let capture = LogCapture::install();
+    let (mut mgr, gm, npc) = setup(); // the GM has the NPC selected
+    let (tx, _rx) = mpsc::channel(32);
+    super::super::dispatch::handle_console_command(
+        gm,
+        ".effects",
+        &tx,
+        &mut mgr,
+        &ChainEngine::new(),
+    )
+    .await;
+
+    let event = capture
+        .find_message(Level::INFO, AUDIT_MSG)
+        .expect("the GM audit line must fire");
+    assert!(
+        event.has_field("target_id", &npc.to_string()),
+        "the selection still rides along as target_id; got {event:#?}"
+    );
+    for key in [
+        "subject_player_id",
+        "subject_player_name",
+        "target_template_id",
+    ] {
+        assert!(
+            !event.fields.contains_key(key),
+            "a no-target command has no subject, so {key} must be absent; got {event:#?}"
         );
     }
 }

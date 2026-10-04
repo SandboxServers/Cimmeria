@@ -16,7 +16,9 @@ use tokio::sync::mpsc;
 
 use crate::cell::console::{parse_bool, seed, send_gm_feedback};
 use crate::cell::messages::CellToBaseMsg;
-use crate::cell::space_manager::{DespawnOutcome, SpaceManager, SpawnRowChange, SpawnRowOp};
+use crate::cell::space_manager::{
+    DespawnOutcome, EntityNames, SpaceManager, SpawnRowChange, SpawnRowOp,
+};
 
 /// Seed file the spawn rows live in.
 const SPAWNLIST_SEED: &str = "db/resources/Worlds/Seed/spawnlist.sql";
@@ -124,6 +126,7 @@ pub(crate) async fn save_spawn(
             SpawnRowOp::Insert
         },
         entity_id: target,
+        entity_name: space_mgr.entity_names(target).entity_name,
         spawn_id,
         world: world_name,
         world_id,
@@ -186,6 +189,7 @@ pub(super) async fn del_spawn(
     let row = SpawnRowChange {
         op: SpawnRowOp::Delete,
         entity_id: target,
+        entity_name: EntityNames::of(e).entity_name,
         spawn_id: Some(spawn_id),
         world_id: space_mgr.world_id_for_world(&world),
         world,

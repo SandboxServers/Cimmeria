@@ -253,18 +253,26 @@ async fn send_grant(
         grant,
     };
     if let Err(e) = tx.send(CellToBaseMsg::Plugin(PluginMsg::new(msg))).await {
+        // Rule 5: `entity_*` / `account_*` / `player_*` name the GM; the
+        // character the grant was for is the `subject_*`.
+        let gm = space_mgr.player_identity(caller_id);
+        let subject = space_mgr.player_identity(entity_id);
         tracing::warn!(
             target: "crafting",
             event = "forward_failed",
             kind = "gm_craft_grant",
-            account_id,
-            account_name = space_mgr.player_identity(entity_id).account_name,
-            player_id,
-            player_name = space_mgr.player_identity(entity_id).player_name,
-            entity_id,
-            entity_name = space_mgr.entity_label(entity_id),
-            gm_entity_id = caller_id,
-            gm_entity_name = space_mgr.entity_label(caller_id),
+            entity_id = caller_id,
+            entity_name = gm.player_name,
+            account_id = gm.account_id,
+            account_name = gm.account_name,
+            player_id = gm.player_id,
+            player_name = gm.player_name,
+            subject_entity_id = entity_id,
+            subject_entity_name = space_mgr.entity_label(entity_id),
+            subject_account_id = account_id,
+            subject_account_name = subject.account_name,
+            subject_player_id = player_id,
+            subject_player_name = subject.player_name,
             error = %e,
             "GM crafting grant could not be queued (base channel closed)"
         );

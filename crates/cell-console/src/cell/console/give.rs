@@ -52,8 +52,8 @@ pub(super) async fn give_cash(
         caller_name = space_mgr.entity_label(caller_id),
         target,
         target_name = space_mgr.entity_label(target),
-        player_id,
-        player_name = space_mgr.entity_label(target),
+        subject_player_id = player_id,
+        subject_player_name = space_mgr.entity_label(target),
         amount,
         "GM .givecash"
     );

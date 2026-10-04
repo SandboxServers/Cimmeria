@@ -127,10 +127,16 @@ pub async fn handle_console_command(
     // moment two GMs are online, and `entity_id` can't stand in for identity
     // because it's a recycled per-space slot. Log the account directly.
     let id = space_mgr.player_identity(caller_id);
-    // The subject, when the command resolved one: named on the same row so
-    // the audit line says who the GM acted on (Rule 5 § actor on someone
-    // else). A player subject also carries its own character id.
-    let subject = target_id.map_or(PlayerIdentity::UNKNOWN, |t| space_mgr.player_identity(t));
+    // The subject, for a command that takes a target: named on the same row
+    // so the audit line says who the GM acted on (Rule 5 § actor on someone
+    // else). A player subject carries its character, an NPC its template
+    // pair (D-NT5). A no-target command only passes the GM's selection
+    // through, so it names no subject.
+    let subject_id = target_id.filter(|_| spec.target != Target::None);
+    let subject = subject_id.map_or(PlayerIdentity::UNKNOWN, |t| space_mgr.player_identity(t));
+    let subject_names = subject_id
+        .map(|t| space_mgr.entity_names(t))
+        .unwrap_or_default();
     tracing::info!(
         entity_id = caller_id,
         entity_name = id.player_name,
@@ -142,6 +148,8 @@ pub async fn handle_console_command(
         target_name = target_id.and_then(|t| space_mgr.entity_label(t)),
         subject_player_id = subject.player_id,
         subject_player_name = subject.player_name,
+        target_template_id = subject_names.template_id,
+        target_template_name = subject_names.template_name,
         access_level,
         command = name,
         argc = args.len(),
