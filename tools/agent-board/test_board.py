@@ -24,6 +24,11 @@ def tree():
         "openbc": other, "openbc/renderer": other_campaign,
         "questions": {"id": 12, "slug": "questions"}, "handoffs": {"id": 11, "slug": "handoffs"},
         "directives": {"id": 5, "slug": "directives"}, "decisions-log": {"id": 13, "slug": "decisions-log"},
+        "stbc-reverse-engineering": {"id": 8, "slug": "stbc-reverse-engineering", "name": "STBC Reverse Engineering"},
+        "stbc-reverse-engineering/re-questions": {"id": 16, "slug": "re-questions",
+                                                  "_parent_slug": "stbc-reverse-engineering"},
+        "stbc-reverse-engineering/re-handoffs": {"id": 17, "slug": "re-handoffs",
+                                                 "_parent_slug": "stbc-reverse-engineering"},
     }
 
 
@@ -84,6 +89,32 @@ class CategoryRuleTests(unittest.TestCase):
         self.assertIn("project: cimmeria", h)
         self.assertIn("campaign: agent-board-rollout", h)
         self.assertIn("agent: documentation-writer (Steven)", h)
+
+
+class CleanRoomTests(unittest.TestCase):
+    """STBC (the RE room) never posts where OpenBC agents can read, and vice versa."""
+
+    def test_stbc_questions_and_handoffs_stay_inside_the_re_room(self):
+        re = ident("game-reverse-engineer", project="stbc")
+        self.assertEqual(board.resolve_post_category(re, tree(), "questions")["id"], 16)
+        self.assertEqual(board.resolve_post_category(re, tree(), "handoffs")["id"], 17)
+
+    def test_stbc_cannot_target_the_shared_or_other_project_categories(self):
+        re = ident("game-reverse-engineer", project="stbc")
+        for slug in ("openbc", "openbc/renderer", "cimmeria", "directives"):
+            with self.assertRaises(board.BoardError, msg=slug):
+                board.resolve_post_category(re, tree(), slug)
+
+    def test_openbc_cannot_target_the_re_room(self):
+        ob = ident("network-protocol", project="openbc")
+        for slug in ("stbc-reverse-engineering", "stbc-reverse-engineering/re-questions", "re-questions"):
+            with self.assertRaises(board.BoardError, msg=slug):
+                board.resolve_post_category(ob, tree(), slug)
+
+    def test_inbox_watch_lists(self):
+        self.assertNotIn("questions", board.watched_categories("stbc"))
+        self.assertIn("questions", board.watched_categories("openbc"))
+        self.assertIn("directives", board.watched_categories("stbc"))
 
 
 class HookTests(unittest.TestCase):

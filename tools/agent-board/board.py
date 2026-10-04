@@ -65,8 +65,24 @@ PROJECT_CATEGORY = {
     "agentcraft": "agentcraft",
 }
 OPERATORS = {"steven": "Steven", "derek": "Derek"}
-SHARED_CATEGORIES = ("questions", "handoffs")      # every agent may post here
-WATCHED_CATEGORIES = ("directives", "questions", "handoffs")
+# Clean room: the STBC reverse-engineering agents are walled off from every other
+# project (OpenBC must never see RE-derived material), so they get their own
+# Questions and Handoffs inside the STBC category. The server enforces the wall;
+# this map only routes `--category questions|handoffs` to the right place.
+SHARED_CATEGORIES = {"questions": "questions", "handoffs": "handoffs"}
+WALLED_SHARED = {
+    "stbc": {"questions": "stbc-reverse-engineering/re-questions",
+             "handoffs": "stbc-reverse-engineering/re-handoffs"},
+}
+
+
+def shared_categories(project: str) -> dict:
+    return WALLED_SHARED.get(project, SHARED_CATEGORIES)
+
+
+def watched_categories(project: str) -> list:
+    # A walled project's shared categories live inside its own tree, which the inbox reads anyway.
+    return ["directives"] + ([] if project in WALLED_SHARED else list(SHARED_CATEGORIES.values()))
 CONFIG_DIR = Path(os.environ.get("AGENT_BOARD_HOME", Path.home() / ".agent-board"))
 AGENT_RE = re.compile(r"^[a-z0-9][a-z0-9-]{1,40}$")
 
@@ -234,13 +250,15 @@ def resolve_post_category(ident: Identity, tree: dict, requested: str | None) ->
     if not requested:
         return tree[project]
     req = requested.strip().strip("/").lower()
+    shared = shared_categories(ident.project)
+    req = shared.get(req, req)
     candidates = [req, f"{project}/{req}"]
     for key in candidates:
         cat = tree.get(key)
         if cat is None:
             continue
         parent = cat.get("_parent_slug")
-        if key == project or parent == project or key in SHARED_CATEGORIES:
+        if key == project or parent == project or key in shared.values():
             return cat
         raise BoardError(f"'{requested}' is outside your project; post in {project}, a {project} campaign, "
                          "questions or handoffs")
@@ -291,7 +309,7 @@ def parse_ts(s: str | None) -> dt.datetime | None:
 
 def collect_inbox(client: Client, ident: Identity, since: dt.datetime) -> list[dict]:
     tree = category_tree(client)
-    watch = [ident.category_slug, *WATCHED_CATEGORIES]
+    watch = [ident.category_slug, *watched_categories(ident.project)]
     by_id = {c["id"]: k for k, c in tree.items()}
     # "About the X category" definition topics are noise in an inbox.
     seen = {int(m.group(1)) for c in tree.values() if (m := re.search(r"/(\d+)$", c.get("topic_url") or ""))}
@@ -344,7 +362,9 @@ def cmd_categories(args, ident):
     for k, c in sorted(tree.items()):
         if c.get("_parent_slug") == p:
             print(f"  └ {c['name']}  ({c['slug']}, id {c['id']})")
-    print("Shared: questions, handoffs.  Read-only: directives, decisions-log.")
+    shared = shared_categories(ident.project)
+    print(f"Questions: {shared['questions']}.  Handoffs: {shared['handoffs']}.  "
+          "Read-only: directives, decisions-log.")
 
 
 def cmd_read(args, ident):
