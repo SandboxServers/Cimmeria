@@ -35,11 +35,11 @@ many tests also updates the catalogue.
 
 | Metric | Count |
 |---|---:|
-| Tests (`#[test]` / `#[tokio::test]`) | 10,368 |
-| Files with tests | 1,775 |
-| Gated in CI (every crate but CI's exclude list) | 8,814 |
+| Tests (`#[test]` / `#[tokio::test]`) | 10,400 |
+| Files with tests | 1,779 |
+| Gated in CI (every crate but CI's exclude list) | 8,846 |
 | Live-DB tests (`require_db_or_skip!` in the body) | 1,546 |
-| Inventory threshold (5% of the tests) | 518 |
+| Inventory threshold (5% of the tests) | 520 |
 
 <!-- /gen:tests-totals -->
 
@@ -87,7 +87,7 @@ with no file in this directory yet.
 
 | Crate | Package | Tests | Files | Live-DB | In CI | Catalogue |
 |---|---|---:|---:|---:|---|---|
-| `crates/cell-combat` | `cimmeria-cell-combat` | 842 | 150 | 45 | yes | none |
+| `crates/cell-combat` | `cimmeria-cell-combat` | 867 | 153 | 45 | yes | none |
 | `crates/cell-content` | `cimmeria-cell-content` | 831 | 121 | 477 | yes | none |
 | `crates/client-telemetry` | `cimmeria-client-telemetry` | 638 | 125 | 0 | no | none |
 | `crates/base-methods` | `cimmeria-base-methods` | 593 | 127 | 427 | yes | none |
@@ -112,9 +112,9 @@ with no file in this directory yet.
 | `crates/resources` | `cimmeria-resources` | 137 | 20 | 0 | yes | none |
 | `crates/client-patches` | `cimmeria-client-patches` | 93 | 14 | 0 | no | none |
 | `crates/discord` | `cimmeria-discord` | 82 | 16 | 0 | yes | none |
+| `crates/server` | `cimmeria-server` | 80 | 16 | 0 | yes | [server.md](server.md) |
 | `crates/upk-objects` | `cimmeria-upk-objects` | 78 | 9 | 0 | yes | [upk-objects.md](upk-objects.md) |
 | `crates/admin-api` | `cimmeria-admin-api` | 77 | 8 | 0 | yes | none |
-| `crates/server` | `cimmeria-server` | 74 | 15 | 0 | yes | [server.md](server.md) |
 | `crates/cell-org` | `cimmeria-cell-org` | 73 | 8 | 0 | yes | none |
 | `crates/cell-cover` | `cimmeria-cell-cover` | 71 | 5 | 6 | yes | none |
 | `crates/wireclient` | `cimmeria-wireclient` | 61 | 16 | 0 | yes | [wireclient.md](wireclient.md) |
@@ -137,7 +137,7 @@ with no file in this directory yet.
 | `crates/sgw-testhost` | `cimmeria-sgw-testhost` | 12 | 2 | 0 | yes | none |
 | `crates/upk` | `cimmeria-upk` | 12 | 3 | 0 | yes | none |
 | `tools/ContentEditor` | `cimmeria-content-editor` | 12 | 1 | 0 | no | [tools-contenteditor.md](tools-contenteditor.md) |
-| `crates/observability` | `cimmeria-observability` | 8 | 2 | 0 | yes | none |
+| `crates/observability` | `cimmeria-observability` | 9 | 2 | 0 | yes | none |
 | `src-tauri` | `cimmeria-app` | 6 | 2 | 0 | no | [tauri-app.md](tauri-app.md) |
 | `crates/defs` | `cimmeria-defs` | 5 | 1 | 0 | yes | [defs.md](defs.md) |
 
