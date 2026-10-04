@@ -24,6 +24,7 @@ mod effect_routing_live_db;
 mod fire_los;
 mod gating;
 mod holster_queue;
+mod interrupt_effect;
 mod min_range;
 mod no_mechanics;
 mod no_mechanics_live_db;

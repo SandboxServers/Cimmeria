@@ -23,6 +23,12 @@
 --                             of a pistol auto attack's (effect 641) 100.
 --   MechanicalHealthDamage 5  Health taken from a mechanical target, half
 --                             a pistol auto attack's base HealthDamage 10.
+--   InterruptChance 25        Chance in percent that a hit breaks the
+--                             target's warmup and channels (ability
+--                             mechanics AB-09c), before its interruptRes.
+--                             DESIGN, not recovered: an EMP disrupts, and
+--                             a quarter of hits breaks a cast without an
+--                             automatic weapon locking out every warmup.
 --
 -- "Mechanical" is the target's body set: drones, the Prisoner Retrieval
 -- Unit, the BattleWalker and deployables. The list and its reasons are in
@@ -43,5 +49,6 @@ INSERT INTO effects (effect_id, ability_id, delay, effect_desc, effect_sequence,
 
 INSERT INTO effect_nvps (nvp_id, effect_id, name, value) VALUES (9120, 9120, 'FocusDamage', '10');
 INSERT INTO effect_nvps (nvp_id, effect_id, name, value) VALUES (9121, 9120, 'MechanicalHealthDamage', '5');
+INSERT INTO effect_nvps (nvp_id, effect_id, name, value) VALUES (9122, 9120, 'InterruptChance', '25');
 
 INSERT INTO ammo_modifiers (ammo_type, damage_mult, penetration_mult, damage_type, on_hit_effect_id, toggle_ability_id) VALUES ('Bullet_EMP', 1.1, 0.75, 'DT_Physical', 9120, 1445);

@@ -55,6 +55,27 @@ pub(super) async fn npc_ai_fight(
         return;
     };
 
+    // Stunned or knocked down (`BSF_MovementLock`, held by a timed-effect
+    // entry, ability mechanics AB-09a): no launch, no step, no leash walk
+    // until the lock clears. The target list above still prunes, so the
+    // fight resumes on a live target. The movement tick freezes any path
+    // already in progress.
+    if space_mgr
+        .get_entity(npc_id)
+        .is_some_and(|e| e.has_state_flag(crate::cell::combat::BSF_MOVEMENT_LOCK))
+    {
+        super::note_outcome("stunned");
+        tracing::debug!(
+            target: "npc_ai",
+            event = "decision",
+            decision_outcome = "stunned",
+            npc_id,
+            target_id,
+            "NPC AI: movement locked (stun or knockdown), holding"
+        );
+        return;
+    }
+
     // Hard leash: the NPC itself is beyond the hysteresis band around its
     // spawn, or too far above or below it. Measured on the NPC, never on the
     // target (audit S3): a player 49.9 u from spawn no longer leashes an NPC

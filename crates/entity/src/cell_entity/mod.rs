@@ -66,6 +66,7 @@ mod offered_dialogs;
 mod pending_cast;
 mod pet;
 mod stat_buff;
+mod stat_buff_flags;
 #[cfg(test)]
 mod stat_buff_tests;
 mod state_flags;

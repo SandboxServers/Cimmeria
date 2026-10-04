@@ -19,6 +19,10 @@
 //! the on-hit effect would need `pulse_count > 1`, which re-fires `on_apply`
 //! and drains again every pulse. See `worknotes/AM-09.md`.
 //!
+//! Since ability mechanics AB-09c a hit also breaks the target's warmup and
+//! channels at the row's `InterruptChance` (25 %, DESIGN), resisted by its
+//! `interruptRes`: the script queues the request and combat resolves it.
+//!
 //! # Which targets are mechanical
 //!
 //! There is no mechanical flag on an entity, a template or a faction
@@ -139,6 +143,11 @@ impl EffectScript for EmpDisrupt {
             health_damage,
             "EMP round disrupted the target"
         );
+        // The disruption also breaks a cast, at the row's InterruptChance
+        // (ability mechanics AB-09c); combat rolls it against interruptRes.
+        if let Some(chance) = super::crowd_control::stated_interrupt_chance(ctx.effect) {
+            super::crowd_control::queue_interrupt(ctx, chance);
+        }
     }
 }
 
@@ -351,6 +360,8 @@ mod tests {
         );
         assert_eq!(effect.param_i32("FocusDamage"), FOCUS_DAMAGE);
         assert_eq!(effect.param_i32("MechanicalHealthDamage"), MECH_DAMAGE);
+        // AB-09c: a quarter of EMP hits break a cast (DESIGN).
+        assert_eq!(effect.param_i32("InterruptChance"), 25);
 
         let name: String =
             sqlx::query_scalar("SELECT name FROM resources.abilities WHERE ability_id = 1445")

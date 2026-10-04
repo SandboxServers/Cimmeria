@@ -12,13 +12,15 @@
 //!
 //! One file per script family, as before the move:
 //!
-//! - [`scripts`]: the damage, stun and suppression scripts (the pool heals
+//! - [`scripts`]: the damage and suppression scripts (the pool heals
 //!   and the shield re-exported);
 //! - [`shield`]: `AbsorbShield`, an absorb shield on the timed effect ledger
 //!   (ability mechanics AB-10);
 //! - [`cleanse`]: `RemoveEffects`, the category cleanses of the support
 //!   darts and the ability purges (AB-10);
 //! - [`heal`]: `HealHealth` and `HealFocus`;
+//! - [`crowd_control`]: `Stun`, `Knockdown` and `Interrupt` (ability mechanics
+//!   AB-09);
 //! - [`cover_stance`]: the Cover Stance grant and removal (NA22);
 //! - [`pet_scripts`]: the owner abilities that act on a pet (pets PT-08);
 //! - [`stat_buff`]: the consumable stimpacks' timed attribute buff;
@@ -35,6 +37,9 @@ pub mod ammo_emp;
 pub mod ammo_incendiary;
 pub mod cleanse;
 pub mod cover_stance;
+pub mod crowd_control;
+#[cfg(test)]
+mod crowd_control_seed_live_db_tests;
 pub mod heal;
 #[cfg(test)]
 mod heal_seed_live_db_tests;

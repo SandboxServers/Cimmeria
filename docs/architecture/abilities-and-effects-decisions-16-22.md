@@ -319,6 +319,26 @@ into the launch pass, and `zero_warmup_wire_is_unchanged` pins the zero-warmup b
 (`fire_ground_cast_after_warmup`). Evidence and test list:
 [AT-10 worknote](../analysis/ability-trees/worknotes/at10.md).
 
+**Extended (ability mechanics AB-09c, 2026-10-03): an interrupt effect is a fourth trigger.**
+An effect script cannot reach this cancel: it is synchronous and below combat. The
+`Interrupt` script ("Interrupts target", effect 723 of Interrupting Shot) and the EMP round's
+`EmpDisrupt` (at its `InterruptChance`, 25 %) queue an `InterruptRequest` on the
+`SpaceManager` ([`interrupt_request.rs`](../../crates/cell-world/src/cell/effects/interrupt_request.rs)).
+Combat resolves the queue in `flush_stat_buff_timers`, which every caller of a script already
+awaits, so the interrupt reaches the client in the hit's burst, and on the stat-buff tick as a
+safety net ([`effects/interrupt.rs`](../../crates/cell-combat/src/cell/effects/interrupt.rs)).
+A target with neither a warmup nor a channel is not rolled. Otherwise it resists with
+probability `(interruptRes + coordination) / 1000`, clamped to 0..=1: `alias.xml` makes
+`interruptRes` a resistance to every interrupt but movement and gives coordination "+0.1%
+resistance to interrupts per point", and D-AB09's 10 points per 1 % puts both in one unit.
+`P(interrupt) = InterruptChance x (1 - resist)`, rolled from a seed of the source, the target,
+the effect and the target's warmup instance. DESIGN, not recovered. When it lands the target's
+warmup goes through `interrupt_pending_cast` with reason `interrupt_effect` (refund, zeroed
+timers, `Ability_Interrupt`, no lockout, exactly as above) and its channels through
+`cancel_channels_from_attacker`. One `abilities` `interrupt_effect` row per request:
+`decision_outcome` `interrupted`, `resisted` or `nothing_to_interrupt`, the interrupter as
+actor, the target as subject. Guards: `use_ability/tests/interrupt_effect.rs`.
+
 ### 22. Timer expiries are absolute on one server-wide game clock (CR-02)
 
 **Decision:** Every `onTimerUpdate` that starts a timer sends

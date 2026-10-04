@@ -1,6 +1,6 @@
 """The registered families, in run order.
 
-AB-02 ships ``heal``, AB-03 ``damage``, AB-04 ``stat``, AB-10 ``shield`` and
+AB-02 ships ``heal``, AB-03 ``damage``, AB-04 ``stat``, AB-09 ``cc``, AB-10 ``shield`` and
 ``cleanse``: one module each beside ``heal.py``, one entry here, and the
 family's range in ``NVP_RANGES``. The ranges are fixed by the ledger
 (docs/analysis/ability-mechanics/work-packets.md, "Contract"); ``cleanse``
@@ -12,6 +12,7 @@ from __future__ import annotations
 from typing import Dict, Tuple
 
 from family import Family
+from families.cc import CcFamily
 from families.cleanse import CleanseFamily
 from families.damage import DamageFamily
 from families.heal import HealFamily
@@ -24,8 +25,9 @@ NVP_RANGES: Dict[str, Tuple[int, int]] = {
     "stat": (23000, 23999),
     "shield": (24000, 24499),
     "cleanse": (24500, 24999),
+    "cc": (25000, 25499),
 }
 
 FAMILIES: Dict[str, Family] = {
-    f.name: f for f in (HealFamily(), DamageFamily(), StatFamily(), ShieldFamily(), CleanseFamily())
+    f.name: f for f in (HealFamily(), DamageFamily(), StatFamily(), ShieldFamily(), CleanseFamily(), CcFamily())
 }

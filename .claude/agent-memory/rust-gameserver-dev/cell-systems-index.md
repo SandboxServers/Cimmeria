@@ -63,7 +63,7 @@ Moved out of MEMORY.md on 2026-09-28 (AM-12 compaction).
 - [beneficial-cast-resolution-and-abilitydef-fields.md](beneficial-cast-resolution-and-abilitydef-fields.md) — AB-01 resolver + #444 gate in use_ability/beneficial.rs; 2228 is a Heal-typed attack; new AbilityDef field = ~70 literals.
 - [ammo-on-hit-effect-needs-a-script.md](ammo-on-hit-effect-needs-a-script.md) — ammo on-hit effects need a script_name or the hit pulse never fires; no Radioactive dart toggle exists.
 - [effect-category-and-friendly-target-gaps.md](effect-category-and-friendly-target-gaps.md) — cleanses key on an `EffectCategory` NVP; no ally targeting (#444); new effect ids must not reach the client.
-- [pulsing-script-reapply-and-npc-cc.md](pulsing-script-reapply-and-npc-cc.md) — a pulsing script's on_apply runs per pulse/refresh, on_remove once: guard stateful scripts; NPCs ignore BSF_MOVEMENT_LOCK (#1049).
+- [pulsing-script-reapply-and-npc-cc.md](pulsing-script-reapply-and-npc-cc.md) — on_apply runs per pulse/refresh, on_remove once: put stateful scripts on the ledger (state_flags since AB-09); script interrupts queue for combat.
 - [mechanical-target-signal-is-body-set](mechanical-target-signal-is-body-set.md) — no mechanical flag exists; use `ammo_emp::is_mechanical` (body_set prefixes); EMP split from grenade 2864.
 - [on-hit-fanout-and-recursive-async-send](on-hit-fanout-and-recursive-async-send.md) — scripts can't damage secondaries (no wire/death); fan out in damage_apply; box recursion as a named dyn Send.
 - [effect-flag-64-marks-sequenced-damage](effect-flag-64-marks-sequenced-damage.md) — AB-03: NVP damage per TCM_Single effect; single-shot flag-64 rows are vs-low-Focus/chain/barrage follow-ups, never give them NVPs.

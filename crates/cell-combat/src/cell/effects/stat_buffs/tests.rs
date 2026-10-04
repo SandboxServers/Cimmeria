@@ -44,6 +44,7 @@ fn stim(stat_id: i32, delta: i32, effect_id: i32, flags: u32) -> TimedEffectSpec
         absorb: Vec::new(),
         duration_secs: Some(3600.0),
         stacking: TimedStacking::ReplaceSameStat,
+        state_flags: 0,
         invoker_identity: Default::default(),
     }
 }
@@ -60,6 +61,7 @@ fn aim(invoker_id: u32) -> TimedEffectSpec {
         absorb: Vec::new(),
         duration_secs: Some(15.0),
         stacking: TimedStacking::PerSource,
+        state_flags: 0,
         invoker_identity: Default::default(),
     }
 }
