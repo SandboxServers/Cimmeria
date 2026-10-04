@@ -162,6 +162,7 @@ pub(super) fn convert_trigger(row: &DbTriggerRow) -> Option<Trigger> {
                 // it has no surviving trigger.
                 tracing::warn!(
                     chain_id = row.chain_id,
+                    chain_name = cimmeria_names::book().chain(row.chain_id),
                     event_type = %row.event_type,
                     pct,
                     min = *HEALTH_PCT_RANGE.start(),

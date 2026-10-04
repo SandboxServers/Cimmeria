@@ -115,7 +115,10 @@ pub async fn handle_respawn(
     let space_id = match space_mgr.get_entity(entity_id) {
         Some(e) => e.space_id.0 as u32,
         None => {
-            tracing::warn!(entity_id, "respawn: entity not found");
+            tracing::warn!(
+                entity_id, // nt:id-only the entity is gone, nothing left to name
+                "respawn: entity not found"
+            );
             return;
         }
     };
@@ -184,8 +187,11 @@ pub async fn handle_respawn(
             let id = space_mgr.player_identity(entity_id);
             tracing::warn!(
                 entity_id,
+                entity_name = space_mgr.entity_names(entity_id).entity_name,
                 account_id = id.account_id,
+                account_name = id.account_name,
                 player_id = id.player_id,
+                player_name = id.player_name,
                 to = %target_world,
                 reason = "cell_to_base_closed",
                 error = %e,
@@ -202,9 +208,12 @@ pub async fn handle_respawn(
             space_mgr,
         )
         .await;
+        // Snapshot the name before the teardown takes the entity with it.
+        let entity_name = space_mgr.entity_names(entity_id).entity_name;
         space_mgr.destroy_entity(entity_id);
         tracing::info!(
             entity_id,
+            entity_name,
             from = ?current_world,
             to = %target_world,
             "Respawn: cross-world via GateTravel"
@@ -314,9 +323,13 @@ pub async fn handle_respawn(
             let id = space_mgr.player_identity(entity_id);
             tracing::warn!(
                 entity_id,
+                entity_name = space_mgr.entity_names(entity_id).entity_name,
                 account_id = id.account_id,
+                account_name = id.account_name,
                 player_id = id.player_id,
+                player_name = id.player_name,
                 space_id,
+                world = space_mgr.world_name_for_space(space_id),
                 reason = "cell_to_base_closed",
                 error = %e,
                 "Respawn: ReanchorPlayer not sent; pets left in place"
@@ -344,6 +357,7 @@ pub async fn handle_respawn(
         .await;
         tracing::info!(
             entity_id,
+            entity_name = space_mgr.entity_names(entity_id).entity_name,
             world = %world_name,
             regions,
             "respawn: re-registered client-hinted regions after reanchor"
@@ -384,7 +398,9 @@ pub async fn handle_respawn(
         {
             tracing::warn!(
                 entity_id,
+                entity_name = space_mgr.entity_names(entity_id).entity_name,
                 player_id,
+                player_name = space_mgr.player_identity(entity_id).player_name,
                 error = %e,
                 "respawn: ListInventoryItems send failed -- inventory will not repopulate \
                  post-respawn (bag panel will stay empty until relog)"
@@ -393,6 +409,7 @@ pub async fn handle_respawn(
     } else {
         tracing::warn!(
             entity_id,
+            entity_name = space_mgr.entity_names(entity_id).entity_name,
             "respawn: entity has no player_id; skipping post-reanchor inventory snapshot \
              (NPC respawn? this branch should be player-only)"
         );
@@ -488,6 +505,7 @@ pub(super) fn resolve_respawn_target(
                 // worknote for the convention-vs-practice note.
                 tracing::warn!(
                     entity_id,
+                    entity_name = space_mgr.entity_names(entity_id).entity_name,
                     respawner_id,
                     respawner_name = %r.name,
                     world = %r.world_name,
@@ -502,7 +520,9 @@ pub(super) fn resolve_respawn_target(
             Some(r) => return (r.world_name.clone(), r.pos),
             None => tracing::warn!(
                 entity_id,
+                entity_name = space_mgr.entity_names(entity_id).entity_name,
                 respawner_id,
+                respawner_name = cimmeria_names::book().respawner(respawner_id),
                 reason = "respawner_not_found",
                 "Respawner not found, falling back to the nearest respawner"
             ),
@@ -541,9 +561,13 @@ pub(super) fn resolve_respawn_target(
             tracing::info!(
                 target: "player.respawn",
                 entity_id,
+                entity_name = space_mgr.entity_names(entity_id).entity_name,
                 account_id = id.account_id,
+                account_name = id.account_name,
                 player_id = id.player_id,
+                player_name = id.player_name,
                 requested_respawner_id = respawner_id,
+                requested_respawner_name = cimmeria_names::book().respawner(respawner_id),
                 respawner_id = r.respawner_id,
                 respawner_name = %r.name,
                 world = %wn,
@@ -564,6 +588,7 @@ pub(super) fn resolve_respawn_target(
             // `origin_respawner_warn_fires_once_on_the_world_scan_path`.
             tracing::warn!(
                 entity_id,
+                entity_name = space_mgr.entity_names(entity_id).entity_name,
                 world = %wn,
                 skipped,
                 reason = "world_respawners_all_at_origin",
@@ -577,7 +602,12 @@ pub(super) fn resolve_respawn_target(
 
     match world_name.as_deref() {
         Some(CASTLE_WORLD) | None => {
-            tracing::debug!(entity_id, world = ?world_name, "No respawner; using Castle default position");
+            tracing::debug!(
+                entity_id,
+                entity_name = space_mgr.entity_names(entity_id).entity_name,
+                world = ?world_name,
+                "No respawner; using Castle default position"
+            );
             (CASTLE_WORLD.to_string(), CASTLE_DEFAULT_POS)
         }
         Some(world) => {
@@ -587,6 +617,7 @@ pub(super) fn resolve_respawn_target(
                 .unwrap_or(CASTLE_DEFAULT_POS);
             tracing::warn!(
                 entity_id,
+                entity_name = space_mgr.entity_names(entity_id).entity_name,
                 world = world,
                 "No respawner configured for this world — respawning in place at current position"
             );

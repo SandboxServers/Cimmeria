@@ -111,6 +111,7 @@ A third, cheap: state is released on `destroy_entity`.
 | `phase` | optional | Short string naming a sub-step (e.g. `"create_base"` \| `"cascade"`). |
 | `reason` | optional | Short string naming why the expectation was unmet (e.g. `"entity_to_addr_miss"`, `"oneshot_dropped"`, `"rows_affected_zero"`). An expected miss logs at DEBUG under its own reason: a witness-send miss for a witness whose session just ended is `"witness_session_ended"`, not a WARN. |
 | `world` | when the seam is space-scoped | The **world name**, not only `space_id`. A space id is a runtime allocation that means nothing outside the running process, so a log carrying only `space_id` cannot be grouped by zone after the fact. Pair them — `space_id` still identifies the instance. `world` is Rule 6's name key for `space_id` and `world_id`; don't use `world_name`. |
+| `chain_name` | beside every `chain_id` | `content_chains.description`, from `cimmeria_names::book().chain` or, inside the content engine, `Chain::label`. A chain with no description leaves the field off (the loader no longer invents `chain_<id>`). NT-21 |
 | `suppressed` | required on a Pattern D seam | Count of occurrences elided since this seam last emitted for this entity. `0` on the first row of an episode. |
 
 Keys the named-telemetry sweeps renamed while pairing them (Rule 6), so a saved query on the old key finds nothing after the change:
@@ -120,6 +121,12 @@ Keys the named-telemetry sweeps renamed while pairing them (Rule 6), so a saved 
 | `navmesh_mode_summary` (target `movement.navmesh`, startup) | `world_name` | `world` | NT-23 |
 | `AoI: dynamicUpdate InteractionType (base→merged)` | `player_id` (held the witness's entity id) | `witness_id` + `witness_name` | NT-23 |
 | `TeleportPlayer: persistence UPDATE matched 0 rows` / `failed to persist position` | `pid` | `player_id` + `player_name` | NT-23 |
+| `Content: adding dialog set` / `removing dialog set` and the other `AddDialogSet` / `RemoveDialogSet` executor rows | `dialog_set_id` (always held a `dialog_set_maps` row) | `dialog_set_map_id` + `dialog_set_map_name` (the topic text) | NT-21 |
+| `consumable_*` cell rows, the `RemoveItem` executor rows, `content.send_system_mail`, `fire_item_equipped` | `type_id` | `item_type_id` + `item_name` | NT-21 |
+| Cell loot rows: `Player looted item`, `loot_restored`, `loot_restore_failed`, `loot_grant_send_failed` | `type_id`, `design_id` | `item_id` + `item_name` | NT-21 |
+| The interact dispatcher's target-resolved row | `tmpl_id` | `target_template_id` + `target_template_name` | NT-21 |
+| `send_loot_display`, the vendor open rows, `send_dialog_display` | `player_id` (held the player's entity id) | `entity_id` + `entity_name` | NT-21 |
+| The `spawn_entity` executor rows and the DHD rows | `world_name` | `world` | NT-21 |
 
 ### Credential fields
 
@@ -494,10 +501,10 @@ is a seam: the item goes back on the corpse, or its loss is logged.
 | `grant_refused` | INFO | `container_full`, `database_error`, `not_grantable_container` (the grant resolved to buyback, 16) | `account_id`, `player_id`, `entity_id`, `type_id`, `quantity`, `container_id` |
 | `grant_outcome_unknown` | WARN | `commit_outcome_unknown` | as `grant_refused` |
 | `lookup_failed` | WARN | (`phase = placement`) | `player_id`, `entity_id`, `type_id`, `requested_container_id`, `error` |
-| `loot_restored` | INFO | the refusal: `storage_only`, `container_full`, `no_database`, `database_error` | `account_id`, `player_id`, `entity_id`, `corpse_id`, `index`, `type_id`, `qty`, `container_id`, `reflagged` |
+| `loot_restored` | INFO | the refusal: `storage_only`, `container_full`, `no_database`, `database_error` | `account_id`, `player_id`, `entity_id`, `corpse_id`, `index`, `item_id` + `item_name` (the item type; `type_id` before NT-21), `qty`, `container_id`, `reflagged` |
 | `loot_restore_failed` | WARN | `corpse_gone`, `corpse_changed`, `index_taken` (cell); `cell_channel_closed` (base) | as `loot_restored`, plus `refusal` |
 | `loot_restore_skipped` | WARN | `commit_outcome_unknown` | `account_id`, `player_id`, `entity_id`, `corpse_id`, `index`, `type_id`, `qty` |
-| `loot_grant_send_failed` | WARN | `restored`, or the restore miss | `player_id`, `entity_id`, `corpse_id`, `index`, `type_id`, `qty`, `restored` |
+| `loot_grant_send_failed` | WARN | `restored`, or the restore miss | `player_id`, `entity_id`, `corpse_id`, `index`, `item_id` + `item_name` (`type_id` before NT-21), `qty`, `restored` |
 | `feedback_send_failed` | WARN | `send_error` | `account_id`, `player_id`, `entity_id` |
 
 Only a refusal raised before the commit is handed back. A `COMMIT` that
@@ -514,7 +521,7 @@ unit-tested (`persist::tests`).
 
 ## Native consumable seams (decision 28)
 
-A heal or buff item used from the bags ([consumables.md](../gameplay/consumables.md)). The cell rows use the module's own target (`cimmeria_cell_content::cell::content::consumable_use`), the base rows `cimmeria_base_methods::...::consume_for_use`, the stat-buff rows `abilities`. Every row carries `entity_id`, `account_id` and `player_id`; the use rows also `type_id` and, when known, `instance_id` and `ability_id`.
+A heal or buff item used from the bags ([consumables.md](../gameplay/consumables.md)). The cell rows use the module's own target (`cimmeria_cell_content::cell::content::consumable_use`), the base rows `cimmeria_base_methods::...::consume_for_use`, the stat-buff rows `abilities`. Every row carries `entity_id`, `account_id` and `player_id`, each with its name; the cell's use rows also `item_type_id` + `item_name` (`type_id` before NT-21) and, when known, `instance_id` and `ability_id` + `ability_name`.
 
 | `event` | Level | `reason` | Extra fields |
 |---|---|---|---|

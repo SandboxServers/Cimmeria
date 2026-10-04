@@ -82,15 +82,25 @@ pub async fn fire_item_use(
     let resolved = engine.resolve_event(&event, &ctx);
     let matched = !resolved.actions.is_empty();
     if matched {
+        let id = space_mgr.player_identity(entity_id);
         tracing::info!(
             entity_id,
+            entity_name = space_mgr.entity_label(entity_id),
             player_id,
+            player_name = id.player_name,
             item_id,
+            item_name = cimmeria_names::book().item(item_id),
             actions = resolved.actions.len(),
             "fire_item_use: matched"
         );
     } else {
-        tracing::debug!(entity_id, item_id, "fire_item_use: no chains matched");
+        tracing::debug!(
+            entity_id,
+            entity_name = space_mgr.entity_label(entity_id),
+            item_id,
+            item_name = cimmeria_names::book().item(item_id),
+            "fire_item_use: no chains matched"
+        );
         crate::cell::playtest_friction::item_use_no_chain(space_mgr, entity_id, item_id);
     }
     executor::execute_actions(resolved, entity_id, player_id, tx, space_mgr, engine).await;
@@ -127,15 +137,25 @@ pub async fn fire_item_equipped(
 
     let resolved = engine.resolve_event(&event, &ctx);
     if !resolved.actions.is_empty() {
+        let id = space_mgr.player_identity(entity_id);
         tracing::info!(
             entity_id,
+            entity_name = space_mgr.entity_label(entity_id),
             player_id,
-            type_id,
+            player_name = id.player_name,
+            item_type_id = type_id,
+            item_name = cimmeria_names::book().item(type_id),
             actions = resolved.actions.len(),
             "fire_item_equipped: matched"
         );
     } else {
-        tracing::debug!(entity_id, type_id, "fire_item_equipped: no chains matched");
+        tracing::debug!(
+            entity_id,
+            entity_name = space_mgr.entity_label(entity_id),
+            item_type_id = type_id,
+            item_name = cimmeria_names::book().item(type_id),
+            "fire_item_equipped: no chains matched"
+        );
     }
     executor::execute_actions(resolved, entity_id, player_id, tx, space_mgr, engine).await;
 }

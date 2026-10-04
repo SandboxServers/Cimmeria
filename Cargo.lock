@@ -1346,6 +1346,7 @@ version = "0.1.0"
 dependencies = [
  "cimmeria-common",
  "cimmeria-entity",
+ "cimmeria-names",
  "cimmeria-workspace-hack",
  "serde",
  "serde_json",

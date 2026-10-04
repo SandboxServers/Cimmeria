@@ -42,6 +42,7 @@ pub async fn send_respec_rejection(
             target: "abilities",
             event = "respec_feedback_send_failed",
             entity_id,
+            entity_name = space_mgr.entity_label(entity_id),
             reason,
             error_code = code,
             error_name = cimmeria_names::book().error_code(code),

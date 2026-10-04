@@ -110,7 +110,9 @@ pub async fn try_open_trainer(
         None => {
             tracing::warn!(
                 player_entity_id,
+                player_entity_name = space_mgr.entity_label(player_entity_id),
                 target_entity_id,
+                target_entity_name = space_mgr.entity_label(target_entity_id),
                 "trainer interact: player has no archetype_id — skipping"
             );
             cimmeria_observability::counter!(
@@ -132,10 +134,15 @@ pub async fn try_open_trainer(
             target: "abilities",
             event = "trainer_empty_offering",
             player_entity_id,
+            player_entity_name = space_mgr.entity_label(player_entity_id),
             trainer_entity_id = target_entity_id,
+            trainer_entity_name = space_mgr.entity_label(target_entity_id),
             trainer_template_id,
+            trainer_template_name = cimmeria_names::book().template(trainer_template_id),
             list_id,
+            list_name = cimmeria_names::book().trainer_ability_list(list_id),
             archetype_id = player_archetype,
+            archetype_name = cimmeria_names::archetype_name(player_archetype),
             "Trainer has no abilities for this archetype — content gap"
         );
         cimmeria_observability::counter!(
@@ -183,10 +190,15 @@ pub async fn try_open_trainer(
                         target: "abilities",
                         event = "trainer_offered_unbound",
                         player_entity_id,
+                        player_entity_name = space_mgr.entity_label(player_entity_id),
                         trainer_entity_id = target_entity_id,
+                        trainer_entity_name = space_mgr.entity_label(target_entity_id),
                         list_id,
+                        list_name = cimmeria_names::book().trainer_ability_list(list_id),
                         archetype_id = player_archetype,
+                        archetype_name = cimmeria_names::archetype_name(player_archetype),
                         ability_id,
+                        ability_name = cimmeria_names::book().ability(ability_id),
                         "Trainer offers ability not in player's archetype tree — \
                          content gap (trainer_abilities row without matching \
                          archetype_ability_tree entry)"
@@ -226,10 +238,15 @@ pub async fn try_open_trainer(
                 target: "abilities",
                 event = "trainer_open",
                 player_entity_id,
+                player_entity_name = space_mgr.entity_label(player_entity_id),
                 trainer_entity_id = target_entity_id,
+                trainer_entity_name = space_mgr.entity_label(target_entity_id),
                 trainer_template_id,
+                trainer_template_name = cimmeria_names::book().template(trainer_template_id),
                 list_id,
+                list_name = cimmeria_names::book().trainer_ability_list(list_id),
                 archetype_id = player_archetype,
+                archetype_name = cimmeria_names::archetype_name(player_archetype),
                 offered = entries.len(),
                 trainable_count = entries.iter().filter(|(_, t)| *t == 1).count(),
                 "Sent onTrainerOpen"
@@ -250,8 +267,11 @@ pub async fn try_open_trainer(
                 target: "abilities",
                 event = "trainer_open_send_failed",
                 player_entity_id,
+                player_entity_name = space_mgr.entity_label(player_entity_id),
                 trainer_entity_id = target_entity_id,
+                trainer_entity_name = space_mgr.entity_label(target_entity_id),
                 trainer_template_id,
+                trainer_template_name = cimmeria_names::book().template(trainer_template_id),
                 error = %e,
                 "Failed to send onTrainerOpen — cell→base channel closed"
             );

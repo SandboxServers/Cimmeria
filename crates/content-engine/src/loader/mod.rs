@@ -130,9 +130,16 @@ pub fn build_chains_from_rows(
 
     for row in chain_rows {
         let chain_id = row.chain_id;
+        // The description is the chain's name in logs (`chain_name`). A
+        // chain without one gets an empty name, never a made-up
+        // `chain_<id>`: Rule 6 leaves an unknown name off the line.
         let name = row
             .description
-            .unwrap_or_else(|| format!("chain_{}", chain_id));
+            .as_deref()
+            .map(str::trim)
+            .unwrap_or_default()
+            .to_owned();
+        let chain_name = (!name.is_empty()).then_some(name.as_str());
 
         // Build conditions (shared across all triggers for this chain).
         let mut cond_list = conditions_by_chain.remove(&chain_id).unwrap_or_default();
@@ -140,7 +147,7 @@ pub fn build_chains_from_rows(
         let conditions: Vec<Condition> = cond_list.iter().filter_map(|c_row| {
             let result = condition::convert_condition(c_row);
             if result.is_none() {
-                warn!(chain_id, condition_type = %c_row.condition_type, "Unknown condition_type, skipping");
+                warn!(chain_id, chain_name, condition_type = %c_row.condition_type, "Unknown condition_type, skipping");
             }
             result
         }).collect();
@@ -165,7 +172,7 @@ pub fn build_chains_from_rows(
                     action_delays.push(a_row.delay_ms.max(0));
                 }
                 None => {
-                    warn!(chain_id, action_type = %a_row.action_type, "Unknown action_type, skipping");
+                    warn!(chain_id, chain_name, action_type = %a_row.action_type, "Unknown action_type, skipping");
                 }
             }
         }
@@ -206,6 +213,7 @@ pub fn build_chains_from_rows(
                     if result.is_none() {
                         warn!(
                             chain_id,
+                            chain_name,
                             event_type = %t_row.event_type,
                             "Unknown trigger event_type, skipping this trigger row"
                         );
@@ -218,7 +226,7 @@ pub fn build_chains_from_rows(
         if triggers.is_empty() {
             warn!(
                 chain_id,
-                "All trigger rows failed to convert — skipping chain"
+                chain_name, "All trigger rows failed to convert — skipping chain"
             );
             continue;
         }

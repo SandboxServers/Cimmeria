@@ -516,7 +516,7 @@ Verified from `Core/Reload/Reload.lua`, `Core/WeaponBar/WeaponBar.lua` and the b
 - **Assert:**
   - `/diff/by_item` Health Slappack delta -1.
   - `/health/current` rises by min(500, missing).
-  - SigNoz `consumable_used decision_outcome=applied type_id=2893 ability_id=648`.
+  - SigNoz `consumable_used decision_outcome=applied item_type_id=2893 ability_id=648`.
   - With cooldown 0, a second immediate use also works and should consume one more. Assert that, not a refusal.
 - **Gap:** the consumables.toml I2 args are wrong (§2).
 

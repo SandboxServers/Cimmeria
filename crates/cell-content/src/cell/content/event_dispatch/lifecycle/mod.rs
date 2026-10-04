@@ -74,13 +74,23 @@ pub async fn fire_player_loaded(
 
     let resolved = engine.resolve_event(&event, &ctx);
     if !resolved.actions.is_empty() {
+        let id = space_mgr.player_identity(entity_id);
         tracing::info!(
-            entity_id, player_id, %world_name,
+            entity_id,
+            entity_name = space_mgr.entity_label(entity_id),
+            player_id,
+            player_name = id.player_name,
+            %world_name,
             actions = resolved.actions.len(),
             "fire_player_loaded: matched"
         );
     } else {
-        tracing::debug!(entity_id, %world_name, "fire_player_loaded: no chains matched");
+        tracing::debug!(
+            entity_id,
+            entity_name = space_mgr.entity_label(entity_id),
+            %world_name,
+            "fire_player_loaded: no chains matched"
+        );
     }
     executor::execute_actions(resolved, entity_id, player_id, tx, space_mgr, engine).await;
 }
@@ -118,13 +128,20 @@ pub async fn fire_entity_death(
 
     let resolved = engine.resolve_event(&event, &ctx);
     if !resolved.actions.is_empty() {
+        let id = space_mgr.player_identity(killer_entity_id);
         tracing::info!(
-            killer = killer_entity_id, player_id, %entity_tag,
-            actions = resolved.actions.len(), "fire_entity_death: matched"
+            killer = killer_entity_id,
+            killer_name = space_mgr.entity_label(killer_entity_id),
+            player_id,
+            player_name = id.player_name,
+            %entity_tag,
+            actions = resolved.actions.len(),
+            "fire_entity_death: matched"
         );
     } else {
         tracing::debug!(
             killer = killer_entity_id,
+            killer_name = space_mgr.entity_label(killer_entity_id),
             %entity_tag,
             "fire_entity_death: no chains matched"
         );
@@ -279,9 +296,14 @@ pub async fn fire_health_below_for_hit(
         .get_entity(attacker_entity_id)
         .and_then(|e| e.player_id)
     else {
+        let target = space_mgr.entity_names(target_entity_id);
         tracing::warn!(
             attacker = attacker_entity_id,
+            attacker_name = space_mgr.entity_label(attacker_entity_id),
             target = target_entity_id,
+            target_name = target.entity_name,
+            template_id = target.template_id,
+            template_name = target.template_name,
             %entity_tag,
             "fire_health_below_for_hit: attacker has no player_id — \
              skipping EntityHealthBelow event"
@@ -354,9 +376,15 @@ pub async fn fire_entity_health_below(
 
     let resolved = engine.resolve_event(&event, &ctx);
     if !resolved.actions.is_empty() {
+        let id = space_mgr.player_identity(attacker_entity_id);
         tracing::info!(
-            attacker = attacker_entity_id, player_id, %entity_tag,
-            pct_before, pct_after,
+            attacker = attacker_entity_id,
+            attacker_name = space_mgr.entity_label(attacker_entity_id),
+            player_id,
+            player_name = id.player_name,
+            %entity_tag,
+            pct_before,
+            pct_after,
             actions = resolved.actions.len(),
             "fire_entity_health_below: matched"
         );

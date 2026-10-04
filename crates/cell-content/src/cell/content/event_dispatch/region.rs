@@ -57,9 +57,23 @@ pub async fn fire_enter_region(
 
     let resolved = engine.resolve_event(&event, &ctx);
     if !resolved.actions.is_empty() {
-        tracing::info!(entity_id, player_id, %region_tag, actions = resolved.actions.len(), "fire_enter_region: matched");
+        let id = space_mgr.player_identity(entity_id);
+        tracing::info!(
+            entity_id,
+            entity_name = space_mgr.entity_label(entity_id),
+            player_id,
+            player_name = id.player_name,
+            %region_tag,
+            actions = resolved.actions.len(),
+            "fire_enter_region: matched"
+        );
     } else {
-        tracing::debug!(entity_id, %region_tag, "fire_enter_region: no chains matched");
+        tracing::debug!(
+            entity_id,
+            entity_name = space_mgr.entity_label(entity_id),
+            %region_tag,
+            "fire_enter_region: no chains matched"
+        );
     }
     executor::execute_actions(resolved, entity_id, player_id, tx, space_mgr, engine).await;
 }
@@ -96,9 +110,23 @@ pub async fn fire_exit_region(
 
     let resolved = engine.resolve_event(&event, &ctx);
     if !resolved.actions.is_empty() {
-        tracing::info!(entity_id, player_id, %region_tag, actions = resolved.actions.len(), "fire_exit_region: matched");
+        let id = space_mgr.player_identity(entity_id);
+        tracing::info!(
+            entity_id,
+            entity_name = space_mgr.entity_label(entity_id),
+            player_id,
+            player_name = id.player_name,
+            %region_tag,
+            actions = resolved.actions.len(),
+            "fire_exit_region: matched"
+        );
     } else {
-        tracing::debug!(entity_id, %region_tag, "fire_exit_region: no chains matched");
+        tracing::debug!(
+            entity_id,
+            entity_name = space_mgr.entity_label(entity_id),
+            %region_tag,
+            "fire_exit_region: no chains matched"
+        );
     }
     executor::execute_actions(resolved, entity_id, player_id, tx, space_mgr, engine).await;
 }
@@ -141,15 +169,25 @@ pub async fn fire_teleport_in(
 
     let resolved = engine.resolve_event(&event, &ctx);
     if !resolved.actions.is_empty() {
+        let id = space_mgr.player_identity(entity_id);
         tracing::info!(
             entity_id,
+            entity_name = space_mgr.entity_label(entity_id),
             player_id,
+            player_name = id.player_name,
             region_id,
+            region_name = crate::cell::ring_transport::ring_region_name(space_mgr, region_id),
             actions = resolved.actions.len(),
             "fire_teleport_in: matched"
         );
     } else {
-        tracing::debug!(entity_id, region_id, "fire_teleport_in: no chains matched");
+        tracing::debug!(
+            entity_id,
+            entity_name = space_mgr.entity_label(entity_id),
+            region_id,
+            region_name = crate::cell::ring_transport::ring_region_name(space_mgr, region_id),
+            "fire_teleport_in: no chains matched"
+        );
     }
     executor::execute_actions(resolved, entity_id, player_id, tx, space_mgr, engine).await;
 }

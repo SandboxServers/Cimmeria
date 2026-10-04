@@ -13,9 +13,12 @@
 use cimmeria_cell_world::cell::service::npc_ai::{self, AiTransitionReason};
 use tokio::sync::mpsc;
 
-use super::transport;
 use crate::cell::messages::CellToBaseMsg;
 use crate::cell::space_manager::SpaceManager;
+
+mod movement;
+
+pub(super) use movement::{move_entity, move_waypoint};
 
 #[cfg(test)]
 mod aggression_log_tests;
@@ -37,6 +40,10 @@ pub(super) async fn set_interaction_type(
     space_mgr: &mut SpaceManager,
 ) {
     if let Some(target_id) = space_mgr.find_entity_by_tag(entity_id, &entity_tag) {
+        // Snapshot the names first: the log below sits inside the mutable
+        // borrow of the target.
+        let entity_name = space_mgr.entity_names(entity_id).entity_name;
+        let tn = space_mgr.entity_names(target_id);
         let new_flags = if let Some(target) = space_mgr.get_entity_mut(target_id) {
             let old = target.interaction_type_flags;
             match operation.as_str() {
@@ -47,12 +54,14 @@ pub(super) async fn set_interaction_type(
             }
             let names = &cimmeria_entity::interaction_flags::INTERACTION_FLAGS;
             tracing::debug!(
-                entity_id, %entity_tag, target_id, %operation, mask,
+                entity_id, entity_name, %entity_tag, target_id, target_name = tn.entity_name,
+                template_id = tn.template_id, template_name = tn.template_name, %operation, mask,
                 mask_names = %names.render(mask),
                 old, old_names = %names.render(old),
                 new = target.interaction_type_flags,
                 new_names = %names.render(target.interaction_type_flags),
                 chain_id,
+                chain_name = cimmeria_names::book().chain(chain_id),
                 "Content: set interaction type"
             );
             Some(target.interaction_type_flags)
@@ -76,7 +85,14 @@ pub(super) async fn set_interaction_type(
             }
         }
     } else {
-        tracing::debug!(entity_id, %entity_tag, chain_id, "Content: entity tag not found for SetInteractionType");
+        tracing::debug!(
+            entity_id,
+            entity_name = space_mgr.entity_names(entity_id).entity_name,
+            %entity_tag,
+            chain_id,
+            chain_name = cimmeria_names::book().chain(chain_id),
+            "Content: entity tag not found for SetInteractionType"
+        );
     }
 }
 
@@ -131,8 +147,10 @@ pub(super) async fn set_aggression(
             event = "set_aggression_invalid_level",
             reason = "invalid_level",
             entity_id,
+            entity_name = space_mgr.entity_names(entity_id).entity_name,
             tag = %entity_tag,
             chain_id,
+            chain_name = cimmeria_names::book().chain(chain_id),
             agg_level,
             "Content: set_aggression level is not 0-5 -- the NPC's aggression is unchanged"
         );
@@ -144,8 +162,10 @@ pub(super) async fn set_aggression(
             event = "set_aggression_tag_miss",
             reason = "tag_not_found",
             entity_id,
+            entity_name = space_mgr.entity_names(entity_id).entity_name,
             tag = %entity_tag,
             chain_id,
+            chain_name = cimmeria_names::book().chain(chain_id),
             agg_level,
             "Content: set_aggression matched no entity -- the NPC's aggression is unchanged"
         );
@@ -157,15 +177,21 @@ pub(super) async fn set_aggression(
         None
     };
     if let Some(from) = from {
+        let tn = space_mgr.entity_names(target_id);
         tracing::info!(
             target: "content",
             event = "set_aggression",
             entity_id,
+            entity_name = space_mgr.entity_names(entity_id).entity_name,
             tag = %entity_tag,
             target_id,
+            target_name = tn.entity_name,
+            template_id = tn.template_id,
+            template_name = tn.template_name,
             from = from.map(|l| l.label()).unwrap_or("faction"),
             to = level.label(),
             chain_id,
+            chain_name = cimmeria_names::book().chain(chain_id),
             "Content: set aggression"
         );
         crate::cell::abilities::send_entity_method_to_witnesses(
@@ -198,8 +224,20 @@ pub(super) fn set_npc_poi(
 ) {
     use cimmeria_entity::cell_entity::AiState;
     if let Some(target_id) = space_mgr.find_entity_by_tag(entity_id, &entity_tag) {
+        let tn = space_mgr.entity_names(target_id);
         tracing::info!(
-            entity_id, %entity_tag, target_id, x, y, z, chain_id,
+            entity_id,
+            entity_name = space_mgr.entity_names(entity_id).entity_name,
+            %entity_tag,
+            target_id,
+            target_name = tn.entity_name,
+            template_id = tn.template_id,
+            template_name = tn.template_name,
+            x,
+            y,
+            z,
+            chain_id,
+            chain_name = cimmeria_names::book().chain(chain_id),
             "Content: set NPC POI (Investigating)"
         );
         let world = npc_ai::world_label(space_mgr, target_id);
@@ -219,7 +257,14 @@ pub(super) fn set_npc_poi(
             npc_ai::stop_movement_on(target);
         }
     } else {
-        tracing::debug!(entity_id, %entity_tag, chain_id, "Content: entity tag not found for SetNpcPoi");
+        tracing::debug!(
+            entity_id,
+            entity_name = space_mgr.entity_names(entity_id).entity_name,
+            %entity_tag,
+            chain_id,
+            chain_name = cimmeria_names::book().chain(chain_id),
+            "Content: entity tag not found for SetNpcPoi"
+        );
     }
 }
 
@@ -251,7 +296,14 @@ pub(super) fn set_follow_target(
 ) {
     use cimmeria_entity::cell_entity::AiState;
     let Some(npc_id) = space_mgr.find_entity_by_tag(entity_id, &entity_tag) else {
-        tracing::debug!(entity_id, %entity_tag, chain_id, "Content: entity tag not found for SetFollowTarget");
+        tracing::debug!(
+            entity_id,
+            entity_name = space_mgr.entity_names(entity_id).entity_name,
+            %entity_tag,
+            chain_id,
+            chain_name = cimmeria_names::book().chain(chain_id),
+            "Content: entity tag not found for SetFollowTarget"
+        );
         return;
     };
     let resolved_target = if use_player.unwrap_or(false) {
@@ -260,7 +312,11 @@ pub(super) fn set_follow_target(
             Some(entity_id)
         } else {
             tracing::warn!(
-                entity_id, %entity_tag, chain_id,
+                entity_id,
+                entity_name = space_mgr.entity_names(entity_id).entity_name,
+                %entity_tag,
+                chain_id,
+                chain_name = cimmeria_names::book().chain(chain_id),
                 "Content: SetFollowTarget use_player=true but the triggering \
                  entity is not a player; follow target left unresolved"
             );
@@ -271,8 +327,21 @@ pub(super) fn set_follow_target(
             .as_deref()
             .and_then(|tag| space_mgr.find_entity_by_tag(entity_id, tag))
     };
+    let npc_names = space_mgr.entity_names(npc_id);
     tracing::info!(
-        entity_id, %entity_tag, npc_id, ?target_tag, use_player, ?resolved_target, chain_id,
+        entity_id,
+        entity_name = space_mgr.entity_names(entity_id).entity_name,
+        %entity_tag,
+        npc_id,
+        npc_name = npc_names.entity_name,
+        template_id = npc_names.template_id,
+        template_name = npc_names.template_name,
+        ?target_tag,
+        use_player,
+        ?resolved_target,
+        resolved_target_name = resolved_target.and_then(|t| space_mgr.entity_names(t).entity_name),
+        chain_id,
+        chain_name = cimmeria_names::book().chain(chain_id),
         "Content: set follow target"
     );
     let world = npc_ai::world_label(space_mgr, npc_id);
@@ -306,7 +375,14 @@ pub(super) fn set_npc_ai_state(
     use cimmeria_content_engine::actions::NpcAiStateAction;
     use cimmeria_entity::cell_entity::AiState;
     let Some(target_id) = space_mgr.find_entity_by_tag(entity_id, &entity_tag) else {
-        tracing::debug!(entity_id, %entity_tag, chain_id, "Content: entity tag not found for SetNpcAiState");
+        tracing::debug!(
+            entity_id,
+            entity_name = space_mgr.entity_names(entity_id).entity_name,
+            %entity_tag,
+            chain_id,
+            chain_name = cimmeria_names::book().chain(chain_id),
+            "Content: entity tag not found for SetNpcAiState"
+        );
         return;
     };
     let new_state = match state {
@@ -315,8 +391,19 @@ pub(super) fn set_npc_ai_state(
         NpcAiStateAction::Submit => AiState::Submit,
         NpcAiStateAction::Error => AiState::Error,
     };
+    let tn = space_mgr.entity_names(target_id);
     tracing::info!(
-        entity_id, %entity_tag, target_id, ?state, ?new_state, chain_id,
+        entity_id,
+        entity_name = space_mgr.entity_names(entity_id).entity_name,
+        %entity_tag,
+        target_id,
+        target_name = tn.entity_name,
+        template_id = tn.template_id,
+        template_name = tn.template_name,
+        ?state,
+        ?new_state,
+        chain_id,
+        chain_name = cimmeria_names::book().chain(chain_id),
         "Content: set NPC AI state"
     );
     let world = npc_ai::world_label(space_mgr, target_id);
@@ -342,8 +429,18 @@ pub(super) async fn generate_threat(
     // If no entity_tag, the threat is on the player entity itself (ignored by combat).
     if let Some(tag) = &entity_tag {
         if let Some(target_id) = space_mgr.find_entity_by_tag(entity_id, tag) {
+            let tn = space_mgr.entity_names(target_id);
             tracing::info!(
-                entity_id, %tag, target_id, threat_level, chain_id,
+                entity_id,
+                entity_name = space_mgr.entity_names(entity_id).entity_name,
+                %tag,
+                target_id,
+                target_name = tn.entity_name,
+                template_id = tn.template_id,
+                template_name = tn.template_name,
+                threat_level,
+                chain_id,
+                chain_name = cimmeria_names::book().chain(chain_id),
                 "Content: generate threat on NPC from player"
             );
             if let Some(new_state) = crate::cell::combat::generate_threat(
@@ -408,8 +505,10 @@ pub(super) async fn generate_threat(
     } else {
         tracing::debug!(
             entity_id,
+            entity_name = space_mgr.entity_names(entity_id).entity_name,
             threat_level,
             chain_id,
+            chain_name = cimmeria_names::book().chain(chain_id),
             "Content: generate threat (no target tag, skipped)"
         );
     }
@@ -461,7 +560,14 @@ pub(super) async fn set_visible(
     space_mgr: &SpaceManager,
 ) {
     let Some(target_id) = space_mgr.find_entity_by_tag(entity_id, &entity_tag) else {
-        tracing::debug!(entity_id, %entity_tag, chain_id, "Content: entity tag not found for SetVisible");
+        tracing::debug!(
+            entity_id,
+            entity_name = space_mgr.entity_names(entity_id).entity_name,
+            %entity_tag,
+            chain_id,
+            chain_name = cimmeria_names::book().chain(chain_id),
+            "Content: entity tag not found for SetVisible"
+        );
         return;
     };
 
@@ -475,7 +581,15 @@ pub(super) async fn set_visible(
         )
         .await;
         tracing::debug!(
-            entity_id, %entity_tag, target_id, visible, witnesses_notified = notified, chain_id,
+            entity_id,
+            entity_name = space_mgr.entity_names(entity_id).entity_name,
+            %entity_tag,
+            target_id,
+            target_name = space_mgr.entity_names(target_id).entity_name,
+            visible,
+            witnesses_notified = notified,
+            chain_id,
+            chain_name = cimmeria_names::book().chain(chain_id),
             "Content: set visible (show)"
         );
         return;
@@ -494,7 +608,15 @@ pub(super) async fn set_visible(
             Ok(()) => notified += 1,
             Err(e) => {
                 tracing::warn!(
-                    witness_id = *witness_id, entity_id, %entity_tag, target_id, chain_id,
+                    witness_id = *witness_id,
+                    witness_name = space_mgr.entity_names(*witness_id).entity_name,
+                    entity_id,
+                    entity_name = space_mgr.entity_names(entity_id).entity_name,
+                    %entity_tag,
+                    target_id,
+                    target_name = space_mgr.entity_names(target_id).entity_name,
+                    chain_id,
+                    chain_name = cimmeria_names::book().chain(chain_id),
                     reason = "set_visible_send_failed",
                     "SetVisible: cell→base send failed -- this witness keeps seeing \
                      the entity that content just hid: {e}"
@@ -503,191 +625,15 @@ pub(super) async fn set_visible(
         }
     }
     tracing::debug!(
-        entity_id, %entity_tag, target_id, visible, witnesses_notified = notified, chain_id,
+        entity_id,
+        entity_name = space_mgr.entity_names(entity_id).entity_name,
+        %entity_tag,
+        target_id,
+        target_name = space_mgr.entity_names(target_id).entity_name,
+        visible,
+        witnesses_notified = notified,
+        chain_id,
+        chain_name = cimmeria_names::book().chain(chain_id),
         "Content: set visible (hide)"
     );
-}
-
-/// `Action::MoveEntity` — reposition either the acting player or a
-/// tagged NPC. One seed verb, two very different mechanisms:
-///
-/// - **`use_player: true`** (seed rows 3007 / 3028, both with
-///   `target_key` NULL) moves the *player* who fired the chain. That has
-///   to go through [`transport::teleport`], which owns the spatial-grid
-///   update, the `note_authorized_teleport` validator reseed, the
-///   `CellToBaseMsg::TeleportPlayer` forced-position snap and the
-///   prev-position anti-camera-snap. `update_entity_position` alone
-///   moves the server's idea of the player and nothing the client sees.
-/// - **`entity_tag`** (rows 3005 / 3009 / 3011) repositions an NPC, which
-///   is exactly [`move_waypoint`]'s job.
-///
-/// `use_player` wins when both are set — the seed never does that, but
-/// "move the player" is the more specific instruction.
-///
-/// The `world` param is a cross-world guard, not a destination selector.
-/// All five seeded rows name the world they are already on, so it
-/// normally resolves to the same-world path; a genuine mismatch on the
-/// player path routes to [`transport::cross_world_teleport`] instead of
-/// silently dropping the avatar at those coordinates on the wrong map.
-/// A mismatch on the NPC path is refused: NPCs have no gate-travel
-/// equivalent, and snapping one to coordinates in a world it isn't in
-/// would place it somewhere arbitrary.
-pub(super) async fn move_entity(
-    entity_tag: Option<String>,
-    destination: [f32; 3],
-    world: Option<String>,
-    use_player: Option<bool>,
-    entity_id: u32,
-    chain_id: i64,
-    tx: &mpsc::Sender<CellToBaseMsg>,
-    space_mgr: &mut SpaceManager,
-) {
-    if use_player == Some(true) {
-        let current_world = space_mgr.get_entity_world_name(entity_id);
-        // Only a *known* mismatch counts. An unresolvable current world
-        // (entity already gone) falls through to the same-world path,
-        // which fail-softs on the missing entity rather than firing a
-        // gate travel for a player the cell can't see.
-        let cross_world = match (world.as_deref(), current_world.as_deref()) {
-            (Some(want), Some(cur)) => want != cur,
-            _ => false,
-        };
-        if cross_world {
-            // `world` is Some in this branch by construction.
-            let target_world = world.unwrap_or_default();
-            tracing::info!(
-                entity_id, %target_world, ?destination, chain_id,
-                "Content: move_entity crosses worlds -- routing through gate travel"
-            );
-            transport::cross_world_teleport(
-                target_world,
-                destination,
-                entity_id,
-                chain_id,
-                tx,
-                space_mgr,
-            )
-            .await;
-            return;
-        }
-        // Same-world player move. `transport::teleport` treats its
-        // `space_id` as the *destination* space and warns on a mismatch,
-        // so pass the player's current space to keep it on the
-        // same-space path. `0` is its "unspecified" sentinel and is what
-        // a missing entity degrades to.
-        let space_id = space_mgr
-            .get_entity(entity_id)
-            .map(|e| e.space_id.0)
-            .unwrap_or(0);
-        transport::teleport(space_id, destination, entity_id, chain_id, tx, space_mgr).await;
-        return;
-    }
-
-    let Some(entity_tag) = entity_tag else {
-        tracing::warn!(
-            entity_id,
-            ?destination,
-            chain_id,
-            "MoveEntity: row has neither use_player nor target_key -- nothing moved"
-        );
-        return;
-    };
-
-    let Some(target_id) = space_mgr.find_entity_by_tag(entity_id, &entity_tag) else {
-        tracing::warn!(
-            entity_id, %entity_tag, ?destination, chain_id,
-            "MoveEntity: no entity matched tag in the source entity's space -- NPC reposition skipped"
-        );
-        return;
-    };
-
-    if let (Some(want), Some(cur)) = (
-        world.as_deref(),
-        space_mgr.get_entity_world_name(target_id).as_deref(),
-    ) {
-        if want != cur {
-            tracing::warn!(
-                entity_id, %entity_tag, target_id, want_world = %want, current_world = %cur,
-                chain_id,
-                "MoveEntity: cross-world NPC move is not supported -- NPC reposition skipped"
-            );
-            return;
-        }
-    }
-
-    move_waypoint(entity_tag, destination, entity_id, chain_id, tx, space_mgr).await;
-}
-
-/// `Action::MoveWaypoint` — snap the tagged entity to a new position.
-/// No yaw/orientation change; chains call `update_position_preserving_facing`
-/// directly.
-///
-/// The snap is broadcast to the entity's current witnesses immediately as a
-/// per-witness `EntityMoved`, so a scripted reposition is visible on the
-/// next frame rather than whenever the 100ms AoI tick next relays ghost
-/// positions. Witnesses the move drops entirely still get their `LeftAoI`
-/// from that tick, so a long-distance reposition needs no extra fan-out
-/// here. That immediate fan-out deliberately duplicates the AoI tick's own
-/// `EntityMoved` relay; harmless while NPC `UPDATE_AVATAR`/`EntityMoved`
-/// remains unreliable and self-correcting, but it would amplify position
-/// updates if that path ever becomes reliable for NPCs.
-pub(super) async fn move_waypoint(
-    entity_tag: String,
-    destination: [f32; 3],
-    entity_id: u32,
-    chain_id: i64,
-    tx: &mpsc::Sender<CellToBaseMsg>,
-    space_mgr: &mut SpaceManager,
-) {
-    let Some(target_id) = space_mgr.find_entity_by_tag(entity_id, &entity_tag) else {
-        return;
-    };
-    tracing::debug!(entity_id, %entity_tag, target_id, ?destination, chain_id, "Content: move waypoint");
-    let Some(t) = space_mgr.get_entity(target_id) else {
-        return;
-    };
-    let space_id = t.space_id.0 as u32;
-    let direction = [t.direction.x, t.direction.y, t.direction.z];
-    space_mgr.update_position_preserving_facing(target_id, destination, [0.0; 3]);
-    space_mgr
-        .npc_detectors
-        .note_move_source(target_id, npc_ai::detectors::MoveSource::Content);
-    // Authorized server move: reseed the movement-validator clock for
-    // the moved entity (harmless for NPC targets — they never pass
-    // through the client-position validator).
-    space_mgr.note_authorized_teleport(target_id);
-
-    // Broadcast the snap to current witnesses now instead of waiting for
-    // the AoI tick's next pass, so a chain-driven reposition (escort
-    // arrival, tutorial staging) does not hold stale on the client for up
-    // to 100ms. Witness sets are last-tick snapshots, so a witness the
-    // move left behind still gets the snap before its `LeftAoI`, and a
-    // player newly in range gets a full `EnteredAoI` — the tick completes
-    // the picture either way. A failed send only delays the relay by one
-    // tick, but it is still an expectation seam, so log it.
-    let witnesses = space_mgr.get_witnesses_of(target_id);
-    for witness_id in witnesses {
-        if let Err(e) = tx
-            .send(CellToBaseMsg::EntityMoved {
-                witness_id,
-                entity_id: target_id,
-                space_id,
-                position: destination,
-                direction,
-                velocity: [0.0; 3],
-                npc_moved_since_last: None,
-            })
-            .await
-        {
-            tracing::warn!(
-                entity_id,
-                witness_id,
-                target_id,
-                chain_id,
-                reason = "move_waypoint_send_failed",
-                "MoveWaypoint: cell→base send failed -- witness holds the stale \
-                 position until the next AoI tick relays it: {e}"
-            );
-        }
-    }
 }

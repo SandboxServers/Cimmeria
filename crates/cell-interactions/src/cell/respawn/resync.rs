@@ -73,6 +73,7 @@ pub async fn send_active_slot_resend(
     tracing::info!(
         target: "bandolier.resend",
         entity_id,
+        entity_name = space_mgr.entity_names(entity_id).entity_name,
         active_slot,
         "Re-sent onActiveSlotUpdate post-onClientReady (defensive resync \
          against client bag-list init race — see \
@@ -123,7 +124,7 @@ pub(crate) async fn resync_after_pawn_recreate(
 
     let Some(entity) = space_mgr.get_entity(entity_id) else {
         tracing::warn!(
-            entity_id,
+            entity_id, // nt:id-only the entity is gone, nothing left to name
             reason = "entity_missing",
             "resync after pawn recreate skipped — entity not found"
         );
@@ -191,10 +192,14 @@ pub(crate) async fn resync_after_pawn_recreate(
     let id = space_mgr.player_identity(entity_id);
     tracing::info!(
         entity_id,
+        entity_name = space_mgr.entity_names(entity_id).entity_name,
         account_id = id.account_id,
+        account_name = id.account_name,
         player_id = id.player_id,
+        player_name = id.player_name,
         level,
         archetype_id,
+        archetype_name = cimmeria_names::archetype_name(archetype_id),
         state_field,
         state_field_names = %cimmeria_wire::state_field::STATE_FLAGS.render(state_field),
         replayed = RESYNC_REPLAYED,
@@ -250,6 +255,7 @@ pub async fn send_known_abilities_update(
         0 => {
             tracing::info!(
                 entity_id,
+                entity_name = space_mgr.entity_names(entity_id).entity_name,
                 count = ability_ids.len(),
                 "Sent onKnownAbilitiesUpdate (hotbar seed)"
             );
@@ -260,6 +266,7 @@ pub async fn send_known_abilities_update(
             // on the bar") has a corresponding server-side log entry.
             tracing::error!(
                 entity_id,
+                entity_name = space_mgr.entity_names(entity_id).entity_name,
                 count = ability_ids.len(),
                 origin,
                 "Failed to send onKnownAbilitiesUpdate (hotbar seed) — cell→base channel closed"

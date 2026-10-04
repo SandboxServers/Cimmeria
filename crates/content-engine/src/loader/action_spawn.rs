@@ -34,7 +34,10 @@ pub(super) fn convert_spawn_action(row: &DbActionRow) -> Option<Action> {
             if tag.is_empty() {
                 warn!(
                     chain_id = row.chain_id,
-                    template_id, "spawn_entity: empty target_key (tag); dropping action"
+                    chain_name = cimmeria_names::book().chain(row.chain_id),
+                    template_id,
+                    template_name = cimmeria_names::book().template(template_id),
+                    "spawn_entity: empty target_key (tag); dropping action"
                 );
                 return None;
             }
@@ -53,7 +56,9 @@ pub(super) fn convert_spawn_action(row: &DbActionRow) -> Option<Action> {
                 _ => {
                     warn!(
                         chain_id = row.chain_id,
+                        chain_name = cimmeria_names::book().chain(row.chain_id),
                         template_id,
+                        template_name = cimmeria_names::book().template(template_id),
                         %tag,
                         ?params,
                         "spawn_entity: missing or non-finite x/y/z; \
@@ -92,7 +97,9 @@ pub(super) fn convert_spawn_action(row: &DbActionRow) -> Option<Action> {
             {
                 warn!(
                     chain_id = row.chain_id,
+                    chain_name = cimmeria_names::book().chain(row.chain_id),
                     template_id,
+                    template_name = cimmeria_names::book().template(template_id),
                     %tag,
                     reason = "respawn_secs_not_honoured",
                     "spawn_entity: respawn_secs is not supported for content \
@@ -130,6 +137,7 @@ pub(super) fn convert_spawn_action(row: &DbActionRow) -> Option<Action> {
             if entity_tag.is_empty() {
                 warn!(
                     chain_id = row.chain_id,
+                    chain_name = cimmeria_names::book().chain(row.chain_id),
                     "despawn_entity: empty target_key (tag); dropping action"
                 );
                 return None;

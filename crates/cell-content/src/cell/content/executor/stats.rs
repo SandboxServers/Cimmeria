@@ -36,8 +36,10 @@ pub(super) async fn change_stat(
     if use_ammo_stat == Some(true) || stat_id < 0 {
         tracing::warn!(
             entity_id,
+            entity_name = space_mgr.entity_names(entity_id).entity_name,
             chain_id,
-            stat_id,
+            chain_name = cimmeria_names::book().chain(chain_id),
+            stat_id, // nt:id-only stats have no name table; ids are stat_ids.rs constants
             ?use_ammo_stat,
             "Content: ChangeStat use_ammo_stat / negative stat_id \
              is not yet implemented; skipping (deliberate stub)"
@@ -51,50 +53,60 @@ pub(super) async fn change_stat(
     // dirty flag; `serialize_dirty` collects them into one
     // `onStatUpdate` payload.
     let payload = match space_mgr.get_entity_mut(entity_id) {
-        Some(entity) => match entity.stats.get_mut(stat_id) {
-            Some(stat) => {
-                if let Some(new_min) = min {
-                    stat.set_min(new_min);
+        Some(entity) => {
+            // Snapshot before `stat` borrows the entity mutably.
+            let entity_name = crate::cell::space_manager::EntityNames::of(entity).entity_name;
+            match entity.stats.get_mut(stat_id) {
+                Some(stat) => {
+                    if let Some(new_min) = min {
+                        stat.set_min(new_min);
+                    }
+                    if let Some(new_max) = max {
+                        stat.set_max(new_max);
+                    }
+                    if set_to_max == Some(true) {
+                        stat.set_current(stat.max);
+                    }
+                    if let Some(delta) = amount {
+                        stat.change(delta);
+                    }
+                    tracing::info!(
+                        entity_id,
+                        entity_name,
+                        stat_id, // nt:id-only stats have no name table; ids are stat_ids.rs constants
+                        ?min,
+                        ?max,
+                        ?set_to_max,
+                        ?amount,
+                        cur = stat.cur,
+                        max = stat.max,
+                        chain_id,
+                        chain_name = cimmeria_names::book().chain(chain_id),
+                        "Content: ChangeStat applied"
+                    );
+                    let p = entity.stats.serialize_dirty();
+                    entity.stats.clear_dirty();
+                    p
                 }
-                if let Some(new_max) = max {
-                    stat.set_max(new_max);
+                None => {
+                    tracing::warn!(
+                        entity_id,
+                        entity_name,
+                        stat_id, // nt:id-only stats have no name table; ids are stat_ids.rs constants
+                        chain_id,
+                        chain_name = cimmeria_names::book().chain(chain_id),
+                        "Content: ChangeStat target stat not found"
+                    );
+                    Vec::new()
                 }
-                if set_to_max == Some(true) {
-                    stat.set_current(stat.max);
-                }
-                if let Some(delta) = amount {
-                    stat.change(delta);
-                }
-                tracing::info!(
-                    entity_id,
-                    stat_id,
-                    ?min,
-                    ?max,
-                    ?set_to_max,
-                    ?amount,
-                    cur = stat.cur,
-                    max = stat.max,
-                    chain_id,
-                    "Content: ChangeStat applied"
-                );
-                let p = entity.stats.serialize_dirty();
-                entity.stats.clear_dirty();
-                p
             }
-            None => {
-                tracing::warn!(
-                    entity_id,
-                    stat_id,
-                    chain_id,
-                    "Content: ChangeStat target stat not found"
-                );
-                Vec::new()
-            }
-        },
+        }
         None => {
             tracing::warn!(
                 entity_id,
+                entity_name = space_mgr.entity_names(entity_id).entity_name,
                 chain_id,
+                chain_name = cimmeria_names::book().chain(chain_id),
                 "Content: ChangeStat source entity not found"
             );
             Vec::new()
@@ -111,7 +123,11 @@ pub(super) async fn change_stat(
             .await
         {
             tracing::error!(
-                entity_id, chain_id, error = %e,
+                entity_id,
+                entity_name = space_mgr.entity_names(entity_id).entity_name,
+                chain_id,
+                chain_name = cimmeria_names::book().chain(chain_id),
+                error = %e,
                 "Content: ChangeStat onStatUpdate send failed"
             );
         }

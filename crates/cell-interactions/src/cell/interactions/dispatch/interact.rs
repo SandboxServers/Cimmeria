@@ -41,41 +41,56 @@ pub async fn handle_interact(
     let (player_pos, player_space_id) = match space_mgr.get_entity(entity_id) {
         Some(e) => (e.position, e.space_id.0),
         None => {
-            tracing::warn!(entity_id, "interact: player entity not found");
+            tracing::warn!(
+                entity_id, // nt:id-only the player's entity is gone, so there is no live name
+                "interact: player entity not found"
+            );
             return None;
         }
     };
     tracing::Span::current().record("space_id", player_space_id);
 
     // Validate target exists and get interaction data
-    let (target_pos, interaction_type, npc_name, target_template_id) =
+    let (target_pos, interaction_type, target_template_id) =
         match space_mgr.get_entity(target_entity_id) {
-            Some(e) => (
-                e.position,
-                e.interaction_type.clone(),
-                e.npc_name.clone().unwrap_or_default(),
-                e.template_id,
-            ),
+            Some(e) => (e.position, e.interaction_type.clone(), e.template_id),
             None => {
                 tracing::info!(
                     entity_id,
+                    entity_name = space_mgr.entity_label(entity_id),
                     target_entity_id,
+                    target_entity_name = space_mgr.entity_label(target_entity_id),
                     "interact: target entity not found"
                 );
                 return None;
             }
         };
 
-    tracing::info!(
-        entity_id, target_entity_id, %npc_name,
-        ?interaction_type, ?target_template_id,
-        "interact: target resolved"
-    );
+    {
+        let names = cimmeria_names::book();
+        tracing::info!(
+            entity_id,
+            entity_name = space_mgr.entity_label(entity_id),
+            target_entity_id,
+            target_entity_name = space_mgr.entity_label(target_entity_id),
+            ?interaction_type,
+            target_template_id,
+            target_template_name = target_template_id.and_then(|t| names.template(t)),
+            "interact: target resolved"
+        );
+    }
 
     // Distance check
     let dist = player_pos.distance_squared_to(&target_pos).sqrt();
     if dist > MAX_INTERACT_DISTANCE {
-        tracing::info!(entity_id, target_entity_id, dist, "interact: too far away");
+        tracing::info!(
+            entity_id,
+            entity_name = space_mgr.entity_label(entity_id),
+            target_entity_id,
+            target_entity_name = space_mgr.entity_label(target_entity_id),
+            dist,
+            "interact: too far away"
+        );
         super::super::bank::reject_banker_out_of_range(entity_id, target_entity_id, tx, space_mgr)
             .await;
         super::super::org_registrar::reject_registrar_out_of_range(
@@ -126,9 +141,13 @@ pub async fn handle_interact(
         if let Some(dialog_id) = dialog_id {
             tracing::info!(
                 entity_id,
+                entity_name = space_mgr.entity_label(entity_id),
                 target_entity_id,
-                tmpl_id,
+                target_entity_name = space_mgr.entity_label(target_entity_id),
+                target_template_id = tmpl_id,
+                target_template_name = cimmeria_names::book().template(tmpl_id),
                 dialog_id,
+                dialog_name = cimmeria_names::book().dialog(dialog_id),
                 "interact: per-player dialog set → onDialogDisplay"
             );
             send_dialog_display(entity_id, target_entity_id as i32, dialog_id, tx, space_mgr).await;
@@ -140,7 +159,9 @@ pub async fn handle_interact(
             // silent click can tell the two apart.
             tracing::info!(
                 entity_id,
-                tmpl_id,
+                entity_name = space_mgr.entity_label(entity_id),
+                target_template_id = tmpl_id,
+                target_template_name = cimmeria_names::book().template(tmpl_id),
                 entry_count,
                 "interact: per-player binds are all interaction-only (no dialog) -- \
                  falling through to static interaction type"
@@ -148,7 +169,9 @@ pub async fn handle_interact(
         } else {
             tracing::info!(
                 entity_id,
-                tmpl_id,
+                entity_name = space_mgr.entity_label(entity_id),
+                target_template_id = tmpl_id,
+                target_template_name = cimmeria_names::book().template(tmpl_id),
                 "interact: no per-player interactions for template"
             );
         }
@@ -181,8 +204,11 @@ pub async fn handle_interact(
         Some(NpcInteractionType::Dialog { dialog_id }) => {
             tracing::info!(
                 entity_id,
+                entity_name = space_mgr.entity_label(entity_id),
                 target_entity_id,
+                target_entity_name = space_mgr.entity_label(target_entity_id),
                 dialog_id,
+                dialog_name = cimmeria_names::book().dialog(dialog_id),
                 "interact: static dialog → onDialogDisplay"
             );
             send_dialog_display(entity_id, target_entity_id as i32, dialog_id, tx, space_mgr).await;
@@ -191,7 +217,9 @@ pub async fn handle_interact(
         Some(NpcInteractionType::Vendor) => {
             tracing::info!(
                 entity_id,
+                entity_name = space_mgr.entity_label(entity_id),
                 target_entity_id,
+                target_entity_name = space_mgr.entity_label(target_entity_id),
                 "interact: vendor → OpenVendorStore"
             );
             send_store_open(entity_id, target_entity_id, tx, space_mgr).await;
@@ -215,8 +243,11 @@ pub async fn handle_interact(
                 target: "abilities",
                 event = "trainer_deprecated_routing_arm",
                 entity_id,
+                entity_name = space_mgr.entity_label(entity_id),
                 target_entity_id,
+                target_entity_name = space_mgr.entity_label(target_entity_id),
                 archetype_id,
+                archetype_name = cimmeria_names::archetype_name(archetype_id),
                 reason = "deprecated_routing_arm",
                 "interact: deprecated NpcInteractionType::Trainer arm hit — \
                  template_trainer_lists is the canonical path; set \
@@ -228,7 +259,9 @@ pub async fn handle_interact(
         Some(NpcInteractionType::Banker { scope }) => {
             tracing::info!(
                 entity_id,
+                entity_name = space_mgr.entity_label(entity_id),
                 target_entity_id,
+                target_entity_name = space_mgr.entity_label(target_entity_id),
                 scope = scope.as_str(),
                 "interact: banker → onVaultOpen"
             );
@@ -252,9 +285,13 @@ pub async fn handle_interact(
                 event = "bm.open_unwired",
                 reason = "auctioneer_without_chain",
                 entity_id,
+                entity_name = id.player_name,
                 account_id = id.account_id,
+                account_name = id.account_name,
                 player_id = id.player_id,
+                player_name = id.player_name,
                 target_entity_id,
+                target_entity_name = space_mgr.entity_label(target_entity_id),
                 "interact: auctioneer clicked but no interact_tag chain opened the Black \
                  Market -- bind an open_black_market chain to its tag"
             );
@@ -270,6 +307,7 @@ pub async fn handle_interact(
                 tracing::warn!(
                     event = "bm.feedback_send_failed",
                     entity_id,
+                    entity_name = space_mgr.entity_label(entity_id),
                     reason = "base_channel_closed",
                     "auctioneer feedback line not queued"
                 );
@@ -279,7 +317,9 @@ pub async fn handle_interact(
         Some(NpcInteractionType::Loot) => {
             tracing::info!(
                 entity_id,
+                entity_name = space_mgr.entity_label(entity_id),
                 target_entity_id,
+                target_entity_name = space_mgr.entity_label(target_entity_id),
                 "interact: loot → onLootDisplay"
             );
             // Track which entity the player is looting (for lootItem calls)
@@ -292,7 +332,9 @@ pub async fn handle_interact(
         None => {
             tracing::info!(
                 entity_id,
+                entity_name = space_mgr.entity_label(entity_id),
                 target_entity_id,
+                target_entity_name = space_mgr.entity_label(target_entity_id),
                 "interact: target has no static interaction type"
             );
             // Stuck-player detector: a target that advertises interaction

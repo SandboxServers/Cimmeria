@@ -51,6 +51,20 @@ pub fn query(table: Table) -> &'static str {
         Table::ItemLists => "SELECT item_list_id::bigint, name::text FROM resources.item_lists",
         Table::AppliedScience => "SELECT id::bigint, name::text FROM resources.applied_science",
         Table::Worlds => "SELECT world_id::bigint, world::text FROM resources.worlds",
+        Table::Chains => "SELECT chain_id::bigint, description::text FROM resources.content_chains",
+        Table::LootTables => {
+            "SELECT loot_table_id::bigint, description::text FROM resources.loot_tables"
+        }
+        Table::TrainerAbilityLists => {
+            "SELECT list_id::bigint, description::text FROM resources.trainer_ability_lists"
+        }
+        Table::EventSets => "SELECT event_set_id::bigint, name::text FROM resources.event_sets",
+        Table::Sequences => {
+            "SELECT sequence_id::bigint, kismet_script_name::text FROM resources.sequences"
+        }
+        Table::DialogSetMaps => {
+            "SELECT dialog_set_map_id::bigint, topic_text::text FROM resources.dialog_set_maps"
+        }
     }
 }
 
@@ -176,6 +190,6 @@ mod tests {
         );
         report.set(Table::Worlds, TableCount::default());
         assert_eq!(report.empty_tables(), [Table::Speakers, Table::Worlds]);
-        assert_eq!(report.unresolved(), 18 + 3);
+        assert_eq!(report.unresolved(), 24 + 3);
     }
 }

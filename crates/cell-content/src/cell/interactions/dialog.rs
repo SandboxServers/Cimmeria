@@ -54,10 +54,14 @@ pub async fn send_dialog_display(
             // MAX_OFFERED_DIALOGS unanswered dialogs, which no shipped
             // content does; a sustained stream of these points at a chain
             // displaying dialogs in a loop.
+            let names = cimmeria_names::book();
             tracing::warn!(
-                player_id,
+                entity_id = player_id,
+                entity_name = crate::cell::space_manager::EntityNames::of(player).entity_name,
                 dialog_id,
+                dialog_name = names.dialog(dialog_id),
                 evicted_dialog_id,
+                evicted_dialog_name = names.dialog(evicted_dialog_id),
                 max_offered = cimmeria_entity::cell_entity::MAX_OFFERED_DIALOGS,
                 offered_dialog_ids = ?player.offered_dialogs(),
                 "DisplayDialog: offered-dialog set full -- evicted the oldest \
@@ -73,10 +77,19 @@ pub async fn send_dialog_display(
     args.push(1); // IsImmediate
     args.extend_from_slice(&0i32.to_le_bytes()); // aMissionId
 
+    // Snapshot the names for both log lines; the send below awaits.
+    let entity_name = space_mgr.entity_names(player_id).entity_name;
+    let npc_entity_name = u32::try_from(npc_entity_id)
+        .ok()
+        .and_then(|n| space_mgr.entity_names(n).entity_name);
+    let dialog_name = cimmeria_names::book().dialog(dialog_id).map(str::to_owned);
     tracing::debug!(
-        player_id,
+        entity_id = player_id,
+        entity_name,
         npc_entity_id,
+        npc_entity_name,
         dialog_id,
+        dialog_name = dialog_name.as_deref(),
         "Sending onDialogDisplay"
     );
     if let Err(e) = tx
@@ -91,9 +104,12 @@ pub async fn send_dialog_display(
         // player stuck — they interacted with an NPC and nothing
         // happens. warn! because it's player-visible.
         tracing::warn!(
-            player_id,
+            entity_id = player_id,
+            entity_name,
             npc_entity_id,
+            npc_entity_name,
             dialog_id,
+            dialog_name = dialog_name.as_deref(),
             "DisplayDialog: cell→base send failed -- dialog not opened on client: {e}"
         );
     }
