@@ -2,6 +2,7 @@
 
 > Reference · launcher implementation and release owners · 2026-10-04
 > Base: `a806e8b79` · isolated branch: `launcher/updater-apply`
+> Feature commit: `dc97a395` · companion commit wires shared dependencies/startup
 > Integration: coordinator-owned; this packet does not publish or replace a live app.
 
 The desktop updater now has a native Apply path after signed package preparation.

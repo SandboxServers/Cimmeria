@@ -194,7 +194,10 @@ fn main() {
             );
             #[cfg(target_os = "macos")]
             let host = host.with_bundled_helper(app.path().resource_dir()?);
-            let host = host.with_launch_resources(app.path().resource_dir()?);
+            let app_handle = app.handle().clone();
+            let host = host
+                .with_launch_resources(app.path().resource_dir()?)
+                .with_updater_shutdown(move || app_handle.exit(0));
             app.manage(Arc::new(host));
             Ok(())
         })

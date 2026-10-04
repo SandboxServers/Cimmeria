@@ -18,6 +18,7 @@ pub use install::{InstallCommand, InstallStatus, JobError};
 
 pub struct NativeHost {
     updater_config: Option<cimmeria_launcher_engine::updater::Config>,
+    updater_shutdown: Option<Arc<dyn Fn() + Send + Sync>>,
     root: PathBuf,
     default_install_directory: Option<PathBuf>,
     #[cfg(target_os = "macos")]
@@ -39,6 +40,7 @@ impl NativeHost {
     pub fn new(root: PathBuf) -> Self {
         Self {
             updater_config: None,
+            updater_shutdown: None,
             root,
             default_install_directory: None,
             #[cfg(target_os = "macos")]
@@ -97,7 +99,21 @@ impl NativeHost {
     fn store(&self) -> Result<Arc<Mutex<DesktopState>>, StorageError> {
         let mut guard = self.state.lock().map_err(|_| StorageError::Io)?;
         if guard.is_none() {
-            let mut state = DesktopState::open(&self.root)?;
+            let restart = std::env::args_os().any(|arg| arg == "--launcher-update-restart");
+            let deadline = std::time::Instant::now() + std::time::Duration::from_secs(30);
+            let mut state = loop {
+                match DesktopState::open(&self.root) {
+                    Err(StorageError::InUse) if restart && std::time::Instant::now() < deadline => {
+                        std::thread::sleep(std::time::Duration::from_millis(50))
+                    }
+                    result => break result?,
+                }
+            };
+            if let Ok(target) = cimmeria_launcher_engine::updater::InstalledTarget::current() {
+                // Only the running binary's compiled version acknowledges a handoff.
+                // Failure leaves the updater owner visible and excludes game work.
+                let _ = state.reconcile_launcher_update(&target, env!("CARGO_PKG_VERSION"));
+            }
             if state.preferences().revision == 0
                 && state.preferences().install_directory.is_none()
                 && state.operations().snapshot().operation.is_none()
