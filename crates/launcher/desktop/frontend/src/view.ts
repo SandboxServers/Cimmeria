@@ -22,7 +22,7 @@ const errorText: Record<BridgeFailure['code'], string> = {
 };
 
 /** Mount once per application. Tab changes only hide panels; they do not own workflows. */
-export function mountLauncher(document: Document, invoke: Invoke) {
+export function mountLauncher(document: Document, invoke: Invoke, onSettingsChanged: () => void = () => {}) {
   const runtime = ManagedRuntime.make(Layer.effect(Launcher, makeLauncher).pipe(
     Layer.provide(bridgeLayer(request => invoke('launcher_command', {request}))),
   ));
@@ -55,7 +55,7 @@ export function mountLauncher(document: Document, invoke: Invoke) {
     get<HTMLButtonElement>('folder').disabled = !enabled || !native?.preferences.install_directory;
     const failure = localError ?? current.error;
     get('status').textContent = failure ? errorText[failure] : active ?? notice ??
-      (native ? 'Settings loaded. Game installation is not connected in this build.' : 'Opening launcher…');
+      (native ? 'Settings loaded.' : 'Opening launcher…');
     get('retry').hidden = !failure || native?.requires_reopen === true;
     get<HTMLButtonElement>('retry').disabled = !!active || current.busy;
     get('gear').setAttribute('aria-busy', String(!!active || current.busy));
@@ -70,7 +70,7 @@ export function mountLauncher(document: Document, invoke: Invoke) {
       if (disposed) return;
       active = null; pendingConsent = null;
       if (Result.isFailure(result)) localError = result.failure.code;
-      else notice = success;
+      else { notice = success; onSettingsChanged(); }
       render();
     }).catch(() => {
       if (disposed) return;

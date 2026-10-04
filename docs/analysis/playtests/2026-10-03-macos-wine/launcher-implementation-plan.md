@@ -551,5 +551,28 @@ remain disabled and unconnected, so frontend JS REPL/visual UAT does not apply.
 Mac install/resume is rejected before downloads until the Wine adapter exists.
 Actual Tauri interaction, runtime/game readiness and final startup remain gates.
 Prior native CI `37187754913` passed both platforms at `117344e76`. Resume CI
-`37188326146` at `bf8029e28` passed macOS; full Windows completion remains pending.
-Those prior revisions do not validate the new IPC packet.
+`37188326146` at `bf8029e28` subsequently passed both platforms. Shell CI
+`37189445603` at `17b949f4c` remains in progress. These runs do not validate the
+newer frontend installation controls.
+
+
+### 2026-10-04: Effect installation controls
+
+Connected Windows installation, cancellation and interrupted-operation
+inspection/resume to the restricted native IPC. Effect refreshes state before
+mutations, never automatically replays writes, bounds transport-only read retries
+and permits cancellation between observation polls. Scope disposal stops
+observation without cancelling native work; uncertain persistence stops polling
+and requires restart. Mac install/resume stays disabled. Success is labelled
+content prepared, while terminal failed/cancelled retry, cleanup and Play remain
+unavailable.
+
+Twenty-three frontend tests, TypeScript checking and the frontend build passed.
+`npm run uat:install` passed sequential actual-DOM/Effect fixture checks for
+install/progress, cancel-requested state, disposal/reconnection without replay,
+completion winning cancellation, and no Play-readiness or consent inference.
+Native installation IPC is mocked; filesystem installation, Wine, visual layout
+and gameplay are not covered. The separate Rust `state_bridge` settings UAT
+also passed its disk/restart checks. CI now runs the installation logic UAT. The approved settings preview predates these changes; native
+visual/keyboard inspection and actual Tauri installation IPC are still unverified.
+No game/runtime readiness or final startup validation is claimed.

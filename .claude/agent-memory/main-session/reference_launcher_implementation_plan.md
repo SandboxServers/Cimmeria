@@ -112,3 +112,17 @@ Windows+Mac before the shell; shell/visual/game gates remain separate.
   Mac install/resume stays blocked before network until the Wine adapter exists.
   Frontend controls remain disabled/unconnected. Thirteen local shell tests passed;
   native Tauri interaction and this packet's Windows CI remain separate gates.
+
+
+- Effect installation controls now call restricted native IPC on supported
+  Windows builds; Mac install/resume remains blocked. Pre-mutation inspection,
+  no write replay, bounded read retries and polling outside the command semaphore
+  preserve native ownership and allow cancel. Uncertain persistence stops polling.
+  Recovery inspect/resume is explicit; success means content prepared, not Play.
+  Terminal failed/cancelled retry and cleanup remain unavailable. Twenty-three
+  frontend tests, TS/build and install DOM/Effect UAT passed; install IPC was
+  mocked, so no filesystem/Wine/visual/game proof. Separate real state_bridge
+  settings-disk/restart UAT also passed. Native visual/installation IPC UAT remains
+  pending; the approved settings preview predates this installation UI.
+- Resume CI 37188326146 passed both platforms at bf8029e28; newer shell CI
+  37189445603 at 17b949f4c was still running when this evidence was recorded.

@@ -66,6 +66,7 @@ jobs:
           npm ci --ignore-scripts --prefix crates/launcher/desktop/frontend
           npm run check --prefix crates/launcher/desktop/frontend
           npm test --prefix crates/launcher/desktop/frontend
+          npm run uat:install --prefix crates/launcher/desktop/frontend
       - name: Build native state harness
         run: bash tools/build-lane/lane.sh cargo build --locked --manifest-path crates/launcher/desktop/Cargo.toml -p cimmeria-launcher-engine --target-dir target/desktop --example state_bridge
       - name: JS logic UAT against native persistence

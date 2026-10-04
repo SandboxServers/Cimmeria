@@ -8,9 +8,11 @@
 This standalone workspace contains native Rust state, Effect workflows and a
 Tauri settings shell. The interface connects through Tauri invoke to native
 preference persistence. Play/Patch Notes tabs and the settings panel are
-implemented; patch notes load from a signed release manifest and game actions
-remain disabled. The installer algorithms are shared and fixture-tested, but installation is not
-connected to the UI. Repair, removal, launch and telemetry export remain pending. The existing Windows egui launcher retains its UI and shares the downloader cancellation fixes.
+implemented; patch notes load from a signed release manifest. Effect installation
+controls now call native IPC on supported Windows builds; Mac installation
+remains disabled. Content preparation does not establish runtime or Play
+readiness. Repair, removal, launch and telemetry export remain pending. The
+existing Windows egui launcher shares the downloader cancellation fixes.
 
 ## Native operation and storage contracts
 
@@ -217,6 +219,7 @@ cargo fmt --all --manifest-path crates/launcher/desktop/Cargo.toml -- --check
 npm ci --ignore-scripts --prefix crates/launcher/desktop/frontend
 npm run check --prefix crates/launcher/desktop/frontend
 npm test --prefix crates/launcher/desktop/frontend
+npm run uat:install --prefix crates/launcher/desktop/frontend
 bash tools/build-lane/lane.sh cargo build --locked --manifest-path crates/launcher/desktop/Cargo.toml --example state_bridge --target-dir target/desktop
 npm run uat --prefix crates/launcher/desktop/frontend -- "$PWD/target/desktop/debug/examples/state_bridge"
 ```
@@ -283,8 +286,8 @@ the Windows icon correction and before the catalog addition.
 ## Next integration gates
 
 Verify the native window, keyboard behavior, actual Tauri IPC, folder chooser
-and saved-folder reveal interactively. Connect the restricted native install,
-reconciliation, cancellation and progress commands to Effect frontend workflows. Game actions remain disconnected from the frontend. Platform
+and saved-folder reveal interactively. Validate the newly connected Effect installation controls against actual native
+IPC, including cancellation and recovery. Platform
 provisioning, telemetry, migration/updater and final self-contained startup and
 release gates remain open.
 
@@ -337,7 +340,8 @@ all-target clippy. A separate blocked-pipe regression checks cancellation-write 
 Windows-only integration test connects the supervisor to the actual archive
 worker; its native CI result remains pending. No GUI or Wine execution was
 performed. This packet changes no frontend behavior, so frontend JS REPL/visual
-UAT does not apply. Installation remains disabled until coordinator integration.
+UAT does not apply. At this supervisor milestone, installation remained disabled; current UI
+integration is described below.
 
 
 ## Durable install admission
@@ -411,7 +415,8 @@ Power-loss durability of the complete extracted tree remains unvalidated.
 Failure and cancellation retain the marker and partial output. Interrupted native content can be inspected conservatively as described below;
 automatic retry, cleanup and adoption remain unimplemented. The Wine cabinet-helper
 adapter, runtime provisioning and frontend dispatch remain pending. Installation
-stays disabled in the UI; content preparation does not establish launch readiness.
+is now connected through the Windows UI described below; content preparation
+does not establish launch readiness.
 
 Fixtures cover actual HTTP/ZIP staging and promotion, observer disposal,
 duplicate dispatch, missing-executable rejection, cancellation while waiting for
@@ -489,7 +494,8 @@ It rejects symlinks/special files, Windows reparse points, conflicting ledger
 entries, and existing promoted content or receipts. It commits `running` before
 continuing the shared pipeline, including Range downloads from partial archives.
 
-Resume is never automatic on restart and is not exposed through the UI yet.
+Resume is never automatic on restart. Supported Windows builds expose an
+explicit resume control through the Effect workflow described below.
 It does not retry terminal cancelled/failed attempts or establish Wine guest
 ownership. Promoted-content uncertainty belongs to recovery inspection. Fixtures
 cover Range continuation through promotion, interruption before staging creation,
@@ -529,8 +535,7 @@ Failures cross IPC as flat allowlisted codes.
 
 Install and resume are Windows-only until the Mac Wine adapter is connected.
 Other platforms reject them before downloads or destination mutation; install's
-async adapter checks support before fetching release evidence. Frontend game
-controls remain disabled and unconnected to this command. Native IPC availability
+async adapter checks support before fetching release evidence. The Effect controls described below now connect this command on Windows. Native IPC availability
 does not establish interactive Tauri routing or runtime/gameplay readiness.
 
 Local validation for this packet: thirteen shell tests passed. No frontend
@@ -538,5 +543,43 @@ behavior changed, so JS REPL/visual UAT does not apply to this native-only chang
 Prior [CI run 37187754913](https://github.com/SandboxServers/Cimmeria/actions/runs/37187754913)
 passed macOS and Windows at `117344e76`. The resume packet's
 [run 37188326146](https://github.com/SandboxServers/Cimmeria/actions/runs/37188326146)
-at `bf8029e28` passed macOS; its complete Windows result remains pending.
-Neither run validates this newer IPC change.
+at `bf8029e28` passed both native platforms. The newer shell
+[run 37189445603](https://github.com/SandboxServers/Cimmeria/actions/runs/37189445603)
+at `17b949f4c` remains in progress. These revisions do not validate the newer
+frontend installation controls.
+
+
+## Effect installation controls
+
+`frontend/src/install-workflow.ts` and `install-view.ts` connect installation
+controls to native IPC on supported Windows builds. Install requires a selected
+folder and no current operation. Mac installation remains disabled until its
+native adapter is available. Settings saves refresh installation status.
+Repair, uninstall, runtime setup and Play remain unavailable.
+
+The application-scoped Effect service inspects native state before each mutation,
+uses current revisions and never automatically replays a mutation after a lost
+reply. Read-only inspection retries transport errors at most twice with 100 ms
+exponential backoff. The install admission IPC reply times out after 35 seconds; other IPC replies
+time out after five seconds. These deadlines do not cancel native work or cap
+overall operation polling, which continues until a terminal/recovery state or
+observation failure.
+
+Active operations are polled every 250 ms without holding the command semaphore
+between polls, allowing explicit cancellation. Tabs preserve the workflow;
+disposal stops frontend observation without cancelling native installation.
+`requires_reopen` stops observation and directs the user to restart. Interrupted
+operations expose explicit inspection/reconciliation and resume controls.
+
+Success displays “Content prepared”, never Play-ready. Failed/cancelled attempts
+retain partial files and cannot be retried or cleaned up through this UI yet.
+The current frontend suite has 23 passing tests; TypeScript checking and the
+frontend build passed. `npm run uat:install` passed a sequential actual-DOM and
+Effect fixture flow covering installation/progress, cancellation requested,
+disposal/reconnection without replay, completion winning cancellation, and no
+Play-readiness or consent inference. Its native IPC is mocked: it does not
+exercise filesystem installation, Wine, visual layout or the real game. CI now
+runs this installation logic UAT. The separate `npm run uat` against the Rust
+`state_bridge` also passed, preserving real settings-disk/restart coverage. The earlier approved settings preview predates
+these controls; their native visual, keyboard and actual Tauri IPC UAT remain
+unverified. No real game or runtime readiness is established by frontend tests.
