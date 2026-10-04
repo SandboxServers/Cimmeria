@@ -288,6 +288,7 @@ pub(crate) const OTEL_FILTER: &str = "info,\
                 cimmeria_wire::firehose=debug,\
                 cimmeria_wire::hex=debug,\
                 cimmeria_wire::mercury=debug,\
+                cimmeria_wire::names=debug,\
                 cimmeria_wire::state_field=debug,\
                 cimmeria_wire_log=debug,\
                 cimmeria_cell_cover=debug,\

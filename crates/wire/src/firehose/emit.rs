@@ -81,6 +81,7 @@ pub fn log_entity_moved(sampler: &FirehoseSampler, row: &EntityMovedRow) {
         witness_id,
         entity_id,
         msg_id = crate::mercury::aoi::BASEMSG_UPDATE_AVATAR_NO_ALIAS_FULL_POS_YPR,
+        msg_name = crate::names::client_msg_name(crate::mercury::aoi::BASEMSG_UPDATE_AVATAR_NO_ALIAS_FULL_POS_YPR),
         pos_variant = "FullPos",
         x = position[0],
         y = position[1],

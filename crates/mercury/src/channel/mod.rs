@@ -31,7 +31,7 @@ mod tick;
 pub use ack::TxHoleStall;
 pub use channel_core::Channel;
 pub use rx_order::{RxDelivery, RxOutcome, RxStall};
-pub use state::{AbandonedPacket, ChannelState, RxEntry, TxEntry, TxHole};
+pub use state::{AbandonedPacket, ChannelState, MessageNames, RxEntry, TxEntry, TxHole};
 pub use tick::TickActions;
 
 #[cfg(test)]

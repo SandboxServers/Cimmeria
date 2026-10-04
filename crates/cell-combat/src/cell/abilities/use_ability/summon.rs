@@ -484,6 +484,7 @@ async fn send_summon_feedback(
                 player_id = id.player_id,
                 ability_id,
                 method_index,
+                method_name = cimmeria_wire::names::player_client_method(method_index),
                 "summon feedback could not be queued (base channel closed)"
             );
         } else {

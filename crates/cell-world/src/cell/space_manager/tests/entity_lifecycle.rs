@@ -114,3 +114,39 @@ fn update_entity_position_keeps_spatial_grid_consistent() {
         "entity 100 must be reachable from the spatial grid at its new position"
     );
 }
+
+/// `client_method_name` reads the entity's own type: index 27 is a mob's
+/// `onAggressionOverrideUpdate` and a player's `onSystemCommunication`, and
+/// an entity the manager no longer holds leaves 27 unnamed.
+#[test]
+fn client_method_name_reads_the_entitys_own_type() {
+    use cimmeria_wire::names::{SGWMOB_CLASS_ID, SGWPLAYER_CLASS_ID};
+
+    let mut mgr = make_manager();
+    mgr.create_entity(7001, "Agnos", [0.0; 3], [0.0; 3])
+        .unwrap();
+    mgr.create_entity(7002, "Agnos", [0.0; 3], [0.0; 3])
+        .unwrap();
+    mgr.get_entity_mut(7001).unwrap().class_id = SGWMOB_CLASS_ID;
+    mgr.get_entity_mut(7002).unwrap().class_id = SGWPLAYER_CLASS_ID;
+
+    assert_eq!(
+        mgr.client_method_name(7001, 27),
+        Some("onAggressionOverrideUpdate")
+    );
+    assert_eq!(
+        mgr.client_method_name(7002, 27),
+        Some("onSystemCommunication")
+    );
+    assert_eq!(mgr.client_method_name(9999, 27), None);
+    assert_eq!(mgr.client_method_name(9999, 26), Some("BeingAppearance"));
+
+    // A player reads the GM superset: the cell keeps every player at 0x02,
+    // so a GM's own tail (157-162) would otherwise go unnamed.
+    mgr.get_entity_mut(7002).unwrap().is_player = true;
+    assert_eq!(mgr.client_method_name(7002, 157), Some("onLOSResult"));
+    assert_eq!(
+        mgr.client_method_name(7002, 27),
+        Some("onSystemCommunication")
+    );
+}

@@ -45,6 +45,8 @@ mod effect_routing;
 mod enumerations_xml;
 mod loot_drop;
 mod messaging;
+#[cfg(test)]
+mod method_name_log_tests;
 pub(crate) mod metrics;
 mod movement_type;
 #[cfg(test)]

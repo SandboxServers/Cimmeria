@@ -528,6 +528,7 @@ async fn send_refusal(
                 player_id = id.player_id,
                 ability_id,
                 method_index,
+                method_name = cimmeria_wire::names::player_client_method(method_index),
                 "item use refusal feedback could not be queued; the click shows nothing"
             );
         }

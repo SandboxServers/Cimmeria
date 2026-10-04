@@ -11,11 +11,11 @@ For agents with the SigNoz MCP connected (setup: `docs/operations/signoz-remote-
 - **Prefer `signoz_aggregate_logs` (or a builder query) over `signoz_search_logs`** for counts, distributions and "did X happen" questions; use `search_logs` only when you need the bodies of specific lines. In experiment G (2026-10-03, `docs/analysis/token-usage/experiment-g.md`) both answered 12/12, but aggregate took 4 requests and 7k characters against 9 requests and 32.5k. Aggregate calls fail more often on a bad filter (14 errors against 1 historically), so check the filter syntax below first.
 - **Never call `signoz_get_field_keys` unfiltered.** The key list is huge.
 - **Filters that work:**
-  - `body = 'wire_inbound' AND peer = '<ip:port>'`, `msg_name IN (...)`
+  - `body = 'wire_inbound' AND peer = '<ip:port>'`, `method_name IN (...)` for client methods (`useAbility`, `chatJoin`). Since NT-30 (2026-10-04) `msg_name` on `wire.in` is the Mercury message name (`cellMethod`, `baseMethod`, `enableEntities`), so a method-name filter on `msg_name` returns nothing; rows before the deploy carry the method in `msg_name`
   - `decoded CONTAINS '"update_id":0,'` (`update_id` itself is not an indexed key)
   - `witness_id = N` on `wire_outbound`
   - `body NOT CONTAINS 'movement.validation_reject'` drops the navmesh-reject noise
-- **Wire attributes** live under `attributes_string` (`msg_name`, `peer`, `decoded`).
+- **Wire attributes** live under `attributes_string` (`msg_name`, `method_name`, `entity_type`, `peer`, `decoded`).
 - **Time:** `start`/`end` are epoch milliseconds (2026-09-20T00:00Z = 1789862400000). Timestamps the owner quotes from Discord are US Central (CDT is UTC-5 in summer).
 - **Session anchors:**
   - `World entry: sending RESET_ENTITIES` (login; has addr, entity_id, position)

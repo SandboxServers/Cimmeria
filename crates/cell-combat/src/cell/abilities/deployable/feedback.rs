@@ -129,6 +129,7 @@ pub(super) async fn send_refusal(
                 player_id = id.player_id,
                 ability_id,
                 method_index,
+                method_name = cimmeria_wire::names::player_client_method(method_index),
                 reason = refusal.reason(),
                 "deployable refusal feedback could not be queued (base channel closed)"
             );

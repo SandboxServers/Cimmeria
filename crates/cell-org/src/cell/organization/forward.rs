@@ -51,6 +51,7 @@ pub(super) async fn answer(
         reason = "not_available",
         entity_id,
         method_index,
+        method_name = cimmeria_wire::names::player_cell_method(method_index),
         method = call.method_name(),
         org_id = call.org_id(),
         text_units = text_units(call),
@@ -70,6 +71,7 @@ pub(super) fn log_squad_route(entity_id: u32, method_index: u16, org_id: Option<
         route = "squad",
         entity_id,
         method_index,
+        method_name = cimmeria_wire::names::player_cell_method(method_index),
         org_id,
         "organization cell method routed to the squad handler"
     );
@@ -207,6 +209,7 @@ async fn not_a_player(
         account_id,
         entity_id,
         method_index,
+        method_name = cimmeria_wire::names::player_cell_method(method_index),
         org_id,
         "organization call from an entity with no character"
     );
@@ -231,6 +234,7 @@ async fn send_to_base(
             player_id,
             entity_id,
             method_index,
+            method_name = cimmeria_wire::names::player_cell_method(method_index),
             org_id,
             "organization call forwarded to the base"
         ),
@@ -241,6 +245,7 @@ async fn send_to_base(
             player_id,
             entity_id,
             method_index,
+            method_name = cimmeria_wire::names::player_cell_method(method_index),
             org_id,
             reason = "cell_to_base_closed",
             "organization call could not be forwarded to the base"
@@ -339,6 +344,7 @@ pub(super) async fn send_error_and_line(
                 event = "org.feedback_send_failed",
                 entity_id,
                 method_index,
+                method_name = cimmeria_wire::names::player_client_method(method_index),
                 reason = "cell_to_base_closed",
                 "organization feedback could not be queued"
             );

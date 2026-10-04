@@ -37,14 +37,20 @@ pub enum OrgBaseCall {
 }
 
 impl OrgBaseCall {
-    /// The `.def` method name, for logs.
-    pub fn method_name(&self) -> &'static str {
+    /// The base-method message id the call arrived as (`0xC0 + index`).
+    pub fn msg_id(&self) -> u8 {
         match self {
-            OrgBaseCall::Invite { .. } => "organizationInvite",
-            OrgBaseCall::InviteByType { .. } => "organizationInviteByType",
-            OrgBaseCall::Kick { .. } => "organizationKick",
-            OrgBaseCall::RankChange { .. } => "organizationRankChange",
+            OrgBaseCall::Invite { .. } => ORGANIZATION_INVITE,
+            OrgBaseCall::InviteByType { .. } => ORGANIZATION_INVITE_BY_TYPE,
+            OrgBaseCall::Kick { .. } => ORGANIZATION_KICK,
+            OrgBaseCall::RankChange { .. } => ORGANIZATION_RANK_CHANGE,
         }
+    }
+
+    /// The `.def` method name, for logs, from the generated table
+    /// (`crate::names`).
+    pub fn method_name(&self) -> &'static str {
+        crate::names::player_base_method(u16::from(self.msg_id() - 0xC0)).unwrap_or("unknown")
     }
 }
 

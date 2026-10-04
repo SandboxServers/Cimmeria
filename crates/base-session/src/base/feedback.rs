@@ -181,6 +181,7 @@ async fn send_method(
                                 account_id = c.account_id,
                                 session_player_id = c.active_player_id,
                                 method_index,
+                                method_name = cimmeria_wire::names::player_client_method(method_index),
                                 reason = if c.active_player_id == Some(player_id) {
                                     "not_in_world"
                                 } else {
@@ -220,6 +221,7 @@ async fn send_method(
             %addr,
             ?who,
             method_index,
+            method_name = cimmeria_wire::names::player_client_method(method_index),
             reason = "no_session",
             "player method dropped: client disconnected first",
         );
@@ -240,6 +242,7 @@ async fn send_method(
             %addr,
             entity_id,
             method_index,
+            method_name = cimmeria_wire::names::player_client_method(method_index),
             reason = "send_error",
             error = %e,
             "player method send failed",

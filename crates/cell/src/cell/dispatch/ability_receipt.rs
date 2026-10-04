@@ -95,6 +95,7 @@ pub fn log_receipt(
         stage = "recv",
         method = r.method,
         method_index,
+        method_name = cimmeria_wire::names::player_cell_method(method_index),
         account_id = who.account_id,
         player_id = who.player_id,
         entity_id,

@@ -384,7 +384,7 @@ pub(super) async fn entity_method_call(
     // Logged before the deferred-buffer check so pre-
     // onClientReady buffered calls still appear once on the
     // wire log; deferred-replay does NOT re-emit.
-    crate::wire_log::log_outbound_entity_method(entity_id, entity_id, method_index, &args);
+    crate::wire_log::log_outbound_entity_method(entity_id, entity_id, true, method_index, &args);
     // Gate on the TARGET entity's session — entity-method calls
     // are dispatched to the entity_id's owning client (see
     // `aoi::entity_method_call`'s lookup). If that client is
@@ -408,6 +408,7 @@ pub(super) async fn entity_method_call(
                 outcome,
                 entity_id,
                 entity_id,
+                true,
                 method_index,
                 "client_not_ready",
             );
@@ -438,7 +439,13 @@ pub(super) async fn entity_method_call_batch(
     // applied per-method so the SigNoz `wire.out` stream sees every
     // method exactly once even when they ride the same packet.
     for (method_index, args) in &calls {
-        crate::wire_log::log_outbound_entity_method(entity_id, entity_id, *method_index, args);
+        crate::wire_log::log_outbound_entity_method(
+            entity_id,
+            entity_id,
+            true,
+            *method_index,
+            args,
+        );
     }
     let target_addr = entity_to_addr
         .lock()
@@ -464,6 +471,7 @@ pub(super) async fn entity_method_call_batch(
                     outcome,
                     entity_id,
                     entity_id,
+                    true,
                     method_index,
                     "client_not_ready",
                 );
@@ -489,7 +497,13 @@ pub(super) async fn witness_entity_method(
     // observer (witness_id) and observee (entity_id) differ
     // on the AoI fanout — both are recorded so SigNoz can
     // answer "what did entity X broadcast to its witnesses?"
-    crate::wire_log::log_outbound_entity_method(witness_id, entity_id, method_index, &args);
+    crate::wire_log::log_outbound_entity_method(
+        witness_id,
+        entity_id,
+        entity_is_player,
+        method_index,
+        &args,
+    );
     // Cinematic hold: the observee's CREATE_ENTITY is still buffered, so
     // this method would reach a client with no such entity and be dropped
     // for good. Buffer it behind the create. Logged above so a held call
@@ -509,6 +523,7 @@ pub(super) async fn witness_entity_method(
             outcome,
             witness_id,
             entity_id,
+            entity_is_player,
             method_index,
             "held_behind_create",
         );

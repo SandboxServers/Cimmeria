@@ -30,7 +30,14 @@ use cimmeria_cell_world::cell::plugin::CellMethodCall;
     name = "cell.dispatch",
     level = "debug",
     skip_all,
-    fields(entity_id, method_index, args_len = args.len(), packet_seq, space_id = tracing::field::Empty),
+    fields(
+        entity_id,
+        method_index,
+        method_name = cimmeria_wire::names::player_cell_method(method_index),
+        args_len = args.len(),
+        packet_seq,
+        space_id = tracing::field::Empty
+    ),
 )]
 pub async fn dispatch_cell_method(
     entity_id: u32,
@@ -162,6 +169,7 @@ pub async fn dispatch_cell_method(
     tracing::warn!(
         entity_id,
         method_index,
+        method_name = cimmeria_wire::names::player_cell_method(method_index),
         args_len = args.len(),
         "Unhandled cell method call -- no registered handler for this index; client behaviour may diverge silently"
     );

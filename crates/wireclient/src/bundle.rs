@@ -237,6 +237,8 @@ pub fn decode_bundle(body: &Bytes) -> Vec<S2CMessage> {
         // its length, so stop rather than guess and desync the rest of the
         // bundle.
         tracing::warn!(
+            // nt:id-only the id is one this decoder has no entry for, so it
+            // has no name either; the wire crate is a dev-dependency here.
             msg_id = format_args!("{msg_id:#04x}"),
             offset = msg_start,
             "decode_bundle: unrecognized msg_id, stopping decode of this bundle"

@@ -67,6 +67,7 @@ pub(super) async fn broadcast_except(
             what,
             org_id,
             method_index = method_idx,
+            method_name = cimmeria_wire::names::player_client_method(method_idx),
             reason,
             error,
             "organization broadcast not sent: the roster could not be read"
@@ -121,6 +122,7 @@ pub(super) async fn broadcast_except(
         what,
         org_id,
         method_index = method_idx,
+        method_name = cimmeria_wire::names::player_client_method(method_idx),
         required = required.map(|r| r.bits()),
         roster_size = roster.len(),
         online_members = recipients.len(),

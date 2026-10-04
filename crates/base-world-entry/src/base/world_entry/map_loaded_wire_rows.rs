@@ -81,6 +81,7 @@ pub(super) fn log_world_entry_ability_sends(
                     origin = ORIGIN_WORLD_ENTRY,
                     method,
                     method_index,
+                    method_name = cimmeria_wire::names::player_client_method(method_index),
                     entity_id,
                     recipient_id = entity_id,
                     account_id,

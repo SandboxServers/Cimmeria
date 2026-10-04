@@ -153,6 +153,7 @@ async fn forward(
             player_id,
             entity_id,
             method_index,
+            method_name = cimmeria_wire::names::player_cell_method(method_index),
             reason = "method_out_of_range",
             "forwarded organization cell call outside 8..=17"
         );
@@ -167,6 +168,7 @@ async fn forward(
                 player_id,
                 entity_id,
                 method_index,
+                method_name = cimmeria_wire::names::player_cell_method(method_index),
                 reason = e.reason(),
                 error = %e,
                 "forwarded organization cell call did not decode"
@@ -184,6 +186,7 @@ async fn forward(
             player_id,
             entity_id,
             method_index,
+            method_name = cimmeria_wire::names::player_cell_method(method_index),
             org_id = call.org_id(),
             reason = "actor_mismatch",
             "forwarded organization call no longer matches a session in the world"
@@ -232,6 +235,7 @@ async fn forward(
                 player_id,
                 entity_id,
                 method_index,
+                method_name = cimmeria_wire::names::player_cell_method(method_index),
                 reason = "unsolicited",
                 "forwarded strike-team / PvP-leave response: nothing ever asked"
             );
@@ -244,6 +248,7 @@ async fn forward(
                 player_id,
                 entity_id,
                 method_index,
+                method_name = cimmeria_wire::names::player_cell_method(method_index),
                 method = call.method_name(),
                 org_id = call.org_id(),
                 "organization cell method has no base handler yet; answered with feedback"

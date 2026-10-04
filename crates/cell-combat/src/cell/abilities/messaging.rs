@@ -139,6 +139,7 @@ fn refuse_unbound_npc_method(entity_id: u32, method_index: u16, via: &'static st
         event = "wire_npc_method_unbound",
         entity_id,
         method_index,
+        method_name = cimmeria_wire::names::any_entity_client_method(method_index),
         via,
         reason = "no_client_binding",
         "NPC method not fanned out to witnesses: the client binds it on SGWPlayer only and would drop it"
@@ -234,6 +235,7 @@ fn witness_audience(
                     event = "wire_npc_no_witnesses",
                     entity_id,
                     method_index,
+                    method_name = space_mgr.client_method_name(entity_id, method_index),
                     "send_entity_method: NPC has no witnesses, method dropped"
                 );
             }
@@ -255,6 +257,7 @@ fn witness_audience(
                     method = wire_ledger::method_name(method_index),
                     method_index,
                     entity_id,
+                    method_name = space_mgr.client_method_name(entity_id, method_index),
                     account_id = who.account_id,
                     player_id = who.player_id,
                     cast_id = space_mgr.current_cast_id(),
@@ -330,6 +333,7 @@ pub(crate) async fn deliver(
                 event = "wire_send_failed",
                 method = wire_ledger::method_name(method_index),
                 method_index,
+                method_name = space_mgr.client_method_name(entity_id, method_index),
                 entity_id,
                 recipient_id = entity_id,
                 account_id = who.account_id,
@@ -353,6 +357,7 @@ pub(crate) async fn deliver(
                 witness_id,
                 entity_id,
                 method_index,
+                method_name = space_mgr.client_method_name(entity_id, method_index),
                 "send_entity_method: routing NPC method to witness"
             );
         }
@@ -387,6 +392,7 @@ pub(crate) async fn deliver(
             event = "wire_send_failed",
             method = wire_ledger::method_name(method_index),
             method_index,
+            method_name = space_mgr.client_method_name(entity_id, method_index),
             entity_id,
             route = route.label(),
             witness_count = out.witnesses_addressed,
@@ -411,6 +417,7 @@ pub(crate) async fn deliver(
             cast_id = space_mgr.current_cast_id(),
             route = route.label(),
             method_index,
+            method_name = space_mgr.client_method_name(entity_id, method_index),
             witness_count = out.witnesses_addressed,
             "send_entity_method_to_witnesses: fanned out"
         );

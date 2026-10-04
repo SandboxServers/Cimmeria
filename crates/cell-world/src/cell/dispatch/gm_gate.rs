@@ -170,6 +170,7 @@ pub async fn enforce_gm_gate(
         tracing::info!(
             entity_id,
             method_index,
+            method_name = cimmeria_wire::names::player_cell_method(method_index),
             access_level,
             "GM-gated cell method authorized"
         );
@@ -182,6 +183,7 @@ pub async fn enforce_gm_gate(
     tracing::warn!(
         entity_id,
         method_index,
+        method_name = cimmeria_wire::names::player_cell_method(method_index),
         access_level,
         required = %REQUIRED,
         "GM-gated cell method rejected -- caller is not a GM (server-authority gate, #475)"

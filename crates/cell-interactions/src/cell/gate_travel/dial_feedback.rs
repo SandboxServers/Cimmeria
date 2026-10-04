@@ -146,6 +146,7 @@ pub(crate) async fn send_dial_refusal(
                 target_address_id,
                 refusal = refusal.reason(),
                 method_index,
+                method_name = cimmeria_wire::names::player_client_method(method_index),
                 reason = "dial_feedback_send_failed",
                 "onDialGate: refusal feedback could not be enqueued ({e}) — the dial is \
                  still refused, but the client gets no feedback and may look hung"

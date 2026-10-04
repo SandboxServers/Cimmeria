@@ -227,7 +227,9 @@ pub fn collect_pending_retransmits(
     // reliable packets we sent after one it never acked, so it is holding
     // everything behind that one (no entity creates, leaves or method
     // calls reach it) until a resend lands. The WARN is logged inside.
-    if let Some(stall) = channel.check_tx_hole() {
+    if let Some(stall) = channel
+        .check_tx_hole_named(|entry| reliable_send::name_stalled_entry(&clients, &state.enc, entry))
+    {
         if stall.first_warning {
             cimmeria_observability::counter!("mercury_tx_hole_stalls_total");
         }
@@ -779,6 +781,8 @@ where
             kind: "witness_single",
             fragment: None,
             message_count: None,
+            // The closure encrypts the packet; its message is not seen here.
+            first_message: None,
         },
     );
     WitnessSendOutcome::Sent { addr, seq, bytes }
@@ -969,6 +973,9 @@ pub async fn send_bundle_to_witness_reliable(
                 kind: "witness_bundle",
                 fragment: (packets.len() > 1).then_some((i + 1, packets.len())),
                 message_count: Some(num_messages),
+                // A later fragment starts inside the stream; the plan's walk
+                // recorded the message it starts in, for `mercury.tx_hole`.
+                first_message: plan.heads.get(i).copied().flatten().filter(|_| i > 0),
             },
         );
     }
@@ -1001,3 +1008,6 @@ mod disconnect_teardown;
 
 #[cfg(test)]
 mod departed_witnesses_tests;
+
+#[cfg(test)]
+mod sent_message_head_tests;

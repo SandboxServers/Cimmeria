@@ -354,6 +354,7 @@ pub(crate) async fn send_to_owner(
             player_id = caller.player_id,
             pet_id,
             method_index,
+            method_name = cimmeria_wire::names::client_method(cimmeria_wire::names::SGWPET_CLASS_ID, method_index),
             reason = "owner_send_failed",
             "pet command: owner-only pet method could not be queued (base channel closed) -- \
              the owner's pet bar keeps its old state"

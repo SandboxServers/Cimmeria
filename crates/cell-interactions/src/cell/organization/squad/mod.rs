@@ -110,6 +110,7 @@ pub async fn confirm(tx: &mpsc::Sender<CellToBaseMsg>, entity_id: u32, text: &st
             event = "squad.send_failed",
             entity_id,
             method_index = ON_PLAYER_COMMUNICATION,
+            method_name = cimmeria_wire::names::player_client_method(ON_PLAYER_COMMUNICATION),
             reason = "cell_to_base_closed",
             "squad confirmation line could not be queued"
         );

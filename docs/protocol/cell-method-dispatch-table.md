@@ -11,8 +11,10 @@ Client-to-server cell method calls. Only methods with `<Exposed/>` in the .def f
 get a wire index. Non-exposed methods are server-internal and **skipped** in numbering.
 
 **Verified continuously** by `cimmeria-wire`'s `mercury::def_conformance` ([crates/wire/src/mercury/def_conformance/](../../crates/wire/src/mercury/def_conformance/), #801): it flattens the exposed CellMethods of
-`SGWPlayer.def` and `SGWGmPlayer.def` and checks every `CM_*` constant (through
-`cell_method_name`) and every GM constant against them.
+`SGWPlayer.def` and `SGWGmPlayer.def` and checks every `CM_*` constant and every
+GM constant against them. Every indexed row of this page, the GM inventory tables
+included, is checked against the generated `cimmeria_wire::names` tables by
+`names::doc_conformance`, so a row that drifts fails CI with its line number.
 
 ## Wire Encoding
 

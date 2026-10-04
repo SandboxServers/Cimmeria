@@ -27,6 +27,14 @@
 //!    protocol has a decoder. Right now we have ~10 priority decoders
 //!    hand-written; the rest fall through to `args_hex` only.
 //!
+//! Named telemetry (instrumentation-discipline Rule 6): `wire.in` pairs `msg_id` with
+//! `msg_name`, the Mercury message name (`cellMethod` / `baseMethod` for an
+//! entity call), and an entity call's `method_index` with `method_name`, the
+//! method on the session's `entity_type`. `wire.out` carries `method_name`
+//! beside `method_index`; its `msg_name` is a deprecated alias of that
+//! method name (with an `"unknown"` fallback) that has no `msg_id` to pair
+//! with: query `method_name`. Unresolved names are left out.
+//!
 //! # Capture points
 //!
 //! * **Inbound** — [`log_inbound`] is called from the bundle scanner
@@ -61,9 +69,16 @@ const HEX_DUMP_CAP: usize = 256;
 /// Called from the bundle scanner once per message in a decrypted
 /// packet body. Most messages are entity-method calls; system messages
 /// like `AUTHENTICATE` (0x01) and `ENABLE_ENTITIES` (0x08) pass
-/// through this helper too.
-pub fn log_inbound(peer: SocketAddr, msg_id: u8, payload: &[u8]) {
-    let msg_name = client_names::inbound_msg_name_with_payload(msg_id, payload);
+/// through this helper too. `class_id` is the clientIndex of the client's
+/// entity (`Account` at character select, the player's class in world),
+/// which decides what a base method id (0xC0+) means.
+pub fn log_inbound(peer: SocketAddr, class_id: u8, msg_id: u8, payload: &[u8]) {
+    // Rule 6: `msg_id` pairs with the Mercury message name (`enableEntities`,
+    // or `cellMethod` / `baseMethod` for an entity call), and an entity call
+    // also carries the method it names. Both are left out when unresolved.
+    let msg_name = cimmeria_wire::names::server_msg_name(msg_id);
+    let method_name = cimmeria_wire::names::inbound_method(class_id, msg_id, payload);
+    let entity_type = cimmeria_wire::names::class_name(class_id);
     // Index within its namespace, so base methods (no name table yet) are at
     // least distinguishable: cell = id-0x80 (or 61+sub), base = id-0xC0.
     let method_index: i32 = match msg_id {
@@ -82,6 +97,8 @@ pub fn log_inbound(peer: SocketAddr, msg_id: u8, payload: &[u8]) {
         msg_id,
         msg_name,
         method_index,
+        method_name,
+        entity_type,
         entity_method = msg_id >= 0x80,
         args_len,
         truncated = args_len > HEX_DUMP_CAP,
@@ -95,7 +112,7 @@ pub fn log_inbound(peer: SocketAddr, msg_id: u8, payload: &[u8]) {
     // peer's session. Fed the raw inputs rather than the already-computed
     // pieces above so the tap has zero cost on the untapped hot path — it
     // re-derives name/hex/decode only for a session that is actually tapped.
-    tap::record_inbound(peer, msg_id, payload);
+    tap::record_inbound(peer, class_id, msg_id, payload);
 }
 
 /// Record an outbound entity-method call (the cell-to-base bridge).
@@ -107,10 +124,15 @@ pub fn log_inbound(peer: SocketAddr, msg_id: u8, payload: &[u8]) {
 pub fn log_outbound_entity_method(
     witness_id: u32,
     target_entity_id: u32,
+    target_is_player: bool,
     method_index: u16,
     args: &[u8],
 ) {
-    let msg_name = client_names::outbound_method_name(method_index);
+    // A player target reads the player table; a mob's or pet's 27-31 stay
+    // unnamed (they differ from the player's). `msg_name` is the deprecated
+    // alias of `method_name`, kept for existing queries.
+    let method_name = client_names::outbound_name(target_is_player, method_index);
+    let msg_name = method_name.unwrap_or("unknown");
     let args_len = args.len();
     let args_hex = hex_truncate(args);
     let decoded = decoders::decode_outbound(method_index, args);
@@ -120,6 +142,7 @@ pub fn log_outbound_entity_method(
         target: "wire.out",
         method_index,
         msg_name,
+        method_name,
         args_len,
         truncated = args_len > HEX_DUMP_CAP,
         args_hex = %args_hex,
@@ -131,7 +154,13 @@ pub fn log_outbound_entity_method(
 
     // Per-session packet tap (#688): no-op unless a tap is active for the
     // witness session. See `log_inbound` above for the zero-cost rationale.
-    tap::record_outbound(witness_id, target_entity_id, method_index, args);
+    tap::record_outbound(
+        witness_id,
+        target_entity_id,
+        target_is_player,
+        method_index,
+        args,
+    );
 }
 
 /// Hex-encode the first [`HEX_DUMP_CAP`] bytes of `bytes`. Inline

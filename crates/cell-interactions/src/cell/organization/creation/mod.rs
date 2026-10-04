@@ -78,6 +78,7 @@ pub async fn send(
             reason = "cell_to_base_closed",
             entity_id,
             method_index,
+            method_name = cimmeria_wire::names::player_client_method(method_index),
             "organization creation reply could not be queued"
         );
     }

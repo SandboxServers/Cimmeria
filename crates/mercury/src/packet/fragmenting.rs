@@ -90,6 +90,11 @@ pub struct FragmentPlan {
     /// Cuts moved back to a message start because the raw cut fell inside a
     /// message header.
     pub header_guarded_cuts: usize,
+    /// The message each packet starts in, by packet index, recorded from
+    /// the same framing walk as the cuts. Empty for a one-packet plan: that
+    /// packet starts at a message boundary, so its head is read from its own
+    /// bytes when needed ([`super::first_message_head`]).
+    pub heads: Vec<Option<super::MessageHead>>,
 }
 
 impl FragmentPlan {
@@ -99,37 +104,38 @@ impl FragmentPlan {
     }
 }
 
-/// Cut positions a fragment boundary must avoid: `start + 1` and `start + 2`
-/// of every `WORD_LENGTH` message, found by framing the body from the front.
-fn forbidden_cuts(body: &[u8]) -> Vec<usize> {
+/// One framing walk of a body from the front.
+struct Walk {
+    /// Cut positions a fragment boundary must avoid: `start + 1` and
+    /// `start + 2` of every `WORD_LENGTH` message.
+    forbidden: Vec<usize>,
+    /// The start of every framed message.
+    starts: Vec<usize>,
+    /// Where the walk stopped: the body end, or the first message it could
+    /// not frame.
+    framed_end: usize,
+}
+
+fn walk(body: &[u8]) -> Walk {
     let mut forbidden = Vec::new();
+    let mut starts = Vec::new();
     let mut pos = 0usize;
     while pos < body.len() {
-        let Some(framing) = server_message_framing(body[pos]) else {
+        let Some(end) = super::message_head::message_end(body, pos) else {
             break;
         };
-        match framing {
-            ServerMessageFraming::Constant(len) => {
-                if pos + 1 + len > body.len() {
-                    break;
-                }
-                pos += 1 + len;
-            }
-            ServerMessageFraming::Word => {
-                if pos + 3 > body.len() {
-                    break;
-                }
-                let len = u16::from_le_bytes([body[pos + 1], body[pos + 2]]) as usize;
-                if pos + 3 + len > body.len() {
-                    break;
-                }
-                forbidden.push(pos + 1);
-                forbidden.push(pos + 2);
-                pos += 3 + len;
-            }
+        if server_message_framing(body[pos]) == Some(ServerMessageFraming::Word) {
+            forbidden.push(pos + 1);
+            forbidden.push(pos + 2);
         }
+        starts.push(pos);
+        pos = end;
     }
-    forbidden
+    Walk {
+        forbidden,
+        starts,
+        framed_end: pos,
+    }
 }
 
 /// Plan the packet cuts for `body`. A body of at most [`FRAGMENT_BODY_SIZE`]
@@ -139,9 +145,11 @@ pub fn plan_fragments(body: &[u8]) -> FragmentPlan {
         return FragmentPlan {
             ranges: std::iter::once(0..body.len()).collect(),
             header_guarded_cuts: 0,
+            heads: Vec::new(),
         };
     }
-    let forbidden = forbidden_cuts(body);
+    let walk = walk(body);
+    let forbidden = &walk.forbidden;
     let mut ranges = Vec::with_capacity(body.len().div_ceil(FRAGMENT_BODY_SIZE));
     let mut guarded = 0usize;
     let mut start = 0usize;
@@ -156,9 +164,11 @@ pub fn plan_fragments(body: &[u8]) -> FragmentPlan {
         start = cut;
     }
     ranges.push(start..body.len());
+    let heads = super::message_head::heads_for_ranges(body, &walk.starts, walk.framed_end, &ranges);
     FragmentPlan {
         ranges,
         header_guarded_cuts: guarded,
+        heads,
     }
 }
 
