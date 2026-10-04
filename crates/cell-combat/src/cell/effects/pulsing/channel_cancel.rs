@@ -24,6 +24,7 @@ use crate::cell::abilities::wire_ledger::{self, WireCtx};
 use crate::cell::abilities::{send_timer_update_ctx, WireRoute};
 use crate::cell::messages::CellToBaseMsg;
 use crate::cell::space_manager::SpaceManager;
+use cimmeria_entity::cell_entity::PlayerIdentity;
 
 use super::CHANNEL_INTERRUPT_DISTANCE;
 
@@ -56,7 +57,7 @@ pub async fn cancel_channels_from_attacker(
     // the same effect_id under different abilities (rare but possible if
     // two abilities reference the same effect template). Without the
     // ability_id pin, cancelling one would over-delete the other.
-    let to_cancel: Vec<(u32, i32, i32, u32, Option<i32>)> = {
+    let to_cancel: Vec<(u32, i32, i32, u32, Option<i32>, PlayerIdentity)> = {
         let target_eids = space_mgr.all_entity_ids();
         let mut out = Vec::new();
         for target_eid in target_eids {
@@ -86,6 +87,7 @@ pub async fn cancel_channels_from_attacker(
                     inst.ability_id,
                     inst.invoker_id,
                     inst.cast_id,
+                    inst.invoker_identity,
                 ));
             }
         }
@@ -105,7 +107,7 @@ pub async fn cancel_channels_from_attacker(
         "Cancelling channels from attacker"
     );
 
-    for (target_eid, effect_id, ability_id, invoker_id, cast_id) in to_cancel {
+    for (target_eid, effect_id, ability_id, invoker_id, cast_id, invoker_who) in to_cancel {
         // Remove the instance from the target — three-key match
         // (effect_id + ability_id + invoker_id) so we don't over-delete.
         if let Some(target) = space_mgr.get_entity_mut(target_eid) {
@@ -118,6 +120,8 @@ pub async fn cancel_channels_from_attacker(
         // Dispatch on_remove for script-driven cleanup.
         if let Some(effect_def) = space_mgr.effect_defs.get(&effect_id).cloned() {
             if let Some(script_name) = effect_def.script_name.clone() {
+                // Name the channel's own cast and invoker (`cast_scope`).
+                let outer = space_mgr.enter_effect_scope(cast_id, invoker_id, invoker_who);
                 let mut ctx = crate::cell::effects::EffectContext {
                     source_id: invoker_id,
                     target_id: target_eid,
@@ -125,6 +129,7 @@ pub async fn cancel_channels_from_attacker(
                     space_mgr,
                 };
                 crate::cell::effects::dispatch_on_remove(&script_name, &mut ctx);
+                space_mgr.exit_effect_scope(outer);
             }
             // Flush stat dirty bits from on_remove.
             if let Some(target) = space_mgr.get_entity_mut(target_eid) {
@@ -268,7 +273,7 @@ pub async fn cancel_channels_for_invoker_ability(
     tx: &mpsc::Sender<CellToBaseMsg>,
     space_mgr: &mut SpaceManager,
 ) -> usize {
-    let to_cancel: Vec<(u32, i32, u32, Option<i32>)> = {
+    let to_cancel: Vec<(u32, i32, u32, Option<i32>, PlayerIdentity)> = {
         let target_eids = space_mgr.all_entity_ids();
         let mut out = Vec::new();
         for target_eid in target_eids {
@@ -286,7 +291,13 @@ pub async fn cancel_channels_for_invoker_ability(
                 if effect_def.pulse_count != 0 {
                     continue;
                 }
-                out.push((target_eid, inst.effect_id, inst.invoker_id, inst.cast_id));
+                out.push((
+                    target_eid,
+                    inst.effect_id,
+                    inst.invoker_id,
+                    inst.cast_id,
+                    inst.invoker_identity,
+                ));
             }
         }
         out
@@ -297,7 +308,7 @@ pub async fn cancel_channels_for_invoker_ability(
     }
 
     let cancelled_count = to_cancel.len();
-    for (target_eid, effect_id, inv_id, cast_id) in to_cancel {
+    for (target_eid, effect_id, inv_id, cast_id, invoker_who) in to_cancel {
         if let Some(target) = space_mgr.get_entity_mut(target_eid) {
             target.active_effects.retain(|inst| {
                 !(inst.effect_id == effect_id
@@ -307,6 +318,8 @@ pub async fn cancel_channels_for_invoker_ability(
         }
         if let Some(effect_def) = space_mgr.effect_defs.get(&effect_id).cloned() {
             if let Some(script_name) = effect_def.script_name.clone() {
+                // Name the channel's own cast and invoker (`cast_scope`).
+                let outer = space_mgr.enter_effect_scope(cast_id, inv_id, invoker_who);
                 let mut ctx = crate::cell::effects::EffectContext {
                     source_id: inv_id,
                     target_id: target_eid,
@@ -314,6 +327,7 @@ pub async fn cancel_channels_for_invoker_ability(
                     space_mgr,
                 };
                 crate::cell::effects::dispatch_on_remove(&script_name, &mut ctx);
+                space_mgr.exit_effect_scope(outer);
             }
             if let Some(target) = space_mgr.get_entity_mut(target_eid) {
                 let dirty = target.stats.serialize_dirty();

@@ -260,7 +260,8 @@ fn witness_audience(
                     cast_id = space_mgr.current_cast_id(),
                     route = route.label(),
                     self_send = is_player && route == WireRoute::SelfAndWitnesses,
-                    "send_entity_method_to_witnesses: no witnesses; nothing emitted"
+                    "witness fan-out skipped: no witnesses in AoI (the owner's own send, \
+                     when the route has one, still goes out; see self_send)"
                 );
                 return witnesses;
             }

@@ -25,7 +25,7 @@ pub struct RemoveByMoniker;
 impl EffectScript for RemoveByMoniker {
     fn on_apply(&self, ctx: &mut EffectContext) {
         let effect = ctx.effect;
-        let who = ctx.space_mgr.player_identity(ctx.source_id);
+        let who = ctx.space_mgr.caster_identity(ctx.source_id);
         let target_who = ctx.space_mgr.player_identity(ctx.target_id);
         let name = effect
             .params

@@ -153,11 +153,15 @@ fn ability_rows(src: &str) -> Vec<(usize, String, String)> {
 }
 
 /// The core fields `code` lacks for an effect-script row: `cast_id`, the
-/// caster's `player_id`, and `target_player_id` when it names a `target_id`.
+/// caster's `account_id` and `player_id`, and `target_player_id` when it
+/// names a `target_id`.
 fn missing_core_fields(code: &str) -> Vec<&'static str> {
     let mut out = Vec::new();
     if !has_field(code, "cast_id") {
         out.push("cast_id");
+    }
+    if !has_field(code, "account_id") {
+        out.push("account_id");
     }
     if !has_field(code, "player_id") {
         out.push("player_id");
@@ -262,15 +266,15 @@ fn every_effect_row_names_its_cast_and_players() {
 fn missing_core_fields_reads_the_field_names() {
     assert_eq!(
         missing_core_fields("target: \"abilities\", event = \"\", target_id = 1, x"),
-        ["cast_id", "player_id", "target_player_id"]
+        ["cast_id", "account_id", "player_id", "target_player_id"]
     );
     assert!(missing_core_fields(
-        "target: \"abilities\", cast_id, player_id = p, target_id, target_player_id = t"
+        "target: \"abilities\", cast_id, account_id = a, player_id = p, target_id, target_player_id = t"
     )
     .is_empty());
     // `ids.cast_id` as a value is not a `cast_id` field.
     assert_eq!(
-        missing_core_fields("target: \"abilities\", x = ids.cast_id, player_id = p"),
+        missing_core_fields("target: \"abilities\", x = ids.cast_id, account_id, player_id = p"),
         ["cast_id"]
     );
 }

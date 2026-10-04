@@ -11,7 +11,7 @@ use super::EffectContext;
 /// A script that ran and changed nothing. `reason` is one of
 /// `no_damage_nvp`, `target_gone`, `no_health_stat`, `no_health_bleed`.
 pub(crate) fn script_skipped(ctx: &EffectContext, script: &'static str, reason: &'static str) {
-    let who = ctx.space_mgr.player_identity(ctx.source_id);
+    let who = ctx.space_mgr.caster_identity(ctx.source_id);
     tracing::debug!(
         target: "abilities.effect",
         event = "effect_script_skipped",
@@ -35,7 +35,7 @@ pub(crate) fn script_skipped(ctx: &EffectContext, script: &'static str, reason: 
 /// expired or was cleansed first, or never landed. `script` names whose
 /// cleanup it was.
 pub(crate) fn on_remove_found_nothing(ctx: &EffectContext, script: &'static str) {
-    let who = ctx.space_mgr.player_identity(ctx.source_id);
+    let who = ctx.space_mgr.caster_identity(ctx.source_id);
     tracing::debug!(
         target: "abilities.ledger",
         event = "effect_on_remove_no_entry",

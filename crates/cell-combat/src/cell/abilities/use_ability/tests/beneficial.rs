@@ -28,7 +28,7 @@ use crate::test_support::{LogCapture, NoContentEvents};
 
 pub(super) const HEAL_FOCUS: i32 = 597;
 const HEALTH_HEAL: i32 = 1646;
-const RECUPERATION: i32 = 1218;
+pub(super) const RECUPERATION: i32 = 1218;
 /// 2228 `MS020_080818_CallTarget`'s shape: Heal-typed, but it deals damage.
 const HEAL_TYPED_ATTACK: i32 = 2228;
 const NEUTRAL: u32 = 5;

@@ -147,6 +147,9 @@ async fn a_fan_out_with_no_witnesses_names_its_event_player_and_cast() {
     assert!(row.has_field("method", "onStatUpdate"), "{row:?}");
     assert!(row.has_field("route", "self_and_witnesses"), "{row:?}");
     assert!(row.has_field("self_send", "true"), "{row:?}");
+    // The owner's send still went out, so the text must not claim otherwise
+    // (Copilot on #1198).
+    assert!(!row.message_contains("nothing emitted"), "{row:?}");
 }
 
 /// Self + witnesses for a player: one `EntityMethodCall` to self, one

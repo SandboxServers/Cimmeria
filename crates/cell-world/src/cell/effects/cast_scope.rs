@@ -19,6 +19,8 @@
 //! A `cast_id` is unique per caster (it is the caster's own counter), so the
 //! join key is `(caster entity_id, cast_id)`.
 
+use cimmeria_entity::cell_entity::PlayerIdentity;
+
 use crate::cell::space_manager::SpaceManager;
 
 impl SpaceManager {
@@ -38,6 +40,47 @@ impl SpaceManager {
     pub fn current_cast_id(&self) -> Option<i32> {
         self.current_cast_id
     }
+
+    /// Resolve a deferred effect (a pulse, a natural end, a channel cancel)
+    /// under the cast and invoker identity its instance snapshotted. The
+    /// cast scope of the launch is long closed by then, and the invoker may
+    /// have disconnected and its entity id been recycled, so the effect rows
+    /// read these snapshots, never a lookup. Returns the scope it replaces,
+    /// for [`SpaceManager::exit_effect_scope`].
+    pub fn enter_effect_scope(
+        &mut self,
+        cast_id: Option<i32>,
+        invoker_id: u32,
+        invoker_identity: PlayerIdentity,
+    ) -> EffectScope {
+        EffectScope {
+            cast_id: std::mem::replace(&mut self.current_cast_id, cast_id),
+            invoker: self.current_invoker.replace((invoker_id, invoker_identity)),
+        }
+    }
+
+    /// Restore the scope [`SpaceManager::enter_effect_scope`] replaced.
+    pub fn exit_effect_scope(&mut self, previous: EffectScope) {
+        self.current_cast_id = previous.cast_id;
+        self.current_invoker = previous.invoker;
+    }
+
+    /// The identity a row should name for the effect's caster `entity_id`:
+    /// the deferred effect's snapshot when it is that effect's invoker,
+    /// otherwise the live lookup.
+    pub fn caster_identity(&self, entity_id: u32) -> PlayerIdentity {
+        match self.current_invoker {
+            Some((id, who)) if id == entity_id => who,
+            _ => self.player_identity(entity_id),
+        }
+    }
+}
+
+/// What [`SpaceManager::enter_effect_scope`] replaced.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct EffectScope {
+    cast_id: Option<i32>,
+    invoker: Option<(u32, PlayerIdentity)>,
 }
 
 #[cfg(test)]
@@ -55,5 +98,28 @@ mod tests {
         assert_eq!(mgr.current_cast_id(), Some(7), "the outer cast is back");
         mgr.exit_cast_scope(outer);
         assert_eq!(mgr.current_cast_id(), None);
+    }
+
+    /// A deferred effect names its snapshotted cast and invoker; the entity
+    /// id it names is gone (or recycled), so a lookup would find nobody, or
+    /// someone else. Exiting restores the outer scope.
+    #[test]
+    fn an_effect_scope_names_the_snapshot_not_the_live_entity() {
+        let mut mgr = SpaceManager::new(1);
+        let snap = PlayerIdentity::new(Some(10), Some(71));
+        assert_eq!(mgr.caster_identity(2), PlayerIdentity::UNKNOWN);
+        let outer = mgr.enter_cast_scope(Some(9));
+        let prev = mgr.enter_effect_scope(Some(1), 2, snap);
+        assert_eq!(mgr.current_cast_id(), Some(1));
+        assert_eq!(mgr.caster_identity(2), snap);
+        assert_eq!(
+            mgr.caster_identity(3),
+            PlayerIdentity::UNKNOWN,
+            "only the invoker reads the snapshot"
+        );
+        mgr.exit_effect_scope(prev);
+        assert_eq!(mgr.current_cast_id(), Some(9));
+        assert_eq!(mgr.caster_identity(2), PlayerIdentity::UNKNOWN);
+        mgr.exit_cast_scope(outer);
     }
 }

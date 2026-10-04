@@ -164,7 +164,7 @@ pub struct RemoveEffects;
 impl EffectScript for RemoveEffects {
     fn on_apply(&self, ctx: &mut EffectContext) {
         let wanted = remove_categories(ctx.effect);
-        let who = ctx.space_mgr.player_identity(ctx.source_id);
+        let who = ctx.space_mgr.caster_identity(ctx.source_id);
         let target_who = ctx.space_mgr.player_identity(ctx.target_id);
         let polarity = polarity(ctx.effect);
         let rel = relation(ctx.space_mgr, ctx.source_id, ctx.target_id);

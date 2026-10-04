@@ -213,6 +213,7 @@ pub(super) fn log_method_outcome(
                     account_id = who.account_id,
                     player_id = who.player_id,
                     seq,
+                    source_id = j.source_id,
                     timer_id = j.timer_id,
                     timer_type_code = j.timer_type_code,
                     secondary_id = j.secondary_id,
@@ -419,6 +420,7 @@ mod tests {
             "{row:#?}"
         );
         assert!(row.has_field("secondary_id", "0"), "{row:#?}");
+        assert!(row.has_field("source_id", &PLAYER.to_string()), "{row:#?}");
         assert!(row.has_field("complete_at", "88.5"), "{row:#?}");
         assert!(!row.fields.contains_key("effect_id"), "{row:#?}");
     }

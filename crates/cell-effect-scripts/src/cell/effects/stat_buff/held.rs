@@ -71,7 +71,7 @@ pub(super) fn apply_held(ctx: &mut EffectContext, spec: TimedEffectSpec, script:
     let effect_id = ctx.effect.effect_id;
     let ability_id = ctx.effect.ability_id;
     let (source, target) = (ctx.source_id, ctx.target_id);
-    let who = ctx.space_mgr.player_identity(source);
+    let who = ctx.space_mgr.caster_identity(source);
     let toggle = is_toggle(ctx);
     let kind = if toggle { "toggle" } else { "passive" };
     if source != target {

@@ -13,13 +13,21 @@
 //! Join on `entity_id` + `method` and, per method:
 //!
 //! - `onTimerUpdate`: `timer_id` (the ability for a cooldown or warmup, the
-//!   effect for a duration), `timer_type_code`, `secondary_id`, and
-//!   `complete_at`: the absolute expiry on the client's clock, the same
+//!   effect for a duration), `timer_type_code`, `source_id` (the caster: a
+//!   duration timer on a target names whose effect it is), `secondary_id`,
+//!   and `complete_at`: the absolute expiry on the client's clock, the same
 //!   `f32` widened the same way on both rows, so it tells two presses of one
 //!   ability apart.
-//! - `onEffectResults`: `ability_id`, `effect_id` (the cast's `effect_seq`,
-//!   equal to its `cast_id` for a single-target hit), `target_id`.
-//! - `onErrorCode`: `system_id`, `instance_id`, `error_code`.
+//! - `onEffectResults`: `source_id`, `ability_id`, `effect_id` (the cast's
+//!   `effect_seq`, equal to its `cast_id` for a single-target hit),
+//!   `target_id`. An effect id counts per caster, so `source_id` is part of
+//!   the key: two casters' hits on one target can share an `effect_id`.
+//! - `onErrorCode`: `system_id`, `instance_id`, `error_code`. This key is
+//!   **not unique**: the same refusal pressed twice (597 out of line of sight
+//!   twice) sends identical bytes. The cell-to-base queue is FIFO and the
+//!   base sends an entity's methods in queue order, so pair equal-key rows
+//!   oldest first (the n-th `wire_sent` with the n-th `client_sent` or
+//!   `client_send_dropped`); there is no payload-only join for it.
 //!
 //! Layouts: `docs/protocol/client-method-dispatch-table.md`, the same ones
 //! `cimmeria_cell_combat`'s `wire_ledger::decode` reads.
@@ -32,6 +40,7 @@ use cimmeria_wire::cell::client_methods::player::ON_ERROR_CODE;
 /// layout, is `None` and absent from the row.
 #[derive(Debug, Default, Clone, Copy, PartialEq)]
 pub(super) struct JoinFields {
+    pub source_id: Option<i32>,
     pub timer_id: Option<i32>,
     pub timer_type_code: Option<i8>,
     pub secondary_id: Option<i32>,
@@ -56,6 +65,7 @@ pub(super) fn join_fields(method_index: u16, args: &[u8]) -> JoinFields {
         ON_TIMER_UPDATE => JoinFields {
             timer_id: i32_at(args, 0),
             timer_type_code: args.get(4).map(|&t| t as i8),
+            source_id: i32_at(args, 5),
             secondary_id: i32_at(args, 9),
             complete_at: args
                 .get(17..21)
@@ -65,6 +75,7 @@ pub(super) fn join_fields(method_index: u16, args: &[u8]) -> JoinFields {
         },
         // SourceID:i32, AbilityID:i32, EffectID:i32, TargetID:i32, ...
         ON_EFFECT_RESULTS => JoinFields {
+            source_id: i32_at(args, 0),
             ability_id: i32_at(args, 4),
             effect_id: i32_at(args, 8),
             target_id: i32_at(args, 12),
@@ -99,6 +110,7 @@ mod tests {
         let j = join_fields(ON_TIMER_UPDATE, &args);
         assert_eq!(j.timer_id, Some(597));
         assert_eq!(j.timer_type_code, Some(TIMER_ABILITY_WARMUP));
+        assert_eq!(j.source_id, Some(2));
         assert_eq!(j.secondary_id, Some(0));
         // Widened exactly as the cell's `wire_sent` row widens it.
         assert_eq!(j.complete_at, Some(f64::from(1234.5_f32)));
@@ -114,6 +126,32 @@ mod tests {
             (Some(597), Some(41), Some(9))
         );
         assert_eq!(j.timer_id, None);
+    }
+
+    /// **Regression guard (Copilot on #1198).** Effect ids count per caster:
+    /// two casters' hits with the same ability, effect id and target differ
+    /// only in `SourceID`, so the join must carry it. Fails on revert: both
+    /// decode to the same fields.
+    #[test]
+    fn two_casters_with_one_effect_id_decode_to_different_keys() {
+        let a = join_fields(
+            ON_EFFECT_RESULTS,
+            &serialize_effect_results(2, 597, 41, 9, 1, &[]),
+        );
+        let b = join_fields(
+            ON_EFFECT_RESULTS,
+            &serialize_effect_results(3, 597, 41, 9, 1, &[]),
+        );
+        assert_eq!((a.source_id, b.source_id), (Some(2), Some(3)));
+        assert_ne!(a, b);
+        // A duration timer on one target from two casters, likewise.
+        let t = |src| {
+            join_fields(
+                ON_TIMER_UPDATE,
+                &serialize_timer_update(1383, 3, src, 1383, 25.0, 100.0),
+            )
+        };
+        assert_ne!(t(2), t(3));
     }
 
     #[test]

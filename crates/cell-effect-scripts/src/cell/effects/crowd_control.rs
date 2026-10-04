@@ -78,7 +78,7 @@ pub fn lock_duration(effect: &EffectDef) -> Option<f32> {
 /// Put a `BSF_MovementLock` entry for `ctx`'s effect on its target.
 fn apply_lock(ctx: &mut EffectContext, kind: &'static str) {
     let effect = ctx.effect;
-    let who = ctx.space_mgr.player_identity(ctx.source_id);
+    let who = ctx.space_mgr.caster_identity(ctx.source_id);
     let target_who = ctx.space_mgr.player_identity(ctx.target_id);
     let duration = lock_duration(effect);
     if duration.is_some_and(|d| d <= 0.0) {

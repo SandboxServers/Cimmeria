@@ -58,7 +58,7 @@ impl EffectScript for AbsorbShield {
             (None, _) => Some("unknown_shield_type"),
             _ => None,
         };
-        let who = ctx.space_mgr.player_identity(ctx.source_id);
+        let who = ctx.space_mgr.caster_identity(ctx.source_id);
         let target_who = ctx.space_mgr.player_identity(ctx.target_id);
         if let Some(reason) = reason {
             tracing::warn!(

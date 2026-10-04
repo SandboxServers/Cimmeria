@@ -97,11 +97,14 @@ pub struct EffectRowIds {
 }
 
 impl EffectContext<'_> {
-    /// [`EffectRowIds`] for this script run. The cast scope is open while a
-    /// script runs (the fire, a pulse tick, a channel cancel), so `cast_id`
-    /// names the cast that landed the effect.
+    /// [`EffectRowIds`] for this script run. A live cast's fire runs under
+    /// its cast scope; a deferred run (a pulse, a natural end, a channel
+    /// cancel) runs under the effect scope of the instance's snapshotted
+    /// `cast_id` and invoker identity (`cast_scope`), so `cast_id` and the
+    /// caster's ids name the cast that landed the effect even after the
+    /// caster left and its entity id was reused.
     pub fn row_ids(&self) -> EffectRowIds {
-        let who = self.space_mgr.player_identity(self.source_id);
+        let who = self.space_mgr.caster_identity(self.source_id);
         EffectRowIds {
             account_id: who.account_id,
             player_id: who.player_id,
@@ -226,8 +229,8 @@ pub fn dispatch_on_remove(name: &str, ctx: &mut EffectContext) -> bool {
                 stage = "end",
                 reason = "script_not_registered",
                 script = name,
-                account_id = ctx.space_mgr.player_identity(ctx.source_id).account_id,
-                player_id = ctx.space_mgr.player_identity(ctx.source_id).player_id,
+                account_id = ctx.space_mgr.caster_identity(ctx.source_id).account_id,
+                player_id = ctx.space_mgr.caster_identity(ctx.source_id).player_id,
                 source_id = ctx.source_id,
                 target_id = ctx.target_id,
                 target_player_id = ctx.space_mgr.player_identity(ctx.target_id).player_id,

@@ -12,11 +12,14 @@
 //! fields that join it to the cell's `wire_sent` row instead
 //! (`base-world-entry`'s `cell_dispatch::method_join`).
 
-use super::beneficial::{heal_mgr, HEAL_FOCUS};
-use super::duel_gate::A;
+use std::time::{Duration, Instant};
+
+use super::beneficial::{heal_mgr, HEAL_FOCUS, RECUPERATION};
+use super::duel_gate::{A, B};
 use super::warmup::after_warmup;
 use super::*;
 use crate::cell::abilities::resolve_warmups;
+use crate::cell::effects::effect_pulse_tick;
 use crate::test_support::{Captured, LogCapture, NoContentEvents};
 
 /// The targets the `cast_id` forensics query reads (AB-T7's list).
@@ -154,4 +157,47 @@ async fn an_instant_self_heal_names_its_cast_on_every_row() {
     assert_every_ability_row_has_an_event(&all);
     assert_every_row_after_launch_names_the_cast(&all, &cast_id);
     assert_heal_rows_name_the_players(&all, "101");
+}
+
+/// **Regression guard (Copilot on #1198).** A deferred effect's script rows
+/// (a later pulse, the natural end) run after the cast's scope has closed,
+/// and the caster may have left with its entity id reused. They must name
+/// the cast and the caster the instance snapshotted. Here Recuperation's
+/// last pulse fires and ends after entity A has been taken over by player
+/// 555: the ambient scope has no `cast_id` at the end, and a live lookup
+/// names player 555. Fails on revert of the pulse's or the end's effect
+/// scope.
+#[tokio::test]
+async fn a_deferred_heal_pulse_and_end_name_the_snapshotted_cast_and_caster() {
+    let mut mgr = heal_mgr(0.0);
+    burn_effect_ids(&mut mgr, 2);
+    mgr.get_entity_mut(A).unwrap().account_id = Some(10);
+    let (tx, _rx) = mpsc::channel(256);
+
+    assert!(handle_use_ability(A, RECUPERATION, B as i32, &tx, &mut mgr).await);
+    // Entity id A now belongs to another player's session.
+    let reused = mgr.get_entity_mut(A).unwrap();
+    reused.player_id = Some(555);
+    reused.account_id = Some(9_555);
+    for i in &mut mgr.get_entity_mut(B).unwrap().active_effects {
+        i.remaining_pulses = 1;
+        i.next_pulse_at = Instant::now() - Duration::from_secs(1);
+    }
+    let logs = LogCapture::install();
+    effect_pulse_tick(&NoContentEvents, &tx, &mut mgr).await;
+
+    let all = logs.all();
+    for event in [
+        "effect_script_dispatch",
+        "heal_health",
+        "effect_script_remove",
+    ] {
+        let row = all
+            .iter()
+            .find(|c| c.has_field("event", event))
+            .unwrap_or_else(|| panic!("no `{event}` row in {all:#?}"));
+        assert!(row.has_field("cast_id", "3"), "{event}: {row:?}");
+        assert!(row.has_field("player_id", "101"), "{event}: {row:?}");
+        assert!(row.has_field("account_id", "10"), "{event}: {row:?}");
+    }
 }
