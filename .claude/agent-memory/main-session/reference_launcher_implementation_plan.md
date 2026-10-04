@@ -36,3 +36,9 @@ Windows+Mac before the shell; shell/visual/game gates remain separate.
 - Windows shell CI requires `shell/icons/icon.ico` even for tests; the initial
   PNG-only shell passed Mac CI but failed Windows tauri-build resource creation
   (run `37182338053`). The existing launcher ICO is now included explicitly.
+
+- Desktop catalog shares the existing manifest source via a Rust path module,
+  with its own bounded HTTPS fetcher and notes-only IPC. Live probe authenticated
+  seven patches on 2026-10-04 using the handoff's release public key; development
+  fallback keys cannot authenticate production content. Notes are available
+  release information, not evidence of installation. Native catalog UI UAT open.

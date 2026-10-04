@@ -754,3 +754,7 @@ Launch and injection (`launch`, `inject`) live in the shared
 `telemetry/` were each promoted from a flat file once they crossed the
 4-siblings-on-one-theme threshold in
 [CLAUDE.md's file organization rules](../../CLAUDE.md).
+
+The experimental desktop launcher now displays signature-verified manifest
+patch notes through its Patch Notes tab. This does not establish installed
+patch state; its game installation and launch integration remain unfinished.

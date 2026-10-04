@@ -1,3 +1,4 @@
+import { mountPatchNotes } from "./patch-notes";
 import { Context, Effect, Fiber, Layer, ManagedRuntime, Result, Schema, Stream } from "effect";
 import { BridgeFailure, safeFailure } from "./contract";
 import { bridgeLayer, makeLauncher, ScreenState } from "./workflows";
@@ -30,6 +31,7 @@ export function mountLauncher(document: Document, invoke: Invoke) {
     if (!value) throw new Error(`Missing launcher element ${id}`);
     return value as T;
   };
+  const patchNotes = mountPatchNotes(document, () => invoke('fetch_patch_notes'));
   const checkbox = get<HTMLInputElement>('telemetry');
   const path = get<HTMLInputElement>('install-path');
   const abort = new AbortController();
@@ -85,7 +87,7 @@ export function mountLauncher(document: Document, invoke: Invoke) {
     get('notes').setAttribute('aria-pressed', String(notes));
   };
   on('home', 'click', () => showTab(false));
-  on('notes', 'click', () => showTab(true));
+  on('notes', 'click', () => {showTab(true); patchNotes.open();});
   on('settings', 'click', () => {
     get('gear').hidden = !get('gear').hidden;
     get('settings').setAttribute('aria-expanded', String(!get('gear').hidden));
@@ -128,12 +130,13 @@ export function mountLauncher(document: Document, invoke: Invoke) {
   const ready = settled;
   return {
     ready,
-    settled: () => settled,
+    settled: () => Promise.all([settled, patchNotes.settled()]),
     dispose: async () => {
       if (disposed) return;
       disposed = true; abort.abort(); listeners.forEach(remove => remove());
       await Effect.runPromise(Fiber.interrupt(watcher));
       await settled;
+      await patchNotes.dispose();
       await runtime.dispose();
     },
   };

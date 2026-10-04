@@ -32,7 +32,8 @@ test('approved tabs and settings work without inventing installed state', {timeo
     ui.click('settings'); assert.equal(ui.get('gear').hidden, false);
     ui.click('home'); assert.equal(ui.get('play').hidden, false);
     assert.equal(ui.get('gear').hidden, false);
-    assert.deepEqual(calls, ['launcher_command']);
+    await app.settled();
+    assert.deepEqual(calls, ['launcher_command', 'fetch_patch_notes']);
   } finally { await app.dispose(); }
   ui.click('settings'); assert.equal(ui.get('gear').hidden, false, 'dispose removes handlers');
 });

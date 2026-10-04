@@ -341,3 +341,29 @@ passed engine tests and JS persistence UAT, then failed the shell build script:
 `icons/icon.ico` was missing. Added the existing launcher ICO to the standalone
 shell and listed both icon formats explicitly. Native Windows validation of
 this correction is pending the next run; no cross-compilation was attempted.
+
+### 2026-10-04: signed release patch notes
+
+The Windows icon correction passed native Windows and Mac shell CI in run
+`37182711152` at `aaf00cb9e`. Added a bounded catalog loader sharing the existing
+manifest schema/signature policy, notes-only IPC and lazy Effect tab loading.
+Refresh is explicit; failures preserve and label previously verified session
+notes. Titles/descriptions render as text. No installed-state claim is made.
+
+Local validation: 52 engine tests, two shell-host tests, 14 frontend tests,
+clippy, TypeScript and JS logic UAT passed. Catalog UAT renders a response fixture
+while persisted consent stays unchanged; it does not test cryptography or actual
+Tauri routing. Rust tests separately cover signed/tampered fixtures, malformed
+signatures, schema errors, and bounded declared/chunked HTTP bodies. A read-only
+live probe using the release public key recorded in the handoff authenticated
+seven patches from `content-current`. Production key injection, native visual
+UAT and final packaging gates remain open. No desktop application was opened.
+Next: actual installer/runtime adapters and operation reconciliation.
+
+A second headless JS pass rendered the live probe’s verified response through
+the actual Effect view: seven entries, expected first title and consent still
+off. It bypassed Tauri routing and did not open a window. The Mac executable
+compiled with the recorded release public key; no new packaged UI UAT occurred.
+Read-only advisor review found no actionable pre-commit issues. Manifest
+freshness/rollback protection remains inherited and must be addressed before
+using catalog availability as an update-readiness decision.

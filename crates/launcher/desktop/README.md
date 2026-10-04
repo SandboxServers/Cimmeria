@@ -8,8 +8,8 @@
 This standalone workspace contains native Rust state, Effect workflows and a
 Tauri settings shell. The interface connects through Tauri invoke to native
 preference persistence. Play/Patch Notes tabs and the settings panel are
-implemented; game actions remain disabled and patch notes show an explicit
-manifest placeholder. Installation, repair, removal, launch and telemetry export
+implemented; patch notes load from a signed release manifest and game actions
+remain disabled. Installation, repair, removal, launch and telemetry export
 are not implemented here. The existing Windows egui launcher is unchanged.
 
 ## Native operation and storage contracts
@@ -72,7 +72,7 @@ rejects older snapshots, and publishes a one-entry sliding state stream so slow
 views cannot build an unbounded progress backlog.
 
 Read-only inspection has at most two retries, with 100 ms exponential backoff.
-Each IPC call has a five-second observation timeout. Saves are sent **once**;
+Each settings IPC call has a five-second observation timeout. Saves are sent **once**;
 timeout, interruption or failure leaves inspection required before another
 mutation. A cancelled Effect fiber does not cancel a native save. Scope cleanup
 releases subscriptions; it does not claim native rollback. Uncertain native
@@ -93,10 +93,44 @@ native acknowledgement and restore confirmed state on failure. Folder selection
 saves through the same Effect workflow and preserves consent. Disposal removes
 handlers and interrupts frontend observation without claiming native rollback.
 
-The development UI explicitly labels unavailable operations. Its manifest
-placeholder neither fetches patch notes nor establishes installed-game status.
+The development UI explicitly labels unavailable game operations. Verified
+patch notes describe available release patches, not installed-game status.
 Native window appearance, dialogs and actual Tauri IPC still require interactive
 UAT. Compilation and headless DOM tests do not establish those behaviors.
+
+## Verified release patch notes
+
+`engine/src/catalog/mod.rs` fetches the native-owned `content-current` manifest
+and detached signature over HTTPS. Limits: 1 MiB manifest, 256-byte signature,
+five-second connection timeout, fifteen seconds per request including body
+consumption, and five redirects. Size limits cover declared and streamed bodies.
+
+A Rust path module shares `crates/launcher/src/manifest.rs` with the Windows
+launcher; the catalog uses its schema, signature verification and validation,
+but replaces its unbounded fetcher. Signature verification precedes JSON parsing.
+Notes-only IPC exposes IDs, titles and descriptions in manifest order, with the
+ID as fallback for a missing or blank title. Errors contain safe codes only.
+Changes to the shared source also trigger the desktop CI workflow.
+
+`LAUNCHER_MANIFEST_PUBKEY_HEX` supplies the existing build-time trust key.
+Release builds without a usable key fail closed. Test/debug builds can use the
+existing development fallback; it cannot authenticate the live release. Supply
+the maintainer-approved public key when building a launcher for live content.
+Do not discover or trust a key from the manifest being verified.
+
+The Patch Notes tab starts an independent read-only Effect fetch on first open.
+Refresh explicitly fetches again; no automatic retries or overlapping UI loads.
+Frontend observation times out after 35 seconds. Disposal interrupts observation,
+not native network work, which remains bounded by its own deadlines. Successful
+notes stay in session memory; a failed refresh retains them with an explicit
+previously-verified label. All content renders as literal DOM text, never HTML.
+
+A read-only live check uses the same native fetcher:
+
+```bash
+# Set LAUNCHER_MANIFEST_PUBKEY_HEX to the approved release public key first.
+bash tools/build-lane/lane.sh cargo run --locked --manifest-path crates/launcher/desktop/Cargo.toml -p cimmeria-launcher-engine --example catalog_probe --target-dir target/desktop
+```
 
 ## Validation
 
@@ -139,7 +173,7 @@ On Windows, append `.exe` to the harness path. Root workspace tests do not run
 this nested workspace. `.github/workflows/launcher-desktop.yml` adds explicit
 native Mac/Windows checks and the frontend/native logic UAT.
 
-On 2026-10-04, **23 Rust tests**, **12 frontend tests**, strict clippy, TypeScript
+On 2026-10-04, **52 engine tests**, **two shell-host tests**, **14 frontend tests**, strict clippy, TypeScript
 checking and formatting passed locally on macOS. The one ignored Rust test is a
 subprocess fixture invoked by its parent test. Coverage includes command/schema
 validation, ownership/retries, cancellation races, file failures before/after
@@ -149,7 +183,7 @@ writing; its parent verifies exclusion, kills it and reopens interrupted state.
 That interrupts an idle child after completed writes, not a write in progress
 or a power failure. Effect tests use virtual time for retry/timeout behavior.
 
-The frontend suite includes eight workflow tests and four DOM tests covering
+The frontend suite includes eight workflow tests and six DOM tests covering
 navigation, disabled game actions, pending/failed consent saves, folder choice
 and cancellation, and disposal during pending IPC. Two shell-host tests cover
 lazy ownership, saved-folder resolution and retry after another owner releases
@@ -160,14 +194,17 @@ JS logic UAT mounts the actual HTML and view code in a headless DOM. It drives a
 checkbox through Effect, the Rust process harness and disk, then restarts the
 process and confirms persistence. It also checks restored settings and a mocked
 cancelled chooser without an extra save. Earlier workflow steps cover default-off
-consent, path persistence and persisted opt-out. This does not exercise native
+consent, path persistence and persisted opt-out. The patch tab renders a notes
+response fixture as literal text while consent remains unchanged. Signature
+verification is covered separately in Rust, not by this DOM fixture. This does not exercise native
 webview rendering, Tauri command routing, real dialogs or file-manager reveal,
 keyboard behavior, gameplay or telemetry export.
 
 [CI run 37181383914](https://github.com/SandboxServers/Cimmeria/actions/runs/37181383914)
 passed the Windows and macOS engine/frontend persistence checks at `69fc13d3f`,
 before the shell was added. CI now includes shell tests, clippy and executable
-builds; inspect their current run before claiming shell validation on Windows.
+builds. Run `37182711152` passed both native platforms at `aaf00cb9e`, after
+the Windows icon correction and before the catalog addition.
 
 ## Next integration gates
 
@@ -175,10 +212,18 @@ Verify the native window, keyboard behavior, actual Tauri IPC, folder chooser
 and saved-folder reveal interactively. Extract existing installation/preparation
 behind validated native intents, prove worker dispatch follows persistence,
 and implement authoritative reconciliation, cancellation and progress through
-Effect. Manifest loading and all game actions remain unimplemented. Platform
+Effect. All game actions remain unimplemented. Platform
 provisioning, telemetry, migration/updater and final self-contained startup and
 release gates remain open.
 
 The shell includes PNG and Windows ICO resources. Tauri compiles the ICO into
 the Windows executable even for shell tests; native Windows CI is the check for
 that resource step. The ICO is copied from the existing Windows launcher.
+
+Catalog tests cover signed fixture decoding, order/title fallback, tampered and
+malformed signatures, invalid JSON/schema, size bounds, and loopback HTTP status
+and chunked-body handling. The live `catalog_probe` succeeded on 2026-10-04 with
+seven patches using the release public key recorded in the bring-up handoff.
+This verifies a current response, not future availability or packaged UI routing.
+The local fixture suite uses the development key; run it without a release-key
+override. Real Tauri catalog IPC and visual UAT remain unverified.

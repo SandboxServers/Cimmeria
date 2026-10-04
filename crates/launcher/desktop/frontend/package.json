@@ -4,7 +4,7 @@
   "type": "module",
   "scripts": {
     "check": "tsc --noEmit",
-    "test": "esbuild src/workflows.test.ts src/view.test.ts --bundle --platform=node --format=esm --packages=external --outdir=.test-build --out-extension:.js=.mjs && node --test .test-build/*.test.mjs",
+    "test": "esbuild src/workflows.test.ts src/view.test.ts src/patch-notes.test.ts --bundle --platform=node --format=esm --packages=external --outdir=.test-build --out-extension:.js=.mjs && node --test .test-build/*.test.mjs",
     "uat": "esbuild src/workflows.ts src/view.ts --bundle --platform=node --format=esm --packages=external --outdir=.test-build --out-extension:.js=.mjs && node uat.mjs",
     "build": "tsc --noEmit && node build.mjs"
   },

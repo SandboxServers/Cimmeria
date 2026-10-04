@@ -80,6 +80,7 @@ try {
   const {document, window} = parseHTML(await readFile(new URL('./ui/index.html', import.meta.url), 'utf8'));
   const app = mountLauncher(document, (command, args) => {
     if (command === 'launcher_command') return third.invoke(args.request);
+    if (command === 'fetch_patch_notes') return Promise.resolve({schema_version:1, patches:[{id:'fixture',title:'Fixture <patch>',description:'Verified-response fixture; no live network.'}]});
     if (command === 'choose_install_directory') return Promise.resolve(null);
     throw new Error('native GUI commands are not exercised by logic UAT');
   });
@@ -98,6 +99,12 @@ try {
     document.getElementById('choose').dispatchEvent(new window.Event('click'));
     await app.settled(); await flush();
     assert.equal((await third.invoke({command:'inspect', schema_version:1})).preferences.revision, 3);
+    document.getElementById('notes').dispatchEvent(new window.Event('click'));
+    await app.settled(); await flush();
+    assert.equal(document.getElementById('entries').querySelector('h3').textContent, 'Fixture <patch>');
+    assert.equal(document.getElementById('entries').querySelectorAll('patch').length, 0);
+    assert.equal(consent.checked, true);
+    console.log('PASS patch tab: fixture rendered as text while persisted consent remains unchanged; signature and transport tested separately in Rust');
     console.log('PASS rendered controls: consent saved natively, settings show saved path, cancelled chooser does not save');
   } finally { await app.dispose(); }
   await third.close();

@@ -56,6 +56,14 @@ async fn show_install_directory(
     .map_err(|_| StorageError::Io)?
 }
 
+#[tauri::command]
+async fn fetch_patch_notes() -> Result<
+    cimmeria_launcher_engine::catalog::PatchNotes,
+    cimmeria_launcher_engine::catalog::CatalogError,
+> {
+    cimmeria_launcher_engine::catalog::fetch_patch_notes().await
+}
+
 fn main() {
     tauri::Builder::default()
         .plugin(tauri_plugin_dialog::init())
@@ -68,7 +76,8 @@ fn main() {
         .invoke_handler(tauri::generate_handler![
             launcher_command,
             choose_install_directory,
-            show_install_directory
+            show_install_directory,
+            fetch_patch_notes
         ])
         .run(tauri::generate_context!())
         .expect("desktop launcher could not initialize");
