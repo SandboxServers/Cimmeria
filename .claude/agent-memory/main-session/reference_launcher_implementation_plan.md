@@ -165,3 +165,12 @@ Windows+Mac before the shell; shell/visual/game gates remain separate.
   ownership; final library suite: 201 passed, five ignored and strict all-target clippy
   passed after mapping fix. No test Wineboot/wineserver processes remained.
   No real RAR/FDI chain or gameplay proof. Mac installation stays disabled.
+
+
+- Original client RAR/chained-cabinet managed-Wine smoke PASSED 2026-10-04:
+  299.64s test, 301.146s lane, Windows debug helper 17b949f4c. Authenticated manifest
+  and source size/hash; cabinet progress 5983/5983, MZ SGW.exe, SGWGame directory,
+  no .tmp-unpack and durable helper Completed. Private tree auto-cleaned. Exact
+  artifact identity and command: desktop/docs/wine-validation.md. No patching,
+  prerequisites, launch/login/gameplay or release-performance proof; Mac UI stays
+  disabled. Helper-journal CI 37191310279 passed both platforms at ef10c31f9.

@@ -654,3 +654,25 @@ inspection found no test Wineboot/wineserver processes. The earlier uncertain fa
 the current smoke outcome. Actual client RAR/FDI chains and gameplay remain
 unverified. Seed CI `37190303728` passed macOS and Windows at `cd7366c61`; that
 revision does not validate the newer Wine adapter.
+
+The desktop reference now separates [Wine/runtime/helper contracts and smoke
+commands](../../../../crates/launcher/desktop/docs/wine-validation.md) from its
+README. Latest ordinary checks passed 201 library tests with six ignored entries
+and strict clippy; the real-archive smoke result remains pending.
+
+
+### 2026-10-04: original client RAR through managed Wine passed
+
+The supervised real-archive smoke passed in 299.64 seconds (301.146 seconds lane
+elapsed). It authenticated the signed manifest, verified the 4,135,724,034-byte
+source and its SHA-256, then used the Windows debug helper from `17b949f4c` under
+the managed runtime/private prefix. Final cabinet progress was 5,983/5,983;
+assertions found the expected MZ executable and SGWGame directory, no remaining
+`.tmp-unpack`, and durable helper completion. The test tree auto-cleaned.
+Hashes/key and command are recorded in the [validation reference](../../../../crates/launcher/desktop/docs/wine-validation.md#real-client-archive-evidence--2026-10-04).
+
+This passes the original RAR/chained-cabinet extraction smoke, not patching,
+prerequisites, launch, login or gameplay. The debug-helper duration is not a
+release performance benchmark; Mac shell installation remains disabled.
+Helper-journal CI `37191310279` passed both platforms at `ef10c31f9`; that earlier
+revision does not validate subsequent Wine changes.

@@ -308,3 +308,6 @@ fn claim_prefix(root: &Path, intent: &InstallIntent) -> Result<(PathBuf, File), 
 }
 #[cfg(test)]
 mod tests;
+
+#[cfg(test)]
+mod smoke;

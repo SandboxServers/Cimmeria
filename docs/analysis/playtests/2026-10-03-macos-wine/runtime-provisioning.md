@@ -219,3 +219,19 @@ The experimental adapter is not selected by the production coordinator or shell;
 Mac installation remains disabled. Do not treat this packet as functional Mac
 installation or relax cabinet-chain, prerequisite, gameplay, licensing or final
 startup gates on its basis.
+
+
+## Original client archive extraction passed — 2026-10-04
+
+The supervised original-RAR smoke passed through the pinned managed Wine runtime
+and Windows debug helper (`17b949f4c`) in 299.64 seconds. Manifest signature and
+source size/hash were verified first. Cabinet progress reached 5,983/5,983; the
+expected MZ SGW executable and SGWGame directory existed, `.tmp-unpack` was absent,
+and the helper journal recorded completion. Private test output auto-cleaned.
+Exact hashes, verification key and runnable command are in the
+[validation reference](../../../../crates/launcher/desktop/docs/wine-validation.md#real-client-archive-evidence--2026-10-04).
+
+This advances extraction evidence beyond the earlier ZIP fixture. It does not
+prove patching, fresh-prefix game prerequisites, launch/login or gameplay, and
+its debug-helper timing is not a release benchmark. Production coordination,
+Mac UI installation and distribution clearance remain open.
