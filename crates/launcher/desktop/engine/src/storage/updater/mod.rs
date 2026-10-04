@@ -11,6 +11,16 @@ use std::io::Read;
 pub use transport::{check, download};
 use uuid::Uuid;
 
+#[cfg(feature = "test-support")]
+thread_local! {
+    static FAIL_NEXT_SAVE: std::cell::Cell<Option<bool>> = const { std::cell::Cell::new(None) };
+}
+/// Fail one atomic updater save on this worker thread, before or after replacement.
+#[cfg(feature = "test-support")]
+pub fn fail_next_update_save_for_test(after_replace: bool) {
+    FAIL_NEXT_SAVE.with(|fault| fault.set(Some(after_replace)));
+}
+
 const RECORD: &str = "launcher-update.json";
 const ARTIFACT: &str = "launcher-update.verified";
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -157,6 +167,22 @@ impl DesktopState {
             .checked_add(1)
             .filter(|v| *v <= MAX_REVISION)
             .ok_or(StorageError::Corrupt)?;
+        #[cfg(feature = "test-support")]
+        let result = match FAIL_NEXT_SAVE.with(|fault| fault.take()) {
+            Some(after_replace) => {
+                atomic::write_with(self.state_root(), RECORD, &record, |point| {
+                    if (point == atomic::Checkpoint::AfterReplace) == after_replace {
+                        Err(std::io::Error::other(
+                            "injected updater persistence failure",
+                        ))
+                    } else {
+                        Ok(())
+                    }
+                })
+            }
+            None => atomic::write(self.state_root(), RECORD, &record),
+        };
+        #[cfg(not(feature = "test-support"))]
         let result = atomic::write(self.state_root(), RECORD, &record);
         self.preferences_uncertain |= result == Err(StorageError::PersistenceUncertain);
         result?;

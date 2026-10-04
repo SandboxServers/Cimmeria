@@ -100,13 +100,33 @@ impl DesktopState {
         revision: u64,
         operation_revision: u64,
     ) -> Result<Snapshot, Error> {
+        self.apply_launcher_update_with_handoff(
+            config,
+            target,
+            offer_id,
+            revision,
+            operation_revision,
+            || {},
+        )
+    }
+    /// Notify the native owner after successful spawn, before fallible bookkeeping.
+    /// The notification is not an installation acknowledgment or persisted intent.
+    pub fn apply_launcher_update_with_handoff(
+        &mut self,
+        config: Option<&Config>,
+        target: &InstalledTarget,
+        offer_id: Uuid,
+        revision: u64,
+        operation_revision: u64,
+        on_handoff: impl FnOnce(),
+    ) -> Result<Snapshot, Error> {
         self.apply_update_with(
             config,
             target,
             offer_id,
             revision,
             operation_revision,
-            spawn,
+            notify_handoff(spawn, on_handoff),
         )
     }
     fn apply_update_with(
@@ -476,5 +496,42 @@ impl DesktopState {
         Ok(())
     }
 }
+// Only a successful native spawn emits this signal. Durable intent precedes
+// spawn and therefore cannot be used as evidence that shutdown is required.
+fn notify_handoff(
+    start: impl FnOnce(&Path, &[String]) -> Result<(), Error>,
+    on_handoff: impl FnOnce(),
+) -> impl FnOnce(&Path, &[String]) -> Result<(), Error> {
+    move |path, args| {
+        start(path, args)?;
+        on_handoff();
+        Ok(())
+    }
+}
+
+#[cfg(feature = "test-support")]
+impl DesktopState {
+    /// Inert Windows installer seam for engine-to-host lifecycle fault tests.
+    pub fn apply_launcher_update_fixture(
+        &mut self,
+        config: &Config,
+        executable: &Path,
+        ready: Snapshot,
+        start: impl FnOnce(&Path, &[String]) -> Result<(), Error>,
+        on_handoff: impl FnOnce(),
+    ) -> Result<Snapshot, Error> {
+        self.apply_update_with(
+            Some(config),
+            &InstalledTarget(Target::Windows {
+                executable: executable.into(),
+            }),
+            ready.offer.ok_or(Error::StaleOffer)?.id,
+            ready.revision,
+            ready.operation_revision,
+            notify_handoff(start, on_handoff),
+        )
+    }
+}
+
 #[cfg(test)]
 mod tests;

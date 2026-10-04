@@ -79,3 +79,6 @@ framing; and recovery treated a derived stage pathname as ownership. Regressions
 exercise the actual ambiguous trees, foreign collision bytes and dropped native
 reply. A separate self-review replaced the two-step publication gap with atomic
 Mac exchange, so a crash cannot remove the visible installed application name.
+
+Follow-up: [updater-handoff-fix.md](updater-handoff-fix.md) covers shutdown when
+post-spawn persistence fails, with engine-to-host fault injection.

@@ -71,7 +71,9 @@ The Apply fixture exercises real temporary Mac bundle renames and a spawned
 fixture executable, final-rename/spawn-failure rollback, interrupted recovery,
 foreign-stage preservation, and compiled-version acknowledgment. Shell tests
 prove that a dropped renderer reply still invokes the native shutdown callback
-once, and failed spawn never invokes it. Windows handoff state is fixture-tested;
+once, including when the post-spawn atomic save fails before or after replacement.
+Failed spawn never invokes shutdown, even though handoff intent is already durable.
+Windows handoff state is fixture-tested;
 actual NSIS/MSI installation, UAC, locking and durability remain native Windows gates.
 These checks do not prove packaged Tauri IPC/layout/exit, production HTTPS,
 replacement of the actual launcher, application health or production restart. Production key custody, updater-compatible CLI signing, release
@@ -108,9 +110,14 @@ Unknown/colliding stage, target or backup contents are preserved and retain
 reconciliation ownership. Cleanup never adopts a directory just because it has
 the expected name. A pre-handoff interruption restores recognized old bytes.
 
-A successful spawn leaves `restart_required`; it does not claim completion.
-Native shutdown belongs to the retained Apply worker and does not depend on an
-IPC response reaching the renderer. A Mac replacement receives a fixed restart
+After successful spawn, Apply attempts to persist `restart_required`; it does not
+claim completion. Native shutdown belongs to the retained Apply worker and uses
+an explicit successful-spawn notification, independent of the final save and IPC
+response. A failure saving the restart state still shuts down the old process so
+the replacement can acquire the state lock. The error remains an error, durable
+ownership blocks duplicate Apply, and reopening requires reconciliation. Durable
+handoff intent alone never triggers shutdown: it is written before spawn, which
+can still fail. A Mac replacement receives a fixed restart
 argument and waits up to 30 seconds for the old state owner to exit. No arbitrary
 process is killed. On reopen, only the current executable's compiled version and
 native target can acknowledge the expected release. Mac acknowledgment also

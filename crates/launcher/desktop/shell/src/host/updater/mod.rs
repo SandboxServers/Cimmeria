@@ -60,7 +60,7 @@ impl NativeHost {
             // The detached blocking owner outlives a dropped renderer request.
             let shutdown = self.updater_shutdown.clone().ok_or(Error::Disabled)?;
             return retained_apply(
-                move || {
+                move |on_handoff| {
                     if config.is_none() {
                         return Err(Error::Disabled);
                     }
@@ -68,12 +68,13 @@ impl NativeHost {
                     store
                         .lock()
                         .map_err(|_| StorageError::Io)?
-                        .apply_launcher_update(
+                        .apply_launcher_update_with_handoff(
                             config.as_ref(),
                             &target,
                             offer_id,
                             revision,
                             operation_revision,
+                            on_handoff,
                         )
                 },
                 shutdown,
@@ -153,17 +154,18 @@ impl NativeHost {
 }
 
 // Dropping the request future drops only its JoinHandle, never the already
-// admitted native owner or shutdown after a successful durable handoff.
+// admitted native owner or shutdown after a successful spawn, even if later persistence fails.
 fn retained_apply(
-    apply: impl FnOnce() -> Result<Snapshot, Error> + Send + 'static,
+    apply: impl FnOnce(&mut dyn FnMut()) -> Result<Snapshot, Error> + Send + 'static,
     shutdown: std::sync::Arc<dyn Fn() + Send + Sync>,
 ) -> tokio::task::JoinHandle<Result<Snapshot, Error>> {
     tokio::task::spawn_blocking(move || {
-        let status = apply()?;
-        if status.phase == updater::Phase::RestartRequired {
+        let mut handed_off = false;
+        let result = apply(&mut || handed_off = true);
+        if handed_off {
             shutdown();
         }
-        Ok(status)
+        result
     })
 }
 
@@ -219,7 +221,7 @@ mod tests {
         let observed = calls.clone();
         let saved = path.clone();
         let handle = retained_apply(
-            move || {
+            move |on_handoff| {
                 started_tx.send(()).unwrap();
                 release_rx.recv().unwrap();
                 let snapshot = Snapshot {
@@ -232,6 +234,7 @@ mod tests {
                     requires_reopen: false,
                 };
                 std::fs::write(saved, serde_json::to_vec(&snapshot).unwrap()).unwrap();
+                on_handoff();
                 Ok(snapshot)
             },
             Arc::new(move || {
@@ -253,7 +256,7 @@ mod tests {
         let observed = calls.clone();
         assert_eq!(
             retained_apply(
-                || Err(Error::Spawn),
+                |_| Err(Error::Spawn),
                 Arc::new(move || {
                     observed.fetch_add(1, Ordering::SeqCst);
                 })
@@ -266,3 +269,6 @@ mod tests {
         assert_eq!(calls.load(Ordering::SeqCst), 1);
     }
 }
+
+#[cfg(test)]
+mod handoff_tests;
