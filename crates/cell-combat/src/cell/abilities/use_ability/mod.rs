@@ -22,6 +22,11 @@
 //!   launch side, the 100 ms tick, and the interrupt (AT-10).
 //! - `not_known` — the `onErrorCode` 167 answer to a press of an ability
 //!   the player does not know.
+//! - `no_mechanics` — `ability_has_mechanics` and the AB-12 refusal of a
+//!   press that cannot do anything: `onErrorCode`, a feedback line, no
+//!   cooldown (D-AB10).
+//! - `weapon_gate` — the weapon-attack launch gates: the holstered-draw
+//!   queue, one queued shot at a time, the slot-swap lockout.
 //! - `summon` — the pet-summon diversions (pets PT-03): the launch refusals,
 //!   and the fire that spawns the pet instead of resolving a target.
 //! - `owner_pet` — owner abilities that act on the owner's pet (pets PT-08):
@@ -41,12 +46,14 @@ mod fire;
 mod fire_los;
 mod handle;
 mod kill_credit;
+mod no_mechanics;
 mod not_known;
 mod owner_pet;
 mod sequence;
 mod summon;
 mod support_shot;
 mod warmup;
+mod weapon_gate;
 mod weapon_redirect;
 
 #[cfg(test)]

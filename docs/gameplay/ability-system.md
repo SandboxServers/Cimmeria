@@ -41,6 +41,7 @@ The `AbilityManager` class (in `deprecated/python/cell/AbilityManager.py`) manag
 | Chain targeting | NOT IMPL | |
 | Combo / response system | NOT IMPL | `Response` flag modifies cooldown only |
 | Ability conditions | NOT IMPL | Pre-launch condition checks from ability data |
+| Press of an ability with no mechanic | DONE | AB-12 (D-AB10). A player's press is refused before the cooldown with `onErrorCode` 167 and the feedback line "That ability has no effect yet." See [presses with no mechanic](#presses-with-no-mechanic-ab-12) |
 
 ## Entity Definition
 
@@ -168,6 +169,30 @@ The last row is the proposed default of D-AB02, which the owner has not yet conf
 The cast then runs each effect's script on that entity, with no QR roll, no `onEffectResults`, no threat, no in-combat state and no channel cancel. The stat change goes to that entity and its witnesses, a `StatBuff` timer goes with it, and a pulsing effect (Recuperation's 25 pulses) is registered on it with the caster as invoker. The warmup's fire-time re-check and the fire run the same resolver on the target the client sent, so an ally who dies or turns hostile during the warmup takes the cast to the fallback, and `Ability_End` names the entity the cast lands on. NPC casts and every non-beneficial cast keep the #444 gate and the damage pipeline unchanged. The heal shows as the bars moving; there is no floating heal number yet (AB-11).
 
 Each resolution logs one `abilities` row, `event=beneficial_cast`: DEBUG at `stage=launch` (it runs before the launch's dead, known and cooldown checks) and INFO at `stage=fire`, with `ability_id`, `effect_ids`, `wire_target_id`, `resolved_target_id`, `target_player_id` and `resolution`; `event=beneficial_cast_applied` (DEBUG) carries the target's Health and Focus before and after. The design record is [decision 34](../architecture/abilities-and-effects-decisions-23-33.md#34-a-beneficial-cast-lands-on-the-caster-or-an-ally-never-on-a-hostile-ability-mechanics-ab-01).
+
+### Presses with no mechanic (AB-12)
+
+Most seeded abilities have nothing the server can resolve yet (ability-mechanics audit B-02). Before AB-12 a press of one charged the cooldown, sent the timer, maybe played an animation, and did nothing else. Now a player's press of an ability with no mechanic is refused at launch, right after the dead, warming-up, known-ability and cooldown checks, so a dead, friendly or out-of-range target never swallows the answer (`use_ability/no_mechanics.rs`):
+
+- `onErrorCode` with `SystemID 0` (`ERRORCODE_SYSTEM_Ability`), `InstanceID` = the ability id and `ErrorCodeID 167` (`EntityDoesNotHaveAbility`, the code the pet-order gate already sends for an unimplemented pet ability; the client enum has no "no effect" value);
+- then `onPlayerCommunication("SYSTEM", 0, CHAN_FEEDBACK, "That ability has no effect yet.")`, the line the player reads, since no client Lua renders `onErrorCode`;
+- no cooldown, no `onTimerUpdate`, no animation, and the ability is not stashed for auto-cycle.
+
+An ability **has a mechanic** (`ability_has_mechanics`) when any of these holds:
+
+| Mechanic | Source |
+|----------|--------|
+| An effect deals damage (`HealthDamage` or `FocusDamage` above 0) or runs a registered script (a blank or unknown `script_name` does not count) | `cimmeria_entity::abilities::ability_effects_have_mechanics`. Heal and stat NVPs count through the script that reads them |
+| It summons a pet, or acts on the owner's pet | `resources.pet_summons`; an owner-pet script (pets PT-08) |
+| It places a deployable | `resources.deployables` |
+| It is an ammo toggle | `resources.ammo_modifiers.toggle_ability_id`. The press behaves as before (D-AM07) |
+| It is a weapon shot (`required_ammo` above 0) | It spends a round and carries the loaded ammo's modifier and on-hit effect |
+| It is Cover Stance (1451) | Granted by the cover hold (NA22) |
+| It is Reload (596) | The reload pipeline runs it; its effect 658 names the unregistered `Reload` |
+
+An event set alone does not count: an animation is not a mechanic. The predicate reads the seed, so an ability lights up as soon as a generator packet gives one of its effects a number or a script (AB-03 damage, AB-04 stats). On `main` after AB-03, 247 of 1,886 seeded abilities have a mechanic; the live-DB test `seeded_has_mechanics_count_live_db` pins the number. Out-of-scope families (stealth, self-revive, Asgard energy, turrets; D-AB11) get the same refusal, because they have no mechanic either.
+
+Never refused: NPC and pet casts, an ability the server has no definition for (silent, as before), and an ability the active weapon grants through `items_event_sets` (the basic attack). Each refusal logs one DEBUG `abilities` row, `event=no_mechanics_refused`, `reason=no_mechanics`, with `ability_id`, `ability_name`, `effect_count`, `animates`, `account_id` and `player_id`.
 
 ## Condition Feedback Codes
 

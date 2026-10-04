@@ -544,8 +544,9 @@ What the starter abilities do when pressed: heals, regeneration, damage numbers,
 | AB-U3 | Health Heal with yourself, a mob, or nothing targeted | Your own Health rises. The mob's never does. | D-AB02 proposed default (fall back to the caster). The owner may change it to a refusal with a feedback line |
 | AB-U4 | Recuperation on the other player | Their Health rises a little every second for 25 s. | |
 | AB-U5 | Out of combat, Heal Focus with a mob targeted | You stay out of combat: no combat stance, and the mob is not pulled. | Before AB-01 this put you in combat with the mob (B-14) |
+| AB-U6 | Train an ability with no effect yet (a stance, a stealth ability or a mine) and press it twice | Each press shows "That ability has no effect yet." in chat. No cooldown sweep starts on the button. Pistol Shot, the heals, pet summons and Cover Stance still work | AB-12 (D-AB10). The list of abilities with no effect shrinks as later packets land |
 
-**SigNoz:** `scope_name = 'abilities' AND player_id = <id>`, `event = beneficial_cast` with `stage` (`launch`, `fire`), `wire_target_id`, `resolved_target_id` and `resolution` (`self_ability`, `ally`, `fallback_to_caster`); the heal itself is `heal_health` or `heal_focus` with `ability_id` 597, 1646 or 1218.
+**SigNoz:** `scope_name = 'abilities' AND player_id = <id>`, `event = beneficial_cast` with `stage` (`launch`, `fire`), `wire_target_id`, `resolved_target_id` and `resolution` (`self_ability`, `ally`, `fallback_to_caster`); the heal itself is `heal_health` or `heal_focus` with `ability_id` 597, 1646 or 1218; a refused press is `event = no_mechanics_refused` with `reason = no_mechanics` and `ability_id`.
 
 **Things only a human can check:** whether the client sends a Heal Focus press at all (AB-U1); there is no floating heal number yet (AB-11), so watch the bars.
 

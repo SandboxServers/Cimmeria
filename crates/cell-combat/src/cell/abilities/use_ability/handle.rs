@@ -42,7 +42,8 @@ use super::weapon_redirect::resolve_weapon_redirect;
 /// resolution and wire packets have fired by then; with a positive warmup
 /// they fire later from the warmup tick, or never if it is interrupted.
 /// Returns `false` when any pre-consume guard rejected the call (entity
-/// missing/dead, already warming up, no ability, on cooldown, reload in
+/// missing/dead, already warming up, no ability, a player's ability with no
+/// mechanic yet (AB-12, `no_mechanics`), on cooldown, reload in
 /// flight, no ammo, out-of-range, a target in another space (#906), or no
 /// fire-time line of sight for an explicit target). Ground-target AoE
 /// callers gate secondary-target damage on this return value.
@@ -144,6 +145,9 @@ pub async fn handle_use_ability(
     // A player pressed a server-known ability they do not know: answered
     // with `onErrorCode` below, once the entity borrow ends.
     let mut not_known = false;
+    // A known ability with no mechanic yet (AB-12): answered below, before
+    // any target or range check could refuse the press silently.
+    let mut no_mechanics = false;
     // Beneficial ammo (AM-11d): a support shot may land on an ally or the
     // shooter and never on a hostile target. `None` for every other cast,
     // whose targeting is exactly the #444 rule below.
@@ -229,6 +233,15 @@ pub async fn handle_use_ability(
             tracing::debug!(entity_id, ability_id, "useAbility: ability on cooldown");
             return false;
         }
+        if super::no_mechanics::lacks_mechanics(
+            entity_id,
+            ability_id,
+            ability_def.as_ref(),
+            space_mgr,
+        ) {
+            no_mechanics = true;
+            break 'validate;
+        }
 
         // Range + target validation
         if target_id > 0 {
@@ -312,6 +325,14 @@ pub async fn handle_use_ability(
         return false;
     }
 
+    // A known ability with no mechanic yet: feedback, no cooldown (AB-12).
+    if no_mechanics {
+        if let Some(def) = ability_def.as_ref() {
+            super::no_mechanics::refuse_without_mechanics(entity_id, def, tx, space_mgr).await;
+        }
+        return false;
+    }
+
     if let Some(failure) = out_of_range {
         super::cast_range::refuse_out_of_range(
             entity_id,
@@ -360,86 +381,17 @@ pub async fn handle_use_ability(
         return false;
     }
 
-    // Attack-while-holstered queue: when the player presses fire while
-    // the weapon is holstered, defer the ability dispatch until the
-    // draw animation has had time to play. Mirrors the
-    // reload-while-holstered Phase A — draw the weapon, fire
-    // `Item_Equip`, stash the ability + target, and let
-    // `pending_attack_tick` re-invoke `handle_use_ability` after
-    // `UNHOLSTER_DRAW_DURATION`.
-    //
-    // Only weapon attacks (`required_ammo > 0`) gate on this queue.
-    // Non-weapon abilities (heals, buffs, self-casts) bypass entirely
-    // — they don't need the weapon drawn to function, and they
-    // shouldn't be locked out while a queued weapon shot is mid-draw.
-    //
-    // Subsequent weapon-attack presses during the draw window are
-    // rejected so the first press locks in the queue. Ammo is NOT
-    // checked here — the deferred re-invocation runs the normal ammo
-    // check at fire time.
-    let is_weapon_attack = ability_def.as_ref().is_some_and(|d| d.required_ammo > 0);
-    let queued_attack_already_pending = space_mgr
-        .get_entity(entity_id)
-        .is_some_and(|e| e.pending_attack_at.is_some());
-    if queued_attack_already_pending && is_weapon_attack {
-        tracing::debug!(
-            entity_id,
-            ability_id,
-            "useAbility: weapon attack already queued (mid-draw), ignoring input"
-        );
-        return false;
-    }
-
-    // Block weapon attacks while a bandolier slot swap is in progress.
-    // The player's hands are physically holstering the old weapon and
-    // drawing the new one; firing through that window would defeat the
-    // animation penalty that makes weapon swaps a real loadout choice.
-    // Non-weapon abilities (heals, buffs) are still permitted — the
-    // queue is about the FIRE pose, not a global ability lockout.
-    let slot_swap_in_progress = space_mgr.get_entity(entity_id).is_some_and(|e| {
-        e.pending_slot_swap_at
-            .is_some_and(|t| std::time::Instant::now() < t)
-    });
-    if slot_swap_in_progress && is_weapon_attack {
-        tracing::debug!(
-            entity_id,
-            ability_id,
-            "useAbility: bandolier slot swap in progress, weapon attack blocked"
-        );
-        return false;
-    }
-
-    let needs_unholster_queue = is_weapon_attack
-        && !queued_attack_already_pending
-        && space_mgr
-            .get_entity(entity_id)
-            .is_some_and(|e| e.is_player && e.weapon_holstered && e.threatened_mobs.is_empty());
-    if needs_unholster_queue {
-        if let Some(e) = space_mgr.get_entity_mut(entity_id) {
-            e.set_weapon_holstered(false);
-            e.combat_exit_at = Some(std::time::Instant::now());
-            e.holster_animation_complete_at = None;
-            e.pending_attack_at = Some(
-                std::time::Instant::now()
-                    + super::super::super::cell_methods::player::world::UNHOLSTER_DRAW_DURATION,
-            );
-            e.pending_attack_ability_id = Some(ability_id);
-            e.pending_attack_target_id = Some(target_id);
-        }
-        tracing::info!(
-            entity_id,
-            ability_id,
-            target_id,
-            "useAbility: holstered → queueing attack, drawing weapon first"
-        );
-        super::super::messaging::request_appearance_refresh(entity_id, tx, space_mgr).await;
-        super::super::super::cell_methods::player::world::fire_item_sequence(
-            entity_id,
-            super::super::super::spawner::EVENT_ITEM_EQUIP,
-            tx,
-            space_mgr,
-        )
-        .await;
+    // Weapon attacks: the holstered-draw queue and the slot-swap lockout.
+    if super::weapon_gate::hold_weapon_attack(
+        entity_id,
+        ability_id,
+        target_id,
+        ability_def.as_ref(),
+        tx,
+        space_mgr,
+    )
+    .await
+    {
         return false;
     }
 

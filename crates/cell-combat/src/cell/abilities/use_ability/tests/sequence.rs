@@ -61,6 +61,7 @@ pub(super) fn scene() -> SpaceManager {
     let mut def = make_ability(ABILITY, 0, 40);
     def.event_set_id = Some(EVENT_SET);
     mgr.ability_defs.insert(ABILITY, def);
+    seed_fixture_effect(&mut mgr);
     mgr.sequence_map
         .insert((EVENT_SET, EVENT_ABILITY_END), END_SEQ);
     let _ = mgr.compute_aoi_changes();

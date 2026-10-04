@@ -45,6 +45,7 @@ pub(super) fn make_auto_cycle_mgr() -> SpaceManager {
     }
     mgr.connect_entity(1);
     let _ = mgr.compute_aoi_changes();
+    crate::test_support::seed_mechanic_effect(&mut mgr);
     mgr.ability_defs.insert(
         7,
         AbilityDef {
@@ -57,7 +58,7 @@ pub(super) fn make_auto_cycle_mgr() -> SpaceManager {
             min_range: 0.0,
             max_range: 30.0,
             target_type_id: 0,
-            effect_ids: vec![],
+            effect_ids: vec![crate::test_support::MECHANIC_FIXTURE_EFFECT],
             moniker_ids: vec![],
             required_ammo: 0,
             event_set_id: None,

@@ -100,7 +100,10 @@ pub fn arm_loop_at(mgr: &mut SpaceManager, player_id: u32, target_id: u32) {
     );
 }
 
+/// The loop's ability, with the shared no-op mechanic effect so a player's
+/// cast of it passes the AB-12 launch gate.
 pub fn install_ability_def(mgr: &mut SpaceManager) {
+    cimmeria_cell_world::test_fixtures::seed_mechanic_effect(mgr);
     mgr.ability_defs.insert(
         ABILITY,
         AbilityDef {
@@ -113,7 +116,7 @@ pub fn install_ability_def(mgr: &mut SpaceManager) {
             min_range: 0.0,
             max_range: 30.0,
             target_type_id: 0,
-            effect_ids: vec![],
+            effect_ids: vec![cimmeria_cell_world::test_fixtures::MECHANIC_FIXTURE_EFFECT],
             moniker_ids: vec![],
             required_ammo: 0,
             event_set_id: None,
