@@ -13,5 +13,6 @@ mod switch_return;
 // re-exports and `dispatch.rs` reaches for identical after the split.
 pub use active_slot::flush_dirty_bandolier_ammo;
 pub use active_slot::handle_request_active_slot_change;
+pub use active_slot::weapon_ability_set;
 pub use ammo_change::handle_request_ammo_change;
 pub use switch_return::{begin_switch_return, handle_switch_returned, SwitchReturn};

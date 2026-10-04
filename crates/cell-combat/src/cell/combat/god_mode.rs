@@ -103,11 +103,15 @@ impl GodModeGuard {
             tracing::debug!(
                 target: "abilities",
                 event = "god_mode_absorbed",
-                account_id = target_identity.account_id,
-                player_id = target_identity.player_id,
-                entity_id = self.target_id,
-                source_id = source.source_id,
-                source_player_id = source_identity.player_id,
+                // Rule 5: the canonical pair names the actor (the damage
+                // source, empty for an NPC); the protected GM is the
+                // target, as in every other damage row.
+                account_id = source_identity.account_id,
+                player_id = source_identity.player_id,
+                entity_id = source.source_id,
+                target_account_id = target_identity.account_id,
+                target_player_id = target_identity.player_id,
+                target_id = self.target_id,
                 ability_id = source.ability_id,
                 effect_id = source.effect_id,
                 seam = source.seam,
@@ -157,7 +161,15 @@ mod tests {
         )
         .unwrap();
         mgr.create_entity(1, "Castle", [0.0; 3], [0.0; 3]).unwrap();
+        // The attacker (2) is a player too, so actor and target identities
+        // are both present and distinguishable.
+        mgr.create_entity(2, "Castle", [0.0; 3], [0.0; 3]).unwrap();
+        let attacker = mgr.get_entity_mut(2).unwrap();
+        attacker.account_id = Some(702);
+        attacker.player_id = Some(72);
         let e = mgr.get_entity_mut(1).unwrap();
+        e.account_id = Some(701);
+        e.player_id = Some(71);
         e.god_mode = god_mode;
         e.stats.get_mut(HEALTH).unwrap().update(0, 100, 100);
         e.stats.get_mut(FOCUS).unwrap().update(0, 50, 50);
@@ -211,6 +223,18 @@ mod tests {
         let row = absorbed_row(&capture).expect("one god_mode_absorbed row");
         assert!(row.has_field("health_absorbed", "30"));
         assert!(row.has_field("seam", "ability_hit"));
+        // Rule 5 (instrumentation-discipline.md, "an actor acts on someone
+        // else"): the canonical pair is the attacker's, the GM is target_*.
+        for (k, v) in [
+            ("account_id", "702"),
+            ("player_id", "72"),
+            ("entity_id", "2"),
+            ("target_account_id", "701"),
+            ("target_player_id", "71"),
+            ("target_id", "1"),
+        ] {
+            assert!(row.has_field(k, v), "{k}={v}: {row:#?}");
+        }
     }
 
     #[test]

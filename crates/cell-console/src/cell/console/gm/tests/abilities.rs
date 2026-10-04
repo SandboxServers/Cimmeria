@@ -325,3 +325,59 @@ async fn gm_set_mob_ability_set_refusals_leave_the_mob_alone() {
         one_row(&capture, "refused", Some(reason));
     }
 }
+
+/// Park a warming cast of `ability_id` on the mob.
+fn warming(mgr: &mut SpaceManager, ability_id: i32) {
+    use cimmeria_entity::cell_entity::PendingCast;
+    let (anchor, space_id) = {
+        let m = mgr.get_entity(MOB).unwrap();
+        (m.position, m.space_id)
+    };
+    mgr.get_entity_mut(MOB).unwrap().pending_cast = Some(PendingCast {
+        ability_id,
+        target_id: GM as i32,
+        wire_target_id: GM as i32,
+        ground: None,
+        effect_seq: 1,
+        fire_at: std::time::Instant::now() + std::time::Duration::from_secs(5),
+        warmup_secs: 5.0,
+        anchor,
+        space_id,
+        weapon_instance: None,
+    });
+    mgr.pending_casts.insert(MOB);
+}
+
+/// **Guard: a swap cancels a warmup of an ability it removed.** The mob is
+/// warming 592; set 350 does not hold it, so the cast is interrupted
+/// instead of firing an ability the mob no longer knows when the warmup
+/// ends. On revert the pending cast survives.
+#[tokio::test]
+async fn gm_set_mob_ability_set_interrupts_a_warmup_of_a_removed_ability() {
+    let mut mgr = fixture();
+    with_mob(&mut mgr);
+    warming(&mut mgr, 592);
+    call(&mut mgr, GM_SET_MOB_ABILITY_SET, &350i32.to_le_bytes()).await;
+    assert!(
+        mgr.get_entity(MOB).unwrap().pending_cast.is_none(),
+        "the warming 592 is interrupted"
+    );
+}
+
+/// A warmup of an ability the new set keeps is left to fire.
+#[tokio::test]
+async fn gm_set_mob_ability_set_keeps_a_warmup_of_a_kept_ability() {
+    let mut mgr = fixture();
+    with_mob(&mut mgr);
+    mgr.get_entity_mut(MOB).unwrap().abilities.add_ability(221);
+    warming(&mut mgr, 221);
+    call(&mut mgr, GM_SET_MOB_ABILITY_SET, &350i32.to_le_bytes()).await;
+    assert_eq!(
+        mgr.get_entity(MOB)
+            .unwrap()
+            .pending_cast
+            .as_ref()
+            .map(|c| c.ability_id),
+        Some(221)
+    );
+}

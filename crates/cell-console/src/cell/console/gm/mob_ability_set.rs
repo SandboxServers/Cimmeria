@@ -8,6 +8,8 @@
 //! `resources.ability_set_abilities` (`SpaceManager::ability_sets`, loaded
 //! at startup). The mob's known abilities become exactly the set's, and the
 //! NPC AI picks from them on its next decision (`npc_ai::ability_select`).
+//! A warming cast of an ability the swap removed is interrupted, as a
+//! respec interrupts one (`interrupt_unlearned_cast`).
 //! Nothing is persisted: the mob's next spawn uses its template's set
 //! again.
 //!
@@ -61,7 +63,14 @@ pub(super) async fn handle_set_mob_ability_set(
         None => format!("aAbilitySetId={set_id}"),
     };
     match apply(entity_id, target, set_id, space_mgr) {
-        Ok((mob, abilities)) => {
+        Ok(Swap {
+            mob,
+            abilities,
+            removed,
+        }) => {
+            // A warmup of an ability the swap took away would otherwise
+            // fire it when the warmup ends (AT-10's respec rule).
+            crate::cell::abilities::interrupt_unlearned_cast(mob, &removed, tx, space_mgr).await;
             log_gm_command(
                 space_mgr,
                 entity_id,
@@ -93,13 +102,13 @@ pub(super) async fn handle_set_mob_ability_set(
 }
 
 /// Check the selection and the set, then replace the mob's known
-/// abilities. Returns the mob and its new ability ids.
+/// abilities.
 fn apply(
     caller_id: u32,
     target: Option<u32>,
     set_id: i32,
     space_mgr: &mut SpaceManager,
-) -> Result<(u32, Vec<i32>), (&'static str, String)> {
+) -> Result<Swap, (&'static str, String)> {
     let Some(mob) = target else {
         return Err(("no_target", format!("{CMD}: select a mob first")));
     };
@@ -126,11 +135,31 @@ fn apply(
     let Some(entity) = space_mgr.get_entity_mut(mob) else {
         return Err(("target_gone", format!("{CMD}: entity {mob} is gone")));
     };
-    for id in entity.abilities.known_ability_ids() {
+    let removed: Vec<i32> = entity
+        .abilities
+        .known_ability_ids()
+        .into_iter()
+        .filter(|id| !abilities.contains(id))
+        .collect();
+    for &id in &removed {
         entity.abilities.remove_ability(id);
     }
     for &id in &abilities {
         entity.abilities.add_ability(id);
     }
-    Ok((mob, abilities))
+    Ok(Swap {
+        mob,
+        abilities,
+        removed,
+    })
+}
+
+/// A set swap [`apply`] made.
+#[derive(Debug)]
+struct Swap {
+    mob: u32,
+    /// The mob's known abilities now.
+    abilities: Vec<i32>,
+    /// What it knew before and no longer does.
+    removed: Vec<i32>,
 }

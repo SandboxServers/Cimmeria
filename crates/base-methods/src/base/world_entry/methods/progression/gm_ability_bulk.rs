@@ -54,8 +54,12 @@ pub(super) enum BulkRefusal {
 
 /// The archetype's character-creation starters, ascending. `archetype` is
 /// the `sgw_player.archetype` ordinal, the `EArchetype` enum position, as
-/// `player_load` reads the ability tree.
-pub(super) async fn starter_abilities(pool: &PgPool, archetype: i32) -> sqlx::Result<Vec<i32>> {
+/// `player_load` reads the ability tree. Takes any executor so the reset
+/// reads it on its own transaction's connection.
+pub(super) async fn starter_abilities<'e, E>(executor: E, archetype: i32) -> sqlx::Result<Vec<i32>>
+where
+    E: sqlx::PgExecutor<'e>,
+{
     sqlx::query_scalar(
         "SELECT DISTINCT ca.ability_id \
            FROM resources.char_creation_abilities ca \
@@ -64,7 +68,7 @@ pub(super) async fn starter_abilities(pool: &PgPool, archetype: i32) -> sqlx::Re
           ORDER BY 1",
     )
     .bind(archetype)
-    .fetch_all(pool)
+    .fetch_all(executor)
     .await
 }
 
@@ -103,7 +107,10 @@ pub(super) async fn persist_bulk(
             .await?
         }
         GmAbilityChange::Reset => {
-            let starters = starter_abilities(pool, archetype).await?;
+            // On the transaction's connection: a second pool connection
+            // while this one holds the row lock can starve the pool when
+            // several resets run at once.
+            let starters = starter_abilities(&mut *txn, archetype).await?;
             if starters.is_empty() {
                 return Ok(Err(BulkRefusal::NoStarters));
             }

@@ -139,6 +139,68 @@ async fn gm_give_all_mirror_adds_every_id_in_one_burst() {
     assert_eq!(progress.tree_points_spent, 2);
 }
 
+/// **Guard: a reset keeps the equipped weapon's abilities.** The row holds
+/// the pistol shot (the player knew it before equipping, so the weapon
+/// never tagged it), the reset removes it from the row, and the active
+/// slot's grant puts it back, tagged so the next unequip revokes it. On
+/// revert the player is left unable to fire the equipped pistol.
+#[tokio::test]
+async fn gm_reset_mirror_regrants_the_equipped_weapons_abilities() {
+    use cimmeria_entity::cell_entity::BandolierItem;
+    // Sentinel item and ability ids: the binding is the fixture's own.
+    const ITEM: i32 = 0x7032_0A01;
+    const SHOT: i32 = 0x7032_0A02;
+    let mut mgr = fixture();
+    mgr.item_event_set_abilities
+        .insert((ITEM, crate::cell::spawner::EVENT_ITEM_RANGED), SHOT);
+    let p = mgr.get_entity_mut(GM).unwrap();
+    p.abilities.add_ability(SHOT);
+    p.bandolier_items.insert(
+        0,
+        BandolierItem {
+            instance_id: 0,
+            item_id: ITEM,
+            clip_size: 12,
+            default_ammo_type: 1,
+            current_ammo: 12,
+            cur_ammo_type: 1,
+        },
+    );
+    p.active_bandolier_slot = 0;
+
+    let frames = deliver(
+        &mut mgr,
+        GmAbilitiesChanged {
+            entity_id: GM,
+            player_id: PLAYER_ID,
+            change: GmAbilityChange::Reset,
+            added: vec![],
+            removed: vec![TRAINED[0], TRAINED[1], QUEST, SHOT],
+            training_points: 3,
+        },
+    )
+    .await;
+
+    let p = mgr.get_entity(GM).unwrap();
+    assert!(p.abilities.has_ability(SHOT), "the pistol shot is back");
+    assert_eq!(p.abilities.weapon_granted_ability_ids(), vec![SHOT]);
+    assert!(
+        !p.abilities.has_ability(QUEST),
+        "the rest of the reset stands"
+    );
+    let update = frames
+        .iter()
+        .find(|(m, _)| *m == method_idx::ON_KNOWN_ABILITIES_UPDATE)
+        .expect("one known-abilities update");
+    assert!(
+        update
+            .1
+            .windows(4)
+            .any(|w| w == SHOT.to_le_bytes().as_slice()),
+        "the client's known list carries the shot"
+    );
+}
+
 /// The entity id now plays another character: nothing changes, nothing is
 /// sent.
 #[tokio::test]

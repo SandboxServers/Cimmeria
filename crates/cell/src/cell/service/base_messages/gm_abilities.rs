@@ -71,6 +71,7 @@ pub(super) async fn handle_gm_abilities_changed(
         progress.tree_points_spent = 0;
         progress.training_points = training_points;
     }
+    let regranted = reconcile_weapon_grants(entity_id, space_mgr);
     apply_passives_and_sync(entity_id, &removed, PassiveChange::Unlearned, tx, space_mgr).await;
     apply_passives_and_sync(entity_id, &added, PassiveChange::Learned, tx, space_mgr).await;
     let interrupted =
@@ -87,6 +88,7 @@ pub(super) async fn handle_gm_abilities_changed(
         cmd,
         added = added.len(),
         removed = removed.len(),
+        weapon_regranted = ?regranted,
         training_points,
         interrupted_warmup = interrupted,
         "GmAbilitiesChanged: cell mirrored + one hotbar burst"
@@ -110,4 +112,28 @@ pub(super) async fn handle_gm_abilities_changed(
         ),
     };
     send_gm_feedback(entity_id, &text, tx).await;
+}
+
+/// Re-run the active weapon's grant against the post-change known set.
+///
+/// The row can hold an ability the equipped weapon also grants (579, the
+/// pistol shot, trained or persisted before the pistol went in the slot).
+/// The weapon then never tagged it, so a reset that removes it from the row
+/// would leave the player unable to fire the weapon until the next slot
+/// change. Swapping in the slot's own set adds back, and tags, every weapon
+/// ability the change took away. Returns those ids.
+fn reconcile_weapon_grants(entity_id: u32, space_mgr: &mut SpaceManager) -> Vec<i32> {
+    let Some(slot) = space_mgr
+        .get_entity(entity_id)
+        .map(|e| e.active_bandolier_slot)
+    else {
+        return Vec::new();
+    };
+    let set = cimmeria_cell_combat::cell::cell_methods::inventory::bandolier::weapon_ability_set(
+        space_mgr, entity_id, slot,
+    );
+    match space_mgr.get_entity_mut(entity_id) {
+        Some(e) => e.abilities.swap_weapon_granted_abilities(set).1,
+        None => Vec::new(),
+    }
 }
