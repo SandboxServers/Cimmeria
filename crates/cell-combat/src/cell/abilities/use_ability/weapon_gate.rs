@@ -8,6 +8,7 @@ use cimmeria_entity::abilities::AbilityDef;
 
 use super::super::super::messages::CellToBaseMsg;
 use super::super::super::space_manager::SpaceManager;
+use super::super::metrics::{self, CastOutcome, RefusalReason};
 
 /// `true` when a weapon-attack gate holds the cast back: the caller returns
 /// `false` with no cooldown charged. Non-weapon abilities (heals, buffs,
@@ -47,12 +48,14 @@ pub(super) async fn hold_weapon_attack(
         .is_some_and(|e| e.pending_attack_at.is_some());
     if queued_attack_already_pending {
         tracing::debug!(
+            target: "abilities",
             account_id = who.account_id,
             player_id = who.player_id,
             entity_id,
             ability_id,
             "useAbility: weapon attack already queued (mid-draw), ignoring input"
         );
+        metrics::refused_in(space_mgr, entity_id, RefusalReason::WeaponAttackQueued);
         return true;
     }
 
@@ -68,12 +71,14 @@ pub(super) async fn hold_weapon_attack(
     });
     if slot_swap_in_progress {
         tracing::debug!(
+            target: "abilities",
             account_id = who.account_id,
             player_id = who.player_id,
             entity_id,
             ability_id,
             "useAbility: bandolier slot swap in progress, weapon attack blocked"
         );
+        metrics::refused_in(space_mgr, entity_id, RefusalReason::SlotSwapInProgress);
         return true;
     }
 
@@ -95,6 +100,7 @@ pub(super) async fn hold_weapon_attack(
         e.pending_attack_target_id = Some(target_id);
     }
     tracing::info!(
+        target: "abilities",
         account_id = who.account_id,
         player_id = who.player_id,
         entity_id,
@@ -102,6 +108,7 @@ pub(super) async fn hold_weapon_attack(
         target_id,
         "useAbility: holstered → queueing attack, drawing weapon first"
     );
+    metrics::cast_in(space_mgr, entity_id, CastOutcome::Held);
     super::super::messaging::request_appearance_refresh(entity_id, tx, space_mgr).await;
     super::super::super::cell_methods::player::world::fire_item_sequence(
         entity_id,

@@ -93,6 +93,7 @@ pub async fn send_timer_update_ctx(
     let is_player = space_mgr.get_entity(entity_id).is_some_and(|e| e.is_player);
     if !is_player {
         tracing::debug!(
+            target: "abilities.wire",
             entity_id,
             reason = "not_player",
             "onTimerUpdate not sent: the client binds it on SGWPlayer only, so an NPC timer would be dropped"
@@ -111,6 +112,11 @@ pub async fn send_timer_update_ctx(
         .is_err()
     {
         let who = space_mgr.player_identity(entity_id);
+        crate::cell::abilities::metrics::wire_send_failed_in(
+            space_mgr,
+            entity_id,
+            crate::cell::abilities::metrics::WireMessage::OnTimerUpdate,
+        );
         tracing::warn!(
             target: "abilities.wire",
             event = "wire_send_failed",

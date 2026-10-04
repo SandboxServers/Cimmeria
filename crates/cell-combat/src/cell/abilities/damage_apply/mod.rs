@@ -195,6 +195,7 @@ async fn apply_hit(
         target: space_mgr.player_identity(target_eid),
         cast_id: space_mgr.current_cast_id(),
         god_mode: space_mgr.get_entity(target_eid).is_some_and(|e| e.god_mode),
+        world: super::metrics::world_of(space_mgr, target_eid),
     };
     let qr_result = qr_gate::roll_hit(ability_def.as_ref(), space_mgr, qr, seed, cover, ids);
 

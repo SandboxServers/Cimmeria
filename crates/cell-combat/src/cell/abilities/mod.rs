@@ -26,6 +26,7 @@
 //! - `timer_update` — `onTimerUpdate` goes to the owning player's client only.
 //! - `wire_ledger` — the `abilities.wire` row for every client-bound ability
 //!   send (AB-T4).
+//! - `metrics` — the AB-T6 counters and histograms and their label enums.
 //! - `loot_drop` — on-death loot generation + interaction-flag updates.
 //! - `resolve` — per-weapon ability resolution (items_event_sets lookup).
 //! - `rng` — deterministic pseudo-random for combat rolls.
@@ -44,6 +45,7 @@ mod effect_routing;
 mod enumerations_xml;
 mod loot_drop;
 mod messaging;
+pub(crate) mod metrics;
 mod movement_type;
 #[cfg(test)]
 mod movement_type_log_tests;

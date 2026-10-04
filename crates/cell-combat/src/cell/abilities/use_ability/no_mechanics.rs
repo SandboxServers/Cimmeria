@@ -207,6 +207,10 @@ pub(super) async fn send_ability_refusal(
             .await
             .is_err()
         {
+            crate::cell::abilities::metrics::wire_send_failed(
+                crate::cell::abilities::metrics::WireMessage::from_method(method_index),
+                crate::cell::abilities::metrics::UNKNOWN_WORLD,
+            );
             tracing::warn!(
                 target: "abilities",
                 event = "no_mechanics_feedback_send_failed",

@@ -10,7 +10,9 @@
 //!
 //! All three share the same cleanup discipline: dispatch the script's
 //! `on_remove` hook, flush stat dirty bits, and fire the timer-clear
-//! wire packet so the client removes the buff icon.
+//! wire packet so the client removes the buff icon. The cancel runs outside
+//! any cast scope, so both sends name the cancelled instance's `cast_id`
+//! themselves: its `abilities.wire` rows join the cast that registered it.
 
 use tokio::sync::mpsc;
 
@@ -47,14 +49,14 @@ pub async fn cancel_channels_from_attacker(
     tx: &mpsc::Sender<CellToBaseMsg>,
     space_mgr: &mut SpaceManager,
 ) -> usize {
-    // Snapshot (target_id, effect_id, ability_id, invoker_id) for every
-    // channel to cancel — we can't hold a mutable borrow across awaits.
+    // Snapshot (target_id, effect_id, ability_id, invoker_id, cast_id) for
+    // every channel to cancel — we can't hold a mutable borrow across awaits.
     // `ability_id` is part of the key (not just effect_id + invoker_id)
     // because a single invoker could have two channel instances sharing
     // the same effect_id under different abilities (rare but possible if
     // two abilities reference the same effect template). Without the
     // ability_id pin, cancelling one would over-delete the other.
-    let to_cancel: Vec<(u32, i32, i32, u32)> = {
+    let to_cancel: Vec<(u32, i32, i32, u32, Option<i32>)> = {
         let target_eids = space_mgr.all_entity_ids();
         let mut out = Vec::new();
         for target_eid in target_eids {
@@ -78,7 +80,13 @@ pub async fn cancel_channels_from_attacker(
                 if keep_ability_id == Some(inst.ability_id) {
                     continue;
                 }
-                out.push((target_eid, inst.effect_id, inst.ability_id, inst.invoker_id));
+                out.push((
+                    target_eid,
+                    inst.effect_id,
+                    inst.ability_id,
+                    inst.invoker_id,
+                    inst.cast_id,
+                ));
             }
         }
         out
@@ -97,7 +105,7 @@ pub async fn cancel_channels_from_attacker(
         "Cancelling channels from attacker"
     );
 
-    for (target_eid, effect_id, ability_id, invoker_id) in to_cancel {
+    for (target_eid, effect_id, ability_id, invoker_id, cast_id) in to_cancel {
         // Remove the instance from the target — three-key match
         // (effect_id + ability_id + invoker_id) so we don't over-delete.
         if let Some(target) = space_mgr.get_entity_mut(target_eid) {
@@ -128,7 +136,7 @@ pub async fn cancel_channels_from_attacker(
                         crate::mercury::method_idx::ON_STAT_UPDATE,
                         dirty,
                         WireRoute::EntityDefault,
-                        WireCtx::new("channel_cancel"),
+                        WireCtx::new("channel_cancel").cast(cast_id),
                         tx,
                         space_mgr,
                     )
@@ -145,7 +153,9 @@ pub async fn cancel_channels_from_attacker(
             0.0,
             0.0,
         );
-        let ctx = WireCtx::new("channel_cancel").reason("effect_cleared");
+        let ctx = WireCtx::new("channel_cancel")
+            .cast(cast_id)
+            .reason("effect_cleared");
         send_timer_update_ctx(target_eid, zero_timer, ctx, tx, space_mgr).await;
     }
 
@@ -258,7 +268,7 @@ pub async fn cancel_channels_for_invoker_ability(
     tx: &mpsc::Sender<CellToBaseMsg>,
     space_mgr: &mut SpaceManager,
 ) -> usize {
-    let to_cancel: Vec<(u32, i32, u32)> = {
+    let to_cancel: Vec<(u32, i32, u32, Option<i32>)> = {
         let target_eids = space_mgr.all_entity_ids();
         let mut out = Vec::new();
         for target_eid in target_eids {
@@ -276,7 +286,7 @@ pub async fn cancel_channels_for_invoker_ability(
                 if effect_def.pulse_count != 0 {
                     continue;
                 }
-                out.push((target_eid, inst.effect_id, inst.invoker_id));
+                out.push((target_eid, inst.effect_id, inst.invoker_id, inst.cast_id));
             }
         }
         out
@@ -287,7 +297,7 @@ pub async fn cancel_channels_for_invoker_ability(
     }
 
     let cancelled_count = to_cancel.len();
-    for (target_eid, effect_id, inv_id) in to_cancel {
+    for (target_eid, effect_id, inv_id, cast_id) in to_cancel {
         if let Some(target) = space_mgr.get_entity_mut(target_eid) {
             target.active_effects.retain(|inst| {
                 !(inst.effect_id == effect_id
@@ -314,7 +324,7 @@ pub async fn cancel_channels_for_invoker_ability(
                         crate::mercury::method_idx::ON_STAT_UPDATE,
                         dirty,
                         WireRoute::EntityDefault,
-                        WireCtx::new("channel_cancel"),
+                        WireCtx::new("channel_cancel").cast(cast_id),
                         tx,
                         space_mgr,
                     )
@@ -330,7 +340,9 @@ pub async fn cancel_channels_for_invoker_ability(
             0.0,
             0.0,
         );
-        let ctx = WireCtx::new("channel_cancel").reason("effect_cleared");
+        let ctx = WireCtx::new("channel_cancel")
+            .cast(cast_id)
+            .reason("effect_cleared");
         send_timer_update_ctx(target_eid, zero_timer, ctx, tx, space_mgr).await;
     }
     cancelled_count

@@ -1,0 +1,897 @@
+{
+  "title": "Cimmeria — Ability metrics",
+  "description": "Ability-mechanics AB-T6 metrics (AB-T7). Casts by outcome, refusals by reason, effect paths, QR results, ledger removals, failed sends, press-to-fire latency and damage/heal per pool. Every metric also carries world; add it to a panel's group-by to split by map. Reading guide: tools/signoz/abilities/README.md.",
+  "tags": [
+    "cimmeria",
+    "abilities",
+    "ab-t7"
+  ],
+  "version": "v5",
+  "variables": {},
+  "layout": [
+    {
+      "h": 6,
+      "i": "casts-by-outcome",
+      "w": 6,
+      "x": 0,
+      "y": 0
+    },
+    {
+      "h": 6,
+      "i": "refusals-by-reason",
+      "w": 6,
+      "x": 6,
+      "y": 0
+    },
+    {
+      "h": 6,
+      "i": "effects-by-path",
+      "w": 6,
+      "x": 0,
+      "y": 6
+    },
+    {
+      "h": 6,
+      "i": "qr-results",
+      "w": 6,
+      "x": 6,
+      "y": 6
+    },
+    {
+      "h": 6,
+      "i": "ledger-removals",
+      "w": 6,
+      "x": 0,
+      "y": 12
+    },
+    {
+      "h": 6,
+      "i": "wire-send-failed",
+      "w": 6,
+      "x": 6,
+      "y": 12
+    },
+    {
+      "h": 6,
+      "i": "press-to-fire-p50",
+      "w": 6,
+      "x": 0,
+      "y": 18
+    },
+    {
+      "h": 6,
+      "i": "press-to-fire-p95",
+      "w": 6,
+      "x": 6,
+      "y": 18
+    },
+    {
+      "h": 6,
+      "i": "damage-p95",
+      "w": 6,
+      "x": 0,
+      "y": 24
+    },
+    {
+      "h": 6,
+      "i": "heal-p95",
+      "w": 6,
+      "x": 6,
+      "y": 24
+    }
+  ],
+  "widgets": [
+    {
+      "contextLinks": {
+        "linksData": []
+      },
+      "description": "One sample per cast: fired, interrupted, refused, held (holstered-weapon queue).",
+      "fillSpans": false,
+      "id": "casts-by-outcome",
+      "nullZeroValues": "zero",
+      "opacity": "1",
+      "panelTypes": "graph",
+      "query": {
+        "builder": {
+          "queryData": [
+            {
+              "aggregations": [
+                {
+                  "metricName": "abilities_cast_total",
+                  "spaceAggregation": "sum",
+                  "temporality": "cumulative",
+                  "timeAggregation": "increase"
+                }
+              ],
+              "dataSource": "metrics",
+              "disabled": false,
+              "expression": "A",
+              "filter": {
+                "expression": "service.name = 'cimmeria-server'"
+              },
+              "functions": [],
+              "groupBy": [
+                {
+                  "dataType": "string",
+                  "fieldContext": "attribute",
+                  "fieldDataType": "string",
+                  "isColumn": false,
+                  "isJSON": false,
+                  "key": "outcome",
+                  "name": "outcome",
+                  "signal": "metrics",
+                  "type": "tag"
+                },
+                {
+                  "dataType": "string",
+                  "fieldContext": "attribute",
+                  "fieldDataType": "string",
+                  "isColumn": false,
+                  "isJSON": false,
+                  "key": "caster",
+                  "name": "caster",
+                  "signal": "metrics",
+                  "type": "tag"
+                }
+              ],
+              "having": [],
+              "legend": "{{outcome}} / {{caster}}",
+              "orderBy": [],
+              "queryName": "A",
+              "selectColumns": [],
+              "stepInterval": 60
+            }
+          ],
+          "queryFormulas": []
+        },
+        "clickhouse_sql": [
+          {
+            "disabled": false,
+            "legend": "",
+            "name": "A",
+            "query": ""
+          }
+        ],
+        "promql": [
+          {
+            "disabled": false,
+            "legend": "",
+            "name": "A",
+            "query": ""
+          }
+        ],
+        "queryType": "builder"
+      },
+      "selectedLogFields": [],
+      "selectedTracesFields": [],
+      "softMax": 0,
+      "softMin": 0,
+      "thresholds": [],
+      "timePreferance": "GLOBAL_TIME",
+      "title": "Casts by outcome (abilities_cast_total)",
+      "yAxisUnit": "none"
+    },
+    {
+      "contextLinks": {
+        "linksData": []
+      },
+      "description": "Launch refusals; a fire-time re-check failure is an interrupt, not a refusal.",
+      "fillSpans": false,
+      "id": "refusals-by-reason",
+      "nullZeroValues": "zero",
+      "opacity": "1",
+      "panelTypes": "graph",
+      "query": {
+        "builder": {
+          "queryData": [
+            {
+              "aggregations": [
+                {
+                  "metricName": "abilities_refused_total",
+                  "spaceAggregation": "sum",
+                  "temporality": "cumulative",
+                  "timeAggregation": "increase"
+                }
+              ],
+              "dataSource": "metrics",
+              "disabled": false,
+              "expression": "A",
+              "filter": {
+                "expression": "service.name = 'cimmeria-server'"
+              },
+              "functions": [],
+              "groupBy": [
+                {
+                  "dataType": "string",
+                  "fieldContext": "attribute",
+                  "fieldDataType": "string",
+                  "isColumn": false,
+                  "isJSON": false,
+                  "key": "reason",
+                  "name": "reason",
+                  "signal": "metrics",
+                  "type": "tag"
+                },
+                {
+                  "dataType": "string",
+                  "fieldContext": "attribute",
+                  "fieldDataType": "string",
+                  "isColumn": false,
+                  "isJSON": false,
+                  "key": "caster",
+                  "name": "caster",
+                  "signal": "metrics",
+                  "type": "tag"
+                }
+              ],
+              "having": [],
+              "legend": "{{reason}} / {{caster}}",
+              "orderBy": [],
+              "queryName": "A",
+              "selectColumns": [],
+              "stepInterval": 60
+            }
+          ],
+          "queryFormulas": []
+        },
+        "clickhouse_sql": [
+          {
+            "disabled": false,
+            "legend": "",
+            "name": "A",
+            "query": ""
+          }
+        ],
+        "promql": [
+          {
+            "disabled": false,
+            "legend": "",
+            "name": "A",
+            "query": ""
+          }
+        ],
+        "queryType": "builder"
+      },
+      "selectedLogFields": [],
+      "selectedTracesFields": [],
+      "softMax": 0,
+      "softMin": 0,
+      "thresholds": [],
+      "timePreferance": "GLOBAL_TIME",
+      "title": "Refusals by reason (abilities_refused_total)",
+      "yAxisUnit": "none"
+    },
+    {
+      "contextLinks": {
+        "linksData": []
+      },
+      "description": "One per effect_planned row: script, nvp, ledger, pulse, routed_to_user, ally_fanout, skipped.",
+      "fillSpans": false,
+      "id": "effects-by-path",
+      "nullZeroValues": "zero",
+      "opacity": "1",
+      "panelTypes": "graph",
+      "query": {
+        "builder": {
+          "queryData": [
+            {
+              "aggregations": [
+                {
+                  "metricName": "abilities_effect_applied_total",
+                  "spaceAggregation": "sum",
+                  "temporality": "cumulative",
+                  "timeAggregation": "increase"
+                }
+              ],
+              "dataSource": "metrics",
+              "disabled": false,
+              "expression": "A",
+              "filter": {
+                "expression": "service.name = 'cimmeria-server'"
+              },
+              "functions": [],
+              "groupBy": [
+                {
+                  "dataType": "string",
+                  "fieldContext": "attribute",
+                  "fieldDataType": "string",
+                  "isColumn": false,
+                  "isJSON": false,
+                  "key": "path",
+                  "name": "path",
+                  "signal": "metrics",
+                  "type": "tag"
+                }
+              ],
+              "having": [],
+              "legend": "{{path}}",
+              "orderBy": [],
+              "queryName": "A",
+              "selectColumns": [],
+              "stepInterval": 60
+            }
+          ],
+          "queryFormulas": []
+        },
+        "clickhouse_sql": [
+          {
+            "disabled": false,
+            "legend": "",
+            "name": "A",
+            "query": ""
+          }
+        ],
+        "promql": [
+          {
+            "disabled": false,
+            "legend": "",
+            "name": "A",
+            "query": ""
+          }
+        ],
+        "queryType": "builder"
+      },
+      "selectedLogFields": [],
+      "selectedTracesFields": [],
+      "softMax": 0,
+      "softMin": 0,
+      "thresholds": [],
+      "timePreferance": "GLOBAL_TIME",
+      "title": "Effect plans by path (abilities_effect_applied_total)",
+      "yAxisUnit": "none"
+    },
+    {
+      "contextLinks": {
+        "linksData": []
+      },
+      "description": "One per hit's roll; dont_use_qr hits count as hit.",
+      "fillSpans": false,
+      "id": "qr-results",
+      "nullZeroValues": "zero",
+      "opacity": "1",
+      "panelTypes": "graph",
+      "query": {
+        "builder": {
+          "queryData": [
+            {
+              "aggregations": [
+                {
+                  "metricName": "abilities_qr_total",
+                  "spaceAggregation": "sum",
+                  "temporality": "cumulative",
+                  "timeAggregation": "increase"
+                }
+              ],
+              "dataSource": "metrics",
+              "disabled": false,
+              "expression": "A",
+              "filter": {
+                "expression": "service.name = 'cimmeria-server'"
+              },
+              "functions": [],
+              "groupBy": [
+                {
+                  "dataType": "string",
+                  "fieldContext": "attribute",
+                  "fieldDataType": "string",
+                  "isColumn": false,
+                  "isJSON": false,
+                  "key": "result",
+                  "name": "result",
+                  "signal": "metrics",
+                  "type": "tag"
+                }
+              ],
+              "having": [],
+              "legend": "{{result}}",
+              "orderBy": [],
+              "queryName": "A",
+              "selectColumns": [],
+              "stepInterval": 60
+            }
+          ],
+          "queryFormulas": []
+        },
+        "clickhouse_sql": [
+          {
+            "disabled": false,
+            "legend": "",
+            "name": "A",
+            "query": ""
+          }
+        ],
+        "promql": [
+          {
+            "disabled": false,
+            "legend": "",
+            "name": "A",
+            "query": ""
+          }
+        ],
+        "queryType": "builder"
+      },
+      "selectedLogFields": [],
+      "selectedTracesFields": [],
+      "softMax": 0,
+      "softMin": 0,
+      "thresholds": [],
+      "timePreferance": "GLOBAL_TIME",
+      "title": "QR results (abilities_qr_total)",
+      "yAxisUnit": "none"
+    },
+    {
+      "contextLinks": {
+        "linksData": []
+      },
+      "description": "Timed effects taken off: expired, replaced, cleansed, drained, died, ...",
+      "fillSpans": false,
+      "id": "ledger-removals",
+      "nullZeroValues": "zero",
+      "opacity": "1",
+      "panelTypes": "graph",
+      "query": {
+        "builder": {
+          "queryData": [
+            {
+              "aggregations": [
+                {
+                  "metricName": "abilities_ledger_removed_total",
+                  "spaceAggregation": "sum",
+                  "temporality": "cumulative",
+                  "timeAggregation": "increase"
+                }
+              ],
+              "dataSource": "metrics",
+              "disabled": false,
+              "expression": "A",
+              "filter": {
+                "expression": "service.name = 'cimmeria-server'"
+              },
+              "functions": [],
+              "groupBy": [
+                {
+                  "dataType": "string",
+                  "fieldContext": "attribute",
+                  "fieldDataType": "string",
+                  "isColumn": false,
+                  "isJSON": false,
+                  "key": "reason",
+                  "name": "reason",
+                  "signal": "metrics",
+                  "type": "tag"
+                }
+              ],
+              "having": [],
+              "legend": "{{reason}}",
+              "orderBy": [],
+              "queryName": "A",
+              "selectColumns": [],
+              "stepInterval": 60
+            }
+          ],
+          "queryFormulas": []
+        },
+        "clickhouse_sql": [
+          {
+            "disabled": false,
+            "legend": "",
+            "name": "A",
+            "query": ""
+          }
+        ],
+        "promql": [
+          {
+            "disabled": false,
+            "legend": "",
+            "name": "A",
+            "query": ""
+          }
+        ],
+        "queryType": "builder"
+      },
+      "selectedLogFields": [],
+      "selectedTracesFields": [],
+      "softMax": 0,
+      "softMin": 0,
+      "thresholds": [],
+      "timePreferance": "GLOBAL_TIME",
+      "title": "Ledger removals by reason (abilities_ledger_removed_total)",
+      "yAxisUnit": "none"
+    },
+    {
+      "contextLinks": {
+        "linksData": []
+      },
+      "description": "Non-zero only when the cell-to-base queue is closed (shutdown) or full: investigate.",
+      "fillSpans": false,
+      "id": "wire-send-failed",
+      "nullZeroValues": "zero",
+      "opacity": "1",
+      "panelTypes": "graph",
+      "query": {
+        "builder": {
+          "queryData": [
+            {
+              "aggregations": [
+                {
+                  "metricName": "abilities_wire_send_failed_total",
+                  "spaceAggregation": "sum",
+                  "temporality": "cumulative",
+                  "timeAggregation": "increase"
+                }
+              ],
+              "dataSource": "metrics",
+              "disabled": false,
+              "expression": "A",
+              "filter": {
+                "expression": "service.name = 'cimmeria-server'"
+              },
+              "functions": [],
+              "groupBy": [
+                {
+                  "dataType": "string",
+                  "fieldContext": "attribute",
+                  "fieldDataType": "string",
+                  "isColumn": false,
+                  "isJSON": false,
+                  "key": "message",
+                  "name": "message",
+                  "signal": "metrics",
+                  "type": "tag"
+                }
+              ],
+              "having": [],
+              "legend": "{{message}}",
+              "orderBy": [],
+              "queryName": "A",
+              "selectColumns": [],
+              "stepInterval": 60
+            }
+          ],
+          "queryFormulas": []
+        },
+        "clickhouse_sql": [
+          {
+            "disabled": false,
+            "legend": "",
+            "name": "A",
+            "query": ""
+          }
+        ],
+        "promql": [
+          {
+            "disabled": false,
+            "legend": "",
+            "name": "A",
+            "query": ""
+          }
+        ],
+        "queryType": "builder"
+      },
+      "selectedLogFields": [],
+      "selectedTracesFields": [],
+      "softMax": 0,
+      "softMin": 0,
+      "thresholds": [],
+      "timePreferance": "GLOBAL_TIME",
+      "title": "Failed sends by message (abilities_wire_send_failed_total)",
+      "yAxisUnit": "none"
+    },
+    {
+      "contextLinks": {
+        "linksData": []
+      },
+      "description": "Cell receipt to fire. instant ~0; warmup = warmup + tick lateness.",
+      "fillSpans": false,
+      "id": "press-to-fire-p50",
+      "nullZeroValues": "zero",
+      "opacity": "1",
+      "panelTypes": "graph",
+      "query": {
+        "builder": {
+          "queryData": [
+            {
+              "aggregations": [
+                {
+                  "metricName": "abilities_press_to_fire_ms",
+                  "spaceAggregation": "p50",
+                  "temporality": "",
+                  "timeAggregation": ""
+                }
+              ],
+              "dataSource": "metrics",
+              "disabled": false,
+              "expression": "A",
+              "filter": {
+                "expression": "service.name = 'cimmeria-server'"
+              },
+              "functions": [],
+              "groupBy": [
+                {
+                  "dataType": "string",
+                  "fieldContext": "attribute",
+                  "fieldDataType": "string",
+                  "isColumn": false,
+                  "isJSON": false,
+                  "key": "path",
+                  "name": "path",
+                  "signal": "metrics",
+                  "type": "tag"
+                }
+              ],
+              "having": [],
+              "legend": "{{path}}",
+              "orderBy": [],
+              "queryName": "A",
+              "selectColumns": [],
+              "stepInterval": 60
+            }
+          ],
+          "queryFormulas": []
+        },
+        "clickhouse_sql": [
+          {
+            "disabled": false,
+            "legend": "",
+            "name": "A",
+            "query": ""
+          }
+        ],
+        "promql": [
+          {
+            "disabled": false,
+            "legend": "",
+            "name": "A",
+            "query": ""
+          }
+        ],
+        "queryType": "builder"
+      },
+      "selectedLogFields": [],
+      "selectedTracesFields": [],
+      "softMax": 0,
+      "softMin": 0,
+      "thresholds": [],
+      "timePreferance": "GLOBAL_TIME",
+      "title": "Press to fire, p50 (abilities_press_to_fire_ms)",
+      "yAxisUnit": "ms"
+    },
+    {
+      "contextLinks": {
+        "linksData": []
+      },
+      "description": "A warmup p95 far above the authored warmups means the 100 ms warmup tick is late.",
+      "fillSpans": false,
+      "id": "press-to-fire-p95",
+      "nullZeroValues": "zero",
+      "opacity": "1",
+      "panelTypes": "graph",
+      "query": {
+        "builder": {
+          "queryData": [
+            {
+              "aggregations": [
+                {
+                  "metricName": "abilities_press_to_fire_ms",
+                  "spaceAggregation": "p95",
+                  "temporality": "",
+                  "timeAggregation": ""
+                }
+              ],
+              "dataSource": "metrics",
+              "disabled": false,
+              "expression": "A",
+              "filter": {
+                "expression": "service.name = 'cimmeria-server'"
+              },
+              "functions": [],
+              "groupBy": [
+                {
+                  "dataType": "string",
+                  "fieldContext": "attribute",
+                  "fieldDataType": "string",
+                  "isColumn": false,
+                  "isJSON": false,
+                  "key": "path",
+                  "name": "path",
+                  "signal": "metrics",
+                  "type": "tag"
+                }
+              ],
+              "having": [],
+              "legend": "{{path}}",
+              "orderBy": [],
+              "queryName": "A",
+              "selectColumns": [],
+              "stepInterval": 60
+            }
+          ],
+          "queryFormulas": []
+        },
+        "clickhouse_sql": [
+          {
+            "disabled": false,
+            "legend": "",
+            "name": "A",
+            "query": ""
+          }
+        ],
+        "promql": [
+          {
+            "disabled": false,
+            "legend": "",
+            "name": "A",
+            "query": ""
+          }
+        ],
+        "queryType": "builder"
+      },
+      "selectedLogFields": [],
+      "selectedTracesFields": [],
+      "softMax": 0,
+      "softMin": 0,
+      "thresholds": [],
+      "timePreferance": "GLOBAL_TIME",
+      "title": "Press to fire, p95 (abilities_press_to_fire_ms)",
+      "yAxisUnit": "ms"
+    },
+    {
+      "contextLinks": {
+        "linksData": []
+      },
+      "description": "Per effect per target: health, focus, absorb (what shields took).",
+      "fillSpans": false,
+      "id": "damage-p95",
+      "nullZeroValues": "zero",
+      "opacity": "1",
+      "panelTypes": "graph",
+      "query": {
+        "builder": {
+          "queryData": [
+            {
+              "aggregations": [
+                {
+                  "metricName": "abilities_damage_dealt",
+                  "spaceAggregation": "p95",
+                  "temporality": "",
+                  "timeAggregation": ""
+                }
+              ],
+              "dataSource": "metrics",
+              "disabled": false,
+              "expression": "A",
+              "filter": {
+                "expression": "service.name = 'cimmeria-server'"
+              },
+              "functions": [],
+              "groupBy": [
+                {
+                  "dataType": "string",
+                  "fieldContext": "attribute",
+                  "fieldDataType": "string",
+                  "isColumn": false,
+                  "isJSON": false,
+                  "key": "pool",
+                  "name": "pool",
+                  "signal": "metrics",
+                  "type": "tag"
+                }
+              ],
+              "having": [],
+              "legend": "{{pool}}",
+              "orderBy": [],
+              "queryName": "A",
+              "selectColumns": [],
+              "stepInterval": 60
+            }
+          ],
+          "queryFormulas": []
+        },
+        "clickhouse_sql": [
+          {
+            "disabled": false,
+            "legend": "",
+            "name": "A",
+            "query": ""
+          }
+        ],
+        "promql": [
+          {
+            "disabled": false,
+            "legend": "",
+            "name": "A",
+            "query": ""
+          }
+        ],
+        "queryType": "builder"
+      },
+      "selectedLogFields": [],
+      "selectedTracesFields": [],
+      "softMax": 0,
+      "softMin": 0,
+      "thresholds": [],
+      "timePreferance": "GLOBAL_TIME",
+      "title": "Damage per effect, p95 by pool (abilities_damage_dealt)",
+      "yAxisUnit": "none"
+    },
+    {
+      "contextLinks": {
+        "linksData": []
+      },
+      "description": "Per effect per target; scripted heals only (NVP is damage only).",
+      "fillSpans": false,
+      "id": "heal-p95",
+      "nullZeroValues": "zero",
+      "opacity": "1",
+      "panelTypes": "graph",
+      "query": {
+        "builder": {
+          "queryData": [
+            {
+              "aggregations": [
+                {
+                  "metricName": "abilities_heal_done",
+                  "spaceAggregation": "p95",
+                  "temporality": "",
+                  "timeAggregation": ""
+                }
+              ],
+              "dataSource": "metrics",
+              "disabled": false,
+              "expression": "A",
+              "filter": {
+                "expression": "service.name = 'cimmeria-server'"
+              },
+              "functions": [],
+              "groupBy": [
+                {
+                  "dataType": "string",
+                  "fieldContext": "attribute",
+                  "fieldDataType": "string",
+                  "isColumn": false,
+                  "isJSON": false,
+                  "key": "pool",
+                  "name": "pool",
+                  "signal": "metrics",
+                  "type": "tag"
+                }
+              ],
+              "having": [],
+              "legend": "{{pool}}",
+              "orderBy": [],
+              "queryName": "A",
+              "selectColumns": [],
+              "stepInterval": 60
+            }
+          ],
+          "queryFormulas": []
+        },
+        "clickhouse_sql": [
+          {
+            "disabled": false,
+            "legend": "",
+            "name": "A",
+            "query": ""
+          }
+        ],
+        "promql": [
+          {
+            "disabled": false,
+            "legend": "",
+            "name": "A",
+            "query": ""
+          }
+        ],
+        "queryType": "builder"
+      },
+      "selectedLogFields": [],
+      "selectedTracesFields": [],
+      "softMax": 0,
+      "softMin": 0,
+      "thresholds": [],
+      "timePreferance": "GLOBAL_TIME",
+      "title": "Heal per effect, p95 by pool (abilities_heal_done)",
+      "yAxisUnit": "none"
+    }
+  ]
+}

@@ -57,6 +57,7 @@ pub fn collect_cone_targets(
     let dir_len = (dx * dx + dz * dz).sqrt();
     if dir_len < 1e-3 {
         tracing::debug!(
+            target: "abilities",
             attacker_id,
             primary_target_id,
             "cone_aoe: primary stacked on attacker — skipping cone fan-out"

@@ -160,6 +160,11 @@ pub(crate) async fn refuse(
         .await
         .is_err()
     {
+        crate::cell::abilities::metrics::wire_send_failed_in(
+            space_mgr,
+            entity_id,
+            crate::cell::abilities::metrics::WireMessage::OnPlayerCommunication,
+        );
         tracing::warn!(
             target: "ammo",
             event = "ammo_support_feedback_send_failed",

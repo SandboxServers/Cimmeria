@@ -11,6 +11,7 @@ use cimmeria_entity::stats::{FOCUS, HEALTH};
 
 use cimmeria_cell_world::cell::combat_debug::{self, Note, Pools, PulseNote};
 
+use crate::cell::abilities::metrics;
 use crate::cell::abilities::wire_ledger::{self, WireCtx};
 use crate::cell::abilities::WireRoute;
 use crate::cell::content_events::ContentEvents;
@@ -296,6 +297,17 @@ async fn fire_pulse(
                 }
             }
         }
+    }
+
+    // AB-T6: the pulse's damage. A scripted pulse's pool change is recorded
+    // by the script dispatch; the NVP branches' here, before any god-mode
+    // restore or surrender floor puts some back.
+    let world = metrics::world_of(space_mgr, target_id);
+    metrics::damage_dealt(metrics::Pool::Absorb, absorbed, world);
+    if path != "script" {
+        let (health_now, focus_now) = pools(space_mgr, target_id);
+        metrics::damage_dealt(metrics::Pool::Health, health_before - health_now, world);
+        metrics::damage_dealt(metrics::Pool::Focus, focus_before - focus_now, world);
     }
 
     // AB-10: charge what this pulse drained from the absorb stats to the

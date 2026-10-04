@@ -103,6 +103,11 @@ pub(super) async fn apply_death_transition(
                 .is_err()
             {
                 let who = space_mgr.player_identity(target_eid);
+                crate::cell::abilities::metrics::wire_send_failed_in(
+                    space_mgr,
+                    target_eid,
+                    crate::cell::abilities::metrics::WireMessage::ContactListPresenceEvent,
+                );
                 tracing::warn!(
                     target: "abilities.wire",
                     event = "wire_send_failed",
@@ -185,6 +190,7 @@ pub(super) async fn apply_death_transition(
             crate::cell::combat::clear_dead_npc_from_all_player_threat(space_mgr, target_eid);
         for (player_entity_id, new_state) in to_broadcast {
             tracing::debug!(
+                target: "abilities",
                 player_entity_id,
                 dying_npc = target_eid,
                 new_state,
@@ -219,6 +225,7 @@ pub(super) async fn apply_death_transition(
         crate::cell::combat::clear_auto_cycle_for_target(space_mgr, target_eid);
     for (player_entity_id, new_state) in auto_cycle_broadcasts {
         tracing::info!(
+            target: "abilities",
             player_entity_id,
             dying_target = target_eid,
             new_state,
@@ -255,6 +262,7 @@ pub(super) async fn apply_death_transition(
     if target_is_player {
         if let Some(new_state) = crate::cell::combat::clear_auto_cycle(space_mgr, target_eid) {
             tracing::info!(
+                target: "abilities",
                 player_entity_id = target_eid,
                 new_state,
                 "death: clearing dying player's own auto-cycle loop"
@@ -419,6 +427,7 @@ pub(super) async fn resolve_death(
     };
 
     tracing::info!(
+        target: "abilities",
         attacker = attacker_id,
         target = target_eid,
         ability_id = ability_id.unwrap_or(-1),

@@ -182,6 +182,11 @@ async fn send_order_feedback(
         };
         if tx.send(msg).await.is_err() {
             let summoner = space_mgr.pets.summoner_identity(pet_id);
+            crate::cell::abilities::metrics::wire_send_failed_in(
+                space_mgr,
+                owner_id,
+                crate::cell::abilities::metrics::WireMessage::from_method(method_index),
+            );
             tracing::warn!(
                 target: "pets.command",
                 event = "order_feedback_send_failed",

@@ -15,10 +15,7 @@
 //! QR 0, so a no-QR effect could miss (about 7 % of the time). D-AB07 reads
 //! the flag's name literally: no roll.
 
-use cimmeria_entity::abilities::{
-    AbilityDef, EffectDef, EF_DONT_USE_QR, RC_CRITICAL, RC_DOUBLE_CRITICAL, RC_GLANCING, RC_HIT,
-    RC_MISS, RC_NONE,
-};
+use cimmeria_entity::abilities::{AbilityDef, EffectDef, EF_DONT_USE_QR, RC_HIT, RC_MISS};
 
 use super::cover_roll::HitCover;
 use super::HitIds;
@@ -99,6 +96,7 @@ pub(super) fn roll_hit(
         forced,
         "QR rolled for the hit"
     );
+    crate::cell::abilities::metrics::qr(result.result_code, ids.world);
     result
 }
 
@@ -110,14 +108,7 @@ fn forced_roll(_space_mgr: &SpaceManager, _caster_id: u32) -> Option<QrResult> {
 }
 
 /// The `result` label of a QR result code (the client's `EResultCode`).
+/// One spelling for the row and the `abilities_qr_total` metric.
 pub(crate) fn result_label(result_code: u8) -> &'static str {
-    match result_code {
-        RC_NONE => "none",
-        RC_HIT => "hit",
-        RC_MISS => "miss",
-        RC_CRITICAL => "critical",
-        RC_DOUBLE_CRITICAL => "double_critical",
-        RC_GLANCING => "glancing",
-        _ => "unknown",
-    }
+    crate::cell::abilities::metrics::QrOutcome::from_code(result_code).label()
 }

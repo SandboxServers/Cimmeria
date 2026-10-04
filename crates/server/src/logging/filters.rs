@@ -500,12 +500,16 @@ pub(crate) const FILE_LAYERS: &[FileLayer] = &[
              cimmeria_cell_world::cell::space_manager=trace,\
              cimmeria_cell_world::cell::space_manager::npc_population=off",
     },
+    // `abilities` (and its `abilities.*` children) since AB-T7 moved the
+    // ability modules' last module-path rows onto named targets: without it
+    // those rows would have left this file.
     FileLayer {
         file: "combat.log",
         directives: "off,\
              cimmeria_cell_combat::cell::combat=trace,\
              cimmeria_cell_world::cell::combat=trace,\
-             cimmeria_cell_combat::cell::abilities=trace",
+             cimmeria_cell_combat::cell::abilities=trace,\
+             abilities=trace",
     },
     FileLayer {
         file: "content.log",

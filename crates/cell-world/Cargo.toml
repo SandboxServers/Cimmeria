@@ -51,6 +51,9 @@ cimmeria-workspace-hack = { version = "0.1", path = "../workspace-hack" }
 test-support = ["cimmeria-cell-cover/test-support"]
 
 [dev-dependencies]
+# The recording meter the AB-T6 ability-metric tests read
+# (`cimmeria_observability::testing`).
+cimmeria-observability = { workspace = true, features = ["testing"] }
 # Property-based AoI differential test.
 proptest = { workspace = true }
 # The live-DB gate (`require_db_or_skip!`), `LogCapture` and the source-scan

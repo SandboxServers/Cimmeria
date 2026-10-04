@@ -52,6 +52,7 @@ pub async fn broadcast_movement_type(
     let is_player = space_mgr.get_entity(entity_id).is_some_and(|e| e.is_player);
     if is_player {
         tracing::warn!(
+            target: "movement.movement_type",
             entity_id,
             ?kind,
             "broadcast_movement_type called on a player entity — no-op (movement type is NPC-only)"

@@ -37,17 +37,20 @@ use cimmeria_entity::abilities::{EffectDef, EF_DONT_USE_QR};
 use cimmeria_entity::cell_entity::PlayerIdentity;
 
 use super::super::space_manager::SpaceManager;
+use super::metrics::{self, EffectPath};
 
 /// `event` of the per-effect plan row (target `abilities.effect`).
 pub(crate) const EVENT_EFFECT_PLANNED: &str = "effect_planned";
 
-pub(crate) const PATH_SCRIPT: &str = "script";
-pub(crate) const PATH_NVP: &str = "nvp";
-pub(crate) const PATH_ROUTED_TO_USER: &str = "routed_to_user";
-pub(crate) const PATH_ALLY_FANOUT: &str = "ally_fanout";
-pub(crate) const PATH_LEDGER: &str = "ledger";
-pub(crate) const PATH_PULSE: &str = "pulse";
-pub(crate) const PATH_SKIPPED: &str = "skipped";
+// The paths are `abilities_effect_applied_total`'s label set (AB-T6), so
+// the row and the metric share one spelling.
+pub(crate) const PATH_SCRIPT: &str = EffectPath::Script.label();
+pub(crate) const PATH_NVP: &str = EffectPath::Nvp.label();
+pub(crate) const PATH_ROUTED_TO_USER: &str = EffectPath::RoutedToUser.label();
+pub(crate) const PATH_ALLY_FANOUT: &str = EffectPath::AllyFanout.label();
+pub(crate) const PATH_LEDGER: &str = EffectPath::Ledger.label();
+pub(crate) const PATH_PULSE: &str = EffectPath::Pulse.label();
+pub(crate) const PATH_SKIPPED: &str = EffectPath::Skipped.label();
 
 /// The QR roll missed: no damage, script or pulses (AB-06).
 pub(crate) const REASON_MISS: &str = "miss";
@@ -106,6 +109,8 @@ pub(crate) struct PlanIds {
     pub cast_id: Option<i32>,
     pub caster: PlayerIdentity,
     pub target: PlayerIdentity,
+    /// The recipient's world: the AB-T6 metrics' `world` label.
+    pub world: &'static str,
 }
 
 impl PlanIds {
@@ -123,6 +128,7 @@ impl PlanIds {
             cast_id: space_mgr.current_cast_id(),
             caster: space_mgr.player_identity(caster_id),
             target: space_mgr.player_identity(target_id),
+            world: metrics::world_of(space_mgr, target_id),
         }
     }
 }
@@ -210,8 +216,13 @@ impl PlannedEffect {
         }
     }
 
-    /// Log this plan row.
+    /// Log this plan row and count its path (`abilities_effect_applied_total`).
     pub(crate) fn log(&self, ids: PlanIds) {
+        match EffectPath::from_label(self.path) {
+            Some(path) => metrics::effect_applied(path, ids.world),
+            // Every path is one of the consts above; `metrics::tests` pins it.
+            None => debug_assert!(false, "effect path {} has no label", self.path),
+        }
         tracing::debug!(
             target: "abilities.effect",
             event = EVENT_EFFECT_PLANNED,

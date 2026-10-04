@@ -158,6 +158,13 @@ A label sitting between the target and the hard ceiling (e.g. 50
 worlds when we ship more content) is a yellow flag, not a fail —
 revisit it during the next instrumentation review.
 
+**Declaring a label as an enum.** `cimmeria_observability::metric_label!`
+declares a label as a `Copy` enum with `ALL` and `label()`, so a call
+site passes a variant and cannot invent a value, and a test can compare
+`ALL` with the reasons the code logs. The ability metrics
+(`crates/cell-combat/src/cell/abilities/metrics/`) use it for every
+label and pin each set in `metrics/tests.rs`.
+
 #### Ruling: `world` is an approved label
 
 `movement_validation_rejects_total`, `npc_path_fail_total` and

@@ -331,6 +331,48 @@ A press within 1 second of the last forwarded respec (`RESPEC_RETRY_WINDOW`) is 
 
 **The hotbar.** The client keeps its action-bar bindings in a per-character Lua saved variable (`GActionProfiles`, declared as a `<CharacterVariable>` in `ActionButtons.toc` and written to `Documents/My Games/.../SGWGame/<account>/<character>/ActionButtons - Saved Vars.lua`). No server method, property or table carries it, so the server cannot strip refunded abilities from it. The only server-held list the bar draws from is `sgw_player.abilities`, which the respec `UPDATE` strips, and `onKnownAbilitiesUpdate` re-sends it. A button still bound to a refunded ability stays on the bar until the player clears it. Pressing it is refused with `onErrorCode(0, ability_id, 167 EntityDoesNotHaveAbility)` (`use_ability/handle.rs`, `send_not_known_feedback`). Before AT-08 that refusal was silent. An ability id with no server definition stays silent, because a legitimate client cannot send one, and so do NPC casters. The action bar has no server hook. A client Lua patch that clears it would be an owner decision. AT-E1 found no client-side cleanup either ([ability-trainer-ui.md](../reverse-engineering/findings/ability-trainer-ui.md) §5).
 
+## Reading one cast
+
+Every cast leaves rows on both sides, and one query sequence reads them in order. The design is the [ability-mechanics telemetry plan](../analysis/ability-mechanics/lab-uat-and-telemetry.md#the-correlation-model); the saved views and the dashboard are in [tools/signoz/abilities/](../../tools/signoz/abilities/README.md).
+
+**1. Find the cast.** A cast's id is `cast_id`: the `effect_seq` its launch minted, which is also the effect id the client receives in `onEffectResults` and the `InstanceId` of its sequences. It counts per caster, so it is unique only together with the caster. Start from the launch row:
+
+```text
+service.name = 'cimmeria-server' AND scope_name = 'abilities'
+  AND event = 'ability_launched' AND player_id = <P> AND ability_id = <A>
+```
+
+A press that never launched has no `cast_id`. Its refusal row (`use_ability_*`, `*_refused`; the **Abilities — Refusals by reason** view) names the `reason`, and `abilities_refused_total` counts it under the same value.
+
+**2. Read the server rows in order.** Every server row of the cast carries its `cast_id`: receipt-to-launch gates, warmup, fire, the QR roll (`abilities.qr`), each effect's plan and NVP damage (`abilities.effect`), pulses (`abilities.pulse`), the timed-effect ledger, and every client-bound send (`abilities.wire`). Sort oldest first:
+
+```text
+service.name = 'cimmeria-server'
+  AND (scope_name = 'abilities' OR scope_name LIKE 'abilities.%' OR scope_name = 'base.entity_method')
+  AND cast_id = <C> AND (player_id = <P> OR entity_id = <caster entity>)
+```
+
+This is the **Abilities — One cast, in order** view. A wire row's `player_id` and `entity_id` name the entity the method is about, so a target's `onStatUpdate` carries the cast's `cast_id` but the target's ids: add `OR entity_id = <target>` to include it. A channel's cancel and an effect's expiry run outside the cast, and their rows name the cast that registered the effect (AB-T1, and the channel cancel since AB-T6).
+
+**3. Join the press.** The receipt row, `scope_name = 'abilities' AND event = 'use_ability_recv'`, carries `mercury_seq`, the sequence number of the Mercury packet that delivered the `useAbility`. It has no `cast_id` (the launch mints it right after), so take the receipt just before the `ability_launched` row with the same `entity_id` and `ability_id`. The client logs the packets that carried its send as `client.ability.sent_seq` with `mercury_seq_first` and `mercury_seq_last`:
+
+```text
+service.name = 'cimmeria-client' AND client_target = 'client.ability.sent_seq' AND player_id = <P>
+```
+
+The receipt belongs to the send whose range holds its seq. The counter is 28 bits and wraps, so test membership modulo 2^28, `((seq - first) & 0x0fffffff) <= ((last - first) & 0x0fffffff)`, never `first <= seq <= last`. From that row, `send_id` leads to `client.ability.sent` (the arguments the client sent, and `client_target_id`, what the UI had targeted) and `press_id` to `client.ability.press` and any `client.ability.press_dropped`. A press the client dropped before sending has no seq: join it on `(player_id, ability_id)` within 2 s.
+
+**4. Read the client's side.** Client rows are in the `cimmeria-client` service, named by `client_target`, with their fields in the `fields` JSON attribute. `player_id` and `account_id` are lifted out only when the event carries them; if a row has neither, filter on the session's `session_id` instead:
+
+```text
+service.name = 'cimmeria-client' AND player_id = <P>
+  AND client_target LIKE 'client.ability.%' AND fields CONTAINS '"cast_id":<C>'
+```
+
+`client.ability.recv` rows decode what arrived (`onEffectResults`' `effect_id` is the `cast_id`; an `onSequence` gives its `instance_id`); `client.ability.applied` and `client.ability.shown` say what the client did with it. Timers join on `(player_id, ability_id)` for cooldowns and `(player_id, effect_id, secondary_id)` for effect durations.
+
+**Counts, not stories.** The `abilities_*` metrics (`crates/cell-combat/src/cell/abilities/metrics/`) answer "how often" over many casts: outcomes, refusal reasons, effect paths, QR results, ledger removals, failed sends, press-to-fire time and damage and heal per pool, each with `world`. The **Cimmeria — Ability metrics** dashboard charts them. Their labels are the same strings as the rows' `reason`, `path` and `result` fields, so a spike on the dashboard leads straight to the rows.
+
 ## Data References
 
 - **Ability definitions**: 1,886 in `db/resources/Abilities/Seed/abilities.sql`

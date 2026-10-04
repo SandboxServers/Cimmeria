@@ -100,10 +100,27 @@ pub(crate) async fn resolve_warmups(
             interrupt_pending_cast(entity_id, reason, tx, space_mgr).await;
             continue;
         }
+        record_warmup_fire(&pc, now, entity_id, space_mgr);
         fire_due_cast(entity_id, pc, &ability_def, tx, space_mgr, events).await;
         fired += 1;
     }
     fired
+}
+
+/// AB-T6: count a warmed cast's fire and its press-to-fire time. The launch
+/// was `warmup_secs` before `fire_at`; `now` is the tick's clock, so the
+/// sample is the warmup plus the tick's lateness.
+fn record_warmup_fire(pc: &PendingCast, now: Instant, entity_id: u32, space_mgr: &SpaceManager) {
+    use crate::cell::abilities::metrics;
+    let launched = pc
+        .fire_at
+        .checked_sub(std::time::Duration::from_secs_f32(pc.warmup_secs.max(0.0)));
+    metrics::fired(
+        metrics::FirePath::Warmup,
+        launched.map_or_else(Default::default, |t| now.saturating_duration_since(t)),
+        metrics::caster_kind(space_mgr, entity_id),
+        metrics::world_of(space_mgr, entity_id),
+    );
 }
 
 /// The caster has moved more than [`CHANNEL_INTERRUPT_DISTANCE`] (planar)
@@ -259,6 +276,7 @@ async fn fire_time_refusal(
         space_mgr,
     )
     .await
+    .is_some()
     {
         return Some(InterruptReason::NoLineOfSight);
     }
