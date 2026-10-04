@@ -91,9 +91,13 @@ pub(super) async fn open(
         None => {
             tracing::warn!(
                 entity_id,
+                entity_name = space_mgr.entity_names(entity_id).entity_name,
                 account_id = id.account_id,
+                account_name = id.account_name,
                 player_id = id.player_id,
+                player_name = id.player_name,
                 chain_id,
+                chain_name = cimmeria_names::book().chain(chain_id),
                 "OpenBlackMarket: no auctioneer entity id in chain params or \
                  last_interaction_target -- cannot send onBMOpen (would open the \
                  Black Market with no bound auctioneer)"
@@ -124,10 +128,17 @@ pub(super) async fn open(
 
     tracing::info!(
         entity_id,
+        entity_name = space_mgr.entity_names(entity_id).entity_name,
         account_id = id.account_id,
+        account_name = id.account_name,
         player_id = id.player_id,
+        player_name = id.player_name,
         auctioneer_entity_id,
+        auctioneer_entity_name = u32::try_from(auctioneer_entity_id)
+            .ok()
+            .and_then(|a| space_mgr.entity_names(a).entity_name),
         chain_id,
+        chain_name = cimmeria_names::book().chain(chain_id),
         "Content: opening Black Market window"
     );
 
@@ -145,17 +156,24 @@ pub(super) async fn open(
         // player-visible (same shape as send_dialog_display).
         tracing::warn!(
             entity_id,
+            entity_name = space_mgr.entity_names(entity_id).entity_name,
             account_id = id.account_id,
+            account_name = id.account_name,
             player_id = id.player_id,
+            player_name = id.player_name,
             auctioneer_entity_id,
+            auctioneer_entity_name = u32::try_from(auctioneer_entity_id)
+                .ok()
+                .and_then(|a| space_mgr.entity_names(a).entity_name),
             chain_id,
+            chain_name = cimmeria_names::book().chain(chain_id),
             "OpenBlackMarket: cell→base send failed -- Black Market not opened on client: {e}"
         );
         return;
     }
 
     count_bm_outcome("open", "ok");
-    send_feedback(entity_id, OPENED_LINE, tx).await;
+    send_feedback(entity_id, OPENED_LINE, tx, space_mgr).await;
 
     // The window is open: this auctioneer is now the one cell methods 62-64
     // are checked against. `auctioneer_check` passed, so the id is a live
@@ -166,9 +184,15 @@ pub(super) async fn open(
         tracing::debug!(
             event = "bm.open",
             entity_id,
+            entity_name = space_mgr.entity_names(entity_id).entity_name,
             account_id = id.account_id,
+            account_name = id.account_name,
             player_id,
+            player_name = space_mgr.player_identity(entity_id).player_name,
             auctioneer_entity_id,
+            auctioneer_entity_name = u32::try_from(auctioneer_entity_id)
+                .ok()
+                .and_then(|a| space_mgr.entity_names(a).entity_name),
             opens,
             "Black Market session opened at an auctioneer"
         );
@@ -215,10 +239,17 @@ async fn refuse_open(
             reason = "not_at_auctioneer",
             access = reject.label(),
             entity_id,
+            entity_name = space_mgr.entity_names(entity_id).entity_name,
             account_id = id.account_id,
+            account_name = id.account_name,
             player_id = id.player_id,
+            player_name = id.player_name,
             auctioneer_entity_id,
+            auctioneer_entity_name = u32::try_from(auctioneer_entity_id)
+                .ok()
+                .and_then(|a| space_mgr.entity_names(a).entity_name),
             chain_id,
+            chain_name = cimmeria_names::book().chain(chain_id),
             "OpenBlackMarket refused: the NPC is not an auctioneer (its template has no \r
              INT_Auction bit) -- the chain is bound to the wrong NPC"
         );
@@ -228,20 +259,32 @@ async fn refuse_open(
             reason = "not_at_auctioneer",
             access = reject.label(),
             entity_id,
+            entity_name = space_mgr.entity_names(entity_id).entity_name,
             account_id = id.account_id,
+            account_name = id.account_name,
             player_id = id.player_id,
+            player_name = id.player_name,
             auctioneer_entity_id,
+            auctioneer_entity_name = u32::try_from(auctioneer_entity_id)
+                .ok()
+                .and_then(|a| space_mgr.entity_names(a).entity_name),
             chain_id,
+            chain_name = cimmeria_names::book().chain(chain_id),
             dist,
             "OpenBlackMarket refused: the player is not at the auctioneer"
         );
     }
     count_bm_outcome("open", "not_at_auctioneer");
-    send_feedback(entity_id, refusal_line(reject), tx).await;
+    send_feedback(entity_id, refusal_line(reject), tx, space_mgr).await;
 }
 
 /// One `SYSTEM` line on the feedback channel to the player's own client.
-async fn send_feedback(entity_id: u32, text: &str, tx: &mpsc::Sender<CellToBaseMsg>) {
+async fn send_feedback(
+    entity_id: u32,
+    text: &str,
+    tx: &mpsc::Sender<CellToBaseMsg>,
+    space_mgr: &SpaceManager,
+) {
     if let Err(e) = tx
         .send(CellToBaseMsg::EntityMethodCall {
             entity_id,
@@ -253,6 +296,7 @@ async fn send_feedback(entity_id: u32, text: &str, tx: &mpsc::Sender<CellToBaseM
         tracing::warn!(
             event = "bm.feedback_send_failed",
             entity_id,
+            entity_name = space_mgr.entity_names(entity_id).entity_name,
             reason = "base_channel_closed",
             "Black Market feedback line not queued: {e}"
         );

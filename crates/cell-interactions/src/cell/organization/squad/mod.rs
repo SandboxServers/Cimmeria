@@ -69,7 +69,12 @@ pub fn forwarded_actor(
             target: "squad",
             event = "squad.actor_mismatch",
             player_id,
+            player_name = space_mgr
+                .player_entity_by_player_id(player_id)
+                .and_then(|eid| space_mgr.entity_label(eid)),
+            // The entity is not this player's, so name whoever holds it.
             entity_id,
+            entity_name = space_mgr.entity_label(entity_id),
             "forwarded squad call names an entity that is not that player's -- dropped"
         );
     }
@@ -108,7 +113,7 @@ pub async fn confirm(tx: &mpsc::Sender<CellToBaseMsg>, entity_id: u32, text: &st
         tracing::warn!(
             target: "squad",
             event = "squad.send_failed",
-            entity_id,
+            entity_id, // nt:id-only no SpaceManager here; the channel only closes at shutdown
             method_index = ON_PLAYER_COMMUNICATION,
             method_name = cimmeria_wire::names::player_client_method(ON_PLAYER_COMMUNICATION),
             reason = "cell_to_base_closed",

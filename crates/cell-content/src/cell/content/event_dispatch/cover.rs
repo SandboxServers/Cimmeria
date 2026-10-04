@@ -23,6 +23,19 @@ use crate::cell::space_manager::SpaceManager;
 use super::super::executor;
 use super::super::mission_context::{populate_mission_context, populate_world_context};
 
+/// The name a log line pairs with a `cover_set_id` (Rule 6): the set's
+/// `cover_sets.chunk_name` (`Castle_CellBlock.Castle_CellBlock-fffefffe.SpecNode.565`,
+/// the source chunk and actor), since `cover_set_id` is the set's `chunk_id`.
+/// The cover service keeps the sets sorted by `chunk_id`, so this is a
+/// binary search; call it only inside the branch that logs.
+pub(crate) fn cover_set_name(space_mgr: &SpaceManager, cover_set_id: i32) -> Option<&str> {
+    let sets = &space_mgr.cover.sets;
+    let at = sets
+        .binary_search_by_key(&cover_set_id, |s| s.chunk_id)
+        .ok()?;
+    Some(sets[at].chunk_name.as_str()).filter(|n| !n.trim().is_empty())
+}
+
 /// Fire `OnPlayerEnteredCover` for a player who just entered a cover set.
 ///
 /// Carries `cover_set_id` + representative `height` and `quality` in the
@@ -62,10 +75,14 @@ pub async fn fire_cover_entered(
 
     let resolved = engine.resolve_event(&event, &ctx);
     if !resolved.actions.is_empty() {
+        let id = space_mgr.player_identity(entity_id);
         tracing::info!(
             entity_id,
+            entity_name = space_mgr.entity_label(entity_id),
             player_id,
+            player_name = id.player_name,
             cover_set_id,
+            cover_set_name = cover_set_name(space_mgr, cover_set_id),
             height,
             quality,
             actions = resolved.actions.len(),
@@ -74,7 +91,9 @@ pub async fn fire_cover_entered(
     } else {
         tracing::debug!(
             entity_id,
+            entity_name = space_mgr.entity_label(entity_id),
             cover_set_id,
+            cover_set_name = cover_set_name(space_mgr, cover_set_id),
             "fire_cover_entered: no chains matched"
         );
     }
@@ -115,17 +134,23 @@ pub async fn fire_cover_left(
 
     let resolved = engine.resolve_event(&event, &ctx);
     if !resolved.actions.is_empty() {
+        let id = space_mgr.player_identity(entity_id);
         tracing::info!(
             entity_id,
+            entity_name = space_mgr.entity_label(entity_id),
             player_id,
+            player_name = id.player_name,
             cover_set_id,
+            cover_set_name = cover_set_name(space_mgr, cover_set_id),
             actions = resolved.actions.len(),
             "fire_cover_left: matched"
         );
     } else {
         tracing::debug!(
             entity_id,
+            entity_name = space_mgr.entity_label(entity_id),
             cover_set_id,
+            cover_set_name = cover_set_name(space_mgr, cover_set_id),
             "fire_cover_left: no chains matched"
         );
     }
@@ -169,10 +194,14 @@ pub async fn fire_cover_duration(
 
     let resolved = engine.resolve_event(&event, &ctx);
     if !resolved.actions.is_empty() {
+        let id = space_mgr.player_identity(entity_id);
         tracing::info!(
             entity_id,
+            entity_name = space_mgr.entity_label(entity_id),
             player_id,
+            player_name = id.player_name,
             cover_set_id,
+            cover_set_name = cover_set_name(space_mgr, cover_set_id),
             seconds,
             actions = resolved.actions.len(),
             "fire_cover_duration: matched"
@@ -180,7 +209,9 @@ pub async fn fire_cover_duration(
     } else {
         tracing::debug!(
             entity_id,
+            entity_name = space_mgr.entity_label(entity_id),
             cover_set_id,
+            cover_set_name = cover_set_name(space_mgr, cover_set_id),
             seconds,
             "fire_cover_duration: no chains matched"
         );
@@ -221,17 +252,27 @@ pub async fn fire_npc_flanked(
 
     let resolved = engine.resolve_event(&event, &ctx);
     if !resolved.actions.is_empty() {
+        let npc = space_mgr.entity_names(npc_entity_id);
         tracing::info!(
             npc_entity_id,
+            npc_entity_name = npc.entity_name,
+            template_id = npc.template_id,
+            template_name = npc.template_name,
             threat_entity_id,
+            threat_entity_name = space_mgr.entity_label(threat_entity_id),
             npc_template,
             actions = resolved.actions.len(),
             "fire_npc_flanked: matched"
         );
     } else {
+        let npc = space_mgr.entity_names(npc_entity_id);
         tracing::debug!(
             npc_entity_id,
+            npc_entity_name = npc.entity_name,
+            template_id = npc.template_id,
+            template_name = npc.template_name,
             threat_entity_id,
+            threat_entity_name = space_mgr.entity_label(threat_entity_id),
             "fire_npc_flanked: no chains matched"
         );
     }
@@ -304,17 +345,27 @@ pub async fn fire_player_flanked_npc(
 
     let resolved = engine.resolve_event(&event, &ctx);
     if !resolved.actions.is_empty() {
+        let npc = space_mgr.entity_names(npc_entity_id);
         tracing::info!(
             player_entity_id,
+            player_entity_name = space_mgr.entity_label(player_entity_id),
             npc_entity_id,
+            npc_entity_name = npc.entity_name,
+            template_id = npc.template_id,
+            template_name = npc.template_name,
             npc_template,
             actions = resolved.actions.len(),
             "fire_player_flanked_npc: matched"
         );
     } else {
+        let npc = space_mgr.entity_names(npc_entity_id);
         tracing::debug!(
             player_entity_id,
+            player_entity_name = space_mgr.entity_label(player_entity_id),
             npc_entity_id,
+            npc_entity_name = npc.entity_name,
+            template_id = npc.template_id,
+            template_name = npc.template_name,
             "fire_player_flanked_npc: no chains matched"
         );
     }

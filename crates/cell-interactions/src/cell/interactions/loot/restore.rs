@@ -7,7 +7,7 @@
 //! the item back and tells the looter. A grant the cell could not even
 //! send comes back through [`return_unsent`].
 
-use cimmeria_entity::cell_entity::{LootItem, NpcInteractionType};
+use cimmeria_entity::cell_entity::{LootItem, NpcInteractionType, PlayerIdentity};
 use cimmeria_wire::cell::chat::{serialize_on_player_communication, CHAN_FEEDBACK};
 use tokio::sync::mpsc;
 
@@ -151,8 +151,10 @@ pub async fn handle_loot_grant_refused(
     let looter = space_mgr
         .get_entity(entity_id)
         .filter(|e| e.player_id == Some(player_id))
-        .map(|e| (e.account_id, e.looting_entity == Some(source.corpse_id)));
-    let account_id = looter.and_then(|(account_id, _)| account_id);
+        .map(|e| (e.identity(), e.looting_entity == Some(source.corpse_id)));
+    // A reused entity id is someone else: log the grant's player, unnamed.
+    let id = looter.map_or(PlayerIdentity::new(None, Some(player_id)), |(id, _)| id);
+    let account_id = id.account_id;
     let item = LootItem {
         design_id: Some(design_id),
         quantity,
@@ -165,13 +167,19 @@ pub async fn handle_loot_grant_refused(
                 target: "inventory",
                 event = "loot_restored",
                 account_id,
+                account_name = id.account_name,
                 player_id,
+                player_name = id.player_name,
                 entity_id,
+                entity_name = id.player_name,
                 corpse_id = source.corpse_id,
+                corpse_name = space_mgr.entity_label(source.corpse_id),
                 index = source.index,
-                type_id = design_id,
+                item_id = design_id,
+                item_name = cimmeria_names::book().item(design_id),
                 qty = quantity,
                 container_id,
+                container_name = cimmeria_names::book().container(container_id),
                 reason = reason.as_str(),
                 reflagged,
                 "loot_restored: the refused item is back on the corpse"
@@ -193,7 +201,7 @@ pub async fn handle_loot_grant_refused(
                 send_feedback(
                     entity_id,
                     player_id,
-                    account_id,
+                    id,
                     restored_text(reason, container_id, on),
                     tx,
                 )
@@ -209,18 +217,23 @@ pub async fn handle_loot_grant_refused(
                 target: "inventory",
                 event = "loot_restore_failed",
                 account_id,
+                account_name = id.account_name,
                 player_id,
+                player_name = id.player_name,
                 entity_id,
+                entity_name = id.player_name,
                 corpse_id = source.corpse_id,
+                corpse_name = space_mgr.entity_label(source.corpse_id),
                 index = source.index,
-                type_id = design_id,
+                item_id = design_id,
+                item_name = cimmeria_names::book().item(design_id),
                 qty = quantity,
                 refusal = reason.as_str(),
                 reason = miss.as_str(),
                 "loot_restore_failed: the refused item could not go back on its corpse and is lost"
             );
             if looter.is_some() {
-                send_feedback(entity_id, player_id, account_id, LOST_TEXT, tx).await;
+                send_feedback(entity_id, player_id, id, LOST_TEXT, tx).await;
             }
         }
     }
@@ -236,17 +249,23 @@ pub(super) fn return_unsent(
     item: LootItem,
     space_mgr: &mut SpaceManager,
 ) {
-    let type_id = item.design_id;
+    let item_id = item.design_id;
     let qty = item.quantity;
     let restored = put_back(space_mgr, player_id, source, item);
+    let id = space_mgr.player_identity(entity_id);
+    let names = cimmeria_names::book();
     tracing::warn!(
         target: "inventory",
         event = "loot_grant_send_failed",
         player_id,
+        player_name = id.player_name,
         entity_id,
+        entity_name = id.player_name,
         corpse_id = source.corpse_id,
+        corpse_name = space_mgr.entity_label(source.corpse_id),
         index = source.index,
-        type_id = ?type_id,
+        item_id,
+        item_name = item_id.and_then(|d| names.item(d)),
         qty,
         restored = restored.is_ok(),
         reason = restored.err().map_or("restored", RestoreMiss::as_str),
@@ -257,7 +276,7 @@ pub(super) fn return_unsent(
 async fn send_feedback(
     entity_id: u32,
     player_id: i32,
-    account_id: Option<u32>,
+    id: PlayerIdentity,
     text: &str,
     tx: &mpsc::Sender<CellToBaseMsg>,
 ) {
@@ -274,9 +293,12 @@ async fn send_feedback(
         tracing::warn!(
             target: "inventory",
             event = "feedback_send_failed",
-            account_id,
+            account_id = id.account_id,
+            account_name = id.account_name,
             player_id,
+            player_name = id.player_name,
             entity_id,
+            entity_name = id.player_name,
             reason = "send_error",
             "feedback_send_failed: the loot refusal line did not reach the base"
         );

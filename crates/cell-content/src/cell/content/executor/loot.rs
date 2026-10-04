@@ -73,17 +73,27 @@ pub(super) async fn open_loot(
     };
     tracing::Span::current().record("loot_table_id", tracing::field::debug(loot_table_id));
     let id = space_mgr.player_identity(entity_id);
-    let refuse = |reason: &'static str, container: Option<u32>, key: Option<&str>| {
+    let refuse = |space_mgr: &SpaceManager,
+                  reason: &'static str,
+                  container: Option<u32>,
+                  key: Option<&str>| {
+        let names = cimmeria_names::book();
         tracing::info!(
             target: "loot",
             event = "loot.container_refused",
             entity_id,
+            entity_name = space_mgr.entity_names(entity_id).entity_name,
             account_id = id.account_id,
+            account_name = id.account_name,
             player_id,
+            player_name = id.player_name,
             container_entity_id = container,
+            container_entity_name = container.and_then(|c| space_mgr.entity_names(c).entity_name),
             container_key = key,
             loot_table_id,
+            loot_table_name = loot_table_id.and_then(|t| names.loot_table(t)),
             chain_id,
+            chain_name = names.chain(chain_id),
             reason,
             "open_loot: nothing rolled"
         );
@@ -101,38 +111,45 @@ pub(super) async fn open_loot(
                 .and_then(|e| e.last_interaction_target)
         });
     let Some(container) = container.filter(|&c| c != entity_id) else {
-        refuse("no_container", None, None);
+        refuse(space_mgr, "no_container", None, None);
         tracing::warn!(
             entity_id,
+            entity_name = space_mgr.entity_names(entity_id).entity_name,
             chain_id,
+            chain_name = cimmeria_names::book().chain(chain_id),
             reason = "no_container",
             "open_loot fired with no interact target -- bind it to an interact_tag chain"
         );
         return;
     };
     if let Err(fail) = interact_range(entity_id, container, space_mgr) {
-        refuse("out_of_range", Some(container), None);
+        refuse(space_mgr, "out_of_range", Some(container), None);
         tracing::debug!(
             entity_id,
-            container,
+            entity_name = space_mgr.entity_names(entity_id).entity_name,
+            container_entity_id = container,
+            container_entity_name = space_mgr.entity_names(container).entity_name,
             ?fail,
             "open_loot: container out of range"
         );
-        feedback(entity_id, OUT_OF_RANGE_TEXT, tx).await;
+        feedback(entity_id, OUT_OF_RANGE_TEXT, tx, space_mgr).await;
         return;
     }
     let key = container_key.or_else(|| space_mgr.get_entity(container).and_then(|c| c.tag.clone()));
     let key_ref = key.as_deref();
     if once_per_character && key.is_none() {
-        refuse("no_container_key", Some(container), None);
+        refuse(space_mgr, "no_container_key", Some(container), None);
         tracing::warn!(
             entity_id,
-            container,
+            entity_name = space_mgr.entity_names(entity_id).entity_name,
+            container_entity_id = container,
+            container_entity_name = space_mgr.entity_names(container).entity_name,
             chain_id,
+            chain_name = cimmeria_names::book().chain(chain_id),
             reason = "no_container_key",
             "open_loot: once_per_character needs a container_key or a tagged container"
         );
-        feedback(entity_id, NOTHING_HERE_TEXT, tx).await;
+        feedback(entity_id, NOTHING_HERE_TEXT, tx, space_mgr).await;
         return;
     }
     let already = key_ref.is_some_and(|k| {
@@ -148,9 +165,13 @@ pub(super) async fn open_loot(
             target: "loot",
             event = "loot.container_reopened",
             entity_id,
+            entity_name = space_mgr.entity_names(entity_id).entity_name,
             account_id = id.account_id,
+            account_name = id.account_name,
             player_id,
+            player_name = id.player_name,
             container_entity_id = container,
+            container_entity_name = space_mgr.entity_names(container).entity_name,
             container_key = key_ref,
             item_count = pending.len(),
             reason = "pending_reopened",
@@ -167,35 +188,38 @@ pub(super) async fn open_loot(
         } else {
             ("nothing_pending", NOTHING_HERE_TEXT)
         };
-        refuse(reason, Some(container), key_ref);
-        feedback(entity_id, text, tx).await;
+        refuse(space_mgr, reason, Some(container), key_ref);
+        feedback(entity_id, text, tx, space_mgr).await;
         return;
     };
 
     // 4. Once per character.
     if once_per_character && already {
-        refuse("already_looted", Some(container), key_ref);
-        feedback(entity_id, ALREADY_LOOTED_TEXT, tx).await;
+        refuse(space_mgr, "already_looted", Some(container), key_ref);
+        feedback(entity_id, ALREADY_LOOTED_TEXT, tx, space_mgr).await;
         return;
     }
 
     // 5. Roll.
     let Some(entries) = space_mgr.loot_tables.get(&table_id).cloned() else {
-        refuse("unknown_loot_table", Some(container), key_ref);
+        refuse(space_mgr, "unknown_loot_table", Some(container), key_ref);
         tracing::warn!(
             entity_id,
+            entity_name = space_mgr.entity_names(entity_id).entity_name,
             chain_id,
+            chain_name = cimmeria_names::book().chain(chain_id),
             loot_table_id = table_id,
+            loot_table_name = cimmeria_names::book().loot_table(table_id),
             reason = "unknown_loot_table",
             "open_loot: the loot table has no rows -- check db/resources/Loot/Seed"
         );
-        feedback(entity_id, EMPTY_ROLL_TEXT, tx).await;
+        feedback(entity_id, EMPTY_ROLL_TEXT, tx, space_mgr).await;
         return;
     };
     let rolled = crate::cell::abilities::roll_loot_entries(&entries, container, table_id);
     if rolled.is_empty() {
-        refuse("empty_roll", Some(container), key_ref);
-        feedback(entity_id, EMPTY_ROLL_TEXT, tx).await;
+        refuse(space_mgr, "empty_roll", Some(container), key_ref);
+        feedback(entity_id, EMPTY_ROLL_TEXT, tx, space_mgr).await;
         return;
     }
 
@@ -237,7 +261,9 @@ pub(super) async fn open_loot(
                 tracing::warn!(
                     target: "loot",
                     entity_id,
+                    entity_name = space_mgr.entity_names(entity_id).entity_name,
                     player_id,
+                    player_name = id.player_name,
                     container_key = key_ref,
                     reason = "base_channel_closed",
                     "open_loot: ContainerLooted not sent -- the flag holds for this session only"
@@ -250,14 +276,20 @@ pub(super) async fn open_loot(
         target: "loot",
         event = "loot.container_opened",
         entity_id,
+        entity_name = space_mgr.entity_names(entity_id).entity_name,
         account_id = id.account_id,
+        account_name = id.account_name,
         player_id,
+        player_name = id.player_name,
         container_entity_id = container,
+        container_entity_name = space_mgr.entity_names(container).entity_name,
         container_key = key_ref,
         loot_table_id = table_id,
+        loot_table_name = cimmeria_names::book().loot_table(table_id),
         item_count = items.len(),
         once_per_character,
         chain_id,
+        chain_name = cimmeria_names::book().chain(chain_id),
         "open_loot: rolled and opened the loot window"
     );
     show(entity_id, container, &items, tx, space_mgr).await;
@@ -285,7 +317,9 @@ async fn show(
         tracing::warn!(
             target: "loot",
             entity_id,
-            container,
+            entity_name = space_mgr.entity_names(entity_id).entity_name,
+            container_entity_id = container,
+            container_entity_name = space_mgr.entity_names(container).entity_name,
             reason = "base_channel_closed",
             "open_loot: onLootDisplay not sent"
         );
@@ -293,7 +327,12 @@ async fn show(
 }
 
 /// One feedback line, so no press is silent.
-async fn feedback(entity_id: u32, text: &str, tx: &mpsc::Sender<CellToBaseMsg>) {
+async fn feedback(
+    entity_id: u32,
+    text: &str,
+    tx: &mpsc::Sender<CellToBaseMsg>,
+    space_mgr: &SpaceManager,
+) {
     let sent = tx
         .send(CellToBaseMsg::EntityMethodCall {
             entity_id,
@@ -305,6 +344,7 @@ async fn feedback(entity_id: u32, text: &str, tx: &mpsc::Sender<CellToBaseMsg>) 
         tracing::warn!(
             target: "loot",
             entity_id,
+            entity_name = space_mgr.entity_names(entity_id).entity_name,
             reason = "base_channel_closed",
             "open_loot: feedback line not sent"
         );

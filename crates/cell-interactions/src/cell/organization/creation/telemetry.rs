@@ -8,6 +8,7 @@ use cimmeria_entity::cell_entity::PlayerIdentity;
 use cimmeria_entity::organization::OrgType;
 
 use crate::cell::org_creation::{count_org_action, Pending};
+use crate::cell::space_manager::SpaceManager;
 
 /// The two actions whose rows the cell writes.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -43,6 +44,8 @@ pub struct Outcome {
     pub entity_id: u32,
     pub org_type: Option<OrgType>,
     pub npc_entity_id: Option<u32>,
+    /// The registrar's label, resolved where `npc_entity_id` is set.
+    pub npc_entity_name: Option<&'static str>,
     pub name_units: Option<usize>,
     pub attempts_left: Option<u8>,
     /// The D-ORG10 rule a refused name broke.
@@ -57,6 +60,7 @@ impl Outcome {
             entity_id,
             org_type: None,
             npc_entity_id: None,
+            npc_entity_name: None,
             name_units: None,
             attempts_left: None,
             text_reason: None,
@@ -79,10 +83,16 @@ impl Outcome {
             outcome,
             reason,
             account_id = self.actor.account_id,
+            account_name = self.actor.account_name,
             player_id = self.actor.player_id,
+            player_name = self.actor.player_name,
             entity_id = self.entity_id,
+            // The entity is the actor's own player entity, so its label is
+            // the actor's character name.
+            entity_name = self.actor.player_name,
             org_type = self.org_type.map(OrgType::name),
             npc_entity_id = self.npc_entity_id,
+            npc_entity_name = self.npc_entity_name,
             name_units = self.name_units,
             attempts_left = self.attempts_left,
             text_reason = self.text_reason,
@@ -96,15 +106,24 @@ impl Outcome {
 
 /// `pending_creation_created`: a registrar offer was recorded (or an open
 /// one re-pointed, `refreshed`).
-pub fn pending_created(actor: PlayerIdentity, p: &Pending, refreshed: bool) {
+pub fn pending_created(
+    space_mgr: &SpaceManager,
+    actor: PlayerIdentity,
+    p: &Pending,
+    refreshed: bool,
+) {
     tracing::debug!(
         target: "org",
         event = "pending_creation_created",
         account_id = actor.account_id,
+        account_name = actor.account_name,
         player_id = actor.player_id,
+        player_name = actor.player_name,
         org_type = p.org_type.name(),
         npc_entity_id = p.npc_entity_id,
+        npc_entity_name = space_mgr.entity_label(p.npc_entity_id),
         space_id = p.space_id,
+        world = space_mgr.world_name_for_space(p.space_id),
         attempts_left = p.attempts_left,
         refreshed,
         "organization creation offer open"
@@ -112,14 +131,17 @@ pub fn pending_created(actor: PlayerIdentity, p: &Pending, refreshed: bool) {
 }
 
 /// `pending_creation_consumed`: the organization was created.
-pub fn pending_consumed(actor: PlayerIdentity, p: &Pending) {
+pub fn pending_consumed(space_mgr: &SpaceManager, actor: PlayerIdentity, p: &Pending) {
     tracing::debug!(
         target: "org",
         event = "pending_creation_consumed",
         account_id = actor.account_id,
+        account_name = actor.account_name,
         player_id = actor.player_id,
+        player_name = actor.player_name,
         org_type = p.org_type.name(),
         npc_entity_id = p.npc_entity_id,
+        npc_entity_name = space_mgr.entity_label(p.npc_entity_id),
         attempts_left = p.attempts_left,
         "organization creation offer closed by a creation"
     );
@@ -127,14 +149,22 @@ pub fn pending_consumed(actor: PlayerIdentity, p: &Pending) {
 
 /// `pending_creation_expired`: the offer ended without a creation.
 /// `cause` is `ttl`, `space_changed` or `disconnect`.
-pub fn pending_expired(actor: PlayerIdentity, p: &Pending, cause: &'static str) {
+pub fn pending_expired(
+    space_mgr: &SpaceManager,
+    actor: PlayerIdentity,
+    p: &Pending,
+    cause: &'static str,
+) {
     tracing::debug!(
         target: "org",
         event = "pending_creation_expired",
         account_id = actor.account_id,
+        account_name = actor.account_name,
         player_id = actor.player_id,
+        player_name = actor.player_name,
         org_type = p.org_type.name(),
         npc_entity_id = p.npc_entity_id,
+        npc_entity_name = space_mgr.entity_label(p.npc_entity_id),
         attempts_left = p.attempts_left,
         cause,
         "organization creation offer ended"

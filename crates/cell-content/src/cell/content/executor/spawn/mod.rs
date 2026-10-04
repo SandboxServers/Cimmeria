@@ -67,7 +67,13 @@ pub(super) async fn spawn_entity(
     // ── 1. The acting entity must be a player ──
     let Some(actor) = space_mgr.get_entity(entity_id) else {
         tracing::warn!(
-            entity_id, template_id, %tag, chain_id,
+            entity_id,
+            entity_name = space_mgr.entity_names(entity_id).entity_name,
+            template_id,
+            template_name = cimmeria_names::book().template(template_id),
+            %tag,
+            chain_id,
+            chain_name = cimmeria_names::book().chain(chain_id),
             reason = "actor_missing",
             "spawn_entity: the triggering entity is not in any space -- nothing spawned"
         );
@@ -75,7 +81,13 @@ pub(super) async fn spawn_entity(
     };
     if !actor.is_player {
         tracing::warn!(
-            entity_id, template_id, %tag, chain_id,
+            entity_id,
+            entity_name = space_mgr.entity_names(entity_id).entity_name,
+            template_id,
+            template_name = cimmeria_names::book().template(template_id),
+            %tag,
+            chain_id,
+            chain_name = cimmeria_names::book().chain(chain_id),
             reason = "actor_not_player",
             "spawn_entity: the triggering entity is not a player, so \"the acting \
              player's space\" is undefined -- nothing spawned"
@@ -85,7 +97,13 @@ pub(super) async fn spawn_entity(
 
     let Some(space_id) = space_mgr.get_entity_space_id(entity_id) else {
         tracing::warn!(
-            entity_id, template_id, %tag, chain_id,
+            entity_id,
+            entity_name = space_mgr.entity_names(entity_id).entity_name,
+            template_id,
+            template_name = cimmeria_names::book().template(template_id),
+            %tag,
+            chain_id,
+            chain_name = cimmeria_names::book().chain(chain_id),
             reason = "space_unresolved",
             "spawn_entity: could not resolve the acting player's space -- nothing spawned"
         );
@@ -98,7 +116,14 @@ pub(super) async fn spawn_entity(
     // ── 2. Template must be in the startup cache ──
     let Some(prototype) = space_mgr.spawn_templates.get(&template_id) else {
         tracing::warn!(
-            entity_id, template_id, %tag, %world_name, chain_id,
+            entity_id,
+            entity_name = space_mgr.entity_names(entity_id).entity_name,
+            template_id,
+            template_name = cimmeria_names::book().template(template_id),
+            %tag,
+            world = %world_name,
+            chain_id,
+            chain_name = cimmeria_names::book().chain(chain_id),
             reason = "template_not_cached",
             "spawn_entity: template id is not in the entity_templates cache \
              (missing row, or the row failed to decode at startup) -- nothing spawned"
@@ -110,7 +135,15 @@ pub(super) async fn spawn_entity(
     // ── 3. Shared-world refusal ──
     if !space_mgr.is_world_instanced(&world_name) && allow_shared != Some(true) {
         tracing::warn!(
-            entity_id, template_id, %tag, %world_name, space_id, chain_id,
+            entity_id,
+            entity_name = space_mgr.entity_names(entity_id).entity_name,
+            template_id,
+            template_name = cimmeria_names::book().template(template_id),
+            %tag,
+            world = %world_name,
+            space_id,
+            chain_id,
+            chain_name = cimmeria_names::book().chain(chain_id),
             reason = "shared_world_refused",
             "spawn_entity: refusing to spawn into a non-instanced world -- every \
              player in the hub would see (and a hostile would attack) this \
@@ -123,7 +156,17 @@ pub(super) async fn spawn_entity(
     // ── 4. Same-tag idempotence ──
     if let Some(existing) = space_mgr.find_entity_by_tag(entity_id, &tag) {
         tracing::warn!(
-            entity_id, template_id, %tag, %world_name, space_id, existing, chain_id,
+            entity_id,
+            entity_name = space_mgr.entity_names(entity_id).entity_name,
+            template_id,
+            template_name = cimmeria_names::book().template(template_id),
+            %tag,
+            world = %world_name,
+            space_id,
+            existing,
+            existing_name = space_mgr.entity_names(existing).entity_name,
+            chain_id,
+            chain_name = cimmeria_names::book().chain(chain_id),
             reason = "tag_already_live",
             "spawn_entity: an entity with this tag is already in the player's \
              space -- no-op. This is the expected path for a relog-restore \
@@ -149,7 +192,14 @@ pub(super) async fn spawn_entity(
             Some(level) => Some(level),
             None => {
                 tracing::warn!(
-                    entity_id, template_id, %tag, chain_id, aggression = v,
+                    entity_id,
+                    entity_name = space_mgr.entity_names(entity_id).entity_name,
+                    template_id,
+                    template_name = cimmeria_names::book().template(template_id),
+                    %tag,
+                    chain_id,
+                    chain_name = cimmeria_names::book().chain(chain_id),
+                    aggression = v,
                     reason = "invalid_aggression",
                     "spawn_entity: aggression is not 0-5 -- ignored, the faction reaction decides"
                 );
@@ -164,7 +214,13 @@ pub(super) async fn spawn_entity(
     // Surface it at spawn time next to the row that caused it.
     if agg.is_some_and(|l| l.is_hostile()) && template_faction == 0 {
         tracing::warn!(
-            entity_id, template_id, %tag, chain_id,
+            entity_id,
+            entity_name = space_mgr.entity_names(entity_id).entity_name,
+            template_id,
+            template_name = cimmeria_names::book().template(template_id),
+            %tag,
+            chain_id,
+            chain_name = cimmeria_names::book().chain(chain_id),
             reason = "aggressive_spawn_faction_zero",
             "spawn_entity: hostile aggression on a template whose faction is 0 (or \
              NULL) -- auto-aggro skips a player on the NPC's own server faction, and \
@@ -192,16 +248,35 @@ pub(super) async fn spawn_entity(
             // relies on. `spawn_npc_from_record_into` does both required
             // inserts (spatial grid *and* `space.entities`).
             tracing::info!(
-                entity_id, npc_entity_id, template_id, %tag, %world_name,
-                space_id, ?position, heading,
+                entity_id,
+                entity_name = space_mgr.entity_names(entity_id).entity_name,
+                template_id,
+                template_name = cimmeria_names::book().template(template_id),
+                %tag,
+                npc_entity_id,
+                npc_entity_name = space_mgr.entity_names(npc_entity_id).entity_name,
+                world = %world_name,
+                space_id,
+                ?position,
+                heading,
                 aggression = ?agg.map(|l| l.level()),
-                is_stationary = is_stationary.unwrap_or(false), chain_id,
+                is_stationary = is_stationary.unwrap_or(false),
+                chain_id,
+                chain_name = cimmeria_names::book().chain(chain_id),
                 "Content: spawned mission entity"
             );
         }
         Err(e) => {
             tracing::warn!(
-                entity_id, template_id, %tag, %world_name, space_id, chain_id,
+                entity_id,
+                entity_name = space_mgr.entity_names(entity_id).entity_name,
+                template_id,
+                template_name = cimmeria_names::book().template(template_id),
+                %tag,
+                world = %world_name,
+                space_id,
+                chain_id,
+                chain_name = cimmeria_names::book().chain(chain_id),
                 reason = "spawn_failed",
                 "spawn_entity: spawn into the player's space failed: {e}"
             );
@@ -232,11 +307,19 @@ pub(super) async fn despawn_by_tag(
 ) {
     let Some(target_id) = space_mgr.find_entity_by_tag(entity_id, &entity_tag) else {
         tracing::debug!(
-            entity_id, %entity_tag, chain_id, verb,
+            entity_id,
+            entity_name = space_mgr.entity_names(entity_id).entity_name,
+            %entity_tag,
+            chain_id,
+            chain_name = cimmeria_names::book().chain(chain_id),
+            verb,
             "Content: entity tag not found for despawn"
         );
         return;
     };
+    // Snapshot the target's names now: the despawn destroys it.
+    let entity_name = space_mgr.entity_names(entity_id).entity_name;
+    let tn = space_mgr.entity_names(target_id);
     match cimmeria_cell_combat::cell::combat::despawn_npc_releasing_combat(
         target_id,
         "content_despawn",
@@ -247,7 +330,17 @@ pub(super) async fn despawn_by_tag(
     {
         DespawnOutcome::Despawned { witnesses_notified } => {
             tracing::info!(
-                entity_id, %entity_tag, target_id, witnesses_notified, chain_id, verb,
+                entity_id,
+                entity_name,
+                %entity_tag,
+                target_id,
+                target_name = tn.entity_name,
+                template_id = tn.template_id,
+                template_name = tn.template_name,
+                witnesses_notified,
+                chain_id,
+                chain_name = cimmeria_names::book().chain(chain_id),
+                verb,
                 "Content: despawned tagged entity"
             );
         }
@@ -255,7 +348,16 @@ pub(super) async fn despawn_by_tag(
             // The tag resolved a moment ago, so this means the entity left
             // the space between the lookup and the despawn.
             tracing::warn!(
-                entity_id, %entity_tag, target_id, chain_id, verb,
+                entity_id,
+                entity_name,
+                %entity_tag,
+                target_id,
+                target_name = tn.entity_name,
+                template_id = tn.template_id,
+                template_name = tn.template_name,
+                chain_id,
+                chain_name = cimmeria_names::book().chain(chain_id),
+                verb,
                 reason = "despawn_target_vanished",
                 "Content: despawn target disappeared between tag lookup and despawn"
             );
@@ -267,7 +369,16 @@ pub(super) async fn despawn_by_tag(
             // discarded because if it ever does fire, a content chain came
             // one step from destroying a logged-in player's cell entity.
             tracing::warn!(
-                entity_id, %entity_tag, target_id, chain_id, verb,
+                entity_id,
+                entity_name,
+                %entity_tag,
+                target_id,
+                target_name = tn.entity_name,
+                template_id = tn.template_id,
+                template_name = tn.template_name,
+                chain_id,
+                chain_name = cimmeria_names::book().chain(chain_id),
+                verb,
                 reason = "despawn_refused_player",
                 "Content: despawn refused -- the tag resolved to a PLAYER entity"
             );

@@ -23,7 +23,12 @@ fn resolve_mail_player_id(entity_id: u32, space_mgr: &SpaceManager, op: &str) ->
     match space_mgr.get_entity(entity_id).and_then(|e| e.player_id) {
         Some(id) => Some(id),
         None => {
-            tracing::warn!(entity_id, op, "mail op dropped: entity has no player_id");
+            tracing::warn!(
+                entity_id,
+                entity_name = space_mgr.entity_names(entity_id).entity_name,
+                op,
+                "mail op dropped: entity has no player_id"
+            );
             None
         }
     }
@@ -161,7 +166,9 @@ pub async fn handle_attachment_op(
         tracing::warn!(
             target: "mail",
             entity_id,
+            entity_name = space_mgr.entity_names(entity_id).entity_name,
             player_id,
+            player_name = space_mgr.player_identity(entity_id).player_name,
             method,
             reason = "base_channel_closed",
             "mail attachment op dropped: base channel closed",
@@ -191,7 +198,9 @@ pub async fn handle_send_mail(
                 target: "mail",
                 event = "mail.send_decoded",
                 entity_id,
+                entity_name = space_mgr.entity_names(entity_id).entity_name,
                 player_id,
+                player_name = space_mgr.player_identity(entity_id).player_name,
                 recipients = send.recipients.len(),
                 recipient_flags = send.recipient_flags,
                 recipient_flags_names = %cimmeria_wire::cell::mail::codes::flags::MAIL_FLAGS.render(send.recipient_flags),
@@ -199,7 +208,7 @@ pub async fn handle_send_mail(
                 body_units = send.body.encode_utf16().count(),
                 cash = send.cash,
                 cod = send.cod,
-                item_id = send.item_id,
+                item_id = send.item_id, // nt:id-only an inventory instance id; the cell holds no inventory row to type it
                 "sendMailMessage decoded, forwarding to base",
             );
             MailOp::Send(send)
@@ -209,7 +218,9 @@ pub async fn handle_send_mail(
                 target: "mail",
                 event = "mail.send_decode_rejected",
                 entity_id,
+                entity_name = space_mgr.entity_names(entity_id).entity_name,
                 player_id,
+                player_name = space_mgr.player_identity(entity_id).player_name,
                 payload_len = args.len(),
                 reason = reject.reason(),
                 detail = ?reject,
@@ -230,7 +241,9 @@ pub async fn handle_send_mail(
         tracing::warn!(
             target: "mail",
             entity_id,
+            entity_name = space_mgr.entity_names(entity_id).entity_name,
             player_id,
+            player_name = space_mgr.player_identity(entity_id).player_name,
             reason = "base_channel_closed",
             "sendMailMessage dropped: base channel closed",
         );

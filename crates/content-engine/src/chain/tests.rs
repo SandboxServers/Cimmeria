@@ -544,3 +544,24 @@ fn has_item_use_chain_matches_the_exact_item_on_enabled_chains_only() {
     );
     assert!(!engine.has_item_use_chain(20));
 }
+
+/// `chain_name` (Rule 6) is the description, or nothing: a blank one or a
+/// seed placeholder is left off the log line, never logged as a name.
+#[test]
+fn chain_label_drops_blank_and_placeholder_descriptions() {
+    let mut chain = make_chain(
+        1202,
+        Trigger::OnPlayerLoaded { world_name: None },
+        Vec::new(),
+        0,
+    );
+    chain.name = "701 - Gerschon interact (Human): offer dialog 2573".to_string();
+    assert_eq!(
+        chain.label(),
+        Some("701 - Gerschon interact (Human): offer dialog 2573")
+    );
+    for none in ["", "   ", "UNUSED", "DELETED"] {
+        chain.name = none.to_string();
+        assert_eq!(chain.label(), None, "{none:?} is not a chain name");
+    }
+}

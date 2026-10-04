@@ -54,10 +54,13 @@ pub fn suppress_hidden_mission_frames(
     site: &'static str,
 ) -> bool {
     if is_hidden {
+        // The callers hold the entity mutably, so no name is in reach here;
+        // each caller's own line just before this one names the player.
         tracing::debug!(
-            entity_id,
-            player_id,
+            entity_id, // nt:id-only caller holds the entity mutably; its adjacent line names it
+            player_id, // nt:id-only caller holds the entity mutably; its adjacent line names it
             mission_id,
+            mission_name = cimmeria_names::book().mission(mission_id),
             site,
             reason = "hidden_mission",
             "mission client frames suppressed: mission is hidden (reference parity, #715)"

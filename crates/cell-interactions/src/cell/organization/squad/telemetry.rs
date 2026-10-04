@@ -295,12 +295,19 @@ impl Outcome {
             outcome,
             reason = reason_str,
             account_id = self.actor.account_id,
+            account_name = self.actor.account_name,
             player_id = self.actor.player_id,
+            player_name = self.actor.player_name,
             entity_id = self.entity_id,
+            // The entity is the actor's own player entity, so its label is
+            // the actor's character name.
+            entity_name = self.actor.player_name,
             target_account_id = target.account_id,
+            target_account_name = target.account_name,
             target_player_id = target.player_id,
-            squad_id = self.squad_id,
-            request_id = self.request_id,
+            target_player_name = target.player_name,
+            squad_id = self.squad_id, // nt:id-only squads have no name, only a runtime id
+            request_id = self.request_id, // nt:id-only invite request token, nothing to name
             recipients = self.recipients,
             "squad action {}",
             outcome
@@ -313,9 +320,11 @@ pub fn squad_created(squad_id: i32, leader: PlayerIdentity) {
     tracing::debug!(
         target: "squad",
         event = "squad_created",
-        squad_id,
+        squad_id, // nt:id-only squads have no name, only a runtime id
         account_id = leader.account_id,
+        account_name = leader.account_name,
         player_id = leader.player_id,
+        player_name = leader.player_name,
         "squad created"
     );
 }
@@ -324,9 +333,11 @@ pub fn member_joined(squad_id: i32, who: PlayerIdentity, rank: OrgRank) {
     tracing::debug!(
         target: "squad",
         event = "member_joined",
-        squad_id,
+        squad_id, // nt:id-only squads have no name, only a runtime id
         account_id = who.account_id,
+        account_name = who.account_name,
         player_id = who.player_id,
+        player_name = who.player_name,
         rank = rank.as_u8(),
         "squad member joined"
     );
@@ -339,9 +350,11 @@ pub fn departure(space_mgr: &SpaceManager, d: &Departure, departed: PlayerIdenti
     tracing::debug!(
         target: "squad",
         event = "member_left",
-        squad_id = d.squad_id,
+        squad_id = d.squad_id, // nt:id-only squads have no name, only a runtime id
         account_id = departed.account_id,
+        account_name = departed.account_name,
         player_id = departed.player_id,
+        player_name = departed.player_name,
         reason,
         remaining = d.remaining.len(),
         "squad member left"
@@ -351,13 +364,26 @@ pub fn departure(space_mgr: &SpaceManager, d: &Departure, departed: PlayerIdenti
         tracing::debug!(
             target: "squad",
             event = "leader_changed",
-            squad_id = d.squad_id,
+            squad_id = d.squad_id, // nt:id-only squads have no name, only a runtime id
             account_id = departed.account_id,
+            account_name = departed.account_name,
             player_id = departed.player_id,
+            player_name = departed.player_name,
             target_account_id = target.account_id,
+            target_account_name = target.account_name,
             target_player_id = target.player_id,
+            target_player_name = target.player_name,
             from_player_id = d.departed.player_id,
+            from_player_name = departed.player_name,
             to_player_id = to,
+            // The roster carries the new leader's name even when they are
+            // in transit with no live entity to resolve.
+            to_player_name = target.player_name.or_else(|| {
+                d.remaining
+                    .iter()
+                    .find(|m| m.player_id == to && !m.name.is_empty())
+                    .map(|m| m.name.as_str())
+            }),
             reason,
             "squad leader changed"
         );
@@ -366,9 +392,11 @@ pub fn departure(space_mgr: &SpaceManager, d: &Departure, departed: PlayerIdenti
         tracing::debug!(
             target: "squad",
             event = "disbanded",
-            squad_id = d.squad_id,
+            squad_id = d.squad_id, // nt:id-only squads have no name, only a runtime id
             account_id = departed.account_id,
+            account_name = departed.account_name,
             player_id = departed.player_id,
+            player_name = departed.player_name,
             reason,
             "squad disbanded"
         );
@@ -384,9 +412,11 @@ pub fn loot_mode_changed(
     tracing::debug!(
         target: "squad",
         event = "loot_mode_changed",
-        squad_id,
+        squad_id, // nt:id-only squads have no name, only a runtime id
         account_id = actor.account_id,
+        account_name = actor.account_name,
         player_id = actor.player_id,
+        player_name = actor.player_name,
         from = loot_label(from),
         to = loot_label(to),
         "squad loot mode changed"
@@ -402,12 +432,16 @@ pub fn invite_created(
     tracing::debug!(
         target: "squad",
         event = "invite_created",
-        request_id,
-        squad_id,
+        request_id, // nt:id-only invite request token, nothing to name
+        squad_id, // nt:id-only squads have no name, only a runtime id
         account_id = inviter.account_id,
+        account_name = inviter.account_name,
         player_id = inviter.player_id,
+        player_name = inviter.player_name,
         target_account_id = invitee.account_id,
+        target_account_name = invitee.account_name,
         target_player_id = invitee.player_id,
+        target_player_name = invitee.player_name,
         "squad invite created"
     );
 }
@@ -422,13 +456,17 @@ pub fn invite_consumed(
     tracing::debug!(
         target: "squad",
         event = "invite_consumed",
-        request_id,
-        squad_id,
+        request_id, // nt:id-only invite request token, nothing to name
+        squad_id, // nt:id-only squads have no name, only a runtime id
         accepted,
         account_id = invitee.account_id,
+        account_name = invitee.account_name,
         player_id = invitee.player_id,
+        player_name = invitee.player_name,
         target_account_id = inviter.account_id,
+        target_account_name = inviter.account_name,
         target_player_id = inviter.player_id,
+        target_player_name = inviter.player_name,
         "squad invite consumed"
     );
 }
@@ -442,12 +480,16 @@ pub fn invites_expired(space_mgr: &mut SpaceManager) {
         tracing::debug!(
             target: "squad",
             event = "invite_expired",
-            request_id = e.request_id,
-            squad_id = e.squad_id,
+            request_id = e.request_id, // nt:id-only invite request token, nothing to name
+            squad_id = e.squad_id, // nt:id-only squads have no name, only a runtime id
             account_id = inviter.account_id,
+            account_name = inviter.account_name,
             player_id = inviter.player_id,
+            player_name = inviter.player_name,
             target_account_id = invitee.account_id,
+            target_account_name = invitee.account_name,
             target_player_id = invitee.player_id,
+            target_player_name = invitee.player_name,
             "squad invite expired unanswered"
         );
     }

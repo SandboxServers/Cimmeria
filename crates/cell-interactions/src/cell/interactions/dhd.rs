@@ -55,7 +55,9 @@ pub(crate) async fn try_open_dhd(
         None => {
             tracing::warn!(
                 entity_id,
+                entity_name = space_mgr.entity_label(entity_id),
                 target_entity_id,
+                target_entity_name = space_mgr.entity_label(target_entity_id),
                 reason = "entity_world_unknown",
                 "onDisplayDHD: interacting entity is in no space — DHD not opened"
             );
@@ -85,8 +87,10 @@ pub(crate) async fn try_open_dhd(
             // player sees nothing — log it so the seed gap is greppable.
             tracing::warn!(
                 entity_id,
+                entity_name = space_mgr.entity_label(entity_id),
                 target_entity_id,
-                world_name = %world_name,
+                target_entity_name = space_mgr.entity_label(target_entity_id),
+                world = %world_name,
                 reason = "no_stargate_for_world",
                 "onDisplayDHD: a DHD prop is spawned on a world with no \
                  stargates row — the dialling UI cannot open; seed the gate \
@@ -112,11 +116,13 @@ pub(crate) async fn try_open_dhd(
         _ => {
             tracing::warn!(
                 entity_id,
+                entity_name = space_mgr.entity_label(entity_id),
                 stargate_id,
+                stargate_name = cimmeria_names::book().stargate(stargate_id),
                 address_origin,
                 min = *ADDRESS_ORIGIN_RANGE.start(),
                 max = *ADDRESS_ORIGIN_RANGE.end(),
-                world_name = %world_name,
+                world = %world_name,
                 reason = "address_origin_out_of_range",
                 "onDisplayDHD: stargates.address_origin is outside the 1-38 \
                  point-of-origin glyph range — refusing to emit rather than \
@@ -137,10 +143,13 @@ pub(crate) async fn try_open_dhd(
 
     tracing::info!(
         entity_id,
+        entity_name = space_mgr.entity_label(entity_id),
         target_entity_id,
+        target_entity_name = space_mgr.entity_label(target_entity_id),
         stargate_id,
+        stargate_name = cimmeria_names::book().stargate(stargate_id),
         address_origin = origin_byte,
-        world_name = %world_name,
+        world = %world_name,
         "interact: DHD → onDisplayDHD"
     );
 
@@ -154,7 +163,9 @@ pub(crate) async fn try_open_dhd(
     {
         tracing::warn!(
             entity_id,
+            entity_name = space_mgr.entity_label(entity_id),
             target_entity_id,
+            target_entity_name = space_mgr.entity_label(target_entity_id),
             "onDisplayDHD: cell→base send failed -- the dialling UI will not \
              open for the player: {e}"
         );

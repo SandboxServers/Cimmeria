@@ -22,8 +22,11 @@ pub(super) async fn trigger_transporter(
 ) {
     tracing::info!(
         entity_id,
+        entity_name = space_mgr.entity_names(entity_id).entity_name,
         region_id,
+        region_name = space_mgr.ring_transporters.region_name(region_id),
         chain_id,
+        chain_name = cimmeria_names::book().chain(chain_id),
         "Content: triggering transporter"
     );
     crate::cell::ring_transport::handle_interact(region_id, entity_id, tx, space_mgr, engine).await;
@@ -42,9 +45,14 @@ pub(super) async fn teleport(
 ) {
     tracing::info!(
         entity_id,
+        entity_name = space_mgr.entity_names(entity_id).entity_name,
         space_id,
+        world = u32::try_from(space_id)
+            .ok()
+            .and_then(|s| space_mgr.world_name_for_space(s)),
         ?position,
         chain_id,
+        chain_name = cimmeria_names::book().chain(chain_id),
         "Content: teleporting entity"
     );
     // The chain action's `space_id` is the destination space ID.
@@ -53,7 +61,12 @@ pub(super) async fn teleport(
     let current_space = space_mgr.get_entity(entity_id).map(|e| e.space_id.0);
     if Some(space_id) != current_space && space_id != 0 {
         tracing::warn!(
-            entity_id, requested = space_id, current = ?current_space, chain_id,
+            entity_id,
+            entity_name = space_mgr.entity_names(entity_id).entity_name,
+            requested = space_id,
+            current = ?current_space,
+            chain_id,
+            chain_name = cimmeria_names::book().chain(chain_id),
             "Content: cross-space chain teleport not implemented — falling back to same-space move"
         );
     }
@@ -100,7 +113,9 @@ pub(super) async fn teleport(
         // still sees the owner.
         tracing::warn!(
             entity_id,
+            entity_name = space_mgr.entity_names(entity_id).entity_name,
             chain_id,
+            chain_name = cimmeria_names::book().chain(chain_id),
             reason = "cell_to_base_closed",
             error = %e,
             "Content: teleport snap not sent; pets left in place"
@@ -144,9 +159,11 @@ pub(super) async fn cross_world_teleport(
 ) {
     tracing::info!(
         entity_id,
+        entity_name = space_mgr.entity_names(entity_id).entity_name,
         world = %world_name,
         ?position,
         chain_id,
+        chain_name = cimmeria_names::book().chain(chain_id),
         "Content: cross-world teleporting entity"
     );
 
@@ -183,7 +200,13 @@ pub(super) async fn cross_world_teleport(
         .await
     {
         tracing::error!(
-            entity_id, world = %world_name, ?position, chain_id, error = %e,
+            entity_id,
+            entity_name = space_mgr.entity_names(entity_id).entity_name,
+            world = %world_name,
+            ?position,
+            chain_id,
+            chain_name = cimmeria_names::book().chain(chain_id),
+            error = %e,
             reason = "cell_to_base_closed",
             "CrossWorldTeleport: cell→base GateTravel send failed -- player and pets left in place"
         );

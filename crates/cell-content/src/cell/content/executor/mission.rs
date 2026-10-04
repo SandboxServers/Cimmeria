@@ -24,8 +24,11 @@ pub(super) async fn accept_or_advance(
 ) {
     tracing::info!(
         entity_id,
+        entity_name = space_mgr.entity_names(entity_id).entity_name,
         mission_id,
+        mission_name = cimmeria_names::book().mission(mission_id),
         chain_id,
+        chain_name = cimmeria_names::book().chain(chain_id),
         "Content: accepting mission"
     );
     if let Some(def) = space_mgr.mission_defs.get(&mission_id) {
@@ -53,8 +56,11 @@ pub(super) async fn accept_or_advance(
         if !accepted {
             tracing::info!(
                 entity_id,
+                entity_name = space_mgr.entity_names(entity_id).entity_name,
                 mission_id,
+                mission_name = cimmeria_names::book().mission(mission_id),
                 chain_id,
+                chain_name = cimmeria_names::book().chain(chain_id),
                 "Content: accept_mission refused by offer guard — skipping persist + follow-up event"
             );
             return;
@@ -98,7 +104,9 @@ pub(super) async fn accept_or_advance(
     } else {
         tracing::warn!(
             mission_id,
+            mission_name = cimmeria_names::book().mission(mission_id),
             chain_id,
+            chain_name = cimmeria_names::book().chain(chain_id),
             "No mission_defs entry — cannot accept mission"
         );
     }
@@ -120,8 +128,11 @@ pub(super) async fn complete(
 ) {
     tracing::info!(
         entity_id,
+        entity_name = space_mgr.entity_names(entity_id).entity_name,
         mission_id,
+        mission_name = cimmeria_names::book().mission(mission_id),
         chain_id,
+        chain_name = cimmeria_names::book().chain(chain_id),
         "Content: completing mission"
     );
     // Snapshot the prior status BEFORE `complete_mission_direct` flips
@@ -173,7 +184,9 @@ pub(super) async fn complete(
     } else {
         tracing::debug!(
             entity_id,
+            entity_name = space_mgr.entity_names(entity_id).entity_name,
             mission_id,
+            mission_name = cimmeria_names::book().mission(mission_id),
             ?prior_status,
             "Content: complete called on non-active mission — skipping mission_completed event"
         );
@@ -230,9 +243,13 @@ pub(super) async fn advance_step(
 ) {
     tracing::info!(
         entity_id,
+        entity_name = space_mgr.entity_names(entity_id).entity_name,
         mission_id,
+        mission_name = cimmeria_names::book().mission(mission_id),
         step_id,
+        step_name = cimmeria_names::book().mission_step(step_id),
         chain_id,
+        chain_name = cimmeria_names::book().chain(chain_id),
         "Content: advancing step"
     );
     let activated =
@@ -279,8 +296,11 @@ pub(super) async fn abandon(
 ) {
     tracing::info!(
         entity_id,
+        entity_name = space_mgr.entity_names(entity_id).entity_name,
         mission_id,
+        mission_name = cimmeria_names::book().mission(mission_id),
         chain_id,
+        chain_name = cimmeria_names::book().chain(chain_id),
         "Content: abandoning mission"
     );
     // H54: fire the follow-up event only on a real removal, mirroring how
@@ -315,9 +335,13 @@ pub(super) async fn complete_objective(
 ) {
     tracing::info!(
         entity_id,
+        entity_name = space_mgr.entity_names(entity_id).entity_name,
         mission_id,
+        mission_name = cimmeria_names::book().mission(mission_id),
         objective_id,
+        objective_name = cimmeria_names::book().mission_objective(objective_id),
         chain_id,
+        chain_name = cimmeria_names::book().chain(chain_id),
         "Content: complete objective"
     );
     // Snapshot before the call so the auto-complete branch inside
@@ -368,9 +392,13 @@ pub(super) async fn complete_objective(
     if prior_status == Some(MISSION_ACTIVE) && now_status == Some(MISSION_COMPLETED) {
         tracing::info!(
             entity_id,
+            entity_name = space_mgr.entity_names(entity_id).entity_name,
             mission_id,
+            mission_name = cimmeria_names::book().mission(mission_id),
             objective_id,
+            objective_name = cimmeria_names::book().mission_objective(objective_id),
             chain_id,
+            chain_name = cimmeria_names::book().chain(chain_id),
             "Content: final required objective completed the mission — firing mission_completed"
         );
         crate::cell::content::event_dispatch::fire_mission_completed(

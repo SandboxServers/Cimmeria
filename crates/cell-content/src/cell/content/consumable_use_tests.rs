@@ -519,7 +519,10 @@ async fn the_not_implemented_refusal_logs_its_reason() {
             "consumable_not_implemented",
         )
         .expect("WARN reason=consumable_not_implemented");
-    assert_eq!(row.fields.get("type_id").map(String::as_str), Some("6206"));
+    assert_eq!(
+        row.fields.get("item_type_id").map(String::as_str),
+        Some("6206")
+    );
     assert_eq!(
         row.fields.get("item_id").map(String::as_str),
         Some(INSTANCE.to_string().as_str())

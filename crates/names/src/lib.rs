@@ -8,8 +8,10 @@
 //!   abilities, effects, missions with their steps and objectives, dialogs,
 //!   dialog sets, speakers, entity templates, monikers, texts, error texts,
 //!   stargates, respawners, spawn sets, containers, item lists, applied
-//!   sciences, worlds). Typed lookups return `Option<&str>`: `None` for an
-//!   unknown id, a blank name or a seed placeholder such as `NO ITEM NAME`.
+//!   sciences, worlds, content chains, loot tables, trainer ability lists,
+//!   Kismet event sets and sequences, dialog-set entries). Typed lookups
+//!   return `Option<&str>`: `None` for an unknown id, a blank name or a seed
+//!   placeholder such as `NO ITEM NAME`.
 //! - [`global`] / [`book`]: the process's book, shared by the base and the
 //!   cell. [`load_at_boot`] fills it once; [`reload`] swaps in a new one on
 //!   content reload.

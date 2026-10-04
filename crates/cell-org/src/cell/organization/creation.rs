@@ -90,8 +90,10 @@ pub async fn on_organization_creation(
                 row.org_type = Some(p.org_type);
                 row.attempts_left = Some(p.attempts_left);
                 match miss {
-                    TakeMiss::Expired => telemetry::pending_expired(actor, p, "ttl"),
-                    TakeMiss::SpaceChanged => telemetry::pending_expired(actor, p, "space_changed"),
+                    TakeMiss::Expired => telemetry::pending_expired(space_mgr, actor, p, "ttl"),
+                    TakeMiss::SpaceChanged => {
+                        telemetry::pending_expired(space_mgr, actor, p, "space_changed")
+                    }
                     _ => {}
                 }
             }
@@ -167,6 +169,6 @@ pub fn on_disconnect(entity_id: u32, space_mgr: &mut SpaceManager) {
         return;
     };
     if let Some(p) = space_mgr.resources.org_creations_mut().clear(player_id) {
-        telemetry::pending_expired(actor, &p, "disconnect");
+        telemetry::pending_expired(space_mgr, actor, &p, "disconnect");
     }
 }

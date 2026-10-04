@@ -30,8 +30,11 @@ pub(super) async fn send_store_open(
         Some(id) => id,
         None => {
             tracing::warn!(
-                player_id,
+                // `player_id` here is the player's entity id.
+                entity_id = player_id,
+                entity_name = space_mgr.entity_label(player_id),
                 vendor_entity_id,
+                vendor_entity_name = space_mgr.entity_label(vendor_entity_id),
                 "send_store_open: missing player_id; aborting vendor open"
             );
             return;
@@ -42,20 +45,29 @@ pub(super) async fn send_store_open(
         Ok(v) => v,
         Err(_) => {
             tracing::warn!(
-                player_id,
+                // `player_id` here is the player's entity id.
+                entity_id = player_id,
+                entity_name = space_mgr.entity_label(player_id),
                 vendor_entity_id,
+                vendor_entity_name = space_mgr.entity_label(vendor_entity_id),
                 "send_store_open: vendor entity id exceeds i32; aborting"
             );
             return;
         }
     };
 
-    tracing::info!(
-        player_id,
-        vendor_entity_id,
-        ?vendor_template_id,
-        "Opening vendor store"
-    );
+    {
+        let names = cimmeria_names::book();
+        tracing::info!(
+            entity_id = player_id,
+            entity_name = space_mgr.entity_label(player_id),
+            vendor_entity_id,
+            vendor_entity_name = space_mgr.entity_label(vendor_entity_id),
+            vendor_template_id,
+            vendor_template_name = vendor_template_id.and_then(|t| names.template(t)),
+            "Opening vendor store"
+        );
+    }
     let _ = tx
         .send(CellToBaseMsg::OpenVendorStore {
             entity_id: player_id,

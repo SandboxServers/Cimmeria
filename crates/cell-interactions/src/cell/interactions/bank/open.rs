@@ -120,7 +120,7 @@ pub async fn open_vault_gm(
     space_mgr: &mut SpaceManager,
 ) -> bool {
     let Some(pos) = space_mgr.get_entity(entity_id).map(|e| e.position) else {
-        log_player_entity_missing(entity_id, None);
+        log_player_entity_missing(entity_id, None, None);
         return false;
     };
     open_personal_vault(
@@ -147,7 +147,8 @@ async fn open_personal_vault(
     space_mgr: &mut SpaceManager,
 ) -> bool {
     let Some(space_id) = space_mgr.get_entity_space_id(entity_id) else {
-        log_player_entity_missing(entity_id, banker_id);
+        let banker_name = banker_id.and_then(|b| space_mgr.entity_label(b));
+        log_player_entity_missing(entity_id, banker_id, banker_name);
         return false;
     };
     // `get_entity_space_id` resolved it, so the entity exists.
@@ -167,12 +168,17 @@ async fn open_personal_vault(
         target: "bank",
         event = "vault_session_opened",
         account_id = id.account_id,
+        account_name = id.account_name,
         player_id = id.player_id,
+        player_name = id.player_name,
         entity_id,
+        entity_name = id.player_name,
         scope = VaultScope::Personal.as_str(),
         banker_id,
+        banker_name = banker_id.and_then(|b| space_mgr.entity_label(b)),
         gm_override = banker_id.is_none(),
         space_id,
+        world = space_mgr.world_name_for_space(space_id),
         distance,
         "vault_session_opened: vault session open, sending onVaultOpen"
     );
@@ -189,9 +195,13 @@ async fn open_personal_vault(
             target: "bank",
             event = "vault_open_send_failed",
             account_id = id.account_id,
+            account_name = id.account_name,
             player_id = id.player_id,
+            player_name = id.player_name,
             entity_id,
+            entity_name = id.player_name,
             banker_id,
+            banker_name = banker_id.and_then(|b| space_mgr.entity_label(b)),
             reason = "base_channel_closed",
             error = %e,
             "vault_open_send_failed: onVaultOpen could not be queued (base channel closed) -- \
@@ -209,15 +219,16 @@ async fn open_personal_vault(
 /// to the four player-visible refusals, and this one has no player to tell
 /// (the entity is in no space). It logs under this crate's own target,
 /// which `OTEL_FILTER` exports at DEBUG and above.
-fn log_player_entity_missing(entity_id: u32, banker_id: Option<u32>) {
+fn log_player_entity_missing(entity_id: u32, banker_id: Option<u32>, banker_name: Option<&str>) {
     // Under `bank`, like every other open refusal, so a support query on
     // the target finds it. No `account_id` / `player_id`: they are read from
     // the entity that is missing.
     tracing::warn!(
         target: "bank",
         event = "vault_open_rejected",
-        entity_id,
+        entity_id, // nt:id-only the player's entity is gone, so there is no live name
         banker_id,
+        banker_name,
         reason = "player_entity_missing",
         "bank: vault open found no cell entity for the player -- no vault session and no \
          window; the player may hold stale state"

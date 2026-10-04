@@ -11,7 +11,7 @@ use super::{
     suppress_hidden_mission_frames, ON_MISSION_UPDATE, ON_OBJECTIVE_UPDATE, ON_STEP_UPDATE,
 };
 use crate::cell::messages::CellToBaseMsg;
-use crate::cell::space_manager::SpaceManager;
+use crate::cell::space_manager::{EntityNames, SpaceManager};
 
 /// Accept a mission: create a MissionInstance and send initial state to client.
 ///
@@ -59,8 +59,9 @@ pub async fn accept_mission(
         }
         None => {
             tracing::warn!(
-                entity_id,
+                entity_id, // nt:id-only the entity is gone, nothing left to name
                 mission_id,
+                mission_name = cimmeria_names::book().mission(mission_id),
                 "accept_mission: entity not found — refusing (nothing to mutate, \
                  and persisting an accept for an unknown entity would corrupt \
                  the saved row)"
@@ -86,7 +87,9 @@ pub async fn accept_mission(
         if let Some(reason) = refusal {
             tracing::warn!(
                 entity_id,
+                entity_name = space_mgr.entity_label(entity_id),
                 mission_id,
+                mission_name = cimmeria_names::book().mission(mission_id),
                 status,
                 repeats,
                 num_repeats = def.map_or(0, |d| d.num_repeats),
@@ -122,13 +125,19 @@ pub async fn accept_mission(
     mission.is_hidden = is_hidden;
     entity.missions.add_mission(mission);
 
-    tracing::info!(
-        entity_id,
-        mission_id,
-        step_id,
-        prior_repeats,
-        "Mission accepted"
-    );
+    {
+        let names = cimmeria_names::book();
+        tracing::info!(
+            entity_id,
+            entity_name = EntityNames::of(entity).entity_name,
+            mission_id,
+            mission_name = names.mission(mission_id),
+            step_id,
+            step_name = names.mission_step(step_id),
+            prior_repeats,
+            "Mission accepted"
+        );
+    }
 
     // Hidden missions are accepted (state above, persistence and the
     // `mission_accepted` event in the caller) but never announced (#715).
@@ -208,7 +217,13 @@ pub async fn abandon_mission(
     let player_id = entity.player_id;
 
     if let Some(removed) = entity.missions.remove_mission(mission_id) {
-        tracing::info!(entity_id, mission_id, "Mission abandoned");
+        tracing::info!(
+            entity_id,
+            entity_name = EntityNames::of(entity).entity_name,
+            mission_id,
+            mission_name = cimmeria_names::book().mission(mission_id),
+            "Mission abandoned"
+        );
 
         // The client never saw a hidden mission, so there is no journal
         // row to remove (#715). The removal itself still counts.
@@ -239,7 +254,9 @@ pub async fn abandon_mission(
 
     tracing::debug!(
         entity_id,
+        entity_name = EntityNames::of(entity).entity_name,
         mission_id,
+        mission_name = cimmeria_names::book().mission(mission_id),
         "abandon_mission: mission not tracked — no removal, no mission_abandoned event"
     );
     false

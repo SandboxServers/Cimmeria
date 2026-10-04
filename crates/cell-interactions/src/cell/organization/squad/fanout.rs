@@ -50,7 +50,7 @@ pub async fn send(
         tracing::warn!(
             target: "squad",
             event = "squad.send_failed",
-            entity_id,
+            entity_id, // nt:id-only no SpaceManager here; the channel only closes at shutdown
             method_index,
             method_name = cimmeria_wire::names::player_client_method(method_index),
             reason = "cell_to_base_closed",
@@ -229,16 +229,17 @@ pub async fn announce_join(
     }
 }
 
-/// Tell `player_id` they left `squad_id`, or queue it for their next world
+/// Tell `member` they left `squad_id`, or queue it for their next world
 /// entry when they are in transit. A logout needs neither: the client is
 /// gone.
 async fn tell_left(
     tx: &mpsc::Sender<CellToBaseMsg>,
     space_mgr: &mut SpaceManager,
-    player_id: i32,
+    member: &SquadMember,
     squad_id: i32,
     reason: OrgLeaveReason,
 ) {
+    let player_id = member.player_id;
     stamp_squad_id(space_mgr, player_id, None);
     if reason == OrgLeaveReason::Logout {
         return;
@@ -258,7 +259,10 @@ async fn tell_left(
                 target: "squad",
                 event = "squad.left_owed",
                 player_id,
-                squad_id,
+                // In transit, so no live entity to name them: the roster's
+                // copy of the name is the one left.
+                player_name = Some(member.name.as_str()).filter(|n| !n.is_empty()),
+                squad_id, // nt:id-only squads have no name, only a runtime id
                 reason = reason.as_u8(),
                 "squad member in transit; onOrganizationLeft queued for their world entry"
             );
@@ -297,7 +301,7 @@ pub async fn announce_departure(
         d,
         telemetry::of_player(space_mgr, d.departed.player_id),
     );
-    tell_left(tx, space_mgr, d.departed.player_id, sid, d.reason).await;
+    tell_left(tx, space_mgr, &d.departed, sid, d.reason).await;
     for m in &d.remaining {
         let Some(eid) = space_mgr.player_entity_by_player_id(m.player_id) else {
             continue;
@@ -332,7 +336,7 @@ pub async fn announce_departure(
     }
     if d.disbanded {
         for m in &d.remaining {
-            tell_left(tx, space_mgr, m.player_id, sid, OrgLeaveReason::Disbanded).await;
+            tell_left(tx, space_mgr, m, sid, OrgLeaveReason::Disbanded).await;
         }
     }
 }

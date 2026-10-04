@@ -55,10 +55,24 @@ pub async fn fire_interact_tag(
     let resolved = engine.resolve_event(&event, &ctx);
     let matched = !resolved.actions.is_empty();
     if matched {
-        tracing::info!(entity_id, player_id, %tag, actions = resolved.actions.len(), "fire_interact_tag: matched");
+        let id = space_mgr.player_identity(entity_id);
+        tracing::info!(
+            entity_id,
+            entity_name = space_mgr.entity_label(entity_id),
+            player_id,
+            player_name = id.player_name,
+            %tag,
+            actions = resolved.actions.len(),
+            "fire_interact_tag: matched"
+        );
         executor::execute_actions(resolved, entity_id, player_id, tx, space_mgr, engine).await;
     } else {
-        tracing::debug!(entity_id, %tag, "fire_interact_tag: no chains matched");
+        tracing::debug!(
+            entity_id,
+            entity_name = space_mgr.entity_label(entity_id),
+            %tag,
+            "fire_interact_tag: no chains matched"
+        );
     }
     matched
 }
@@ -103,10 +117,24 @@ pub async fn fire_interact_template(
     let resolved = engine.resolve_event(&event, &ctx);
     let matched = !resolved.actions.is_empty();
     if matched {
-        tracing::info!(entity_id, player_id, %template_name, actions = resolved.actions.len(), "fire_interact_template: matched");
+        let id = space_mgr.player_identity(entity_id);
+        tracing::info!(
+            entity_id,
+            entity_name = space_mgr.entity_label(entity_id),
+            player_id,
+            player_name = id.player_name,
+            %template_name,
+            actions = resolved.actions.len(),
+            "fire_interact_template: matched"
+        );
         executor::execute_actions(resolved, entity_id, player_id, tx, space_mgr, engine).await;
     } else {
-        tracing::debug!(entity_id, %template_name, "fire_interact_template: no chains matched");
+        tracing::debug!(
+            entity_id,
+            entity_name = space_mgr.entity_label(entity_id),
+            %template_name,
+            "fire_interact_template: no chains matched"
+        );
     }
     matched
 }

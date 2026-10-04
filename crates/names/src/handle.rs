@@ -122,6 +122,12 @@ fn log_loaded(report: &LoadReport, trigger: Trigger, elapsed_ms: u128) {
         item_lists = n(Table::ItemLists),
         applied_science = n(Table::AppliedScience),
         worlds = n(Table::Worlds),
+        content_chains = n(Table::Chains),
+        loot_tables = n(Table::LootTables),
+        trainer_ability_lists = n(Table::TrainerAbilityLists),
+        event_sets = n(Table::EventSets),
+        sequences = n(Table::Sequences),
+        dialog_set_maps = n(Table::DialogSetMaps),
         unresolved = report.unresolved(),
         "name book loaded"
     );

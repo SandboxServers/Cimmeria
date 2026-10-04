@@ -27,18 +27,30 @@ use super::MAX_INTERACT_DISTANCE;
 /// `trade_proposal` on BOTH entities and returns `true`.
 pub fn begin_trading(entity_id: u32, partner_entity_id: i32, space_mgr: &mut SpaceManager) -> bool {
     if partner_entity_id <= 0 {
-        tracing::warn!(entity_id, partner_entity_id, "beginTrading: invalid id");
+        tracing::warn!(
+            entity_id,
+            entity_name = space_mgr.entity_names(entity_id).entity_name,
+            partner_entity_id, // nt:id-only not a valid entity id, so nothing to name
+            "beginTrading: invalid id"
+        );
         return false;
     }
     if partner_entity_id as u32 == entity_id {
-        tracing::warn!(entity_id, "beginTrading: cannot trade with self");
+        tracing::warn!(
+            entity_id,
+            entity_name = space_mgr.entity_names(entity_id).entity_name,
+            "beginTrading: cannot trade with self"
+        );
         return false;
     }
 
     let me = match space_mgr.get_entity(entity_id) {
         Some(e) => e,
         None => {
-            tracing::warn!(entity_id, "beginTrading: caller entity not found");
+            tracing::warn!(
+                entity_id, // nt:id-only the caller entity is gone, nothing left to name
+                "beginTrading: caller entity not found"
+            );
             return false;
         }
     };
@@ -54,7 +66,9 @@ pub fn begin_trading(entity_id: u32, partner_entity_id: i32, space_mgr: &mut Spa
     if !me.is_player {
         tracing::warn!(
             entity_id,
+            entity_name = space_mgr.entity_names(entity_id).entity_name,
             partner_entity_id,
+            partner_entity_name = space_mgr.entity_names(partner_entity_id as u32).entity_name,
             "beginTrading: caller is not a player — rejecting"
         );
         return false;
@@ -62,6 +76,7 @@ pub fn begin_trading(entity_id: u32, partner_entity_id: i32, space_mgr: &mut Spa
     if me.trade_partner_entity_id.is_some() {
         tracing::warn!(
             entity_id,
+            entity_name = space_mgr.entity_names(entity_id).entity_name,
             "beginTrading: caller already in another trade session"
         );
         return false;
@@ -74,7 +89,8 @@ pub fn begin_trading(entity_id: u32, partner_entity_id: i32, space_mgr: &mut Spa
         None => {
             tracing::info!(
                 entity_id,
-                partner_entity_id,
+                entity_name = space_mgr.entity_names(entity_id).entity_name,
+                partner_entity_id, // nt:id-only the partner entity is gone, nothing left to name
                 "beginTrading: partner not found"
             );
             return false;
@@ -83,7 +99,9 @@ pub fn begin_trading(entity_id: u32, partner_entity_id: i32, space_mgr: &mut Spa
     if !partner.is_player {
         tracing::info!(
             entity_id,
+            entity_name = space_mgr.entity_names(entity_id).entity_name,
             partner_entity_id,
+            partner_entity_name = space_mgr.entity_names(partner_entity_id as u32).entity_name,
             "beginTrading: target is not a player"
         );
         return false;
@@ -91,7 +109,9 @@ pub fn begin_trading(entity_id: u32, partner_entity_id: i32, space_mgr: &mut Spa
     if partner.space_id != my_space {
         tracing::info!(
             entity_id,
+            entity_name = space_mgr.entity_names(entity_id).entity_name,
             partner_entity_id,
+            partner_entity_name = space_mgr.entity_names(partner_entity_id as u32).entity_name,
             "beginTrading: partner in a different space"
         );
         return false;
@@ -100,7 +120,9 @@ pub fn begin_trading(entity_id: u32, partner_entity_id: i32, space_mgr: &mut Spa
     if dist > MAX_INTERACT_DISTANCE {
         tracing::info!(
             entity_id,
+            entity_name = space_mgr.entity_names(entity_id).entity_name,
             partner_entity_id,
+            partner_entity_name = space_mgr.entity_names(partner_entity_id as u32).entity_name,
             dist,
             "beginTrading: too far away"
         );
@@ -109,7 +131,9 @@ pub fn begin_trading(entity_id: u32, partner_entity_id: i32, space_mgr: &mut Spa
     if partner.trade_partner_entity_id.is_some() {
         tracing::info!(
             entity_id,
+            entity_name = space_mgr.entity_names(entity_id).entity_name,
             partner_entity_id,
+            partner_entity_name = space_mgr.entity_names(partner_entity_id as u32).entity_name,
             "beginTrading: partner already trading"
         );
         return false;
@@ -124,7 +148,13 @@ pub fn begin_trading(entity_id: u32, partner_entity_id: i32, space_mgr: &mut Spa
         p.trade_partner_entity_id = Some(entity_id);
         p.trade_proposal = Some(TradeProposal::default());
     }
-    tracing::info!(entity_id, partner_entity_id, "trade session opened");
+    tracing::info!(
+        entity_id,
+        entity_name = space_mgr.entity_names(entity_id).entity_name,
+        partner_entity_id,
+        partner_entity_name = space_mgr.entity_names(partner_entity_id as u32).entity_name,
+        "trade session opened"
+    );
     true
 }
 
@@ -148,7 +178,9 @@ pub async fn apply_proposal(
     if new_proposal.version != expected_version {
         tracing::warn!(
             entity_id,
+            entity_name = space_mgr.entity_names(entity_id).entity_name,
             partner_entity_id,
+            partner_entity_name = space_mgr.entity_names(partner_entity_id as u32).entity_name,
             got = new_proposal.version,
             expected = expected_version,
             "applyProposal: bad version"
@@ -224,7 +256,9 @@ pub async fn cancel_session(
     send_on_trade_results(partner_entity_id as u32, entity_id as i32, result, tx).await;
     tracing::info!(
         entity_id,
+        entity_name = space_mgr.entity_names(entity_id).entity_name,
         partner_entity_id,
+        partner_entity_name = space_mgr.entity_names(partner_entity_id as u32).entity_name,
         result,
         "trade session cancelled"
     );

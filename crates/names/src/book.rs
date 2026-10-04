@@ -49,11 +49,27 @@ pub enum Table {
     AppliedScience,
     /// `worlds.world`, by `world_id`.
     Worlds,
+    /// `content_chains.description`, by `chain_id`: the designer's one-line
+    /// summary of a content chain (`701 - Gerschon interact (Human): offer
+    /// dialog 2573`), logged as `chain_name`.
+    Chains,
+    /// `loot_tables.description`, by `loot_table_id`.
+    LootTables,
+    /// `trainer_ability_lists.description`, by `list_id`.
+    TrainerAbilityLists,
+    /// `event_sets.name` (the Kismet event set), by `event_set_id`.
+    EventSets,
+    /// `sequences.kismet_script_name`, by `sequence_id` (the client's
+    /// `KismetEventSetSeqID`).
+    Sequences,
+    /// `dialog_set_maps.topic_text`, by `dialog_set_map_id`: the line the
+    /// player clicks to open the entry's dialog.
+    DialogSetMaps,
 }
 
 impl Table {
     /// Every table, in order.
-    pub const ALL: [Table; 20] = [
+    pub const ALL: [Table; 26] = [
         Table::Items,
         Table::Abilities,
         Table::Effects,
@@ -74,6 +90,12 @@ impl Table {
         Table::ItemLists,
         Table::AppliedScience,
         Table::Worlds,
+        Table::Chains,
+        Table::LootTables,
+        Table::TrainerAbilityLists,
+        Table::EventSets,
+        Table::Sequences,
+        Table::DialogSetMaps,
     ];
 
     /// The `resources` table name.
@@ -99,6 +121,12 @@ impl Table {
             Table::ItemLists => "item_lists",
             Table::AppliedScience => "applied_science",
             Table::Worlds => "worlds",
+            Table::Chains => "content_chains",
+            Table::LootTables => "loot_tables",
+            Table::TrainerAbilityLists => "trainer_ability_lists",
+            Table::EventSets => "event_sets",
+            Table::Sequences => "sequences",
+            Table::DialogSetMaps => "dialog_set_maps",
         }
     }
 
@@ -271,6 +299,37 @@ impl NameBook {
     /// `worlds.world`, the world's name (`world_name` in logs).
     pub fn world(&self, world_id: impl Into<i64>) -> Option<&str> {
         self.get(Table::Worlds, world_id)
+    }
+
+    /// `content_chains.description`, the chain's one-line summary
+    /// (`chain_name` in logs).
+    pub fn chain(&self, chain_id: impl Into<i64>) -> Option<&str> {
+        self.get(Table::Chains, chain_id)
+    }
+
+    /// `loot_tables.description`.
+    pub fn loot_table(&self, loot_table_id: impl Into<i64>) -> Option<&str> {
+        self.get(Table::LootTables, loot_table_id)
+    }
+
+    /// `trainer_ability_lists.description`.
+    pub fn trainer_ability_list(&self, list_id: impl Into<i64>) -> Option<&str> {
+        self.get(Table::TrainerAbilityLists, list_id)
+    }
+
+    /// `event_sets.name`, the Kismet event set.
+    pub fn event_set(&self, event_set_id: impl Into<i64>) -> Option<&str> {
+        self.get(Table::EventSets, event_set_id)
+    }
+
+    /// `sequences.kismet_script_name` for a `KismetEventSetSeqID`.
+    pub fn sequence(&self, sequence_id: impl Into<i64>) -> Option<&str> {
+        self.get(Table::Sequences, sequence_id)
+    }
+
+    /// `dialog_set_maps.topic_text`, the entry's clickable topic line.
+    pub fn dialog_set_map(&self, dialog_set_map_id: impl Into<i64>) -> Option<&str> {
+        self.get(Table::DialogSetMaps, dialog_set_map_id)
     }
 
     /// The `world_id` of the world named `world`, the reverse of

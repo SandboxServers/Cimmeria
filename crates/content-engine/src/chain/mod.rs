@@ -34,7 +34,9 @@ pub struct Chain {
     /// Unique database identifier for this chain.
     pub id: i64,
 
-    /// Human-readable name for this chain (e.g., "Grant XP on Jaffa kill").
+    /// Human-readable name for this chain (e.g., "Grant XP on Jaffa kill"):
+    /// the `content_chains.description` the loader read, empty when the row
+    /// has none. Log it through [`Chain::label`].
     pub name: String,
 
     /// Whether this chain is active. Disabled chains are skipped during event
@@ -87,6 +89,13 @@ pub struct Chain {
 }
 
 impl Chain {
+    /// The name for a `chain_name` log field: `None` when the chain has
+    /// none or only a seed placeholder (the NameBook's check), so the field
+    /// is left off rather than written blank (Rule 6).
+    pub fn label(&self) -> Option<&str> {
+        cimmeria_names::classify(Some(&self.name)).ok()
+    }
+
     /// Is at least one of this chain's conditions a read of per-player
     /// mission state (see [`Condition::gates_on_mission_state`])?
     ///
@@ -139,7 +148,7 @@ impl ChainEngine {
         let trigger_type = chain.trigger.trigger_type();
         debug!(
             chain_id = chain.id,
-            chain_name = %chain.name,
+            chain_name = chain.label(),
             trigger = ?trigger_type,
             enabled = chain.enabled,
             priority = chain.priority,
@@ -161,6 +170,16 @@ impl ChainEngine {
     /// sees only the id. No seeded chain mixes them.
     pub fn is_once(&self, chain_id: i64) -> bool {
         self.once_chain_ids.contains(&chain_id)
+    }
+
+    /// The [`Chain::label`] of the chain registered under `chain_id`. A
+    /// scan of every bucket, so call it only in a branch that logs.
+    pub fn chain_label(&self, chain_id: i64) -> Option<&str> {
+        self.chains_by_trigger
+            .values()
+            .flatten()
+            .find(|c| c.id == chain_id)
+            .and_then(Chain::label)
     }
 
     /// Return the total number of registered chains (enabled and disabled).
@@ -269,7 +288,11 @@ impl ChainEngine {
         for chain in chains {
             // Skip disabled chains.
             if !chain.enabled {
-                trace!(chain_id = chain.id, chain_name = %chain.name, "Skipping disabled chain");
+                trace!(
+                    chain_id = chain.id,
+                    chain_name = chain.label(),
+                    "Skipping disabled chain"
+                );
                 continue;
             }
 
@@ -277,7 +300,7 @@ impl ChainEngine {
             if !chain.trigger.matches(event) {
                 trace!(
                     chain_id = chain.id,
-                    chain_name = %chain.name,
+                    chain_name = chain.label(),
                     "Trigger filter did not match"
                 );
                 continue;
@@ -285,7 +308,7 @@ impl ChainEngine {
 
             debug!(
                 chain_id = chain.id,
-                chain_name = %chain.name,
+                chain_name = chain.label(),
                 condition_count = chain.conditions.len(),
                 "Evaluating chain conditions"
             );
@@ -296,6 +319,7 @@ impl ChainEngine {
                 if !result {
                     trace!(
                         chain_id = chain.id,
+                        chain_name = chain.label(),
                         condition = ?condition,
                         "Condition failed"
                     );
@@ -306,7 +330,7 @@ impl ChainEngine {
             if !conditions_met {
                 debug!(
                     chain_id = chain.id,
-                    chain_name = %chain.name,
+                    chain_name = chain.label(),
                     "Chain conditions not met, skipping actions"
                 );
                 continue;
@@ -314,7 +338,7 @@ impl ChainEngine {
 
             debug!(
                 chain_id = chain.id,
-                chain_name = %chain.name,
+                chain_name = chain.label(),
                 action_count = chain.actions.len(),
                 "Executing chain actions"
             );
@@ -326,6 +350,7 @@ impl ChainEngine {
                     ActionResult::Success => {
                         trace!(
                             chain_id = chain.id,
+                            chain_name = chain.label(),
                             action_index = i,
                             action = ?action,
                             "Action succeeded"
@@ -334,7 +359,7 @@ impl ChainEngine {
                     ActionResult::Error(msg) => {
                         warn!(
                             chain_id = chain.id,
-                            chain_name = %chain.name,
+                            chain_name = chain.label(),
                             action_index = i,
                             error = %msg,
                             "Action failed"
@@ -343,7 +368,9 @@ impl ChainEngine {
                     ActionResult::ChainTrigger(target_id) => {
                         debug!(
                             chain_id = chain.id,
+                            chain_name = chain.label(),
                             target_chain_id = target_id,
+                            target_chain_name = self.chain_label(*target_id),
                             "Action requested chain trigger (caller must re-dispatch)"
                         );
                     }
@@ -429,7 +456,7 @@ impl ChainEngine {
                 debug!(
                     target: "content.resolve",
                     chain_id = chain.id,
-                    chain_name = %chain.name,
+                    chain_name = chain.label(),
                     trigger_type = ?event.trigger_type,
                     source_entity = ?ctx.source_entity_id,
                     reason = "filtered_out",
@@ -452,7 +479,7 @@ impl ChainEngine {
                 debug!(
                     target: "content.resolve",
                     chain_id = chain.id,
-                    chain_name = %chain.name,
+                    chain_name = chain.label(),
                     trigger_type = ?event.trigger_type,
                     source_entity = ?ctx.source_entity_id,
                     reason = "condition_failed",
@@ -464,7 +491,12 @@ impl ChainEngine {
                 continue;
             }
 
-            debug!(chain_id = chain.id, chain_name = %chain.name, actions = chain.actions.len(), "resolve_event: chain matched");
+            debug!(
+                chain_id = chain.id,
+                chain_name = chain.label(),
+                actions = chain.actions.len(),
+                "resolve_event: chain matched"
+            );
             for (i, action) in chain.actions.iter().enumerate() {
                 let delay_ms = chain.action_delays.get(i).copied().unwrap_or(0);
                 resolved.actions.push((chain.id, action.clone()));

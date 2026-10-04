@@ -266,9 +266,13 @@ pub(super) async fn try_native_use(
                 event = "consumable_skipped",
                 reason = "placeholder_ability",
                 entity_id,
+                entity_name = space_mgr.entity_names(entity_id).entity_name,
                 player_id,
-                type_id,
+                player_name = space_mgr.player_identity(entity_id).player_name,
+                item_type_id = type_id,
+                item_name = cimmeria_names::book().item(type_id),
                 ability_id = PLACEHOLDER_ITEM_USE_ABILITY,
+                ability_name = cimmeria_names::book().ability(PLACEHOLDER_ITEM_USE_ABILITY),
                 "item use: event-5 binding is the Heal Focus filler; not applied"
             );
             return false;
@@ -282,12 +286,17 @@ pub(super) async fn try_native_use(
                     reason = Refusal::NotImplemented.reason(),
                     cause = reason,
                     entity_id,
+                    entity_name = id.player_name,
                     account_id = id.account_id,
+                    account_name = id.account_name,
                     player_id,
+                    player_name = id.player_name,
                     item_id = instance_id,
-                    instance_id,
-                    type_id,
+                    instance_id, // nt:id-only an inventory row id; item_name names its item type
+                    item_type_id = type_id,
+                    item_name = cimmeria_names::book().item(type_id),
                     ability_id,
+                    ability_name = cimmeria_names::book().ability(ability_id),
                     "item use refused: a bag consumable whose effect is not implemented; \
                      nothing consumed"
                 );
@@ -298,9 +307,13 @@ pub(super) async fn try_native_use(
                 event = "consumable_skipped",
                 reason,
                 entity_id,
+                entity_name = space_mgr.entity_names(entity_id).entity_name,
                 player_id,
-                type_id,
+                player_name = space_mgr.player_identity(entity_id).player_name,
+                item_type_id = type_id,
+                item_name = cimmeria_names::book().item(type_id),
                 ability_id,
+                ability_name = cimmeria_names::book().ability(ability_id),
                 "item use: event-5 ability has an effect this path cannot apply; chains decide"
             );
             return false;
@@ -312,10 +325,15 @@ pub(super) async fn try_native_use(
             event = "consumable_skipped",
             reason = "chain_owns_item",
             entity_id,
+            entity_name = id.player_name,
             account_id = id.account_id,
+            account_name = id.account_name,
             player_id,
-            type_id,
+            player_name = id.player_name,
+            item_type_id = type_id,
+            item_name = cimmeria_names::book().item(type_id),
             ability_id = plan.ability_id,
+            ability_name = cimmeria_names::book().ability(plan.ability_id),
             "item use: an item_use chain owns this item; the native consumable path stands aside"
         );
         return false;
@@ -339,12 +357,17 @@ pub(super) async fn try_native_use(
             decision_outcome = "refused",
             reason = refused.reason(),
             entity_id,
+            entity_name = id.player_name,
             account_id = id.account_id,
+            account_name = id.account_name,
             player_id,
-            instance_id,
-            type_id,
+            player_name = id.player_name,
+            instance_id, // nt:id-only an inventory row id; item_name names its item type
+            item_type_id = type_id,
+            item_name = cimmeria_names::book().item(type_id),
             ability_id = plan.ability_id,
-            stat_id = stat,
+            ability_name = cimmeria_names::book().ability(plan.ability_id),
+            stat_id = stat, // nt:id-only stats have no name table, only stat_ids.rs constants
             stat_cur = cur,
             stat_max = max,
             "item use refused: it would do nothing; nothing consumed"
@@ -360,10 +383,15 @@ pub(super) async fn try_native_use(
             event = "consumable_skipped",
             reason = "no_instance_id",
             entity_id,
+            entity_name = id.player_name,
             account_id = id.account_id,
+            account_name = id.account_name,
             player_id,
-            type_id,
+            player_name = id.player_name,
+            item_type_id = type_id,
+            item_name = cimmeria_names::book().item(type_id),
             ability_id = plan.ability_id,
+            ability_name = cimmeria_names::book().ability(plan.ability_id),
             "item use: ItemUsed carries no instance id; nothing consumed or applied"
         );
         return true;
@@ -380,10 +408,14 @@ pub(super) async fn try_native_use(
             event = "consumable_consume_send_failed",
             reason = "cell_to_base_closed",
             entity_id,
+            entity_name = id.player_name,
             account_id = id.account_id,
+            account_name = id.account_name,
             player_id,
-            instance_id,
-            type_id,
+            player_name = id.player_name,
+            instance_id, // nt:id-only an inventory row id; item_name names its item type
+            item_type_id = type_id,
+            item_name = cimmeria_names::book().item(type_id),
             error = %e,
             "item use: ConsumeItemForUse could not be queued; nothing consumed or applied"
         );
@@ -392,11 +424,16 @@ pub(super) async fn try_native_use(
     tracing::debug!(
         event = "consumable_consume_requested",
         entity_id,
+        entity_name = id.player_name,
         account_id = id.account_id,
+        account_name = id.account_name,
         player_id,
-        instance_id,
-        type_id,
+        player_name = id.player_name,
+        instance_id, // nt:id-only an inventory row id; item_name names its item type
+        item_type_id = type_id,
+        item_name = cimmeria_names::book().item(type_id),
         ability_id = plan.ability_id,
+        ability_name = cimmeria_names::book().ability(plan.ability_id),
         "item use: asked the base to consume one unit before applying"
     );
     true
@@ -427,11 +464,17 @@ pub async fn apply_consumed_item(
             event = "consumable_apply_skipped",
             reason,
             entity_id,
+            entity_name = id.player_name,
             account_id = id.account_id,
+            account_name = id.account_name,
             player_id,
-            instance_id,
-            type_id,
+            player_name = id.player_name,
+            instance_id, // nt:id-only an inventory row id; item_name names its item type
+            item_type_id = type_id,
+            item_name = cimmeria_names::book().item(type_id),
             ability_id,
+            ability_name =
+                ability_id.and_then(|a| cimmeria_names::book().ability(a).map(str::to_owned)),
             "item use: the unit was consumed but its effect was not applied"
         );
     };
@@ -461,11 +504,16 @@ pub async fn apply_consumed_item(
         event = "consumable_used",
         decision_outcome = "applied",
         entity_id,
+        entity_name = id.player_name,
         account_id = id.account_id,
+        account_name = id.account_name,
         player_id,
-        instance_id,
-        type_id,
+        player_name = id.player_name,
+        instance_id, // nt:id-only an inventory row id; item_name names its item type
+        item_type_id = type_id,
+        item_name = cimmeria_names::book().item(type_id),
         ability_id = plan.ability_id,
+        ability_name = cimmeria_names::book().ability(plan.ability_id),
         heals = ?plan.heals,
         stat_buff = plan.buffs,
         registered,
@@ -524,9 +572,13 @@ async fn send_refusal(
                 event = "consumable_feedback_send_failed",
                 reason = "cell_to_base_closed",
                 entity_id,
+                entity_name = id.player_name,
                 account_id = id.account_id,
+                account_name = id.account_name,
                 player_id = id.player_id,
+                player_name = id.player_name,
                 ability_id,
+                ability_name = cimmeria_names::book().ability(ability_id),
                 method_index,
                 method_name = cimmeria_wire::names::player_client_method(method_index),
                 "item use refusal feedback could not be queued; the click shows nothing"

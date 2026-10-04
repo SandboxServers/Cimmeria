@@ -110,15 +110,23 @@ async fn fire(
 
     let resolved = engine.resolve_event(&event, &ctx);
     if !resolved.actions.is_empty() {
+        let id = space_mgr.player_identity(entity_id);
         tracing::info!(
             entity_id,
+            entity_name = space_mgr.entity_label(entity_id),
             player_id,
+            player_name = id.player_name,
             destination_world,
             actions = resolved.actions.len(),
             "{label}: matched"
         );
     } else {
-        tracing::debug!(entity_id, destination_world, "{label}: no chains matched");
+        tracing::debug!(
+            entity_id,
+            entity_name = space_mgr.entity_label(entity_id),
+            destination_world,
+            "{label}: no chains matched"
+        );
     }
     executor::execute_actions(resolved, entity_id, player_id, tx, space_mgr, engine).await;
 }

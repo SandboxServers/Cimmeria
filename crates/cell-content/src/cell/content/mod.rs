@@ -26,6 +26,8 @@ mod mission_context;
 
 #[cfg(test)]
 mod chain_replay_tests;
+#[cfg(test)]
+mod named_telemetry_tests;
 
 // Public surface — preserve the flat `crate::cell::content::<fn>` paths that
 // callers across the cell service already use.

@@ -102,6 +102,7 @@ pub(super) fn convert_action(row: &DbActionRow) -> Option<Action> {
                         None => {
                             tracing::warn!(
                                 chain_id = row.chain_id, %name,
+                                chain_name = cimmeria_names::book().chain(row.chain_id),
                                 "set_interaction_type: unknown interaction-flag name; mask defaulted to 0"
                             );
                             0
@@ -135,6 +136,7 @@ pub(super) fn convert_action(row: &DbActionRow) -> Option<Action> {
                     _ => {
                         warn!(
                             chain_id = row.chain_id,
+                            chain_name = cimmeria_names::book().chain(row.chain_id),
                             %minigame_type,
                             difficulty = %v,
                             "start_minigame: difficulty must be an integer 1-5; dropping the action row"
@@ -180,6 +182,7 @@ pub(super) fn convert_action(row: &DbActionRow) -> Option<Action> {
                 _ => {
                     warn!(
                         chain_id = row.chain_id,
+                        chain_name = cimmeria_names::book().chain(row.chain_id),
                         %entity_tag,
                         ?params,
                         "set_npc_poi: missing or non-finite x/y/z; dropping action"
@@ -230,6 +233,7 @@ pub(super) fn convert_action(row: &DbActionRow) -> Option<Action> {
                 other => {
                     warn!(
                         chain_id = row.chain_id,
+                        chain_name = cimmeria_names::book().chain(row.chain_id),
                         %entity_tag,
                         state = %other,
                         "set_npc_ai_state: unknown state value, dropping action"
@@ -272,6 +276,7 @@ pub(super) fn convert_action(row: &DbActionRow) -> Option<Action> {
                 _ => {
                     warn!(
                         chain_id = row.chain_id,
+                        chain_name = cimmeria_names::book().chain(row.chain_id),
                         %world_name,
                         ?params,
                         "cross_world_teleport: missing or non-finite x/y/z; \
@@ -332,6 +337,7 @@ pub(super) fn convert_action(row: &DbActionRow) -> Option<Action> {
                     Err(_) => {
                         warn!(
                             chain_id = row.chain_id,
+                            chain_name = cimmeria_names::book().chain(row.chain_id),
                             amount = v,
                             "change_stat.amount is out of i32 range; \
                              dropping action"

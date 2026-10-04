@@ -82,9 +82,13 @@ pub(super) async fn replay_cover_sets(
         .copied() else {
             tracing::debug!(
                 entity_id,
+                entity_name = space_mgr.entity_label(entity_id),
                 mission_id,
+                mission_name = cimmeria_names::book().mission(mission_id),
                 step_id,
+                step_name = cimmeria_names::book().mission_step(step_id),
                 cover_set_id,
+                cover_set_name = super::super::cover::cover_set_name(space_mgr, cover_set_id),
                 reason = "player_left_during_replay",
                 "step-activation cover replay: skipping a set the player no longer occupies"
             );
@@ -146,9 +150,13 @@ async fn replay_one(
     if resolved.actions.is_empty() {
         tracing::debug!(
             entity_id,
+            entity_name = space_mgr.entity_label(entity_id),
             mission_id,
+            mission_name = cimmeria_names::book().mission(mission_id),
             step_id,
+            step_name = cimmeria_names::book().mission_step(step_id),
             cover_set_id,
+            cover_set_name = super::super::cover::cover_set_name(space_mgr, cover_set_id),
             reason = REPLAY_REASON,
             "step-activation cover replay: no mission-gated chain matched"
         );
@@ -157,10 +165,15 @@ async fn replay_one(
 
     tracing::info!(
         entity_id,
+        entity_name = space_mgr.entity_label(entity_id),
         player_id,
+        player_name = space_mgr.player_identity(entity_id).player_name,
         mission_id,
+        mission_name = cimmeria_names::book().mission(mission_id),
         step_id,
+        step_name = cimmeria_names::book().mission_step(step_id),
         cover_set_id,
+        cover_set_name = super::super::cover::cover_set_name(space_mgr, cover_set_id),
         actions = resolved.actions.len(),
         reason = REPLAY_REASON,
         "step-activation cover replay: matched"

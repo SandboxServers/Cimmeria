@@ -74,8 +74,11 @@ pub(super) async fn display(
         tracing::Span::current().record("monologue", true);
         tracing::debug!(
             entity_id,
+            entity_name = space_mgr.entity_names(entity_id).entity_name,
             dialog_id,
+            dialog_name = cimmeria_names::book().dialog(dialog_id),
             chain_id,
+            chain_name = cimmeria_names::book().chain(chain_id),
             "DisplayDialog: dialog is player-monologue (all screens \
              speaker_id=0) — binding player as context entity"
         );
@@ -97,8 +100,11 @@ pub(super) async fn display(
             None => {
                 tracing::warn!(
                     entity_id,
+                    entity_name = space_mgr.entity_names(entity_id).entity_name,
                     dialog_id,
+                    dialog_name = cimmeria_names::book().dialog(dialog_id),
                     chain_id,
+                    chain_name = cimmeria_names::book().chain(chain_id),
                     "DisplayDialog: no NPC entity id in chain params or last_interaction_target -- \
                      cannot send onDialogDisplay (would bind player as speaker and blank portrait)"
                 );
@@ -111,13 +117,20 @@ pub(super) async fn display(
     // Stuck-player detector: a dialog replaced within seconds cannot be read.
     let (replaced_dialog_id, ms_since_previous) =
         crate::cell::playtest_friction_watch::last_dialog(entity_id).unwrap_or((0, 0));
+    let entity_name = space_mgr.entity_names(entity_id).entity_name;
+    let npc_names = space_mgr.entity_names(npc_entity_id as u32);
     tracing::debug!(
         target: "dialog.display",
         entity_id,
+        entity_name,
         dialog_id,
+        dialog_name = cimmeria_names::book().dialog(dialog_id),
         chain_id,
+        chain_name = cimmeria_names::book().chain(chain_id),
         npc_entity_id,
+        npc_entity_name = npc_names.entity_name,
         replaced_dialog_id,
+        replaced_dialog_name = cimmeria_names::book().dialog(replaced_dialog_id),
         ms_since_previous,
         "dialog displayed -- replaced_dialog_id is the previous one shown to this player"
     );
@@ -129,9 +142,15 @@ pub(super) async fn display(
     );
     tracing::info!(
         entity_id,
+        entity_name,
         dialog_id,
+        dialog_name = cimmeria_names::book().dialog(dialog_id),
         npc_entity_id,
+        npc_entity_name = npc_names.entity_name,
+        template_id = npc_names.template_id,
+        template_name = npc_names.template_name,
         chain_id,
+        chain_name = cimmeria_names::book().chain(chain_id),
         "Content: displaying dialog"
     );
     crate::cell::interactions::send_dialog_display(
@@ -159,7 +178,7 @@ pub(super) async fn display(
     name = "dialog.add_set",
     level = "info",
     skip_all,
-    fields(entity_id, dialog_set_id, slot, chain_id)
+    fields(entity_id, dialog_set_map_id = dialog_set_id, slot, chain_id)
 )]
 pub(super) async fn add_dialog_set(
     dialog_set_id: i32,
@@ -171,18 +190,26 @@ pub(super) async fn add_dialog_set(
 ) {
     tracing::info!(
         entity_id,
-        dialog_set_id,
-        slot,
+        entity_name = space_mgr.entity_names(entity_id).entity_name,
+        dialog_set_map_id = dialog_set_id,
+        dialog_set_map_name = cimmeria_names::book().dialog_set_map(dialog_set_id),
+        template_id = slot,
+        template_name = cimmeria_names::book().template(slot),
         chain_id,
+        chain_name = cimmeria_names::book().chain(chain_id),
         "Content: adding dialog set"
     );
 
     if let Some(entry) = space_mgr.dialog_set_maps.get(&dialog_set_id).cloned() {
         tracing::info!(
             entity_id,
-            dialog_set_id,
-            slot,
-            dialog_id = ?entry.dialog_id,
+            entity_name = space_mgr.entity_names(entity_id).entity_name,
+            dialog_set_map_id = dialog_set_id,
+            dialog_set_map_name = cimmeria_names::book().dialog_set_map(dialog_set_id),
+            template_id = slot,
+            template_name = cimmeria_names::book().template(slot),
+            dialog_id = entry.dialog_id,
+            dialog_name = dialog_name_of(entry.dialog_id).as_deref(),
             interaction_only = entry.dialog_id.is_none(),
             interaction_flags = entry.interaction_flags,
             interaction_flags_names = %cimmeria_entity::interaction_flags::INTERACTION_FLAGS.render(entry.interaction_flags),
@@ -198,7 +225,9 @@ pub(super) async fn add_dialog_set(
 
             tracing::info!(
                 entity_id,
-                slot,
+                entity_name = crate::cell::space_manager::EntityNames::of(player).entity_name,
+                template_id = slot,
+                template_name = cimmeria_names::book().template(slot),
                 interactions_count = player
                     .available_interactions
                     .get(&slot)
@@ -218,7 +247,12 @@ pub(super) async fn add_dialog_set(
         .await;
     } else {
         tracing::warn!(
-            dialog_set_id,
+            entity_id,
+            entity_name = space_mgr.entity_names(entity_id).entity_name,
+            dialog_set_map_id = dialog_set_id,
+            dialog_set_map_name = cimmeria_names::book().dialog_set_map(dialog_set_id),
+            chain_id,
+            chain_name = cimmeria_names::book().chain(chain_id),
             "dialog_set_maps cache miss for add_dialog_set"
         );
     }
@@ -232,7 +266,7 @@ pub(super) async fn add_dialog_set(
     name = "dialog.remove_set",
     level = "info",
     skip_all,
-    fields(entity_id, dialog_set_id, slot, chain_id)
+    fields(entity_id, dialog_set_map_id = dialog_set_id, slot, chain_id)
 )]
 pub(super) async fn remove_dialog_set(
     dialog_set_id: i32,
@@ -244,9 +278,13 @@ pub(super) async fn remove_dialog_set(
 ) {
     tracing::info!(
         entity_id,
-        dialog_set_id,
-        slot,
+        entity_name = space_mgr.entity_names(entity_id).entity_name,
+        dialog_set_map_id = dialog_set_id,
+        dialog_set_map_name = cimmeria_names::book().dialog_set_map(dialog_set_id),
+        template_id = slot,
+        template_name = cimmeria_names::book().template(slot),
         chain_id,
+        chain_name = cimmeria_names::book().chain(chain_id),
         "Content: removing dialog set"
     );
 
@@ -297,10 +335,15 @@ pub(super) async fn remove_dialog_set(
                 // wrong interaction prompt).
                 tracing::warn!(
                     entity_id,
+                    entity_name = space_mgr.entity_names(entity_id).entity_name,
                     target_id,
-                    dialog_set_id,
-                    slot,
+                    target_name = space_mgr.entity_names(target_id).entity_name,
+                    dialog_set_map_id = dialog_set_id,
+                    dialog_set_map_name = cimmeria_names::book().dialog_set_map(dialog_set_id),
+                    template_id = slot,
+                    template_name = cimmeria_names::book().template(slot),
                     chain_id,
+                    chain_name = cimmeria_names::book().chain(chain_id),
                     phase = "remove",
                     "RemoveDialogSet: cell→base interaction-type send failed -- NPC interaction prompt stale: {e}"
                 );
@@ -316,7 +359,7 @@ pub(super) async fn remove_dialog_set(
     name = "dialog.add",
     level = "info",
     skip_all,
-    fields(entity_id, dialog_set_id, entity_template = ?entity_template, chain_id),
+    fields(entity_id, dialog_set_map_id = dialog_set_id, entity_template = ?entity_template, chain_id),
 )]
 pub(super) async fn add_dialog(
     dialog_set_id: i32,
@@ -331,8 +374,11 @@ pub(super) async fn add_dialog(
         None => {
             tracing::warn!(
                 entity_id,
-                dialog_set_id,
+                entity_name = space_mgr.entity_names(entity_id).entity_name,
+                dialog_set_map_id = dialog_set_id,
+                dialog_set_map_name = cimmeria_names::book().dialog_set_map(dialog_set_id),
                 chain_id,
+                chain_name = cimmeria_names::book().chain(chain_id),
                 "AddDialog: missing entity_template — skipping"
             );
             return;
@@ -341,18 +387,26 @@ pub(super) async fn add_dialog(
 
     tracing::info!(
         entity_id,
-        dialog_set_id,
-        slot,
+        entity_name = space_mgr.entity_names(entity_id).entity_name,
+        dialog_set_map_id = dialog_set_id,
+        dialog_set_map_name = cimmeria_names::book().dialog_set_map(dialog_set_id),
+        template_id = slot,
+        template_name = cimmeria_names::book().template(slot),
         chain_id,
+        chain_name = cimmeria_names::book().chain(chain_id),
         "Content: add dialog (via entity_template)"
     );
 
     if let Some(entry) = space_mgr.dialog_set_maps.get(&dialog_set_id).cloned() {
         tracing::info!(
             entity_id,
-            dialog_set_id,
-            slot,
-            dialog_id = ?entry.dialog_id,
+            entity_name = space_mgr.entity_names(entity_id).entity_name,
+            dialog_set_map_id = dialog_set_id,
+            dialog_set_map_name = cimmeria_names::book().dialog_set_map(dialog_set_id),
+            template_id = slot,
+            template_name = cimmeria_names::book().template(slot),
+            dialog_id = entry.dialog_id,
+            dialog_name = dialog_name_of(entry.dialog_id).as_deref(),
             interaction_only = entry.dialog_id.is_none(),
             interaction_flags = entry.interaction_flags,
             interaction_flags_names = %cimmeria_entity::interaction_flags::INTERACTION_FLAGS.render(entry.interaction_flags),
@@ -377,7 +431,15 @@ pub(super) async fn add_dialog(
         )
         .await;
     } else {
-        tracing::warn!(dialog_set_id, "dialog_set_maps cache miss for add_dialog");
+        tracing::warn!(
+            entity_id,
+            entity_name = space_mgr.entity_names(entity_id).entity_name,
+            dialog_set_map_id = dialog_set_id,
+            dialog_set_map_name = cimmeria_names::book().dialog_set_map(dialog_set_id),
+            chain_id,
+            chain_name = cimmeria_names::book().chain(chain_id),
+            "dialog_set_maps cache miss for add_dialog"
+        );
     }
 }
 
@@ -433,8 +495,11 @@ async fn send_interaction_update_if_visible(
 
             tracing::debug!(
                 entity_id,
+                entity_name = space_mgr.entity_names(entity_id).entity_name,
                 target_id,
-                dialog_id = ?dialog_id,
+                target_name = space_mgr.entity_names(target_id).entity_name,
+                dialog_id,
+                dialog_name = dialog_name_of(dialog_id).as_deref(),
                 base_flags,
                 base_flags_names = %cimmeria_entity::interaction_flags::INTERACTION_FLAGS.render(base_flags),
                 player_flags,
@@ -461,9 +526,13 @@ async fn send_interaction_update_if_visible(
                 // stale flags.
                 tracing::warn!(
                     entity_id,
+                    entity_name = space_mgr.entity_names(entity_id).entity_name,
                     target_id,
-                    dialog_id = ?dialog_id,
-                    slot,
+                    target_name = space_mgr.entity_names(target_id).entity_name,
+                    dialog_id,
+                    dialog_name = dialog_name_of(dialog_id).as_deref(),
+                    template_id = slot,
+                    template_name = cimmeria_names::book().template(slot),
                     phase = label,
                     "interaction-type send failed -- NPC prompt stale: {e}"
                 );
@@ -471,11 +540,19 @@ async fn send_interaction_update_if_visible(
         } else {
             tracing::debug!(
                 entity_id,
+                entity_name = space_mgr.entity_names(entity_id).entity_name,
                 target_id,
+                target_name = space_mgr.entity_names(target_id).entity_name,
                 "NPC not yet in player AoI — deferring InteractionType to AoI create"
             );
         }
     }
+}
+
+/// The NameBook name of a dialog a `dialog_set_maps` row may leave empty
+/// (Rule 6). Owned, so the book guard is gone before the next `.await`.
+fn dialog_name_of(dialog_id: Option<i32>) -> Option<String> {
+    dialog_id.and_then(|d| cimmeria_names::book().dialog(d).map(str::to_owned))
 }
 
 #[cfg(test)]

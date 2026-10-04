@@ -49,27 +49,38 @@ pub(super) async fn send_system_mail(
             event = "content.send_system_mail",
             reason = "no_player",
             entity_id,
+            entity_name = space_mgr.entity_names(entity_id).entity_name,
             player_id,
+            player_name = identity.player_name,
             chain_id,
+            chain_name = cimmeria_names::book().chain(chain_id),
             "send_system_mail: the chain's entity is not this player; no mail sent",
         );
         return;
     }
-    tracing::info!(
-        target: "content",
-        event = "content.send_system_mail",
-        outcome = "requested",
-        entity_id,
-        account_id = identity.account_id,
-        player_id,
-        chain_id,
-        sender_name = %sender_name,
-        cash,
-        type_id = item.map(|(t, _)| t),
-        quantity = item.map(|(_, q)| q),
-        cooldown_secs,
-        "send_system_mail: forwarded to the base",
-    );
+    {
+        let names = cimmeria_names::book();
+        tracing::info!(
+            target: "content",
+            event = "content.send_system_mail",
+            outcome = "requested",
+            entity_id,
+            entity_name = space_mgr.entity_names(entity_id).entity_name,
+            account_id = identity.account_id,
+            account_name = identity.account_name,
+            player_id,
+            player_name = identity.player_name,
+            chain_id,
+            chain_name = names.chain(chain_id),
+            sender_name = %sender_name,
+            cash,
+            item_type_id = item.map(|(t, _)| t),
+            item_name = item.and_then(|(t, _)| names.item(t)),
+            quantity = item.map(|(_, q)| q),
+            cooldown_secs,
+            "send_system_mail: forwarded to the base",
+        );
+    }
     let msg = ContentSystemMail {
         entity_id,
         player_id,
@@ -91,9 +102,13 @@ pub(super) async fn send_system_mail(
             event = "content.send_system_mail",
             reason = "base_channel_closed",
             entity_id,
+            entity_name = space_mgr.entity_names(entity_id).entity_name,
             account_id = identity.account_id,
+            account_name = identity.account_name,
             player_id,
+            player_name = identity.player_name,
             chain_id,
+            chain_name = cimmeria_names::book().chain(chain_id),
             error = %e,
             "send_system_mail: cell->base send failed; no mail sent",
         );
