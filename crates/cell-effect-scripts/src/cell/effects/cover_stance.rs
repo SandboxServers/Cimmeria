@@ -70,12 +70,17 @@ impl EffectScript for CoverStance {
         tracing::debug!(
             target: "abilities",
             event = "cover_stance_applied",
-            cast_id = ctx.row_ids().cast_id,
+            cast_id = ctx.row_ids().cast_id, // nt:id-only per-cast sequence number, no name exists
             account_id = ctx.row_ids().account_id,
+            account_name = ctx.row_ids().account_name,
             player_id = ctx.row_ids().player_id,
+            player_name = ctx.row_ids().player_name,
             target_player_id = ctx.row_ids().target_player_id,
+            target_player_name = ctx.row_ids().target_player_name,
             target_id = ctx.target_id,
+            target_name = ctx.space_mgr.entity_label(ctx.target_id),
             effect_id = ctx.effect.effect_id,
+            effect_name = cimmeria_names::book().effect(ctx.effect.effect_id),
             delta,
             cover_defense = cur + delta,
             "Cover Stance applied"
@@ -104,12 +109,17 @@ impl EffectScript for RemoveCoverStance {
         tracing::debug!(
             target: "abilities",
             event = "cover_stance_removed",
-            cast_id = ctx.row_ids().cast_id,
+            cast_id = ctx.row_ids().cast_id, // nt:id-only per-cast sequence number, no name exists
             account_id = ctx.row_ids().account_id,
+            account_name = ctx.row_ids().account_name,
             player_id = ctx.row_ids().player_id,
+            player_name = ctx.row_ids().player_name,
             target_player_id = ctx.row_ids().target_player_id,
+            target_player_name = ctx.row_ids().target_player_name,
             target_id = ctx.target_id,
+            target_name = ctx.space_mgr.entity_label(ctx.target_id),
             effect_id = ctx.effect.effect_id,
+            effect_name = cimmeria_names::book().effect(ctx.effect.effect_id),
             delta,
             cover_defense = new_cur,
             "Cover Stance removed"

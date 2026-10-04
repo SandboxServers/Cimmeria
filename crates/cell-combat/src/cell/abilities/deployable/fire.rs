@@ -102,11 +102,17 @@ pub(in crate::cell::abilities) async fn fire_deploy(
                 decision_outcome = "deploy_refused",
                 stage = "fire",
                 entity_id,
+                entity_name = space_mgr.entity_label(entity_id),
                 owner_id = entity_id,
+                owner_name = id.player_name,
                 account_id = id.account_id,
+                account_name = id.account_name,
                 player_id = id.player_id,
+                player_name = id.player_name,
                 ability_id,
+                ability_name = cimmeria_names::book().ability(ability_id),
                 template_id = spec.template_id,
+                template_name = cimmeria_names::book().template(spec.template_id),
                 reason,
                 "deployable refused after its warmup; nothing placed"
             );

@@ -25,6 +25,7 @@ use crate::cell::abilities::effect_plan::{
 fn npc_cast(world: &'static str) -> RefusedCast {
     RefusedCast {
         entity_id: 7,
+        entity_name: None,
         ability_id: 99,
         who: cimmeria_entity::cell_entity::PlayerIdentity::UNKNOWN,
         caster: CasterKind::Npc,

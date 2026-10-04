@@ -25,14 +25,22 @@ pub(super) fn effect_def_missing(
         reason = "effect_def_missing",
         site,
         account_id = ids.actor.account_id,
+        account_name = ids.actor.account_name,
         player_id = ids.actor.player_id,
+        player_name = ids.actor.player_name,
         entity_id = ids.entity_id,
+        entity_name = ids.entity_name,
         caster_id = ids.entity_id,
-        cast_id,
+        caster_name = ids.entity_name,
+        cast_id, // nt:id-only per-cast sequence number, no name exists
         ability_id = ids.ability_id,
+        ability_name = cimmeria_names::book().ability(ids.ability_id),
         effect_id,
+        effect_name = cimmeria_names::book().effect(effect_id),
         target_id = ids.target_eid,
+        target_name = ids.target_name,
         target_player_id = ids.target.player_id,
+        target_player_name = ids.target.player_name,
         "hit pipeline ({site}): expected an effect definition for this id, the effect table has none; the effect is skipped on this hit and the player sees nothing from it"
     );
 }
@@ -47,13 +55,20 @@ pub(super) fn unknown_ability_fallback(ids: HitIds, cast_id: Option<i32>, health
         stage = "route",
         reason = "no_ability_def",
         account_id = ids.actor.account_id,
+        account_name = ids.actor.account_name,
         player_id = ids.actor.player_id,
+        player_name = ids.actor.player_name,
         entity_id = ids.entity_id,
+        entity_name = ids.entity_name,
         caster_id = ids.entity_id,
-        cast_id,
+        caster_name = ids.entity_name,
+        cast_id, // nt:id-only per-cast sequence number, no name exists
         ability_id = ids.ability_id,
+        ability_name = cimmeria_names::book().ability(ids.ability_id),
         target_id = ids.target_eid,
+        target_name = ids.target_name,
         target_player_id = ids.target.player_id,
+        target_player_name = ids.target.player_name,
         health_damage = health,
         "hit pipeline: expected an ability definition, there is none; the hit deals a generic fallback HEALTH swing instead of the ability's effects"
     );
@@ -68,12 +83,18 @@ pub(super) fn script_name_missing(ids: HitIds, cast_id: Option<i32>, effect_id: 
         stage = "apply",
         reason = "no_script_name",
         account_id = ids.actor.account_id,
+        account_name = ids.actor.account_name,
         player_id = ids.actor.player_id,
+        player_name = ids.actor.player_name,
         entity_id = ids.entity_id,
-        cast_id,
+        entity_name = ids.entity_name,
+        cast_id, // nt:id-only per-cast sequence number, no name exists
         ability_id = ids.ability_id,
+        ability_name = cimmeria_names::book().ability(ids.ability_id),
         effect_id,
+        effect_name = cimmeria_names::book().effect(effect_id),
         target_id = ids.target_eid,
+        target_name = ids.target_name,
         "hit pipeline: expected a script name on an effect queued for script dispatch, found none; no script runs for it"
     );
 }
@@ -95,11 +116,16 @@ pub(super) fn hit_gone(
         stage = "apply",
         reason = missing,
         account_id = who.account_id,
+        account_name = who.account_name,
         player_id = who.player_id,
+        player_name = who.player_name,
         entity_id,
-        cast_id,
+        entity_name = space_mgr.entity_label(entity_id),
+        cast_id, // nt:id-only per-cast sequence number, no name exists
         ability_id,
+        ability_name = cimmeria_names::book().ability(ability_id),
         target_id = target_eid,
+        target_name = space_mgr.entity_label(target_eid),
         "hit pipeline: expected the attacker and the target alive in the space, one is gone ({missing}); no roll, no damage, no onEffectResults (the shot's ammo is still spent)"
     );
 }

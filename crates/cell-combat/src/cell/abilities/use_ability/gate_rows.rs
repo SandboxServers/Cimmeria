@@ -15,6 +15,7 @@
 use cimmeria_entity::cell_entity::PlayerIdentity;
 
 use super::super::metrics::{self, CasterKind, RefusalReason};
+use crate::cell::space_manager::SpaceManager;
 
 /// Why a launch stopped. Each variant is one `event`.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -207,18 +208,39 @@ impl LaunchRefusal {
 pub(super) struct LaunchRow<'a> {
     pub who: PlayerIdentity,
     pub entity_id: u32,
+    /// The caster's name (Rule 6): a player's is a copy of the interned
+    /// character name, an NPC's one NameBook read per press.
+    pub entity_name: Option<&'static str>,
     pub ability_id: i32,
-    pub ability_name: &'a str,
+    /// `None` for an ability with no definition: the field is left out.
+    pub ability_name: Option<&'a str>,
     /// The target the client sent.
     pub wire_target_id: i32,
+    pub wire_target_name: Option<&'static str>,
     /// The target the launch resolved (the wire target until it has).
+    /// Set it through [`LaunchRow::set_target`] so its name follows.
     pub target_id: i32,
+    pub target_name: Option<&'static str>,
     /// The AB-T6 metrics' `caster` and `world` labels.
     pub caster: CasterKind,
     pub world: &'static str,
 }
 
+/// The name of the entity a wire target id names; `None` for target 0 or
+/// a negative id.
+pub(super) fn target_label(space_mgr: &SpaceManager, target_id: i32) -> Option<&'static str> {
+    u32::try_from(target_id)
+        .ok()
+        .and_then(|t| space_mgr.entity_names(t).entity_name)
+}
+
 impl LaunchRow<'_> {
+    /// The launch resolved its target: record it with its name.
+    pub(super) fn set_target(&mut self, space_mgr: &SpaceManager, target_id: i32) {
+        self.target_id = target_id;
+        self.target_name = target_label(space_mgr, target_id);
+    }
+
     /// `player` or `npc`: the caster's kind, from its identity (an NPC has
     /// no `player_id`).
     fn caster_kind(&self) -> &'static str {
@@ -236,6 +258,7 @@ impl LaunchRow<'_> {
             reason,
             metrics::RefusedCast {
                 entity_id: self.entity_id,
+                entity_name: self.entity_name,
                 ability_id: self.ability_id,
                 who: self.who,
                 caster: self.caster,
@@ -275,16 +298,23 @@ impl LaunchRow<'_> {
                     stage,
                     reason,
                     account_id = self.who.account_id,
+                    account_name = self.who.account_name,
                     player_id = self.who.player_id,
+                    player_name = self.who.player_name,
                     entity_id = self.entity_id,
+                    entity_name = self.entity_name,
                     caster_id = self.entity_id,
+                    caster_name = self.entity_name,
                     caster_kind = self.caster_kind(),
                     ability_id = self.ability_id,
                     ability_name = self.ability_name,
                     wire_target_id = self.wire_target_id,
+                    wire_target_name = self.wire_target_name,
                     target_id = self.target_id,
+                    target_name = self.target_name,
                     warming_ability_id,
-                    warming_cast_id,
+                    warming_ability_name = cimmeria_cell_world::cell::effects::content_names::ability_name(warming_ability_id),
+                    warming_cast_id, // nt:id-only per-cast sequence number, no name exists
                     ammo_current,
                     ammo_required,
                     "{message}"
@@ -306,8 +336,11 @@ impl LaunchRow<'_> {
             event = "auto_cycle_cleared_by_override",
             stage = "gate",
             account_id = self.who.account_id,
+            account_name = self.who.account_name,
             player_id = self.who.player_id,
+            player_name = self.who.player_name,
             entity_id = self.entity_id,
+            entity_name = self.entity_name,
             ability_id = self.ability_id,
             ability_name = self.ability_name,
             "auto-cycle: cleared by manual override (different ability fired)"

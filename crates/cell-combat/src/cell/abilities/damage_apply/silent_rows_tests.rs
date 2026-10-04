@@ -19,6 +19,8 @@ fn ids() -> HitIds {
         ability_id: ABILITY,
         actor: PlayerIdentity::new(Some(901), Some(101)),
         target: PlayerIdentity::UNKNOWN,
+        entity_name: None,
+        target_name: None,
         cast_id: None,
         god_mode: false,
         world: "unknown",

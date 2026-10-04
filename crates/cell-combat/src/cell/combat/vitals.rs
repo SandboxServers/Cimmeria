@@ -80,12 +80,19 @@ pub fn log_damage_taken(
         target: "vitals",
         event = "damage_taken",
         account_id = id.account_id,
+        account_name = id.account_name,
         player_id = id.player_id,
+        player_name = id.player_name,
         entity_id = target_eid,
+        entity_name = space_mgr.entity_label(target_eid),
         space_id = target.space_id.0,
+        world = space_mgr.world_name_for_space(target.space_id.0 as u32),
         attacker_entity_id = attacker_eid,
+        attacker_entity_name = space_mgr.entity_label(attacker_eid),
         attacker_player_id = space_mgr.player_identity(attacker_eid).player_id,
+        attacker_player_name = space_mgr.player_identity(attacker_eid).player_name,
         ability_id,
+        ability_name = cimmeria_names::book().ability(ability_id),
         result_code,
         result = crate::cell::abilities::metrics::QrOutcome::from_code(result_code).label(),
         health_before = before.health,
@@ -102,16 +109,21 @@ pub fn log_damage_taken(
 }
 
 /// One `vitals` `event = "combat_sample"` row for a player in combat.
-pub fn log_combat_sample(entity: &CellEntity) {
+/// `space_mgr` names the player's world.
+pub fn log_combat_sample(space_mgr: &SpaceManager, entity: &CellEntity) {
     let v = Vitals::of(&entity.stats);
     let id = entity.identity();
     tracing::debug!(
         target: "vitals",
         event = "combat_sample",
         account_id = id.account_id,
+        account_name = id.account_name,
         player_id = id.player_id,
+        player_name = id.player_name,
         entity_id = entity.entity_id.0,
+        entity_name = id.player_name,
         space_id = entity.space_id.0,
+        world = space_mgr.world_name_for_space(entity.space_id.0 as u32),
         health = v.health,
         health_max = v.health_max,
         focus = v.focus,
@@ -198,7 +210,7 @@ mod tests {
         let mut mgr = mgr_with_player();
         mgr.get_entity_mut(1).unwrap().threatened_mobs.insert(900);
         let capture = LogCapture::install();
-        log_combat_sample(mgr.get_entity(1).unwrap());
+        log_combat_sample(&mgr, mgr.get_entity(1).unwrap());
         let row = capture
             .find_message(Level::DEBUG, "vitals: in-combat sample")
             .expect("combat_sample row");

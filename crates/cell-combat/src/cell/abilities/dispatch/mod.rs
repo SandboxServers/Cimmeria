@@ -111,6 +111,7 @@ pub async fn handle_use_ability_on_ground(
                 target: "abilities",
                 event = "ground_attacker_missing",
                 entity_id,
+                entity_name = space_mgr.entity_label(entity_id),
                 "useAbilityOnGroundTarget: attacker entity not found"
             );
             return Vec::new();
@@ -157,7 +158,12 @@ pub async fn handle_use_ability_on_ground(
         tracing::debug!(
             target: "abilities",
             event = "ground_no_enemy_in_radius",
-            entity_id, ability_id, ?ground, radius,
+            entity_id,
+            entity_name = space_mgr.entity_label(entity_id),
+            ability_id,
+            ability_name = cimmeria_names::book().ability(ability_id),
+            ?ground,
+            radius,
             "useAbilityOnGroundTarget: no enemy in AoE radius; consuming cooldown/ammo without damage"
         );
         handle_use_ability(entity_id, ability_id, 0, tx, space_mgr).await;
@@ -169,7 +175,14 @@ pub async fn handle_use_ability_on_ground(
         tracing::debug!(
             target: "abilities",
             event = "ground_primary_out_of_range",
-            entity_id, ability_id, ?ground, primary_eid, max_range,
+            entity_id,
+            entity_name = space_mgr.entity_label(entity_id),
+            ability_id,
+            ability_name = cimmeria_names::book().ability(ability_id),
+            ?ground,
+            primary_eid,
+            primary_name = space_mgr.entity_label(primary_eid),
+            max_range,
             "useAbilityOnGroundTarget: nearest target outside attacker's ability max_range; charging cooldown/ammo only"
         );
         handle_use_ability(entity_id, ability_id, 0, tx, space_mgr).await;
@@ -188,7 +201,9 @@ pub async fn handle_use_ability_on_ground(
         target: "abilities",
         event = "ground_primary_cast",
         entity_id,
+        entity_name = space_mgr.entity_label(entity_id),
         ability_id,
+        ability_name = cimmeria_names::book().ability(ability_id),
         ?ground,
         primary_eid,
         radius,
@@ -206,7 +221,9 @@ pub async fn handle_use_ability_on_ground(
             target: "abilities",
             event = "ground_primary_rejected",
             entity_id,
+            entity_name = space_mgr.entity_label(entity_id),
             ability_id,
+            ability_name = cimmeria_names::book().ability(ability_id),
             primary_eid,
             "useAbilityOnGroundTarget: primary cast rejected; suppressing AoE secondaries"
         );
@@ -222,7 +239,9 @@ pub async fn handle_use_ability_on_ground(
             target: "abilities",
             event = "ground_primary_warming_up",
             entity_id,
+            entity_name = space_mgr.entity_label(entity_id),
             ability_id,
+            ability_name = cimmeria_names::book().ability(ability_id),
             primary_eid,
             "useAbilityOnGroundTarget: primary is warming up; AoE secondaries deferred to the fire"
         );
@@ -396,7 +415,9 @@ async fn apply_secondaries(
             target: "abilities",
             event = "ground_secondary_hit",
             entity_id,
+            entity_name = space_mgr.entity_label(entity_id),
             ability_id,
+            ability_name = cimmeria_names::book().ability(ability_id),
             secondary_eid,
             secondary_seq,
             "useAbilityOnGroundTarget: AoE — secondary target via apply_damage_to_target"

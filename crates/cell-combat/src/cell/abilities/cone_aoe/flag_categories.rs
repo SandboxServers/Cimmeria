@@ -13,6 +13,8 @@
 use cimmeria_common::flag_names::FlagSet;
 use cimmeria_entity::abilities::EffectDef;
 
+use crate::cell::space_manager::SpaceManager;
+
 /// Every `EEffectFlag` token, in bit order (`enumerations.xml:1094-1123`).
 /// Log sites pair an effect's `flags` word with `EFFECT_FLAGS.render(..)`
 /// (NT-31).
@@ -48,6 +50,7 @@ pub(crate) const EFFECT_FLAGS: FlagSet = FlagSet::new(&[
 /// effect with no flags. Bits the client enum does not define show as a
 /// hex remainder in `flags_names` instead of being dropped.
 pub fn log_effect_flag_categories(
+    space_mgr: &SpaceManager,
     entity_id: u32,
     target_id: u32,
     ability_id: i32,
@@ -61,9 +64,13 @@ pub fn log_effect_flag_categories(
         target: "abilities",
         event = "effect_flag_categories",
         entity_id,
+        entity_name = space_mgr.entity_label(entity_id),
         target_id,
+        target_name = space_mgr.entity_label(target_id),
         ability_id,
+        ability_name = cimmeria_names::book().ability(ability_id),
         effect_id = effect.effect_id,
+        effect_name = cimmeria_names::book().effect(effect.effect_id),
         flags,
         flags_names = %EFFECT_FLAGS.render(flags),
         "effect carries EEffectFlag bits"

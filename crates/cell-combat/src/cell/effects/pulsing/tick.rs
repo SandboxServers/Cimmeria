@@ -167,14 +167,22 @@ pub async fn effect_pulse_tick(
                 stage = "end",
                 reason = "natural_end",
                 account_id = who.account_id,
+                account_name = who.account_name,
                 player_id = who.player_id,
+                player_name = who.player_name,
                 entity_id = invoker,
+                entity_name = who.player_name,
                 target_id = entity_id,
+                target_name = space_mgr.entity_label(entity_id),
                 target_player_id = space_mgr.player_identity(entity_id).player_id,
+                target_player_name = space_mgr.player_identity(entity_id).player_name,
                 invoker_id = invoker,
-                cast_id,
+                invoker_name = who.player_name,
+                cast_id, // nt:id-only per-cast sequence number, no name exists
                 effect_id = cleared_effect,
+                effect_name = cimmeria_names::book().effect(cleared_effect),
                 ability_id,
+                ability_name = cimmeria_names::book().ability(ability_id),
                 "pulsing effect ran its last pulse; clearing its icon"
             );
             // Phase I: script on_remove first so stateful effects (Stun

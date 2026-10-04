@@ -94,8 +94,14 @@ impl SpaceManager {
     /// `name_id` text for an NPC. `None` when the entity is gone or has no
     /// name; never `""`. NPC log lines also want `template_id` +
     /// `template_name`: use [`Self::entity_names`] for those.
-    pub fn entity_label(&self, entity_id: u32) -> Option<&str> {
-        self.get_entity(entity_id).and_then(label_of)
+    ///
+    /// Takes an `Option<u32>` too, for the log fields whose entity is
+    /// optional (`pet_id`, `owner_id`): `None` names nothing.
+    pub fn entity_label(&self, entity_id: impl Into<Option<u32>>) -> Option<&str> {
+        entity_id
+            .into()
+            .and_then(|id| self.get_entity(id))
+            .and_then(label_of)
     }
 
     /// [`EntityNames`] for a live entity; all `None` when it is gone. A

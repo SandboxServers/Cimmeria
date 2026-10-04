@@ -25,10 +25,13 @@ pub async fn fire_item_sequence(
     let seq_id = event_set.and_then(|esid| space_mgr.sequence_map.get(&(esid, event_id)).copied());
     tracing::info!(
         entity_id,
+        entity_name = space_mgr.entity_label(entity_id),
         event_id,
+        event_name = cimmeria_entity::abilities::sequence_event_name(event_id),
         archetype_id = ?archetype_id,
-        event_set_id = ?event_set,
-        seq_id = ?seq_id,
+        archetype_name = archetype_id.and_then(cimmeria_names::archetype_name),
+        event_set_id = ?event_set, // nt:id-only event sets have no NameBook name table
+        seq_id = ?seq_id, // nt:id-only sequences have no NameBook name table
         "fire_item_sequence: archetype-keyed sequence lookup"
     );
     let Some(seq_id) = seq_id else {

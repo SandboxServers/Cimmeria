@@ -159,6 +159,7 @@ pub async fn request_draw(
     let (instance_id, ammo_type, clip_before) =
         (item.instance_id, item.cur_ammo_type, item.current_ammo);
     let account_id = e.account_id;
+    let who = e.identity();
     if !flush_slot(entity_id, slot_id, tx, space_mgr).await {
         return;
     }
@@ -175,7 +176,13 @@ pub async fn request_draw(
             target: "ammo",
             event = "reserve_request_send_failed",
             reason = "base_channel_closed",
-            account_id, player_id, entity_id, ammo_type,
+            account_id,
+            account_name = who.account_name,
+            player_id,
+            player_name = who.player_name,
+            entity_id,
+            entity_name = who.player_name,
+            ammo_type,
             "reload draw could not be queued; the clip is unchanged"
         );
         return;
@@ -190,7 +197,16 @@ pub async fn request_draw(
     tracing::debug!(
         target: "ammo",
         event = "reload_draw_requested",
-        account_id, player_id, entity_id, ammo_type, slot_id, instance_id, clip_before,
+        account_id,
+        account_name = who.account_name,
+        player_id,
+        player_name = who.player_name,
+        entity_id,
+        entity_name = who.player_name,
+        ammo_type,
+        slot_id, // nt:id-only bandolier slot index, not a named object
+        instance_id, // nt:id-only weapon inventory instance, no name of its own
+        clip_before,
         "special reload: asked the base to draw rounds"
     );
 }
@@ -238,8 +254,8 @@ pub async fn handle_reload_drawn(
     tx: &mpsc::Sender<CellToBaseMsg>,
     space_mgr: &mut SpaceManager,
 ) {
-    let (account_id, active_slot) = match space_mgr.get_entity(entity_id) {
-        Some(e) if e.player_id == Some(player_id) => (e.account_id, e.active_bandolier_slot),
+    let (who, active_slot) = match space_mgr.get_entity(entity_id) {
+        Some(e) if e.player_id == Some(player_id) => (e.identity(), e.active_bandolier_slot),
         _ => {
             // The rounds are in the weapon row already; the next load of
             // the character shows them.
@@ -247,12 +263,16 @@ pub async fn handle_reload_drawn(
                 target: "ammo",
                 event = "reload_drawn_stale",
                 reason = "entity_gone",
-                player_id, entity_id, ammo_type, drawn,
+                player_id, // nt:id-only the entity left: no session left to name
+                entity_id, // nt:id-only gone or reused: a live label would name another
+                ammo_type,
+                drawn,
                 "reload draw answered for an entity that is no longer this player"
             );
             return;
         }
     };
+    let account_id = who.account_id;
     let was_pending = reserve_state_mut(space_mgr, entity_id)
         .and_then(|s| {
             s.pending_draw
@@ -274,11 +294,18 @@ pub async fn handle_reload_drawn(
                 target: "ammo",
                 event = "reload_refused_feedback",
                 reason = refusal.reason(),
-                account_id, player_id, entity_id, ammo_type, slot_id,
+                account_id,
+                account_name = who.account_name,
+                player_id,
+                player_name = who.player_name,
+                entity_id,
+                entity_name = who.player_name,
+                ammo_type,
+                slot_id, // nt:id-only bandolier slot index, not a named object
                 "special reload refused; clip unchanged, feedback sent"
             );
             send_reload_error(entity_id, tx).await;
-            send_feedback_line(entity_id, &text, tx).await;
+            send_feedback_line(entity_id, who.player_name, &text, tx).await;
         }
         Ok(()) if drawn <= 0 => {
             // The clip was already full when the base looked: nothing to do.
@@ -299,7 +326,16 @@ pub async fn handle_reload_drawn(
                     target: "ammo",
                     event = "reload_drawn_stale",
                     reason = "slot_changed",
-                    account_id, player_id, entity_id, ammo_type, slot_id, instance_id, drawn,
+                    account_id,
+                    account_name = who.account_name,
+                    player_id,
+                    player_name = who.player_name,
+                    entity_id,
+                    entity_name = who.player_name,
+                    ammo_type,
+                    slot_id, // nt:id-only bandolier slot index, not a named object
+                    instance_id, // nt:id-only weapon inventory instance, no name of its own
+                    drawn,
                     "reload draw answered after the weapon left its slot"
                 );
                 return;
@@ -307,7 +343,16 @@ pub async fn handle_reload_drawn(
             tracing::debug!(
                 target: "ammo",
                 event = "reload_drawn_loaded",
-                account_id, player_id, entity_id, ammo_type, slot_id, drawn, clip_after,
+                account_id,
+                account_name = who.account_name,
+                player_id,
+                player_name = who.player_name,
+                entity_id,
+                entity_name = who.player_name,
+                ammo_type,
+                slot_id, // nt:id-only bandolier slot index, not a named object
+                drawn,
+                clip_after,
                 stack_after,
                 "special rounds loaded; starting the reload warmup"
             );
@@ -383,6 +428,7 @@ pub async fn flush_slot(
     let (Some(player_id), Some(item)) = (e.player_id, e.bandolier_items.get(&slot_id)) else {
         return false;
     };
+    let who = e.identity();
     let msg = CellToBaseMsg::BandolierAmmoUpdate {
         player_id,
         slot_id,
@@ -395,7 +441,11 @@ pub async fn flush_slot(
             target: "ammo",
             event = "reserve_request_send_failed",
             reason = "base_channel_closed",
-            player_id, entity_id, slot_id,
+            player_id,
+            player_name = who.player_name,
+            entity_id,
+            entity_name = who.player_name,
+            slot_id, // nt:id-only bandolier slot index, not a named object
             "clip flush before a reserve request could not be queued; nothing sent"
         );
         return false;
@@ -425,8 +475,14 @@ async fn send_reload_error(entity_id: u32, tx: &mpsc::Sender<CellToBaseMsg>) {
         .await;
 }
 
-/// One `SYSTEM` feedback line to the player.
-pub async fn send_feedback_line(entity_id: u32, text: &str, tx: &mpsc::Sender<CellToBaseMsg>) {
+/// One `SYSTEM` feedback line to the player. `entity_name` is the player's,
+/// for the send-failure row.
+pub async fn send_feedback_line(
+    entity_id: u32,
+    entity_name: Option<&str>,
+    text: &str,
+    tx: &mpsc::Sender<CellToBaseMsg>,
+) {
     let args = serialize_on_player_communication("SYSTEM", 0, CHAN_FEEDBACK, text);
     if tx
         .send(CellToBaseMsg::EntityMethodCall {
@@ -442,6 +498,7 @@ pub async fn send_feedback_line(entity_id: u32, text: &str, tx: &mpsc::Sender<Ce
             event = "feedback_send_failed",
             reason = "base_channel_closed",
             entity_id,
+            entity_name,
             "an ammo feedback line could not be queued"
         );
     }

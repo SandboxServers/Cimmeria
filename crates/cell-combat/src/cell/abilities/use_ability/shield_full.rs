@@ -90,9 +90,13 @@ pub(super) async fn refuse_shield_full(
         decision_outcome = "refused",
         reason = REASON_ABSORB_FULL,
         entity_id,
+        entity_name = space_mgr.entity_label(entity_id),
         account_id = id.account_id,
+        account_name = id.account_name,
         player_id = id.player_id,
+        player_name = id.player_name,
         ability_id = def.ability_id,
+        ability_name = cimmeria_names::book().ability(def.ability_id),
         "useAbility: every pool the shield would fill is full; refused with feedback, no cooldown charged"
     );
     super::no_mechanics::send_ability_feedback(entity_id, id, def.ability_id, SHIELD_FULL_TEXT, tx)

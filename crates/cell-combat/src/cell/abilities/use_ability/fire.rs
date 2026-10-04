@@ -109,10 +109,14 @@ pub(in crate::cell::abilities) async fn fire_cast(
                 event = "ammo_consumed",
                 stage = "fire",
                 account_id = who.account_id,
+                account_name = who.account_name,
                 player_id = who.player_id,
+                player_name = who.player_name,
                 entity_id,
-                cast_id = effect_seq,
+                entity_name = who.player_name,
+                cast_id = effect_seq, // nt:id-only per-cast sequence number, no name exists
                 ability_id,
+                ability_name = cimmeria_names::book().ability(ability_id),
                 ammo_remaining = entity.active_ammo(),
                 "useAbility: consumed ammo"
             );
@@ -274,11 +278,16 @@ async fn fire_at_target(
             stage = "fire",
             reason = if target_id <= 0 { "no_target" } else { "all_routed_away" },
             account_id = who.account_id,
+            account_name = who.account_name,
             player_id = who.player_id,
+            player_name = who.player_name,
             entity_id,
-            cast_id = effect_seq,
+            entity_name = space_mgr.entity_label(entity_id),
+            cast_id = effect_seq, // nt:id-only per-cast sequence number, no name exists
             ability_id,
+            ability_name = cimmeria_names::book().ability(ability_id),
             target_id,
+            target_name = space_mgr.entity_label(target_id as u32),
             off_target_landings = routed.landings.len(),
             "fire: expected a target to resolve the cast on, none took part (no target, or every effect routed to the caster or allies); no QR roll, no damage, only off-target effects land"
         );
@@ -376,10 +385,14 @@ async fn land_routed(
         target: "abilities",
         event = "effect_routing_applied",
         account_id = who.account_id,
+        account_name = who.account_name,
         player_id = who.player_id,
+        player_name = who.player_name,
         entity_id,
-        cast_id = space_mgr.current_cast_id(),
+        entity_name = space_mgr.entity_label(entity_id),
+        cast_id = space_mgr.current_cast_id(), // nt:id-only per-cast sequence number, no name exists
         ability_id,
+        ability_name = cimmeria_names::book().ability(ability_id),
         landed = ?landed,
         landed_player_ids = ?routed
             .landings

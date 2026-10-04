@@ -56,13 +56,19 @@ impl EffectScript for MovementSlow {
             tracing::warn!(
                 target: "abilities",
                 event = "movement_slow_no_reduction",
-                cast_id = ctx.row_ids().cast_id,
+                cast_id = ctx.row_ids().cast_id, // nt:id-only per-cast sequence number, no name exists
                 account_id = ctx.row_ids().account_id,
+                account_name = ctx.row_ids().account_name,
                 player_id = ctx.row_ids().player_id,
+                player_name = ctx.row_ids().player_name,
                 target_player_id = ctx.row_ids().target_player_id,
+                target_player_name = ctx.row_ids().target_player_name,
                 source_id = ctx.source_id,
+                source_name = ctx.space_mgr.caster_label(ctx.source_id),
                 target_id = ctx.target_id,
+                target_name = ctx.space_mgr.entity_label(ctx.target_id),
                 effect_id = ctx.effect.effect_id,
+                effect_name = cimmeria_names::book().effect(ctx.effect.effect_id),
                 reduction,
                 "MovementSlow effect has no positive SpeedReduction NVP; nothing slowed"
             );
@@ -95,13 +101,19 @@ impl EffectScript for MovementSlow {
         tracing::info!(
             target: "abilities",
             event = "movement_slow_applied",
-            cast_id = ctx.row_ids().cast_id,
+            cast_id = ctx.row_ids().cast_id, // nt:id-only per-cast sequence number, no name exists
             account_id = ctx.row_ids().account_id,
+            account_name = ctx.row_ids().account_name,
             player_id = ctx.row_ids().player_id,
+            player_name = ctx.row_ids().player_name,
             target_player_id = ctx.row_ids().target_player_id,
+            target_player_name = ctx.row_ids().target_player_name,
             source_id = ctx.source_id,
+            source_name = ctx.space_mgr.caster_label(ctx.source_id),
             target_id = ctx.target_id,
+            target_name = ctx.space_mgr.entity_label(ctx.target_id),
             effect_id = effect.effect_id,
+            effect_name = cimmeria_names::book().effect(effect.effect_id),
             reduction,
             duration_secs = duration.unwrap_or(0.0),
             speed_mod_before = before,
@@ -126,13 +138,19 @@ impl EffectScript for MovementSlow {
         tracing::info!(
             target: "abilities",
             event = "movement_slow_expired",
-            cast_id = ctx.row_ids().cast_id,
+            cast_id = ctx.row_ids().cast_id, // nt:id-only per-cast sequence number, no name exists
             account_id = ctx.row_ids().account_id,
+            account_name = ctx.row_ids().account_name,
             player_id = ctx.row_ids().player_id,
+            player_name = ctx.row_ids().player_name,
             target_player_id = ctx.row_ids().target_player_id,
+            target_player_name = ctx.row_ids().target_player_name,
             source_id = ctx.source_id,
+            source_name = ctx.space_mgr.caster_label(ctx.source_id),
             target_id = ctx.target_id,
+            target_name = ctx.space_mgr.entity_label(ctx.target_id),
             effect_id,
+            effect_name = cimmeria_names::book().effect(effect_id),
             speed_mod_before = before,
             speed_mod_after = speed_mod(ctx),
             "MovementSlow expired; speed restored"

@@ -56,17 +56,32 @@ pub fn enter_player_combat(
             // so SigNoz `groupBy event` counts real combat-enter
             // transitions (one per actual aggro, not one per damage tick).
             // See issue #408.
+            // Copy out what the row needs so the player's borrow ends and
+            // the mob can be named.
+            let (new_state, weapon_holstered, who) = (
+                player.state_field,
+                player.weapon_holstered,
+                player.identity(),
+            );
+            // `player_id` here is the player's entity id; the row's
+            // `player_id` is the character's (Rule 5).
             tracing::info!(
                 target: "threat",
                 event = "enter_combat",
-                player_id,
+                entity_id = player_id,
+                entity_name = who.player_name,
+                account_id = who.account_id,
+                account_name = who.account_name,
+                player_id = who.player_id,
+                player_name = who.player_name,
                 mob_id,
-                new_state = player.state_field,
-                new_state_names = %cimmeria_wire::state_field::STATE_FLAGS.render(player.state_field),
-                weapon_holstered = player.weapon_holstered,
+                mob_name = space_mgr.entity_label(mob_id),
+                new_state,
+                new_state_names = %cimmeria_wire::state_field::STATE_FLAGS.render(new_state),
+                weapon_holstered,
                 "enter_player_combat: BSF_InCombat set (first threatened mob); weapon drawn"
             );
-            return Some(player.state_field);
+            return Some(new_state);
         }
     }
     None
@@ -107,17 +122,32 @@ pub fn exit_player_combat(
             // (cleared in `enter_player_combat`). BSF_InCombat clears
             // immediately on the wire so HUD/cursor flips don't lag.
             player.combat_exit_at = Some(std::time::Instant::now());
+            // Copy out what the row needs so the player's borrow ends and
+            // the mob can be named.
+            let (new_state, weapon_holstered, who) = (
+                player.state_field,
+                player.weapon_holstered,
+                player.identity(),
+            );
+            // `player_id` here is the player's entity id; the row's
+            // `player_id` is the character's (Rule 5).
             tracing::info!(
                 target: "threat",
                 event = "exit_combat",
-                player_id,
+                entity_id = player_id,
+                entity_name = who.player_name,
+                account_id = who.account_id,
+                account_name = who.account_name,
+                player_id = who.player_id,
+                player_name = who.player_name,
                 mob_id,
-                new_state = player.state_field,
-                new_state_names = %cimmeria_wire::state_field::STATE_FLAGS.render(player.state_field),
-                weapon_holstered = player.weapon_holstered,
+                mob_name = space_mgr.entity_label(mob_id),
+                new_state,
+                new_state_names = %cimmeria_wire::state_field::STATE_FLAGS.render(new_state),
+                weapon_holstered,
                 "exit_player_combat: BSF_InCombat cleared; OOC holster timer armed"
             );
-            return Some(player.state_field);
+            return Some(new_state);
         }
     }
     None

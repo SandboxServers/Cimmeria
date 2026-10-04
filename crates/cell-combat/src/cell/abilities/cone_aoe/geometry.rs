@@ -60,7 +60,9 @@ pub fn collect_cone_targets(
             target: "abilities",
             event = "cone_aoe_primary_stacked",
             attacker_id,
+            attacker_name = space_mgr.entity_label(attacker_id),
             primary_target_id,
+            primary_target_name = space_mgr.entity_label(primary_target_id),
             "cone_aoe: primary stacked on attacker — skipping cone fan-out"
         );
         return Vec::new();

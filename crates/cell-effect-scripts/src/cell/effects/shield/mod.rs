@@ -64,15 +64,22 @@ impl EffectScript for AbsorbShield {
             tracing::warn!(
                 target: "abilities",
                 event = "shield_skipped",
-                cast_id = ctx.row_ids().cast_id,
+                cast_id = ctx.row_ids().cast_id, // nt:id-only per-cast sequence number, no name exists
                 reason,
                 account_id = who.account_id,
+                account_name = who.account_name,
                 player_id = who.player_id,
+                player_name = who.player_name,
                 entity_id = ctx.source_id,
+                entity_name = ctx.space_mgr.caster_label(ctx.source_id),
                 target_id = ctx.target_id,
+                target_name = ctx.space_mgr.entity_label(ctx.target_id),
                 target_player_id = target_who.player_id,
+                target_player_name = target_who.player_name,
                 effect_id = ctx.effect.effect_id,
+                effect_name = cimmeria_names::book().effect(ctx.effect.effect_id),
                 ability_id = ctx.effect.ability_id,
+                ability_name = cimmeria_names::book().ability(ctx.effect.ability_id),
                 shield_type = ctx.effect.params.get(SHIELD_TYPE_NVP).map(String::as_str),
                 amount,
                 "AbsorbShield has no positive ShieldAmount or an unknown ShieldType; \
@@ -88,15 +95,22 @@ impl EffectScript for AbsorbShield {
             tracing::warn!(
                 target: "abilities",
                 event = "shield_skipped",
-                cast_id = ctx.row_ids().cast_id,
+                cast_id = ctx.row_ids().cast_id, // nt:id-only per-cast sequence number, no name exists
                 reason = "target_not_ally",
                 account_id = who.account_id,
+                account_name = who.account_name,
                 player_id = who.player_id,
+                player_name = who.player_name,
                 entity_id = ctx.source_id,
+                entity_name = ctx.space_mgr.caster_label(ctx.source_id),
                 target_id = ctx.target_id,
+                target_name = ctx.space_mgr.entity_label(ctx.target_id),
                 target_player_id = target_who.player_id,
+                target_player_name = target_who.player_name,
                 effect_id = ctx.effect.effect_id,
+                effect_name = cimmeria_names::book().effect(ctx.effect.effect_id),
                 ability_id = ctx.effect.ability_id,
+                ability_name = cimmeria_names::book().ability(ctx.effect.ability_id),
                 relation = rel.label(),
                 "AbsorbShield landed on a target that is not the caster or an ally; nothing applied"
             );
@@ -120,15 +134,22 @@ impl EffectScript for AbsorbShield {
             tracing::debug!(
                 target: "abilities",
                 event = "shield_skipped",
-                cast_id = ctx.row_ids().cast_id,
+                cast_id = ctx.row_ids().cast_id, // nt:id-only per-cast sequence number, no name exists
                 reason = REASON_ABSORB_FULL,
                 account_id = who.account_id,
+                account_name = who.account_name,
                 player_id = who.player_id,
+                player_name = who.player_name,
                 entity_id = ctx.source_id,
+                entity_name = ctx.space_mgr.caster_label(ctx.source_id),
                 target_id = ctx.target_id,
+                target_name = ctx.space_mgr.entity_label(ctx.target_id),
                 target_player_id = target_who.player_id,
+                target_player_name = target_who.player_name,
                 effect_id = ctx.effect.effect_id,
+                effect_name = cimmeria_names::book().effect(ctx.effect.effect_id),
                 ability_id = ctx.effect.ability_id,
+                ability_name = cimmeria_names::book().ability(ctx.effect.ability_id),
                 "AbsorbShield: every pool it would fill is full; nothing applied"
             );
             return;
@@ -144,13 +165,20 @@ impl EffectScript for AbsorbShield {
                 stage = "ledger",
                 reason = "ledger_refused",
                 account_id = who.account_id,
+                account_name = who.account_name,
                 player_id = who.player_id,
+                player_name = who.player_name,
                 entity_id = ctx.source_id,
-                cast_id = ctx.space_mgr.current_cast_id(),
+                entity_name = ctx.space_mgr.caster_label(ctx.source_id),
+                cast_id = ctx.space_mgr.current_cast_id(), // nt:id-only per-cast sequence number, no name exists
                 target_id = ctx.target_id,
+                target_name = ctx.space_mgr.entity_label(ctx.target_id),
                 target_player_id = target_who.player_id,
+                target_player_name = target_who.player_name,
                 effect_id = ctx.effect.effect_id,
+                effect_name = cimmeria_names::book().effect(ctx.effect.effect_id),
                 ability_id = ctx.effect.ability_id,
+                ability_name = cimmeria_names::book().ability(ctx.effect.ability_id),
                 "AbsorbShield: expected the ledger to take the shield entry, it refused; no shield, no icon, the target takes full damage"
             );
             return;
@@ -158,14 +186,21 @@ impl EffectScript for AbsorbShield {
         tracing::info!(
             target: "abilities",
             event = "shield_granted",
-            cast_id = ctx.row_ids().cast_id,
+            cast_id = ctx.row_ids().cast_id, // nt:id-only per-cast sequence number, no name exists
             account_id = who.account_id,
+            account_name = who.account_name,
             player_id = who.player_id,
+            player_name = who.player_name,
             entity_id = ctx.source_id,
+            entity_name = ctx.space_mgr.caster_label(ctx.source_id),
             target_id = ctx.target_id,
+            target_name = ctx.space_mgr.entity_label(ctx.target_id),
             target_player_id = target_who.player_id,
+            target_player_name = target_who.player_name,
             effect_id = ctx.effect.effect_id,
+            effect_name = cimmeria_names::book().effect(ctx.effect.effect_id),
             ability_id = ctx.effect.ability_id,
+            ability_name = cimmeria_names::book().ability(ctx.effect.ability_id),
             damage_types = ?types,
             amount,
             pools = ?out.applied.absorb.iter().map(|p| (p.stat_id, p.granted)).collect::<Vec<_>>(),

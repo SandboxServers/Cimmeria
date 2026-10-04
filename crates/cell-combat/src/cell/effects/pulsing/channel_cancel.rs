@@ -102,7 +102,9 @@ pub async fn cancel_channels_from_attacker(
         target: "abilities",
         event = "channel_cancel_sweep",
         attacker_id,
+        attacker_name = space_mgr.entity_label(attacker_id),
         keep_ability_id = ?keep_ability_id,
+        keep_ability_name = cimmeria_cell_world::cell::effects::content_names::ability_name(keep_ability_id),
         cancelled = cancelled_count,
         "Cancelling channels from attacker"
     );
@@ -247,7 +249,9 @@ pub async fn channel_interrupt_on_movement_tick(
             target: "abilities",
             event = "channel_interrupted_by_movement",
             invoker_id,
+            invoker_name = space_mgr.caster_label(invoker_id),
             ability_id,
+            ability_name = cimmeria_names::book().ability(ability_id),
             threshold = CHANNEL_INTERRUPT_DISTANCE,
             "Channel interrupted — caster moved past threshold"
         );

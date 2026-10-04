@@ -57,9 +57,13 @@ pub(super) async fn refuse_while_incapacitated(
         decision_outcome = "refused",
         reason = "incapacitated",
         entity_id,
+        entity_name = space_mgr.entity_label(entity_id),
         account_id = id.account_id,
+        account_name = id.account_name,
         player_id = id.player_id,
+        player_name = id.player_name,
         ability_id,
+        ability_name = cimmeria_names::book().ability(ability_id),
         is_player,
         "useAbility: the caster is stunned or knocked down; refused, no cooldown charged"
     );

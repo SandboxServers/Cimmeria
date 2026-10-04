@@ -55,8 +55,8 @@ use super::super::messages::CellToBaseMsg;
 use super::super::space_manager::SpaceManager;
 use super::messaging::{deliver, Delivery, WireRoute};
 use cimmeria_entity::cell_entity::PlayerIdentity;
-pub(crate) use decode::method_name;
 use decode::Decoded;
+pub(crate) use decode::method_name;
 
 /// What the caller knows about a send that the bytes do not say.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

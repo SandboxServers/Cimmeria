@@ -280,12 +280,17 @@ fn log_route(
     tracing::debug!(
         target: "abilities",
         event = EVENT_EFFECT_ROUTED,
-        cast_id = space_mgr.current_cast_id(),
+        cast_id = space_mgr.current_cast_id(), // nt:id-only per-cast sequence number, no name exists
         account_id = who.account_id,
+        account_name = who.account_name,
         player_id = who.player_id,
+        player_name = who.player_name,
         entity_id = caster_id,
+        entity_name = space_mgr.entity_label(caster_id),
         ability_id = def.ability_id,
+        ability_name = cimmeria_names::book().ability(def.ability_id),
         effect_id = effect.effect_id,
+        effect_name = cimmeria_names::book().effect(effect.effect_id),
         tcm = effect.target_collection_method.as_str(),
         effect_flags = effect.flags,
         effect_flags_names = %crate::cell::abilities::cone_aoe::EFFECT_FLAGS.render(effect.flags),
@@ -346,17 +351,27 @@ pub(in crate::cell::abilities) fn launch_target(
         "user_half_only"
     };
     let who = space_mgr.player_identity(caster_id);
-    let target_player_id =
-        (wire_target > 0).then(|| space_mgr.player_identity(wire_target as u32).player_id);
+    let target_who = u32::try_from(wire_target)
+        .ok()
+        .filter(|&t| t > 0)
+        .map_or(cimmeria_entity::cell_entity::PlayerIdentity::UNKNOWN, |t| {
+            space_mgr.player_identity(t)
+        });
     tracing::debug!(
         target: "abilities",
         event = EVENT_ROUTING_LAUNCH,
         account_id = who.account_id,
+        account_name = who.account_name,
         player_id = who.player_id,
+        player_name = who.player_name,
         entity_id = caster_id,
+        entity_name = space_mgr.entity_label(caster_id),
         ability_id = def.ability_id,
+        ability_name = cimmeria_names::book().ability(def.ability_id),
         wire_target_id = wire_target,
-        target_player_id = target_player_id.flatten(),
+        wire_target_name = space_mgr.entity_label(wire_target as u32),
+        target_player_id = target_who.player_id,
+        target_player_name = target_who.player_name,
         off_target_effects = off,
         target_effects = on,
         resolution,
@@ -399,11 +414,15 @@ pub(in crate::cell::abilities) fn secondary_scope(
         tracing::debug!(
             target: "abilities",
             event = EVENT_EFFECT_ROUTED,
-            cast_id = space_mgr.current_cast_id(),
+            cast_id = space_mgr.current_cast_id(), // nt:id-only per-cast sequence number, no name exists
             account_id = who.account_id,
+            account_name = who.account_name,
             player_id = who.player_id,
+            player_name = who.player_name,
             entity_id = caster_id,
+            entity_name = space_mgr.entity_label(caster_id),
             ability_id = def.ability_id,
+            ability_name = cimmeria_names::book().ability(def.ability_id),
             effect_ids = ?target.effect_ids,
             reason = "no_area_damage_effect",
             "ground secondaries keep the whole ability: its damage is authored only on single-target effects"

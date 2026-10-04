@@ -15,6 +15,7 @@
 use std::collections::HashSet;
 use std::sync::{OnceLock, RwLock};
 
+use cimmeria_entity::cell_entity::PlayerIdentity;
 use cimmeria_entity::stats::{FOCUS, HEALTH};
 
 use super::stat_buff::StatBuffRemoval;
@@ -185,9 +186,8 @@ pub fn abandon_pending_cast(space_mgr: &mut SpaceManager, entity_id: u32, reason
         return;
     };
     let caster = caster_label(caster.is_player);
-    let target_player_id = u32::try_from(pc.target_id)
-        .ok()
-        .and_then(|t| space_mgr.player_identity(t).player_id);
+    let target_who = u32::try_from(pc.target_id)
+        .map_or(PlayerIdentity::UNKNOWN, |t| space_mgr.player_identity(t));
     tracing::debug!(
         target: "abilities",
         event = "warmup_abandoned",
@@ -195,12 +195,18 @@ pub fn abandon_pending_cast(space_mgr: &mut SpaceManager, entity_id: u32, reason
         outcome = OUTCOME_ABANDONED,
         reason,
         account_id = who.account_id,
+        account_name = who.account_name,
         player_id = who.player_id,
+        player_name = who.player_name,
         entity_id,
-        cast_id = pc.cast_id(),
+        entity_name = space_mgr.entity_label(entity_id),
+        cast_id = pc.cast_id(), // nt:id-only per-cast sequence number, no name exists
         ability_id = pc.ability_id,
+        ability_name = cimmeria_names::book().ability(pc.ability_id),
         target_id = pc.target_id,
-        target_player_id,
+        target_name = space_mgr.entity_label(pc.target_id as u32),
+        target_player_id = target_who.player_id,
+        target_player_name = target_who.player_name,
         warmup_secs = pc.warmup_secs,
         "ability warmup abandoned: the caster was torn down before the cast fired"
     );

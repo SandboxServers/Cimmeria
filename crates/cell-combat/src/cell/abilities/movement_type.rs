@@ -54,6 +54,7 @@ pub async fn broadcast_movement_type(
         tracing::warn!(
             target: "movement.movement_type",
             entity_id,
+            entity_name = space_mgr.entity_label(entity_id),
             ?kind,
             "broadcast_movement_type called on a player entity — no-op (movement type is NPC-only)"
         );
@@ -87,6 +88,7 @@ pub async fn broadcast_movement_type(
         None => tracing::debug!(
             target: "movement.movement_type",
             entity_id,
+            entity_name = space_mgr.entity_label(entity_id),
             prior_kind = ?last,
             outcome = "cleared",
             "movement type cache cleared"
@@ -94,6 +96,7 @@ pub async fn broadcast_movement_type(
         Some(k) => tracing::debug!(
             target: "movement.movement_type",
             entity_id,
+            entity_name = space_mgr.entity_label(entity_id),
             kind = ?k,
             kind_byte = k as u8,
             prior_kind = ?last,

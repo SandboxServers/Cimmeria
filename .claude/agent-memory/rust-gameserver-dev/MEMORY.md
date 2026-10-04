@@ -115,6 +115,7 @@ One line per topic file; the detail lives in the file. Keep hooks short (this in
 ## Observability
 
 - [named-telemetry-sweep-traps](named-telemetry-sweep-traps.md) — Rule 6 sweeps: chain/loot/event-set names exist in seed; keys holding the wrong ID; rescan without rebuild.
+- [rule6-sweep-scanner-and-naming-traps](rule6-sweep-scanner-and-naming-traps.md) — list unpaired sites by zeroing baseline rows; `$level!` rows escape the scan; never name a deferred effect's invoker live.
 - [discord-named-pairs-resolvers](discord-named-pairs-resolvers.md) — Discord Event objects are `Named` pairs (NT-10); base/cell/content resolvers; button text and minigame ids are unnameable.
 - [observability-test-and-throttle-traps](observability-test-and-throttle-traps.md) — counters unobservable in tests.
 - [ability-row-event-guard-and-cast-join](ability-row-event-guard-and-cast-join.md) — ability rows need `event` (source-scan guard); pre-mint rows lack cast_id; client_sent joins by payload.

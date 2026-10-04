@@ -1152,6 +1152,7 @@ dependencies = [
  "cimmeria-cell-catalog",
  "cimmeria-cell-world",
  "cimmeria-entity",
+ "cimmeria-names",
  "cimmeria-test-support",
  "cimmeria-wire",
  "cimmeria-workspace-hack",

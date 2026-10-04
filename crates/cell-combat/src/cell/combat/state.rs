@@ -62,6 +62,12 @@ pub fn mark_npc_dead(entity: &mut cimmeria_entity::cell_entity::CellEntity, worl
             Some(std::time::Instant::now() + std::time::Duration::from_secs(secs as u64));
         tracing::info!(
             entity_id = entity.entity_id.0,
+            entity_name =
+                cimmeria_cell_world::cell::space_manager::EntityNames::of(entity).entity_name,
+            template_id = entity.template_id,
+            template_name = cimmeria_cell_world::cell::effects::content_names::template_name(
+                entity.template_id
+            ),
             respawn_secs = secs,
             "NPC death: respawn scheduled",
         );

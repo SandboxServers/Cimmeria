@@ -156,7 +156,7 @@ fn log_effect_flag_categories_no_op_on_zero_flags() {
         flags: 0,
         ..Default::default()
     };
-    log_effect_flag_categories(10, 20, 30, &effect);
+    log_effect_flag_categories(&SpaceManager::new(1), 10, 20, 30, &effect);
 }
 
 /// The log names the client's `EEffectFlag` bits (B-25). The old category
@@ -193,7 +193,7 @@ fn effect_flag_names_are_the_client_eeffectflag_tokens() {
             flags: 1 << bit,
             ..Default::default()
         };
-        log_effect_flag_categories(10, 20, 30, &effect);
+        log_effect_flag_categories(&SpaceManager::new(1), 10, 20, 30, &effect);
     }
 }
 
@@ -209,7 +209,7 @@ fn effect_flag_row_carries_flags_names() {
         flags: 144 | (1 << 30),
         ..Default::default()
     };
-    log_effect_flag_categories(10, 20, 30, &effect);
+    log_effect_flag_categories(&SpaceManager::new(1), 10, 20, 30, &effect);
     let row = capture
         .find_message(tracing::Level::DEBUG, "effect carries EEffectFlag bits")
         .expect("effect flag row");

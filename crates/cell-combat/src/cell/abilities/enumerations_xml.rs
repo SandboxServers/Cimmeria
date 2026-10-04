@@ -45,3 +45,63 @@ pub(crate) fn token(enum_name: &str, name: &str) -> i64 {
         _ => panic!("{enum_name}::{name} is declared twice"),
     }
 }
+
+/// `bag_name` (the `bag_name` log field) spells every bag ID the way the
+/// client's `EInventoryContainerId` does, and names nothing else.
+#[test]
+fn bag_names_are_the_client_einventorycontainerid_tokens() {
+    use cimmeria_entity::inventory::bag_name;
+    let client = tokens("EInventoryContainerId");
+    for (id, name) in &client {
+        assert_eq!(bag_name(*id as i32), Some(name.as_str()), "bag {id}");
+    }
+    assert_eq!(bag_name(0), None);
+    assert_eq!(bag_name(21), None);
+}
+
+/// `stat_name` (the `stat_name` log field) is the client's `EStats` token
+/// for every stat, and names nothing else.
+#[test]
+fn stat_names_are_the_client_estats_tokens() {
+    use cimmeria_entity::stats::stat_name;
+    let client = tokens("EStats");
+    for (id, name) in &client {
+        assert_eq!(stat_name(*id as i32), Some(name.as_str()), "stat {id}");
+    }
+    let declared: Vec<i32> = client.iter().map(|(id, _)| *id as i32).collect();
+    for id in -1..200 {
+        if !declared.contains(&id) {
+            assert_eq!(stat_name(id), None, "stat {id} is not in EStats");
+        }
+    }
+}
+
+/// `target_type_name` spells `ETargetType` the client's way.
+#[test]
+fn target_type_names_are_the_client_etargettype_tokens() {
+    use cimmeria_entity::abilities::target_type_name;
+    for (id, name) in tokens("ETargetType") {
+        assert_eq!(
+            target_type_name(id as i32),
+            Some(name.as_str()),
+            "target type {id}"
+        );
+    }
+    assert_eq!(target_type_name(4), None);
+}
+
+/// `sequence_event_name` spells `ESequenceEventType` the client's way.
+#[test]
+fn sequence_event_names_are_the_client_tokens() {
+    use cimmeria_entity::abilities::sequence_event_name;
+    let client = tokens("ESequenceEventType");
+    assert!(!client.is_empty());
+    for (id, name) in &client {
+        assert_eq!(
+            sequence_event_name(*id as i32),
+            Some(name.as_str()),
+            "event {id}"
+        );
+    }
+    assert_eq!(sequence_event_name(-1), None);
+}

@@ -127,7 +127,9 @@ impl ShotAmmo {
             event = "ammo_on_hit_effect_missing",
             ammo_type = self.ammo_type,
             on_hit_effect_id = id,
+            on_hit_effect_name = cimmeria_names::book().effect(id),
             toggle_ability_id = self.modifier.toggle_ability_id,
+            toggle_ability_name = cimmeria_names::book().ability(self.modifier.toggle_ability_id),
             "ammo_modifiers row names an on-hit effect that is not in effect_defs; \
              the shot fires without it"
         );
@@ -182,17 +184,25 @@ pub fn log_applied(
         target: "ammo",
         event = "ammo_damage_applied",
         account_id = who.account_id,
+        account_name = who.account_name,
         player_id = who.player_id,
+        player_name = who.player_name,
         entity_id = attacker_id,
+        entity_name = space_mgr.entity_label(attacker_id),
         item_id = shot.ammo_item_id,
+        item_name = crate::cell::effects::content_names::item_name(shot.ammo_item_id),
         ammo_type = shot.ammo_type,
         target_entity_id = target_id,
+        target_entity_name = space_mgr.entity_label(target_id),
         ability_id,
+        ability_name = cimmeria_names::book().ability(ability_id),
         damage_mult = shot.modifier.damage_mult,
         penetration_mult = shot.modifier.penetration_mult,
         damage_type,
         toggle_ability_id = shot.modifier.toggle_ability_id,
+        toggle_ability_name = super::content_names::ability_name(shot.modifier.toggle_ability_id),
         on_hit_effect_id,
+        on_hit_effect_name = super::content_names::effect_name(on_hit_effect_id),
         health_damage,
         "special ammo modifier applied to a shot"
     );

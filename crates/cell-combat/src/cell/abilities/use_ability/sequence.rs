@@ -167,9 +167,12 @@ pub(super) fn warn_unanimated_npc_attack(
         event = "ability_end",
         outcome,
         source_id = entity_id,
+        source_name = space_mgr.entity_label(entity_id),
         target_id,
+        target_name = space_mgr.entity_label(target_id as u32),
         ability_id,
-        event_set_id = event_set_id.unwrap_or(0),
+        ability_name = cimmeria_names::book().ability(ability_id),
+        event_set_id = event_set_id.unwrap_or(0), // nt:id-only event sets have no NameBook name table
         suppressed,
         "PlaySequence: NPC attack expected an Ability_End onSequence but none can be resolved \
          -- damage lands with no attack animation on any client"
@@ -230,11 +233,15 @@ pub(in crate::cell::abilities) async fn play_ability_sequence(
                 event = "ability_end",
                 outcome = "no_end_sequence",
                 account_id = who.account_id,
+                account_name = who.account_name,
                 player_id = who.player_id,
+                player_name = who.player_name,
                 source_id = entity_id,
-                cast_id = instance_id,
+                source_name = space_mgr.entity_label(entity_id),
+                cast_id = instance_id, // nt:id-only per-cast sequence number, no name exists
                 ability_id,
-                event_set_id,
+                ability_name = cimmeria_names::book().ability(ability_id),
+                event_set_id, // nt:id-only event sets have no NameBook name table
                 "onSequence: no Ability_End sequence found for event_set"
             );
         }
@@ -268,14 +275,19 @@ pub(in crate::cell::abilities) async fn play_ability_sequence(
         target: "abilities.sequence",
         event = phase.event(),
         account_id = who.account_id,
+        account_name = who.account_name,
         player_id = who.player_id,
+        player_name = who.player_name,
         source_id = entity_id,
+        source_name = space_mgr.entity_label(entity_id),
         // The sequence's InstanceId is the cast's `cast_id` (AB-T1).
-        cast_id = instance_id,
+        cast_id = instance_id, // nt:id-only per-cast sequence number, no name exists
         target_id,
+        target_name = space_mgr.entity_label(target_id as u32),
         ability_id,
-        sequence_id,
-        event_set_id,
+        ability_name = cimmeria_names::book().ability(ability_id),
+        sequence_id, // nt:id-only sequences have no NameBook name table
+        event_set_id, // nt:id-only event sets have no NameBook name table
         witness_count,
         "onSequence broadcast: {}",
         phase.describe()
@@ -297,9 +309,12 @@ pub(in crate::cell::abilities) async fn play_ability_sequence(
                 event = "ability_end",
                 outcome = "stance_not_announced",
                 source_id = entity_id,
+                source_name = space_mgr.entity_label(entity_id),
                 target_id,
+                target_name = space_mgr.entity_label(target_id as u32),
                 ability_id,
-                sequence_id,
+                ability_name = cimmeria_names::book().ability(ability_id),
+                sequence_id, // nt:id-only sequences have no NameBook name table
                 witness_count,
                 suppressed,
                 "PlaySequence: NPC fired an Ability_End before its BSF_InCombat stance was \
@@ -315,9 +330,12 @@ pub(in crate::cell::abilities) async fn play_ability_sequence(
                 event = "ability_end",
                 outcome = "no_witnesses",
                 source_id = entity_id,
+                source_name = space_mgr.entity_label(entity_id),
                 target_id,
+                target_name = space_mgr.entity_label(target_id as u32),
                 ability_id,
-                sequence_id,
+                ability_name = cimmeria_names::book().ability(ability_id),
+                sequence_id, // nt:id-only sequences have no NameBook name table
                 suppressed,
                 "PlaySequence: NPC attack onSequence expected at least one witness but had \
                  none -- the target is not seeing the NPC that shoots it"

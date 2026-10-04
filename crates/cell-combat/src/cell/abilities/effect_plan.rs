@@ -109,6 +109,9 @@ pub(crate) struct PlanIds {
     pub cast_id: Option<i32>,
     pub caster: PlayerIdentity,
     pub target: PlayerIdentity,
+    /// The caster's and recipient's names (Rule 6).
+    pub caster_name: Option<&'static str>,
+    pub target_name: Option<&'static str>,
     /// The recipient's world: the AB-T6 metrics' `world` label.
     pub world: &'static str,
 }
@@ -128,6 +131,8 @@ impl PlanIds {
             cast_id: space_mgr.current_cast_id(),
             caster: space_mgr.player_identity(caster_id),
             target: space_mgr.player_identity(target_id),
+            caster_name: space_mgr.entity_names(caster_id).entity_name,
+            target_name: space_mgr.entity_names(target_id).entity_name,
             world: metrics::world_of(space_mgr, target_id),
         }
     }
@@ -228,13 +233,20 @@ impl PlannedEffect {
             event = EVENT_EFFECT_PLANNED,
             stage = "route",
             account_id = ids.caster.account_id,
+            account_name = ids.caster.account_name,
             player_id = ids.caster.player_id,
+            player_name = ids.caster.player_name,
             entity_id = ids.caster_id,
-            cast_id = ids.cast_id,
+            entity_name = ids.caster_name,
+            cast_id = ids.cast_id, // nt:id-only per-cast sequence number, no name exists
             ability_id = ids.ability_id,
+            ability_name = cimmeria_names::book().ability(ids.ability_id),
             effect_id = self.effect_id,
+            effect_name = cimmeria_cell_world::cell::effects::content_names::effect_name(self.effect_id),
             target_id = ids.target_id,
+            target_name = ids.target_name,
             target_player_id = ids.target.player_id,
+            target_player_name = ids.target.player_name,
             path = self.path,
             reason = self.reason,
             nvp = self.nvp,

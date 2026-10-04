@@ -96,6 +96,7 @@ pub async fn send_timer_update_ctx(
             target: "abilities.wire",
             event = "timer_update_not_sent",
             entity_id,
+            entity_name = space_mgr.entity_label(entity_id),
             reason = "not_player",
             "onTimerUpdate not sent: the client binds it on SGWPlayer only, so an NPC timer would be dropped"
         );
@@ -123,8 +124,11 @@ pub async fn send_timer_update_ctx(
             event = "wire_send_failed",
             method = "onTimerUpdate",
             entity_id,
+            entity_name = space_mgr.entity_label(entity_id),
             account_id = who.account_id,
+            account_name = who.account_name,
             player_id = who.player_id,
+            player_name = who.player_name,
             origin = ctx.origin,
             reason = "cell_to_base_closed",
             "onTimerUpdate send failed: the cooldown/effect bar will not show on the client"

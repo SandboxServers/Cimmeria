@@ -276,6 +276,7 @@ pub(crate) const EVENT_ABILITY_REFUSED: &str = "ability_refused";
 #[derive(Debug, Clone, Copy)]
 pub(crate) struct RefusedCast {
     pub entity_id: u32,
+    pub entity_name: Option<&'static str>,
     pub ability_id: i32,
     pub who: PlayerIdentity,
     pub caster: CasterKind,
@@ -287,6 +288,7 @@ impl RefusedCast {
     pub(crate) fn of(space_mgr: &SpaceManager, entity_id: u32, ability_id: i32) -> Self {
         Self {
             entity_id,
+            entity_name: space_mgr.entity_names(entity_id).entity_name,
             ability_id,
             who: space_mgr.player_identity(entity_id),
             caster: caster_kind(space_mgr, entity_id),
@@ -301,6 +303,7 @@ impl RefusedCast {
 pub(crate) fn refused(reason: RefusalReason, cast_ids: RefusedCast) {
     let RefusedCast {
         entity_id,
+        entity_name,
         ability_id,
         who,
         caster,
@@ -314,9 +317,13 @@ pub(crate) fn refused(reason: RefusalReason, cast_ids: RefusedCast) {
         caster = caster.label(),
         world,
         account_id = who.account_id,
+        account_name = who.account_name,
         player_id = who.player_id,
+        player_name = who.player_name,
         entity_id,
+        entity_name,
         ability_id,
+        ability_name = cimmeria_names::book().ability(ability_id),
         "ability launch refused (one row per abilities_refused_total sample)"
     );
     cimmeria_observability::counter!(

@@ -62,6 +62,7 @@ pub async fn maybe_trigger_reload_on_activate(
     }
     tracing::info!(
         entity_id,
+        entity_name = space_mgr.entity_label(entity_id),
         "bandolier-activate: reload-on-activate triggered"
     );
     handle_reload(entity_id, tx, space_mgr).await;
@@ -126,6 +127,7 @@ pub async fn handle_reload_with(
             }
             tracing::info!(
                 entity_id,
+                entity_name = space_mgr.entity_label(entity_id),
                 draw_duration_ms = UNHOLSTER_DRAW_DURATION.as_millis() as u64,
                 "reload-while-holstered: phase A — drawing weapon, reload deferred"
             );
@@ -156,6 +158,7 @@ pub async fn handle_reload_with(
         if std::time::Instant::now() < t {
             tracing::debug!(
                 entity_id,
+                entity_name = space_mgr.entity_label(entity_id),
                 "requestReload: ignoring while draw window in progress"
             );
             return;
@@ -184,13 +187,20 @@ pub async fn handle_reload_with(
     let entity = match space_mgr.get_entity_mut(entity_id) {
         Some(e) => e,
         None => {
-            tracing::warn!(entity_id, "requestReload: entity not found");
+            tracing::warn!(
+                entity_id, // nt:id-only the entity was not found, nothing to name
+                "requestReload: entity not found"
+            );
             return;
         }
     };
 
     if entity.active_ammo() >= entity.active_clip_size() && entity.reload_complete_at.is_none() {
-        tracing::debug!(entity_id, "requestReload: already at max ammo");
+        tracing::debug!(
+            entity_id,
+            entity_name = entity.log_names.player_name,
+            "requestReload: already at max ammo"
+        );
         return;
     }
 
@@ -204,6 +214,7 @@ pub async fn handle_reload_with(
         super::reload_reserve::ReloadGate::Blocked => {
             tracing::debug!(
                 entity_id,
+                entity_name = space_mgr.entity_label(entity_id),
                 "requestReload: a reserve request is in flight, ignoring"
             );
             return;
@@ -254,8 +265,10 @@ pub async fn start_reload_warmup(
 
     tracing::info!(
         entity_id,
+        entity_name = space_mgr.entity_label(entity_id),
         old,
         target = target_ammo,
+        target_name = space_mgr.entity_label(target_ammo as u32),
         warmup,
         cooldown,
         "Weapon reload started"

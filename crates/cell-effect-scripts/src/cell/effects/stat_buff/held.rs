@@ -79,17 +79,24 @@ pub(super) fn apply_held(ctx: &mut EffectContext, spec: TimedEffectSpec, script:
         tracing::warn!(
             target: "abilities",
             event = "stat_buff_skipped",
-            cast_id = ctx.row_ids().cast_id,
+            cast_id = ctx.row_ids().cast_id, // nt:id-only per-cast sequence number, no name exists
             reason = "held_not_self",
             script,
             kind,
             account_id = who.account_id,
+            account_name = who.account_name,
             player_id = who.player_id,
+            player_name = who.player_name,
             entity_id = source,
+            entity_name = ctx.space_mgr.entity_label(source),
             target_id = target,
+            target_name = ctx.space_mgr.entity_label(target),
             target_player_id = target_who.player_id,
+            target_player_name = target_who.player_name,
             effect_id,
+            effect_name = cimmeria_names::book().effect(effect_id),
             ability_id,
+            ability_name = cimmeria_names::book().ability(ability_id),
             "a held {kind} effect lands only on its own invoker; nothing applied"
         );
         return;
@@ -108,15 +115,22 @@ pub(super) fn apply_held(ctx: &mut EffectContext, spec: TimedEffectSpec, script:
             tracing::info!(
                 target: "abilities",
                 event = "toggle_pressed",
-                cast_id = ctx.row_ids().cast_id,
+                cast_id = ctx.row_ids().cast_id, // nt:id-only per-cast sequence number, no name exists
                 target_player_id = ctx.row_ids().target_player_id,
+                target_player_name = ctx.row_ids().target_player_name,
                 decision_outcome = if on { "off" } else { "on" },
                 account_id = who.account_id,
+                account_name = who.account_name,
                 player_id = who.player_id,
+                player_name = who.player_name,
                 entity_id = source,
+                entity_name = ctx.space_mgr.entity_label(source),
                 target_id = target,
+                target_name = ctx.space_mgr.entity_label(target),
                 ability_id,
+                ability_name = cimmeria_names::book().ability(ability_id),
                 effect_id,
+                effect_name = cimmeria_names::book().effect(effect_id),
                 "toggled ability switched {}",
                 if on { "off" } else { "on" }
             );

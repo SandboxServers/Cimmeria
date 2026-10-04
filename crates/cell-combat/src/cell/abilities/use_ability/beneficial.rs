@@ -166,8 +166,10 @@ fn log_resolution(
         CastTarget::Ally(id) | CastTarget::Hostile(id) => Some(id),
         CastTarget::None => None,
     };
-    let target_player_id =
-        resolved_target_id.and_then(|id| space_mgr.player_identity(id).player_id);
+    let target_who = resolved_target_id.map_or(
+        cimmeria_entity::cell_entity::PlayerIdentity::UNKNOWN,
+        |id| space_mgr.player_identity(id),
+    );
     macro_rules! row {
         ($level:expr) => {
             tracing::event!(
@@ -175,15 +177,23 @@ fn log_resolution(
                 $level,
                 event = EVENT_BENEFICIAL_CAST,
                 account_id = who.account_id,
+                account_name = who.account_name,
                 player_id = who.player_id,
+                player_name = who.player_name,
                 entity_id = caster_id,
-                cast_id,
+                entity_name = space_mgr.entity_label(caster_id),
+                cast_id, // nt:id-only per-cast sequence number, no name exists
                 ability_id = def.map(|d| d.ability_id),
+                ability_name = cimmeria_cell_world::cell::effects::content_names::ability_name(def.map(|d| d.ability_id)),
                 effect_ids = ?def.map(|d| d.effect_ids.as_slice()),
                 target_type_id = def.map(|d| d.target_type_id),
+                target_type_name = def.and_then(|d| cimmeria_entity::abilities::target_type_name(d.target_type_id)),
                 wire_target_id = wire_target,
+                wire_target_name = space_mgr.entity_label(wire_target as u32),
                 resolved_target_id,
-                target_player_id,
+                resolved_target_name = space_mgr.entity_label(resolved_target_id),
+                target_player_id = target_who.player_id,
+                target_player_name = target_who.player_name,
                 resolution,
                 stage,
                 "beneficial cast resolved: heals and buffs land on the caster or an ally, never a hostile"
@@ -364,8 +374,11 @@ async fn send_no_ally_feedback(
             target: "abilities",
             event = "beneficial_feedback_send_failed",
             account_id = who.account_id,
+            account_name = who.account_name,
             player_id = who.player_id,
+            player_name = who.player_name,
             entity_id = caster_id,
+            entity_name = space_mgr.entity_label(caster_id),
             reason = "cell_to_base_closed",
             "beneficial-cast refusal feedback could not be queued (base channel closed)"
         );
@@ -442,11 +455,17 @@ pub(super) fn target_gate(
             target: "abilities",
             event = EVENT_BENEFICIAL_CAST,
             account_id = who.account_id,
+            account_name = who.account_name,
             player_id = who.player_id,
+            player_name = who.player_name,
             entity_id = caster.entity_id.0,
+            entity_name = space_mgr.entity_label(caster.entity_id.0 as u32),
             ability_id,
+            ability_name = cimmeria_names::book().ability(ability_id),
             target_id = target.entity_id.0,
+            target_name = space_mgr.entity_label(target.entity_id.0 as u32),
             target_player_id = target_who.player_id,
+            target_player_name = target_who.player_name,
             reason = "beneficial_non_ally_target",
             "useAbility rejected -- beneficial cast aimed at a non-ally after resolution; \
              nothing applied"
@@ -464,11 +483,17 @@ pub(super) fn target_gate(
             target: "abilities",
             event = "target_gate_non_hostile",
             account_id = who.account_id,
+            account_name = who.account_name,
             player_id = who.player_id,
+            player_name = who.player_name,
             entity_id = caster.entity_id.0,
+            entity_name = space_mgr.entity_label(caster.entity_id.0 as u32),
             ability_id,
+            ability_name = cimmeria_names::book().ability(ability_id),
             target_id = target.entity_id.0,
+            target_name = space_mgr.entity_label(target.entity_id.0 as u32),
             target_player_id = target_who.player_id,
+            target_player_name = target_who.player_name,
             target_is_player = target.is_player,
             target_faction = target.faction,
             "useAbility rejected -- player single-target ability against a \
@@ -533,13 +558,19 @@ pub(super) async fn fire_beneficial(
         target: "abilities",
         event = "beneficial_cast_applied",
         account_id = who.account_id,
+        account_name = who.account_name,
         player_id = who.player_id,
+        player_name = who.player_name,
         entity_id = caster_id,
-        cast_id = space_mgr.current_cast_id(),
+        entity_name = space_mgr.entity_label(caster_id),
+        cast_id = space_mgr.current_cast_id(), // nt:id-only per-cast sequence number, no name exists
         ability_id = def.ability_id,
+        ability_name = cimmeria_names::book().ability(def.ability_id),
         effect_ids = ?def.effect_ids,
         resolved_target_id = target_id,
+        resolved_target_name = space_mgr.entity_label(target_id),
         target_player_id = space_mgr.player_identity(target_id).player_id,
+        target_player_name = space_mgr.player_identity(target_id).player_name,
         resolution,
         pulsing_registered = pulsing,
         recipient_ids = ?recipients(&routed.landings),

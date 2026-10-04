@@ -74,6 +74,18 @@ impl SpaceManager {
             _ => self.player_identity(entity_id),
         }
     }
+
+    /// The name a row should give the effect's caster `entity_id` (Rule 6),
+    /// on the same terms as [`Self::caster_identity`]: inside a deferred
+    /// effect's scope the invoker may have left and its id been reused, so
+    /// it is named from the snapshot (a player's name; nothing for an NPC)
+    /// and never from whoever holds the id now.
+    pub fn caster_label(&self, entity_id: u32) -> Option<&str> {
+        match self.current_invoker {
+            Some((id, who)) if id == entity_id => who.player_name,
+            _ => self.entity_label(entity_id),
+        }
+    }
 }
 
 /// What [`SpaceManager::enter_effect_scope`] replaced.

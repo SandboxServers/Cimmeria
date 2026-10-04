@@ -68,9 +68,13 @@ pub(super) async fn commit_auto_cycle(
                 target: "abilities",
                 event = "auto_cycle_cleared_by_flag",
                 account_id = who.account_id,
+                account_name = who.account_name,
                 player_id = who.player_id,
+                player_name = who.player_name,
                 entity_id,
+                entity_name = space_mgr.entity_label(entity_id),
                 ability_id,
+                ability_name = cimmeria_names::book().ability(ability_id),
                 "auto-cycle: cleared by AF_DEACTIVATE_AUTO_CYCLE flag"
             );
             send_auto_cycle_state(entity_id, new_state, tx, space_mgr).await;
@@ -82,10 +86,15 @@ pub(super) async fn commit_auto_cycle(
             target: "abilities",
             event = "auto_cycle_armed",
             account_id = who.account_id,
+            account_name = who.account_name,
             player_id = who.player_id,
+            player_name = who.player_name,
             entity_id,
+            entity_name = space_mgr.entity_label(entity_id),
             ability_id,
+            ability_name = cimmeria_names::book().ability(ability_id),
             target_id,
+            target_name = space_mgr.entity_label(target_id as u32),
             "auto-cycle: armed (first commit) — BSF_AUTO_CYCLING set"
         );
         send_auto_cycle_state(entity_id, new_state, tx, space_mgr).await;

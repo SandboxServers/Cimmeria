@@ -55,6 +55,7 @@ pub async fn release_npc_from_player_combat(
         tracing::debug!(
             event = "npc_released_from_player_combat",
             npc_id,
+            npc_name = space_mgr.entity_label(npc_id),
             reason = why,
             combat_exits = exits.len(),
             players = ?exits.iter().map(|&(p, _)| p).collect::<Vec<_>>(),
