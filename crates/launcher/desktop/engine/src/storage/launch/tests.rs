@@ -11,7 +11,7 @@ fn artifact(root: &Path, name: &str) -> Artifact {
     )
     .unwrap()
 }
-fn fixture() -> (tempfile::TempDir, DesktopState, Plan) {
+pub(super) fn fixture() -> (tempfile::TempDir, DesktopState, Plan) {
     let (root, mut state, installation) = runtime_setup::tests::fixture_with_runtime([7; 32]);
     let resources = Resources {
         helper: artifact(&root.path().canonicalize().unwrap(), "helper.exe"),

@@ -204,6 +204,18 @@ fn prepare(
     if !cfg!(windows) {
         return Err(StorageError::Corrupt.into());
     }
+    prepare_native(plan)
+}
+fn prepare_native(
+    plan: &Plan,
+) -> Result<
+    (
+        crate::helper_supervisor::HelperCommand,
+        cimmeria_runtime_probe::game_launch::Request,
+        Ownership,
+    ),
+    IntentError,
+> {
     let owner_path = plan.installation.destination.join(".cimmeria-install.json");
     let owner = OpenOptions::new()
         .read(true)
@@ -211,7 +223,8 @@ fn prepare(
         .open(&owner_path)
         .map_err(|_| StorageError::Io)?;
     owner.try_lock().map_err(|_| StorageError::InUse)?;
-    let saved: InstallIntent = read(&owner_path)?.ok_or(StorageError::Corrupt)?;
+    // Windows byte-range locks also exclude reads through a second handle.
+    let saved: InstallIntent = read_open(&owner)?;
     if saved != plan.installation {
         return Err(StorageError::Corrupt.into());
     }
@@ -251,4 +264,48 @@ fn prepare(
         request,
         Ownership::Native { _owner: owner },
     ))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn native_preparation_reads_locked_owner_and_retains_exclusion() {
+        let (root, _state, plan) = super::super::tests::fixture();
+        let game = plan.installation.destination.join("game");
+        let exe = game.join("Working/Binaries/SGW.exe");
+        // Inert PE32 header, sufficient for real client preparation, never spawned.
+        let mut bytes = vec![0u8; 0x200];
+        bytes[..2].copy_from_slice(b"MZ");
+        bytes[60..64].copy_from_slice(&0x128u32.to_le_bytes());
+        bytes[0x128..0x12c].copy_from_slice(b"PE\0\0");
+        bytes[0x13c..0x13e].copy_from_slice(&0xe0u16.to_le_bytes());
+        bytes[0x140..0x142].copy_from_slice(&0x10bu16.to_le_bytes());
+        bytes[0x186..0x188].copy_from_slice(&0x8140u16.to_le_bytes());
+        std::fs::write(&exe, bytes).unwrap();
+
+        // Windows exercises the dispatch preparation entry point; other hosts
+        // exercise the same native preparation without enabling native dispatch.
+        let prepared = if cfg!(windows) {
+            prepare(&plan, root.path())
+        } else {
+            prepare_native(&plan)
+        };
+        let (command, request, ownership) = prepared.unwrap();
+        assert_eq!(request.operation_id, plan.id);
+        assert_eq!(request.exe, exe);
+        assert_eq!(command.directory, game.join("Working/Binaries"));
+        assert_eq!(command.executable, plan.resources.helper.path());
+        assert_eq!(&std::fs::read(&exe).unwrap()[0x186..0x188], &[0, 0x81]);
+        assert!(crate::client_setup::login_servers::path(&game).is_file());
+        let competitor = OpenOptions::new()
+            .read(true)
+            .write(true)
+            .open(plan.installation.destination.join(".cimmeria-install.json"))
+            .unwrap();
+        assert!(competitor.try_lock().is_err(), "ownership must stay locked");
+        drop(ownership);
+        competitor.try_lock().unwrap();
+    }
 }

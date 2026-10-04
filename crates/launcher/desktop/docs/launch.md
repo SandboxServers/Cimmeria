@@ -129,6 +129,13 @@ Portable tests cover operation identity/revision, duplicate admission/dispatch,
 pre-spawn cancellation, disk reopen and lost observations, hash replacement,
 Mac prerequisite/graphics admission, and real host-process pipes reporting guest
 start/early exit, host death, mismatched guest and malformed/oversized output.
+The native preparation regression uses an inert PE32 fixture, reads installation
+identity through its exclusively locked owner handle, runs real client setup and
+checks that a competing owner remains excluded until the guard is dropped. On
+Windows it exercises the dispatch preparation entry point; on other hosts it
+exercises the same native preparation implementation without enabling dispatch.
+The locked-handle read regression requires a native Windows run because Unix
+locks do not forbid reads through another handle.
 Those host fixtures are Python protocol actors, not Wine or SGW. Windows x86
 helper compilation/injection, managed Wine launch and rendering require separate
 native validation. No frontend code changes in this packet; JS REPL and visual
