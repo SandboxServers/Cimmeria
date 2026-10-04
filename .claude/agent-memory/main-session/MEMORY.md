@@ -18,6 +18,8 @@ Dated, sourced facts from top-level sessions, committed with the change that pro
 
 ## Reference
 
+- [reference_archive_preflight_2026_10_04.md](reference_archive_preflight_2026_10_04.md) — RAR/FDI name inventory before output; rebuilt Windows helper and spanning-cabinet validation required.
+
 - [reference_launcher_repair_ui.md](reference_launcher_repair_ui.md) — Settings Repair retains preparation-to-commit ownership; native-persistence Effect UAT covers cancellation/reopen/abandonment, with real-client, Windows and visual gates open.
 
 - [reference_launcher_implementation_plan.md](reference_launcher_implementation_plan.md) — 2026-10-04 Tauri/Effect settings shell and persistent native state; game workers and summary export pending; self-contained startup gate last

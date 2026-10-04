@@ -8,7 +8,7 @@ use std::path::Path;
 
 use unrar::Archive;
 
-use super::{safe_relative, UnpackError, UnpackSink};
+use super::{entry_inventory::EntryInventory, safe_relative, UnpackError, UnpackSink};
 
 fn rar_err(e: unrar::error::UnrarError) -> UnpackError {
     UnpackError::Rar(e.to_string())
@@ -18,12 +18,24 @@ fn rar_err(e: unrar::error::UnrarError) -> UnpackError {
 /// with [`safe_relative`] before anything is written, and each file is
 /// extracted to that checked path rather than to the name UnRAR reports.
 pub(super) fn extract(archive: &Path, dest: &Path, sink: &UnpackSink) -> Result<(), UnpackError> {
+    let mut inventory = EntryInventory::default();
+    let mut total = 0;
+    for entry in Archive::new(archive).open_for_listing().map_err(rar_err)? {
+        sink.check_cancel()?;
+        let entry = entry.map_err(rar_err)?;
+        let name = entry
+            .filename
+            .to_str()
+            .ok_or_else(|| UnpackError::Rar("entry name is not valid Unicode".into()))?;
+        if entry.is_encrypted() {
+            return Err(UnpackError::Rar(
+                "encrypted entries are not supported".into(),
+            ));
+        }
+        inventory.insert(name, entry.is_directory())?;
+        total += usize::from(entry.is_file());
+    }
     std::fs::create_dir_all(dest)?;
-    let total = Archive::new(archive)
-        .open_for_listing()
-        .map_err(rar_err)?
-        .filter(|e| e.as_ref().is_ok_and(|h| h.is_file()))
-        .count();
 
     let mut open = Archive::new(archive)
         .open_for_processing()
@@ -60,6 +72,22 @@ mod tests {
     use super::super::test_fixtures::{sink, write_stored_rar4};
     use super::*;
     use crate::install::Progress;
+
+    #[test]
+    fn rejects_a_late_conflict_before_writing_any_entry() {
+        for second in ["A.txt", "a.txt", "a.txt/child", "../escape", "NUL.txt"] {
+            let dir = tempfile::tempdir().unwrap();
+            let archive = dir.path().join("a.rar");
+            write_stored_rar4(&archive, &[("a.txt", b"first"), (second, b"second")]);
+            let out = dir.path().join("out");
+            let (sink, _rx) = sink();
+            assert!(extract(&archive, &out, &sink).is_err(), "{second}");
+            assert!(
+                !out.exists(),
+                "preflight must not write the first file: {second}"
+            );
+        }
+    }
 
     #[test]
     fn extracts_files_at_their_archived_paths() {

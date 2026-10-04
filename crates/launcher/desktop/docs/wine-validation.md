@@ -31,6 +31,31 @@ This guards Windows file mutation/replacement; enforcement against native-host
 writes under Wine remains unverified. It is not an adversarial filesystem
 sandbox.
 
+### RAR and cabinet entry preflight
+
+The shared extractor lists every RAR entry before extracting its first file.
+Listing errors, encrypted entries, rooted/traversal paths, Windows device/stream
+names, duplicate names, case aliases (including directory ancestors), and
+file/directory conflicts reject the archive. An implicit directory may be listed
+explicitly once with the same spelling.
+
+Cabinet extraction performs a separate FDI header pass across the complete set
+before creating its output tree. It checks the same name inventory and requires
+the number of file starts to match the INF count. Continued fragments are not
+duplicate starts. Source cabinet handles deny write/delete sharing across both
+passes, and FDI may open only the validated cabinet names. The implementation uses
+the documented [FDI notification contract](https://learn.microsoft.com/en-us/windows/win32/api/fdi/nf-fdi-fnfdinotify):
+returning zero from `COPY_FILE` skips output, while `PARTIAL_FILE` identifies
+continuations from earlier cabinets.
+
+This is name preflight, not validation of compressed payload integrity or a
+filesystem sandbox. A later decompression error can still leave partial staging
+for reconciliation. The helper protocol is unchanged, and the new checks require
+a helper rebuilt from the changed source; older staged executables do not acquire
+them automatically. Local Mac tests cover real RAR listing/extraction and the
+shared inventory. FDI and spanning-cabinet compatibility require native Windows
+CI and subsequent Wine validation of that rebuilt helper.
+
 Stdin remains open as the ownership channel. A control frame with the same
 schema/operation ID and `cancel: true` requests cooperative cancellation. EOF or
 malformed controls also cancel; valid frames for a different ID are ignored.
