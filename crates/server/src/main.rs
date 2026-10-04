@@ -11,7 +11,7 @@
 //! |---|---|---|
 //! | `AUTH_HOST` | `0.0.0.0` | Auth service bind address |
 //! | `AUTH_PORT` | `13001` | Auth service port (BaseApp connections) |
-//! | `LOGON_PORT` | `8081` | Auth HTTP port (SOAP client login). Also serves the four launcher telemetry routes (`/api/auth/dev-session`, `/api/auth/dev-session/refresh`, `/api/telemetry/upload-{chunk,bundle}`) and nothing else from the admin API, so remote launchers need no config (decision @Cadacious, 2026-09-29). |
+//! | `LOGON_PORT` | `8081` | Auth HTTP port (SOAP client login). Also serves the four launcher telemetry routes (`/api/auth/dev-session`, `/api/auth/dev-session/refresh`, `/api/telemetry/upload-{chunk,bundle}`) and nothing else from the admin API, so remote launchers need no config (decision @Cadacious, 2026-09-29). A fifth, `/api/telemetry/launcher-summary` (desktop launcher attempt summaries), is merged beside them and is outside that decision: it needs the maintainer's explicit yes before a build carrying it is deployed. |
 //! | `AUTH_TLS_RELOAD_INTERVAL_SECS` | `30` | How often the background watcher polls the auth TLS cert/key file mtimes and hot-reloads the live config when either changes (e.g. a Let's Encrypt renewal), without restarting the server. `0` disables the watcher. Only active when the TLS listener is configured (cert + key paths set). |
 //! | `BASE_HOST` | `0.0.0.0` | BaseApp UDP bind address |
 //! | `BASE_EXTERNAL` | `127.0.0.1` | BaseApp address advertised to game clients |
@@ -174,7 +174,9 @@ async fn main() {
     // is also served on the public SOAP login port, so a remote player's
     // launcher reaches it with no config and no secret. Decision
     // (@Cadacious, 2026-09-29): plain HTTP there is acceptable, the game's
-    // own login already sends passwords over it. Only those four routes go
+    // own login already sends passwords over it. Only those four routes,
+    // and the launcher-summary ingest merged beside them (outside that
+    // decision; see `cimmeria_admin_api::login_port`), go
     // on 8081; the rest of the admin API stays on its private listener.
     orch.state()
         .write()
