@@ -48,7 +48,7 @@ impl DesktopState {
     ) -> Result<Option<HelperRecord>, IntentError> {
         self.read_helper_identity(intent.operation_id, intent.digest()?)
     }
-    fn read_helper_identity(
+    pub(crate) fn read_helper_identity(
         &self,
         id: Uuid,
         digest: [u8; 32],

@@ -1,4 +1,4 @@
-//! Separate prefix ownership for installation and repair extraction work.
+//! Separate prefix ownership for installation, repair and adoption-reference work.
 use super::*;
 use std::io::Write;
 #[derive(serde::Serialize, serde::Deserialize)]

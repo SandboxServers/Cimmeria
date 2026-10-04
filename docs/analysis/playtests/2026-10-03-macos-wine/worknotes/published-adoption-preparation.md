@@ -70,7 +70,9 @@ cargo fmt --manifest-path crates/launcher/desktop/engine/Cargo.toml --all -- --c
 ```
 
 The focused suite passes **23 tests**, with **2 ignored platform fixtures**.
-The full-suite final count and regression proof are recorded below at handoff.
+The full engine library suite passes **358 tests**, with **18 ignored**.
+Strict all-target engine clippy, desktop workspace formatting and diff checks
+pass. No native Windows build was attempted on this host.
 
 The two ignored fixtures were separately run with `CIMMERIA_WINE_HELPER`, its
 independently supplied build SHA (`CIMMERIA_WINE_HELPER_SHA256`), and a read-only
@@ -113,3 +115,11 @@ helper protocol or extraction algorithm is introduced by this packet.
 Coordinator-owned follow-up: link this worknote from the campaign ledger/shared
 indexes and update the desktop migration contract/guide with these native APIs;
 then integrate owner/current-release separation and effective settings/UI.
+
+## Regression proof
+
+After committing, removed only preparation's durable operation admission and
+Running transition. The retained-preview guard failed because a competing
+Install was admitted (`Ok(Starting)`) instead of returning `Busy`. Restored that
+one committed file and reran the adoption filter: **23 passed, 2 ignored**.
+The intentionally failing guard run is not an outstanding defect.
