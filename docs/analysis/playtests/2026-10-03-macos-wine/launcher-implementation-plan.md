@@ -481,3 +481,21 @@ was used.
 Worker packet validation: 160 engine tests plus twelve process scenarios passed
 on macOS; strict all-target clippy and root/desktop formatting passed. Native
 Windows worker validation remains pending.
+
+
+### 2026-10-04: interrupted-content reconciliation
+
+Added native inspection for operations awaiting reconciliation. Missing/empty
+output commits failure without creating/removing content. Matching intent,
+verified release, ownership marker, acquired lock, receipt and current content
+checks permit content-prepared success. Partial/conflicting evidence never
+permits replay. Resolved executable and game paths must stay in the content root.
+Marker decoding uses the locked handle rather than reopening it, avoiding
+Windows lock conflicts. Fixtures cover persisted recovery, active ownership,
+partial/missing content, foreign markers and Unix redirection.
+
+168 engine tests and twelve process scenarios passed on macOS; strict all-target
+clippy and formatting passed. Native Windows recovery checks remain pending.
+No downloads, resume, cleanup or frontend changes were added. Exact authenticated
+release input is still required; offline signed-release caching remains open.
+Wine guest lifecycle and runtime/gameplay readiness remain separate gates.

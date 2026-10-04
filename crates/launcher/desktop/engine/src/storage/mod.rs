@@ -1,6 +1,7 @@
 //! Exclusive state-directory ownership and bounded, crash-aware persistence.
 mod atomic;
 mod install_intent;
+pub mod install_recovery;
 pub mod install_worker;
 pub use install_intent::{InstallAdmission, InstallIntent, IntentError};
 #[cfg(test)]
@@ -250,6 +251,12 @@ fn read<T: serde::de::DeserializeOwned>(path: &Path) -> Result<Option<T>, Storag
         Err(error) if error.kind() == ErrorKind::NotFound => return Ok(None),
         Err(_) => return Err(StorageError::Io),
     };
+    read_open(&file).map(Some)
+}
+
+// Read through an already-owned handle. Reopening an exclusively locked file
+// would fail on Windows even from this same process.
+fn read_open<T: serde::de::DeserializeOwned>(file: &File) -> Result<T, StorageError> {
     let mut bytes = Vec::new();
     file.take(MAX_STATE_BYTES + 1)
         .read_to_end(&mut bytes)
@@ -257,7 +264,5 @@ fn read<T: serde::de::DeserializeOwned>(path: &Path) -> Result<Option<T>, Storag
     if bytes.len() as u64 > MAX_STATE_BYTES {
         return Err(StorageError::TooLarge);
     }
-    serde_json::from_slice(&bytes)
-        .map(Some)
-        .map_err(|_| StorageError::Corrupt)
+    serde_json::from_slice(&bytes).map_err(|_| StorageError::Corrupt)
 }

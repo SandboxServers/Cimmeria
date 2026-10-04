@@ -246,7 +246,7 @@ this nested workspace. `.github/workflows/launcher-desktop.yml` adds explicit
 native Mac/Windows checks and the frontend/native logic UAT. Shared-source
 changes also run an existing-launcher Cargo check on native Windows.
 
-On 2026-10-04, **160 engine tests**, **two shell-host tests**, **14 frontend tests**, strict clippy, TypeScript
+On 2026-10-04, **168 engine tests**, **two shell-host tests**, **14 frontend tests**, strict clippy, TypeScript
 checking and formatting passed locally on macOS. Three engine tests are ignored by default: the subprocess fixture invoked by
 its parent, plus manual real-SGW-executable and real-client-RAR checks that
 remain unrun. Coverage includes command/schema
@@ -410,8 +410,8 @@ Content moves to `<selected-directory>/game`. The worker persists
 reconciliation; visible files alone are not reported as confirmed success.
 Power-loss durability of the complete extracted tree remains unvalidated.
 
-Failure and cancellation retain the marker and partial output. Automatic retry,
-cleanup, adoption and recovery remain unimplemented. The Wine cabinet-helper
+Failure and cancellation retain the marker and partial output. Interrupted native content can be inspected conservatively as described below;
+automatic retry, cleanup and adoption remain unimplemented. The Wine cabinet-helper
 adapter, runtime provisioning and frontend dispatch remain pending. Installation
 stays disabled in the UI; content preparation does not establish launch readiness.
 
@@ -426,3 +426,33 @@ No frontend behavior changed, so JS REPL/visual UAT is not applicable here.
 Worker validation: 160 engine tests and the twelve-scenario process harness
 passed locally on macOS. Strict all-target engine clippy and root/desktop
 formatting passed. Native Windows worker checks await CI; no GUI UAT occurred.
+
+
+## Interrupted content reconciliation
+
+`engine/src/storage/install_recovery/` reconciles interrupted in-process content
+work without downloading, extracting, deleting or resuming it. It requires an
+operation awaiting reconciliation, matching saved intent and verified release
+digest, and an unchanged resolved destination parent. Missing or empty output
+commits `failed` and returns `NoOutput`, leaving the filesystem unchanged.
+
+For nonempty output, recovery acquires the ownership-marker lock and reads its
+bounded contents through that same handle (required by Windows lock semantics).
+The marker must match the intent. Only a matching completion receipt and current
+content checks permit `succeeded` / `ContentPrepared`; the lock remains held
+through the journal commit. Partial content stays untouched and gated.
+
+Content checks require the expected ledger, a nonempty regular executable and
+an `SGWGame` directory, with resolved executable/game paths inside the content
+root. They do not validate every installed file, runtime prerequisites or game
+compatibility. This path covers only the native in-process worker and does not
+establish that an unobserved Wine guest exited. Resume, cleanup, UI routing and
+persisted signed-release evidence for offline reconciliation remain pending.
+Callers currently must supply the exact verified release used by the attempt.
+
+Recovery fixtures cover missing/empty output, preserved partial content,
+receipt-before-terminal recovery across reopen, missing executable, active owner
+locks, foreign markers and Unix content-path redirection. Local checks passed:
+168 engine tests, twelve process scenarios, strict all-target clippy and
+formatting. Native Windows recovery checks await CI. No frontend changed, so
+JS REPL/visual UAT does not apply to this packet.

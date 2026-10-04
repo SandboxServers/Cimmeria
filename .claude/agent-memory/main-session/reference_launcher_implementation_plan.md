@@ -80,3 +80,10 @@ Windows+Mac before the shell; shell/visual/game gates remain separate.
   UnpackError::Cancelled to InstallError::Cancelled. The previous conversion
   incorrectly treated extraction cancellation as generic patch failure. Actual
   partial-ZIP checkpoint and stalled-response regressions cover both fixes.
+
+- Native interrupted-content reconciliation requires exact release identity,
+  matching marker ownership/lock and receipt plus current content checks before
+  success. Missing/empty output resolves failure; partial output stays gated.
+  Decode marker JSON through the locked handle: a second read handle conflicts
+  with Windows exclusive file locking. No automatic resume, cleanup, offline
+  signed-release cache or Wine guest-lifecycle recovery is implemented yet.

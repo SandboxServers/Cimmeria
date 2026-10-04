@@ -229,7 +229,7 @@ fn sync_directory(path: &Path) -> Result<(), StorageError> {
     Ok(())
 }
 
-fn content_valid(stage: &Path, release: &VerifiedRelease) -> bool {
+pub(super) fn content_valid(stage: &Path, release: &VerifiedRelease) -> bool {
     let Ok(Some(state)) =
         read::<crate::state::InstalledState>(&crate::state::InstalledState::path(stage))
     else {
@@ -242,10 +242,20 @@ fn content_valid(stage: &Path, release: &VerifiedRelease) -> bool {
     {
         return false;
     }
+    let Ok(canonical_root) = stage.canonicalize() else {
+        return false;
+    };
     let exe = crate::install_layout::sgw_exe(stage);
+    let game = crate::install_layout::sgwgame_dir(stage);
+    let contained = |path: &Path| {
+        path.canonicalize()
+            .is_ok_and(|path| path.starts_with(&canonical_root))
+    };
     std::fs::symlink_metadata(&exe)
         .is_ok_and(|meta| meta.is_file() && !meta.file_type().is_symlink() && meta.len() > 0)
-        && crate::install_layout::sgwgame_dir(stage).is_dir()
+        && contained(&exe)
+        && game.is_dir()
+        && contained(&game)
 }
 
 #[cfg(test)]
