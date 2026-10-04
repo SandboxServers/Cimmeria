@@ -39,6 +39,8 @@ pub(in super::super) struct Expired {
     /// Its `sender_id` when it expired (`None` for server mail, or a sender
     /// whose character is gone).
     pub(in super::super) sender_id: Option<i32>,
+    /// The stored `sender_name` while `sender_id` is set; for the log line only.
+    pub(in super::super) sender_name: Option<String>,
     pub(in super::super) path: ExpiryPath,
     pub(in super::super) expires_at: i32,
     /// Gift cash on the mail: what went back with a return, what a
@@ -48,6 +50,8 @@ pub(in super::super) struct Expired {
     pub(in super::super) cod_cancelled: i64,
     /// The escrowed instance it still carries, if any.
     pub(in super::super) item_id: Option<i32>,
+    /// That instance's item type, for the log line's `item_name` only.
+    pub(in super::super) item_type_id: Option<i32>,
     /// For the owner's line when it is quarantined.
     pub(in super::super) subject: String,
 }
@@ -107,11 +111,13 @@ pub(in super::super) async fn expire_one(
         mail_id,
         owner,
         sender_id: mail.sender_id,
+        sender_name: mail.sender_id.map(|_| mail.sender_name.clone()),
         path: ExpiryPath::Deleted,
         expires_at,
         cash: gift_cash,
         cod_cancelled: if cod { mail.cash } else { 0 },
         item_id: item.map(|i| i.item_id),
+        item_type_id: item.map(|i| i.type_id),
         subject: mail.subject.clone(),
     };
 

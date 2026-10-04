@@ -15,6 +15,7 @@ use cimmeria_wire::cell::client_methods::organization::{
 };
 
 use super::fanout::{online_members, send_to_members};
+use super::log_names::identity_of_player;
 use super::{OrgCtx, OrgPlayer};
 use crate::base::organization::persistence::{load_memberships, load_roster, RosterMember};
 
@@ -25,6 +26,7 @@ use crate::base::organization::persistence::{load_memberships, load_roster, Rost
 pub(super) async fn announce(
     ctx: &OrgCtx<'_>,
     org_id: i32,
+    org_name: Option<&str>,
     org_type: OrgType,
     roster: &[RosterMember],
     player: &OrgPlayer,
@@ -36,6 +38,7 @@ pub(super) async fn announce(
     } else {
         "member_offline"
     };
+    let who = identity_of_player(ctx, player.player_id);
     let Some(me) = roster.iter().find(|m| m.player_id == player.player_id) else {
         // The roster was read after the membership: the player left (or was
         // removed) in between, so there is no row to update.
@@ -44,8 +47,11 @@ pub(super) async fn announce(
             event = "org.presence_skipped",
             presence = event,
             account_id = player.account_id,
+            account_name = who.account_name,
             player_id = player.player_id,
+            player_name = who.player_name,
             org_id,
+            org_name,
             reason = "not_in_roster",
             "presence not announced: the player is no longer on the roster"
         );
@@ -62,6 +68,7 @@ pub(super) async fn announce(
     let sent = send_to_members(
         ctx,
         org_id,
+        org_name,
         &recipients,
         &[(ON_MEMBER_JOINED_ORGANIZATION, args)],
         event,
@@ -71,11 +78,15 @@ pub(super) async fn announce(
         target: "org",
         event,
         account_id = player.account_id,
+        account_name = who.account_name,
         player_id = player.player_id,
+        player_name = who.player_name,
         entity_id = player.entity_id,
+        entity_name = who.player_name,
         org_id,
+        org_name,
         org_type = org_type.name(),
-        member_id,
+        member_id, // nt:id-only the roster entity id the client stores, 0 when offline; the member is player_name
         recipients = sent,
         online_members = recipients.len(),
         disconnect_reason,
@@ -101,14 +112,20 @@ pub async fn announce_offline(
     player: &OrgPlayer,
     disconnect_reason: &'static str,
 ) {
+    // Resolved once per session end, which is rare; the session may already
+    // be torn down, in which case the names are left off.
+    let who = identity_of_player(ctx, player.player_id);
     let fail = |reason: &'static str, error: Option<String>| {
         tracing::warn!(
             target: "org",
             event = "org.presence_failed",
             presence = "member_offline",
             account_id = player.account_id,
+            account_name = who.account_name,
             player_id = player.player_id,
+            player_name = who.player_name,
             entity_id = player.entity_id,
+            entity_name = who.player_name,
             disconnect_reason,
             reason,
             error,
@@ -133,6 +150,7 @@ pub async fn announce_offline(
                 announce(
                     ctx,
                     org_id,
+                    Some(m.header.name.as_str()),
                     m.header.org_type,
                     &roster,
                     player,

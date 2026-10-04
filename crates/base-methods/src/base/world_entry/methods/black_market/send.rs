@@ -20,7 +20,7 @@ use super::types::AuctionRow;
 use super::wire::{self, BMError};
 use crate::base::feedback::FeedbackCtx;
 use crate::base::helpers::{send_to_witness_reliable, WitnessSendOutcome};
-use crate::base::ConnectedClientState;
+use crate::base::{session_identity, ConnectedClientState};
 use crate::mercury::{build_player_entity_method_packet, method_idx};
 
 /// The transport and session maps every send needs.
@@ -73,10 +73,15 @@ impl BmNet<'_> {
         tracing::debug!(
             event = "bm.send",
             entity_id,
-            method = name,
+            entity_name = session_identity::identity_for_entity(
+                self.connected,
+                self.entity_to_addr,
+                entity_id
+            )
+            .player_name,
+            method_name = name,
             method_index = method,
-            method_name = cimmeria_wire::names::player_client_method(method),
-            auction_id,
+            auction_id, // nt:id-only auctions have no name column; the send carries no item
             rows,
             payload_bytes = args.len(),
             sent,

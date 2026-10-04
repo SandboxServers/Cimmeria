@@ -53,9 +53,16 @@ pub async fn push_contact_lists_on_login(
     let pool = match db_pool {
         Some(p) => p.as_ref(),
         None => {
+            let who = crate::base::session_identity::identity_for_entity(
+                connected,
+                entity_to_addr,
+                entity_id,
+            );
             tracing::warn!(
                 entity_id,
+                entity_name = who.player_name,
                 player_id,
+                player_name = who.player_name,
                 "ContactList login push: no DB pool — contact lists not sent"
             );
             return;
@@ -64,9 +71,16 @@ pub async fn push_contact_lists_on_login(
 
     // Ensure system lists exist (idempotent).
     if let Err(e) = ensure_system_lists(pool, player_id).await {
+        let who = crate::base::session_identity::identity_for_entity(
+            connected,
+            entity_to_addr,
+            entity_id,
+        );
         tracing::error!(
             entity_id,
+            entity_name = who.player_name,
             player_id,
+            player_name = who.player_name,
             "ContactList: ensure_system_lists failed: {e}"
         );
         return;
@@ -75,9 +89,16 @@ pub async fn push_contact_lists_on_login(
     let lists = match load_contact_lists(pool, player_id).await {
         Ok(l) => l,
         Err(e) => {
+            let who = crate::base::session_identity::identity_for_entity(
+                connected,
+                entity_to_addr,
+                entity_id,
+            );
             tracing::error!(
                 entity_id,
+                entity_name = who.player_name,
                 player_id,
+                player_name = who.player_name,
                 "ContactList login push: load_contact_lists failed: {e}"
             );
             return;
@@ -128,9 +149,13 @@ pub async fn push_contact_lists_on_login(
         .await;
     }
 
+    let who =
+        crate::base::session_identity::identity_for_entity(connected, entity_to_addr, entity_id);
     tracing::debug!(
         entity_id,
+        entity_name = who.player_name,
         player_id,
+        player_name = who.player_name,
         list_count = lists.len(),
         "ContactList: pushed {} lists to client on login",
         lists.len()
@@ -177,8 +202,14 @@ pub(crate) async fn notify_online_contacts(
     let online_names = match connected.lock() {
         Ok(clients) => collect_online_names(&clients, recipient_entity_id),
         Err(_) => {
+            let who = crate::base::session_identity::identity_for_entity(
+                connected,
+                entity_to_addr,
+                recipient_entity_id,
+            );
             tracing::error!(
                 recipient_entity_id,
+                recipient_entity_name = who.player_name,
                 "ContactList presence: connected lock poisoned"
             );
             return;
@@ -212,8 +243,14 @@ pub(crate) async fn notify_online_contacts(
     }
 
     if !to_notify.is_empty() {
+        let who = crate::base::session_identity::identity_for_entity(
+            connected,
+            entity_to_addr,
+            recipient_entity_id,
+        );
         tracing::debug!(
             recipient_entity_id,
+            recipient_entity_name = who.player_name,
             online_contacts = to_notify.len(),
             "ContactList: sent online presence for already-online contacts"
         );

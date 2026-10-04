@@ -35,7 +35,7 @@ use std::sync::Arc;
 use sqlx::{PgConnection, PgPool};
 
 use super::helpers::now_unix_secs;
-use super::telemetry::count_bm_outcome;
+use super::telemetry::{count_bm_outcome, item_name};
 use super::types::auction_status;
 use super::wire::auction_length_seconds;
 use cimmeria_wire::black_market::UIAuctionTime;
@@ -286,7 +286,9 @@ fn log_seed_refused(source: &'static str, err: &SystemSellerError) {
                 reason = *reason,
                 source,
                 account_id = SYSTEM_ACCOUNT_ID,
+                account_name = SYSTEM_SELLER_NAME,
                 player_id = SYSTEM_SELLER_ID,
+                player_name = SYSTEM_SELLER_NAME,
                 found = found.as_str(),
                 "BM seed refused: the reserved system seller ids hold another account or \
                  character, so no listing was seeded (a sale would mint items and pay player 1)"
@@ -378,7 +380,8 @@ async fn seed_active_auctions(pool: &PgPool) {
             Ok(_) => inserted += 1,
             Err(e) => {
                 tracing::warn!(
-                    item_def_id = spec.item_def_id,
+                    item_type_id = spec.item_def_id,
+                    item_name = item_name(spec.item_def_id),
                     "BM seed: insert failed: {e}"
                 )
             }
@@ -387,6 +390,7 @@ async fn seed_active_auctions(pool: &PgPool) {
     tracing::info!(
         inserted,
         seller_id = SYSTEM_SELLER_ID,
+        seller_name = SYSTEM_SELLER_NAME,
         "BM seed: seeded Black Market auctions"
     );
 }

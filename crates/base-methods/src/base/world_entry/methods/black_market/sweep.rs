@@ -15,13 +15,14 @@ use std::net::SocketAddr;
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
+use cimmeria_entity::name_intern;
 use cimmeria_mercury::transport::Transport;
 use sqlx::PgPool;
 
 use super::helpers::now_unix_secs;
 use super::send::{send_bm_auction_remove, BmNet};
 use super::settle::{settle_locked, SettleCause, SettleError};
-use super::telemetry::{count_bm_outcome, log_transition};
+use super::telemetry::{count_bm_outcome, item_name, log_transition, Who};
 use super::types::{auction_columns, auction_status, AuctionRow};
 use crate::base::ConnectedClientState;
 
@@ -93,9 +94,10 @@ async fn settle_one(pool: &PgPool, auction: &AuctionRow) -> Outcome {
         Err(e) => {
             tracing::warn!(
                 event = "bm.settle_retry",
-                auction_id = auction.sequence_id,
-                seller_id = auction.seller_id,
-                bidder_id = auction.current_bidder,
+                auction_id = auction.sequence_id, // nt:id-only auctions have no name column; item_name names the listing
+                item_name = item_name(auction.item_def_id),
+                seller_id = auction.seller_id, // nt:id-only the retry path loads no player rows, and a log name gets no query
+                bidder_id = auction.current_bidder, // nt:id-only the retry path loads no player rows, and a log name gets no query
                 reason = e.reason(),
                 error = %e,
                 "Black Market settlement failed; the auction stays active for the next sweep pass"
@@ -110,16 +112,10 @@ async fn settle_one(pool: &PgPool, auction: &AuctionRow) -> Outcome {
     } else {
         "bm.expired"
     };
-    let account_id = account_of(pool, settled.seller_id).await;
-    log_transition(
-        event,
-        account_id,
-        settled.seller_id,
-        Some(&settled.before),
-        &settled.after,
-    );
+    let who = who_is(pool, settled.seller_id).await;
+    log_transition(event, &who, Some(&settled.before), &settled.after);
     for payout in &settled.payouts {
-        payout.log(account_id, settled.seller_id);
+        payout.log(&who);
     }
     count_bm_outcome("settle", event.trim_start_matches("bm."));
     Outcome::Settled(Box::new(settled))
@@ -172,17 +168,22 @@ async fn quarantine(pool: &PgPool, auction: &AuctionRow, e: &SettleError) -> Out
             .await;
     match marked {
         Ok(r) if r.rows_affected() == 1 => {
-            let account_id = account_of(pool, auction.seller_id).await;
+            let who = who_is(pool, auction.seller_id).await;
             tracing::error!(
                 event = "bm.quarantined",
-                account_id,
-                player_id = auction.seller_id,
-                auction_id = auction.sequence_id,
+                account_id = who.account_id,
+                account_name = who.account_name,
+                player_id = who.player_id,
+                player_name = who.player_name,
+                auction_id = auction.sequence_id, // nt:id-only auctions have no name column; item_name names the listing
                 seller_id = auction.seller_id,
+                seller_name = who.name_of(auction.seller_id),
                 bidder_id = auction.current_bidder,
+                bidder_name = auction.current_bidder.and_then(|b| who.name_of(b)),
                 held_cash = auction.escrowed_cash(),
                 item_id = auction.item_id,
-                item_def_id = auction.item_def_id,
+                item_type_id = auction.item_def_id,
+                item_name = item_name(auction.item_def_id),
                 reason,
                 error = %e,
                 "Black Market auction could not be settled and is quarantined for an operator"
@@ -194,8 +195,9 @@ async fn quarantine(pool: &PgPool, auction: &AuctionRow, e: &SettleError) -> Out
         Err(db) => {
             tracing::warn!(
                 event = "bm.settle_retry",
-                auction_id = auction.sequence_id,
-                seller_id = auction.seller_id,
+                auction_id = auction.sequence_id, // nt:id-only auctions have no name column; item_name names the listing
+                item_name = item_name(auction.item_def_id),
+                seller_id = auction.seller_id, // nt:id-only the retry path loads no player rows, and a log name gets no query
                 reason = "quarantine_failed",
                 settle_reason = reason,
                 error = %db,
@@ -207,16 +209,30 @@ async fn quarantine(pool: &PgPool, auction: &AuctionRow, e: &SettleError) -> Out
     }
 }
 
-/// The account a player belongs to, for a settlement row's `account_id`
-/// (the sweep has no session). `None` if the lookup fails.
-async fn account_of(pool: &PgPool, player_id: i32) -> Option<u32> {
-    sqlx::query_scalar::<_, i32>("SELECT account_id FROM sgw_player WHERE player_id = $1")
-        .bind(player_id)
-        .fetch_optional(pool)
-        .await
-        .ok()
-        .flatten()
-        .and_then(|a| u32::try_from(a).ok())
+/// The seller a settlement row is logged for: their account and the names
+/// (the sweep has no session). One query, the one that already fetched the
+/// account id. A failed lookup leaves the account and names off the line.
+async fn who_is(pool: &PgPool, player_id: i32) -> Who {
+    let row = sqlx::query_as::<_, (i32, String, Option<String>)>(
+        "SELECT p.account_id, p.player_name, a.account_name            FROM sgw_player p LEFT JOIN account a ON a.account_id = p.account_id           WHERE p.player_id = $1",
+    )
+    .bind(player_id)
+    .fetch_optional(pool)
+    .await
+    .ok()
+    .flatten();
+    match row {
+        Some((account_id, player_name, account_name)) => Who {
+            account_id: u32::try_from(account_id).ok(),
+            account_name: account_name.as_deref().and_then(name_intern::intern),
+            player_id,
+            player_name: name_intern::intern(&player_name),
+        },
+        None => Who {
+            player_id,
+            ..Who::default()
+        },
+    }
 }
 
 /// Push `onBMAuctionRemove` to the seller and buyer (when online) for a

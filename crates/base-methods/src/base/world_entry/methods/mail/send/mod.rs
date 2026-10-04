@@ -104,6 +104,9 @@ pub(super) fn resolve_recipient_flags(recipient_flags: i32) -> Result<(), FlagRe
 pub(super) struct SenderSession {
     addr: SocketAddr,
     pub(super) account_id: u32,
+    /// The sender's names (Rule 6), for the log lines; `None` until known.
+    pub(super) player_name: Option<&'static str>,
+    pub(super) account_name: Option<&'static str>,
 }
 
 /// One refusal: the result code, what failed, and why.
@@ -161,11 +164,14 @@ pub(super) async fn send_mail(
             target: "mail",
             event = "mail.attachment_seen",
             entity_id = caller.entity_id,
+            entity_name = session.player_name,
             player_id = caller.player_id,
+            player_name = session.player_name,
             account_id = session.account_id,
+            account_name = session.account_name,
             cash = send.cash,
             cod = send.cod,
-            item_id = send.item_id,
+            item_id = send.item_id, // nt:id-only client-sent item instance, not yet checked against the sender's bag
             item_quantity = send.item_quantity,
             recipients = send.recipients.len(),
             "sendMailMessage carries an attachment",
@@ -212,8 +218,11 @@ pub(super) async fn send_mail(
         tracing::error!(
             target: "mail",
             entity_id = caller.entity_id,
+            entity_name = session.player_name,
             player_id = caller.player_id,
+            player_name = session.player_name,
             account_id = session.account_id,
+            account_name = session.account_name,
             reason = "no_db_pool",
             "sendMailMessage cannot be delivered: no database pool",
         );
@@ -245,16 +254,21 @@ pub(super) async fn send_mail(
             refusal,
             balance,
             recipient_id,
+            recipient_name,
         }) => {
             tracing::debug!(
                 target: "mail",
                 event = "mail.attachment_refused",
                 entity_id = caller.entity_id,
+                entity_name = session.player_name,
                 player_id = caller.player_id,
+                player_name = session.player_name,
                 account_id = session.account_id,
+                account_name = session.account_name,
                 target_player_id = recipient_id,
+                target_player_name = recipient_name.as_deref(),
                 reason = refusal.reason,
-                item_id = send.item_id,
+                item_id = send.item_id, // nt:id-only client-sent item instance, refused before it was resolved to a type
                 item_quantity = send.item_quantity,
                 cash = send.cash,
                 cod = send.cod,
@@ -269,7 +283,14 @@ pub(super) async fn send_mail(
                 reason: refusal.reason,
                 text: refusal.text.to_string(),
             };
-            return refuse_about(caller, session, refusal, recipient_id).await;
+            return refuse_about(
+                caller,
+                session,
+                refusal,
+                recipient_id,
+                recipient_name.as_deref(),
+            )
+            .await;
         }
         Err(e) => {
             let reason = match &e {
@@ -280,8 +301,11 @@ pub(super) async fn send_mail(
             tracing::error!(
                 target: "mail",
                 entity_id = caller.entity_id,
+                entity_name = session.player_name,
                 player_id = caller.player_id,
+                player_name = session.player_name,
                 account_id = session.account_id,
+                account_name = session.account_name,
                 reason,
                 error = %e,
                 "sendMailMessage delivery failed, transaction rolled back",
@@ -303,9 +327,13 @@ pub(super) async fn send_mail(
             target: "mail",
             event = "mail.recipient_failed",
             entity_id = caller.entity_id,
+            entity_name = session.player_name,
             player_id = caller.player_id,
+            player_name = session.player_name,
             account_id = session.account_id,
+            account_name = session.account_name,
             target_player_id = f.player_id,
+            target_player_name = f.player_id.map(|_| f.typed.as_str()),
             reason = f.reason.reason(),
             "gate-mail recipient not delivered",
         );
@@ -323,6 +351,13 @@ pub(super) async fn send_mail(
             [one] => Some(*one),
             _ => None,
         };
+        let target_name = target.and_then(|one| {
+            delivery
+                .failed
+                .iter()
+                .find(|f| f.player_id == Some(one))
+                .map(|f| f.typed.as_str())
+        });
         let refusal = Refusal {
             result: MailResult::NoRecipients,
             failed_recipients: &failed_names,
@@ -330,7 +365,7 @@ pub(super) async fn send_mail(
             reason: "no_deliverable_recipients",
             text: failure_text.unwrap_or_else(|| GATE_MAIL_UNAVAILABLE.to_string()),
         };
-        return refuse_about(caller, session, refusal, target).await;
+        return refuse_about(caller, session, refusal, target, target_name).await;
     }
 
     let mail_ids: Vec<i32> = delivery.delivered.iter().map(|d| d.mail_id).collect();
@@ -339,8 +374,11 @@ pub(super) async fn send_mail(
         target: "mail",
         event = "mail.sent",
         entity_id = caller.entity_id,
+        entity_name = session.player_name,
         player_id = caller.player_id,
+        player_name = session.player_name,
         account_id = session.account_id,
+        account_name = session.account_name,
         target_player_ids = ?recipient_ids,
         mail_ids = ?mail_ids,
         delivered = mail_ids.len(),
@@ -373,7 +411,7 @@ const GATE_MAIL_UNAVAILABLE: &str = "Gate-mail is unavailable right now. The mes
 
 /// Log the refusal, answer `sendMailResult`, and send its feedback line.
 async fn refuse(caller: &Caller<'_>, session: SenderSession, refusal: Refusal<'_>) {
-    refuse_about(caller, session, refusal, None).await;
+    refuse_about(caller, session, refusal, None, None).await;
 }
 
 /// [`refuse`], naming the recipient once one was resolved
@@ -384,14 +422,19 @@ async fn refuse_about(
     session: SenderSession,
     refusal: Refusal<'_>,
     target_player_id: Option<i32>,
+    target_player_name: Option<&str>,
 ) {
     tracing::warn!(
         target: "mail",
         event = "mail.send_refused",
         entity_id = caller.entity_id,
+        entity_name = session.player_name,
         player_id = caller.player_id,
+        player_name = session.player_name,
         account_id = session.account_id,
+        account_name = session.account_name,
         target_player_id,
+        target_player_name,
         reason = refusal.reason,
         result = refusal.result.token(),
         failed_recipients = refusal.failed_recipients.len(),

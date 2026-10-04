@@ -191,9 +191,10 @@ async fn insert_org(
         target: "org",
         event = "create_org",
         org_id,
+        org_name = name.as_str(),
         org_type = org_type.name(),
-        player_id = leader_player_id,
-        account_id,
+        player_id = leader_player_id, // nt:id-only persistence layer takes ids only, the handler's outcome row names the member
+        account_id, // nt:id-only persistence layer takes ids only, the handler's outcome row names the member
         name_units = units(&name),
         rows_affected = ranks.len() + 2,
         "Organization created"
@@ -236,6 +237,7 @@ pub async fn disband(
             target: "org",
             event = "disband",
             org_id,
+            org_name = header.name.as_str(),
             org_type = header.org_type.name(),
             members = members.len(),
             rows_affected = deleted.rows_affected(),

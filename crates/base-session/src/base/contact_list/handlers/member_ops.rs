@@ -43,10 +43,17 @@ pub async fn handle_add_members(
     let pool = match db_pool {
         Some(p) => p.as_ref(),
         None => {
+            let who = crate::base::session_identity::identity_for_entity(
+                connected,
+                entity_to_addr,
+                entity_id,
+            );
             tracing::warn!(
                 entity_id,
+                entity_name = who.player_name,
                 player_id,
-                list_id,
+                player_name = who.player_name,
+                list_id, // nt:id-only list row is player-owned, no name loaded at this site
                 "ContactListAddMembers: no DB pool"
             );
             return Vec::new();
@@ -55,10 +62,17 @@ pub async fn handle_add_members(
 
     // Clamp to prevent abuse.
     if names.len() > MAX_MEMBERS_PER_REQUEST {
+        let who = crate::base::session_identity::identity_for_entity(
+            connected,
+            entity_to_addr,
+            entity_id,
+        );
         tracing::warn!(
             entity_id,
+            entity_name = who.player_name,
             player_id,
-            list_id,
+            player_name = who.player_name,
+            list_id, // nt:id-only list row is player-owned, no name loaded at this site
             count = names.len(),
             "ContactListAddMembers: clamping names array from {} to {MAX_MEMBERS_PER_REQUEST}",
             names.len()
@@ -83,10 +97,17 @@ pub async fn handle_add_members(
     }
     match outcome.map(|r| r.added) {
         Ok(added) if !added.is_empty() => {
+            let who = crate::base::session_identity::identity_for_entity(
+                connected,
+                entity_to_addr,
+                entity_id,
+            );
             tracing::info!(
                 entity_id,
+                entity_name = who.player_name,
                 player_id,
-                list_id,
+                player_name = who.player_name,
+                list_id, // nt:id-only list row is player-owned, no name loaded at this site
                 count = added.len(),
                 "ContactList: members added"
             );
@@ -106,26 +127,47 @@ pub async fn handle_add_members(
         }
         Ok(_) => {
             // All names were duplicates — nothing to echo.
+            let who = crate::base::session_identity::identity_for_entity(
+                connected,
+                entity_to_addr,
+                entity_id,
+            );
             tracing::debug!(
                 entity_id,
+                entity_name = who.player_name,
                 player_id,
-                list_id,
+                player_name = who.player_name,
+                list_id, // nt:id-only list row is player-owned, no name loaded at this site
                 "ContactListAddMembers: all duplicates, no echo"
             );
         }
         Err(sqlx::Error::RowNotFound) => {
+            let who = crate::base::session_identity::identity_for_entity(
+                connected,
+                entity_to_addr,
+                entity_id,
+            );
             tracing::warn!(
                 entity_id,
+                entity_name = who.player_name,
                 player_id,
-                list_id,
+                player_name = who.player_name,
+                list_id, // nt:id-only list row is player-owned, no name loaded at this site
                 "ContactListAddMembers: list not found or not owned"
             );
         }
         Err(e) => {
+            let who = crate::base::session_identity::identity_for_entity(
+                connected,
+                entity_to_addr,
+                entity_id,
+            );
             tracing::error!(
                 entity_id,
+                entity_name = who.player_name,
                 player_id,
-                list_id,
+                player_name = who.player_name,
+                list_id, // nt:id-only list row is player-owned, no name loaded at this site
                 "ContactListAddMembers: DB error: {e}"
             );
         }
@@ -205,10 +247,17 @@ pub async fn handle_remove_members(
     let pool = match db_pool {
         Some(p) => p.as_ref(),
         None => {
+            let who = crate::base::session_identity::identity_for_entity(
+                connected,
+                entity_to_addr,
+                entity_id,
+            );
             tracing::warn!(
                 entity_id,
+                entity_name = who.player_name,
                 player_id,
-                list_id,
+                player_name = who.player_name,
+                list_id, // nt:id-only list row is player-owned, no name loaded at this site
                 "ContactListRemoveMembers: no DB pool"
             );
             return Vec::new();
@@ -216,10 +265,17 @@ pub async fn handle_remove_members(
     };
 
     if names.len() > MAX_MEMBERS_PER_REQUEST {
+        let who = crate::base::session_identity::identity_for_entity(
+            connected,
+            entity_to_addr,
+            entity_id,
+        );
         tracing::warn!(
             entity_id,
+            entity_name = who.player_name,
             player_id,
-            list_id,
+            player_name = who.player_name,
+            list_id, // nt:id-only list row is player-owned, no name loaded at this site
             count = names.len(),
             "ContactListRemoveMembers: clamping names array from {} to {MAX_MEMBERS_PER_REQUEST}",
             names.len()
@@ -229,10 +285,17 @@ pub async fn handle_remove_members(
 
     match remove_members(pool, player_id, list_id, &names).await {
         Ok(removed) if !removed.is_empty() => {
+            let who = crate::base::session_identity::identity_for_entity(
+                connected,
+                entity_to_addr,
+                entity_id,
+            );
             tracing::info!(
                 entity_id,
+                entity_name = who.player_name,
                 player_id,
-                list_id,
+                player_name = who.player_name,
+                list_id, // nt:id-only list row is player-owned, no name loaded at this site
                 count = removed.len(),
                 "ContactList: members removed"
             );
@@ -268,26 +331,47 @@ pub async fn handle_remove_members(
             return removed;
         }
         Ok(_) => {
+            let who = crate::base::session_identity::identity_for_entity(
+                connected,
+                entity_to_addr,
+                entity_id,
+            );
             tracing::debug!(
                 entity_id,
+                entity_name = who.player_name,
                 player_id,
-                list_id,
+                player_name = who.player_name,
+                list_id, // nt:id-only list row is player-owned, no name loaded at this site
                 "ContactListRemoveMembers: none of the named members were present"
             );
         }
         Err(sqlx::Error::RowNotFound) => {
+            let who = crate::base::session_identity::identity_for_entity(
+                connected,
+                entity_to_addr,
+                entity_id,
+            );
             tracing::warn!(
                 entity_id,
+                entity_name = who.player_name,
                 player_id,
-                list_id,
+                player_name = who.player_name,
+                list_id, // nt:id-only list row is player-owned, no name loaded at this site
                 "ContactListRemoveMembers: list not found or not owned"
             );
         }
         Err(e) => {
+            let who = crate::base::session_identity::identity_for_entity(
+                connected,
+                entity_to_addr,
+                entity_id,
+            );
             tracing::error!(
                 entity_id,
+                entity_name = who.player_name,
                 player_id,
-                list_id,
+                player_name = who.player_name,
+                list_id, // nt:id-only list row is player-owned, no name loaded at this site
                 "ContactListRemoveMembers: DB error: {e}"
             );
         }
@@ -314,13 +398,21 @@ async fn resync_if_ignore_list(
         Ok(Some((_, flags))) if flags == IGNORE_LIST_FLAGS => {}
         Ok(_) => return,
         Err(e) => {
+            let who = crate::base::session_identity::identity_for_entity(
+                connected,
+                entity_to_addr,
+                entity_id,
+            );
             tracing::error!(
                 target: "chat",
                 event = "chat.ignore_sync_failed",
                 entity_id,
+                entity_name = who.player_name,
                 player_id,
+                player_name = who.player_name,
                 account_id,
-                list_id,
+                account_name = who.account_name,
+                list_id, // nt:id-only list row is player-owned, no name loaded at this site
                 reason = "db_error",
                 error = %e,
                 "could not tell whether the changed list is the Ignore list; cache not reloaded",
@@ -329,13 +421,21 @@ async fn resync_if_ignore_list(
         }
     }
     let Some(addr) = addr else {
+        let who = crate::base::session_identity::identity_for_entity(
+            connected,
+            entity_to_addr,
+            entity_id,
+        );
         tracing::debug!(
             target: "chat",
             event = "chat.ignore_sync_failed",
             entity_id,
+            entity_name = who.player_name,
             player_id,
+            player_name = who.player_name,
             account_id,
-            list_id,
+            account_name = who.account_name,
+            list_id, // nt:id-only list row is player-owned, no name loaded at this site
             reason = "entity_to_addr_miss",
             "Ignore list changed for an entity with no session; the next world entry reloads it",
         );
@@ -367,13 +467,18 @@ async fn refuse_over_cap(
 
     let addr = entity_to_addr.lock().unwrap().get(&entity_id).copied();
     let account_id = addr.and_then(|a| connected.lock().unwrap().get(&a).map(|c| c.account_id));
+    let who =
+        crate::base::session_identity::identity_for_entity(connected, entity_to_addr, entity_id);
     tracing::debug!(
         target: "chat",
         event = "chat.ignore_refused",
         entity_id,
+        entity_name = who.player_name,
         player_id,
+        player_name = who.player_name,
         account_id,
-        list_id,
+        account_name = who.account_name,
+        list_id, // nt:id-only list row is player-owned, no name loaded at this site
         added = result.added.len(),
         refused = result.over_cap.len(),
         reason = "list_full",

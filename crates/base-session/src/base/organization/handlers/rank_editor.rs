@@ -42,6 +42,7 @@ use sqlx::{Postgres, Transaction};
 use super::broadcast::broadcast_to_org;
 use super::edit_row::{units, EditRow};
 use super::fanout::feedback;
+use super::log_names::label;
 use super::officer_notes::{sync_for_rank_locked, NoteSync};
 use super::order::org_order_guard;
 use super::telemetry::OrgReject;
@@ -139,7 +140,7 @@ pub(super) async fn rank_permissions_locked(
             Err(OrgStoreError::RankNotInType(_)) => return Err(OrgReject::RankNotInType),
             Err(e) => return Err(row.db_failed(&e)),
         }
-        note_sync = sync_for_rank_locked(tx, org_id, rank, from, to)
+        note_sync = sync_for_rank_locked(tx, org_id, access.org_name(), rank, from, to)
             .await
             .map_err(|e| row.db_failed(&e))?;
     }
@@ -196,6 +197,7 @@ pub async fn handle_set_rank_permissions(
         wire_mask: Some(wire_mask),
         ..EditRow::default()
     };
+    row.name_actor(ctx);
     let _order = org_order_guard(org_id).await;
     let decided = match ctx.db_pool.as_deref() {
         None => Err(OrgReject::NoDb),
@@ -224,8 +226,11 @@ pub async fn handle_set_rank_permissions(
             target: "org",
             event = "rank_permissions_changed",
             account_id = player.account_id,
+            account_name = row.account_name,
             player_id = player.player_id,
+            player_name = row.player_name,
             org_id,
+            org_name = row.org_name,
             rank = edit.rank.as_u8(),
             from_mask = edit.from.bits(),
             from_mask_names = %cimmeria_entity::organization::ORG_PERMISSIONS.render(edit.from.bits()),
@@ -277,6 +282,7 @@ pub async fn handle_set_rank_name(
         to_units: Some(units(name)),
         ..EditRow::default()
     };
+    row.name_actor(ctx);
     let name = match org_text::validate(TextField::RankName, name) {
         Ok(n) => n,
         Err(r) => return row.refuse(ctx, OrgReject::InvalidText(r), "").await,
@@ -369,6 +375,7 @@ async fn member_locked(
         .map_err(|e| row.db_failed(&e))?
         .ok_or(OrgReject::NotMember)?;
     row.org_type = Some(header.org_type.name());
+    row.org_name = label(&header.name);
     let access = member_access_locked(tx, org_id, player.player_id)
         .await
         .map_err(|e| row.db_failed(&e))?

@@ -73,6 +73,7 @@ pub async fn gm_set_perms(
         rank: Some(rank),
         ..ActionRow::default()
     };
+    row.name_actor(ctx);
     let fail = |row: ActionRow, why: OrgReject, text: String| async move {
         refuse(ctx, &row, gm.entity_id, why, &text).await
     };
@@ -125,8 +126,11 @@ pub async fn gm_set_perms(
         event = "permissions_changed",
         via = "gm",
         account_id = caller.account_id,
+        account_name = row.account_name,
         player_id = caller.player_id,
+        player_name = row.player_name,
         org_id,
+        org_name = row.org_name,
         org_type = row.org_type,
         rank,
         from_mask = edit.from.bits(),
@@ -167,12 +171,17 @@ async fn edit_locked(
     row: &mut ActionRow,
     ignored: &mut OrgPermission,
 ) -> Result<PermEdit, OrgReject> {
-    let access = OrgAccess::system(tx, org_id, gm_actor(gm, "org_set_perms"))
-        .await
-        .map_err(|e| db_failed(row, &e))?
-        .ok_or(OrgReject::NoSuchOrg)?;
+    let access = OrgAccess::system(
+        tx,
+        org_id,
+        gm_actor(gm, (row.account_name, row.player_name), "org_set_perms"),
+    )
+    .await
+    .map_err(|e| db_failed(row, &e))?
+    .ok_or(OrgReject::NoSuchOrg)?;
     let org_type = access.org_type();
     row.org_type = Some(org_type.name());
+    row.org_name = access.org_name();
     let wire = OrgPermission::from_bits_truncate(mask);
     let editable = OrgPermission::editable_for(org_type);
     *ignored = OrgPermission::from_bits_truncate(wire.bits() & !editable.bits());
@@ -186,6 +195,9 @@ async fn edit_locked(
         entity_id: Some(gm.entity_id),
         org_id: Some(org_id),
         org_type: Some(org_type.name()),
+        account_name: row.account_name,
+        player_name: row.player_name,
+        org_name: access.org_name(),
         rank: Some(i32::from(rank)),
         wire_mask: Some(wire.to_wire()),
         ..EditRow::default()

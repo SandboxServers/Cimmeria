@@ -24,6 +24,7 @@ use sqlx::{Postgres, Transaction};
 
 use super::answer::{db_failed, refusal_text, refuse};
 use super::fanout::{feedback, send_to_player};
+use super::log_names::label;
 use super::targets::{actor_may_send, online_target, with_actor_session, OnlineTarget};
 use super::telemetry::{ActionRow, OrgReject};
 use super::{OrgCtx, OrgPlayer};
@@ -81,6 +82,7 @@ pub async fn handle_invite(
         org_type: by_type.map(|t| t.name()),
         ..ActionRow::default()
     };
+    row.name_actor(ctx);
     let fail = |row: ActionRow, why: OrgReject, org_type: Option<OrgType>| async move {
         let text = refusal_text(why, INVITE_SELF_TEXT, org_type);
         refuse(ctx, &row, player.entity_id, why, &text).await
@@ -96,12 +98,16 @@ pub async fn handle_invite(
             if let Some(t) = t {
                 row.target_account_id = Some(t.account_id);
                 row.target_player_id = Some(t.player_id);
+                row.target_player_name = label(&t.name);
+                row.name_target(ctx);
             }
             return fail(row, why, by_type).await;
         }
     };
     row.target_account_id = Some(target.account_id);
     row.target_player_id = Some(target.player_id);
+    row.target_player_name = label(&target.name);
+    row.name_target(ctx);
 
     let Some(pool) = ctx.db_pool.as_deref() else {
         return fail(row, OrgReject::NoDb, by_type).await;
@@ -134,11 +140,12 @@ pub async fn handle_invite(
                 Some(c) => {
                     let issued = c
                         .org_invites
-                        .issue(
+                        .issue_named(
                             target.player_id,
                             player.player_id,
                             &inviter_name,
                             checked.org_id,
+                            Some(&checked.org_name),
                             checked.org_type,
                             now,
                         )
@@ -151,9 +158,12 @@ pub async fn handle_invite(
                             target: "org",
                             event = "invite_expired",
                             org_id = gone.org_id,
-                            request_id = gone.request_id,
+                            org_name = gone.org_name.as_deref(),
+                            request_id = gone.request_id, // nt:id-only base-local invite counter, nothing to name
                             player_id = gone.inviter_player_id,
+                            player_name = gone.inviter_name.as_str(),
                             target_player_id = gone.invitee_player_id,
+                            target_player_name = c.player_name.as_deref(),
                             "organization invite expired unanswered"
                         );
                     }
@@ -168,16 +178,22 @@ pub async fn handle_invite(
     };
     with_actor_session(ctx, player, |c| c.org_invites.record_sent(now));
     row.request_id = Some(invite.request_id);
+    row.org_name = label(&checked.org_name);
     tracing::debug!(
         target: "org",
         event = "invite_created",
         account_id = player.account_id,
+        account_name = row.account_name,
         player_id = player.player_id,
+        player_name = row.player_name,
         target_account_id = target.account_id,
+        target_account_name = row.target_account_name,
         target_player_id = target.player_id,
+        target_player_name = row.target_player_name,
         org_id = checked.org_id,
+        org_name = checked.org_name.as_str(),
         org_type = checked.org_type.name(),
-        request_id = invite.request_id,
+        request_id = invite.request_id, // nt:id-only base-local invite counter, nothing to name
         expires_in_secs = crate::base::organization::invites::INVITE_TTL.as_secs(),
         "organization invite created"
     );
@@ -199,11 +215,17 @@ pub async fn handle_invite(
             event = "org.send_failed",
             what = "organization_invite",
             org_id = checked.org_id,
+            org_name = checked.org_name.as_str(),
             account_id = player.account_id,
+            account_name = row.account_name,
             player_id = player.player_id,
+            player_name = row.player_name,
             target_account_id = target.account_id,
+            target_account_name = row.target_account_name,
             target_player_id = target.player_id,
+            target_player_name = row.target_player_name,
             entity_id = target.entity_id,
+            entity_name = row.target_player_name,
             reason,
             "onOrganizationInvite could not be sent to the invitee"
         );
@@ -251,6 +273,7 @@ async fn check_locked(
         .map_err(|e| db(row, &e))?
         .ok_or(OrgReject::NotMember)?;
     row.org_type = Some(header.org_type.name());
+    row.org_name = label(&header.name);
     let access = member_access_locked(tx, org_id, player.player_id)
         .await
         .map_err(|e| db(row, &e))?

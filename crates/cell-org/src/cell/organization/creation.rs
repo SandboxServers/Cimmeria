@@ -58,6 +58,7 @@ pub async fn on_organization_creation(
                 target: "org",
                 event = "org.cell_method_malformed",
                 entity_id,
+                entity_name = space_mgr.entity_label(entity_id),
                 method_index = 94u16,
                 method_name = cimmeria_wire::names::player_cell_method(94u16),
                 reason = e.reason(),
@@ -136,8 +137,11 @@ pub async fn on_organization_creation(
             event = "org.create_forward_failed",
             reason = "cell_to_base_closed",
             account_id = actor.account_id,
+            account_name = actor.account_name,
             player_id,
+            player_name = actor.player_name,
             entity_id,
+            entity_name = space_mgr.entity_label(entity_id),
             "organization creation could not reach the base"
         );
         let left = space_mgr
@@ -154,8 +158,11 @@ pub async fn on_organization_creation(
         target: "org",
         event = "org.create_forwarded",
         account_id = actor.account_id,
+        account_name = actor.account_name,
         player_id,
+        player_name = actor.player_name,
         entity_id,
+        entity_name = space_mgr.entity_label(entity_id),
         org_type = org_type.name(),
         name_units = row.name_units,
         "organization name forwarded to the base"

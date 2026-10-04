@@ -90,9 +90,10 @@ pub async fn add_member(
             target: "org",
             event = "add_member",
             org_id,
+            org_name = header.name.as_str(),
             org_type = header.org_type.name(),
-            player_id,
-            account_id,
+            player_id, // nt:id-only persistence layer takes ids only, the handler's outcome row names the member
+            account_id, // nt:id-only persistence layer takes ids only, the handler's outcome row names the member
             rank = rank.as_u8(),
             rows_affected = 1u64,
             "Organization member added"
@@ -195,7 +196,7 @@ pub async fn remove_member(
     player_id: i32,
 ) -> Result<MemberRemoval, OrgStoreError> {
     observed("remove_member", Some(org_id), Some(player_id), async {
-        authorize(tx, actor, org_id).await?;
+        let header = authorize(tx, actor, org_id).await?;
         let leader_before = current_leader(tx, org_id).await?;
         let old_rank: Option<i16> = sqlx::query_scalar(
             "DELETE FROM sgw_organization_members WHERE org_id = $1 AND player_id = $2 \
@@ -232,7 +233,8 @@ pub async fn remove_member(
             target: "org",
             event = "remove_member",
             org_id,
-            player_id,
+            org_name = header.name.as_str(),
+            player_id, // nt:id-only persistence layer takes ids only, the handler's outcome row names the member
             from_rank = old_rank.as_u8(),
             after = after.label(),
             rows_affected = 1u64,
@@ -310,7 +312,8 @@ pub async fn set_rank(
             target: "org",
             event = "set_rank",
             org_id,
-            player_id,
+            org_name = header.name.as_str(),
+            player_id, // nt:id-only persistence layer takes ids only, the handler's outcome row names the member
             from_rank = old.as_u8(),
             to_rank = rank.as_u8(),
             rows_affected = updated.rows_affected(),

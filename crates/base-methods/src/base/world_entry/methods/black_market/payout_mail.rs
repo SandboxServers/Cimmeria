@@ -24,7 +24,7 @@ use sqlx::{PgPool, Postgres, Transaction};
 use super::super::mail::{
     send_system_mail_tx, SystemItem, SystemMail, SystemMailError, SystemMailSent,
 };
-use super::telemetry::count_bm_outcome;
+use super::telemetry::{count_bm_outcome, item_name, Who};
 use super::types::AuctionRow;
 use crate::base::feedback::FeedbackCtx;
 
@@ -119,22 +119,26 @@ pub struct Payout {
 impl Payout {
     /// After the commit: log `mail.system_sent` and `bm.payout`, with the
     /// actor's ids (for the sweep, the seller's), and count it.
-    pub fn log(&self, account_id: Option<u32>, player_id: i32) {
+    pub fn log(&self, who: &Who) {
         self.mail.log_sent();
         let item = self.mail.item;
         tracing::info!(
             event = "bm.payout",
-            account_id,
-            player_id,
-            auction_id = self.auction_id,
+            account_id = who.account_id,
+            account_name = who.account_name,
+            player_id = who.player_id,
+            player_name = who.player_name,
+            auction_id = self.auction_id, // nt:id-only auctions have no name column; item_name names a mailed item
             reason = self.reason.label(),
             role = self.role.label(),
             recipient_player_id = self.mail.recipient_player_id,
-            mail_id = self.mail.mail_id,
+            recipient_player_name = who.name_of(self.mail.recipient_player_id),
+            mail_id = self.mail.mail_id, // nt:id-only mail rows have a subject, not a name column
             cash = self.mail.cash,
             item_source = self.mail.item_source,
             item_id = item.map(|i| i.item_id),
-            type_id = item.map(|i| i.type_id),
+            item_type_id = item.map(|i| i.type_id),
+            item_name = item.and_then(|i| item_name(i.type_id)),
             stack_size = item.map(|i| i.stack_size),
             "Black Market mail delivered"
         );
@@ -205,8 +209,9 @@ pub async fn refund_standing_bid(
         Err(SystemMailError::RecipientNotFound) => {
             tracing::warn!(
                 event = "bm.refund_skipped",
-                auction_id = auction.sequence_id,
-                bidder_id = bidder,
+                auction_id = auction.sequence_id, // nt:id-only auctions have no name column; item_name names the listing
+                item_name = item_name(auction.item_def_id),
+                bidder_id = bidder, // nt:id-only the bidder row is missing, so there is no name to load
                 amount = cash,
                 cause = reason.label(),
                 reason = "bidder_missing",

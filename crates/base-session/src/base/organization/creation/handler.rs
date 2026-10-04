@@ -70,9 +70,11 @@ impl CreationCtx<'_> {
                     target: "org",
                     event = "org.actor_mismatch",
                     reason = "actor_mismatch",
-                    player_id,
+                    player_id, // nt:id-only the claimed character failed the session check, so it has no live name
                     entity_id,
+                    entity_name = session.and_then(|s| s.identity.player_name),
                     session_player_id = session.and_then(|s| s.identity.player_id),
+                    session_player_name = session.and_then(|s| s.identity.player_name),
                     action = ?action,
                     "organization request names an entity that is no longer that character"
                 );
@@ -113,6 +115,7 @@ impl CreationCtx<'_> {
                     event = "org.send_failed",
                     reason,
                     entity_id,
+                    entity_name = self.session(entity_id).and_then(|s| s.identity.player_name),
                     method_index,
                     method_name = cimmeria_wire::names::player_client_method(method_index),
                     "organization client method could not be sent"
@@ -142,13 +145,16 @@ impl CreationCtx<'_> {
             None => false,
         };
         if !sent {
+            let session = self.session(entity_id);
             tracing::warn!(
                 target: "org",
                 event = "org.cell_send_failed",
                 reason = "cell_unreachable",
                 kind,
                 player_id,
+                player_name = session.and_then(|s| s.identity.player_name),
                 entity_id,
+                entity_name = session.and_then(|s| s.identity.player_name),
                 "organization reply could not reach the cell"
             );
         }
@@ -234,7 +240,9 @@ pub async fn handle_registrar_open(
                 event = "org.registrar_open_lookup_failed",
                 reason = e.reason(),
                 player_id,
+                player_name = row.actor.player_name,
                 entity_id,
+                entity_name = row.actor.player_name,
                 error = %e,
                 "registrar eligibility read failed"
             );
@@ -384,7 +392,9 @@ async fn found_and_answer(
                     event = "org.create_failed",
                     reason = e_reason(&e),
                     player_id,
+                    player_name = row.actor.player_name,
                     entity_id,
+                    entity_name = row.actor.player_name,
                     error = %e,
                     "organization creation failed in the database"
                 );
@@ -395,14 +405,18 @@ async fn found_and_answer(
         }
     };
     row.org_id = Some(founded.org.org_id);
+    row.org_name = Some(founded.org.name.clone());
     row.cash = founded.cash;
     tracing::debug!(
         target: "org",
         event = "member_joined",
         org_id = founded.org.org_id,
+        org_name = founded.org.name.as_str(),
         org_type = org_type.name(),
         account_id = row.actor.account_id,
+        account_name = row.actor.account_name,
         player_id,
+        player_name = row.actor.player_name,
         rank = OrgRank::LEADER.as_u8(),
         "organization founder joined as leader"
     );

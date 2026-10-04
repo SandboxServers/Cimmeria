@@ -21,6 +21,7 @@ use cimmeria_wire::cell::client_methods::duel::{
 use crate::cell::messages::CellToBaseMsg;
 use crate::cell::space_manager::SpaceManager;
 
+use super::duelist_names as names;
 use super::limits::COUNTDOWN;
 use super::outbound::{send_countdown, send_line, Recipient};
 use super::registry::{PendingChallenge, ResponseRefusal};
@@ -77,10 +78,14 @@ async fn respond(
                 target: "duel",
                 event = "duel.response_malformed",
                 account_id = id.account_id,
+                account_name = id.account_name,
                 player_id = id.player_id,
+                player_name = id.player_name,
                 entity_id,
+                entity_name = names::entity_name(mgr, Some(entity_id)),
                 target_player_id = pending.map(|p| p.challenger),
-                duel_id = pending.map(|p| p.duel_id),
+                target_player_name = pending.map(|p| p.challenger).and_then(|o| names::player_name_of(mgr, o)),
+                duel_id = pending.map(|p| p.duel_id), // nt:id-only duel row id with no name column; the duelists are named in the same event
                 args_len = args.len(),
                 reason = e.reason(),
                 error = ?e,
@@ -97,7 +102,9 @@ async fn respond(
             target: "duel",
             event = "duel.response_refused",
             account_id = id.account_id,
+            account_name = id.account_name,
             entity_id,
+            entity_name = names::entity_name(mgr, Some(entity_id)),
             response = response.name(),
             reason = "not_a_player",
             "sendDuelResponse from an entity that is not a connected player"
@@ -117,8 +124,11 @@ async fn respond(
                 target: "duel",
                 event = "duel.response_refused",
                 account_id = id.account_id,
+                account_name = id.account_name,
                 player_id = responder_pid,
+                player_name = id.player_name,
                 entity_id,
+                entity_name = names::entity_name(mgr, Some(entity_id)),
                 response = response.name(),
                 reason = "no_pending_challenge",
                 "sendDuelResponse with no challenge addressed to the caller"
@@ -136,11 +146,15 @@ async fn respond(
             tracing::debug!(
                 target: "duel",
                 event = "duel.response_refused",
-                duel_id = p.duel_id,
+                duel_id = p.duel_id, // nt:id-only duel row id with no name column; the duelists are named in the same event
                 account_id = id.account_id,
+                account_name = id.account_name,
                 player_id = responder_pid,
+                player_name = id.player_name,
                 entity_id,
+                entity_name = names::entity_name(mgr, Some(entity_id)),
                 target_player_id = p.challenger,
+                target_player_name = names::player_name_of(mgr, p.challenger),
                 response = response.name(),
                 reason = "expired",
                 expired_ms_ago = (now - p.expires_at).as_millis() as u64,
@@ -157,11 +171,15 @@ async fn respond(
             tracing::debug!(
                 target: "duel",
                 event = "duel.declined",
-                duel_id = pending.duel_id,
+                duel_id = pending.duel_id, // nt:id-only duel row id with no name column; the duelists are named in the same event
                 account_id = id.account_id,
+                account_name = id.account_name,
                 player_id = responder_pid,
+                player_name = id.player_name,
                 entity_id,
+                entity_name = names::entity_name(mgr, Some(entity_id)),
                 target_player_id = pending.challenger,
+                target_player_name = names::player_name_of(mgr, pending.challenger),
                 "duel challenge declined"
             );
             abort_both(tx, mgr, &pending, "declined").await;
@@ -176,11 +194,15 @@ async fn respond(
                 tracing::debug!(
                     target: "duel",
                     event = "duel.accept_refused",
-                    duel_id = pending.duel_id,
+                    duel_id = pending.duel_id, // nt:id-only duel row id with no name column; the duelists are named in the same event
                     account_id = id.account_id,
+                    account_name = id.account_name,
                     player_id = responder_pid,
+                    player_name = id.player_name,
                     entity_id,
+                    entity_name = names::entity_name(mgr, Some(entity_id)),
                     target_player_id = pending.challenger,
+                    target_player_name = names::player_name_of(mgr, pending.challenger),
                     reason = "challenger_gone",
                     "duel accepted but the challenger is no longer in the space"
                 );
@@ -195,14 +217,21 @@ async fn respond(
             tracing::debug!(
                 target: "duel",
                 event = "duel.accepted",
-                duel_id = duel.duel_id,
+                duel_id = duel.duel_id, // nt:id-only duel row id with no name column; the duelists are named in the same event
                 account_id = id.account_id,
+                account_name = id.account_name,
                 player_id = responder_pid,
+                player_name = id.player_name,
                 entity_id,
+                entity_name = names::entity_name(mgr, Some(entity_id)),
                 target_player_id = pending.challenger,
+                target_player_name = names::player_name_of(mgr, pending.challenger),
                 target_entity_id = challenger.entity_id,
+                target_entity_name = names::entity_name(mgr, Some(challenger.entity_id)),
                 target_account_id = challenger.account_id,
+                target_account_name = names::account_name(mgr, Some(challenger.entity_id)),
                 space_id = duel.space_id,
+                world = names::world(mgr, duel.space_id),
                 state = "start_pending",
                 "duel accepted: countdown started"
             );
@@ -244,9 +273,10 @@ pub(super) async fn abort_both(
             None => tracing::debug!(
                 target: "duel",
                 event = "duel.notify_skipped",
-                duel_id = pending.duel_id,
-                player_id,
+                duel_id = pending.duel_id, // nt:id-only duel row id with no name column; the duelists are named in the same event
+                player_id, // nt:id-only duel party is no longer in the world, so its name cannot be resolved
                 target_player_id = other,
+                target_player_name = names::player_name_of(mgr, other),
                 why,
                 reason = "player_not_in_world",
                 "duel abort line not sent: the player is no longer in the world"

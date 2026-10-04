@@ -139,7 +139,8 @@ pub async fn set_text(
             target: "org",
             event = "set_text",
             org_id,
-            player_id = target.player_id(),
+            org_name = header.name.as_str(),
+            player_id = target.player_id(), // nt:id-only persistence layer takes ids only, the handler's outcome row names the member
             field = target.field().name(),
             rank,
             from_units = units(&old),
@@ -195,6 +196,7 @@ pub async fn set_rank_permissions(
             target: "org",
             event = "set_rank_permissions",
             org_id,
+            org_name = header.name.as_str(),
             rank = rank.as_u8(),
             from_mask = old.bits(),
             from_mask_names = %cimmeria_entity::organization::ORG_PERMISSIONS.render(old.bits()),

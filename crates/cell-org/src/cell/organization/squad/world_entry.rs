@@ -60,8 +60,10 @@ pub async fn on_world_entry(
         target: "squad",
         event = "squad.world_entry_replay",
         player_id,
+        player_name = space_mgr.player_identity(entity_id).player_name,
         entity_id,
-        squad_id = squad.id(),
+        entity_name = space_mgr.entity_label(entity_id),
+        squad_id = squad.id(), // nt:id-only squads are unnamed ad hoc groups with no name column
         "squad re-sent to a member entering a world"
     );
     fanout::send_whole_squad(tx, space_mgr, &squad, entity_id, player_id, false, &[]).await;

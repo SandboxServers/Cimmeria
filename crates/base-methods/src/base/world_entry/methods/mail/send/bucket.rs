@@ -6,6 +6,7 @@ use std::time::Instant;
 use super::super::Caller;
 use super::{feedback, SenderSession};
 use crate::base::rate_limit::{log_exceeded, RateActor, RateCategory, RateDecision};
+use crate::base::session_identity::session_identity;
 use crate::cell::mail::codes::MailResult;
 use crate::cell::mail::serialize_send_mail_result;
 use crate::mercury::method_idx;
@@ -27,10 +28,13 @@ pub(super) async fn take_send_token(
     now: Instant,
 ) -> Option<SenderSession> {
     let Some(addr) = caller.addr() else {
+        let who = caller.identity();
         tracing::warn!(
             target: "mail",
             entity_id = caller.entity_id,
+            entity_name = who.player_name,
             player_id = caller.player_id,
+            player_name = who.player_name,
             reason = "no_client_addr",
             "sendMailMessage dropped: the entity has no client address",
         );
@@ -43,16 +47,20 @@ pub(super) async fn take_send_token(
         };
         let Some(c) = clients.get_mut(&addr) else {
             drop(clients);
+            let who = caller.identity();
             tracing::warn!(
                 target: "mail",
                 entity_id = caller.entity_id,
+                entity_name = who.player_name,
                 player_id = caller.player_id,
+                player_name = who.player_name,
                 %addr,
                 reason = "no_session",
                 "sendMailMessage dropped: no session at the client address",
             );
             return None;
         };
+        let who = session_identity(c);
         let decision = c.rate_limits.check(RateCategory::MailSend, now);
         if let RateDecision::Limited { notify } = decision {
             // Logged under the lock so the event carries the bucket state
@@ -69,6 +77,8 @@ pub(super) async fn take_send_token(
             SenderSession {
                 addr,
                 account_id: c.account_id,
+                player_name: who.player_name,
+                account_name: who.account_name,
             },
             decision,
         )

@@ -8,6 +8,9 @@
 
 use cimmeria_entity::organization::TextReject;
 
+use super::log_names::identity_of_player;
+use super::OrgCtx;
+
 /// Why a Team or Command action was refused: the closed `reason` set of the
 /// actions in this module. Stable strings; they are metric labels.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -159,6 +162,11 @@ pub(super) struct Row {
     /// `None` when the organization was never read (a refusal before the
     /// lock).
     pub org_type: Option<&'static str>,
+    /// The names that pair with the ids above (Rule 6); `None` when the
+    /// session or the organization was never read.
+    pub account_name: Option<&'static str>,
+    pub player_name: Option<&'static str>,
+    pub org_name: Option<&'static str>,
 }
 
 impl Row {
@@ -171,9 +179,13 @@ impl Row {
             outcome = "ok",
             after,
             account_id = self.account_id,
+            account_name = self.account_name,
             player_id = self.player_id,
+            player_name = self.player_name,
             entity_id = self.entity_id,
+            entity_name = self.player_name,
             org_id = self.org_id,
+            org_name = self.org_name,
             org_type = self.org_type,
             "organization action succeeded"
         );
@@ -188,9 +200,13 @@ impl Row {
             outcome = "rejected",
             reason = why.reason(),
             account_id = self.account_id,
+            account_name = self.account_name,
             player_id = self.player_id,
+            player_name = self.player_name,
             entity_id = self.entity_id,
+            entity_name = self.player_name,
             org_id = self.org_id,
+            org_name = self.org_name,
             org_type = self.org_type,
             "organization action rejected"
         );
@@ -225,6 +241,14 @@ pub(super) struct ActionRow {
     pub org_type: Option<&'static str>,
     pub target_account_id: Option<u32>,
     pub target_player_id: Option<i32>,
+    /// The names that pair with the ids above (Rule 6). `None` for a
+    /// session or organization the action never read; see
+    /// [`ActionRow::name_actor`] and [`ActionRow::name_target`].
+    pub account_name: Option<&'static str>,
+    pub player_name: Option<&'static str>,
+    pub org_name: Option<&'static str>,
+    pub target_account_name: Option<&'static str>,
+    pub target_player_name: Option<&'static str>,
     pub request_id: Option<i32>,
     /// The actor's rank, read under the lock.
     pub actor_rank: Option<u8>,
@@ -247,6 +271,26 @@ pub(super) struct ActionRow {
 }
 
 impl ActionRow {
+    /// Fill the actor's names from their session (by `player_id`).
+    pub(super) fn name_actor(&mut self, ctx: &OrgCtx<'_>) {
+        if let Some(player_id) = self.player_id {
+            let id = identity_of_player(ctx, player_id);
+            self.account_name = id.account_name;
+            self.player_name = id.player_name;
+        }
+    }
+
+    /// Fill the target's names from their online session (by
+    /// `target_player_id`), keeping a `target_player_name` already set from
+    /// a row the caller read (an offline member has no session).
+    pub(super) fn name_target(&mut self, ctx: &OrgCtx<'_>) {
+        if let Some(player_id) = self.target_player_id {
+            let id = identity_of_player(ctx, player_id);
+            self.target_account_name = id.account_name;
+            self.target_player_name = id.player_name.or(self.target_player_name);
+        }
+    }
+
     /// The `ok` row. `after` names what the action did.
     pub(super) fn ok(&self, after: &'static str) {
         self.emit(self.event, "ok", None, Some(after));
@@ -280,13 +324,19 @@ impl ActionRow {
             reason,
             after,
             account_id = self.account_id,
+            account_name = self.account_name,
             player_id = self.player_id,
+            player_name = self.player_name,
             entity_id = self.entity_id,
+            entity_name = self.player_name,
             org_id = self.org_id,
+            org_name = self.org_name,
             org_type = self.org_type,
             target_account_id = self.target_account_id,
+            target_account_name = self.target_account_name,
             target_player_id = self.target_player_id,
-            request_id = self.request_id,
+            target_player_name = self.target_player_name,
+            request_id = self.request_id, // nt:id-only base-local invite counter, nothing to name
             actor_rank = self.actor_rank,
             target_rank = self.target_rank,
             to_rank = self.to_rank,
