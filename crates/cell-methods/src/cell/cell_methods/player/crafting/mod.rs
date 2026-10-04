@@ -46,6 +46,7 @@ pub async fn dispatch(
                 event = "malformed",
                 entity_id,
                 method_index,
+                method_name = cimmeria_wire::names::player_cell_method(method_index),
                 args_len = args.len(),
                 ?error,
                 "crafting request arguments did not parse; dropped"

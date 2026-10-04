@@ -31,6 +31,7 @@ mod ack_budget;
 mod build;
 mod fragmenting;
 mod legacy;
+mod message_head;
 mod parse;
 
 #[cfg(test)]
@@ -60,6 +61,7 @@ pub use fragmenting::{
     fragment_count, plan_fragments, server_message_framing, FragmentPlan, ServerMessageFraming,
 };
 pub use legacy::{Packet, PacketFlags};
+pub use message_head::{first_message_head, MessageHead};
 pub use parse::parse_incoming;
 
 // ── Flag byte constants (C++ packet.hpp) ────────────────────────────────────

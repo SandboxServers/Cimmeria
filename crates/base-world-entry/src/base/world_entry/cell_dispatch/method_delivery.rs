@@ -39,7 +39,14 @@ use super::super::super::helpers::{BundleSendOutcome, WitnessSendOutcome};
 use super::super::super::session_identity;
 use super::super::super::ConnectedClientState;
 use super::method_join;
-use crate::wire_log::client_names::outbound_method_name;
+use cimmeria_wire::names::entity_client_method;
+
+/// The name of `method_index` on the entity, for the `method` field the
+/// cell's `wire_sent` row joins on: `"unknown"` where `method_name` is left
+/// out (a mob's or pet's 27-31, where the player table names another method).
+fn method_label(entity_is_player: bool, method_index: u16) -> &'static str {
+    entity_client_method(entity_is_player, method_index).unwrap_or("unknown")
+}
 
 /// The methods whose successful send is logged too (`client_sent`): the
 /// ability messages a cast's accounting joins on. Kept small so routine
@@ -59,6 +66,7 @@ pub(super) fn log_method_deferred(
     outcome: DeferOutcome,
     recipient_id: u32,
     entity_id: u32,
+    entity_is_player: bool,
     method_index: u16,
     why: &'static str,
 ) {
@@ -66,8 +74,9 @@ pub(super) fn log_method_deferred(
         DeferOutcome::Buffered { depth } => tracing::debug!(
             target: "base.entity_method",
             event = "client_send_buffered",
-            method = outbound_method_name(method_index),
+            method = method_label(entity_is_player, method_index),
             method_index,
+            method_name = entity_client_method(entity_is_player, method_index),
             recipient_id,
             entity_id,
             depth,
@@ -77,8 +86,9 @@ pub(super) fn log_method_deferred(
         DeferOutcome::BufferFull => tracing::warn!(
             target: "base.entity_method",
             event = "client_send_dropped",
-            method = outbound_method_name(method_index),
+            method = method_label(entity_is_player, method_index),
             method_index,
+            method_name = entity_client_method(entity_is_player, method_index),
             recipient_id,
             entity_id,
             reason = "deferred_buffer_full",
@@ -88,8 +98,9 @@ pub(super) fn log_method_deferred(
         DeferOutcome::SessionGone => tracing::debug!(
             target: "base.entity_method",
             event = "client_send_dropped",
-            method = outbound_method_name(method_index),
+            method = method_label(entity_is_player, method_index),
             method_index,
+            method_name = entity_client_method(entity_is_player, method_index),
             recipient_id,
             entity_id,
             reason = "client_disconnected",
@@ -191,6 +202,7 @@ pub(super) fn log_method_outcome(
     outcome: WitnessSendOutcome,
     recipient_id: u32,
     entity_id: u32,
+    entity_is_player: bool,
     method_index: u16,
     args: &[u8],
     connected: &Arc<Mutex<HashMap<SocketAddr, ConnectedClientState>>>,
@@ -206,8 +218,9 @@ pub(super) fn log_method_outcome(
                     target: "abilities.wire",
                     event = "client_sent",
                     stage = "wire",
-                    method = outbound_method_name(method_index),
+                    method = method_label(entity_is_player, method_index),
                     method_index,
+                    method_name = entity_client_method(entity_is_player, method_index),
                     recipient_id,
                     entity_id,
                     account_id = who.account_id,
@@ -240,8 +253,9 @@ pub(super) fn log_method_outcome(
                 tracing::warn!(
                     target: "base.entity_method",
                     event = "client_send_dropped",
-                    method = outbound_method_name(method_index),
+                    method = method_label(entity_is_player, method_index),
                     method_index,
+                    method_name = entity_client_method(entity_is_player, method_index),
                     recipient_id,
                     entity_id,
                     account_id = who.account_id,
@@ -254,8 +268,9 @@ pub(super) fn log_method_outcome(
                 tracing::debug!(
                     target: "base.entity_method",
                     event = "client_send_dropped",
-                    method = outbound_method_name(method_index),
+                    method = method_label(entity_is_player, method_index),
                     method_index,
+                    method_name = entity_client_method(entity_is_player, method_index),
                     recipient_id,
                     entity_id,
                     account_id = who.account_id,

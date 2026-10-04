@@ -195,6 +195,7 @@ async fn send_to_self_and_witnesses(
                 target_player_id = to.other_player_id,
                 witness_id,
                 method_index,
+                method_name = cimmeria_wire::names::player_client_method(method_index),
                 duel_id,
                 reason = "cell_to_base_closed",
                 "duel client method could not be queued to a witness"
@@ -229,6 +230,7 @@ async fn send(
             entity_id = to.entity_id,
             target_player_id = to.other_player_id,
             method_index,
+            method_name = cimmeria_wire::names::player_client_method(method_index),
             duel_id,
             reason = "cell_to_base_closed",
             "duel client method could not be queued to the base"

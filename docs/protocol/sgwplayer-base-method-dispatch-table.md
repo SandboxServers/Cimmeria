@@ -15,7 +15,10 @@ the base-method constants in `cimmeria-wire::base` are checked against the
 flattened exposed BaseMethods. So is `cimmeria_wire::base::names::base_method_name`,
 the index-to-name table the base plugin registry (#962 step 5,
 [plugin-architecture.md §4.5](../architecture/plugin-architecture.md#45-step-5-the-baseplugin-core-and-crafting))
-uses to refuse a registration for an index that is not in this table.
+uses to refuse a registration for an index that is not in this table. It reads
+the `cimmeria_wire::names` table generated from `entities/defs/`, and
+`names::doc_conformance` checks every row of this page (index, wire byte and
+method) against it.
 
 ## Wire Encoding
 

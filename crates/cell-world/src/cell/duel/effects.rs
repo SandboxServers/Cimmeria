@@ -163,6 +163,7 @@ async fn send(
             player_id = id.player_id,
             entity_id,
             method_index,
+            method_name = cimmeria_wire::names::player_client_method(method_index),
             reason = "cell_to_base_closed",
             "duel effect cleanup could not be queued to the base"
         );

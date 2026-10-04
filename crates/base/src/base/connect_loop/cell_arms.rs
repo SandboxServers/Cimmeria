@@ -11,6 +11,7 @@ use std::ops::ControlFlow;
 use std::sync::{Arc, Mutex};
 
 use cimmeria_mercury::transport::Transport;
+use cimmeria_wire::names;
 use sqlx::PgPool;
 use tokio::sync::mpsc;
 
@@ -69,7 +70,13 @@ pub(super) async fn dispatch_cell_method(
         clients.get(&addr).and_then(|c| c.player_entity_id)
     };
     let Some(player_eid) = player_eid else {
-        tracing::trace!(%addr, msg_id = format_args!("{:#04x}", id), "Cell method before world entry -- ignored");
+        tracing::trace!(
+            %addr,
+            msg_id = format_args!("{:#04x}", id),
+            msg_name = names::server_msg_name(id),
+            method_name = names::player_inbound_method(id, payload),
+            "Cell method before world entry -- ignored"
+        );
         return ControlFlow::Continue(());
     };
 
@@ -77,6 +84,8 @@ pub(super) async fn dispatch_cell_method(
         tracing::trace!(
             %addr,
             msg_id = format_args!("{:#04x}", id),
+            msg_name = names::server_msg_name(id),
+            method_name = names::player_inbound_method(id, payload),
             "Ignoring cell method until mapLoaded arrives"
         );
         return ControlFlow::Break(());
@@ -84,7 +93,16 @@ pub(super) async fn dispatch_cell_method(
 
     // Strip 4-byte entityId prefix (always present per entity_message_handler.cpp:18-20)
     if payload.len() < 4 {
-        tracing::warn!(%addr, msg_id = format_args!("{:#04x}", id), payload_len = payload.len(), "Cell method payload too short for entityId prefix");
+        // `method_name` is absent for the 0xBD sub-slot, whose index is in
+        // the bytes this payload is too short for.
+        tracing::warn!(
+            %addr,
+            msg_id = format_args!("{:#04x}", id),
+            msg_name = names::server_msg_name(id),
+            method_name = names::player_inbound_method(id, payload),
+            payload_len = payload.len(),
+            "Cell method payload too short for entityId prefix"
+        );
         return ControlFlow::Break(());
     }
     let entity_id_from_client =
@@ -106,6 +124,7 @@ pub(super) async fn dispatch_cell_method(
                 entity_id = entity_id_from_client,
                 sub_index,
                 method_index,
+                method_name = names::player_cell_method(method_index),
                 payload_hex = %payload[..payload.len().min(12)].iter().map(|b| format!("{:02x}", b)).collect::<String>(),
                 "Extended cell method (0xBD)"
             );

@@ -42,6 +42,7 @@ One line per topic file; the detail lives in the file. Keep hooks short (this in
 
 ## Wire format
 
+- [wire-names-generated-tables.md](wire-names-generated-tables.md) — `cimmeria_wire::names` is generated from defs (regen cmd), doc-checked; naming rules for unknown entity types.
 - [gm-tail-dispatch-doc-filename-trap.md](gm-tail-dispatch-doc-filename-trap.md) — client- vs cell-method dispatch tables are different files; GM tail is `109 + K`.
 - [method-idx-duplicate-table-drift.md](method-idx-duplicate-table-drift.md) — `cell/client_methods/` is authoritative; `mercury::method_idx` is a drifted partial copy; `def_conformance` guards both (#801).
 - [read-wstring-offset-semantic.md](read-wstring-offset-semantic.md) — `read_wstring` returns bytes consumed: `offset += n`, never `offset = n`.

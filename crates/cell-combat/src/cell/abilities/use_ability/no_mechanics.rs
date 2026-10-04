@@ -219,6 +219,7 @@ pub(super) async fn send_ability_refusal(
                 entity_id,
                 ability_id,
                 method_index,
+                method_name = cimmeria_wire::names::player_client_method(method_index),
                 "useAbility: the no-effect feedback could not be queued (base channel closed)"
             );
         } else {

@@ -70,22 +70,28 @@ pub enum OrgCellCall {
 }
 
 impl OrgCellCall {
-    /// The `.def` method name, for logs.
-    pub fn method_name(&self) -> &'static str {
+    /// The cell-method index the call arrived as.
+    pub fn method_index(&self) -> u16 {
         match self {
-            OrgCellCall::InviteResponse { .. } => "organizationInviteResponse",
-            OrgCellCall::Leave { .. } => "organizationLeave",
-            OrgCellCall::BroadcastMinimapPing { .. } => "BroadcastMinimapPing",
-            OrgCellCall::StrikeTeamResponse { .. } => "strikeTeamResponse",
-            OrgCellCall::PvpLeaveResponse { .. } => "pvpOrganizationLeaveResponse",
-            OrgCellCall::Motd { .. } => "organizationMOTD",
-            OrgCellCall::Note { .. } => "organizationNote",
-            OrgCellCall::OfficerNote { .. } => "organizationOfficerNote",
-            OrgCellCall::SetRankPermissions { .. } => "organizationSetRankPermissions",
-            OrgCellCall::SetRankName { .. } => "organizationSetRankName",
-            OrgCellCall::SquadSetLootMode { .. } => "squadSetLootMode",
-            OrgCellCall::TransferCash { .. } => "organizationTransferCash",
+            OrgCellCall::InviteResponse { .. } => INVITE_RESPONSE,
+            OrgCellCall::Leave { .. } => LEAVE,
+            OrgCellCall::BroadcastMinimapPing { .. } => BROADCAST_MINIMAP_PING,
+            OrgCellCall::StrikeTeamResponse { .. } => STRIKE_TEAM_RESPONSE,
+            OrgCellCall::PvpLeaveResponse { .. } => PVP_LEAVE_RESPONSE,
+            OrgCellCall::Motd { .. } => MOTD,
+            OrgCellCall::Note { .. } => NOTE,
+            OrgCellCall::OfficerNote { .. } => OFFICER_NOTE,
+            OrgCellCall::SetRankPermissions { .. } => SET_RANK_PERMISSIONS,
+            OrgCellCall::SetRankName { .. } => SET_RANK_NAME,
+            OrgCellCall::SquadSetLootMode { .. } => SQUAD_SET_LOOT_MODE,
+            OrgCellCall::TransferCash { .. } => TRANSFER_CASH,
         }
+    }
+
+    /// The `.def` method name, for logs, from the generated table
+    /// (`crate::names`).
+    pub fn method_name(&self) -> &'static str {
+        crate::names::player_cell_method(self.method_index()).unwrap_or("unknown")
     }
 
     /// The organization id the call names, if it carries one. CM 8 carries

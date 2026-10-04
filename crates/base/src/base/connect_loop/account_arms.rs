@@ -185,7 +185,18 @@ pub(super) async fn dispatch_base_method(
             tracing::debug!(%addr, "Client sent onClientVersion -- acknowledged");
         }
         _ => {
-            tracing::trace!(%addr, msg_id = format_args!("{:#04x}", id), "Unhandled Account base method");
+            tracing::trace!(
+                %addr,
+                msg_id = format_args!("{:#04x}", id),
+                msg_name = cimmeria_wire::names::server_msg_name(id),
+                method_name = cimmeria_wire::names::inbound_method(
+                    cimmeria_wire::names::ACCOUNT_CLASS_ID,
+                    id,
+                    payload
+                ),
+                entity_type = "Account",
+                "Unhandled Account base method"
+            );
         }
     }
     Ok(())

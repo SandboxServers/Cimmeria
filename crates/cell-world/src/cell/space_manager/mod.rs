@@ -53,6 +53,7 @@ mod lab_snapshots;
 mod lifecycle;
 mod live_tags;
 mod loot_lists;
+mod method_names;
 mod movement_telemetry;
 mod navmesh_containment;
 pub mod npc_identity;

@@ -263,6 +263,7 @@ pub(super) async fn entity_method_call(
     tracing::debug!(
         entity_id,
         method_index,
+        method_name = cimmeria_wire::names::player_client_method(method_index),
         args_len = args.len(),
         "CellService->client entity method call"
     );
@@ -296,6 +297,7 @@ pub(super) async fn entity_method_call(
         outcome,
         entity_id,
         entity_id,
+        true,
         method_index,
         &args,
         connected,
@@ -319,6 +321,11 @@ pub(super) async fn witness_entity_method(
         witness_id,
         entity_id,
         method_index,
+        method_name = if entity_is_player {
+            cimmeria_wire::names::player_client_method(method_index)
+        } else {
+            cimmeria_wire::names::any_entity_client_method(method_index)
+        },
         entity_is_player,
         "Broadcast entity method to witness"
     );
@@ -361,6 +368,7 @@ pub(super) async fn witness_entity_method(
         outcome,
         witness_id,
         entity_id,
+        entity_is_player,
         method_index,
         &args,
         connected,

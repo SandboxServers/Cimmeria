@@ -85,6 +85,7 @@ pub async fn dispatch(
                 event = "org.cell_method_malformed",
                 entity_id,
                 method_index,
+                method_name = cimmeria_wire::names::player_cell_method(method_index),
                 reason = e.reason(),
                 error = %e,
                 "organization cell method payload did not decode"

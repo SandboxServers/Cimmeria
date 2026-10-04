@@ -161,6 +161,7 @@ pub async fn handle_set_text(
                     what = "officer_note",
                     org_id,
                     method_index = ON_ORGANIZATION_OFFICER_NOTE_UPDATE,
+                    method_name = cimmeria_wire::names::player_client_method(ON_ORGANIZATION_OFFICER_NOTE_UPDATE),
                     required = OrgPermission::OFFICER_NOTES.bits(),
                     holders = d.holders.len(),
                     online_members = online.len(),

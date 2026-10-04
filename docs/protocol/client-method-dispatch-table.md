@@ -25,8 +25,11 @@ last_updated: 2026-09-27
 > direction.
 > **Verified continuously** by `cimmeria-wire`'s `mercury::def_conformance` ([crates/wire/src/mercury/def_conformance/](../../crates/wire/src/mercury/def_conformance/), #801): it replays the flattening rule
 > below over `entities/defs/` in CI and fails on any constant that drifts from it
-> (`method_idx`, the per-interface tables, the SGWMob and SGWPet indices, and the
-> `wire-log` name table).
+> (`method_idx`, the per-interface tables, the SGWMob and SGWPet indices). The
+> log-name tables in `cimmeria_wire::names` are generated from the same flattener,
+> and `names::doc_conformance` checks every row of this page against them: a row
+> whose index and method disagree with the generated table fails CI with this
+> file's line number (NT-30, named telemetry).
 > **Total methods**: 157 (indices 0–156)
 > **Encoding**: Methods 0–60 use direct wire encoding (`msg_id = 0x80 + index`);
 > methods 61+ use extended encoding (`msg_id = 0xBD`, sub-byte = `index - 61`).
@@ -507,6 +510,26 @@ internal property-list lookup key matches its `.def` `<ArgName>` string exactly 
 `GamePet__OnPetStanceUpdateChanged` (`0x00d3a260`) keys on `"aStance"` — i.e. this confirms
 which method each decompiled handler implements, not that the flattening rule assigned it the
 number claimed above.
+
+## SGWGmPlayer Client Method Dispatch Table
+
+> **Entity type**: SGWGmPlayer (`class_id = 0x03`), the class a GM account's player is created as.
+> **Total methods**: 163 (indices 0-162). `SGWGmPlayer.def` declares `<Parent>SGWPlayer</Parent>`
+> with an empty `<Implements>`, so its own six `<ClientMethods>` append after SGWPlayer's 157 and
+> nothing before them renumbers. The idbase stays 61, so all six use the extended encoding
+> (`0xBD`, sub-byte = `index - 61`).
+
+| Index | Method | Args |
+|-------|--------|------|
+| 0-156 | *(SGWPlayer — see the table above)* | — |
+| 157 | `onLOSResult` | `VECTOR3 aStart, VECTOR3 aEnd, INT8 aClear` |
+| 158 | `onShowWaypoints` | `WSTRING pointSetName, FLOAT radius, WaypointList wayPoints` |
+| 159 | `onShowPath` | `INT32 aEntityId, UINT8 aMovementType, ARRAY<VECTOR3> aPath` |
+| 160 | `onDisableShowPath` | `INT32 aEntityId` |
+| 161 | `onSetTarget` | `INT32 aEntityId` |
+| 162 | `onShowNavigation` | `WSTRING aChunkName, ARRAY<NavigationPolygon> aNavPolyList` |
+
+Extended encoding: sub-bytes 96-101. Source: `entities/defs/SGWGmPlayer.def` `<ClientMethods>`.
 
 ## Derivation
 

@@ -341,7 +341,10 @@ Example: playCharacter (0xC4 = base method index 4 | 0xC0)
 - C++ source: `deprecated/cpp/src/baseapp/mercury/sgw/messages.hpp` and `messages.cpp`
 - Rust source: the message-ID constants in `crates/wire/src/mercury/mod.rs`
   and `crates/wire/src/mercury/aoi/mod.rs`; the inbound length table in
-  `crates/base/src/base/connect_loop/encrypted/mod.rs`.
+  `crates/base/src/base/connect_loop/encrypted/mod.rs`; the log names of both
+  interface tables in `crates/wire/src/names/messages.rs`, which
+  `names::doc_conformance` checks against every row of this page (the Account
+  method rows included, against the tables generated from `Account.def`).
   (`crates/mercury/src/messages.rs` is **not** the registry for these IDs — its
   `MsgId` enum is self-declared placeholder values and matches nothing in this
   table.)

@@ -297,6 +297,7 @@ pub async fn toggle_from_cell_method(
         event = "gm_command",
         cmd,
         method_index,
+        method_name = cimmeria_wire::names::player_cell_method(method_index),
         entity_id,
         account_id = who.account_id,
         player_id = who.player_id,

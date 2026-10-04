@@ -75,6 +75,7 @@ impl BmNet<'_> {
             entity_id,
             method = name,
             method_index = method,
+            method_name = cimmeria_wire::names::player_client_method(method),
             auction_id,
             rows,
             payload_bytes = args.len(),

@@ -192,6 +192,7 @@ async fn send_line(
             player_id,
             entity_id,
             method_index,
+            method_name = cimmeria_wire::names::player_client_method(method_index),
             reason,
             "crafting refusal line not sent -- the player sees nothing for this press"
         );

@@ -202,7 +202,7 @@ A `packet` clause asserts what crossed the wire, as the server decoded it. When 
 
 | Field | Meaning |
 |---|---|
-| `message` | The message name as the tap decodes it (its `msg_name`, the dispatch-table name); case does not matter |
+| `message` | The message name as the tap decodes it (the tap row's `msg_name`: the method for an entity call, else the Mercury message name, the dispatch-table name either way); case does not matter. This is not the `wire.in` log field of the same name, which holds only the Mercury message name and puts the method in `method_name` |
 | `direction` | `to_client` (the server sent it) or `to_server` (the client sent it) |
 | `entity` | Only messages sent for this entity (an outbound row's `target_entity_id`): a number or a `${var}`, usually `"${player_entity_id}"` |
 | `match_fields` | Only messages whose decoded fields (or tap columns) equal these, numbers numerically: `{ dead = true }` counts the state-field updates that set the dead bit |

@@ -18,6 +18,7 @@ use cimmeria_entity::manager::EntityManager;
 use cimmeria_mercury::channel::RxDelivery;
 use cimmeria_mercury::encryption::MercuryEncryption;
 use cimmeria_mercury::packet::{parse_incoming, ParsedPacket};
+use cimmeria_wire::names;
 
 use crate::cell::messages::BaseToCellMsg;
 
@@ -143,7 +144,7 @@ pub(crate) async fn handle_encrypted_datagram(
     // for the client's retransmit, a retransmitted duplicate (our ACK was
     // lost) is dropped instead of being dispatched a second time, and
     // unreliable packets (movement) go straight through.
-    let Some(delivery) = receive_in_order(connected, addr, pkt) else {
+    let Some((delivery, class_id)) = receive_in_order(connected, addr, pkt) else {
         return Ok(());
     };
     if let Some(seq) = delivery.ack {
@@ -158,6 +159,7 @@ pub(crate) async fn handle_encrypted_datagram(
         dispatch_client_bundle(
             body,
             packet_seq,
+            class_id,
             transport,
             addr,
             key,
@@ -184,7 +186,7 @@ fn receive_in_order(
     connected: &Arc<Mutex<HashMap<SocketAddr, ConnectedClientState>>>,
     addr: SocketAddr,
     pkt: ParsedPacket,
-) -> Option<RxDelivery> {
+) -> Option<(RxDelivery, u8)> {
     let clients = connected.lock().ok()?;
     let Some(state) = clients.get(&addr) else {
         tracing::debug!(
@@ -196,7 +198,7 @@ fn receive_in_order(
     };
     let mut channel = state.channel.lock().ok()?;
     match channel.receive_parsed(pkt) {
-        Ok(delivery) => Some(delivery),
+        Ok(delivery) => Some((delivery, session_class::session_class_id(state))),
         Err(e) => {
             tracing::warn!(
                 %addr,
@@ -214,6 +216,9 @@ fn receive_in_order(
 async fn dispatch_client_bundle(
     body: &[u8],
     packet_seq: Option<u32>,
+    // The clientIndex of the session's entity, read by the receive gate:
+    // it decides what a base method id (0xC0+) means in the logs below.
+    class_id: u8,
     transport: &Arc<dyn Transport>,
     addr: SocketAddr,
     key: [u8; 32],
@@ -264,14 +269,14 @@ async fn dispatch_client_bundle(
         let payload = match payload_result {
             Some(p) => p,
             None => {
-                tracing::trace!(%addr, msg_id = format_args!("{:#04x}", msg_id), "Bundle truncated");
+                tracing::trace!(%addr, msg_id = format_args!("{:#04x}", msg_id), msg_name = names::server_msg_name(msg_id), entity_type = names::class_name(class_id), "Bundle truncated");
                 break;
             }
         };
 
-        tracing::debug!(%addr, msg_id = format_args!("{:#04x}", msg_id), payload_len = payload.len(), "Client bundle message");
+        tracing::debug!(%addr, msg_id = format_args!("{:#04x}", msg_id), msg_name = names::server_msg_name(msg_id), method_name = names::inbound_method(class_id, msg_id, payload), entity_type = names::class_name(class_id), payload_len = payload.len(), "Client bundle message");
 
-        crate::wire_log::log_inbound(addr, msg_id, payload);
+        crate::wire_log::log_inbound(addr, class_id, msg_id, payload);
 
         // Dispatch message.
         //
@@ -561,7 +566,7 @@ async fn dispatch_client_bundle(
                 }
             }
             _ => {
-                tracing::trace!(%addr, msg_id = format_args!("{:#04x}", msg_id), payload_len = payload.len(), "Unhandled client message");
+                tracing::trace!(%addr, msg_id = format_args!("{:#04x}", msg_id), msg_name = names::server_msg_name(msg_id), method_name = names::inbound_method(class_id, msg_id, payload), entity_type = names::class_name(class_id), payload_len = payload.len(), "Unhandled client message");
             }
         }
     }
@@ -667,6 +672,7 @@ fn parse_request_entity_update(payload: &[u8]) -> Vec<u32> {
 }
 
 mod decrypt_reject;
+mod session_class;
 
 #[cfg(test)]
 mod cache_routing_tests;

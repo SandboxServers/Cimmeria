@@ -47,15 +47,25 @@ pub enum CraftVerb {
 }
 
 impl CraftVerb {
-    /// The client method name, for logs.
-    pub fn method_name(&self) -> &'static str {
+    /// The cell-method index the verb arrived as (95-100).
+    pub fn method_index(&self) -> u16 {
+        use crate::cell::cell_methods::player::{
+            ALLOYING, CRAFT, RESEARCH, RESPEC_CRAFTING, REVERSE_ENGINEER,
+            SPEND_APPLIED_SCIENCE_POINTS,
+        };
         match self {
-            CraftVerb::Spend { .. } => "spendAppliedSciencePoints",
-            CraftVerb::Craft { .. } => "craft",
-            CraftVerb::Research { .. } => "research",
-            CraftVerb::ReverseEngineer { .. } => "reverseEngineer",
-            CraftVerb::Alloy { .. } => "alloying",
-            CraftVerb::Respec => "respecCrafting",
+            CraftVerb::Spend { .. } => SPEND_APPLIED_SCIENCE_POINTS,
+            CraftVerb::Craft { .. } => CRAFT,
+            CraftVerb::Research { .. } => RESEARCH,
+            CraftVerb::ReverseEngineer { .. } => REVERSE_ENGINEER,
+            CraftVerb::Alloy { .. } => ALLOYING,
+            CraftVerb::Respec => RESPEC_CRAFTING,
         }
+    }
+
+    /// The client method name, for logs and the crafting `verb` label, from
+    /// the generated table (`crate::names`).
+    pub fn method_name(&self) -> &'static str {
+        crate::names::player_cell_method(self.method_index()).unwrap_or("unknown")
     }
 }

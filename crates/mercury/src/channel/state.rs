@@ -7,7 +7,7 @@
 
 use std::time::Instant;
 
-use crate::packet::{Packet, ParsedPacket};
+use crate::packet::{MessageHead, Packet, ParsedPacket};
 
 // ── Channel state ───────────────────────────────────────────────────────────
 
@@ -25,6 +25,19 @@ pub enum ChannelState {
 }
 
 // ── Per-packet TX metadata ──────────────────────────────────────────────────
+
+/// A sent packet's first message, identified and named by the service
+/// (`cimmeria_wire::names`; the transport has no method tables and no
+/// session key). Built only when the transmit-hole watchdog warns.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub struct MessageNames {
+    /// Its Mercury message id.
+    pub msg_id: Option<u8>,
+    /// The Mercury message name (`createEntity`, or `entityMethod`).
+    pub msg_name: Option<&'static str>,
+    /// The entity method, for an entity method call.
+    pub method_name: Option<&'static str>,
+}
 
 /// Bookkeeping for a packet sitting in the transmit window awaiting ACK.
 #[derive(Debug, Clone)]
@@ -55,6 +68,10 @@ pub struct TxEntry {
     pub fragment_count: Option<usize>,
     /// Message count in a bundled witness send.
     pub message_count: Option<usize>,
+    /// The message the packet's body starts in, recorded at send time only
+    /// for a fragment past the first of a bundle (its body starts inside the
+    /// stream); any other packet's is read from `raw_bytes` on a stall.
+    pub first_message: Option<MessageHead>,
     /// Most retransmits this entry gets before the channel gives up on
     /// it and drops it from the window unacked. `None` (every ordinary
     /// reliable packet) resends until acked. Set through

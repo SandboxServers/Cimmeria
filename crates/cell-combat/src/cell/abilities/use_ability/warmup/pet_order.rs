@@ -196,6 +196,7 @@ async fn send_order_feedback(
                 account_id = summoner.account_id,
                 player_id = summoner.player_id,
                 method_index,
+                method_name = cimmeria_wire::names::player_client_method(method_index),
                 reason = "feedback_send_failed",
                 "pet order feedback could not be queued (base channel closed)"
             );

@@ -6,6 +6,9 @@ use std::collections::HashMap;
 use std::net::SocketAddr;
 use std::sync::{Arc, Mutex};
 
+use cimmeria_mercury::channel::{MessageNames, TxEntry};
+use cimmeria_mercury::packet::MessageHead;
+
 use super::ConnectedClientState;
 
 /// Register an outgoing reliable packet's sequence number AND its
@@ -66,6 +69,8 @@ pub(super) struct ReliableSendDetails {
     pub(super) kind: &'static str,
     pub(super) fragment: Option<(usize, usize)>,
     pub(super) message_count: Option<usize>,
+    /// The message the packet's body starts in, for `mercury.tx_hole`.
+    pub(super) first_message: Option<MessageHead>,
 }
 
 impl Default for ReliableSendDetails {
@@ -74,7 +79,53 @@ impl Default for ReliableSendDetails {
             kind: "direct",
             fragment: None,
             message_count: None,
+            first_message: None,
         }
+    }
+}
+
+/// Identify and name the first message of a stalled packet for the
+/// `mercury.tx_hole` WARN, which the transport cannot do itself. Called only
+/// on a tick that warns, with the session table locked. A later fragment of
+/// a bundle carries the head its plan recorded; any other packet starts at a
+/// message boundary, so its retained bytes are decrypted with the session key
+/// and its head read at body offset 0 (a non-bundle fragment past the first
+/// starts mid-stream and stays unnamed).
+pub(super) fn name_stalled_entry(
+    clients: &HashMap<SocketAddr, ConnectedClientState>,
+    enc: &cimmeria_mercury::encryption::MercuryEncryption,
+    entry: &TxEntry,
+) -> MessageNames {
+    let head = entry.first_message.or_else(|| {
+        let plaintext = enc.decrypt(&entry.raw_bytes).ok()?;
+        let packet = cimmeria_mercury::packet::parse_incoming(&plaintext).ok()?;
+        let continuation = packet.frag_begin.is_some_and(|b| Some(b) != packet.seq_id);
+        if continuation {
+            return None;
+        }
+        cimmeria_mercury::packet::first_message_head(&packet.body)
+    });
+    head.map_or_else(MessageNames::default, |h| name_stalled_message(clients, &h))
+}
+
+/// Name one message head: an entity method on a player (the witness itself,
+/// or any entity some session plays) reads the player table; on anything
+/// else, the name every in-world type agrees on (a mob's or pet's 27-31 stay
+/// unnamed).
+pub(super) fn name_stalled_message(
+    clients: &HashMap<SocketAddr, ConnectedClientState>,
+    head: &MessageHead,
+) -> MessageNames {
+    let method_name = head.method_index.and_then(|index| {
+        let is_player = head
+            .entity_id
+            .is_some_and(|entity| clients.values().any(|c| c.player_entity_id == Some(entity)));
+        cimmeria_wire::names::entity_client_method(is_player, index)
+    });
+    MessageNames {
+        msg_id: Some(head.msg_id),
+        msg_name: cimmeria_wire::names::client_msg_name(head.msg_id),
+        method_name,
     }
 }
 
@@ -124,6 +175,7 @@ pub(super) fn shadow_register_reliable_send_with_details(
         details.kind,
         details.fragment,
         details.message_count,
+        details.first_message,
     );
     let (fragment_index, fragment_count) = details.fragment.unzip();
     let packet_max_size = cimmeria_mercury::consts::PACKET_MAX_SIZE;

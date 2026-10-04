@@ -113,6 +113,7 @@ pub(super) async fn relay_to_squad(
                 event = "squad.send_failed",
                 entity_id = eid,
                 method_index = ON_PLAYER_COMMUNICATION,
+                method_name = cimmeria_wire::names::player_client_method(ON_PLAYER_COMMUNICATION),
                 squad_id = squad.id(),
                 reason = "cell_to_base_closed",
                 "squad chat line could not be queued"

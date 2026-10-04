@@ -107,6 +107,8 @@ pub(super) async fn handle_org_base_method(
                 event = "org.base_method_malformed",
                 %addr,
                 msg_id = format_args!("{msg_id:#04x}"),
+                msg_name = cimmeria_wire::names::server_msg_name(msg_id),
+                method_name = cimmeria_wire::names::player_inbound_method(msg_id, payload),
                 account_id,
                 player_id,
                 entity_id,
@@ -126,7 +128,9 @@ pub(super) async fn handle_org_base_method(
             event = "org.base_method_no_player",
             %addr,
             msg_id = format_args!("{msg_id:#04x}"),
+            msg_name = cimmeria_wire::names::server_msg_name(msg_id),
             method = call.method_name(),
+            method_name = call.method_name(),
             account_id,
             "organization base method from a session with no player entity"
         );
@@ -202,7 +206,9 @@ pub(super) async fn handle_org_base_method(
                 event = "org.base_method_unimplemented",
                 %addr,
                 msg_id = format_args!("{msg_id:#04x}"),
+                msg_name = cimmeria_wire::names::server_msg_name(msg_id),
                 method = call.method_name(),
+                method_name = call.method_name(),
                 account_id,
                 player_id,
                 entity_id,

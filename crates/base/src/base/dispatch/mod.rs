@@ -114,7 +114,13 @@ pub(crate) mod sgw_player_base {
     name = "base.player_method",
     level = "debug",
     skip_all,
-    fields(peer = %addr, msg_id, payload_len = payload.len()),
+    fields(
+        peer = %addr,
+        msg_id,
+        msg_name = cimmeria_wire::names::server_msg_name(msg_id),
+        method_name = cimmeria_wire::names::player_inbound_method(msg_id, payload),
+        payload_len = payload.len()
+    ),
 )]
 #[allow(clippy::too_many_arguments)]
 pub(crate) async fn dispatch_sgw_player_base_method(
@@ -281,6 +287,8 @@ pub(crate) async fn dispatch_sgw_player_base_method(
                 %addr,
                 msg_id = format_args!("{:#04x}", msg_id),
                 base_method_index = msg_id.wrapping_sub(0xC0),
+                msg_name = cimmeria_wire::names::server_msg_name(msg_id),
+                method_name = cimmeria_wire::names::player_inbound_method(msg_id, payload),
                 "Unhandled SGWPlayer base method -- no registered handler for this index; client behaviour may diverge silently"
             );
         }

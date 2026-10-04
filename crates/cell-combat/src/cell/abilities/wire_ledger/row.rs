@@ -18,6 +18,7 @@ macro_rules! wire_row {
             delivery = "queued_to_base",
             method = $c.method,
             method_index = $c.method_index,
+            method_name = $c.method_name,
             origin = $c.origin,
             entity_id = $c.entity_id,
             account_id = $c.account_id,
@@ -35,8 +36,11 @@ macro_rules! wire_row {
 
 /// The fields every row shares.
 struct Common {
+    /// The ledger's closed label: the decoded methods, else `"other"`.
     method: &'static str,
     method_index: u16,
+    /// The method's name on this entity's type, for every index.
+    method_name: Option<&'static str>,
     origin: &'static str,
     entity_id: u32,
     account_id: Option<u32>,
@@ -98,6 +102,10 @@ pub(super) fn emit(
     let c = Common {
         method: method_name(method_index),
         method_index,
+        method_name: space_mgr.map_or_else(
+            || cimmeria_wire::names::any_entity_client_method(method_index),
+            |m| m.client_method_name(entity_id, method_index),
+        ),
         origin: ctx.origin,
         entity_id,
         account_id: who.account_id,

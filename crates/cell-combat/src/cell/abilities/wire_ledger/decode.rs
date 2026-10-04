@@ -136,23 +136,26 @@ fn f32_at(b: &[u8], at: usize) -> Option<f32> {
     Some(f32::from_le_bytes(b.get(at..at + 4)?.try_into().ok()?))
 }
 
-/// The client method's name for `method_index`, as the dispatch table
-/// spells it; `"other"` for a method this ledger does not decode.
+/// The client method's name for `method_index`, from the generated table
+/// (`cimmeria_wire::names`); `"other"` for a method this ledger does not
+/// decode, so the `method` field keeps its closed set of values.
 pub(crate) fn method_name(method_index: u16) -> &'static str {
     match method_index {
-        ON_SEQUENCE => "onSequence",
-        ON_TIMER_UPDATE => "onTimerUpdate",
-        ON_EFFECT_RESULTS => "onEffectResults",
-        ON_STATE_FIELD_UPDATE => "onStateFieldUpdate",
-        ON_STAT_UPDATE => "onStatUpdate",
-        ON_STAT_BASE_UPDATE => "onStatBaseUpdate",
-        ON_KNOWN_ABILITIES_UPDATE => "onKnownAbilitiesUpdate",
-        ON_ABILITY_TREE_INFO => "onAbilityTreeInfo",
-        ON_ERROR_CODE => "onErrorCode",
-        ON_PLAYER_COMMUNICATION => "onPlayerCommunication",
-        ON_TARGET_UPDATE => "onTargetUpdate",
-        INTERACTION_TYPE => "InteractionType",
-        ON_BEGIN_AID_WAIT => "onBeginAidWait",
+        ON_SEQUENCE
+        | ON_TIMER_UPDATE
+        | ON_EFFECT_RESULTS
+        | ON_STATE_FIELD_UPDATE
+        | ON_STAT_UPDATE
+        | ON_STAT_BASE_UPDATE
+        | ON_KNOWN_ABILITIES_UPDATE
+        | ON_ABILITY_TREE_INFO
+        | ON_ERROR_CODE
+        | ON_PLAYER_COMMUNICATION
+        | ON_TARGET_UPDATE
+        | INTERACTION_TYPE
+        | ON_BEGIN_AID_WAIT => {
+            cimmeria_wire::names::player_client_method(method_index).unwrap_or("other")
+        }
         _ => "other",
     }
 }

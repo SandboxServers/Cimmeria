@@ -151,6 +151,7 @@ pub async fn dispatch(
     fields(
         entity_id,
         method_index = method.index(),
+        method_name = cimmeria_wire::names::player_cell_method(method.index()),
         account_id = tracing::field::Empty,
         player_id = tracing::field::Empty
     )
