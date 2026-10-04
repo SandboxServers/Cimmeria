@@ -237,7 +237,8 @@ test('repair confirmation dismisses without mutation and duplicate confirm sends
  const commands:InstallRequest[]=[];
  const app=mountInstall(ui.document,async(_command,args)=>{const request=args!.request as InstallRequest;commands.push(request);
    if(request.command==='repair'){assert.equal(request.installation_id,'owner');assert.equal(request.confirmed,true);
-     status={...status,repair:{target:null,recovery:false,cleanup:true},native:{...status.native,operation:{schema_version:1,revision:2,operation:{id,kind:'repair',state:'succeeded',intent_digest:Array(32).fill(0)}}}};}
+     status={...status,repair:{target:null,recovery:false,cleanup:true,backup:'retained'},native:{...status.native,operation:{schema_version:1,revision:2,operation:{id,kind:'repair',state:'succeeded',intent_digest:Array(32).fill(0)}}}};}
+   if(request.command==='cleanup_repair')status={...status,repair:{...status.repair!,cleanup:false,backup:'removed'}};
    return status;
  },()=>id);
  try{await app.ready;await flush();ui.click('repair');assert.equal(ui.get('repair-directory').textContent,'/owned-game');
@@ -247,5 +248,15 @@ test('repair confirmation dismisses without mutation and duplicate confirm sends
    assert.equal(ui.get('install').disabled,true);assert.equal(ui.get('cleanup-repair').hidden,false);
    ui.click('cleanup-repair');assert.match(ui.get('repair-consequences').textContent!,/Permanently delete/);
    ui.click('confirm-repair');await app.settled();assert.equal(commands.filter(x=>x.command==='cleanup_repair').length,1);
+   assert.equal(ui.get('cleanup-repair').hidden,true);assert.match(ui.get('install-status').textContent!,/old backup has been removed/);
+   status={...status,repair:{...status.repair!,backup:'not_retained'}};await app.refresh();await flush();
+   assert.equal(ui.get('cleanup-repair').hidden,true);assert.match(ui.get('install-status').textContent!,/No old backup was retained/);
  }finally{await app.dispose();}
+});
+
+for(const state of ['running','succeeded','reconciliation_required'] as const)test(`install view leaves ${state} launch presentation to launch view`,async()=>{
+ const ui=dom();const status:InstallStatus={...initial(),native:{...initial().native,operation:{schema_version:1,revision:2,operation:{id,kind:'launch',state,intent_digest:Array(32).fill(0)}}}};
+ const app=mountInstall(ui.document,async()=>status,()=>id);
+ try{await app.ready;await flush();assert.equal(ui.get('install').hidden,true);assert.equal(ui.get('install-status').textContent,'');}
+ finally{await app.dispose();}
 });

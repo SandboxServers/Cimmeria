@@ -64,7 +64,7 @@ pub fn commit_wine(
     start(state, prepared)
 }
 
-fn start(
+pub(super) fn start(
     state: Arc<Mutex<DesktopState>>,
     prepared: Prepared,
 ) -> Result<oneshot::Receiver<Result<(), Failure>>, IntentError> {

@@ -4,6 +4,11 @@ use cimmeria_launcher_engine::{repair, IntentError, OperationKind, OperationStat
 use serde::Serialize;
 use uuid::Uuid;
 
+#[cfg(test)]
+pub(super) struct TestDispatch {
+    url: String,
+    interrupt: bool,
+}
 pub(super) struct Worker {
     id: Uuid,
     preparation: repair::preparation::Preparation,
@@ -14,6 +19,7 @@ pub struct RepairStatus {
     pub directory: Option<PathBuf>,
     pub recovery: bool,
     pub cleanup: bool,
+    pub backup: repair::cleanup::BackupStatus,
 }
 #[derive(Debug, Serialize)]
 pub struct Target {
@@ -22,6 +28,10 @@ pub struct Target {
 }
 impl NativeHost {
     fn repair_backend_supported(&self, native: bool) -> bool {
+        #[cfg(test)]
+        if self.repair_fixture.is_some() {
+            return true;
+        }
         if native {
             return cfg!(windows);
         }
@@ -44,6 +54,7 @@ impl NativeHost {
             directory: None,
             recovery: false,
             cleanup: false,
+            backup: repair::cleanup::BackupStatus::Unavailable,
         };
         if op
             .as_ref()
@@ -85,8 +96,15 @@ impl NativeHost {
             status.recovery = supported
                 && current_repair
                     .is_some_and(|op| op.state == OperationState::ReconciliationRequired);
-            status.cleanup =
-                supported && current_repair.is_some_and(|op| op.state == OperationState::Succeeded);
+            if current_repair.is_some_and(|op| op.state == OperationState::Succeeded) {
+                status.backup = repair::cleanup::status(&mut state)?;
+                status.cleanup = supported
+                    && matches!(
+                        status.backup,
+                        repair::cleanup::BackupStatus::Retained
+                            | repair::cleanup::BackupStatus::CleanupPending
+                    );
+            }
         }
         Ok(status)
     }
@@ -174,24 +192,24 @@ impl NativeHost {
             let (_, empty) = tokio::sync::oneshot::channel();
             let result = std::mem::replace(&mut preparation.result, empty);
             *worker = Some(Worker { id, preparation });
+            #[cfg(test)]
+            let fixture_commit = self
+                .repair_fixture
+                .as_ref()
+                .map(|fixture| fixture.interrupt);
             tokio::runtime::Handle::try_current()
                 .map_err(|_| JobError::Io)?
                 .spawn(async move {
                     match result.await {
                         Ok(Ok(prepared)) => {
-                            let commit = if native {
-                                repair::commit::commit_native(state.clone(), prepared)
+                            #[cfg(test)]
+                            let commit = if let Some(interrupt) = fixture_commit {
+                                repair::test_support::commit(state.clone(), prepared, interrupt)
                             } else {
-                                #[cfg(target_os = "macos")]
-                                {
-                                    repair::commit::commit_wine(state.clone(), prepared)
-                                }
-                                #[cfg(not(target_os = "macos"))]
-                                {
-                                    drop(prepared);
-                                    Err(IntentError::from(StorageError::Corrupt))
-                                }
+                                commit_prepared(state.clone(), prepared, native)
                             };
+                            #[cfg(not(test))]
+                            let commit = commit_prepared(state.clone(), prepared, native);
                             match commit {
                                 Ok(result) => {
                                     if result.await.is_err() {
@@ -214,6 +232,22 @@ impl NativeHost {
                 .installation
                 .backend
                 .is_native();
+            #[cfg(test)]
+            let result = if self.repair_fixture.is_some() {
+                match request {
+                    InstallCommand::RecoverRepair { .. } => {
+                        repair::test_support::recover(state, id, revision)
+                    }
+                    InstallCommand::CleanupRepair { .. } => {
+                        repair::test_support::cleanup(state, id, revision)
+                    }
+                    _ => return Err(JobError::RecoveryRequired),
+                }
+                .map_err(JobError::from)?
+            } else {
+                recovery(state, request, native, id, revision)?
+            };
+            #[cfg(not(test))]
             let result = recovery(state, request, native, id, revision)?;
             // Called by spawn_blocking. Engine worker retains mutation if IPC is lost.
             result
@@ -229,6 +263,11 @@ impl NativeHost {
         id: Uuid,
         native: bool,
     ) -> Result<repair::preparation::Preparation, JobError> {
+        #[cfg(test)]
+        if let Some(fixture) = &self.repair_fixture {
+            return repair::test_support::prepare(state, id, fixture.url.clone())
+                .map_err(Into::into);
+        }
         if native {
             return repair::preparation::prepare_native(state, id).map_err(Into::into);
         }
@@ -296,3 +335,25 @@ fn recovery(
 
 #[cfg(test)]
 mod tests;
+
+fn commit_prepared(
+    state: Arc<Mutex<DesktopState>>,
+    prepared: repair::preparation::Prepared,
+    native: bool,
+) -> Result<tokio::sync::oneshot::Receiver<Result<(), repair::preparation::Failure>>, IntentError> {
+    if native {
+        return repair::commit::commit_native(state, prepared);
+    }
+    #[cfg(target_os = "macos")]
+    {
+        repair::commit::commit_wine(state, prepared)
+    }
+    #[cfg(not(target_os = "macos"))]
+    {
+        drop(prepared);
+        Err(StorageError::Corrupt.into())
+    }
+}
+
+#[cfg(test)]
+mod integration_tests;

@@ -133,32 +133,36 @@ async fn missing_game_identity_survives_reopen_and_explicit_abandonment() {
     assert!(!status.can_reconcile);
     let revision = status.native.operation.revision;
     let host = Arc::new(host);
-    let response = tokio::task::spawn_blocking(move || {
-        assert_eq!(
+    let response = tokio::time::timeout(
+        std::time::Duration::from_secs(5),
+        tokio::task::spawn_blocking(move || {
+            assert_eq!(
+                host.install_command(
+                    InstallCommand::RecoverRepair {
+                        schema_version: 1,
+                        operation_id: work,
+                        operation_revision: revision,
+                        confirmed: true
+                    },
+                    None
+                )
+                .unwrap_err(),
+                JobError::CorruptState
+            );
             host.install_command(
-                InstallCommand::RecoverRepair {
+                InstallCommand::AbandonRepair {
                     schema_version: 1,
                     operation_id: work,
                     operation_revision: revision,
-                    confirmed: true
+                    confirmed: true,
                 },
-                None
+                None,
             )
-            .unwrap_err(),
-            JobError::CorruptState
-        );
-        host.install_command(
-            InstallCommand::AbandonRepair {
-                schema_version: 1,
-                operation_id: work,
-                operation_revision: revision,
-                confirmed: true,
-            },
-            None,
-        )
-        .unwrap()
-    })
+            .unwrap()
+        }),
+    )
     .await
+    .expect("recovery and abandonment finish within fixture deadline")
     .unwrap();
     assert_eq!(
         response.native.operation.operation.unwrap().state,

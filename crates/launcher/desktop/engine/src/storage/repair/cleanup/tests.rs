@@ -10,10 +10,19 @@ async fn fixture(missing: bool) -> (tempfile::TempDir, DesktopState, Plan) {
 async fn removes_only_successful_repairs_backup_and_repeated_cleanup_is_idempotent() {
     for missing in [false, true] {
         let (root, mut state, plan) = fixture(missing).await;
+        assert_eq!(
+            status(&mut state).unwrap(),
+            if missing {
+                BackupStatus::NotRetained
+            } else {
+                BackupStatus::Retained
+            }
+        );
         let preferences = state.preferences().clone();
         let revision = state.operations().snapshot().revision;
         cleanup(&mut state, plan.id, revision, |_| Ok(())).unwrap();
         assert!(!plan.backup().exists());
+        assert_eq!(status(&mut state).unwrap(), BackupStatus::Removed);
         assert_eq!(
             std::fs::read(plan.installation.destination.join("game/later.txt")).unwrap(),
             b"later entry"
@@ -23,6 +32,7 @@ async fn removes_only_successful_repairs_backup_and_repeated_cleanup_is_idempote
         assert_eq!(state.operations().snapshot().revision, revision);
         drop(state);
         let mut state = DesktopState::open(&root.path().join("state")).unwrap();
+        assert_eq!(status(&mut state).unwrap(), BackupStatus::Removed);
         cleanup(&mut state, plan.id, revision, |_| Ok(())).unwrap();
         assert_eq!(
             state.installed_content().unwrap().unwrap().intent,
@@ -53,6 +63,14 @@ async fn every_cleanup_boundary_survives_reopen_without_touching_active_game() {
         })
         .is_err());
         assert!(reached, "unreached {stop:?}");
+        assert_eq!(
+            status(&mut state).unwrap(),
+            if stop == Point::RemovedRecorded {
+                BackupStatus::Removed
+            } else {
+                BackupStatus::CleanupPending
+            }
+        );
         assert_eq!(
             std::fs::read(plan.installation.destination.join("game/later.txt")).unwrap(),
             b"later entry"

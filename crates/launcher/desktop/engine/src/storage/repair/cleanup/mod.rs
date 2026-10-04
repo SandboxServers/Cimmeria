@@ -28,6 +28,66 @@ enum Point {
     RemovedRecorded,
 }
 
+/// Current backup evidence, independent of the successful Repair journal result.
+#[derive(Debug, Clone, Copy, Serialize, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub enum BackupStatus {
+    Unavailable,
+    NotRetained,
+    Retained,
+    CleanupPending,
+    Removed,
+}
+/// Observe only the current repair's descriptor, checkpoint, role and cleanup record.
+/// A partial deletion remains resumable even after its directory was removed.
+pub fn status(state: &mut DesktopState) -> Result<BackupStatus, IntentError> {
+    let snapshot = state.operations().snapshot();
+    let Some(op) = snapshot
+        .operation
+        .as_ref()
+        .filter(|op| op.kind == OperationKind::Repair && op.state == OperationState::Succeeded)
+    else {
+        return Ok(BackupStatus::Unavailable);
+    };
+    let id = op.id;
+    let plan = state.repair_plan()?.ok_or(StorageError::Corrupt)?;
+    let _owner = lock_owner(&plan.installation)?;
+    let committed: commit::Record = read(
+        &state
+            .directory
+            .root
+            .join(format!("repair-commit-{id}.json")),
+    )?
+    .ok_or(StorageError::Corrupt)?;
+    if committed.schema_version != 2
+        || committed.plan != plan
+        || committed.phase != commit::Phase::Published
+    {
+        return Err(StorageError::Corrupt.into());
+    }
+    let saved: Option<Record> = read(&state.directory.root.join(name(id)))?;
+    let phase = match saved {
+        Some(saved) if saved.schema_version == 1 && saved.plan == plan => Some(saved.phase),
+        Some(_) => return Err(StorageError::Corrupt.into()),
+        None => None,
+    };
+    let exists = directory_or_absent(&plan.backup())?;
+    match phase {
+        Some(Phase::Removed) if !exists => Ok(BackupStatus::Removed),
+        Some(Phase::Empty) => Ok(BackupStatus::CleanupPending),
+        Some(Phase::Removed) => Err(StorageError::UnsafeFile.into()),
+        _ if !plan.original_present && !exists => Ok(BackupStatus::NotRetained),
+        _ if exists && read_role(&plan.backup(), &plan)? == Some(Role::Original) => {
+            Ok(if phase.is_some() {
+                BackupStatus::CleanupPending
+            } else {
+                BackupStatus::Retained
+            })
+        }
+        _ => Err(StorageError::Corrupt.into()),
+    }
+}
+
 /// Retained native cleanup. The operation must still be the observed successful
 /// Repair; cleanup does not change its result or infer success from filesystem state.
 pub fn cleanup_native(
@@ -48,7 +108,7 @@ pub fn cleanup_wine(
 ) -> Result<oneshot::Receiver<Result<(), IntentError>>, IntentError> {
     dispatch(state, id, revision)
 }
-fn dispatch(
+pub(super) fn dispatch(
     state: Arc<Mutex<DesktopState>>,
     id: Uuid,
     revision: u64,

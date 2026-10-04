@@ -393,3 +393,6 @@ pub use resume::{resume, ResumeError};
 mod wine;
 #[cfg(target_os = "macos")]
 pub use wine::dispatch_wine;
+
+#[cfg(any(test, feature = "test-support"))]
+pub mod fixtures;

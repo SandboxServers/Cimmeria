@@ -490,3 +490,32 @@ original-client RAR repair or gameplay. Full engine validation passed 294 tests
 with 15 ignored (`20261004-094147-62543`); strict clippy passed (`20261004-094534-63498`).
 Earlier counts above remain dated evidence for their respective packets. Repair
 UI remains unconnected; no frontend or visual UAT is claimed.
+
+## Current backup observation and host integration guards
+
+Settings exposes Repair for the saved installation identity. The host retains
+preparation progress/cancellation and consumes its successful handoff in a native
+coordinator that dispatches commit independently of the view. Closing or losing
+an IPC observer cannot replace that coordinator. Earlier "UI unconnected" notes
+above describe the earlier engine-only packets.
+
+A successful Repair result does not imply a backup still exists. `repair.backup`
+reports `retained`, `cleanup_pending`, `removed`, `not_retained`, or `unavailable`
+from the engine's current plan, published commit checkpoint, backup role and
+cleanup record. The cleanup control is available only for a retained backup or
+unfinished cleanup. Missing-content repairs report no retained backup; completed
+cleanup reports removal immediately and after reopening. Partial cleanup remains
+resumable, including interruption between directory removal and its final record.
+These observations never change the successful Repair outcome or Play readiness.
+
+The shell integration guards dispatch actual Repair/Cancel/Recover/Cleanup
+commands through the production host coordinator. The explicitly enabled engine
+`test-support` feature supplies loopback transport, the shared signed inert ZIP,
+portable native-algorithm entry points and an after-promotion fault. Production
+OS eligibility and Wine ownership checks are unchanged. The tests verify progress,
+pre-commit cancellation, retained commit, successful recovery and cleanup, missing
+content and reopened backup status without Wine or original-client downloads.
+`frontend/repair-native-uat.mjs` drives the real Effect/view journey against the
+same host fixture; the older `repair-uat.mjs` remains an admission/persistence
+fixture and does not prove preparation or commit. Neither replaces packaged
+visual/focus UAT or native Windows/Wine validation.

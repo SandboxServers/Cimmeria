@@ -45,6 +45,7 @@ export function mountInstall(document:Document,invoke:Invoke,uuid:()=>string=()=
     const recovery=operation?.state==='reconciliation_required';
     const ready=!!status&&!status.native.requires_reopen&&!current.needsInspection&&!current.busy&&!pending;
     repairs.render(current,ready);
+    primary.hidden=operation?.kind==='launch';
     const canPrepare=!!status?.runtime_setup&&!active&&!recovery;
     primary.disabled=!ready||active||(!canPrepare&&(!status?.install_supported||(!!operation&&!status?.can_retry)||!status.native.preferences.install_directory));
     const removed=operation?.kind==='uninstall'&&operation.state==='succeeded';
@@ -77,7 +78,8 @@ export function mountInstall(document:Document,invoke:Invoke,uuid:()=>string=()=
     if(current.error)text=operation?.kind==='repair'&&recovery&&['corrupt_state','recovery_required','io'].includes(current.error)?'Repair recovery remains blocked. Preserve the game, backup and stage. Recheck status; checkpoint recovery requires verified replacement evidence, and abandonment requires no commit checkpoint. An unknown helper outcome needs manual inspection.':errors[current.error];
     else if(pending)text='Confirming operation…';
     else if(status){
-      if(operation?.kind==='repair')text=recovery?'Repair needs recovery. In Settings, finish checkpointed replacement or abandon preparation. Unknown helper outcomes stay blocked; preserve files and restart to recheck.':active?(operation.state==='cancel_requested'?'Cancellation requested. Waiting for repair to stop safely.':status.progress?.phase==='download'?'Downloading repair content…':status.progress?.phase==='extraction'?'Reconstructing game content…':'Preparing or committing repair…'):operation.state==='succeeded'?'Game reconstructed. The old backup is retained; remove it explicitly in Settings. Play readiness is unchanged.':operation.state==='cancelled'?'Repair cancelled. The old game and retained staging files are preserved.':'Repair stopped. Recheck status; retained files are preserved.';
+      if(operation?.kind==='launch')text='';
+      else if(operation?.kind==='repair')text=recovery?'Repair needs recovery. In Settings, finish checkpointed replacement or abandon preparation. Unknown helper outcomes stay blocked; preserve files and restart to recheck.':active?(operation.state==='cancel_requested'?'Cancellation requested. Waiting for repair to stop safely.':status.progress?.phase==='download'?'Downloading repair content…':status.progress?.phase==='extraction'?'Reconstructing game content…':'Preparing or committing repair…'):operation.state==='succeeded'?repairSuccess(status.repair?.backup):operation.state==='cancelled'?'Repair cancelled. The old game and retained staging files are preserved.':'Repair stopped. Recheck status; retained files are preserved.';
       else if(removed)text='Game uninstalled. You can install it again when ready.';
       else if(canPrepare)text='Game content is ready. Continue installation to check compatibility.';
       else if(runtimeSetup)text=recovery?(status.can_reconcile?'A saved compatibility result is available. Recover setup to finish checking its state.':'Compatibility setup was interrupted. Files are preserved; recovery requires inspection.'):active?(operation?.state==='cancel_requested'?'Cancellation requested. Waiting for compatibility setup to stop safely.':'Checking game compatibility…'):operation?.state==='succeeded'?'Prerequisites checked. Graphics and Play still need validation.':'Compatibility setup stopped. Game files are preserved.';
@@ -150,4 +152,13 @@ export function mountInstall(document:Document,invoke:Invoke,uuid:()=>string=()=
     if(disposed)return;disposed=true;abort.abort();listeners.forEach(remove=>remove());repairs.dispose();
     await Effect.runPromise(Fiber.interrupt(watcher));await Promise.all([mutation,observation]);await runtime.dispose();
   }};
+}
+
+function repairSuccess(backup: NonNullable<InstallStatus['repair']>['backup']): string {
+  const evidence = backup === 'retained' ? 'The old backup is retained; remove it explicitly in Settings.'
+    : backup === 'cleanup_pending' ? 'Backup cleanup is incomplete; finish it explicitly in Settings.'
+    : backup === 'removed' ? 'The old backup has been removed.'
+    : backup === 'not_retained' ? 'No old backup was retained.'
+    : 'Recheck status for current backup details.';
+  return `Game reconstructed. ${evidence} Play readiness is unchanged.`;
 }

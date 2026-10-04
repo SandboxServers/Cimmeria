@@ -23,3 +23,16 @@ preparation before reconstruction; it does not prove real Wine or replacement.
 The shell tests and engine repair fault matrix are separate evidence. Windows
 native and packaged visual/focus validation remain required. Source: the
 [repair contract](../../../crates/launcher/desktop/docs/repair.md).
+
+## 2026-10-04 review-fix evidence
+
+- Successful Repair is historical outcome, not current backup evidence. Engine
+  `repair::cleanup::status` validates the current plan/checkpoint/role/cleanup
+  record. Settings must hide deletion after cleanup and for missing-content
+  repairs, while retaining resumable partial cleanup.
+- Shell `host/repair/integration_tests.rs` exercises real production dispatch and
+  the retained preparation-to-commit coordinator with a shared signed inert ZIP.
+  A dev-only engine test-support seam changes transport/platform adapters, not
+  durable admission or coordinator logic. Native Windows/Wine and packaged UI
+  remain separate evidence gates. Details: `desktop/docs/repair.md` under
+  `crates/launcher/`; packet evidence is in `repair-review-fixes.md`.

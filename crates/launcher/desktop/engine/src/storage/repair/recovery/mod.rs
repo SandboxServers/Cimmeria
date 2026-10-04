@@ -26,7 +26,7 @@ pub fn recover_wine(
 ) -> Result<oneshot::Receiver<Result<(), IntentError>>, IntentError> {
     dispatch(state, id, revision)
 }
-fn dispatch(
+pub(super) fn dispatch(
     state: Arc<Mutex<DesktopState>>,
     id: Uuid,
     revision: u64,

@@ -181,3 +181,6 @@ fn lock_owner(intent: &InstallIntent) -> Result<File, StorageError> {
 }
 #[cfg(test)]
 mod tests;
+
+#[cfg(feature = "test-support")]
+pub mod test_support;
