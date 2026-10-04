@@ -355,7 +355,7 @@ pub(crate) async fn handle_create_character(
             item_choices.push(StarterItem {
                 item_type_id: item_id,
                 stack_size: 1,
-                bound: choice.item_bound,
+                bound: Some(choice.item_bound),
                 durability: choice.item_durability,
             });
         } else {
@@ -383,12 +383,23 @@ pub(crate) async fn handle_create_character(
 
     // ── Look up starting abilities (Account.py:166) and the starter kit ───
 
-    let starter_abilities = load_starter_abilities(pool.as_ref(), char_def_id).await;
+    // A lookup that fails is a failed creation, not a character without its
+    // kit: nothing would ever add the missing abilities or pistol later.
+    let (starter_abilities, kit_items) = match (
+        load_starter_abilities(pool.as_ref(), char_def_id).await,
+        load_starter_items(pool.as_ref(), char_def_id).await,
+    ) {
+        (Ok(a), Ok(i)) => (a, i),
+        _ => {
+            send_char_create_failed(transport, addr, key, connected, 3).await?;
+            return Ok(());
+        }
+    };
     let abilities: Vec<i32> = starter_abilities.iter().map(|a| a.ability_id).collect();
     // The visual-choice items first (clothes onto the body), then the
     // char_creation_items kit (the pistol into the bandolier).
     let mut starter_items = item_choices;
-    starter_items.extend(load_starter_items(pool.as_ref(), char_def_id).await);
+    starter_items.extend(kit_items);
 
     tracing::debug!(
         %addr,
@@ -414,6 +425,34 @@ pub(crate) async fn handle_create_character(
     // a GM account's characters were created at access_level 0 and carried no
     // GM marker on every load.
     let access_level = get_access_level(connected, addr) as i32;
+
+    // Account name is best-effort from the live session state; the creation
+    // log lines and the Discord notification carry it.
+    let account_name = connected
+        .lock()
+        .ok()
+        .and_then(|c| c.get(&addr).and_then(|s| s.account_name.clone()));
+
+    // The character row and its starter inventory commit together: a kit
+    // that can't be placed rolls the character back and the client gets
+    // the DB-error code, rather than a character that exists for good
+    // without its pistol.
+    let mut tx = match pool.begin().await {
+        Ok(tx) => tx,
+        Err(e) => {
+            tracing::error!(
+                event = "character_create_failed",
+                reason = "db_error",
+                %addr,
+                account_id,
+                account_name = account_name.as_deref(),
+                error = %e,
+                "character_create: could not open the creation transaction"
+            );
+            send_char_create_failed(transport, addr, key, connected, 3).await?;
+            return Ok(());
+        }
+    };
 
     let result = sqlx::query_scalar::<_, i32>(
         "INSERT INTO sgw_player \
@@ -446,7 +485,7 @@ pub(crate) async fn handle_create_character(
     // Likewise one Applied Science Point at level 1; each level gained adds
     // one more in `handle_grant_xp`. The column default is 0.
     .bind(cimmeria_game::player::STARTING_APPLIED_SCIENCE_POINTS)
-    .fetch_one(pool.as_ref())
+    .fetch_one(&mut *tx)
     .await;
 
     match result {
@@ -454,15 +493,32 @@ pub(crate) async fn handle_create_character(
             // ── Insert starter items into sgw_inventory (Account.py:182-207) ───
 
             let placed =
-                insert_starter_inventory(pool.as_ref(), addr, player_id, &name, &starter_items)
-                    .await;
-
-            // Account name is best-effort from the live session state; the
-            // creation log line and the Discord notification both carry it.
-            let account_name = connected
-                .lock()
-                .ok()
-                .and_then(|c| c.get(&addr).and_then(|s| s.account_name.clone()));
+                match insert_starter_inventory(&mut tx, addr, player_id, &name, &starter_items)
+                    .await
+                {
+                    Ok(placed) => placed,
+                    Err(_) => {
+                        // `insert_starter_inventory` logged the item and reason.
+                        let _ = tx.rollback().await;
+                        send_char_create_failed(transport, addr, key, connected, 3).await?;
+                        return Ok(());
+                    }
+                };
+            if let Err(e) = tx.commit().await {
+                tracing::error!(
+                    event = "character_create_failed",
+                    reason = "db_error",
+                    %addr,
+                    account_id,
+                    account_name = account_name.as_deref(),
+                    player_id,
+                    player_name = %name,
+                    error = %e,
+                    "character_create: commit failed"
+                );
+                send_char_create_failed(transport, addr, key, connected, 3).await?;
+                return Ok(());
+            }
 
             // One line with everything the character starts with, named
             // (Rule 6), so "why can't lomiada fire?" is one SigNoz query.
@@ -570,6 +626,9 @@ mod live_db_tests;
 
 #[cfg(test)]
 mod seed_parity_live_db_tests;
+
+#[cfg(test)]
+mod kit_rollback_live_db_tests;
 
 #[cfg(test)]
 mod tests {

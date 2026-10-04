@@ -7,7 +7,6 @@ One line per topic file; the detail lives in the file. Keep hooks short (this in
 - [build-environment.md](build-environment.md) — rust-lld override obsolete; worktrees need the `external/` junction.
 - [stale-branch-clippy-toolchain-drift.md](stale-branch-clippy-toolchain-drift.md) — CI clippy floats to current stable; idle branches fail on new lints. Update the branch first.
 - [lane-sh-masks-cargo-exit-code.md](lane-sh-masks-cargo-exit-code.md) — `lane.sh` / `live-db-test.sh` the old `%TEMP%` lane exited 0 on a failed cargo.
-- [lane-log-dir-pruned-while-waiting.md](lane-log-dir-pruned-while-waiting.md) — fresh worktree's lane jobs die in 0.3 s: another lane pruned the empty log dir; `touch .keep` in it.
 - [mutation-restore-mtime-trap.md](mutation-restore-mtime-trap.md) — restoring from a backup copy leaves an old mtime; cargo keeps the mutated build. Touch restored files.
 - [dependency-dedupe-blockers.md](dependency-dedupe-blockers.md) — duplicate dep versions pinned upstream (sqlx, axum ws, reqwest, rmcp); machete false positives.
 - [services-split-extraction-traps.md](services-split-extraction-traps.md) — extracting a crate from services: allowlist edges, unreachable_pub, privacy errors in phases.

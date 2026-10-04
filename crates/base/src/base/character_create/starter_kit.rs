@@ -3,6 +3,10 @@
 //! (`resources.char_creation_items`, the pistol every class spawns with) and
 //! the inventory rows for both those and the item-bearing visual choices.
 //!
+//! Every database error here fails the creation: the caller runs the
+//! `sgw_player` INSERT and [`insert_starter_inventory`] in one transaction
+//! and rolls back on an `Err`, so a character never exists without its kit.
+//!
 //! The seeded playtest characters in `db/sgw/Players/Seed/sgw_player.sql` and
 //! `db/sgw/Inventory/Seed/sgw_inventory.sql` are copies of what this module
 //! writes for a Praxis Commando; `seed_parity_live_db_tests` fails when the
@@ -11,13 +15,29 @@
 use std::collections::HashMap;
 use std::net::SocketAddr;
 
-use sqlx::PgPool;
+use sqlx::{PgPool, Postgres, Transaction};
 
 use super::super::resources::{bag_min_slot, pick_first_open_bag, BAG_FILL_ORDER};
 
 /// The bandolier container. A weapon placed here is the one the character
 /// holds at spawn (`sgw_player.bandolier_slot` defaults to slot 0).
 const INV_BANDOLIER: i32 = cimmeria_entity::inventory::INV_BANDOLIER;
+
+/// `resources.items.flags` bit for bind-on-acquire
+/// (`cimmeria_cell_catalog::crafting::ItemFlags::BIND_ON_ACQUIRE`; this crate
+/// does not depend on the catalog). A kit item is bound when its design says
+/// so, as the grant and vendor paths do.
+const BIND_ON_ACQUIRE: i32 = 4;
+
+/// Durability of a granted item. The grant path (`inventory/grant/persist.rs`)
+/// and the vendor path both write 100, and the repair queries only see
+/// `durability >= 0`, so the starter pistol is the same repairable item as
+/// the one the Cellblock tutorial hands out.
+const GRANTED_DURABILITY: i32 = 100;
+
+/// Why the kit could not be loaded or placed. Logged where it happens; the
+/// caller only rolls back and answers with the creation error.
+pub(super) type KitFailure = &'static str;
 
 /// One starter ability, with its name for the creation log.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -32,7 +52,8 @@ pub(super) struct StarterAbility {
 pub(super) struct StarterItem {
     pub(super) item_type_id: i32,
     pub(super) stack_size: i32,
-    pub(super) bound: bool,
+    /// `None`: from the design's bind-on-acquire flag.
+    pub(super) bound: Option<bool>,
     pub(super) durability: i32,
 }
 
@@ -48,7 +69,10 @@ pub(super) struct PlacedItem {
 
 /// The starter abilities for `char_def_id`, in ability-id order so a created
 /// character's `abilities` array is the same every time (the seed copies it).
-pub(super) async fn load_starter_abilities(pool: &PgPool, char_def_id: i32) -> Vec<StarterAbility> {
+pub(super) async fn load_starter_abilities(
+    pool: &PgPool,
+    char_def_id: i32,
+) -> Result<Vec<StarterAbility>, KitFailure> {
     let rows = sqlx::query_as::<_, (i32, Option<String>)>(
         "SELECT ca.ability_id, a.name \
          FROM resources.char_creation_abilities ca \
@@ -58,116 +82,142 @@ pub(super) async fn load_starter_abilities(pool: &PgPool, char_def_id: i32) -> V
     )
     .bind(char_def_id)
     .fetch_all(pool)
-    .await;
-    match rows {
-        Ok(rows) => rows
-            .into_iter()
-            .map(|(ability_id, name)| StarterAbility {
-                ability_id,
-                ability_name: real_name(name),
-            })
-            .collect(),
-        Err(e) => {
-            tracing::error!(
-                event = "starter_abilities_load_failed",
-                reason = "db_error",
-                char_def_id, // nt:id-only char_def rows carry no name column
-                error = %e,
-                "character_create: starting abilities lookup failed"
-            );
-            Vec::new()
-        }
+    .await
+    .map_err(|e| {
+        tracing::error!(
+            event = "starter_abilities_load_failed",
+            reason = "db_error",
+            char_def_id, // nt:id-only char_def rows carry no name column
+            error = %e,
+            "character_create: starting abilities lookup failed"
+        );
+        "db_error"
+    })?;
+    if rows.is_empty() {
+        // A content gap, not a failure: the character is still created.
+        tracing::warn!(
+            event = "starter_abilities_empty",
+            reason = "no_char_creation_abilities_rows",
+            char_def_id, // nt:id-only char_def rows carry no name column
+            "character_create: char_def has no starter abilities"
+        );
     }
+    Ok(rows
+        .into_iter()
+        .map(|(ability_id, name)| StarterAbility {
+            ability_id,
+            ability_name: real_name(name),
+        })
+        .collect())
 }
 
 /// The `char_creation_items` rows for `char_def_id`, in item-id order.
-pub(super) async fn load_starter_items(pool: &PgPool, char_def_id: i32) -> Vec<StarterItem> {
+pub(super) async fn load_starter_items(
+    pool: &PgPool,
+    char_def_id: i32,
+) -> Result<Vec<StarterItem>, KitFailure> {
     let rows = sqlx::query_as::<_, (i32, i32)>(
         "SELECT item_id, stack_size FROM resources.char_creation_items \
          WHERE char_def_id = $1 ORDER BY item_id",
     )
     .bind(char_def_id)
     .fetch_all(pool)
-    .await;
-    match rows {
-        Ok(rows) => rows
-            .into_iter()
-            .map(|(item_type_id, stack_size)| StarterItem {
-                item_type_id,
-                stack_size,
-                bound: false,
-                durability: -1,
-            })
-            .collect(),
-        Err(e) => {
-            tracing::error!(
-                event = "starter_items_load_failed",
-                reason = "db_error",
-                char_def_id, // nt:id-only char_def rows carry no name column
-                error = %e,
-                "character_create: starter items lookup failed"
-            );
-            Vec::new()
-        }
+    .await
+    .map_err(|e| {
+        tracing::error!(
+            event = "starter_items_load_failed",
+            reason = "db_error",
+            char_def_id, // nt:id-only char_def rows carry no name column
+            error = %e,
+            "character_create: starter items lookup failed"
+        );
+        "db_error"
+    })?;
+    if rows.is_empty() {
+        // A content gap: the character is created but spawns unarmed, and
+        // Pistol Shot is refused with NoAmmo until it finds a weapon.
+        tracing::warn!(
+            event = "starter_kit_empty",
+            reason = "no_char_creation_items_rows",
+            char_def_id, // nt:id-only char_def rows carry no name column
+            "character_create: char_def has no starter items; the character spawns unarmed"
+        );
     }
+    Ok(rows
+        .into_iter()
+        .map(|(item_type_id, stack_size)| StarterItem {
+            item_type_id,
+            stack_size,
+            bound: None,
+            durability: GRANTED_DURABILITY,
+        })
+        .collect())
 }
 
-/// Insert `items` into `player_id`'s inventory, in order (Account.py:182-207).
+/// Insert `items` into `player_id`'s inventory, in order (Account.py:182-207),
+/// inside the creation transaction `tx`.
 ///
 /// Each item goes to the first bag in `BAG_FILL_ORDER` that it may live in
 /// and that still has room, so clothes land on the body and a weapon lands
-/// in the bandolier. A weapon starts with a full magazine (`ammo` =
-/// `clip_size`): without it Pistol Shot is refused with NoAmmo on the first
-/// press, and the starter pistol would need a reload before it fired.
+/// in the bandolier. The row is written the way the grant path writes one
+/// (`INSERT ... SELECT ... FROM resources.items`: the design's ammo types and
+/// charges), and a weapon starts with a full magazine (`ammo` = `clip_size`):
+/// without it Pistol Shot is refused with NoAmmo on the first press.
+///
+/// An item that cannot be placed or written is an `Err`, logged here; the
+/// caller rolls the whole character back.
 pub(super) async fn insert_starter_inventory(
-    pool: &PgPool,
+    tx: &mut Transaction<'_, Postgres>,
     addr: SocketAddr,
     player_id: i32,
     player_name: &str,
     items: &[StarterItem],
-) -> Vec<PlacedItem> {
+) -> Result<Vec<PlacedItem>, KitFailure> {
     let mut slot_indices: HashMap<i32, i32> = HashMap::new();
     let mut placed = Vec::with_capacity(items.len());
     for item in items {
-        let design = sqlx::query_as::<_, (Vec<i32>, i32, String)>(
-            "SELECT container_sets, clip_size, name FROM resources.items WHERE item_id = $1",
-        )
-        .bind(item.item_type_id)
-        .fetch_optional(pool)
-        .await
-        .ok()
-        .flatten();
-        let (container_sets, clip_size, item_name) = match design {
-            Some((sets, clip, name)) => (sets, clip, real_name(Some(name))),
-            None => (Vec::new(), 0, None),
-        };
-
-        // Pick the first bag that's both valid for this item AND still has
-        // room. Pre-fix this picked the first valid bag unconditionally and
-        // `continue`d if it was full, so an item that could overflow to a
-        // later bag was silently dropped (live observation 2026-06-02: item
-        // 4343 lost at character create because its primary bag filled up
-        // first while a later valid bag still had room).
-        let Some(bag_id) = pick_first_open_bag(&container_sets, &slot_indices) else {
-            // Either the item has no valid container (content gap) or every
-            // valid container is genuinely full. Both are operator-actionable,
-            // so the reason tells them apart.
-            let reason = if BAG_FILL_ORDER.iter().any(|b| container_sets.contains(b)) {
-                "all_valid_containers_full"
-            } else {
-                "no_valid_container"
-            };
-            tracing::warn!(
-                event = "starter_item_dropped",
+        let fail = |reason: KitFailure, item_name: Option<&str>, error: Option<&sqlx::Error>| {
+            tracing::error!(
+                event = "starter_item_failed",
                 reason,
                 %addr,
                 player_id,
                 player_name,
                 item_type_id = item.item_type_id,
-                item_name = item_name.as_deref(),
-                "character_create: starter item dropped"
+                item_name,
+                error = error.map(tracing::field::display),
+                "character_create: starter item could not be placed; creation rolled back"
             );
-            continue;
+            reason
+        };
+
+        let design = sqlx::query_as::<_, (Vec<i32>, i32, String)>(
+            "SELECT container_sets, clip_size, name FROM resources.items WHERE item_id = $1",
+        )
+        .bind(item.item_type_id)
+        .fetch_optional(&mut **tx)
+        .await;
+        let (container_sets, clip_size, item_name) = match design {
+            Ok(Some((sets, clip, name))) => (sets, clip, real_name(Some(name))),
+            Ok(None) => return Err(fail("unknown_item", None, None)),
+            Err(e) => return Err(fail("db_error", None, Some(&e))),
+        };
+
+        // Pick the first bag that's both valid for this item AND still has
+        // room. Pre-fix this picked the first valid bag unconditionally and
+        // dropped the item if it was full, so an item that could overflow to
+        // a later bag was lost (live observation 2026-06-02: item 4343 lost
+        // at character create because its primary bag filled up first while
+        // a later valid bag still had room).
+        let Some(bag_id) = pick_first_open_bag(&container_sets, &slot_indices) else {
+            // Either the item has no valid container (content gap) or every
+            // valid container is genuinely full; the reason tells them apart.
+            let reason = if BAG_FILL_ORDER.iter().any(|b| container_sets.contains(b)) {
+                "all_valid_containers_full"
+            } else {
+                "no_valid_container"
+            };
+            return Err(fail(reason, item_name.as_deref(), None));
         };
 
         let entry = slot_indices
@@ -177,34 +227,30 @@ pub(super) async fn insert_starter_inventory(
         *entry += 1;
         let ammo = clip_size.max(0);
 
-        if let Err(e) = sqlx::query(
+        let written = sqlx::query(
             "INSERT INTO sgw_inventory \
-             (container_id, slot_id, type_id, character_id, durability, bound, stack_size, ammo) \
-             VALUES ($1, $2, $3, $4, $5, $6, $7, $8)",
+             (character_id, type_id, stack_size, slot_id, container_id, bound, durability, \
+              charges, ammo_type, ammo_types, ammo, flags) \
+             SELECT $1, ri.item_id, $2, $3, $4, COALESCE($5, (ri.flags & $6) <> 0), $7, \
+                    ri.charges, COALESCE(ri.default_ammo_type, 'AMMO_NONE'::resources.\"EAmmoType\"), \
+                    ri.ammo_types, $8, 0 \
+             FROM resources.items ri WHERE ri.item_id = $9",
         )
-        .bind(bag_id)
-        .bind(slot_id)
-        .bind(item.item_type_id)
         .bind(player_id)
-        .bind(item.durability)
-        .bind(item.bound)
         .bind(item.stack_size)
+        .bind(slot_id)
+        .bind(bag_id)
+        .bind(item.bound)
+        .bind(BIND_ON_ACQUIRE)
+        .bind(item.durability)
         .bind(ammo)
-        .execute(pool)
-        .await
-        {
-            tracing::error!(
-                event = "starter_item_insert_failed",
-                reason = "db_error",
-                %addr,
-                player_id,
-                player_name,
-                item_type_id = item.item_type_id,
-                item_name = item_name.as_deref(),
-                error = %e,
-                "character_create: failed to insert starter item"
-            );
-            continue;
+        .bind(item.item_type_id)
+        .execute(&mut **tx)
+        .await;
+        match written {
+            Ok(r) if r.rows_affected() == 1 => {}
+            Ok(_) => return Err(fail("unknown_item", item_name.as_deref(), None)),
+            Err(e) => return Err(fail("db_error", item_name.as_deref(), Some(&e))),
         }
         placed.push(PlacedItem {
             item_type_id: item.item_type_id,
@@ -214,7 +260,7 @@ pub(super) async fn insert_starter_inventory(
             ammo,
         });
     }
-    placed
+    Ok(placed)
 }
 
 /// `592 Pistol Shot, 594 Strike` for the creation log line.

@@ -33,9 +33,6 @@ use crate::test_support::{require_db_or_skip, TestTransport};
 const KIT_ACCOUNT: i32 = 0x7000_1E00;
 const PARITY_ACCOUNT: i32 = 0x7000_1E01;
 
-/// Every char_def a client can pick (`resources.char_creation`).
-const CHAR_DEFS: std::ops::RangeInclusive<i32> = 1..=23;
-
 /// Praxis Commando, male human: what every seeded character is.
 const PRAXIS_COMMANDO_MALE: i32 = 3;
 
@@ -53,7 +50,7 @@ const INV_BANDOLIER: i32 = 3;
 
 /// The first choice of every `VIS_Optional` group of `char_def_id`: the
 /// payload a player who clicks straight through the creator sends.
-async fn default_choices(pool: &PgPool, char_def_id: i32) -> Vec<(i32, i32)> {
+pub(super) async fn default_choices(pool: &PgPool, char_def_id: i32) -> Vec<(i32, i32)> {
     sqlx::query_as::<_, (i32, i32)>(
         "SELECT vg.vis_group_id, MIN(c.choice_id) \
          FROM resources.char_creation_visgroups vg \
@@ -108,29 +105,67 @@ async fn create(
     })
 }
 
-/// The row without the columns that name it: the parity comparand.
-/// `to_jsonb` covers every column, so a new one is compared without an edit,
-/// and `jsonb`'s text form is canonical (keys sorted), so two rows compare
-/// equal as text exactly when they are equal.
-async fn player_shape(pool: &PgPool, player_id: i32) -> String {
+/// Every char_def a client can pick, read from `resources.char_creation` so a
+/// new char_def is covered without an edit here.
+async fn char_defs(pool: &PgPool) -> Vec<i32> {
+    sqlx::query_scalar("SELECT char_def_id FROM resources.char_creation ORDER BY char_def_id")
+        .fetch_all(pool)
+        .await
+        .expect("read char_defs")
+}
+
+/// Columns of `table` whose value depends on when the row was written: a
+/// clock default (`now()`, `CURRENT_TIMESTAMP`, `clock_timestamp()`, ...).
+/// A seed can't reproduce the reference's creation time, so these are left
+/// out of the comparison. A column the handler fills from the clock itself
+/// (no default) has to be added to the `- '...'` list of the shape query by
+/// hand.
+async fn clock_columns(pool: &PgPool, table: &str) -> Vec<String> {
     sqlx::query_scalar(
-        "SELECT (to_jsonb(p) - 'player_id' - 'account_id' - 'player_name' - 'extra_name')::text \
+        "SELECT column_name::text FROM information_schema.columns \
+         WHERE table_schema = current_schema() AND table_name = $1 \
+           AND (column_default ILIKE '%now()%' \
+                OR column_default ILIKE '%current_timestamp%' \
+                OR column_default ILIKE '%clock_timestamp%' \
+                OR column_default ILIKE '%statement_timestamp%' \
+                OR column_default ILIKE '%transaction_timestamp%' \
+                OR column_default ILIKE '%current_date%' \
+                OR column_default ILIKE '%localtimestamp%')",
+    )
+    .bind(table)
+    .fetch_all(pool)
+    .await
+    .expect("read clock-default columns")
+}
+
+/// The row without the columns that name it or carry a clock default: the
+/// parity comparand. `to_jsonb` covers every column, so a new one is
+/// compared without an edit, and `jsonb`'s text form is canonical (keys
+/// sorted), so two rows compare equal as text exactly when they are equal.
+async fn player_shape(pool: &PgPool, player_id: i32) -> String {
+    let skip = clock_columns(pool, "sgw_player").await;
+    sqlx::query_scalar(
+        "SELECT (to_jsonb(p) - 'player_id' - 'account_id' - 'player_name' - 'extra_name' \
+                 - $2::text[])::text \
          FROM sgw_player p WHERE player_id = $1",
     )
     .bind(player_id)
+    .bind(&skip)
     .fetch_one(pool)
     .await
     .unwrap_or_else(|e| panic!("read player {player_id}: {e}"))
 }
 
-/// The character's inventory without the instance and owner ids, in
-/// container/slot order.
+/// The character's inventory without the instance and owner ids (or a clock
+/// default, see [`clock_columns`]), in container/slot order.
 async fn inventory_shape(pool: &PgPool, player_id: i32) -> Vec<String> {
+    let skip = clock_columns(pool, "sgw_inventory").await;
     sqlx::query_scalar(
-        "SELECT (to_jsonb(i) - 'item_id' - 'character_id')::text FROM sgw_inventory i \
-         WHERE character_id = $1 ORDER BY container_id, slot_id",
+        "SELECT (to_jsonb(i) - 'item_id' - 'character_id' - $2::text[])::text \
+         FROM sgw_inventory i WHERE character_id = $1 ORDER BY container_id, slot_id",
     )
     .bind(player_id)
+    .bind(&skip)
     .fetch_all(pool)
     .await
     .unwrap_or_else(|e| panic!("read inventory of {player_id}: {e}"))
@@ -156,7 +191,12 @@ async fn every_char_def_starts_armed_with_the_starter_set_live_db() {
             .expect("starter pistol is seeded");
     assert!(clip_size > 0, "the starter pistol has a magazine");
 
-    for char_def_id in CHAR_DEFS {
+    let defs = char_defs(&pool).await;
+    assert!(
+        defs.len() >= 23,
+        "the 23 seeded char_defs at least: {defs:?}"
+    );
+    for char_def_id in defs {
         let name = format!("Starter Kit {char_def_id:02}");
         let player_id = create(&pool, KIT_ACCOUNT, 0, char_def_id, &name).await;
 
@@ -175,16 +215,19 @@ async fn every_char_def_starts_armed_with_the_starter_set_live_db() {
         }
         assert_eq!(bandolier_slot, 0, "char_def {char_def_id}: active slot 0");
 
-        let weapon: Option<(i32, i32)> = sqlx::query_as(
-            "SELECT type_id, ammo FROM sgw_inventory \
-             WHERE character_id = $1 AND container_id = $2 AND slot_id = 0",
+        let weapon: Option<(i32, i32, i32, bool)> = sqlx::query_as(
+            "SELECT i.type_id, i.ammo, i.durability, \
+                    i.ammo_type = COALESCE(ri.default_ammo_type, 'AMMO_NONE') \
+                      AND i.ammo_types = ri.ammo_types \
+             FROM sgw_inventory i JOIN resources.items ri ON ri.item_id = i.type_id \
+             WHERE i.character_id = $1 AND i.container_id = $2 AND i.slot_id = 0",
         )
         .bind(player_id)
         .bind(INV_BANDOLIER)
         .fetch_optional(&pool)
         .await
         .expect("read bandolier slot 0");
-        let (type_id, ammo) = weapon.unwrap_or_else(|| {
+        let (type_id, ammo, durability, design_ammo) = weapon.unwrap_or_else(|| {
             panic!("char_def {char_def_id}: no pistol in bandolier slot 0 (Pistol Shot = NoAmmo)")
         });
         assert_eq!(
@@ -195,6 +238,17 @@ async fn every_char_def_starts_armed_with_the_starter_set_live_db() {
             ammo, clip_size,
             "char_def {char_def_id}: the starter pistol is loaded (ammo = clip_size), \
              or the first Pistol Shot is refused with NoAmmo"
+        );
+        // The row is the one the item-grant path writes (durability 100,
+        // the design's ammo types), so the starter pistol repairs and loads
+        // like the tutorial's copy of item 55.
+        assert_eq!(
+            durability, 100,
+            "char_def {char_def_id}: granted durability"
+        );
+        assert!(
+            design_ammo,
+            "char_def {char_def_id}: ammo_type / ammo_types copied from the design"
         );
     }
 
@@ -261,12 +315,23 @@ async fn seeded_characters_match_a_fresh_praxis_commando_live_db() {
              for a Praxis Commando (char_def {PRAXIS_COMMANDO_MALE}); update \
              db/sgw/Players/Seed/sgw_player.sql to match"
         );
+        let got_inventory = inventory_shape(&pool, player_id).await;
         assert_eq!(
-            inventory_shape(&pool, player_id).await,
-            want_inventory,
-            "seeded player {player_id} must start with the inventory createCharacter \
-             gives a Praxis Commando; update db/sgw/Inventory/Seed/sgw_inventory.sql"
+            got_inventory.len(),
+            want_inventory.len(),
+            "seeded player {player_id} has {} starter items, a fresh Praxis Commando {}; \
+             update db/sgw/Inventory/Seed/sgw_inventory.sql",
+            got_inventory.len(),
+            want_inventory.len()
         );
+        // Row by row, so a failure prints the one row that differs in full.
+        for (got, want) in got_inventory.iter().zip(&want_inventory) {
+            assert_eq!(
+                got, want,
+                "seeded player {player_id} must start with the inventory createCharacter \
+                 gives a Praxis Commando; update db/sgw/Inventory/Seed/sgw_inventory.sql"
+            );
+        }
     }
 
     cleanup(&pool, PARITY_ACCOUNT).await;
