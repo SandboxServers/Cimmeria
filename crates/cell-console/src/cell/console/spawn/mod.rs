@@ -211,7 +211,11 @@ async fn despawn_entity(
     tx: &mpsc::Sender<CellToBaseMsg>,
     space_mgr: &mut SpaceManager,
 ) {
-    match space_mgr.despawn_npc(target, tx).await {
+    // Players who had hit it leave combat with it (a bare `despawn_npc`
+    // left them stuck in combat with an entity that no longer exists).
+    match crate::cell::combat::despawn_npc_releasing_combat(target, "gm_despawn", tx, space_mgr)
+        .await
+    {
         DespawnOutcome::Despawned { witnesses_notified } => {
             send_gm_feedback(
                 caller_id,
@@ -264,6 +268,10 @@ async fn respawn_all(
         .collect();
     let mut reset = 0usize;
     for id in &npcs {
+        // The reset clears each threat list, so drain the players first or
+        // they stay in combat with a mob that has forgotten them.
+        crate::cell::combat::release_npc_from_player_combat(*id, "gm_respawnall", tx, space_mgr)
+            .await;
         let world = npc_ai::world_label(space_mgr, *id);
         if let Some(e) = space_mgr.get_entity_mut(*id) {
             if let Some(spawn) = e.spawn_position {

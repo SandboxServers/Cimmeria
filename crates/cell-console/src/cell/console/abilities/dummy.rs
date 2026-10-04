@@ -23,10 +23,10 @@
 //!
 //! **Despawn leaves nobody in combat.** A hit puts the dummy in the
 //! attacker's `threatened_mobs`, and `despawn_npc` only removes the entity.
-//! Every despawn (clear, expiry, owner logout) first drains the dummy from
-//! every player's combat set, as the leash does, and broadcasts each
-//! `onStateFieldUpdate` whose `BSF_InCombat` just cleared; a player still
-//! fighting another mob stays in combat.
+//! Every despawn (clear, expiry, owner logout) first runs
+//! `release_npc_from_player_combat`, the drain every non-death despawn
+//! shares: each `onStateFieldUpdate` whose `BSF_InCombat` just cleared is
+//! broadcast, and a player still fighting another mob stays in combat.
 //!
 //! It despawns [`LAB_DUMMY_LIFETIME`] after placement ([`lab_dummy_tick`]) or
 //! when its owner logs out ([`despawn_lab_dummies_of`]). `.dummy clear`
@@ -40,9 +40,7 @@ use cimmeria_entity::cell_entity::MobAggression;
 use cimmeria_entity::stats::{ACCURACY, DEFENSE, HEALTH};
 use tokio::sync::mpsc;
 
-use crate::cell::abilities::send_entity_method_to_self_and_witnesses;
-use crate::cell::client_methods::being::ON_STATE_FIELD_UPDATE;
-use crate::cell::combat::{drain_npc_from_player_combat, HOSTILE_FACTION};
+use crate::cell::combat::{release_npc_from_player_combat, HOSTILE_FACTION};
 use crate::cell::console::send_gm_feedback;
 use crate::cell::messages::CellToBaseMsg;
 use crate::cell::space_manager::{
@@ -288,20 +286,7 @@ async fn despawn(
     else {
         return false;
     };
-    let exits = drain_npc_from_player_combat(space_mgr, dummy_id);
-    if let Some(d) = space_mgr.get_entity_mut(dummy_id) {
-        d.threat_list.clear();
-    }
-    for &(player_id, state) in &exits {
-        send_entity_method_to_self_and_witnesses(
-            player_id,
-            ON_STATE_FIELD_UPDATE,
-            state.to_le_bytes().to_vec(),
-            tx,
-            space_mgr,
-        )
-        .await;
-    }
+    let combat_exits = release_npc_from_player_combat(dummy_id, why.as_str(), tx, space_mgr).await;
     let outcome = space_mgr.despawn_npc(dummy_id, tx).await;
     let (removed, witnesses) = match outcome {
         DespawnOutcome::Despawned { witnesses_notified } => (true, witnesses_notified),
@@ -317,7 +302,7 @@ async fn despawn(
         dummy_id,
         removed,
         witnesses_notified = witnesses,
-        combat_exits = exits.len(),
+        combat_exits,
         "lab dummy despawned"
     );
     removed

@@ -60,3 +60,4 @@ pub use threat::{
     exit_player_combat, generate_threat, AggroCause, HOLSTER_ANIMATION_DURATION, LEASH_DISTANCE,
     NPC_ATTACK_RANGE, NPC_DEFAULT_ABILITY, NPC_MELEE_RANGE, OOC_HOLSTER_DELAY,
 };
+pub use threat::{despawn_npc_releasing_combat, release_npc_from_player_combat};

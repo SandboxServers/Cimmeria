@@ -237,7 +237,14 @@ pub(super) async fn despawn_by_tag(
         );
         return;
     };
-    match space_mgr.despawn_npc(target_id, tx).await {
+    match cimmeria_cell_combat::cell::combat::despawn_npc_releasing_combat(
+        target_id,
+        "content_despawn",
+        tx,
+        space_mgr,
+    )
+    .await
+    {
         DespawnOutcome::Despawned { witnesses_notified } => {
             tracing::info!(
                 entity_id, %entity_tag, target_id, witnesses_notified, chain_id, verb,

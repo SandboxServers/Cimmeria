@@ -30,6 +30,8 @@ mod cr05_allcraft;
 #[cfg(test)]
 mod craft_grants;
 #[cfg(test)]
+mod despawn_releases_combat;
+#[cfg(test)]
 mod gm_audit_identity;
 
 #[cfg(test)]
