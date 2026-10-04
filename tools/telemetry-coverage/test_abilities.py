@@ -68,6 +68,88 @@ const OTHER: &[X] = &[(5, "notMe")];
         self.assertIsNone(cov.scan_const_text(text, "ABSENT"))
 
 
+class CommentedOutEntries(unittest.TestCase):
+    """A commented-out entry is not coverage (Copilot on #1185), for every
+    entry shape the scanner reads, in line and block comments, while string
+    and char literals that merely contain comment markers are kept."""
+
+    TABLE = """
+const T: &[X] = &[
+    generic(1, "liveCall"),
+    // generic(2, "lineCall"),
+    /* generic(3, "blockCall"), */
+    (10, "liveTuple"),
+    // (11, "lineTuple"),
+    /* (12, "blockTuple"), */
+    X {
+        index: 20,
+        name: "liveStruct",
+    },
+    // X {
+    //     index: 21,
+    //     name: "lineStruct",
+    // },
+    /* X {
+        index: 22,
+        name: "blockStruct",
+    }, */
+    /* outer /* nested generic(30, "nestedInner"), */ generic(31, "nestedOuter"), */
+    X {
+        index: 40,
+        note: "a // not a comment /* nor this",
+        raw: r#"he said "// x" and /* y"#,
+        bytes: br"/* z",
+        escaped: "\\"// still a string\\"",
+        quote: '"',
+        slash: '/',
+        name: "afterLiterals",
+    },
+    generic(41, "afterLiteralsCall"), // trailing comment generic(42, "trailing"),
+];
+"""
+
+    def test_only_live_entries_are_scanned(self):
+        self.assertEqual(cov.scan_const_text(self.TABLE, "T"), {
+            "liveCall": 1,
+            "liveTuple": 10,
+            "liveStruct": 20,
+            "afterLiterals": 40,
+            "afterLiteralsCall": 41,
+        })
+
+    def test_literals_survive_and_newlines_are_kept(self):
+        src = 'a("// x", r#"/* y"#, \'"\') // gone\n/* b\nc */d'
+        self.assertEqual(
+            cov.strip_rust_comments(src),
+            'a("// x", r#"/* y"#, \'"\') \n\nd',
+        )
+
+    def test_a_commented_out_const_is_absent(self):
+        self.assertIsNone(cov.scan_const_text("/*\nconst T: &[X] = &[\n    (1, \"a\"),\n];\n*/", "T"))
+
+    def test_a_commented_out_receipt_empties_its_cell(self):
+        path, const = cov.SOURCES[cov.SERVER_RECV]
+        text = (cov.ROOT / path).read_text(encoding="utf-8")
+        live = '    generic(77, "trainAbility"),'
+        self.assertIn(live, text, "fixture: the real receipt table changed shape")
+        commented = text.replace(live, '    // generic(77, "trainAbility"),')
+        real_scan = cov.scan_const
+
+        def scan(p, c):
+            if (p, c) == (path, const):
+                return cov.scan_const_text(commented, c, p)
+            return real_scan(p, c)
+
+        with mock.patch.object(cov, "scan_const", scan):
+            res = cov.build()
+        cells = {m.name: cells for m, _, cells in res.rows}
+        self.assertEqual(cells["trainAbility"][cov.SERVER_RECV].state, "missing")
+        self.assertTrue(
+            any("`trainAbility` has no server recv row" in p for p in res.problems),
+            res.problems,
+        )
+
+
 class Gate(unittest.TestCase):
     """The rules of the gate, against the real dispatch tables with the code
     tables replaced."""

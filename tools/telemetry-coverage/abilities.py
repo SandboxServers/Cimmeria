@@ -230,6 +230,64 @@ def parse_table_text(text: str, path: str) -> List[TableRow]:
 
 # --- code tables -----------------------------------------------------------
 
+_RAW_STRING = re.compile(r'b?r(#*)"')
+_CHAR_LITERAL = re.compile(r"'(?:\\(?:x[0-9A-Fa-f]{2}|u\{[0-9A-Fa-f]{1,6}\}|.)|[^\\'\n])'")
+
+
+def strip_rust_comments(text: str) -> str:
+    """``text`` with every Rust line comment and (nested) block comment
+    removed, so a commented-out entry never counts as coverage. String,
+    raw-string, byte-string and char literals are copied unchanged, so a
+    ``//`` or ``/*`` inside one is not a comment. A comment's newlines are
+    kept, so line anchors (the ``];`` that closes a table) stay put."""
+    out: List[str] = []
+    i, n = 0, len(text)
+    while i < n:
+        c = text[i]
+        two = text[i:i + 2]
+        if two == "//":
+            j = text.find("\n", i)
+            i = n if j < 0 else j
+            continue
+        if two == "/*":
+            depth, i = 1, i + 2
+            while i < n and depth:
+                if text.startswith("/*", i):
+                    depth, i = depth + 1, i + 2
+                elif text.startswith("*/", i):
+                    depth, i = depth - 1, i + 2
+                else:
+                    if text[i] == "\n":
+                        out.append("\n")
+                    i += 1
+            continue
+        # A raw string (`r"..."`, `r#"..."#`, `br"..."`), not part of an
+        # identifier such as `bar"`.
+        m = _RAW_STRING.match(text, i)
+        if m and (i == 0 or not (text[i - 1].isalnum() or text[i - 1] == "_")):
+            close = '"' + m.group(1)
+            j = text.find(close, m.end())
+            j = n if j < 0 else j + len(close)
+            out.append(text[i:j])
+            i = j
+            continue
+        if c == '"':
+            j = i + 1
+            while j < n and text[j] != '"':
+                j += 2 if text[j] == "\\" else 1
+            out.append(text[i:j + 1])
+            i = j + 1
+            continue
+        if c == "'":
+            m = _CHAR_LITERAL.match(text, i)
+            if m:
+                out.append(m.group(0))
+                i = m.end()
+                continue
+        out.append(c)
+        i += 1
+    return "".join(out)
+
 def const_block(text: str, const: str) -> Optional[str]:
     """The body of ``const NAME ... = &[`` up to its closing ``];`` at the
     start of a line."""
@@ -256,7 +314,9 @@ def scan_const_text(text: str, const: str, path: str = "<text>") -> Optional[Dic
     const does not exist. Understands ``generic(N, "name")``-style calls,
     ``(N, "name")`` tuples, and struct literals with an ``index`` /
     ``cell_index`` field and a ``name`` / ``method`` field, in either order;
-    an index may be a ``u16`` const of the same file."""
+    an index may be a ``u16`` const of the same file. Comments are stripped
+    first: a commented-out entry is not coverage."""
+    text = strip_rust_comments(text)
     body = const_block(text, const)
     if body is None:
         return None
