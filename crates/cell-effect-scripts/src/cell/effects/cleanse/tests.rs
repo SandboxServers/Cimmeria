@@ -96,6 +96,7 @@ fn timed(
             moniker_ids: vec![],
             stats: vec![(stat, delta)],
             absorb: Vec::new(),
+            state_flags: 0,
             duration_secs: Some(15.0),
             stacking: TimedStacking::PerSource,
             invoker_identity: Default::default(),
