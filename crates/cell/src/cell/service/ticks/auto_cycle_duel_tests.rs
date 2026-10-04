@@ -66,6 +66,7 @@ fn duel_loop_mgr() -> SpaceManager {
             event_set_id: None,
             velocity: 0.0,
             type_id: Default::default(),
+            passive: false,
         },
     );
     let now = Instant::now();

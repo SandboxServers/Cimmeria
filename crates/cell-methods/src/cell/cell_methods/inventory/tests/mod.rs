@@ -9,6 +9,7 @@ use crate::cell::space_manager::SpaceManager;
 
 mod active_slot_abilities;
 mod active_slot_change;
+mod active_slot_held_effects;
 mod ammo_change;
 mod move_item;
 mod slot_swap;
@@ -45,6 +46,7 @@ fn register_test_fire_ability(mgr: &mut SpaceManager, ability_id: i32) {
             event_set_id: None,
             velocity: 0.0,
             type_id: Default::default(),
+            passive: false,
         },
     );
 }

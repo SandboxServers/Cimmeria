@@ -42,6 +42,7 @@ pub(super) fn cast_ability(id: i32, warmup: f32) -> AbilityDef {
         event_set_id: Some(EVENT_SET),
         velocity: 0.0,
         type_id: Default::default(),
+        passive: false,
     }
 }
 

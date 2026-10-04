@@ -214,6 +214,7 @@ mod tests {
                 "PetSummonSpeed",
                 "StatBuff",
                 "TimedStat",
+                "RemoveByMoniker",
                 "RadiationDamage",
                 "RemoveEffects",
                 "EmpDisrupt",

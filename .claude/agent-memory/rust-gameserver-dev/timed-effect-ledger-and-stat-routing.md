@@ -33,7 +33,8 @@ guard `a_killing_hit_leaves_no_clear_on_death_debuff`.
 
 **Monikers:** `abilities.moniker_ids` are broad shared CRCs (1470900795 is on
 most combat abilities); the seed has no effect-moniker column. Removing by an
-ability moniker would strip unrelated buffs.
+ability moniker would strip unrelated buffs. Since AB-08 an effect moniker
+(`EFFECT_Stance`) rides an `EffectMoniker` NVP: [[held-toggles-and-stance-moniker]].
 
 **How to apply:** later packets (AB-05/08/09/10) call
 `SpaceManager::apply_timed_effect` / `remove_timed_effects` /

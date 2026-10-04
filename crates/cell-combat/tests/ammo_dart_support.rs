@@ -68,6 +68,7 @@ fn world(ammo_type: i32, target_is_player: bool) -> SpaceManager {
             event_set_id: None,
             velocity: 0.0,
             type_id: Default::default(),
+            passive: false,
         },
     );
     mgr.effect_defs.insert(

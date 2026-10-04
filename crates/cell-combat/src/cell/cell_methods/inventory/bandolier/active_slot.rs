@@ -626,6 +626,18 @@ async fn swap_weapon_granted_abilities_for_slot(
     if removed.is_empty() && added.is_empty() {
         return; // No change — skip the broadcast.
     }
+    // A revoked ability's held entries (a toggle left on, a passive) would
+    // otherwise outlive the ability with nothing to take them off.
+    if !removed.is_empty() {
+        crate::cell::effects::strip_timed_effects(
+            entity_id,
+            crate::cell::effects::stat_buff::StatBuffRemoval::Removed,
+            |b| b.expires_at.is_none() && removed.contains(&b.ability_id),
+            tx,
+            space_mgr,
+        )
+        .await;
+    }
 
     // 3. Build + broadcast `onKnownAbilitiesUpdate` (method 101) — the
     //    bulk known-abilities replace. Same wire shape the login burst

@@ -53,6 +53,7 @@ pub(super) fn summon_def(id: i32) -> AbilityDef {
         event_set_id: Some(SUMMON_SET),
         velocity: 100.0,
         type_id: Default::default(),
+        passive: false,
     }
 }
 

@@ -28,6 +28,7 @@ mod min_range;
 mod no_mechanics;
 mod no_mechanics_live_db;
 mod npc_timer_routing;
+mod passive_cast;
 mod pet_kill_credit;
 mod range_units;
 mod range_units_live_db;
@@ -42,6 +43,7 @@ mod summoned_pet_kill_credit;
 mod support_shot;
 mod target_validity;
 mod timed_buffs;
+mod toggles;
 mod warmup;
 mod warmup_interrupt;
 mod weapon_grant;
@@ -70,6 +72,7 @@ fn make_ability(id: i32, required_ammo: i32, max_range: i32) -> AbilityDef {
         event_set_id: None,
         velocity: 0.0,
         type_id: Default::default(),
+        passive: false,
     }
 }
 

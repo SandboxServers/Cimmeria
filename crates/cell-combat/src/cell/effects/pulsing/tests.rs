@@ -153,6 +153,7 @@ async fn channel_interrupt_uses_planar_distance_only() {
             event_set_id: None,
             velocity: 0.0,
             type_id: Default::default(),
+            passive: false,
         },
     );
     register_active_effect(&mut mgr, 2, 1, &channel_effect, Instant::now(), &tx).await;
@@ -263,6 +264,7 @@ async fn channel_interrupt_fires_when_invoker_moves_past_threshold() {
             event_set_id: None,
             velocity: 0.0,
             type_id: Default::default(),
+            passive: false,
         },
     );
     register_active_effect(&mut mgr, 2, 1, &channel_effect, Instant::now(), &tx).await;
@@ -311,6 +313,7 @@ async fn channel_interrupt_respects_af_channel_allows_movement_flag() {
             event_set_id: None,
             velocity: 0.0,
             type_id: Default::default(),
+            passive: false,
         },
     );
     register_active_effect(&mut mgr, 2, 1, &channel_effect, Instant::now(), &tx).await;
@@ -355,6 +358,7 @@ async fn channel_interrupt_below_threshold_does_not_fire() {
             event_set_id: None,
             velocity: 0.0,
             type_id: Default::default(),
+            passive: false,
         },
     );
     register_active_effect(&mut mgr, 2, 1, &channel_effect, Instant::now(), &tx).await;

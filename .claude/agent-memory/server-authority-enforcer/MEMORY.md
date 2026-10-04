@@ -70,3 +70,4 @@
 - [exploit_refund_not_bound_to_payment.md](exploit_refund_not_bound_to_payment.md) — CR10 respec refunded ASP per discipline held, not per ASP paid; free grant paths minted ASP (fixed: spent counter)
 - [reference_respawn_gate.md](reference_respawn_gate.md) — callForAid/respawn dead gate + offered_in_world live in the dispatch arms, not handle_respawn (#799)
 - [reference_beneficial_cast_gate.md](reference_beneficial_cast_gate.md) — AB-01 beneficial classifier/resolver; Heal-typed debuff/CC hazard fixed by the classifier (heal script or bit required)
+- [project_ab08_toggles_passives_review.md](project_ab08_toggles_passives_review.md) — AB-08 held toggles/passives cleared shape; passive-cast hole resolved (passive_yn loaded, casts refused at launch)

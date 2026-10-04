@@ -74,6 +74,7 @@ fn ability(
         event_set_id: None,
         velocity: 100.0,
         type_id: Default::default(),
+        passive: false,
     }
 }
 

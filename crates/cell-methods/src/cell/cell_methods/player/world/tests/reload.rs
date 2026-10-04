@@ -89,6 +89,7 @@ async fn handle_reload_pins_reload_slot_id_to_current_active_slot() {
             event_set_id: None,
             velocity: 0.0,
             type_id: Default::default(),
+            passive: false,
         },
     );
     let (tx, _rx) = mpsc::channel(16);
@@ -173,6 +174,7 @@ async fn handle_reload_sends_item_reload_sequence() {
             event_set_id: Some(DECOY_EVENT_SET),
             velocity: 0.0,
             type_id: Default::default(),
+            passive: false,
         },
     );
     mgr.sequence_map
@@ -370,6 +372,7 @@ async fn handle_reload_timer_expiry_is_absolute_on_the_game_clock() {
             event_set_id: None,
             velocity: 0.0,
             type_id: Default::default(),
+            passive: false,
         },
     );
 

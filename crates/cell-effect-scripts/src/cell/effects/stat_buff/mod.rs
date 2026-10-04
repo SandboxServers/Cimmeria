@@ -30,26 +30,35 @@
 //! duration timers; the callers that run a script (`fire_beneficial`,
 //! `damage_apply`, content's `apply_effect`) flush those timers right after.
 //!
-//! **A held effect is refused for now.** `pulse_duration = 0` on a toggled
-//! ability (a stance) is a held entry that a second press removes; until
-//! AB-08 wires `AF_TOGGLED`, nothing would ever take it off, so both
-//! scripts log `no_duration` and apply nothing.
+//! **Held effects** (`pulse_duration = 0`, AB-08) are [`held`]'s: a toggle
+//! (`AF_TOGGLED`, a stance) switches on and off with each press, a passive
+//! (`EF_AlwaysPersist`) holds while the ability is known, and only ever on
+//! its own invoker. Any other held effect would never come off, so it is
+//! refused with `no_duration`. [`RemoveByMoniker`] is the "Remove Effect of
+//! moniker EFFECT_Stance" half a stance authors.
 //!
 //! Log target `abilities`.
 
+mod held;
+mod remove_by_moniker;
 #[cfg(test)]
 mod seed_live_db_tests;
 #[cfg(test)]
 mod tests;
+#[cfg(test)]
+mod toggle_tests;
+
+pub use remove_by_moniker::RemoveByMoniker;
 
 use std::time::Instant;
 
-use cimmeria_entity::abilities::EffectDef;
+use cimmeria_entity::abilities::{effect_moniker_id, EffectDef, EFFECT_MONIKER_NVP};
 use cimmeria_entity::cell_entity::{TimedEffectSpec, TimedStacking};
 use cimmeria_entity::stats::{
     ACCURACY, COORDINATION, COVER_ACCURACY, COVER_DEFENSE, CROUCHING_ACCURACY, CROUCHING_DEFENSE,
     DEFENSE, ENGAGEMENT, FOCUS_REGEN, FORTITUDE, HEALTH_REGEN, HEALTH_RES, INTELLIGENCE,
     INTERRUPT_RES, KINETIC_RES, MENTAL_RES, MORALE, MOVEMENT_SPEED_MOD, PERCEPTION, RESPONSE,
+    SUBTLETY, TRACKING,
 };
 
 use super::{EffectContext, EffectScript};
@@ -85,6 +94,8 @@ pub const STAT_BUFF_NVPS: &[(&str, i32)] = &[
     ("MentalResistance", MENTAL_RES),
     ("HealthResistance", HEALTH_RES),
     ("MovementSpeedMod", MOVEMENT_SPEED_MOD),
+    ("Tracking", TRACKING),
+    ("Subtlety", SUBTLETY),
     ("FocusRegen", FOCUS_REGEN),
     ("HealthRegen", HEALTH_REGEN),
 ];
@@ -112,7 +123,7 @@ pub fn timed_spec(ctx: &EffectContext, stacking: TimedStacking) -> TimedEffectSp
         ability_id: effect.ability_id,
         invoker_id: ctx.source_id,
         effect_flags: effect.flags,
-        moniker_ids: ctx.space_mgr.ability_moniker_ids(effect.ability_id),
+        moniker_ids: entry_monikers(ctx),
         stats: stat_mods(effect),
         duration_secs: Some(effect.pulse_duration),
         stacking,
@@ -121,9 +132,42 @@ pub fn timed_spec(ctx: &EffectContext, stacking: TimedStacking) -> TimedEffectSp
     }
 }
 
+/// The monikers an entry carries: its ability's `moniker_ids` plus the
+/// effect's own [`EFFECT_MONIKER_NVP`] (a stance's `EFFECT_Stance`). An
+/// unknown effect-moniker name is dropped with a WARN: it must never match
+/// anything by accident.
+fn entry_monikers(ctx: &EffectContext) -> Vec<i64> {
+    let effect = ctx.effect;
+    let mut ids = ctx.space_mgr.ability_moniker_ids(effect.ability_id);
+    if let Some(name) = effect.params.get(EFFECT_MONIKER_NVP) {
+        match effect_moniker_id(name) {
+            Some(id) if !ids.contains(&id) => ids.push(id),
+            Some(_) => {}
+            None => tracing::warn!(
+                target: "abilities",
+                event = "effect_moniker_unknown",
+                account_id = ctx.space_mgr.player_identity(ctx.source_id).account_id,
+                player_id = ctx.space_mgr.player_identity(ctx.source_id).player_id,
+                entity_id = ctx.source_id,
+                target_id = ctx.target_id,
+                target_player_id = ctx.space_mgr.player_identity(ctx.target_id).player_id,
+                effect_id = effect.effect_id,
+                ability_id = effect.ability_id,
+                moniker = %name,
+                "effect names an effect moniker the server does not know; entry carries only its ability's monikers"
+            ),
+        }
+    }
+    ids
+}
+
 /// Apply `ctx`'s effect as a ledger entry, or log why not.
 fn apply_entry(ctx: &mut EffectContext, stacking: TimedStacking, script: &'static str) {
     let spec = timed_spec(ctx, stacking);
+    if !spec.stats.is_empty() && ctx.effect.pulse_duration <= 0.0 && held::is_held_kind(ctx) {
+        held::apply_held(ctx, spec, script);
+        return;
+    }
     let reason = if spec.stats.is_empty() {
         Some("no_stat_nvps")
     } else if ctx.effect.pulse_duration <= 0.0 {

@@ -203,6 +203,7 @@ fn ability(id: i32, target_type_id: i32, effect_ids: Vec<i32>) -> AbilityDef {
         event_set_id: None,
         velocity: 100.0,
         type_id: AbilityType::DirectDamage,
+        passive: false,
     }
 }
 

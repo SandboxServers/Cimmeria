@@ -163,6 +163,10 @@ pub struct AbilityDef {
     /// lets a heal script stand in for the beneficial bit
     /// ([`super::ability_is_beneficial`]); it is never enough on its own.
     pub type_id: super::AbilityType,
+    /// `resources.abilities.passive_yn`: known, never cast. Its
+    /// `EF_AlwaysPersist` effects run through `apply_passives`; a cast of it
+    /// is refused at launch (ability mechanics AB-08).
+    pub passive: bool,
 }
 
 /// A single effect within an ability (damage, heal, buff, etc).

@@ -143,6 +143,7 @@ async fn reload_phase_a_to_phase_b_clears_pending_and_starts_reload() {
             event_set_id: None,
             velocity: 0.0,
             type_id: Default::default(),
+            passive: false,
         },
     );
 
@@ -304,6 +305,7 @@ async fn reload_in_isolation_does_not_flip_bsf_in_combat() {
             event_set_id: None,
             velocity: 0.0,
             type_id: Default::default(),
+            passive: false,
         },
     );
 
@@ -387,6 +389,7 @@ async fn handle_reload_phase_b_cancels_in_flight_holster_phase_2() {
             event_set_id: None,
             velocity: 0.0,
             type_id: Default::default(),
+            passive: false,
         },
     );
 

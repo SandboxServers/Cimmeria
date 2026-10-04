@@ -55,6 +55,7 @@ pub fn deployable_ability_def() -> AbilityDef {
         event_set_id: None,
         velocity: 100.0,
         type_id: Default::default(),
+        passive: false,
     }
 }
 

@@ -85,6 +85,7 @@ fn world() -> SpaceManager {
             event_set_id: None,
             velocity: 0.0,
             type_id: Default::default(),
+            passive: false,
         },
     );
     for id in [NEAR, ALSO_NEAR, FAR] {
