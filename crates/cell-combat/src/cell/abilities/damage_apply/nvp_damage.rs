@@ -175,16 +175,10 @@ pub(super) fn apply_nvp_damage(
             break;
         }
         let qr = if entry.unrolled { &unrolled } else { hit_qr };
-        let (health_results, health_dealt) = combat::calculate_damage_penetrating(
-            qr,
-            entry.health,
-            scale,
-            penetration_mult,
-            damage_type,
-            HEALTH,
-            attacker,
-            defender,
-        );
+        // Focus first: a shield stands in front of Focus, so a partial one
+        // spends itself on the Focus half before the Health half
+        // (`combat/damage/absorb.rs`). The two pools are otherwise
+        // independent, so the order changes nothing without a shield.
         let mut focus_dealt = 0;
         if entry.focus > 0 {
             focus_dealt = combat::calculate_damage_penetrating(
@@ -199,6 +193,16 @@ pub(super) fn apply_nvp_damage(
             )
             .1;
         }
+        let (health_results, health_dealt) = combat::calculate_damage_penetrating(
+            qr,
+            entry.health,
+            scale,
+            penetration_mult,
+            damage_type,
+            HEALTH,
+            attacker,
+            defender,
+        );
         tracing::debug!(
             target: "abilities",
             event = "nvp_damage_resolved",

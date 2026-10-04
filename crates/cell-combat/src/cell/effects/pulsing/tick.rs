@@ -325,10 +325,17 @@ async fn fire_pulse(
     // Script path takes precedence over NVP path so a registered
     // script can fully decide what happens on each pulse.
     if let Some(script_name) = effect.script_name.clone() {
+        // A scripted DoT pulse passes the target's shields first (AB-10), as
+        // the NVP branch does inside `calculate_damage`.
+        let mut effect = effect.clone();
+        if let Some(target) = space_mgr.get_entity_mut(target_id) {
+            let damage_type = crate::cell::combat::script_damage_type(Some(&script_name));
+            crate::cell::combat::absorb_damage_nvps(&mut target.stats, &mut effect, damage_type);
+        }
         let mut ctx = crate::cell::effects::EffectContext {
             source_id: inst.invoker_id,
             target_id,
-            effect,
+            effect: &effect,
             space_mgr,
         };
         crate::cell::effects::dispatch_by_name(&script_name, &mut ctx);
@@ -369,16 +376,8 @@ async fn fire_pulse(
         if let (Some(attacker), Some(target)) =
             (attacker_stats, space_mgr.get_entity_mut(target_id))
         {
-            if h_dmg > 0 {
-                let _ = crate::cell::combat::calculate_damage(
-                    &neutral_qr,
-                    h_dmg,
-                    dmg_type,
-                    HEALTH,
-                    &attacker,
-                    &mut target.stats,
-                );
-            }
+            // Focus first, as on a hit: a partial shield spends itself on
+            // the Focus half before the Health half (AB-10).
             if f_dmg > 0 {
                 let _ = crate::cell::combat::calculate_damage(
                     &neutral_qr,
@@ -389,11 +388,26 @@ async fn fire_pulse(
                     &mut target.stats,
                 );
             }
+            if h_dmg > 0 {
+                let _ = crate::cell::combat::calculate_damage(
+                    &neutral_qr,
+                    h_dmg,
+                    dmg_type,
+                    HEALTH,
+                    &attacker,
+                    &mut target.stats,
+                );
+            }
         } else if let Some(target) = space_mgr.get_entity_mut(target_id) {
             // Invoker vanished mid-DoT (NPC despawned, etc.). Apply
             // raw damage as a degraded fallback — better than dropping
             // the pulse entirely, which would let DoT victims survive
-            // forever after their attacker died.
+            // forever after their attacker died. It still passes the
+            // target's shields, Focus first (AB-10).
+            let (f_dmg, _) =
+                crate::cell::combat::drain_absorption_pools(&mut target.stats, dmg_type, f_dmg);
+            let (h_dmg, _) =
+                crate::cell::combat::drain_absorption_pools(&mut target.stats, dmg_type, h_dmg);
             if h_dmg > 0 {
                 if let Some(stat) = target.stats.get_mut(HEALTH) {
                     let cur = stat.cur;
@@ -410,6 +424,11 @@ async fn fire_pulse(
             }
         }
     }
+
+    // AB-10: charge what this pulse drained from the absorb stats to the
+    // shields on the ledger; an emptied one comes off, and the stat-buff
+    // tick sends its icon clear.
+    space_mgr.settle_absorb_shields(target_id);
 
     // Surrender floor: an automatic damage source may wound a
     // surrendered NPC but may never finish it. See

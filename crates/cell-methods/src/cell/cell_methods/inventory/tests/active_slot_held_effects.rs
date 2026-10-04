@@ -27,6 +27,7 @@ fn held(effect_id: i32, ability_id: i32, stat: i32) -> TimedEffectSpec {
         effect_flags: 1,
         moniker_ids: vec![],
         stats: vec![(stat, 100)],
+        absorb: Vec::new(),
         duration_secs: None,
         stacking: TimedStacking::PerSource,
         invoker_identity: Default::default(),

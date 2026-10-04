@@ -50,6 +50,7 @@ mod no_mechanics;
 mod not_known;
 mod owner_pet;
 mod sequence;
+mod shield_full;
 mod summon;
 mod support_shot;
 mod warmup;

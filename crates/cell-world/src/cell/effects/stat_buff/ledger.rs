@@ -56,6 +56,8 @@ pub enum StatBuffRemoval {
     BandolierSwap,
     /// A cleanse effect (AB-10).
     Cleansed,
+    /// A shield whose every absorb pool damage emptied (AB-10).
+    Drained,
 }
 
 impl StatBuffRemoval {
@@ -73,6 +75,7 @@ impl StatBuffRemoval {
             Self::Revive => "revive",
             Self::BandolierSwap => "bandolier_swap",
             Self::Cleansed => "cleansed",
+            Self::Drained => "drained",
         }
     }
 }
@@ -315,7 +318,7 @@ fn cur_of(snapshot: &[(i32, i32)], entry: &TimedEffect) -> Vec<Option<i32>> {
 
 /// The `stat_buff_removed` row. `account_id` / `player_id` are the invoker
 /// identity the entry snapshotted when it went on.
-fn log_removed(
+pub(super) fn log_removed(
     target: u32,
     target_who: PlayerIdentity,
     entry: &TimedEffect,
@@ -339,6 +342,7 @@ fn log_removed(
         ability_id = entry.ability_id,
         stat_ids = ?entry.stats.iter().map(|s| s.stat_id).collect::<Vec<_>>(),
         restored = ?entry.stats.iter().map(|s| (s.stat_id, -s.requested)).collect::<Vec<_>>(),
+        absorb_left = ?entry.absorb.iter().map(|p| (p.stat_id, p.remaining)).collect::<Vec<_>>(),
         stat_before = ?stat_before,
         stat_after = ?stat_after,
         "timed effect removed"

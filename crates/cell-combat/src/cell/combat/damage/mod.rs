@@ -11,13 +11,16 @@
 //!
 //! Submodules:
 //! - [`qr`]: QR scoring + beta-distribution roll → result code.
-//! - [`pipeline`]: the multi-stage damage-application formula + shields.
+//! - [`pipeline`]: the multi-stage damage-application formula.
+//! - [`absorb`]: the absorb-shield drain every damage seam shares (AB-10).
 //! - [`cover_damage`]: cover as a per-node damage reduction (NA32, D-NA15a).
 
+mod absorb;
 mod cover_damage;
 mod pipeline;
 mod qr;
 
+pub(crate) use absorb::{absorb_damage_nvps, drain_absorption_pools, script_damage_type};
 pub use cover_damage::{
     attacker_cover_qr, cover_reduction, node_base_pct, CoverRatingTable, CoverReduction, CoverSide,
     COVER_MAX_PCT, COVER_MIN_PCT, COVER_RATING,

@@ -12,13 +12,17 @@
 //! - `SpaceManager::apply_timed_effect(target, TimedEffectSpec, now)`;
 //! - `SpaceManager::remove_timed_effects(target, StatBuffRemoval, pred)` and
 //!   `remove_timed_effects_by_moniker`;
-//! - [`StatBuffRemoval`], the reason an entry came off.
+//! - [`StatBuffRemoval`], the reason an entry came off;
+//! - `SpaceManager::settle_absorb_shields(target)` (`absorb.rs`, AB-10):
+//!   charge what the damage pipeline drained from the `absorb*` stats to the
+//!   shield entries' pools, and take off the empty ones.
 //!
 //! The async half (expiry, the client's duration timers, the death strip and
 //! the other clear hooks) is `cimmeria-cell-combat`'s `effects::stat_buffs`.
 //!
 //! Log target `abilities`.
 
+mod absorb;
 mod ledger;
 
 pub use ledger::StatBuffRemoval;

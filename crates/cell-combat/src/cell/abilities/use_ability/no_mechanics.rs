@@ -151,12 +151,13 @@ pub(super) async fn refuse_without_mechanics(
         animates = def.event_set_id.is_some(),
         "useAbility: the ability has no mechanic yet, or is a passive; refused with feedback, no cooldown charged"
     );
-    send_no_effect_feedback(entity_id, ability_id, text, tx).await;
+    send_ability_feedback(entity_id, ability_id, text, tx).await;
 }
 
 /// `onErrorCode(ERRORCODE_SYSTEM_Ability, ability_id, 167)` and the
-/// `CHAN_FEEDBACK` line, in that order.
-async fn send_no_effect_feedback(
+/// `CHAN_FEEDBACK` line `text`, in that order: the answer to a refused press
+/// (no mechanic here, a full shield in `shield_full.rs`).
+pub(super) async fn send_ability_feedback(
     entity_id: u32,
     ability_id: i32,
     text: &str,

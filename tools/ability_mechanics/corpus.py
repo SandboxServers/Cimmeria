@@ -49,6 +49,7 @@ class Effect:
     tcm: str
     script_name: Optional[str]
     script_span: Tuple[int, int]  # the script_name literal in effects.sql (LF text)
+    effect_sequence: int = 0  # the ability's sequence step; a resist roll gates its step (AB-10)
 
 
 @dataclass
@@ -122,6 +123,7 @@ def _effect(r) -> Effect:
         tcm=r["target_collection_method"].text or "",
         script_name=sn.text,
         script_span=(sn.start, sn.end),
+        effect_sequence=int(r["effect_sequence"].text) if "effect_sequence" in r else 0,
     )
 
 
