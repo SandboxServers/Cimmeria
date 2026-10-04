@@ -263,6 +263,7 @@ The first 16 bytes of each function, read from the QA image (`0x` addresses are 
 | `0x00e08570` `EffectSet` entry lookup | `83 ec 08 8b 44 24 0c 53 55 56 8d 71 10 57 8d 4c` |
 | `0x00e0a9e0` effect-bar announce | `6a ff 68 38 99 6d 01 64 a1 00 00 00 00 50 64 89` |
 | `0x00e0a810` effect display-data request | `64 a1 00 00 00 00 6a ff 68 c3 9f 6f 01 50 64 89` |
+| `0x00e0a2d0` effect-bar post to the UI (`thiscall(ui, int* id, record*)`, `ret 8`) | `64 a1 00 00 00 00 6a ff 68 46 cd 6f 01 50 64 89` |
 | `0x00e004e0` / `0x00e005b0` stat functors | `56 57 8b f9 8d 44 24 0c 50 8d 8f 60 01 00 00 e8` / `56 8b f1 8d 44 24 08 50 8d 8e 60 01 00 00 e8 ed` |
 | `0x00ea6af0` `CooldownManager` timer | `6a ff 68 4f 15 71 01 64 a1 00 00 00 00 50 64 89` |
 | `0x00ea62b0` | `83 ec 14 8b 44 24 18 8b 54 24 1c 53 55 56 57 89` |

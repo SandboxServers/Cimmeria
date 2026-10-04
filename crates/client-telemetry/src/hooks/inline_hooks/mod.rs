@@ -48,7 +48,7 @@
 //!
 //! # What's installed
 //!
-//! 44 hooks. Every address below was re-checked against the QA
+//! 45 hooks. Every address below was re-checked against the QA
 //! `SGW.exe` on 2026-09-27 (function entry, `ret N` against the detour's
 //! argument count) and is covered by the [fingerprint
 //! gate](crate::fingerprint), which installs none of them on a build
@@ -97,7 +97,7 @@
 //! | sequence play step (`this, data, request, source`, `ret 0xc`) | `0x00d06dd0` | `client.sequence.dropped` (`culled_by_distance` at `debug`, `instance_refused`) | per (path, Source entity) bucket |
 //! | Kismet sequence instantiate (`this, out, name, pawn`, `ret 0xc`) | `0x00d067e0` | (records the play step's result; no event) | - |
 //! | `EffectSet` timer handler (`this, event, subject`, `ret 8`) | `0x00e09160` | `client.ability.applied` `effect_bar_*` | per-name bucket |
-//! | `EffectSet` entry lookup / effect-bar announce / display-data request (probes, `ret 4`) | `0x00e08570`, `0x00e0a9e0`, `0x00e0a810` | (feed the effect-bar row; no event) | - |
+//! | `EffectSet` entry lookup / effect-bar announce / display-data request (probes, `ret 4`) and the post to the UI (`ret 8`) | `0x00e08570`, `0x00e0a9e0`, `0x00e0a810`, `0x00e0a2d0` | (feed the effect-bar row; no event) | - |
 //! | `CooldownManager` timer handler (`ret 8`) + button callback (`ret 0x10`) | `0x00ea6af0`, `0x00ea62b0` | `client.ability.applied` `cooldown` | per-name bucket |
 //! | `GameBeing` stat / base-stat handlers (`ret 8`) + their functors (`ret 0x10`) | `0x00e01f40`, `0x00e02060`, `0x00e004e0`, `0x00e005b0` | `client.ability.applied` `stat` / `stat_base` | per-name bucket |
 //! | `SequenceManager::onSequence` (`this, event, subject`, `ret 8`) | `0x00d05790` | `client.sequence.dropped` (`no_source_entity`, `stage = net_in`) | per (path, Source entity) bucket |
@@ -215,7 +215,7 @@ unsafe fn install_inner(producer: Producer) {
     super::emit_info(
         &producer,
         "client.hooks.inline.install_complete",
-        [("hook_count", serde_json::json!(44))],
+        [("hook_count", serde_json::json!(45))],
     );
 }
 
@@ -456,6 +456,7 @@ mod tests {
             assert_eq!(super::ability_apply::ADDR_EFFECT_LOOKUP, 0x00e08570);
             assert_eq!(super::ability_apply::ADDR_EFFECT_ANNOUNCE, 0x00e0a9e0);
             assert_eq!(super::ability_apply::ADDR_EFFECT_DATA_REQUEST, 0x00e0a810);
+            assert_eq!(super::ability_apply::ADDR_EFFECT_POST, 0x00e0a2d0);
             assert_eq!(super::ability_apply::ADDR_COOLDOWN_TIMER, 0x00ea6af0);
             assert_eq!(super::ability_apply::ADDR_COOLDOWN_UI, 0x00ea62b0);
             assert_eq!(super::ability_apply::ADDR_STAT_HANDLER, 0x00e01f40);
@@ -508,6 +509,7 @@ mod tests {
             super::ability_apply::ADDR_EFFECT_LOOKUP,
             super::ability_apply::ADDR_EFFECT_ANNOUNCE,
             super::ability_apply::ADDR_EFFECT_DATA_REQUEST,
+            super::ability_apply::ADDR_EFFECT_POST,
             super::ability_apply::ADDR_COOLDOWN_TIMER,
             super::ability_apply::ADDR_COOLDOWN_UI,
             super::ability_apply::ADDR_STAT_HANDLER,

@@ -76,13 +76,18 @@ unsafe extern "thiscall-unwind" fn timer_detour(
         return;
     };
     let original: HandlerFn = unsafe { std::mem::transmute(t) };
-    let pre = guarded(|| {
-        (
-            Timer::read(&LiveBag(event)),
-            i32_at(this, COOLDOWN_OWNER),
-            now(),
-        )
-    });
+    // The event getters are game code with a C++ EH frame (they copy the
+    // property tree and can throw `bad_alloc`). They are called outside
+    // `catch_unwind`: catching a foreign exception aborts or swallows it,
+    // unspecified which, so a throw must unwind through this
+    // `thiscall-unwind` frame to the game's own handler, as it would from
+    // the handler's own call to the same getter. The Rust around them
+    // cannot panic.
+    let pre = Some((
+        Timer::read(&LiveBag(event)),
+        i32_at(this, COOLDOWN_OWNER),
+        now(),
+    ));
     let ui = {
         let _scope = Restore::set(&UI, Some(None));
         unsafe { original(this, event, subject) };

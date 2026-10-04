@@ -19,6 +19,12 @@
 //! property tree, looks the name up, and frees the copy; nothing is
 //! written to the event. All three are in the fingerprint gate.
 //!
+//! They are C++ (`6a ff 68` exception-frame prologue) and can throw, so a
+//! caller must never put them under `catch_unwind`: catching a foreign
+//! exception aborts or swallows it, unspecified which. The detours call
+//! them directly from their `thiscall-unwind` frame, where a throw unwinds
+//! to the game's own handler.
+//!
 //! The name is an MSVC 2008 `std::string`, built here by hand
 //! ([`MsvcString`]): `+0x00` the allocator word, `+0x04` a 16-byte buffer
 //! (the characters when `capacity < 16`, else a pointer to them), `+0x14`

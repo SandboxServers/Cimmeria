@@ -9,6 +9,7 @@
 //! | `EffectSet` entry lookup | `0x00e08570` | `thiscall(this, int secondary_id) -> entry*`, `ret 4` | probe: did an entry exist |
 //! | effect-bar announce | `0x00e0a9e0` | `thiscall(ui, int* id)`, `ret 4` | probe: a new entry was announced |
 //! | effect display-data request | `0x00e0a810` | `thiscall(ui, int* id)`, `ret 4` | probe: the display data was missing |
+//! | effect-bar post to the UI | `0x00e0a2d0` | `thiscall(ui, int* id, record*)`, `ret 8` | probe: the add was posted |
 //! | `CooldownManager` timer handler | `0x00ea6af0` | `thiscall(this, event, subject)`, `ret 8` | cooldown on a hotbar button |
 //! | cooldown button callback | `0x00ea62b0` | `thiscall(this, type, id, float, float)`, `ret 0x10` | probe: a button took it |
 //! | `GameBeing` stat handler | `0x00e01f40` | `thiscall(this, event, subject)`, `ret 8` | scope for the current stats |
@@ -43,14 +44,15 @@ use crate::queue::Producer;
 pub(super) use cooldown::{ADDR_COOLDOWN_TIMER, ADDR_COOLDOWN_UI};
 #[cfg(test)]
 pub(super) use effect_bar::{
-    ADDR_EFFECT_ANNOUNCE, ADDR_EFFECT_DATA_REQUEST, ADDR_EFFECT_LOOKUP, ADDR_EFFECT_TIMER,
+    ADDR_EFFECT_ANNOUNCE, ADDR_EFFECT_DATA_REQUEST, ADDR_EFFECT_LOOKUP, ADDR_EFFECT_POST,
+    ADDR_EFFECT_TIMER,
 };
 #[cfg(test)]
 pub(super) use stats::{
     ADDR_STAT_BASE_FUNCTOR, ADDR_STAT_BASE_HANDLER, ADDR_STAT_FUNCTOR, ADDR_STAT_HANDLER,
 };
 
-/// Install the ten hooks.
+/// Install the eleven hooks.
 pub(super) unsafe fn install_all(producer: &Producer) {
     unsafe {
         effect_bar::install_all(producer);

@@ -31,6 +31,7 @@ pub(in crate::hooks::inline_hooks) const ADDR_EFFECT_TIMER: usize = 0x00e0_9160;
 pub(in crate::hooks::inline_hooks) const ADDR_EFFECT_LOOKUP: usize = 0x00e0_8570;
 pub(in crate::hooks::inline_hooks) const ADDR_EFFECT_ANNOUNCE: usize = 0x00e0_a9e0;
 pub(in crate::hooks::inline_hooks) const ADDR_EFFECT_DATA_REQUEST: usize = 0x00e0_a810;
+pub(in crate::hooks::inline_hooks) const ADDR_EFFECT_POST: usize = 0x00e0_a2d0;
 
 /// The `EffectSet`'s owner entity id (the subject it subscribed with,
 /// stored by its constructor `0x00e094d0`).
@@ -43,6 +44,7 @@ static TIMER_TRAMPOLINE: OnceLock<usize> = OnceLock::new();
 static LOOKUP_TRAMPOLINE: OnceLock<usize> = OnceLock::new();
 static ANNOUNCE_TRAMPOLINE: OnceLock<usize> = OnceLock::new();
 static DATA_REQUEST_TRAMPOLINE: OnceLock<usize> = OnceLock::new();
+static POST_TRAMPOLINE: OnceLock<usize> = OnceLock::new();
 
 thread_local! {
     /// Set while the handler runs for a type-5 timer.
@@ -50,7 +52,7 @@ thread_local! {
 }
 
 pub(super) unsafe fn install_all(producer: &Producer) {
-    let hooks: [(&str, usize, *mut c_void, &OnceLock<usize>); 4] = [
+    let hooks: [(&str, usize, *mut c_void, &OnceLock<usize>); 5] = [
         (
             "ability_effect_timer",
             ADDR_EFFECT_TIMER,
@@ -74,6 +76,12 @@ pub(super) unsafe fn install_all(producer: &Producer) {
             ADDR_EFFECT_DATA_REQUEST,
             data_request_detour as *mut c_void,
             &DATA_REQUEST_TRAMPOLINE,
+        ),
+        (
+            "ability_effect_post",
+            ADDR_EFFECT_POST,
+            post_detour as *mut c_void,
+            &POST_TRAMPOLINE,
         ),
     ];
     for (name, addr, detour, slot) in hooks {
@@ -103,13 +111,17 @@ unsafe extern "thiscall-unwind" fn timer_detour(
         return;
     };
     let original: HandlerFn = unsafe { std::mem::transmute(t) };
+    // The event getters are game code with a C++ EH frame (they copy the
+    // property tree and can throw `bad_alloc`). They are called outside
+    // `catch_unwind`: catching a foreign exception aborts or swallows it,
+    // unspecified which, so a throw must unwind through this
+    // `thiscall-unwind` frame to the game's own handler, as it would from
+    // the handler's own call to the same getter. The Rust around them
+    // cannot panic.
     // Only a type-5 timer reaches the bar; read the rest only then.
-    let pre = guarded(|| {
-        let bag = LiveBag(event);
-        (bag.byte(b"Type\0") == Some(TIMER_TYPE_EFFECT))
-            .then(|| (Timer::read(&bag), i32_at(this, EFFECT_SET_OWNER), now()))
-    })
-    .flatten();
+    let bag = LiveBag(event);
+    let pre = (bag.byte(b"Type\0") == Some(TIMER_TYPE_EFFECT))
+        .then(|| (Timer::read(&bag), i32_at(this, EFFECT_SET_OWNER), now()));
     let Some((timer, owner, clock)) = pre else {
         unsafe { original(this, event, subject) };
         return;
@@ -173,6 +185,25 @@ unsafe extern "thiscall-unwind" fn data_request_detour(this: *mut c_void, id: *m
     unsafe { original(this, id) }
 }
 
+type PostFn = unsafe extern "thiscall-unwind" fn(*mut c_void, *mut i32, *mut c_void) -> u32;
+
+/// The add posted to the effect UI (`0x00e0a2d0`, `thiscall(ui, int* id,
+/// record*)`, `ret 8`), reached from the announcement only when the UI
+/// exists and has the effect's display data.
+#[allow(improper_ctypes_definitions)]
+unsafe extern "thiscall-unwind" fn post_detour(
+    this: *mut c_void,
+    id: *mut i32,
+    record: *mut c_void,
+) -> u32 {
+    let Some(&t) = POST_TRAMPOLINE.get() else {
+        return 0;
+    };
+    let original: PostFn = unsafe { std::mem::transmute(t) };
+    guarded(|| update_probe(|p| p.posted = true));
+    unsafe { original(this, id, record) }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -197,6 +228,14 @@ mod tests {
         let _ = LOOKUP_TRAMPOLINE.set(lookup as *const () as usize);
         let _ = ANNOUNCE_TRAMPOLINE.set(announce as *const () as usize);
         let _ = DATA_REQUEST_TRAMPOLINE.set(announce as *const () as usize);
+        unsafe extern "thiscall-unwind" fn post(
+            _: *mut c_void,
+            id: *mut i32,
+            record: *mut c_void,
+        ) -> u32 {
+            unsafe { *id }.unsigned_abs() + record as u32
+        }
+        let _ = POST_TRAMPOLINE.set(post as *const () as usize);
 
         // Outside a handler: forwarded, nothing recorded.
         assert_eq!(unsafe { lookup_detour(0x100 as *mut c_void, 7) }, 0xABCD);
@@ -216,6 +255,11 @@ mod tests {
                 unsafe { data_request_detour(0x300 as *mut c_void, &mut id) },
                 1201
             );
+            // `ret 8`: both stack arguments reach the original.
+            assert_eq!(
+                unsafe { post_detour(0x400 as *mut c_void, &mut id, 5 as *mut c_void) },
+                1206
+            );
             PROBE.with(Cell::get)
         };
         assert_eq!(
@@ -224,6 +268,7 @@ mod tests {
                 lookup_hit: Some(true),
                 announced: true,
                 data_request: Some(false),
+                posted: true,
             })
         );
         assert_eq!(PROBE.with(Cell::get), None, "restored after the handler");

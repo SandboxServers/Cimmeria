@@ -416,6 +416,16 @@ pub const EFFECT_DATA_REQUEST: Site = code_site(
     ],
 );
 
+/// Effect-bar add posted to the UI: `mov eax, fs:[0]; push -1; push
+/// 0x016fcd46` (`ret 8`).
+pub const EFFECT_POST: Site = code_site(
+    "Effect bar post",
+    0x00e0_a2d0,
+    &[
+        0x64, 0xA1, 0x00, 0x00, 0x00, 0x00, 0x6A, 0xFF, 0x68, 0x46, 0xCD, 0x6F,
+    ],
+);
+
 /// `CooldownManager` `onTimerUpdate` handler: `push -1; push 0x0171154f;
 /// mov eax, fs:[0]` (`ret 8`).
 pub const COOLDOWN_TIMER: Site = code_site(
@@ -503,7 +513,7 @@ pub const EVENT_GET_FLOAT: Site =
 pub const EVENT_GET_BYTE: Site = code_site("CME event GetByte", 0x00d4_34d0, EVENT_GETTER_PROLOGUE);
 
 /// Every function the gate checks.
-pub const CODE_SITES: [Site; 53] = [
+pub const CODE_SITES: [Site; 54] = [
     cimmeria_client_hookgate::ENGINE_TICK,
     cimmeria_client_hookgate::DROP_CALLEE,
     BINK_TICK,
@@ -547,6 +557,7 @@ pub const CODE_SITES: [Site; 53] = [
     EFFECT_LOOKUP,
     EFFECT_ANNOUNCE,
     EFFECT_DATA_REQUEST,
+    EFFECT_POST,
     COOLDOWN_TIMER,
     COOLDOWN_UI,
     STAT_HANDLER,

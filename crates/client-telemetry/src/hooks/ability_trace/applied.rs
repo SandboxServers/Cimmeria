@@ -9,7 +9,7 @@
 //!
 //! | `kind` | From | Means |
 //! |---|---|---|
-//! | `effect_bar_add` | `EffectSet` timer handler `0x00e09160`, type 5, no entry for `SecondaryId`, `BigWorldTimeComplete` in the future | A new icon entry. `ui` says what the bar did with it: `posted` (the effect's display data was cached and the add went to the UI) or `data_requested` (it was not: the client sent `Event_NetOut_elementDataRequest`, category 9, for the effect id instead) |
+//! | `effect_bar_add` | `EffectSet` timer handler `0x00e09160`, type 5, no entry for `SecondaryId`, `BigWorldTimeComplete` in the future | A new icon entry. `ui` says what the bar did with it: `posted` (the add went to the UI, `0x00e0a2d0` ran), `data_requested` (the display data was not cached: the client sent `Event_NetOut_elementDataRequest`, category 9, for the effect id instead), `data_request_pending` (a request was already out), or `no_ui` (no effect UI existed, so nothing was sent) |
 //! | `effect_bar_refresh` | same, an entry exists, complete time in the future | The entry's interval was moved |
 //! | `effect_bar_clear` | same, an entry exists, complete time not in the future | The server ended the effect (it sends `0.0`); the bar drops the entry on its next clock check |
 //! | `effect_bar_ignored` | same, no entry, complete time not in the future | `reason = expired_on_arrival`: the handler creates nothing |
@@ -92,6 +92,9 @@ pub(crate) struct EffectProbe {
     /// data request `0x00e0a810` ran; `Some(true)` when a request was
     /// already outstanding (`[this+0x48]` set), so nothing new was sent.
     pub data_request: Option<bool>,
+    /// Inside the announcement, the add was posted to the effect UI
+    /// (`0x00e0a2d0`).
+    pub posted: bool,
 }
 
 /// `(kind, extra fields)` for one effect-bar handler call, or `None` for
@@ -108,10 +111,13 @@ pub(crate) fn effect_bar_kind(
     }
     let mut extra: Fields = Vec::new();
     let kind = if probe.announced {
-        let ui = match probe.data_request {
-            None => "posted",
-            Some(false) => "data_requested",
-            Some(true) => "data_request_pending",
+        let ui = match (probe.posted, probe.data_request) {
+            (true, _) => "posted",
+            (false, Some(false)) => "data_requested",
+            (false, Some(true)) => "data_request_pending",
+            // `0x00e0a9e0` returns at once when `0x00e0a1f0` finds no
+            // effect UI (before the UI exists): nothing was sent anywhere.
+            (false, None) => "no_ui",
         };
         extra.push(("ui", json!(ui)));
         "effect_bar_add"
@@ -315,6 +321,7 @@ mod tests {
             lookup_hit: Some(false),
             announced: true,
             data_request: None,
+            posted: true,
         };
         let (kind, f) = effect_bar_fields(Some(77), &timer(130.0), &add, Some(100.0)).unwrap();
         assert_eq!(kind, "effect_bar_add");
@@ -326,10 +333,19 @@ mod tests {
 
         let requested = EffectProbe {
             data_request: Some(false),
+            posted: false,
             ..add
         };
         let (_, f) = effect_bar_fields(Some(77), &timer(130.0), &requested, Some(100.0)).unwrap();
         assert_eq!(get(&f, "ui"), json!("data_requested"));
+        // Announced, but neither posted nor requested: no effect UI yet.
+        // That must not read as shown.
+        let no_ui = EffectProbe {
+            posted: false,
+            ..add
+        };
+        let (_, f) = effect_bar_fields(Some(77), &timer(130.0), &no_ui, Some(100.0)).unwrap();
+        assert_eq!(get(&f, "ui"), json!("no_ui"));
 
         let hit = EffectProbe {
             lookup_hit: Some(true),

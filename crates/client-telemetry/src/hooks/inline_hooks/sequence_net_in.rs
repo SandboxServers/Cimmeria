@@ -90,7 +90,14 @@ unsafe extern "thiscall-unwind" fn on_sequence_detour(
         return;
     };
     let original: HandlerFn = unsafe { std::mem::transmute(t) };
-    let drop = guarded(|| plan(&LiveBag(event), &LiveMem)).flatten();
+    // The event getters are game code with a C++ EH frame (they copy the
+    // property tree and can throw `bad_alloc`). They are called outside
+    // `catch_unwind`: catching a foreign exception aborts or swallows it,
+    // unspecified which, so a throw must unwind through this
+    // `thiscall-unwind` frame to the game's own handler, as it would from
+    // the handler's own call to the same getter. The Rust around them
+    // cannot panic.
+    let drop = plan(&LiveBag(event), &LiveMem);
     unsafe { original(this, event, subject) };
     if let Some(d) = drop {
         guarded(|| super::sequence_manager::report(&d, "net_in"));
