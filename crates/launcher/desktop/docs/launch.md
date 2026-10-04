@@ -226,3 +226,12 @@ Follow the [lab rulebook](../../../../docs/guides/live-research-lab.md). A local
 UAT session must use a fresh loopback bridge token and an empty upload endpoint;
 no live mint, telemetry upload or server-side lab access is part of this campaign.
 Native Windows compilation does not establish Wine bridge compatibility.
+
+### Minimum-version status
+
+Idle Play inspection verifies the retained signed release and reports
+`launcher_update_required`. When it blocks, no installation capability is
+returned and repeated status polls keep Play disabled with update guidance.
+This read does not change consent or the operation journal. Existing native
+admission checks remain authoritative. Development-build exemptions retain the
+legacy policy; this status does not imply updater download or replacement.

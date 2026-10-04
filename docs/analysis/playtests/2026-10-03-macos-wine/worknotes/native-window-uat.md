@@ -73,8 +73,8 @@ with pinned native Windows helper/client-patches and upstream D9VK. The initial
 inspection waited on Documents access again: macOS logged that the existing
 code requirement did not match the newly rebuilt development app and issued a
 new `AUTHREQ_PROMPTING`. A process sample placed inspection in installed-owner
-file reading. This is an unresolved OS permission wait, not a failed game launch;
-Play has not been pressed. The operator was asked to resolve the protected prompt.
+file reading. At that point Play had not been pressed; the operator then resolved the
+protected prompt, allowing the first Play attempt described below.
 
 ## First Play and graphics diagnosis
 
@@ -92,3 +92,12 @@ minimization on focus loss. These are operator observations: the computer-use
 provider rejected both Wine and SGW application names. Login/world entry has
 not been confirmed. The new production environment guard is in `wine.rs` with
 revert-verified tests; a rebuilt production-path Play pass is still required.
+
+The operator subsequently closed the diagnostic game to adjust framerate. The
+retained helper observed guest exit code 0 and itself exited 0, releasing its
+ownership locks. This is a normal-exit observation, not a login/world result.
+Further game launches and graphics-setting changes are deferred while the
+operator makes those changes. The first local-lab CI build compiled the MCP
+supervisor but failed because the injector command selected the library package;
+the corrected workflow builds `sgw-start32` from `cimmeria-start32`. No lab DLL has
+yet been injected and no live telemetry endpoint has been used.
