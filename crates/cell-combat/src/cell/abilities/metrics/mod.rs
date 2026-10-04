@@ -194,13 +194,16 @@ impl QrOutcome {
 
 cimmeria_observability::metric_label! {
     /// The message a failed send carried: the `method` of its WARN row.
-    /// The first eleven are `wire_ledger::method_name`'s values.
+    /// The first fourteen are `wire_ledger::method_name`'s values.
     pub(crate) enum WireMessage {
         OnSequence => "onSequence",
         OnTimerUpdate => "onTimerUpdate",
         OnEffectResults => "onEffectResults",
         OnStateFieldUpdate => "onStateFieldUpdate",
         OnStatUpdate => "onStatUpdate",
+        OnStatBaseUpdate => "onStatBaseUpdate",
+        OnKnownAbilitiesUpdate => "onKnownAbilitiesUpdate",
+        OnAbilityTreeInfo => "onAbilityTreeInfo",
         OnErrorCode => "onErrorCode",
         OnPlayerCommunication => "onPlayerCommunication",
         OnTargetUpdate => "onTargetUpdate",
