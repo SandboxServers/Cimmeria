@@ -1,6 +1,9 @@
 //! Detours on the press chain (AB-C2). Every one forwards its arguments
-//! untouched; the reads happen before or after the original, through
-//! `ReadProcessMemory`.
+//! untouched and returns the original's EAX (the functions are `void` in
+//! effect, but a pass-through cannot clobber a value a caller might read);
+//! the reads happen before or after the original, through
+//! `ReadProcessMemory`. Calling conventions and `ret N` were re-checked
+//! against the QA image on 2026-10-04 (finding, AB-C1/AB-C2 addendum).
 
 use std::ffi::c_void;
 use std::sync::OnceLock;
@@ -117,13 +120,13 @@ pub(super) unsafe extern "C-unwind" fn use_ability_detour(l: *mut c_void) -> i32
 // ---------------------------------------------------------------------
 // The chain
 
-type SlotFn = unsafe extern "C-unwind" fn(i32, u32);
+type SlotFn = unsafe extern "C-unwind" fn(i32, u32) -> u32;
 
 /// `FUN_00ad9580(actionId, self)`. `self` is a pushed dword whose low byte
 /// is the bool (`0x00aa954f`).
-pub(super) unsafe extern "C-unwind" fn slot_detour(action_id: i32, self_flag: u32) {
+pub(super) unsafe extern "C-unwind" fn slot_detour(action_id: i32, self_flag: u32) -> u32 {
     let Some(&t) = SLOT_TRAMPOLINE.get() else {
-        return;
+        return 0;
     };
     let original: SlotFn = unsafe { std::mem::transmute(t) };
     let held = guarded(|| {
@@ -131,7 +134,7 @@ pub(super) unsafe extern "C-unwind" fn slot_detour(action_id: i32, self_flag: u3
         Some(layout::slot_action(&LiveMem, action_id))
     })
     .flatten();
-    unsafe { original(action_id, self_flag) };
+    let r = unsafe { original(action_id, self_flag) };
     if let Some(action) = held {
         report(
             guarded(|| with_press(|p| p.slot_left(action)))
@@ -139,9 +142,10 @@ pub(super) unsafe extern "C-unwind" fn slot_detour(action_id: i32, self_flag: u3
                 .unwrap_or_default(),
         );
     }
+    r
 }
 
-type LookupFn = unsafe extern "thiscall-unwind" fn(*mut c_void, i32, i32);
+type LookupFn = unsafe extern "thiscall-unwind" fn(*mut c_void, i32, i32) -> u32;
 
 /// `FUN_00d2afc0(set, abilityId, targetId)`.
 #[allow(improper_ctypes_definitions)]
@@ -149,9 +153,9 @@ pub(super) unsafe extern "thiscall-unwind" fn lookup_detour(
     set: *mut c_void,
     ability_id: i32,
     target_id: i32,
-) {
+) -> u32 {
     let Some(&t) = LOOKUP_TRAMPOLINE.get() else {
-        return;
+        return 0;
     };
     let original: LookupFn = unsafe { std::mem::transmute(t) };
     report(
@@ -159,15 +163,16 @@ pub(super) unsafe extern "thiscall-unwind" fn lookup_detour(
             .flatten()
             .unwrap_or_default(),
     );
-    unsafe { original(set, ability_id, target_id) };
+    let r = unsafe { original(set, ability_id, target_id) };
     report(
         guarded(|| with_press(|p| p.lookup_left()))
             .flatten()
             .unwrap_or_default(),
     );
+    r
 }
 
-type SendBuilderFn = unsafe extern "thiscall-unwind" fn(*mut c_void, *mut c_void, i32);
+type SendBuilderFn = unsafe extern "thiscall-unwind" fn(*mut c_void, *mut c_void, i32) -> u32;
 
 /// `FUN_00d2ae40(set, record, targetId)`. Reached from `FUN_00d2afc0` only
 /// with a record; also called from `0x00d2b009`, outside any press, which
@@ -177,9 +182,9 @@ pub(super) unsafe extern "thiscall-unwind" fn send_builder_detour(
     set: *mut c_void,
     rec: *mut c_void,
     target_id: i32,
-) {
+) -> u32 {
     let Some(&t) = SEND_BUILDER_TRAMPOLINE.get() else {
-        return;
+        return 0;
     };
     let original: SendBuilderFn = unsafe { std::mem::transmute(t) };
     let _ = guarded(|| {
@@ -190,16 +195,16 @@ pub(super) unsafe extern "thiscall-unwind" fn send_builder_detour(
             with_pending(|t| t.push(pending));
         }
     });
-    unsafe { original(set, rec, target_id) };
+    unsafe { original(set, rec, target_id) }
 }
 
-type PetActionFn = unsafe extern "thiscall-unwind" fn(*mut c_void, u32);
+type PetActionFn = unsafe extern "thiscall-unwind" fn(*mut c_void, u32) -> u32;
 
 /// `PetAbilityAction::execute(self)`.
 #[allow(improper_ctypes_definitions)]
-pub(super) unsafe extern "thiscall-unwind" fn pet_action_detour(this: *mut c_void, self_flag: u32) {
+pub(super) unsafe extern "thiscall-unwind" fn pet_action_detour(this: *mut c_void, self_flag: u32) -> u32 {
     let Some(&t) = PET_ACTION_TRAMPOLINE.get() else {
-        return;
+        return 0;
     };
     let original: PetActionFn = unsafe { std::mem::transmute(t) };
     report(
@@ -212,15 +217,16 @@ pub(super) unsafe extern "thiscall-unwind" fn pet_action_detour(this: *mut c_voi
         .flatten()
         .unwrap_or_default(),
     );
-    unsafe { original(this, self_flag) };
+    let r = unsafe { original(this, self_flag) };
     report(
         guarded(|| with_press(|p| p.pet_left()))
             .flatten()
             .unwrap_or_default(),
     );
+    r
 }
 
-type PetSendFn = unsafe extern "thiscall-unwind" fn(*mut c_void, i32, i32);
+type PetSendFn = unsafe extern "thiscall-unwind" fn(*mut c_void, i32, i32) -> u32;
 
 /// The GamePet send `(abilityId, targetId)`. Its three gates are read
 /// before it runs; the second caller (`0x00ad7bfe`) is outside any press
@@ -230,9 +236,9 @@ pub(super) unsafe extern "thiscall-unwind" fn pet_send_detour(
     pet: *mut c_void,
     ability_id: i32,
     target_id: i32,
-) {
+) -> u32 {
     let Some(&t) = PET_SEND_TRAMPOLINE.get() else {
-        return;
+        return 0;
     };
     let original: PetSendFn = unsafe { std::mem::transmute(t) };
     let outs = guarded(|| {
@@ -246,5 +252,5 @@ pub(super) unsafe extern "thiscall-unwind" fn pet_send_detour(
     .flatten()
     .unwrap_or_default();
     report(outs);
-    unsafe { original(pet, ability_id, target_id) };
+    unsafe { original(pet, ability_id, target_id) }
 }

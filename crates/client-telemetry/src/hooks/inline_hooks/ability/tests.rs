@@ -86,6 +86,17 @@ static RECORD: AtomicUsize = AtomicUsize::new(0);
 /// Address of the fake pet (`+0x38` flags, `+0x174` ability set).
 static PET: AtomicUsize = AtomicUsize::new(0);
 
+// Every stand-in has the ABI read from the image (2026-10-04): the two
+// thunks `cdecl int(lua_State*)` with plain `ret`; `FUN_00ad9580` `cdecl`
+// (two stack args, plain `ret`); `FUN_00d2afc0`, `FUN_00d2ae40` and the
+// GamePet send `thiscall` with two stack args (`ret 8`);
+// `PetAbilityAction::execute` `thiscall` with one (`ret 4`). Each returns
+// a marker mixed with its callee's EAX, so the tests also prove that the
+// detours hand the original's EAX back unchanged.
+
+/// What the slot stand-in returned to the `useAction` stand-in.
+static SLOT_RET: AtomicU32 = AtomicU32::new(0);
+
 #[inline(never)]
 unsafe extern "C-unwind" fn use_action_standin(l: *mut c_void) -> i32 {
     SEEN[0].store(l as u32, Ordering::SeqCst);
@@ -93,8 +104,8 @@ unsafe extern "C-unwind" fn use_action_standin(l: *mut c_void) -> i32 {
         // tolua_error: a Lua error is a C++ throw through the binding.
         panic!("#ferror in function 'useAction'.");
     }
-    let next: unsafe extern "C-unwind" fn(i32, u32) = black_box(slot_standin);
-    unsafe { next(3, 0xCC00) };
+    let next: unsafe extern "C-unwind" fn(i32, u32) -> u32 = black_box(slot_standin);
+    SLOT_RET.store(unsafe { next(3, 0xCC00) }, Ordering::SeqCst);
     SEEN[0].fetch_add(1, Ordering::SeqCst);
     0
 }
@@ -102,43 +113,47 @@ unsafe extern "C-unwind" fn use_action_standin(l: *mut c_void) -> i32 {
 #[inline(never)]
 unsafe extern "C-unwind" fn use_ability_standin(l: *mut c_void) -> i32 {
     SEEN[1].store(l as u32, Ordering::SeqCst);
-    let next: unsafe extern "thiscall-unwind" fn(*mut c_void, i32, i32) = black_box(lookup_standin);
+    let next: unsafe extern "thiscall-unwind" fn(*mut c_void, i32, i32) -> u32 =
+        black_box(lookup_standin);
     unsafe { next(0x5E7 as *mut c_void, 4000, 99) };
     SEEN[1].fetch_add(1, Ordering::SeqCst);
     0
 }
 
 #[inline(never)]
-unsafe extern "C-unwind" fn slot_standin(action_id: i32, self_flag: u32) {
+unsafe extern "C-unwind" fn slot_standin(action_id: i32, self_flag: u32) -> u32 {
     SEEN[2].store(action_id as u32 ^ self_flag, Ordering::SeqCst);
-    match SCENARIO.load(Ordering::SeqCst) {
+    let child = match SCENARIO.load(Ordering::SeqCst) {
         PET_MISSING | PET_FOUND => {
-            let next: unsafe extern "thiscall-unwind" fn(*mut c_void, u32) =
+            let next: unsafe extern "thiscall-unwind" fn(*mut c_void, u32) -> u32 =
                 black_box(pet_action_standin);
             let action = [0u32, 0, 0, 11, 900];
-            unsafe { next(action.as_ptr() as *mut c_void, 0) };
+            unsafe { next(action.as_ptr() as *mut c_void, 0) }
         }
         _ => {
-            let next: unsafe extern "thiscall-unwind" fn(*mut c_void, i32, i32) =
+            let next: unsafe extern "thiscall-unwind" fn(*mut c_void, i32, i32) -> u32 =
                 black_box(lookup_standin);
-            unsafe { next(0x5E7 as *mut c_void, 597, 1234) };
+            unsafe { next(0x5E7 as *mut c_void, 597, 1234) }
         }
-    }
+    };
     SEEN[2].fetch_add(1, Ordering::SeqCst);
+    black_box(0x2_0000 ^ child)
 }
 
 #[inline(never)]
-unsafe extern "thiscall-unwind" fn lookup_standin(set: *mut c_void, ability: i32, target: i32) {
+unsafe extern "thiscall-unwind" fn lookup_standin(set: *mut c_void, ability: i32, target: i32) -> u32 {
     SEEN[3].store(
         set as u32 ^ ability as u32 ^ target as u32,
         Ordering::SeqCst,
     );
+    let mut child = 0;
     if matches!(SCENARIO.load(Ordering::SeqCst), KNOWN | GROUND) {
-        let next: unsafe extern "thiscall-unwind" fn(*mut c_void, *mut c_void, i32) =
+        let next: unsafe extern "thiscall-unwind" fn(*mut c_void, *mut c_void, i32) -> u32 =
             black_box(send_builder_standin);
-        unsafe { next(set, RECORD.load(Ordering::SeqCst) as *mut c_void, target) };
+        child = unsafe { next(set, RECORD.load(Ordering::SeqCst) as *mut c_void, target) };
     }
     SEEN[3].fetch_add(1, Ordering::SeqCst);
+    black_box(0x1000 ^ child)
 }
 
 #[inline(never)]
@@ -146,29 +161,33 @@ unsafe extern "thiscall-unwind" fn send_builder_standin(
     set: *mut c_void,
     rec: *mut c_void,
     t: i32,
-) {
+) -> u32 {
     SEEN[4].store(set as u32 ^ rec as u32 ^ t as u32, Ordering::SeqCst);
     SEEN[5].fetch_add(1, Ordering::SeqCst);
+    black_box(0x5B)
 }
 
 #[inline(never)]
-unsafe extern "thiscall-unwind" fn pet_action_standin(this: *mut c_void, self_flag: u32) {
+unsafe extern "thiscall-unwind" fn pet_action_standin(this: *mut c_void, self_flag: u32) -> u32 {
     SEEN[6].store(this as u32 ^ self_flag, Ordering::SeqCst);
+    let mut child = 0;
     if SCENARIO.load(Ordering::SeqCst) == PET_FOUND {
-        let next: unsafe extern "thiscall-unwind" fn(*mut c_void, i32, i32) =
+        let next: unsafe extern "thiscall-unwind" fn(*mut c_void, i32, i32) -> u32 =
             black_box(pet_send_standin);
-        unsafe { next(PET.load(Ordering::SeqCst) as *mut c_void, 11, 5) };
+        child = unsafe { next(PET.load(Ordering::SeqCst) as *mut c_void, 11, 5) };
     }
     SEEN[6].fetch_add(1, Ordering::SeqCst);
+    black_box(0x300 ^ child)
 }
 
 #[inline(never)]
-unsafe extern "thiscall-unwind" fn pet_send_standin(pet: *mut c_void, ability: i32, target: i32) {
+unsafe extern "thiscall-unwind" fn pet_send_standin(pet: *mut c_void, ability: i32, target: i32) -> u32 {
     SEEN[7].store(
         pet as u32 ^ ability as u32 ^ target as u32,
         Ordering::SeqCst,
     );
     SEEN[7].fetch_add(1, Ordering::SeqCst);
+    black_box(0x77)
 }
 
 fn run(scenario: u32, f: impl FnOnce()) -> Vec<Out> {
@@ -248,6 +267,11 @@ fn the_press_chain_patch_call_unpatch() {
         (3 ^ 0xCC00) + 1,
         "args kept"
     );
+    assert_eq!(
+        SLOT_RET.load(Ordering::SeqCst),
+        0x2_0000 ^ 0x1000 ^ 0x5B,
+        "EAX passes back through the slot, lookup and send-builder detours"
+    );
     let pending = with_pending(|t| t.take("useAbility", Some(597), now_ms()));
     let press_id = field(&outs[0].fields, "press_id").and_then(|v| v.as_u64());
     assert_eq!(pending.map(|p| u64::from(p.press_id)), press_id);
@@ -293,6 +317,11 @@ fn the_press_chain_patch_call_unpatch() {
     let outs = run(PET_FOUND, press_hotbar);
     assert_eq!(reason(&outs).as_deref(), Some("pet_state_flag"));
     assert_eq!(
+        SLOT_RET.load(Ordering::SeqCst),
+        0x2_0000 ^ 0x300 ^ 0x77,
+        "EAX passes back through the pet detours"
+    );
+    assert_eq!(
         SEEN[7].load(Ordering::SeqCst) & 1,
         1,
         "the original pet send ran"
@@ -302,6 +331,7 @@ fn the_press_chain_patch_call_unpatch() {
     drop(hooks);
     let outs = run(UNKNOWN, press_hotbar);
     assert!(outs.is_empty(), "{outs:#?}");
+    assert_eq!(SLOT_RET.load(Ordering::SeqCst), 0x2_0000 ^ 0x1000);
 }
 
 // ---------------------------------------------------------------------
