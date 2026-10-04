@@ -272,6 +272,13 @@ jobs:
       DATABASE_URL: postgres://w-testing:w-testing@localhost:5432/sgw
     steps:
       - uses: actions/checkout@v7
+      # The generated effect NVP blocks in db/resources/Effects/Seed/ match
+      # what the ability-mechanics generator writes (D-AB06), and its parser
+      # tests pass. Stock Python; runs before the seed this job loads.
+      - name: effect NVP generator (unit tests + --check)
+        run: |
+          python3 -m unittest discover -s tools/ability_mechanics -p "test_*.py"
+          python3 tools/ability_mechanics/effect_nvps_from_desc.py --check
       - uses: ./.github/actions/rust-toolchain
       - name: install clang + mold + psql
         run: sudo apt-get update && sudo apt-get install -y clang mold postgresql-client

@@ -1348,10 +1348,10 @@ INSERT INTO effects (effect_id, ability_id, delay, effect_desc, effect_sequence,
 30 Seconds duration', 0, 0, 'set:CoreWidgets image:IconMissing', 30, 1, NULL, NULL, 'TCM_Single', false, false, 'Engagement State', 0, NULL, NULL);
 
 INSERT INTO effects (effect_id, ability_id, delay, effect_desc, effect_sequence, flags, icon_location, pulse_count, pulse_duration, tcm_param1, tcm_param2, target_collection_method, use_ability_velocity, is_channeled, name, target_collection_id, event_set_id, script_name) VALUES (1040, 946, 0, 'Single Target
-Target +35% Focus', 0, 16, 'set:CoreWidgets image:IconMissing', 1, 0, NULL, NULL, 'TCM_Single', false, false, 'Heal', 0, NULL, NULL);
+Target +35% Focus', 0, 16, 'set:CoreWidgets image:IconMissing', 1, 0, NULL, NULL, 'TCM_Single', false, false, 'Heal', 0, NULL, 'HealFocus');
 
 INSERT INTO effects (effect_id, ability_id, delay, effect_desc, effect_sequence, flags, icon_location, pulse_count, pulse_duration, tcm_param1, tcm_param2, target_collection_method, use_ability_velocity, is_channeled, name, target_collection_id, event_set_id, script_name) VALUES (1044, 948, 0, 'Single Target
-Target +10% Health', 0, 17, 'set:CoreWidgets image:IconMissing', 1, 0, NULL, NULL, 'TCM_Single', false, false, 'Direct Heal', 0, NULL, NULL);
+Target +10% Health', 0, 17, 'set:CoreWidgets image:IconMissing', 1, 0, NULL, NULL, 'TCM_Single', false, false, 'Direct Heal', 0, NULL, 'HealHealth');
 
 INSERT INTO effects (effect_id, ability_id, delay, effect_desc, effect_sequence, flags, icon_location, pulse_count, pulse_duration, tcm_param1, tcm_param2, target_collection_method, use_ability_velocity, is_channeled, name, target_collection_id, event_set_id, script_name) VALUES (1045, 949, 0, 'Single Target
 Target +25% Health', 0, 17, 'set:CoreWidgets image:IconMissing', 1, 0, NULL, NULL, 'TCM_Single', false, false, 'Heal', 0, NULL, NULL);
@@ -3058,9 +3058,9 @@ INSERT INTO effects (effect_id, ability_id, delay, effect_desc, effect_sequence,
 
 INSERT INTO effects (effect_id, ability_id, delay, effect_desc, effect_sequence, flags, icon_location, pulse_count, pulse_duration, tcm_param1, tcm_param2, target_collection_method, use_ability_velocity, is_channeled, name, target_collection_id, event_set_id, script_name) VALUES (1858, 1524, 0, 'Disable Effect', 1, 20, 'set:AbilityIcons001 image:ToggleBuff_Ammo_Explosive', 1, 5, NULL, NULL, 'TCM_Single', true, false, 'Disable Effect', 0, NULL, NULL);
 
-INSERT INTO effects (effect_id, ability_id, delay, effect_desc, effect_sequence, flags, icon_location, pulse_count, pulse_duration, tcm_param1, tcm_param2, target_collection_method, use_ability_velocity, is_channeled, name, target_collection_id, event_set_id, script_name) VALUES (1877, 1554, 0, 'Heals 35% of players Focus pool', 0, 16, 'set:CoreWidgets image:IconMissing', 1, 0, NULL, NULL, 'TCM_Single', false, false, 'Focus Heal', 0, NULL, NULL);
+INSERT INTO effects (effect_id, ability_id, delay, effect_desc, effect_sequence, flags, icon_location, pulse_count, pulse_duration, tcm_param1, tcm_param2, target_collection_method, use_ability_velocity, is_channeled, name, target_collection_id, event_set_id, script_name) VALUES (1877, 1554, 0, 'Heals 35% of players Focus pool', 0, 16, 'set:CoreWidgets image:IconMissing', 1, 0, NULL, NULL, 'TCM_Single', false, false, 'Focus Heal', 0, NULL, 'HealFocus');
 
-INSERT INTO effects (effect_id, ability_id, delay, effect_desc, effect_sequence, flags, icon_location, pulse_count, pulse_duration, tcm_param1, tcm_param2, target_collection_method, use_ability_velocity, is_channeled, name, target_collection_id, event_set_id, script_name) VALUES (1878, 1555, 0, 'Heals 35% of players Focus pool', 0, 16, 'set:CoreWidgets image:IconMissing', 1, 0, NULL, NULL, 'TCM_Single', false, false, 'Focus Heal', 0, NULL, NULL);
+INSERT INTO effects (effect_id, ability_id, delay, effect_desc, effect_sequence, flags, icon_location, pulse_count, pulse_duration, tcm_param1, tcm_param2, target_collection_method, use_ability_velocity, is_channeled, name, target_collection_id, event_set_id, script_name) VALUES (1878, 1555, 0, 'Heals 35% of players Focus pool', 0, 16, 'set:CoreWidgets image:IconMissing', 1, 0, NULL, NULL, 'TCM_Single', false, false, 'Focus Heal', 0, NULL, 'HealFocus');
 
 INSERT INTO effects (effect_id, ability_id, delay, effect_desc, effect_sequence, flags, icon_location, pulse_count, pulse_duration, tcm_param1, tcm_param2, target_collection_method, use_ability_velocity, is_channeled, name, target_collection_id, event_set_id, script_name) VALUES (1879, 1556, 0, 'Mental Resist', 0, 0, 'set:CoreWidgets image:IconMissing', 1, 0, NULL, NULL, 'TCM_Single', true, false, 'Mental Resist', 0, NULL, NULL);
 
@@ -3191,11 +3191,11 @@ INSERT INTO effects (effect_id, ability_id, delay, effect_desc, effect_sequence,
 
 INSERT INTO effects (effect_id, ability_id, delay, effect_desc, effect_sequence, flags, icon_location, pulse_count, pulse_duration, tcm_param1, tcm_param2, target_collection_method, use_ability_velocity, is_channeled, name, target_collection_id, event_set_id, script_name) VALUES (2008, 1646, 0, '+10% Health', 0, 17, 'set:CoreWidgets image:IconMissing', 1, 0, NULL, NULL, 'TCM_Single', false, false, 'Health Heal', 0, NULL, 'HealHealth');
 
-INSERT INTO effects (effect_id, ability_id, delay, effect_desc, effect_sequence, flags, icon_location, pulse_count, pulse_duration, tcm_param1, tcm_param2, target_collection_method, use_ability_velocity, is_channeled, name, target_collection_id, event_set_id, script_name) VALUES (2009, 1647, 0, 'Heals 35% of players Focus pool', 0, 16, 'set:CoreWidgets image:IconMissing', 1, 0, NULL, NULL, 'TCM_Single', false, false, 'Focus Heal', 0, NULL, NULL);
+INSERT INTO effects (effect_id, ability_id, delay, effect_desc, effect_sequence, flags, icon_location, pulse_count, pulse_duration, tcm_param1, tcm_param2, target_collection_method, use_ability_velocity, is_channeled, name, target_collection_id, event_set_id, script_name) VALUES (2009, 1647, 0, 'Heals 35% of players Focus pool', 0, 16, 'set:CoreWidgets image:IconMissing', 1, 0, NULL, NULL, 'TCM_Single', false, false, 'Focus Heal', 0, NULL, 'HealFocus');
 
 INSERT INTO effects (effect_id, ability_id, delay, effect_desc, effect_sequence, flags, icon_location, pulse_count, pulse_duration, tcm_param1, tcm_param2, target_collection_method, use_ability_velocity, is_channeled, name, target_collection_id, event_set_id, script_name) VALUES (2010, 1631, 0, 'Pulse Condition', 1, 128, 'set:AbilityIcons001 image:CD_Steady_Aim', 10, 1, NULL, NULL, 'TCM_Single', true, false, 'Pulse Condition', 0, NULL, NULL);
 
-INSERT INTO effects (effect_id, ability_id, delay, effect_desc, effect_sequence, flags, icon_location, pulse_count, pulse_duration, tcm_param1, tcm_param2, target_collection_method, use_ability_velocity, is_channeled, name, target_collection_id, event_set_id, script_name) VALUES (2014, 1651, 0, 'Heals 35% of target''s Focus pool', 0, 16, 'set:CoreWidgets image:IconMissing', 1, 0, NULL, NULL, 'TCM_Single', false, false, 'Focus Heal', 0, NULL, NULL);
+INSERT INTO effects (effect_id, ability_id, delay, effect_desc, effect_sequence, flags, icon_location, pulse_count, pulse_duration, tcm_param1, tcm_param2, target_collection_method, use_ability_velocity, is_channeled, name, target_collection_id, event_set_id, script_name) VALUES (2014, 1651, 0, 'Heals 35% of target''s Focus pool', 0, 16, 'set:CoreWidgets image:IconMissing', 1, 0, NULL, NULL, 'TCM_Single', false, false, 'Focus Heal', 0, NULL, 'HealFocus');
 
 INSERT INTO effects (effect_id, ability_id, delay, effect_desc, effect_sequence, flags, icon_location, pulse_count, pulse_duration, tcm_param1, tcm_param2, target_collection_method, use_ability_velocity, is_channeled, name, target_collection_id, event_set_id, script_name) VALUES (2909, 2135, 5, 'Test', 0, 512, 'set:CoreWidgets image:IconMissing', 1, 0, NULL, NULL, 'TCM_Single', true, false, 'Mine 2', 0, NULL, NULL);
 
@@ -5378,7 +5378,7 @@ INSERT INTO effects (effect_id, ability_id, delay, effect_desc, effect_sequence,
 
 INSERT INTO effects (effect_id, ability_id, delay, effect_desc, effect_sequence, flags, icon_location, pulse_count, pulse_duration, tcm_param1, tcm_param2, target_collection_method, use_ability_velocity, is_channeled, name, target_collection_id, event_set_id, script_name) VALUES (4085, 2823, 0, 'Heals 10% of target''s Health pool
 Channeled: 1 Second interval
-Energy -25', 0, 17, 'set:CoreWidgets image:IconMissing', 20, 1, NULL, NULL, 'TCM_Single', false, false, 'Lord''s Vitae Heal', 0, NULL, NULL);
+Energy -25', 0, 17, 'set:CoreWidgets image:IconMissing', 20, 1, NULL, NULL, 'TCM_Single', false, false, 'Lord''s Vitae Heal', 0, NULL, 'HealHealth');
 
 INSERT INTO effects (effect_id, ability_id, delay, effect_desc, effect_sequence, flags, icon_location, pulse_count, pulse_duration, tcm_param1, tcm_param2, target_collection_method, use_ability_velocity, is_channeled, name, target_collection_id, event_set_id, script_name) VALUES (4086, 1654, 0, '-10% Focus 
 8 ticks
@@ -7515,7 +7515,7 @@ INSERT INTO effects (effect_id, ability_id, delay, effect_desc, effect_sequence,
 
 INSERT INTO effects (effect_id, ability_id, delay, effect_desc, effect_sequence, flags, icon_location, pulse_count, pulse_duration, tcm_param1, tcm_param2, target_collection_method, use_ability_velocity, is_channeled, name, target_collection_id, event_set_id, script_name) VALUES (786, 740, 0, '-100F -10H', 0, 0, 'set:CoreWidgets image:IconMissing', 1, 0, NULL, NULL, 'TCM_Single', false, false, 'Blade Damage', 0, NULL, NULL);
 
-INSERT INTO effects (effect_id, ability_id, delay, effect_desc, effect_sequence, flags, icon_location, pulse_count, pulse_duration, tcm_param1, tcm_param2, target_collection_method, use_ability_velocity, is_channeled, name, target_collection_id, event_set_id, script_name) VALUES (788, 742, 0, '+10% Health', 0, 17, 'set:CoreWidgets image:IconMissing', 1, 0, NULL, NULL, 'TCM_Single', false, false, 'Field Medic I Heal', 0, NULL, NULL);
+INSERT INTO effects (effect_id, ability_id, delay, effect_desc, effect_sequence, flags, icon_location, pulse_count, pulse_duration, tcm_param1, tcm_param2, target_collection_method, use_ability_velocity, is_channeled, name, target_collection_id, event_set_id, script_name) VALUES (788, 742, 0, '+10% Health', 0, 17, 'set:CoreWidgets image:IconMissing', 1, 0, NULL, NULL, 'TCM_Single', false, false, 'Field Medic I Heal', 0, NULL, 'HealHealth');
 
 INSERT INTO effects (effect_id, ability_id, delay, effect_desc, effect_sequence, flags, icon_location, pulse_count, pulse_duration, tcm_param1, tcm_param2, target_collection_method, use_ability_velocity, is_channeled, name, target_collection_id, event_set_id, script_name) VALUES (735, 709, 0, '-100F -10H', 0, 0, 'set:CoreWidgets image:IconMissing', 1, 0, NULL, NULL, 'TCM_Single', false, false, 'Strike Damage', 0, 301, NULL);
 
@@ -7532,7 +7532,7 @@ INSERT INTO effects (effect_id, ability_id, delay, effect_desc, effect_sequence,
 INSERT INTO effects (effect_id, ability_id, delay, effect_desc, effect_sequence, flags, icon_location, pulse_count, pulse_duration, tcm_param1, tcm_param2, target_collection_method, use_ability_velocity, is_channeled, name, target_collection_id, event_set_id, script_name) VALUES (720, 655, 0, 'Single Target
 Target -300F / -30H', 0, 0, 'set:CoreWidgets image:IconMissing', 1, 0, NULL, NULL, 'TCM_Single', false, false, 'Rifle Auto Attack Damage', 0, 262, NULL);
 
-INSERT INTO effects (effect_id, ability_id, delay, effect_desc, effect_sequence, flags, icon_location, pulse_count, pulse_duration, tcm_param1, tcm_param2, target_collection_method, use_ability_velocity, is_channeled, name, target_collection_id, event_set_id, script_name) VALUES (789, 743, 0, '+20% Health', 0, 17, 'set:CoreWidgets image:IconMissing', 1, 0, NULL, NULL, 'TCM_Single', false, false, 'Field Medic II Heal', 0, NULL, NULL);
+INSERT INTO effects (effect_id, ability_id, delay, effect_desc, effect_sequence, flags, icon_location, pulse_count, pulse_duration, tcm_param1, tcm_param2, target_collection_method, use_ability_velocity, is_channeled, name, target_collection_id, event_set_id, script_name) VALUES (789, 743, 0, '+20% Health', 0, 17, 'set:CoreWidgets image:IconMissing', 1, 0, NULL, NULL, 'TCM_Single', false, false, 'Field Medic II Heal', 0, NULL, 'HealHealth');
 
 INSERT INTO effects (effect_id, ability_id, delay, effect_desc, effect_sequence, flags, icon_location, pulse_count, pulse_duration, tcm_param1, tcm_param2, target_collection_method, use_ability_velocity, is_channeled, name, target_collection_id, event_set_id, script_name) VALUES (790, 744, 0, '+40% Health', 0, 17, 'set:CoreWidgets image:IconMissing', 1, 0, NULL, NULL, 'TCM_Single', false, false, 'Field Medic III Heal', 0, NULL, NULL);
 
@@ -7603,9 +7603,9 @@ INSERT INTO effects (effect_id, ability_id, delay, effect_desc, effect_sequence,
 
 INSERT INTO effects (effect_id, ability_id, delay, effect_desc, effect_sequence, flags, icon_location, pulse_count, pulse_duration, tcm_param1, tcm_param2, target_collection_method, use_ability_velocity, is_channeled, name, target_collection_id, event_set_id, script_name) VALUES (830, 784, 0, '+100 Disguise Rating', 0, 1, 'set:CoreWidgets image:IconMissing', 1, 0, NULL, NULL, 'TCM_Single', true, false, 'Disguise Heal', 0, NULL, NULL);
 
-INSERT INTO effects (effect_id, ability_id, delay, effect_desc, effect_sequence, flags, icon_location, pulse_count, pulse_duration, tcm_param1, tcm_param2, target_collection_method, use_ability_velocity, is_channeled, name, target_collection_id, event_set_id, script_name) VALUES (834, 788, 0, '+10% Focus', 0, 17, 'set:CoreWidgets image:IconMissing', 1, 0, NULL, NULL, 'TCM_Single', false, false, 'Restore: Concentration Focus Heal', 0, NULL, NULL);
+INSERT INTO effects (effect_id, ability_id, delay, effect_desc, effect_sequence, flags, icon_location, pulse_count, pulse_duration, tcm_param1, tcm_param2, target_collection_method, use_ability_velocity, is_channeled, name, target_collection_id, event_set_id, script_name) VALUES (834, 788, 0, '+10% Focus', 0, 17, 'set:CoreWidgets image:IconMissing', 1, 0, NULL, NULL, 'TCM_Single', false, false, 'Restore: Concentration Focus Heal', 0, NULL, 'HealFocus');
 
-INSERT INTO effects (effect_id, ability_id, delay, effect_desc, effect_sequence, flags, icon_location, pulse_count, pulse_duration, tcm_param1, tcm_param2, target_collection_method, use_ability_velocity, is_channeled, name, target_collection_id, event_set_id, script_name) VALUES (835, 789, 0, 'Heals 20% of target''s Focus pool', 0, 17, 'set:CoreWidgets image:IconMissing', 1, 0, NULL, NULL, 'TCM_Single', false, false, 'Focus Heal', 0, NULL, NULL);
+INSERT INTO effects (effect_id, ability_id, delay, effect_desc, effect_sequence, flags, icon_location, pulse_count, pulse_duration, tcm_param1, tcm_param2, target_collection_method, use_ability_velocity, is_channeled, name, target_collection_id, event_set_id, script_name) VALUES (835, 789, 0, 'Heals 20% of target''s Focus pool', 0, 17, 'set:CoreWidgets image:IconMissing', 1, 0, NULL, NULL, 'TCM_Single', false, false, 'Focus Heal', 0, NULL, 'HealFocus');
 
 INSERT INTO effects (effect_id, ability_id, delay, effect_desc, effect_sequence, flags, icon_location, pulse_count, pulse_duration, tcm_param1, tcm_param2, target_collection_method, use_ability_velocity, is_channeled, name, target_collection_id, event_set_id, script_name) VALUES (846, 803, 0, 'Single Target
 Mental Resist Roll', 0, 0, 'set:CoreWidgets image:IconMissing', 1, 0, NULL, NULL, 'TCM_Single', true, false, 'Mental Resist Roll', 0, NULL, NULL);
@@ -7691,7 +7691,7 @@ User ReloadSpeed +33', 0, 17, 'set:CoreWidgets image:IconMissing', 1, 0, NULL, N
 INSERT INTO effects (effect_id, ability_id, delay, effect_desc, effect_sequence, flags, icon_location, pulse_count, pulse_duration, tcm_param1, tcm_param2, target_collection_method, use_ability_velocity, is_channeled, name, target_collection_id, event_set_id, script_name) VALUES (938, 868, 1, 'Set for explosion via kismet', 1, 0, 'set:CoreWidgets image:IconMissing', 1, 0, NULL, NULL, 'TCM_Single', true, false, 'Explosion', 0, NULL, NULL);
 
 INSERT INTO effects (effect_id, ability_id, delay, effect_desc, effect_sequence, flags, icon_location, pulse_count, pulse_duration, tcm_param1, tcm_param2, target_collection_method, use_ability_velocity, is_channeled, name, target_collection_id, event_set_id, script_name) VALUES (939, 869, 0, 'Single Target
-35% Focus Heal', 1, 16, 'set:CoreWidgets image:IconMissing', 1, 0, NULL, NULL, 'TCM_Single', true, false, 'Rally User Focus heal', 0, NULL, NULL);
+35% Focus Heal', 1, 16, 'set:CoreWidgets image:IconMissing', 1, 0, NULL, NULL, 'TCM_Single', true, false, 'Rally User Focus heal', 0, NULL, 'HealFocus');
 
 INSERT INTO effects (effect_id, ability_id, delay, effect_desc, effect_sequence, flags, icon_location, pulse_count, pulse_duration, tcm_param1, tcm_param2, target_collection_method, use_ability_velocity, is_channeled, name, target_collection_id, event_set_id, script_name) VALUES (940, 870, 0, '+10% Subtlety', 0, 0, 'set:CoreWidgets image:IconMissing', 1, 0, NULL, NULL, 'TCM_Single', true, false, 'Sniper Buff', 0, NULL, NULL);
 

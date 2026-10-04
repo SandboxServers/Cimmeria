@@ -46,6 +46,16 @@ Each system has up to 4 file types: `Tables/`, `Seed/`, `Sequences/`, `Types/`.
 
 Support files per system: `_foreign_keys.sql`, `_functions.sql`, `_indexes.sql`, `_primary_keys.sql`, `_schema.sql`, `_sequence_ownership.sql`, `_triggers.sql`
 
+### Generated seed
+
+Some seed is written by a checked-in generator rather than by hand. Change the generator's input and rerun it; never hand-edit its output.
+
+| Seed | Generator | What it writes |
+|---|---|---|
+| `Archetypes/Seed/archetype_ability_tree.sql`, `Abilities/Seed/trainer_abilities.sql` | [tools/ability_trees/](../tools/ability_trees/README.md) | The ability trees, from the owner's workbook |
+| `Items/Seed/crafting_item_effects.sql` | [tools/crafting/](../tools/crafting/README.md) | Blueprint and paradigm items |
+| `Effects/Seed/effect_nvps.sql` (the `-- ability-mechanics generated <family>` blocks only) and the `script_name` of those effects in `Effects/Seed/effects.sql` | [tools/ability_mechanics/](../tools/ability_mechanics/README.md) | Effect NVPs read from each effect's own designer text. Every row is RECONSTRUCTION and quotes its source; rows outside the blocks are hand-authored. CI runs its `--check` |
+
 ## sgw/ — Game Schema
 
 Core game tables: accounts, characters, character inventory, missions, effects, respawners, etc.
