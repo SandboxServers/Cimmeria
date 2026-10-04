@@ -497,6 +497,46 @@ pub enum Action {
         once_per_character: bool,
         container_key: Option<String>,
     },
+    /// The GM bulk ability change, fired from an NPC (Debug Area DA-02: the
+    /// ability granter and the ability reset NPC).
+    ///
+    /// GM-gated on the triggering player's account access level: a non-GM
+    /// gets a refusal line and nothing changes. For a GM it first clears
+    /// every running cooldown (and tells the client), then does what
+    /// `/gmgiveallabilities` (`GrantAll`) or `/gmresetabilities` (`Reset`)
+    /// does for the GM themself: the same plan, the same base write, the
+    /// same `onKnownAbilitiesUpdate` burst and result line.
+    GmAbilityBulk { change: AbilityBulkChange },
+}
+
+/// What a [`Action::GmAbilityBulk`] does to the player's known abilities.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub enum AbilityBulkChange {
+    /// Every ability of the archetype's tree the player does not know, all
+    /// three branches and the capstones (`gmGiveAllAbilities`).
+    GrantAll,
+    /// Back to the archetype's character-creation starters, tree points
+    /// refunded (`gmResetAbilities`).
+    Reset,
+}
+
+impl AbilityBulkChange {
+    /// Parse the action's `change` param: `grant_all` or `reset`.
+    pub fn from_param(value: &str) -> Option<Self> {
+        match value {
+            "grant_all" => Some(Self::GrantAll),
+            "reset" => Some(Self::Reset),
+            _ => None,
+        }
+    }
+
+    /// The param value, for logs.
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::GrantAll => "grant_all",
+            Self::Reset => "reset",
+        }
+    }
 }
 
 /// Arithmetic/assignment operation for [`Action::ModifyProperty`].

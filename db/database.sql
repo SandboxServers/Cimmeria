@@ -310,6 +310,7 @@
 \ir resources/Entities/Seed/entity_templates.sql
 \ir resources/Entities/Seed/entity_templates_debug_area_combat.sql
 \ir resources/Entities/Seed/entity_templates_debug_area_npcs.sql
+\ir resources/Entities/Seed/entity_templates_debug_area_plaza.sql
 \ir resources/Entities/Seed/monikers.sql
 \ir resources/Entities/Seed/pet_summons.sql
 \ir resources/Entities/Seed/resource_types.sql
@@ -328,6 +329,7 @@
 \ir resources/Items/Seed/item_list_items.sql
 \ir resources/Items/Seed/item_list_prices.sql
 \ir resources/Items/Seed/item_lists.sql
+\ir resources/Items/Seed/item_lists_debug_area_plaza.sql
 \ir resources/Items/Seed/items.sql
 \ir resources/Items/Seed/items_event_sets.sql
 -- Ammo campaign (AM-F): the reserve items, then their mapping table
@@ -365,6 +367,7 @@
 \ir resources/Worlds/Seed/spawnlist.sql
 \ir resources/Worlds/Seed/spawnlist_debug_area_combat.sql
 \ir resources/Worlds/Seed/spawnlist_debug_area_npcs.sql
+\ir resources/Worlds/Seed/spawnlist_debug_area_plaza.sql
 \ir resources/Worlds/Seed/stargates.sql
 \ir resources/Worlds/Seed/worlds.sql
 \ir resources/Content/Seed/castle_cellblock_chains.sql
@@ -378,6 +381,7 @@
 \ir resources/Content/Seed/harset_space_chains.sql
 \ir resources/Content/Seed/sgc_w1_chains.sql
 \ir resources/Content/Seed/debug_hub_chains.sql
+\ir resources/Content/Seed/debug_area_plaza_chains.sql
 
 \ir resources/_foreign_keys.sql
 

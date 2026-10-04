@@ -4,6 +4,8 @@
 //! Split into per-theme submodules when the original `tests.rs` crossed
 //! the 700-line hard cap from `CLAUDE.md`:
 //!
+//! - [`ability_granter`]  — `Action::GmAbilityBulk` (DA-02): the GM gate,
+//!   the tree grant, the cooldown clear and the first-click lines.
 //! - [`effects`]          — `Action::LaunchAbility` / `Action::ApplyEffect`
 //!   (server-initiated effect application, target resolution).
 //! - [`stats`]            — `Action::ChangeStat` (heal / clamp / damage /
@@ -37,6 +39,7 @@ pub(super) use cimmeria_content_engine::actions::Action;
 pub(super) use cimmeria_content_engine::chain::{ChainEngine, ResolvedActions};
 pub(super) use tokio::sync::mpsc;
 
+mod ability_granter;
 mod deferred;
 mod effects;
 mod inventory_counter;

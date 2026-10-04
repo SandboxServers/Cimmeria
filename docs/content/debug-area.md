@@ -15,10 +15,15 @@ loaded, and only GMs can get there: `.gotolocation DebugArea` (or the native
 tests one group of server systems. Every spawn carries a `DebugArea_*` tag;
 the stasis-room hub's tests count `DebugHub_*`, so the two never mix (D-DA6).
 
-This page covers the zones from packets DA-03 and DA-04, in zone order; DA-05
+This page covers the zones from packets DA-02, DA-03 and DA-04; DA-05
 completes it with the station index and the UAT mapping. Each packet's rows are
 in their own seed files:
 
+- DA-02 (Z2 services plaza, Z3 training dummies): the `*_debug_area_plaza.sql`
+  files (templates 1300-1302 and 1310-1314, spawns 13001-13022 and
+  13100-13104, buy list 1300, chains 13000-13008), inside DA-02's block
+  (templates 1300-1329, spawns 13000-13199). See
+  [Services plaza and dummies](#services-plaza-and-dummies).
 - DA-03 (Z4 faction yard, Z5 AI behaviour slope, Z7 enemy gallery):
   `db/resources/Entities/Seed/entity_templates_debug_area_npcs.sql` (templates
   1330-1333 and 1340-1343), `db/resources/Events/Seed/point_sets_debug_area_npcs.sql`
@@ -648,3 +653,225 @@ seed file, so another packet's NPCs take part as soon as they are seeded:
 | 13396 | 135 | Unas 4 Female | (none) | 1 | 592 fallback | (385, -612) |
 | 13397 | 136 | Unas 5 Female | (none) | 1 | 592 fallback | (389, -612) |
 | 13398 | 137 | Unas 6 Female | (none) | 1 | 592 fallback | (393, -612) |
+
+## Services plaza and dummies
+
+Packet DA-02. Zone Z2, the services plaza, holds a copy of every hub service,
+an ability granter, an ability reset NPC and a munitions vendor. Zone Z3, the
+dummies range just north of it, holds five training dummies that never fight
+back (D-DA7).
+
+### Where it is
+
+The plaza is centred on (252.0, 7.0, -923.0), in the courtyard of the crater
+floor's south compound, about 39 units north of the Z1 arrival point. Its
+centre is clear for 12 units. Twenty-one NPCs stand on a ring of radius 10.5
+round it, about 2.9 units apart, each facing the centre. The ring has two
+30-degree gaps: one to the south, which is where you walk in from the
+arrival, and one to the north, towards the dummies.
+
+- The east arc (x above 252), south to north: ability granter, ability reset,
+  trainer, pet trainer, vendor, munitions vendor, loot crate, Livewire
+  terminal, dialog NPC, mail clerk, Black Market auctioneer.
+- The west arc, south to north: Storage Officer, Team Banker, Command Banker,
+  Team registrar, Command registrar, crafting supplies vendor, then the four
+  crafting stations. Every station is within 5 units of the next, so one spot
+  reaches them all.
+
+The dummies stand on one line at z -872, from x 240 to x 264, 6 units apart,
+facing south towards the plaza.
+
+| Spawn | Template | Tag | Name shown | Position (x, y, z) | Heading |
+|---:|---:|---|---|---|---:|
+| 13020 | 1300 | `DebugArea_AbilityGranter` | Train Testing Abilities | (254.72, 7.10, -933.14) | -0.2618 |
+| 13021 | 1301 | `DebugArea_AbilityReset` | Jay Test Abilities | (257.25, 6.99, -932.09) | -0.5236 |
+| 13002 | 301 | `DebugArea_Trainer` | Archetype Skills Trainer | (259.42, 6.99, -930.42) | -0.7854 |
+| 13007 | 360 | `DebugArea_PetTrainer` | Goa'uld Advanced Skills | (261.09, 6.99, -928.25) | -1.0472 |
+| 13001 | 300 | `DebugArea_Vendor` | Basic Equipment Quartermaster | (262.14, 6.99, -925.72) | -1.3090 |
+| 13006 | 1302 | `DebugArea_MunitionsVendor` | Consumables | (262.50, 6.99, -923.00) | -1.5708 |
+| 13005 | 304 | `DebugArea_LootCrate` | Crate | (262.14, 6.99, -920.28) | -1.8326 |
+| 13004 | 303 | `DebugArea_LivewireTerminal` | Terminal | (261.09, 6.99, -917.75) | -2.0944 |
+| 13003 | 302 | `DebugArea_DialogNpc` | Airman Lance | (259.42, 6.99, -915.58) | -2.3562 |
+| 13011 | 390 | `DebugArea_MailClerk` | Sgt. Harriman | (257.25, 6.99, -913.91) | -2.6180 |
+| 13012 | 305 | `DebugArea_Auctioneer` | Machra | (254.72, 6.99, -912.86) | -2.8798 |
+| 13008 | 370 | `DebugArea_Banker` | Storage Officer | (249.28, 7.06, -933.14) | 0.2618 |
+| 13009 | 371 | `DebugArea_TeamBanker` | Storage Officer | (246.49, 6.99, -931.94) | 0.5527 |
+| 13010 | 372 | `DebugArea_CommandBanker` | Storage Officer | (244.16, 6.99, -929.98) | 0.8436 |
+| 13013 | 330 | `DebugArea_TeamRegistrar` | Organization Registrar | (242.48, 6.99, -927.44) | 1.1345 |
+| 13014 | 331 | `DebugArea_CommandRegistrar` | Organization Registrar | (241.61, 6.99, -924.52) | 1.4254 |
+| 13019 | 314 | `DebugArea_CraftSupplies` | Common Materials Components | (241.61, 6.99, -921.48) | 1.7162 |
+| 13015 | 310 | `DebugArea_Station_BioMedical` | BioMedical Crafting Station | (242.48, 6.99, -918.56) | 2.0071 |
+| 13016 | 311 | `DebugArea_Station_Electronics` | Electronics Crafting Station | (244.16, 6.99, -916.02) | 2.2980 |
+| 13017 | 312 | `DebugArea_Station_PowerSystems` | Power Systems Crafting Station | (246.49, 6.99, -914.06) | 2.5889 |
+| 13018 | 313 | `DebugArea_Station_Materials` | Materials Crafting Station | (249.28, 6.99, -912.86) | 2.8798 |
+| 13100 | 1310 | `DebugArea_Dummy_L1` | Jaffa (level 1) | (240.00, 7.08, -872.00) | 3.1416 |
+| 13101 | 1311 | `DebugArea_Dummy_L10` | Jaffa (level 10) | (246.00, 6.59, -872.00) | 3.1416 |
+| 13102 | 1312 | `DebugArea_Dummy_L25` | Jaffa (level 25) | (252.00, 6.59, -872.00) | 3.1416 |
+| 13103 | 1313 | `DebugArea_Dummy_L50` | Jaffa (level 50) | (258.00, 6.70, -872.00) | 3.1416 |
+| 13104 | 1314 | `DebugArea_Dummy_Friendly` | Injured SGC Guard | (264.00, 6.86, -872.00) | 3.1416 |
+
+Every spawn is `is_stationary`: none walks, and none is checked for being off
+the navmesh. The tags start `DebugArea_`, never `DebugHub_` (D-DA6), because
+the hub's tests count that prefix.
+
+Heights are the navmesh floor under each point, read with `nav_inspect`
+against `data/spaces/ihpet_crater_light.nav`. The whole plaza is one open
+walkable region at 6.99 to 7.10, and the campaign survey found the plaza
+interior agrees with the occluder terrain to about 1 unit.
+
+> **Placement is unchecked in the client.** No client has loaded world 1300
+> yet. Packet DA-06 checks in the lab that each NPC stands on the floor and
+> that the ring is clear of the courtyard's walls and props.
+
+The names are monikers the client PAK ships; a new `texts.sql` id cannot
+render. No shipped moniker names an ability granter, so the granter and the
+reset NPC use the original developers' own test trainers, "Train Testing
+Abilities" (21666) and "Jay Test Abilities" (22555). The granter wears
+General Hammond's look and the reset NPC Sam Carter's, so neither is mistaken
+for the trainer beside them.
+
+### Services copied from the hub
+
+Fifteen plaza NPCs spawn the hub's own templates, so each behaves exactly as
+its hub twin; the [hub page](debug-hub.md#what-each-npc-tests) describes what
+each one tests. The differences:
+
+- **Dialog NPC (template 302).** The hub's dialogs 60100 and 60101 are
+  quarantined (a client that received them crashed on map load), so the hub's
+  dialog NPC shows nothing. The plaza's copy shows dialog 5738, which the
+  client ships: two screens (Next pages through them) and one Generic button.
+  No mission, dialog set or other chain uses 5738. Its text is a mission line
+  out of context; the dialog UI is what is being tested. The button sends
+  `dialogButtonChoice(5738, 198)`, and chain 13003 says "Dialog round trip
+  complete" in chat as Airman Lance. Closing with X sends nothing.
+- **Gate Mail Clerk (template 390).** The hub clerk mails from a quarantined
+  dialog, so it cannot mail at all. The plaza's clerk mails on the click
+  itself (chain 13007): the same mail, 5 Health Slappack TC1 and 50
+  naquadah, and the same limit of one per character every 10 minutes. The
+  limit is kept separately from the hub clerk's.
+- **Black Market auctioneer (template 305).** Chain 13008 opens the Black
+  Market for the plaza's own tag; the hub's chain 5030 binds the hub's tag.
+  Both NPCs are the same seeded auctioneer.
+- **Livewire terminal and loot crate (templates 303 and 304).** Chains 13004
+  and 13005 (Livewire and its victory line) and 13006 (loot table 3), the
+  hub's chains for the plaza's tags.
+- **Vendor, trainer, pet trainer, Bankers, registrars, crafting stations and
+  supplies.** These need no chain; they answer through the built-in
+  interaction paths, as in the hub.
+
+### Ability granter (template 1300)
+
+Right-click the granter. If you are a GM, you get every ability of your
+archetype's tree that you do not know, all three branches and the capstones,
+and every running cooldown is cleared. The result is the same as typing
+`/gmgiveallabilities`.
+
+1. A chat line says how many abilities are on their way and how many
+   cooldowns were cleared, for example "Ability granter: granting 41
+   abilities of your Commando tree (all branches and capstones); 2
+   cooldown(s) cleared."
+2. The base saves them to the character (`sgw_player.abilities`, not a
+   trainer purchase: no training points move, and a respec keeps them).
+3. The Abilities window refreshes (`onKnownAbilitiesUpdate`), and a second
+   line confirms: "gmGiveAllAbilities: granted 41 abilities from your tree
+   (saved; no points spent)".
+
+If you already know the whole tree, the cooldowns are still cleared and a
+line says so. The action bar is not filled: the server cannot write it.
+Drag the abilities from the Abilities window.
+
+A player who is not a GM gets "Only a GM can use this. Your abilities and
+cooldowns are unchanged." and nothing else happens. The check is the
+account's access level, the same one the native GM commands use.
+
+How it works: the click fires chain 13000, whose content action
+`gm_ability_bulk` (change `grant_all`) does the GM check, clears the
+cooldowns and sends the base the same message `/gmgiveallabilities` sends.
+See [content-engine-vocabulary.md](content-engine-vocabulary.md). The
+template carries `INT_Trainer` (128) for the trainer cursor and no trainer
+list, so the trainer window never claims the click. Each click writes one
+`event = "ability_granter"` row on target `content` with the player and
+every granted ability id and name.
+
+### Ability reset (template 1301)
+
+Right-click the reset NPC to go back to your archetype's character-creation
+starter abilities, with the tree points you spent refunded and every cooldown
+cleared, as `/gmresetabilities` does. It removes quest and GM grants too: it
+is the clean slate a repeatable ability UAT starts from. GM only, like the
+granter. Chain 13001, action `gm_ability_bulk` with change `reset`.
+
+### Munitions vendor (template 1302)
+
+Right-click to open a store that sells, at 1 naquadah each (buy list 1300):
+
+| Rows | Items |
+|---|---|
+| 13001-13005 | 100 rounds of each bullet special ammo: Armor Piercing, Hollow Point, Incendiary, EMP, Explosive (items 9000-9004) |
+| 13006-13015 | 100 of each dart special ammo: Poison, Disease, Tranquilizer, EMP, Radioactive, Stim, Coagulant, Nanite, Antidote, Adrenaline (9005-9014) |
+| 13016 | 5 Health Slappack TC1 (2893) |
+| 13017-13019 | One SI 3 9mm Pistol (55), SGHC 6 SMG (21) and CO2 Pistol Dartgun (3584) |
+
+Sell, repair and recharge use list 2, as the hub vendor does. A purchase
+lands in the main bag. The special ammo is drawn by a reload once
+`ammo.finite_special` is on (#1026). Deployables are abilities, not items:
+get them from the ability granter. The name is the client's "Consumables"
+vendor moniker (27264).
+
+### Training dummies (templates 1310-1314)
+
+Five dummies that never fight back, however much you shoot them (D-DA7).
+Right-click a hostile one to attack it, or target it and use any ability.
+
+| Template | Level | Faction | Health | Use |
+|---:|---:|---|---|---|
+| 1310 | 1 | 10 (hostile) | 1,000,000 | Damage against a level-1 target |
+| 1311 | 10 | 10 (hostile) | 1,000,000 | Damage against a level-10 target |
+| 1312 | 25 | 10 (hostile) | 1,000,000 | Damage against a level-25 target |
+| 1313 | 50 | 10 (hostile) | 1,000,000 | Damage against a level-50 target |
+| 1314 | 10 | 9 (Friendly_Ambient) | 500,000 of 1,000,000 | Heals and buffs |
+
+- **They never attack, chase or leash.** The templates carry
+  `training_dummy = true`. At spawn that puts on the same "never fights back"
+  mark the GM `.dummy` command places, which keeps the NPC out of the AI tick
+  entirely. A plain hostile NPC set to NEUTRAL still fires back once shot,
+  which is why D-DA7 asked for the mark.
+- **They do not die in a test run.** 1,000,000 Health. If one is killed
+  anyway, it respawns 30 seconds later.
+- **Combat ends on its own.** Ten seconds after the last hit on a dummy,
+  everyone who hit it leaves combat with it (regeneration and the
+  out-of-combat holster come back). A dummy has no leash to do that.
+- **The friendly dummy takes heals.** It starts at half Health, so a heal has
+  room to land and shows its size; nothing but a heal changes its Health.
+  Target it and cast a heal: the heal lands on it instead of falling back to
+  you. Players cannot attack it, and no NPC targets it.
+- They carry no ability set and no loot table, and the names are the client's
+  "Jaffa" (8168) and "Injured SGC Guard" (7882).
+- A GM can place one anywhere with `.spawn 1310` (or 1311 to 1314); it is a
+  training dummy too. The `.dummy` command still places a temporary one in
+  front of you ([commands.md](../commands.md#dev-console--commands)).
+
+### Where it lives
+
+| What | Where |
+|---|---|
+| Templates 1300-1302, 1310-1314 | `db/resources/Entities/Seed/entity_templates_debug_area_plaza.sql` |
+| Spawns 13001-13022, 13100-13104 | `db/resources/Worlds/Seed/spawnlist_debug_area_plaza.sql` |
+| Buy list 1300 (rows 13001-13019) | `db/resources/Items/Seed/item_lists_debug_area_plaza.sql` |
+| Chains 13000-13008 | `db/resources/Content/Seed/debug_area_plaza_chains.sql` |
+| The `training_dummy` column | `db/resources/Entities/Tables/entity_templates.sql` |
+| The training-dummy mark, its Health and its quiet sweep | `crates/cell-world/src/cell/space_manager/training_dummy.rs`, `crates/cell-combat/src/cell/combat/threat/training_dummy_release.rs` |
+| The friendly dummy as a heal target | `classify` in `crates/cell-combat/src/cell/abilities/use_ability/support_shot.rs` |
+| The `gm_ability_bulk` action | `crates/cell-content/src/cell/content/executor/ability_granter.rs` |
+| The tree plan and the cooldown clear it shares with the GM commands | `plan_tree_grant` in `crates/cell-world/src/cell/space_manager/tree_grant.rs`, `reset_all_cooldowns` in `crates/cell-combat/src/cell/abilities/cooldown_reset.rs` |
+
+### Tests
+
+| Guard | What it pins |
+|---|---|
+| `cell-catalog` `spawner/tests/live_db_debug_area_plaza.rs` | Every DA-02 spawn is in world 1300, stationary, `DebugArea_*`-tagged, on a seeded template with a shipped name; the plaza NPCs on the ring and the plaza floor, the dummies on their line, all at least 2.5 apart; templates 1310-1314 and only they are training dummies, loaded as such by both loaders, hostile at levels 1, 10, 25 and 50 plus one friendly; each chain-driven NPC has one `interact_tag` chain running its action; buy list 1300 sells every special-ammo item |
+| `cell-content` `executor/tests/ability_granter.rs` | A GM gets exactly the tree abilities they lack (capstone included, no repeats), cleared cooldowns with the client's clear timers and a first-click line; a non-GM gets the refusal line and nothing else; a GM who knows the tree gets a line and no write; the reset forwards a reset |
+| `cell` `service/tests/npc_ai/training_dummy.rs` | An NPC spawned from a `training_dummy` record gets the mark and the dummy Health and never attacks its threat target, where the same record without the flag shoots; the friendly one starts at half Health |
+| `cell-combat` `combat/threat/training_dummy_release.rs` | A dummy's attackers stay in combat while hits land and leave it 10 s after the last; an ordinary NPC is left to its leash |
+| `cell-combat` `use_ability/tests/beneficial_training_dummy.rs` | A heal aimed at a friendly training dummy lands on it; an unmarked neutral NPC still falls back to the caster, and a hostile dummy is never healed |
+| `content-engine` `loader/tests/action_conversion.rs`, `interact_tag_linter` | `gm_ability_bulk` converts for `grant_all` and `reset` and drops anything else; the plaza's interact chains are allowlisted (template-default cursor bits) |

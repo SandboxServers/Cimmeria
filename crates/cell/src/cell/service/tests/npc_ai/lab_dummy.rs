@@ -9,7 +9,7 @@ use super::*;
 use crate::cell::messages::CellToBaseMsg;
 use crate::cell::spawner::EVENT_ABILITY_END;
 use crate::mercury::method_idx::ON_SEQUENCE;
-use cimmeria_cell_world::cell::space_manager::{LabCaster, LabDummy};
+use cimmeria_cell_world::cell::space_manager::{LabCaster, LabDummy, TrainingDummy};
 use cimmeria_entity::cell_entity::{MobAggression, PlayerIdentity};
 use tokio::sync::mpsc;
 
@@ -47,6 +47,10 @@ fn fixture_with(marked: bool, caster: bool) -> SpaceManager {
         .add_ability(crate::cell::combat::NPC_DEFAULT_ABILITY);
     npc.threat_list.insert(TARGET, 10.0);
     if marked {
+        // What `.dummy` places: the shared never-fights-back mark and the
+        // lab owner/lifetime mark.
+        npc.extensions
+            .insert(TrainingDummy::new(std::time::Instant::now()));
         npc.extensions.insert(LabDummy {
             owner_id: TARGET,
             owner_identity: PlayerIdentity::UNKNOWN,
@@ -90,7 +94,7 @@ async fn tick(mgr: &mut SpaceManager) -> usize {
         .count()
 }
 
-/// Revert proof: drop the `LabDummy` skip from
+/// Revert proof: drop the `TrainingDummy` skip from
 /// `SpaceManager::ai_driven_npc_entity_ids` and the marked run fires exactly
 /// like the control.
 #[tokio::test]

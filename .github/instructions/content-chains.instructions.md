@@ -216,6 +216,21 @@ The Castle_CellBlock debug NPCs ([docs/content/debug-hub.md](../../docs/content/
 No mission, no conditions, and the cursor bits are permanent template
 defaults, so the interact chains are allowlisted in `interact_tag_linter.rs`.
 
+### Debug Area — one file per packet, the packet's spawn block
+
+World 1300 `DebugArea` ([docs/content/debug-area.md](../../docs/content/debug-area.md)).
+Each packet's chain ids reuse the numbers of its spawn block, in its own
+file, so concurrent packets never edit the same file.
+
+```text
+debug_area_plaza_chains.sql   DA-02 services plaza: 13000-13099 (13000-13008 used)
+```
+
+Tags fire chains in any world (`scope_id` is a label), so a copy of a hub
+NPC needs its own `DebugArea_*` tag and chain. The GM-only ability
+granter is gated inside its `gm_ability_bulk` action, not by a condition,
+so a non-GM's click still gets a refusal line.
+
 ## Linked references
 
 - `docs/content/content-engine.md` — **runtime reference**: architecture, vocabulary, schema, lifecycle, observability, performance.

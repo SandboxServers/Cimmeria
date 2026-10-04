@@ -35,7 +35,7 @@ use cimmeria_wire::cell::chat::{serialize_on_player_communication, CHAN_FEEDBACK
 
 use super::super::super::combat;
 use super::super::super::messages::CellToBaseMsg;
-use super::super::super::space_manager::SpaceManager;
+use super::super::super::space_manager::{SpaceManager, TrainingDummy};
 use super::super::effect_plan::{PlanIds, PlannedEffect, REASON_SUPPORT_SHOT};
 use super::super::messaging::{flush_attacker_ammo_stat, WireRoute};
 use super::super::wire_ledger::{self, WireCtx};
@@ -58,7 +58,8 @@ pub(crate) const HOSTILE_FEEDBACK: &str = "Support rounds only affect allies.";
 /// Where a support shot is aimed, from [`classify`].
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum SupportTarget {
-    /// Another player the shooter may not attack, or the shooter.
+    /// Another player the shooter may not attack, the shooter, or a
+    /// training dummy the shooter may not attack.
     Ally,
     /// A target `combat::player_may_attack` admits.
     Hostile,
@@ -96,6 +97,13 @@ pub(crate) fn classify(
         return SupportTarget::Hostile;
     }
     if target.is_player && target.space_id == caster.space_id {
+        return SupportTarget::Ally;
+    }
+    // A training dummy the caster may not attack (the friendly one in the
+    // Debug Area's dummies range, or a `.dummy friendly`) is a heal and buff
+    // target, D-DA7. Ordinary friendly NPCs stay `Other`: a heal aimed at a
+    // vendor still falls back to the caster.
+    if target.extensions.contains::<TrainingDummy>() && target.space_id == caster.space_id {
         return SupportTarget::Ally;
     }
     SupportTarget::Other

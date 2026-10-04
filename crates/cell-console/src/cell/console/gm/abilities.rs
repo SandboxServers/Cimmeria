@@ -23,7 +23,7 @@ use super::command_log::{log_gm_command, Outcome};
 use super::feedback::send_gm_feedback;
 use super::{read_i32, GM_GIVE_ABILITY, GM_GIVE_ALL_ABILITIES, GM_RESET_ABILITIES};
 use crate::cell::messages::{CellToBaseMsg, GmAbilityBulk, GmAbilityChange};
-use crate::cell::space_manager::SpaceManager;
+use crate::cell::space_manager::{SpaceManager, TreeGrantRefusal};
 
 /// `gmGiveAbility(INT32 aAbilityID)`: grant one ability to the caller.
 pub(super) async fn handle_give_ability(
@@ -119,44 +119,32 @@ pub(super) async fn handle_give_all_abilities(
 }
 
 /// The caller's character and the archetype-tree ids it does not know yet,
-/// in tree order.
+/// in tree order ([`SpaceManager::plan_tree_grant`], shared with the Debug
+/// Area ability granter).
 pub(super) fn plan_give_all(
     entity_id: u32,
     space_mgr: &SpaceManager,
 ) -> Result<(i32, Vec<i32>), (&'static str, String)> {
     let cmd = GmAbilityChange::GrantAll.command();
-    let Some(entity) = space_mgr.get_entity(entity_id) else {
-        return Err(("caller_gone", format!("{cmd}: caller entity not found")));
-    };
-    let Some(player_id) = entity.player_id else {
-        return Err(("caller_not_player", format!("{cmd}: you have no player id")));
-    };
-    let Some(archetype) = entity.archetype_id else {
-        return Err((
-            "no_archetype",
-            format!("{cmd}: your character has no archetype"),
-        ));
-    };
-    let tree = space_mgr.ability_tree_catalog.tree(archetype);
-    if tree.is_empty() {
-        let text = format!("{cmd}: archetype {archetype} has no ability tree loaded");
-        return Err(("no_tree", text));
-    }
-    let mut missing: Vec<i32> = Vec::new();
-    for node in tree {
-        let id = node.ability_id;
-        if !entity.abilities.has_ability(id) && !missing.contains(&id) {
-            missing.push(id);
+    match space_mgr.plan_tree_grant(entity_id) {
+        Ok(plan) => Ok((plan.player_id, plan.missing)),
+        Err(refusal) => {
+            let text = match refusal {
+                TreeGrantRefusal::EntityGone => format!("{cmd}: caller entity not found"),
+                TreeGrantRefusal::NotPlayer => format!("{cmd}: you have no player id"),
+                TreeGrantRefusal::NoArchetype => {
+                    format!("{cmd}: your character has no archetype")
+                }
+                TreeGrantRefusal::NoTree { archetype } => {
+                    format!("{cmd}: archetype {archetype} has no ability tree loaded")
+                }
+                TreeGrantRefusal::NothingToGrant { tree_len } => {
+                    format!("{cmd}: you already know all {tree_len} abilities in your tree")
+                }
+            };
+            Err((refusal.reason(), text))
         }
     }
-    if missing.is_empty() {
-        let text = format!(
-            "{cmd}: you already know all {} abilities in your tree",
-            tree.len()
-        );
-        return Err(("nothing_to_grant", text));
-    }
-    Ok((player_id, missing))
 }
 
 /// `gmResetAbilities()`: back to the archetype's starters.

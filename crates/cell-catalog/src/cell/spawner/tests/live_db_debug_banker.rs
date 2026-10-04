@@ -136,9 +136,13 @@ mod live_db {
             .await
             .expect("load_respawners must succeed");
 
-        let placed: Vec<&SpawnRecord> =
-            records.iter().filter(|r| r.template_id == BANKER).collect();
-        assert_eq!(placed.len(), 1, "template 370 is placed exactly once");
+        let placed: Vec<&SpawnRecord> = records
+            .iter()
+            .filter(|r| r.template_id == BANKER && r.world_name == "Castle_CellBlock")
+            .collect();
+        // The Debug Area plaza has its own copy (spawn 13008, DA-02), guarded
+        // by `live_db_debug_area_plaza`.
+        assert_eq!(placed.len(), 1, "template 370 is placed once in the hub");
         let s = placed[0];
         assert_eq!(s.spawn_id, BANKER_SPAWN);
         assert_eq!(s.tag.as_deref(), Some(BANKER_TAG));

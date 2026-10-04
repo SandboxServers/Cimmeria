@@ -133,6 +133,14 @@ CREATE TABLE entity_templates (
     vault_scope text DEFAULT 'personal' NOT NULL,
     CONSTRAINT entity_templates_vault_scope_known
         CHECK (vault_scope IN ('personal', 'team', 'command')),
+    -- Training dummy (Debug Area D-DA7): the NPC never fights back. The spawn
+    -- path puts the `TrainingDummy` mark on it, the one the GM `.dummy`
+    -- command places: no AI turn (no attack, chase or leash, however much
+    -- threat it takes), 1,000,000 Health (half of it on a non-hostile dummy,
+    -- the heal target), an ally for beneficial casts when it cannot be
+    -- attacked, and its attackers leave combat 10 s after the last hit.
+    -- See crates/cell-world/src/cell/space_manager/training_dummy.rs.
+    training_dummy boolean DEFAULT false NOT NULL,
     CONSTRAINT entity_templates_leash_distance_positive
         CHECK (leash_distance IS NULL OR leash_distance > 0.0),
     CONSTRAINT entity_templates_move_speed_positive

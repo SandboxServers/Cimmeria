@@ -57,5 +57,6 @@ pub fn npc_spawn_record(
         aggression_override: None,
         use_cover: None,
         vault_scope,
+        training_dummy: false,
     }
 }

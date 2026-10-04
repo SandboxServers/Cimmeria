@@ -6,8 +6,10 @@
 //! `.dummy` (hostile) and `.dummy friendly` place one template NPC three
 //! metres in front of the caller, facing them, with:
 //!
-//! - the [`LabDummy`] mark, which keeps it out of the AI tick: no attack, no
-//!   chase, no leash, however much threat it takes;
+//! - the [`TrainingDummy`] mark, the one a seeded training dummy carries
+//!   too, which keeps it out of the AI tick: no attack, no chase, no leash,
+//!   however much threat it takes; and the [`LabDummy`] mark with its owner
+//!   and lifetime;
 //! - [`LAB_DUMMY_HEALTH`] Health, current and max;
 //! - the template's own Defense and Accuracy, read back in the feedback line
 //!   (and in `.effects` / `server_ability_state`) so a QR expectation can be
@@ -46,7 +48,7 @@ use crate::cell::combat::{release_npc_from_player_combat, HOSTILE_FACTION};
 use crate::cell::console::send_gm_feedback;
 use crate::cell::messages::CellToBaseMsg;
 use crate::cell::space_manager::{
-    DespawnOutcome, LabDummy, SpaceManager, LAB_DUMMY_HEALTH, LAB_DUMMY_LIFETIME,
+    DespawnOutcome, LabDummy, SpaceManager, TrainingDummy, LAB_DUMMY_HEALTH, LAB_DUMMY_LIFETIME,
     LAB_DUMMY_MAX_PER_OWNER,
 };
 
@@ -220,6 +222,8 @@ pub(super) async fn spawn_dummy(
     }
     // Set before the first AoI pass, so the client's create carries it too.
     dummy.faction = dummy_faction(disposition);
+    // The shared "never fights back" mark (D-AU6, D-DA7): no AI turn.
+    dummy.extensions.insert(TrainingDummy::new(Instant::now()));
     dummy.extensions.insert(LabDummy {
         owner_id: caller_id,
         owner_identity,

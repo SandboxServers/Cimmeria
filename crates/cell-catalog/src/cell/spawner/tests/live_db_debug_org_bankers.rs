@@ -159,12 +159,14 @@ mod live_db {
         for (template, spawn, tag, _, scope) in ORG_BANKERS {
             let placed: Vec<&SpawnRecord> = records
                 .iter()
-                .filter(|r| r.template_id == template)
+                .filter(|r| r.template_id == template && r.world_name == "Castle_CellBlock")
                 .collect();
+            // The Debug Area plaza has its own copies (spawns 13009 and
+            // 13010, DA-02), guarded by `live_db_debug_area_plaza`.
             assert_eq!(
                 placed.len(),
                 1,
-                "template {template} is placed exactly once"
+                "template {template} is placed once in the hub"
             );
             let s = placed[0];
             assert_eq!(s.spawn_id, spawn);

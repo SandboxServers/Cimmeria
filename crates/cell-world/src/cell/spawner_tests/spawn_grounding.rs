@@ -68,6 +68,7 @@ fn guard_record(y: f32) -> SpawnRecord {
         aggression_override: None,
         use_cover: None,
         vault_scope: cimmeria_entity::cell_entity::VaultScope::Personal,
+        training_dummy: false,
         patrol_path: vec![],
         patrol_point_delay_secs: 2.0,
         wander_radius: 0.0,

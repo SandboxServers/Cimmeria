@@ -146,9 +146,11 @@ mod live_db {
 
         let placed: Vec<&SpawnRecord> = records
             .iter()
-            .filter(|r| r.template_id == PET_TRAINER)
+            .filter(|r| r.template_id == PET_TRAINER && r.world_name == "Castle_CellBlock")
             .collect();
-        assert_eq!(placed.len(), 1, "template 360 is placed exactly once");
+        // The Debug Area plaza has its own copy (spawn 13007, DA-02), guarded
+        // by `live_db_debug_area_plaza`.
+        assert_eq!(placed.len(), 1, "template 360 is placed once in the hub");
         let s = placed[0];
         assert_eq!(s.spawn_id, 450);
         assert_eq!(s.tag.as_deref(), Some(PET_TRAINER_TAG));

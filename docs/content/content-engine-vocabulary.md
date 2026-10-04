@@ -182,6 +182,26 @@ An action has to clear **two** hurdles to do anything. It needs a match arm in [
 | `send_system_mail` | `SendSystemMail` | 1 |
 | `open_black_market` | `OpenBlackMarket` | 0 |
 | `open_loot` | `OpenLoot` | 8 |
+| `gm_ability_bulk` | `GmAbilityBulk` | 2 |
+
+`gm_ability_bulk` is the GM bulk ability change, fired from an NPC (Debug
+Area DA-02). Its one param, `change`, is `grant_all` or `reset`; a row
+with anything else is dropped at load with a warn rather than defaulting
+to a grant. The executor arm
+([`executor/ability_granter.rs`](../../crates/cell-content/src/cell/content/executor/ability_granter.rs))
+is GM-gated on the triggering player's account access level: a non-GM
+gets the line "Only a GM can use this." and nothing changes. For a GM it
+clears every running cooldown (with the client's clear timers, as
+`.cooldowns reset`), then sends the base the same `GmAbilityBulk` that
+`/gmgiveallabilities` (`grant_all`: every ability of the archetype tree
+the player does not know, capstones included) or `/gmresetabilities`
+(`reset`: back to the character-creation starters, tree points refunded)
+sends; the base's reply refreshes the Abilities window and adds its result
+line. Every click gets a line on the first press. Each click writes one
+`event = "ability_granter"` row on target `content` naming the player
+and every ability id with its name. The seeded uses are chains 13000 and
+13001, the Debug Area's ability granter and ability reset NPCs
+([debug-area.md](debug-area.md)).
 
 `open_black_market` sends `onBMOpen(auctioneerEntityId)` (client method 90)
 to open the client's Black Market window. It takes no params: the executor

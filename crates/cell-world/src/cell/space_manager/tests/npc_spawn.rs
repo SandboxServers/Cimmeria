@@ -108,6 +108,7 @@ fn spawn_npc_from_record_sets_template_fields() {
         aggression_override: None,
         use_cover: None,
         vault_scope: cimmeria_entity::cell_entity::VaultScope::Personal,
+        training_dummy: false,
     };
 
     mgr.spawn_npc_from_record(600, &record).unwrap();
@@ -173,6 +174,7 @@ fn record_with_flags(interaction_type: i64) -> crate::cell::spawner::SpawnRecord
         aggression_override: None,
         use_cover: None,
         vault_scope: cimmeria_entity::cell_entity::VaultScope::Personal,
+        training_dummy: false,
     }
 }
 
@@ -249,6 +251,7 @@ fn spawn_npc_from_record_derives_banker_with_its_vault_scope() {
         let mut mgr = make_manager();
         let record = crate::cell::spawner::SpawnRecord {
             vault_scope: scope,
+            training_dummy: false,
             ..record_with_flags(INT_BANKER)
         };
         mgr.spawn_npc_from_record(600, &record).unwrap();
@@ -281,6 +284,7 @@ fn banker_bit_wins_over_vendor_bits_and_scope_needs_the_banker_bit() {
     let mut mgr = make_manager();
     let record = crate::cell::spawner::SpawnRecord {
         vault_scope: VaultScope::Team,
+        training_dummy: false,
         ..record_with_flags(INT_VENDOR_GENERAL)
     };
     mgr.spawn_npc_from_record(600, &record).unwrap();

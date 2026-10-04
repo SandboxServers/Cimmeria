@@ -4,10 +4,12 @@
 //! and marked with a [`LabDummy`] extension. The mark is what makes it a
 //! dummy:
 //!
-//! - **No AI turn.** [`SpaceManager::ai_driven_npc_entity_ids`] leaves a
-//!   marked NPC out, so it never fights back, chases, leashes, patrols or
-//!   walks home, however much threat it takes. `.spawn` plus `.aggro off`
-//!   only stops a mob noticing you, not hitting back (the reason for D-AU6).
+//! - **No AI turn.** `.dummy` also puts the [`super::TrainingDummy`] mark on
+//!   it, the same mark a seeded training dummy carries (Debug Area D-DA7), and
+//!   [`SpaceManager::ai_driven_npc_entity_ids`] leaves a marked NPC out, so it
+//!   never fights back, chases, leashes, patrols or walks home, however much
+//!   threat it takes. `.spawn` plus `.aggro off` only stops a mob noticing
+//!   you, not hitting back (the reason for D-AU6).
 //! - **A lifetime and an owner.** It despawns [`LAB_DUMMY_LIFETIME`] after
 //!   it was placed, or when its owner logs out; the sweeps live with the
 //!   command in `cimmeria-cell-console`.
@@ -30,8 +32,8 @@ use super::SpaceManager;
 pub const LAB_DUMMY_LIFETIME: Duration = Duration::from_secs(600);
 
 /// The Health a dummy is given, current and max (D-AU6): enough that no
-/// test run kills it by accident.
-pub const LAB_DUMMY_HEALTH: i32 = 1_000_000;
+/// test run kills it by accident. The seeded training dummies' figure.
+pub const LAB_DUMMY_HEALTH: i32 = super::TRAINING_DUMMY_HEALTH;
 
 /// The most dummies one GM may have standing at once, so a stuck macro
 /// cannot fill a zone.

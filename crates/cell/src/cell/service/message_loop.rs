@@ -260,6 +260,10 @@ pub(super) async fn run_cell_loop(
                     // Lab dummies (AB-L2, D-AU6) whose 10 minutes are up.
                     // Returns at once when none is standing.
                     crate::cell::console::abilities::lab_dummy_tick(tx, &mut space_mgr).await;
+                    // Training dummies (D-DA7) get no AI turn and so no
+                    // leash: one whose fight went quiet lets its attackers
+                    // out of combat here.
+                    crate::cell::combat::training_dummy_combat_tick(tx, &mut space_mgr).await;
                     // Cover-detection — also 1 Hz. Scans every player for
                     // proximity to loaded cover sets; fires
                     // OnPlayerEnteredCover / OnPlayerLeftCover /
