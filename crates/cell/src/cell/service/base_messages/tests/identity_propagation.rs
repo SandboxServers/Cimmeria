@@ -245,6 +245,33 @@ async fn identity_is_available_before_init_player_state() {
     );
 }
 
+/// The names `CreateEntity` carries are for logs only. Game lookups by
+/// name (`.goto`, `.summon`, tells) must see a loading player exactly as
+/// before NT-02: not found until `InitPlayerState` sets `character_name`.
+#[tokio::test]
+async fn birth_names_do_not_change_name_lookups_while_loading() {
+    let mut mgr = manager();
+    let (tx, _rx) = mpsc::channel(16);
+
+    create_via_base_message(&mut mgr, 7777, true, &tx).await;
+
+    assert_eq!(
+        mgr.find_online_player_by_name(PLAYER_NAME),
+        cimmeria_cell_world::cell::space_manager::PlayerNameLookup::NotFound,
+        "a player still loading was NotFound before NT-02 and must stay so"
+    );
+    assert_eq!(
+        mgr.get_entity(7777).unwrap().character_name,
+        None,
+        "the game's name is InitPlayerState's to set"
+    );
+    assert_eq!(
+        mgr.player_identity(7777).player_name,
+        Some(PLAYER_NAME),
+        "while the log identity is named from birth"
+    );
+}
+
 /// The teardown log is the last line of a session that can still name the
 /// account, and it runs *after* the entity has been removed from its space.
 /// Resolving identity lazily at the log statement would report UNKNOWN.

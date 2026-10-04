@@ -1,4 +1,4 @@
-//! The departed-entity ring: who held an entity ID slot, and when.
+//! The departed-entity rings: who held an entity ID slot, and when.
 //!
 //! Entity IDs are recycled runtime slots (instrumentation-discipline Rule 5),
 //! so a log row that arrives late, such as a client telemetry row replayed by
@@ -7,6 +7,11 @@
 //! the entities destroyed in it, with their lifetimes, and
 //! [`SpaceManager::entity_label_at`](super::SpaceManager::entity_label_at)
 //! answers from it.
+//!
+//! Players and NPCs are kept in separate rings. Player slots are the ones
+//! that get recycled; NPC ids come from a monotonic counter. A busy space
+//! despawns NPCs by the thousand, and in a shared ring those rows would push
+//! a departed player out long before its 10 minutes were up.
 //!
 //! The rings live on the `SpaceManager`, not on the space, because an
 //! instanced space is destroyed when its last player leaves, and that
@@ -17,13 +22,19 @@ use std::time::{Duration, SystemTime};
 
 /// How long a departed entity stays nameable.
 pub const DEPARTED_RETENTION: Duration = Duration::from_secs(10 * 60);
-/// Most departed entities kept per space; the oldest go first.
+/// Most departed entities of one kind (players, NPCs) kept per space; the
+/// oldest go first.
 pub const DEPARTED_CAP: usize = 4_096;
+/// How often a push also ages every other space's rings, so a destroyed
+/// instance's rings (which never see another push) are dropped.
+const SWEEP_INTERVAL: Duration = Duration::from_secs(60);
 
 /// One entity that left a space.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct DepartedEntity {
     pub entity_id: u32,
+    /// True for a player entity; picks the ring.
+    pub player: bool,
     /// Character name for a player, `name_id` text for an NPC; `None` when
     /// it had none.
     pub label: Option<&'static str>,
@@ -34,18 +45,66 @@ pub struct DepartedEntity {
 }
 
 impl DepartedEntity {
-    /// True when `at` falls inside this entity's lifetime (both ends
-    /// inclusive).
+    /// True when `at` falls inside this entity's lifetime, half-open:
+    /// `[created_at, destroyed_at)`. At the instant of a destroy the slot
+    /// already belongs to whoever is created next.
     fn was_alive_at(&self, at: SystemTime) -> bool {
-        self.created_at <= at && at <= self.destroyed_at
+        self.created_at <= at && at < self.destroyed_at
     }
 }
 
-/// Per-space rings of [`DepartedEntity`], bounded at [`DEPARTED_RETENTION`]
-/// or [`DEPARTED_CAP`] rows per space, whichever is smaller.
+/// One kind's rings, keyed by space.
+#[derive(Debug, Default)]
+struct Rings(HashMap<u32, VecDeque<DepartedEntity>>);
+
+impl Rings {
+    fn push(&mut self, space_id: u32, row: DepartedEntity) {
+        let now = row.destroyed_at;
+        let ring = self.0.entry(space_id).or_default();
+        ring.push_back(row);
+        while ring.len() > DEPARTED_CAP {
+            ring.pop_front();
+        }
+        age(ring, now);
+    }
+
+    fn sweep(&mut self, now: SystemTime) {
+        self.0.retain(|_, ring| {
+            age(ring, now);
+            !ring.is_empty()
+        });
+    }
+
+    fn alive_at(&self, space_id: u32, entity_id: u32, at: SystemTime) -> Option<&DepartedEntity> {
+        // Newest first, in case a clock step made two lifetimes overlap.
+        self.0
+            .get(&space_id)?
+            .iter()
+            .rev()
+            .find(|d| d.entity_id == entity_id && d.was_alive_at(at))
+    }
+
+    fn len(&self, space_id: u32) -> usize {
+        self.0.get(&space_id).map_or(0, VecDeque::len)
+    }
+}
+
+/// Drop the rows of `ring` that are past retention at `now`.
+fn age(ring: &mut VecDeque<DepartedEntity>, now: SystemTime) {
+    while ring.front().is_some_and(|d| aged_out(d.destroyed_at, now)) {
+        ring.pop_front();
+    }
+}
+
+/// Per-space rings of [`DepartedEntity`], one for players and one for NPCs,
+/// each bounded at [`DEPARTED_RETENTION`] or [`DEPARTED_CAP`] rows per space,
+/// whichever is smaller.
 #[derive(Debug, Default)]
 pub struct DepartedEntities {
-    rings: HashMap<u32, VecDeque<DepartedEntity>>,
+    players: Rings,
+    npcs: Rings,
+    /// When every ring was last aged.
+    last_sweep: Option<SystemTime>,
     /// A fixed clock for tests; `None` reads the wall clock.
     now_override: Option<SystemTime>,
 }
@@ -63,49 +122,46 @@ impl DepartedEntities {
         self.now_override = Some(now);
     }
 
-    /// Record a departure from `space_id`, then evict what has aged out.
+    /// Record a departure from `space_id`. Ages the ring it lands in, and at
+    /// most once per [`SWEEP_INTERVAL`] every other ring too.
     /// `departed.destroyed_at` is the "now" the eviction measures from.
     pub fn push(&mut self, space_id: u32, departed: DepartedEntity) {
         let now = departed.destroyed_at;
-        let ring = self.rings.entry(space_id).or_default();
-        ring.push_back(departed);
-        while ring.len() > DEPARTED_CAP {
-            ring.pop_front();
+        if departed.player {
+            self.players.push(space_id, departed);
+        } else {
+            self.npcs.push(space_id, departed);
         }
-        // Every ring is aged here, not only this one: a destroyed instance's
-        // ring never receives another push, and would otherwise stay forever.
-        self.rings.retain(|_, ring| {
-            while ring.front().is_some_and(|d| aged_out(d.destroyed_at, now)) {
-                ring.pop_front();
-            }
-            !ring.is_empty()
-        });
+        let due = self
+            .last_sweep
+            .is_none_or(|last| now.duration_since(last).is_ok_and(|d| d >= SWEEP_INTERVAL));
+        if due {
+            self.players.sweep(now);
+            self.npcs.sweep(now);
+            self.last_sweep = Some(now);
+        }
     }
 
     /// The departed entity that held `entity_id` in `space_id` at `at`.
-    /// Lifetimes of one slot never overlap, so at most one row matches;
-    /// the newest is taken if a clock step made two.
     pub fn alive_at(
         &self,
         space_id: u32,
         entity_id: u32,
         at: SystemTime,
     ) -> Option<&DepartedEntity> {
-        self.rings
-            .get(&space_id)?
-            .iter()
-            .rev()
-            .find(|d| d.entity_id == entity_id && d.was_alive_at(at))
+        self.players
+            .alive_at(space_id, entity_id, at)
+            .or_else(|| self.npcs.alive_at(space_id, entity_id, at))
     }
 
-    /// Rows held for `space_id`.
+    /// Rows held for `space_id`, players and NPCs together.
     pub fn len(&self, space_id: u32) -> usize {
-        self.rings.get(&space_id).map_or(0, VecDeque::len)
+        self.players.len(space_id) + self.npcs.len(space_id)
     }
 
     /// True when no space holds a departed row.
     pub fn is_empty(&self) -> bool {
-        self.rings.is_empty()
+        self.players.0.is_empty() && self.npcs.0.is_empty()
     }
 }
 
@@ -128,6 +184,7 @@ mod tests {
     fn row(entity_id: u32, label: &'static str, created: u64, destroyed: u64) -> DepartedEntity {
         DepartedEntity {
             entity_id,
+            player: true,
             label: Some(label),
             template_id: None,
             created_at: t(created),
@@ -135,24 +192,32 @@ mod tests {
         }
     }
 
+    fn npc(entity_id: u32, created: u64, destroyed: u64) -> DepartedEntity {
+        DepartedEntity {
+            player: false,
+            label: Some("Jaffa Guard"),
+            ..row(entity_id, "", created, destroyed)
+        }
+    }
+
+    fn label(ring: &DepartedEntities, space: u32, id: u32, at: SystemTime) -> Option<&'static str> {
+        ring.alive_at(space, id, at).and_then(|d| d.label)
+    }
+
     #[test]
     fn a_slot_held_twice_names_each_occupant_in_its_own_lifetime() {
         let mut ring = DepartedEntities::default();
         ring.push(1, row(7, "Old", 0, 100));
         ring.push(1, row(7, "New", 100, 200));
+        assert_eq!(label(&ring, 1, 7, t(50)), Some("Old"));
         assert_eq!(
-            ring.alive_at(1, 7, t(50)).and_then(|d| d.label),
-            Some("Old")
+            label(&ring, 1, 7, t(100)),
+            Some("New"),
+            "lifetimes are half-open: at the hand-over instant the slot is the new occupant's"
         );
-        assert_eq!(
-            ring.alive_at(1, 7, t(150)).and_then(|d| d.label),
-            Some("New")
-        );
-        assert!(
-            ring.alive_at(1, 7, t(250)).is_none(),
-            "after the last departure"
-        );
-        assert!(ring.alive_at(2, 7, t(50)).is_none(), "another space");
+        assert_eq!(label(&ring, 1, 7, t(150)), Some("New"));
+        assert_eq!(label(&ring, 1, 7, t(200)), None, "at the last departure");
+        assert_eq!(label(&ring, 2, 7, t(50)), None, "another space");
     }
 
     #[test]
@@ -161,8 +226,9 @@ mod tests {
         ring.push(1, row(7, "Old", 0, 10));
         let later = 10 + DEPARTED_RETENTION.as_secs() + 1;
         ring.push(1, row(8, "Fresh", later - 5, later));
-        assert!(
-            ring.alive_at(1, 7, t(5)).is_none(),
+        assert_eq!(
+            label(&ring, 1, 7, t(5)),
+            None,
             "a row past retention must be gone, not answered from"
         );
         assert_eq!(ring.len(1), 1);
@@ -192,10 +258,25 @@ mod tests {
     }
 
     #[test]
-    fn a_backwards_clock_step_keeps_history() {
+    fn npc_departures_never_evict_a_player() {
+        let mut ring = DepartedEntities::default();
+        ring.push(1, row(7, "Daniel", 0, 10));
+        for i in 0..(2 * DEPARTED_CAP as u32) {
+            ring.push(1, npc(100_000 + i, 10, 20));
+        }
+        assert_eq!(label(&ring, 1, 7, t(5)), Some("Daniel"));
+        assert_eq!(
+            label(&ring, 1, 100_000 + 2 * DEPARTED_CAP as u32 - 1, t(15)),
+            Some("Jaffa Guard")
+        );
+    }
+
+    #[test]
+    fn a_backwards_clock_step_keeps_history_and_names_each_row() {
         let mut ring = DepartedEntities::default();
         ring.push(1, row(7, "Old", 0, 1_000));
         ring.push(1, row(8, "Stepped", 0, 500));
-        assert!(ring.alive_at(1, 7, t(10)).is_some());
+        assert_eq!(label(&ring, 1, 7, t(10)), Some("Old"));
+        assert_eq!(label(&ring, 1, 8, t(10)), Some("Stepped"));
     }
 }

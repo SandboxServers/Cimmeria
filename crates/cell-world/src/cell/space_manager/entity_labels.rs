@@ -39,12 +39,12 @@ pub struct EntityNames {
 }
 
 impl EntityNames {
-    /// The names of `e`, resolved now. Costs a NameBook read and an interner
-    /// lookup, so call it inside the branch that logs.
+    /// The names of `e`, resolved now. For an NPC this costs a NameBook read
+    /// and an interner lookup, so call it inside the branch that logs.
     pub fn of(e: &CellEntity) -> Self {
-        if let Some(name) = e.character_name.as_deref() {
+        if is_player(e) {
             return Self {
-                entity_name: intern_opt(Some(name)),
+                entity_name: player_label(e),
                 ..Self::default()
             };
         }
@@ -64,13 +64,25 @@ fn npc_display_name<'b>(book: &'b cimmeria_names::NameBook, e: &CellEntity) -> O
         .or_else(|| e.template_id.and_then(|t| book.template_display(t)))
 }
 
+/// A player entity, as opposed to an NPC: it belongs to a session.
+fn is_player(e: &CellEntity) -> bool {
+    e.is_player
+        || e.player_id.is_some()
+        || e.log_names.player_name.is_some()
+        || e.character_name.is_some()
+}
+
+/// A player's name: the one stamped for logs at birth (already interned),
+/// else the game's `character_name`.
+fn player_label(e: &CellEntity) -> Option<&'static str> {
+    e.log_names
+        .player_name
+        .or_else(|| intern_opt(e.character_name.as_deref()))
+}
+
 /// The label of a live entity: see [`SpaceManager::entity_label`].
-fn label_of(e: &CellEntity) -> Option<&str> {
-    match e.character_name.as_deref() {
-        Some(name) if !name.trim().is_empty() => Some(name),
-        Some(_) => None,
-        None => EntityNames::of(e).entity_name,
-    }
+fn label_of(e: &CellEntity) -> Option<&'static str> {
+    EntityNames::of(e).entity_name
 }
 
 impl SpaceManager {
@@ -91,16 +103,22 @@ impl SpaceManager {
     }
 
     /// The label of whichever entity held `entity_id` in `space_id` at
-    /// wall-clock time `at`.
+    /// server time `at`.
     ///
-    /// The live entity answers when `at` is at or after its creation; a
-    /// departed one answers when `at` falls inside its lifetime and it is
-    /// still in the ring (10 minutes or 4,096 rows per space). `None`
-    /// otherwise: a slot is never named after an occupant who didn't hold it
-    /// at `at`.
+    /// Lifetimes are half-open, `[created_at, destroyed_at)`. The live
+    /// entity answers when `at` is at or after its creation; a departed one
+    /// answers when `at` falls inside its lifetime and it is still in its
+    /// ring (10 minutes or 4,096 rows per space, players and NPCs in
+    /// separate rings). `None` otherwise: a slot is never named after an
+    /// occupant who didn't hold it at `at`.
     ///
-    /// `at` is a [`SystemTime`] so a client row's wall-clock timestamp
-    /// converts straight in: `UNIX_EPOCH + Duration::from_millis(ms)`.
+    /// **`at` must be a server-clock time.** Lifetimes are stamped with the
+    /// server's wall clock, and occupants of one slot can be seconds apart,
+    /// so a client clock's skew would name the wrong one, and a client
+    /// could pick its timestamp to choose the name. A caller with a client
+    /// row (NT-40) maps the row onto the server clock first, from the
+    /// server's receive time or a per-session clock offset, and never
+    /// passes the client's time raw.
     pub fn entity_label_at(&self, space_id: u32, entity_id: u32, at: SystemTime) -> Option<&str> {
         if let Some(e) = self
             .spaces
@@ -131,6 +149,7 @@ impl SpaceManager {
             pending.space_id,
             DepartedEntity {
                 entity_id: pending.entity_id,
+                player: pending.player,
                 label: pending.names.entity_name,
                 template_id: pending.names.template_id,
                 created_at: pending.created_at,
@@ -145,6 +164,7 @@ impl SpaceManager {
 pub(crate) struct PendingDeparture {
     space_id: u32,
     entity_id: u32,
+    player: bool,
     names: EntityNames,
     created_at: SystemTime,
 }
@@ -154,6 +174,7 @@ impl PendingDeparture {
         Self {
             space_id,
             entity_id,
+            player: is_player(e),
             names: EntityNames::of(e),
             created_at: e.created_at,
         }

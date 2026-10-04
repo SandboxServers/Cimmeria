@@ -220,14 +220,13 @@ pub fn on_create_result(
     // The offer is keyed by character, so it is settled even if the entity
     // has gone meanwhile; the identity is only for the log.
     let live = space_mgr.player_identity(entity_id);
-    let actor = PlayerIdentity {
-        player_id: Some(player_id),
-        // The entity may hold another character by now; its name is only
-        // this player's when the IDs agree.
-        player_name: live
-            .player_name
-            .filter(|_| live.player_id == Some(player_id)),
-        ..live
+    // The entity may hold another character (on another account) by now.
+    // Its account and names are this player's only when the IDs agree;
+    // otherwise the line carries the player id alone.
+    let actor = if live.player_id == Some(player_id) {
+        live
+    } else {
+        PlayerIdentity::new(None, Some(player_id))
     };
     if created {
         match space_mgr.resources.org_creations_mut().consume(player_id) {

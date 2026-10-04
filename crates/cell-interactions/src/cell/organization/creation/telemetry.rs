@@ -148,7 +148,9 @@ pub fn attempt_charged(actor: PlayerIdentity, attempts_left: Option<u8>, by: &'s
         target: "org",
         event = "pending_creation_attempt_charged",
         account_id = actor.account_id,
+        account_name = actor.account_name,
         player_id = actor.player_id,
+        player_name = actor.player_name,
         attempts_left,
         by,
         "organization creation attempt spent"

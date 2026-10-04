@@ -103,12 +103,14 @@ pub(super) async fn handle_create_entity(
             // gate-travel destination entity carry the account. NPCs pass
             // `None`/`None` and are left UNKNOWN. The names come with the
             // IDs (Rule 6), so the same lines can say who, not only which.
+            // They go into the log-only `log_names`, interned once here:
+            // `character_name` is the game's field and stays unset until
+            // `InitPlayerState`, as before, so name lookups don't change.
             if account_id.is_some() || player_id.is_some() {
                 if let Some(entity) = space_mgr.get_entity_mut(entity_id) {
                     entity.account_id = account_id;
                     entity.player_id = player_id;
-                    entity.account_name = account_name;
-                    entity.character_name = player_name;
+                    entity.stamp_log_names(player_name.as_deref(), account_name.as_deref());
                 } else {
                     // The create reported success, so the entity must be
                     // resolvable; if it isn't, every subsequent log for this

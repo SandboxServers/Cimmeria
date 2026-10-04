@@ -49,6 +49,11 @@ fn a_recycled_id_is_named_after_whoever_held_it_at_the_time() {
         "before the recycle the slot was Daniel's: naming it after its current \
          occupant would pin Daniel's row on Vala"
     );
+    assert_eq!(
+        mgr.entity_label_at(AGNOS, SLOT, t(100)),
+        Some("Vala"),
+        "half-open lifetimes: the hand-over instant is the new occupant's"
+    );
     assert_eq!(mgr.entity_label_at(AGNOS, SLOT, t(150)), Some("Vala"));
     assert_eq!(mgr.entity_label(SLOT), Some("Vala"));
     assert_eq!(
@@ -78,6 +83,26 @@ fn a_timestamp_older_than_the_ring_is_unnamed() {
         mgr.entity_label_at(AGNOS, SLOT, later - Duration::from_secs(1)),
         Some("Vala"),
         "the row that evicted it is still answered from"
+    );
+}
+
+/// NPC despawns are the bulk of a busy space's departures. They must not
+/// push a departed player out of its ring inside the retention window.
+#[test]
+fn npc_despawns_do_not_evict_a_departed_player() {
+    let mut mgr = make_manager();
+    occupy(&mut mgr, "Daniel", t(0));
+    vacate(&mut mgr, t(10));
+    mgr.departed.set_now(t(20));
+    for i in 0..5_000 {
+        let id = 200_000 + i;
+        mgr.spawn_npc(id, "Agnos", [0.0; 3], [0.0; 3]).unwrap();
+        mgr.destroy_entity(id);
+    }
+    assert_eq!(
+        mgr.entity_label_at(AGNOS, SLOT, t(5)),
+        Some("Daniel"),
+        "5,000 NPC rows evicted a player who left 10 s earlier"
     );
 }
 
