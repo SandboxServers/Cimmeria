@@ -436,11 +436,12 @@ pub struct CellEntity {
     /// [`ActiveEffectInstance`] for the per-instance state.
     pub active_effects: Vec<ActiveEffectInstance>,
 
-    /// Timed stat buffs (the consumable stimpacks), at most one per stat,
-    /// with the client timer clears they still owe. `pulse_count = 1`
-    /// effects never register in `active_effects`, so these carry their
-    /// own duration; the cell's stat-buff tick expires them. Empty for
-    /// almost every entity. See [`super::StatBuffLedger`].
+    /// The timed effect ledger: stat-changing effects with a duration (the
+    /// consumable stimpacks, ability buffs and debuffs), one per
+    /// `(effect_id, invoker_id)`, with the client timer clears they still
+    /// owe. `pulse_count = 1` effects never register in `active_effects`,
+    /// so these carry their own duration; the cell's stat-buff tick expires
+    /// them. Empty for almost every entity. See [`super::StatBuffLedger`].
     pub stat_buffs: super::StatBuffLedger,
 
     // ── NPC AI state ──────────────────────────────────────────────────────────

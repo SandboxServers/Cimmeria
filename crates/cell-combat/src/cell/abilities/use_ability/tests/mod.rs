@@ -39,6 +39,7 @@ mod summon_roster_live_db;
 mod summoned_pet_kill_credit;
 mod support_shot;
 mod target_validity;
+mod timed_buffs;
 mod warmup;
 mod warmup_interrupt;
 mod weapon_grant;

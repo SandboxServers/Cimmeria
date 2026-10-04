@@ -2,12 +2,12 @@
 title: "Effect System"
 type: reference
 audience: engineers
-last_updated: 2026-09-28
+last_updated: 2026-10-03
 ---
 
 # Effect System
 
-> **Last updated**: 2026-09-28 (#804: the clear-on-death rows follow the stat-buff ledger)
+> **Last updated**: 2026-10-03 (ability mechanics AB-04: single-pulse timed buffs and debuffs on the timed effect ledger; duration tracking was only true for multi-pulse effects, audit B-34)
 > **Status**: Implemented — application, removal, pulsing, stacking, absorption shields, and channel cancellation all work. Gaps: diminishing returns, most of the effect-clear flags (only `EF_ClearOnDeath` is honoured, and only by the timed stat-buff ledger), and **no effect visuals at all** (no `onSequence` is emitted anywhere in the effect system).
 
 ## Overview
@@ -23,12 +23,12 @@ The `EffectInstance` class in `deprecated/python/cell/AbilityManager.py` handles
 | Effect application | DONE | `addEffect()` on AbilityManager |
 | Effect removal (by ID, by flag, by moniker) | DONE | Multiple removal paths |
 | Pulsing effects (periodic) | DONE | Timer-based pulse loop |
-| Duration tracking | DONE | `completeTime`, `remainingPulses` |
+| Duration tracking | PARTIAL | Multi-pulse effects: `active_effects` (`cell/effects/pulsing/`). Single-pulse timed effects (`pulse_count = 1`, `pulse_duration > 0`, the shape of every authored buff and debuff) never register there; since ability mechanics AB-04 the ones with stat NVPs live on the timed effect ledger (`CellEntity::stat_buffs`, one entry per effect and invoker, expired by the stat-buff tick, icon via `onTimerUpdate` type 5 with SecondaryId = effect id). The 21 generated stat effects and the stimpacks use it; CC, regen buffs, shields and held stances do not yet (AB-05, AB-08 to AB-10). [ADR decision 28](../architecture/abilities-and-effects-decisions-23-33.md#28-native-consumables-the-base-consumes-before-the-cell-applies-and-timed-stat-buffs-live-in-their-own-ledger) |
 | Stat modification (absolute) | DONE | `changeStat()` with STAT_Absolute |
 | Stat modification (% current) | DONE | `STAT_CurrentPercentage` |
 | Stat modification (% max) | DONE | `STAT_MaxPercentage` |
 | Stat modification (% min-max) | DONE | `STAT_MinMaxPercentage` |
-| Temporary vs permanent changes | NOT IMPL | No permanent/temporary distinction exists in `crates/`. A stat change is reverted only by its script's `on_remove` (AbsorbShield, Stun, RemoveCoverStance); direct HEALTH/FOCUS writes are one-way |
+| Temporary vs permanent changes | PARTIAL | A timed effect ledger entry records exactly what it moved and takes back exactly that on expiry or removal (`StatBuff`, `TimedStat`). Otherwise a stat change is reverted only by its script's `on_remove` (AbsorbShield, Stun, RemoveCoverStance); direct HEALTH/FOCUS writes are one-way |
 | QR combat damage | DONE | `qrCombatDamage()` using shared or per-effect QR |
 | Effect scripts | DONE | Dynamic script loading via `cell.effects.<name>` |
 | Kismet sequences (init, pulse, remove, per-QR hit) | NOT IMPL | Nothing under `crates/cell-world/src/cell/effects/` or `crates/cell-combat/src/cell/effects/` emits `onSequence`. Events 2000–2008 are never sent, so effects have no visual at all — see [cinematic-system.md](cinematic-system.md) |

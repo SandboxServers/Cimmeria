@@ -26,14 +26,14 @@ python tools/ability_mechanics/effect_nvps_from_desc.py --check    # exit 1 if t
 python tools/ability_mechanics/effect_nvps_from_desc.py --report   # generated, hand-authored and unparsed effects
 python tools/ability_mechanics/effect_nvps_from_desc.py --family heal   # one family only
 python tools/ability_mechanics/effect_nvps_from_desc.py --report --family damage > tools/ability_mechanics/reports/damage.txt
-python -m unittest discover -s tools/ability_mechanics -p "test_*.py"
+python -m unittest discover -s tools/ability_mechanics -p "test_*.py"   # test_stat_family.py is the stat family's
 ```
 
 Exit codes: 0 success, 1 drift (`--check`), 2 input failure (an unparseable seed, an unmatched marker, a family out of `nvp_id`s). Output is deterministic, and a run keeps each file's CRLF line endings.
 
 `reports/damage.txt` is the committed `damage` report: the generated effects with their notes, and every unparsed effect with its reason. A unit test fails when it no longer matches the parser, so a grammar change ships with the reviewed list. Regenerate it with the command above once the seed is current.
 
-CI runs `--check` and the unit tests in the `test-live-db` job of [.github/workflows/test.yml](../../.github/workflows/test.yml), so a hand edit inside a block, or a parser change without a regenerated seed, fails the PR. The live-DB guards in `crates/cell-effect-scripts/src/cell/effects/heal_seed_live_db_tests.rs` load the real seed and run the bound scripts on it; `crates/cell-combat/src/cell/abilities/damage_apply/damage_seed_live_db_tests.rs` checks the damage rows and fires Point Blank Shot on them.
+CI runs `--check` and the unit tests in the `test-live-db` job of [.github/workflows/test.yml](../../.github/workflows/test.yml), so a hand edit inside a block, or a parser change without a regenerated seed, fails the PR. The live-DB guards in `crates/cell-effect-scripts/src/cell/effects/heal_seed_live_db_tests.rs` (heal) and `stat_buff/seed_live_db_tests.rs` (stat) load the real seed and run the bound scripts on it; `crates/cell-combat/src/cell/abilities/damage_apply/damage_seed_live_db_tests.rs` checks the damage rows and fires Point Blank Shot on them.
 
 ## Ownership rules
 
@@ -49,7 +49,7 @@ CI runs `--check` and the unit tests in the `test-live-db` job of [.github/workf
 |---|---|---|---|
 | `heal` | AB-02 | `HealPercentage` (percent of the pool's max) or `HealAmount` (flat points) | `HealHealth` / `HealFocus` |
 | `damage` | AB-03 | `HealthDamage`, `FocusDamage` | none (NVP path) |
-| `stat` | AB-04 | the stat names `StatBuff` reads | the ledger script |
+| `stat` | AB-04 | stat names (`Accuracy`, `Defense`, `CoverDefense`, `MovementSpeedMod`, ...) | `TimedStat` |
 | `shield` | AB-10 | `ShieldAmount`, `ShieldType` | `AbsorbShield` |
 
 A family is one module under `families/` that subclasses `family.Family` (`is_candidate`, `parse`) and one entry in `families/__init__.py`. The corpus loader (`corpus.py`), the seed reader (`seed_sql.py`), the ownership rules, the block writer, `--check` and `--report` are shared.
@@ -86,6 +86,23 @@ An effect is reported, not written, when its rejection reason starts with one of
 - `grammar`: anything else the parser refuses.
 
 When the ability tooltip's numbers differ from the effect's, the effect row wins and the comment says so.
+### stat
+
+`families/stat.py` writes stat-named NVPs (`Accuracy`, `Defense`, `CoverAccuracy`, `CoverDefense`, `CrouchingDefense`, `Response`, `InterruptResistance`, the three resists, `MovementSpeedMod`) and binds `TimedStat`, which puts one entry per effect and caster on the timed effect ledger for the effect's `pulse_duration` (AB-04, D-AB08). The names it may write sit between `# nvp-names` markers, and a Rust test (`stat_nvp_names_match_the_generator`) fails if the script would ignore one.
+
+The grammar accepts stat clauses as whole lines, after an optional `Target`, `User` or `Debuff` prefix: "+200 Accuracy: 15 Seconds", "+200 Cover ACC for 15 Seconds", "Accuracy -100", "Movement Speed-30%", "Cover Defense Debuff: -100", and pairs such as "-200 ACC / DEF" or "-200ACC / -200DEF". Targeting lines and duration lines ("10 Second Duration", "Duration: 15sec") are skipped; a stated duration must equal `pulse_duration`.
+
+Units are D-AB09's, and every converted row carries a `note` saying how: a bare number is points (200 Accuracy is 2 QR); a percentage on a resist or interrupt stat is 10 points per 1 %; a percentage on run speed is `movementSpeedMod` percent. Any other percentage is rejected.
+
+Reported instead of bound:
+
+- anything that is not a timed single pulse: held effects (stances, toggles), `EF_AlwaysPersist` passives and `AF_TOGGLED` abilities are AB-08's;
+- `EF_ClearOnDamage` effects ("(1 hit)"), until AB-11's damage hook exists;
+- AE, group and "Secondary" effects (AB-07), deployables and turret enhancements (D-AB11);
+- the regen stats (AB-05: `regen.rs` reads them as points per second until D-AB04's percentage model lands), pool maximums, armour factors, mitigation and stealth;
+- an effect the cast would land in the wrong place: the non-beneficial half of a Self ability (Combat Sprint's "-100 ACC"), a "User" half of a targeted ability, and a beneficial effect whose ability has a non-beneficial effect that does something (the cast would take the hostile path, B-27).
+
+When the ability tooltip names a different stat from the effect row, the row wins and the comment says so.
 
 ## Changing a family
 

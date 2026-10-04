@@ -25,4 +25,5 @@ pub use pulsing::{
 };
 pub use stat_buffs::{
     clear_stat_buffs_on_death, flush_stat_buff_timers, stat_buff_tick, stat_buff_tick_at,
+    strip_timed_effects,
 };

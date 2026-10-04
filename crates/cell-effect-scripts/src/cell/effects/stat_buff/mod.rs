@@ -1,5 +1,12 @@
-//! [`StatBuff`]: a timed buff to one or more primary attributes (the
-//! consumable stimpacks, items 6677-6682 and 6697 / 6717-6733).
+//! The two scripts that write the timed effect ledger
+//! ([`cimmeria_entity::cell_entity::StatBuffLedger`], ability-mechanics
+//! AB-04 and decision 28 of `docs/architecture/abilities-and-effects-system.md`):
+//!
+//! - [`StatBuff`]: the consumable stimpacks (items 6677-6682, 6697,
+//!   6717-6733), stacked by stat (decision 28's rule);
+//! - [`TimedStat`]: ability buffs and debuffs ("+200 Accuracy: 15 Seconds",
+//!   "-100 Defense: 15 Seconds"), one entry per `(effect, invoker)`: the same
+//!   caster refreshes, another caster stacks (D-AB08).
 //!
 //! | Items | Effects | Magnitude, each stat | Duration |
 //! |---|---|---|---|
@@ -8,127 +15,181 @@
 //! | Mark VII (6717, 6720, 6723, 6726, 6729, 6732) | 3967-3978, two stats | +7 / +7 | 3600 s |
 //! | Mark X (6718, 6721, 6724, 6727, 6730, 6733) | 3979-3990, two stats | +10 / +10 | 3600 s |
 //!
-//! Each effect row moves one stat; a two-stat stim's ability owns two
-//! effects, so one use applies both. The magnitudes are `effect_nvps` rows
-//! named after the stat ([`STAT_BUFF_NVPS`]); the 2009 rows shipped none, so
-//! each value is the number in the effect's own `effect_desc` ("+7
-//! Coordination"). The duration is the effect's `pulse_duration`.
+//! Both read the effect's NVPs named after a stat ([`STAT_BUFF_NVPS`]); the
+//! 2009 rows shipped none, so every value is the number in the effect's own
+//! `effect_desc`: hand rows for the stimpacks, the `stat` family of
+//! `tools/ability_mechanics/effect_nvps_from_desc.py` for abilities, with
+//! D-AB09's unit conversions. The duration is the effect's `pulse_duration`.
 //!
 //! **Why not the pulsing layer.** These rows are `pulse_count = 1`, and
 //! `register_active_effect` computes `remaining = pulse_count - 1 = 0` and
 //! registers nothing, so such an effect never gets an `active_effects`
 //! instance and never an `on_remove`. Raising `pulse_count` would make the
-//! pulse tick call `on_apply` again at expiry. The buff lives in
-//! `CellEntity::stat_buffs` instead ([`cimmeria_entity::cell_entity::StatBuffLedger`]),
-//! the player-side counterpart of the pet buff ledger (decision 25 of
-//! `docs/architecture/abilities-and-effects-system.md`), and the cell's
-//! stat-buff tick in `cimmeria-cell-combat` expires it and sends the
-//! client's duration timers.
+//! pulse tick call `on_apply` again at expiry. The cell's stat-buff tick in
+//! `cimmeria-cell-combat` expires ledger entries and sends the client's
+//! duration timers; the callers that run a script (`fire_beneficial`,
+//! `damage_apply`, content's `apply_effect`) flush those timers right after.
 //!
-//! **Stacking is keyed by stat** (see the ledger's module docs): a second
-//! buff on the same stat replaces the first, whatever its tier; buffs on
-//! different stats never interact.
+//! **A held effect is refused for now.** `pulse_duration = 0` on a toggled
+//! ability (a stance) is a held entry that a second press removes; until
+//! AB-08 wires `AF_TOGGLED`, nothing would ever take it off, so both
+//! scripts log `no_duration` and apply nothing.
 //!
 //! Log target `abilities`.
 
+#[cfg(test)]
+mod seed_live_db_tests;
 #[cfg(test)]
 mod tests;
 
 use std::time::Instant;
 
-use cimmeria_entity::cell_entity::StatBuffSpec;
+use cimmeria_entity::abilities::EffectDef;
+use cimmeria_entity::cell_entity::{TimedEffectSpec, TimedStacking};
 use cimmeria_entity::stats::{
-    COORDINATION, ENGAGEMENT, FORTITUDE, INTELLIGENCE, MORALE, PERCEPTION,
+    ACCURACY, COORDINATION, COVER_ACCURACY, COVER_DEFENSE, CROUCHING_ACCURACY, CROUCHING_DEFENSE,
+    DEFENSE, ENGAGEMENT, FOCUS_REGEN, FORTITUDE, HEALTH_REGEN, HEALTH_RES, INTELLIGENCE,
+    INTERRUPT_RES, KINETIC_RES, MENTAL_RES, MORALE, MOVEMENT_SPEED_MOD, PERCEPTION, RESPONSE,
 };
 
 use super::{EffectContext, EffectScript};
 
-// The ledger (`SpaceManager::apply_stat_buff` / `remove_stat_buffs` and
-// `StatBuffRemoval`) stays in `cimmeria-cell-world`, where the cell's
+// The ledger (`SpaceManager::apply_timed_effect` / `remove_timed_effects`
+// and `StatBuffRemoval`) stays in `cimmeria-cell-world`, where the cell's
 // stat-buff tick in `cimmeria-cell-combat` calls it too.
 pub use cimmeria_cell_world::cell::effects::stat_buff::*;
 
-/// `effect_nvps` names [`StatBuff`] reads, and the stat each moves. The
-/// names are the stimpack's own words, so Intellect maps to the stat the
-/// server calls `INTELLIGENCE`.
-pub const STAT_BUFF_NVPS: [(&str, i32); 6] = [
+/// `effect_nvps` names the ledger scripts read, and the stat each moves.
+/// The first six are the stimpacks' own words (Intellect moves the stat the
+/// server calls `INTELLIGENCE`); the rest are the `stat` family's
+/// (`tools/ability_mechanics/families/stat.py` writes the same names, and
+/// `stat_nvp_names_match_the_generator` pins the two lists together). The
+/// regen names are AB-05's: the generator does not write them until the
+/// regen model reads them as percentages (D-AB04).
+pub const STAT_BUFF_NVPS: &[(&str, i32)] = &[
     ("Coordination", COORDINATION),
     ("Engagement", ENGAGEMENT),
     ("Fortitude", FORTITUDE),
     ("Intellect", INTELLIGENCE),
     ("Morale", MORALE),
     ("Perception", PERCEPTION),
+    ("Accuracy", ACCURACY),
+    ("Defense", DEFENSE),
+    ("CoverAccuracy", COVER_ACCURACY),
+    ("CoverDefense", COVER_DEFENSE),
+    ("CrouchingAccuracy", CROUCHING_ACCURACY),
+    ("CrouchingDefense", CROUCHING_DEFENSE),
+    ("Response", RESPONSE),
+    ("InterruptResistance", INTERRUPT_RES),
+    ("KineticResistance", KINETIC_RES),
+    ("MentalResistance", MENTAL_RES),
+    ("HealthResistance", HEALTH_RES),
+    ("MovementSpeedMod", MOVEMENT_SPEED_MOD),
+    ("FocusRegen", FOCUS_REGEN),
+    ("HealthRegen", HEALTH_REGEN),
 ];
 
 /// The `(stat, delta)` pairs an effect's NVPs ask for; zero NVPs are
 /// skipped.
-pub fn stat_buff_mods(ctx: &EffectContext) -> Vec<(i32, i32)> {
+pub fn stat_mods(effect: &EffectDef) -> Vec<(i32, i32)> {
     STAT_BUFF_NVPS
         .iter()
-        .filter_map(|&(name, stat)| match ctx.effect.param_i32(name) {
+        .filter_map(|&(name, stat)| match effect.param_i32(name) {
             0 => None,
             delta => Some((stat, delta)),
         })
         .collect()
 }
 
-/// A timed buff to the target's primary attributes, from the effect's
-/// [`STAT_BUFF_NVPS`], lasting the effect's `pulse_duration`.
+/// The ledger entry `effect` asks for when `invoker_id` lands it: its stat
+/// NVPs, its `pulse_duration`, its flags and its ability's monikers. A
+/// caller with its own stats (AB-05's regen buffs, AB-09's CC, AB-10's
+/// shields) builds the spec from this and replaces `stats`.
+pub fn timed_spec(ctx: &EffectContext, stacking: TimedStacking) -> TimedEffectSpec {
+    let effect = ctx.effect;
+    TimedEffectSpec {
+        effect_id: effect.effect_id,
+        ability_id: effect.ability_id,
+        invoker_id: ctx.source_id,
+        effect_flags: effect.flags,
+        moniker_ids: ctx.space_mgr.ability_moniker_ids(effect.ability_id),
+        stats: stat_mods(effect),
+        duration_secs: Some(effect.pulse_duration),
+        stacking,
+        // `SpaceManager::apply_timed_effect` fills it from the invoker.
+        invoker_identity: Default::default(),
+    }
+}
+
+/// Apply `ctx`'s effect as a ledger entry, or log why not.
+fn apply_entry(ctx: &mut EffectContext, stacking: TimedStacking, script: &'static str) {
+    let spec = timed_spec(ctx, stacking);
+    let reason = if spec.stats.is_empty() {
+        Some("no_stat_nvps")
+    } else if ctx.effect.pulse_duration <= 0.0 {
+        Some("no_duration")
+    } else {
+        None
+    };
+    if let Some(reason) = reason {
+        let who = ctx.space_mgr.player_identity(ctx.source_id);
+        let target_who = ctx.space_mgr.player_identity(ctx.target_id);
+        tracing::warn!(
+            target: "abilities",
+            event = "stat_buff_skipped",
+            reason,
+            script,
+            account_id = who.account_id,
+            player_id = who.player_id,
+            entity_id = ctx.source_id,
+            target_id = ctx.target_id,
+            target_player_id = target_who.player_id,
+            source_id = ctx.source_id,
+            effect_id = ctx.effect.effect_id,
+            ability_id = ctx.effect.ability_id,
+            "{script} effect has no stat NVP or no duration; nothing applied \
+             (check the effect's effect_nvps and pulse_duration seed)"
+        );
+        return;
+    }
+    let _ = ctx
+        .space_mgr
+        .apply_timed_effect(ctx.target_id, spec, Instant::now());
+}
+
+/// A stimpack: a timed buff to the target's stats from the effect's
+/// [`STAT_BUFF_NVPS`], lasting the effect's `pulse_duration`. A second stim
+/// on the same stat replaces the first, whatever its tier or source.
 pub struct StatBuff;
 
 impl EffectScript for StatBuff {
     fn on_apply(&self, ctx: &mut EffectContext) {
-        let effect_id = ctx.effect.effect_id;
-        let ability_id = ctx.effect.ability_id;
-        let mods = stat_buff_mods(ctx);
-        let reason = if mods.is_empty() {
-            Some("no_stat_nvps")
-        } else if ctx.effect.pulse_duration <= 0.0 {
-            Some("no_duration")
-        } else {
-            None
-        };
-        if let Some(reason) = reason {
-            let id = ctx.space_mgr.player_identity(ctx.target_id);
-            tracing::warn!(
-                target: "abilities",
-                event = "stat_buff_skipped",
-                reason,
-                entity_id = ctx.target_id,
-                account_id = id.account_id,
-                player_id = id.player_id,
-                source_id = ctx.source_id,
-                effect_id,
-                ability_id,
-                "StatBuff effect has no stat NVP or no duration; nothing applied \
-                 (check the effect's effect_nvps and pulse_duration seed)"
-            );
-            return;
-        }
-        let now = Instant::now();
-        for (stat_id, delta) in mods {
-            let _ = ctx.space_mgr.apply_stat_buff(
-                ctx.target_id,
-                StatBuffSpec {
-                    stat_id,
-                    delta,
-                    effect_id,
-                    ability_id,
-                    invoker_id: ctx.source_id,
-                    effect_flags: ctx.effect.flags,
-                    duration_secs: ctx.effect.pulse_duration,
-                },
-                now,
-            );
-        }
+        apply_entry(ctx, TimedStacking::ReplaceSameStat, "StatBuff");
     }
 
     fn on_remove(&self, ctx: &mut EffectContext) {
         let effect_id = ctx.effect.effect_id;
         let _ = ctx
             .space_mgr
-            .remove_stat_buffs(ctx.target_id, StatBuffRemoval::Removed, |b| {
+            .remove_timed_effects(ctx.target_id, StatBuffRemoval::Removed, |b| {
                 b.effect_id == effect_id
             });
+    }
+}
+
+/// An ability's timed buff or debuff: the effect's [`STAT_BUFF_NVPS`] for
+/// its `pulse_duration`, one entry per `(effect, invoker)`.
+pub struct TimedStat;
+
+impl EffectScript for TimedStat {
+    fn on_apply(&self, ctx: &mut EffectContext) {
+        apply_entry(ctx, TimedStacking::PerSource, "TimedStat");
+    }
+
+    fn on_remove(&self, ctx: &mut EffectContext) {
+        let key = (ctx.effect.effect_id, ctx.source_id);
+        let _ = ctx
+            .space_mgr
+            .remove_timed_effects(ctx.target_id, StatBuffRemoval::Removed, |b| b.key() == key);
     }
 }

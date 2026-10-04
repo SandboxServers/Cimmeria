@@ -445,7 +445,7 @@ pub async fn apply_consumed_item(
     let after = pools(entity_id, space_mgr);
     let buffs = space_mgr
         .get_entity(entity_id)
-        .map_or(0, |e| e.stat_buffs.buffs.len());
+        .map_or(0, |e| e.stat_buffs.entries.len());
     tracing::info!(
         event = "consumable_used",
         decision_outcome = "applied",

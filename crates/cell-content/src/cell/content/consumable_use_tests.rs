@@ -596,8 +596,8 @@ async fn a_consumed_mark_v_stim_buffs_both_stats_and_sends_both_icons() {
     apply_consumed_item(consumed(STIM_V), &tx, &mut mgr).await;
     let e = mgr.get_entity(PLAYER).unwrap();
     assert_eq!(e.stats.get(COORDINATION).unwrap().cur, 17);
-    assert_eq!(e.stat_buffs.buffs.len(), 2);
-    assert!(e.stat_buffs.buffs.iter().all(|b| b.timer_sent));
+    assert_eq!(e.stat_buffs.entries.len(), 2);
+    assert!(e.stat_buffs.entries.iter().all(|b| b.timer_sent));
     let icons: Vec<i32> = method_calls(&drain(&mut rx))
         .into_iter()
         .filter(|(m, _)| *m == crate::cell::client_methods::being::ON_TIMER_UPDATE)
@@ -617,7 +617,7 @@ async fn a_second_different_stim_keeps_the_first_buff() {
     apply_consumed_item(consumed(STIM_V), &tx, &mut mgr).await;
     let e = mgr.get_entity(PLAYER).unwrap();
     assert_eq!(e.stats.get(COORDINATION).unwrap().cur, 17);
-    assert_eq!(e.stat_buffs.buffs.len(), 2);
+    assert_eq!(e.stat_buffs.entries.len(), 2);
 }
 
 #[tokio::test]

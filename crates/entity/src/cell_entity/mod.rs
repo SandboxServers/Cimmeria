@@ -83,8 +83,8 @@ pub use offered_dialogs::MAX_OFFERED_DIALOGS;
 pub use pending_cast::PendingCast;
 pub use pet::{PetBuff, PetStance, PetState, UnknownPetStance, ALL_STANCES_MASK};
 pub use stat_buff::{
-    shift_stat_widening, unshift_stat, ActiveStatBuff, StatBuffApplied, StatBuffLedger,
-    StatBuffSpec, StatShift,
+    shift_stat_widening, unshift_stat, AppliedStat, StatBuffLedger, StatShift, TimedEffect,
+    TimedEffectApplied, TimedEffectSpec, TimedStacking, EFFECT_BAR_SLOTS_PER_SIDE,
 };
 pub use system_options::SystemOptions;
 pub use tree_progress::TreeProgress;
