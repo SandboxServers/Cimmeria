@@ -152,3 +152,48 @@ After packaging and wiring Play, record each result separately:
    stale-liveness claim, Repair or uninstall while reconciliation is required.
 8. Verify summary opt-in/out and imported settings do not implicitly enable game
    telemetry. Run the integration's JS logic and visual/keyboard UAT separately.
+
+## Desktop Play control and resource binding
+
+The desktop shell registers `launch_command` with only `inspect` and `play`.
+Play accepts schema version, operation UUID, inspected operation revision and
+saved installation UUID. Native code resolves all resources from its bundle;
+the frontend cannot supply paths, executable names, environment or hashes.
+
+| Compile-time SHA-256 variable | Fixed bundle resource |
+|---|---|
+| `CIMMERIA_LAUNCH_HELPER_SHA256` | `windows/cimmeria-launch-worker.exe` |
+| `CIMMERIA_CLIENT_PATCHES_SHA256` | `windows/cimmeria_client_patches.dll` |
+| `CIMMERIA_D3D9_SHA256` | `graphics/d3d9.dll` (Mac required) |
+| `CIMMERIA_ROSETTA_X87_SHA256` | `graphics/rosettax87` (optional pair) |
+| `CIMMERIA_ROSETTA_X87_LIBRARY_SHA256` | `graphics/libRuntimeRosettax87` (optional pair) |
+
+This shell requires client patches. It never silently drops them to enable Play.
+The x87 pair must either have both pinned artifacts or be entirely absent; absent
+acceleration uses stock Rosetta. Resource hashes are rechecked during inspection,
+admission and dispatch. Missing/mismatched resources produce an unavailable Play
+control; they do not manufacture installation or graphics readiness.
+
+The application-scoped Effect workflow publishes immediate first-click feedback,
+serializes commands and polls native state. A transport timeout never replays Play.
+Inspection observes the retained native worker even after a tab change or lost
+reply. Running keeps Play, directory changes, Repair and uninstall gated until
+observed exit; restart with an unfinished attempt reports unknown and stays gated.
+The display distinguishes preparation, process start, early/normal exit and
+unknown. No message claims login or world entry from process start or zero exit.
+Launcher summary consent remains independent and is not changed by Play.
+
+## Headless integration checks
+
+Run shell tests through the build lane, then use the emitted shell test binary for
+`LAUNCH_UAT_BINARY` when running `npm run uat:launch` from
+`crates/launcher/desktop/frontend`. The ignored `launch_uat_bridge` fixture uses
+real native admission, operation journals and filesystem persistence with inert
+installed content and prerequisite evidence. Its explicit lifecycle observations
+stand in for Windows/Wine execution. JavaScript exercises the real Effect decoder,
+workflow and DOM controls through that fixture, including duplicate clicks,
+early exit, lost reply, reopened unknown state and unchanged consent.
+
+These checks do not validate real injection, Wine/Windows execution, D3D9/x87,
+login, world entry or packaged visual/keyboard behavior. Keep the human checklist
+above as a separate gate.

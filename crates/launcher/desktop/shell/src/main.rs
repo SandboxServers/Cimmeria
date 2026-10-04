@@ -2,7 +2,7 @@
 mod host;
 
 use cimmeria_launcher_engine::{NativeCommand, NativeSnapshot, StorageError};
-use host::{InstallCommand, InstallStatus, JobError, NativeHost};
+use host::{InstallCommand, InstallStatus, JobError, LaunchCommand, LaunchStatus, NativeHost};
 use std::sync::Arc;
 use tauri::Manager;
 use tauri_plugin_dialog::DialogExt;
@@ -129,6 +129,17 @@ where
     }
 }
 
+#[tauri::command]
+async fn launch_command(
+    request: LaunchCommand,
+    state: tauri::State<'_, Arc<NativeHost>>,
+) -> Result<LaunchStatus, JobError> {
+    let host = state.inner().clone();
+    tauri::async_runtime::spawn_blocking(move || host.launch_command(request))
+        .await
+        .map_err(|_| JobError::Io)?
+}
+
 fn main() {
     tauri::Builder::default()
         .plugin(tauri_plugin_dialog::init())
@@ -139,6 +150,7 @@ fn main() {
             );
             #[cfg(target_os = "macos")]
             let host = host.with_bundled_helper(app.path().resource_dir()?);
+            let host = host.with_launch_resources(app.path().resource_dir()?);
             app.manage(Arc::new(host));
             Ok(())
         })
@@ -147,7 +159,8 @@ fn main() {
             choose_install_directory,
             show_install_directory,
             fetch_patch_notes,
-            install_command
+            install_command,
+            launch_command
         ])
         .run(tauri::generate_context!())
         .expect("desktop launcher could not initialize");

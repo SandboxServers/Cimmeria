@@ -1,3 +1,4 @@
+import { mountLaunch } from './launch-view';
 import { mountInstall } from './install-view';
 import { mountLauncher, Invoke } from './view';
 
@@ -7,4 +8,5 @@ declare global {
 const invoke: Invoke = (command,args) => window.__TAURI__.core.invoke(command,args);
 const installation = mountInstall(document,invoke);
 const app = mountLauncher(document,invoke,()=>{void installation.refresh();});
-window.addEventListener('pagehide', () => { void app.dispose(); void installation.dispose(); }, {once:true});
+const play = mountLaunch(document,invoke,()=>{void installation.refresh(); void app.refresh();});
+window.addEventListener('pagehide', () => { void play.dispose(); void app.dispose(); void installation.dispose(); }, {once:true});

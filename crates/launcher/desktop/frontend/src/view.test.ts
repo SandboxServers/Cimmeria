@@ -102,3 +102,12 @@ test('disposing during pending IPC removes controls without claiming a saved res
   assert.equal(ui.get<HTMLInputElement>('telemetry').disabled,true);
   assert.equal(calls,1);
 });
+
+test('native Launch ownership gates directory changes until observed exit',async()=>{
+ const ui=dom();let status:NativeSnapshot={...initial(),operation:{schema_version:1,revision:1,operation:{id:'launch',kind:'launch',state:'running',intent_digest:Array(32).fill(0)}}};
+ const app=mountLauncher(ui.document,async()=>status);
+ try{await app.ready;await flush();assert.equal(ui.get<HTMLButtonElement>('choose').disabled,true);
+ status={...status,operation:{...status.operation,revision:2,operation:{...status.operation.operation!,state:'reconciliation_required'}}};await app.refresh();await flush();assert.equal(ui.get<HTMLButtonElement>('choose').disabled,true);
+ status={...status,operation:{...status.operation,revision:3,operation:{...status.operation.operation!,state:'succeeded'}}};await app.refresh();await flush();assert.equal(ui.get<HTMLButtonElement>('choose').disabled,false);
+ }finally{await app.dispose();}
+});

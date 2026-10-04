@@ -51,7 +51,7 @@ export function mountLauncher(document: Document, invoke: Invoke, onSettingsChan
     checkbox.checked = pendingConsent ?? native?.preferences.launcher_summary_consent ?? false;
     checkbox.disabled = !enabled;
     path.value = native?.preferences.install_directory ?? '';
-    get<HTMLButtonElement>('choose').disabled = !enabled;
+    get<HTMLButtonElement>('choose').disabled = !enabled || (!!native?.operation.operation && !['succeeded','failed','cancelled'].includes(native.operation.operation.state));
     get<HTMLButtonElement>('folder').disabled = !enabled || !native?.preferences.install_directory;
     const failure = localError ?? current.error;
     get('status').textContent = failure ? errorText[failure] : active ?? notice ??
@@ -130,6 +130,7 @@ export function mountLauncher(document: Document, invoke: Invoke, onSettingsChan
   const ready = settled;
   return {
     ready,
+    refresh: () => { run(Effect.flatMap(Launcher, launcher => launcher.inspect), 'Checking settings…', 'Settings loaded.'); return settled; },
     settled: () => Promise.all([settled, patchNotes.settled()]),
     dispose: async () => {
       if (disposed) return;

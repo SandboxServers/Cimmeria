@@ -6,6 +6,8 @@ use std::{
 };
 
 mod install;
+mod launch;
+pub use launch::{LaunchCommand, LaunchStatus};
 mod repair;
 mod runtime_setup;
 pub use install::{InstallCommand, InstallStatus, JobError};
@@ -22,6 +24,8 @@ pub struct NativeHost {
     state: Mutex<Option<Arc<Mutex<DesktopState>>>>,
     #[cfg(test)]
     repair_fixture: Option<repair::TestDispatch>,
+    launch_resources: Option<cimmeria_launcher_engine::launch::Resources>,
+    launch_worker: Mutex<Option<cimmeria_launcher_engine::launch::Worker>>,
     repair_worker: Mutex<Option<repair::Worker>>,
     worker: Mutex<Option<cimmeria_launcher_engine::install_worker::Worker>>,
 }
@@ -39,6 +43,8 @@ impl NativeHost {
             state: Mutex::new(None),
             #[cfg(test)]
             repair_fixture: None,
+            launch_resources: None,
+            launch_worker: Mutex::new(None),
             repair_worker: Mutex::new(None),
             worker: Mutex::new(None),
         }
