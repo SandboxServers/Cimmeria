@@ -20,6 +20,11 @@ async fn original_client_module_probe_in_private_wine_prefix() {
     verify_file(&helper, &expected.try_into().unwrap()).unwrap();
     let source =
         PathBuf::from(std::env::var_os("SGW_PROBE_BINARIES").expect("set original binaries"));
+    assert!(
+        !(std::env::var_os("SGW_PHYSX_CORE").is_some()
+            && std::env::var_os("SGW_PHYSX_INSTALLER").is_some()),
+        "choose core diagnostic or vendor installer, not both"
+    );
     let root = tempfile::tempdir().unwrap();
     let root_path = root.path().canonicalize().unwrap();
     let game = root_path.join("game");
@@ -58,6 +63,14 @@ async fn original_client_module_probe_in_private_wine_prefix() {
         report.physx_sdk,
         cimmeria_runtime_probe::physx::SdkResult::CreateFailed { sdk_error: Some(1) }
     );
+    if let Some(installer) = std::env::var_os("SGW_PHYSX_INSTALLER") {
+        run_vendor_installer(&runtime, &prefix, Path::new(&installer)).await;
+        let report = run_probe(&runtime, &prefix, &helper, &game).await;
+        assert_eq!(
+            report.physx_sdk,
+            cimmeria_runtime_probe::physx::SdkResult::InitializedAndReleased {}
+        );
+    }
     if let Some(core) = std::env::var_os("SGW_PHYSX_CORE") {
         register_fixture_core(&runtime, &prefix, Path::new(&core)).await;
         let report = run_probe(&runtime, &prefix, &helper, &game).await;
@@ -165,4 +178,96 @@ async fn register_fixture_core(runtime: &Path, prefix: &Path, source: &Path) {
     let stopped = stop_prefix(runtime, &env).await;
     stopped.unwrap();
     assert!(result.expect("bounded registry fixture").unwrap().success());
+}
+
+/// Explicit headless experiment with the original vendor package; never used
+/// by production admission until exit, SDK result and recovery are established.
+async fn run_vendor_installer(runtime: &Path, prefix: &Path, source: &Path) {
+    let bytes = std::fs::read(source).unwrap();
+    assert_eq!(
+        hex(&Sha256::digest(&bytes)),
+        "920d5e09e6ba0a92342271c18c67472461813424d70b5c0b981b6f13b129fbf6"
+    );
+    let mode = std::env::var("SGW_PHYSX_INSTALLER_MODE").unwrap_or_else(|_| "msi".into());
+    assert!(matches!(mode.as_str(), "msi" | "exe"));
+    let installer = prefix
+        .parent()
+        .unwrap()
+        .join(format!("physx-7.11.13.{mode}"));
+    if mode == "msi" {
+        // Original hash above binds this exact container. Independently measured
+        // Compound archive boundary with 7-Zip: offset35463, size38811648.
+        let payload = &bytes[35463..35463 + 38811648];
+        assert_eq!(
+            &payload[..8],
+            &[0xd0, 0xcf, 0x11, 0xe0, 0xa1, 0xb1, 0x1a, 0xe1]
+        );
+        std::fs::write(&installer, payload).unwrap();
+    } else {
+        std::fs::write(&installer, bytes).unwrap();
+    }
+    let log = prefix.parent().unwrap().join("physx-msi.log");
+    let mut env = environment(runtime, prefix).unwrap();
+    env.insert("WINEDEBUG".into(), "-all,err+all".into());
+    let mut command = tokio::process::Command::new(runtime.join("bin/wine"));
+    if mode == "msi" {
+        command
+            .args(["msiexec", "/i"])
+            .arg(paths::guest(&installer).unwrap())
+            .args(["/qn", "/norestart", "REBOOT=ReallySuppress", "/l*v"])
+            .arg(paths::guest(&log).unwrap());
+    } else {
+        command.arg(paths::guest(&installer).unwrap()).arg("/s");
+    }
+    let mut child = command
+        .current_dir(prefix.parent().unwrap())
+        .env_clear()
+        .envs(&env)
+        .stdin(Stdio::null())
+        .stdout(Stdio::null())
+        .stderr(Stdio::piped())
+        .kill_on_drop(true)
+        .spawn()
+        .unwrap();
+    let mut errors = child.stderr.take().unwrap();
+    let result = tokio::time::timeout(std::time::Duration::from_secs(180), async {
+        let mut bytes = Vec::new();
+        // Retain only a bounded diagnostic, but keep draining to avoid blocking
+        // the installer or closing its pipe when the retained limit is reached.
+        let mut chunk = [0u8; 4096];
+        loop {
+            let count = errors.read(&mut chunk).await?;
+            if count == 0 {
+                break;
+            }
+            let retain = count.min(16384usize.saturating_sub(bytes.len()));
+            bytes.extend_from_slice(&chunk[..retain]);
+        }
+        let status = child.wait().await?;
+        Ok::<_, std::io::Error>((status, bytes))
+    })
+    .await;
+    let stopped = stop_prefix(runtime, &env).await;
+    let _ = child.kill().await;
+    let _ = child.wait().await;
+    stopped.unwrap();
+    let (status, errors) = result.expect("bounded vendor installer").unwrap();
+    eprintln!(
+        "original PhysX vendor installer exit: {status}; diagnostic: {}",
+        String::from_utf8_lossy(&errors)
+    );
+    if !status.success() {
+        if let Ok(mut file) = File::open(&log) {
+            let length = file.metadata().unwrap().len();
+            std::io::Seek::seek(
+                &mut file,
+                std::io::SeekFrom::Start(length.saturating_sub(16384)),
+            )
+            .unwrap();
+            let mut tail = Vec::new();
+            std::io::Read::read_to_end(&mut std::io::Read::take(file, 16384), &mut tail).unwrap();
+            eprintln!("MSI log tail: {}", String::from_utf8_lossy(&tail));
+        }
+    }
+    assert!(status.success(), "vendor installer failed");
 }

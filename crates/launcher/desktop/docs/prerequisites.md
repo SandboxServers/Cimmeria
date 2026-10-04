@@ -96,7 +96,9 @@ client binaries. The test verifies the probe hash and both client-file hashes
 before Wine starts, copies only the two client binaries into its private tree,
 and disables window drivers. It bounds execution to 120 seconds and stdout to
 8 KiB, then stops/waits for the private prefix before evaluating the report.
-It never installs prerequisites or runs the game. It is not the production
+Without opt-in provisioning variables it installs no prerequisites; it never
+runs the game. The vendor MSI experiment below enables private-prefix provisioning.
+It is not the production
 supervisor and does not validate cancellation or launcher-restart recovery.
 
 ```bash
@@ -142,3 +144,33 @@ This optional registration is a diagnostic fixture, not production provisioning
 or vendor-installer validation. No other installation, game process, graphics,
 login or gameplay was exercised. Probe executable SHA256:
 `3ed60ee8fba3a6b02bf860b559e5ca55f4c5b99836d88126b3f86865ebac3ebc`.
+
+## Original vendor MSI experiment
+
+The schema-2 private-prefix smoke passed in 29.457 seconds (lane
+`20261004-072220-9439`). After changing stderr capture to drain continuously
+while retaining at most 16 KiB, the rerun passed in 30.806 seconds
+(`20261004-072721-11858`); strict engine clippy also passed
+(`20261004-072635-11228`). The clean prefix loaded all five modules but SDK creation
+returned numeric error `1`. After the original vendor MSI exited zero, the harness
+stopped the private prefix, restarted the probe and observed
+`initialized_and_released`. No window drivers were enabled and SGW was not started.
+
+To repeat, use the private smoke command above with the schema-2 helper/hash from
+[its native CI artifact](physx-probe.md#implemented-sdk-call-and-remaining-supervision-gates),
+`SGW_PROBE_BINARIES`, and `SGW_PHYSX_INSTALLER` pointing to the original retained
+PhysX 7.11.13 EXE. Set `SGW_PHYSX_INSTALLER_MODE=msi` (the default) and leave
+`SGW_PHYSX_CORE` unset; manual-core and vendor-installer modes are mutually exclusive.
+The harness authenticates the EXE against SHA-256
+`920d5e09e6ba0a92342271c18c67472461813424d70b5c0b981b6f13b129fbf6`,
+then carves its embedded MSI at byte offset 35,463, length 38,811,648 bytes.
+Those boundaries were independently measured with 7-Zip; the harness also checks
+the compound-file signature. This is a diagnostic extraction procedure.
+
+In the disposable prefix it invokes Wine with
+`msiexec /i <MSI> /qn /norestart REBOOT=ReallySuppress /l*v <log>`, bounds the
+installer to 180 seconds, and stops/waits for the prefix before the next probe.
+The alternative EXE `/s` experiment exited `1` with window-driver errors on stderr;
+that observation does not establish the sole failure cause. This validates a
+specific vendor-MSI/SDK lifecycle, not the production supervisor, cancellation or
+restart recovery, graphics, game launch or readiness.

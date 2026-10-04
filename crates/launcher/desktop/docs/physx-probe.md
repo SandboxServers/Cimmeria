@@ -32,7 +32,9 @@ an inferred boolean signature or treat it as a supported local-core override.
 ## Exact 2.6.3 core evidence
 
 Read-only research carved the MSI beginning at byte 35,463 of the original
-retained PhysX 7.11.13 installer; this is not a production extraction/install path.
+retained PhysX 7.11.13 installer (EXE SHA-256
+`920d5e09e6ba0a92342271c18c67472461813424d70b5c0b981b6f13b129fbf6`);
+this is not a production extraction/install path.
 Its embedded `Cabs.m26` contains
 `PhysXCore.dll.FA211449_AC3F_4A7D_A467_6CC0BA89C1A4`, version 2.6.3.5, SHA-256:
 `e54919c223e768e0fd12736119102069f7d3bdf1989f09f223119fd9ef0fe31e`.

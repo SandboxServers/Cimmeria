@@ -374,3 +374,11 @@ Windows+Mac before the shell; shell/visual/game gates remain separate.
   registers original core in private 32-bit AGEIA registry; same probe then
   initializes/releases SDK successfully (lane071507-6004,23.074s). No vendor
   installer, graphics, game/login proof. Runtime setup still needs integration.
+
+- Original PhysX7.11.13 embedded MSI test passed29.457s lane072220-9439:
+  authentic EXE SHA920d5e09e6ba0a92342271c18c67472461813424d70b5c0b981b6f13b129fbf6,
+  embedded Compound MSI offset35463 length38811648; private headless Wine
+  msiexec /i /qn /norestart REBOOT=ReallySuppress exits0. After prefix stop/restart,
+  SDK create/release passes (clean baseline fails1). EXE /s exits1 with window
+  errors; sole cause not established. No production supervision/gameplay claim.
+  Procedure: desktop/docs/prerequisites.md, original vendor MSI experiment.
