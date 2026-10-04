@@ -53,3 +53,27 @@ probe (`20261004-124759-33363`). Strict engine all-target Clippy passed
 evidence tests passed 5/5 and installed-content tests 9/9. The new real-seed
 Repair commit test passed; substituting the original-release lookup failed it
 (`20261004-124719-33071`). Native Windows and shell integration checks remain open.
+
+## Follow-up: native Update admission
+
+Starting from `9fe5a438a`, the separate Update plan records old/new signed release
+references and the permanent owner without inventing an Install or Repair.
+Confirmation, revision, expected release, occupied paths and minimum-launcher
+checks precede admission. The old game and both content receipts stay unchanged.
+Repeated requests do not dispatch twice; reopen reverifies both signed inputs and
+requires reconciliation. This is admission only, with no IPC capability yet.
+
+Native tests cover unchanged owner/game/preferences, retained old/new evidence,
+reopen, duplicate suppression, stale/incorrect confirmation, preexisting evidence
+preservation, same-release refusal, signed-evidence tampering and the minimum gate.
+The frontend test and native-process JS UAT accept the new operation kind. The UAT
+starts with a synthetic journal, observes Rust's durable recovery transition,
+then reopens it again and confirms that Effect dispatched inspection only.
+It does not prove a complete Update plan, worker, user confirmation or visual UI.
+
+Follow-up validation: full native engine **372 passed, 18 ignored**
+(`20261004-125841-43720`); Update admission 3/3 and minimum guard 1/1 passed.
+Frontend **55 passed**, type check and build passed. `npm run uat` against the
+newly built native `state_bridge` passed, including the Update journal reopen case.
+Formatting, scoped Markdown lint and diff checks passed. Windows execution,
+Update worker/publication/rollback and visual Update UI remain unverified.

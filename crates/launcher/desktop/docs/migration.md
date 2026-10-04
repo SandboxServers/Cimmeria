@@ -175,3 +175,20 @@ backup. These tests do **not** prove an Update transition, Update replacement or
 rollback, effective imported configuration or UI. The next required journey is a
 confirmed Update that stages another authenticated release, retains its owned
 backup and publishes both current receipts through explicit recovery checkpoints.
+
+### Update admission
+
+`admit_update` now creates a distinct `OperationKind::Update` plan from native
+confirmed inputs: permanent installation UUID, expected current release and an
+already authenticated target. It checks launcher minimum, operation revision,
+owner identity and unused work/evidence paths before saving the target's original
+signed bytes and the plan. Admission changes no game files or content receipts.
+An identical retry returns the plan without dispatch; reopening leaves the
+operation in reconciliation and reverifies both signed releases. A different
+current release, conflicting UUID or occupied artifact path is refused.
+
+This interface is not exposed as an IPC Update action yet. Modification review,
+retained preparation, replacement/publication checkpoints, cancellation/recovery,
+rollback and the Update UI remain required. The frontend snapshot contract can
+read an Update journal; native-persistence JS UAT verifies reconciliation survives
+reopen without redispatch, not a complete Update journey.

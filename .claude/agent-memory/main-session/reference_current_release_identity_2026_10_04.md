@@ -14,3 +14,8 @@ Two-release fixture states verify consumers only; no Update writer or publicatio
 transaction is implemented by this change. See the permanent-owner section in
 `crates/launcher/desktop/docs/migration.md`. Do not claim Update, rollback, effective
 settings or adopted Play completion from receipt-reader tests.
+
+Follow-up native Update admission now binds old/new references in its own durable
+plan and OperationKind. It changes no content receipts and has no IPC action yet.
+Reopen verifies both signed inputs; duplicate admission does not redispatch.
+Frontend/native-process UAT covers only journal decoding and durable reconciliation.

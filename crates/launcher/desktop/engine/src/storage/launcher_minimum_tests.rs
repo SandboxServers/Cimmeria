@@ -223,3 +223,23 @@ fn direct_install_retains_legacy_unknown_and_malformed_exemptions() {
         );
     }
 }
+
+#[test]
+fn signed_minimum_blocks_game_update_before_evidence_or_plan_publication() {
+    let (root, state, owner, _resources) = installed(OWN);
+    drop(state);
+    let mut state =
+        DesktopState::open_with_compatibility(&root.path().join("state"), policy(true)).unwrap();
+    let before = tree(root.path());
+    let target = release(NEXT_DAY);
+    let result = state.admit_update(update::Request {
+        id: Uuid::new_v4(),
+        operation_revision: state.operations().snapshot().revision,
+        installation_id: owner.operation_id,
+        expected_current: owner.release_identity(),
+        target: &target,
+        confirmed: true,
+    });
+    assert!(matches!(result, Err(IntentError::LauncherTooOld)));
+    assert_eq!(tree(root.path()), before);
+}

@@ -9,6 +9,7 @@ pub mod migration;
 pub mod repair;
 pub mod runtime_setup;
 pub mod uninstall;
+pub mod update;
 pub mod updater;
 pub use helper_journal::{HelperPhase, HelperRecord, HelperResult};
 mod release_evidence;

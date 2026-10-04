@@ -170,7 +170,7 @@ fn ordinary(metadata: &std::fs::Metadata) -> Result<(), StorageError> {
     }
     Ok(())
 }
-fn lock_owner(intent: &InstallIntent) -> Result<OwnerLock, StorageError> {
+pub(super) fn lock_owner(intent: &InstallIntent) -> Result<OwnerLock, StorageError> {
     let path = intent.destination.join(".cimmeria-install.json");
     let metadata = std::fs::symlink_metadata(&path).map_err(|_| StorageError::Corrupt)?;
     ordinary(&metadata)?;
