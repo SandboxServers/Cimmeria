@@ -637,3 +637,35 @@ async fn despawn_with_an_unknown_tag_emits_nothing() {
         "the real tagged NPC must be untouched"
     );
 }
+
+/// A content despawn takes the NPC out of the fight of every player who hit
+/// it. Revert proof: route `despawn_by_tag` back to a bare `despawn_npc` and
+/// the player stays in combat with an entity that no longer exists.
+#[tokio::test]
+async fn despawn_takes_its_attackers_out_of_combat() {
+    use cimmeria_cell_combat::cell::combat::{generate_threat, AggroCause, BSF_IN_COMBAT};
+    let mut mgr = make_space_mgr();
+    let (npc_id, witnesses) = stage_npc_with_witnesses(&mut mgr, 1);
+    mgr.get_entity_mut(npc_id).unwrap().class_id = 0x04;
+    let player = witnesses[0];
+    let _ = generate_threat(&mut mgr, player, npc_id, 10.0, AggroCause::Damage);
+    assert!(
+        mgr.get_entity(player).unwrap().state_field & BSF_IN_COMBAT != 0,
+        "fixture: in combat"
+    );
+    let (tx, _rx) = mpsc::channel(32);
+
+    despawn_by_tag(
+        TAG.to_string(),
+        player,
+        6305,
+        "despawn_entity",
+        &tx,
+        &mut mgr,
+    )
+    .await;
+
+    let p = mgr.get_entity(player).unwrap();
+    assert!(p.threatened_mobs.is_empty());
+    assert_eq!(p.state_field & BSF_IN_COMBAT, 0);
+}

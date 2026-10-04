@@ -222,7 +222,15 @@ pub(super) async fn handle_despawn(
     // instead of leaving the corpse visible until the next AoI tick (the
     // same failure shape documented on
     // `content::executor::world::destroy_tagged_entity`, issue #582).
-    let feedback = match space_mgr.despawn_npc(target_eid, tx).await {
+    // Releases the players who had hit it from combat first.
+    let feedback = match crate::cell::combat::despawn_npc_releasing_combat(
+        target_eid,
+        "gm_despawn",
+        tx,
+        space_mgr,
+    )
+    .await
+    {
         DespawnOutcome::Despawned { witnesses_notified } => {
             format!(
                 "gmDespawn: despawned npc {target_eid} ({witnesses_notified} witnesses notified)"

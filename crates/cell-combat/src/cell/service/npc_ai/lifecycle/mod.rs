@@ -32,7 +32,9 @@ pub(super) async fn npc_ai_despawn(
     // before the destroy. The broadcast itself is dedup'd on None and
     // emits nothing — this is purely a state-clean step.
     crate::cell::abilities::broadcast_movement_type(npc_id, None, tx, space_mgr).await;
-    match space_mgr.despawn_npc(npc_id, tx).await {
+    match crate::cell::combat::despawn_npc_releasing_combat(npc_id, "ai_despawning", tx, space_mgr)
+        .await
+    {
         DespawnOutcome::Despawned { witnesses_notified } => {
             tracing::info!(
                 npc_id,

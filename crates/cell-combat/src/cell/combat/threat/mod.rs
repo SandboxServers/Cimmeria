@@ -9,9 +9,12 @@
 //!   the leash/attack-range constants.
 //! - [`player_combat`]: player-side `threatened_mobs` / `BSF_IN_COMBAT`
 //!   bookkeeping and the dead-NPC sweep.
+//! - [`release`]: the same drain, with its state-field sends, for an NPC that
+//!   leaves without dying (GM despawn, reset, content despawn).
 
 mod aggro;
 mod player_combat;
+mod release;
 
 pub use aggro::{
     generate_threat, AggroCause, HOLSTER_ANIMATION_DURATION, LEASH_DISTANCE, NPC_ATTACK_RANGE,
@@ -21,3 +24,4 @@ pub use player_combat::{
     clear_dead_npc_from_all_player_threat, drain_npc_from_player_combat, enter_player_combat,
     exit_player_combat,
 };
+pub use release::{despawn_npc_releasing_combat, release_npc_from_player_combat};

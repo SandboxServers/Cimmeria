@@ -214,7 +214,9 @@ pub(super) async fn del_spawn(
     // `destroy_entity`) fans LeftAoI out to every current witness and scrubs
     // the target from every witness set immediately, rather than leaving
     // observers to notice on the next AoI tick.
-    let outcome = space_mgr.despawn_npc(target, tx).await;
+    let outcome =
+        crate::cell::combat::despawn_npc_releasing_combat(target, "gm_delspawn", tx, space_mgr)
+            .await;
     let msg = match outcome {
         DespawnOutcome::Despawned { witnesses_notified } => {
             format!("delspawn [{target}]: despawned in-memory ({witnesses_notified} witness(es) notified).")

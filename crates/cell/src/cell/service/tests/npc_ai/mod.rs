@@ -106,6 +106,7 @@ mod castle_standoff;
 mod combat_stance;
 mod crowd_control;
 mod dead_player_drop;
+mod despawning_release;
 mod follow_resume;
 mod lab_dummy;
 mod leash_reset;
