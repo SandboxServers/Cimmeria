@@ -388,7 +388,14 @@ fn active_updater_refuses_early_mutation_but_preserves_consent_control() {
             assert!(entry.file_type().unwrap().is_file());
             out.insert(
                 entry.file_name().to_str().unwrap().to_owned(),
-                std::fs::read(entry.path()).unwrap(),
+                if entry.file_name() == "launcher.lock" {
+                    // The state owns the Windows byte-range lock. Its empty
+                    // payload is checked without a forbidden second read.
+                    assert_eq!(entry.metadata().unwrap().len(), 0);
+                    vec![]
+                } else {
+                    std::fs::read(entry.path()).unwrap()
+                },
             );
         }
         out

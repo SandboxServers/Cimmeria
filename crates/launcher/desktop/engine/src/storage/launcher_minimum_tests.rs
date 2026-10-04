@@ -40,7 +40,12 @@ fn tree(root: &Path) -> Vec<(PathBuf, Vec<u8>)> {
             let path = entry.unwrap().path();
             result.push((
                 path.strip_prefix(root).unwrap().into(),
-                if path.is_file() {
+                if path == root.join("state/launcher.lock") {
+                    // Windows byte-range locks reject a second-handle read even
+                    // in this process. The lock has no persisted payload.
+                    assert_eq!(std::fs::metadata(&path).unwrap().len(), 0);
+                    vec![]
+                } else if path.is_file() {
                     std::fs::read(&path).unwrap()
                 } else {
                     vec![]

@@ -231,7 +231,6 @@ cabinet expansion output and a completed helper journal. The private temporary
 tree is removed after the test. The recorded passing run is detailed below.
 This test does not establish patch application, game startup or Play readiness.
 
-
 ## Real client archive evidence — 2026-10-04
 
 `original_client_rar_under_managed_wine` passed in 299.64 seconds (301.146 seconds
@@ -251,7 +250,6 @@ managed Wine/helper path. It does not establish patch application, prerequisites
 game launch, login or gameplay. The debug-helper duration is not a release
 performance benchmark. Packaged-helper binding is a separate gate described below.
 
-
 The retained-worker fixture additionally passed Wine seed extraction followed by
 a native ZIP patch, client preparation and receipt publication after observer
 disposal (22.596 seconds). Both strengthened ignored checks passed in a 19.090-second run, including
@@ -265,7 +263,6 @@ The adapter checks cancellation before helper dispatch and preserves a superviso
 `NotStarted(Cancelled)` outcome as cancellation. Seven adapter tests passed; the
 pre-cancel fixture proves no helper journal, output or attempt to execute its
 nonexistent helper. That early exit also avoids starting prefix cleanup commands.
-
 
 ## Packaged helper staging and Mac build
 
@@ -319,7 +316,6 @@ against that actual app resource directory in 1.872 seconds, without opening a
 window. This does not establish final startup or gameplay readiness.
 The app was not opened.
 
-
 ## Mac Wine recovery inspection
 
 Reconciliation distinguishes absent launch evidence from ambiguous launches.
@@ -341,7 +337,6 @@ recovery gate. Final checks, including stop/wait failure and timeout guards,
 passed 212 engine tests/eight ignored, 15 shell tests/one ignored and combined
 strict clippy. JS logic UAT passed reconciliation availability without resume or
 success inference; native IPC was mocked and visual behavior was not exercised.
-
 
 ## Original signed-release content smoke
 
@@ -372,7 +367,6 @@ under the production key. The corrected library-only invocation passed in
 312.55 seconds (315.308 seconds lane, exit zero), confirming original seed, all
 seven patches, content validation and receipt, with consent false. This does not
 establish launch, login, gameplay or release performance.
-
 
 Final ordinary validation for this packet passed 218 engine tests/ten ignored,
 17 shell tests/one ignored and combined strict clippy. These ordinary checks ran
