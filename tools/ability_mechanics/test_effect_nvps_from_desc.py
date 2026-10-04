@@ -231,6 +231,29 @@ class Ownership(unittest.TestCase):
         self.assertNotIn("HealHealth", effs2)
         self.assertNotIn("INSERT", nvps2.split("heal begin")[1].split("heal end")[0])
 
+    def test_a_hand_override_keeps_the_binding(self):
+        # Generate, then a human adds a HealPercentage row outside the block
+        # for the same effect: the effect leaves the block, but its script
+        # must stay, or the hand row heals nothing.
+        _, nvps, effs = self.run_gen(effect_row(10, 1, "+10% Health"), NVP_TRAILER)
+        nvps = nvp_row(500, 10, "HealPercentage", "12.00") + nvps
+        result, nvps2, effs2 = self.run_gen(effs, nvps)
+        self.assertEqual(result.generated, [])
+        self.assertEqual([e.effect_id for e, _ in result.hand_authored], [10])
+        self.assertIn("NULL, 'HealHealth');", effs2)
+        self.assertNotIn("(20000,", nvps2)
+        # And it stays stable on the next run.
+        _, nvps3, effs3 = self.run_gen(effs2, nvps2)
+        self.assertEqual((nvps3, effs3), (nvps2, effs2))
+
+    def test_a_repeated_family_runs_once(self):
+        c = corpus(effect_row(10, 1, "+10% Health"), NVP_TRAILER)
+        _, once, nvps1, effs1 = gen.generate(["heal"], c)
+        _, twice, nvps2, effs2 = gen.generate(["heal", "heal"], c)
+        self.assertEqual((nvps2, effs2), (nvps1, effs1))
+        self.assertEqual(len(twice), 1)
+        self.assertIn("(20000, 10,", nvps2)
+
     def test_an_unmatched_marker_is_an_input_error(self):
         broken = "-- ability-mechanics generated heal begin\n" + NVP_TRAILER
         with self.assertRaises(gen.InputError):

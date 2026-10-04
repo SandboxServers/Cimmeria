@@ -148,10 +148,15 @@ def place_block(nvps_text: str, family: str, block: str) -> str:
 
 def script_edits(corpus: Corpus, result: FamilyResult) -> Dict[int, Optional[str]]:
     """``script_name`` per effect after this family: what it binds, and NULL
-    for what it bound before and no longer generates."""
+    for what it bound before and no longer generates.
+
+    An effect that gained a hand-authored row of the family's NVPs is handed
+    over, not dropped: its binding stays, because the hand row needs the
+    same script to do anything."""
     fam = result.family
+    handed_over = {e.effect_id for e, _ in result.hand_authored}
     want: Dict[int, Optional[str]] = {}
-    for eid in corpus.owned_before(fam.name):
+    for eid in corpus.owned_before(fam.name) - handed_over:
         e = corpus.effects.get(eid)
         if e is not None and e.script_name in fam.scripts:
             want[eid] = None
@@ -182,7 +187,9 @@ def generate(
     nvps_text = corpus.nvps_text
     clears: Dict[int, Optional[str]] = {}
     binds: Dict[int, Optional[str]] = {}
-    for name in families:
+    # Once per family: a repeated `--family heal` would otherwise see its own
+    # claims from the first pass and write an empty block.
+    for name in dict.fromkeys(families):
         result = run_family(FAMILIES[name], corpus, claimed)
         results.append(result)
         nvps_text = place_block(nvps_text, name, render_block(result))
