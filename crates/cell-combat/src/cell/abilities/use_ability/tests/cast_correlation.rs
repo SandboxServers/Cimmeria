@@ -203,7 +203,7 @@ async fn a_dots_pulse_rows_name_the_caster_after_its_entity_id_is_reused() {
     effect_pulse_tick(&NoContentEvents, &tx, &mut mgr).await;
 
     let all = logs.all();
-    for event in ["effect_pulse_fired", "active_effect_ended"] {
+    for event in ["pulse_ticked", "pulse_ended"] {
         let r = row(&all, event);
         assert!(
             r.has_field("player_id", &A_PID.to_string()) && r.has_field("account_id", "901"),
@@ -239,7 +239,7 @@ async fn a_dots_tick_rows_carry_the_launch_cast_id() {
         &cast_id,
         "the DoT registration",
     );
-    let pulse = row(&all, "effect_pulse_fired");
+    let pulse = row(&all, "pulse_ticked");
     assert_cast(&pulse, &cast_id, "the pulse row");
     assert!(pulse.has_field("player_id", &A_PID.to_string()));
     let span = all
@@ -248,4 +248,54 @@ async fn a_dots_tick_rows_carry_the_launch_cast_id() {
         .expect("the pulse opens combat.effect_tick");
     assert_cast(span, &cast_id, "the combat.effect_tick span");
     assert!(span.has_field("effect_id", &DOT_EFFECT.to_string()));
+}
+
+/// **Regression guard (AB-T3).** A DoT pulse logs `abilities.pulse`
+/// `pulse_ticked` with its amount, its path and the target's pools before
+/// and after, and the natural end logs `pulse_ended`. The pools match the
+/// target: the pulse row is written after the pulse landed, from the same
+/// stats the client is sent.
+#[tokio::test]
+async fn a_dot_tick_logs_the_pools_before_and_after() {
+    let mut mgr = dot_mgr(2);
+    let (tx, _rx) = mpsc::channel(256);
+    assert!(handle_use_ability(A, DOT, MOB as i32, &tx, &mut mgr).await);
+    let health = |mgr: &SpaceManager| {
+        mgr.get_entity(MOB)
+            .unwrap()
+            .stats
+            .get(cimmeria_entity::stats::HEALTH)
+            .unwrap()
+            .cur
+    };
+    let before = health(&mgr);
+    for i in &mut mgr.get_entity_mut(MOB).unwrap().active_effects {
+        i.next_pulse_at = Instant::now() - Duration::from_secs(1);
+    }
+    let logs = LogCapture::install();
+
+    effect_pulse_tick(&NoContentEvents, &tx, &mut mgr).await;
+
+    let after = health(&mgr);
+    assert!(after < before, "the pulse dealt damage");
+    let all = logs.all();
+    let pulse = row(&all, "pulse_ticked");
+    assert_eq!(pulse.target, "abilities.pulse");
+    for (field, want) in [
+        ("health_before", before.to_string()),
+        ("health_after", after.to_string()),
+        ("health_amount", "5".to_string()),
+        ("path", "nvp".to_string()),
+        ("effect_id", DOT_EFFECT.to_string()),
+        ("player_id", A_PID.to_string()),
+    ] {
+        assert!(
+            pulse.has_field(field, &want),
+            "pulse_ticked {field} = {want}: {pulse:?}"
+        );
+    }
+    let ended = row(&all, "pulse_ended");
+    assert_eq!(ended.target, "abilities.pulse");
+    assert!(ended.has_field("reason", "natural_end"));
+    assert!(ended.has_field("player_id", &A_PID.to_string()));
 }

@@ -157,10 +157,14 @@ pub async fn effect_pulse_tick(
             cleared
         };
         for (cleared_effect, invoker, ability_id, cast_id, who) in cleared_ids {
+            // AB-T3: `pulse_ended` (was `active_effect_ended`), the natural
+            // end. A strip (death, duel end, cleanse, channel cancel) logs
+            // its own row where it removes the instance.
             tracing::debug!(
-                target: "abilities",
-                event = "active_effect_ended",
+                target: "abilities.pulse",
+                event = "pulse_ended",
                 stage = "end",
+                reason = "natural_end",
                 account_id = who.account_id,
                 player_id = who.player_id,
                 target_id = entity_id,

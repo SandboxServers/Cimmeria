@@ -25,5 +25,8 @@ pub use cover_damage::{
     attacker_cover_qr, cover_reduction, node_base_pct, CoverRatingTable, CoverReduction, CoverSide,
     COVER_MAX_PCT, COVER_MIN_PCT, COVER_RATING,
 };
-pub use pipeline::{calculate_damage, calculate_damage_penetrating, calculate_damage_scaled};
+pub use pipeline::{
+    calculate_damage, calculate_damage_penetrating, calculate_damage_scaled, resolve_damage,
+    DamageOutcome,
+};
 pub use qr::{calculate_qr, calculate_result, qr_rand_to_result_code, QrResult};

@@ -14,6 +14,11 @@ use tokio::sync::mpsc;
 
 use cimmeria_entity::abilities::EffectDef;
 
+use super::super::effect_plan::{
+    PlanIds, PlannedEffect, PATH_ALLY_FANOUT, PATH_ROUTED_TO_USER, REASON_BENEFICIAL_CAST,
+    REASON_NOT_REACHABLE, REASON_NO_SCRIPT,
+};
+
 use super::super::super::messages::CellToBaseMsg;
 use super::super::super::space_manager::SpaceManager;
 use super::super::messaging::send_entity_method_to_self_and_witnesses;
@@ -23,25 +28,87 @@ use super::super::messaging::send_entity_method_to_self_and_witnesses;
 pub(in crate::cell::abilities) struct Landing {
     pub effect: EffectDef,
     pub recipient: u32,
+    /// Why it lands there: the route `plan_cast` chose, logged on the
+    /// landing's `effect_planned` row (AB-T3).
+    pub route: LandingRoute,
+}
+
+/// How a [`Landing`] was routed, for its `effect_planned` row.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(in crate::cell::abilities) enum LandingRoute {
+    /// A user half (rule 1 or 2), with the routing `reason`.
+    User(&'static str),
+    /// A beneficial area half fanned out to an ally (rule 3).
+    AllyArea(&'static str),
+    /// An effect of a beneficial cast on its resolved target (AB-01).
+    BeneficialTarget,
 }
 
 impl Landing {
-    pub(in crate::cell::abilities) fn new(effect: &EffectDef, recipient: u32) -> Self {
+    pub(in crate::cell::abilities) fn new(
+        effect: &EffectDef,
+        recipient: u32,
+        route: LandingRoute,
+    ) -> Self {
         Self {
             effect: effect.clone(),
             recipient,
+            route,
+        }
+    }
+
+    /// This landing's `effect_planned` row: the route's path, or `skipped`
+    /// when the recipient is gone or the effect has nothing to run.
+    fn plan(&self, recipient_exists: bool) -> PlannedEffect {
+        let effect = &self.effect;
+        if !recipient_exists {
+            return PlannedEffect::skipped(effect, REASON_NOT_REACHABLE);
+        }
+        let script = effect.script_name.is_some();
+        let pulsing = effect.is_pulsing();
+        let (path, reason) = match self.route {
+            LandingRoute::User(reason) => (PATH_ROUTED_TO_USER, reason),
+            LandingRoute::AllyArea(reason) => (PATH_ALLY_FANOUT, reason),
+            LandingRoute::BeneficialTarget => {
+                return PlannedEffect::landing(
+                    effect,
+                    false,
+                    script,
+                    pulsing,
+                    REASON_BENEFICIAL_CAST,
+                )
+            }
+        };
+        if !script && !pulsing {
+            return PlannedEffect::skipped(effect, REASON_NO_SCRIPT);
+        }
+        PlannedEffect {
+            path,
+            reason,
+            ..PlannedEffect::landing(effect, false, script, pulsing, reason)
         }
     }
 }
 
 /// Land `landings` from `caster_id` (module docs). Returns how many pulsing
-/// effects were registered.
+/// effects were registered. Each landing logs its `effect_planned` row
+/// first (AB-T3).
 pub(in crate::cell::abilities) async fn land_effects(
     caster_id: u32,
+    ability_id: i32,
     landings: &[Landing],
     tx: &mpsc::Sender<CellToBaseMsg>,
     space_mgr: &mut SpaceManager,
 ) -> usize {
+    for landing in landings {
+        let exists = space_mgr.get_entity(landing.recipient).is_some();
+        landing.plan(exists).log(PlanIds::of(
+            space_mgr,
+            caster_id,
+            landing.recipient,
+            ability_id,
+        ));
+    }
     for landing in landings {
         let Some(script_name) = landing.effect.script_name.as_deref() else {
             continue;

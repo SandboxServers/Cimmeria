@@ -51,14 +51,15 @@ pub(super) struct NvpPlanner {
 }
 
 impl NvpPlanner {
-    /// Add a landing effect that has no damage script.
-    pub(super) fn add(&mut self, effect: &EffectDef) {
+    /// Add a landing effect that has no damage script. Returns whether it
+    /// deals NVP damage (`false`: no positive `HealthDamage`/`FocusDamage`).
+    pub(super) fn add(&mut self, effect: &EffectDef) -> bool {
         let (health, focus) = (
             effect.param_i32("HealthDamage").max(0),
             effect.param_i32("FocusDamage").max(0),
         );
         if health == 0 && focus == 0 {
-            return;
+            return false;
         }
         let unrolled = effect.flags & EF_DONT_USE_QR != 0;
         if effect.target_collection_method == TCM_SINGLE {
@@ -69,7 +70,7 @@ impl NvpPlanner {
                 focus,
                 unrolled,
             });
-            return;
+            return true;
         }
         if health > 0 {
             self.area_health = Some((health, effect.effect_id, unrolled));
@@ -77,34 +78,26 @@ impl NvpPlanner {
         if focus > 0 {
             self.area_focus = Some((focus, effect.effect_id, unrolled));
         }
+        true
     }
 
-    /// The hit's entries, singles first in effect order.
-    pub(super) fn finish(mut self, ids: HitIds) -> Vec<NvpDamage> {
+    /// The hit's entries, singles first in effect order, and the area
+    /// effects left to their fan-out because a direct `TCM_Single` damage
+    /// effect is this target's damage (their `effect_planned` rows say
+    /// `skipped`, `area_effect_left_to_fan_out`).
+    pub(super) fn finish(mut self) -> (Vec<NvpDamage>, Vec<i32>) {
         let sources: Vec<(i32, i32, bool)> = self
             .area_health
             .into_iter()
             .chain(self.area_focus)
             .collect();
         if sources.is_empty() {
-            return self.singles;
+            return (self.singles, Vec::new());
         }
-        let source_ids: Vec<i32> = sources.iter().map(|s| s.1).collect();
         if self.direct_single {
-            tracing::debug!(
-                target: "abilities",
-                event = "effect_path_skipped",
-                account_id = ids.actor.account_id,
-                player_id = ids.actor.player_id,
-                entity_id = ids.entity_id,
-                target_player_id = ids.target.player_id,
-                target_id = ids.target_eid,
-                ability_id = ids.ability_id,
-                effect_ids = ?source_ids,
-                reason = "area_effect_left_to_fan_out",
-                "cone/radius NVP damage skipped on this target: a direct TCM_Single damage effect is its damage"
-            );
-            return self.singles;
+            let mut left: Vec<i32> = sources.iter().map(|s| s.1).collect();
+            left.dedup();
+            return (self.singles, left);
         }
         // Each pool keeps its own QR provenance: when the collapsed Health
         // and Focus came from effects with different `EF_DontUseQR` policies,
@@ -131,7 +124,7 @@ impl NvpPlanner {
                 }));
             }
         }
-        self.singles
+        (self.singles, Vec::new())
     }
 }
 
@@ -141,6 +134,11 @@ impl NvpPlanner {
 /// entry that dealt HEALTH damage, and the HEALTH damage dealt (for threat
 /// and the death check). The FOCUS change reaches the client in
 /// `onStatUpdate`, as it always has.
+///
+/// Each entry logs `nvp_damage_resolved` (AB-T3): the roll it took, the
+/// damage type, the target's pools before and after, and what the absorb
+/// pools took; a shield that absorbed some of it also logs
+/// `shield_absorbed_damage` with the hit's ids.
 #[allow(clippy::too_many_arguments)]
 pub(super) fn apply_nvp_damage(
     entries: &[NvpDamage],
@@ -165,6 +163,7 @@ pub(super) fn apply_nvp_damage(
                 account_id = ids.actor.account_id,
                 player_id = ids.actor.player_id,
                 entity_id = ids.entity_id,
+                cast_id = ids.cast_id,
                 target_player_id = ids.target.player_id,
                 target_id = ids.target_eid,
                 ability_id = ids.ability_id,
@@ -175,13 +174,14 @@ pub(super) fn apply_nvp_damage(
             break;
         }
         let qr = if entry.unrolled { &unrolled } else { hit_qr };
+        let (health_before, focus_before) = pools(defender);
         // Focus first: a shield stands in front of Focus, so a partial one
         // spends itself on the Focus half before the Health half
         // (`combat/damage/absorb.rs`). The two pools are otherwise
         // independent, so the order changes nothing without a shield.
-        let mut focus_dealt = 0;
+        let mut focus = combat::DamageOutcome::default();
         if entry.focus > 0 {
-            focus_dealt = combat::calculate_damage_penetrating(
+            focus = combat::resolve_damage(
                 qr,
                 entry.focus,
                 scale,
@@ -190,10 +190,9 @@ pub(super) fn apply_nvp_damage(
                 FOCUS,
                 attacker,
                 defender,
-            )
-            .1;
+            );
         }
-        let (health_results, health_dealt) = combat::calculate_damage_penetrating(
+        let health = combat::resolve_damage(
             qr,
             entry.health,
             scale,
@@ -203,12 +202,38 @@ pub(super) fn apply_nvp_damage(
             attacker,
             defender,
         );
+        let (health_after, focus_after) = pools(defender);
+        let absorbed = focus.absorbed + health.absorbed;
+        if absorbed > 0 {
+            tracing::debug!(
+                target: "abilities",
+                event = "shield_absorbed_damage",
+                stage = "apply",
+                account_id = ids.actor.account_id,
+                player_id = ids.actor.player_id,
+                entity_id = ids.entity_id,
+                cast_id = ids.cast_id,
+                target_player_id = ids.target.player_id,
+                target_id = ids.target_eid,
+                ability_id = ids.ability_id,
+                effect_id = entry.effect_id,
+                damage_type,
+                absorbed,
+                focus_absorbed = focus.absorbed,
+                health_absorbed = health.absorbed,
+                focus_through = focus.dealt,
+                health_through = health.dealt,
+                "a shield absorbed NVP damage"
+            );
+        }
         tracing::debug!(
-            target: "abilities",
+            target: "abilities.effect",
             event = "nvp_damage_resolved",
+            stage = "apply",
             account_id = ids.actor.account_id,
             player_id = ids.actor.player_id,
             entity_id = ids.entity_id,
+            cast_id = ids.cast_id,
             target_player_id = ids.target.player_id,
             target_id = ids.target_eid,
             ability_id = ids.ability_id,
@@ -216,13 +241,28 @@ pub(super) fn apply_nvp_damage(
             health_base = entry.health,
             focus_base = entry.focus,
             qr_rand = qr.qr_rand,
+            result_code = qr.result_code,
             reason = if entry.unrolled { "dont_use_qr" } else { "hit_roll" },
-            health_dealt,
-            focus_dealt,
+            damage_type,
+            health_before,
+            health_after,
+            focus_before,
+            focus_after,
+            health_dealt = health.dealt,
+            focus_dealt = focus.dealt,
+            absorbed,
+            // `*_after` is before a god-mode restore (`god_mode_absorbed`).
+            god_mode = ids.god_mode,
             "NVP damage resolved for one effect"
         );
-        results.extend(health_results);
-        total_health += health_dealt;
+        results.extend(health.results);
+        total_health += health.dealt;
     }
     (results, total_health)
+}
+
+/// The target's HEALTH and FOCUS.
+fn pools(stats: &StatList) -> (i32, i32) {
+    let cur = |id| stats.get(id).map_or(0, |s| s.cur);
+    (cur(HEALTH), cur(FOCUS))
 }

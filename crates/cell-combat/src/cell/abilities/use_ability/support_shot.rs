@@ -36,6 +36,7 @@ use cimmeria_wire::cell::chat::{serialize_on_player_communication, CHAN_FEEDBACK
 use super::super::super::combat;
 use super::super::super::messages::CellToBaseMsg;
 use super::super::super::space_manager::SpaceManager;
+use super::super::effect_plan::{PlanIds, PlannedEffect, REASON_SUPPORT_SHOT};
 use super::super::messaging::{flush_attacker_ammo_stat, send_entity_method_to_self_and_witnesses};
 
 /// `event` of a support shot that landed on an ally (DEBUG, target `ammo`).
@@ -245,6 +246,15 @@ pub(super) async fn fire_support(
     let on_hit_effect_id = shot.on_hit_effect_id(space_mgr);
     let effect_def = on_hit_effect_id.and_then(|id| space_mgr.effect_defs.get(&id).cloned());
     if let Some(effect_def) = effect_def.as_ref() {
+        // AB-T3: the on-hit effect's plan on the ally.
+        PlannedEffect::landing(
+            effect_def,
+            false,
+            effect_def.script_name.is_some(),
+            effect_def.is_pulsing(),
+            REASON_SUPPORT_SHOT,
+        )
+        .log(PlanIds::of(space_mgr, entity_id, target_id, ability_id));
         if let Some(script_name) = effect_def.script_name.clone() {
             let mut ctx = crate::cell::effects::EffectContext {
                 source_id: entity_id,

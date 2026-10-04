@@ -22,6 +22,10 @@ use cimmeria_entity::stats::{FOCUS, HEALTH};
 use super::nvp_damage::{NvpDamage, NvpPlanner};
 use super::qr_gate::effect_lands;
 use super::HitIds;
+use crate::cell::abilities::effect_plan::{
+    PlannedEffect, PATH_NVP, PATH_SKIPPED, REASON_AFTER_HIT_SCRIPT, REASON_AMMO_ON_HIT,
+    REASON_AREA_LEFT_TO_FAN_OUT, REASON_MISS, REASON_SPLASH_TARGET, REASON_UNKNOWN_ABILITY,
+};
 use crate::cell::space_manager::SpaceManager;
 
 /// The scripts that are an effect's damage. They read `FocusDamage` and
@@ -61,6 +65,11 @@ pub(super) struct HitEffects {
 /// splash target: it keeps the NVP damage and the damage scripts (both
 /// scaled by the splash fraction in the caller), and `after_scripts` is
 /// emptied.
+///
+/// Every effect it sorts logs one `abilities.effect` `effect_planned` row
+/// (AB-T3, [`crate::cell::abilities::effect_plan`]), written once the plan
+/// is final, so an area effect the NVP planner leaves to its fan-out logs
+/// `skipped`, not `nvp`.
 pub(super) fn plan_hit_effects(
     space_mgr: &SpaceManager,
     ability_def: Option<&AbilityDef>,
@@ -70,8 +79,10 @@ pub(super) fn plan_hit_effects(
     ids: HitIds,
 ) -> HitEffects {
     let mut plan = HitEffects::default();
+    let mut rows: Vec<PlannedEffect> = Vec::new();
     let Some(def) = ability_def else {
-        if result_code != RC_MISS {
+        let landed = result_code != RC_MISS;
+        if landed {
             plan.nvp.push(NvpDamage {
                 effect_id: None,
                 health: UNKNOWN_ABILITY_HEALTH_DAMAGE,
@@ -79,6 +90,20 @@ pub(super) fn plan_hit_effects(
                 unrolled: false,
             });
         }
+        PlannedEffect {
+            effect_id: None,
+            path: if landed { PATH_NVP } else { PATH_SKIPPED },
+            reason: if landed {
+                REASON_UNKNOWN_ABILITY
+            } else {
+                REASON_MISS
+            },
+            nvp: landed,
+            script: false,
+            pulsing: false,
+            dont_use_qr: false,
+        }
+        .log(ids.plan_ids());
         return plan;
     };
     let mut nvp = NvpPlanner::default();
@@ -87,39 +112,59 @@ pub(super) fn plan_hit_effects(
             continue;
         };
         if !effect_lands(effect, result_code) {
-            log_skipped(
-                ids,
-                effect,
-                "miss",
-                "the QR roll missed: no damage, script or pulses",
-            );
+            rows.push(PlannedEffect::skipped(effect, REASON_MISS));
             continue;
         }
         let script = effect.script_name.as_deref();
         if script.is_some_and(is_damage_script) {
-            log_skipped(
-                ids,
-                effect,
-                "damage_script",
-                "NVP pipeline skipped: the damage script is the only damage path",
-            );
+            rows.push(PlannedEffect::damage_script(effect));
             plan.damage_scripts.push(eid);
             continue;
         }
-        nvp.add(effect);
+        let deals_nvp = nvp.add(effect);
+        // A splash target runs no after-hit script and registers no pulses.
+        let runs_script = script.is_some() && direct;
         if script.is_some() {
             plan.after_scripts.push(eid);
         }
-    }
-    plan.nvp = nvp.finish(ids);
-    if let Some(eid) = on_hit_effect_id {
-        if space_mgr
-            .effect_defs
-            .get(&eid)
-            .is_some_and(|e| e.script_name.is_some())
-        {
-            plan.after_scripts.push(eid);
+        if !direct && !deals_nvp && script.is_some() {
+            rows.push(PlannedEffect::skipped(effect, REASON_SPLASH_TARGET));
+            continue;
         }
+        rows.push(PlannedEffect::landing(
+            effect,
+            deals_nvp,
+            runs_script,
+            direct && effect.is_pulsing(),
+            REASON_AFTER_HIT_SCRIPT,
+        ));
+    }
+    let (entries, left_to_fan_out) = nvp.finish();
+    plan.nvp = entries;
+    for row in rows.iter_mut() {
+        let dropped = row
+            .effect_id
+            .is_some_and(|id| left_to_fan_out.contains(&id));
+        if dropped && row.path == PATH_NVP {
+            *row = PlannedEffect {
+                path: PATH_SKIPPED,
+                reason: REASON_AREA_LEFT_TO_FAN_OUT,
+                nvp: false,
+                ..*row
+            };
+        }
+    }
+    if let Some(effect) = on_hit_effect_id.and_then(|eid| space_mgr.effect_defs.get(&eid)) {
+        if effect.script_name.is_some() {
+            plan.after_scripts.push(effect.effect_id);
+        }
+        rows.push(PlannedEffect::landing(
+            effect,
+            false,
+            effect.script_name.is_some() && direct,
+            direct && effect.is_pulsing(),
+            REASON_AMMO_ON_HIT,
+        ));
     }
     // A splash target takes the shot's damage only: its damage scripts stay
     // (the caller runs them at the splash scale, since they ARE the shot's
@@ -127,6 +172,10 @@ pub(super) fn plan_hit_effects(
     // lands a second time.
     if !direct {
         plan.after_scripts.clear();
+    }
+    let plan_ids = ids.plan_ids();
+    for row in &rows {
+        row.log(plan_ids);
     }
     plan
 }
@@ -176,6 +225,7 @@ pub(super) fn apply_damage_scripts(
         scale,
         health_delta,
         focus_delta = focus_after - focus_before,
+        god_mode = ids.god_mode,
         "damage scripts resolved the hit's damage"
     );
     if health_delta == 0 {
@@ -276,21 +326,4 @@ fn scale_damage_nvps(effect: &mut EffectDef, scale: f64) {
             effect.params.insert(name.to_string(), scaled.to_string());
         }
     }
-}
-
-fn log_skipped(ids: HitIds, effect: &EffectDef, reason: &'static str, msg: &'static str) {
-    tracing::debug!(
-        target: "abilities",
-        event = "effect_path_skipped",
-        account_id = ids.actor.account_id,
-        player_id = ids.actor.player_id,
-        entity_id = ids.entity_id,
-        target_player_id = ids.target.player_id,
-        target_id = ids.target_eid,
-        ability_id = ids.ability_id,
-        effect_id = effect.effect_id,
-        script = effect.script_name.as_deref().unwrap_or(""),
-        reason,
-        "{msg}"
-    );
 }
