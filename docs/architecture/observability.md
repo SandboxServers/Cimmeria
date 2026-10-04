@@ -321,7 +321,7 @@ use cimmeria_observability::{counter, histogram, gauge_add};
 
 counter!("trade_swaps_total", "outcome" => "completed");
 histogram!("trade_swap_duration_seconds", elapsed_secs, "outcome" => "completed");
-gauge_add!("cover_slots_held", 1, "world_name" => "Castle");
+gauge_add!("cover_slots_held", 1, "world" => "Castle");
 ```
 
 Instruments are lazily registered on first emission via the global
@@ -338,7 +338,7 @@ signals via one collector.
 **Label cardinality.** Per
 [instrumentation-discipline.md](instrumentation-discipline.md#rule-4--metric-labels-are-enumerated-spanlog-fields-are-correlators):
 metric labels must be enumerated low-cardinality strings (`outcome`,
-`reason`, `kind`, `world_name`, `decision_outcome`). High-cardinality
+`reason`, `kind`, `world`, `decision_outcome`). High-cardinality
 correlators (`entity_id`, `player_id`, `peer`) belong in span/log
 fields. A counter labelled by `player_id` would degrade ClickHouse's
 merge-tree query performance non-linearly.

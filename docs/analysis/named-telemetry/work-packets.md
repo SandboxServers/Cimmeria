@@ -31,7 +31,7 @@
   |---|---|---|
   | `entity_id`, `target`, `attacker` | `entity_name`, `target_name`, `attacker_name` | player: character name; NPC: `name_id` text, and NPC lines also carry the template pair (D-NT5) |
   | `template_id` | `template_name` | `entity_templates.template_name` |
-  | `item_id` (instance), `item_type_id` / `type_id` / `design_id` | `item_name` | `items.name` via the type. A log `item_id` is often an instance ID, while the seed's `items.item_id` is a type ID: resolve an instance through its type, never by looking its ID up in `items` |
+  | `item_id` (instance), `item_type_id` | `item_name` | `items.name` via the type. A log `item_id` is often an instance ID, while the seed's `items.item_id` is a type ID: resolve an instance through its type, never by looking its ID up in `items` |
   | `ability_id` | `ability_name` | `abilities.name` |
   | `effect_id` | `effect_name` | `effects.name` |
   | `mission_id`, `step_id`, `objective_id` | `mission_name`, `step_name`, `objective_name` | `mission_label`, step / objective display text |
@@ -90,7 +90,7 @@ Update [negative-logging-convention.md](../../architecture/negative-logging-conv
 
 **Depends:** NT-00 (D-NT4: blocking). **Effort:** M. **Reviewer:** testing-validation-engineer.
 
-- A source-scan test in the style of `crates/server/src/logging/target_scan_tests.rs`. It parses every `trace!/debug!/info!/warn!/error!/event!/info_span!`… call in `IN_PROCESS_CRATES`, and classifies **every** ID-shaped key (NT-00's default rule: any `*_id`, plus the bare entity keys), not just the keys the table lists. Each one must have its paired name key (default `<prefix>_name`, or the table's exception) in the same call, or an exemption. A table-only scan would let `witness_id` or `method_index` stay unpaired.
+- A source-scan test in the style of `crates/server/src/logging/target_scan_tests.rs`. It parses every `trace!/debug!/info!/warn!/error!/event!` call (event macros only; span constructors are outside Rule 6's scope) in `IN_PROCESS_CRATES`, and classifies **every** ID-shaped key (NT-00's default rule: any `*_id`, plus the bare entity keys), not just the keys the table lists. Each one must have its paired name key (default `<prefix>_name`, or the table's exception) in the same call, or an exemption. A table-only scan would let `witness_id` or `method_index` stay unpaired.
 - `crates/server/src/logging/unpaired_id_baseline.txt`: `path count` per file. The test fails if any file's count rises or a new file appears, and prints the offending call. It also fails if a count falls without the baseline being lowered, so the ratchet stays tight.
 - An inline `// nt:id-only <reason>` marker exempts one field: a pure slot counter, a test-only log, a hot path proven unreadable.
 - The first run's totals go into the ledger as the campaign baseline.

@@ -133,7 +133,7 @@ not span fields.** The cardinality rules:
 
 | Where | What goes there | Examples |
 |---|---|---|
-| Metric label | Enumerated low-cardinality string (target ≤ ~30 values) | `outcome`, `reason`, `kind`, `world_name`, `decision_outcome` |
+| Metric label | Enumerated low-cardinality string (target ≤ ~30 values) | `outcome`, `reason`, `kind`, `world`, `decision_outcome` |
 | Span field | High-cardinality correlator | `player_id`, `entity_id`, `space_id`, `peer`, `mission_id` |
 | Log field | Same as span field — any correlator | `player_id`, `entity_id`, `rows_affected`, `expected` |
 
@@ -397,7 +397,7 @@ comes from, so every call site resolves it the same way.
 |---|---|---|
 | `entity_id`, `target`, `attacker` (any key holding an entity ID) | `entity_name`, `target_name`, `attacker_name` | A player: the character name. An NPC: its player-facing `name_id` text, **and** the line also carries the `template_id` + `template_name` pair (D-NT5). Live entities only, through `SpaceManager` and the departed-entity ring (NT-02), never the NameBook: entity IDs are recycled slots |
 | `template_id` | `template_name` | `entity_templates.template_name` |
-| `item_id` (instance), `item_type_id`, `type_id`, `design_id` | `item_name` | `items.name`, looked up by the item's type |
+| `item_id` (instance), `item_type_id` | `item_name` | `items.name`, looked up by the item's type. A logged `item_id` is often an instance ID; resolve it to its type first |
 | `ability_id` | `ability_name` | `abilities.name` |
 | `effect_id` | `effect_name` | `effects.name` |
 | `mission_id`, `step_id`, `objective_id` | `mission_name`, `step_name`, `objective_name` | `missions.mission_label`; step and objective display text |
@@ -409,6 +409,12 @@ comes from, so every call site resolves it the same way.
 | `archetype` | `archetype_name` | `archetype_name()` |
 | `error_code`, `moniker_id` | `error_name`, `moniker_name` | `error_texts.moniker_name`, `monikers.name` |
 | `opcode`, `msg_id`, `method_id`, `method_index` | `method_name` | The NT-30 method table |
+
+**Generic keys name their domain first.** `type_id` and `design_id` are not item keys everywhere: `abilities.type_id`
+is logged in the spawner, and the GM console uses `design_id` for mission and template input. A key that
+doesn't say what it identifies can't be paired by rule, so a sweep renames it to its domain key
+(`item_type_id`, `ability_id`, `mission_id`, `template_id`) and then pairs that. Until it is renamed it
+counts as unpaired in NT-03's baseline.
 
 `space_id` pairs with `world`, not `world_name`. `world` is already the
 key on about 70 log sites against about 20 for `world_name`, it is the
@@ -478,7 +484,10 @@ embed's field cap.
 
 #### Scope
 
-Every log line and Discord message that carries an ID, at any level.
+Every log event (`trace!` to `error!`, and `event!`) and every Discord message that carries an ID, at any
+level. Span fields (`*_span!`, `#[instrument(fields(...))]`) are out of scope: names on a span reach
+neither the log record nor Discord (see the anti-pattern below), so NT-03 doesn't scan span constructors.
+A span may still carry a name for the Traces view.
 NPC lines are in scope too: unlike Rule 5's identity, an NPC has a
 name. Existing lines converge through the campaign's system sweeps
 (NT-20 to NT-27), and NT-03's baseline only shrinks.
