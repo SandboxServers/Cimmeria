@@ -58,6 +58,8 @@ pub enum StatBuffRemoval {
     Cleansed,
     /// A shield whose every absorb pool damage emptied (AB-10).
     Drained,
+    /// The duel its invoker was fighting the entity in ended.
+    DuelEnded,
 }
 
 impl StatBuffRemoval {
@@ -76,6 +78,7 @@ impl StatBuffRemoval {
             Self::BandolierSwap => "bandolier_swap",
             Self::Cleansed => "cleansed",
             Self::Drained => "drained",
+            Self::DuelEnded => "duel_ended",
         }
     }
 }
@@ -198,6 +201,7 @@ impl SpaceManager {
             missing_stats = ?out.missing_stats,
             duration_secs = out.applied.duration_secs,
             held = out.applied.expires_at.is_none(),
+            state_flags = out.applied.state_flags,
             beneficial,
             replaced_effect_ids = ?out.replaced.iter().map(|b| b.effect_id).collect::<Vec<_>>(),
             "timed effect applied"
@@ -343,6 +347,7 @@ pub(super) fn log_removed(
         stat_ids = ?entry.stats.iter().map(|s| s.stat_id).collect::<Vec<_>>(),
         restored = ?entry.stats.iter().map(|s| (s.stat_id, -s.requested)).collect::<Vec<_>>(),
         absorb_left = ?entry.absorb.iter().map(|p| (p.stat_id, p.remaining)).collect::<Vec<_>>(),
+        state_flags = entry.state_flags,
         stat_before = ?stat_before,
         stat_after = ?stat_after,
         "timed effect removed"

@@ -351,6 +351,11 @@ pub struct SpaceManager {
     /// `pending_ai_retries` it is a candidate set: an entry whose entity
     /// is gone or whose `pending_cast` is `None` is dropped by the tick.
     pub pending_casts: std::collections::HashSet<u32>,
+    /// Interrupts an effect script queued for combat to resolve (AB-09c,
+    /// `effects::interrupt_request`). Empty between bursts.
+    pub pending_interrupts: Vec<crate::cell::effects::interrupt_request::InterruptRequest>,
+    /// The last nonce handed to an interrupt request (its roll seed).
+    pub interrupt_nonce: u64,
     /// Server-authoritative movement validator. Consulted by
     /// `apply_client_position_update` on every inbound client position:
     /// bounds + navmesh + teleport hard-reject, speed warn-only. Holds a
@@ -537,6 +542,8 @@ impl SpaceManager {
             deployables: super::deployables::DeployableRegistry::default(),
             pending_ai_retries: std::collections::HashSet::new(),
             pending_casts: std::collections::HashSet::new(),
+            pending_interrupts: Vec::new(),
+            interrupt_nonce: 0,
             movement_validator: MovementValidator::new(),
             movement_telemetry: MovementTelemetry::default(),
             zero_health_npc_log: LogThrottle::default(),

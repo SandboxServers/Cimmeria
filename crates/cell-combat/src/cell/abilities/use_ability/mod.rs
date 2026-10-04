@@ -45,6 +45,7 @@ mod cast_range;
 mod fire;
 mod fire_los;
 mod handle;
+mod incapacitated;
 mod kill_credit;
 mod no_mechanics;
 mod not_known;

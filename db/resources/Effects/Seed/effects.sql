@@ -341,7 +341,7 @@ INSERT INTO effects (effect_id, ability_id, delay, effect_desc, effect_sequence,
 
 INSERT INTO effects (effect_id, ability_id, delay, effect_desc, effect_sequence, flags, icon_location, pulse_count, pulse_duration, tcm_param1, tcm_param2, target_collection_method, use_ability_velocity, is_channeled, name, target_collection_id, event_set_id, script_name) VALUES (2617, 2001, 0, 'Kinetic Resist roll', 1, 64, 'set:CoreWidgets image:IconMissing', 1, 0, 'Melee', 'Narrow', 'TCM_AECone', true, false, 'Kinetic Resist', 0, NULL, NULL);
 
-INSERT INTO effects (effect_id, ability_id, delay, effect_desc, effect_sequence, flags, icon_location, pulse_count, pulse_duration, tcm_param1, tcm_param2, target_collection_method, use_ability_velocity, is_channeled, name, target_collection_id, event_set_id, script_name) VALUES (2620, 2001, 0, 'Knockdown: 3 seconds', 1, 64, 'set:CoreWidgets image:IconMissing', 1, 3, 'Melee', 'Narrow', 'TCM_AECone', true, false, 'Knockdown', 0, NULL, NULL);
+INSERT INTO effects (effect_id, ability_id, delay, effect_desc, effect_sequence, flags, icon_location, pulse_count, pulse_duration, tcm_param1, tcm_param2, target_collection_method, use_ability_velocity, is_channeled, name, target_collection_id, event_set_id, script_name) VALUES (2620, 2001, 0, 'Knockdown: 3 seconds', 1, 64, 'set:CoreWidgets image:IconMissing', 1, 3, 'Melee', 'Narrow', 'TCM_AECone', true, false, 'Knockdown', 0, NULL, 'Knockdown');
 
 INSERT INTO effects (effect_id, ability_id, delay, effect_desc, effect_sequence, flags, icon_location, pulse_count, pulse_duration, tcm_param1, tcm_param2, target_collection_method, use_ability_velocity, is_channeled, name, target_collection_id, event_set_id, script_name) VALUES (2626, 2006, 0, 'Single Target
 -200F / -20H', 0, 0, 'set:CoreWidgets image:IconMissing', 1, 0, 'Medium', 'Narrow', 'TCM_Single', true, false, 'Blast Damage', 0, NULL, NULL);
@@ -905,7 +905,7 @@ INSERT INTO effects (effect_id, ability_id, delay, effect_desc, effect_sequence,
 
 INSERT INTO effects (effect_id, ability_id, delay, effect_desc, effect_sequence, flags, icon_location, pulse_count, pulse_duration, tcm_param1, tcm_param2, target_collection_method, use_ability_velocity, is_channeled, name, target_collection_id, event_set_id, script_name) VALUES (3202, 2263, 0, 'Attach Flame BC', 0, 512, 'set:CoreWidgets image:IconMissing', 1, 30, NULL, NULL, 'TCM_Single', true, false, 'Attach Flame BC', 0, NULL, NULL);
 
-INSERT INTO effects (effect_id, ability_id, delay, effect_desc, effect_sequence, flags, icon_location, pulse_count, pulse_duration, tcm_param1, tcm_param2, target_collection_method, use_ability_velocity, is_channeled, name, target_collection_id, event_set_id, script_name) VALUES (3203, 2263, 0, 'Knockdown', 0, 512, 'set:CoreWidgets image:IconMissing', 1, 2, NULL, NULL, 'TCM_Single', true, false, 'Knockdown', 0, NULL, NULL);
+INSERT INTO effects (effect_id, ability_id, delay, effect_desc, effect_sequence, flags, icon_location, pulse_count, pulse_duration, tcm_param1, tcm_param2, target_collection_method, use_ability_velocity, is_channeled, name, target_collection_id, event_set_id, script_name) VALUES (3203, 2263, 0, 'Knockdown', 0, 512, 'set:CoreWidgets image:IconMissing', 1, 2, NULL, NULL, 'TCM_Single', true, false, 'Knockdown', 0, NULL, 'Knockdown');
 
 INSERT INTO effects (effect_id, ability_id, delay, effect_desc, effect_sequence, flags, icon_location, pulse_count, pulse_duration, tcm_param1, tcm_param2, target_collection_method, use_ability_velocity, is_channeled, name, target_collection_id, event_set_id, script_name) VALUES (3204, 2263, 0, 'Single Target
 -100F / -10H 
@@ -913,7 +913,7 @@ INSERT INTO effects (effect_id, ability_id, delay, effect_desc, effect_sequence,
 
 INSERT INTO effects (effect_id, ability_id, delay, effect_desc, effect_sequence, flags, icon_location, pulse_count, pulse_duration, tcm_param1, tcm_param2, target_collection_method, use_ability_velocity, is_channeled, name, target_collection_id, event_set_id, script_name) VALUES (3205, 2265, 0, 'Smokefrom Teargas on grenade mob', 1, 512, 'set:CoreWidgets image:IconMissing', 1, 30, NULL, NULL, 'TCM_Single', true, false, 'Smokefrom Teargas', 0, NULL, NULL);
 
-INSERT INTO effects (effect_id, ability_id, delay, effect_desc, effect_sequence, flags, icon_location, pulse_count, pulse_duration, tcm_param1, tcm_param2, target_collection_method, use_ability_velocity, is_channeled, name, target_collection_id, event_set_id, script_name) VALUES (3206, 2265, 0, 'Knockdown', 0, 512, 'set:CoreWidgets image:IconMissing', 1, 2, NULL, NULL, 'TCM_Single', true, false, 'Knockdown', 0, NULL, NULL);
+INSERT INTO effects (effect_id, ability_id, delay, effect_desc, effect_sequence, flags, icon_location, pulse_count, pulse_duration, tcm_param1, tcm_param2, target_collection_method, use_ability_velocity, is_channeled, name, target_collection_id, event_set_id, script_name) VALUES (3206, 2265, 0, 'Knockdown', 0, 512, 'set:CoreWidgets image:IconMissing', 1, 2, NULL, NULL, 'TCM_Single', true, false, 'Knockdown', 0, NULL, 'Knockdown');
 
 INSERT INTO effects (effect_id, ability_id, delay, effect_desc, effect_sequence, flags, icon_location, pulse_count, pulse_duration, tcm_param1, tcm_param2, target_collection_method, use_ability_velocity, is_channeled, name, target_collection_id, event_set_id, script_name) VALUES (3207, 2265, 0, 'Single Target
 -100F / -10H 
@@ -1417,12 +1417,12 @@ INSERT INTO effects (effect_id, ability_id, delay, effect_desc, effect_sequence,
 INSERT INTO effects (effect_id, ability_id, delay, effect_desc, effect_sequence, flags, icon_location, pulse_count, pulse_duration, tcm_param1, tcm_param2, target_collection_method, use_ability_velocity, is_channeled, name, target_collection_id, event_set_id, script_name) VALUES (1389, 1229, 2, 'Defensive Grenade Damage:
 -500 F / -50 H', 0, 0, 'set:CoreWidgets image:IconMissing', 1, 0, 'Short', NULL, 'TCM_AERadius', true, false, 'Incendiary Strike Damage', 0, NULL, NULL);
 
-INSERT INTO effects (effect_id, ability_id, delay, effect_desc, effect_sequence, flags, icon_location, pulse_count, pulse_duration, tcm_param1, tcm_param2, target_collection_method, use_ability_velocity, is_channeled, name, target_collection_id, event_set_id, script_name) VALUES (1390, 1229, 0, '5 Second Knockdown', 0, 68, 'set:CoreWidgets image:IconMissing', 1, 5, 'Melee', NULL, 'TCM_AERadius', true, false, 'Knockdown - 5 Seconds', 0, NULL, NULL);
+INSERT INTO effects (effect_id, ability_id, delay, effect_desc, effect_sequence, flags, icon_location, pulse_count, pulse_duration, tcm_param1, tcm_param2, target_collection_method, use_ability_velocity, is_channeled, name, target_collection_id, event_set_id, script_name) VALUES (1390, 1229, 0, '5 Second Knockdown', 0, 68, 'set:CoreWidgets image:IconMissing', 1, 5, 'Melee', NULL, 'TCM_AERadius', true, false, 'Knockdown - 5 Seconds', 0, NULL, 'Knockdown');
 
 INSERT INTO effects (effect_id, ability_id, delay, effect_desc, effect_sequence, flags, icon_location, pulse_count, pulse_duration, tcm_param1, tcm_param2, target_collection_method, use_ability_velocity, is_channeled, name, target_collection_id, event_set_id, script_name) VALUES (1391, 1230, 2, 'Gamma Strike Damage:
 -500 F / -50 H', 0, 0, 'set:CoreWidgets image:IconMissing', 1, 0, 'Short', NULL, 'TCM_AERadius', true, false, 'Gamma Strike Damage', 0, NULL, NULL);
 
-INSERT INTO effects (effect_id, ability_id, delay, effect_desc, effect_sequence, flags, icon_location, pulse_count, pulse_duration, tcm_param1, tcm_param2, target_collection_method, use_ability_velocity, is_channeled, name, target_collection_id, event_set_id, script_name) VALUES (1392, 1230, 0, '5 Second Knockdown', 0, 68, 'set:CoreWidgets image:IconMissing', 1, 5, 'Melee', NULL, 'TCM_AERadius', true, false, 'Knockdown - 5 Seconds', 0, NULL, NULL);
+INSERT INTO effects (effect_id, ability_id, delay, effect_desc, effect_sequence, flags, icon_location, pulse_count, pulse_duration, tcm_param1, tcm_param2, target_collection_method, use_ability_velocity, is_channeled, name, target_collection_id, event_set_id, script_name) VALUES (1392, 1230, 0, '5 Second Knockdown', 0, 68, 'set:CoreWidgets image:IconMissing', 1, 5, 'Melee', NULL, 'TCM_AERadius', true, false, 'Knockdown - 5 Seconds', 0, NULL, 'Knockdown');
 
 INSERT INTO effects (effect_id, ability_id, delay, effect_desc, effect_sequence, flags, icon_location, pulse_count, pulse_duration, tcm_param1, tcm_param2, target_collection_method, use_ability_velocity, is_channeled, name, target_collection_id, event_set_id, script_name) VALUES (1398, 1240, 0, ' ', 0, 0, 'set:CoreWidgets image:IconMissing', 1, 0, 'Extreme', NULL, 'TCM_AERadius', true, false, 'Splash Damage', 0, NULL, NULL);
 
@@ -1443,7 +1443,7 @@ INSERT INTO effects (effect_id, ability_id, delay, effect_desc, effect_sequence,
 Kinetic Resist Roll', 0, 4194308, 'set:CoreWidgets image:IconMissing', 1, 0, 'Short', NULL, 'TCM_AERadius', true, false, 'Kinetic Resist Roll', 0, NULL, NULL);
 
 INSERT INTO effects (effect_id, ability_id, delay, effect_desc, effect_sequence, flags, icon_location, pulse_count, pulse_duration, tcm_param1, tcm_param2, target_collection_method, use_ability_velocity, is_channeled, name, target_collection_id, event_set_id, script_name) VALUES (1466, 868, 0, 'Small Radius AE
-Stun: 5 Seconds', 0, 4194372, 'set:CoreWidgets image:IconMissing', 1, 5, 'Short', NULL, 'TCM_Single', false, false, 'Flashbang Stun: 5 Seconds', 0, NULL, NULL);
+Stun: 5 Seconds', 0, 4194372, 'set:CoreWidgets image:IconMissing', 1, 5, 'Short', NULL, 'TCM_Single', false, false, 'Flashbang Stun: 5 Seconds', 0, NULL, 'Stun');
 
 INSERT INTO effects (effect_id, ability_id, delay, effect_desc, effect_sequence, flags, icon_location, pulse_count, pulse_duration, tcm_param1, tcm_param2, target_collection_method, use_ability_velocity, is_channeled, name, target_collection_id, event_set_id, script_name) VALUES (1393, 1233, 0, 'Single Target
 -200F / -20H', 0, 0, 'set:CoreWidgets image:IconMissing', 1, 0, 'Short', NULL, 'TCM_AERadius', false, false, 'AW Auto Attack Damage', 0, 289, NULL);
@@ -1455,7 +1455,7 @@ INSERT INTO effects (effect_id, ability_id, delay, effect_desc, effect_sequence,
 Fear: 15 Seconds', 0, 68, 'set:AbilityIcons001 image:AOE_Denial_of_Area', 1, 15, 'Short', NULL, 'TCM_AERadius', true, false, 'Fear', 0, NULL, NULL);
 
 INSERT INTO effects (effect_id, ability_id, delay, effect_desc, effect_sequence, flags, icon_location, pulse_count, pulse_duration, tcm_param1, tcm_param2, target_collection_method, use_ability_velocity, is_channeled, name, target_collection_id, event_set_id, script_name) VALUES (1494, 647, 0, 'Small Radius AE
-Knockdown: 5 Seconds', 0, 4194372, 'set:CoreWidgets image:IconMissing', 1, 5, 'Short', NULL, 'TCM_Single', false, false, 'Knockdown: 5 Seconds', 0, NULL, NULL);
+Knockdown: 5 Seconds', 0, 4194372, 'set:CoreWidgets image:IconMissing', 1, 5, 'Short', NULL, 'TCM_Single', false, false, 'Knockdown: 5 Seconds', 0, NULL, 'Knockdown');
 
 INSERT INTO effects (effect_id, ability_id, delay, effect_desc, effect_sequence, flags, icon_location, pulse_count, pulse_duration, tcm_param1, tcm_param2, target_collection_method, use_ability_velocity, is_channeled, name, target_collection_id, event_set_id, script_name) VALUES (1515, 1312, 3, ' ', 0, 0, 'set:CoreWidgets image:IconMissing', 1, 0, 'Medium', NULL, 'TCM_AERadius', false, false, 'Splash Damage', 0, NULL, NULL);
 
@@ -1501,7 +1501,7 @@ INSERT INTO effects (effect_id, ability_id, delay, effect_desc, effect_sequence,
 Kinetic Resist Roll', 0, 512, 'set:CoreWidgets image:IconMissing', 1, 0, 'Melee', NULL, 'TCM_Single', true, false, 'Kinetic Resist Roll', 0, NULL, NULL);
 
 INSERT INTO effects (effect_id, ability_id, delay, effect_desc, effect_sequence, flags, icon_location, pulse_count, pulse_duration, tcm_param1, tcm_param2, target_collection_method, use_ability_velocity, is_channeled, name, target_collection_id, event_set_id, script_name) VALUES (1783, 1485, 0, 'Large Radius AE
-Knockdown: 5 Seconds', 0, 68, 'set:CoreWidgets image:IconMissing', 1, 5, 'Medium', NULL, 'TCM_Single', true, false, 'Cluster Mortar Knockdown', 0, NULL, NULL);
+Knockdown: 5 Seconds', 0, 68, 'set:CoreWidgets image:IconMissing', 1, 5, 'Medium', NULL, 'TCM_Single', true, false, 'Cluster Mortar Knockdown', 0, NULL, 'Knockdown');
 
 INSERT INTO effects (effect_id, ability_id, delay, effect_desc, effect_sequence, flags, icon_location, pulse_count, pulse_duration, tcm_param1, tcm_param2, target_collection_method, use_ability_velocity, is_channeled, name, target_collection_id, event_set_id, script_name) VALUES (1787, 1488, 0, 'Medium Radius AE
 - 800 F / - 80 H', 0, 0, 'set:CoreWidgets image:IconMissing', 1, 0, 'Medium', NULL, 'TCM_AERadius', true, false, 'Missile Damage', 0, NULL, NULL);
@@ -1547,7 +1547,7 @@ INSERT INTO effects (effect_id, ability_id, delay, effect_desc, effect_sequence,
 Kinetic Resist Roll', 0, 4, 'set:CoreWidgets image:IconMissing', 1, 0, 'Short', NULL, 'TCM_AERadius', true, false, 'Kinetic Resist Roll', 0, NULL, NULL);
 
 INSERT INTO effects (effect_id, ability_id, delay, effect_desc, effect_sequence, flags, icon_location, pulse_count, pulse_duration, tcm_param1, tcm_param2, target_collection_method, use_ability_velocity, is_channeled, name, target_collection_id, event_set_id, script_name) VALUES (1967, 1622, 0, 'Small Radius AE
-Stun: 5 Seconds', 0, 68, 'set:CoreWidgets image:IconMissing', 1, 5, 'Short', NULL, 'TCM_Single', false, false, 'Flashbang Stun: 5 Seconds', 0, NULL, NULL);
+Stun: 5 Seconds', 0, 68, 'set:CoreWidgets image:IconMissing', 1, 5, 'Short', NULL, 'TCM_Single', false, false, 'Flashbang Stun: 5 Seconds', 0, NULL, 'Stun');
 
 INSERT INTO effects (effect_id, ability_id, delay, effect_desc, effect_sequence, flags, icon_location, pulse_count, pulse_duration, tcm_param1, tcm_param2, target_collection_method, use_ability_velocity, is_channeled, name, target_collection_id, event_set_id, script_name) VALUES (1968, 1622, 1, 'Small Radius AE
 Health Resist Roll', 1, 0, 'set:CoreWidgets image:IconMissing', 1, 0, 'Short', NULL, 'TCM_AERadius', true, false, 'Health Resist Roll', 0, NULL, NULL);
@@ -1936,7 +1936,7 @@ INSERT INTO effects (effect_id, ability_id, delay, effect_desc, effect_sequence,
 INSERT INTO effects (effect_id, ability_id, delay, effect_desc, effect_sequence, flags, icon_location, pulse_count, pulse_duration, tcm_param1, tcm_param2, target_collection_method, use_ability_velocity, is_channeled, name, target_collection_id, event_set_id, script_name) VALUES (3458, 1328, 0, 'Short Radius AE
 -300 F -30 H', 1, 4194304, 'set:CoreWidgets image:IconMissing', 1, 0, 'Short', NULL, 'TCM_AERadius', true, false, 'Direct Damage', 0, NULL, NULL);
 
-INSERT INTO effects (effect_id, ability_id, delay, effect_desc, effect_sequence, flags, icon_location, pulse_count, pulse_duration, tcm_param1, tcm_param2, target_collection_method, use_ability_velocity, is_channeled, name, target_collection_id, event_set_id, script_name) VALUES (3459, 1885, 0, 'Knockdown: 10 Seconds', 0, 70, 'set:CoreWidgets image:IconMissing', 1, 10, 'Melee', NULL, 'TCM_Single', true, false, 'Knockdown', 0, NULL, NULL);
+INSERT INTO effects (effect_id, ability_id, delay, effect_desc, effect_sequence, flags, icon_location, pulse_count, pulse_duration, tcm_param1, tcm_param2, target_collection_method, use_ability_velocity, is_channeled, name, target_collection_id, event_set_id, script_name) VALUES (3459, 1885, 0, 'Knockdown: 10 Seconds', 0, 70, 'set:CoreWidgets image:IconMissing', 1, 10, 'Melee', NULL, 'TCM_Single', true, false, 'Knockdown', 0, NULL, 'Knockdown');
 
 INSERT INTO effects (effect_id, ability_id, delay, effect_desc, effect_sequence, flags, icon_location, pulse_count, pulse_duration, tcm_param1, tcm_param2, target_collection_method, use_ability_velocity, is_channeled, name, target_collection_id, event_set_id, script_name) VALUES (3460, 1885, 1, 'Defensive Grenade Damage:
 - 100 F
@@ -2390,7 +2390,7 @@ INSERT INTO effects (effect_id, ability_id, delay, effect_desc, effect_sequence,
 
 INSERT INTO effects (effect_id, ability_id, delay, effect_desc, effect_sequence, flags, icon_location, pulse_count, pulse_duration, tcm_param1, tcm_param2, target_collection_method, use_ability_velocity, is_channeled, name, target_collection_id, event_set_id, script_name) VALUES (583, 523, 0, 'Melee Radius AE
 Knockdown: 5 seconds
-', 0, 4194372, 'set:CoreWidgets image:IconMissing', 1, 5, 'Melee', NULL, 'TCM_Single', true, false, 'Knockdown - 5 Seconds', 0, NULL, NULL);
+', 0, 4194372, 'set:CoreWidgets image:IconMissing', 1, 5, 'Melee', NULL, 'TCM_Single', true, false, 'Knockdown - 5 Seconds', 0, NULL, 'Knockdown');
 
 INSERT INTO effects (effect_id, ability_id, delay, effect_desc, effect_sequence, flags, icon_location, pulse_count, pulse_duration, tcm_param1, tcm_param2, target_collection_method, use_ability_velocity, is_channeled, name, target_collection_id, event_set_id, script_name) VALUES (590, 525, 5, ' ', 0, 0, 'set:CoreWidgets image:IconMissing', 1, 0, 'Melee', NULL, 'TCM_AERadius', false, false, 'Splash Damage', 0, NULL, NULL);
 
@@ -2400,7 +2400,7 @@ Kinetic Resist Roll', 0, 4194368, 'set:CoreWidgets image:IconMissing', 1, 0, 'Sh
 INSERT INTO effects (effect_id, ability_id, delay, effect_desc, effect_sequence, flags, icon_location, pulse_count, pulse_duration, tcm_param1, tcm_param2, target_collection_method, use_ability_velocity, is_channeled, name, target_collection_id, event_set_id, script_name) VALUES (755, 724, 0, 'Kinetic Resist Roll', 0, 512, 'set:CoreWidgets image:IconMissing', 1, 0, 'Short', NULL, 'TCM_Single', true, false, 'Kinetic Resist Roll', 0, NULL, NULL);
 
 INSERT INTO effects (effect_id, ability_id, delay, effect_desc, effect_sequence, flags, icon_location, pulse_count, pulse_duration, tcm_param1, tcm_param2, target_collection_method, use_ability_velocity, is_channeled, name, target_collection_id, event_set_id, script_name) VALUES (756, 724, 0, 'Small Radius 
-Knockdown: 6 Seconds', 0, 68, 'set:CoreWidgets image:IconMissing', 1, 6, 'Short', NULL, 'TCM_Single', true, false, 'Anti-Personnel Mine AE Knockdown', 0, NULL, NULL);
+Knockdown: 6 Seconds', 0, 68, 'set:CoreWidgets image:IconMissing', 1, 6, 'Short', NULL, 'TCM_Single', true, false, 'Anti-Personnel Mine AE Knockdown', 0, NULL, 'Knockdown');
 
 INSERT INTO effects (effect_id, ability_id, delay, effect_desc, effect_sequence, flags, icon_location, pulse_count, pulse_duration, tcm_param1, tcm_param2, target_collection_method, use_ability_velocity, is_channeled, name, target_collection_id, event_set_id, script_name) VALUES (769, 731, 2, 'Defensive Grenade Damage:
 - 500 F
@@ -2430,7 +2430,7 @@ INSERT INTO effects (effect_id, ability_id, delay, effect_desc, effect_sequence,
 -800F / -80H', 0, 0, 'set:CoreWidgets image:IconMissing', 1, 0, 'Medium', NULL, 'TCM_AERadius', true, false, 'High Explosive Mortar Damage', 0, NULL, NULL);
 
 INSERT INTO effects (effect_id, ability_id, delay, effect_desc, effect_sequence, flags, icon_location, pulse_count, pulse_duration, tcm_param1, tcm_param2, target_collection_method, use_ability_velocity, is_channeled, name, target_collection_id, event_set_id, script_name) VALUES (910, 852, 0, 'Medium Radius AE
-Knockdown: 5 Seconds', 0, 68, 'set:CoreWidgets image:IconMissing', 1, 5, 'Medium', NULL, 'TCM_Single', true, false, 'High Explosive Mortar Knockdown', 0, NULL, NULL);
+Knockdown: 5 Seconds', 0, 68, 'set:CoreWidgets image:IconMissing', 1, 5, 'Medium', NULL, 'TCM_Single', true, false, 'High Explosive Mortar Knockdown', 0, NULL, 'Knockdown');
 
 INSERT INTO effects (effect_id, ability_id, delay, effect_desc, effect_sequence, flags, icon_location, pulse_count, pulse_duration, tcm_param1, tcm_param2, target_collection_method, use_ability_velocity, is_channeled, name, target_collection_id, event_set_id, script_name) VALUES (921, 858, 0, 'Small Radius AE
 +50% Focus Regen: 20 Seconds', 0, 21, 'set:AbilityIcons001 image:Buff_Leadership', 1, 20, 'Short', NULL, 'TCM_AERadius', false, false, 'Leadership AE Buff', 0, NULL, NULL);
@@ -2746,10 +2746,10 @@ INSERT INTO effects (effect_id, ability_id, delay, effect_desc, effect_sequence,
 INSERT INTO effects (effect_id, ability_id, delay, effect_desc, effect_sequence, flags, icon_location, pulse_count, pulse_duration, tcm_param1, tcm_param2, target_collection_method, use_ability_velocity, is_channeled, name, target_collection_id, event_set_id, script_name) VALUES (1460, 855, 0, 'Single Target
 Target Movement Speed-30%', 0, 68, 'set:CoreWidgets image:IconMissing', 1, 15, NULL, NULL, 'TCM_Single', true, false, 'Aimed Shot: Leg Snare', 0, NULL, 'TimedStat');
 
-INSERT INTO effects (effect_id, ability_id, delay, effect_desc, effect_sequence, flags, icon_location, pulse_count, pulse_duration, tcm_param1, tcm_param2, target_collection_method, use_ability_velocity, is_channeled, name, target_collection_id, event_set_id, script_name) VALUES (1461, 774, 0, 'Snare: 10 Seconds', 0, 70, 'set:CoreWidgets image:IconMissing', 1, 10, NULL, NULL, 'TCM_Single', true, false, 'Snare: 10 seconds', 0, NULL, NULL);
+INSERT INTO effects (effect_id, ability_id, delay, effect_desc, effect_sequence, flags, icon_location, pulse_count, pulse_duration, tcm_param1, tcm_param2, target_collection_method, use_ability_velocity, is_channeled, name, target_collection_id, event_set_id, script_name) VALUES (1461, 774, 0, 'Snare: 10 Seconds', 0, 70, 'set:CoreWidgets image:IconMissing', 1, 10, NULL, NULL, 'TCM_Single', true, false, 'Snare: 10 seconds', 0, NULL, 'TimedStat');
 
 INSERT INTO effects (effect_id, ability_id, delay, effect_desc, effect_sequence, flags, icon_location, pulse_count, pulse_duration, tcm_param1, tcm_param2, target_collection_method, use_ability_velocity, is_channeled, name, target_collection_id, event_set_id, script_name) VALUES (1462, 717, 0, 'Single Target
-Snare: 15 Seconds', 1, 68, 'set:AbilityIcons001 image:DD_Snare_Shot', 1, 15, NULL, NULL, 'TCM_Single', true, false, 'Snare: 15 Seconds', 0, NULL, NULL);
+Snare: 15 Seconds', 1, 68, 'set:AbilityIcons001 image:DD_Snare_Shot', 1, 15, NULL, NULL, 'TCM_Single', true, false, 'Snare: 15 Seconds', 0, NULL, 'TimedStat');
 
 INSERT INTO effects (effect_id, ability_id, delay, effect_desc, effect_sequence, flags, icon_location, pulse_count, pulse_duration, tcm_param1, tcm_param2, target_collection_method, use_ability_velocity, is_channeled, name, target_collection_id, event_set_id, script_name) VALUES (1464, 647, 10, 'VFX', 1, 0, 'set:CoreWidgets image:IconMissing', 1, 0, NULL, NULL, 'TCM_Single', true, false, 'Explosion Visual', 0, NULL, NULL);
 
@@ -2825,7 +2825,7 @@ INSERT INTO effects (effect_id, ability_id, delay, effect_desc, effect_sequence,
 Secondary Knockdown: 5 Seconds', 0, 64, 'set:CoreWidgets image:IconMissing', 1, 5, NULL, NULL, 'TCM_Single', true, false, 'Knockdown', 0, NULL, NULL);
 
 INSERT INTO effects (effect_id, ability_id, delay, effect_desc, effect_sequence, flags, icon_location, pulse_count, pulse_duration, tcm_param1, tcm_param2, target_collection_method, use_ability_velocity, is_channeled, name, target_collection_id, event_set_id, script_name) VALUES (1572, 1331, 0, 'Single Target
-Target Knockdown: 5 Seconds', 1, 64, 'set:CoreWidgets image:IconMissing', 1, 5, NULL, NULL, 'TCM_Single', true, false, 'Knockdown', 0, NULL, NULL);
+Target Knockdown: 5 Seconds', 1, 64, 'set:CoreWidgets image:IconMissing', 1, 5, NULL, NULL, 'TCM_Single', true, false, 'Knockdown', 0, NULL, 'Knockdown');
 
 INSERT INTO effects (effect_id, ability_id, delay, effect_desc, effect_sequence, flags, icon_location, pulse_count, pulse_duration, tcm_param1, tcm_param2, target_collection_method, use_ability_velocity, is_channeled, name, target_collection_id, event_set_id, script_name) VALUES (1573, 1331, 0, 'Single Target
 Target Kinetic Resist Roll', 1, 64, 'set:CoreWidgets image:IconMissing', 1, 0, NULL, NULL, 'TCM_Single', true, false, 'Kinetic Resist Roll', 0, NULL, NULL);
@@ -2846,7 +2846,7 @@ INSERT INTO effects (effect_id, ability_id, delay, effect_desc, effect_sequence,
 Kinetic Resist Roll', 1, 0, 'set:CoreWidgets image:IconMissing', 1, 0, NULL, NULL, 'TCM_Single', true, false, 'Kinetic Resist Roll', 0, NULL, NULL);
 
 INSERT INTO effects (effect_id, ability_id, delay, effect_desc, effect_sequence, flags, icon_location, pulse_count, pulse_duration, tcm_param1, tcm_param2, target_collection_method, use_ability_velocity, is_channeled, name, target_collection_id, event_set_id, script_name) VALUES (1599, 1355, 0, 'Target
-Stun: 5 seconds', 1, 64, 'set:CoreWidgets image:IconMissing', 1, 5, NULL, NULL, 'TCM_Single', true, false, 'Stun: 5 Seconds', 0, NULL, NULL);
+Stun: 5 seconds', 1, 64, 'set:CoreWidgets image:IconMissing', 1, 5, NULL, NULL, 'TCM_Single', true, false, 'Stun: 5 Seconds', 0, NULL, 'Stun');
 
 INSERT INTO effects (effect_id, ability_id, delay, effect_desc, effect_sequence, flags, icon_location, pulse_count, pulse_duration, tcm_param1, tcm_param2, target_collection_method, use_ability_velocity, is_channeled, name, target_collection_id, event_set_id, script_name) VALUES (1600, 1356, 0, 'Target
 -300F / -30H', 0, 0, 'set:CoreWidgets image:IconMissing', 1, 0, NULL, NULL, 'TCM_Single', false, false, 'Direct Damage', 0, NULL, NULL);
@@ -2886,7 +2886,7 @@ Secondary Target', 0, 76, 'set:CoreWidgets image:IconMissing', 4, 5, NULL, NULL,
 INSERT INTO effects (effect_id, ability_id, delay, effect_desc, effect_sequence, flags, icon_location, pulse_count, pulse_duration, tcm_param1, tcm_param2, target_collection_method, use_ability_velocity, is_channeled, name, target_collection_id, event_set_id, script_name) VALUES (1616, 1142, 0, 'Single Target
 Secondary Target', 0, 64, 'set:CoreWidgets image:IconMissing', 1, 0, NULL, NULL, 'TCM_Single', true, false, 'Mental Resist Check', 0, NULL, NULL);
 
-INSERT INTO effects (effect_id, ability_id, delay, effect_desc, effect_sequence, flags, icon_location, pulse_count, pulse_duration, tcm_param1, tcm_param2, target_collection_method, use_ability_velocity, is_channeled, name, target_collection_id, event_set_id, script_name) VALUES (1617, 1364, 0, 'Knockdown: 6 seconds', 0, 262, 'set:AbilityIcons001 image:AOE_Denial_of_Area', 1, 6, NULL, NULL, 'TCM_Single', true, false, 'Knockdown', 0, NULL, NULL);
+INSERT INTO effects (effect_id, ability_id, delay, effect_desc, effect_sequence, flags, icon_location, pulse_count, pulse_duration, tcm_param1, tcm_param2, target_collection_method, use_ability_velocity, is_channeled, name, target_collection_id, event_set_id, script_name) VALUES (1617, 1364, 0, 'Knockdown: 6 seconds', 0, 262, 'set:AbilityIcons001 image:AOE_Denial_of_Area', 1, 6, NULL, NULL, 'TCM_Single', true, false, 'Knockdown', 0, NULL, 'Knockdown');
 
 INSERT INTO effects (effect_id, ability_id, delay, effect_desc, effect_sequence, flags, icon_location, pulse_count, pulse_duration, tcm_param1, tcm_param2, target_collection_method, use_ability_velocity, is_channeled, name, target_collection_id, event_set_id, script_name) VALUES (1619, 1364, 1, 'VFX 2', 2, 0, 'set:CoreWidgets image:IconMissing', 1, 0, NULL, NULL, 'TCM_Single', true, false, 'VFX 2', 0, NULL, NULL);
 
@@ -3800,7 +3800,7 @@ INSERT INTO effects (effect_id, ability_id, delay, effect_desc, effect_sequence,
 
 INSERT INTO effects (effect_id, ability_id, delay, effect_desc, effect_sequence, flags, icon_location, pulse_count, pulse_duration, tcm_param1, tcm_param2, target_collection_method, use_ability_velocity, is_channeled, name, target_collection_id, event_set_id, script_name) VALUES (2607, 856, 0, 'Kinetic Resist', 0, 64, 'set:CoreWidgets image:IconMissing', 1, 0, NULL, NULL, 'TCM_Single', true, false, 'Kinetic Resist Roll', 0, NULL, NULL);
 
-INSERT INTO effects (effect_id, ability_id, delay, effect_desc, effect_sequence, flags, icon_location, pulse_count, pulse_duration, tcm_param1, tcm_param2, target_collection_method, use_ability_velocity, is_channeled, name, target_collection_id, event_set_id, script_name) VALUES (2608, 856, 0, 'Knockdown: 5 seconds', 0, 70, 'set:CoreWidgets image:IconMissing', 1, 5, NULL, NULL, 'TCM_Single', true, false, 'Knockdown', 0, NULL, NULL);
+INSERT INTO effects (effect_id, ability_id, delay, effect_desc, effect_sequence, flags, icon_location, pulse_count, pulse_duration, tcm_param1, tcm_param2, target_collection_method, use_ability_velocity, is_channeled, name, target_collection_id, event_set_id, script_name) VALUES (2608, 856, 0, 'Knockdown: 5 seconds', 0, 70, 'set:CoreWidgets image:IconMissing', 1, 5, NULL, NULL, 'TCM_Single', true, false, 'Knockdown', 0, NULL, 'Knockdown');
 
 INSERT INTO effects (effect_id, ability_id, delay, effect_desc, effect_sequence, flags, icon_location, pulse_count, pulse_duration, tcm_param1, tcm_param2, target_collection_method, use_ability_velocity, is_channeled, name, target_collection_id, event_set_id, script_name) VALUES (2609, 1996, 0, 'Template setup for Effect abilities', 0, 16, 'set:CoreWidgets image:IconMissing', 1, 0, NULL, NULL, 'TCM_Single', false, false, 'Effect on Target', 0, NULL, NULL);
 
@@ -3816,7 +3816,7 @@ INSERT INTO effects (effect_id, ability_id, delay, effect_desc, effect_sequence,
 
 INSERT INTO effects (effect_id, ability_id, delay, effect_desc, effect_sequence, flags, icon_location, pulse_count, pulse_duration, tcm_param1, tcm_param2, target_collection_method, use_ability_velocity, is_channeled, name, target_collection_id, event_set_id, script_name) VALUES (2618, 2001, 0, 'Kinetic Resist Roll', 0, 64, 'set:CoreWidgets image:IconMissing', 1, 0, NULL, NULL, 'TCM_Single', true, false, 'Kinetic Resist', 0, NULL, NULL);
 
-INSERT INTO effects (effect_id, ability_id, delay, effect_desc, effect_sequence, flags, icon_location, pulse_count, pulse_duration, tcm_param1, tcm_param2, target_collection_method, use_ability_velocity, is_channeled, name, target_collection_id, event_set_id, script_name) VALUES (2619, 2001, 0, 'Knockdown: 3 Seconds', 0, 64, 'set:CoreWidgets image:IconMissing', 1, 3, NULL, NULL, 'TCM_Single', true, false, 'Knockdown', 0, NULL, NULL);
+INSERT INTO effects (effect_id, ability_id, delay, effect_desc, effect_sequence, flags, icon_location, pulse_count, pulse_duration, tcm_param1, tcm_param2, target_collection_method, use_ability_velocity, is_channeled, name, target_collection_id, event_set_id, script_name) VALUES (2619, 2001, 0, 'Knockdown: 3 Seconds', 0, 64, 'set:CoreWidgets image:IconMissing', 1, 3, NULL, NULL, 'TCM_Single', true, false, 'Knockdown', 0, NULL, 'Knockdown');
 
 INSERT INTO effects (effect_id, ability_id, delay, effect_desc, effect_sequence, flags, icon_location, pulse_count, pulse_duration, tcm_param1, tcm_param2, target_collection_method, use_ability_velocity, is_channeled, name, target_collection_id, event_set_id, script_name) VALUES (2621, 2002, 0, 'Template setup for Effect abilities', 0, 16, 'set:CoreWidgets image:IconMissing', 1, 0, NULL, NULL, 'TCM_Single', false, false, 'Effect on Target', 0, NULL, NULL);
 
@@ -3907,7 +3907,7 @@ INSERT INTO effects (effect_id, ability_id, delay, effect_desc, effect_sequence,
 INSERT INTO effects (effect_id, ability_id, delay, effect_desc, effect_sequence, flags, icon_location, pulse_count, pulse_duration, tcm_param1, tcm_param2, target_collection_method, use_ability_velocity, is_channeled, name, target_collection_id, event_set_id, script_name) VALUES (2668, 2025, 0, 'Kinetic Resist', 0, 64, 'set:CoreWidgets image:IconMissing', 1, 0, NULL, NULL, 'TCM_Single', true, false, 'Kinetic Resist', 0, NULL, NULL);
 
 INSERT INTO effects (effect_id, ability_id, delay, effect_desc, effect_sequence, flags, icon_location, pulse_count, pulse_duration, tcm_param1, tcm_param2, target_collection_method, use_ability_velocity, is_channeled, name, target_collection_id, event_set_id, script_name) VALUES (2669, 2025, 0, 'Knockdown:
-5 Seconds', 0, 64, 'set:CoreWidgets image:IconMissing', 1, 5, NULL, NULL, 'TCM_Single', true, false, 'Knockdown', 0, NULL, NULL);
+5 Seconds', 0, 64, 'set:CoreWidgets image:IconMissing', 1, 5, NULL, NULL, 'TCM_Single', true, false, 'Knockdown', 0, NULL, 'Knockdown');
 
 INSERT INTO effects (effect_id, ability_id, delay, effect_desc, effect_sequence, flags, icon_location, pulse_count, pulse_duration, tcm_param1, tcm_param2, target_collection_method, use_ability_velocity, is_channeled, name, target_collection_id, event_set_id, script_name) VALUES (2671, 2026, 0, 'Explosion VFX', 1, 0, 'set:CoreWidgets image:IconMissing', 1, 0, NULL, NULL, 'TCM_Single', true, false, 'Ground Blast VFX', 0, NULL, NULL);
 
@@ -4001,7 +4001,7 @@ INSERT INTO effects (effect_id, ability_id, delay, effect_desc, effect_sequence,
 INSERT INTO effects (effect_id, ability_id, delay, effect_desc, effect_sequence, flags, icon_location, pulse_count, pulse_duration, tcm_param1, tcm_param2, target_collection_method, use_ability_velocity, is_channeled, name, target_collection_id, event_set_id, script_name) VALUES (2735, 2063, 0, 'Single Target
 Confusion: 20 Seconds', 0, 68, 'set:AbilityIcons001 image:Buff_Steadfast', 1, 20, NULL, NULL, 'TCM_Single', true, false, 'Induce Rebellion: Humanoid Confusion', 0, NULL, NULL);
 
-INSERT INTO effects (effect_id, ability_id, delay, effect_desc, effect_sequence, flags, icon_location, pulse_count, pulse_duration, tcm_param1, tcm_param2, target_collection_method, use_ability_velocity, is_channeled, name, target_collection_id, event_set_id, script_name) VALUES (2736, 1638, 0, 'Stun: 5 seconds', 0, 68, 'set:CoreWidgets image:IconMissing', 1, 5, NULL, NULL, 'TCM_Single', true, false, 'Stun: 5 seconds', 0, NULL, NULL);
+INSERT INTO effects (effect_id, ability_id, delay, effect_desc, effect_sequence, flags, icon_location, pulse_count, pulse_duration, tcm_param1, tcm_param2, target_collection_method, use_ability_velocity, is_channeled, name, target_collection_id, event_set_id, script_name) VALUES (2736, 1638, 0, 'Stun: 5 seconds', 0, 68, 'set:CoreWidgets image:IconMissing', 1, 5, NULL, NULL, 'TCM_Single', true, false, 'Stun: 5 seconds', 0, NULL, 'Stun');
 
 INSERT INTO effects (effect_id, ability_id, delay, effect_desc, effect_sequence, flags, icon_location, pulse_count, pulse_duration, tcm_param1, tcm_param2, target_collection_method, use_ability_velocity, is_channeled, name, target_collection_id, event_set_id, script_name) VALUES (2739, 2065, 0, 'Explosion VFX', 1, 0, 'set:CoreWidgets image:IconMissing', 1, 0, NULL, NULL, 'TCM_Single', true, false, 'Ground Blast VFX', 0, NULL, NULL);
 
@@ -4021,7 +4021,7 @@ Target Kinetic Resist Check', 0, 64, 'set:CoreWidgets image:IconMissing', 1, 0, 
 
 INSERT INTO effects (effect_id, ability_id, delay, effect_desc, effect_sequence, flags, icon_location, pulse_count, pulse_duration, tcm_param1, tcm_param2, target_collection_method, use_ability_velocity, is_channeled, name, target_collection_id, event_set_id, script_name) VALUES (2747, 2069, 0, 'F-150 H-15', 1, 0, 'set:CoreWidgets image:IconMissing', 1, 0, NULL, NULL, 'TCM_Single', true, false, 'Disintegration Damage (First Wave)', 0, NULL, NULL);
 
-INSERT INTO effects (effect_id, ability_id, delay, effect_desc, effect_sequence, flags, icon_location, pulse_count, pulse_duration, tcm_param1, tcm_param2, target_collection_method, use_ability_velocity, is_channeled, name, target_collection_id, event_set_id, script_name) VALUES (2748, 2069, 0, 'Stun: 5 Seconds', 0, 68, 'set:CoreWidgets image:IconMissing', 1, 5, NULL, NULL, 'TCM_Single', true, false, 'Stun', 0, NULL, NULL);
+INSERT INTO effects (effect_id, ability_id, delay, effect_desc, effect_sequence, flags, icon_location, pulse_count, pulse_duration, tcm_param1, tcm_param2, target_collection_method, use_ability_velocity, is_channeled, name, target_collection_id, event_set_id, script_name) VALUES (2748, 2069, 0, 'Stun: 5 Seconds', 0, 68, 'set:CoreWidgets image:IconMissing', 1, 5, NULL, NULL, 'TCM_Single', true, false, 'Stun', 0, NULL, 'Stun');
 
 INSERT INTO effects (effect_id, ability_id, delay, effect_desc, effect_sequence, flags, icon_location, pulse_count, pulse_duration, tcm_param1, tcm_param2, target_collection_method, use_ability_velocity, is_channeled, name, target_collection_id, event_set_id, script_name) VALUES (2749, 2069, 0, 'Single Target
 ', 0, 0, 'set:CoreWidgets image:IconMissing', 1, 0, NULL, NULL, 'TCM_Single', true, false, 'Pulse Count = 1', 0, NULL, NULL);
@@ -4915,7 +4915,7 @@ INSERT INTO effects (effect_id, ability_id, delay, effect_desc, effect_sequence,
 
 INSERT INTO effects (effect_id, ability_id, delay, effect_desc, effect_sequence, flags, icon_location, pulse_count, pulse_duration, tcm_param1, tcm_param2, target_collection_method, use_ability_velocity, is_channeled, name, target_collection_id, event_set_id, script_name) VALUES (3523, 1373, 0, 'Damages unit for 5% of health if their health is greater than 200.', 1, 524304, 'set:AbilityIcons001 image:DD_Disruption_Shot', 0, 5, NULL, NULL, 'TCM_Single', false, false, 'Stasis Sickness - Stage 2 (high health) w/ Icon', 0, NULL, NULL);
 
-INSERT INTO effects (effect_id, ability_id, delay, effect_desc, effect_sequence, flags, icon_location, pulse_count, pulse_duration, tcm_param1, tcm_param2, target_collection_method, use_ability_velocity, is_channeled, name, target_collection_id, event_set_id, script_name) VALUES (3525, 1621, 0, '4 second Stun', 0, 326, 'set:CoreWidgets image:IconMissing', 1, 4, NULL, NULL, 'TCM_Single', true, false, 'Paralyze Stun', 0, NULL, NULL);
+INSERT INTO effects (effect_id, ability_id, delay, effect_desc, effect_sequence, flags, icon_location, pulse_count, pulse_duration, tcm_param1, tcm_param2, target_collection_method, use_ability_velocity, is_channeled, name, target_collection_id, event_set_id, script_name) VALUES (3525, 1621, 0, '4 second Stun', 0, 326, 'set:CoreWidgets image:IconMissing', 1, 4, NULL, NULL, 'TCM_Single', true, false, 'Paralyze Stun', 0, NULL, 'Stun');
 
 INSERT INTO effects (effect_id, ability_id, delay, effect_desc, effect_sequence, flags, icon_location, pulse_count, pulse_duration, tcm_param1, tcm_param2, target_collection_method, use_ability_velocity, is_channeled, name, target_collection_id, event_set_id, script_name) VALUES (3526, 2426, 0, 'Damage for Burst', 0, 512, 'set:CoreWidgets image:IconMissing', 1, 0, NULL, NULL, 'TCM_Single', true, false, 'Burst Damage', 0, NULL, NULL);
 
@@ -5452,7 +5452,7 @@ INSERT INTO effects (effect_id, ability_id, delay, effect_desc, effect_sequence,
 
 INSERT INTO effects (effect_id, ability_id, delay, effect_desc, effect_sequence, flags, icon_location, pulse_count, pulse_duration, tcm_param1, tcm_param2, target_collection_method, use_ability_velocity, is_channeled, name, target_collection_id, event_set_id, script_name) VALUES (4123, 2841, 0, 'Kinetic Resist', 0, 0, 'set:CoreWidgets image:IconMissing', 1, 0, NULL, NULL, 'TCM_Single', true, false, 'Kinetic Resist', 0, NULL, NULL);
 
-INSERT INTO effects (effect_id, ability_id, delay, effect_desc, effect_sequence, flags, icon_location, pulse_count, pulse_duration, tcm_param1, tcm_param2, target_collection_method, use_ability_velocity, is_channeled, name, target_collection_id, event_set_id, script_name) VALUES (4124, 2841, 0, 'Stun: 5 seconds', 0, 64, 'set:CoreWidgets image:IconMissing', 1, 5, NULL, NULL, 'TCM_Single', true, false, 'Stun', 0, NULL, NULL);
+INSERT INTO effects (effect_id, ability_id, delay, effect_desc, effect_sequence, flags, icon_location, pulse_count, pulse_duration, tcm_param1, tcm_param2, target_collection_method, use_ability_velocity, is_channeled, name, target_collection_id, event_set_id, script_name) VALUES (4124, 2841, 0, 'Stun: 5 seconds', 0, 64, 'set:CoreWidgets image:IconMissing', 1, 5, NULL, NULL, 'TCM_Single', true, false, 'Stun', 0, NULL, 'Stun');
 
 INSERT INTO effects (effect_id, ability_id, delay, effect_desc, effect_sequence, flags, icon_location, pulse_count, pulse_duration, tcm_param1, tcm_param2, target_collection_method, use_ability_velocity, is_channeled, name, target_collection_id, event_set_id, script_name) VALUES (4125, 2841, 0, 'Explosion VFX', 1, 0, 'set:CoreWidgets image:IconMissing', 1, 0, NULL, NULL, 'TCM_Single', true, false, 'Ground Blast VFX', 0, NULL, NULL);
 
@@ -5507,7 +5507,7 @@ INSERT INTO effects (effect_id, ability_id, delay, effect_desc, effect_sequence,
 
 INSERT INTO effects (effect_id, ability_id, delay, effect_desc, effect_sequence, flags, icon_location, pulse_count, pulse_duration, tcm_param1, tcm_param2, target_collection_method, use_ability_velocity, is_channeled, name, target_collection_id, event_set_id, script_name) VALUES (4149, 2857, 0, 'Kinetic Resist', 0, 64, 'set:CoreWidgets image:IconMissing', 1, 0, NULL, NULL, 'TCM_Single', true, false, 'Kinetic Resist ', 0, NULL, NULL);
 
-INSERT INTO effects (effect_id, ability_id, delay, effect_desc, effect_sequence, flags, icon_location, pulse_count, pulse_duration, tcm_param1, tcm_param2, target_collection_method, use_ability_velocity, is_channeled, name, target_collection_id, event_set_id, script_name) VALUES (4150, 2857, 0, '10 second Snare', 0, 326, 'set:CoreWidgets image:IconMissing', 1, 10, NULL, NULL, 'TCM_Single', true, false, 'Crippling Slash Snare', 0, NULL, NULL);
+INSERT INTO effects (effect_id, ability_id, delay, effect_desc, effect_sequence, flags, icon_location, pulse_count, pulse_duration, tcm_param1, tcm_param2, target_collection_method, use_ability_velocity, is_channeled, name, target_collection_id, event_set_id, script_name) VALUES (4150, 2857, 0, '10 second Snare', 0, 326, 'set:CoreWidgets image:IconMissing', 1, 10, NULL, NULL, 'TCM_Single', true, false, 'Crippling Slash Snare', 0, NULL, 'TimedStat');
 
 INSERT INTO effects (effect_id, ability_id, delay, effect_desc, effect_sequence, flags, icon_location, pulse_count, pulse_duration, tcm_param1, tcm_param2, target_collection_method, use_ability_velocity, is_channeled, name, target_collection_id, event_set_id, script_name) VALUES (4151, 1623, 0, 'Knockdown: 4 Seconds', 0, 70, 'set:CoreWidgets image:IconMissing', 1, 4, NULL, NULL, 'TCM_Single', true, false, 'Knockdown', 0, NULL, NULL);
 
@@ -6445,7 +6445,7 @@ INSERT INTO effects (effect_id, ability_id, delay, effect_desc, effect_sequence,
 
 INSERT INTO effects (effect_id, ability_id, delay, effect_desc, effect_sequence, flags, icon_location, pulse_count, pulse_duration, tcm_param1, tcm_param2, target_collection_method, use_ability_velocity, is_channeled, name, target_collection_id, event_set_id, script_name) VALUES (4761, 3243, 0, 'Third induction bar', 0, 96, 'set:CoreWidgets image:IconMissing', 1, 5, NULL, NULL, 'TCM_Single', true, false, 'Coaxing a Flame', 0, NULL, NULL);
 
-INSERT INTO effects (effect_id, ability_id, delay, effect_desc, effect_sequence, flags, icon_location, pulse_count, pulse_duration, tcm_param1, tcm_param2, target_collection_method, use_ability_velocity, is_channeled, name, target_collection_id, event_set_id, script_name) VALUES (4763, 1548, 0, 'Knockdown: 4 seconds', 0, 326, 'set:CoreWidgets image:IconMissing', 1, 4, NULL, NULL, 'TCM_Single', true, false, 'Knockdown', 0, NULL, NULL);
+INSERT INTO effects (effect_id, ability_id, delay, effect_desc, effect_sequence, flags, icon_location, pulse_count, pulse_duration, tcm_param1, tcm_param2, target_collection_method, use_ability_velocity, is_channeled, name, target_collection_id, event_set_id, script_name) VALUES (4763, 1548, 0, 'Knockdown: 4 seconds', 0, 326, 'set:CoreWidgets image:IconMissing', 1, 4, NULL, NULL, 'TCM_Single', true, false, 'Knockdown', 0, NULL, 'Knockdown');
 
 INSERT INTO effects (effect_id, ability_id, delay, effect_desc, effect_sequence, flags, icon_location, pulse_count, pulse_duration, tcm_param1, tcm_param2, target_collection_method, use_ability_velocity, is_channeled, name, target_collection_id, event_set_id, script_name) VALUES (4764, 1556, 0, 'Single Target
 Disorient: 20 Seconds', 0, 334, 'set:CoreWidgets image:IconMissing', 20, 1, NULL, NULL, 'TCM_Single', true, false, 'Reduce Processes: Mechanical Disorient', 0, NULL, NULL);
@@ -6594,7 +6594,7 @@ INSERT INTO effects (effect_id, ability_id, delay, effect_desc, effect_sequence,
 
 INSERT INTO effects (effect_id, ability_id, delay, effect_desc, effect_sequence, flags, icon_location, pulse_count, pulse_duration, tcm_param1, tcm_param2, target_collection_method, use_ability_velocity, is_channeled, name, target_collection_id, event_set_id, script_name) VALUES (4834, 1535, 0, 'Kinetic resist', 0, 64, 'set:CoreWidgets image:IconMissing', 1, 0, NULL, NULL, 'TCM_Single', true, false, 'Kinetic Resist', 0, NULL, NULL);
 
-INSERT INTO effects (effect_id, ability_id, delay, effect_desc, effect_sequence, flags, icon_location, pulse_count, pulse_duration, tcm_param1, tcm_param2, target_collection_method, use_ability_velocity, is_channeled, name, target_collection_id, event_set_id, script_name) VALUES (4835, 1535, 0, 'Knockdown 3 seconds', 0, 320, 'set:CoreWidgets image:IconMissing', 1, 3, NULL, NULL, 'TCM_Single', true, false, 'Knockdown', 0, NULL, NULL);
+INSERT INTO effects (effect_id, ability_id, delay, effect_desc, effect_sequence, flags, icon_location, pulse_count, pulse_duration, tcm_param1, tcm_param2, target_collection_method, use_ability_velocity, is_channeled, name, target_collection_id, event_set_id, script_name) VALUES (4835, 1535, 0, 'Knockdown 3 seconds', 0, 320, 'set:CoreWidgets image:IconMissing', 1, 3, NULL, NULL, 'TCM_Single', true, false, 'Knockdown', 0, NULL, 'Knockdown');
 
 INSERT INTO effects (effect_id, ability_id, delay, effect_desc, effect_sequence, flags, icon_location, pulse_count, pulse_duration, tcm_param1, tcm_param2, target_collection_method, use_ability_velocity, is_channeled, name, target_collection_id, event_set_id, script_name) VALUES (4836, 3260, 0, 'Mental Resist check', 0, 0, 'set:CoreWidgets image:IconMissing', 1, 0, NULL, NULL, 'TCM_Single', true, false, 'Mental Resist', 0, NULL, NULL);
 
@@ -7327,7 +7327,7 @@ INSERT INTO effects (effect_id, ability_id, delay, effect_desc, effect_sequence,
 
 INSERT INTO effects (effect_id, ability_id, delay, effect_desc, effect_sequence, flags, icon_location, pulse_count, pulse_duration, tcm_param1, tcm_param2, target_collection_method, use_ability_velocity, is_channeled, name, target_collection_id, event_set_id, script_name) VALUES (5307, 1984, 0, 'Kinetic Resist', 0, 64, 'set:CoreWidgets image:IconMissing', 1, 0, NULL, NULL, 'TCM_Single', true, false, 'Kinetic Resist', 0, NULL, NULL);
 
-INSERT INTO effects (effect_id, ability_id, delay, effect_desc, effect_sequence, flags, icon_location, pulse_count, pulse_duration, tcm_param1, tcm_param2, target_collection_method, use_ability_velocity, is_channeled, name, target_collection_id, event_set_id, script_name) VALUES (5308, 1984, 0, '3 second Knockdown', 0, 70, 'set:CoreWidgets image:IconMissing', 1, 3, NULL, NULL, 'TCM_Single', true, false, 'Knockdown', 0, NULL, NULL);
+INSERT INTO effects (effect_id, ability_id, delay, effect_desc, effect_sequence, flags, icon_location, pulse_count, pulse_duration, tcm_param1, tcm_param2, target_collection_method, use_ability_velocity, is_channeled, name, target_collection_id, event_set_id, script_name) VALUES (5308, 1984, 0, '3 second Knockdown', 0, 70, 'set:CoreWidgets image:IconMissing', 1, 3, NULL, NULL, 'TCM_Single', true, false, 'Knockdown', 0, NULL, 'Knockdown');
 
 INSERT INTO effects (effect_id, ability_id, delay, effect_desc, effect_sequence, flags, icon_location, pulse_count, pulse_duration, tcm_param1, tcm_param2, target_collection_method, use_ability_velocity, is_channeled, name, target_collection_id, event_set_id, script_name) VALUES (531, 470, 0, ' ', 0, 0, 'set:CoreWidgets image:IconMissing', 1, 0, NULL, NULL, 'TCM_Single', false, false, 'Kismet Test damage', 0, NULL, NULL);
 
@@ -7450,7 +7450,7 @@ INSERT INTO effects (effect_id, ability_id, delay, effect_desc, effect_sequence,
 INSERT INTO effects (effect_id, ability_id, delay, effect_desc, effect_sequence, flags, icon_location, pulse_count, pulse_duration, tcm_param1, tcm_param2, target_collection_method, use_ability_velocity, is_channeled, name, target_collection_id, event_set_id, script_name) VALUES (722, 657, 0, 'Single Target
 -100F / -10H', 0, 0, 'set:CoreWidgets image:IconMissing', 1, 0, NULL, NULL, 'TCM_Single', false, false, 'Interrupting Shot Damage', 0, NULL, NULL);
 
-INSERT INTO effects (effect_id, ability_id, delay, effect_desc, effect_sequence, flags, icon_location, pulse_count, pulse_duration, tcm_param1, tcm_param2, target_collection_method, use_ability_velocity, is_channeled, name, target_collection_id, event_set_id, script_name) VALUES (723, 657, 0, 'Interrupts target', 0, 512, 'set:CoreWidgets image:IconMissing', 1, 0, NULL, NULL, 'TCM_Single', true, false, 'Interrupting Shot Interruption', 0, NULL, NULL);
+INSERT INTO effects (effect_id, ability_id, delay, effect_desc, effect_sequence, flags, icon_location, pulse_count, pulse_duration, tcm_param1, tcm_param2, target_collection_method, use_ability_velocity, is_channeled, name, target_collection_id, event_set_id, script_name) VALUES (723, 657, 0, 'Interrupts target', 0, 512, 'set:CoreWidgets image:IconMissing', 1, 0, NULL, NULL, 'TCM_Single', true, false, 'Interrupting Shot Interruption', 0, NULL, 'Interrupt');
 
 INSERT INTO effects (effect_id, ability_id, delay, effect_desc, effect_sequence, flags, icon_location, pulse_count, pulse_duration, tcm_param1, tcm_param2, target_collection_method, use_ability_velocity, is_channeled, name, target_collection_id, event_set_id, script_name) VALUES (726, 659, 0, 'Single Target
 -100F / -10H', 1, 0, 'set:CoreWidgets image:IconMissing', 1, 0, NULL, NULL, 'TCM_Single', true, false, 'Direct Damage', 0, NULL, NULL);

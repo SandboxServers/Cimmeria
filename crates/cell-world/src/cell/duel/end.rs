@@ -209,7 +209,18 @@ pub async fn end_engaged(
             send_pvp_flag(tx, mgr, to, false, duel_id).await;
             send_duel_entities_clear(tx, to, duel_id).await;
             effects_removed[i] = super::effects::strip_from(tx, mgr, my_eid, other_eid).await;
-            if let Some(state) = combat::exit(mgr, my_eid, other_eid) {
+            // A partner's stun released by the strip, and the combat exit:
+            // one onStateFieldUpdate with the final value.
+            let ledger_changed = mgr
+                .get_entity_mut(my_eid)
+                .and_then(|e| e.take_ledger_state_change())
+                .is_some();
+            let state = combat::exit(mgr, my_eid, other_eid).or_else(|| {
+                ledger_changed
+                    .then(|| mgr.get_entity(my_eid).map(|e| e.state_field))
+                    .flatten()
+            });
+            if let Some(state) = state {
                 send_state_field(tx, mgr, to, state, duel_id).await;
             }
             cleared[i] = true;

@@ -66,6 +66,7 @@ fn fill(mgr: &mut SpaceManager) {
             moniker_ids: vec![],
             stats: vec![],
             absorb: vec![(ABSORB_PHYSICAL, 1000)],
+            state_flags: 0,
             duration_secs: Some(30.0),
             stacking: TimedStacking::PerSource,
             invoker_identity: Default::default(),

@@ -36,6 +36,12 @@
 //! debuff on a 0/0/0 stat end at 0/0/0 whichever expires first; undoing
 //! each entry's own bound shift would clamp the debuff's revert when the
 //! buff's widened `max` went first.
+//!
+//! **State flags** (ability-mechanics AB-09). An entry may also hold
+//! `state_field` bits, a stun's `BSF_MovementLock`: one counted reference
+//! per bit, taken when the entry goes on and released when it comes off,
+//! however many times its script re-applies it. `stat_buff_flags.rs` has
+//! the arithmetic.
 
 use std::time::{Duration, Instant};
 
@@ -87,6 +93,11 @@ pub enum TimedStacking {
     /// Decision 28's stimpack rule: the new entry first takes off every
     /// entry, from any source, that moves one of its stats.
     ReplaceSameStat,
+    /// One entry per `effect_id` on the entity, whoever applied it: a second
+    /// shooter refreshes the first one's entry instead of stacking. The
+    /// Tranquilizer dart's slow (`MovementSlow`) keeps its one-slow-per-dart
+    /// rule this way.
+    PerEffect,
 }
 
 /// One timed (or held) effect on one entity.
@@ -110,6 +121,10 @@ pub struct TimedEffect {
     /// by damage, taken back off their stats when the entry comes off.
     /// Empty for every other entry.
     pub absorb: Vec<AbsorbPool>,
+    /// `state_field` bits (`BSF_*`) the entry holds one counted reference on
+    /// each, for its whole life: a stun's `BSF_MovementLock`. See
+    /// `stat_buff_flags.rs`. 0 for a stat-only entry.
+    pub state_flags: u32,
     /// Its full length in seconds (the effect's `pulse_duration`); 0 for a
     /// held entry.
     pub duration_secs: f32,
@@ -152,7 +167,7 @@ impl TimedEffect {
 }
 
 /// What a caller asks [`CellEntity::apply_timed_effect`] to apply.
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Default)]
 pub struct TimedEffectSpec {
     pub effect_id: i32,
     pub ability_id: i32,
@@ -164,6 +179,10 @@ pub struct TimedEffectSpec {
     /// A shield's `(absorb stat_id, amount)` pools (AB-10). Empty for every
     /// other entry.
     pub absorb: Vec<(i32, i32)>,
+    /// `state_field` bits the entry holds while it lives (a stun's
+    /// `BSF_MovementLock`); 0 for none. A spec with flags and no stats is a
+    /// valid entry.
+    pub state_flags: u32,
     /// Seconds until it lapses, or `None` to hold it until removed.
     pub duration_secs: Option<f32>,
     pub stacking: TimedStacking,
@@ -191,12 +210,19 @@ pub struct StatBuffLedger {
     /// `(stat_id, min, max)`: each stat's own bounds, recorded when the
     /// first entry touched it and restored when the last one comes off.
     pub baselines: Vec<(i32, i32, i32)>,
+    /// The entity's `state_field` before the first entry flag change the
+    /// client has not been told about, or `None` when there is none. The
+    /// flush compares it with the current value, so a refresh that drops
+    /// and retakes a bit in one call sends nothing.
+    pub state_field_before: Option<u32>,
 }
 
 impl StatBuffLedger {
     /// Whether nothing is active or owed.
     pub fn is_idle(&self) -> bool {
-        self.entries.is_empty() && self.pending_timer_clears.is_empty()
+        self.entries.is_empty()
+            && self.pending_timer_clears.is_empty()
+            && self.state_field_before.is_none()
     }
 
     /// Icons on one side of the client's effect bar: the distinct effects
@@ -292,6 +318,7 @@ impl CellEntity {
         }
         let replaced = self.remove_timed_effects_where(|e| {
             e.key() == key
+                || (spec.stacking == TimedStacking::PerEffect && e.effect_id == spec.effect_id)
                 || (spec.stacking == TimedStacking::ReplaceSameStat
                     && present.iter().any(|&(stat, _)| e.moves(stat)))
         });
@@ -315,6 +342,7 @@ impl CellEntity {
             moniker_ids: spec.moniker_ids,
             stats,
             absorb,
+            state_flags: spec.state_flags,
             duration_secs: spec.duration_secs.unwrap_or(0.0).max(0.0),
             expires_at: spec
                 .duration_secs
@@ -323,6 +351,9 @@ impl CellEntity {
             invoker_identity: spec.invoker_identity,
         };
         self.stat_buffs.entries.push(applied.clone());
+        // After the replaced entries released theirs: a refresh drops the
+        // bit and takes it straight back, one reference either way.
+        self.hold_ledger_flags(applied.state_flags);
         // The effect's icon is live again: a clear owed for it is superseded,
         // and the start is re-sent with the latest expiry of its entries.
         self.stat_buffs
@@ -349,6 +380,7 @@ impl CellEntity {
             self.unshift_ledger_stat(s.stat_id, s.requested);
         }
         self.release_absorb(&entry);
+        self.release_ledger_flags(entry.state_flags);
         if self.stat_buffs.has_effect(entry.effect_id) {
             self.mark_icon_stale(entry.effect_id);
         } else if !self

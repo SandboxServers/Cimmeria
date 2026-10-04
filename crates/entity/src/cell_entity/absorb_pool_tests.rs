@@ -23,6 +23,7 @@ fn shield(effect_id: i32, invoker_id: u32, pools: Vec<(i32, i32)>) -> TimedEffec
         moniker_ids: vec![],
         stats: vec![],
         absorb: pools,
+        state_flags: 0,
         duration_secs: Some(30.0),
         stacking: TimedStacking::PerSource,
         invoker_identity: Default::default(),

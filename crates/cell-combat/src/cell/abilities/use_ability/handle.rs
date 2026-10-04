@@ -149,6 +149,8 @@ pub async fn handle_use_ability(
     // any target or range check could refuse the press silently.
     let mut no_mechanics = false;
     let mut shield_full = false;
+    // Stunned or knocked down (AB-09a): answered below, before any cost.
+    let mut incapacitated = false;
     // Beneficial ammo (AM-11d): a support shot may land on an ally or the
     // shooter and never on a hostile target. `None` for every other cast,
     // whose targeting is exactly the #444 rule below.
@@ -167,6 +169,10 @@ pub async fn handle_use_ability(
 
         if combat::is_dead_state(entity.state_field) {
             return false;
+        }
+        if super::incapacitated::is_incapacitated(entity) {
+            incapacitated = true;
+            break 'validate;
         }
         // One cast at a time: python `canUseAbility` refused a launch while
         // `currentAbility` (an ability in its warmup) was set. The refusal
@@ -317,6 +323,12 @@ pub async fn handle_use_ability(
         if let Some(new_state) = combat::clear_auto_cycle(space_mgr, entity_id) {
             send_auto_cycle_state(entity_id, new_state, tx, space_mgr).await;
         }
+        return false;
+    }
+
+    if incapacitated {
+        super::incapacitated::refuse_while_incapacitated(entity_id, ability_id, tx, space_mgr)
+            .await;
         return false;
     }
 

@@ -8,6 +8,13 @@
 //! with the same cleanup the pulse sweep and the channel cancel use: the
 //! script's `on_remove`, the stat flush, and a zero `onTimerUpdate` so the
 //! client drops the icon.
+//!
+//! Timed-effect ledger entries the partner put on (a single-pulse stun,
+//! knockdown, snare, debuff, the Tranquilizer slow) never get an
+//! `active_effects` instance, so they are stripped from the ledger too,
+//! with reason `duel_ended`: their stats are restored and flushed, their
+//! icons cleared, and a lock they held is released. The caller sends the
+//! resulting `state_field` once, beside the combat-exit change.
 
 use tokio::sync::mpsc;
 
@@ -79,7 +86,58 @@ pub(super) async fn strip_from(
         );
         send(tx, id, target, ON_TIMER_UPDATE, zero).await;
     }
-    removed.len()
+    removed.len() + strip_ledger_from(tx, mgr, target, invoker).await
+}
+
+/// Take the ledger entries `invoker` put on `target` off, then flush the
+/// restored stats and the icon clears to `target`'s client. The
+/// `state_field` change a released lock owes stays recorded on the ledger
+/// for the caller (`take_ledger_state_change`).
+async fn strip_ledger_from(
+    tx: &mpsc::Sender<CellToBaseMsg>,
+    mgr: &mut SpaceManager,
+    target: u32,
+    invoker: u32,
+) -> usize {
+    let removed = mgr
+        .remove_timed_effects(
+            target,
+            crate::cell::effects::stat_buff::StatBuffRemoval::DuelEnded,
+            |e| e.invoker_id == invoker,
+        )
+        .len();
+    if removed == 0 {
+        return 0;
+    }
+    let id = mgr.player_identity(target);
+    let Some(entity) = mgr.get_entity_mut(target) else {
+        return removed;
+    };
+    let clears = std::mem::take(&mut entity.stat_buffs.pending_timer_clears);
+    let dirty = entity.stats.serialize_dirty();
+    entity.stats.clear_dirty();
+    if !dirty.is_empty() {
+        send(
+            tx,
+            id,
+            target,
+            cimmeria_wire::mercury::method_idx::ON_STAT_UPDATE,
+            dirty,
+        )
+        .await;
+    }
+    for (effect_id, by) in clears {
+        let zero = serialize_timer_update(
+            effect_id,
+            TIMER_DURATION_EFFECT,
+            by as i32,
+            effect_id,
+            0.0,
+            0.0,
+        );
+        send(tx, id, target, ON_TIMER_UPDATE, zero).await;
+    }
+    removed
 }
 
 async fn send(

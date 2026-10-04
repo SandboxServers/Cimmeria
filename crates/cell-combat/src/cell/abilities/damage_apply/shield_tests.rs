@@ -36,6 +36,7 @@ fn shielded(capacity: i32) -> SpaceManager {
             moniker_ids: vec![],
             stats: vec![],
             absorb: vec![(ABSORB_PHYSICAL, capacity)],
+            state_flags: 0,
             duration_secs: Some(30.0),
             stacking: TimedStacking::PerSource,
             invoker_identity: Default::default(),

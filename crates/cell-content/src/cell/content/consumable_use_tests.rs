@@ -30,6 +30,9 @@ use crate::cell::spawner::EVENT_ITEM_USE_ABILITY;
 use crate::test_support::LogCapture;
 use cimmeria_wire::cell::vault::VaultAccess;
 
+#[path = "consumable_use_stunned_tests.rs"]
+mod stunned;
+
 const PLAYER: u32 = 1;
 const PLAYER_ID: i32 = 42;
 const INSTANCE: i32 = 0x7000_D1C1;

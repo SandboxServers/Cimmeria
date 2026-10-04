@@ -219,6 +219,8 @@ mod tests {
                 "RemoveEffects",
                 "EmpDisrupt",
                 "MovementSlow",
+                "Knockdown",
+                "Interrupt",
             ]
         );
     }

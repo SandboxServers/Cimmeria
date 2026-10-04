@@ -168,6 +168,7 @@ async fn a_second_world_entry_neither_stacks_a_passive_nor_orphans_a_stance() {
             absorb: Vec::new(),
             duration_secs: None,
             stacking: TimedStacking::PerSource,
+            state_flags: 0,
             invoker_identity: Default::default(),
         },
         std::time::Instant::now(),

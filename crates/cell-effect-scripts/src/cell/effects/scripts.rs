@@ -8,8 +8,9 @@
 //! v2 — buff/debuff scripts:
 //! - [`AbsorbShield`] — an absorb shield on the timed effect ledger (in
 //!   `shield/`, re-exported here)
-//! - [`Stun`] — sets `BSF_MOVEMENT_LOCK` on the target; cleared on
-//!   `on_remove` when the active-effect instance expires.
+//! - `Stun` moved to `crowd_control.rs` (re-exported here), beside
+//!   `Knockdown` and `Interrupt`: a timed-ledger entry holding
+//!   `BSF_MOVEMENT_LOCK` (ability mechanics AB-09).
 //! - [`Suppression`] — per-pulse HEALTH chip via the `HealthDamage`
 //!   NVP. Full movement-speed reduction (the original game's other
 //!   half of "suppression") waits for a `MOVE_SPEED_MOD` stat the
@@ -30,9 +31,10 @@ use super::{EffectContext, EffectScript};
 // The pool heals moved to `heal.rs` (this file is over the cap); re-exported
 // so `scripts::HealHealth` keeps resolving for the registry and pet scripts.
 pub use super::heal::{HealFocus, HealHealth};
+// Same for the stun, now in `crowd_control.rs`.
+pub use super::crowd_control::Stun;
 pub use super::shield::AbsorbShield;
 use cimmeria_entity::stats::{FOCUS, HEALTH};
-use cimmeria_wire::state_field::BSF_MOVEMENT_LOCK;
 
 // ── MeleeDamage ──────────────────────────────────────────────────────────
 
@@ -213,59 +215,6 @@ impl EffectScript for MeleePhysicalDamage {
             health_damage_applied = final_health_damage,
             base_health_damage = health_damage,
             "MeleePhysicalDamage: Focus pierced, applied HEALTH bleed",
-        );
-    }
-}
-
-// ── Stun ─────────────────────────────────────────────────────────────────
-
-/// Locks the target's movement + actions for the effect's duration.
-///
-/// Sets `BSF_MOVEMENT_LOCK` on apply, clears it on `on_remove` when
-/// the active-effect instance expires (Phase I). Pair with a pulsing
-/// registration (`pulse_count` × `pulse_duration` = lockdown seconds).
-///
-/// No NVPs — duration comes from the owning effect's pulse_count ×
-/// pulse_duration.
-pub struct Stun;
-
-impl EffectScript for Stun {
-    fn on_apply(&self, ctx: &mut EffectContext) {
-        let Some(target) = ctx.space_mgr.get_entity_mut(ctx.target_id) else {
-            return;
-        };
-        let was_set = target.set_state_flag(BSF_MOVEMENT_LOCK);
-        tracing::info!(
-            target: "abilities",
-            event = "stun_applied",
-            source_id = ctx.source_id,
-            target_id = ctx.target_id,
-            effect_id = ctx.effect.effect_id,
-            was_already_set = !was_set,
-            "Stun applied — BSF_MOVEMENT_LOCK set"
-        );
-    }
-
-    /// Clear `BSF_MOVEMENT_LOCK` when the stun instance expires.
-    ///
-    /// Multi-source stuns stack correctly because
-    /// `set_state_flag` / `unset_state_flag` are refcounted via
-    /// `state_flag_counts`: two stuns from different invokers bump
-    /// the counter to 2, the first expiry decrements to 1 with the
-    /// bit STILL set, the second clears it. See
-    /// `cell_entity/state_flags.rs` for the counter implementation.
-    fn on_remove(&self, ctx: &mut EffectContext) {
-        let Some(target) = ctx.space_mgr.get_entity_mut(ctx.target_id) else {
-            return;
-        };
-        let was_set = target.unset_state_flag(BSF_MOVEMENT_LOCK);
-        tracing::info!(
-            target: "abilities",
-            event = "stun_expired",
-            target_id = ctx.target_id,
-            effect_id = ctx.effect.effect_id,
-            cleared = was_set,
-            "Stun expired — BSF_MOVEMENT_LOCK cleared"
         );
     }
 }
@@ -572,136 +521,6 @@ mod tests {
         // Original target unchanged
         let hp = mgr.get_entity(1).unwrap().stats.get(HEALTH).unwrap().cur;
         assert_eq!(hp, 50);
-    }
-
-    #[test]
-    fn stun_multi_source_keeps_lock_until_all_release() {
-        // Phase K: two concurrent stuns from different invokers share
-        // one `BSF_MOVEMENT_LOCK` bit via the refcounted state-flag
-        // helpers. First release must NOT drop the bit while the second
-        // is still pulsing.
-        let mut mgr = make_mgr_with_target();
-        let effect_a = EffectDef {
-            effect_id: 700,
-            ability_id: 100,
-            ..Default::default()
-        };
-        let effect_b = EffectDef {
-            effect_id: 701,
-            ability_id: 101,
-            ..Default::default()
-        };
-
-        // Apply both stuns (different invokers) in scoped blocks so the
-        // mutable borrows on `mgr` don't overlap between EffectContexts.
-        {
-            let mut ctx_a = EffectContext {
-                source_id: 1,
-                target_id: 1,
-                effect: &effect_a,
-                space_mgr: &mut mgr,
-            };
-            Stun.on_apply(&mut ctx_a);
-        }
-        {
-            let mut ctx_b = EffectContext {
-                source_id: 99,
-                target_id: 1,
-                effect: &effect_b,
-                space_mgr: &mut mgr,
-            };
-            Stun.on_apply(&mut ctx_b);
-        }
-        assert!(
-            mgr.get_entity(1).unwrap().has_state_flag(BSF_MOVEMENT_LOCK),
-            "both stuns set the lock"
-        );
-
-        // First expiry — bit must STAY set (refcount drops 2 → 1)
-        {
-            let mut ctx_a = EffectContext {
-                source_id: 1,
-                target_id: 1,
-                effect: &effect_a,
-                space_mgr: &mut mgr,
-            };
-            Stun.on_remove(&mut ctx_a);
-        }
-        assert!(
-            mgr.get_entity(1).unwrap().has_state_flag(BSF_MOVEMENT_LOCK),
-            "lock must stay while second stun still active"
-        );
-
-        // Second expiry — now bit clears (refcount drops 1 → 0)
-        {
-            let mut ctx_b = EffectContext {
-                source_id: 99,
-                target_id: 1,
-                effect: &effect_b,
-                space_mgr: &mut mgr,
-            };
-            Stun.on_remove(&mut ctx_b);
-        }
-        assert!(
-            !mgr.get_entity(1).unwrap().has_state_flag(BSF_MOVEMENT_LOCK),
-            "lock clears when last reason expires"
-        );
-    }
-
-    #[test]
-    fn stun_on_remove_clears_movement_lock_state_flag() {
-        // Phase I: stun apply → movement lock set; stun remove → cleared.
-        let mut mgr = make_mgr_with_target();
-        let effect = EffectDef {
-            effect_id: 601,
-            ability_id: 1,
-            ..Default::default()
-        };
-        let mut ctx = EffectContext {
-            source_id: 1,
-            target_id: 1,
-            effect: &effect,
-            space_mgr: &mut mgr,
-        };
-        Stun.on_apply(&mut ctx);
-        assert!(
-            ctx.space_mgr
-                .get_entity(1)
-                .unwrap()
-                .has_state_flag(BSF_MOVEMENT_LOCK),
-            "Stun apply must set lock"
-        );
-        Stun.on_remove(&mut ctx);
-        assert!(
-            !ctx.space_mgr
-                .get_entity(1)
-                .unwrap()
-                .has_state_flag(BSF_MOVEMENT_LOCK),
-            "Stun on_remove must clear lock"
-        );
-    }
-
-    #[test]
-    fn stun_sets_movement_lock_state_flag() {
-        let mut mgr = make_mgr_with_target();
-        let effect = EffectDef {
-            effect_id: 600,
-            ability_id: 1,
-            ..Default::default()
-        };
-        let mut ctx = EffectContext {
-            source_id: 1,
-            target_id: 1,
-            effect: &effect,
-            space_mgr: &mut mgr,
-        };
-        Stun.on_apply(&mut ctx);
-        let has_lock = ctx
-            .space_mgr
-            .get_entity(1)
-            .unwrap()
-            .has_state_flag(BSF_MOVEMENT_LOCK);
-        assert!(has_lock, "Stun must set BSF_MOVEMENT_LOCK");
     }
 
     #[test]

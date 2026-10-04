@@ -16,14 +16,19 @@
 //! | `Dart_Disease` | 9141, a long, weak damage over time | `Suppression` |
 //! | `Dart_Tranquilizer` | 9142, a timed slow | [`MovementSlow`], below |
 //!
-//! The Tranquilizer is a slow, not a stun. The existing `Stun` script sets
-//! `BSF_MOVEMENT_LOCK`, which the NPC AI never reads, and it leaks the flag's
-//! refcount when its effect pulses (issue #1049). The NPC movement tick and
-//! the client both scale speed by `MOVEMENT_SPEED_MOD`, so lowering that stat
-//! slows NPCs and players alike.
+//! The Tranquilizer is a slow, not a stun. Since ability mechanics AB-09b
+//! the slow is a timed-ledger entry on `MOVEMENT_SPEED_MOD` (the stat the
+//! NPC movement tick and the client both scale speed by), so it reverts by
+//! exactly what it took even when another slow or a speed buff moved the
+//! stat meanwhile. Before, it changed the stat directly and its restore
+//! could overshoot.
 
+use std::time::Instant;
+
+use cimmeria_entity::cell_entity::{TimedEffectSpec, TimedStacking};
 use cimmeria_entity::stats::MOVEMENT_SPEED_MOD;
 
+use super::stat_buff::StatBuffRemoval;
 use super::{EffectContext, EffectScript};
 
 /// `effect_nvps` name for how many points [`MovementSlow`] takes off
@@ -31,31 +36,18 @@ use super::{EffectContext, EffectScript};
 pub const SPEED_REDUCTION_NVP: &str = "SpeedReduction";
 
 /// Lowers the target's `MOVEMENT_SPEED_MOD` by the effect's
-/// [`SPEED_REDUCTION_NVP`] for the effect's duration, then puts it back.
+/// [`SPEED_REDUCTION_NVP`] for the effect's duration, as one timed-ledger
+/// entry, then puts back exactly what it took.
 ///
-/// Give the effect `pulse_count > 1` and a `pulse_duration`. That makes the
-/// pulse layer register an active-effect instance whose expiry calls
-/// [`MovementSlow::on_remove`].
+/// **One slow per effect per target** ([`TimedStacking::PerEffect`]): a
+/// second shooter's hit, or a re-hit, refreshes the entry instead of
+/// stacking, as before the ledger. A different slow (a Snare Shot) is a
+/// different effect and stacks; each reverts its own delta.
 ///
-/// **One slow per effect per target.** The pulse layer calls `on_apply` on
-/// the hit, again on every pulse, and again when the same shooter re-hits
-/// and refreshes the instance. So `on_apply` slows only when no instance of
-/// this effect is on the target yet: on the hit, `damage_apply` runs the
-/// script before it registers the instance. `on_remove` restores only when
-/// no instance of this effect is left, because every removal path (expiry,
-/// duel strip, channel cancel) drops the instance before calling it. Two
-/// shooters therefore share one slow that ends with the last of their
-/// instances, instead of stacking. Stacking two slows would need a record of
-/// what each one actually took off; nothing asks for that.
+/// Duration: one `pulse_duration` for a single-pulse row (the seeded 9142
+/// is 6 s), `pulse_count x pulse_duration` for a pulsing one, whose
+/// instance's `on_remove` ends it.
 pub struct MovementSlow;
-
-/// Whether `target_id` carries an active instance of `effect_id`, from any
-/// invoker.
-fn has_instance(ctx: &EffectContext, effect_id: i32) -> bool {
-    ctx.space_mgr
-        .get_entity(ctx.target_id)
-        .is_some_and(|e| e.active_effects.iter().any(|i| i.effect_id == effect_id))
-}
 
 impl EffectScript for MovementSlow {
     fn on_apply(&self, ctx: &mut EffectContext) {
@@ -72,74 +64,75 @@ impl EffectScript for MovementSlow {
             );
             return;
         }
-        let effect_id = ctx.effect.effect_id;
-        if has_instance(ctx, effect_id) {
-            // A pulse or a refresh of a slow that is already in force.
-            tracing::trace!(
-                target: "abilities",
-                event = "movement_slow_already_active",
-                source_id = ctx.source_id,
-                target_id = ctx.target_id,
-                effect_id,
-                "MovementSlow already active on the target"
-            );
+        let effect = ctx.effect;
+        let duration = match effect.pulse_count {
+            0 => None,
+            n => Some(n.max(1) as f32 * effect.pulse_duration.max(0.0)),
+        };
+        let spec = TimedEffectSpec {
+            effect_id: effect.effect_id,
+            ability_id: effect.ability_id,
+            invoker_id: ctx.source_id,
+            effect_flags: effect.flags,
+            moniker_ids: ctx.space_mgr.ability_moniker_ids(effect.ability_id),
+            stats: vec![(MOVEMENT_SPEED_MOD, -reduction)],
+            duration_secs: duration,
+            stacking: TimedStacking::PerEffect,
+            ..Default::default()
+        };
+        let before = speed_mod(ctx);
+        if ctx
+            .space_mgr
+            .apply_timed_effect(ctx.target_id, spec, Instant::now())
+            .is_none()
+        {
             return;
         }
-        let Some(stat) = ctx
-            .space_mgr
-            .get_entity_mut(ctx.target_id)
-            .and_then(|t| t.stats.get_mut(MOVEMENT_SPEED_MOD))
-        else {
-            return;
-        };
-        let before = stat.cur;
-        stat.change(-reduction);
-        let after = stat.cur;
         tracing::info!(
             target: "abilities",
             event = "movement_slow_applied",
             source_id = ctx.source_id,
             target_id = ctx.target_id,
-            effect_id,
+            effect_id = effect.effect_id,
             reduction,
+            duration_secs = duration.unwrap_or(0.0),
             speed_mod_before = before,
-            speed_mod_after = after,
+            speed_mod_after = speed_mod(ctx),
             "MovementSlow applied"
         );
     }
 
+    /// A pulsing row's instance ended: its entry comes off (expiry of a
+    /// single-pulse row is the ledger tick's, logged `stat_buff_removed`).
     fn on_remove(&self, ctx: &mut EffectContext) {
-        let reduction = ctx.effect.param_i32(SPEED_REDUCTION_NVP);
-        if reduction <= 0 {
-            return;
-        }
         let effect_id = ctx.effect.effect_id;
-        if has_instance(ctx, effect_id) {
-            // Another shooter's instance still holds the slow.
+        let before = speed_mod(ctx);
+        let removed =
+            ctx.space_mgr
+                .remove_timed_effects(ctx.target_id, StatBuffRemoval::Removed, |e| {
+                    e.effect_id == effect_id
+                });
+        if removed.is_empty() {
             return;
         }
-        let Some(stat) = ctx
-            .space_mgr
-            .get_entity_mut(ctx.target_id)
-            .and_then(|t| t.stats.get_mut(MOVEMENT_SPEED_MOD))
-        else {
-            return;
-        };
-        let before = stat.cur;
-        stat.change(reduction);
-        let after = stat.cur;
         tracing::info!(
             target: "abilities",
             event = "movement_slow_expired",
             source_id = ctx.source_id,
             target_id = ctx.target_id,
             effect_id,
-            reduction,
             speed_mod_before = before,
-            speed_mod_after = after,
+            speed_mod_after = speed_mod(ctx),
             "MovementSlow expired; speed restored"
         );
     }
+}
+
+fn speed_mod(ctx: &EffectContext) -> Option<i32> {
+    ctx.space_mgr
+        .get_entity(ctx.target_id)
+        .and_then(|t| t.stats.get(MOVEMENT_SPEED_MOD))
+        .map(|s| s.cur)
 }
 
 #[cfg(test)]
@@ -147,18 +140,20 @@ mod tests {
     use super::*;
     use crate::cell::effects::test_fixtures::{effect_with_nvp, make_mgr_with_target};
     use crate::cell::effects::{dispatch_by_name, dispatch_on_remove, registry};
+    use crate::cell::space_manager::SpaceManager;
     use cimmeria_entity::abilities::EffectDef;
-    use cimmeria_entity::cell_entity::ActiveEffectInstance;
 
+    /// Effect 9142 as seeded: 40 points for one 6 s pulse.
     fn slow_effect(reduction: i32) -> EffectDef {
         let mut e = effect_with_nvp(SPEED_REDUCTION_NVP, &reduction.to_string());
+        e.effect_id = 9142;
         e.script_name = Some("MovementSlow".to_string());
-        e.pulse_count = 4;
-        e.pulse_duration = 2.0;
+        e.pulse_count = 1;
+        e.pulse_duration = 6.0;
         e
     }
 
-    fn speed(mgr: &crate::cell::space_manager::SpaceManager) -> i32 {
+    fn speed(mgr: &SpaceManager) -> i32 {
         mgr.get_entity(1)
             .unwrap()
             .stats
@@ -167,34 +162,7 @@ mod tests {
             .cur
     }
 
-    fn add_instance(
-        mgr: &mut crate::cell::space_manager::SpaceManager,
-        effect_id: i32,
-        invoker: u32,
-    ) {
-        mgr.get_entity_mut(1)
-            .unwrap()
-            .active_effects
-            .push(ActiveEffectInstance {
-                effect_id,
-                ability_id: 597,
-                invoker_id: invoker,
-                remaining_pulses: 3,
-                total_pulses: 4,
-                next_pulse_at: std::time::Instant::now(),
-                pulse_interval_secs: 2.0,
-                invoker_position_at_register: None,
-            });
-    }
-
-    fn remove_instance(mgr: &mut crate::cell::space_manager::SpaceManager, invoker: u32) {
-        mgr.get_entity_mut(1)
-            .unwrap()
-            .active_effects
-            .retain(|i| i.invoker_id != invoker);
-    }
-
-    fn apply(mgr: &mut crate::cell::space_manager::SpaceManager, effect: &EffectDef, source: u32) {
+    fn apply(mgr: &mut SpaceManager, effect: &EffectDef, source: u32) {
         let mut ctx = EffectContext {
             source_id: source,
             target_id: 1,
@@ -204,7 +172,7 @@ mod tests {
         assert!(dispatch_by_name("MovementSlow", &mut ctx));
     }
 
-    fn remove(mgr: &mut crate::cell::space_manager::SpaceManager, effect: &EffectDef, source: u32) {
+    fn remove(mgr: &mut SpaceManager, effect: &EffectDef, source: u32) {
         let mut ctx = EffectContext {
             source_id: source,
             target_id: 1,
@@ -214,54 +182,78 @@ mod tests {
         assert!(dispatch_on_remove("MovementSlow", &mut ctx));
     }
 
+    /// A snare (`TimedStat` on `MovementSpeedMod`) from another caster.
+    fn snare(mgr: &mut SpaceManager, delta: i32, source: u32) {
+        let mut effect = effect_with_nvp("MovementSpeedMod", &delta.to_string());
+        effect.effect_id = 1462;
+        effect.ability_id = 717;
+        effect.script_name = Some("TimedStat".to_string());
+        effect.pulse_count = 1;
+        effect.pulse_duration = 15.0;
+        let mut ctx = EffectContext {
+            source_id: source,
+            target_id: 1,
+            effect: &effect,
+            space_mgr: mgr,
+        };
+        assert!(dispatch_by_name("TimedStat", &mut ctx));
+    }
+
     #[test]
     fn registry_resolves_movement_slow() {
         assert!(registry::lookup("MovementSlow").is_some());
     }
 
-    /// The hit slows, the pulses and a same-shooter refresh do not slow
-    /// again, and expiry restores exactly the starting speed.
+    /// The hit slows once, a re-hit (same or other shooter) refreshes
+    /// without slowing again, and the removal restores exactly the starting
+    /// speed.
     #[test]
-    fn slow_applies_once_per_instance_and_restores_on_expiry() {
+    fn slow_applies_once_per_effect_and_restores_on_removal() {
         let mut mgr = make_mgr_with_target();
         let effect = slow_effect(40);
         assert_eq!(speed(&mgr), 100);
-
-        // The hit: no instance yet, so it slows.
         apply(&mut mgr, &effect, 7);
         assert_eq!(speed(&mgr), 60);
-        // damage_apply then registers the instance.
-        add_instance(&mut mgr, effect.effect_id, 7);
-        // Three pulses and a refresh re-run on_apply: no further slow.
-        for _ in 0..4 {
-            apply(&mut mgr, &effect, 7);
-        }
-        assert_eq!(speed(&mgr), 60, "pulses and refreshes must not stack");
-
-        // Expiry: the sweep drops the instance, then calls on_remove.
-        remove_instance(&mut mgr, 7);
-        remove(&mut mgr, &effect, 7);
-        assert_eq!(speed(&mgr), 100, "expiry restores the original speed");
+        apply(&mut mgr, &effect, 7);
+        apply(&mut mgr, &effect, 8);
+        assert_eq!(speed(&mgr), 60, "re-hits must not stack");
+        let entries = &mgr.get_entity(1).unwrap().stat_buffs.entries;
+        assert_eq!(entries.len(), 1);
+        assert_eq!(entries[0].duration_secs, 6.0);
+        remove(&mut mgr, &effect, 8);
+        assert_eq!(speed(&mgr), 100, "removal restores the original speed");
     }
 
-    /// Two shooters share one slow; it ends with the last instance.
+    /// **Regression guard (the MovementSlow overshoot).** A -70 snare and
+    /// the -40 dart stacked on 100 drive the stat below its 0 floor; each
+    /// reverts exactly what it took, in either order, back to 100. The old
+    /// script moved the stat directly: its -40 clamped to -30 at the floor
+    /// but its restore added the full 40, ending at 110 (`speed after both`
+    /// fails).
     #[test]
-    fn two_shooters_share_one_slow_until_the_last_instance_goes() {
-        let mut mgr = make_mgr_with_target();
-        let effect = slow_effect(40);
-        apply(&mut mgr, &effect, 7);
-        add_instance(&mut mgr, effect.effect_id, 7);
-        apply(&mut mgr, &effect, 8);
-        add_instance(&mut mgr, effect.effect_id, 8);
-        assert_eq!(speed(&mgr), 60);
-
-        remove_instance(&mut mgr, 7);
-        remove(&mut mgr, &effect, 7);
-        assert_eq!(speed(&mgr), 60, "shooter 8's instance still holds the slow");
-
-        remove_instance(&mut mgr, 8);
-        remove(&mut mgr, &effect, 8);
-        assert_eq!(speed(&mgr), 100);
+    fn stacked_slows_revert_exactly_in_either_order() {
+        for dart_first_off in [true, false] {
+            let mut mgr = make_mgr_with_target();
+            let dart = slow_effect(40);
+            snare(&mut mgr, -70, 9);
+            apply(&mut mgr, &dart, 7);
+            assert!(speed(&mgr) <= 0, "both slows in force: {}", speed(&mgr));
+            if dart_first_off {
+                remove(&mut mgr, &dart, 7);
+                assert_eq!(speed(&mgr), 30, "the snare alone");
+                let _ = mgr.remove_timed_effects(1, StatBuffRemoval::Expired, |_| true);
+            } else {
+                let _ =
+                    mgr.remove_timed_effects(1, StatBuffRemoval::Expired, |e| e.effect_id == 1462);
+                assert_eq!(speed(&mgr), 60, "the dart alone");
+                remove(&mut mgr, &dart, 7);
+            }
+            assert_eq!(
+                speed(&mgr),
+                100,
+                "speed after both (dart first: {dart_first_off})"
+            );
+        }
     }
 
     #[test]
@@ -333,8 +325,8 @@ mod tests {
 
         let tranq = effect(9142);
         assert_eq!(tranq.script_name.as_deref(), Some("MovementSlow"));
-        assert!(tranq.is_pulsing(), "the slow needs an instance to expire");
-        assert_eq!((tranq.pulse_count, tranq.pulse_duration), (4, 2.0));
+        // A single 6 s ledger entry since AB-09b (was 4 pulses 2 s apart).
+        assert_eq!((tranq.pulse_count, tranq.pulse_duration), (1, 6.0));
         assert_eq!(tranq.param_i32(SPEED_REDUCTION_NVP), 40);
         assert_eq!(category(9142), None);
 
