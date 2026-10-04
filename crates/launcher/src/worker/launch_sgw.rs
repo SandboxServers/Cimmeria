@@ -26,7 +26,7 @@ use cimmeria_client_launch::start32::{self, Request, Target};
 use tracing::{info, warn};
 
 use super::launch_telemetry::{follow_with_telemetry, start_player_session};
-use super::{Event, EventSender, LaunchSgwRequest, Worker};
+use super::{Activity, Event, EventSender, LaunchSgwRequest, Worker};
 use crate::client_patches::{decide, dll_source, injection_order, InjectDecision, PatchInjection};
 use crate::client_telemetry_dll::{self, DllOutcome, TelemetryDll};
 use crate::config::{exe_dir, ClientPatchesSettings};
@@ -50,6 +50,7 @@ fn sgw_dir(install_dir: &Path) -> PathBuf {
 /// could not be opened to wait on: it runs, but no telemetry session can
 /// follow it.
 struct StartedGame {
+    pid: u32,
     exit: Option<ExitWaiter>,
     injection: PatchInjection,
     /// `None` when the telemetry DLL was never wanted (no opt-in, or no
@@ -73,8 +74,11 @@ enum HelperStart {
 }
 
 impl Worker {
+    /// Called only once [`Activity::begin_launch`] has claimed the game
+    /// slot; the task releases it when the launch fails or the game exits.
     pub(super) fn spawn_launch_sgw(&self, req: LaunchSgwRequest) {
         let events_tx = self.events_tx.clone();
+        let activity = self.activity.clone();
         // Only the telemetry session uses it.
         let http = self.telemetry_http.clone();
         self.runtime.spawn(async move {
@@ -95,17 +99,28 @@ impl Worker {
             };
             let Some(game) = start_game(&sgw_dir, &req.client_patches, &telemetry_dll, &events_tx)
             else {
+                activity.game_ended();
                 return;
             };
-            let Some(session) = session else {
-                return;
-            };
+            activity.game_started(game.pid);
             let Some(exit) = game.exit else {
-                let _ = events_tx.send(Event::TelemetrySessionError(
-                    "the game started, but its process could not be opened to follow it; \
-                     no telemetry session this launch"
-                        .into(),
-                ));
+                // Running but not followable: the UI falls back to the
+                // process probe, which also keeps guarding file actions.
+                activity.game_ended();
+                let _ = events_tx.send(Event::GameUntracked { pid: game.pid });
+                if session.is_some() {
+                    let _ = events_tx.send(Event::TelemetrySessionError(
+                        "the game started, but its process could not be opened to follow it; \
+                         no telemetry session this launch"
+                            .into(),
+                    ));
+                }
+                return;
+            };
+            let exit = notify_exit(exit, game.pid, events_tx.clone(), activity);
+            let Some(session) = session else {
+                // Telemetry off: follow the game only to report its exit.
+                let _ = exit.await;
                 return;
             };
             let patch_log = PatchLogWatcher::new(&sgw_dir, launched_at, game.injection);
@@ -122,6 +137,31 @@ impl Worker {
             .await;
         });
     }
+}
+
+/// Wrap the game's exit future so that, however the game was launched
+/// and whether or not telemetry follows it, its exit reaches the UI as
+/// [`Event::GameExited`] and frees the worker's game slot.
+fn notify_exit(
+    exit: ExitWaiter,
+    pid: u32,
+    events_tx: EventSender,
+    activity: Activity,
+) -> ExitWaiter {
+    Box::pin(async move {
+        let res = exit.await;
+        activity.game_ended();
+        let exit_code = match &res {
+            Ok(report) => report.exit_code,
+            Err(e) => {
+                warn!(pid, error = %e, "lost track of the game while waiting for it to exit");
+                None
+            }
+        };
+        info!(pid, ?exit_code, "game exited");
+        let _ = events_tx.send(Event::GameExited { pid, exit_code });
+        res
+    })
 }
 
 /// The DLL sets to try, in order, until one starts the game; if all fail
@@ -217,6 +257,7 @@ fn start_game(
                 info!(pid, dlls = ?dlls, "SGW.exe launched with DLLs");
                 let _ = events_tx.send(Event::Launched(launched_label(has_patches, has_tel), pid));
                 return Some(StartedGame {
+                    pid,
                     exit,
                     injection,
                     telemetry_dll: tel_outcome,
@@ -249,6 +290,7 @@ fn start_game(
         Ok(child) => {
             let _ = events_tx.send(Event::Launched("SGW.exe".into(), child.id()));
             Some(StartedGame {
+                pid: child.id(),
                 exit: Some(Box::pin(wait_for_exit(child))),
                 injection,
                 telemetry_dll: tel_outcome,

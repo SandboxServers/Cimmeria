@@ -81,10 +81,13 @@ mod tests {
         let (tx, mut rx) = mpsc::unbounded_channel();
         let (wake, count) = counting_waker();
         let sender = EventSender::new(tx, wake);
-        assert!(sender.send(Event::ManifestError("offline".into())));
+        assert!(sender.send(Event::ManifestError {
+            url: String::new(),
+            message: "offline".into()
+        }));
         assert!(sender.clone().send(Event::InstallComplete));
         assert_eq!(count.load(Ordering::SeqCst), 2);
-        assert!(matches!(rx.try_recv(), Ok(Event::ManifestError(_))));
+        assert!(matches!(rx.try_recv(), Ok(Event::ManifestError { .. })));
         assert!(matches!(rx.try_recv(), Ok(Event::InstallComplete)));
     }
 
@@ -105,7 +108,7 @@ mod tests {
                 .expect("no event before timeout")
                 .expect("channel closed")
         });
-        assert!(matches!(ev, Event::ManifestError(_)), "got {ev:?}");
+        assert!(matches!(ev, Event::ManifestError { .. }), "got {ev:?}");
         assert_eq!(count.load(Ordering::SeqCst), 1);
     }
 

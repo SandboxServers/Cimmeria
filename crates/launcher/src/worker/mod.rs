@@ -6,12 +6,16 @@
 //! goes through [`EventSender`], which wakes the UI so that frame happens
 //! without mouse input.
 
+mod activity;
 mod event_sender;
 mod launch_sgw;
 mod launch_telemetry;
 mod messages;
+mod open_folder;
 mod self_update;
 
+pub use activity::Busy;
+use activity::{Activity, Conflict};
 #[cfg(test)]
 use event_sender::no_waker;
 pub use event_sender::{EventSender, Waker};
@@ -70,6 +74,9 @@ pub struct Worker {
     /// The self-updater's client (GitHub hosts only), endpoints and build
     /// identity.
     updater: self_update::Updater,
+    /// What is running, so conflicting commands are refused here and not
+    /// only greyed out in the UI.
+    activity: Activity,
 }
 
 impl Worker {
@@ -89,7 +96,17 @@ impl Worker {
             http,
             telemetry_http: crate::telemetry::endpoint::client(),
             updater: self_update::Updater::production(),
+            activity: Activity::production(),
         }
+    }
+
+    /// Tell the UI a command was not started and why.
+    fn refuse(&self, action: Busy, conflict: Conflict) {
+        tracing::info!(?action, reason = %conflict, "worker refused a conflicting command");
+        let _ = self.events_tx.send(Event::Refused {
+            action,
+            reason: conflict.to_string(),
+        });
     }
 
     pub fn dispatch(&mut self, cmd: Command) {
@@ -99,14 +116,38 @@ impl Worker {
                     token.cancel();
                 }
             }
-            Command::Install { config, manifest } => self.spawn_install(config, manifest),
-            Command::LaunchSgw(req) => self.spawn_launch_sgw(req),
-            Command::LaunchAteraDebug(dir) => {
-                self.spawn_launch("AtreaGameDebug.bat", move || launch_atera_debug(&dir))
+            Command::Install { config, manifest } => {
+                match self.activity.begin_install(&config.install_path) {
+                    Ok(()) => self.spawn_install(config, manifest),
+                    Err(c) => self.refuse(Busy::Install, c),
+                }
             }
-            Command::LaunchAteraFixAslr(dir) => {
-                self.spawn_launch("AtreaFixASLR.bat", move || launch_atera_fix_aslr(&dir))
-            }
+            Command::LaunchSgw(req) => match self.activity.begin_launch(&req.install_dir) {
+                Ok(()) => self.spawn_launch_sgw(req),
+                Err(c) => self.refuse(Busy::Launch, c),
+            },
+            // The Atera bat starts SGW.exe itself, so the worker cannot
+            // follow it: the launch slot is held only until the bat starts,
+            // and the process probe guards the running game after that.
+            Command::LaunchAteraDebug(dir) => match self.activity.begin_launch(&dir) {
+                Ok(()) => {
+                    let activity = self.activity.clone();
+                    self.spawn_launch("AtreaGameDebug.bat", move || {
+                        let r = launch_atera_debug(&dir);
+                        activity.game_ended();
+                        r
+                    })
+                }
+                Err(c) => self.refuse(Busy::Launch, c),
+            },
+            // Fix ASLR rewrites SGW.exe; the resets delete the client's
+            // per-user files. Neither runs under a running game.
+            Command::LaunchAteraFixAslr(dir) => match self.activity.check_idle(&dir) {
+                Ok(()) => {
+                    self.spawn_launch("AtreaFixASLR.bat", move || launch_atera_fix_aslr(&dir))
+                }
+                Err(c) => self.refuse(Busy::Files, c),
+            },
             Command::UploadLogs {
                 install_dir,
                 sas_url,
@@ -115,13 +156,28 @@ impl Worker {
             Command::AdoptExisting {
                 install_dir,
                 manifest,
-            } => self.spawn_adopt(install_dir, manifest),
-            Command::WipeClientCache => self.spawn_wipe(WipeTarget::CacheOnly),
-            Command::WipeAllClientState => self.spawn_wipe(WipeTarget::EntireFiresky),
+            } => match self.activity.begin_install(&install_dir) {
+                Ok(()) => self.spawn_adopt(install_dir, manifest),
+                Err(c) => self.refuse(Busy::Install, c),
+            },
+            Command::OpenInExplorer(dir) => self.spawn_open_folder(dir),
+            Command::WipeClientCache | Command::WipeAllClientState => {
+                let target = match cmd {
+                    Command::WipeClientCache => WipeTarget::CacheOnly,
+                    _ => WipeTarget::EntireFiresky,
+                };
+                match self.activity.check_idle(Path::new("")) {
+                    Ok(()) => self.spawn_wipe(target),
+                    Err(c) => self.refuse(Busy::Files, c),
+                }
+            }
             Command::LaunchAteraDebugWithTelemetry {
                 install_dir,
                 telemetry,
-            } => self.spawn_launch_with_telemetry(install_dir, telemetry),
+            } => match self.activity.begin_launch(&install_dir) {
+                Ok(()) => self.spawn_launch_with_telemetry(install_dir, telemetry),
+                Err(c) => self.refuse(Busy::Launch, c),
+            },
             Command::CheckForUpdate => self.spawn_update_check(),
             Command::ApplyUpdate(release) => self.spawn_update_apply(release),
         }
@@ -130,6 +186,7 @@ impl Worker {
     fn spawn_launch_with_telemetry(&self, install_dir: PathBuf, cfg: LaunchTelemetryConfig) {
         let events_tx = self.events_tx.clone();
         let http = self.telemetry_http.clone();
+        let activity = self.activity.clone();
         self.runtime.spawn(async move {
             let req = DevSessionRequest {
                 install_id: cfg.install_id,
@@ -159,10 +216,13 @@ impl Worker {
                     // is supplementary; never block the play action.
                     let _ = events_tx.send(Event::TelemetrySessionError(msg));
                     launch_legacy_atera(&install_dir, &events_tx);
+                    activity.game_ended();
                     return;
                 }
             };
-            let child = match launch_atera_debug_with_child(&install_dir) {
+            let launched = launch_atera_debug_with_child(&install_dir);
+            activity.game_ended();
+            let child = match launched {
                 Ok(c) => {
                     let _ = events_tx.send(Event::Launched("AtreaGameDebug.bat".into(), c.id()));
                     c
@@ -190,11 +250,14 @@ impl Worker {
 
     fn spawn_adopt(&self, install_dir: PathBuf, manifest: Manifest) {
         let events_tx = self.events_tx.clone();
+        let activity = self.activity.clone();
         // Adopt is a single filesystem write — synchronous in the worker
         // task so we don't need a separate progress channel. Keep it on
         // the runtime anyway so a slow-disk write doesn't block the UI.
         self.runtime.spawn(async move {
-            match adopt_existing_install(&install_dir, &manifest) {
+            let result = adopt_existing_install(&install_dir, &manifest);
+            activity.end_install();
+            match result {
                 Ok(_) => {
                     let _ = events_tx.send(Event::AdoptComplete);
                 }
@@ -243,34 +306,31 @@ impl Worker {
         let events_tx = self.events_tx.clone();
         let http = self.http.clone();
         self.runtime.spawn(async move {
-            match fetch_manifest(&http, &url).await {
-                Ok(m) => {
-                    let _ = events_tx.send(Event::ManifestFetched(m));
-                }
-                Err(e) => {
-                    let _ = events_tx.send(Event::ManifestError(e.to_string()));
-                }
-            }
+            let event = match fetch_manifest(&http, &url).await {
+                Ok(manifest) => Event::ManifestFetched { url, manifest },
+                Err(e) => Event::ManifestError {
+                    url,
+                    message: e.to_string(),
+                },
+            };
+            let _ = events_tx.send(event);
         });
     }
 
+    /// Called only once [`Activity::begin_install`] has claimed the
+    /// install slot, so two installs never race on the .tmp-* zips, the
+    /// extract, launcher-installed.json, or the game's files; the task
+    /// releases the slot when it ends.
     fn spawn_install(&mut self, config: LauncherConfig, manifest: Manifest) {
-        // Cancel any previous install before starting a new one. Without
-        // this, a rapid double-click on Install / Update spawns two
-        // concurrent install tasks that race on the .tmp-* zips, the
-        // extract, launcher-installed.json, and the SGW.exe patch. The
-        // previous task observes its token flip to cancelled at the
-        // next progress checkpoint and bails with InstallError::Cancelled.
-        if let Some(prev) = self.current_install_cancel.take() {
-            prev.cancel();
-        }
         let cancel = CancellationToken::new();
         self.current_install_cancel = Some(cancel.clone());
 
         let events_tx = self.events_tx.clone();
         let events_tx_for_fwd = self.events_tx.clone();
         let http = self.http.clone();
+        let activity = self.activity.clone();
         let (prog_tx, mut prog_rx) = mpsc::unbounded_channel::<Progress>();
+        let _ = events_tx.send(Event::InstallStarted);
 
         // Forwarder: re-emit install Progress as Event::Progress. Loop ends
         // when prog_tx (held inside the install task's InstallContext) drops.
@@ -292,6 +352,7 @@ impl Worker {
                 http: &http,
             };
             let (result, report) = install_all(ctx).await;
+            activity.end_install();
             crate::telemetry::install_result::queue_install_result(
                 &report,
                 config.telemetry.opted_in,
@@ -300,6 +361,9 @@ impl Worker {
             match result {
                 Ok(_) => {
                     let _ = events_tx.send(Event::InstallComplete);
+                }
+                Err(crate::install::InstallError::Cancelled) => {
+                    let _ = events_tx.send(Event::InstallCancelled);
                 }
                 Err(e) => {
                     error!("install failed: {e}");
@@ -400,245 +464,7 @@ fn launch_legacy_atera(install_dir: &Path, events_tx: &EventSender) {
 }
 
 #[cfg(test)]
-mod tests {
-    use super::*;
-    use crate::manifest::{Manifest, SeedEntry};
-    use std::time::Duration;
-    use tokio::time::timeout;
+mod guard_tests;
 
-    /// 1-second deadline on every event-recv. If the worker dispatch
-    /// regresses to never-emit, the test fails loudly instead of
-    /// hanging the suite. Adjust upward only if a real platform-slow
-    /// path appears.
-    pub(super) const RECV_TIMEOUT: Duration = Duration::from_secs(1);
-
-    fn fake_manifest() -> Manifest {
-        Manifest {
-            schema: 1,
-            min_launcher: None,
-            seed: SeedEntry {
-                blob: "seed/x.zip".into(),
-                size: 1,
-                sha256: "manifest-seed-hash".into(),
-            },
-            patches: vec![],
-        }
-    }
-
-    pub(super) fn make_worker() -> (Worker, Arc<Runtime>) {
-        let rt = Arc::new(Runtime::new().unwrap());
-        let worker = Worker::new(rt.clone(), no_waker());
-        (worker, rt)
-    }
-
-    /// Pull the next event matching `pred` (skipping any unrelated
-    /// events on the channel) within `RECV_TIMEOUT`. Returns the first
-    /// match. The skip-and-match shape exists because `spawn_wipe`
-    /// emits `Wiped` *or* `WipeError` depending on the resolved path —
-    /// rather than asserting "no other events," we say what we want.
-    pub(super) async fn recv_matching<F: Fn(&Event) -> bool>(
-        rx: &mut mpsc::UnboundedReceiver<Event>,
-        pred: F,
-    ) -> Event {
-        loop {
-            let ev = timeout(RECV_TIMEOUT, rx.recv())
-                .await
-                .expect("worker emitted no event before timeout")
-                .expect("worker channel closed unexpectedly");
-            if pred(&ev) {
-                return ev;
-            }
-        }
-    }
-
-    // Adopt happy path: SGW.exe present + no prior state file → worker
-    // dispatches AdoptComplete and the on-disk launcher-installed.json
-    // carries the manifest's seed hash plus seed_adopted=true.
-    #[test]
-    fn spawn_adopt_emits_complete_and_writes_marker() {
-        let dir = tempfile::tempdir().unwrap();
-        std::fs::write(dir.path().join("SGW.exe"), b"fake-game").unwrap();
-        let (mut worker, rt) = make_worker();
-        worker.dispatch(Command::AdoptExisting {
-            install_dir: dir.path().to_path_buf(),
-            manifest: fake_manifest(),
-        });
-        let ev = rt.block_on(async {
-            recv_matching(&mut worker.events_rx, |e| {
-                matches!(e, Event::AdoptComplete | Event::AdoptError(_))
-            })
-            .await
-        });
-        assert!(
-            matches!(ev, Event::AdoptComplete),
-            "expected AdoptComplete, got {ev:?}"
-        );
-        let state = crate::state::InstalledState::load(dir.path());
-        assert!(state.seed_adopted);
-        assert_eq!(state.seed_sha256.as_deref(), Some("manifest-seed-hash"));
-    }
-
-    // Adopt error path: no SGW.exe → AdoptError carries the rendered
-    // message. Pinned shape: the worker must NOT silently swallow the
-    // failure (we wouldn't see it surface in the UI).
-    #[test]
-    fn spawn_adopt_emits_error_when_install_dir_empty() {
-        let dir = tempfile::tempdir().unwrap();
-        let (mut worker, rt) = make_worker();
-        worker.dispatch(Command::AdoptExisting {
-            install_dir: dir.path().to_path_buf(),
-            manifest: fake_manifest(),
-        });
-        let ev = rt.block_on(async {
-            recv_matching(&mut worker.events_rx, |e| {
-                matches!(e, Event::AdoptComplete | Event::AdoptError(_))
-            })
-            .await
-        });
-        match ev {
-            Event::AdoptError(msg) => assert!(
-                msg.contains("SGW.exe"),
-                "AdoptError message should mention the missing SGW.exe, got: {msg}"
-            ),
-            other => panic!("expected AdoptError, got {other:?}"),
-        }
-    }
-
-    // Wipe cache: with USERPROFILE pointed at a temp dir containing
-    // populated Cache.en-US, WipeClientCache emits Wiped{kind=Cache.en-US}
-    // and the cache contents are gone.
-    //
-    // Env-mutation is serialized via the env_lock pattern used in other
-    // launcher tests; here we just save/restore around the body because
-    // there's only one test that mutates USERPROFILE per run path and
-    // tests in the same process are parallel-but-distinct via this
-    // restore-on-drop guard.
-    #[test]
-    fn spawn_wipe_cache_clears_cache_subdir() {
-        let _g = crate::client_paths::env_test_lock().lock().unwrap();
-        let dir = tempfile::tempdir().unwrap();
-        let cache = dir
-            .path()
-            .join("Documents/My Games/Firesky/SGWGame/Cache.en-US");
-        std::fs::create_dir_all(&cache).unwrap();
-        std::fs::write(cache.join("override.pak"), b"stale").unwrap();
-
-        let prev_profile = std::env::var("USERPROFILE").ok();
-        let prev_home = std::env::var("HOME").ok();
-        std::env::set_var("USERPROFILE", dir.path());
-        std::env::remove_var("HOME");
-
-        let (mut worker, rt) = make_worker();
-        worker.dispatch(Command::WipeClientCache);
-        let ev = rt.block_on(async {
-            recv_matching(&mut worker.events_rx, |e| {
-                matches!(e, Event::Wiped { .. } | Event::WipeError(_))
-            })
-            .await
-        });
-
-        // Restore env BEFORE asserting so a panic doesn't leak global state.
-        match prev_profile {
-            Some(v) => std::env::set_var("USERPROFILE", v),
-            None => std::env::remove_var("USERPROFILE"),
-        }
-        if let Some(v) = prev_home {
-            std::env::set_var("HOME", v);
-        }
-
-        match ev {
-            Event::Wiped { kind, report } => {
-                assert_eq!(kind, "Cache.en-US");
-                assert_eq!(report.entries_removed, 1);
-                assert!(report.bytes_freed >= 5);
-            }
-            other => panic!("expected Wiped, got {other:?}"),
-        }
-        assert!(
-            cache.exists(),
-            "cache dir itself survives — only contents wiped"
-        );
-        assert!(
-            std::fs::read_dir(&cache).unwrap().next().is_none(),
-            "cache contents must be empty",
-        );
-    }
-
-    // Wipe all client state: with USERPROFILE set, WipeAllClientState
-    // emits Wiped{kind=Firesky} and the Firesky tree is empty after.
-    #[test]
-    fn spawn_wipe_all_clears_firesky_tree() {
-        let _g = crate::client_paths::env_test_lock().lock().unwrap();
-        let dir = tempfile::tempdir().unwrap();
-        let firesky = dir.path().join("Documents/My Games/Firesky");
-        std::fs::create_dir_all(firesky.join("SGWGame/Config")).unwrap();
-        std::fs::write(firesky.join("SGWGame/Config/user.ini"), b"keybinds=...").unwrap();
-
-        let prev_profile = std::env::var("USERPROFILE").ok();
-        let prev_home = std::env::var("HOME").ok();
-        std::env::set_var("USERPROFILE", dir.path());
-        std::env::remove_var("HOME");
-
-        let (mut worker, rt) = make_worker();
-        worker.dispatch(Command::WipeAllClientState);
-        let ev = rt.block_on(async {
-            recv_matching(&mut worker.events_rx, |e| {
-                matches!(e, Event::Wiped { .. } | Event::WipeError(_))
-            })
-            .await
-        });
-
-        match prev_profile {
-            Some(v) => std::env::set_var("USERPROFILE", v),
-            None => std::env::remove_var("USERPROFILE"),
-        }
-        if let Some(v) = prev_home {
-            std::env::set_var("HOME", v);
-        }
-
-        match ev {
-            Event::Wiped { kind, .. } => assert_eq!(kind, "Firesky"),
-            other => panic!("expected Wiped{{kind=Firesky}}, got {other:?}"),
-        }
-        // The Firesky dir itself survives — only contents go — so a
-        // running watcher in the client doesn't lose its handle.
-        assert!(firesky.exists());
-        assert!(std::fs::read_dir(&firesky).unwrap().next().is_none());
-    }
-
-    // Resolution failure path: neither USERPROFILE nor HOME set →
-    // WipeError instead of Wiped. Important so a CI runner with a
-    // weird env doesn't silently nuke files relative to cwd.
-    #[test]
-    fn spawn_wipe_emits_error_when_no_profile_env() {
-        let _g = crate::client_paths::env_test_lock().lock().unwrap();
-        let prev_profile = std::env::var("USERPROFILE").ok();
-        let prev_home = std::env::var("HOME").ok();
-        std::env::remove_var("USERPROFILE");
-        std::env::remove_var("HOME");
-
-        let (mut worker, rt) = make_worker();
-        worker.dispatch(Command::WipeClientCache);
-        let ev = rt.block_on(async {
-            recv_matching(&mut worker.events_rx, |e| {
-                matches!(e, Event::Wiped { .. } | Event::WipeError(_))
-            })
-            .await
-        });
-
-        if let Some(v) = prev_profile {
-            std::env::set_var("USERPROFILE", v);
-        }
-        if let Some(v) = prev_home {
-            std::env::set_var("HOME", v);
-        }
-
-        match ev {
-            Event::WipeError(msg) => assert!(
-                msg.contains("USERPROFILE") || msg.contains("HOME"),
-                "WipeError should explain which env var was missing, got: {msg}"
-            ),
-            other => panic!("expected WipeError, got {other:?}"),
-        }
-    }
-}
+#[cfg(test)]
+mod tests;

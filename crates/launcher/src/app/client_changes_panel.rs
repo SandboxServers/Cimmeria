@@ -10,6 +10,8 @@ use crate::client_changes::{list, ChangeInputs};
 impl LauncherApp {
     pub(super) fn show_client_changes(&mut self, ui: &mut egui::Ui) {
         let patches = self
+            .play
+            .manifest
             .manifest
             .as_ref()
             .map(|m| m.patches.as_slice())
@@ -40,7 +42,7 @@ impl LauncherApp {
                 .small()
                 .italics(),
             );
-            if self.manifest.is_none() {
+            if self.play.manifest.manifest.is_none() {
                 ui.label(
                     egui::RichText::new(
                         "The patch list appears once the manifest has been fetched.",

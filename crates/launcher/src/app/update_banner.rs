@@ -168,7 +168,9 @@ impl LauncherApp {
 
     fn min_gate(&self) -> MinLauncherGate {
         self.update.gate(
-            self.manifest
+            self.play
+                .manifest
+                .manifest
                 .as_ref()
                 .and_then(|m| m.min_launcher.as_deref()),
         )
@@ -195,11 +197,15 @@ impl LauncherApp {
         self.worker.dispatch(Command::CheckForUpdate);
     }
 
+    /// The update alerts at the top of the main column: the mandatory
+    /// `min_launcher` gate, an available update, and download progress.
+    /// Nothing is drawn when there is nothing to say.
     pub(super) fn show_update_banner(&mut self, ui: &mut egui::Ui) {
+        let installing = self.play.operation.is_some();
         let gate = self.min_gate();
         if let MinLauncherGate::TooOld { required } = &gate {
             ui.colored_label(
-                egui::Color32::RED,
+                super::theme::DANGER,
                 format!(
                     "This launcher ({}) is too old for the server's content; it needs {required} \
                      or newer. Install and Launch are off until you update.",
@@ -224,20 +230,20 @@ impl LauncherApp {
             }
             UpdatePhase::Restarting { tag } => {
                 ui.colored_label(
-                    egui::Color32::LIGHT_GREEN,
+                    super::theme::GOOD,
                     format!("Update verified. Restarting into {tag}…"),
                 );
             }
             UpdatePhase::Failed { message, page_url } => {
                 ui.colored_label(
-                    egui::Color32::RED,
+                    super::theme::DANGER,
                     format!("Launcher update failed: {message}."),
                 );
                 ui.horizontal(|ui| {
                     ui.hyperlink_to("Download the new launcher from the release page", page_url);
                     if let Some(offer) = self.update.offer.clone() {
                         if ui
-                            .add_enabled(!self.installing, egui::Button::new("Try again"))
+                            .add_enabled(!installing, egui::Button::new("Try again"))
                             .clicked()
                         {
                             self.click_update(offer);
@@ -249,11 +255,11 @@ impl LauncherApp {
                 if let Some(offer) = self.update.offer.clone() {
                     ui.horizontal(|ui| {
                         ui.colored_label(
-                            egui::Color32::LIGHT_YELLOW,
+                            super::theme::WARN,
                             format!("Launcher update available ({})", offer.tag),
                         );
                         if ui
-                            .add_enabled(!self.installing, egui::Button::new("Update now"))
+                            .add_enabled(!installing, egui::Button::new("Update now"))
                             .on_disabled_hover_text("Wait for the install to finish.")
                             .clicked()
                         {
@@ -269,7 +275,11 @@ impl LauncherApp {
                 }
             }
         }
+    }
 
+    /// The launcher's version and "Check for updates", in Settings ›
+    /// Advanced. The banner above stays on the main surface.
+    pub(super) fn show_update_controls(&mut self, ui: &mut egui::Ui) {
         ui.horizontal(|ui| {
             let version = if self.update.build.is_release() {
                 format!("Launcher {}", self.update.build.display())

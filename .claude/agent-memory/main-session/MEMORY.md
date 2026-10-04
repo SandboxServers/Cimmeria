@@ -4,6 +4,7 @@ Dated, sourced facts from top-level sessions, committed with the change that pro
 
 ## Open investigations
 
+- [project_launcher_redesign_1153.md](project_launcher_redesign_1153.md) — #1153 launcher redesign: layout A chosen 2026-10-03; PR 1 shell/lifecycle/guards built; Repair (PR 2) and Uninstall (PR 3) still to do
 - [project_mercury_tx_hole_size.md](project_mercury_tx_hole_size.md) — 2026-09-29 stall on 1488-byte datagrams (client reads 1472); cause was uncapped piggybacked ACKs, capped 2026-10-03; send/recv fingerprint telemetry
 - [project_cellblock_autoplay_campaign.md](project_cellblock_autoplay_campaign.md) — Cellblock autoplay planned 2026-09-29 (docs/analysis/cellblock-autoplay/); nothing built; installed labd predates #1099-#1102
 - [project_invisible_cellblock_guard.md](project_invisible_cellblock_guard.md) — Cellblock NID guard often unrendered on a fresh character though the client creates it; evidence, ruled-out causes (#838)
@@ -18,6 +19,7 @@ Dated, sourced facts from top-level sessions, committed with the change that pro
 
 ## Reference
 
+- [reference_launcher_ui_verification_traps.md](reference_launcher_ui_verification_traps.md) — prototype needs .mjs MIME fix to render; PowerShell `bash` is WSL; debug launchers reject the live manifest; scratch config for screenshot runs
 - [reference_lab_client_controls.md](reference_lab_client_controls.md) — lab driving: Q/E rotate, B bag, Tab target; mouse-look broken (no DI button); .gotoxyz moves the selected target; inventory reader fallback
 
 - [reference_auto_cycle_client_telemetry_2026_10_03.md](reference_auto_cycle_client_telemetry_2026_10_03.md) — AutoAttack.lua icon vs T binding, Sep 29 target-0 clears; #1144 colo UAT passed 2026-10-03; auto-cycle no longer persisted (owner: always off on login, #1148)

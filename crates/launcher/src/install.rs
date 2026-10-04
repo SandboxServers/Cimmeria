@@ -107,7 +107,7 @@ fn safe_sha_prefix(sha: &str) -> Result<&str, InstallError> {
 
 /// Progress events emitted during install. Forwarded to the UI thread by
 /// the worker, which wraps these in [`crate::worker::Event::Progress`].
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Progress {
     Downloading {
         label: String,

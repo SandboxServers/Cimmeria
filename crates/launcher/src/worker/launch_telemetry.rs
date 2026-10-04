@@ -102,6 +102,8 @@ pub(super) async fn follow_with_telemetry(
     events_tx: &EventSender,
 ) {
     let Ok(telemetry) = session.telemetry else {
+        // No session to run, but `exit` still reports the game's exit.
+        let _ = exit.await;
         return;
     };
     if let Some(outcome) = dll_outcome {
