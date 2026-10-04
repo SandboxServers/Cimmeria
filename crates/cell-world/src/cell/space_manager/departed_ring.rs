@@ -53,25 +53,71 @@ impl DepartedEntity {
     }
 }
 
+/// One space's departures of one kind: the rows in departure order (for
+/// eviction), and the same rows grouped by entity ID, so a lookup costs one
+/// hash probe plus the few lifetimes that slot had, never a scan of the
+/// whole ring. The telemetry ingest asks about entity IDs a client chose
+/// (NT-40), so a miss has to be cheap.
+#[derive(Debug, Default)]
+struct SpaceRing {
+    rows: VecDeque<DepartedEntity>,
+    by_entity: HashMap<u32, VecDeque<DepartedEntity>>,
+}
+
+impl SpaceRing {
+    fn push(&mut self, row: DepartedEntity) {
+        self.rows.push_back(row);
+        self.by_entity
+            .entry(row.entity_id)
+            .or_default()
+            .push_back(row);
+    }
+
+    /// Drop the oldest row from both views. Rows enter both in the same
+    /// order, so it is also the front of its entity's list.
+    fn pop_front(&mut self) {
+        let Some(row) = self.rows.pop_front() else {
+            return;
+        };
+        if let Some(list) = self.by_entity.get_mut(&row.entity_id) {
+            list.pop_front();
+            if list.is_empty() {
+                self.by_entity.remove(&row.entity_id);
+            }
+        }
+    }
+
+    /// Drop the rows that are past retention at `now`.
+    fn age(&mut self, now: SystemTime) {
+        while self
+            .rows
+            .front()
+            .is_some_and(|d| aged_out(d.destroyed_at, now))
+        {
+            self.pop_front();
+        }
+    }
+}
+
 /// One kind's rings, keyed by space.
 #[derive(Debug, Default)]
-struct Rings(HashMap<u32, VecDeque<DepartedEntity>>);
+struct Rings(HashMap<u32, SpaceRing>);
 
 impl Rings {
     fn push(&mut self, space_id: u32, row: DepartedEntity) {
         let now = row.destroyed_at;
         let ring = self.0.entry(space_id).or_default();
-        ring.push_back(row);
-        while ring.len() > DEPARTED_CAP {
+        ring.push(row);
+        while ring.rows.len() > DEPARTED_CAP {
             ring.pop_front();
         }
-        age(ring, now);
+        ring.age(now);
     }
 
     fn sweep(&mut self, now: SystemTime) {
         self.0.retain(|_, ring| {
-            age(ring, now);
-            !ring.is_empty()
+            ring.age(now);
+            !ring.rows.is_empty()
         });
     }
 
@@ -79,20 +125,15 @@ impl Rings {
         // Newest first, in case a clock step made two lifetimes overlap.
         self.0
             .get(&space_id)?
+            .by_entity
+            .get(&entity_id)?
             .iter()
             .rev()
-            .find(|d| d.entity_id == entity_id && d.was_alive_at(at))
+            .find(|d| d.was_alive_at(at))
     }
 
     fn len(&self, space_id: u32) -> usize {
-        self.0.get(&space_id).map_or(0, VecDeque::len)
-    }
-}
-
-/// Drop the rows of `ring` that are past retention at `now`.
-fn age(ring: &mut VecDeque<DepartedEntity>, now: SystemTime) {
-    while ring.front().is_some_and(|d| aged_out(d.destroyed_at, now)) {
-        ring.pop_front();
+        self.0.get(&space_id).map_or(0, |r| r.rows.len())
     }
 }
 
@@ -278,5 +319,26 @@ mod tests {
         ring.push(1, row(8, "Stepped", 0, 500));
         assert_eq!(label(&ring, 1, 7, t(10)), Some("Old"));
         assert_eq!(label(&ring, 1, 8, t(10)), Some("Stepped"));
+    }
+
+    /// The by-entity index follows the ring: an evicted row leaves it, so a
+    /// lookup sees exactly the rows the ring holds, and an entity whose rows
+    /// are all gone leaves no key behind.
+    #[test]
+    fn the_entity_index_follows_eviction() {
+        let mut ring = DepartedEntities::default();
+        ring.push(1, row(7, "Old", 0, 10));
+        for i in 0..DEPARTED_CAP as u32 {
+            ring.push(1, row(1_000 + i, "x", 10, 20));
+        }
+        let space = &ring.players.0[&1];
+        assert_eq!(space.rows.len(), DEPARTED_CAP);
+        assert!(
+            !space.by_entity.contains_key(&7),
+            "evicted row left its key"
+        );
+        assert_eq!(space.by_entity.len(), DEPARTED_CAP);
+        assert_eq!(label(&ring, 1, 7, t(5)), None);
+        assert_eq!(label(&ring, 1, 1_000, t(15)), Some("x"));
     }
 }

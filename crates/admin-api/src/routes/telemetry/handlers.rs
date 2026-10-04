@@ -13,8 +13,8 @@ use crate::routes::dev_session::{decode_token, AuthError, TokenClaims, SCOPE_TEL
 
 use super::dto::{BundleResponse, ChunkResponse, IngestError};
 use super::entity_labels::{self, name_chunk};
-use super::replay::parse_ndjson;
-use super::session_budget::{replay_budgeted, EVENTS_PER_WINDOW, WINDOW_SECS};
+use super::replay::{parse_ndjson, replay_events};
+use super::session_budget::{admit_budgeted, EVENTS_PER_WINDOW, WINDOW_SECS};
 use super::{
     MAX_BUNDLE_BYTES, MAX_BUNDLE_ENTRY_DECOMPRESSED_BYTES, MAX_CHUNK_BYTES,
     MAX_CHUNK_DECOMPRESSED_BYTES,
@@ -49,24 +49,28 @@ pub(super) async fn upload_chunk(
         ));
     }
 
-    // The runaway guard: over the session's budget only priority events
-    // are replayed; the rest are counted and reported below, never dropped
-    // silently.
+    // The whole chunk parses or none of it replays.
     let events = parse_ndjson(&ndjson).map_err(|e| IngestError::Ndjson {
         line: e.line,
         err: e.err,
     })?;
-    // Entity IDs are named by asking the cell who held each slot when the
-    // row was written (NT-40); the rest of a row's names need no round trip.
+    // The runaway guard first: over the session's budget only priority
+    // events are replayed (the rest are counted and reported below, never
+    // dropped silently), and only those are named. Then entity IDs are
+    // named by asking the cell who held each slot when the row was written
+    // (NT-40); the rest of a row's names need no round trip.
+    let now = chrono::Utc::now().timestamp();
+    let (admitted, totals) = admit_budgeted(&claims, &events, now);
     let labels = name_chunk(
         &claims.sid,
+        &claims.sub,
         &events,
+        &admitted,
         SystemTime::now(),
-        entity_labels::cell(),
+        entity_labels::link(),
     )
     .await;
-    let now = chrono::Utc::now().timestamp();
-    let (counts, totals) = replay_budgeted(&claims, events, &labels, now);
+    let counts = replay_events(&claims, events, &labels, &admitted);
     let (accepted, parsed, suppressed) = (counts.accepted, counts.parsed, counts.suppressed);
 
     if suppressed > 0 {

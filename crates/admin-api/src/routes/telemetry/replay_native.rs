@@ -51,6 +51,29 @@ const OUTBOUND_TARGETS: &[&str] = &[
     "client.ability.sent_seq",
 ];
 
+/// DLL targets replayed in the status shape (boot, hooks, streaming, the
+/// governor's rollups, the CEGUI log): the families whose status keys
+/// (`level_name`, `dll_version`, `usable`, the rollup pair) are lifted.
+/// Every other target is replayed in the game shape. The shape follows the
+/// target, never the row's fields, so a row can't hide its status keys by
+/// carrying a game ID.
+const STATUS_TARGET_PREFIXES: &[&str] = &[
+    "client.telemetry.",
+    "client.dll.",
+    "client.hooks.",
+    "client.streaming.",
+    "client.ui.",
+];
+
+/// Whether DLL event `target` is replayed in the status shape.
+pub(super) fn is_status_target(target: &str) -> bool {
+    STATUS_TARGET_PREFIXES.iter().any(|p| target.starts_with(p))
+}
+
+/// What every replayed `client.native` row says about its names: the IDs,
+/// spaces and times they were resolved from are the client's own claims.
+const NAMES_SOURCE: &str = "client_claimed";
+
 /// Correlation keys lifted out of a DLL event's `fields` bag into
 /// attributes of their own, so SigNoz can filter on them without parsing
 /// the `fields` JSON. `None` (key absent or the wrong JSON type) omits the
@@ -112,19 +135,6 @@ impl LiftedFields {
             rollup_target: text("rollup_target"),
             rollup_count: text("rollup_target").and_then(|_| int("count")),
         }
-    }
-
-    /// Whether the row carries a game ID, which picks the replay shape.
-    pub(super) fn has_game_ids(&self) -> bool {
-        self.method_index.is_some()
-            || self.msg_id.is_some()
-            || self.class_id.is_some()
-            || self.entity_id.is_some()
-            || self.target_id.is_some()
-            || self.source_id.is_some()
-            || self.pet_id.is_some()
-            || self.ability_id.is_some()
-            || self.item_type_id.is_some()
     }
 }
 
@@ -207,13 +217,16 @@ pub(super) fn replay_client_native(claims: &TokenClaims, e: ClientNativeEvent) {
 ///   `cimmeria.session_kind`, `lab`), never the DLL's own claims.
 /// - **IDs are named** (module docs); `entity_label` names an entity ID as
 ///   this row saw it.
-/// - **Two shapes.** `tracing` caps an event at 32 fields, and the ID pairs
-///   plus the DLL's status keys exceed it. A row with any game ID (method,
-///   message, entity type, entity, ability or item) is replayed with the ID
-///   pairs; any other row (boot, hooks, streaming, governor rollups) with
-///   the status keys (`level_name`, `dll_version`, `fingerprint_usable`,
-///   `rollup_target`, `rollup_count`). Both carry the identity, the
-///   address pair and the whole bag in `fields`.
+/// - **Two shapes, by target.** `tracing` caps an event at 32 fields, and
+///   the ID pairs plus the DLL's status keys exceed it. A status target
+///   ([`is_status_target`]: boot, hooks, streaming, governor rollups, the
+///   CEGUI log) is replayed with the status keys (`level_name`,
+///   `dll_version`, `fingerprint_usable`, `rollup_target`, `rollup_count`);
+///   every other target with the ID pairs. Both carry the identity, the
+///   address pair, `names_source` and the whole bag in `fields`.
+/// - **Names are client-claimed** (`names_source = "client_claimed"`): the
+///   IDs, the space and the time come from the uploaded row, so a name is
+///   what the row claims, never a server observation.
 pub(super) fn replay_client_native_named(
     claims: &TokenClaims,
     e: ClientNativeEvent,
@@ -242,6 +255,7 @@ pub(super) fn replay_client_native_named(
                 seq = e.seq,
                 client_target = name,
                 client_level = %e.level,
+                names_source = NAMES_SOURCE,
                 class_id = l.class_id,
                 class_name = n.class_name,
                 method_index = l.method_index,
@@ -280,6 +294,7 @@ pub(super) fn replay_client_native_named(
                 seq = e.seq,
                 client_target = name,
                 client_level = %e.level,
+                names_source = NAMES_SOURCE,
                 address = l.address.as_deref(),
                 address_name = n.address_name,
                 level_name = l.level_name.as_deref(),
@@ -293,7 +308,7 @@ pub(super) fn replay_client_native_named(
         };
     }
 
-    match (l.has_game_ids(), e.level.as_str()) {
+    match (!is_status_target(name), e.level.as_str()) {
         (true, "trace") => game_event!(tracing::Level::TRACE),
         (true, "debug") => game_event!(tracing::Level::DEBUG),
         (true, "warn") => game_event!(tracing::Level::WARN),

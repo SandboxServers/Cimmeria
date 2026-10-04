@@ -10,9 +10,13 @@ Learned on NT-40 (2026-10-04), naming client.native rows at ingest.
 - **`tracing` caps one event at 32 fields, message included.** The `client.native` replay outgrew it,
   so `replay_native.rs` has two shapes: rows with game IDs carry the ID/name pairs, other rows carry
   the status keys. Adding a field means picking a shape and recounting.
+- **Never put public-ingest work on the base->cell gameplay channel** (security review of #1215).
+  The ingest has its own 4-slot `EntityLabelsRequest` channel, read by the cell loop only under
+  `if rx.is_empty()`, one request in flight (`Semaphore::try_acquire`), budget gate before naming,
+  cell skips `reply_tx.is_closed()`, departed rings indexed by entity ID. Names are client-claimed.
 - **The upload routes have no router state.** They are mounted on the admin listener and on the
-  public login port (`login_port_telemetry_router`), so cell access is the process-global sender
-  from `connect_entity_labels`, set in `main.rs` after `start_all`. Tests pass a sender explicitly
+  public login port (`login_port_telemetry_router`), so cell access is the process-global label
+  link from `connect_entity_labels`, set in `main.rs` after `start_all`. Tests pass a sender explicitly
   (`replay_ndjson_named`).
 - **`docs/` is in `docker/Dockerfile.dockerignore`.** Anything `include_str!`'d must live under
   `crates/` (or entities/tools) — the symbol table is `routes/telemetry/client_symbols.tsv`.

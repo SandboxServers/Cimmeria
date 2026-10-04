@@ -9,7 +9,7 @@ use cimmeria_cell_world::cell::plugin::TickStage;
 use cimmeria_content_engine::chain::ChainEngine;
 
 use super::super::content;
-use super::super::messages::{BaseToCellMsg, CellToBaseMsg};
+use super::super::messages::{BaseToCellMsg, CellToBaseMsg, EntityLabelsRequest};
 use super::super::space_manager::SpaceManager;
 use super::super::spawner;
 
@@ -18,8 +18,14 @@ use super::super::spawner;
 /// Exits when `shutdown` is notified, the BaseToCell channel closes, or the
 /// task is dropped. `CellService::stop()` uses the `shutdown` arm to request
 /// a clean exit and then awaits the join handle.
+///
+/// `labels_rx` carries the telemetry ingest's entity-label questions
+/// (NT-40). Its arm runs only while the gameplay queue is empty, so a flood
+/// of uploads can delay a label answer but never a gameplay message.
+#[allow(clippy::too_many_arguments)]
 pub(super) async fn run_cell_loop(
     rx: &mut mpsc::Receiver<BaseToCellMsg>,
+    labels_rx: &mut Option<mpsc::Receiver<EntityLabelsRequest>>,
     tx: &mpsc::Sender<CellToBaseMsg>,
     mut space_mgr: SpaceManager,
     mut engine: ChainEngine,
@@ -57,6 +63,16 @@ pub(super) async fn run_cell_loop(
                         tracing::info!("Cell service channel closed — shutting down");
                         break;
                     }
+                }
+            }
+            // Gameplay first: the precondition is checked each time round
+            // the loop, so a label question is taken only when no gameplay
+            // message is queued. The arm is never polled otherwise. Each
+            // answer is bounded (ENTITY_LABEL_QUERY_CAP hash lookups) and is
+            // skipped when the ingest already gave up.
+            req = next_label_request(labels_rx), if rx.is_empty() => {
+                if let Some(req) = req {
+                    space_mgr.answer_entity_labels(req);
                 }
             }
             _ = tick_interval.tick() => {
@@ -307,4 +323,19 @@ pub(super) async fn run_cell_loop(
     }
 
     tracing::debug!("Cell service message loop exited");
+}
+
+/// The next label question, or `None` once the ingest's sender is gone,
+/// after which the arm never fires again. With no channel, never ready.
+async fn next_label_request(
+    rx: &mut Option<mpsc::Receiver<EntityLabelsRequest>>,
+) -> Option<EntityLabelsRequest> {
+    let Some(r) = rx.as_mut() else {
+        return std::future::pending().await;
+    };
+    let req = r.recv().await;
+    if req.is_none() {
+        *rx = None;
+    }
+    req
 }

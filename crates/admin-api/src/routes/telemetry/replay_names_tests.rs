@@ -9,9 +9,10 @@ use serde_json::json;
 use tokio::sync::mpsc;
 
 use cimmeria_names::{NameBook, Table};
-use cimmeria_services::cell::messages::BaseToCellMsg;
+use cimmeria_services::cell::messages::EntityLabelsRequest;
 
 use super::dto::ClientNativeEvent;
+use super::entity_labels::EntityLabelLink;
 use super::replay::replay_ndjson_named;
 use super::replay_native::replay_client_native_named;
 use super::replay_tests::{capture, capture_async, claims};
@@ -163,47 +164,48 @@ fn a_method_index_without_a_type_is_named_only_where_types_agree() {
 
 /// A stand-in cell with one slot that changed hands at `handover`: Daniel
 /// before, Vala from then on. The real lookup is the cell's
-/// (`entity_labels_at`, tested in `cimmeria-cell`); this one checks the
-/// time the ingest asks about.
-fn fake_cell(space_id: u32, handover: SystemTime) -> mpsc::Sender<BaseToCellMsg> {
-    let (tx, mut rx) = mpsc::channel::<BaseToCellMsg>(4);
+/// (`entity_labels_at`, tested in `cimmeria-cell-world`); this one checks
+/// the time the ingest asks about.
+fn fake_cell(space_id: u32, handover: SystemTime) -> EntityLabelLink {
+    let (tx, mut rx) = mpsc::channel::<EntityLabelsRequest>(4);
     tokio::spawn(async move {
-        while let Some(msg) = rx.recv().await {
-            if let BaseToCellMsg::EntityLabelsAt { queries, reply_tx } = msg {
-                let labels = queries
-                    .iter()
-                    .map(|q| {
-                        (q.space_id == space_id && q.entity_id == ENTITY)
-                            .then_some(if q.at < handover { "Daniel" } else { "Vala" })
-                    })
-                    .collect();
-                let _ = reply_tx.send(labels);
-            }
+        while let Some(req) = rx.recv().await {
+            let labels = req
+                .queries
+                .iter()
+                .map(|q| {
+                    (q.space_id == space_id && q.entity_id == ENTITY)
+                        .then_some(if q.at < handover { "Daniel" } else { "Vala" })
+                })
+                .collect();
+            let _ = req.reply_tx.send(labels);
         }
     });
-    tx
+    EntityLabelLink::new(tx)
 }
 
-/// A row written a minute before the upload, about a slot that changed
+fn line(ts: i64, target: &str, fields: serde_json::Value) -> String {
+    json!({
+        "type": "client_native", "ts_ms": ts, "seq": 1,
+        "target": target, "level": "info", "fields": fields,
+    })
+    .to_string()
+}
+
+/// A chunk written a minute before its upload, about a slot that changed
 /// hands 30 s before the upload, names the occupant at the time it was
 /// written. Naming by receive time would name the new occupant, and the
 /// client's clock here is years off the server's, so its raw time would
-/// name no one.
+/// name no one. The next chunk, written after the hand-over, names the new
+/// occupant.
 #[tokio::test]
-async fn a_late_row_names_the_slot_holder_when_it_was_written() {
+async fn a_late_chunk_names_the_slot_holder_when_it_was_written() {
     const SPACE: u32 = 65536;
     let recv = SystemTime::now();
-    let cell = fake_cell(SPACE, recv - Duration::from_secs(30));
+    let link = fake_cell(SPACE, recv - Duration::from_secs(30));
     // The client's clock runs years behind the server's.
     let client_now: i64 = 1_700_000_000_000;
-    let line = |ts: i64, target: &str, fields: serde_json::Value| {
-        json!({
-            "type": "client_native", "ts_ms": ts, "seq": 1,
-            "target": target, "level": "info", "fields": fields,
-        })
-        .to_string()
-    };
-    let ndjson = [
+    let late = [
         line(
             client_now - 90_000,
             "client.entity.create",
@@ -214,27 +216,51 @@ async fn a_late_row_names_the_slot_holder_when_it_was_written() {
             "client.ability.recv",
             json!({ "source_id": ENTITY, "method_index": 14 }),
         ),
-        line(
-            client_now,
-            "client.ability.recv",
-            json!({ "target_id": ENTITY, "method_index": 14 }),
-        ),
+        // The newest row, written just before the upload.
+        line(client_now, "client.engine.tick", json!({})),
     ]
     .join("\n");
+    let fresh = line(
+        client_now + 1_000,
+        "client.ability.recv",
+        json!({ "target_id": ENTITY, "method_index": 14 }),
+    );
     // A session id of its own: the clock offset is kept per session.
     let mut claims = claims(None);
-    claims.sid = "nt40-late-row".into();
+    claims.sid = "nt40-late-chunk".into();
 
     let (counts, rows) =
-        capture_async(replay_ndjson_named(&claims, &ndjson, recv, Some(&cell))).await;
+        capture_async(replay_ndjson_named(&claims, &late, recv, Some(&link))).await;
     assert_eq!(counts.unwrap().accepted, 3);
     assert_eq!(rows[0].fields["entity_name"], "Daniel");
     assert_eq!(
         rows[1].fields["source_name"], "Daniel",
         "written 60 s before the upload, 30 s before the slot changed hands"
     );
+    assert_eq!(rows[1].fields["names_source"], "client_claimed");
+
+    let next = recv + Duration::from_secs(1);
+    let (_, rows) = capture_async(replay_ndjson_named(&claims, &fresh, next, Some(&link))).await;
     assert_eq!(
-        rows[2].fields["target_name"], "Vala",
-        "written just before the upload, after the hand-over"
+        rows[0].fields["target_name"], "Vala",
+        "written after the hand-over"
     );
+}
+
+/// The shape follows the DLL target, not the row's fields: a governor
+/// rollup that also carries a game key keeps its rollup attributes.
+#[test]
+fn a_status_target_keeps_its_status_keys_whatever_else_it_carries() {
+    let mut e = row(
+        "client.telemetry.rollup",
+        "info",
+        json!({ "rollup_target": "client.lua.pcall", "count": 7, "type_id": 2, "msg_id": 1 }),
+    );
+    e.seq = 2;
+    let rows = capture(|| replay_client_native_named(&claims(None), e, &book(), |_| None));
+    let f = &rows[0].fields;
+    assert_eq!(f["rollup_count"], "7");
+    assert_eq!(f["rollup_target"], "client.lua.pcall");
+    assert!(!f.contains_key("class_id"), "a status row has no ID pairs");
+    assert_eq!(f["names_source"], "client_claimed");
 }

@@ -11,7 +11,9 @@ use std::time::SystemTime;
 use cimmeria_entity::cell_entity::CellEntity;
 use cimmeria_entity::name_intern::intern_opt;
 
-use crate::cell::messages::{EntityLabelQuery, EntityLabelsReply, ENTITY_LABEL_QUERY_CAP};
+use crate::cell::messages::{
+    EntityLabelQuery, EntityLabelsReply, EntityLabelsRequest, ENTITY_LABEL_QUERY_CAP,
+};
 
 use super::departed_ring::DepartedEntity;
 use super::SpaceManager;
@@ -141,8 +143,19 @@ impl SpaceManager {
             .and_then(|d| d.label)
     }
 
-    /// Answer a `BaseToCellMsg::EntityLabelsAt` (NT-40): one
-    /// [`Self::entity_label_at`] per query, in order. Queries past
+    /// Answer an [`EntityLabelsRequest`] from the telemetry ingest (NT-40),
+    /// unless the ingest already stopped waiting for it: then the answer
+    /// would go nowhere, so none is computed. Returns whether it answered.
+    pub fn answer_entity_labels(&self, req: EntityLabelsRequest) -> bool {
+        if req.reply_tx.is_closed() {
+            return false;
+        }
+        req.reply_tx
+            .send(self.entity_labels_at(&req.queries))
+            .is_ok()
+    }
+
+    /// One [`Self::entity_label_at`] per query, in order. Queries past
     /// [`ENTITY_LABEL_QUERY_CAP`] get `None`, so one telemetry chunk can't
     /// stall the tick.
     pub fn entity_labels_at(&self, queries: &[EntityLabelQuery]) -> EntityLabelsReply {

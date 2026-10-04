@@ -31,9 +31,9 @@
 //!   ability round trip (`gmGiveAllAbilities`, `gmResetAbilities`; AB-N2).
 //! - `plugin_msg` — `PluginMsg`, the feature-message envelope carried by
 //!   `CellToBaseMsg::Plugin` (#962, plugin ADR §3.4).
-//! - `entity_labels` — `EntityLabelQuery`, carried by
-//!   `BaseToCellMsg::EntityLabelsAt`: the telemetry ingest naming entity IDs
-//!   from late client rows (NT-40).
+//! - `entity_labels` — `EntityLabelsRequest`, sent on its own ingest-to-cell
+//!   channel (never the gameplay one): the telemetry ingest naming entity
+//!   IDs from late client rows (NT-40).
 
 mod ability_gm;
 mod ammo_gm_cell_to_base;
@@ -74,7 +74,10 @@ pub use data::{
     MailOp, MailSend, MailSendReject, NpcAoIData, NpcVitals, PlayerAoIData, SavedMission,
 };
 pub use duel_base_to_cell::DuelBaseToCell;
-pub use entity_labels::{EntityLabelQuery, EntityLabelsReply, ENTITY_LABEL_QUERY_CAP};
+pub use entity_labels::{
+    EntityLabelQuery, EntityLabelsReply, EntityLabelsRequest, ENTITY_LABEL_CHANNEL_CAPACITY,
+    ENTITY_LABEL_QUERY_CAP,
+};
 pub use item_use::{ConsumeItemForUse, ItemUseConsumed};
 pub use lab::{
     LabEntityFilter, LabEntityNames, LabEntityRef, LabEntitySnapshot, LabQuery, LabQueryReply,

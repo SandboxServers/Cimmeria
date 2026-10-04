@@ -38,14 +38,10 @@
 
 use std::time::SystemTime;
 
-use tokio::sync::mpsc;
-
-use cimmeria_services::cell::messages::BaseToCellMsg;
-
 use crate::routes::dev_session::TokenClaims;
 
 use super::dto::TelemetryEvent;
-use super::entity_labels::{name_chunk, EntityLabels};
+use super::entity_labels::{name_chunk, EntityLabelLink, EntityLabels};
 use super::replay_native::{replay_client_native_named, ReplayNames};
 
 /// One NDJSON line that did not parse as a [`TelemetryEvent`]. The whole
@@ -81,7 +77,7 @@ pub fn replay_ndjson(claims: &TokenClaims, ndjson: &str) -> Result<ReplayCounts,
 }
 
 /// [`replay_ndjson`] with entity IDs named: the chunk is placed on the
-/// server clock as received at `recv` and the cell is asked through `cell`,
+/// server clock as received at `recv` and the cell is asked through `link`,
 /// as the upload handler does (without its session budget).
 ///
 /// Public so the server's tests can drive the naming against a real
@@ -90,11 +86,12 @@ pub async fn replay_ndjson_named(
     claims: &TokenClaims,
     ndjson: &str,
     recv: SystemTime,
-    cell: Option<&mpsc::Sender<BaseToCellMsg>>,
+    link: Option<&EntityLabelLink>,
 ) -> Result<ReplayCounts, ReplayError> {
     let events = parse_ndjson(ndjson)?;
-    let labels = name_chunk(&claims.sid, &events, recv, cell).await;
-    Ok(replay_events_gated(claims, events, &labels, |_| true))
+    let admitted = vec![true; events.len()];
+    let labels = name_chunk(&claims.sid, &claims.sub, &events, &admitted, recv, link).await;
+    Ok(replay_events(claims, events, &labels, &admitted))
 }
 
 /// [`replay_ndjson`] with a gate: an event for which `admit` returns
@@ -108,11 +105,12 @@ pub(super) fn replay_ndjson_gated(
     admit: impl FnMut(&TelemetryEvent) -> bool,
 ) -> Result<ReplayCounts, ReplayError> {
     let events = parse_ndjson(ndjson)?;
-    Ok(replay_events_gated(
+    let admitted: Vec<bool> = events.iter().map(admit).collect();
+    Ok(replay_events(
         claims,
         events,
         &EntityLabels::none(),
-        admit,
+        &admitted,
     ))
 }
 
@@ -132,13 +130,14 @@ pub(super) fn parse_ndjson(ndjson: &str) -> Result<Vec<TelemetryEvent>, ReplayEr
     Ok(events)
 }
 
-/// Replay a parsed chunk through `admit`, naming each row's entity IDs
-/// from `labels` (built for these `events`, in this order).
-pub(super) fn replay_events_gated(
+/// Replay the rows of a parsed chunk that `admitted` marks (by index; the
+/// rest are counted as suppressed), naming each row's entity IDs from
+/// `labels` (built for these `events`, in this order).
+pub(super) fn replay_events(
     claims: &TokenClaims,
     events: Vec<TelemetryEvent>,
     labels: &EntityLabels,
-    mut admit: impl FnMut(&TelemetryEvent) -> bool,
+    admitted: &[bool],
 ) -> ReplayCounts {
     let mut counts = ReplayCounts {
         parsed: events.len() as u64,
@@ -146,7 +145,7 @@ pub(super) fn replay_events_gated(
     };
     let book = cimmeria_names::book();
     for (row, ev) in events.into_iter().enumerate() {
-        if admit(&ev) {
+        if admitted.get(row).copied().unwrap_or(false) {
             let names = ReplayNames {
                 book: &book,
                 entity_label: &|id| labels.label(row, id),

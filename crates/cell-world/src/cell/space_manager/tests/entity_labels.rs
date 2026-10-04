@@ -7,6 +7,7 @@ use std::time::{Duration, SystemTime};
 use cimmeria_names::{NameBook, Table};
 
 use super::make_manager;
+use crate::cell::messages::{EntityLabelQuery, EntityLabelsRequest, ENTITY_LABEL_QUERY_CAP};
 use crate::cell::space_manager::{EntityNames, SpaceManager, DEPARTED_RETENTION};
 
 /// Agnos: not instanced, so destroying its last player keeps the space.
@@ -178,4 +179,60 @@ fn npcs_of_a_destroyed_instance_stay_nameable() {
         mgr.entity_label_at(space_id, 901, born),
         Some("Jaffa Guard")
     );
+}
+
+/// The telemetry ingest's batch (NT-40): one answer per question, each
+/// after whoever held the slot at its time; questions past the cap get none.
+#[test]
+fn a_label_batch_answers_each_question_at_its_time_up_to_the_cap() {
+    let mut mgr = make_manager();
+    occupy(&mut mgr, "Daniel", t(0));
+    vacate(&mut mgr, t(100));
+    occupy(&mut mgr, "Vala", t(100));
+    let q = |at| EntityLabelQuery {
+        space_id: AGNOS,
+        entity_id: SLOT,
+        at,
+    };
+    assert_eq!(
+        mgr.entity_labels_at(&[q(t(50)), q(t(150)), q(t(0) - Duration::from_secs(1))]),
+        [Some("Daniel"), Some("Vala"), None]
+    );
+
+    let many = vec![q(t(150)); ENTITY_LABEL_QUERY_CAP + 2];
+    let labels = mgr.entity_labels_at(&many);
+    assert_eq!(
+        labels.len(),
+        ENTITY_LABEL_QUERY_CAP + 2,
+        "one answer per question"
+    );
+    assert_eq!(labels[ENTITY_LABEL_QUERY_CAP - 1], Some("Vala"));
+    assert_eq!(labels[ENTITY_LABEL_QUERY_CAP], None);
+}
+
+/// A request whose sender stopped waiting is not computed: the answer
+/// would go nowhere, and the sender may be an attacker's abandoned upload.
+#[test]
+fn a_label_request_nobody_waits_for_is_skipped() {
+    let mut mgr = make_manager();
+    occupy(&mut mgr, "Daniel", t(0));
+    let question = EntityLabelQuery {
+        space_id: AGNOS,
+        entity_id: SLOT,
+        at: t(10),
+    };
+
+    let (reply_tx, reply_rx) = tokio::sync::oneshot::channel();
+    drop(reply_rx);
+    assert!(!mgr.answer_entity_labels(EntityLabelsRequest {
+        queries: vec![question],
+        reply_tx,
+    }));
+
+    let (reply_tx, mut reply_rx) = tokio::sync::oneshot::channel();
+    assert!(mgr.answer_entity_labels(EntityLabelsRequest {
+        queries: vec![question],
+        reply_tx,
+    }));
+    assert_eq!(reply_rx.try_recv().unwrap(), [Some("Daniel")]);
 }

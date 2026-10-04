@@ -28,7 +28,6 @@ mod disconnect_ability_snapshot;
 mod disconnect_lab_dummy;
 mod disconnect_persist_position;
 mod duel;
-mod entity_labels_at;
 mod general;
 mod gm_abilities;
 mod gm_ability_granted;

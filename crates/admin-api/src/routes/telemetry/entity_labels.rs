@@ -3,46 +3,56 @@
 //! An entity ID is a recycled slot, and a client row reaches the server
 //! seconds to minutes after the client wrote it, so the ID is named by
 //! asking the cell who held the slot *when the row was written*:
-//! `SpaceManager::entity_label_at(space_id, entity_id, at)`. Three things
-//! make that question answerable from a chunk of rows.
+//! `SpaceManager::entity_label_at(space_id, entity_id, at)`.
+//!
+//! **These names are client-claimed.** The entity ID, the space and the
+//! timestamp all come from the uploaded row, and the uploader is anyone who
+//! minted a dev-session token. The clock mapping below corrects an honest
+//! client's skew; it does not authenticate the row, and a client can pick
+//! its fields to make a row name any entity the rings remember. Every
+//! replayed `client.native` row says so (`names_source = "client_claimed"`).
 //!
 //! - **The time, on the server clock.** Lifetimes are stamped with the
-//!   server's wall clock and the client's clock is its own, so a row's
-//!   `ts_ms` is never passed raw. Each session keeps a clock offset: for
-//!   every chunk, the server's receive time minus the newest `ts_ms` in it,
-//!   and the session keeps the smallest offset seen. An observed offset is
-//!   the true clock difference plus that chunk's upload delay (buffering,
-//!   retries, the network), never less, so the smallest one is the best
-//!   estimate and only improves. The receive time alone would place every
-//!   row of a chunk at the moment of upload, after the destroys and slot
-//!   reuses that happened while the chunk sat in the DLL's queue; a raw
-//!   client time would let skew (or the client) pick the occupant. A row's
-//!   server time is `ts_ms + offset`, capped at the receive time. The rows
-//!   of a session's first chunks may land a little late, by at most the
-//!   smallest upload delay seen so far.
+//!   server's wall clock and the client's clock is its own. For each chunk
+//!   the session observes an offset: the server's receive time minus the
+//!   newest `ts_ms` in it. That is the true clock difference plus the
+//!   chunk's upload delay, never less, so the session uses the smallest
+//!   offset seen in the last [`OFFSET_WINDOW`]: an old sample ages out, so
+//!   a clock step heals within the window instead of skewing the rest of
+//!   the session. A row's server time is `ts_ms + offset`, capped at the
+//!   receive time. Receive time alone would place every row of a buffered
+//!   chunk after the slot reuses that happened while it waited.
+//! - **One question per entity per chunk.** A chunk asks once for each
+//!   (space, entity) pair, at the time of the first admitted row that
+//!   mentions it. So the cell's work is bounded by the distinct entities in
+//!   a chunk ([`ENTITY_LABEL_QUERY_CAP`]), not by the client's timestamps.
 //! - **The space.** Most rows carry no `space_id`. The client is in one
 //!   space at a time, and every entity it creates or brings into view
 //!   reports the space (`client.entity.create`, `.enter`,
-//!   `.entered_world`), so each row is placed in the last space the
-//!   session reported, carried from chunk to chunk. A row before the first
-//!   report stays unnamed.
-//! - **The cell.** The cell loop owns the `SpaceManager`, and the upload
-//!   routes are mounted on the admin listener and the public login port
-//!   with no router state, so the ingest reaches the cell through one
-//!   process-wide sender, set at boot ([`connect_entity_labels`]). Each
-//!   chunk is one `BaseToCellMsg::EntityLabelsAt` round trip, deduplicated
-//!   and capped, answered between ticks. No sender, a full channel, or no
-//!   reply within [`CELL_REPLY_TIMEOUT`] replays the chunk unnamed.
+//!   `.entered_world`), so each row is placed in the last space the session
+//!   reported, carried from chunk to chunk. A row before the first report
+//!   stays unnamed.
+//! - **The cell, at arm's length.** The upload routes are public and have
+//!   no router state, so the ingest reaches the cell through one
+//!   process-wide [`EntityLabelLink`], set at boot
+//!   ([`connect_entity_labels`]). It is a small channel of its own (never
+//!   the base->cell gameplay channel), read by the cell loop only when no
+//!   gameplay message is waiting, and at most one request is in flight
+//!   process-wide. A busy link, a full channel or no reply within
+//!   [`CELL_REPLY_TIMEOUT`] replays the chunk unnamed at once; the ingest
+//!   never waits for a turn.
+//! - **Only what the budget admits.** The upload handler gates a chunk on
+//!   the session budget first and names only the rows it will replay.
 
-use std::collections::{HashMap, HashSet};
-use std::sync::{Mutex, OnceLock, PoisonError};
+use std::collections::{HashMap, HashSet, VecDeque};
+use std::sync::{Arc, Mutex, OnceLock, PoisonError};
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
 use serde_json::{Map, Value};
-use tokio::sync::{mpsc, oneshot};
+use tokio::sync::{mpsc, oneshot, Semaphore};
 
 use cimmeria_services::cell::messages::{
-    BaseToCellMsg, EntityLabelQuery, EntityLabelsReply, ENTITY_LABEL_QUERY_CAP,
+    EntityLabelQuery, EntityLabelsReply, EntityLabelsRequest, ENTITY_LABEL_QUERY_CAP,
 };
 
 use super::dto::TelemetryEvent;
@@ -55,72 +65,173 @@ pub(super) const ENTITY_KEYS: [&str; 4] = ["entity_id", "target_id", "source_id"
 /// The cell answers between ticks, well inside this.
 pub(super) const CELL_REPLY_TIMEOUT: Duration = Duration::from_millis(500);
 
+/// How far back the smallest observed clock offset is taken from.
+pub(super) const OFFSET_WINDOW: Duration = Duration::from_secs(5 * 60);
+
+/// Offset samples kept per session, at most; the oldest go first.
+const OFFSET_SAMPLES: usize = 64;
+
 /// Sessions whose clock and space are remembered. The least recently seen
 /// is forgotten first; a forgotten session starts over, and its next rows
 /// stay unnamed until it reports a space again.
 const MAX_SESSIONS: usize = 1024;
 
-static CELL: OnceLock<mpsc::Sender<BaseToCellMsg>> = OnceLock::new();
+/// Sessions remembered per install (the token's `sub`). One install minting
+/// many sessions evicts its own oldest, not other installs'.
+pub(super) const MAX_SESSIONS_PER_INSTALL: usize = 4;
 
-/// Give the ingest the cell's channel, so replayed rows name their entity
-/// IDs. Called once at boot, after the cell starts; later calls are
-/// ignored. Until it is called, rows replay without entity names.
-pub fn connect_entity_labels(cell_tx: mpsc::Sender<BaseToCellMsg>) {
-    let _ = CELL.set(cell_tx);
+/// The ingest's way to the cell: the label channel and the one permit that
+/// keeps at most one request in flight.
+#[derive(Debug, Clone)]
+pub struct EntityLabelLink {
+    tx: mpsc::Sender<EntityLabelsRequest>,
+    in_flight: Arc<Semaphore>,
 }
 
-/// The channel [`connect_entity_labels`] set, if any.
-pub(super) fn cell() -> Option<&'static mpsc::Sender<BaseToCellMsg>> {
-    CELL.get()
+impl EntityLabelLink {
+    /// A link over `tx` with one request in flight at a time.
+    pub fn new(tx: mpsc::Sender<EntityLabelsRequest>) -> Self {
+        Self {
+            tx,
+            in_flight: Arc::new(Semaphore::new(1)),
+        }
+    }
+}
+
+static LINK: OnceLock<EntityLabelLink> = OnceLock::new();
+
+/// Give the ingest the cell's entity-label channel, so replayed rows name
+/// their entity IDs. Called once at boot, after the cell starts; later calls
+/// are ignored. Until it is called, rows replay without entity names.
+pub fn connect_entity_labels(tx: mpsc::Sender<EntityLabelsRequest>) {
+    let _ = LINK.set(EntityLabelLink::new(tx));
+}
+
+/// The link [`connect_entity_labels`] set, if any.
+pub(super) fn link() -> Option<&'static EntityLabelLink> {
+    LINK.get()
 }
 
 /// What a session's earlier chunks established.
-#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub(super) struct SessionClock {
-    /// Server minus client clock, in ms: the smallest offset observed.
-    pub(super) offset_ms: Option<i64>,
+    /// `(receive ms, observed offset ms)` per recent chunk, oldest first.
+    samples: VecDeque<(i64, i64)>,
     /// The last space the client reported.
     pub(super) space_id: Option<u32>,
+    /// The install the session belongs to.
+    install_id: String,
     /// Server time of the last chunk, in ms, for eviction.
-    pub(super) last_seen_ms: i64,
+    last_seen_ms: i64,
 }
 
-static CLOCKS: Mutex<Option<HashMap<String, SessionClock>>> = Mutex::new(None);
+impl SessionClock {
+    /// A fresh clock whose session already reported `space_id`.
+    #[cfg(test)]
+    pub(super) fn in_space(space_id: u32) -> Self {
+        Self {
+            space_id: Some(space_id),
+            ..Self::default()
+        }
+    }
 
-/// Run `f` on `sid`'s clock in the process-wide table, creating it if new.
-/// Poisoning is ignored: the clock only names rows and must never take the
-/// ingest down.
-fn with_session_clock<R>(sid: &str, now_ms: i64, f: impl FnOnce(&mut SessionClock) -> R) -> R {
-    let mut guard = CLOCKS.lock().unwrap_or_else(PoisonError::into_inner);
-    let table = guard.get_or_insert_with(HashMap::new);
-    if !table.contains_key(sid) && table.len() >= MAX_SESSIONS {
-        let oldest = table
+    /// Record a chunk received at `recv_ms` whose newest row is `newest`,
+    /// and forget samples older than [`OFFSET_WINDOW`].
+    fn observe(&mut self, recv_ms: i64, newest: i64) {
+        self.samples
+            .push_back((recv_ms, recv_ms.saturating_sub(newest)));
+        let window = i64::try_from(OFFSET_WINDOW.as_millis()).unwrap_or(i64::MAX);
+        while self.samples.len() > OFFSET_SAMPLES
+            || self
+                .samples
+                .front()
+                .is_some_and(|(at, _)| recv_ms.saturating_sub(*at) > window)
+        {
+            self.samples.pop_front();
+        }
+    }
+
+    /// The smallest offset in the window.
+    pub(super) fn offset_ms(&self) -> Option<i64> {
+        self.samples.iter().map(|(_, o)| *o).min()
+    }
+}
+
+/// The process-wide clocks, by session.
+#[derive(Debug, Default)]
+pub(super) struct SessionClocks(HashMap<String, SessionClock>);
+
+impl SessionClocks {
+    /// `sid`'s clock, created if new. A new session first evicts its
+    /// install's least recently seen session when the install is at
+    /// [`MAX_SESSIONS_PER_INSTALL`], then the least recently seen of all
+    /// when the table is at [`MAX_SESSIONS`].
+    pub(super) fn entry(&mut self, sid: &str, install_id: &str, now_ms: i64) -> &mut SessionClock {
+        if !self.0.contains_key(sid) {
+            let install_count = self
+                .0
+                .values()
+                .filter(|c| c.install_id == install_id)
+                .count();
+            if install_count >= MAX_SESSIONS_PER_INSTALL {
+                self.evict_oldest(|c| c.install_id == install_id);
+            }
+            if self.0.len() >= MAX_SESSIONS {
+                self.evict_oldest(|_| true);
+            }
+        }
+        let clock = self
+            .0
+            .entry(sid.to_string())
+            .or_insert_with(|| SessionClock {
+                install_id: install_id.to_string(),
+                ..SessionClock::default()
+            });
+        clock.last_seen_ms = now_ms;
+        clock
+    }
+
+    fn evict_oldest(&mut self, which: impl Fn(&SessionClock) -> bool) {
+        let oldest = self
+            .0
             .iter()
+            .filter(|(_, c)| which(c))
             .min_by_key(|(_, c)| c.last_seen_ms)
             .map(|(k, _)| k.clone());
         if let Some(oldest) = oldest {
-            table.remove(&oldest);
+            self.0.remove(&oldest);
         }
     }
-    let clock = table.entry(sid.to_string()).or_default();
-    clock.last_seen_ms = now_ms;
-    f(clock)
+
+    #[cfg(test)]
+    pub(super) fn contains(&self, sid: &str) -> bool {
+        self.0.contains_key(sid)
+    }
 }
 
-/// Where and when one row happened, on the server's terms.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-struct RowPlace {
-    space_id: u32,
-    at: SystemTime,
+static CLOCKS: Mutex<Option<SessionClocks>> = Mutex::new(None);
+
+/// Run `f` on `sid`'s clock in the process-wide table. Poisoning is
+/// ignored: the clock only names rows and must never take the ingest down.
+fn with_session_clock<R>(
+    sid: &str,
+    install_id: &str,
+    now_ms: i64,
+    f: impl FnOnce(&mut SessionClock) -> R,
+) -> R {
+    let mut guard = CLOCKS.lock().unwrap_or_else(PoisonError::into_inner);
+    f(guard
+        .get_or_insert_with(SessionClocks::default)
+        .entry(sid, install_id, now_ms))
 }
 
 /// The entity names for one chunk's rows, resolved by the cell.
 #[derive(Debug, Default)]
 pub(super) struct EntityLabels {
-    /// Per row (by index in the chunk): its place, when it has one.
-    places: Vec<Option<RowPlace>>,
-    /// Each distinct (space, entity, time) asked about, and its answer.
-    labels: HashMap<EntityLabelQuery, &'static str>,
+    /// Per row (by index in the chunk): the space it was placed in.
+    spaces: Vec<Option<u32>>,
+    /// The cell's answer for each (space, entity) pair it knew.
+    labels: HashMap<(u32, u32), &'static str>,
 }
 
 impl EntityLabels {
@@ -131,78 +242,81 @@ impl EntityLabels {
 
     /// The label of `entity_id` as row `row` saw it, if the cell knew it.
     pub(super) fn label(&self, row: usize, entity_id: u32) -> Option<&'static str> {
-        let place = (*self.places.get(row)?)?;
-        let query = EntityLabelQuery {
-            space_id: place.space_id,
-            entity_id,
-            at: place.at,
-        };
-        self.labels.get(&query).copied()
+        let space = (*self.spaces.get(row)?)?;
+        self.labels.get(&(space, entity_id)).copied()
     }
 }
 
-/// A chunk's places and the queries they need, before the cell answers.
+/// A chunk's row spaces and the questions they need, before the cell
+/// answers.
 #[derive(Debug, Default)]
 pub(super) struct NamingPlan {
-    places: Vec<Option<RowPlace>>,
+    spaces: Vec<Option<u32>>,
     queries: Vec<EntityLabelQuery>,
 }
 
 impl NamingPlan {
-    /// Place every `client.native` row of a chunk received at `recv`, and
-    /// list the entity IDs to ask about, deduplicated and capped. `clock` is
-    /// the session's state from earlier chunks, updated here.
+    /// Place the `client.native` rows of a chunk received at `recv`, and
+    /// list one question per (space, entity) pair among the rows `admitted`
+    /// says will replay, at the time of the pair's first such row, capped
+    /// at [`ENTITY_LABEL_QUERY_CAP`]. `clock` is the session's state from
+    /// earlier chunks, updated here from every row.
     pub(super) fn build(
         events: &[TelemetryEvent],
+        admitted: &[bool],
         recv: SystemTime,
         clock: &mut SessionClock,
     ) -> Self {
         let recv_ms = millis(recv);
-        let newest = events
+        if let Some(newest) = events
             .iter()
             .filter_map(|ev| native(ev).map(|(ts, _)| ts))
-            .max();
-        if let Some(newest) = newest {
-            let observed = recv_ms.saturating_sub(newest);
-            clock.offset_ms = Some(clock.offset_ms.map_or(observed, |o| o.min(observed)));
+            .max()
+        {
+            clock.observe(recv_ms, newest);
         }
+        let offset = clock.offset_ms();
         let mut plan = Self::default();
-        let mut seen = HashSet::new();
-        for ev in events {
+        let mut asked = HashSet::new();
+        for (row, ev) in events.iter().enumerate() {
             let Some((ts_ms, fields)) = native(ev) else {
-                plan.places.push(None);
+                plan.spaces.push(None);
                 continue;
             };
             if let Some(space) = fields.get("space_id").and_then(as_u32) {
                 clock.space_id = Some(space);
             }
-            let at_ms = clock
-                .offset_ms
-                .map(|o| ts_ms.saturating_add(o).min(recv_ms));
-            let place = match (clock.space_id, at_ms.and_then(from_millis)) {
-                (Some(space_id), Some(at)) => Some(RowPlace { space_id, at }),
-                _ => None,
+            plan.spaces.push(clock.space_id);
+            let (Some(space_id), Some(offset), true) = (
+                clock.space_id,
+                offset,
+                admitted.get(row).copied().unwrap_or(false),
+            ) else {
+                continue;
             };
-            plan.places.push(place);
-            let Some(place) = place else { continue };
-            for id in ENTITY_KEYS
+            let Some(at) = from_millis(ts_ms.saturating_add(offset).min(recv_ms)) else {
+                continue;
+            };
+            for entity_id in ENTITY_KEYS
                 .iter()
                 .filter_map(|k| fields.get(*k).and_then(entity_id))
             {
-                let query = EntityLabelQuery {
-                    space_id: place.space_id,
-                    entity_id: id,
-                    at: place.at,
-                };
-                if plan.queries.len() < ENTITY_LABEL_QUERY_CAP && seen.insert(query) {
-                    plan.queries.push(query);
+                if plan.queries.len() >= ENTITY_LABEL_QUERY_CAP {
+                    break;
+                }
+                if asked.insert((space_id, entity_id)) {
+                    plan.queries.push(EntityLabelQuery {
+                        space_id,
+                        entity_id,
+                        at,
+                    });
                 }
             }
         }
         plan
     }
 
-    /// The queries the cell will be asked, in order.
+    /// The questions the cell will be asked, in order.
     #[cfg(test)]
     pub(super) fn queries(&self) -> &[EntityLabelQuery] {
         &self.queries
@@ -214,50 +328,60 @@ impl NamingPlan {
             .queries
             .into_iter()
             .zip(labels)
-            .filter_map(|(q, l)| Some((q, l?)))
+            .filter_map(|(q, l)| Some(((q.space_id, q.entity_id), l?)))
             .collect();
         EntityLabels {
-            places: self.places,
+            spaces: self.spaces,
             labels,
         }
     }
 }
 
-/// Plan a chunk for session `sid` against its stored clock, and resolve it
-/// through `cell`. Rows replay unnamed when the cell can't answer.
+/// Plan a chunk for session `sid` of install `install_id` against its
+/// stored clock, and resolve the rows `admitted` marks through `link`.
 pub(super) async fn name_chunk(
     sid: &str,
+    install_id: &str,
     events: &[TelemetryEvent],
+    admitted: &[bool],
     recv: SystemTime,
-    cell: Option<&mpsc::Sender<BaseToCellMsg>>,
+    link: Option<&EntityLabelLink>,
 ) -> EntityLabels {
-    let plan = with_session_clock(sid, millis(recv), |clock| {
-        NamingPlan::build(events, recv, clock)
+    let plan = with_session_clock(sid, install_id, millis(recv), |clock| {
+        NamingPlan::build(events, admitted, recv, clock)
     });
-    resolve(plan, cell).await
+    resolve(plan, link).await
 }
 
-/// Ask the cell about `plan`'s queries.
-pub(super) async fn resolve(
-    plan: NamingPlan,
-    cell: Option<&mpsc::Sender<BaseToCellMsg>>,
-) -> EntityLabels {
-    let (Some(cell), false) = (cell, plan.queries.is_empty()) else {
+/// Ask the cell about `plan`'s questions, if the link is free right now.
+pub(super) async fn resolve(plan: NamingPlan, link: Option<&EntityLabelLink>) -> EntityLabels {
+    let (Some(link), false) = (link, plan.queries.is_empty()) else {
         return plan.answered(Vec::new());
     };
-    let (reply_tx, reply_rx) = oneshot::channel();
-    let queries = plan.queries.clone();
-    let asked = queries.len();
-    // try_send: a cell backed up with game traffic is not delayed further by
-    // telemetry; the chunk replays unnamed instead.
-    let reason = match cell.try_send(BaseToCellMsg::EntityLabelsAt { queries, reply_tx }) {
-        Err(_) => "cell_channel_unavailable",
-        Ok(()) => match tokio::time::timeout(CELL_REPLY_TIMEOUT, reply_rx).await {
-            Ok(Ok(labels)) => return plan.answered(labels),
-            Ok(Err(_)) => "cell_dropped_reply",
-            Err(_) => "cell_reply_timeout",
-        },
+    let asked = plan.queries.len();
+    // One request in flight process-wide, whatever the upload concurrency:
+    // a chunk that finds it taken replays unnamed rather than queueing.
+    let Ok(_permit) = link.in_flight.try_acquire() else {
+        return unnamed(plan, "label_link_busy", asked);
     };
+    let (reply_tx, reply_rx) = oneshot::channel();
+    let request = EntityLabelsRequest {
+        queries: plan.queries.clone(),
+        reply_tx,
+    };
+    if link.tx.try_send(request).is_err() {
+        return unnamed(plan, "label_channel_full", asked);
+    }
+    match tokio::time::timeout(CELL_REPLY_TIMEOUT, reply_rx).await {
+        Ok(Ok(labels)) => plan.answered(labels),
+        // The cell checks `is_closed` before answering, so a request left
+        // behind by a timeout costs it nothing.
+        Ok(Err(_)) => unnamed(plan, "cell_dropped_reply", asked),
+        Err(_) => unnamed(plan, "cell_reply_timeout", asked),
+    }
+}
+
+fn unnamed(plan: NamingPlan, reason: &'static str, asked: usize) -> EntityLabels {
     tracing::debug!(
         target: "launcher.ingest",
         event = "entity_labels_unavailable",

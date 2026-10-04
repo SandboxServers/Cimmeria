@@ -70,7 +70,7 @@ mod session_budget_tests;
 mod tests;
 
 pub use client_symbols::load_client_symbols;
-pub use entity_labels::connect_entity_labels;
+pub use entity_labels::{connect_entity_labels, EntityLabelLink};
 pub use replay::{replay_ndjson, replay_ndjson_named, ReplayCounts, ReplayError};
 
 use axum::extract::DefaultBodyLimit;

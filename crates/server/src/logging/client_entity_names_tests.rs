@@ -3,8 +3,8 @@
 //! client wrote the row. The ingest is the real admin-api path
 //! (`replay_ndjson_named`), the names come from a real `SpaceManager` and
 //! its departed-entity ring, and the cell's side of the round trip is the
-//! same `entity_labels_at` call the cell loop makes for
-//! `BaseToCellMsg::EntityLabelsAt`.
+//! same `answer_entity_labels` call the cell loop makes for a request on
+//! its label channel.
 
 use std::collections::BTreeMap;
 use std::sync::{Arc, Mutex};
@@ -16,8 +16,8 @@ use tracing::{Event, Subscriber};
 use tracing_subscriber::layer::{Context, Layer, SubscriberExt};
 
 use cimmeria_admin_api::routes::dev_session::TokenClaims;
-use cimmeria_admin_api::routes::telemetry::replay_ndjson_named;
-use cimmeria_services::cell::messages::BaseToCellMsg;
+use cimmeria_admin_api::routes::telemetry::{replay_ndjson_named, EntityLabelLink};
+use cimmeria_services::cell::messages::EntityLabelsRequest;
 use cimmeria_services::cell::space_manager::SpaceManager;
 
 const SLOT: u32 = 100;
@@ -56,17 +56,40 @@ fn occupy(mgr: &mut SpaceManager, name: &str, created: SystemTime) {
     e.created_at = created;
 }
 
-/// The cell loop's side of `EntityLabelsAt`, over `mgr`.
-fn serve_cell(mgr: SpaceManager) -> mpsc::Sender<BaseToCellMsg> {
-    let (tx, mut rx) = mpsc::channel::<BaseToCellMsg>(4);
+/// The cell loop's side of the label channel, over `mgr`: the same
+/// `answer_entity_labels` call the loop makes.
+fn serve_cell(mgr: SpaceManager) -> EntityLabelLink {
+    let (tx, mut rx) = mpsc::channel::<EntityLabelsRequest>(4);
     tokio::spawn(async move {
-        while let Some(msg) = rx.recv().await {
-            if let BaseToCellMsg::EntityLabelsAt { queries, reply_tx } = msg {
-                let _ = reply_tx.send(mgr.entity_labels_at(&queries));
-            }
+        while let Some(req) = rx.recv().await {
+            mgr.answer_entity_labels(req);
         }
     });
-    tx
+    EntityLabelLink::new(tx)
+}
+
+fn line(ts: i64, target: &str, fields: String) -> String {
+    format!(
+        r#"{{"type":"client_native","ts_ms":{ts},"seq":1,"target":"{target}","level":"info","fields":{fields}}}"#
+    )
+}
+
+async fn replay(
+    claims: &TokenClaims,
+    ndjson: &str,
+    recv: SystemTime,
+    cell: &EntityLabelLink,
+) -> Vec<BTreeMap<String, String>> {
+    let rows = Rows::default();
+    let sub = tracing_subscriber::registry().with(rows.clone());
+    {
+        let _guard = tracing::subscriber::set_default(sub);
+        replay_ndjson_named(claims, ndjson, recv, Some(cell))
+            .await
+            .unwrap();
+    }
+    let out = rows.0.lock().unwrap().clone();
+    out
 }
 
 #[tokio::test]
@@ -93,36 +116,9 @@ async fn a_row_uploaded_after_its_slot_was_reused_names_the_original_occupant() 
     assert_eq!(mgr.entity_label(SLOT), Some("Vala"));
     let cell = serve_cell(mgr);
     // Row times are whole milliseconds; let the clock leave the millisecond
-    // of the hand-over so "just before the upload" is after it.
+    // of the hand-over so "after the upload" is after it.
     tokio::time::sleep(Duration::from_millis(5)).await;
 
-    // The chunk the client uploads now. Its clock is years off the
-    // server's; its newest row was written just before the upload, and the
-    // row about the slot a minute earlier, while Daniel held it.
-    let client_now: i64 = 1_700_000_000_000;
-    let line = |ts: i64, target: &str, fields: String| {
-        format!(
-            r#"{{"type":"client_native","ts_ms":{ts},"seq":1,"target":"{target}","level":"info","fields":{fields}}}"#
-        )
-    };
-    let ndjson = [
-        line(
-            client_now - 61_000,
-            "client.entity.enter",
-            format!(r#"{{"entity_id":{SLOT},"space_id":{space_id}}}"#),
-        ),
-        line(
-            client_now - 60_000,
-            "client.ability.recv",
-            format!(r#"{{"source_id":{SLOT},"method_index":14}}"#),
-        ),
-        line(
-            client_now,
-            "client.ability.recv",
-            format!(r#"{{"target_id":{SLOT},"method_index":14}}"#),
-        ),
-    ]
-    .join("\n");
     let claims = TokenClaims {
         iss: "cimmeria-server".into(),
         sub: "install-nt40".into(),
@@ -133,16 +129,26 @@ async fn a_row_uploaded_after_its_slot_was_reused_names_the_original_occupant() 
         kind: Some("lab".into()),
     };
 
-    let rows = Rows::default();
-    let sub = tracing_subscriber::registry().with(rows.clone());
-    let counts = {
-        let _guard = tracing::subscriber::set_default(sub);
-        replay_ndjson_named(&claims, &ndjson, SystemTime::now(), Some(&cell))
-            .await
-            .unwrap()
-    };
-    assert_eq!(counts.accepted, 3);
-    let rows = rows.0.lock().unwrap().clone();
+    // The chunk the client uploads now, written over the last minute while
+    // Daniel held the slot. Its clock is years off the server's; its newest
+    // row was written just before the upload.
+    let client_now: i64 = 1_700_000_000_000;
+    let late = [
+        line(
+            client_now - 61_000,
+            "client.entity.enter",
+            format!(r#"{{"entity_id":{SLOT},"space_id":{space_id}}}"#),
+        ),
+        line(
+            client_now - 60_000,
+            "client.ability.recv",
+            format!(r#"{{"source_id":{SLOT},"method_index":14}}"#),
+        ),
+        line(client_now, "client.engine.tick", "{}".to_string()),
+    ]
+    .join("\n");
+    let rows = replay(&claims, &late, SystemTime::now(), &cell).await;
+    assert_eq!(rows.len(), 3);
     assert_eq!(
         rows[1].get("source_name").map(String::as_str),
         Some("Daniel"),
@@ -151,9 +157,24 @@ async fn a_row_uploaded_after_its_slot_was_reused_names_the_original_occupant() 
         rows[1]
     );
     assert_eq!(rows[1]["source_id"], SLOT.to_string());
+    assert_eq!(rows[1]["names_source"], "client_claimed");
+
+    // The next chunk, written after the hand-over, names Vala.
+    let fresh = line(
+        client_now + 1_000,
+        "client.ability.recv",
+        format!(r#"{{"target_id":{SLOT},"method_index":14}}"#),
+    );
+    let rows = replay(
+        &claims,
+        &fresh,
+        SystemTime::now() + Duration::from_secs(1),
+        &cell,
+    )
+    .await;
     assert_eq!(
-        rows[2].get("target_name").map(String::as_str),
+        rows[0].get("target_name").map(String::as_str),
         Some("Vala"),
-        "the newest row was written after the hand-over"
+        "written after the hand-over"
     );
 }

@@ -5,8 +5,8 @@ use serde_json::json;
 
 use super::dto::{ClientNativeEvent, DebugLogEvent, KeyDumpEvent, TelemetryEvent};
 use super::entity_labels::EntityLabels;
-use super::replay::parse_ndjson;
-use super::session_budget::{is_priority, replay_budgeted, SessionLedger, EVENTS_PER_WINDOW};
+use super::replay::{parse_ndjson, replay_events};
+use super::session_budget::{admit_budgeted, is_priority, SessionLedger, EVENTS_PER_WINDOW};
 use crate::routes::dev_session::TokenClaims;
 
 fn native(target: &str, level: &str) -> TelemetryEvent {
@@ -155,7 +155,8 @@ fn a_runaway_chunk_is_cut_at_the_budget_and_counted() {
             .to_string(),
     );
     let events = parse_ndjson(&lines.join("\n")).unwrap();
-    let (counts, totals) = replay_budgeted(&claims, events, &EntityLabels::none(), 1_000);
+    let (admitted, totals) = admit_budgeted(&claims, &events, 1_000);
+    let counts = replay_events(&claims, events, &EntityLabels::none(), &admitted);
     assert_eq!(counts.parsed, EVENTS_PER_WINDOW + extra + 1);
     assert_eq!(
         counts.accepted,

@@ -4,7 +4,6 @@ use super::ammo_reserve::AmmoReserveAnswer;
 use super::bank_base_to_cell::BankBaseToCell;
 use super::data::SavedMission;
 use super::duel_base_to_cell::DuelBaseToCell;
-use super::entity_labels::{EntityLabelQuery, EntityLabelsReply};
 use super::item_use::ItemUseConsumed;
 use super::lab::{LabQuery, LabQueryResult};
 use super::org_base_to_cell::OrgBaseToCell;
@@ -417,16 +416,6 @@ pub enum BaseToCellMsg {
     LabQuery {
         query: LabQuery,
         reply_tx: tokio::sync::oneshot::Sender<LabQueryResult>,
-    },
-
-    /// Name entity IDs from late client telemetry rows (NT-40): the label of
-    /// whoever held each slot at each query's server time, from
-    /// `SpaceManager::entity_label_at`. Sent by the telemetry ingest once per
-    /// uploaded chunk. Read-only, like [`Self::LabQuery`], and capped at
-    /// [`crate::cell::messages::ENTITY_LABEL_QUERY_CAP`] queries.
-    EntityLabelsAt {
-        queries: Vec<EntityLabelQuery>,
-        reply_tx: tokio::sync::oneshot::Sender<EntityLabelsReply>,
     },
 
     /// Minigame result callback (forwarded from BaseApp after minigame server reports).
