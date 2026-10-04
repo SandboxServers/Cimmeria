@@ -20,6 +20,7 @@ use tokio::sync::mpsc;
 use cimmeria_entity::abilities::{ability_effects_have_mechanics, AbilityDef};
 use cimmeria_wire::cell::chat::{serialize_on_player_communication, CHAN_FEEDBACK};
 
+use crate::cell::cell_methods::player::world::reload::ABILITY_RELOAD_WEAPON;
 use crate::cell::cover::COVER_STANCE_ABILITY;
 use crate::cell::messages::CellToBaseMsg;
 use crate::cell::space_manager::SpaceManager;
@@ -42,9 +43,12 @@ pub(crate) const REASON_NO_MECHANICS: &str = "no_mechanics";
 
 /// Whether a cast of `def` does something the server resolves:
 ///
-/// - an effect deals damage from its NVPs or runs a script
-///   ([`ability_effects_have_mechanics`]; heal and stat NVPs count through
-///   the script that reads them, and the cover stance 1451 runs one);
+/// - an effect deals damage from its NVPs or runs a script the installed
+///   registry answers ([`ability_effects_have_mechanics`]; a blank or
+///   unregistered `script_name` does not count; heal and stat NVPs count
+///   through the script that reads them, and the cover stance 1451 runs one);
+/// - it is Reload (596): the reload pipeline runs it, not an effect script
+///   (its effect 658 names the unregistered `Reload`);
 /// - it summons a pet (`pet_summons`) or acts on the owner's pet (an
 ///   owner-pet script, PT-08);
 /// - it places a deployable (`deployables`);
@@ -56,9 +60,11 @@ pub(crate) const REASON_NO_MECHANICS: &str = "no_mechanics";
 /// An event set alone does not count: an animation is not a mechanic.
 pub(crate) fn ability_has_mechanics(space_mgr: &SpaceManager, def: &AbilityDef) -> bool {
     let id = def.ability_id;
-    ability_effects_have_mechanics(def, &space_mgr.effect_defs)
+    let scripts = space_mgr.effect_scripts();
+    ability_effects_have_mechanics(def, &space_mgr.effect_defs, |s| scripts.contains(s))
         || def.required_ammo > 0
         || id == COVER_STANCE_ABILITY
+        || id == ABILITY_RELOAD_WEAPON
         || space_mgr.pet_summons.pet_summon_for(id).is_some()
         || super::owner_pet::is_owner_pet_ability(space_mgr, id)
         || space_mgr.deployable_specs.deployable_for(id).is_some()

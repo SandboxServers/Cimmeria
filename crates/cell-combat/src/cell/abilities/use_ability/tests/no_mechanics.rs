@@ -54,7 +54,9 @@ fn scene() -> SpaceManager {
 fn expected_feedback(ability_id: i32) -> Vec<(u32, u16, Vec<u8>)> {
     let mut err = vec![0u8];
     err.extend_from_slice(&ability_id.to_le_bytes());
-    err.extend_from_slice(&167u16.to_le_bytes());
+    err.extend_from_slice(
+        &client_enum("CONDITION_FEEDBACK_EntityDoesNotHaveAbility").to_le_bytes(),
+    );
     vec![
         (PLAYER, method_idx::ON_ERROR_CODE, err),
         (
@@ -63,6 +65,25 @@ fn expected_feedback(ability_id: i32) -> Vec<(u32, u16, Vec<u8>)> {
             serialize_on_player_communication("SYSTEM", 0, CHAN_FEEDBACK, NO_EFFECT_TEXT),
         ),
     ]
+}
+
+/// A `CONDITION_FEEDBACK_*` value read from the enum file the client
+/// parses (`entities/defs/enumerations.xml`), not restated as a literal.
+fn client_enum(name: &str) -> u16 {
+    let path = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join("../../entities/defs/enumerations.xml");
+    let xml = std::fs::read_to_string(&path).expect("enumerations.xml");
+    let line = xml
+        .lines()
+        .find(|l| l.contains(&format!("<Name>{name}</Name>")))
+        .unwrap_or_else(|| panic!("{name} missing from enumerations.xml"));
+    line.split("<Value>")
+        .nth(1)
+        .and_then(|v| v.split("</Value>").next())
+        .expect("a <Value> on the line")
+        .trim()
+        .parse()
+        .expect("a numeric value")
 }
 
 fn calls(msgs: &[CellToBaseMsg]) -> Vec<(u32, u16, Vec<u8>)> {
@@ -87,7 +108,10 @@ fn sent_timer(msgs: &[CellToBaseMsg]) -> bool {
 #[test]
 fn the_feedback_text_and_code_are_the_decided_ones() {
     assert_eq!(NO_EFFECT_TEXT, "That ability has no effect yet.");
-    assert_eq!(NO_MECHANICS_ERROR_CODE, 167);
+    assert_eq!(
+        NO_MECHANICS_ERROR_CODE,
+        client_enum("CONDITION_FEEDBACK_EntityDoesNotHaveAbility")
+    );
     // The chat line's bytes, hand-built: WSTRING "SYSTEM", flags 0,
     // channel 9 (CHAN_FEEDBACK), WSTRING of the 31-character text.
     let mut want = 6u32.to_le_bytes().to_vec();

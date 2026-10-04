@@ -9,6 +9,7 @@ use cimmeria_entity::abilities::{ability_effects_have_mechanics, AbilityDef};
 
 use super::super::is_owner_pet_ability;
 use super::super::no_mechanics::ability_has_mechanics;
+use crate::cell::cell_methods::player::world::reload::ABILITY_RELOAD_WEAPON;
 use crate::cell::cover::COVER_STANCE_ABILITY;
 use crate::cell::space_manager::SpaceManager;
 use crate::cell::spawner::{
@@ -18,7 +19,7 @@ use crate::test_support::require_db_or_skip;
 
 /// Seeded abilities with a mechanic on `main` after AB-01, AB-02 and AB-06.
 /// The one number to update when a packet lights up more abilities.
-const HAS_MECHANICS_TODAY: usize = 108;
+const HAS_MECHANICS_TODAY: usize = 107;
 
 /// The archetype starters every new character holds: Pistol Shot, Strike,
 /// Heal Focus, Health Heal, Recuperation.
@@ -31,6 +32,8 @@ async fn seeded_manager(pool: &sqlx::PgPool) -> SpaceManager {
     mgr.pet_summons = load_pet_summons(pool).await.expect("pet summons load");
     mgr.deployable_specs = load_deployables(pool).await.expect("deployables load");
     mgr.ammo_catalog = load_ammo_catalog(pool).await.expect("ammo catalog loads");
+    // The cell installs the registry at startup; the predicate reads it.
+    crate::test_support::install_effect_scripts(&mut mgr);
     mgr
 }
 
@@ -58,13 +61,14 @@ async fn seeded_has_mechanics_count_live_db() {
         .values()
         .filter(|d| !ability_has_mechanics(&mgr, d) && d.event_set_id.is_some())
         .count();
-    let via_effects = with
-        .iter()
-        .filter(|d| ability_effects_have_mechanics(d, &mgr.effect_defs))
-        .count();
+    let scripts = mgr.effect_scripts().clone();
+    let by_effects = |d: &AbilityDef| {
+        ability_effects_have_mechanics(d, &mgr.effect_defs, |s| scripts.contains(s))
+    };
+    let via_effects = with.iter().filter(|d| by_effects(d)).count();
     let weapon_shot_only: Vec<i32> = with
         .iter()
-        .filter(|d| !ability_effects_have_mechanics(d, &mgr.effect_defs) && d.required_ammo > 0)
+        .filter(|d| !by_effects(d) && d.required_ammo > 0)
         .map(|d| d.ability_id)
         .collect();
     println!(
@@ -83,7 +87,7 @@ async fn seeded_has_mechanics_count_live_db() {
     );
 }
 
-/// Never refuse what works today: the five starters, Cover Stance, every
+/// Never refuse what works today: the five starters, Cover Stance, Reload, every
 /// ammo toggle, every pet summon, every deployable and every owner-pet
 /// ability. The lists come from the seed tables, so a new row is guarded
 /// too.
@@ -110,9 +114,10 @@ async fn abilities_that_work_today_have_mechanics_live_db() {
     assert!(!deployables.is_empty(), "deployables are seeded");
     assert!(!owner_pet.is_empty(), "owner-pet abilities are seeded");
 
-    let groups: [(&str, Vec<i32>); 6] = [
+    let groups: [(&str, Vec<i32>); 7] = [
         ("starter", STARTERS.to_vec()),
         ("cover stance", vec![COVER_STANCE_ABILITY]),
+        ("reload", vec![ABILITY_RELOAD_WEAPON]),
         ("ammo toggle", toggles),
         ("pet summon", summons),
         ("deployable", deployables),

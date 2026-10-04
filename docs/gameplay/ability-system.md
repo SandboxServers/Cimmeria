@@ -182,14 +182,15 @@ An ability **has a mechanic** (`ability_has_mechanics`) when any of these holds:
 
 | Mechanic | Source |
 |----------|--------|
-| An effect deals damage (`HealthDamage` or `FocusDamage` above 0) or runs a script | `cimmeria_entity::abilities::ability_effects_have_mechanics`. Heal and stat NVPs count through the script that reads them |
+| An effect deals damage (`HealthDamage` or `FocusDamage` above 0) or runs a registered script (a blank or unknown `script_name` does not count) | `cimmeria_entity::abilities::ability_effects_have_mechanics`. Heal and stat NVPs count through the script that reads them |
 | It summons a pet, or acts on the owner's pet | `resources.pet_summons`; an owner-pet script (pets PT-08) |
 | It places a deployable | `resources.deployables` |
 | It is an ammo toggle | `resources.ammo_modifiers.toggle_ability_id`. The press behaves as before (D-AM07) |
 | It is a weapon shot (`required_ammo` above 0) | It spends a round and carries the loaded ammo's modifier and on-hit effect |
 | It is Cover Stance (1451) | Granted by the cover hold (NA22) |
+| It is Reload (596) | The reload pipeline runs it; its effect 658 names the unregistered `Reload` |
 
-An event set alone does not count: an animation is not a mechanic. The predicate reads the seed, so an ability lights up as soon as a generator packet gives one of its effects a number or a script (AB-03 damage, AB-04 stats). On `main` after AB-06, 108 of 1,886 seeded abilities have a mechanic; the live-DB test `seeded_has_mechanics_count_live_db` pins the number. Out-of-scope families (stealth, self-revive, Asgard energy, turrets; D-AB11) get the same refusal, because they have no mechanic either.
+An event set alone does not count: an animation is not a mechanic. The predicate reads the seed, so an ability lights up as soon as a generator packet gives one of its effects a number or a script (AB-03 damage, AB-04 stats). On `main` after AB-06, 107 of 1,886 seeded abilities have a mechanic; the live-DB test `seeded_has_mechanics_count_live_db` pins the number. Out-of-scope families (stealth, self-revive, Asgard energy, turrets; D-AB11) get the same refusal, because they have no mechanic either.
 
 Never refused: NPC and pet casts, an ability the server has no definition for (silent, as before), and an ability the active weapon grants through `items_event_sets` (the basic attack). Each refusal logs one DEBUG `abilities` row, `event=no_mechanics_refused`, `reason=no_mechanics`, with `ability_id`, `ability_name`, `effect_count`, `animates`, `account_id` and `player_id`.
 

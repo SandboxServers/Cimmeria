@@ -18,11 +18,27 @@ use std::collections::HashMap;
 use super::{AbilityDef, EffectDef};
 
 /// Whether `effect` does something when it resolves: positive damage values
-/// or an effect script. An effect missing from `effects` does nothing: the
-/// damage pipeline skips an effect id it cannot resolve.
+/// or a named effect script. An effect missing from `effects` does nothing:
+/// the damage pipeline skips an effect id it cannot resolve. A blank
+/// `script_name` names no script (seed effect 2907 on ability 2134 carries
+/// `''`), so it does not count.
 pub fn effect_is_implemented(effect: Option<&EffectDef>) -> bool {
+    effect_has_mechanic(effect, |_| true)
+}
+
+/// [`effect_is_implemented`] with a say on the script: a named script counts
+/// only when `script_resolves(name)`. The cell passes its installed registry,
+/// so a name no script answers (`Reload`, a typo) is not a mechanic.
+pub fn effect_has_mechanic(
+    effect: Option<&EffectDef>,
+    script_resolves: impl Fn(&str) -> bool,
+) -> bool {
     effect.is_some_and(|e| {
-        e.param_i32("HealthDamage") > 0 || e.param_i32("FocusDamage") > 0 || e.script_name.is_some()
+        e.param_i32("HealthDamage") > 0
+            || e.param_i32("FocusDamage") > 0
+            || e.script_name
+                .as_deref()
+                .is_some_and(|s| !s.trim().is_empty() && script_resolves(s))
     })
 }
 
@@ -49,10 +65,17 @@ pub fn ability_is_unimplemented(def: &AbilityDef, effects: &HashMap<i32, EffectD
 /// names) count only through the script that reads them: no code reads them
 /// without one, and every generator family that writes them also binds the
 /// script (AB-02, AB-04). So the count grows on its own as the seed fills in.
-pub fn ability_effects_have_mechanics(def: &AbilityDef, effects: &HashMap<i32, EffectDef>) -> bool {
+///
+/// A script counts only when `script_resolves(name)` ([`effect_has_mechanic`]):
+/// the cell passes its installed registry.
+pub fn ability_effects_have_mechanics(
+    def: &AbilityDef,
+    effects: &HashMap<i32, EffectDef>,
+    script_resolves: impl Fn(&str) -> bool,
+) -> bool {
     def.effect_ids
         .iter()
-        .any(|id| effect_is_implemented(effects.get(id)))
+        .any(|id| effect_has_mechanic(effects.get(id), &script_resolves))
 }
 
 #[cfg(test)]
@@ -122,28 +145,73 @@ mod tests {
         let damage = effect(2, &[("HealthDamage", "25")], None);
         let script = effect(3, &[], Some("HealHealth"));
         let effects = HashMap::from([(1, silent), (2, damage), (3, script)]);
+        let any = |_: &str| true;
 
         let animated = def(Some(3), vec![1]);
         assert!(!ability_is_unimplemented(&animated, &effects));
         assert!(
-            !ability_effects_have_mechanics(&animated, &effects),
+            !ability_effects_have_mechanics(&animated, &effects, any),
             "an event set and an unscripted heal or stat NVP do nothing"
         );
         assert!(!ability_effects_have_mechanics(
             &def(Some(3), vec![]),
-            &effects
+            &effects,
+            any
         ));
         assert!(!ability_effects_have_mechanics(
             &def(None, vec![9999]),
-            &effects
+            &effects,
+            any
         ));
         assert!(ability_effects_have_mechanics(
             &def(None, vec![1, 2]),
-            &effects
+            &effects,
+            any
         ));
         assert!(ability_effects_have_mechanics(
             &def(None, vec![3]),
+            &effects,
+            any
+        ));
+    }
+
+    /// Copilot on #1158: seed effect 2907 (ability 2134) carries
+    /// `script_name = ''`, which no script answers. A blank name is not a
+    /// script for either predicate, and a name the registry does not answer
+    /// (`Reload`, effect 658) is not a mechanic for the launch gate.
+    #[test]
+    fn a_blank_or_unregistered_script_name_is_not_a_script() {
+        let blank = effect(2907, &[], Some(""));
+        let spaces = effect(2908, &[], Some("  "));
+        let reload = effect(658, &[], Some("Reload"));
+        let heal = effect(659, &[], Some("HealFocus"));
+        let effects = HashMap::from([(2907, blank), (2908, spaces), (658, reload), (659, heal)]);
+        let registered = |s: &str| s == "HealFocus";
+
+        assert!(!effect_is_implemented(effects.get(&2907)));
+        assert!(!effect_is_implemented(effects.get(&2908)));
+        assert!(ability_is_unimplemented(
+            &def(None, vec![2907, 2908]),
             &effects
+        ));
+        assert!(!ability_effects_have_mechanics(
+            &def(None, vec![2907]),
+            &effects,
+            |_| true
+        ));
+
+        // A named but unregistered script: implemented for the pet gate
+        // (it names a script), not a mechanic for the player gate.
+        assert!(effect_is_implemented(effects.get(&658)));
+        assert!(!ability_effects_have_mechanics(
+            &def(None, vec![658]),
+            &effects,
+            registered
+        ));
+        assert!(ability_effects_have_mechanics(
+            &def(None, vec![659]),
+            &effects,
+            registered
         ));
     }
 

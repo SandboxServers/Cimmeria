@@ -34,7 +34,8 @@ pub use ability_type::AbilityType;
 pub use beneficial::{ability_is_beneficial, HEAL_SCRIPTS};
 pub use defs::*;
 pub use implemented::{
-    ability_effects_have_mechanics, ability_is_unimplemented, effect_is_implemented,
+    ability_effects_have_mechanics, ability_is_unimplemented, effect_has_mechanic,
+    effect_is_implemented,
 };
 pub use manager::{AbilityManager, CooldownEntry};
 pub use range::{
