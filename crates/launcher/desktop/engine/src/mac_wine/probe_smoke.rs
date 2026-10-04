@@ -53,10 +53,32 @@ async fn original_client_module_probe_in_private_wine_prefix() {
     std::fs::create_dir(prefix.join("dosdevices")).unwrap();
     std::os::unix::fs::symlink("../drive_c", prefix.join("dosdevices/c:")).unwrap();
     std::os::unix::fs::symlink("/", prefix.join("dosdevices/z:")).unwrap();
-    let env = environment(&runtime, &prefix).unwrap();
+    let report = run_probe(&runtime, &prefix, &helper, &game).await;
+    assert_eq!(
+        report.physx_sdk,
+        cimmeria_runtime_probe::physx::SdkResult::CreateFailed { sdk_error: Some(1) }
+    );
+    if let Some(core) = std::env::var_os("SGW_PHYSX_CORE") {
+        register_fixture_core(&runtime, &prefix, Path::new(&core)).await;
+        let report = run_probe(&runtime, &prefix, &helper, &game).await;
+        assert_eq!(
+            report.physx_sdk,
+            cimmeria_runtime_probe::physx::SdkResult::InitializedAndReleased {}
+        );
+    }
+}
+
+async fn run_probe(
+    runtime: &Path,
+    prefix: &Path,
+    helper: &Path,
+    game: &Path,
+) -> cimmeria_runtime_probe::Report {
+    let root_path = prefix.parent().unwrap();
+    let env = environment(runtime, prefix).unwrap();
     let mut child = tokio::process::Command::new(runtime.join("bin/wine"))
-        .arg(paths::guest(&helper).unwrap())
-        .current_dir(&root_path)
+        .arg(paths::guest(helper).unwrap())
+        .current_dir(root_path)
         .env_clear()
         .envs(&env)
         .stdin(Stdio::piped())
@@ -68,7 +90,7 @@ async fn original_client_module_probe_in_private_wine_prefix() {
     let mut input = child.stdin.take().unwrap();
     let output = child.stdout.take().unwrap();
     let request = serde_json::to_vec(&serde_json::json!({
-        "schema_version": 1, "game_binaries": paths::guest(&game).unwrap()
+        "schema_version": 1, "game_binaries": paths::guest(game).unwrap()
     }))
     .unwrap();
     let attempt = tokio::time::timeout(std::time::Duration::from_secs(120), async {
@@ -84,7 +106,7 @@ async fn original_client_module_probe_in_private_wine_prefix() {
     })
     .await;
     // Run cleanup even after timeout/protocol/exit failure, before assertions.
-    let stopped = stop_prefix(&runtime, &env).await;
+    let stopped = stop_prefix(runtime, &env).await;
     let _ = child.kill().await;
     let _ = child.wait().await;
     stopped.unwrap();
@@ -103,5 +125,44 @@ async fn original_client_module_probe_in_private_wine_prefix() {
     assert_eq!(modules[4].component, "physx_loader");
     assert!(!String::from_utf8_lossy(&bytes).contains(&root_path.to_string_lossy().to_string()));
     eprintln!("private Wine module evidence: {report:?}");
-    // No vendor installers, graphics device, SGW process or login were exercised.
+    report
+}
+
+/// Diagnostic registration of the exact inertly extracted core. This deliberately
+/// does not validate vendor installer behavior or replace production provisioning.
+async fn register_fixture_core(runtime: &Path, prefix: &Path, source: &Path) {
+    let bytes = std::fs::read(source).unwrap();
+    assert_eq!(
+        hex(&Sha256::digest(&bytes)),
+        "e54919c223e768e0fd12736119102069f7d3bdf1989f09f223119fd9ef0fe31e"
+    );
+    let root = prefix.parent().unwrap().join("physx-core");
+    let version = root.join("v2.6.3");
+    std::fs::create_dir_all(&version).unwrap();
+    std::fs::write(version.join("PhysXCore.dll"), bytes).unwrap();
+    let env = environment(runtime, prefix).unwrap();
+    let command = tokio::process::Command::new(runtime.join("bin/wine"))
+        .args([
+            "reg",
+            "add",
+            r"HKLM\Software\Ageia Technologies",
+            "/v",
+            "PhysXCore Path",
+            "/t",
+            "REG_SZ",
+            "/d",
+        ])
+        .arg(paths::guest(&root).unwrap())
+        .args(["/f", "/reg:32"])
+        .env_clear()
+        .envs(&env)
+        .stdin(Stdio::null())
+        .stdout(Stdio::null())
+        .stderr(Stdio::null())
+        .kill_on_drop(true)
+        .status();
+    let result = tokio::time::timeout(std::time::Duration::from_secs(30), command).await;
+    let stopped = stop_prefix(runtime, &env).await;
+    stopped.unwrap();
+    assert!(result.expect("bounded registry fixture").unwrap().success());
 }

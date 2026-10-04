@@ -49,7 +49,7 @@ bash tools/build-lane/lane.sh cargo test --locked \
 ```
 
 Eight portable tests passed locally (`20261004-070649-1979`), and native Mac
-strict clippy passed (`20261004-063517-87120`); neither compiles or executes the
+strict engine/probe clippy passed (`20261004-071451-5792`); neither compiles or executes the
 Windows-only implementation. The standalone `.github/workflows/launcher-runtime-probe.yml` native Windows i686
 job builds/tests,
 self-tests successful `kernel32` loading and a missing DLL, and uploads the helper.
@@ -124,3 +124,23 @@ The [experimental PhysX SDK probe](physx-probe.md) records the original loader A
 implemented hash-pinned lifecycle and outstanding supervision gates. Null default
 allocator/output pointers remain experimental; no production integration or new
 frontend behavior is implemented.
+
+## SDK before/after check
+
+The schema-2 probe from native Windows run `37201203156`, commit `ebeaaaa47`,
+artifact `11302724959`, passed the private Wine baseline in 24.278 seconds
+(lane `20261004-071305-4880`). All modules loaded, but SDK creation returned null
+with numeric error `1`. This is stronger evidence than DLL presence alone.
+
+Set optional `SGW_PHYSX_CORE` to the inertly extracted, hash-verified original
+2.6.3 core described in [ABI evidence](physx-probe.md). The same smoke then copies
+that core into its private tree, adds its path to the private prefix's 32-bit AGEIA
+registry view through a bounded `wine reg` invocation, and reruns the probe.
+The before/after test passed in 23.074 seconds (lane `20261004-071507-6004`):
+`create_failed` with error `1`, then `initialized_and_released`. Both runs kept
+`game_started` false; prefix stop/wait preceded assertions.
+
+This optional registration is a diagnostic fixture, not production provisioning
+or vendor-installer validation. No other installation, game process, graphics,
+login or gameplay was exercised. Probe executable SHA256:
+`3ed60ee8fba3a6b02bf860b559e5ca55f4c5b99836d88126b3f86865ebac3ebc`.

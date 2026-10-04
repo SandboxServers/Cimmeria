@@ -65,8 +65,8 @@ pub fn probe(directory: &Path) -> SdkResult {
     let release: Release = unsafe { std::mem::transmute(release) };
     physx::exercise(
         |version, descriptor, error| unsafe {
-            // Null default allocator/output is documented for SDK2.8, but remains
-            // experimental until exercised against this exact2.6.3 core.
+            // Exact bundled 2.6.3 core handles both null defaults; address-level
+            // evidence is recorded in docs/physx-probe.md.
             create(
                 version,
                 std::ptr::null_mut(),

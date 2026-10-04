@@ -1,6 +1,6 @@
-# PhysX SDK probe: ABI evidence and planned experiment
+# PhysX SDK probe: ABI evidence and supervised experiment
 
-**Status: experimental implementation; native Windows validation pending.** The
+**Status: experimental implementation; native Windows CI passed, Wine run pending.** The
 [probe](prerequisites.md) now separates module loading from a PhysX SDK
 creation/release attempt. Production supervision/integration remains unfinished;
 this does not start SGW, create graphics devices or claim readiness.
@@ -29,13 +29,29 @@ version-specific evidence, not portable entry points.
 `0x10001530`/`0x100015e0`, not an established boolean switch. Do not call it using
 an inferred boolean signature or treat it as a supported local-core override.
 
-## Null-default limitation
+## Exact 2.6.3 core evidence
 
-The [NVIDIA PhysX 2.8 manual, SDK Initialization (PDF page index 34)](https://www2.denizyuret.com/bib/nvidia/PhysX28/PhysXDocumentation.pdf#page=35)
-permits null allocator and output-stream arguments. This is later-version
-primary documentation, not verification of the original 2.6.3 implementation.
-Using those defaults in this experiment must remain explicitly experimental;
-the observed descriptor words do not establish a named public struct layout.
+Read-only research carved the MSI beginning at byte 35,463 of the original
+retained PhysX 7.11.13 installer; this is not a production extraction/install path.
+Its embedded `Cabs.m26` contains
+`PhysXCore.dll.FA211449_AC3F_4A7D_A467_6CC0BA89C1A4`, version 2.6.3.5, SHA-256:
+`e54919c223e768e0fd12736119102069f7d3bdf1989f09f223119fd9ef0fe31e`.
+The ABI advisory found these exact-core behaviors:
+
+| Observation | Evidence |
+| --- | --- |
+| Version gate | `NpCreatePhysicsSDK`, RVA `0x11f1e0`, compares `0x02060300`; mismatch reports error `2`. |
+| Descriptor validation | `0x1011f204`–`0x1011f22a` checks first word `65536` and power-of-two words at offsets 4 and 8; rejection reports error `3`. Field names remain unknown. |
+| Null allocator | Foundation code `0x1013d546`–`0x1013d54e` explicitly selects built-in allocator `0x1024a2c0`. |
+| Null output | Stored through vtable slot `+4` to `0x10085330`; reporter `0x1013d2cd`–`0x1013d2d2` skips the callback when null. |
+| Error pointer | Required by core code at `0x1011f1ed`; the helper supplies a non-null writable location. |
+
+This closes the earlier inference about null allocator/output defaults for this
+exact core. The [NVIDIA PhysX 2.8 manual, SDK Initialization (PDF page index 34)](https://www2.denizyuret.com/bib/nvidia/PhysX28/PhysXDocumentation.pdf#page=35)
+also permits those defaults, but is supplementary later-version documentation.
+Static imports include KERNEL32, WS2_32, SETUPAPI and ADVAPI32; dynamic `user32`
+strings mean this inventory does not prove the core cannot display UI. Static
+ABI evidence still requires bounded execution in the actual Wine environment.
 
 ## Implemented SDK call and remaining supervision gates
 
@@ -44,7 +60,7 @@ holding the file across hash verification, loading, creation and release to deny
 writes/deletion. It pins the SHA above and resolves both cdecl exports before
 calling creation. `physx::exercise` supplies the observed version/descriptor and
 an error sentinel of `u32::MAX`; Windows passes null allocator/output pointers
-under the experimental limitation above. A non-null SDK is released exactly once
+using the exact-core defaults verified above. A non-null SDK is released exactly once
 while the module remains loaded. No assumed C++ vtable is invoked.
 
 Report schema 2 carries a tagged `physx_sdk` result: `not_checked`,
@@ -60,5 +76,19 @@ Native Windows and the pinned private Wine environment need separate evidence.
 This tests at most one SDK lifecycle. It would not establish scene simulation,
 PhysX cooking, graphics, game startup, login or gameplay. Keep it separate from
 production capability/readiness flags until its ABI assumptions and supervised
-failure paths have been validated. Native Windows execution of this change remains pending. The earlier schema-1
-module-load smoke is not SDK proof; a new helper artifact is required.
+failure paths have been validated. Native Windows SDK CI `37201203156` passed at
+`ebeaaaa47`; artifact `11302724959` contains executable SHA-256
+`3ed60ee8fba3a6b02bf860b559e5ca55f4c5b99836d88126b3f86865ebac3ebc`.
+The schema-2 baseline Wine run is pending. The earlier schema-1 module-load smoke
+is not SDK proof, and CI success alone does not establish real SDK initialization.
+
+## Observed SDK lifecycle under Wine
+
+The original core now has dynamic evidence as well: the private-prefix before/
+after test passed (lane `20261004-071507-6004`, 23.074 seconds). With no core
+registered, the helper returned `create_failed` with error `1`; after diagnostic
+registration of the hash-verified 2.6.3.5 core, it returned
+`initialized_and_released`. The observed descriptor and null defaults therefore
+worked for one lifecycle in pinned WoWSilicon Wine r17. This does not validate
+vendor installation, cooking, scenes, graphics or game launch. Reproduction and
+artifact identity are in [prerequisite validation](prerequisites.md#sdk-beforeafter-check).

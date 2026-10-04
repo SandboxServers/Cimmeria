@@ -364,3 +364,13 @@ Windows+Mac before the shell; shell/visual/game gates remain separate.
 - First SDK native Windows build caught sha2 0.11 digest lacking LowerHex in the
   Windows-only hash guard; changed to explicit per-byte hex formatting. This was
   a compile failure, not evidence that the SDK call ran. Native rerun required.
+
+- Exact core 2.6.3.5 extracted inertly from original installer MSI/Cabs.m26 (core
+  SHA e54919c223e768e0fd12736119102069f7d3bdf1989f09f223119fd9ef0fe31e).
+  Static branches explicitly support both null defaults; earlier2.8 inference
+  superseded. Native SDK probe CI37201203156 passed at ebeaaaa47, artifact11302724959,
+  exeSHA3ed60ee8fba3a6b02bf860b559e5ca55f4c5b99836d88126b3f86865ebac3ebc.
+  Clean Wine SDK baseline fails code1 despite all DLLs loading. Optional fixture
+  registers original core in private 32-bit AGEIA registry; same probe then
+  initializes/releases SDK successfully (lane071507-6004,23.074s). No vendor
+  installer, graphics, game/login proof. Runtime setup still needs integration.
