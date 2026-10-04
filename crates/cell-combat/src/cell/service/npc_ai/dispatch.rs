@@ -452,12 +452,6 @@ fn log_ai_tick(
     let Some(suppressed) = admit_ai_tick_row(space_mgr, npc_id, state_before, now) else {
         return;
     };
-    // The sampler above admits every tick of a fighting, leashing or
-    // witnessed NPC, so the row's own level is the gate: with it off, skip
-    // the name, line-of-sight and policy work below.
-    if !tracing::enabled!(target: "npc_ai.tick", tracing::Level::DEBUG) {
-        return;
-    }
     let space_mgr: &SpaceManager = space_mgr;
     let Some(e) = space_mgr.get_entity(npc_id) else {
         return;
@@ -472,6 +466,13 @@ fn log_ai_tick(
     let next = e.nav_path.front().copied();
     let [vx, vy, vz] = e.velocity;
     let los = target.map(|_| space_mgr.npc_line_of_sight(npc_id, target_id));
+    // The sampler above admits every tick of a fighting, leashing or
+    // witnessed NPC, so the row's own level gates the name lookup. Not
+    // earlier: the line-of-sight query feeds the `npc_ai.los` detector's
+    // sampler and rows, which must not depend on this row's level.
+    if !tracing::enabled!(target: "npc_ai.tick", tracing::Level::DEBUG) {
+        return;
+    }
     let names = EntityNames::of(e);
     tracing::debug!(
         target: "npc_ai.tick",
