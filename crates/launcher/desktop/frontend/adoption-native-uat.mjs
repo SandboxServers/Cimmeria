@@ -58,6 +58,7 @@ try {
  await app.ready;await settle();
  const before=await evidence();
  assert.equal(before.destination_entries,null);assert.equal(before.owned_directory,null);assert.equal(before.launcher_summary_consent,false);
+ assert.equal(before.settings_binding,null);assert.equal(before.prerequisite_target,null);
  assert.match(text(),/Choose where to create a separate verified copy/);
  assert.equal(get('adoption-review').hidden,true);assert.equal(get('cancel-adoption').hidden,true);
 
@@ -177,9 +178,13 @@ try {
  assert.equal(after.backend,backend==='wine'?'wine':'native');
  assert.equal(after.launcher_summary_consent,true,'adoption keeps the diagnostics choice made before it');
  assert.equal(after.artifacts,null);assert.equal(after.references,0);assert.equal(after.plans,1);
+ // The reopened store still binds the reviewed patch setting, and only a
+ // Wine-extracted copy is offered prerequisites.
+ assert.equal(after.settings_binding,'patches_off');
+ assert.equal(after.prerequisite_target,backend==='wine'?after.installation_id:null);assert.notEqual(after.installation_id,null);
  assert(changes>0,'saved revisions notified other views');
  console.log(`Native adoption logic UAT passed (${backend} extraction backend): production Effect workflow and view against the production host with a real isolated store, legacy game tree and signed loopback artifact origin.`);
  console.log('Exercised: unavailable and oversized signed downloads rejected with nothing kept; single preparation per double click; progress and cancel; no re-choice during preparation; process kill mid-download, reopen and explicit preparation removal without replay; rendered review (source, destination, signed release, classification counts and paths, ordered login servers, patch setting, telemetry and diagnostics statements); unchecked required confirmations; stale review preserved and never sent, then dismissed; single confirmation per double click; lost confirm reply inspected without redispatch; retained copy progress and cancel control; published copy, desktop ownership and backend identity read from disk after reopening; byte-identical source folders and import record.');
- console.log(`Observed prerequisite target for the adopted copy: ${after.prerequisite_target??'none offered by this build'}.`);
- console.log('Excluded: native folder dialog and Tauri IPC, the signed production catalog and HTTPS transport, the published multi-gigabyte client and its RAR/CAB seed, copy recovery and abandonment (covered by host tests), prerequisites and Play for the adopted copy, Windows, and packaged visual/focus/layout UAT.');
+ console.log(`Adopted copy after reopen: reviewed patch setting bound (${after.settings_binding}); prerequisites ${after.prerequisite_target?'offered':'not offered (portable backend)'}.`);
+ console.log('Excluded: native folder dialog and Tauri IPC, the signed production catalog and HTTPS transport, the published multi-gigabyte client and its RAR/CAB seed, copy recovery and abandonment (covered by host tests), prerequisite preparation and Play admission for the adopted copy (covered by host tests), Windows, and packaged visual/focus/layout UAT.');
 } finally {await app.dispose();await bridge.end().finally(()=>rm(root,{recursive:true,force:true}));}

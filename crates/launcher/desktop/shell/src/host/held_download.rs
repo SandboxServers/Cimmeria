@@ -32,6 +32,9 @@ impl HeldDownload {
                     Err(error) => panic!("fixture accept: {error}"),
                 }
             };
+            // An accepted socket inherits the listener's non-blocking mode on
+            // macOS, and the request may not have arrived yet.
+            stream.set_nonblocking(false).unwrap();
             stream
                 .set_read_timeout(Some(Duration::from_secs(1)))
                 .unwrap();
@@ -74,5 +77,33 @@ impl Drop for HeldDownload {
                 thread.join().unwrap();
             }
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::net::TcpStream;
+
+    #[test]
+    fn a_request_that_arrives_after_the_connection_is_still_served() {
+        let download = HeldDownload::new(vec![7; 8]);
+        let address = download
+            .url
+            .strip_prefix("http://")
+            .and_then(|rest| rest.strip_suffix("/manifest.json"))
+            .unwrap();
+        let mut client = TcpStream::connect(address).unwrap();
+        client
+            .set_read_timeout(Some(Duration::from_secs(5)))
+            .unwrap();
+        // Long enough for the origin to accept and start reading an empty socket.
+        thread::sleep(Duration::from_millis(200));
+        client
+            .write_all(b"GET /seed.zip HTTP/1.1\r\nHost: fixture\r\n\r\n")
+            .unwrap();
+        let mut response = [0; 15];
+        client.read_exact(&mut response).unwrap();
+        assert_eq!(&response, b"HTTP/1.1 200 OK");
     }
 }

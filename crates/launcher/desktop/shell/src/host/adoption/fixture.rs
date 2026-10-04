@@ -153,6 +153,19 @@ pub(super) fn imported_host(root: &Path, source: &LegacySource) -> NativeHost {
     drop(state);
     NativeHost::new(state_root)
 }
+/// The bundled prerequisite helper a packaged build carries. Without it the host
+/// offers no prerequisite setup for any installation. Inert: it is never run.
+pub(super) fn bundle_prerequisite_helper(host: &mut NativeHost, directory: &Path) {
+    const EMPTY: &str = "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855";
+    let helper = directory
+        .canonicalize()
+        .unwrap()
+        .join("prerequisite-worker.exe");
+    fs::write(&helper, b"").unwrap();
+    host.prerequisite_helper = Some(
+        cimmeria_launcher_engine::mac_wine::PrerequisiteResource::open(helper, EMPTY).unwrap(),
+    );
+}
 /// Every file below `root` with its exact bytes; the old launcher's lock file is
 /// content-free and excluded by name only.
 pub(super) fn tree(root: &Path) -> BTreeMap<PathBuf, Vec<u8>> {

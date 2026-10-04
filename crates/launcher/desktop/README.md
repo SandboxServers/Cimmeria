@@ -231,6 +231,14 @@ bash tools/build-lane/lane.sh cargo build --locked --manifest-path crates/launch
 npm run uat --prefix crates/launcher/desktop/frontend -- "$PWD/target/desktop/debug/examples/state_bridge"
 ```
 
+The native-backed UATs (`uat:adoption`, `uat:launch`, `uat:migration`,
+`uat:game-update`, `uat:game-update-apply`, `uat:updater`, `uat:updater-apply`)
+each spawn an ignored bridge test from a Cargo test binary named by an
+environment variable. The updater pair needs the engine test binary in
+`UPDATER_UAT_BINARY`; the others need the shell test binary. The adoption
+bridge and its optional Wine backend are described in the
+[migration contract](docs/migration.md#verified-copy-adoption-in-settings).
+
 Build the development executable without opening it:
 
 ```bash

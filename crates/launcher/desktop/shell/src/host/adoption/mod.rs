@@ -24,6 +24,8 @@ mod fixture;
 #[cfg(all(test, target_os = "macos"))]
 mod lifecycle_tests;
 #[cfg(all(test, target_os = "macos"))]
+mod play_tests;
+#[cfg(all(test, target_os = "macos"))]
 mod tests;
 #[cfg(all(test, target_os = "macos"))]
 mod uat_bridge;

@@ -75,6 +75,13 @@ fn evidence(host: &NativeHost, source: &LegacySource, root: &Path) -> serde_json
     let mut state = store.lock().unwrap();
     let installed = state.installed_content().ok().flatten();
     let preferences = state.preferences().clone();
+    // The reviewed patch setting, as Play admission derives it from the records.
+    let binding = match state.effective_launch_binding() {
+        Ok(None) => serde_json::Value::Null,
+        Ok(Some(binding)) if binding.client_patches_enabled => "patches_on".into(),
+        Ok(Some(_)) => "patches_off".into(),
+        Err(_) => "refused".into(),
+    };
     drop(state);
     let state_names = names(&host.root).unwrap();
     serde_json::json!({
@@ -89,6 +96,8 @@ fn evidence(host: &NativeHost, source: &LegacySource, root: &Path) -> serde_json
             ExtractionBackend::Wine { .. } => "wine",
         }),
         "uninstall_directory": host.install_status().ok().and_then(|status| status.uninstall).map(|target| target.directory),
+        "installation_id": installed.as_ref().map(|installed| installed.intent.operation_id),
+        "settings_binding": binding,
         "prerequisite_target": host.install_status().ok().and_then(|status| status.runtime_setup),
         "artifacts": names(&host.root.join("adoption-artifacts")),
         "references": state_names.iter().filter(|name| name.starts_with(".adoption-reference-")).count(),
@@ -131,6 +140,7 @@ fn bridge() {
     let mut origin = Origin::new(&runtime, "signed", &seed);
     let open = |manifest_url: String| {
         let mut host = NativeHost::new(root.join("state"));
+        bundle_prerequisite_helper(&mut host, &root);
         host.adoption_fixture = Some(TestDispatch {
             manifest_url,
             helper: helper.clone(),

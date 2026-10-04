@@ -41,6 +41,7 @@ async fn wine_fixture() -> (Fixture, wiremock::MockServer, HelperResource) {
     let mut f = Fixture::new(serde_json::json!({}));
     let helper = helper().expect("CIMMERIA_WINE_HELPER names the pinned helper");
     seed_runtime(&f.host.root);
+    bundle_prerequisite_helper(&mut f.host, f.root.path());
     let server = f.serve().await;
     f.host.adoption_fixture.as_mut().unwrap().helper = Some(helper.clone());
     (f, server, helper)
@@ -99,10 +100,8 @@ async fn wine_backed_journey_downloads_extracts_reviews_and_publishes_a_wine_own
     assert_eq!(installed.intent.destination, f.destination());
     let install = f.host.install_status().unwrap();
     assert_eq!(install.uninstall.unwrap().directory, f.destination());
-    println!(
-        "ADOPTED_WINE_COPY prerequisite_target={:?}",
-        install.runtime_setup
-    );
+    // Published with a Wine backend, the copy is offered prerequisites at once.
+    assert_eq!(install.runtime_setup, Some(installed.intent.operation_id));
     assert!(f
         .destination()
         .join("game/Working/Binaries/SGW.exe")

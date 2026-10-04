@@ -22,10 +22,11 @@ ordinary file matching an independently trusted build digest. `Resources.helper`
 is the x86 lifecycle worker. `client_patches: Some(artifact)` injects the approved
 patch DLL before the first game thread runs; `None` explicitly starts without
 that functionality. No telemetry DLL or session is created. Launcher summary
-consent never changes game telemetry. Imported legacy configuration must be
-validated and deliberately mapped before admission; imports do not manufacture
-signed content evidence or installation ownership. This packet uses the saved
-installation's login servers and native bundle patch selection.
+consent never changes game telemetry. Imports do not manufacture signed content
+evidence or installation ownership. A fresh installation uses its saved login
+servers and the bundle's patch artifact. A verified adopted copy uses the patch
+setting and ordered login servers the user reviewed; see
+[Patch policy per installation](#patch-policy-per-installation).
 
 Admission verifies installed identity/content, resource hashes and platform
 support. Mac additionally requires successful current prerequisite evidence and
@@ -277,7 +278,9 @@ the frontend cannot supply paths, executable names, environment or hashes.
 | `CIMMERIA_ROSETTA_X87_SHA256` | `graphics/rosettax87` (optional pair) |
 | `CIMMERIA_ROSETTA_X87_LIBRARY_SHA256` | `graphics/libRuntimeRosettax87` (optional pair) |
 
-This shell requires client patches. It never silently drops them to enable Play.
+The launch helper is required for every installation. The patch artifact is
+required only by the installations that inject it (next section); it is never
+silently dropped to enable Play.
 The x87 pair must either have both pinned artifacts or be entirely absent; absent
 acceleration uses stock Rosetta. Resource hashes are rechecked during inspection,
 admission and dispatch. Missing/mismatched resources produce an unavailable Play
@@ -291,6 +294,41 @@ observed exit; restart with an unfinished attempt reports unknown and stays gate
 The display distinguishes preparation, process start, early/normal exit and
 unknown. No message claims login or world entry from process start or zero exit.
 Launcher summary consent remains independent and is not changed by Play.
+
+## Patch policy per installation
+
+Native code decides whether Play injects client patches. The renderer cannot.
+
+| Installation | Patch artifact | Play |
+|---|---|---|
+| Fresh install | Verified | Injects patches |
+| Fresh install | Absent or replaced | Unavailable |
+| Adopted, patches reviewed on | Verified | Injects patches |
+| Adopted, patches reviewed on | Absent or replaced | Unavailable |
+| Adopted, patches reviewed off | Any | Starts without patches |
+
+`DesktopState::resolve_play_resources` applies this table to the bundle, and
+`admit_launch` refuses resources that disagree with it, so a host that skips
+resolution cannot inject or drop the patch.
+
+An adopted copy's imported settings are accepted only while every independent
+record of the review agrees:
+
+- the installed index's adoption provenance;
+- the Published adoption record `adoption-<work>.json`;
+- the admission checkpoint `adoption-plan-<work>.json`, which is why that file
+  must outlive publication;
+- the Adopt journal digest, while Adopt is still the latest operation;
+- the retained `legacy-import.json`, re-derived from the exact legacy JSON.
+
+When they disagree, Play and prerequisite setup are not offered and both
+commands are refused. Inspect still answers, the copy can still be uninstalled,
+and the bundle is not reported as missing resources. The signed launcher minimum
+belongs to the owner's release and is checked first, so it is reported whether or
+not the imported settings verify.
+
+The Play view has no separate message for refused imported settings yet. It
+shows the general "finish installation and compatibility checks" line.
 
 ## Headless integration checks
 

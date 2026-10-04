@@ -180,3 +180,7 @@ Windows-helper ownership requirements. It does not establish game compatibility.
 - [Post-handoff persistence failure fix](worknotes/updater-handoff-fix.md)
 - [Desktop updater contract](../../../../crates/launcher/desktop/docs/updater.md)
 - [Native verified-copy adoption foundation](worknotes/native-verified-copy-adoption.md)
+- [Verified-copy adoption UI](worknotes/adoption-ui.md)
+- [Effective imported settings for adopted Play](worknotes/effective-settings.md)
+- [Opt-in Mac app identity for the Wine process](worknotes/wine-computer-use.md)
+- [Adoption, settings and Wine identity integration](worknotes/uat-integration.md)

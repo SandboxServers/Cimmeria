@@ -6,6 +6,10 @@ type: project
 
 # `HeldDownload` reads from a non-blocking socket
 
+**Status 2026-10-04: fixed on `launcher/uat-integration`.** The accepted socket
+is made blocking, and `held_download::tests` reproduces the panic when that line
+is removed. The text below is the original observation.
+
 2026-10-04. Observed in 3 of 25 runs of the shell test binary on macOS
 (Darwin 25.6, Apple Silicon), in a test that used
 `shell/src/host/held_download.rs`.

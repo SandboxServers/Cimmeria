@@ -690,3 +690,30 @@ operator visual confirmation is recorded in [native-window UAT](worknotes/native
 Authentication/world entry and windowed focus remain unverified. Windows updater
 diagnosis is handed off through issue #1194; migration settings/adoption UI remain
 independent implementation work. Full launcher acceptance is still open.
+
+### 2026-10-04: Adoption UI, effective settings and Wine app identity combined
+
+`launcher/uat-integration` squash-merges three branches from their final commits:
+[verified-copy adoption UI](worknotes/adoption-ui.md) (`6c372b849`),
+[effective imported settings](worknotes/effective-settings.md) (`4786bc621`) and
+[opt-in Wine app identity](worknotes/wine-computer-use.md) (`4d17fe1ba`, with the
+30 FPS cap). Git reported no conflicts; the semantic ones and their resolutions
+are in the [integration note](worknotes/uat-integration.md).
+
+A Wine-backed copy adopted through Settings is now offered prerequisite setup,
+and Play once prerequisites succeed, with the patch setting and login server
+order the user reviewed. New host journeys adopt through the production host and
+carry the same store to one admitted Play, with patches reviewed off and on. The
+shared `HeldDownload` test origin no longer panics on macOS.
+
+Local macOS checks on the combined tree passed: the desktop workspace tests,
+strict Clippy and formatting, seven ignored Wine fixtures in isolated prefixes,
+frontend typecheck, tests and build, and the native-backed JS UATs for adoption
+(portable and Wine), launch, migration, game Update with Apply and rollback, and
+the updater. Exact counts are in the integration note.
+
+This is fixture evidence. No game was started and no package was rebuilt. Still
+open: the signed Mac rebuild, native window UAT of adoption, real prerequisite
+preparation and Play of an adopted copy, the `CIMMERIA_WINE_APP_IDENTITY=1`
+runtime and computer-use checks, the published RAR/CAB seed with a rebuilt
+helper, and native Windows validation.

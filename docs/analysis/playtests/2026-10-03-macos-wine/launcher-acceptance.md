@@ -70,9 +70,11 @@ documented fixture scopes. These are not gameplay or release evidence.
   The current production Play path reached the SGW login screen, visually confirmed
   by the operator; authentication/world entry remain unverified. See [native UAT](worknotes/native-window-uat.md).
 - Settings import is integrated. [Verified-copy adoption](worknotes/native-verified-copy-adoption.md)
-  has a source-preserving native foundation, but no UI or Play enablement yet.
-  Published RAR references, effective configuration and permanent-owner/current-
-  release separation remain required.
+  has a source-preserving native foundation. Its Settings UI on macOS and the
+  effective imported settings for adopted Play are combined on
+  `launcher/uat-integration` with fixture evidence only; see the
+  [integration note](worknotes/uat-integration.md). Native window UAT, a real
+  adopted Play and the published RAR/CAB seed remain required.
 - [Signed updater checks](worknotes/signed-updater.md) and minimum-version gates
   are integrated. Settings can check/download/reverify with native ownership;
   production configuration is disabled. Apply, restart, rollback and partial
@@ -103,7 +105,7 @@ documented fixture scopes. These are not gameplay or release evidence.
 | Signed GitHub manifest patch notes | Actual Tauri tab rendered seven verified entries; wrong-key rejection observed | Refresh/reconnect after integrated changes; integration |
 | Default-off optional summary consent | Separate persisted preference; exporter absent | Consent preservation plus local exporter race/failure evidence; external track and integration |
 | Focused observability | Discovery reviewed and integrated; implementation assignment recorded | Full bounded producer-to-local-ingestion/query fixture; external track |
-| Migration and identity/consent preservation | Explicit settings import and verified-copy foundation integrated | Published-client adoption, effective settings, UI, permanent owner/current release and game Update |
+| Migration and identity/consent preservation | Explicit settings import and verified-copy foundation integrated; adoption UI and effective settings combined with fixture host journeys and native-backed JS UAT | Native window UAT, published-client adoption, real prerequisite preparation and Play of an adopted copy, game Update of an adopted copy, Windows adoption |
 | Single updater owner and version/asset mapping | Native minimum gates and signed check/download integrated; composed persistence UAT passed | Apply/restart/rollback, resume, production configuration and Windows replacement parity |
 | Tests, docs and project memory | Existing baseline artifacts | Per-packet guards, fresh bounded review, matching docs/indexes and findings |
 | Windows native parity | Earlier Play checks passed; lab/helper/DLL builds verified; newer test snapshot failures identified | Corrected native tests, FDI preflight, latest helper and updater/adoption parity |
