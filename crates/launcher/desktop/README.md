@@ -9,8 +9,8 @@ This standalone workspace contains native Rust state, Effect workflows and a
 Tauri settings shell. The interface connects through Tauri invoke to native
 preference persistence. Play/Patch Notes tabs and the settings panel are
 implemented; patch notes load from a signed release manifest and game actions
-remain disabled. Installation, repair, removal, launch and telemetry export
-are not implemented here. The existing Windows egui launcher is unchanged.
+remain disabled. The installer algorithms are shared and fixture-tested, but installation is not
+connected to the UI. Repair, removal, launch and telemetry export remain pending. The existing Windows egui launcher is unchanged.
 
 ## Native operation and storage contracts
 
@@ -98,6 +98,37 @@ patch notes describe available release patches, not installed-game status.
 Native window appearance, dialogs and actual Tauri IPC still require interactive
 UAT. Compilation and headless DOM tests do not establish those behaviors.
 
+## Shared installer core
+
+The engine imports the existing launcher installation, archive, layout, state,
+patch destination, report and client-preparation modules through Rust path
+modules. It depends on the existing `cimmeria-patchset` crate for delta patches
+and UPK normalization. Algorithms and their regression tests have one source;
+the standalone lockfile resolves their dependencies independently. This includes
+the existing workspace-hack dependency transitively; the desktop workspace is
+still excluded from root aggregate checks.
+
+`install_progress::ProgressSink::latest()` retains one progress value through a
+Tokio watch channel. A stalled or disconnected observer cannot build a backlog
+or fail installation. The existing egui worker uses the legacy adapter and
+preserves its event stream. Progress is observational, not an operation journal
+or proof that the game is ready.
+
+The loopback installer test downloads a synthetic PE-in-ZIP seed, verifies its
+hash, extracts it, overlays a patch, writes the login file, disables ASLR and
+persists installed state. Its second pass makes no further blob requests, while
+a stalled watch receiver retains the newest progress. This exercises the real
+pipeline, not simulated progress. It does not download or launch SGW.
+
+The original archive's spanning cabinet set still requires Windows FDI. Native
+Mac ZIP/RAR tests do not prove Wine cabinet extraction. The next integration
+needs a Windows-native-built helper, managed runtime/prefix ownership, validated
+operation intents, reconciliation, cancellation and terminal readiness checks.
+The legacy pipeline's success can occur without SGW.exe; a new readiness adapter
+must not equate it with Play-ready. Existing install state is not an ownership
+marker permitting uninstall, and its permissive reads are not recovery proof.
+See [runtime provisioning evidence](../../../docs/analysis/playtests/2026-10-03-macos-wine/runtime-provisioning.md).
+
 ## Verified release patch notes
 
 `engine/src/catalog/mod.rs` fetches the native-owned `content-current` manifest
@@ -171,11 +202,13 @@ work without the tester's explicit desktop permission.
 
 On Windows, append `.exe` to the harness path. Root workspace tests do not run
 this nested workspace. `.github/workflows/launcher-desktop.yml` adds explicit
-native Mac/Windows checks and the frontend/native logic UAT.
+native Mac/Windows checks and the frontend/native logic UAT. Shared-source
+changes also run an existing-launcher Cargo check on native Windows.
 
-On 2026-10-04, **52 engine tests**, **two shell-host tests**, **14 frontend tests**, strict clippy, TypeScript
-checking and formatting passed locally on macOS. The one ignored Rust test is a
-subprocess fixture invoked by its parent test. Coverage includes command/schema
+On 2026-10-04, **132 engine tests**, **two shell-host tests**, **14 frontend tests**, strict clippy, TypeScript
+checking and formatting passed locally on macOS. Three engine tests are ignored by default: the subprocess fixture invoked by
+its parent, plus manual real-SGW-executable and real-client-RAR checks that
+remain unrun. Coverage includes command/schema
 validation, ownership/retries, cancellation races, file failures before/after
 replacement, preference persistence, stale revisions, corrupt/future state,
 symlink rejection and bounded reads. A child process holds the lock while
@@ -227,3 +260,6 @@ seven patches using the release public key recorded in the bring-up handoff.
 This verifies a current response, not future availability or packaged UI routing.
 The local fixture suite uses the development key; run it without a release-key
 override. Real Tauri catalog IPC and visual UAT remain unverified.
+
+Catalog CI run `37183173769` passed both native platforms at `f8ea7b844`.
+The shared-installer packet needs its own native Windows result.

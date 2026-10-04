@@ -30,6 +30,7 @@ use tokio_util::sync::CancellationToken;
 use tracing::info;
 
 use crate::install::Progress;
+use crate::install_progress::{ProgressReporter, ProgressSink};
 
 /// Name of the staging directory a RAR is extracted into, under the
 /// destination. Removed when unpacking finishes, and cleared before a retry.
@@ -72,7 +73,7 @@ pub enum UnpackError {
 /// (not borrowed) so it can move onto a blocking thread.
 #[derive(Clone)]
 pub struct UnpackSink {
-    pub progress: tokio::sync::mpsc::UnboundedSender<Progress>,
+    pub progress: ProgressSink,
     pub label: String,
     pub cancel: CancellationToken,
 }
@@ -87,7 +88,7 @@ impl UnpackSink {
     }
 
     fn report(&self, step: &str, current: usize, total: usize, path: &Path) {
-        let _ = self.progress.send(Progress::Extracting {
+        self.progress.report(Progress::Extracting {
             label: format!("{} ({step})", self.label),
             current,
             total,

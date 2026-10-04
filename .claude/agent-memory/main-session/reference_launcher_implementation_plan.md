@@ -42,3 +42,11 @@ Windows+Mac before the shell; shell/visual/game gates remain separate.
   seven patches on 2026-10-04 using the handoff's release public key; development
   fallback keys cannot authenticate production content. Notes are available
   release information, not evidence of installation. Native catalog UI UAT open.
+
+- Desktop engine shares install/unpack/client-setup algorithms and patchset
+  dependency. ProgressSink::latest retains one observation; egui's adapter keeps
+  its old stream. A ZIP fixture covers full pipeline/idempotence. Native Mac
+  cannot expand the real spanning cabinets yet; Windows FDI helper is the planned
+  route. Legacy successful install is not readiness (SGW.exe may be absent), and
+  launcher-installed.json is not deletion ownership. Runtime inventory and open
+  redistribution/prerequisite gates are in runtime-provisioning.md.

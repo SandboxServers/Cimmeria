@@ -367,3 +367,28 @@ compiled with the recorded release public key; no new packaged UI UAT occurred.
 Read-only advisor review found no actionable pre-commit issues. Manifest
 freshness/rollback protection remains inherited and must be addressed before
 using catalog availability as an update-readiness decision.
+
+### 2026-10-04: shared installer algorithms and runtime evidence
+
+Imported the existing installation/unpack/preparation modules into the desktop
+engine without copying algorithms; delta application uses `cimmeria-patchset`.
+Added a one-value progress sink for desktop workers while retaining the existing
+egui event stream. A shared fixture now drives HTTP seed download, SHA-256,
+ZIP extraction, overlay patching, PE/client preparation, persisted installed state
+and an idempotent second pass with no new blob requests. No UI install action or
+managed worker is connected yet. Legacy success without SGW.exe and permissive
+installed-state reads must not be used as readiness or ownership evidence.
+
+Mac engine validation: 132 tests pass; ignored cases are the parent-invoked child
+fixture and two manual real-client checks, still unrun. Strict workspace clippy
+passes. Catalog CI `37183173769` passed both native platforms at `f8ea7b844`;
+shared-installer validation awaits its own run. Native Windows CI now checks the
+existing egui launcher too because the progress interface is shared.
+
+Primary-source research is recorded in [runtime-provisioning.md](runtime-provisioning.md).
+It identifies the pinned Wine revision and separates D3D9/x87 resources from
+that archive. A narrow Windows FDI helper under an exclusive managed prefix is
+the recommended first cabinet path; redistribution inventory, legacy prerequisite
+packages and fresh-prefix/game UAT remain gates. No runtime was installed and
+no desktop application was opened. Next: helper protocol, validated native
+worker admission and filesystem/process reconciliation.

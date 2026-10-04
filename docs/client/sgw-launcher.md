@@ -758,3 +758,7 @@ Launch and injection (`launch`, `inject`) live in the shared
 The experimental desktop launcher now displays signature-verified manifest
 patch notes through its Patch Notes tab. This does not establish installed
 patch state; its game installation and launch integration remain unfinished.
+
+The desktop engine shares the existing installation and unpacking source.
+`install_progress` supports a one-value watch channel for desktop workers; the
+existing egui worker retains its legacy event stream through an adapter.

@@ -14,5 +14,20 @@ ed25519-dalek = { version = "3", default-features = false, features = ["alloc"] 
 thiserror = "2"
 reqwest = { version = "0.12", default-features = false, features = ["rustls-tls", "stream"] }
 
+# Share the existing patch algorithms, including UPK normalization.
+cimmeria-patchset = { path = "../../../patchset" }
+tokio = { version = "1", features = ["macros", "rt", "rt-multi-thread", "time", "sync", "fs", "io-util"] }
+tokio-util = "0.7"
+futures-util = "0.3"
+sha2 = "0.11"
+zip = { version = "8", default-features = false, features = ["deflate"] }
+unrar = "0.5"
+chrono = { version = "0.4", default-features = false, features = ["clock", "serde"] }
+tracing = "0.1"
+
+[target.'cfg(windows)'.dependencies]
+windows-sys = { version = "0.61", features = ["Win32_Foundation", "Win32_Storage_Cabinets", "Win32_Storage_FileSystem", "Win32_System_Memory", "Win32_System_WindowsProgramming"] }
+
 [dev-dependencies]
-tokio = { version = "1", features = ["macros", "rt", "time"] }
+wiremock = "0.6"
+crc32fast = "1"

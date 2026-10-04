@@ -169,8 +169,11 @@ mod tests {
     /// cabinets' spelling; see [`PATCH_TARGETS`].
     #[test]
     fn every_patch_target_is_listed() {
-        let dir =
-            std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../data/client-patches");
+        let dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+            .ancestors()
+            .map(|root| root.join("data/client-patches"))
+            .find(|dir| dir.is_dir())
+            .expect("repository client-patch fixtures must exist");
         let mut seen = 0;
         for entry in std::fs::read_dir(&dir).unwrap() {
             let spec_path = entry.unwrap().path().join("patch.json");

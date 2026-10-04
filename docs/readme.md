@@ -606,3 +606,5 @@ When adding or updating documentation specifically:
 6. Update the doc-update map in [agents/doc-update-map.md](agents/doc-update-map.md) so reviewers can verify the right files were touched.
 
 Reporting a security issue? See **[../SECURITY.md](../SECURITY.md)** for the private reporting path. Project conduct expectations are in **[../CODE_OF_CONDUCT.md](../CODE_OF_CONDUCT.md)**.
+
+- [Mac launcher runtime provisioning evidence](analysis/playtests/2026-10-03-macos-wine/runtime-provisioning.md) — pinned runtime inventory, process ownership and distribution gates.

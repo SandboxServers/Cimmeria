@@ -28,6 +28,7 @@ use tokio_util::sync::CancellationToken;
 use tracing::{info, warn};
 
 use crate::install_layout;
+use crate::install_progress::{ProgressReporter, ProgressSink};
 use crate::install_report::{InstallReport, PatchOutcomeKind};
 use crate::manifest::{blob_url, Manifest, PatchEntry, SeedEntry};
 use crate::patch_dest::patch_dest;
@@ -128,7 +129,7 @@ pub struct InstallContext<'a> {
     pub manifest: &'a Manifest,
     pub login_servers: &'a [crate::client_setup::LoginServer],
     pub cancel: CancellationToken,
-    pub progress: tokio::sync::mpsc::UnboundedSender<Progress>,
+    pub progress: ProgressSink,
     /// Shared HTTP client owned by the worker — reused across the
     /// seed download, every patch download, and the post-install
     /// manifest revalidation. Avoids rebuilding the connection pool
@@ -331,7 +332,7 @@ pub(crate) async fn download_to_file(
     cancel: CancellationToken,
     expected_size: u64,
     label: &str,
-    progress: &tokio::sync::mpsc::UnboundedSender<Progress>,
+    progress: &impl ProgressReporter,
 ) -> Result<(), InstallError> {
     use futures_util::StreamExt;
 
@@ -399,7 +400,7 @@ pub(crate) async fn download_to_file(
         downloaded += chunk.len() as u64;
         // Throttle progress emits so the UI channel isn't flooded by tiny chunks.
         if last_emit.elapsed() >= std::time::Duration::from_millis(33) {
-            let _ = progress.send(Progress::Downloading {
+            progress.report(Progress::Downloading {
                 label: label.to_string(),
                 downloaded,
                 total,
@@ -408,7 +409,7 @@ pub(crate) async fn download_to_file(
         }
     }
     file.flush().await?;
-    let _ = progress.send(Progress::Downloading {
+    progress.report(Progress::Downloading {
         label: label.to_string(),
         downloaded,
         total,

@@ -4,7 +4,11 @@ on:
   pull_request:
     paths:
       - 'crates/launcher/desktop/**'
-      - 'crates/launcher/src/manifest.rs'
+      - 'crates/launcher/src/**'
+      - 'crates/patchset/**'
+      - 'crates/upk/**'
+      - 'crates/workspace-hack/**'
+      - 'Cargo.toml'
       - '.github/workflows/launcher-desktop.yml'
       - '.github/actions/rust-toolchain/**'
       - 'rust-toolchain.toml'
@@ -13,7 +17,11 @@ on:
     branches: [main]
     paths:
       - 'crates/launcher/desktop/**'
-      - 'crates/launcher/src/manifest.rs'
+      - 'crates/launcher/src/**'
+      - 'crates/patchset/**'
+      - 'crates/upk/**'
+      - 'crates/workspace-hack/**'
+      - 'Cargo.toml'
       - '.github/workflows/launcher-desktop.yml'
       - '.github/actions/rust-toolchain/**'
       - 'rust-toolchain.toml'
@@ -71,3 +79,6 @@ jobs:
         run: bash tools/build-lane/lane.sh cargo clippy --locked --manifest-path crates/launcher/desktop/Cargo.toml -p cimmeria-launcher-desktop --target-dir target/desktop --all-targets -- -D warnings
       - name: Build native desktop executable
         run: bash tools/build-lane/lane.sh cargo build --locked --manifest-path crates/launcher/desktop/Cargo.toml -p cimmeria-launcher-desktop --target-dir target/desktop
+      - name: Check existing Windows launcher integration
+        if: runner.os == 'Windows'
+        run: bash tools/build-lane/lane.sh cargo check --locked -p sgw-launcher --all-targets --target-dir target/legacy-launcher

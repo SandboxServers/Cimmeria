@@ -134,3 +134,7 @@ not production implementation or an observed login result.
 
 Implementation has begun with the [native operation contract](../../../../crates/launcher/desktop/README.md);
 see the plan's implementation ledger for tested scope and remaining work.
+
+Implementation evidence: [runtime provisioning](runtime-provisioning.md) records
+the pinned Wine inventory, candidate launch environment, distribution gates and
+Windows-helper ownership requirements. It does not establish game compatibility.
