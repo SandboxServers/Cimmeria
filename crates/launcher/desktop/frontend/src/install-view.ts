@@ -1,5 +1,5 @@
 import { Context, Effect, Fiber, Layer, ManagedRuntime, Result, Stream } from 'effect';
-import { installBridgeLayer, InstallFailure, InstallViewState, makeInstallWorkflow, operationActive } from './install-workflow';
+import { installBridgeLayer, InstallFailure, InstallStatus, InstallViewState, makeInstallWorkflow, operationActive } from './install-workflow';
 import type { Invoke } from './view';
 class Installation extends Context.Service<Installation,Effect.Success<typeof makeInstallWorkflow>>()('launcher/Installation') {}
 const errors:Record<InstallFailure['code'],string>={
@@ -33,6 +33,7 @@ export function mountInstall(document:Document,invoke:Invoke,uuid:()=>string=()=
   const abort=new AbortController();
   let current:InstallViewState={status:null,busy:false,needsInspection:true,error:null};
   let disposed=false; let pending=false; let watching=false;
+  let journeyInstallId:string|null=null;
   let mutation:Promise<void>=Promise.resolve(); let observation:Promise<void>=Promise.resolve();
   const listeners:(()=>void)[]=[];
   const render=()=>{
@@ -42,10 +43,11 @@ export function mountInstall(document:Document,invoke:Invoke,uuid:()=>string=()=
     const active=!!status&&operationActive(status);
     const recovery=operation?.state==='reconciliation_required';
     const ready=!!status&&!status.native.requires_reopen&&!current.needsInspection&&!current.busy&&!pending;
-    primary.disabled=!ready||!status?.install_supported||(!!operation&&!status?.can_retry)||!status.native.preferences.install_directory;
+    const canPrepare=!!status?.runtime_setup&&!active&&!recovery;
+    primary.disabled=!ready||active||(!canPrepare&&(!status?.install_supported||(!!operation&&!status?.can_retry)||!status.native.preferences.install_directory));
     const removed=operation?.kind==='uninstall'&&operation.state==='succeeded';
     const runtimeSetup=operation?.kind==='prepare_runtime';
-    primary.textContent=runtimeSetup?(active?'Checking compatibility…':operation?.state==='succeeded'?'Compatibility checked':'Check compatibility status'):removed?'Install Stargate Worlds':status?.can_retry?'Retry installation':operation?.state==='succeeded'?'Content prepared':active?(operation?.kind==='uninstall'?'Removing…':'Installing…'):'Install Stargate Worlds';
+    primary.textContent=canPrepare?'Continue installation':runtimeSetup?(active?'Checking compatibility…':operation?.state==='succeeded'?'Compatibility checked':'Check compatibility status'):removed?'Install Stargate Worlds':status?.can_retry?'Retry installation':operation?.state==='succeeded'?'Content prepared':active?(operation?.kind==='uninstall'?'Removing…':'Installing…'):'Install Stargate Worlds';
     const failed=operation?.kind==='install'&&(operation.state==='failed'||operation.state==='cancelled');
     cleanup.hidden=!failed||status?.can_retry===true;
     cleanup.disabled=!ready;
@@ -60,7 +62,7 @@ export function mountInstall(document:Document,invoke:Invoke,uuid:()=>string=()=
     get('uninstall-directory').textContent=uninstalling?.directory??'';
     get<HTMLButtonElement>('confirm-uninstall').disabled=!ready||active;
     get<HTMLButtonElement>('dismiss-uninstall').disabled=pending||current.busy;
-    cancel.hidden=!active||operation?.kind!=='install';
+    cancel.hidden=!active||(operation?.kind!=='install'&&operation?.kind!=='prepare_runtime');
     cancel.disabled=!ready||operation?.state==='cancel_requested';
     resume.hidden=!recovery||!status?.can_resume; resume.disabled=!ready||!status?.can_resume;
     recheck.hidden=!current.error&&!recovery;
@@ -73,9 +75,10 @@ export function mountInstall(document:Document,invoke:Invoke,uuid:()=>string=()=
     else if(pending)text='Confirming operation…';
     else if(status){
       if(removed)text='Game uninstalled. You can install it again when ready.';
-      else if(runtimeSetup)text=recovery?'Compatibility setup was interrupted. Files are preserved; recovery requires inspection.':active?'Checking game compatibility…':operation?.state==='succeeded'?'Prerequisites checked. Graphics and Play still need validation.':'Compatibility setup stopped. Game files are preserved.';
+      else if(canPrepare)text='Game content is ready. Continue installation to check compatibility.';
+      else if(runtimeSetup)text=recovery?'Compatibility setup was interrupted. Files are preserved; recovery requires inspection.':active?(operation?.state==='cancel_requested'?'Cancellation requested. Waiting for compatibility setup to stop safely.':'Checking game compatibility…'):operation?.state==='succeeded'?'Prerequisites checked. Graphics and Play still need validation.':'Compatibility setup stopped. Game files are preserved.';
       else if(operation?.kind==='uninstall')text=recovery?'Uninstall was interrupted. Use Finish uninstall in Settings to confirm removal again.':active?'Removing game files…':'Inspect uninstall status before continuing.';
-      else if(operation?.state==='succeeded')text='Game content prepared. Runtime checks and Play are not connected in this build.';
+      else if(operation?.state==='succeeded')text='Game content prepared. This build cannot continue compatibility setup for this installation.';
       else if(recovery)text=status.can_resume||status.can_reconcile?'An interrupted installation was found. Inspect files or explicitly resume the saved attempt.':'An interrupted compatibility operation was found. Files are preserved; recovery is not available in this build. You can recheck status.';
       else if(active)text=operation?.state==='cancel_requested'?'Cancellation requested. Waiting for the installer to stop safely.':
         status.progress?.phase==='download'?'Downloading verified game content…':status.progress?.phase==='extraction'?'Extracting game content…':'Preparing installation…';
@@ -91,19 +94,29 @@ export function mountInstall(document:Document,invoke:Invoke,uuid:()=>string=()=
   };
   const watcher=runtime.runFork(Effect.flatMap(Installation,service=>Stream.runForEach(service.changes,
     value=>Effect.sync(()=>{current=value;render();}))));
+  const advance=(status:InstallStatus)=>{
+    const op=status.native.operation.operation;
+    if(disposed||pending||!journeyInstallId||op?.id!==journeyInstallId||op.kind!=='install'||op.state!=='succeeded'||!status.runtime_setup)return false;
+    const previous=journeyInstallId;journeyInstallId=null;
+    void run(service=>service.prepareRuntime(uuid(),status.runtime_setup!,previous));
+    return true;
+  };
   const observe=()=>{
     const status=current.status; const id=status?.native.operation.operation?.id;
     if(disposed||watching||!status||!id||!operationActive(status)||status.native.requires_reopen)return;
     watching=true;
+    let completed:InstallStatus|null=null;
     observation=runtime.runPromise(Effect.flatMap(Installation,service=>Effect.result(service.observe(id))),{signal:abort.signal})
-      .then(()=>{}).catch(()=>{}).finally(()=>{watching=false;});
+      .then(result=>{if(Result.isSuccess(result))completed=result.success;else journeyInstallId=null;})
+      .catch(()=>{journeyInstallId=null;}).finally(()=>{watching=false;if(completed)advance(completed);});
   };
-  const run=(action:(service:Effect.Success<typeof makeInstallWorkflow>)=>Effect.Effect<unknown,InstallFailure>)=>{
+  const run=(action:(service:Effect.Success<typeof makeInstallWorkflow>)=>Effect.Effect<InstallStatus,InstallFailure>)=>{
     if(disposed||pending)return mutation;
     pending=true;render();
+    let completed:InstallStatus|null=null;
     mutation=runtime.runPromise(Effect.flatMap(Installation,service=>Effect.result(action(service))),{signal:abort.signal})
-      .then(result=>{if(!disposed&&Result.isFailure(result))current={...current,error:result.failure.code,needsInspection:true};})
-      .catch(()=>{}).finally(()=>{pending=false;render();if(!current.error)observe();});
+      .then(result=>{if(Result.isSuccess(result))completed=result.success;else {journeyInstallId=null;if(!disposed)current={...current,error:result.failure.code,needsInspection:true};}})
+      .catch(()=>{journeyInstallId=null;}).finally(()=>{pending=false;render();if(completed&&advance(completed))return;if(!current.error)observe();});
     return mutation;
   };
   const on=(element:HTMLButtonElement,action:()=>void)=>{
@@ -119,8 +132,10 @@ export function mountInstall(document:Document,invoke:Invoke,uuid:()=>string=()=
   on(cleanup,()=>{confirming=current.status?.native.operation.operation?.id??null;render();});
   on(get<HTMLButtonElement>('dismiss-cleanup'),()=>{confirming=null;render();});
   on(get<HTMLButtonElement>('confirm-cleanup'),()=>{const id=confirming;confirming=null;if(id)void run(service=>service.cleanFailed(id));});
-  on(primary,()=>{const id=uuid();void run(service=>service.install(id));});
-  on(cancel,()=>{const id=current.status?.native.operation.operation?.id;if(id)void run(service=>service.cancel(id));});
+  on(primary,()=>{const id=uuid();const status=current.status;
+    if(status?.runtime_setup&&status.native.operation.operation){journeyInstallId=null;void run(service=>service.prepareRuntime(id,status.runtime_setup!,status.native.operation.operation!.id));}
+    else {journeyInstallId=id;void run(service=>service.install(id));}});
+  on(cancel,()=>{journeyInstallId=null;const id=current.status?.native.operation.operation?.id;if(id)void run(service=>service.cancel(id));});
   on(resume,()=>{const id=current.status?.native.operation.operation?.id;if(id)void run(service=>service.resume(id));});
   on(recheck,()=>{const operation=current.status?.native.operation.operation;
     void run(service=>operation?.state==='reconciliation_required'&&current.status?.can_reconcile?service.reconcile(operation.id):service.inspect);});

@@ -153,6 +153,10 @@ async fn admitted_setup_is_retained_and_duplicate_does_not_replace_worker() {
         owner.installed_content().unwrap().unwrap();
         owner.operations().snapshot().revision
     };
+    assert_eq!(
+        host.install_status().unwrap().runtime_setup,
+        Some(installation)
+    );
     let id = Uuid::new_v4();
     let request = || InstallCommand::PrepareRuntime {
         schema_version: 1,
@@ -161,6 +165,7 @@ async fn admitted_setup_is_retained_and_duplicate_does_not_replace_worker() {
         installation_id: installation,
     };
     host.install_command(request(), None).unwrap();
+    assert!(host.install_status().unwrap().runtime_setup.is_none());
     host.install_command(request(), None).unwrap();
     host.install_command(
         InstallCommand::Cancel {
@@ -202,6 +207,7 @@ async fn admitted_setup_is_retained_and_duplicate_does_not_replace_worker() {
         OperationState::Cancelled
     );
     assert!(status.native.preferences.launcher_summary_consent);
+    assert_eq!(status.runtime_setup, Some(installation));
     assert!(!root.path().join("state/game-prefixes").exists());
     assert!(state.lock().unwrap().runtime_record().unwrap().is_some());
     drop(host);

@@ -6,7 +6,7 @@ import { mountInstall } from './install-view';
 import type { InstallRequest, InstallStatus } from './install-workflow';
 const html=await readFile(new URL('../ui/index.html',import.meta.url),'utf8');
 const id='d539d049-61b7-4c82-b3d7-cb9b7a991adc';
-const initial=():InstallStatus=>({schema_version:1,install_supported:true,can_resume:true,can_reconcile:true,can_retry:false,uninstall:null,progress:null,outcome:null,native:{schema_version:1,
+const initial=():InstallStatus=>({schema_version:1,install_supported:true,can_resume:true,can_reconcile:true,can_retry:false,uninstall:null,runtime_setup:null,progress:null,outcome:null,native:{schema_version:1,
   requires_reopen:false,operation:{schema_version:1,revision:0,operation:null},preferences:{schema_version:1,revision:1,
     install_directory:'/fixture',launcher_summary_consent:false}}});
 const flush=()=>new Promise<void>(resolve=>setImmediate(resolve));
@@ -25,7 +25,7 @@ test('install click dispatches once; content completion never becomes Play',{tim
  try{await app.ready;await flush();assert.equal(ui.get('install').disabled,false);
    ui.click('install');ui.click('install');await app.settled();await flush();
    assert.equal(commands.filter(x=>x==='install').length,1);assert.equal(ui.get('install').textContent,'Content prepared');
-   assert.equal(ui.get('install').disabled,true);assert.match(ui.get('install-status').textContent!,/Play are not connected/);
+   assert.equal(ui.get('install').disabled,true);assert.match(ui.get('install-status').textContent!,/cannot continue compatibility setup/);
  }finally{await app.dispose();}
 });
 
@@ -140,8 +140,73 @@ for (const state of ['running','succeeded','reconciliation_required'] as const) 
   try {await app.ready;await flush();assert.equal(ui.get('install').disabled,true);
    assert.match(ui.get('install-status').textContent!,state==='succeeded'?/Graphics and Play still need validation/:/compatibility|Compatibility/);
    ui.click('install');await flush();assert.ok(calls.every(call=>call==='inspect'));
-   assert.equal(ui.get('cancel-install').hidden,true);
+   assert.equal(ui.get('cancel-install').hidden,state!=='running');
    assert.equal(status.native.preferences.launcher_summary_consent,false);
   } finally {await app.dispose();}
  });
 }
+
+
+const runtimeId='a2ec19a1-7345-43ef-aef5-8a944d8ee26c';
+const prepared=():InstallStatus=>({...initial(),runtime_setup:id,outcome:'content_prepared',native:{...initial().native,
+ operation:{schema_version:1,revision:3,operation:{id,kind:'install',state:'succeeded',intent_digest:Array(32).fill(0)}}}});
+async function until(predicate:()=>boolean){for(let n=0;n<100&&!predicate();n++)await new Promise(resolve=>setTimeout(resolve,10));assert.ok(predicate());}
+for(const delayed of [false,true])test(`one Install click advances to compatibility (${delayed?'observed':'immediate'} completion)`,{timeout:5000},async()=>{
+ const ui=dom();let status=initial();const calls:InstallRequest[]=[];let counter=0;
+ const app=mountInstall(ui.document,async(_command,args)=>{
+  const request=args!.request as InstallRequest;calls.push(request);
+  if(request.command==='install'){status=prepared();if(delayed)status={...status,runtime_setup:null,native:{...status.native,operation:{...status.native.operation,operation:{...status.native.operation.operation!,state:'running'}}}};}
+  if(request.command==='prepare_runtime'){
+   assert.equal(request.installation_id,id);assert.equal(request.operation_id,runtimeId);assert.equal(request.operation_revision,3);
+   status={...status,runtime_setup:null,outcome:null,native:{...status.native,operation:{schema_version:1,revision:4,
+    operation:{id:runtimeId,kind:'prepare_runtime',state:'running',intent_digest:Array(32).fill(0)}}}};
+  }
+  if(request.command==='cancel')status={...status,native:{...status.native,operation:{...status.native.operation,revision:5,
+   operation:{...status.native.operation.operation!,state:'cancel_requested'}}}};
+  return status;
+ },()=>counter++===0?id:runtimeId);
+ try{await app.ready;await flush();ui.click('install');await app.settled();await flush();
+  if(delayed){assert.equal(calls.filter(c=>c.command==='prepare_runtime').length,0);status=prepared();}
+  await until(()=>calls.some(c=>c.command==='prepare_runtime'));await app.settled();await flush();
+  assert.equal(calls.filter(c=>c.command==='install').length,1);assert.equal(calls.filter(c=>c.command==='prepare_runtime').length,1);
+  assert.equal(ui.get('install').textContent,'Checking compatibility…');assert.equal(ui.get('cancel-install').hidden,false);
+  ui.click('cancel-install');await app.settled();await flush();
+  assert.equal(calls.find(c=>c.command==='cancel')?.operation_id,runtimeId);assert.match(ui.get('install-status').textContent!,/Cancellation requested/);
+  assert.equal(status.native.preferences.launcher_summary_consent,false);
+ }finally{await app.dispose();}
+});
+
+test('reopen requires Continue; lost setup reply is inspected without replay',async()=>{
+ const ui=dom();let status=prepared();const calls:InstallRequest[]=[];
+ const app=mountInstall(ui.document,async(_command,args)=>{
+  const request=args!.request as InstallRequest;calls.push(request);
+  if(request.command==='prepare_runtime'){
+   status={...status,runtime_setup:null,native:{...status.native,operation:{schema_version:1,revision:4,
+    operation:{id:runtimeId,kind:'prepare_runtime',state:'running',intent_digest:Array(32).fill(0)}}}};
+   throw new Error('lost reply');
+  }return status;
+ },()=>runtimeId);
+ try{await app.ready;await flush();assert.equal(ui.get('install').textContent,'Continue installation');
+  assert.equal(calls.every(c=>c.command==='inspect'),true);ui.click('install');ui.click('install');await app.settled();await flush();
+  assert.match(ui.get('install-status').textContent!,/Could not confirm/);await app.refresh();await flush();
+  assert.equal(calls.filter(c=>c.command==='prepare_runtime').length,1);assert.ok(calls.every(c=>c.command!=='install'));
+  assert.equal(ui.get('install').disabled,true);assert.equal(status.native.preferences.launcher_summary_consent,false);
+ }finally{await app.dispose();}
+});
+
+test('cancelled journey cannot advance if content completion wins the cancellation race',{timeout:5000},async()=>{
+ const ui=dom();let status=initial();const calls:InstallRequest[]=[];
+ const app=mountInstall(ui.document,async(_command,args)=>{
+  const request=args!.request as InstallRequest;calls.push(request);
+  if(request.command==='install')status={...prepared(),runtime_setup:null,native:{...prepared().native,
+   operation:{...prepared().native.operation,operation:{...prepared().native.operation.operation!,state:'running'}}}};
+  if(request.command==='cancel')status=prepared();
+  return status;
+ },()=>id);
+ try{await app.ready;await flush();ui.click('install');await app.settled();await flush();
+  ui.click('cancel-install');await app.settled();await flush();await new Promise(resolve=>setTimeout(resolve,300));
+  assert.equal(ui.get('install').textContent,'Continue installation');
+  assert.equal(calls.filter(c=>c.command==='prepare_runtime').length,0);
+  assert.equal(calls.filter(c=>c.command==='cancel').length,1);
+ }finally{await app.dispose();}
+});

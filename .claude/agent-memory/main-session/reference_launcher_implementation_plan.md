@@ -443,6 +443,9 @@ passed staging. Two Python staging and two native identity tests passed.
 `PrerequisiteResource` prevents accidental archive-backend conversion; receipts
 remain non-authoritative. The prerequisite build variable now feeds the native shell resource binding.
 The strict prepare_runtime command retains the Mac coordinator, refuses forged
-resource fields and routes cancellation by operation ID. Effect admission and
-UI sequencing remain pending.
+resource fields and routes cancellation by operation ID. Effect now sequences
+content success into setup for the active Install intent; reopening requires
+explicit Continue, lost replies are not replayed, and cancellation clears the
+continuation. Native status exposes only eligible installed IDs. 36 frontend
+tests and JS logic UAT pass; native visual and real UI-to-Wine UAT remain open.
 See desktop `docs/prerequisites.md` for commands and evidence boundaries.

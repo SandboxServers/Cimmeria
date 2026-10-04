@@ -513,8 +513,9 @@ newer frontend installation controls.
 `frontend/src/install-workflow.ts` and `install-view.ts` connect installation
 controls to native IPC on Windows and verified-helper Mac builds. Install
 requires a selected folder and no current operation. Mac builds without the
-verified packaged helper cannot install. Settings saves refresh installation status. Repair,
-runtime setup and Play remain unavailable. Confirmed uninstall uses the saved
+verified packaged helper cannot install. Settings saves refresh installation status.
+Verified Mac builds sequence content completion into prerequisite checks; Repair
+and Play remain unavailable. Confirmed uninstall uses the saved
 installation identity; see [maintenance](docs/maintenance.md).
 
 The application-scoped Effect service inspects native state before each
@@ -532,9 +533,13 @@ disposal stops frontend observation without cancelling native installation.
 `requires_reopen` stops observation and directs the user to restart. Interrupted
 operations expose explicit inspection/reconciliation and resume controls.
 
-Success displays “Content prepared”, never Play-ready. Failed/cancelled attempts
-retain partial files and cannot be retried or cleaned up through this UI yet.
-The current frontend suite has 23 passing tests; TypeScript checking and the
+Content completion advances to compatibility setup when the native host exposes
+an eligible installed identity. Reopening requires “Continue installation”; a
+lost reply is inspected without replay. Explicit cancellation prevents automatic
+advancement even if content completion wins that race. Failed content can be
+cleaned up with confirmation and retried. Prerequisite success remains distinct
+from Play readiness; see [prerequisites](docs/prerequisites.md#effect-and-main-install-flow).
+The current frontend suite has 36 passing tests; TypeScript checking and the
 frontend build passed. `npm run uat:install` passed a sequential actual-DOM and
 Effect fixture flow covering installation/progress, cancellation requested,
 disposal/reconnection without replay, completion winning cancellation, and no
@@ -545,7 +550,6 @@ runs this installation logic UAT. The separate `npm run uat` against the Rust
 earlier approved settings preview predates these controls; their native visual,
 keyboard and actual Tauri IPC UAT remain unverified. No real game or runtime
 readiness is established by frontend tests.
-
 
 ## Retained Wine content worker
 
@@ -573,7 +577,6 @@ checking/build and sequential JS logic UAT passed,
 including new failure decoding and preserved consent. Native visual UAT was not
 performed. These fixtures do not establish real game prerequisites or readiness.
 
-
 ## Packaged Mac helper binding
 
 The shell resolves only `resource_dir/windows/cimmeria-archive-worker.exe` and
@@ -594,7 +597,6 @@ separately. The final development bundle built with its embedded helper hash
 verified; packaged permission verification remains pending. No visual UAT or packaged-app startup was performed; the final
 self-contained startup gate remains deferred. Game prerequisites/Play and Wine
 recovery remain unfinished.
-
 
 ## Durable installation outcomes
 

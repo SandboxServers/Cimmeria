@@ -2,6 +2,52 @@
 use super::*;
 use uuid::Uuid;
 impl NativeHost {
+    pub(super) fn runtime_setup_target(
+        &self,
+        state: &mut DesktopState,
+    ) -> Result<Option<Uuid>, StorageError> {
+        #[cfg(not(target_os = "macos"))]
+        {
+            let _ = state;
+            Ok(None)
+        }
+        #[cfg(target_os = "macos")]
+        {
+            use cimmeria_launcher_engine::{ExtractionBackend, OperationKind, OperationState};
+            if state.requires_reopen()
+                || self
+                    .prerequisite_helper
+                    .as_ref()
+                    .is_none_or(|helper| helper.verify().is_err())
+            {
+                return Ok(None);
+            }
+            let eligible = state
+                .operations()
+                .snapshot()
+                .operation
+                .as_ref()
+                .is_some_and(|op| {
+                    (op.kind == OperationKind::Install && op.state == OperationState::Succeeded)
+                        || (op.kind == OperationKind::PrepareRuntime
+                            && matches!(
+                                op.state,
+                                OperationState::Failed | OperationState::Cancelled
+                            ))
+                });
+            if !eligible {
+                return Ok(None);
+            }
+            let Some(installed) = state.installed_content()? else {
+                return Ok(None);
+            };
+            Ok(
+                matches!(installed.intent.backend, ExtractionBackend::Wine { .. })
+                    .then_some(installed.intent.operation_id),
+            )
+        }
+    }
+
     pub(super) fn prepare_runtime(
         &self,
         id: Uuid,

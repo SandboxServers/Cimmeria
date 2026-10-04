@@ -4,6 +4,7 @@ import { NativeSnapshot } from './contract';
 const Count = Schema.Int.check(Schema.isBetween({minimum:0, maximum:Number.MAX_SAFE_INTEGER}));
 export const InstallStatus = Schema.Struct({
   schema_version:Schema.Literal(1), native:NativeSnapshot, install_supported:Schema.Boolean, can_resume:Schema.Boolean, can_reconcile:Schema.Boolean, can_retry:Schema.Boolean,
+  runtime_setup:Schema.NullOr(Schema.String),
   uninstall:Schema.NullOr(Schema.Struct({installation_id:Schema.String,directory:Schema.String,recovery:Schema.Boolean})),
   progress:Schema.NullOr(Schema.Struct({phase:Schema.Literals(['download','extraction']), current:Count, total:Count})),
   outcome:Schema.NullOr(Schema.Literals(['content_prepared','cancelled','destination_unavailable','install_failed','content_invalid','reconciliation_required','rosetta_required','runtime_unavailable'])),
@@ -11,6 +12,7 @@ export const InstallStatus = Schema.Struct({
 export type InstallStatus = typeof InstallStatus.Type;
 export type InstallRequest = {command:'inspect';schema_version:1} |
   {command:'install';schema_version:1;operation_id:string;operation_revision:number;preferences_revision:number} |
+  {command:'prepare_runtime';schema_version:1;operation_id:string;operation_revision:number;installation_id:string} |
   {command:'uninstall';schema_version:1;operation_id:string;operation_revision:number;installation_id:string;confirmed:true} |
   {command:'clean_failed';schema_version:1;operation_id:string;operation_revision:number;confirmed:true} |
   {command:'cancel';schema_version:1;operation_id:string} |
@@ -65,10 +67,11 @@ export const makeInstallWorkflow = Effect.gen(function*(){
     Effect.flatMap(accept),Effect.tapError(failure),
   );
   const inspect=inspectUnlocked.pipe(Semaphore.withPermits(gate,1));
-  const mutate=(request:(status:InstallStatus)=>InstallRequest)=>Effect.gen(function*(){
+  const mutate=(request:(status:InstallStatus)=>InstallRequest, accepts:(status:InstallStatus)=>boolean=()=>true)=>Effect.gen(function*(){
     // Always refresh before admitting an intent, including changes made by settings.
     const latest=yield* inspectUnlocked;
     if(latest.native.requires_reopen) return yield* Effect.fail(new InstallFailure({code:'persistence_uncertain'}));
+    if(!accepts(latest))return yield* Effect.fail(new InstallFailure({code:'identity_conflict'}));
     const current=yield* Ref.get(state);
     yield* publish({...current,busy:true,needsInspection:true,error:null});
     // Never replay a mutation after a lost reply. Native work can outlive invoke.
@@ -92,7 +95,11 @@ export const makeInstallWorkflow = Effect.gen(function*(){
       status=yield* inspect;
     }
   }).pipe(Effect.tapError(failure));
-  return {inspect,install,cancel,
+  const prepareRuntime=(id:string,installationId:string,previousId:string)=>mutate(status=>({
+    command:'prepare_runtime',schema_version:1,operation_id:id,operation_revision:status.native.operation.revision,
+    installation_id:installationId,
+  }),status=>status.runtime_setup===installationId&&status.native.operation.operation?.id===previousId);
+  return {inspect,install,cancel,prepareRuntime,
     uninstall:(id:string,installationId:string)=>mutate(status=>({command:'uninstall',schema_version:1,operation_id:id,
       operation_revision:status.native.operation.revision,installation_id:installationId,confirmed:true})),resume:(id:string)=>recover('resume',id),
     cleanFailed:(id:string)=>mutate(status=>({command:'clean_failed',schema_version:1,operation_id:id,

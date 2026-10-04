@@ -162,6 +162,7 @@ pub struct InstallStatus {
     pub can_resume: bool,
     pub can_reconcile: bool,
     pub can_retry: bool,
+    pub runtime_setup: Option<Uuid>,
     pub uninstall: Option<cimmeria_launcher_engine::uninstall::Target>,
     pub progress: Option<JobProgress>,
     pub outcome: Option<Outcome>,

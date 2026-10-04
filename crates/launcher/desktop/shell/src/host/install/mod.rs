@@ -63,17 +63,19 @@ impl NativeHost {
     }
 
     pub fn install_status(&self) -> Result<InstallStatus, JobError> {
-        let (native, native_backend, outcome, can_retry, uninstall) = self.with_state(|state| {
-            Ok((
-                state.inspect(),
-                state
-                    .install_intent()?
-                    .is_some_and(|intent| intent.backend.is_native()),
-                state.install_outcome()?,
-                state.can_retry_install(),
-                state.uninstall_target()?,
-            ))
-        })?;
+        let (native, native_backend, outcome, can_retry, uninstall, runtime_setup) = self
+            .with_state(|state| {
+                Ok((
+                    state.inspect(),
+                    state
+                        .install_intent()?
+                        .is_some_and(|intent| intent.backend.is_native()),
+                    state.install_outcome()?,
+                    state.can_retry_install(),
+                    state.uninstall_target()?,
+                    self.runtime_setup_target(state)?,
+                ))
+            })?;
         let recovery = !native.requires_reopen
             && native.operation.operation.as_ref().is_some_and(|op| {
                 op.state == cimmeria_launcher_engine::OperationState::ReconciliationRequired
@@ -102,6 +104,7 @@ impl NativeHost {
                 && (native_backend || cfg!(target_os = "macos")),
             can_retry,
             uninstall,
+            runtime_setup,
             progress: observed,
             outcome,
         })

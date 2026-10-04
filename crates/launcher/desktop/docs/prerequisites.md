@@ -384,8 +384,8 @@ helper. Duplicate identical operation IDs do not redispatch. Dispatch failure
 marks the admitted operation uncertain immediately. The existing `cancel`
 command routes by operation ID to the retained prerequisite worker, which
 persists cancellation before signaling it. Setup evidence stays native; the
-webview only observes operation state. Reconciliation UI and automatic Effect
-sequencing are still pending; successful prerequisites cannot enable Play.
+webview only observes operation state. Reconciliation UI remains pending; successful prerequisites cannot enable Play.
+The Effect sequencing contract is described below.
 
 Native shell tests cover missing/replaced resources, forged command fields,
 selected-folder refusal, consent preservation, retained dispatch, duplicate
@@ -412,3 +412,35 @@ bash tools/build-lane/lane.sh cargo test --locked \
 No frontend code changed in this native-boundary packet; no new JS or visual UAT
 is claimed. The Effect/UI integration requires its own logic and interaction
 verification. No application window, game or live telemetry endpoint was opened.
+
+
+## Effect and main Install flow
+
+The native status includes `runtime_setup`, either null or an eligible installed
+content ID. It is exposed only for completed Mac content or a known terminal
+failed/cancelled prerequisite attempt with a verified helper. Active/uncertain
+work and successful prerequisite attempts never advertise a new setup attempt.
+Admission still revalidates identity/content/resources; a capability snapshot
+is not permission to bypass native checks.
+
+An Install click authorizes the content → prerequisite sequence while that
+frontend scope is alive. Immediate completion and completion found by polling
+both advance exactly once through Effect `prepareRuntime`, with a fresh work ID
+and an inspected predecessor/revision. Cancellation clears this continuation,
+even if content then completes successfully. Reopening, observer failure or a
+lost mutation reply does not replay setup: the main button offers “Continue
+installation” when native state permits it. A replaced predecessor is refused
+before dispatch. Setup cancellation routes to its own work ID; consent is not
+changed. A cancelled/failed known-terminal setup can be explicitly retried with
+a new generation. Unknown recovery remains gated.
+
+Validation: 36 frontend tests, TypeScript checking, production frontend build,
+and `npm run uat:install` passed. The sequential JS logic UAT mounts the actual
+Effect/view code against controlled native replies, exercises automatic setup,
+explicit continuation after reopen, visible cancellation and unchanged consent.
+Tests additionally cover delayed completion, lost replies, predecessor changes
+and cancellation winning the continuation decision. Native target projection
+and admission tests passed (`20261004-082325-35183`); the full shell suite passed
+21 tests with two opt-in checks ignored (`20261004-082215-34649`). These passes do
+not exercise the actual Tauri window, Wine installation via UI, disk persistence
+through JS, graphics, login or gameplay. Those remain separate UAT gates.

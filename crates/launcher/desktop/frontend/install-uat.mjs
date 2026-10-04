@@ -6,7 +6,7 @@ import { parseHTML } from 'linkedom';
 import { mountInstall } from './.test-build/install-view.mjs';
 const html=await readFile(new URL('./ui/index.html',import.meta.url),'utf8');
 const id='7e438f46-9b99-450d-83b6-3c12436b403c';
-let status={schema_version:1,install_supported:true,can_resume:true,can_reconcile:true,can_retry:false,uninstall:null,progress:null,outcome:null,native:{schema_version:1,requires_reopen:false,
+let status={schema_version:1,install_supported:true,can_resume:true,can_reconcile:true,can_retry:false,uninstall:null,runtime_setup:null,progress:null,outcome:null,native:{schema_version:1,requires_reopen:false,
   preferences:{schema_version:1,revision:1,install_directory:'/fixture/app-data/Stargate Worlds',launcher_summary_consent:false},
   operation:{schema_version:1,revision:0,operation:null}}};
 const calls=[];const requests=[];
@@ -130,7 +130,7 @@ for (const phase of ['running','succeeded','reconciliation_required']) {
    operation:{id,kind:'prepare_runtime',state:phase,intent_digest:Array(32).fill(0)}}}};
  ui=mount();await ui.app.ready;await settle(ui.app);
  assert.equal(ui.document.getElementById('install').disabled,true);
- assert.equal(ui.document.getElementById('cancel-install').hidden,true);
+ assert.equal(ui.document.getElementById('cancel-install').hidden,phase!=='running');
  assert.match(ui.document.getElementById('install-status').textContent,
   phase==='succeeded'?/Graphics and Play still need validation/:/compatibility|Compatibility/);
  ui.document.getElementById('install').dispatchEvent(new ui.window.Event('click'));
@@ -138,4 +138,45 @@ for (const phase of ['running','succeeded','reconciliation_required']) {
  assert.equal(status.native.preferences.launcher_summary_consent,false);
  await ui.app.dispose();
 }
-console.log('PASS: Effect decodes runtime setup states; progress/success/recovery remain inspection-only, never Play or reinstall; consent preserved. Fixture IPC only; native durable runtime state is covered separately by Rust tests. No visual UAT.');
+console.log('PASS: Effect decodes runtime setup states; running setup exposes cancellation; success/recovery never enable Play or reinstall; consent preserved. Fixture IPC only; native durable runtime state is covered separately by Rust tests. No visual UAT.');
+
+
+// Exercise the actual Effect/view transition through controlled durable-state replies.
+const setupId='5c1d6e5a-8c9d-442f-9740-0ca5d62568ac';
+let journey={...status,runtime_setup:null,can_resume:false,can_reconcile:false,can_retry:false,
+ native:{...status.native,operation:{schema_version:1,revision:0,operation:null}}};
+const journeyCalls=[];let next=0;
+const journeyInvoke=async(_command,{request})=>{
+ journeyCalls.push(request);
+ if(request.command==='install')journey={...journey,runtime_setup:id,outcome:'content_prepared',native:{...journey.native,
+  operation:{schema_version:1,revision:3,operation:{id,kind:'install',state:'succeeded',intent_digest:Array(32).fill(0)}}}};
+ if(request.command==='prepare_runtime'){
+  assert.equal(request.installation_id,id);assert.equal(request.operation_revision,3);
+  journey={...journey,runtime_setup:null,outcome:null,native:{...journey.native,
+   operation:{schema_version:1,revision:4,operation:{id:setupId,kind:'prepare_runtime',state:'running',intent_digest:Array(32).fill(0)}}}};
+ }
+ return journey;
+};
+let screen=parseHTML(html);let journeyApp=mountInstall(screen.document,journeyInvoke,()=>next++===0?id:setupId);
+await journeyApp.ready;await settle(journeyApp);
+screen.document.getElementById('install').dispatchEvent(new screen.window.Event('click'));
+for(let n=0;n<20&&!journeyCalls.some(c=>c.command==='prepare_runtime');n++)await settle(journeyApp);
+await settle(journeyApp);
+assert.equal(journeyCalls.filter(c=>c.command==='install').length,1);
+assert.equal(journeyCalls.filter(c=>c.command==='prepare_runtime').length,1);
+assert.equal(screen.document.getElementById('install').textContent,'Checking compatibility…');
+assert.equal(screen.document.getElementById('cancel-install').hidden,false);
+await journeyApp.dispose();
+// A reopened successful-content state is a separate user intent, not automatic replay.
+journey={...journey,runtime_setup:id,native:{...journey.native,operation:{schema_version:1,revision:3,
+ operation:{id,kind:'install',state:'succeeded',intent_digest:Array(32).fill(0)}}}};
+const beforeJourney=journeyCalls.length;screen=parseHTML(html);
+journeyApp=mountInstall(screen.document,journeyInvoke,()=>setupId);
+await journeyApp.ready;await settle(journeyApp);
+assert.equal(screen.document.getElementById('install').textContent,'Continue installation');
+assert.ok(journeyCalls.slice(beforeJourney).every(c=>c.command==='inspect'));
+screen.document.getElementById('install').dispatchEvent(new screen.window.Event('click'));await settle(journeyApp);
+assert.equal(journeyCalls.filter(c=>c.command==='prepare_runtime').length,2);
+assert.equal(journey.native.preferences.launcher_summary_consent,false);
+await journeyApp.dispose();
+console.log('PASS: one Install intent sequences content into native setup once; reopen requires explicit Continue; setup exposes cancellation; consent unchanged. This REPL-style pass uses fixture native state, not real Wine, disk persistence, visual layout, login or gameplay.');
