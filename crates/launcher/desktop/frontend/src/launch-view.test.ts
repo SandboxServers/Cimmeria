@@ -72,3 +72,28 @@ test('failed status read stops automatic polling until explicit recheck succeeds
   assert.equal((document.getElementById('launch') as HTMLButtonElement).disabled,false);
  } finally {await app.dispose();}
 });
+
+test('background inspection keeps Play steady and accepts one click while the read is pending', {timeout:5000},async()=>{
+ const {document,window}=parseHTML(html);let reads=0;let plays=0;
+ let release!:()=>void;const held=new Promise<void>(resolve=>{release=resolve;});
+ const app=mountLaunch(document,async(_,{request}:any)=>{
+  if(request.command==='inspect'&&++reads===2)await held;
+  if(request.command==='play')plays++;
+  return initial();
+ },()=>{},()=> 'single-attempt');
+ try {
+  await app.ready;await new Promise(resolve=>setImmediate(resolve));
+  const button=document.getElementById('launch') as HTMLButtonElement;
+  const read=app.refresh();await new Promise(resolve=>setImmediate(resolve));
+  assert.equal(button.disabled,false);
+  assert.equal(button.getAttribute('aria-busy'),'false');
+  assert.equal(button.textContent,'Play');
+  button.dispatchEvent(new window.Event('click'));button.dispatchEvent(new window.Event('click'));
+  assert.equal(button.disabled,true);
+  assert.equal(button.textContent,'Starting…');
+  release();await read;await app.settled();await new Promise(resolve=>setImmediate(resolve));
+  assert.equal(plays,1);
+  assert.equal(button.disabled,false);
+  assert.equal(button.textContent,'Play');
+ } finally {release();await app.dispose();}
+});

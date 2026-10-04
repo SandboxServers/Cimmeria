@@ -235,3 +235,18 @@ returned and repeated status polls keep Play disabled with update guidance.
 This read does not change consent or the operation journal. Existing native
 admission checks remain authoritative. Development-build exemptions retain the
 legacy policy; this status does not imply updater download or replacement.
+
+## Background observation and the Play button
+
+A status read preserves the last confirmed Play capability while it is pending;
+it does not show the starting state or dim the button. Clicking Play during a
+read queues one intent through the Effect semaphore, refreshes native state, then
+admits it only if still eligible. Duplicate clicks are suppressed immediately.
+Changed native capability or a failed read still disables Play. A failed read
+stops automatic polling until explicit recheck succeeds, so a macOS folder-access
+prompt cannot accumulate an unbounded sequence of native reads.
+
+The held-read regression covers stable enabled/text/busy state and exactly one
+click admitted after the read. Native-persistence Play UAT additionally covers
+lost replies, reopening and minimum-launcher rejection. This does not establish
+actual game startup, login or world entry.
