@@ -11,6 +11,7 @@ mod content;
 mod db;
 mod entities;
 mod logs;
+mod names;
 mod packet_tap;
 mod sessions;
 mod witnesses;

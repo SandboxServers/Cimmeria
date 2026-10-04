@@ -22,4 +22,7 @@ tracing = { workspace = true }
 cimmeria-services = { workspace = true }
 # The recent-log ring buffer (`LogBuffer`) that `server_log_tail` reads.
 cimmeria-admin-api = { workspace = true }
+# The NameBook the tools pair template / archetype / `name_id` names from
+# (named telemetry Rule 6, NT-41).
+cimmeria-names = { workspace = true }
 cimmeria-workspace-hack = { version = "0.1", path = "../workspace-hack" }

@@ -98,6 +98,11 @@ pub enum BaseError {
 pub struct OnlinePlayer {
     pub id: u32,
     pub name: String,
+    /// The character's DB `player_id`, once `playCharacter` set it.
+    pub player_id: Option<i32>,
+    pub account_id: u32,
+    /// The login name; `None` if the login path did not record one.
+    pub account_name: Option<String>,
     pub archetype: &'static str,
     pub level: i32,
     pub zone: String,

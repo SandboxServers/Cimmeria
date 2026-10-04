@@ -301,6 +301,32 @@ WireGuard-only on the colo): `server_console_*`, `server_sessions`,
 clauses ([automated-uat.md](automated-uat.md#packet-clauses)): one tap
 per row from the anchor to teardown, always stopped.
 
+### Names next to IDs in the server tools
+
+`server_entity_get`, `server_entity_query`, `server_witnesses` and `server_sessions` pair every ID with its name, per Rule 6 of [instrumentation-discipline.md](../architecture/instrumentation-discipline.md#rule-6--every-id-field-is-paired-with-its-name). A name that does not resolve is left out of the reply, never `null`, `""` or `"unknown"`: a `template_id` with no `template_name` is a seed hole worth reporting.
+
+| Tool | ID → name keys |
+|---|---|
+| `server_entity_get`, `server_entity_query` | `entity_id` → `entity_name` (character name; for an NPC its `npc_name`, else the text of its `name_id` or its template's); `template_id` → `template_name`; `space_id` → `world`; `archetype_id` → `archetype_name`; `current_target_id` → `current_target_name` (a live target in the same space) |
+| `server_witnesses` | The entity's `entity_name`, `template_id` + `template_name` and `world`. `witnessed_by` and `witnesses` are lists of `{ entity_id, entity_name, template_id, template_name }`, not bare IDs |
+| `server_sessions` | `entity_id` → `entity_name`, `player_id` → `player_name`, `account_id` → `account_name`, and the zone as `world` |
+
+The cell fills the names it holds live (a character or NPC name, the space's world, the target's name); the lab endpoint fills the seed names from the NameBook (`cimmeria-names`) on the way out. The older keys stay for existing callers: `name` and `world_name` on a snapshot, `name` and `zone` on a session row. The snapshot's `spawn_id`, `class_id`, `faction` and per-stat `stat_id` have no name table and stay bare.
+
+`client_entity_table` and `client_inventory` are answered by the lab daemon from the client's memory and UI Lua; the server never sees those replies, so it does not name them. `client_inventory` already carries the client's item names; `client_entity_table` reports only IDs (use `client_entity_find` or `server_entity_get` for the name).
+
+Before and after for an NPC (`server_entity_get`, trimmed, illustrative IDs):
+
+```json
+// before
+{ "entity_id": 900, "space_id": 3, "world_name": "Castle_CellBlock", "name": null,
+  "template_id": 7001, "current_target_id": 100 }
+// after
+{ "entity_id": 900, "entity_name": "Jaffa Guard", "space_id": 3, "world": "Castle_CellBlock",
+  "world_name": "Castle_CellBlock", "name": null, "template_id": 7001,
+  "template_name": "Jaffa_Guard_T1", "current_target_id": 100, "current_target_name": "Tealc" }
+```
+
 ## Driving the client with its own input
 
 The input tools press nothing through Lua: Lua only reads where a widget is and places the UI cursor. What the live client showed (2026-09-29):

@@ -6,13 +6,18 @@
 //! `SpaceManager` escapes, and an [`LabQuery::EntityQuery`] is capped at
 //! [`LAB_ENTITY_QUERY_CAP`] so a query over a dense space cannot stall the
 //! tick. Nothing here mutates state.
+//!
+//! Names (Rule 6, NT-41): the cell fills only the names it holds live, an
+//! entity's character or NPC name and its space's world. The lab endpoint
+//! fills the NameBook ones (template, archetype, `name_id` text) on the way
+//! out, so the snapshot stays copied-out primitives.
 
 use cimmeria_entity::cell_entity::{CellEntity, StatState};
 use cimmeria_entity::stats::{FOCUS, HEALTH};
 
 use crate::cell::messages::{
-    LabEntityFilter, LabEntitySnapshot, LabQueryReply, LabRadiusCenter, LabWitnessReport,
-    LAB_ENTITY_QUERY_CAP,
+    LabEntityFilter, LabEntityNames, LabEntityRef, LabEntitySnapshot, LabQueryReply,
+    LabRadiusCenter, LabWitnessReport, LAB_ENTITY_QUERY_CAP,
 };
 
 use super::{SpaceInstance, SpaceManager};
@@ -97,6 +102,7 @@ impl SpaceManager {
     /// [`LabQuery::Witnesses`]: crate::cell::messages::LabQuery::Witnesses
     pub fn lab_witness_report(&self, entity_id: u32) -> Option<LabWitnessReport> {
         let &space_id = self.entity_space.get(&entity_id)?;
+        let space = self.spaces.get(&space_id)?;
         let entity = self.get_entity(entity_id)?;
         // Whom X sees (populated only for players; empty for NPCs).
         let mut witnesses: Vec<u32> = entity.witnesses.iter().map(|e| e.0 as u32).collect();
@@ -106,11 +112,52 @@ impl SpaceManager {
         witnessed_by.sort_unstable();
         Some(LabWitnessReport {
             entity_id,
+            names: live_names(entity),
             space_id,
-            witnessed_by,
-            witnesses,
+            world: world_of(space),
+            witnessed_by: witnessed_by
+                .into_iter()
+                .map(|id| self.lab_ref(id))
+                .collect(),
+            witnesses: witnesses.into_iter().map(|id| self.lab_ref(id)).collect(),
         })
     }
+
+    /// An entity id with the live names the cell holds for it. An id with no
+    /// live entity (a witness entry racing a despawn) carries the id alone.
+    fn lab_ref(&self, entity_id: u32) -> LabEntityRef {
+        LabEntityRef {
+            entity_id,
+            names: self
+                .get_entity(entity_id)
+                .map(live_names)
+                .unwrap_or_default(),
+        }
+    }
+}
+
+/// The names the cell holds live for an entity: the character name for a
+/// player, `npc_name` for an NPC, and the NPC's template id. The lab endpoint
+/// adds the NameBook names.
+fn live_names(entity: &CellEntity) -> LabEntityNames {
+    LabEntityNames {
+        entity_name: live_entity_name(entity),
+        template_id: entity.template_id,
+        template_name: None,
+    }
+}
+
+fn live_entity_name(entity: &CellEntity) -> Option<String> {
+    entity
+        .character_name
+        .clone()
+        .or_else(|| entity.npc_name.clone())
+        .filter(|n| !n.is_empty())
+}
+
+/// A space's world, or `None` for a space with no world name.
+fn world_of(space: &SpaceInstance) -> Option<String> {
+    Some(space.world_name.clone()).filter(|w| !w.is_empty())
 }
 
 /// How much of the stat block a snapshot carries.
@@ -149,9 +196,18 @@ fn snapshot_entity(
     } else {
         Vec::new()
     };
+    // Targets live in the target's own space; a target id that is not a live
+    // entity here (it left, or it is a stale id) gets no name.
+    let current_target_name = entity
+        .current_target_id
+        .and_then(|t| u32::try_from(t).ok())
+        .and_then(|t| space.entities.get(&t))
+        .and_then(live_entity_name);
     LabEntitySnapshot {
         entity_id: entity.entity_id.0 as u32,
+        entity_name: live_entity_name(entity),
         space_id: space.space_id,
+        world: world_of(space),
         world_name: space.world_name.clone(),
         position: [entity.position.x, entity.position.y, entity.position.z],
         direction: [entity.direction.x, entity.direction.y, entity.direction.z],
@@ -167,13 +223,16 @@ fn snapshot_entity(
             .clone()
             .or_else(|| entity.npc_name.clone()),
         template_id: entity.template_id,
+        template_name: None,
         spawn_id: entity.spawn_id,
         tag: entity.tag.clone(),
         name_id: entity.name_id,
         archetype_id: entity.archetype_id,
+        archetype_name: None,
         access_level: entity.access_level,
         ai_state: format!("{:?}", entity.ai_state()),
         current_target_id: entity.current_target_id,
+        current_target_name,
         aoi_radius: entity.aoi_radius,
         state_field: entity.state_field,
         interaction_type_flags: entity.interaction_type_flags,
