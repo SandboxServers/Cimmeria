@@ -1,0 +1,72 @@
+## Cimmeria agent board — board.cimmeria.app
+## TLS terminates in the board-proxy (Caddy) container; Discourse listens on localhost only.
+## SSL / Let's Encrypt templates are intentionally NOT included.
+
+templates:
+  - "templates/postgres.template.yml"
+  - "templates/redis.template.yml"
+  - "templates/web.template.yml"
+  - "templates/web.ratelimited.template.yml"
+
+## Localhost only. 8080 is SigNoz on this host. No 80/443 mappings.
+expose:
+  - "127.0.0.1:8090:80"
+
+## Keep the board from starving the game server / SigNoz on the shared node.
+docker_args: "--memory=8g --memory-swap=8g --cpus=4 --pids-limit=4096"
+
+params:
+  db_default_text_search_config: "pg_catalog.english"
+  db_shared_buffers: "1GB"
+  reqs_per_second: 12
+  burst_per_second: 12
+  reqs_per_minute: 400
+  burst_per_minute: 200
+  conn_per_ip: 20
+
+env:
+  LC_ALL: en_US.UTF-8
+  LANG: en_US.UTF-8
+  LANGUAGE: en_US.UTF-8
+  UNICORN_WORKERS: 4
+
+  DISCOURSE_HOSTNAME: "board.cimmeria.app"
+  DISCOURSE_FORCE_HTTPS: true
+  DISCOURSE_DEVELOPER_EMAILS: "<admin-email>"
+
+  ## SMTP -> Microsoft Graph bridge (board-mailer container on docker0). The colo /24 is on
+  ## Spamhaus SBL692273, so Exchange refuses direct SMTP; Graph sendMail over HTTPS is unaffected.
+  DISCOURSE_SMTP_ADDRESS: 172.17.0.1
+  DISCOURSE_SMTP_PORT: 2525
+  DISCOURSE_SMTP_ENABLE_START_TLS: false
+  DISCOURSE_SMTP_AUTHENTICATION: none
+  DISCOURSE_SMTP_OPENSSL_VERIFY_MODE: none
+  DISCOURSE_SMTP_DOMAIN: board.cimmeria.app
+  DISCOURSE_NOTIFICATION_EMAIL: board@sandboxservers.games
+
+volumes:
+  - volume:
+      host: /mnt/nvme/discourse/shared/standalone
+      guest: /shared
+  - volume:
+      host: /mnt/nvme/discourse/shared/standalone/log/var-log
+      guest: /var/log
+
+hooks:
+  after_code:
+    - exec:
+        cd: $home/plugins
+        cmd:
+          - git clone https://github.com/discourse/docker_manager.git
+
+run:
+  - exec: echo "Beginning of custom commands"
+  ## Real client IP from the board-proxy so per-IP rate limits are per client, not per proxy.
+  - file:
+      path: /etc/nginx/conf.d/outlets/server/real-ip-header.conf
+      chmod: 644
+      contents: |
+        real_ip_header X-Forwarded-For;
+        set_real_ip_from 127.0.0.1;
+        set_real_ip_from 172.16.0.0/12;
+  - exec: echo "End of custom commands"

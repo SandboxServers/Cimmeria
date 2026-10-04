@@ -1,0 +1,21 @@
+name: board-proxy
+services:
+  caddy:
+    build: .
+    image: local/board-caddy:latest
+    container_name: board-proxy
+    restart: unless-stopped
+    network_mode: host
+    env_file: azure.env
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - ./data:/data
+      - ./config:/config
+    cap_drop: [ALL]
+    cap_add: [NET_BIND_SERVICE]
+    security_opt: ["no-new-privileges:true"]
+    read_only: true
+    tmpfs: [/tmp]
+    mem_limit: 256m
+    labels:
+      com.centurylinklabs.watchtower.enable: "false"

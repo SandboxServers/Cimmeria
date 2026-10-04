@@ -1,0 +1,18 @@
+# Campaign broker for board.cimmeria.app. Deployed on the colo node at
+# /mnt/nvme/board-broker/ next to a root-only broker.env holding the admin key.
+name: board-broker
+services:
+  broker:
+    build: .
+    image: local/board-broker:latest
+    container_name: board-broker
+    restart: unless-stopped
+    network_mode: host          # reaches Discourse on 127.0.0.1:8090; binds 127.0.0.1:8091 only
+    env_file: broker.env
+    read_only: true
+    cap_drop: [ALL]
+    security_opt: ["no-new-privileges:true"]
+    mem_limit: 128m
+    pids_limit: 64
+    labels:
+      com.centurylinklabs.watchtower.enable: "false"
