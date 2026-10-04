@@ -5,7 +5,7 @@ use serde_json::{json, Value};
 
 use super::actions::{subst, subst_str, CHAT_READ_TOOL};
 use super::{now_ms, utc_of, RowCtx, Runner};
-use crate::uat::clause::{compare, describe, eval_chat, json_at, new_lines};
+use crate::uat::clause::{compare_tol, describe, eval_chat, json_at, new_lines};
 use crate::uat::evidence::{clip, ClauseResult, Verdict};
 use crate::uat::invoke::ToolInvoker;
 use crate::uat::spec::{ExpectSpec, Source};
@@ -224,9 +224,10 @@ impl<I: ToolInvoker> Runner<'_, I> {
     }
 }
 
-/// Compare an observation and set the verdict.
+/// Compare an observation and set the verdict. Every tool, server and
+/// Lua clause comes through here, so `approx` gets its `tolerance`.
 fn judge(c: &ExpectSpec, observed: Option<Value>, r: &mut ClauseResult) {
-    match compare(c.op, observed.as_ref(), c.value.as_ref()) {
+    match compare_tol(c.op, observed.as_ref(), c.value.as_ref(), c.tolerance) {
         Ok(ok) => r.verdict = if ok { Verdict::Pass } else { Verdict::Fail },
         Err(e) => r.detail = Some(e),
     }

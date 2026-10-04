@@ -55,7 +55,10 @@ fn loose_eq(a: &Value, b: &Value) -> bool {
     }
 }
 
-/// Apply `op` (default: `eq` when a value is given, else `truthy`).
+/// Apply `op` (default: `eq` when a value is given, else `truthy`) with no
+/// tolerance. Test-only: every runtime path calls [`compare_tol`] with the
+/// clause's `tolerance`, so `approx` can never lose it.
+#[cfg(test)]
 pub fn compare(
     op: Option<Op>,
     observed: Option<&Value>,
@@ -243,16 +246,23 @@ pub fn packet_matches(c: &ExpectSpec, entity: Option<u64>, m: &Value) -> bool {
 /// (`{messages, dropped, ...}`). Returns the verdict, the observation for
 /// the bundle and a detail line. A ring that dropped messages cannot
 /// prove an upper bound or "every row", so such a PASS is UNVERIFIED.
+/// A read without a `messages` array or a numeric `dropped` is not an
+/// empty, lossless tap: it proves nothing, so it is UNVERIFIED too.
 pub fn grade_packet(
     c: &ExpectSpec,
     entity: Option<u64>,
     tap: &Value,
 ) -> (Verdict, Value, Option<String>) {
-    let all: &[Value] = tap
-        .get("messages")
-        .and_then(Value::as_array)
-        .map_or(&[], Vec::as_slice);
-    let dropped = tap.get("dropped").and_then(Value::as_u64).unwrap_or(0);
+    let (Some(all), Some(dropped)) = (
+        tap.get("messages").and_then(Value::as_array),
+        tap.get("dropped").and_then(Value::as_u64),
+    ) else {
+        return (
+            Verdict::Unverified,
+            clip(tap, 300),
+            Some("the tap read has no messages array or no numeric dropped count".into()),
+        );
+    };
     let rows: Vec<Value> = all
         .iter()
         .filter(|m| packet_matches(c, entity, m))
@@ -520,6 +530,17 @@ mod tests {
             grade_packet(&packet("max_rows = 0"), None, &empty).0,
             Verdict::Pass
         );
+        // A read missing either field is not an empty, lossless tap.
+        for bad in [
+            json!({ "dropped": 0 }),
+            json!({ "messages": [] }),
+            json!({ "messages": {}, "dropped": 0 }),
+            json!({ "messages": [], "dropped": "0" }),
+        ] {
+            let (v, _, why) = grade_packet(&packet("max_rows = 0"), None, &bad);
+            assert_eq!(v, Verdict::Unverified, "{bad}");
+            assert!(why.unwrap().contains("no messages array"));
+        }
         // A ring that dropped messages cannot prove "none".
         let lossy = json!({ "messages": [], "dropped": 3 });
         let (v, _, why) = grade_packet(&packet("max_rows = 0"), None, &lossy);

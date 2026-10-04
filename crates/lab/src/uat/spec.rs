@@ -525,6 +525,12 @@ fn check_clause(c: &ExpectSpec) -> Result<(), String> {
                 c.at.is_none() && c.since.is_none(),
                 "a packet clause is graded over the whole row: no at or since",
             )?;
+            // Without a field, op/value would be silently ignored and any
+            // matching message would pass.
+            need(
+                c.field.is_some() || (c.op.is_none() && c.value.is_none() && c.tolerance.is_none()),
+                "a packet clause's op, value and tolerance need a field",
+            )?;
         }
         Source::Human => need(c.question.is_some(), "a human clause needs question")?,
     }
@@ -538,10 +544,10 @@ fn check_clause(c: &ExpectSpec) -> Result<(), String> {
         return Err("field needs op".into());
     }
     if c.op == Some(Op::Approx)
-        && (c.tolerance.is_none_or(|t| t.is_nan() || t < 0.0)
+        && (c.tolerance.is_none_or(|t| !t.is_finite() || t < 0.0)
             || !c.value.as_ref().is_some_and(Value::is_number))
     {
-        return Err("op approx needs a numeric value and a tolerance >= 0".into());
+        return Err("op approx needs a numeric value and a finite tolerance >= 0".into());
     }
     if let Some(re) = &c.matches {
         regex::Regex::new(&without_vars(re)).map_err(|e| format!("bad regex {re:?}: {e}"))?;
@@ -648,5 +654,19 @@ tolerance = 1
         assert!(parse(&bad).unwrap_err().contains("no at or since"));
         let bad = format!("{MINI}{}", PACKET.replace("tolerance = 1\n", ""));
         assert!(parse(&bad).unwrap_err().contains("tolerance"));
+        // Non-finite and negative tolerances would pass anything or nothing.
+        for t in ["inf", "+inf", "nan", "-1"] {
+            let bad = format!(
+                "{MINI}{}",
+                PACKET.replace("tolerance = 1", &format!("tolerance = {t}"))
+            );
+            assert!(parse(&bad).unwrap_err().contains("finite tolerance"), "{t}");
+        }
+        // op/value without field would pass on any matching message.
+        let bad = format!(
+            "{MINI}{}",
+            PACKET.replace("field = \"complete_in_s\"\n", "")
+        );
+        assert!(parse(&bad).unwrap_err().contains("need a field"));
     }
 }

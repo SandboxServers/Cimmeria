@@ -33,6 +33,9 @@ pub(crate) struct RowTap {
     pub entity: Option<u32>,
     pub error: Option<String>,
     pub read: Option<Value>,
+    /// Why the tap could not be stopped (after one retry). A tap still
+    /// running may have dropped or mixed in rows, so no clause passes.
+    pub stop_error: Option<String>,
 }
 
 /// A var holding an entity id, as a number or a numeric string.
@@ -199,9 +202,22 @@ impl<I: ToolInvoker> Runner<'_, I> {
                 ctx,
             )
             .await;
-        let stop = self
-            .server_call(server, Role::Teardown, "server_packet_tap_stop", args, ctx)
+        // One retry: a timeout or a transient refusal must not leave the
+        // tap buffering this session.
+        let mut stop = self
+            .server_call(
+                server,
+                Role::Teardown,
+                "server_packet_tap_stop",
+                args.clone(),
+                ctx,
+            )
             .await;
+        if !stop.ok {
+            stop = self
+                .server_call(server, Role::Teardown, "server_packet_tap_stop", args, ctx)
+                .await;
+        }
         let path = self
             .run
             .attach_dir(&ctx.section, &ctx.row_id)
@@ -223,6 +239,12 @@ impl<I: ToolInvoker> Runner<'_, I> {
             });
         }
         if let Some(tap) = ctx.tap.as_mut() {
+            if !stop.ok {
+                tap.stop_error = Some(format!(
+                    "server_packet_tap_stop failed twice: {}",
+                    stop.error.clone().unwrap_or_default()
+                ));
+            }
             if read.ok {
                 tap.read = Some(read.json);
             } else {
@@ -290,6 +312,14 @@ fn packet_clause(c: &ExpectSpec, ctx: &RowCtx) -> ClauseResult {
     r.verdict = verdict;
     r.observed = observed;
     r.detail = detail;
+    // A tap that would not stop cannot back a PASS; a FAIL observed in
+    // the read still stands.
+    if let Some(e) = tap.and_then(|t| t.stop_error.as_ref()) {
+        if r.verdict == Verdict::Pass {
+            r.verdict = Verdict::Unverified;
+            r.detail = Some(e.clone());
+        }
+    }
     r
 }
 

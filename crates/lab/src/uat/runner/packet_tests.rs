@@ -18,6 +18,8 @@ struct FakeServer {
     tap: Value,
     /// Every call fails like the colo's 2026-09-29 HTTP 403.
     unreachable: bool,
+    /// How many `server_packet_tap_stop` calls fail before one succeeds.
+    stop_failures: Mutex<u32>,
 }
 
 impl FakeServer {
@@ -26,6 +28,7 @@ impl FakeServer {
             calls: Mutex::new(vec![]),
             tap,
             unreachable: false,
+            stop_failures: Mutex::new(0),
         }
     }
 
@@ -63,7 +66,15 @@ impl ServerInvoker for FakeServer {
                     ok(json!({ "entity_id": 7, "replaced_existing": false }))
                 }
                 "server_packet_tap_read" => ok(self.tap.clone()),
-                "server_packet_tap_stop" => ok(json!({ "entity_id": 7, "stopped": true })),
+                "server_packet_tap_stop" => {
+                    let mut left = self.stop_failures.lock().unwrap();
+                    if *left > 0 {
+                        *left -= 1;
+                        ToolOutcome::err("lab-mcp: operation timed out")
+                    } else {
+                        ok(json!({ "entity_id": 7, "stopped": true }))
+                    }
+                }
                 _ => ToolOutcome::err(format!("unknown tool {name}")),
             }
         };
@@ -233,4 +244,63 @@ async fn the_tap_is_stopped_when_the_row_fails() {
         server.names().last().map(String::as_str),
         Some("server_packet_tap_stop")
     );
+}
+
+/// A stop that fails once is retried; one that fails twice leaves the
+/// tap possibly running, so a clause that would pass is UNVERIFIED.
+#[tokio::test]
+async fn a_tap_that_will_not_stop_cannot_pass() {
+    let fake = Fake::new(&[]);
+    let server = FakeServer::new(tap_with_cooldown(15.0));
+    *server.stop_failures.lock().unwrap() = 1;
+    let row = run_with(&fake, Some(&server), COOLDOWN_ROW).await;
+    assert_eq!(row.result, RowResult::Pass, "{:?}", row.reasons);
+    let stops = server
+        .names()
+        .iter()
+        .filter(|n| *n == "server_packet_tap_stop")
+        .count();
+    assert_eq!(stops, 2, "one retry");
+
+    let server = FakeServer::new(tap_with_cooldown(15.0));
+    *server.stop_failures.lock().unwrap() = 2;
+    let row = run_with(&fake, Some(&server), COOLDOWN_ROW).await;
+    assert_eq!(row.result, RowResult::Unverified, "{:?}", row.reasons);
+    let c = &row.clauses[0];
+    assert_eq!(c.verdict, Verdict::Unverified);
+    assert!(c
+        .detail
+        .as_deref()
+        .unwrap()
+        .contains("server_packet_tap_stop failed twice"));
+}
+
+/// `approx` reaches tool, server and Lua clauses with its tolerance (the
+/// fake Lua read returns "40").
+#[tokio::test]
+async fn approx_works_on_a_lua_clause() {
+    let rows = r#"
+[[row]]
+id = "AB-2"
+title = "range"
+expected = "40 m, give or take one."
+step = [{ chat = ".help" }]
+[[row.expect]]
+id = "range"
+text = "range is about 40"
+source = "lua"
+chunk = "return 40"
+op = "approx"
+value = 39.5
+tolerance = 1
+"#;
+    let fake = Fake::new(&[]);
+    let row = run_with(&fake, None, rows).await;
+    assert_eq!(
+        row.clauses[0].verdict,
+        Verdict::Pass,
+        "{:?}",
+        row.clauses[0].detail
+    );
+    assert_eq!(row.result, RowResult::Pass);
 }
