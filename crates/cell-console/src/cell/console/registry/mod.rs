@@ -257,12 +257,17 @@ const DUMMY_ARGS: &[ArgSpec] = &[
     arg(
         "mode",
         "str",
-        "Optional. `hostile` (default) or `friendly` places a dummy 3 m in front of you; `clear` removes your own dummies",
+        "Optional. `hostile` (default) or `friendly` places a dummy 3 m in front of you; `caster` places a hostile one that casts an ability at you; `clear` removes your own dummies",
     ),
     arg(
         "templateId",
         "int",
-        "Optional. The entity template to use (default 34, SGC Jaffa)",
+        "Optional. The entity template to use (default 34, SGC Jaffa); after `caster`, the ability it casts",
+    ),
+    arg(
+        "intervalSecs",
+        "int",
+        "Optional, `caster` only. Seconds between casts (default 8, 1-600); at least the ability's cooldown and longer than its warmup",
     ),
 ];
 

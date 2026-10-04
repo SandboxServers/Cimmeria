@@ -1,5 +1,5 @@
 //! Ability mechanics AB-L2: the ability lab dot commands (`.effects`,
-//! `.cooldowns`, `.dummy`, `.cleareffects`).
+//! `.cooldowns`, `.dummy`, `.dummy caster`, `.cleareffects`).
 //!
 //! Filter prefix: `ab_l2_`.
 //!
@@ -13,6 +13,8 @@
 mod clear_effects;
 mod cooldowns;
 mod dummy;
+mod dummy_caster;
+mod dummy_caster_live_db;
 mod dummy_combat;
 mod effects;
 
