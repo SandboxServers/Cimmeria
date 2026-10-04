@@ -113,6 +113,8 @@ pub(super) fn emit(
         ids.sort_unstable();
         ids.iter().map(i32::to_string).collect::<Vec<_>>().join(",")
     });
+    // One book read per row, not one per name (a row per ability send).
+    let book = cimmeria_names::book();
     let c = Common {
         method: method_name(method_index),
         method_index,
@@ -154,7 +156,7 @@ pub(super) fn emit(
                 source_id,
                 source_name = label(space_mgr, source_id),
                 ability_id,
-                ability_name = cimmeria_names::book().ability(ability_id),
+                ability_name = book.ability(ability_id),
                 // The wire's EffectID carries the cast's `cast_id`, not an
                 // `effects` row (`hit_wire.rs`).
                 effect_id, // nt:id-only the wire EffectID is the cast_id sequence
@@ -171,8 +173,7 @@ pub(super) fn emit(
         Decoded::StatUpdate { count, ref stats } => wire_row!(
             c,
             ability_id = ctx.ability_id,
-            ability_name =
-                cimmeria_cell_world::cell::effects::content_names::ability_name(ctx.ability_id),
+            ability_name = ctx.ability_id.and_then(|a| book.ability(a)),
             stat_count = count,
             stats = stats.as_str(),
             "stat update queued for the client"
@@ -215,11 +216,9 @@ pub(super) fn emit(
             wire_row!(
                 c,
                 ability_id,
-                ability_name =
-                    cimmeria_cell_world::cell::effects::content_names::ability_name(ability_id),
+                ability_name = ability_id.and_then(|a| book.ability(a)),
                 effect_id,
-                effect_name =
-                    cimmeria_cell_world::cell::effects::content_names::effect_name(effect_id),
+                effect_name = effect_id.and_then(|e| book.effect(e)),
                 timer_type = kind,
                 timer_type_code = timer_type,
                 timer_id = id, // nt:id-only runtime timer handle, nothing to name
@@ -246,12 +245,11 @@ pub(super) fn emit(
             wire_row!(
                 c,
                 ability_id,
-                ability_name =
-                    cimmeria_cell_world::cell::effects::content_names::ability_name(ability_id),
+                ability_name = ability_id.and_then(|a| book.ability(a)),
                 system_id,   // nt:id-only ERRORCODE_SYSTEM enum code, no name table
                 instance_id, // nt:id-only the ability (named as ability_name) or a system instance
                 error_code,
-                error_name = cimmeria_names::book().error_code(error_code),
+                error_name = book.error_code(error_code),
                 reason = ctx.reason,
                 "onErrorCode queued for the client"
             );
@@ -286,8 +284,7 @@ pub(super) fn emit(
         } => wire_row!(
             c,
             ability_id = ctx.ability_id,
-            ability_name =
-                cimmeria_cell_world::cell::effects::content_names::ability_name(ctx.ability_id),
+            ability_name = ctx.ability_id.and_then(|a| book.ability(a)),
             sequence_id, // nt:id-only sequences have no NameBook name table
             source_id,
             source_name = label(space_mgr, source_id),
@@ -300,8 +297,7 @@ pub(super) fn emit(
         Decoded::Communication { channel, ref text } => wire_row!(
             c,
             ability_id = ctx.ability_id,
-            ability_name =
-                cimmeria_cell_world::cell::effects::content_names::ability_name(ctx.ability_id),
+            ability_name = ctx.ability_id.and_then(|a| book.ability(a)),
             channel,
             text = text.as_str(),
             reason = ctx.reason,
@@ -310,8 +306,7 @@ pub(super) fn emit(
         Decoded::Other | Decoded::Short => wire_row!(
             c,
             ability_id = ctx.ability_id,
-            ability_name =
-                cimmeria_cell_world::cell::effects::content_names::ability_name(ctx.ability_id),
+            ability_name = ctx.ability_id.and_then(|a| book.ability(a)),
             reason = ctx.reason,
             decode = if matches!(decoded, Decoded::Short) {
                 "short"

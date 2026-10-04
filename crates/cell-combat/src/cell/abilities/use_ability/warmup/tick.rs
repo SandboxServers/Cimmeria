@@ -98,7 +98,7 @@ pub(crate) async fn resolve_warmups(
                     entity_id,
                     entity_name = who.player_name,
                     cast_id = pc.cast_id(), // nt:id-only per-cast sequence number, no name exists
-                    ability_id = pc.ability_id,
+                    ability_id = pc.ability_id, // nt:id-only per-tick row: the launch and fire rows name the ability
                     remaining_ms = pc.fire_at.saturating_duration_since(now).as_millis() as u64,
                     "warmup tick: cast still warming"
                 );

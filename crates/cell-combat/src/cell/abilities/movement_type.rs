@@ -71,7 +71,7 @@ pub async fn broadcast_movement_type(
         if let Some(suppressed) = MOVEMENT_TYPE_DEDUPED_SAMPLER.admit() {
             tracing::trace!(
                 target: "movement.movement_type",
-                entity_id,
+                entity_id, // nt:id-only repeats every AI tick: the broadcast row names the NPC
                 ?kind,
                 outcome = "deduped",
                 sampled_1_in = MOVEMENT_TYPE_DEDUPED_SAMPLER.every(),

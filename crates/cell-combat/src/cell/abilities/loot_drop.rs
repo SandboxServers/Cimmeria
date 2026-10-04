@@ -116,7 +116,10 @@ pub fn roll_loot_entries(
                 event = "loot_entry_bad_quantity",
                 owner,
                 loot_table_id, // nt:id-only NameBook has no loot_tables lookup (description only)
-                item_id = entry.design_id,
+                // `design_id` stays for the cell/base loot join (NT-22a);
+                // `item_type_id` is its Rule 6 key and carries the name.
+                design_id = entry.design_id, // nt:id-only kept for the loot join; item_type_id is named
+                item_type_id = entry.design_id,
                 item_name = cimmeria_cell_world::cell::effects::content_names::item_name(entry.design_id),
                 min = entry.min_quantity,
                 max = entry.max_quantity,
@@ -133,7 +136,10 @@ pub fn roll_loot_entries(
                 event = "loot_generated",
                 owner,
                 loot_table_id, // nt:id-only NameBook has no loot_tables lookup (description only)
-                item_id = entry.design_id,
+                // `design_id` stays for the cell/base loot join (NT-22a);
+                // `item_type_id` is its Rule 6 key and carries the name.
+                design_id = entry.design_id, // nt:id-only kept for the loot join; item_type_id is named
+                item_type_id = entry.design_id,
                 item_name = cimmeria_cell_world::cell::effects::content_names::item_name(entry.design_id),
                 quantity,
                 probability = entry.probability,

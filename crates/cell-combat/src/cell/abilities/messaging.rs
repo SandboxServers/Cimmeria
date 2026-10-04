@@ -369,7 +369,7 @@ pub(crate) async fn deliver(
             tracing::trace!(
                 target: "abilities.wire",
                 event = "wire_witness_routed",
-                witness_id,
+                witness_id, // nt:id-only one row per witness per send: no lookup on this path
                 entity_id,
                 entity_name = space_mgr.entity_label(entity_id),
                 method_index,

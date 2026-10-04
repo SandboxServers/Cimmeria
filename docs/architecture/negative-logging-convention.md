@@ -608,7 +608,7 @@ The NT-20 sweep renamed four keys whose value was not what the key said:
 - `threat` `enter_combat` / `exit_combat` logged the player's **entity** id as `player_id`. It is now `entity_id` (with `entity_name`), and `player_id` / `account_id` carry the character's and account's ids per Rule 5.
 - `npc_ai.aggro_scan` `assist_joined` and the `NPC AI: proximity auto-aggro on a hostile player` row logged the target's entity id as `player_id`. It is now `target_id` (with `target_name`), beside `target_player_id` / `target_player_name`.
 - `npc_ai.leash` `player_combat_exit` logged the player's entity id as `player_id`. It is now `entity_id`, beside the real `player_id`.
-- The loot roll rows (`loot_generated`, `loot_entry_bad_quantity`) logged the item type as `design_id = ?Some(..)`. It is now `item_id` (a number) with `item_name`.
+- The loot roll rows (`loot_generated`, `loot_entry_bad_quantity`) logged the item type as `design_id = ?Some(..)`. It now logs `item_type_id` (a number; `item_id` is for instances) with `item_name`, and keeps `design_id`, as a number, for the cell/base loot join.
 
 A deferred effect row (a pulse, an expiry, a removal) names its invoker from the snapshot the effect took when it landed (`SpaceManager::caster_label`, `TimedEffect::invoker_identity`), never from whoever holds the invoker's entity id now: the id may have been reused. A pet's `owner_name` comes from the summon-time identity for the same reason (#889).
 
