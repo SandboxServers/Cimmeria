@@ -16,7 +16,8 @@ use crate::cell::combat;
 use crate::cell::messages::CellToBaseMsg;
 use crate::cell::space_manager::SpaceManager;
 
-use super::super::super::timer_update::send_timer_update;
+use super::super::super::timer_update::send_timer_update_ctx;
+use super::super::super::wire_ledger::WireCtx;
 use super::super::sequence::{play_ability_sequence, AbilityPhase, PhaseSequence};
 
 /// Why a warmup was interrupted. The label is the `reason` log field.
@@ -133,7 +134,11 @@ pub(crate) async fn interrupt_pending_cast(
         for timer_type in [TIMER_ABILITY_WARMUP, TIMER_ABILITY_COOLDOWN] {
             let args =
                 serialize_timer_update(pc.ability_id, timer_type, entity_id as i32, 0, 0.0, 0.0);
-            send_timer_update(entity_id, args, tx, space_mgr).await;
+            let ctx = WireCtx::new("warmup_interrupt")
+                .cast(Some(pc.cast_id()))
+                .ability(pc.ability_id)
+                .reason(reason.as_str());
+            send_timer_update_ctx(entity_id, args, ctx, tx, space_mgr).await;
         }
     }
 

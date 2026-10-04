@@ -13,7 +13,9 @@ use super::tests::{drain, make_ability, make_mgr_player_vs_npc};
 use super::*;
 use crate::cell::space_manager::SpaceManager;
 use crate::mercury::method_idx;
-use cimmeria_entity::abilities::{ClientEffectResult, EffectDef, EF_DONT_USE_QR, RC_HIT, SRC_NONE};
+use cimmeria_entity::abilities::{
+    serialize_effect_results, ClientEffectResult, EffectDef, EF_DONT_USE_QR, RC_HIT, SRC_NONE,
+};
 use cimmeria_entity::stats::{FOCUS, FORTITUDE};
 
 pub(super) const PISTOL_SHOT: i32 = 592;

@@ -60,9 +60,8 @@ use cimmeria_entity::abilities::{
 
 use cimmeria_entity::cell_entity::TimedEffect;
 
-use crate::cell::abilities::{
-    send_entity_method, send_entity_method_to_self_and_witnesses, send_timer_update,
-};
+use crate::cell::abilities::wire_ledger::{self, WireCtx};
+use crate::cell::abilities::{send_timer_update_ctx, WireRoute};
 use crate::cell::effects::stat_buff::StatBuffRemoval;
 use crate::cell::messages::CellToBaseMsg;
 use crate::cell::space_manager::SpaceManager;
@@ -138,10 +137,10 @@ async fn flush_ledger_state_field(
     tx: &mpsc::Sender<CellToBaseMsg>,
     space_mgr: &mut SpaceManager,
 ) {
-    let Some(state) = space_mgr
-        .get_entity_mut(entity_id)
-        .and_then(|e| e.take_ledger_state_change())
-    else {
+    let Some((before, state)) = space_mgr.get_entity_mut(entity_id).and_then(|e| {
+        let before = e.stat_buffs.state_field_before;
+        e.take_ledger_state_change().map(|state| (before, state))
+    }) else {
         return;
     };
     tracing::debug!(
@@ -151,10 +150,14 @@ async fn flush_ledger_state_field(
         state_field = state,
         "timed effect changed the state field; broadcasting"
     );
-    send_entity_method_to_self_and_witnesses(
+    wire_ledger::send(
         entity_id,
         crate::mercury::method_idx::ON_STATE_FIELD_UPDATE,
         state.to_le_bytes().to_vec(),
+        WireRoute::SelfAndWitnesses,
+        WireCtx::new("stat_buffs")
+            .reason("timed_effect")
+            .prev_state(before),
         tx,
         space_mgr,
     )
@@ -183,7 +186,8 @@ async fn flush_duration_timers(
         .collect();
     stale.sort_unstable();
     stale.dedup();
-    let mut starts: Vec<(i32, u32, f32, f32)> = Vec::new();
+    // (effect_id, invoker, total, remaining, the entry's cast and ability)
+    let mut starts: Vec<(i32, u32, f32, f32, Option<i32>, i32)> = Vec::new();
     for effect_id in stale {
         let latest = entity
             .stat_buffs
@@ -194,13 +198,27 @@ async fn flush_duration_timers(
             .max_by_key(|(t, _)| *t);
         if let Some((expires_at, entry)) = latest {
             let remaining = expires_at.saturating_duration_since(now).as_secs_f32();
-            starts.push((effect_id, entry.invoker_id, entry.duration_secs, remaining));
+            starts.push((
+                effect_id,
+                entry.invoker_id,
+                entry.duration_secs,
+                remaining,
+                entry.cast_id,
+                entry.ability_id,
+            ));
         } else if let Some(held) = entity.stat_buffs.entries.iter().find(|b| {
             b.effect_id == effect_id
                 && b.expires_at.is_none()
                 && b.effect_flags & EF_ALWAYS_PERSIST == 0
         }) {
-            starts.push((effect_id, held.invoker_id, HELD_ICON_SECS, HELD_ICON_SECS));
+            starts.push((
+                effect_id,
+                held.invoker_id,
+                HELD_ICON_SECS,
+                HELD_ICON_SECS,
+                held.cast_id,
+                held.ability_id,
+            ));
         }
         for b in entity
             .stat_buffs
@@ -220,9 +238,10 @@ async fn flush_duration_timers(
             0.0,
             0.0,
         );
-        send_timer_update(entity_id, args, tx, space_mgr).await;
+        let ctx = WireCtx::new("stat_buffs").reason("effect_cleared");
+        send_timer_update_ctx(entity_id, args, ctx, tx, space_mgr).await;
     }
-    for (effect_id, invoker_id, total, remaining) in starts {
+    for (effect_id, invoker_id, total, remaining, cast_id, ability_id) in starts {
         let complete = crate::mercury::game_clock::game_time_secs() + remaining;
         let args = serialize_timer_update(
             effect_id,
@@ -232,7 +251,11 @@ async fn flush_duration_timers(
             total,
             complete,
         );
-        send_timer_update(entity_id, args, tx, space_mgr).await;
+        let ctx = WireCtx::new("stat_buffs")
+            .cast(cast_id)
+            .ability(ability_id)
+            .reason("effect_started");
+        send_timer_update_ctx(entity_id, args, ctx, tx, space_mgr).await;
     }
 }
 
@@ -291,10 +314,12 @@ async fn flush_stats(
     }
     let dirty = entity.stats.serialize_dirty();
     entity.stats.clear_dirty();
-    send_entity_method(
+    wire_ledger::send(
         entity_id,
         crate::mercury::method_idx::ON_STAT_UPDATE,
         dirty,
+        WireRoute::EntityDefault,
+        WireCtx::new("stat_buffs"),
         tx,
         space_mgr,
     )

@@ -21,7 +21,8 @@ use super::super::super::space_manager::SpaceManager;
 use crate::mercury::game_clock;
 
 use super::super::auto_cycle_state::send_auto_cycle_state;
-use super::super::timer_update::send_timer_update;
+use super::super::timer_update::send_timer_update_ctx;
+use super::super::wire_ledger::WireCtx;
 
 use super::gate_rows::{LaunchRefusal, LaunchRow};
 use super::weapon_redirect::resolve_weapon_redirect;
@@ -524,7 +525,12 @@ pub async fn handle_use_ability(
 
     // Owner only: the client binds onTimerUpdate on SGWPlayer alone, so an
     // NPC's cooldown sent to its witnesses was dropped on every shot.
-    send_timer_update(entity_id, timer_args, tx, space_mgr).await;
+    // The cast scope opens only at fire, so the launch names its cast itself.
+    let ctx = WireCtx::new("ability_launch")
+        .cast(Some(effect_seq))
+        .ability(ability_id)
+        .reason("cooldown_start");
+    send_timer_update_ctx(entity_id, timer_args, ctx, tx, space_mgr).await;
 
     // ── Auto-cycle commit: arm or DEACTIVATE-flag clear ──
     super::auto_cycle_commit::commit_auto_cycle(

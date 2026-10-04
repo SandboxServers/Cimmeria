@@ -190,7 +190,19 @@ async fn dispatch_deferred(
         return;
     }
     let buffered_count = buffered.len();
+    let methods_buffered = deferred_aoi::method_summary(&buffered);
     let segments = lifecycle_segments(buffered);
+    let methods_dispatched: usize = segments
+        .iter()
+        .map(|s| deferred_aoi::method_summary(s).0)
+        .sum();
+    super::method_delivery::log_deferred_flush(
+        addr,
+        witness_id,
+        trigger,
+        &methods_buffered,
+        methods_dispatched,
+    );
     tracing::info!(
         %addr,
         witness_id,

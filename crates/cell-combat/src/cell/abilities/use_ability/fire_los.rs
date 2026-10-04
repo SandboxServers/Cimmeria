@@ -52,6 +52,7 @@ use cimmeria_entity::abilities::{AbilityDef, TARGET_GROUND, TARGET_SELF};
 use cimmeria_entity::cell_entity::CellEntity;
 use cimmeria_entity::navigation::{LineOfSight, LosProbe};
 
+use crate::cell::abilities::wire_ledger::{self, WireCtx};
 use crate::cell::messages::CellToBaseMsg;
 use crate::cell::space_manager::{occluder_probe, SpaceManager};
 
@@ -285,11 +286,13 @@ pub(crate) async fn refuse_without_line_of_sight(
         "abilities_los_refused_total",
         "world" => world,
     );
+    let args = los_error_args(ability_id);
+    let row = wire_ledger::prepare(crate::mercury::method_idx::ON_ERROR_CODE, &args);
     if tx
         .send(CellToBaseMsg::EntityMethodCall {
             entity_id: shooter_id,
             method_index: crate::mercury::method_idx::ON_ERROR_CODE,
-            args: los_error_args(ability_id),
+            args,
         })
         .await
         .is_err()
@@ -302,6 +305,12 @@ pub(crate) async fn refuse_without_line_of_sight(
             entity_id = shooter_id,
             ability_id,
             "useAbility: the no-line-of-sight onErrorCode could not be queued (base channel closed)"
+        );
+    } else {
+        row.sent_to_owner(
+            space_mgr,
+            shooter_id,
+            WireCtx::new("fire_los").reason("no_line_of_sight"),
         );
     }
     true
@@ -332,11 +341,13 @@ async fn refuse_other_space(
         error_code = CONDITION_FEEDBACK_INVALID_ENTITY,
         "useAbility refused: the target is not in the caster's space (onErrorCode 0)"
     );
+    let args = other_space_error_args(ability_id);
+    let row = wire_ledger::prepare(crate::mercury::method_idx::ON_ERROR_CODE, &args);
     if tx
         .send(CellToBaseMsg::EntityMethodCall {
             entity_id: shooter_id,
             method_index: crate::mercury::method_idx::ON_ERROR_CODE,
-            args: other_space_error_args(ability_id),
+            args,
         })
         .await
         .is_err()
@@ -350,6 +361,12 @@ async fn refuse_other_space(
             player_id = id.player_id,
             ability_id,
             "useAbility: the other-space onErrorCode could not be queued (base channel closed)"
+        );
+    } else {
+        row.sent_to_owner(
+            space_mgr,
+            shooter_id,
+            WireCtx::new("fire_los").reason("target_other_space"),
         );
     }
 }

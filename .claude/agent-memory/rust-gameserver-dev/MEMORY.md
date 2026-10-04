@@ -14,6 +14,7 @@ One line per topic file; the detail lives in the file. Keep hooks short (this in
 ## Working environment
 
 - [concurrent-claude-sessions.md](concurrent-claude-sessions.md) — other sessions on the repo: work in `.claude/worktrees/<slug>/`, junction `external/`.
+- [shared-scratchpad-name-collisions.md](shared-scratchpad-name-collisions.md) — sibling workers share the scratchpad; prefix script names with the packet id.
 - [stacked-branch-rebase-traps.md](stacked-branch-rebase-traps.md) — a handed-down base sha may not be an ancestor.
 - [shepherd-merge-traps.md](shepherd-merge-traps.md) — clean merges of main can duplicate a doc section or index line; const-slice ptr::eq fails on i686.
 - [rebase-keep-both-regex-drops-braces.md](rebase-keep-both-regex-drops-braces.md) — scripted "keep both" conflict fixes can drop a `}` mid-hunk; inspect + `cargo check` before `--continue`.
@@ -113,6 +114,7 @@ One line per topic file; the detail lives in the file. Keep hooks short (this in
 ## Testing patterns
 
 - [testing-patterns-index](testing-patterns-index.md) — sub-index: nextest vs cargo test, revert proofs, live-DB races/ports, chain replay, encrypted test sessions, LogCapture.
+- [aoi-fixture-introducible-and-wire-ledger](aoi-fixture-introducible-and-wire-ledger.md) — account_id without archetype_id hides a test player from AoI; ability sends go through `wire_ledger` (AB-T4).
 - [damage-apply-miss-gate-and-seeded-rolls](damage-apply-miss-gate-and-seeded-rolls.md) — since AB-06 a miss lands nothing; a literal effect_seq may roll a miss; use `seq_rolling`.
 - [player-cast-fixtures-need-a-mechanic](player-cast-fixtures-need-a-mechanic.md) — since AB-12 a player cast with no mechanic is refused; effectless fixtures need `seed_mechanic_effect`.
 

@@ -37,7 +37,8 @@ use super::super::super::combat;
 use super::super::super::messages::CellToBaseMsg;
 use super::super::super::space_manager::SpaceManager;
 use super::super::effect_plan::{PlanIds, PlannedEffect, REASON_SUPPORT_SHOT};
-use super::super::messaging::{flush_attacker_ammo_stat, send_entity_method_to_self_and_witnesses};
+use super::super::messaging::{flush_attacker_ammo_stat, WireRoute};
+use super::super::wire_ledger::{self, WireCtx};
 
 /// `event` of a support shot that landed on an ally (DEBUG, target `ammo`).
 pub(crate) const EVENT_APPLIED: &str = "ammo_support_applied";
@@ -148,11 +149,13 @@ pub(crate) async fn refuse(
         return;
     }
     let chat = serialize_on_player_communication("SYSTEM", 0, CHAN_FEEDBACK, HOSTILE_FEEDBACK);
+    let args = chat;
+    let row = wire_ledger::prepare(crate::mercury::method_idx::ON_PLAYER_COMMUNICATION, &args);
     if tx
         .send(CellToBaseMsg::EntityMethodCall {
             entity_id,
             method_index: crate::mercury::method_idx::ON_PLAYER_COMMUNICATION,
-            args: chat,
+            args,
         })
         .await
         .is_err()
@@ -166,6 +169,15 @@ pub(crate) async fn refuse(
             ammo_type = shot.ammo_type,
             reason = "cell_to_base_closed",
             "support ammo refusal feedback could not be queued (base channel closed)"
+        );
+    } else {
+        // With the manager, so a fire-time refusal joins its cast scope.
+        row.sent_to_owner(
+            space_mgr,
+            entity_id,
+            WireCtx::new("support_shot")
+                .ability(ability_id)
+                .reason(REASON_HOSTILE_TARGET),
         );
     }
 }
@@ -278,10 +290,12 @@ pub(super) async fn fire_support(
         None => Vec::new(),
     };
     if !stat_update.is_empty() {
-        send_entity_method_to_self_and_witnesses(
+        wire_ledger::send(
             target_id,
             crate::mercury::method_idx::ON_STAT_UPDATE,
             stat_update,
+            WireRoute::SelfAndWitnesses,
+            WireCtx::new("support_shot"),
             tx,
             space_mgr,
         )
@@ -345,5 +359,64 @@ async fn flush_ammo(
 ) {
     if needs_ammo_stat_send {
         flush_attacker_ammo_stat(entity_id, tx, space_mgr).await;
+    }
+}
+
+#[cfg(test)]
+mod wire_row_tests {
+    use super::*;
+    use crate::cell::spawner::AmmoModifier;
+    use crate::test_support::LogCapture;
+
+    /// AB-T4 (Copilot on #1175): a refusal at fire time happens inside the
+    /// cast's scope, so the feedback line's `abilities.wire` row carries
+    /// that `cast_id`. Fails if the row is written from the identity alone
+    /// (`sent_to_owner_as`), which cannot see the scope.
+    #[tokio::test]
+    async fn a_fire_time_refusal_feedback_row_carries_the_cast() {
+        let mut mgr = SpaceManager::new(1);
+        mgr.parse_spaces_xml(
+            r#"<?xml version="1.0"?><Spaces><Space WorldName="W" Instanced="false" MinX="-100" MaxX="100" MinY="-100" MaxY="100" /></Spaces>"#,
+        )
+        .unwrap();
+        mgr.create_startup_spaces(
+            r#"<?xml version="1.0"?><Spaces><Space WorldName="W" /></Spaces>"#,
+        )
+        .unwrap();
+        for id in [1, 2] {
+            mgr.create_entity(id, "W", [0.0; 3], [0.0; 3]).unwrap();
+        }
+        let p = mgr.get_entity_mut(1).unwrap();
+        p.is_player = true;
+        p.player_id = Some(100);
+        let shot = ShotAmmo {
+            ammo_type: 7,
+            ammo_item_id: None,
+            modifier: AmmoModifier {
+                ammo_type: 7,
+                damage_mult: 1.0,
+                penetration_mult: 1.0,
+                damage_type: None,
+                on_hit_effect_id: None,
+                toggle_ability_id: 0,
+                beneficial: true,
+            },
+        };
+        let (tx, _rx) = mpsc::channel(8);
+        let logs = LogCapture::install();
+
+        let outer = mgr.enter_cast_scope(Some(55));
+        refuse(1, 2, 900, &shot, "fire", REASON_HOSTILE_TARGET, &tx, &mgr).await;
+        mgr.exit_cast_scope(outer);
+
+        let row = logs
+            .all()
+            .into_iter()
+            .find(|c| {
+                c.target == "abilities.wire" && c.has_field("method", "onPlayerCommunication")
+            })
+            .expect("the feedback line's wire row");
+        assert!(row.has_field("cast_id", "55"), "{row:?}");
+        assert!(row.has_field("origin", "support_shot"), "{row:?}");
     }
 }

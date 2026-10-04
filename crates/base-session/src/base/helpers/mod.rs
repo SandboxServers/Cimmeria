@@ -430,6 +430,7 @@ pub fn destroy_client_entities(
             _ => None,
         };
         crate::base::player_index::log_unlisted(addr, c, reason);
+        crate::base::deferred_aoi::log_discarded_on_teardown(addr, c, reason);
         // The session's plugin registry outlives the session for the
         // disconnect hook below.
         let plugins = clients.remove(&addr).map(|c| c.plugins).unwrap_or_default();

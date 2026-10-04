@@ -14,8 +14,8 @@ use super::*;
 use crate::cell::space_manager::SpaceManager;
 use crate::mercury::method_idx;
 use cimmeria_entity::abilities::{
-    ClientEffectResult, EffectDef, EF_DONT_USE_QR, RC_HIT, SRC_MORTAL, SRC_NONE, TCM_AE_CONE,
-    TCM_AE_RADIUS,
+    serialize_effect_results, ClientEffectResult, EffectDef, EF_DONT_USE_QR, RC_HIT, SRC_MORTAL,
+    SRC_NONE, TCM_AE_CONE, TCM_AE_RADIUS,
 };
 use cimmeria_entity::stats::{FOCUS, FORTITUDE, INTELLIGENCE};
 

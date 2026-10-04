@@ -44,6 +44,7 @@ use super::super::super::messages::CellToBaseMsg;
 use super::super::super::space_manager::SpaceManager;
 use super::super::super::spawner::PetSummon;
 use super::sequence::{ability_sequence_args, play_ability_sequence, AbilityPhase, PhaseSequence};
+use crate::cell::abilities::wire_ledger::{self, WireCtx};
 
 /// "Goauld summon target" (`resources.event_sets` 1122): the ground effect
 /// at the summoned pet. It is an effect-level set (only `Effect_Init`), so
@@ -459,6 +460,7 @@ async fn send_summon_feedback(
         (crate::mercury::method_idx::ON_ERROR_CODE, err),
         (crate::mercury::method_idx::ON_PLAYER_COMMUNICATION, chat),
     ] {
+        let row = wire_ledger::prepare(method_index, &args);
         if tx
             .send(CellToBaseMsg::EntityMethodCall {
                 entity_id,
@@ -480,6 +482,8 @@ async fn send_summon_feedback(
                 method_index,
                 "summon feedback could not be queued (base channel closed)"
             );
+        } else {
+            row.sent_to_owner_as(id, entity_id, WireCtx::new("summon"));
         }
     }
 }

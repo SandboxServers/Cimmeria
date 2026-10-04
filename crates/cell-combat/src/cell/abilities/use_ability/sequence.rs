@@ -49,7 +49,8 @@ use super::super::super::space_manager::SpaceManager;
 use super::super::super::spawner::{
     EVENT_ABILITY_BEGIN, EVENT_ABILITY_END, EVENT_ABILITY_INTERRUPT,
 };
-use super::super::messaging::send_entity_method_to_self_and_witnesses;
+use super::super::messaging::WireRoute;
+use super::super::wire_ledger::{self, WireCtx};
 
 /// Window for the per-ability `abilities.sequence` WARNs. The condition is a
 /// seed defect that holds until the next deploy, so one row a minute per
@@ -248,14 +249,20 @@ pub(in crate::cell::abilities) async fn play_ability_sequence(
         space_mgr, entity_id, ability_id, target_id,
     );
     let args = ability_sequence_args(sequence_id, entity_id, target_id, instance_id);
-    let witness_count = send_entity_method_to_self_and_witnesses(
+    let witness_count = wire_ledger::send(
         entity_id,
         crate::mercury::method_idx::ON_SEQUENCE,
         args,
+        WireRoute::SelfAndWitnesses,
+        WireCtx::new("ability_sequence")
+            .cast(Some(instance_id))
+            .ability(ability_id)
+            .reason(phase.event()),
         tx,
         space_mgr,
     )
-    .await;
+    .await
+    .witnesses_addressed;
     let who = space_mgr.player_identity(entity_id);
     tracing::debug!(
         target: "abilities.sequence",

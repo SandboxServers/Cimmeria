@@ -11,7 +11,7 @@
 
 use tokio::sync::mpsc;
 
-use cimmeria_entity::abilities::{serialize_effect_results, AbilityDef, DT_PHYSICAL, RC_MISS};
+use cimmeria_entity::abilities::{AbilityDef, DT_PHYSICAL, RC_MISS};
 use cimmeria_entity::stats::HEALTH;
 
 use super::super::combat;
@@ -21,10 +21,9 @@ use super::super::space_manager::SpaceManager;
 use cimmeria_cell_world::cell::duel;
 use cimmeria_cell_world::cell::effects::{ammo_damage, ammo_explosive};
 
-use super::messaging::{
-    flush_attacker_ammo_stat, send_entity_method, send_entity_method_to_self_and_witnesses,
-};
+use super::messaging::{flush_attacker_ammo_stat, WireRoute};
 use super::rng::pseudo_random_seed;
+use super::wire_ledger::{self, WireCtx};
 use ammo_splash::HitKind;
 use duel_gate::{clamp_source, player_hit_refusal};
 pub(in crate::cell::abilities) use effect_scripts::is_damage_script;
@@ -366,65 +365,24 @@ async fn apply_hit(
     let _target_public_stat_update = target.stats.serialize_dirty_public();
     target.stats.clear_dirty();
 
-    // ── Send effect results ──
-
-    // onEffectResults — send to both attacker and target, but avoid double-sending.
-    // If attacker is a player and target is an NPC, the witness routing on the NPC
-    // already reaches the player. So only send to the attacker directly + NPC witnesses.
-    let effect_args = serialize_effect_results(
-        entity_id as i32, // source
-        ability_id,
-        effect_seq as i32, // effect ID (using sequence as stub)
-        target_eid as i32, // target
-        qr_result.result_code,
-        &effect_results,
-    );
-
     let attacker_is_player = space_mgr.get_entity(entity_id).is_some_and(|e| e.is_player);
-    let target_is_player = space_mgr
-        .get_entity(target_eid)
-        .is_some_and(|e| e.is_player);
 
-    // Fan out the attacker's effect results to self + all AoI witnesses so a
-    // spectator sees the ability fire. For NPC attackers the self send is a
-    // no-op (NPCs have no client) and this collapses to witness-only.
-    send_entity_method_to_self_and_witnesses(
-        entity_id,
-        crate::mercury::method_idx::ON_EFFECT_RESULTS,
-        effect_args.clone(),
-        tx,
-        space_mgr,
-    )
-    .await;
-
-    // On-target effect results — fan out for any player target so witnesses
-    // see the hit land on them. For NPC targets the attacker's self+witness
-    // send above already carries the result (entity_id = attacker, target_eid
-    // in the payload). Player targets are tracked by a different entity_id, so
-    // they need a separate fanout keyed on target_eid.
-    if target_is_player {
-        send_entity_method_to_self_and_witnesses(
+    // ── Send effect results and the target's stats ──
+    hit_wire::send_hit_results(
+        hit_wire::HitWire {
+            entity_id,
             target_eid,
-            crate::mercury::method_idx::ON_EFFECT_RESULTS,
-            effect_args,
-            tx,
-            space_mgr,
-        )
-        .await;
-    }
-
-    // ── Send stat updates ──
-
-    // onStatUpdate to target — health bar changes must reach witnesses so the
-    // spectator sees the health drain. Fan out to self+witnesses of the target.
-    send_entity_method_to_self_and_witnesses(
-        target_eid,
-        crate::mercury::method_idx::ON_STAT_UPDATE,
-        target_stat_update,
+            ability_id,
+            effect_seq,
+            result_code: qr_result.result_code,
+            effect_results: &effect_results,
+            target_stat_update,
+        },
         tx,
         space_mgr,
     )
     .await;
+    let ctx = WireCtx::new("damage_apply").ability(ability_id);
 
     // onStatUpdate to attacker — drains AmmoSlot{N} dirty bits set by
     // `set_slot_ammo` on the consume path so the bandolier UI updates on every
@@ -477,6 +435,7 @@ async fn apply_hit(
     // appearance first puts the mesh at the holster socket so the draw
     // animation has something real to act on.
     if !target_died {
+        let prev_state = space_mgr.get_entity(entity_id).map(|e| e.state_field);
         if let Some(new_state) = combat::generate_threat(
             space_mgr,
             entity_id,
@@ -488,10 +447,12 @@ async fn apply_hit(
             // BSF_InCombat flip — broadcast to self+witnesses so a spectator
             // sees the entity enter the combat stance. This is the primary
             // trigger site for the witness-fanout requirement.
-            send_entity_method_to_self_and_witnesses(
+            wire_ledger::send(
                 entity_id,
                 crate::mercury::method_idx::ON_STATE_FIELD_UPDATE,
                 new_state.to_le_bytes().to_vec(),
+                WireRoute::SelfAndWitnesses,
+                ctx.reason("entered_combat").prev_state(prev_state),
                 tx,
                 space_mgr,
             )
@@ -529,10 +490,12 @@ async fn apply_hit(
             let dirty = target.stats.serialize_dirty();
             target.stats.clear_dirty();
             if !dirty.is_empty() {
-                send_entity_method(
+                wire_ledger::send(
                     target_eid,
                     crate::mercury::method_idx::ON_STAT_UPDATE,
                     dirty,
+                    WireRoute::EntityDefault,
+                    ctx.reason("after_scripts"),
                     tx,
                     space_mgr,
                 )
@@ -651,6 +614,7 @@ mod cover_roll;
 mod duel_gate;
 mod effect_scripts;
 mod hit_ids;
+mod hit_wire;
 mod nvp_damage;
 mod qr_gate;
 mod silent_rows;
@@ -693,3 +657,5 @@ mod tests;
 mod timed_effect_tests;
 #[cfg(test)]
 mod vitals_tests;
+#[cfg(test)]
+mod wire_rows_tests;

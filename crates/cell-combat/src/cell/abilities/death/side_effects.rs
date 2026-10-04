@@ -17,7 +17,8 @@ use crate::cell::messages::CellToBaseMsg;
 use crate::cell::space_manager::SpaceManager;
 
 use super::super::loot_drop::kill_xp;
-use super::super::messaging::{send_entity_method, send_entity_method_to_self_and_witnesses};
+use super::super::messaging::WireRoute;
+use super::super::wire_ledger::{self, WireCtx};
 
 /// Kismet event id for the death animation. Event set 1025 (Mob) drives
 /// it for both NPCs and players today; if they ever diverge, branch on
@@ -51,10 +52,12 @@ pub(super) async fn send_death_sequence(
     seq_args.push(0); // ViewType
     seq_args.extend_from_slice(&0i32.to_le_bytes()); // InstanceId
 
-    send_entity_method_to_self_and_witnesses(
+    wire_ledger::send(
         target_eid,
         crate::mercury::method_idx::ON_SEQUENCE,
         seq_args,
+        WireRoute::SelfAndWitnesses,
+        WireCtx::new("death").reason("entity_death"),
         tx,
         space_mgr,
     )
@@ -469,10 +472,12 @@ pub(super) async fn send_begin_aid_wait(
         }
     }
 
-    send_entity_method(
+    wire_ledger::send(
         target_eid,
         crate::mercury::method_idx::ON_BEGIN_AID_WAIT,
         aid_args,
+        WireRoute::EntityDefault,
+        WireCtx::new("death").reason("aid_wait"),
         tx,
         space_mgr,
     )

@@ -17,6 +17,12 @@
 //!   the "self" send is degenerate (NPCs have no client) and this collapses
 //!   to the witnesses-only path.
 //!
+//! Every send goes through one router, [`deliver`], so a send the closed
+//! cell-to-base channel refuses is always a WARN (`abilities.wire`,
+//! `event = wire_send_failed`), never a silent `let _`. Ability-subsystem
+//! callers that also owe an `abilities.wire` row use
+//! [`super::wire_ledger::send`], which routes through the same function.
+//!
 //! Also hosts the dirty-stat flush helper that pushes a queued `onStatUpdate`
 //! to the attacker's client after an ammo decrement.
 
@@ -24,6 +30,64 @@ use tokio::sync::mpsc;
 
 use super::super::messages::CellToBaseMsg;
 use super::super::space_manager::SpaceManager;
+use super::wire_ledger::{self, WireCtx};
+
+/// Which audience one entity-method send goes to. Each of the three public
+/// helpers below is one of these; [`wire_ledger::send`] takes it directly.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum WireRoute {
+    /// The entity's own client, unconditionally. The caller has already
+    /// checked that the entity is a player.
+    SelfOnly,
+    /// [`send_entity_method`]: a player's own client, or an NPC's witnesses.
+    EntityDefault,
+    /// [`send_entity_method_to_witnesses`]: witnesses only, never the owner.
+    Witnesses,
+    /// [`send_entity_method_to_self_and_witnesses`]: the owner (a player)
+    /// and every witness.
+    SelfAndWitnesses,
+}
+
+impl WireRoute {
+    /// The `route` field on the `abilities.wire` rows.
+    pub fn label(self) -> &'static str {
+        match self {
+            Self::SelfOnly => "self",
+            Self::EntityDefault => "entity_default",
+            Self::Witnesses => "witnesses",
+            Self::SelfAndWitnesses => "self_and_witnesses",
+        }
+    }
+}
+
+/// What one routed send reached: the input to the `abilities.wire` row.
+#[derive(Debug, Default, Clone, PartialEq, Eq)]
+pub struct Delivery {
+    /// The method was queued for the entity's own client.
+    pub self_sent: bool,
+    /// The witnesses it was queued for.
+    pub witness_ids: Vec<u32>,
+    /// Witnesses it was addressed to, including those whose send failed.
+    pub witnesses_addressed: usize,
+    /// Sends that failed because the cell-to-base channel is closed. Each
+    /// failure is a WARN (`abilities.wire`, `event = wire_send_failed`).
+    pub failed: usize,
+}
+
+impl Delivery {
+    /// A single successful send to the entity's own client.
+    pub fn self_only() -> Self {
+        Self {
+            self_sent: true,
+            ..Self::default()
+        }
+    }
+
+    /// Clients the method was queued for.
+    pub fn delivered(&self) -> usize {
+        usize::from(self.self_sent) + self.witness_ids.len()
+    }
+}
 
 /// Send an entity method call, routing to the entity's client if it's a player,
 /// or broadcasting to all witnessing players if it's an NPC (ghost entity).
@@ -36,6 +100,10 @@ use super::super::space_manager::SpaceManager;
 /// to also reach other players in AoI, use
 /// [`send_entity_method_to_self_and_witnesses`] instead — this function alone
 /// does not fan out for players.
+///
+/// A send the closed cell-to-base channel refuses is a WARN. Ability-subsystem
+/// callers that also want an `abilities.wire` row go through
+/// [`wire_ledger::send`] instead.
 pub async fn send_entity_method(
     entity_id: u32,
     method_index: u16,
@@ -43,47 +111,15 @@ pub async fn send_entity_method(
     tx: &mpsc::Sender<CellToBaseMsg>,
     space_mgr: &SpaceManager,
 ) {
-    let is_player = space_mgr.get_entity(entity_id).is_some_and(|e| e.is_player);
-
-    if is_player {
-        let _ = tx
-            .send(CellToBaseMsg::EntityMethodCall {
-                entity_id,
-                method_index,
-                args,
-            })
-            .await;
-    } else {
-        if refuse_unbound_npc_method(entity_id, method_index, "send_entity_method") {
-            return;
-        }
-        let witnesses = space_mgr.get_witnesses_of(entity_id);
-        if witnesses.is_empty() {
-            tracing::warn!(
-                entity_id,
-                method_index,
-                "send_entity_method: NPC has no witnesses, method dropped"
-            );
-        }
-        for witness_id in witnesses {
-            tracing::debug!(
-                witness_id,
-                entity_id,
-                method_index,
-                "send_entity_method: routing NPC method to witness"
-            );
-            let _ = tx
-                .send(CellToBaseMsg::WitnessEntityMethod {
-                    witness_id,
-                    entity_id,
-                    method_index,
-                    args: args.clone(),
-                    // NPC branch only — `is_player` is `false` here.
-                    entity_is_player: is_player,
-                })
-                .await;
-        }
-    }
+    deliver(
+        entity_id,
+        method_index,
+        args,
+        WireRoute::EntityDefault,
+        tx,
+        space_mgr,
+    )
+    .await;
 }
 
 /// Refuse a witness fanout of a method the client never binds on a non-player
@@ -123,42 +159,16 @@ pub async fn send_entity_method_to_witnesses(
     tx: &mpsc::Sender<CellToBaseMsg>,
     space_mgr: &SpaceManager,
 ) -> usize {
-    let witnesses = space_mgr.get_witnesses_of(entity_id);
-    let count = witnesses.len();
-    if count == 0 {
-        tracing::debug!(
-            entity_id,
-            method_index,
-            "send_entity_method_to_witnesses: no witnesses; nothing emitted"
-        );
-        return 0;
-    }
-    // Compute once before the loop — the observee's player-ness is the same for
-    // every witness and drives the idbase selection at wire-encode time.
-    let entity_is_player = space_mgr.get_entity(entity_id).is_some_and(|e| e.is_player);
-    if !entity_is_player
-        && refuse_unbound_npc_method(entity_id, method_index, "send_entity_method_to_witnesses")
-    {
-        return 0;
-    }
-    for witness_id in witnesses {
-        let _ = tx
-            .send(CellToBaseMsg::WitnessEntityMethod {
-                witness_id,
-                entity_id,
-                method_index,
-                args: args.clone(),
-                entity_is_player,
-            })
-            .await;
-    }
-    tracing::debug!(
+    deliver(
         entity_id,
         method_index,
-        witness_count = count,
-        "send_entity_method_to_witnesses: fanned out"
-    );
-    count
+        args,
+        WireRoute::Witnesses,
+        tx,
+        space_mgr,
+    )
+    .await
+    .witnesses_addressed
 }
 
 /// Emit an entity-method call to `entity_id`'s own client AND fan out to all
@@ -183,118 +193,182 @@ pub async fn send_entity_method_to_self_and_witnesses(
     tx: &mpsc::Sender<CellToBaseMsg>,
     space_mgr: &SpaceManager,
 ) -> usize {
-    let is_player = space_mgr.get_entity(entity_id).is_some_and(|e| e.is_player);
+    deliver(
+        entity_id,
+        method_index,
+        args,
+        WireRoute::SelfAndWitnesses,
+        tx,
+        space_mgr,
+    )
+    .await
+    .witnesses_addressed
+}
 
-    if is_player {
-        let _ = tx
+/// The witnesses `route` addresses for `entity_id`, after the unbound-method
+/// refusal and the empty-audience logging each route has always had.
+fn witness_audience(
+    entity_id: u32,
+    method_index: u16,
+    route: WireRoute,
+    is_player: bool,
+    space_mgr: &SpaceManager,
+) -> Vec<u32> {
+    match route {
+        WireRoute::SelfOnly => Vec::new(),
+        WireRoute::EntityDefault if is_player => Vec::new(),
+        WireRoute::EntityDefault => {
+            if refuse_unbound_npc_method(entity_id, method_index, "send_entity_method") {
+                return Vec::new();
+            }
+            let witnesses = space_mgr.get_witnesses_of(entity_id);
+            if witnesses.is_empty() {
+                tracing::warn!(
+                    entity_id,
+                    method_index,
+                    "send_entity_method: NPC has no witnesses, method dropped"
+                );
+            }
+            witnesses
+        }
+        WireRoute::Witnesses | WireRoute::SelfAndWitnesses => {
+            let witnesses = space_mgr.get_witnesses_of(entity_id);
+            if witnesses.is_empty() {
+                tracing::debug!(
+                    entity_id,
+                    method_index,
+                    "send_entity_method_to_witnesses: no witnesses; nothing emitted"
+                );
+                return witnesses;
+            }
+            if !is_player
+                && refuse_unbound_npc_method(
+                    entity_id,
+                    method_index,
+                    "send_entity_method_to_witnesses",
+                )
+            {
+                return Vec::new();
+            }
+            witnesses
+        }
+    }
+}
+
+/// Route one entity-method call and report what it reached. Every send in
+/// this module goes through here, so a failed send is always a WARN.
+pub(crate) async fn deliver(
+    entity_id: u32,
+    method_index: u16,
+    mut args: Vec<u8>,
+    route: WireRoute,
+    tx: &mpsc::Sender<CellToBaseMsg>,
+    space_mgr: &SpaceManager,
+) -> Delivery {
+    let is_player = space_mgr.get_entity(entity_id).is_some_and(|e| e.is_player);
+    let to_self = match route {
+        WireRoute::SelfOnly => true,
+        WireRoute::EntityDefault | WireRoute::SelfAndWitnesses => is_player,
+        WireRoute::Witnesses => false,
+    };
+    let witnesses = witness_audience(entity_id, method_index, route, is_player, space_mgr);
+    let mut out = Delivery {
+        witnesses_addressed: witnesses.len(),
+        ..Delivery::default()
+    };
+
+    if to_self {
+        // The last send takes the buffer; only a fan-out behind it clones.
+        let self_args = if witnesses.is_empty() {
+            std::mem::take(&mut args)
+        } else {
+            args.clone()
+        };
+        let sent = tx
             .send(CellToBaseMsg::EntityMethodCall {
                 entity_id,
                 method_index,
-                args: args.clone(),
+                args: self_args,
             })
             .await;
-    }
-    // For NPCs the self send is a no-op; the witness fanout below is the only
-    // path that does anything. For players the fanout sits on top of the self
-    // send above. Either way the witnesses-only helper handles the empty case
-    // (no warning, debug-only) so an alone-in-space player doesn't log noise.
-    send_entity_method_to_witnesses(entity_id, method_index, args, tx, space_mgr).await
-}
-
-/// 1-in-N for the `movement.movement_type` `deduped` TRACE row, which fires
-/// once per NPC per AI tick. Prime, so the fixed NPC iteration order cannot
-/// phase-lock the sample onto one NPC.
-pub(crate) const MOVEMENT_TYPE_DEDUPED_SAMPLE_EVERY: u64 = 53;
-static MOVEMENT_TYPE_DEDUPED_SAMPLER: crate::firehose::FirehoseSampler =
-    crate::firehose::FirehoseSampler::new(MOVEMENT_TYPE_DEDUPED_SAMPLE_EVERY);
-
-/// Record an NPC's movement type (`EMobMovementType`) in the dedup cache
-/// `last_movement_type`. **Nothing goes on the wire.**
-///
-/// The client has no server-to-client movement-type message. `setMovementType`
-/// is a cell method only (`SGWBeing.def`, `<Exposed/>`, client to server; the
-/// client has `Event_NetOut_SetMovementType` and no NetIn twin). This function
-/// used to send a `WitnessEntityMethod` with method index `1` and a one-byte
-/// payload. For a witness, client method `1` of every NPC entity type is
-/// `onSequence` (`client_methods::spawnable_entity::ON_SEQUENCE`), the Kismet
-/// sequence trigger that attack animations use. So every Fighting, Patrol,
-/// Leash or Follow entry sent each witness a truncated `onSequence`. The
-/// client handler once thought to be the movement-type animation switch,
-/// `0x00deb660`, is the GM path visualiser for `SGWGmPlayer.onShowPath`
-/// (NA10, 2026-09-25; see
-/// `docs/reverse-engineering/findings/npc-movement-pathfinding.md`).
-///
-/// What the client animates comes from the velocity on each `EntityMoved`.
-/// To stop an NPC, zero its velocity (`npc_ai::stop_npc_movement`). No
-/// movement type is needed.
-///
-/// The cache is kept, and callers still report their state here, so that
-/// `last_movement_type` stays a truthful "what is this NPC doing" field for
-/// telemetry and the debug bookmark. `kind = None` clears it. Each change logs
-/// `movement.movement_type outcome=suppressed` (or `cleared`) at DEBUG.
-///
-/// `tx` is unused now and kept so the dozen call sites stay unchanged. A
-/// future GM `onShowPath` feature is the correct way to show a movement type
-/// on a client.
-pub async fn broadcast_movement_type(
-    entity_id: u32,
-    kind: Option<cimmeria_entity::cell_entity::MobMovementType>,
-    _tx: &mpsc::Sender<CellToBaseMsg>,
-    space_mgr: &mut SpaceManager,
-) {
-    // NPC-only guard. Players have no movement-type concept; a caller
-    // routing this at a player is a bug worth seeing.
-    let is_player = space_mgr.get_entity(entity_id).is_some_and(|e| e.is_player);
-    if is_player {
-        tracing::warn!(
-            entity_id,
-            ?kind,
-            "broadcast_movement_type called on a player entity — no-op (movement type is NPC-only)"
-        );
-        return;
-    }
-
-    let last = space_mgr
-        .get_entity(entity_id)
-        .and_then(|e| e.last_movement_type);
-    if last == kind {
-        // Hot path: every AI tick (2 s) re-asserts the current kind, once per
-        // NPC. NA25 exports this target, so the row is sampled 1-in-N with
-        // the skipped count; ~75 rows/s at 150 NPCs becomes ~1.4.
-        if let Some(suppressed) = MOVEMENT_TYPE_DEDUPED_SAMPLER.admit() {
-            tracing::trace!(
-                target: "movement.movement_type",
+        if sent.is_ok() {
+            out.self_sent = true;
+        } else {
+            out.failed += 1;
+            let who = space_mgr.player_identity(entity_id);
+            tracing::warn!(
+                target: "abilities.wire",
+                event = "wire_send_failed",
+                method = wire_ledger::method_name(method_index),
+                method_index,
                 entity_id,
-                ?kind,
-                outcome = "deduped",
-                sampled_1_in = MOVEMENT_TYPE_DEDUPED_SAMPLER.every(),
-                suppressed,
-                "movement type unchanged"
+                recipient_id = entity_id,
+                account_id = who.account_id,
+                player_id = who.player_id,
+                route = route.label(),
+                reason = "cell_to_base_closed",
+                "entity method not queued for the owner's client: the cell-to-base channel is \
+                 closed, so the player never sees it"
             );
         }
-        return;
     }
-    if let Some(e) = space_mgr.get_entity_mut(entity_id) {
-        e.last_movement_type = kind;
+
+    let mut witness_failed = 0usize;
+    for witness_id in witnesses {
+        if route == WireRoute::EntityDefault {
+            tracing::debug!(
+                witness_id,
+                entity_id,
+                method_index,
+                "send_entity_method: routing NPC method to witness"
+            );
+        }
+        let sent = tx
+            .send(CellToBaseMsg::WitnessEntityMethod {
+                witness_id,
+                entity_id,
+                method_index,
+                args: args.clone(),
+                // Drives the idbase selection at wire-encode time; the same
+                // for every witness of this entity.
+                entity_is_player: is_player,
+            })
+            .await;
+        if sent.is_ok() {
+            out.witness_ids.push(witness_id);
+        } else {
+            witness_failed += 1;
+        }
     }
-    match kind {
-        None => tracing::debug!(
-            target: "movement.movement_type",
+    if witness_failed > 0 {
+        // One row per fan-out, not per witness: a closed channel refuses
+        // every witness in the loop the same way.
+        out.failed += witness_failed;
+        tracing::warn!(
+            target: "abilities.wire",
+            event = "wire_send_failed",
+            method = wire_ledger::method_name(method_index),
+            method_index,
             entity_id,
-            prior_kind = ?last,
-            outcome = "cleared",
-            "movement type cache cleared"
-        ),
-        Some(k) => tracing::debug!(
-            target: "movement.movement_type",
-            entity_id,
-            kind = ?k,
-            kind_byte = k as u8,
-            prior_kind = ?last,
-            outcome = "suppressed",
-            "movement type recorded; not sent (no client receiver exists, index 1 is onSequence)"
-        ),
+            route = route.label(),
+            witness_count = out.witnesses_addressed,
+            failed_count = witness_failed,
+            reason = "cell_to_base_closed",
+            "entity method not queued for its witnesses: the cell-to-base channel is closed, so \
+             the observers never see it"
+        );
     }
+    if matches!(route, WireRoute::Witnesses | WireRoute::SelfAndWitnesses)
+        && out.witnesses_addressed > 0
+    {
+        tracing::debug!(
+            entity_id,
+            method_index,
+            witness_count = out.witnesses_addressed,
+            "send_entity_method_to_witnesses: fanned out"
+        );
+    }
+    out
 }
 
 /// Send a `CellToBaseMsg::RefreshAppearance` for a player entity, reading
@@ -337,13 +411,27 @@ pub async fn request_appearance_refresh(
             return;
         }
     };
-    let _ = tx
+    if tx
         .send(CellToBaseMsg::RefreshAppearance {
             entity_id,
             player_id,
             holstered,
         })
-        .await;
+        .await
+        .is_err()
+    {
+        tracing::warn!(
+            target: "abilities.wire",
+            event = "wire_send_failed",
+            method = "RefreshAppearance",
+            entity_id,
+            account_id = space_mgr.player_identity(entity_id).account_id,
+            player_id,
+            holstered,
+            reason = "cell_to_base_closed",
+            "appearance refresh not queued: the cell-to-base channel is closed, so the weapon              draw or holster never reaches the player or their witnesses"
+        );
+    }
 }
 
 /// Drain the attacker's dirty stats and push `onStatUpdate` (method 20) to its
@@ -364,260 +452,19 @@ pub(super) async fn flush_attacker_ammo_stat(
         None => Vec::new(),
     };
     if !payload.is_empty() {
-        send_entity_method(entity_id, 20, payload, tx, space_mgr).await;
+        wire_ledger::send(
+            entity_id,
+            crate::mercury::method_idx::ON_STAT_UPDATE,
+            payload,
+            WireRoute::EntityDefault,
+            WireCtx::new("ammo_flush"),
+            tx,
+            space_mgr,
+        )
+        .await;
     }
 }
 
 #[cfg(test)]
-mod tests {
-    use super::*;
-    use crate::cell::messages::CellToBaseMsg;
-    use crate::cell::space_manager::SpaceManager;
-
-    /// Two players + one NPC in the same Castle space. Both players are
-    /// connected and AoI is computed, so each player sees the others +
-    /// the NPC. Returns the manager + an mpsc rx for asserting on emitted
-    /// `CellToBaseMsg` traffic.
-    fn make_mgr_two_players_and_npc() -> (SpaceManager, mpsc::Receiver<CellToBaseMsg>) {
-        let mut mgr = SpaceManager::new(1);
-        let xml = r#"<?xml version="1.0"?><Spaces><Space WorldName="Castle" Instanced="false" MinX="-800" MaxX="800" MinY="-800" MaxY="800" /></Spaces>"#;
-        mgr.parse_spaces_xml(xml).unwrap();
-        mgr.create_startup_spaces(
-            r#"<?xml version="1.0"?><Spaces><Space WorldName="Castle" /></Spaces>"#,
-        )
-        .unwrap();
-        // Two players + one NPC, all co-located so AoI naturally captures all.
-        mgr.create_entity(1, "Castle", [0.0; 3], [0.0; 3]).unwrap();
-        mgr.create_entity(2, "Castle", [0.0; 3], [0.0; 3]).unwrap();
-        mgr.create_entity(3, "Castle", [0.0; 3], [0.0; 3]).unwrap();
-        if let Some(p) = mgr.get_entity_mut(1) {
-            p.is_player = true;
-            p.player_id = Some(100);
-        }
-        if let Some(p) = mgr.get_entity_mut(2) {
-            p.is_player = true;
-            p.player_id = Some(200);
-        }
-        // entity 3 stays an NPC.
-        mgr.connect_entity(1);
-        mgr.connect_entity(2);
-        let _ = mgr.compute_aoi_changes();
-        let (_tx, rx) = mpsc::channel(64);
-        (mgr, rx)
-    }
-
-    fn drain(rx: &mut mpsc::Receiver<CellToBaseMsg>) -> Vec<CellToBaseMsg> {
-        let mut out = Vec::new();
-        while let Ok(msg) = rx.try_recv() {
-            out.push(msg);
-        }
-        out
-    }
-
-    /// Witness-only fanout for a player who has one other player in AoI:
-    /// emits exactly one `WitnessEntityMethod` to that other player, and
-    /// zero `EntityMethodCall` to self.
-    #[tokio::test]
-    async fn witnesses_only_fanout_skips_self_and_addresses_each_observer() {
-        let (mgr, _rx) = make_mgr_two_players_and_npc();
-        let (tx, mut rx) = mpsc::channel(64);
-        let count = send_entity_method_to_witnesses(
-            1,
-            19, // ON_STATE_FIELD_UPDATE — arbitrary; the helper is method-agnostic
-            vec![0xDE, 0xAD],
-            &tx,
-            &mgr,
-        )
-        .await;
-        // Player 2 sees player 1, so exactly one witness.
-        assert_eq!(count, 1);
-        let msgs = drain(&mut rx);
-        assert_eq!(msgs.len(), 1);
-        match &msgs[0] {
-            CellToBaseMsg::WitnessEntityMethod {
-                witness_id,
-                entity_id,
-                method_index,
-                args,
-                ..
-            } => {
-                assert_eq!(*witness_id, 2);
-                assert_eq!(*entity_id, 1);
-                assert_eq!(*method_index, 19);
-                assert_eq!(args, &vec![0xDE, 0xAD]);
-            }
-            other => panic!("expected WitnessEntityMethod, got {other:?}"),
-        }
-    }
-
-    /// Witness-only with no observers: returns 0, emits nothing, does NOT
-    /// log a warning. This is the path a player alone in a space hits when
-    /// their state flips — the helper must stay silent rather than spam.
-    #[tokio::test]
-    async fn witnesses_only_with_no_observers_is_a_clean_zero() {
-        let mut mgr = SpaceManager::new(1);
-        let xml = r#"<?xml version="1.0"?><Spaces><Space WorldName="Castle" Instanced="false" MinX="-800" MaxX="800" MinY="-800" MaxY="800" /></Spaces>"#;
-        mgr.parse_spaces_xml(xml).unwrap();
-        mgr.create_startup_spaces(
-            r#"<?xml version="1.0"?><Spaces><Space WorldName="Castle" /></Spaces>"#,
-        )
-        .unwrap();
-        mgr.create_entity(1, "Castle", [0.0; 3], [0.0; 3]).unwrap();
-        if let Some(p) = mgr.get_entity_mut(1) {
-            p.is_player = true;
-            p.player_id = Some(100);
-        }
-        mgr.connect_entity(1);
-        let _ = mgr.compute_aoi_changes();
-        let (tx, mut rx) = mpsc::channel(64);
-
-        let count = send_entity_method_to_witnesses(1, 19, vec![], &tx, &mgr).await;
-        assert_eq!(count, 0);
-        assert!(drain(&mut rx).is_empty());
-    }
-
-    /// Self + witnesses for a player: one `EntityMethodCall` to self, one
-    /// `WitnessEntityMethod` per observer. Returns the witness count
-    /// (not counting the self send).
-    #[tokio::test]
-    async fn self_and_witnesses_for_player_sends_both() {
-        let (mgr, _rx) = make_mgr_two_players_and_npc();
-        let (tx, mut rx) = mpsc::channel(64);
-
-        let witness_count =
-            send_entity_method_to_self_and_witnesses(1, 19, vec![0xBE, 0xEF], &tx, &mgr).await;
-        assert_eq!(witness_count, 1);
-
-        let msgs = drain(&mut rx);
-        let self_sends: Vec<_> = msgs
-            .iter()
-            .filter(|m| matches!(m, CellToBaseMsg::EntityMethodCall { entity_id: 1, .. }))
-            .collect();
-        let witness_sends: Vec<_> = msgs
-            .iter()
-            .filter(|m| matches!(m, CellToBaseMsg::WitnessEntityMethod { entity_id: 1, .. }))
-            .collect();
-        assert_eq!(self_sends.len(), 1, "expected exactly one self send");
-        assert_eq!(witness_sends.len(), 1, "expected exactly one witness send");
-    }
-
-    /// Self + witnesses for an NPC: the "self" path is a no-op (NPCs have
-    /// no client), and the helper collapses to witnesses-only. Verifies
-    /// no `EntityMethodCall` is emitted for the NPC.
-    #[tokio::test]
-    async fn self_and_witnesses_for_npc_skips_self_send() {
-        let (mgr, _rx) = make_mgr_two_players_and_npc();
-        let (tx, mut rx) = mpsc::channel(64);
-
-        // Entity 3 is the NPC; both players witness it.
-        let witness_count =
-            send_entity_method_to_self_and_witnesses(3, 19, vec![], &tx, &mgr).await;
-        // Both players are co-located and see the NPC.
-        assert_eq!(witness_count, 2);
-
-        let msgs = drain(&mut rx);
-        let self_sends: Vec<_> = msgs
-            .iter()
-            .filter(|m| matches!(m, CellToBaseMsg::EntityMethodCall { entity_id: 3, .. }))
-            .collect();
-        let witness_sends: Vec<_> = msgs
-            .iter()
-            .filter(|m| matches!(m, CellToBaseMsg::WitnessEntityMethod { entity_id: 3, .. }))
-            .collect();
-        assert!(
-            self_sends.is_empty(),
-            "NPC must not receive an EntityMethodCall — NPCs have no client"
-        );
-        assert_eq!(witness_sends.len(), 2);
-    }
-
-    /// Behavior parity: `send_entity_method` for an NPC fans out to the same
-    /// witness set `send_entity_method_to_witnesses` would. This pins that
-    /// the new witness-only helper is a non-disruptive extension — paths
-    /// that already use the entity-aware default keep their existing
-    /// behavior unchanged when the new helper lands.
-    #[tokio::test]
-    async fn npc_send_entity_method_matches_witnesses_only_helper() {
-        let (mgr, _rx) = make_mgr_two_players_and_npc();
-        let (tx_a, mut rx_a) = mpsc::channel(64);
-        let (tx_b, mut rx_b) = mpsc::channel(64);
-
-        send_entity_method(3, 19, vec![1, 2, 3], &tx_a, &mgr).await;
-        let count_b = send_entity_method_to_witnesses(3, 19, vec![1, 2, 3], &tx_b, &mgr).await;
-
-        let msgs_a = drain(&mut rx_a);
-        let msgs_b = drain(&mut rx_b);
-        assert_eq!(msgs_a.len(), msgs_b.len());
-        assert_eq!(msgs_a.len(), count_b);
-    }
-
-    // ── broadcast_movement_type ────────────────────────────────────────────
-
-    fn movement_type_rows(logs: &crate::test_support::LogCaptureGuard, outcome: &str) -> usize {
-        logs.all()
-            .into_iter()
-            .filter(|c| c.target == "movement.movement_type" && c.has_field("outcome", outcome))
-            .count()
-    }
-
-    /// NA10 regression guard. A movement-type change is recorded in the cache
-    /// and sends **nothing**. It used to send each witness a
-    /// `WitnessEntityMethod` with method index 1 and payload `[kind]`. Client
-    /// method 1 is `onSequence`, so that was a truncated Kismet-sequence
-    /// trigger, not a movement type. Restoring the send fails this test.
-    #[tokio::test]
-    async fn broadcast_movement_type_records_the_cache_and_sends_nothing() {
-        use cimmeria_entity::cell_entity::MobMovementType;
-
-        let (mut mgr, _rx) = make_mgr_two_players_and_npc();
-        let (tx, mut rx) = mpsc::channel(64);
-        let logs = crate::test_support::LogCapture::install();
-
-        broadcast_movement_type(3, Some(MobMovementType::Patrol), &tx, &mut mgr).await;
-
-        let msgs = drain(&mut rx);
-        assert!(
-            msgs.is_empty(),
-            "no wire message may go out for a movement type: {msgs:?}"
-        );
-        assert_eq!(
-            mgr.get_entity(3).unwrap().last_movement_type,
-            Some(MobMovementType::Patrol),
-        );
-        assert_eq!(movement_type_rows(&logs, "suppressed"), 1);
-    }
-
-    /// Re-asserting the same kind is deduplicated: one `suppressed` row per
-    /// change, not one per AI tick.
-    #[tokio::test]
-    async fn broadcast_movement_type_same_kind_logs_once() {
-        use cimmeria_entity::cell_entity::MobMovementType;
-
-        let (mut mgr, _rx) = make_mgr_two_players_and_npc();
-        let (tx, _rx2) = mpsc::channel(64);
-        let logs = crate::test_support::LogCapture::install();
-
-        broadcast_movement_type(3, Some(MobMovementType::CombatAdvance), &tx, &mut mgr).await;
-        broadcast_movement_type(3, Some(MobMovementType::CombatAdvance), &tx, &mut mgr).await;
-        assert_eq!(movement_type_rows(&logs, "suppressed"), 1);
-    }
-
-    /// `None` clears the cache, so the next kind is a change again.
-    #[tokio::test]
-    async fn broadcast_movement_type_none_clears_the_cache() {
-        use cimmeria_entity::cell_entity::MobMovementType;
-
-        let (mut mgr, _rx) = make_mgr_two_players_and_npc();
-        let (tx, mut rx) = mpsc::channel(64);
-        let logs = crate::test_support::LogCapture::install();
-
-        broadcast_movement_type(3, Some(MobMovementType::Patrol), &tx, &mut mgr).await;
-        broadcast_movement_type(3, None, &tx, &mut mgr).await;
-        assert_eq!(mgr.get_entity(3).unwrap().last_movement_type, None);
-        broadcast_movement_type(3, Some(MobMovementType::Patrol), &tx, &mut mgr).await;
-
-        assert_eq!(movement_type_rows(&logs, "cleared"), 1);
-        assert_eq!(movement_type_rows(&logs, "suppressed"), 2);
-        assert!(drain(&mut rx).is_empty());
-    }
-}
+#[path = "messaging_tests.rs"]
+mod tests;

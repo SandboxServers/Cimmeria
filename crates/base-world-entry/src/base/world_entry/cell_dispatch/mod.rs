@@ -57,6 +57,7 @@ mod deferred_flush;
 mod gate_teleport_dispatch;
 mod inventory_dispatch;
 mod item_grant_dispatch;
+mod method_delivery;
 mod minigame;
 mod org_dispatch;
 mod player_ghost;

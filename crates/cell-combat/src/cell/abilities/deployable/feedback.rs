@@ -11,6 +11,7 @@ use cimmeria_entity::cell_entity::PlayerIdentity;
 use cimmeria_wire::cell::chat::{serialize_on_player_communication, CHAN_FEEDBACK};
 
 use super::super::super::messages::CellToBaseMsg;
+use crate::cell::abilities::wire_ledger::{self, WireCtx};
 
 /// `CONDITION_FEEDBACK_InvalidEntity`: the generic refusal.
 pub(super) const CONDITION_FEEDBACK_INVALID_ENTITY: u16 = 0;
@@ -104,6 +105,7 @@ pub(super) async fn send_refusal(
         (crate::mercury::method_idx::ON_ERROR_CODE, err),
         (crate::mercury::method_idx::ON_PLAYER_COMMUNICATION, chat),
     ] {
+        let row = wire_ledger::prepare(method_index, &args);
         if tx
             .send(CellToBaseMsg::EntityMethodCall {
                 entity_id,
@@ -125,6 +127,12 @@ pub(super) async fn send_refusal(
                 method_index,
                 reason = refusal.reason(),
                 "deployable refusal feedback could not be queued (base channel closed)"
+            );
+        } else {
+            row.sent_to_owner_as(
+                id,
+                entity_id,
+                WireCtx::new("deployable").reason(refusal.reason()),
             );
         }
     }

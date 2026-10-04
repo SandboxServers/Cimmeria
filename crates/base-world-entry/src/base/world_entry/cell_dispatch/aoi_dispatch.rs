@@ -18,7 +18,7 @@ use crate::cell::messages::{CellToBaseMsg, NpcAoIData, PlayerAoIData};
 use super::super::super::deferred_aoi;
 use super::super::super::session_identity;
 use super::super::super::ConnectedClientState;
-use super::{aoi, DispatchCtx};
+use super::{aoi, method_delivery, DispatchCtx};
 
 /// Route the AoI / space-lifecycle family of `CellToBaseMsg` variants.
 ///
@@ -395,7 +395,7 @@ pub(super) async fn entity_method_call(
         .and_then(|m| m.get(&entity_id).copied());
     if let Some(addr) = target_addr {
         if deferred_aoi::should_defer(connected, addr) {
-            deferred_aoi::push_deferred(
+            let outcome = deferred_aoi::push_deferred(
                 connected,
                 addr,
                 deferred_aoi::DeferredAoiMsg::EntityMethodCall {
@@ -403,6 +403,13 @@ pub(super) async fn entity_method_call(
                     method_index,
                     args,
                 },
+            );
+            method_delivery::log_method_deferred(
+                outcome,
+                entity_id,
+                entity_id,
+                method_index,
+                "client_not_ready",
             );
             return;
         }
@@ -444,7 +451,7 @@ pub(super) async fn entity_method_call_batch(
             // batching benefit during deferred replay but
             // preserve the at-most-once delivery guarantee.
             for (method_index, args) in calls {
-                deferred_aoi::push_deferred(
+                let outcome = deferred_aoi::push_deferred(
                     connected,
                     addr,
                     deferred_aoi::DeferredAoiMsg::EntityMethodCall {
@@ -452,6 +459,13 @@ pub(super) async fn entity_method_call_batch(
                         method_index,
                         args,
                     },
+                );
+                method_delivery::log_method_deferred(
+                    outcome,
+                    entity_id,
+                    entity_id,
+                    method_index,
+                    "client_not_ready",
                 );
             }
             return;
@@ -481,7 +495,7 @@ pub(super) async fn witness_entity_method(
     // for good. Buffer it behind the create. Logged above so a held call
     // appears once on the wire log; the replay does not re-log.
     if let Some(addr) = held_witness_addr(witness_id, entity_id, connected, entity_to_addr) {
-        deferred_aoi::push_deferred(
+        let outcome = deferred_aoi::push_deferred(
             connected,
             addr,
             deferred_aoi::DeferredAoiMsg::WitnessEntityMethod {
@@ -490,6 +504,13 @@ pub(super) async fn witness_entity_method(
                 args,
                 entity_is_player,
             },
+        );
+        method_delivery::log_method_deferred(
+            outcome,
+            witness_id,
+            entity_id,
+            method_index,
+            "held_behind_create",
         );
         return;
     }

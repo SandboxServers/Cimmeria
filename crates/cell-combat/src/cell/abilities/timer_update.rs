@@ -29,6 +29,7 @@ use tokio::sync::mpsc;
 
 use super::super::messages::CellToBaseMsg;
 use super::super::space_manager::SpaceManager;
+use super::wire_ledger::{self, WireCtx};
 use crate::cell::client_methods::being::ON_TIMER_UPDATE;
 
 /// `true` when the client has no handler for `method_index` on a non-player
@@ -60,9 +61,32 @@ pub enum TimerRoute {
 /// Every `onTimerUpdate` in the cell goes through here. The witness-fanout
 /// helpers in `messaging` refuse method 12 for a non-player entity at WARN,
 /// so a caller that bypasses this function is visible in SigNoz.
+///
+/// A sent timer writes its `abilities.wire` row (AB-T4): cooldown and warmup
+/// starts and clears, effect duration starts and clears, category timers.
+/// [`send_timer_update_ctx`] names the sending system and the cast.
 pub async fn send_timer_update(
     entity_id: u32,
     args: Vec<u8>,
+    tx: &mpsc::Sender<CellToBaseMsg>,
+    space_mgr: &SpaceManager,
+) -> TimerRoute {
+    send_timer_update_ctx(
+        entity_id,
+        args,
+        WireCtx::new("ability_timer"),
+        tx,
+        space_mgr,
+    )
+    .await
+}
+
+/// [`send_timer_update`] with the caller's ledger context: its `origin`,
+/// and the `cast_id` of a timer sent outside the cast's scope (an expiry).
+pub async fn send_timer_update_ctx(
+    entity_id: u32,
+    args: Vec<u8>,
+    ctx: WireCtx,
     tx: &mpsc::Sender<CellToBaseMsg>,
     space_mgr: &SpaceManager,
 ) -> TimerRoute {
@@ -75,6 +99,8 @@ pub async fn send_timer_update(
         );
         return TimerRoute::NotPlayer;
     }
+    // Decoded before the send moves the bytes; logged after it.
+    let row = wire_ledger::prepare(ON_TIMER_UPDATE, &args);
     if tx
         .send(CellToBaseMsg::EntityMethodCall {
             entity_id,
@@ -84,11 +110,20 @@ pub async fn send_timer_update(
         .await
         .is_err()
     {
+        let who = space_mgr.player_identity(entity_id);
         tracing::warn!(
+            target: "abilities.wire",
+            event = "wire_send_failed",
+            method = "onTimerUpdate",
             entity_id,
+            account_id = who.account_id,
+            player_id = who.player_id,
+            origin = ctx.origin,
             reason = "cell_to_base_closed",
             "onTimerUpdate send failed: the cooldown/effect bar will not show on the client"
         );
+    } else {
+        row.sent_to_owner(space_mgr, entity_id, ctx);
     }
     TimerRoute::Owner
 }

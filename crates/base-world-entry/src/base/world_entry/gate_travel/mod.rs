@@ -69,6 +69,11 @@ async fn abandon_unspaced_session(
             // other teardown path.
             c.cancelled.store(true, Ordering::Relaxed);
             cimmeria_base_session::base::player_index::log_unlisted(addr, c, "gate_travel_abandon");
+            cimmeria_base_session::base::deferred_aoi::log_discarded_on_teardown(
+                addr,
+                c,
+                "gate_travel_abandon",
+            );
         }
         clients.remove(&addr);
     }

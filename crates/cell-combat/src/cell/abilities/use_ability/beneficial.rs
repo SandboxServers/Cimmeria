@@ -43,6 +43,7 @@ use super::super::super::messages::CellToBaseMsg;
 use super::super::super::space_manager::SpaceManager;
 use super::super::effect_routing::{land_effects, plan_cast, Landing};
 use super::support_shot::{classify, SupportTarget};
+use crate::cell::abilities::wire_ledger::{self, WireCtx};
 
 /// `event` of every beneficial-cast resolution (target `abilities`).
 pub(crate) const EVENT_BENEFICIAL_CAST: &str = "beneficial_cast";
@@ -279,11 +280,13 @@ async fn send_no_ally_feedback(
     space_mgr: &SpaceManager,
 ) {
     let chat = serialize_on_player_communication("SYSTEM", 0, CHAN_FEEDBACK, NO_ALLY_FEEDBACK);
+    let args = chat;
+    let row = wire_ledger::prepare(crate::mercury::method_idx::ON_PLAYER_COMMUNICATION, &args);
     if tx
         .send(CellToBaseMsg::EntityMethodCall {
             entity_id: caster_id,
             method_index: crate::mercury::method_idx::ON_PLAYER_COMMUNICATION,
-            args: chat,
+            args,
         })
         .await
         .is_err()
@@ -297,6 +300,12 @@ async fn send_no_ally_feedback(
             entity_id = caster_id,
             reason = "cell_to_base_closed",
             "beneficial-cast refusal feedback could not be queued (base channel closed)"
+        );
+    } else {
+        row.sent_to_owner(
+            space_mgr,
+            caster_id,
+            WireCtx::new("beneficial").reason("no_ally"),
         );
     }
 }
