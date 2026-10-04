@@ -2,6 +2,15 @@
 
 Cimmeria is a server emulator for the cancelled MMO **Stargate Worlds**. Active development is in **Rust** under `crates/`.
 
+## How to review here
+
+- Follow the `code-review` skill in `.github/skills/code-review/`. It names which domain advisor brief (`.claude/agents/<name>.md` plus `.claude/agent-memory/<name>/MEMORY.md`) to read for each area of a diff.
+- Path-specific rules live in `.github/instructions/`: content chains, Rust services, the launcher and CI workflows.
+- Rank findings by severity, and give each one a concrete failure scenario. Priority order: trust boundary (what if the client lies), data loss, states a user cannot get out of, wire correctness, tests that guard nothing, repo rules.
+- Check the PR body's claims against the code. A claim the code contradicts is a finding.
+- Skip what CI already reports (`cargo fmt`, clippy, markdownlint), lockfiles, and text between `<!-- gen:NAME -->` markers. Draft PRs are reviewed like any other.
+- Do not raise a point again in a resolved or answered thread unless new commits reintroduce it.
+
 ## Safety rules (review blockers)
 
 - Active schemas live in `db/database.sql`, `db/sgw/`, `db/resources/`.
