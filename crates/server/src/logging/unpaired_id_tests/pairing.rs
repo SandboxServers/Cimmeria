@@ -47,7 +47,8 @@ pub(super) enum Verdict {
     Exempt,
     /// No pair and no exemption: counts against the file's baseline.
     Unpaired,
-    /// A marker with no reason: fails the build outright, baseline or not.
+    /// A marker with no reason, or one too short to be a reason: fails the
+    /// build outright, baseline or not.
     MarkerWithoutReason,
 }
 
@@ -85,10 +86,17 @@ pub(super) fn name_key_for(key: &str) -> Option<Option<String>> {
     Some(Some(dotted(format!("{prefix}_name"))))
 }
 
+/// A reason is at least two words or 10 characters: `x`, `-` and `TODO`
+/// are not reasons.
+fn is_reason(text: &str) -> bool {
+    let text = text.trim();
+    text.split_whitespace().count() >= 2 || text.chars().count() >= 10
+}
+
 /// The marker on `line`, if any: `Some(true)` with a reason, `Some(false)`
 /// without one. The comment must open with the marker as a whole word; a
 /// comment that only mentions it (`// don't use nt:id-only here`) is prose.
-fn marker_on(line_comments: &[(usize, String)], line: usize) -> Option<bool> {
+pub(super) fn marker_on(line_comments: &[(usize, String)], line: usize) -> Option<bool> {
     line_comments
         .iter()
         .filter(|(l, _)| *l == line)
@@ -97,16 +105,20 @@ fn marker_on(line_comments: &[(usize, String)], line: usize) -> Option<bool> {
             if !(rest.is_empty() || rest.starts_with(char::is_whitespace)) {
                 return None;
             }
-            Some(!rest.trim().is_empty())
+            Some(is_reason(rest))
         })
 }
 
 /// Every ID-shaped field of `call` with its verdict, as `(line, key, verdict)`.
+/// `also` holds keys the same event records elsewhere: a wrapper's fixed
+/// fields, when `call` is one of its call sites.
 pub(super) fn judge(
     call: &Call,
+    also: &BTreeSet<String>,
     line_comments: &[(usize, String)],
 ) -> Vec<(usize, String, Verdict)> {
-    let keys: BTreeSet<&str> = call.fields.iter().map(|f| f.key.as_str()).collect();
+    let mut keys: BTreeSet<&str> = call.fields.iter().map(|f| f.key.as_str()).collect();
+    keys.extend(also.iter().map(String::as_str));
     let mut out = Vec::new();
     for field in &call.fields {
         let Some(name_key) = name_key_for(&field.key) else {

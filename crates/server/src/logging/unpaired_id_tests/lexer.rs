@@ -143,17 +143,25 @@ fn char_literal_end(src: &str, i: usize) -> Option<usize> {
     (src.as_bytes().get(after) == Some(&b'\'')).then_some(after)
 }
 
-/// Blanks every item gated by `#[cfg(test)]` in a masked source: a `mod
-/// tests { … }`, a test-only fn or impl, a `mod tests;` declaration. Only the
-/// item goes, so production code after a test module is still scanned, and
-/// line numbers stay put.
+/// Blanks everything gated to test builds in a masked source: anything under
+/// `#[cfg(test)]`, `#[cfg(any(test, …))]` or `#[cfg(all(test, …))]` (but not
+/// `not(test)`). That covers a `mod tests { … }`, a test-only fn or impl, a
+/// `mod tests;` declaration, a struct field, an enum variant, a match arm or
+/// a statement. Only the gated part goes, so production code after a test
+/// module is still scanned, and line numbers stay put.
 pub(super) fn blank_test_items(code: &mut String) {
-    const ATTR: &str = "#[cfg(test)]";
     let mut bytes = std::mem::take(code).into_bytes();
     let mut from = 0;
-    while let Some(i) = find(&bytes[from..], ATTR.as_bytes()) {
+    while let Some(i) = find(&bytes[from..], b"#[cfg(") {
         let start = from + i;
-        let mut j = start + ATTR.len();
+        let Some(attr_end) = close_of(&bytes, start + 1) else {
+            break;
+        };
+        from = attr_end + 1;
+        if !is_test_cfg(&bytes[start + 6..attr_end]) {
+            continue;
+        }
+        let mut j = attr_end + 1;
         // Further attributes on the same item.
         loop {
             while j < bytes.len() && bytes[j].is_ascii_whitespace() {
@@ -165,30 +173,71 @@ pub(super) fn blank_test_items(code: &mut String) {
                 break;
             }
         }
-        // The item ends at its first top-level `;`, or with the block its
-        // first top-level `{` opens.
-        let mut depth = 0usize;
-        let end = loop {
-            match bytes.get(j) {
-                None => break bytes.len(),
-                Some(b'(' | b'[') => depth += 1,
-                Some(b')' | b']') => depth = depth.saturating_sub(1),
-                Some(b';') if depth == 0 => break j + 1,
-                Some(b'{') if depth == 0 => {
-                    break close_of(&bytes, j).map_or(bytes.len(), |c| c + 1)
-                }
-                _ => {}
-            }
-            j += 1;
-        };
+        let end = gated_end(&bytes, j);
         for b in &mut bytes[start..end] {
             if *b != b'\n' {
                 *b = b' ';
             }
         }
-        from = end;
+        from = end.max(from);
     }
     *code = String::from_utf8(bytes).expect("blanking keeps UTF-8");
+}
+
+/// The cfg predicate (the text inside `cfg(…)`) names `test` and never
+/// negates anything.
+fn is_test_cfg(pred: &[u8]) -> bool {
+    let pred = String::from_utf8_lossy(pred);
+    let words: Vec<&str> = pred
+        .split(|c: char| !(c.is_ascii_alphanumeric() || c == '_'))
+        .collect();
+    words.contains(&"test") && !words.contains(&"not")
+}
+
+const ITEM_KEYWORDS: &[&str] = &[
+    "fn",
+    "mod",
+    "impl",
+    "struct",
+    "enum",
+    "use",
+    "const",
+    "static",
+    "type",
+    "trait",
+    "pub",
+    "async",
+    "unsafe",
+    "extern",
+    "macro_rules",
+    "union",
+];
+
+/// Where the gated thing that starts at `j` ends (exclusive). An item ends at
+/// its first top-level `;` or with the block its first top-level `{` opens.
+/// A field, variant, arm or parameter also ends at a top-level `,`, and
+/// anything ends before a closing bracket it didn't open.
+fn gated_end(bytes: &[u8], j: usize) -> usize {
+    let word_len = bytes[j..]
+        .iter()
+        .position(|&b| !(b.is_ascii_alphanumeric() || b == b'_'))
+        .unwrap_or(bytes.len() - j);
+    let word = std::str::from_utf8(&bytes[j..j + word_len]).unwrap_or("");
+    let is_item = ITEM_KEYWORDS.contains(&word);
+    let mut depth = 0usize;
+    for (k, &b) in bytes.iter().enumerate().skip(j) {
+        match b {
+            b'(' | b'[' => depth += 1,
+            b'{' if depth == 0 => return close_of(bytes, k).map_or(bytes.len(), |c| c + 1),
+            b'{' => depth += 1,
+            b')' | b']' | b'}' if depth == 0 => return k,
+            b')' | b']' | b'}' => depth -= 1,
+            b';' if depth == 0 => return k + 1,
+            b',' if depth == 0 && !is_item => return k + 1,
+            _ => {}
+        }
+    }
+    bytes.len()
 }
 
 fn find(hay: &[u8], needle: &[u8]) -> Option<usize> {

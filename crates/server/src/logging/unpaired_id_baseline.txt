@@ -1,6 +1,7 @@
 # Unpaired ID fields per file (Rule 6, NT-03). Only ever lowered.
 # Regenerate after pairing fields: NT_BASELINE_BLESS=1 cargo nextest run -p cimmeria-server unpaired_id
 # See crates/server/src/logging/unpaired_id_tests/mod.rs.
+# total 7039
 crates/admin-api/src/routes/dev_session/handlers.rs 2
 crates/admin-api/src/routes/telemetry/handlers.rs 14
 crates/admin-api/src/routes/telemetry/replay.rs 33
@@ -271,7 +272,7 @@ crates/cell-combat/src/cell/abilities/use_ability/warmup/pet_order.rs 22
 crates/cell-combat/src/cell/abilities/use_ability/warmup/tick.rs 14
 crates/cell-combat/src/cell/abilities/use_ability/weapon_gate.rs 13
 crates/cell-combat/src/cell/abilities/use_ability/weapon_redirect.rs 6
-crates/cell-combat/src/cell/abilities/wire_ledger/row.rs 5
+crates/cell-combat/src/cell/abilities/wire_ledger/row.rs 27
 crates/cell-combat/src/cell/cell_methods/inventory/bandolier/active_slot.rs 34
 crates/cell-combat/src/cell/cell_methods/inventory/bandolier/ammo_change.rs 25
 crates/cell-combat/src/cell/cell_methods/inventory/bandolier/switch_return.rs 24
