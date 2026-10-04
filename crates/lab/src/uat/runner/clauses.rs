@@ -3,7 +3,7 @@
 
 use serde_json::{json, Value};
 
-use super::actions::{subst, subst_str, unresolved, CHAT_READ_TOOL};
+use super::actions::{captured_value, subst, subst_str, unresolved, CHAT_READ_TOOL};
 use super::packet::ENTITY_VAR;
 use super::players::Who;
 use super::{now_ms, utc_of, RowCtx, Runner};
@@ -197,7 +197,8 @@ impl<I: ToolInvoker> Runner<'_, I> {
             );
         }
         if let (Some(var), Some(v)) = (&c.capture_var, captured) {
-            ctx.vars.insert(var.clone(), json!(v));
+            let v = captured_value(&v);
+            ctx.vars.insert(var.clone(), v.clone());
             observed["captured"] = json!({ var: v });
         }
         r.verdict = verdict;

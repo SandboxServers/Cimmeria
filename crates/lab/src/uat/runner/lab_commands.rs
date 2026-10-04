@@ -8,7 +8,7 @@ use std::time::{Duration, Instant};
 
 use serde_json::json;
 
-use super::actions::fail;
+use super::actions::{captured_value, fail};
 use super::players::Who;
 use super::{RowCtx, Runner};
 use crate::uat::clause::new_lines;
@@ -75,7 +75,7 @@ impl<I: ToolInvoker> Runner<'_, I> {
                 if let (Some(var), Some(g)) = (cmd.capture, group) {
                     // Ids are stored as numbers, so `entity_id = "${dummy_id}"`
                     // reaches a server tool as one.
-                    let v = g.parse::<u64>().map_or_else(|_| json!(g), |n| json!(n));
+                    let v = captured_value(&g);
                     ctx.vars.insert(var.into(), v.clone());
                     result["captured"] = json!({ var: v });
                 }

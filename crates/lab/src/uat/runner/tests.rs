@@ -477,7 +477,8 @@ contains = "deleted"
     ]);
     let (row, _) = run_one(&fake, rows).await;
     assert_eq!(row.result, RowResult::Pass, "{:?}", row.reasons);
-    assert_eq!(row.vars["mail_id"], "42");
+    // A whole number is kept as one (it still types as "42").
+    assert_eq!(row.vars["mail_id"], 42);
 }
 
 /// Plan-only drives nothing and reports every row SKIPPED or BLOCKED.

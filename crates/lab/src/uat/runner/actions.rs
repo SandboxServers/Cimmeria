@@ -48,6 +48,13 @@ pub fn subst(v: &Value, vars: &Map<String, Value>) -> Value {
     }
 }
 
+/// A captured chat group as a var: a whole number stays a number (an
+/// entity or mail id reaches a tool's integer argument as one); anything
+/// else is a string. Either substitutes into a line as the same text.
+pub(crate) fn captured_value(s: &str) -> Value {
+    s.parse::<u64>().map_or_else(|_| json!(s), |n| json!(n))
+}
+
 /// `name` when `s` is exactly `${name}`.
 fn exact_var(s: &str) -> Option<&str> {
     s.strip_prefix("${")
@@ -157,7 +164,8 @@ impl<I: ToolInvoker> Runner<'_, I> {
                         });
                         match hit {
                             Some(v) => {
-                                ctx.vars.insert(var.clone(), json!(v));
+                                let v = captured_value(&v);
+                                ctx.vars.insert(var.clone(), v.clone());
                                 rec.result = json!({ var: v });
                             }
                             None => fail(&mut rec, "no chat line matched".into()),
@@ -425,6 +433,9 @@ mod tests {
         // A whole-string var keeps its type: an entity id stays a number.
         assert_eq!(subst(&json!({"id": "${n}"}), &vars), json!({"id": 3}));
         assert_eq!(subst(&json!("${row_id}"), &vars), json!("M1-1"));
+        assert_eq!(captured_value("4242"), json!(4242));
+        assert_eq!(captured_value("Labone"), json!("Labone"));
+        assert_eq!(captured_value("-3"), json!("-3"));
         assert_eq!(
             unresolved(".mail_expire ${mail_id}").as_deref(),
             Some("${mail_id}")
