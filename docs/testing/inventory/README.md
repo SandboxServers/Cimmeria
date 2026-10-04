@@ -35,9 +35,9 @@ many tests also updates the catalogue.
 
 | Metric | Count |
 |---|---:|
-| Tests (`#[test]` / `#[tokio::test]`) | 10,671 |
-| Files with tests | 1,837 |
-| Gated in CI (every crate but CI's exclude list) | 9,046 |
+| Tests (`#[test]` / `#[tokio::test]`) | 10,678 |
+| Files with tests | 1,838 |
+| Gated in CI (every crate but CI's exclude list) | 9,053 |
 | Live-DB tests (`require_db_or_skip!` in the body) | 1,551 |
 | Inventory threshold (5% of the tests) | 534 |
 
@@ -91,9 +91,9 @@ with no file in this directory yet.
 | `crates/cell-content` | `cimmeria-cell-content` | 835 | 123 | 477 | yes | none |
 | `crates/client-telemetry` | `cimmeria-client-telemetry` | 649 | 126 | 0 | no | none |
 | `crates/base-methods` | `cimmeria-base-methods` | 596 | 128 | 427 | yes | none |
-| `crates/cell` | `cimmeria-cell` | 553 | 127 | 19 | yes | none |
+| `crates/cell` | `cimmeria-cell` | 554 | 127 | 19 | yes | none |
 | `crates/cell-world` | `cimmeria-cell-world` | 528 | 91 | 32 | yes | none |
-| `crates/cell-console` | `cimmeria-cell-console` | 497 | 81 | 1 | yes | none |
+| `crates/cell-console` | `cimmeria-cell-console` | 500 | 81 | 1 | yes | none |
 | `crates/lab` | `cimmeria-lab` | 469 | 98 | 0 | no | none |
 | `crates/navmesh-extractor` | `cimmeria-navmesh-extractor` | 449 | 52 | 0 | yes | none |
 | `crates/entity` | `cimmeria-entity` | 448 | 57 | 0 | yes | [entity.md](entity.md) |
@@ -131,8 +131,8 @@ with no file in this directory yet.
 | `crates/occluder` | `cimmeria-occluder` | 30 | 3 | 0 | yes | none |
 | `crates/commands` | `cimmeria-commands` | 29 | 3 | 0 | yes | [commands.md](commands.md) |
 | `crates/wire-log` | `cimmeria-wire-log` | 28 | 6 | 0 | yes | none |
+| `crates/patchset` | `cimmeria-patchset` | 26 | 6 | 0 | yes | none |
 | `crates/names` | `cimmeria-names` | 23 | 6 | 4 | yes | none |
-| `crates/patchset` | `cimmeria-patchset` | 23 | 5 | 0 | yes | none |
 | `crates/lab-mcp` | `cimmeria-lab-mcp` | 22 | 6 | 0 | yes | none |
 | `crates/client-hookgate` | `cimmeria-client-hookgate` | 20 | 2 | 0 | yes | none |
 | `crates/sgw-testhost` | `cimmeria-sgw-testhost` | 12 | 2 | 0 | yes | none |
