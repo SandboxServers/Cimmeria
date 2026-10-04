@@ -28,7 +28,11 @@
 use cimmeria_common::EntityId;
 use cimmeria_entity::cell_entity::CellEntity;
 
-use super::SpaceManager;
+use super::{EntityNames, SpaceManager};
+
+/// The target of the "stored target cleared" line: this module's path,
+/// so callers in other modules can gate a name lookup on the same target.
+pub(super) const LOG_TARGET: &str = module_path!();
 
 /// Drop `holder`'s stored target if it is `gone`. Returns whether it did.
 ///
@@ -39,6 +43,7 @@ pub(super) fn drop_target_if(
     holder_id: u32,
     holder: &mut CellEntity,
     gone: u32,
+    gone_name: Option<&str>,
     reason: &'static str,
 ) -> bool {
     let Ok(gone_i32) = i32::try_from(gone) else {
@@ -48,7 +53,15 @@ pub(super) fn drop_target_if(
         return false;
     }
     holder.current_target_id = None;
-    tracing::debug!(holder_id, target_id = gone, reason, "stored target cleared");
+    tracing::debug!(
+        target: LOG_TARGET,
+        holder_id,
+        holder_name = EntityNames::of(holder).entity_name,
+        target_id = gone,
+        target_name = gone_name,
+        reason,
+        "stored target cleared"
+    );
     true
 }
 
@@ -64,9 +77,18 @@ impl SpaceManager {
         let Some(space) = self.spaces.get_mut(&space_id) else {
             return Vec::new();
         };
+        // Named only when the clear line is on: this runs on every destroy.
+        let gone_name = if tracing::enabled!(target: LOG_TARGET, tracing::Level::DEBUG) {
+            space
+                .entities
+                .get(&gone)
+                .and_then(|e| EntityNames::of(e).entity_name)
+        } else {
+            None
+        };
         let mut cleared = Vec::new();
         for (&holder_id, holder) in space.entities.iter_mut() {
-            if drop_target_if(holder_id, holder, gone, reason) {
+            if drop_target_if(holder_id, holder, gone, gone_name, reason) {
                 cleared.push(holder_id);
             }
         }
@@ -76,8 +98,14 @@ impl SpaceManager {
     /// Clear `holder`'s stored target if it is `target`. Returns whether it
     /// did. Used by the death burst for the killer alone.
     pub fn clear_target_of(&mut self, holder: u32, target: u32, reason: &'static str) -> bool {
+        // Named only when the clear line is on, like `clear_targets_on`.
+        let target_name = if tracing::enabled!(target: LOG_TARGET, tracing::Level::DEBUG) {
+            self.entity_names(target).entity_name
+        } else {
+            None
+        };
         self.get_entity_mut(holder)
-            .is_some_and(|h| drop_target_if(holder, h, target, reason))
+            .is_some_and(|h| drop_target_if(holder, h, target, target_name, reason))
     }
 
     /// Is `target` something `viewer` can legitimately have selected: itself,

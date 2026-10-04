@@ -28,6 +28,7 @@
 
 use std::sync::Arc;
 
+use cimmeria_entity::cell_entity::PlayerIdentity;
 use sqlx::PgPool;
 
 /// Persist the arrival and learn its addresses. Never fails the transfer: the
@@ -72,6 +73,7 @@ pub async fn persist_arrival(
     target_world_name: &str,
     position: [f32; 3],
     destination_gates: &[i32],
+    names: PlayerIdentity,
 ) {
     let Some(pool) = db_pool else { return };
 
@@ -124,7 +126,9 @@ pub async fn persist_arrival(
         Ok(Some(known)) => {
             tracing::debug!(
                 player_id,
+                player_name = names.player_name,
                 account_id,
+                account_name = names.account_name,
                 world_name = %target_world_name,
                 known_count = known.len(),
                 "GateTravel: destination persisted and the address book updated"
@@ -134,7 +138,9 @@ pub async fn persist_arrival(
             // Same shape the pre-merge code warned on as `rows_affected == 0`.
             tracing::warn!(
                 player_id,
+                player_name = names.player_name,
                 account_id,
+                account_name = names.account_name,
                 world_name = %target_world_name,
                 rows_affected = 0,
                 expected = 1,
@@ -147,7 +153,9 @@ pub async fn persist_arrival(
         Err(e) => {
             tracing::error!(
                 player_id,
+                player_name = names.player_name,
                 account_id,
+                account_name = names.account_name,
                 world_name = %target_world_name,
                 reason = "persist_arrival_failed",
                 "GateTravel: failed to persist the arrival ({e}) -- a relog will drop \
@@ -182,7 +190,16 @@ mod tests {
 
     #[tokio::test]
     async fn no_db_pool_is_a_silent_noop() {
-        persist_arrival(&None, 1, 1, "Harset", [0.0; 3], &[3]).await;
+        persist_arrival(
+            &None,
+            1,
+            1,
+            "Harset",
+            [0.0; 3],
+            &[3],
+            PlayerIdentity::UNKNOWN,
+        )
+        .await;
     }
 
     async fn cleanup(pool: &PgPool, account_id: i32, player_id: i32) {
@@ -261,6 +278,7 @@ mod tests {
             A_GATELESS_WORLD,
             [11.0, 12.0, 13.0],
             &[3, 41, 42, 41],
+            PlayerIdentity::UNKNOWN,
         )
         .await;
         let (known, _, _) = row_of(&pool, player_id).await;
@@ -278,6 +296,7 @@ mod tests {
             A_GATELESS_WORLD,
             [11.0, 12.0, 13.0],
             &[3, 41, 42],
+            PlayerIdentity::UNKNOWN,
         )
         .await;
         let (known, _, _) = row_of(&pool, player_id).await;
@@ -311,6 +330,7 @@ mod tests {
             A_REAL_WORLD,
             [777.5, 0.0, 0.0],
             &[3, 41],
+            PlayerIdentity::UNKNOWN,
         )
         .await;
 
@@ -366,6 +386,7 @@ mod tests {
             "Castle_CellBlock",
             [0.0; 3],
             &[],
+            PlayerIdentity::UNKNOWN,
         )
         .await;
 
@@ -398,6 +419,7 @@ mod tests {
             A_REAL_WORLD,
             [999.0, 0.0, 0.0],
             &[41],
+            PlayerIdentity::UNKNOWN,
         )
         .await;
 

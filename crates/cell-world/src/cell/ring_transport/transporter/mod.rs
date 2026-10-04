@@ -207,6 +207,9 @@ struct Timers {
 #[derive(Debug, Clone)]
 pub struct RingTransporter {
     pub region_id: i32,
+    /// The region's `tag`, the name its log lines pair with `region_id`
+    /// (Rule 6).
+    pub tag: String,
     pub world_name: String,
     pub position: [f32; 3],
     pub destination_ids: Vec<i32>,
@@ -263,6 +266,7 @@ impl RingTransporter {
     pub fn from_region(region: &RingRegion) -> Self {
         Self {
             region_id: region.region_id,
+            tag: region.tag.clone(),
             world_name: region.world_name.clone(),
             position: [region.x, region.y, region.z],
             destination_ids: region.destination_ids.clone(),

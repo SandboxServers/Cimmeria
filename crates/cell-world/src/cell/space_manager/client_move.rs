@@ -294,7 +294,7 @@ impl SpaceManager {
                 // must not silently drop the GM allowance rows, which
                 // are the audit trail for a privileged player standing
                 // where an ordinary one is snapped back from.
-                let world = self.world_name_for_space(space_id).unwrap_or("unknown");
+                let world = self.world_name_for_space(space_id);
                 tracing::warn!(
                     target: "movement.validation",
                     entity_id,
@@ -304,7 +304,7 @@ impl SpaceManager {
                     player_id = id.player_id,
                     player_name = id.player_name,
                     space_id,
-                    world = %world,
+                    world,
                     client_x = position[0],
                     client_y = position[1],
                     client_z = position[2],
@@ -347,12 +347,13 @@ impl SpaceManager {
                 now,
                 super::movement_telemetry::ADVISORY_OFF_MESH_LOG_INTERVAL,
             ) {
-                let world = self.world_name_for_space(space_id).unwrap_or("unknown");
+                let world = self.world_name_for_space(space_id);
                 tracing::trace!(
                     target: "movement.navmesh",
                     entity_id,
+                    entity_name = self.entity_label(entity_id),
                     space_id,
-                    world = %world,
+                    world,
                     client_x = position[0],
                     client_y = position[1],
                     client_z = position[2],
@@ -384,7 +385,7 @@ impl SpaceManager {
             // tolerance-calibration pipeline can compute the legitimate
             // p99.9 before the speed layer is ever promoted to snap-back.
             let id = self.player_identity(entity_id);
-            let world = self.world_name_for_space(space_id).unwrap_or("unknown");
+            let world = self.world_name_for_space(space_id);
             tracing::warn!(
                 target: "movement.validation",
                 entity_id,
@@ -394,7 +395,7 @@ impl SpaceManager {
                 player_id = id.player_id,
                 player_name = id.player_name,
                 space_id,
-                world = %world,
+                world,
                 client_x = position[0],
                 client_y = position[1],
                 client_z = position[2],

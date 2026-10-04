@@ -19,6 +19,7 @@ mod address_book;
 mod arrival;
 mod dial_feedback;
 mod dial_timer;
+mod named_logs;
 mod pets;
 mod sequences;
 mod stargate_grant_dial;

@@ -51,6 +51,7 @@ pub(super) async fn handle_create_entity(
         %world_name,
         ?position,
         ?destination_space_id,
+        destination_world = destination_space_id.and_then(|s| space_mgr.world_name_for_space(s)),
         "CreateEntity"
     );
 
@@ -66,7 +67,12 @@ pub(super) async fn handle_create_entity(
             Some(w) if w == world_name => Some(sid),
             Some(other) => {
                 tracing::warn!(
-                    entity_id, requested_space_id = sid, %world_name, actual_world = %other,
+                    entity_id,
+                    entity_name = player_name.as_deref(),
+                    requested_space_id = sid,
+                    requested_world = %other,
+                    %world_name,
+                    actual_world = %other,
                     "CreateEntity: requested destination instance belongs to another world — \
                      falling back to by-world-name resolution"
                 );
@@ -74,7 +80,10 @@ pub(super) async fn handle_create_entity(
             }
             None => {
                 tracing::warn!(
-                    entity_id, requested_space_id = sid, %world_name,
+                    entity_id,
+                    entity_name = player_name.as_deref(),
+                    requested_space_id = sid, // nt:id-only the instance is unloaded, it has no world now
+                    %world_name,
                     "CreateEntity: requested destination instance is no longer loaded \
                      (last player left mid-transfer) — falling back to by-world-name resolution"
                 );
@@ -117,11 +126,13 @@ pub(super) async fn handle_create_entity(
                     // session silently loses its identity fields.
                     tracing::warn!(
                         entity_id,
+                        entity_name = player_name.as_deref(),
                         account_id,
                         account_name = account_name.as_deref(),
                         player_id,
                         player_name = player_name.as_deref(),
                         space_id,
+                        world = space_mgr.world_name_for_space(space_id),
                         reason = "identity_stamp_entity_missing",
                         "CreateEntity: entity absent immediately after a successful create -- \
                          session logs will carry no account_id/player_id until InitPlayerState"
@@ -170,6 +181,7 @@ pub(super) async fn handle_create_entity(
             // `Result` is the real fix and is tracked for the gate-travel owner.
             tracing::error!(
                 entity_id, account_id, player_id, %world_name, ?destination_space_id,
+                destination_world = destination_space_id.and_then(|s| space_mgr.world_name_for_space(s)),
                 entity_name = player_name.as_deref(),
                 account_name = account_name.as_deref(),
                 player_name = player_name.as_deref(),
@@ -390,9 +402,14 @@ async fn persist_last_position(
         return;
     };
     let Some(world_name) = space_mgr.get_entity_world_name(entity_id) else {
+        let id = entity.identity();
         tracing::warn!(
             entity_id,
+            entity_name = id.player_name,
+            account_id = id.account_id,
+            account_name = id.account_name,
             player_id,
+            player_name = id.player_name,
             reason = "entity_has_no_space",
             "DisconnectEntity: player entity is in no space — last position not persisted"
         );
@@ -407,9 +424,14 @@ async fn persist_last_position(
         })
         .await
     {
+        let id = entity.identity();
         tracing::warn!(
             entity_id,
+            entity_name = id.player_name,
+            account_id = id.account_id,
+            account_name = id.account_name,
             player_id,
+            player_name = id.player_name,
             world = %world_name,
             ?position,
             error = %e,

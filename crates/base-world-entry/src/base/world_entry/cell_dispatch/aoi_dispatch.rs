@@ -182,9 +182,13 @@ pub(super) fn entity_created(
     let id = session_identity::identity_for_entity(connected, entity_to_addr, entity_id);
     tracing::debug!(
         entity_id,
+        entity_name = id.player_name,
         account_id = id.account_id,
+        account_name = id.account_name,
         player_id = id.player_id,
+        player_name = id.player_name,
         space_id,
+        world = super::super::space_registry::world_for_space(space_id),
         ?position,
         "CellService: entity created"
     );
@@ -214,6 +218,11 @@ pub(super) async fn entered_aoi(
         .lock()
         .ok()
         .and_then(|m| m.get(&witness_id).copied());
+    let names = aoi::AoiNames {
+        connected,
+        entity_to_addr,
+        npc_name_id: npc_data.as_ref().and_then(|n| n.name_id),
+    };
     if let Some(addr) = witness_addr {
         if deferred_aoi::should_hold_entity_traffic(connected, addr) {
             // NA34 observability: the introduction lifecycle has a "sent"
@@ -227,7 +236,9 @@ pub(super) async fn entered_aoi(
             tracing::debug!(
                 target: "aoi.introduce",
                 witness_id,
+                witness_name = names.player(witness_id),
                 entity_id,
+                entity_name = names.observee(entity_id),
                 is_player = player_data.is_some(),
                 outcome = "deferred_not_ready",
                 "AoI introduce: witness pre-onClientReady, buffering entity introduction"
@@ -266,10 +277,15 @@ pub(super) async fn entered_aoi(
         tracing::warn!(
             target: "aoi.entered_no_witness_addr",
             witness_id,
+            witness_name = witness.player_name,
             account_id = witness.account_id,
+            account_name = witness.account_name,
             player_id = witness.player_id,
+            player_name = witness.player_name,
             entity_id,
+            entity_name = names.observee(entity_id),
             class_id,
+            class_name = cimmeria_wire::names::class_name(class_id),
             reason = "witness_addr_unmapped",
             "EnteredAoI for unmapped witness — CREATE_ENTITY + cascade will be dropped; entity invisible to witness until relog"
         );
@@ -351,7 +367,18 @@ pub(super) async fn entity_moved(
             tracing::trace!(
                 %addr,
                 witness_id,
+                witness_name = super::super::super::session_identity::player_name_for_entity(
+                    connected,
+                    entity_to_addr,
+                    witness_id
+                ),
                 entity_id,
+                // Players only: the base has no NPC name outside EnteredAoI.
+                entity_name = super::super::super::session_identity::player_name_for_entity(
+                    connected,
+                    entity_to_addr,
+                    entity_id
+                ),
                 "Dropping EntityMoved while witness is pre-onClientReady"
             );
             return;

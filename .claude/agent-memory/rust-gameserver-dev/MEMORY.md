@@ -116,6 +116,7 @@ One line per topic file; the detail lives in the file. Keep hooks short (this in
 - [observability-test-and-throttle-traps](observability-test-and-throttle-traps.md) — counters unobservable in tests.
 - [ability-row-event-guard-and-cast-join](ability-row-event-guard-and-cast-join.md) — ability rows need `event` (source-scan guard); pre-mint rows lack cast_id; client_sent joins by payload.
 - [discord-noise-and-teardown-race](discord-noise-and-teardown-race.md) — SIGNOZ_ONLY_EVENTS; logOff witness-send race is DEBUG via departed_witnesses; colo warns that are real faults.
+- [rule6-name-pairing-sweep-techniques](rule6-name-pairing-sweep-techniques.md) — list unpaired sites by zeroing the baseline; lazy fields + `enabled!`; base NPC names only from EnteredAoI.
 - [log-filter-parity-traps](log-filter-parity-traps.md) — `EnvFilter::new` drops a bad directive silently.
 - [tracing-span-fields-not-on-log-records](tracing-span-fields-not-on-log-records.md) — span fields are not flattened onto OTLP log records.
 - [client-telemetry-index-and-upload-traps](client-telemetry-index-and-upload-traps.md) — cimmeria-client routing; base-vs-chunk URL, blank `${VAR:-}` env; opted-in player launch mints the session before the game.

@@ -42,7 +42,9 @@ pub(super) fn player_knows_stargate(
         // entity.
         tracing::warn!(
             entity_id,
+            entity_name = space_mgr.entity_label(entity_id),
             target_address_id,
+            target_address_name = cimmeria_names::book().stargate(target_address_id),
             reason = "dial_entity_missing",
             "onDialGate: no cell entity for the caller — refusing the dial; \
              the client is told to try again"
@@ -63,8 +65,11 @@ pub(super) fn player_knows_stargate(
     // from "holds addresses, just not this one".
     tracing::warn!(
         entity_id,
+        entity_name = space_mgr.entity_label(entity_id),
         player_id = entity.player_id,
+        player_name = entity.identity().player_name,
         target_address_id,
+        target_address_name = cimmeria_names::book().stargate(target_address_id),
         known_count = entity.known_stargates.len(),
         reason = "unknown_stargate_address",
         "onDialGate: address is not in the player's known list — refusing the dial; \

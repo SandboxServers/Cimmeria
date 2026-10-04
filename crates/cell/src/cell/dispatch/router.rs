@@ -168,6 +168,7 @@ pub async fn dispatch_cell_method(
     // warn-filtered ops dashboard.
     tracing::warn!(
         entity_id,
+        entity_name = space_mgr.entity_label(entity_id),
         method_index,
         method_name = cimmeria_wire::names::player_cell_method(method_index),
         args_len = args.len(),

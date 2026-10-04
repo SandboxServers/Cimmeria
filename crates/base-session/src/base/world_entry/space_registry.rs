@@ -24,6 +24,21 @@ pub fn register_space(world_name: String, space_id: u32) {
     guard.insert(world_name, space_id);
 }
 
+/// The world a registered space belongs to, for a log line's `world` field
+/// (Rule 6). `None` when the cell never announced the space.
+///
+/// A linear scan of a few dozen rows under the lock, so call it inside the
+/// branch that logs. Space ids are allocated monotonically and never reused,
+/// so a stale row can't name the wrong world.
+pub fn world_for_space(space_id: u32) -> Option<&'static str> {
+    let guard = SPACE_REGISTRY.lock().unwrap_or_else(|p| p.into_inner());
+    let world = guard
+        .iter()
+        .find(|(_, &sid)| sid == space_id)
+        .map(|(w, _)| w.as_str());
+    cimmeria_entity::name_intern::intern_opt(world)
+}
+
 /// Hardcoded space ID fallback (used when CellService oneshot fails or is unavailable).
 ///
 /// `None` means there is no safe fallback and the caller must fail closed.

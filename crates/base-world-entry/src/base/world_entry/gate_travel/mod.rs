@@ -20,6 +20,7 @@ use crate::base::contact_list::wire::EVENT_GATE_TRAVEL;
 use crate::cell::messages::BaseToCellMsg;
 use crate::mercury::{build_reset_entities, WorldEntryInfo, SGWPLAYER_CLASS_ID};
 
+use super::super::session_identity;
 use super::super::ConnectedClientState;
 use super::methods::{query_player_load_data, query_world_stargates};
 use super::space_registry::resolve_space_id_fallback;
@@ -63,8 +64,11 @@ async fn abandon_unspaced_session(
     entity_to_addr: &Arc<Mutex<HashMap<u32, SocketAddr>>>,
     cell_tx: &Option<mpsc::Sender<BaseToCellMsg>>,
 ) {
+    // Snapshot the names before the session is removed below (Rule 6).
+    let mut id = cimmeria_entity::cell_entity::PlayerIdentity::UNKNOWN;
     if let Ok(mut clients) = connected.lock() {
         if let Some(c) = clients.get(&addr) {
+            id = session_identity::session_identity(c);
             // Stop the tick-sync loop before the session goes, same as every
             // other teardown path.
             c.cancelled.store(true, Ordering::Relaxed);
@@ -99,14 +103,26 @@ async fn abandon_unspaced_session(
             .await
         {
             tracing::error!(
-                entity_id, %addr,
+                entity_id,
+                entity_name = id.player_name,
+                account_id = id.account_id,
+                account_name = id.account_name,
+                player_id = id.player_id,
+                player_name = id.player_name,
+                %addr,
                 "GateTravel: DisconnectEntity send failed while abandoning an \
                  un-spaced session ({e}) — cell may keep stale player state"
             );
         }
     }
     tracing::warn!(
-        entity_id, %addr,
+        entity_id,
+        entity_name = id.player_name,
+        account_id = id.account_id,
+        account_name = id.account_name,
+        player_id = id.player_id,
+        player_name = id.player_name,
+        %addr,
         "GateTravel: session ended after an unrecoverable transfer abort — \
          the client must reconnect"
     );
@@ -189,8 +205,19 @@ pub async fn handle_gate_travel(
         )
     };
 
+    // Interned once for the log lines below; the owned names move into the
+    // Discord emit further down.
+    let log_player_name = cimmeria_entity::name_intern::intern_opt(exit_name.as_deref());
+    let log_account_name = cimmeria_entity::name_intern::intern_opt(account_name.as_deref());
+
     tracing::info!(
-        entity_id, %addr, world = %target_world_name,
+        entity_id,
+        entity_name = log_player_name,
+        account_id,
+        account_name = log_account_name,
+        player_name = log_player_name,
+        %addr,
+        world = %target_world_name,
         "Gate travel: sending RESET_ENTITIES for world transition"
     );
 
@@ -237,7 +264,11 @@ pub async fn handle_gate_travel(
             Some(pid) => pid,
             None => {
                 tracing::error!(
-                    %addr, account_id, world = %target_world_name,
+                    %addr,
+                    account_id,
+                    account_name = log_account_name,
+                    player_name = log_player_name,
+                    world = %target_world_name,
                     "GateTravel: no active_player_id cached — refusing the transfer \
                      (would risk wrong-character corruption / loading the wrong character \
                      on multi-character accounts); ending the session because the entity \
@@ -312,7 +343,14 @@ pub async fn handle_gate_travel(
     // their saved origin.
     let Some(space_id) = resolved_space_id else {
         tracing::error!(
-            entity_id, %addr, account_id, world = %target_world_name,
+            entity_id,
+            entity_name = log_player_name,
+            account_id,
+            account_name = log_account_name,
+            player_id = active_player_id,
+            player_name = log_player_name,
+            %addr,
+            world = %target_world_name,
             reason = "no_safe_space_fallback",
             "GateTravel: the cell did not place the entity and this world has no fallback \
              space — ending the session instead of sending a world entry for another space"
@@ -341,7 +379,15 @@ pub async fn handle_gate_travel(
         let mapped_addr = entity_to_addr.lock().unwrap().get(&entity_id).copied();
         if mapped_addr.is_some() && mapped_addr != Some(addr) {
             tracing::error!(
-                entity_id, %addr, ?mapped_addr, world = %target_world_name,
+                entity_id,
+                entity_name = log_player_name,
+                account_id,
+                account_name = log_account_name,
+                player_id = active_player_id,
+                player_name = log_player_name,
+                %addr,
+                ?mapped_addr,
+                world = %target_world_name,
                 "GateTravel: entity id was recycled to another session mid-transfer — \
                  abandoning the transfer WITHOUT reaping (destroying this entity now \
                  would strand the live player who owns the id)"
@@ -355,15 +401,29 @@ pub async fn handle_gate_travel(
             .contains_key(&addr);
         if !addr_still_mapped || !session_still_open {
             tracing::warn!(
-                entity_id, %addr, world = %target_world_name,
-                addr_still_mapped, session_still_open,
+                entity_id,
+                entity_name = log_player_name,
+                account_id,
+                account_name = log_account_name,
+                player_id = active_player_id,
+                player_name = log_player_name,
+                %addr,
+                world = %target_world_name,
+                addr_still_mapped,
+                session_still_open,
                 "GateTravel: client disconnected mid-transfer — destroying the \
                  freshly-created destination entity so it doesn't leak"
             );
             if let Some(tx) = cell_tx {
                 if let Err(e) = tx.send(BaseToCellMsg::DestroyEntity { entity_id }).await {
                     tracing::error!(
-                        entity_id, world = %target_world_name,
+                        entity_id,
+                        entity_name = log_player_name,
+                        account_id,
+                        account_name = log_account_name,
+                        player_id = active_player_id,
+                        player_name = log_player_name,
+                        world = %target_world_name,
                         "GateTravel: DestroyEntity send failed after mid-transfer \
                          disconnect ({e}) — ghost entity left in the destination space"
                     );
@@ -400,6 +460,8 @@ pub async fn handle_gate_travel(
         target_world_name,
         position,
         &world_stargates,
+        cimmeria_entity::cell_entity::PlayerIdentity::UNKNOWN
+            .with_names(log_player_name, log_account_name),
     )
     .await;
 
@@ -539,7 +601,14 @@ pub async fn handle_gate_travel(
     }
 
     tracing::info!(
-        entity_id, %addr, world = %target_world_name,
+        entity_id,
+        entity_name = log_player_name,
+        account_id,
+        account_name = log_account_name,
+        player_id = active_player_id,
+        player_name = log_player_name,
+        %addr,
+        world = %target_world_name,
         "Gate travel: RESET_ENTITIES sent -- awaiting ENABLE_ENTITIES"
     );
 

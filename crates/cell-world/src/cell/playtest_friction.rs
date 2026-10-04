@@ -26,6 +26,8 @@ use std::collections::HashMap;
 use std::sync::{LazyLock, Mutex};
 use std::time::{Duration, Instant};
 
+use super::space_manager::SpaceManager;
+
 /// Interacts on one target that all dead-ended.
 pub const INTERACT_THRESHOLD: u32 = 5;
 pub const INTERACT_WINDOW: Duration = Duration::from_secs(60);
@@ -97,11 +99,13 @@ fn with<R>(f: impl FnOnce(&mut Detectors) -> R) -> R {
 }
 
 /// An interact reached the end of the dispatcher with nothing to do.
+///
+/// The names (Rule 6) and the target's `tag` are looked up only when the
+/// warn fires.
 pub fn interact_no_effect(
+    space_mgr: &SpaceManager,
     entity_id: u32,
     target_entity_id: u32,
-    npc_name: &str,
-    tag: &str,
     interaction_flags: i64,
 ) {
     let fired = with(|d| {
@@ -113,14 +117,25 @@ pub fn interact_no_effect(
         )
     });
     if let Some(count) = fired {
+        let id = space_mgr.player_identity(entity_id);
+        let target = space_mgr.entity_names(target_entity_id);
+        let target_entity = space_mgr.get_entity(target_entity_id);
         tracing::warn!(
             target: "playtest.friction",
             signal = "repeat_interact_no_effect",
             reason = "interact_dead_end",
             entity_id,
+            entity_name = id.player_name,
+            account_id = id.account_id,
+            account_name = id.account_name,
+            player_id = id.player_id,
+            player_name = id.player_name,
             target_entity_id,
-            npc_name,
-            tag,
+            target_entity_name = target.entity_name,
+            template_id = target.template_id,
+            template_name = target.template_name,
+            npc_name = target_entity.and_then(|t| t.npc_name.as_deref()),
+            tag = target_entity.and_then(|t| t.tag.as_deref()),
             interaction_flags,
             interaction_flags_names = %cimmeria_entity::interaction_flags::INTERACTION_FLAGS.render(interaction_flags),
             count,
@@ -131,7 +146,8 @@ pub fn interact_no_effect(
 }
 
 /// An item use matched no content chain.
-pub fn item_use_no_chain(entity_id: u32, item_id: i32) {
+/// `item_id` is the item's design id.
+pub fn item_use_no_chain(space_mgr: &SpaceManager, entity_id: u32, item_id: i32) {
     let fired = with(|d| {
         d.item_use.note(
             (entity_id, item_id as u32 as u64),
@@ -146,7 +162,9 @@ pub fn item_use_no_chain(entity_id: u32, item_id: i32) {
             signal = "repeat_item_use_no_chain",
             reason = "no_chain_matched",
             entity_id,
+            entity_name = space_mgr.entity_label(entity_id),
             item_id,
+            item_name = cimmeria_names::book().item(item_id),
             count,
             window_secs = ITEM_USE_WINDOW.as_secs(),
             "friction: player keeps using an item that matches no content chain -- likely a mission step that has not activated or a condition that never holds"
@@ -155,9 +173,10 @@ pub fn item_use_no_chain(entity_id: u32, item_id: i32) {
 }
 
 /// A `.`-console line was rejected before dispatch.
-pub fn console_rejected(entity_id: u32, command: &str, reject: &str) {
+pub fn console_rejected(space_mgr: &SpaceManager, entity_id: u32, command: &str, reject: &str) {
     tracing::debug!(
         entity_id,
+        entity_name = space_mgr.entity_label(entity_id),
         command,
         reason = reject,
         "GM .-console command rejected -- feedback sent to client"
@@ -176,6 +195,7 @@ pub fn console_rejected(entity_id: u32, command: &str, reject: &str) {
             signal = "console_reject_streak",
             reason = reject,
             entity_id,
+            entity_name = space_mgr.entity_label(entity_id),
             command,
             count,
             window_secs = CONSOLE_REJECT_WINDOW.as_secs(),
@@ -185,7 +205,14 @@ pub fn console_rejected(entity_id: u32, command: &str, reject: &str) {
 }
 
 /// An escort's follow tick. `dist` is the current distance to its leader.
-pub fn escort_tick(npc_id: u32, target_id: u32, dist: f32, max_d: f32, routed: bool) {
+pub fn escort_tick(
+    space_mgr: &SpaceManager,
+    npc_id: u32,
+    target_id: u32,
+    dist: f32,
+    max_d: f32,
+    routed: bool,
+) {
     let key = (npc_id, u64::from(target_id));
     if dist <= max_d * ESCORT_SEPARATION_FACTOR {
         with(|d| d.escort.clear(key));
@@ -201,7 +228,9 @@ pub fn escort_tick(npc_id: u32, target_id: u32, dist: f32, max_d: f32, routed: b
             signal = "escort_separated",
             reason = if routed { "cannot_keep_up" } else { "unrouted" },
             npc_id,
+            npc_name = space_mgr.entity_label(npc_id),
             target_id,
+            target_name = space_mgr.entity_label(target_id),
             dist,
             max_d,
             count,
@@ -268,8 +297,9 @@ mod tests {
     #[test]
     fn repeat_dead_end_interacts_warn_once() {
         let logs = crate::test_support::LogCapture::install();
+        let space_mgr = crate::test_fixtures::make_space_manager();
         for _ in 0..20 {
-            interact_no_effect(4_000_001, 4_000_002, "DHD_Frost", "Castle_DHD", 16);
+            interact_no_effect(&space_mgr, 4_000_001, 4_000_002, 16);
         }
         let ev = logs
             .find_event(

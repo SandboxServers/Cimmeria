@@ -169,6 +169,7 @@ pub async fn enforce_gm_gate(
     if caller.can_execute(REQUIRED) {
         tracing::info!(
             entity_id,
+            entity_name = space_mgr.entity_label(entity_id),
             method_index,
             method_name = cimmeria_wire::names::player_cell_method(method_index),
             access_level,
@@ -182,6 +183,7 @@ pub async fn enforce_gm_gate(
     // by caller + method.
     tracing::warn!(
         entity_id,
+        entity_name = space_mgr.entity_label(entity_id),
         method_index,
         method_name = cimmeria_wire::names::player_cell_method(method_index),
         access_level,

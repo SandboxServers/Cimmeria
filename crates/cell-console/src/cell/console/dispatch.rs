@@ -45,7 +45,12 @@ pub async fn handle_console_command(
             tx,
         )
         .await;
-        crate::cell::playtest_friction::console_rejected(caller_id, name, "unknown_command");
+        crate::cell::playtest_friction::console_rejected(
+            space_mgr,
+            caller_id,
+            name,
+            "unknown_command",
+        );
         return;
     };
 
@@ -60,7 +65,12 @@ pub async fn handle_console_command(
             tx,
         )
         .await;
-        crate::cell::playtest_friction::console_rejected(caller_id, name, "too_few_args");
+        crate::cell::playtest_friction::console_rejected(
+            space_mgr,
+            caller_id,
+            name,
+            "too_few_args",
+        );
         return;
     }
     if args.len() > spec.max {
@@ -74,7 +84,12 @@ pub async fn handle_console_command(
             tx,
         )
         .await;
-        crate::cell::playtest_friction::console_rejected(caller_id, name, "too_many_args");
+        crate::cell::playtest_friction::console_rejected(
+            space_mgr,
+            caller_id,
+            name,
+            "too_many_args",
+        );
         return;
     }
 
@@ -83,7 +98,12 @@ pub async fn handle_console_command(
         Ok(t) => t,
         Err(msg) => {
             send_gm_feedback(caller_id, &format!(".{name}: {msg}"), tx).await;
-            crate::cell::playtest_friction::console_rejected(caller_id, name, "bad_target");
+            crate::cell::playtest_friction::console_rejected(
+                space_mgr,
+                caller_id,
+                name,
+                "bad_target",
+            );
             return;
         }
     };

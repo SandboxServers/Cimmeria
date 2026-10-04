@@ -78,14 +78,35 @@ pub(super) enum AddrMissPath {
     Bundle,
 }
 
+/// The witness's character name for a miss line (Rule 6), from the session
+/// that still claims the entity. The map miss is what brought us here, so
+/// this scans the sessions; it runs only on the miss path. A departed
+/// witness's session is usually gone already, and the name is left off.
+fn witness_name(
+    connected: &Mutex<HashMap<SocketAddr, super::ConnectedClientState>>,
+    witness_id: u32,
+) -> Option<&'static str> {
+    let clients = connected.lock().ok()?;
+    let c = clients
+        .values()
+        .find(|c| c.player_entity_id == Some(witness_id))?;
+    cimmeria_entity::name_intern::intern_opt(c.player_name.as_deref())
+}
+
 /// Log an `entity_to_addr` miss: DEBUG for a witness whose session just
 /// ended, WARN otherwise. The WARN messages and fields are the ones the
 /// helpers always emitted (pinned by the negative-logging guards).
-pub(super) fn log_addr_miss(witness_id: u32, map_size: usize, path: AddrMissPath) {
+pub(super) fn log_addr_miss(
+    witness_id: u32,
+    map_size: usize,
+    path: AddrMissPath,
+    connected: &Mutex<HashMap<SocketAddr, super::ConnectedClientState>>,
+) {
     if witness_recently_departed(witness_id) {
         tracing::debug!(
             target: HELPERS_TARGET,
             witness_id,
+            witness_name = witness_name(connected, witness_id),
             reason = "witness_session_ended",
             entity_count_in_map = map_size,
             path = ?path,
@@ -99,6 +120,7 @@ pub(super) fn log_addr_miss(witness_id: u32, map_size: usize, path: AddrMissPath
         AddrMissPath::Unreliable => tracing::warn!(
             target: HELPERS_TARGET,
             witness_id,
+            witness_name = witness_name(connected, witness_id),
             reason = "entity_to_addr_miss",
             entity_count_in_map = map_size,
             "AoI: no client addr for witness -- packet dropped"
@@ -109,6 +131,7 @@ pub(super) fn log_addr_miss(witness_id: u32, map_size: usize, path: AddrMissPath
         AddrMissPath::Reliable => tracing::warn!(
             target: HELPERS_TARGET,
             witness_id,
+            witness_name = witness_name(connected, witness_id),
             reason = "entity_to_addr_miss",
             entity_count_in_map = map_size,
             "AoI reliable: no client addr for witness -- packet dropped"
@@ -117,6 +140,7 @@ pub(super) fn log_addr_miss(witness_id: u32, map_size: usize, path: AddrMissPath
         AddrMissPath::Bundle => tracing::warn!(
             target: HELPERS_TARGET,
             witness_id,
+            witness_name = witness_name(connected, witness_id),
             reason = "entity_to_addr_miss",
             entity_count_in_map = map_size,
             "AoI bundle: no client addr for witness -- bundle dropped"
