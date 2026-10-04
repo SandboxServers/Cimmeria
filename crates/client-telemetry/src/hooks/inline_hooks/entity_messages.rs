@@ -24,7 +24,9 @@
 //!
 //! Events: `client.mercury.entity_method` and `client.mercury.entity_property`
 //! (`debug` when delivered, `info` when queued) and
-//! `client.entity.queue_replay` (`info`).
+//! `client.entity.queue_replay` (`info`). The method detour also reports the
+//! ability methods' decoded arguments as `client.ability.recv`
+//! ([`super::ability_recv`]).
 
 use std::ffi::c_void;
 use std::sync::OnceLock;
@@ -171,6 +173,9 @@ unsafe extern "thiscall-unwind" fn entity_method_detour(
         return;
     };
     let original: MessageFn = unsafe { std::mem::transmute(t) };
+    // The ability methods' arguments, decoded before the original consumes
+    // the stream (`client.ability.recv`).
+    guarded(|| super::ability_recv::report(this, id, msg_id, stream));
     let (planned, decision) = decide(this, id, stream, true, "client.mercury.entity_method");
     let ctx = Ctx {
         entity_id: id,

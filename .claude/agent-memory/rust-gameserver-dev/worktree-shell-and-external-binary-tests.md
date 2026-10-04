@@ -33,6 +33,10 @@ with `^`/`$` anchors over a CRLF file silently does nothing useful.
 Check `file <path>` first; for CRLF sources use the Edit tool or
 PowerShell `[System.IO.File]::ReadAllLines` / `WriteAllLines`.
 
+`bash tools/build-lane/ship.sh ...` is refused too ("runs bash in a plain
+command"); run `python tools/build-lane/ship.py pr -C <worktree> -F <msg>
+--body-file <body>` from the PowerShell tool instead (2026-10-04).
+
 Two more refusals seen in NA21 (2026-09-25): a `cd <worktree>/<subdir> &&
 python - <<'EOF'` combination, and any loop whose command word comes from a
 variable (`for f in ...; do "$BIN" "$f"`). Inline heredoc Python also broke on a

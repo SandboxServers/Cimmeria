@@ -127,3 +127,127 @@ pub const EVENT_GET_BYTE: Site = code_site(
     0x00d4_34d0,
     b"\x6a\xff\x68\x50\x82\x70\x01\x64\xa1\x00\x00\x00\x00\x50\x64\x89",
 );
+
+// ---------------------------------------------------------------------
+// AB-C4 and AB-C5: what the client applied, and the `onSequence` net-in
+// drop. Read from the QA `SGW.exe` disassembly on 2026-10-04.
+
+/// `EffectSet` `onTimerUpdate` handler (`client.ability.applied`): `push
+/// -1; push 0x017088ab; mov eax, fs:[0]` (`ret 8`).
+pub const EFFECT_TIMER: Site = code_site(
+    "EffectSet timer handler",
+    0x00e0_9160,
+    &[
+        0x6A, 0xFF, 0x68, 0xAB, 0x88, 0x70, 0x01, 0x64, 0xA1, 0x00, 0x00, 0x00,
+    ],
+);
+
+/// `EffectSet` entry lookup by `SecondaryId`: `sub esp, 8; mov eax,
+/// [esp+0xc]; push ebx; push ebp; push esi; lea esi, [ecx+0x10]` (`ret 4`).
+pub const EFFECT_LOOKUP: Site = code_site(
+    "EffectSet entry lookup",
+    0x00e0_8570,
+    &[
+        0x83, 0xEC, 0x08, 0x8B, 0x44, 0x24, 0x0C, 0x53, 0x55, 0x56, 0x8D, 0x71,
+    ],
+);
+
+/// Effect-bar announce to the UI: `push -1; push 0x016d9938; mov eax,
+/// fs:[0]` (`ret 4`).
+pub const EFFECT_ANNOUNCE: Site = code_site(
+    "Effect bar announce",
+    0x00e0_a9e0,
+    &[
+        0x6A, 0xFF, 0x68, 0x38, 0x99, 0x6D, 0x01, 0x64, 0xA1, 0x00, 0x00, 0x00,
+    ],
+);
+
+/// Effect display-data request (`Event_NetOut_elementDataRequest`,
+/// category 9): `mov eax, fs:[0]; push -1; push 0x016f9fc3` (`ret 4`).
+pub const EFFECT_DATA_REQUEST: Site = code_site(
+    "Effect display-data request",
+    0x00e0_a810,
+    &[
+        0x64, 0xA1, 0x00, 0x00, 0x00, 0x00, 0x6A, 0xFF, 0x68, 0xC3, 0x9F, 0x6F,
+    ],
+);
+
+/// Effect-bar add posted to the UI: `mov eax, fs:[0]; push -1; push
+/// 0x016fcd46` (`ret 8`).
+pub const EFFECT_POST: Site = code_site(
+    "Effect bar post",
+    0x00e0_a2d0,
+    &[
+        0x64, 0xA1, 0x00, 0x00, 0x00, 0x00, 0x6A, 0xFF, 0x68, 0x46, 0xCD, 0x6F,
+    ],
+);
+
+/// `CooldownManager` `onTimerUpdate` handler: `push -1; push 0x0171154f;
+/// mov eax, fs:[0]` (`ret 8`).
+pub const COOLDOWN_TIMER: Site = code_site(
+    "CooldownManager timer handler",
+    0x00ea_6af0,
+    &[
+        0x6A, 0xFF, 0x68, 0x4F, 0x15, 0x71, 0x01, 0x64, 0xA1, 0x00, 0x00, 0x00,
+    ],
+);
+
+/// Cooldown button callback: `sub esp, 0x14; mov eax, [esp+0x18]; mov edx,
+/// [esp+0x1c]; push ebx` (`ret 0x10`).
+pub const COOLDOWN_UI: Site = code_site(
+    "CooldownManager button callback",
+    0x00ea_62b0,
+    &[
+        0x83, 0xEC, 0x14, 0x8B, 0x44, 0x24, 0x18, 0x8B, 0x54, 0x24, 0x1C, 0x53,
+    ],
+);
+
+/// `GameBeing` stat handler: `push -1; push 0x01708574; mov eax, fs:[0]`
+/// (`ret 8`).
+pub const STAT_HANDLER: Site = code_site(
+    "GameBeing stat handler",
+    0x00e0_1f40,
+    &[
+        0x6A, 0xFF, 0x68, 0x74, 0x85, 0x70, 0x01, 0x64, 0xA1, 0x00, 0x00, 0x00,
+    ],
+);
+
+/// `GameBeing` base-stat handler: `push -1; push 0x01708596; mov eax,
+/// fs:[0]` (`ret 8`).
+pub const STAT_BASE_HANDLER: Site = code_site(
+    "GameBeing base-stat handler",
+    0x00e0_2060,
+    &[
+        0x6A, 0xFF, 0x68, 0x96, 0x85, 0x70, 0x01, 0x64, 0xA1, 0x00, 0x00, 0x00,
+    ],
+);
+
+/// Current-stat functor: `push esi; push edi; mov edi, ecx; lea eax,
+/// [esp+0xc]; push eax; lea ecx, [edi+0x160]` (`ret 0x10`).
+pub const STAT_FUNCTOR: Site = code_site(
+    "GameBeing current-stat functor",
+    0x00e0_04e0,
+    &[
+        0x56, 0x57, 0x8B, 0xF9, 0x8D, 0x44, 0x24, 0x0C, 0x50, 0x8D, 0x8F, 0x60,
+    ],
+);
+
+/// Base-stat functor: `push esi; mov esi, ecx; lea eax, [esp+8]; push eax;
+/// lea ecx, [esi+0x160]` (`ret 0x10`).
+pub const STAT_BASE_FUNCTOR: Site = code_site(
+    "GameBeing base-stat functor",
+    0x00e0_05b0,
+    &[
+        0x56, 0x8B, 0xF1, 0x8D, 0x44, 0x24, 0x08, 0x50, 0x8D, 0x8E, 0x60, 0x01,
+    ],
+);
+
+/// `SequenceManager::onSequence`, the `Event_NetIn_onSequence` handler:
+/// `push -1; push 0x016fa823; mov eax, fs:[0]` (`ret 8`).
+pub const ON_SEQUENCE: Site = code_site(
+    "SequenceManager::onSequence",
+    0x00d0_5790,
+    &[
+        0x6A, 0xFF, 0x68, 0x23, 0xA8, 0x6F, 0x01, 0x64, 0xA1, 0x00, 0x00, 0x00,
+    ],
+);

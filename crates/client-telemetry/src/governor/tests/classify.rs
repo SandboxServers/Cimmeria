@@ -66,6 +66,9 @@ fn the_must_keep_targets_are_never_summarized() {
         ("client.ability.press_dropped", KeepReason::AbilityTrace),
         ("client.ability.sent", KeepReason::AbilityTrace),
         ("client.ability.sent_seq", KeepReason::AbilityTrace),
+        ("client.ability.recv", KeepReason::AbilityTrace),
+        ("client.ability.applied", KeepReason::AbilityTrace),
+        ("client.ability.shown", KeepReason::AbilityTrace),
     ];
     for (target, reason) in cases {
         assert_eq!(class_of(target), Class::MustKeep(*reason), "{target}");

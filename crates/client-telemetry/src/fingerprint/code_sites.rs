@@ -379,7 +379,7 @@ pub const SCRIPTED_DEBUG_ERROR: Site = code_site(
 );
 
 /// Every function the gate checks.
-pub const CODE_SITES: [Site; 54] = [
+pub const CODE_SITES: [Site; 66] = [
     cimmeria_client_hookgate::ENGINE_TICK,
     cimmeria_client_hookgate::DROP_CALLEE,
     BINK_TICK,
@@ -431,6 +431,18 @@ pub const CODE_SITES: [Site; 54] = [
     CHANNEL_SEND,
     NUB_SEND,
     SEQ_NEXT,
+    EFFECT_TIMER,
+    EFFECT_LOOKUP,
+    EFFECT_ANNOUNCE,
+    EFFECT_DATA_REQUEST,
+    EFFECT_POST,
+    COOLDOWN_TIMER,
+    COOLDOWN_UI,
+    STAT_HANDLER,
+    STAT_BASE_HANDLER,
+    STAT_FUNCTOR,
+    STAT_BASE_FUNCTOR,
+    ON_SEQUENCE,
     EVENT_GET_INT,
     EVENT_GET_FLOAT,
     EVENT_GET_BYTE,
