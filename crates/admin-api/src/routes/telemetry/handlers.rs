@@ -1,6 +1,7 @@
 //! Axum handlers and the unzip / verify / replay helpers they call.
 
 use std::io::Read;
+use std::time::SystemTime;
 
 use axum::extract::Multipart;
 use axum::http::HeaderMap;
@@ -11,6 +12,8 @@ use flate2::read::GzDecoder;
 use crate::routes::dev_session::{decode_token, AuthError, TokenClaims, SCOPE_TELEMETRY_WRITE};
 
 use super::dto::{BundleResponse, ChunkResponse, IngestError};
+use super::entity_labels::{self, name_chunk};
+use super::replay::parse_ndjson;
 use super::session_budget::{replay_budgeted, EVENTS_PER_WINDOW, WINDOW_SECS};
 use super::{
     MAX_BUNDLE_BYTES, MAX_BUNDLE_ENTRY_DECOMPRESSED_BYTES, MAX_CHUNK_BYTES,
@@ -49,19 +52,28 @@ pub(super) async fn upload_chunk(
     // The runaway guard: over the session's budget only priority events
     // are replayed; the rest are counted and reported below, never dropped
     // silently.
+    let events = parse_ndjson(&ndjson).map_err(|e| IngestError::Ndjson {
+        line: e.line,
+        err: e.err,
+    })?;
+    // Entity IDs are named by asking the cell who held each slot when the
+    // row was written (NT-40); the rest of a row's names need no round trip.
+    let labels = name_chunk(
+        &claims.sid,
+        &events,
+        SystemTime::now(),
+        entity_labels::cell(),
+    )
+    .await;
     let now = chrono::Utc::now().timestamp();
-    let (counts, totals) =
-        replay_budgeted(&claims, &ndjson, now).map_err(|e| IngestError::Ndjson {
-            line: e.line,
-            err: e.err,
-        })?;
+    let (counts, totals) = replay_budgeted(&claims, events, &labels, now);
     let (accepted, parsed, suppressed) = (counts.accepted, counts.parsed, counts.suppressed);
 
     if suppressed > 0 {
         tracing::warn!(
             target: "launcher.ingest",
-            session_id = %claims.sid,
-            install_id = %claims.sub,
+            session_id = %claims.sid, // nt:id-only telemetry session UUID from the token; it names nothing
+            install_id = %claims.sub, // nt:id-only launcher install UUID from the token; it names nothing
             session_kind = claims.session_kind(),
             accepted,
             parsed,
@@ -76,8 +88,8 @@ pub(super) async fn upload_chunk(
     } else {
         tracing::debug!(
             target: "launcher.ingest",
-            session_id = %claims.sid,
-            install_id = %claims.sub,
+            session_id = %claims.sid, // nt:id-only telemetry session UUID from the token; it names nothing
+            install_id = %claims.sub, // nt:id-only launcher install UUID from the token; it names nothing
             session_kind = claims.session_kind(),
             accepted,
             parsed,
@@ -127,8 +139,8 @@ pub(super) async fn upload_bundle(
                     Ok(meta) => {
                         tracing::info!(
                             target: "launcher.bundle",
-                            session_id = %claims.sid,
-                            install_id = %claims.sub,
+                            session_id = %claims.sid, // nt:id-only telemetry session UUID from the token; it names nothing
+                            install_id = %claims.sub, // nt:id-only launcher install UUID from the token; it names nothing
                             metadata = %meta,
                             "bundle metadata"
                         );
@@ -136,7 +148,7 @@ pub(super) async fn upload_bundle(
                     Err(e) => {
                         tracing::warn!(
                             target: "launcher.bundle",
-                            session_id = %claims.sid,
+                            session_id = %claims.sid, // nt:id-only telemetry session UUID from the token; it names nothing
                             error = %e,
                             "failed to parse bundle metadata JSON; correlator lost"
                         );
@@ -167,7 +179,7 @@ pub(super) async fn upload_bundle(
             other => {
                 tracing::debug!(
                     target: "launcher.bundle",
-                    session_id = %claims.sid,
+                    session_id = %claims.sid, // nt:id-only telemetry session UUID from the token; it names nothing
                     field = %other,
                     "ignoring unexpected multipart field"
                 );
@@ -178,7 +190,7 @@ pub(super) async fn upload_bundle(
     if !metadata_seen {
         tracing::warn!(
             target: "launcher.bundle",
-            session_id = %claims.sid,
+            session_id = %claims.sid, // nt:id-only telemetry session UUID from the token; it names nothing
             "bundle uploaded without metadata field"
         );
     }
@@ -209,7 +221,7 @@ fn unpack_and_replay(claims: &TokenClaims, zip_bytes: &[u8]) -> Result<(u64, u64
         if entry.size() > MAX_BUNDLE_ENTRY_DECOMPRESSED_BYTES {
             tracing::warn!(
                 target: "launcher.bundle",
-                session_id = %claims.sid,
+                session_id = %claims.sid, // nt:id-only telemetry session UUID from the token; it names nothing
                 path = %path,
                 declared_size = entry.size(),
                 cap = MAX_BUNDLE_ENTRY_DECOMPRESSED_BYTES,
@@ -230,7 +242,7 @@ fn unpack_and_replay(claims: &TokenClaims, zip_bytes: &[u8]) -> Result<(u64, u64
         if bounded.read_to_string(&mut content).is_err() {
             tracing::debug!(
                 target: "launcher.bundle",
-                session_id = %claims.sid,
+                session_id = %claims.sid, // nt:id-only telemetry session UUID from the token; it names nothing
                 path = %path,
                 "skipping non-UTF8 bundle entry"
             );
@@ -239,7 +251,7 @@ fn unpack_and_replay(claims: &TokenClaims, zip_bytes: &[u8]) -> Result<(u64, u64
         if content.len() as u64 > MAX_BUNDLE_ENTRY_DECOMPRESSED_BYTES {
             tracing::warn!(
                 target: "launcher.bundle",
-                session_id = %claims.sid,
+                session_id = %claims.sid, // nt:id-only telemetry session UUID from the token; it names nothing
                 path = %path,
                 decompressed = content.len(),
                 cap = MAX_BUNDLE_ENTRY_DECOMPRESSED_BYTES,
@@ -254,8 +266,8 @@ fn unpack_and_replay(claims: &TokenClaims, zip_bytes: &[u8]) -> Result<(u64, u64
             }
             tracing::info!(
                 target: "launcher.client_log",
-                session_id = %claims.sid,
-                install_id = %claims.sub,
+                session_id = %claims.sid, // nt:id-only telemetry session UUID from the token; it names nothing
+                install_id = %claims.sub, // nt:id-only launcher install UUID from the token; it names nothing
                 cimmeria.session_kind = claims.session_kind(),
                 lab = claims.is_lab(),
                 source = "bundle",

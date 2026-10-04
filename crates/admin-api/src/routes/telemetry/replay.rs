@@ -25,15 +25,28 @@
 //! | `ts_ms`, `seq` | the uploader's clock and sequence number |
 //!
 //! A `client.native` row adds the DLL's event name (`client_target`, also
-//! the log body), its level string (`client_level`), a few correlation keys
-//! lifted out of the DLL's `fields` bag when present (see
-//! [`LiftedFields`]), and the whole bag as JSON in `fields`.
+//! the log body), its level string (`client_level`), the DLL's IDs lifted
+//! out of its `fields` bag with their names resolved here (see
+//! [`super::replay_native`]), and the whole bag as JSON in `fields`.
+//!
+//! # Naming entity IDs
+//!
+//! [`replay_ndjson`] names content IDs, method indexes, message ids and
+//! addresses, but not entity IDs: those need the cell
+//! ([`super::entity_labels`]). The upload handler and
+//! [`replay_ndjson_named`] ask it.
 
-use serde_json::{Map, Value};
+use std::time::SystemTime;
+
+use tokio::sync::mpsc;
+
+use cimmeria_services::cell::messages::BaseToCellMsg;
 
 use crate::routes::dev_session::TokenClaims;
 
-use super::dto::{ClientNativeEvent, TelemetryEvent};
+use super::dto::TelemetryEvent;
+use super::entity_labels::{name_chunk, EntityLabels};
+use super::replay_native::{replay_client_native_named, ReplayNames};
 
 /// One NDJSON line that did not parse as a [`TelemetryEvent`]. The whole
 /// chunk is refused at the first one, as before this module existed.
@@ -59,11 +72,29 @@ pub struct ReplayCounts {
 
 /// Replay every event in a decompressed upload chunk (NDJSON, one
 /// `TelemetryEvent` per line) under `claims`. Blank lines are skipped.
+/// Entity IDs are not named (see the module docs).
 ///
 /// Public so the server's ingest round-trip test can drive the exact path
 /// `/api/telemetry/upload-chunk` takes, past the HTTP and gzip layers.
 pub fn replay_ndjson(claims: &TokenClaims, ndjson: &str) -> Result<ReplayCounts, ReplayError> {
     replay_ndjson_gated(claims, ndjson, |_| true)
+}
+
+/// [`replay_ndjson`] with entity IDs named: the chunk is placed on the
+/// server clock as received at `recv` and the cell is asked through `cell`,
+/// as the upload handler does (without its session budget).
+///
+/// Public so the server's tests can drive the naming against a real
+/// `SpaceManager`.
+pub async fn replay_ndjson_named(
+    claims: &TokenClaims,
+    ndjson: &str,
+    recv: SystemTime,
+    cell: Option<&mpsc::Sender<BaseToCellMsg>>,
+) -> Result<ReplayCounts, ReplayError> {
+    let events = parse_ndjson(ndjson)?;
+    let labels = name_chunk(&claims.sid, &events, recv, cell).await;
+    Ok(replay_events_gated(claims, events, &labels, |_| true))
 }
 
 /// [`replay_ndjson`] with a gate: an event for which `admit` returns
@@ -74,8 +105,19 @@ pub fn replay_ndjson(claims: &TokenClaims, ndjson: &str) -> Result<ReplayCounts,
 pub(super) fn replay_ndjson_gated(
     claims: &TokenClaims,
     ndjson: &str,
-    mut admit: impl FnMut(&TelemetryEvent) -> bool,
+    admit: impl FnMut(&TelemetryEvent) -> bool,
 ) -> Result<ReplayCounts, ReplayError> {
+    let events = parse_ndjson(ndjson)?;
+    Ok(replay_events_gated(
+        claims,
+        events,
+        &EntityLabels::none(),
+        admit,
+    ))
+}
+
+/// Parse a whole chunk, refusing it at the first bad line.
+pub(super) fn parse_ndjson(ndjson: &str) -> Result<Vec<TelemetryEvent>, ReplayError> {
     let mut events = Vec::new();
     for (idx, line) in ndjson.lines().enumerate() {
         if line.trim().is_empty() {
@@ -87,22 +129,38 @@ pub(super) fn replay_ndjson_gated(
         })?;
         events.push(ev);
     }
+    Ok(events)
+}
+
+/// Replay a parsed chunk through `admit`, naming each row's entity IDs
+/// from `labels` (built for these `events`, in this order).
+pub(super) fn replay_events_gated(
+    claims: &TokenClaims,
+    events: Vec<TelemetryEvent>,
+    labels: &EntityLabels,
+    mut admit: impl FnMut(&TelemetryEvent) -> bool,
+) -> ReplayCounts {
     let mut counts = ReplayCounts {
         parsed: events.len() as u64,
         ..ReplayCounts::default()
     };
-    for ev in events {
+    let book = cimmeria_names::book();
+    for (row, ev) in events.into_iter().enumerate() {
         if admit(&ev) {
-            replay_event(claims, ev);
+            let names = ReplayNames {
+                book: &book,
+                entity_label: &|id| labels.label(row, id),
+            };
+            replay_event(claims, ev, &names);
             counts.accepted += 1;
         } else {
             counts.suppressed += 1;
         }
     }
-    Ok(counts)
+    counts
 }
 
-pub(super) fn replay_event(claims: &TokenClaims, ev: TelemetryEvent) {
+pub(super) fn replay_event(claims: &TokenClaims, ev: TelemetryEvent, names: &ReplayNames<'_>) {
     // Every event carries the session's id, install and kind so SigNoz
     // queries can slice by session or by player without joining across
     // rows. Field naming matches the dev_session mint event so a session's
@@ -113,8 +171,8 @@ pub(super) fn replay_event(claims: &TokenClaims, ev: TelemetryEvent) {
         TelemetryEvent::ClientLog(e) => {
             tracing::info!(
                 target: "launcher.client_log",
-                session_id = %claims.sid,
-                install_id = %claims.sub,
+                session_id = %claims.sid, // nt:id-only telemetry session UUID from the token; it names nothing
+                install_id = %claims.sub, // nt:id-only launcher install UUID from the token; it names nothing
                 cimmeria.session_kind = kind,
                 lab,
                 ts_ms = e.ts_ms,
@@ -129,8 +187,8 @@ pub(super) fn replay_event(claims: &TokenClaims, ev: TelemetryEvent) {
         TelemetryEvent::DebugLog(e) => {
             tracing::info!(
                 target: "launcher.debug_log",
-                session_id = %claims.sid,
-                install_id = %claims.sub,
+                session_id = %claims.sid, // nt:id-only telemetry session UUID from the token; it names nothing
+                install_id = %claims.sub, // nt:id-only launcher install UUID from the token; it names nothing
                 cimmeria.session_kind = kind,
                 lab,
                 ts_ms = e.ts_ms,
@@ -148,8 +206,8 @@ pub(super) fn replay_event(claims: &TokenClaims, ev: TelemetryEvent) {
             // target is `off` in every OTLP filter.
             tracing::debug!(
                 target: "launcher.key_dump",
-                session_id = %claims.sid,
-                install_id = %claims.sub,
+                session_id = %claims.sid, // nt:id-only telemetry session UUID from the token; it names nothing
+                install_id = %claims.sub, // nt:id-only launcher install UUID from the token; it names nothing
                 ts_ms = e.ts_ms,
                 seq = e.seq,
                 source_file = %e.source_file,
@@ -159,8 +217,8 @@ pub(super) fn replay_event(claims: &TokenClaims, ev: TelemetryEvent) {
         TelemetryEvent::SessionMeta(e) => {
             tracing::info!(
                 target: "launcher.session_meta",
-                session_id = %claims.sid,
-                install_id = %claims.sub,
+                session_id = %claims.sid, // nt:id-only telemetry session UUID from the token; it names nothing
+                install_id = %claims.sub, // nt:id-only launcher install UUID from the token; it names nothing
                 cimmeria.session_kind = kind,
                 lab,
                 ts_ms = e.ts_ms,
@@ -170,179 +228,7 @@ pub(super) fn replay_event(claims: &TokenClaims, ev: TelemetryEvent) {
             );
         }
         TelemetryEvent::ClientNative(e) => {
-            replay_client_native(claims, e);
+            replay_client_native_named(claims, e, names.book, names.entity_label);
         }
-    }
-}
-
-/// Correlation keys lifted out of a DLL event's `fields` bag into
-/// attributes of their own, so SigNoz can filter on them without parsing
-/// the `fields` JSON. `None` (key absent or the wrong JSON type) omits the
-/// attribute: `tracing` records nothing for a `None` field, which is the
-/// right shape for "only when known" and never a sentinel.
-#[derive(Debug, Clone, Default, PartialEq)]
-pub(super) struct LiftedFields {
-    /// The game account, when a hook knows it.
-    pub account_id: Option<i64>,
-    /// The player entity, when a hook knows it.
-    pub player_id: Option<i64>,
-    /// A Mercury method index (`client.dispatch.method_dropped`).
-    pub method_index: Option<i64>,
-    /// The map being loaded (`client.streaming.*`).
-    pub level_name: Option<String>,
-    /// The DLL's own build (`client.dll.attached`).
-    pub dll_version: Option<String>,
-    /// Whether the SGW.exe build fingerprint matched
-    /// (`client.hooks.fingerprint`).
-    pub fingerprint_usable: Option<bool>,
-    /// The target a governor rollup summarizes (`client.telemetry.rollup`).
-    pub rollup_target: Option<String>,
-    /// How many events that rollup summarizes. Lifted only alongside
-    /// `rollup_target`, so a generic `count` field is never mistaken for
-    /// one; `sum(rollup_count)` by `rollup_target` recovers the totals.
-    pub rollup_count: Option<i64>,
-}
-
-impl LiftedFields {
-    pub(super) fn from_fields(fields: &Map<String, Value>) -> Self {
-        let int = |k: &str| fields.get(k).and_then(Value::as_i64);
-        let text = |k: &str| fields.get(k).and_then(Value::as_str).map(str::to_string);
-        Self {
-            account_id: int("account_id"),
-            player_id: int("player_id"),
-            method_index: int("method_index"),
-            level_name: text("level_name"),
-            dll_version: text("dll_version"),
-            fingerprint_usable: fields.get("usable").and_then(Value::as_bool),
-            rollup_target: text("rollup_target"),
-            rollup_count: text("rollup_target").and_then(|_| int("count")),
-        }
-    }
-}
-
-/// Replay one injected-DLL event through `tracing`.
-///
-/// - **Target is static** (`client.native`), which is what routes it to
-///   `cimmeria-client`. The DLL's own event name (`client.lua.pcall`)
-///   rides in `client_target` and is the log body, so the SigNoz list view
-///   shows it.
-/// - **`level` is honoured** if it is one of `trace`/`debug`/`info`/
-///   `warn`/`error`; anything else is replayed at `info` so a typo in the
-///   DLL never drops an event. The raw string is kept in `client_level`.
-/// - **Identity** is the token's (`session_id`, `install_id`,
-///   `cimmeria.session_kind`, `lab`), never the DLL's own claims.
-pub(super) fn replay_client_native(claims: &TokenClaims, e: ClientNativeEvent) {
-    let lifted = LiftedFields::from_fields(&e.fields);
-    let kind = claims.session_kind();
-    let lab = claims.is_lab();
-    let name = e.target.as_str();
-    let fields_json = Value::Object(e.fields);
-    match e.level.as_str() {
-        "trace" => tracing::trace!(
-            target: "client.native",
-            session_id = %claims.sid,
-            install_id = %claims.sub,
-            cimmeria.session_kind = kind,
-            lab,
-            ts_ms = e.ts_ms,
-            seq = e.seq,
-            client_target = name,
-            client_level = %e.level,
-            account_id = lifted.account_id,
-            player_id = lifted.player_id,
-            method_index = lifted.method_index,
-            level_name = lifted.level_name.as_deref(),
-            dll_version = lifted.dll_version.as_deref(),
-            fingerprint_usable = lifted.fingerprint_usable,
-            rollup_target = lifted.rollup_target.as_deref(),
-            rollup_count = lifted.rollup_count,
-            fields = %fields_json,
-            "{name}"
-        ),
-        "debug" => tracing::debug!(
-            target: "client.native",
-            session_id = %claims.sid,
-            install_id = %claims.sub,
-            cimmeria.session_kind = kind,
-            lab,
-            ts_ms = e.ts_ms,
-            seq = e.seq,
-            client_target = name,
-            client_level = %e.level,
-            account_id = lifted.account_id,
-            player_id = lifted.player_id,
-            method_index = lifted.method_index,
-            level_name = lifted.level_name.as_deref(),
-            dll_version = lifted.dll_version.as_deref(),
-            fingerprint_usable = lifted.fingerprint_usable,
-            rollup_target = lifted.rollup_target.as_deref(),
-            rollup_count = lifted.rollup_count,
-            fields = %fields_json,
-            "{name}"
-        ),
-        "warn" => tracing::warn!(
-            target: "client.native",
-            session_id = %claims.sid,
-            install_id = %claims.sub,
-            cimmeria.session_kind = kind,
-            lab,
-            ts_ms = e.ts_ms,
-            seq = e.seq,
-            client_target = name,
-            client_level = %e.level,
-            account_id = lifted.account_id,
-            player_id = lifted.player_id,
-            method_index = lifted.method_index,
-            level_name = lifted.level_name.as_deref(),
-            dll_version = lifted.dll_version.as_deref(),
-            fingerprint_usable = lifted.fingerprint_usable,
-            rollup_target = lifted.rollup_target.as_deref(),
-            rollup_count = lifted.rollup_count,
-            fields = %fields_json,
-            "{name}"
-        ),
-        "error" => tracing::error!(
-            target: "client.native",
-            session_id = %claims.sid,
-            install_id = %claims.sub,
-            cimmeria.session_kind = kind,
-            lab,
-            ts_ms = e.ts_ms,
-            seq = e.seq,
-            client_target = name,
-            client_level = %e.level,
-            account_id = lifted.account_id,
-            player_id = lifted.player_id,
-            method_index = lifted.method_index,
-            level_name = lifted.level_name.as_deref(),
-            dll_version = lifted.dll_version.as_deref(),
-            fingerprint_usable = lifted.fingerprint_usable,
-            rollup_target = lifted.rollup_target.as_deref(),
-            rollup_count = lifted.rollup_count,
-            fields = %fields_json,
-            "{name}"
-        ),
-        // `info` and any unrecognised value
-        _ => tracing::info!(
-            target: "client.native",
-            session_id = %claims.sid,
-            install_id = %claims.sub,
-            cimmeria.session_kind = kind,
-            lab,
-            ts_ms = e.ts_ms,
-            seq = e.seq,
-            client_target = name,
-            client_level = %e.level,
-            account_id = lifted.account_id,
-            player_id = lifted.player_id,
-            method_index = lifted.method_index,
-            level_name = lifted.level_name.as_deref(),
-            dll_version = lifted.dll_version.as_deref(),
-            fingerprint_usable = lifted.fingerprint_usable,
-            rollup_target = lifted.rollup_target.as_deref(),
-            rollup_count = lifted.rollup_count,
-            fields = %fields_json,
-            "{name}"
-        ),
     }
 }

@@ -22,6 +22,8 @@ mod abilities_event_field_tests;
 #[cfg(test)]
 mod abilities_target_tests;
 #[cfg(test)]
+mod client_entity_names_tests;
+#[cfg(test)]
 mod client_index_tests;
 #[cfg(test)]
 mod deployables_target_tests;

@@ -208,9 +208,15 @@ per-session is a record attribute instead:
 | `ts_ms`, `seq` | The uploader's clock and sequence number |
 | `client_target` | The DLL's event name (`client.lua.pcall`); also the log body |
 | `client_level` | The DLL's level string, kept when it is not one the server knows |
-| `account_id`, `player_id`, `method_index`, `level_name`, `dll_version`, `fingerprint_usable` | Lifted from the DLL's `fields` bag when the event carries them; absent otherwise, never `0` |
+| `class_id` + `class_name`, `method_index` + `method_name`, `msg_id` + `msg_name` | Lifted from the DLL's `fields` bag (`type_id` becomes `class_id`) and named from the NT-30 wire tables: `method_index` is a flat ClientMethod index, looked up in the row's entity type when it has one; `msg_id` is read from the server's interface on `client.net.out` and `client.ability.sent*`, the client's otherwise |
+| `entity_id`, `target_id`, `source_id`, `pet_id` + `<prefix>_name` | Entity IDs, named by the cell after whoever held the slot when the client wrote the row: the row's `ts_ms` mapped onto the server clock by a per-session offset (receive time minus the chunk's newest `ts_ms`, smallest seen), in the space the session last reported. Unnamed when the cell can't say |
+| `ability_id` + `ability_name`, `item_type_id` + `item_name` | Named from the NameBook |
+| `address` + `address_name` | A native SGW.exe address, named from the committed symbol table (`crates/admin-api/src/routes/telemetry/client_symbols.tsv`), exact entry points only |
+| `level_name`, `dll_version`, `fingerprint_usable` | Lifted from the DLL's `fields` bag on rows with no game ID (boot, hooks, streaming); absent otherwise, never `0` |
 | `rollup_target`, `rollup_count` | On a `client.telemetry.rollup` row: the target the governor summarized and how many events the row stands for (`count`, lifted only alongside `rollup_target`). `sum(rollup_count)` by `rollup_target` recovers totals |
 | `fields` | The DLL's whole `fields` bag as JSON |
+
+Every lifted key is absent when the event lacks it, and every name is absent when it doesn't resolve (Rule 6), never `0` or `""`. `tracing` caps an event at 32 fields, so a row is replayed in one of two shapes: one with any game ID carries the ID and name pairs, any other carries `level_name`, `dll_version`, `fingerprint_usable` and the rollup pair. Both carry the identity, the address pair and `fields`. The DLL's own `account_id` and `player_id` claims are not lifted: identity is the token's.
 
 `client_target` values added 2026-09-29, all under `client.native`:
 `client.lua.debug_log` (the UI's `Debug:log` / `warn` / `error` lines and the

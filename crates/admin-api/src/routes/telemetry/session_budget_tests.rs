@@ -4,6 +4,8 @@
 use serde_json::json;
 
 use super::dto::{ClientNativeEvent, DebugLogEvent, KeyDumpEvent, TelemetryEvent};
+use super::entity_labels::EntityLabels;
+use super::replay::parse_ndjson;
 use super::session_budget::{is_priority, replay_budgeted, SessionLedger, EVENTS_PER_WINDOW};
 use crate::routes::dev_session::TokenClaims;
 
@@ -152,7 +154,8 @@ fn a_runaway_chunk_is_cut_at_the_budget_and_counted() {
         r#"{"type":"client_native","ts_ms":1,"seq":0,"target":"client.lua.error","level":"warn"}"#
             .to_string(),
     );
-    let (counts, totals) = replay_budgeted(&claims, &lines.join("\n"), 1_000).unwrap();
+    let events = parse_ndjson(&lines.join("\n")).unwrap();
+    let (counts, totals) = replay_budgeted(&claims, events, &EntityLabels::none(), 1_000);
     assert_eq!(counts.parsed, EVENTS_PER_WINDOW + extra + 1);
     assert_eq!(
         counts.accepted,

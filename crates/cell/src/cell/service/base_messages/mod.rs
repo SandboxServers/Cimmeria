@@ -340,6 +340,12 @@ pub(super) async fn handle_base_message(
             lab_query::handle_lab_query(query, reply_tx, space_mgr);
         }
 
+        BaseToCellMsg::EntityLabelsAt { queries, reply_tx } => {
+            // Read-only, like LabQuery. A dropped receiver means the ingest
+            // stopped waiting and replays the chunk unnamed; nothing to undo.
+            let _ = reply_tx.send(space_mgr.entity_labels_at(&queries));
+        }
+
         BaseToCellMsg::MinigameResult {
             entity_id,
             result_code,

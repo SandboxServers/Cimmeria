@@ -16,15 +16,14 @@ use tracing_subscriber::layer::{Context, Layer, SubscriberExt};
 use crate::routes::dev_session::TokenClaims;
 
 use super::dto::ClientNativeEvent;
-use super::replay::{
-    replay_client_native, replay_ndjson, replay_ndjson_gated, LiftedFields, ReplayError,
-};
+use super::replay::{replay_ndjson, replay_ndjson_gated, ReplayError};
+use super::replay_native::{replay_client_native, LiftedFields};
 
 #[derive(Debug, Clone)]
-struct Row {
-    target: String,
-    level: tracing::Level,
-    fields: BTreeMap<String, String>,
+pub(super) struct Row {
+    pub(super) target: String,
+    pub(super) level: tracing::Level,
+    pub(super) fields: BTreeMap<String, String>,
 }
 
 #[derive(Clone, Default)]
@@ -54,7 +53,20 @@ impl<S: Subscriber> Layer<S> for Rows {
     }
 }
 
-fn capture(f: impl FnOnce()) -> Vec<Row> {
+/// [`capture`] around a future, on the current-thread test runtime (the
+/// subscriber is the thread's default while the future runs).
+pub(super) async fn capture_async<F: std::future::Future>(f: F) -> (F::Output, Vec<Row>) {
+    let rows = Rows::default();
+    let sub = tracing_subscriber::registry().with(rows.clone());
+    let out = {
+        let _guard = tracing::subscriber::set_default(sub);
+        f.await
+    };
+    let captured = rows.0.lock().unwrap().clone();
+    (out, captured)
+}
+
+pub(super) fn capture(f: impl FnOnce()) -> Vec<Row> {
     let rows = Rows::default();
     let sub = tracing_subscriber::registry().with(rows.clone());
     tracing::subscriber::with_default(sub, f);
@@ -62,7 +74,7 @@ fn capture(f: impl FnOnce()) -> Vec<Row> {
     out
 }
 
-fn claims(kind: Option<&str>) -> TokenClaims {
+pub(super) fn claims(kind: Option<&str>) -> TokenClaims {
     TokenClaims {
         iss: "cimmeria-server".into(),
         sub: "install-1".into(),
@@ -91,7 +103,7 @@ fn a_lab_client_row_carries_kind_identity_and_lifted_keys() {
     let rows = capture(|| {
         replay_client_native(
             &claims(Some("lab")),
-            native("warn", json!({ "method_index": 41, "account_id": 6 })),
+            native("warn", json!({ "method_index": 41 })),
         );
     });
     assert_eq!(rows.len(), 1);
@@ -106,7 +118,6 @@ fn a_lab_client_row_carries_kind_identity_and_lifted_keys() {
     assert_eq!(r.fields["client_level"], "warn");
     assert_eq!(r.fields["message"], "client.dispatch.method_dropped");
     assert_eq!(r.fields["method_index"], "41");
-    assert_eq!(r.fields["account_id"], "6");
     assert!(r.fields["fields"].contains("\"method_index\":41"));
 }
 
@@ -122,6 +133,9 @@ fn a_player_row_omits_the_keys_the_dll_did_not_send() {
         "account_id",
         "player_id",
         "method_index",
+        "method_name",
+        "entity_id",
+        "entity_name",
         "level_name",
         "dll_version",
         "fingerprint_usable",
@@ -139,20 +153,27 @@ fn an_unknown_level_is_replayed_at_info_with_the_raw_string() {
     assert_eq!(rows[0].fields["client_level"], "verbose");
 }
 
-/// Lifting takes each key only at its JSON type: a string `account_id`
-/// is not guessed into a number.
+/// Lifting takes each key only at its JSON type: a string `ability_id`
+/// is not guessed into a number, and a 0 or negative entity ID means none.
 #[test]
 fn lifted_fields_read_only_well_typed_keys() {
     let f = json!({
-        "account_id": "6",
-        "player_id": 9,
+        "ability_id": "6",
+        "method_index": 9,
+        "entity_id": 0,
+        "target_id": -1,
+        "source_id": 4123,
         "level_name": "Castle_CellBlock",
         "dll_version": "0.1.0+abc",
         "usable": true,
     });
     let l = LiftedFields::from_fields(f.as_object().unwrap());
-    assert_eq!(l.account_id, None);
-    assert_eq!(l.player_id, Some(9));
+    assert_eq!(l.ability_id, None);
+    assert_eq!(l.method_index, Some(9));
+    assert_eq!(
+        (l.entity_id, l.target_id, l.source_id),
+        (None, None, Some(4123))
+    );
     assert_eq!(l.level_name.as_deref(), Some("Castle_CellBlock"));
     assert_eq!(l.dll_version.as_deref(), Some("0.1.0+abc"));
     assert_eq!(l.fingerprint_usable, Some(true));

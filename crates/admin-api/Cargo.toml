@@ -7,6 +7,10 @@ description = "REST/WebSocket admin API for the Cimmeria server emulator"
 
 [dependencies]
 cimmeria-services = { workspace = true }
+# Telemetry ingest names client rows (NT-40): the NameBook for item and
+# ability IDs, the NT-30 wire tables for message ids and method indexes.
+cimmeria-names = { workspace = true }
+cimmeria-wire = { workspace = true }
 tokio = { workspace = true }
 axum = { workspace = true }
 tower-http = { workspace = true }
