@@ -13,6 +13,7 @@
 mod clear_effects;
 mod cooldowns;
 mod dummy;
+mod dummy_combat;
 mod effects;
 
 use cimmeria_entity::cell_entity::{TimedEffectSpec, TimedStacking};

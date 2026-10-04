@@ -21,7 +21,7 @@ use crate::test_support::LogCapture;
 
 const WITNESS: u32 = 2;
 
-fn template(id: i32) -> SpawnRecord {
+pub(super) fn template(id: i32) -> SpawnRecord {
     SpawnRecord {
         spawn_id: -1,
         world_name: String::new(),
@@ -67,7 +67,7 @@ fn template(id: i32) -> SpawnRecord {
     }
 }
 
-fn dummy_world() -> SpaceManager {
+pub(super) fn dummy_world() -> SpaceManager {
     let (mut mgr, _npc) = world(2);
     mgr.spawn_templates
         .insert(DEFAULT_DUMMY_TEMPLATE, template(DEFAULT_DUMMY_TEMPLATE));

@@ -14,7 +14,7 @@
 //!   clear is queued;
 //! - then the owed clears go out (`onTimerUpdate` with zero times, to the
 //!   entity's own client), with the `onStateFieldUpdate` a released stun owes
-//!   and the restored stats (`onStatUpdate`).
+//!   and the restored stats (`onStatUpdate`, to the entity and its witnesses).
 //!
 //! Cooldowns and a warmup are left alone: `.cooldowns reset` is the tool
 //! for the first, and a warmup ends on its own in seconds.
@@ -26,7 +26,7 @@ use cimmeria_cell_world::cell::effects::{dispatch_on_remove, EffectContext};
 use tokio::sync::mpsc;
 
 use super::display_name;
-use crate::cell::abilities::send_entity_method;
+use crate::cell::abilities::send_entity_method_to_self_and_witnesses;
 use crate::cell::client_methods::combatant::ON_STAT_UPDATE;
 use crate::cell::console::send_gm_feedback;
 use crate::cell::messages::CellToBaseMsg;
@@ -124,7 +124,11 @@ fn strip_pulses(subject: u32, space_mgr: &mut SpaceManager) -> Vec<(i32, u32)> {
     removed
 }
 
-/// Send `subject`'s dirty stats and clear the flags (the restored stats).
+/// Send `subject`'s dirty stats to it and to every player who sees it, and
+/// clear the flags (the restored stats). The witnesses need them as much as
+/// the owner does: applying the effect sent them to both
+/// (`effect_routing::land`), and once the dirty bits are cleared here no later
+/// flush would repair an observer's stale Health or Focus.
 async fn flush_stats(subject: u32, tx: &mpsc::Sender<CellToBaseMsg>, space_mgr: &mut SpaceManager) {
     let Some(entity) = space_mgr.get_entity_mut(subject) else {
         return;
@@ -134,5 +138,5 @@ async fn flush_stats(subject: u32, tx: &mpsc::Sender<CellToBaseMsg>, space_mgr: 
     }
     let dirty = entity.stats.serialize_dirty();
     entity.stats.clear_dirty();
-    send_entity_method(subject, ON_STAT_UPDATE, dirty, tx, space_mgr).await;
+    send_entity_method_to_self_and_witnesses(subject, ON_STAT_UPDATE, dirty, tx, space_mgr).await;
 }

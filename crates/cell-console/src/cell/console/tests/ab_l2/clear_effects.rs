@@ -8,6 +8,12 @@ use cimmeria_entity::cell_entity::{ActiveEffectInstance, TimedEffectSpec};
 use cimmeria_entity::stats::ACCURACY;
 use tracing::Level;
 
+use cimmeria_cell_world::cell::effects::registry::EffectScripts;
+use cimmeria_cell_world::cell::effects::{EffectContext, EffectScript};
+use cimmeria_common::EntityId;
+use cimmeria_entity::abilities::EffectDef;
+use cimmeria_entity::stats::QR_MOD;
+
 use super::{aim, console, lines, timers, world, CALLER};
 use crate::cell::messages::CellToBaseMsg;
 use crate::mercury::method_idx::{ON_STATE_FIELD_UPDATE, ON_STAT_UPDATE};
@@ -158,4 +164,108 @@ async fn ab_l2_cleareffects_with_nothing_on_says_so() {
     let msgs = console(&mut mgr, None, ".cleareffects").await;
     assert!(timers(&msgs).is_empty());
     assert!(lines(&msgs)[0].ends_with("nothing to clear"));
+}
+
+const WITNESS: u32 = 2;
+
+/// Copilot finding (#1177): a player's restored stats went only to the
+/// player. A witness must get the same `onStatUpdate`, or its view of the
+/// player keeps the buffed value (the flush clears the dirty bits, so nothing
+/// repairs it later). Revert proof: send with `send_entity_method` again and
+/// the witness gets nothing.
+#[tokio::test]
+async fn ab_l2_cleareffects_sends_the_restored_stats_to_observers() {
+    let (mut mgr, _npc) = world(2);
+    mgr.get_entity_mut(WITNESS)
+        .unwrap()
+        .witnesses
+        .insert(EntityId(CALLER as i32));
+    let caller = mgr.get_entity_mut(CALLER).unwrap();
+    caller
+        .apply_timed_effect(aim(CALLER), Instant::now())
+        .unwrap();
+    caller.stats.clear_dirty();
+
+    let msgs = console(&mut mgr, None, ".cleareffects").await;
+
+    let own: Vec<&Vec<u8>> = msgs
+        .iter()
+        .filter_map(|m| match m {
+            CellToBaseMsg::EntityMethodCall {
+                entity_id: CALLER,
+                method_index: ON_STAT_UPDATE,
+                args,
+            } => Some(args),
+            _ => None,
+        })
+        .collect();
+    let seen: Vec<&Vec<u8>> = msgs
+        .iter()
+        .filter_map(|m| match m {
+            CellToBaseMsg::WitnessEntityMethod {
+                witness_id: WITNESS,
+                entity_id: CALLER,
+                method_index: ON_STAT_UPDATE,
+                args,
+                ..
+            } => Some(args),
+            _ => None,
+        })
+        .collect();
+    assert_eq!(own.len(), 1, "the owner gets the restored stats once");
+    assert_eq!(seen, own, "the observer gets the same restored stats");
+}
+
+/// Counts `on_remove` calls on the target, as +1 on its `QR_MOD` max and cur:
+/// state on the entity, so parallel tests cannot share it.
+struct CleanupProbe;
+
+const PROBE: &str = "AbL2CleanupProbe";
+
+impl EffectScript for CleanupProbe {
+    fn on_apply(&self, _ctx: &mut EffectContext) {}
+    fn on_remove(&self, ctx: &mut EffectContext) {
+        if let Some(s) = ctx
+            .space_mgr
+            .get_entity_mut(ctx.target_id)
+            .and_then(|e| e.stats.get_mut(QR_MOD))
+        {
+            let (min, cur, max) = (s.min, s.cur, s.max);
+            s.update(min, cur + 1, max + 1);
+        }
+    }
+}
+
+/// Copilot finding (#1177): the pulse strip runs each removed pulse's
+/// script `on_remove` exactly once, so a stateful script undoes its state.
+/// Revert proof: drop the `dispatch_on_remove` call and the count is 0.
+#[tokio::test]
+async fn ab_l2_cleareffects_runs_each_pulse_scripts_on_remove_once() {
+    let (mut mgr, _npc) = world(2);
+    mgr.install_effect_scripts(
+        EffectScripts::build([(PROBE, &CleanupProbe as &'static dyn EffectScript)]).unwrap(),
+    );
+    mgr.effect_defs.insert(
+        5001,
+        EffectDef {
+            effect_id: 5001,
+            ability_id: 800,
+            script_name: Some(PROBE.to_string()),
+            ..Default::default()
+        },
+    );
+    let caller = mgr.get_entity_mut(CALLER).unwrap();
+    caller.active_effects.push(pulse(5001, WITNESS));
+    let before = caller.stats.get(QR_MOD).unwrap().cur;
+
+    let msgs = console(&mut mgr, None, ".cleareffects").await;
+
+    let caller = mgr.get_entity(CALLER).unwrap();
+    assert!(caller.active_effects.is_empty());
+    assert_eq!(
+        caller.stats.get(QR_MOD).unwrap().cur - before,
+        1,
+        "on_remove ran exactly once"
+    );
+    assert_eq!(effect_clears(&msgs, CALLER), vec![(5001, 5, [0; 8])]);
 }

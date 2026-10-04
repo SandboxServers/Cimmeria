@@ -29,6 +29,13 @@ stops it fighting back is `ai_driven_npc_entity_ids` skipping the mark: no
 AI turn means no fight, chase, leash or movement (the retry sweep is fed only
 by the fight pass). Expiry is a 1 Hz sweep in the cell message loop; the
 owner's `DisconnectEntity` sweeps theirs. Gate travel does not.
+- The player attack gate (`player_may_attack_pve`) reads `faction == 10`,
+  never the aggression override, so a spawned NPC's attackability comes from
+  its faction: the dummy sets 10 (hostile) or 9 Friendly_Ambient (friendly).
+- `despawn_npc` removes the entity only. Anything that despawns an NPC a
+  player has hit must first run `drain_npc_from_player_combat` and send the
+  returned state fields, or the player stays in combat (no regen). `.despawn`
+  itself still lacks this as of 2026-10-04.
 
 **Cooldown clear bytes.** The client's hotbar sweep stops on
 `onTimerUpdate(ability_id, type 2 TIMER_ABILITY_COOLDOWN, caster, 0, 0.0, 0.0)`

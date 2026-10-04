@@ -10,8 +10,23 @@
 //! - the template's own Defense and Accuracy, read back in the feedback line
 //!   (and in `.effects` / `server_ability_state`) so a QR expectation can be
 //!   computed;
-//! - an aggression override (`hostile` or `friendly`), no respawn and no
-//!   `spawnlist` row.
+//! - a disposition that decides who may shoot it: `hostile` gets faction
+//!   [`HOSTILE_FACTION`] (10) and a HOSTILE override, `friendly` gets
+//!   [`FRIENDLY_DUMMY_FACTION`] (9, Friendly_Ambient) and a FRIENDLY
+//!   override. The player attack gate (`player_may_attack_pve`) reads the
+//!   faction, so the template's own faction must not decide it: template 34
+//!   is faction 10, which made a `friendly` dummy attackable, and a faction-1
+//!   template made a `hostile` one untouchable. Faction 9 regards every
+//!   faction as friendly and no faction is hostile to it, so no NPC picks a
+//!   friendly dummy as a target either. The gate itself is unchanged;
+//! - no respawn and no `spawnlist` row.
+//!
+//! **Despawn leaves nobody in combat.** A hit puts the dummy in the
+//! attacker's `threatened_mobs`, and `despawn_npc` only removes the entity.
+//! Every despawn (clear, expiry, owner logout) first drains the dummy from
+//! every player's combat set, as the leash does, and broadcasts each
+//! `onStateFieldUpdate` whose `BSF_InCombat` just cleared; a player still
+//! fighting another mob stays in combat.
 //!
 //! It despawns [`LAB_DUMMY_LIFETIME`] after placement ([`lab_dummy_tick`]) or
 //! when its owner logs out ([`despawn_lab_dummies_of`]). `.dummy clear`
@@ -25,6 +40,9 @@ use cimmeria_entity::cell_entity::MobAggression;
 use cimmeria_entity::stats::{ACCURACY, DEFENSE, HEALTH};
 use tokio::sync::mpsc;
 
+use crate::cell::abilities::send_entity_method_to_self_and_witnesses;
+use crate::cell::client_methods::being::ON_STATE_FIELD_UPDATE;
+use crate::cell::combat::{drain_npc_from_player_combat, HOSTILE_FACTION};
 use crate::cell::console::send_gm_feedback;
 use crate::cell::messages::CellToBaseMsg;
 use crate::cell::space_manager::{
@@ -35,6 +53,19 @@ use crate::cell::space_manager::{
 /// The template a dummy uses when none is named: 34, "SGC Jaffa", a plain
 /// humanoid body with no ability set.
 pub(crate) const DEFAULT_DUMMY_TEMPLATE: i32 = 34;
+
+/// The faction of a `friendly` dummy: 9, Friendly_Ambient, friendly to every
+/// faction and the target of none.
+pub(crate) const FRIENDLY_DUMMY_FACTION: u8 = 9;
+
+/// The faction that makes `disposition` true for the attack gate.
+pub(crate) fn dummy_faction(disposition: MobAggression) -> u8 {
+    if disposition.is_hostile() {
+        HOSTILE_FACTION
+    } else {
+        FRIENDLY_DUMMY_FACTION
+    }
+}
 
 /// How far in front of the caller a dummy is placed, in metres.
 const PLACE_DISTANCE: f32 = 3.0;
@@ -146,6 +177,8 @@ async fn place(
     if let Some(h) = dummy.stats.get_mut(HEALTH) {
         h.update(0, LAB_DUMMY_HEALTH, LAB_DUMMY_HEALTH);
     }
+    // Set before the first AoI pass, so the client's create carries it too.
+    dummy.faction = dummy_faction(disposition);
     dummy.extensions.insert(LabDummy {
         owner_id: caller_id,
         owner_identity,
@@ -164,6 +197,7 @@ async fn place(
         dummy_id,
         template_id,
         disposition = disposition.label(),
+        faction = dummy_faction(disposition),
         health = LAB_DUMMY_HEALTH,
         defense,
         accuracy,
@@ -254,6 +288,20 @@ async fn despawn(
     else {
         return false;
     };
+    let exits = drain_npc_from_player_combat(space_mgr, dummy_id);
+    if let Some(d) = space_mgr.get_entity_mut(dummy_id) {
+        d.threat_list.clear();
+    }
+    for &(player_id, state) in &exits {
+        send_entity_method_to_self_and_witnesses(
+            player_id,
+            ON_STATE_FIELD_UPDATE,
+            state.to_le_bytes().to_vec(),
+            tx,
+            space_mgr,
+        )
+        .await;
+    }
     let outcome = space_mgr.despawn_npc(dummy_id, tx).await;
     let (removed, witnesses) = match outcome {
         DespawnOutcome::Despawned { witnesses_notified } => (true, witnesses_notified),
@@ -269,6 +317,7 @@ async fn despawn(
         dummy_id,
         removed,
         witnesses_notified = witnesses,
+        combat_exits = exits.len(),
         "lab dummy despawned"
     );
     removed
