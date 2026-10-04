@@ -223,4 +223,7 @@ fn a_reliable_fragmented_bundle_arriving_reversed_is_delivered_once() {
     assert!(ch.receive_parsed(frag(1)).unwrap().bundles.is_empty());
     let done = ch.receive_parsed(frag(0)).unwrap();
     assert_eq!(bodies(&done), vec![b"AAABBBCCC".as_slice()]);
+    // AB-T2: the reassembled bundle is known by its first fragment's seq
+    // (`frag_begin`), not by the seq of the fragment that completed it (12).
+    assert_eq!(done.bundle_seqs, vec![Some(10)]);
 }

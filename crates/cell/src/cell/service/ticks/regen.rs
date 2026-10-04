@@ -98,6 +98,7 @@ pub(in crate::cell::service) async fn regen_tick(
                         event = "regen_skipped",
                         reason = if pool.is_some() { "pool_full" } else { "no_pool_stat" },
                         entity_id,
+                        account_id = entity.account_id,
                         player_id = entity.player_id,
                         pool_id,
                         "regen tick: this pool needs no regen; the other pool still regenerates"
@@ -124,10 +125,13 @@ pub(in crate::cell::service) async fn regen_tick(
             )
             .await;
         } else {
+            let who = space_mgr.player_identity(entity_id);
             tracing::trace!(
                 target: "vitals",
                 event = "regen_skipped",
                 reason = "nothing_dirty",
+                account_id = who.account_id,
+                player_id = who.player_id,
                 entity_id,
                 "regen tick: eligible but no pool changed; no onStatUpdate sent"
             );
