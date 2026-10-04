@@ -5,14 +5,18 @@
 //! One row runs as: static checks (standing `blocked`, players, colo
 //! rule 6, tool availability) → reach the row's state (client running,
 //! logged in, in world; and p2 in world for a two-player row) → the
-//! `.bug uat <row>` anchor → setup → steps
-//! (clauses and evidence tied to a step label run right after it) → end
+//! `.bug uat <row>` anchor → packet tap and client-event marks → setup →
+//! steps (a press also captures `${cast_id}`, see [`cast_id`]; clauses and
+//! evidence tied to a step label run right after it) → end
 //! clauses and evidence → teardown → grade → write. Rows are independent:
 //! a failed row never stops the section.
 
 mod actions;
+mod cast_id;
 mod checks;
 mod clauses;
+mod client_events;
+mod lab_commands;
 mod packet;
 mod players;
 mod session;
@@ -126,6 +130,9 @@ pub(crate) struct RowCtx {
     pub started_ms: i64,
     /// The row's packet tap, when a clause reads one.
     pub tap: Option<packet::RowTap>,
+    /// Event-store seqs client_event clauses read from, per client and
+    /// label (`Who::mark`; `""` is the row start), or why there is none.
+    pub event_marks: HashMap<String, Result<u64, String>>,
 }
 
 /// The runner. Holds the invokers, the run directory and its manifest.
@@ -306,6 +313,7 @@ impl<'a, I: ToolInvoker> Runner<'a, I> {
             anchor: None,
             started_ms: now_ms(),
             tap: None,
+            event_marks: HashMap::new(),
         };
         ctx.blocked = self.static_blocks(spec, row);
         let mut results: Vec<Option<ClauseResult>> = vec![None; row.expect.len()];
@@ -388,6 +396,7 @@ impl<'a, I: ToolInvoker> Runner<'a, I> {
         if tapped {
             self.tap_start(ctx).await;
         }
+        self.event_marks_at(row, None, ctx).await;
         let setup_ok = self.drive_steps(row, ctx, results).await;
         // Read and stop the tap before teardown, and on the failed-setup
         // path too: a tap left running would keep buffering this session.
@@ -449,6 +458,7 @@ impl<'a, I: ToolInvoker> Runner<'a, I> {
                         ctx.chat_marks.insert(who.mark(label), tail);
                     }
                 }
+                self.event_marks_at(row, Some(label), ctx).await;
             }
             let rec = self.exec(a, Role::Step, ctx).await;
             let stop = !rec.ok && !a.optional;
@@ -501,6 +511,8 @@ impl<'a, I: ToolInvoker> Runner<'a, I> {
     }
 }
 
+#[cfg(test)]
+mod ability_tests;
 #[cfg(test)]
 mod packet_tests;
 #[cfg(test)]

@@ -6,6 +6,7 @@ use super::actions::{CHAT_MACRO_TOOLS, CHAT_READ_TOOL, CHAT_SEND_TOOL};
 use super::players::Who;
 use super::Runner;
 use crate::uat::invoke::ToolInvoker;
+use crate::uat::lab_commands;
 use crate::uat::spec::{ActionKind, ActionSpec, RowSpec, SectionSpec, Source};
 use crate::uat::tier;
 
@@ -46,6 +47,7 @@ impl<I: ToolInvoker> Runner<'_, I> {
                 Source::Tool => c.tool.as_deref(),
                 Source::Lua => Some("client_lua_eval"),
                 Source::Wait => Some("client_wait_for"),
+                Source::ClientEvent => Some(super::client_events::WAIT_EVENT_TOOL),
                 _ => None,
             };
             let who = Who::of(c.client.as_deref());
@@ -88,6 +90,15 @@ impl<I: ToolInvoker> Runner<'_, I> {
                 }
                 if let Err(e) = tier::resolve_tool(t, a.tier) {
                     out.push(format!("spec: {e}"));
+                }
+                // `@clear_effects { name }` targets by clicking first.
+                let targets = t == lab_commands::CLEAR_EFFECTS_TOOL
+                    && a.args.as_ref().is_some_and(|x| x.get("name").is_some());
+                if targets && !inv.has_tool("client_target") {
+                    out.push(format!(
+                        "{t} with a name needs tool client_target, which is not routed{}",
+                        on_p2(who)
+                    ));
                 }
             }
             Ok(ActionKind::Chat) => {

@@ -87,6 +87,16 @@ impl<'a, I: ToolInvoker> Runner<'a, I> {
 
     /// Whether `who` can run `tool`. `@target_player` needs `client_target`.
     pub(crate) fn routed(&self, who: Who, tool: &str) -> bool {
+        // The ability lab commands are typed chat, confirmed from the chat
+        // box: they need a chat sender and the chat reader.
+        if crate::uat::lab_commands::is_lab_command(tool) {
+            let inv = self.on(who);
+            let send = inv.has_tool(super::actions::CHAT_SEND_TOOL)
+                || super::actions::CHAT_MACRO_TOOLS
+                    .iter()
+                    .all(|t| inv.has_tool(t));
+            return send && inv.has_tool(super::actions::CHAT_READ_TOOL);
+        }
         let tool = if tool == TARGET_PLAYER_TOOL {
             "client_target"
         } else {
