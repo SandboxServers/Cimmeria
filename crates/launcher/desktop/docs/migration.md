@@ -172,9 +172,8 @@ identity, receipt mismatch refusal and uninstall. They directly construct the
 post-publication state. A signed local-seed test also reconstructs and commits
 Repair against a distinct current manifest, preserving the original owner and old
 backup. These tests do **not** prove an Update transition, Update replacement or
-rollback, effective imported configuration or UI. The next required journey is a
-confirmed Update that stages another authenticated release, retains its owned
-backup and publishes both current receipts through explicit recovery checkpoints.
+rollback, effective imported configuration or UI. Those earlier fixtures did not
+exercise the Update journey described below.
 
 ### Update admission
 
@@ -187,8 +186,59 @@ An identical retry returns the plan without dispatch; reopening leaves the
 operation in reconciliation and reverifies both signed releases. A different
 current release, conflicting UUID or occupied artifact path is refused.
 
-This interface is not exposed as an IPC Update action yet. Modification review,
-retained preparation, replacement/publication checkpoints, cancellation/recovery,
-rollback and the Update UI remain required. The frontend snapshot contract can
-read an Update journal; native-persistence JS UAT verifies reconciliation survives
-reopen without redispatch, not a complete Update journey.
+### Retained Update execution and recovery
+
+`update::preparation::prepare_native` (Windows) and `prepare_wine` reconstruct the
+authenticated target release in an operation-owned stage. They retain root/work
+ownership, publish progress and accept durable precommit cancellation; the Wine
+handoff also retains its owned adapter. Preparation preserves the existing game.
+A derived fingerprint binds staged paths and file contents to the plan and is
+rechecked before promotion/publication. It is not a publisher-signed file
+inventory or a review of modifications in the old game.
+
+`update::commit::commit_native` / `commit_wine` consume the prepared handoff without
+releasing ownership. Replacement records Planned → OriginalMoved → Promoted →
+Published checkpoints, moves the old game to its owned backup, promotes the stage,
+then publishes the content-ready receipt and installed-content index. These are
+separate renames and writes. Cancellation cannot interrupt commit after entry;
+losing the observer does not abort the retained worker. Failure preserves evidence
+and requires reconciliation. Success retains the backup and does not prove runtime
+readiness.
+
+Explicit `update::recovery::recover_*` finishes only a validated checkpointed
+replacement. `update::abandon::abandon_*` cancels eligible pre-checkpoint work while
+preserving game and stage content. Confirmed `update::discard::discard_*` removes
+the owned preparation directory after terminal cancellation/failure; interrupted
+nonterminal preparation must first be abandoned. `update::cleanup::cleanup_*`
+separately removes the current successful Update's backup through resumable
+deletion checkpoints; `cleanup::status` inspects that backup. Native evidence,
+operation identity/revision and Wine process-ownership checks gate these actions.
+Missing or conflicting evidence does not authorize success or deletion. These are
+internal APIs: a UI must separately confirm destructive consequences before
+calling them. `update_plan()` and the operation snapshot provide durable status.
+
+`admit_update_rollback(completed_update, id, revision, expected_current, confirmed)`
+creates another confirmed Update to reconstruct the prior authenticated release
+from retained signed evidence, checking that release's launcher minimum again.
+It never promotes the old backup or trusts modified backup files as release
+content. The permanent installation owner, original setup inputs and adoption
+provenance remain unchanged; current-release receipts change through publication.
+Uninstall recognizes completed Update/Repair auxiliary directories only against
+their durable plans, owner and checkpoint/role evidence.
+
+Modification review and the IPC/Effect Update journey remain separate integration
+work. Confirmation binds the reviewed old/new signed identities, but this API does
+not enumerate changed files for review. The UI must disclose full reconstruction:
+existing modifications and game-local user files remain only in the retained
+backup; they are not merged into the newly active game.
+
+Native Mac fixtures exercise two distinct signed HTTP seeds through Update,
+reopen, Repair of the new release and Uninstall; both sides of both renames and
+both receipt/index publications; cancelled and lost observers; foreign ownership
+and modified-stage refusal; explicit abandonment/discard/backup cleanup; and
+separately confirmed signed rollback. Adoption provenance and exact imported JSON
+are covered by a separate native fixture. These tests do not establish native
+Windows locking, rename or power-loss behavior, original-client Wine reconstruction
+or packaged visual/focus behavior. Integrated native-persistence JS UAT and actual
+window UAT remain separate gates. See the
+[native Update worknote](../../../../docs/analysis/playtests/2026-10-03-macos-wine/worknotes/game-update-native.md).

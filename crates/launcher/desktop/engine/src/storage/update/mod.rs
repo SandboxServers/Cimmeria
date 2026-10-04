@@ -1,6 +1,16 @@
 //! Game Update admission binds two authenticated releases to one permanent owner.
 //! Admission persists intent only; replacement and recovery are separate phases.
+use super::repair::{directory_or_absent, lock_owner, ordinary};
 use super::*;
+use crate::owner_lock::OwnerLock;
+pub mod abandon;
+pub mod cleanup;
+pub mod commit;
+pub mod discard;
+pub mod preparation;
+pub mod recovery;
+mod staged_content;
+use super::repair::tree_identity;
 use crate::{catalog::VerifiedRelease, OperationKind};
 use sha2::{Digest, Sha256};
 use uuid::Uuid;
@@ -13,6 +23,11 @@ pub struct Plan {
     pub owner: InstallIntent,
     pub previous: ReleaseIdentity,
     pub target: ReleaseIdentity,
+}
+impl tree_identity::TreePlan for Plan {
+    fn marker_name(&self) -> String {
+        format!(".cimmeria-update-tree-{}.json", self.id)
+    }
 }
 impl Plan {
     pub fn work_directory(&self) -> PathBuf {
@@ -61,6 +76,50 @@ fn name(id: Uuid) -> String {
     format!("update-plan-{id}.json")
 }
 impl DesktopState {
+    /// A separate confirmed transition reconstructs the previous authenticated
+    /// release. The old backup is never treated as executable rollback evidence.
+    pub fn admit_update_rollback(
+        &mut self,
+        completed_update: Uuid,
+        id: Uuid,
+        revision: u64,
+        expected_current: ReleaseIdentity,
+        confirmed: bool,
+    ) -> Result<Admission, IntentError> {
+        if !confirmed {
+            return Err(ContractError::InvalidTransition.into());
+        }
+        let record: commit::Record = read(
+            &self
+                .directory
+                .root
+                .join(format!("update-commit-{completed_update}.json")),
+        )?
+        .ok_or(StorageError::Corrupt)?;
+        let saved: Plan = read(&self.directory.root.join(name(completed_update)))?
+            .ok_or(StorageError::Corrupt)?;
+        if saved != record.plan
+            || record.schema_version != 2
+            || record.phase != commit::Phase::Published
+            || record.plan.id != completed_update
+            || !record.plan.valid()
+            || record.plan.target != expected_current
+        {
+            return Err(ContractError::IdentityConflict.into());
+        }
+        let release = self
+            .verify_release_identity(record.plan.previous)
+            .map_err(|_| StorageError::Corrupt)?;
+        self.admit_update(Request {
+            id,
+            operation_revision: revision,
+            installation_id: record.plan.owner.operation_id,
+            expected_current,
+            target: &release,
+            confirmed,
+        })
+    }
+
     pub fn admit_update(&mut self, request: Request<'_>) -> Result<Admission, IntentError> {
         self.ensure_updater_idle()?;
         if self.requires_reopen() {
@@ -175,3 +234,60 @@ impl DesktopState {
 }
 #[cfg(test)]
 mod tests;
+
+#[cfg(feature = "test-support")]
+pub mod test_support;
+
+/// Uninstall validates auxiliary content against the durable completed plan.
+pub(super) fn uninstall_artifact(
+    state_root: &Path,
+    path: &Path,
+    owner: &InstallIntent,
+    partial: bool,
+) -> Result<bool, StorageError> {
+    let Some(filename) = path.file_name().and_then(|n| n.to_str()) else {
+        return Ok(false);
+    };
+    let work_prefix = ".cimmeria-update-";
+    let backup_prefix = ".cimmeria-update-backup-";
+    let (id, backup) = if let Some(id) = filename.strip_prefix(backup_prefix) {
+        (id, true)
+    } else if let Some(id) = filename.strip_prefix(work_prefix) {
+        (id, false)
+    } else {
+        return Ok(false);
+    };
+    let id = Uuid::parse_str(id).map_err(|_| StorageError::Corrupt)?;
+    let plan: Plan = read(&state_root.join(name(id)))?.ok_or(StorageError::Corrupt)?;
+    let checkpoint: commit::Record =
+        read(&state_root.join(format!("update-commit-{id}.json")))?.ok_or(StorageError::Corrupt)?;
+    if !plan.valid()
+        || plan.id != id
+        || plan.owner != *owner
+        || checkpoint.schema_version != 2
+        || checkpoint.plan != plan
+        || checkpoint.phase != commit::Phase::Published
+    {
+        return Err(StorageError::Corrupt);
+    }
+    if backup {
+        let marker = path.join(tree_identity::name(&plan));
+        if (!partial || marker.try_exists().map_err(|_| StorageError::Io)?)
+            && tree_identity::read_role(path, &plan)? != Some(tree_identity::Role::Original)
+        {
+            return Err(StorageError::Corrupt);
+        }
+    } else {
+        let marker = path.join("owner.json");
+        if (!partial || marker.try_exists().map_err(|_| StorageError::Io)?)
+            && read::<Plan>(&marker)?.as_ref() != Some(&plan)
+        {
+            return Err(StorageError::Corrupt);
+        }
+    }
+    failed_cleanup::validate_tree(path)?;
+    Ok(true)
+}
+
+#[cfg(test)]
+mod journey_tests;
