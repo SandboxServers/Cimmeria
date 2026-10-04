@@ -23,6 +23,8 @@ One line per topic file; the detail lives in the file. Keep hooks short (this in
 
 ## Tooling quirks
 
+- [launcher-native-owner-handle.md](launcher-native-owner-handle.md) — native launch reads installation identity through its locked handle; Windows revert proof must run natively.
+
 - [patchset-supersede-and-restore-to-stock](patchset-supersede-and-restore-to-stock.md) — apply skips target==result before source check; a delta back to an LZO stock map ships CME bytes.
 - [client-file-case-and-stock-listing](client-file-case-and-stock-listing.md) — game UI lookups are case-sensitive on Windows (eula.lua = no login); rename keeps target spelling; DATA.INF = stock names.
 - [offline-client-event-trace-and-udp-port-trap](offline-client-event-trace-and-udp-port-trap.md) — no Ghidra: client Lua + PE bytes + RTTI name the CME event a handler raises.
