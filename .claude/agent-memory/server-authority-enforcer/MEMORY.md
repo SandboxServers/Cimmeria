@@ -69,3 +69,4 @@
 - [project_bank_vault_bv09_review.md](project_bank_vault_bv09_review.md) — BV-09 Team vault expansion from treasury: leader-under-lock cleared; leaver + recycled-eid guards added; other-member onBagInfo open
 - [exploit_refund_not_bound_to_payment.md](exploit_refund_not_bound_to_payment.md) — CR10 respec refunded ASP per discipline held, not per ASP paid; free grant paths minted ASP (fixed: spent counter)
 - [reference_respawn_gate.md](reference_respawn_gate.md) — callForAid/respawn dead gate + offered_in_world live in the dispatch arms, not handle_respawn (#799)
+- [reference_beneficial_cast_gate.md](reference_beneficial_cast_gate.md) — AB-01 beneficial classifier/resolver; Heal type_id covers debuff/CC abilities in seed (latent ally-grief)
