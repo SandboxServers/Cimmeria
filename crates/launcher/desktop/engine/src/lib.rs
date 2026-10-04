@@ -49,3 +49,6 @@ pub mod mac_runtime;
 
 #[cfg(target_os = "macos")]
 pub mod mac_wine;
+
+/// Authenticated prerequisite package inputs; execution is a separate operation.
+pub mod prerequisites;

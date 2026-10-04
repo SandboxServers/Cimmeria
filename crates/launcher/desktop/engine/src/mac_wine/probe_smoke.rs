@@ -183,11 +183,25 @@ async fn register_fixture_core(runtime: &Path, prefix: &Path, source: &Path) {
 /// Explicit headless experiment with the original vendor package; never used
 /// by production admission until exit, SDK result and recovery are established.
 async fn run_vendor_installer(runtime: &Path, prefix: &Path, source: &Path) {
-    let bytes = std::fs::read(source).unwrap();
+    let mut bytes = Vec::new();
+    std::io::Read::read_to_end(
+        &mut std::io::Read::take(
+            File::open(source).unwrap(),
+            crate::prerequisites::PHYSX_EXE_BYTES as u64 + 1,
+        ),
+        &mut bytes,
+    )
+    .unwrap();
+    // Exercise the same authenticated extraction as the native coordinator will
+    // use. Both modes authenticate the complete wrapper before any execution.
+    // A same-size wrapper change must invalidate even an otherwise intact MSI.
+    bytes[0] ^= 1;
     assert_eq!(
-        hex(&Sha256::digest(&bytes)),
-        "920d5e09e6ba0a92342271c18c67472461813424d70b5c0b981b6f13b129fbf6"
+        crate::prerequisites::physx_msi(&bytes),
+        Err(crate::prerequisites::PackageError::Identity)
     );
+    bytes[0] ^= 1;
+    let payload = crate::prerequisites::physx_msi(&bytes).unwrap();
     let mode = std::env::var("SGW_PHYSX_INSTALLER_MODE").unwrap_or_else(|_| "msi".into());
     assert!(matches!(mode.as_str(), "msi" | "exe"));
     let installer = prefix
@@ -195,13 +209,6 @@ async fn run_vendor_installer(runtime: &Path, prefix: &Path, source: &Path) {
         .unwrap()
         .join(format!("physx-7.11.13.{mode}"));
     if mode == "msi" {
-        // Original hash above binds this exact container. Independently measured
-        // Compound archive boundary with 7-Zip: offset35463, size38811648.
-        let payload = &bytes[35463..35463 + 38811648];
-        assert_eq!(
-            &payload[..8],
-            &[0xd0, 0xcf, 0x11, 0xe0, 0xa1, 0xb1, 0x1a, 0xe1]
-        );
         std::fs::write(&installer, payload).unwrap();
     } else {
         std::fs::write(&installer, bytes).unwrap();

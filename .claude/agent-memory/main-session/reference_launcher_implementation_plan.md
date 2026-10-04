@@ -382,3 +382,11 @@ Windows+Mac before the shell; shell/visual/game gates remain separate.
   SDK create/release passes (clean baseline fails1). EXE /s exits1 with window
   errors; sole cause not established. No production supervision/gameplay claim.
   Procedure: desktop/docs/prerequisites.md, original vendor MSI experiment.
+
+- Shared prerequisites::physx_msi authenticates exact EXE size/hash, fixed MSI
+  boundary/header and independent payload SHA3f122f4be03c6ae42652d28cc5ed48669e0348c8d3650f389954014992a06c8b.
+  Negative container tests pass; original-package mutation refusal + real Wine
+  MSI→SDK lifecycle pass29.367s lane072950-13307; strict clippy073026-13812.
+  Production runtime preparation is still planned: separate game-prefix
+  generation/operation, immutable identity, journaled supervised install+probe;
+  no Play enablement from PhysX alone. See desktop/docs/prerequisites.md.
