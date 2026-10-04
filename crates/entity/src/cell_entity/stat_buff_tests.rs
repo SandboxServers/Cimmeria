@@ -1,13 +1,16 @@
-//! The stat-buff ledger's arithmetic: the stat-keyed replace rule, the
-//! bound widening and its exact reversal.
+//! The timed effect ledger's arithmetic: per-source refresh and stacking,
+//! the stimpacks' stat-keyed replace rule, the bound widening and its exact
+//! reversal.
 
 use std::time::{Duration, Instant};
 
 use cimmeria_common::{EntityId, SpaceId, Vector3};
 
-use super::stat_buff::{shift_stat_widening, unshift_stat, StatBuffSpec, StatShift};
+use super::stat_buff::{
+    shift_stat_widening, unshift_stat, StatShift, TimedEffectSpec, TimedStacking,
+};
 use super::CellEntity;
-use crate::stats::{ArchetypeStatValues, COORDINATION, ENGAGEMENT, HEALTH};
+use crate::stats::{ArchetypeStatValues, ACCURACY, COORDINATION, DEFENSE, ENGAGEMENT, HEALTH};
 
 /// A player-like entity with the archetype's primary attributes, which sit
 /// at `cur == max` (Coordination 10/10).
@@ -28,15 +31,31 @@ fn entity() -> CellEntity {
     e
 }
 
-fn spec(stat_id: i32, delta: i32, effect_id: i32) -> StatBuffSpec {
-    StatBuffSpec {
-        stat_id,
-        delta,
+/// A stimpack effect: one stat, an hour, the stat-keyed rule.
+fn stim(stat_id: i32, delta: i32, effect_id: i32) -> TimedEffectSpec {
+    TimedEffectSpec {
         effect_id,
         ability_id: effect_id + 10_000,
         invoker_id: 1,
         effect_flags: 2,
-        duration_secs: 3600.0,
+        moniker_ids: vec![],
+        stats: vec![(stat_id, delta)],
+        duration_secs: Some(3600.0),
+        stacking: TimedStacking::ReplaceSameStat,
+    }
+}
+
+/// An ability buff (Aim, effect 700): per source, 15 s.
+fn aim(invoker_id: u32) -> TimedEffectSpec {
+    TimedEffectSpec {
+        effect_id: 700,
+        ability_id: 637,
+        invoker_id,
+        effect_flags: 21,
+        moniker_ids: vec![3_212_632_871],
+        stats: vec![(ACCURACY, 200)],
+        duration_secs: Some(15.0),
+        stacking: TimedStacking::PerSource,
     }
 }
 
@@ -49,23 +68,28 @@ fn cur_max(e: &CellEntity, stat: i32) -> (i32, i32) {
 fn a_buff_on_a_stat_at_max_raises_cur_and_max_together() {
     let mut e = entity();
     let now = Instant::now();
-    let out = e.apply_stat_buff(spec(COORDINATION, 5, 3950), now).unwrap();
+    let out = e
+        .apply_timed_effect(stim(COORDINATION, 5, 3950), now)
+        .unwrap();
     assert_eq!(
         cur_max(&e, COORDINATION),
         (15, 15),
         "+5 must not clamp at max"
     );
     assert_eq!(
-        out.applied.shift,
+        out.applied.stats[0].shift,
         StatShift {
             cur: 5,
             min: 0,
             max: 5
         }
     );
-    assert_eq!(out.applied.expires_at, now + Duration::from_secs(3600));
+    assert_eq!(
+        out.applied.expires_at,
+        Some(now + Duration::from_secs(3600))
+    );
     assert!(!out.applied.timer_sent);
-    assert!(out.replaced.is_none());
+    assert!(out.replaced.is_empty());
     assert!(
         e.stats.get(COORDINATION).unwrap().dirty,
         "the client must hear of it"
@@ -73,44 +97,49 @@ fn a_buff_on_a_stat_at_max_raises_cur_and_max_together() {
 }
 
 #[test]
-fn removing_a_buff_restores_cur_and_max_exactly() {
+fn removing_an_entry_restores_cur_and_max_exactly() {
     let mut e = entity();
-    e.apply_stat_buff(spec(COORDINATION, 5, 3950), Instant::now());
-    let removed = e.remove_stat_buffs_where(|b| b.effect_id == 3950);
+    e.apply_timed_effect(stim(COORDINATION, 5, 3950), Instant::now());
+    let removed = e.remove_timed_effects_where(|b| b.effect_id == 3950);
     assert_eq!(removed.len(), 1);
     assert_eq!(cur_max(&e, COORDINATION), (10, 10), "no permanent stat");
-    assert!(e.stat_buffs.buffs.is_empty());
+    assert!(e.stat_buffs.entries.is_empty());
     assert_eq!(e.stat_buffs.pending_timer_clears, vec![(3950, 1)]);
 }
 
 #[test]
-fn a_higher_tier_on_the_same_stat_replaces_rather_than_stacks() {
+fn a_higher_stim_tier_on_the_same_stat_replaces_rather_than_stacks() {
     let mut e = entity();
     let now = Instant::now();
-    e.apply_stat_buff(spec(COORDINATION, 5, 3950), now);
-    let out = e.apply_stat_buff(spec(COORDINATION, 7, 3956), now).unwrap();
+    e.apply_timed_effect(stim(COORDINATION, 5, 3950), now);
+    let out = e
+        .apply_timed_effect(stim(COORDINATION, 7, 3956), now)
+        .unwrap();
     assert_eq!(
         cur_max(&e, COORDINATION),
         (17, 17),
         "+7 replaces +5, not +12"
     );
-    assert_eq!(out.replaced.as_ref().map(|b| b.effect_id), Some(3950));
-    assert_eq!(e.stat_buffs.buffs.len(), 1, "one buff per stat");
+    assert_eq!(
+        out.replaced.iter().map(|b| b.effect_id).collect::<Vec<_>>(),
+        vec![3950]
+    );
+    assert_eq!(e.stat_buffs.entries.len(), 1, "one stim per stat");
     assert_eq!(
         e.stat_buffs.pending_timer_clears,
         vec![(3950, 1)],
         "the replaced effect's icon must be cleared"
     );
-    e.remove_stat_buffs_where(|_| true);
+    e.remove_timed_effects_where(|_| true);
     assert_eq!(cur_max(&e, COORDINATION), (10, 10));
 }
 
 #[test]
-fn a_lower_tier_on_the_same_stat_also_replaces() {
+fn a_lower_stim_tier_on_the_same_stat_also_replaces() {
     let mut e = entity();
     let now = Instant::now();
-    e.apply_stat_buff(spec(COORDINATION, 10, 3979), now);
-    e.apply_stat_buff(spec(COORDINATION, 5, 3950), now);
+    e.apply_timed_effect(stim(COORDINATION, 10, 3979), now);
+    e.apply_timed_effect(stim(COORDINATION, 5, 3950), now);
     assert_eq!(
         cur_max(&e, COORDINATION),
         (15, 15),
@@ -119,15 +148,17 @@ fn a_lower_tier_on_the_same_stat_also_replaces() {
 }
 
 #[test]
-fn different_stats_do_not_collide() {
+fn stims_on_different_stats_do_not_collide() {
     let mut e = entity();
     let now = Instant::now();
-    e.apply_stat_buff(spec(COORDINATION, 5, 3950), now);
-    let out = e.apply_stat_buff(spec(ENGAGEMENT, 3, 3955), now).unwrap();
-    assert!(out.replaced.is_none());
+    e.apply_timed_effect(stim(COORDINATION, 5, 3950), now);
+    let out = e
+        .apply_timed_effect(stim(ENGAGEMENT, 3, 3955), now)
+        .unwrap();
+    assert!(out.replaced.is_empty());
     assert_eq!(cur_max(&e, COORDINATION), (15, 15));
     assert_eq!(cur_max(&e, ENGAGEMENT), (15, 15));
-    assert_eq!(e.stat_buffs.buffs.len(), 2);
+    assert_eq!(e.stat_buffs.entries.len(), 2);
     assert!(e.stat_buffs.pending_timer_clears.is_empty());
 }
 
@@ -135,28 +166,119 @@ fn different_stats_do_not_collide() {
 fn reapplying_the_same_effect_refreshes_and_owes_no_clear() {
     let mut e = entity();
     let t0 = Instant::now();
-    e.apply_stat_buff(spec(COORDINATION, 5, 3950), t0);
+    e.apply_timed_effect(stim(COORDINATION, 5, 3950), t0);
     let t1 = t0 + Duration::from_secs(600);
-    let out = e.apply_stat_buff(spec(COORDINATION, 5, 3950), t1).unwrap();
+    let out = e
+        .apply_timed_effect(stim(COORDINATION, 5, 3950), t1)
+        .unwrap();
     assert_eq!(cur_max(&e, COORDINATION), (15, 15));
-    assert_eq!(out.applied.expires_at, t1 + Duration::from_secs(3600));
+    assert_eq!(out.applied.expires_at, Some(t1 + Duration::from_secs(3600)));
     assert!(
         e.stat_buffs.pending_timer_clears.is_empty(),
         "the new start timer supersedes the old one"
     );
 }
 
+/// The contract's refresh rule: the same effect from the same invoker
+/// refreshes, it never stacks. On a revert to stat-blind stacking Accuracy
+/// would read 400.
 #[test]
-fn an_effect_timer_clears_only_after_its_last_stat_comes_off() {
+fn the_same_source_refreshes_an_ability_buff() {
+    let mut e = entity();
+    let t0 = Instant::now();
+    e.apply_timed_effect(aim(1), t0);
+    let t1 = t0 + Duration::from_secs(10);
+    let out = e.apply_timed_effect(aim(1), t1).unwrap();
+    assert_eq!(
+        e.stats.get(ACCURACY).unwrap().cur,
+        200,
+        "refreshed, not +400"
+    );
+    assert_eq!(out.replaced.len(), 1);
+    assert_eq!(out.applied.expires_at, Some(t1 + Duration::from_secs(15)));
+    assert_eq!(e.stat_buffs.entries.len(), 1);
+    assert!(e.stat_buffs.pending_timer_clears.is_empty());
+}
+
+/// Different invokers stack, and each comes off on its own. On a revert to
+/// the stat-keyed rule the second Aim would replace the first (200, not 400).
+#[test]
+fn different_sources_stack_and_expire_independently() {
     let mut e = entity();
     let now = Instant::now();
-    // One effect moving two stats.
-    e.apply_stat_buff(spec(COORDINATION, 5, 7000), now);
-    e.apply_stat_buff(spec(ENGAGEMENT, 5, 7000), now);
-    e.remove_stat_buffs_where(|b| b.stat_id == COORDINATION);
-    assert!(e.stat_buffs.pending_timer_clears.is_empty());
-    e.remove_stat_buffs_where(|b| b.stat_id == ENGAGEMENT);
-    assert_eq!(e.stat_buffs.pending_timer_clears, vec![(7000, 1)]);
+    e.apply_timed_effect(aim(1), now);
+    let out = e.apply_timed_effect(aim(2), now).unwrap();
+    assert!(out.replaced.is_empty());
+    assert_eq!(e.stats.get(ACCURACY).unwrap().cur, 400);
+    e.remove_timed_effects_where(|b| b.invoker_id == 1);
+    assert_eq!(e.stats.get(ACCURACY).unwrap().cur, 200);
+    assert_eq!(e.stat_buffs.pending_timer_clears, vec![(700, 1)]);
+}
+
+/// Expiry reverts exactly the applied delta, even when something else moved
+/// the stat meanwhile.
+#[test]
+fn removal_reverts_exactly_what_was_applied() {
+    let mut e = entity();
+    let now = Instant::now();
+    e.apply_timed_effect(aim(1), now);
+    // Another system moves Accuracy by +50 while Aim is up.
+    e.stats.get_mut(ACCURACY).unwrap().change(50);
+    e.remove_timed_effects_where(|b| b.effect_id == 700);
+    assert_eq!(
+        e.stats.get(ACCURACY).unwrap().cur,
+        50,
+        "only Aim's +200 comes off"
+    );
+}
+
+#[test]
+fn one_entry_moves_several_stats_and_restores_them_together() {
+    let mut e = entity();
+    let spec = TimedEffectSpec {
+        effect_id: 1980,
+        ability_id: 1630,
+        invoker_id: 9,
+        effect_flags: 6,
+        moniker_ids: vec![],
+        stats: vec![(ACCURACY, -200), (DEFENSE, -200)],
+        duration_secs: Some(15.0),
+        stacking: TimedStacking::PerSource,
+    };
+    e.apply_timed_effect(spec, Instant::now()).unwrap();
+    assert_eq!(e.stats.get(ACCURACY).unwrap().cur, -200);
+    let d = e.stats.get(DEFENSE).unwrap();
+    assert_eq!(
+        (d.min, d.cur, d.max),
+        (-200, -200, 0),
+        "min widens for a debuff"
+    );
+    e.remove_timed_effects_where(|_| true);
+    let d = e.stats.get(DEFENSE).unwrap();
+    assert_eq!((d.min, d.cur, d.max), (0, 0, 0));
+    assert_eq!(e.stats.get(ACCURACY).unwrap().cur, 0);
+    assert_eq!(e.stat_buffs.pending_timer_clears, vec![(1980, 9)]);
+}
+
+#[test]
+fn a_held_entry_has_no_expiry() {
+    let mut e = entity();
+    let mut spec = aim(1);
+    spec.duration_secs = None;
+    let now = Instant::now();
+    let out = e.apply_timed_effect(spec, now).unwrap();
+    assert_eq!(out.applied.expires_at, None);
+    assert!(!out.applied.is_expired(now + Duration::from_secs(86_400)));
+}
+
+#[test]
+fn an_icon_only_entry_applies_with_no_stats() {
+    let mut e = entity();
+    let mut spec = aim(1);
+    spec.stats.clear();
+    let out = e.apply_timed_effect(spec, Instant::now()).unwrap();
+    assert!(out.applied.stats.is_empty());
+    assert_eq!(e.stat_buffs.entries.len(), 1);
 }
 
 #[test]
@@ -192,7 +314,31 @@ fn a_buff_below_max_moves_cur_only() {
 fn a_missing_stat_changes_nothing() {
     let mut e = entity();
     assert!(e
-        .apply_stat_buff(spec(9_999, 5, 1), Instant::now())
+        .apply_timed_effect(stim(9_999, 5, 1), Instant::now())
         .is_none());
     assert!(e.stat_buffs.is_idle());
+}
+
+#[test]
+fn a_partly_missing_spec_applies_the_stats_it_can_and_reports_the_rest() {
+    let mut e = entity();
+    let mut spec = aim(1);
+    spec.stats.push((9_999, 5));
+    let out = e.apply_timed_effect(spec, Instant::now()).unwrap();
+    assert_eq!(out.missing_stats, vec![9_999]);
+    assert_eq!(e.stats.get(ACCURACY).unwrap().cur, 200);
+}
+
+#[test]
+fn the_effect_bar_counts_each_side() {
+    let mut e = entity();
+    let now = Instant::now();
+    e.apply_timed_effect(aim(1), now);
+    e.apply_timed_effect(aim(2), now);
+    let mut debuff = aim(3);
+    debuff.effect_id = 903;
+    debuff.effect_flags = 20;
+    e.apply_timed_effect(debuff, now);
+    assert_eq!(e.stat_buffs.bar_icons(true), 2);
+    assert_eq!(e.stat_buffs.bar_icons(false), 1);
 }

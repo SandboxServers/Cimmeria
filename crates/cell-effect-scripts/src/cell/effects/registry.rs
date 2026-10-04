@@ -43,8 +43,11 @@ pub static EFFECT_SCRIPTS: &[(&str, &dyn EffectScript)] = &[
     ("PetDeathTimer", &pet_scripts::PetDeathTimer),
     ("HealPetHealth", &pet_scripts::HealPetHealth),
     ("PetSummonSpeed", &pet_scripts::PetSummonSpeed),
-    // Timed primary-attribute buffs: the consumable stimpacks.
+    // Timed stat buffs stacked by stat: the consumable stimpacks.
     ("StatBuff", &stat_buff::StatBuff),
+    // Timed ability buffs and debuffs on the same ledger (ability mechanics
+    // AB-04): one entry per (effect, invoker).
+    ("TimedStat", &stat_buff::TimedStat),
     // Radioactive dart dose (ammo AM-11b).
     ("RadiationDamage", &ammo_dart_tech::RadiationDamage),
     // Antidote and Coagulant darts (ammo AM-11c): remove effects by category.
@@ -95,6 +98,7 @@ mod tests {
         assert!(lookup("CoverStance").is_some());
         assert!(lookup("RemoveCoverStance").is_some());
         assert!(lookup("StatBuff").is_some());
+        assert!(lookup("TimedStat").is_some());
         for pet_script in [
             "PetStatBuff",
             "PetDeathTimer",

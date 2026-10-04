@@ -31,6 +31,8 @@ class Ability:
     name: str
     description: str
     type_id: str
+    flags: int = 0  # EAbilityFlag bits (AF_TOGGLED = 8)
+    target_type_id: int = 0  # 1 Self, 2 Target, 3 Ground
 
 
 @dataclass
@@ -153,7 +155,11 @@ def corpus_from_texts(
     abilities = {}
     for r in sql_rows(abilities_text, "abilities"):
         aid = int(r["ability_id"].text)
-        abilities[aid] = Ability(aid, r["name"].text or "", r["description"].text or "", r["type_id"].text or "")
+        flags = int(r["flags"].text) if "flags" in r else 0
+        target = int(r["target_type_id"].text) if "target_type_id" in r else 0
+        abilities[aid] = Ability(
+            aid, r["name"].text or "", r["description"].text or "", r["type_id"].text or "", flags, target
+        )
 
     reachable: Set[int] = set()
     for text in reachable_texts:

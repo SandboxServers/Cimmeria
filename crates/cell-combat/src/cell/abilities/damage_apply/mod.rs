@@ -588,6 +588,10 @@ async fn apply_hit(
             .await;
         }
     }
+    // AB-04: a landed single-pulse debuff ran its ledger script (`TimedStat`)
+    // with the miss-gated after-hit scripts; its icon goes out with these.
+    let now = std::time::Instant::now();
+    crate::cell::effects::flush_stat_buff_timers(target_eid, now, tx, space_mgr).await;
 
     // ── Duel end (non-lethal, D-SS20) ──
     //
@@ -664,5 +668,7 @@ mod per_effect_damage_tests;
 mod single_damage_path_tests;
 #[cfg(test)]
 mod tests;
+#[cfg(test)]
+mod timed_effect_tests;
 #[cfg(test)]
 mod vitals_tests;
