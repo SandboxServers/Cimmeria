@@ -44,7 +44,7 @@ pub use storage::install_worker;
 pub use storage::repair;
 pub use storage::runtime_setup;
 pub use storage::uninstall;
-pub use storage::EvidenceError;
+pub use storage::{EvidenceError, ReleaseIdentity};
 
 #[cfg(target_os = "macos")]
 pub mod mac_runtime;

@@ -12,7 +12,7 @@ pub mod uninstall;
 pub mod updater;
 pub use helper_journal::{HelperPhase, HelperRecord, HelperResult};
 mod release_evidence;
-pub use release_evidence::EvidenceError;
+pub use release_evidence::{EvidenceError, ReleaseIdentity};
 mod install_intent;
 pub mod install_recovery;
 mod install_result;

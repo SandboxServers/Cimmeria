@@ -18,6 +18,8 @@ Dated, sourced facts from top-level sessions, committed with the change that pro
 
 ## Reference
 
+- [reference_current_release_identity_2026_10_04.md](reference_current_release_identity_2026_10_04.md) — immutable owner with separate signed current-release reference; Update publication remains required.
+
 - [reference_owner_lock_release_2026_10_04.md](reference_owner_lock_release_2026_10_04.md) — explicit unlock at Repair/prefix logical-owner drop; duplicate-handle regression and native CI boundary.
 
 - [reference_archive_preflight_2026_10_04.md](reference_archive_preflight_2026_10_04.md) — RAR/FDI name inventory before output; rebuilt Windows helper and spanning-cabinet validation required.

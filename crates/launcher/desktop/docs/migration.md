@@ -148,3 +148,30 @@ the new shared archive preflight. Full published multi-cabinet validation with a
 rebuilt helper, effective imported settings, permanent owner/current-release
 separation, game Update, native Windows adoption and the UI remain required.
 See the [preparation handoff](../../../../docs/analysis/playtests/2026-10-03-macos-wine/worknotes/published-adoption-preparation.md).
+
+## Permanent owner and current release
+
+The original `InstallIntent` and `.cimmeria-install.json` remain immutable owner
+identity. `ReleaseIdentity` independently binds retained signed bytes by evidence
+UUID and manifest digest. Installed-content schema 3 carries this current release
+beside the original owner and optional adoption provenance; schema 1/2 records
+continue deriving the release from the original intent. Content-ready schema 2
+binds the permanent installation UUID to the current release. A mismatched owner,
+index or receipt is refused.
+
+Repair binds its plan and extraction to the current signed release, and republishes
+that receipt. Uninstall retains the permanent owner UUID, checks the current
+receipt before detaching, and preserves both releases' signed evidence. Existing
+plans omit the optional current-release field, preserving their serialized hashes.
+Play/minimum and prerequisite inspection obtain the current authenticated release
+through the installed-content reader. The original backend and setup inputs remain
+unchanged by this storage contract.
+
+Two-release filesystem fixtures exercise reopen, Repair admission/extraction
+identity, receipt mismatch refusal and uninstall. They directly construct the
+post-publication state. A signed local-seed test also reconstructs and commits
+Repair against a distinct current manifest, preserving the original owner and old
+backup. These tests do **not** prove an Update transition, Update replacement or
+rollback, effective imported configuration or UI. The next required journey is a
+confirmed Update that stages another authenticated release, retains its owned
+backup and publishes both current receipts through explicit recovery checkpoints.

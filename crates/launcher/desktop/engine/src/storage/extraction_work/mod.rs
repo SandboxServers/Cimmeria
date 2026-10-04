@@ -9,6 +9,8 @@ pub(crate) struct ExtractionWork {
     pub operation_id: Uuid,
     pub intent_digest: [u8; 32],
     pub installation: InstallIntent,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub current_release: Option<ReleaseIdentity>,
     pub stage: PathBuf,
     pub cache: PathBuf,
 }
@@ -18,11 +20,14 @@ impl DesktopState {
         id: Uuid,
     ) -> Result<crate::catalog::VerifiedRelease, IntentError> {
         let work = self.extraction_work(id)?;
-        self.release_for_intent(&work.installation)
-            .map_err(|error| match error {
-                EvidenceError::Storage(error) => IntentError::Storage(error),
-                _ => IntentError::Storage(StorageError::Corrupt),
-            })
+        self.verify_release_identity(
+            work.current_release
+                .unwrap_or_else(|| work.installation.release_identity()),
+        )
+        .map_err(|error| match error {
+            EvidenceError::Storage(error) => IntentError::Storage(error),
+            _ => IntentError::Storage(StorageError::Corrupt),
+        })
     }
 
     /// Reverify the current durable plan; never accept work paths from the UI.
@@ -40,6 +45,7 @@ impl DesktopState {
         if operation.id != id {
             return Err(ContractError::UnknownOperation.into());
         }
+        let mut current_release = None;
         let (installation, stage, cache) = match operation.kind {
             OperationKind::Install => {
                 let intent = self.install_intent()?.ok_or(StorageError::Corrupt)?;
@@ -49,6 +55,7 @@ impl DesktopState {
             }
             OperationKind::Repair => {
                 let plan = self.repair_plan()?.ok_or(StorageError::Corrupt)?;
+                current_release = plan.current_release;
                 let stage = plan.stage();
                 let cache = plan.work_directory().join("cache");
                 (plan.installation, stage, cache)
@@ -69,6 +76,7 @@ impl DesktopState {
             operation_id: id,
             intent_digest: operation.intent_digest,
             installation,
+            current_release,
             stage,
             cache,
         })

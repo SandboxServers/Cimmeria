@@ -148,7 +148,7 @@ pub(super) fn replace(
             failed_cleanup::validate_tree(&game)?;
         }
         let release = state
-            .release_for_intent(&plan.installation)
+            .verify_release_identity(plan.release_identity())
             .map_err(|_| StorageError::Corrupt)?;
         if !install_worker::content_valid(&plan.stage(), &release) {
             return Err(StorageError::Corrupt.into());
@@ -187,7 +187,7 @@ pub(super) fn replace(
         if !install_worker::content_valid(&game, &release) {
             return Err(StorageError::Corrupt.into());
         }
-        atomic::write(root, "content-ready.json", &plan.installation)?;
+        installed_content::write_ready(root, &plan.installation, plan.release_identity())?;
         record(&mut state, plan, Phase::Published)?;
         hook(Point::Published)?;
         state

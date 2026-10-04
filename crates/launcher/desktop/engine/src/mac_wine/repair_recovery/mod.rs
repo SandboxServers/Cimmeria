@@ -26,6 +26,7 @@ pub(crate) fn stop_reference(state: &DesktopState, id: Uuid) -> Result<StoppedPr
         stage: record.stage(),
         cache: record.cache(),
         installation: record.descriptor,
+        current_release: None,
     };
     stop_bound_work(state, id, false, work)
 }

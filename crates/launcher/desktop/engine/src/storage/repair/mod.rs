@@ -17,8 +17,14 @@ pub struct Plan {
     pub id: Uuid,
     pub installation: InstallIntent,
     pub original_present: bool,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub current_release: Option<ReleaseIdentity>,
 }
 impl Plan {
+    pub fn release_identity(&self) -> ReleaseIdentity {
+        self.current_release
+            .unwrap_or_else(|| self.installation.release_identity())
+    }
     pub fn work_directory(&self) -> PathBuf {
         self.installation
             .destination
@@ -93,6 +99,8 @@ impl DesktopState {
         let plan = Plan {
             schema_version: 1,
             id,
+            current_release: (installed.current_release != installed.intent.release_identity())
+                .then_some(installed.current_release),
             installation: installed.intent,
             original_present,
         };

@@ -265,3 +265,90 @@ async fn nested_link_in_either_tree_refuses_replacement() {
         );
     }
 }
+
+#[tokio::test]
+async fn reconstruction_and_commit_keep_current_release_separate_from_original_owner() {
+    use std::io::{Cursor, Write};
+    use wiremock::{matchers::path, Mock, ResponseTemplate};
+    let (_root, state, installation, server) = install_worker::tests::prepared_fixture().await;
+    let mut archive =
+        zip::ZipWriter::new_append(Cursor::new(install_worker::tests::archive(true))).unwrap();
+    archive
+        .start_file("version-two.txt", zip::write::SimpleFileOptions::default())
+        .unwrap();
+    archive.write_all(b"new release content").unwrap();
+    let seed = archive.finish().unwrap().into_inner();
+    let release = install_worker::tests::verified(&seed);
+    server.reset().await;
+    Mock::given(path("/seed.zip"))
+        .respond_with(ResponseTemplate::new(200).set_body_bytes(seed))
+        .mount(&server)
+        .await;
+    let (plan, owner_bytes, current) = {
+        let mut state = state.lock().unwrap();
+        let installed = state.installed_content().unwrap().unwrap();
+        let owner = installed.intent;
+        let owner_bytes = std::fs::read(owner.destination.join(".cimmeria-install.json")).unwrap();
+        let current = ReleaseIdentity {
+            evidence_id: Uuid::new_v4(),
+            manifest_digest: release.digest(),
+        };
+        state
+            .save_release_evidence(current.evidence_id, &release)
+            .unwrap();
+        installed_content::write_ready(&owner.destination, &owner, current).unwrap();
+        atomic::write(
+            &state.directory.root,
+            "installed-content.json",
+            &serde_json::json!({
+                "schema_version": 3, "intent": owner, "current_release": current
+            }),
+        )
+        .unwrap();
+        std::fs::write(owner.destination.join("game/later.txt"), b"damaged").unwrap();
+        let revision = state.operations().snapshot().revision;
+        let plan = state
+            .admit_repair(Uuid::new_v4(), revision, installation, true)
+            .unwrap()
+            .plan;
+        (plan, owner_bytes, current)
+    };
+    let prepared = preparation::start(
+        state.clone(),
+        plan.id,
+        reqwest::Client::new(),
+        format!("{}/manifest.json", server.uri()),
+    )
+    .unwrap()
+    .result
+    .await
+    .unwrap()
+    .unwrap();
+    assert_eq!(
+        start(state.clone(), prepared).unwrap().await.unwrap(),
+        Ok(())
+    );
+    let mut state = state.lock().unwrap();
+    let installed = state.installed_content().unwrap().unwrap();
+    assert_eq!(installed.current_release, current);
+    assert_eq!(installed.intent.operation_id, installation);
+    assert_eq!(installed.release.digest(), current.manifest_digest);
+    assert_ne!(installed.intent.manifest_digest, current.manifest_digest);
+    assert_eq!(
+        std::fs::read(plan.installation.destination.join(".cimmeria-install.json")).unwrap(),
+        owner_bytes
+    );
+    assert_eq!(
+        std::fs::read(plan.installation.destination.join("game/later.txt")).unwrap(),
+        b"later entry"
+    );
+    assert_eq!(
+        std::fs::read(plan.installation.destination.join("game/version-two.txt")).unwrap(),
+        b"new release content"
+    );
+    assert!(!plan.backup().join("version-two.txt").exists());
+    assert_eq!(
+        std::fs::read(plan.backup().join("later.txt")).unwrap(),
+        b"damaged"
+    );
+}

@@ -96,3 +96,69 @@ fn malformed_oversized_and_missing_cache_never_fall_back_to_network() {
         EvidenceError::Storage(StorageError::Io)
     );
 }
+
+#[test]
+fn two_signed_releases_survive_reopen_without_rewriting_install_ownership() {
+    let original = release(0);
+    let next = release(1);
+    let (root, mut state, installation_id) = setup(&original);
+    let intent = state.install_intent().unwrap().unwrap();
+    let intent_path = root
+        .path()
+        .join("state")
+        .join(format!("install-intent-{installation_id}.json"));
+    let owner_bytes = std::fs::read(&intent_path).unwrap();
+    let original_bytes =
+        std::fs::read(root.path().join("state").join(name(installation_id))).unwrap();
+    let update_id = Uuid::new_v4();
+    state.save_release_evidence(update_id, &next).unwrap();
+    let next_identity = ReleaseIdentity {
+        evidence_id: update_id,
+        manifest_digest: next.digest(),
+    };
+    drop(state);
+    let state = DesktopState::open(&root.path().join("state")).unwrap();
+    assert_eq!(
+        state
+            .verify_release_identity(intent.release_identity())
+            .unwrap()
+            .evidence(),
+        original.evidence()
+    );
+    assert_eq!(
+        state
+            .verify_release_identity(next_identity)
+            .unwrap()
+            .evidence(),
+        next.evidence()
+    );
+    assert_eq!(std::fs::read(intent_path).unwrap(), owner_bytes);
+    assert_eq!(
+        std::fs::read(root.path().join("state").join(name(installation_id))).unwrap(),
+        original_bytes
+    );
+    assert_eq!(state.install_intent().unwrap().unwrap(), intent);
+    assert!(!root
+        .path()
+        .join("state")
+        .join(format!("install-intent-{update_id}.json"))
+        .exists());
+    assert_eq!(
+        state
+            .verify_release_identity(ReleaseIdentity {
+                evidence_id: update_id,
+                manifest_digest: original.digest(),
+            })
+            .unwrap_err(),
+        EvidenceError::IdentityMismatch
+    );
+    assert_eq!(
+        state
+            .verify_release_identity(ReleaseIdentity {
+                evidence_id: installation_id,
+                manifest_digest: next.digest(),
+            })
+            .unwrap_err(),
+        EvidenceError::IdentityMismatch
+    );
+}

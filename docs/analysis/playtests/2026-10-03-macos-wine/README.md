@@ -150,7 +150,6 @@ Implementation evidence: [runtime provisioning](runtime-provisioning.md) records
 the pinned Wine inventory, candidate launch environment, distribution gates and
 Windows-helper ownership requirements. It does not establish game compatibility.
 
-
 ## Launcher implementation references
 
 - [Requirements and delivery plan](launcher-implementation-plan.md)
@@ -173,6 +172,7 @@ Windows-helper ownership requirements. It does not establish game compatibility.
 - [Fresh observability implementation assignment](worknotes/observability-implementation-assignment.md)
 
 - [Verified existing-user adoption contract](worknotes/adoption-contract-audit.md)
+- [Permanent owner and current release](worknotes/owner-current-release.md)
 - [Signed updater implementation and evidence](worknotes/signed-updater.md)
 - [Desktop updater contract](../../../../crates/launcher/desktop/docs/updater.md)
 - [Native verified-copy adoption foundation](worknotes/native-verified-copy-adoption.md)

@@ -122,7 +122,9 @@ fn start_with_backend(
             }
         }
         let installed = owner.installed_content()?.ok_or(StorageError::Corrupt)?;
-        if installed.intent != plan.installation {
+        if installed.intent != plan.installation
+            || installed.current_release != plan.release_identity()
+        {
             return Err(StorageError::Corrupt.into());
         }
         owner

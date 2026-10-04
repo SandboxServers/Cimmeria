@@ -6,6 +6,25 @@ use uuid::Uuid;
 // Four-byte body length, the catalog's 1 MiB body and 256-byte signature limit.
 const MAX_EVIDENCE: usize = 4 + 1024 * 1024 + 256;
 
+/// A signed release reference, independent of the permanent installation owner.
+/// The evidence ID selects retained original bytes; the digest binds their exact
+/// signed manifest. Neither field establishes installation or mutation authority.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct ReleaseIdentity {
+    pub evidence_id: Uuid,
+    pub manifest_digest: [u8; 32],
+}
+
+impl InstallIntent {
+    pub fn release_identity(&self) -> ReleaseIdentity {
+        ReleaseIdentity {
+            evidence_id: self.operation_id,
+            manifest_digest: self.manifest_digest,
+        }
+    }
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum EvidenceError {
     Storage(StorageError),
@@ -52,7 +71,19 @@ impl DesktopState {
         &self,
         intent: &InstallIntent,
     ) -> Result<VerifiedRelease, EvidenceError> {
-        let path = self.directory.root.join(name(intent.operation_id));
+        self.verify_release_identity(intent.release_identity())
+    }
+
+    /// Reverify retained signed bytes without manufacturing an Install intent.
+    /// Update plans can bind old and new releases while retaining one owner.
+    pub fn verify_release_identity(
+        &self,
+        identity: ReleaseIdentity,
+    ) -> Result<VerifiedRelease, EvidenceError> {
+        if identity.evidence_id.is_nil() {
+            return Err(EvidenceError::IdentityMismatch);
+        }
+        let path = self.directory.root.join(name(identity.evidence_id));
         ensure_regular_or_absent(&path)?;
         let file = File::open(path).map_err(|_| StorageError::Io)?;
         let mut bytes = Vec::new();
@@ -71,7 +102,7 @@ impl DesktopState {
         }
         let (body, signature) = body.split_at(length);
         let release = verify_release(body, signature).map_err(EvidenceError::Verification)?;
-        if release.digest() != intent.manifest_digest {
+        if release.digest() != identity.manifest_digest {
             return Err(EvidenceError::IdentityMismatch);
         }
         Ok(release)

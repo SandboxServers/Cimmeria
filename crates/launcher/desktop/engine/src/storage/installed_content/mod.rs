@@ -7,11 +7,64 @@ const NAME: &str = "installed-content.json";
 
 #[derive(Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
+struct ContentReceipt {
+    schema_version: u32,
+    installation_id: uuid::Uuid,
+    release: ReleaseIdentity,
+}
+
+#[derive(Deserialize)]
+#[serde(untagged)]
+enum Ready {
+    Original(InstallIntent),
+    Current(ContentReceipt),
+}
+
+pub(super) fn read_ready(
+    root: &Path,
+    owner: &InstallIntent,
+) -> Result<Option<ReleaseIdentity>, StorageError> {
+    match read::<Ready>(&root.join("content-ready.json"))? {
+        None => Ok(None),
+        Some(Ready::Original(intent)) if intent == *owner => Ok(Some(intent.release_identity())),
+        Some(Ready::Current(receipt))
+            if receipt.schema_version == 2 && receipt.installation_id == owner.operation_id =>
+        {
+            Ok(Some(receipt.release))
+        }
+        _ => Err(StorageError::Corrupt),
+    }
+}
+
+pub(super) fn write_ready(
+    root: &Path,
+    owner: &InstallIntent,
+    release: ReleaseIdentity,
+) -> Result<(), StorageError> {
+    if release == owner.release_identity() {
+        atomic::write(root, "content-ready.json", owner)
+    } else {
+        atomic::write(
+            root,
+            "content-ready.json",
+            &ContentReceipt {
+                schema_version: 2,
+                installation_id: owner.operation_id,
+                release,
+            },
+        )
+    }
+}
+
+#[derive(Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
 struct Record {
     schema_version: u32,
     intent: InstallIntent,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     adoption: Option<super::adoption::Provenance>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    current_release: Option<ReleaseIdentity>,
 }
 
 /// Reverified ownership and signed release identity, independent of preferences
@@ -19,6 +72,7 @@ struct Record {
 pub struct InstalledContent {
     pub intent: InstallIntent,
     pub release: VerifiedRelease,
+    pub current_release: ReleaseIdentity,
 }
 
 impl DesktopState {
@@ -46,7 +100,7 @@ impl DesktopState {
             record = read(&self.directory.root.join(NAME))?;
         }
         let record = record.ok_or(StorageError::Corrupt)?;
-        if !matches!(record.schema_version, 1 | 2) || record.intent.schema_version != 1 {
+        if !matches!(record.schema_version, 1..=3) || record.intent.schema_version != 1 {
             return Err(StorageError::UnsupportedSchema);
         }
         if self
@@ -55,13 +109,17 @@ impl DesktopState {
             .operation
             .as_ref()
             .is_some_and(|op| {
-                op.id == record.intent.operation_id && op.state != OperationState::Succeeded
+                (op.id == record.intent.operation_id
+                    || record
+                        .current_release
+                        .is_some_and(|release| release.evidence_id == op.id))
+                    && op.state != OperationState::Succeeded
             })
         {
             return Err(StorageError::Busy);
         }
         self.verify_adoption_record(&record)?;
-        self.verify_installed_identity(record.intent, None)
+        self.verify_current_identity(record.intent, None, record.current_release)
             .map(Some)
     }
 
@@ -74,9 +132,9 @@ impl DesktopState {
             return Err(StorageError::PersistenceUncertain);
         }
         let record: Option<Record> = read(&self.directory.root.join(NAME))?;
-        let intent = match record {
+        let (intent, current_release) = match record {
             Some(record) => {
-                if !matches!(record.schema_version, 1 | 2) || record.intent.schema_version != 1 {
+                if !matches!(record.schema_version, 1..=3) || record.intent.schema_version != 1 {
                     return Err(StorageError::UnsupportedSchema);
                 }
                 if self
@@ -85,7 +143,11 @@ impl DesktopState {
                     .operation
                     .as_ref()
                     .is_some_and(|op| {
-                        op.id == record.intent.operation_id && op.state != OperationState::Succeeded
+                        (op.id == record.intent.operation_id
+                            || record
+                                .current_release
+                                .is_some_and(|release| release.evidence_id == op.id))
+                            && op.state != OperationState::Succeeded
                     })
                 {
                     return Err(StorageError::Busy);
@@ -96,7 +158,7 @@ impl DesktopState {
                 if record.adoption.is_some() {
                     return Err(StorageError::Busy);
                 }
-                record.intent
+                (record.intent, record.current_release)
             }
             None => {
                 if !self
@@ -110,10 +172,11 @@ impl DesktopState {
                 {
                     return Ok(None);
                 }
-                self.install_intent()?.ok_or(StorageError::Corrupt)?
+                (self.install_intent()?.ok_or(StorageError::Corrupt)?, None)
             }
         };
-        self.verify_installed_identity(intent, None).map(Some)
+        self.verify_current_identity(intent, None, current_release)
+            .map(Some)
     }
 
     /// Offline status re-verifies retained signed bytes against the installation
@@ -155,6 +218,7 @@ impl DesktopState {
                 schema_version: 1,
                 intent,
                 adoption: None,
+                current_release: None,
             },
         );
         if result == Err(StorageError::PersistenceUncertain) {
@@ -169,7 +233,7 @@ impl DesktopState {
     ) -> Result<(), StorageError> {
         let path = self.directory.root.join(NAME);
         if let Some(record) = read::<Record>(&path)? {
-            if !matches!(record.schema_version, 1 | 2) {
+            if !matches!(record.schema_version, 1..=3) {
                 return Err(StorageError::UnsupportedSchema);
             }
             if record.intent != *intent {
@@ -200,14 +264,18 @@ impl DesktopState {
                 schema_version: 2,
                 intent: intent.clone(),
                 adoption: Some(provenance.clone()),
+                current_release: None,
             },
         )
     }
 
     fn verify_adoption_record(&self, record: &Record) -> Result<(), StorageError> {
+        if (record.schema_version == 3) != record.current_release.is_some() {
+            return Err(StorageError::Corrupt);
+        }
         match (record.schema_version, record.adoption.as_ref()) {
-            (1, None) => Ok(()),
-            (2, Some(provenance)) => {
+            (1 | 3, None) => Ok(()),
+            (2 | 3, Some(provenance)) => {
                 super::adoption::verify_provenance(self, &record.intent, provenance)
             }
             _ => Err(StorageError::Corrupt),
@@ -219,6 +287,15 @@ impl DesktopState {
         intent: InstallIntent,
         locked_owner: Option<&InstallIntent>,
     ) -> Result<InstalledContent, StorageError> {
+        self.verify_current_identity(intent, locked_owner, None)
+    }
+
+    fn verify_current_identity(
+        &self,
+        intent: InstallIntent,
+        locked_owner: Option<&InstallIntent>,
+        current_release: Option<ReleaseIdentity>,
+    ) -> Result<InstalledContent, StorageError> {
         let saved: InstallIntent = read(
             &self
                 .directory
@@ -229,12 +306,13 @@ impl DesktopState {
         if saved != intent {
             return Err(StorageError::Corrupt);
         }
-        let release = self
-            .release_for_intent(&intent)
-            .map_err(|error| match error {
-                EvidenceError::Storage(error) => error,
-                _ => StorageError::Corrupt,
-            })?;
+        let current_release = current_release.unwrap_or_else(|| intent.release_identity());
+        let release =
+            self.verify_release_identity(current_release)
+                .map_err(|error| match error {
+                    EvidenceError::Storage(error) => error,
+                    _ => StorageError::Corrupt,
+                })?;
         let parent = intent
             .destination
             .parent()
@@ -263,12 +341,15 @@ impl DesktopState {
             None => read(&intent.destination.join(".cimmeria-install.json"))?
                 .ok_or(StorageError::Corrupt)?,
         };
-        let receipt: InstallIntent =
-            read(&intent.destination.join("content-ready.json"))?.ok_or(StorageError::Corrupt)?;
-        if owner != intent || receipt != intent {
+        let receipt = read_ready(&intent.destination, &intent)?.ok_or(StorageError::Corrupt)?;
+        if owner != intent || receipt != current_release {
             return Err(StorageError::Corrupt);
         }
-        Ok(InstalledContent { intent, release })
+        Ok(InstalledContent {
+            intent,
+            release,
+            current_release,
+        })
     }
 }
 
