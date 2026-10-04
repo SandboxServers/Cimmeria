@@ -227,6 +227,22 @@ fn report_reads_only_what_it_needs() {
     assert_eq!(*reads.borrow(), vec![1, 16]);
 }
 
+/// An extended id with no bytes cannot name its method: a `read_failed`
+/// skip for a receiver that has extended ids, nothing for one that has
+/// none, and no read is attempted.
+#[test]
+fn an_empty_extended_message_is_a_skip_not_a_silent_drop() {
+    let read = |_: usize| -> Option<Vec<u8>> { panic!("nothing to read") };
+    for r in [Receiver::Player, Receiver::Unknown] {
+        let skip = report(&msg(61, r, 0), read).expect_err("a skip");
+        assert_eq!(skip.reason, "read_failed");
+        assert!(skip.method.is_none());
+    }
+    assert!(report(&msg(61, Receiver::Other, 0), read)
+        .unwrap()
+        .is_none());
+}
+
 /// AB-C6: a synthetic cast. The client sent ability 31999; a witnessed
 /// `onEffectResults` for it joins nothing, the first local one carries
 /// the send's ids and the interval on the client clock, and the next one

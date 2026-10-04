@@ -144,6 +144,14 @@ pub(crate) fn report(
     } else {
         None
     };
+    // An extended id with no sub-index byte cannot be resolved; for a
+    // receiver that can have extended ids it may be ours, so say so.
+    if first.is_none()
+        && recv_methods::is_extended(msg.msg_id)
+        && matches!(msg.receiver, Receiver::Player | Receiver::Unknown)
+    {
+        return Err(Skip::new(reason::READ_FAILED, msg.msg_id, None));
+    }
     let Some((method, _)) = recv_methods::resolve(msg.msg_id, msg.receiver, first) else {
         // A player-only method for an entity the hook could not place (a
         // message queued for an entity not created yet) may be ours.

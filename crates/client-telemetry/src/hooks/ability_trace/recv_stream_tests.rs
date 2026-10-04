@@ -198,6 +198,25 @@ fn unreadable_arguments_are_read_failed() {
     assert_eq!(get(&f, "len"), json!(20));
 }
 
+/// An extended id (61) on an empty stream has no sub-index to name its
+/// method: a `read_failed` with no method and `len` 0, not a silent drop
+/// (Copilot on #1203).
+#[test]
+fn an_extended_id_on_an_empty_stream_is_read_failed() {
+    let mut m = world();
+    let stream = live_stream(&mut m, &[]);
+    let (target, level, f) = observe(&m, MGR, LOCAL_ID, 61, stream).expect("a skipped row");
+    assert_eq!((target, level), (TARGET_RECV_SKIPPED, "warn"));
+    assert_eq!(get(&f, "reason"), json!("read_failed"));
+    assert_eq!(get(&f, "msg_id"), json!(61));
+    assert_eq!(get(&f, "method_index"), Value::Null);
+    assert_eq!(get(&f, "method"), Value::Null);
+    assert_eq!(get(&f, "len"), json!(0));
+    // A mob has no extended ids: its 61 is not ours, so nothing.
+    let stream = live_stream(&mut m, &[]);
+    assert!(observe(&m, MGR, MOB_ID, 61, stream).is_none());
+}
+
 /// A player-only method for an entity that is in no map is an `info`
 /// `receiver_unknown`: it may be ours, so it is not dropped silently.
 #[test]

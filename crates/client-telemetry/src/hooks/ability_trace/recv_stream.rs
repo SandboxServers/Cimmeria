@@ -88,7 +88,8 @@ pub(crate) mod reason {
     /// The stream, its cursor or its end could not be read, or the cursor
     /// is past the end.
     pub(crate) const BAD_WINDOW: &str = "bad_window";
-    /// The sub-index or the argument bytes could not be read.
+    /// The sub-index or the argument bytes could not be read, or an
+    /// extended id arrived with no sub-index byte at all.
     pub(crate) const READ_FAILED: &str = "read_failed";
     /// A player-only method for an entity the hook could not place.
     pub(crate) const RECEIVER_UNKNOWN: &str = "receiver_unknown";
