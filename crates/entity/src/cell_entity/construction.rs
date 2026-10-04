@@ -43,6 +43,8 @@ impl CellEntity {
             missions: MissionManager::new(),
             player_id: None,
             account_id: None,
+            account_name: None,
+            created_at: std::time::SystemTime::now(),
             archetype_id: None,
             access_level: 0,
             known_stargates: Vec::new(),

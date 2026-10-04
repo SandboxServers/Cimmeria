@@ -51,6 +51,13 @@ pub enum BaseToCellMsg {
         /// only after `onClientReady`, which is too late for the world-entry
         /// movement and lifecycle logs. `None` for NPCs.
         player_id: Option<i32>,
+        /// The login name paired with `account_id` (Rule 6). Stamped at
+        /// birth for the same reason as the IDs. `None` for NPCs.
+        account_name: Option<String>,
+        /// The character name paired with `player_id` (Rule 6), stamped as
+        /// the entity's `character_name` at birth; `InitPlayerState`
+        /// re-asserts it. `None` for NPCs.
+        player_name: Option<String>,
         reply_tx: tokio::sync::oneshot::Sender<u32>,
     },
 

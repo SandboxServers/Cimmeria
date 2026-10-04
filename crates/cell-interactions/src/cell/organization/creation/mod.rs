@@ -153,10 +153,7 @@ pub async fn on_registrar_eligible(
     let identity = forwarded_actor(space_mgr, player_id, entity_id, "registrar_eligible");
     let mut row = Outcome::new(
         Action::RegistrarOpen,
-        identity.unwrap_or(PlayerIdentity {
-            account_id: None,
-            player_id: Some(player_id),
-        }),
+        identity.unwrap_or(PlayerIdentity::new(None, Some(player_id))),
         entity_id,
     );
     row.org_type = Some(org_type);
@@ -222,9 +219,15 @@ pub fn on_create_result(
 ) {
     // The offer is keyed by character, so it is settled even if the entity
     // has gone meanwhile; the identity is only for the log.
+    let live = space_mgr.player_identity(entity_id);
     let actor = PlayerIdentity {
         player_id: Some(player_id),
-        ..space_mgr.player_identity(entity_id)
+        // The entity may hold another character by now; its name is only
+        // this player's when the IDs agree.
+        player_name: live
+            .player_name
+            .filter(|_| live.player_id == Some(player_id)),
+        ..live
     };
     if created {
         match space_mgr.resources.org_creations_mut().consume(player_id) {

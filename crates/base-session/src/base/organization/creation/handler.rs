@@ -53,7 +53,7 @@ impl CreationCtx<'_> {
         let clients = self.connected.lock().ok()?;
         let c = clients.get(&addr)?;
         Some(Session {
-            identity: PlayerIdentity::new(Some(c.account_id), c.active_player_id),
+            identity: crate::base::session_identity::session_identity(c),
             access_level: c.access_level,
         })
     }

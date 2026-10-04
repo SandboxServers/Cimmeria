@@ -64,6 +64,7 @@ pub async fn handle_play_character(
                     Arc::clone(&c.next_seq),
                     c.access_level,
                     c.enc_version,
+                    c.account_name.clone(),
                 ))
             } else {
                 None
@@ -74,7 +75,7 @@ pub async fn handle_play_character(
         }
     };
 
-    let (pending_acks_arc, next_seq, access_level, enc_version) = match arcs {
+    let (pending_acks_arc, next_seq, access_level, enc_version, account_name) = match arcs {
         Some(a) => a,
         None => return Ok(()),
     };
@@ -84,6 +85,7 @@ pub async fn handle_play_character(
     let entry_info = query_world_entry(
         db_pool,
         account_id,
+        account_name,
         player_id,
         access_level,
         entity_manager,

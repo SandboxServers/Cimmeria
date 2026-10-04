@@ -115,6 +115,9 @@ impl SpaceManager {
         // teardown to an account. `entity_id` alone is not enough here of all
         // places: the id is released for reuse the moment this returns.
         let id = self.player_identity(entity_id);
+        // The names and lifetime go into the departed ring once the entity
+        // is gone, so a late row can still name this occupant of the slot.
+        let departing = self.departure_snapshot(entity_id);
         // AB-T6: a cast still in its warmup ends here with an `abandoned`
         // outcome (a logout took it already, as `caster_disconnected`).
         crate::cell::effects::ability_metrics::abandon_pending_cast(
@@ -235,10 +238,19 @@ impl SpaceManager {
         self.combat_debug.forget_entity(entity_id);
         // And the NPC AI detectors (stale velocity, leash loop, ...).
         self.npc_detectors.forget(entity_id);
+        let names = departing.map(|d| d.names()).unwrap_or_default();
+        if let Some(departing) = departing {
+            self.record_departure(departing);
+        }
         tracing::debug!(
             entity_id,
+            entity_name = names.entity_name,
+            template_id = names.template_id,
+            template_name = names.template_name,
             account_id = id.account_id,
+            account_name = id.account_name,
             player_id = id.player_id,
+            player_name = id.player_name,
             "Cell entity destroyed"
         );
     }
@@ -381,8 +393,11 @@ impl SpaceManager {
                 };
                 tracing::debug!(
                     entity_id,
+                    entity_name = id.player_name,
                     account_id = id.account_id,
+                    account_name = id.account_name,
                     player_id = id.player_id,
+                    player_name = id.player_name,
                     space_id,
                     "Entity connected (player)"
                 );
@@ -489,8 +504,11 @@ impl SpaceManager {
                     {
                         tracing::warn!(
                             witness_id, entity_id,
+                            entity_name = id.player_name,
                             account_id = id.account_id,
+                            account_name = id.account_name,
                             player_id = id.player_id,
+                            player_name = id.player_name,
                             error = %e,
                             "LeftAoI send to base failed during disconnect"
                         );
@@ -508,8 +526,11 @@ impl SpaceManager {
         self.destroy_entity(entity_id);
         tracing::debug!(
             entity_id,
+            entity_name = id.player_name,
             account_id = id.account_id,
+            account_name = id.account_name,
             player_id = id.player_id,
+            player_name = id.player_name,
             "Entity disconnected and destroyed"
         );
     }

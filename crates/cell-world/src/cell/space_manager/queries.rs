@@ -392,9 +392,9 @@ impl SpaceManager {
     /// a single task that holds `&mut SpaceManager` across that teardown, so
     /// no other handler currently observes the window. The other real-world
     /// case, a player mid-gate-travel, does *not* land here: the cell
-    /// destroys the old entity and `create_entity` builds a fresh one with
-    /// `character_name: None`, so the name is absent until `InitPlayerState`
-    /// re-caches it, and this lookup reports `NotFound` where legacy (whose
+    /// destroys the old entity and `create_entity` builds a fresh one, which
+    /// `BaseToCellMsg::CreateEntity` names at birth (NT-02), so a lookup
+    /// between the two reports `NotFound` where legacy (whose
     /// dict key survives until `disconnected()`) would have reported the
     /// not-on-a-reachable-space error. Closing that gap needs a name roster
     /// that outlives the entity, which is out of scope here — the variant is

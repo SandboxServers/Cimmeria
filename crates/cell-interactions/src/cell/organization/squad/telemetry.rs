@@ -247,10 +247,7 @@ pub fn of_player(space_mgr: &SpaceManager, player_id: i32) -> PlayerIdentity {
 /// The identity a base-forwarded call claims, before the cell confirms it:
 /// the `player_id` from the base session, no account half.
 pub fn claimed(player_id: i32) -> PlayerIdentity {
-    PlayerIdentity {
-        account_id: None,
-        player_id: Some(player_id),
-    }
+    PlayerIdentity::new(None, Some(player_id))
 }
 
 /// One outcome row, before it is emitted.

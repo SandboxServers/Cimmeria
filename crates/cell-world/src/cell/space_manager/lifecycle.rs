@@ -254,6 +254,11 @@ impl SpaceManager {
     pub fn destroy_space(&mut self, space_id: u32) {
         if let Some(space) = self.spaces.remove(&space_id) {
             let entity_count = space.entities.len();
+            // The instance's NPCs go with it: record them in the departed
+            // ring like any other destroy, so late rows can still name them.
+            for (&eid, e) in &space.entities {
+                self.record_departure(super::entity_labels::PendingDeparture::of(space_id, eid, e));
+            }
 
             // Remove all entity_space entries for entities in this space
             for &eid in space.entities.keys() {

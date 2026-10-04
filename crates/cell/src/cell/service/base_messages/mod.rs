@@ -73,6 +73,8 @@ pub(super) async fn handle_base_message(
             destination_space_id,
             account_id,
             player_id,
+            account_name,
+            player_name,
             reply_tx,
         } => {
             lifecycle::handle_create_entity(
@@ -81,8 +83,12 @@ pub(super) async fn handle_base_message(
                 position,
                 rotation,
                 destination_space_id,
-                account_id,
-                player_id,
+                lifecycle::BirthIdentity {
+                    account_id,
+                    player_id,
+                    account_name,
+                    player_name,
+                },
                 reply_tx,
                 tx,
                 space_mgr,

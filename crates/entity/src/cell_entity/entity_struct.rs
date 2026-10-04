@@ -151,6 +151,16 @@ pub struct CellEntity {
     /// `docs/architecture/instrumentation-discipline.md` §Rule 5.
     pub account_id: Option<u32>,
 
+    /// The login name paired with [`Self::account_id`] (Rule 6), stamped
+    /// with it from `BaseToCellMsg::CreateEntity`. `None` for NPCs.
+    pub account_name: Option<String>,
+
+    /// Wall-clock time this entity was created in its space. Entity IDs are
+    /// recycled slots, so naming an ID at a past time (a delayed client
+    /// telemetry row) has to check the time against this before trusting
+    /// the live occupant: see `SpaceManager::entity_label_at`.
+    pub created_at: std::time::SystemTime,
+
     /// Archetype ID for content engine conditions. Set from character data on connect.
     pub archetype_id: Option<i32>,
 

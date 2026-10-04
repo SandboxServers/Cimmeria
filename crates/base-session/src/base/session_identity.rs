@@ -1,5 +1,6 @@
 //! Base-side resolution of the stable `(account_id, player_id)` log
-//! correlator for an entity.
+//! correlator for an entity, with the names that pair with it
+//! (`account_name`, `player_name`; Rule 6).
 //!
 //! This is the base counterpart to
 //! `cimmeria_services::cell::space_manager::SpaceManager::player_identity`.
@@ -56,14 +57,89 @@ pub fn identity_for_entity(
     };
 
     if let Some(c) = addr.and_then(|a| clients.get(&a)) {
-        return PlayerIdentity::new(Some(c.account_id), c.active_player_id);
+        return session_identity(c);
     }
 
     // Fallback: find the session that claims this entity.
     clients
         .values()
         .find(|c| c.player_entity_id == Some(entity_id))
-        .map_or(PlayerIdentity::UNKNOWN, |c| {
-            PlayerIdentity::new(Some(c.account_id), c.active_player_id)
-        })
+        .map_or(PlayerIdentity::UNKNOWN, session_identity)
+}
+
+/// The identity of one session: the Rule 5 IDs and their Rule 6 names
+/// (`player_name` is the active character's, `account_name` the login).
+/// A name the session doesn't have yet is `None`, so it is left off the line.
+pub fn session_identity(c: &ConnectedClientState) -> PlayerIdentity {
+    PlayerIdentity::new(Some(c.account_id), c.active_player_id)
+        .with_names(c.player_name.as_deref(), c.account_name.as_deref())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::test_support::test_default_connected_client_state;
+
+    fn maps(
+        state: ConnectedClientState,
+        via_reverse_map: bool,
+    ) -> (
+        Arc<Mutex<HashMap<SocketAddr, ConnectedClientState>>>,
+        Arc<Mutex<HashMap<u32, SocketAddr>>>,
+    ) {
+        let addr: SocketAddr = "127.0.0.1:20013".parse().unwrap();
+        let entity_to_addr = if via_reverse_map {
+            HashMap::from([(77, addr)])
+        } else {
+            HashMap::new()
+        };
+        (
+            Arc::new(Mutex::new(HashMap::from([(addr, state)]))),
+            Arc::new(Mutex::new(entity_to_addr)),
+        )
+    }
+
+    fn session() -> ConnectedClientState {
+        let mut c = test_default_connected_client_state();
+        c.account_id = 6;
+        c.account_name = Some("sgc_login".into());
+        c.active_player_id = Some(12);
+        c.player_name = Some("Teal'c".into());
+        c.player_entity_id = Some(77);
+        c
+    }
+
+    /// Both lookup strategies return the names with the IDs (Rule 6), so a
+    /// base line that emits the identity names the player too.
+    #[test]
+    fn both_strategies_carry_the_session_names() {
+        for via_reverse_map in [true, false] {
+            let (connected, entity_to_addr) = maps(session(), via_reverse_map);
+            let id = identity_for_entity(&connected, &entity_to_addr, 77);
+            assert_eq!(id.account_id, Some(6));
+            assert_eq!(id.player_id, Some(12));
+            assert_eq!(
+                id.account_name,
+                Some("sgc_login"),
+                "via_reverse_map={via_reverse_map}"
+            );
+            assert_eq!(
+                id.player_name,
+                Some("Teal'c"),
+                "via_reverse_map={via_reverse_map}"
+            );
+        }
+    }
+
+    /// Before character select there is no character name: it is left out,
+    /// not written as "".
+    #[test]
+    fn a_session_without_a_character_has_no_player_name() {
+        let mut c = session();
+        c.player_name = None;
+        c.active_player_id = None;
+        let id = session_identity(&c);
+        assert_eq!(id.player_name, None);
+        assert_eq!(id.account_name, Some("sgc_login"));
+    }
 }

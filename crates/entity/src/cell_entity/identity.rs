@@ -30,7 +30,12 @@
 //! `unwrap_or(0)` these — a sentinel 0 is indistinguishable from a real id
 //! in a query.
 //!
-//! See `docs/architecture/instrumentation-discipline.md` §Rule 5.
+//! The two names (`player_name`, `account_name`) follow the same contract:
+//! Rule 6 pairs every ID with its name, and an unknown name is left out.
+//!
+//! See `docs/architecture/instrumentation-discipline.md` §Rule 5 and §Rule 6.
+
+use crate::name_intern::intern_opt;
 
 /// The stable identity correlator pair for one player connection.
 ///
@@ -45,6 +50,12 @@ pub struct PlayerIdentity {
     /// The `sgw_player.player_id` of the character being played. `None` for
     /// NPCs and before character select.
     pub player_id: Option<i32>,
+    /// The character's name, paired with `player_id` (Rule 6). `None` for
+    /// NPCs and whenever the name is not known yet; never `""`.
+    pub player_name: Option<&'static str>,
+    /// The login name, paired with `account_id` (Rule 6). `None` for NPCs
+    /// and whenever it is not known; never `""`.
+    pub account_name: Option<&'static str>,
 }
 
 impl PlayerIdentity {
@@ -54,14 +65,29 @@ impl PlayerIdentity {
     pub const UNKNOWN: Self = Self {
         account_id: None,
         player_id: None,
+        player_name: None,
+        account_name: None,
     };
 
-    /// Build from the two raw halves.
+    /// Build from the two raw ID halves, with no names.
     #[must_use]
     pub fn new(account_id: Option<u32>, player_id: Option<i32>) -> Self {
         Self {
             account_id,
             player_id,
+            ..Self::UNKNOWN
+        }
+    }
+
+    /// Attach the names that pair with the IDs (Rule 6). Both are interned
+    /// (see [`crate::name_intern`]) so the identity stays `Copy`; a blank
+    /// name becomes `None`.
+    #[must_use]
+    pub fn with_names(self, player_name: Option<&str>, account_name: Option<&str>) -> Self {
+        Self {
+            player_name: intern_opt(player_name),
+            account_name: intern_opt(account_name),
+            ..self
         }
     }
 
@@ -78,12 +104,14 @@ impl super::CellEntity {
     ///
     /// Returns [`PlayerIdentity::UNKNOWN`] for NPCs, whose `account_id` and
     /// `player_id` are both `None`.
+    ///
+    /// The names are interned here (a read-locked hash lookup once a name
+    /// has been seen), which is why callers resolve identity inside the
+    /// branch that logs, never on the per-tick path.
     #[must_use]
     pub fn identity(&self) -> PlayerIdentity {
-        PlayerIdentity {
-            account_id: self.account_id,
-            player_id: self.player_id,
-        }
+        PlayerIdentity::new(self.account_id, self.player_id)
+            .with_names(self.character_name.as_deref(), self.account_name.as_deref())
     }
 }
 
@@ -112,6 +140,25 @@ mod tests {
         e.player_id = Some(12);
         assert_eq!(e.identity(), PlayerIdentity::new(Some(6), Some(12)));
         assert!(e.identity().is_known());
+    }
+
+    #[test]
+    fn identity_carries_the_entity_names() {
+        let mut e = entity();
+        e.account_id = Some(6);
+        e.player_id = Some(12);
+        e.character_name = Some("Teal'c".into());
+        e.account_name = Some("steve".into());
+        let id = e.identity();
+        assert_eq!(id.player_name, Some("Teal'c"));
+        assert_eq!(id.account_name, Some("steve"));
+    }
+
+    #[test]
+    fn blank_names_are_left_out() {
+        let mut e = entity();
+        e.character_name = Some(String::new());
+        assert_eq!(e.identity().player_name, None);
     }
 
     #[test]
