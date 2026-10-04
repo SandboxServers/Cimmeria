@@ -588,6 +588,7 @@ async fn committed_specs_plan_against_main_tools() {
     // plans against today's tools, the ability capabilities included.
     for r in [
         "AB-U1a", "AB-U3b", "AB-U6", "AB-U7", "AB-U9b", "AB-U14", "AB-U16", "AB-U17", "AB-U21a",
+        "AB-U23",
     ] {
         let row = result("ability-mechanics", r);
         assert_eq!(row.result, "SKIPPED", "{r}: {:?}", row.reasons);
@@ -597,6 +598,8 @@ async fn committed_specs_plan_against_main_tools() {
         ("AB-U24", "D-AB03"),
         ("AB-U25", "AB-E1, AB-11"),
         ("AB-U1d", "second lab instance"),
+        ("AB-U20", "#1188"),
+        ("AB-U22", "#1188"),
     ] {
         let row = result("ability-mechanics", r);
         assert_eq!(row.result, "BLOCKED", "{r}");
@@ -653,4 +656,41 @@ lua_condition = "true"
         .find(|a| a.tool.as_deref() == Some("client_target"))
         .unwrap();
     assert_eq!(step.tier_source.as_deref(), Some("reported:ui_lua"));
+}
+
+/// AB-U20 and AB-U22 wait only on `.dummy caster` (#1188): with their
+/// `blocked` line deleted they plan as ready, so unblocking them is that
+/// one-line change and nothing else in the rows is missing.
+#[tokio::test]
+async fn the_caster_dummy_rows_are_ready_once_unblocked() {
+    let path = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join("../../docs/guides/uat-specs/abilities.toml");
+    let text = std::fs::read_to_string(&path)
+        .unwrap()
+        .replace("blocked = \"#1188 (.dummy caster)\"", "");
+    let spec = crate::uat::spec::parse(&text).unwrap();
+    let mut fake = Fake::new(&[]);
+    fake.tools = MAIN_TOOLS.split_whitespace().map(str::to_string).collect();
+    let req = RunRequest {
+        sections: vec![LoadedSpec {
+            path: "abilities.toml".into(),
+            sha256: "0".into(),
+            spec,
+        }],
+        rows: Some(vec!["AB-U20".into(), "AB-U22".into()]),
+        root: tempfile::tempdir().unwrap().keep(),
+        lab_character: Some("Labone".into()),
+        plan_only: true,
+        no_settle: true,
+        ..Default::default()
+    };
+    let out = Runner::new(&fake, None, req)
+        .unwrap()
+        .run_all()
+        .await
+        .unwrap();
+    assert_eq!(out.rows.len(), 2);
+    for r in &out.rows {
+        assert_eq!(r.result, "SKIPPED", "{}: {:?}", r.row, r.reasons);
+    }
 }

@@ -10,10 +10,12 @@ Facts found writing `docs/guides/uat-specs/abilities.toml` (AB-R0, 2026-10-04).
 - **No seeded NPC casts with a warmup.** NPC ability sets 1-5 and 350-352 hold
   no ability with `warmup > 0`; 353 (Lo'taur pet) has only 2 s heals. The lab
   dummy (`.dummy`) gets no AI turn at all. So "interrupt a mob's warmup" rows
-  (AB-U18's warmup half, AB-U20) cannot be staged; `/gmsetmobabilityset` only
-  takes those seeded sets.
-- **No seeded NPC applies a Mental debuff to a player** (643/753/754/891 are
-  player abilities), so a cleanse row (AB-U22, Clear: Mind 2099) needs a duel.
+  (AB-U18's warmup half, AB-U20) need `.dummy caster <abilityId>` (#1188),
+  which casts through the real launch at its owner; AB-U20 uses 1354
+  Disabling Shot (4 s warmup). `/gmsetmobabilityset` only takes seeded sets.
+- **No seeded Mental effect has a held mechanic**, so Clear: Mind (2099)
+  removes 0. AB-U22 stages Absolution (2865, effect 4169 `Health:2`) against
+  the two Health debuffs (4335, 4333) a `.dummy caster 1354` hit leaves.
 - **Plan ids that were effect ids:** 1462 (Snare Shot is ability 717), 4306
   (Personal Shield is 1013), 2827 (Clear: Mind is 2099). Check `abilities.sql`
   `effect_ids` before trusting a number in a plan table.

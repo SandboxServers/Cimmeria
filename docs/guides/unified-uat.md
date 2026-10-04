@@ -558,10 +558,10 @@ What the starter abilities do when pressed: heals, regeneration, damage numbers,
 | AB-U17 | Takedown (856) on the dummy | The dummy is knocked down: it cannot move for 5 s, then it can again. | AB-09a. A miss lands nothing |
 | AB-U18 | Takedown (856) on a live hostile mob that is fighting you | The mob stops moving and firing for 5 s. | AB-09a. Interrupting a mob's warmup cannot be staged yet: no seeded mob casts with a warmup |
 | AB-U19 | Snare Shot (717) on a mob | The mob moves 30 % slower for 15 s. | AB-09b |
-| AB-U20 | Interrupting Shot (657) during a mob's warmup | The mob's cast is interrupted. | AB-09c. Blocked: the dummy never casts, and no seeded mob casts with a warmup |
+| AB-U20 | Place a caster dummy with `.dummy caster 1354` (it casts Disabling Shot at you every 8 s, with a 4 s warmup). Press Interrupting Shot (657) while its cast bar runs | The dummy's cast stops: it plays the interrupt and nothing hits you from that cast. | AB-09c. `/gmsetgodmode 1` first keeps you alive. Needs `.dummy caster` (#1188) |
 | AB-U21 | Personal Shield (1013), then let a mob hit you; press it again while the shield is still full | The shield soaks damage before your Focus moves. The second press is refused with a feedback line and starts no cooldown. | AB-10 |
-| AB-U22 | Clear: Mind (2099) after a Mental debuff lands on you | Up to five Mental effects are removed. | AB-10. Blocked: no seeded mob puts a Mental debuff on a player |
-| AB-U23 | `/gmdebugcombat` from a GM character, then Pistol Shot | A debug line in chat on the feedback channel describes the cast. | AB-N1. Blocked: the server's combat-debug line is not built yet |
+| AB-U22 | Let a `.dummy caster 1354` hit you with Disabling Shot, then press Absolution (2865) | Both of Disabling Shot's debuff icons (Response -100; Accuracy and Defense -200) go away at once, and the stats come back. | AB-10. Needs `.dummy caster` (#1188). Clear: Mind (2099) removes nothing yet: no Mental debuff in the game has an effect that stays on you |
+| AB-U23 | `/gmdebugcombat` from a GM character, then Quick Burst (598) at the dummy | A line starting `[CD #<number>]` in chat describes the hit: roll, result and pools. `/gmdebugcombat` again turns it off. | AB-N1 |
 | AB-U24 | Fight, then stop | Focus recharges a few seconds after the last hit; Health regenerates out of combat. | AB-05. Blocked: the regen rates are an owner decision (D-AB03) |
 | AB-U25 | Health Heal (1646) on the other player | The other player sees a floating heal number. | AB-11. Blocked on AB-E1 and AB-11 |
 

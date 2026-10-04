@@ -30,6 +30,8 @@
 # - A hostile cast rolls QR, and `.qr` (D-AU2) does not exist: a miss on the
 #   graded press FAILs a damage or debuff row. Check `qr_rolled` for the
 #   row's cast_id in SigNoz before filing it.
+# - AB-U20 and AB-U22 use `.dummy caster 1354` (#1188) and are blocked on it
+#   until it merges: deleting their `blocked` line is the whole unblock.
 
 schema = 1
 
@@ -1677,13 +1679,75 @@ source = "signoz"
 filter = "event = 'stat_buff_applied' AND effect_id = 1462 AND ${cast_key}"
 
 # ---------------------------------------------------------------- AB-U20
+# AB-09c: 657 Interrupting Shot (effect 723, Interrupt 100 %) during the
+# warmup of a `.dummy caster 1354` (#1188): Disabling Shot, 4 s warmup, cast
+# at its owner every 8 s through the real launch.
 
 [[row]]
 id = "AB-U20"
-title = "Interrupting Shot during a mob's warmup"
-expected = "Ability_Interrupt sent and received."
-blocked = "no warmup-casting NPC: the dummy never casts and no seeded NPC ability set has a warmup ability"
-notes = "657 Interrupting Shot (effect 723, Interrupt 100 %). Needs a hostile NPC that starts a warmup on cue (a lab NPC set, or a two-player duel); the plan's 'dummy's warmup' cannot happen, since the dummy gets no AI turn."
+title = "Interrupting Shot during a caster dummy's warmup"
+expected = "The dummy's warmup is interrupted: Ability_Interrupt sent and received."
+blocked = "#1188 (.dummy caster)"
+notes = "Unblock by deleting the blocked line once #1188 merges. The step waits for the dummy's next cast to start (its onSequence) and answers inside the 4 s warmup. God mode keeps the lab character alive between casts. A miss of the Interrupting Shot interrupts nothing (check qr_rolled)."
+setup = [
+  { chat = "/gmgiveability 657", tier = "G", optional = true },
+  { chat = "/gmsetgodmode 1", tier = "G" },
+  { chat = ".dummy caster 1354", tier = "G" },
+  { capture = "chat", regex = 'dummy \[([0-9]+)\] placed: caster', var = "dummy_id" },
+  { tool = "@target", args = { entity_id = "${dummy_id}" } },
+  { tool = "@use_ability", args = { ability_id = 657, place = true }, label = "place" },
+  { tool = "@cooldowns_reset", args = { ability_id = 657 } },
+]
+step = [
+  { tool = "@wait_event", args = { kind = "ability.recv", fields = { method = "onSequence", source_id = "${dummy_id}" }, timeout_ms = 20000, cursor = "uat_warmup_${run_id}" }, label = "warmup" },
+  { tool = "@use_ability", args = { ability_id = 657, press = "key", fallback = "none" }, label = "press" },
+  { wait_ms = 3000 },
+]
+teardown = [
+  { tool = "@dummy", args = { disposition = "clear" }, optional = true },
+  { chat = "/gmsetgodmode 0", tier = "G" },
+  { tool = "@clear_effects", args = { name = "${character}" }, optional = true },
+  { tool = "@cooldowns_reset" },
+]
+[[row.expect]]
+id = "warmup-seen"
+text = "the client saw the dummy start a cast before the press"
+source = "client_event"
+event = "client.ability.recv"
+match_fields = { method = "onSequence", source_id = "${dummy_id}" }
+since = "warmup"
+[[row.expect]]
+id = "interrupted"
+text = "the dummy's warmup was interrupted"
+source = "signoz"
+filter = "event = 'warmup_interrupted' AND entity_id = ${dummy_id}"
+[[row.expect]]
+id = "interrupt-row"
+text = "the interrupt effect landed for this cast"
+source = "signoz"
+filter = "event = 'interrupt_effect' AND ${cast_key}"
+[[row.expect]]
+id = "interrupt-shown"
+text = "the client played the interrupt sequence"
+source = "client_event"
+event = "client.ability.shown"
+match_fields = { kind = "sequence_played", interrupt = true }
+since = "press"
+[[row.expect]]
+id = "sent"
+text = "the press left the client"
+source = "client_event"
+event = "client.ability.sent"
+match_fields = { ability_id = 657 }
+since = "press"
+[[row.expect]]
+id = "wire-sequence"
+text = "the server sent the dummy's sequences (cast start and interrupt)"
+source = "packet"
+message = "onSequence"
+direction = "to_client"
+entity = "${dummy_id}"
+min_rows = 2
 
 # ---------------------------------------------------------------- AB-U21
 # AB-10: 1013 Personal Shield (warmup 4 s, cooldown 20 s; effect 4306
@@ -1809,22 +1873,145 @@ direction = "to_client"
 entity = "${player_entity_id}"
 
 # ---------------------------------------------------------------- AB-U22
+# AB-10: a harmful-effect purge. Clear: Mind (2099, effect 2827 Mental:5)
+# removes nothing today: no seeded Mental effect has a mechanic that stays on
+# its target. The stageable pair (#1188): Disabling Shot (1354) from a
+# `.dummy caster` leaves two Health TimedStat debuffs, 4335 (Response -100)
+# and 4333 (Accuracy and Defense -200), 15 s each; Absolution (2865, effect
+# 4169 RemoveCategories Health:2, Harmful) removes exactly those two.
 
 [[row]]
 id = "AB-U22"
-title = "Clear: Mind removes the named count of Mental effects"
-expected = "Exactly the named count removed, reason cleansed."
-blocked = "no lab path puts a Mental debuff on a player: no seeded NPC set casts one, and a p2 cast needs a duel the lab cannot accept yet"
-notes = "2099 Clear: Mind (effect 2827, RemoveEffects Mental:5, Harmful). The Mental-tagged debuffs (643 Induce Caution, 753 Induce Panic, 754 Induce Mass Caution, 891 Suppression Shot, ...) are player abilities."
+title = "Absolution removes the two Health debuffs a caster dummy's Disabling Shot left"
+expected = "Exactly the two named Health debuffs are removed, reason cleansed."
+blocked = "#1188 (.dummy caster)"
+notes = "Unblock by deleting the blocked line once #1188 merges. Clear: Mind (2099) removes 0 until a Mental effect gets a held mechanic (a content decision). The dummy casts again every 8 s, so the removal is checked right after the press, before its next hit can land. A miss of Disabling Shot lands no debuff; the step waits up to 30 s for one that lands."
+setup = [
+  { chat = "/gmgiveability 2865", tier = "G", optional = true },
+  { chat = "/gmsetgodmode 1", tier = "G" },
+  { tool = "@use_ability", args = { ability_id = 2865, place = true }, label = "place" },
+  { tool = "@cooldowns_reset", args = { ability_id = 2865 } },
+  { chat = ".dummy caster 1354", tier = "G" },
+  { capture = "chat", regex = 'dummy \[([0-9]+)\] placed: caster', var = "dummy_id" },
+]
+step = [
+  { tool = "@wait_event", args = { kind = "ability.applied", fields = { kind = "effect_bar_add", effect_id = 4333 }, timeout_ms = 30000, cursor = "uat_debuff_${run_id}" }, label = "hit" },
+  { wait_ms = 500, label = "debuffed" },
+  { tool = "@use_ability", args = { ability_id = 2865, press = "key", fallback = "none" }, label = "press" },
+  { wait_ms = 1000, label = "cleansed" },
+]
+teardown = [
+  { tool = "@dummy", args = { disposition = "clear" }, optional = true },
+  { chat = "/gmsetgodmode 0", tier = "G" },
+  { tool = "@clear_effects", args = { name = "${character}" }, optional = true },
+  { tool = "@cooldowns_reset" },
+]
+[[row.expect]]
+id = "debuffed"
+text = "before the press the ledger holds Disabling Shot's 4333"
+source = "server"
+at = "debuffed"
+tool = "@ability_state"
+pointer = "/state/ledger[effect_id=4333]/ability_id"
+op = "eq"
+value = 1354
+[[row.expect]]
+id = "gone-4333"
+text = "after the press 4333 is gone"
+source = "server"
+at = "cleansed"
+tool = "@ability_state"
+pointer = "/state/ledger[effect_id=4333]"
+op = "absent"
+[[row.expect]]
+id = "gone-4335"
+text = "after the press 4335 is gone"
+source = "server"
+at = "cleansed"
+tool = "@ability_state"
+pointer = "/state/ledger[effect_id=4335]"
+op = "absent"
+[[row.expect]]
+id = "cleansed-rows"
+text = "both entries came off with reason cleansed"
+source = "signoz"
+filter = "event = 'stat_buff_removed' AND reason = 'cleansed' AND effect_id IN (4333, 4335) AND target_id = ${player_entity_id}"
+min_rows = 2
+[[row.expect]]
+id = "purge-row"
+text = "the purge ran for this cast"
+source = "signoz"
+filter = "event = 'remove_effects_applied' AND ${cast_key}"
+[[row.expect]]
+id = "client-cleared"
+text = "the client's effect bar clears the debuff"
+source = "client_event"
+event = "client.ability.applied"
+match_fields = { kind = "effect_bar_clear", effect_id = 4333 }
+since = "press"
+timeout_ms = 3000
+[[row.expect]]
+id = "wire-timer"
+text = "the server sent the icon clears"
+source = "packet"
+message = "onTimerUpdate"
+direction = "to_client"
+entity = "${player_entity_id}"
+min_rows = 2
 
 # ---------------------------------------------------------------- AB-U23
+# AB-N1 (#1184): `/gmdebugcombat` (docs/commands.md, index 170) toggles the
+# server's combat-debug lines, which arrive as feedback-channel chat lines
+# starting `[CD #<cast_id>]` and log `combat_debug_line` with the same text.
 
 [[row]]
 id = "AB-U23"
 title = "The combat-debug line matches the abilities.debug row"
 expected = "The feedback-channel debug line in chat matches the abilities.debug row for the same cast_id."
-blocked = "AB-N1"
-notes = "/gmdebugcombat from the GM character, then 592 Pistol Shot. AB-N1 (the server's combat-debug lines) is not built yet."
+notes = "Quick Burst (598) stands in for the plan's Pistol Shot: a fresh character's pistol may hold no ammo. `/gmdebugcombat` is a toggle; setup proves it went on, teardown turns it off."
+setup = [
+  { chat = "/gmgiveability 598", tier = "G", optional = true },
+  { tool = "@dummy", args = { disposition = "hostile" } },
+  { tool = "@target", args = { entity_id = "${dummy_id}" } },
+  { tool = "@use_ability", args = { ability_id = 598, place = true }, label = "place" },
+  { wait_ms = 2000 },
+  { tool = "@cooldowns_reset", args = { ability_id = 598 } },
+  { chat = "/gmdebugcombat", tier = "G" },
+  { capture = "chat", regex = 'gmDebugCombat: Combat debug (on)', var = "combat_debug" },
+]
+step = [
+  { tool = "@use_ability", args = { ability_id = 598, press = "key", fallback = "none" }, label = "press" },
+  { wait_ms = 2000 },
+]
+teardown = [
+  { chat = "/gmdebugcombat", tier = "G", optional = true },
+  { tool = "@cooldowns_reset" },
+  { tool = "@dummy", args = { disposition = "clear" }, optional = true },
+]
+[[row.expect]]
+id = "chat-line"
+text = "a [CD #cast_id] line for this cast reaches chat"
+source = "chat"
+matches = '\[CD #${cast_id}\]'
+[[row.expect]]
+id = "shown"
+text = "the client shows a feedback line from the combat debug"
+source = "client_event"
+event = "client.ability.shown"
+match_fields = { kind = "feedback_line", text = "[CD #*" }
+since = "press"
+[[row.expect]]
+id = "debug-row"
+text = "the abilities.debug row for this cast and caster"
+source = "signoz"
+filter = "event = 'combat_debug_line' AND cast_id = ${cast_id} AND caster_id = ${cast_entity_id}"
+[[row.expect]]
+id = "wire-feedback"
+text = "the server sent the debug lines as player communication"
+source = "packet"
+message = "onPlayerCommunication"
+direction = "to_client"
+entity = "${player_entity_id}"
 
 # ---------------------------------------------------------------- AB-U24, AB-U25
 
