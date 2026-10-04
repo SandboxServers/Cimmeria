@@ -9,7 +9,7 @@ use tokio::sync::mpsc;
 use super::feedback::send_gm_feedback;
 use super::{read_i32, read_i64};
 use crate::cell::messages::CellToBaseMsg;
-use crate::cell::space_manager::{DespawnOutcome, SpaceManager};
+use crate::cell::space_manager::{DespawnOutcome, EntityNames, SpaceManager};
 use crate::mercury::method_idx::ON_TARGET_UPDATE;
 use crate::mercury::read_wstring;
 
@@ -31,6 +31,7 @@ pub(super) async fn handle_kill_target(
         None => {
             tracing::warn!(
                 entity_id,
+                entity_name = space_mgr.entity_label(entity_id),
                 args_len = args.len(),
                 "gmKillTarget: truncated args (need INT64 = 8 bytes)"
             );
@@ -45,6 +46,7 @@ pub(super) async fn handle_kill_target(
         Err(_) => {
             tracing::warn!(
                 entity_id,
+                entity_name = space_mgr.entity_label(entity_id),
                 target_i64,
                 "gmKillTarget: target id out of u32 range"
             );
@@ -60,7 +62,12 @@ pub(super) async fn handle_kill_target(
     let target = match space_mgr.get_entity(target_eid) {
         Some(t) => t,
         None => {
-            tracing::warn!(entity_id, target_eid, "gmKillTarget: target not found");
+            tracing::warn!(
+                entity_id,
+                entity_name = space_mgr.entity_label(entity_id),
+                target_entity_id = target_eid, // nt:id-only the target is gone, so it has no name
+                "gmKillTarget: target not found"
+            );
             send_gm_feedback(
                 entity_id,
                 &format!("gmKillTarget: target {target_eid} not found"),
@@ -73,10 +80,12 @@ pub(super) async fn handle_kill_target(
     if Some(target.space_id.0) != caller_space {
         tracing::warn!(
             entity_id,
-            target_eid,
+            entity_name = space_mgr.entity_label(entity_id),
+            target_entity_id = target_eid,
+            target_entity_name = EntityNames::of(target).entity_name,
             target_space = target.space_id.0,
             caller_space = ?caller_space,
-            "gmKillTarget: target is in a different space — refused"
+            "gmKillTarget: target is in a different space — refused",
         );
         send_gm_feedback(
             entity_id,
@@ -89,7 +98,9 @@ pub(super) async fn handle_kill_target(
     if target.is_player {
         tracing::warn!(
             entity_id,
-            target_eid,
+            entity_name = space_mgr.entity_label(entity_id),
+            target_entity_id = target_eid,
+            target_entity_name = EntityNames::of(target).entity_name,
             "gmKillTarget: target is a player — refused (GM kill is NPC-only)"
         );
         send_gm_feedback(
@@ -101,7 +112,16 @@ pub(super) async fn handle_kill_target(
         return true;
     }
 
-    tracing::info!(entity_id, target_eid, "gmKillTarget: killing NPC");
+    let target_names = EntityNames::of(target);
+    tracing::info!(
+        entity_id,
+        entity_name = space_mgr.entity_label(entity_id),
+        target_entity_id = target_eid,
+        target_entity_name = target_names.entity_name,
+        target_template_id = target_names.template_id,
+        target_template_name = target_names.template_name,
+        "gmKillTarget: killing NPC"
+    );
     // `attacker_is_player: false` — a GM `.kill` never went through the
     // combat HUD, so there is no reticle on the GM to drop.
     // `grant_xp: false` — an admin command must not mint levels.
@@ -121,7 +141,9 @@ pub(super) async fn handle_kill_target(
         // surface it so the GM knows the command no-op'd.
         tracing::warn!(
             entity_id,
-            target_eid,
+            entity_name = space_mgr.entity_label(entity_id),
+            target_entity_id = target_eid,
+            target_entity_name = target_names.entity_name,
             "gmKillTarget: kill not applied (target already dead or not an NPC)"
         );
         send_gm_feedback(
@@ -155,6 +177,7 @@ pub(super) async fn handle_despawn(
         None => {
             tracing::warn!(
                 entity_id,
+                entity_name = space_mgr.entity_label(entity_id),
                 args_len = args.len(),
                 "gmDespawn: truncated args (need INT32 TargetID)"
             );
@@ -165,7 +188,12 @@ pub(super) async fn handle_despawn(
     let target_eid = match u32::try_from(target_i32) {
         Ok(id) if id != 0 => id,
         _ => {
-            tracing::warn!(entity_id, target_i32, "gmDespawn: invalid target id");
+            tracing::warn!(
+                entity_id,
+                entity_name = space_mgr.entity_label(entity_id),
+                target_i32,
+                "gmDespawn: invalid target id"
+            );
             send_gm_feedback(entity_id, "gmDespawn: invalid target id", tx).await;
             return true;
         }
@@ -176,10 +204,12 @@ pub(super) async fn handle_despawn(
         Some(t) if Some(t.space_id.0) != caller_space => {
             tracing::warn!(
                 entity_id,
-                target_eid,
+                entity_name = space_mgr.entity_label(entity_id),
+                target_entity_id = target_eid,
+                target_entity_name = EntityNames::of(t).entity_name,
                 target_space = t.space_id.0,
                 caller_space = ?caller_space,
-                "gmDespawn: target in a different space — refused"
+                "gmDespawn: target in a different space — refused",
             );
             send_gm_feedback(
                 entity_id,
@@ -192,7 +222,9 @@ pub(super) async fn handle_despawn(
         Some(t) if t.is_player => {
             tracing::warn!(
                 entity_id,
-                target_eid,
+                entity_name = space_mgr.entity_label(entity_id),
+                target_entity_id = target_eid,
+                target_entity_name = EntityNames::of(t).entity_name,
                 "gmDespawn: target is a player — refused (NPC-only)"
             );
             send_gm_feedback(
@@ -205,7 +237,12 @@ pub(super) async fn handle_despawn(
         }
         Some(_) => {}
         None => {
-            tracing::warn!(entity_id, target_eid, "gmDespawn: target not found");
+            tracing::warn!(
+                entity_id,
+                entity_name = space_mgr.entity_label(entity_id),
+                target_entity_id = target_eid, // nt:id-only the target is gone, so it has no name
+                "gmDespawn: target not found"
+            );
             send_gm_feedback(
                 entity_id,
                 &format!("gmDespawn: target {target_eid} not found"),
@@ -216,7 +253,16 @@ pub(super) async fn handle_despawn(
         }
     }
 
-    tracing::info!(entity_id, target_eid, "gmDespawn: despawning NPC");
+    let target_names = space_mgr.entity_names(target_eid);
+    tracing::info!(
+        entity_id,
+        entity_name = space_mgr.entity_label(entity_id),
+        target_entity_id = target_eid,
+        target_entity_name = target_names.entity_name,
+        target_template_id = target_names.template_id,
+        target_template_name = target_names.template_name,
+        "gmDespawn: despawning NPC"
+    );
     // C08b (2026-09-18): switched from the bare `SpaceManager::destroy_entity`
     // to `despawn_npc`, which fans `LeftAoI` to every witness immediately
     // instead of leaving the corpse visible until the next AoI tick (the
@@ -269,12 +315,17 @@ pub(super) async fn handle_respawn_cmd(
     {
         tracing::warn!(
             entity_id,
+            entity_name = space_mgr.entity_label(entity_id),
             "gmRespawn: caller has no player_id (respawn is player-only)"
         );
         send_gm_feedback(entity_id, "gmRespawn: caller is not a player", tx).await;
         return true;
     }
-    tracing::info!(entity_id, "gmRespawn: respawning GM");
+    tracing::info!(
+        entity_id,
+        entity_name = space_mgr.entity_label(entity_id),
+        "gmRespawn: respawning GM"
+    );
     crate::cell::respawn::handle_respawn(entity_id, 0, tx, space_mgr).await;
     send_gm_feedback(entity_id, "gmRespawn: respawned", tx).await;
     true
@@ -295,7 +346,12 @@ pub(super) async fn handle_set_target(
     let (name_or_id, _) = match read_wstring(args, 0) {
         Ok(v) => v,
         Err(e) => {
-            tracing::warn!(entity_id, error = %e, "gmSetTarget: malformed NameOrID WSTRING");
+            tracing::warn!(
+                entity_id,
+                entity_name = space_mgr.entity_label(entity_id),
+                error = %e,
+                "gmSetTarget: malformed NameOrID WSTRING",
+            );
             send_gm_feedback(entity_id, "gmSetTarget: malformed NameOrID", tx).await;
             return true;
         }
@@ -305,9 +361,10 @@ pub(super) async fn handle_set_target(
         _ => {
             tracing::warn!(
                 entity_id,
-                name_or_id = %name_or_id,
+                entity_name = space_mgr.entity_label(entity_id),
+                name_or_id_arg = %name_or_id,
                 "gmSetTarget: NameOrID is not a non-negative numeric id — \
-                 name resolution is not wired in the cell; rejecting"
+                 name resolution is not wired in the cell; rejecting",
             );
             send_gm_feedback(
                 entity_id,
@@ -322,12 +379,24 @@ pub(super) async fn handle_set_target(
     match space_mgr.get_entity_mut(entity_id) {
         Some(e) => e.current_target_id = if target_id > 0 { Some(target_id) } else { None },
         None => {
-            tracing::warn!(entity_id, "gmSetTarget: caller entity not found");
+            tracing::warn!(
+                entity_id,
+                entity_name = space_mgr.entity_label(entity_id),
+                "gmSetTarget: caller entity not found"
+            );
             send_gm_feedback(entity_id, "gmSetTarget: caller entity not found", tx).await;
             return true;
         }
     }
-    tracing::info!(entity_id, target_id, "gmSetTarget: target set");
+    tracing::info!(
+        entity_id,
+        entity_name = space_mgr.entity_label(entity_id),
+        target_id,
+        target_name = u32::try_from(target_id)
+            .ok()
+            .and_then(|t| space_mgr.entity_label(t)),
+        "gmSetTarget: target set"
+    );
 
     // Notify the owner so the client enables auto-attack against the target.
     let reply = target_id.to_le_bytes().to_vec();

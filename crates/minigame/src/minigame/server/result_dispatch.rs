@@ -62,12 +62,15 @@ pub(super) async fn send_minigame_result(
     {
         tracing::error!(
             entity_id,
+            entity_name = player.name(),
+            player_id = player.id,
+            player_name = player.name(),
             game = %game_name,
             result_code,
             result = cimmeria_wire::cell::client_methods::minigame::minigame_result_name(result_code),
             chain_count,
             phase,
-            "Minigame: result delivery failed -- chains will not fire: {e}"
+            "Minigame: result delivery failed -- chains will not fire: {e}",
         );
     }
 }
@@ -137,6 +140,19 @@ mod tests {
             event.has_field("result", "victory"),
             "the result code is named next to its number (NT-31): {event:#?}"
         );
+        // Rule 6: the player the outcome is lost for is named, not just
+        // the entity slot.
+        for (key, want) in [
+            ("entity_name", "Hacker"),
+            ("player_id", "7"),
+            ("player_name", "Hacker"),
+        ] {
+            assert!(
+                event.has_field(key, want),
+                "a lost minigame result must name its player: expected \
+                 {key}={want}; got {event:#?}"
+            );
+        }
         assert!(
             event.has_field("chain_count", "2"),
             "chain_count must reflect the on_victory_chains length so a \

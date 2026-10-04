@@ -111,10 +111,14 @@ async fn refuse(
         decision_outcome = "gm_refused",
         reason,
         entity_id = caller_id,
+        entity_name = id.player_name,
         account_id = id.account_id,
+        account_name = id.account_name,
         player_id = id.player_id,
+        player_name = id.player_name,
         pet_id,
-        "GM .pet refused"
+        pet_name = pet_id.and_then(|p| space_mgr.entity_label(p)),
+        "GM .pet refused",
     );
     send_gm_feedback(caller_id, text, tx).await;
 }
@@ -186,14 +190,21 @@ async fn summon(
         target: "pets.command",
         decision_outcome = "gm_summoned",
         entity_id = caller_id,
+        entity_name = id.player_name,
         account_id = id.account_id,
+        account_name = id.account_name,
         player_id = id.player_id,
+        player_name = id.player_name,
         pet_id,
+        pet_name = space_mgr.entity_label(pet_id),
         owner_id = caller_id,
+        owner_name = id.player_name,
         template_id,
+        template_name = cimmeria_names::book().template(template_id),
         ability_id = summon_ability_id,
+        ability_name = cimmeria_names::book().ability(summon_ability_id),
         replaced = ?replaced,
-        "GM .pet summon"
+        "GM .pet summon",
     );
     let via = if summon_ability_id != 0 {
         format!(" via ability {summon_ability_id}")
@@ -270,11 +281,15 @@ async fn dismiss(caller_id: u32, tx: &mpsc::Sender<CellToBaseMsg>, space_mgr: &m
         target: "pets.command",
         decision_outcome = "gm_dismissed",
         entity_id = caller_id,
+        entity_name = id.player_name,
         account_id = id.account_id,
+        account_name = id.account_name,
         player_id = id.player_id,
+        player_name = id.player_name,
         owner_id = caller_id,
+        owner_name = id.player_name,
         pets = ?pets,
-        "GM .pet dismiss"
+        "GM .pet dismiss",
     );
     send_gm_feedback(caller_id, &format!(".pet dismiss: dismissed {pets:?}"), tx).await;
 }
@@ -341,13 +356,18 @@ async fn stance(
         decision_outcome = "gm_stance_set",
         event = "stance_changed",
         entity_id = caller_id,
+        entity_name = id.player_name,
         account_id = id.account_id,
+        account_name = id.account_name,
         player_id = id.player_id,
+        player_name = id.player_name,
         pet_id,
+        pet_name = space_mgr.entity_label(pet_id),
         owner_id = owner,
+        owner_name = space_mgr.entity_label(owner),
         from = previous.label(),
         stance = stance.label(),
-        "GM .pet stance"
+        "GM .pet stance",
     );
     // Owner only: the stance highlights the owner's pet bar.
     if let Err(e) = tx
@@ -365,12 +385,17 @@ async fn stance(
             decision_outcome = "send_failed",
             reason = "cell_to_base_closed",
             entity_id = caller_id,
+            entity_name = id.player_name,
             account_id = id.account_id,
+            account_name = id.account_name,
             player_id = id.player_id,
+            player_name = id.player_name,
             pet_id,
+            pet_name = space_mgr.entity_label(pet_id),
             owner_id = owner,
+            owner_name = space_mgr.entity_label(owner),
             error = %e,
-            "GM .pet stance: onPetStanceUpdate not sent; the pet bar shows the old stance"
+            "GM .pet stance: onPetStanceUpdate not sent; the pet bar shows the old stance",
         );
     }
     send_gm_feedback(
@@ -435,20 +460,26 @@ async fn info(
     // Another owner's pet names its summoner as the subject (Rule 5): the
     // identity captured at summon, since the owner's entity id may since
     // have been reused.
-    let subject_player_id = (owner != caller_id)
-        .then(|| space_mgr.pets.summoner_identity(pet_id).player_id)
-        .flatten();
+    let subject = (owner != caller_id).then(|| space_mgr.pets.summoner_identity(pet_id));
+    let subject_player_id = subject.and_then(|s| s.player_id);
+    let subject_player_name = subject.and_then(|s| s.player_name);
     tracing::debug!(
         target: "pets.command",
         decision_outcome = "gm_inspected",
         verb = "info",
         entity_id = caller_id,
+        entity_name = id.player_name,
         account_id = id.account_id,
+        account_name = id.account_name,
         player_id = id.player_id,
+        player_name = id.player_name,
         subject_player_id,
+        subject_player_name = subject_player_name,
         pet_id,
+        pet_name = space_mgr.entity_label(pet_id),
         owner_id = owner,
-        "GM .pet info"
+        owner_name = space_mgr.entity_label(owner),
+        "GM .pet info",
     );
     let distance = owner_distance(space_mgr, pet_id, owner)
         .map_or_else(|| "owner not found".to_string(), |d| format!("{d:.1} u"));
@@ -496,11 +527,15 @@ async fn list(caller_id: u32, tx: &mpsc::Sender<CellToBaseMsg>, space_mgr: &mut 
         decision_outcome = "gm_inspected",
         verb = "list",
         entity_id = caller_id,
+        entity_name = id.player_name,
         account_id = id.account_id,
+        account_name = id.account_name,
         player_id = id.player_id,
+        player_name = id.player_name,
         space_id = space,
+        world = space.and_then(|s| space_mgr.world_name_for_space(s)),
         pets = pairs.len(),
-        "GM .pet list"
+        "GM .pet list",
     );
     send_gm_feedback(
         caller_id,

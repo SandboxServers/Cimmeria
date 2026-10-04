@@ -51,13 +51,16 @@ impl ChatRow {
             outcome,
             reason,
             account_id = self.who.account_id,
+            account_name = self.who.account_name,
             player_id = self.who.player_id,
+            player_name = self.who.player_name,
             entity_id = self.entity_id,
-            squad_id = self.squad_id,
+            entity_name = self.who.player_name,
+            squad_id = self.squad_id, // nt:id-only squads carry no name, only their members do
             recipients = self.recipients,
             text_units = self.text_units,
             "squad chat {}",
-            outcome
+            outcome,
         );
         count_action("chat", outcome, reason.unwrap_or("none"));
     }
@@ -112,11 +115,12 @@ pub(super) async fn relay_to_squad(
                 target: "squad",
                 event = "squad.send_failed",
                 entity_id = eid,
+                entity_name = space_mgr.entity_label(eid),
                 method_index = ON_PLAYER_COMMUNICATION,
                 method_name = cimmeria_wire::names::player_client_method(ON_PLAYER_COMMUNICATION),
-                squad_id = squad.id(),
+                squad_id = squad.id(), // nt:id-only squads carry no name, only their members do
                 reason = "cell_to_base_closed",
-                "squad chat line could not be queued"
+                "squad chat line could not be queued",
             );
             continue;
         }

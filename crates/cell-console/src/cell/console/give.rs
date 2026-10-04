@@ -47,7 +47,16 @@ pub(super) async fn give_cash(
         send_gm_feedback(caller_id, "givecash: target has no player id", tx).await;
         return;
     };
-    tracing::info!(caller_id, target, player_id, amount, "GM .givecash");
+    tracing::info!(
+        caller_id,
+        caller_name = space_mgr.entity_label(caller_id),
+        target,
+        target_name = space_mgr.entity_label(target),
+        subject_player_id = player_id,
+        subject_player_name = space_mgr.entity_label(target),
+        amount,
+        "GM .givecash"
+    );
     let _ = tx
         .send(CellToBaseMsg::GrantCash {
             entity_id: target,
@@ -85,7 +94,14 @@ pub(super) async fn give_xp(
         send_gm_feedback(caller_id, "givexp: target has no player id", tx).await;
         return;
     }
-    tracing::info!(caller_id, target, amount, "GM .givexp");
+    tracing::info!(
+        caller_id,
+        caller_name = space_mgr.entity_label(caller_id),
+        target,
+        target_name = space_mgr.entity_label(target),
+        amount,
+        "GM .givexp"
+    );
     let _ = tx
         .send(CellToBaseMsg::GrantXP {
             entity_id: target,

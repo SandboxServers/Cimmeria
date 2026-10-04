@@ -68,7 +68,7 @@ mod world;
 use tokio::sync::mpsc;
 
 use crate::cell::messages::CellToBaseMsg;
-use crate::cell::space_manager::SpaceManager;
+use crate::cell::space_manager::{EntityNames, SpaceManager};
 
 // ── Flattened SGWGmPlayer cell-method indices ────────────────────────────────
 //
@@ -411,7 +411,8 @@ pub(super) fn resolve_self_or_target(
         Err(_) => {
             tracing::warn!(
                 entity_id = caller_id,
-                target,
+                entity_name = space_mgr.entity_label(caller_id),
+                target_raw = target,
                 cmd,
                 "GM cmd: target id out of u32 range"
             );
@@ -424,7 +425,9 @@ pub(super) fn resolve_self_or_target(
         Some(t) => {
             tracing::warn!(
                 entity_id = caller_id,
-                target_eid,
+                entity_name = space_mgr.entity_label(caller_id),
+                target_entity_id = target_eid,
+                target_entity_name = EntityNames::of(t).entity_name,
                 target_space = t.space_id.0,
                 caller_space = ?caller_space,
                 cmd,
@@ -435,7 +438,8 @@ pub(super) fn resolve_self_or_target(
         None => {
             tracing::warn!(
                 entity_id = caller_id,
-                target_eid,
+                entity_name = space_mgr.entity_label(caller_id),
+                target_entity_id = target_eid, // nt:id-only the target is gone, so it has no name
                 cmd,
                 "GM cmd: target not found"
             );

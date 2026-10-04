@@ -203,9 +203,11 @@ pub(super) async fn spawn_dummy(
                 event = "lab_dummy_refused",
                 reason = "spawn_failed",
                 entity_id = caller_id,
+                entity_name = space_mgr.entity_label(caller_id),
                 template_id,
+                template_name = cimmeria_names::book().template(template_id),
                 error = %e,
-                "GM .dummy refused: the template did not spawn"
+                "GM .dummy refused: the template did not spawn",
             );
             send_gm_feedback(caller_id, &format!(".dummy: {e}"), tx).await;
             return None;
@@ -231,18 +233,24 @@ pub(super) async fn spawn_dummy(
         target: "abilities.gm",
         event = "lab_dummy_spawned",
         entity_id = caller_id,
+        entity_name = owner_identity.player_name,
         account_id = owner_identity.account_id,
+        account_name = owner_identity.account_name,
         player_id = owner_identity.player_id,
+        player_name = owner_identity.player_name,
         dummy_id,
+        dummy_name = (!name.is_empty()).then_some(name.as_str()),
         template_id,
+        template_name = cimmeria_names::book().template(template_id),
         disposition = disposition.label(),
         faction = dummy_faction(disposition),
         health = LAB_DUMMY_HEALTH,
         defense,
         accuracy,
         space_id,
+        world = %world_name,
         lifetime_secs = LAB_DUMMY_LIFETIME.as_secs(),
-        "GM placed a lab dummy"
+        "GM placed a lab dummy",
     );
     Some(Placed {
         dummy_id,
@@ -333,6 +341,8 @@ async fn despawn(
     else {
         return false;
     };
+    // Snapshotted before the despawn tears the entity down (Rule 6).
+    let dummy_name = space_mgr.entity_names(dummy_id).entity_name;
     let combat_exits = release_npc_from_player_combat(dummy_id, why.as_str(), tx, space_mgr).await;
     let outcome = space_mgr.despawn_npc(dummy_id, tx).await;
     let (removed, witnesses) = match outcome {
@@ -344,13 +354,17 @@ async fn despawn(
         event = "lab_dummy_despawned",
         reason = why.as_str(),
         entity_id = mark.owner_id,
+        entity_name = mark.owner_identity.player_name,
         account_id = mark.owner_identity.account_id,
+        account_name = mark.owner_identity.account_name,
         player_id = mark.owner_identity.player_id,
+        player_name = mark.owner_identity.player_name,
         dummy_id,
+        dummy_name = dummy_name,
         removed,
         witnesses_notified = witnesses,
         combat_exits,
-        "lab dummy despawned"
+        "lab dummy despawned",
     );
     removed
 }

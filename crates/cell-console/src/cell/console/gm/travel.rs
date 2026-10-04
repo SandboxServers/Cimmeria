@@ -33,6 +33,7 @@ pub(super) async fn handle_goto_xyz(
     let Some(position) = read_xyz(args, 0) else {
         tracing::warn!(
             entity_id,
+            entity_name = space_mgr.entity_label(entity_id),
             args_len = args.len(),
             "gmGotoXYZ: truncated args (need 3×FLOAT = 12 bytes)"
         );
@@ -46,6 +47,7 @@ pub(super) async fn handle_goto_xyz(
     if !position.iter().all(|c| c.is_finite()) {
         tracing::warn!(
             entity_id,
+            entity_name = space_mgr.entity_label(entity_id),
             ?position,
             "gmGotoXYZ: non-finite coordinate rejected"
         );
@@ -60,13 +62,24 @@ pub(super) async fn handle_goto_xyz(
             [e.position.x, e.position.y, e.position.z],
         ),
         None => {
-            tracing::warn!(entity_id, "gmGotoXYZ: caller entity not found");
+            tracing::warn!(
+                entity_id,
+                entity_name = space_mgr.entity_label(entity_id),
+                "gmGotoXYZ: caller entity not found"
+            );
             send_gm_feedback(entity_id, "gmGotoXYZ: caller entity not found", tx).await;
             return true;
         }
     };
 
-    tracing::info!(entity_id, ?position, space_id, "gmGotoXYZ: teleporting GM");
+    tracing::info!(
+        entity_id,
+        entity_name = space_mgr.entity_label(entity_id),
+        ?position,
+        space_id,
+        world = space_mgr.world_name_for_space(space_id),
+        "gmGotoXYZ: teleporting GM"
+    );
 
     // Keep the spatial grid consistent first (writes cell_entity.position),
     // then send the authoritative snap. Position-only: `gmGotoXYZ` names a
@@ -135,7 +148,12 @@ pub(super) async fn handle_goto_location(
     let (world_name, consumed) = match read_wstring(args, 0) {
         Ok(v) => v,
         Err(e) => {
-            tracing::warn!(entity_id, error = %e, "gmGotoLocation: malformed WorldName WSTRING");
+            tracing::warn!(
+                entity_id,
+                entity_name = space_mgr.entity_label(entity_id),
+                error = %e,
+                "gmGotoLocation: malformed WorldName WSTRING",
+            );
             send_gm_feedback(entity_id, "gmGotoLocation: malformed WorldName", tx).await;
             return true;
         }
@@ -143,6 +161,7 @@ pub(super) async fn handle_goto_location(
     let Some(position) = read_xyz(args, consumed) else {
         tracing::warn!(
             entity_id,
+            entity_name = space_mgr.entity_label(entity_id),
             args_len = args.len(),
             "gmGotoLocation: truncated args (need WSTRING + 3×FLOAT)"
         );
@@ -155,13 +174,18 @@ pub(super) async fn handle_goto_location(
         return true;
     };
     if world_name.trim().is_empty() {
-        tracing::warn!(entity_id, "gmGotoLocation: empty world name rejected");
+        tracing::warn!(
+            entity_id,
+            entity_name = space_mgr.entity_label(entity_id),
+            "gmGotoLocation: empty world name rejected"
+        );
         send_gm_feedback(entity_id, "gmGotoLocation: empty world name rejected", tx).await;
         return true;
     }
     if !position.iter().all(|c| c.is_finite()) {
         tracing::warn!(
             entity_id,
+            entity_name = space_mgr.entity_label(entity_id),
             ?position,
             "gmGotoLocation: non-finite coordinate rejected"
         );
@@ -174,7 +198,11 @@ pub(super) async fn handle_goto_location(
         return true;
     }
     if space_mgr.get_entity(entity_id).is_none() {
-        tracing::warn!(entity_id, "gmGotoLocation: caller entity not found");
+        tracing::warn!(
+            entity_id,
+            entity_name = space_mgr.entity_label(entity_id),
+            "gmGotoLocation: caller entity not found"
+        );
         send_gm_feedback(entity_id, "gmGotoLocation: caller entity not found", tx).await;
         return true;
     }
@@ -199,9 +227,10 @@ pub(super) async fn handle_goto_location(
                 None => {
                     tracing::warn!(
                         entity_id,
-                        %world_name,
+                        entity_name = space_mgr.entity_label(entity_id),
+                        world = %world_name,
                         reason = "no_entry_point",
-                        "gmGotoLocation: origin requested and the world has no entry point"
+                        "gmGotoLocation: origin requested and the world has no entry point",
                     );
                     send_gm_feedback(
                         entity_id,
@@ -215,7 +244,14 @@ pub(super) async fn handle_goto_location(
         }
     }
 
-    tracing::info!(entity_id, %world_name, ?position, entry_source = ?entry_source, "gmGotoLocation: cross-world teleport via GateTravel");
+    tracing::info!(
+        entity_id,
+        entity_name = space_mgr.entity_label(entity_id),
+        world = %world_name,
+        ?position,
+        entry_source = ?entry_source,
+        "gmGotoLocation: cross-world teleport via GateTravel",
+    );
     // Feedback wording is captured before the move because `world_name` is moved
     // into the GateTravel message below.
     let feedback = format!(
@@ -250,6 +286,7 @@ pub(super) async fn handle_goto_location(
     {
         tracing::warn!(
             entity_id,
+            entity_name = space_mgr.entity_label(entity_id),
             "gmGotoLocation: GateTravel enqueue failed; entity left in place"
         );
         send_gm_feedback(entity_id, "gmGotoLocation: transfer enqueue failed", tx).await;
@@ -286,7 +323,11 @@ pub(super) async fn handle_dhd(
     let gate_addr = match args.first() {
         Some(&b) => b as i8, // INT8 (signed)
         None => {
-            tracing::warn!(entity_id, "gmDHD: truncated args (need INT8 aGateAddress)");
+            tracing::warn!(
+                entity_id,
+                entity_name = space_mgr.entity_label(entity_id),
+                "gmDHD: truncated args (need INT8 aGateAddress)"
+            );
             send_gm_feedback(entity_id, "gmDHD: missing INT8 aGateAddress", tx).await;
             return true;
         }
@@ -294,6 +335,7 @@ pub(super) async fn handle_dhd(
     if gate_addr <= 0 {
         tracing::warn!(
             entity_id,
+            entity_name = space_mgr.entity_label(entity_id),
             gate_addr,
             "gmDHD: address <= 0 (list request) unsupported — needs a client feedback channel"
         );
@@ -305,7 +347,12 @@ pub(super) async fn handle_dhd(
         .await;
         return true;
     }
-    tracing::info!(entity_id, gate_addr, "gmDHD: dialing stargate");
+    tracing::info!(
+        entity_id,
+        entity_name = space_mgr.entity_label(entity_id),
+        gate_addr,
+        "gmDHD: dialing stargate"
+    );
 
     // `handle_dial_gate` enforces the player's address book (CAT-O-01), and a
     // GM debugging a world they have never visited will not hold its address.
@@ -323,6 +370,7 @@ pub(super) async fn handle_dhd(
             tracing::warn!(
                 entity_id,
                 gate_addr,
+                entity_name = entity.identity().player_name,
                 access_level = entity.access_level,
                 reason = "gm_address_grant",
                 "gmDHD: caller does not hold this stargate address — granting it for \
@@ -360,7 +408,7 @@ pub(super) async fn handle_goto(
     tx: &mpsc::Sender<CellToBaseMsg>,
     space_mgr: &mut SpaceManager,
 ) -> bool {
-    let Some(target_eid) = parse_target_id(entity_id, args, "gmGoto") else {
+    let Some(target_eid) = parse_target_id(entity_id, args, "gmGoto", space_mgr) else {
         send_gm_feedback(
             entity_id,
             "gmGoto: NameOrID must be a positive numeric id",
@@ -375,7 +423,9 @@ pub(super) async fn handle_goto(
         Some(_) => {
             tracing::warn!(
                 entity_id,
-                target_eid,
+                entity_name = space_mgr.entity_label(entity_id),
+                target_entity_id = target_eid,
+                target_entity_name = space_mgr.entity_label(target_eid),
                 "gmGoto: target in a different space — refused"
             );
             send_gm_feedback(
@@ -387,7 +437,12 @@ pub(super) async fn handle_goto(
             return true;
         }
         None => {
-            tracing::warn!(entity_id, target_eid, "gmGoto: target not found");
+            tracing::warn!(
+                entity_id,
+                entity_name = space_mgr.entity_label(entity_id),
+                target_entity_id = target_eid, // nt:id-only the target is gone, so it has no name
+                "gmGoto: target not found"
+            );
             send_gm_feedback(
                 entity_id,
                 &format!("gmGoto: target {target_eid} not found"),
@@ -409,7 +464,11 @@ pub(super) async fn handle_goto(
     };
     tracing::info!(
         entity_id,
-        target_eid,
+        entity_name = space_mgr.entity_label(entity_id),
+        target_entity_id = target_eid,
+        target_entity_name = space_mgr.entity_label(target_eid),
+        subject_player_id = space_mgr.player_identity(target_eid).player_id,
+        subject_player_name = space_mgr.player_identity(target_eid).player_name,
         ?dest,
         "gmGoto: teleporting GM to target"
     );
@@ -464,7 +523,7 @@ pub(super) async fn handle_summon(
     tx: &mpsc::Sender<CellToBaseMsg>,
     space_mgr: &mut SpaceManager,
 ) -> bool {
-    let Some(target_eid) = parse_target_id(entity_id, args, "gmSummon") else {
+    let Some(target_eid) = parse_target_id(entity_id, args, "gmSummon", space_mgr) else {
         send_gm_feedback(
             entity_id,
             "gmSummon: NameOrID must be a positive numeric id",
@@ -474,7 +533,11 @@ pub(super) async fn handle_summon(
         return true;
     };
     if target_eid == entity_id {
-        tracing::warn!(entity_id, "gmSummon: cannot summon yourself");
+        tracing::warn!(
+            entity_id,
+            entity_name = space_mgr.entity_label(entity_id),
+            "gmSummon: cannot summon yourself"
+        );
         send_gm_feedback(entity_id, "gmSummon: cannot summon yourself", tx).await;
         return true;
     }
@@ -492,7 +555,9 @@ pub(super) async fn handle_summon(
         Some(_) => {
             tracing::warn!(
                 entity_id,
-                target_eid,
+                entity_name = space_mgr.entity_label(entity_id),
+                target_entity_id = target_eid,
+                target_entity_name = space_mgr.entity_label(target_eid),
                 "gmSummon: target in a different space — refused"
             );
             send_gm_feedback(
@@ -504,7 +569,12 @@ pub(super) async fn handle_summon(
             return true;
         }
         None => {
-            tracing::warn!(entity_id, target_eid, "gmSummon: target not found");
+            tracing::warn!(
+                entity_id,
+                entity_name = space_mgr.entity_label(entity_id),
+                target_entity_id = target_eid, // nt:id-only the target is gone, so it has no name
+                "gmSummon: target not found"
+            );
             send_gm_feedback(
                 entity_id,
                 &format!("gmSummon: target {target_eid} not found"),
@@ -516,7 +586,11 @@ pub(super) async fn handle_summon(
     };
     tracing::info!(
         entity_id,
-        target_eid,
+        entity_name = space_mgr.entity_label(entity_id),
+        target_entity_id = target_eid,
+        target_entity_name = space_mgr.entity_label(target_eid),
+        subject_player_id = space_mgr.player_identity(target_eid).player_id,
+        subject_player_name = space_mgr.player_identity(target_eid).player_name,
         is_player,
         "gmSummon: moving target to caller"
     );
@@ -565,11 +639,22 @@ pub(super) async fn handle_summon(
 
 /// Parse a leading `WSTRING aNameOrID` as a positive numeric entity id.
 /// Returns `None` (after a warn) on malformed/non-numeric input.
-fn parse_target_id(entity_id: u32, args: &[u8], cmd: &str) -> Option<u32> {
+fn parse_target_id(
+    entity_id: u32,
+    args: &[u8],
+    cmd: &str,
+    space_mgr: &SpaceManager,
+) -> Option<u32> {
     let name_or_id = match read_wstring(args, 0) {
         Ok((s, _)) => s,
         Err(e) => {
-            tracing::warn!(entity_id, error = %e, cmd, "GM goto/summon: malformed NameOrID WSTRING");
+            tracing::warn!(
+                entity_id,
+                entity_name = space_mgr.entity_label(entity_id),
+                error = %e,
+                cmd,
+                "GM goto/summon: malformed NameOrID WSTRING",
+            );
             return None;
         }
     };
@@ -578,9 +663,10 @@ fn parse_target_id(entity_id: u32, args: &[u8], cmd: &str) -> Option<u32> {
         _ => {
             tracing::warn!(
                 entity_id,
-                name_or_id = %name_or_id,
+                entity_name = space_mgr.entity_label(entity_id),
+                name_or_id_arg = %name_or_id,
                 cmd,
-                "GM goto/summon: NameOrID is not a positive numeric id — name resolution not wired in the cell"
+                "GM goto/summon: NameOrID is not a positive numeric id — name resolution not wired in the cell",
             );
             None
         }

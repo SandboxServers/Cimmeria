@@ -31,6 +31,7 @@ pub(super) async fn handle_give_training_points(
         None => {
             tracing::warn!(
                 entity_id,
+                entity_name = space_mgr.entity_label(entity_id),
                 args_len = args.len(),
                 "gmGiveTrainingPoints: truncated args (need INT32)"
             );
@@ -41,6 +42,7 @@ pub(super) async fn handle_give_training_points(
     if amount <= 0 {
         tracing::warn!(
             entity_id,
+            entity_name = space_mgr.entity_label(entity_id),
             amount,
             "gmGiveTrainingPoints: non-positive amount rejected"
         );
@@ -55,7 +57,11 @@ pub(super) async fn handle_give_training_points(
     let player_id = match space_mgr.get_entity(entity_id).and_then(|e| e.player_id) {
         Some(pid) => pid,
         None => {
-            tracing::warn!(entity_id, "gmGiveTrainingPoints: caller has no player_id");
+            tracing::warn!(
+                entity_id,
+                entity_name = space_mgr.entity_label(entity_id),
+                "gmGiveTrainingPoints: caller has no player_id"
+            );
             send_gm_feedback(
                 entity_id,
                 "gmGiveTrainingPoints: caller is not a player",
@@ -67,7 +73,9 @@ pub(super) async fn handle_give_training_points(
     };
     tracing::info!(
         entity_id,
+        entity_name = space_mgr.entity_label(entity_id),
         player_id,
+        player_name = space_mgr.entity_label(entity_id),
         amount,
         "gmGiveTrainingPoints: granting training points to GM"
     );

@@ -98,11 +98,21 @@ pub(super) async fn read_and_handle_login(
                     "<var n='id' t='n'>999</var><var n='_cmd' t='s'>loginFailed</var>",
                 );
                 let _ = send_null_terminated(stream, &fail).await;
-                tracing::warn!(entity_id, game = %zone, "Failed to create minigame");
+                tracing::warn!(
+                    entity_id,
+                    entity_name = session.player_name.as_deref(),
+                    game = %zone,
+                    "Failed to create minigame",
+                );
                 return None;
             }
 
-            tracing::info!(entity_id, game = %zone, "Minigame login successful");
+            tracing::info!(
+                entity_id,
+                entity_name = session.player_name.as_deref(),
+                game = %zone,
+                "Minigame login successful",
+            );
             Some((session, game.unwrap()))
         }
         _ => {

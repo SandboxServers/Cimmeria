@@ -152,7 +152,11 @@ impl SessionRegistry {
         // than the player having to wait out a sweep tick.
         expire_pending_locked(&mut inner, PENDING_SESSION_TTL);
         if inner.sessions.contains_key(&entity_id) {
-            tracing::warn!(entity_id, "Entity already has an active minigame session");
+            tracing::warn!(
+                entity_id,
+                entity_name = session.player_name.as_deref(),
+                "Entity already has an active minigame session"
+            );
             return None;
         }
         inner.sessions.insert(entity_id, session);
@@ -207,15 +211,20 @@ impl SessionRegistry {
         let mut inner = self.inner.lock().await;
         let session = inner.sessions.get_mut(&entity_id)?;
         if session.ticket != password {
-            tracing::warn!(entity_id, "Minigame ticket mismatch");
+            tracing::warn!(
+                entity_id,
+                entity_name = session.player_name.as_deref(),
+                "Minigame ticket mismatch"
+            );
             return None;
         }
         if session.game_name != game_name {
             tracing::warn!(
                 entity_id,
+                entity_name = session.player_name.as_deref(),
                 expected = %session.game_name,
                 got = %game_name,
-                "Minigame game name mismatch"
+                "Minigame game name mismatch",
             );
             return None;
         }
@@ -237,15 +246,20 @@ impl SessionRegistry {
         let inner = self.inner.lock().await;
         let session = inner.sessions.get(&entity_id)?;
         if session.ticket != password {
-            tracing::warn!(entity_id, "Minigame ticket mismatch");
+            tracing::warn!(
+                entity_id,
+                entity_name = session.player_name.as_deref(),
+                "Minigame ticket mismatch"
+            );
             return None;
         }
         if session.game_name != game_name {
             tracing::warn!(
                 entity_id,
+                entity_name = session.player_name.as_deref(),
                 expected = %session.game_name,
                 got = %game_name,
-                "Minigame game name mismatch"
+                "Minigame game name mismatch",
             );
             return None;
         }
@@ -282,11 +296,12 @@ impl SessionRegistry {
                 inner.sessions.remove(&entity_id);
                 true
             }
-            Some(_) => {
+            Some(newer) => {
                 // Not an error the player sees, but it means two tasks
                 // overlapped on one entity — worth a line if it ever fires.
                 tracing::warn!(
                     entity_id,
+                    entity_name = newer.player_name.as_deref(),
                     "Minigame: stale connection task tried to unregister a \
                      newer session; leaving it in place"
                 );
@@ -327,9 +342,10 @@ fn expire_pending_locked(inner: &mut SessionRegistryInner, ttl: Duration) -> Vec
             // whether this line fired for that entity.
             tracing::info!(
                 entity_id = *entity_id,
+                entity_name = session.player_name.as_deref(),
                 game = %session.game_name,
                 ttl_secs = ttl.as_secs(),
-                "Minigame: expiring session whose client never connected"
+                "Minigame: expiring session whose client never connected",
             );
         }
     }

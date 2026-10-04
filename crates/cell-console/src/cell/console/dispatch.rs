@@ -5,6 +5,7 @@
 //! contract and [`exec`] routes a validated command to its family handler.
 
 use cimmeria_content_engine::chain::ChainEngine;
+use cimmeria_entity::cell_entity::PlayerIdentity;
 use tokio::sync::mpsc;
 
 use super::registry::{Spec, Target, COMMANDS};
@@ -126,10 +127,29 @@ pub async fn handle_console_command(
     // moment two GMs are online, and `entity_id` can't stand in for identity
     // because it's a recycled per-space slot. Log the account directly.
     let id = space_mgr.player_identity(caller_id);
+    // The subject, for a command that takes a target: named on the same row
+    // so the audit line says who the GM acted on (Rule 5 § actor on someone
+    // else). A player subject carries its character, an NPC its template
+    // pair (D-NT5). A no-target command only passes the GM's selection
+    // through, so it names no subject.
+    let subject_id = target_id.filter(|_| spec.target != Target::None);
+    let subject = subject_id.map_or(PlayerIdentity::UNKNOWN, |t| space_mgr.player_identity(t));
+    let subject_names = subject_id
+        .map(|t| space_mgr.entity_names(t))
+        .unwrap_or_default();
     tracing::info!(
         entity_id = caller_id,
+        entity_name = id.player_name,
         account_id = id.account_id,
+        account_name = id.account_name,
         player_id = id.player_id,
+        player_name = id.player_name,
+        target_id,
+        target_name = target_id.and_then(|t| space_mgr.entity_label(t)),
+        subject_player_id = subject.player_id,
+        subject_player_name = subject.player_name,
+        target_template_id = subject_names.template_id,
+        target_template_name = subject_names.template_name,
         access_level,
         command = name,
         argc = args.len(),
@@ -195,8 +215,11 @@ pub(crate) async fn refuse_non_gm_command(
             decision_outcome = "gm_refused",
             reason = "not_gm",
             entity_id,
+            entity_name = id.player_name,
             account_id = id.account_id,
+            account_name = id.account_name,
             player_id = id.player_id,
+            player_name = id.player_name,
             access_level,
             command = spec.name,
             "non-GM .-console command refused"
@@ -206,8 +229,11 @@ pub(crate) async fn refuse_non_gm_command(
             decision_outcome = "refused",
             reason = "not_gm",
             entity_id,
+            entity_name = id.player_name,
             account_id = id.account_id,
+            account_name = id.account_name,
             player_id = id.player_id,
+            player_name = id.player_name,
             access_level,
             command = spec.name,
             "non-GM .-console command refused"
@@ -270,7 +296,9 @@ fn resolve_target(
     if !space_mgr.target_in_view(caller_id, target_id) {
         tracing::debug!(
             caller_id,
+            caller_name = space_mgr.entity_label(caller_id),
             target_id,
+            target_name = space_mgr.entity_label(target_id),
             reason = "target_not_in_view",
             "console: stored target is outside the caller's AoI -- refusing the command"
         );

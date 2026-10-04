@@ -183,7 +183,9 @@ async fn move_here(
     }
     tracing::info!(
         caller_id,
+        caller_name = space_mgr.entity_label(caller_id),
         target,
+        target_name = space_mgr.entity_label(target),
         ?pos,
         yaw_rad = yaw,
         "GM .movehere: placed entity at caller"
@@ -302,9 +304,12 @@ async fn location(
 
         tracing::info!(
             caller_id,
+            caller_name = space_mgr.entity_label(caller_id),
             target,
+            target_name = space_mgr.entity_label(target),
             ?position,
             space_id,
+            world = space_mgr.world_name_for_space(space_id),
             is_player,
             "GM .location: setting entity position"
         );
@@ -335,9 +340,11 @@ async fn location(
                 // vouch for on the client.
                 tracing::warn!(
                     caller_id,
+                    caller_name = space_mgr.entity_label(caller_id),
                     target,
+                    target_name = space_mgr.entity_label(target),
                     error = %err,
-                    "location: base channel closed, snap not sent"
+                    "location: base channel closed, snap not sent",
                 );
                 return;
             }
@@ -406,7 +413,9 @@ async fn rotation(
     if let Some([pitch, yaw, roll]) = set_to {
         tracing::info!(
             caller_id,
+            caller_name = space_mgr.entity_label(caller_id),
             target,
+            target_name = space_mgr.entity_label(target),
             pitch,
             yaw,
             roll,

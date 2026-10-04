@@ -135,8 +135,8 @@ async fn non_gm_grants_forward_nothing() {
 }
 
 /// With the base channel closed, the grant cannot be queued: a WARN
-/// `forward_failed` carrying the target's `account_id`, `player_id` and
-/// `entity_id`, and the GM in `gm_entity_id`.
+/// `forward_failed`. Rule 5: `entity_id` names the GM, and the target is the
+/// subject (`subject_account_id`, `subject_player_id`, `subject_entity_id`).
 #[tokio::test]
 async fn a_grant_the_base_cannot_receive_warns_with_the_canonical_identity() {
     let capture = crate::test_support::LogCapture::install();
@@ -166,10 +166,10 @@ async fn a_grant_the_base_cannot_receive_warns_with_the_canonical_identity() {
     for (field, value) in [
         ("event", "forward_failed".to_string()),
         ("kind", "gm_craft_grant".to_string()),
-        ("account_id", "4303".to_string()),
-        ("player_id", TARGET_PLAYER_ID.to_string()),
-        ("entity_id", TARGET.to_string()),
-        ("gm_entity_id", gm.to_string()),
+        ("subject_account_id", "4303".to_string()),
+        ("subject_player_id", TARGET_PLAYER_ID.to_string()),
+        ("subject_entity_id", TARGET.to_string()),
+        ("entity_id", gm.to_string()),
     ] {
         assert!(e.has_field(field, &value), "{field}: {e:#?}");
     }

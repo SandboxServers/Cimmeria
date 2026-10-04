@@ -1,7 +1,7 @@
 # Unpaired ID fields per file (Rule 6, NT-03). Only ever lowered.
 # Regenerate after pairing fields: NT_BASELINE_BLESS=1 cargo nextest run -p cimmeria-server unpaired_id
 # See crates/server/src/logging/unpaired_id_tests/mod.rs.
-# total 5156
+# total 4651
 crates/admin-api/src/routes/dev_session/handlers.rs 2
 crates/admin-api/src/routes/telemetry/handlers.rs 14
 crates/admin-api/src/routes/telemetry/replay.rs 33
@@ -276,52 +276,6 @@ crates/cell-combat/src/cell/effects/pulsing/pulse.rs 27
 crates/cell-combat/src/cell/effects/pulsing/register.rs 7
 crates/cell-combat/src/cell/effects/pulsing/tick.rs 9
 crates/cell-combat/src/cell/effects/stat_buffs/mod.rs 1
-crates/cell-console/src/cell/console/abilities/clear_effects.rs 5
-crates/cell-console/src/cell/console/abilities/cooldowns.rs 4
-crates/cell-console/src/cell/console/abilities/dummy.rs 12
-crates/cell-console/src/cell/console/abilities/dummy_caster.rs 17
-crates/cell-console/src/cell/console/aggro.rs 2
-crates/cell-console/src/cell/console/bank.rs 15
-crates/cell-console/src/cell/console/black_market.rs 6
-crates/cell-console/src/cell/console/bookmark.rs 13
-crates/cell-console/src/cell/console/chat/mod.rs 2
-crates/cell-console/src/cell/console/chat/spatial.rs 9
-crates/cell-console/src/cell/console/chat/squad.rs 6
-crates/cell-console/src/cell/console/crafting.rs 6
-crates/cell-console/src/cell/console/dispatch.rs 11
-crates/cell-console/src/cell/console/duel.rs 8
-crates/cell-console/src/cell/console/give.rs 5
-crates/cell-console/src/cell/console/give_ability.rs 16
-crates/cell-console/src/cell/console/gm/command_log.rs 6
-crates/cell-console/src/cell/console/gm/feedback.rs 2
-crates/cell-console/src/cell/console/gm/give.rs 41
-crates/cell-console/src/cell/console/gm/give_ammo.rs 14
-crates/cell-console/src/cell/console/gm/give_training_points.rs 5
-crates/cell-console/src/cell/console/gm/missions.rs 17
-crates/cell-console/src/cell/console/gm/mod.rs 4
-crates/cell-console/src/cell/console/gm/organizations.rs 5
-crates/cell-console/src/cell/console/gm/physics.rs 3
-crates/cell-console/src/cell/console/gm/query.rs 1
-crates/cell-console/src/cell/console/gm/set_infinite_ammo.rs 12
-crates/cell-console/src/cell/console/gm/shout.rs 23
-crates/cell-console/src/cell/console/gm/spawn.rs 13
-crates/cell-console/src/cell/console/gm/stats.rs 8
-crates/cell-console/src/cell/console/gm/travel.rs 27
-crates/cell-console/src/cell/console/gm/world.rs 21
-crates/cell-console/src/cell/console/mail.rs 6
-crates/cell-console/src/cell/console/mission.rs 2
-crates/cell-console/src/cell/console/org.rs 12
-crates/cell-console/src/cell/console/org_create.rs 6
-crates/cell-console/src/cell/console/pet.rs 35
-crates/cell-console/src/cell/console/placement.rs 9
-crates/cell-console/src/cell/console/player_commands.rs 3
-crates/cell-console/src/cell/console/seed.rs 12
-crates/cell-console/src/cell/console/social.rs 10
-crates/cell-console/src/cell/console/spawn/mod.rs 4
-crates/cell-console/src/cell/console/squad.rs 6
-crates/cell-console/src/cell/console/stats.rs 5
-crates/cell-console/src/cell/console/travel/mod.rs 17
-crates/cell-console/src/cell/console/travel/named_destination.rs 6
 crates/cell-duel/src/cell/duel/engage.rs 15
 crates/cell-duel/src/cell/duel/forfeit.rs 7
 crates/cell-duel/src/cell/duel/response.rs 36
@@ -400,12 +354,9 @@ crates/cell-world/src/cell/space_manager/vault_session_end.rs 6
 crates/cell/src/cell/dispatch/ability_receipt.rs 3
 crates/cell/src/cell/service/base_messages/ability_granted.rs 17
 crates/cell/src/cell/service/base_messages/bandolier.rs 7
-crates/cell/src/cell/service/base_messages/gm_abilities.rs 6
-crates/cell/src/cell/service/base_messages/gm_spawn.rs 5
 crates/cell/src/cell/service/base_messages/ignore.rs 14
 crates/cell/src/cell/service/base_messages/inventory_events.rs 23
 crates/cell/src/cell/service/base_messages/lab_console.rs 2
-crates/cell/src/cell/service/base_messages/minigame.rs 1
 crates/cell/src/cell/service/base_messages/org.rs 4
 crates/cell/src/cell/service/base_messages/player_init/mission_restore.rs 6
 crates/cell/src/cell/service/base_messages/player_init/mod.rs 16
@@ -419,11 +370,6 @@ crates/cell/src/cell/service/ticks/regen.rs 16
 crates/cell/src/cell/service/ticks/reload_completion.rs 3
 crates/game/src/combat/damage.rs 1
 crates/mercury/src/instrumentation.rs 1
-crates/minigame/src/minigame/games/livewire/mod.rs 1
-crates/minigame/src/minigame/server/handshake.rs 2
-crates/minigame/src/minigame/server/mod.rs 10
-crates/minigame/src/minigame/server/result_dispatch.rs 1
-crates/minigame/src/minigame/session.rs 7
 crates/resources/src/base/dialog_overrides/patch.rs 5
 crates/resources/src/base/resources/apply_overrides.rs 17
 crates/wire-log/src/wire_log/mod.rs 2

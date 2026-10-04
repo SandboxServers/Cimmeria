@@ -76,10 +76,14 @@ pub(super) async fn goto(
         let caller = space_mgr.player_identity(caller_id);
         tracing::warn!(
             caller_id,
+            caller_name = caller.player_name,
             account_id = caller.account_id,
+            account_name = caller.account_name,
             player_id = caller.player_id,
+            player_name = caller.player_name,
             dest_entity,
             dest_space_id,
+            dest_world = space_mgr.world_name_for_space(dest_space_id),
             "goto: resolved player has no entity or no live space"
         );
         send_gm_feedback(caller_id, NOT_REACHABLE, tx).await;
@@ -339,8 +343,10 @@ async fn resolve_named_player(
         PlayerNameLookup::InTransition { entity_id } => {
             tracing::debug!(
                 caller_id,
-                entity_id,
-                player_name = name,
+                caller_name = space_mgr.entity_label(caller_id),
+                subject_entity_id = entity_id,
+                subject_entity_name = name,
+                subject_player_name = name,
                 "console travel: named player is not in a space"
             );
             send_gm_feedback(caller_id, NOT_REACHABLE, tx).await;

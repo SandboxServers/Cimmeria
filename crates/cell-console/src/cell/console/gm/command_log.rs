@@ -43,12 +43,15 @@ pub(super) fn log_gm_command(
             method_index,
             method_name = cimmeria_wire::names::player_cell_method(method_index),
             entity_id,
+            entity_name = id.player_name,
             account_id = id.account_id,
+            account_name = id.account_name,
             player_id = id.player_id,
+            player_name = id.player_name,
             args,
             decision_outcome = "refused",
             reason,
-            "GM ability command refused"
+            "GM ability command refused",
         ),
         Outcome::Applied | Outcome::Forwarded => tracing::info!(
             target: "abilities",
@@ -57,15 +60,18 @@ pub(super) fn log_gm_command(
             method_index,
             method_name = cimmeria_wire::names::player_cell_method(method_index),
             entity_id,
+            entity_name = id.player_name,
             account_id = id.account_id,
+            account_name = id.account_name,
             player_id = id.player_id,
+            player_name = id.player_name,
             args,
             decision_outcome = if outcome == Outcome::Applied {
                 "applied"
             } else {
                 "forwarded"
             },
-            "GM ability command"
+            "GM ability command",
         ),
     }
 }

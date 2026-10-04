@@ -35,11 +35,22 @@ fn player_id_of(entity_id: u32, space_mgr: &SpaceManager) -> i32 {
 
 /// Parse the leading `WSTRING DesignID` as a positive numeric mission id.
 /// Returns `None` (after a warn) on malformed/non-numeric input.
-fn parse_mission_id(entity_id: u32, args: &[u8], cmd: &str) -> Option<(i32, usize)> {
+fn parse_mission_id(
+    entity_id: u32,
+    args: &[u8],
+    cmd: &str,
+    space_mgr: &SpaceManager,
+) -> Option<(i32, usize)> {
     let (design_id_str, consumed) = match read_wstring(args, 0) {
         Ok(v) => v,
         Err(e) => {
-            tracing::warn!(entity_id, error = %e, cmd, "GM mission cmd: malformed DesignID WSTRING");
+            tracing::warn!(
+                entity_id,
+                entity_name = space_mgr.entity_label(entity_id),
+                error = %e,
+                cmd,
+                "GM mission cmd: malformed DesignID WSTRING",
+            );
             return None;
         }
     };
@@ -48,10 +59,11 @@ fn parse_mission_id(entity_id: u32, args: &[u8], cmd: &str) -> Option<(i32, usiz
         _ => {
             tracing::warn!(
                 entity_id,
-                design_id = %design_id_str,
+                entity_name = space_mgr.entity_label(entity_id),
+                mission_arg = %design_id_str,
                 cmd,
                 "GM mission cmd: DesignID is not a positive numeric mission id — \
-                 name resolution is not wired in the cell; rejecting"
+                 name resolution is not wired in the cell; rejecting",
             );
             None
         }
@@ -69,7 +81,8 @@ pub(super) async fn handle_mission_assign(
     space_mgr: &mut SpaceManager,
     engine: &ChainEngine,
 ) -> bool {
-    let Some((mission_id, _)) = parse_mission_id(entity_id, args, "gmMissionAssign") else {
+    let Some((mission_id, _)) = parse_mission_id(entity_id, args, "gmMissionAssign", space_mgr)
+    else {
         send_gm_feedback(
             entity_id,
             "gmMissionAssign: DesignID must be a positive numeric id",
@@ -93,7 +106,9 @@ pub(super) async fn handle_mission_assign(
     }) else {
         tracing::warn!(
             entity_id,
+            entity_name = space_mgr.entity_label(entity_id),
             mission_id,
+            mission_name = cimmeria_names::book().mission(mission_id),
             "gmMissionAssign: no mission def for id"
         );
         send_gm_feedback(
@@ -106,8 +121,11 @@ pub(super) async fn handle_mission_assign(
     };
     tracing::info!(
         entity_id,
+        entity_name = space_mgr.entity_label(entity_id),
         mission_id,
+        mission_name = cimmeria_names::book().mission(mission_id),
         step_id,
+        step_name = cimmeria_names::book().mission_step(step_id),
         "gmMissionAssign: assigning mission"
     );
     // accept_mission returns false when the offer guard refuses (e.g. already
@@ -148,7 +166,8 @@ pub(super) async fn handle_mission_clear(
     space_mgr: &mut SpaceManager,
     engine: &ChainEngine,
 ) -> bool {
-    let Some((mission_id, _)) = parse_mission_id(entity_id, args, "gmMissionClear") else {
+    let Some((mission_id, _)) = parse_mission_id(entity_id, args, "gmMissionClear", space_mgr)
+    else {
         send_gm_feedback(
             entity_id,
             "gmMissionClear: DesignID must be a positive numeric id",
@@ -157,7 +176,13 @@ pub(super) async fn handle_mission_clear(
         .await;
         return true;
     };
-    tracing::info!(entity_id, mission_id, "gmMissionClear: abandoning mission");
+    tracing::info!(
+        entity_id,
+        entity_name = space_mgr.entity_label(entity_id),
+        mission_id,
+        mission_name = cimmeria_names::book().mission(mission_id),
+        "gmMissionClear: abandoning mission"
+    );
     if missions::abandon_mission(entity_id, mission_id, tx, space_mgr).await {
         // H54: a GM clearing a mission must repaint its offer too, otherwise
         // the GM's own re-test of the flow starts from a broken giver.
@@ -187,7 +212,9 @@ pub(super) async fn handle_mission_advance(
     space_mgr: &mut SpaceManager,
     engine: &ChainEngine,
 ) -> bool {
-    let Some((mission_id, consumed)) = parse_mission_id(entity_id, args, "gmMissionAdvance") else {
+    let Some((mission_id, consumed)) =
+        parse_mission_id(entity_id, args, "gmMissionAdvance", space_mgr)
+    else {
         send_gm_feedback(
             entity_id,
             "gmMissionAdvance: DesignID must be a positive numeric id",
@@ -201,6 +228,7 @@ pub(super) async fn handle_mission_advance(
         None => {
             tracing::warn!(
                 entity_id,
+                entity_name = space_mgr.entity_label(entity_id),
                 args_len = args.len(),
                 "gmMissionAdvance: truncated args (missing INT32 StepToAdvanceTo)"
             );
@@ -216,8 +244,11 @@ pub(super) async fn handle_mission_advance(
     if new_step_id <= 0 {
         tracing::warn!(
             entity_id,
+            entity_name = space_mgr.entity_label(entity_id),
             mission_id,
+            mission_name = cimmeria_names::book().mission(mission_id),
             new_step_id,
+            new_step_name = cimmeria_names::book().mission_step(new_step_id),
             "gmMissionAdvance: non-positive step rejected"
         );
         send_gm_feedback(entity_id, "gmMissionAdvance: step must be positive", tx).await;
@@ -225,8 +256,11 @@ pub(super) async fn handle_mission_advance(
     }
     tracing::info!(
         entity_id,
+        entity_name = space_mgr.entity_label(entity_id),
         mission_id,
+        mission_name = cimmeria_names::book().mission(mission_id),
         new_step_id,
+        new_step_name = cimmeria_names::book().mission_step(new_step_id),
         "gmMissionAdvance: advancing mission step"
     );
     if missions::advance_step(entity_id, mission_id, new_step_id, tx, space_mgr).await {
