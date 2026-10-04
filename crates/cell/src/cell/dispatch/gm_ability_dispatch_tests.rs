@@ -56,7 +56,7 @@ fn calls() -> [(u16, Vec<u8>); 5] {
 async fn route(mgr: &mut SpaceManager, index: u16, args: &[u8]) -> Vec<CellToBaseMsg> {
     let engine = cimmeria_content_engine::chain::ChainEngine::new();
     let (tx, mut rx) = mpsc::channel(32);
-    dispatch_cell_method(CALLER, index, args, &tx, mgr, &engine).await;
+    dispatch_cell_method(CALLER, index, args, &tx, mgr, &engine, None).await;
     std::iter::from_fn(|| rx.try_recv().ok()).collect()
 }
 

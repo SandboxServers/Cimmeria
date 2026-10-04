@@ -135,9 +135,18 @@ pub(super) async fn handle_base_message(
             entity_id,
             method_index,
             args,
+            packet_seq,
         } => {
-            dispatch::dispatch_cell_method(entity_id, method_index, &args, tx, space_mgr, engine)
-                .await;
+            dispatch::dispatch_cell_method(
+                entity_id,
+                method_index,
+                &args,
+                tx,
+                space_mgr,
+                engine,
+                packet_seq,
+            )
+            .await;
         }
 
         BaseToCellMsg::ChatMessage {

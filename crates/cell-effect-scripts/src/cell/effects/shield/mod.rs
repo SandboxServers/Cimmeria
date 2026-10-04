@@ -134,6 +134,22 @@ impl EffectScript for AbsorbShield {
             .space_mgr
             .apply_timed_effect(ctx.target_id, spec, Instant::now())
         else {
+            // The ledger refused the entry (no target, or nothing to hold).
+            tracing::debug!(
+                target: "abilities",
+                event = "shield_skipped",
+                stage = "ledger",
+                reason = "ledger_refused",
+                account_id = who.account_id,
+                player_id = who.player_id,
+                entity_id = ctx.source_id,
+                cast_id = ctx.space_mgr.current_cast_id(),
+                target_id = ctx.target_id,
+                target_player_id = target_who.player_id,
+                effect_id = ctx.effect.effect_id,
+                ability_id = ctx.effect.ability_id,
+                "AbsorbShield: expected the ledger to take the shield entry, it refused; no shield, no icon, the target takes full damage"
+            );
             return;
         };
         tracing::info!(
@@ -159,9 +175,12 @@ impl EffectScript for AbsorbShield {
     /// it: the ledger entry comes off and its unspent capacity with it.
     fn on_remove(&self, ctx: &mut EffectContext) {
         let key = (ctx.effect.effect_id, ctx.source_id);
-        let _ = ctx
-            .space_mgr
-            .remove_timed_effects(ctx.target_id, StatBuffRemoval::Removed, |b| b.key() == key);
+        let removed =
+            ctx.space_mgr
+                .remove_timed_effects(ctx.target_id, StatBuffRemoval::Removed, |b| b.key() == key);
+        if removed.is_empty() {
+            crate::cell::effects::script_rows::on_remove_found_nothing(ctx, "AbsorbShield");
+        }
     }
 }
 

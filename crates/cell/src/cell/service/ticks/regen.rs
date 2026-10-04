@@ -74,17 +74,34 @@ pub(in crate::cell::service) async fn regen_tick(
 
     for entity_id in eligible {
         let stat_payload = {
-            let entity = match space_mgr.get_entity_mut(entity_id) {
-                Some(e) => e,
-                None => continue,
+            let Some(entity) = space_mgr.get_entity_mut(entity_id) else {
+                // Gone between the eligibility snapshot and now (AB-T2).
+                // TRACE: a 1 Hz sample row, not an expectation failure.
+                tracing::trace!(
+                    target: "vitals",
+                    event = "regen_skipped",
+                    reason = "entity_gone",
+                    entity_id,
+                    "regen tick: player left between the eligibility pass and the regen; nothing applied"
+                );
+                continue;
             };
 
             for &(pool_id, regen_id) in POOLS {
                 let regen = entity.stats.get(regen_id).map_or(0, |s| s.cur).max(1);
-                if let Some(pool) = entity.stats.get_mut(pool_id) {
-                    if pool.cur < pool.max && pool.max > 0 {
+                match entity.stats.get_mut(pool_id) {
+                    Some(pool) if pool.cur < pool.max && pool.max > 0 => {
                         pool.change(regen);
                     }
+                    pool => tracing::trace!(
+                        target: "vitals",
+                        event = "regen_skipped",
+                        reason = if pool.is_some() { "pool_full" } else { "no_pool_stat" },
+                        entity_id,
+                        player_id = entity.player_id,
+                        pool_id,
+                        "regen tick: this pool needs no regen; the other pool still regenerates"
+                    ),
                 }
             }
 
@@ -106,6 +123,14 @@ pub(in crate::cell::service) async fn regen_tick(
                 space_mgr,
             )
             .await;
+        } else {
+            tracing::trace!(
+                target: "vitals",
+                event = "regen_skipped",
+                reason = "nothing_dirty",
+                entity_id,
+                "regen tick: eligible but no pool changed; no onStatUpdate sent"
+            );
         }
     }
 }

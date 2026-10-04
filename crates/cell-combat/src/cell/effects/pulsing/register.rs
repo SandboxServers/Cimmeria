@@ -47,6 +47,9 @@ pub async fn register_active_effect(
     tx: &mpsc::Sender<CellToBaseMsg>,
 ) -> bool {
     if !effect.is_pulsing() {
+        // The normal answer for a single-shot effect, which callers pass
+        // without filtering: TRACE, not a refusal.
+        not_registered(space_mgr, target_id, invoker_id, effect, "not_pulsing");
         return false;
     }
     // pulse_count == 0 → channelled. Compute the cap as
@@ -65,6 +68,7 @@ pub async fn register_active_effect(
     // remaining_pulses = total - 1 (the initial pulse already fired).
     let remaining = total_pulses - 1;
     if remaining <= 0 {
+        not_registered(space_mgr, target_id, invoker_id, effect, "no_pulses_left");
         return false;
     }
     let pulse_secs = effect.pulse_duration.max(0.1);
@@ -87,6 +91,10 @@ pub async fn register_active_effect(
     let who = space_mgr.player_identity(invoker_id);
 
     let was_refresh = {
+        if space_mgr.get_entity(target_id).is_none() {
+            not_registered(space_mgr, target_id, invoker_id, effect, "target_gone");
+            return false;
+        }
         let Some(target) = space_mgr.get_entity_mut(target_id) else {
             return false;
         };
@@ -171,4 +179,43 @@ pub async fn register_active_effect(
     send_timer_update(target_id, timer_bytes, tx, space_mgr).await;
 
     true
+}
+
+/// A pulsing registration that did not happen (AB-T2). `not_pulsing` is the
+/// single-shot answer and logs at TRACE; the other two mean a pulsing
+/// effect landed its first pulse and will not tick again, so DEBUG.
+fn not_registered(
+    space_mgr: &SpaceManager,
+    target_id: u32,
+    invoker_id: u32,
+    effect: &EffectDef,
+    reason: &'static str,
+) {
+    let who = space_mgr.player_identity(invoker_id);
+    let cast_id = space_mgr.current_cast_id();
+    macro_rules! row {
+        ($level:ident) => {
+            tracing::$level!(
+                target: "abilities.pulse",
+                event = "active_effect_not_registered",
+                stage = "pulse",
+                reason,
+                account_id = who.account_id,
+                player_id = who.player_id,
+                invoker_id,
+                target_id,
+                cast_id,
+                effect_id = effect.effect_id,
+                ability_id = effect.ability_id,
+                pulse_count = effect.pulse_count,
+                pulse_duration = effect.pulse_duration,
+                "pulsing effect not registered ({reason}): the first pulse already landed, no further pulses tick and no duration icon is sent"
+            )
+        };
+    }
+    if reason == "not_pulsing" {
+        row!(trace);
+    } else {
+        row!(debug);
+    }
 }

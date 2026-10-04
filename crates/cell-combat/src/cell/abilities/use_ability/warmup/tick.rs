@@ -52,6 +52,21 @@ pub(crate) async fn resolve_warmups(
         else {
             // Entity destroyed, or its cast already resolved: drop the
             // stale candidate.
+            let who = space_mgr.player_identity(entity_id);
+            tracing::debug!(
+                target: "abilities",
+                event = "warmup_candidate_stale",
+                stage = "warmup",
+                reason = if space_mgr.get_entity(entity_id).is_some() {
+                    "no_pending_cast"
+                } else {
+                    "caster_gone"
+                },
+                account_id = who.account_id,
+                player_id = who.player_id,
+                entity_id,
+                "warmup tick: expected a warming cast on this caster, found none; the stale candidate is dropped and nothing fires"
+            );
             space_mgr.pending_casts.remove(&entity_id);
             continue;
         };
@@ -62,6 +77,19 @@ pub(crate) async fn resolve_warmups(
             continue;
         }
         if now < pc.fire_at {
+            // Still warming: not a refusal, so TRACE (one row per 100 ms
+            // tick per warming caster). The interrupt and fire rows carry
+            // the outcome.
+            tracing::trace!(
+                target: "abilities",
+                event = "warmup_pending",
+                stage = "warmup",
+                entity_id,
+                cast_id = pc.cast_id(),
+                ability_id = pc.ability_id,
+                remaining_ms = pc.fire_at.saturating_duration_since(now).as_millis() as u64,
+                "warmup tick: cast still warming"
+            );
             continue;
         }
         if let Some(reason) =

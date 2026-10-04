@@ -45,6 +45,7 @@ pub mod heal;
 mod heal_seed_live_db_tests;
 pub mod pet_scripts;
 pub mod registry;
+mod script_rows;
 pub mod scripts;
 pub mod shield;
 pub mod stat_buff;

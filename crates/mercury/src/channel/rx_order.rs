@@ -91,11 +91,24 @@ pub struct RxDelivery {
     /// empty (buffered, duplicate, or a fragment of an incomplete bundle),
     /// and can hold several bundles when one packet fills a gap.
     pub bundles: Vec<Bytes>,
+    /// The Mercury sequence number of each entry in `bundles`, index for
+    /// index: the seq of the packet that carried it, or, for a bundle that
+    /// arrived in fragments, the first fragment's (`frag_begin`, the seq the
+    /// sender's bundle started on). `None` for a packet with no sequence
+    /// footer. Telemetry joins a client press to its server receipt on it
+    /// (ability-mechanics AB-T2, the `mercury_seq` on `use_ability_recv`).
+    pub bundle_seqs: Vec<Option<u32>>,
     /// The sequence number the caller owes the peer an ACK for, if any.
     /// `Some` for every reliable packet except [`RxOutcome::OutOfWindow`].
     pub ack: Option<u32>,
     /// What the gate did with the packet.
     pub outcome: RxOutcome,
+}
+
+/// The sequence a delivered bundle is known by: its first fragment's, or
+/// its packet's when it was not fragmented. See [`RxDelivery::bundle_seqs`].
+fn bundle_seq(pkt: &ParsedPacket) -> Option<u32> {
+    pkt.frag_begin.or(pkt.seq_id).map(|s| s & SEQUENCE_MASK)
 }
 
 /// A reliable gap the stall watchdog reported. See
@@ -157,9 +170,11 @@ impl Channel {
         let seq = match (pkt.is_reliable(), pkt.seq_id) {
             (true, Some(seq)) => seq & SEQUENCE_MASK,
             _ => {
-                let bundles = self.reassemble_parsed(&pkt)?.into_iter().collect();
+                let bundles: Vec<Bytes> = self.reassemble_parsed(&pkt)?.into_iter().collect();
+                let bundle_seqs = vec![bundle_seq(&pkt); bundles.len()];
                 return Ok(RxDelivery {
                     bundles,
+                    bundle_seqs,
                     ack: None,
                     outcome: RxOutcome::Unordered,
                 });
@@ -168,9 +183,11 @@ impl Channel {
 
         let (outcome, released) = self.admit(seq, pkt);
         let mut bundles = Vec::new();
+        let mut bundle_seqs = Vec::new();
         for pkt in released {
             if let Some(body) = self.reassemble_parsed(&pkt)? {
                 bundles.push(body);
+                bundle_seqs.push(bundle_seq(&pkt));
             }
         }
         match outcome {
@@ -204,6 +221,7 @@ impl Channel {
         }
         Ok(RxDelivery {
             bundles,
+            bundle_seqs,
             ack: (outcome != RxOutcome::OutOfWindow).then_some(seq),
             outcome,
         })

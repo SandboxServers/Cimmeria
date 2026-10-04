@@ -10,6 +10,8 @@
 //! - `beneficial` — who a player's cast lands on (AB-01): the #444 target
 //!   gate, `resolve_cast_target` (Self casts on the caster, heals on allies,
 //!   the D-AB02 fallback) and the damage-free `fire_beneficial`.
+//! - `gate_rows` — the launch's refusal rows (AB-T2): one `abilities` row
+//!   for every early return that has no answer of its own.
 //! - `cast_range` — the range gate shared by the launch and the warmup
 //!   fire: the maximum for every caster, the `min_range` for players
 //!   (#1016), and the `onErrorCode` 42 refusal.
@@ -48,6 +50,7 @@ mod beneficial;
 mod cast_range;
 mod fire;
 mod fire_los;
+mod gate_rows;
 mod handle;
 mod incapacitated;
 mod kill_credit;
