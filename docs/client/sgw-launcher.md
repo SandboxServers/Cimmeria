@@ -19,7 +19,9 @@ UI now connects installation, cancellation and explicit recovery through Effect
 on Windows and verified-helper Mac builds, with cached evidence for identical
 native retries.
 It reports content preparation separately from runtime readiness; launch, repair
-and removal remain unavailable. Mac builds without the compiled-and-bundled
+and removal remain unavailable. Explicitly confirmed cleanup can remove one
+failed/cancelled attempt's owned partial files before a separate retry; it is
+not uninstall. Mac builds without the compiled-and-bundled
 verified helper cannot install; Wine resume/recovery remains unsupported. Runtime provisioning and game validation remain
 separate gates. The existing Windows launcher described here
 remains the functional user-facing implementation.

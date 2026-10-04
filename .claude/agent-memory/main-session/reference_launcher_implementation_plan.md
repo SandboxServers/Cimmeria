@@ -191,7 +191,7 @@ Windows+Mac before the shell; shell/visual/game gates remain separate.
   Stage tool validates trusted hash/revision and AMD64 PE; receipt is not trust.
   Missing helper leaves settings/notes only. Wine recovery capability flags false;
   no native fallback/replay. Dev .app built, not opened. Resolver/admit/cancel
-  fixture1.961s passed; frontend26 tests/build/UAT and stage guards passed;
+  fixture1.961s passed; frontend 26 tests/build/UAT and stage guards passed;
   final engine205/eight ignored and shell15/one ignored passed, plus strict
   engine/shell clippy and separately run resource smoke. Final bundle/hash passed;
   packaged permission check pending. No visual/final startup proof.
@@ -214,3 +214,13 @@ Windows+Mac before the shell; shell/visual/game gates remain separate.
   No download/delete/resume/shared profiles. ZIP reopen/stop smoke passed in 22.685s;
   final engine212/eight ignored, shell15/one ignored, combined strict clippy and
   mocked-IPC reconciliation/no-resume/no-success-inference JS UAT passed.
+
+
+- Explicit confirmed failed/cancelled cleanup now binds ID/revision, canonical
+  owner lock and allowlisted recursive preflight. Promoted/foreign/symlink/reparse
+  content vetoes before deletion. Stage/cache then marker removed; destination
+  empty, old terminal persists. Separate retry fresh UUID; another empty folder
+  preserves old files. Runtime/prefix retained. Engine 217/shell 16 and frontend 26
+  plus confirmation/retry/consent UAT passed; combined strict clippy passed. Windows junction and
+  visual checks pending. Actual failed-Wine cleanup passed24.096s after helper
+  completion/content rejection; destination empty, retry enabled, consent unchanged. Reconcile/cleanup IPC 35 seconds.

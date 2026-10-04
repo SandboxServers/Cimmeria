@@ -223,3 +223,71 @@ async fn retained_wine_worker_cancels_before_runtime_provisioning() {
     assert!(!root.path().join("install/content-ready.json").exists());
     assert!(server.received_requests().await.unwrap().is_empty());
 }
+
+#[tokio::test]
+#[ignore = "requires Windows-native helper; verifies explicit cleanup after real Wine extraction fails content validation"]
+async fn failed_wine_content_can_be_cleaned_for_a_new_attempt() {
+    let helper =
+        PathBuf::from(std::env::var_os("CIMMERIA_WINE_HELPER").expect("set native-built helper"));
+    let seed = super::super::tests::archive(false);
+    let release = super::super::tests::verified(&seed);
+    let (root, state, id) = setup(
+        &release,
+        Sha256::digest(std::fs::read(&helper).unwrap()).into(),
+    );
+    let server = MockServer::start().await;
+    Mock::given(path("/seed.zip"))
+        .respond_with(ResponseTemplate::new(200).set_body_bytes(seed))
+        .expect(1)
+        .mount(&server)
+        .await;
+    let worker = dispatch_with(
+        state.clone(),
+        id,
+        release,
+        helper,
+        format!("{}/manifest.json", server.uri()),
+        reqwest::Client::new(),
+    )
+    .unwrap();
+    let mut result = worker.result.clone();
+    let outcome = tokio::time::timeout(Duration::from_secs(180), async {
+        loop {
+            if let Some(value) = *result.borrow_and_update() {
+                break value;
+            }
+            result.changed().await.unwrap();
+        }
+    })
+    .await
+    .unwrap();
+    assert!(matches!(
+        outcome,
+        Outcome::ContentInvalid | Outcome::InstallFailed
+    ));
+    drop(worker);
+    let clone = state.clone();
+    tokio::task::spawn_blocking(move || {
+        let mut state = clone.lock().unwrap();
+        assert_eq!(
+            state.helper_record(id).unwrap().unwrap().phase,
+            crate::HelperPhase::Finished {
+                result: crate::HelperResult::Completed
+            }
+        );
+        let revision = state.operations().snapshot().revision;
+        assert!(!state.can_retry_install());
+        state.clean_failed_install(id, revision).unwrap();
+        assert!(state.can_retry_install());
+        assert!(!state.preferences().launcher_summary_consent);
+    })
+    .await
+    .unwrap();
+    assert_eq!(
+        std::fs::read_dir(root.path().join("install"))
+            .unwrap()
+            .count(),
+        0
+    );
+    server.verify().await;
+}

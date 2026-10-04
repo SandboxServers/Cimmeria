@@ -375,7 +375,8 @@ Power-loss durability of the complete extracted tree remains unvalidated.
 
 Failure and cancellation retain the marker and partial output. Interrupted
 native content can be inspected conservatively as described below; automatic
-retry, cleanup and adoption remain unimplemented. The Wine cabinet-helper
+adoption remains unimplemented; explicit failed-attempt cleanup and retry are
+described below. The Wine cabinet-helper
 adapter, runtime provisioning and frontend dispatch remain pending. Installation
 is now connected through the Windows UI described below; content preparation
 does not establish launch readiness.
@@ -526,7 +527,8 @@ The application-scoped Effect service inspects native state before each
 mutation, uses current revisions and never automatically replays a mutation
 after a lost reply. Read-only inspection retries transport errors at most twice
 with 100 ms exponential backoff. The install admission IPC reply times out after
-35 seconds; other IPC replies time out after five seconds. These deadlines do
+35 seconds, as do reconcile/cleanup replies; reads and other IPC replies time
+out after five seconds. These deadlines do
 not cancel native work or cap overall operation polling, which continues until a
 terminal/recovery state or observation failure.
 
@@ -612,7 +614,7 @@ Legacy journals may legitimately have no result record.
 
 Shell status reads this durable outcome, so a confirmed failure reason survives
 host disposal and reopening without a retained worker. This adds result reporting,
-not Wine recovery or failed/cancelled retry. The shell suite passed 15 tests with
+not itself recovery or retry; those explicit flows are described separately. The shell suite passed 15 tests with
 one ignored entry, including actual host drop/reopen preserving `InstallFailed`.
 Final engine checks passed 209 tests with eight ignored entries; combined strict
 clippy and `npm run uat:install` passed. That JS pass uses mocked installation
@@ -642,3 +644,30 @@ verified prefix while preserving output and unresolved recovery state. This is
 not proof of arbitrary crash recovery. Final checks passed 212 engine tests/eight ignored, 15 shell tests/one ignored
 and combined strict clippy. JS logic UAT passed enabled reconciliation without
 resume or inferred success, using mocked native IPC. No native visual or gameplay UAT is claimed.
+
+## Confirmed partial-install cleanup and retry
+
+`CleanFailed` requires explicit confirmation plus the inspected operation ID and
+revision. Only terminal failed/cancelled installations qualify. Cleanup checks
+the canonical destination, locks its exact intent-matching owner marker, and
+preflights every entry before deletion. Only that attempt's marker, staging and
+cache names are allowed; promoted content, receipts and foreign files veto the
+operation. Recursive checks reject symlinks, special files and Windows reparse
+points. Eligible Wine attempts retain the conservative prefix-stop requirements.
+
+Cleanup deletes staging/cache, then the marker last, leaving the destination
+empty. Repeating explicitly after inspecting a lost reply is idempotent; it does
+not admit a replacement operation or change the old terminal state. `can_retry`
+enables a separate fresh-UUID install. Selecting another empty folder also enables
+retry while preserving previous output. Runtime cache and extraction prefixes
+remain; this is not uninstall or full application cleanup.
+
+The UI asks for confirmation and supports dismissal without dispatch. Install,
+reconcile and cleanup replies have 35-second observation deadlines; reads retain
+five-second deadlines. Final ordinary checks passed 217 engine tests (nine opt-in tests now ignored)
+and 16 shell tests/one ignored. Twenty-six frontend tests, checking/build and JS
+logic UAT passed confirmation/dismissal, one cleanup call, new-ID retry and
+unchanged consent. Combined strict clippy passed. Windows junction regression is added
+but not locally run. Real failed-Wine cleanup passed in 24.096 seconds: the helper
+finished extraction, invalid content failed validation, confirmed cleanup emptied
+the game destination and enabled retry without changing consent. Native visual UAT remains open.

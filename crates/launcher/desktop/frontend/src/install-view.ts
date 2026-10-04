@@ -23,6 +23,9 @@ export function mountInstall(document:Document,invoke:Invoke,uuid:()=>string=()=
   const cancel=get<HTMLButtonElement>('cancel-install');
   const resume=get<HTMLButtonElement>('resume-install');
   const recheck=get<HTMLButtonElement>('inspect-install');
+  const cleanup=get<HTMLButtonElement>('clean-failed-install');
+  const confirmation=get('cleanup-confirmation');
+  let confirming:string|null=null;
   const progress=get<HTMLProgressElement>('install-progress');
   const abort=new AbortController();
   let current:InstallViewState={status:null,busy:false,needsInspection:true,error:null};
@@ -36,8 +39,15 @@ export function mountInstall(document:Document,invoke:Invoke,uuid:()=>string=()=
     const active=!!status&&operationActive(status);
     const recovery=operation?.state==='reconciliation_required';
     const ready=!!status&&!status.native.requires_reopen&&!current.needsInspection&&!current.busy&&!pending;
-    primary.disabled=!ready||!status?.install_supported||!!operation||!status.native.preferences.install_directory;
-    primary.textContent=operation?.state==='succeeded'?'Content prepared':active?'Installing…':'Install Stargate Worlds';
+    primary.disabled=!ready||!status?.install_supported||(!!operation&&!status?.can_retry)||!status.native.preferences.install_directory;
+    primary.textContent=status?.can_retry?'Retry installation':operation?.state==='succeeded'?'Content prepared':active?'Installing…':'Install Stargate Worlds';
+    const failed=operation?.state==='failed'||operation?.state==='cancelled';
+    cleanup.hidden=!failed||status?.can_retry===true;
+    cleanup.disabled=!ready;
+    if(!failed||confirming!==operation?.id)confirming=null;
+    confirmation.hidden=confirming===null;
+    get<HTMLButtonElement>('confirm-cleanup').disabled=!ready;
+    get<HTMLButtonElement>('dismiss-cleanup').disabled=pending||current.busy;
     cancel.hidden=!active;
     cancel.disabled=!ready||operation?.state==='cancel_requested';
     resume.hidden=!recovery||!status?.can_resume; resume.disabled=!ready||!status?.can_resume;
@@ -56,7 +66,8 @@ export function mountInstall(document:Document,invoke:Invoke,uuid:()=>string=()=
         status.progress?.phase==='download'?'Downloading verified game content…':status.progress?.phase==='extraction'?'Extracting game content…':'Preparing installation…';
       else if(status.outcome==='rosetta_required')text='Rosetta is required to prepare Windows game compatibility on this Mac. No game was launched.';
       else if(status.outcome==='runtime_unavailable')text='Windows compatibility could not be prepared. Check your connection and available disk space. Existing files have been preserved.';
-      else if(operation)text='Installation stopped. Partial files are preserved. Retry and cleanup are not connected in this build.';
+      else if(status.can_retry)text='Ready to retry installation.';
+      else if(operation)text='Installation stopped. Partial files are preserved. Remove partial files to retry, or choose another empty folder in Settings.';
       else if(!status.install_supported)text='This build is missing a verified compatibility helper. Settings and Patch Notes are available.';
       else text=status.native.preferences.install_directory?'Ready to install game content.':'Choose an empty game folder in Settings to begin.';
     }
@@ -84,6 +95,9 @@ export function mountInstall(document:Document,invoke:Invoke,uuid:()=>string=()=
     const listener=()=>{if(!element.disabled)action();};
     element.addEventListener('click',listener);listeners.push(()=>element.removeEventListener('click',listener));
   };
+  on(cleanup,()=>{confirming=current.status?.native.operation.operation?.id??null;render();});
+  on(get<HTMLButtonElement>('dismiss-cleanup'),()=>{confirming=null;render();});
+  on(get<HTMLButtonElement>('confirm-cleanup'),()=>{const id=confirming;confirming=null;if(id)void run(service=>service.cleanFailed(id));});
   on(primary,()=>{const id=uuid();void run(service=>service.install(id));});
   on(cancel,()=>{const id=current.status?.native.operation.operation?.id;if(id)void run(service=>service.cancel(id));});
   on(resume,()=>{const id=current.status?.native.operation.operation?.id;if(id)void run(service=>service.resume(id));});

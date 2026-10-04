@@ -6,19 +6,23 @@ import { parseHTML } from 'linkedom';
 import { mountInstall } from './.test-build/install-view.mjs';
 const html=await readFile(new URL('./ui/index.html',import.meta.url),'utf8');
 const id='7e438f46-9b99-450d-83b6-3c12436b403c';
-let status={schema_version:1,install_supported:true,can_resume:true,can_reconcile:true,progress:null,outcome:null,native:{schema_version:1,requires_reopen:false,
+let status={schema_version:1,install_supported:true,can_resume:true,can_reconcile:true,can_retry:false,progress:null,outcome:null,native:{schema_version:1,requires_reopen:false,
   preferences:{schema_version:1,revision:1,install_directory:'/fixture/owned',launcher_summary_consent:false},
   operation:{schema_version:1,revision:0,operation:null}}};
-const calls=[];
+const calls=[];const requests=[];
 const invoke=async(_command,{request})=>{
-  calls.push(request.command);
+  calls.push(request.command);requests.push(request);
   if(request.command==='install')status={...status,progress:{phase:'download',current:32,total:64},native:{...status.native,
-    operation:{schema_version:1,revision:1,operation:{id,kind:'install',intent_digest:Array(32).fill(0),state:'running'}}}};
+    operation:{schema_version:1,revision:1,operation:{id:request.operation_id,kind:'install',intent_digest:Array(32).fill(0),state:'running'}}}};
+  if(request.command==='clean_failed'){
+    assert.equal(request.confirmed,true);
+    status={...status,can_retry:true};
+  }
   if(request.command==='cancel')status={...status,native:{...status.native,operation:{...status.native.operation,revision:2,
     operation:{...status.native.operation.operation,state:'cancel_requested'}}}};
   return status;
 };
-const mount=()=>{const {document,window}=parseHTML(html);return {document,window,app:mountInstall(document,invoke,()=>id)};};
+const mount=(operationId=id)=>{const {document,window}=parseHTML(html);return {document,window,app:mountInstall(document,invoke,()=>operationId)};};
 const settle=async app=>{await app.settled();await new Promise(resolve=>setImmediate(resolve));};
 let ui=mount();await ui.app.ready;await settle(ui.app);
 ui.document.getElementById('install').dispatchEvent(new ui.window.Event('click'));await settle(ui.app);
@@ -66,5 +70,29 @@ assert.equal(calls.includes('resume'),false);
 assert.equal(status.native.operation.operation.state,'reconciliation_required');
 assert.equal(status.native.preferences.launcher_summary_consent,false);
 await ui.app.dispose();
-console.log('PASS: enabled recovery explicitly reconciles without resume or completion inference; unsupported Wine recovery only inspects;  Rosetta/runtime failure decoding and reopened feedback;  install, progress, explicit cancel, reconnect without replay, completion wins cancellation, no Play/consent inference.');
+status={...status,can_retry:false,native:{...status.native,operation:{...status.native.operation,
+  operation:{...status.native.operation.operation,state:'failed'}}}};
+ui=mount();await ui.app.ready;await settle(ui.app);
+ui.document.getElementById('clean-failed-install').dispatchEvent(new ui.window.Event('click'));
+assert.equal(ui.document.getElementById('cleanup-confirmation').hidden,false);
+assert.equal(calls.includes('clean_failed'),false);
+ui.document.getElementById('dismiss-cleanup').dispatchEvent(new ui.window.Event('click'));
+assert.equal(ui.document.getElementById('cleanup-confirmation').hidden,true);
+assert.equal(calls.includes('clean_failed'),false);
+ui.document.getElementById('clean-failed-install').dispatchEvent(new ui.window.Event('click'));
+ui.document.getElementById('confirm-cleanup').dispatchEvent(new ui.window.Event('click'));await settle(ui.app);
+assert.equal(calls.filter(x=>x==='clean_failed').length,1);
+assert.equal(ui.document.getElementById('install').disabled,false);
+assert.equal(ui.document.getElementById('install').textContent,'Retry installation');
+assert.equal(status.native.operation.operation.state,'failed');
+assert.equal(status.native.preferences.launcher_summary_consent,false);
+await ui.app.dispose();
+const replacementId='877407cc-b79c-4ce5-8361-c0c8d3787463';
+ui=mount(replacementId);await ui.app.ready;await settle(ui.app);
+ui.document.getElementById('install').dispatchEvent(new ui.window.Event('click'));await settle(ui.app);
+assert.equal(requests.filter(x=>x.command==='install').at(-1).operation_id,replacementId);
+assert.equal(status.native.operation.operation.id,replacementId);
+assert.equal(calls.filter(x=>x==='clean_failed').length,1);
+await ui.app.dispose();
+console.log('PASS: cleanup requires confirmation, dismissal preserves files, acknowledged cleanup enables explicit retry; enabled recovery explicitly reconciles without resume or completion inference; unsupported Wine recovery only inspects;  Rosetta/runtime failure decoding and reopened feedback;  install, progress, explicit cancel, reconnect without replay, completion wins cancellation, no Play/consent inference.');
 console.log('NOT COVERED: native install IPC/filesystem, actual downloads/Wine, visual layout, OS dialogs, login/gameplay.');

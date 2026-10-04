@@ -1,5 +1,6 @@
 //! Exclusive state-directory ownership and bounded, crash-aware persistence.
 mod atomic;
+mod failed_cleanup;
 mod helper_journal;
 pub use helper_journal::{HelperPhase, HelperRecord, HelperResult};
 mod release_evidence;

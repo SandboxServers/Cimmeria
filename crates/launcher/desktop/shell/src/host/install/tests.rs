@@ -418,3 +418,65 @@ async fn same_session_reconciliation_discards_stale_uncertain_worker_result() {
     assert!(recovered.outcome.is_none());
     assert!(recovered.progress.is_none());
 }
+
+#[test]
+fn cleanup_requires_confirmation_and_exposes_retry_without_dispatch() {
+    let root = tempfile::tempdir().unwrap();
+    let host = NativeHost::new(root.path().join("state"));
+    host.dispatch(NativeCommand::SavePreferences {
+        schema_version: 1,
+        expected_revision: 0,
+        install_directory: Some(root.path().join("install")),
+        launcher_summary_consent: false,
+    })
+    .unwrap();
+    let id = Uuid::new_v4();
+    let revision = {
+        let store = host.store().unwrap();
+        let mut state = store.lock().unwrap();
+        let intent = state
+            .admit_install(id, 0, 1, &fixture_release(), vec![])
+            .unwrap()
+            .intent;
+        std::fs::create_dir(&intent.destination).unwrap();
+        std::fs::write(
+            intent.destination.join(".cimmeria-install.json"),
+            serde_json::to_vec(&intent).unwrap(),
+        )
+        .unwrap();
+        state
+            .operations_mut()
+            .unwrap()
+            .observe(id, cimmeria_launcher_engine::OperationState::Failed)
+            .unwrap();
+        state.operations().snapshot().revision
+    };
+    assert!(!host.install_status().unwrap().can_retry);
+    assert!(host
+        .install_command(
+            InstallCommand::CleanFailed {
+                schema_version: 1,
+                operation_id: id,
+                operation_revision: revision,
+                confirmed: false,
+            },
+            None
+        )
+        .is_err());
+    assert!(root.path().join("install/.cimmeria-install.json").exists());
+    let status = host
+        .install_command(
+            InstallCommand::CleanFailed {
+                schema_version: 1,
+                operation_id: id,
+                operation_revision: revision,
+                confirmed: true,
+            },
+            None,
+        )
+        .unwrap();
+    assert!(status.can_retry);
+    assert_eq!(status.native.operation.operation.unwrap().id, id);
+    assert!(!status.native.preferences.launcher_summary_consent);
+    assert!(host.worker.lock().unwrap().is_none());
+}

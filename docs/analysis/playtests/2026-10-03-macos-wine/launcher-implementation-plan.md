@@ -744,3 +744,24 @@ output and unresolved recovery state. Final checks passed 212 engine tests/eight
 ignored, 15 shell tests/one ignored and combined strict clippy. JS logic UAT
 passed enabled inspection without resume or inferred success; native IPC remains
 mocked. No native visual/gameplay proof is claimed.
+
+
+### 2026-10-04: confirmed failed-attempt cleanup and retry
+
+Added confirmed CleanFailed IPC bound to ID/revision and terminal failed/cancelled
+install state. Canonical ownership lock and complete name/type/tree preflight
+veto promoted content, receipts, foreign files, symlinks and reparse points before
+deletion. Stage/cache are removed before the marker; runtime cache/prefixes stay.
+The destination remains empty and old terminal state persists. Explicit repeat
+after lost-reply inspection is safe; retry separately creates a fresh UUID.
+Selecting another empty folder preserves old output. Wine stop restrictions stay.
+
+Engine 217 ordinary tests and shell 16/one ignored passed; engine now has nine opt-in tests. Frontend 26 tests,
+check/build and sequential logic UAT passed confirmation/dismissal, one cleanup,
+new-ID retry and consent preservation. Combined strict clippy passed. Windows junction
+regression awaits native validation. Real failed-Wine cleanup passed in 24.096 seconds,
+including helper completion, content rejection, empty destination and retry readiness.
+Native visual UAT was not exercised. Reconcile/cleanup observation timeout is now 35 seconds, reads remain five seconds.
+
+Earlier desktop CI `37194260496` passed macOS and Windows at `ba765f95`. The
+new cleanup revision awaits its own CI; the older result does not validate it.

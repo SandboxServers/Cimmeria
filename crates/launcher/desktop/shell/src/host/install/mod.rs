@@ -22,6 +22,12 @@ pub enum InstallCommand {
         operation_revision: u64,
         preferences_revision: u64,
     },
+    CleanFailed {
+        schema_version: u32,
+        operation_id: Uuid,
+        operation_revision: u64,
+        confirmed: bool,
+    },
     Cancel {
         schema_version: u32,
         operation_id: Uuid,
@@ -42,6 +48,7 @@ impl InstallCommand {
         let version = match self {
             Self::Inspect { schema_version }
             | Self::Install { schema_version, .. }
+            | Self::CleanFailed { schema_version, .. }
             | Self::Cancel { schema_version, .. }
             | Self::Resume { schema_version, .. }
             | Self::Reconcile { schema_version, .. } => *schema_version,
@@ -144,6 +151,7 @@ pub struct InstallStatus {
     pub install_supported: bool,
     pub can_resume: bool,
     pub can_reconcile: bool,
+    pub can_retry: bool,
     pub progress: Option<JobProgress>,
     pub outcome: Option<Outcome>,
 }
@@ -220,13 +228,14 @@ impl NativeHost {
     }
 
     pub fn install_status(&self) -> Result<InstallStatus, JobError> {
-        let (native, native_backend, outcome) = self.with_state(|state| {
+        let (native, native_backend, outcome, can_retry) = self.with_state(|state| {
             Ok((
                 state.inspect(),
                 state
                     .install_intent()?
                     .is_some_and(|intent| intent.backend.is_native()),
                 state.install_outcome()?,
+                state.can_retry_install(),
             ))
         })?;
         let recovery = !native.requires_reopen
@@ -248,6 +257,7 @@ impl NativeHost {
             install_supported: self.platform_backend().is_ok(),
             can_resume: recovery && native_backend && cfg!(windows),
             can_reconcile: recovery && (native_backend || cfg!(target_os = "macos")),
+            can_retry,
             progress: observed,
             outcome,
         })
@@ -289,6 +299,21 @@ impl NativeHost {
                     release,
                     self.platform_backend()?,
                 )?;
+            }
+            InstallCommand::CleanFailed {
+                operation_id,
+                operation_revision,
+                confirmed,
+                ..
+            } => {
+                if !confirmed {
+                    return Err(JobError::RecoveryRequired);
+                }
+                state
+                    .lock()
+                    .map_err(|_| JobError::Io)?
+                    .clean_failed_install(operation_id, operation_revision)?;
+                *worker = None;
             }
             InstallCommand::Cancel { operation_id, .. } => {
                 let active = worker
