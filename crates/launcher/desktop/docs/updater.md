@@ -1,18 +1,20 @@
-# Signed launcher package checks
+# Signed launcher updates
 
 > Reference · desktop launcher maintainers · 2026-10-04
 
 The desktop launcher can check a native-configured release feed, download a
 package, and verify its Minisign signature and signed version before saving it.
-It cannot install a package, replace the running launcher, relaunch, or roll back.
-The production composition currently supplies no endpoint or signing key, so
+Apply re-verifies saved bytes and can replace a native Mac application bundle or
+hand off a Windows installer. The new compiled launcher version must acknowledge
+startup before an update is reported installed. The production composition currently supplies no endpoint or signing key, so
 its visible status is **Disabled**. Game-manifest signatures and legacy launcher
 checksums remain separate mechanisms.
 
-`updater_command` accepts schema 1 `inspect`, `check`, or `prepare`. Check uses
+`updater_command` accepts schema 1 `inspect`, `check`, `prepare`, or `apply`. Check uses
 the inspected updater `revision` and `operation_revision`. Prepare adds only
 the opaque `offer_id`. No URL, key, filesystem path, executable arguments or
-artifact bytes are accepted from the renderer. There is no Apply command.
+artifact bytes are accepted from the renderer. Apply uses the same opaque offer
+ID and both inspected revisions as Prepare.
 Snapshots expose version and bounded notes as text, never signature material or
 artifact locations. An available offer is an unverified feed announcement;
 **Ready** means a verified saved package, not an installed update.
@@ -49,7 +51,8 @@ cleanup call `ensure_updater_idle()` before preparatory writes. Repair-backup
 cleanup uses the same gate. Directory changes are blocked while updates run;
 summary consent remains editable. New mutation paths must preserve this rule. A dropped
 renderer request does not cancel the native task. An interrupted process is not
-a successful update: reopen changes an in-progress phase to failed/interrupted.
+a successful update: reopen changes interrupted downloads to failed/interrupted,
+and installing/restart states to reconciliation-required while retaining ownership.
 Ready inspection rereads and reverifies the native staging file, including after
 reopen; missing, modified or no-longer-newer packages lose Ready status. An
 uncertain persistence commit requires reopening and blocks new admissions.
@@ -64,19 +67,68 @@ stale revisions/offers, cross-operation exclusion and restart recovery.
 a Rust fixture process with actual HTTP downloads and temporary disk persistence.
 It covers duplicate clicks, literal notes, verified reopen and tamper rejection.
 
-This does not prove packaged Tauri IPC/layout, production HTTPS, Windows native
-lock/durability behavior, installer completion, restart, application health or
-rollback. Apply/recovery work must retain native ownership until safe handoff,
-reverify saved bytes, record durable intent, and prove failure recovery on each
-platform. Production key custody, updater-compatible CLI signing, release
+The Apply fixture exercises real temporary Mac bundle renames and a spawned
+fixture executable, final-rename/spawn-failure rollback, interrupted recovery,
+foreign-stage preservation, and compiled-version acknowledgment. Shell tests
+prove that a dropped renderer reply still invokes the native shutdown callback
+once, and failed spawn never invokes it. Windows handoff state is fixture-tested;
+actual NSIS/MSI installation, UAC, locking and durability remain native Windows gates.
+These checks do not prove packaged Tauri IPC/layout/exit, production HTTPS,
+replacement of the actual launcher, application health or production restart. Production key custody, updater-compatible CLI signing, release
 publication, OS signing/notarization and release ordering remain separate gates.
 
 ## Settings integration
 
-Settings provides Check, Download and Recheck controls. The application owns all
+Settings provides Check, Download, Apply and restart, and Recheck controls. The application owns all
 views for its lifetime; native operation-revision changes refresh updater
 capabilities, so a completed game/setup operation does not strand an old offer
 behind a stale revision. No update mutation is replayed automatically. The
 composition UAT mounts the real views, completes a native fixture journal
 operation while an offer is displayed, then downloads once using the refreshed
 revision. Non-updater view payloads in that UAT remain inert fixtures.
+
+## Native Apply and recovery
+
+The running executable selects its installed target. A Mac target must be the
+executable named by its enclosing bundle's `Contents/Info.plist`. Apply checks the
+incoming bundle identifier, executable name and offered version before touching
+that target. Tar extraction accepts one `.app` root, bounded entries/expanded
+bytes, ordinary files/directories and contained relative framework symlinks;
+unsafe paths, duplicate/case aliases, hard links and special files are rejected.
+The stage is published beside the installed bundle by exclusive rename with an
+operation-owner marker. Staging is on the target volume even when app data is on
+another volume; there is no privileged or cross-volume copy fallback.
+
+Apply records `installing` before filesystem effects, fingerprints original and
+replacement trees with explicit directory/entry framing, atomically exchanges the installed and staged bundles with `RENAME_SWAP`, then
+moves the swapped-out original to a unique sibling backup. The installed path
+remains launchable if the process crashes between those steps.
+A final rename or replacement-spawn failure restores a recognized original.
+Unknown/colliding stage, target or backup contents are preserved and retain
+reconciliation ownership. Cleanup never adopts a directory just because it has
+the expected name. A pre-handoff interruption restores recognized old bytes.
+
+A successful spawn leaves `restart_required`; it does not claim completion.
+Native shutdown belongs to the retained Apply worker and does not depend on an
+IPC response reaching the renderer. A Mac replacement receives a fixed restart
+argument and waits up to 30 seconds for the old state owner to exit. No arbitrary
+process is killed. On reopen, only the current executable's compiled version and
+native target can acknowledge the expected release. Mac acknowledgment also
+checks the replacement tree fingerprint. `installed` is persisted before
+best-effort backup cleanup, so a crash during garbage collection cannot undo a
+valid startup acknowledgment. This proves version startup, not app health.
+
+Windows uses the signed `.exe` or `.msi` asset with native-only installer flags.
+NSIS uses passive update/restart flags and the current executable's directory;
+MSI uses the system `msiexec` path and launch-after-install properties.
+`ShellExecuteExW` supports normal Windows elevation and detects rejected launch.
+Installer handoff remains pending until the new compiled launcher starts. An old
+version reopening cannot infer that the installer was cancelled or completed;
+it preserves the owner and blocks game/setup changes. Real installer cancellation,
+reboot, elevation and package upgrade identity must be exercised before release.
+
+`frontend/updater-apply-native-uat.mjs` drives the production Effect/view through
+an isolated native bundle/process fixture. It covers duplicate Apply suppression,
+real replacement, persisted reopen, game exclusion and a fixture-supplied compiled
+version acknowledgment. It does not replace packaged visual/IPC UAT or a real
+old-to-new signed launcher upgrade.

@@ -18,6 +18,12 @@ pub enum UpdaterCommand {
         revision: u64,
         operation_revision: u64,
     },
+    Apply {
+        schema_version: u32,
+        revision: u64,
+        operation_revision: u64,
+        offer_id: Uuid,
+    },
     Prepare {
         schema_version: u32,
         revision: u64,
@@ -26,20 +32,59 @@ pub enum UpdaterCommand {
     },
 }
 impl NativeHost {
+    /// Native composition installs shutdown before any Apply capability is exposed.
+    pub fn with_updater_shutdown(mut self, shutdown: impl Fn() + Send + Sync + 'static) -> Self {
+        self.updater_shutdown = Some(std::sync::Arc::new(shutdown));
+        self
+    }
+
     pub async fn updater_command(&self, request: UpdaterCommand) -> Result<Snapshot, Error> {
         let schema = match &request {
             UpdaterCommand::Inspect { schema_version }
             | UpdaterCommand::Check { schema_version, .. }
-            | UpdaterCommand::Prepare { schema_version, .. } => *schema_version,
+            | UpdaterCommand::Prepare { schema_version, .. }
+            | UpdaterCommand::Apply { schema_version, .. } => *schema_version,
         };
         if schema != 1 {
             return Err(StorageError::UnsupportedSchema.into());
         }
         let store = self.store()?;
         let config = self.updater_config.clone();
+        if let UpdaterCommand::Apply {
+            offer_id,
+            revision,
+            operation_revision,
+            ..
+        } = request
+        {
+            // The detached blocking owner outlives a dropped renderer request.
+            let shutdown = self.updater_shutdown.clone().ok_or(Error::Disabled)?;
+            return retained_apply(
+                move || {
+                    if config.is_none() {
+                        return Err(Error::Disabled);
+                    }
+                    let target = updater::InstalledTarget::current()?;
+                    store
+                        .lock()
+                        .map_err(|_| StorageError::Io)?
+                        .apply_launcher_update(
+                            config.as_ref(),
+                            &target,
+                            offer_id,
+                            revision,
+                            operation_revision,
+                        )
+                },
+                shutdown,
+            )
+            .await
+            .map_err(|_| Error::Interrupted)?;
+        }
         let ticket = {
             let mut state = store.lock().map_err(|_| StorageError::Io)?;
             match request {
+                UpdaterCommand::Apply { .. } => unreachable!(),
                 UpdaterCommand::Inspect { .. } => {
                     return state.launcher_update_snapshot(config.as_ref())
                 }
@@ -107,6 +152,21 @@ impl NativeHost {
     }
 }
 
+// Dropping the request future drops only its JoinHandle, never the already
+// admitted native owner or shutdown after a successful durable handoff.
+fn retained_apply(
+    apply: impl FnOnce() -> Result<Snapshot, Error> + Send + 'static,
+    shutdown: std::sync::Arc<dyn Fn() + Send + Sync>,
+) -> tokio::task::JoinHandle<Result<Snapshot, Error>> {
+    tokio::task::spawn_blocking(move || {
+        let status = apply()?;
+        if status.phase == updater::Phase::RestartRequired {
+            shutdown();
+        }
+        Ok(status)
+    })
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -132,7 +192,7 @@ mod tests {
         assert!(!root.path().join("state/launcher-update.json").exists());
     }
     #[test]
-    fn updater_ipc_rejects_renderer_url_key_bytes_and_apply() {
+    fn updater_ipc_rejects_renderer_url_key_bytes_and_incomplete_apply() {
         for field in ["url", "public_key", "bytes"] {
             let mut request = serde_json::json!({"command":"check","schema_version":1,"revision":0,"operation_revision":0});
             request[field] = serde_json::json!("attacker");
@@ -142,5 +202,67 @@ mod tests {
             serde_json::json!({"command":"apply","schema_version":1})
         )
         .is_err());
+    }
+    #[tokio::test]
+    async fn lost_apply_reply_still_shuts_down_once_after_durable_handoff_and_never_on_failure() {
+        use std::sync::{
+            atomic::{AtomicUsize, Ordering},
+            Arc,
+        };
+        let root = tempfile::tempdir().unwrap();
+        let path = root.path().join("handoff.json");
+        let (started_tx, started_rx) = tokio::sync::oneshot::channel();
+        let (release_tx, release_rx) = std::sync::mpsc::channel();
+        let (done_tx, done_rx) = tokio::sync::oneshot::channel();
+        let done = std::sync::Mutex::new(Some(done_tx));
+        let calls = Arc::new(AtomicUsize::new(0));
+        let observed = calls.clone();
+        let saved = path.clone();
+        let handle = retained_apply(
+            move || {
+                started_tx.send(()).unwrap();
+                release_rx.recv().unwrap();
+                let snapshot = Snapshot {
+                    schema_version: 1,
+                    revision: 5,
+                    operation_revision: 0,
+                    phase: updater::Phase::RestartRequired,
+                    offer: None,
+                    failure: None,
+                    requires_reopen: false,
+                };
+                std::fs::write(saved, serde_json::to_vec(&snapshot).unwrap()).unwrap();
+                Ok(snapshot)
+            },
+            Arc::new(move || {
+                observed.fetch_add(1, Ordering::SeqCst);
+                done.lock().unwrap().take().unwrap().send(()).unwrap();
+            }),
+        );
+        started_rx.await.unwrap();
+        drop(handle); // renderer abandoned its reply
+        release_tx.send(()).unwrap();
+        tokio::time::timeout(std::time::Duration::from_secs(5), done_rx)
+            .await
+            .unwrap()
+            .unwrap();
+        assert_eq!(calls.load(Ordering::SeqCst), 1);
+        let saved: serde_json::Value =
+            serde_json::from_slice(&std::fs::read(path).unwrap()).unwrap();
+        assert_eq!(saved["phase"], "restart_required");
+        let observed = calls.clone();
+        assert_eq!(
+            retained_apply(
+                || Err(Error::Spawn),
+                Arc::new(move || {
+                    observed.fetch_add(1, Ordering::SeqCst);
+                })
+            )
+            .await
+            .unwrap()
+            .unwrap_err(),
+            Error::Spawn
+        );
+        assert_eq!(calls.load(Ordering::SeqCst), 1);
     }
 }
