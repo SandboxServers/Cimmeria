@@ -42,14 +42,14 @@ import re
 import sys
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Dict, List, Optional, Sequence, Tuple
+from typing import Dict, List, Optional, Sequence, Set, Tuple
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
 from corpus import BEGIN, END, NVPS_SQL, EFFECTS_SQL, Corpus, Effect, find_blocks, load_corpus  # noqa: E402
 from families import FAMILIES, NVP_RANGES  # noqa: E402
 from family import Family, Generated, Rejected, show  # noqa: E402
-from seed_sql import InputError, sql_quote, write_text  # noqa: E402
+from seed_sql import InputError, sql_quote, sql_rows, write_text  # noqa: E402
 
 TOOL = "tools/ability_mechanics/effect_nvps_from_desc.py"
 
@@ -74,7 +74,7 @@ def run_family(family: Family, corpus: Corpus, claimed: Dict[int, str]) -> Famil
         if not family.is_candidate(e, corpus):
             continue
         outcome = family.parse(e, corpus)
-        hand_rows = [(n, v) for n, v in corpus.hand_nvps.get(e.effect_id, []) if n in family.nvp_names]
+        hand_rows = corpus.hand_rows(e.effect_id, family.nvp_names)
         if hand_rows:
             if isinstance(outcome, Generated):
                 same = sorted(outcome.nvps) == sorted(hand_rows)
@@ -99,7 +99,29 @@ def run_family(family: Family, corpus: Corpus, claimed: Dict[int, str]) -> Famil
     return result
 
 
-def render_block(result: FamilyResult) -> str:
+def nvp_ids(text: str) -> List[int]:
+    return [int(r["nvp_id"].text) for r in sql_rows(text, "effect_nvps")]
+
+
+def used_outside(nvps_text: str, family: str) -> Set[int]:
+    """Every ``nvp_id`` in the file outside the family's own block: hand rows
+    (including generated rows someone moved out of the markers) and other
+    families' blocks. The family's allocation skips all of them."""
+    b = find_blocks(nvps_text).get(family)
+    outside = nvps_text if b is None else nvps_text[: b.start] + nvps_text[b.end :]
+    return set(nvp_ids(outside))
+
+
+def check_unique_ids(nvps_text: str) -> None:
+    """Backstop before anything is written or compared: a duplicate
+    ``nvp_id`` would fail the seed load on the primary key."""
+    seen: Set[int] = set()
+    dups = sorted({i for i in nvp_ids(nvps_text) if i in seen or seen.add(i)})
+    if dups:
+        raise InputError(f"{NVPS_SQL}: duplicate nvp_id {dups}")
+
+
+def render_block(result: FamilyResult, used: Set[int]) -> str:
     fam = result.family
     lo, hi = NVP_RANGES[fam.name]
     lines = [
@@ -122,6 +144,8 @@ def render_block(result: FamilyResult) -> str:
         for note in g.notes:
             lines.append(f"--   note: {note}")
         for n, v in g.nvps:
+            while nvp_id in used:
+                nvp_id += 1
             if nvp_id > hi:
                 raise InputError(f"family '{fam.name}' ran out of nvp_ids ({lo}-{hi})")
             lines.append(
@@ -150,13 +174,16 @@ def script_edits(corpus: Corpus, result: FamilyResult) -> Dict[int, Optional[str
     """``script_name`` per effect after this family: what it binds, and NULL
     for what it bound before and no longer generates.
 
-    An effect that gained a hand-authored row of the family's NVPs is handed
-    over, not dropped: its binding stays, because the hand row needs the
-    same script to do anything."""
+    An effect with a hand-authored row of the family's NVPs is handed over,
+    not dropped: its binding stays, because the hand row needs the same
+    script to do anything. Ownership comes from ``corpus.hand_rows`` alone,
+    so it holds even when the effect stopped being a candidate (its text
+    changed) or reachable."""
     fam = result.family
-    handed_over = {e.effect_id for e, _ in result.hand_authored}
     want: Dict[int, Optional[str]] = {}
-    for eid in corpus.owned_before(fam.name) - handed_over:
+    for eid in corpus.owned_before(fam.name):
+        if corpus.hand_rows(eid, fam.nvp_names):
+            continue
         e = corpus.effects.get(eid)
         if e is not None and e.script_name in fam.scripts:
             want[eid] = None
@@ -192,9 +219,11 @@ def generate(
     for name in dict.fromkeys(families):
         result = run_family(FAMILIES[name], corpus, claimed)
         results.append(result)
-        nvps_text = place_block(nvps_text, name, render_block(result))
+        block = render_block(result, used_outside(nvps_text, name))
+        nvps_text = place_block(nvps_text, name, block)
         for eid, script in script_edits(corpus, result).items():
             (binds if script is not None else clears)[eid] = script
+    check_unique_ids(nvps_text)
     # A bind from any family beats another family's clear of the same effect.
     return corpus, results, nvps_text, apply_scripts(corpus, {**clears, **binds})
 

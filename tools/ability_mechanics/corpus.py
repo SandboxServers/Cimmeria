@@ -78,6 +78,13 @@ class Corpus:
         b = self.blocks.get(family)
         return set(b.effect_ids) if b else set()
 
+    def hand_rows(self, effect_id: int, names: Iterable[str]) -> List[Tuple[str, str]]:
+        """Hand-authored rows (outside every generated block) of ``names`` on
+        the effect. The single source of hand ownership: it does not depend
+        on whether the effect is reachable or a family candidate."""
+        names = set(names)
+        return [(n, v) for n, v in self.hand_nvps.get(effect_id, []) if n in names]
+
 
 def find_blocks(text: str) -> Dict[str, Block]:
     """The generated blocks of an ``effect_nvps.sql`` text, by family."""

@@ -246,6 +246,50 @@ class Ownership(unittest.TestCase):
         _, nvps3, effs3 = self.run_gen(effs2, nvps2)
         self.assertEqual((nvps3, effs3), (nvps2, effs2))
 
+    def test_a_hand_override_keeps_the_binding_when_the_text_stops_parsing(self):
+        # Same hand-over, but the designer text also changes to something the
+        # heal family no longer recognises: ownership must come from the hand
+        # row, not from candidacy.
+        _, nvps, effs = self.run_gen(effect_row(10, 1, "+10% Health"), NVP_TRAILER)
+        nvps = nvp_row(500, 10, "HealPercentage", "12.00") + nvps
+        effs = effs.replace("+10% Health", "Custom restoration")
+        result, nvps2, effs2 = self.run_gen(effs, nvps)
+        self.assertEqual(result.generated, [])
+        self.assertEqual(result.hand_authored, [], "not a candidate any more")
+        self.assertIn("NULL, 'HealHealth');", effs2)
+        self.assertNotIn("(20000,", nvps2)
+
+    def test_a_hand_override_on_an_unreachable_effect_keeps_the_binding(self):
+        # Ability 1 drops out of the reachable set and gains a hand row.
+        _, nvps, effs = self.run_gen(effect_row(10, 1, "+10% Health"), NVP_TRAILER)
+        nvps = nvp_row(500, 10, "HealAmount", "40") + nvps
+        c = corpus_from_texts(effs, nvps, ABILITIES, ["INSERT INTO char_creation_abilities (char_def_id, ability_id) VALUES (3, 2);\n"])
+        _, _, _, effs2 = gen.generate(["heal"], c)
+        self.assertIn("NULL, 'HealHealth');", effs2)
+
+    def test_a_generated_row_moved_out_of_the_block_keeps_its_id_unique(self):
+        # Generate two effects (ids 20000, 20001), then move 10's row out of
+        # the markers as a hand row with its id. Regenerating must not hand
+        # 20000 to effect 11.
+        effs = effect_row(10, 1, "+10% Health") + effect_row(11, 1, "+20% Health")
+        _, nvps, effs = self.run_gen(effs, NVP_TRAILER)
+        moved = nvp_row(20000, 10, "HealPercentage", "10.00")
+        self.assertIn(moved, nvps)
+        nvps = moved + nvps.replace(moved, "")
+        result, nvps2, _ = self.run_gen(effs, nvps)
+        self.assertEqual([g.effect.effect_id for g in result.generated], [11])
+        ids = gen.nvp_ids(nvps2)
+        self.assertEqual(len(ids), len(set(ids)), ids)
+        self.assertIn("(20001, 11,", nvps2)
+        # Stable on the next run.
+        _, nvps3, _ = self.run_gen(effs, nvps2)
+        self.assertEqual(nvps3, nvps2)
+
+    def test_a_duplicate_nvp_id_is_rejected_before_writing(self):
+        nvps = nvp_row(7, 99, "HealthDamage", "1") + nvp_row(7, 98, "HealthDamage", "2") + NVP_TRAILER
+        with self.assertRaises(gen.InputError):
+            self.run_gen(effect_row(10, 1, "+10% Health"), nvps)
+
     def test_a_repeated_family_runs_once(self):
         c = corpus(effect_row(10, 1, "+10% Health"), NVP_TRAILER)
         _, once, nvps1, effs1 = gen.generate(["heal"], c)

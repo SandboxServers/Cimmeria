@@ -37,7 +37,8 @@ CI runs `--check` and the unit tests in the `test-live-db` job of [.github/workf
 - Rows outside the markers are hand-authored, and the tool never rewrites them.
 - An effect that already has a hand-authored NVP of one of the family's names is left alone. The report says whether the parser agrees with it (it does for 659, 2008, 1383 and 3211).
 - An effect whose `script_name` is set, and was not set by the family's committed block, is left alone and reported. A script the family bound earlier and no longer generates is cleared back to NULL on the next run.
-- `nvp_id` ranges are fixed by the campaign ledger: heal 20000-20999, damage 21000-22999, stat 23000-23999, shield 24000-24499.
+- Hand ownership comes from the rows outside the markers alone. An effect the family generated, which then gains a hand row of the family's NVPs, keeps its `script_name`, even if its text no longer parses or its ability is no longer reachable. Removing that hand row later does not hand the effect back: its script now counts as hand-authored, and the report lists it.
+- `nvp_id` ranges are fixed by the campaign ledger: heal 20000-20999, damage 21000-22999, stat 23000-23999, shield 24000-24499. Allocation skips every id used outside the family's block (a generated row moved out keeps its id), and any duplicate `nvp_id` in the file fails the run with exit 2, `--check` included.
 
 ## Families
 
