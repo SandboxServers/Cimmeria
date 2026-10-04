@@ -1,6 +1,6 @@
 # Dev-Session Telemetry — Architecture
 
-> **Last updated**: 2026-09-29
+> **Last updated**: 2026-10-04
 
 How the launcher streams a developer's session (Atera client log,
 BigWorld `sgwdebuglog*`, end-of-session bundle) to the cimmeria-server
@@ -110,8 +110,13 @@ plain HTTP on that port. No TLS or tunnel is required; a Cloudflare route
 in front of the admin port remains an option.
 
 Wiring: `cimmeria_admin_api::login_port_telemetry_router()` builds a
-stateless router holding only those four routes (with their body limits
-and the same per-request trace span as the admin router). The composition
+stateless router holding those four routes and, since 2026-10-04, a fifth:
+the launcher-summary ingest (see
+[Launcher-summary sessions](#launcher-summary-sessions)). That fifth route
+is outside the decision above and needs the maintainer's explicit yes
+before a build carrying it is deployed. The router comes with the routes'
+body limits and a per-request trace span like the admin router's, except
+that it records the path without the query string. The composition
 root (`crates/server/src/main.rs`) hands it to the auth service through
 `AuthService::set_public_routes` before `start_all`, and the auth service
 merges it next to `/SGWLogin/*`. The auth crate sits below the admin API
@@ -147,6 +152,27 @@ default login server. Launcher config schema 2 migrates a schema-1 file
 whose `auth_url` is exactly the old default (`http://localhost:8443/api`)
 to the new default once, and writes the file back; any other value is
 kept.
+
+## Launcher-summary sessions
+
+A third session kind, `launcher_summary`, belongs to the desktop launcher's
+attempt summaries, not to this pipeline. It shares the mint endpoint, the
+token format and the HMAC secret, and nothing else:
+
+- The mint takes `"session_kind": "launcher_summary"` and issues a token
+  whose only scope is `launcher_summary.write`, whose `kind` is
+  `launcher_summary`, and whose `sub` is that same constant instead of an
+  `install_id`. Summary mints are counted per peer address on a table of
+  their own, with no per-`install_id` charge.
+- The token works on `POST /api/telemetry/launcher-summary` and is refused
+  by the two upload routes. A player or lab token is refused by the summary
+  route.
+- The token has the common 8-hour TTL and can be refreshed like any other.
+
+The design, the wire contract and the rows are in
+[launcher-summary-telemetry.md](launcher-summary-telemetry.md); the
+desktop side is in
+[launcher-summaries.md](../../crates/launcher/desktop/docs/launcher-summaries.md).
 
 ## Lab sessions
 
@@ -322,7 +348,10 @@ with `"session_kind": "lab"`, and **absent** for a player's launcher, so
 a player token is byte-identical to one minted before the claim existed
 and older tokens still decode. It is signed, so an upload cannot relabel
 itself, but minting is open, so it is a filter label and never a
-privilege. A refresh keeps it. Any other requested kind is a 400.
+privilege. A refresh keeps it. A
+[launcher-summary session](#launcher-summary-sessions) is the one
+exception to the `sub` and `scope` above. Any other requested kind is a
+400.
 
 `iat` is the **original mint** time and survives every refresh, so
 `exp` − `iat` is 8 hours only on a freshly minted token and shrinks
@@ -340,9 +369,11 @@ oracles.
 Three things stand in for the authentication the mint endpoint does
 not have.
 
-**Scope.** A minted token carries only `telemetry.write`, and
+**Scope.** A player or lab token carries only `telemetry.write`, and
 `verify_bearer` in `crates/admin-api/src/routes/telemetry/handlers.rs`
-refuses a token without it. The scope is checked at ingest rather
+refuses a token without it (a launcher-summary token carries only
+`launcher_summary.write`, which the same check refuses on the upload
+routes). The scope is checked at ingest rather
 than assumed from the mint path, so narrowing what a token may do
 stays a one-line change on the server.
 

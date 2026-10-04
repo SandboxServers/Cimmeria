@@ -94,13 +94,19 @@ running cimmeria-server process env.
 
 ## Pointing the launcher at a non-localhost server
 
-The server serves the four telemetry routes (see [Endpoints](#endpoints))
-on two listeners: the admin API port (`8443`, private, no
-authentication) and the public SOAP login port (`LOGON_PORT`, `8081`),
-which every player's game client already reaches. Nothing else from the
-admin API is served on `8081`. Decision (@Cadacious, 2026-09-29): plain
-HTTP on the login port is acceptable, because the game's own login
-already sends the player's password over plain HTTP on that port.
+The server serves the four dev-session telemetry routes (mint, refresh
+and the two uploads; see [Endpoints](#endpoints)) on two listeners: the
+admin API port (`8443`, private, no authentication) and the public SOAP
+login port (`LOGON_PORT`, `8081`), which every player's game client
+already reaches. Decision (@Cadacious, 2026-09-29): plain HTTP on the
+login port is acceptable, because the game's own login already sends the
+player's password over plain HTTP on that port.
+
+The code also merges a fifth route, `/api/telemetry/launcher-summary`, on
+both listeners (see [Launcher summaries](#launcher-summaries)). Serving it
+on the public port is outside that decision and needs the maintainer's
+explicit yes before a build carrying it is deployed. Nothing else from the
+admin API is served on `8081`.
 
 The launcher sends telemetry to:
 
@@ -216,6 +222,16 @@ telemetry. In-flight upload requests are NOT rejected by the kill
 switch — they complete using the token they already hold — but new
 sessions can't start until the switch is released.
 
+Three routes check the switch, and two do not:
+
+| Route | Under the kill switch |
+|---|---|
+| `/api/auth/dev-session` (every session kind) | 503 + `Retry-After: 60` |
+| `/api/auth/dev-session/refresh` | 503 + `Retry-After: 60` |
+| `/api/telemetry/launcher-summary` | 503 + `Retry-After: 60`, before the quota and the token are looked at |
+| `/api/telemetry/upload-chunk` | Not checked: answers as usual |
+| `/api/telemetry/upload-bundle` | Not checked: answers as usual |
+
 ```bash
 # Pause ingest without redeploy
 ssh cimmeria-server "systemctl set-environment CIMMERIA_TELEMETRY_KILL_SWITCH=1 \
@@ -260,10 +276,11 @@ that header and falls back to launching without telemetry.
 | Variable | Default | Counts |
 |---|---|---|
 | `CIMMERIA_TELEMETRY_QUOTA_WINDOW_SECS` | `3600` | The window everything below is counted over. |
-| `CIMMERIA_TELEMETRY_MINT_QUOTA_PER_IP` | `120` | Mints per peer address per window. |
+| `CIMMERIA_TELEMETRY_MINT_QUOTA_PER_IP` | `120` | Mints per peer address per window. Player and lab mints share one counter; launcher-summary mints have a counter of their own with the same limit, so neither can spend the other's allowance. |
 | `CIMMERIA_TELEMETRY_MINT_QUOTA_PER_INSTALL` | `30` | Mints per `install_id` per window. |
 | `CIMMERIA_TELEMETRY_REFRESH_QUOTA_PER_IP` | `480` | Refreshes with a valid token per peer address per window. Charged only after the token verifies. |
 | `CIMMERIA_TELEMETRY_REFRESH_BAD_QUOTA_PER_IP` | `30` | Refresh calls whose token fails verification, per peer address per window. A separate counter, so junk tokens cannot spend the valid-token allowance. |
+| `CIMMERIA_TELEMETRY_SUMMARY_QUOTA_PER_IP` | `120` | Requests to `/api/telemetry/launcher-summary` per peer address per window. Charged before the token is checked, so a request with no token or a bad one is counted too. See [Launcher summaries](#launcher-summaries). |
 | `CIMMERIA_TELEMETRY_MAX_SESSION_SECS` | `86400` | How long one minted session may be extended by chained refreshes. Not a quota: `0` (or a negative value) does **not** disable the cap, it refuses every refresh. |
 
 Setting a quota to `0` disables that counter. A value that does not
@@ -312,13 +329,16 @@ server:
 | `cimmeria-client` | `launcher.client_log` | Game log lines the launcher tailed, and the per-line replay of end-of-session bundles |
 | `cimmeria-client` | `launcher.debug_log` | `sgwdebuglog` lines |
 | `cimmeria-client` | `launcher.session_meta` | Session boundaries and rotation events |
-| `cimmeria-server` | `launcher.ingest` | Server-side accept counters per chunk, with the session totals; a `warn` with `reason = session_over_budget` when the runaway guard suppressed events |
+| `cimmeria-client` | `launcher.summary` | The desktop launcher's attempt summaries: `event = launcher_summary` per accepted summary and `event = launcher_phase` per timed phase. See [Launcher summaries](#launcher-summaries) |
+| `cimmeria-server` | `launcher.ingest` | Server-side accept counters per chunk, with the session totals; a `warn` with `reason = session_over_budget` when the runaway guard suppressed events. Also `event = launcher_summary_batch`, one row per launcher-summary request that reached validation |
 | `cimmeria-server` | `launcher.bundle` | Bundle metadata and refusals (caps, bad entries) |
 | none | `launcher.key_dump` | Encryption key material; `off` in every OTLP filter, never leaves the host |
 
-Every `cimmeria-client` row carries `session_id` and `install_id` (the
-token's claims), `cimmeria.session_kind` (`lab` or `player`) and `lab`
-(`true`/`false`), plus `ts_ms` and `seq`. `client.native` rows also carry
+Every uploaded `cimmeria-client` row carries `session_id` and `install_id`
+(the token's claims), `cimmeria.session_kind` (`lab` or `player`) and `lab`
+(`true`/`false`), plus `ts_ms` and `seq`. `launcher.summary` rows are the
+exception: they carry none of those identifiers, and their
+`cimmeria.session_kind` is `launcher_summary`. `client.native` rows also carry
 `client_level`, the DLL's `fields` bag as JSON in `fields`, and, when the
 event has them, `account_id`, `player_id`, `method_index`, `level_name`,
 `dll_version`, `fingerprint_usable`, and on a governor rollup
@@ -405,6 +425,56 @@ counted in a shared `<overflow>` entry instead, so no live session ever
 gets its budget back early. A chunk refused for a malformed line spends
 no budget: the whole chunk is parsed before any event is counted.
 
+## Launcher summaries
+
+The desktop launcher (`crates/launcher/desktop/`) can report how each
+install, runtime-setup, repair, uninstall or launch attempt ended: one row
+of closed values per attempt, with no session, install or machine
+identifier. The design and the wire contract are in
+[launcher-summary-telemetry.md](../architecture/launcher-summary-telemetry.md).
+
+**No launcher sends one today.** Every distributed build has no summary
+endpoint, so there is nothing to operate yet, and nothing here has run
+against a deployed server or a real SigNoz. What follows is what the server
+code does when a summary arrives.
+
+- **Consent.** The desktop launcher's own `launcher_summary_consent`
+  preference, off by default. It is separate from the telemetry opt-in under
+  [Player opt-in](#player-opt-in) and never turns on game or DLL telemetry.
+- **Session kind and scope.** The launcher mints with
+  `"session_kind": "launcher_summary"`. The token carries the single scope
+  `launcher_summary.write`, and its subject is the constant
+  `launcher_summary`, not an `install_id`. The summary route requires that
+  scope and the upload routes refuse it; a player or lab token
+  (`telemetry.write`) is refused by the summary route.
+- **Route.** `POST /api/telemetry/launcher-summary`, JSON, at most 64 KiB and
+  32 summaries per request.
+- **Quotas.** `CIMMERIA_TELEMETRY_SUMMARY_QUOTA_PER_IP` (default `120` per
+  window, `0` disables) limits requests to the route per peer address. It is
+  charged before the token is checked, so anyone behind the same address as
+  real launchers can use the allowance up without a token. Summary mints are
+  counted on their own per-address counter, sized by
+  `CIMMERIA_TELEMETRY_MINT_QUOTA_PER_IP`; an over-quota mint logs
+  `scope=mint/summary_ip`. Behind a proxy or a shared egress address both are
+  one shared bucket, as for the other quotas.
+- **Kill switch.** The route answers 503 under
+  [the kill switch](#kill-switch).
+- **Where the rows land.** `launcher.summary` rows go to
+  `service.name = cimmeria-client`; the per-request `launcher_summary_batch`
+  row goes to `cimmeria-server` under `launcher.ingest`. A request refused
+  before validation (kill switch, quota, token, malformed body) writes
+  neither.
+- **Duplicates.** The server remembers the last 16,384 accepted ids in
+  memory. A restart forgets them, so a summary resent after one is accepted
+  again.
+- **Reading the rows.** The dashboard and saved-view fixtures, and the notes
+  on what each row means, are in
+  [signoz/launcher-summary-views.md](signoz/launcher-summary-views.md). The
+  fixtures have not been imported into any SigNoz.
+
+The rows are self-reported and can be forged within the quotas. Do not alert
+on them or set a target from them.
+
 ## Player opt-in
 
 Telemetry is **opt-in**. The launcher's `TelemetrySettings`
@@ -459,15 +529,18 @@ While it is off:
 
 | Path | Method | Auth | Purpose |
 |---|---|---|---|
-| `/api/auth/dev-session` | POST | none (anyone can mint), quota-limited | Mint a token for a launcher session, or a lab session with `"session_kind": "lab"` (any other value is a 400). |
+| `/api/auth/dev-session` | POST | none (anyone can mint), quota-limited | Mint a token for a launcher session, a lab session with `"session_kind": "lab"`, or a launcher-summary session with `"session_kind": "launcher_summary"` (any other value is a 400). |
 | `/api/auth/dev-session/refresh` | POST | bearer (own token), quota-limited | Extend an almost-expired token, up to the session cap. |
 | `/api/telemetry/upload-chunk` | POST | bearer | Streaming events (gzip(NDJSON)). |
 | `/api/telemetry/upload-bundle` | POST | bearer | End-of-session zip (multipart). |
+| `/api/telemetry/launcher-summary` | POST | bearer with scope `launcher_summary.write`, quota-limited | Desktop-launcher attempt summaries (JSON). See [Launcher summaries](#launcher-summaries). |
 
-A 503 with `Retry-After` on any of these means the kill switch is on.
+A 503 with `Retry-After` on the mint, the refresh or the summary route
+means the kill switch is on; the two upload routes do not check it.
 A 429 with `Retry-After` means a quota was hit — see
 [Mint and refresh quotas](#mint-and-refresh-quotas). A 401 on upload
 endpoints means the token expired, was never valid, or does not carry
-the `telemetry.write` scope; a 401 on refresh additionally means the
-session passed its lifetime cap, and the launcher's answer to all of
-them is to mint a fresh session.
+the `telemetry.write` scope; a 401 on the summary route means the same
+for the `launcher_summary.write` scope; a 401 on refresh additionally
+means the session passed its lifetime cap, and the launcher's answer to
+all of them is to mint a fresh session.

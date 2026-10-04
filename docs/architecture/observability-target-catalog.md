@@ -144,6 +144,8 @@ at its real level and asserts all of them pass.
 | `ammo` | WARN; INFO span `ammo.ammo_change` | `cell::cell_methods::inventory::bandolier::ammo_change` | `requestAmmoChange` validation (AM-03). `ammo_type_change_rejected` (WARN: `reason` = `weapon_def_cache_miss` \| `not_in_allowed_types` \| `ambiguous_slot` \| `item_not_in_bandolier` \| `non_positive_ammo_type`, with `weapon_instance_id` and `weapon_item_id`; the player got one feedback line), `ammo_feedback_send_failed` (WARN). An accepted change is `target: bandolier` `event = ammo_type_change` |
 | `ammo` | DEBUG / WARN | `cell::effects::{ammo_damage, ammo_emp, ammo_explosive}`, `cell::abilities::damage_apply::ammo_splash`, `cell::abilities::use_ability::support_shot` | The shot (AM-04, AM-08 to AM-11d). `ammo_damage_applied` (DEBUG, one per modified hit: `damage_mult`, `penetration_mult`, `damage_type`, `toggle_ability_id`, `on_hit_effect_id`), `ammo_on_hit_effect_missing` (WARN: the row names an effect not in `effect_defs`), `ammo_emp_disrupt` (DEBUG: `target_entity_id`, `target_template_id`, `effect_id`, `mechanical`, `focus_before`, `focus_drained`, `health_before`, `health_damage`; `reason = target_missing`), `ammo_splash` (DEBUG: `target_entity_id`, `radius`, `fraction`, `splash_count`, `los_blocked`, `targets`), `ammo_splash_bad_fraction` (WARN), `ammo_support_applied` / `ammo_support_refused` (DEBUG, `decision_outcome` = `applied` \| `refused`; `target_entity_id`, `target_player_id`, `self_target`, `ability_id`, `on_hit_effect_id`, before/after Health and Focus on applied; `stage` = `launch` \| `fire` and `reason` = `hostile_target` \| `target_gone` \| `not_an_ally` on refused), `ammo_support_feedback_send_failed` (WARN, `reason = cell_to_base_closed`). The on-hit effect scripts log under `abilities` (`ranged_energy_damage`, `suppression_pulse`, `movement_slow_*`, `radiation_pulse`, `heal_focus`, `heal_health`, `effect_removed_by_cleanse`) |
 | `ammo` | DEBUG / INFO / WARN; INFO span `ammo.gm_give` | `cell::interactions::loot`, `cell::console::gm::{give_ammo, set_infinite_ammo}`, `base::world_entry::methods::inventory::ammo_gm_give` | Loot and GM tools (AM-05, AM-06). `ammo_loot_dropped` (DEBUG, one per looted ammo stack once the grant is sent: `quantity` = rounds, `ammo_label`, `corpse_id`, `corpse_template_id`, `loot_table_id`; a refused grant logs the `inventory` `loot_restored` row instead). `gm_give_ammo` (cell DEBUG forwarded, base INFO granted with `returned`, `remainder`, `stack_before`/`after`, `stacks_touched`; WARN refused, `reason` = `bad_args` \| `unknown_ammo_type` \| `not_special_ammo` \| `no_reserve_item` \| `bad_quantity` \| `not_a_player` \| `session_mismatch` \| `bags_full` \| `db_error`, ERROR for `db_error` after a rollback), `gm_infinite_ammo_toggled` (INFO: `on`, `changed`, `subject_player_id`) |
+| `launcher.summary` | INFO | See [details](#launchersummary) | See [details](#launchersummary) |
+| `launcher.ingest` | INFO (`launcher_summary_batch`) | See [details](#launchersummary) | The launcher-summary ingest's per-request row; see [details](#launchersummary). The chunk upload's accept counters and its `session_over_budget` WARN use the same target and are described in [telemetry.md](../operations/telemetry.md#where-the-data-lives) |
 
 ## Target details
 
@@ -508,6 +510,25 @@ the cell's WARN refusals `no_vendor_session` | `malformed_args` | `template_mism
 `failed` (WARN, server-side, `error`): `no_database` | `db_error` | `inventory_lock_failed` | `player_missing` | `design_missing` | `template_not_found` | `template_query_failed` | `template_lookup_failed` | `rows_affected_zero` | `rows_affected_mismatch` | `buyback_slot_exhausted` | `main_slot_exhausted` | `outbox_enqueue_failed` | `commit_failed`; cell `base_channel_closed`.
 The `vendor.*` INFO spans are unchanged.
 Covered by `OTEL_FILTER`'s `vendor=info`
+
+### `launcher.summary`
+
+**Target:** `launcher.summary` (events `launcher_summary`, `launcher_phase`) / `launcher.ingest` (event `launcher_summary_batch`)
+
+**Level:** INFO
+
+**Emitted from:** `routes::telemetry::launcher_summary::rows::{emit_summary, emit_batch}` (`cimmeria-admin-api`), called from `launcher_summary::handlers::ingest_inner` for `POST /api/telemetry/launcher-summary`
+
+Desktop-launcher attempt summaries ([launcher-summary-telemetry.md](launcher-summary-telemetry.md)). No shipped launcher has a summary endpoint, so no server has emitted these rows outside tests.
+`launcher_summary` (one per accepted summary): `event_id`, `attempt_id`, `operation` (`install` | `prepare_runtime` | `repair` | `uninstall` | `launch`), `phase` (where the attempt ended), `outcome` (`succeeded` | `failed` | `cancelled` | `unknown`), `error_code` (failed rows only), `duration_ms` and `duration_bucket` (only when the launcher timed the attempt; never on a launch), `retry_count`, `launcher_version`, `os`, `arch`, `schema_version`, `cimmeria.session_kind` = `launcher_summary`.
+`launcher_phase` (one per entry of an accepted summary's `phases`): `attempt_id`, `operation`, `phase` (`starting` | `running` | `download` | `extraction`), `duration_ms`, `duration_bucket`, `launcher_version`, `os`, `arch`, `schema_version`, `cimmeria.session_kind`. It has its own `event` so a count of attempts never counts a timed phase; join on `attempt_id`.
+`launcher_summary_batch` (target `launcher.ingest`, one per request that reached validation): `accepted`, `duplicate`, `rejected`, `client_dropped_overflow`, `client_dropped_expired`, `client_dropped_rejected`. A request refused earlier (kill switch, quota, token, envelope) writes no row.
+`duration_bucket` is server-derived: `lt_1s` | `lt_10s` | `lt_1m` | `lt_5m` | `lt_30m` | `ge_30m`.
+An absent optional is an absent field, never a sentinel. No row carries a session id, an install id, the token's subject, the peer address or any string the client sent.
+The rows are self-reported and forgeable within the per-address quotas: never alert on them or set a target from them.
+Index routing: `launcher.summary` is in `CLIENT_TARGETS` (`crates/server/src/otel.rs`), so its rows land in `cimmeria-client` only; `launcher.ingest` stays in `cimmeria-server`. Pinned by `launcher_summary_rows_land_in_the_client_index_and_batch_rows_in_the_server_index`.
+Covered by `OTEL_FILTER`'s `launcher=debug`.
+Dashboard and saved-view fixtures (not imported into any SigNoz): [launcher-summary-views.md](../operations/signoz/launcher-summary-views.md)
 
 ## Saved views for reading a playtest
 
