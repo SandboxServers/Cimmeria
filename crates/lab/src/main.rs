@@ -49,6 +49,7 @@ use tracing_subscriber::EnvFilter;
 
 mod client;
 mod daemon;
+mod lease;
 mod server;
 mod supervisor;
 mod timeline;
@@ -113,6 +114,8 @@ fn build_server() -> Result<LabServer> {
 
     let bridge = Arc::new(BridgeClient::new(addr, token));
     let supervisor = Arc::new(Supervisor::new(bridge, config));
+    // Expired leases are logged when they run out, not when someone next asks.
+    lease::spawn_sweeper(supervisor.leases().clone());
     Ok(LabServer::new(supervisor))
 }
 

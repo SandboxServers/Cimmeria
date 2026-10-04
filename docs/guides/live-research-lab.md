@@ -801,3 +801,60 @@ gets the new build on its next call; a session whose MCP connection broke
 reconnects with `/mcp`. The game client keeps running across a daemon
 restart, but the new daemon does not adopt it: stop the client first
 (`lab_client_stop`) or start a fresh one afterwards.
+
+### The lab lease
+
+One agent drives the lab client at a time, and the supervisor enforces it.
+Take the lease before you drive, pass its id to every tool that drives, and
+release it when you are done:
+
+```text
+lab_lease_acquire {owner: "session-name", purpose: "ability UAT AB-3"}
+  -> {lease_id: "lease-...", expires_at, ttl_s: 600}
+client_ui_click {window: "Login_LoginButton", lease_id: "lease-..."}
+lab_lease_release {lease_id: "lease-..."}
+```
+
+| Rule | What happens |
+|---|---|
+| A tool that drives the client is called without `lease_id`, or with one that is not the current lease | refused: the message says to call `lab_lease_acquire`, names the holder if there is one, and says when and how a stale lease ended (released, expired, or taken over by whom and why) |
+| `lab_lease_acquire` while someone holds the lease | refused, naming the holder, their purpose and since when |
+| `lab_lease_acquire {force: true, reason}` | takes the lease over; logged at `WARN`; the new lease and `lab_lease_status` record the previous holder |
+| any guarded call with the current lease | renews the lease for its `ttl_s` (a touch) |
+| no call for `ttl_s` seconds (default 600, 30 to 3600) | the lease expires and is logged; `lab_lease_renew` extends it explicitly |
+| the client dies while nobody holds a lease | the watchdog leaves it down and logs `watchdog_idle_no_lease`; with a lease it relaunches and logs back in as before |
+
+`lab_lease_status` shows the holder, purpose, since, expiry and the last few
+leases with how they ended. It never shows a lease id: the id is what lets
+a session drive, so only the acquirer gets it.
+
+**Which tools need the lease.** A tool needs it when it changes the client,
+drives its input or UI, runs Lua or native code the caller chooses, or
+moves a shared read cursor. The list is `OPEN` / `LEASED` in
+`crates/lab/src/lease/policy.rs`; a tool missing from both is guarded, and
+a test fails until every routed tool is classified. Guarded tools list
+`lease_id` as a required argument in `tools/list`.
+
+| Open (no lease) | Leased |
+|---|---|
+| `lab_lease_*`, `lab_client_status`, `lab_crash_report`, `lab_timeline`, `lab_uat_report` | `lab_client_start` / `stop` / `restart` |
+| `lab_screenshot`, `lab_screenshot_region`, `lab_pixel_probe` | `client_lua_eval`, `client_wait_for` (its predicate is Lua), `client_mem_write`, `client_call_native`, `client_console`, `client_hook_install` / `remove` |
+| `client_module_info`, `client_mem_read`, `client_hook_list`, `client_input_status` | `client_events_read`, `client_wait_event`, `client_chat_log`, `client_combat_log` (shared cursors) |
+| `client_entity_find`, `client_entity_table`, `client_ui_state`, `client_window_read`, `client_inventory`, `client_player_state`, `client_hotbar`, `lab_characters` | every input, click, drag, world, combat and item tool; the `lab_*` login, character, play, dialog and logout flows; `lab_uat_run`, `lab_uat_attest` |
+
+The four cursor reads are leased because they share one event store: two
+sessions reading through the same named cursor take events from each other,
+and the chat and combat logs install their client-side capture on first
+use. A session that only watches uses screenshots, the UI readers,
+`lab_timeline` and SigNoz.
+
+**Stdio mode has the same rules.** A stdio supervisor enforces the lease
+too, so a tool behaves the same whichever transport reaches it. With one
+stdio supervisor per session the lease only covers that session's own
+supervisor, which is why the daemon is the supported setup.
+
+**Telemetry.** Each acquire, renew, release, expire and forced takeover is
+one event on target `lab.lease` (field `event`, plus `owner` and
+`purpose`) in `labd.log`. The watchdog's refusal to relaunch is
+`event = "watchdog_idle_no_lease"` on the same target. The touch on every
+guarded call is `debug` only.

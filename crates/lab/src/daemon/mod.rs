@@ -28,7 +28,7 @@ pub mod log_file;
 pub mod single_instance;
 
 #[cfg(test)]
-mod http_tests;
+pub(crate) mod http_tests;
 
 use std::sync::Arc;
 

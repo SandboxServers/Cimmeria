@@ -61,8 +61,29 @@ impl Supervisor {
 
     /// A death/hang was detected: terminate (in case it's hung),
     /// quarantine the in-flight command, record the crash, and — if
-    /// under the recovery cap — relaunch and log back in.
+    /// under the recovery cap and someone holds the lab lease — relaunch
+    /// and log back in.
     async fn handle_death(&self, dead_pid: u32) {
+        if self.after_death(dead_pid).await != AfterDeath::Relaunch {
+            return;
+        }
+        match self.launch_client(None).await {
+            Ok(new_pid) => {
+                tracing::info!(new_pid, "relaunched after crash; logging back in");
+                self.spawn_watchdog(new_pid);
+                self.relogin_after_crash().await;
+                // Restore probes: re-apply persistent hooks (never writes
+                // or native calls — the quarantined in-flight command stays
+                // quarantined). ADR §6 "Restore probes".
+                self.reapply_persistent_hooks().await;
+            }
+            Err(e) => tracing::error!(error = %e, "relaunch after crash failed"),
+        }
+    }
+
+    /// Everything a death does short of the relaunch, and whether to
+    /// relaunch. Split out so the lease gate is testable without launching.
+    async fn after_death(&self, dead_pid: u32) -> AfterDeath {
         let _ = tokio::task::spawn_blocking(move || process::terminate(dead_pid)).await;
 
         let may_relaunch = {
@@ -76,20 +97,68 @@ impl Supervisor {
 
         if !may_relaunch {
             tracing::error!("recovery cap reached (3 crashes / 10 min); not relaunching");
-            return;
+            return AfterDeath::CapReached;
         }
+        // Nobody holds the lab, so nobody is driving this client (or the
+        // driver's lease ran out): a relaunch would only fight whoever
+        // stopped it. Per-session stdio supervisors each relaunched a client
+        // another session had closed.
+        if !self.leases().is_held() {
+            tracing::info!(target: "lab.lease", event = "watchdog_idle_no_lease",
+                pid = dead_pid, "client died with no lab lease held; not relaunching");
+            return AfterDeath::IdleNoLease;
+        }
+        AfterDeath::Relaunch
+    }
+}
 
-        match self.launch_client(None).await {
-            Ok(new_pid) => {
-                tracing::info!(new_pid, "relaunched after crash; logging back in");
-                self.spawn_watchdog(new_pid);
-                self.relogin_after_crash().await;
-                // Restore probes: re-apply persistent hooks (never writes
-                // or native calls — the quarantined in-flight command stays
-                // quarantined). ADR §6 "Restore probes".
-                self.reapply_persistent_hooks().await;
-            }
-            Err(e) => tracing::error!(error = %e, "relaunch after crash failed"),
-        }
+/// What the watchdog does after a client death.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum AfterDeath {
+    Relaunch,
+    /// Three crashes in ten minutes.
+    CapReached,
+    /// No lease held: leave the client down.
+    IdleNoLease,
+}
+
+#[cfg(test)]
+mod tests {
+    use std::sync::Arc;
+
+    use super::*;
+    use crate::lease::{AcquireRequest, LeaseBook};
+    use crate::supervisor::events::fake_bridge;
+
+    /// A pid no process has (Windows pids are multiples of four).
+    const NO_SUCH_PID: u32 = 0xFFFF_FFF1;
+
+    /// Regression guard: with no lease the watchdog leaves a dead client
+    /// down; with one it relaunches; a released lease is no lease.
+    #[tokio::test]
+    async fn the_watchdog_relaunches_only_while_leased() {
+        let book = Arc::new(LeaseBook::default());
+        // A fresh supervisor per death, so the 3-in-10-minutes recovery cap
+        // never decides the outcome.
+        let fresh = || async {
+            fake_bridge::supervisor(Arc::new(|_, _| Ok(serde_json::json!({}))))
+                .await
+                .with_leases(book.clone())
+        };
+        let died =
+            |sup: crate::supervisor::Supervisor| async move { sup.after_death(NO_SUCH_PID).await };
+        assert_eq!(died(fresh().await).await, AfterDeath::IdleNoLease);
+
+        let l = book
+            .acquire(AcquireRequest {
+                owner: "test".into(),
+                purpose: "watchdog".into(),
+                ..Default::default()
+            })
+            .unwrap();
+        assert_eq!(died(fresh().await).await, AfterDeath::Relaunch);
+
+        book.release(&l.lease_id).unwrap();
+        assert_eq!(died(fresh().await).await, AfterDeath::IdleNoLease);
     }
 }
