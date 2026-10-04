@@ -26,6 +26,15 @@ unimplemented index. Also add the new constant to
 `implemented_indices_are_in_gm_tail`; `wire`'s `def_conformance` checks the
 constant name against `SGWGmPlayer.def` automatically.
 
-**Why:** both cost a test round trip during AB-N2.
+**Rewriting a known-ability set.** A weapon only tags an ability it added;
+one the row already held (579 known before equipping the pistol) is
+untagged. Anything that strips abilities from the row (reset, respec-like
+paths) must re-run the active slot's grant
+(`bandolier::weapon_ability_set` + `swap_weapon_granted_abilities`) and
+call `interrupt_unlearned_cast` for removed ids, mobs included. Base
+helpers that run inside a row-locking `txn` must take `&mut *txn`, not
+the pool (Copilot on #1170).
+
+**Why:** all of these cost a test round trip during AB-N2.
 **How to apply:** check these before wiring any new damage rule or GM index.
 Related: [[ai-state-private-and-revert-proof-mtime]].
