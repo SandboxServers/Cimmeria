@@ -4,6 +4,10 @@ on:
   pull_request:
     paths:
       - 'crates/launcher/desktop/runtime-probe/**'
+      - 'crates/client-launch/**'
+      - 'crates/client-patches/**'
+      - 'crates/client-hookgate/**'
+      - 'crates/patch-wire/**'
       - 'crates/launcher/desktop/Cargo.toml'
       - 'crates/launcher/desktop/Cargo.lock'
       - '.github/workflows/launcher-runtime-probe.yml'
@@ -14,6 +18,10 @@ on:
     branches: [main]
     paths:
       - 'crates/launcher/desktop/runtime-probe/**'
+      - 'crates/client-launch/**'
+      - 'crates/client-patches/**'
+      - 'crates/client-hookgate/**'
+      - 'crates/patch-wire/**'
       - 'crates/launcher/desktop/Cargo.toml'
       - 'crates/launcher/desktop/Cargo.lock'
       - '.github/workflows/launcher-runtime-probe.yml'
@@ -32,7 +40,7 @@ concurrency:
 jobs:
   runtime-probe:
     runs-on: windows-latest
-    timeout-minutes: 15
+    timeout-minutes: 30
     defaults:
       run:
         shell: bash
@@ -48,6 +56,12 @@ jobs:
           bash tools/build-lane/lane.sh cargo test --locked --manifest-path crates/launcher/desktop/Cargo.toml -p cimmeria-runtime-probe --target i686-pc-windows-msvc
           bash tools/build-lane/lane.sh cargo build --locked --manifest-path crates/launcher/desktop/Cargo.toml -p cimmeria-runtime-probe --target i686-pc-windows-msvc --target-dir target/runtime-probe
           target/runtime-probe/i686-pc-windows-msvc/debug/cimmeria-runtime-probe.exe --self-test
+      - name: Record launch helper identity from the native build
+        run: sha256sum target/runtime-probe/i686-pc-windows-msvc/debug/cimmeria-launch-worker.exe
+      - name: Build the game patch resource natively
+        run: |
+          bash tools/build-lane/lane.sh cargo build --locked -p cimmeria-client-patches --target i686-pc-windows-msvc --target-dir target/client-patches
+          sha256sum target/client-patches/i686-pc-windows-msvc/debug/cimmeria_client_patches.dll
       - name: Retain x86 probe for managed Wine validation
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
         with:
@@ -55,4 +69,6 @@ jobs:
           path: |
             target/runtime-probe/i686-pc-windows-msvc/debug/cimmeria-runtime-probe.exe
             target/runtime-probe/i686-pc-windows-msvc/debug/cimmeria-prerequisite-worker.exe
+            target/runtime-probe/i686-pc-windows-msvc/debug/cimmeria-launch-worker.exe
+            target/client-patches/i686-pc-windows-msvc/debug/cimmeria_client_patches.dll
           retention-days: 7

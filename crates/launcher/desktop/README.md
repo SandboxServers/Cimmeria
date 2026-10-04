@@ -135,12 +135,9 @@ recording the seed as applied; the desktop worker maps this distinct outcome to
 reconciliation. Successful extraction permits archive cleanup and normal
 patching.
 
-No production caller selects this backend yet. No Wine runtime was selected or
-invoked. Fixtures cover fresh output, native patch overlay and subsequent reuse,
-hash failure before adapter dispatch, and uncertainty retaining evidence without
-a completion ledger. The engine suite passed 181 tests; the three enhanced seed
-fixtures also passed separately. Strict all-target engine clippy and root
-formatting also passed.
+The retained Mac worker selects the Wine backend with a verified packaged helper.
+Fixtures cover fresh output, patch reuse, hash failure before dispatch and
+uncertainty retaining evidence. Dated results live in the implementation ledger.
 
 `install_progress::ProgressSink::latest()` retains one progress value through a
 Tokio watch channel. A stalled or disconnected observer cannot build a backlog

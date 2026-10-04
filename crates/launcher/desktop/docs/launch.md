@@ -46,6 +46,10 @@ bash tools/build-lane/lane.sh cargo build --manifest-path crates/launcher/deskto
 
 Stage `cimmeria-launch-worker.exe` as a native-resolved bundle resource and pin its
 SHA-256 independently in the shell build, just as for the prerequisite helper.
+The `launcher-runtime-probe` Windows CI job builds this helper and the patch DLL,
+logs their SHA-256 identities, and retains them in its `windows-runtime-probe`
+artifact. Record the source revision and successful native build when staging;
+the artifact is development validation, not a signed release package.
 The new helper is not interchangeable with `sgw-start32.exe`: it accepts bounded
 schema-1 JSON on stdin, emits bounded identity-bound JSON lines on stdout, and
 stays alive until the game exits. It reuses `cimmeria-client-launch`'s existing
