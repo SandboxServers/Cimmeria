@@ -442,7 +442,7 @@ impl<I: ToolInvoker> Runner<'_, I> {
         }
     }
 
-    fn rel(&self, p: &std::path::Path) -> String {
+    pub(crate) fn rel(&self, p: &std::path::Path) -> String {
         p.strip_prefix(&self.run.root)
             .unwrap_or(p)
             .to_string_lossy()

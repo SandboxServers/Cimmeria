@@ -228,6 +228,10 @@ pub enum Source {
     Signoz,
     /// A server lab-mcp tool over HTTP (UNVERIFIED when unreachable).
     Server,
+    /// Decoded Mercury messages from the server packet tap, captured for
+    /// the lab character's session from the anchor to teardown
+    /// (UNVERIFIED when the endpoint is unreachable).
+    Packet,
     /// A question for a person (NEEDS_HUMAN until answered).
     Human,
 }
@@ -250,6 +254,8 @@ pub enum Op {
     Truthy,
     Falsy,
     LenGte,
+    /// Numeric `value` within `tolerance` either way (`15 ± 1`).
+    Approx,
 }
 
 /// One expected clause. The fields used depend on `source`;
@@ -314,9 +320,24 @@ pub struct ExpectSpec {
     pub min_rows: Option<u64>,
     #[serde(default)]
     pub max_rows: Option<u64>,
-    /// SigNoz: a field every attested row must satisfy with `op`/`value`.
+    /// SigNoz and packet: a field every matching row must satisfy with
+    /// `op`/`value`.
     #[serde(default)]
     pub field: Option<String>,
+    /// `op = "approx"`: how far either side of `value` still passes.
+    #[serde(default)]
+    pub tolerance: Option<f64>,
+    // packet
+    /// The message name as the tap decodes it (its `msg_name`).
+    #[serde(default)]
+    pub message: Option<String>,
+    /// `to_client` (server sends) or `to_server` (client sends).
+    #[serde(default)]
+    pub direction: Option<String>,
+    /// Only messages for this entity (an outbound row's
+    /// `target_entity_id`); a number or a `${var}`.
+    #[serde(default)]
+    pub entity: Option<Value>,
     // human
     #[serde(default)]
     pub question: Option<String>,
@@ -493,6 +514,24 @@ fn check_clause(c: &ExpectSpec) -> Result<(), String> {
             "a timing clause needs action and max_ms",
         )?,
         Source::Signoz => need(c.filter.is_some(), "a signoz clause needs filter")?,
+        Source::Packet => {
+            need(c.message.is_some(), "a packet clause needs message")?;
+            need(
+                matches!(c.direction.as_deref(), Some("to_client" | "to_server")),
+                "a packet clause needs direction = \"to_client\" or \"to_server\"",
+            )?;
+            // One tap covers the row and is read once, at teardown.
+            need(
+                c.at.is_none() && c.since.is_none(),
+                "a packet clause is graded over the whole row: no at or since",
+            )?;
+            // Without a field, op/value would be silently ignored and any
+            // matching message would pass.
+            need(
+                c.field.is_some() || (c.op.is_none() && c.value.is_none() && c.tolerance.is_none()),
+                "a packet clause's op, value and tolerance need a field",
+            )?;
+        }
         Source::Human => need(c.question.is_some(), "a human clause needs question")?,
     }
     if matches!(c.source, Source::Tool | Source::Server | Source::Lua)
@@ -503,6 +542,12 @@ fn check_clause(c: &ExpectSpec) -> Result<(), String> {
     }
     if c.field.is_some() && c.op.is_none() {
         return Err("field needs op".into());
+    }
+    if c.op == Some(Op::Approx)
+        && (c.tolerance.is_none_or(|t| !t.is_finite() || t < 0.0)
+            || !c.value.as_ref().is_some_and(Value::is_number))
+    {
+        return Err("op approx needs a numeric value and a finite tolerance >= 0".into());
     }
     if let Some(re) = &c.matches {
         regex::Regex::new(&without_vars(re)).map_err(|e| format!("bad regex {re:?}: {e}"))?;
@@ -569,5 +614,59 @@ contains = "help"
     fn unknown_fields_are_errors_not_silently_ignored() {
         let bad = MINI.replace("title = \"help answers\"", "title = \"x\"\ntypo = 1");
         assert!(parse(&bad).is_err());
+    }
+
+    const PACKET: &str = r#"
+[[row.expect]]
+id = "timer"
+text = "a 15 s timer"
+source = "packet"
+message = "onTimerUpdate"
+direction = "to_client"
+entity = "${player_entity_id}"
+field = "complete_in_s"
+op = "approx"
+value = 15
+tolerance = 1
+"#;
+
+    #[test]
+    fn a_packet_clause_parses_and_its_rules_hold() {
+        let s = parse(&format!("{MINI}{PACKET}")).unwrap();
+        let c = &s.rows[0].expect[1];
+        assert_eq!(c.source, Source::Packet);
+        assert_eq!(c.message.as_deref(), Some("onTimerUpdate"));
+        assert_eq!(c.op, Some(Op::Approx));
+        assert_eq!(c.tolerance, Some(1.0));
+
+        let bad = format!("{MINI}{}", PACKET.replace("to_client", "outbound"));
+        assert!(parse(&bad).unwrap_err().contains("to_client"));
+        let bad = format!(
+            "{MINI}{}",
+            PACKET.replace("message = \"onTimerUpdate\"\n", "")
+        );
+        assert!(parse(&bad).unwrap_err().contains("needs message"));
+        // One tap per row, read at teardown: a step-anchored clause is wrong.
+        let bad = format!(
+            "{MINI}{}",
+            PACKET.replace("source = \"packet\"", "source = \"packet\"\nat = \"help\"")
+        );
+        assert!(parse(&bad).unwrap_err().contains("no at or since"));
+        let bad = format!("{MINI}{}", PACKET.replace("tolerance = 1\n", ""));
+        assert!(parse(&bad).unwrap_err().contains("tolerance"));
+        // Non-finite and negative tolerances would pass anything or nothing.
+        for t in ["inf", "+inf", "nan", "-1"] {
+            let bad = format!(
+                "{MINI}{}",
+                PACKET.replace("tolerance = 1", &format!("tolerance = {t}"))
+            );
+            assert!(parse(&bad).unwrap_err().contains("finite tolerance"), "{t}");
+        }
+        // op/value without field would pass on any matching message.
+        let bad = format!(
+            "{MINI}{}",
+            PACKET.replace("field = \"complete_in_s\"\n", "")
+        );
+        assert!(parse(&bad).unwrap_err().contains("need a field"));
     }
 }

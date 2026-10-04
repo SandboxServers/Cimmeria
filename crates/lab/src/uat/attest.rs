@@ -156,6 +156,7 @@ fn apply(row: &mut RowEvidence, clause_id: &str, req: &AttestRequest) -> Result<
                     .and_then(|v| v.as_str().map(str::to_string)),
                 op: stored(c.query.as_ref(), "op").and_then(|v| serde_json::from_value(v).ok()),
                 value: stored(c.query.as_ref(), "value"),
+                tolerance: stored(c.query.as_ref(), "tolerance").and_then(|v| v.as_f64()),
                 ..blank_expect()
             };
             c.verdict = grade_signoz(&spec, n, &req.rows)?;

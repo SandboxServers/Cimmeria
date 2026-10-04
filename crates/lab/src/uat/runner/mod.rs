@@ -11,6 +11,7 @@
 
 mod actions;
 mod clauses;
+mod packet;
 mod session;
 
 use std::collections::{HashMap, HashSet};
@@ -22,7 +23,7 @@ use super::evidence::{
     ActionRecord, Anchor, Attachment, ClauseResult, RowEvidence, RunDir, RunManifest, BUNDLE_SCHEMA,
 };
 use super::grade::grade;
-use super::invoke::{ServerTools, ToolInvoker};
+use super::invoke::{ServerInvoker, ToolInvoker};
 use super::ledger;
 use super::spec::{RowSpec, SectionSpec, Source};
 use super::tier::Role;
@@ -118,12 +119,14 @@ pub(crate) struct RowCtx {
     pub character: Value,
     pub anchor: Option<Anchor>,
     pub started_ms: i64,
+    /// The row's packet tap, when a clause reads one.
+    pub tap: Option<packet::RowTap>,
 }
 
 /// The runner. Holds the invokers, the run directory and its manifest.
 pub struct Runner<'a, I: ToolInvoker> {
     pub(crate) inv: &'a I,
-    pub(crate) server: Option<&'a ServerTools>,
+    pub(crate) server: Option<&'a dyn ServerInvoker>,
     pub(crate) run: RunDir,
     pub(crate) manifest: RunManifest,
     pub(crate) req: RunRequest,
@@ -139,7 +142,7 @@ impl<'a, I: ToolInvoker> Runner<'a, I> {
     /// Open (or create) the run directory and write the manifest.
     pub fn new(
         inv: &'a I,
-        server: Option<&'a ServerTools>,
+        server: Option<&'a dyn ServerInvoker>,
         req: RunRequest,
     ) -> Result<Self, String> {
         let t = now_ms();
@@ -162,7 +165,7 @@ impl<'a, I: ToolInvoker> Runner<'a, I> {
                     server: json!({
                         "service_version": req.server_version,
                         "source": if req.server_version.is_some() { "arg" } else { "unknown" },
-                        "lab_mcp": server.map(ServerTools::url),
+                        "lab_mcp": server.map(|s| s.url()),
                     }),
                     client: req.client.clone(),
                     account: json!({ "name": req.account_name, "kind": null }),
@@ -291,6 +294,7 @@ impl<'a, I: ToolInvoker> Runner<'a, I> {
             character: json!({ "name": self.character_name(spec) }),
             anchor: None,
             started_ms: now_ms(),
+            tap: None,
         };
         ctx.blocked = self.static_blocks(spec, row);
         let mut results: Vec<Option<ClauseResult>> = vec![None; row.expect.len()];
@@ -344,7 +348,8 @@ impl<'a, I: ToolInvoker> Runner<'a, I> {
         }
     }
 
-    /// State, anchor, setup, steps, clauses, evidence, teardown.
+    /// State, anchor, packet tap, setup, steps, clauses, evidence, tap
+    /// read, teardown.
     async fn drive_row(
         &mut self,
         spec: &SectionSpec,
@@ -361,6 +366,33 @@ impl<'a, I: ToolInvoker> Runner<'a, I> {
         if row.state == "in_world" && row.anchor.unwrap_or(true) {
             self.anchor(ctx).await;
         }
+        let tapped = row.expect.iter().any(|c| c.source == Source::Packet);
+        if tapped {
+            self.tap_start(ctx).await;
+        }
+        let setup_ok = self.drive_steps(row, ctx, results).await;
+        // Read and stop the tap before teardown, and on the failed-setup
+        // path too: a tap left running would keep buffering this session.
+        if tapped {
+            self.tap_finish(ctx).await;
+            self.packet_clauses(row, ctx, results);
+        }
+        if setup_ok {
+            for a in &row.teardown {
+                let rec = self.exec(a, Role::Teardown, ctx).await;
+                ctx.actions.push(rec);
+            }
+        }
+    }
+
+    /// Setup, steps, clauses and evidence. False when setup failed (the
+    /// row is BLOCKED and its teardown does not run).
+    async fn drive_steps(
+        &mut self,
+        row: &RowSpec,
+        ctx: &mut RowCtx,
+        results: &mut [Option<ClauseResult>],
+    ) -> bool {
         for a in &row.setup {
             let rec = self.exec(a, Role::Setup, ctx).await;
             let failed = !rec.ok && !a.optional;
@@ -369,7 +401,7 @@ impl<'a, I: ToolInvoker> Runner<'a, I> {
             ctx.actions.push(rec);
             if failed {
                 ctx.blocked.push(format!("setup {what} failed: {err}"));
-                return;
+                return false;
             }
         }
         let since: HashSet<&str> = row
@@ -403,13 +435,11 @@ impl<'a, I: ToolInvoker> Runner<'a, I> {
         self.clauses_at(row, None, ctx, results).await;
         self.evidence_at(row, None, ctx).await;
         self.capture_final(ctx).await;
-        for a in &row.teardown {
-            let rec = self.exec(a, Role::Teardown, ctx).await;
-            ctx.actions.push(rec);
-        }
+        true
     }
 
     /// Clauses whose `at` is `label` (or unset, for `None`), in spec order.
+    /// Packet clauses wait for the tap read ([`Self::packet_clauses`]).
     async fn clauses_at(
         &mut self,
         row: &RowSpec,
@@ -418,7 +448,7 @@ impl<'a, I: ToolInvoker> Runner<'a, I> {
         results: &mut [Option<ClauseResult>],
     ) {
         for (i, c) in row.expect.iter().enumerate() {
-            if c.at.as_ref() == label && results[i].is_none() {
+            if c.at.as_ref() == label && results[i].is_none() && c.source != Source::Packet {
                 results[i] = Some(self.eval_clause(c, ctx).await);
             }
         }
@@ -436,5 +466,7 @@ impl<'a, I: ToolInvoker> Runner<'a, I> {
     }
 }
 
+#[cfg(test)]
+mod packet_tests;
 #[cfg(test)]
 mod tests;

@@ -4,7 +4,7 @@
 
 use serde_json::{json, Value};
 
-use super::evidence::Verdict;
+use super::evidence::{clip, Verdict};
 use super::spec::{ExpectSpec, Op, Source};
 
 /// Value at a JSON pointer (`/chat_tail/0`); the whole value for `None`
@@ -55,11 +55,24 @@ fn loose_eq(a: &Value, b: &Value) -> bool {
     }
 }
 
-/// Apply `op` (default: `eq` when a value is given, else `truthy`).
+/// Apply `op` (default: `eq` when a value is given, else `truthy`) with no
+/// tolerance. Test-only: every runtime path calls [`compare_tol`] with the
+/// clause's `tolerance`, so `approx` can never lose it.
+#[cfg(test)]
 pub fn compare(
     op: Option<Op>,
     observed: Option<&Value>,
     value: Option<&Value>,
+) -> Result<bool, String> {
+    compare_tol(op, observed, value, None)
+}
+
+/// [`compare`] with the clause's `tolerance`, which `approx` needs.
+pub fn compare_tol(
+    op: Option<Op>,
+    observed: Option<&Value>,
+    value: Option<&Value>,
+    tolerance: Option<f64>,
 ) -> Result<bool, String> {
     let op = op.unwrap_or(if value.is_some() { Op::Eq } else { Op::Truthy });
     let need = || value.ok_or_else(|| format!("{op:?} needs a value"));
@@ -76,6 +89,12 @@ pub fn compare(
         Op::Matches => {
             let re = regex::Regex::new(&as_text(need()?)).map_err(|e| e.to_string())?;
             re.is_match(&as_text(obs))
+        }
+        Op::Approx => {
+            let want = as_f64(need()?).ok_or("approx needs a numeric value")?;
+            let tol = tolerance.ok_or("approx needs a tolerance")?;
+            // A hair of slack so `15 ± 1` keeps 16.0 after float noise.
+            as_f64(obs).is_some_and(|h| (h - want).abs() <= tol + 1e-9)
         }
         Op::Gt | Op::Gte | Op::Lt | Op::Lte | Op::LenGte => {
             let want = as_f64(need()?).ok_or("a numeric op needs a numeric value")?;
@@ -161,7 +180,8 @@ pub fn eval_chat(c: &ExpectSpec, lines: &[String]) -> (Verdict, Value, Option<St
 
 /// Grade a SigNoz clause from attested rows: `min_rows`/`max_rows` on the
 /// count (default: at least one row), and `field` `op` `value` on every
-/// key row when given.
+/// key row when given. Packet clauses grade their matching rows the same
+/// way ([`grade_packet`]).
 pub fn grade_signoz(c: &ExpectSpec, row_count: u64, rows: &[Value]) -> Result<Verdict, String> {
     let min = c
         .min_rows
@@ -175,12 +195,96 @@ pub fn grade_signoz(c: &ExpectSpec, row_count: u64, rows: &[Value]) -> Result<Ve
         }
         for r in rows {
             let v = r.get(field.as_str()).or_else(|| r.pointer(field));
-            if !compare(c.op, v, c.value.as_ref())? {
+            if !compare_tol(c.op, v, c.value.as_ref(), c.tolerance)? {
                 return Ok(Verdict::Fail);
             }
         }
     }
     Ok(Verdict::Pass)
+}
+
+/// A tap row's direction for a clause's `direction`.
+fn tap_dir(direction: Option<&str>) -> &'static str {
+    match direction {
+        Some("to_server") => "in",
+        _ => "out",
+    }
+}
+
+/// One tapped message flattened for grading: the decoded fields at the
+/// top level (so `field = "cooldown"` reads the message's own argument),
+/// with the tap's columns (`ts_ms`, `dir`, `msg_name`, `target_entity_id`,
+/// `args_len`, `args_hex`) beside them. A decoded field never shadows a
+/// tap column; `/decoded/...` pointers still reach the original.
+pub fn packet_row(m: &Value) -> Value {
+    let mut out = match m.get("decoded") {
+        Some(Value::Object(d)) => d.clone(),
+        _ => serde_json::Map::new(),
+    };
+    if let Value::Object(cols) = m {
+        for (k, v) in cols {
+            out.insert(k.clone(), v.clone());
+        }
+    }
+    Value::Object(out)
+}
+
+/// Whether a tapped message is one the clause names.
+pub fn packet_matches(c: &ExpectSpec, entity: Option<u64>, m: &Value) -> bool {
+    let name_ok = m
+        .get("msg_name")
+        .and_then(Value::as_str)
+        .zip(c.message.as_deref())
+        .is_some_and(|(have, want)| have.eq_ignore_ascii_case(want));
+    let dir_ok = m.get("dir").and_then(Value::as_str) == Some(tap_dir(c.direction.as_deref()));
+    let entity_ok =
+        entity.is_none_or(|e| m.get("target_entity_id").and_then(Value::as_u64) == Some(e));
+    name_ok && dir_ok && entity_ok
+}
+
+/// Grade a packet clause against one `server_packet_tap_read` result
+/// (`{messages, dropped, ...}`). Returns the verdict, the observation for
+/// the bundle and a detail line. A ring that dropped messages cannot
+/// prove an upper bound or "every row", so such a PASS is UNVERIFIED.
+/// A read without a `messages` array or a numeric `dropped` is not an
+/// empty, lossless tap: it proves nothing, so it is UNVERIFIED too.
+pub fn grade_packet(
+    c: &ExpectSpec,
+    entity: Option<u64>,
+    tap: &Value,
+) -> (Verdict, Value, Option<String>) {
+    let (Some(all), Some(dropped)) = (
+        tap.get("messages").and_then(Value::as_array),
+        tap.get("dropped").and_then(Value::as_u64),
+    ) else {
+        return (
+            Verdict::Unverified,
+            clip(tap, 300),
+            Some("the tap read has no messages array or no numeric dropped count".into()),
+        );
+    };
+    let rows: Vec<Value> = all
+        .iter()
+        .filter(|m| packet_matches(c, entity, m))
+        .map(packet_row)
+        .collect();
+    let observed = json!({
+        "matching_rows": rows.len(),
+        "tapped_rows": all.len(),
+        "dropped": dropped,
+        "rows": clip(&json!(rows.iter().take(5).collect::<Vec<_>>()), 1500),
+    });
+    let verdict = match grade_signoz(c, rows.len() as u64, &rows) {
+        Ok(v) => v,
+        Err(e) => return (Verdict::Unverified, observed, Some(e)),
+    };
+    if verdict == Verdict::Pass && dropped > 0 && (c.max_rows.is_some() || c.field.is_some()) {
+        let why = format!(
+            "the tap ring dropped {dropped} message(s), so an upper bound or an every-row check cannot be proven"
+        );
+        return (Verdict::Unverified, observed, Some(why));
+    }
+    (verdict, observed, None)
 }
 
 /// A one-line statement of what the clause wants, for the bundle.
@@ -236,6 +340,32 @@ pub fn describe(c: &ExpectSpec) -> String {
             }
             if let Some(f) = &c.field {
                 s.push_str(&format!("; every row {f} {}", opv(c.op, &c.value)));
+                if let Some(t) = c.tolerance {
+                    s.push_str(&format!(" ± {t}"));
+                }
+            }
+            s
+        }
+        Source::Packet => {
+            let mut s = format!(
+                "packet {} {}",
+                c.direction.as_deref().unwrap_or("?"),
+                c.message.as_deref().unwrap_or("?")
+            );
+            if let Some(e) = &c.entity {
+                s.push_str(&format!(" for entity {}", as_text(e)));
+            }
+            if let Some(m) = c.min_rows {
+                s.push_str(&format!(" (>= {m} rows)"));
+            }
+            if let Some(m) = c.max_rows {
+                s.push_str(&format!(" (<= {m} rows)"));
+            }
+            if let Some(f) = &c.field {
+                s.push_str(&format!("; every row {f} {}", opv(c.op, &c.value)));
+                if let Some(t) = c.tolerance {
+                    s.push_str(&format!(" ± {t}"));
+                }
             }
             s
         }
@@ -324,5 +454,97 @@ mod tests {
         let none = clause("source = \"signoz\"\nfilter = \"x\"\nmax_rows = 0");
         assert_eq!(grade_signoz(&none, 0, &[]).unwrap(), Verdict::Pass);
         assert_eq!(grade_signoz(&none, 1, &[]).unwrap(), Verdict::Fail);
+    }
+
+    #[test]
+    fn approx_holds_within_the_tolerance_either_way() {
+        let ap =
+            |obs: Value| compare_tol(Some(Op::Approx), Some(&obs), Some(&json!(15)), Some(1.0));
+        assert!(ap(json!(15)).unwrap());
+        assert!(ap(json!(14.0)).unwrap());
+        assert!(ap(json!("16")).unwrap());
+        assert!(!ap(json!(16.5)).unwrap());
+        assert!(!ap(json!("n/a")).unwrap());
+        assert!(compare(Some(Op::Approx), Some(&json!(15)), Some(&json!(15))).is_err());
+    }
+
+    /// A canned `server_packet_tap_read` result: two timer sends for
+    /// entity 7 (decoded 15.2 s and 14.6 s), one for entity 9, and an
+    /// inbound cast request.
+    fn tap() -> Value {
+        json!({
+            "entity_id": 7, "capacity": 5000, "count": 4, "dropped": 0,
+            "messages": [
+                { "ts_ms": 1, "dir": "in", "msg_id": 9, "method_index": 12, "msg_name": "useAbility",
+                  "target_entity_id": null, "args_len": 8, "args_hex": "00", "decoded": { "abilityId": 1234 } },
+                { "ts_ms": 2, "dir": "out", "msg_id": null, "method_index": 40, "msg_name": "onTimerUpdate",
+                  "target_entity_id": 7, "args_len": 12, "args_hex": "00", "decoded": { "complete_in_s": 15.2 } },
+                { "ts_ms": 3, "dir": "out", "msg_id": null, "method_index": 40, "msg_name": "onTimerUpdate",
+                  "target_entity_id": 9, "args_len": 12, "args_hex": "00", "decoded": { "complete_in_s": 99 } },
+                { "ts_ms": 4, "dir": "out", "msg_id": null, "method_index": 40, "msg_name": "onTimerUpdate",
+                  "target_entity_id": 7, "args_len": 12, "args_hex": "00", "decoded": { "complete_in_s": 14.6 } },
+            ]
+        })
+    }
+
+    fn packet(extra: &str) -> ExpectSpec {
+        clause(&format!(
+            "source = \"packet\"\nmessage = \"onTimerUpdate\"\ndirection = \"to_client\"\n{extra}"
+        ))
+    }
+
+    #[test]
+    fn packet_clause_passes_on_matching_rows_and_fields() {
+        let c = packet("field = \"complete_in_s\"\nop = \"approx\"\nvalue = 15\ntolerance = 1");
+        let (v, obs, detail) = grade_packet(&c, Some(7), &tap());
+        assert_eq!(v, Verdict::Pass, "{detail:?}");
+        assert_eq!(obs["matching_rows"], 2);
+        assert_eq!(obs["tapped_rows"], 4);
+        // The tap columns survive beside the decoded fields.
+        assert_eq!(obs["rows"][0]["msg_name"], "onTimerUpdate");
+        // Inbound: the cast request is to_server, never to_client.
+        let c = clause(
+            "source = \"packet\"\nmessage = \"useAbility\"\ndirection = \"to_server\"\nfield = \"abilityId\"\nop = \"eq\"\nvalue = 1234",
+        );
+        assert_eq!(grade_packet(&c, None, &tap()).0, Verdict::Pass);
+        let c = clause("source = \"packet\"\nmessage = \"useAbility\"\ndirection = \"to_client\"");
+        assert_eq!(grade_packet(&c, None, &tap()).0, Verdict::Fail);
+    }
+
+    #[test]
+    fn packet_clause_fails_on_a_bad_field_or_count() {
+        // Without the entity filter, entity 9's 99 s breaks "every row".
+        let c = packet("field = \"complete_in_s\"\nop = \"approx\"\nvalue = 15\ntolerance = 1");
+        assert_eq!(grade_packet(&c, None, &tap()).0, Verdict::Fail);
+        let c = packet("max_rows = 1");
+        assert_eq!(grade_packet(&c, Some(7), &tap()).0, Verdict::Fail);
+        let c = packet("min_rows = 3");
+        assert_eq!(grade_packet(&c, Some(7), &tap()).0, Verdict::Fail);
+    }
+
+    #[test]
+    fn an_empty_tap_fails_a_wanted_message_and_passes_an_absent_one() {
+        let empty = json!({ "messages": [], "dropped": 0 });
+        assert_eq!(grade_packet(&packet(""), None, &empty).0, Verdict::Fail);
+        assert_eq!(
+            grade_packet(&packet("max_rows = 0"), None, &empty).0,
+            Verdict::Pass
+        );
+        // A read missing either field is not an empty, lossless tap.
+        for bad in [
+            json!({ "dropped": 0 }),
+            json!({ "messages": [] }),
+            json!({ "messages": {}, "dropped": 0 }),
+            json!({ "messages": [], "dropped": "0" }),
+        ] {
+            let (v, _, why) = grade_packet(&packet("max_rows = 0"), None, &bad);
+            assert_eq!(v, Verdict::Unverified, "{bad}");
+            assert!(why.unwrap().contains("no messages array"));
+        }
+        // A ring that dropped messages cannot prove "none".
+        let lossy = json!({ "messages": [], "dropped": 3 });
+        let (v, _, why) = grade_packet(&packet("max_rows = 0"), None, &lossy);
+        assert_eq!(v, Verdict::Unverified);
+        assert!(why.unwrap().contains("dropped 3"));
     }
 }

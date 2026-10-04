@@ -242,6 +242,9 @@ WireGuard-only on the colo): `server_console_*`, `server_sessions`,
 `server_entity_*`, `server_witnesses`, `server_packet_tap_*`,
 `server_log_tail`, `server_content_reload`, `server_db_query`. See ADR
 §3.5 for the full set; `docs/operations/colo-deploy.md` for the port.
+`lab_uat_run` drives the packet tap itself for a row with `packet`
+clauses ([automated-uat.md](automated-uat.md#packet-clauses)): one tap
+per row from the anchor to teardown, always stopped.
 
 ## Driving the client with its own input
 
