@@ -33,6 +33,8 @@ class Ability:
     type_id: str
     flags: int = 0  # EAbilityFlag bits (AF_TOGGLED = 8)
     target_type_id: int = 0  # 1 Self, 2 Target, 3 Ground
+    passive: bool = False  # passive_yn: known, never cast
+    moniker_ids: Tuple[int, ...] = ()  # abilities.moniker_ids (ability groups)
 
 
 @dataclass
@@ -157,8 +159,17 @@ def corpus_from_texts(
         aid = int(r["ability_id"].text)
         flags = int(r["flags"].text) if "flags" in r else 0
         target = int(r["target_type_id"].text) if "target_type_id" in r else 0
+        passive = "passive_yn" in r and (r["passive_yn"].text or "").lower() == "true"
+        monikers = tuple(int(m) for m in re.findall(r"\d+", r["moniker_ids"].text or "")) if "moniker_ids" in r else ()
         abilities[aid] = Ability(
-            aid, r["name"].text or "", r["description"].text or "", r["type_id"].text or "", flags, target
+            aid,
+            r["name"].text or "",
+            r["description"].text or "",
+            r["type_id"].text or "",
+            flags,
+            target,
+            passive,
+            monikers,
         )
 
     reachable: Set[int] = set()

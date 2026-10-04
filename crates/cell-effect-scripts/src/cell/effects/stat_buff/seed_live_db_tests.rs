@@ -8,7 +8,10 @@
 //! Every value is RECONSTRUCTION from the effect's own `effect_desc`, with
 //! D-AB09's units.
 
-use cimmeria_entity::abilities::ability_is_beneficial;
+use cimmeria_entity::abilities::{
+    ability_is_beneficial, AF_TOGGLED, EFFECT_MONIKER_NVP, EFFECT_STANCE_MONIKER,
+    EF_ALWAYS_PERSIST, REMOVE_BY_MONIKER_SCRIPT, REMOVE_MONIKER_NVP,
+};
 use cimmeria_entity::stats::{ACCURACY, COVER_DEFENSE, DEFENSE, MOVEMENT_SPEED_MOD};
 
 use super::super::test_fixtures::make_mgr_with_target;
@@ -108,4 +111,80 @@ async fn generated_stat_abilities_route_as_the_generator_assumes_live_db() {
     // 847 Call Target, and 1619 Combat Sprint (routed per effect).
     assert!(!ability_is_beneficial(&abilities[&847], &effects));
     assert!(!ability_is_beneficial(&abilities[&1619], &effects));
+}
+
+/// AB-08's held rows, with the designer text: the stances carry
+/// `EffectMoniker EFFECT_Stance`, the passives do not, and every one is a
+/// `pulse_duration = 0` `TimedStat` on a toggle or a passive.
+#[tokio::test]
+async fn held_stance_and_passive_rows_carry_their_nvps_live_db() {
+    let pool = require_db_or_skip!();
+    let defs = load_effect_defs(&pool).await.expect("load_effect_defs");
+    let abilities = load_ability_defs(&pool).await.expect("load_ability_defs");
+    for (effect_id, name, value, stance) in [
+        (2003, "CoverDefense", "100", true), // 1642 "Cover Defense +100"
+        (2004, "MentalResistance", "50", true), // 1642 "+50 (5%) Mental Resist buff"
+        (2005, "Subtlety", "-100", true),    // 1642 "Subtlety -100 (10% increase to threat)"
+        (922, "InterruptResistance", "250", true), // 859 "Target +250 Interrupt Resistance"
+        (2645, "KineticResistance", "150", false), // 1731 passive "+15%" (D-AB09)
+        (1741, "CoverAccuracy", "100", false), // 1450 passive "+100 CoverAccuracy"
+        (4782, "Defense", "100", false),     // 1574 passive "Defense: +100"
+    ] {
+        let def = &defs[&effect_id];
+        assert_eq!(def.script_name.as_deref(), Some("TimedStat"), "{effect_id}");
+        assert_eq!(
+            def.params.get(name).map(String::as_str),
+            Some(value),
+            "{effect_id} {name}"
+        );
+        assert_eq!(def.pulse_duration, 0.0, "{effect_id} is held");
+        assert_eq!(
+            def.params.get(EFFECT_MONIKER_NVP).map(String::as_str),
+            stance.then_some("EFFECT_Stance"),
+            "{effect_id} stance tag"
+        );
+        let ability = &abilities[&def.ability_id];
+        let toggled = ability.flags & AF_TOGGLED != 0;
+        let persists = def.flags & EF_ALWAYS_PERSIST != 0;
+        assert!(toggled != persists, "{effect_id}: a toggle or a passive");
+    }
+    let removal = &defs[&4294];
+    assert_eq!(
+        removal.script_name.as_deref(),
+        Some(REMOVE_BY_MONIKER_SCRIPT)
+    );
+    assert_eq!(
+        removal.params.get(REMOVE_MONIKER_NVP).map(String::as_str),
+        Some("EFFECT_Stance")
+    );
+}
+
+/// The removal can only ever reach stance entries: no seeded ability lists
+/// `EFFECT_Stance` among its `moniker_ids`, so an entry carries it only
+/// through its effect's `EffectMoniker` row.
+#[tokio::test]
+async fn no_ability_carries_the_stance_moniker_live_db() {
+    let pool = require_db_or_skip!();
+    let abilities = load_ability_defs(&pool).await.expect("load_ability_defs");
+    let carriers: Vec<i32> = abilities
+        .values()
+        .filter(|d| d.moniker_ids.contains(&EFFECT_STANCE_MONIKER))
+        .map(|d| d.ability_id)
+        .collect();
+    assert!(carriers.is_empty(), "{carriers:?}");
+}
+
+/// The stances stay beneficial (their flags-0 removal half included), so a
+/// press lands on the caster whatever is selected.
+#[tokio::test]
+async fn seeded_stances_are_beneficial_live_db() {
+    let pool = require_db_or_skip!();
+    let abilities = load_ability_defs(&pool).await.expect("load_ability_defs");
+    let effects = load_effect_defs(&pool).await.expect("load_effect_defs");
+    // 1642 Soldier, 1458 Ranged Specialist, 859 Concentration (with 4294),
+    // 857 Leading the Target (with 920), 714 Mobility, 2067 Warrior's.
+    for id in [1642, 1458, 859, 857, 714, 2067] {
+        assert!(ability_is_beneficial(&abilities[&id], &effects), "{id}");
+        assert!(abilities[&id].flags & AF_TOGGLED != 0, "{id} toggles");
+    }
 }

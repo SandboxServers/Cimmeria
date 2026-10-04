@@ -99,12 +99,14 @@ pub(super) async fn handle_abilities_reset(
     progress.tree_points_spent = 0;
     progress.training_points = training_points;
     // A refunded passive's effect comes off with it (pets PT-08).
-    let _passives = crate::cell::effects::passives::apply_passives(
-        space_mgr,
+    let _passives = super::passive_sync::apply_passives_and_sync(
         entity_id,
         &refunded,
         crate::cell::effects::passives::PassiveChange::Unlearned,
-    );
+        tx,
+        space_mgr,
+    )
+    .await;
 
     // A cast of a refunded ability parked in its warmup (AT-10) would fire
     // an ability the player no longer knows. Its interrupt frames go out

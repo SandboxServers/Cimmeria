@@ -19,7 +19,10 @@ pub fn acts_on_owner_pet(script: &str) -> bool {
 }
 
 /// Whether `script` is the effect of a passive ability, applied while the
-/// ability is known (`EF_AlwaysPersist`, see `super::passives`).
+/// ability is known (`EF_AlwaysPersist`, see `super::passives`): the pet
+/// summon speed, and the timed effect ledger's `TimedStat`, which holds an
+/// `EF_AlwaysPersist` stat entry until the respec takes it off (ability
+/// mechanics AB-08). A heal is never one: a login must not fire it.
 pub fn is_passive_script(script: &str) -> bool {
-    script == "PetSummonSpeed"
+    matches!(script, "PetSummonSpeed" | "TimedStat")
 }

@@ -49,7 +49,7 @@ CI runs `--check` and the unit tests in the `test-live-db` job of [.github/workf
 |---|---|---|---|
 | `heal` | AB-02 | `HealPercentage` (percent of the pool's max) or `HealAmount` (flat points) | `HealHealth` / `HealFocus` |
 | `damage` | AB-03 | `HealthDamage`, `FocusDamage` | none (NVP path) |
-| `stat` | AB-04 | stat names (`Accuracy`, `Defense`, `CoverDefense`, `MovementSpeedMod`, ...) | `TimedStat` |
+| `stat` | AB-04, AB-08 | stat names (`Accuracy`, `Defense`, `CoverDefense`, `MovementSpeedMod`, ...); `EffectMoniker` / `RemoveMoniker` for stances | `TimedStat`, `RemoveByMoniker` |
 | `shield` | AB-10 | `ShieldAmount`, `ShieldType` | `AbsorbShield` |
 
 A family is one module under `families/` that subclasses `family.Family` (`is_candidate`, `parse`) and one entry in `families/__init__.py`. The corpus loader (`corpus.py`), the seed reader (`seed_sql.py`), the ownership rules, the block writer, `--check` and `--report` are shared.
@@ -93,13 +93,19 @@ When the ability tooltip's numbers differ from the effect's, the effect row wins
 
 `families/stat.py` writes stat-named NVPs (`Accuracy`, `Defense`, `CoverAccuracy`, `CoverDefense`, `CrouchingDefense`, `Response`, `InterruptResistance`, the three resists, `MovementSpeedMod`) and binds `TimedStat`, which puts one entry per effect and caster on the timed effect ledger for the effect's `pulse_duration` (AB-04, D-AB08). The names it may write sit between `# nvp-names` markers, and a Rust test (`stat_nvp_names_match_the_generator`) fails if the script would ignore one.
 
-The grammar accepts stat clauses as whole lines, after an optional `Target`, `User` or `Debuff` prefix: "+200 Accuracy: 15 Seconds", "+200 Cover ACC for 15 Seconds", "Accuracy -100", "Movement Speed-30%", "Cover Defense Debuff: -100", and pairs such as "-200 ACC / DEF" or "-200ACC / -200DEF". Targeting lines and duration lines ("10 Second Duration", "Duration: 15sec") are skipped; a stated duration must equal `pulse_duration`.
+The grammar accepts stat clauses as whole lines, after an optional `Target`, `User`, `Self`, `Toggled:` or `Debuff` prefix: "+200 Accuracy: 15 Seconds", "+200 Cover ACC for 15 Seconds", "Accuracy -100", "Movement Speed-30%", "Cover Defense Debuff: -100", and pairs such as "-200 ACC / DEF" or "-200ACC / -200DEF". Targeting lines and duration lines ("10 Second Duration", "Duration: 15sec") are skipped; a stated duration must equal `pulse_duration`.
 
 Units are D-AB09's, and every converted row carries a `note` saying how: a bare number is points (200 Accuracy is 2 QR); a percentage on a resist or interrupt stat is 10 points per 1 %; a percentage on run speed is `movementSpeedMod` percent. Any other percentage is rejected.
 
+AB-08 added `Engagement`, `Fortitude`, `Tracking` and `Subtlety`, the spellings "Engagement: +10", "Kinetic Resists Increased: +15%", "+10% to ...", "+50 (5%) Mental Resist buff" (the two numbers must agree under the 10:1 rule), "Self ..." and "Toggled: ...", and **held effects** (`pulse_duration = 0`, `families/stat_held.py`), which `TimedStat` holds with no expiry:
+
+- a **toggle**: an effect of an `AF_TOGGLED` Self ability. The next press takes it off. A **stance** (a toggle named a stance, or one that authors a "Remove ... EFFECT_Stance" effect) also gets `EffectMoniker` `EFFECT_Stance` (RECONSTRUCTION: the seed has no effect monikers, audit B-74), and its "Remove Effect of moniker EFFECT_Stance" half gets `RemoveMoniker` `EFFECT_Stance` and the `RemoveByMoniker` script, only when the same ability binds a stance effect;
+- a **passive**: an `EF_AlwaysPersist` effect of a `passive_yn` ability, applied while the ability is known.
+
 Reported instead of bound:
 
-- anything that is not a timed single pulse: held effects (stances, toggles), `EF_AlwaysPersist` passives and `AF_TOGGLED` abilities are AB-08's;
+- a held effect nothing would take off: neither a toggle nor a passive, a passive ability's effect without `EF_AlwaysPersist` (1457 Steadfast), a toggle on another entity (a Target ability), a shield toggle (AB-10), a toggle's timed effect, and a mini-game passive (moniker 320218562: 809 Mental Fortitude's effect holds only "during Mini-game State");
+- a timed effect that is not a single pulse;
 - `EF_ClearOnDamage` effects ("(1 hit)"), until AB-11's damage hook exists;
 - a cone, a group or aura effect (D-AB12), a hostile `TCM_AERadius` effect of a non-ground ability (it lands on the one target) or a beneficial one of a ground ability (the ground collector takes hostiles), and "Secondary" effects; deployables and turret enhancements (D-AB11);
 - the regen stats (AB-05: `regen.rs` reads them as points per second until D-AB04's percentage model lands), pool maximums, armour factors, mitigation and stealth;
