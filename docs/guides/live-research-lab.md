@@ -865,10 +865,13 @@ use. A session that only watches uses screenshots, the UI readers,
 under your lease. Omit it and the run takes a lease of its own (owner
 `lab_uat_run`, purpose naming the sections and rows), which is refused
 while someone else holds the lab and released when the run ends,
-whatever the outcome. The runner calls tools in-process, so it touches
-the lease before every step: a long run stays leased, and a takeover
-stops the run at its next step. `plan_only: true` drives nothing and
-needs no lease.
+whatever the outcome. A keep-alive renews the lease every third of its
+ttl for the whole run, so `wait_ms` steps (which call no tool) never let
+it lapse. The moment the lease is taken over or released, the run stops:
+the row being driven is cut off at its next await and BLOCKED, every
+remaining row is BLOCKED without being driven (reason `lease revoked`),
+and the run lets go of every held key and button. `plan_only: true`
+drives nothing and needs no lease.
 
 **Stdio mode has the same rules.** A stdio supervisor enforces the lease
 too, so a tool behaves the same whichever transport reaches it. With one

@@ -301,7 +301,7 @@ fn run_dir_or_latest(arg: Option<&String>) -> Result<PathBuf, McpError> {
 #[tool_router(router = uat_router, vis = "pub(super)")]
 impl LabServer {
     #[tool(
-        description = "Run automated UAT rows from the TOML specs (docs/guides/uat-specs): reach each row's state with the lab flows, type a `.bug uat <row>` anchor, run setup and steps through the lab tools by name, check every expected clause, capture screenshots, and write an evidence bundle (run.json, rows/<section>/<row>.json, attachments, ledger.md). Returns each row's result (PASS, FAIL, BLOCKED, SKIPPED, NEEDS_HUMAN, UNVERIFIED, NATIVE_SHORTFALL) and the unified-uat.md \"Recording results\" blocks. A row never passes when a step ran below its required native level, a required clause is pending (SigNoz: attest with lab_uat_attest), or a tool it names is not routed (BLOCKED, naming the tool). Runs under the lab lease: pass your lease_id, or the run takes one of its own (owner lab_uat_run, refused while someone else holds the lab) and releases it when it ends; every step renews it, and a takeover stops the run at its next step. plan_only needs no lease."
+        description = "Run automated UAT rows from the TOML specs (docs/guides/uat-specs): reach each row's state with the lab flows, type a `.bug uat <row>` anchor, run setup and steps through the lab tools by name, check every expected clause, capture screenshots, and write an evidence bundle (run.json, rows/<section>/<row>.json, attachments, ledger.md). Returns each row's result (PASS, FAIL, BLOCKED, SKIPPED, NEEDS_HUMAN, UNVERIFIED, NATIVE_SHORTFALL) and the unified-uat.md \"Recording results\" blocks. A row never passes when a step ran below its required native level, a required clause is pending (SigNoz: attest with lab_uat_attest), or a tool it names is not routed (BLOCKED, naming the tool). Runs under the lab lease: pass your lease_id, or the run takes one of its own (owner lab_uat_run, refused while someone else holds the lab) and releases it when it ends; a keep-alive renews it for the whole run, and a takeover or release stops the run at once (the current and every remaining row BLOCKED \"lease revoked\"). plan_only needs no lease."
     )]
     async fn lab_uat_run(
         &self,
@@ -400,13 +400,41 @@ impl LabServer {
         };
         let server_tools = ServerTools::from_env();
         let server = server_tools.as_ref().map(|s| s as &dyn ServerInvoker);
-        let runner = Runner::new(&inv, server, req)
+        let mut runner = Runner::new(&inv, server, req)
             .map_err(|e| McpError::internal_error(e, None))?
             .with_p2(second);
-        let out = runner
-            .run_all()
-            .await
-            .map_err(|e| McpError::internal_error(e, None))?;
+        // Renew on a timer for the whole run (wait_ms steps make no tool
+        // calls), and stop the run the moment the lease is lost. Declared
+        // after `run_lease`, so it stops before an own lease is released.
+        let keep = run_lease.as_ref().map(RunLease::keep_alive);
+        if let Some(k) = &keep {
+            runner = runner.with_revocation(k.revoked());
+        }
+        let out = match &run_lease {
+            // The run's own lease: its flows' actions re-check it (with a
+            // caller's lease, `call_tool` already set this scope).
+            Some(l) if l.is_own() => {
+                crate::lease::permit::scope(l.permit(), runner.run_all()).await
+            }
+            _ => runner.run_all().await,
+        }
+        .map_err(|e| McpError::internal_error(e, None))?;
+        if let Some(reason) = keep.as_ref().and_then(|k| k.revoked().borrow().clone()) {
+            // A row cut off mid-press may have left a key or button down;
+            // letting go is allowed without the lease.
+            tracing::warn!(target: "lab.lease", event = "uat_run_revoked", %reason,
+                "UAT run stopped: lease lost");
+            let _ = self
+                .supervisor
+                .bridge_call("input_release", json!({}))
+                .await;
+            if let Ok((name, _, _)) = &p2 {
+                let _ = p2_lab(name)
+                    .supervisor
+                    .bridge_call("input_release", json!({}))
+                    .await;
+            }
+        }
         let mut blocks = vec![ContentBlock::text(
             serde_json::to_string_pretty(&json!({ "run_dir": out.run_dir, "rows": out.rows }))
                 .unwrap_or_default(),

@@ -13,10 +13,18 @@ Classification is `crates/lab/src/lease/policy.rs` (`OPEN` / `LEASED` / `OWN_LEA
 anything unlisted is guarded and `every_routed_tool_is_classified` fails until a new
 tool is placed. A new lab tool therefore needs a policy line.
 
+**Revocation is enforced at the action, not the gate** (review fix, 2026-10-04). Guarded
+tools run inside `lease::permit::scope`; `Supervisor::bridge_call`, `process::post_message`
+(releases exempt) and `launch_client` call `permit::ensure` and fail "lease revoked".
+A new client-acting path must go through one of those, or call `ensure` itself.
+`input_release` over the bridge is exempt (cleanup). The task-local does not cross
+`tokio::spawn`/`spawn_blocking`: an action in a spawned task is unchecked.
+
 **The runner bypasses the gate.** `lab_uat_run`'s `RouterInvoker` dispatches through
 `tool_router` in-process, so it never passes `call_tool`. It carries a `RunLease` and
-touches it before every step (renews; a forced takeover stops the run). Any other
-in-process dispatcher must do the same.
+touches it before every step, plus a `KeepAlive` task renews every ttl/3 and wakes on
+`LeaseBook::subscribe` (holder changes); `Runner::with_revocation` races each row
+against it and BLOCKs the rest. Any other in-process dispatcher must do the same.
 
 **One lease book per process** (`lease::global()`), shared by the default supervisor and
 the in-process p2 supervisor. Tests must give each supervisor its own book
