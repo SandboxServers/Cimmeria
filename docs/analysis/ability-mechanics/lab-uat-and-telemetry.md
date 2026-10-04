@@ -337,7 +337,7 @@ AB-U1 to AB-U9 keep their guide ids. AB-U10 onwards are new and go into the unif
 | AB-U1 | AB-01 | Heal Focus (597): no target, self, dummy, `p2` | `client.ability.sent` target versus `client_target_id` (B-15); own Focus rises; dummy and `p2` never; `resolution` |
 | AB-U2 | AB-01 | Health Heal (1646) on `p2` | `p2`'s own client applies the Health stat |
 | AB-U3 | AB-01 | Health Heal on self, dummy, nothing | `fallback_to_caster` |
-| AB-U4 | AB-01/02 | Recuperation (1218) on `p2` | 25 `pulse_ticked` rows with one `cast_id`, then `pulse_ended`; `p2`'s client applies each |
+| AB-U4 | AB-01/02 | Recuperation (1218) on `p2` | 25 heals with one `cast_id`: the first lands with the cast, then 24 `pulse_ticked` rows (the tick logs every pulse but the first), then `pulse_ended`; `p2`'s client applies each |
 | AB-U5 | AB-01 | Heal Focus at the dummy, out of combat | No `BSF_InCombat` on either side; empty threat table |
 | AB-U6 | AB-12 | A no-mechanics ability (2944 Activate Stealth), twice | `client.ability.shown` feedback line twice; no cooldown applied on the client or the wire |
 | AB-U7 | AB-04 | Aim (637), again at 5 s | Accuracy +200; effect bar shows 15 s, then refreshes; `replaced`; clear at expiry, on both sides |

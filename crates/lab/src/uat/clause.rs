@@ -278,7 +278,15 @@ pub fn packet_matches(c: &ExpectSpec, entity: Option<u64>, m: &Value) -> bool {
     let dir_ok = m.get("dir").and_then(Value::as_str) == Some(tap_dir(c.direction.as_deref()));
     let entity_ok =
         entity.is_none_or(|e| m.get("target_entity_id").and_then(Value::as_u64) == Some(e));
-    name_ok && dir_ok && entity_ok
+    // `match_fields` picks which messages the count and `field` apply to
+    // ("at least one onStateFieldUpdate with dead = true"), as it does for
+    // client_event clauses.
+    let fields_ok = c.match_fields.as_ref().is_none_or(|want| {
+        let row = packet_row(m);
+        want.iter()
+            .all(|(k, v)| row.get(k).is_some_and(|got| loose_eq(got, v)))
+    });
+    name_ok && dir_ok && entity_ok && fields_ok
 }
 
 /// Grade a packet clause against one `server_packet_tap_read` result

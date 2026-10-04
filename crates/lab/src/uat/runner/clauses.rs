@@ -22,6 +22,7 @@ const SIGNOZ_AFTER_MS: i64 = 120_000;
 
 impl<I: ToolInvoker> Runner<'_, I> {
     pub(crate) async fn eval_clause(&mut self, c: &ExpectSpec, ctx: &mut RowCtx) -> ClauseResult {
+        let c = &with_vars(c, &ctx.vars);
         let who = Who::of(c.client.as_deref());
         let mut r = ClauseResult {
             id: c.id.clone(),
@@ -166,6 +167,12 @@ impl<I: ToolInvoker> Runner<'_, I> {
                 r.evidence_refs = ctx.attachments.iter().map(|a| a.path.clone()).collect();
             }
         }
+        // A read that came back (PASS or FAIL) can seed a later clause.
+        if matches!(c.source, Source::Tool | Source::Server | Source::Lua)
+            && matches!(r.verdict, Verdict::Pass | Verdict::Fail)
+        {
+            capture(c, Some(&r.observed), ctx);
+        }
         r
     }
 
@@ -269,6 +276,27 @@ impl<I: ToolInvoker> Runner<'_, I> {
 
 /// Compare an observation and set the verdict. Every tool, server and
 /// Lua clause comes through here, so `approx` gets its `tolerance`.
+/// The clause with its `value` and `match_fields` filled in from the row's
+/// vars, so `value = "${mitigation_before}"` compares with a baseline an
+/// earlier clause captured.
+pub(crate) fn with_vars(c: &ExpectSpec, vars: &serde_json::Map<String, Value>) -> ExpectSpec {
+    let mut c = c.clone();
+    c.value = c.value.map(|v| subst(&v, vars));
+    if let Some(m) = c.match_fields.take() {
+        c.match_fields = subst(&Value::Object(m), vars).as_object().cloned();
+    }
+    c
+}
+
+/// A tool, server or lua clause's `capture_var`: keep what it observed.
+fn capture(c: &ExpectSpec, observed: Option<&Value>, ctx: &mut RowCtx) {
+    if let (Some(var), Some(v)) = (&c.capture_var, observed) {
+        if !v.is_null() {
+            ctx.vars.insert(var.clone(), v.clone());
+        }
+    }
+}
+
 fn judge(c: &ExpectSpec, observed: Option<Value>, r: &mut ClauseResult) {
     match compare_tol(c.op, observed.as_ref(), c.value.as_ref(), c.tolerance) {
         Ok(ok) => r.verdict = if ok { Verdict::Pass } else { Verdict::Fail },

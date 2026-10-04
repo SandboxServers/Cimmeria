@@ -30,7 +30,7 @@
 # - A hostile cast rolls QR, and `.qr` (D-AU2) does not exist: a miss on the
 #   graded press FAILs a damage or debuff row. Check `qr_rolled` for the
 #   row's cast_id in SigNoz before filing it.
-# - AB-U20 and AB-U22 use `.dummy caster 1354` (#1188) and are blocked on it
+# - AB-U20 and AB-U22 use `.dummy caster 1354`, which is not on the server yet
 #   until it merges: deleting their `blocked` line is the whole unblock.
 
 schema = 1
@@ -110,7 +110,7 @@ id = "focus-ui"
 text = "the client shows Focus above 100"
 source = "tool"
 tool = "@player_state"
-pointer = "/focus"
+pointer = "/focus/current"
 op = "gt"
 value = 100
 [[row.expect]]
@@ -189,7 +189,7 @@ id = "focus-ui"
 text = "the client shows Focus above 100"
 source = "tool"
 tool = "@player_state"
-pointer = "/focus"
+pointer = "/focus/current"
 op = "gt"
 value = 100
 [[row.expect]]
@@ -308,7 +308,7 @@ text = "p2's own client still shows its Focus near 100"
 source = "tool"
 client = "p2"
 tool = "@player_state"
-pointer = "/focus"
+pointer = "/focus/current"
 op = "lt"
 value = 150
 [[row.expect]]
@@ -366,7 +366,7 @@ text = "p2's client shows Health above 200"
 source = "tool"
 client = "p2"
 tool = "@player_state"
-pointer = "/health"
+pointer = "/health/current"
 op = "gt"
 value = 200
 [[row.expect]]
@@ -430,7 +430,7 @@ id = "health-ui"
 text = "the client shows Health above 200"
 source = "tool"
 tool = "@player_state"
-pointer = "/health"
+pointer = "/health/current"
 op = "gt"
 value = 200
 [[row.expect]]
@@ -557,7 +557,7 @@ value = "fallback_to_caster"
 [[row]]
 id = "AB-U4"
 title = "Recuperation on the other player heals them every second for 25 s"
-expected = "25 pulses with one cast_id, then the pulse ends; p2's own client applies each."
+expected = "25 heals with one cast: the first with the cast, then 24 pulse_ticked, then the pulse ends; p2's own client applies each."
 players = 2
 setup = [
   { chat = ".summon ${p2_character}", tier = "G" },
@@ -600,14 +600,21 @@ text = "p2's client shows Health well above 200"
 source = "tool"
 client = "p2"
 tool = "@player_state"
-pointer = "/health"
+pointer = "/health/current"
 op = "gt"
 value = 400
 [[row.expect]]
 id = "pulses"
-text = "exactly 25 pulse_ticked rows for this cast"
+text = "the other 24 pulses tick for this cast (the first lands with the cast and logs no pulse_ticked)"
 source = "signoz"
 filter = "event = 'pulse_ticked' AND ${cast_key}"
+min_rows = 24
+max_rows = 24
+[[row.expect]]
+id = "heals"
+text = "25 heals in all, every one for this cast"
+source = "signoz"
+filter = "event = 'heal_health' AND ${cast_key}"
 min_rows = 25
 max_rows = 25
 [[row.expect]]
@@ -665,9 +672,9 @@ field = "in_combat"
 op = "falsy"
 [[row.expect]]
 id = "no-combat-rows"
-text = "no combat entry was logged for you"
+text = "no combat entry was logged against the dummy"
 source = "signoz"
-filter = "event IN ('enter_combat', 'fight_entered') AND entity_id = ${player_entity_id}"
+filter = "event = 'enter_combat' AND mob_id = ${dummy_id}"
 max_rows = 0
 
 # ---------------------------------------------------------------- AB-U6
@@ -1022,6 +1029,7 @@ source = "packet"
 message = "onStateFieldUpdate"
 direction = "to_client"
 entity = "${player_entity_id}"
+match_fields = { dead = true }
 
 # ---------------------------------------------------------------- AB-U10
 
@@ -1090,10 +1098,29 @@ field = "ability_id"
 op = "eq"
 value = 598
 [[row.expect]]
-id = "resolved"
-text = "nvp_damage_resolved for this cast"
+id = "resolved-focus"
+text = "this cast resolved the seeded 200 Focus damage"
 source = "signoz"
-filter = "event = 'nvp_damage_resolved' AND ${cast_key}"
+filter = "event = 'nvp_damage_resolved' AND effect_id = 660 AND ${cast_key}"
+field = "focus_base"
+op = "eq"
+value = 200
+[[row.expect]]
+id = "resolved-health"
+text = "and the seeded 20 Health damage"
+source = "signoz"
+filter = "event = 'nvp_damage_resolved' AND effect_id = 660 AND ${cast_key}"
+field = "health_base"
+op = "eq"
+value = 20
+[[row.expect]]
+id = "dealt"
+text = "the hit moved the dummy's Focus"
+source = "signoz"
+filter = "event = 'nvp_damage_resolved' AND effect_id = 660 AND ${cast_key}"
+field = "focus_dealt"
+op = "gt"
+value = 0
 
 # ---------------------------------------------------------------- AB-U12
 # AB-03: 1879 Point Blank Shot (2393 direct 200/20; 2394 DoT 150/30 per tick,
@@ -1131,11 +1158,29 @@ op = "eq"
 value = 150
 [[row.expect]]
 id = "pulses"
-text = "the DoT ticks for this cast"
+text = "the DoT's first pulse lands with the hit"
+source = "signoz"
+filter = "event = 'effect_planned' AND effect_id = 2394 AND path = 'pulse' AND ${cast_key}"
+[[row.expect]]
+id = "ticks"
+text = "the other 7 of its 8 pulses tick, 150 Focus each"
 source = "signoz"
 filter = "event = 'pulse_ticked' AND effect_id = 2394 AND ${cast_key}"
 min_rows = 7
-max_rows = 8
+max_rows = 7
+field = "focus_amount"
+op = "eq"
+value = 150
+[[row.expect]]
+id = "tick-health"
+text = "and 30 Health each"
+source = "signoz"
+filter = "event = 'pulse_ticked' AND effect_id = 2394 AND ${cast_key}"
+min_rows = 7
+max_rows = 7
+field = "health_amount"
+op = "eq"
+value = 30
 [[row.expect]]
 id = "pulse-ended"
 text = "then pulse_ended"
@@ -1198,7 +1243,7 @@ text = "p2's client shows Focus above 100"
 source = "tool"
 client = "p2"
 tool = "@player_state"
-pointer = "/focus"
+pointer = "/focus/current"
 op = "gt"
 value = 100
 [[row.expect]]
@@ -1238,6 +1283,7 @@ setup = [
   { wait_ms = 3000 },
   { tool = "@cooldowns_reset", args = { ability_id = 869 } },
   { chat = "/gmsetfocus 100 0", tier = "G", client = "p2" },
+  { chat = "/gmsetfocus 100 0", tier = "G" },
 ]
 step = [
   { tool = "@use_ability", args = { ability_id = 869, press = "key", fallback = "none" }, label = "press" },
@@ -1258,7 +1304,7 @@ text = "p2's client still shows Focus near 100"
 source = "tool"
 client = "p2"
 tool = "@player_state"
-pointer = "/focus"
+pointer = "/focus/current"
 op = "lt"
 value = 150
 [[row.expect]]
@@ -1270,12 +1316,12 @@ match_fields = { ability_id = 869 }
 since = "press"
 [[row.expect]]
 id = "own-focus"
-text = "the caster's half still lands"
+text = "the caster's half still lands: your Focus rises above the 100 setup left"
 source = "server"
 tool = "@ability_state"
 pointer = "/state/stats[stat_id=8]/cur"
 op = "gt"
-value = 0
+value = 100
 [[row.expect]]
 id = "wire-sent"
 text = "useAbility reached the server"
@@ -1299,6 +1345,7 @@ setup = [
   { tool = "@cooldowns_reset", args = { ability_id = 1016 } },
 ]
 step = [
+  { wait_ms = 500, label = "base" },
   { tool = "@use_ability", args = { ability_id = 1016, press = "key", fallback = "none", observe_ms = 4000 }, label = "press" },
   { wait_ms = 3000, label = "on1" },
   { tool = "@use_ability", args = { ability_id = 1016, press = "key", fallback = "none", observe_ms = 4000 }, label = "press-off" },
@@ -1310,6 +1357,42 @@ teardown = [
   { tool = "@clear_effects", args = { name = "${character}" }, optional = true },
   { tool = "@cooldowns_reset" },
 ]
+[[row.expect]]
+id = "mitigation-base"
+text = "Mitigation before the first press (the baseline)"
+source = "server"
+at = "base"
+tool = "@ability_state"
+pointer = "/state/stats[stat_id=80]/cur"
+op = "exists"
+capture_var = "mitigation_before"
+[[row.expect]]
+id = "mitigation-on1"
+text = "the shield raises Mitigation"
+source = "server"
+at = "on1"
+tool = "@ability_state"
+pointer = "/state/stats[stat_id=80]/cur"
+op = "gt"
+value = "${mitigation_before}"
+[[row.expect]]
+id = "mitigation-off"
+text = "off, Mitigation is back exactly to the baseline"
+source = "server"
+at = "off"
+tool = "@ability_state"
+pointer = "/state/stats[stat_id=80]/cur"
+op = "eq"
+value = "${mitigation_before}"
+[[row.expect]]
+id = "mitigation-on2"
+text = "on again, Mitigation is raised again"
+source = "server"
+at = "on2"
+tool = "@ability_state"
+pointer = "/state/stats[stat_id=80]/cur"
+op = "gt"
+value = "${mitigation_before}"
 [[row.expect]]
 id = "held-on1"
 text = "after the first press the toggle's entry is held"
@@ -1588,7 +1671,7 @@ teardown = [
 id = "held"
 text = "the mob's fight tick held while knocked down"
 source = "signoz"
-filter = "decision_outcome = 'stunned' AND entity_id = ${mob_id}"
+filter = "event = 'decision' AND decision_outcome = 'stunned' AND npc_id = ${mob_id}"
 [[row.expect]]
 id = "client-set"
 text = "the client sets the mob's movement lock"
@@ -1680,15 +1763,15 @@ filter = "event = 'stat_buff_applied' AND effect_id = 1462 AND ${cast_key}"
 
 # ---------------------------------------------------------------- AB-U20
 # AB-09c: 657 Interrupting Shot (effect 723, Interrupt 100 %) during the
-# warmup of a `.dummy caster 1354` (#1188): Disabling Shot, 4 s warmup, cast
+# warmup of a `.dummy caster 1354`: Disabling Shot, 4 s warmup, cast
 # at its owner every 8 s through the real launch.
 
 [[row]]
 id = "AB-U20"
 title = "Interrupting Shot during a caster dummy's warmup"
 expected = "The dummy's warmup is interrupted: Ability_Interrupt sent and received."
-blocked = "#1188 (.dummy caster)"
-notes = "Unblock by deleting the blocked line once #1188 merges. The step waits for the dummy's next cast to start (its onSequence) and answers inside the 4 s warmup. God mode keeps the lab character alive between casts. A miss of the Interrupting Shot interrupts nothing (check qr_rolled)."
+blocked = ".dummy caster (not merged)"
+notes = "Unblock by deleting the blocked line once the `.dummy caster` GM command is on the server. The step waits for the dummy's next cast to start (its onSequence) and answers inside the 4 s warmup. God mode keeps the lab character alive between casts. A miss of the Interrupting Shot interrupts nothing (check qr_rolled)."
 setup = [
   { chat = "/gmgiveability 657", tier = "G", optional = true },
   { chat = "/gmsetgodmode 1", tier = "G" },
@@ -1757,7 +1840,7 @@ min_rows = 2
 id = "AB-U21a"
 title = "Personal Shield absorbs damage before Focus"
 expected = "The absorb pool drains before Focus."
-notes = "The NID Guard (template 24) fights back once Strike pulls it; .aggro off keeps it idle until then."
+notes = "The NID Guard (template 24) fights back once Strike pulls it; .aggro off keeps it idle until then. A fresh character's Focus is full, so regen cannot move it either: Focus equal to the baseline while the pool is below 500 means the shield took the hits and Focus did not."
 setup = [
   { chat = "/gmgiveability 1013", tier = "G", optional = true },
   { chat = ".aggro off", tier = "G" },
@@ -1770,6 +1853,7 @@ setup = [
 ]
 step = [
   { tool = "@use_ability", args = { ability_id = 1013, press = "key", fallback = "none", observe_ms = 6000 }, label = "press" },
+  { wait_ms = 500, label = "shielded" },
   { tool = "@target", args = { entity_id = "${mob_id}" }, label = "target-mob" },
   { tool = "@use_ability", args = { ability_id = 594, press = "key", fallback = "none" }, label = "pull" },
   { wait_ms = 10000 },
@@ -1790,6 +1874,23 @@ id = "granted"
 text = "the shield was granted for this cast"
 source = "signoz"
 filter = "event = 'shield_granted' AND ${cast_key}"
+[[row.expect]]
+id = "focus-base"
+text = "Focus with the shield up, before the fight (the baseline)"
+source = "server"
+at = "shielded"
+tool = "@ability_state"
+pointer = "/state/stats[stat_id=8]/cur"
+op = "exists"
+capture_var = "focus_before"
+[[row.expect]]
+id = "focus-held"
+text = "after the fight Focus has not moved"
+source = "server"
+tool = "@ability_state"
+pointer = "/state/stats[stat_id=8]/cur"
+op = "eq"
+value = "${focus_before}"
 [[row.expect]]
 id = "pool-drained"
 text = "the first pool holds less than 500"
@@ -1875,7 +1976,7 @@ entity = "${player_entity_id}"
 # ---------------------------------------------------------------- AB-U22
 # AB-10: a harmful-effect purge. Clear: Mind (2099, effect 2827 Mental:5)
 # removes nothing today: no seeded Mental effect has a mechanic that stays on
-# its target. The stageable pair (#1188): Disabling Shot (1354) from a
+# its target. The stageable pair: Disabling Shot (1354) from a
 # `.dummy caster` leaves two Health TimedStat debuffs, 4335 (Response -100)
 # and 4333 (Accuracy and Defense -200), 15 s each; Absolution (2865, effect
 # 4169 RemoveCategories Health:2, Harmful) removes exactly those two.
@@ -1884,8 +1985,8 @@ entity = "${player_entity_id}"
 id = "AB-U22"
 title = "Absolution removes the two Health debuffs a caster dummy's Disabling Shot left"
 expected = "Exactly the two named Health debuffs are removed, reason cleansed."
-blocked = "#1188 (.dummy caster)"
-notes = "Unblock by deleting the blocked line once #1188 merges. Clear: Mind (2099) removes 0 until a Mental effect gets a held mechanic (a content decision). The dummy casts again every 8 s, so the removal is checked right after the press, before its next hit can land. A miss of Disabling Shot lands no debuff; the step waits up to 30 s for one that lands."
+blocked = ".dummy caster (not merged)"
+notes = "Unblock by deleting the blocked line once the `.dummy caster` GM command is on the server. Clear: Mind (2099) removes 0 until a Mental effect gets a held mechanic (a content decision). The dummy casts again every 8 s, so the removal is checked right after the press, before its next hit can land. A miss of Disabling Shot lands no debuff; the step waits up to 30 s for one that lands."
 setup = [
   { chat = "/gmgiveability 2865", tier = "G", optional = true },
   { chat = "/gmsetgodmode 1", tier = "G" },
@@ -1968,7 +2069,7 @@ min_rows = 2
 id = "AB-U23"
 title = "The combat-debug line matches the abilities.debug row"
 expected = "The feedback-channel debug line in chat matches the abilities.debug row for the same cast_id."
-notes = "Quick Burst (598) stands in for the plan's Pistol Shot: a fresh character's pistol may hold no ammo. `/gmdebugcombat` is a toggle; setup proves it went on, teardown turns it off."
+notes = "A line over 255 UTF-16 units is split into several chat lines and rows; the first must match its row exactly. Quick Burst (598) stands in for the plan's Pistol Shot: a fresh character's pistol may hold no ammo. `/gmdebugcombat` is a toggle; setup proves it went on, teardown turns it off."
 setup = [
   { chat = "/gmgiveability 598", tier = "G", optional = true },
   { tool = "@dummy", args = { disposition = "hostile" } },
@@ -1992,7 +2093,8 @@ teardown = [
 id = "chat-line"
 text = "a [CD #cast_id] line for this cast reaches chat"
 source = "chat"
-matches = '\[CD #${cast_id}\]'
+matches = '(\[CD #${cast_id}\].*)'
+capture_var = "cd_line"
 [[row.expect]]
 id = "shown"
 text = "the client shows a feedback line from the combat debug"
@@ -2002,9 +2104,12 @@ match_fields = { kind = "feedback_line", text = "[CD #*" }
 since = "press"
 [[row.expect]]
 id = "debug-row"
-text = "the abilities.debug row for this cast and caster"
+text = "the abilities.debug row for this cast and caster has the chat line's exact text"
 source = "signoz"
 filter = "event = 'combat_debug_line' AND cast_id = ${cast_id} AND caster_id = ${cast_entity_id}"
+field = "text"
+op = "eq"
+value = "${cd_line}"
 [[row.expect]]
 id = "wire-feedback"
 text = "the server sent the debug lines as player communication"

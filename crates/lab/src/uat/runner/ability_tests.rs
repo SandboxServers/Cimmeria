@@ -388,7 +388,7 @@ async fn the_cast_id_falls_back_to_the_press_window() {
     let fake = ability_client();
     // The key goes out 5 s after the tool was called (lookup, placement):
     // the window is centred on the tool's `press_ms`, not the action start
-    // (Copilot, #1183). Centred on the start it would pick cast 54.
+    // Centred on the start it would pick cast 54.
     *fake.press_delay_ms.lock().unwrap() = 5000;
     // The fake's bookmark id is the server clock at the anchor, a moment
     // before the press.
@@ -424,7 +424,7 @@ async fn the_cast_id_falls_back_to_the_press_window() {
 
 /// A suppressed press shows only as `suppressed` on a later press row, and
 /// its `sent` is gone without a trace: an upper bound on `sent` must not
-/// pass (Copilot, #1183).
+/// pass.
 #[tokio::test]
 async fn a_throttled_press_makes_an_upper_bound_on_sends_unverified() {
     let rows = r#"
@@ -589,4 +589,50 @@ contains = "never"
         .unwrap()
         .iter()
         .any(|c| c.1["text"] == ".cleareffects"));
+}
+
+/// A server read can keep its observation as a baseline, and a later
+/// clause compares with it through `value = "${var}"`: "Focus did not
+/// move" and "mitigation came back exactly" need the value from before.
+#[tokio::test]
+async fn a_captured_baseline_feeds_a_later_comparison() {
+    let rows = r#"
+[[row]]
+id = "AB-U14"
+title = "baseline"
+expected = "x"
+step = [{ wait_ms = 1, label = "base" }, { chat = ".help" }]
+[[row.expect]]
+id = "baseline"
+text = "Focus before"
+source = "server"
+at = "base"
+tool = "@ability_state"
+pointer = "/state/stats[stat_id=8]/cur"
+op = "exists"
+capture_var = "focus_before"
+[[row.expect]]
+id = "same"
+text = "Focus is back to the baseline"
+source = "server"
+tool = "@ability_state"
+pointer = "/state/stats[stat_id=8]/cur"
+op = "eq"
+value = "${focus_before}"
+[[row.expect]]
+id = "higher"
+text = "Focus above the baseline (it is not: this clause must fail)"
+source = "server"
+required = false
+tool = "@ability_state"
+pointer = "/state/stats[stat_id=8]/cur"
+op = "gt"
+value = "${focus_before}"
+"#;
+    let fake = Fake::new(&[]);
+    let server = FakeServer::new(vec![]);
+    let row = run(&fake, Some(&server), rows).await;
+    assert_eq!(row.vars["focus_before"], 140);
+    assert_eq!(clause(&row, "same").verdict, Verdict::Pass);
+    assert_eq!(clause(&row, "higher").verdict, Verdict::Fail);
 }

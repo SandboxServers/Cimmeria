@@ -187,8 +187,10 @@ matches = "searchitem 'pistol': [0-9]+ match"
 | `signoz` | `filter`, `min_rows`, `max_rows`, `field` + `op` + `value` | PENDING until attested |
 | `server` | `tool`, `args`, `pointer`, `op`, `value` | A `cimmeria-lab-mcp` tool; UNVERIFIED when unreachable. `@ability_state` (`server_ability_state`) with no `entity_id` reads the lab character |
 | `client_event` | `event`, `match_fields`, `since`, `min_rows`, `max_rows`, `field` + `op` + `value` (+ `tolerance`), `timeout_ms` | The client's own telemetry events (`client.ability.*`) from the lab event store ([below](#client-event-clauses-and-cast_id)) |
-| `packet` | `message`, `direction`, `entity`, `min_rows`, `max_rows`, `field` + `op` + `value` (+ `tolerance`) | Decoded Mercury messages from the row's packet tap (below); UNVERIFIED when the endpoint is unreachable |
+| `packet` | `message`, `direction`, `entity`, `match_fields`, `min_rows`, `max_rows`, `field` + `op` + `value` (+ `tolerance`) | Decoded Mercury messages from the row's packet tap (below); UNVERIFIED when the endpoint is unreachable |
 | `human` | `question` | NEEDS_HUMAN until answered |
+
+A `tool`, `server` or `lua` clause with `capture_var` keeps what it observed in that var, so a later clause can compare with it: a baseline read `at` an early step with `op = "exists"` and `capture_var = "mitigation_before"`, then `op = "eq"` and `value = "${mitigation_before}"` after the toggle goes off. Every clause's `value` and `match_fields` take `${var}`s.
 
 `op` is one of `eq`, `ne`, `contains`, `not_contains`, `matches`, `gt`, `gte`, `lt`, `lte`, `exists`, `absent`, `truthy`, `falsy`, `len_gte`, `approx`. Numbers compare numerically even when Lua returns them as strings. `approx` takes a numeric `value` and a `tolerance`: `op = "approx"`, `value = 15`, `tolerance = 1` passes 14 to 16, the spec form of `complete_in_s ~ 15 ± 1`.
 
@@ -203,6 +205,7 @@ A `packet` clause asserts what crossed the wire, as the server decoded it. When 
 | `message` | The message name as the tap decodes it (its `msg_name`, the dispatch-table name); case does not matter |
 | `direction` | `to_client` (the server sent it) or `to_server` (the client sent it) |
 | `entity` | Only messages sent for this entity (an outbound row's `target_entity_id`): a number or a `${var}`, usually `"${player_entity_id}"` |
+| `match_fields` | Only messages whose decoded fields (or tap columns) equal these, numbers numerically: `{ dead = true }` counts the state-field updates that set the dead bit |
 | `min_rows`, `max_rows` | How many matching messages; default at least one. `max_rows = 0` asserts the message was never sent |
 | `field` + `op` + `value` (+ `tolerance`) | Every matching message must satisfy it. `field` is a decoded argument name, a tap column (`ts_ms`, `method_index`, `args_len`, `args_hex`), or a JSON pointer (`/decoded/...`) |
 
@@ -333,7 +336,7 @@ The ability lab capabilities are the AB-L2 dot commands, typed into chat at tier
 
 ## Spec coverage
 
-Rows authored in [docs/guides/uat-specs/](uat-specs/), 2026-09-29, and what a `plan_only` run against today's router says (the `committed_specs_plan_against_main_tools` test pins it):
+Rows authored in [docs/guides/uat-specs/](uat-specs/) (2026-09-29; `ability-mechanics` 2026-10-04), and what a `plan_only` run against today's router says (the `committed_specs_plan_against_main_tools` test pins it):
 
 | Section | Ready now | Blocked, and on what |
 |---|---|---|
@@ -348,7 +351,7 @@ Rows authored in [docs/guides/uat-specs/](uat-specs/), 2026-09-29, and what a `p
 | `castle-cellblock` | T01/T02 (makes and deletes its own character) | |
 | `ability-mechanics` (fresh Soldier, 2026-10-04) | 23 one-player rows: AB-U1a-c, AB-U3a-c, AB-U5 to AB-U9b, AB-U11, AB-U12, AB-U14 to AB-U19, AB-U21a/b, AB-U23 | AB-U1d, AB-U2, AB-U4, AB-U13a/b (second player); AB-U10 (D-AU2), AB-U20 and AB-U22 (`.dummy caster`, #1188), AB-U24 (D-AB03), AB-U25 (AB-E1, AB-11) |
 
-22 rows are ready and 12 are blocked. None of them has run against a live client yet. The first live run should take them in this order, each proving one more part of the runner:
+45 rows are ready (22 before `ability-mechanics`, which adds 23) and 22 are blocked (12, plus its 10). None of them has run against a live client yet. The first live run should take them in this order, each proving one more part of the runner:
 
 1. `gm-parity` M1-1: typed chat, the `.bug` anchor and server clock, `since` chat marks, the ledger block.
 2. `chat` 9a and 9c, `black-market` U1 and U22: exact-count clauses, refusals, teardown.

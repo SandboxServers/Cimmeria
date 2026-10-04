@@ -300,7 +300,9 @@ pub struct ExpectSpec {
     pub count: Option<u32>,
     #[serde(default)]
     pub absent: bool,
-    /// Chat: store regex group 1 of the first match into this var.
+    /// Chat: store regex group 1 of the first match into this var. Tool,
+    /// server and lua: store the observed value (a baseline a later
+    /// clause compares with `value = "${var}"`).
     #[serde(default)]
     pub capture_var: Option<String>,
     // tool / server / lua
@@ -359,8 +361,10 @@ pub struct ExpectSpec {
     /// without the `client.` prefix. A glob (`client.ability.*`) is fine.
     #[serde(default)]
     pub event: Option<String>,
-    /// Only events whose fields equal these (strings are globs, numbers
-    /// compare numerically): `{ method = "onEffectResults", ability_id = 597 }`.
+    /// Client_event and packet: only events (messages) whose fields equal
+    /// these: `{ method = "onEffectResults", ability_id = 597 }`. Client
+    /// events glob strings; packet fields compare loosely (numbers
+    /// numerically).
     #[serde(default)]
     pub match_fields: Option<serde_json::Map<String, Value>>,
     /// Chat, tool, lua, wait and client_event clauses: read this client

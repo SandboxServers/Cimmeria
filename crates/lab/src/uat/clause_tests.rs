@@ -191,3 +191,15 @@ fn an_empty_tap_fails_a_wanted_message_and_passes_an_absent_one() {
     assert_eq!(v, Verdict::Unverified);
     assert!(why.unwrap().contains("dropped 3"));
 }
+
+#[test]
+fn packet_match_fields_pick_the_messages_a_clause_counts() {
+    // Two timer sends for entity 7: 15.2 s and 14.6 s.
+    let c = packet("match_fields = { complete_in_s = 15.2 }\nmin_rows = 1\nmax_rows = 1");
+    let (v, obs, _) = grade_packet(&c, Some(7), &tap());
+    assert_eq!(v, Verdict::Pass);
+    assert_eq!(obs["matching_rows"], 1);
+    // A value no message carries matches nothing.
+    let c = packet("match_fields = { complete_in_s = 3 }");
+    assert_eq!(grade_packet(&c, Some(7), &tap()).0, Verdict::Fail);
+}

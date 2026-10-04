@@ -537,6 +537,12 @@ client_player_state";
 async fn committed_specs_plan_against_main_tools() {
     let dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../docs/guides/uat-specs");
     let sections = crate::uat::load_sections(&dir, None).unwrap();
+    let abilities = sections
+        .iter()
+        .find(|s| s.spec.section.id == "ability-mechanics")
+        .expect("abilities.toml is committed")
+        .spec
+        .clone();
     let mut fake = Fake::new(&[]);
     fake.tools = MAIN_TOOLS.split_whitespace().map(str::to_string).collect();
     let tmp = tempfile::tempdir().unwrap().keep();
@@ -584,31 +590,29 @@ async fn committed_specs_plan_against_main_tools() {
         "BLOCKED",
         "rule 6 without approval"
     );
-    // Ability mechanics (AB-R0): every one-player row that is not blocked
-    // plans against today's tools, the ability capabilities included.
-    for r in [
-        "AB-U1a", "AB-U3b", "AB-U6", "AB-U7", "AB-U9b", "AB-U14", "AB-U16", "AB-U17", "AB-U21a",
-        "AB-U23",
-    ] {
-        let row = result("ability-mechanics", r);
-        assert_eq!(row.result, "SKIPPED", "{r}: {:?}", row.reasons);
+    // Ability mechanics (AB-R0), every row: a one-player row with no
+    // standing reason plans as ready against today's tools (so a row that
+    // picks up an unrouted tool fails here); every other row is BLOCKED
+    // with its own reason, or the second-player one.
+    for row in &abilities.rows {
+        let got = result("ability-mechanics", &row.id);
+        let want = if row.blocked.is_some() || row.players > 1 {
+            "BLOCKED"
+        } else {
+            "SKIPPED"
+        };
+        assert_eq!(got.result, want, "{}: {:?}", row.id, got.reasons);
+        let why = row.blocked.as_deref().unwrap_or("second lab instance");
+        if want == "BLOCKED" {
+            assert!(
+                got.reasons.iter().any(|x| x.contains(why)),
+                "{}: {:?}",
+                row.id,
+                got.reasons
+            );
+        }
     }
-    for (r, why) in [
-        ("AB-U10", "D-AU2"),
-        ("AB-U24", "D-AB03"),
-        ("AB-U25", "AB-E1, AB-11"),
-        ("AB-U1d", "second lab instance"),
-        ("AB-U20", "#1188"),
-        ("AB-U22", "#1188"),
-    ] {
-        let row = result("ability-mechanics", r);
-        assert_eq!(row.result, "BLOCKED", "{r}");
-        assert!(
-            row.reasons.iter().any(|x| x.contains(why)),
-            "{r}: {:?}",
-            row.reasons
-        );
-    }
+    assert!(abilities.rows.len() >= 33, "the section lost rows");
     // Two players: BLOCKED until a second lab instance is configured.
     let m12 = result("gm-parity", "M1-2");
     assert_eq!(m12.result, "BLOCKED");
@@ -658,16 +662,18 @@ lua_condition = "true"
     assert_eq!(step.tier_source.as_deref(), Some("reported:ui_lua"));
 }
 
-/// AB-U20 and AB-U22 wait only on `.dummy caster` (#1188): with their
-/// `blocked` line deleted they plan as ready, so unblocking them is that
-/// one-line change and nothing else in the rows is missing.
+/// AB-U20 and AB-U22 wait only on the `.dummy caster` GM command (a lab
+/// dummy that casts one ability at its owner through the real launch),
+/// which is not on the server yet: with their `blocked` line deleted they
+/// plan as ready, so unblocking them is that one-line change and nothing
+/// else in the rows is missing.
 #[tokio::test]
 async fn the_caster_dummy_rows_are_ready_once_unblocked() {
     let path = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
         .join("../../docs/guides/uat-specs/abilities.toml");
     let text = std::fs::read_to_string(&path)
         .unwrap()
-        .replace("blocked = \"#1188 (.dummy caster)\"", "");
+        .replace("blocked = \".dummy caster (not merged)\"", "");
     let spec = crate::uat::spec::parse(&text).unwrap();
     let mut fake = Fake::new(&[]);
     fake.tools = MAIN_TOOLS.split_whitespace().map(str::to_string).collect();
