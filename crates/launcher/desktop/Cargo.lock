@@ -585,9 +585,11 @@ dependencies = [
 name = "cimmeria-launcher-desktop"
 version = "0.1.0"
 dependencies = [
+ "base64 0.22.1",
  "cimmeria-launcher-engine",
  "cimmeria-runtime-probe",
  "ed25519-dalek",
+ "minisign",
  "serde",
  "serde_json",
  "sha2 0.10.9",

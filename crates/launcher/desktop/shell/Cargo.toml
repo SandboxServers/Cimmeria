@@ -21,6 +21,8 @@ tauri-plugin-dialog = "2"
 tauri-plugin-opener = "2"
 
 [dev-dependencies]
+minisign = "=0.8.0"
+base64 = "=0.22.1"
 cimmeria-launcher-engine = { path = "../engine", features = ["test-support"] }
 wiremock = "0.6"
 ed25519-dalek = { version = "3", default-features = false, features = ["alloc"] }
