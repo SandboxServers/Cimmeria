@@ -12,11 +12,12 @@ use std::time::Instant;
 
 use tokio::sync::mpsc;
 
+use cimmeria_cell_world::cell::combat_debug::{pools_of, LandingNote, Note, PlanNote, Pools};
 use cimmeria_entity::abilities::EffectDef;
 
 use super::super::effect_plan::{
-    PlanIds, PlannedEffect, PATH_ALLY_FANOUT, PATH_ROUTED_TO_USER, REASON_BENEFICIAL_CAST,
-    REASON_NOT_REACHABLE, REASON_NO_SCRIPT,
+    PlanIds, PlannedEffect, PATH_ALLY_FANOUT, PATH_ROUTED_TO_USER, PATH_SKIPPED,
+    REASON_BENEFICIAL_CAST, REASON_NOT_REACHABLE, REASON_NO_SCRIPT,
 };
 
 use super::super::super::messages::CellToBaseMsg;
@@ -101,14 +102,17 @@ pub(in crate::cell::abilities) async fn land_effects(
     tx: &mpsc::Sender<CellToBaseMsg>,
     space_mgr: &mut SpaceManager,
 ) -> usize {
+    let mut debug = LandingDebug::start(space_mgr);
     for landing in landings {
         let exists = space_mgr.get_entity(landing.recipient).is_some();
-        landing.plan(exists).log(PlanIds::of(
+        let plan = landing.plan(exists);
+        plan.log(PlanIds::of(
             space_mgr,
             caster_id,
             landing.recipient,
             ability_id,
         ));
+        debug.note_plan(space_mgr, caster_id, ability_id, landing.recipient, &plan);
     }
     for landing in landings {
         let Some(script_name) = landing.effect.script_name.as_deref() else {
@@ -135,6 +139,7 @@ pub(in crate::cell::abilities) async fn land_effects(
         // A ledger script queued its duration timer; send it with the stats.
         crate::cell::effects::flush_stat_buff_timers(entity_id, now, tx, space_mgr).await;
     }
+    debug.finish(space_mgr, caster_id, ability_id);
 
     let mut pulsing = 0usize;
     for landing in landings.iter().filter(|l| l.effect.is_pulsing()) {
@@ -181,3 +186,69 @@ async fn flush_stats(
         .await;
     }
 }
+
+/// A landing's notes for the in-game combat debug (AB-N1): the plan rows
+/// and each recipient's pools around the scripts. Empty while no one is
+/// debugging.
+#[derive(Debug, Default)]
+struct LandingDebug {
+    active: bool,
+    cast_id: Option<i32>,
+    before: Vec<(u32, Pools)>,
+}
+
+impl LandingDebug {
+    fn start(space_mgr: &SpaceManager) -> Self {
+        if !space_mgr.combat_debug.is_active() {
+            return Self::default();
+        }
+        Self {
+            active: true,
+            cast_id: space_mgr.current_cast_id(),
+            before: Vec::new(),
+        }
+    }
+
+    /// Note the plan row, and take the recipient's pools before the scripts
+    /// when this plan can land: a `skipped` plan (`not_reachable`,
+    /// `no_script`) lands nothing, so it must not print `landed`.
+    fn note_plan(
+        &mut self,
+        space_mgr: &mut SpaceManager,
+        caster_id: u32,
+        ability_id: i32,
+        recipient: u32,
+        plan: &PlannedEffect,
+    ) {
+        if !self.active {
+            return;
+        }
+        if plan.path != PATH_SKIPPED && !self.before.iter().any(|(r, _)| *r == recipient) {
+            self.before
+                .push((recipient, pools_of(space_mgr, recipient)));
+        }
+        let note = Note::Plan(PlanNote {
+            target_id: recipient,
+            effect_id: plan.effect_id,
+            path: plan.path,
+            reason: plan.reason,
+        });
+        space_mgr.note_combat_debug(caster_id, self.cast_id, ability_id, note);
+    }
+
+    fn finish(self, space_mgr: &mut SpaceManager, caster_id: u32, ability_id: i32) {
+        for (recipient, before) in self.before {
+            let after = pools_of(space_mgr, recipient);
+            let note = Note::Landing(LandingNote {
+                recipient,
+                before,
+                after,
+            });
+            space_mgr.note_combat_debug(caster_id, self.cast_id, ability_id, note);
+        }
+    }
+}
+
+#[cfg(test)]
+#[path = "land_debug_tests.rs"]
+mod land_debug_tests;

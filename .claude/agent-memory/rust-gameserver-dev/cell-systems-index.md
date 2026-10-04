@@ -72,3 +72,4 @@ Moved out of MEMORY.md on 2026-09-28 (AM-12 compaction).
 - [effect-routing-and-scoped-defs](effect-routing-and-scoped-defs.md) — AB-07 per-effect routing: user/area halves land after the target part; ground/splash scoped defs; routing.py mirror.
 - [held-toggles-and-stance-moniker](held-toggles-and-stance-moniker.md) — AB-08 held entries: toggle switch is the last held effect, EFFECT_Stance = CRC-32 via EffectMoniker NVP, held icon horizon.
 - [absorb-shield-ledger-and-cleanse-categories](absorb-shield-ledger-and-cleanse-categories.md) — AB-10: shields mirror into absorb* stats, every drain seam must settle; categories from co-sequenced resist rolls; shield rows lack the beneficial bit.
+- [combat-debug-notes-and-flush-points](combat-debug-notes-and-flush-points.md) — AB-N1: note beside the AB-T3 row via SpaceManager.combat_debug; lines leave only at scope-close flushes; damage_apply/mod.rs near cap.

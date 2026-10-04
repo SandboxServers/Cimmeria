@@ -606,5 +606,7 @@ pub async fn handle_use_ability(
     )
     .await;
     space_mgr.exit_cast_scope(outer_cast);
+    // The cast's debug lines (AB-N1), now its scope is closed.
+    cimmeria_cell_world::cell::combat_debug::flush(tx, space_mgr).await;
     true
 }

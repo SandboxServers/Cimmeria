@@ -36,13 +36,17 @@
 //!   tree, reset to the starters (AB-N2).
 //! - [`god_mode`] — `gmSetGodMode`, the damage-seam flag (AB-N2).
 //! - [`mob_ability_set`] — `gmSetMobAbilitySet` on the selected mob (AB-N2).
-//! - [`command_log`] — the one `gm_command` row each AB-N2 command writes.
+//! - [`command_log`] — the one `gm_command` row each AB-N2 and AB-N1
+//!   command writes.
+//! - [`combat_debug`] — the native combat-debug toggles 169-172 and 176
+//!   (AB-N1); the lines come from `cimmeria_cell_world::cell::combat_debug`.
 //!
 //! The full 117-method inventory + handler-status map (DONE/REUSE/ADAPT/NEW)
 //! lives in `docs/protocol/cell-method-dispatch-table.md`; the ADAPT roadmap
 //! is in `docs/architecture/gm-cell-method-adapt-plan.md`.
 
 mod abilities;
+mod combat_debug;
 mod command_log;
 pub mod feedback;
 mod give;
@@ -217,6 +221,21 @@ pub const GM_RESPAWN: u16 = 189;
 /// `gmKillTarget(INT64 TargetId)` — def line 482. Offset 81. NPC-only.
 pub const GM_KILL_TARGET: u16 = 190;
 
+// -- Combat debug (169-172, 176; AB-N1) ---------------------------------------
+/// `gmDebugAbility(INT32 aAbilityId)` — def line 378. Offset 60. Toggles the
+/// ability in the caller's `debugAbilityList`; 0 clears the list.
+pub const GM_DEBUG_ABILITY: u16 = 169;
+/// `gmDebugCombat()` — def line 383. Offset 61. Toggles combat debug.
+pub const GM_DEBUG_COMBAT: u16 = 170;
+/// `gmDebugCombatVerbose()` — def line 387. Offset 62. Toggles verbose
+/// combat debug.
+pub const GM_DEBUG_COMBAT_VERBOSE: u16 = 171;
+/// `gmDebugHeal()` — def line 391. Offset 63. Toggles heal debug.
+pub const GM_DEBUG_HEAL: u16 = 172;
+/// `gmDebugAbilityOnMob(INT32 AbilityID)` — def line 408. Offset 67. The
+/// selected mob's casts of that ability (0: all) print to the caller.
+pub const GM_DEBUG_ABILITY_ON_MOB: u16 = 176;
+
 // -- Debug (180) --------------------------------------------------------------
 /// `gmDebugMobData(INT32 aSpaceID, INT32 target)` — def line 427. Offset 71.
 /// Dumps a mob's debug data via feedback.
@@ -282,6 +301,13 @@ pub async fn dispatch(
         GM_SET_GOD_MODE => god_mode::handle_set_god_mode(entity_id, args, tx, space_mgr).await,
         GM_SET_MOB_ABILITY_SET => {
             mob_ability_set::handle_set_mob_ability_set(entity_id, args, tx, space_mgr).await
+        }
+        // -- combat debug (AB-N1) --
+        GM_DEBUG_COMBAT | GM_DEBUG_COMBAT_VERBOSE | GM_DEBUG_HEAL => {
+            combat_debug::handle_toggle(entity_id, method_index, tx, space_mgr).await
+        }
+        GM_DEBUG_ABILITY | GM_DEBUG_ABILITY_ON_MOB => {
+            combat_debug::handle_ability_toggle(entity_id, method_index, args, tx, space_mgr).await
         }
         // -- stats --
         GM_SET_HEALTH => stats::handle_set_health(entity_id, args, false, tx, space_mgr).await,

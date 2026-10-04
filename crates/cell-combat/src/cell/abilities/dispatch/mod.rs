@@ -226,6 +226,9 @@ pub async fn handle_use_ability_on_ground(
         space_mgr,
     )
     .await;
+    // The secondaries resolve outside the primary's cast scope: their
+    // debug lines (AB-N1) go out here.
+    cimmeria_cell_world::cell::combat_debug::flush(tx, space_mgr).await;
     deaths_since(space_mgr, alive_before)
 }
 
@@ -284,6 +287,9 @@ pub(super) async fn fire_ground_cast_after_warmup(
         space_mgr,
     )
     .await;
+    // The secondaries resolve outside the primary's cast scope: their
+    // debug lines (AB-N1) go out here.
+    cimmeria_cell_world::cell::combat_debug::flush(tx, space_mgr).await;
     deaths_since(space_mgr, alive_before)
 }
 

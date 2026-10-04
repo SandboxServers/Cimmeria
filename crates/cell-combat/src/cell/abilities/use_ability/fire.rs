@@ -136,6 +136,17 @@ pub(in crate::cell::abilities) async fn fire_cast(
     let target_id = beneficial.map_or(target_id, |(t, _)| {
         super::beneficial::landing_id(entity_id, t)
     });
+    // The in-game combat debug's cast record opens here (AB-N1): the fire is
+    // where a zero-warmup cast and a warmup cast meet.
+    space_mgr.note_combat_debug(
+        entity_id,
+        Some(effect_seq),
+        ability_id,
+        cimmeria_cell_world::cell::combat_debug::Note::Fire {
+            target: u32::try_from(target_id).ok().filter(|&t| t != 0),
+            beneficial: beneficial.is_some(),
+        },
+    );
     // Every other cast routes per effect (AB-07): its user halves and its
     // beneficial area halves land off the target, the rest stays for the
     // target pipeline below (`routed.target_def`).

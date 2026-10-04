@@ -302,6 +302,8 @@ async fn fire_due_cast(
     let outer_cast = space_mgr.enter_cast_scope(Some(pc.cast_id()));
     fire_and_credit(entity_id, pc, ability_def, tx, space_mgr, events).await;
     space_mgr.exit_cast_scope(outer_cast);
+    // The cast's debug lines (AB-N1), now its scope is closed.
+    cimmeria_cell_world::cell::combat_debug::flush(tx, space_mgr).await;
 }
 
 /// The body of [`fire_due_cast`].

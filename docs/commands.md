@@ -380,21 +380,21 @@ Assign, advance, and inspect missions on yourself.
 
 Combat, AI, and minigame debug switches.
 
-The five ability and combat debug commands (`/gmdebugability`, `/gmdebugabilityonmob`, `/gmdebugcombat`, `/gmdebugcombatverbose`, `/gmdebugheal`; the heal one's keyword is name-derived, like the others) are sent by the game only from a Game Master character; from a normal character the game drops them silently before they leave your computer. The game has no combat-debug window: any text a server returns for them arrives as an ordinary chat line. Details: [native-combat-debug.md](reverse-engineering/findings/native-combat-debug.md).
+The five ability and combat debug commands (`/gmdebugability`, `/gmdebugabilityonmob`, `/gmdebugcombat`, `/gmdebugcombatverbose`, `/gmdebugheal`; the heal one's keyword is name-derived, like the others) are sent by the game only from a Game Master character; from a normal character the game drops them silently before they leave your computer. The game has no combat-debug window: the server's debug lines arrive as ordinary chat lines on the feedback channel, each starting `[CD #<cast id>]`. Details: [native-combat-debug.md](reverse-engineering/findings/native-combat-debug.md) and [In-game combat debug](gameplay/ability-system.md#in-game-combat-debug).
 
 | Command | What it does | Works now? | Parameters | Example |
 |---|---|---|---|---|
 | `/gmaddbehavioreventset` | Add a behavior event set | ❌ Not yet | `<id>` | `/gmaddbehavioreventset` |
 | `/gmchat` | Send a GM chat message | ❌ Not yet | `<text>` | `/gmchat` |
 | `/gmconfirmeffect` | Respond to an effect-confirmation prompt | ✅ Yes | `<choice>` | `/gmconfirmeffect 1` |
-| `/gmdebugability` | Toggle ability debug | ❌ Not yet | `<abilityId>` | `/gmdebugability` |
-| `/gmdebugabilityonmob` | Run an ability on an NPC for debug | ❌ Not yet | `<abilityId>` | `/gmdebugabilityonmob` |
+| `/gmdebugability` | Toggle debug lines for one ability (its casts by you or on you); `0` clears the list | ✅ Yes | `<abilityId>` | `/gmdebugability 592` |
+| `/gmdebugabilityonmob` | Print your selected mob's casts of one ability (`0`: all) to you | ✅ Yes | `<abilityId>` | `/gmdebugabilityonmob 0` |
 | `/gmdebugbehaviorsonmob` | Stream an NPC's behavior state | ❌ Not yet | none | `/gmdebugbehaviorsonmob` |
-| `/gmdebugcombat` | Toggle combat debug info | 🚧 Partly | none | `/gmdebugcombat` |
-| `/gmdebugcombatverbose` | Toggle verbose combat debug | 🚧 Partly | none | `/gmdebugcombatverbose` |
+| `/gmdebugcombat` | Toggle combat debug: one chat line per hit you land or take (roll, result, pools) | ✅ Yes | none | `/gmdebugcombat` |
+| `/gmdebugcombatverbose` | Toggle verbose combat debug: adds effect plans, damage, ledger and pulses | ✅ Yes | none | `/gmdebugcombatverbose` |
 | `/gmdebugevents` | Toggle event debug | ❌ Not yet | `<target> <level>` | `/gmdebugevents` |
 | `/gmdebugflash` | Toggle Flash UI debug | ❌ Not yet | none | `/gmdebugflash` |
-| `/gmdebugheal` | Toggle healing debug info | 🚧 Partly | none | `/gmdebugheal` |
+| `/gmdebugheal` | Toggle heal debug: one chat line per heal or buff you cast or receive | ✅ Yes | none | `/gmdebugheal` |
 | `/gmdebuginteract` | Force an interaction for debug | ❌ Not yet | none | `/gmdebuginteract` |
 | `/gmdebugjoinminigame` | Join a minigame for debug | ❌ Not yet | `<gameId>` | `/gmdebugjoinminigame` |
 | `/gmdebugminigameinstance` | Inspect a minigame instance | ❌ Not yet | `<instanceId>` | `/gmdebugminigameinstance` |

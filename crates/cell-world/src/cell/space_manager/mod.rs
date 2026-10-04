@@ -366,6 +366,9 @@ pub struct SpaceManager {
     /// `effects::cast_scope`): what the effect rows, ledger entries, pulsing
     /// instances and interrupt requests created under it carry as `cast_id`.
     pub current_cast_id: Option<i32>,
+    /// In-game combat and ability debug (AB-N1, `cell::combat_debug`): who
+    /// has it on, and the notes of the casts being resolved.
+    pub combat_debug: crate::cell::combat_debug::CombatDebug,
     /// Server-authoritative movement validator. Consulted by
     /// `apply_client_position_update` on every inbound client position:
     /// bounds + navmesh + teleport hard-reject, speed warn-only. Holds a
@@ -556,6 +559,7 @@ impl SpaceManager {
             pending_interrupts: Vec::new(),
             interrupt_nonce: 0,
             current_cast_id: None,
+            combat_debug: Default::default(),
             movement_validator: MovementValidator::new(),
             movement_telemetry: MovementTelemetry::default(),
             zero_health_npc_log: LogThrottle::default(),
