@@ -102,6 +102,7 @@ mod tests {
             event_set_id: None,
             velocity: 100.0,
             type_id,
+            passive: false,
         }
     }
 

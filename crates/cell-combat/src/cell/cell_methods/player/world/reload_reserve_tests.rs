@@ -69,6 +69,7 @@ fn mgr(player_id: i32, ammo_type: i32, current: i32) -> SpaceManager {
             event_set_id: None,
             velocity: 0.0,
             type_id: Default::default(),
+            passive: false,
         },
     );
     mgr

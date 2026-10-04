@@ -125,8 +125,13 @@ pub(in crate::cell::service) async fn handle_init_player_state(
             // timed stat buff (a stimpack) would have raised, so a buff
             // still in the ledger would restore its delta below the base
             // when it expired. `InitPlayerState` reaches a fresh entity on
-            // every world entry, so the ledger is empty here; clearing it
-            // keeps that true should the message ever reach a live one.
+            // every world entry, so the ledger is empty here. Should the
+            // message reach a live one, every entry is taken off first,
+            // restoring exactly what it moved: `apply_archetype` resets only
+            // some stats, and a held passive or stance on another one (Cover
+            // Accuracy, Defense) would otherwise stay raised and stack with
+            // the passive pass below.
+            let _ = entity.remove_timed_effects_where(|_| true);
             entity.stat_buffs = Default::default();
             let arch = crate::mercury::archetype_stats(archetype_id);
             entity

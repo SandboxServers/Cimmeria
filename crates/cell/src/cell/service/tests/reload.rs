@@ -199,6 +199,7 @@ async fn reload_completion_tick_emits_ability_end_sequence_when_event_set_presen
             event_set_id: Some(EVENT_SET_ID),
             velocity: 0.0,
             type_id: Default::default(),
+            passive: false,
         },
     );
     mgr.sequence_map

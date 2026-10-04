@@ -216,6 +216,7 @@ pub(super) fn seed_default_ability(mgr: &mut SpaceManager, min_range: i32, max_r
             event_set_id: None,
             velocity: 0.0,
             type_id: Default::default(),
+            passive: false,
         },
     );
 }

@@ -13,12 +13,13 @@ use crate::cell::messages::CellToBaseMsg;
 use crate::cell::spawner::{load_ability_defs, load_effect_defs};
 use crate::test_support::require_db_or_skip;
 use cimmeria_entity::abilities::EffectDef;
-use cimmeria_entity::cell_entity::TreeProgress;
-use cimmeria_entity::stats::{COVER_ACCURACY, DEFENSE, KINETIC_RES};
+use cimmeria_entity::cell_entity::{TimedEffectSpec, TimedStacking, TreeProgress};
+use cimmeria_entity::stats::{COVER_ACCURACY, COVER_DEFENSE, DEFENSE, KINETIC_RES};
 
 const PLAYER: u32 = 1;
 const PLAYER_ID: i32 = 100;
 const WARRIORS_RESILIENCE: i32 = 1731;
+const COVER_PENETRATION: i32 = 1450;
 
 fn fixture() -> SpaceManager {
     let mut mgr = crate::test_support::make_space_manager();
@@ -122,16 +123,74 @@ async fn world_entry_holds_a_stat_passive_and_sends_it() {
     assert!(sent.contains(&KINETIC_RES), "the client hears it: {sent:?}");
 }
 
-/// A second world entry (a relog reaching a live entity) does not stack it:
-/// `InitPlayerState` empties the ledger before the passive pass.
+/// **Regression guard (review).** A second world entry reaching a live
+/// entity takes every ledger entry off before it resets the ledger. Kinetic
+/// Resistance is reset by `apply_archetype` anyway; Cover Accuracy (1450's
+/// passive) and Cover Defense (a stance left on) are not, so dropping the
+/// ledger without reverting would leave +200 Cover Accuracy and an orphaned
+/// +100 Cover Defense.
 #[tokio::test]
-async fn a_second_world_entry_does_not_stack_the_passive() {
+async fn a_second_world_entry_neither_stacks_a_passive_nor_orphans_a_stance() {
     let mut mgr = fixture();
+    crate::test_support::seed_ability_defs(&mut mgr, &[COVER_PENETRATION]);
+    mgr.ability_defs
+        .get_mut(&COVER_PENETRATION)
+        .unwrap()
+        .effect_ids = vec![1741];
+    mgr.effect_defs.insert(
+        1741,
+        EffectDef {
+            effect_id: 1741,
+            ability_id: COVER_PENETRATION,
+            flags: 524_305,
+            pulse_count: 1,
+            pulse_duration: 0.0,
+            script_name: Some("TimedStat".to_string()),
+            params: [("CoverAccuracy".to_string(), "100".to_string())].into(),
+            ..Default::default()
+        },
+    );
     mgr.connect_entity(PLAYER);
-    let _ = deliver(&mut mgr, init_msg(vec![WARRIORS_RESILIENCE])).await;
-    let _ = deliver(&mut mgr, init_msg(vec![WARRIORS_RESILIENCE])).await;
+    let base_ca = stat(&mgr, COVER_ACCURACY);
+    let base_cd = stat(&mgr, COVER_DEFENSE);
+    let known = vec![WARRIORS_RESILIENCE, COVER_PENETRATION];
+    let _ = deliver(&mut mgr, init_msg(known.clone())).await;
+    // A stance left on (1642's 2003, held, Cover Defense +100).
+    mgr.apply_timed_effect(
+        PLAYER,
+        TimedEffectSpec {
+            effect_id: 2003,
+            ability_id: 1642,
+            invoker_id: PLAYER,
+            effect_flags: 21,
+            moniker_ids: vec![],
+            stats: vec![(COVER_DEFENSE, 100)],
+            duration_secs: None,
+            stacking: TimedStacking::PerSource,
+            invoker_identity: Default::default(),
+        },
+        std::time::Instant::now(),
+    );
+    assert_eq!(stat(&mgr, COVER_DEFENSE), base_cd + 100, "fixture");
+
+    let _ = deliver(&mut mgr, init_msg(known)).await;
     assert_eq!(stat(&mgr, KINETIC_RES), 40 + 150);
-    assert_eq!(mgr.get_entity(PLAYER).unwrap().stat_buffs.entries.len(), 1);
+    assert_eq!(
+        stat(&mgr, COVER_ACCURACY),
+        base_ca + 100,
+        "the passive once"
+    );
+    assert_eq!(stat(&mgr, COVER_DEFENSE), base_cd, "the stance reverted");
+    let mut ids: Vec<i32> = mgr
+        .get_entity(PLAYER)
+        .unwrap()
+        .stat_buffs
+        .entries
+        .iter()
+        .map(|b| b.effect_id)
+        .collect();
+    ids.sort_unstable();
+    assert_eq!(ids, vec![1741, 2645]);
 }
 
 /// A purchase holds it at once and sends it; a respec takes it off, sends

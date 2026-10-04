@@ -161,16 +161,30 @@ async fn held_stance_and_passive_rows_carry_their_nvps_live_db() {
 
 /// The removal can only ever reach stance entries: no seeded ability lists
 /// `EFFECT_Stance` among its `moniker_ids`, so an entry carries it only
-/// through its effect's `EffectMoniker` row.
+/// through its effect's `EffectMoniker` row. Read from the table itself:
+/// the ability loader does not load `moniker_ids`.
 #[tokio::test]
 async fn no_ability_carries_the_stance_moniker_live_db() {
     let pool = require_db_or_skip!();
-    let abilities = load_ability_defs(&pool).await.expect("load_ability_defs");
-    let carriers: Vec<i32> = abilities
-        .values()
-        .filter(|d| d.moniker_ids.contains(&EFFECT_STANCE_MONIKER))
-        .map(|d| d.ability_id)
-        .collect();
+    let with = |moniker: i64| {
+        let pool = pool.clone();
+        async move {
+            sqlx::query_scalar::<_, i32>(
+                "SELECT ability_id FROM resources.abilities \
+                 WHERE $1 = ANY(moniker_ids::bigint[]) ORDER BY ability_id",
+            )
+            .bind(moniker)
+            .fetch_all(&pool)
+            .await
+            .expect("moniker query")
+        }
+    };
+    // The query can see monikers at all: the shared group is on hundreds.
+    assert!(
+        with(1_470_900_795).await.len() > 100,
+        "moniker_ids must be readable"
+    );
+    let carriers = with(EFFECT_STANCE_MONIKER).await;
     assert!(carriers.is_empty(), "{carriers:?}");
 }
 

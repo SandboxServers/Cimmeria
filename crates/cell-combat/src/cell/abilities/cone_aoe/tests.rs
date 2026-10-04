@@ -243,6 +243,7 @@ fn make_cone_ability_with_effect(
             event_set_id: None,
             velocity: 0.0,
             type_id: Default::default(),
+            passive: false,
         },
     );
 }
@@ -376,6 +377,7 @@ async fn fan_out_cone_effects_no_cone_effects_returns_empty() {
             event_set_id: None,
             velocity: 0.0,
             type_id: Default::default(),
+            passive: false,
         },
     );
     spawn_npc(&mut mgr, 300, "W", [10.0, 0.0, 0.0]);
@@ -452,6 +454,7 @@ async fn fan_out_cone_effects_two_cones_apply_per_effect_not_unioned() {
             event_set_id: None,
             velocity: 0.0,
             type_id: Default::default(),
+            passive: false,
         },
     );
 

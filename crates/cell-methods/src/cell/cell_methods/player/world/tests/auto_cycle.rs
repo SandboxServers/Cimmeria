@@ -220,6 +220,7 @@ async fn set_auto_cycle_enable_fires_immediately_when_target_and_last_ability_se
             event_set_id: None,
             velocity: 0.0,
             type_id: Default::default(),
+            passive: false,
         },
     );
     let engine = ChainEngine::new();
@@ -280,6 +281,7 @@ async fn set_auto_cycle_enable_persists_ability_even_when_immediate_fire_rejects
             event_set_id: None,
             velocity: 0.0,
             type_id: Default::default(),
+            passive: false,
         },
     );
     let engine = ChainEngine::new();
@@ -377,6 +379,7 @@ async fn set_auto_cycle_enable_skips_immediate_fire_when_on_cooldown() {
             event_set_id: None,
             velocity: 0.0,
             type_id: Default::default(),
+            passive: false,
         },
     );
     let engine = ChainEngine::new();
@@ -533,6 +536,7 @@ async fn set_auto_cycle_immediate_fire_credits_quest_kill_on_tagged_npc_death() 
             event_set_id: None,
             velocity: 0.0,
             type_id: Default::default(),
+            passive: false,
         },
     );
     if let Some(npc) = mgr.get_entity_mut(50) {

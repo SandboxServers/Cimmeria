@@ -14,7 +14,7 @@ use crate::cell::messages::CellToBaseMsg;
 use crate::cell::space_manager::SpaceManager;
 
 /// [`apply_passives`] on `entity_id`, then its dirty stats to its own
-/// client. Returns how many effect scripts ran.
+/// client and its witnesses. Returns how many effect scripts ran.
 pub(super) async fn apply_passives_and_sync(
     entity_id: u32,
     ability_ids: &[i32],
@@ -33,7 +33,9 @@ pub(super) async fn apply_passives_and_sync(
     entity.stats.clear_dirty();
     // serialize_dirty always emits the 4-byte count prefix.
     if payload.len() > 4 {
-        crate::cell::abilities::send_entity_method(
+        // Self and witnesses, as every other stat change (`fire_beneficial`'s
+        // flush): a passive's stats are as public as a buff's.
+        let _ = crate::cell::abilities::send_entity_method_to_self_and_witnesses(
             entity_id,
             crate::mercury::method_idx::ON_STAT_UPDATE,
             payload,

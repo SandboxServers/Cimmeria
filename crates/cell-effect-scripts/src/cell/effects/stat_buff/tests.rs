@@ -297,6 +297,7 @@ fn timed_stat_records_the_abilitys_monikers() {
             event_set_id: None,
             velocity: 0.0,
             type_id: cimmeria_entity::abilities::AbilityType::Buff,
+            passive: false,
         },
     );
     run_as(&mut mgr, &TimedStat, &aim(), 1);

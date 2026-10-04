@@ -17,7 +17,7 @@
 
 use tokio::sync::mpsc;
 
-use cimmeria_entity::abilities::{ability_effects_have_mechanics, AbilityDef};
+use cimmeria_entity::abilities::{ability_effects_have_mechanics, AbilityDef, EF_ALWAYS_PERSIST};
 use cimmeria_wire::cell::chat::{serialize_on_player_communication, CHAN_FEEDBACK};
 
 use crate::cell::cell_methods::player::world::reload::ABILITY_RELOAD_WEAPON;
@@ -40,6 +40,29 @@ const ERRORCODE_SYSTEM_ABILITY: u8 = 0;
 
 /// The `reason` the refusal row carries.
 pub(crate) const REASON_NO_MECHANICS: &str = "no_mechanics";
+
+/// The feedback line a refused press of a passive ability shows.
+pub(crate) const PASSIVE_TEXT: &str = "That ability is passive: it works while you know it.";
+
+/// The `reason` of a refused passive cast.
+pub(crate) const REASON_PASSIVE: &str = "passive_ability";
+
+/// Whether `def` is a passive (ability mechanics AB-08): `passive_yn`, or
+/// every effect `EF_AlwaysPersist`. Its effects run through
+/// `apply_passives` while it is known, never through a cast: since AB-08
+/// they are `TimedStat` mechanics, and a forged cast of 1574 (effect 4782,
+/// no beneficial bit, cooldown 0) at a hostile would run the attack path
+/// (a QR roll, threat, in-combat) for free.
+pub(crate) fn is_passive_ability(space_mgr: &SpaceManager, def: &AbilityDef) -> bool {
+    def.passive
+        || (!def.effect_ids.is_empty()
+            && def.effect_ids.iter().all(|id| {
+                space_mgr
+                    .effect_defs
+                    .get(id)
+                    .is_some_and(|e| e.flags & EF_ALWAYS_PERSIST != 0)
+            }))
+}
 
 /// Whether a cast of `def` does something the server resolves:
 ///
@@ -72,8 +95,9 @@ pub(crate) fn ability_has_mechanics(space_mgr: &SpaceManager, def: &AbilityDef) 
 }
 
 /// Whether a press of `ability_id` must get the no-effect refusal: a player
-/// caster, an ability the server has a def for, no mechanic, and not granted
-/// by the active weapon (the basic attack never goes quiet). `false` for an
+/// caster, an ability the server has a def for, and either a passive
+/// ([`is_passive_ability`]) or no mechanic and not granted by the active
+/// weapon (the basic attack never goes quiet). `false` for an
 /// NPC and for an ability with no def (the caller's own unknown-id path
 /// handles that). Checked right after the known-ability and cooldown checks,
 /// so a dead, missing or friendly target never swallows the answer.
@@ -85,10 +109,11 @@ pub(super) fn lacks_mechanics(
 ) -> bool {
     def.is_some_and(|def| {
         space_mgr.get_entity(entity_id).is_some_and(|e| e.is_player)
-            && !ability_has_mechanics(space_mgr, def)
-            && !super::super::resolve::is_ability_granted_by_active_weapon(
-                space_mgr, entity_id, ability_id,
-            )
+            && (is_passive_ability(space_mgr, def)
+                || (!ability_has_mechanics(space_mgr, def)
+                    && !super::super::resolve::is_ability_granted_by_active_weapon(
+                        space_mgr, entity_id, ability_id,
+                    )))
     })
 }
 
@@ -103,13 +128,20 @@ pub(super) async fn refuse_without_mechanics(
 ) {
     let ability_id = def.ability_id;
     let id = space_mgr.player_identity(entity_id);
+    let passive = is_passive_ability(space_mgr, def);
+    let (reason, text) = if passive {
+        (REASON_PASSIVE, PASSIVE_TEXT)
+    } else {
+        (REASON_NO_MECHANICS, NO_EFFECT_TEXT)
+    };
     // DEBUG: any client can press any bar button at will, and the
     // `abilities=debug` OTEL_FILTER row exports it.
     tracing::debug!(
         target: "abilities",
         event = "no_mechanics_refused",
         decision_outcome = "refused",
-        reason = REASON_NO_MECHANICS,
+        reason,
+        passive,
         entity_id,
         account_id = id.account_id,
         player_id = id.player_id,
@@ -117,9 +149,9 @@ pub(super) async fn refuse_without_mechanics(
         ability_name = %def.name,
         effect_count = def.effect_ids.len(),
         animates = def.event_set_id.is_some(),
-        "useAbility: the ability has no mechanic yet; refused with feedback, no cooldown charged"
+        "useAbility: the ability has no mechanic yet, or is a passive; refused with feedback, no cooldown charged"
     );
-    send_no_effect_feedback(entity_id, ability_id, tx).await;
+    send_no_effect_feedback(entity_id, ability_id, text, tx).await;
 }
 
 /// `onErrorCode(ERRORCODE_SYSTEM_Ability, ability_id, 167)` and the
@@ -127,13 +159,14 @@ pub(super) async fn refuse_without_mechanics(
 async fn send_no_effect_feedback(
     entity_id: u32,
     ability_id: i32,
+    text: &str,
     tx: &mpsc::Sender<CellToBaseMsg>,
 ) {
     let mut err = Vec::with_capacity(7);
     err.push(ERRORCODE_SYSTEM_ABILITY); // SystemID
     err.extend_from_slice(&ability_id.to_le_bytes()); // InstanceID
     err.extend_from_slice(&NO_MECHANICS_ERROR_CODE.to_le_bytes());
-    let chat = serialize_on_player_communication("SYSTEM", 0, CHAN_FEEDBACK, NO_EFFECT_TEXT);
+    let chat = serialize_on_player_communication("SYSTEM", 0, CHAN_FEEDBACK, text);
     for (method_index, args) in [
         (crate::mercury::method_idx::ON_ERROR_CODE, err),
         (crate::mercury::method_idx::ON_PLAYER_COMMUNICATION, chat),

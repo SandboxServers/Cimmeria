@@ -93,7 +93,8 @@ pub async fn load_ability_defs(
     let rows = sqlx::query_as::<_, AbilityRow>(
         "SELECT ability_id, name, cooldown, warmup, flags, is_ranged, \
          min_range, max_range, target_type_id, effect_ids, \
-         required_ammo, event_set_id, velocity, type_id::text AS type_id \
+         required_ammo, event_set_id, velocity, type_id::text AS type_id, \
+         passive_yn \
          FROM resources.abilities",
     )
     .fetch_all(pool)
@@ -125,6 +126,8 @@ struct AbilityRow {
     velocity: f32,
     /// The `"EAbilityTypes"` label, read as text (`ABILITY_TYPE_Heal`).
     type_id: String,
+    /// `passive_yn` (NOT NULL).
+    passive_yn: bool,
 }
 
 impl AbilityRow {
@@ -163,6 +166,7 @@ impl AbilityRow {
             event_set_id: self.event_set_id,
             velocity: self.velocity,
             type_id,
+            passive: self.passive_yn,
         }
     }
 }
@@ -423,7 +427,18 @@ mod range_unit_tests {
             event_set_id: None,
             velocity: 100.0,
             type_id: "ABILITY_TYPE_DD".into(),
+            passive_yn: false,
         }
+    }
+
+    /// AB-08: `passive_yn` reaches `AbilityDef::passive`, which the launch
+    /// gate refuses.
+    #[test]
+    fn passive_yn_reaches_the_def() {
+        let mut r = row(0, 0);
+        r.passive_yn = true;
+        assert!(r.into_def().passive);
+        assert!(!row(0, 0).into_def().passive);
     }
 
     /// #919: the column is UE3 units, `AbilityDef` is metres. Without the

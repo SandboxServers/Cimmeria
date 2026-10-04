@@ -51,6 +51,25 @@ impl EffectScript for RemoveByMoniker {
             );
             return;
         };
+        // Only the caster's own stance: a forged cast routed at someone else
+        // must not strip their entries.
+        if ctx.source_id != ctx.target_id {
+            tracing::warn!(
+                target: "abilities",
+                event = "stat_buff_skipped",
+                reason = "remove_not_self",
+                script = "RemoveByMoniker",
+                account_id = who.account_id,
+                player_id = who.player_id,
+                entity_id = ctx.source_id,
+                target_id = ctx.target_id,
+                target_player_id = target_who.player_id,
+                effect_id = effect.effect_id,
+                ability_id = effect.ability_id,
+                "RemoveByMoniker removes only the caster's own entries; nothing removed"
+            );
+            return;
+        }
         let own = effect.ability_id;
         let removed = ctx.space_mgr.remove_timed_effects(
             ctx.target_id,

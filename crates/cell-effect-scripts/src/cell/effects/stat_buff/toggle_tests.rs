@@ -41,6 +41,7 @@ fn ability(id: i32, flags: u32, effect_ids: Vec<i32>) -> AbilityDef {
         event_set_id: None,
         velocity: 0.0,
         type_id: AbilityType::Buff,
+        passive: false,
     }
 }
 
@@ -361,6 +362,32 @@ fn a_passive_holds_until_removed() {
     TimedStat.on_remove(&mut ctx);
     assert_eq!(cur(&mgr, PLAYER, MENTAL_RES), before);
     assert!(effect_ids(&mgr, PLAYER).is_empty());
+}
+
+/// The removal strips only its caster's own stance: run at another entity
+/// (a forged route), it removes nothing there.
+#[test]
+fn a_stance_removal_at_another_entity_removes_nothing() {
+    let capture = LogCapture::install();
+    let mut mgr = world();
+    press_at(&mut mgr, SOLDIER, OTHER, OTHER);
+    assert_eq!(effect_ids(&mgr, OTHER), vec![2003, 2004, 2005], "fixture");
+    let effect = mgr.effect_defs[&4294].clone();
+    let mut ctx = EffectContext {
+        source_id: PLAYER,
+        target_id: OTHER,
+        effect: &effect,
+        space_mgr: &mut mgr,
+    };
+    RemoveByMoniker.on_apply(&mut ctx);
+    assert_eq!(effect_ids(&mgr, OTHER), vec![2003, 2004, 2005]);
+    assert!(capture
+        .find_event(
+            Level::WARN,
+            "RemoveByMoniker removes only",
+            "remove_not_self"
+        )
+        .is_some());
 }
 
 /// An effect tagged with a moniker the server does not know carries only

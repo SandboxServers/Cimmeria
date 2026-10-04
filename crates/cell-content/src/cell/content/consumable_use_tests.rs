@@ -64,6 +64,7 @@ fn ability(ability_id: i32, effect_ids: Vec<i32>) -> AbilityDef {
         event_set_id: None,
         velocity: 0.0,
         type_id: Default::default(),
+        passive: false,
     }
 }
 

@@ -44,6 +44,7 @@ async fn an_owner_killed_by_a_hit_loses_its_pet_in_the_same_call() {
         event_set_id: None,
         velocity: 0.0,
         type_id: Default::default(),
+        passive: false,
     };
     let mut params = std::collections::HashMap::new();
     params.insert("HealthDamage".to_string(), "9999".to_string());
