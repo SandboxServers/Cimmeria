@@ -8,8 +8,8 @@ use cimmeria_launcher_engine::{
 };
 use uuid::Uuid;
 
-mod contract;
-use contract::progress;
+pub(super) mod contract;
+pub(super) use contract::progress;
 pub use contract::{InstallCommand, InstallStatus, JobError};
 
 impl NativeHost {
@@ -102,17 +102,26 @@ impl NativeHost {
                 .is_some_and(|operation| operation.id == worker.operation_id())
         });
         let observed = worker.and_then(|worker| worker.progress.borrow().as_ref().map(progress));
+        let repair = self.repair_status()?;
+        let observed = if native.operation.operation.as_ref().is_some_and(|op| {
+            op.kind == cimmeria_launcher_engine::OperationKind::Repair && !op.state.terminal()
+        }) {
+            self.repair_progress()?.or(observed)
+        } else {
+            observed
+        };
         Ok(InstallStatus {
             schema_version: 1,
             native,
             install_supported: self.platform_backend().is_ok(),
-            can_resume: recovery && native_backend && cfg!(windows),
+            can_resume: recovery && install_recovery && native_backend && cfg!(windows),
             can_reconcile: recovery
                 && ((install_recovery && (native_backend || cfg!(target_os = "macos")))
                     || runtime_recovery),
             can_retry,
             uninstall,
             runtime_setup,
+            repair,
             progress: observed,
             outcome,
         })
@@ -143,6 +152,9 @@ impl NativeHost {
         } = request
         {
             self.prepare_runtime(operation_id, operation_revision, installation_id)?;
+            return self.install_status();
+        }
+        if self.repair_command(&request)? {
             return self.install_status();
         }
         let state = self.store()?;
@@ -196,7 +208,7 @@ impl NativeHost {
                 *worker = None;
             }
             InstallCommand::Cancel { operation_id, .. } => {
-                if self.cancel_runtime(operation_id)? {
+                if self.cancel_repair(operation_id)? || self.cancel_runtime(operation_id)? {
                     drop(worker);
                     return self.install_status();
                 }
@@ -243,7 +255,12 @@ impl NativeHost {
                 // Recovery supersedes the completed worker's old observation.
                 *worker = None;
             }
-            InstallCommand::Inspect { .. } | InstallCommand::PrepareRuntime { .. } => {
+            InstallCommand::Repair { .. }
+            | InstallCommand::RecoverRepair { .. }
+            | InstallCommand::AbandonRepair { .. }
+            | InstallCommand::CleanupRepair { .. }
+            | InstallCommand::Inspect { .. }
+            | InstallCommand::PrepareRuntime { .. } => {
                 unreachable!()
             }
         }

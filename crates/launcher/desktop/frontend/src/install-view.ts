@@ -1,3 +1,4 @@
+import { repairControls } from './repair-view';
 import { Context, Effect, Fiber, Layer, ManagedRuntime, Result, Stream } from 'effect';
 import { installBridgeLayer, InstallFailure, InstallStatus, InstallViewState, makeInstallWorkflow, operationActive } from './install-workflow';
 import type { Invoke } from './view';
@@ -43,11 +44,12 @@ export function mountInstall(document:Document,invoke:Invoke,uuid:()=>string=()=
     const active=!!status&&operationActive(status);
     const recovery=operation?.state==='reconciliation_required';
     const ready=!!status&&!status.native.requires_reopen&&!current.needsInspection&&!current.busy&&!pending;
+    repairs.render(current,ready);
     const canPrepare=!!status?.runtime_setup&&!active&&!recovery;
     primary.disabled=!ready||active||(!canPrepare&&(!status?.install_supported||(!!operation&&!status?.can_retry)||!status.native.preferences.install_directory));
     const removed=operation?.kind==='uninstall'&&operation.state==='succeeded';
     const runtimeSetup=operation?.kind==='prepare_runtime';
-    primary.textContent=canPrepare?'Continue installation':runtimeSetup?(active?'Checking compatibility…':operation?.state==='succeeded'?'Compatibility checked':'Check compatibility status'):removed?'Install Stargate Worlds':status?.can_retry?'Retry installation':operation?.state==='succeeded'?'Content prepared':active?(operation?.kind==='uninstall'?'Removing…':'Installing…'):'Install Stargate Worlds';
+    primary.textContent=operation?.kind==='repair'?(active?'Repairing…':operation.state==='succeeded'?'Game reconstructed':'Repair stopped'):canPrepare?'Continue installation':runtimeSetup?(active?'Checking compatibility…':operation?.state==='succeeded'?'Compatibility checked':'Check compatibility status'):removed?'Install Stargate Worlds':status?.can_retry?'Retry installation':operation?.state==='succeeded'?'Content prepared':active?(operation?.kind==='uninstall'?'Removing…':'Installing…'):'Install Stargate Worlds';
     const failed=operation?.kind==='install'&&(operation.state==='failed'||operation.state==='cancelled');
     cleanup.hidden=!failed||status?.can_retry===true;
     cleanup.disabled=!ready;
@@ -62,7 +64,7 @@ export function mountInstall(document:Document,invoke:Invoke,uuid:()=>string=()=
     get('uninstall-directory').textContent=uninstalling?.directory??'';
     get<HTMLButtonElement>('confirm-uninstall').disabled=!ready||active;
     get<HTMLButtonElement>('dismiss-uninstall').disabled=pending||current.busy;
-    cancel.hidden=!active||(operation?.kind!=='install'&&operation?.kind!=='prepare_runtime');
+    cancel.hidden=!active||(operation?.kind!=='install'&&operation?.kind!=='prepare_runtime'&&operation?.kind!=='repair');
     cancel.disabled=!ready||operation?.state==='cancel_requested';
     resume.hidden=!recovery||!status?.can_resume; resume.disabled=!ready||!status?.can_resume;
     recheck.textContent=runtimeSetup&&recovery&&status?.can_reconcile?'Recover compatibility setup':'Recheck status';
@@ -72,10 +74,11 @@ export function mountInstall(document:Document,invoke:Invoke,uuid:()=>string=()=
     if(status?.progress){progress.max=Math.max(1,status.progress.total);progress.value=Math.min(status.progress.current,progress.max);
       if(!status.progress.total)progress.removeAttribute('value');}
     let text='Checking installation…';
-    if(current.error)text=errors[current.error];
+    if(current.error)text=operation?.kind==='repair'&&recovery&&['corrupt_state','recovery_required','io'].includes(current.error)?'Repair recovery remains blocked. Preserve the game, backup and stage. Recheck status; checkpoint recovery requires verified replacement evidence, and abandonment requires no commit checkpoint. An unknown helper outcome needs manual inspection.':errors[current.error];
     else if(pending)text='Confirming operation…';
     else if(status){
-      if(removed)text='Game uninstalled. You can install it again when ready.';
+      if(operation?.kind==='repair')text=recovery?'Repair needs recovery. In Settings, finish checkpointed replacement or abandon preparation. Unknown helper outcomes stay blocked; preserve files and restart to recheck.':active?(operation.state==='cancel_requested'?'Cancellation requested. Waiting for repair to stop safely.':status.progress?.phase==='download'?'Downloading repair content…':status.progress?.phase==='extraction'?'Reconstructing game content…':'Preparing or committing repair…'):operation.state==='succeeded'?'Game reconstructed. The old backup is retained; remove it explicitly in Settings. Play readiness is unchanged.':operation.state==='cancelled'?'Repair cancelled. The old game and retained staging files are preserved.':'Repair stopped. Recheck status; retained files are preserved.';
+      else if(removed)text='Game uninstalled. You can install it again when ready.';
       else if(canPrepare)text='Game content is ready. Continue installation to check compatibility.';
       else if(runtimeSetup)text=recovery?(status.can_reconcile?'A saved compatibility result is available. Recover setup to finish checking its state.':'Compatibility setup was interrupted. Files are preserved; recovery requires inspection.'):active?(operation?.state==='cancel_requested'?'Cancellation requested. Waiting for compatibility setup to stop safely.':'Checking game compatibility…'):operation?.state==='succeeded'?'Prerequisites checked. Graphics and Play still need validation.':'Compatibility setup stopped. Game files are preserved.';
       else if(operation?.kind==='uninstall')text=recovery?'Uninstall was interrupted. Use Finish uninstall in Settings to confirm removal again.':active?'Removing game files…':'Inspect uninstall status before continuing.';
@@ -93,6 +96,7 @@ export function mountInstall(document:Document,invoke:Invoke,uuid:()=>string=()=
     get('install-status').textContent=text;
     primary.setAttribute('aria-busy',String(pending||active));
   };
+  const repairs=repairControls(document,uuid,action=>run(action));
   const watcher=runtime.runFork(Effect.flatMap(Installation,service=>Stream.runForEach(service.changes,
     value=>Effect.sync(()=>{current=value;render();}))));
   const advance=(status:InstallStatus)=>{
@@ -143,7 +147,7 @@ export function mountInstall(document:Document,invoke:Invoke,uuid:()=>string=()=
   const refresh=()=>run(service=>service.inspect);
   const ready=refresh();
   return {ready,refresh,settled:()=>mutation,dispose:async()=>{
-    if(disposed)return;disposed=true;abort.abort();listeners.forEach(remove=>remove());
+    if(disposed)return;disposed=true;abort.abort();listeners.forEach(remove=>remove());repairs.dispose();
     await Effect.runPromise(Fiber.interrupt(watcher));await Promise.all([mutation,observation]);await runtime.dispose();
   }};
 }

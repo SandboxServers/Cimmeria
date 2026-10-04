@@ -36,6 +36,31 @@ pub enum InstallCommand {
         operation_revision: u64,
         confirmed: bool,
     },
+    Repair {
+        schema_version: u32,
+        operation_id: Uuid,
+        operation_revision: u64,
+        installation_id: Uuid,
+        confirmed: bool,
+    },
+    RecoverRepair {
+        schema_version: u32,
+        operation_id: Uuid,
+        operation_revision: u64,
+        confirmed: bool,
+    },
+    AbandonRepair {
+        schema_version: u32,
+        operation_id: Uuid,
+        operation_revision: u64,
+        confirmed: bool,
+    },
+    CleanupRepair {
+        schema_version: u32,
+        operation_id: Uuid,
+        operation_revision: u64,
+        confirmed: bool,
+    },
     Cancel {
         schema_version: u32,
         operation_id: Uuid,
@@ -59,6 +84,10 @@ impl InstallCommand {
             | Self::PrepareRuntime { schema_version, .. }
             | Self::Uninstall { schema_version, .. }
             | Self::CleanFailed { schema_version, .. }
+            | Self::Repair { schema_version, .. }
+            | Self::RecoverRepair { schema_version, .. }
+            | Self::AbandonRepair { schema_version, .. }
+            | Self::CleanupRepair { schema_version, .. }
             | Self::Cancel { schema_version, .. }
             | Self::Resume { schema_version, .. }
             | Self::Reconcile { schema_version, .. } => *schema_version,
@@ -162,6 +191,7 @@ pub struct InstallStatus {
     pub can_resume: bool,
     pub can_reconcile: bool,
     pub can_retry: bool,
+    pub repair: super::super::repair::RepairStatus,
     pub runtime_setup: Option<Uuid>,
     pub uninstall: Option<cimmeria_launcher_engine::uninstall::Target>,
     pub progress: Option<JobProgress>,
@@ -173,7 +203,7 @@ pub enum JobProgress {
     Download { current: u64, total: u64 },
     Extraction { current: u64, total: u64 },
 }
-pub(super) fn progress(value: &Progress) -> JobProgress {
+pub(crate) fn progress(value: &Progress) -> JobProgress {
     const MAX: u64 = 9_007_199_254_740_991;
     match value {
         Progress::Downloading {

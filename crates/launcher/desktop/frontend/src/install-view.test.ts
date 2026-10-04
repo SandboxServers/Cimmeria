@@ -231,3 +231,21 @@ test('observed compatibility recovery is explicit and never dispatches setup aga
   assert.equal(status.native.preferences.launcher_summary_consent,false);
  }finally{await app.dispose();}
 });
+
+test('repair confirmation dismisses without mutation and duplicate confirm sends one saved-owner request',async()=>{
+ const ui=dom();let status:InstallStatus={...initial(),repair:{target:{installation_id:'owner',directory:'/owned-game'},recovery:false,cleanup:false}};
+ const commands:InstallRequest[]=[];
+ const app=mountInstall(ui.document,async(_command,args)=>{const request=args!.request as InstallRequest;commands.push(request);
+   if(request.command==='repair'){assert.equal(request.installation_id,'owner');assert.equal(request.confirmed,true);
+     status={...status,repair:{target:null,recovery:false,cleanup:true},native:{...status.native,operation:{schema_version:1,revision:2,operation:{id,kind:'repair',state:'succeeded',intent_digest:Array(32).fill(0)}}}};}
+   return status;
+ },()=>id);
+ try{await app.ready;await flush();ui.click('repair');assert.equal(ui.get('repair-directory').textContent,'/owned-game');
+   ui.click('dismiss-repair');assert.equal(commands.some(x=>x.command==='repair'),false);
+   ui.click('repair');ui.click('confirm-repair');ui.click('confirm-repair');await app.settled();await flush();
+   assert.equal(commands.filter(x=>x.command==='repair').length,1);assert.match(ui.get('install-status').textContent!,/Game reconstructed/);
+   assert.equal(ui.get('install').disabled,true);assert.equal(ui.get('cleanup-repair').hidden,false);
+   ui.click('cleanup-repair');assert.match(ui.get('repair-consequences').textContent!,/Permanently delete/);
+   ui.click('confirm-repair');await app.settled();assert.equal(commands.filter(x=>x.command==='cleanup_repair').length,1);
+ }finally{await app.dispose();}
+});

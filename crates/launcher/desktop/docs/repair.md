@@ -1,11 +1,67 @@
 # Repair design contract
 
-**Status: native admission, reconstruction and retained replacement implemented;
-checkpointed native restart recovery and current-operation backup cleanup are
-implemented. Retained Mac Wine reconstruction/commit and observed-result recovery,
-abandonment and backup cleanup are implemented; UI remains unconnected.** This contract defines the replacement workflow and its gates.
-Repair is not yet an available user command. See
-[maintenance](maintenance.md) for implemented uninstall.
+**Status: Settings confirmation, retained native preparation/replacement, progress,
+precommit cancellation, explicit recovery/abandonment and current-backup cleanup
+are connected. Platform release gates remain open.** See
+[maintenance](maintenance.md) for uninstall.
+
+## Settings journey
+
+Choose **Repair game** in Settings. The confirmation displays the saved installed
+directory, even if Settings currently selects another folder or game content is
+missing. Repair reconstructs the same authenticated release and replaces game
+modifications. Dismissal sends no mutation. Confirmation creates one fresh work ID;
+repeated clicks are suppressed and native duplicate IDs never dispatch again.
+
+The application-owned Effect workflow reinspects native state before each action,
+then observes the retained native worker. Download/extraction progress comes from
+that worker. Closing the view does not cancel it. **Cancel** requests native
+precommit cancellation; once replacement begins, it must finish or require recovery.
+Successful repair preserves settings and diagnostics consent and never enables Play.
+
+After a lost reply, choose **Recheck status**. Never automatically replay repair.
+After a process restart, Settings exposes two explicitly confirmed recovery actions:
+
+- **Recover repair** finishes only a valid checkpointed replacement. Native ownership,
+  tree and Wine helper evidence checks can refuse it without changing files.
+- **Abandon preparation** accepts only pre-checkpoint work. It preserves the original
+  game and all retained stages, and records cancellation. It does not repair content.
+
+Unknown helper outcomes remain gated. Preserve the game, backup, stages and journal
+for manual inspection; restarting and rechecking does not prove a helper stopped.
+Neither button promises recovery of every interruption.
+
+After durable success, **Remove old repair backup** separately confirms permanent
+removal of the current repair's backup, including modifications there. Cleanup is
+recoverable and idempotent through its native checkpoint. It does not delete stages.
+Perform it before starting another operation: historical backup/stage cleanup is
+outside this command's scope. Settings and diagnostics consent remain available
+according to the existing native persistence gates.
+
+## IPC and validation boundary
+
+`install_command` accepts `repair` with work ID, operation revision, permanent
+installation ID and confirmation. `recover_repair`, `abandon_repair` and
+`cleanup_repair` accept the inspected work ID/revision and confirmation. Paths,
+release choices and claimed results are not accepted from the renderer.
+The status includes a native repair target and explicit recovery/cleanup flags;
+these are presentation eligibility, while mutation independently validates evidence.
+Recovery buttons mean “request native validation,” not a guarantee it will succeed.
+
+The host retains preparation's cancellation/progress handle and transfers only its
+result receiver to the coordinator. That coordinator consumes `Prepared` directly
+into native/Wine commit without releasing the root, work or prefix ownership.
+Dispatch failure marks reconciliation immediately. Active observation avoids
+reopening the worker-owned root marker, which matters for Windows file locking.
+
+The `frontend/repair-uat.mjs` exercise runs actual Effect/view logic against the
+ignored native `repair_uat_bridge` test. It checks durable admission, cancellation,
+reopen, refused recovery, explicit abandonment, saved-directory identity and consent.
+Its controlled worker seam holds work before reconstruction: it does **not** exercise
+real downloads, Wine, replacement or cleanup. Rust engine fixtures cover those
+filesystem checkpoints separately. Native Windows locking/power-loss and packaged
+visual/focus UAT remain required; the coordinator owns the visible UI pass.
+The dated sections below retain the earlier engine milestones and their evidence.
 
 ## Identity and reconstruction
 

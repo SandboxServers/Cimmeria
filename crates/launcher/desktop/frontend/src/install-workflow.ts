@@ -5,6 +5,7 @@ const Count = Schema.Int.check(Schema.isBetween({minimum:0, maximum:Number.MAX_S
 export const InstallStatus = Schema.Struct({
   schema_version:Schema.Literal(1), native:NativeSnapshot, install_supported:Schema.Boolean, can_resume:Schema.Boolean, can_reconcile:Schema.Boolean, can_retry:Schema.Boolean,
   runtime_setup:Schema.NullOr(Schema.String),
+  repair:Schema.optionalKey(Schema.Struct({directory:Schema.optionalKey(Schema.NullOr(Schema.String)),target:Schema.NullOr(Schema.Struct({installation_id:Schema.String,directory:Schema.String})),recovery:Schema.Boolean,cleanup:Schema.Boolean})),
   uninstall:Schema.NullOr(Schema.Struct({installation_id:Schema.String,directory:Schema.String,recovery:Schema.Boolean})),
   progress:Schema.NullOr(Schema.Struct({phase:Schema.Literals(['download','extraction']), current:Count, total:Count})),
   outcome:Schema.NullOr(Schema.Literals(['content_prepared','cancelled','destination_unavailable','install_failed','content_invalid','reconciliation_required','rosetta_required','runtime_unavailable'])),
@@ -15,6 +16,8 @@ export type InstallRequest = {command:'inspect';schema_version:1} |
   {command:'prepare_runtime';schema_version:1;operation_id:string;operation_revision:number;installation_id:string} |
   {command:'uninstall';schema_version:1;operation_id:string;operation_revision:number;installation_id:string;confirmed:true} |
   {command:'clean_failed';schema_version:1;operation_id:string;operation_revision:number;confirmed:true} |
+  {command:'repair';schema_version:1;operation_id:string;operation_revision:number;installation_id:string;confirmed:true} |
+  {command:'recover_repair'|'abandon_repair'|'cleanup_repair';schema_version:1;operation_id:string;operation_revision:number;confirmed:true} |
   {command:'cancel';schema_version:1;operation_id:string} |
   {command:'resume'|'reconcile';schema_version:1;operation_id:string;operation_revision:number};
 const codes = ['unsupported_schema','platform_unavailable','io','corrupt_state','invalid_directory','stale_revision',
@@ -99,7 +102,13 @@ export const makeInstallWorkflow = Effect.gen(function*(){
     command:'prepare_runtime',schema_version:1,operation_id:id,operation_revision:status.native.operation.revision,
     installation_id:installationId,
   }),status=>status.runtime_setup===installationId&&status.native.operation.operation?.id===previousId);
-  return {inspect,install,cancel,prepareRuntime,
+  const repair=(id:string,installationId:string)=>mutate(status=>({command:'repair',schema_version:1,
+    operation_id:id,operation_revision:status.native.operation.revision,installation_id:installationId,confirmed:true}),
+    status=>status.repair?.target?.installation_id===installationId);
+  const repairAction=(command:'recover_repair'|'abandon_repair'|'cleanup_repair',id:string)=>mutate(status=>({
+    command,schema_version:1,operation_id:id,operation_revision:status.native.operation.revision,confirmed:true,
+  }),status=>status.native.operation.operation?.id===id && (command==='cleanup_repair'?status.repair?.cleanup===true:status.repair?.recovery===true));
+  return {inspect,install,cancel,prepareRuntime,repair,repairAction,
     uninstall:(id:string,installationId:string)=>mutate(status=>({command:'uninstall',schema_version:1,operation_id:id,
       operation_revision:status.native.operation.revision,installation_id:installationId,confirmed:true})),resume:(id:string)=>recover('resume',id),
     cleanFailed:(id:string)=>mutate(status=>({command:'clean_failed',schema_version:1,operation_id:id,
