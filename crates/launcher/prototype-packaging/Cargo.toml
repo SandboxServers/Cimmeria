@@ -1,0 +1,5 @@
+[workspace]
+members = ["model", "egui", "tauri"]
+resolver = "2"
+[profile.release]
+strip = true

@@ -5,6 +5,17 @@
 > **Last updated:** 2026-10-03
 > **Companions:** [Playtest handoff](README.md), [launcher design](../../../client/sgw-launcher.md), [Mac guide](../../../guides/macos.md), [build policy](../../../../CLAUDE.md)
 
+## Authorized packaging experiment
+
+On 2026-10-03 the user explicitly authorized a bounded native Mac packaging
+proof comparing egui and Tauri. This supersedes the earlier no-build permission
+status **for that proof only**. The production Windows-native policy remains;
+all compiling Cargo calls still use the build lane. No architecture is selected.
+See the [proof runbook](../../../../crates/launcher/prototype-packaging/README.md)
+for commands, self-contained first-open criteria, current evidence and the
+Windows-native handoff. At this handoff, egui release build and actual-model JS
+UAT passed; Tauri compilation and offline/visual verification remain unfinished.
+
 ## Recommendation
 
 ### Accepted first-open requirement
@@ -52,8 +63,8 @@ window.
 
 This recommendation is an experiment order, not a platform commitment. The
 current repo permits Windows-native builds and has no Mac product target.
-**Obtain an explicit build-policy exception before implementing or compiling a
-Mac prototype.** Windows builds continue through `tools/build-lane/lane.sh`.
+**The packaging proof above has a scoped exception; obtain explicit approval
+before expanding it into a production Mac implementation.** Windows builds continue through `tools/build-lane/lane.sh`.
 This research does not amend those rules or authorize cross-compilation.
 
 For the immediate tester, continue the existing Windows launcher under
@@ -332,8 +343,8 @@ approved design and native interaction details.
 
 Stop or change direction when evidence warrants it:
 
-- Stop all native implementation until the build-policy exception and supported
-  platform scope are explicit.
+- Keep native work within the authorized packaging-proof scope; stop before
+  expanding production platform support without an explicit policy decision.
 - Stop a frontend candidate if it cannot meet agreed accessibility or
   responsiveness gates without disproportionate maintenance work.
 - Stop native extraction if the real CAB fixture cannot be handled correctly;
