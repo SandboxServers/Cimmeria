@@ -121,7 +121,7 @@ For channelled effects (`pulse_count = 0`), we register with `MAX_CHANNEL_PULSES
 | TCM | Effect rows (DB seed) | Route |
 |---|---|---|
 | `TCM_Single` | 2,795 (87%) | `apply_damage_to_target` (primary only) |
-| `TCM_AERadius` | 300 (9%) | `handle_use_ability_on_ground` for ground-targeted; primary-only for everything else |
+| `TCM_AERadius` | 300 (9%) | `handle_use_ability_on_ground` for ground-targeted (its secondaries take the area part only); a beneficial one of a player's non-ground cast fans out to the caster's allies; primary-only for everything else (decision 35) |
 | `TCM_AECone` | 99 (3%) | `cone_aoe::fan_out_cone_effects` after primary commits |
 
 **Why:** Each TCM has a different anchor and different geometry, so a unified "collect_targets(tcm, args)" entrypoint would push the dispatch one layer deeper without removing the per-TCM code. Three call sites match three real call paths.
@@ -249,6 +249,7 @@ Later decisions live in two sibling files, with their numbers and text unchanged
 - [32. NPC-vs-NPC: an NPC's area ability hits the NPCs it would target, and an NPC-only kill pays nobody (#1009)](abilities-and-effects-decisions-23-33.md#32-npc-vs-npc-an-npcs-area-ability-hits-the-npcs-it-would-target-and-an-npc-only-kill-pays-nobody-1009)
 - [33. The scripts live in a leaf crate and register with the cell at startup (#962 step 4)](abilities-and-effects-decisions-23-33.md#33-the-scripts-live-in-a-leaf-crate-and-register-with-the-cell-at-startup-962-step-4)
 - [34. A beneficial cast lands on the caster or an ally, never on a hostile (ability mechanics AB-01)](abilities-and-effects-decisions-23-33.md#34-a-beneficial-cast-lands-on-the-caster-or-an-ally-never-on-a-hostile-ability-mechanics-ab-01)
+- [35. Each effect of a cast lands where its routing says (ability mechanics AB-07)](abilities-and-effects-decisions-23-33.md#35-each-effect-of-a-cast-lands-where-its-routing-says-ability-mechanics-ab-07)
 
 ## Cross-cutting follow-ups
 

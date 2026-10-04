@@ -34,16 +34,14 @@
 use tokio::sync::mpsc;
 
 use cimmeria_cell_world::cell::duel::DuelResources;
-use cimmeria_entity::abilities::{
-    ability_is_beneficial, AbilityDef, EffectDef, EF_RESOLVE_ON_ABILITY_USER, TARGET_SELF,
-};
+use cimmeria_entity::abilities::{ability_is_beneficial, AbilityDef, TARGET_SELF};
 use cimmeria_entity::cell_entity::CellEntity;
 use cimmeria_wire::cell::chat::{serialize_on_player_communication, CHAN_FEEDBACK};
 
 use super::super::super::combat;
 use super::super::super::messages::CellToBaseMsg;
 use super::super::super::space_manager::SpaceManager;
-use super::super::messaging::send_entity_method_to_self_and_witnesses;
+use super::super::effect_routing::{land_effects, plan_cast, Landing};
 use super::support_shot::{classify, SupportTarget};
 
 /// `event` of every beneficial-cast resolution (target `abilities`).
@@ -232,7 +230,9 @@ pub(super) fn landing_id(caster_id: u32, target: CastTarget) -> i32 {
 ///
 /// A `diverted` cast (a summon, an owner-pet ability, a deployable) has its
 /// own target rule and gets target 0, as before. A non-beneficial cast keeps
-/// the wire target. A beneficial cast gets the resolved entity, so the
+/// the wire target, unless its effects all land off the target or its user
+/// half would be refused with it (`effect_routing::launch_target`: target 0).
+/// A beneficial cast gets the resolved entity, so the
 /// launch's range and line-of-sight checks, the warmup's anchor and the
 /// `onSequence` all name where it will land.
 pub(super) async fn launch_target(
@@ -247,7 +247,11 @@ pub(super) async fn launch_target(
         return Some((0, false));
     }
     if !is_player_beneficial(space_mgr, caster_id, def) {
-        return Some((wire_target, false));
+        // A cast whose user half has nowhere else to land, or whose target
+        // #444 would refuse, drops its target (AB-07, `effect_routing`).
+        let target =
+            super::super::effect_routing::launch_target(space_mgr, caster_id, def, wire_target);
+        return Some((target, false));
     }
     let (target, resolution) = resolve(space_mgr, caster_id, def, wire_target);
     log_resolution(
@@ -396,8 +400,10 @@ pub(super) fn target_gate(
 /// the launch from the fire: the ally died, left, or turned hostile).
 ///
 /// The caller (`fire::fire_cast`) has played `Ability_End` at the same
-/// resolved entity and spent any ammo. Runs every effect script on the resolved entity (an
-/// `EF_ResolveOnAbilityUser` effect on the caster), sends each touched
+/// resolved entity and spent any ammo. Runs every effect script on the
+/// resolved entity, routed per effect by `effect_routing` (an
+/// `EF_ResolveOnAbilityUser` effect on the caster, an area effect on the
+/// caster's allies in its radius, AB-07), sends each touched
 /// entity's stat change to it and its witnesses, sends any buff timers, and
 /// registers pulsing effects (Recuperation's 25 pulses) with the caster as
 /// invoker. This path owns every effect of a beneficial cast: it never
@@ -423,59 +429,12 @@ pub(super) async fn fire_beneficial(
     let Some(def) = def.as_ref() else { return };
 
     let before = pools(space_mgr, target_id);
-    let effects: Vec<_> = def
-        .effect_ids
-        .iter()
-        .filter_map(|id| space_mgr.effect_defs.get(id).cloned())
-        .collect();
-    // `EF_ResolveOnAbilityUser` effects land on the caster even when the
-    // cast lands on an ally; every other effect lands on the resolved target.
-    let recipient = |e: &EffectDef| {
-        if e.flags & EF_RESOLVE_ON_ABILITY_USER != 0 {
-            caster_id
-        } else {
-            target_id
-        }
-    };
-    for effect in &effects {
-        let Some(script_name) = effect.script_name.clone() else {
-            continue;
-        };
-        let mut ctx = crate::cell::effects::EffectContext {
-            source_id: caster_id,
-            target_id: recipient(effect),
-            effect,
-            space_mgr,
-        };
-        crate::cell::effects::dispatch_by_name(&script_name, &mut ctx);
-    }
-
-    let now = std::time::Instant::now();
-    let mut touched = vec![target_id];
-    if caster_id != target_id && effects.iter().any(|e| recipient(e) == caster_id) {
-        touched.push(caster_id);
-    }
-    for &entity_id in &touched {
-        flush_stats(entity_id, tx, space_mgr).await;
-        // A `StatBuff` script queued its duration timer; send it with the stats.
-        crate::cell::effects::flush_stat_buff_timers(entity_id, now, tx, space_mgr).await;
-    }
-
-    let mut pulsing = 0usize;
-    for effect in effects.iter().filter(|e| e.is_pulsing()) {
-        if crate::cell::effects::register_active_effect(
-            space_mgr,
-            recipient(effect),
-            caster_id,
-            effect,
-            now,
-            tx,
-        )
-        .await
-        {
-            pulsing += 1;
-        }
-    }
+    // Per-effect routing (AB-07): an `EF_ResolveOnAbilityUser` effect lands
+    // on the caster even when the cast lands on an ally, a beneficial area
+    // effect on the caster's allies around them, and every other effect on
+    // the resolved target.
+    let routed = plan_cast(space_mgr, caster_id, Some(def), Some(target_id));
+    let pulsing = land_effects(caster_id, &routed.landings, tx, space_mgr).await;
 
     let after = pools(space_mgr, target_id);
     tracing::debug!(
@@ -488,6 +447,11 @@ pub(super) async fn fire_beneficial(
         target_player_id = space_mgr.player_identity(target_id).player_id,
         resolution,
         pulsing_registered = pulsing,
+        recipient_ids = ?recipients(&routed.landings),
+        recipient_player_ids = ?recipients(&routed.landings)
+            .into_iter()
+            .map(|id| space_mgr.player_identity(id).player_id)
+            .collect::<Vec<_>>(),
         target_health_before = before.0,
         target_health_after = after.0,
         target_focus_before = before.1,
@@ -496,30 +460,15 @@ pub(super) async fn fire_beneficial(
     );
 }
 
-/// Send `entity_id`'s dirty stats to it and its witnesses.
-async fn flush_stats(
-    entity_id: u32,
-    tx: &mpsc::Sender<CellToBaseMsg>,
-    space_mgr: &mut SpaceManager,
-) {
-    let stat_update = match space_mgr.get_entity_mut(entity_id) {
-        Some(t) => {
-            let update = t.stats.serialize_dirty();
-            t.stats.clear_dirty();
-            update
+/// Every entity a landing reaches, in first-landing order.
+fn recipients(landings: &[Landing]) -> Vec<u32> {
+    let mut out: Vec<u32> = Vec::new();
+    for l in landings {
+        if !out.contains(&l.recipient) {
+            out.push(l.recipient);
         }
-        None => Vec::new(),
-    };
-    if !stat_update.is_empty() {
-        send_entity_method_to_self_and_witnesses(
-            entity_id,
-            crate::mercury::method_idx::ON_STAT_UPDATE,
-            stat_update,
-            tx,
-            space_mgr,
-        )
-        .await;
     }
+    out
 }
 
 /// The entity's current `(Health, Focus)`, for the before and after fields.

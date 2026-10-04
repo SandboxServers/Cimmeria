@@ -198,23 +198,26 @@ INSERT INTO effect_nvps (nvp_id, effect_id, name, value) VALUES (20005, 1040, 'H
 -- RECONSTRUCTION 1044 Direct Heal (ability 948), effect_desc "Single Target\nTarget +10% Health"
 --   from "Target +10% Health" -> HealHealth, HealPercentage 10.00
 INSERT INTO effect_nvps (nvp_id, effect_id, name, value) VALUES (20006, 1044, 'HealPercentage', '10.00');
+-- RECONSTRUCTION 1215 Rally AE Focus Heal (ability 869), effect_desc "Short Radius AE\n35% Focus Heal"
+--   from "35% Focus Heal" -> HealFocus, HealPercentage 35.00
+INSERT INTO effect_nvps (nvp_id, effect_id, name, value) VALUES (20007, 1215, 'HealPercentage', '35.00');
 -- RECONSTRUCTION 1877 Focus Heal (ability 1554), effect_desc "Heals 35% of players Focus pool"
 --   from "Heals 35% of players Focus pool" -> HealFocus, HealPercentage 35.00
-INSERT INTO effect_nvps (nvp_id, effect_id, name, value) VALUES (20007, 1877, 'HealPercentage', '35.00');
+INSERT INTO effect_nvps (nvp_id, effect_id, name, value) VALUES (20008, 1877, 'HealPercentage', '35.00');
 -- RECONSTRUCTION 1878 Focus Heal (ability 1555), effect_desc "Heals 35% of players Focus pool"
 --   from "Heals 35% of players Focus pool" -> HealFocus, HealPercentage 35.00
-INSERT INTO effect_nvps (nvp_id, effect_id, name, value) VALUES (20008, 1878, 'HealPercentage', '35.00');
+INSERT INTO effect_nvps (nvp_id, effect_id, name, value) VALUES (20009, 1878, 'HealPercentage', '35.00');
 -- RECONSTRUCTION 2009 Focus Heal (ability 1647), effect_desc "Heals 35% of players Focus pool"
 --   from "Heals 35% of players Focus pool" -> HealFocus, HealPercentage 35.00
-INSERT INTO effect_nvps (nvp_id, effect_id, name, value) VALUES (20009, 2009, 'HealPercentage', '35.00');
+INSERT INTO effect_nvps (nvp_id, effect_id, name, value) VALUES (20010, 2009, 'HealPercentage', '35.00');
 -- RECONSTRUCTION 2014 Focus Heal (ability 1651), effect_desc "Heals 35% of target's Focus pool"
 --   from "Heals 35% of target's Focus pool" -> HealFocus, HealPercentage 35.00
-INSERT INTO effect_nvps (nvp_id, effect_id, name, value) VALUES (20010, 2014, 'HealPercentage', '35.00');
+INSERT INTO effect_nvps (nvp_id, effect_id, name, value) VALUES (20011, 2014, 'HealPercentage', '35.00');
 -- RECONSTRUCTION 4085 Lord's Vitae Heal (ability 2823), effect_desc "Heals 10% of target's Health pool\nChanneled: 1 Second interval\nEnergy -25"
 --   from "Heals 10% of target's Health pool" -> HealHealth, HealPercentage 10.00
 --   note: "Energy -25" is a cost; no ability cost is modelled (B-04)
 --   note: 10% per pulse, 20 pulses of 1 s (200% in total)
-INSERT INTO effect_nvps (nvp_id, effect_id, name, value) VALUES (20011, 4085, 'HealPercentage', '10.00');
+INSERT INTO effect_nvps (nvp_id, effect_id, name, value) VALUES (20012, 4085, 'HealPercentage', '10.00');
 -- ability-mechanics generated heal end
 
 -- ability-mechanics generated damage begin
@@ -1044,90 +1047,105 @@ INSERT INTO effect_nvps (nvp_id, effect_id, name, value) VALUES (23004, 928, 'Ac
 --   note: 15 s, the effect's pulse_duration
 INSERT INTO effect_nvps (nvp_id, effect_id, name, value) VALUES (23005, 937, 'Accuracy', '-200');
 INSERT INTO effect_nvps (nvp_id, effect_id, name, value) VALUES (23006, 937, 'Defense', '-200');
+-- RECONSTRUCTION 948 Defense Debuff (ability 877), effect_desc "Medium Radius AE\n-200 Defense: 15 Seconds"
+--   from "-200 Defense: 15 Seconds" -> TimedStat, Defense -200
+--   note: D-AB09: a bare -200 is -200 stat points (-2 QR per alias.xml)
+--   note: 15 s, the effect's pulse_duration
+INSERT INTO effect_nvps (nvp_id, effect_id, name, value) VALUES (23007, 948, 'Defense', '-200');
 -- RECONSTRUCTION 1460 Aimed Shot: Leg Snare (ability 855), effect_desc "Single Target\nTarget Movement Speed-30%"
 --   from "Target Movement Speed-30%" -> TimedStat, MovementSpeedMod -30
 --   note: D-AB09: -30% run speed is movementSpeedMod -30 (100 = unmodified)
 --   note: 15 s, the effect's pulse_duration
-INSERT INTO effect_nvps (nvp_id, effect_id, name, value) VALUES (23007, 1460, 'MovementSpeedMod', '-30');
+INSERT INTO effect_nvps (nvp_id, effect_id, name, value) VALUES (23008, 1460, 'MovementSpeedMod', '-30');
 -- RECONSTRUCTION 1743 Buff (ability 1452), effect_desc "Single Target\n+200 CoverDefense: 15 seconds"
 --   from "+200 CoverDefense: 15 seconds" -> TimedStat, CoverDefense 200
 --   note: D-AB09: a bare +200 is +200 stat points
 --   note: 15 s, the effect's pulse_duration
 --   note: the ability tooltip names ['CrouchingDefense']; the effect row is what executes (as for heal 3211)
-INSERT INTO effect_nvps (nvp_id, effect_id, name, value) VALUES (23008, 1743, 'CoverDefense', '200');
+INSERT INTO effect_nvps (nvp_id, effect_id, name, value) VALUES (23009, 1743, 'CoverDefense', '200');
 -- RECONSTRUCTION 1744 Buff (ability 1453), effect_desc "Single Target\n+50 Response: 15 seconds"
 --   from "+50 Response: 15 seconds" -> TimedStat, Response 50
 --   note: D-AB09: a bare +50 is +50 stat points
 --   note: 15 s, the effect's pulse_duration
-INSERT INTO effect_nvps (nvp_id, effect_id, name, value) VALUES (23009, 1744, 'Response', '50');
+INSERT INTO effect_nvps (nvp_id, effect_id, name, value) VALUES (23010, 1744, 'Response', '50');
 -- RECONSTRUCTION 1747 Buff (ability 1454), effect_desc "Single Target\n+100 Cover Defense: 15 seconds"
 --   from "+100 Cover Defense: 15 seconds" -> TimedStat, CoverDefense 100
 --   note: D-AB09: a bare +100 is +100 stat points
 --   note: 15 s, the effect's pulse_duration
-INSERT INTO effect_nvps (nvp_id, effect_id, name, value) VALUES (23010, 1747, 'CoverDefense', '100');
+INSERT INTO effect_nvps (nvp_id, effect_id, name, value) VALUES (23011, 1747, 'CoverDefense', '100');
 -- RECONSTRUCTION 1962 Combat Sprint Run Speed Buff (ability 1619), effect_desc "Single Target\nUser +50% Run Speed\n10 Second Duration"
 --   from "User +50% Run Speed" -> TimedStat, MovementSpeedMod 50
 --   note: D-AB09: +50% run speed is movementSpeedMod +50 (100 = unmodified)
 --   note: 10 s, the effect's pulse_duration
-INSERT INTO effect_nvps (nvp_id, effect_id, name, value) VALUES (23011, 1962, 'MovementSpeedMod', '50');
+INSERT INTO effect_nvps (nvp_id, effect_id, name, value) VALUES (23012, 1962, 'MovementSpeedMod', '50');
 -- RECONSTRUCTION 1969 Flashbang Blind Debuff (ability 1622), effect_desc "Small Radius AE\nDebuff -200 ACC / DEF: 15 Seconds"
 --   from "Debuff -200 ACC / DEF: 15 Seconds" -> TimedStat, Accuracy -200, Defense -200
 --   note: D-AB09: a bare -200 is -200 stat points (-2 QR per alias.xml)
 --   note: D-AB09: a bare -200 is -200 stat points (-2 QR per alias.xml)
 --   note: 15 s, the effect's pulse_duration
-INSERT INTO effect_nvps (nvp_id, effect_id, name, value) VALUES (23012, 1969, 'Accuracy', '-200');
-INSERT INTO effect_nvps (nvp_id, effect_id, name, value) VALUES (23013, 1969, 'Defense', '-200');
+INSERT INTO effect_nvps (nvp_id, effect_id, name, value) VALUES (23013, 1969, 'Accuracy', '-200');
+INSERT INTO effect_nvps (nvp_id, effect_id, name, value) VALUES (23014, 1969, 'Defense', '-200');
 -- RECONSTRUCTION 1980 Accuracy Debuff (ability 1630), effect_desc "Single Target\n-200 Accuracy: 15 Seconds\n-200 Defense: 15 Seconds"
 --   from "-200 Accuracy: 15 Seconds / -200 Defense: 15 Seconds" -> TimedStat, Accuracy -200, Defense -200
 --   note: D-AB09: a bare -200 is -200 stat points (-2 QR per alias.xml)
 --   note: D-AB09: a bare -200 is -200 stat points (-2 QR per alias.xml)
 --   note: 15 s, the effect's pulse_duration
-INSERT INTO effect_nvps (nvp_id, effect_id, name, value) VALUES (23014, 1980, 'Accuracy', '-200');
-INSERT INTO effect_nvps (nvp_id, effect_id, name, value) VALUES (23015, 1980, 'Defense', '-200');
+INSERT INTO effect_nvps (nvp_id, effect_id, name, value) VALUES (23015, 1980, 'Accuracy', '-200');
+INSERT INTO effect_nvps (nvp_id, effect_id, name, value) VALUES (23016, 1980, 'Defense', '-200');
+-- RECONSTRUCTION 2002 Combat Sprint Accuracy Debuff (ability 1619), effect_desc "Single Target\nTarget -100 ACC\n10 Second Duration"
+--   from "Target -100 ACC" -> TimedStat, Accuracy -100
+--   note: D-AB09: a bare -100 is -100 stat points (-1 QR per alias.xml)
+--   note: 10 s, the effect's pulse_duration
+INSERT INTO effect_nvps (nvp_id, effect_id, name, value) VALUES (23017, 2002, 'Accuracy', '-100');
 -- RECONSTRUCTION 2752 Accuracy -100 (ability 2070), effect_desc "Accuracy -100"
 --   from "Accuracy -100" -> TimedStat, Accuracy -100
 --   note: D-AB09: a bare -100 is -100 stat points (-1 QR per alias.xml)
 --   note: 25 s, the effect's pulse_duration
-INSERT INTO effect_nvps (nvp_id, effect_id, name, value) VALUES (23016, 2752, 'Accuracy', '-100');
+INSERT INTO effect_nvps (nvp_id, effect_id, name, value) VALUES (23018, 2752, 'Accuracy', '-100');
 -- RECONSTRUCTION 4239 Blind Debuff (ability 863), effect_desc "Single Target\nTarget -200 ACC / -200 DEF\nDuration: 15sec"
 --   from "Target -200 ACC / -200 DEF" -> TimedStat, Accuracy -200, Defense -200
 --   note: D-AB09: a bare -200 is -200 stat points (-2 QR per alias.xml)
 --   note: D-AB09: a bare -200 is -200 stat points (-2 QR per alias.xml)
 --   note: 15 s, the effect's pulse_duration
-INSERT INTO effect_nvps (nvp_id, effect_id, name, value) VALUES (23017, 4239, 'Accuracy', '-200');
-INSERT INTO effect_nvps (nvp_id, effect_id, name, value) VALUES (23018, 4239, 'Defense', '-200');
+INSERT INTO effect_nvps (nvp_id, effect_id, name, value) VALUES (23019, 4239, 'Accuracy', '-200');
+INSERT INTO effect_nvps (nvp_id, effect_id, name, value) VALUES (23020, 4239, 'Defense', '-200');
 -- RECONSTRUCTION 4309 Stat Debuff (ability 1242), effect_desc "Single Target\nTarget -100 Response"
 --   from "Target -100 Response" -> TimedStat, Response -100
 --   note: D-AB09: a bare -100 is -100 stat points
 --   note: 15 s, the effect's pulse_duration
-INSERT INTO effect_nvps (nvp_id, effect_id, name, value) VALUES (23019, 4309, 'Response', '-100');
+INSERT INTO effect_nvps (nvp_id, effect_id, name, value) VALUES (23021, 4309, 'Response', '-100');
 -- RECONSTRUCTION 4333 Blind (ability 1354), effect_desc "Single Target\nTarget -200ACC / -200DEF"
 --   from "Target -200ACC / -200DEF" -> TimedStat, Accuracy -200, Defense -200
 --   note: D-AB09: a bare -200 is -200 stat points (-2 QR per alias.xml)
 --   note: D-AB09: a bare -200 is -200 stat points (-2 QR per alias.xml)
 --   note: 15 s, the effect's pulse_duration
-INSERT INTO effect_nvps (nvp_id, effect_id, name, value) VALUES (23020, 4333, 'Accuracy', '-200');
-INSERT INTO effect_nvps (nvp_id, effect_id, name, value) VALUES (23021, 4333, 'Defense', '-200');
+INSERT INTO effect_nvps (nvp_id, effect_id, name, value) VALUES (23022, 4333, 'Accuracy', '-200');
+INSERT INTO effect_nvps (nvp_id, effect_id, name, value) VALUES (23023, 4333, 'Defense', '-200');
 -- RECONSTRUCTION 4335 Slow (ability 1354), effect_desc "Single Target\nTarget -100 Response"
 --   from "Target -100 Response" -> TimedStat, Response -100
 --   note: D-AB09: a bare -100 is -100 stat points
 --   note: 15 s, the effect's pulse_duration
-INSERT INTO effect_nvps (nvp_id, effect_id, name, value) VALUES (23022, 4335, 'Response', '-100');
+INSERT INTO effect_nvps (nvp_id, effect_id, name, value) VALUES (23024, 4335, 'Response', '-100');
 -- RECONSTRUCTION 4411 Snare Debuff (ability 1474), effect_desc "Single Target\nTarget -30% Movement Speed\nDuration: 15 Seconds"
 --   from "Target -30% Movement Speed" -> TimedStat, MovementSpeedMod -30
 --   note: D-AB09: -30% run speed is movementSpeedMod -30 (100 = unmodified)
 --   note: 15 s, the effect's pulse_duration
-INSERT INTO effect_nvps (nvp_id, effect_id, name, value) VALUES (23023, 4411, 'MovementSpeedMod', '-30');
+INSERT INTO effect_nvps (nvp_id, effect_id, name, value) VALUES (23025, 4411, 'MovementSpeedMod', '-30');
 -- RECONSTRUCTION 4715 Debuff: Cooldown Timers (ability 3168), effect_desc "Response -100"
 --   from "Response -100" -> TimedStat, Response -100
 --   note: D-AB09: a bare -100 is -100 stat points
 --   note: 30 s, the effect's pulse_duration
-INSERT INTO effect_nvps (nvp_id, effect_id, name, value) VALUES (23024, 4715, 'Response', '-100');
+INSERT INTO effect_nvps (nvp_id, effect_id, name, value) VALUES (23026, 4715, 'Response', '-100');
+-- RECONSTRUCTION 4779 Response +100 (ability 3246), effect_desc "Response +100"
+--   from "Response +100" -> TimedStat, Response 100
+--   note: D-AB09: a bare +100 is +100 stat points
+--   note: 2.5 s, the effect's pulse_duration
+INSERT INTO effect_nvps (nvp_id, effect_id, name, value) VALUES (23027, 4779, 'Response', '100');
 -- RECONSTRUCTION 5266 Debuff (ability 1728), effect_desc "Debuff -100 Defense\n35 seconds"
 --   from "Debuff -100 Defense" -> TimedStat, Defense -100
 --   note: D-AB09: a bare -100 is -100 stat points (-1 QR per alias.xml)
 --   note: 35 s, the effect's pulse_duration
-INSERT INTO effect_nvps (nvp_id, effect_id, name, value) VALUES (23025, 5266, 'Defense', '-100');
+INSERT INTO effect_nvps (nvp_id, effect_id, name, value) VALUES (23028, 5266, 'Defense', '-100');
 -- ability-mechanics generated stat end
 
 --

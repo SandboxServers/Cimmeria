@@ -382,3 +382,48 @@ async fn aoe_returns_dead_target_ids_for_caller_to_fire_entity_death() {
         "high-HP survivor must not be in deaths Vec"
     );
 }
+
+/// **Regression guard (AB-07, the AB-03 review carry-over).** 3170
+/// Contaminate Area's shape: a single-target hit (here 10) and a radius
+/// effect (here 100), both `EF_DontUseQR` so no roll can miss. The primary
+/// takes its single-target hit (the radius effect is left to the fan-out on
+/// a target with a direct hit), and the secondary takes the radius effect.
+/// Before AB-07 the secondary took the whole ability, so the same rule gave
+/// it the single-target 10 and dropped the radius 100: its loss equalled the
+/// primary's (`secondary takes the radius damage` fails).
+#[tokio::test]
+async fn ground_secondaries_take_the_radius_effect_not_the_primarys_hit() {
+    use cimmeria_entity::abilities::{EF_DONT_USE_QR, TARGET_GROUND, TCM_AE_RADIUS};
+    let (mut mgr, tx, _rx) = make_aoe_scenario();
+    let single = GROUND_EFFECT_ID;
+    let radius = GROUND_EFFECT_ID + 1;
+    {
+        let e = mgr.effect_defs.get_mut(&single).unwrap();
+        e.flags = EF_DONT_USE_QR;
+        e.params
+            .insert("HealthDamage".to_string(), "10".to_string());
+    }
+    let mut area = mgr.effect_defs[&single].clone();
+    area.effect_id = radius;
+    area.target_collection_method = TCM_AE_RADIUS.to_string();
+    area.params
+        .insert("HealthDamage".to_string(), "100".to_string());
+    mgr.effect_defs.insert(radius, area);
+    {
+        let def = mgr.ability_defs.get_mut(&GROUND_ABILITY_ID).unwrap();
+        def.effect_ids = vec![single, radius];
+        def.target_type_id = TARGET_GROUND;
+    }
+    add_hostile_npc(&mut mgr, 400, "Castle_CellBlock", [2.0, 0.0, 0.0], 10_000);
+    add_hostile_npc(&mut mgr, 401, "Castle_CellBlock", [0.0, 0.0, 5.0], 10_000);
+
+    handle_use_ability_on_ground(ATTACKER_EID, GROUND_ABILITY_ID, [0.0; 3], &tx, &mut mgr).await;
+
+    let loss = |eid: u32| 10_000 - mgr.get_entity(eid).unwrap().stats.get(HEALTH).unwrap().cur;
+    let (primary, secondary) = (loss(400), loss(401));
+    assert!(primary > 0, "the primary takes its hit");
+    assert!(
+        secondary > primary * 5,
+        "the secondary takes the radius damage: primary lost {primary}, secondary {secondary}"
+    );
+}

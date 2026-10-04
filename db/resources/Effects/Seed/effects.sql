@@ -1389,7 +1389,7 @@ INSERT INTO effects (effect_id, ability_id, delay, effect_desc, effect_sequence,
 - 800F / - 80H', 0, 0, 'set:CoreWidgets image:IconMissing', 1, 0, 'Medium', NULL, 'TCM_AERadius', true, false, 'Anti-Personnel Mortar AE Damage', 0, NULL, NULL);
 
 INSERT INTO effects (effect_id, ability_id, delay, effect_desc, effect_sequence, flags, icon_location, pulse_count, pulse_duration, tcm_param1, tcm_param2, target_collection_method, use_ability_velocity, is_channeled, name, target_collection_id, event_set_id, script_name) VALUES (1215, 869, 0, 'Short Radius AE
-35% Focus Heal', 0, 16, 'set:CoreWidgets image:IconMissing', 1, 0, 'Short', NULL, 'TCM_AERadius', false, false, 'Rally AE Focus Heal', 0, NULL, NULL);
+35% Focus Heal', 0, 16, 'set:CoreWidgets image:IconMissing', 1, 0, 'Short', NULL, 'TCM_AERadius', false, false, 'Rally AE Focus Heal', 0, NULL, 'HealFocus');
 
 INSERT INTO effects (effect_id, ability_id, delay, effect_desc, effect_sequence, flags, icon_location, pulse_count, pulse_duration, tcm_param1, tcm_param2, target_collection_method, use_ability_velocity, is_channeled, name, target_collection_id, event_set_id, script_name) VALUES (1228, 754, 0, 'Single Target
 Suppression: 20 Seconds', 0, 76, 'set:CoreWidgets image:IconMissing', 1, 20, 'Medium', NULL, 'TCM_Single', true, false, 'Suppression', 0, NULL, NULL);
@@ -2445,7 +2445,7 @@ INSERT INTO effects (effect_id, ability_id, delay, effect_desc, effect_sequence,
 Debuff -200 ACC / DEF: 15 Seconds', 2, 4194372, 'set:CoreWidgets image:IconMissing', 1, 15, 'Short', NULL, 'TCM_Single', true, false, 'Flashbang Blind Debuff', 0, NULL, 'TimedStat');
 
 INSERT INTO effects (effect_id, ability_id, delay, effect_desc, effect_sequence, flags, icon_location, pulse_count, pulse_duration, tcm_param1, tcm_param2, target_collection_method, use_ability_velocity, is_channeled, name, target_collection_id, event_set_id, script_name) VALUES (948, 877, 0, 'Medium Radius AE
--200 Defense: 15 Seconds', 0, 4, 'set:CoreWidgets image:IconMissing', 1, 15, 'Medium', NULL, 'TCM_AERadius', true, false, 'Defense Debuff', 0, NULL, NULL);
+-200 Defense: 15 Seconds', 0, 4, 'set:CoreWidgets image:IconMissing', 1, 15, 'Medium', NULL, 'TCM_AERadius', true, false, 'Defense Debuff', 0, NULL, 'TimedStat');
 
 INSERT INTO effects (effect_id, ability_id, delay, effect_desc, effect_sequence, flags, icon_location, pulse_count, pulse_duration, tcm_param1, tcm_param2, target_collection_method, use_ability_velocity, is_channeled, name, target_collection_id, event_set_id, script_name) VALUES (1418, 1250, 0, 'Run Speed +50%', 0, 535, 'set:CoreWidgets image:IconMissing', 1, 5, NULL, NULL, 'TCM_Single', true, false, 'Run Speed +50%', 0, NULL, NULL);
 
@@ -3174,7 +3174,7 @@ INSERT INTO effects (effect_id, ability_id, delay, effect_desc, effect_sequence,
 
 INSERT INTO effects (effect_id, ability_id, delay, effect_desc, effect_sequence, flags, icon_location, pulse_count, pulse_duration, tcm_param1, tcm_param2, target_collection_method, use_ability_velocity, is_channeled, name, target_collection_id, event_set_id, script_name) VALUES (2002, 1619, 0, 'Single Target
 Target -100 ACC
-10 Second Duration', 0, 534, 'set:CoreWidgets image:IconMissing', 1, 10, NULL, NULL, 'TCM_Single', true, false, 'Combat Sprint Accuracy Debuff', 0, NULL, NULL);
+10 Second Duration', 0, 534, 'set:CoreWidgets image:IconMissing', 1, 10, NULL, NULL, 'TCM_Single', true, false, 'Combat Sprint Accuracy Debuff', 0, NULL, 'TimedStat');
 
 INSERT INTO effects (effect_id, ability_id, delay, effect_desc, effect_sequence, flags, icon_location, pulse_count, pulse_duration, tcm_param1, tcm_param2, target_collection_method, use_ability_velocity, is_channeled, name, target_collection_id, event_set_id, script_name) VALUES (2003, 1642, 0, 'Single Target
 Cover Defense +100', 0, 21, 'set:CoreWidgets image:IconMissing', 1, 0, NULL, NULL, 'TCM_Single', true, false, 'Cover Defense Buff', 0, NULL, NULL);
@@ -6473,7 +6473,7 @@ INSERT INTO effects (effect_id, ability_id, delay, effect_desc, effect_sequence,
 INSERT INTO effects (effect_id, ability_id, delay, effect_desc, effect_sequence, flags, icon_location, pulse_count, pulse_duration, tcm_param1, tcm_param2, target_collection_method, use_ability_velocity, is_channeled, name, target_collection_id, event_set_id, script_name) VALUES (4778, 3246, 0, '10 Pulses
 2 Second duration', 0, 134, 'set:CoreWidgets image:IconMissing', 10, 2, NULL, NULL, 'TCM_Single', true, false, '20 Second Pulse', 0, NULL, NULL);
 
-INSERT INTO effects (effect_id, ability_id, delay, effect_desc, effect_sequence, flags, icon_location, pulse_count, pulse_duration, tcm_param1, tcm_param2, target_collection_method, use_ability_velocity, is_channeled, name, target_collection_id, event_set_id, script_name) VALUES (4779, 3246, 0, 'Response +100', 0, 150, 'set:CoreWidgets image:IconMissing', 1, 2.5, NULL, NULL, 'TCM_Single', true, false, 'Response +100', 0, NULL, NULL);
+INSERT INTO effects (effect_id, ability_id, delay, effect_desc, effect_sequence, flags, icon_location, pulse_count, pulse_duration, tcm_param1, tcm_param2, target_collection_method, use_ability_velocity, is_channeled, name, target_collection_id, event_set_id, script_name) VALUES (4779, 3246, 0, 'Response +100', 0, 150, 'set:CoreWidgets image:IconMissing', 1, 2.5, NULL, NULL, 'TCM_Single', true, false, 'Response +100', 0, NULL, 'TimedStat');
 
 INSERT INTO effects (effect_id, ability_id, delay, effect_desc, effect_sequence, flags, icon_location, pulse_count, pulse_duration, tcm_param1, tcm_param2, target_collection_method, use_ability_velocity, is_channeled, name, target_collection_id, event_set_id, script_name) VALUES (4780, 1572, 0, '20 Pulses
 1 Second duration', 0, 0, 'set:CoreWidgets image:IconMissing', 20, 1, NULL, NULL, 'TCM_Single', true, false, 'Pulse', 0, NULL, NULL);

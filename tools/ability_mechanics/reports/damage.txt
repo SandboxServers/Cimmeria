@@ -293,12 +293,12 @@ unparsed: 54
    4336 (ability 656) "Narrow Cone Channeled: 50 ticks\n-150F / -15H per tick\n-5 Ammo per tick": pulse shape: the text says 50 ticks but pulse_count is 1
    4357 (ability 1477) "F-400\nH-40\nRemaining pulses": grammar: unrecognised line "Remaining pulses"
    4363 (ability 1259) "Secondary Damage\nAOE: Short\nF-500 H-50": sequenced: single-shot EF_SequenceOnFinish follow-up (a check's outcome, a chain jump, an extra shell); the pipeline would apply it on every hit
-   4531 (ability 1889) "F-50\nH-5": scope: EF_ResolveOnAbilityUser resolves on the user; user routing is AB-07
+   4531 (ability 1889) "F-50\nH-5": scope: EF_ResolveOnAbilityUser on a damage row: the server never routes damage onto the user (AB-07)
    4614 (ability 1536) "Damage per second while moving: F-100 H-10\n10 seconds": conditional: "while moving" variant; no conditional NVP exists, and every hit would apply it
    4626 (ability 1540) "F-200 H-20": sequenced: single-shot EF_SequenceOnFinish follow-up (a check's outcome, a chain jump, an extra shell); the pipeline would apply it on every hit
    4627 (ability 1540) "F-200 H-20": sequenced: single-shot EF_SequenceOnFinish follow-up (a check's outcome, a chain jump, an extra shell); the pipeline would apply it on every hit
    4633 (ability 1546) "F-150\nH-15": sequenced: single-shot EF_SequenceOnFinish follow-up (a check's outcome, a chain jump, an extra shell); the pipeline would apply it on every hit
-   4642 (ability 1561) "Damage: F-200 H-20": scope: damage half of an ability of type ABILITY_TYPE_Buff: it belongs on the user (B-27, AB-07)
+   4642 (ability 1561) "Damage: F-200 H-20": scope: damage half of an ability of type ABILITY_TYPE_Buff: it belongs on the user, and the server never routes damage onto the user (B-27, AB-07)
    4708 (ability 3167) "F-150\nH-15\nCone: Wide": sequenced: single-shot EF_SequenceOnFinish follow-up (a check's outcome, a chain jump, an extra shell); the pipeline would apply it on every hit
    5034 (ability 722) "Medium Cone\n-50F / -5H DoT: 10 Ticks": targeting: the text says cone but the row is TCM_Single
    5136 (ability 1540) "F-200 H -20": sequenced: single-shot EF_SequenceOnFinish follow-up (a check's outcome, a chain jump, an extra shell); the pipeline would apply it on every hit

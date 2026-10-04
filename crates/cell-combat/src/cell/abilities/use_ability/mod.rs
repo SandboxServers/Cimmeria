@@ -75,6 +75,7 @@ pub(crate) use warmup::{attach_ground_point, interrupt_pending_cast, is_casting,
 pub use warmup::{interrupt_unlearned_cast, warmup_tick};
 
 pub use fire_los::{fire_line_of_sight, FireLos};
+pub(in crate::cell::abilities) use support_shot::{classify, SupportTarget};
 
 #[cfg(any(test, feature = "test-support"))]
 #[doc(hidden)]

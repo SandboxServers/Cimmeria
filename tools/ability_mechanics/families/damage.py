@@ -137,11 +137,14 @@ def conditional_reason(effect: Effect, ability: Optional[Ability]) -> Optional[s
 def scope_reason(effect: Effect, ability: Optional[Ability]) -> Optional[str]:
     atype = ability.type_id if ability else ""
     if atype not in HOSTILE_TYPES:
-        return f"scope: damage half of an ability of type {atype}: it belongs on the user (B-27, AB-07)"
+        return (
+            f"scope: damage half of an ability of type {atype}: it belongs on the user, and the "
+            "server never routes damage onto the user (B-27, AB-07)"
+        )
     if effect.tcm not in ROUTED_TCMS:
         return f"scope: {effect.tcm} damage is not routed by the pipeline (AB-07, D-AB12)"
     if effect.flags & EF_RESOLVE_ON_ABILITY_USER:
-        return "scope: EF_ResolveOnAbilityUser resolves on the user; user routing is AB-07"
+        return "scope: EF_ResolveOnAbilityUser on a damage row: the server never routes damage onto the user (AB-07)"
     if effect.flags & EF_SEQUENCE_ON_FINISH and effect.pulse_count == 1:
         return (
             "sequenced: single-shot EF_SequenceOnFinish follow-up (a check's outcome, a chain jump, "

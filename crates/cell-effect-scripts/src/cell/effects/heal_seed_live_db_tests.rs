@@ -102,16 +102,16 @@ async fn generated_heals_restore_the_amount_their_text_states_live_db() {
 }
 
 /// Heals the generator reports instead of binding, because the current
-/// pipeline would land them on the wrong entity: AE/group halves (AB-07),
+/// pipeline would land them on the wrong entity: group halves (D-AB12),
 /// deployable pulses, the self-revive (D-AB11), a damaging ability's heal
 /// half, and bare "+N% Focus" on Buff abilities (stance / dart toggle).
+/// Morale Boost's radius heal 1215 left this list in AB-07, which fans it
+/// out to the caster's allies (`cell-combat`'s `effect_routing_live_db`).
 #[tokio::test]
 async fn heals_the_pipeline_would_misroute_stay_unbound_live_db() {
     let pool = require_db_or_skip!();
     let defs = load_effect_defs(&pool).await.expect("load_effect_defs");
-    for effect_id in [
-        1215, 1357, 1358, 2134, 3371, 3372, 3373, 3374, 4140, 4781, 5008,
-    ] {
+    for effect_id in [1357, 1358, 2134, 3371, 3372, 3373, 3374, 4140, 4781, 5008] {
         let def = defs
             .get(&effect_id)
             .unwrap_or_else(|| panic!("effect {effect_id} is seeded"));

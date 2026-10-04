@@ -48,9 +48,11 @@ async fn generated_stat_effects_carry_their_script_and_nvp_live_db() {
             "{effect_id}"
         );
     }
-    // The deferred halves stay unbound: Leadership's regen (AB-05), Hunker
-    // Down's secondary half and Combat Sprint's penalty (AB-07).
-    for effect_id in [1211, 1746, 2002] {
+    // The deferred halves stay unbound: Leadership's regen (AB-05) and
+    // Hunker Down's secondary half. Combat Sprint's penalty 2002 is bound
+    // since AB-07 lands it on the user (`cell-combat`'s
+    // `effect_routing_live_db`).
+    for effect_id in [1211, 1746] {
         assert_eq!(
             defs[&effect_id].script_name, None,
             "{effect_id} stays unbound"
@@ -88,19 +90,22 @@ async fn generated_stat_effects_move_their_stat_live_db() {
 
 /// The routing the generator's scope rules promise: the buffs' abilities
 /// are beneficial (so they land on the caster or an ally), Call Target is
-/// not (so it lands on the hostile through `damage_apply`).
+/// not (so it lands on the hostile through `damage_apply`). Combat Sprint
+/// stopped being beneficial when AB-07 bound its penalty half: both halves
+/// land on its user through the per-effect routing instead.
 #[tokio::test]
 async fn generated_stat_abilities_route_as_the_generator_assumes_live_db() {
     let pool = require_db_or_skip!();
     let abilities = load_ability_defs(&pool).await.expect("load_ability_defs");
     let effects = load_effect_defs(&pool).await.expect("load_effect_defs");
-    // 637 Aim, 1454 Hunker Down, 1619 Combat Sprint.
-    for id in [637, 1454, 1619] {
+    // 637 Aim, 1454 Hunker Down.
+    for id in [637, 1454] {
         assert!(
             ability_is_beneficial(&abilities[&id], &effects),
             "{id} must be beneficial"
         );
     }
-    // 847 Call Target.
+    // 847 Call Target, and 1619 Combat Sprint (routed per effect).
     assert!(!ability_is_beneficial(&abilities[&847], &effects));
+    assert!(!ability_is_beneficial(&abilities[&1619], &effects));
 }
