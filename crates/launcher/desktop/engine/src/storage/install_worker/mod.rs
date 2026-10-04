@@ -12,7 +12,7 @@ use tokio::sync::watch;
 use tokio_util::sync::CancellationToken;
 use uuid::Uuid;
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum Outcome {
     /// Content preparation only; runtime prerequisites and game UAT are separate.
@@ -205,6 +205,14 @@ fn publish(state: &Mutex<DesktopState>, id: Uuid, outcome: Outcome) -> Outcome {
     let Ok(mut state) = state.lock() else {
         return Outcome::ReconciliationRequired;
     };
+    if outcome != Outcome::ReconciliationRequired
+        && state.prepare_install_result(id, outcome).is_err()
+    {
+        if let Ok(operations) = state.operations_mut() {
+            let _ = operations.mark_uncertain(id);
+        }
+        return Outcome::ReconciliationRequired;
+    }
     let Ok(operations) = state.operations_mut() else {
         return Outcome::ReconciliationRequired;
     };

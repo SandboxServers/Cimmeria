@@ -195,3 +195,13 @@ Windows+Mac before the shell; shell/visual/game gates remain separate.
   final engine205/eight ignored and shell15/one ignored passed, plus strict
   engine/shell clippy and separately run resource smoke. Final bundle/hash passed;
   packaged permission check pending. No visual/final startup proof.
+
+
+- Durable install-result.json binds outcome to operation ID, intent digest and
+  exact terminal revision; written before terminal journal commit. Active/recovery/
+  requires-reopen states hide it; old reconciliation revisions cannot reuse it.
+  Legacy absence allowed. Shell drop/reopen preserves confirmed failure reason.
+  Shell 15/one ignored and engine 209/eight ignored passed; combined strict
+  clippy and mock-install JS UAT passed. Windows launcher shared install API
+  is now public for lint parity; native Windows verification pending.
+  This does not implement Wine recovery or terminal retry.

@@ -213,21 +213,36 @@ async fn host_retains_real_worker_and_reports_its_failure_without_duplicate_disp
     );
     assert!(root.path().join("install/.cimmeria-install.json").is_file());
     let revision = terminal.native.operation.revision;
-    let mut worker = host.worker.lock().unwrap();
-    start_install(
-        host.store().unwrap(),
-        &mut worker,
-        id,
-        0,
-        1,
-        fixture_release(),
-    )
-    .unwrap();
-    drop(worker);
+    {
+        let mut worker = host.worker.lock().unwrap();
+        start_install(
+            host.store().unwrap(),
+            &mut worker,
+            id,
+            0,
+            1,
+            fixture_release(),
+        )
+        .unwrap();
+    }
     assert_eq!(
         host.install_status().unwrap().native.operation.revision,
         revision
     );
+    drop(host);
+    let reopened = NativeHost::new(root.path().join("state"));
+    let reopened_status = tokio::time::timeout(std::time::Duration::from_secs(5), async {
+        loop {
+            if let Ok(status) = reopened.install_status() {
+                break status;
+            }
+            tokio::time::sleep(std::time::Duration::from_millis(5)).await;
+        }
+    })
+    .await
+    .unwrap();
+    assert_eq!(reopened_status.outcome, Some(Outcome::InstallFailed));
+    assert_eq!(reopened_status.native.operation.revision, revision);
 }
 
 #[test]

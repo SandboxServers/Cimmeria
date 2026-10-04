@@ -597,3 +597,24 @@ separately. The final development bundle built with its embedded helper hash
 verified; packaged permission verification remains pending. No visual UAT or packaged-app startup was performed; the final
 self-contained startup gate remains deferred. Game prerequisites/Play and Wine
 recovery remain unfinished.
+
+
+## Durable installation outcomes
+
+`install-result.json` is a bounded schema-1 record binding an outcome to its
+operation ID, intent digest and exact terminal journal revision. The worker
+writes it before committing the terminal operation state. The record alone never
+proves completion: active, reconciliation-required and requires-reopen states
+hide it. An older operation/reconciliation revision cannot reuse it; a matching
+record with inconsistent digest or terminal state is rejected as corrupt.
+Legacy journals may legitimately have no result record.
+
+Shell status reads this durable outcome, so a confirmed failure reason survives
+host disposal and reopening without a retained worker. This adds result reporting,
+not Wine recovery or failed/cancelled retry. The shell suite passed 15 tests with
+one ignored entry, including actual host drop/reopen preserving `InstallFailed`.
+Final engine checks passed 209 tests with eight ignored entries; combined strict
+clippy and `npm run uat:install` passed. That JS pass uses mocked installation
+IPC, not native filesystem/Wine or visual UAT. The existing Windows launcher now
+exports the shared install module publicly, matching its progress API and fixing
+unused/dead-code lint failures; native Windows verification awaits the next CI.

@@ -220,12 +220,13 @@ impl NativeHost {
     }
 
     pub fn install_status(&self) -> Result<InstallStatus, JobError> {
-        let (native, native_backend) = self.with_state(|state| {
+        let (native, native_backend, outcome) = self.with_state(|state| {
             Ok((
                 state.inspect(),
                 state
                     .install_intent()?
                     .is_some_and(|intent| intent.backend.is_native()),
+                state.install_outcome()?,
             ))
         })?;
         let recovery = native_backend
@@ -242,16 +243,6 @@ impl NativeHost {
                 .is_some_and(|operation| operation.id == worker.operation_id())
         });
         let observed = worker.and_then(|worker| worker.progress.borrow().as_ref().map(progress));
-        let terminal = native
-            .operation
-            .operation
-            .as_ref()
-            .is_some_and(|op| op.state.terminal());
-        let outcome = if terminal {
-            worker.and_then(|worker| *worker.result.borrow())
-        } else {
-            None
-        };
         Ok(InstallStatus {
             schema_version: 1,
             native,

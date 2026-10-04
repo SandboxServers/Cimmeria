@@ -6,6 +6,7 @@ mod release_evidence;
 pub use release_evidence::EvidenceError;
 mod install_intent;
 pub mod install_recovery;
+mod install_result;
 pub mod install_worker;
 pub use install_intent::{
     AdmissionRequest, ExtractionBackend, InstallAdmission, InstallIntent, IntentError,

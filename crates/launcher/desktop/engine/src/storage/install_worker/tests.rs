@@ -381,3 +381,34 @@ fn redirected_parent_after_admission_is_not_claimed() {
         0
     );
 }
+
+#[test]
+fn result_write_failure_preserves_recovery_gate() {
+    let release = verified(&archive(true));
+    let (root, state, id) = setup(&release);
+    state
+        .lock()
+        .unwrap()
+        .operations_mut()
+        .unwrap()
+        .observe(id, OperationState::Running)
+        .unwrap();
+    // A non-regular result destination deterministically prevents publication.
+    std::fs::create_dir(root.path().join("state/install-result.json")).unwrap();
+    assert_eq!(
+        publish(&state, id, Outcome::ContentPrepared),
+        Outcome::ReconciliationRequired
+    );
+    let state = state.lock().unwrap();
+    assert_eq!(
+        state
+            .operations()
+            .snapshot()
+            .operation
+            .as_ref()
+            .unwrap()
+            .state,
+        OperationState::ReconciliationRequired
+    );
+    assert_eq!(state.install_outcome(), Ok(None));
+}

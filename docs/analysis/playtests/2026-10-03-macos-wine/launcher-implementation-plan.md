@@ -712,3 +712,19 @@ ignored, and strict engine/shell clippy. The ignored resource smoke passed
 separately. Final development bundling and embedded-helper hash verification
 passed; packaged permission verification remains pending. No visual UAT or
 final self-contained startup occurred. Wine recovery and gameplay remain open.
+
+
+### 2026-10-04: durable installation outcome reporting
+
+Added bounded schema-1 `install-result.json`, written before terminal commit and
+bound to operation ID, intent digest and exact terminal revision. Active/recovery
+or uncertain-reopen state hides the record; mismatched historical revisions stay
+hidden and legacy missing results are allowed. Shell status now preserves the
+confirmed reason across host reopen. Fifteen shell tests passed with one ignored,
+including persisted InstallFailed after host drop/reopen. Final engine checks
+passed 209 tests with eight ignored entries; combined strict clippy and
+`npm run uat:install` passed. JS installation IPC remains mocked, so this adds no
+native filesystem/Wine or visual UAT evidence. The existing Windows launcher
+exports the shared install module publicly to resolve unused/dead-code lint
+failures reported by CI `37194260466`; native Windows validation awaits the next
+run. Wine recovery and terminal-attempt retry remain unsupported.

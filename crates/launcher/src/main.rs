@@ -9,7 +9,8 @@ mod client_setup;
 mod client_telemetry_dll;
 mod config;
 mod identity;
-mod install;
+// Shared installer API is also consumed by the standalone desktop engine.
+pub mod install;
 mod install_layout;
 pub mod install_progress;
 mod install_report;
