@@ -434,3 +434,25 @@ the final startup gate remains open.
 Validation: 142 engine tests and all twelve process-harness scenarios passed on
 macOS through the build lane; strict all-target clippy passed. Three default
 ignores retain the previously documented parent-fixture/real-client distinction.
+
+
+### 2026-10-04: verified release identity and durable install admission
+
+Added `VerifiedRelease`, binding validated manifest data to its original signed
+byte digest, and native admission that persists immutable install inputs before
+operation ownership. Per-operation intent filenames preserve previous recovery
+evidence when the next admission fails between writes. First-install destinations
+must be missing or empty with an existing canonical parent, and cannot overlap
+launcher state. These checks do not reserve the filesystem.
+
+Fixtures exercise evidence preservation, rejection paths, restart without replay,
+identical retries after consent changes, and interrupted replacement admission.
+Admission does not dispatch filesystem work or create game files. Ownership,
+worker integration, readiness, reconciliation and UI installation remain pending.
+No frontend behavior changed, so frontend JS REPL/visual UAT does not apply.
+Archive-helper CI run `37184586437` passed both native platforms at `e96dfeaf3`;
+the later supervisor commit `04b03a158` has its own CI run `37185555998`.
+
+Local admission packet checks: 152 engine tests and the twelve-scenario process
+harness passed; strict all-target clippy and formatting passed. Native Windows
+validation for these new admission cases remains pending.

@@ -3,7 +3,9 @@ mod operations;
 pub use operations::*;
 
 mod storage;
-pub use storage::{DesktopState, Preferences, StorageError};
+pub use storage::{
+    DesktopState, InstallAdmission, InstallIntent, IntentError, Preferences, StorageError,
+};
 mod commands;
 pub use commands::{NativeCommand, NativeSnapshot};
 

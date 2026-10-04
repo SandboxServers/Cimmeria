@@ -63,3 +63,10 @@ Windows+Mac before the shell; shell/visual/game gates remain separate.
   coordinator wiring remains pending. Cancellation writes share the active
   deadline and cleanup cannot renew that budget. Direct-child kill/OS-lock
   release is tested, but does not prove Wine guest death. No UI worker is wired.
+
+- Native install admission binds the exact verified release digest and saved
+  destination/server configuration to an operation. Intent records are named by
+  operation UUID: a failed subsequent journal commit must not overwrite prior
+  retry evidence. Restart never replays work. First-install path checks accept
+  absent/empty directories but do not reserve them; mutation ownership and
+  readiness remain separate coordinator gates. No install IPC is enabled yet.

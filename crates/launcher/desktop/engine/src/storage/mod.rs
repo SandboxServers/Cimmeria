@@ -1,5 +1,7 @@
 //! Exclusive state-directory ownership and bounded, crash-aware persistence.
 mod atomic;
+mod install_intent;
+pub use install_intent::{InstallAdmission, InstallIntent, IntentError};
 #[cfg(test)]
 mod tests;
 

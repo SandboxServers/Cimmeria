@@ -1,6 +1,7 @@
 //! Authenticated release patch notes. This is catalog data, not installed state.
 use crate::manifest::{self, Manifest, ManifestError};
 use serde::Serialize;
+use sha2::{Digest, Sha256};
 use std::time::Duration;
 
 const URL: &str =
@@ -33,6 +34,24 @@ pub struct PatchNote {
 /// Fixed native-owned origin; the webview cannot choose arbitrary fetch targets.
 /// Each request has a finite total deadline, including body consumption.
 pub async fn fetch_patch_notes() -> Result<PatchNotes, CatalogError> {
+    Ok(notes(fetch_release().await?.manifest))
+}
+
+/// Authenticated native input; cannot be constructed by deserializing a UI request.
+pub struct VerifiedRelease {
+    manifest: Manifest,
+    digest: [u8; 32],
+}
+impl VerifiedRelease {
+    pub fn manifest(&self) -> &Manifest {
+        &self.manifest
+    }
+    pub fn digest(&self) -> [u8; 32] {
+        self.digest
+    }
+}
+
+pub async fn fetch_release() -> Result<VerifiedRelease, CatalogError> {
     if manifest::MANIFEST_SIGNING_PUBKEY.is_none() {
         return Err(CatalogError::SigningKeyUnavailable);
     }
@@ -45,8 +64,7 @@ pub async fn fetch_patch_notes() -> Result<PatchNotes, CatalogError> {
         .map_err(|_| CatalogError::Network)?;
     let body = read_bounded(&client, URL, MAX_BODY).await?;
     let signature = read_bounded(&client, &manifest::sig_url_for(URL), MAX_SIGNATURE).await?;
-    let manifest = decode_verified(&body, &signature)?;
-    Ok(notes(manifest))
+    verify_release(&body, &signature)
 }
 
 async fn read_bounded(
@@ -74,6 +92,14 @@ async fn read_bounded(
         body.extend_from_slice(&chunk);
     }
     Ok(body)
+}
+
+/// Verify original signed bytes before retaining their identity for installation.
+pub fn verify_release(body: &[u8], signature: &[u8]) -> Result<VerifiedRelease, CatalogError> {
+    Ok(VerifiedRelease {
+        manifest: decode_verified(body, signature)?,
+        digest: Sha256::digest(body).into(),
+    })
 }
 
 fn decode_verified(body: &[u8], signature: &[u8]) -> Result<Manifest, CatalogError> {

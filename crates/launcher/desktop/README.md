@@ -246,7 +246,7 @@ this nested workspace. `.github/workflows/launcher-desktop.yml` adds explicit
 native Mac/Windows checks and the frontend/native logic UAT. Shared-source
 changes also run an existing-launcher Cargo check on native Windows.
 
-On 2026-10-04, **142 engine tests**, **two shell-host tests**, **14 frontend tests**, strict clippy, TypeScript
+On 2026-10-04, **152 engine tests**, **two shell-host tests**, **14 frontend tests**, strict clippy, TypeScript
 checking and formatting passed locally on macOS. Three engine tests are ignored by default: the subprocess fixture invoked by
 its parent, plus manual real-SGW-executable and real-client-RAR checks that
 remain unrun. Coverage includes command/schema
@@ -340,3 +340,47 @@ Windows-only integration test connects the supervisor to the actual archive
 worker; its native CI result remains pending. No GUI or Wine execution was
 performed. This packet changes no frontend behavior, so frontend JS REPL/visual
 UAT does not apply. Installation remains disabled until coordinator integration.
+
+
+## Durable install admission
+
+`catalog::VerifiedRelease` retains the validated manifest and SHA-256 of its
+original signed bytes. Native callers obtain it through signature/schema
+verification; a frontend request cannot deserialize one.
+
+`DesktopState::admit_install` records immutable inputs in
+`install-intent-<operation-id>.json`: operation ID, original preference revision,
+canonical destination, verified manifest digest and native-supplied login servers.
+It writes this record before admitting the operation with the intent's digest.
+`dispatch: true` is returned only after both writes succeed. Admission itself
+dispatches no worker and creates no game files. Separate filenames preserve the
+previous operation's evidence if a subsequent admission fails between writes.
+Orphan/history cleanup remains part of coordinator recovery work.
+
+First-install admission requires a saved absolute destination whose parent
+already exists. It canonicalizes that parent and accepts a missing final
+directory or an existing empty directory. Files, final-component symlinks,
+nonempty directories and paths overlapping launcher state are rejected. Adoption
+and repair require separate ownership evidence. These are admission-time checks,
+not a filesystem reservation; the worker must acquire ownership and recheck.
+
+A retry retains its saved intent and returns `dispatch: false`. It must retain
+the original preference revision, verified release identity and login servers.
+Changing diagnostics consent afterward does not invalidate the original retry.
+Conflicting inputs fail without rewriting current recovery evidence. On restart,
+interrupted operations require reconciliation; an identical retry never replays
+installation. Reading recovery intent validates schema, operation ID and digest.
+Missing, corrupt or mismatched evidence is not permission to run. An orphan
+intent is not independently dispatchable.
+
+Fixtures cover admission/restart without destination mutation, consent-change
+retries, release conflicts, busy/stale requests, missing/corrupt/digest-mismatched
+intent, failed writes, failed replacement admission, empty-directory acceptance
+and unsafe destination rejection (symlinks on Unix). This establishes neither
+installation readiness nor UI install behavior. No frontend behavior changed,
+so JS REPL/visual UAT does not apply to this packet. Worker dispatch, readiness,
+reconciliation and UI installation remain pending.
+
+Admission validation: 152 engine tests passed on macOS through the build lane,
+plus the unchanged twelve-scenario process harness; strict all-target clippy
+and formatting passed. Windows admission validation awaits native CI.
