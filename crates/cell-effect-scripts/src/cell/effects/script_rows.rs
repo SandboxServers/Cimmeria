@@ -49,6 +49,7 @@ pub(crate) fn on_remove_found_nothing(ctx: &EffectContext, script: &'static str)
         effect_id = ctx.effect.effect_id,
         ability_id = ctx.effect.ability_id,
         target_id = ctx.target_id,
+        target_player_id = ctx.space_mgr.player_identity(ctx.target_id).player_id,
         "{script} on_remove: expected the caster's ledger entry on the target, found none; nothing comes off (it expired or was cleansed already)"
     );
 }

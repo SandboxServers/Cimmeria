@@ -36,6 +36,7 @@ impl EffectScript for RemoveByMoniker {
             tracing::warn!(
                 target: "abilities",
                 event = "stat_buff_skipped",
+                cast_id = ctx.row_ids().cast_id,
                 reason = "unknown_moniker",
                 script = "RemoveByMoniker",
                 account_id = who.account_id,
@@ -57,6 +58,7 @@ impl EffectScript for RemoveByMoniker {
             tracing::warn!(
                 target: "abilities",
                 event = "stat_buff_skipped",
+                cast_id = ctx.row_ids().cast_id,
                 reason = "remove_not_self",
                 script = "RemoveByMoniker",
                 account_id = who.account_id,
@@ -79,6 +81,7 @@ impl EffectScript for RemoveByMoniker {
         tracing::debug!(
             target: "abilities",
             event = "removed_by_moniker",
+            cast_id = ctx.row_ids().cast_id,
             account_id = who.account_id,
             player_id = who.player_id,
             entity_id = ctx.source_id,

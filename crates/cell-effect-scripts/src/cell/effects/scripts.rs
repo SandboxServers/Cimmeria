@@ -70,7 +70,8 @@ impl EffectScript for MeleeDamage {
             script_skipped(ctx, "MeleeDamage", "no_health_stat");
             return;
         };
-        let cast_id = ctx.space_mgr.current_cast_id();
+        let ids = ctx.row_ids();
+        let cast_id = ids.cast_id;
         let Some(target) = ctx.space_mgr.get_entity_mut(ctx.target_id) else {
             return;
         };
@@ -83,6 +84,9 @@ impl EffectScript for MeleeDamage {
             event = "melee_damage",
             stage = "apply",
             cast_id,
+            account_id = ids.account_id,
+            player_id = ids.player_id,
+            target_player_id = ids.target_player_id,
             source_id = ctx.source_id,
             target_id = ctx.target_id,
             effect_id = ctx.effect.effect_id,
@@ -160,7 +164,8 @@ impl EffectScript for MeleePhysicalDamage {
             return;
         }
 
-        let cast_id = ctx.space_mgr.current_cast_id();
+        let ids = ctx.row_ids();
+        let cast_id = ids.cast_id;
         if ctx.space_mgr.get_entity(ctx.target_id).is_none() {
             script_skipped(ctx, "MeleePhysicalDamage", "target_gone");
             return;
@@ -194,6 +199,9 @@ impl EffectScript for MeleePhysicalDamage {
                 event = "melee_physical_damage",
                 stage = "apply",
                 cast_id,
+                account_id = ids.account_id,
+                player_id = ids.player_id,
+                target_player_id = ids.target_player_id,
                 source_id = ctx.source_id,
                 target_id = ctx.target_id,
                 effect_id = ctx.effect.effect_id,
@@ -224,6 +232,9 @@ impl EffectScript for MeleePhysicalDamage {
             event = "melee_physical_damage",
             stage = "apply",
             cast_id,
+            account_id = ids.account_id,
+            player_id = ids.player_id,
+            target_player_id = ids.target_player_id,
             source_id = ctx.source_id,
             target_id = ctx.target_id,
             effect_id = ctx.effect.effect_id,
@@ -272,7 +283,8 @@ impl EffectScript for Suppression {
             script_skipped(ctx, "Suppression", "no_damage_nvp");
             return;
         }
-        let cast_id = ctx.space_mgr.current_cast_id();
+        let ids = ctx.row_ids();
+        let cast_id = ids.cast_id;
         if ctx.space_mgr.get_entity(ctx.target_id).is_none() {
             script_skipped(ctx, "Suppression", "target_gone");
             return;
@@ -290,6 +302,9 @@ impl EffectScript for Suppression {
             event = "suppression_pulse",
             stage = "apply",
             cast_id,
+            account_id = ids.account_id,
+            player_id = ids.player_id,
+            target_player_id = ids.target_player_id,
             source_id = ctx.source_id,
             target_id = ctx.target_id,
             effect_id = ctx.effect.effect_id,
@@ -345,7 +360,8 @@ impl EffectScript for RangedPhysicalDamage {
             return;
         }
 
-        let cast_id = ctx.space_mgr.current_cast_id();
+        let ids = ctx.row_ids();
+        let cast_id = ids.cast_id;
         if ctx.space_mgr.get_entity(ctx.target_id).is_none() {
             script_skipped(ctx, "RangedPhysicalDamage", "target_gone");
             return;
@@ -379,6 +395,9 @@ impl EffectScript for RangedPhysicalDamage {
                 event = "ranged_physical_damage",
                 stage = "apply",
                 cast_id,
+                account_id = ids.account_id,
+                player_id = ids.player_id,
+                target_player_id = ids.target_player_id,
                 source_id = ctx.source_id,
                 target_id = ctx.target_id,
                 effect_id = ctx.effect.effect_id,
@@ -410,6 +429,9 @@ impl EffectScript for RangedPhysicalDamage {
             event = "ranged_physical_damage",
             stage = "apply",
             cast_id,
+            account_id = ids.account_id,
+            player_id = ids.player_id,
+            target_player_id = ids.target_player_id,
             source_id = ctx.source_id,
             target_id = ctx.target_id,
             effect_id = ctx.effect.effect_id,
@@ -448,7 +470,8 @@ impl EffectScript for RangedEnergyDamage {
             return;
         }
 
-        let cast_id = ctx.space_mgr.current_cast_id();
+        let ids = ctx.row_ids();
+        let cast_id = ids.cast_id;
         if ctx.space_mgr.get_entity(ctx.target_id).is_none() {
             script_skipped(ctx, "RangedEnergyDamage", "target_gone");
             return;
@@ -475,6 +498,9 @@ impl EffectScript for RangedEnergyDamage {
             event = "ranged_energy_damage",
             stage = "apply",
             cast_id,
+            account_id = ids.account_id,
+            player_id = ids.player_id,
+            target_player_id = ids.target_player_id,
             source_id = ctx.source_id,
             target_id = ctx.target_id,
             effect_id = ctx.effect.effect_id,

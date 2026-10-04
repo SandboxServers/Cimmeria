@@ -85,6 +85,7 @@ fn apply_lock(ctx: &mut EffectContext, kind: &'static str) {
         tracing::warn!(
             target: "abilities",
             event = "crowd_control_skipped",
+            cast_id = ctx.row_ids().cast_id,
             reason = "no_duration",
             kind,
             account_id = who.account_id,
@@ -125,6 +126,7 @@ fn apply_lock(ctx: &mut EffectContext, kind: &'static str) {
     tracing::info!(
         target: "abilities",
         event = "crowd_control_applied",
+        cast_id = ctx.row_ids().cast_id,
         kind,
         account_id = who.account_id,
         player_id = who.player_id,
@@ -207,6 +209,10 @@ fn queue(ctx: &mut EffectContext, chance_pct: i32, cause: InterruptCause) {
     tracing::debug!(
         target: "abilities",
         event = "interrupt_requested",
+        cast_id = ctx.row_ids().cast_id,
+        account_id = ctx.row_ids().account_id,
+        player_id = ctx.row_ids().player_id,
+        target_player_id = ctx.row_ids().target_player_id,
         entity_id = ctx.source_id,
         target_id = ctx.target_id,
         effect_id = request.effect_id,

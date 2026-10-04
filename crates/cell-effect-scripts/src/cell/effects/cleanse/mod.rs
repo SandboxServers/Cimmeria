@@ -183,6 +183,7 @@ impl EffectScript for RemoveEffects {
             tracing::warn!(
                 target: "abilities",
                 event = "remove_effects_skipped",
+                cast_id = ctx.row_ids().cast_id,
                 reason,
                 account_id = who.account_id,
                 player_id = who.player_id,
@@ -238,6 +239,7 @@ impl EffectScript for RemoveEffects {
             tracing::info!(
                 target: "abilities",
                 event = "effect_removed_by_cleanse",
+                cast_id = ctx.row_ids().cast_id,
                 account_id = who.account_id,
                 player_id = who.player_id,
                 entity_id = ctx.source_id,
@@ -257,6 +259,7 @@ impl EffectScript for RemoveEffects {
         tracing::debug!(
             target: "abilities",
             event = "remove_effects_applied",
+            cast_id = ctx.row_ids().cast_id,
             account_id = who.account_id,
             player_id = who.player_id,
             entity_id = ctx.source_id,

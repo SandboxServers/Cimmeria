@@ -66,6 +66,39 @@ fn assert_every_ability_row_has_an_event(all: &[Captured]) {
     assert!(bare.is_empty(), "ability rows with no `event`: {bare:#?}");
 }
 
+/// From the launch row on, every ability-target row of the cast carries its
+/// `cast_id` (the rows before it are the launch gates, which run before the
+/// id exists). The colo cast's `effect_script_dispatch` and `heal_focus`
+/// rows had none.
+fn assert_every_row_after_launch_names_the_cast(all: &[Captured], cast_id: &str) {
+    let start = all
+        .iter()
+        .position(|c| c.has_field("event", "ability_launched"))
+        .expect("a launch row");
+    let strays: Vec<_> = all[start..]
+        .iter()
+        .filter(|c| is_ability_target(&c.target))
+        .filter(|c| c.fields.get("cast_id").map(String::as_str) != Some(cast_id))
+        .collect();
+    assert!(
+        strays.is_empty(),
+        "ability rows after the launch without cast_id {cast_id}: {strays:#?}"
+    );
+}
+
+/// The effect-script rows name the caster's player and the target's, too.
+fn assert_heal_rows_name_the_players(all: &[Captured], player_id: &str) {
+    for event in ["effect_script_dispatch", "heal_focus"] {
+        let row = all
+            .iter()
+            .find(|c| c.has_field("event", event))
+            .unwrap_or_else(|| panic!("no `{event}` row in {all:#?}"));
+        assert!(row.has_field("player_id", player_id), "{row:?}");
+        assert!(row.has_field("target_player_id", player_id), "{row:?}");
+        assert!(row.has_field("account_id", "10"), "{row:?}");
+    }
+}
+
 /// **Regression guard.** The colo cast: Heal Focus with a warmup and
 /// nothing selected. The launch and fire `beneficial_cast` rows and the
 /// `effect_routed` row carry the launch's `cast_id`, and no ability row of
@@ -75,6 +108,7 @@ fn assert_every_ability_row_has_an_event(all: &[Captured]) {
 async fn a_warmed_up_self_heal_names_its_cast_on_every_row() {
     let mut mgr = heal_mgr(1.5);
     burn_effect_ids(&mut mgr, 3);
+    mgr.get_entity_mut(A).unwrap().account_id = Some(10);
     let (tx, _rx) = mpsc::channel(256);
     let logs = LogCapture::install();
 
@@ -97,6 +131,8 @@ async fn a_warmed_up_self_heal_names_its_cast_on_every_row() {
         .collect();
     assert_eq!(stages, ["launch", "fire"]);
     assert_every_ability_row_has_an_event(&all);
+    assert_every_row_after_launch_names_the_cast(&all, &cast_id);
+    assert_heal_rows_name_the_players(&all, "101");
 }
 
 /// The instant form: launch and fire in one pass, the same ids.
@@ -104,6 +140,7 @@ async fn a_warmed_up_self_heal_names_its_cast_on_every_row() {
 async fn an_instant_self_heal_names_its_cast_on_every_row() {
     let mut mgr = heal_mgr(0.0);
     burn_effect_ids(&mut mgr, 6);
+    mgr.get_entity_mut(A).unwrap().account_id = Some(10);
     let (tx, _rx) = mpsc::channel(256);
     let logs = LogCapture::install();
 
@@ -115,4 +152,6 @@ async fn an_instant_self_heal_names_its_cast_on_every_row() {
     assert_all_carry(&all, "beneficial_cast", &cast_id);
     assert_all_carry(&all, "effect_routed", &cast_id);
     assert_every_ability_row_has_an_event(&all);
+    assert_every_row_after_launch_names_the_cast(&all, &cast_id);
+    assert_heal_rows_name_the_players(&all, "101");
 }

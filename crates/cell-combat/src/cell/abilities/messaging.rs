@@ -398,10 +398,17 @@ pub(crate) async fn deliver(
     if matches!(route, WireRoute::Witnesses | WireRoute::SelfAndWitnesses)
         && out.witnesses_addressed > 0
     {
+        let who = space_mgr.player_identity(entity_id);
         tracing::debug!(
             target: "abilities.wire",
             event = "wire_fanned_out",
+            stage = "wire",
+            method = wire_ledger::method_name(method_index),
             entity_id,
+            account_id = who.account_id,
+            player_id = who.player_id,
+            cast_id = space_mgr.current_cast_id(),
+            route = route.label(),
             method_index,
             witness_count = out.witnesses_addressed,
             "send_entity_method_to_witnesses: fanned out"

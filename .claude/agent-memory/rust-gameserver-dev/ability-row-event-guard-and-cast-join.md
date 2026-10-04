@@ -13,6 +13,12 @@ scans `IN_PROCESS_CRATES` source and fails on a bare one (42 were bare before).
 A `LogCapture` over a cast cannot catch rows the fixture never reaches, so
 the source scan is the real guard.
 
+**Effect rows need the core fields too.** Every ability-target row in
+`cell-effect-scripts/src` and `cell-world/src/cell/effects` (minus
+`ability_snapshot.rs`) must carry `cast_id`, `player_id` and, with a
+`target_id`, `target_player_id`; use `ctx.row_ids()` (`EffectContext::row_ids`).
+Guard: `every_effect_row_names_its_cast_and_players` in the same test file.
+
 **Rows logged before the launch mints `effect_seq` have no cast_id.** The
 cast scope (`enter_cast_scope`) opens only at fire; launch-side rows must take
 the id explicitly or be logged after `next_effect_id()` in `handle.rs`.
