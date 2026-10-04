@@ -40,18 +40,31 @@ async fn channel_on_player(
         None,
         "the cancel runs outside the cast"
     );
+    // A stat the cancel's removal left dirty: the cancel flushes it as an
+    // `onStatUpdate`, which must name the cast too.
+    mgr.get_entity_mut(1)
+        .unwrap()
+        .stats
+        .get_mut(cimmeria_entity::stats::HEALTH)
+        .unwrap()
+        .update(0, 90, 100);
 }
 
-fn cancel_clear(logs: &[Captured]) -> Captured {
+/// The cancel's `abilities.wire` row for `method`.
+fn cancel_send(logs: &[Captured], method: &str) -> Captured {
     logs.iter()
         .find(|c| {
             c.target == "abilities.wire"
                 && c.has_field("event", "wire_sent")
-                && c.has_field("method", "onTimerUpdate")
+                && c.has_field("method", method)
                 && c.has_field("origin", "channel_cancel")
         })
         .cloned()
-        .unwrap_or_else(|| panic!("no channel_cancel timer clear: {logs:#?}"))
+        .unwrap_or_else(|| panic!("no channel_cancel {method}: {logs:#?}"))
+}
+
+fn cancel_clear(logs: &[Captured]) -> Captured {
+    cancel_send(logs, "onTimerUpdate")
 }
 
 #[tokio::test]
@@ -64,8 +77,11 @@ async fn attacker_cancel_clears_the_timer_with_the_channels_cast_id() {
     let cancelled = cancel_channels_from_attacker(2, None, &tx, &mut mgr).await;
 
     assert_eq!(cancelled, 1);
-    let row = cancel_clear(&logs.all());
+    let all = logs.all();
+    let row = cancel_clear(&all);
     assert!(row.has_field("cast_id", &CAST.to_string()), "{row:?}");
+    let stats = cancel_send(&all, "onStatUpdate");
+    assert!(stats.has_field("cast_id", &CAST.to_string()), "{stats:?}");
     assert!(row.has_field("action", "clear"), "{row:?}");
 }
 
@@ -79,6 +95,9 @@ async fn movement_cancel_clears_the_timer_with_the_channels_cast_id() {
     let cancelled = cancel_channels_for_invoker_ability(2, ABILITY, &tx, &mut mgr).await;
 
     assert_eq!(cancelled, 1);
-    let row = cancel_clear(&logs.all());
+    let all = logs.all();
+    let row = cancel_clear(&all);
     assert!(row.has_field("cast_id", &CAST.to_string()), "{row:?}");
+    let stats = cancel_send(&all, "onStatUpdate");
+    assert!(stats.has_field("cast_id", &CAST.to_string()), "{stats:?}");
 }

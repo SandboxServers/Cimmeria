@@ -30,6 +30,10 @@ pub struct PendingCast {
     /// `Ability_Interrupt` of one cast share it. It is also the cast's
     /// telemetry `cast_id` ([`PendingCast::cast_id`], AB-T1).
     pub effect_seq: i32,
+    /// When the cell received the press that launched the cast: the start
+    /// of `abilities_press_to_fire_ms` (AB-T6), so a launch slowed by
+    /// backpressure before the warmup started still counts that delay.
+    pub received_at: std::time::Instant,
     /// When the warmup expires.
     pub fire_at: std::time::Instant,
     /// Warmup length after the speed-stat modifiers, in seconds.

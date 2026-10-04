@@ -218,3 +218,97 @@ async fn a_refused_timer_send_counts_wire_send_failed() {
         "the cooldown timer's failed send is counted"
     );
 }
+
+/// A launch delayed before its warmup started (backpressure on the
+/// cooldown or `Ability_Begin` sends) is part of press to fire: the sample
+/// runs from `PendingCast::received_at`, not from when the warmup began.
+#[tokio::test]
+async fn press_to_fire_runs_from_the_receipt_not_the_warmup_start() {
+    install();
+    const W: &str = "Metrics_T6_Receipt";
+    let mut mgr = warmup_mgr_in(W);
+    let (tx, _rx) = mpsc::channel(256);
+    let press = [("path", "warmup"), ("world", W)];
+    let s0 = histogram_sum(PRESS_TO_FIRE_MS, &press);
+
+    assert!(handle_use_ability(1, WARMUP_ABILITY, 2, &tx, &mut mgr).await);
+    // The press reached the cell 5 s before the warmup was parked.
+    let pc = mgr
+        .get_entity_mut(1)
+        .unwrap()
+        .pending_cast
+        .as_mut()
+        .unwrap();
+    pc.received_at -= Duration::from_secs(5);
+    let fire_at = pc.fire_at;
+    resolve_warmups(fire_at, &tx, &mut mgr, &NoContentEvents).await;
+
+    let ms = histogram_sum(PRESS_TO_FIRE_MS, &press) - s0;
+    assert!(
+        ms >= 5000.0 + f64::from(WARMUP_SECS) * 1000.0 - 50.0,
+        "press to fire {ms} ms leaves out the 5 s before the warmup"
+    );
+}
+
+/// A warming caster that logs out abandons its cast: one
+/// `abilities_cast_total{outcome=abandoned}` and a `warmup_abandoned` row
+/// naming the cast and `reason = caster_disconnected`.
+#[tokio::test]
+async fn a_logout_mid_warmup_counts_abandoned() {
+    install();
+    const W: &str = "Metrics_T6_Logout";
+    let mut mgr = warmup_mgr_in(W);
+    let (tx, _rx) = mpsc::channel(256);
+    let a0 = outcome(W, "abandoned");
+    assert!(handle_use_ability(1, WARMUP_ABILITY, 2, &tx, &mut mgr).await);
+    let cast = mgr
+        .get_entity(1)
+        .unwrap()
+        .pending_cast
+        .as_ref()
+        .unwrap()
+        .cast_id();
+    let logs = crate::test_support::LogCapture::install();
+
+    mgr.disconnect_entity(1, &tx).await;
+
+    assert_eq!(outcome(W, "abandoned") - a0, 1);
+    let rows = abandoned_rows(&logs);
+    assert_eq!(rows.len(), 1, "{rows:#?}");
+    assert!(
+        rows[0].has_field("reason", "caster_disconnected"),
+        "{rows:?}"
+    );
+    assert!(rows[0].has_field("cast_id", &cast.to_string()), "{rows:?}");
+    // Nothing is left for the warmup tick to drop silently.
+    assert!(!mgr.pending_casts.contains(&1));
+}
+
+/// A warming caster destroyed without a logout (a cross-world teleport, a
+/// despawn) abandons its cast with `reason = caster_destroyed`.
+#[tokio::test]
+async fn a_destroy_mid_warmup_counts_abandoned() {
+    install();
+    const W: &str = "Metrics_T6_Destroy";
+    let mut mgr = warmup_mgr_in(W);
+    let (tx, _rx) = mpsc::channel(256);
+    let a0 = outcome(W, "abandoned");
+    assert!(handle_use_ability(1, WARMUP_ABILITY, 2, &tx, &mut mgr).await);
+    let logs = crate::test_support::LogCapture::install();
+
+    mgr.destroy_entity(1);
+
+    assert_eq!(outcome(W, "abandoned") - a0, 1);
+    let rows = abandoned_rows(&logs);
+    assert_eq!(rows.len(), 1, "{rows:#?}");
+    assert!(rows[0].has_field("reason", "caster_destroyed"), "{rows:?}");
+}
+
+fn abandoned_rows(
+    logs: &crate::test_support::LogCaptureGuard,
+) -> Vec<crate::test_support::Captured> {
+    logs.all()
+        .into_iter()
+        .filter(|c| c.target == "abilities" && c.has_field("event", "warmup_abandoned"))
+        .collect()
+}

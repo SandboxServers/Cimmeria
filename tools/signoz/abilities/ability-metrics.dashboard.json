@@ -85,7 +85,7 @@
       "contextLinks": {
         "linksData": []
       },
-      "description": "One sample per cast: fired, interrupted, refused, held (holstered-weapon queue).",
+      "description": "One sample per cast: fired, interrupted, refused, held (holstered-weapon queue), abandoned (caster torn down mid-warmup).",
       "fillSpans": false,
       "id": "casts-by-outcome",
       "nullZeroValues": "zero",
@@ -581,7 +581,7 @@
       "contextLinks": {
         "linksData": []
       },
-      "description": "Cell receipt to fire. instant ~0; warmup = warmup + tick lateness.",
+      "description": "Cell receipt of the press to fire. instant ~0; warmup = launch delay + warmup + tick lateness.",
       "fillSpans": false,
       "id": "press-to-fire-p50",
       "nullZeroValues": "zero",

@@ -133,6 +133,7 @@ fn start_warmup(mgr: &mut SpaceManager) {
         wire_target_id: 1,
         ground: None,
         effect_seq: 77,
+        received_at: std::time::Instant::now(),
         fire_at: Instant::now() + std::time::Duration::from_secs(5),
         warmup_secs: 5.0,
         anchor: Vector3::new(5.0, 0.0, 0.0),

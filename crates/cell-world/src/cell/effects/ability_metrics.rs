@@ -147,3 +147,63 @@ pub fn ledger_removed(why: StatBuffRemoval, world: &'static str) {
         "world" => world,
     );
 }
+
+/// `abilities_cast_total`: one sample per cast's outcome. The combat crate
+/// counts `fired`, `interrupted`, `refused` and `held`; this crate counts
+/// `abandoned`, the teardown of a caster mid-warmup.
+pub const CAST_TOTAL: &str = "abilities_cast_total";
+/// The `abandoned` outcome (`CastOutcome::Abandoned` in the combat crate).
+pub const OUTCOME_ABANDONED: &str = "abandoned";
+/// Why a warming cast was abandoned: its caster logged out.
+pub const ABANDONED_DISCONNECTED: &str = "caster_disconnected";
+/// Why a warming cast was abandoned: its caster was destroyed (a
+/// cross-world teleport, a GM despawn, a despawn sweep).
+pub const ABANDONED_DESTROYED: &str = "caster_destroyed";
+
+/// The `caster` label of an entity (`CasterKind` in the combat crate).
+pub fn caster_label(is_player: bool) -> &'static str {
+    if is_player {
+        "player"
+    } else {
+        "npc"
+    }
+}
+
+/// End `entity_id`'s cast in its warmup because the caster is being torn
+/// down: take the pending cast, log `warmup_abandoned` (the cast's last
+/// row, with `reason`) and count `abilities_cast_total{outcome=abandoned}`.
+/// Nothing is sent: the caster's client and entity are going away. A
+/// no-op when nothing is warming.
+pub fn abandon_pending_cast(space_mgr: &mut SpaceManager, entity_id: u32, reason: &'static str) {
+    space_mgr.pending_casts.remove(&entity_id);
+    let world = world_of(space_mgr, entity_id);
+    let who = space_mgr.player_identity(entity_id);
+    let Some(caster) = space_mgr.get_entity_mut(entity_id) else {
+        return;
+    };
+    let Some(pc) = caster.pending_cast.take() else {
+        return;
+    };
+    let caster = caster_label(caster.is_player);
+    tracing::debug!(
+        target: "abilities",
+        event = "warmup_abandoned",
+        stage = "end",
+        outcome = OUTCOME_ABANDONED,
+        reason,
+        account_id = who.account_id,
+        player_id = who.player_id,
+        entity_id,
+        cast_id = pc.cast_id(),
+        ability_id = pc.ability_id,
+        target_id = pc.target_id,
+        warmup_secs = pc.warmup_secs,
+        "ability warmup abandoned: the caster was torn down before the cast fired"
+    );
+    cimmeria_observability::counter!(
+        CAST_TOTAL,
+        "outcome" => OUTCOME_ABANDONED,
+        "caster" => caster,
+        "world" => world,
+    );
+}

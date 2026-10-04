@@ -107,17 +107,14 @@ pub(crate) async fn resolve_warmups(
     fired
 }
 
-/// AB-T6: count a warmed cast's fire and its press-to-fire time. The launch
-/// was `warmup_secs` before `fire_at`; `now` is the tick's clock, so the
-/// sample is the warmup plus the tick's lateness.
+/// AB-T6: count a warmed cast's fire and its press-to-fire time, from the
+/// cell's receipt of the press (`PendingCast::received_at`) to `now`, the
+/// tick's clock: any launch delay, the warmup, and the tick's lateness.
 fn record_warmup_fire(pc: &PendingCast, now: Instant, entity_id: u32, space_mgr: &SpaceManager) {
     use crate::cell::abilities::metrics;
-    let launched = pc
-        .fire_at
-        .checked_sub(std::time::Duration::from_secs_f32(pc.warmup_secs.max(0.0)));
     metrics::fired(
         metrics::FirePath::Warmup,
-        launched.map_or_else(Default::default, |t| now.saturating_duration_since(t)),
+        now.saturating_duration_since(pc.received_at),
         metrics::caster_kind(space_mgr, entity_id),
         metrics::world_of(space_mgr, entity_id),
     );

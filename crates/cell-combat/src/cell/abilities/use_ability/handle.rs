@@ -597,6 +597,7 @@ pub async fn handle_use_ability(
                 effect_seq,
                 warmup_secs,
                 event_set_id: ability_def.as_ref().and_then(|d| d.event_set_id),
+                received_at: pressed_at,
             },
             tx,
             space_mgr,

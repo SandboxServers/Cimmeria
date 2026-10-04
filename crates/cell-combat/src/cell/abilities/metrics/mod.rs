@@ -17,13 +17,17 @@
 //! `refused` (with its `abilities_refused_total` reason) at the launch,
 //! `held` when the holstered-weapon queue defers it (the deferred re-press
 //! counts again when it runs), `fired` when it fires (in the launch pass, or
-//! from the warmup tick) and `interrupted` when its warmup is broken. A
-//! fire-time re-check that fails (range, line of sight, target lost) is an
+//! from the warmup tick), `interrupted` when its warmup is broken, and
+//! `abandoned` when its caster is torn down mid-warmup (a logout, a
+//! cross-world teleport, a despawn; the `warmup_abandoned` row names which).
+//! A fire-time re-check that fails (range, line of sight, target lost) is an
 //! interrupt, not a refusal: the cooldown was charged at the launch.
 //!
 //! **Press to fire** is measured on the cell from `handle_use_ability`'s
-//! entry to the fire: near zero for an instant cast, the warmup plus the
-//! tick's lateness for a warmed one. The client-side timings are AB-C6's.
+//! entry (the receipt, carried on `PendingCast::received_at` through a
+//! warmup) to the fire: near zero for an instant cast; any launch delay,
+//! the warmup and the tick's lateness for a warmed one. The client-side
+//! timings are AB-C6's.
 //!
 //! **Labels are enumerated** (Rule 4 of `instrumentation-discipline.md`):
 //! each is a [`cimmeria_observability::metric_label`] enum, so a call site
@@ -53,7 +57,7 @@ use super::super::space_manager::SpaceManager;
 #[cfg(test)]
 mod tests;
 
-pub(crate) const CAST_TOTAL: &str = "abilities_cast_total";
+pub(crate) use cimmeria_cell_world::cell::effects::ability_metrics::CAST_TOTAL;
 pub(crate) const REFUSED_TOTAL: &str = "abilities_refused_total";
 pub(crate) const EFFECT_APPLIED_TOTAL: &str = "abilities_effect_applied_total";
 pub(crate) const QR_TOTAL: &str = "abilities_qr_total";
@@ -68,6 +72,10 @@ cimmeria_observability::metric_label! {
         Refused => "refused",
         /// The holstered-weapon queue deferred it until the draw finishes.
         Held => "held",
+        /// Its caster was torn down mid-warmup (logout, cross-world
+        /// teleport, despawn): `ability_metrics::abandon_pending_cast` in
+        /// `cimmeria-cell-world` counts it.
+        Abandoned => "abandoned",
     }
 }
 

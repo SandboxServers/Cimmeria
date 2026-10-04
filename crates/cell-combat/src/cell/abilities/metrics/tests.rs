@@ -385,3 +385,22 @@ fn the_refusal_counter_has_one_call_site() {
         "count refusals through metrics::refused"
     );
 }
+
+/// cell-world counts the `abandoned` outcome on the same metric with the
+/// same `caster` spelling as this crate's enums.
+#[test]
+fn abandoned_outcome_matches_the_cell_world_counter() {
+    assert_eq!(
+        CastOutcome::Abandoned.label(),
+        ability_metrics::OUTCOME_ABANDONED
+    );
+    assert_eq!(CAST_TOTAL, ability_metrics::CAST_TOTAL);
+    assert_eq!(
+        CasterKind::Player.label(),
+        ability_metrics::caster_label(true)
+    );
+    assert_eq!(
+        CasterKind::Npc.label(),
+        ability_metrics::caster_label(false)
+    );
+}

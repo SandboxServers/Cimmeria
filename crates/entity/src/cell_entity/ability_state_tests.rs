@@ -53,6 +53,7 @@ fn seeded() -> (CellEntity, Instant) {
         wire_target_id: 0,
         ground: None,
         effect_seq: 44,
+        received_at: std::time::Instant::now(),
         fire_at: now + Duration::from_millis(1500),
         warmup_secs: 2.0,
         anchor: Vector3::zero(),

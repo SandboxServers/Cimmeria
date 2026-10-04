@@ -339,6 +339,7 @@ fn warming(mgr: &mut SpaceManager, ability_id: i32) {
         wire_target_id: GM as i32,
         ground: None,
         effect_seq: 1,
+        received_at: std::time::Instant::now(),
         fire_at: std::time::Instant::now() + std::time::Duration::from_secs(5),
         warmup_secs: 5.0,
         anchor,
