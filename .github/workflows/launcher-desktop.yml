@@ -79,6 +79,16 @@ jobs:
         run: bash tools/build-lane/lane.sh cargo clippy --locked --manifest-path crates/launcher/desktop/Cargo.toml -p cimmeria-launcher-desktop --target-dir target/desktop --all-targets -- -D warnings
       - name: Build native desktop executable
         run: bash tools/build-lane/lane.sh cargo build --locked --manifest-path crates/launcher/desktop/Cargo.toml -p cimmeria-launcher-desktop --target-dir target/desktop
+      - name: Build Windows archive worker
+        if: runner.os == 'Windows'
+        run: bash tools/build-lane/lane.sh cargo build --locked --manifest-path crates/launcher/desktop/Cargo.toml -p cimmeria-launcher-engine --bin cimmeria-archive-worker --target-dir target/desktop
+      - name: Retain Windows helper for supervised Wine validation
+        if: runner.os == 'Windows'
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        with:
+          name: windows-archive-worker
+          path: target/desktop/debug/cimmeria-archive-worker.exe
+          retention-days: 7
       - name: Check existing Windows launcher integration
         if: runner.os == 'Windows'
         run: bash tools/build-lane/lane.sh cargo check --locked -p sgw-launcher --all-targets --target-dir target/legacy-launcher

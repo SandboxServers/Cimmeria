@@ -50,3 +50,10 @@ Windows+Mac before the shell; shell/visual/game gates remain separate.
   route. Legacy successful install is not readiness (SGW.exe may be absent), and
   launcher-installed.json is not deletion ownership. Runtime inventory and open
   redistribution/prerequisite gates are in runtime-provisioning.md.
+
+- Archive helper protocol is bounded NDJSON with hash-before-new-output, UUID
+  controls, EOF cancellation and bounded terminal delivery. Windows deny-write/
+  delete sharing holds the verified file stable through path-based extraction.
+  Parent must keep stdin open/drain stdout and reconcile partial output. Mac
+  tests exercise portable mechanics; native Windows process/sharing results and
+  Wine/real-CAB UAT remain separate gates. No host invocation is wired yet.

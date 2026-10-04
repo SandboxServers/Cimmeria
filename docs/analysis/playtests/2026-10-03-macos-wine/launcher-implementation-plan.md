@@ -392,3 +392,22 @@ the recommended first cabinet path; redistribution inventory, legacy prerequisit
 packages and fresh-prefix/game UAT remain gates. No runtime was installed and
 no desktop application was opened. Next: helper protocol, validated native
 worker admission and filesystem/process reconciliation.
+
+### 2026-10-04: archive helper transport
+
+Added a Windows-only operational archive-helper executable and shared bounded
+NDJSON transport. It authenticates the local archive hash before creating a new
+staging destination, refuses overlays, and retains partial output for recovery.
+The Windows verification handle denies file write/delete until extraction ends.
+Cancellation is cooperative; stdin EOF/malformed controls cancel, and late
+cancellation may lose to completion. A one-slot writer isolates extraction from
+stdout stalls; terminal delivery has a two-second budget after extraction exits.
+
+Mac engine tests: 140 passed, three default ignores as previously described;
+strict all-target clippy passed. Portable tests exercise real control-reader
+logic and injected stalled/broken writers. Windows sharing and real-process
+stdio tests await native CI; no Windows cross-compile, Wine invocation, real
+archive extraction or new shell-host/visual UAT occurred. CI retains the helper
+as a seven-day debug artifact for later supervised validation. Installation
+remains disabled until parent ownership, deadlines, staging promotion and
+reconciliation are connected. The helper is not a game launch worker.

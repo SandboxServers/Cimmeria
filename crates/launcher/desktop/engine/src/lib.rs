@@ -31,3 +31,5 @@ pub mod unpack;
 
 #[path = "../../../src/install_progress.rs"]
 pub mod install_progress;
+
+pub mod archive_worker;

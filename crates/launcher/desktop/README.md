@@ -122,12 +122,53 @@ pipeline, not simulated progress. It does not download or launch SGW.
 
 The original archive's spanning cabinet set still requires Windows FDI. Native
 Mac ZIP/RAR tests do not prove Wine cabinet extraction. The next integration
-needs a Windows-native-built helper, managed runtime/prefix ownership, validated
+needs to invoke the Windows helper, establish managed runtime/prefix ownership, validated
 operation intents, reconciliation, cancellation and terminal readiness checks.
 The legacy pipeline's success can occur without SGW.exe; a new readiness adapter
 must not equate it with Play-ready. Existing install state is not an ownership
 marker permitting uninstall, and its permissive reads are not recovery proof.
 See [runtime provisioning evidence](../../../docs/analysis/playtests/2026-10-03-macos-wine/runtime-provisioning.md).
+
+## Archive worker boundary
+
+`engine/src/archive_worker/` defines a one-request extraction contract and
+portable stdio mechanics. `cimmeria-archive-worker` is operational only when
+built natively on Windows; non-Windows entry points exit with an error. The
+desktop coordinator does not yet invoke it and Wine execution is unverified.
+
+Input is NDJSON, bounded to 8,192 bytes per frame including the newline. An
+extraction request carries `schema_version: 1`, `operation_id` (UUID), absolute
+`archive` and `destination` paths, and `sha256`. The native parent supplies the
+hash from authenticated content and owns the archive's directory. The helper
+verifies the hash before creating a destination that must not already exist.
+It never overlays an existing installation. On Windows, the verification handle
+denies write/delete sharing and stays open while the extractor reopens the path.
+This guards Windows file mutation/replacement; enforcement against native-host
+writes under Wine remains unverified. It is not an adversarial filesystem sandbox.
+
+Stdin remains open as the ownership channel. A control frame with the same
+schema/operation ID and `cancel: true` requests cooperative cancellation. EOF
+or malformed controls also cancel; valid frames for a different ID are ignored.
+Cancellation checkpoints can be coarse (between ZIP entries, patchset operations
+or archive stages). Completion can win a late cancellation; no immediate abort
+or rollback is promised. Partial output stays for parent reconciliation.
+
+Progress is latest-value only, emitted at most every 100 ms into a one-slot
+stdout queue. Replies carry schema/version, operation ID and either progress
+counts or a `finished` error code; no filenames or raw errors are emitted.
+After the blocking extractor returns, terminal enqueue/flush has a two-second
+budget. Lost/blocked output yields a nonzero exit; it does not prove no files
+were written. The executable exits after the result, including when a detached
+stdio thread remains blocked. The parent must drain stdout, keep stdin open,
+impose startup/operation deadlines, own staging and reconcile uncertain exits.
+
+The helper uses the existing Windows FDI chain implementation. A Windows process
+test checks real stdio, Unicode/space paths, operation identity, exactly one
+terminal result and hash failure before output. A Windows sharing test guards
+write/rename denial. Portable tests exercise the actual control reader and
+injected blocked/broken writers. They do not establish Wine or real-cabinet
+compatibility. Native Windows CI retains a debug helper artifact for seven days
+for supervised validation; this is not a published release.
 
 ## Verified release patch notes
 
@@ -205,7 +246,7 @@ this nested workspace. `.github/workflows/launcher-desktop.yml` adds explicit
 native Mac/Windows checks and the frontend/native logic UAT. Shared-source
 changes also run an existing-launcher Cargo check on native Windows.
 
-On 2026-10-04, **132 engine tests**, **two shell-host tests**, **14 frontend tests**, strict clippy, TypeScript
+On 2026-10-04, **140 engine tests**, **two shell-host tests**, **14 frontend tests**, strict clippy, TypeScript
 checking and formatting passed locally on macOS. Three engine tests are ignored by default: the subprocess fixture invoked by
 its parent, plus manual real-SGW-executable and real-client-RAR checks that
 remain unrun. Coverage includes command/schema
@@ -262,4 +303,6 @@ The local fixture suite uses the development key; run it without a release-key
 override. Real Tauri catalog IPC and visual UAT remain unverified.
 
 Catalog CI run `37183173769` passed both native platforms at `f8ea7b844`.
-The shared-installer packet needs its own native Windows result.
+The shared-installer/helper packets need their own native Windows results.
+Helper stdio mechanics are compiled and tested on Mac without running the
+Windows executable. Shell-host tests were last run in the preceding packet.
