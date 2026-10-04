@@ -1,8 +1,9 @@
 # Instrumentation Discipline
 
-> **Last updated**: 2026-09-17
+> **Last updated**: 2026-10-04
 > **Status**: Convention adopted in issue #482 (2026-06-01); Rule 5
-> (stable player identity on every log) added 2026-09-17. Companion to
+> (stable player identity on every log) added 2026-09-17; Rule 6 (every
+> ID paired with its name) added 2026-10-04. Companion to
 > [negative-logging-convention.md](negative-logging-convention.md) which
 > covers the *failure-side* discipline. This document covers the
 > *success-side* — span placement, event-level rules, metric labels.
@@ -21,7 +22,7 @@ the codebase to learn the convention.
 
 Source: issue #482 (`Telemetry & logging instrumentation pass`).
 
-## The five rules
+## The six rules
 
 ### Rule 1 — Every dispatch entrypoint gets an info-level span
 
@@ -336,6 +337,149 @@ NPC-only logs do not get forced identity — they have no account, and
 character-select logs already carried `account_id` before this rule and
 are unchanged.
 
+### Rule 6 — Every ID field is paired with its name
+
+An ID tells a query which rows belong together. It tells a human
+nothing. `ability_id=880 target=4123 space_id=12` sends whoever reads
+it — you at 2am in SigNoz, a teammate in Discord, an agent spending
+tokens — off to look up three numbers by hand. So every ID a log line
+or a Discord message carries has its name next to it, resolved by
+ordinary code when the line is written:
+
+```text
+ability_id=880 ability_name="Staff Blast" target=4123 target_name="Jaffa Guard"
+space_id=12 world="Castle_CellBlock" reason=out_of_range
+```
+
+The rule was added by the
+[named-telemetry campaign](../analysis/named-telemetry/README.md),
+which also builds the lookups it needs (NT-01, NT-02) and the CI scan
+that enforces it (NT-03).
+
+#### The pairing contract
+
+- **Pair, don't replace.** The ID stays: it is the join key, and two
+  objects can share a name. The name goes next to it.
+- **Same prefix.** `ability_id` pairs with `ability_name`,
+  `target_player_id` with `target_player_name`. A reader who sees one
+  key can predict the other.
+- **Absent when unresolved.** Pass the name as an `Option<&str>` and
+  let `tracing` drop the field when it is `None`, exactly as Rule 5
+  does for `account_id`. Never write `"unknown"`, `""` or `"None"`:
+  each one becomes a value in SigNoz's value set, matches every other
+  unresolved row, and hides the fact that the name is missing. A
+  missing name is a signal — a `template_id` with no `template_name`
+  points at a seed hole — so let it show.
+- **Seed placeholders are unresolved.** `NO ITEM NAME`,
+  `UNUSED DIALOGUE` and their kin are not names. The NameBook (NT-01)
+  loads them as `None`, so the field is left out.
+- **On the event, never only on a span.** Same reason as Rule 5: the
+  OTLP bridge exports only the event's own fields, and so does the
+  Discord layer (see the anti-pattern below).
+- **Resolve late, and before teardown.** Same as Rule 5. Look the name
+  up inside the branch that logs, and snapshot it at the top of a
+  function that destroys the entity.
+
+#### Which key gets which name
+
+**The default rule.** A field whose key ends in `_id` pairs with the
+same prefix ending in `_name`: `witness_id` → `witness_name`,
+`owner_id` → `owner_name`, `npc_id` → `npc_name`,
+`subject_player_id` → `subject_player_name`. The bare entity keys
+`target`, `attacker`, `entity` and `witness` pair with the key plus
+`_name`: `target` → `target_name`.
+
+**Exceptions.** The table lists only the keys where the name key or
+the lookup differs from the default. Each row also says where the name
+comes from, so every call site resolves it the same way.
+
+| ID key | Name key | Source |
+|---|---|---|
+| `entity_id`, `target`, `attacker` (any key holding an entity ID) | `entity_name`, `target_name`, `attacker_name` | A player: the character name. An NPC: its player-facing `name_id` text, **and** the line also carries the `template_id` + `template_name` pair (D-NT5). Live entities only, through `SpaceManager` and the departed-entity ring (NT-02), never the NameBook: entity IDs are recycled slots |
+| `template_id` | `template_name` | `entity_templates.template_name` |
+| `item_id` (instance), `item_type_id`, `type_id`, `design_id` | `item_name` | `items.name`, looked up by the item's type |
+| `ability_id` | `ability_name` | `abilities.name` |
+| `effect_id` | `effect_name` | `effects.name` |
+| `mission_id`, `step_id`, `objective_id` | `mission_name`, `step_name`, `objective_name` | `missions.mission_label`; step and objective display text |
+| `dialog_id`, `dialog_set_id`, `speaker_id` | `dialog_name`, `dialog_set_name`, `speaker_name` | `dialogs.name`, `dialog_sets.name`, `speakers.name` |
+| `space_id`, `world_id` | `world` | `SpaceManager` (a space's world) and the `Worlds` table |
+| `account_id` | `account_name` | The session's login name |
+| `player_id` | `player_name` | The session, or `sgw_player` |
+| `org_id` | `org_name` | Organizations |
+| `archetype` | `archetype_name` | `archetype_name()` |
+| `error_code`, `moniker_id` | `error_name`, `moniker_name` | `error_texts.moniker_name`, `monikers.name` |
+| `opcode`, `msg_id`, `method_id`, `method_index` | `method_name` | The NT-30 method table |
+
+`space_id` pairs with `world`, not `world_name`. `world` is already the
+key on about 70 log sites against about 20 for `world_name`, it is the
+key [negative-logging-convention.md](negative-logging-convention.md#field-naming-rules)
+asks for, and it is the approved metric label (Rule 4), so a dashboard
+and a log query filter on the same key.
+
+**Where existing keys disagree, sweeps converge on one:**
+
+| Keep | Retire | Why |
+|---|---|---|
+| `player_name` | `character_name` | It follows the default rule from `player_id`. As log fields, `player_name` is on 5 sites and `character_name` on 1. Struct fields such as `CellEntity::character_name` keep their names; this is about the log key |
+| `world` | `world_name` | See above |
+| `npc_name` (with `npc_id`), `entity_name` (with `entity_id`) | `name` holding an NPC or template name | A bare `name` key says nothing about what it names. `name = %record.template_name` in the spawn path becomes `template_name` |
+
+A key that fits neither the default rule nor the exceptions table needs
+an exemption (below), or NT-03's scan fails the build.
+
+#### Exemption: `// nt:id-only <reason>`
+
+Some IDs have no name to pair: a correlation token, a generated
+session ID, a row ID in a table with no name column. Mark the field's
+line with a comment saying why. The dev-session token mint in
+`crates/admin-api/src/routes/dev_session/handlers.rs` is one:
+
+```rust
+tracing::info!(
+    session_id = %session_id, // nt:id-only generated UUID, nothing to name
+    session_kind = claims.session_kind(),
+    "Minted dev-session telemetry token"
+);
+```
+
+The marker goes on the field's own line, and the reason is mandatory.
+NT-03's scan enforces both: an unpaired ID with no marker fails, and so
+does a marker with no reason.
+
+#### Names are never metric labels
+
+Rule 4 stands. An item, ability or player name has as many values as
+the ID it names, so it is a log field, never a label. `world` stays the
+one approved name-shaped label, under Rule 4's ruling.
+
+#### Discord
+
+Discord messages follow the same pairing, with three extra rules. The
+restoration team reads Discord, but only developers on the VPN can
+reach SigNoz, so each message has to stand on its own.
+
+- **Every object renders as `Name (#id)`:** `Staff Blast (#880)`,
+  `steve (#6)`. An unresolved name renders as the ID alone, `#880`.
+  Account login names stay in Discord (D-NT2): the server is private
+  and team-only. Player IPs and whisper text stay hidden, as today.
+- **No links to SigNoz, the admin API or any other VPN-only host.**
+  Most readers can't open them. NT-11 adds a test that fails on any
+  such link anywhere in an embed.
+- **`trace_id` as plain text.** An error embed may carry the
+  `trace_id` as a short footer line a developer can paste into SigNoz
+  (D-NT3). It is text, never a link.
+
+The Discord tracing layer folds each `x_id` + `x_name` pair into one
+embed field (NT-11), so pairing doesn't push other fields past the
+embed's field cap.
+
+#### Scope
+
+Every log line and Discord message that carries an ID, at any level.
+NPC lines are in scope too: unlike Rule 5's identity, an NPC has a
+name. Existing lines converge through the campaign's system sweeps
+(NT-20 to NT-27), and NT-03's baseline only shrinks.
+
 ### Worked example
 
 A `trade.execute` handler that already has the dispatcher span:
@@ -391,6 +535,17 @@ trade), the counter aggregates *across* trades by outcome.
   `entity.player_id` without `account_id`). Use
   `SpaceManager::player_identity` / `session_identity::identity_for_entity`
   so every call site emits the same two field names.
+- **Names only on a span.** Rule 6's names are invisible anywhere a
+  human reads a log line if they sit only on a parent span. The OTLP
+  bridge copies only the event's own fields into the log record (Rule 5
+  § "These go on the log EVENT"), and the Discord tracing layer's
+  `DiscordLayer::on_event` (`crates/discord/src/layer/mod.rs`) reads
+  only the event's fields too. A span-level name helps the Traces view
+  and nothing else. Put the name on the event.
+- **`name = x.as_deref().unwrap_or("")`.** An empty string is a value:
+  it matches every other unresolved row and hides the missing name.
+  Pass the `Option` through, as Rule 6 says. Several `npc_name` sites
+  do this today; the NPC sweep (NT-25) fixes them.
 - **Metric label = `entity_id` / `player_id` / `peer`.** Per the
   cardinality rule above — these are span fields, never labels. A
   ClickHouse merge-tree storing a label per entity for every counter
