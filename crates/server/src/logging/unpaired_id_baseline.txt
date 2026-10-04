@@ -400,8 +400,6 @@ crates/cell-world/src/cell/space_manager/vault_session_end.rs 6
 crates/cell/src/cell/dispatch/ability_receipt.rs 3
 crates/cell/src/cell/service/base_messages/ability_granted.rs 17
 crates/cell/src/cell/service/base_messages/bandolier.rs 7
-crates/cell/src/cell/service/base_messages/gm_abilities.rs 6
-crates/cell/src/cell/service/base_messages/gm_spawn.rs 5
 crates/cell/src/cell/service/base_messages/ignore.rs 14
 crates/cell/src/cell/service/base_messages/inventory_events.rs 23
 crates/cell/src/cell/service/base_messages/lab_console.rs 2

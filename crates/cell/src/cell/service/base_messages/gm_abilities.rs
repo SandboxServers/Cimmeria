@@ -49,8 +49,10 @@ pub(super) async fn handle_gm_abilities_changed(
             decision_outcome = "ignored",
             reason = "player_mismatch",
             entity_id,
-            player_id,
-            current_player_id = ?current,
+            entity_name = space_mgr.entity_label(entity_id),
+            player_id, // nt:id-only the changed character no longer plays this entity, so the cell can't name it
+            current_player_id = current,
+            current_player_name = space_mgr.player_identity(entity_id).player_name,
             cmd,
             "GmAbilitiesChanged: entity no longer plays the changed character"
         );
@@ -83,8 +85,11 @@ pub(super) async fn handle_gm_abilities_changed(
         event = "gm_ability_bulk_mirror",
         decision_outcome = "applied",
         entity_id,
+        entity_name = identity.player_name,
         account_id = identity.account_id,
+        account_name = identity.account_name,
         player_id,
+        player_name = identity.player_name,
         cmd,
         added = added.len(),
         removed = removed.len(),

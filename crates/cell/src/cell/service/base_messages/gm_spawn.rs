@@ -28,9 +28,11 @@ pub(super) async fn handle_gm_spawn_npc_ready(
         Ok(placed_space) => {
             tracing::info!(
                 npc_entity_id = id,
+                npc_entity_name = space_mgr.entity_label(id),
                 template_id = record.template_id,
                 template_name = %record.template_name,
                 space_id = placed_space,
+                world = space_mgr.world_name_for_space(placed_space),
                 x = record.x,
                 y = record.y,
                 z = record.z,
@@ -54,9 +56,11 @@ pub(super) async fn handle_gm_spawn_npc_ready(
         }
         Err(e) => {
             tracing::warn!(
-                npc_entity_id = id,
+                npc_entity_id = id, // nt:id-only the spawn failed, so no entity holds this id
                 template_id = record.template_id,
+                template_name = %record.template_name,
                 space_id,
+                world = space_mgr.world_name_for_space(space_id),
                 "GmSpawnNpcReady: spawn failed: {e}"
             );
             crate::cell::console::gm::feedback::send_gm_feedback(
