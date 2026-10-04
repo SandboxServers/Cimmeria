@@ -64,7 +64,18 @@ async fn original_client_module_probe_in_private_wine_prefix() {
         cimmeria_runtime_probe::physx::SdkResult::CreateFailed { sdk_error: Some(1) }
     );
     if let Some(installer) = std::env::var_os("SGW_PHYSX_INSTALLER") {
-        run_vendor_installer(&runtime, &prefix, Path::new(&installer)).await;
+        if let Some(worker) = std::env::var_os("SGW_PREREQUISITE_WORKER") {
+            run_prerequisite_worker(
+                &runtime,
+                &prefix,
+                Path::new(&worker),
+                Path::new(&installer),
+                &game,
+            )
+            .await;
+        } else {
+            run_vendor_installer(&runtime, &prefix, Path::new(&installer)).await;
+        }
         let report = run_probe(&runtime, &prefix, &helper, &game).await;
         assert_eq!(
             report.physx_sdk,
@@ -277,4 +288,71 @@ async fn run_vendor_installer(runtime: &Path, prefix: &Path, source: &Path) {
         }
     }
     assert!(status.success(), "vendor installer failed");
+}
+
+/// Exercise the native worker separately from the original msiexec experiment.
+/// Parent admission/journaling are not provided by this disposable test harness.
+async fn run_prerequisite_worker(
+    runtime: &Path,
+    prefix: &Path,
+    worker: &Path,
+    package: &Path,
+    game: &Path,
+) {
+    use cimmeria_runtime_probe::prerequisite::{
+        decode_result, PrepareRequest, ResultKind, MAX_RESULT,
+    };
+    let digest = std::env::var("SGW_PREREQUISITE_WORKER_SHA256").expect("worker artifact SHA256");
+    let bytes = std::fs::read(worker).unwrap();
+    assert_eq!(hex(&Sha256::digest(&bytes)), digest);
+    let operation = Uuid::new_v4();
+    let generation = Uuid::new_v4();
+    let request = PrepareRequest {
+        schema_version: 1,
+        operation_id: operation,
+        prefix_generation: generation,
+        game_binaries: paths::guest(game).unwrap().into(),
+        package: paths::guest(package).unwrap().into(),
+        scratch: paths::guest(&prefix.parent().unwrap().join("worker-scratch"))
+            .unwrap()
+            .into(),
+    };
+    let env = environment(runtime, prefix).unwrap();
+    let mut child = tokio::process::Command::new(runtime.join("bin/wine"))
+        .arg(paths::guest(worker).unwrap())
+        .current_dir(prefix.parent().unwrap())
+        .env_clear()
+        .envs(&env)
+        .stdin(Stdio::piped())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::null())
+        .kill_on_drop(true)
+        .spawn()
+        .unwrap();
+    let mut input = child.stdin.take().unwrap();
+    let output = child.stdout.take().unwrap();
+    let attempt = tokio::time::timeout(std::time::Duration::from_secs(180), async {
+        input
+            .write_all(&serde_json::to_vec(&request).unwrap())
+            .await?;
+        drop(input);
+        let mut bytes = Vec::new();
+        output
+            .take(MAX_RESULT as u64 + 1)
+            .read_to_end(&mut bytes)
+            .await?;
+        let status = child.wait().await?;
+        Ok::<_, std::io::Error>((status, bytes))
+    })
+    .await;
+    let stopped = stop_prefix(runtime, &env).await;
+    let _ = child.kill().await;
+    let _ = child.wait().await;
+    stopped.unwrap();
+    let (status, bytes) = attempt.expect("bounded prerequisite worker").unwrap();
+    assert!(status.success(), "worker process: {status}");
+    let result = decode_result(&bytes, operation, generation).unwrap();
+    eprintln!("private prerequisite worker evidence: {result:?}");
+    assert!(matches!(result.result, ResultKind::Probed { report }
+        if report.physx_sdk == (cimmeria_runtime_probe::physx::SdkResult::InitializedAndReleased {})));
 }

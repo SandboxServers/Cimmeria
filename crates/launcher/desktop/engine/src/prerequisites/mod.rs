@@ -1,4 +1,5 @@
-//! Authenticated prerequisite material. These APIs do not execute installers,
-//! establish installation ownership, or assert game readiness.
-mod physx_package;
-pub use physx_package::{physx_msi, PackageError, PHYSX_EXE_BYTES, PHYSX_EXE_SHA256};
+//! Authenticated prerequisite inputs, shared with the native x86 worker.
+//! Execution and durable operation ownership are separate responsibilities.
+pub use cimmeria_runtime_probe::prerequisite::package::{
+    physx_msi, PackageError, PHYSX_EXE_BYTES, PHYSX_EXE_SHA256,
+};

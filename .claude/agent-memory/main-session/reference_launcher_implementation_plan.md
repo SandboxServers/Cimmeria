@@ -390,3 +390,12 @@ Windows+Mac before the shell; shell/visual/game gates remain separate.
   Production runtime preparation is still planned: separate game-prefix
   generation/operation, immutable identity, journaled supervised install+probe;
   no Play enablement from PhysX alone. See desktop/docs/prerequisites.md.
+
+- Native x86 prerequisite worker source now sequences authenticated MSI and SDK
+  probe via MsiInstallProductW with no internal UI and suppressed reboot.
+  Request/result bind operation and prefix generation; only MSIcode0 probes,
+  typed reboot/failure codes remain failures. Probed evidence is not Ready.
+  Package extraction moved into runtime-probe library and engine reexports it.
+  Fourteen portable tests pass lane073637-16670; strict engine/probe clippy
+  passes073616-16359. Windows native compile/API execution still pending.
+  No production admission/journal or UI changes in this packet.

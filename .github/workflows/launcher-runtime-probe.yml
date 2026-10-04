@@ -52,5 +52,7 @@ jobs:
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
         with:
           name: windows-runtime-probe
-          path: target/runtime-probe/i686-pc-windows-msvc/debug/cimmeria-runtime-probe.exe
+          path: |
+            target/runtime-probe/i686-pc-windows-msvc/debug/cimmeria-runtime-probe.exe
+            target/runtime-probe/i686-pc-windows-msvc/debug/cimmeria-prerequisite-worker.exe
           retention-days: 7

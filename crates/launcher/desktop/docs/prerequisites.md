@@ -161,7 +161,8 @@ To repeat, use the private smoke command above with the schema-2 helper/hash fro
 `SGW_PROBE_BINARIES`, and `SGW_PHYSX_INSTALLER` pointing to the original retained
 PhysX 7.11.13 EXE. Set `SGW_PHYSX_INSTALLER_MODE=msi` (the default) and leave
 `SGW_PHYSX_CORE` unset; manual-core and vendor-installer modes are mutually exclusive.
-The harness now calls shared engine `prerequisites::physx_msi`, which verifies
+The harness calls `prerequisites::physx_msi`, re-exported by the engine from the
+small `runtime-probe` library through a normal dependency. It verifies
 the exact 39,242,016-byte EXE and SHA-256
 `920d5e09e6ba0a92342271c18c67472461813424d70b5c0b981b6f13b129fbf6`,
 then carves its embedded MSI at byte offset 35,463, length 38,811,648 bytes.
@@ -187,6 +188,36 @@ that observation does not establish the sole failure cause. This validates a
 specific vendor-MSI/SDK lifecycle, not the production supervisor, cancellation or
 restart recovery, graphics, game launch or readiness.
 
+## Native prerequisite worker
+
+`cimmeria-prerequisite-worker` now implements a one-shot Windows x86 install/probe
+sequence. Schema-1 requests are bounded to 8 KiB and bind non-nil operation and
+prefix-generation UUIDs to absolute game/package/fresh-scratch paths. It validates
+the exact package before creating scratch, writes the authenticated MSI and holds
+its deny-write/delete sharing handle through installation. Existing scratch is
+refused; failed attempts retain evidence rather than overlaying another attempt.
+
+The worker selects `INSTALLUILEVEL_NONE` with
+[MsiSetInternalUI](https://learn.microsoft.com/en-us/windows/win32/api/msi/nf-msi-msisetinternalui),
+then calls [MsiInstallProductW](https://learn.microsoft.com/en-us/windows/win32/api/msi/nf-msi-msiinstallproductw)
+with `REBOOT=ReallySuppress`. Only installer code `0` proceeds to the existing
+probe. Every nonzero status, including `3010`, remains an installer failure.
+A `probed` result means evidence was collected: its nested SDK result may still
+be failure, and it never implies readiness.
+
+Results are bounded to 16 KiB. The shared decoder enforces schema and both UUIDs,
+validates the nested schema-2 probe report, and refuses `not_checked` SDK evidence
+or an installer-failure result carrying code zero. The native CI artifact now
+contains both probe and prerequisite-worker executables. To exercise the worker
+inside the vendor fixture above, additionally set `SGW_PREREQUISITE_WORKER` and
+`SGW_PREREQUISITE_WORKER_SHA256` to that artifact and its verified digest.
+
+Fourteen portable tests passed (`20261004-073512-15727`) before one additional
+assertion; final tests/clippy, native Windows CI and real Wine worker execution
+remain pending. Earlier EXE/msiexec experiments do not validate this new native
+MSI API path. Production admission, journaling, supervision and cancellation are
+still unfinished; no frontend behavior changed.
+
 ## Planned production integration boundary
 
 This coordination is not implemented. A separate `PrepareRuntime` operation must
@@ -195,7 +226,8 @@ distinct from the extraction prefix. Bind immutable installation, runtime, helpe
 and prerequisite-package identities before mutation; selected preferences cannot
 retarget an admitted attempt.
 
-One owned helper should perform vendor installation and SDK probing. Persist
+The new worker supplies the install/probe sequence, but durable coordination is
+not implemented. Persist
 launch intent, then host identity before sending the mutating request, followed by
 installer result, SDK result and durable completion. A successful installer exit
 alone is insufficient. Uncertain requests/results require explicit reconciliation:
