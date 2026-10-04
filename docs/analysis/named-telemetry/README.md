@@ -76,7 +76,7 @@ You coordinate this campaign. Work from [work-packets.md](work-packets.md) one p
 
 | Packet | Status | PR | Notes |
 |---|---|---|---|
-| NT-00 Rule 6 and key table | Ready | | |
+| NT-00 Rule 6 and key table | Done (PR #1191) | [#1191](https://github.com/SandboxServers/Cimmeria/pull/1191) | `space_id` pairs with `world`, not `world_name`; `player_name` kept over `character_name` |
 | NT-01 NameBook | Ready | | |
 | NT-02 Name helpers on the existing resolvers | BlockedDependency (NT-01) | | |
 | NT-03 Unpaired-ID scan and baseline | BlockedDependency (NT-00) | | |
