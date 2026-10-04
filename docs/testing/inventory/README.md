@@ -35,11 +35,11 @@ many tests also updates the catalogue.
 
 | Metric | Count |
 |---|---:|
-| Tests (`#[test]` / `#[tokio::test]`) | 10,047 |
-| Files with tests | 1,706 |
-| Gated in CI (every crate but CI's exclude list) | 8,638 |
-| Live-DB tests (`require_db_or_skip!` in the body) | 1,538 |
-| Inventory threshold (5% of the tests) | 502 |
+| Tests (`#[test]` / `#[tokio::test]`) | 10,083 |
+| Files with tests | 1,713 |
+| Gated in CI (every crate but CI's exclude list) | 8,674 |
+| Live-DB tests (`require_db_or_skip!` in the body) | 1,546 |
+| Inventory threshold (5% of the tests) | 504 |
 
 <!-- /gen:tests-totals -->
 
@@ -88,13 +88,13 @@ with no file in this directory yet.
 | Crate | Package | Tests | Files | Live-DB | In CI | Catalogue |
 |---|---|---:|---:|---:|---|---|
 | `crates/cell-content` | `cimmeria-cell-content` | 830 | 121 | 477 | yes | none |
-| `crates/cell-combat` | `cimmeria-cell-combat` | 781 | 135 | 45 | yes | none |
-| `crates/base-methods` | `cimmeria-base-methods` | 586 | 126 | 420 | yes | none |
-| `crates/cell` | `cimmeria-cell` | 529 | 117 | 19 | yes | none |
+| `crates/cell-combat` | `cimmeria-cell-combat` | 790 | 137 | 45 | yes | none |
+| `crates/base-methods` | `cimmeria-base-methods` | 593 | 127 | 427 | yes | none |
+| `crates/cell` | `cimmeria-cell` | 535 | 119 | 19 | yes | none |
 | `crates/client-telemetry` | `cimmeria-client-telemetry` | 518 | 101 | 0 | no | none |
 | `crates/cell-world` | `cimmeria-cell-world` | 485 | 85 | 32 | yes | none |
+| `crates/cell-console` | `cimmeria-cell-console` | 458 | 71 | 0 | yes | none |
 | `crates/navmesh-extractor` | `cimmeria-navmesh-extractor` | 449 | 52 | 0 | yes | none |
-| `crates/cell-console` | `cimmeria-cell-console` | 445 | 70 | 0 | yes | none |
 | `crates/entity` | `cimmeria-entity` | 439 | 56 | 0 | yes | [entity.md](entity.md) |
 | `crates/base-session` | `cimmeria-base-session` | 404 | 72 | 185 | yes | none |
 | `crates/launcher` | `sgw-launcher` | 396 | 54 | 0 | no | [launcher.md](launcher.md) |
@@ -105,7 +105,7 @@ with no file in this directory yet.
 | `crates/cell-methods` | `cimmeria-cell-methods` | 276 | 44 | 8 | yes | none |
 | `crates/content-engine` | `cimmeria-content-engine` | 271 | 24 | 0 | yes | [content-engine.md](content-engine.md) |
 | `crates/cell-interactions` | `cimmeria-cell-interactions` | 201 | 33 | 0 | yes | none |
-| `crates/cell-catalog` | `cimmeria-cell-catalog` | 194 | 49 | 109 | yes | none |
+| `crates/cell-catalog` | `cimmeria-cell-catalog` | 195 | 50 | 110 | yes | none |
 | `crates/base` | `cimmeria-base` | 181 | 31 | 10 | yes | none |
 | `crates/base-world-entry` | `cimmeria-base-world-entry` | 165 | 46 | 27 | yes | none |
 | `crates/cell-effect-scripts` | `cimmeria-cell-effect-scripts` | 158 | 19 | 21 | yes | none |
