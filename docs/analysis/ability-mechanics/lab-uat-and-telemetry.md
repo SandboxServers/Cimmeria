@@ -65,7 +65,7 @@ Out of scope: rows for packets that have not merged. AB-05 (waiting on D-AB03), 
 | G3 | No cooldown reset, effect list or forced QR outcome; native GM indices 142, 153, 154 and 169-176 are unimplemented | AB-N1, AB-N2, AB-L2 |
 | G4 | No target that holds still and doesn't fight back | AB-L2 (`.dummy`) |
 | G5 | Ally rows need a second player | AB-L6 |
-| G6 | The colo lab endpoint answered 403 | D-AU1 |
+| G6 | The colo lab endpoint answered 403 on 2026-09-29; its allowed-hosts setting is now configured | AB-L0 confirms (D-AU8) |
 | G7 | No per-cast correlation on the server | AB-T1 to AB-T5 |
 | G8 | `docs/commands.md:285` marks `/gmInvokeAbility` implemented; there is no handler | AB-N2 |
 
@@ -81,6 +81,7 @@ PROPOSED rows are adopted at their default unless the owner objects. Record a ch
 | D-AU4 | PROPOSED | **The ability client hooks ship in the base telemetry DLL, to every player**, not behind `lab-bridge`. Each is fingerprint-gated and throttled per name. They reach SigNoz through the existing launcher telemetry path, and each event is also pushed to the lab event ring. | The owner rule is that telemetry is first class and a playtest is debuggable from SigNoz alone. A colo tester's bug must be diagnosable without their local files. The lab reads the same events, so UAT and production see one truth. |
 | D-AU5 | PROPOSED | Volume budget. Server rows (per cast, per decision, per pulse, per send) are DEBUG. A 1 Hz regen sample is TRACE and off by default. Client rows are throttled per name: a burst of 8, then 4 per second, with a `suppressed` count. A pulse storm thins out but never goes silent. Metrics use enumerated labels only. | Full accounting without drowning the colo collector. |
 | D-AU6 | PROPOSED | `.dummy` spawns a lab target with no AI attack tick and no leash, 1,000,000 Health and readable Defense and Accuracy. It despawns after 10 min or when its spawner logs out. | `.spawn` plus `.aggro off` stops a mob noticing you, not hitting back. |
+| D-AU8 | **DECIDED** (owner, 2026-10-04) | **Supersedes D-AU1.** There is no local run: every graded run is live on the colo. Each packet reaches the colo through the normal release, since the colo DB is rebuilt from the seed on every deploy. Colo rule 6 applies: touch only the lab characters and what they spawn. The colo lab endpoint has `CIMMERIA_LAB_MCP_ALLOWED_HOSTS` set as of 2026-10-04, so server clauses should verify; AB-L0 confirms it. | Owner's call. |
 | D-AU7 | PROPOSED | Use the native GM and debug commands wherever the client has an index or a slash command. Dot commands are only for things the client never had: `.effects`, `.cooldowns`, `.dummy` and `.qr`. | The project rule for GM commands (#518, #523). |
 
 ## The correlation model
@@ -302,7 +303,7 @@ A UAT step presses the real hotbar key (N1). Everything below is setup, readback
 
 | Packet | What | Tier |
 |---|---|---|
-| AB-L0 | Rebuild and install `cimmeria-lab` and the telemetry DLL from `main`, start a local server with `cimmeria-lab-mcp`, and run `lab_uat_run` with `plan_only`. Record the SHAs here. No code unless the smoke fails. | none |
+| AB-L0 | Rebuild and install `cimmeria-lab` and the telemetry DLL from `main`, point it at the colo, confirm `server_sessions` answers over WireGuard (no 403), and run `lab_uat_run` with `plan_only`. Record the SHAs here. No code unless the smoke fails. | none |
 | AB-L1 | `server_ability_state` (`LabQuery::AbilityState`) over AB-T5; `focus` and `stats` added to `server_entity_get`. | read |
 | AB-L2 | Dot commands, GM-gated and audited: `.effects [target]`, `.cooldowns reset [id]` (it sends the clear timer, so the sweep stops), `.dummy [hostile\|friendly]` (D-AU6), `.cleareffects [target]` (teardown), and `.qr` if D-AU2 is approved. | G |
 | AB-L3 | Runner support: `${cast_id}` captured from the press (the `client.ability.sent` packet seq joined with the server's receipt row), a `client_event` clause source that reads the decoded `client.ability.*` events from the ring, a `server` clause over `server_ability_state`, and `@cooldowns_reset` and `@ability_state` capabilities. | runner |
@@ -362,15 +363,15 @@ Before the spec merges, the coordinator confirms each row's ids against the seed
 
 AB-C1 and AB-C2 answer B-15 (does a 597 press leave the client, and with which target) directly. A hand-built `onEffectResults` on the lab server, read through AB-C3, the packet tap and a screenshot, answers B-62. Output: `docs/reverse-engineering/findings/beneficial-cast-client-evidence.md`. That unblocks AB-11.
 
-### AB-R2. Full graded run, local
+### AB-R2. Full graded run, colo
 
 `lab_uat_run` in batches of about 5 rows on one `run_dir`. Attest the SigNoz clauses with the SigNoz MCP, then run `lab_uat_report { ledger: true }`. A FAIL becomes a fix packet `AB-F<n>`, with its `cast_id` forensics query as the evidence.
 
-### AB-R3. Colo confirmation
+### AB-R3. Owner confirmation
 
 After AB-13's `/release` and the launcher release carrying AB-C1 to AB-C5:
 
-- the same section, run against the colo;
+- a full re-run of the section on the release build;
 - the owner UAT;
 - a SigNoz read of the owner's own session, joined client to server on `cast_id`.
 
