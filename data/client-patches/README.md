@@ -28,6 +28,7 @@ for the format and [crates/patchset](../../crates/patchset/) for the code.
 | `006-gate-sound-bank` | Copies the stock `audio/genprp/prp_gen.fev` and `prp_gen_gate.fsb` into `Audio/UI/`, where the known-good client has them (byte-identical); the sources are the player's own stock files | 2 near-empty deltas | 1.5 KB |
 | `007-castle-armory-ring` | The ring rig on the CellBlock Armory pad (mission 688). This is 002's Armory op with the same source, delta and result, so installs that applied 002 skip it | 1 map delta against the normalized stock map | 2.6 KB |
 | `008-dialog-portraits` | **Supersedes 001.** The same five dialog-portrait files, shipped whole instead of as deltas, so it applies to any client: stock, Project Giza, or one that already carries a hand-installed portrait fix | 5 whole files | 93 KB |
+| `009-starter-hotbar` | Puts a new character's starting abilities on its action bar at first login (see below) | 1 delta (`ActionProfileDefault1.lua`) | 4.1 KB |
 
 `002-castle-ring-transport` was **removed from the signed content
 manifest on 2026-09-29**, and `007-castle-armory-ring` supersedes it.
@@ -44,8 +45,45 @@ is LZO-compressed. A delta from 002's map back to the stock bytes is
 389 KB, and 383 KB of that is stock map bytes stored verbatim, which the
 no-CME-bytes rule forbids. Fresh installs never get the station.
 
-Applied to the stock client, the rebuilt files are byte-identical to a
-known-good QA client's.
+Applied to the stock client, the rebuilt files of 001-008 are
+byte-identical to a known-good QA client's.
+
+### 009-starter-hotbar
+
+The action bar is client state (`GActionProfiles`, saved per character in
+`ActionButtons - Saved Vars.lua`), so the server can grant abilities but
+cannot put them on the bar, and a new character starts with 100 empty
+buttons. 009 appends [StarterHotbar.lua](009-starter-hotbar/StarterHotbar.lua)
+to the stock `ActionProfileDefault1.lua`, byte for byte. The ActionButtons
+module loads that file after `ActionProfiles.lua`.
+
+- **What it does.** On the profile the client creates at a character's
+  first login (when `GActionProfiles` is empty), it binds each known
+  starting ability (Pistol Shot 592, Strike 594, Heal Focus 597, Health
+  Heal 1646, Recuperation 1218, in that order) to the next empty
+  layer-bound button from 11 to 20 (default keys Alt+1 to Alt+0), using the
+  same calls as dropping an ability from the Ability window. It reads the
+  known abilities with the native `getAbilityList(UIAbilityGroup.KnownAbility)`
+  and tops up on `Events.AbilityUpdate` (and, throttled, on
+  `Events.PropertyUpdated`) until the first session ends. The profile then
+  records `cimmeriaStarterHotbar = 'done'` and is never touched again. A
+  profile that existed before the patch, or one made with the editor's
+  New Profile button, has no such mark and is left alone.
+- **Compatible with UI packs.** It never creates, moves or resizes a
+  button, and it patches no file that the WQHD v26 UI pack replaces
+  (`ActionProfiles.lua`, `ActionButton.layout`). It wraps
+  `ActionProfileMod.createProfile` and `ActionProfileMod.loadProfile`,
+  which the stock file and the v26 replacement both define.
+- **Rebuilding.** Build a patched tree whose `ActionProfileDefault1.lua` is
+  the stock file (sha256 `a09eb055...`) followed by `StarterHotbar.lua`, then
+  run `cimmeria-patchset build` as below. `starter_hotbar_tests.rs` in
+  `crates/patchset` fails when the hook changes without a rebuilt zip.
+- **Logic UAT.** `lua5.1 data/client-patches/009-starter-hotbar/test/run.lua`,
+  or `python .../test/run_lupa.py` on Windows. CI runs it against a
+  clean-room model of the ActionButtons module. Set `SGW_UI_DIR` to a stock
+  client's `Working/SGWGame/Content/UI`, and `SGW_V26_ACTIONPROFILES` to
+  the v26 pack's `ActionProfiles.lua`, to also run it against the real
+  scripts.
 
 Each spec carries a `title` and `description` for the launcher's
 **Changes to your client** list. `cimmeria-patchset build` copies them

@@ -2,7 +2,7 @@
 title: "Finding: Ability Trainer UI Client Evidence (AT-E1)"
 type: reference
 audience: contributors doing RE, ability-trees campaign workers
-last_updated: 2026-09-27
+last_updated: 2026-10-04
 ---
 
 # Finding: Ability Trainer UI Client Evidence (AT-E1)
@@ -18,13 +18,14 @@ last_updated: 2026-09-27
 
 **Confidence: HIGH — confirmed by decompile of both native functions.**
 
-The client exposes five Lua-bound natives for the trainer/ability system. All are registered via a `#ferror in function '<name>'` string next to the Lua-argument-check shim; the shim calls into a small inner function that does the real work:
+The client exposes five Lua-bound natives for the trainer/ability system (a sixth, `getAbilityList`, was added to the table on 2026-10-04). All are registered via a `#ferror in function '<name>'` string next to the Lua-argument-check shim; the shim calls into a small inner function that does the real work:
 
 | Lua-visible name | Shim (arg-check) address | Inner function address | Reads from |
 |---|---|---|---|
 | `getTrainingTreeCount()` | `0x00aa2ac0` | `0x00ad8700` | `GameEntityManager::instance()+0x8c → +0x50` |
 | `getTrainableList(tab)` | `0x00aa2ba0` | `0x00add0a0` | same `+0x8c → +0x50` field, indexed by `tab-1` |
-| `getTrainableInfo(id)` | `0x00aa2c20` | `0x00add1b0` | `GameEntityManager::instance()+0x8c → +0x3c` |
+| `getTrainableInfo(id)` | `0x00aa2c20` | `0x00add1b0` | `GameEntityManager::instance()+0x8c → +0x50` (the entry) and `+0x3c` (`haveIt`); corrected 2026-10-04, see the note below |
+| `getAbilityList(group)` | `0x00aa2740` | `0x00adb810` | `+0x8c → +0x3c → +0xc` (the known-ability ids; added 2026-10-04) |
 | `buyTrainable(id)` | `0x00aa2ca0` | `0x00ad8720` (sender) | — |
 | `respecAbilities()` | `0x00aa2d80` | `0x00aeacd0` (sender) | — |
 
@@ -43,6 +44,15 @@ The client exposes five Lua-bound natives for the trainer/ability system. All ar
 **Order**: the tree window's button order comes from **`onAbilityTreeInfo`'s array order** (the tree), not the trainer's offered-list order — `getTrainableList` never touches the trainer map at all; it only walks the `+0x50` tree cache.
 
 **Cap beyond `MAX_BUTTONS = 30`**: none found. The native loop that builds the Lua table for a tab (`FUN_00add0a0`) walks the *entire* inner array with no length ceiling; the only limit is `Ability.lua`'s own `for i=1,AbilityMod.MAX_BUTTONS do ... trainableList[i]` — ids beyond index 30 in a branch are simply never read. Confirms A-22's finding is a Lua-side cap only.
+
+> [!NOTE]
+> **Correction, 2026-10-04 (headless Ghidra decompile of `0x00add1b0`).** The offsets above are swapped for `getTrainableInfo`. It looks the entry up through `FUN_00e19890(player->+0x50)`, the same object `getTrainableList` reads, and computes `haveIt` with `FUN_00d2a000(player->+0x3c)`. So `+0x3c` is the player's **known-abilities** object: `FUN_00d2a000` looks the id up in its map at `+0x28`, and its id array sits at `+0xc`. The trainer map lives under `+0x50`, and the two bullets above that describe `+0x3c` as the trainer map are wrong on that point; the table is corrected.
+
+### `getAbilityList`: the known-ability list (2026-10-04)
+
+The stock UI Lua never calls it, but `getAbilityList` is a registered native (registered at `0x00ad4c84` inside `FUN_00acbb10`). Its shim `0x00aa2740` requires one argument, then calls `FUN_00adb810`, which ignores that argument. `FUN_00adb810` walks the id array at `player->+0x3c->+0xc` (`FUN_00d29d90` returns `+0xc`) and builds a Lua array with `FUN_00ada620`, the per-id pusher `getTrainableList` uses. The result is the client's known-ability ids, as `onKnownAbilitiesUpdate` filled them.
+
+The `UIAbilityGroup` enum, registered next to it, is `None = 0`, `Training = 1`, `KnownAbility = 2`, `Inventory = 3` (getter constants: `FLDZ`, `FLD1`, double `2.0` at `0x01866fe0`, double `3.0` at `0x0183db60`). Client patch `009-starter-hotbar` calls `getAbilityList(UIAbilityGroup.KnownAbility)` to find the abilities to put on a new character's bar.
 
 ---
 

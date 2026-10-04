@@ -104,6 +104,8 @@ pub(crate) fn sha256_hex(bytes: &[u8]) -> String {
 }
 
 #[cfg(test)]
+mod starter_hotbar_tests;
+#[cfg(test)]
 mod supersede_tests;
 #[cfg(test)]
 mod tests;

@@ -228,6 +228,11 @@ jobs:
         run: sudo apt-get update && sudo apt-get install -y lua5.1
       - name: run the overlay logic UAT
         run: lua5.1 crates/client-patches/overlay/test/run.lua
+      # 009-starter-hotbar's hook against a clean-room model of the
+      # ActionButtons module; the stock and WQHD v26 variants need a client
+      # and run locally (data/client-patches/009-starter-hotbar/test/run.lua).
+      - name: run the starter hotbar logic UAT
+        run: lua5.1 data/client-patches/009-starter-hotbar/test/run.lua
 
   # cargo nextest against a live Postgres. Schema is loaded from
   # db/database.sql (which `\ir`-includes everything in db/sgw and
