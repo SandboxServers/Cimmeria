@@ -16,6 +16,7 @@ use super::single_damage_path_tests::{
 };
 use super::*;
 use crate::test_support::{Captured, LogCapture};
+use cimmeria_entity::abilities::EffectDef;
 use cimmeria_entity::stats::ABSORB_PHYSICAL;
 
 /// The test player's `player_id` (`make_mgr_player_vs_npc`).
@@ -195,4 +196,73 @@ async fn a_shielded_nvp_hit_logs_the_absorb_with_the_hit_ids() {
             "shield row {field} = {want}: {row:?}"
         );
     }
+}
+
+/// **Guard (AB-T3 review).** A damage script's absorb row carries the
+/// cast's `cast_id` and `stage`, as the NVP one does, so a shielded
+/// Pistol Shot joins its `ability_launched` row.
+#[tokio::test]
+async fn a_shielded_damage_script_logs_the_absorb_in_its_cast() {
+    let effect = damage_effect(PISTOL_SHOT_EFFECT, Some("RangedPhysicalDamage"), 15, 150, 0);
+    let (mut mgr, ability) = fixture(PISTOL_SHOT, effect, 0);
+    let shield = mgr
+        .get_entity_mut(NPC)
+        .unwrap()
+        .stats
+        .get_mut(ABSORB_PHYSICAL)
+        .unwrap();
+    shield.update(0, 10_000, 10_000);
+    let seq = seq_rolling(&mgr, (1, NPC), PISTOL_SHOT, false);
+    let outer = mgr.enter_cast_scope(Some(42));
+    let logs = LogCapture::install();
+
+    fire(&mut mgr, &ability, seq).await;
+    mgr.exit_cast_scope(outer);
+
+    let all = logs.all();
+    let row = the_one(
+        rows(&all, "shield_absorbed_damage"),
+        "shield_absorbed_damage",
+    );
+    for (field, want) in [
+        ("cast_id", "42"),
+        ("stage", "apply"),
+        ("player_id", PID),
+        ("effect_id", "654"),
+    ] {
+        assert!(row.has_field(field, want), "{field} = {want}: {row:?}");
+    }
+}
+
+/// **Guard (AB-T3 review, the area collapse).** The seed's Point Blank Fire
+/// shape: two radius effects that both deal Health, no direct single. The
+/// legacy collapse keeps the last one's value, so only it resolves; the
+/// first is planned `skipped` / `area_collapsed`, never `nvp`.
+#[tokio::test]
+async fn a_collapsed_area_effect_is_planned_skipped() {
+    use cimmeria_entity::abilities::TCM_AE_RADIUS;
+    let area = |id| EffectDef {
+        target_collection_method: TCM_AE_RADIUS.to_string(),
+        ..damage_effect(id, None, 40, 0, 0)
+    };
+    let (mut mgr, mut ability) = fixture(1332, area(1575), 1000);
+    mgr.effect_defs.insert(1574, area(1574));
+    ability.effect_ids = vec![1575, 1574];
+    mgr.ability_defs.insert(1332, ability.clone());
+    let seq = seq_rolling(&mgr, (1, NPC), 1332, false);
+    let logs = LogCapture::install();
+
+    fire(&mut mgr, &ability, seq).await;
+
+    let all = logs.all();
+    let first = the_one(planned(&all, 1575), "effect_planned 1575");
+    assert!(
+        first.has_field("path", "skipped") && first.has_field("reason", "area_collapsed"),
+        "{first:?}"
+    );
+    assert!(first.has_field("nvp", "false"));
+    let last = the_one(planned(&all, 1574), "effect_planned 1574");
+    assert!(last.has_field("path", "nvp"), "{last:?}");
+    let resolved = the_one(rows(&all, "nvp_damage_resolved"), "nvp_damage_resolved");
+    assert!(resolved.has_field("effect_id", "1574"), "{resolved:?}");
 }

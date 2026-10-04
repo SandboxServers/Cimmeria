@@ -68,6 +68,9 @@ pub(crate) const REASON_PULSING: &str = "pulsing";
 /// A cone or radius effect's NVP damage left to its fan-out, because a
 /// direct single-target damage effect is this target's damage.
 pub(crate) const REASON_AREA_LEFT_TO_FAN_OUT: &str = "area_effect_left_to_fan_out";
+/// A cone or radius effect whose pool a later area effect of the same
+/// ability replaced in the legacy collapse (one area value per pool).
+pub(crate) const REASON_AREA_COLLAPSED: &str = "area_collapsed";
 /// A splash target takes the shot's damage only (AM-10).
 pub(crate) const REASON_SPLASH_TARGET: &str = "splash_target";
 /// A special round's on-hit effect (AM-04).

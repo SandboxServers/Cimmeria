@@ -24,7 +24,7 @@ use super::qr_gate::effect_lands;
 use super::HitIds;
 use crate::cell::abilities::effect_plan::{
     PlannedEffect, PATH_NVP, PATH_SKIPPED, REASON_AFTER_HIT_SCRIPT, REASON_AMMO_ON_HIT,
-    REASON_AREA_LEFT_TO_FAN_OUT, REASON_MISS, REASON_SPLASH_TARGET, REASON_UNKNOWN_ABILITY,
+    REASON_MISS, REASON_SPLASH_TARGET, REASON_UNKNOWN_ABILITY,
 };
 use crate::cell::space_manager::SpaceManager;
 
@@ -139,21 +139,22 @@ pub(super) fn plan_hit_effects(
             REASON_AFTER_HIT_SCRIPT,
         ));
     }
-    let (entries, left_to_fan_out) = nvp.finish();
+    let (entries, dropped) = nvp.finish();
     plan.nvp = entries;
     for row in rows.iter_mut() {
-        let dropped = row
-            .effect_id
-            .is_some_and(|id| left_to_fan_out.contains(&id));
-        if dropped && row.path == PATH_NVP {
-            *row = PlannedEffect {
-                path: PATH_SKIPPED,
-                reason: REASON_AREA_LEFT_TO_FAN_OUT,
-                nvp: false,
-                ..*row
-            };
+        let Some(&(_, reason)) = dropped.iter().find(|d| Some(d.0) == row.effect_id) else {
+            continue;
+        };
+        // Its NVP damage never resolves on this target. An effect whose
+        // NVP was its primary path is skipped; one with a script or pulses
+        // keeps that path, without the `nvp` flag.
+        row.nvp = false;
+        if row.path == PATH_NVP {
+            row.path = PATH_SKIPPED;
+            row.reason = reason;
         }
     }
+
     if let Some(effect) = on_hit_effect_id.and_then(|eid| space_mgr.effect_defs.get(&eid)) {
         if effect.script_name.is_some() {
             plan.after_scripts.push(effect.effect_id);
@@ -261,9 +262,11 @@ fn absorb_script_damage(
         tracing::debug!(
             target: "abilities",
             event = "shield_absorbed_damage",
+            stage = "apply",
             account_id = ids.actor.account_id,
             player_id = ids.actor.player_id,
             entity_id = ids.entity_id,
+            cast_id = ids.cast_id,
             target_player_id = ids.target.player_id,
             target_id = ids.target_eid,
             ability_id = ids.ability_id,

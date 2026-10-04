@@ -21,6 +21,7 @@
 use cimmeria_entity::abilities::{ClientEffectResult, EffectDef, EF_DONT_USE_QR, TCM_SINGLE};
 use cimmeria_entity::stats::{StatList, FOCUS, HEALTH};
 
+use super::super::effect_plan::{REASON_AREA_COLLAPSED, REASON_AREA_LEFT_TO_FAN_OUT};
 use super::qr_gate::unrolled_qr;
 use super::HitIds;
 use crate::cell::combat::{self, QrResult};
@@ -48,6 +49,9 @@ pub(super) struct NvpPlanner {
     /// per pool, last positive wins.
     area_health: Option<(i32, i32, bool)>,
     area_focus: Option<(i32, i32, bool)>,
+    /// Every area effect added, in order, for the plan rows of the ones
+    /// the collapse drops.
+    area_ids: Vec<i32>,
 }
 
 impl NvpPlanner {
@@ -72,6 +76,7 @@ impl NvpPlanner {
             });
             return true;
         }
+        self.area_ids.push(effect.effect_id);
         if health > 0 {
             self.area_health = Some((health, effect.effect_id, unrolled));
         }
@@ -81,24 +86,36 @@ impl NvpPlanner {
         true
     }
 
-    /// The hit's entries, singles first in effect order, and the area
-    /// effects left to their fan-out because a direct `TCM_Single` damage
-    /// effect is this target's damage (their `effect_planned` rows say
-    /// `skipped`, `area_effect_left_to_fan_out`).
-    pub(super) fn finish(mut self) -> (Vec<NvpDamage>, Vec<i32>) {
-        let sources: Vec<(i32, i32, bool)> = self
-            .area_health
-            .into_iter()
-            .chain(self.area_focus)
-            .collect();
-        if sources.is_empty() {
+    /// The hit's entries, singles first in effect order, and every area
+    /// effect that deals nothing here, with the reason its `effect_planned`
+    /// row gives: `area_effect_left_to_fan_out` (a direct `TCM_Single`
+    /// damage effect is this target's damage) or `area_collapsed` (a later
+    /// area effect replaced its pool in the legacy collapse).
+    pub(super) fn finish(mut self) -> (Vec<NvpDamage>, Vec<(i32, &'static str)>) {
+        if self.area_ids.is_empty() {
             return (self.singles, Vec::new());
         }
         if self.direct_single {
-            let mut left: Vec<i32> = sources.iter().map(|s| s.1).collect();
-            left.dedup();
+            let left = self
+                .area_ids
+                .iter()
+                .map(|&id| (id, REASON_AREA_LEFT_TO_FAN_OUT))
+                .collect();
             return (self.singles, left);
         }
+        let kept: Vec<i32> = self
+            .area_health
+            .iter()
+            .chain(self.area_focus.iter())
+            .map(|s| s.1)
+            .collect();
+        let collapsed = self
+            .area_ids
+            .iter()
+            .filter(|id| !kept.contains(id))
+            .map(|&id| (id, REASON_AREA_COLLAPSED))
+            .collect();
+
         // Each pool keeps its own QR provenance: when the collapsed Health
         // and Focus came from effects with different `EF_DontUseQR` policies,
         // they resolve as two entries, so a flagged pool is never rolled.
@@ -124,7 +141,7 @@ impl NvpPlanner {
                 }));
             }
         }
-        (self.singles, Vec::new())
+        (self.singles, collapsed)
     }
 }
 
