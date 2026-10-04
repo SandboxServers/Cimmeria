@@ -181,6 +181,7 @@ mod tests {
             error: (!ok).then(|| "boom".to_string()),
             result: Value::Null,
             calls: vec![],
+            client: None,
         }
     }
 
@@ -197,6 +198,7 @@ mod tests {
             evaluated_ms: 0,
             query: None,
             evidence_refs: vec![],
+            client: None,
         }
     }
 

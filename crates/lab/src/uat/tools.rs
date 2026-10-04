@@ -11,6 +11,11 @@
 use super::spec::{ActionSpec, SectionSpec};
 use super::tier::Tier;
 
+/// What `@target_player` resolves to. Not a router tool: the runner
+/// expands it into `client_target` naming the other lab client's
+/// character, on the client the action runs on (two-player rows).
+pub const TARGET_PLAYER_TOOL: &str = "uat_target_player";
+
 /// One capability.
 #[derive(Debug, Clone, Copy)]
 pub struct Capability {
@@ -62,6 +67,9 @@ pub const CAPABILITIES: &[Capability] = &[
     drive("target", "client_target", Tier::N1),
     drive("move_to", "client_move_to", Tier::N1),
     drive("camera", "client_camera", Tier::N1),
+    // Two-player rows (AB-L6): `client_target` on the other player's
+    // character by name, with real input. Expanded by the runner.
+    drive("target_player", TARGET_PLAYER_TOOL, Tier::N1),
     // UI and items (L1, L2, L3, L8, L9, L10).
     read("window_read", "client_window_read"),
     drive("window_click_row", "client_window_click_row", Tier::N1),

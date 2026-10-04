@@ -10,14 +10,15 @@
 //! non-programmers may edit.
 //!
 //! The format is documented for authors in
-//! `docs/guides/automated-uat.md`; this module is the schema.
-
-use std::collections::HashSet;
+//! `docs/guides/automated-uat.md`; this module is the schema and
+//! [`super::spec_validate`] the rules the types cannot express.
 
 use serde::Deserialize;
 use serde_json::Value;
 
 use super::tier::Tier;
+
+pub use super::spec_validate::{validate, without_vars};
 
 /// Current spec schema version.
 pub const SCHEMA: u32 = 1;
@@ -95,8 +96,9 @@ pub struct RowSpec {
     /// `in_world` (default), `char_select`, `any` or `client_stopped`.
     #[serde(default = "default_state")]
     pub state: String,
-    /// Players the row needs. Above 1 the row is BLOCKED until a second
-    /// lab instance or a puppet can join it (matrix X1).
+    /// Players the row needs: 1, or 2 to drive the second lab instance
+    /// (`p2`) as well. A 2-player row is BLOCKED, with the reason, when no
+    /// second instance is configured; above 2 always is (matrix X1).
     #[serde(default = "default_players")]
     pub players: u32,
     /// K-numbers or step notes the guide attaches.
@@ -174,6 +176,10 @@ pub struct ActionSpec {
     /// An error here is recorded but does not fail or block the row.
     #[serde(default)]
     pub optional: bool,
+    /// Which lab client runs it: `p1` (default, the lab character) or
+    /// `p2` (the second instance; `players = 2` rows only).
+    #[serde(default)]
+    pub client: Option<String>,
 }
 
 impl ActionSpec {
@@ -338,6 +344,10 @@ pub struct ExpectSpec {
     /// `target_entity_id`); a number or a `${var}`.
     #[serde(default)]
     pub entity: Option<Value>,
+    /// Chat, tool, lua and wait clauses: read this client (`p1` default,
+    /// `p2` on a `players = 2` row).
+    #[serde(default)]
+    pub client: Option<String>,
     // human
     #[serde(default)]
     pub question: Option<String>,
@@ -359,6 +369,9 @@ pub struct EvidenceSpec {
     /// After the action with this label; default: after the steps.
     #[serde(default)]
     pub at: Option<String>,
+    /// Capture from this client (`p1` default, `p2`).
+    #[serde(default)]
+    pub client: Option<String>,
 }
 
 /// Parse and validate one section file.
@@ -368,191 +381,6 @@ pub fn parse(text: &str) -> Result<SectionSpec, String> {
     super::tools::resolve_section(&mut spec)?;
     validate(&spec)?;
     Ok(spec)
-}
-
-/// Structural checks the type system cannot express. Every problem is
-/// reported with its row id so an author can find it.
-pub fn validate(spec: &SectionSpec) -> Result<(), String> {
-    let mut errs = Vec::new();
-    if spec.schema != SCHEMA {
-        errs.push(format!(
-            "schema {} (this runner reads {SCHEMA})",
-            spec.schema
-        ));
-    }
-    if spec.section.character == "fresh" && spec.section.fresh.is_none() {
-        errs.push("character = \"fresh\" needs a [section.fresh] table".into());
-    }
-    if !matches!(spec.section.character.as_str(), "lab" | "fresh") {
-        errs.push(format!(
-            "character {:?}: lab or fresh",
-            spec.section.character
-        ));
-    }
-    if !matches!(spec.section.account.as_str(), "gm" | "non-gm") {
-        errs.push(format!("account {:?}: gm or non-gm", spec.section.account));
-    }
-    let mut ids = HashSet::new();
-    for row in &spec.rows {
-        let r = &row.id;
-        if !ids.insert(r.clone()) {
-            errs.push(format!("{r}: duplicate row id"));
-        }
-        if !matches!(
-            row.state.as_str(),
-            "in_world" | "char_select" | "any" | "client_stopped"
-        ) {
-            errs.push(format!("{r}: state {:?}", row.state));
-        }
-        let mut labels = HashSet::new();
-        for a in row.setup.iter().chain(&row.steps).chain(&row.teardown) {
-            check_action(r, a, &mut errs);
-            if let Some(l) = &a.label {
-                if !labels.insert(l.clone()) {
-                    errs.push(format!("{r}: duplicate action label {l:?}"));
-                }
-            }
-        }
-        if row.steps.is_empty() && row.blocked.is_none() {
-            errs.push(format!("{r}: no steps (add `blocked` if it cannot run)"));
-        }
-        if row.expect.is_empty() && row.blocked.is_none() {
-            errs.push(format!("{r}: no expected clauses"));
-        }
-        let mut cids = HashSet::new();
-        for c in &row.expect {
-            if !cids.insert(c.id.clone()) {
-                errs.push(format!("{r}/{}: duplicate clause id", c.id));
-            }
-            for l in [&c.at, &c.since, &c.action].into_iter().flatten() {
-                if !labels.contains(l) {
-                    errs.push(format!("{r}/{}: no action labelled {l:?}", c.id));
-                }
-            }
-            if let Err(e) = check_clause(c) {
-                errs.push(format!("{r}/{}: {e}", c.id));
-            }
-        }
-        for e in &row.evidence {
-            if let Some(l) = &e.at {
-                if !labels.contains(l) {
-                    errs.push(format!("{r}/evidence {}: no action labelled {l:?}", e.name));
-                }
-            }
-        }
-    }
-    if errs.is_empty() {
-        Ok(())
-    } else {
-        Err(errs.join("; "))
-    }
-}
-
-fn check_action(row: &str, a: &ActionSpec, errs: &mut Vec<String>) {
-    match a.kind() {
-        Err(e) => errs.push(format!("{row}: {e}")),
-        Ok(ActionKind::Capture) => {
-            if a.regex.is_none() || a.var.is_none() {
-                errs.push(format!("{row}: capture needs regex and var"));
-            }
-            if a.capture.as_deref() != Some("chat") {
-                errs.push(format!("{row}: capture source must be \"chat\""));
-            }
-        }
-        Ok(_) => {}
-    }
-    if let Some(re) = &a.regex {
-        if let Err(e) = regex::Regex::new(&without_vars(re)) {
-            errs.push(format!("{row}: bad regex {re:?}: {e}"));
-        }
-    }
-    for f in &a.fallback {
-        if f.tool.is_none() && f.chat.is_none() {
-            errs.push(format!("{row}: a fallback must be a tool or chat action"));
-        }
-        check_action(row, f, errs);
-    }
-}
-
-/// A pattern with its `${var}` placeholders replaced by a literal, so it
-/// can be compiled before the variables are known.
-pub fn without_vars(s: &str) -> String {
-    let mut out = String::with_capacity(s.len());
-    let mut rest = s;
-    while let Some(i) = rest.find("${") {
-        out.push_str(&rest[..i]);
-        match rest[i..].find('}') {
-            Some(j) => {
-                out.push('X');
-                rest = &rest[i + j + 1..];
-            }
-            None => {
-                out.push_str(&rest[i..]);
-                rest = "";
-            }
-        }
-    }
-    out.push_str(rest);
-    out
-}
-
-fn check_clause(c: &ExpectSpec) -> Result<(), String> {
-    let need = |ok: bool, what: &str| if ok { Ok(()) } else { Err(what.to_string()) };
-    match c.source {
-        Source::Chat => need(
-            c.contains.is_some() || c.matches.is_some(),
-            "a chat clause needs contains or matches",
-        )?,
-        Source::Tool | Source::Server => need(c.tool.is_some(), "needs tool")?,
-        Source::Lua => need(c.chunk.is_some(), "a lua clause needs chunk")?,
-        Source::Wait => need(
-            c.lua_condition.is_some(),
-            "a wait clause needs lua_condition",
-        )?,
-        Source::Timing => need(
-            c.action.is_some() && c.max_ms.is_some(),
-            "a timing clause needs action and max_ms",
-        )?,
-        Source::Signoz => need(c.filter.is_some(), "a signoz clause needs filter")?,
-        Source::Packet => {
-            need(c.message.is_some(), "a packet clause needs message")?;
-            need(
-                matches!(c.direction.as_deref(), Some("to_client" | "to_server")),
-                "a packet clause needs direction = \"to_client\" or \"to_server\"",
-            )?;
-            // One tap covers the row and is read once, at teardown.
-            need(
-                c.at.is_none() && c.since.is_none(),
-                "a packet clause is graded over the whole row: no at or since",
-            )?;
-            // Without a field, op/value would be silently ignored and any
-            // matching message would pass.
-            need(
-                c.field.is_some() || (c.op.is_none() && c.value.is_none() && c.tolerance.is_none()),
-                "a packet clause's op, value and tolerance need a field",
-            )?;
-        }
-        Source::Human => need(c.question.is_some(), "a human clause needs question")?,
-    }
-    if matches!(c.source, Source::Tool | Source::Server | Source::Lua)
-        && c.op.is_none()
-        && c.value.is_none()
-    {
-        return Err("needs op and/or value".into());
-    }
-    if c.field.is_some() && c.op.is_none() {
-        return Err("field needs op".into());
-    }
-    if c.op == Some(Op::Approx)
-        && (c.tolerance.is_none_or(|t| !t.is_finite() || t < 0.0)
-            || !c.value.as_ref().is_some_and(Value::is_number))
-    {
-        return Err("op approx needs a numeric value and a finite tolerance >= 0".into());
-    }
-    if let Some(re) = &c.matches {
-        regex::Regex::new(&without_vars(re)).map_err(|e| format!("bad regex {re:?}: {e}"))?;
-    }
-    Ok(())
 }
 
 #[cfg(test)]
@@ -629,6 +457,57 @@ op = "approx"
 value = 15
 tolerance = 1
 "#;
+
+    #[test]
+    fn the_second_player_needs_a_two_player_row() {
+        let two = MINI.replace(
+            "title = \"help answers\"",
+            "title = \"help answers\"\nplayers = 2",
+        );
+        let p2_step = "{ chat = \".help\", label = \"help\", client = \"p2\" }";
+        let ok = two.replace("{ chat = \".help\", label = \"help\" }", p2_step);
+        parse(&ok).unwrap();
+        // The same step on a one-player row, an unknown client, and
+        // @target_player without a second player are all spec errors.
+        let one = MINI.replace("{ chat = \".help\", label = \"help\" }", p2_step);
+        assert!(parse(&one).unwrap_err().contains("players = 2"));
+        let p3 = ok.replace("client = \"p2\"", "client = \"p3\"");
+        assert!(parse(&p3).unwrap_err().contains("p1 or p2"));
+        let target = MINI.replace(
+            "step = [{ chat = \".help\", label = \"help\" }]",
+            "step = [{ tool = \"@target_player\" }, { chat = \".help\", label = \"help\" }]",
+        );
+        assert!(parse(&target).unwrap_err().contains("players = 2"));
+        let resolved =
+            parse(&target.replace("title = \"help answers\"", "title = \"x\"\nplayers = 2"))
+                .unwrap();
+        assert_eq!(
+            resolved.rows[0].steps[0].tool.as_deref(),
+            Some("uat_target_player")
+        );
+        // A fallback runs on its action's client: it may not name another
+        // one, an unknown one, or p2 on a one-player row, at any depth.
+        let fb = |client: &str| {
+            ok.replace(
+                p2_step,
+                &format!(
+                    "{{ tool = \"lab_x\", tier = \"N1\", label = \"help\", fallback = [{{ chat = \".help\", fallback = [{{ chat = \".h\", client = \"{client}\" }}] }}] }}"
+                ),
+            )
+        };
+        parse(&fb("p1")).unwrap();
+        assert!(parse(&fb("p2"))
+            .unwrap_err()
+            .contains("runs on its action's client"));
+        assert!(parse(&fb("p3")).unwrap_err().contains("p1 or p2"));
+        let one = fb("p2").replace("players = 2", "players = 1");
+        assert!(parse(&one).unwrap_err().contains("players = 2"));
+        // Only clauses that read a client take one.
+        let signoz = format!(
+            "{two}\n[[row.expect]]\nid = \"s\"\ntext = \"t\"\nsource = \"signoz\"\nfilter = \"x\"\nclient = \"p2\"\n"
+        );
+        assert!(parse(&signoz).unwrap_err().contains("client applies to"));
+    }
 
     #[test]
     fn a_packet_clause_parses_and_its_rules_hold() {

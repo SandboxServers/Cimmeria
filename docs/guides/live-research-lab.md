@@ -292,6 +292,13 @@ Its tools show up under the second server's name, so an agent addresses a player
 
 **Focus.** A client whose window is not in the foreground runs at below-normal priority with a 5 ms sleep per tick (`FEngineLoop::Tick`). Turn on `client_input_focus` (virtual focus) for both instances: it answers `GetForegroundWindow` per process, so neither is throttled and each keeps reading its own lab input. Real keyboard and mouse still go to the window in front, so do not type while a scenario runs. Both windows open at the same place and size; screenshots use `PrintWindow` per window, so an overlapped window still captures.
 
+**Two-player UAT rows.** `lab_uat_run` drives p2 itself for a `players = 2` row ([automated-uat.md, Two-player rows](automated-uat.md#two-player-rows)). It runs from the default instance and, on the first such row, makes an in-process supervisor for the second instance with that instance's session file, credentials, logs and bridge port. It keeps that supervisor for the life of the server, so p2's client stays up between runs. You need:
+
+- `sessions\lab-account.p2.json` with its own account (`lab2`) and a `character`. Without it, two-player rows are BLOCKED and the reason names the file;
+- `CIMMERIA_LAB_UAT_P2` only to use another instance name (default `p2`), and `CIMMERIA_LAB_UAT_P2_BRIDGE_PORT` only to use another bridge port (default: this instance's port + 1, so 8771).
+
+Do not also run a separate `cimmeria-lab-p2` server for the same instance while a run drives it. Both would own p2's session file, and whichever starts second has its client start refused, which BLOCKs the row with that error. Virtual focus is turned on for each client by the runner's chat macro.
+
 **When to use `wireclient` instead.** A second player that only has to exist and answer (a duel partner, a body to be visible, a trade or squad counterpart driven with `cell_method`/`base_method`) needs no window at all: use `sparbot` or `GameSession` from `crates/wireclient` ([wireclient.md](../architecture/wireclient.md)). It has no throttling and no shared client cache, and needs its own account too. Use a second full client when the second player's UI is part of what is being tested.
 
 ## The display: screensaver and D3D

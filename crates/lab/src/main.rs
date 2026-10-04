@@ -29,6 +29,9 @@
 //!   `lab-account.<name>.json`, logs and (with `_PORT`) bridge port.
 //!   `CIMMERIA_LAB_MAX_CLIENTS` caps the clients (default 2). Unset = the
 //!   single-client layout.
+//! - `CIMMERIA_LAB_UAT_P2`, `CIMMERIA_LAB_UAT_P2_BRIDGE_PORT` — the second
+//!   instance `lab_uat_run` drives for two-player rows (default `p2`, this
+//!   port + 1); its account is `lab-account.<name>.json`.
 
 use std::sync::Arc;
 
