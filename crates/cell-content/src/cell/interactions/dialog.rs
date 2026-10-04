@@ -77,19 +77,13 @@ pub async fn send_dialog_display(
     args.push(1); // IsImmediate
     args.extend_from_slice(&0i32.to_le_bytes()); // aMissionId
 
-    // Snapshot the names for both log lines; the send below awaits.
-    let entity_name = space_mgr.entity_names(player_id).entity_name;
-    let npc_entity_name = u32::try_from(npc_entity_id)
-        .ok()
-        .and_then(|n| space_mgr.entity_names(n).entity_name);
-    let dialog_name = cimmeria_names::book().dialog(dialog_id).map(str::to_owned);
     tracing::debug!(
         entity_id = player_id,
-        entity_name,
+        entity_name = space_mgr.entity_names(player_id).entity_name,
         npc_entity_id,
-        npc_entity_name,
+        npc_entity_name = npc_name(space_mgr, npc_entity_id),
         dialog_id,
-        dialog_name = dialog_name.as_deref(),
+        dialog_name = cimmeria_names::book().dialog(dialog_id),
         "Sending onDialogDisplay"
     );
     if let Err(e) = tx
@@ -105,14 +99,21 @@ pub async fn send_dialog_display(
         // happens. warn! because it's player-visible.
         tracing::warn!(
             entity_id = player_id,
-            entity_name,
+            entity_name = space_mgr.entity_names(player_id).entity_name,
             npc_entity_id,
-            npc_entity_name,
+            npc_entity_name = npc_name(space_mgr, npc_entity_id),
             dialog_id,
-            dialog_name = dialog_name.as_deref(),
+            dialog_name = cimmeria_names::book().dialog(dialog_id),
             "DisplayDialog: cell→base send failed -- dialog not opened on client: {e}"
         );
     }
+}
+
+/// The NPC's name for a log line. The wire carries its entity id as `i32`.
+fn npc_name(space_mgr: &SpaceManager, npc_entity_id: i32) -> Option<&'static str> {
+    u32::try_from(npc_entity_id)
+        .ok()
+        .and_then(|n| space_mgr.entity_names(n).entity_name)
 }
 
 #[cfg(test)]

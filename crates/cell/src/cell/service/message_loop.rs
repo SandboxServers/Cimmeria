@@ -42,13 +42,15 @@ pub(super) async fn run_cell_loop(
                 match msg {
                     Some(BaseToCellMsg::ReloadContentEngine) => {
                         tracing::info!("Hot-reloading content engine from database");
-                        engine = content::build_engine(db_pool.as_deref()).await;
-                        tracing::info!(chains = engine.chain_count(), "Content engine reloaded");
                         // The name book reloads with the content, so a seed
-                        // rename shows in log lines without a restart.
+                        // rename shows in log lines without a restart. It
+                        // goes first: the chain loader's warnings name their
+                        // chains and templates from the book.
                         if let Some(pool) = db_pool.as_deref() {
                             cimmeria_names::reload(pool).await;
                         }
+                        engine = content::build_engine(db_pool.as_deref()).await;
+                        tracing::info!(chains = engine.chain_count(), "Content engine reloaded");
                     }
                     Some(msg) => super::base_messages::handle_base_message(msg, tx, &mut space_mgr, &engine, &spawn_records).await,
                     None => {

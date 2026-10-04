@@ -24,7 +24,7 @@ pub(super) async fn trigger_transporter(
         entity_id,
         entity_name = space_mgr.entity_names(entity_id).entity_name,
         region_id,
-        region_name = crate::cell::ring_transport::ring_region_name(space_mgr, region_id),
+        region_name = space_mgr.ring_transporters.region_name(region_id),
         chain_id,
         chain_name = cimmeria_names::book().chain(chain_id),
         "Content: triggering transporter"

@@ -193,7 +193,8 @@ pub(super) async fn add_dialog_set(
         entity_name = space_mgr.entity_names(entity_id).entity_name,
         dialog_set_map_id = dialog_set_id,
         dialog_set_map_name = cimmeria_names::book().dialog_set_map(dialog_set_id),
-        slot,
+        template_id = slot,
+        template_name = cimmeria_names::book().template(slot),
         chain_id,
         chain_name = cimmeria_names::book().chain(chain_id),
         "Content: adding dialog set"
@@ -205,7 +206,8 @@ pub(super) async fn add_dialog_set(
             entity_name = space_mgr.entity_names(entity_id).entity_name,
             dialog_set_map_id = dialog_set_id,
             dialog_set_map_name = cimmeria_names::book().dialog_set_map(dialog_set_id),
-            slot,
+            template_id = slot,
+            template_name = cimmeria_names::book().template(slot),
             dialog_id = entry.dialog_id,
             dialog_name = dialog_name_of(entry.dialog_id).as_deref(),
             interaction_only = entry.dialog_id.is_none(),
@@ -224,7 +226,8 @@ pub(super) async fn add_dialog_set(
             tracing::info!(
                 entity_id,
                 entity_name = crate::cell::space_manager::EntityNames::of(player).entity_name,
-                slot,
+                template_id = slot,
+                template_name = cimmeria_names::book().template(slot),
                 interactions_count = player
                     .available_interactions
                     .get(&slot)
@@ -278,7 +281,8 @@ pub(super) async fn remove_dialog_set(
         entity_name = space_mgr.entity_names(entity_id).entity_name,
         dialog_set_map_id = dialog_set_id,
         dialog_set_map_name = cimmeria_names::book().dialog_set_map(dialog_set_id),
-        slot,
+        template_id = slot,
+        template_name = cimmeria_names::book().template(slot),
         chain_id,
         chain_name = cimmeria_names::book().chain(chain_id),
         "Content: removing dialog set"
@@ -336,7 +340,8 @@ pub(super) async fn remove_dialog_set(
                     target_name = space_mgr.entity_names(target_id).entity_name,
                     dialog_set_map_id = dialog_set_id,
                     dialog_set_map_name = cimmeria_names::book().dialog_set_map(dialog_set_id),
-                    slot,
+                    template_id = slot,
+                    template_name = cimmeria_names::book().template(slot),
                     chain_id,
                     chain_name = cimmeria_names::book().chain(chain_id),
                     phase = "remove",
@@ -385,7 +390,8 @@ pub(super) async fn add_dialog(
         entity_name = space_mgr.entity_names(entity_id).entity_name,
         dialog_set_map_id = dialog_set_id,
         dialog_set_map_name = cimmeria_names::book().dialog_set_map(dialog_set_id),
-        slot,
+        template_id = slot,
+        template_name = cimmeria_names::book().template(slot),
         chain_id,
         chain_name = cimmeria_names::book().chain(chain_id),
         "Content: add dialog (via entity_template)"
@@ -397,7 +403,8 @@ pub(super) async fn add_dialog(
             entity_name = space_mgr.entity_names(entity_id).entity_name,
             dialog_set_map_id = dialog_set_id,
             dialog_set_map_name = cimmeria_names::book().dialog_set_map(dialog_set_id),
-            slot,
+            template_id = slot,
+            template_name = cimmeria_names::book().template(slot),
             dialog_id = entry.dialog_id,
             dialog_name = dialog_name_of(entry.dialog_id).as_deref(),
             interaction_only = entry.dialog_id.is_none(),
@@ -524,7 +531,8 @@ async fn send_interaction_update_if_visible(
                     target_name = space_mgr.entity_names(target_id).entity_name,
                     dialog_id,
                     dialog_name = dialog_name_of(dialog_id).as_deref(),
-                    slot,
+                    template_id = slot,
+                    template_name = cimmeria_names::book().template(slot),
                     phase = label,
                     "interaction-type send failed -- NPC prompt stale: {e}"
                 );

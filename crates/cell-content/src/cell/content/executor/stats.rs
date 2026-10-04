@@ -54,8 +54,6 @@ pub(super) async fn change_stat(
     // `onStatUpdate` payload.
     let payload = match space_mgr.get_entity_mut(entity_id) {
         Some(entity) => {
-            // Snapshot before `stat` borrows the entity mutably.
-            let entity_name = crate::cell::space_manager::EntityNames::of(entity).entity_name;
             match entity.stats.get_mut(stat_id) {
                 Some(stat) => {
                     if let Some(new_min) = min {
@@ -70,16 +68,20 @@ pub(super) async fn change_stat(
                     if let Some(delta) = amount {
                         stat.change(delta);
                     }
+                    // Copied out so `stat`'s borrow of the entity ends
+                    // before the line names it.
+                    let (cur, max_now) = (stat.cur, stat.max);
                     tracing::info!(
                         entity_id,
-                        entity_name,
+                        entity_name =
+                            crate::cell::space_manager::EntityNames::of(entity).entity_name,
                         stat_id, // nt:id-only stats have no name table; ids are stat_ids.rs constants
                         ?min,
                         ?max,
                         ?set_to_max,
                         ?amount,
-                        cur = stat.cur,
-                        max = stat.max,
+                        cur,
+                        max = max_now,
                         chain_id,
                         chain_name = cimmeria_names::book().chain(chain_id),
                         "Content: ChangeStat applied"
@@ -91,7 +93,8 @@ pub(super) async fn change_stat(
                 None => {
                     tracing::warn!(
                         entity_id,
-                        entity_name,
+                        entity_name =
+                            crate::cell::space_manager::EntityNames::of(entity).entity_name,
                         stat_id, // nt:id-only stats have no name table; ids are stat_ids.rs constants
                         chain_id,
                         chain_name = cimmeria_names::book().chain(chain_id),

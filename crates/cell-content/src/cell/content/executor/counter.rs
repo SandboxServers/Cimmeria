@@ -25,18 +25,17 @@ pub(super) fn increment(
     space_mgr: &mut SpaceManager,
 ) {
     if let Some(entity) = space_mgr.get_entity_mut(entity_id) {
-        let id = entity.identity();
-        let entity_name = crate::cell::space_manager::EntityNames::of(entity).entity_name;
         let entry = entity.counters.entry(counter_name.clone()).or_insert(0);
         *entry = entry.saturating_add(amount);
+        let new_value = *entry;
         tracing::debug!(
             entity_id,
-            entity_name,
+            entity_name = crate::cell::space_manager::EntityNames::of(entity).entity_name,
             player_id,
-            player_name = id.player_name,
+            player_name = entity.identity().player_name,
             %counter_name,
             amount,
-            new_value = *entry,
+            new_value,
             chain_id,
             chain_name = cimmeria_names::book().chain(chain_id),
             "Content: incremented counter"
@@ -63,14 +62,12 @@ pub(super) fn reset(
     space_mgr: &mut SpaceManager,
 ) {
     if let Some(entity) = space_mgr.get_entity_mut(entity_id) {
-        let id = entity.identity();
-        let entity_name = crate::cell::space_manager::EntityNames::of(entity).entity_name;
         let removed = entity.counters.remove(&counter_name);
         tracing::debug!(
             entity_id,
-            entity_name,
+            entity_name = crate::cell::space_manager::EntityNames::of(entity).entity_name,
             player_id,
-            player_name = id.player_name,
+            player_name = entity.identity().player_name,
             %counter_name,
             ?removed,
             chain_id,

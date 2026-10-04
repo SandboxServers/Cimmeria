@@ -176,7 +176,7 @@ pub async fn fire_teleport_in(
             player_id,
             player_name = id.player_name,
             region_id,
-            region_name = crate::cell::ring_transport::ring_region_name(space_mgr, region_id),
+            region_name = space_mgr.ring_transporters.region_name(region_id),
             actions = resolved.actions.len(),
             "fire_teleport_in: matched"
         );
@@ -185,7 +185,7 @@ pub async fn fire_teleport_in(
             entity_id,
             entity_name = space_mgr.entity_label(entity_id),
             region_id,
-            region_name = crate::cell::ring_transport::ring_region_name(space_mgr, region_id),
+            region_name = space_mgr.ring_transporters.region_name(region_id),
             "fire_teleport_in: no chains matched"
         );
     }

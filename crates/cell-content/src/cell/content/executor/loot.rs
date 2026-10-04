@@ -127,8 +127,8 @@ pub(super) async fn open_loot(
         tracing::debug!(
             entity_id,
             entity_name = space_mgr.entity_names(entity_id).entity_name,
-            container,
-            container_name = space_mgr.entity_names(container).entity_name,
+            container_entity_id = container,
+            container_entity_name = space_mgr.entity_names(container).entity_name,
             ?fail,
             "open_loot: container out of range"
         );
@@ -142,8 +142,8 @@ pub(super) async fn open_loot(
         tracing::warn!(
             entity_id,
             entity_name = space_mgr.entity_names(entity_id).entity_name,
-            container,
-            container_name = space_mgr.entity_names(container).entity_name,
+            container_entity_id = container,
+            container_entity_name = space_mgr.entity_names(container).entity_name,
             chain_id,
             chain_name = cimmeria_names::book().chain(chain_id),
             reason = "no_container_key",
@@ -318,8 +318,8 @@ async fn show(
             target: "loot",
             entity_id,
             entity_name = space_mgr.entity_names(entity_id).entity_name,
-            container,
-            container_name = space_mgr.entity_names(container).entity_name,
+            container_entity_id = container,
+            container_entity_name = space_mgr.entity_names(container).entity_name,
             reason = "base_channel_closed",
             "open_loot: onLootDisplay not sent"
         );

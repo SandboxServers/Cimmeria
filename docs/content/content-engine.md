@@ -166,6 +166,8 @@ The `_type` discriminator columns (`event_type`, `condition_type`, `action_type`
 
 **`content_triggers.once`** is "fire once, then disarm" (#802). It is carried per trigger row onto the `Chain` it materializes (`Chain.once`) and enforced by the cell executor's once gate ([executor/once_gate.rs](../../crates/cell-content/src/cell/content/executor/once_gate.rs)), not by `resolve_event`. The scope is **once per player per cell-entity lifetime**: the set of fired once-chains lives in memory on the entity the actions execute for, so the chain re-arms on relog and on every new space visit, the lifetime of the 2009 per-player level script whose `once = True` subscriptions it models. It disarms only when the chain actually fires (trigger matched, every condition passed); a matched trigger whose conditions fail stays armed. The `scope` column is still not read, so `once` is per entity whatever `scope` says. It is not a substitute for a mission gate when a chain must stay closed across relogs. Seeded use: chains 1008 and 1044.
 
+**Every new chain needs a `description`.** It is the chain's `chain_name` on every log line (named telemetry, Rule 6), read by the NameBook (`cimmeria-names`). The same goes for a new `loot_tables.description` or `trainer_ability_lists.description` row. A row left without one, or with a placeholder such as `UNUSED`, fails `live_db_namebook_every_seed_row_resolves_or_is_a_pinned_gap` until you name it or pin it with `NAMEBOOK_GAPS_BLESS=1` (`crates/names/src/namebook_gaps.txt`).
+
 The `params jsonb` column is the catch-all for new action fields. Every new field rides in JSON. The trade-off: zero migration cost, but no schema-level type safety. A typo'd key ("ammount") silently no-ops.
 
 ### What's stored but NOT in these tables
