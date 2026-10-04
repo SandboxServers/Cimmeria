@@ -251,7 +251,7 @@ pub(super) fn mint_inner(
     // install_id / machine_id stay at debug to avoid leaking
     // persistent fingerprints into info-level pipelines.
     tracing::info!(
-        session_id = %session_id,
+        session_id = %session_id, // nt:id-only generated UUID, nothing to name
         session_kind = claims.session_kind(),
         branch = %req.branch,
         git_sha = %req.git_sha,
@@ -260,7 +260,7 @@ pub(super) fn mint_inner(
         "Minted dev-session telemetry token"
     );
     tracing::debug!(
-        session_id = %session_id,
+        session_id = %session_id, // nt:id-only generated UUID, nothing to name
         install_id = %claims.sub,
         machine_id = %req.machine_id,
         "dev-session caller identifiers (debug-only)"
@@ -352,7 +352,7 @@ pub(super) fn refresh_inner(
     };
     let token = encode_token(&new_claims, &secret)?;
     tracing::info!(
-        session_id = %new_claims.sid,
+        session_id = %new_claims.sid, // nt:id-only generated UUID, nothing to name
         old_exp = claims.exp,
         new_exp,
         session_age_secs = elapsed,

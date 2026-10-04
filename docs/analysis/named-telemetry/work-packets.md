@@ -11,6 +11,7 @@
 - **Hot paths.** Resolve a name inside the branch that logs, never at function entry (Rule 5 § "Resolve late"). If a call site needs more than one map lookup, the reviewer checks the path isn't per-tick.
 - **Tests.** Each converted subsystem gets at least one capture-layer test asserting the pair is present on its most-read event, and that fails with the name field removed. TESTING.md has the capture-subscriber pattern (`identity_propagation.rs` is the model).
 - **Ratchet.** Once NT-03 lands, every sweep shrinks the baseline file in the same PR. A sweep never grows it.
+- **Bare `target` keys that aren't entities get renamed, not exempted.** NT-03 counts every bare `target` as an entity ID needing `target_name`, so a `target` that holds something else is renamed to its domain key: `chat_target` (`base/src/base/dispatch/chat.rs`, already a name string), `ammo_type_id` (`cell-combat/.../player/world/reload.rs`), `target_container_id` (`cell/.../base_messages/inventory_events.rs`). Don't mark them `// nt:id-only`.
 - **Docs.** List the [doc-update-map](../../agents/doc-update-map.md) rows you touched in the PR body. Field-name changes update the field catalog in [negative-logging-convention.md](../../architecture/negative-logging-convention.md).
 
 ---

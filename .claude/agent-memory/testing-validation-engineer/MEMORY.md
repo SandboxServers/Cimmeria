@@ -13,3 +13,4 @@
 - [Seed SQL line-scan loses rows](finding_seed_sql_line_scan_loses_rows.md) — Dialogs seeds have multi-line literals, chain seeds have apostrophes in `--` comments; pin parsed row counts
 - [finding_sentinel_and_method_idx_sweeps.md](finding_sentinel_and_method_idx_sweeps.md) — 2026-09-25: 9 dup sentinel consts (4 real) + decimal-offset spill; method_idx vs .def flattening has 0 mismatches; names.rs is a conformance hook
 - [project_live_db_marker_convention.md](project_live_db_marker_convention.md) — live-DB tests need `live_db` in fn/module name; N-way parallel on per-slot DB clones; guards in test-support live_db_group
+- [finding_source_scan_lexer_masking.md](finding_source_scan_lexer_masking.md) — NT-03 scan masks literals/comments before parsing (load-bearing); Git Bash `sed -i` turns CRLF docs LF

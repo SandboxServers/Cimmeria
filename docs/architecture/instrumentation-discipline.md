@@ -449,9 +449,11 @@ tracing::info!(
 );
 ```
 
-The marker goes on the field's own line, and the reason is mandatory.
-NT-03's scan enforces both: an unpaired ID with no marker fails, and so
-does a marker with no reason.
+The marker exempts exactly one field, so the field goes on its own
+line: a marked line that holds two ID fields, in one call or two, fails
+the build. The reason is mandatory and has to read as one: at least two
+words or 10 characters (`x`, `-` and `TODO` fail). The marker must open
+the comment; a comment that only mentions `nt:id-only` exempts nothing.
 
 #### Names are never metric labels
 
@@ -492,6 +494,39 @@ A span may still carry a name for the Traces view.
 NPC lines are in scope too: unlike Rule 5's identity, an NPC has a
 name. Existing lines converge through the campaign's system sweeps
 (NT-20 to NT-27), and NT-03's baseline only shrinks.
+
+The scan is `unpaired_id_fields_only_shrink` in
+`crates/server/src/logging/unpaired_id_tests/`, and the baseline is
+`crates/server/src/logging/unpaired_id_baseline.txt` (unpaired fields
+per file). A sweep that pairs fields lowers the baseline in the same
+PR with `NT_BASELINE_BLESS=1 cargo nextest run -p cimmeria-server
+unpaired_id`. The scan applies the exceptions table by suffix and keeps
+the prefix (`dest_space_id` pairs with `dest_world`), and a dotted key
+pairs under the same path (`npc.template_id` with `npc.template_name`).
+
+How the scan reads the code and the baseline:
+
+- **Test code is skipped:** test files, and anything under `#[cfg(test)]`
+  or `#[cfg(any(test, ...))]` / `#[cfg(all(test, ...))]`, down to a single
+  field or match arm.
+- **Wrappers count.** A `macro_rules!` wrapper that forwards `$(...)`
+  into an event macro has each of its call sites in the same file judged
+  as an event, with the wrapper's fixed fields counted toward pairing.
+  A wrapper with no call site in its file fails the build unless its
+  forwarding line carries a marker. So does renaming an event macro in a
+  `use tracing::... as ...` import.
+- **Lists of IDs are out of scope.** `effect_ids`, `target_player_ids`
+  and other `*_ids` keys aren't ID-shaped under the default rule, and the
+  scan doesn't count them.
+- **The baseline only shrinks in total.** Its `# total N` line is the sum
+  of the per-file rows. A bless (`NT_BASELINE_BLESS=1`) accepts any
+  per-file change, a moved or split file included, while that total
+  doesn't rise, and refuses otherwise; it panics under `CI`. A scanner
+  change that finds more fields is the one legitimate rise: empty the
+  file and bless, and the `# total` line shows the rise in review.
+- **What the ratchet can't see:** pairing one field and adding a new
+  unpaired one in the same file keeps that file's count, so it passes.
+  Review catches that, not the scan.
 
 ### Worked example
 
