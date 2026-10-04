@@ -645,3 +645,14 @@ The fixture is corrected and its full rerun (`20261004-062633-83023`) remains pe
 uninstall is claimed. Final combined strict clippy passed (`20261004-062715-83742`);
 updated Mac development bundling passed (`20261004-062355-81738`) with the new
 helper resource SHA verified. The app was not opened.
+
+### 2026-10-04: Windows x86 module-load probe contract
+
+The standalone desktop workspace now contains `cimmeria-runtime-probe`: bounded
+8 KiB stdin, SGW manifest resource-1 activation and fixed VC80 CRT/CPP, D3DX9_40,
+XInput1_3 and absolute game PhysXLoader checks. Reports are path-free; loading a
+module never asserts SDK initialization or game readiness. Three portable tests
+passed (`20261004-063409-86560`); strict clippy and native Windows i686 CI remain
+pending. No local Windows compilation or real-game probe is claimed. Managed
+integration still requires helper hash/owned-root binding and supervisor deadlines.
+See [probe contracts](../../../../crates/launcher/desktop/docs/prerequisites.md).

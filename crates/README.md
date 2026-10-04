@@ -308,4 +308,7 @@ The live-DB run must be serialised — some guards share sentinel id ranges and 
 [`launcher/desktop`](launcher/desktop/README.md) contains the new
 `cimmeria-launcher-engine` operation/storage foundation and the Effect frontend. It is outside the root
 Cargo workspace and generated crate graph; use its explicit manifest validation
-commands. Existing `sgw-launcher` behavior is unchanged.
+commands. It also contains `cimmeria-runtime-probe`, a Windows x86 module-load
+helper with a portable request/report contract; see its
+[probe reference](launcher/desktop/docs/prerequisites.md). Existing `sgw-launcher`
+behavior is unchanged.

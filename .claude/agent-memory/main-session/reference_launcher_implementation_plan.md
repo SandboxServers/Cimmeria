@@ -320,6 +320,13 @@ Windows+Mac before the shell; shell/visual/game gates remain separate.
   No app opened or visual UAT. Retention-capable helper now staged from Windows CI
   37197224000 at 1fa1a13ce (both platforms green). Enhanced smoke passed full
   content and four prerequisite hashes, then correctly refused uninstall InUse:
-  fixture preclaim guard outlived publication. Fixture corrected; full rerun and
-  completed real uninstall pending. Strict clippy and updated Mac bundle passed;
+  fixture preclaim guard outlived publication. Corrected full rerun passed
+  326.696s lane062633-83023, including confirmed uninstall. Strict clippy and updated Mac bundle passed;
   packaged new helper SHA verified, app not opened.
+
+- Experimental desktop `runtime-probe` is a native Windows x86 module-load helper,
+  not SDK/game readiness. Bounded stdin, SGW manifest activation, fixed module IDs
+  and path-free results; physx_engine_checked/game_started always false. Three
+  portable tests pass; native i686 CI and real-game execution remain unproven.
+  Before managed integration bind helper hash/owned root and supervisor deadline.
+  Reference: `crates/launcher/desktop/docs/prerequisites.md`.

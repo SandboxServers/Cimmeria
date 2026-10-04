@@ -379,7 +379,9 @@ The enhanced smoke (`20261004-062038-80112`) passed full-content preparation and
 all four retained prerequisite hashes, then uninstall correctly refused
 `Storage(InUse)`: the fixture retained its preclaim guard past publication, unlike
 the production worker. The fixture now drops that guard before publication. A
-corrected full run is pending; completed real uninstall is not yet proven.
+corrected full run passed (`20261004-062633-83023`, 326.696 seconds lane),
+including original seed, seven patches, four prerequisite hashes and confirmed
+uninstall. This proves that tested content/removal flow, not runtime readiness.
 
 CI `37197224000` passed both platforms at the retention helper revision. Combined
 strict clippy passed (`20261004-062337-81520`). The updated Mac development bundle

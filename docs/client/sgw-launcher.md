@@ -122,7 +122,7 @@ when relative paths, types, file sizes and SHA-256 hashes match exactly; extra o
 changed files, links, special files and Windows reparse points are refused.
 Cancellation is checked during inventory/hash reads and before publication.
 The rebuilt Windows helper passed real content/retained-prerequisite hash checks;
-the full uninstall smoke rerun remains pending. Existing completed-install receipts do not
+the corrected full uninstall smoke also passed. Existing completed-install receipts do not
 prove prerequisites were retained or installed.
 
 Cabinets are expanded with Windows' FDI API (`FDICreate`/`FDICopy` in

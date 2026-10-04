@@ -689,3 +689,5 @@ is no new UI or Repair execution in this packet.
 
 Settings uninstall, explicit recovery and data-retention boundaries are described
 in [installed-content maintenance](docs/maintenance.md).
+See [prerequisite evidence and probe semantics](docs/prerequisites.md) for the
+experimental Windows x86 module-load helper and remaining integration gates.
