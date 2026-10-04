@@ -269,3 +269,21 @@ for schema/auth/consent/retention; platform guides for packaging. Update indices
 and project memory with each packet. Add an architecture decision only when the
 contracts are reviewed; this plan records the requested direction and remaining
 work, not an implemented system.
+
+## Implementation ledger
+
+### 2026-10-04: operation contract (packet 1, partial)
+
+Added the standalone [desktop engine scaffold](../../../../crates/launcher/desktop/README.md)
+with versioned snapshots, current-operation retry handling, revision checks,
+cancellation acknowledgement states and an injected journal contract. Nine
+Rust tests, strict clippy and formatting passed on macOS through the build lane
+(compilation only). No existing egui configuration/preparation ownership has
+been extracted yet. No concrete file journal, real mutation worker, Tauri IPC
+or Effect service is connected. Next: durable journal/process ownership and
+settings, then the Effect bridge and worker integration.
+
+The tests use an in-memory journal. They do not prove crash durability, native
+worker dispatch, cross-process ownership or Windows behavior. No frontend
+changed, so no JS/visual UAT was run for this packet. Production release gates
+and final self-contained startup validation remain open.

@@ -131,3 +131,6 @@ the 2026-10-04 direction: reuse Rust installation/launch behavior, implement rea
 Effect orchestration and focused consent-aware operation summaries, then perform
 self-contained startup testing as the final release gate. This packet is a plan,
 not production implementation or an observed login result.
+
+Implementation has begun with the [native operation contract](../../../../crates/launcher/desktop/README.md);
+see the plan's implementation ledger for tested scope and remaining work.

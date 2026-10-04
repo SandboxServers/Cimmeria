@@ -14,3 +14,8 @@ structured `client.native` logs, not native phase spans. Existing game consent
 is saved for launch-time snapshots; do not claim immediate DLL revocation.
 The plan proposes narrow bounded launcher summaries, independent export consent,
 acknowledged queue and validated lifted fields; these are not yet implemented.
+
+2026-10-04 implementation update: `crates/launcher/desktop/engine` now provides
+a tested operation contract (nine Mac tests), with an injected journal trait.
+It is a separate workspace, requiring explicit manifest checks. No file journal,
+Effect integration or mutation worker is connected yet; see the plan ledger.
