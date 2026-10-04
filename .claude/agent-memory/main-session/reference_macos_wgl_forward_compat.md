@@ -33,8 +33,11 @@ uninstalled. Installation, login, injection, and gameplay remain unverified.
 
 WoWSilicon's Options -> Environment accepts one KEY=VALUE per line. Recommend
 this per-profile setting before changing the Cimmeria renderer or Wine build.
-The setting was tested as a process environment variable, not persisted into
-the profile. The helper-library environment normally supplied by WoWSilicon
+The setting was subsequently saved through Options -> Environment, verified
+on disk in the Cimmeria profile, and confirmed in a new launch command after
+pressing Play. That launcher remained running; no second visual capture was
+made. The current resume checklist is
+[the playtest handoff](../../../docs/analysis/playtests/2026-10-03-macos-wine/README.md). The helper-library environment normally supplied by WoWSilicon
 should be retained for real play; the direct diagnostic command emitted
 FreeType warnings.
 
