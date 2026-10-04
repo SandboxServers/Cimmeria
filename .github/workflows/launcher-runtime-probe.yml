@@ -5,6 +5,7 @@ on:
     paths:
       - 'crates/launcher/desktop/runtime-probe/**'
       - 'crates/client-launch/**'
+      - 'crates/start32/**'
       - 'crates/lab/**'
       - 'crates/client-telemetry/**'
       - 'crates/client-patches/**'
@@ -21,6 +22,7 @@ on:
     paths:
       - 'crates/launcher/desktop/runtime-probe/**'
       - 'crates/client-launch/**'
+      - 'crates/start32/**'
       - 'crates/lab/**'
       - 'crates/client-telemetry/**'
       - 'crates/client-patches/**'
@@ -92,7 +94,7 @@ jobs:
       - name: Build native lab supervisor and injection tools
         run: |
           bash tools/build-lane/lane.sh cargo build --locked -p cimmeria-lab --target-dir target/local-lab
-          bash tools/build-lane/lane.sh cargo build --locked -p cimmeria-client-launch --bin sgw-start32 --target i686-pc-windows-msvc --target-dir target/local-lab
+          bash tools/build-lane/lane.sh cargo build --locked -p cimmeria-start32 --bin sgw-start32 --target i686-pc-windows-msvc --target-dir target/local-lab
           bash tools/build-lane/lane.sh cargo build --locked -p cimmeria-client-telemetry --features lab-bridge --target i686-pc-windows-msvc --target-dir target/local-lab
           sha256sum target/local-lab/debug/cimmeria-lab.exe target/local-lab/i686-pc-windows-msvc/debug/sgw-start32.exe target/local-lab/i686-pc-windows-msvc/debug/cimmeria_client_telemetry.dll
       - name: Retain local-only UAT tools
