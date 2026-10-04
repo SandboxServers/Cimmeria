@@ -35,9 +35,9 @@ many tests also updates the catalogue.
 
 | Metric | Count |
 |---|---:|
-| Tests (`#[test]` / `#[tokio::test]`) | 10,535 |
-| Files with tests | 1,806 |
-| Gated in CI (every crate but CI's exclude list) | 8,910 |
+| Tests (`#[test]` / `#[tokio::test]`) | 10,545 |
+| Files with tests | 1,809 |
+| Gated in CI (every crate but CI's exclude list) | 8,920 |
 | Live-DB tests (`require_db_or_skip!` in the body) | 1,551 |
 | Inventory threshold (5% of the tests) | 527 |
 
@@ -91,7 +91,7 @@ with no file in this directory yet.
 | `crates/cell-content` | `cimmeria-cell-content` | 831 | 121 | 477 | yes | none |
 | `crates/client-telemetry` | `cimmeria-client-telemetry` | 649 | 126 | 0 | no | none |
 | `crates/base-methods` | `cimmeria-base-methods` | 593 | 127 | 427 | yes | none |
-| `crates/cell` | `cimmeria-cell` | 550 | 126 | 19 | yes | none |
+| `crates/cell` | `cimmeria-cell` | 551 | 126 | 19 | yes | none |
 | `crates/cell-world` | `cimmeria-cell-world` | 506 | 86 | 32 | yes | none |
 | `crates/cell-console` | `cimmeria-cell-console` | 497 | 81 | 1 | yes | none |
 | `crates/lab` | `cimmeria-lab` | 469 | 98 | 0 | no | none |
@@ -132,9 +132,9 @@ with no file in this directory yet.
 | `crates/commands` | `cimmeria-commands` | 29 | 3 | 0 | yes | [commands.md](commands.md) |
 | `crates/wire-log` | `cimmeria-wire-log` | 27 | 6 | 0 | yes | none |
 | `crates/patchset` | `cimmeria-patchset` | 23 | 5 | 0 | yes | none |
+| `crates/lab-mcp` | `cimmeria-lab-mcp` | 22 | 6 | 0 | yes | none |
 | `crates/names` | `cimmeria-names` | 22 | 6 | 4 | yes | none |
 | `crates/client-hookgate` | `cimmeria-client-hookgate` | 20 | 2 | 0 | yes | none |
-| `crates/lab-mcp` | `cimmeria-lab-mcp` | 13 | 3 | 0 | yes | none |
 | `crates/sgw-testhost` | `cimmeria-sgw-testhost` | 12 | 2 | 0 | yes | none |
 | `crates/upk` | `cimmeria-upk` | 12 | 3 | 0 | yes | none |
 | `tools/ContentEditor` | `cimmeria-content-editor` | 12 | 1 | 0 | no | [tools-contenteditor.md](tools-contenteditor.md) |
