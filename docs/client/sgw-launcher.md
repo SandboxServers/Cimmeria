@@ -16,10 +16,11 @@ The approved cross-platform replacement is being implemented separately in
 [`crates/launcher/desktop/`](../../crates/launcher/desktop/README.md). Its native
 first-install worker prepares content through the shared pipeline, but its Tauri
 UI now connects installation, cancellation and explicit recovery through Effect
-on supported Windows builds, with cached evidence for identical native retries.
+on Windows and verified-helper Mac builds, with cached evidence for identical
+native retries.
 It reports content preparation separately from runtime readiness; launch, repair
-and removal remain unavailable. Mac install/resume is rejected until the
-Wine adapter is connected. Runtime provisioning and game validation remain
+and removal remain unavailable. Mac builds without the compiled-and-bundled
+verified helper cannot install; Wine resume/recovery remains unsupported. Runtime provisioning and game validation remain
 separate gates. The existing Windows launcher described here
 remains the functional user-facing implementation.
 

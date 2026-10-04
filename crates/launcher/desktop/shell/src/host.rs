@@ -10,6 +10,8 @@ pub use install::{InstallCommand, InstallStatus, JobError};
 
 pub struct NativeHost {
     root: PathBuf,
+    #[cfg(target_os = "macos")]
+    helper: Option<cimmeria_launcher_engine::mac_wine::HelperResource>,
     state: Mutex<Option<Arc<Mutex<DesktopState>>>>,
     worker: Mutex<Option<cimmeria_launcher_engine::install_worker::Worker>>,
 }
@@ -17,9 +19,23 @@ impl NativeHost {
     pub fn new(root: PathBuf) -> Self {
         Self {
             root,
+            #[cfg(target_os = "macos")]
+            helper: None,
             state: Mutex::new(None),
             worker: Mutex::new(None),
         }
+    }
+
+    #[cfg(target_os = "macos")]
+    pub fn with_bundled_helper(mut self, resource_directory: PathBuf) -> Self {
+        self.helper = option_env!("CIMMERIA_WINDOWS_HELPER_SHA256").and_then(|expected| {
+            cimmeria_launcher_engine::mac_wine::HelperResource::open(
+                resource_directory.join("windows/cimmeria-archive-worker.exe"),
+                expected,
+            )
+            .ok()
+        });
+        self
     }
 
     fn with_state<T>(

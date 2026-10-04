@@ -151,7 +151,7 @@ fn shared_native_owner_outlives_host_while_worker_retains_it() {
     assert!(DesktopState::open(&path).is_ok());
 }
 
-fn fixture_release() -> VerifiedRelease {
+pub(super) fn fixture_release() -> VerifiedRelease {
     fixture_release_padded(0)
 }
 fn fixture_release_padded(padding: usize) -> VerifiedRelease {

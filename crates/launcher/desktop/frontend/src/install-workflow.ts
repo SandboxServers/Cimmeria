@@ -3,7 +3,7 @@ import { NativeSnapshot } from './contract';
 
 const Count = Schema.Int.check(Schema.isBetween({minimum:0, maximum:Number.MAX_SAFE_INTEGER}));
 export const InstallStatus = Schema.Struct({
-  schema_version:Schema.Literal(1), native:NativeSnapshot, install_supported:Schema.Boolean,
+  schema_version:Schema.Literal(1), native:NativeSnapshot, install_supported:Schema.Boolean, can_resume:Schema.Boolean, can_reconcile:Schema.Boolean,
   progress:Schema.NullOr(Schema.Struct({phase:Schema.Literals(['download','extraction']), current:Count, total:Count})),
   outcome:Schema.NullOr(Schema.Literals(['content_prepared','cancelled','destination_unavailable','install_failed','content_invalid','reconciliation_required','rosetta_required','runtime_unavailable'])),
 });

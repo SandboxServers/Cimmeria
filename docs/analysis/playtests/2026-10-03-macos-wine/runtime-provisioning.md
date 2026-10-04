@@ -252,3 +252,16 @@ The shell still lacks build-pinned resource binding and rejects Mac installation
 Wine resume/recovery remains unsupported; local helper hashing is not a packaged
 artifact trust policy. Real-client patching, prerequisites, launch/gameplay and
 native visual UAT remain separate gates.
+
+
+## Packaged helper binding — 2026-10-04
+
+Mac shell content installation is now conditional on a fixed bundled Windows
+helper matching a build-time expected digest. Staging checks independently
+supplied hash/source revision and AMD64 PE32+ format; its receipt cannot authorize
+the artifact. Runtime checks occur at resolution and before fetch/admission.
+The development bundle contains the verified helper, but was not opened.
+A staged-resolution/admission/cancel fixture passed; visual routing and final
+self-contained startup remain unvalidated. Wine recovery remains disabled.
+The [build recipe](../../../../crates/launcher/desktop/docs/wine-validation.md#packaged-helper-staging-and-mac-build)
+records artifact identity and the separate manifest verification key.

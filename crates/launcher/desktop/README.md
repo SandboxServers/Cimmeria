@@ -9,8 +9,9 @@ This standalone workspace contains native Rust state, Effect workflows and a
 Tauri settings shell. The interface connects through Tauri invoke to native
 preference persistence. Play/Patch Notes tabs and the settings panel are
 implemented; patch notes load from a signed release manifest. Effect
-installation controls now call native IPC on supported Windows builds; Mac
-installation remains disabled. Content preparation does not establish runtime or
+installation controls call native IPC on Windows and on Mac builds containing
+a helper verified against its compiled artifact identity. Mac builds without
+that resource retain settings and patch notes but cannot install. Content preparation does not establish runtime or
 Play readiness. Repair, removal, launch and telemetry export remain pending. The
 existing Windows egui launcher shares the downloader cancellation fixes.
 
@@ -158,8 +159,7 @@ evidence](../../../docs/analysis/playtests/2026-10-03-macos-wine/runtime-provisi
 The experimental headless Wine adapter prepares a pinned runtime and uses a
 Windows helper with durable ownership checkpoints. Fixture ZIP and original client
 RAR/chained-cabinet extraction smokes passed; patching and runtime/game readiness
-remain separate gates. Mac installation is still disabled
-in the shell. See [Wine/runtime/helper validation](docs/wine-validation.md) for
+remain separate gates. Mac installation is conditional on the packaged helper binding below. See [Wine/runtime/helper validation](docs/wine-validation.md) for
 protocol limits, backend identity, cancellation/recovery boundaries, managed cache
 checks and supervised smoke commands. Game prerequisites and readiness remain
 separate gates.
@@ -496,10 +496,10 @@ progress projects only fixed download/extraction phases and JavaScript-safe
 counts, with no path-bearing labels. The native snapshot still includes the
 saved directory. Failures cross IPC as flat allowlisted codes.
 
-Install and resume are Windows-only until the Mac Wine adapter is connected.
-Other platforms reject them before downloads or destination mutation; install's
-async adapter checks support before fetching release evidence. The Effect
-controls described below now connect this command on Windows. Native IPC
+Install supports Windows and verified-helper Mac builds. Unsupported builds
+reject it before downloads or destination mutation. Resume supports interrupted
+native Windows attempts; Wine resume/recovery remains rejected. The Effect
+controls follow the native capability flags. Native IPC
 availability does not establish interactive Tauri routing or runtime/gameplay
 readiness.
 
@@ -517,9 +517,9 @@ newer frontend installation controls.
 ## Effect installation controls
 
 `frontend/src/install-workflow.ts` and `install-view.ts` connect installation
-controls to native IPC on supported Windows builds. Install requires a selected
-folder and no current operation. Mac installation remains disabled until its
-native adapter is available. Settings saves refresh installation status. Repair,
+controls to native IPC on Windows and verified-helper Mac builds. Install
+requires a selected folder and no current operation. Mac builds without the
+verified packaged helper cannot install. Settings saves refresh installation status. Repair,
 uninstall, runtime setup and Play remain unavailable.
 
 The application-scoped Effect service inspects native state before each
@@ -561,10 +561,10 @@ and client setup remain native; ordinary content checks, promotion and receipt
 publication follow extraction. Observer disposal does not abort the task.
 
 `RosettaRequired` and `RuntimeUnavailable` outcomes now have typed frontend
-messages, distinct from cancellation and uncertainty. The shell still rejects
-Mac install/resume: packaged resource identity is not bound yet. A caller hashing
+messages, distinct from cancellation and uncertainty. Packaged resource binding now enables Mac content installation when verified;
+Wine resume/recovery remains unsupported. A caller hashing
 a local helper file is not an artifact trust policy. Native Wine recovery remains
-rejected; this API does not enable end-user Mac installation.
+rejected; this API alone does not establish packaged startup or game readiness.
 
 An explicitly run retained-worker fixture passed in 22.596 seconds, combining
 Wine seed extraction, a native ZIP patch and content receipt after its observer
@@ -575,3 +575,25 @@ passed 204 tests with eight ignored entries. Twenty-five frontend tests,
 checking/build and sequential JS logic UAT passed,
 including new failure decoding and preserved consent. Native visual UAT was not
 performed. These fixtures do not establish real game prerequisites or readiness.
+
+
+## Packaged Mac helper binding
+
+The shell resolves only `resource_dir/windows/cimmeria-archive-worker.exe` and
+checks it against compile-time `CIMMERIA_WINDOWS_HELPER_SHA256`. It verifies again
+before release fetching/admission and persists the immutable Wine backend.
+Missing, mismatched or unconfigured helpers leave Mac installation unavailable.
+Status now declares `can_resume`/`can_reconcile`; unsupported Wine recovery
+controls stay hidden and status rechecks do not invoke native recovery.
+The engine continues to reject native replay of Wine intents.
+
+See the [repeatable helper staging and Mac build recipe](docs/wine-validation.md#packaged-helper-staging-and-mac-build).
+A development bundle with the verified helper was built without opening it.
+The staged-resolver → Wine-admission → cancellation integration passed in 1.961
+seconds. Python staging guards, 26 frontend tests, check/build and sequential
+logic UAT passed. Final checks passed 205 engine tests (eight ignored), 15 shell tests (one
+ignored), and strict engine/shell clippy. The ignored resource smoke passed
+separately. The final development bundle built with its embedded helper hash
+verified; packaged permission verification remains pending. No visual UAT or packaged-app startup was performed; the final
+self-contained startup gate remains deferred. Game prerequisites/Play and Wine
+recovery remain unfinished.

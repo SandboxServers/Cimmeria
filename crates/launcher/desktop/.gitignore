@@ -1,2 +1,6 @@
 /target/
 /shell/gen/
+/shell/resources/windows/*.exe
+
+/shell/resources/windows/helper-build.json
+/tools/__pycache__/

@@ -5,7 +5,7 @@ class Installation extends Context.Service<Installation,Effect.Success<typeof ma
 const errors:Record<InstallFailure['code'],string>={
   transport:'Could not confirm the operation. Recheck status before continuing.',
   schema:'The interface and installer versions do not match.',unsupported_schema:'This installer state requires a different launcher version.',
-  platform_unavailable:'Mac installation is not available in this build yet.',io:'Cannot read or write installation state. Check disk space and permissions.',
+  platform_unavailable:'The compatibility helper is unavailable. Check that the launcher files are intact.',io:'Cannot read or write installation state. Check disk space and permissions.',
   corrupt_state:'Saved installation state cannot be read. Files have been preserved.',invalid_directory:'Choose an empty game folder in Settings.',
   stale_revision:'Installation state changed. Recheck status.',busy:'An operation already owns this installation.',
   unknown_operation:'This operation is no longer the current installation. Recheck status.',identity_conflict:'This request does not match the saved installation.',
@@ -40,7 +40,7 @@ export function mountInstall(document:Document,invoke:Invoke,uuid:()=>string=()=
     primary.textContent=operation?.state==='succeeded'?'Content prepared':active?'Installing…':'Install Stargate Worlds';
     cancel.hidden=!active;
     cancel.disabled=!ready||operation?.state==='cancel_requested';
-    resume.hidden=!recovery; resume.disabled=!ready||!status?.install_supported;
+    resume.hidden=!recovery||!status?.can_resume; resume.disabled=!ready||!status?.can_resume;
     recheck.hidden=!current.error&&!recovery;
     recheck.disabled=pending||current.busy||status?.native.requires_reopen===true;
     progress.hidden=!active||!status?.progress;
@@ -51,13 +51,13 @@ export function mountInstall(document:Document,invoke:Invoke,uuid:()=>string=()=
     else if(pending)text='Confirming installation request…';
     else if(status){
       if(operation?.state==='succeeded')text='Game content prepared. Runtime checks and Play are not connected in this build.';
-      else if(recovery)text='An interrupted installation was found. Inspect files or explicitly resume the saved attempt.';
+      else if(recovery)text=status.can_resume||status.can_reconcile?'An interrupted installation was found. Inspect files or explicitly resume the saved attempt.':'An interrupted compatibility operation was found. Files are preserved; recovery is not available in this build. You can recheck status.';
       else if(active)text=operation?.state==='cancel_requested'?'Cancellation requested. Waiting for the installer to stop safely.':
         status.progress?.phase==='download'?'Downloading verified game content…':status.progress?.phase==='extraction'?'Extracting game content…':'Preparing installation…';
       else if(status.outcome==='rosetta_required')text='Rosetta is required to prepare Windows game compatibility on this Mac. No game was launched.';
       else if(status.outcome==='runtime_unavailable')text='Windows compatibility could not be prepared. Check your connection and available disk space. Existing files have been preserved.';
       else if(operation)text='Installation stopped. Partial files are preserved. Retry and cleanup are not connected in this build.';
-      else if(!status.install_supported)text='Mac compatibility setup is still in development. Settings and Patch Notes are available.';
+      else if(!status.install_supported)text='This build is missing a verified compatibility helper. Settings and Patch Notes are available.';
       else text=status.native.preferences.install_directory?'Ready to install game content.':'Choose an empty game folder in Settings to begin.';
     }
     get('install-status').textContent=text;
@@ -88,7 +88,7 @@ export function mountInstall(document:Document,invoke:Invoke,uuid:()=>string=()=
   on(cancel,()=>{const id=current.status?.native.operation.operation?.id;if(id)void run(service=>service.cancel(id));});
   on(resume,()=>{const id=current.status?.native.operation.operation?.id;if(id)void run(service=>service.resume(id));});
   on(recheck,()=>{const operation=current.status?.native.operation.operation;
-    void run(service=>operation?.state==='reconciliation_required'?service.reconcile(operation.id):service.inspect);});
+    void run(service=>operation?.state==='reconciliation_required'&&current.status?.can_reconcile?service.reconcile(operation.id):service.inspect);});
   const refresh=()=>run(service=>service.inspect);
   const ready=refresh();
   return {ready,refresh,settled:()=>mutation,dispose:async()=>{

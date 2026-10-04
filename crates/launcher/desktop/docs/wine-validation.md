@@ -6,8 +6,9 @@
 > **Companions:** [Desktop launcher](../README.md), [runtime provisioning evidence](../../../../docs/analysis/playtests/2026-10-03-macos-wine/runtime-provisioning.md), [implementation ledger](../../../../docs/analysis/playtests/2026-10-03-macos-wine/launcher-implementation-plan.md)
 
 Paths in this reference are relative to `crates/launcher/desktop/` unless stated
-otherwise. Shell commands run from the repository root. Mac installation remains
-disabled; the adapter is an experimental native seam, not a released installer.
+otherwise. Shell commands run from the repository root. Mac content installation
+is conditional on verified packaged-helper binding; it is not a release or
+game-readiness claim.
 Historical packet results live in the implementation ledger.
 
 ## Archive worker boundary
@@ -173,7 +174,7 @@ Wineboot/wineserver processes. No frontend changed, so frontend UAT was not
 rerun.
 
 The adapter is connected to the retained native `dispatch_wine` worker, but not
-to shell resource selection. Mac installation remains disabled. The smoke proves fixture ZIP extraction only.
+to shell resource selection through the verified binding described below. The smoke proves fixture ZIP extraction only.
 The original client RAR/chained-cabinet smoke subsequently passed, as recorded
 below. Prerequisites, game launch and distribution clearance remain unproven.
 
@@ -223,7 +224,7 @@ successful smoke and cancellation of a redundant diagnostic. This establishes
 original RAR/chained-cabinet extraction through the
 managed Wine/helper path. It does not establish patch application, prerequisites,
 game launch, login or gameplay. The debug-helper duration is not a release
-performance benchmark. Mac shell installation remains disabled.
+performance benchmark. Packaged-helper binding is a separate gate described below.
 
 
 The retained-worker fixture additionally passed Wine seed extraction followed by
@@ -239,3 +240,53 @@ The adapter checks cancellation before helper dispatch and preserves a superviso
 `NotStarted(Cancelled)` outcome as cancellation. Seven adapter tests passed; the
 pre-cancel fixture proves no helper journal, output or attempt to execute its
 nonexistent helper. That early exit also avoids starting prefix cleanup commands.
+
+
+## Packaged helper staging and Mac build
+
+`tools/stage-helper.py` requires a Windows artifact, an independently supplied
+64-digit expected SHA-256 and its full 40-digit source commit. It checks bounded
+regular-file input, hash and AMD64 PE32+ headers before replacing the ignored
+resource. `helper-build.json` records provenance; it is not a trust source.
+The shell embeds the expected hash at compile time and resolves a fixed resource
+path, verifying again before release fetching/admission.
+
+For the tested debug helper, Windows CI run `37189445603` built commit
+`17b949f4c8a5e37f9840177739ec8f6f4e85a9e4`; artifact SHA-256 is
+`5b51149c6a6c0a5f4403b3344433015f2db140bb45fe14e4425c0437b1605406`.
+From the repository root, set `CIMMERIA_WINE_HELPER` to the downloaded executable
+and run on macOS (the Tauri CLI must already be installed):
+
+```bash
+export CIMMERIA_WINDOWS_HELPER_SHA256=5b51149c6a6c0a5f4403b3344433015f2db140bb45fe14e4425c0437b1605406
+export LAUNCHER_MANIFEST_PUBKEY_HEX=7d78f576e86c2a3993a35080538b122cf0d40bf7010a39e96483e7feac7d004e
+python3 crates/launcher/desktop/tools/stage-helper.py "$CIMMERIA_WINE_HELPER" \
+  --sha256 "$CIMMERIA_WINDOWS_HELPER_SHA256" \
+  --revision 17b949f4c8a5e37f9840177739ec8f6f4e85a9e4
+npm ci --ignore-scripts --prefix crates/launcher/desktop/frontend
+npm run build --prefix crates/launcher/desktop/frontend
+bash tools/build-lane/lane.sh bash crates/launcher/desktop/bundle-macos-dev.sh
+```
+
+The output is under `target/desktop/debug/bundle/macos/`. Both identity variables
+are build inputs, not runtime configuration. Ordinary development-key fixture
+tests should run without the release-manifest key override. For a different
+helper revision, obtain its expected digest from that trusted build and update
+both staging and compilation; do not derive trust from the staged receipt.
+
+The development `.app` was built and its embedded helper matched the expected
+hash. The app was not opened. A staged-resource resolver/Wine-admission/cancel
+fixture passed in 1.961 seconds, but does not prove actual Tauri-window routing
+or self-contained startup. Mac content installation is supported only when this
+binding verifies. Wine recovery/resume and game prerequisites/launch remain open.
+
+Final validation passed 205 engine tests (eight ignored), 15 shell tests (one
+ignored), strict engine/shell clippy and final development bundling. The resource
+smoke passed separately. The packaged helper at
+`Contents/Resources/windows/cimmeria-archive-worker.exe` matched the expected hash.
+Staging now sets the public helper resource to mode `0644` for multi-user reads;
+its regression test passed. The final `.app` resource's SHA256 and mode `0644`
+were verified. The resource-resolver admission/cancellation smoke also passed
+against that actual app resource directory in 1.872 seconds, without opening a
+window. This does not establish final startup or gameplay readiness.
+The app was not opened.

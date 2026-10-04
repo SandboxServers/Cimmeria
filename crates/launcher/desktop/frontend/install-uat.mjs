@@ -6,7 +6,7 @@ import { parseHTML } from 'linkedom';
 import { mountInstall } from './.test-build/install-view.mjs';
 const html=await readFile(new URL('./ui/index.html',import.meta.url),'utf8');
 const id='7e438f46-9b99-450d-83b6-3c12436b403c';
-let status={schema_version:1,install_supported:true,progress:null,outcome:null,native:{schema_version:1,requires_reopen:false,
+let status={schema_version:1,install_supported:true,can_resume:true,can_reconcile:true,progress:null,outcome:null,native:{schema_version:1,requires_reopen:false,
   preferences:{schema_version:1,revision:1,install_directory:'/fixture/owned',launcher_summary_consent:false},
   operation:{schema_version:1,revision:0,operation:null}}};
 const calls=[];
@@ -49,5 +49,13 @@ for(const [outcome,pattern] of [['rosetta_required',/Rosetta is required/],['run
  assert.equal(status.native.preferences.launcher_summary_consent,false);
  await ui.app.dispose();
 }
-console.log('PASS: Rosetta/runtime failure decoding and reopened feedback;  install, progress, explicit cancel, reconnect without replay, completion wins cancellation, no Play/consent inference.');
+status={...status,can_resume:false,can_reconcile:false,native:{...status.native,operation:{...status.native.operation,
+ revision:status.native.operation.revision+1,operation:{...status.native.operation.operation,state:'reconciliation_required'}}}};
+ui=mount();await ui.app.ready;await settle(ui.app);
+assert.equal(ui.document.getElementById('resume-install').hidden,true);
+ui.document.getElementById('inspect-install').dispatchEvent(new ui.window.Event('click'));await settle(ui.app);
+assert.equal(calls.includes('reconcile'),false);assert.equal(calls.includes('resume'),false);
+assert.equal(status.native.preferences.launcher_summary_consent,false);
+await ui.app.dispose();
+console.log('PASS: unsupported Wine recovery only inspects;  Rosetta/runtime failure decoding and reopened feedback;  install, progress, explicit cancel, reconnect without replay, completion wins cancellation, no Play/consent inference.');
 console.log('NOT COVERED: native install IPC/filesystem, actual downloads/Wine, visual layout, OS dialogs, login/gameplay.');

@@ -115,9 +115,10 @@ fn main() {
     tauri::Builder::default()
         .plugin(tauri_plugin_dialog::init())
         .setup(|app| {
-            app.manage(Arc::new(NativeHost::new(
-                app.path().app_data_dir()?.join("state"),
-            )));
+            let host = NativeHost::new(app.path().app_data_dir()?.join("state"));
+            #[cfg(target_os = "macos")]
+            let host = host.with_bundled_helper(app.path().resource_dir()?);
+            app.manage(Arc::new(host));
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![

@@ -695,3 +695,20 @@ logic UAT passed. No visual UAT was performed. Mac shell install remains
 disabled pending
 trusted resource binding; native Wine recovery remains rejected. No end-user
 Mac-install or game-readiness claim follows from this native API.
+
+
+### 2026-10-04: packaged Windows helper binding for Mac content installation
+
+Added guarded artifact staging and fixed-resource resolution against a compiled
+helper digest. Hash/PE checks precede staging; its receipt is provenance only.
+The shell verifies before enabling Mac installation and again before fetch/admit,
+then records immutable backend identity. Missing resources retain settings/notes
+only. Capability flags hide unsupported Wine recovery and keep recheck read-only.
+
+The development Mac bundle contains the expected Windows CI helper. It was not
+opened. Staged resolver/admission/cancel passed in 1.961 seconds; staging guards,
+26 frontend tests, check/build and sequential logic UAT passed. Final native checks passed 205 engine tests/eight ignored, 15 shell tests/one
+ignored, and strict engine/shell clippy. The ignored resource smoke passed
+separately. Final development bundling and embedded-helper hash verification
+passed; packaged permission verification remains pending. No visual UAT or
+final self-contained startup occurred. Wine recovery and gameplay remain open.

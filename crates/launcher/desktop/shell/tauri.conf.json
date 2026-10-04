@@ -3,11 +3,38 @@
   "productName": "Stargate Worlds Launcher",
   "version": "0.1.0",
   "identifier": "app.cimmeria.launcher.desktop",
-  "build": {"frontendDist": "../frontend/dist"},
+  "build": {
+    "frontendDist": "../frontend/dist"
+  },
   "app": {
     "withGlobalTauri": true,
-    "windows": [{"label":"main","title":"Stargate Worlds — development","theme":"Dark","width":620,"height":700,"minWidth":480,"minHeight":560}],
-    "security": {"csp":"default-src 'self'; connect-src 'self' ipc: http://ipc.localhost; script-src 'self'; style-src 'self'; img-src 'self' data:; object-src 'none'; base-uri 'none'; frame-src 'none'"}
+    "windows": [
+      {
+        "label": "main",
+        "title": "Stargate Worlds \u2014 development",
+        "theme": "Dark",
+        "width": 620,
+        "height": 700,
+        "minWidth": 480,
+        "minHeight": 560
+      }
+    ],
+    "security": {
+      "csp": "default-src 'self'; connect-src 'self' ipc: http://ipc.localhost; script-src 'self'; style-src 'self'; img-src 'self' data:; object-src 'none'; base-uri 'none'; frame-src 'none'"
+    }
   },
-  "bundle": {"active":true,"targets":"all","icon":["icons/icon.png","icons/icon.ico"],"macOS":{"minimumSystemVersion":"12.0"}}
+  "bundle": {
+    "active": true,
+    "targets": "all",
+    "icon": [
+      "icons/icon.png",
+      "icons/icon.ico"
+    ],
+    "macOS": {
+      "minimumSystemVersion": "12.0"
+    },
+    "resources": {
+      "resources/windows/": "windows/"
+    }
+  }
 }

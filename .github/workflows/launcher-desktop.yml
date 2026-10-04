@@ -74,6 +74,9 @@ jobs:
           bridge=target/desktop/debug/examples/state_bridge
           if [ "$RUNNER_OS" = Windows ]; then bridge="$bridge.exe"; fi
           npm run uat --prefix crates/launcher/desktop/frontend -- "$PWD/$bridge"
+      - name: Check Mac helper staging guards
+        if: runner.os == 'macOS'
+        run: python3 -m unittest discover -s crates/launcher/desktop/tools -p 'test_*.py'
       - name: Build UI assets
         run: npm run build --prefix crates/launcher/desktop/frontend
       - name: Test native shell adapter without opening a window

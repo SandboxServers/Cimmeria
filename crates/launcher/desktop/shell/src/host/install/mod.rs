@@ -142,6 +142,8 @@ pub struct InstallStatus {
     pub schema_version: u32,
     pub native: NativeSnapshot,
     pub install_supported: bool,
+    pub can_resume: bool,
+    pub can_reconcile: bool,
     pub progress: Option<JobProgress>,
     pub outcome: Option<Outcome>,
 }
@@ -168,14 +170,19 @@ fn progress(value: &Progress) -> JobProgress {
 }
 
 impl NativeHost {
-    /// Mac content extraction remains unavailable until the Wine archive adapter
-    /// is wired. Refuse before manifest/blob downloads or destination mutation.
+    /// Missing or changed native resources reject before any release fetch.
     pub fn require_install_support(&self) -> Result<(), JobError> {
+        self.platform_backend()?.verify()
+    }
+    fn platform_backend(&self) -> Result<PlatformBackend, JobError> {
         if cfg!(windows) {
-            Ok(())
-        } else {
-            Err(JobError::PlatformUnavailable)
+            return Ok(PlatformBackend::Native);
         }
+        #[cfg(target_os = "macos")]
+        if let Some(helper) = &self.helper {
+            return Ok(PlatformBackend::Wine(helper.clone()));
+        }
+        Err(JobError::PlatformUnavailable)
     }
 
     pub fn retry_release(
@@ -213,7 +220,19 @@ impl NativeHost {
     }
 
     pub fn install_status(&self) -> Result<InstallStatus, JobError> {
-        let native = self.with_state(|state| Ok(state.inspect()))?;
+        let (native, native_backend) = self.with_state(|state| {
+            Ok((
+                state.inspect(),
+                state
+                    .install_intent()?
+                    .is_some_and(|intent| intent.backend.is_native()),
+            ))
+        })?;
+        let recovery = native_backend
+            && !native.requires_reopen
+            && native.operation.operation.as_ref().is_some_and(|op| {
+                op.state == cimmeria_launcher_engine::OperationState::ReconciliationRequired
+            });
         let worker = self.worker.lock().map_err(|_| JobError::Io)?;
         let worker = worker.as_ref().filter(|worker| {
             native
@@ -236,7 +255,9 @@ impl NativeHost {
         Ok(InstallStatus {
             schema_version: 1,
             native,
-            install_supported: cfg!(windows),
+            install_supported: self.platform_backend().is_ok(),
+            can_resume: recovery && cfg!(windows),
+            can_reconcile: recovery,
             progress: observed,
             outcome,
         })
@@ -269,13 +290,14 @@ impl NativeHost {
                 ..
             } => {
                 let release = release.ok_or(JobError::InvalidManifest)?;
-                start_install(
+                start_install_with(
                     state.clone(),
                     &mut worker,
                     operation_id,
                     operation_revision,
                     preferences_revision,
                     release,
+                    self.platform_backend()?,
                 )?;
             }
             InstallCommand::Cancel { operation_id, .. } => {
@@ -290,6 +312,9 @@ impl NativeHost {
                 operation_revision,
                 ..
             } => {
+                if !cfg!(windows) {
+                    return Err(JobError::PlatformUnavailable);
+                }
                 *worker = Some(install_worker::resume(
                     state.clone(),
                     operation_id,
@@ -326,23 +351,29 @@ impl NativeHost {
     }
 }
 
-fn start_install(
+fn start_install_with(
     state: Arc<Mutex<DesktopState>>,
     worker: &mut Option<install_worker::Worker>,
     id: Uuid,
     operation_revision: u64,
     preferences_revision: u64,
     release: VerifiedRelease,
+    backend: PlatformBackend,
 ) -> Result<(), JobError> {
-    let admission = state.lock().map_err(|_| JobError::Io)?.admit_install(
-        id,
-        operation_revision,
-        preferences_revision,
-        &release,
-        cimmeria_launcher_engine::client_setup::login_servers::default_servers(),
-    )?;
+    backend.verify()?;
+    let admission = state
+        .lock()
+        .map_err(|_| JobError::Io)?
+        .admit_install_backend(cimmeria_launcher_engine::AdmissionRequest {
+            id,
+            operation_revision,
+            preferences_revision,
+            release: &release,
+            login_servers: cimmeria_launcher_engine::client_setup::login_servers::default_servers(),
+            backend: backend.identity(),
+        })?;
     if admission.dispatch {
-        match install_worker::dispatch(state.clone(), id, release) {
+        match backend.dispatch(state.clone(), id, release) {
             Ok(active) => *worker = Some(active),
             Err(error) => {
                 // Admission succeeded, but dispatch did not. Expose recovery now,
@@ -361,3 +392,62 @@ fn start_install(
 
 #[cfg(test)]
 mod tests;
+
+#[cfg(test)]
+fn start_install(
+    state: Arc<Mutex<DesktopState>>,
+    worker: &mut Option<install_worker::Worker>,
+    id: Uuid,
+    operation_revision: u64,
+    preferences_revision: u64,
+    release: VerifiedRelease,
+) -> Result<(), JobError> {
+    start_install_with(
+        state,
+        worker,
+        id,
+        operation_revision,
+        preferences_revision,
+        release,
+        PlatformBackend::Native,
+    )
+}
+
+enum PlatformBackend {
+    Native,
+    #[cfg(target_os = "macos")]
+    Wine(cimmeria_launcher_engine::mac_wine::HelperResource),
+}
+impl PlatformBackend {
+    fn verify(&self) -> Result<(), JobError> {
+        match self {
+            Self::Native => Ok(()),
+            #[cfg(target_os = "macos")]
+            Self::Wine(helper) => helper.verify().map_err(|_| JobError::PlatformUnavailable),
+        }
+    }
+    fn identity(&self) -> cimmeria_launcher_engine::ExtractionBackend {
+        match self {
+            Self::Native => cimmeria_launcher_engine::ExtractionBackend::Native,
+            #[cfg(target_os = "macos")]
+            Self::Wine(helper) => helper.backend(),
+        }
+    }
+    fn dispatch(
+        self,
+        state: Arc<Mutex<DesktopState>>,
+        id: Uuid,
+        release: VerifiedRelease,
+    ) -> Result<install_worker::Worker, IntentError> {
+        match self {
+            Self::Native => install_worker::dispatch(state, id, release),
+            #[cfg(target_os = "macos")]
+            Self::Wine(helper) => {
+                install_worker::dispatch_wine(state, id, release, helper.path().into())
+            }
+        }
+    }
+}
+
+#[cfg(all(test, target_os = "macos"))]
+mod resource_tests;

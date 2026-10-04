@@ -184,3 +184,14 @@ Windows+Mac before the shell; shell/visual/game gates remain separate.
   ignored entries. Frontend 25
   tests/check/build plus sequential failure/consent UAT passed. No visual UAT.
   Mac shell stays disabled pending trusted resource binding; Wine recovery refused.
+
+
+- Packaged helper binding now conditionally enables Mac content install: fixed
+  resource path plus compile-time expected digest, reverified before fetch/admit.
+  Stage tool validates trusted hash/revision and AMD64 PE; receipt is not trust.
+  Missing helper leaves settings/notes only. Wine recovery capability flags false;
+  no native fallback/replay. Dev .app built, not opened. Resolver/admit/cancel
+  fixture1.961s passed; frontend26 tests/build/UAT and stage guards passed;
+  final engine205/eight ignored and shell15/one ignored passed, plus strict
+  engine/shell clippy and separately run resource smoke. Final bundle/hash passed;
+  packaged permission check pending. No visual/final startup proof.

@@ -4,7 +4,7 @@ import { Effect, Fiber, Result } from 'effect';
 import { TestClock } from 'effect/testing';
 import { installBridgeLayer, InstallStatus, makeInstallWorkflow } from './install-workflow';
 const id='d539d049-61b7-4c82-b3d7-cb9b7a991adc';
-const initial=():InstallStatus=>({schema_version:1,install_supported:true,progress:null,outcome:null,native:{
+const initial=():InstallStatus=>({schema_version:1,install_supported:true,can_resume:true,can_reconcile:true,progress:null,outcome:null,native:{
   schema_version:1,requires_reopen:false,preferences:{schema_version:1,revision:1,install_directory:'/fixture',launcher_summary_consent:false},
   operation:{schema_version:1,revision:0,operation:null},
 }});

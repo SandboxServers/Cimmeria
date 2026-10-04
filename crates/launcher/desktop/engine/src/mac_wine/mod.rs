@@ -22,6 +22,8 @@ use std::{
 use tokio_util::sync::CancellationToken;
 use uuid::Uuid;
 mod paths;
+mod resource;
+pub use resource::HelperResource;
 #[derive(Debug, thiserror::Error)]
 pub enum WineError {
     #[error("Wine adapter ownership or resource validation failed")]

@@ -6,7 +6,7 @@ import { mountInstall } from './install-view';
 import type { InstallRequest, InstallStatus } from './install-workflow';
 const html=await readFile(new URL('../ui/index.html',import.meta.url),'utf8');
 const id='d539d049-61b7-4c82-b3d7-cb9b7a991adc';
-const initial=():InstallStatus=>({schema_version:1,install_supported:true,progress:null,outcome:null,native:{schema_version:1,
+const initial=():InstallStatus=>({schema_version:1,install_supported:true,can_resume:true,can_reconcile:true,progress:null,outcome:null,native:{schema_version:1,
   requires_reopen:false,operation:{schema_version:1,revision:0,operation:null},preferences:{schema_version:1,revision:1,
     install_directory:'/fixture',launcher_summary_consent:false}}});
 const flush=()=>new Promise<void>(resolve=>setImmediate(resolve));
@@ -76,3 +76,14 @@ for (const [outcome, message] of [['rosetta_required', /Rosetta is required/], [
   }finally{await app.dispose();}
  });
 }
+
+test('Wine recovery cannot invoke native resume or reconciliation',async()=>{
+ const ui=dom();const status:InstallStatus={...initial(),can_resume:false,can_reconcile:false,native:{...initial().native,
+  operation:{schema_version:1,revision:2,operation:{id,kind:'install',intent_digest:Array(32).fill(0),state:'reconciliation_required'}}}};
+ const calls:string[]=[];const app=mountInstall(ui.document,async(_command,args)=>{calls.push((args!.request as InstallRequest).command);return status;});
+ try{await app.ready;await flush();assert.equal(ui.get('resume-install').hidden,true);
+  assert.match(ui.get('install-status').textContent!,/recovery is not available/);
+  ui.click('resume-install');ui.click('inspect-install');await app.settled();
+  assert.ok(calls.every(command=>command==='inspect'));
+ }finally{await app.dispose();}
+});
