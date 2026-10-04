@@ -226,9 +226,14 @@ provenance remain unchanged; current-release receipts change through publication
 Uninstall recognizes completed Update/Repair auxiliary directories only against
 their durable plans, owner and checkpoint/role evidence.
 
-Modification review and the IPC/Effect Update journey remain separate integration
-work. Confirmation binds the reviewed old/new signed identities, but this API does
-not enumerate changed files for review. The UI must disclose full reconstruction:
+Settings now mounts the IPC/Effect Update journey. Confirmation binds the
+reviewed old/new signed identities, permanent directory and operation revision;
+a fresh native inspection invalidates stale reviews before admission. The shell
+retains preparation through commit independently of the IPC reply. It exposes
+progress/cancellation, explicit recovery, abandonment, partial-file cleanup,
+backup cleanup and separately confirmed signed rollback. These actions remain
+subject to native checkpoint and ownership validation. It does not enumerate
+changed files for review. The UI must disclose full reconstruction:
 existing modifications and game-local user files remain only in the retained
 backup; they are not merged into the newly active game.
 
@@ -239,6 +244,11 @@ and modified-stage refusal; explicit abandonment/discard/backup cleanup; and
 separately confirmed signed rollback. Adoption provenance and exact imported JSON
 are covered by a separate native fixture. These tests do not establish native
 Windows locking, rename or power-loss behavior, original-client Wine reconstruction
-or packaged visual/focus behavior. Integrated native-persistence JS UAT and actual
-window UAT remain separate gates. See the
+or packaged visual/focus behavior. The host integration tests exercise confirmed Apply, duplicate dispatch,
+cancellation, interrupted publication recovery and backup cleanup.
+`npm run uat:game-update-apply` drives the mounted production Effect view against
+a real host with a signed inert archive, loopback download and real replacement:
+confirmation, lost-reply inspection without replay, cleanup and store reopen pass.
+This JS pass does not execute rollback, platform-specific helpers or the actual
+game, and does not replace packaged visual UAT. See the
 [native Update worknote](../../../../docs/analysis/playtests/2026-10-03-macos-wine/worknotes/game-update-native.md).

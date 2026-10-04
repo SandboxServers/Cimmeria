@@ -2,7 +2,7 @@ use super::super::install::tests::fixture_release_padded;
 use super::*;
 use cimmeria_launcher_engine::OperationState;
 
-fn fixture() -> (tempfile::TempDir, NativeHost) {
+pub(super) fn fixture() -> (tempfile::TempDir, NativeHost) {
     let root = tempfile::tempdir().unwrap();
     let host = NativeHost::new(root.path().join("state"));
     let store = host.store().unwrap();
@@ -12,7 +12,13 @@ fn fixture() -> (tempfile::TempDir, NativeHost) {
         .unwrap();
     let id = Uuid::new_v4();
     let intent = state
-        .admit_install(id, 0, 1, &fixture_release_padded(0), vec![])
+        .admit_install(
+            id,
+            0,
+            1,
+            &fixture_release_padded(0),
+            cimmeria_launcher_engine::client_setup::login_servers::default_servers(),
+        )
         .unwrap()
         .intent;
     std::fs::create_dir_all(intent.destination.join("game")).unwrap();
@@ -147,6 +153,11 @@ fn game_update_native_uat_bridge() {
             let request: GameUpdateCommand = serde_json::from_value(value).unwrap();
             match request {
                 GameUpdateCommand::Inspect { .. } => host.game_update_status(),
+                request @ (GameUpdateCommand::Maintain { .. }
+                | GameUpdateCommand::Rollback { .. }) => host.maintain_game_update(request),
+                request @ (GameUpdateCommand::Apply { .. } | GameUpdateCommand::Cancel { .. }) => {
+                    host.apply_game_update(request)
+                }
                 GameUpdateCommand::Check {
                     operation_revision, ..
                 } => host

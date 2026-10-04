@@ -155,3 +155,18 @@ The corrected development app was rebuilt and reopened. After macOS reauthorized
 Documents access for its new code signature, explicit recheck restored Play; the
 button remained enabled across subsequent observed refreshes. No game was started.
 The saved earlier code-3 exit remains visible and is not a new test result.
+
+### Game Update settings and development signing
+
+The next changed development bundle used the same existing Apple Development
+certificate. After the previous explicit Documents grant, the rebuilt app read
+its installation immediately without another prompt. This verifies one rebuild's
+grant continuity, not final Developer ID signing or notarization.
+
+In the actual webview, Settings exposed enabled game-update Check and Recheck
+controls. Check immediately showed progress, fetched the trusted signed catalog,
+and returned “The installed game matches the signed release.” Both controls then
+re-enabled. Play remained enabled and the app was left on its Play screen. No
+real game replacement, backup deletion or game launch was performed. Replacement
+and cleanup confirmation were exercised separately against an isolated native
+fixture by `uat:game-update-apply`; that JS pass is not visual confirmation UI UAT.

@@ -3,10 +3,45 @@ use super::*;
 use cimmeria_launcher_engine::{catalog::VerifiedRelease, ReleaseIdentity};
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
+pub(super) mod dispatch;
+mod maintenance;
+use maintenance::{Maintenance, MaintenanceAction};
+
+#[cfg(test)]
+#[derive(Clone)]
+pub(super) struct TestDispatch {
+    url: String,
+    interrupt: bool,
+}
 
 #[derive(Debug, Clone, Deserialize)]
 #[serde(tag = "command", rename_all = "snake_case", deny_unknown_fields)]
 pub enum GameUpdateCommand {
+    Maintain {
+        schema_version: u32,
+        action: MaintenanceAction,
+        operation_id: Uuid,
+        operation_revision: u64,
+        confirmed: bool,
+    },
+    Rollback {
+        schema_version: u32,
+        completed_update: Uuid,
+        operation_id: Uuid,
+        operation_revision: u64,
+        confirmed: bool,
+    },
+    Cancel {
+        schema_version: u32,
+        operation_id: Uuid,
+    },
+    Apply {
+        schema_version: u32,
+        offer_id: Uuid,
+        operation_id: Uuid,
+        operation_revision: u64,
+        confirmed: bool,
+    },
     Inspect {
         schema_version: u32,
     },
@@ -18,9 +53,12 @@ pub enum GameUpdateCommand {
 impl GameUpdateCommand {
     pub fn validate(&self) -> Result<(), JobError> {
         let version = match self {
-            Self::Inspect { schema_version } | Self::Check { schema_version, .. } => {
-                *schema_version
-            }
+            Self::Inspect { schema_version }
+            | Self::Check { schema_version, .. }
+            | Self::Apply { schema_version, .. }
+            | Self::Cancel { schema_version, .. }
+            | Self::Maintain { schema_version, .. }
+            | Self::Rollback { schema_version, .. } => *schema_version,
         };
         if version == 1 {
             Ok(())
@@ -35,6 +73,7 @@ pub(crate) struct Check {
     revision: u64,
     installation: Uuid,
     current: ReleaseIdentity,
+    native_backend: bool,
     directory: PathBuf,
 }
 #[derive(Default)]
@@ -49,6 +88,8 @@ pub struct GameUpdateStatus {
     pub can_check: bool,
     pub checked: bool,
     pub offer: Option<Offer>,
+    pub progress: Option<super::install::contract::JobProgress>,
+    pub maintenance: Option<Maintenance>,
 }
 #[derive(Debug, Serialize)]
 pub struct Offer {
@@ -93,6 +134,7 @@ impl NativeHost {
             revision,
             installation: installed.intent.operation_id,
             current: installed.current_release,
+            native_backend: installed.intent.backend.is_native(),
             directory: installed.intent.destination,
         };
         *offers = Offers {
@@ -132,16 +174,37 @@ impl NativeHost {
         self.game_update_status()
     }
     pub fn game_update_status(&self) -> Result<GameUpdateStatus, JobError> {
+        let progress = {
+            let worker = self.game_update_worker.lock().map_err(|_| JobError::Io)?;
+            worker.as_ref().and_then(|worker| {
+                worker
+                    .preparation
+                    .progress
+                    .borrow()
+                    .as_ref()
+                    .map(|value| (worker.id, super::install::progress(value)))
+            })
+        };
         let offers = self.game_update_offer.lock().map_err(|_| JobError::Io)?;
         let store = self.store()?;
         let mut state = store.lock().map_err(|_| JobError::Io)?;
         let native = state.dispatch(NativeCommand::Inspect { schema_version: 1 })?;
         let mut status = GameUpdateStatus {
             schema_version: 1,
-            native,
             can_check: false,
             checked: false,
+            progress: progress
+                .filter(|(id, _)| {
+                    native
+                        .operation
+                        .operation
+                        .as_ref()
+                        .is_some_and(|op| op.id == *id && !op.state.terminal())
+                })
+                .map(|(_, progress)| progress),
             offer: None,
+            maintenance: maintenance::status(&mut state)?,
+            native,
         };
         // Active preparation owns a Windows root lock. Never reopen it just to inspect.
         if !idle(&state) {
@@ -193,3 +256,6 @@ impl NativeHost {
 
 #[cfg(test)]
 mod tests;
+
+#[cfg(test)]
+mod integration_tests;

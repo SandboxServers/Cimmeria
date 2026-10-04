@@ -8,7 +8,7 @@ use std::{
     time::Duration,
 };
 
-pub(super) struct HeldDownload {
+pub(crate) struct HeldDownload {
     pub url: String,
     stop: mpsc::Sender<()>,
     thread: Option<JoinHandle<()>>,

@@ -23,6 +23,16 @@ async fn game_update_command(
                 .await
                 .map_err(|_| JobError::Io)?
         }
+        request @ (GameUpdateCommand::Maintain { .. } | GameUpdateCommand::Rollback { .. }) => {
+            tauri::async_runtime::spawn_blocking(move || host.maintain_game_update(request))
+                .await
+                .map_err(|_| JobError::Io)?
+        }
+        request @ (GameUpdateCommand::Apply { .. } | GameUpdateCommand::Cancel { .. }) => {
+            tauri::async_runtime::spawn_blocking(move || host.apply_game_update(request))
+                .await
+                .map_err(|_| JobError::Io)?
+        }
         GameUpdateCommand::Check {
             operation_revision, ..
         } => {

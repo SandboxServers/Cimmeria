@@ -113,3 +113,20 @@ packet; the adapter's dispatch/quiescence wiring is not that external validation
 Native Windows execution, locking/rename behavior and hardware power-loss durability
 remain CI/platform gates. Successful reconstruction alone does not prove Play,
 server login, effective imported settings or end-user migration parity.
+
+## Coordinator shell and Effect integration
+
+The combined-validation branch mounts game Update in Settings. Review binds the
+native-held signed offer, directory and operation revision. Apply retains the
+preparation-to-commit handoff; cancellation and confirmed recovery/abandonment,
+partial-file cleanup, backup cleanup and signed rollback route to native workers.
+The UI discloses that modifications and game-local saves stay only in the backup.
+
+Six scoped shell tests pass (two opt-in UAT bridges ignored). The mounted
+`uat:game-update-apply` pass exercises a signed inert archive over loopback, real
+filesystem replacement, confirmation dismissal, lost Apply reply inspection,
+backup cleanup and store reopen. Frontend tests pass 60, including stale-review
+invalidation and minimum-version blocking. These checks do not execute a real
+client, Windows/Wine helpers, rollback through the mounted view or visual confirmation UAT. Packaged Settings Check was separately observed
+to return an installed-release match; no real game replacement was attempted.
+The original engine packet's platform limits still apply.

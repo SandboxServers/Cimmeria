@@ -6,6 +6,8 @@ use std::{
 };
 
 mod game_update;
+#[cfg(test)]
+mod held_download;
 mod install;
 pub use game_update::{GameUpdateCommand, GameUpdateStatus};
 mod updater;
@@ -20,6 +22,7 @@ pub use install::{InstallCommand, InstallStatus, JobError};
 
 pub struct NativeHost {
     game_update_offer: Mutex<game_update::Offers>,
+    game_update_worker: Mutex<Option<game_update::dispatch::Worker>>,
     updater_config: Option<cimmeria_launcher_engine::updater::Config>,
     updater_shutdown: Option<Arc<dyn Fn() + Send + Sync>>,
     root: PathBuf,
@@ -34,6 +37,8 @@ pub struct NativeHost {
     migration_preview: Mutex<Option<migration::Preview>>,
     #[cfg(test)]
     repair_fixture: Option<repair::TestDispatch>,
+    #[cfg(test)]
+    game_update_fixture: Option<game_update::TestDispatch>,
     launch_resources: Option<cimmeria_launcher_engine::launch::Resources>,
     launch_worker: Mutex<Option<cimmeria_launcher_engine::launch::Worker>>,
     repair_worker: Mutex<Option<repair::Worker>>,
@@ -43,6 +48,7 @@ impl NativeHost {
     pub fn new(root: PathBuf) -> Self {
         Self {
             game_update_offer: Mutex::new(game_update::Offers::default()),
+            game_update_worker: Mutex::new(None),
             updater_config: None,
             updater_shutdown: None,
             root,
@@ -57,6 +63,8 @@ impl NativeHost {
             migration_preview: Mutex::new(None),
             #[cfg(test)]
             repair_fixture: None,
+            #[cfg(test)]
+            game_update_fixture: None,
             launch_resources: None,
             launch_worker: Mutex::new(None),
             repair_worker: Mutex::new(None),
