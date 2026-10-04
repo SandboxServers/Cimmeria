@@ -352,3 +352,22 @@ without the production verification-key override. The latest-source development
 Mac bundle also built successfully, with the known `STATIC_VCRUNTIME` deprecation
 warning. Final packaging/startup validation remains deferred; bundle creation is
 not an application launch or gameplay result.
+
+## Inert prerequisite retention
+
+Shared RAR/cabinet unpack now retains optional `Data/Prerequisites` as
+`.cimmeria-prerequisites` beside `Working` in the extraction destination before
+staging cleanup. A same-volume rename publishes the tree; an identical retry is
+accepted using relative paths, entry types, file sizes and SHA-256 hashes.
+Mismatches, extra entries, links, special files and Windows reparse points are
+refused. Inventory/hash reads and publication honor cancellation. Retention does
+not execute or probe any installer.
+
+An independent extraction from the authenticated original seed inventoried 119
+files totaling 160,028,982 bytes. This is archive evidence, not a successful
+retention run through the helper. The staged Windows helper is still the older
+build; rebuilding it and rerunning the real smoke are pending. The full-release
+smoke now requires the retained directory and exact independently measured SHA-256
+hashes of four vendor executables; its earlier 312.55-second pass predates those
+assertions. Existing completed
+receipts do not establish prerequisite retention, installation or game readiness.

@@ -268,3 +268,15 @@ Windows+Mac before the shell; shell/visual/game gates remain separate.
   strict clippy passed. Latest-source Mac development bundle passed with known
   STATIC_VCRUNTIME deprecation; final packaging/startup/gameplay remain unproven.
   The earlier non-lib invocation's fixture-key failure is historical, not current.
+
+- Prerequisite retention seam implemented in shared unpack: optional original
+  `Data/Prerequisites` moves beside `Working` as `.cimmeria-prerequisites` before
+  staging cleanup. Exact path/type/size/SHA inventory allows identical retry;
+  extra/different/link/special/reparse trees are refused, with cancellation checks.
+  No probing/execution. Independent verified-seed extraction found 119 files,
+  160,028,982 bytes. Staged Windows helper is still old; rebuild/real retention
+  smoke pending. Existing completed receipts do not prove retention. Combined
+  ordinary checks passed 239/11 ignored and combined strict clippy passed; no
+  frontend change or JS UAT required. Enhanced real-release smoke now asserts the
+  retained tree and four executable hashes; prior 312.55-second proof predates it.
+  Windows junction fixture separator correction still needs native validation.

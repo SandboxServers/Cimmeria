@@ -114,6 +114,17 @@ The archive format comes from the file's magic bytes, not its name:
   the cabinets are expanded in order into the install dir. Otherwise the
   staged files are moved across. The staging dir is removed afterwards.
 
+After cabinet expansion, shared unpack preserves optional `Data/Prerequisites`
+as `<extraction destination>/.cimmeria-prerequisites`, alongside `Working`, before
+removing staging. These are inert vendor files; nothing is probed or executed.
+Publication uses a same-volume rename. An existing retained tree is accepted only
+when relative paths, types, file sizes and SHA-256 hashes match exactly; extra or
+changed files, links, special files and Windows reparse points are refused.
+Cancellation is checked during inventory/hash reads and before publication.
+The currently staged Windows helper predates this change: rebuilding it and a
+real retention smoke remain required. Existing completed-install receipts do not
+prove prerequisites were retained or installed.
+
 Cabinets are expanded with Windows' FDI API (`FDICreate`/`FDICopy` in
 `cabinet.dll`, `src/unpack/fdi.rs`), because the installer's cabinets
 are 1 GiB volumes with files continued across them, which pure-Rust cab

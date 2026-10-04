@@ -19,6 +19,7 @@ mod cab_set;
 mod dos_time;
 #[cfg(windows)]
 mod fdi;
+mod prerequisites;
 mod rar;
 mod zip;
 
@@ -138,6 +139,7 @@ pub fn unpack(archive: &Path, dest: &Path, sink: &UnpackSink) -> Result<(), Unpa
                     "RAR holds an installer cabinet set; expanding it"
                 );
                 cab_set::expand(&set, dest, sink)?;
+                prerequisites::preserve(&staging, dest, sink)?;
             } else {
                 move_tree(&staging, &staging, dest)?;
             }
@@ -276,7 +278,13 @@ mod tests {
         let cabs = super::test_fixtures::make_cab_set(&cab_dir, &files, 65_536);
         assert!(cabs.len() >= 2, "{cabs:?}");
 
-        let mut entries: Vec<(String, Vec<u8>)> = vec![("SetupQA.exe".into(), b"MZ".to_vec())];
+        let mut entries: Vec<(String, Vec<u8>)> = vec![
+            ("SetupQA.exe".into(), b"MZ".to_vec()),
+            (
+                "Data/Prerequisites/DX9.0c/DXSETUP.exe".into(),
+                b"inert vendor fixture".to_vec(),
+            ),
+        ];
         for name in cabs.iter().map(String::as_str).chain(["DATA.INF"]) {
             entries.push((
                 format!("Data\\{name}"),
@@ -306,6 +314,14 @@ mod tests {
                 .modified()
                 .unwrap(),
             super::test_fixtures::fixture_mtime()
+        );
+        assert_eq!(
+            std::fs::read(
+                dest.join(prerequisites::DIRECTORY)
+                    .join("DX9.0c/DXSETUP.exe")
+            )
+            .unwrap(),
+            b"inert vendor fixture"
         );
         assert!(!dest.join("SetupQA.exe").exists());
         assert!(!dest.join("Data").exists());

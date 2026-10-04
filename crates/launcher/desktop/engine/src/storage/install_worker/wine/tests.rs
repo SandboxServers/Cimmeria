@@ -347,6 +347,36 @@ async fn original_signed_release_prepares_patched_content() {
     assert_eq!(publish(&state, id, outcome), Outcome::ContentPrepared);
     assert!(root.path().join("install/content-ready.json").exists());
     assert!(content_valid(&root.path().join("install/game"), &release));
+    // Independently measured from the authenticated original seed. This makes
+    // an older helper that discards vendor installers fail the real smoke.
+    let prerequisites = root.path().join("install/game/.cimmeria-prerequisites");
+    for (path, expected) in [
+        (
+            "DOTNETC/NetFx20SP1_x86.exe",
+            "c36c3a1d074de32d53f371c665243196a7608652a2fc6be9520312d5ce560871",
+        ),
+        (
+            "DOTNETC/vcredist_x86.exe",
+            "eb00f891919d4f894ab725b158459db8834470c382dc60cd3c3ee2c6de6da92c",
+        ),
+        (
+            "DX9.0c/DXSETUP.exe",
+            "ea13ab4b4f9ae747d7dc8c96e0be8d58568bed87c478bf3dffcaba9e95de1166",
+        ),
+        (
+            "PhysX/PhysX_7.11.13_SystemSoftware.exe",
+            "920d5e09e6ba0a92342271c18c67472461813424d70b5c0b981b6f13b129fbf6",
+        ),
+    ] {
+        assert_eq!(
+            Sha256::digest(std::fs::read(prerequisites.join(path)).unwrap())
+                .iter()
+                .map(|byte| format!("{byte:02x}"))
+                .collect::<String>(),
+            expected,
+            "retained {path}"
+        );
+    }
     assert!(!state.lock().unwrap().preferences().launcher_summary_consent);
     eprintln!(
         "Authenticated real seed and {} patches prepared; runtime/gameplay not tested",

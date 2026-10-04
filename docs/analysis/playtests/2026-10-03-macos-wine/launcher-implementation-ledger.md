@@ -548,3 +548,28 @@ one ignored (`20261004-054308-60834`), combined strict clippy
 (`20261004-054415-61415`) with the known STATIC_VCRUNTIME deprecation warning.
 No launch/login/gameplay result is implied; final self-contained packaging/startup
 remains deferred.
+
+### 2026-10-04: retain original prerequisites as inert data
+
+Shared cabinet extraction now preserves optional `Data/Prerequisites` in
+`.cimmeria-prerequisites`, separate from `Working`, before staging cleanup.
+Same-volume publication accepts an identical tree on retry and refuses changed,
+extra, linked, special or Windows-reparse content; cancellation is honored.
+No runtime probe or prerequisite installer is run. Independent extraction of the
+verified original seed inventoried 119 files and 160,028,982 bytes.
+
+Combined ordinary engine/shell checks passed 239 tests with 11 ignored
+(`20261004-055701-67012`). No frontend behavior changed, so JS logic UAT does not
+apply. Final engine library rerun passed 222/ten ignored (`20261004-055927-68733`);
+combined strict all-target clippy passed (`20261004-055946-69045`).
+The staged Windows helper predates retention;
+a native rebuild and real retention smoke remain gates. The enhanced full-release
+smoke now requires the retained directory and exact independently measured SHA-256
+hashes of four vendor executables. The earlier 312.55-second pass predates these
+assertions. Existing successful content receipts do not imply retained or installed
+prerequisites.
+
+Earlier CI `37195142523` passed both platforms at `6ad941268`. Windows CI
+`37195617733` failed while creating the junction fixture, before exercising
+cleanup: mixed path separators made `mklink` reject its argument. The fixture now
+normalizes separators and captures command output; native validation is pending.

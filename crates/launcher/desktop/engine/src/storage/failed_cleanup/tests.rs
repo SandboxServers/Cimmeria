@@ -132,13 +132,15 @@ fn windows_junction_cannot_redirect_partial_cleanup() {
     std::fs::create_dir(&outside).unwrap();
     std::fs::write(outside.join("keep"), "preserve").unwrap();
     let junction = stage.join("junction");
-    assert!(std::process::Command::new("cmd")
-        .args(["/C", "mklink", "/J"])
-        .arg(&junction)
-        .arg(&outside)
-        .status()
-        .unwrap()
-        .success());
+    // Rust accepts mixed separators, but cmd's mklink treats '/' as a
+    // switch even inside a path. Normalize these generated fixture paths.
+    let output = std::process::Command::new("cmd")
+        .args(["/D", "/C", "mklink", "/J"])
+        .arg(junction.to_str().unwrap().replace('/', "\\"))
+        .arg(outside.to_str().unwrap().replace('/', "\\"))
+        .output()
+        .unwrap();
+    assert!(output.status.success(), "mklink: {output:?}");
     assert!(state.clean_failed_install(id, revision).is_err());
     assert!(outside.join("keep").exists());
     std::fs::remove_dir(junction).unwrap();
