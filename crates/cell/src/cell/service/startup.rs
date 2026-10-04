@@ -580,6 +580,12 @@ impl CellService {
             }
         }
 
+        // The process name book (NT-01). The base loads it too; whichever
+        // starts first reads the database and the other returns at once.
+        if let Some(pool) = self.db_pool.as_deref() {
+            cimmeria_names::load_at_boot(pool).await;
+        }
+
         // Build the content engine — load from DB if available, else fallback
         let engine = content::build_engine(self.db_pool.as_deref()).await;
         let db_pool = self.db_pool.clone();

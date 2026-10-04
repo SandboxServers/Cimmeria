@@ -79,7 +79,7 @@ Coordinator launch: 2026-10-04 at `7e7ba5779` (baseline `a679e748c`). The cited 
 | Packet | Status | PR | Notes |
 |---|---|---|---|
 | NT-00 Rule 6 and key table | Done (PR #1191) | [#1191](https://github.com/SandboxServers/Cimmeria/pull/1191) | `space_id` pairs with `world`, not `world_name`; `player_name` kept over `character_name` |
-| NT-01 NameBook | Ready | | |
+| NT-01 NameBook | In review | #1196 | `cimmeria-names`: 20 tables, loaded at base/cell boot and on content reload (`names.loaded`). Zero-row tables: `spawn_sets` (no seed rows; warns at boot). Pinned gaps (blank or placeholder, `crates/names/src/namebook_gaps.txt`): items 88, missions 4, mission_steps 22, mission_objectives 3,261, dialogs 1,436, dialog_sets 1,176, speakers 468, texts 15,682. Spec corrections: mission names are `mission_defn` (`mission_label` is the zone/group, 202 rows `NO MISSION LABEL`); `dialogs.name` is set on 6 rows only, so a dialog falls back to its first `dialog_set_maps.topic_text`; `UNUSED.*` is too broad (mission 819 is really "Unused Explosive"), so the shapes are `UNUSED`, `UNUSED.`, `UNUSED DIALOG*`, `UnusedDialog`, `UNUSED ERROR*`, `NO … NAME`, `NO … LABEL`, plus the `DELETE`/`DELETED` deletion markers as a word; the `UNUSED DIALOGUE` strings live in `dialog_screens`, which the book does not read. Fixed in passing: `base-session::archetype_name` mapped 7 to Jaffa (it is Shol'va) and had no 8; both archetype tables now read the seed spelling. |
 | NT-02 Name helpers on the existing resolvers | BlockedDependency (NT-01) | | |
 | NT-03 Unpaired-ID scan and baseline | BlockedDependency (NT-00) | | |
 | NT-10 Discord typed events | BlockedDependency (NT-01) | | |

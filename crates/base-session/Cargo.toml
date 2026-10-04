@@ -22,6 +22,8 @@ cimmeria-cell-catalog = { workspace = true }
 cimmeria-resources = { workspace = true }
 cimmeria-common = { workspace = true }
 cimmeria-entity = { workspace = true }
+# `archetype_name` for the admin API's online list.
+cimmeria-names = { workspace = true }
 cimmeria-mercury = { workspace = true }
 # The player-disconnect and Mercury-timeout notifications.
 cimmeria-discord = { workspace = true }

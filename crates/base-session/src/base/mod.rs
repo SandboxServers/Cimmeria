@@ -106,17 +106,10 @@ pub struct OnlinePlayer {
     pub session: String,
 }
 
+/// The archetype's name for the admin API's online list, from
+/// [`cimmeria_names::archetype_name`]; "Unknown" outside 0 to 8.
 pub fn archetype_name(id: i32) -> &'static str {
-    match id {
-        1 => "Soldier",
-        2 => "Commando",
-        3 => "Scientist",
-        4 => "Archaeologist",
-        5 => "Asgard",
-        6 => "Goa'uld",
-        7 => "Jaffa",
-        _ => "Unknown",
-    }
+    cimmeria_names::archetype_name(id).unwrap_or("Unknown")
 }
 
 // ── Per-connection state ──────────────────────────────────────────────────────

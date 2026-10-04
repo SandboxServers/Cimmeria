@@ -43,6 +43,10 @@ const NO_OWN_ROW: &[(&str, &str)] = &[
     ("entity", NEVER_EXPORTED_BELOW_INFO),
     ("game", NEVER_EXPORTED_BELOW_INFO),
     ("lab-mcp", NEVER_EXPORTED_BELOW_INFO),
+    (
+        "names",
+        "the name book (NT-01) logs only under its `names` target, at INFO and          WARN, which the leading `info` exports",
+    ),
     ("observability", NEVER_EXPORTED_BELOW_INFO),
     ("occluder", NEVER_EXPORTED_BELOW_INFO),
     (

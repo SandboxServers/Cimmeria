@@ -28,3 +28,4 @@ metadata:
 - [pet-template-seed-traps](pet-template-seed-traps.md) — NoPetLeveling freezes a pet at template level.
 - [trainer-seed-and-gm-grant-traps](trainer-seed-and-gm-grant-traps.md) — trainer_abilities.sql is generated.
 - [effect-nvp-generator-seed-traps](effect-nvp-generator-seed-traps.md) — effect_nvps.sql loads before effects.sql; heal per-pulse math; heals that must stay unbound until routing.
+- [seed-name-columns-and-placeholders](seed-name-columns-and-placeholders.md) — mission_defn is the name (not mission_label); near-empty name columns; "Unused Explosive" is real.

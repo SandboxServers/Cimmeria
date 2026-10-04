@@ -33,7 +33,10 @@
 
 use std::time::{Duration, Instant};
 
-use cimmeria_entity::ammo_type::{is_special, label};
+use cimmeria_entity::ammo_type::is_special;
+/// "Hollow Point" for `Bullet_Hollow_Point`; lives in the name book crate
+/// with the other closed name tables (NT-01).
+pub use cimmeria_names::ammo_name;
 use cimmeria_wire::cell::chat::{serialize_on_player_communication, CHAN_FEEDBACK};
 use tokio::sync::mpsc;
 
@@ -401,14 +404,6 @@ pub async fn flush_slot(
         e.bandolier_ammo_dirty.remove(&slot_id);
     }
     true
-}
-
-/// "Hollow Point" for `Bullet_Hollow_Point`: the enum label without its
-/// family prefix, for feedback lines.
-pub fn ammo_name(ammo_type: i32) -> String {
-    let raw = label(ammo_type).unwrap_or("special");
-    let tail = raw.split_once('_').map_or(raw, |(_, t)| t);
-    tail.replace('_', " ")
 }
 
 /// `onErrorCode(Ability, 596, AmmoCountLessThan)`: the refused reload.

@@ -1,0 +1,30 @@
+[package]
+name = "cimmeria-names"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+publish = false
+description = "The NameBook for the Cimmeria server emulator: the seed's names for static content ids (items, abilities, missions, templates, worlds and the rest), loaded at boot, swapped whole on content reload, for log lines and Discord"
+
+# Named telemetry campaign, NT-01 (docs/analysis/named-telemetry/). D-NT1: a
+# small crate both halves of the server can depend on, so it sits at the
+# bottom of the graph next to cimmeria-entity and depends on no service crate.
+[dependencies]
+# `ammo_type::label` behind `ammo_name`.
+cimmeria-entity = { workspace = true }
+sqlx = { workspace = true }
+# The whole book is swapped in one store on content reload, so a reader
+# never sees half an old book and half a new one.
+arc-swap = { workspace = true }
+# `sync::OnceCell`: the base and the cell both ask for the boot load, and
+# only the first one reads the database.
+tokio = { workspace = true }
+tracing = { workspace = true }
+cimmeria-workspace-hack = { version = "0.1", path = "../workspace-hack" }
+
+[dev-dependencies]
+# The live-DB gate (`require_db_or_skip!`) and `LogCapture`, re-exported from
+# the `#[cfg(test)] mod test_support` shim in lib.rs. Every crate with this
+# dev-dependency must be listed in tools/test-live-db.{sh,ps1};
+# `live_db_wrapper_lists_every_test_support_crate` enforces it.
+cimmeria-test-support = { workspace = true }

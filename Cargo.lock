@@ -896,6 +896,7 @@ dependencies = [
  "cimmeria-game",
  "cimmeria-mercury",
  "cimmeria-minigame",
+ "cimmeria-names",
  "cimmeria-observability",
  "cimmeria-resources",
  "cimmeria-test-support",
@@ -956,6 +957,7 @@ dependencies = [
  "cimmeria-discord",
  "cimmeria-entity",
  "cimmeria-mercury",
+ "cimmeria-names",
  "cimmeria-observability",
  "cimmeria-resources",
  "cimmeria-test-support",
@@ -1010,6 +1012,7 @@ dependencies = [
  "cimmeria-common",
  "cimmeria-content-engine",
  "cimmeria-entity",
+ "cimmeria-names",
  "cimmeria-observability",
  "cimmeria-occluder",
  "cimmeria-test-support",
@@ -1027,6 +1030,7 @@ version = "0.1.0"
 dependencies = [
  "cimmeria-common",
  "cimmeria-entity",
+ "cimmeria-names",
  "cimmeria-test-support",
  "cimmeria-wire",
  "cimmeria-workspace-hack",
@@ -1046,6 +1050,7 @@ dependencies = [
  "cimmeria-common",
  "cimmeria-discord",
  "cimmeria-entity",
+ "cimmeria-names",
  "cimmeria-observability",
  "cimmeria-occluder",
  "cimmeria-test-support",
@@ -1073,6 +1078,7 @@ dependencies = [
  "cimmeria-content-engine",
  "cimmeria-discord",
  "cimmeria-entity",
+ "cimmeria-names",
  "cimmeria-resources",
  "cimmeria-test-support",
  "cimmeria-wire",
@@ -1470,6 +1476,19 @@ dependencies = [
  "quick-xml 0.41.0",
  "rand 0.10.3",
  "socket2",
+ "tokio",
+ "tracing",
+]
+
+[[package]]
+name = "cimmeria-names"
+version = "0.1.0"
+dependencies = [
+ "arc-swap",
+ "cimmeria-entity",
+ "cimmeria-test-support",
+ "cimmeria-workspace-hack",
+ "sqlx",
  "tokio",
  "tracing",
 ]
