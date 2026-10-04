@@ -127,6 +127,12 @@ async fn chat_outcome_row_names_the_speaker() {
         account_id: Some(ACCOUNT),
         player_id: Some(PLAYER),
         entity_id: Some(ENTITY),
+        identity: cimmeria_entity::cell_entity::PlayerIdentity {
+            account_id: Some(ACCOUNT),
+            player_id: Some(PLAYER),
+            player_name: Some("Teal'c"),
+            account_name: Some("sgc_login"),
+        },
     };
     relay_org_chat(&w.ctx(), speaker, 3, "secret words").await;
     let row = row_of(&capture, "org.chat");

@@ -26,6 +26,8 @@ use std::net::SocketAddr;
 use std::sync::{Arc, Mutex};
 use std::time::Instant;
 
+use cimmeria_base_session::base::session_identity::session_identity;
+use cimmeria_entity::cell_entity::PlayerIdentity;
 use cimmeria_mercury::transport::Transport;
 use sqlx::PgPool;
 use tokio::sync::mpsc;
@@ -68,6 +70,8 @@ struct Caller {
     player_id: i32,
     account_id: u32,
     entity_id: u32,
+    /// The session's names, for the log lines (Rule 6).
+    identity: PlayerIdentity,
 }
 
 /// Handle `chatIgnore`. Every path ends in one feedback line, except a rate
@@ -100,6 +104,7 @@ pub(super) async fn handle_chat_ignore(
                             player_id,
                             account_id: c.account_id,
                             entity_id,
+                            identity: session_identity(c),
                         });
                 let decision = if caller.is_none() || c.access_level >= CHAT_EXEMPT_ACCESS_LEVEL {
                     RateDecision::Allowed
@@ -127,19 +132,23 @@ pub(super) async fn handle_chat_ignore(
         return;
     }
     let Some(caller) = caller else {
-        let (account_id, player_id, entity_id) = connected
+        let (ident, entity_id) = connected
             .lock()
             .unwrap()
             .get(&addr)
-            .map(|c| (Some(c.account_id), c.active_player_id, c.player_entity_id))
-            .unwrap_or_default();
+            .map_or((PlayerIdentity::UNKNOWN, None), |c| {
+                (session_identity(c), c.player_entity_id)
+            });
         tracing::debug!(
             target: "chat",
             event = "chat.ignore_refused",
             %addr,
-            account_id,
-            player_id,
+            account_id = ident.account_id,
+            account_name = ident.account_name,
+            player_id = ident.player_id,
+            player_name = ident.player_name,
             entity_id,
+            entity_name = ident.player_name,
             reason = "not_in_world",
             "chatIgnore from a session with no character in the world; dropped",
         );
@@ -154,9 +163,13 @@ pub(super) async fn handle_chat_ignore(
             event = "chat.ignore_refused",
             %addr,
             player_id = caller.player_id,
+            player_name = caller.identity.player_name,
             account_id = caller.account_id,
+            account_name = caller.identity.account_name,
             entity_id = caller.entity_id,
+            entity_name = caller.identity.player_name,
             target_player_id,
+            target_player_name = target_player_id.map(|_| name),
             target_name = %shown(name),
             reason,
             "chatIgnore refused, feedback sent",
@@ -213,8 +226,11 @@ pub(super) async fn handle_chat_ignore(
                 event = "chat.ignore_refused",
                 %addr,
                 player_id = caller.player_id,
+                player_name = caller.identity.player_name,
                 account_id = caller.account_id,
+                account_name = caller.identity.account_name,
                 entity_id = caller.entity_id,
+                entity_name = caller.identity.player_name,
                 reason = "db_error",
                 error = %e,
                 "chatIgnore: could not load the Ignore list",
@@ -248,8 +264,11 @@ pub(super) async fn handle_chat_ignore(
                     event = "chat.ignore_refused",
                     %addr,
                     player_id = caller.player_id,
+                    player_name = caller.identity.player_name,
                     account_id = caller.account_id,
+                    account_name = caller.identity.account_name,
                     entity_id = caller.entity_id,
+                    entity_name = caller.identity.player_name,
                     reason = "db_error",
                     error = %e,
                     "chatIgnore: name lookup failed",
@@ -334,9 +353,13 @@ pub(super) async fn handle_chat_ignore(
                     event = "chat.ignore_refused",
                     %addr,
                     player_id = caller.player_id,
+                    player_name = caller.identity.player_name,
                     account_id = caller.account_id,
+                    account_name = caller.identity.account_name,
                     entity_id = caller.entity_id,
+                    entity_name = caller.identity.player_name,
                     target_player_id,
+                    target_player_name = target_player_id.map(|_| name.as_str()),
                     reason = "db_error",
                     error = %e,
                     "chatIgnore: the Ignore insert failed",
@@ -372,9 +395,13 @@ pub(super) async fn handle_chat_ignore(
         event = if add { "chat.ignore_added" } else { "chat.ignore_removed" },
         %addr,
         player_id = caller.player_id,
+        player_name = caller.identity.player_name,
         account_id = caller.account_id,
+        account_name = caller.identity.account_name,
         entity_id = caller.entity_id,
+        entity_name = caller.identity.player_name,
         target_player_id,
+        target_player_name = target_player_id.map(|_| name.as_str()),
         before,
         after,
         "Ignore list changed by chatIgnore",

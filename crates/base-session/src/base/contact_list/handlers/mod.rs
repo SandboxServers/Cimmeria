@@ -202,14 +202,9 @@ pub(crate) async fn notify_online_contacts(
     let online_names = match connected.lock() {
         Ok(clients) => collect_online_names(&clients, recipient_entity_id),
         Err(_) => {
-            let who = crate::base::session_identity::identity_for_entity(
-                connected,
-                entity_to_addr,
-                recipient_entity_id,
-            );
+            // The poisoned guard is still live in this arm, so no name lookup here.
             tracing::error!(
-                recipient_entity_id,
-                recipient_entity_name = who.player_name,
+                recipient_entity_id, // nt:id-only poisoned lock, no session left to name
                 "ContactList presence: connected lock poisoned"
             );
             return;

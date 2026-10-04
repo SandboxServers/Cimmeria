@@ -39,6 +39,7 @@ use super::super::feedback::{send_feedback_line, FeedbackCtx};
 use super::super::rate_limit::{log_exceeded, RateActor, RateCategory, RateDecision};
 use super::super::ConnectedClientState;
 use cimmeria_base_session::base::player_index::{NameLookup, OnlinePlayerIndex};
+use cimmeria_base_session::base::session_identity::session_identity;
 
 /// Longest prefix of a typed name a log row carries.
 const LOGGED_NAME_CHARS: usize = 64;
@@ -49,6 +50,8 @@ struct Actor {
     player_id: i32,
     account_id: u32,
     entity_id: u32,
+    player_name: Option<&'static str>,
+    account_name: Option<&'static str>,
 }
 
 /// Handle `sendDuelChallenge` on the wall clock.
@@ -92,12 +95,20 @@ pub(super) async fn send_duel_challenge_at(
         let Some(c) = clients.get_mut(&addr) else {
             return;
         };
-        let session = (c.account_id, c.active_player_id, c.player_entity_id);
+        let identity = session_identity(c);
+        let session = (
+            c.account_id,
+            c.active_player_id,
+            c.player_entity_id,
+            identity,
+        );
         let actor = match (c.active_player_id, c.player_entity_id) {
             (Some(player_id), Some(entity_id)) => Some(Actor {
                 player_id,
                 account_id: c.account_id,
                 entity_id,
+                player_name: identity.player_name,
+                account_name: identity.account_name,
             }),
             _ => None,
         };
@@ -128,14 +139,17 @@ pub(super) async fn send_duel_challenge_at(
     }
 
     let Some(actor) = actor else {
-        let (account_id, player_id, entity_id) = session;
+        let (account_id, player_id, entity_id, identity) = session;
         tracing::warn!(
             target: "duel",
             event = "duel.challenge_refused",
             %addr,
             account_id,
+            account_name = identity.account_name,
             player_id,
+            player_name = identity.player_name,
             entity_id,
+            entity_name = identity.player_name,
             reason = "not_in_world",
             "sendDuelChallenge from a session with no player in the world"
         );
@@ -151,8 +165,11 @@ pub(super) async fn send_duel_challenge_at(
                 event = "duel.challenge_malformed",
                 %addr,
                 account_id = actor.account_id,
+                account_name = actor.account_name,
                 player_id = actor.player_id,
+                player_name = actor.player_name,
                 entity_id = actor.entity_id,
+                entity_name = actor.player_name,
                 reason = e.reason(),
                 error = %e,
                 "sendDuelChallenge payload did not decode"
@@ -162,15 +179,21 @@ pub(super) async fn send_duel_challenge_at(
     };
     let shown: String = call.player_name.chars().take(LOGGED_NAME_CHARS).collect();
 
-    let refuse = |reason: &'static str, target_player_id: Option<i32>| {
+    let refuse = |reason: &'static str, target: Option<(i32, Option<&'static str>)>| {
+        let target_player_id = target.map(|t| t.0);
+        let target_player_name = target.and_then(|t| t.1);
         tracing::debug!(
             target: "duel",
             event = "duel.challenge_refused",
             %addr,
             account_id = actor.account_id,
+            account_name = actor.account_name,
             player_id = actor.player_id,
+            player_name = actor.player_name,
             entity_id = actor.entity_id,
+            entity_name = actor.player_name,
             target_player_id,
+            target_player_name,
             target_name = %shown,
             squad_duel = call.squad_duel,
             reason,
@@ -196,21 +219,24 @@ pub(super) async fn send_duel_challenge_at(
         match OnlinePlayerIndex::new(&clients).lookup(&call.player_name) {
             NameLookup::Found(target) => {
                 let target_state = clients.get(&target.addr);
+                let target_name = target_state.and_then(|t| {
+                    cimmeria_entity::name_intern::intern_opt(t.player_name.as_deref())
+                });
                 match target_state.and_then(|t| t.player_entity_id) {
                     Some(_) if !target_state.is_some_and(is_client_ready) => Err((
                         "target_loading",
                         TEXT_TARGET_LOADING,
-                        Some(target.player_id),
+                        Some((target.player_id, target_name)),
                     )),
                     Some(target_entity_id) => Ok((
-                        target.player_id,
+                        (target.player_id, target_name),
                         target_entity_id,
                         target_state.is_some_and(|t| ignores(t, actor.player_id)),
                     )),
                     None => Err((
                         "target_not_in_world",
                         TEXT_TARGET_NOT_ONLINE,
-                        Some(target.player_id),
+                        Some((target.player_id, target_name)),
                     )),
                 }
             }
@@ -218,16 +244,19 @@ pub(super) async fn send_duel_challenge_at(
             NameLookup::NotFound => Err(("target_not_online", TEXT_TARGET_NOT_ONLINE, None)),
         }
     };
-    let (target_player_id, target_entity_id, ignored) = match resolved {
+    let ((target_player_id, target_player_name), target_entity_id, ignored) = match resolved {
         Ok(t) => t,
-        Err((reason, text, target_player_id)) => {
-            refuse(reason, target_player_id);
+        Err((reason, text, target)) => {
+            refuse(reason, target);
             send_feedback_line(&feedback, addr, text).await;
             return;
         }
     };
     if ignored {
-        refuse("target_ignoring", Some(target_player_id));
+        refuse(
+            "target_ignoring",
+            Some((target_player_id, target_player_name)),
+        );
         send_feedback_line(&feedback, addr, TEXT_TARGET_IGNORING).await;
         return;
     }
@@ -238,9 +267,13 @@ pub(super) async fn send_duel_challenge_at(
             event = "duel.challenge_refused",
             %addr,
             account_id = actor.account_id,
+            account_name = actor.account_name,
             player_id = actor.player_id,
+            player_name = actor.player_name,
             entity_id = actor.entity_id,
+            entity_name = actor.player_name,
             target_player_id,
+            target_player_name,
             reason = "no_cell_channel",
             "duel challenge not forwarded: no cell channel"
         );
@@ -260,9 +293,13 @@ pub(super) async fn send_duel_challenge_at(
             event = "duel.challenge_refused",
             %addr,
             account_id = actor.account_id,
+            account_name = actor.account_name,
             player_id = actor.player_id,
+            player_name = actor.player_name,
             entity_id = actor.entity_id,
+            entity_name = actor.player_name,
             target_player_id,
+            target_player_name,
             reason = "cell_channel_closed",
             "duel challenge could not be forwarded to the cell"
         );
@@ -276,10 +313,15 @@ pub(super) async fn send_duel_challenge_at(
         event = "duel.challenge_forwarded",
         %addr,
         account_id = actor.account_id,
+        account_name = actor.account_name,
         player_id = actor.player_id,
+        player_name = actor.player_name,
         entity_id = actor.entity_id,
+        entity_name = actor.player_name,
         target_player_id,
+        target_player_name,
         target_entity_id,
+        target_entity_name = target_player_name,
         "duel challenge passed the base checks; forwarded to the cell"
     );
 }

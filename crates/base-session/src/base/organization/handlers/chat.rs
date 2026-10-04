@@ -47,7 +47,6 @@ use super::telemetry::count;
 use super::OrgCtx;
 use crate::base::feedback::{send_feedback_line, FeedbackCtx};
 use crate::base::organization::persistence::load_memberships;
-use crate::base::session_identity::session_identity;
 
 /// The line a speaker in no Team reads.
 pub const NOT_IN_TEAM_TEXT: &str = "You are not in a team.";
@@ -79,6 +78,9 @@ pub struct ChatSpeaker<'a> {
     pub account_id: Option<u32>,
     pub player_id: Option<i32>,
     pub entity_id: Option<u32>,
+    /// The speaker's session identity, read by the dispatcher under its own
+    /// lock so the outcome row names them without a second `connected` lock.
+    pub identity: PlayerIdentity,
 }
 
 /// The `org.chat` outcome row.
@@ -184,12 +186,7 @@ pub async fn relay_org_chat(ctx: &OrgCtx<'_>, speaker: ChatSpeaker<'_>, channel:
     let Some((org_type, required)) = org_channel(channel) else {
         return;
     };
-    let identity = ctx
-        .connected
-        .lock()
-        .ok()
-        .and_then(|c| c.get(&speaker.addr).map(session_identity))
-        .unwrap_or(PlayerIdentity::UNKNOWN);
+    let identity = speaker.identity;
     let mut row = ChatRow {
         channel,
         account_id: speaker.account_id,
