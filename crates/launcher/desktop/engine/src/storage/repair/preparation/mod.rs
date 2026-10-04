@@ -1,5 +1,5 @@
 //! Retained fresh reconstruction. The result retains root/stage ownership for a
-//! future commit coordinator; no existing game is renamed by this layer.
+//! commit coordinator; no existing game is renamed by this layer.
 use super::*;
 use crate::{catalog, install, install_progress::ProgressSink, OperationState};
 use futures_util::FutureExt;
@@ -11,6 +11,8 @@ pub struct Prepared {
     pub plan: Plan,
     pub(super) _root_owner: File,
     pub(super) _work_owner: File,
+    #[cfg(target_os = "macos")]
+    pub(super) wine: Option<crate::mac_wine::WineSeedExtractor>,
     // Dropping a delivered handoff notifies a retained observer without taking
     // the state mutex in Drop (the caller may already hold it).
     _handoff: Option<oneshot::Sender<()>>,
@@ -39,8 +41,7 @@ impl Preparation {
         Ok(())
     }
 }
-/// Native Windows backend only. The Mac Wine adapter needs a separate work-ID
-/// binding before it can use this preparation path.
+/// Native Windows backend only; macOS uses the explicit Wine entry point.
 pub fn prepare_native(
     state: Arc<Mutex<DesktopState>>,
     id: Uuid,
@@ -48,14 +49,40 @@ pub fn prepare_native(
     if !cfg!(windows) {
         return Err(ContractError::InvalidTransition.into());
     }
-    let http = reqwest::Client::builder()
+    start(state, id, download_client()?, catalog::URL.into())
+}
+fn download_client() -> Result<reqwest::Client, StorageError> {
+    reqwest::Client::builder()
         .https_only(true)
         .connect_timeout(Duration::from_secs(10))
         .read_timeout(Duration::from_secs(30))
         .redirect(reqwest::redirect::Policy::limited(5))
         .build()
-        .map_err(|_| StorageError::Io)?;
-    start(state, id, http, catalog::URL.into())
+        .map_err(|_| StorageError::Io)
+}
+#[cfg(target_os = "macos")]
+pub fn prepare_wine(
+    state: Arc<Mutex<DesktopState>>,
+    id: Uuid,
+    helper: crate::mac_wine::HelperResource,
+) -> Result<Preparation, IntentError> {
+    start_with_backend(
+        state,
+        id,
+        download_client()?,
+        catalog::URL.into(),
+        Backend::Wine(helper),
+    )
+}
+enum Backend {
+    Native,
+    #[cfg(target_os = "macos")]
+    Wine(crate::mac_wine::HelperResource),
+}
+struct Source {
+    http: reqwest::Client,
+    url: String,
+    backend: Backend,
 }
 pub(super) fn start(
     state: Arc<Mutex<DesktopState>>,
@@ -63,14 +90,36 @@ pub(super) fn start(
     http: reqwest::Client,
     url: String,
 ) -> Result<Preparation, IntentError> {
+    start_with_backend(state, id, http, url, Backend::Native)
+}
+fn start_with_backend(
+    state: Arc<Mutex<DesktopState>>,
+    id: Uuid,
+    http: reqwest::Client,
+    url: String,
+    backend: Backend,
+) -> Result<Preparation, IntentError> {
     let runtime = tokio::runtime::Handle::try_current().map_err(|_| StorageError::Io)?;
     let (plan, release) = {
         let mut owner = state.lock().map_err(|_| StorageError::Io)?;
         let plan = owner
             .repair_plan()?
             .ok_or(ContractError::UnknownOperation)?;
-        if plan.id != id || !plan.installation.backend.is_native() {
+        if plan.id != id {
             return Err(ContractError::IdentityConflict.into());
+        }
+        match &backend {
+            Backend::Native if !plan.installation.backend.is_native() => {
+                return Err(ContractError::InvalidTransition.into())
+            }
+            Backend::Native => (),
+            #[cfg(target_os = "macos")]
+            Backend::Wine(helper) => {
+                if helper.backend() != plan.installation.backend {
+                    return Err(ContractError::IdentityConflict.into());
+                }
+                helper.verify().map_err(|_| StorageError::UnsafeFile)?;
+            }
         }
         let installed = owner.installed_content()?.ok_or(StorageError::Corrupt)?;
         if installed.intent != plan.installation {
@@ -91,8 +140,7 @@ pub(super) fn start(
             &owner,
             plan,
             release,
-            http,
-            url,
+            Source { http, url, backend },
             owned_cancel,
             progress,
         ))
@@ -122,8 +170,7 @@ async fn reconstruct(
     state: &Arc<Mutex<DesktopState>>,
     plan: Plan,
     release: catalog::VerifiedRelease,
-    http: reqwest::Client,
-    url: String,
+    source: Source,
     cancel: CancellationToken,
     progress: ProgressSink,
 ) -> Result<Prepared, Failure> {
@@ -136,16 +183,47 @@ async fn reconstruct(
         .map_err(|_| Failure::ReconciliationRequired)?
         .map_err(|_| Failure::Failed)?;
     let stage = plan.stage();
-    let (result, _) = install::install_all(install::InstallContext {
-        manifest_url: &url,
+    let context = install::InstallContext {
+        manifest_url: &source.url,
         install_dir: &stage,
         manifest: release.manifest(),
         login_servers: &plan.installation.login_servers,
         cancel,
         progress,
-        http: &http,
-    })
-    .await;
+        http: &source.http,
+    };
+    let (result, _) = match source.backend {
+        Backend::Native => install::install_all(context).await,
+        #[cfg(target_os = "macos")]
+        Backend::Wine(helper) => {
+            let adapter = crate::mac_wine::WineSeedExtractor::prepare(
+                state.clone(),
+                plan.id,
+                helper.path().to_path_buf(),
+                context.cancel.clone(),
+                context.progress.clone(),
+            )
+            .await
+            .map_err(|error| match error {
+                crate::mac_wine::WineError::Runtime(
+                    crate::mac_runtime::RuntimeError::Cancelled,
+                ) => Failure::Cancelled,
+                crate::mac_wine::WineError::Invalid => Failure::ReconciliationRequired,
+                _ => Failure::Failed,
+            })?;
+            let cache = plan.work_directory().join("cache");
+            let result = install::install_all_with_seed_extractor(
+                context,
+                install::SeedBackend {
+                    extractor: &adapter,
+                    cache_directory: &cache,
+                },
+            )
+            .await;
+            prepared.wine = Some(adapter);
+            result
+        }
+    };
     match result {
         Err(install::InstallError::Cancelled) => return Err(Failure::Cancelled),
         Err(install::InstallError::SeedExtractionUncertain) => {
@@ -227,6 +305,8 @@ fn claim(plan: Plan) -> Result<Prepared, StorageError> {
         plan,
         _root_owner: root_owner,
         _work_owner: work_owner,
+        #[cfg(target_os = "macos")]
+        wine: None,
         _handoff: None,
     })
 }
@@ -251,3 +331,6 @@ pub(super) fn finish_failure(state: &Mutex<DesktopState>, id: Uuid, failure: Fai
 }
 #[cfg(test)]
 mod tests;
+
+#[cfg(all(test, target_os = "macos"))]
+mod wine_tests;

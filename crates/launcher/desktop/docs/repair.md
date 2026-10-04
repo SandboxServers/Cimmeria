@@ -2,7 +2,8 @@
 
 **Status: native admission, reconstruction and retained replacement implemented;
 checkpointed native restart recovery and current-operation backup cleanup are
-implemented. Wine repair and UI remain unfinished.** This contract defines the replacement workflow and its gates.
+implemented. Retained Mac Wine reconstruction/commit is implemented; Wine restart
+recovery, cleanup and UI remain unfinished.** This contract defines the replacement workflow and its gates.
 Repair is not yet an available user command. See
 [maintenance](maintenance.md) for implemented uninstall.
 
@@ -132,7 +133,7 @@ renames, replaces or deletes the existing game. Pre-cancellation avoids staging
 and downloads. A receiver lost before handoff preserves output and marks the
 operation for reconciliation; failed terminal persistence reports uncertainty.
 
-The public preparation entry point supports native Windows only. Local tests
+`prepare_native` supports native Windows; `prepare_wine` is described below. Local tests
 use the private entry point with signed ZIP fixtures on macOS: six focused
 repair tests passed (`20261004-084930-43826`), including fresh extraction despite
 a damaged old tree and current ledger, retained locks, pre-cancel, lost receiver
@@ -345,10 +346,59 @@ bash tools/build-lane/lane.sh cargo test --locked \
 ```
 
 This validates the extraction adapter, not original-client repair, game launch
-or graphics. The repair orchestrator remains native-only; installation/work-tree
-locks across Wine extraction, repair-prefix crash recovery and Repair UI remain
+or graphics. The retained worker below adds installation/work-tree ownership
+across Wine extraction; repair-prefix crash recovery and Repair UI remain
 unfinished. No desktop window was opened and no frontend/visual UAT is claimed.
 
 After the final seed-refusal test, the full engine suite passed 290 tests with
 13 environment-dependent cases ignored (`20261004-092727-57278`); strict clippy
 passed (`20261004-092751-57236`).
+
+
+## Retained Mac reconstruction and commit
+
+Mac Repair has internal `prepare_wine` and `commit_wine` entry points. Preparation
+validates the native-selected helper resource and immutable Wine backend before
+entering Running, then acquires installation/work ownership and reconstructs
+through the shared installer using the repair operation's cache. Successful
+`Prepared` retains both file locks and the Wine adapter's exclusive extraction
+prefix ownership. The adapter completes prefix stop/wait before returning
+successful extraction. `commit_wine` requires that retained adapter and consumes
+the handoff through the checkpointed replacement sequence.
+
+Missing/replaced resources refuse dispatch. Cancellation recorded before worker
+execution avoids staging, runtime provisioning and downloads. Extraction or
+stop/wait uncertainty remains reconciliation-gated; successful staging alone
+never authorizes replacement after cancellation. The retained prefix lock is not
+a runtime-cache lock.
+
+Repair remains unavailable in the UI. Restart recovery, abandonment and backup
+cleanup still reject Wine plans. An interruption or lost handoff can therefore
+leave retained files behind a gate without an available Wine continuation; those
+paths must be implemented before exposing Repair. Gameplay/graphics readiness
+remains separate from reconstructed content.
+
+
+The retained signed-ZIP Wine repair smoke passed (`20261004-093516-60234`,
+37.583 seconds including lane execution). It performed one HTTP seed download,
+Windows-helper extraction, client setup, staged validation and commit. It verified
+held installation/prefix locks before commit, their release afterward, unchanged
+consent and permanent identity, new content in `game` and the original inert
+fixture in the backup. It uses the same pinned Windows helper documented above.
+Run with `CIMMERIA_WINE_HELPER` set to that artifact:
+
+```bash
+bash tools/build-lane/lane.sh cargo test --locked \
+  --manifest-path crates/launcher/desktop/Cargo.toml \
+  -p cimmeria-launcher-engine --lib \
+  storage::repair::preparation::wine_tests::retained_wine_repair_reconstructs_and_commits_under_all_ownership_locks \
+  -- --exact --ignored --nocapture
+```
+
+The fixture initially exposed its invalid empty login-server list; the shared
+client-setup validation correctly refused it. The successful run uses valid saved
+login settings. No production validation was bypassed. The full engine suite
+passed 291 tests with 14 ignored (`20261004-093530-60393`). This is not an
+original-client RAR repair, native Windows validation or in-game UAT.
+
+Strict clippy passed (`20261004-093618-60749`).

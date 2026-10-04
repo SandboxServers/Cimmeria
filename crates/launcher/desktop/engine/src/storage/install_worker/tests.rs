@@ -5,7 +5,7 @@ use sha2::{Digest, Sha256};
 use std::io::Cursor;
 use wiremock::{matchers::path, Mock, MockServer, ResponseTemplate};
 
-pub(super) fn archive(with_exe: bool) -> Vec<u8> {
+pub(crate) fn archive(with_exe: bool) -> Vec<u8> {
     let mut zip = zip::ZipWriter::new(Cursor::new(Vec::new()));
     let mut exe = vec![0u8; 0x200];
     exe[..2].copy_from_slice(b"MZ");

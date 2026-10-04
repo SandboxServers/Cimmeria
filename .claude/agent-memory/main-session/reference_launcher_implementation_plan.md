@@ -476,26 +476,15 @@ accessor used by portable persistence tests; cfg now includes test builds.
 Windows revalidation remains pending; no cross-compile was performed.
 
 
-### Repair admission (2026-10-04)
+### Repair implementation (2026-10-04)
 
-Native admit_repair now binds a separate work UUID to the permanent installed
-identity and original cached signed release, records old-game presence and
-reserves derived stage/backup names without creating them. Confirmation/revision,
-owner lock and absent-path checks precede durable admission; duplicate/reopened
-IDs never redispatch. Three targeted tests pass. This is not a Repair worker or
-UI: reconstruction, commit checkpoints, resource/prefix ownership and recovery
-remain required. Canonical contract: desktop docs/repair.md.
-
-
-Repair reconstructs a fresh signed seed, retaining root/work locks. Retained
-commit checkpoints two renames and preserves the old backup through success.
-Schema-2 commit records plus operation/role markers now support explicit native
-restart recovery without downloads, including interruption during recovery.
-Foreign shapes, stale requests and legacy unmarked commits remain gated. Explicit
-confirmed abandonment now cancels pre-checkpoint work under ownership locks with
-no deletion; a new confirmed Repair can retry. Current-successful-operation
-backup cleanup now uses marker-last Deleting/Empty/Removed checkpoints. Historical
-cleanup, abandoned stages, Wine binding and UI remain open. ExtractionWork now
-separates helper work identity from the install owner. Dedicated Wine repair
-prefix + signed-ZIP helper smoke pass; orchestration/recovery/UI remain unfinished.
-Contract/evidence: desktop docs/repair.md.
+Repair preserves permanent install identity and reconstructs the cached signed
+release under a separate work ID. Native replacement/restart recovery uses owned
+tree markers and durable two-rename checkpoints, keeping backups through success.
+Confirmed precommit abandonment preserves files; marker-last backup cleanup is
+resumable for the current successful operation. Historical/abandoned-stage cleanup
+remains open. ExtractionWork binds helper requests to work identity and original
+signed release. Mac prepare_wine now retains root/work/prefix ownership through
+reconstruction; commit_wine consumes that handoff. Wine restart recovery,
+abandonment, cleanup and UI are still gated. Canonical evidence and limitations:
+crates/launcher/desktop/docs/repair.md.

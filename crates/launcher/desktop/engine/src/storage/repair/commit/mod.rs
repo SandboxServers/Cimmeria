@@ -51,6 +51,19 @@ pub fn commit_native(
     }
     start(state, prepared)
 }
+/// The freshly prepared Wine adapter retains its exclusively owned, stopped
+/// prefix through commit. Reopened work needs separate process reconciliation.
+#[cfg(target_os = "macos")]
+pub fn commit_wine(
+    state: Arc<Mutex<DesktopState>>,
+    prepared: Prepared,
+) -> Result<oneshot::Receiver<Result<(), Failure>>, IntentError> {
+    if prepared.plan.installation.backend.is_native() || prepared.wine.is_none() {
+        return Err(ContractError::InvalidTransition.into());
+    }
+    start(state, prepared)
+}
+
 fn start(
     state: Arc<Mutex<DesktopState>>,
     prepared: Prepared,

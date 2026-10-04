@@ -32,7 +32,7 @@ pub(crate) fn fixture_with_backend(
             operation_revision: 0,
             preferences_revision: 1,
             release: &release,
-            login_servers: vec![],
+            login_servers: crate::client_setup::login_servers::default_servers(),
             backend: ExtractionBackend::Wine {
                 runtime_sha256: runtime,
                 helper_sha256: helper,
