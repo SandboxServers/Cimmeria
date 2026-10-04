@@ -18,6 +18,8 @@ Dated, sourced facts from top-level sessions, committed with the change that pro
 
 ## Reference
 
+- [reference_launcher_repair_ui.md](reference_launcher_repair_ui.md) — Settings Repair retains preparation-to-commit ownership; native-persistence Effect UAT covers cancellation/reopen/abandonment, with real-client, Windows and visual gates open.
+
 - [reference_launcher_implementation_plan.md](reference_launcher_implementation_plan.md) — 2026-10-04 Tauri/Effect settings shell and persistent native state; game workers and summary export pending; self-contained startup gate last
 
 - [reference_launcher_platform_options.md](reference_launcher_platform_options.md) — 2026-10-03 proposed egui/wgpu versus Tauri versus SwiftUI evaluation; no accepted architecture or performance benchmark; scoped Mac packaging proof later authorized

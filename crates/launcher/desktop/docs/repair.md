@@ -1,5 +1,10 @@
 # Repair design contract
 
+> **Type:** Reference
+> **Audience:** Launcher contributors and testers
+> **Last updated:** 2026-10-04
+> **Companions:** [Desktop](../README.md), [validation handoff](../../../../docs/analysis/playtests/2026-10-03-macos-wine/worknotes/repair-ui.md)
+
 **Status: Settings confirmation, retained native preparation/replacement, progress,
 precommit cancellation, explicit recovery/abandonment and current-backup cleanup
 are connected. Platform release gates remain open.** See
@@ -61,7 +66,10 @@ Its controlled worker seam holds work before reconstruction: it does **not** exe
 real downloads, Wine, replacement or cleanup. Rust engine fixtures cover those
 filesystem checkpoints separately. Native Windows locking/power-loss and packaged
 visual/focus UAT remain required; the coordinator owns the visible UI pass.
-The dated sections below retain the earlier engine milestones and their evidence.
+## Historical engine implementation evidence
+
+The sections below retain earlier engine milestones. Statements that UI work was
+unconnected describe those milestones, not the current Settings contract above.
 
 ## Identity and reconstruction
 

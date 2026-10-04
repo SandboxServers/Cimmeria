@@ -13,8 +13,9 @@ installation controls call native IPC on Windows and on Mac builds containing
 a helper verified against its compiled artifact identity. Mac builds without
 that resource retain settings and patch notes but cannot install. Content preparation does not establish runtime or
 Play readiness. Confirmed uninstall and interrupted-removal recovery are wired
-through Settings. Repair, launch and telemetry export remain pending. The
-existing Windows egui launcher shares the downloader cancellation fixes.
+through Settings. Settings also connects confirmed [Repair](docs/repair.md),
+precommit cancellation, recovery/abandonment and current-backup cleanup. Launch
+and telemetry export remain pending; platform and real-client validation remain open.
 
 ## Native operation and storage contracts
 
@@ -69,7 +70,7 @@ packet.
 commands. No command lets frontend callers set native operation outcomes or
 choose the state-directory root. The shell selects app data through Tauri's
 native resolver. Native first-install intent validation and worker dispatch are
-implemented below; frontend operation commands remain pending.
+implemented below; installation and maintenance use a separate native operation boundary.
 
 ## Effect workflows
 
@@ -514,8 +515,8 @@ newer frontend installation controls.
 controls to native IPC on Windows and verified-helper Mac builds. Install
 requires a selected folder and no current operation. Mac builds without the
 verified packaged helper cannot install. Settings saves refresh installation status.
-Verified Mac builds sequence content completion into prerequisite checks; Repair
-and Play remain unavailable. Confirmed uninstall uses the saved
+Verified Mac builds sequence content completion into prerequisite checks. Play
+remains unavailable; Settings Repair follows the [repair contract](docs/repair.md). Confirmed uninstall uses the saved
 installation identity; see [maintenance](docs/maintenance.md).
 
 The application-scoped Effect service inspects native state before each
@@ -682,14 +683,14 @@ latest operation and selected folder. It is written after promotion/receipt and
 before terminal success, including recovery; publication failure retains the
 recovery gate. Reading returns `InstalledContent` with a reverified signed release,
 matching saved per-ID intent, canonical owned root, owner marker and receipt.
-Missing game files or the entire `game` directory preserve identity for future
+Missing game files or the entire `game` directory preserve identity for
 Repair; an existing game directory must be ordinary and not a link/reparse point.
 Missing ownership records or signed evidence remain errors.
 
 An older current successful Install can migrate on read. Selecting a folder never
 adopts its contents. This record does not grant launch/delete permission or prove
-readiness: current-operation, content and runtime checks remain required. Repair
-execution remains unimplemented.
+readiness: current-operation, content and runtime checks remain required.
+Repair follows the [maintenance contract](docs/repair.md).
 
 Settings uninstall, explicit recovery and data-retention boundaries are described
 in [installed-content maintenance](docs/maintenance.md).

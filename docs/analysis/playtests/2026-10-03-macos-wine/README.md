@@ -12,7 +12,7 @@ For the later Tauri work, use the [implementation plan](launcher-implementation-
 [delegation plan with Codex/Claude prompts](launcher-delegation-plan.md).
 The Wine playtest notes below describe the earlier launcher workaround.
 
-## Resume here
+## Historical Windows egui/WoWSilicon track
 
 **The launcher window blocker is resolved. The game is not installed yet.**
 The Windows launcher renders under WoWSilicon with `CX_FWD_COMPAT_GL_CTX=1`.
@@ -112,10 +112,10 @@ corresponding docs under [CLAUDE.md](../../../../CLAUDE.md),
 
 [Launcher platform options](launcher-platform-options.md) compares a shared native
 UI with SwiftUI plus Rust, identifies the real porting boundaries, and proposes
-measurement gates. It is research, not an accepted architecture or permission to
-build a native Mac target.
+measurement gates. It records the earlier research phase. The subsequent approved Tauri scope is
+defined by the implementation plan above.
 
-## Copy-ready continuation prompt
+## Historical Windows-track continuation prompt
 
 ```text
 Continue the macOS/Wine Stargate Worlds bring-up. Read
@@ -151,4 +151,8 @@ Windows-helper ownership requirements. It does not establish game compatibility.
 
 - [Requirements and delivery plan](launcher-implementation-plan.md)
 - [Dated implementation ledger](launcher-implementation-ledger.md)
+- [Migration audit](worknotes/migration-audit.md)
+- [Native-window UAT](worknotes/native-window-uat.md)
+- [Repair handoff](worknotes/repair-ui.md)
+- [Acceptance checklist and current ownership](launcher-acceptance.md)
 - [Runtime provisioning evidence](runtime-provisioning.md)

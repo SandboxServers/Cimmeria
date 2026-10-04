@@ -2,7 +2,7 @@
 title: "SGW Launcher"
 type: explanation
 audience: engineers
-last_updated: 2026-09-29
+last_updated: 2026-10-04
 ---
 
 # SGW Launcher
@@ -12,30 +12,14 @@ Releases, applies declared patches in order, optionally launches the
 debug-Atera path (with or without the dev-session telemetry pipeline),
 and uploads debug logs to an Azure Blob SAS URL.
 
-The approved cross-platform replacement is being implemented separately in
-[`crates/launcher/desktop/`](../../crates/launcher/desktop/README.md). Its native
-first-install worker prepares content through the shared pipeline, but its Tauri
-UI now connects installation, cancellation and explicit recovery through Effect
-on Windows and verified-helper Mac builds, with cached evidence for identical
-native retries.
-It reports content preparation separately from runtime readiness; launch, repair
-and removal remain unavailable. Explicitly confirmed cleanup can remove one
-failed/cancelled attempt's owned partial files before a separate retry; it is
-not uninstall. Mac builds without the compiled-and-bundled
-verified helper cannot install; Wine resume/recovery remains unsupported. Runtime provisioning and game validation remain
-separate gates. The existing Windows launcher described here
-remains the functional user-facing implementation.
-
-Located in [`crates/launcher/`](../../crates/launcher/) as the
-`sgw-launcher` crate. Built with **eframe (egui)** for a small, native
-window with no webview dependency.
-
-> **Status:** rewritten 2026-05-20. Supersedes the Tauri prototype and the
-> archive.org-RAR install flow described in
-> [.claude/plans/2026-03-06-sgw-launcher-design.md](../../.claude/plans/2026-03-06-sgw-launcher-design.md)
-> and the task-by-task plan in
-> [.claude/plans/2026-03-06-sgw-launcher-plan.md](../../.claude/plans/2026-03-06-sgw-launcher-plan.md).
-> Both are kept for historical context; do not implement from them.
+The desktop replacement connects installation and Settings maintenance through
+native IPC and Effect. Confirmed uninstall and Repair use the recorded installation
+identity. Repair includes retained reconstruction/replacement, precommit cancellation
+and explicitly validated recovery/abandonment/backup cleanup. These controls do not
+establish runtime readiness or complete platform validation; see the
+[desktop contracts](../../crates/launcher/desktop/README.md) and
+[repair evidence](../../crates/launcher/desktop/docs/repair.md).
+The remaining document describes the Windows egui launcher.
 
 ---
 

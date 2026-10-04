@@ -2,7 +2,7 @@
 title: "Launcher Guide"
 type: how-to
 audience: players, operators
-last_updated: 2026-09-29
+last_updated: 2026-10-04
 ---
 
 # Launcher Guide
@@ -15,6 +15,19 @@ see [sgw-launcher.md](sgw-launcher.md). For the one-time operator
 backend setup (GitHub Releases for content, manifest signing keypair,
 Azure Blob SAS for log uploads) see
 [launcher-distribution-setup.md](launcher-distribution-setup.md).
+
+### Repair in the desktop replacement
+
+The development Tauri launcher provides **Settings → Repair game** for its recorded
+installation. Confirm the displayed installed directory: Repair reconstructs the
+saved authenticated release and replaces modifications inside `game`. Changing
+the selected folder does not redirect Repair.
+
+Cancel is available before replacement begins. After a lost reply, use **Recheck
+status**. Recovery and abandonment require separate confirmation and may be refused
+when native evidence is insufficient. Removing the old backup is a separate
+permanent-deletion action. See the [repair contract](../../crates/launcher/desktop/docs/repair.md)
+for boundaries. Original-client and platform release validation remain open.
 
 > **Audience split:**
 > [Part 1 — Players](#part-1--for-players) is for anyone running the

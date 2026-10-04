@@ -656,3 +656,24 @@ passed (`20261004-063409-86560`); strict clippy and native Windows i686 CI remai
 pending. No local Windows compilation or real-game probe is claimed. Managed
 integration still requires helper hash/owned-root binding and supervisor deadlines.
 See [probe contracts](../../../../crates/launcher/desktop/docs/prerequisites.md).
+
+
+### 2026-10-04: Settings Repair journey
+
+Settings connects confirmation against the saved installation identity, retained
+preparation/replacement, progress, precommit cancellation, explicit recovery/
+abandonment and current-backup cleanup. Lost replies require inspection rather
+than mutation replay; success does not enable Play.
+
+The [worker handoff](worknotes/repair-ui.md) records implementation `d00f6bc09`,
+reserved dependency `622f7fff7` and commands. Worker results: 38 frontend tests;
+shell 26 passed/3 ignored; repair engine 39 passed/3 ignored; strict shell clippy
+and frontend build passed. Native-persistence Effect UAT exercised confirmation/
+dismissal, duplicate suppression, saved-directory identity, durable cancellation,
+lost-reply reopening, refused recovery, abandonment and preserved preferences/consent.
+
+The UAT fixture holds preparation before reconstruction. It does not establish a
+real reconstruction worker, helper lifecycle, replacement or cleanup. Original-
+client Wine repair, native Windows locking/rename/power-loss behavior and packaged
+visual/focus/layout UAT remain open. The chain is locally integrated as
+`292f0678d`, `8a13518f6`, `e3709de6b`; review and integrated validation are pending.
