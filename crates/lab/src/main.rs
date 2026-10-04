@@ -32,6 +32,14 @@
 //! - `CIMMERIA_LAB_UAT_P2`, `CIMMERIA_LAB_UAT_P2_BRIDGE_PORT` — the second
 //!   instance `lab_uat_run` drives for two-player rows (default `p2`, this
 //!   port + 1); its account is `lab-account.<name>.json`.
+//!
+//! Modes:
+//!
+//! - default: one stdio MCP server per Claude session (back-compat).
+//! - `--http <127.0.0.1:port> [--log-file <path>]`: the shared daemon
+//!   ([`daemon`]), token-gated by `CIMMERIA_LAB_DAEMON_TOKEN`, logging to
+//!   `%LOCALAPPDATA%\cimmeria-lab\labd.log`. `tools/lab/daemon.ps1` runs it
+//!   as a per-user scheduled task.
 
 use std::sync::Arc;
 
@@ -40,26 +48,50 @@ use rmcp::{transport::stdio, ServiceExt};
 use tracing_subscriber::EnvFilter;
 
 mod client;
+mod daemon;
 mod server;
 mod supervisor;
 mod timeline;
 mod uat;
 
 use client::BridgeClient;
+use daemon::config::Mode;
 use server::LabServer;
 use supervisor::{Supervisor, SupervisorConfig};
 
-#[tokio::main]
-async fn main() -> Result<()> {
-    // Logs go to stderr — stdout is the MCP transport.
-    tracing_subscriber::fmt()
-        .with_env_filter(
-            EnvFilter::try_from_default_env().unwrap_or_else(|_| EnvFilter::new("info")),
-        )
-        .with_writer(std::io::stderr)
-        .with_ansi(false)
-        .init();
+fn env_filter() -> EnvFilter {
+    EnvFilter::try_from_default_env().unwrap_or_else(|_| EnvFilter::new("info"))
+}
 
+fn main() -> Result<()> {
+    let mode = match daemon::config::parse_args(std::env::args().skip(1)) {
+        Ok(m) => m,
+        Err(e) => {
+            eprintln!("cimmeria-lab: {e}");
+            eprintln!(
+                "usage: cimmeria-lab [--http <loopback ip:port, e.g. {}> [--log-file <path>]]",
+                daemon::config::DEFAULT_BIND
+            );
+            std::process::exit(daemon::EXIT_REFUSED);
+        }
+    };
+    let rt = tokio::runtime::Builder::new_multi_thread()
+        .enable_all()
+        .build()?;
+    match mode {
+        Mode::Stdio => rt.block_on(run_stdio()),
+        Mode::Http { bind, log_file } => {
+            let code = rt.block_on(run_http(bind, log_file));
+            // Drop the runtime first so the log guard flushes, then exit with
+            // the code the scheduled-task wrapper keys its restart on.
+            drop(rt);
+            std::process::exit(code)
+        }
+    }
+}
+
+/// Build the shared supervisor + MCP server from the environment.
+fn build_server() -> Result<LabServer> {
     // A bad instance name must stop the server: silently becoming the
     // default instance would put two clients on one session file.
     if let Err(e) = supervisor::instance::from_env() {
@@ -73,8 +105,7 @@ async fn main() -> Result<()> {
     let token = std::env::var("CIMMERIA_LAB_TOKEN").unwrap_or_default();
     if token.is_empty() {
         tracing::warn!(
-            "CIMMERIA_LAB_TOKEN is unset; attaching to a pre-existing client will \
-             fail until lab_client_start mints its own token"
+            "CIMMERIA_LAB_TOKEN is unset; attaching to a pre-existing client will              fail until lab_client_start mints its own token"
         );
     }
     tracing::info!(%addr, install_dir = ?config.install_dir, instance = ?config.instance,
@@ -82,11 +113,102 @@ async fn main() -> Result<()> {
 
     let bridge = Arc::new(BridgeClient::new(addr, token));
     let supervisor = Arc::new(Supervisor::new(bridge, config));
-    let service = LabServer::new(supervisor)
+    Ok(LabServer::new(supervisor))
+}
+
+async fn run_stdio() -> Result<()> {
+    // Logs go to stderr — stdout is the MCP transport.
+    tracing_subscriber::fmt()
+        .with_env_filter(env_filter())
+        .with_writer(std::io::stderr)
+        .with_ansi(false)
+        .init();
+
+    let service = build_server()?
         .serve(stdio())
         .await
         .inspect_err(|e| tracing::error!("serve error: {e:?}"))?;
 
     service.waiting().await?;
     Ok(())
+}
+
+/// The shared daemon. Returns the process exit code.
+async fn run_http(bind: String, log_file: Option<std::path::PathBuf>) -> i32 {
+    use daemon::config::{self, DaemonConfig};
+    use daemon::single_instance::{self, InstanceGuard};
+
+    let state = config::state_dir();
+    let log_path = log_file.unwrap_or_else(|| state.join("labd.log"));
+    let writer = match daemon::log_file::RotatingFile::open(
+        &log_path,
+        daemon::log_file::MAX_BYTES,
+        daemon::log_file::KEEP,
+    ) {
+        Ok(w) => w,
+        Err(e) => {
+            eprintln!("cimmeria-lab: cannot open {}: {e}", log_path.display());
+            return daemon::EXIT_REFUSED;
+        }
+    };
+    let (nb, _log_guard) = tracing_appender::non_blocking(writer);
+    tracing_subscriber::fmt()
+        .with_env_filter(env_filter())
+        .with_writer(nb)
+        .with_ansi(false)
+        .init();
+
+    let (addr, token) = match config::evaluate(&bind, std::env::var(config::ENV_TOKEN).ok()) {
+        Ok(v) => v,
+        Err(e) => {
+            tracing::error!(reason = %e, "lab daemon refused to start");
+            eprintln!("cimmeria-lab: {e}");
+            return daemon::EXIT_REFUSED;
+        }
+    };
+    let cfg = DaemonConfig {
+        bind: addr,
+        token,
+        log_file: log_path,
+    };
+
+    let pidfile = state.join("labd.pid");
+    let mut guard = match InstanceGuard::acquire(single_instance::MUTEX_NAME) {
+        Ok(g) => g,
+        Err(e) => {
+            let holder = single_instance::describe_holder(&pidfile);
+            tracing::error!(reason = %e, %holder, "lab daemon already running; not starting");
+            eprintln!("cimmeria-lab: {e} ({holder})");
+            return daemon::EXIT_ALREADY_RUNNING;
+        }
+    };
+    let listener = match tokio::net::TcpListener::bind(cfg.bind).await {
+        Ok(l) => l,
+        Err(e) => {
+            tracing::error!(addr = %cfg.bind, error = %e, "lab daemon cannot bind; is another one running?");
+            eprintln!("cimmeria-lab: cannot bind {}: {e}", cfg.bind);
+            return daemon::EXIT_ALREADY_RUNNING;
+        }
+    };
+    if let Err(e) = guard.write_pidfile(&pidfile, &cfg.bind.to_string()) {
+        tracing::warn!(error = %e, path = %pidfile.display(), "could not write the pidfile");
+    }
+
+    let server = match build_server() {
+        Ok(s) => s,
+        Err(e) => {
+            tracing::error!(error = %e, "lab daemon refused to start");
+            return daemon::EXIT_REFUSED;
+        }
+    };
+    tracing::info!(addr = %cfg.bind, log = %cfg.log_file.display(), pid = std::process::id(),
+        "lab daemon listening");
+    let router = daemon::build_router(server, &cfg.token);
+    match daemon::serve(listener, router).await {
+        Ok(()) => 0,
+        Err(e) => {
+            tracing::error!(error = %e, "lab daemon server error");
+            1
+        }
+    }
 }

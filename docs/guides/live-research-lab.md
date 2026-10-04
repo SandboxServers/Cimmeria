@@ -728,3 +728,74 @@ pieces from a worktree and installs them:
 
 To roll back, rename the `.old` copies back over the installed files and
 reconnect again.
+
+## The shared daemon (`cimmeria-lab --http`)
+
+By default every Claude session starts its own stdio `cimmeria-lab`, and
+each one runs its own heartbeat watchdog against the same `SGW.exe`. Three
+sessions meant three watchdogs: one relaunched a client another session
+had just closed, and a new build reached a session only when it
+reconnected. The daemon is one `cimmeria-lab` for the whole machine, so
+there is one supervisor, one watchdog and one owner of the client. Every
+session reaches it over MCP streamable HTTP. Stdio stays the default, so
+existing `.mcp.json` entries keep working until you switch.
+
+What the daemon refuses:
+
+| Check | Refusal |
+|---|---|
+| `--http` is not a loopback address (`127.0.0.1`, `::1`) | exit 2 at start |
+| `CIMMERIA_LAB_DAEMON_TOKEN` unset or under 32 bytes | exit 2 at start |
+| another daemon holds the `Local\cimmeria-labd` mutex, or the port is taken | exit 3 at start; the log names the holder's pid from `labd.pid` |
+| a request without `Authorization: Bearer <token>` | `401`, before any MCP session |
+| a `Host` header other than `localhost`, `127.0.0.1` or `::1` (DNS rebinding) | `403` |
+| any `Origin` header (no browser has a reason to call it) | `403` |
+
+### Run it
+
+```powershell
+pwsh tools/lab/daemon.ps1 install   # copy the exe, make the token, import env, register + start the task
+pwsh tools/lab/daemon.ps1 status    # task state, pid, port, token present, last log lines
+pwsh tools/lab/daemon.ps1 restart   # pick up a newer build (see below)
+pwsh tools/lab/daemon.ps1 stop | start | uninstall
+```
+
+`install` registers the per-user scheduled task `CimmeriaLabDaemon`: it
+starts at logon, in your interactive session (the client needs the
+desktop), and restarts after a crash. Its files are in
+`%LOCALAPPDATA%\cimmeria-lab`:
+
+| File | What it is |
+|---|---|
+| `labd\cimmeria-lab.exe` | the daemon's own copy of the exe, so a rebuild or `tools/lab/install.ps1` is never blocked by the running daemon |
+| `labd.env` | the supervisor's environment, `KEY=VALUE` per line, imported once from the `env` block of the stdio `cimmeria-lab` entry in `.mcp.json` (`install -Force` re-imports) |
+| `labd.log` | the daemon log; rotates at 10 MiB, five old files kept (`labd.1.log` ...) |
+| `labd-task.log` | the task wrapper's start and exit lines |
+| `labd.pid` | pid and address of the running daemon |
+
+The token is the user environment variable `CIMMERIA_LAB_DAEMON_TOKEN`,
+which `install` generates when it is missing. Claude Code gets it from
+`tools/lab/labd-headers.ps1`, the entry's `headersHelper`, which reads the
+user environment directly, so the token never lands in `.mcp.json` and a
+fresh token works without restarting Claude Code:
+
+```json
+"cimmeria-lab": {
+  "type": "http",
+  "url": "http://127.0.0.1:8779/mcp",
+  "headersHelper": "pwsh -NoProfile -File <CIMMERIA_ROOT>\\tools\\lab\\labd-headers.ps1"
+}
+```
+
+`.mcp.json.example` carries this entry as `cimmeria-lab-http`. To switch,
+rename it to `cimmeria-lab` and delete the stdio `cimmeria-lab` entry.
+
+**A new build.** `restart` copies
+`%LOCALAPPDATA%\cimmeria-lab\bin\cimmeria-lab.exe` (what
+`tools/lab/install.ps1` installs), else the repo's
+`target\debug\cimmeria-lab.exe`, over the daemon's copy when it is newer
+(`-Exe <path>` names one explicitly), then starts the task. Every session
+gets the new build on its next call; a session whose MCP connection broke
+reconnects with `/mcp`. The game client keeps running across a daemon
+restart, but the new daemon does not adopt it: stop the client first
+(`lab_client_stop`) or start a fresh one afterwards.
