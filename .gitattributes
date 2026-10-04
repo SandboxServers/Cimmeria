@@ -38,3 +38,4 @@ crates/client-patches/overlay/Content/** -text
 data/client-patches/008-dialog-portraits/*.scheme -text
 data/client-patches/008-dialog-portraits/*.layout -text
 data/client-patches/008-dialog-portraits/*.lua -text
+data/client-patches/009-starter-hotbar/StarterHotbar.lua -text

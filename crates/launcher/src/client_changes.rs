@@ -292,6 +292,13 @@ pub fn builtin_description(id: &str) -> Option<(&'static str, &'static str)> {
              layouts and scripts with whole files, so it applies whatever state those \
              files are in. Supersedes 001.",
         ),
+        "009-starter-hotbar" => (
+            "Starting abilities on the action bar",
+            "Puts a new character's starting abilities (Pistol Shot, Strike, Heal Focus, \
+             Health Heal, Recuperation) on the empty action buttons 11-20 at its first \
+             login on this machine (no saved UI variables), once. Action bars that \
+             already exist are never changed. Changes ActionProfileDefault1.lua.",
+        ),
         _ if id.starts_with(DEFAULT_ID_PREFIX) => (OVERLAY_TITLE, OVERLAY_DESCRIPTION),
         _ => return None,
     };
