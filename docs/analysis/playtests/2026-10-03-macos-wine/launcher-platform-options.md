@@ -319,3 +319,151 @@ The next decision is a bounded comparison of shared egui/wgpu and Tauri against
 the approved design, after policy approval and a shared worker contract sketch.
 Bring SwiftUI into that comparison when Mac conventions are a concrete product
 requirement. Record the measured choice in an ADR only after the evidence exists.
+
+## Closer comparison: egui/wgpu versus Tauri
+
+Tauri permits a [plain TypeScript frontend](https://v2.tauri.app/start/frontend/);
+a spike need not add React, SSR or a shipped Node server. The repo already uses
+React 19, TypeScript, Vite 6 and Tauri 2 in its other frontends (see
+`frontend/package.json` and `tools/ContentEditor/ui/package.json`), so this restores a
+stack to the **launcher**, rather than introducing it to the entire project.
+A small React/TS/Vite implementation may fit that convention; maintainer
+familiarity has not been established. The archived `tools/SGWLauncher` is not the
+production reference.
+
+Neither candidate dominates every requirement. **egui minimizes implementation
+change and keeps one Rust toolchain; Tauri favors CSS design iteration and offers
+packaging integrations.** The user has not chosen either. Compare these actual
+benefits against their maintenance costs instead of treating “native” or “web”
+as a performance verdict.
+
+### Translate the approved design deliberately
+
+| Design element | egui/wgpu approach | Tauri approach |
+|---|---|---|
+| Hero art and gradient treatment | Load a licensed static texture; compose panels and overlays with egui painting. Bake complex static effects into assets where appropriate | Use the same licensed asset with CSS gradients, overlays and responsive layout |
+| Typography | Configure font families, sizes and spacing; optionally bundle licensed fonts | Start from the prototype’s system-font stack; optionally bundle licensed fonts |
+| Primary action and progress | Style standard buttons and progress widgets while preserving enabled/focus semantics | Style semantic `button` and progress elements; retain disabled state, labels and keyboard behavior |
+| Play and Patch Notes tabs; gear settings | Rust view composition with selected-tab/modal state | Components or targeted DOM updates with selected-tab/modal state |
+| Text fields and dialogs | Standard widgets plus a native dialog adapter | Semantic form controls plus native dialog plugin |
+| Window chrome | Use the operating system's actual titlebar/window controls | Use native window decoration or a tested platform titlebar integration |
+
+Neither route requires reproducing the prototype's decorative traffic lights as
+fake buttons. Native window controls must move, minimize and close the real
+window correctly. A polished image is not sufficient evidence for keyboard
+focus, resize hit targets, drag regions or accessibility.
+
+The prototype currently uses system fonts; no downloadable font was approved.
+If you choose a bundled font, licensing is a release requirement: permission to view a font
+on a website does not establish permission to bundle it in a desktop app.
+Record the font and hero-image licenses with the assets, including redistribution
+terms. Use comparable fonts and the same approved assets in the comparison so a typography
+mismatch is not mistaken for a framework limitation.
+
+Native file dialogs are available to both candidates. Rust's
+[`rfd`](https://docs.rs/rfd/latest/rfd/) provides native file/message dialogs;
+Tauri supplies a [dialog plugin](https://v2.tauri.app/plugin/dialog/). Test the
+selected integration (including rfd’s macOS main-thread/app-context guidance)
+for cancellation, Unicode and spaced paths, initial
+location, and parent-window behavior. A plugin's existence does not prove the
+launcher has integrated those flows correctly.
+
+### One Rust engine, two possible presentation boundaries
+
+The engine should own installation truth, operation lifecycle, cancellation,
+telemetry consent and game lifecycle. It publishes snapshots and accepts intents.
+A frontend may own the selected tab, expanded notes and an open modal; it must
+not decide that files are installed merely because an animation reached 100%.
+
+With egui, the UI can consume typed Rust snapshots and send typed intents through
+in-process channels. The engine can remain independent of egui so its behavior
+is testable without creating a window. This is the smaller change from the
+existing worker pattern, although moving preparation out of `app` remains work.
+
+With Tauri, async commands carry intents and a channel carries snapshots or
+progress events across a serialized boundary. Define schema versions, operation
+IDs and error types; validate commands in Rust. Keep the webview a presentation
+client of that interface. Tauri documents [Rust commands](https://v2.tauri.app/develop/calling-rust/)
+and [Rust-to-frontend channels](https://v2.tauri.app/develop/calling-frontend/);
+they supply transport mechanisms, not an installation state model.
+
+The approved prototype's `state.mjs` is a simulation. Its useful state scenarios
+can become contract fixtures, but its synthetic install/game status must not
+become a second authority when wired to the real launcher. Similarly, replacing
+a whole view with `innerHTML` on every progress update risks losing input focus,
+selection and transient form state. Use targeted updates or stable components
+and verify focus during repeated worker events.
+
+### Keep both interfaces idle when nothing changes
+
+An egui interface does not need to repaint continuously while idle: request
+repaint for relevant events and animations. Tauri likewise should not run a
+permanent animation loop or repeatedly rebuild the DOM when the snapshot has
+not changed. The current egui UI already has a worker-event wakeup and repaints
+every 33 ms while installing; preserve event-driven wakeups and measure queue floods,
+rather than assuming it always renders continuously. Measure CPU and wakeups in
+visible, background and minimized states.
+
+As a **proposed starting point**, coalesce ordinary download/hash progress to
+roughly 5–10 updates per second, while delivering errors, cancellation and
+terminal transitions immediately. This is not a measured optimum or a product
+requirement. Keep animation timing separate from worker progress and tune using
+real traces so coalescing does not hide a completed or failed operation.
+
+Send compact metadata across the boundary: operation ID, stage, counts and
+status. Do not serialize archives, extracted file contents or enormous log
+buffers over frontend IPC. Rust owns download, hashing, extraction and bounded
+log storage. Move synchronous launch preparation off the UI thread in either
+candidate; neither CSS nor Metal fixes blocking filesystem work.
+
+### Verify semantics before judging screenshots
+
+[`egui_kittest` 0.35](https://docs.rs/egui_kittest/0.35.0/egui_kittest/)
+provides semantic interaction tests and wgpu-backed snapshot testing. That makes
+“click Install, observe busy state, cancel, observe terminal state” testable
+without substituting pixel coordinates for behavior. It does not automatically
+cover the packaged app, native dialogs, VoiceOver or the Wine helper.
+
+For Tauri, combine state/contract tests with packaged-webview automation using
+the platform-appropriate mechanism described above. Keep embedded WebDriver
+plugins test-only and verify they are absent from shipped artifacts; browser
+mode with mocked invokes does not prove WKWebView or real IPC behavior.
+Both candidates still need
+visual checks at different window sizes and scaling, keyboard-only operation,
+and real Mac accessibility checks. Run the same scenarios against the same
+engine fixtures and record what each layer does not cover.
+
+### Migrate in reversible stages
+
+1. Extract and test authoritative Rust orchestration while retaining the
+   existing egui launcher as the working product.
+2. Agree on snapshots, intents, cancellation and restart semantics. Add a thin
+   adapter for the selected experiment; do not fork installer logic.
+3. Implement the approved core screen, settings and notes with real engine
+   events. Compare appearance, focus, idle behavior and busy-state responsiveness.
+4. Prove install, update, launch, consent, error and recovery parity before
+   replacing the maintained frontend or publishing a Mac artifact.
+
+A Tauri candidate should be a fresh adapter to current Rust behavior, not a
+resurrection of the historical Tauri launcher and its obsolete assumptions.
+Tauri's [bundler](https://v2.tauri.app/distribute/) and
+[updater plugin](https://v2.tauri.app/plugin/updater/) can reduce integration work,
+but still need signing, permissions, failure recovery and release ownership.
+The updater expects SemVer and platform-specific URLs/signatures; current
+`launcher-YYYYMMDD-sha` release tags are not directly compatible. Design version
+mapping, asset naming, existing `.exe` migration and state adoption. Do not run
+the legacy swap updater and Tauri updater concurrently.
+Launcher-app update signatures are separate from the game's signed content
+manifest; preserve both trust boundaries rather than treating one as the other.
+
+Tauri also adds an IPC permission boundary: [custom commands](https://v2.tauri.app/security/capabilities/)
+need explicit restriction and Rust-side validation of paths and process inputs;
+plugin scopes alone do not constrain arbitrary commands. Use a bundled frontend,
+an explicit [CSP](https://v2.tauri.app/security/csp/), narrow operations and
+schema-checked DTOs, rather than a general shell/filesystem bridge.
+
+Favor egui if it reproduces the required design and passes interaction gates
+with modest changes. Favor Tauri if its demonstrably better design workflow or
+platform integrations outweigh the added frontend/protocol maintenance while
+meeting the same gates. Neither choice is justified by invented FPS or memory
+ratios; the deciding evidence is the bounded experiment and its upkeep cost.
