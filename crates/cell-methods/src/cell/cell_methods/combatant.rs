@@ -53,8 +53,18 @@ pub async fn dispatch(
             }
             true
         }
+        // Crafted callers only: the stock client sends the GM twin 172
+        // instead (AB-N1). GM-gated in `gm_gate`.
         TOGGLE_HEAL_DEBUG => {
-            tracing::debug!(entity_id, "toggleHealDebug (stub)");
+            cimmeria_cell_world::cell::combat_debug::commands::toggle_from_cell_method(
+                tx,
+                space_mgr,
+                entity_id,
+                method_index,
+                "toggleHealDebug",
+                cimmeria_cell_world::cell::combat_debug::commands::Toggle::Heal,
+            )
+            .await;
             true
         }
         REQUEST_HOLSTER_WEAPON => {

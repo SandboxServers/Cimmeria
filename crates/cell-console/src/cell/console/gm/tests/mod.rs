@@ -79,6 +79,11 @@ fn implemented_indices_are_in_gm_tail() {
         GM_RESET_ABILITIES,
         GM_GIVE_ALL_ABILITIES,
         GM_SET_MOB_ABILITY_SET,
+        GM_DEBUG_ABILITY,
+        GM_DEBUG_COMBAT,
+        GM_DEBUG_COMBAT_VERBOSE,
+        GM_DEBUG_HEAL,
+        GM_DEBUG_ABILITY_ON_MOB,
     ] {
         assert!(
             idx >= GM_TAIL_BASE,
@@ -162,6 +167,7 @@ async fn unimplemented_gm_index_returns_false() {
 }
 
 mod abilities;
+mod combat_debug;
 mod give;
 mod give_training_points;
 mod missions;

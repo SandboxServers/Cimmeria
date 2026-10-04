@@ -9,6 +9,8 @@ use cimmeria_entity::abilities::{EffectDef, DT_PHYSICAL};
 use cimmeria_entity::cell_entity::{ActiveEffectInstance, AiState};
 use cimmeria_entity::stats::{FOCUS, HEALTH};
 
+use cimmeria_cell_world::cell::combat_debug::{self, Note, Pools, PulseNote};
+
 use crate::cell::abilities::wire_ledger::{self, WireCtx};
 use crate::cell::abilities::WireRoute;
 use crate::cell::content_events::ContentEvents;
@@ -57,6 +59,8 @@ pub(super) async fn pulse_one(
     dot_kill_credit(target_id, inst.invoker_id, events, tx, space_mgr).await;
     events.pending_health_below(tx, space_mgr).await;
     space_mgr.exit_cast_scope(outer_cast);
+    // The pulse's debug lines (AB-N1), now its scope is closed.
+    combat_debug::flush(tx, space_mgr).await;
 }
 
 /// Death credit for a pulse that finished the target.
@@ -439,6 +443,26 @@ async fn fire_pulse(
         god_mode_restored_focus = god_mode_restored.focus,
         remaining_before_decrement = inst.remaining_pulses,
         "effect pulse ticked"
+    );
+    // The same values for the in-game combat debug (AB-N1).
+    space_mgr.combat_debug.note(
+        inst.invoker_id,
+        inst.cast_id,
+        inst.ability_id,
+        Note::Pulse(PulseNote {
+            target_id,
+            effect_id: inst.effect_id,
+            path,
+            before: Pools {
+                health: health_before,
+                focus: focus_before,
+            },
+            after: Pools {
+                health: health_after,
+                focus: focus_after,
+            },
+            remaining: inst.remaining_pulses,
+        }),
     );
 
     // The end strips this effect and every other one the partner applied,

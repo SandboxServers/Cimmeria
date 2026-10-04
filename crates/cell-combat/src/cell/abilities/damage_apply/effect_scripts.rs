@@ -59,6 +59,9 @@ pub(super) struct HitEffects {
     pub damage_scripts: Vec<i32>,
     /// Every other landing script, run after the hit resolves.
     pub after_scripts: Vec<i32>,
+    /// The `effect_planned` rows this plan logged, for the in-game combat
+    /// debug (AB-N1).
+    pub planned: Vec<PlannedEffect>,
 }
 
 /// Sort the ability's effects (and a special ammo round's on-hit effect)
@@ -94,7 +97,7 @@ pub(super) fn plan_hit_effects(
                 unrolled: false,
             });
         }
-        PlannedEffect {
+        let row = PlannedEffect {
             effect_id: None,
             path: if landed { PATH_NVP } else { PATH_SKIPPED },
             reason: if landed {
@@ -106,8 +109,9 @@ pub(super) fn plan_hit_effects(
             script: false,
             pulsing: false,
             dont_use_qr: false,
-        }
-        .log(ids.plan_ids());
+        };
+        row.log(ids.plan_ids());
+        plan.planned.push(row);
         return plan;
     };
     let mut nvp = NvpPlanner::default();
@@ -186,6 +190,7 @@ pub(super) fn plan_hit_effects(
     for row in &rows {
         row.log(plan_ids);
     }
+    plan.planned = rows;
     plan
 }
 

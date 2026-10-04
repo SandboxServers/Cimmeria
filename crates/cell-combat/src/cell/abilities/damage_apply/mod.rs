@@ -260,6 +260,7 @@ async fn apply_hit(
     let vitals_before = combat::vitals::player_snapshot(space_mgr, target_eid);
     // GM god mode (142): snapshot the pools, put back any loss below.
     let god_mode = GodModeGuard::arm(space_mgr, target_eid);
+    let mut debug = debug_notes::HitDebug::start(space_mgr, target_eid);
 
     // Apply health damage to target
     let target = match space_mgr.get_entity_mut(target_eid) {
@@ -285,6 +286,7 @@ async fn apply_hit(
         &attacker_stats,
         &mut target.stats,
         ids,
+        debug.nvp(),
     );
 
     // The damage scripts' damage, at the same point and the same scale as
@@ -344,6 +346,15 @@ async fn apply_hit(
             before,
         );
     }
+    let planned = &plan.planned;
+    debug.finish(
+        space_mgr,
+        ids,
+        qr,
+        &qr_result,
+        ability_def.as_ref(),
+        planned,
+    );
     let Some(target) = space_mgr.get_entity_mut(target_eid) else {
         // Cannot happen (the target was just written), but a held hit must
         // still end its duel.
@@ -545,37 +556,18 @@ async fn apply_hit(
         .await;
     }
 
-    // ── Register pulsing effects ──
-    //
-    // Walk the ability's effects again — for any with `pulse_count > 1`
-    // and a positive `pulse_duration`, register an `ActiveEffectInstance`
-    // on the target. The initial pulse already fired (above, via NVP
-    // damage or script dispatch); registration carries the remaining
-    // pulses. See `cell::effects::pulsing::effect_pulse_tick` for the
-    // per-tick fire loop. Not on a splash target (blast damage only), and
-    // not for a QR-rolled effect the roll missed (AB-06: a missed DoT
-    // must not tick; `plan_hit_effects` logged the skip).
-    if let Some(def) = ability_def.as_ref().filter(|_| kind.is_direct()) {
-        let now = std::time::Instant::now();
-        for eid in def.effect_ids.iter().copied().chain(on_hit_effect_id) {
-            let effect_clone = match space_mgr.effect_defs.get(&eid) {
-                Some(e) if e.is_pulsing() && qr_gate::effect_lands(e, qr_result.result_code) => {
-                    e.clone()
-                }
-                // A missing def was logged by `plan_hit_effects`.
-                _ => continue,
-            };
-            // `register_active_effect` logs each refusal itself (AB-T2).
-            crate::cell::effects::register_active_effect(
-                space_mgr,
-                target_eid,
-                entity_id,
-                &effect_clone,
-                now,
-                tx,
-            )
-            .await;
-        }
+    // ── Register pulsing effects (`pulse_registration`) ──
+    if kind.is_direct() {
+        pulse_registration::register_hit_pulses(
+            entity_id,
+            target_eid,
+            ability_def.as_ref(),
+            on_hit_effect_id,
+            qr_result.result_code,
+            tx,
+            space_mgr,
+        )
+        .await;
     }
     // AB-04: a landed single-pulse debuff ran its ledger script (`TimedStat`)
     // with the miss-gated after-hit scripts; its icon goes out with these.
@@ -611,11 +603,13 @@ async fn apply_hit(
 
 mod ammo_splash;
 mod cover_roll;
+mod debug_notes;
 mod duel_gate;
 mod effect_scripts;
 mod hit_ids;
 mod hit_wire;
 mod nvp_damage;
+mod pulse_registration;
 mod qr_gate;
 mod silent_rows;
 

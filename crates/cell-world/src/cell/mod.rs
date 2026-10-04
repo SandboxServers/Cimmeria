@@ -9,6 +9,7 @@
 pub mod arrival;
 pub mod black_market;
 pub mod combat;
+pub mod combat_debug;
 pub mod content_events;
 pub mod cover;
 pub mod deployables;

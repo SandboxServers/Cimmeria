@@ -622,14 +622,14 @@ beyond the 3 verified handlers above.
 
 | Idx | Method (args) | Stock cmd | Cimmeria primitive | Status |
 |-----|---------------|-----------|--------------------|--------|
-| 169 | `gmDebugAbility(INT32 abilityId)` | — | — | NEW |
-| 170 | `gmDebugCombat()` | — | stub `cell_methods/ability_manager.rs:22` (also gated as in-range idx 2) | ADAPT |
-| 171 | `gmDebugCombatVerbose()` | — | log-only stub (in-range idx 3) | ADAPT |
-| 172 | `gmDebugHeal()` | — | stub `cell_methods/combatant.rs:59` (in-range idx 6) | ADAPT |
+| 169 | `gmDebugAbility(INT32 abilityId)` | — | `cell-console` `gm/combat_debug.rs` (AB-N1): toggles `debugAbilityList`; `0` clears | DONE |
+| 170 | `gmDebugCombat()` | — | `cell-console` `gm/combat_debug.rs` (AB-N1); idx 2 shares the toggle | DONE |
+| 171 | `gmDebugCombatVerbose()` | — | `cell-console` `gm/combat_debug.rs` (AB-N1); idx 3 shares the toggle | DONE |
+| 172 | `gmDebugHeal()` | — | `cell-console` `gm/combat_debug.rs` (AB-N1): heal-debug toggle; idx 6 shares it | DONE |
 | 173 | `gmDebugStartMinigame(INT32 gameId)` | — | `minigame/session.rs:60 register` + cell dispatch stub | ADAPT |
 | 174 | `gmDebugSpectateMinigame()` | — | cell stub `cell_methods/minigame.rs` | ADAPT |
 | 175 | `gmDebugJoinMinigame()` | — | cell stub | ADAPT |
-| 176 | `gmDebugAbilityOnMob(INT32 abilityID)` | — | — | NEW |
+| 176 | `gmDebugAbilityOnMob(INT32 abilityID)` | — | `cell-console` `gm/combat_debug.rs` (AB-N1): the selected mob's casts print to the GM | DONE |
 | 177 | `gmDebugBehaviorsOnMob()` | — | read `ai_state`/`threat_list` + stream callback | ADAPT |
 | 178 | `gmDebugPathsOnMob()` | — | read `cell_entity/mod.rs:493 nav_path` + `onShowPath` callback | ADAPT |
 | 179 | `gmDebugEvents(INT32 target, INT32 level)` | — | — | NEW |

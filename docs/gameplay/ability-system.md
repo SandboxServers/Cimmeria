@@ -64,7 +64,7 @@ The `AbilityManager` class (in `deprecated/python/cell/AbilityManager.py`) manag
 | `effectMonikers` | ARRAY\<PYTHON\> | CELL_PUBLIC | (entityId, monikerCRC) tuples |
 | `effectSequenceId` | INT32 | CELL_PRIVATE | Next unique effect save key |
 | `pendingAbilities` | PYTHON | CELL_PRIVATE | Abilities waiting to be resolved |
-| `debugAbilityList` | ARRAY\<INT32\> | CELL_PRIVATE | Debug: abilities being traced |
+| `debugAbilityList` | ARRAY\<INT32\> | CELL_PRIVATE | Debug: abilities being traced ([In-game combat debug](#in-game-combat-debug)) |
 | `debugEffectList` | ARRAY\<INT32\> | CELL_PRIVATE | Debug: effects being traced |
 
 ### Key Cell Methods
@@ -195,6 +195,28 @@ An ability **has a mechanic** (`ability_has_mechanics`) when any of these holds:
 An event set alone does not count: an animation is not a mechanic. The predicate reads the seed, so an ability lights up as soon as a generator packet gives one of its effects a number or a script (AB-03 damage, AB-04 stats, AB-08 stances and passives). On `main` after AB-10, 284 of 1,886 seeded abilities have a mechanic (276 after AB-08, 264 after AB-07, 262 after AB-04, 247 after AB-03); the live-DB test `seeded_has_mechanics_count_live_db` pins the number. Out-of-scope families (stealth, self-revive, Asgard energy, turrets; D-AB11) get the same refusal, because they have no mechanic either.
 
 Never refused: NPC and pet casts, an ability the server has no definition for (silent, as before), and an ability the active weapon grants through `items_event_sets` (the basic attack). Each refusal logs one DEBUG `abilities` row, `event=no_mechanics_refused`, `reason=no_mechanics`, with `ability_id`, `ability_name`, `effect_count`, `animates`, `account_id` and `player_id`.
+
+## In-game combat debug
+
+A Game Master can watch the server resolve casts from inside the game (ability-mechanics AB-N1). The game has no combat-debug window and cannot receive `onSendCombatDebug`, so each debug line arrives as an ordinary chat line on the feedback channel (`onPlayerCommunication`, channel 9), the same sky-blue Info-tab line other GM feedback uses ([native-combat-debug.md](../reverse-engineering/findings/native-combat-debug.md)).
+
+| Command | Index | What it toggles |
+|---|---|---|
+| `/gmdebugcombat` | 170 | Combat debug (`bCombatDebug`): one line per hostile hit you land or take |
+| `/gmdebugcombatverbose` | 171 | Verbose combat debug (`bCombatVerboseDebug`): the hit lines, plus every effect plan, NVP damage entry, ledger entry and pulse |
+| `/gmdebugheal` | 172 | Heal debug: one line per heal or buff you cast or receive |
+| `/gmdebugability <abilityId>` | 169 | That ability in `debugAbilityList`: its casts by you or on you print with every other toggle off. `0` is `clearAbilityDebug` (empties the list and the mob list, lines back to you) |
+| `/gmdebugabilityonmob <abilityId>` | 176 | Your selected mob's casts of that ability (`0`: all of them) print to you |
+
+The game sends these only from a GM avatar, and the server's GM gate refuses them for anyone else. Every press answers with a feedback line (`gmDebugCombat: Combat debug on: ...`) and writes one `abilities` `gm_command` row. Cells 2 (`toggleCombatDebug`), 3 (`toggleCombatVerboseDebug`) and 6 (`toggleHealDebug`) do the same for a crafted caller; the stock game has no event bound to them. `setAbilityDebugTarget` (send your lines to another player in your space) and `clearAbilityDebug` are server-side helpers in `cell::combat_debug::commands`; no client event reaches the first. The toggles live in memory only, like god mode: a relog starts with them off.
+
+**What a line says.** Every line starts with `[CD #<cast_id>]`, the cast's join key to its `abilities` rows. A hit: `[CD #7] Pistol Shot (592) Gm(1) -> Jaffa(3): hit, roll 0.620 qr 0.150; HP 100->77 (-23), FP 50->50 (+0)`. A heal or routed landing ends `landed;` and the recipient's pools; a pulse names its effect and the pulses left; a cast that reached no one prints `fired, nothing resolved`. Verbose adds `plan eff <id> -> <target>: <path> (<reason>)`, `nvp eff <id> -> ...: base H.. F.., dealt H.. F.., absorbed ..`, `ledger eff <id> -> ...: applied, 10.0 s` and `pulse eff <id> -> ...: path nvp`. The values are the ones the AB-T3 rows log (`qr_rolled`, `effect_planned`, `nvp_damage_resolved`, `stat_buff_applied`, `pulse_ticked`), taken at the same points.
+
+**Who gets it.** You, when you cast the record or are touched by it and its toggle is on (combat or verbose for a hostile cast, heal for a beneficial one, any of the three for a later pulse), or when the ability is in your list; and you, for any cast of a mob you turned mob debug on for. The lines go out when the cast's scope closes (the zero-warmup launch, the warmup fire, each pulse, a ground cast's secondaries).
+
+**Same text in SigNoz.** Each line, sent or not, also writes one `abilities.debug` DEBUG `combat_debug_line` row whose `text` is exactly what the client received ([observability-target-catalog.md](../architecture/observability-target-catalog.md)).
+
+**Limits.** A line longer than 255 UTF-16 units (the server's chat cap, D-SS12) is split, continuation lines starting `  ... `. Each recipient gets at most 20 lines a second; past that a line is held back (its row still written, `delivery = suppressed`) and the next line after the second ends is `[CD] +N lines suppressed (...)`. Ledger removals, absorb-shield settles and the after-hit scripts' own pool changes are not in the lines; their rows are.
 
 ## Condition Feedback Codes
 

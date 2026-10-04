@@ -18,6 +18,7 @@
 //!   damage effect does: a pure cone ability still hurts its primary, and
 //!   "Target -100F" + "Medium Cone -100F" deals the primary 100, not 200.
 
+use cimmeria_cell_world::cell::combat_debug::{NvpNote, Pools};
 use cimmeria_entity::abilities::{ClientEffectResult, EffectDef, EF_DONT_USE_QR, TCM_SINGLE};
 use cimmeria_entity::stats::{StatList, FOCUS, HEALTH};
 
@@ -155,7 +156,8 @@ impl NvpPlanner {
 /// Each entry logs `nvp_damage_resolved` (AB-T3): the roll it took, the
 /// damage type, the target's pools before and after, and what the absorb
 /// pools took; a shield that absorbed some of it also logs
-/// `shield_absorbed_damage` with the hit's ids.
+/// `shield_absorbed_damage` with the hit's ids. With `debug`, the same
+/// values are pushed there for the in-game combat debug (AB-N1).
 #[allow(clippy::too_many_arguments)]
 pub(super) fn apply_nvp_damage(
     entries: &[NvpDamage],
@@ -166,6 +168,7 @@ pub(super) fn apply_nvp_damage(
     attacker: &StatList,
     defender: &mut StatList,
     ids: HitIds,
+    mut debug: Option<&mut Vec<NvpNote>>,
 ) -> (Vec<ClientEffectResult>, i32) {
     let unrolled = unrolled_qr();
     let mut results = Vec::new();
@@ -272,6 +275,30 @@ pub(super) fn apply_nvp_damage(
             god_mode = ids.god_mode,
             "NVP damage resolved for one effect"
         );
+        if let Some(notes) = debug.as_deref_mut() {
+            notes.push(NvpNote {
+                target_id: ids.target_eid,
+                effect_id: entry.effect_id,
+                health_base: entry.health,
+                focus_base: entry.focus,
+                health_dealt: health.dealt,
+                focus_dealt: focus.dealt,
+                absorbed,
+                before: Pools {
+                    health: health_before,
+                    focus: focus_before,
+                },
+                after: Pools {
+                    health: health_after,
+                    focus: focus_after,
+                },
+                reason: if entry.unrolled {
+                    "dont_use_qr"
+                } else {
+                    "hit_roll"
+                },
+            });
+        }
         results.extend(health.results);
         total_health += health.dealt;
     }

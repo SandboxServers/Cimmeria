@@ -1,6 +1,8 @@
 //! The one telemetry row each AB-N2 ability-testing GM command writes
 //! (`gmGiveAbility`, `gmSetGodMode`, `gmResetAbilities`,
-//! `gmGiveAllAbilities`, `gmSetMobAbilitySet`).
+//! `gmGiveAllAbilities`, `gmSetMobAbilitySet`), and each AB-N1 combat-debug
+//! toggle (`gmDebugAbility`, `gmDebugCombat`, `gmDebugCombatVerbose`,
+//! `gmDebugHeal`, `gmDebugAbilityOnMob`).
 //!
 //! Target `abilities`, `event = "gm_command"`, with the caller's
 //! `account_id` / `player_id` (instrumentation-discipline Rule 5), the

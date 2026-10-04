@@ -235,6 +235,23 @@ impl SpaceManager {
                 "more timed effects on one side than the client's effect bar shows"
             );
         }
+        // The same decision for the in-game combat debug (AB-N1).
+        self.combat_debug.note(
+            invoker_id,
+            cast_id,
+            ability_id,
+            crate::cell::combat_debug::Note::Ledger(crate::cell::combat_debug::LedgerNote {
+                target_id: target,
+                effect_id,
+                outcome: if out.replaced.is_empty() {
+                    "applied"
+                } else {
+                    "replaced"
+                },
+                duration_secs: out.applied.duration_secs,
+                held: out.applied.expires_at.is_none(),
+            }),
+        );
         Some(out)
     }
 
