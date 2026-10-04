@@ -4,6 +4,7 @@ pub(crate) mod extraction_work;
 mod failed_cleanup;
 mod helper_journal;
 pub mod launch;
+pub mod migration;
 pub mod repair;
 pub mod runtime_setup;
 pub mod uninstall;
@@ -148,12 +149,14 @@ impl DesktopState {
             ContractError::PersistenceUncertain => StorageError::PersistenceUncertain,
             _ => StorageError::Io,
         })?;
-        Ok(Self {
+        let mut state = Self {
             operations,
             preferences,
             directory,
             preferences_uncertain: false,
-        })
+        };
+        state.recover_legacy_import()?;
+        Ok(state)
     }
 
     #[cfg(any(target_os = "macos", test))]

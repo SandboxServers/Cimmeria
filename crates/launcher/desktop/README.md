@@ -696,3 +696,7 @@ Settings uninstall, explicit recovery and data-retention boundaries are describe
 in [installed-content maintenance](docs/maintenance.md).
 See [prerequisite evidence and probe semantics](docs/prerequisites.md) for the
 experimental Windows x86 module-load helper and remaining integration gates.
+
+See [legacy migration](docs/migration.md) for the native preview/confirmed import API,
+identity and consent preservation, historical ledger limits and crash recovery.
+Shell import controls and updater migration remain separate integration work.
