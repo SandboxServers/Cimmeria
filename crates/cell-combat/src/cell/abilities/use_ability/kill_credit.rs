@@ -170,6 +170,7 @@ pub(super) async fn credit_single_target(
         let who = space_mgr.player_identity(entity_id);
         tracing::warn!(
             target: "abilities",
+            event = "kill_credit_no_player",
             account_id = who.account_id, player_id = who.player_id,
             entity_id, npc_tag = ?primary_tag, aoe_kills = aoe_dead_ids.len(),
             reason = "no_credited_player",
@@ -249,6 +250,7 @@ pub async fn credit_ground_deaths(
                     let who = space_mgr.player_identity(entity_id);
                     tracing::warn!(
                         target: "abilities",
+                        event = "kill_credit_no_player",
                         account_id = who.account_id, player_id = who.player_id,
                         entity_id, npc_tag = %tag, dead_eid, reason = "no_credited_player",
                         "Skipping entity_death event (ground target): killer entity has no player_id"

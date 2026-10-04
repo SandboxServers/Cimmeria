@@ -77,6 +77,7 @@ pub async fn fan_out_cone_effects(
     if union_for_death_snapshot.is_empty() {
         tracing::debug!(
             target: "abilities",
+            event = "cone_aoe_no_secondaries",
             entity_id,
             primary_target_id,
             ability_id,
@@ -88,6 +89,7 @@ pub async fn fan_out_cone_effects(
 
     tracing::info!(
         target: "abilities",
+        event = "cone_aoe_fan_out",
         entity_id,
         primary_target_id,
         ability_id,

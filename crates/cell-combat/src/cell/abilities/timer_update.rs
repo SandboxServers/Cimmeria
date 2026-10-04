@@ -94,6 +94,7 @@ pub async fn send_timer_update_ctx(
     if !is_player {
         tracing::debug!(
             target: "abilities.wire",
+            event = "timer_update_not_sent",
             entity_id,
             reason = "not_player",
             "onTimerUpdate not sent: the client binds it on SGWPlayer only, so an NPC timer would be dropped"

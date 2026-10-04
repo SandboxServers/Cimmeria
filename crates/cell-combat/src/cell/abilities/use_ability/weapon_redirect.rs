@@ -115,6 +115,7 @@ pub(super) fn resolve_weapon_redirect(
     let who = space_mgr.player_identity(entity_id);
     tracing::debug!(
         target: "abilities",
+        event = "weapon_ability_redirect",
         account_id = who.account_id,
         player_id = who.player_id,
         entity_id,

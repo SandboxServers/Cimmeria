@@ -144,9 +144,12 @@ fn no_ally() -> (CastTarget, &'static str) {
     }
 }
 
-/// Log the `beneficial_cast` row. `stage` is `launch` (DEBUG: it runs before
-/// the launch's dead, known and cooldown checks, so a forged packet must not
-/// buy an INFO row) or `fire` (INFO: once per committed cast).
+/// Log the `beneficial_cast` row. `stage` is `launch` (DEBUG: the fire's
+/// INFO row is the one per committed cast) or `fire` (INFO). `cast_id` is the
+/// cast's id (AB-T1): the launch logs once the cast is minted, the fire inside
+/// its cast scope. Only a launch refused before minting (D-AB02's refusal)
+/// logs `None`: there is no cast to name.
+#[allow(clippy::too_many_arguments)]
 fn log_resolution(
     space_mgr: &SpaceManager,
     caster_id: u32,
@@ -155,6 +158,7 @@ fn log_resolution(
     target: CastTarget,
     resolution: &'static str,
     stage: &'static str,
+    cast_id: Option<i32>,
 ) {
     let who = space_mgr.player_identity(caster_id);
     let resolved_target_id = match target {
@@ -173,6 +177,7 @@ fn log_resolution(
                 account_id = who.account_id,
                 player_id = who.player_id,
                 entity_id = caster_id,
+                cast_id,
                 ability_id = def.map(|d| d.ability_id),
                 effect_ids = ?def.map(|d| d.effect_ids.as_slice()),
                 target_type_id = def.map(|d| d.target_type_id),
@@ -214,6 +219,7 @@ pub(super) fn resolve_at_fire(
         target,
         resolution,
         "fire",
+        space_mgr.current_cast_id(),
     );
     (target, resolution)
 }
@@ -227,8 +233,20 @@ pub(super) fn landing_id(caster_id: u32, target: CastTarget) -> i32 {
     }
 }
 
-/// The launch's view of the client's target: `Some((target_id, beneficial))`
-/// to go on with, `None` when the cast is refused (feedback already sent).
+/// The launch's view of the client's target, from [`launch_target`].
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(super) struct LaunchTarget {
+    /// The entity the launch's range, line-of-sight and gate checks see.
+    pub target_id: i32,
+    /// A player's beneficial cast.
+    pub beneficial: bool,
+    /// A beneficial cast's resolution, logged by [`log_launch_resolution`]
+    /// once the cast has its id.
+    pub resolved: Option<Resolved>,
+}
+
+/// The launch's view of the client's target: `Some` to go on with, `None`
+/// when the cast is refused (feedback already sent).
 ///
 /// A `diverted` cast (a summon, an owner-pet ability, a deployable) has its
 /// own target rule and gets target 0, as before. A non-beneficial cast keeps
@@ -236,7 +254,9 @@ pub(super) fn landing_id(caster_id: u32, target: CastTarget) -> i32 {
 /// half would be refused with it (`effect_routing::launch_target`: target 0).
 /// A beneficial cast gets the resolved entity, so the
 /// launch's range and line-of-sight checks, the warmup's anchor and the
-/// `onSequence` all name where it will land.
+/// `onSequence` all name where it will land. Its launch `beneficial_cast`
+/// row waits for the cast id ([`log_launch_resolution`]); only a refusal
+/// logs here.
 pub(super) async fn launch_target(
     caster_id: u32,
     def: Option<&AbilityDef>,
@@ -244,34 +264,76 @@ pub(super) async fn launch_target(
     diverted: bool,
     tx: &mpsc::Sender<CellToBaseMsg>,
     space_mgr: &SpaceManager,
-) -> Option<(i32, bool)> {
+) -> Option<LaunchTarget> {
     if diverted {
-        return Some((0, false));
+        return Some(LaunchTarget {
+            target_id: 0,
+            beneficial: false,
+            resolved: None,
+        });
     }
     if !is_player_beneficial(space_mgr, caster_id, def) {
         // A cast whose user half has nowhere else to land, or whose target
         // #444 would refuse, drops its target (AB-07, `effect_routing`).
-        let target =
+        let target_id =
             super::super::effect_routing::launch_target(space_mgr, caster_id, def, wire_target);
-        return Some((target, false));
+        return Some(LaunchTarget {
+            target_id,
+            beneficial: false,
+            resolved: None,
+        });
     }
     let (target, resolution) = resolve(space_mgr, caster_id, def, wire_target);
-    log_resolution(
-        space_mgr,
-        caster_id,
-        def,
-        wire_target,
-        target,
-        resolution,
-        "launch",
-    );
-    match target {
-        CastTarget::Caster => Some((caster_id as i32, true)),
-        CastTarget::Ally(id) => Some((id as i32, true)),
+    let target_id = match target {
+        CastTarget::Caster => caster_id as i32,
+        CastTarget::Ally(id) => id as i32,
         CastTarget::Hostile(_) | CastTarget::None => {
+            // Refused before the launch mints a cast id: no `cast_id`.
+            log_resolution(
+                space_mgr,
+                caster_id,
+                def,
+                wire_target,
+                target,
+                resolution,
+                "launch",
+                None,
+            );
             send_no_ally_feedback(caster_id, tx, space_mgr).await;
-            None
+            return None;
         }
+    };
+    Some(LaunchTarget {
+        target_id,
+        beneficial: true,
+        resolved: Some((target, resolution)),
+    })
+}
+
+/// Log a committed beneficial cast's launch `beneficial_cast` row once the
+/// launch has minted its `cast_id`. It used to run before the mint and
+/// carried no `cast_id` (colo smoke test, 2026-10-04), so a cast's forensics
+/// query never selected it. A cast a later launch gate refuses logs that
+/// gate's row instead.
+pub(super) fn log_launch_resolution(
+    space_mgr: &SpaceManager,
+    caster_id: u32,
+    def: Option<&AbilityDef>,
+    wire_target: i32,
+    resolved: Option<Resolved>,
+    cast_id: i32,
+) {
+    if let Some((target, resolution)) = resolved {
+        log_resolution(
+            space_mgr,
+            caster_id,
+            def,
+            wire_target,
+            target,
+            resolution,
+            "launch",
+            Some(cast_id),
+        );
     }
 }
 
@@ -400,6 +462,7 @@ pub(super) fn target_gate(
     if caster.is_player && !combat::player_may_attack(caster, target, duels) {
         tracing::warn!(
             target: "abilities",
+            event = "target_gate_non_hostile",
             account_id = who.account_id,
             player_id = who.player_id,
             entity_id = caster.entity_id.0,

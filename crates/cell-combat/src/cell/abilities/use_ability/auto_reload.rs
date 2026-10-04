@@ -58,6 +58,7 @@ pub(super) async fn maybe_trigger_auto_reload(
     let who = space_mgr.player_identity(entity_id);
     tracing::info!(
         target: "abilities",
+        event = "auto_reload_triggered",
         account_id = who.account_id,
         player_id = who.player_id,
         entity_id,

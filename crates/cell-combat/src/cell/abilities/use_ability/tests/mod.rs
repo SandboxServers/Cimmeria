@@ -14,6 +14,7 @@ use tokio::sync::mpsc;
 
 mod auto_cycle;
 mod beneficial;
+mod beneficial_cast_rows;
 mod beneficial_live_db;
 mod cast_correlation;
 mod combat_debug;

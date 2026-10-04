@@ -297,6 +297,7 @@ pub(super) async fn entity_method_call(
         entity_id,
         entity_id,
         method_index,
+        &args,
         connected,
         entity_to_addr,
     );
@@ -361,6 +362,7 @@ pub(super) async fn witness_entity_method(
         witness_id,
         entity_id,
         method_index,
+        &args,
         connected,
         entity_to_addr,
     );
