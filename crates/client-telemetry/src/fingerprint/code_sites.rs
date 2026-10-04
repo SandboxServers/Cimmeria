@@ -3,6 +3,8 @@
 
 use cimmeria_client_hookgate::Site;
 
+use super::ability_sites::*;
+
 /// `FFullScreenMovieBink::Tick`: `xorps xmm1, xmm1; sub esp, 8; push esi;
 /// mov esi, ecx`.
 pub const BINK_TICK: Site = code_site(
@@ -377,7 +379,7 @@ pub const SCRIPTED_DEBUG_ERROR: Site = code_site(
 );
 
 /// Every function the gate checks.
-pub const CODE_SITES: [Site; 39] = [
+pub const CODE_SITES: [Site; 54] = [
     cimmeria_client_hookgate::ENGINE_TICK,
     cimmeria_client_hookgate::DROP_CALLEE,
     BINK_TICK,
@@ -417,9 +419,24 @@ pub const CODE_SITES: [Site; 39] = [
     SCRIPTED_DEBUG_LOG,
     SCRIPTED_DEBUG_WARN,
     SCRIPTED_DEBUG_ERROR,
+    USE_ACTION_THUNK,
+    USE_ABILITY_THUNK,
+    ABILITY_SLOT,
+    ABILITY_LOOKUP,
+    ABILITY_SEND_BUILDER,
+    PET_ABILITY_ACTION_EXECUTE,
+    GAME_PET_SEND,
+    START_ENTITY_MESSAGE,
+    START_PROXY_MESSAGE,
+    CHANNEL_SEND,
+    NUB_SEND,
+    SEQ_NEXT,
+    EVENT_GET_INT,
+    EVENT_GET_FLOAT,
+    EVENT_GET_BYTE,
 ];
 
-const fn code_site(name: &'static str, address: usize, expected: &'static [u8]) -> Site {
+pub(super) const fn code_site(name: &'static str, address: usize, expected: &'static [u8]) -> Site {
     Site {
         name,
         address,

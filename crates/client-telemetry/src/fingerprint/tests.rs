@@ -124,3 +124,57 @@ fn every_code_site_can_be_chained_over_by_minhook() {
         assert!(site.expected.len() > 5, "{}", site.name);
     }
 }
+
+/// The ability sites (AB-C1, AB-C2): the twelve hooked functions and the
+/// three event-bag readers the router hook calls. Every byte of every one
+/// is load-bearing: flipping any of them fails the whole gate, so a
+/// different `SGW.exe` installs no hook at all.
+#[test]
+fn a_changed_byte_at_any_ability_site_installs_nothing() {
+    let ability = [
+        USE_ACTION_THUNK,
+        USE_ABILITY_THUNK,
+        ABILITY_SLOT,
+        ABILITY_LOOKUP,
+        ABILITY_SEND_BUILDER,
+        PET_ABILITY_ACTION_EXECUTE,
+        GAME_PET_SEND,
+        START_ENTITY_MESSAGE,
+        START_PROXY_MESSAGE,
+        CHANNEL_SEND,
+        NUB_SEND,
+        SEQ_NEXT,
+        EVENT_GET_INT,
+        EVENT_GET_FLOAT,
+        EVENT_GET_BYTE,
+    ];
+    for site in ability {
+        assert!(
+            CODE_SITES
+                .iter()
+                .any(|s| s.address == site.address && s.expected == site.expected),
+            "{} is not in the gate",
+            site.name
+        );
+        assert_eq!(site.expected.len(), 16, "{}", site.name);
+        assert!(
+            !site.may_be_chained,
+            "{}: only this DLL hooks it",
+            site.name
+        );
+        for i in 0..site.expected.len() {
+            let mut mem = stock_build();
+            mem.get_mut(&site.address).unwrap()[i] ^= 0x01;
+            let report = check(reader(&mem), &[]);
+            assert!(!report.is_usable(), "{} byte {i}", site.name);
+            assert!(
+                report
+                    .verdicts()
+                    .iter()
+                    .any(|(n, v)| *n == site.name && *v == "mismatch"),
+                "{} byte {i}",
+                site.name
+            );
+        }
+    }
+}

@@ -68,6 +68,7 @@ One line per topic file; the detail lives in the file. Keep hooks short (this in
 
 ## Injected client DLLs
 
+- [offline-disasm-and-minhook-detour-tests.md](offline-disasm-and-minhook-detour-tests.md) — capstone under `py -V:3.13` reads SGW.exe offline; MinHook stand-in tests for detours; game calls outside catch_unwind.
 - [injected-dll-unwind-and-lua-error-rules.md](injected-dll-unwind-and-lua-error-rules.md) — `thiscall-unwind` detours for C++-EH prologues.
 - [lab-probe-traffic-starves-watchdog.md](lab-probe-traffic-starves-watchdog.md) — per-field mem_reads starved the lab heartbeat and killed a healthy client; keep bridge reads coarse.
 - [lab-event-store-and-ui-lua-hooks.md](lab-event-store-and-ui-lua-hooks.md) — events_read drains; read via the supervisor store; one UI Lua subscription per window per event.
