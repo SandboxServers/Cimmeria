@@ -13,6 +13,8 @@
 //! | [`Note::Ledger`] | `stat_buff_applied` |
 //! | [`Note::Pulse`] | `pulse_ticked` |
 
+use cimmeria_entity::cell_entity::PlayerIdentity;
+
 use super::MAX_NOTES_PER_RECORD;
 
 /// A target's HEALTH and FOCUS at one moment.
@@ -131,6 +133,9 @@ pub enum CastKind {
 #[derive(Debug, Clone, PartialEq)]
 pub struct CastDebug {
     pub caster_id: u32,
+    /// The caster's `account_id` / `player_id` when the record opened, so
+    /// its rows name the caster even if it has left by the flush.
+    pub caster: PlayerIdentity,
     pub cast_id: Option<i32>,
     pub ability_id: i32,
     pub notes: Vec<Note>,
@@ -139,9 +144,15 @@ pub struct CastDebug {
 }
 
 impl CastDebug {
-    pub fn new(caster_id: u32, cast_id: Option<i32>, ability_id: i32) -> Self {
+    pub fn new(
+        caster_id: u32,
+        caster: PlayerIdentity,
+        cast_id: Option<i32>,
+        ability_id: i32,
+    ) -> Self {
         Self {
             caster_id,
+            caster,
             cast_id,
             ability_id,
             notes: Vec::new(),

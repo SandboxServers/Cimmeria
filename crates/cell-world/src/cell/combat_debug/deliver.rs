@@ -22,14 +22,18 @@
 //!    sent after the window ends is preceded by `[CD] +N lines suppressed`.
 //!    A flush with no records still sends an owed notice, so a storm that
 //!    stops is reported at the next cast or pulse in the cell.
-//! 3. **The row and the line.** Every line, sent or not, writes one
-//!    `abilities.debug` DEBUG `combat_debug_line` row whose `text` is the
-//!    exact text sent.
+//! 3. **The row and the line.** Every line writes one `abilities.debug`
+//!    DEBUG `combat_debug_line` row whose `text` is the exact text. A line
+//!    within budget logs its row after the send: `delivery =
+//!    queued_to_base` once the cell-to-base queue took it (queued, not yet
+//!    delivered, as AB-T4's `wire_sent`), `send_failed` when the queue was
+//!    closed.
 
 use std::time::{Duration, Instant};
 
 use tokio::sync::mpsc;
 
+use cimmeria_entity::cell_entity::PlayerIdentity;
 use cimmeria_wire::cell::chat::{serialize_on_player_communication, CHAN_FEEDBACK};
 use cimmeria_wire::cell::client_methods::communicator::ON_PLAYER_COMMUNICATION;
 
@@ -53,16 +57,9 @@ pub(crate) struct RateWindow {
     suppressed: u32,
 }
 
-/// One line to send.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct Outgoing {
-    pub recipient: u32,
-    pub text: String,
-}
-
 /// Which line a row is for.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-enum LineKind {
+pub enum LineKind {
     Simple,
     Verbose,
     SuppressedNotice,
@@ -78,15 +75,53 @@ impl LineKind {
     }
 }
 
-/// Finalize, route, format and send every finished record (module docs).
-pub async fn flush(tx: &mpsc::Sender<CellToBaseMsg>, mgr: &mut SpaceManager) {
-    let out = prepare(mgr, Instant::now());
-    for line in out {
-        send_feedback_line(tx, mgr, line.recipient, &line.text).await;
+/// The cast a line is about, for its row (`None` on a suppressed notice).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct LineCast {
+    pub caster_id: u32,
+    /// Snapshotted when the record opened.
+    pub caster: PlayerIdentity,
+    pub cast_id: Option<i32>,
+    pub ability_id: i32,
+}
+
+impl LineCast {
+    fn of(rec: &CastDebug) -> Self {
+        Self {
+            caster_id: rec.caster_id,
+            caster: rec.caster,
+            cast_id: rec.cast_id,
+            ability_id: rec.ability_id,
+        }
     }
 }
 
-/// The synchronous half of [`flush`]: everything but the sends, at `now`.
+/// One line to send, with what its row needs.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Outgoing {
+    pub recipient: u32,
+    pub text: String,
+    pub kind: LineKind,
+    pub cast: Option<LineCast>,
+}
+
+/// Finalize, route, format and send every finished record (module docs),
+/// logging each line's row once its send is known.
+pub async fn flush(tx: &mpsc::Sender<CellToBaseMsg>, mgr: &mut SpaceManager) {
+    let out = prepare(mgr, Instant::now());
+    for line in out {
+        let queued = send_feedback_line(tx, mgr, line.recipient, &line.text).await;
+        let delivery = if queued {
+            "queued_to_base"
+        } else {
+            "send_failed"
+        };
+        log_line(mgr, &line, delivery);
+    }
+}
+
+/// The synchronous half of [`flush`]: everything but the sends and the rows
+/// of the lines to send, at `now`. Suppressed lines log their rows here.
 pub fn prepare(mgr: &mut SpaceManager, now: Instant) -> Vec<Outgoing> {
     let debug = &mgr.combat_debug;
     if debug.open.is_empty() && debug.windows.is_empty() {
@@ -107,6 +142,7 @@ pub fn prepare(mgr: &mut SpaceManager, now: Instant) -> Vec<Outgoing> {
             continue;
         }
         let lines = format_record(mgr, rec);
+        let cast = Some(LineCast::of(rec));
         for (recipient, verbose) in wanted {
             let simple = lines.simple.iter().map(|l| (l, LineKind::Simple));
             let detail = lines
@@ -116,7 +152,13 @@ pub fn prepare(mgr: &mut SpaceManager, now: Instant) -> Vec<Outgoing> {
                 .map(|l| (l, LineKind::Verbose));
             for (line, kind) in simple.chain(detail) {
                 for text in split_line(line, MAX_LINE_UNITS) {
-                    admit(mgr, now, recipient, Some(rec), kind, text, &mut out);
+                    let line = Outgoing {
+                        recipient,
+                        text,
+                        kind,
+                        cast,
+                    };
+                    admit(mgr, now, line, &mut out);
                 }
             }
         }
@@ -126,7 +168,8 @@ pub fn prepare(mgr: &mut SpaceManager, now: Instant) -> Vec<Outgoing> {
 }
 
 /// Remove watchers whose entity is gone, is no longer a player, or now
-/// plays another character.
+/// plays another character. The row names the watcher by the identity
+/// snapshotted when it turned debugging on.
 fn drop_stale_watchers(mgr: &mut SpaceManager) {
     let stale: Vec<u32> = mgr
         .combat_debug
@@ -143,8 +186,10 @@ fn drop_stale_watchers(mgr: &mut SpaceManager) {
         tracing::debug!(
             target: "abilities.debug",
             event = "combat_debug_watcher_dropped",
+            reason = "watcher_left",
             entity_id = id,
-            player_id = s.and_then(|s| s.player_id),
+            account_id = s.as_ref().and_then(|s| s.account_id),
+            player_id = s.as_ref().and_then(|s| s.player_id),
             "combat debug: watcher left; its toggles are cleared"
         );
     }
@@ -190,16 +235,18 @@ fn recipients(mgr: &SpaceManager, rec: &CastDebug) -> Vec<(u32, bool)> {
     out
 }
 
-/// Spend one line of `recipient`'s budget on `text` (module docs, step 2).
-fn admit(
-    mgr: &mut SpaceManager,
-    now: Instant,
-    recipient: u32,
-    rec: Option<&CastDebug>,
-    kind: LineKind,
-    text: String,
-    out: &mut Vec<Outgoing>,
-) {
+fn notice(recipient: u32, owed: u32) -> Outgoing {
+    Outgoing {
+        recipient,
+        text: suppressed_notice(owed),
+        kind: LineKind::SuppressedNotice,
+        cast: None,
+    }
+}
+
+/// Spend one line of the recipient's budget on `line` (module docs, step 2).
+fn admit(mgr: &mut SpaceManager, now: Instant, line: Outgoing, out: &mut Vec<Outgoing>) {
+    let recipient = line.recipient;
     let mut w = *mgr
         .combat_debug
         .windows
@@ -218,28 +265,15 @@ fn admit(
         };
         if owed > 0 {
             w.sent += 1;
-            let notice = suppressed_notice(owed);
-            log_line(
-                mgr,
-                recipient,
-                None,
-                LineKind::SuppressedNotice,
-                "sent",
-                &notice,
-            );
-            out.push(Outgoing {
-                recipient,
-                text: notice,
-            });
+            out.push(notice(recipient, owed));
         }
     }
     if w.sent < LINES_PER_WINDOW {
         w.sent += 1;
-        log_line(mgr, recipient, rec, kind, "sent", &text);
-        out.push(Outgoing { recipient, text });
+        out.push(line);
     } else {
         w.suppressed += 1;
-        log_line(mgr, recipient, rec, kind, "suppressed", &text);
+        log_line(mgr, &line, "suppressed");
     }
     mgr.combat_debug.windows.insert(recipient, w);
 }
@@ -258,12 +292,7 @@ fn settle_windows(mgr: &mut SpaceManager, now: Instant, out: &mut Vec<Outgoing>)
         if w.suppressed == 0 {
             continue;
         }
-        let notice = suppressed_notice(w.suppressed);
-        log_line(mgr, id, None, LineKind::SuppressedNotice, "sent", &notice);
-        out.push(Outgoing {
-            recipient: id,
-            text: notice,
-        });
+        out.push(notice(id, w.suppressed));
         // The notice opens a new window, so a storm still under way keeps
         // its budget.
         mgr.combat_debug.windows.insert(
@@ -285,42 +314,37 @@ fn suppressed_notice(n: u32) -> String {
 }
 
 /// The `abilities.debug` row for one line.
-fn log_line(
-    mgr: &SpaceManager,
-    recipient: u32,
-    rec: Option<&CastDebug>,
-    kind: LineKind,
-    delivery: &'static str,
-    text: &str,
-) {
-    let who = mgr.player_identity(recipient);
-    let caster = rec.map(|r| mgr.player_identity(r.caster_id));
+fn log_line(mgr: &SpaceManager, line: &Outgoing, delivery: &'static str) {
+    let who = mgr.player_identity(line.recipient);
+    let cast = line.cast;
     tracing::debug!(
         target: "abilities.debug",
         event = "combat_debug_line",
         stage = "debug",
         account_id = who.account_id,
         player_id = who.player_id,
-        entity_id = recipient,
-        caster_id = rec.map(|r| r.caster_id),
-        caster_player_id = caster.and_then(|c| c.player_id),
-        cast_id = rec.and_then(|r| r.cast_id),
-        ability_id = rec.map(|r| r.ability_id),
-        line_kind = kind.as_str(),
+        entity_id = line.recipient,
+        caster_id = cast.map(|c| c.caster_id),
+        caster_account_id = cast.and_then(|c| c.caster.account_id),
+        caster_player_id = cast.and_then(|c| c.caster.player_id),
+        cast_id = cast.and_then(|c| c.cast_id),
+        ability_id = cast.map(|c| c.ability_id),
+        line_kind = line.kind.as_str(),
         delivery,
-        text,
+        text = line.text.as_str(),
         "combat debug line"
     );
 }
 
 /// Send one `onPlayerCommunication("SYSTEM", 0, CHAN_FEEDBACK, text)` to
-/// `recipient`'s own client. A closed channel is logged, not dropped.
+/// `recipient`'s own client. Returns whether the cell-to-base queue took
+/// it; a closed channel is logged, not dropped.
 pub async fn send_feedback_line(
     tx: &mpsc::Sender<CellToBaseMsg>,
     mgr: &SpaceManager,
     recipient: u32,
     text: &str,
-) {
+) -> bool {
     let args = serialize_on_player_communication("SYSTEM", 0, CHAN_FEEDBACK, text);
     let msg = CellToBaseMsg::EntityMethodCall {
         entity_id: recipient,
@@ -338,5 +362,7 @@ pub async fn send_feedback_line(
             error = %e,
             "combat debug line not queued: base channel closed"
         );
+        return false;
     }
+    true
 }

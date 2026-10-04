@@ -60,6 +60,7 @@ impl HitDebug {
         let debug = &mut space_mgr.combat_debug;
         debug.note(
             caster,
+            ids.actor,
             cast,
             ability,
             Note::Hit(HitNote {
@@ -80,10 +81,10 @@ impl HitDebug {
                 path: p.path,
                 reason: p.reason,
             };
-            debug.note(caster, cast, ability, Note::Plan(plan));
+            debug.note(caster, ids.actor, cast, ability, Note::Plan(plan));
         }
         for v in self.nvp {
-            debug.note(caster, cast, ability, Note::Nvp(v));
+            debug.note(caster, ids.actor, cast, ability, Note::Nvp(v));
         }
     }
 }

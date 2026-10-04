@@ -16,8 +16,8 @@ use cimmeria_cell_world::cell::combat_debug::{pools_of, LandingNote, Note, PlanN
 use cimmeria_entity::abilities::EffectDef;
 
 use super::super::effect_plan::{
-    PlanIds, PlannedEffect, PATH_ALLY_FANOUT, PATH_ROUTED_TO_USER, REASON_BENEFICIAL_CAST,
-    REASON_NOT_REACHABLE, REASON_NO_SCRIPT,
+    PlanIds, PlannedEffect, PATH_ALLY_FANOUT, PATH_ROUTED_TO_USER, PATH_SKIPPED,
+    REASON_BENEFICIAL_CAST, REASON_NOT_REACHABLE, REASON_NO_SCRIPT,
 };
 
 use super::super::super::messages::CellToBaseMsg;
@@ -102,7 +102,7 @@ pub(in crate::cell::abilities) async fn land_effects(
     tx: &mpsc::Sender<CellToBaseMsg>,
     space_mgr: &mut SpaceManager,
 ) -> usize {
-    let debug = LandingDebug::start(space_mgr, landings);
+    let mut debug = LandingDebug::start(space_mgr);
     for landing in landings {
         let exists = space_mgr.get_entity(landing.recipient).is_some();
         let plan = landing.plan(exists);
@@ -198,25 +198,22 @@ struct LandingDebug {
 }
 
 impl LandingDebug {
-    fn start(space_mgr: &SpaceManager, landings: &[Landing]) -> Self {
+    fn start(space_mgr: &SpaceManager) -> Self {
         if !space_mgr.combat_debug.is_active() {
             return Self::default();
-        }
-        let mut before: Vec<(u32, Pools)> = Vec::new();
-        for l in landings {
-            if !before.iter().any(|(r, _)| *r == l.recipient) {
-                before.push((l.recipient, pools_of(space_mgr, l.recipient)));
-            }
         }
         Self {
             active: true,
             cast_id: space_mgr.current_cast_id(),
-            before,
+            before: Vec::new(),
         }
     }
 
+    /// Note the plan row, and take the recipient's pools before the scripts
+    /// when this plan can land: a `skipped` plan (`not_reachable`,
+    /// `no_script`) lands nothing, so it must not print `landed`.
     fn note_plan(
-        &self,
+        &mut self,
         space_mgr: &mut SpaceManager,
         caster_id: u32,
         ability_id: i32,
@@ -226,15 +223,17 @@ impl LandingDebug {
         if !self.active {
             return;
         }
+        if plan.path != PATH_SKIPPED && !self.before.iter().any(|(r, _)| *r == recipient) {
+            self.before
+                .push((recipient, pools_of(space_mgr, recipient)));
+        }
         let note = Note::Plan(PlanNote {
             target_id: recipient,
             effect_id: plan.effect_id,
             path: plan.path,
             reason: plan.reason,
         });
-        space_mgr
-            .combat_debug
-            .note(caster_id, self.cast_id, ability_id, note);
+        space_mgr.note_combat_debug(caster_id, self.cast_id, ability_id, note);
     }
 
     fn finish(self, space_mgr: &mut SpaceManager, caster_id: u32, ability_id: i32) {
@@ -245,9 +244,11 @@ impl LandingDebug {
                 before,
                 after,
             });
-            space_mgr
-                .combat_debug
-                .note(caster_id, self.cast_id, ability_id, note);
+            space_mgr.note_combat_debug(caster_id, self.cast_id, ability_id, note);
         }
     }
 }
+
+#[cfg(test)]
+#[path = "land_debug_tests.rs"]
+mod land_debug_tests;

@@ -447,6 +447,7 @@ async fn fire_pulse(
     // The same values for the in-game combat debug (AB-N1).
     space_mgr.combat_debug.note(
         inst.invoker_id,
+        inst.invoker_identity,
         inst.cast_id,
         inst.ability_id,
         Note::Pulse(PulseNote {

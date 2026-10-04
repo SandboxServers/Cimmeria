@@ -18,6 +18,9 @@ pub struct DebugSettings {
     /// The `player_id` the watcher had when it turned debugging on. A
     /// watcher whose entity id now names someone else is dropped.
     pub player_id: Option<i32>,
+    /// The watcher's `account_id` at the same moment, for its rows after the
+    /// entity has gone.
+    pub account_id: Option<u32>,
     /// `bCombatDebug`: one line per hostile hit the watcher casts or takes.
     pub combat: bool,
     /// `bCombatVerboseDebug`: the hostile lines plus every plan, NVP entry,

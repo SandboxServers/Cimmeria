@@ -37,6 +37,8 @@ mod router;
 #[cfg(test)]
 mod gm_ability_dispatch_tests;
 #[cfg(test)]
+mod gm_combat_debug_dispatch_tests;
+#[cfg(test)]
 mod gm_dispatch_tests;
 #[cfg(test)]
 mod plugin_routing_tests;

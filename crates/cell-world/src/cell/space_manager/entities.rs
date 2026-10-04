@@ -223,6 +223,9 @@ impl SpaceManager {
         // And for the NPC AI's zero-health invariant warning: a respawn on a
         // recycled id must be able to warn on its first bad tick.
         self.zero_health_npc_log.forget(entity_id);
+        // AB-N1 combat debug: a recycled id must not inherit a predecessor's
+        // toggles, budget or mob-debug entries.
+        self.combat_debug.forget_entity(entity_id);
         // And the NPC AI detectors (stale velocity, leash loop, ...).
         self.npc_detectors.forget(entity_id);
         tracing::debug!(

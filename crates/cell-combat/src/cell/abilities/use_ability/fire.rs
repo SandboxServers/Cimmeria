@@ -138,7 +138,7 @@ pub(in crate::cell::abilities) async fn fire_cast(
     });
     // The in-game combat debug's cast record opens here (AB-N1): the fire is
     // where a zero-warmup cast and a warmup cast meet.
-    space_mgr.combat_debug.note(
+    space_mgr.note_combat_debug(
         entity_id,
         Some(effect_seq),
         ability_id,

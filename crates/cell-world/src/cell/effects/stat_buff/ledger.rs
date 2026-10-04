@@ -238,6 +238,7 @@ impl SpaceManager {
         // The same decision for the in-game combat debug (AB-N1).
         self.combat_debug.note(
             invoker_id,
+            who,
             cast_id,
             ability_id,
             crate::cell::combat_debug::Note::Ledger(crate::cell::combat_debug::LedgerNote {

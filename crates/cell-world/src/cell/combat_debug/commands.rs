@@ -61,13 +61,17 @@ fn edit<T>(
         return Err(Refused::new("caller_not_player", "only a player can debug"));
     }
     let player_id = caller.player_id;
+    let account_id = caller.account_id;
     let watchers = &mut mgr.combat_debug.watchers;
     let settings = watchers.entry(entity_id).or_default();
     if settings.player_id != player_id {
         // The entity id was reused by another character: start clean.
         *settings = DebugSettings::default();
-        settings.player_id = player_id;
     }
+    // The watcher's identity, snapshotted on each press, so its rows name it
+    // after its entity has gone.
+    settings.player_id = player_id;
+    settings.account_id = account_id;
     let out = f(settings);
     if settings.is_idle() {
         watchers.remove(&entity_id);

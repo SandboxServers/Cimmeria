@@ -8,7 +8,7 @@ use tokio::sync::mpsc;
 use super::commands::{
     clear_ability_debug, set_ability_debug_target, toggle, toggle_ability, toggle_mob, Toggle,
 };
-use super::deliver::{prepare, send_feedback_line, Outgoing, LINES_PER_WINDOW, WINDOW};
+use super::deliver::{flush, prepare, send_feedback_line, Outgoing, LINES_PER_WINDOW, WINDOW};
 use super::format::{format_record, split_line, MAX_LINE_UNITS};
 use super::*;
 use crate::cell::messages::CellToBaseMsg;
@@ -81,14 +81,13 @@ fn plan(target_id: u32) -> Note {
 
 /// A hostile cast by `caster` at `target`: fire, hit and one plan.
 fn hostile(mgr: &mut SpaceManager, caster: u32, cast_id: i32, target: u32) {
-    let d = &mut mgr.combat_debug;
     let fire = Note::Fire {
         target: Some(target),
         beneficial: false,
     };
-    d.note(caster, Some(cast_id), ABILITY, fire);
-    d.note(caster, Some(cast_id), ABILITY, hit(target));
-    d.note(caster, Some(cast_id), ABILITY, plan(target));
+    mgr.note_combat_debug(caster, Some(cast_id), ABILITY, fire);
+    mgr.note_combat_debug(caster, Some(cast_id), ABILITY, hit(target));
+    mgr.note_combat_debug(caster, Some(cast_id), ABILITY, plan(target));
 }
 
 fn texts(out: &[Outgoing], to: u32) -> Vec<String> {
@@ -123,7 +122,7 @@ fn a_cast_with_nothing_resolved_prints_one_line() {
         target: None,
         beneficial: false,
     };
-    m.combat_debug.note(GM, Some(3), ABILITY, fire);
+    m.note_combat_debug(GM, Some(3), ABILITY, fire);
     let out = prepare(&mut m, Instant::now());
     assert_eq!(
         texts(&out, GM),
@@ -202,10 +201,10 @@ fn heal_debug_takes_beneficial_casts() {
         target: Some(GM),
         beneficial: true,
     };
-    m.combat_debug.note(GM, Some(5), HEAL, fire.clone());
+    m.note_combat_debug(GM, Some(5), HEAL, fire.clone());
     assert!(prepare(&mut m, Instant::now()).is_empty());
     toggle(&mut m, GM, Toggle::Heal).unwrap();
-    m.combat_debug.note(GM, Some(6), HEAL, fire);
+    m.note_combat_debug(GM, Some(6), HEAL, fire);
     let landing = Note::Landing(LandingNote {
         recipient: GM,
         before: Pools {
@@ -217,7 +216,7 @@ fn heal_debug_takes_beneficial_casts() {
             focus: 5,
         },
     });
-    m.combat_debug.note(GM, Some(6), HEAL, landing);
+    m.note_combat_debug(GM, Some(6), HEAL, landing);
     let out = prepare(&mut m, Instant::now());
     assert_eq!(
         texts(&out, GM),
@@ -235,7 +234,7 @@ fn the_ability_list_prints_only_its_abilities() {
         target: Some(MOB),
         beneficial: false,
     };
-    m.combat_debug.note(GM, Some(8), HEAL, fire);
+    m.note_combat_debug(GM, Some(8), HEAL, fire);
     let out = prepare(&mut m, Instant::now());
     assert_eq!(texts(&out, GM), vec![HIT_LINE.to_string()]);
     assert!(toggle_ability(&mut m, GM, 999_999).is_err(), "unknown id");
@@ -300,9 +299,95 @@ fn a_stale_watcher_is_dropped() {
     let mut m = mgr();
     toggle(&mut m, GM, Toggle::Combat).unwrap();
     m.get_entity_mut(GM).unwrap().player_id = Some(555);
+    m.get_entity_mut(GM).unwrap().account_id = Some(5555);
+    let logs = LogCapture::install();
     hostile(&mut m, GM, 7, MOB);
     assert!(prepare(&mut m, Instant::now()).is_empty());
     assert!(m.combat_debug.watchers.is_empty());
+    // The row names the watcher as it was when it turned debugging on.
+    let row = one_row(&logs, "combat_debug_watcher_dropped");
+    assert!(row.has_field("account_id", "9100"), "{row:?}");
+    assert!(row.has_field("player_id", "100"), "{row:?}");
+}
+
+fn one_row(
+    logs: &crate::test_support::LogCaptureGuard,
+    event: &str,
+) -> crate::test_support::Captured {
+    let rows: Vec<_> = logs
+        .all()
+        .into_iter()
+        .filter(|c| c.has_field("event", event))
+        .collect();
+    assert_eq!(rows.len(), 1, "one {event} row: {rows:#?}");
+    rows[0].clone()
+}
+
+/// **Guard.** An evicted record's row names its caster by the ids
+/// snapshotted when the record opened, even after the caster changed.
+#[test]
+fn an_evicted_record_names_its_caster() {
+    let mut m = mgr();
+    toggle(&mut m, GM, Toggle::Combat).unwrap();
+    let logs = LogCapture::install();
+    hostile(&mut m, GM, 1, MOB);
+    m.get_entity_mut(GM).unwrap().account_id = None;
+    for cast in 2..=(super::MAX_OPEN_RECORDS as i32 + 1) {
+        hostile(&mut m, GM, cast, MOB);
+    }
+    let row = one_row(&logs, "combat_debug_record_evicted");
+    for (k, v) in [
+        ("entity_id", "1"),
+        ("account_id", "9100"),
+        ("player_id", "100"),
+        ("cast_id", "1"),
+    ] {
+        assert!(row.has_field(k, v), "{k} = {v}: {row:?}");
+    }
+}
+
+/// **Guard.** A relog on the same entity id starts with debug off:
+/// `destroy_entity` forgets the watcher, so the new entity's casts print
+/// nothing.
+#[test]
+fn a_relog_on_a_recycled_id_starts_with_debug_off() {
+    let mut m = mgr();
+    toggle(&mut m, GM, Toggle::Combat).unwrap();
+    m.destroy_entity(GM);
+    m.create_entity(GM, "Castle", [0.0; 3], [0.0; 3]).unwrap();
+    let e = m.get_entity_mut(GM).unwrap();
+    e.is_player = true;
+    e.player_id = Some(100);
+    assert!(m.combat_debug.settings(GM).is_none(), "debug starts off");
+    hostile(&mut m, GM, 7, MOB);
+    assert!(prepare(&mut m, Instant::now()).is_empty());
+}
+
+/// **Guard.** A destroyed mob takes its mob-debug entries with it, so a
+/// mob spawned on the recycled id is not debugged.
+#[test]
+fn a_destroyed_mob_leaves_no_mob_debug_behind() {
+    let mut m = mgr();
+    toggle(&mut m, GM, Toggle::Combat).unwrap();
+    m.get_entity_mut(GM).unwrap().current_target_id = Some(MOB as i32);
+    toggle_mob(&mut m, GM, 0).unwrap();
+    m.destroy_entity(MOB);
+    assert!(m.combat_debug.settings(GM).unwrap().mobs.is_empty());
+    m.create_entity(MOB, "Castle", [0.0; 3], [0.0; 3]).unwrap();
+    hostile(&mut m, MOB, 4, OTHER);
+    assert!(texts(&prepare(&mut m, Instant::now()), GM).is_empty());
+}
+
+/// **Guard.** `destroy_space` forgets the debug state of every entity it
+/// removes.
+#[test]
+fn destroy_space_forgets_its_watchers() {
+    let mut m = mgr();
+    toggle(&mut m, GM, Toggle::Combat).unwrap();
+    toggle(&mut m, OTHER, Toggle::Heal).unwrap();
+    let space = m.get_entity_space_id(GM).unwrap();
+    m.destroy_space(space);
+    assert!(!m.combat_debug.is_active(), "no watcher survives its space");
 }
 
 /// **Guard.** A storm past the budget sends `LINES_PER_WINDOW` lines,
@@ -342,13 +427,18 @@ fn a_storm_is_rate_limited_with_a_suppressed_notice() {
 
 /// **Guard.** The `abilities.debug` row's `text` is the exact text sent,
 /// and it names the recipient and the cast.
-#[test]
-fn the_row_text_equals_the_client_text() {
+#[tokio::test]
+async fn the_row_text_equals_the_client_text() {
     let mut m = mgr();
     toggle(&mut m, GM, Toggle::Combat).unwrap();
     let logs = LogCapture::install();
     hostile(&mut m, GM, 7, MOB);
-    let out = prepare(&mut m, Instant::now());
+    let (tx, mut rx) = mpsc::channel(8);
+    flush(&tx, &mut m).await;
+    let Ok(CellToBaseMsg::EntityMethodCall { args, .. }) = rx.try_recv() else {
+        panic!("one line sent");
+    };
+    let sent = decode_text(&args);
     let rows: Vec<_> = logs
         .all()
         .into_iter()
@@ -359,17 +449,44 @@ fn the_row_text_equals_the_client_text() {
     assert_eq!(row.target, "abilities.debug");
     assert_eq!(
         row.fields.get("text").map(String::as_str),
-        Some(out[0].text.as_str())
+        Some(sent.as_str())
     );
     for (k, v) in [
         ("player_id", "100"),
         ("cast_id", "7"),
         ("ability_id", "592"),
         ("line_kind", "simple"),
-        ("delivery", "sent"),
+        ("delivery", "queued_to_base"),
+        ("caster_account_id", "9100"),
     ] {
         assert!(row.has_field(k, v), "{k} = {v}: {row:?}");
     }
+}
+
+/// **Guard.** A line the closed cell-to-base queue refused logs
+/// `send_failed`, never `queued_to_base`: the row is written after the send.
+#[tokio::test]
+async fn a_refused_send_logs_send_failed() {
+    let mut m = mgr();
+    toggle(&mut m, GM, Toggle::Combat).unwrap();
+    let logs = LogCapture::install();
+    hostile(&mut m, GM, 7, MOB);
+    let (tx, rx) = mpsc::channel(8);
+    drop(rx);
+    flush(&tx, &mut m).await;
+    let row = one_row(&logs, "combat_debug_line");
+    assert!(row.has_field("delivery", "send_failed"), "{row:?}");
+}
+
+/// The text WSTRING of an `onPlayerCommunication` payload.
+fn decode_text(args: &[u8]) -> String {
+    let spk = u32::from_le_bytes(args[0..4].try_into().unwrap()) as usize;
+    let off = 4 + spk * 2 + 2;
+    let n = u32::from_le_bytes(args[off..off + 4].try_into().unwrap()) as usize;
+    let units: Vec<u16> = (0..n)
+        .map(|i| u16::from_le_bytes([args[off + 4 + i * 2], args[off + 5 + i * 2]]))
+        .collect();
+    String::from_utf16(&units).unwrap()
 }
 
 /// **Byte-exact.** One debug line on the wire: `onPlayerCommunication`

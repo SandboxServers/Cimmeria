@@ -268,6 +268,8 @@ impl SpaceManager {
                 self.pets.forget_pet(eid);
                 // A deployable dies with its instance too.
                 self.deployables.forget(eid);
+                // And the AB-N1 combat-debug state keyed by the entity.
+                self.combat_debug.forget_entity(eid);
             }
             self.npc_detectors.forget_world(&space.world_name);
 
