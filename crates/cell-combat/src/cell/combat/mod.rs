@@ -41,7 +41,8 @@ pub use auto_cycle::{
 pub(crate) use damage::{absorb_damage_nvps, drain_absorption_pools, script_damage_type};
 pub use damage::{
     attacker_cover_qr, calculate_damage, calculate_damage_penetrating, calculate_damage_scaled,
-    calculate_qr, calculate_result, cover_reduction, CoverReduction, CoverSide, QrResult,
+    calculate_qr, calculate_result, cover_reduction, resolve_damage, CoverReduction, CoverSide,
+    DamageOutcome, QrResult,
 };
 pub use damage_credit::{note_pre_damage_health, HealthBelowSample};
 pub use health_threshold::{health_pct, health_pct_from, HealthPct};

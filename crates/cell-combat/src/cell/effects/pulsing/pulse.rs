@@ -21,7 +21,7 @@ use crate::cell::space_manager::SpaceManager;
 ///
 /// The span opens per fired pulse, not per tick, so an idle tick opens
 /// nothing (instrumentation-discipline rule 3). It is DEBUG: a 0.1 s channel
-/// pulses ten times a second, and the `effect_pulse_fired` row already
+/// pulses ten times a second, and the `pulse_ticked` row already
 /// carries the same fields.
 #[tracing::instrument(
     name = "combat.effect_tick",
@@ -154,13 +154,17 @@ async fn fire_pulse(
         .is_some_and(|s| s.cur <= 0)
     {
         tracing::debug!(
-            target: "abilities",
+            target: "abilities.pulse",
             event = "pulse_skipped_dead_target",
+            stage = "pulse",
             account_id = inst.invoker_identity.account_id,
             player_id = inst.invoker_identity.player_id,
+            entity_id = inst.invoker_id,
             target_id,
+            target_player_id = space_mgr.player_identity(target_id).player_id,
             invoker_id = inst.invoker_id,
             cast_id = inst.cast_id,
+            ability_id = inst.ability_id,
             effect_id = inst.effect_id,
             "Skipping pulse — target is dead"
         );
@@ -177,6 +181,12 @@ async fn fire_pulse(
     crate::cell::combat::note_pre_damage_health(space_mgr, inst.invoker_id, target_id);
     // GM god mode (142): snapshot the pools, put back any loss below.
     let god_mode = crate::cell::combat::god_mode::GodModeGuard::arm(space_mgr, target_id);
+    // AB-T3: the pools this pulse starts from, and how it acts, for
+    // `pulse_ticked`.
+    let (health_before, focus_before) = pools(space_mgr, target_id);
+    let mut path = "script";
+    let mut damage_type = DT_PHYSICAL;
+    let mut absorbed = 0;
 
     // Script path takes precedence over NVP path so a registered
     // script can fully decide what happens on each pulse.
@@ -185,8 +195,12 @@ async fn fire_pulse(
         // the NVP branch does inside `calculate_damage`.
         let mut effect = effect.clone();
         if let Some(target) = space_mgr.get_entity_mut(target_id) {
-            let damage_type = crate::cell::combat::script_damage_type(Some(&script_name));
-            crate::cell::combat::absorb_damage_nvps(&mut target.stats, &mut effect, damage_type);
+            damage_type = crate::cell::combat::script_damage_type(Some(&script_name));
+            absorbed = crate::cell::combat::absorb_damage_nvps(
+                &mut target.stats,
+                &mut effect,
+                damage_type,
+            );
         }
         let mut ctx = crate::cell::effects::EffectContext {
             source_id: inst.invoker_id,
@@ -228,42 +242,40 @@ async fn fire_pulse(
         // requires plumbing a damage_type column onto effects — flagged
         // as a follow-up; today's content authoring relies on the
         // attacker's weapon type rather than a per-effect override.
-        let dmg_type = cimmeria_entity::abilities::DT_PHYSICAL;
+        let dmg_type = DT_PHYSICAL;
+        path = "nvp";
         if let (Some(attacker), Some(target)) =
             (attacker_stats, space_mgr.get_entity_mut(target_id))
         {
             // Focus first, as on a hit: a partial shield spends itself on
             // the Focus half before the Health half (AB-10).
-            if f_dmg > 0 {
-                let _ = crate::cell::combat::calculate_damage(
-                    &neutral_qr,
-                    f_dmg,
-                    dmg_type,
-                    FOCUS,
-                    &attacker,
-                    &mut target.stats,
-                );
-            }
-            if h_dmg > 0 {
-                let _ = crate::cell::combat::calculate_damage(
-                    &neutral_qr,
-                    h_dmg,
-                    dmg_type,
-                    HEALTH,
-                    &attacker,
-                    &mut target.stats,
-                );
+            for (amount, stat) in [(f_dmg, FOCUS), (h_dmg, HEALTH)] {
+                if amount > 0 {
+                    absorbed += crate::cell::combat::resolve_damage(
+                        &neutral_qr,
+                        amount,
+                        1.0,
+                        1.0,
+                        dmg_type,
+                        stat,
+                        &attacker,
+                        &mut target.stats,
+                    )
+                    .absorbed;
+                }
             }
         } else if let Some(target) = space_mgr.get_entity_mut(target_id) {
+            path = "nvp_invoker_gone";
             // Invoker vanished mid-DoT (NPC despawned, etc.). Apply
             // raw damage as a degraded fallback — better than dropping
             // the pulse entirely, which would let DoT victims survive
             // forever after their attacker died. It still passes the
             // target's shields, Focus first (AB-10).
-            let (f_dmg, _) =
+            let (f_dmg, f_absorbed) =
                 crate::cell::combat::drain_absorption_pools(&mut target.stats, dmg_type, f_dmg);
-            let (h_dmg, _) =
+            let (h_dmg, h_absorbed) =
                 crate::cell::combat::drain_absorption_pools(&mut target.stats, dmg_type, h_dmg);
+            absorbed = f_absorbed + h_absorbed;
             if h_dmg > 0 {
                 if let Some(stat) = target.stats.get_mut(HEALTH) {
                     let cur = stat.cur;
@@ -285,6 +297,7 @@ async fn fire_pulse(
     // shields on the ledger; an emptied one comes off, and the stat-buff
     // tick sends its icon clear.
     space_mgr.settle_absorb_shields(target_id);
+    let mut god_mode_restored = crate::cell::combat::god_mode::Absorbed::default();
     if let Some(guard) = &god_mode {
         let source = crate::cell::combat::god_mode::DamageSource {
             source_id: inst.invoker_id,
@@ -292,7 +305,7 @@ async fn fire_pulse(
             effect_id: Some(inst.effect_id),
             seam: "effect_pulse",
         };
-        guard.restore(space_mgr, source);
+        god_mode_restored = guard.restore(space_mgr, source);
     }
 
     // Surrender floor: an automatic damage source may wound a
@@ -321,18 +334,24 @@ async fn fire_pulse(
     // NPC (H08 records explicit-attack behaviour rather than changing
     // it). Only the killing blow from a self-repeating source is
     // refused.
+    // Read before the mutable borrow below (rule 5: the subject's id).
+    let target_player_id = space_mgr.player_identity(target_id).player_id;
     if let Some(target) = space_mgr.get_entity_mut(target_id) {
         if !target.is_player && target.ai_state() == AiState::Submit {
             if let Some(stat) = target.stats.get_mut(HEALTH) {
                 if stat.cur <= 0 {
                     stat.update(stat.min, 1, stat.max);
                     tracing::debug!(
-                        target: "abilities",
+                        target: "abilities.pulse",
                         event = "pulse_surrender_floor",
+                        stage = "pulse",
                         account_id = inst.invoker_identity.account_id,
                         player_id = inst.invoker_identity.player_id,
+                        entity_id = inst.invoker_id,
                         target_id,
+                        target_player_id,
                         cast_id = inst.cast_id,
+                        ability_id = inst.ability_id,
                         effect_id = inst.effect_id,
                         invoker_id = inst.invoker_id,
                         "Pulse would have killed a surrendered NPC -- health floored at 1"
@@ -345,7 +364,7 @@ async fn fire_pulse(
     // D-SS20: a pulse from the duel partner never kills a duelist. It runs
     // after both branches (script and NVP, and the invoker-gone fallback,
     // which cannot match: the partner leaving ends the duel) and before the
-    // flush, so the client is told 1, never 0. `effect_pulse_fired` below
+    // flush, so the client is told 1, never 0. `pulse_ticked` below
     // still logs the pulse; the duel ends after the flush.
     let duel_clamp = cimmeria_cell_world::cell::duel::clamp_partner_lethal(
         space_mgr,
@@ -381,22 +400,40 @@ async fn fire_pulse(
     }
 
     // The registration's snapshot: the invoker may be gone, or its entity id
-    // reused by another player, by now (rule 5).
+    // reused by another player, by now (rule 5). AB-T3 renamed this row
+    // from `effect_pulse_fired` and added the amounts and pools.
     let who = inst.invoker_identity;
+    let (health_after, focus_after) = pools(space_mgr, target_id);
     tracing::debug!(
-        target: "abilities",
-        event = "effect_pulse_fired",
+        target: "abilities.pulse",
+        event = "pulse_ticked",
         stage = "pulse",
         account_id = who.account_id,
         player_id = who.player_id,
+        entity_id = inst.invoker_id,
         target_id,
+        target_player_id = space_mgr.player_identity(target_id).player_id,
         invoker_id = inst.invoker_id,
         cast_id = inst.cast_id,
         effect_id = inst.effect_id,
         ability_id = inst.ability_id,
-        damage_type = DT_PHYSICAL,
+        path,
+        script = effect.script_name.as_deref(),
+        health_amount = effect.param_i32("HealthDamage"),
+        focus_amount = effect.param_i32("FocusDamage"),
+        damage_type,
+        absorbed,
+        health_before,
+        health_after,
+        focus_before,
+        focus_after,
+        // `health_after` / `focus_after` are read after the god-mode restore,
+        // so they are what the target kept; these say what was put back.
+        god_mode = god_mode.is_some(),
+        god_mode_restored_health = god_mode_restored.health,
+        god_mode_restored_focus = god_mode_restored.focus,
         remaining_before_decrement = inst.remaining_pulses,
-        "Effect pulse fired"
+        "effect pulse ticked"
     );
 
     // The end strips this effect and every other one the partner applied,
@@ -404,4 +441,12 @@ async fn fire_pulse(
     if let Some(hit) = duel_clamp {
         cimmeria_cell_world::cell::duel::finish_clamped(tx, space_mgr, hit).await;
     }
+}
+
+/// The target's HEALTH and FOCUS (0 when it is gone).
+fn pools(space_mgr: &SpaceManager, target_id: u32) -> (i32, i32) {
+    space_mgr.get_entity(target_id).map_or((0, 0), |e| {
+        let cur = |id| e.stats.get(id).map_or(0, |s| s.cur);
+        (cur(HEALTH), cur(FOCUS))
+    })
 }

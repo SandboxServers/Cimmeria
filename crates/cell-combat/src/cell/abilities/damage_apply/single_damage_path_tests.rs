@@ -16,17 +16,23 @@ use crate::mercury::method_idx;
 use cimmeria_entity::abilities::{ClientEffectResult, EffectDef, EF_DONT_USE_QR, RC_HIT, SRC_NONE};
 use cimmeria_entity::stats::{FOCUS, FORTITUDE};
 
-const PISTOL_SHOT: i32 = 592;
-const PISTOL_SHOT_EFFECT: i32 = 654;
+pub(super) const PISTOL_SHOT: i32 = 592;
+pub(super) const PISTOL_SHOT_EFFECT: i32 = 654;
 const STRIKE: i32 = 594;
 const STRIKE_EFFECT: i32 = 656;
-const NPC: u32 = 2;
+pub(super) const NPC: u32 = 2;
 
 /// `RangedPhysicalDamage` against an empty Focus pool: the whole 150
 /// overflows, `(150*100/150)*150/300 = 50` spills, plus the base 15.
 const PISTOL_SHOT_BLEED: i32 = 65;
 
-fn damage_effect(id: i32, script: Option<&str>, health: i32, focus: i32, flags: u32) -> EffectDef {
+pub(super) fn damage_effect(
+    id: i32,
+    script: Option<&str>,
+    health: i32,
+    focus: i32,
+    flags: u32,
+) -> EffectDef {
     EffectDef {
         effect_id: id,
         script_name: script.map(str::to_string),
@@ -41,7 +47,11 @@ fn damage_effect(id: i32, script: Option<&str>, health: i32, focus: i32, flags: 
 
 /// Player 1 vs NPC 2 with one ability of one effect; the NPC at 1000
 /// Health and `focus`/1000 Focus.
-fn fixture(ability_id: i32, effect: EffectDef, focus: i32) -> (SpaceManager, AbilityDef) {
+pub(super) fn fixture(
+    ability_id: i32,
+    effect: EffectDef,
+    focus: i32,
+) -> (SpaceManager, AbilityDef) {
     let mut mgr = make_mgr_player_vs_npc();
     let ability = make_ability(ability_id, vec![effect.effect_id]);
     mgr.ability_defs.insert(ability_id, ability.clone());
@@ -78,7 +88,7 @@ pub(super) fn seq_rolling(
         .expect("a seed in range rolls the wanted result")
 }
 
-fn pools(mgr: &SpaceManager) -> (i32, i32) {
+pub(super) fn pools(mgr: &SpaceManager) -> (i32, i32) {
     let stats = &mgr.get_entity(NPC).unwrap().stats;
     (
         stats.get(HEALTH).unwrap().cur,
@@ -105,7 +115,11 @@ fn result_code(args: &[u8]) -> u8 {
     args[16]
 }
 
-async fn fire(mgr: &mut SpaceManager, ability: &AbilityDef, seq: u32) -> Vec<CellToBaseMsg> {
+pub(super) async fn fire(
+    mgr: &mut SpaceManager,
+    ability: &AbilityDef,
+    seq: u32,
+) -> Vec<CellToBaseMsg> {
     let (tx, mut rx) = mpsc::channel(256);
     let id = ability.ability_id;
     apply_damage_to_target(1, NPC, id, &Some(ability.clone()), seq, false, &tx, mgr).await;

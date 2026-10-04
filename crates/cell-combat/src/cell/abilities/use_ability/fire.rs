@@ -334,7 +334,7 @@ async fn land_routed(
     tx: &mpsc::Sender<CellToBaseMsg>,
     space_mgr: &mut SpaceManager,
 ) {
-    let pulsing = land_effects(entity_id, &routed.landings, tx, space_mgr).await;
+    let pulsing = land_effects(entity_id, ability_id, &routed.landings, tx, space_mgr).await;
     let who = space_mgr.player_identity(entity_id);
     let landed: Vec<(i32, u32)> = routed
         .landings

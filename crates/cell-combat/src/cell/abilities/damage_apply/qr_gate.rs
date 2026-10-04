@@ -15,8 +15,12 @@
 //! QR 0, so a no-QR effect could miss (about 7 % of the time). D-AB07 reads
 //! the flag's name literally: no roll.
 
-use cimmeria_entity::abilities::{AbilityDef, EffectDef, EF_DONT_USE_QR, RC_HIT, RC_MISS};
+use cimmeria_entity::abilities::{
+    AbilityDef, EffectDef, EF_DONT_USE_QR, RC_CRITICAL, RC_DOUBLE_CRITICAL, RC_GLANCING, RC_HIT,
+    RC_MISS, RC_NONE,
+};
 
+use super::cover_roll::HitCover;
 use super::HitIds;
 use crate::cell::combat::{self, QrResult};
 use crate::cell::space_manager::SpaceManager;
@@ -55,27 +59,65 @@ pub(super) fn hit_skips_qr(ability_def: Option<&AbilityDef>, space_mgr: &SpaceMa
 }
 
 /// The hit's QR result: the beta roll, or no roll when [`hit_skips_qr`].
+/// Logs the hit's one `abilities.qr` `qr_rolled` row (AB-T3). A hit that
+/// takes no roll logs it with `dont_use_qr = true` and the unrolled sample
+/// (that row was `qr_roll_skipped` before AB-T3).
 pub(super) fn roll_hit(
     ability_def: Option<&AbilityDef>,
     space_mgr: &SpaceManager,
     qr: f64,
     seed: u64,
+    cover: HitCover,
     ids: HitIds,
 ) -> QrResult {
-    if !hit_skips_qr(ability_def, space_mgr) {
-        return combat::calculate_result(qr, seed);
-    }
+    let dont_use_qr = hit_skips_qr(ability_def, space_mgr);
+    let forced_result = forced_roll(space_mgr, ids.entity_id);
+    let forced = forced_result.is_some();
+    let result = match forced_result {
+        Some(forced) => forced,
+        None if dont_use_qr => unrolled_qr(),
+        None => combat::calculate_result(qr, seed),
+    };
     tracing::debug!(
-        target: "abilities",
-        event = "qr_roll_skipped",
+        target: "abilities.qr",
+        event = "qr_rolled",
+        stage = "qr",
         account_id = ids.actor.account_id,
         player_id = ids.actor.player_id,
         entity_id = ids.entity_id,
+        cast_id = ids.cast_id,
+        ability_id = ids.ability_id,
         target_player_id = ids.target.player_id,
         target_id = ids.target_eid,
-        ability_id = ids.ability_id,
-        reason = "every effect carries EF_DontUseQR",
-        "hit takes no QR roll: RC_Hit"
+        qr,
+        roll = result.qr_rand,
+        result_code = result.result_code,
+        result = result_label(result.result_code),
+        cover_qr = cover.attacker_qr,
+        cover_reduction_pct = cover.reduction.final_pct,
+        dont_use_qr,
+        forced,
+        "QR rolled for the hit"
     );
-    unrolled_qr()
+    result
+}
+
+/// D-AU2 hook point. A GM `.qr <hit|miss|crit|graze|off>` override of the
+/// caster's rolls returns the forced result here, and `qr_rolled` logs
+/// `forced = true`. There is no override until the owner decides D-AU2.
+fn forced_roll(_space_mgr: &SpaceManager, _caster_id: u32) -> Option<QrResult> {
+    None
+}
+
+/// The `result` label of a QR result code (the client's `EResultCode`).
+pub(crate) fn result_label(result_code: u8) -> &'static str {
+    match result_code {
+        RC_NONE => "none",
+        RC_HIT => "hit",
+        RC_MISS => "miss",
+        RC_CRITICAL => "critical",
+        RC_DOUBLE_CRITICAL => "double_critical",
+        RC_GLANCING => "glancing",
+        _ => "unknown",
+    }
 }

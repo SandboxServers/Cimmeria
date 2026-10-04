@@ -52,7 +52,7 @@ use super::super::space_manager::SpaceManager;
 mod ally_area;
 mod land;
 
-pub(in crate::cell::abilities) use land::{land_effects, Landing};
+pub(in crate::cell::abilities) use land::{land_effects, Landing, LandingRoute};
 
 /// `TCM_Group`: the caster's group. Routing waits for D-AB12.
 pub(crate) const TCM_GROUP: &str = "TCM_Group";
@@ -239,9 +239,13 @@ pub(in crate::cell::abilities) fn plan_cast(
             log_route(space_mgr, caster_id, def, effect, route, reason);
         }
         match (route, beneficial_target) {
-            (EffectRoute::User, _) => landings.push(Landing::new(effect, caster_id)),
+            (EffectRoute::User, _) => {
+                landings.push(Landing::new(effect, caster_id, LandingRoute::User(reason)))
+            }
             (EffectRoute::AllyArea, _) => area.push(effect),
-            (EffectRoute::Target, Some(target)) => landings.push(Landing::new(effect, target)),
+            (EffectRoute::Target, Some(target)) => {
+                landings.push(Landing::new(effect, target, LandingRoute::BeneficialTarget))
+            }
             (EffectRoute::Target, None) => {
                 target_ids.push(eid);
                 continue;

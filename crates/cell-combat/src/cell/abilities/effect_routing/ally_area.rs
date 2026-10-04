@@ -22,7 +22,7 @@ use cimmeria_entity::abilities::{AbilityDef, EffectDef};
 use super::super::super::combat;
 use super::super::super::space_manager::SpaceManager;
 use super::super::use_ability::{classify, SupportTarget};
-use super::Landing;
+use super::{Landing, LandingRoute, REASON_BENEFICIAL_AREA};
 
 /// `event` of the fan-out row (target `abilities`).
 pub(crate) const EVENT_ALLY_AREA: &str = "ally_area_fan_out";
@@ -90,7 +90,7 @@ pub(super) fn ally_landings(
     );
     allies
         .into_iter()
-        .map(|id| Landing::new(effect, id))
+        .map(|id| Landing::new(effect, id, LandingRoute::AllyArea(REASON_BENEFICIAL_AREA)))
         .collect()
 }
 

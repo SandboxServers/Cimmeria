@@ -368,3 +368,84 @@ async fn an_attack_without_a_user_half_keeps_the_444_gate() {
     let (tx, _rx) = mpsc::channel(256);
     assert!(!handle_use_ability(A, MIXED, B as i32, &tx, &mut mgr).await);
 }
+
+/// The `(effect_id, target_id, path, reason)` of every `effect_planned` row,
+/// sorted, each checked to carry the launch row's `cast_id`.
+fn plan_rows(all: &[crate::test_support::Captured]) -> Vec<(String, String, String, String)> {
+    let cast_id = all
+        .iter()
+        .find(|c| c.has_field("event", "ability_launched"))
+        .and_then(|c| c.fields.get("cast_id").cloned())
+        .expect("the launch row carries cast_id");
+    let mut rows: Vec<_> = all
+        .iter()
+        .filter(|c| c.has_field("event", "effect_planned"))
+        .map(|c| {
+            assert_eq!(c.target, "abilities.effect");
+            assert!(c.has_field("cast_id", &cast_id), "{c:?}");
+            let f = |k: &str| c.fields.get(k).cloned().unwrap_or_default();
+            (f("effect_id"), f("target_id"), f("path"), f("reason"))
+        })
+        .collect();
+    rows.sort();
+    rows
+}
+
+fn plan_row(
+    effect: i32,
+    target: u32,
+    path: &str,
+    reason: &str,
+) -> (String, String, String, String) {
+    (
+        effect.to_string(),
+        target.to_string(),
+        path.to_string(),
+        reason.to_string(),
+    )
+}
+
+/// **Regression guard (AB-T3, routed landings).** Morale Boost logs one
+/// `effect_planned` row per effect per recipient, with the route it took:
+/// 939 on the cast's resolved target, the caster (a beneficial cast's
+/// target half; rule 2 does not apply, the ability has an area effect), and
+/// the area heal on each ally in its radius (not the caster, whose 939
+/// already ran `HealFocus`), all in the cast.
+#[tokio::test]
+async fn morale_boost_logs_one_plan_row_per_effect_per_recipient() {
+    let mut mgr = routing_mgr();
+    let (tx, _rx) = mpsc::channel(256);
+    let logs = LogCapture::install();
+
+    assert!(handle_use_ability(A, MORALE_BOOST, 0, &tx, &mut mgr).await);
+
+    assert_eq!(
+        plan_rows(&logs.all()),
+        vec![
+            plan_row(RALLY_AREA, B, "ally_fanout", "beneficial_area"),
+            plan_row(RALLY_AREA, C, "ally_fanout", "beneficial_area"),
+            plan_row(RALLY_USER, A, "script", "beneficial_cast"),
+        ]
+    );
+}
+
+/// **Regression guard (AB-T3).** A missed attack with a user half: the hit
+/// pipeline plans the damage effect `skipped` for the miss on the mob, and
+/// the landing path plans the user half on the caster. One row each.
+#[tokio::test]
+async fn a_missed_attack_plans_the_miss_and_the_user_half() {
+    let mut mgr = routing_mgr();
+    next_roll(&mut mgr, MIXED, true);
+    let (tx, _rx) = mpsc::channel(256);
+    let logs = LogCapture::install();
+
+    assert!(handle_use_ability(A, MIXED, MOB as i32, &tx, &mut mgr).await);
+
+    assert_eq!(
+        plan_rows(&logs.all()),
+        vec![
+            plan_row(MIXED_HIT, MOB, "skipped", "miss"),
+            plan_row(MIXED_USER, A, "routed_to_user", "resolve_on_ability_user"),
+        ]
+    );
+}

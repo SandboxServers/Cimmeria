@@ -93,12 +93,50 @@ pub fn calculate_damage_penetrating(
     attacker: &StatList,
     defender: &mut StatList,
 ) -> (Vec<ClientEffectResult>, i32) {
+    let outcome = resolve_damage(
+        qr_result,
+        base_damage,
+        scale,
+        penetration_mult,
+        damage_type,
+        stat_id,
+        attacker,
+        defender,
+    );
+    (outcome.results, outcome.dealt)
+}
+
+/// What one pass through the pipeline did.
+#[derive(Debug, Clone, Default)]
+pub struct DamageOutcome {
+    /// The `onEffectResults` entry, when the pipeline reached the stat.
+    pub results: Vec<ClientEffectResult>,
+    /// The damage the stat took.
+    pub dealt: i32,
+    /// What the target's absorb pools took first (AB-10).
+    pub absorbed: i32,
+}
+
+/// [`calculate_damage_penetrating`], also reporting what the absorb pools
+/// took. The pipeline logs nothing: it has no ids, so the callers log the
+/// absorb on their own rows (`nvp_damage_resolved`, `pulse_ticked`, and
+/// `shield_absorbed_damage` with the hit's ids, ability-mechanics AB-T3).
+pub fn resolve_damage(
+    qr_result: &QrResult,
+    base_damage: i32,
+    scale: f64,
+    penetration_mult: f64,
+    damage_type: i8,
+    stat_id: i32,
+    attacker: &StatList,
+    defender: &mut StatList,
+) -> DamageOutcome {
     let mut results = Vec::new();
 
     // Base damage * qrRand * QR_DAMAGE_MULTIPLIER
     let raw = base_damage as f64 * qr_result.qr_rand * QR_DAMAGE_MULTIPLIER;
     if raw <= 0.0 {
-        return (results, 0);
+        return DamageOutcome::default();
     }
 
     // Damage bonus from attacker
@@ -161,19 +199,11 @@ pub fn calculate_damage_penetrating(
         stat_result_code: src,
     });
 
-    if absorbed > 0 {
-        tracing::debug!(
-            target: "abilities",
-            event = "shield_absorbed_damage",
-            damage_type,
-            absorbed,
-            passed_through = final_damage,
-            "Shield absorbed damage"
-        );
+    DamageOutcome {
+        results,
+        dealt: actual_change.unsigned_abs() as i32,
+        absorbed,
     }
-
-    let total_damage = actual_change.unsigned_abs() as i32;
-    (results, total_damage)
 }
 
 // ── Helpers ──────────────────────────────────────────────────────────────────

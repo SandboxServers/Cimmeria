@@ -434,7 +434,7 @@ pub(super) async fn fire_beneficial(
     // effect on the caster's allies around them, and every other effect on
     // the resolved target.
     let routed = plan_cast(space_mgr, caster_id, Some(def), Some(target_id));
-    let pulsing = land_effects(caster_id, &routed.landings, tx, space_mgr).await;
+    let pulsing = land_effects(caster_id, def.ability_id, &routed.landings, tx, space_mgr).await;
 
     let after = pools(space_mgr, target_id);
     let who = space_mgr.player_identity(caster_id);

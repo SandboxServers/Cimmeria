@@ -28,6 +28,7 @@ use super::rng::pseudo_random_seed;
 use ammo_splash::HitKind;
 use duel_gate::{clamp_source, player_hit_refusal};
 pub(in crate::cell::abilities) use effect_scripts::is_damage_script;
+use hit_ids::HitIds;
 
 /// Resolve damage from `entity_id` to `target_eid` for ability `ability_id`.
 ///
@@ -192,8 +193,10 @@ async fn apply_hit(
         ability_id,
         actor: space_mgr.player_identity(entity_id),
         target: space_mgr.player_identity(target_eid),
+        cast_id: space_mgr.current_cast_id(),
+        god_mode: space_mgr.get_entity(target_eid).is_some_and(|e| e.god_mode),
     };
-    let qr_result = qr_gate::roll_hit(ability_def.as_ref(), space_mgr, qr, seed, ids);
+    let qr_result = qr_gate::roll_hit(ability_def.as_ref(), space_mgr, qr, seed, cover, ids);
 
     // Special ammo (AM-04, D-AM07): a player's weapon shot with a modified
     // ammo type loaded scales its damage, divides the armour by its
@@ -644,21 +647,9 @@ mod ammo_splash;
 mod cover_roll;
 mod duel_gate;
 mod effect_scripts;
+mod hit_ids;
 mod nvp_damage;
 mod qr_gate;
-
-/// One attacker → target hit, carried into the submodules' logs. The
-/// identities are the canonical `account_id`/`player_id` correlators
-/// (instrumentation-discipline rule 5): the actor's pair and the target's
-/// `player_id`, both empty (and so omitted from the log) for an NPC.
-#[derive(Debug, Clone, Copy)]
-struct HitIds {
-    entity_id: u32,
-    target_eid: u32,
-    ability_id: i32,
-    actor: cimmeria_entity::cell_entity::PlayerIdentity,
-    target: cimmeria_entity::cell_entity::PlayerIdentity,
-}
 
 #[cfg(test)]
 mod aggro_cause_tests;
@@ -682,6 +673,8 @@ mod bleed_death_tests;
 mod cover_tests;
 #[cfg(test)]
 mod damage_seed_live_db_tests;
+#[cfg(test)]
+mod decision_rows_tests;
 #[cfg(test)]
 mod god_mode_tests;
 #[cfg(test)]

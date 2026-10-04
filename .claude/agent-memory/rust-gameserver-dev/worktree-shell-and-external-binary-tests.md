@@ -97,6 +97,13 @@ is accepted. Run the same script through the PowerShell tool as
 which works. Bash also refuses a command whose script argument comes from a
 shell variable (`python $S/rep.py`): spell out the absolute scratchpad path.
 
+AB-T3 (2026-10-04): Git Bash's MSYS path conversion rewrites an argument
+that starts with `///` when it is passed to a native exe (python), so a
+splice script given the marker `"/// One effect..."` wrote `//// One
+effect...` into the source (clippy `four_forward_slashes` caught it). Pass
+markers that do not start with `/`, or set `MSYS_NO_PATHCONV=1` in the
+script's own environment; check the spliced line after the edit.
+
 Also, when the Dev Drive that holds the build-lane target dirs fills up
 ("no space on device"), delete only your own worktree's target dir under
 `CIMMERIA_TARGET_ROOT` and point `CIMMERIA_TARGET_ROOT` at a scratch
