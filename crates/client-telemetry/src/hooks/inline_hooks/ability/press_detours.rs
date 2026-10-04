@@ -202,7 +202,10 @@ type PetActionFn = unsafe extern "thiscall-unwind" fn(*mut c_void, u32) -> u32;
 
 /// `PetAbilityAction::execute(self)`.
 #[allow(improper_ctypes_definitions)]
-pub(super) unsafe extern "thiscall-unwind" fn pet_action_detour(this: *mut c_void, self_flag: u32) -> u32 {
+pub(super) unsafe extern "thiscall-unwind" fn pet_action_detour(
+    this: *mut c_void,
+    self_flag: u32,
+) -> u32 {
     let Some(&t) = PET_ACTION_TRAMPOLINE.get() else {
         return 0;
     };

@@ -141,7 +141,11 @@ unsafe extern "C-unwind" fn slot_standin(action_id: i32, self_flag: u32) -> u32 
 }
 
 #[inline(never)]
-unsafe extern "thiscall-unwind" fn lookup_standin(set: *mut c_void, ability: i32, target: i32) -> u32 {
+unsafe extern "thiscall-unwind" fn lookup_standin(
+    set: *mut c_void,
+    ability: i32,
+    target: i32,
+) -> u32 {
     SEEN[3].store(
         set as u32 ^ ability as u32 ^ target as u32,
         Ordering::SeqCst,
@@ -181,7 +185,11 @@ unsafe extern "thiscall-unwind" fn pet_action_standin(this: *mut c_void, self_fl
 }
 
 #[inline(never)]
-unsafe extern "thiscall-unwind" fn pet_send_standin(pet: *mut c_void, ability: i32, target: i32) -> u32 {
+unsafe extern "thiscall-unwind" fn pet_send_standin(
+    pet: *mut c_void,
+    ability: i32,
+    target: i32,
+) -> u32 {
     SEEN[7].store(
         pet as u32 ^ ability as u32 ^ target as u32,
         Ordering::SeqCst,
