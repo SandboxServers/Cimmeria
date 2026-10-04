@@ -31,12 +31,12 @@
   |---|---|---|
   | `entity_id`, `target`, `attacker` | `entity_name`, `target_name`, `attacker_name` | player: character name; NPC: `name_id` text, and NPC lines also carry the template pair (D-NT5) |
   | `template_id` | `template_name` | `entity_templates.template_name` |
-  | `item_id` (instance), `item_type_id` / `type_id` | `item_name` | `items.name` via the type |
+  | `item_id` (instance), `item_type_id` / `type_id` / `design_id` | `item_name` | `items.name` via the type. A log `item_id` is often an instance ID, while the seed's `items.item_id` is a type ID: resolve an instance through its type, never by looking its ID up in `items` |
   | `ability_id` | `ability_name` | `abilities.name` |
   | `effect_id` | `effect_name` | `effects.name` |
   | `mission_id`, `step_id`, `objective_id` | `mission_name`, `step_name`, `objective_name` | `mission_label`, step / objective display text |
   | `dialog_id`, `dialog_set_id`, `speaker_id` | `dialog_name`, `dialog_set_name`, `speaker_name` | `dialogs.name` etc. |
-  | `space_id`, `world_id` | `world_name` | `SpaceManager` / `Worlds` |
+  | `space_id`, `world_id` | `world` | `SpaceManager` / `Worlds` |
   | `account_id` | `account_name` | session |
   | `player_id` | `player_name` | session / `sgw_player` |
   | `org_id` | `org_name` | organizations |
@@ -157,6 +157,8 @@ Each sweep converts every unpaired ID field in its crates, shrinks the NT-03 bas
 
 Sweep notes:
 
+- **The `"world_name"` metric label (NT-25, coordinate with NT-23).** The NPC respawn counter at `cell/service/ticks/npc_respawn/mod.rs:413` is the one metric labelled `world_name`; every other world label is `world` (Rule 4). Rename it to `world`. It is a label rename, so check the SigNoz dashboards and saved views (`docs/operations/signoz/`) for queries on the old label first, and update them in the same PR.
+- **NPC names that break Rule 6 (NT-25).** Four sites log `npc_name = ….as_deref().unwrap_or("")`: `npc_ai/dispatch.rs` (two), `space_manager/npc_population.rs` and `playtest_friction_watch.rs`. Pass the `Option` through instead. `npc_population.rs` also logs `name = %record.template_name`; make it `template_name`.
 - **GM commands** name both the caller and the subject (Rule 5 § "Naming when an actor acts on someone else"), e.g. `player_name` + `subject_player_name`.
 - **Loops over many objects** (loot tables, witness lists) log a count plus at most the first few `Name (#id)` pairs. A per-row line is a volume regression.
 - **Wire crates** (`wire`, `mercury`, `wireclient`, `wire-log`) are left for NT-30. They have no content names to resolve.
@@ -179,7 +181,7 @@ Sweep notes:
 
 - Bitflag fields (BSF state flags, effect flags, item flags; about 15 `flags = {:#x}` sites) log a `*_names` pair rendered `A|B|C`, from one `bitflags`-style formatter per flag set. Unknown bits render as `0x…`.
 - Numeric enum codes logged as integers (reason codes, `aiState`, movement type, dialog UI state, error codes) gain a name. Prefer logging the Rust enum with `?` when one exists. `error_code` pairs with `error_texts.moniker_name` from NT-01.
-- Positions: player-activity events that carry a position also carry `world_name`, and the enclosing spawn region's name when one contains the point (`regions.rs` already has region names). This is optional per site; the sweep owner decides.
+- Positions: player-activity events that carry a position also carry `world`, and the enclosing spawn region's name when one contains the point (`regions.rs` already has region names). This is optional per site; the sweep owner decides.
 
 ---
 
