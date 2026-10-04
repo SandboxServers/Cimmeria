@@ -526,7 +526,8 @@ lab_client_status lab_client_stop lab_crash_report lab_create_character lab_dele
 lab_ensure_character_slot lab_finish_dialog lab_login lab_logout lab_pixel_probe \
 lab_play_character lab_screenshot lab_screenshot_region lab_timeline \
 client_entity_find client_target client_world_click client_move_to client_camera \
-client_hotbar client_use_ability client_combat_log client_die_and_respawn client_wait_event";
+client_hotbar client_use_ability client_combat_log client_die_and_respawn client_wait_event \
+client_player_state";
 
 /// Plan every committed spec against today's tools: the rows the lab can
 /// drive now come back SKIPPED (ready), and the rows waiting on a planned
@@ -583,6 +584,28 @@ async fn committed_specs_plan_against_main_tools() {
         "BLOCKED",
         "rule 6 without approval"
     );
+    // Ability mechanics (AB-R0): every one-player row that is not blocked
+    // plans against today's tools, the ability capabilities included.
+    for r in [
+        "AB-U1a", "AB-U3b", "AB-U6", "AB-U7", "AB-U9b", "AB-U14", "AB-U16", "AB-U17", "AB-U21a",
+    ] {
+        let row = result("ability-mechanics", r);
+        assert_eq!(row.result, "SKIPPED", "{r}: {:?}", row.reasons);
+    }
+    for (r, why) in [
+        ("AB-U10", "D-AU2"),
+        ("AB-U24", "D-AB03"),
+        ("AB-U25", "AB-E1, AB-11"),
+        ("AB-U1d", "second lab instance"),
+    ] {
+        let row = result("ability-mechanics", r);
+        assert_eq!(row.result, "BLOCKED", "{r}");
+        assert!(
+            row.reasons.iter().any(|x| x.contains(why)),
+            "{r}: {:?}",
+            row.reasons
+        );
+    }
     // Two players: BLOCKED until a second lab instance is configured.
     let m12 = result("gm-parity", "M1-2");
     assert_eq!(m12.result, "BLOCKED");

@@ -1,0 +1,1841 @@
+# Unified UAT, section "Ability mechanics" (AB-R0 of the ability-mechanics
+# lab UAT plan, docs/analysis/ability-mechanics/lab-uat-and-telemetry.md).
+# Guide: docs/guides/unified-uat.md#ability-mechanics (AB-U1 to AB-U25).
+#
+# Where it runs: the colo (D-AU8), with the GM lab account and a fresh
+# Soldier per run; colo rule 6 holds (only the lab characters and what they
+# spawn are touched). Every id below was checked against db/resources/ and
+# the packets' live-DB tests on 2026-10-04.
+#
+# How a row is built:
+# - Setup gives the ability (`/gmgiveability`, G), places it on the bar
+#   (`@use_ability` with `place = true`, N3 the first time) and, because
+#   placing also presses it, resets its cooldown and clears what it did.
+#   The graded press is the step: the bound hotbar key (`press = "key"`,
+#   `fallback = "none"`, N1).
+# - The setup press is in the row's window, so every client_event clause
+#   reads `since = "press"`. Packet clauses cover the whole row (one tap per
+#   row), so they assert only what both presses share.
+# - `${cast_id}` is the step press's cast (automated-uat.md, "Client event
+#   clauses and `${cast_id}`"); every SigNoz clause names it.
+# - A row that needs several graded presses of a 30 s cooldown is split into
+#   lettered rows (AB-U1a to AB-U1d): a cooldown reset between presses is a
+#   GM action, and a GM step costs the row its N1 grade.
+# - Teardown: `@clear_effects` on the lab character, `@cooldowns_reset`,
+#   and `.dummy clear` (or `/gmdespawn` for a spawned mob).
+# - Two-player rows (`players = 2`) need lab-account.p2.json (D-AU3: `lab2`).
+#   p2's own `/gm*` lines need lab2 to be a GM account.
+# - A hostile cast rolls QR, and `.qr` (D-AU2) does not exist: a miss on the
+#   graded press FAILs a damage or debuff row. Check `qr_rolled` for the
+#   row's cast_id in SigNoz before filing it.
+
+schema = 1
+
+[section]
+id = "ability-mechanics"
+system = "Ability mechanics"
+guide = "docs/guides/unified-uat.md#ability-mechanics"
+ledger = "docs/analysis/ability-mechanics/lab-uat-and-telemetry.md#ledger"
+account = "gm"
+character = "fresh"
+
+[section.fresh]
+alignment = "sgu"
+archetype = "Soldier"
+gender = "male"
+first = "Uat"
+
+# ---------------------------------------------------------------- AB-U1
+# AB-01: 597 Heal Focus (Self, effect 659 HealFocus 35 %), from every target.
+
+[[row]]
+id = "AB-U1a"
+title = "Heal Focus with no target restores your own Focus"
+expected = "The press leaves the client and restores your own Focus."
+known_issues = ["B-15", "AB-E1"]
+setup = [
+  { chat = "/gmsetfocus 100 0", tier = "G" },
+  { tool = "@use_ability", args = { ability_id = 597, place = true }, label = "place" },
+  { wait_ms = 3000 },
+  { tool = "@cooldowns_reset", args = { ability_id = 597 } },
+  { chat = "/gmsetfocus 100 0", tier = "G" },
+]
+step = [
+  { tool = "@use_ability", args = { ability_id = 597, press = "key", fallback = "none" }, label = "press" },
+  { wait_ms = 3000 },
+]
+teardown = [
+  { tool = "@clear_effects", args = { name = "${character}" }, optional = true },
+  { tool = "@cooldowns_reset" },
+]
+[[row.expect]]
+id = "sent"
+text = "the press leaves the client (B-15)"
+source = "client_event"
+event = "client.ability.sent"
+match_fields = { ability_id = 597 }
+since = "press"
+[[row.expect]]
+id = "sent-target"
+text = "what was sent next to what the UI had targeted (B-15 evidence, not graded)"
+source = "client_event"
+required = false
+event = "client.ability.sent"
+match_fields = { ability_id = 597 }
+since = "press"
+field = "client_target_id"
+op = "exists"
+[[row.expect]]
+id = "not-dropped"
+text = "the client did not drop the press"
+source = "client_event"
+event = "client.ability.press_dropped"
+match_fields = { ability_id = 597 }
+since = "press"
+max_rows = 0
+timeout_ms = 1000
+[[row.expect]]
+id = "applied"
+text = "the client applied a stat update after the press"
+source = "client_event"
+event = "client.ability.applied"
+match_fields = { kind = "stat" }
+since = "press"
+[[row.expect]]
+id = "focus-ui"
+text = "the client shows Focus above 100"
+source = "tool"
+tool = "@player_state"
+pointer = "/focus"
+op = "gt"
+value = 100
+[[row.expect]]
+id = "focus-server"
+text = "the server holds Focus above 100"
+source = "server"
+tool = "@ability_state"
+pointer = "/state/stats[stat_id=8]/cur"
+op = "gt"
+value = 100
+[[row.expect]]
+id = "wire-sent"
+text = "useAbility reached the server"
+source = "packet"
+message = "useAbility"
+direction = "to_server"
+[[row.expect]]
+id = "wire-stat"
+text = "the server sent the caster a stat update"
+source = "packet"
+message = "onStatUpdate"
+direction = "to_client"
+entity = "${player_entity_id}"
+[[row.expect]]
+id = "resolution"
+text = "the cast resolved as a Self ability"
+source = "signoz"
+filter = "event = 'beneficial_cast' AND cast_id = ${cast_id}"
+field = "resolution"
+op = "eq"
+value = "self_ability"
+[[row.expect]]
+id = "heal-row"
+text = "heal_focus ran for this cast"
+source = "signoz"
+filter = "event = 'heal_focus' AND cast_id = ${cast_id}"
+
+[[row]]
+id = "AB-U1b"
+title = "Heal Focus with yourself targeted restores your own Focus"
+expected = "Your own Focus rises."
+known_issues = ["B-15"]
+setup = [
+  { chat = "/gmsetfocus 100 0", tier = "G" },
+  { tool = "@use_ability", args = { ability_id = 597, place = true }, label = "place" },
+  { wait_ms = 3000 },
+  { tool = "@cooldowns_reset", args = { ability_id = 597 } },
+  { chat = "/gmsetfocus 100 0", tier = "G" },
+  { tool = "@target", args = { name = "${character}" } },
+]
+step = [
+  { tool = "@use_ability", args = { ability_id = 597, press = "key", fallback = "none" }, label = "press" },
+  { wait_ms = 3000 },
+]
+teardown = [
+  { tool = "@clear_effects", args = { name = "${character}" }, optional = true },
+  { tool = "@cooldowns_reset" },
+]
+[[row.expect]]
+id = "sent"
+text = "the press leaves the client"
+source = "client_event"
+event = "client.ability.sent"
+match_fields = { ability_id = 597 }
+since = "press"
+[[row.expect]]
+id = "focus-server"
+text = "the server holds Focus above 100"
+source = "server"
+tool = "@ability_state"
+pointer = "/state/stats[stat_id=8]/cur"
+op = "gt"
+value = 100
+[[row.expect]]
+id = "focus-ui"
+text = "the client shows Focus above 100"
+source = "tool"
+tool = "@player_state"
+pointer = "/focus"
+op = "gt"
+value = 100
+[[row.expect]]
+id = "wire-stat"
+text = "the server sent the caster a stat update"
+source = "packet"
+message = "onStatUpdate"
+direction = "to_client"
+entity = "${player_entity_id}"
+[[row.expect]]
+id = "resolution"
+text = "the cast resolved as a Self ability"
+source = "signoz"
+filter = "event = 'beneficial_cast' AND cast_id = ${cast_id}"
+field = "resolution"
+op = "eq"
+value = "self_ability"
+
+[[row]]
+id = "AB-U1c"
+title = "Heal Focus with the dummy targeted heals you, never the dummy"
+expected = "Your own Focus rises; the dummy's bars never move."
+known_issues = ["B-14"]
+setup = [
+  { tool = "@dummy", args = { disposition = "hostile" } },
+  { chat = "/gmsetfocus 100 0", tier = "G" },
+  { tool = "@use_ability", args = { ability_id = 597, place = true }, label = "place" },
+  { wait_ms = 3000 },
+  { tool = "@cooldowns_reset", args = { ability_id = 597 } },
+  { chat = "/gmsetfocus 100 0", tier = "G" },
+  { tool = "@target", args = { entity_id = "${dummy_id}" } },
+]
+step = [
+  { tool = "@use_ability", args = { ability_id = 597, press = "key", fallback = "none" }, label = "press" },
+  { wait_ms = 3000 },
+]
+teardown = [
+  { tool = "@clear_effects", args = { name = "${character}" }, optional = true },
+  { tool = "@cooldowns_reset" },
+  { tool = "@dummy", args = { disposition = "clear" }, optional = true },
+]
+[[row.expect]]
+id = "sent"
+text = "the press leaves the client with the dummy targeted"
+source = "client_event"
+event = "client.ability.sent"
+match_fields = { ability_id = 597 }
+since = "press"
+[[row.expect]]
+id = "focus-server"
+text = "the server holds your Focus above 100"
+source = "server"
+tool = "@ability_state"
+pointer = "/state/stats[stat_id=8]/cur"
+op = "gt"
+value = 100
+[[row.expect]]
+id = "wire-no-dummy-stat"
+text = "the server sent no stat update for the dummy"
+source = "packet"
+message = "onStatUpdate"
+direction = "to_client"
+entity = "${dummy_id}"
+max_rows = 0
+[[row.expect]]
+id = "resolution"
+text = "the cast resolved as a Self ability, not at the dummy"
+source = "signoz"
+filter = "event = 'beneficial_cast' AND cast_id = ${cast_id}"
+field = "resolution"
+op = "eq"
+value = "self_ability"
+
+[[row]]
+id = "AB-U1d"
+title = "Heal Focus with the other player targeted heals you, never them"
+expected = "Your own Focus rises; the other player's Focus never moves."
+players = 2
+setup = [
+  { chat = ".summon ${p2_character}", tier = "G" },
+  { wait_ms = 5000 },
+  { chat = "/gmsetfocus 100 0", tier = "G", client = "p2" },
+  { chat = "/gmsetfocus 100 0", tier = "G" },
+  { tool = "@use_ability", args = { ability_id = 597, place = true }, label = "place" },
+  { wait_ms = 3000 },
+  { tool = "@cooldowns_reset", args = { ability_id = 597 } },
+  { chat = "/gmsetfocus 100 0", tier = "G" },
+  { tool = "@target_player" },
+]
+step = [
+  { tool = "@use_ability", args = { ability_id = 597, press = "key", fallback = "none" }, label = "press" },
+  { wait_ms = 3000 },
+]
+teardown = [
+  { tool = "@clear_effects", args = { name = "${character}" }, optional = true },
+  { tool = "@cooldowns_reset" },
+]
+[[row.expect]]
+id = "sent"
+text = "the press leaves the client with p2 targeted"
+source = "client_event"
+event = "client.ability.sent"
+match_fields = { ability_id = 597 }
+since = "press"
+[[row.expect]]
+id = "focus-server"
+text = "the server holds your Focus above 100"
+source = "server"
+tool = "@ability_state"
+pointer = "/state/stats[stat_id=8]/cur"
+op = "gt"
+value = 100
+[[row.expect]]
+id = "p2-focus"
+text = "p2's own client still shows its Focus near 100"
+source = "tool"
+client = "p2"
+tool = "@player_state"
+pointer = "/focus"
+op = "lt"
+value = 150
+[[row.expect]]
+id = "resolution"
+text = "the cast resolved as a Self ability"
+source = "signoz"
+filter = "event = 'beneficial_cast' AND cast_id = ${cast_id}"
+field = "resolution"
+op = "eq"
+value = "self_ability"
+
+# ---------------------------------------------------------------- AB-U2
+# AB-01: 1646 Health Heal (Target, effect 2008 HealHealth +10 %).
+
+[[row]]
+id = "AB-U2"
+title = "Health Heal on the other player heals them"
+expected = "Their Health rises; yours does not. Their own client applies the Health stat."
+players = 2
+setup = [
+  { chat = ".summon ${p2_character}", tier = "G" },
+  { wait_ms = 5000 },
+  { tool = "@target_player" },
+  { tool = "@use_ability", args = { ability_id = 1646, place = true }, label = "place" },
+  { wait_ms = 3000 },
+  { tool = "@cooldowns_reset", args = { ability_id = 1646 } },
+  { chat = "/gmsethealth 200 0", tier = "G", client = "p2" },
+  { wait_ms = 1000 },
+]
+step = [
+  { tool = "@use_ability", args = { ability_id = 1646, press = "key", fallback = "none" }, label = "press" },
+  { wait_ms = 3000 },
+]
+teardown = [
+  { tool = "@cooldowns_reset" },
+]
+[[row.expect]]
+id = "sent"
+text = "the press leaves p1's client"
+source = "client_event"
+event = "client.ability.sent"
+match_fields = { ability_id = 1646 }
+since = "press"
+[[row.expect]]
+id = "p2-applied"
+text = "p2's own client applies a stat update"
+source = "client_event"
+client = "p2"
+event = "client.ability.applied"
+match_fields = { kind = "stat" }
+since = "press"
+[[row.expect]]
+id = "p2-health"
+text = "p2's client shows Health above 200"
+source = "tool"
+client = "p2"
+tool = "@player_state"
+pointer = "/health"
+op = "gt"
+value = 200
+[[row.expect]]
+id = "wire-sent"
+text = "useAbility reached the server"
+source = "packet"
+message = "useAbility"
+direction = "to_server"
+[[row.expect]]
+id = "resolution"
+text = "the cast resolved to the ally"
+source = "signoz"
+filter = "event = 'beneficial_cast' AND cast_id = ${cast_id}"
+field = "resolution"
+op = "eq"
+value = "ally"
+[[row.expect]]
+id = "heal-row"
+text = "heal_health ran for this cast"
+source = "signoz"
+filter = "event = 'heal_health' AND cast_id = ${cast_id}"
+
+# ---------------------------------------------------------------- AB-U3
+# AB-01 / D-AB02 default: a Target heal with no ally falls back to the caster.
+
+[[row]]
+id = "AB-U3a"
+title = "Health Heal with yourself targeted heals you"
+expected = "Your own Health rises."
+setup = [
+  { tool = "@use_ability", args = { ability_id = 1646, place = true }, label = "place" },
+  { wait_ms = 3000 },
+  { tool = "@cooldowns_reset", args = { ability_id = 1646 } },
+  { chat = "/gmsethealth 200 0", tier = "G" },
+  { tool = "@target", args = { name = "${character}" } },
+]
+step = [
+  { tool = "@use_ability", args = { ability_id = 1646, press = "key", fallback = "none" }, label = "press" },
+  { wait_ms = 3000 },
+]
+teardown = [
+  { tool = "@cooldowns_reset" },
+]
+[[row.expect]]
+id = "sent"
+text = "the press leaves the client"
+source = "client_event"
+event = "client.ability.sent"
+match_fields = { ability_id = 1646 }
+since = "press"
+[[row.expect]]
+id = "health-server"
+text = "the server holds your Health above 200"
+source = "server"
+tool = "@ability_state"
+pointer = "/state/stats[stat_id=7]/cur"
+op = "gt"
+value = 200
+[[row.expect]]
+id = "health-ui"
+text = "the client shows Health above 200"
+source = "tool"
+tool = "@player_state"
+pointer = "/health"
+op = "gt"
+value = 200
+[[row.expect]]
+id = "wire-stat"
+text = "the server sent you a stat update"
+source = "packet"
+message = "onStatUpdate"
+direction = "to_client"
+entity = "${player_entity_id}"
+[[row.expect]]
+id = "resolution"
+text = "a Target heal at yourself resolves as an ally (the caster)"
+source = "signoz"
+filter = "event = 'beneficial_cast' AND cast_id = ${cast_id}"
+field = "resolution"
+op = "eq"
+value = "ally"
+
+[[row]]
+id = "AB-U3b"
+title = "Health Heal with the dummy targeted falls back to you"
+expected = "Your own Health rises. The dummy's never does."
+setup = [
+  { tool = "@dummy", args = { disposition = "hostile" } },
+  { tool = "@use_ability", args = { ability_id = 1646, place = true }, label = "place" },
+  { wait_ms = 3000 },
+  { tool = "@cooldowns_reset", args = { ability_id = 1646 } },
+  { chat = "/gmsethealth 200 0", tier = "G" },
+  { tool = "@target", args = { entity_id = "${dummy_id}" } },
+]
+step = [
+  { tool = "@use_ability", args = { ability_id = 1646, press = "key", fallback = "none" }, label = "press" },
+  { wait_ms = 3000 },
+]
+teardown = [
+  { tool = "@cooldowns_reset" },
+  { tool = "@dummy", args = { disposition = "clear" }, optional = true },
+]
+[[row.expect]]
+id = "sent"
+text = "the press leaves the client with the dummy targeted"
+source = "client_event"
+event = "client.ability.sent"
+match_fields = { ability_id = 1646 }
+since = "press"
+[[row.expect]]
+id = "health-server"
+text = "the server holds your Health above 200"
+source = "server"
+tool = "@ability_state"
+pointer = "/state/stats[stat_id=7]/cur"
+op = "gt"
+value = 200
+[[row.expect]]
+id = "wire-no-dummy-stat"
+text = "the server sent no stat update for the dummy"
+source = "packet"
+message = "onStatUpdate"
+direction = "to_client"
+entity = "${dummy_id}"
+max_rows = 0
+[[row.expect]]
+id = "resolution"
+text = "the cast fell back to the caster"
+source = "signoz"
+filter = "event = 'beneficial_cast' AND cast_id = ${cast_id}"
+field = "resolution"
+op = "eq"
+value = "fallback_to_caster"
+
+[[row]]
+id = "AB-U3c"
+title = "Health Heal with nothing targeted falls back to you"
+expected = "Your own Health rises."
+notes = "Nothing targeted: the row follows AB-U3b's teardown, which removed the dummy it had selected."
+setup = [
+  { tool = "@use_ability", args = { ability_id = 1646, place = true }, label = "place" },
+  { wait_ms = 3000 },
+  { tool = "@cooldowns_reset", args = { ability_id = 1646 } },
+  { chat = "/gmsethealth 200 0", tier = "G" },
+]
+step = [
+  { tool = "@use_ability", args = { ability_id = 1646, press = "key", fallback = "none" }, label = "press" },
+  { wait_ms = 3000 },
+]
+teardown = [
+  { tool = "@cooldowns_reset" },
+]
+[[row.expect]]
+id = "sent"
+text = "the press leaves the client"
+source = "client_event"
+event = "client.ability.sent"
+match_fields = { ability_id = 1646 }
+since = "press"
+[[row.expect]]
+id = "health-server"
+text = "the server holds your Health above 200"
+source = "server"
+tool = "@ability_state"
+pointer = "/state/stats[stat_id=7]/cur"
+op = "gt"
+value = 200
+[[row.expect]]
+id = "wire-stat"
+text = "the server sent you a stat update"
+source = "packet"
+message = "onStatUpdate"
+direction = "to_client"
+entity = "${player_entity_id}"
+[[row.expect]]
+id = "resolution"
+text = "the cast fell back to the caster"
+source = "signoz"
+filter = "event = 'beneficial_cast' AND cast_id = ${cast_id}"
+field = "resolution"
+op = "eq"
+value = "fallback_to_caster"
+
+# ---------------------------------------------------------------- AB-U4
+# AB-01/02: 1218 Medical Attention: Recuperation (warmup 5 s; effect 1383,
+# HealHealth 3 % x 25 pulses of 1 s).
+
+[[row]]
+id = "AB-U4"
+title = "Recuperation on the other player heals them every second for 25 s"
+expected = "25 pulses with one cast_id, then the pulse ends; p2's own client applies each."
+players = 2
+setup = [
+  { chat = ".summon ${p2_character}", tier = "G" },
+  { wait_ms = 5000 },
+  { tool = "@target_player" },
+  { tool = "@use_ability", args = { ability_id = 1218, place = true }, label = "place" },
+  { wait_ms = 6000 },
+  { tool = "@clear_effects", args = { name = "${p2_character}" } },
+  { tool = "@cooldowns_reset", args = { ability_id = 1218 } },
+  { chat = "/gmsethealth 200 0", tier = "G", client = "p2" },
+  { tool = "@target_player" },
+]
+step = [
+  { tool = "@use_ability", args = { ability_id = 1218, press = "key", fallback = "none", observe_ms = 8000 }, label = "press" },
+  { wait_ms = 30000 },
+]
+teardown = [
+  { tool = "@cooldowns_reset" },
+]
+[[row.expect]]
+id = "sent"
+text = "the press leaves p1's client"
+source = "client_event"
+event = "client.ability.sent"
+match_fields = { ability_id = 1218 }
+since = "press"
+[[row.expect]]
+id = "p2-applied"
+text = "p2's own client applies a stat update for most pulses"
+source = "client_event"
+client = "p2"
+event = "client.ability.applied"
+match_fields = { kind = "stat" }
+since = "press"
+min_rows = 20
+timeout_ms = 30000
+[[row.expect]]
+id = "p2-health"
+text = "p2's client shows Health well above 200"
+source = "tool"
+client = "p2"
+tool = "@player_state"
+pointer = "/health"
+op = "gt"
+value = 400
+[[row.expect]]
+id = "pulses"
+text = "exactly 25 pulse_ticked rows for this cast"
+source = "signoz"
+filter = "event = 'pulse_ticked' AND cast_id = ${cast_id}"
+min_rows = 25
+max_rows = 25
+[[row.expect]]
+id = "pulse-ended"
+text = "then pulse_ended"
+source = "signoz"
+filter = "event = 'pulse_ended' AND cast_id = ${cast_id}"
+[[row.expect]]
+id = "wire-sent"
+text = "useAbility reached the server"
+source = "packet"
+message = "useAbility"
+direction = "to_server"
+
+# ---------------------------------------------------------------- AB-U5
+
+[[row]]
+id = "AB-U5"
+title = "Heal Focus at the dummy out of combat keeps you out of combat"
+expected = "No BSF_InCombat on either side; the dummy is not pulled."
+known_issues = ["B-14"]
+setup = [
+  { tool = "@dummy", args = { disposition = "hostile" } },
+  { tool = "@use_ability", args = { ability_id = 597, place = true }, label = "place" },
+  { wait_ms = 3000 },
+  { tool = "@cooldowns_reset", args = { ability_id = 597 } },
+  { tool = "@target", args = { entity_id = "${dummy_id}" } },
+]
+step = [
+  { tool = "@use_ability", args = { ability_id = 597, press = "key", fallback = "none" }, label = "press" },
+  { wait_ms = 4000 },
+]
+teardown = [
+  { tool = "@cooldowns_reset" },
+  { tool = "@dummy", args = { disposition = "clear" }, optional = true },
+]
+[[row.expect]]
+id = "client-no-combat"
+text = "the client never sets BSF_InCombat (8)"
+source = "client_event"
+event = "client.ability.applied"
+match_fields = { kind = "state_flag", set = 8 }
+since = "press"
+max_rows = 0
+timeout_ms = 3000
+[[row.expect]]
+id = "wire-no-combat"
+text = "every state-field update the server sent says not in combat"
+source = "packet"
+message = "onStateFieldUpdate"
+direction = "to_client"
+entity = "${player_entity_id}"
+min_rows = 0
+field = "in_combat"
+op = "falsy"
+[[row.expect]]
+id = "no-combat-rows"
+text = "no combat entry was logged for you"
+source = "signoz"
+filter = "event IN ('enter_combat', 'fight_entered') AND entity_id = ${player_entity_id}"
+max_rows = 0
+
+# ---------------------------------------------------------------- AB-U6
+# AB-12: 2944 Activate Stealth has no bound effect (4379, 4269, 4268 carry no
+# script and no damage NVP).
+
+[[row]]
+id = "AB-U6"
+title = "A no-mechanics ability says so on every press and starts no cooldown"
+expected = "Each press shows \"That ability has no effect yet.\"; no cooldown on the client or the wire."
+setup = [
+  { chat = "/gmgiveability 2944", tier = "G", optional = true },
+  { wait_ms = 1000 },
+  { tool = "@use_ability", args = { ability_id = 2944, place = true }, label = "place" },
+]
+step = [
+  { tool = "@use_ability", args = { ability_id = 2944, press = "key", fallback = "none" }, label = "press" },
+  { wait_ms = 2000 },
+  { tool = "@use_ability", args = { ability_id = 2944, press = "key", fallback = "none" }, label = "press2" },
+  { wait_ms = 2000 },
+]
+[[row.expect]]
+id = "feedback-shown"
+text = "the feedback line shows on both presses"
+source = "client_event"
+event = "client.ability.shown"
+match_fields = { kind = "feedback_line", text = "*no effect yet*" }
+since = "press"
+min_rows = 2
+[[row.expect]]
+id = "error-received"
+text = "the client receives onErrorCode on both presses"
+source = "client_event"
+event = "client.ability.recv"
+match_fields = { method = "onErrorCode" }
+since = "press"
+min_rows = 2
+[[row.expect]]
+id = "no-client-cooldown"
+text = "the client applies no cooldown for 2944"
+source = "client_event"
+event = "client.ability.applied"
+match_fields = { kind = "cooldown", ability_id = 2944 }
+since = "press"
+max_rows = 0
+timeout_ms = 2000
+[[row.expect]]
+id = "hotbar-idle"
+text = "the button shows no cooldown sweep"
+source = "tool"
+tool = "@hotbar"
+pointer = "/buttons[ability_id=2944]/cooldown/active"
+op = "falsy"
+[[row.expect]]
+id = "wire-error"
+text = "the server sends error code 167 on each press"
+source = "packet"
+message = "onErrorCode"
+direction = "to_client"
+entity = "${player_entity_id}"
+min_rows = 2
+field = "ErrorCodeID"
+op = "eq"
+value = 167
+[[row.expect]]
+id = "wire-no-timer"
+text = "the server sends no timer at all in this row"
+source = "packet"
+message = "onTimerUpdate"
+direction = "to_client"
+entity = "${player_entity_id}"
+max_rows = 0
+[[row.expect]]
+id = "server-no-cooldown"
+text = "the server holds no cooldown"
+source = "server"
+tool = "@ability_state"
+pointer = "/state/cooldowns[ability_id=2944]"
+op = "absent"
+[[row.expect]]
+id = "refused-rows"
+text = "no_mechanics_refused, twice or more, for 2944"
+source = "signoz"
+filter = "event = 'no_mechanics_refused' AND ability_id = 2944 AND entity_id = ${player_entity_id}"
+min_rows = 2
+field = "reason"
+op = "eq"
+value = "no_mechanics"
+
+# ---------------------------------------------------------------- AB-U7
+# AB-04: 637 Aim (effect 700, TimedStat Accuracy +200 for 15 s). The setup
+# press is the first cast; the graded press is the refresh about 5 s later.
+
+[[row]]
+id = "AB-U7"
+title = "Aim buffs Accuracy, refreshes on a second press and clears at expiry"
+expected = "Accuracy +200; the effect bar shows 15 s, then refreshes (replaced); it clears at expiry on both sides. The dummy gets nothing."
+setup = [
+  { chat = "/gmgiveability 637", tier = "G", optional = true },
+  { tool = "@dummy", args = { disposition = "hostile" } },
+  { tool = "@target", args = { entity_id = "${dummy_id}" } },
+  { tool = "@use_ability", args = { ability_id = 637, place = true }, label = "place" },
+  { wait_ms = 4000 },
+  { tool = "@cooldowns_reset", args = { ability_id = 637 } },
+]
+step = [
+  { tool = "@use_ability", args = { ability_id = 637, press = "key", fallback = "none" }, label = "press" },
+  { wait_ms = 2000, label = "refreshed" },
+  { wait_ms = 16000, label = "expired" },
+]
+teardown = [
+  { tool = "@cooldowns_reset" },
+  { tool = "@dummy", args = { disposition = "clear" }, optional = true },
+]
+[[row.expect]]
+id = "server-buff"
+text = "the server ledger holds Aim's +200 Accuracy (once, refreshed)"
+source = "server"
+at = "refreshed"
+tool = "@ability_state"
+pointer = "/state/ledger[ability_id=637]/stats[stat_id=11]/requested"
+op = "eq"
+value = 200
+[[row.expect]]
+id = "server-15s"
+text = "the refreshed entry runs about 15 s again"
+source = "server"
+at = "refreshed"
+tool = "@ability_state"
+pointer = "/state/ledger[ability_id=637]/expires_in_secs"
+op = "gt"
+value = 11
+[[row.expect]]
+id = "dummy-nothing"
+text = "the dummy has no ledger entry"
+source = "server"
+at = "refreshed"
+tool = "@ability_state"
+args = { entity_id = "${dummy_id}" }
+pointer = "/state/ledger/0"
+op = "absent"
+[[row.expect]]
+id = "client-refresh"
+text = "the client's effect bar refreshes effect 700"
+source = "client_event"
+event = "client.ability.applied"
+match_fields = { kind = "effect_bar_refresh", effect_id = 700 }
+since = "press"
+[[row.expect]]
+id = "client-clear"
+text = "the client's effect bar clears effect 700 at expiry"
+source = "client_event"
+event = "client.ability.applied"
+match_fields = { kind = "effect_bar_clear", effect_id = 700 }
+since = "press"
+timeout_ms = 3000
+[[row.expect]]
+id = "server-cleared"
+text = "the server ledger no longer holds Aim"
+source = "server"
+tool = "@ability_state"
+pointer = "/state/ledger[ability_id=637]"
+op = "absent"
+[[row.expect]]
+id = "wire-effect-timer"
+text = "the server sends Aim's 15 s effect timer"
+source = "packet"
+message = "onTimerUpdate"
+direction = "to_client"
+entity = "${player_entity_id}"
+min_rows = 2
+[[row.expect]]
+id = "replaced"
+text = "the first entry was replaced, not stacked"
+source = "signoz"
+filter = "event = 'stat_buff_removed' AND effect_id = 700 AND reason = 'replaced' AND target_id = ${player_entity_id}"
+[[row.expect]]
+id = "applied-row"
+text = "stat_buff_applied for this cast"
+source = "signoz"
+filter = "event = 'stat_buff_applied' AND effect_id = 700 AND cast_id = ${cast_id}"
+[[row.expect]]
+id = "expired-row"
+text = "stat_buff_removed with reason expired at the end"
+source = "signoz"
+filter = "event = 'stat_buff_removed' AND effect_id = 700 AND reason = 'expired' AND target_id = ${player_entity_id}"
+
+# ---------------------------------------------------------------- AB-U8
+# AB-04/07: 1619 Combat Sprint (1962 MovementSpeedMod +50 % and 2002
+# Accuracy -100, both on the user, 10 s).
+
+[[row]]
+id = "AB-U8"
+title = "Combat Sprint: run speed +50 % and Accuracy -100 for 10 s"
+expected = "Run speed +50 % and Accuracy -100 on you, with an icon, for 10 s."
+setup = [
+  { chat = "/gmgiveability 1619", tier = "G", optional = true },
+  { tool = "@use_ability", args = { ability_id = 1619, place = true }, label = "place" },
+  { wait_ms = 1000 },
+  { tool = "@clear_effects", args = { name = "${character}" } },
+  { tool = "@cooldowns_reset", args = { ability_id = 1619 } },
+]
+step = [
+  { tool = "@use_ability", args = { ability_id = 1619, press = "key", fallback = "none" }, label = "press" },
+  { wait_ms = 1000, label = "running" },
+]
+teardown = [
+  { tool = "@clear_effects", args = { name = "${character}" }, optional = true },
+  { tool = "@cooldowns_reset" },
+]
+[[row.expect]]
+id = "server-speed"
+text = "the server holds movementSpeedMod 150"
+source = "server"
+at = "running"
+tool = "@ability_state"
+pointer = "/state/stats[stat_id=6]/cur"
+op = "eq"
+value = 150
+[[row.expect]]
+id = "server-accuracy"
+text = "the ledger holds the -100 Accuracy half"
+source = "server"
+at = "running"
+tool = "@ability_state"
+pointer = "/state/ledger[ability_id=1619]/stats[stat_id=11]/requested"
+op = "eq"
+value = -100
+[[row.expect]]
+id = "client-icon"
+text = "the client's effect bar adds the run-speed effect"
+source = "client_event"
+event = "client.ability.applied"
+match_fields = { kind = "effect_bar_add", effect_id = 1962 }
+since = "press"
+[[row.expect]]
+id = "wire-timer"
+text = "the server sends an effect timer"
+source = "packet"
+message = "onTimerUpdate"
+direction = "to_client"
+entity = "${player_entity_id}"
+[[row.expect]]
+id = "both-halves"
+text = "two stat_buff_applied rows for this cast"
+source = "signoz"
+filter = "event = 'stat_buff_applied' AND cast_id = ${cast_id}"
+min_rows = 2
+
+# ---------------------------------------------------------------- AB-U9
+# AB-04: 847 Call Target (effect 903, Defense -100 for 15 s on the target).
+
+[[row]]
+id = "AB-U9a"
+title = "Call Target lowers the dummy's Defense by 100"
+expected = "The dummy's ledger holds Defense -100 for 15 s."
+notes = "A hostile debuff rolls QR: a miss lands nothing (check qr_rolled for the cast_id)."
+setup = [
+  { chat = "/gmgiveability 847", tier = "G", optional = true },
+  { tool = "@dummy", args = { disposition = "hostile" } },
+  { tool = "@target", args = { entity_id = "${dummy_id}" } },
+  { tool = "@use_ability", args = { ability_id = 847, place = true }, label = "place" },
+  { wait_ms = 3000 },
+  { tool = "@clear_effects" },
+  { tool = "@cooldowns_reset", args = { ability_id = 847 } },
+]
+step = [
+  { tool = "@use_ability", args = { ability_id = 847, press = "key", fallback = "none" }, label = "press" },
+  { wait_ms = 2000 },
+]
+teardown = [
+  { tool = "@cooldowns_reset" },
+  { tool = "@dummy", args = { disposition = "clear" }, optional = true },
+]
+[[row.expect]]
+id = "dummy-defense"
+text = "the dummy's ledger holds Defense -100"
+source = "server"
+tool = "@ability_state"
+args = { entity_id = "${dummy_id}" }
+pointer = "/state/ledger[ability_id=847]/stats[stat_id=12]/requested"
+op = "eq"
+value = -100
+[[row.expect]]
+id = "sent"
+text = "the press leaves the client"
+source = "client_event"
+event = "client.ability.sent"
+match_fields = { ability_id = 847 }
+since = "press"
+[[row.expect]]
+id = "wire-result"
+text = "the server sends Call Target's effect result"
+source = "packet"
+message = "onEffectResults"
+direction = "to_client"
+field = "ability_id"
+op = "eq"
+value = 847
+[[row.expect]]
+id = "applied-row"
+text = "stat_buff_applied on the dummy for this cast"
+source = "signoz"
+filter = "event = 'stat_buff_applied' AND effect_id = 903 AND cast_id = ${cast_id}"
+field = "target_id"
+op = "eq"
+value = "${dummy_id}"
+
+[[row]]
+id = "AB-U9b"
+title = "Dying takes Aim off at once"
+expected = "Aim is removed with reason died; the client's effect bar clears it."
+required_native = "G"
+notes = "The lab can only die to a real hit after a GM sets Health to 1 (client_die_and_respawn), so the step is G. A spawned NID Guard (template 24) lands the hit."
+setup = [
+  { chat = "/gmgiveability 637", tier = "G", optional = true },
+  { chat = ".spawn 24", tier = "G" },
+  { capture = "chat", regex = "spawned npc ([0-9]+)", var = "mob_id" },
+  { tool = "@use_ability", args = { ability_id = 637, place = true }, label = "place" },
+  { wait_ms = 2000 },
+]
+step = [
+  { tool = "@die_and_respawn", args = { setup_health = 1, respawn = "release" }, label = "die" },
+]
+teardown = [
+  { tool = "@cooldowns_reset" },
+  { chat = "/gmdespawn ${mob_id}", tier = "G", optional = true },
+]
+[[row.expect]]
+id = "died-row"
+text = "Aim was removed with reason died"
+source = "signoz"
+filter = "event = 'stat_buff_removed' AND effect_id = 700 AND reason = 'died' AND target_id = ${player_entity_id}"
+[[row.expect]]
+id = "client-clear"
+text = "the client's effect bar clears effect 700"
+source = "client_event"
+event = "client.ability.applied"
+match_fields = { kind = "effect_bar_clear", effect_id = 700 }
+since = "die"
+[[row.expect]]
+id = "server-cleared"
+text = "the server ledger no longer holds Aim"
+source = "server"
+tool = "@ability_state"
+pointer = "/state/ledger[ability_id=637]"
+op = "absent"
+[[row.expect]]
+id = "wire-dead"
+text = "the server sent a state-field update with the dead bit"
+source = "packet"
+message = "onStateFieldUpdate"
+direction = "to_client"
+entity = "${player_entity_id}"
+
+# ---------------------------------------------------------------- AB-U10
+
+[[row]]
+id = "AB-U10"
+title = "Pistol Shot with a forced miss, then a forced hit"
+expected = "No pool moves on the miss; exactly one damage path on the hit."
+blocked = "D-AU2 (.qr)"
+notes = "592 Pistol Shot at the dummy with `.qr miss`, then `.qr hit`. Needs the owner's D-AU2 decision on the `.qr` GM override."
+
+# ---------------------------------------------------------------- AB-U11
+# AB-03: 598 Quick Burst (effect 660, FocusDamage 200 / HealthDamage 20).
+# The AB-03 live-DB test pins 598, 717, 856 and 1879; 598 is the Soldier's.
+
+[[row]]
+id = "AB-U11"
+title = "Quick Burst deals its seeded damage to the dummy"
+expected = "Damage equals the seeded NVP (200 Focus, 20 Health); combat text shows it."
+notes = "A miss deals nothing (check qr_rolled)."
+setup = [
+  { chat = "/gmgiveability 598", tier = "G", optional = true },
+  { tool = "@dummy", args = { disposition = "hostile" } },
+  { tool = "@target", args = { entity_id = "${dummy_id}" } },
+  { tool = "@use_ability", args = { ability_id = 598, place = true }, label = "place" },
+  { wait_ms = 2000 },
+  { tool = "@cooldowns_reset", args = { ability_id = 598 } },
+]
+step = [
+  { tool = "@use_ability", args = { ability_id = 598, press = "key", fallback = "none" }, label = "press" },
+  { wait_ms = 2000 },
+]
+teardown = [
+  { tool = "@cooldowns_reset" },
+  { tool = "@dummy", args = { disposition = "clear" }, optional = true },
+]
+[[row.expect]]
+id = "seeded-focus"
+text = "the seed holds FocusDamage 200 for effect 660"
+source = "server"
+tool = "server_db_query"
+args = { sql = "SELECT value FROM resources.effect_nvps WHERE effect_id = 660 AND name = 'FocusDamage'" }
+pointer = "/rows/0/value"
+op = "eq"
+value = 200
+[[row.expect]]
+id = "combat-text"
+text = "the client shows combat text for Quick Burst"
+source = "client_event"
+event = "client.ability.shown"
+match_fields = { kind = "combat_text", ability_id = 598 }
+since = "press"
+[[row.expect]]
+id = "recv-result"
+text = "the client receives the effect result"
+source = "client_event"
+event = "client.ability.recv"
+match_fields = { method = "onEffectResults", ability_id = 598 }
+since = "press"
+[[row.expect]]
+id = "wire-result"
+text = "every effect result in the row is Quick Burst's"
+source = "packet"
+message = "onEffectResults"
+direction = "to_client"
+field = "ability_id"
+op = "eq"
+value = 598
+[[row.expect]]
+id = "resolved"
+text = "nvp_damage_resolved for this cast"
+source = "signoz"
+filter = "event = 'nvp_damage_resolved' AND cast_id = ${cast_id}"
+
+# ---------------------------------------------------------------- AB-U12
+# AB-03: 1879 Point Blank Shot (2393 direct 200/20; 2394 DoT 150/30 per tick,
+# 8 pulses of 1 s).
+
+[[row]]
+id = "AB-U12"
+title = "A DoT deals its per-pulse damage for every pulse"
+expected = "Per-pulse damage x pulses; pulse_ended."
+notes = "A miss runs no pulses (check qr_rolled)."
+setup = [
+  { chat = "/gmgiveability 1879", tier = "G", optional = true },
+  { tool = "@dummy", args = { disposition = "hostile" } },
+  { tool = "@target", args = { entity_id = "${dummy_id}" } },
+  { tool = "@use_ability", args = { ability_id = 1879, place = true }, label = "place" },
+  { wait_ms = 10000 },
+  { tool = "@cooldowns_reset", args = { ability_id = 1879 } },
+]
+step = [
+  { tool = "@use_ability", args = { ability_id = 1879, press = "key", fallback = "none" }, label = "press" },
+  { wait_ms = 10000 },
+]
+teardown = [
+  { tool = "@cooldowns_reset" },
+  { tool = "@dummy", args = { disposition = "clear" }, optional = true },
+]
+[[row.expect]]
+id = "seeded-tick"
+text = "the seed holds FocusDamage 150 per tick for effect 2394"
+source = "server"
+tool = "server_db_query"
+args = { sql = "SELECT value FROM resources.effect_nvps WHERE effect_id = 2394 AND name = 'FocusDamage'" }
+pointer = "/rows/0/value"
+op = "eq"
+value = 150
+[[row.expect]]
+id = "pulses"
+text = "the DoT ticks for this cast"
+source = "signoz"
+filter = "event = 'pulse_ticked' AND effect_id = 2394 AND cast_id = ${cast_id}"
+min_rows = 7
+max_rows = 8
+[[row.expect]]
+id = "pulse-ended"
+text = "then pulse_ended"
+source = "signoz"
+filter = "event = 'pulse_ended' AND effect_id = 2394 AND cast_id = ${cast_id}"
+[[row.expect]]
+id = "combat-text"
+text = "the client shows combat text for the ticks"
+source = "client_event"
+event = "client.ability.shown"
+match_fields = { kind = "combat_text" }
+since = "press"
+min_rows = 4
+timeout_ms = 10000
+[[row.expect]]
+id = "wire-results"
+text = "the server sends effect results for Point Blank Shot"
+source = "packet"
+message = "onEffectResults"
+direction = "to_client"
+min_rows = 2
+field = "ability_id"
+op = "eq"
+value = 1879
+
+# ---------------------------------------------------------------- AB-U13
+# AB-07: 869 Morale Boost (1215 HealFocus 35 % to allies in a Short radius,
+# 939 the same on the caster).
+
+[[row]]
+id = "AB-U13a"
+title = "Morale Boost heals an ally in range"
+expected = "ally_fanout reaches p2; p2's Focus rises."
+players = 2
+setup = [
+  { chat = "/gmgiveability 869", tier = "G", optional = true },
+  { chat = ".summon ${p2_character}", tier = "G" },
+  { wait_ms = 5000 },
+  { tool = "@use_ability", args = { ability_id = 869, place = true }, label = "place" },
+  { wait_ms = 3000 },
+  { tool = "@cooldowns_reset", args = { ability_id = 869 } },
+  { chat = "/gmsetfocus 100 0", tier = "G", client = "p2" },
+  { chat = "/gmsetfocus 100 0", tier = "G" },
+]
+step = [
+  { tool = "@use_ability", args = { ability_id = 869, press = "key", fallback = "none" }, label = "press" },
+  { wait_ms = 3000 },
+]
+teardown = [
+  { tool = "@cooldowns_reset" },
+]
+[[row.expect]]
+id = "fanout"
+text = "the radius heal fanned out to an ally"
+source = "signoz"
+filter = "event = 'effect_planned' AND path = 'ally_fanout' AND cast_id = ${cast_id}"
+[[row.expect]]
+id = "p2-focus"
+text = "p2's client shows Focus above 100"
+source = "tool"
+client = "p2"
+tool = "@player_state"
+pointer = "/focus"
+op = "gt"
+value = 100
+[[row.expect]]
+id = "p2-applied"
+text = "p2's own client applies a stat update"
+source = "client_event"
+client = "p2"
+event = "client.ability.applied"
+match_fields = { kind = "stat" }
+since = "press"
+[[row.expect]]
+id = "own-focus"
+text = "the caster's Focus rises too"
+source = "server"
+tool = "@ability_state"
+pointer = "/state/stats[stat_id=8]/cur"
+op = "gt"
+value = 100
+[[row.expect]]
+id = "wire-sent"
+text = "useAbility reached the server"
+source = "packet"
+message = "useAbility"
+direction = "to_server"
+
+[[row]]
+id = "AB-U13b"
+title = "Morale Boost does not reach an ally out of range"
+expected = "No ally_fanout; p2's Focus does not move."
+players = 2
+notes = "p2 goes to Castle's entry point, so it is in another space from p1 (whose fresh character is in its own Castle_CellBlock instance unless summoned)."
+setup = [
+  { chat = "/gmgiveability 869", tier = "G", optional = true },
+  { chat = ".gotolocation Castle", tier = "G", client = "p2" },
+  { wait_ms = 15000 },
+  { tool = "@use_ability", args = { ability_id = 869, place = true }, label = "place" },
+  { wait_ms = 3000 },
+  { tool = "@cooldowns_reset", args = { ability_id = 869 } },
+  { chat = "/gmsetfocus 100 0", tier = "G", client = "p2" },
+]
+step = [
+  { tool = "@use_ability", args = { ability_id = 869, press = "key", fallback = "none" }, label = "press" },
+  { wait_ms = 3000 },
+]
+teardown = [
+  { tool = "@cooldowns_reset" },
+]
+[[row.expect]]
+id = "no-fanout"
+text = "no ally_fanout for this cast"
+source = "signoz"
+filter = "event = 'effect_planned' AND path = 'ally_fanout' AND cast_id = ${cast_id}"
+max_rows = 0
+[[row.expect]]
+id = "p2-focus"
+text = "p2's client still shows Focus near 100"
+source = "tool"
+client = "p2"
+tool = "@player_state"
+pointer = "/focus"
+op = "lt"
+value = 150
+[[row.expect]]
+id = "sent"
+text = "the press leaves p1's client"
+source = "client_event"
+event = "client.ability.sent"
+match_fields = { ability_id = 869 }
+since = "press"
+[[row.expect]]
+id = "own-focus"
+text = "the caster's half still lands"
+source = "server"
+tool = "@ability_state"
+pointer = "/state/stats[stat_id=8]/cur"
+op = "gt"
+value = 0
+[[row.expect]]
+id = "wire-sent"
+text = "useAbility reached the server"
+source = "packet"
+message = "useAbility"
+direction = "to_server"
+
+# ---------------------------------------------------------------- AB-U14
+# AB-08/10: 1016 Shield: Physical, a toggle (cooldown 2 s, warmup 2 s;
+# effect 4270 TimedStat Mitigation, held).
+
+[[row]]
+id = "AB-U14"
+title = "A toggle turns on, off and on again"
+expected = "The held entry comes and goes; stats restore exactly."
+setup = [
+  { chat = "/gmgiveability 1016", tier = "G", optional = true },
+  { tool = "@use_ability", args = { ability_id = 1016, place = true }, label = "place" },
+  { wait_ms = 4000 },
+  { tool = "@clear_effects", args = { name = "${character}" } },
+  { tool = "@cooldowns_reset", args = { ability_id = 1016 } },
+]
+step = [
+  { tool = "@use_ability", args = { ability_id = 1016, press = "key", fallback = "none", observe_ms = 4000 }, label = "press" },
+  { wait_ms = 3000, label = "on1" },
+  { tool = "@use_ability", args = { ability_id = 1016, press = "key", fallback = "none", observe_ms = 4000 }, label = "press-off" },
+  { wait_ms = 3000, label = "off" },
+  { tool = "@use_ability", args = { ability_id = 1016, press = "key", fallback = "none", observe_ms = 4000 }, label = "press-on" },
+  { wait_ms = 3000, label = "on2" },
+]
+teardown = [
+  { tool = "@clear_effects", args = { name = "${character}" }, optional = true },
+  { tool = "@cooldowns_reset" },
+]
+[[row.expect]]
+id = "held-on1"
+text = "after the first press the toggle's entry is held"
+source = "server"
+at = "on1"
+tool = "@ability_state"
+pointer = "/state/ledger[ability_id=1016]/held"
+op = "truthy"
+[[row.expect]]
+id = "gone-off"
+text = "after the second press the entry is gone"
+source = "server"
+at = "off"
+tool = "@ability_state"
+pointer = "/state/ledger[ability_id=1016]"
+op = "absent"
+[[row.expect]]
+id = "held-on2"
+text = "after the third press it is held again"
+source = "server"
+at = "on2"
+tool = "@ability_state"
+pointer = "/state/ledger[ability_id=1016]/held"
+op = "truthy"
+[[row.expect]]
+id = "toggled-off"
+text = "the off press removed it with reason toggled_off"
+source = "signoz"
+filter = "event = 'stat_buff_removed' AND effect_id = 4270 AND reason = 'toggled_off' AND target_id = ${player_entity_id}"
+[[row.expect]]
+id = "presses"
+text = "three toggle presses"
+source = "signoz"
+filter = "event = 'toggle_pressed' AND ability_id = 1016 AND entity_id = ${player_entity_id}"
+min_rows = 3
+[[row.expect]]
+id = "client-sent"
+text = "all three presses leave the client"
+source = "client_event"
+event = "client.ability.sent"
+match_fields = { ability_id = 1016 }
+since = "press"
+min_rows = 3
+[[row.expect]]
+id = "wire-sent"
+text = "useAbility reached the server"
+source = "packet"
+message = "useAbility"
+direction = "to_server"
+min_rows = 3
+
+# ---------------------------------------------------------------- AB-U15
+# AB-08: stances carry the EFFECT_Stance moniker; a new one removes the old.
+# 1642 Stance: Soldier (2003-2005), 1458 Stance: Ranged Specialist (1749).
+
+[[row]]
+id = "AB-U15"
+title = "A second stance replaces the first"
+expected = "Stance A is removed by moniker; only stance B is held."
+setup = [
+  { chat = "/gmgiveability 1642", tier = "G", optional = true },
+  { chat = "/gmgiveability 1458", tier = "G", optional = true },
+  { tool = "@use_ability", args = { ability_id = 1642, place = true }, label = "place-a" },
+  { wait_ms = 3000 },
+  { tool = "@use_ability", args = { ability_id = 1458, place = true }, label = "place-b" },
+  { wait_ms = 2000 },
+  { tool = "@clear_effects", args = { name = "${character}" } },
+  { tool = "@cooldowns_reset" },
+]
+step = [
+  { tool = "@use_ability", args = { ability_id = 1642, press = "key", fallback = "none" }, label = "press" },
+  { wait_ms = 3000, label = "stance-a" },
+  { tool = "@use_ability", args = { ability_id = 1458, press = "key", fallback = "none" }, label = "press-b" },
+  { wait_ms = 2000, label = "stance-b" },
+]
+teardown = [
+  { tool = "@clear_effects", args = { name = "${character}" }, optional = true },
+  { tool = "@cooldowns_reset" },
+]
+[[row.expect]]
+id = "a-held"
+text = "stance A is held after its press"
+source = "server"
+at = "stance-a"
+tool = "@ability_state"
+pointer = "/state/ledger[ability_id=1642]/held"
+op = "truthy"
+[[row.expect]]
+id = "a-gone"
+text = "stance A is gone after B"
+source = "server"
+at = "stance-b"
+tool = "@ability_state"
+pointer = "/state/ledger[ability_id=1642]"
+op = "absent"
+[[row.expect]]
+id = "b-held"
+text = "only stance B is held"
+source = "server"
+at = "stance-b"
+tool = "@ability_state"
+pointer = "/state/ledger[ability_id=1458]/held"
+op = "truthy"
+[[row.expect]]
+id = "by-moniker"
+text = "stance A came off by moniker"
+source = "signoz"
+filter = "event = 'stat_buff_removed' AND reason = 'removed_by_moniker' AND target_id = ${player_entity_id}"
+[[row.expect]]
+id = "client-sent"
+text = "both presses leave the client"
+source = "client_event"
+event = "client.ability.sent"
+since = "press"
+min_rows = 2
+[[row.expect]]
+id = "wire-sent"
+text = "useAbility reached the server"
+source = "packet"
+message = "useAbility"
+direction = "to_server"
+min_rows = 2
+
+# ---------------------------------------------------------------- AB-U16
+# AB-08: 1574 Defensive Upgrade: Create Density: Basic, a passive (effect
+# 4782, Defense +100, EF_AlwaysPersist, no icon).
+
+[[row]]
+id = "AB-U16"
+title = "A passive applies at login with no icon, and a press is refused"
+expected = "Applied at login, no icon; a press is refused with the passive line."
+relog = "same"
+setup = [
+  { chat = "/gmgiveability 1574", tier = "G", optional = true },
+  { tool = "@use_ability", args = { ability_id = 1574, place = true }, label = "place" },
+]
+step = [
+  { tool = "@logout", label = "logout" },
+  { tool = "@play", args = { name = "${character}" }, label = "relog" },
+  { wait_ms = 3000 },
+  { tool = "@use_ability", args = { ability_id = 1574, press = "key", fallback = "none" }, label = "press" },
+  { wait_ms = 2000 },
+]
+[[row.expect]]
+id = "held-at-login"
+text = "the passive's entry is held after the relog"
+source = "server"
+tool = "@ability_state"
+pointer = "/state/ledger[ability_id=1574]/held"
+op = "truthy"
+[[row.expect]]
+id = "no-icon"
+text = "the client draws no effect-bar entry for it"
+source = "client_event"
+event = "client.ability.applied"
+match_fields = { kind = "effect_bar_add", effect_id = 4782 }
+since = "relog"
+max_rows = 0
+timeout_ms = 1000
+[[row.expect]]
+id = "refused-line"
+text = "the press shows the passive feedback line"
+source = "client_event"
+event = "client.ability.shown"
+match_fields = { kind = "feedback_line", text = "*passive*" }
+since = "press"
+[[row.expect]]
+id = "refused-row"
+text = "no_mechanics_refused with reason passive_ability"
+source = "signoz"
+filter = "event = 'no_mechanics_refused' AND ability_id = 1574"
+field = "reason"
+op = "eq"
+value = "passive_ability"
+
+# ---------------------------------------------------------------- AB-U17
+# AB-09a: 856 Takedown (2608 Knockdown 5 s, 919 damage 100/10).
+
+[[row]]
+id = "AB-U17"
+title = "Takedown locks the dummy's movement, then releases it"
+expected = "BSF_MovementLock set, then cleared with refcount 0, on both sides."
+notes = "A miss lands nothing (check qr_rolled)."
+setup = [
+  { chat = "/gmgiveability 856", tier = "G", optional = true },
+  { tool = "@dummy", args = { disposition = "hostile" } },
+  { tool = "@target", args = { entity_id = "${dummy_id}" } },
+  { tool = "@use_ability", args = { ability_id = 856, place = true }, label = "place" },
+  { wait_ms = 7000 },
+  { tool = "@cooldowns_reset", args = { ability_id = 856 } },
+]
+step = [
+  { tool = "@use_ability", args = { ability_id = 856, press = "key", fallback = "none" }, label = "press" },
+  { wait_ms = 1000, label = "locked" },
+  { wait_ms = 6000, label = "released" },
+]
+teardown = [
+  { tool = "@cooldowns_reset" },
+  { tool = "@dummy", args = { disposition = "clear" }, optional = true },
+]
+[[row.expect]]
+id = "server-locked"
+text = "the server holds one BSF_MovementLock reference on the dummy"
+source = "server"
+at = "locked"
+tool = "@ability_state"
+args = { entity_id = "${dummy_id}" }
+pointer = "/state/state_flag_refcounts[bit=6]/count"
+op = "eq"
+value = 1
+[[row.expect]]
+id = "server-released"
+text = "the reference is gone after 5 s"
+source = "server"
+at = "released"
+tool = "@ability_state"
+args = { entity_id = "${dummy_id}" }
+pointer = "/state/state_flag_refcounts[bit=6]"
+op = "absent"
+[[row.expect]]
+id = "client-set"
+text = "the client sets the dummy's movement lock (64)"
+source = "client_event"
+event = "client.ability.applied"
+match_fields = { kind = "state_flag", entity_id = "${dummy_id}", set = 64 }
+since = "press"
+[[row.expect]]
+id = "client-cleared"
+text = "the client clears it"
+source = "client_event"
+event = "client.ability.applied"
+match_fields = { kind = "state_flag", entity_id = "${dummy_id}", cleared = 64 }
+since = "press"
+timeout_ms = 8000
+[[row.expect]]
+id = "wire-flags"
+text = "the server broadcast the dummy's state field (set and clear)"
+source = "packet"
+message = "onStateFieldUpdate"
+direction = "to_client"
+entity = "${dummy_id}"
+min_rows = 2
+[[row.expect]]
+id = "cc-row"
+text = "crowd_control_applied for this cast"
+source = "signoz"
+filter = "event = 'crowd_control_applied' AND cast_id = ${cast_id}"
+
+# ---------------------------------------------------------------- AB-U18
+
+[[row]]
+id = "AB-U18"
+title = "Takedown on a live, fighting mob stops it moving and firing"
+expected = "The mob neither moves nor fires for the knockdown's 5 s."
+notes = "The plan's 'mid-warmup' half cannot be staged: no seeded NPC ability set has a warmup ability (sets 1-5 and 350-352; 353 is the Lo'taur pet's heals). The NID Guard (template 24) fights with set 3. God mode keeps the lab character alive."
+setup = [
+  { chat = "/gmgiveability 856", tier = "G", optional = true },
+  { chat = "/gmsetgodmode 1", tier = "G" },
+  { chat = ".spawn 24", tier = "G" },
+  { capture = "chat", regex = "spawned npc ([0-9]+)", var = "mob_id" },
+  { tool = "@target", args = { entity_id = "${mob_id}" } },
+  { tool = "@use_ability", args = { ability_id = 856, place = true }, label = "place" },
+  { wait_ms = 7000 },
+  { tool = "@cooldowns_reset", args = { ability_id = 856 } },
+]
+step = [
+  { tool = "@use_ability", args = { ability_id = 856, press = "key", fallback = "none" }, label = "press" },
+  { wait_ms = 6000 },
+]
+teardown = [
+  { chat = "/gmsetgodmode 0", tier = "G" },
+  { tool = "@cooldowns_reset" },
+  { chat = "/gmdespawn ${mob_id}", tier = "G", optional = true },
+]
+[[row.expect]]
+id = "held"
+text = "the mob's fight tick held while knocked down"
+source = "signoz"
+filter = "decision_outcome = 'stunned' AND entity_id = ${mob_id}"
+[[row.expect]]
+id = "client-set"
+text = "the client sets the mob's movement lock"
+source = "client_event"
+event = "client.ability.applied"
+match_fields = { kind = "state_flag", entity_id = "${mob_id}", set = 64 }
+since = "press"
+[[row.expect]]
+id = "wire-flags"
+text = "the server broadcast the mob's state field"
+source = "packet"
+message = "onStateFieldUpdate"
+direction = "to_client"
+entity = "${mob_id}"
+[[row.expect]]
+id = "cc-row"
+text = "crowd_control_applied for this cast"
+source = "signoz"
+filter = "event = 'crowd_control_applied' AND cast_id = ${cast_id}"
+
+# ---------------------------------------------------------------- AB-U19
+# AB-09b: 717 Snare Shot (effect 1462, TimedStat MovementSpeedMod -30 for
+# 15 s; 744 damage 100/10).
+
+[[row]]
+id = "AB-U19"
+title = "Snare Shot slows a mob"
+expected = "movementSpeedMod -30 on the mob; it chases more slowly."
+notes = "A miss lands nothing (check qr_rolled). The slower chase is read from the server stat, not from positions."
+setup = [
+  { chat = "/gmgiveability 717", tier = "G", optional = true },
+  { chat = "/gmsetgodmode 1", tier = "G" },
+  { chat = ".spawn 24", tier = "G" },
+  { capture = "chat", regex = "spawned npc ([0-9]+)", var = "mob_id" },
+  { tool = "@target", args = { entity_id = "${mob_id}" } },
+  { tool = "@use_ability", args = { ability_id = 717, place = true }, label = "place" },
+  { wait_ms = 2000 },
+  { tool = "@clear_effects" },
+  { tool = "@cooldowns_reset", args = { ability_id = 717 } },
+]
+step = [
+  { tool = "@use_ability", args = { ability_id = 717, press = "key", fallback = "none" }, label = "press" },
+  { wait_ms = 2000 },
+]
+teardown = [
+  { chat = "/gmsetgodmode 0", tier = "G" },
+  { tool = "@cooldowns_reset" },
+  { chat = "/gmdespawn ${mob_id}", tier = "G", optional = true },
+]
+[[row.expect]]
+id = "mob-slowed"
+text = "the mob's ledger holds movementSpeedMod -30"
+source = "server"
+tool = "@ability_state"
+args = { entity_id = "${mob_id}" }
+pointer = "/state/ledger[ability_id=717]/stats[stat_id=6]/requested"
+op = "eq"
+value = -30
+[[row.expect]]
+id = "mob-speed"
+text = "the mob's movementSpeedMod is 70"
+source = "server"
+tool = "@ability_state"
+args = { entity_id = "${mob_id}" }
+pointer = "/state/stats[stat_id=6]/cur"
+op = "eq"
+value = 70
+[[row.expect]]
+id = "sent"
+text = "the press leaves the client"
+source = "client_event"
+event = "client.ability.sent"
+match_fields = { ability_id = 717 }
+since = "press"
+[[row.expect]]
+id = "wire-result"
+text = "the server sends Snare Shot's effect result"
+source = "packet"
+message = "onEffectResults"
+direction = "to_client"
+field = "ability_id"
+op = "eq"
+value = 717
+[[row.expect]]
+id = "applied-row"
+text = "stat_buff_applied for the snare"
+source = "signoz"
+filter = "event = 'stat_buff_applied' AND effect_id = 1462 AND cast_id = ${cast_id}"
+
+# ---------------------------------------------------------------- AB-U20
+
+[[row]]
+id = "AB-U20"
+title = "Interrupting Shot during a mob's warmup"
+expected = "Ability_Interrupt sent and received."
+blocked = "no warmup-casting NPC: the dummy never casts and no seeded NPC ability set has a warmup ability"
+notes = "657 Interrupting Shot (effect 723, Interrupt 100 %). Needs a hostile NPC that starts a warmup on cue (a lab NPC set, or a two-player duel); the plan's 'dummy's warmup' cannot happen, since the dummy gets no AI turn."
+
+# ---------------------------------------------------------------- AB-U21
+# AB-10: 1013 Personal Shield (warmup 4 s, cooldown 20 s; effect 4306
+# AbsorbShield 500 Physical/Energy/Hazmat for 30 s).
+
+[[row]]
+id = "AB-U21a"
+title = "Personal Shield absorbs damage before Focus"
+expected = "The absorb pool drains before Focus."
+notes = "The NID Guard (template 24) fights back once Strike pulls it; .aggro off keeps it idle until then."
+setup = [
+  { chat = "/gmgiveability 1013", tier = "G", optional = true },
+  { chat = ".aggro off", tier = "G" },
+  { chat = ".spawn 24", tier = "G" },
+  { capture = "chat", regex = "spawned npc ([0-9]+)", var = "mob_id" },
+  { tool = "@use_ability", args = { ability_id = 1013, place = true, observe_ms = 6000 }, label = "place" },
+  { tool = "@use_ability", args = { ability_id = 594, place = true }, label = "place-strike" },
+  { tool = "@clear_effects", args = { name = "${character}" } },
+  { tool = "@cooldowns_reset" },
+]
+step = [
+  { tool = "@use_ability", args = { ability_id = 1013, press = "key", fallback = "none", observe_ms = 6000 }, label = "press" },
+  { tool = "@target", args = { entity_id = "${mob_id}" }, label = "target-mob" },
+  { tool = "@use_ability", args = { ability_id = 594, press = "key", fallback = "none" }, label = "pull" },
+  { wait_ms = 10000 },
+]
+teardown = [
+  { chat = ".aggro on", tier = "G" },
+  { tool = "@clear_effects", args = { name = "${character}" }, optional = true },
+  { tool = "@cooldowns_reset" },
+  { chat = "/gmdespawn ${mob_id}", tier = "G", optional = true },
+]
+[[row.expect]]
+id = "absorbed"
+text = "the shield absorbed damage"
+source = "signoz"
+filter = "event IN ('shield_absorbed', 'shield_absorbed_damage') AND target_id = ${player_entity_id}"
+[[row.expect]]
+id = "granted"
+text = "the shield was granted for this cast"
+source = "signoz"
+filter = "event = 'shield_granted' AND cast_id = ${cast_id}"
+[[row.expect]]
+id = "pool-drained"
+text = "the first pool holds less than 500"
+source = "server"
+tool = "@ability_state"
+pointer = "/state/ledger[ability_id=1013]/absorb/0/remaining"
+op = "lt"
+value = 500
+[[row.expect]]
+id = "client-icon"
+text = "the client's effect bar adds the shield"
+source = "client_event"
+event = "client.ability.applied"
+match_fields = { kind = "effect_bar_add", effect_id = 4306 }
+since = "press"
+[[row.expect]]
+id = "wire-timer"
+text = "the server sends the shield's timer"
+source = "packet"
+message = "onTimerUpdate"
+direction = "to_client"
+entity = "${player_entity_id}"
+[[row.expect]]
+id = "drained"
+text = "if the pools ran dry, the entry came off as drained (not graded)"
+source = "signoz"
+required = false
+filter = "event = 'stat_buff_removed' AND effect_id = 4306 AND reason = 'drained' AND target_id = ${player_entity_id}"
+
+[[row]]
+id = "AB-U21b"
+title = "A second Personal Shield while the first is full is refused with feedback"
+expected = "Refused with a feedback line and no cooldown."
+setup = [
+  { chat = "/gmgiveability 1013", tier = "G", optional = true },
+  { tool = "@use_ability", args = { ability_id = 1013, place = true, observe_ms = 6000 }, label = "place" },
+  { tool = "@cooldowns_reset", args = { ability_id = 1013 } },
+]
+step = [
+  { tool = "@use_ability", args = { ability_id = 1013, press = "key", fallback = "none" }, label = "press" },
+  { wait_ms = 2000 },
+]
+teardown = [
+  { tool = "@clear_effects", args = { name = "${character}" }, optional = true },
+  { tool = "@cooldowns_reset" },
+]
+[[row.expect]]
+id = "refused"
+text = "shield_full_refused for this press"
+source = "signoz"
+filter = "event = 'shield_full_refused' AND ability_id = 1013 AND entity_id = ${player_entity_id}"
+[[row.expect]]
+id = "feedback"
+text = "the client shows a feedback line"
+source = "client_event"
+event = "client.ability.shown"
+match_fields = { kind = "feedback_line" }
+since = "press"
+[[row.expect]]
+id = "no-cooldown"
+text = "the client applies no cooldown for 1013 after the press"
+source = "client_event"
+event = "client.ability.applied"
+match_fields = { kind = "cooldown", ability_id = 1013 }
+since = "press"
+max_rows = 0
+timeout_ms = 2000
+[[row.expect]]
+id = "server-no-cooldown"
+text = "the server holds no cooldown for 1013"
+source = "server"
+tool = "@ability_state"
+pointer = "/state/cooldowns[ability_id=1013]"
+op = "absent"
+[[row.expect]]
+id = "wire-error"
+text = "the server sent an error code"
+source = "packet"
+message = "onErrorCode"
+direction = "to_client"
+entity = "${player_entity_id}"
+
+# ---------------------------------------------------------------- AB-U22
+
+[[row]]
+id = "AB-U22"
+title = "Clear: Mind removes the named count of Mental effects"
+expected = "Exactly the named count removed, reason cleansed."
+blocked = "no lab path puts a Mental debuff on a player: no seeded NPC set casts one, and a p2 cast needs a duel the lab cannot accept yet"
+notes = "2099 Clear: Mind (effect 2827, RemoveEffects Mental:5, Harmful). The Mental-tagged debuffs (643 Induce Caution, 753 Induce Panic, 754 Induce Mass Caution, 891 Suppression Shot, ...) are player abilities."
+
+# ---------------------------------------------------------------- AB-U23
+
+[[row]]
+id = "AB-U23"
+title = "The combat-debug line matches the abilities.debug row"
+expected = "The feedback-channel debug line in chat matches the abilities.debug row for the same cast_id."
+blocked = "AB-N1"
+notes = "/gmdebugcombat from the GM character, then 592 Pistol Shot. AB-N1 (the server's combat-debug lines) is not built yet."
+
+# ---------------------------------------------------------------- AB-U24, AB-U25
+
+[[row]]
+id = "AB-U24"
+title = "Regeneration"
+expected = "Focus recharges in combat after the delay; Health regenerates out of combat."
+blocked = "D-AB03"
+notes = "AB-05 waits on the owner's regen rates."
+
+[[row]]
+id = "AB-U25"
+title = "A floating heal number on the other player"
+expected = "p2's client shows a heal number."
+blocked = "AB-E1, AB-11"
+players = 2

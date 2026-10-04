@@ -346,6 +346,7 @@ Rows authored in [docs/guides/uat-specs/](uat-specs/), 2026-09-29, and what a `p
 | `consumables` | I1 | I2 (`@item_action`, `@inventory`) |
 | `cooked-data` | CD3, CD6 | CD1, CD5 (`@cache_files`), CD2 (owner-only files), CD4 (`@cache_files`, `@world_click`) |
 | `castle-cellblock` | T01/T02 (makes and deletes its own character) | |
+| `ability-mechanics` (fresh Soldier, 2026-10-04) | 22 one-player rows: AB-U1a-c, AB-U3a-c, AB-U5 to AB-U9b, AB-U11, AB-U12, AB-U14 to AB-U19, AB-U21a/b | AB-U1d, AB-U2, AB-U4, AB-U13a/b (second player); AB-U10 (D-AU2), AB-U20 (no warmup-casting NPC), AB-U22 (no Mental debuff source), AB-U23 (AB-N1), AB-U24 (D-AB03), AB-U25 (AB-E1, AB-11) |
 
 22 rows are ready and 12 are blocked. None of them has run against a live client yet. The first live run should take them in this order, each proving one more part of the runner:
 
