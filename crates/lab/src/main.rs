@@ -105,7 +105,7 @@ fn build_server() -> Result<LabServer> {
     let token = std::env::var("CIMMERIA_LAB_TOKEN").unwrap_or_default();
     if token.is_empty() {
         tracing::warn!(
-            "CIMMERIA_LAB_TOKEN is unset; attaching to a pre-existing client will              fail until lab_client_start mints its own token"
+            "CIMMERIA_LAB_TOKEN is unset; attaching to a pre-existing client will fail until lab_client_start mints its own token"
         );
     }
     tracing::info!(%addr, install_dir = ?config.install_dir, instance = ?config.instance,

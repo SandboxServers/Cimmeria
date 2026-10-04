@@ -14,7 +14,7 @@ Give the agent hands, eyes, and a body in a live game session, so the research r
 Three pieces:
 
 1. **Client bridge.** An inbound command channel added to the already-injected `cimmeria-client-telemetry` DLL, behind a `lab-bridge` cargo feature. It evaluates Lua on the client main thread, reads and writes memory, installs non-freezing logging hooks at any address, and calls native functions. Lua eval is the hot-loadable probe layer: new client probes need no rebuild.
-2. **Lab supervisor** (`cimmeria-lab`). A stdio MCP server on the dev box. It launches, injects, logs in, watches, screenshots, and restarts SGW.exe, and proxies tool calls to the bridge. It outlives client crashes, which is what makes unattended recovery possible.
+2. **Lab supervisor** (`cimmeria-lab`). An MCP server on the dev box: stdio per session, or one shared token-gated loopback HTTP daemon (`cimmeria-lab --http`) that every session reaches. It launches, injects, logs in, watches, screenshots, and restarts SGW.exe, and proxies tool calls to the bridge. It outlives client crashes, which is what makes unattended recovery possible.
 3. **Server lab endpoint** (`cimmeria-lab-mcp`). An MCP endpoint inside `cimmeria-server` with a fixed tool set: dot-console passthrough with captured output, live entity and witness queries, per-session packet taps, log tail, read-only SQL. Token-gated, bound only to an address the operator names, reachable on the colo over WireGuard only.
 
 Sequencing is RE first: the client track (Phases 1 to 3) lands before the server track (Phases 4 and 5), though the two tracks are independent and can run in parallel.
@@ -109,7 +109,7 @@ Lives at `crates/client-telemetry/src/bridge/` (directory from day one: `mod.rs`
 
 ### 3.4 Lab supervisor (`crates/lab`, binary `cimmeria-lab`)
 
-A Windows-only stdio MCP server. It reuses the launcher's `launch` and `inject` modules, which move into a library target so both binaries share them. It owns the SGW.exe process handle for the whole session.
+A Windows-only MCP server, over stdio (one per session, the original setup) or as one shared daemon over streamable HTTP (`cimmeria-lab --http <127.0.0.1:port>`, run as a per-user scheduled task by `tools/lab/daemon.ps1`; loopback only, bearer token `CIMMERIA_LAB_DAEMON_TOKEN`, one per logon session). It reuses the launcher's `launch` and `inject` modules, which move into a library target so both binaries share them. It owns the SGW.exe process handle for the whole session.
 
 **Injection goes through the i686 `sgw-start32` helper (#985).** The supervisor is 64-bit and `SGW.exe` is 32-bit. A direct injection hands the remote thread the supervisor's own `LoadLibraryW`, which does not exist in a 32-bit process, and a suspended WOW64 target has no 32-bit kernel32 mapped to resolve it from, so until #985 the supervisor's own launch path never loaded the bridge (lab evidence came from manual injection). `lab_client_start` now runs the helper, as `sgw-launcher` does since #984: `start32::run` with the bridge DLL, then `RunningProcess::open` on the pid it reports. The helper lives beside `cimmeria-lab.exe` or at `CIMMERIA_LAB_START32`; the contract is in [crates/client-launch/README.md](../../crates/client-launch/README.md).
 

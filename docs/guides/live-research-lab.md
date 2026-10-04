@@ -757,7 +757,9 @@ What the daemon refuses:
 pwsh tools/lab/daemon.ps1 install   # copy the exe, make the token, import env, register + start the task
 pwsh tools/lab/daemon.ps1 status    # task state, pid, port, token present, last log lines
 pwsh tools/lab/daemon.ps1 restart   # pick up a newer build (see below)
-pwsh tools/lab/daemon.ps1 stop | start | uninstall
+pwsh tools/lab/daemon.ps1 stop
+pwsh tools/lab/daemon.ps1 start
+pwsh tools/lab/daemon.ps1 uninstall
 ```
 
 `install` registers the per-user scheduled task `CimmeriaLabDaemon`: it

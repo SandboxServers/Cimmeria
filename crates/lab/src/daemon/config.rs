@@ -34,7 +34,11 @@ pub fn evaluate(bind: &str, token: Option<String>) -> Result<(SocketAddr, String
     let addr: SocketAddr = bind
         .parse()
         .map_err(|e| format!("--http {bind:?} is not an ip:port address ({e})"))?;
-    if !addr.ip().is_loopback() {
+    // Exactly 127.0.0.1 or ::1, not the whole 127/8: the Host allowlist
+    // (LOOPBACK_HOSTS) names only these, so a daemon on 127.0.0.2 would start
+    // and then answer every request 403.
+    let ip = addr.ip();
+    if ip != std::net::Ipv4Addr::LOCALHOST && ip != std::net::Ipv6Addr::LOCALHOST {
         return Err(format!(
             "--http {addr}: the lab daemon binds loopback only (127.0.0.1 or ::1); \
              it drives a desktop client and must never be reachable off this machine"
@@ -121,7 +125,14 @@ mod tests {
     /// Regression guard: the daemon must never listen off loopback.
     #[test]
     fn a_non_loopback_bind_is_refused() {
-        for bind in ["0.0.0.0:8779", "10.0.0.5:8779", "[::]:8779"] {
+        // 127.0.0.2 is loopback but not in the Host allowlist: it would
+        // start and then refuse every request.
+        for bind in [
+            "0.0.0.0:8779",
+            "10.0.0.5:8779",
+            "[::]:8779",
+            "127.0.0.2:8779",
+        ] {
             let e = evaluate(bind, tok(64)).unwrap_err();
             assert!(e.contains("loopback only"), "{bind}: {e}");
         }

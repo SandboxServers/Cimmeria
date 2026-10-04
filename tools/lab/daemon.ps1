@@ -15,7 +15,8 @@
                             rebuild in target\ nor tools/lab/install.ps1
                             (which writes bin\) is blocked by the running
                             daemon; `restart` picks up the newer build
-      labd\daemon.ps1       this script, which the task runs (`run`)
+      labd\daemon.ps1       this script, which the task runs (`run`), and
+      labd\labd-lib.ps1     its helpers (tested by tools/lab/test-labd-lib.ps1)
       labd.env              KEY=VALUE lines: the supervisor's environment
                             (CIMMERIA_LAB_INSTALL_DIR, _START32, ...)
       labd.log              the daemon log (rotates at 10 MiB, 5 kept)
@@ -65,6 +66,7 @@ param(
 )
 
 $ErrorActionPreference = 'Stop'
+. (Join-Path $PSScriptRoot 'labd-lib.ps1')
 
 $TaskName = 'CimmeriaLabDaemon'
 $TokenVar = 'CIMMERIA_LAB_DAEMON_TOKEN'
@@ -88,7 +90,7 @@ function Get-RepoRoot {
 
 function Write-TaskLog([string]$msg) {
     $line = '{0:yyyy-MM-ddTHH:mm:ss} {1}' -f (Get-Date), $msg
-    Add-Content -Path $TaskLog -Value $line -Encoding ascii
+    [System.IO.File]::AppendAllText($TaskLog, $line + "`r`n", $script:Utf8NoBom)
     $item = Get-Item $TaskLog -ErrorAction SilentlyContinue
     if ($item -and $item.Length -gt 1MB) {
         Move-Item -Force $TaskLog "$TaskLog.1"
@@ -114,30 +116,25 @@ function Read-DaemonPid {
 }
 
 function Import-EnvFile {
-    if (-not (Test-Path $EnvFile)) { return }
-    foreach ($line in Get-Content $EnvFile) {
-        $l = $line.Trim()
-        if (-not $l -or $l.StartsWith('#')) { continue }
-        $i = $l.IndexOf('=')
-        if ($i -lt 1) { continue }
-        [Environment]::SetEnvironmentVariable($l.Substring(0, $i).Trim(), $l.Substring($i + 1), 'Process')
+    # UTF-8 (no BOM) both ways: an install path with non-ASCII characters
+    # must reach the daemon intact (labd-lib.ps1).
+    $map = Read-LabdEnvFile $EnvFile
+    foreach ($k in $map.Keys) {
+        [Environment]::SetEnvironmentVariable($k, $map[$k], 'Process')
     }
 }
 
 function Write-EnvFile([string]$from) {
     $lines = @(
-        '# Environment for the shared lab daemon (tools/lab/daemon.ps1).',
+        '# Environment for the shared lab daemon (tools/lab/daemon.ps1). UTF-8.',
         '# KEY=VALUE per line; the same variables the stdio cimmeria-lab took',
         '# from its .mcp.json env block. Restart the daemon after editing.'
     )
     if ($from -and (Test-Path $from)) {
-        $json = Get-Content -Raw $from | ConvertFrom-Json
-        $entry = $json.mcpServers.'cimmeria-lab'
-        if ($entry -and $entry.env) {
-            foreach ($p in $entry.env.PSObject.Properties) {
-                $lines += '{0}={1}' -f $p.Name, $p.Value
-            }
-            Write-Host "labd.env: imported $(@($entry.env.PSObject.Properties).Count) variables from $from"
+        $imported = Get-McpEnvLines ([System.IO.File]::ReadAllText($from, $script:Utf8NoBom))
+        if ($imported) {
+            $lines += $imported
+            Write-Host "labd.env: imported $($imported.Count) variables from $from"
         } else {
             Write-Warning "$from has no stdio cimmeria-lab env block; labd.env is a stub, fill it in"
         }
@@ -146,7 +143,7 @@ function Write-EnvFile([string]$from) {
         $lines += '# CIMMERIA_LAB_INSTALL_DIR=C:\path\to\Stargate Worlds'
         $lines += '# CIMMERIA_LAB_START32=C:\path\to\sgw-start32.exe'
     }
-    Set-Content -Path $EnvFile -Value $lines -Encoding ascii
+    Write-LabdEnvFile $EnvFile $lines
 }
 
 function Get-DefaultExe {
@@ -180,9 +177,14 @@ function Stop-Daemon {
     $info = Read-DaemonPid
     if ($info -and $info.pid) {
         $p = Get-Process -Id $info.pid -ErrorAction SilentlyContinue
-        if ($p -and $p.ProcessName -eq 'cimmeria-lab') {
+        # labd.pid outlives a daemon that died abruptly, and the pid may now
+        # belong to someone else's stdio cimmeria-lab: kill it only when it
+        # runs our labd\ copy and started just before labd.pid was written.
+        if (Test-DaemonProcess $info $p $DaemonExe) {
             Stop-Process -Id $info.pid -Force
             Write-Host "stopped daemon pid $($info.pid)"
+        } elseif ($p) {
+            Write-Warning "labd.pid names pid $($info.pid) ($($p.Path)), which is not the daemon; left running"
         }
     }
     # A daemon whose pidfile is gone still holds the exe open; stop any
@@ -191,6 +193,14 @@ function Stop-Daemon {
         Where-Object { $_.Path -eq $DaemonExe } |
         ForEach-Object { Stop-Process -Id $_.Id -Force; Write-Host "stopped daemon pid $($_.Id)" }
     Remove-Item -Force $PidFile -ErrorAction SilentlyContinue
+}
+
+function Copy-TaskScripts {
+    # The task runs labd\daemon.ps1, which dot-sources labd-lib.ps1 beside it.
+    if ((Resolve-Path $PSScriptRoot).Path -eq (Resolve-Path $Bin).Path) { return }
+    foreach ($f in 'daemon.ps1', 'labd-lib.ps1') {
+        Copy-Item -Force (Join-Path $PSScriptRoot $f) (Join-Path $Bin $f)
+    }
 }
 
 function Test-Port([string]$addr) {
@@ -204,7 +214,7 @@ switch ($Command) {
         New-Item -ItemType Directory -Force $State, $Bin | Out-Null
         Stop-Daemon
         Copy-DaemonExe $Exe
-        Copy-Item -Force $PSCommandPath (Join-Path $Bin 'daemon.ps1')
+        Copy-TaskScripts
 
         $token = Get-Token
         if (-not $token -or $token.Length -lt 32) {
@@ -263,8 +273,7 @@ switch ($Command) {
                 Copy-DaemonExe $src
             }
         }
-        $taskScript = Join-Path $Bin 'daemon.ps1'
-        if ($PSCommandPath -ne $taskScript) { Copy-Item -Force $PSCommandPath $taskScript }
+        Copy-TaskScripts
         Start-ScheduledTask -TaskName $TaskName
         Write-Host "restarted $TaskName; MCP sessions reconnect on their next call (or /mcp)"
     }
@@ -275,12 +284,16 @@ switch ($Command) {
         Write-Host "task ${TaskName}: $($task.State) (last result $($ti.LastTaskResult), last run $($ti.LastRunTime))"
         $info = Read-DaemonPid
         if ($info) {
-            $alive = [bool](Get-Process -Id $info.pid -ErrorAction SilentlyContinue)
+            $p = Get-Process -Id $info.pid -ErrorAction SilentlyContinue
+            $alive = Test-DaemonProcess $info $p $DaemonExe
             Write-Host "daemon: pid $($info.pid) on $($info.bind), alive=$alive, since $($info.started_at)"
         } else {
             Write-Host 'daemon: no pidfile (not running)'
         }
-        Write-Host "port $Bind listening: $(Test-Port $Bind)"
+        # The running daemon's own address (it may have been installed with
+        # -Bind), not this command line's default.
+        $probe = Get-DaemonBind $info $Bind
+        Write-Host "port $probe listening: $(Test-Port $probe)"
         Write-Host "token ($TokenVar): $(if (Get-Token) { 'set' } else { 'MISSING' })"
         if (Test-Path $LogFile) {
             Write-Host "--- last lines of $LogFile"
