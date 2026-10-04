@@ -1,0 +1,312 @@
+## family damage
+generated: 178 effects
+    660 -           FocusDamage 200, HealthDamage 20 "Single Target\n-200F / -20H"
+    674 -           FocusDamage 200, HealthDamage 20 "Single Target Damage\n-200F / -20H"
+        note: the ability tooltip says "-300F / -30H"; the effect row is what executes
+    694 -           FocusDamage 200, HealthDamage 20 "Cone: Beam\nF-200 H-20"
+    704 -           FocusDamage 100, HealthDamage 10 "Single Target\nTarget -100F / -10H"
+    715 -           FocusDamage 100, HealthDamage 10 "Melee Damage\n-100F -10H"
+    719 -           FocusDamage 200, HealthDamage 20 "Single Target Damage\n-200F / -20H"
+    720 -           FocusDamage 300, HealthDamage 30 "Single Target\nTarget -300F / -30H"
+    722 -           FocusDamage 100, HealthDamage 10 "Single Target\n-100F / -10H"
+    724 -           FocusDamage 100, HealthDamage 10 "Wide Cone\n-100F / -10H"
+    732 -           FocusDamage 100, HealthDamage 10 "Single Target Channeled: 7 ticks\n-100F\n-10H"
+        note: per tick, 7 ticks of 0.8 s
+    739 -           FocusDamage 200, HealthDamage 20 "Single Target\n-200F / -20H"
+    742 -           FocusDamage 100, HealthDamage 10 "Single Target\n-100F\n-10H"
+    744 -           FocusDamage 100, HealthDamage 10 "Single Target\n-100F / -10H"
+    751 -           FocusDamage 50, HealthDamage 5 "Single Target\n-50F / -5H DoT: 10 Ticks"
+        note: per tick, 10 ticks of 1 s
+        note: the ability tooltip says "-100F / -10H"; the effect row is what executes
+    752 -           FocusDamage 100, HealthDamage 10 "Medium Cone\n-100F / -10H"
+    818 -           FocusDamage 150, HealthDamage 15 "Single Target\n-150F / -15H"
+    853 -           FocusDamage 300, HealthDamage 30 "Medium Radius AE\n-300F / -30H"
+    864 -           FocusDamage 100, HealthDamage 10 "Single Target Channeled Damage\n-100F / -10H per Pulse\n-5 Ammo per Pulse"
+        note: "-5 Ammo per Pulse" is a cost; no ability cost is modelled (B-04)
+        note: per tick on a single-shot row: one application deals one tick (channel ticks are not modelled)
+        note: the ability tooltip says "-50F / -5H per pulse"; the effect row is what executes
+    865 -           FocusDamage 100, HealthDamage 10 "Medium Cone Damage\n-100F / -10H per Pulse"
+        note: per tick on a single-shot row: one application deals one tick (channel ticks are not modelled)
+        note: the ability tooltip says "-50F / -5H per pulse"; the effect row is what executes
+    866 -           FocusDamage 150, HealthDamage 10 "Single Target Channeled: 20 Ticks\n-150F / -10H per Tick\n5 Ammo per Tick"
+        note: "5 Ammo per Tick" is a cost; no ability cost is modelled (B-04)
+        note: per tick, 20 ticks of 0.5 s
+        note: the ability tooltip says "-1500F / -150H"; the effect row is what executes
+    904 -           FocusDamage 500, HealthDamage 50 "Single Target Channeled\nTarget -500F / -50H"
+        note: per tick on a single-shot row: one application deals one tick (channel ticks are not modelled)
+        note: the ability tooltip says "-300F / -30H"; the effect row is what executes
+    906 -           FocusDamage 200, HealthDamage 20 "Medium Narrow Cone\n-200F\n-20H"
+    908 -           FocusDamage 800, HealthDamage 80 "Medium Radius AE\n-800F / -80H"
+    911 -           FocusDamage 500, HealthDamage 50 "Medium Cone\n-500F / -50H"
+    916 -           FocusDamage 500, HealthDamage 50 "Single Target\nTarget -500F / -50H"
+        note: the ability tooltip says "-200F / -20H"; the effect row is what executes
+    919 -           FocusDamage 100, HealthDamage 10 "Single Target Melee Damage\n-100F / -10H"
+    927 -           FocusDamage 800, HealthDamage 80 "Short Radius AE\n-800 F / -80 H"
+    930 -           FocusDamage 100, HealthDamage 10 "Single Target\n-100F / -10H"
+    943 -           FocusDamage 100, HealthDamage 10 "Single Target\n-100F / -10H"
+    975 -           FocusDamage 100        "Single Target\n-100F"
+        note: the ability tooltip says "-100F / -10H"; the effect row is what executes
+   1103 -           FocusDamage 100, HealthDamage 10 "Single Target Channeled: 7 ticks\n-100F\n-10H"
+        note: per tick, 7 ticks of 0.8 s
+        note: the ability tooltip says "-700F / -70H"; the effect row is what executes
+   1106 -           FocusDamage 100, HealthDamage 10 "-100F\n-10H\n50 Ammo"
+        note: "50 Ammo" is a cost; no ability cost is modelled (B-04)
+        note: the ability tooltip says "-1500F / -150H"; the effect row is what executes
+   1124 -           FocusDamage 200, HealthDamage 20 "Medium Narrow Cone\n-200F / -20H"
+   1194 -           FocusDamage 200, HealthDamage 20 "Cone Damage\n-200F / -20H"
+        note: the ability tooltip says "-300F / -30H"; the effect row is what executes
+   1196 -           FocusDamage 100, HealthDamage 10 "Single Target\n-100F / -10H"
+   1199 -           FocusDamage 800, HealthDamage 80 "Short Radius AE\n- 800F / - 80H"
+   1216 -           FocusDamage 100, HealthDamage 10 "Single Target\n-100F / -10H"
+   1217 -           FocusDamage 100, HealthDamage 10 "Medium Cone\n-100F / -10H"
+   1219 -           FocusDamage 100, HealthDamage 10 "Single Target\n-100F / -10H"
+   1336 -           FocusDamage 175, HealthDamage 20 "F-175\nH-20"
+   1382 -           FocusDamage 100, HealthDamage 10 "Single Target\nTarget F-100 / H-10"
+   1389 -           FocusDamage 500, HealthDamage 50 "Defensive Grenade Damage:\n-500 F / -50 H"
+   1391 -           FocusDamage 500, HealthDamage 50 "Gamma Strike Damage:\n-500 F / -50 H"
+   1401 -           FocusDamage 500, HealthDamage 50 "Targeted\n-500F / -50H"
+        note: the ability tooltip says "-300F / -30H"; the effect row is what executes
+   1409 -           FocusDamage 200, HealthDamage 20 "-200F -20H"
+   1455 -           FocusDamage 500, HealthDamage 50 "Melee Radius AE\n-500 F / -50 H"
+   1463 -           FocusDamage 800, HealthDamage 80 "Small Radius AE\n-800F / -80H"
+        note: the ability tooltip says "-500F / -50H"; the effect row is what executes
+   1568 -           FocusDamage 100, HealthDamage 10 "Medium Cone\nSecondary -100F / -10H"
+   1570 -           FocusDamage 100, HealthDamage 10 "Single Target\nTarget -100F / -10H"
+   1574 -           FocusDamage 100, HealthDamage 10 "Medium Narrow Cone\n-100F / -10H"
+   1575 -           FocusDamage 300, HealthDamage 30 "Melee Narrow Cone\n-300F / -30H"
+        note: the ability tooltip says "-100F / -10H"; the effect row is what executes
+   1595 -           FocusDamage 250, HealthDamage 25 "Single Target\nTarget -250F / -25H"
+   1597 -           FocusDamage 500, HealthDamage 50 "Target\n-500F / -50H"
+   1600 -           FocusDamage 300, HealthDamage 30 "Target\n-300F / -30H"
+   1601 -           FocusDamage 100, HealthDamage 10 "Target\n-100F / -10H\n8 Ticks x1 Second"
+        note: per tick, 8 ticks of 1 s
+        note: the ability tooltip says "-300F /-30H"; the effect row is what executes
+   1603 -           FocusDamage 100, HealthDamage 10 "Target\n-100F / -10H"
+   1605 -           FocusDamage 200, HealthDamage 20 "Single Target\n-200F / -20H"
+   1606 -           FocusDamage 100, HealthDamage 10 "Target\n-100F / -10H\n10 Ticks x1 Sec"
+        note: per tick, 10 ticks of 1 s
+        note: the ability tooltip says "-200F / -20H"; the effect row is what executes
+   1607 -           FocusDamage 500, HealthDamage 50 "Single Target\n-500F / -50H"
+   1620 -           FocusDamage 100, HealthDamage 10 "Secondary\n-100F / -10H"
+   1764 -           FocusDamage 200, HealthDamage 20 "Single Target\nTarget -200F / -20H"
+   1767 -           FocusDamage 100, HealthDamage 10 "Medium Cone\nSecondary -100F / -10H"
+   1770 -           FocusDamage 200, HealthDamage 20 "Secondary Target\n-200F\n-20H"
+   1772 -           FocusDamage 200, HealthDamage 20 "Single Target\n-200F\n-20H"
+   1781 -           FocusDamage 800, HealthDamage 80 "Large Radius AE\n- 800 F / - 80 H"
+   1785 -           FocusDamage 500, HealthDamage 50 "Wide Cone\n-500F / -50H"
+   1956 -           FocusDamage 200, HealthDamage 20 "-200F / -20H"
+   1963 -           FocusDamage 200, HealthDamage 20 "-200F / -20H\n10 Pulses"
+        note: per tick, 10 ticks of 0.5 s
+   1965 -           FocusDamage 100, HealthDamage 10 "-100F / -10H"
+        note: the ability tooltip says "-200F / -20H"; the effect row is what executes
+   1974 -           FocusDamage 100, HealthDamage 10 "Single Target\n-100F / -10H"
+   1977 -           FocusDamage 200, HealthDamage 20 "Single Target\n-200F\n-20H"
+   1978 -           FocusDamage 150, HealthDamage 15 "Single Target:\n-150F -15H"
+        note: the ability tooltip says "-100F / -10H"; the effect row is what executes
+   1986 -           FocusDamage 150, HealthDamage 15 "Single Target\n-150F / -15H"
+   1993 -           FocusDamage 500, HealthDamage 50 "Short Radius AE\n-500 F / -50 H"
+   1994 -           FocusDamage 800, HealthDamage 80 "Medium Radius AE\n-800 F / -80 H"
+   2136 -           FocusDamage 100, HealthDamage 10 "Cone Damage:\n-100 F -10H"
+   2137 -           FocusDamage 125, HealthDamage 15 "-125F -15H"
+   2138 -           FocusDamage 120, HealthDamage 20 "Single Target\n-120F\n-20H"
+   2140 -           FocusDamage 300, HealthDamage 30 "Secondary Targets\n-300F / -30H"
+        note: the ability tooltip says "-500F / -50H"; the effect row is what executes
+   2254 -           FocusDamage 350, HealthDamage 35 "-350 F\n-35 H"
+   2393 -           FocusDamage 200, HealthDamage 20 "Single Target\n-200F / -20H"
+   2394 -           FocusDamage 150, HealthDamage 30 "DOT: -150F -30H (8 Ticks)"
+        note: per tick, 8 ticks of 1 s
+   2404 -           FocusDamage 100, HealthDamage 10 "Damage\n-100F / -10H per Pulse\n-5 Ammo per Pulse"
+        note: "-5 Ammo per Pulse" is a cost; no ability cost is modelled (B-04)
+        note: per tick on a single-shot row: one application deals one tick (channel ticks are not modelled)
+   2405 -           FocusDamage 100, HealthDamage 10 "Medium Cone\n-100F / -10H per Pulse"
+        note: per tick on a single-shot row: one application deals one tick (channel ticks are not modelled)
+   2406 -           FocusDamage 50, HealthDamage 5 "-50F -5H 8 Ticks"
+        note: per tick, 8 ticks of 1 s
+        note: the ability tooltip says "-150F / -30H per pulse"; the effect row is what executes
+   2411 -           FocusDamage 50         "Focus DOT\n-50 F\n20 ticks"
+        note: per tick, 20 ticks of 0.5 s
+   2422 -           FocusDamage 200, HealthDamage 20 "F-200\nH-20"
+        note: the ability tooltip says "-150F / -30H per pulse"; the effect row is what executes
+   2465 -           FocusDamage 100, HealthDamage 10 "Single Target\n-100F / -10H"
+   2527 -           FocusDamage 100, HealthDamage 10 "Single Target\nTarget F-100 / H-10"
+        note: the ability tooltip says "-1500F / -150H"; the effect row is what executes
+   2586 -           FocusDamage 100, HealthDamage 10 "-100F -10H"
+   2611 -           FocusDamage 100        "Increased Threat +200\nFocus Damage -100"
+        note: "Increased Threat +200" is not modelled
+   2612 -           FocusDamage 100        "Increased Threat +400\nFocus Damage -100\nCone Narrow"
+        note: "Increased Threat +400" is not modelled
+   2615 -           FocusDamage 200, HealthDamage 20 "Single Target Damage\n-200F / -20H"
+   2616 -           FocusDamage 200, HealthDamage 20 "Cone Damage\n-200F / -20H"
+   2652 -           FocusDamage 100, HealthDamage 10 "-100F -10H"
+   2667 -           FocusDamage 200, HealthDamage 20 "AOE Damage\n-200 F -20 H"
+   2670 -           FocusDamage 500, HealthDamage 50 "Secondary Targets\n-500F / -50H"
+   2676 -           FocusDamage 1000, HealthDamage 100 "Medium Radius AE\n-1000 F / -100 H"
+        note: the ability tooltip says "-100 F -100 H"; the effect row is what executes
+   2677 -           FocusDamage 200, HealthDamage 20 "AOE Damage\n-200 F -20 H"
+   2695 -           FocusDamage 1000, HealthDamage 100 "Secondary Targets\n-1000F / -100H"
+   2699 -           FocusDamage 400, HealthDamage 40 "Single Target Damage\n-400F / -40H"
+   2700 -           FocusDamage 400, HealthDamage 40 "Cone Damage\n-400F / -40H"
+   2719 -           FocusDamage 500, HealthDamage 50 "Secondary Targets\n-500F / -50H"
+   2720 -           FocusDamage 150, HealthDamage 15 "-150 F / -15 H\n10 Ticks"
+        note: per tick, 10 ticks of 1 s
+   2729 -           FocusDamage 1500, HealthDamage 150 "Secondary Targets\n-1500F / -150H"
+   2730 -           FocusDamage 1500, HealthDamage 150 "Secondary Targets\n-1500F / -150H"
+   2731 -           FocusDamage 150, HealthDamage 15 "-150 F / -15 H\n10 Ticks"
+        note: per tick, 10 ticks of 1 s
+        note: the ability tooltip says "-1500F / -150H"; the effect row is what executes
+   2738 -           FocusDamage 1500, HealthDamage 150 "Secondary Targets\n-1500F / -150H"
+   2747 -           FocusDamage 150, HealthDamage 15 "F-150 H-15"
+   2750 -           FocusDamage 200, HealthDamage 20 "F-200 H-20"
+   2839 -           FocusDamage 500, HealthDamage 50 "Concussion Grenade Damage:\n- 500 F\n- 50 H"
+   2926 -           FocusDamage 200, HealthDamage 20 "Single Target Damage\n-200F / -20H"
+   2927 -           FocusDamage 200, HealthDamage 20 "Medium Cone Damage\n-200F / -20H"
+   3196 -           FocusDamage 100, HealthDamage 10 "Single Target\n-100F / -10H"
+   3204 -           FocusDamage 100, HealthDamage 10 "Single Target\n-100F / -10H"
+   3207 -           FocusDamage 100, HealthDamage 10 "Single Target\n-100F / -10H"
+   3209 -           FocusDamage 100, HealthDamage 10 "Single Target\n-100F / -10H"
+   3360 -           FocusDamage 200, HealthDamage 20 "Single Target\nTarget -200F / -20H"
+        note: the ability tooltip says "-20H"; the effect row is what executes
+   3361 -           FocusDamage 300, HealthDamage 30 "Single Target\nTarget -300F / -30H"
+        note: the ability tooltip says "-20H"; the effect row is what executes
+   3460 -           FocusDamage 100, HealthDamage 10 "Defensive Grenade Damage:\n- 100 F\n- 10 H"
+   3478 -           FocusDamage 50, HealthDamage 5 "-50F -5H 8 Ticks"
+        note: per tick, 8 ticks of 1 s
+        note: the ability tooltip says "-150F / -30H per pulse"; the effect row is what executes
+   3511 -           FocusDamage 500, HealthDamage 50 "Frag Grenade Damage:\n- 500 F\n- 50 H"
+   3514 -           FocusDamage 500, HealthDamage 50 "Grenade Damage:\n-500 F -50 H"
+   3536 -           FocusDamage 100, HealthDamage 10 "Single Target\n-100F / -10H"
+   3885 -           FocusDamage 200, HealthDamage 20 "Medium Narrow Cone\n-200F\n-20H"
+   3910 -           FocusDamage 500, HealthDamage 50 "Secondary Targets\n-500F / -50H"
+   3916 -           FocusDamage 500, HealthDamage 50 "Secondary Targets\n-500F / -50H"
+   3920 -           FocusDamage 1500, HealthDamage 150 "Secondary Targets\n-1500F / -150H"
+   3925 -           FocusDamage 1000, HealthDamage 100 "Medium Radius AE\n-1000 F / -100 H"
+        note: the ability tooltip says "-100 F -100 H"; the effect row is what executes
+   4005 -           FocusDamage 100, HealthDamage 10 "Single Target\n-100F / -10H"
+   4054 -           FocusDamage 200, HealthDamage 20 "Medium Narrow Cone\n-200F\n-20H"
+   4092 -           FocusDamage 200, HealthDamage 20 "Medium Narrow Cone\n-200F\n-20H"
+   4126 -           FocusDamage 500, HealthDamage 50 "Secondary Targets\n-500F / -50H"
+   4137 -           FocusDamage 500, HealthDamage 50 "Single Target\n-500F\n-50H"
+   4139 -           FocusDamage 100, HealthDamage 10 "Single Target\n-100F / -10H per Tick\n10 Energy per pulse"
+        note: "10 Energy per pulse" is a cost; no ability cost is modelled (B-04)
+        note: per tick on a single-shot row: one application deals one tick (channel ticks are not modelled)
+   4148 -           FocusDamage 100, HealthDamage 10 "-100F / -10H"
+   4152 -           FocusDamage 200, HealthDamage 20 "Cone Damage:\n-200 F -20H"
+   4156 -           FocusDamage 100, HealthDamage 10 "-100F / -10H"
+   4173 -           FocusDamage 200, HealthDamage 20 "-200F / -20H\n10 Pulses"
+        note: per tick, 10 ticks of 0.5 s
+   4178 -           FocusDamage 200, HealthDamage 20 "-200F -20H"
+   4181 -           FocusDamage 200, HealthDamage 20 "-200F / -20H"
+        note: the ability tooltip says "-100 F -10 H"; the effect row is what executes
+   4182 -           FocusDamage 250, HealthDamage 25 "-250F / -25H"
+        note: the ability tooltip says "-100 F -10 H"; the effect row is what executes
+   4235 -           FocusDamage 50, HealthDamage 5 "Single Target\n-50F / -5H\n8 Ticks x1sec"
+        note: per tick, 8 ticks of 1 s
+        note: the ability tooltip says "-100F /-10H"; the effect row is what executes
+   4237 -           FocusDamage 50, HealthDamage 5 "Single Target\n-50F / -5H\n8 Ticks x1sec"
+        note: per tick, 8 ticks of 1 s
+        note: the ability tooltip says "-100F / -10H"; the effect row is what executes
+   4409 -           FocusDamage 200, HealthDamage 20 "Narrow Cone\nSecondary -200F / -20H"
+   4522 -           FocusDamage 200, HealthDamage 20 "Single Target\n-200F / -20H"
+   4530 -           FocusDamage 50, HealthDamage 5 "F-50\nH-5\n8 Ticks"
+        note: per tick, 8 ticks of 1 s
+        note: the ability tooltip says "-150F / -30H per pulse"; the effect row is what executes
+   4542 -           FocusDamage 50, HealthDamage 5 "F-50\nH-5\n8 Ticks"
+        note: per tick, 8 ticks of 1 s
+        note: the ability tooltip says "-150F / -30H per pulse"; the effect row is what executes
+   4603 -           FocusDamage 200, HealthDamage 20 "F-200\nH-20"
+   4604 -           FocusDamage 100, HealthDamage 10 "F-100\nH-10"
+   4611 -           FocusDamage 150, HealthDamage 15 "F-150\nH-15"
+   4612 -           FocusDamage 200, HealthDamage 20 "F-200\nH-20"
+   4618 -           FocusDamage 200, HealthDamage 20 "F-200\nH-20"
+   4621 -           FocusDamage 50         "Damage Over time F-50\n25 Ticks"
+        note: per tick, 25 ticks of 1 s
+   4624 -           FocusDamage 100, HealthDamage 10 "F-100\nH-10"
+        note: channelled (pulse_count 0): per pulse of 1 s
+   4628 -           FocusDamage 200, HealthDamage 20 "F-200 H-20"
+   4629 -           FocusDamage 200, HealthDamage 20 "F-200 H-20"
+   4631 -           FocusDamage 300, HealthDamage 30 "5 Pulses\nF-300\nH-30"
+        note: per tick, 5 ticks of 1 s
+   4632 -           FocusDamage 150, HealthDamage 15 "F-150\nH-15"
+   4634 -           FocusDamage 300, HealthDamage 30 "Secondary Damage: F-300 H-30"
+   4648 -           FocusDamage 200, HealthDamage 20 "Damage:\nF-200 H-20"
+   4667 -           FocusDamage 200, HealthDamage 20 "F-200 H-20"
+   4694 -           FocusDamage 100, HealthDamage 10 "F-100\nH-10"
+   4707 -           FocusDamage 150, HealthDamage 15 "F-150 H-15\nEnergy-15"
+        note: "Energy-15" is a cost; no ability cost is modelled (B-04)
+   4719 -           FocusDamage 300, HealthDamage 30 "F-300 H-30"
+   4728 -           FocusDamage 200, HealthDamage 20 "F-200\nH-20"
+   4729 -           FocusDamage 200, HealthDamage 20 "F-200 H-20"
+   4738 -           FocusDamage 300, HealthDamage 30 "F-300\nH-30\nAOE Radius: Short"
+   4749 -           FocusDamage 500, HealthDamage 50 "AOE: Long\nF-500\nH-50"
+   4772 -           FocusDamage 200        "Focus Damage: -200"
+   4784 -           FocusDamage 200, HealthDamage 20 "Damage: F-200 H-20\nEnergy Return: 5%"
+        note: "Energy Return: 5%" is not modelled
+   4974 -           FocusDamage 300, HealthDamage 30 "F-300 H-30"
+   4975 -           FocusDamage 100, HealthDamage 10 "Single Target\nTarget F-100 / H-10"
+   4976 -           FocusDamage 100, HealthDamage 10 "Narrow Cone\nSecondary F-100 / H-10"
+   4978 -           FocusDamage 100, HealthDamage 10 "Medium Cone\nSecondary F-100 / H-10"
+   4996 -           FocusDamage 300, HealthDamage 30 "Short Radius AE\n-300F / -30H"
+   5141 -           FocusDamage 200, HealthDamage 20 "F-200 H-20\n5 Energy per target"
+        note: "5 Energy per target" is a cost; no ability cost is modelled (B-04)
+   5147 -           FocusDamage 150, HealthDamage 15 "F-150\nH-15"
+hand-authored, left alone: 3
+    654 "Single Target\n-150F\n-15H" (parser agrees)
+    656 "-100F -10H" (parser agrees)
+   5066 "Medium Radius AE\nSecondary -100F" (parser agrees)
+unparsed: 54
+  by category: conditional 15, sequenced 14, targeting 5, pulse shape 15, scope 2, grammar 3
+    703 (ability 640) "Single Target\nTarget -800F / 80H": grammar: an amount with no minus sign in "Target -800F / 80H"
+    721 (ability 656) "Single Target Channeled: 50 ticks\n-150F / -15H per tick\n-5 Ammo per tick": pulse shape: the text says 50 ticks but pulse_count is 1
+    757 (ability 725) "Single Target Channeled: 5 ticks\n-200F / -20H": pulse shape: the text says 5 ticks but pulse_count is 1
+    758 (ability 725) "Single Target Channeled: 5 ticks\n-400F / -40H": pulse shape: the text says 5 ticks but pulse_count is 1
+    759 (ability 725) "Single Target Channeled: 5 ticks\n-300F / -30H": pulse shape: the text says 5 ticks but pulse_count is 1
+    778 (ability 718) "Single Target\n-200F / -20H\n1 second pulse\n3 ammo": pulse shape: a tick every 1 s but pulse_duration is 0
+   1431 (ability 1259) "Target\n-800F / -80F": sequenced: single-shot EF_SequenceOnFinish follow-up (a check's outcome, a chain jump, an extra shell); the pipeline would apply it on every hit
+   1559 (ability 641) "Single Target\nTarget -300F / -30H": conditional: "Flank" variant; no conditional NVP exists, and every hit would apply it
+   1560 (ability 641) "Single Target\nTarget -500F / -50H": conditional: "Rear" variant; no conditional NVP exists, and every hit would apply it
+   1604 (ability 1357) "Target\n-500F / -50H": sequenced: single-shot EF_SequenceOnFinish follow-up (a check's outcome, a chain jump, an extra shell); the pipeline would apply it on every hit
+   1609 (ability 1359) "Single Target\nTarget -1500F / -150H": sequenced: single-shot EF_SequenceOnFinish follow-up (a check's outcome, a chain jump, an extra shell); the pipeline would apply it on every hit
+   1777 (ability 1481) "Single Target Channeled: 10 ticks: 1.5 second intervals\n-200F / -20H per tick": pulse shape: the text says 10 ticks but pulse_count is 1
+   1988 (ability 1639) "Single Target\n-200F\n-20H": targeting: the text says single but the row is TCM_AECone
+   2015 (ability 1652) "Single Target\n2 pulses:\n-250F\n-25H": pulse shape: pulse_count 2 with pulse_duration 0 never pulses
+   2439 (ability 1905) "Single Target Channeled: 6 ticks: 1second duration\n-250F / -25H per tick": pulse shape: the text says 6 ticks but pulse_count is 1
+   2843 (ability 2105) "Grenade Damage:\n-500 F -50 H": sequenced: single-shot EF_SequenceOnFinish follow-up (a check's outcome, a chain jump, an extra shell); the pipeline would apply it on every hit
+   3516 (ability 2105) "Grenade Damage:\n-500 F -50 H": sequenced: single-shot EF_SequenceOnFinish follow-up (a check's outcome, a chain jump, an extra shell); the pipeline would apply it on every hit
+   3702 (ability 1477) "Secondary Damage\nF-200 H-20\n3 pulses": pulse shape: the text says 3 ticks but pulse_count is 1
+   3886 (ability 2694) "Medium Narrow Cone\n-200F\n-20H": targeting: the text says cone but the row is TCM_Single
+   4053 (ability 2795) "Medium Narrow Cone\n-200F\n-20H": targeting: the text says cone but the row is TCM_Single
+   4091 (ability 2827) "Medium Narrow Cone\n-200F\n-20H": targeting: the text says cone but the row is TCM_Single
+   4142 (ability 1613) "Bonus Damage: Rear\nF-200 H-20": conditional: "Bonus" variant; no conditional NVP exists, and every hit would apply it
+   4143 (ability 1613) "Flank Damage: F-100 H-10": conditional: "Bonus" variant; no conditional NVP exists, and every hit would apply it
+   4153 (ability 2858) "Bonus Damage:\nF-50\nH-5": conditional: "Stance" variant; no conditional NVP exists, and every hit would apply it
+   4157 (ability 2860) "Wound: F -50 H -5": pulse shape: pulse_count 20 but the text states no tick count
+   4158 (ability 2860) "Bonus Damage:\nF-50\nH-5": conditional: "Stance" variant; no conditional NVP exists, and every hit would apply it
+   4161 (ability 2861) "Wound: F -50 H -5": pulse shape: pulse_count 20 but the text states no tick count
+   4163 (ability 2862) "F-800\nH-80\nRemoves Moniker: DCHAIN_I\nRemoves Moniker: DCHAIN_II": conditional: "Bonus" variant; no conditional NVP exists, and every hit would apply it
+   4165 (ability 2862) "Bonus Damage:\nF-50\nH-5": conditional: "Stance" variant; no conditional NVP exists, and every hit would apply it
+   4166 (ability 2861) "Bonus Damage:\nF-50\nH-5": conditional: "Stance" variant; no conditional NVP exists, and every hit would apply it
+   4176 (ability 1613) "Bonus Damage\nF-50\nH-5": conditional: "Bonus" variant; no conditional NVP exists, and every hit would apply it
+   4177 (ability 1621) "Bonus Damage:\nF-50\nH-5": conditional: "Stance" variant; no conditional NVP exists, and every hit would apply it
+   4179 (ability 1620) "Bonus Damage:\nF-50\nH-5": conditional: "Stance" variant; no conditional NVP exists, and every hit would apply it
+   4200 (ability 2864) "Single Target\nSecondary Target\n-0F / -225H": conditional: "Mechanical" variant; no conditional NVP exists, and every hit would apply it
+   4202 (ability 2864) "Single Target\nSecondary Target\n-100F / -0H": conditional: "Mechanical" variant; no conditional NVP exists, and every hit would apply it
+   4336 (ability 656) "Narrow Cone Channeled: 50 ticks\n-150F / -15H per tick\n-5 Ammo per tick": pulse shape: the text says 50 ticks but pulse_count is 1
+   4357 (ability 1477) "F-400\nH-40\nRemaining pulses": grammar: unrecognised line "Remaining pulses"
+   4363 (ability 1259) "Secondary Damage\nAOE: Short\nF-500 H-50": sequenced: single-shot EF_SequenceOnFinish follow-up (a check's outcome, a chain jump, an extra shell); the pipeline would apply it on every hit
+   4531 (ability 1889) "F-50\nH-5": scope: EF_ResolveOnAbilityUser resolves on the user; user routing is AB-07
+   4614 (ability 1536) "Damage per second while moving: F-100 H-10\n10 seconds": conditional: "while moving" variant; no conditional NVP exists, and every hit would apply it
+   4626 (ability 1540) "F-200 H-20": sequenced: single-shot EF_SequenceOnFinish follow-up (a check's outcome, a chain jump, an extra shell); the pipeline would apply it on every hit
+   4627 (ability 1540) "F-200 H-20": sequenced: single-shot EF_SequenceOnFinish follow-up (a check's outcome, a chain jump, an extra shell); the pipeline would apply it on every hit
+   4633 (ability 1546) "F-150\nH-15": sequenced: single-shot EF_SequenceOnFinish follow-up (a check's outcome, a chain jump, an extra shell); the pipeline would apply it on every hit
+   4642 (ability 1561) "Damage: F-200 H-20": scope: damage half of an ability of type ABILITY_TYPE_Buff: it belongs on the user (B-27, AB-07)
+   4708 (ability 3167) "F-150\nH-15\nCone: Wide": sequenced: single-shot EF_SequenceOnFinish follow-up (a check's outcome, a chain jump, an extra shell); the pipeline would apply it on every hit
+   5034 (ability 722) "Medium Cone\n-50F / -5H DoT: 10 Ticks": targeting: the text says cone but the row is TCM_Single
+   5136 (ability 1540) "F-200 H -20": sequenced: single-shot EF_SequenceOnFinish follow-up (a check's outcome, a chain jump, an extra shell); the pipeline would apply it on every hit
+   5144 (ability 1546) "F-150\nH-15": sequenced: single-shot EF_SequenceOnFinish follow-up (a check's outcome, a chain jump, an extra shell); the pipeline would apply it on every hit
+   5145 (ability 1546) "F-150\nH-15": sequenced: single-shot EF_SequenceOnFinish follow-up (a check's outcome, a chain jump, an extra shell); the pipeline would apply it on every hit
+   5148 (ability 3167) "F-150\nH-15": sequenced: single-shot EF_SequenceOnFinish follow-up (a check's outcome, a chain jump, an extra shell); the pipeline would apply it on every hit
+   5267 (ability 1477) "F-400\nH-40\nRemaining pulses": grammar: unrecognised line "Remaining pulses"
+   5268 (ability 1477) "Single Target Damage\nF-200 H-20\n3 pulses": pulse shape: the text says 3 ticks but pulse_count is 1
+   5269 (ability 1477) "F-300\nH-30\n5 pulses": pulse shape: the text says 5 ticks but pulse_count is 1
+   5270 (ability 1477) "F-300\nH-30\n5 pulses": pulse shape: the text says 5 ticks but pulse_count is 1
+

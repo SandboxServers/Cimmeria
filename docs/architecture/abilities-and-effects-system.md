@@ -170,6 +170,8 @@ For channelled effects (`pulse_count = 0`), we register with `MAX_CHANNEL_PULSES
 
 Starter damage drops as a result. Code: [`damage_apply/effect_scripts.rs`](../../crates/cell-combat/src/cell/abilities/damage_apply/effect_scripts.rs) and [`damage_apply/qr_gate.rs`](../../crates/cell-combat/src/cell/abilities/damage_apply/qr_gate.rs).
 
+**Addendum (2026-10-03, ability-mechanics AB-03, B-21).** The NVP path resolves each `TCM_Single` effect on its own instead of keeping the last positive `HealthDamage`/`FocusDamage` of any effect, so a direct hit and its DoT both land, one `onEffectResults` HEALTH entry each. `EF_DontUseQR` is read per effect: in a mixed ability the flagged effect resolves at the unrolled QR (its base) whatever the hit rolled, a miss included. Cone and radius effects keep the old collapse on a hit and land only when no direct (non-pulsing) `TCM_Single` damage effect does; their secondaries get them through the fan-outs as before. Code: [`damage_apply/nvp_damage.rs`](../../crates/cell-combat/src/cell/abilities/damage_apply/nvp_damage.rs).
+
 ### 11. Channel-interrupt distance = 0.5m
 
 **Decision:** `CHANNEL_INTERRUPT_DISTANCE = 0.5` world units.

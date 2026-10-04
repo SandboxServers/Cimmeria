@@ -1,9 +1,12 @@
 //! The hit's QR roll and what a miss stops (AB-06, D-AB07).
 //!
-//! - An effect carrying `EF_DontUseQR` (16) never rolls and always lands.
-//!   A hit whose every effect carries it takes no roll at all: its result
-//!   is `RC_Hit` at the distribution's midpoint, so the NVP pipeline deals
-//!   the authored base (`base × 0.5 × 2 × (1 + 0)`).
+//! - An effect carrying `EF_DontUseQR` (16) never rolls and always lands,
+//!   at [`unrolled_qr`]: the distribution's midpoint, so the NVP pipeline
+//!   deals the authored base (`base × 0.5 × 2 × (1 + 0)`). That holds per
+//!   effect (AB-03, `nvp_damage`): in a mixed ability the flagged effect
+//!   deals its base whatever the others rolled, even on a miss. A hit
+//!   whose every effect carries it takes no roll at all: its result is
+//!   `RC_Hit`.
 //! - Any other effect lands only when the roll is not `RC_MISS`. A missed
 //!   effect deals no NVP damage, runs no script and registers no pulses.
 //!
@@ -21,6 +24,16 @@ use crate::cell::space_manager::SpaceManager;
 /// The `qr_rand` an unrolled hit uses: the mean of the QR-0 distribution,
 /// `Beta(1.4, 1.4)`.
 const UNROLLED_QR_RAND: f64 = 0.5;
+
+/// The QR result of an effect that takes no roll: `RC_Hit` at the mean
+/// of the QR-0 distribution.
+pub(super) fn unrolled_qr() -> QrResult {
+    QrResult {
+        qr_rand: UNROLLED_QR_RAND,
+        result_code: RC_HIT,
+        qr: 0.0,
+    }
+}
 
 /// Whether `effect` lands on a hit whose roll came out `result_code`.
 pub(super) fn effect_lands(effect: &EffectDef, result_code: u8) -> bool {
@@ -64,9 +77,5 @@ pub(super) fn roll_hit(
         reason = "every effect carries EF_DontUseQR",
         "hit takes no QR roll: RC_Hit"
     );
-    QrResult {
-        qr_rand: UNROLLED_QR_RAND,
-        result_code: RC_HIT,
-        qr: 0.0,
-    }
+    unrolled_qr()
 }

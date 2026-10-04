@@ -211,6 +211,18 @@ baseDamage
   = final damage
 ```
 
+### Damage sources
+
+`baseDamage` comes from the effect, in one of two ways ([`damage_apply/`](../../crates/cell-combat/src/cell/abilities/damage_apply/)):
+
+- **A damage script** (`RangedPhysicalDamage`, `MeleePhysicalDamage`, `RangedEnergyDamage`, `MeleeDamage`) is its effect's only damage (AB-06, D-AB07). It reads `FocusDamage` and `HealthDamage` itself, raw: no QR roll, resist or armour.
+- **Otherwise the NVP path** runs the pipeline above on the effect's `HealthDamage` and `FocusDamage` NVPs. Since AB-03 (B-21) each `TCM_Single` effect resolves on its own, so a direct hit and its DoT both land, with one HEALTH entry each in `onEffectResults` ([`nvp_damage.rs`](../../crates/cell-combat/src/cell/abilities/damage_apply/nvp_damage.rs)). Before, only the last positive value of any effect counted.
+- **Cone and radius effects** are their fan-outs' damage (the cone fan-out and the ground cast). On a hit they still collapse to one value, the last positive one per pool, which lands only when no direct (non-pulsing) `TCM_Single` damage effect does. So a pure cone ability hurts its primary, and "Target -100F" plus "Medium Cone -100F" deals the primary 100, not 200.
+- **`EF_DontUseQR` (16)** is read per effect: a flagged effect resolves at the unrolled QR (`qrRand` 0.5, `qr` 0), so it deals its base whatever the hit rolled, a miss included. Every other effect takes the hit's roll, and a missed rolled effect deals nothing.
+- **DoT ticks** re-read the same NVPs at a neutral QR ([`pulsing/tick.rs`](../../crates/cell-combat/src/cell/effects/pulsing/tick.rs)), so a DoT's row is its per-tick amount.
+
+The numbers are seed rows. The ability-mechanics generator ([`tools/ability_mechanics/`](../../tools/ability_mechanics/README.md)) writes the `damage` family from each effect's designer text ("-200F / -20H", "F-200 H-20", "-150F -30H (8 Ticks)"), labelled RECONSTRUCTION. Conditional variants (vs mechanical targets, vs low Focus, flank and rear, stance bonuses) and sequenced follow-ups get no row, because nothing evaluates their condition and every hit would apply them; [its report](../../tools/ability_mechanics/reports/damage.txt) lists them.
+
 ### QR Result Codes (EResultCode)
 
 | Code | Constant | Threshold |

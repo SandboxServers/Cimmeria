@@ -42,6 +42,9 @@ class Family:
     name: str = ""
     nvp_names: frozenset = frozenset()  # the NVP names its rows use
     scripts: frozenset = frozenset()  # every script_name it may bind
+    # Reason prefixes ("conditional: ...") the report counts, when the
+    # family tags its rejections that way.
+    reason_categories: tuple = ()
 
     def is_candidate(self, effect: Effect, corpus: Corpus) -> bool:
         raise NotImplementedError

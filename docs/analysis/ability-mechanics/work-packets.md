@@ -129,6 +129,7 @@ Priority inside each wave: anything that changes what Heal Focus, Health Heal, R
 - **Tests.** Live-DB: 598, 717, 856, 1879 and one grenade carry their numbers. Pipeline: an ability with two single-target damage effects applies both. Unit: the parser on the corpus. Generator report committed, with the unparsed list.
 - **Docs.** `docs/gameplay/combat-system.md` damage-source section.
 - **Advisor.** `combat-systems-advisor`, `database-persistence`. **Depends.** AB-02 (generator), AB-06 (so scripted and unscripted effects do not both apply).
+- **Status.** Review (2026-10-03, branch `abilities/ab-03-damage-numbers`). The `damage` family writes 178 effects (nvp_id 21000-21349) and reports 54 by category: conditional 15, sequenced 14, pulse shape 15, targeting 5, scope 2, grammar 3 (`tools/ability_mechanics/reports/damage.txt`). Single-shot `EF_SequenceOnFinish` (64) effects are reported as sequenced follow-ups: that is how Execution's and Red Mist's "vs low Focus" rows, the Energy Cascade jumps and the Grenade Barrage's extra shells are told apart from the base hit. Pipeline rule: a cone or radius effect lands on a hit only when no direct (non-pulsing) `TCM_Single` damage effect does. AB-06 carry-over closed: `EF_DontUseQR` is resolved per effect, so a flagged effect in a mixed ability deals its base on any roll, a miss included.
 
 ### AB-04. Timed effect ledger: buffs, debuffs and their icons (D-AB08, D-AB09)
 

@@ -25,12 +25,15 @@ python tools/ability_mechanics/effect_nvps_from_desc.py            # regenerate
 python tools/ability_mechanics/effect_nvps_from_desc.py --check    # exit 1 if the committed seed drifted
 python tools/ability_mechanics/effect_nvps_from_desc.py --report   # generated, hand-authored and unparsed effects
 python tools/ability_mechanics/effect_nvps_from_desc.py --family heal   # one family only
+python tools/ability_mechanics/effect_nvps_from_desc.py --report --family damage > tools/ability_mechanics/reports/damage.txt
 python -m unittest discover -s tools/ability_mechanics -p "test_*.py"
 ```
 
 Exit codes: 0 success, 1 drift (`--check`), 2 input failure (an unparseable seed, an unmatched marker, a family out of `nvp_id`s). Output is deterministic, and a run keeps each file's CRLF line endings.
 
-CI runs `--check` and the unit tests in the `test-live-db` job of [.github/workflows/test.yml](../../.github/workflows/test.yml), so a hand edit inside a block, or a parser change without a regenerated seed, fails the PR. The live-DB guards in `crates/cell-effect-scripts/src/cell/effects/heal_seed_live_db_tests.rs` load the real seed and run the bound scripts on it.
+`reports/damage.txt` is the committed `damage` report: the generated effects with their notes, and every unparsed effect with its reason. A unit test fails when it no longer matches the parser, so a grammar change ships with the reviewed list. Regenerate it with the command above once the seed is current.
+
+CI runs `--check` and the unit tests in the `test-live-db` job of [.github/workflows/test.yml](../../.github/workflows/test.yml), so a hand edit inside a block, or a parser change without a regenerated seed, fails the PR. The live-DB guards in `crates/cell-effect-scripts/src/cell/effects/heal_seed_live_db_tests.rs` load the real seed and run the bound scripts on it; `crates/cell-combat/src/cell/abilities/damage_apply/damage_seed_live_db_tests.rs` checks the damage rows and fires Point Blank Shot on them.
 
 ## Ownership rules
 
@@ -66,6 +69,23 @@ A heal is reported instead of bound when the current pipeline would land it on t
 - a bare "+N% Focus" on a Buff ability, which may be a max-pool buff (the `stat` family's).
 
 When the ability tooltip states a different number, the effect row wins and the comment says so, as for pet effect 3211.
+
+### damage
+
+The grammar reads one amount per pool: "-200F / -20H", "-800 F / -80 H", "F-200 H-20", "Target F-100 / H-10", "Focus Damage: -200", or one pool per line ("-200F" then "-20H"). A pool given twice, or an amount with no minus sign ("-800F / 80H"), rejects the effect. Targeting lines ("Single Target", "Medium Cone", "Short Radius AE", "Secondary Targets", "Frag Grenade Damage:") are read for the shape check below; ammo and energy costs are noted, not modelled (B-04); "Increased Threat +N" and "Energy Return: N%" are noted as not modelled.
+
+No script is bound. Each row feeds the NVP damage path in `crates/cell-combat/src/cell/abilities/damage_apply/` ([combat-system.md, Damage sources](../../docs/gameplay/combat-system.md#damage-sources)), where each `TCM_Single` effect resolves on its own and a DoT tick re-reads the same row. So a DoT's row is its per-tick amount, which is how the text states it ("DOT: -150F -30H (8 Ticks)"), once the stated tick count equals `pulse_count` (and a stated interval, "x1 Second", equals `pulse_duration`). "Per tick" on a single-shot row writes one tick, with a note that channel ticks are not modelled.
+
+An effect is reported, not written, when its rejection reason starts with one of these categories (the report counts them):
+
+- `conditional`: the variant applies only against some targets or from some position: "Mechanical Target Damage", "Flank Position Damage", "Assassin Stance Bonus Damage", "while moving". No conditional NVP exists, and the pipeline would apply it on every hit.
+- `sequenced`: a single-shot effect with `EF_SequenceOnFinish` (64), the follow-up of a check (Execution's and Red Mist's damage vs low Focus), a chain jump (Energy Cascade) or an extra shell (Grenade Barrage). A pulsing one (Lethal Shot's DoT) is still written.
+- `targeting`: the text names a shape the row does not have, such as "Medium Cone" on a `TCM_Single` row, which would land a second hit on the primary.
+- `pulse shape`: the text's tick count or interval disagrees with the row ("Channeled: 50 ticks" on a single-shot row), or a pulsing row states no count.
+- `scope`: the damage half of a Buff ability, or an `EF_ResolveOnAbilityUser` effect (user routing is AB-07).
+- `grammar`: anything else the parser refuses.
+
+When the ability tooltip's numbers differ from the effect's, the effect row wins and the comment says so.
 
 ## Changing a family
 
