@@ -118,11 +118,14 @@ URL-typed key (`url`, `icon_url`, ...) whose value is such a link is dropped.
 The message itself still posts.
 
 The allowlist, `ALLOWED_LINK_HOSTS`, is for public, team-reachable hosts and
-is empty today. A host on it matches itself and its subdomains.
+is empty today. A host on it matches itself and its subdomains. A URL
+that carries another URL in its path or query (`?next=https://...`, plain or
+percent-encoded) is removed even when its own host is allowed.
 
 The trace ID is the one SigNoz handle Discord keeps, as plain text in the
 footer (`trace_id 4bf92f…`) that a developer pastes into SigNoz (D-NT3). A
-`trace_id` or `span_id` that arrives as a link keeps only its hex ID.
+`trace_id` or `span_id` that arrives as a link keeps only its own hex ID:
+32 digits for the trace, 16 for the span (from `spanId=` first).
 `signoz_url_in_a_field_value_renders_without_it` pins the guard.
 
 ## Account + character naming
@@ -162,7 +165,7 @@ folds them before posting:
 
 An embed holds 25 fields, one of them the log target. When the folded
 fields don't fit, the cut falls on the unpaired tail and the last slot
-says `+N more fields`, so Who and every object pair survive.
+says `+N more fields`, so Who and every object pair survive. The marker never takes a pair's slot: when the pairs alone fill the embed, the unpaired fields are dropped without it.
 
 ## Muted accounts
 

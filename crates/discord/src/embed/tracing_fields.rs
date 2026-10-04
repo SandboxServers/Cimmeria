@@ -101,11 +101,22 @@ pub(super) fn fold_fields(fields: &[(String, String)], max: usize) -> Vec<(Strin
         .flatten()
         .map(|(k, v)| (k.to_string(), v.to_string(), true));
 
-    let mut out: Vec<(String, String, bool)> = who.into_iter().chain(objects).chain(rest).collect();
-    if out.len() > max && max > 0 {
-        let dropped = out.len() - (max - 1);
-        out.truncate(max - 1);
+    let mut out: Vec<(String, String, bool)> = who.into_iter().chain(objects).collect();
+    let rest: Vec<_> = rest.collect();
+    // Room left for unpaired fields once Who and every pair are placed.
+    // The overflow marker takes one of those slots, never a pair's:
+    // when the pairs alone fill the embed, the unpaired fields are
+    // dropped with no marker, and pairs past the cap (which needs 24+
+    // objects on one line) are cut by the cap itself.
+    let room = max.saturating_sub(out.len());
+    if rest.len() <= room {
+        out.extend(rest);
+    } else if room > 0 {
+        let dropped = rest.len() - (room - 1);
+        out.extend(rest.into_iter().take(room - 1));
         out.push(("…".into(), format!("+{dropped} more fields"), true));
+    } else {
+        out.truncate(max);
     }
     out
 }
@@ -119,15 +130,19 @@ pub(super) fn trace_footer(fields: &[(String, String)]) -> Option<String> {
         .iter()
         .filter_map(|key| {
             let value = fields.iter().find(|(k, _)| k == key)?.1.as_str();
-            Some(format!("{key} {}", plain_trace_id(value)?))
+            Some(format!("{key} {}", plain_trace_id(key, value)?))
         })
         .collect();
     (!parts.is_empty()).then(|| parts.join(" · "))
 }
 
-/// The trace or span ID in `value`: the value itself when it is plain,
-/// or the longest run of 16+ hex digits when it is a URL.
-fn plain_trace_id(value: &str) -> Option<String> {
+/// The ID for `key` in `value`: the value itself when it is plain.
+/// When it is a URL, the W3C-sized hex ID for that key: 32 digits for
+/// `trace_id`, 16 for `span_id`. A SigNoz link carries both
+/// (`/trace/<32>?spanId=<16>`), so `span_id` reads its query parameter
+/// first and never takes the trace's run. `None` when no ID of the
+/// right size is there.
+fn plain_trace_id(key: &str, value: &str) -> Option<String> {
     let value = value.trim();
     if value.is_empty() {
         return None;
@@ -135,10 +150,23 @@ fn plain_trace_id(value: &str) -> Option<String> {
     if !value.contains("://") {
         return Some(value.to_string());
     }
+    let is_hex = |s: &str, len: usize| s.len() == len && s.bytes().all(|b| b.is_ascii_hexdigit());
+    let len = if key == "span_id" { 16 } else { 32 };
+    if key == "span_id" {
+        let query = value.split_once('?').map_or("", |(_, q)| q);
+        let from_query = query.split(['&', '#']).find_map(|kv| {
+            let (k, v) = kv.split_once('=')?;
+            (k.eq_ignore_ascii_case("spanid") || k.eq_ignore_ascii_case("span_id"))
+                .then_some(v)
+                .filter(|v| is_hex(v, len))
+        });
+        if let Some(v) = from_query {
+            return Some(v.to_string());
+        }
+    }
     value
         .split(|c: char| !c.is_ascii_hexdigit())
-        .filter(|run| run.len() >= 16)
-        .max_by_key(|run| run.len())
+        .find(|run| is_hex(run, len))
         .map(str::to_string)
 }
 
@@ -349,6 +377,32 @@ mod tests {
         assert_eq!(out[3], ("…".into(), "+7 more fields".into(), true));
     }
 
+    /// Review #1199: when the pairs alone fill the budget, the marker
+    /// must not displace one of them.
+    #[test]
+    fn pairs_that_fill_the_budget_are_not_displaced_by_the_marker() {
+        let mut raw: Vec<(String, String)> = (0..24)
+            .map(|i| (format!("o{i:02}_id"), i.to_string()))
+            .collect();
+        raw.extend((0..3).map(|i| (format!("k{i}"), "v".into())));
+        let out = fold_fields(&raw, 24);
+        assert_eq!(out.len(), 24);
+        assert!(
+            out.iter()
+                .all(|(k, v, _)| k.starts_with('o') && v.starts_with('#')),
+            "{out:?}"
+        );
+
+        // One slot of room: the marker takes it, every pair stays.
+        let out = fold_fields(&raw[1..], 24);
+        assert_eq!(out.len(), 24);
+        assert_eq!(
+            out.iter().filter(|(k, _, _)| k.starts_with('o')).count(),
+            23
+        );
+        assert_eq!(out[23], ("…".into(), "+3 more fields".into(), true));
+    }
+
     #[test]
     fn trace_footer_is_plain_text() {
         let id = "4bf92f3577b34da6a3ce929d0e0e4736";
@@ -368,5 +422,14 @@ mod tests {
             Some(format!("trace_id {id} · span_id 00f067aa0ba902b7"))
         );
         assert_eq!(trace_footer(&f(&[("reason", "x")])), None);
+
+        // Review #1199: one SigNoz URL in both keys yields each key's own
+        // ID, not the longest hex run for both.
+        let link = format!("https://signoz.internal:3301/trace/{id}?spanId=00f067aa0ba902b7");
+        let fields = f(&[("trace_id", &link), ("span_id", &link)]);
+        assert_eq!(
+            trace_footer(&fields),
+            Some(format!("trace_id {id} · span_id 00f067aa0ba902b7"))
+        );
     }
 }

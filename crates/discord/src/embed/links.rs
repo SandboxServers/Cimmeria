@@ -62,7 +62,7 @@ pub(super) fn strip_links(s: &str, allowed: &[&str]) -> Option<String> {
             .unwrap_or(from_scheme.len());
         let (url, after) = from_scheme.split_at(end);
         out.push_str(before);
-        if host_allowed(url, allowed) {
+        if host_allowed(url, allowed) && !carries_nested_url(url) {
             out.push_str(url);
         } else {
             out.push_str(LINK_REMOVED);
@@ -72,6 +72,18 @@ pub(super) fn strip_links(s: &str, allowed: &[&str]) -> Option<String> {
     }
     out.push_str(rest);
     changed.then_some(out)
+}
+
+/// `true` when `url` holds another URL past its own scheme, plain or
+/// percent-encoded: `https://ok.example/redirect?next=https://signoz.internal/`.
+/// Allowlisting the outer host must not let the inner one through, so
+/// such a URL is removed whatever its host.
+fn carries_nested_url(url: &str) -> bool {
+    let Some((_, after_scheme)) = url.split_once("://") else {
+        return false;
+    };
+    let lower = after_scheme.to_ascii_lowercase();
+    lower.contains("://") || lower.contains("%3a%2f%2f") || lower.contains("%3a//")
 }
 
 /// Byte offset of the next `http://` or `https://`, case-insensitive.
@@ -136,6 +148,24 @@ mod tests {
             strip_links("https://user@signoz.internal/", &allowed).as_deref(),
             Some(LINK_REMOVED)
         );
+    }
+
+    /// Review #1199: an allowlisted host must not carry an internal URL
+    /// through in its path or query, plain or percent-encoded.
+    #[test]
+    fn allowlisted_url_with_a_nested_url_is_removed() {
+        let allowed = ["example.org"];
+        for s in [
+            "https://example.org/redirect?next=https://signoz.internal/trace/abc",
+            "https://example.org/r?u=https%3A%2F%2Fsignoz.internal%2Ftrace",
+            "https://example.org/r?u=http%3A//admin.internal/",
+        ] {
+            assert_eq!(
+                strip_links(s, &allowed).as_deref(),
+                Some(LINK_REMOVED),
+                "{s}"
+            );
+        }
     }
 
     /// NT-11 no-links guard, end to end: a SigNoz URL in a harvested
