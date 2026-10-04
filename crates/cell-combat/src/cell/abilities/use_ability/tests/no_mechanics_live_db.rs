@@ -19,7 +19,7 @@ use crate::test_support::require_db_or_skip;
 
 /// Seeded abilities with a mechanic on `main` after AB-01, AB-02, AB-03, AB-04, AB-06, AB-07 and AB-08.
 /// The one number to update when a packet lights up more abilities.
-const HAS_MECHANICS_TODAY: usize = 274;
+const HAS_MECHANICS_TODAY: usize = 276;
 
 /// The archetype starters every new character holds: Pistol Shot, Strike,
 /// Heal Focus, Health Heal, Recuperation.
