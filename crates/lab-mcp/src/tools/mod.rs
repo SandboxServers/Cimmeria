@@ -5,6 +5,7 @@
 //! MCP content, and emitting the one [`crate::audit`] event per call. The tool
 //! set is fixed: no dynamic registration, no eval, no filesystem access.
 
+mod abilities;
 mod console;
 mod content;
 mod db;
@@ -85,6 +86,12 @@ struct EntityQueryArgs {
     /// Center the radius on this explicit `[x, y, z]` world point.
     #[serde(default)]
     around_point: Option<[f32; 3]>,
+}
+
+#[derive(Debug, Deserialize, JsonSchema)]
+struct AbilityStateArgs {
+    /// Runtime entity id (player or NPC) whose ability state to snapshot.
+    entity_id: u32,
 }
 
 #[derive(Debug, Deserialize, JsonSchema)]
@@ -207,7 +214,7 @@ impl LabTools {
 
     /// Snapshot one live cell entity by id.
     #[tool(
-        description = "Snapshot one live cell entity by id: position, class/faction, health, AI state, appearance, and witness count."
+        description = "Snapshot one live cell entity by id: position, class/faction, health, focus, every stat (cur/min/max), AI state, appearance, and witness count."
     )]
     async fn server_entity_get(
         &self,
@@ -250,6 +257,22 @@ impl LabTools {
                 args.around_point,
             )
             .await,
+        )
+    }
+
+    /// One entity's ability state (AB-L1 over AB-T5's snapshot).
+    #[tool(
+        description = "Snapshot one live entity's ability state: the cast in its warmup (ability, cast_id, time left), running ability and moniker cooldowns with time left, pulsing effects (effect, invoker, cast_id, pulses left), timed and held effect-ledger entries (stat deltas, expiry or held, monikers, flags, absorb pools), owed effect-icon clears, state_field refcounts per bit, and every stat's cur/min/max. Times are seconds from now. Read-only; state is null for an unknown entity."
+    )]
+    async fn server_ability_state(
+        &self,
+        Parameters(args): Parameters<AbilityStateArgs>,
+    ) -> Result<CallToolResult, ErrorData> {
+        let audit_args = json!({ "entity_id": args.entity_id });
+        emit_result(
+            "server_ability_state",
+            &audit_args,
+            abilities::ability_state(&self.state, args.entity_id).await,
         )
     }
 
@@ -323,7 +346,7 @@ impl ServerHandler for LabTools {
             "Cimmeria live-research-lab control endpoint. Fixed tool set: \
              inspect and drive a running SGW server (console, sessions, logs, \
              content reload, read-only SQL), snapshot live entities and witness \
-             relationships (entity_get/entity_query/witnesses), and capture \
+             relationships (entity_get/entity_query/witnesses), read one              entity's ability state (ability_state), and capture \
              decoded per-session Mercury traffic (packet_tap_start/read/stop).",
         )
     }

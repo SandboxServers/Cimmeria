@@ -7,8 +7,8 @@
 //! [`LAB_ENTITY_QUERY_CAP`] so a query over a dense space cannot stall the
 //! tick. Nothing here mutates state.
 
-use cimmeria_entity::cell_entity::CellEntity;
-use cimmeria_entity::stats::HEALTH;
+use cimmeria_entity::cell_entity::{CellEntity, StatState};
+use cimmeria_entity::stats::{FOCUS, HEALTH};
 
 use crate::cell::messages::{
     LabEntityFilter, LabEntitySnapshot, LabQueryReply, LabRadiusCenter, LabWitnessReport,
@@ -23,7 +23,7 @@ impl SpaceManager {
         let &space_id = self.entity_space.get(&entity_id)?;
         let space = self.spaces.get(&space_id)?;
         let entity = space.entities.get(&entity_id)?;
-        Some(snapshot_entity(space, entity))
+        Some(snapshot_entity(space, entity, StatDetail::Full))
     }
 
     /// Answer a [`LabQuery::EntityQuery`]: every entity matching `filter`,
@@ -78,7 +78,7 @@ impl SpaceManager {
                 }
                 total_matched += 1;
                 if entities.len() < LAB_ENTITY_QUERY_CAP {
-                    entities.push(snapshot_entity(space, entity));
+                    entities.push(snapshot_entity(space, entity, StatDetail::Pools));
                 }
             }
         }
@@ -113,9 +113,42 @@ impl SpaceManager {
     }
 }
 
+/// How much of the stat block a snapshot carries.
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum StatDetail {
+    /// Health and focus only: an [`LabQuery::EntityQuery`] of up to
+    /// [`LAB_ENTITY_QUERY_CAP`] entities would otherwise ship ~80 stats each.
+    ///
+    /// [`LabQuery::EntityQuery`]: crate::cell::messages::LabQuery::EntityQuery
+    Pools,
+    /// Every stat too (`server_entity_get`, AB-L1).
+    Full,
+}
+
 /// Build an owned snapshot from a live entity. All fields are copied out.
-fn snapshot_entity(space: &SpaceInstance, entity: &CellEntity) -> LabEntitySnapshot {
+fn snapshot_entity(
+    space: &SpaceInstance,
+    entity: &CellEntity,
+    detail: StatDetail,
+) -> LabEntitySnapshot {
     let health = entity.stats.get(HEALTH);
+    let focus = entity.stats.get(FOCUS);
+    let stats = if detail == StatDetail::Full {
+        let mut stats: Vec<StatState> = entity
+            .stats
+            .iter()
+            .map(|(&stat_id, s)| StatState {
+                stat_id,
+                cur: s.cur,
+                min: s.min,
+                max: s.max,
+            })
+            .collect();
+        stats.sort_by_key(|s| s.stat_id);
+        stats
+    } else {
+        Vec::new()
+    };
     LabEntitySnapshot {
         entity_id: entity.entity_id.0 as u32,
         space_id: space.space_id,
@@ -150,5 +183,8 @@ fn snapshot_entity(space: &SpaceInstance, entity: &CellEntity) -> LabEntitySnaps
         witness_count: entity.witnesses.len(),
         health_cur: health.map(|s| s.cur),
         health_max: health.map(|s| s.max),
+        focus_cur: focus.map(|s| s.cur),
+        focus_max: focus.map(|s| s.max),
+        stats,
     }
 }

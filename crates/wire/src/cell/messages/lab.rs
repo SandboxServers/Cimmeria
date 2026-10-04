@@ -3,7 +3,8 @@
 //! These types are the request/reply payload for
 //! [`crate::cell::messages::BaseToCellMsg::LabQuery`] — the read-only snapshot
 //! path the lab MCP endpoint (`cimmeria-lab-mcp`) uses to inspect live cell
-//! state (`server_entity_get` / `server_entity_query` / `server_witnesses`).
+//! state (`server_entity_get` / `server_entity_query` / `server_witnesses` /
+//! `server_ability_state`).
 //!
 //! The cell loop owns `SpaceManager`; nothing outside the loop can read it. The
 //! one precedent for pulling a value back out is
@@ -21,6 +22,7 @@
 //! (with `total_matched`/`capped` reported so the caller knows it was
 //! truncated). The witness lists are naturally bounded by AoI size.
 
+use cimmeria_entity::cell_entity::{AbilityStateSnapshot, StatState};
 use serde::{Deserialize, Serialize};
 
 /// Maximum number of entity snapshots a single [`LabQuery::EntityQuery`]
@@ -53,6 +55,9 @@ pub enum LabQuery {
     EntityQuery { filter: LabEntityFilter },
     /// The bidirectional witness relationship for one entity.
     Witnesses { entity_id: u32 },
+    /// One entity's ability state (ability-mechanics AB-L1 over AB-T5's
+    /// [`AbilityStateSnapshot`]), or `None` if no such entity exists.
+    AbilityState { entity_id: u32 },
 }
 
 /// Filter for [`LabQuery::EntityQuery`]. All fields are AND-combined; a `None`
@@ -109,6 +114,8 @@ pub enum LabQueryReply {
     },
     /// [`LabQuery::Witnesses`] — the bidirectional witness report.
     Witnesses { report: LabWitnessReport },
+    /// [`LabQuery::AbilityState`] — the snapshot, or `null` if absent.
+    AbilityState { state: Option<AbilityStateSnapshot> },
 }
 
 /// A copied-out, allocation-bounded snapshot of one cell entity. Every field is
@@ -116,9 +123,10 @@ pub enum LabQueryReply {
 ///
 /// Deliberately not a full `CellEntity` mirror: it carries the fields an AoI /
 /// visibility / spawn investigation actually needs (identity, position,
-/// class/faction, health, AI state, witness counts). Combat timers, bandolier
-/// contents, trade proposals, and the like are intentionally omitted — add a
-/// field here only when a lab question needs it.
+/// class/faction, health, focus, every stat, AI state, witness counts).
+/// Cooldowns, effects and the warmup are [`LabQuery::AbilityState`]'s;
+/// bandolier contents, trade proposals, and the like are intentionally
+/// omitted — add a field here only when a lab question needs it.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct LabEntitySnapshot {
     pub entity_id: u32,
@@ -165,6 +173,18 @@ pub struct LabEntitySnapshot {
     /// Current / max HEALTH stat, if the entity carries one.
     pub health_cur: Option<i32>,
     pub health_max: Option<i32>,
+    /// Current / max FOCUS stat, if the entity carries one (AB-L1).
+    #[serde(default)]
+    pub focus_cur: Option<i32>,
+    #[serde(default)]
+    pub focus_max: Option<i32>,
+    /// Every stat the entity carries, by stat id (AB-L1): the same rows the
+    /// ability snapshot reports, so a `server_entity_get` answers "what is
+    /// its Defense / Accuracy" without a second query. Filled by
+    /// [`LabQuery::EntityGet`] only; empty in a [`LabQuery::EntityQuery`]
+    /// reply, which can carry [`LAB_ENTITY_QUERY_CAP`] snapshots.
+    #[serde(default)]
+    pub stats: Vec<StatState>,
 }
 
 /// The bidirectional witness relationship for one entity — the direct answer to
