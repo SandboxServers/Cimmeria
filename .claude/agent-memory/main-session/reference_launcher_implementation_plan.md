@@ -294,3 +294,17 @@ Windows+Mac before the shell; shell/visual/game gates remain separate.
   Local engine/shell246/11ignored and strict combined clippy passed; native Windows
   held-lock recovery verification pending. Existing recovery regression now reads
   installed identity after reopen; a new publication failure guard prevents success.
+
+- Confirmed native uninstall now uses independent installation identity, strict
+  tree preflight, sibling detachment/checkpoint and owner-marker-last deletion.
+  Explicit same-ID recovery handles interrupted removal without touching a
+  replacement source folder; forget identity before success. No post-admission
+  cancel or automatic replay. Preserve preferences/consent, logs/evidence,
+  runtime caches and extraction prefixes; Mac stops original owned Wine prefix.
+  Shell/UI wiring and Windows validation pending. Contract reference:
+  `crates/launcher/desktop/docs/maintenance.md`.
+
+- Uninstall packet final: combined256/11ignored and strict combined clippy passed.
+  Ten removal guards cover both final deletion crash windows; enhanced full
+  signed-release Wine smoke now includes confirmed uninstall, pending helper rebuild.
+  Shell/frontend still need confirmation and recovery wiring.

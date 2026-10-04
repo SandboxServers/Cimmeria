@@ -594,3 +594,26 @@ legacy migration, uncommitted-reference gating, missing and redirected content,
 mismatched owner/evidence/schema, recovery and publication failure. Read-only
 review found no remaining blocker after the Windows held-lock correction.
 Final-revision native Windows validation remains pending.
+
+### 2026-10-04: confirmed native uninstall
+
+The native uninstall API binds explicit confirmation to operation ID/revision and
+saved installation ID. It validates owned content, rejects foreign top-level or
+unsafe recursive entries, detaches the root by rename, checkpoints, deletes with
+the owner marker last and forgets installed identity before terminal success.
+Explicit same-ID recovery covers rename/checkpoint and partial-deletion boundaries
+without touching a replacement folder. Preferences/consent, logs, signed evidence,
+runtime caches and extraction prefixes remain. Mac Wine removal first stops the
+original owned prefix. Lost replies require inspection; admitted removal cannot
+be cancelled. See [maintenance contracts](../../../../crates/launcher/desktop/docs/maintenance.md).
+
+This packet exposes the native API only; shell/frontend wiring and native Windows
+validation remain pending. No frontend behavior changed, so JS UAT is not
+applicable. Final combined engine/shell tests passed 256/11 ignored
+(`20261004-061342-76259`); strict combined all-target clippy passed
+(`20261004-061351-76556`). Ten uninstall tests include empty/missing detached
+folders, reference removal before terminal commit, lost replies, owner conflicts,
+foreign files, links and pre-admission persistence failure. The ignored real
+signed-release Wine smoke now additionally performs confirmed uninstall after
+retention assertions; that enhanced smoke awaits a newly built Windows helper.
+No actual original-client removal result is claimed yet.

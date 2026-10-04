@@ -98,6 +98,31 @@ impl DesktopState {
         result
     }
 
+    pub(super) fn forget_installed_content(
+        &mut self,
+        intent: &InstallIntent,
+    ) -> Result<(), StorageError> {
+        let path = self.directory.root.join(NAME);
+        if let Some(record) = read::<Record>(&path)? {
+            if record.schema_version != 1 {
+                return Err(StorageError::UnsupportedSchema);
+            }
+            if record.intent != *intent {
+                return Err(StorageError::Corrupt);
+            }
+            std::fs::remove_file(path).map_err(|_| StorageError::Io)?;
+            #[cfg(unix)]
+            if File::open(&self.directory.root)
+                .and_then(|f| f.sync_all())
+                .is_err()
+            {
+                self.preferences_uncertain = true;
+                return Err(StorageError::PersistenceUncertain);
+            }
+        }
+        Ok(())
+    }
+
     fn verify_installed_identity(
         &self,
         intent: InstallIntent,

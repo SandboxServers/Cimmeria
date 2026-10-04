@@ -129,7 +129,7 @@ impl DesktopState {
         Ok(())
     }
 }
-fn plain(meta: &std::fs::Metadata) -> bool {
+pub(super) fn plain(meta: &std::fs::Metadata) -> bool {
     #[cfg(windows)]
     {
         use std::os::windows::fs::MetadataExt;
@@ -139,7 +139,7 @@ fn plain(meta: &std::fs::Metadata) -> bool {
     }
     meta.is_dir() || meta.is_file()
 }
-fn validate_tree(root: &Path) -> Result<(), StorageError> {
+pub(super) fn validate_tree(root: &Path) -> Result<(), StorageError> {
     let mut pending = vec![root.to_path_buf()];
     while let Some(directory) = pending.pop() {
         for entry in std::fs::read_dir(directory).map_err(|_| StorageError::Io)? {

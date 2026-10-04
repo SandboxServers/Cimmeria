@@ -51,6 +51,20 @@ impl DesktopState {
     }
     pub fn helper_record(&self, id: Uuid) -> Result<Option<HelperRecord>, IntentError> {
         let digest = self.external_identity(id)?;
+        self.read_helper_identity(id, digest)
+    }
+    #[cfg(target_os = "macos")]
+    pub(crate) fn helper_record_for_install(
+        &self,
+        intent: &InstallIntent,
+    ) -> Result<Option<HelperRecord>, IntentError> {
+        self.read_helper_identity(intent.operation_id, intent.digest()?)
+    }
+    fn read_helper_identity(
+        &self,
+        id: Uuid,
+        digest: [u8; 32],
+    ) -> Result<Option<HelperRecord>, IntentError> {
         let record: Option<HelperRecord> = read(&self.directory.root.join(name(id)))?;
         if let Some(record) = &record {
             if record.schema_version != 1 {

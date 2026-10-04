@@ -12,13 +12,20 @@ pub(crate) struct StoppedPrefix {
 /// The guards survive through content inspection and the reconciliation commit.
 pub(crate) fn stop_for_recovery(state: &DesktopState) -> Result<StoppedPrefix, IntentError> {
     let intent = state.install_intent()?.ok_or(StorageError::Corrupt)?;
+    stop_for_install(state, &intent)
+}
+
+pub(crate) fn stop_for_install(
+    state: &DesktopState,
+    intent: &InstallIntent,
+) -> Result<StoppedPrefix, IntentError> {
     let ExtractionBackend::Wine { runtime_sha256, .. } = intent.backend else {
         return Err(StorageError::Corrupt.into());
     };
     if hex(&runtime_sha256) != mac_runtime::ARCHIVE_SHA256 {
         return Err(StorageError::Corrupt.into());
     }
-    let record = state.helper_record(intent.operation_id)?;
+    let record = state.helper_record_for_install(intent)?;
     // No durable launch intent means the supervisor could not have spawned.
     if record.is_none() {
         return Ok(StoppedPrefix {
@@ -32,7 +39,7 @@ pub(crate) fn stop_for_recovery(state: &DesktopState) -> Result<StoppedPrefix, I
         .state_root()
         .join("wine-prefixes")
         .join(intent.operation_id.to_string());
-    let owner = open_owner(&root, &intent)?;
+    let owner = open_owner(&root, intent)?;
     let prefix = root.join("bottle");
     if prefix
         .canonicalize()

@@ -686,3 +686,6 @@ An older current successful Install can migrate on read. Selecting a folder neve
 adopts its contents. This record does not grant launch/delete permission or prove
 readiness: current-operation, content and runtime checks remain required. There
 is no new UI or Repair execution in this packet.
+
+Confirmed native uninstall and its recovery/retention boundaries are described in
+[installed-content maintenance](docs/maintenance.md); UI wiring is pending.

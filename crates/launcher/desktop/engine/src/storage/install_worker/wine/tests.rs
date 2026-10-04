@@ -378,8 +378,19 @@ async fn original_signed_release_prepares_patched_content() {
         );
     }
     assert!(!state.lock().unwrap().preferences().launcher_summary_consent);
+    let removal_state = state.clone();
+    tokio::task::spawn_blocking(move || {
+        let mut owner = removal_state.lock().unwrap();
+        let revision = owner.operations().snapshot().revision;
+        owner.uninstall(Uuid::new_v4(), revision, id, true).unwrap();
+        assert!(owner.installed_content().unwrap().is_none());
+        assert!(!owner.preferences().launcher_summary_consent);
+    })
+    .await
+    .unwrap();
+    assert!(!root.path().join("install").exists());
     eprintln!(
-        "Authenticated real seed and {} patches prepared; runtime/gameplay not tested",
+        "Authenticated real seed and {} patches prepared then explicitly uninstalled; runtime/gameplay not tested",
         release.manifest().patches.len()
     );
 }

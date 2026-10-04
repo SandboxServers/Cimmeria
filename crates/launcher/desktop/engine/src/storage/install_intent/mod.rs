@@ -45,7 +45,7 @@ pub struct InstallIntent {
     pub backend: ExtractionBackend,
 }
 impl InstallIntent {
-    fn digest(&self) -> Result<[u8; 32], StorageError> {
+    pub(super) fn digest(&self) -> Result<[u8; 32], StorageError> {
         let bytes = serde_json::to_vec(self).map_err(|_| StorageError::Corrupt)?;
         Ok(Sha256::digest(bytes).into())
     }
