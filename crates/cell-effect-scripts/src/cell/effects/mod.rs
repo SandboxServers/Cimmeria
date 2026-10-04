@@ -31,6 +31,8 @@ pub mod ammo_emp;
 pub mod ammo_incendiary;
 pub mod cover_stance;
 pub mod heal;
+#[cfg(test)]
+mod heal_seed_live_db_tests;
 pub mod pet_scripts;
 pub mod registry;
 pub mod scripts;
