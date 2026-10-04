@@ -3,7 +3,7 @@ name = "cimmeria-lab"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
-description = "Live Research Lab supervisor + stdio MCP server. Phase 1: a thin proxy exposing client_lua_eval / client_module_info / client_mem_read over the injected client bridge's framed JSON-RPC TCP channel."
+description = "Live Research Lab supervisor: an MCP server (stdio per session, or one shared token-gated loopback HTTP daemon) that owns the SGW.exe lab client and proxies probes to the injected client bridge."
 
 # Windows-only: it drives a running SGW.exe on the owner's dev box.
 # Excluded from the workspace default build and CI's workspace jobs
@@ -15,9 +15,14 @@ path = "src/main.rs"
 
 [dependencies]
 # Official Rust MCP SDK. `server` + `transport-io` for a stdio MCP
-# server; `macros` for #[tool]/#[tool_router]/#[tool_handler].
-rmcp = { version = "3.4", features = ["server", "transport-io", "macros"] }
-tokio = { workspace = true, features = ["rt-multi-thread", "macros", "time"] }
+# server; `macros` for #[tool]/#[tool_router]/#[tool_handler];
+# `transport-streamable-http-server` for the shared daemon (`--http`).
+rmcp = { version = "3.4", features = ["server", "transport-io", "macros", "transport-streamable-http-server"] }
+tokio = { workspace = true, features = ["rt-multi-thread", "macros", "time", "signal", "net"] }
+# The daemon's HTTP edge (bearer middleware in front of the rmcp service),
+# and its non-blocking log writer.
+axum = { workspace = true }
+tracing-appender = { workspace = true }
 serde = { workspace = true, features = ["derive"] }
 serde_json = { workspace = true }
 anyhow = { workspace = true }
@@ -63,6 +68,8 @@ windows-sys = { version = "0.61", features = [
     # probe Direct3D 9 before a launch.
     "Win32_System_Power",
     "Win32_System_LibraryLoader",
+    # daemon/single_instance.rs: CreateMutexW takes SECURITY_ATTRIBUTES.
+    "Win32_Security",
 ] }
 
 [dev-dependencies]
