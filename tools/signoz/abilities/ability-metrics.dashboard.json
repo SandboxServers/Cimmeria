@@ -502,7 +502,7 @@
       "contextLinks": {
         "linksData": []
       },
-      "description": "Non-zero only when the cell-to-base queue is closed (shutdown) or full: investigate.",
+      "description": "Sends the closed cell-to-base channel refused (shutdown, or a base side that has gone). A full queue makes the send wait, not fail, so queue saturation never shows here.",
       "fillSpans": false,
       "id": "wire-send-failed",
       "nullZeroValues": "zero",

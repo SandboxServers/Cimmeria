@@ -19,7 +19,7 @@
           "source": "",
           "stepInterval": 0,
           "filter": {
-            "expression": "service.name = 'cimmeria-server' AND ((scope_name = 'abilities' AND ((event LIKE 'use_ability_%' AND event NOT IN ('use_ability_recv', 'use_ability_on_ground_recv')) OR event LIKE '%_refused')) OR (scope_name = 'deployables.lifecycle' AND event = 'deploy_refused'))"
+            "expression": "service.name = 'cimmeria-server' AND scope_name = 'abilities' AND event = 'ability_refused'"
           },
           "having": {
             "expression": ""
@@ -28,5 +28,5 @@
       }
     ]
   },
-  "extraData": "{\"selectColumns\": [{\"name\": \"reason\", \"signal\": \"logs\"}, {\"name\": \"event\", \"signal\": \"logs\"}, {\"name\": \"stage\", \"signal\": \"logs\"}, {\"name\": \"ability_id\", \"signal\": \"logs\"}, {\"name\": \"ability_name\", \"signal\": \"logs\"}, {\"name\": \"player_id\", \"signal\": \"logs\"}, {\"name\": \"entity_id\", \"signal\": \"logs\"}, {\"name\": \"target_id\", \"signal\": \"logs\"}, {\"name\": \"error_code\", \"signal\": \"logs\"}, {\"name\": \"phase\", \"signal\": \"logs\"}, {\"name\": \"distance\", \"signal\": \"logs\"}, {\"name\": \"max_range\", \"signal\": \"logs\"}, {\"name\": \"body\", \"signal\": \"logs\"}]}"
+  "extraData": "{\"selectColumns\": [{\"name\": \"reason\", \"signal\": \"logs\"}, {\"name\": \"caster\", \"signal\": \"logs\"}, {\"name\": \"world\", \"signal\": \"logs\"}, {\"name\": \"ability_id\", \"signal\": \"logs\"}, {\"name\": \"player_id\", \"signal\": \"logs\"}, {\"name\": \"entity_id\", \"signal\": \"logs\"}, {\"name\": \"account_id\", \"signal\": \"logs\"}, {\"name\": \"body\", \"signal\": \"logs\"}]}"
 }

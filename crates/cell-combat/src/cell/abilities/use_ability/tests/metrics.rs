@@ -29,6 +29,18 @@ fn outcome(world: &str, outcome: &str) -> u64 {
     )
 }
 
+/// `ability_refused` rows with `reason` (the refusals view's population).
+fn refusal_rows(logs: &crate::test_support::LogCaptureGuard, reason: &str) -> usize {
+    logs.all()
+        .iter()
+        .filter(|c| {
+            c.target == "abilities"
+                && c.has_field("event", "ability_refused")
+                && c.has_field("reason", reason)
+        })
+        .count()
+}
+
 /// Every launch refusal counts under the reason its row logs.
 #[test]
 fn launch_refusals_count_under_their_row_reason() {
@@ -60,11 +72,13 @@ async fn a_cooldown_refusal_counts_refused_on_cooldown() {
         outcome(W, "fired"),
     );
 
+    let logs = crate::test_support::LogCapture::install();
     assert!(!handle_use_ability(1, INSTANT_ABILITY, 2, &tx, &mut mgr).await);
 
     assert_eq!(counter_total(REFUSED_TOTAL, &reason) - r0, 1);
     assert_eq!(outcome(W, "refused") - c0, 1);
     assert_eq!(outcome(W, "fired") - f0, 0);
+    assert_eq!(refusal_rows(&logs, "on_cooldown"), 1);
 }
 
 /// A refusal answered by another module (`LaunchRow::count`) counts too:
@@ -79,10 +93,12 @@ async fn an_out_of_range_refusal_counts_its_range_reason() {
     let reason = [("reason", "target_out_of_range"), ("world", W)];
     let (r0, c0) = (counter_total(REFUSED_TOTAL, &reason), outcome(W, "refused"));
 
+    let logs = crate::test_support::LogCapture::install();
     assert!(!handle_use_ability(1, INSTANT_ABILITY, 2, &tx, &mut mgr).await);
 
     assert_eq!(counter_total(REFUSED_TOTAL, &reason) - r0, 1);
     assert_eq!(outcome(W, "refused") - c0, 1);
+    assert_eq!(refusal_rows(&logs, "target_out_of_range"), 1);
 }
 
 /// An instant cast at a hostile fires in the launch pass: one `fired`, one

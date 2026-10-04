@@ -22,6 +22,16 @@ use crate::cell::abilities::effect_plan::{
     PATH_SKIPPED,
 };
 
+fn npc_cast(world: &'static str) -> RefusedCast {
+    RefusedCast {
+        entity_id: 7,
+        ability_id: 99,
+        who: cimmeria_entity::cell_entity::PlayerIdentity::UNKNOWN,
+        caster: CasterKind::Npc,
+        world,
+    }
+}
+
 fn labels(all: impl IntoIterator<Item = &'static str>) -> BTreeSet<&'static str> {
     all.into_iter().collect()
 }
@@ -238,7 +248,7 @@ fn samples_reach_the_meter_with_their_labels() {
 
     let r0 = count(REFUSED_TOTAL, &[("reason", "shield_full"), ("world", W)]);
     let c0 = count(CAST_TOTAL, &[("outcome", "refused"), ("world", W)]);
-    refused(RefusalReason::ShieldFull, CasterKind::Npc, W);
+    refused(RefusalReason::ShieldFull, npc_cast(W));
     assert_eq!(
         count(
             REFUSED_TOTAL,
@@ -320,4 +330,58 @@ fn pool_change_splits_into_damage_and_heal() {
     let n = histogram_count(DAMAGE_DEALT, &[("world", W)]);
     before.record_change(before, W);
     assert_eq!(histogram_count(DAMAGE_DEALT, &[("world", W)]), n);
+}
+
+/// Every `abilities_refused_total` sample writes exactly one
+/// `ability_refused` row whose `reason` is the metric's label, for every
+/// reason: the refusals view and the dashboard count the same population.
+#[test]
+fn every_refusal_writes_one_ability_refused_row_with_its_label() {
+    install();
+    const W: &str = "Metrics_T6_RefusalRows";
+    for reason in RefusalReason::ALL {
+        let logs = crate::test_support::LogCapture::install();
+        let label = [("reason", reason.label()), ("world", W)];
+        let before = counter_total(REFUSED_TOTAL, &label);
+        refused(*reason, npc_cast(W));
+        let rows: Vec<_> = logs
+            .all()
+            .into_iter()
+            .filter(|c| c.target == "abilities" && c.has_field("event", EVENT_ABILITY_REFUSED))
+            .collect();
+        assert_eq!(rows.len(), 1, "{reason:?}: {rows:#?}");
+        assert!(rows[0].has_field("reason", reason.label()), "{rows:?}");
+        assert!(rows[0].has_field("ability_id", "99"), "{rows:?}");
+        assert_eq!(
+            counter_total(REFUSED_TOTAL, &label) - before,
+            1,
+            "{reason:?}"
+        );
+    }
+}
+
+/// `abilities_refused_total` is counted in `metrics::refused` and nowhere
+/// else, so no call site can count a refusal without its row.
+#[test]
+fn the_refusal_counter_has_one_call_site() {
+    let users: Vec<_> = crate::test_support::source_scan::rust_sources()
+        .into_iter()
+        .filter(|s| !s.is_test_path() && s.crates_rel.starts_with("cell-"))
+        .filter(|s| {
+            let text = s.read();
+            crate::test_support::source_scan::production_lines(&text)
+                .iter()
+                .any(|(_, l)| {
+                    !l.trim_start().starts_with("//")
+                        && (l.contains("REFUSED_TOTAL")
+                            || l.contains("\"abilities_refused_total\""))
+                })
+        })
+        .map(|s| s.crates_rel)
+        .collect();
+    assert_eq!(
+        users,
+        ["cell-combat/src/cell/abilities/metrics/mod.rs"],
+        "count refusals through metrics::refused"
+    );
 }

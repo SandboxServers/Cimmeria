@@ -41,7 +41,13 @@ async fn min_range_refusal_logs_reason_and_identity() {
     let rows: Vec<_> = logs
         .all()
         .into_iter()
-        .filter(|c| c.target == "abilities" && c.has_field("reason", "target_too_close"))
+        // The range gate's own row; the `ability_refused` row beside it
+        // (AB-T6, the metric's row) carries the same reason.
+        .filter(|c| {
+            c.target == "abilities"
+                && c.has_field("reason", "target_too_close")
+                && !c.has_field("event", "ability_refused")
+        })
         .collect();
     assert_eq!(rows.len(), 1, "one refusal row; got {rows:#?}");
     let row = &rows[0];

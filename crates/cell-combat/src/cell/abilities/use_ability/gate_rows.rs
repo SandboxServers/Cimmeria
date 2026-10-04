@@ -232,7 +232,16 @@ impl LaunchRow<'_> {
     /// Count a refusal whose row and answer are another module's
     /// (`abilities_refused_total`, AB-T6).
     pub(super) fn count(&self, reason: RefusalReason) {
-        metrics::refused(reason, self.caster, self.world);
+        metrics::refused(
+            reason,
+            metrics::RefusedCast {
+                entity_id: self.entity_id,
+                ability_id: self.ability_id,
+                who: self.who,
+                caster: self.caster,
+                world: self.world,
+            },
+        );
     }
 
     /// Log why the launch stopped, and count it.

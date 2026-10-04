@@ -392,6 +392,7 @@ pub(super) fn target_gate(
         metrics::refused_in(
             space_mgr,
             caster.entity_id.0 as u32,
+            ability_id,
             RefusalReason::BeneficialNonAllyTarget,
         );
         return TargetGate::Refused;
@@ -414,6 +415,7 @@ pub(super) fn target_gate(
         metrics::refused_in(
             space_mgr,
             caster.entity_id.0 as u32,
+            ability_id,
             RefusalReason::NonHostileTarget,
         );
         return TargetGate::Refused;

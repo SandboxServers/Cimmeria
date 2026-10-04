@@ -55,7 +55,12 @@ pub(super) async fn hold_weapon_attack(
             ability_id,
             "useAbility: weapon attack already queued (mid-draw), ignoring input"
         );
-        metrics::refused_in(space_mgr, entity_id, RefusalReason::WeaponAttackQueued);
+        metrics::refused_in(
+            space_mgr,
+            entity_id,
+            ability_id,
+            RefusalReason::WeaponAttackQueued,
+        );
         return true;
     }
 
@@ -78,7 +83,12 @@ pub(super) async fn hold_weapon_attack(
             ability_id,
             "useAbility: bandolier slot swap in progress, weapon attack blocked"
         );
-        metrics::refused_in(space_mgr, entity_id, RefusalReason::SlotSwapInProgress);
+        metrics::refused_in(
+            space_mgr,
+            entity_id,
+            ability_id,
+            RefusalReason::SlotSwapInProgress,
+        );
         return true;
     }
 

@@ -342,7 +342,7 @@ service.name = 'cimmeria-server' AND scope_name = 'abilities'
   AND event = 'ability_launched' AND player_id = <P> AND ability_id = <A>
 ```
 
-A press that never launched has no `cast_id`. Its refusal row (`use_ability_*`, `*_refused`; the **Abilities — Refusals by reason** view) names the `reason`, and `abilities_refused_total` counts it under the same value.
+A press that never launched has no `cast_id`. Every refusal writes one `event = 'ability_refused'` row (the **Abilities — Refusals by reason** view) whose `reason` is the `abilities_refused_total` label it was counted under; the refusing module's own row beside it (`use_ability_on_cooldown`, `cast_refused`, `summon_refused`, ...) has the detail.
 
 **2. Read the server rows in order.** Every server row of the cast carries its `cast_id`: receipt-to-launch gates, warmup, fire, the QR roll (`abilities.qr`), each effect's plan and NVP damage (`abilities.effect`), pulses (`abilities.pulse`), the timed-effect ledger, and every client-bound send (`abilities.wire`). Sort oldest first:
 

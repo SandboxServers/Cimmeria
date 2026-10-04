@@ -46,6 +46,8 @@ pub(crate) use cimmeria_cell_world::cell::effects::ability_metrics::{
     damage_dealt, world_of, Pool, UNKNOWN_WORLD,
 };
 
+use cimmeria_entity::cell_entity::PlayerIdentity;
+
 use super::super::space_manager::SpaceManager;
 
 #[cfg(test)]
@@ -252,8 +254,60 @@ pub(crate) fn cast_in(space_mgr: &SpaceManager, entity_id: u32, outcome: CastOut
     );
 }
 
-/// Count one launch refusal, and its `refused` cast outcome.
-pub(crate) fn refused(reason: RefusalReason, caster: CasterKind, world: &'static str) {
+/// `event` of the one row every `abilities_refused_total` sample writes
+/// (target `abilities`). Its `reason` is the metric's label, so the
+/// **Abilities — Refusals by reason** view selects exactly the metric's
+/// population. The refusing module's own row (`use_ability_on_cooldown`,
+/// `cast_refused`, `deploy_refused`, …) keeps the detail.
+pub(crate) const EVENT_ABILITY_REFUSED: &str = "ability_refused";
+
+/// Who a refusal is about, for its `ability_refused` row.
+#[derive(Debug, Clone, Copy)]
+pub(crate) struct RefusedCast {
+    pub entity_id: u32,
+    pub ability_id: i32,
+    pub who: PlayerIdentity,
+    pub caster: CasterKind,
+    pub world: &'static str,
+}
+
+impl RefusedCast {
+    /// `entity_id`'s refusal of `ability_id`.
+    pub(crate) fn of(space_mgr: &SpaceManager, entity_id: u32, ability_id: i32) -> Self {
+        Self {
+            entity_id,
+            ability_id,
+            who: space_mgr.player_identity(entity_id),
+            caster: caster_kind(space_mgr, entity_id),
+            world: world_of(space_mgr, entity_id),
+        }
+    }
+}
+
+/// Count one launch refusal and its `refused` cast outcome, and write its
+/// `ability_refused` row. The only place `abilities_refused_total` is
+/// counted, so the row and the metric cannot drift apart.
+pub(crate) fn refused(reason: RefusalReason, cast_ids: RefusedCast) {
+    let RefusedCast {
+        entity_id,
+        ability_id,
+        who,
+        caster,
+        world,
+    } = cast_ids;
+    tracing::debug!(
+        target: "abilities",
+        event = EVENT_ABILITY_REFUSED,
+        stage = "gate",
+        reason = reason.label(),
+        caster = caster.label(),
+        world,
+        account_id = who.account_id,
+        player_id = who.player_id,
+        entity_id,
+        ability_id,
+        "ability launch refused (one row per abilities_refused_total sample)"
+    );
     cimmeria_observability::counter!(
         REFUSED_TOTAL,
         "reason" => reason.label(),
@@ -263,13 +317,14 @@ pub(crate) fn refused(reason: RefusalReason, caster: CasterKind, world: &'static
     cast(CastOutcome::Refused, caster, world);
 }
 
-/// [`refused`] for `entity_id`.
-pub(crate) fn refused_in(space_mgr: &SpaceManager, entity_id: u32, reason: RefusalReason) {
-    refused(
-        reason,
-        caster_kind(space_mgr, entity_id),
-        world_of(space_mgr, entity_id),
-    );
+/// [`refused`] for `entity_id`'s press of `ability_id`.
+pub(crate) fn refused_in(
+    space_mgr: &SpaceManager,
+    entity_id: u32,
+    ability_id: i32,
+    reason: RefusalReason,
+) {
+    refused(reason, RefusedCast::of(space_mgr, entity_id, ability_id));
 }
 
 /// Count one `effect_planned` row's path.
