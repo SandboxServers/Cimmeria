@@ -440,8 +440,8 @@ AB-L0 smoke, AB-L4, AB-L6 ──────────────────
 | AB-N1 | BlockedDependency (AB-N0, AB-T3) | | |
 | AB-N2 | Ready | | |
 | AB-L0 | Ready | | |
-| AB-L4 | InReview | #1167 | `source = "packet"` clauses and the `approx` op (`value` ± `tolerance`); one tap per row from the anchor to teardown, stopped on every path; rows kept as the `packet_tap` attachment; UNVERIFIED when the endpoint is unreachable. Guide: automated-uat.md "Packet clauses". |
-| AB-L6 | InReview | #1169 (stacked on #1167) | `players = 2` rows drive the second lab instance (`lab-account.p2.json`, default `p2`) through an in-process supervisor; `client = "p2"` on actions, clauses and evidence; `@target_player` = real-input `client_target` on the other player's character; still BLOCKED, with the reason, when no p2 is configured. gm-parity M1-2 uses it. Guides: automated-uat.md "Two-player rows", live-research-lab.md "Two clients". |
+| AB-L4 | Merged 2026-10-04 | #1167 | `source = "packet"` clauses and the `approx` op (`value` ± `tolerance`); one tap per row from the anchor to teardown, stopped on every path; rows kept as the `packet_tap` attachment; UNVERIFIED when the endpoint is unreachable. Guide: automated-uat.md "Packet clauses". |
+| AB-L6 | InReview | #1169 | `players = 2` rows drive the second lab instance (`lab-account.p2.json`, default `p2`) through an in-process supervisor; `client = "p2"` on actions, clauses and evidence; `@target_player` = real-input `client_target` on the other player's character; still BLOCKED, with the reason, when no p2 is configured. gm-parity M1-2 uses it. Guides: automated-uat.md "Two-player rows", live-research-lab.md "Two clients". |
 | AB-L1, AB-L2 | BlockedDependency (AB-T5); `.qr` BlockedDecision (D-AU2) | | |
 | AB-L3 | BlockedDependency (AB-L1, AB-T1, AB-C1) | | |
 | AB-R0 | Ready (draft rows; clauses fill in as tools land) | | |
