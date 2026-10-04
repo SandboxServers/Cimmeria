@@ -25,7 +25,7 @@ Two coverage jobs in `test.yml`, `coverage-workspace` and `coverage-live-db`, ru
 
 Changes under `crates/launcher/desktop/` also run the native Mac/Windows workflow
 `.github/workflows/launcher-desktop.yml`. It checks the standalone Rust engine,
-Effect frontend and JS logic UAT against the native state harness. Root
+Effect frontend, native Tauri shell, and JS logic UAT against the state harness. Root
 workspace checks do not cover this directory; follow the
 [desktop README](../../crates/launcher/desktop/README.md) commands as well.
 Passing these jobs is not packaged UI, signing or game UAT.

@@ -26,3 +26,9 @@ bounded persisted state and uncertain-commit gating. `frontend/` pins Effect
 example and proves preference persistence across restart. Tauri UI, native
 app-data selection, migration, game workers and exporter remain unconnected.
 Standalone CI is `.github/workflows/launcher-desktop.yml`; root tests omit it.
+
+2026-10-04 shell update: `desktop/shell` now connects native-selected app data
+to the approved interface and Effect settings workflow. File-manager reveal
+accepts only the saved existing directory, avoiding arbitrary-path IPC and
+file-association launch. CI run37181383914 proved engine/JS persistence on
+Windows+Mac before the shell; shell/visual/game gates remain separate.

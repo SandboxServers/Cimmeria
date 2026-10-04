@@ -3,7 +3,9 @@
 import assert from 'node:assert/strict';
 import { spawn } from 'node:child_process';
 import { once } from 'node:events';
-import { mkdtemp, rm } from 'node:fs/promises';
+import { mkdtemp, rm, readFile } from 'node:fs/promises';
+import { parseHTML } from 'linkedom';
+import { mountLauncher } from './.test-build/view.mjs';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { createInterface } from 'node:readline';
@@ -74,8 +76,35 @@ try {
   const final = await third.invoke({command:'inspect', schema_version:1});
   assert.equal(final.preferences.launcher_summary_consent, false);
   assert.equal(final.preferences.revision, 2);
+  console.log('PASS second restart: opt-out durable');
+  const {document, window} = parseHTML(await readFile(new URL('./ui/index.html', import.meta.url), 'utf8'));
+  const app = mountLauncher(document, (command, args) => {
+    if (command === 'launcher_command') return third.invoke(args.request);
+    if (command === 'choose_install_directory') return Promise.resolve(null);
+    throw new Error('native GUI commands are not exercised by logic UAT');
+  });
+  const flush = () => new Promise(resolve => setImmediate(resolve));
+  try {
+    await app.ready; await flush();
+    const consent = document.getElementById('telemetry');
+    assert.equal(consent.checked, false);
+    consent.checked = true; consent.dispatchEvent(new window.Event('change'));
+    await app.settled(); await flush();
+    assert.equal(consent.checked, true);
+    assert.equal((await third.invoke({command:'inspect', schema_version:1})).preferences.revision, 3);
+    document.getElementById('settings').dispatchEvent(new window.Event('click'));
+    assert.equal(document.getElementById('gear').hidden, false);
+    assert.equal(document.getElementById('install-path').value, join(root, 'Game'));
+    document.getElementById('choose').dispatchEvent(new window.Event('click'));
+    await app.settled(); await flush();
+    assert.equal((await third.invoke({command:'inspect', schema_version:1})).preferences.revision, 3);
+    console.log('PASS rendered controls: consent saved natively, settings show saved path, cancelled chooser does not save');
+  } finally { await app.dispose(); }
   await third.close();
-  console.log('PASS second restart: opt-out durable; no GUI or network used');
+  const fourth = start();
+  assert.equal((await fourth.invoke({command:'inspect', schema_version:1})).preferences.launcher_summary_consent, true);
+  await fourth.close();
+  console.log('PASS restart after UI action: checkbox change persisted; no desktop or network used');
 } finally {
   for (const child of children) {
     if (child.exitCode === null && child.signalCode === null) {

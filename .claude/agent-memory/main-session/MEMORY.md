@@ -18,7 +18,7 @@ Dated, sourced facts from top-level sessions, committed with the change that pro
 
 ## Reference
 
-- [reference_launcher_implementation_plan.md](reference_launcher_implementation_plan.md) — 2026-10-04 Tauri + real Effect orchestration plan; bounded consent-aware launcher summaries; self-contained startup release gate last
+- [reference_launcher_implementation_plan.md](reference_launcher_implementation_plan.md) — 2026-10-04 Tauri/Effect settings shell and persistent native state; game workers and summary export pending; self-contained startup gate last
 
 - [reference_launcher_platform_options.md](reference_launcher_platform_options.md) — 2026-10-03 proposed egui/wgpu versus Tauri versus SwiftUI evaluation; no accepted architecture or performance benchmark; scoped Mac packaging proof later authorized
 

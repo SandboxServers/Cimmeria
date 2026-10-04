@@ -5,11 +5,12 @@
 > **Last updated:** 2026-10-04
 > **Companions:** [Implementation plan](../../../docs/analysis/playtests/2026-10-03-macos-wine/launcher-implementation-plan.md), [build rules](../../../CLAUDE.md), [test policy](../../../TESTING.md)
 
-This standalone workspace contains the native Rust operation owner and the
-Effect workflow foundation for the approved Tauri launcher. Native settings are
-persisted and exercised by a headless bridge. The Tauri window is not connected
-here yet. No game installation, repair, removal, launch or telemetry export is
-implemented in this workspace. The existing Windows egui launcher is unchanged.
+This standalone workspace contains native Rust state, Effect workflows and a
+Tauri settings shell. The interface connects through Tauri invoke to native
+preference persistence. Play/Patch Notes tabs and the settings panel are
+implemented; game actions remain disabled and patch notes show an explicit
+manifest placeholder. Installation, repair, removal, launch and telemetry export
+are not implemented here. The existing Windows egui launcher is unchanged.
 
 ## Native operation and storage contracts
 
@@ -40,8 +41,8 @@ Writes use a same-directory temporary file, sync its contents, replace the
 destination, and sync the resulting file. Unix also syncs the parent directory.
 A failure after replacement reports uncertainty: reopen and inspect before
 issuing more mutations. Reads expose the last confirmed in-memory snapshot, so
-adapters must also surface `requires_reopen`. Windows and power-loss durability
-remain unvalidated; OS sync calls alone do not prove hardware crash behavior.
+adapters must also surface `requires_reopen`. Windows-native engine checks have passed; power-loss durability
+remains unvalidated; OS sync calls alone do not prove hardware crash behavior.
 
 Preferences persist an optional absolute install path and separate default-off
 `launcher_summary_consent`. Saves require the current preference revision.
@@ -52,8 +53,8 @@ integration yet, and no immediate-export revocation claim is made by this packet
 
 `engine/src/commands.rs` exposes versioned `inspect` and `save_preferences`
 commands. No command lets frontend callers set native operation outcomes or
-choose the state-directory root. Canonical game intent validation, digest
-calculation, app-data selection and worker integration remain pending.
+choose the state-directory root. The shell selects app data through Tauri's native resolver. Canonical game intent
+validation, digest calculation and worker integration remain pending.
 
 ## Effect workflows
 
@@ -63,8 +64,8 @@ against the npm stable tag on 2026-10-04. API references:
 [scopes](https://effect.website/docs/v4/resource-management/scope) and
 [scheduling](https://effect.website/docs/v4/scheduling/using-schedules).
 
-`bridgeLayer` accepts a transport; production will supply Tauri invoke and the
-logic UAT supplies the native harness. Replies are schema-validated, native
+`bridgeLayer` accepts a transport: the shell supplies Tauri invoke and logic
+UAT supplies the native process harness. Replies are schema-validated, native
 failures are allowlisted codes, and raw transport errors are discarded.
 `makeLauncher` lives in the application scope. It serializes inspection/saves,
 rejects older snapshots, and publishes a one-entry sliding state stream so slow
@@ -77,6 +78,26 @@ mutation. A cancelled Effect fiber does not cancel a native save. Scope cleanup
 releases subscriptions; it does not claim native rollback. Uncertain native
 storage keeps the mutation gate closed until the native store is reopened.
 
+## Tauri settings shell
+
+`shell/` selects `<app-data>/state` with identifier
+`app.cimmeria.launcher.desktop` and lazily opens one `DesktopState` behind a
+mutex. Storage commands run on blocking workers. The native folder chooser is
+parented to the requesting window; cancelling it makes no save. Show folder
+reveals the saved directory in the file manager, rather than opening it through
+file associations. It accepts no frontend path and requires an existing folder.
+
+`frontend/src/view.ts` owns one application-scoped `ManagedRuntime`. Tabs and
+settings preserve that runtime. Consent changes show pending feedback, wait for
+native acknowledgement and restore confirmed state on failure. Folder selection
+saves through the same Effect workflow and preserves consent. Disposal removes
+handlers and interrupts frontend observation without claiming native rollback.
+
+The development UI explicitly labels unavailable operations. Its manifest
+placeholder neither fetches patch notes nor establishes installed-game status.
+Native window appearance, dialogs and actual Tauri IPC still require interactive
+UAT. Compilation and headless DOM tests do not establish those behaviors.
+
 ## Validation
 
 Run from the repository root. Windows checks run natively on Windows; the
@@ -86,7 +107,7 @@ Rust toolchain and repository build lane:
 ```bash
 bash tools/build-lane/lane.sh cargo test --locked --manifest-path crates/launcher/desktop/Cargo.toml
 bash tools/build-lane/lane.sh cargo clippy --locked --manifest-path crates/launcher/desktop/Cargo.toml --all-targets -- -D warnings
-cargo fmt --manifest-path crates/launcher/desktop/Cargo.toml -- --check
+cargo fmt --all --manifest-path crates/launcher/desktop/Cargo.toml -- --check
 npm ci --ignore-scripts --prefix crates/launcher/desktop/frontend
 npm run check --prefix crates/launcher/desktop/frontend
 npm test --prefix crates/launcher/desktop/frontend
@@ -94,11 +115,31 @@ bash tools/build-lane/lane.sh cargo build --locked --manifest-path crates/launch
 npm run uat --prefix crates/launcher/desktop/frontend -- "$PWD/target/desktop/debug/examples/state_bridge"
 ```
 
+Build the development executable without opening it:
+
+```bash
+bash crates/launcher/desktop/build-native.sh
+bash tools/build-lane/lane.sh cargo test --locked --manifest-path crates/launcher/desktop/Cargo.toml -p cimmeria-launcher-desktop --target-dir target/desktop
+bash tools/build-lane/lane.sh cargo clippy --locked --manifest-path crates/launcher/desktop/Cargo.toml -p cimmeria-launcher-desktop --target-dir target/desktop --all-targets -- -D warnings
+```
+
+The executable is `target/desktop/debug/cimmeria-launcher-desktop` (`.exe` on
+Windows). For a development Mac `.app`, after building the UI and installing
+the Tauri CLI, use the lane for its nested Cargo build:
+
+```bash
+bash tools/build-lane/lane.sh bash crates/launcher/desktop/bundle-macos-dev.sh
+```
+
+The bundle is under `target/desktop/debug/bundle/macos/`. Creating this bundle
+is not final self-contained startup validation. Do not open it during unattended
+work without the tester's explicit desktop permission.
+
 On Windows, append `.exe` to the harness path. Root workspace tests do not run
 this nested workspace. `.github/workflows/launcher-desktop.yml` adds explicit
 native Mac/Windows checks and the frontend/native logic UAT.
 
-On 2026-10-04, **23 Rust tests**, **eight Effect tests**, strict clippy, TypeScript
+On 2026-10-04, **23 Rust tests**, **12 frontend tests**, strict clippy, TypeScript
 checking and formatting passed locally on macOS. The one ignored Rust test is a
 subprocess fixture invoked by its parent test. Coverage includes command/schema
 validation, ownership/retries, cancellation races, file failures before/after
@@ -108,19 +149,32 @@ writing; its parent verifies exclusion, kills it and reopens interrupted state.
 That interrupts an idle child after completed writes, not a write in progress
 or a power failure. Effect tests use virtual time for retry/timeout behavior.
 
-The JS logic UAT exercises the actual Effect service, Rust command handler and
-filesystem: first-open consent off; saved consent/path; process restart with
-preserved values; opt-out; a second restart proving opt-out persisted. Tests also
-cover a lost save reply without replay, save failure, old snapshots and scoped
-subscription interruption. No browser, native webview, keyboard/visual layout,
-real game or live telemetry was exercised. CI outcomes must be checked before
-claiming the new Windows-native coverage passed.
+The frontend suite includes eight workflow tests and four DOM tests covering
+navigation, disabled game actions, pending/failed consent saves, folder choice
+and cancellation, and disposal during pending IPC. Two shell-host tests cover
+lazy ownership, saved-folder resolution and retry after another owner releases
+the lock. Native shell compilation, its two host tests and clippy passed locally
+on macOS. No desktop window was opened for those checks.
+
+JS logic UAT mounts the actual HTML and view code in a headless DOM. It drives a
+checkbox through Effect, the Rust process harness and disk, then restarts the
+process and confirms persistence. It also checks restored settings and a mocked
+cancelled chooser without an extra save. Earlier workflow steps cover default-off
+consent, path persistence and persisted opt-out. This does not exercise native
+webview rendering, Tauri command routing, real dialogs or file-manager reveal,
+keyboard behavior, gameplay or telemetry export.
+
+[CI run 37181383914](https://github.com/SandboxServers/Cimmeria/actions/runs/37181383914)
+passed the Windows and macOS engine/frontend persistence checks at `69fc13d3f`,
+before the shell was added. CI now includes shell tests, clippy and executable
+builds; inspect their current run before claiming shell validation on Windows.
 
 ## Next integration gates
 
-Connect the Tauri shell with native app-data ownership and settings UI, then
-extract existing installation/preparation behind validated native intents.
-Prove actual worker dispatch follows persistence, implement authoritative
-reconciliation, and deliver explicit operation cancellation and progress through
-Effect. The original plan's install/launch, platform provisioning, telemetry,
-migration/updater and final self-contained startup/release gates remain open.
+Verify the native window, keyboard behavior, actual Tauri IPC, folder chooser
+and saved-folder reveal interactively. Extract existing installation/preparation
+behind validated native intents, prove worker dispatch follows persistence,
+and implement authoritative reconciliation, cancellation and progress through
+Effect. Manifest loading and all game actions remain unimplemented. Platform
+provisioning, telemetry, migration/updater and final self-contained startup and
+release gates remain open.

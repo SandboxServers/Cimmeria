@@ -244,5 +244,7 @@ natively, using the pinned toolchain and build lane; Windows cross-compilation
 remains unsupported. The root Cargo workspace and its generated graph do not
 include this nested workspace. `.github/workflows/launcher-desktop.yml` invokes
 its manifest explicitly on native Mac and Windows runners, including a
-headless JS/Effect-to-Rust persistence UAT. These checks do not establish
+headless JS/Effect-to-Rust persistence UAT and native shell builds/tests. The
+desktop README also documents a development bundle command; that command does
+not open the app. These checks do not establish
 packaged-webview behavior, game compatibility or self-contained first open.

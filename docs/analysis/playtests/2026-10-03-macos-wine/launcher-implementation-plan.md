@@ -311,3 +311,25 @@ export or self-contained first open. The child-kill test kills an idle process
 after its journal writes have finished. Next: connect the Tauri application
 with native app-data selection and settings UI, then actual installer workers.
 The settings store is new and does not yet migrate the egui configuration.
+
+### 2026-10-04: Tauri settings shell (packet 2, partial)
+
+Connected the application-scoped Effect runtime to Tauri commands backed by
+native app-data selection and a lazily locked store. Added approved dark-only
+Play/Patch Notes tabs, gear settings, persisted diagnostics choice, a parented
+folder chooser and saved-folder-only reveal. Game actions remain disabled and
+patch notes explicitly identify missing manifest integration. Mac native shell
+compilation, two host tests and clippy passed; frontend tests total 12.
+
+Headless JS UAT now drives a DOM checkbox through Effect, the Rust harness and
+disk, then confirms persistence after restart. Chooser cancellation is mocked.
+Visual, keyboard, real-dialog and actual Tauri IPC UAT remain open; no desktop
+window was opened during automated checks. The earlier engine CI run
+37181383914 passed on Windows and macOS at `69fc13d3f`, before this shell.
+CI now also builds/tests the native shell on both platforms. The final
+self-contained startup gate remains deferred, not waived.
+
+The uncertainty regression guard was mutation-checked after the storage commit:
+disabling its reopen gate made the test fail; restoring it made the same test
+pass. This proves that guard detects loss of the gate, not complete recovery
+correctness. Next: signed release-manifest integration and actual game workers.

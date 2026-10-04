@@ -31,7 +31,7 @@ jobs:
       matrix:
         os: [macos-latest, windows-latest]
     runs-on: ${{ matrix.os }}
-    timeout-minutes: 15
+    timeout-minutes: 30
     defaults:
       run:
         shell: bash
@@ -41,7 +41,7 @@ jobs:
         with:
           components: rustfmt, clippy
       - name: Format standalone workspace
-        run: cargo fmt --manifest-path crates/launcher/desktop/Cargo.toml -- --check
+        run: cargo fmt --all --manifest-path crates/launcher/desktop/Cargo.toml -- --check
       - name: Check native engine
         run: bash tools/build-lane/lane.sh cargo clippy --locked --manifest-path crates/launcher/desktop/Cargo.toml -p cimmeria-launcher-engine --target-dir target/desktop --all-targets -- -D warnings
       - name: Test native storage and operation contracts
@@ -61,3 +61,11 @@ jobs:
           bridge=target/desktop/debug/examples/state_bridge
           if [ "$RUNNER_OS" = Windows ]; then bridge="$bridge.exe"; fi
           npm run uat --prefix crates/launcher/desktop/frontend -- "$PWD/$bridge"
+      - name: Build UI assets
+        run: npm run build --prefix crates/launcher/desktop/frontend
+      - name: Test native shell adapter without opening a window
+        run: bash tools/build-lane/lane.sh cargo test --locked --manifest-path crates/launcher/desktop/Cargo.toml -p cimmeria-launcher-desktop --target-dir target/desktop
+      - name: Check shell adapter
+        run: bash tools/build-lane/lane.sh cargo clippy --locked --manifest-path crates/launcher/desktop/Cargo.toml -p cimmeria-launcher-desktop --target-dir target/desktop --all-targets -- -D warnings
+      - name: Build native desktop executable
+        run: bash tools/build-lane/lane.sh cargo build --locked --manifest-path crates/launcher/desktop/Cargo.toml -p cimmeria-launcher-desktop --target-dir target/desktop
