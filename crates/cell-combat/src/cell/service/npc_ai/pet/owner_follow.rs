@@ -68,7 +68,7 @@ pub(super) fn arm_follow(space_mgr: &mut SpaceManager, pet_id: u32, owner_id: u3
         super::super::AiTransitionReason::PetFollow,
     );
     let id = super::owner_identity(space_mgr, pet_id, owner_id);
-    let names = space_mgr.entity_names(pet_id);
+    let names = super::debug_row_names(space_mgr, pet_id);
     tracing::debug!(
         target: "pets.ai",
         entity_id = pet_id,
@@ -130,7 +130,7 @@ pub(super) async fn teleport_if_left_behind(
         .get::<PetState>()
         .and_then(|p| p.last_teleport_at);
     let id = super::owner_identity(space_mgr, pet_id, owner_id);
-    let names = space_mgr.entity_names(pet_id);
+    let names = super::debug_row_names(space_mgr, pet_id);
     if let Some(last) =
         last.filter(|t| now.saturating_duration_since(*t) < PET_TELEPORT_MIN_INTERVAL)
     {

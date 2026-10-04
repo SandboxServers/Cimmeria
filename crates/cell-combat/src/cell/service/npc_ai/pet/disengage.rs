@@ -120,7 +120,7 @@ fn log_released(
         return;
     }
     let id = owner_identity(space_mgr, pet_id, owner_id);
-    let names = space_mgr.entity_names(pet_id);
+    let names = super::debug_row_names(space_mgr, pet_id);
     tracing::debug!(
         target: "pets.ai",
         entity_id = pet_id,
@@ -188,7 +188,7 @@ pub(super) fn drop_targets_not_worth_fighting(
     let released = release_pet_from(space_mgr, pet_id, &invalid);
     log_released(space_mgr, pet_id, owner_id, &released, "target_invalid");
     let id = owner_identity(space_mgr, pet_id, owner_id);
-    let names = space_mgr.entity_names(pet_id);
+    let names = super::debug_row_names(space_mgr, pet_id);
     for (target_id, reason) in dropped {
         tracing::debug!(
             target: "pets.ai",
@@ -288,7 +288,7 @@ pub(in crate::cell::service::npc_ai) async fn rearm_after_fight(
         defend::sync_owner_combat(npc_id, owner_id, tx, space_mgr).await;
     }
     let id = owner_identity(space_mgr, npc_id, owner_id);
-    let names = space_mgr.entity_names(npc_id);
+    let names = super::debug_row_names(space_mgr, npc_id);
     tracing::debug!(
         target: "pets.ai",
         entity_id = npc_id,

@@ -63,7 +63,7 @@ pub(in crate::cell) fn log_aggro_acquired(
         None => "gone",
     };
     let target_faction = target.map(|t| t.faction);
-    let target_tag = target.and_then(|t| t.tag.as_deref()).unwrap_or("");
+    let target_tag = target.and_then(|t| t.tag.as_deref());
     let npc_to_target = target.map(|t| t.position.distance_to(&npc.position));
     let dy = target.map(|t| t.position.y - npc.position.y);
     let has_los = los_label(space_mgr.line_of_sight(npc_id, target_id));
@@ -81,7 +81,7 @@ pub(in crate::cell) fn log_aggro_acquired(
         cause = cause.label(),
         npc_id,
         npc_name = npc_names.entity_name,
-        tag = npc.tag.as_deref().unwrap_or(""),
+        tag = npc.tag.as_deref(),
         template_id = npc.template_id,
         template_name = npc_names.template_name,
         world = world.as_str(),

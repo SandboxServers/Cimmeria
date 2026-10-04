@@ -216,7 +216,10 @@ fn log(
     waypoint: Option<Vector3>,
 ) {
     let w = waypoint.unwrap_or(s.npc_pos);
-    let book = cimmeria_names::book();
+    // A cooling hold writes this row every tick: load the NameBook only when
+    // the row is on (a guard can't be taken inside the field's closure).
+    let book =
+        tracing::enabled!(target: "npc_ai", tracing::Level::DEBUG).then(cimmeria_names::book);
     tracing::debug!(
         target: "npc_ai",
         event = "decision",
@@ -226,7 +229,10 @@ fn log(
         target_id = s.target_id,
         target_name = space_mgr.entity_label(s.target_id),
         ability_id = s.ability_id,
-        ability_name = s.ability_id.and_then(|a| book.ability(a)),
+        ability_name = s
+            .ability_id
+            .zip(book.as_ref())
+            .and_then(|(a, b)| b.ability(a)),
         dist_to_target = s.dist_to_target,
         min_range = s.min_range,
         comfort_range = comfort_range(s.min_range),

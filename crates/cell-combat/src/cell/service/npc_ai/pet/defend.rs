@@ -49,7 +49,7 @@ pub(super) async fn sync_owner_combat(
     for mob_id in engaged {
         if let Some(state) = combat::enter_player_combat(space_mgr, owner_id, mob_id) {
             let id = super::owner_identity(space_mgr, pet_id, owner_id);
-            let names = space_mgr.entity_names(pet_id);
+            let names = super::debug_row_names(space_mgr, pet_id);
             tracing::debug!(
                 target: "pets.ai",
                 entity_id = pet_id,
@@ -115,7 +115,7 @@ pub(super) async fn sync_owner_combat(
     for mob_id in stale {
         if let Some(state) = combat::exit_player_combat(space_mgr, owner_id, mob_id) {
             let id = super::owner_identity(space_mgr, pet_id, owner_id);
-            let names = space_mgr.entity_names(pet_id);
+            let names = super::debug_row_names(space_mgr, pet_id);
             tracing::debug!(
                 target: "pets.ai",
                 entity_id = pet_id,

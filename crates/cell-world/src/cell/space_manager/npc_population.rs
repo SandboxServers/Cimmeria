@@ -146,7 +146,7 @@ fn log_spawn_behaviour(space_mgr: &mut SpaceManager, npc_id: u32) {
         tag = e.tag.as_deref(),
         template_id = e.template_id.unwrap_or(0),
         template_name = names.template_name,
-        spawn_id = e.spawn_id.unwrap_or(0), // nt:id-only spawnlist row id, the row has no name column
+        spawn_id = e.spawn_id, // nt:id-only spawnlist row id, the row has no name column
         x = e.position.x,
         y = e.position.y,
         z = e.position.z,

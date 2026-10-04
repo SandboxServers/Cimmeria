@@ -91,9 +91,9 @@ pub fn report_scan(
     if rejects.is_empty() && found_candidate {
         return;
     }
-    let Some(ident) = NpcIdent::of(space_mgr, npc_id) else {
-        return;
-    };
+    // Built on the first admitted row, not before the sampling below: the
+    // names cost NameBook and interner reads (Rule 6, hot path).
+    let mut ident_cache: Option<Option<NpcIdent>> = None;
     let Some((npc_pos, radius)) = space_mgr
         .get_entity(npc_id)
         .map(|e| (e.position, crate::cell::combat::aggro_radius(e)))
@@ -109,6 +109,12 @@ pub fn report_scan(
             REJECT_SAMPLE_INTERVAL,
         ) else {
             continue;
+        };
+        let Some(ident) = ident_cache
+            .get_or_insert_with(|| NpcIdent::of(space_mgr, npc_id))
+            .clone()
+        else {
+            return;
         };
         let target_pos = space_mgr.get_entity(player_id).map(|p| p.position);
         tracing::debug!(
@@ -140,6 +146,12 @@ pub fn report_scan(
         now,
         NO_CANDIDATES_SAMPLE_INTERVAL,
     ) else {
+        return;
+    };
+    let Some(ident) = ident_cache
+        .get_or_insert_with(|| NpcIdent::of(space_mgr, npc_id))
+        .clone()
+    else {
         return;
     };
     tracing::debug!(
@@ -228,9 +240,9 @@ pub fn report_npc_rejects(
     if rejects.is_empty() {
         return;
     }
-    let Some(ident) = NpcIdent::of(space_mgr, npc_id) else {
-        return;
-    };
+    // Built on the first admitted row, not before the sampling below: the
+    // names cost NameBook and interner reads (Rule 6, hot path).
+    let mut ident_cache: Option<Option<NpcIdent>> = None;
     let Some((npc_pos, npc_faction, radius)) = space_mgr
         .get_entity(npc_id)
         .map(|e| (e.position, e.faction, crate::cell::combat::aggro_radius(e)))
@@ -246,6 +258,12 @@ pub fn report_npc_rejects(
             REJECT_SAMPLE_INTERVAL,
         ) else {
             continue;
+        };
+        let Some(ident) = ident_cache
+            .get_or_insert_with(|| NpcIdent::of(space_mgr, npc_id))
+            .clone()
+        else {
+            return;
         };
         let Some(t) = space_mgr.get_entity(target_id) else {
             continue;

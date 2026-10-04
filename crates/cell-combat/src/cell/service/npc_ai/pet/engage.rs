@@ -127,7 +127,7 @@ pub fn engage_pet_target(
     );
     if pet_space.is_none() || pet_space != target_space {
         let id = super::owner_identity(space_mgr, pet_id, owner_id);
-        let names = space_mgr.entity_names(pet_id);
+        let names = super::debug_row_names(space_mgr, pet_id);
         tracing::debug!(
             target: "pets.ai",
             entity_id = pet_id,

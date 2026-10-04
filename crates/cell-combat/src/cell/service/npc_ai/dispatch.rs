@@ -452,6 +452,12 @@ fn log_ai_tick(
     let Some(suppressed) = admit_ai_tick_row(space_mgr, npc_id, state_before, now) else {
         return;
     };
+    // The sampler above admits every tick of a fighting, leashing or
+    // witnessed NPC, so the row's own level is the gate: with it off, skip
+    // the name, line-of-sight and policy work below.
+    if !tracing::enabled!(target: "npc_ai.tick", tracing::Level::DEBUG) {
+        return;
+    }
     let space_mgr: &SpaceManager = space_mgr;
     let Some(e) = space_mgr.get_entity(npc_id) else {
         return;
@@ -466,7 +472,6 @@ fn log_ai_tick(
     let next = e.nav_path.front().copied();
     let [vx, vy, vz] = e.velocity;
     let los = target.map(|_| space_mgr.npc_line_of_sight(npc_id, target_id));
-    // Past the row throttle above, so this is the logging branch.
     let names = EntityNames::of(e);
     tracing::debug!(
         target: "npc_ai.tick",
@@ -512,7 +517,7 @@ fn log_ai_tick(
                 .attack_los_policy(npc_id, target_id, e.is_stationary, l)
                 .label()
         }),
-        follow_target_id = e.follow_target_id.unwrap_or(0),
+        follow_target_id = e.follow_target_id,
         follow_target_name = e.follow_target_id.and_then(|f| space_mgr.entity_label(f)),
         npc_to_spawn = ?e.spawn_position.map(|p| p.distance_to(&e.position)),
         move_speed = e.move_speed,

@@ -60,7 +60,7 @@ use tokio::sync::mpsc;
 
 use crate::cell::combat;
 use crate::cell::messages::CellToBaseMsg;
-use crate::cell::space_manager::SpaceManager;
+use crate::cell::space_manager::{EntityNames, SpaceManager};
 
 /// Whether `entity_id` is a pet (it carries `PetState`).
 pub(in crate::cell) fn is_pet(space_mgr: &SpaceManager, entity_id: u32) -> bool {
@@ -85,6 +85,27 @@ pub(in crate::cell) fn owner_identity(
     match space_mgr.get_entity(owner_id) {
         Some(o) if o.is_player => o.identity(),
         _ => PlayerIdentity::UNKNOWN,
+    }
+}
+
+/// A pet's [`EntityNames`] for a `pets.ai` DEBUG row, or none when that
+/// level is off. Several of those rows repeat every tick (a pet walking
+/// back, a Passive pet being shot), and the names cost NameBook and
+/// interner reads (Rule 6: resolve only for a row that is written).
+pub(in crate::cell) fn debug_row_names(space_mgr: &SpaceManager, entity_id: u32) -> EntityNames {
+    if tracing::enabled!(target: "pets.ai", tracing::Level::DEBUG) {
+        space_mgr.entity_names(entity_id)
+    } else {
+        EntityNames::default()
+    }
+}
+
+/// [`debug_row_names`] for an entity already in hand.
+fn debug_row_names_of(e: &CellEntity) -> EntityNames {
+    if tracing::enabled!(target: "pets.ai", tracing::Level::DEBUG) {
+        EntityNames::of(e)
+    } else {
+        EntityNames::default()
     }
 }
 
@@ -170,7 +191,7 @@ pub(in crate::cell) fn log_threat_refusal(
         return;
     };
     let id = owner_identity(space_mgr, target.entity_id.0 as u32, pet.owner_id);
-    let names = crate::cell::space_manager::EntityNames::of(target);
+    let names = debug_row_names_of(target);
     tracing::debug!(
         target: "pets.ai",
         entity_id = target.entity_id.0,
@@ -222,7 +243,7 @@ pub(in crate::cell) fn log_fight_entered(
         return;
     };
     let id = owner_identity(space_mgr, pet_id, owner_id);
-    let names = space_mgr.entity_names(pet_id);
+    let names = debug_row_names(space_mgr, pet_id);
     tracing::debug!(
         target: "pets.ai",
         entity_id = pet_id,
@@ -310,7 +331,7 @@ pub(super) async fn pre_pass(
         // The summoner captured at summon: still the right player when the
         // owner entity is gone or its id was reused.
         let id = owner_identity(space_mgr, npc_id, owner_id);
-        let names = space_mgr.entity_names(npc_id);
+        let names = debug_row_names(space_mgr, npc_id);
         tracing::debug!(
             target: "pets.ai",
             entity_id = npc_id,
