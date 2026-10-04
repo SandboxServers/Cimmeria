@@ -26,7 +26,7 @@ export function mountLaunch(document:Document,invoke:Invoke,onChange:()=>void=()
  const render=()=>{if(disposed)return;button.hidden=!!current.status&&!current.status.installation_id&&!current.status.observation&&!current.status.launcher_update_required;button.disabled=playing||current.pending||current.uncertain||!current.status?.installation_id||launchBlocked(current.status);
  button.textContent=playing||current.pending?'Starting…':'Play';button.setAttribute('aria-busy',String(playing||current.pending));
  document.getElementById('launch-status')!.textContent=playing?'Starting game…':launchText(current);
- recheck.disabled=pending||playing||current.pending;};
+ recheck.disabled=playing||current.pending;};
  const watcher=runtime.runFork(Effect.flatMap(Launch,s=>Stream.runForEach(s.changes,value=>Effect.sync(()=>{current=value;render();
  const next=value.status?.native.operation.revision;if(next!==undefined&&next!==revision){revision=next;onChange();}}))));
  const run=(play:boolean)=>{

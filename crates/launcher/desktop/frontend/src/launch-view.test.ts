@@ -87,6 +87,7 @@ test('background inspection keeps Play steady and accepts one click while the re
   const read=app.refresh();await new Promise(resolve=>setImmediate(resolve));
   assert.equal(button.disabled,false);
   assert.equal(button.getAttribute('aria-busy'),'false');
+  assert.equal((document.getElementById('inspect-launch') as HTMLButtonElement).disabled,false, 'background reads keep Recheck stable too');
   assert.equal(button.textContent,'Play');
   button.dispatchEvent(new window.Event('click'));button.dispatchEvent(new window.Event('click'));
   assert.equal(button.disabled,true);

@@ -250,3 +250,7 @@ The held-read regression covers stable enabled/text/busy state and exactly one
 click admitted after the read. Native-persistence Play UAT additionally covers
 lost replies, reopening and minimum-launcher rejection. This does not establish
 actual game startup, login or world entry.
+
+The same steady-state rule applies to **Recheck Play status**: background reads
+do not toggle its disabled style. Read deduplication remains internal; launching
+a game still disables both controls until the native result is observed.
