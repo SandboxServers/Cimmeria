@@ -53,10 +53,22 @@ checkpoint.
 The Wine follow-up stays on its own branch for separate review; no further
 coordinator build or UAT is included.
 
-The already-running Claude investigation on
-`launcher/wine-identity-followup` may finish its existing assignment, but has
-no further work assigned. Its pending changes are not part of this integrated
-revision or its validation claims; review its final handoff separately.
+The original Claude investigation finished as `ea7b4ec42` on
+[`launcher/wine-identity-followup`](https://github.com/SandboxServers/Cimmeria/tree/launcher/wine-identity-followup).
+It is preserved separately, not integrated into this checkpoint. Its
+[worknote](https://github.com/SandboxServers/Cimmeria/blob/ea7b4ec42/docs/analysis/playtests/2026-10-03-macos-wine/worknotes/wine-computer-use.md)
+and [launch contract](https://github.com/SandboxServers/Cimmeria/blob/ea7b4ec42/crates/launcher/desktop/docs/launch.md)
+record the stock-loader desktop keeper, bounded readiness/cancellation,
+fall-back behavior and remaining game/tool checks. No further work was assigned.
+
+The worker reports 425 engine tests and 69 shell tests passing, strict Clippy
+and formatting clean, and 12 focused identity/keeper tests including a real
+32-bit Wine Notepad fixture. That fixture had one registered window owner with
+the chosen identifier; removing the fix reproduced two registrations. One
+adoption artifact test returned `Busy` once and passed subsequent reruns; its
+cause was not resolved. This evidence does not establish that the duplicate
+identity caused the computer-use timeout, or that actual SGW now works with the
+tool. No coordinator rebuild, SGW UAT or Windows validation followed.
 
 Remaining acceptance includes:
 

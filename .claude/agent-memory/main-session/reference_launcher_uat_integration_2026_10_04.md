@@ -55,3 +55,12 @@ conflicts; every problem below was semantic. Handoff:
   full path timed out. Shared identity is only a cause hypothesis. See
   `docs/analysis/playtests/2026-10-03-macos-wine/worknotes/macbook-testing-checkpoint.md`
   for the bounded native evidence; login was operator-confirmed, not automated.
+
+
+The Wine identity follow-up was preserved separately at `ea7b4ec42` on
+`launcher/wine-identity-followup`. A stock-loader desktop keeper prevents the
+fixture desktop host sharing the staged application's bundle identifier.
+Worker evidence covers a 32-bit Wine Notepad child and bounded keeper lifecycle,
+not actual SGW computer use. The tested integration checkpoint deliberately
+excludes that candidate; review and native game/tool validation remain future
+work. See the campaign's MacBook testing checkpoint for results and caveats.

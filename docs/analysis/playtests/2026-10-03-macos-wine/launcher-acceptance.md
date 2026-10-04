@@ -26,8 +26,9 @@ launcher status/rechecks. Native isolated legacy import passed, but verified-cop
 preparation was interrupted: cleanup is offered and has not been requested.
 No real adopted-copy prerequisites or Play passed. Actual SGW computer use still
 timed out. MacBook testing and rebuilds are stopped at the user's request; retain
-the preparation state. The existing Wine identity investigation may finish its
-current assignment, with no further tasks; its pending work is not integrated.
+the preparation state. The Wine identity follow-up finished at `ea7b4ec42` on its separate branch;
+its fixture results and limitations are linked from the checkpoint. It is not
+integrated, and no further task or native UAT followed.
 
 The earlier `launcher/combined-validation` checkpoint and draft PR #1190 remain
 historical integration evidence. None of these results establishes full launcher

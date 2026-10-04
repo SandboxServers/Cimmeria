@@ -739,3 +739,16 @@ its current assignment, but receives no new work and is not integrated here.
 Full launcher/release acceptance, the current Windows helper, Windows parity,
 production updater configuration, clean-machine/notarization and reserved
 observability work remain open. This checkpoint does not close the campaign.
+
+
+### 2026-10-04: repository preservation after MacBook testing stopped
+
+Published the tested integration checkpoint and its acceptance evidence on
+`launcher/uat-integration`. Existing draft PRs #1164 and #1190 link to the
+checkpoint; their branch heads were not advanced or merged. Preserved the
+completed Wine identity follow-up separately at `ea7b4ec42` on
+`launcher/wine-identity-followup`. Its worker reports bounded unit/native Wine
+fixture validation; actual SGW computer-use and Windows remain unverified.
+See the [checkpoint](worknotes/macbook-testing-checkpoint.md) for the test
+failure caveat, exact branch boundary and remaining gates. No new coordinator
+build, UAT, release or additional worker assignment accompanies this record.
