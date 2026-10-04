@@ -168,6 +168,13 @@ fn applied_and_replaced_rows_carry_identity_and_values() {
         .fields
         .get("target_player_id")
         .is_some_and(|v| v == "100"));
+    // The removal row carries the stat's value around it
+    // (negative-logging-convention: stat_before / stat_after).
+    assert!(replaced
+        .fields
+        .get("stat_before")
+        .is_some_and(|v| v.contains("6")));
+    assert!(replaced.fields.contains_key("stat_after"));
     let applied = capture
         .find_message(Level::INFO, "timed effect applied")
         .expect("stat_buff_applied row");
@@ -320,13 +327,19 @@ fn timed_stat_refuses_a_held_effect() {
 fn an_eleventh_buff_applies_and_logs_the_effect_bar_overflow() {
     let capture = LogCapture::install();
     let mut mgr = make_mgr_with_target();
-    for invoker in 1..=10 {
-        run_as(&mut mgr, &TimedStat, &aim(), invoker);
+    // Ten distinct effects (one icon each; casters of one effect share it).
+    let effect = |id: i32| {
+        let mut e = aim();
+        e.effect_id = id;
+        e
+    };
+    for id in 1..=10 {
+        run_as(&mut mgr, &TimedStat, &effect(id), 1);
     }
     assert!(capture
         .find_message(Level::INFO, "more timed effects on one side")
         .is_none());
-    run_as(&mut mgr, &TimedStat, &aim(), 11);
+    run_as(&mut mgr, &TimedStat, &effect(11), 1);
     assert_eq!(cur(&mgr, ACCURACY), 2200, "the eleventh still applies");
     let row = capture
         .find_message(Level::INFO, "more timed effects on one side")

@@ -76,7 +76,10 @@ impl SpaceManager {
         spec: TimedEffectSpec,
         now: Instant,
     ) -> Option<TimedEffectApplied> {
+        let mut spec = spec;
         let who = self.player_identity(spec.invoker_id);
+        // Snapshot now: a removal logged after the invoker left still names them.
+        spec.invoker_identity = who;
         let target_who = self.player_identity(target);
         let (effect_id, ability_id, invoker_id) =
             (spec.effect_id, spec.ability_id, spec.invoker_id);
@@ -102,6 +105,16 @@ impl SpaceManager {
             .iter()
             .map(|&s| entity.stats.get(s).map(|st| st.cur))
             .collect();
+        // Every ledger stat, for the replaced entries' rows.
+        let snapshot = |e: &cimmeria_entity::cell_entity::CellEntity| -> Vec<(i32, i32)> {
+            e.stat_buffs
+                .entries
+                .iter()
+                .flat_map(|b| b.stats.iter().map(|s| s.stat_id))
+                .filter_map(|s| e.stats.get(s).map(|st| (s, st.cur)))
+                .collect()
+        };
+        let ledger_before = snapshot(entity);
         let Some(out) = entity.apply_timed_effect(spec, now) else {
             tracing::warn!(
                 target: "abilities",
@@ -127,7 +140,15 @@ impl SpaceManager {
         let beneficial = out.applied.is_beneficial();
         let icons = entity.stat_buffs.bar_icons(beneficial);
         for old in &out.replaced {
-            log_removed(target, who, target_who, old, StatBuffRemoval::Replaced);
+            // `stat_after` is after the replacing entry went on: the two moves
+            // happen in one call and nothing observes the state between them.
+            let b = cur_of(&ledger_before, old);
+            let a = old
+                .stats
+                .iter()
+                .map(|s| entity.stats.get(s.stat_id).map(|st| st.cur))
+                .collect();
+            log_removed(target, target_who, old, StatBuffRemoval::Replaced, b, a);
         }
         tracing::info!(
             target: "abilities",
@@ -175,7 +196,8 @@ impl SpaceManager {
     }
 
     /// Take off every entry on `target` for which `pred` holds, logging each
-    /// with `why`. Returns them.
+    /// with `why` and the `stat_before` / `stat_after` of the stats it moved.
+    /// Returns them.
     pub fn remove_timed_effects(
         &mut self,
         target: u32,
@@ -183,23 +205,24 @@ impl SpaceManager {
         pred: impl Fn(&TimedEffect) -> bool,
     ) -> Vec<TimedEffect> {
         let target_who = self.player_identity(target);
-        let invokers: Vec<u32> = match self.get_entity(target) {
-            Some(e) => e
-                .stat_buffs
-                .entries
-                .iter()
-                .filter(|b| pred(b))
-                .map(|b| b.invoker_id)
-                .collect(),
-            None => return Vec::new(),
-        };
-        let whos: Vec<PlayerIdentity> = invokers.iter().map(|&i| self.player_identity(i)).collect();
         let Some(entity) = self.get_entity_mut(target) else {
             return Vec::new();
         };
-        let removed = entity.remove_timed_effects_where(pred);
-        for (entry, who) in removed.iter().zip(whos) {
-            log_removed(target, who, target_who, entry, why);
+        let mut removed = Vec::new();
+        // One at a time, so each row's before and after are its own.
+        while let Some(idx) = entity.stat_buffs.entries.iter().position(&pred) {
+            let cur = |e: &cimmeria_entity::cell_entity::CellEntity, entry: &TimedEffect| {
+                entry
+                    .stats
+                    .iter()
+                    .map(|s| e.stats.get(s.stat_id).map(|st| st.cur))
+                    .collect::<Vec<_>>()
+            };
+            let before = cur(entity, &entity.stat_buffs.entries[idx]);
+            let entry = entity.remove_timed_effect_at(idx);
+            let after = cur(entity, &entry);
+            log_removed(target, target_who, &entry, why, before, after);
+            removed.push(entry);
         }
         removed
     }
@@ -254,13 +277,26 @@ impl SpaceManager {
     }
 }
 
+/// The `cur` each of `entry`'s stats had in `snapshot`.
+fn cur_of(snapshot: &[(i32, i32)], entry: &TimedEffect) -> Vec<Option<i32>> {
+    entry
+        .stats
+        .iter()
+        .map(|s| snapshot.iter().find(|p| p.0 == s.stat_id).map(|p| p.1))
+        .collect()
+}
+
+/// The `stat_buff_removed` row. `account_id` / `player_id` are the invoker
+/// identity the entry snapshotted when it went on.
 fn log_removed(
     target: u32,
-    who: PlayerIdentity,
     target_who: PlayerIdentity,
     entry: &TimedEffect,
     why: StatBuffRemoval,
+    stat_before: Vec<Option<i32>>,
+    stat_after: Vec<Option<i32>>,
 ) {
+    let who = entry.invoker_identity;
     tracing::info!(
         target: "abilities",
         event = "stat_buff_removed",
@@ -274,7 +310,10 @@ fn log_removed(
         source_id = entry.invoker_id,
         effect_id = entry.effect_id,
         ability_id = entry.ability_id,
-        restored = ?entry.stats.iter().map(|s| (s.stat_id, -s.shift.cur)).collect::<Vec<_>>(),
+        stat_ids = ?entry.stats.iter().map(|s| s.stat_id).collect::<Vec<_>>(),
+        restored = ?entry.stats.iter().map(|s| (s.stat_id, -s.requested)).collect::<Vec<_>>(),
+        stat_before = ?stat_before,
+        stat_after = ?stat_after,
         "timed effect removed"
     );
 }

@@ -222,7 +222,7 @@ def convert(c: StatClause) -> Tuple[Optional[int], Optional[str], Optional[str]]
 def parse_stat(effect: Effect) -> Outcome:
     """The grammar proper, apart from the scope and routing rules."""
     clauses: List[StatClause] = []
-    duration: Optional[float] = None
+    durations: List[float] = []  # every duration the text states
     user = False
     for raw in desc_lines(effect.desc):
         ln = raw
@@ -230,7 +230,7 @@ def parse_stat(effect: Effect) -> Outcome:
             continue
         m = DURATION_LINE.match(ln)
         if m:
-            duration = float(m.group(1))
+            durations.append(float(m.group(1)))
             continue
         while True:
             p = PREFIX.match(ln)
@@ -248,12 +248,14 @@ def parse_stat(effect: Effect) -> Outcome:
                 return Rejected(effect, why or f'unknown stat "{spelled}"')
             clauses.append(StatClause(stat[0], stat[1], sign, value, pct, dur, spelled, raw))
             if dur is not None:
-                duration = dur
+                durations.append(dur)
     if not clauses:
         return Rejected(effect, "no stat clause")
     pd = effect.pulse_duration
-    if duration is not None and abs(duration - pd) > 1e-6:
-        return Rejected(effect, f"text says {duration:g} s but pulse_duration is {pd:g}")
+    # Every stated duration must match, not just the last (Copilot review on #1159).
+    for duration in durations:
+        if abs(duration - pd) > 1e-6:
+            return Rejected(effect, f"text says {duration:g} s but pulse_duration is {pd:g}")
     nvps: List[Tuple[str, str]] = []
     notes: List[str] = []
     for c in clauses:

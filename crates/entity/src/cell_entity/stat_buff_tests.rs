@@ -10,7 +10,9 @@ use super::stat_buff::{
     shift_stat_widening, unshift_stat, StatShift, TimedEffectSpec, TimedStacking,
 };
 use super::CellEntity;
-use crate::stats::{ArchetypeStatValues, ACCURACY, COORDINATION, DEFENSE, ENGAGEMENT, HEALTH};
+use crate::stats::{
+    ArchetypeStatValues, ACCURACY, COORDINATION, DEFENSE, ENGAGEMENT, HEALTH, RESPONSE,
+};
 
 /// A player-like entity with the archetype's primary attributes, which sit
 /// at `cur == max` (Coordination 10/10).
@@ -42,6 +44,7 @@ fn stim(stat_id: i32, delta: i32, effect_id: i32) -> TimedEffectSpec {
         stats: vec![(stat_id, delta)],
         duration_secs: Some(3600.0),
         stacking: TimedStacking::ReplaceSameStat,
+        invoker_identity: Default::default(),
     }
 }
 
@@ -56,6 +59,7 @@ fn aim(invoker_id: u32) -> TimedEffectSpec {
         stats: vec![(ACCURACY, 200)],
         duration_secs: Some(15.0),
         stacking: TimedStacking::PerSource,
+        invoker_identity: Default::default(),
     }
 }
 
@@ -210,9 +214,18 @@ fn different_sources_stack_and_expire_independently() {
     let out = e.apply_timed_effect(aim(2), now).unwrap();
     assert!(out.replaced.is_empty());
     assert_eq!(e.stats.get(ACCURACY).unwrap().cur, 400);
+    e.stat_buffs
+        .entries
+        .iter_mut()
+        .for_each(|b| b.timer_sent = true);
     e.remove_timed_effects_where(|b| b.invoker_id == 1);
     assert_eq!(e.stats.get(ACCURACY).unwrap().cur, 200);
-    assert_eq!(e.stat_buffs.pending_timer_clears, vec![(700, 1)]);
+    // One icon per effect: the shared icon stays, and is re-sent with the
+    // remaining entry's expiry instead of being cleared.
+    assert!(e.stat_buffs.pending_timer_clears.is_empty());
+    assert!(!e.stat_buffs.entries[0].timer_sent);
+    e.remove_timed_effects_where(|_| true);
+    assert_eq!(e.stat_buffs.pending_timer_clears, vec![(700, 2)]);
 }
 
 /// Expiry reverts exactly the applied delta, even when something else moved
@@ -244,6 +257,7 @@ fn one_entry_moves_several_stats_and_restores_them_together() {
         stats: vec![(ACCURACY, -200), (DEFENSE, -200)],
         duration_secs: Some(15.0),
         stacking: TimedStacking::PerSource,
+        invoker_identity: Default::default(),
     };
     e.apply_timed_effect(spec, Instant::now()).unwrap();
     assert_eq!(e.stats.get(ACCURACY).unwrap().cur, -200);
@@ -335,10 +349,65 @@ fn the_effect_bar_counts_each_side() {
     let now = Instant::now();
     e.apply_timed_effect(aim(1), now);
     e.apply_timed_effect(aim(2), now);
+    let mut brace = aim(1);
+    brace.effect_id = 907;
+    e.apply_timed_effect(brace, now);
     let mut debuff = aim(3);
     debuff.effect_id = 903;
     debuff.effect_flags = 20;
     e.apply_timed_effect(debuff, now);
-    assert_eq!(e.stat_buffs.bar_icons(true), 2);
+    assert_eq!(e.stat_buffs.bar_icons(true), 2, "two Aims share one icon");
     assert_eq!(e.stat_buffs.bar_icons(false), 1);
+}
+
+/// A buff and a debuff of opposite sign on one 0/0/0 stat (Heroism +50 and
+/// a -100 Response debuff). Order-dependent reverts clamped the second
+/// removal against the first one's restored bound (Copilot review on #1159).
+fn heroism_and_debuff() -> (CellEntity, TimedEffectSpec, TimedEffectSpec) {
+    let mut e = entity();
+    e.stats.get_mut(RESPONSE).unwrap().update(0, 0, 0);
+    let mut heroism = aim(1);
+    heroism.effect_id = 1744;
+    heroism.stats = vec![(RESPONSE, 50)];
+    let mut debuff = aim(2);
+    debuff.effect_id = 4309;
+    debuff.effect_flags = 68;
+    debuff.stats = vec![(RESPONSE, -100)];
+    (e, heroism, debuff)
+}
+
+fn response(e: &CellEntity) -> (i32, i32, i32) {
+    let s = e.stats.get(RESPONSE).unwrap();
+    (s.min, s.cur, s.max)
+}
+
+/// **Regression guard.** The buff lapses first: Response must read -100
+/// while the debuff is up, and 0/0/0 after. On revert to per-entry bound
+/// shifts it read -50 (the debuff clamped at its own widened min).
+#[test]
+fn opposite_signs_revert_when_the_buff_lapses_first() {
+    let (mut e, heroism, debuff) = heroism_and_debuff();
+    let now = Instant::now();
+    e.apply_timed_effect(heroism, now).unwrap();
+    e.apply_timed_effect(debuff, now).unwrap();
+    assert_eq!(response(&e).1, -50);
+    e.remove_timed_effects_where(|b| b.effect_id == 1744);
+    assert_eq!(response(&e), (-100, -100, 0), "only the debuff is left");
+    e.remove_timed_effects_where(|b| b.effect_id == 4309);
+    assert_eq!(response(&e), (0, 0, 0));
+    assert!(e.stat_buffs.baselines.is_empty());
+}
+
+/// **Regression guard.** The debuff lapses first: Response reads +50 while
+/// the buff is up, and 0/0/0 after.
+#[test]
+fn opposite_signs_revert_when_the_debuff_lapses_first() {
+    let (mut e, heroism, debuff) = heroism_and_debuff();
+    let now = Instant::now();
+    e.apply_timed_effect(heroism, now).unwrap();
+    e.apply_timed_effect(debuff, now).unwrap();
+    e.remove_timed_effects_where(|b| b.effect_id == 4309);
+    assert_eq!(response(&e), (0, 50, 50), "only the buff is left");
+    e.remove_timed_effects_where(|b| b.effect_id == 1744);
+    assert_eq!(response(&e), (0, 0, 0));
 }

@@ -6,8 +6,9 @@
 //! The ledger itself and its scripts are synchronous and live in
 //! `cimmeria-cell-world` (`effects::stat_buff`) and
 //! `cimmeria-cell-effect-scripts`; a script cannot send, so the ledger
-//! records what the client still needs to hear (a start timer for each new
-//! entry, a clear for each entry that came off) and this module sends it:
+//! records what the client still needs to hear (a start for each effect
+//! whose icon changed, a clear for each effect whose last entry came off;
+//! one icon per `effect_id`, see `StatBuffLedger`) and this module sends it:
 //!
 //! - [`flush_stat_buff_timers`] sends the owed timers. Every caller that
 //!   runs an effect script calls it right after (`fire_beneficial`,
@@ -89,8 +90,9 @@ pub async fn stat_buff_tick_at(
 }
 
 /// Send `entity_id` the duration timers its ledger owes: first the clears
-/// (an entry that came off), then one start per entry the client has not
-/// been told about. Nothing is sent for an entity with nothing owed.
+/// (an effect whose last entry came off), then one start per effect with an
+/// entry the client has not been told about, carrying the latest expiry of
+/// that effect's entries. Nothing is sent for an entity with nothing owed.
 pub async fn flush_stat_buff_timers(
     entity_id: u32,
     now: Instant,
@@ -101,25 +103,39 @@ pub async fn flush_stat_buff_timers(
         return;
     };
     let clears = std::mem::take(&mut entity.stat_buffs.pending_timer_clears);
-    let mut starts: Vec<(i32, u32, f32, f32)> = Vec::new();
-    for entry in entity
+    // One icon per effect_id: the client keys it by SecondaryId alone, so
+    // stacked casters share it. Its start carries the entry that lapses last
+    // (its source and length); held entries have no expiry to count down.
+    let mut stale: Vec<i32> = entity
         .stat_buffs
         .entries
-        .iter_mut()
+        .iter()
         .filter(|b| !b.timer_sent)
-    {
-        entry.timer_sent = true;
-        // A held entry has no expiry to count down (module docs).
-        let Some(expires_at) = entry.expires_at else {
-            continue;
-        };
-        let remaining = expires_at.saturating_duration_since(now).as_secs_f32();
-        starts.push((
-            entry.effect_id,
-            entry.invoker_id,
-            entry.duration_secs,
-            remaining,
-        ));
+        .map(|b| b.effect_id)
+        .collect();
+    stale.sort_unstable();
+    stale.dedup();
+    let mut starts: Vec<(i32, u32, f32, f32)> = Vec::new();
+    for effect_id in stale {
+        let latest = entity
+            .stat_buffs
+            .entries
+            .iter()
+            .filter(|b| b.effect_id == effect_id)
+            .filter_map(|b| b.expires_at.map(|t| (t, b)))
+            .max_by_key(|(t, _)| *t);
+        if let Some((expires_at, entry)) = latest {
+            let remaining = expires_at.saturating_duration_since(now).as_secs_f32();
+            starts.push((effect_id, entry.invoker_id, entry.duration_secs, remaining));
+        }
+        for b in entity
+            .stat_buffs
+            .entries
+            .iter_mut()
+            .filter(|b| b.effect_id == effect_id)
+        {
+            b.timer_sent = true;
+        }
     }
     for (effect_id, invoker_id) in clears {
         let args = serialize_timer_update(

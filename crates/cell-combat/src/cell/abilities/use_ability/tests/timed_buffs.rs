@@ -130,18 +130,27 @@ async fn aim_buffs_the_casters_accuracy_with_its_icon() {
     );
 }
 
-/// Pressing Aim again refreshes rather than stacks.
+/// Pressing Aim again refreshes rather than stacks: one entry, Accuracy
+/// still +200, and a later expiry.
 #[tokio::test]
 async fn aim_twice_refreshes() {
     let mut mgr = buff_mgr();
     let (tx, _rx) = mpsc::channel(256);
+    let expiry = |mgr: &SpaceManager| {
+        let entries = &mgr.get_entity(A).unwrap().stat_buffs.entries;
+        assert_eq!(entries.len(), 1, "exactly one Aim entry");
+        entries[0].expires_at.expect("a timed entry")
+    };
     assert!(handle_use_ability(A, AIM, 0, &tx, &mut mgr).await);
+    let first = expiry(&mgr);
+    tokio::time::sleep(std::time::Duration::from_millis(20)).await;
     mgr.get_entity_mut(A)
         .unwrap()
         .abilities
         .clear_all_cooldowns();
     assert!(handle_use_ability(A, AIM, 0, &tx, &mut mgr).await);
     assert_eq!(stat(&mgr, A, ACCURACY), 200);
+    assert!(expiry(&mgr) > first, "the refresh restarts the 15 s");
 }
 
 /// **Regression guard (B-27 routing).** Combat Sprint with a mob selected

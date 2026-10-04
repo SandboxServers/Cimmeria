@@ -90,6 +90,12 @@ class StatGrammarRejects(unittest.TestCase):
     def test_a_duration_that_disagrees_with_the_row(self):
         self.rejected("Cover Defense Debuff: -100\n1 second duration", "pulse_duration is 1.5", pd=1.5)
 
+    def test_every_stated_duration_must_match_the_row(self):
+        # A mismatch on any line rejects, not only on the last one.
+        self.rejected("-200 Accuracy: 10 Seconds\n-200 Defense: 15 Seconds", "text says 10 s")
+        self.rejected("-200 Accuracy: 15 Seconds\n-200 Defense: 10 Seconds", "text says 10 s")
+        self.rejected("+200 Accuracy: 10 Seconds\nDuration: 15 Seconds", "text says 10 s")
+
     def test_a_percentage_on_points_stat(self):
         self.rejected("+10% Accuracy", "no D-AB09 unit")
 

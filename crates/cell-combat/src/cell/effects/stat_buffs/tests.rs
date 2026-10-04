@@ -43,6 +43,7 @@ fn stim(stat_id: i32, delta: i32, effect_id: i32, flags: u32) -> TimedEffectSpec
         stats: vec![(stat_id, delta)],
         duration_secs: Some(3600.0),
         stacking: TimedStacking::ReplaceSameStat,
+        invoker_identity: Default::default(),
     }
 }
 
@@ -57,6 +58,7 @@ fn aim(invoker_id: u32) -> TimedEffectSpec {
         stats: vec![(ACCURACY, 200)],
         duration_secs: Some(15.0),
         stacking: TimedStacking::PerSource,
+        invoker_identity: Default::default(),
     }
 }
 
@@ -300,10 +302,13 @@ async fn an_ability_buff_starts_and_clears_its_timer_byte_for_byte() {
     );
 }
 
-/// Two casters' Aims are two timers with their own sources, and the first
-/// to lapse clears only its own.
+/// **Regression guard (Copilot review on #1159).** The client keys an
+/// effect icon by SecondaryId alone, so two casters' Aims are one icon: one
+/// start carrying the later expiry (source 42), no clear when the first
+/// lapses, and the clear only when the last one does. On revert (one timer
+/// per entry) the first expiry cleared the icon while 42's Aim was live.
 #[tokio::test]
-async fn two_casters_get_two_timers_and_clear_independently() {
+async fn two_casters_share_one_icon_cleared_by_the_last() {
     let mut mgr = make_mgr();
     let (tx, mut rx) = mpsc::channel(64);
     let now = Instant::now();
@@ -311,19 +316,17 @@ async fn two_casters_get_two_timers_and_clear_independently() {
     mgr.apply_timed_effect(PLAYER, aim(42), now + Duration::from_secs(5));
     flush_stat_buff_timers(PLAYER, now, &tx, &mut mgr).await;
     let sent = drain(&mut rx);
-    let sources: Vec<i32> = timers(&sent)
-        .iter()
-        .map(|a| i32::from_le_bytes(a[5..9].try_into().unwrap()))
-        .collect();
-    assert_eq!(sources, vec![PLAYER as i32, 42]);
+    let t = timers(&sent);
+    assert_eq!(t.len(), 1, "one icon for effect 700: {sent:?}");
+    assert_eq!(i32::from_le_bytes(t[0][5..9].try_into().unwrap()), 42);
+    assert_eq!(f32::from_le_bytes(t[0][13..17].try_into().unwrap()), 15.0);
 
     stat_buff_tick_at(now + Duration::from_secs(15), &tx, &mut mgr).await;
-    let sent = drain(&mut rx);
-    let t = timers(&sent);
-    assert_eq!(t.len(), 1);
-    assert_eq!(
-        i32::from_le_bytes(t[0][5..9].try_into().unwrap()),
-        PLAYER as i32
+    let t: Vec<_> = timers(&drain(&mut rx)).into_iter().cloned().collect();
+    assert!(
+        t.iter()
+            .all(|a| f32::from_le_bytes(a[17..21].try_into().unwrap()) > 0.0),
+        "no clear while 42's Aim is live: {t:?}"
     );
     let accuracy = mgr
         .get_entity(PLAYER)
@@ -333,6 +336,16 @@ async fn two_casters_get_two_timers_and_clear_independently() {
         .unwrap()
         .cur;
     assert_eq!(accuracy, 200, "the second caster's Aim is still up");
+
+    stat_buff_tick_at(now + Duration::from_secs(20), &tx, &mut mgr).await;
+    let sent = drain(&mut rx);
+    let t = timers(&sent);
+    assert_eq!(t.len(), 1);
+    assert_eq!(
+        f32::from_le_bytes(t[0][17..21].try_into().unwrap()),
+        0.0,
+        "the clear"
+    );
 }
 
 /// A held entry (AB-08's toggles) never expires on the tick and sends no

@@ -24,19 +24,24 @@
 //! leaves +7, not +12. The 2009 data does not say how the stim tiers
 //! combined; that rule is a server-side design decision.
 //!
-//! **Bounds widen instead of clamping.** A primary attribute sits at
-//! `cur == max` (the archetype value) and Defense sits at 0/0/0, so
-//! `Stat::change` would clamp a +5 or a -100 to nothing.
-//! [`shift_stat_widening`] raises `max` (or lowers `min`) only as far as
-//! the new value needs and records how far each bound moved;
-//! [`unshift_stat`] takes back exactly that, so an expired entry leaves the
-//! stat where it was, bounds included.
+//! **Bounds widen instead of clamping, and the result never depends on the
+//! order entries come off.** A primary attribute sits at `cur == max` (the
+//! archetype value) and Defense sits at 0/0/0, so `Stat::change` would clamp
+//! a +5 or a -100 to nothing. The ledger records each stat's own bounds
+//! (its *baseline*) when the first entry touches it. Every apply and every
+//! removal moves `cur` by exactly the entry's delta and then refits the
+//! bounds: the baseline, widened just far enough to hold `cur`. When the
+//! last entry on a stat comes off, the baseline comes back exactly and
+//! `cur` is clamped into it. So Heroism (+50 Response) and a -100 Response
+//! debuff on a 0/0/0 stat end at 0/0/0 whichever expires first; undoing
+//! each entry's own bound shift would clamp the debuff's revert when the
+//! buff's widened `max` went first (Copilot review on #1159).
 
 use std::time::{Duration, Instant};
 
 use crate::stats::StatList;
 
-use super::CellEntity;
+use super::{CellEntity, PlayerIdentity};
 
 /// `EF_Beneficial_Effect` (1): which side of the client's effect bar an
 /// entry's icon sits on. Mirrors `abilities::EF_BENEFICIAL_EFFECT`.
@@ -105,8 +110,13 @@ pub struct TimedEffect {
     pub duration_secs: f32,
     /// When it lapses (server-local clock), or `None` while held.
     pub expires_at: Option<Instant>,
-    /// Whether the client has been sent its duration timer.
+    /// Whether the client has been sent this entry's share of its effect's
+    /// icon (one icon per `effect_id`: [`StatBuffLedger`]).
     pub timer_sent: bool,
+    /// The invoker's canonical identity, snapshotted at apply time so a
+    /// removal logged after the invoker left still names them
+    /// (instrumentation-discipline rule 5).
+    pub invoker_identity: PlayerIdentity,
 }
 
 impl TimedEffect {
@@ -149,18 +159,30 @@ pub struct TimedEffectSpec {
     /// Seconds until it lapses, or `None` to hold it until removed.
     pub duration_secs: Option<f32>,
     pub stacking: TimedStacking,
+    /// The invoker's identity; `SpaceManager::apply_timed_effect` fills it.
+    pub invoker_identity: PlayerIdentity,
 }
 
 /// The stat-changing effects on an entity plus the client timer clears the
 /// synchronous ledger owes. The cell's stat-buff tick sends both.
+///
+/// **One client icon per `effect_id`.** The client keys an active effect's
+/// icon by the timer's SecondaryId alone
+/// (`docs/reverse-engineering/findings/effect-execution-model.md`), so two
+/// casters' entries of one effect share one icon: its start carries the
+/// latest expiry of the live entries, and its clear is owed only when the
+/// last entry of that effect comes off.
 #[derive(Debug, Clone, Default)]
 pub struct StatBuffLedger {
     /// At most one per `(effect_id, invoker_id)`.
     pub entries: Vec<TimedEffect>,
-    /// `(effect_id, invoker_id)` pairs whose client duration timer must be
-    /// cleared: the entry came off in synchronous code (an effect script, a
-    /// replacement) that cannot send.
+    /// `(effect_id, invoker_id)` of each effect whose icon must be cleared:
+    /// its last entry came off in synchronous code that cannot send. At most
+    /// one per `effect_id`; the invoker is only the timer's source field.
     pub pending_timer_clears: Vec<(i32, u32)>,
+    /// `(stat_id, min, max)`: each stat's own bounds, recorded when the
+    /// first entry touched it and restored when the last one comes off.
+    pub baselines: Vec<(i32, i32, i32)>,
 }
 
 impl StatBuffLedger {
@@ -169,13 +191,23 @@ impl StatBuffLedger {
         self.entries.is_empty() && self.pending_timer_clears.is_empty()
     }
 
-    /// Icons on one side of the client's effect bar: the entries whose
-    /// beneficial bit is `beneficial` (each entry is one timer, so one icon).
+    /// Icons on one side of the client's effect bar: the distinct effects
+    /// whose beneficial bit is `beneficial` (one icon per `effect_id`).
     pub fn bar_icons(&self, beneficial: bool) -> usize {
-        self.entries
+        let mut ids: Vec<i32> = self
+            .entries
             .iter()
             .filter(|e| e.is_beneficial() == beneficial)
-            .count()
+            .map(|e| e.effect_id)
+            .collect();
+        ids.sort_unstable();
+        ids.dedup();
+        ids.len()
+    }
+
+    /// Whether any live entry belongs to `effect_id`.
+    pub fn has_effect(&self, effect_id: i32) -> bool {
+        self.entries.iter().any(|e| e.effect_id == effect_id)
     }
 }
 
@@ -251,11 +283,12 @@ impl CellEntity {
         let stats = present
             .iter()
             .filter_map(|&(stat_id, delta)| {
-                shift_stat_widening(&mut self.stats, stat_id, delta).map(|shift| AppliedStat {
-                    stat_id,
-                    requested: delta,
-                    shift,
-                })
+                self.shift_ledger_stat(stat_id, delta)
+                    .map(|shift| AppliedStat {
+                        stat_id,
+                        requested: delta,
+                        shift,
+                    })
             })
             .collect();
         let applied = TimedEffect {
@@ -270,11 +303,15 @@ impl CellEntity {
                 .duration_secs
                 .map(|d| now + Duration::from_secs_f32(d.max(0.0))),
             timer_sent: false,
+            invoker_identity: spec.invoker_identity,
         };
         self.stat_buffs.entries.push(applied.clone());
-        // The new start timer supersedes a clear owed for the same key (a
-        // refresh, or re-using the same stim).
-        self.stat_buffs.pending_timer_clears.retain(|&k| k != key);
+        // The effect's icon is live again: a clear owed for it is superseded,
+        // and the start is re-sent with the latest expiry of its entries.
+        self.stat_buffs
+            .pending_timer_clears
+            .retain(|&(effect_id, _)| effect_id != spec.effect_id);
+        self.mark_icon_stale(spec.effect_id);
         Some(TimedEffectApplied {
             applied,
             replaced,
@@ -282,8 +319,9 @@ impl CellEntity {
         })
     }
 
-    /// Take the entry at `idx` off, restoring every stat it moved, and queue
-    /// its client timer clear.
+    /// Take the entry at `idx` off, restoring every stat it moved. Its
+    /// effect's icon clear is queued when no other entry of that effect is
+    /// left; otherwise the icon is re-sent with the remaining latest expiry.
     ///
     /// # Panics
     ///
@@ -291,9 +329,16 @@ impl CellEntity {
     pub fn remove_timed_effect_at(&mut self, idx: usize) -> TimedEffect {
         let entry = self.stat_buffs.entries.remove(idx);
         for s in &entry.stats {
-            let _ = unshift_stat(&mut self.stats, s.stat_id, s.shift);
+            self.unshift_ledger_stat(s.stat_id, s.requested);
         }
-        if !self.stat_buffs.pending_timer_clears.contains(&entry.key()) {
+        if self.stat_buffs.has_effect(entry.effect_id) {
+            self.mark_icon_stale(entry.effect_id);
+        } else if !self
+            .stat_buffs
+            .pending_timer_clears
+            .iter()
+            .any(|&(effect_id, _)| effect_id == entry.effect_id)
+        {
             self.stat_buffs.pending_timer_clears.push(entry.key());
         }
         entry
@@ -315,5 +360,80 @@ impl CellEntity {
             }
         }
         removed
+    }
+
+    /// Have the next flush re-send `effect_id`'s icon.
+    fn mark_icon_stale(&mut self, effect_id: i32) {
+        for e in self
+            .stat_buffs
+            .entries
+            .iter_mut()
+            .filter(|e| e.effect_id == effect_id)
+        {
+            e.timer_sent = false;
+        }
+    }
+
+    /// Move `stat_id` by `delta` for a new entry, recording its baseline
+    /// first if no entry touches it yet, then refit the bounds. Returns what
+    /// moved (for the logs), or `None` when the entity has no such stat.
+    fn shift_ledger_stat(&mut self, stat_id: i32, delta: i32) -> Option<StatShift> {
+        let s = self.stats.get(stat_id)?;
+        let (min, cur, max) = (s.min, s.cur, s.max);
+        if !self.stat_buffs.baselines.iter().any(|b| b.0 == stat_id) {
+            self.stat_buffs.baselines.push((stat_id, min, max));
+        }
+        self.refit_ledger_stat(stat_id, cur.saturating_add(delta));
+        let s = self.stats.get(stat_id)?;
+        Some(StatShift {
+            cur: s.cur - cur,
+            min: s.min - min,
+            max: s.max - max,
+        })
+    }
+
+    /// Take a removed entry's `delta` back off `stat_id` and refit. The
+    /// entry is already out of `entries`.
+    fn unshift_ledger_stat(&mut self, stat_id: i32, delta: i32) {
+        let Some(s) = self.stats.get(stat_id) else {
+            return;
+        };
+        let cur = s.cur.saturating_sub(delta);
+        self.refit_ledger_stat(stat_id, cur);
+        self.release_ledger_stat(stat_id);
+    }
+
+    /// Set `stat_id` to `cur` inside its baseline widened just far enough to
+    /// hold it.
+    fn refit_ledger_stat(&mut self, stat_id: i32, cur: i32) {
+        let Some(&(_, base_min, base_max)) =
+            self.stat_buffs.baselines.iter().find(|b| b.0 == stat_id)
+        else {
+            return;
+        };
+        if let Some(s) = self.stats.get_mut(stat_id) {
+            s.update(base_min.min(cur), cur, base_max.max(cur));
+        }
+    }
+
+    /// Forget `stat_id`'s baseline and clamp it back into it, once no entry
+    /// moves it.
+    fn release_ledger_stat(&mut self, stat_id: i32) {
+        if self.stat_buffs.entries.iter().any(|e| e.moves(stat_id)) {
+            return;
+        }
+        let Some(pos) = self
+            .stat_buffs
+            .baselines
+            .iter()
+            .position(|b| b.0 == stat_id)
+        else {
+            return;
+        };
+        let (_, base_min, base_max) = self.stat_buffs.baselines.remove(pos);
+        if let Some(s) = self.stats.get_mut(stat_id) {
+            let cur = s.cur.clamp(base_min, base_max.max(base_min));
+            s.update(base_min, cur, base_max.max(base_min));
+        }
     }
 }
