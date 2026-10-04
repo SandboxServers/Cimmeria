@@ -435,7 +435,7 @@ AB-L0 smoke, AB-L4, AB-L6 ──────────────────
 |---|---|---|---|
 | AB-T1 | Review | #1168 | `cast_id` via a cast scope on `SpaceManager`; spans `combat.cast_fire`, `combat.effect_tick`. Not reached: the receipt row's packet seq (needs a `packet_seq` on `BaseToCellMsg::CellMethodCall`, threaded from `receive_in_order`'s per-bundle seq through `dispatch_cell_method` and the cell's method dispatch: AB-T2), and zero-warmup ground-cast AoE secondaries (they resolve after the launch returns, outside the scope) |
 | AB-T2 to AB-T4 | BlockedDependency (AB-T1) | | |
-| AB-T5 | Review | | `CellEntity::ability_state` (`cimmeria-entity`, serde) and the `abilities.snapshot` INFO row (`cimmeria-cell-world` `effects::ability_snapshot`) on `.bug` (tester and selected target, on the `bookmark_id`), a player's death (before the clear-on-death strip) and logout. Deaths and logouts of NPCs write no row by design. Moniker cooldowns and owed timer clears are in the snapshot too |
+| AB-T5 | Merged 2026-10-04 | #1172 | `CellEntity::ability_state` (`cimmeria-entity`, serde) and the `abilities.snapshot` INFO row (`cimmeria-cell-world` `effects::ability_snapshot`) on `.bug` (tester and selected target, on the `bookmark_id`), a player's death (before the clear-on-death strip) and logout. Deaths and logouts of NPCs write no row by design. Moniker cooldowns and owed timer clears are in the snapshot too |
 | AB-T6, AB-T7 | BlockedDependency | | |
 | AB-C0 (anchor RE) | Done (static; live checks listed in the finding) | | [ability-client-hook-anchors.md](../../reverse-engineering/findings/ability-client-hook-anchors.md): VERIFIED seams for C1, C2, C3, C4 (effect bar, cooldown, stat, state flag) and the `onSequence` drop; UNRESOLVED: bag arrays, UI event layouts, effect removal body, `onErrorCode` tail |
 | AB-C1 to AB-C5 | Ready (AB-C0 done; effect removal resolved to `0x00e0a810`, see the AB-C4 row) | | |
@@ -446,7 +446,8 @@ AB-L0 smoke, AB-L4, AB-L6 ──────────────────
 | AB-L0 | Ready | | |
 | AB-L4 | Merged 2026-10-04 | #1167 | `source = "packet"` clauses and the `approx` op (`value` ± `tolerance`); one tap per row from the anchor to teardown, stopped on every path; rows kept as the `packet_tap` attachment; UNVERIFIED when the endpoint is unreachable. Guide: automated-uat.md "Packet clauses". |
 | AB-L6 | InReview | #1169 | `players = 2` rows drive the second lab instance (`lab-account.p2.json`, default `p2`) through an in-process supervisor; `client = "p2"` on actions, clauses and evidence; `@target_player` = real-input `client_target` on the other player's character; still BLOCKED, with the reason, when no p2 is configured. gm-parity M1-2 uses it. Guides: automated-uat.md "Two-player rows", live-research-lab.md "Two clients". |
-| AB-L1, AB-L2 | BlockedDependency (AB-T5); `.qr` BlockedDecision (D-AU2) | | |
+| AB-L1 | Review | | `LabQuery::AbilityState` + `server_ability_state` (cimmeria-lab-mcp) over AB-T5's snapshot; `server_entity_get` gains `focus_cur`/`focus_max` and every stat (`#[serde(default)]`, so an older cell still reads); `server_entity_query` gets focus but no full stat block (256 snapshots × ~80 stats). |
+| AB-L2 | BlockedDependency (AB-T5); `.qr` BlockedDecision (D-AU2) | | |
 | AB-L3 | BlockedDependency (AB-L1, AB-T1, AB-C1) | | |
 | AB-R0 | Ready (draft rows; clauses fill in as tools land) | | |
 | AB-R1 to AB-R3 | BlockedDependency | | |

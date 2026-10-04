@@ -141,8 +141,9 @@ In-process, started from `crates/server/src/main.rs` beside the admin API but on
 |---|---|
 | `server_console_list` / `server_console_exec` | The 88-command dot-console (`cell/console/registry`), with captured output. Covers spawn, travel, give, mission, patrol, and net-debug families on day one. |
 | `server_sessions` | Connected accounts, characters, entity ids, spaces, addresses. |
-| `server_entity_get` / `server_entity_query` | Live entity snapshot; filter by space, type, radius, template. |
+| `server_entity_get` / `server_entity_query` | Live entity snapshot; filter by space, type, radius, template. `server_entity_get` also returns focus and every stat (`cur`/`min`/`max`); a query returns health and focus only, so a 256-entity reply stays small (ability-mechanics AB-L1). |
 | `server_witnesses` | Who witnesses an entity, and whom it witnesses. Directly targets the invisible-corpse class of AoI bug. |
+| `server_ability_state` | One entity's ability state (`LabQuery::AbilityState`, ability-mechanics AB-L1 over AB-T5's `CellEntity::ability_state`): the cast in its warmup, running ability and moniker cooldowns, pulsing effects, effect-ledger entries with absorb pools, owed icon clears, `state_field` refcounts per bit and every stat. Times are seconds from the call. The same builder writes the `abilities.snapshot` row and the GM `.effects` readout. |
 | `server_packet_tap_start` / `_read` / `_stop` | Decoded Mercury messages for one session, both directions, into a bounded ring. |
 | `server_log_tail` | Filtered read of the existing `LogBuffer`. |
 | `server_content_reload` | Existing `ReloadContentEngine` path. |
