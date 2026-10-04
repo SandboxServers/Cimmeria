@@ -67,6 +67,7 @@ fn the_must_keep_targets_are_never_summarized() {
         ("client.ability.sent", KeepReason::AbilityTrace),
         ("client.ability.sent_seq", KeepReason::AbilityTrace),
         ("client.ability.recv", KeepReason::AbilityTrace),
+        ("client.ability.recv_skipped", KeepReason::AbilityTrace),
         ("client.ability.applied", KeepReason::AbilityTrace),
         ("client.ability.shown", KeepReason::AbilityTrace),
     ];

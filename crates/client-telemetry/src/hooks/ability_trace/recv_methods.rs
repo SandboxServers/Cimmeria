@@ -251,6 +251,12 @@ pub(crate) fn may_be_wanted(msg_id: u32) -> bool {
     id == PLAYER_FIRST_EXTENDED_ID || METHODS.iter().any(|m| u32::from(m.index) == id)
 }
 
+/// Whether `msg_id` is an extended id (a player class's `0xBD` and up),
+/// whose method is named by a sub-index byte in the stream.
+pub(crate) fn is_extended(msg_id: u32) -> bool {
+    wire_id(msg_id) >= PLAYER_FIRST_EXTENDED_ID
+}
+
 /// The message id as the method-index decoder sees it. `onEntityMethod`
 /// receives the low six bits already (the property bit `0x40` and the
 /// entity-message bit `0x80` are the caller's); a raw byte is masked the

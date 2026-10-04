@@ -20,6 +20,7 @@
 //! | `client.ability.sent` | `RouteOutgoingEntityRpc` reached a `start*Message` for an allowlisted method | `send_id`, `press_id`, `method`, decoded arguments, `client_target_id` |
 //! | `client.ability.sent_seq` | The network thread stamped the packets of the bundle that carried the call | `send_id`, `mercury_seq_first`, `mercury_seq_last` |
 //! | `client.ability.recv` | An inbound ability method, decoded at `onEntityMethod` before the game reads it | `method`, `entity_id`, the arguments by name, `cast_id` |
+//! | `client.ability.recv_skipped` | A message that may be an ability method and was not decoded ([`recv_stream`]) | `reason`, `msg_id`, `method_index`, `entity_id` |
 //! | `client.ability.applied` | A stock handler applied it: effect bar, cooldown, stat, state flag | `kind`, `entity_id`, kind-specific fields |
 //! | `client.ability.shown` | A UI handler ran for it (combat text, chat line, effect bar) or a sequence played | `kind`, `handler`, `status`, `cast_id` |
 //!
@@ -53,6 +54,7 @@ pub(crate) mod layout;
 pub(crate) mod press;
 pub(crate) mod recv;
 pub(crate) mod recv_methods;
+pub(crate) mod recv_stream;
 pub(crate) mod seq_join;
 pub(crate) mod shown;
 pub(crate) mod throttle;
@@ -78,6 +80,8 @@ pub(crate) const TARGET_SENT: &str = "client.ability.sent";
 pub(crate) const TARGET_SENT_SEQ: &str = "client.ability.sent_seq";
 /// An inbound ability method, decoded.
 pub(crate) const TARGET_RECV: &str = "client.ability.recv";
+/// A message that may be an ability method and was not decoded, with why.
+pub(crate) const TARGET_RECV_SKIPPED: &str = "client.ability.recv_skipped";
 
 /// One event ready to go: target, level, throttle key and fields.
 #[derive(Debug, Clone, PartialEq)]

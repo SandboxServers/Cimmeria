@@ -379,7 +379,18 @@ Rows 6 to 8 are read from memory before the router runs; rows 9 and 10 are obser
 
 ### What the client received: `client.ability.recv` (AB-C3)
 
-No new hook. The existing `EntityManager::onEntityMethod` detour (`0x00dd2b80`, network thread) reads the message's argument bytes before the original consumes them: its stream is a `MemoryIStream` (vtable `0x01b18e38`, cursor `+0x08`, end `+0x0c`), and the bytes `[cursor, end)` are the arguments in `.def` order. The cursor is never moved. A message id that cannot be one of the methods below costs one compare; an extended id (61, the player's `0xBD`) costs a one-byte read of its sub-index before the rest is read.
+No new hook. The existing `EntityManager::onEntityMethod` detour (`0x00dd2b80`) reads the message's argument bytes before the original consumes them, and the bytes `[cursor, end)` are the arguments in `.def` order. The cursor is never moved. A message id that cannot be one of the methods below costs one compare; an extended id (61, the player's `0xBD`) costs a one-byte read of its sub-index before the rest is read.
+
+**Which stream (fixed 2026-10-04).** In the live client `onEntityMethod` is not called from the Nub with its `MemoryIStream`. `SGWMessageQueue` (vtable `0x01b14f3c`) is the connection's handler on the network thread: its `onEntityMethod` (`0x01563630`) copies the arguments into an `EntityMethodMessage` that owns a `MemoryOStream`, and `EntityMethodMessage::process` (`0x01561ac0`) later calls the `EntityManager`'s `onEntityMethod` with that `MemoryOStream`'s `BinaryIStream` subobject. The hook reads both layouts (`hooks/ability_trace/recv_stream.rs`):
+
+| Stream | vtable | `remaining` (slot 2) | read cursor | end |
+|---|---|---|---|---|
+| `MemoryOStream`'s `BinaryIStream` subobject (every live message) | `0x019ce734` | `0x00dd3f80` | `+0x14` | `+0x0c` |
+| `MemoryIStream` (a direct Nub dispatch) | `0x01b18e38` | `0x0157af60` | `+0x08` | `+0x0c` |
+
+A stream is matched by its vtable or by its `remaining` slot. The first version knew only the `MemoryIStream` layout and returned without a trace for every live message, so the first live run (colo, 2026-10-04) had `client.ability.applied` rows and no `client.ability.recv` at all.
+
+**`client.ability.recv_skipped`.** A message that may be one of the methods below and is not decoded is never dropped silently. Fields: `reason`, `msg_id`, `method_index` and `method` (null when an extended id's sub-index was not read), `entity_id`, `path`, `len` (when the window was read), `vtable` (hex, for `unknown_stream`). Reasons: `unknown_stream` (neither layout), `bad_window` (the stream, cursor or end unreadable, or the cursor past the end), `read_failed` (the sub-index or the arguments unreadable), all `warn`; and `receiver_unknown` (`info`): a player-only method for an entity in no map and not the local player, which may be ours. One bucket per reason (`recv_skipped:<reason>`, the D-AU5 limits) with `suppressed`. A message that is not one of ours (another method, an `onPlayerCommunication` on another channel, an index 27 and up for a non-player) is not a skip.
 
 The decoder is driven by a table of each method's `.def` argument list (`hooks/ability_trace/recv_methods.rs`). A test reads `entities/defs/` and `alias.xml` and fails if any argument name, type or dictionary layout drifts; another checks every index against [client-method-dispatch-table.md](../protocol/client-method-dispatch-table.md).
 
