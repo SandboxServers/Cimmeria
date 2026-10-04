@@ -499,3 +499,20 @@ clippy and formatting passed. Native Windows recovery checks remain pending.
 No downloads, resume, cleanup or frontend changes were added. Exact authenticated
 release input is still required; offline signed-release caching remains open.
 Wine guest lifecycle and runtime/gameplay readiness remain separate gates.
+
+
+### 2026-10-04: persisted signed release evidence
+
+Admission now saves bounded per-operation original manifest/signature bytes
+before intent and operation commits. Recovery can reverify those bytes under
+the current signing policy and bind them to the saved intent digest without
+relying on the mutable release URL. Fixtures cover exact-byte preservation
+across restart, verification/identity failures, failed writes preventing
+admission and malformed/oversized/missing files. Invalid or absent evidence
+never triggers a replacement fetch. Key rotation and evidence retention policy
+remain explicit concerns; no trust-policy bypass was added.
+
+172 engine tests and twelve process scenarios passed locally; strict all-target
+clippy and formatting passed. Native Windows validation remains pending.
+Automatic resume and frontend installation remain open. No frontend behavior
+changed, so JS REPL/visual UAT does not apply to this packet.

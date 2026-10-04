@@ -1,5 +1,7 @@
 //! Exclusive state-directory ownership and bounded, crash-aware persistence.
 mod atomic;
+mod release_evidence;
+pub use release_evidence::EvidenceError;
 mod install_intent;
 pub mod install_recovery;
 pub mod install_worker;

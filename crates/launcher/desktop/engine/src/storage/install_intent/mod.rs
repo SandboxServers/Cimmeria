@@ -132,6 +132,9 @@ impl DesktopState {
             login_servers,
         };
         let digest = intent.digest()?;
+        // Preserve authenticated original bytes before intent/admission. Never
+        // depend on the mutable GitHub release URL for restart reconciliation.
+        self.save_release_evidence(id, release)?;
         // A crash here leaves an orphan intent, never a dispatched mutation.
         if let Err(error) = atomic::write(&self.directory.root, &intent_name(id), &intent) {
             self.preferences_uncertain |= error == StorageError::PersistenceUncertain;

@@ -87,3 +87,9 @@ Windows+Mac before the shell; shell/visual/game gates remain separate.
   Decode marker JSON through the locked handle: a second read handle conflicts
   with Windows exclusive file locking. No automatic resume, cleanup, offline
   signed-release cache or Wine guest-lifecycle recovery is implemented yet.
+
+- Install admission now persists original signed release bytes before intent and
+  operation commits. cached_install_release verifies the current signing policy
+  and exact durable-intent digest without network fallback. This supplies offline
+  reconciliation input; key changes can reject old evidence. Cache/orphan cleanup
+  and automatic resume remain pending.

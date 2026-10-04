@@ -38,11 +38,17 @@ pub async fn fetch_patch_notes() -> Result<PatchNotes, CatalogError> {
 }
 
 /// Authenticated native input; cannot be constructed by deserializing a UI request.
+#[derive(Debug)]
 pub struct VerifiedRelease {
+    signed_body: Vec<u8>,
+    signature: Vec<u8>,
     manifest: Manifest,
     digest: [u8; 32],
 }
 impl VerifiedRelease {
+    pub(crate) fn evidence(&self) -> (&[u8], &[u8]) {
+        (&self.signed_body, &self.signature)
+    }
     pub fn manifest(&self) -> &Manifest {
         &self.manifest
     }
@@ -98,6 +104,8 @@ async fn read_bounded(
 pub fn verify_release(body: &[u8], signature: &[u8]) -> Result<VerifiedRelease, CatalogError> {
     Ok(VerifiedRelease {
         manifest: decode_verified(body, signature)?,
+        signed_body: body.to_vec(),
+        signature: signature.to_vec(),
         digest: Sha256::digest(body).into(),
     })
 }

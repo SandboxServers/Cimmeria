@@ -246,7 +246,7 @@ this nested workspace. `.github/workflows/launcher-desktop.yml` adds explicit
 native Mac/Windows checks and the frontend/native logic UAT. Shared-source
 changes also run an existing-launcher Cargo check on native Windows.
 
-On 2026-10-04, **168 engine tests**, **two shell-host tests**, **14 frontend tests**, strict clippy, TypeScript
+On 2026-10-04, **172 engine tests**, **two shell-host tests**, **14 frontend tests**, strict clippy, TypeScript
 checking and formatting passed locally on macOS. Three engine tests are ignored by default: the subprocess fixture invoked by
 its parent, plus manual real-SGW-executable and real-client-RAR checks that
 remain unrun. Coverage includes command/schema
@@ -446,9 +446,8 @@ Content checks require the expected ledger, a nonempty regular executable and
 an `SGWGame` directory, with resolved executable/game paths inside the content
 root. They do not validate every installed file, runtime prerequisites or game
 compatibility. This path covers only the native in-process worker and does not
-establish that an unobserved Wine guest exited. Resume, cleanup, UI routing and
-persisted signed-release evidence for offline reconciliation remain pending.
-Callers currently must supply the exact verified release used by the attempt.
+establish that an unobserved Wine guest exited. Resume, cleanup and UI routing remain pending. Callers can use the saved signed
+evidence below to supply the exact verified release used by the attempt.
 
 Recovery fixtures cover missing/empty output, preserved partial content,
 receipt-before-terminal recovery across reopen, missing executable, active owner
@@ -456,3 +455,27 @@ locks, foreign markers and Unix content-path redirection. Local checks passed:
 168 engine tests, twelve process scenarios, strict all-target clippy and
 formatting. Native Windows recovery checks await CI. No frontend changed, so
 JS REPL/visual UAT does not apply to this packet.
+
+
+## Signed release evidence for offline recovery
+
+`engine/src/storage/release_evidence/` persists the exact signed manifest and
+signature in `release-evidence-<operation-id>.bin` before install intent and
+operation admission. Its format is a four-byte little-endian body length,
+at most 1 MiB of manifest bytes and at most 256 signature bytes. It preserves
+original bytes, including whitespace, instead of reserializing parsed JSON.
+The existing 64 KiB limits for ordinary state files remain unchanged.
+
+`cached_install_release` rechecks the current embedded signing-key policy and
+matches the original-byte digest to the current durable intent. Missing,
+malformed, oversized, tampered or mismatched evidence fails without fetching a
+replacement from the mutable release URL. A signing-key change can prevent old
+evidence from being accepted; this cache never bypasses current verification.
+Per-operation evidence/orphan retention cleanup remains pending.
+
+Fixtures cover exact-byte recovery after restart, tampering, a different valid
+release, failed cache writes preventing admission and malformed/oversized/missing
+files. Local validation: 172 engine tests, twelve process scenarios, strict
+all-target clippy and formatting passed. Native Windows validation awaits CI.
+This adds offline recovery inputs, not automatic resume or UI installation.
+No frontend behavior changed, so JS REPL/visual UAT does not apply.
