@@ -35,10 +35,10 @@ many tests also updates the catalogue.
 
 | Metric | Count |
 |---|---:|
-| Tests (`#[test]` / `#[tokio::test]`) | 9,819 |
-| Files with tests | 1,657 |
-| Gated in CI (every crate but CI's exclude list) | 8,432 |
-| Live-DB tests (`require_db_or_skip!` in the body) | 1,518 |
+| Tests (`#[test]` / `#[tokio::test]`) | 9,822 |
+| Files with tests | 1,658 |
+| Gated in CI (every crate but CI's exclude list) | 8,435 |
+| Live-DB tests (`require_db_or_skip!` in the body) | 1,521 |
 | Inventory threshold (5% of the tests) | 491 |
 
 <!-- /gen:tests-totals -->
@@ -109,7 +109,7 @@ with no file in this directory yet.
 | `crates/base` | `cimmeria-base` | 181 | 31 | 10 | yes | none |
 | `crates/base-world-entry` | `cimmeria-base-world-entry` | 165 | 46 | 27 | yes | none |
 | `crates/resources` | `cimmeria-resources` | 137 | 20 | 0 | yes | none |
-| `crates/cell-effect-scripts` | `cimmeria-cell-effect-scripts` | 104 | 11 | 7 | yes | none |
+| `crates/cell-effect-scripts` | `cimmeria-cell-effect-scripts` | 107 | 12 | 10 | yes | none |
 | `crates/client-patches` | `cimmeria-client-patches` | 93 | 14 | 0 | no | none |
 | `crates/discord` | `cimmeria-discord` | 82 | 16 | 0 | yes | none |
 | `crates/upk-objects` | `cimmeria-upk-objects` | 78 | 9 | 0 | yes | [upk-objects.md](upk-objects.md) |
