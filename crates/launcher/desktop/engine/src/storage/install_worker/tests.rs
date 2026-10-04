@@ -460,3 +460,33 @@ fn installation_reference_write_failure_cannot_publish_success() {
     );
     assert!(!root.path().join("state/install-result.json").exists());
 }
+
+/// Shared real ZIP installation fixture for repair reconstruction tests.
+pub(crate) async fn prepared_fixture() -> (
+    tempfile::TempDir,
+    Arc<Mutex<DesktopState>>,
+    Uuid,
+    MockServer,
+) {
+    let seed = archive(true);
+    let release = verified(&seed);
+    let (root, state, id) = setup(&release);
+    let server = MockServer::start().await;
+    Mock::given(path("/seed.zip"))
+        .respond_with(ResponseTemplate::new(200).set_body_bytes(seed))
+        .mount(&server)
+        .await;
+    let worker = dispatch_with(
+        state.clone(),
+        id,
+        release,
+        format!("{}/manifest.json", server.uri()),
+        reqwest::Client::new(),
+    )
+    .unwrap();
+    assert_eq!(
+        outcome(worker.result.clone()).await,
+        Outcome::ContentPrepared
+    );
+    (root, state, id, server)
+}

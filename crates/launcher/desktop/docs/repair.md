@@ -1,7 +1,7 @@
 # Repair design contract
 
-**Status: native admission implemented; reconstruction, commit/recovery and UI
-remain planned.** This contract defines the replacement workflow and its gates.
+**Status: native admission and fresh reconstruction implemented; replacement,
+recovery and UI remain planned.** This contract defines the replacement workflow and its gates.
 Repair is not yet an available user command. See
 [maintenance](maintenance.md) for implemented uninstall.
 
@@ -86,8 +86,8 @@ Before UI release, run real Effect service logic UAT through native persistence:
 confirmation/dismissal, preinspection, one mutation under duplicate clicks,
 precommit cancellation, no replay after timeout/reconnect, explicit recovery and
 preserved consent. Add visual/manual UAT separately and state its coverage.
-Only the admission layer below is implemented; the reconstruction, commit,
-fault-recovery and UI validation gates above are still open.
+Admission and native staging below are implemented; Wine repair adaptation,
+replacement, fault-recovery and UI validation gates above are still open.
 
 ## Implemented admission boundary
 
@@ -101,6 +101,7 @@ does not reinterpret repair work as a first installation.
 The plan records original-game presence and derives sibling
 `.cimmeria-repair-<work-id>` / `.cimmeria-backup-<work-id>` paths under that
 installation. Those paths must be absent and are not created by admission.
+The actual replacement stage is the work directory’s `game` child.
 A missing game is repairable identity, not lost ownership. Preferences are not
 used to redirect repair. Matching duplicate IDs return `dispatch: false`,
 including after reopen; identity conflicts and orphan plans are refused.
@@ -113,3 +114,32 @@ are persistence/ownership fixtures, not reconstruction or platform rename tests.
 The admission lock ends when the call returns; the future retained worker must
 reacquire and revalidate all resources before touching game files. No frontend
 behavior or JS/visual UAT is claimed for this internal API packet.
+
+## Implemented preparation boundary
+
+Repair reconstructs the saved, reverified signed release into a fresh private
+`game` stage beneath the work directory, using the shared seed/patch/setup
+pipeline. It does not reuse the damaged game or its ledger as reconstruction
+input. The permanent installation identity remains unchanged.
+
+Preparation rechecks original-tree presence, refuses an existing backup/work
+path, and holds the installed-root and work-owner locks. Successful handoff
+returns `Prepared` with both locks retained for a future commit coordinator.
+`repair-prepared-<work-id>.json` records completed staging. This layer never
+renames, replaces or deletes the existing game. Pre-cancellation avoids staging
+and downloads. A receiver lost before handoff preserves output and marks the
+operation for reconciliation; failed terminal persistence reports uncertainty.
+
+The public preparation entry point supports native Windows only. Local tests
+use the private entry point with signed ZIP fixtures on macOS: six focused
+repair tests passed (`20261004-084930-43826`), including fresh extraction despite
+a damaged old tree and current ledger, retained locks, pre-cancel, lost receiver
+and failed terminal persistence. Strict clippy passed (`20261004-085024-44236`).
+These results do not establish original-client or native Windows extraction.
+
+The commit coordinator must handle two remaining handoff boundaries: dropping
+an already-delivered `Prepared` releases its locks but leaves Running until
+reopen, and cancellation can race with completed staging. It must retain the
+handoff and recheck cancellation before the first commit mutation. Receiving
+`Prepared` alone is not permission to replace the game. The Wine repair adapter,
+replacement/recovery and UI remain unfinished. No frontend/visual UAT is claimed.

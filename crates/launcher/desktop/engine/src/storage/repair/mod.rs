@@ -1,5 +1,6 @@
 //! Same-release reconstruction identity. Admission never mutates game content.
 use super::*;
+pub mod preparation;
 use crate::OperationKind;
 use sha2::{Digest, Sha256};
 use uuid::Uuid;
@@ -12,10 +13,13 @@ pub struct Plan {
     pub original_present: bool,
 }
 impl Plan {
-    pub fn stage(&self) -> PathBuf {
+    pub fn work_directory(&self) -> PathBuf {
         self.installation
             .destination
             .join(format!(".cimmeria-repair-{}", self.id))
+    }
+    pub fn stage(&self) -> PathBuf {
+        self.work_directory().join("game")
     }
     pub fn backup(&self) -> PathBuf {
         self.installation
@@ -90,7 +94,7 @@ impl DesktopState {
         }
         for path in [
             self.directory.root.join(name(id)),
-            plan.stage(),
+            plan.work_directory(),
             plan.backup(),
         ] {
             match std::fs::symlink_metadata(path) {

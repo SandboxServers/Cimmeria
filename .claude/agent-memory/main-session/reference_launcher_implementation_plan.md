@@ -485,3 +485,10 @@ owner lock and absent-path checks precede durable admission; duplicate/reopened
 IDs never redispatch. Three targeted tests pass. This is not a Repair worker or
 UI: reconstruction, commit checkpoints, resource/prefix ownership and recovery
 remain required. Canonical contract: desktop docs/repair.md.
+
+
+Repair staging now reconstructs a fresh signed seed through the shared installer,
+preserving the old tree and handing root/work locks to the future commit owner.
+Pre-cancel performs no download; lost observation retains output behind recovery.
+Six focused tests pass; native Wine repair binding, replacement/recovery and UI
+remain open. `docs/repair.md` records the staging validation boundary.

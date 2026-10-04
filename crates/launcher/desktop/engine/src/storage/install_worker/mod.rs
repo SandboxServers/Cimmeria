@@ -384,7 +384,7 @@ pub(super) fn content_valid(stage: &Path, release: &VerifiedRelease) -> bool {
 }
 
 #[cfg(test)]
-mod tests;
+pub(super) mod tests;
 
 mod resume;
 pub use resume::{resume, ResumeError};
