@@ -1,19 +1,61 @@
-//! Effect-flag category logging.
+//! Effect-flag logging.
 //!
-//! Surfaces the packed `EffectDef::flags` bitmask as structured tracing
-//! events at fan-out time so operators can see which effect categories are
-//! landing, even before the full mechanics ship in Phase G.
+//! Surfaces the packed `EffectDef::flags` bitmask as a structured tracing
+//! event at fan-out time, so an operator can see which `EEffectFlag` bits
+//! the landing effects carry.
+//!
+//! The names are the client's `entities/defs/enumerations.xml`
+//! `EEffectFlag` tokens. The old version tested made-up "category" values
+//! (`EF_STUN = 12` is really ClearOnDeath + ClearOnDamage, `EF_DOT = 516`
+//! is ClearOnDeath + SequenceOnStart), so its labels were wrong on every
+//! row (ability-mechanics B-25, fixed by AB-06).
 
-use cimmeria_entity::abilities::{
-    EffectDef, EF_DOT, EF_INTERRUPT_CHANCE, EF_MENTAL_RESIST_ROLL, EF_STUN, EF_SUPPRESSION,
-};
+use cimmeria_entity::abilities::EffectDef;
 
-/// Read a packed flags integer and surface any non-trivial categories as
-/// structured tracing events so operators can see which effects are
-/// landing. v1 doesn't fully implement Stun / Suppression / Interrupt /
-/// Resist-roll mechanics — they show up as separate effect scripts in
-/// Phase G — but the flag inspection happens at fan-out time so the
-/// observability is consistent.
+/// Every `EEffectFlag` token, in bit order (`enumerations.xml:1094-1123`).
+const EFFECT_FLAG_NAMES: [(u32, &str); 25] = [
+    (1, "EF_Beneficial_Effect"),
+    (2, "EF_Offline_Time_Counts"),
+    (4, "EF_ClearOnDeath"),
+    (8, "EF_ClearOnDamage"),
+    (16, "EF_DontUseQR"),
+    (32, "EF_HasInductionBar"),
+    (64, "EF_SequenceOnFinish"),
+    (128, "EF_SequenceOnPulse"),
+    (256, "EF_SequenceOnFail"),
+    (512, "EF_SequenceOnStart"),
+    (1024, "EF_SequenceOnRemove"),
+    (2048, "EF_ClearOnRez"),
+    (4096, "EF_HideIconOnClient"),
+    (8192, "EF_OnlySendToGroup"),
+    (16_384, "EF_OnlySendToSelf"),
+    (32_768, "EF_RemoveOnDisguiseZeroed"),
+    (65_536, "EF_RemoveOnBandolierSlotChange"),
+    (131_072, "EF_ResolveOnAbilityUser"),
+    (262_144, "EF_DisableDisguiseWhenRemoved"),
+    (524_288, "EF_AlwaysPersist"),
+    (1_048_576, "EF_Response"),
+    (2_097_152, "EF_RemoveOnStealthZeroed"),
+    (4_194_304, "EF_CalculateQRFromTarget"),
+    (8_388_608, "EF_PromptConfirmationDialog"),
+    (16_777_216, "EF_SequenceOnConfirmation"),
+];
+
+/// Every bit a client `EEffectFlag` defines.
+const KNOWN_EFFECT_FLAG_BITS: u32 = (1 << 25) - 1;
+
+/// The `EEffectFlag` names set in `flags`, in bit order.
+pub(crate) fn effect_flag_names(flags: u32) -> Vec<&'static str> {
+    EFFECT_FLAG_NAMES
+        .iter()
+        .filter(|(bit, _)| flags & bit != 0)
+        .map(|&(_, name)| name)
+        .collect()
+}
+
+/// Log the `EEffectFlag` bits an effect carries. Nothing is logged for an
+/// effect with no flags. Bits the client enum does not define are logged
+/// as `unknown_bits` instead of being dropped.
 pub fn log_effect_flag_categories(
     entity_id: u32,
     target_id: u32,
@@ -24,27 +66,6 @@ pub fn log_effect_flag_categories(
     if flags == 0 {
         return;
     }
-    // Bit checks — flags are a packed bitmask so multiple categories
-    // can fire from one effect.
-    let mut categories: Vec<&'static str> = Vec::new();
-    if flags & EF_STUN == EF_STUN {
-        categories.push("stun");
-    }
-    if flags & EF_INTERRUPT_CHANCE == EF_INTERRUPT_CHANCE {
-        categories.push("interrupt_chance");
-    }
-    if flags & EF_MENTAL_RESIST_ROLL == EF_MENTAL_RESIST_ROLL {
-        categories.push("mental_resist_roll");
-    }
-    if flags & EF_SUPPRESSION == EF_SUPPRESSION {
-        categories.push("suppression");
-    }
-    if flags & EF_DOT == EF_DOT {
-        categories.push("dot");
-    }
-    if categories.is_empty() {
-        return;
-    }
     tracing::debug!(
         target: "abilities",
         event = "effect_flag_categories",
@@ -53,7 +74,8 @@ pub fn log_effect_flag_categories(
         ability_id,
         effect_id = effect.effect_id,
         flags,
-        categories = ?categories,
-        "Effect carries category flags — v1 logs them; full mechanics arrive in Phase G"
+        categories = ?effect_flag_names(flags),
+        unknown_bits = flags & !KNOWN_EFFECT_FLAG_BITS,
+        "effect carries EEffectFlag bits"
     );
 }

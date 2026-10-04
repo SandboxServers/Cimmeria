@@ -50,11 +50,9 @@ use cimmeria_wire::state_field::BSF_MOVEMENT_LOCK;
 /// that wants effect-NVP-driven damage without going through ability
 /// resolution.
 ///
-/// For the v1 hook point in `damage_apply`, the legacy `HealthDamage`
-/// NVP path already covers melee abilities; effects with
-/// `script_name = "MeleeDamage"` will run this in addition, applying
-/// extra raw damage. Operators should set `script_name` only when the
-/// script-driven behavior is the intended path.
+/// In `damage_apply` this is a damage script (AB-06, D-AB07): an effect
+/// bound to it deals its `HealthDamage` through this script only, and the
+/// legacy NVP pipeline skips the effect. A missed QR roll runs no script.
 pub struct MeleeDamage;
 
 impl EffectScript for MeleeDamage {
@@ -125,10 +123,12 @@ impl EffectScript for MeleeDamage {
 /// existing effect that happened to inherit the NVP. Splitting into
 /// a named-as-such script keeps the two intentions clearly separable.
 ///
-/// Without this script, the legacy NVP fallback applies both
-/// `FocusDamage` and `HealthDamage` independently every melee hit,
-/// so the target takes HEALTH damage even at full Focus — exactly
-/// the bug shape `RangedPhysicalDamage` exists to prevent for ranged.
+/// An effect bound to this script deals its damage here only:
+/// `damage_apply` skips the legacy NVP pipeline for it (AB-06, D-AB07;
+/// before AB-06 both ran, so Strike hit twice, audit B-22). An effect
+/// with the same NVPs and no script still takes the NVP pipeline, which
+/// damages both pools independently, so the target loses HEALTH even at
+/// full Focus.
 ///
 /// **Edge case — `FocusDamage = 0` with `HealthDamage > 0`:** the
 /// script returns early via the `focus_overflow == 0` gate without
@@ -233,9 +233,13 @@ impl EffectScript for MeleePhysicalDamage {
 ///
 /// The shield pool persists on the target's StatList until damage
 /// drains it OR a pulsing instance carries the script and expires.
-/// For "buff duration" semantics, register the effect as pulsing with
-/// `pulse_count = 1` and `pulse_duration = <buff_seconds>` — the
-/// pulse fires once on apply, then the instance ages out at expiry.
+/// **A timed shield has no working shape yet.** `pulse_count = 1` with
+/// `pulse_duration = <buff_seconds>` (the seed's timed-buff shape) is
+/// never registered (`EffectDef::is_pulsing` is false for it, audit
+/// B-30), so the pool would never drain on expiry; only a multi-pulse
+/// row registers, and it re-runs `on_apply` every pulse. Timed shields
+/// wait for the ability-mechanics timed-effect ledger (AB-04, AB-10;
+/// audit B-33).
 pub struct AbsorbShield;
 
 /// Resolve which ABSORB_* pool a `ShieldType` NVP maps to. Centralises
@@ -445,9 +449,11 @@ impl EffectScript for Suppression {
 /// over-damaging on small overflows. We match the legacy truncation
 /// step-for-step so combat tuning is parity-correct.
 ///
-/// Without this script, the legacy NVP fallback applies both
-/// `FocusDamage` and `HealthDamage` independently every shot, so the
-/// player takes HEALTH damage even at full Focus.
+/// An effect bound to this script deals its damage here only:
+/// `damage_apply` skips the legacy NVP pipeline for it and scales the
+/// two NVPs by the hit's cover and ammo scale first (AB-06, D-AB07;
+/// before AB-06 both paths ran, so Pistol Shot hit twice, audit B-22).
+/// A missed QR roll runs no script.
 ///
 /// Reference: `deprecated/python/cell/effects/RangedPhysicalDamage.py`
 /// and `deprecated/data-scripts/scripts/effects/RangedPhysicalDamage.script`.

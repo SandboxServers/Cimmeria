@@ -162,6 +162,14 @@ For channelled effects (`pulse_count = 0`), we register with `MAX_CHANNEL_PULSES
 
 **Code:** the registry type in [`crates/cell-world/src/cell/effects/registry.rs`](../../crates/cell-world/src/cell/effects/registry.rs), the script table in [`crates/cell-effect-scripts/src/cell/effects/registry.rs`](../../crates/cell-effect-scripts/src/cell/effects/registry.rs) (decision 33).
 
+**Addendum (2026-10-03, ability-mechanics AB-06, D-AB07).** Three changes refine this decision:
+
+- **A damage script is its effect's only damage path.** An effect whose `script_name` is `RangedPhysicalDamage`, `MeleePhysicalDamage`, `RangedEnergyDamage` or `MeleeDamage` no longer also feeds its `HealthDamage`/`FocusDamage` NVPs to the legacy QR pipeline; before, both ran and Pistol Shot and Strike hit twice. The script runs where the NVP damage runs (before the hit's death check), with its two NVPs scaled by the hit's cover, special-ammo and splash scale, and its HEALTH change is the `onEffectResults` entry. Every other script still runs after the hit.
+- **A miss lands nothing.** A QR-rolled effect whose roll is `RC_MISS` deals no NVP damage, runs no script and registers no pulses.
+- **One flag bit now drives behaviour: `EF_DontUseQR` (16).** An effect carrying it never misses; a hit whose every effect carries it takes no roll (`RC_Hit`, the authored base damage). The old category constants (`EF_STUN = 12`, `EF_DOT = 516`, ...) were not client bits and are gone; the flag log names the client's `EEffectFlag` tokens.
+
+Starter damage drops as a result. Code: [`damage_apply/effect_scripts.rs`](../../crates/cell-combat/src/cell/abilities/damage_apply/effect_scripts.rs) and [`damage_apply/qr_gate.rs`](../../crates/cell-combat/src/cell/abilities/damage_apply/qr_gate.rs).
+
 ### 11. Channel-interrupt distance = 0.5m
 
 **Decision:** `CHANNEL_INTERRUPT_DISTANCE = 0.5` world units.
@@ -243,7 +251,7 @@ Later decisions live in two sibling files, with their numbers and text unchanged
 
 These were considered and deliberately deferred:
 
-- **Mental resist rolls** — `EF_MENTAL_RESIST_ROLL = 64` flag is parsed and observable but no roll mechanic. Needs a design pass: what's the formula (attacker PSIONIC vs defender MENTAL_RES?), how does it interact with QR, what's the wire surface for "resisted" results (new `SRC_*` code? new `onEffectResults` variant?). Picking a model now risks baking the wrong one into the 64 mental-resist effects in DB.
+- **Mental resist rolls** — no roll mechanic. (The old `EF_MENTAL_RESIST_ROLL = 64` constant was not a client bit, 64 is `EF_SequenceOnFinish`, and AB-06 removed it; the resists are their own "Resist Roll" effects, ability-mechanics AB-09d.) Needs a design pass: what's the formula (attacker PSIONIC vs defender MENTAL_RES?), how does it interact with QR, what's the wire surface for "resisted" results (new `SRC_*` code? new `onEffectResults` variant?). Picking a model now risks baking the wrong one into the 64 mental-resist effects in DB.
 - **Stun stacking nuance** — multi-source stuns share one `BSF_MOVEMENT_LOCK` bit via refcount, but per-stun-duration tracking isn't on the wire. The client sees one buff icon for "stunned" even when two stuns are pulsing. Acceptable for v1; needs design + wire-format work to surface per-source durations.
 - **Per-archetype tree content authoring** (~560 rows × 7 archetypes) — pure content design work, no engine blockers.
 - **Effect VFX sequences** — most ranged abilities share a generic beam sequence; per-weapon polish.

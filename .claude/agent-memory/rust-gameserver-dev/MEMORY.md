@@ -111,6 +111,7 @@ One line per topic file; the detail lives in the file. Keep hooks short (this in
 ## Testing patterns
 
 - [testing-patterns-index](testing-patterns-index.md) — sub-index: nextest vs cargo test, revert proofs, live-DB races/ports, chain replay, encrypted test sessions, LogCapture.
+- [damage-apply-miss-gate-and-seeded-rolls](damage-apply-miss-gate-and-seeded-rolls.md) — since AB-06 a miss lands nothing; a literal effect_seq may roll a miss; use `seq_rolling`.
 
 ## Campaign judgment
 
