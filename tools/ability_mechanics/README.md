@@ -26,14 +26,16 @@ python tools/ability_mechanics/effect_nvps_from_desc.py --check    # exit 1 if t
 python tools/ability_mechanics/effect_nvps_from_desc.py --report   # generated, hand-authored and unparsed effects
 python tools/ability_mechanics/effect_nvps_from_desc.py --family heal   # one family only
 python tools/ability_mechanics/effect_nvps_from_desc.py --report --family damage > tools/ability_mechanics/reports/damage.txt
+python tools/ability_mechanics/effect_nvps_from_desc.py --report --family shield > tools/ability_mechanics/reports/shield.txt
+python tools/ability_mechanics/effect_nvps_from_desc.py --report --family cleanse > tools/ability_mechanics/reports/cleanse.txt
 python -m unittest discover -s tools/ability_mechanics -p "test_*.py"   # test_stat_family.py is the stat family's
 ```
 
 Exit codes: 0 success, 1 drift (`--check`), 2 input failure (an unparseable seed, an unmatched marker, a family out of `nvp_id`s). Output is deterministic, and a run keeps each file's CRLF line endings.
 
-`reports/damage.txt` is the committed `damage` report: the generated effects with their notes, and every unparsed effect with its reason. A unit test fails when it no longer matches the parser, so a grammar change ships with the reviewed list. Regenerate it with the command above once the seed is current.
+`reports/damage.txt`, `reports/shield.txt` and `reports/cleanse.txt` are the committed reports of their families. Each holds the generated effects with their notes, and every unparsed effect with its reason. A unit test fails when one no longer matches its parser, so a grammar change ships with the reviewed list. Regenerate them with the command above once the seed is current.
 
-CI runs `--check` and the unit tests in the `test-live-db` job of [.github/workflows/test.yml](../../.github/workflows/test.yml), so a hand edit inside a block, or a parser change without a regenerated seed, fails the PR. The live-DB guards in `crates/cell-effect-scripts/src/cell/effects/heal_seed_live_db_tests.rs` (heal) and `stat_buff/seed_live_db_tests.rs` (stat) load the real seed and run the bound scripts on it; `crates/cell-combat/src/cell/abilities/damage_apply/damage_seed_live_db_tests.rs` checks the damage rows and fires Point Blank Shot on them.
+CI runs `--check` and the unit tests in the `test-live-db` job of [.github/workflows/test.yml](../../.github/workflows/test.yml), so a hand edit inside a block, or a parser change without a regenerated seed, fails the PR. The live-DB guards in `crates/cell-effect-scripts/src/cell/effects/heal_seed_live_db_tests.rs` (heal), `stat_buff/seed_live_db_tests.rs` (stat) and `cleanse/seed_live_db_tests.rs` (shield and cleanse) load the real seed and run the bound scripts on it; `crates/cell-combat/src/cell/abilities/damage_apply/damage_seed_live_db_tests.rs` checks the damage rows and fires Point Blank Shot on them.
 
 ## Ownership rules
 
@@ -41,7 +43,7 @@ CI runs `--check` and the unit tests in the `test-live-db` job of [.github/workf
 - An effect that already has a hand-authored NVP of one of the family's names is left alone. The report says whether the parser agrees with it (it does for 659, 2008, 1383 and 3211).
 - An effect whose `script_name` is set, and was not set by the family's committed block, is left alone and reported. A script the family bound earlier and no longer generates is cleared back to NULL on the next run.
 - Hand ownership comes from the rows outside the markers alone. An effect the family generated, which then gains a hand row of the family's NVPs, keeps its `script_name`, even if its text no longer parses or its ability is no longer reachable. Removing that hand row later does not hand the effect back: its script now counts as hand-authored, and the report lists it.
-- `nvp_id` ranges are fixed by the campaign ledger: heal 20000-20999, damage 21000-22999, stat 23000-23999, shield 24000-24499. Allocation skips every id used outside the family's block (a generated row moved out keeps its id), and any duplicate `nvp_id` in the file fails the run with exit 2, `--check` included.
+- `nvp_id` ranges are fixed by the campaign ledger: heal 20000-20999, damage 21000-22999, stat 23000-23999, shield 24000-24499, cleanse 24500-24999. Allocation skips every id used outside the family's block (a generated row moved out keeps its id), and any duplicate `nvp_id` in the file fails the run with exit 2, `--check` included.
 
 ## Families
 
@@ -50,7 +52,8 @@ CI runs `--check` and the unit tests in the `test-live-db` job of [.github/workf
 | `heal` | AB-02 | `HealPercentage` (percent of the pool's max) or `HealAmount` (flat points) | `HealHealth` / `HealFocus` |
 | `damage` | AB-03 | `HealthDamage`, `FocusDamage` | none (NVP path) |
 | `stat` | AB-04 | stat names (`Accuracy`, `Defense`, `CoverDefense`, `MovementSpeedMod`, ...) | `TimedStat` |
-| `shield` | AB-10 | `ShieldAmount`, `ShieldType` | `AbsorbShield` |
+| `shield` | AB-10 | `ShieldAmount`, `ShieldType`; `Mitigation` | `AbsorbShield`; `TimedStat` |
+| `cleanse` | AB-10 | `RemoveCategories`, `RemovePolarity`; `EffectCategory` on gated effects | `RemoveEffects` |
 
 A family is one module under `families/` that subclasses `family.Family` (`is_candidate`, `parse`) and one entry in `families/__init__.py`. The corpus loader (`corpus.py`), the seed reader (`seed_sql.py`), the ownership rules, the block writer, `--check` and `--report` are shared.
 
@@ -86,6 +89,7 @@ An effect is reported, not written, when its rejection reason starts with one of
 - `grammar`: anything else the parser refuses.
 
 When the ability tooltip's numbers differ from the effect's, the effect row wins and the comment says so.
+
 ### stat
 
 `families/stat.py` writes stat-named NVPs (`Accuracy`, `Defense`, `CoverAccuracy`, `CoverDefense`, `CrouchingDefense`, `Response`, `InterruptResistance`, the three resists, `MovementSpeedMod`) and binds `TimedStat`, which puts one entry per effect and caster on the timed effect ledger for the effect's `pulse_duration` (AB-04, D-AB08). The names it may write sit between `# nvp-names` markers, and a Rust test (`stat_nvp_names_match_the_generator`) fails if the script would ignore one.
@@ -103,6 +107,20 @@ Reported instead of bound:
 - an effect the cast would land in the wrong place: the non-beneficial half of a Self ability (Combat Sprint's "-100 ACC"), a "User" half of a targeted ability, and a beneficial effect whose ability has a non-beneficial effect that does something (the cast would take the hostile path, B-27).
 
 When the ability tooltip names a different stat from the effect row, the row wins and the comment says so.
+
+### shield
+
+`families/shield.py` reads two shapes. An absorb pool with a number ("Absorption:\n500 Physical\n500 Energy\n500 Contamination") binds `AbsorbShield` with `ShieldAmount` (capacity per type) and `ShieldType` (the types by name, `Physical,Energy,Hazmat`; Contamination is `Hazmat`); different capacities per type are refused, since `ShieldAmount` holds one. A mitigation shield ("Target +15% Physical Mitigation") binds `TimedStat` with `Mitigation`: `alias.xml` makes `mitigation` a 0-100% stat, so the percentage is the points, and the stat list has one untyped mitigation stat, so the type is dropped with a note. Those four rows are held toggles and apply once AB-08's held entries land. Its names sit between `# nvp-names` markers, pinned by `shield_nvp_names_match_the_generator`.
+
+Reported, by the category its reason starts with: `no number` ("Total Absorption:\nEnergy:"), `moniker` (the "Remove Effect of EFFECT_Shield" toggle-off halves, AB-08), `unit` (armour-factor percentages), `turret` and `deployable` (D-AB11), `stat` (resist changes under a shield's name), `toggle` (held with no `AF_TOGGLED`), `routing` and `grammar`.
+
+### cleanse
+
+`families/cleanse.py` binds the purges ("Purge Mental Effects: X 2", "Purges Mental States x5", "Purge: Mental Effects x5") to `RemoveEffects` with `RemoveCategories` (`Mental:2`) and `RemovePolarity` `Harmful`. Its categories are the client data's: every "<Kind> Resist Roll" shares an `effect_sequence` step with the effects it gates, and `alias.xml` names `kineticRes`, `mentalRes` and `healthRes` as resistance to harmful kinetic, mental and health effects. So the family also writes `EffectCategory` (`Mental`, `Kinetic`, `Health`) on each harmful effect a roll gates that lasts (`pulse_duration > 0`); an instant hit leaves nothing to remove. `corpus.Effect` carries `effect_sequence` for this.
+
+Reported: `count` (a purge with no number, "Purge: Kinetic Effects"), `category` (a category the data does not define: "Focus Degeneration", "Focus Buff"), `moniker` (removal by an `EFFECT_*`, DoT or stance moniker: stance exclusivity is AB-08's, DoT refreshes remove their own earlier application, and the monikers were never seeded), `scope` (mini-game cleanup), `tag` (two roll kinds at one step), `routing` and `grammar`.
+
+Both families check routing in `families/cast_routing.py`: another effect of the same ability that does something on the hostile path would land the shield or purge on the client's target, so it is reported instead.
 
 ## Changing a family
 

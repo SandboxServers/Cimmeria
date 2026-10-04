@@ -13,7 +13,14 @@
 //! - on an `ABILITY_TYPE_Heal` ability only, an effect whose script is a heal
 //!   ([`HEAL_SCRIPTS`]). 597 Heal Focus, 1646 Health Heal and 1218
 //!   Recuperation qualify this way: their effects carry no beneficial bit
-//!   (659 is flags 16).
+//!   (659 is flags 16), **or**
+//! - on any ability, an effect whose script only ever helps its target
+//!   (AB-10): an absorb shield (`AbsorbShield`) or a cleanse of harmful
+//!   effects (`RemoveEffects` without `RemovePolarity = Beneficial`). Their
+//!   rows carry no beneficial bit either (4306 Personal Shield is flags 342,
+//!   4168 Absolution's purge is 0), and on the hostile path a Self shield or
+//!   purge would land on the client's target. A buff strip
+//!   (`RemovePolarity = Beneficial`) is the opposite and does not qualify.
 //!
 //! **The type alone is not enough.** About 200 seed abilities are typed Heal
 //! but are debuffs or crowd control (1874 Impose Weakness, 1937 FocusDegen,
@@ -41,6 +48,20 @@ use super::{effect_is_implemented, AbilityDef, AbilityType, EffectDef, EF_BENEFI
 /// as beneficial without the `EF_Beneficial_Effect` bit.
 pub const HEAL_SCRIPTS: [&str; 3] = ["HealHealth", "HealFocus", "HealPetHealth"];
 
+/// `true` when `effect`'s script only ever helps whoever it lands on, on
+/// any ability type (module docs). The names are `cimmeria-cell-effect-scripts`'
+/// (`shield/`, `cleanse/`).
+fn effect_script_only_helps(effect: &EffectDef) -> bool {
+    match effect.script_name.as_deref() {
+        Some("AbsorbShield") => true,
+        Some("RemoveEffects") => !effect
+            .params
+            .get("RemovePolarity")
+            .is_some_and(|p| p.trim().eq_ignore_ascii_case("beneficial")),
+        _ => false,
+    }
+}
+
 /// `true` when `effect` deals damage from its NVPs.
 fn effect_deals_damage(effect: &EffectDef) -> bool {
     effect.param_i32("HealthDamage") > 0 || effect.param_i32("FocusDamage") > 0
@@ -61,6 +82,7 @@ pub fn ability_is_beneficial(def: &AbilityDef, effects: &HashMap<i32, EffectDef>
     let heal_typed = def.type_id == AbilityType::Heal;
     doing.iter().all(|e| {
         e.flags & EF_BENEFICIAL_EFFECT != 0
+            || effect_script_only_helps(e)
             || (heal_typed
                 && e.script_name
                     .as_deref()
@@ -215,6 +237,53 @@ mod tests {
         ));
         assert!(!ability_is_beneficial(
             &def(AbilityType::Buff, vec![5]),
+            &effects
+        ));
+    }
+
+    /// AB-10: Personal Shield (1013, DD-typed, 4306 flags 342) and
+    /// Absolution (2865, 4168 flags 0) carry no beneficial bit, but a shield
+    /// and a purge only ever help their target, so the Self cast lands on
+    /// the caster. A buff strip is the opposite.
+    #[test]
+    fn a_shield_or_a_purge_is_beneficial_and_a_buff_strip_is_not() {
+        let effects = HashMap::from([
+            (
+                4306,
+                effect(4306, 342, &[("ShieldAmount", "500")], Some("AbsorbShield")),
+            ),
+            (
+                4168,
+                effect(
+                    4168,
+                    0,
+                    &[("RemoveCategories", "Mental:2")],
+                    Some("RemoveEffects"),
+                ),
+            ),
+            (
+                9,
+                effect(
+                    9,
+                    0,
+                    &[
+                        ("RemoveCategories", "Mental"),
+                        ("RemovePolarity", "Beneficial"),
+                    ],
+                    Some("RemoveEffects"),
+                ),
+            ),
+        ]);
+        assert!(ability_is_beneficial(
+            &def(AbilityType::DirectDamage, vec![4306]),
+            &effects
+        ));
+        assert!(ability_is_beneficial(
+            &def(AbilityType::Buff, vec![4168]),
+            &effects
+        ));
+        assert!(!ability_is_beneficial(
+            &def(AbilityType::Buff, vec![9]),
             &effects
         ));
     }

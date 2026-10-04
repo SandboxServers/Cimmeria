@@ -325,10 +325,16 @@ async fn fire_pulse(
     // Script path takes precedence over NVP path so a registered
     // script can fully decide what happens on each pulse.
     if let Some(script_name) = effect.script_name.clone() {
+        // A scripted DoT pulse passes the target's shields first (AB-10), as
+        // the NVP branch does inside `calculate_damage`.
+        let mut effect = effect.clone();
+        if let Some(target) = space_mgr.get_entity_mut(target_id) {
+            crate::cell::combat::absorb_damage_nvps(&mut target.stats, &mut effect, DT_PHYSICAL);
+        }
         let mut ctx = crate::cell::effects::EffectContext {
             source_id: inst.invoker_id,
             target_id,
-            effect,
+            effect: &effect,
             space_mgr,
         };
         crate::cell::effects::dispatch_by_name(&script_name, &mut ctx);
@@ -410,6 +416,11 @@ async fn fire_pulse(
             }
         }
     }
+
+    // AB-10: charge what this pulse drained from the absorb stats to the
+    // shields on the ledger; an emptied one comes off, and the stat-buff
+    // tick sends its icon clear.
+    space_mgr.settle_absorb_shields(target_id);
 
     // Surrender floor: an automatic damage source may wound a
     // surrendered NPC but may never finish it. See
