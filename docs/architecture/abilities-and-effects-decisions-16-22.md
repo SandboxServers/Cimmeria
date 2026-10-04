@@ -332,7 +332,10 @@ probability `(interruptRes + coordination) / 1000`, clamped to 0..=1: `alias.xml
 `interruptRes` a resistance to every interrupt but movement and gives coordination "+0.1%
 resistance to interrupts per point", and D-AB09's 10 points per 1 % puts both in one unit.
 `P(interrupt) = InterruptChance x (1 - resist)`, rolled from a seed of the source, the target,
-the effect and the target's warmup instance. DESIGN, not recovered. When it lands the target's
+the effect, the target's warmup instance and a per-request nonce (a counter on the
+`SpaceManager`), so repeated hits on one warmup or a channel roll afresh. DESIGN, not recovered.
+A landed stun or knockdown queues an `Incapacitated` request instead: never rolled, reason
+`incapacitated`, and silent when the target was neither casting nor channelling. When it lands the target's
 warmup goes through `interrupt_pending_cast` with reason `interrupt_effect` (refund, zeroed
 timers, `Ability_Interrupt`, no lockout, exactly as above) and its channels through
 `cancel_channels_from_attacker`. One `abilities` `interrupt_effect` row per request:
