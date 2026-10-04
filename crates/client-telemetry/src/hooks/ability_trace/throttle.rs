@@ -42,6 +42,12 @@ fn press_id(fields: &Fields) -> Option<u32> {
 }
 
 impl AbilityThrottle {
+    /// A plain per-name decision, for rows that carry no `press_id` and
+    /// build their fields only when admitted (recv, applied, shown).
+    pub(crate) fn check_name(&mut self, key: &str, now_ms: u64) -> Decision {
+        self.table.check(key, now_ms)
+    }
+
     /// One per-name bucket decision; `suppressed` added when non-zero.
     fn by_name(&mut self, key: &str, mut fields: Fields, now_ms: u64) -> Option<Fields> {
         let Decision::Emit { suppressed } = self.table.check(key, now_ms) else {

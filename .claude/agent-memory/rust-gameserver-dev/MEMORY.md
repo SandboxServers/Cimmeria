@@ -71,6 +71,7 @@ One line per topic file; the detail lives in the file. Keep hooks short (this in
 
 - [offline-disasm-and-minhook-detour-tests.md](offline-disasm-and-minhook-detour-tests.md) — capstone under `py -V:3.13` reads SGW.exe offline; MinHook stand-in tests for detours; game calls outside catch_unwind.
 - [injected-dll-unwind-and-lua-error-rules.md](injected-dll-unwind-and-lua-error-rules.md) — `thiscall-unwind` detours for C++-EH prologues.
+- [client-handler-abi-and-static-disassembly.md](client-handler-abi-and-static-disassembly.md) — CME handlers are `ret 8` (event, subject); verify `ret N` with capstone on the local QA exe; event-bag getters.
 - [lab-probe-traffic-starves-watchdog.md](lab-probe-traffic-starves-watchdog.md) — per-field mem_reads starved the lab heartbeat and killed a healthy client; keep bridge reads coarse.
 - [lab-event-store-and-ui-lua-hooks.md](lab-event-store-and-ui-lua-hooks.md) — events_read drains; read via the supervisor store; one UI Lua subscription per window per event.
 - [lab-ui-reader-lua-traps.md](lab-ui-reader-lua-traps.md) — stock UI Lua facts behind the UI readers (right-click use, Ctrl-drag split, one chat capture via the events store; lupa offline check.

@@ -1,5 +1,11 @@
 //! `GameBeing::onStateFieldUpdate` hook — one dispatcher hook
 //! covers all 9 BSF_* state-flag transitions.
+//!
+//! Since AB-C4 (2026-10-04) it also reports what the client applied, as
+//! `client.ability.applied` `kind = state_flag`: the being's state word at
+//! `[this+0x158]` before the original and after it (the handler stores
+//! `bStateField` there at `0x00e01d75`, after reading the old value at
+//! `0x00e01d62`), with the entity id at `[this+0xc]`.
 
 #[cfg(all(target_os = "windows", target_arch = "x86"))]
 use std::ffi::c_void;
@@ -58,11 +64,47 @@ unsafe extern "thiscall-unwind" fn state_field_update_detour(
         }
     });
 
+    let before = std::panic::catch_unwind(|| {
+        (
+            word_at(this, BEING_ID).map(|v| v as i32),
+            word_at(this, BEING_STATE),
+        )
+    })
+    .ok();
     if let Some(t) = STATE_FIELD_UPDATE_TRAMPOLINE.get() {
         let original: unsafe extern "thiscall-unwind" fn(*mut c_void, *mut c_void, u32) =
             unsafe { std::mem::transmute(*t) };
         original(this, event_data, arg2);
     }
+    let _ = std::panic::catch_unwind(|| {
+        let Some((id, old)) = before else { return };
+        let new = word_at(this, BEING_STATE);
+        let f = crate::hooks::ability_trace::applied::state_flag_fields(id, old, new);
+        let key = format!(
+            "applied:state_flag:{}",
+            crate::hooks::ability_trace::whose(super::ability_apply::is_local_player(id))
+        );
+        if let Some(f) = crate::hooks::ability_trace::admit(&key, || f) {
+            crate::hooks::emit::emit(
+                crate::hooks::ability_trace::applied::TARGET_APPLIED,
+                "info",
+                f,
+            );
+        }
+    });
+}
+
+/// `GameBeing`'s entity id.
+#[cfg(all(target_os = "windows", target_arch = "x86"))]
+const BEING_ID: u32 = 0x0c;
+/// `GameBeing`'s state word (`bStateField`).
+#[cfg(all(target_os = "windows", target_arch = "x86"))]
+const BEING_STATE: u32 = 0x158;
+
+#[cfg(all(target_os = "windows", target_arch = "x86"))]
+fn word_at(base: *mut c_void, offset: u32) -> Option<u32> {
+    use crate::hooks::entity_trace::map::{LiveMem, Mem};
+    LiveMem.u32_at((base as u32).wrapping_add(offset))
 }
 
 #[cfg(test)]

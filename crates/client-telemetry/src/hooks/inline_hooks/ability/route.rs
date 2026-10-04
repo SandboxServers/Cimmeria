@@ -20,12 +20,11 @@ use crate::queue::Producer;
 pub(in crate::hooks::inline_hooks) const ADDR_START_ENTITY_MESSAGE: usize = 0x00dd_6a60;
 /// `startProxyMessage` (`thiscall(conn, msgId)`, `ret 4`).
 pub(in crate::hooks::inline_hooks) const ADDR_START_PROXY_MESSAGE: usize = 0x00dd_6980;
-/// `GetInt(event, const std::string* name, int* out) -> bool`, `ret 8`.
-pub(in crate::hooks::inline_hooks) const ADDR_GET_INT: usize = 0x00e3_cba0;
-/// `GetFloat`, same shape.
-pub(in crate::hooks::inline_hooks) const ADDR_GET_FLOAT: usize = 0x00e3_cc20;
-/// `GetByte`, same shape.
-pub(in crate::hooks::inline_hooks) const ADDR_GET_BYTE: usize = 0x00d4_34d0;
+/// `GetInt` / `GetFloat` / `GetByte(event, const std::string* name, T* out)
+/// -> bool`, `ret 8`: defined once, in `ability_trace::event_bag`.
+pub(in crate::hooks::inline_hooks) use crate::hooks::ability_trace::event_bag::{
+    ADDR_GET_BYTE, ADDR_GET_FLOAT, ADDR_GET_INT,
+};
 
 /// `MethodDescription` fields (finding, "Signatures").
 mod method {
