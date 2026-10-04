@@ -12,6 +12,9 @@
 //!   targeted path and ground-target AoE so cooldown/ammo consume happens
 //!   once per invocation but damage applies to each target in radius.
 //! - `death` — ordered wire protocol burst when a target dies.
+//! - `effect_routing` — where each effect of a cast lands (AB-07): user
+//!   halves on the caster, beneficial area halves on its allies, and the
+//!   scoped defs a ground cast's and a splash's secondary targets take.
 //! - `deployable` — deployable abilities (Phase 0): the ground-point
 //!   launch, the fire that places the object, and its pulse tick.
 //! - `auto_cycle_state` — the broadcast every `BSF_AUTO_CYCLING` transition
@@ -30,6 +33,7 @@ mod damage_apply;
 mod death;
 mod deployable;
 mod dispatch;
+mod effect_routing;
 #[cfg(test)]
 mod enumerations_xml;
 mod loot_drop;

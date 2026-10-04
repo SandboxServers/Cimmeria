@@ -40,7 +40,7 @@ const DAMAGE_NVPS: [&str; 2] = ["FocusDamage", "HealthDamage"];
 /// NVP pipeline: a generic 15-HP swing.
 const UNKNOWN_ABILITY_HEALTH_DAMAGE: i32 = 15;
 
-pub(super) fn is_damage_script(name: &str) -> bool {
+pub(in crate::cell::abilities) fn is_damage_script(name: &str) -> bool {
     DAMAGE_SCRIPTS.contains(&name)
 }
 

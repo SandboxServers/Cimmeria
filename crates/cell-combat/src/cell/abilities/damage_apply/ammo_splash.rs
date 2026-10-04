@@ -30,7 +30,10 @@
 //! scaled by the fraction, and the per-target function runs no on-hit effect
 //! for it, so a splash target never splashes. It also skips the ability's
 //! other effect scripts and its pulsing effects: the splash is the shot's
-//! damage only, not a second copy of its bleed or DoT. The exception is a
+//! damage only, not a second copy of its bleed or DoT. The pulsing effects
+//! are scoped out of the ability before the splash hit
+//! (`effect_routing::splash_scope`), so not even a DoT's first tick lands on
+//! a splash target. The exception is a
 //! damage script (`RangedPhysicalDamage` and its siblings, AB-06): that
 //! script IS the shot's damage, so it runs on the splash target at the
 //! splash fraction (`effect_scripts::apply_damage_scripts`).
@@ -188,6 +191,10 @@ async fn splash_all(
     if targets.is_empty() {
         return;
     }
+    // The splash is the shot's direct damage: not its DoT, whose first tick
+    // used to land here with nothing registered behind it (AB-07).
+    let scoped = super::super::effect_routing::splash_scope(&space_mgr.effect_defs, ability_def);
+    let ability_def = &scoped;
     let alive_before: Vec<u32> = targets
         .iter()
         .copied()

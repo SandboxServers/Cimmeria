@@ -110,8 +110,22 @@ class StatScope(unittest.TestCase):
     def test_clear_on_damage_waits_for_ab11(self):
         self.assertIn("AB-11", scope_rejection(effect("-200 Defense: 30 Seconds (1 hit)", flags=28, pd=30.0), None))
 
-    def test_ae_and_secondary_wait_for_ab07(self):
-        self.assertIn("AB-07", scope_rejection(effect("-200 Defense", tcm="TCM_AERadius"), None))
+    def test_radius_effects_bind_where_ab07_routes_them(self):
+        ground = Ability(877, "Forward Observer", "", "ABILITY_TYPE_Debuff", target_type_id=3)
+        target = Ability(5, "T", "", "ABILITY_TYPE_Debuff", target_type_id=2)
+        hostile = effect("-200 Defense", tcm="TCM_AERadius", flags=4)
+        buff = effect("+200 Defense", tcm="TCM_AERadius", flags=21)
+        # A ground cast's secondaries take a hostile radius effect (948).
+        self.assertIsNone(scope_rejection(hostile, ground))
+        # A beneficial radius effect of a non-ground cast fans out to allies.
+        self.assertIsNone(scope_rejection(buff, target))
+        # The other two would land on the one target or on hostiles.
+        self.assertIn("AB-07", scope_rejection(hostile, target))
+        self.assertIn("ground collector", scope_rejection(buff, ground))
+
+    def test_group_cone_and_secondary_wait(self):
+        self.assertIn("D-AB12", scope_rejection(effect("-200 Defense", tcm="TCM_Group"), None))
+        self.assertIn("cone", scope_rejection(effect("-200 Defense", tcm="TCM_AECone"), None))
         self.assertIn("AB-07", scope_rejection(effect("Secondary Target\n+50 Response: 15 seconds"), None))
 
 
@@ -134,16 +148,31 @@ class StatRouting(unittest.TestCase):
     ally; anything that makes the ability non-beneficial would land it on the
     client's target instead (B-27)."""
 
-    def test_combat_sprint_binds_the_run_speed_and_reports_the_penalty(self):
+    def test_combat_sprint_binds_both_halves(self):
+        # AB-07 rule 2: a Self ability with no area effect lands its single
+        # effects on its user, so the "-100 ACC" penalty is the user's.
         sprint = Ability(1619, "Combat Sprint", "", "ABILITY_TYPE_Buff", flags=144, target_type_id=1)
         run = effect("Single Target\nUser +50% Run Speed\n10 Second Duration", pd=10.0, flags=23, eid=1962, aid=1619)
         acc = effect("Single Target\nTarget -100 ACC\n10 Second Duration", pd=10.0, flags=534, eid=2002, aid=1619)
         c = corpus([run, acc], [sprint])
         fam = StatFamily()
         self.assertIsInstance(fam.parse(run, c), Generated)
-        out = fam.parse(acc, c)
+        self.assertEqual(fam.parse(acc, c).nvps, [("Accuracy", "-100")])
+
+    def test_a_self_abilitys_single_beside_an_area_effect_is_refused(self):
+        # Whirlwind's shape: the single effects follow the area hit.
+        a = Ability(2025, "Whirlwind", "", "ABILITY_TYPE_DD", target_type_id=1)
+        area = effect("AOE Damage\n-200 F -20 H", pd=0.0, flags=0, tcm="TCM_AERadius", eid=2667, aid=2025)
+        debuff = effect("-100 Defense: 5 Seconds", pd=5.0, flags=64, eid=2669, aid=2025)
+        out = StatFamily().parse(debuff, corpus([area, debuff], [a]))
         self.assertIsInstance(out, Rejected)
-        self.assertIn("Self ability's non-beneficial half", out.reason)
+        self.assertIn("follow-up of the area hit", out.reason)
+
+    def test_a_user_flagged_half_of_a_targeted_ability_binds(self):
+        a = Ability(9, "T", "", "ABILITY_TYPE_DD", target_type_id=2)
+        e = effect("User +50% Run Speed", pd=10.0, flags=131072 | 23, eid=90, aid=9)
+        hit = effect("Single Target\n-200F / -20H", pd=0.0, flags=0, eid=91, aid=9)
+        self.assertIsInstance(StatFamily().parse(e, corpus([e, hit], [a])), Generated)
 
     def test_a_buff_beside_a_hostile_effect_is_refused(self):
         a = Ability(5, "Mixed", "", "ABILITY_TYPE_DD", target_type_id=2)
@@ -182,6 +211,8 @@ class CommittedStatSeed(unittest.TestCase):
             903: ("TimedStat", [("Defense", "-100")]),  # Call Target
             1747: ("TimedStat", [("CoverDefense", "100")]),  # Hunker Down
             1962: ("TimedStat", [("MovementSpeedMod", "50")]),  # Combat Sprint
+            2002: ("TimedStat", [("Accuracy", "-100")]),  # Combat Sprint's penalty (AB-07)
+            948: ("TimedStat", [("Defense", "-200")]),  # Forward Observer, ground radius (AB-07)
             1980: ("TimedStat", [("Accuracy", "-200"), ("Defense", "-200")]),  # Impose Weakness
         }
         for eid, row in want.items():
@@ -190,10 +221,9 @@ class CommittedStatSeed(unittest.TestCase):
     def test_the_deferred_effects_are_reported(self):
         for eid, needle in {
             1211: "AB-05",  # Leadership
-            921: "AB-07",  # Leadership's AE half
+            921: "AB-05",  # Leadership's AE half: routed by AB-07, a regen stat
             1985: "AB-05",  # Demand Concentration
             1746: "AB-07",  # Hunker Down's secondary half
-            2002: "non-beneficial half",  # Combat Sprint's penalty
             923: "AB-11",  # Marked Prey "(1 hit)"
         }.items():
             self.assertIn(needle, self.rejected.get(eid, ""), eid)

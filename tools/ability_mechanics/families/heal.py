@@ -26,6 +26,7 @@ from typing import List, Optional
 
 from corpus import Ability, Corpus, Effect
 from family import Family, Generated, Outcome, Rejected, desc_lines
+from routing import is_ground
 
 NUM = r"(\d+(?:\.\d+)?)"
 POOL = r"(health|focus)"
@@ -117,11 +118,19 @@ def scope_rejection(effect: Effect, ability: Optional[Ability]) -> Optional[str]
     """Why a heal must not be bound yet, whatever its text says."""
     aname = ability.name if ability else ""
     atype = ability.type_id if ability else ""
-    if effect.tcm != "TCM_Single":
+    if effect.tcm == "TCM_AERadius":
+        # AB-07 rule 3: a radius heal of a non-ground cast fans out to the
+        # caster's allies (routing.py). A ground cast's radius belongs to the
+        # hostile collector.
+        if is_ground(ability):
+            return "TCM_AERadius on a ground ability: the ground collector takes hostiles, so it would heal them"
+    elif effect.tcm in ("TCM_Group", "TCM_Aura"):
         return (
-            f"{effect.tcm}: the pipeline lands every effect on the ability's one target; "
-            "AE/group routing is AB-07 (D-AB12), and binding it now would heal that target twice"
+            f"{effect.tcm}: group and aura routing waits for D-AB12; the pipeline lands it on the "
+            "ability's one target"
         )
+    elif effect.tcm != "TCM_Single":
+        return f"{effect.tcm}: the cone fan-out collects hostiles, so it would heal them"
     if aname.startswith("Deployable:"):
         return (
             "deployable pulse effect: needs a resources.deployables binding; bound as a plain "
