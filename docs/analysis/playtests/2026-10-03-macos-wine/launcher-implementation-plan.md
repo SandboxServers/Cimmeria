@@ -516,3 +516,21 @@ remain explicit concerns; no trust-policy bypass was added.
 clippy and formatting passed. Native Windows validation remains pending.
 Automatic resume and frontend installation remain open. No frontend behavior
 changed, so JS REPL/visual UAT does not apply to this packet.
+
+
+### 2026-10-04: explicit interrupted-install resume
+
+Added native resume requiring current operation ID/revision and reconciliation
+state. It reverifies cached release evidence, locks/validates owned staging,
+rejects promoted output, then commits Running before continuing the pipeline.
+Fixtures exercise Range continuation through promotion, missing staging,
+failed journal commits, stale duplicates and refusal of unsafe/corrupt content.
+No restart replay or frontend dispatch was added. Terminal cancelled/failed
+retries and Wine guest reconciliation remain open; not every extraction/patch
+interruption is covered by these fixtures.
+
+178 engine tests and twelve process scenarios passed locally; strict clippy and
+formatting passed. Native Windows resume validation remains pending. Repeated
+milestone pushes cancelled preceding native runs, so desktop CI now retains
+active work and queues the latest pending revision. This changes scheduling,
+not what checks run or which commit their results validate.

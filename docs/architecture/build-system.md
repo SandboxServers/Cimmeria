@@ -248,3 +248,9 @@ headless JS/Effect-to-Rust persistence UAT and native shell builds/tests. The
 desktop README also documents a development bundle command; that command does
 not open the app. These checks do not establish
 packaged-webview behavior, game compatibility or self-contained first open.
+
+Desktop validation permits one active run per branch/ref and retains the latest
+pending revision. New pushes do not cancel an active native build: frequent
+implementation milestones previously prevented Windows checks from finishing.
+A result applies only to its recorded commit; queued head revisions remain
+unvalidated until their own checks finish.

@@ -32,7 +32,9 @@ permissions:
 
 concurrency:
   group: desktop-launcher-${{ github.ref }}
-  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+  # Finish expensive native checks; frequent milestone pushes otherwise prevent
+  # Windows validation from completing. GitHub retains the newest pending run.
+  cancel-in-progress: false
 
 jobs:
   native-engine:

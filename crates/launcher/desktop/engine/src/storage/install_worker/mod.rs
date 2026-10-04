@@ -47,14 +47,17 @@ pub fn dispatch(
     id: Uuid,
     release: VerifiedRelease,
 ) -> Result<Worker, IntentError> {
-    let http = reqwest::Client::builder()
+    dispatch_with(state, id, release, catalog::URL.into(), download_client()?)
+}
+
+fn download_client() -> Result<reqwest::Client, StorageError> {
+    reqwest::Client::builder()
         .https_only(true)
         .connect_timeout(Duration::from_secs(10))
         .read_timeout(Duration::from_secs(30))
         .redirect(reqwest::redirect::Policy::limited(5))
         .build()
-        .map_err(|_| StorageError::Io)?;
-    dispatch_with(state, id, release, catalog::URL.into(), http)
+        .map_err(|_| StorageError::Io)
 }
 
 fn dispatch_with(
@@ -77,6 +80,36 @@ fn dispatch_with(
             .observe(id, OperationState::Running)?;
         (intent, owner.directory.root.clone())
     };
+    Ok(spawn_worker(
+        runtime,
+        state,
+        id,
+        TaskInputs {
+            intent,
+            state_root,
+            release,
+            manifest_url,
+            http,
+            ownership: None,
+        },
+    ))
+}
+
+struct TaskInputs {
+    intent: InstallIntent,
+    state_root: PathBuf,
+    release: VerifiedRelease,
+    manifest_url: String,
+    http: reqwest::Client,
+    ownership: Option<File>,
+}
+
+fn spawn_worker(
+    runtime: tokio::runtime::Handle,
+    state: Arc<Mutex<DesktopState>>,
+    id: Uuid,
+    input: TaskInputs,
+) -> Worker {
     let cancel = CancellationToken::new();
     let (progress, observed) = ProgressSink::latest();
     let (result, results) = watch::channel(None);
@@ -84,28 +117,54 @@ fn dispatch_with(
     let owned_cancel = cancel.clone();
     // Intentionally detached from the webview. No external owner can abort it.
     runtime.spawn(async move {
-        let outcome = AssertUnwindSafe(install_owned(
-            &intent,
-            &state_root,
-            &release,
-            &manifest_url,
-            &http,
-            owned_cancel,
-            progress,
-        ))
+        let TaskInputs {
+            intent,
+            state_root,
+            release,
+            manifest_url,
+            http,
+            ownership,
+        } = input;
+        let outcome = AssertUnwindSafe(async {
+            match ownership {
+                Some(_guard) => {
+                    install_stage(
+                        &intent,
+                        &release,
+                        &manifest_url,
+                        &http,
+                        owned_cancel,
+                        progress,
+                    )
+                    .await
+                }
+                None => {
+                    install_owned(
+                        &intent,
+                        &state_root,
+                        &release,
+                        &manifest_url,
+                        &http,
+                        owned_cancel,
+                        progress,
+                    )
+                    .await
+                }
+            }
+        })
         .catch_unwind()
         .await
         .unwrap_or(Outcome::ReconciliationRequired);
         let published = publish(&owned_state, id, outcome);
         result.send_replace(Some(published));
     });
-    Ok(Worker {
+    Worker {
         id,
         state,
         cancel,
         progress: observed,
         result: results,
-    })
+    }
 }
 
 fn publish(state: &Mutex<DesktopState>, id: Uuid, outcome: Outcome) -> Outcome {
@@ -142,11 +201,24 @@ async fn install_owned(
     let Ok(_ownership) = claim(intent, state_root) else {
         return Outcome::DestinationUnavailable;
     };
+    install_stage(intent, release, manifest_url, http, cancel, progress).await
+}
+
+async fn install_stage(
+    intent: &InstallIntent,
+    release: &VerifiedRelease,
+    manifest_url: &str,
+    http: &reqwest::Client,
+    cancel: CancellationToken,
+    progress: ProgressSink,
+) -> Outcome {
     let stage = intent
         .destination
         .join(format!(".cimmeria-stage-{}", intent.operation_id));
-    if std::fs::create_dir(&stage).is_err() {
-        return Outcome::DestinationUnavailable;
+    match std::fs::create_dir(&stage) {
+        Ok(()) => (),
+        Err(error) if error.kind() == ErrorKind::AlreadyExists => (),
+        Err(_) => return Outcome::DestinationUnavailable,
     }
     let (result, _) = install::install_all(InstallContext {
         manifest_url,
@@ -260,3 +332,6 @@ pub(super) fn content_valid(stage: &Path, release: &VerifiedRelease) -> bool {
 
 #[cfg(test)]
 mod tests;
+
+mod resume;
+pub use resume::{resume, ResumeError};

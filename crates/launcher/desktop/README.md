@@ -246,7 +246,7 @@ this nested workspace. `.github/workflows/launcher-desktop.yml` adds explicit
 native Mac/Windows checks and the frontend/native logic UAT. Shared-source
 changes also run an existing-launcher Cargo check on native Windows.
 
-On 2026-10-04, **172 engine tests**, **two shell-host tests**, **14 frontend tests**, strict clippy, TypeScript
+On 2026-10-04, **178 engine tests**, **two shell-host tests**, **14 frontend tests**, strict clippy, TypeScript
 checking and formatting passed locally on macOS. Three engine tests are ignored by default: the subprocess fixture invoked by
 its parent, plus manual real-SGW-executable and real-client-RAR checks that
 remain unrun. Coverage includes command/schema
@@ -479,3 +479,28 @@ files. Local validation: 172 engine tests, twelve process scenarios, strict
 all-target clippy and formatting passed. Native Windows validation awaits CI.
 This adds offline recovery inputs, not automatic resume or UI installation.
 No frontend behavior changed, so JS REPL/visual UAT does not apply.
+
+
+## Explicit interrupted-install resume
+
+`install_worker::resume` requires the current operation ID and inspected revision.
+It accepts only `reconciliation_required`, reverifies cached signed evidence,
+acquires the matching ownership-marker lock and validates staging and its ledger.
+It rejects symlinks/special files, Windows reparse points, conflicting ledger
+entries, and existing promoted content or receipts. It commits `running` before
+continuing the shared pipeline, including Range downloads from partial archives.
+
+Resume is never automatic on restart and is not exposed through the UI yet.
+It does not retry terminal cancelled/failed attempts or establish Wine guest
+ownership. Promoted-content uncertainty belongs to recovery inspection. Fixtures
+cover Range continuation through promotion, interruption before staging creation,
+stale duplicates, corrupt-ledger preservation, active ownership, promoted-content
+refusal, failed journal commit and Unix staging-symlink rejection. They do not
+prove recovery from every mid-extraction or mid-patch checkpoint.
+
+Validation: 178 engine tests and twelve process scenarios passed locally, with
+strict all-target clippy and formatting. Native Windows resume checks await CI.
+No frontend behavior changed; JS REPL/visual UAT does not apply to this packet.
+The desktop CI workflow now lets active native checks finish instead of cancelling
+on each milestone push. GitHub keeps the latest pending run for this branch;
+results for an older commit are never evidence that the latest commit passed.

@@ -93,3 +93,12 @@ Windows+Mac before the shell; shell/visual/game gates remain separate.
   and exact durable-intent digest without network fallback. This supplies offline
   reconciliation input; key changes can reject old evidence. Cache/orphan cleanup
   and automatic resume remain pending.
+
+- Explicit native resume now requires the current reconciliation ID/revision,
+  reverified cached release, locked matching ownership and validated staging.
+  It commits Running before Range continuation. Automatic replay and retries
+  of terminal cancelled/failed attempts remain unsupported. Fixture coverage
+  proves interrupted download recovery, not every extraction/patch checkpoint.
+- Desktop CI retains active native runs (cancel-in-progress false), preventing
+  milestone pushes from repeatedly cancelling Windows checks. Latest pending
+  revision is queued; evidence must still be attributed to its exact commit.

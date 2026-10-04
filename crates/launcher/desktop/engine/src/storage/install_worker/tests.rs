@@ -5,7 +5,7 @@ use sha2::{Digest, Sha256};
 use std::io::Cursor;
 use wiremock::{matchers::path, Mock, MockServer, ResponseTemplate};
 
-fn archive(with_exe: bool) -> Vec<u8> {
+pub(super) fn archive(with_exe: bool) -> Vec<u8> {
     let mut zip = zip::ZipWriter::new(Cursor::new(Vec::new()));
     let mut exe = vec![0u8; 0x200];
     exe[..2].copy_from_slice(b"MZ");
@@ -29,7 +29,7 @@ fn archive(with_exe: bool) -> Vec<u8> {
     zip.write_all(b"later entry").unwrap();
     zip.finish().unwrap().into_inner()
 }
-fn verified(seed: &[u8]) -> VerifiedRelease {
+pub(super) fn verified(seed: &[u8]) -> VerifiedRelease {
     let hash: String = Sha256::digest(seed)
         .iter()
         .map(|byte| format!("{byte:02x}"))
@@ -43,7 +43,9 @@ fn verified(seed: &[u8]) -> VerifiedRelease {
         .collect();
     verify_release(&body, signature.as_bytes()).unwrap()
 }
-fn setup(release: &VerifiedRelease) -> (tempfile::TempDir, Arc<Mutex<DesktopState>>, Uuid) {
+pub(super) fn setup(
+    release: &VerifiedRelease,
+) -> (tempfile::TempDir, Arc<Mutex<DesktopState>>, Uuid) {
     let root = tempfile::tempdir().unwrap();
     let mut state = DesktopState::open(&root.path().join("state")).unwrap();
     state
@@ -55,7 +57,7 @@ fn setup(release: &VerifiedRelease) -> (tempfile::TempDir, Arc<Mutex<DesktopStat
         .unwrap();
     (root, Arc::new(Mutex::new(state)), id)
 }
-async fn outcome(mut receiver: watch::Receiver<Option<Outcome>>) -> Outcome {
+pub(super) async fn outcome(mut receiver: watch::Receiver<Option<Outcome>>) -> Outcome {
     tokio::time::timeout(Duration::from_secs(5), async {
         loop {
             if let Some(result) = *receiver.borrow_and_update() {
