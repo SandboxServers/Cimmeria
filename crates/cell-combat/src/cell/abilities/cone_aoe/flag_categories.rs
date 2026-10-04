@@ -13,7 +13,7 @@
 use cimmeria_entity::abilities::EffectDef;
 
 /// Every `EEffectFlag` token, in bit order (`enumerations.xml:1094-1123`).
-const EFFECT_FLAG_NAMES: [(u32, &str); 25] = [
+pub(super) const EFFECT_FLAG_NAMES: [(u32, &str); 25] = [
     (1, "EF_Beneficial_Effect"),
     (2, "EF_Offline_Time_Counts"),
     (4, "EF_ClearOnDeath"),

@@ -164,27 +164,25 @@ fn log_effect_flag_categories_no_op_on_zero_flags() {
 /// "interrupt_chance" and 12 as "stun"; the real bits are named here.
 #[test]
 fn effect_flag_names_are_the_client_eeffectflag_tokens() {
-    use super::flag_categories::effect_flag_names;
+    use super::flag_categories::{effect_flag_names, EFFECT_FLAG_NAMES};
+    // The whole table, against the client's declaration (not a copy).
+    let client: Vec<(i64, String)> =
+        crate::cell::abilities::enumerations_xml::tokens("EEffectFlag");
+    let ours: Vec<(i64, String)> = EFFECT_FLAG_NAMES
+        .iter()
+        .map(|&(bit, name)| (i64::from(bit), name.to_string()))
+        .collect();
+    assert_eq!(ours, client, "EFFECT_FLAG_NAMES must equal EEffectFlag");
+    // And the lookup reads it: one bit per name, mixed rows split.
+    for (bit, name) in &client {
+        assert_eq!(effect_flag_names(*bit as u32), vec![name.as_str()]);
+    }
     assert_eq!(
         effect_flag_names(144),
         vec!["EF_DontUseQR", "EF_SequenceOnPulse"]
     );
-    assert_eq!(
-        effect_flag_names(12),
-        vec!["EF_ClearOnDeath", "EF_ClearOnDamage"]
-    );
-    assert_eq!(
-        effect_flag_names(cimmeria_entity::abilities::EF_DONT_USE_QR),
-        vec!["EF_DontUseQR"]
-    );
-    assert_eq!(
-        effect_flag_names(1 << 24),
-        vec!["EF_SequenceOnConfirmation"]
-    );
-    assert!(
-        effect_flag_names(1 << 25).is_empty(),
-        "no client token past bit 24"
-    );
+    let past_last = client.last().map(|(v, _)| (*v as u32) << 1).unwrap();
+    assert!(effect_flag_names(past_last).is_empty());
     // Every bit is logged without panicking, unknown ones included.
     for bit in 0..32 {
         let effect = EffectDef {

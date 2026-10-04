@@ -228,7 +228,11 @@ async fn dont_use_qr_effect_never_misses() {
     let (mut mgr, ability) = fixture(PISTOL_SHOT, flagged, 0);
     let msgs = fire(&mut mgr, &ability, seq).await;
 
-    assert_eq!(EF_DONT_USE_QR, 16, "the client's EEffectFlag bit");
+    assert_eq!(
+        i64::from(EF_DONT_USE_QR),
+        crate::cell::abilities::enumerations_xml::token("EEffectFlag", "EF_DontUseQR"),
+        "the client's EEffectFlag bit"
+    );
     assert_eq!(result_code(&effect_results_args(&msgs)), RC_HIT);
     assert_eq!(pools(&mgr), (1000 - PISTOL_SHOT_BLEED, 0));
 }

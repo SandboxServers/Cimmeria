@@ -30,6 +30,8 @@ mod damage_apply;
 mod death;
 mod deployable;
 mod dispatch;
+#[cfg(test)]
+mod enumerations_xml;
 mod loot_drop;
 mod messaging;
 #[cfg(test)]

@@ -187,6 +187,8 @@ async fn apply_hit(
         entity_id,
         target_eid,
         ability_id,
+        actor: space_mgr.player_identity(entity_id),
+        target: space_mgr.player_identity(target_eid),
     };
     let qr_result = qr_gate::roll_hit(ability_def.as_ref(), space_mgr, qr, seed, ids);
 
@@ -633,12 +635,17 @@ mod duel_gate;
 mod effect_scripts;
 mod qr_gate;
 
-/// One attacker → target hit, carried into the submodules' logs.
+/// One attacker → target hit, carried into the submodules' logs. The
+/// identities are the canonical `account_id`/`player_id` correlators
+/// (instrumentation-discipline rule 5): the actor's pair and the target's
+/// `player_id`, both empty (and so omitted from the log) for an NPC.
 #[derive(Debug, Clone, Copy)]
 struct HitIds {
     entity_id: u32,
     target_eid: u32,
     ability_id: i32,
+    actor: cimmeria_entity::cell_entity::PlayerIdentity,
+    target: cimmeria_entity::cell_entity::PlayerIdentity,
 }
 
 #[cfg(test)]

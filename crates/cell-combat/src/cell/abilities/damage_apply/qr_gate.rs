@@ -55,7 +55,10 @@ pub(super) fn roll_hit(
     tracing::debug!(
         target: "abilities",
         event = "qr_roll_skipped",
+        account_id = ids.actor.account_id,
+        player_id = ids.actor.player_id,
         entity_id = ids.entity_id,
+        target_player_id = ids.target.player_id,
         target_id = ids.target_eid,
         ability_id = ids.ability_id,
         reason = "every effect carries EF_DontUseQR",

@@ -58,8 +58,9 @@ pub(super) struct HitEffects {
 
 /// Sort the ability's effects (and a special ammo round's on-hit effect)
 /// into the hit's damage paths. `direct` is false for an explosive round's
-/// splash target, which takes the shot's damage (scaled by the caller) but
-/// none of its other scripts.
+/// splash target: it keeps the NVP damage and the damage scripts (both
+/// scaled by the splash fraction in the caller), and `after_scripts` is
+/// emptied.
 pub(super) fn plan_hit_effects(
     space_mgr: &SpaceManager,
     ability_def: Option<&AbilityDef>,
@@ -122,8 +123,10 @@ pub(super) fn plan_hit_effects(
             plan.after_scripts.push(eid);
         }
     }
-    // A splash target takes blast damage only, not the shot's own scripts
-    // (a bleed, a stun) a second time.
+    // A splash target takes the shot's damage only: its damage scripts stay
+    // (the caller runs them at the splash scale, since they ARE the shot's
+    // damage), but no other script (a bleed, a stun, the on-hit effect)
+    // lands a second time.
     if !direct {
         plan.after_scripts.clear();
     }
@@ -164,7 +167,10 @@ pub(super) fn apply_damage_scripts(
     tracing::debug!(
         target: "abilities",
         event = "damage_script_hit",
+        account_id = ids.actor.account_id,
+        player_id = ids.actor.player_id,
         entity_id = ids.entity_id,
+        target_player_id = ids.target.player_id,
         target_id = ids.target_eid,
         ability_id = ids.ability_id,
         effect_ids = ?effect_ids,
@@ -235,7 +241,10 @@ fn log_skipped(ids: HitIds, effect: &EffectDef, reason: &'static str, msg: &'sta
     tracing::debug!(
         target: "abilities",
         event = "effect_path_skipped",
+        account_id = ids.actor.account_id,
+        player_id = ids.actor.player_id,
         entity_id = ids.entity_id,
+        target_player_id = ids.target.player_id,
         target_id = ids.target_eid,
         ability_id = ids.ability_id,
         effect_id = effect.effect_id,

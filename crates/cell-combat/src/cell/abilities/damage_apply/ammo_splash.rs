@@ -29,8 +29,11 @@
 //! Each splash target is applied with [`HitKind::Splash`]: its damage is
 //! scaled by the fraction, and the per-target function runs no on-hit effect
 //! for it, so a splash target never splashes. It also skips the ability's
-//! own effect scripts and pulsing effects: the splash is blast damage only,
-//! not a second copy of the shot's bleed or DoT.
+//! other effect scripts and its pulsing effects: the splash is the shot's
+//! damage only, not a second copy of its bleed or DoT. The exception is a
+//! damage script (`RangedPhysicalDamage` and its siblings, AB-06): that
+//! script IS the shot's damage, so it runs on the splash target at the
+//! splash fraction (`effect_scripts::apply_damage_scripts`).
 
 use std::future::Future;
 use std::pin::Pin;
@@ -52,7 +55,8 @@ pub(super) enum HitKind {
     /// secondary. Runs the ammo's on-hit effect, which may splash.
     Direct,
     /// A splash target of a shot: `fraction` of the shot's damage, no on-hit
-    /// effect (so no further splash), no ability scripts or pulsing effects.
+    /// effect (so no further splash), no pulsing effects and no ability
+    /// scripts except its damage scripts, which run at the fraction.
     Splash { fraction: f64 },
 }
 
