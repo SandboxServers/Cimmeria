@@ -53,6 +53,12 @@ pub struct ActiveEffectInstance {
     /// fixture, a content-applied effect). A cast id is per invoker, so the
     /// join key is `(invoker_id, cast_id)`.
     pub cast_id: Option<i32>,
+    /// The invoker's canonical identity, snapshotted when the cast registered
+    /// (or last refreshed) it. A pulse outlives its invoker (a disconnect,
+    /// a despawn) and entity ids are recycled, so the pulse and end rows log
+    /// this, never a lookup of `invoker_id` at fire time
+    /// (instrumentation-discipline rule 5).
+    pub invoker_identity: PlayerIdentity,
 }
 
 mod absorb_pool;

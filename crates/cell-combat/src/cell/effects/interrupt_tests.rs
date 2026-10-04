@@ -58,6 +58,7 @@ fn start_channel(mgr: &mut SpaceManager) {
         .unwrap()
         .active_effects
         .push(ActiveEffectInstance {
+            invoker_identity: Default::default(),
             cast_id: None,
             effect_id: CHANNEL_EFFECT,
             ability_id: 1234,

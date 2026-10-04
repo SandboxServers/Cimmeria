@@ -10,7 +10,7 @@ use std::time::Instant;
 use tokio::sync::mpsc;
 
 use cimmeria_entity::abilities::{serialize_timer_update, EffectDef, TIMER_DURATION_EFFECT};
-use cimmeria_entity::cell_entity::ActiveEffectInstance;
+use cimmeria_entity::cell_entity::{ActiveEffectInstance, PlayerIdentity};
 
 use crate::cell::abilities::{send_entity_method, send_timer_update};
 use crate::cell::content_events::ContentEvents;
@@ -135,7 +135,7 @@ pub async fn effect_pulse_tick(
         // `onTimerUpdate` with `total_time = 0` so the client clears
         // the buff/debuff icon. Without the clear, the icon would
         // stick at "expiring in 0s" forever.
-        let cleared_ids: Vec<(i32, u32, i32, Option<i32>)> = {
+        let cleared_ids: Vec<(i32, u32, i32, Option<i32>, PlayerIdentity)> = {
             let Some(entity) = space_mgr.get_entity_mut(entity_id) else {
                 continue;
             };
@@ -147,6 +147,7 @@ pub async fn effect_pulse_tick(
                         inst.invoker_id,
                         inst.ability_id,
                         inst.cast_id,
+                        inst.invoker_identity,
                     ));
                     false
                 } else {
@@ -155,8 +156,7 @@ pub async fn effect_pulse_tick(
             });
             cleared
         };
-        for (cleared_effect, invoker, ability_id, cast_id) in cleared_ids {
-            let who = space_mgr.player_identity(invoker);
+        for (cleared_effect, invoker, ability_id, cast_id, who) in cleared_ids {
             tracing::debug!(
                 target: "abilities",
                 event = "active_effect_ended",

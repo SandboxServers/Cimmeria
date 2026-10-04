@@ -147,13 +147,12 @@ async fn a_warmup_casts_fire_and_ledger_rows_carry_the_launch_cast_id() {
     );
 }
 
-/// **Regression guard (AB-T1).** A DoT's registration and every pulse the
-/// pulse tick fires later carry the launch row's `cast_id`, on the row and
-/// on the per-pulse `combat.effect_tick` span.
-#[tokio::test]
-async fn a_dots_tick_rows_carry_the_launch_cast_id() {
-    const DOT: i32 = 70;
-    const DOT_EFFECT: i32 = 7070;
+const DOT: i32 = 70;
+const DOT_EFFECT: i32 = 7070;
+
+/// `duel_mgr` plus a no-roll DoT ability `DOT` of `pulses` 1 s pulses that A
+/// knows.
+fn dot_mgr(pulses: i32) -> SpaceManager {
     let mut mgr = duel_mgr();
     mgr.ability_defs.insert(
         DOT,
@@ -169,13 +168,57 @@ async fn a_dots_tick_rows_carry_the_launch_cast_id() {
             ability_id: DOT,
             // No roll: the cast never misses, so the DoT always registers.
             flags: EF_DONT_USE_QR,
-            pulse_count: 3,
+            pulse_count: pulses,
             pulse_duration: 1.0,
             params: [("HealthDamage".to_string(), "5".to_string())].into(),
             ..Default::default()
         },
     );
     mgr.get_entity_mut(A).unwrap().abilities.add_ability(DOT);
+    mgr
+}
+
+/// **Regression guard (AB-T1 review, rule 5).** A pulse outlives its
+/// invoker's session and entity ids are recycled, so the pulse and end rows
+/// must name the player who cast the DoT, from the snapshot taken at
+/// registration, not whoever holds the invoker's entity id when the pulse
+/// fires. Here A's entity id is taken over by another player between the
+/// cast and the tick; resolving identity at log time would attribute the
+/// pulse to player 555.
+#[tokio::test]
+async fn a_dots_pulse_rows_name_the_caster_after_its_entity_id_is_reused() {
+    let mut mgr = dot_mgr(2);
+    mgr.get_entity_mut(A).unwrap().account_id = Some(901);
+    let (tx, _rx) = mpsc::channel(256);
+    let logs = LogCapture::install();
+
+    assert!(handle_use_ability(A, DOT, MOB as i32, &tx, &mut mgr).await);
+    // Entity id A now belongs to another player's session.
+    let reused = mgr.get_entity_mut(A).unwrap();
+    reused.player_id = Some(555);
+    reused.account_id = Some(9_555);
+    for i in &mut mgr.get_entity_mut(MOB).unwrap().active_effects {
+        i.next_pulse_at = Instant::now() - Duration::from_secs(1);
+    }
+    effect_pulse_tick(&NoContentEvents, &tx, &mut mgr).await;
+
+    let all = logs.all();
+    for event in ["effect_pulse_fired", "active_effect_ended"] {
+        let r = row(&all, event);
+        assert!(
+            r.has_field("player_id", &A_PID.to_string()) && r.has_field("account_id", "901"),
+            "{event} must name the caster (player {A_PID}, account 901), not the entity id's \
+             new owner: {r:?}"
+        );
+    }
+}
+
+/// **Regression guard (AB-T1).** A DoT's registration and every pulse the
+/// pulse tick fires later carry the launch row's `cast_id`, on the row and
+/// on the per-pulse `combat.effect_tick` span.
+#[tokio::test]
+async fn a_dots_tick_rows_carry_the_launch_cast_id() {
+    let mut mgr = dot_mgr(3);
     burn_effect_ids(&mut mgr, A, 2);
     let (tx, _rx) = mpsc::channel(256);
     let logs = LogCapture::install();

@@ -156,6 +156,8 @@ async fn fire_pulse(
         tracing::debug!(
             target: "abilities",
             event = "pulse_skipped_dead_target",
+            account_id = inst.invoker_identity.account_id,
+            player_id = inst.invoker_identity.player_id,
             target_id,
             invoker_id = inst.invoker_id,
             cast_id = inst.cast_id,
@@ -316,6 +318,8 @@ async fn fire_pulse(
                     tracing::debug!(
                         target: "abilities",
                         event = "pulse_surrender_floor",
+                        account_id = inst.invoker_identity.account_id,
+                        player_id = inst.invoker_identity.player_id,
                         target_id,
                         cast_id = inst.cast_id,
                         effect_id = inst.effect_id,
@@ -365,7 +369,9 @@ async fn fire_pulse(
         }
     }
 
-    let who = space_mgr.player_identity(inst.invoker_id);
+    // The registration's snapshot: the invoker may be gone, or its entity id
+    // reused by another player, by now (rule 5).
+    let who = inst.invoker_identity;
     tracing::debug!(
         target: "abilities",
         event = "effect_pulse_fired",
