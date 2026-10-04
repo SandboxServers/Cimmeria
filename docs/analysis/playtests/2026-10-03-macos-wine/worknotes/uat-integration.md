@@ -176,3 +176,9 @@ could not begin: macOS reported its screen locked, and computer use returned
 event loop. No Play press or real SGW launch was performed in this checkpoint.
 An unlocked desktop is required to finish native adoption/folder-dialog checks,
 Play/status UAT and actual SGW screenshot/input verification.
+
+After unlock, native UAT exposed a markup regression: the legacy import section
+was not closed before adoption, leaving Play and Patch Notes nested in hidden
+Settings. The missing boundary was restored. The tab regression test now checks
+hidden ancestors and that adoption is a direct Settings child, rather than only
+the panel's own `hidden` property. Native verification requires the rebuilt app.
