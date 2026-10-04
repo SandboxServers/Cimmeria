@@ -10,7 +10,8 @@
 //! - [`defs`] — flag/code constants plus [`AbilityDef`], [`EffectDef`],
 //!   [`AbilityTreeData`].
 //! - [`implemented`] — [`ability_is_unimplemented`]: whether a cast has any
-//!   visible result (damage, an effect script or an event set).
+//!   visible result (damage, an effect script or an event set), and the
+//!   stricter [`ability_effects_have_mechanics`] (an event set earns nothing).
 //! - [`beneficial`] — [`ability_is_beneficial`]: a heal or buff, resolved on
 //!   the caster or an ally (ability-mechanics D-AB02).
 //! - [`ability_type`] — [`AbilityType`], the `type_id` column.
@@ -32,7 +33,9 @@ mod wire;
 pub use ability_type::AbilityType;
 pub use beneficial::{ability_is_beneficial, HEAL_SCRIPTS};
 pub use defs::*;
-pub use implemented::{ability_is_unimplemented, effect_is_implemented};
+pub use implemented::{
+    ability_effects_have_mechanics, ability_is_unimplemented, effect_is_implemented,
+};
 pub use manager::{AbilityManager, CooldownEntry};
 pub use range::{
     ability_max_range, ability_range_bounds, ability_range_to_metres, active_weapon_ranges,

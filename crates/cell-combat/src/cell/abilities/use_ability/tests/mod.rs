@@ -23,6 +23,8 @@ mod fire_los;
 mod gating;
 mod holster_queue;
 mod min_range;
+mod no_mechanics;
+mod no_mechanics_live_db;
 mod npc_timer_routing;
 mod pet_kill_credit;
 mod range_units;
@@ -42,6 +44,12 @@ mod warmup_interrupt;
 mod weapon_grant;
 mod weapon_range;
 
+/// Every [`make_ability`] fixture carries the shared no-op mechanic effect,
+/// so it passes the AB-12 launch gate (`no_mechanics`) and behaves as the
+/// effectless fixtures did before the gate. [`make_mgr`] seeds it; a test
+/// that builds its own manager calls [`seed_fixture_effect`].
+const FIXTURE_EFFECT: i32 = crate::test_support::MECHANIC_FIXTURE_EFFECT;
+
 fn make_ability(id: i32, required_ammo: i32, max_range: i32) -> AbilityDef {
     AbilityDef {
         ability_id: id,
@@ -53,7 +61,7 @@ fn make_ability(id: i32, required_ammo: i32, max_range: i32) -> AbilityDef {
         min_range: 0.0,
         max_range: max_range as f32,
         target_type_id: 0,
-        effect_ids: vec![],
+        effect_ids: vec![FIXTURE_EFFECT],
         moniker_ids: vec![],
         required_ammo,
         event_set_id: None,
@@ -73,7 +81,14 @@ fn make_mgr() -> SpaceManager {
         r#"<?xml version="1.0"?><Spaces><Space WorldName="Castle_CellBlock" /></Spaces>"#,
     )
     .unwrap();
+    seed_fixture_effect(&mut mgr);
     mgr
+}
+
+/// Seed [`FIXTURE_EFFECT`] (and its no-op script) on a manager a test built
+/// itself, so its [`make_ability`] fixtures have their mechanic.
+fn seed_fixture_effect(mgr: &mut SpaceManager) {
+    crate::test_support::seed_mechanic_effect(mgr);
 }
 
 fn make_player(mgr: &mut SpaceManager, id: u32, pos: [f32; 3]) {

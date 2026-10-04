@@ -201,6 +201,7 @@ async fn set_auto_cycle_enable_fires_immediately_when_target_and_last_ability_se
         p.current_target_id = Some(50);
         p.weapon_holstered = false;
     }
+    crate::test_support::seed_mechanic_effect(&mut mgr);
     mgr.ability_defs.insert(
         7,
         AbilityDef {
@@ -213,7 +214,7 @@ async fn set_auto_cycle_enable_fires_immediately_when_target_and_last_ability_se
             min_range: 0.0,
             max_range: 30.0,
             target_type_id: 0,
-            effect_ids: vec![],
+            effect_ids: vec![crate::test_support::MECHANIC_FIXTURE_EFFECT],
             moniker_ids: vec![],
             required_ammo: 0,
             event_set_id: None,
@@ -260,6 +261,7 @@ async fn set_auto_cycle_enable_persists_ability_even_when_immediate_fire_rejects
         p.current_target_id = Some(50);
         p.weapon_holstered = false;
     }
+    crate::test_support::seed_mechanic_effect(&mut mgr);
     mgr.ability_defs.insert(
         7,
         AbilityDef {
@@ -272,7 +274,7 @@ async fn set_auto_cycle_enable_persists_ability_even_when_immediate_fire_rejects
             min_range: 0.0,
             max_range: 30.0, // target is at 200 → out of range
             target_type_id: 0,
-            effect_ids: vec![],
+            effect_ids: vec![crate::test_support::MECHANIC_FIXTURE_EFFECT],
             moniker_ids: vec![],
             required_ammo: 0,
             event_set_id: None,
@@ -356,6 +358,7 @@ async fn set_auto_cycle_enable_skips_immediate_fire_when_on_cooldown() {
         p.abilities
             .start_ability_cooldown(7, std::time::Duration::from_secs(60));
     }
+    crate::test_support::seed_mechanic_effect(&mut mgr);
     mgr.ability_defs.insert(
         7,
         AbilityDef {
@@ -368,7 +371,7 @@ async fn set_auto_cycle_enable_skips_immediate_fire_when_on_cooldown() {
             min_range: 0.0,
             max_range: 30.0,
             target_type_id: 0,
-            effect_ids: vec![],
+            effect_ids: vec![crate::test_support::MECHANIC_FIXTURE_EFFECT],
             moniker_ids: vec![],
             required_ammo: 0,
             event_set_id: None,

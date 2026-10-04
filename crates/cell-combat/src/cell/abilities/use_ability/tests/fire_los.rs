@@ -79,6 +79,7 @@ fn scene(occ: Option<Arc<PagedOccluder>>, player: [f32; 3], npc: [f32; 3]) -> Sp
     let mut def = make_ability(ABILITY, 0, 40);
     def.target_type_id = TARGET_TARGET;
     mgr.ability_defs.insert(ABILITY, def);
+    seed_fixture_effect(&mut mgr);
     mgr
 }
 

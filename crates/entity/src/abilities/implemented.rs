@@ -36,6 +36,25 @@ pub fn ability_is_unimplemented(def: &AbilityDef, effects: &HashMap<i32, EffectD
             .any(|id| effect_is_implemented(effects.get(id)))
 }
 
+/// `true` when at least one of `def`'s effects does something when it
+/// resolves ([`effect_is_implemented`]): a damage NVP or an effect script.
+///
+/// Stricter than `!`[`ability_is_unimplemented`]: an event set alone does not
+/// count, because an animation is not a mechanic (ability-mechanics D-AB10).
+/// The player's launch gate (`cell-combat`'s `use_ability/no_mechanics.rs`)
+/// adds the bindings that live outside the effect rows (pet summons,
+/// deployables, ammo toggles, weapon shots).
+///
+/// Heal and stat NVPs (`HealAmount`, `HealPercentage`, the `StatBuff` stat
+/// names) count only through the script that reads them: no code reads them
+/// without one, and every generator family that writes them also binds the
+/// script (AB-02, AB-04). So the count grows on its own as the seed fills in.
+pub fn ability_effects_have_mechanics(def: &AbilityDef, effects: &HashMap<i32, EffectDef>) -> bool {
+    def.effect_ids
+        .iter()
+        .any(|id| effect_is_implemented(effects.get(id)))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -92,6 +111,40 @@ mod tests {
         assert!(!ability_is_unimplemented(&def(None, vec![1, 2]), &effects));
         assert!(!ability_is_unimplemented(&def(None, vec![3]), &effects));
         assert!(!ability_is_unimplemented(&def(None, vec![4]), &effects));
+    }
+
+    /// D-AB10: an event set alone is not a mechanic. The same ability that
+    /// `ability_is_unimplemented` calls implemented (it animates) has no
+    /// mechanics; any effect that deals damage or runs a script gives it some.
+    #[test]
+    fn an_animation_alone_is_not_a_mechanic() {
+        let silent = effect(1, &[("HealAmount", "30"), ("Coordination", "5")], None);
+        let damage = effect(2, &[("HealthDamage", "25")], None);
+        let script = effect(3, &[], Some("HealHealth"));
+        let effects = HashMap::from([(1, silent), (2, damage), (3, script)]);
+
+        let animated = def(Some(3), vec![1]);
+        assert!(!ability_is_unimplemented(&animated, &effects));
+        assert!(
+            !ability_effects_have_mechanics(&animated, &effects),
+            "an event set and an unscripted heal or stat NVP do nothing"
+        );
+        assert!(!ability_effects_have_mechanics(
+            &def(Some(3), vec![]),
+            &effects
+        ));
+        assert!(!ability_effects_have_mechanics(
+            &def(None, vec![9999]),
+            &effects
+        ));
+        assert!(ability_effects_have_mechanics(
+            &def(None, vec![1, 2]),
+            &effects
+        ));
+        assert!(ability_effects_have_mechanics(
+            &def(None, vec![3]),
+            &effects
+        ));
     }
 
     #[test]
