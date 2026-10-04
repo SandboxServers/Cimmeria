@@ -3,10 +3,18 @@
 mod comparison;
 mod inventory;
 mod model;
+pub(crate) mod preparation;
 mod publication;
+pub use preparation::{
+    abandon_preparation, inspect_preparation, list_preparations, PreparationRecord,
+};
 mod reference;
 mod worker;
 pub use worker::{start_confirmation, start_preview, ConfirmationWorker, PreviewWorker};
+#[cfg(all(test, target_os = "macos"))]
+mod cab_fixture;
+#[cfg(all(test, target_os = "macos"))]
+mod preparation_tests;
 #[cfg(all(test, target_os = "macos"))]
 mod recovery_tests;
 #[cfg(all(test, target_os = "macos"))]
@@ -20,6 +28,13 @@ pub use publication::{abandon, inspect, recover};
 use sha2::{Digest, Sha256};
 use std::{io::Read, sync::Mutex};
 use tokio_util::sync::CancellationToken;
+#[cfg(target_os = "macos")]
+pub use worker::start_preview_wine;
+pub(super) enum Backend {
+    Native,
+    #[cfg(target_os = "macos")]
+    Wine(crate::mac_wine::HelperResource),
+}
 use uuid::Uuid;
 
 /// This handle cannot be serialized or fabricated by an IPC caller. It retains
@@ -29,7 +44,7 @@ pub struct Preview {
     report: Report,
     imported: migration::LegacyImport,
     before: Preferences,
-    operation_revision: u64,
+    preparation: preparation::Ownership,
     release: VerifiedRelease,
     source: inventory::Index,
     reference: reference::Reference,
@@ -56,12 +71,22 @@ pub fn preview(
     cancel: CancellationToken,
     progress: crate::install_progress::ProgressSink,
 ) -> Result<Preview, Error> {
+    preview_using(state, request, cancel, progress, Backend::Native)
+}
+
+pub(super) fn preview_using(
+    state: Arc<Mutex<DesktopState>>,
+    request: PreviewRequest,
+    cancel: CancellationToken,
+    progress: crate::install_progress::ProgressSink,
+    backend: Backend,
+) -> Result<Preview, Error> {
     // Mac-native filesystem identity and no-clobber promotion are implemented in
     // this bounded phase. Other hosts fail closed pending their native tests.
     if !cfg!(target_os = "macos") {
         return Err(Error::UnsupportedConfiguration);
     }
-    let (imported, before, destination, root) = {
+    let (imported, before, destination) = {
         let mut owner = state.lock().map_err(|_| StorageError::Io)?;
         idle(
             &owner,
@@ -101,12 +126,7 @@ pub fn preview(
                 return Err(StorageError::InvalidDirectory.into());
             }
         }
-        (
-            imported,
-            owner.preferences.clone(),
-            destination,
-            owner.directory.root.clone(),
-        )
+        (imported, owner.preferences.clone(), destination)
     };
     for path in [
         &imported.source.game_directory,
@@ -120,14 +140,43 @@ pub fn preview(
     verify_import(&imported)?;
     let source = inventory::scan(&imported.source.game_directory, &cancel)?;
     let servers = servers(&imported);
+    let identity = match &backend {
+        Backend::Native => ExtractionBackend::Native,
+        #[cfg(target_os = "macos")]
+        Backend::Wine(helper) => helper.backend(),
+    };
+    let mut preparation =
+        preparation::Ownership::claim(state.clone(), &request, identity, servers.clone())?;
+    let adapter: Option<Box<dyn crate::install::SeedExtractor>> = match backend {
+        Backend::Native => None,
+        #[cfg(target_os = "macos")]
+        Backend::Wine(helper) => {
+            preparation.uncertain = true;
+            Some(Box::new(
+                tokio::runtime::Handle::try_current()
+                    .map_err(|_| StorageError::Io)?
+                    .block_on(crate::mac_wine::WineSeedExtractor::prepare(
+                        state.clone(),
+                        preparation.record.id,
+                        helper.path().to_path_buf(),
+                        cancel.clone(),
+                        progress.clone(),
+                    ))
+                    .map_err(|_| StorageError::PersistenceUncertain)?,
+            ))
+        }
+    };
     let reference = reference::reconstruct(
-        &root,
+        &preparation.record.directory,
         &request.release,
         &request.artifacts,
         &servers,
         &cancel,
         progress,
+        adapter.as_deref(),
     )?;
+    preparation.uncertain = false;
+    drop(adapter);
     let files = comparison::compare(&imported.source.game_directory, &source, &reference)?;
     if !files.iter().any(|d| {
         matches!(
@@ -142,7 +191,7 @@ pub fn preview(
     }
     verify_import(&imported)?;
     let report = Report {
-        preview_handle: Uuid::new_v4(),
+        preview_handle: preparation.record.id,
         source: imported.source.game_directory.clone(),
         destination,
         release_digest: request.release.digest(),
@@ -157,7 +206,7 @@ pub fn preview(
         report,
         imported,
         before,
-        operation_revision: request.operation_revision,
+        preparation,
         release: request.release,
         source,
         reference,

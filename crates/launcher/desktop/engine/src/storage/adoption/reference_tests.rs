@@ -56,6 +56,7 @@ fn reference_reconstructs_signed_patch_order_and_sgw_game_root() {
         &crate::client_setup::login_servers::default_servers(),
         &CancellationToken::new(),
         crate::install_progress::ProgressSink::latest().0,
+        None,
     )
     .unwrap();
     assert_eq!(
@@ -79,7 +80,8 @@ fn reference_reconstructs_signed_patch_order_and_sgw_game_root() {
             },
             &crate::client_setup::login_servers::default_servers(),
             &CancellationToken::new(),
-            crate::install_progress::ProgressSink::latest().0
+            crate::install_progress::ProgressSink::latest().0,
+            None
         ),
         Err(Error::InvalidArtifact)
     ));
@@ -92,6 +94,7 @@ fn authenticated_case_collisions_and_unsafe_zip_names_are_rejected() {
             ("SAME", b"second".as_slice()),
         ],
         vec![("../escape", b"escape".as_slice())],
+        vec![("Data/a", b"a".as_slice()), ("data/b", b"b".as_slice())],
     ] {
         let dir = tempfile::tempdir().unwrap();
         let seed = archive(&entries);
@@ -108,7 +111,8 @@ fn authenticated_case_collisions_and_unsafe_zip_names_are_rejected() {
                 },
                 &crate::client_setup::login_servers::default_servers(),
                 &CancellationToken::new(),
-                crate::install_progress::ProgressSink::latest().0
+                crate::install_progress::ProgressSink::latest().0,
+                None
             ),
             Err(Error::InvalidArtifact)
         ));
@@ -140,5 +144,52 @@ fn missing_executable_is_reviewed_and_replaced_from_reference() {
     assert!(f
         .destination()
         .join("game/Working/Binaries/SGW.exe")
+        .is_file());
+}
+
+#[test]
+fn ordinary_explicit_zip_directories_are_supported() {
+    use std::io::Write;
+    let dir = tempfile::tempdir().unwrap();
+    let mut writer = zip::ZipWriter::new(std::io::Cursor::new(Vec::new()));
+    writer
+        .add_directory("Working/", zip::write::SimpleFileOptions::default())
+        .unwrap();
+    writer
+        .add_directory(
+            "Working/Binaries/",
+            zip::write::SimpleFileOptions::default(),
+        )
+        .unwrap();
+    let seed = crate::install_worker::fixtures::archive(true);
+    let mut original = zip::ZipArchive::new(std::io::Cursor::new(seed)).unwrap();
+    for i in 0..original.len() {
+        let mut file = original.by_index(i).unwrap();
+        writer
+            .start_file(file.name(), zip::write::SimpleFileOptions::default())
+            .unwrap();
+        let mut bytes = Vec::new();
+        file.read_to_end(&mut bytes).unwrap();
+        writer.write_all(&bytes).unwrap();
+    }
+    let bytes = writer.finish().unwrap().into_inner();
+    let path = dir.path().join("seed.zip");
+    std::fs::write(&path, &bytes).unwrap();
+    let reference = reference::reconstruct(
+        dir.path(),
+        &crate::install_worker::fixtures::verified(&bytes),
+        &Artifacts {
+            seed: path,
+            patches: vec![],
+        },
+        &crate::client_setup::login_servers::default_servers(),
+        &CancellationToken::new(),
+        crate::install_progress::ProgressSink::latest().0,
+        None,
+    )
+    .unwrap();
+    assert!(reference
+        .prepared
+        .join("Working/Binaries/SGW.exe")
         .is_file());
 }

@@ -80,7 +80,10 @@ pub(super) fn confirm(
         return Err(Error::SourceChanged);
     }
     let mut state = preview.state.lock().map_err(|_| StorageError::Io)?;
-    idle(&state, preview.operation_revision, preview.before.revision)?;
+    preview.preparation.validate(&state)?;
+    if state.preferences.revision != preview.before.revision {
+        return Err(StorageError::StaleRevision.into());
+    }
     if state.preferences != preview.before {
         return Err(StorageError::StaleRevision.into());
     }
@@ -115,7 +118,7 @@ pub(super) fn confirm(
         destination: destination.clone(),
         manifest_digest: preview.release.digest(),
         login_servers: servers(&preview.imported),
-        backend: ExtractionBackend::Native,
+        backend: preview.preparation.record.descriptor.backend.clone(),
     };
     let mut owner = OpenOptions::new()
         .write(true)
@@ -159,12 +162,10 @@ pub(super) fn confirm(
     write_large(&state.directory.root, &plan_name(id), &plan)?;
     sync(&destination)?;
     sync(destination.parent().ok_or(StorageError::InvalidDirectory)?)?;
-    state.operations_mut()?.begin(
-        id,
-        OperationKind::Adopt,
-        plan.digest()?,
-        preview.operation_revision,
-    )?;
+    let operation_revision = preview.preparation.handoff(&mut state)?;
+    state
+        .operations_mut()?
+        .begin(id, OperationKind::Adopt, plan.digest()?, operation_revision)?;
     state
         .operations_mut()?
         .observe(id, OperationState::Running)?;

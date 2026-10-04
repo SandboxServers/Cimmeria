@@ -220,5 +220,13 @@ The early idle/recover/abandon updater guards are integrated. A busy-updater
 regression covers refused preview before reference/destination writes and refused
 recovery/abandonment. The frontend snapshot decoder recognizes the distinct Adopt
 operation while retaining normal nonterminal ownership gates. This does not expose
-an adoption UI or lift the Play restriction. Preview reconstruction still needs
-a retained preparation ownership record before the RAR/Wine helper phase.
+an adoption UI or lift the Play restriction. The retained preparation follow-up
+below supplies ownership before the RAR/Wine helper phase.
+
+## Retained published-client preparation follow-up
+
+The next phase adds retained preparation ownership, the existing Wine seed
+adapter, explicit reference cleanup/recovery, and real RAR/CAB fixture evidence.
+See [published-adoption-preparation.md](published-adoption-preparation.md) for the
+current API and its remaining platform/helper-build boundaries. It does not
+complete the effective-settings, owner/current-release or UI journey.

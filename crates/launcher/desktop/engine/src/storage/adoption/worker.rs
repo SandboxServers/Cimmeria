@@ -28,6 +28,22 @@ pub fn start_preview(
     state: Arc<Mutex<DesktopState>>,
     request: PreviewRequest,
 ) -> Result<PreviewWorker, Error> {
+    start_preview_backend(state, request, Backend::Native)
+}
+
+#[cfg(target_os = "macos")]
+pub fn start_preview_wine(
+    state: Arc<Mutex<DesktopState>>,
+    request: PreviewRequest,
+    helper: crate::mac_wine::HelperResource,
+) -> Result<PreviewWorker, Error> {
+    start_preview_backend(state, request, Backend::Wine(helper))
+}
+fn start_preview_backend(
+    state: Arc<Mutex<DesktopState>>,
+    request: PreviewRequest,
+    backend: Backend,
+) -> Result<PreviewWorker, Error> {
     let runtime = tokio::runtime::Handle::try_current().map_err(|_| StorageError::Io)?;
     let cancel = CancellationToken::new();
     let owned_cancel = cancel.clone();
@@ -35,7 +51,7 @@ pub fn start_preview(
     let (send, result) = oneshot::channel();
     runtime.spawn_blocking(move || {
         let outcome = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-            preview(state, request, owned_cancel, progress)
+            preview_using(state, request, owned_cancel, progress, backend)
         }))
         .unwrap_or(Err(StorageError::PersistenceUncertain.into()));
         // An unobserved preview releases its source lock/private temp reference.

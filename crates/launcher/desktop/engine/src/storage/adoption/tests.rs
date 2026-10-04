@@ -72,7 +72,7 @@ impl Fixture {
             .unwrap()
             .join("desktop-copy")
     }
-    fn request(&self) -> PreviewRequest {
+    pub(super) fn request(&self) -> PreviewRequest {
         let state = self.state.lock().unwrap();
         PreviewRequest {
             import_digest: state.legacy_import().unwrap().unwrap().confirmation,

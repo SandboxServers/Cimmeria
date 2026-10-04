@@ -5,7 +5,6 @@ use crate::{install_progress::ProgressSink, unpack::UnpackSink};
 use std::collections::BTreeMap;
 
 pub(super) struct Reference {
-    pub _work: tempfile::TempDir,
     pub prepared: PathBuf,
     pub raw: inventory::Index,
     pub index: inventory::Index,
@@ -17,31 +16,50 @@ pub(super) fn reconstruct(
     servers: &[crate::client_setup::LoginServer],
     cancel: &CancellationToken,
     progress: ProgressSink,
+    extractor: Option<&dyn crate::install::SeedExtractor>,
 ) -> Result<Reference, Error> {
     let manifest = release.manifest();
     if artifacts.patches.len() != manifest.patches.len() {
         return Err(Error::InvalidArtifact);
     }
-    let work = tempfile::Builder::new()
-        .prefix(".adoption-reference-")
-        .tempdir_in(parent)?;
-    let raw = work.path().join("raw");
-    std::fs::create_dir(&raw)?;
-    let archive = work.path().join("artifact.zip");
+    std::fs::create_dir_all(parent.join("cache"))?;
+    let raw = parent.join("raw");
+    let archive = parent.join("cache/artifact.download");
     let sink = UnpackSink {
         progress,
         label: "Authenticated adoption reference".into(),
         cancel: cancel.clone(),
     };
-    extract(
-        &artifacts.seed,
-        &archive,
-        manifest.seed.size,
-        &manifest.seed.sha256,
-        &raw,
-        cancel,
-        &sink,
-    )?;
+    if let Some(extractor) = extractor {
+        authenticated_copy(
+            &artifacts.seed,
+            &archive,
+            manifest.seed.size,
+            &manifest.seed.sha256,
+            cancel,
+        )?;
+        tokio::runtime::Handle::try_current()
+            .map_err(|_| StorageError::Io)?
+            .block_on(extractor.extract(crate::install::SeedExtraction {
+                archive: &archive,
+                destination: &raw,
+                sha256: &manifest.seed.sha256,
+                cancel: cancel.clone(),
+                progress: sink.progress.clone(),
+            }))
+            .map_err(|_| StorageError::PersistenceUncertain)?;
+        std::fs::remove_file(&archive)?;
+    } else {
+        extract(
+            &artifacts.seed,
+            &archive,
+            manifest.seed.size,
+            &manifest.seed.sha256,
+            &raw,
+            cancel,
+            &sink,
+        )?;
+    }
     crate::install_layout::place_bundled_cooked_data(&raw)?;
     for (patch, artifact) in manifest.patches.iter().zip(&artifacts.patches) {
         let destination =
@@ -58,7 +76,7 @@ pub(super) fn reconstruct(
         inventory::scan(&raw, cancel)?;
     }
     let raw_index = inventory::scan(&raw, cancel)?;
-    let prepared = work.path().join("prepared");
+    let prepared = parent.join("prepared");
     std::fs::create_dir(&prepared)?;
     for (path, entry) in &raw_index {
         inventory::copy(&raw.join(path), &prepared.join(path), entry, cancel)?;
@@ -75,7 +93,6 @@ pub(super) fn reconstruct(
     }
     let index = inventory::scan(&prepared, cancel)?;
     Ok(Reference {
-        _work: work,
         prepared,
         raw: raw_index,
         index,
@@ -90,15 +107,25 @@ fn extract(
     cancel: &CancellationToken,
     sink: &UnpackSink,
 ) -> Result<(), Error> {
+    authenticated_copy(source, archive, size, sha, cancel)?;
+    strict_zip(archive)?;
+    crate::unpack::unpack(archive, destination, sink).map_err(|_| Error::InvalidArtifact)?;
+    std::fs::remove_file(archive)?;
+    Ok(())
+}
+fn authenticated_copy(
+    source: &Path,
+    archive: &Path,
+    size: u64,
+    sha: &str,
+    cancel: &CancellationToken,
+) -> Result<(), Error> {
     let entry = inventory::hash(source, cancel)?;
     let actual: String = entry.sha256.iter().map(|b| format!("{b:02x}")).collect();
     if entry.size != size || !actual.eq_ignore_ascii_case(sha) {
         return Err(Error::InvalidArtifact);
     }
     inventory::copy(source, archive, &entry, cancel)?;
-    strict_zip(archive)?;
-    crate::unpack::unpack(archive, destination, sink).map_err(|_| Error::InvalidArtifact)?;
-    std::fs::remove_file(archive)?;
     Ok(())
 }
 fn strict_zip(path: &Path) -> Result<(), Error> {
@@ -113,11 +140,18 @@ fn strict_zip(path: &Path) -> Result<(), Error> {
         return Err(StorageError::TooLarge.into());
     }
     let mut names = BTreeMap::new();
+    let mut spellings = BTreeMap::new();
     let mut total = 0u64;
     for i in 0..zip.len() {
         let entry = zip.by_index(i).map_err(|_| Error::InvalidArtifact)?;
         let path = entry.enclosed_name().ok_or(Error::InvalidArtifact)?;
-        let name = path.to_str().ok_or(Error::InvalidArtifact)?.to_string();
+        let original = path.to_str().ok_or(Error::InvalidArtifact)?;
+        let name = if entry.is_dir() {
+            original.trim_end_matches('/')
+        } else {
+            original
+        }
+        .to_string();
         if !name.is_ascii()
             || name.contains('\\')
             || name.is_empty()
@@ -133,6 +167,18 @@ fn strict_zip(path: &Path) -> Result<(), Error> {
             if !matches!(mode & 0o170000, 0 | 0o100000 | 0o040000) {
                 return Err(Error::InvalidArtifact);
             }
+        }
+        let mut ancestor = Some(Path::new(&name));
+        while let Some(path) = ancestor {
+            let spelling = path.to_str().ok_or(Error::InvalidArtifact)?;
+            if let Some(previous) =
+                spellings.insert(spelling.to_ascii_lowercase(), spelling.to_string())
+            {
+                if previous != spelling {
+                    return Err(Error::InvalidArtifact);
+                }
+            }
+            ancestor = path.parent();
         }
         if names
             .insert(name.to_ascii_lowercase(), entry.is_dir())
