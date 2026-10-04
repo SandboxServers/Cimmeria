@@ -41,13 +41,16 @@ pub(super) fn prepare(
             .collect::<Result<_, _>>()?,
     };
     let spec = HelperCommand {
-        executable: resources.runtime.join("bin/wine"),
+        executable: mac_wine::app_identity::loader(&resources.runtime, state_root),
         arguments: vec![guest(plan.resources.helper.path())?.into_os_string()],
         directory: binaries,
         environment,
     };
     Ok((spec, request, resources))
 }
+
+// DXVK's limiter; the client has no vsync setting and nothing else bounds its render loop.
+const FRAME_RATE_LIMIT: &str = "30";
 
 // Called only after Resources::reopen verifies and locks the pinned runtime.
 fn game_environment(
@@ -71,6 +74,7 @@ fn game_environment(
         "d3d9=n;winemenubuilder.exe,mscoree,mshtml=d".into(),
     );
     environment.insert("CX_FWD_COMPAT_GL_CTX".into(), "1".into());
+    environment.insert("DXVK_FRAME_RATE".into(), FRAME_RATE_LIMIT.into());
     if let Some((executable, _)) = &graphics.rosetta_x87 {
         environment.insert(
             "ROSETTA_X87_PATH".into(),

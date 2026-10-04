@@ -51,9 +51,14 @@ fn game_environment_selects_bundled_vulkan_without_changing_headless_policy() {
         environment.get(OsStr::new("CX_FWD_COMPAT_GL_CTX")).unwrap(),
         "1"
     );
+    assert_eq!(
+        environment.get(OsStr::new("DXVK_FRAME_RATE")).unwrap(),
+        "30"
+    );
     assert!(!environment.contains_key(OsStr::new("ROSETTA_X87_PATH")));
     let headless = mac_wine::environment(&runtime, Path::new("/fixture/bottle")).unwrap();
     assert!(!headless.contains_key(OsStr::new("VK_DRIVER_FILES")));
+    assert!(!headless.contains_key(OsStr::new("DXVK_FRAME_RATE")));
     assert!(headless
         .get(OsStr::new("WINEDLLOVERRIDES"))
         .unwrap()
