@@ -281,8 +281,10 @@ async fn error_event_routed_to_errors_channel() {
     assert!(recorded[0].0.ends_with("/errors"));
     // The EventKind discriminator is implicit via routing; pin
     // that we're using the right variant by spot-checking the body
-    // mentions the player_id field.
-    assert!(recorded[0].1.to_string().contains("player_id"));
+    // carries the player, folded into the Who field (NT-11).
+    let body = recorded[0].1.to_string();
+    assert!(body.contains(r#""name":"Who""#), "{body}");
+    assert!(body.contains("#100"), "{body}");
 }
 
 /// Fields are recorded in stable order — `reason` and `entity_id`
@@ -310,8 +312,11 @@ async fn structured_fields_preserved_in_embed() {
     let body = &recorded[0].1;
     let s = body.to_string();
     assert!(s.contains("entity_to_addr_miss"));
-    assert!(s.contains("entity_id"));
-    assert!(s.contains("42"));
+    // `entity_id` has no `entity_name` here, so it folds to `#id` under
+    // the `entity` label (NT-11).
+    assert!(s.contains(r#""name":"entity""#), "{s}");
+    assert!(s.contains("#42"), "{s}");
+    assert!(s.contains("entity_count_in_map"));
 }
 
 /// Sanity: EventKind for the tracing event matches expectation.

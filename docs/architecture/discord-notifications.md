@@ -105,6 +105,29 @@ name + id (and character name where known), not by IP. This keeps player IPs
 out of Discord, which is a less-controlled surface than the server logs /
 SigNoz where the addr is still available for debugging.
 
+## No internal links
+
+Discord embeds never link to SigNoz, the admin API or any other VPN-only
+host: most of the team reading Discord can't open them
+([Rule 6, "Discord"](instrumentation-discipline.md#discord)). The last
+step of [`build_embed`](../../crates/discord/src/embed/builder.rs), for every
+event type, runs [`embed/links.rs`](../../crates/discord/src/embed/links.rs)
+over the whole rendered embed. Any `http://` or `https://` URL in a title,
+description, field or footer is replaced by `[link removed]`, and a
+URL-typed key (`url`, `icon_url`, ...) whose value is such a link is dropped.
+The message itself still posts.
+
+The allowlist, `ALLOWED_LINK_HOSTS`, is for public, team-reachable hosts and
+is empty today. A host on it matches itself and its subdomains. A URL
+that carries another URL in its path or query (`?next=https://...`, plain or
+percent-encoded) is removed even when its own host is allowed.
+
+The trace ID is the one SigNoz handle Discord keeps, as plain text in the
+footer (`trace_id 4bf92f…`) that a developer pastes into SigNoz (D-NT3). A
+`trace_id` or `span_id` that arrives as a link keeps only its own hex ID:
+32 digits for the trace, 16 for the span (from `spanId=` first).
+`signoz_url_in_a_field_value_renders_without_it` pins the guard.
+
 ## Account + character naming
 
 Auth and world embeds show the **account name** (the login username) instead
@@ -114,6 +137,35 @@ falling back to `#id` then `?`. The name is threaded from the login ticket
 extra DB lookup happens at the Mercury login seam. Gameplay/world embeds also
 label the character on its own `Character` field rather than dropping a bare
 name into the description.
+
+## Naming in harvested warnings and errors
+
+Every object in an embed renders as `Name (#id)`, or `#id` when its name
+is unresolved ([Rule 6](instrumentation-discipline.md#rule-6--every-id-field-is-paired-with-its-name)).
+The tracing layer posts a `warn!`/`error!` event's own fields, and
+[`embed/tracing_fields.rs`](../../crates/discord/src/embed/tracing_fields.rs)
+folds them before posting:
+
+- **Who** comes first: `player_id`/`player_name` and
+  `account_id`/`account_name` fold into one field,
+  `Alice (#100) · steve (#6)`. Each half degrades on its own, so a line
+  with only `account_id = 6` shows `#6`. A line not yet swept from
+  `character_name` to `player_name` still folds.
+- **Objects** come next, in field order: each ID key folds with its name
+  key into one field under the key's prefix. `ability_id = 880` +
+  `ability_name = "Staff Blast"` posts as `ability: Staff Blast (#880)`.
+  The pairing follows Rule 6's key table, mirrored in
+  [`embed/naming.rs`](../../crates/discord/src/embed/naming.rs): the default
+  `<p>_id` → `<p>_name`, the bare entity keys (`target` → `target_name`), and
+  the exceptions (`space_id` → `world` under `space`, `item_type_id` →
+  `item_name`, `msg_id` → `msg_name`, `method_index` → `method_name`, ...).
+  Change the doc's table and that file together.
+- **The rest** come last, unchanged, then the event's log target under
+  `Log target`.
+
+An embed holds 25 fields, one of them the log target. When the folded
+fields don't fit, the cut falls on the unpaired tail and the last slot
+says `+N more fields`, so Who and every object pair survive. The marker never takes a pair's slot: when the pairs alone fill the embed, the unpaired fields are dropped without it.
 
 ## Muted accounts
 
@@ -302,7 +354,7 @@ See [colo-deploy.md → Discord notifications](../operations/colo-deploy.md#opti
 
 ## Testing
 
-- Unit tests in `crates/discord/src/` (61 tests; covers formula, embed shape, truncation, rate limiter, retry/429 handling, layer harvest, recursion guard, whisper privacy, `movement.validation` suppression).
+- Unit tests in `crates/discord/src/` (covers formula, embed shape, truncation, rate limiter, retry/429 handling, layer harvest, recursion guard, whisper privacy, `movement.validation` suppression, Rule 6 pair folding and field budget, and the no-internal-links guard).
 - `MockSender` for tests that need to assert wire bytes without HTTP.
 - Wire-format tests for the embed JSON shape — title/description/field caps + `total_chars ≤ 6000` enforcement.
 
