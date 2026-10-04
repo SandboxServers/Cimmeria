@@ -170,3 +170,18 @@ re-enabled. Play remained enabled and the app was left on its Play screen. No
 real game replacement, backup deletion or game launch was performed. Replacement
 and cleanup confirmation were exercised separately against an isolated native
 fixture by `uat:game-update-apply`; that JS pass is not visual confirmation UI UAT.
+
+### Production Play to login screen
+
+The certificate-signed combined build (game Update integration at `8436ed4e8`,
+with the separately owned 30 FPS cap preserved in the development bundle) was
+started through its primary Play action. The first click disabled Play and showed
+preparation; native observation then reported the game process started. The host
+helper and SGW processes remained present during inspection. The operator
+confirmed the SGW login screen was visible.
+
+This is actual launcher-to-rendered-login evidence, not only a fixture or PID.
+The computer-use tool rejected the Wine guest as `Invalid app`, so the visual
+confirmation came from the operator. Authentication, world entry, frame pacing,
+windowed mode/Alt-Tab behavior and game shutdown are not established by this check.
+No credentials were entered and no gameplay was attempted.
