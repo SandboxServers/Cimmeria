@@ -389,6 +389,7 @@ fn unrecognized_backup_is_preserved_and_keeps_reconciliation_owner() {
     assert!(state.ensure_updater_idle().is_err());
 }
 
+#[cfg(target_os = "macos")]
 mod native_uat;
 
 #[test]

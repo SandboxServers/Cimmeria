@@ -37,3 +37,11 @@ frontend logic, so a new JS REPL pass is not applicable.
 
 The test-only Minisign/base64 dependency declarations and lockfile are isolated
 in integration commit `47bf3268`. No production dependencies were added.
+
+## Combined Windows CI follow-up
+
+Run `37223140800`, Windows job `111497329238`, rejected the unconditional
+`native_uat` test module import under strict Clippy. Both tests in that module
+are Mac-only. The module now uses the same platform guard, preserving Mac
+coverage and excluding unused imports on Windows. Native Windows revalidation
+is required on the corrected commit; the failed job did not execute tests.
