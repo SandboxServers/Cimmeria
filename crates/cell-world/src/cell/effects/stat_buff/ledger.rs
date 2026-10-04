@@ -397,8 +397,10 @@ fn log_nothing_removed(
                 stage = "ledger",
                 reason,
                 removal = why.reason(),
-                account_id = target_who.account_id,
-                player_id = target_who.player_id,
+                // The ledger API does not know who asked for the removal, so
+                // the target is named as the subject only, never as the
+                // actor: `account_id` / `player_id` would misattribute a
+                // cleanse of an ally to the ally (rule 5).
                 target_id = target,
                 target_player_id = target_who.player_id,
                 cast_id,

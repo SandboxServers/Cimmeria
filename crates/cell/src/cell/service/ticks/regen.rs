@@ -71,8 +71,14 @@ pub(in crate::cell::service) async fn regen_tick(
         .collect();
 
     log_regen_transitions(space_mgr, &eligible, POOLS);
+    // Snapshot the identities with the ids: a player can leave during an
+    // earlier entity's send, and its skip row must still name it (rule 5).
+    let identities: Vec<_> = eligible
+        .iter()
+        .map(|&eid| space_mgr.player_identity(eid))
+        .collect();
 
-    for entity_id in eligible {
+    for (entity_id, who) in eligible.into_iter().zip(identities) {
         let stat_payload = {
             let Some(entity) = space_mgr.get_entity_mut(entity_id) else {
                 // Gone between the eligibility snapshot and now (AB-T2).
@@ -81,6 +87,8 @@ pub(in crate::cell::service) async fn regen_tick(
                     target: "vitals",
                     event = "regen_skipped",
                     reason = "entity_gone",
+                    account_id = who.account_id,
+                    player_id = who.player_id,
                     entity_id,
                     "regen tick: player left between the eligibility pass and the regen; nothing applied"
                 );
@@ -125,7 +133,6 @@ pub(in crate::cell::service) async fn regen_tick(
             )
             .await;
         } else {
-            let who = space_mgr.player_identity(entity_id);
             tracing::trace!(
                 target: "vitals",
                 event = "regen_skipped",

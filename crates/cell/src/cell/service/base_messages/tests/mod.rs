@@ -41,6 +41,7 @@ mod minigame;
 mod movement;
 mod org;
 mod passive_abilities;
+mod receipt_seq;
 mod request_entity_update;
 mod respec_burst;
 mod stat_passives;

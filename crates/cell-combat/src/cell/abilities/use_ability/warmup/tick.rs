@@ -84,6 +84,8 @@ pub(crate) async fn resolve_warmups(
                 target: "abilities",
                 event = "warmup_pending",
                 stage = "warmup",
+                account_id = space_mgr.player_identity(entity_id).account_id,
+                player_id = space_mgr.player_identity(entity_id).player_id,
                 entity_id,
                 cast_id = pc.cast_id(),
                 ability_id = pc.ability_id,
