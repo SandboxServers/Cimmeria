@@ -133,9 +133,17 @@ class HealGrammarRejects(unittest.TestCase):
 class HealScope(unittest.TestCase):
     """Heals the current pipeline would land on the wrong entity."""
 
-    def test_ae_and_group_wait_for_routing(self):
-        self.assertIn("AB-07", scope_rejection(effect("35% Focus Heal", tcm="TCM_AERadius"), ability()))
-        self.assertIn("AB-07", scope_rejection(effect("+ 5% Every 3 seconds", tcm="TCM_Group"), ability()))
+    def test_a_radius_heal_binds_where_ab07_fans_it_out_to_allies(self):
+        # 1215 Morale Boost: a Self ability, so the radius heal lands on the
+        # caster's allies (routing.py rule 3).
+        self.assertIsNone(scope_rejection(effect("35% Focus Heal", tcm="TCM_AERadius"), ability()))
+        ground = Ability(1, "g", "", "ABILITY_TYPE_Heal", target_type_id=3)
+        self.assertIn("ground collector", scope_rejection(effect("35% Focus Heal", tcm="TCM_AERadius"), ground))
+
+    def test_group_aura_and_cone_heals_wait(self):
+        self.assertIn("D-AB12", scope_rejection(effect("+ 5% Every 3 seconds", tcm="TCM_Group"), ability()))
+        self.assertIn("D-AB12", scope_rejection(effect("+ 5% Every 3 seconds", tcm="TCM_Aura"), ability()))
+        self.assertIn("cone", scope_rejection(effect("35% Focus Heal", tcm="TCM_AECone"), ability()))
 
     def test_deployables_wait_for_a_binding(self):
         self.assertIn("deployable", scope_rejection(effect("x"), ability(name="Deployable: Stim Pack")))

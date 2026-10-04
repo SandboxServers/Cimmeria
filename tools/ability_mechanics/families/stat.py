@@ -29,15 +29,20 @@ Scope rejections, before the grammar:
   AB-08's; a multi-pulse one is not a ledger entry;
 * ``EF_ClearOnDamage`` ("(1 hit)"): no hook takes it off on damage yet
   (AB-11), so it would last its whole duration;
-* not ``TCM_Single``, or a "Secondary" line: AE and secondary routing is
-  AB-07, and today the pipeline would land it on the one target;
+* a cone, a group or aura effect (D-AB12), a hostile ``TCM_AERadius``
+  effect of a non-ground ability or a beneficial one of a ground ability,
+  or a "Secondary" line: the cast would land it on the one target or on
+  hostiles (AB-07 routes user halves and beneficial radius halves only);
 * a deployable's or a turret enhancement's effect: it acts on an object the
   server does not summon for it (D-AB11);
-* routing: a non-beneficial effect of a Self ability (its user's penalty,
-  Combat Sprint's "-100 ACC") and a beneficial effect whose ability also has
-  a non-beneficial effect that does something: in both cases the ability is
-  not ``ability_is_beneficial`` and the cast would land the buff on the
-  client's target, possibly a hostile (B-27, AB-07).
+* routing (``routing.py``, the server's AB-07 rules): an effect the server
+  lands on the user (``EF_ResolveOnAbilityUser``, or a single effect of a
+  Self ability with no area effect, such as Combat Sprint's "-100 ACC") or on
+  the caster's allies is bound. One that lands on the cast's target is
+  refused when it is a "User" half, a single effect of a Self ability with
+  an area effect, or a beneficial effect whose ability also has a
+  non-beneficial effect that does something (the cast would take the
+  hostile path and land the buff on the target, B-27).
 """
 
 from __future__ import annotations
@@ -46,8 +51,10 @@ import re
 from dataclasses import dataclass
 from typing import Dict, List, Optional, Tuple
 
+import routing
 from corpus import Ability, Corpus, Effect
 from family import Family, Generated, Outcome, Rejected, desc_lines
+from routing import is_ground
 
 SCRIPT = "TimedStat"
 
@@ -301,10 +308,29 @@ def scope_rejection(effect: Effect, ability: Optional[Ability]) -> Optional[str]
         return "an AF_TOGGLED ability: a second press must remove it (AB-08)"
     if effect.flags & EF_CLEAR_ON_DAMAGE:
         return "EF_ClearOnDamage: no damage hook removes it yet (AB-11), so it would outlast its design"
-    if effect.tcm != "TCM_Single":
-        return f"{effect.tcm}: AE and group routing is AB-07; the pipeline would land it on the one target"
+    if effect.tcm == "TCM_AERadius":
+        # AB-07: a beneficial radius effect of a non-ground cast fans out to
+        # the caster's allies, and a ground cast's secondaries take its
+        # hostile radius effects. A hostile radius effect of a non-ground
+        # cast still lands on the one target, and a beneficial one of a
+        # ground cast on hostiles.
+        beneficial = bool(effect.flags & EF_BENEFICIAL_EFFECT)
+        if beneficial and is_ground(ability):
+            return "a beneficial TCM_AERadius effect of a ground ability: the ground collector takes hostiles"
+        if not beneficial and not is_ground(ability):
+            return (
+                "a hostile TCM_AERadius effect of a non-ground ability: AB-07 fans out only beneficial "
+                "radius effects there, so it would land on the one target"
+            )
+    elif effect.tcm in ("TCM_Group", "TCM_Aura"):
+        return f"{effect.tcm}: group and aura routing waits for D-AB12; the pipeline would land it on the one target"
+    elif effect.tcm != "TCM_Single":
+        return f"{effect.tcm}: a stat cone is not routed (AB-07 routes user and radius halves only)"
     if re.search(r"\bsecondary\b", effect.desc, re.I):
-        return "a Secondary-target effect: secondary routing is AB-07; today it lands on the primary target"
+        return (
+            "a Secondary-target effect: AB-07 routes user and radius halves, not secondary targets; "
+            "today it lands on the primary target"
+        )
     if ability and ability.name.startswith("Deployable:"):
         return "deployable effect: needs a resources.deployables binding"
     if ability and re.search(r"\bturret\b", ability.name, re.I):
@@ -342,15 +368,23 @@ class StatFamily(Family):
         self, effect: Effect, ability: Optional[Ability], corpus: Corpus, user: bool
     ) -> Optional[str]:
         """Whether the cast would land this effect where the text says."""
+        landing = routing.route(effect, ability, corpus, SCRIPT)
+        if landing != routing.TARGET:
+            # AB-07 lands it on the user or the caster's allies whatever the
+            # rest of the ability does (B-27).
+            return None
         self_ability = ability is not None and ability.target_type_id == TARGET_SELF
         beneficial = bool(effect.flags & EF_BENEFICIAL_EFFECT)
-        if user and not self_ability:
-            return "a User half on a non-Self ability: per-effect routing is AB-07 (B-27)"
+        if user:
+            return (
+                "a User half with no EF_ResolveOnAbilityUser on an ability that is not a pure Self "
+                "ability: AB-07 lands it on the cast's target (B-27)"
+            )
         if not beneficial:
             if self_ability:
                 return (
-                    "a Self ability's non-beneficial half: the ability stops being beneficial and the "
-                    "cast lands on the client's target, possibly a hostile, until AB-07 routes it (B-27)"
+                    "a single effect of a Self ability that has an area effect: it is a follow-up of the "
+                    "area hit and lands on the client's target (B-27)"
                 )
             return None
         for other in corpus.effects.values():

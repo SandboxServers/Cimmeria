@@ -54,6 +54,8 @@ CI runs `--check` and the unit tests in the `test-live-db` job of [.github/workf
 
 A family is one module under `families/` that subclasses `family.Family` (`is_candidate`, `parse`) and one entry in `families/__init__.py`. The corpus loader (`corpus.py`), the seed reader (`seed_sql.py`), the ownership rules, the block writer, `--check` and `--report` are shared.
 
+`routing.py` models where the server lands an effect: the AB-07 rules of `route_effect` in `crates/cell-combat/src/cell/abilities/effect_routing/mod.rs`, which is the authority ([decision 35](../../docs/architecture/abilities-and-effects-decisions-23-33.md#35-each-effect-of-a-cast-lands-where-its-routing-says-ability-mechanics-ab-07)). The families' scope rules read it, so a row is bound only where the cast lands it where its text says. Change both together.
+
 ### heal
 
 The grammar accepts one heal clause per effect, as a whole line: "Heals N% of (the) player's/target's Health/Focus pool", "(Target) +N% Health/Focus", "N% Focus Heal", "Heals N health", and "Health Increase N%". Targeting lines ("Single Target") are skipped, and cost lines ("Energy -25") are noted but not modelled (B-04). Any other line rejects the effect.
@@ -62,7 +64,7 @@ Over time: `HealHealth` and `HealFocus` run once per pulse, and the pulsing laye
 
 A heal is reported instead of bound when the current pipeline would land it on the wrong entity:
 
-- a `TCM_AERadius`, `TCM_Group` or `TCM_Aura` effect (routing is AB-07 and D-AB12; today it would heal the one target twice);
+- a `TCM_Group` or `TCM_Aura` effect (D-AB12; today it would heal the one target), a cone, or a `TCM_AERadius` effect of a ground ability (the ground collector takes hostiles). A radius heal of any other ability is bound: AB-07 fans it out to the caster's allies (Morale Boost's 1215);
 - a "Deployable:" ability's pulse effect (it needs a `resources.deployables` binding);
 - a revive (D-AB11);
 - the heal half of an ability that is neither Heal nor Buff (it belongs on the user, B-27);
@@ -82,10 +84,11 @@ An effect is reported, not written, when its rejection reason starts with one of
 - `sequenced`: a single-shot effect with `EF_SequenceOnFinish` (64), the follow-up of a check (Execution's and Red Mist's damage vs low Focus), a chain jump (Energy Cascade) or an extra shell (Grenade Barrage). A pulsing one (Lethal Shot's DoT) is still written.
 - `targeting`: the text names a shape the row does not have, such as "Medium Cone" on a `TCM_Single` row, which would land a second hit on the primary.
 - `pulse shape`: the text's tick count or interval disagrees with the row ("Channeled: 50 ticks" on a single-shot row), or a pulsing row states no count.
-- `scope`: the damage half of a Buff ability, or an `EF_ResolveOnAbilityUser` effect (user routing is AB-07).
+- `scope`: the damage half of a Buff ability, or an `EF_ResolveOnAbilityUser` effect: the server never routes damage onto the user (AB-07).
 - `grammar`: anything else the parser refuses.
 
 When the ability tooltip's numbers differ from the effect's, the effect row wins and the comment says so.
+
 ### stat
 
 `families/stat.py` writes stat-named NVPs (`Accuracy`, `Defense`, `CoverAccuracy`, `CoverDefense`, `CrouchingDefense`, `Response`, `InterruptResistance`, the three resists, `MovementSpeedMod`) and binds `TimedStat`, which puts one entry per effect and caster on the timed effect ledger for the effect's `pulse_duration` (AB-04, D-AB08). The names it may write sit between `# nvp-names` markers, and a Rust test (`stat_nvp_names_match_the_generator`) fails if the script would ignore one.
@@ -98,9 +101,11 @@ Reported instead of bound:
 
 - anything that is not a timed single pulse: held effects (stances, toggles), `EF_AlwaysPersist` passives and `AF_TOGGLED` abilities are AB-08's;
 - `EF_ClearOnDamage` effects ("(1 hit)"), until AB-11's damage hook exists;
-- AE, group and "Secondary" effects (AB-07), deployables and turret enhancements (D-AB11);
+- a cone, a group or aura effect (D-AB12), a hostile `TCM_AERadius` effect of a non-ground ability (it lands on the one target) or a beneficial one of a ground ability (the ground collector takes hostiles), and "Secondary" effects; deployables and turret enhancements (D-AB11);
 - the regen stats (AB-05: `regen.rs` reads them as points per second until D-AB04's percentage model lands), pool maximums, armour factors, mitigation and stealth;
-- an effect the cast would land in the wrong place: the non-beneficial half of a Self ability (Combat Sprint's "-100 ACC"), a "User" half of a targeted ability, and a beneficial effect whose ability has a non-beneficial effect that does something (the cast would take the hostile path, B-27).
+- an effect the cast would land on its target when its text puts it elsewhere: a "User" half with no `EF_ResolveOnAbilityUser` on an ability that is not a pure Self ability, a single effect of a Self ability that has an area effect (a follow-up of the area hit), and a beneficial effect whose ability has a non-beneficial effect that does something (the cast would take the hostile path, B-27).
+
+An effect the server routes off the target is bound whatever the rest of its ability does: a single effect of a pure Self ability lands on the user (Combat Sprint's "-100 ACC" 2002, TimeShift's 4779), as does an `EF_ResolveOnAbilityUser` effect, and a beneficial radius effect of a non-ground ability lands on the caster's allies. A ground ability's hostile radius effect reaches every ground target (Forward Observer's 948).
 
 When the ability tooltip names a different stat from the effect row, the row wins and the comment says so.
 

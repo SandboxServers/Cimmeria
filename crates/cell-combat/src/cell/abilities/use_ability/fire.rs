@@ -7,6 +7,10 @@
 //! warmup tick ([`super::warmup::warmup_tick`]) calls it when a warmup
 //! expires (AT-10). The launch half (validation, cooldown, `Ability_Begin`)
 //! never runs here, so each of these steps runs exactly once per cast.
+//!
+//! The effects are routed per effect (AB-07, `abilities::effect_routing`):
+//! a user half lands on the caster and a beneficial area half on the
+//! caster's allies before the target pipeline runs the rest.
 
 use tokio::sync::mpsc;
 
@@ -14,6 +18,7 @@ use cimmeria_entity::abilities::AbilityDef;
 
 use super::super::super::messages::CellToBaseMsg;
 use super::super::super::space_manager::SpaceManager;
+use super::super::effect_routing::{land_effects, plan_cast, RoutedCast};
 use super::super::messaging::flush_attacker_ammo_stat;
 
 use super::auto_reload::maybe_trigger_auto_reload;
@@ -122,6 +127,22 @@ pub(in crate::cell::abilities) async fn fire_cast(
     let target_id = beneficial.map_or(target_id, |(t, _)| {
         super::beneficial::landing_id(entity_id, t)
     });
+    // Every other cast routes per effect (AB-07): its user halves and its
+    // beneficial area halves land off the target, the rest stays for the
+    // target pipeline below (`routed.target_def`).
+    let routed = if beneficial.is_none() {
+        plan_cast(space_mgr, entity_id, ability_def.as_ref(), None)
+    } else {
+        RoutedCast::default()
+    };
+    // A cast that only lands on its user (Combat Sprint) animates at the
+    // user, as a beneficial Self cast does.
+    let sequence_target =
+        if target_id <= 0 && routed.target_has_nothing() && routed.lands_on(entity_id) {
+            entity_id as i32
+        } else {
+            target_id
+        };
 
     // ── Send the fire animation (Ability_End) to attacker + witnesses ──
     // The client expects the sequence_id from resources.sequences, NOT the
@@ -134,7 +155,7 @@ pub(in crate::cell::abilities) async fn fire_cast(
                     phase: AbilityPhase::End,
                     entity_id,
                     ability_id,
-                    target_id,
+                    target_id: sequence_target,
                     instance_id: effect_seq,
                     event_set_id: def.event_set_id,
                 },
@@ -164,16 +185,69 @@ pub(in crate::cell::abilities) async fn fire_cast(
         return;
     }
 
+    fire_at_target(
+        CastIds {
+            entity_id,
+            ability_id,
+            target_id,
+            effect_seq,
+        },
+        ability_def,
+        &routed,
+        needs_ammo_stat_send,
+        tx,
+        space_mgr,
+    )
+    .await;
+
+    // The off-target effects land after the target has resolved, so a user
+    // buff never changes its own cast's roll, and whatever the target part
+    // did: no QR roll, so a miss never drops a user half, and no #444 gate
+    // (the launch already dropped a target it would refuse).
+    if !routed.landings.is_empty() {
+        land_routed(entity_id, ability_id, &routed, tx, space_mgr).await;
+    }
+
+    maybe_trigger_auto_reload(entity_id, needs_ammo_stat_send, ability_id, tx, space_mgr).await;
+}
+
+/// The ids of one cast.
+#[derive(Debug, Clone, Copy)]
+struct CastIds {
+    entity_id: u32,
+    ability_id: i32,
+    target_id: i32,
+    effect_seq: i32,
+}
+
+/// The target part of a non-beneficial cast (`routed.target_def`): the
+/// support shot, or the damage pipeline and the cone fan-out. Flushes the
+/// spent ammo on every path.
+async fn fire_at_target(
+    ids: CastIds,
+    ability_def: &Option<AbilityDef>,
+    routed: &RoutedCast,
+    needs_ammo_stat_send: bool,
+    tx: &mpsc::Sender<CellToBaseMsg>,
+    space_mgr: &mut SpaceManager,
+) {
+    let CastIds {
+        entity_id,
+        ability_id,
+        target_id,
+        effect_seq,
+    } = ids;
+
     // ── Combat resolution (if target specified) ──
 
-    if target_id <= 0 {
+    if target_id <= 0 || routed.target_has_nothing() {
         // Self-buff or no-target ability — skip damage but still flush any
         // dirty ammo stat (e.g. ground-targeted ability that consumed ammo
-        // without picking up a target via auto-aim).
+        // without picking up a target via auto-aim). A cast that routed
+        // every effect off its target has nothing to resolve on it either.
         if needs_ammo_stat_send {
             flush_attacker_ammo_stat(entity_id, tx, space_mgr).await;
         }
-        maybe_trigger_auto_reload(entity_id, needs_ammo_stat_send, ability_id, tx, space_mgr).await;
         return;
     }
 
@@ -193,7 +267,6 @@ pub(in crate::cell::abilities) async fn fire_cast(
             space_mgr,
         )
         .await;
-        maybe_trigger_auto_reload(entity_id, needs_ammo_stat_send, ability_id, tx, space_mgr).await;
         return;
     }
 
@@ -205,11 +278,13 @@ pub(in crate::cell::abilities) async fn fire_cast(
     crate::cell::effects::cancel_channels_from_attacker(entity_id, Some(ability_id), tx, space_mgr)
         .await;
 
+    // The target takes the cast minus its off-target halves.
+    let target_def = &routed.target_def;
     super::super::damage_apply::apply_damage_to_target(
         entity_id,
         target_id as u32,
         ability_id,
-        ability_def,
+        target_def,
         effect_seq as u32,
         needs_ammo_stat_send,
         tx,
@@ -227,7 +302,7 @@ pub(in crate::cell::abilities) async fn fire_cast(
         entity_id,
         target_id as u32,
         ability_id,
-        ability_def,
+        target_def,
         tx,
         space_mgr,
     )
@@ -241,6 +316,33 @@ pub(in crate::cell::abilities) async fn fire_cast(
             att.last_aoe_deaths.extend(cone_deaths);
         }
     }
+}
 
-    maybe_trigger_auto_reload(entity_id, needs_ammo_stat_send, ability_id, tx, space_mgr).await;
+/// Land a non-beneficial cast's off-target effects and log where they went.
+async fn land_routed(
+    entity_id: u32,
+    ability_id: i32,
+    routed: &RoutedCast,
+    tx: &mpsc::Sender<CellToBaseMsg>,
+    space_mgr: &mut SpaceManager,
+) {
+    let pulsing = land_effects(entity_id, &routed.landings, tx, space_mgr).await;
+    let who = space_mgr.player_identity(entity_id);
+    let landed: Vec<(i32, u32)> = routed
+        .landings
+        .iter()
+        .map(|l| (l.effect.effect_id, l.recipient))
+        .collect();
+    tracing::debug!(
+        target: "abilities",
+        event = "effect_routing_applied",
+        account_id = who.account_id,
+        player_id = who.player_id,
+        entity_id,
+        ability_id,
+        landed = ?landed,
+        pulsing_registered = pulsing,
+        target_effects = ?routed.target_def.as_ref().map(|d| d.effect_ids.as_slice()),
+        "off-target effects landed: user halves on the caster, beneficial area halves on allies"
+    );
 }

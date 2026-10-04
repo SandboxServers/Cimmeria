@@ -26,6 +26,7 @@ use super::messaging::{
 use super::rng::pseudo_random_seed;
 use ammo_splash::HitKind;
 use duel_gate::{clamp_source, player_hit_refusal};
+pub(in crate::cell::abilities) use effect_scripts::is_damage_script;
 
 /// Resolve damage from `entity_id` to `target_eid` for ability `ability_id`.
 ///

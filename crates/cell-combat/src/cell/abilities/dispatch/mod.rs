@@ -345,6 +345,13 @@ fn alive_snapshot(space_mgr: &SpaceManager, targets: &[(u32, f32)]) -> Vec<(u32,
 }
 
 /// Apply the AoE damage to each secondary target.
+///
+/// A secondary takes the ground cast's area part only
+/// ([`super::effect_routing::secondary_scope`], AB-07): the primary's own
+/// single-target damage and DoTs stay on the primary, and the user halves
+/// on the caster. Before AB-07 every secondary took the whole ability, so
+/// 3170 hit each one with its single-target 4728 and the per-effect NVP rule
+/// then dropped its radius 4729.
 async fn apply_secondaries(
     entity_id: u32,
     ability_id: i32,
@@ -353,6 +360,11 @@ async fn apply_secondaries(
     tx: &mpsc::Sender<CellToBaseMsg>,
     space_mgr: &mut SpaceManager,
 ) {
+    if secondaries.is_empty() {
+        return;
+    }
+    let scoped = super::effect_routing::secondary_scope(space_mgr, entity_id, ability_def);
+    let ability_def = &scoped;
     // Secondary targets: damage only, fresh effect_seq per target so the
     // client can correlate per-target effect packets independently. Each
     // `next_effect_id()` call mints a unique value off the attacker's
