@@ -57,6 +57,26 @@ suspended-process creation, ordered injection and `resume_running` primitives.
 The retained original Windows process handle avoids an OpenProcess race when
 SGW exits immediately. No legacy launcher source behavior changes.
 
+### Development resource staging
+
+Native Windows [run 37214723035](https://github.com/SandboxServers/Cimmeria/actions/runs/37214723035)
+at `d73eea0ed96e9dfbc91553101a3923300ab9e87c` passed the x86 helper's clippy/tests/build
+and built the patch DLL. Its logged SHA-256 values were checked while staging:
+
+| Resource | Kind for `tools/stage-helper.py` | SHA-256 |
+|---|---|---|
+| `cimmeria-launch-worker.exe` | `launch` | `ef3b74030f5d9e38c9ba5405897cb56f9a16bb1d3afe1613687c1845706b0c65` |
+| `cimmeria_client_patches.dll` | `client-patches` | `92cd8dc484781f9c04a8c1e816e10399bb74d9d1dc6399e4c09a710a2dcf289d` |
+
+Run the staging tool with the downloaded artifact path, `--kind`, `--sha256`
+from the trusted native build, and `--revision` with that full source SHA. It
+validates hash, PE32/x86 architecture and executable-versus-DLL role before
+replacement, then prints the shell's compile-time identity variable. The
+provenance receipt beside a resource is not a trust source. Three staging tests
+passed, including refusal to replace an existing resource on a wrong hash or
+wrong executable/DLL role. No actual Wine injection or rendering is proved by
+these builds or staging checks. Later code changes require new native artifacts.
+
 Observations distinguish:
 
 - `preparing`: retained worker admitted; no host observed.

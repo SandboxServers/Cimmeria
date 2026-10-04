@@ -159,7 +159,6 @@ impl DesktopState {
         Ok(state)
     }
 
-    #[cfg(any(target_os = "macos", test))]
     pub(crate) fn state_root(&self) -> &Path {
         &self.directory.root
     }

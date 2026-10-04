@@ -12,6 +12,43 @@ spec.loader.exec_module(module)
 
 
 class StagingTests(unittest.TestCase):
+    def test_launch_and_patch_roles_and_identity_preserve_existing_resources(self):
+        with tempfile.TemporaryDirectory() as root:
+            root = Path(root)
+            source = root / "resource"
+            target = root / "bundle"
+            target.mkdir()
+            data = bytearray(512)
+            data[:2] = b"MZ"
+            struct.pack_into("<I", data, 60, 128)
+            data[128:132] = b"PE\0\0"
+            struct.pack_into("<H", data, 132, 0x14C)
+            struct.pack_into("<H", data, 152, 0x10B)
+            for kind, filename, flags in [
+                ("launch", "cimmeria-launch-worker.exe", 0),
+                ("client-patches", "cimmeria_client_patches.dll", 0x2000),
+            ]:
+                with self.subTest(kind=kind):
+                    existing = target / filename
+                    existing.write_bytes(b"original")
+                    struct.pack_into("<H", data, 150, flags ^ 0x2000)
+                    source.write_bytes(data)
+                    with self.assertRaises(ValueError):
+                        module.stage(source, target, hashlib.sha256(data).hexdigest(),
+                                     "c" * 40, kind)
+                    self.assertEqual(existing.read_bytes(), b"original")
+                    struct.pack_into("<H", data, 150, flags)
+                    source.write_bytes(data)
+                    with self.assertRaises(ValueError):
+                        module.stage(source, target, "00" * 32, "c" * 40, kind)
+                    self.assertEqual(existing.read_bytes(), b"original")
+                    digest = hashlib.sha256(data).hexdigest()
+                    module.stage(source, target, digest, "c" * 40, kind)
+                    self.assertEqual(existing.read_bytes(), data)
+                    receipt = json.loads((target / module.HELPERS[kind][1]).read_text())
+                    self.assertEqual(receipt["sha256"], digest)
+                    self.assertEqual(receipt["target"], "i686-pc-windows-msvc")
+
     def test_identity_and_architecture_gate_precede_replacement(self):
         with tempfile.TemporaryDirectory() as root:
             root = Path(root)

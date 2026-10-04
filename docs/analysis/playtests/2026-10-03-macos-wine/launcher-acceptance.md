@@ -28,6 +28,27 @@ No merge, deployment, release publication or force-push is authorized.
 Workers isolate reserved-file changes in separate commits. Repair releases the
 frontend before Play wiring begins. Worker worktrees remain intact during review.
 
+### Integration wave
+
+Repair, Launch and migration engine commits are integrated in draft PR #1164 at
+`d73eea0ed96e9dfbc91553101a3923300ab9e87c`. Combined engine/probe validation passed
+330 tests with 15 opt-in cases ignored; strict all-target clippy passed on Mac.
+The native x86 helper workflow passed as run `37214723035`; the Windows desktop
+engine job exposed a macOS-only accessor gate, now corrected pending native rerun.
+
+- `launcher/repair-review-fixes` owns the actual backup-status correction and
+  production host preparation/commit/cancellation/recovery guards. Standards
+  review found two documented violations (test timeout and memory metadata);
+  Spec review found two partial requirements (backup status and native wiring
+  coverage). The coordinator fixed memory metadata; remaining fixes are active.
+- `launcher/play-integration` owns new Play host/workflow/view modules, app and
+  shell registration, and its UI. Repair fixes retain installation-status copy
+  ownership, including suppression of misleading Install labels during Launch.
+- Launch engine and migration engine workers have finished. Their handoffs are
+  `worknotes/launch-engine.md` and `worknotes/migration-engine.md`.
+- Migration UI, fresh engine reviews and updater research/implementation remain
+  queued. Observability remains reserved for the external Windows track.
+
 ## Requirement and evidence checklist
 
 | Required behavior or gate | Current evidence | Remaining verification / owner |

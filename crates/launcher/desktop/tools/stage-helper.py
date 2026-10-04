@@ -15,6 +15,10 @@ HELPERS = {
                 "x86_64-pc-windows-msvc", 0x8664, 0x20B, "CIMMERIA_WINDOWS_HELPER_SHA256"),
     "prerequisite": ("cimmeria-prerequisite-worker.exe", "prerequisite-helper-build.json",
                      "i686-pc-windows-msvc", 0x14C, 0x10B, "CIMMERIA_PREREQUISITE_HELPER_SHA256"),
+    "launch": ("cimmeria-launch-worker.exe", "launch-helper-build.json",
+               "i686-pc-windows-msvc", 0x14C, 0x10B, "CIMMERIA_LAUNCH_HELPER_SHA256"),
+    "client-patches": ("cimmeria_client_patches.dll", "client-patches-build.json",
+                       "i686-pc-windows-msvc", 0x14C, 0x10B, "CIMMERIA_CLIENT_PATCHES_SHA256"),
 }
 
 
@@ -39,6 +43,10 @@ def stage(source: Path, destination: Path, expected: str, revision: str,
         raise ValueError("invalid PE header")
     if struct.unpack_from("<H", data, offset + 4)[0] != machine or struct.unpack_from("<H", data, offset + 24)[0] != magic:
         raise ValueError(f"helper must match {target} PE architecture")
+    if kind in ("launch", "client-patches"):
+        is_dll = bool(struct.unpack_from("<H", data, offset + 22)[0] & 0x2000)
+        if is_dll != (kind == "client-patches"):
+            raise ValueError("launch resources must match their executable or DLL role")
     destination.mkdir(parents=True, exist_ok=True)
     with tempfile.NamedTemporaryFile(dir=destination, delete=False) as output:
         pending = Path(output.name)
