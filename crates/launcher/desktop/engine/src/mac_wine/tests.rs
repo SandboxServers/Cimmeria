@@ -246,3 +246,43 @@ printf '%s\n' '{}'
         2
     );
 }
+
+#[tokio::test]
+async fn cancelled_before_dispatch_never_starts_helper_or_server_cleanup() {
+    let (root, state, id, _) = fixture();
+    let intent = state.lock().unwrap().install_intent().unwrap().unwrap();
+    let (prefix, owner) = claim_prefix(
+        &root.path().canonicalize().unwrap().join("prefixes"),
+        &intent,
+    )
+    .unwrap();
+    let stage = intent.destination.join(format!(".cimmeria-stage-{id}"));
+    let cache = intent.destination.join(format!(".cimmeria-cache-{id}"));
+    let archive = cache.join("seed.zip");
+    let adapter = WineSeedExtractor {
+        state: state.clone(),
+        intent,
+        runtime: PathBuf::from("/must-not-run"),
+        helper: PathBuf::from("/missing-helper.exe"),
+        prefix,
+        _owner: owner,
+        used: std::sync::atomic::AtomicBool::new(false),
+        limits: Deadlines::default(),
+    };
+    let cancel = CancellationToken::new();
+    cancel.cancel();
+    assert!(matches!(
+        adapter
+            .extract(SeedExtraction {
+                archive: &archive,
+                destination: &stage,
+                sha256: &"00".repeat(32),
+                cancel,
+                progress: ProgressSink::latest().0
+            })
+            .await,
+        Err(InstallError::Cancelled)
+    ));
+    assert!(state.lock().unwrap().helper_record(id).unwrap().is_none());
+    assert!(!stage.exists());
+}

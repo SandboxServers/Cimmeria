@@ -65,3 +65,14 @@ test('resume reconnects progress observation and mounted cancel stays available'
    assert.equal(ui.get('cancel-install').hidden,true);assert.match(ui.get('install-status').textContent!,/Partial files are preserved/);
  }finally{await app.dispose();}
 });
+
+for (const [outcome, message] of [['rosetta_required', /Rosetta is required/], ['runtime_unavailable', /compatibility could not be prepared/]] as const) {
+ test(`native ${outcome} is readable and never enables Play`,async()=>{
+  const ui=dom();const status:InstallStatus={...initial(),outcome,native:{...initial().native,
+   operation:{schema_version:1,revision:2,operation:{id,kind:'install',intent_digest:Array(32).fill(0),state:'failed'}}}};
+  const app=mountInstall(ui.document,async()=>status);
+  try{await app.ready;await flush();assert.match(ui.get('install-status').textContent!,message);
+   assert.equal(ui.get('install').disabled,true);assert.equal(ui.get('cancel-install').hidden,true);
+  }finally{await app.dispose();}
+ });
+}

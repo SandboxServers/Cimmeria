@@ -21,6 +21,8 @@ pub enum Outcome {
     DestinationUnavailable,
     InstallFailed,
     ContentInvalid,
+    RosettaRequired,
+    RuntimeUnavailable,
     ReconciliationRequired,
 }
 
@@ -98,10 +100,16 @@ fn dispatch_with(
             manifest_url,
             http,
             ownership: None,
+            execution: Execution::Native,
         },
     ))
 }
 
+enum Execution {
+    Native,
+    #[cfg(target_os = "macos")]
+    Wine(PathBuf),
+}
 struct TaskInputs {
     intent: InstallIntent,
     state_root: PathBuf,
@@ -109,6 +117,7 @@ struct TaskInputs {
     manifest_url: String,
     http: reqwest::Client,
     ownership: Option<File>,
+    execution: Execution,
 }
 
 fn spawn_worker(
@@ -131,8 +140,26 @@ fn spawn_worker(
             manifest_url,
             http,
             ownership,
+            execution,
         } = input;
         let outcome = AssertUnwindSafe(async {
+            #[cfg(target_os = "macos")]
+            if let Execution::Wine(helper) = execution {
+                return wine::install(
+                    &owned_state,
+                    &intent,
+                    &state_root,
+                    &release,
+                    &manifest_url,
+                    &http,
+                    helper,
+                    owned_cancel,
+                    progress,
+                )
+                .await;
+            }
+            #[cfg(not(target_os = "macos"))]
+            let _ = execution;
             match ownership {
                 Some(_guard) => {
                     install_stage(
@@ -237,16 +264,25 @@ async fn install_stage(
         http,
     })
     .await;
+    finish_stage(intent, release, &stage, result)
+}
+
+fn finish_stage(
+    intent: &InstallIntent,
+    release: &VerifiedRelease,
+    stage: &Path,
+    result: Result<(), InstallError>,
+) -> Outcome {
     match result {
         Err(InstallError::Cancelled) => return Outcome::Cancelled,
         Err(InstallError::SeedExtractionUncertain) => return Outcome::ReconciliationRequired,
         Err(_) => return Outcome::InstallFailed,
         Ok(()) => (),
     }
-    if !content_valid(&stage, release) {
+    if !content_valid(stage, release) {
         return Outcome::ContentInvalid;
     }
-    promote(intent, &stage)
+    promote(intent, stage)
 }
 
 fn promote(intent: &InstallIntent, stage: &Path) -> Outcome {
@@ -343,3 +379,8 @@ mod tests;
 
 mod resume;
 pub use resume::{resume, ResumeError};
+
+#[cfg(target_os = "macos")]
+mod wine;
+#[cfg(target_os = "macos")]
+pub use wine::dispatch_wine;

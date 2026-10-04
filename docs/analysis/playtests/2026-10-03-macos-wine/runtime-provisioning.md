@@ -235,3 +235,19 @@ This advances extraction evidence beyond the earlier ZIP fixture. It does not
 prove patching, fresh-prefix game prerequisites, launch/login or gameplay, and
 its debug-helper timing is not a release benchmark. Production coordination,
 Mac UI installation and distribution clearance remain open.
+
+
+## Retained worker integration — 2026-10-04
+
+The native `dispatch_wine` API now validates admitted runtime/helper identity
+before Running and connects retained destination ownership, Wine provisioning,
+fresh-stage seed extraction, native patch/client setup and checked promotion.
+A fixture passed this chain after observer disposal in 22.596 seconds. Strengthened duplicate/cancellation checks also passed (19.090-second run),
+including cancellation before runtime/cache/prefix/helper/network work. Strict
+engine clippy and thirteen shell tests passed; final engine suite passed 204 tests with eight ignored entries. Typed Rosetta/runtime preparation
+failures are decoded in the frontend, with consent unaffected in logic UAT.
+
+The shell still lacks build-pinned resource binding and rejects Mac installation.
+Wine resume/recovery remains unsupported; local helper hashing is not a packaged
+artifact trust policy. Real-client patching, prerequisites, launch/gameplay and
+native visual UAT remain separate gates.

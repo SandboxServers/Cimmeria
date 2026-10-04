@@ -205,6 +205,9 @@ impl SeedExtractor for WineSeedExtractor {
             {
                 return Err(uncertain());
             }
+            if request.cancel.is_cancelled() {
+                return Err(InstallError::Cancelled);
+            }
             if self.used.swap(true, std::sync::atomic::Ordering::SeqCst) {
                 return Err(uncertain());
             }
@@ -242,7 +245,9 @@ impl SeedExtractor for WineSeedExtractor {
             let outcome = outcome.map_err(|_| uncertain())?;
             match outcome {
                 Outcome::Completed => Ok(()),
-                Outcome::Cancelled => Err(InstallError::Cancelled),
+                Outcome::Cancelled | Outcome::NotStarted(helper_supervisor::Fault::Cancelled) => {
+                    Err(InstallError::Cancelled)
+                }
                 Outcome::ReconciliationRequired(_) => Err(uncertain()),
                 _ => Err(InstallError::Io(std::io::Error::other(
                     "Wine seed extraction failed",
@@ -250,6 +255,19 @@ impl SeedExtractor for WineSeedExtractor {
             }
         })
     }
+}
+pub(crate) fn validate_helper(intent: &InstallIntent, path: &Path) -> Result<(), WineError> {
+    let ExtractionBackend::Wine {
+        runtime_sha256,
+        helper_sha256,
+    } = &intent.backend
+    else {
+        return Err(WineError::Invalid);
+    };
+    if hex(runtime_sha256) != mac_runtime::ARCHIVE_SHA256 {
+        return Err(WineError::Invalid);
+    }
+    verify_file(path, helper_sha256)
 }
 fn hex(bytes: &[u8]) -> String {
     bytes.iter().map(|byte| format!("{byte:02x}")).collect()

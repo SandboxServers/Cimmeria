@@ -81,6 +81,7 @@ fn resume_with(
             manifest_url,
             http,
             ownership: Some(ownership),
+            execution: Execution::Native,
         }
     };
     Ok(spawn_worker(runtime, state, id, input))

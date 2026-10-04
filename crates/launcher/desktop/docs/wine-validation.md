@@ -15,7 +15,8 @@ Historical packet results live in the implementation ledger.
 `engine/src/archive_worker/` defines a one-request extraction contract and
 portable stdio mechanics. `cimmeria-archive-worker` is operational only when
 built natively on Windows; non-Windows entry points exit with an error. The
-production desktop coordinator does not yet invoke it. The experimental Wine
+Mac shell does not yet invoke it; the retained native Wine worker is described
+in the desktop README. The experimental Wine
 adapter and its validation boundaries are described below.
 
 Input is NDJSON, bounded to 8,192 bytes per frame including the newline. An
@@ -104,9 +105,8 @@ not prove power-loss durability or runtime compatibility.
 Download waits observe cancellation. Tar extraction is not immediately
 interruptible: cancellation is checked before publication. The blocking task
 owns the lock, archive and staging directory, so dropping an observer cannot
-remove staging while tar is writing. No production coordinator calls this module
-yet. The experimental adapter below adds Wine execution/private prefixes; game
-prerequisites and production coordination remain unimplemented.
+remove staging while tar is writing. The experimental adapter and retained native
+worker use this cache; shell resource binding and game prerequisites remain open.
 
 The pinned-archive extraction/full-tree smoke passed when explicitly invoked
 with `CIMMERIA_RUNTIME_ARCHIVE`; its normal suite entry remains ignored without
@@ -136,7 +136,8 @@ through the supervisor callback before request delivery, and persists the
 observed result before returning it. Callers must map journal errors to
 reconciliation. They must still validate runtime/helper artifacts and
 host-to-guest paths and keep this future in native operation scope. The
-production Wine adapter and prefix lifecycle are not connected.
+retained Wine worker uses this wrapper; production shell resource binding and
+restart/prefix recovery remain unconnected.
 
 The real-stdio owned-wrapper fixture checks that the child sees `HostStarted`
 before extraction input and that completion is persisted. Journal tests preserve
@@ -171,8 +172,8 @@ strict all-target engine clippy passed. External-asset smokes run separately. Pr
 Wineboot/wineserver processes. No frontend changed, so frontend UAT was not
 rerun.
 
-The adapter is not wired into the shell or production install coordinator. Mac
-installation remains disabled. The smoke proves fixture ZIP extraction only.
+The adapter is connected to the retained native `dispatch_wine` worker, but not
+to shell resource selection. Mac installation remains disabled. The smoke proves fixture ZIP extraction only.
 The original client RAR/chained-cabinet smoke subsequently passed, as recorded
 below. Prerequisites, game launch and distribution clearance remain unproven.
 
@@ -223,3 +224,16 @@ original RAR/chained-cabinet extraction through the
 managed Wine/helper path. It does not establish patch application, prerequisites,
 game launch, login or gameplay. The debug-helper duration is not a release
 performance benchmark. Mac shell installation remains disabled.
+
+
+The retained-worker fixture additionally passed Wine seed extraction followed by
+a native ZIP patch, client preparation and receipt publication after observer
+disposal (22.596 seconds). Both strengthened ignored checks passed in a 19.090-second run, including
+duplicate rejection and cancellation before cache/prefix/helper/network work.
+Strict engine clippy and thirteen shell tests passed; final engine suite passed 204 tests with eight ignored entries. This is distinct from the original-RAR extraction smoke:
+no original-client patch/prerequisite/gameplay result is implied.
+
+The adapter checks cancellation before helper dispatch and preserves a supervisor
+`NotStarted(Cancelled)` outcome as cancellation. Seven adapter tests passed; the
+pre-cancel fixture proves no helper journal, output or attempt to execute its
+nonexistent helper. That early exit also avoids starting prefix cleanup commands.

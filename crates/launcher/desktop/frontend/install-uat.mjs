@@ -39,5 +39,15 @@ assert.equal(ui.document.getElementById('install').textContent,'Content prepared
 assert.equal(ui.document.getElementById('install').disabled,true);
 assert.equal(status.native.preferences.launcher_summary_consent,false);
 await ui.app.dispose();
-console.log('PASS: install, progress, explicit cancel, reconnect without replay, completion wins cancellation, no Play/consent inference.');
+// Reopen failed native preparation states through the actual Effect decoder/view.
+for(const [outcome,pattern] of [['rosetta_required',/Rosetta is required/],['runtime_unavailable',/compatibility could not be prepared/]]) {
+ status={...status,outcome,native:{...status.native,operation:{...status.native.operation,revision:status.native.operation.revision+1,
+  operation:{...status.native.operation.operation,state:'failed'}}}};
+ ui=mount();await ui.app.ready;await settle(ui.app);
+ assert.match(ui.document.getElementById('install-status').textContent,pattern);
+ assert.equal(ui.document.getElementById('install').disabled,true);
+ assert.equal(status.native.preferences.launcher_summary_consent,false);
+ await ui.app.dispose();
+}
+console.log('PASS: Rosetta/runtime failure decoding and reopened feedback;  install, progress, explicit cancel, reconnect without replay, completion wins cancellation, no Play/consent inference.');
 console.log('NOT COVERED: native install IPC/filesystem, actual downloads/Wine, visual layout, OS dialogs, login/gameplay.');

@@ -676,3 +676,19 @@ prerequisites, launch, login or gameplay. The debug-helper duration is not a
 release performance benchmark; Mac shell installation remains disabled.
 Helper-journal CI `37191310279` passed both platforms at `ef10c31f9`; that earlier
 revision does not validate subsequent Wine changes.
+
+
+### 2026-10-04: retained native Wine worker integration
+
+Added `dispatch_wine`: validate durable backend/runtime/helper identity before
+Running, claim the destination, prepare Wine and run the shared seed adapter,
+then apply native patches/client setup and publish checked content/receipt.
+The retained task survives observer disposal. RosettaRequired/RuntimeUnavailable
+outcomes now decode to frontend messages without altering diagnostics consent.
+
+The explicit retained-worker fixture passed in 22.596 seconds with Wine seed,
+native ZIP patch and receipt after observer drop. Both strengthened ignored checks passed in a 19.090-second run: duplicate
+rejection and cancellation before runtime cache/prefix/helper/network. Strict
+engine clippy and thirteen shell tests passed; final engine suite passed 204 tests with eight ignored entries. Frontend tests 25, check/build and sequential logic UAT passed. No visual UAT was performed. Mac shell install remains disabled pending
+trusted resource binding; native Wine recovery remains rejected. No end-user
+Mac-install or game-readiness claim follows from this native API.

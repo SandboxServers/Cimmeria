@@ -54,6 +54,8 @@ export function mountInstall(document:Document,invoke:Invoke,uuid:()=>string=()=
       else if(recovery)text='An interrupted installation was found. Inspect files or explicitly resume the saved attempt.';
       else if(active)text=operation?.state==='cancel_requested'?'Cancellation requested. Waiting for the installer to stop safely.':
         status.progress?.phase==='download'?'Downloading verified game content…':status.progress?.phase==='extraction'?'Extracting game content…':'Preparing installation…';
+      else if(status.outcome==='rosetta_required')text='Rosetta is required to prepare Windows game compatibility on this Mac. No game was launched.';
+      else if(status.outcome==='runtime_unavailable')text='Windows compatibility could not be prepared. Check your connection and available disk space. Existing files have been preserved.';
       else if(operation)text='Installation stopped. Partial files are preserved. Retry and cleanup are not connected in this build.';
       else if(!status.install_supported)text='Mac compatibility setup is still in development. Settings and Patch Notes are available.';
       else text=status.native.preferences.install_directory?'Ready to install game content.':'Choose an empty game folder in Settings to begin.';

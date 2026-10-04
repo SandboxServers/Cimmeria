@@ -549,3 +549,28 @@ runs this installation logic UAT. The separate `npm run uat` against the Rust
 earlier approved settings preview predates these controls; their native visual,
 keyboard and actual Tauri IPC UAT remain unverified. No real game or runtime
 readiness is established by frontend tests.
+
+
+## Retained Wine content worker
+
+`install_worker::dispatch_wine` connects an admitted Wine intent to a retained
+native task. It validates backend/runtime/helper identity before committing
+`running`, then claims the destination, prepares the Wine adapter and invokes
+the shared seed pipeline with separate cache and fresh staging. Patch overlays
+and client setup remain native; ordinary content checks, promotion and receipt
+publication follow extraction. Observer disposal does not abort the task.
+
+`RosettaRequired` and `RuntimeUnavailable` outcomes now have typed frontend
+messages, distinct from cancellation and uncertainty. The shell still rejects
+Mac install/resume: packaged resource identity is not bound yet. A caller hashing
+a local helper file is not an artifact trust policy. Native Wine recovery remains
+rejected; this API does not enable end-user Mac installation.
+
+An explicitly run retained-worker fixture passed in 22.596 seconds, combining
+Wine seed extraction, a native ZIP patch and content receipt after its observer
+was dropped. Both strengthened ignored checks passed in a 19.090-second run: duplicate
+dispatch was rejected, and immediate cancellation preceded runtime cache, prefix,
+helper and network work. Strict engine clippy and thirteen shell tests passed; the final engine suite
+passed 204 tests with eight ignored entries. Twenty-five frontend tests, checking/build and sequential JS logic UAT passed,
+including new failure decoding and preserved consent. Native visual UAT was not
+performed. These fixtures do not establish real game prerequisites or readiness.
