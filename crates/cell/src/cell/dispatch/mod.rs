@@ -32,8 +32,11 @@
 
 use cimmeria_cell_world::cell::dispatch::gm_gate;
 use cimmeria_wire::cell::dispatch::{constants, names};
+pub mod ability_receipt;
 mod router;
 
+#[cfg(test)]
+mod ability_receipt_tests;
 #[cfg(test)]
 mod gm_ability_dispatch_tests;
 #[cfg(test)]

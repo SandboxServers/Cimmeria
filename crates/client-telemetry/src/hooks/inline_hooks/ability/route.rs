@@ -11,6 +11,7 @@ use crate::hooks::ability_trace::decode::{self, ArgBag, DecodedCall, MethodSpec,
 use crate::hooks::ability_trace::layout::{self, RoutePre};
 use crate::hooks::ability_trace::press::{self, RouteOutcome};
 use crate::hooks::ability_trace::seq_join::SentTag;
+use crate::hooks::ability_trace::timing::{with_timing, Timing};
 use crate::hooks::ability_trace::{now_ms, Out, TARGET_SENT};
 use crate::hooks::entity_trace::map::{LiveMem, Mem};
 use crate::msvc_string::{self, Width};
@@ -215,9 +216,11 @@ impl RouteProbe {
         let pending = with_pending(|t| t.take(b.spec.name, self.call.ability_id, now));
         match press::route_outcome(reached, b.pre) {
             RouteOutcome::Sent => {
+                let press_to_sent_ms = pending.map(|p| now.saturating_sub(p.at_ms));
                 let ctx = SendCtx {
                     send_id: next_send_id(),
                     press_id: pending.map(|p| p.press_id),
+                    press_to_sent_ms,
                     msg_id: b.msg_id,
                     sub_index: b.sub_index,
                     route: super::super::net_out::route_of(b.flags),
@@ -230,6 +233,20 @@ impl RouteProbe {
                         method: b.spec.name,
                         ability_id: self.call.ability_id,
                     })
+                });
+                // AB-C6: the press-to-send interval, and the send held
+                // open for its first answer.
+                if let Some(ms) = press_to_sent_ms {
+                    Timing::press_sent(b.spec.name, ms);
+                }
+                with_timing(|t| {
+                    t.note_sent(
+                        ctx.send_id,
+                        ctx.press_id,
+                        b.spec.name,
+                        self.call.ability_id,
+                        now,
+                    )
                 });
                 vec![Out {
                     target: TARGET_SENT,

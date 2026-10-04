@@ -134,9 +134,12 @@ pub(crate) fn report(
     } else {
         None
     };
-    recv_methods::resolve(msg.msg_id, msg.receiver, first)?;
+    let (method, _) = recv_methods::resolve(msg.msg_id, msg.receiver, first)?;
     let bytes = read((msg.len as usize).min(MAX_ARG_BYTES))?;
-    let (level, key, fields) = event(msg, &bytes)?;
+    let (level, key, mut fields) = event(msg, &bytes)?;
+    // AB-C6: join the send this answers and remember the receive for the
+    // applied row, before the bucket, so a suppressed row still counts.
+    super::timing::annotate_recv(&mut fields, method.name, super::now_ms());
     // A decode failure is evidence and bypasses the bucket; the governor
     // keeps it as a warn.
     if level == "warn" {
@@ -368,6 +371,30 @@ mod tests {
         reads.borrow_mut().clear();
         let _ = report(&msg(19, Receiver::Other, 16), read);
         assert_eq!(*reads.borrow(), vec![1, 16]);
+    }
+
+    /// AB-C6: a synthetic cast. The client sent ability 31999; the first
+    /// `onEffectResults` naming it carries the send's ids and the interval
+    /// on the client clock, and the next one does not.
+    #[test]
+    fn the_first_answer_to_a_send_carries_its_interval() {
+        use crate::hooks::ability_trace::{now_ms, timing};
+        let sent_at = now_ms();
+        timing::with_timing(|t| {
+            t.note_sent(77_001, Some(77_002), "useAbility", Some(31_999), sent_at)
+        });
+        let mut b = i32s(&[100, 31_999, 555, 200]);
+        b.push(0);
+        b.extend_from_slice(&0u32.to_le_bytes());
+        let read = |n: usize| Some(b[..n.min(b.len())].to_vec());
+        let (_, f) = report(&msg(14, Receiver::Other, b.len()), read).unwrap();
+        assert_eq!(get(&f, "send_id"), json!(77_001));
+        assert_eq!(get(&f, "press_id"), json!(77_002));
+        assert_eq!(get(&f, "sent_method"), json!("useAbility"));
+        let ms = get(&f, "sent_to_recv_ms").as_u64().unwrap();
+        assert!(ms <= now_ms() - sent_at, "{ms}");
+        let (_, again) = report(&msg(14, Receiver::Other, b.len()), read).unwrap();
+        assert_eq!(get(&again, "send_id"), Value::Null);
     }
 
     /// An `onPlayerCommunication` cut before its channel is a layout fault:

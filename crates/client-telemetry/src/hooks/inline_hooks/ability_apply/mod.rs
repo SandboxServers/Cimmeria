@@ -113,7 +113,12 @@ pub(super) fn is_local_player(id: Option<i32>) -> bool {
 }
 
 /// Emit one applied event through the per-name bucket `key`.
-pub(super) fn report(key: &str, level: &'static str, fields: Fields) {
+pub(super) fn report(key: &str, level: &'static str, mut fields: Fields) {
+    // AB-C6: the interval since the receive that fed this handler.
+    crate::hooks::ability_trace::timing::annotate_applied(
+        &mut fields,
+        crate::hooks::ability_trace::now_ms(),
+    );
     if let Some(f) = admit(key, || fields) {
         emit(TARGET_APPLIED, level, f);
     }

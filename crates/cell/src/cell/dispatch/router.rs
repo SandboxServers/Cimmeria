@@ -49,6 +49,10 @@ pub async fn dispatch_cell_method(
         tracing::Span::current().record("space_id", e.space_id.0);
     }
 
+    // The receipt row of an ability method (AB-C7), before the GM gate so
+    // a refused `gmDebug*` call still records that it arrived.
+    super::ability_receipt::log_receipt(entity_id, method_index, args, packet_seq, space_mgr);
+
     // Server-authority GM gate (#475 / CAT-N-03). For GM/debug method
     // indices, reject any caller whose `CellEntity::access_level` is below
     // GameMaster *before* the method reaches a handler. Ordinary player

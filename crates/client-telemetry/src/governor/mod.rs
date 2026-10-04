@@ -28,6 +28,7 @@
 //! pre-governor stream. The `raw` capture switch turns the governor off for
 //! the upload path too.
 
+pub mod ability_timing;
 pub mod budget;
 pub mod classify;
 pub mod collapse;
@@ -415,6 +416,11 @@ impl Governor {
         f.insert("upload_dropped_total".into(), json!(drops.upload_dropped));
         let level = if new_drops { "warn" } else { "info" };
         self.push_generated(event(HEALTH_TARGET, level, now_ms, f), out);
+        // The AB-C6 timing histograms ride the health cadence (and the
+        // shutdown flush): one event per non-empty series.
+        for f in ability_timing::drain() {
+            self.push_generated(event(ability_timing::TIMING_TARGET, "info", now_ms, f), out);
+        }
     }
 
     fn forward(&mut self, ev: ClientNativeEvent, out: &mut Vec<ClientNativeEvent>) {

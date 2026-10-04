@@ -55,6 +55,7 @@ One line per topic file; the detail lives in the file. Keep hooks short (this in
 - [game-clock-and-timer-expiry-tests.md](game-clock-and-timer-expiry-tests.md) — client clock is ticks / hertz; expiries = `game_time_secs() + d`.
 - [cooked-data-full-resync.md](cooked-data-full-resync.md) — #840: paced full resync (RequiredUpdates=0), misses jump the stream, Play held for 6 no-miss-path categories.
 - [cooked-item-additions-shape.md](cooked-item-additions-shape.md) — real shipped COOKED_ITEM shape (not alphabetical); new ids via ITEM_ADDITIONS; AmmoType_Icons = EAmmoType labels.
+- [ability-telemetry-coverage-gate.md](ability-telemetry-coverage-gate.md) — AB-C7: script set + four scanned code tables + client declaration; AB-C6 timing tables are process-global.
 
 ## Lab supervisor
 

@@ -28,6 +28,7 @@
 //! | `onErrorCode` | `system_id`, `instance_id`, `error_code`, `reason`; `ability_id` when the system is the ability system |
 //! | `onStateFieldUpdate` | `state_field`, `prev_state_field`, `bits_set`, `bits_cleared` (when the caller knew the old value), `refcounts` (`bit:count,…` after the change), `reason` |
 //! | `onSequence` | `sequence_id`, `source_id`, `target_id`, `instance_id`, `ability_id`, `reason` (`ability_begin` \| `ability_end` \| `ability_interrupt` \| `death`) |
+//! | `onPlayerCommunication` | `channel`, `text` (the first 200 characters), `reason`: the ability feedback lines |
 //!
 //! **Volume.** A fan-out is one row with its witness count, never a row per
 //! witness. The decode runs only when the row is enabled, so a production
@@ -37,6 +38,8 @@
 //! "wire_send_failed"`); a send the queue refused for every recipient
 //! writes no row.
 
+#[cfg(test)]
+mod coverage;
 mod decode;
 mod row;
 

@@ -79,7 +79,11 @@ unsafe extern "thiscall-unwind" fn state_field_update_detour(
     let _ = std::panic::catch_unwind(|| {
         let Some((id, old)) = before else { return };
         let new = word_at(this, BEING_STATE);
-        let f = crate::hooks::ability_trace::applied::state_flag_fields(id, old, new);
+        let mut f = crate::hooks::ability_trace::applied::state_flag_fields(id, old, new);
+        crate::hooks::ability_trace::timing::annotate_applied(
+            &mut f,
+            crate::hooks::ability_trace::now_ms(),
+        );
         let key = format!(
             "applied:state_flag:{}",
             crate::hooks::ability_trace::whose(super::ability_apply::is_local_player(id))

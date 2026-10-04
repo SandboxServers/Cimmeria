@@ -228,6 +228,14 @@ pub(super) fn emit(
             reason = ctx.reason,
             "onSequence queued for the client"
         ),
+        Decoded::Communication { channel, ref text } => wire_row!(
+            c,
+            ability_id = ctx.ability_id,
+            channel,
+            text = text.as_str(),
+            reason = ctx.reason,
+            "onPlayerCommunication queued for the client"
+        ),
         Decoded::Other | Decoded::Short => wire_row!(
             c,
             ability_id = ctx.ability_id,
