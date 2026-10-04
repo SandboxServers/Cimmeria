@@ -399,7 +399,9 @@ pub(in crate::cell::service) async fn npc_respawn_tick(
             respawn_secs,
             world_name = %world_name,
             state_field,
+            state_field_names = %cimmeria_wire::state_field::STATE_FLAGS.render(state_field),
             interaction_flags,
+            interaction_flags_names = %cimmeria_entity::interaction_flags::INTERACTION_FLAGS.render(interaction_flags),
             witness_count = witnesses.len(),
             recreated,
             "NPC respawned (Dead -> Idle, HP restored, position snapped, re-created on witness clients)"

@@ -71,7 +71,9 @@ pub async fn dispatch(
                         entity_id,
                         respawner_id,
                         state_flags_before = b.0,
+                        state_flags_before_names = %cimmeria_wire::state_field::STATE_FLAGS.render(b.0),
                         state_flags_after = a.0,
+                        state_flags_after_names = %cimmeria_wire::state_field::STATE_FLAGS.render(a.0),
                         was_dead = b.0 & dead != 0,
                         dead_flag_cleared = b.0 & dead != 0 && a.0 & dead == 0,
                         health_before = b.1,
@@ -299,6 +301,7 @@ fn respawn_refusal(
             respawner_id = respawner_id.unwrap_or(-1),
             method,
             state_field = e.state_field,
+            state_field_names = %cimmeria_wire::state_field::STATE_FLAGS.render(e.state_field),
             reason = "respawn_not_dead",
             "respawn request from a living player -- refused (no heal, no move); \
              only a dead player's Defeat Window may call for aid or respawn"

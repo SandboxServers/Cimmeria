@@ -169,6 +169,47 @@ async fn the_refusal_is_logged_with_its_ray() {
     assert!(row.has_field("world", "Castle_CellBlock"), "{row:?}");
 }
 
+/// The refusal row and the cell's `wire_sent` row for the `onErrorCode`
+/// both carry `error_name` from the NameBook next to `error_code` 39
+/// (NT-31). The book is the process's global one, so this stores a book
+/// holding the seed's name for 39 and puts an empty one back after.
+#[tokio::test]
+async fn the_refusal_rows_name_error_39() {
+    let Some(occ) = cellblock_occluder() else {
+        return;
+    };
+    let mut book = cimmeria_names::NameBook::empty();
+    book.insert(
+        cimmeria_names::Table::ErrorTexts,
+        39,
+        "CONDITION_FEEDBACK_LOS",
+    );
+    cimmeria_names::global().store(book);
+    let cap = crate::test_support::LogCapture::install();
+    tracing::callsite::rebuild_interest_cache();
+    let mut mgr = scene(Some(occ), HALLWAY02_VICTIM, HALLWAY02_GUARD);
+    let _ = fire(&mut mgr).await;
+    cimmeria_names::global().store(cimmeria_names::NameBook::empty());
+    let rows = cap.all();
+    let refusal = rows
+        .iter()
+        .find(|r| r.target == "abilities" && r.has_field("event", "los_refused"))
+        .unwrap_or_else(|| panic!("no los_refused row: {rows:?}"));
+    assert!(refusal.has_field("error_code", "39"), "{refusal:?}");
+    assert!(
+        refusal.has_field("error_name", "CONDITION_FEEDBACK_LOS"),
+        "{refusal:?}"
+    );
+    let wire = rows
+        .iter()
+        .find(|r| r.has_field("event", "wire_sent") && r.has_field("error_code", "39"))
+        .unwrap_or_else(|| panic!("no onErrorCode wire_sent row: {rows:?}"));
+    assert!(
+        wire.has_field("error_name", "CONDITION_FEEDBACK_LOS"),
+        "{wire:?}"
+    );
+}
+
 /// Lomiada's 13.6 u spot sees `Hallway01_Guard` over its counter: the shot
 /// commits and no error goes out.
 #[tokio::test]

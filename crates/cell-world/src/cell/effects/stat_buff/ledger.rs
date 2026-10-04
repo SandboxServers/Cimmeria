@@ -255,6 +255,7 @@ impl SpaceManager {
             duration_secs = out.applied.duration_secs,
             held = out.applied.expires_at.is_none(),
             state_flags = out.applied.state_flags,
+            state_flags_names = %cimmeria_wire::state_field::STATE_FLAGS.render(out.applied.state_flags),
             beneficial,
             replaced_effect_ids = ?out.replaced.iter().map(|b| b.effect_id).collect::<Vec<_>>(),
             "timed effect applied"
@@ -429,6 +430,7 @@ pub(super) fn log_removed(
         restored = ?entry.stats.iter().map(|s| (s.stat_id, -s.requested)).collect::<Vec<_>>(),
         absorb_left = ?entry.absorb.iter().map(|p| (p.stat_id, p.remaining)).collect::<Vec<_>>(),
         state_flags = entry.state_flags,
+        state_flags_names = %cimmeria_wire::state_field::STATE_FLAGS.render(entry.state_flags),
         stat_before = ?stat_before,
         stat_after = ?stat_after,
         "timed effect removed"

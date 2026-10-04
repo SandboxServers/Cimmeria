@@ -164,25 +164,27 @@ fn log_effect_flag_categories_no_op_on_zero_flags() {
 /// "interrupt_chance" and 12 as "stun"; the real bits are named here.
 #[test]
 fn effect_flag_names_are_the_client_eeffectflag_tokens() {
-    use super::flag_categories::{effect_flag_names, EFFECT_FLAG_NAMES};
+    use super::flag_categories::EFFECT_FLAGS;
     // The whole table, against the client's declaration (not a copy).
     let client: Vec<(i64, String)> =
         crate::cell::abilities::enumerations_xml::tokens("EEffectFlag");
-    let ours: Vec<(i64, String)> = EFFECT_FLAG_NAMES
+    let ours: Vec<(i64, String)> = EFFECT_FLAGS
+        .entries()
         .iter()
-        .map(|&(bit, name)| (i64::from(bit), name.to_string()))
+        .map(|&(bit, name)| (bit as i64, name.to_string()))
         .collect();
-    assert_eq!(ours, client, "EFFECT_FLAG_NAMES must equal EEffectFlag");
-    // And the lookup reads it: one bit per name, mixed rows split.
+    assert_eq!(ours, client, "EFFECT_FLAGS must equal EEffectFlag");
+    // And the rendering reads it: one bit per name, mixed rows split.
     for (bit, name) in &client {
-        assert_eq!(effect_flag_names(*bit as u32), vec![name.as_str()]);
+        assert_eq!(EFFECT_FLAGS.render(*bit as u32).to_string(), *name);
     }
     assert_eq!(
-        effect_flag_names(144),
-        vec!["EF_DontUseQR", "EF_SequenceOnPulse"]
+        EFFECT_FLAGS.render(144u32).to_string(),
+        "EF_DontUseQR|EF_SequenceOnPulse"
     );
+    // A bit past the client's last token is kept, as hex.
     let past_last = client.last().map(|(v, _)| (*v as u32) << 1).unwrap();
-    assert!(effect_flag_names(past_last).is_empty());
+    assert_eq!(EFFECT_FLAGS.render(past_last).to_string(), "0x2000000");
     // Every bit is logged without panicking, unknown ones included.
     for bit in 0..32 {
         let effect = EffectDef {
@@ -193,6 +195,29 @@ fn effect_flag_names_are_the_client_eeffectflag_tokens() {
         };
         log_effect_flag_categories(10, 20, 30, &effect);
     }
+}
+
+/// The emitted row carries the bit names next to the raw word (NT-31), with
+/// an undefined bit kept as hex. Removing `flags_names` from the event
+/// fails this.
+#[test]
+fn effect_flag_row_carries_flags_names() {
+    let capture = crate::test_support::LogCapture::install();
+    let effect = EffectDef {
+        effect_id: 5066,
+        ability_id: 1,
+        flags: 144 | (1 << 30),
+        ..Default::default()
+    };
+    log_effect_flag_categories(10, 20, 30, &effect);
+    let row = capture
+        .find_message(tracing::Level::DEBUG, "effect carries EEffectFlag bits")
+        .expect("effect flag row");
+    assert!(
+        row.has_field("flags_names", "EF_DontUseQR|EF_SequenceOnPulse|0x40000000"),
+        "{row:#?}"
+    );
+    assert!(row.has_field("flags", "1073741968"), "{row:#?}");
 }
 
 // ── fan_out_cone_effects integration tests ──────────────────────────────

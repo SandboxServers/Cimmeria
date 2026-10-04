@@ -183,7 +183,13 @@ async fn handle_datagram(
     // Not yet connected -- only accept the unencrypted Phase 3 login (flags=0x41).
     let login_flags = FLAG_HAS_REQUESTS | FLAG_HAS_SEQUENCE; // 0x41
     if raw[0] != login_flags {
-        tracing::trace!(%addr, flags = raw[0], "Ignoring packet from unknown addr (flags={:#04x})", raw[0]);
+        tracing::trace!(
+            %addr,
+            flags = raw[0],
+            flags_names = %cimmeria_mercury::packet::PACKET_FLAGS.render(raw[0]),
+            "Ignoring packet from unknown addr (flags={:#04x})",
+            raw[0]
+        );
         return Ok(());
     }
 

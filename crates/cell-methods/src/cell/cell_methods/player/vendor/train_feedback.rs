@@ -118,6 +118,7 @@ pub(super) async fn send_reject_feedback(
             ability_id,
             reason = reject.reason(),
             error_code = code,
+            error_name = cimmeria_names::book().error_code(code),
             error = %e,
             "trainAbility: rejection onErrorCode could not be queued (base channel closed)"
         );

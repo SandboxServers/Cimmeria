@@ -121,6 +121,7 @@ pub async fn update_state_flag(
         tracing::warn!(
             entity_id,
             flag,
+            flag_names = %cimmeria_wire::state_field::STATE_FLAGS.render(flag),
             set,
             error = %e,
             reason = "cell_to_base_send_failed",

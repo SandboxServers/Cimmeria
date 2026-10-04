@@ -228,7 +228,9 @@ pub async fn handle_set_rank_permissions(
             org_id,
             rank = edit.rank.as_u8(),
             from_mask = edit.from.bits(),
+            from_mask_names = %cimmeria_entity::organization::ORG_PERMISSIONS.render(edit.from.bits()),
             to_mask = edit.to.bits(),
+            to_mask_names = %cimmeria_entity::organization::ORG_PERMISSIONS.render(edit.to.bits()),
             officer_notes_sync = edit.note_sync.is_some(),
             "organization rank permissions changed"
         );

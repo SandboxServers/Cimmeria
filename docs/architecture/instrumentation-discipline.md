@@ -407,7 +407,8 @@ comes from, so every call site resolves it the same way.
 | `player_id` | `player_name` | The session, or `sgw_player` |
 | `org_id` | `org_name` | Organizations |
 | `archetype` | `archetype_name` | `archetype_name()` |
-| `error_code`, `moniker_id` | `error_name`, `moniker_name` | `error_texts.moniker_name`, `monikers.name` |
+| `error_code`, `moniker_id` | `error_name`, `moniker_name` | `error_texts.moniker_name`, `monikers.name`. `error_name` is reserved for `error_texts`: a code from another vocabulary names its domain, as the Black Market's `error_id` pairs with `bm_error` (the `BMError` variant) |
+| A bitflag word (`state_field`, `flags`, `interaction_flags`, `recipient_flags`, `from_mask`, …) | `<key>_names` | The flag set's `FlagSet` table (`cimmeria_common::flag_names`), rendered `A\|B\|C` with unknown bits as one hex remainder; see [negative-logging-convention.md § Field naming rules](negative-logging-convention.md#field-naming-rules). Not on rows exported per packet or per tick (NT-31) |
 | `opcode`, `msg_id` | `msg_name` | The NT-30 Mercury message table (system frames such as `AUTHENTICATE` included; `wire-log` already uses `msg_name`) |
 | `method_id`, `method_index` | `method_name` | The NT-30 method table, per entity type (clientIndex). A `msg_id` in an entity-method range carries both `msg_name` and `method_name` |
 

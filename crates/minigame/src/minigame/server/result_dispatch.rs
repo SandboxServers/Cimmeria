@@ -62,6 +62,7 @@ pub(super) async fn send_minigame_result(
             entity_id,
             game = %game_name,
             result_code,
+            result = cimmeria_wire::cell::client_methods::minigame::minigame_result_name(result_code),
             chain_count,
             phase,
             "Minigame: result delivery failed -- chains will not fire: {e}"
@@ -107,12 +108,26 @@ mod tests {
             event
         );
         assert!(
+            event.has_field("result", "victory"),
+            "the result code is named next to its number (NT-31): {event:#?}"
+        );
+        assert!(
             event.has_field("chain_count", "2"),
             "chain_count must reflect the on_victory_chains length so a \
              quest-stall investigation can correlate the count of lost \
              chains: {:#?}",
             event
         );
+    }
+
+    /// The log name of every code this server sends (NT-31).
+    #[test]
+    fn result_codes_have_log_names() {
+        use cimmeria_wire::cell::client_methods::minigame::minigame_result_name;
+        assert_eq!(minigame_result_name(RESULT_CANCELED), Some("canceled"));
+        assert_eq!(minigame_result_name(RESULT_VICTORY), Some("victory"));
+        assert_eq!(minigame_result_name(RESULT_DEFEAT), Some("defeat"));
+        assert_eq!(minigame_result_name(3), None);
     }
 
     /// Happy-path: receiver alive, exactly one `MinigameResult` arrives

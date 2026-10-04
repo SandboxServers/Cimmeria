@@ -104,6 +104,7 @@ fn emit(
         player_id = who.player_id,
         is_player = s.is_player,
         state_field = s.state_field,
+        state_field_names = %cimmeria_wire::state_field::STATE_FLAGS.render(s.state_field),
         pending_cast_id = s.pending_cast.as_ref().map(|p| p.cast_id),
         pending_ability_id = s.pending_cast.as_ref().map(|p| p.ability_id),
         cooldowns = s.cooldowns.len(),

@@ -195,6 +195,7 @@ pub(super) async fn apply_death_transition(
                 player_entity_id,
                 dying_npc = target_eid,
                 new_state,
+                new_state_names = %cimmeria_wire::state_field::STATE_FLAGS.render(new_state),
                 "death: clearing player BSF_InCombat (last threatened mob died)"
             );
             wire_ledger::send(
@@ -231,6 +232,7 @@ pub(super) async fn apply_death_transition(
             player_entity_id,
             dying_target = target_eid,
             new_state,
+            new_state_names = %cimmeria_wire::state_field::STATE_FLAGS.render(new_state),
             "death: clearing player auto-cycle loop (target died)"
         );
         crate::cell::abilities::send_auto_cycle_state(player_entity_id, new_state, tx, space_mgr)
@@ -268,6 +270,7 @@ pub(super) async fn apply_death_transition(
                 event = "death_own_auto_cycle_cleared",
                 player_entity_id = target_eid,
                 new_state,
+                new_state_names = %cimmeria_wire::state_field::STATE_FLAGS.render(new_state),
                 "death: clearing dying player's own auto-cycle loop"
             );
             crate::cell::abilities::send_auto_cycle_state(target_eid, new_state, tx, space_mgr)

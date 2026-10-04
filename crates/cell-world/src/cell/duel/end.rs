@@ -257,6 +257,7 @@ pub async fn end_engaged(
         loser_player_id = loser,
         winner_player_id = loser.and_then(|l| duel.opponent_of(l)),
         defeat_reason = defeat.map(|(_, r)| r.value()),
+        defeat_reason_name = defeat.map(|(_, r)| tracing::field::debug(r)),
         killer_entity_id = killer,
         clamped,
         "duel ended: PvP flags, duel entities and the combat pair cleared"

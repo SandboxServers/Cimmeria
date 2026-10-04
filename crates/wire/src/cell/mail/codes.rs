@@ -45,6 +45,28 @@ pub mod flags {
         | MAIL_TO_COMMAND_RANK5
         | MAIL_TO_COMMAND_RANK6
         | MAIL_TO_COMMAND_RANK7;
+
+    /// `EMailFlags` names, for log lines (`recipient_flags_names`, NT-31).
+    /// A word exactly equal to one of the two multi-bit values (4092, 8196)
+    /// renders as that token alone. What those values mean is still open
+    /// (D-BV29), so the log shows the client's token and settles nothing.
+    pub const MAIL_FLAGS: cimmeria_common::flag_names::FlagSet =
+        cimmeria_common::flag_names::FlagSet::new(&[
+            (MAIL_ARCHIVE as u64, "MAIL_Archive"),
+            (MAIL_COD as u64, "MAIL_COD"),
+            (MAIL_TO_VAULT as u64, "MAIL_ToVault"),
+            (MAIL_TO_TEAM as u64, "MAIL_ToTeam"),
+            (MAIL_TO_COMMAND as u64, "MAIL_ToCommand"),
+            (MAIL_TO_COMMAND_OFFICERS as u64, "MAIL_ToCommandOfficers"),
+            (MAIL_TO_COMMAND_RANK0 as u64, "MAIL_ToCommandRank0"),
+            (MAIL_TO_COMMAND_RANK1 as u64, "MAIL_ToCommandRank1"),
+            (MAIL_TO_COMMAND_RANK2 as u64, "MAIL_ToCommandRank2"),
+            (MAIL_TO_COMMAND_RANK3 as u64, "MAIL_ToCommandRank3"),
+            (MAIL_TO_COMMAND_RANK4 as u64, "MAIL_ToCommandRank4"),
+            (MAIL_TO_COMMAND_RANK5 as u64, "MAIL_ToCommandRank5"),
+            (MAIL_TO_COMMAND_RANK6 as u64, "MAIL_ToCommandRank6"),
+            (MAIL_TO_COMMAND_RANK7 as u64, "MAIL_ToCommandRank7"),
+        ]);
 }
 
 /// `EMailResultCodes`: `sendMailResult`'s `ResultCode` byte. The client's

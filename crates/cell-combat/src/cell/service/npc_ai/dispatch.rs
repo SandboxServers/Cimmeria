@@ -74,6 +74,7 @@ pub(in crate::cell::service) fn npc_is_incapacitated(
             tag = e.tag.as_deref().unwrap_or(""),
             ai_state = ?e.ai_state(),
             state_field = e.state_field,
+            state_field_names = %cimmeria_wire::state_field::STATE_FLAGS.render(e.state_field),
             suppressed,
             "npc_ai: skipping NPC at 0 HEALTH with no BSF_DEAD — a kill path \
              zeroed health without running abilities::death::resolve_death"

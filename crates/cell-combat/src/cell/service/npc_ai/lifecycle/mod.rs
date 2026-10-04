@@ -238,6 +238,7 @@ pub(super) async fn npc_ai_submit(
             player_entity_id,
             npc_id,
             new_state,
+            new_state_names = %cimmeria_wire::state_field::STATE_FLAGS.render(new_state),
             "NPC AI: submit — clearing attacker BSF_InCombat (surrendered NPC was their last threat)"
         );
         send_entity_method(

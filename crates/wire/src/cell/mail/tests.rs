@@ -216,6 +216,34 @@ fn mail_flags_match_enumerations_xml() {
     }
 }
 
+/// The log-name table spells every `EMailFlags` token as the client does,
+/// and a vault send renders by name (NT-31).
+#[test]
+fn mail_flag_names_match_enumerations_xml() {
+    let xml = xml_enum("EMailFlags");
+    let ours: std::collections::BTreeMap<String, i64> = flags::MAIL_FLAGS
+        .entries()
+        .iter()
+        .map(|&(m, n)| (n.to_owned(), m as i64))
+        .collect();
+    assert_eq!(ours, xml);
+    assert_eq!(
+        flags::MAIL_FLAGS.render(flags::MAIL_TO_VAULT).to_string(),
+        "MAIL_ToVault"
+    );
+    // The two anomalous values (audit A-12) render as the one token the
+    // client sent, not as the single bits they overlap. What they mean is
+    // still open (D-BV29); when that is decided, this output may change.
+    assert_eq!(
+        flags::MAIL_FLAGS.render(4092).to_string(),
+        "MAIL_ToCommandRank6"
+    );
+    assert_eq!(
+        flags::MAIL_FLAGS.render(8196).to_string(),
+        "MAIL_ToCommandRank7"
+    );
+}
+
 /// Every `EMailResultCodes` value equals the client's token, and the enum
 /// has no value the client does not.
 #[test]

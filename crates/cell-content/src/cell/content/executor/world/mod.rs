@@ -45,9 +45,14 @@ pub(super) async fn set_interaction_type(
                 "set" => target.interaction_type_flags = mask,
                 _ => tracing::warn!(%operation, "Unknown interaction type operation"),
             }
+            let names = &cimmeria_entity::interaction_flags::INTERACTION_FLAGS;
             tracing::debug!(
                 entity_id, %entity_tag, target_id, %operation, mask,
-                old, new = target.interaction_type_flags, chain_id,
+                mask_names = %names.render(mask),
+                old, old_names = %names.render(old),
+                new = target.interaction_type_flags,
+                new_names = %names.render(target.interaction_type_flags),
+                chain_id,
                 "Content: set interaction type"
             );
             Some(target.interaction_type_flags)

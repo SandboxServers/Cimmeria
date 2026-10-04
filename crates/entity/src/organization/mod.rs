@@ -24,7 +24,7 @@ pub use limits::{
     MAX_RANK_NAME_UNITS, MAX_SQUAD_SIZE, MIN_NAME_UNITS, SQUAD_ORG_ID_MAX, SQUAD_ORG_ID_MIN,
 };
 pub use org_text::{TextField, TextReject};
-pub use permissions::{default_rank_permissions, OrgPermission, PermEditReject};
+pub use permissions::{default_rank_permissions, OrgPermission, PermEditReject, ORG_PERMISSIONS};
 pub use types::{CashDir, OrgLeaveReason, OrgRank, OrgType, SquadLootType, UnknownValue};
 
 #[cfg(test)]

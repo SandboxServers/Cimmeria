@@ -122,6 +122,7 @@ pub fn interact_no_effect(
             npc_name,
             tag,
             interaction_flags,
+            interaction_flags_names = %cimmeria_entity::interaction_flags::INTERACTION_FLAGS.render(interaction_flags),
             count,
             window_secs = INTERACT_WINDOW.as_secs(),
             "friction: player keeps interacting with a target and nothing happens -- likely a missing handler or an inert dialog set"

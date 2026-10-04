@@ -1,7 +1,7 @@
 # Unpaired ID fields per file (Rule 6, NT-03). Only ever lowered.
 # Regenerate after pairing fields: NT_BASELINE_BLESS=1 cargo nextest run -p cimmeria-server unpaired_id
 # See crates/server/src/logging/unpaired_id_tests/mod.rs.
-# total 7039
+# total 7027
 crates/admin-api/src/routes/dev_session/handlers.rs 2
 crates/admin-api/src/routes/telemetry/handlers.rs 14
 crates/admin-api/src/routes/telemetry/replay.rs 33
@@ -179,7 +179,7 @@ crates/base-world-entry/src/base/world_entry/cell_dispatch/bandolier.rs 16
 crates/base-world-entry/src/base/world_entry/cell_dispatch/chat_dispatch.rs 3
 crates/base-world-entry/src/base/world_entry/cell_dispatch/deferred_flush.rs 7
 crates/base-world-entry/src/base/world_entry/cell_dispatch/gate_teleport_dispatch.rs 2
-crates/base-world-entry/src/base/world_entry/cell_dispatch/method_delivery.rs 39
+crates/base-world-entry/src/base/world_entry/cell_dispatch/method_delivery.rs 38
 crates/base-world-entry/src/base/world_entry/cell_dispatch/minigame.rs 5
 crates/base-world-entry/src/base/world_entry/cell_dispatch/org_dispatch.rs 19
 crates/base-world-entry/src/base/world_entry/cell_dispatch/player_ghost.rs 4
@@ -249,9 +249,9 @@ crates/cell-combat/src/cell/abilities/timer_update.rs 4
 crates/cell-combat/src/cell/abilities/use_ability/auto_cycle_commit.rs 9
 crates/cell-combat/src/cell/abilities/use_ability/auto_reload.rs 4
 crates/cell-combat/src/cell/abilities/use_ability/beneficial.rs 31
-crates/cell-combat/src/cell/abilities/use_ability/cast_range.rs 10
+crates/cell-combat/src/cell/abilities/use_ability/cast_range.rs 9
 crates/cell-combat/src/cell/abilities/use_ability/fire.rs 16
-crates/cell-combat/src/cell/abilities/use_ability/fire_los.rs 22
+crates/cell-combat/src/cell/abilities/use_ability/fire_los.rs 20
 crates/cell-combat/src/cell/abilities/use_ability/gate_rows.rs 3
 crates/cell-combat/src/cell/abilities/use_ability/handle.rs 6
 crates/cell-combat/src/cell/abilities/use_ability/incapacitated.rs 4
@@ -260,7 +260,7 @@ crates/cell-combat/src/cell/abilities/use_ability/no_mechanics.rs 8
 crates/cell-combat/src/cell/abilities/use_ability/not_known.rs 4
 crates/cell-combat/src/cell/abilities/use_ability/owner_pet/feedback.rs 6
 crates/cell-combat/src/cell/abilities/use_ability/owner_pet/fire.rs 6
-crates/cell-combat/src/cell/abilities/use_ability/owner_pet/launch.rs 12
+crates/cell-combat/src/cell/abilities/use_ability/owner_pet/launch.rs 10
 crates/cell-combat/src/cell/abilities/use_ability/owner_pet/tick.rs 12
 crates/cell-combat/src/cell/abilities/use_ability/sequence.rs 26
 crates/cell-combat/src/cell/abilities/use_ability/shield_full.rs 4
@@ -272,7 +272,7 @@ crates/cell-combat/src/cell/abilities/use_ability/warmup/pet_order.rs 22
 crates/cell-combat/src/cell/abilities/use_ability/warmup/tick.rs 14
 crates/cell-combat/src/cell/abilities/use_ability/weapon_gate.rs 13
 crates/cell-combat/src/cell/abilities/use_ability/weapon_redirect.rs 6
-crates/cell-combat/src/cell/abilities/wire_ledger/row.rs 27
+crates/cell-combat/src/cell/abilities/wire_ledger/row.rs 26
 crates/cell-combat/src/cell/cell_methods/inventory/bandolier/active_slot.rs 34
 crates/cell-combat/src/cell/cell_methods/inventory/bandolier/ammo_change.rs 25
 crates/cell-combat/src/cell/cell_methods/inventory/bandolier/switch_return.rs 24
@@ -435,7 +435,7 @@ crates/cell-interactions/src/cell/interactions/dispatch/mod.rs 8
 crates/cell-interactions/src/cell/interactions/loot/mod.rs 20
 crates/cell-interactions/src/cell/interactions/loot/restore.rs 18
 crates/cell-interactions/src/cell/interactions/org_registrar.rs 12
-crates/cell-interactions/src/cell/interactions/respec_feedback.rs 2
+crates/cell-interactions/src/cell/interactions/respec_feedback.rs 1
 crates/cell-interactions/src/cell/interactions/trainer.rs 20
 crates/cell-interactions/src/cell/interactions/vendor.rs 7
 crates/cell-interactions/src/cell/mail.rs 10
@@ -473,7 +473,7 @@ crates/cell-methods/src/cell/cell_methods/player/vendor/mod.rs 16
 crates/cell-methods/src/cell/cell_methods/player/vendor/respec.rs 11
 crates/cell-methods/src/cell/cell_methods/player/vendor/session.rs 11
 crates/cell-methods/src/cell/cell_methods/player/vendor/train.rs 41
-crates/cell-methods/src/cell/cell_methods/player/vendor/train_feedback.rs 3
+crates/cell-methods/src/cell/cell_methods/player/vendor/train_feedback.rs 2
 crates/cell-methods/src/cell/cell_methods/player/world/auto_cycle.rs 18
 crates/cell-methods/src/cell/cell_methods/player/world/mod.rs 10
 crates/cell-methods/src/cell/cell_methods/player/world/system_options.rs 4
@@ -484,7 +484,7 @@ crates/cell-org/src/cell/organization/squad/membership.rs 6
 crates/cell-org/src/cell/organization/squad/ping.rs 4
 crates/cell-org/src/cell/organization/squad/world_entry.rs 3
 crates/cell-pets/src/cell/cell_methods/player/pet/invoke.rs 7
-crates/cell-pets/src/cell/cell_methods/player/pet/mod.rs 24
+crates/cell-pets/src/cell/cell_methods/player/pet/mod.rs 21
 crates/cell-pets/src/cell/cell_methods/player/pet/stance.rs 9
 crates/cell-pets/src/cell/cell_methods/player/pet/toggle.rs 11
 crates/cell-world/src/cell/combat_debug/commands.rs 4

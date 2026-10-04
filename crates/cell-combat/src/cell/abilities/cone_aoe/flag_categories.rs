@@ -10,10 +10,13 @@
 //! is ClearOnDeath + SequenceOnStart), so its labels were wrong on every
 //! row (ability-mechanics B-25, fixed by AB-06).
 
+use cimmeria_common::flag_names::FlagSet;
 use cimmeria_entity::abilities::EffectDef;
 
 /// Every `EEffectFlag` token, in bit order (`enumerations.xml:1094-1123`).
-pub(super) const EFFECT_FLAG_NAMES: [(u32, &str); 25] = [
+/// Log sites pair an effect's `flags` word with `EFFECT_FLAGS.render(..)`
+/// (NT-31).
+pub(crate) const EFFECT_FLAGS: FlagSet = FlagSet::new(&[
     (1, "EF_Beneficial_Effect"),
     (2, "EF_Offline_Time_Counts"),
     (4, "EF_ClearOnDeath"),
@@ -39,23 +42,11 @@ pub(super) const EFFECT_FLAG_NAMES: [(u32, &str); 25] = [
     (4_194_304, "EF_CalculateQRFromTarget"),
     (8_388_608, "EF_PromptConfirmationDialog"),
     (16_777_216, "EF_SequenceOnConfirmation"),
-];
-
-/// Every bit a client `EEffectFlag` defines.
-const KNOWN_EFFECT_FLAG_BITS: u32 = (1 << 25) - 1;
-
-/// The `EEffectFlag` names set in `flags`, in bit order.
-pub(crate) fn effect_flag_names(flags: u32) -> Vec<&'static str> {
-    EFFECT_FLAG_NAMES
-        .iter()
-        .filter(|(bit, _)| flags & bit != 0)
-        .map(|&(_, name)| name)
-        .collect()
-}
+]);
 
 /// Log the `EEffectFlag` bits an effect carries. Nothing is logged for an
-/// effect with no flags. Bits the client enum does not define are logged
-/// as `unknown_bits` instead of being dropped.
+/// effect with no flags. Bits the client enum does not define show as a
+/// hex remainder in `flags_names` instead of being dropped.
 pub fn log_effect_flag_categories(
     entity_id: u32,
     target_id: u32,
@@ -74,8 +65,7 @@ pub fn log_effect_flag_categories(
         ability_id,
         effect_id = effect.effect_id,
         flags,
-        categories = ?effect_flag_names(flags),
-        unknown_bits = flags & !KNOWN_EFFECT_FLAG_BITS,
+        flags_names = %EFFECT_FLAGS.render(flags),
         "effect carries EEffectFlag bits"
     );
 }

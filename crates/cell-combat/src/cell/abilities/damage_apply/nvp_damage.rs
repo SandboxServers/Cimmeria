@@ -263,6 +263,7 @@ pub(super) fn apply_nvp_damage(
             focus_base = entry.focus,
             qr_rand = qr.qr_rand,
             result_code = qr.result_code,
+            result = super::qr_gate::result_label(qr.result_code),
             reason = if entry.unrolled { "dont_use_qr" } else { "hit_roll" },
             damage_type,
             health_before,

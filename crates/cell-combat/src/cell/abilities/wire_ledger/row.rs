@@ -212,6 +212,7 @@ pub(super) fn emit(
                 system_id,
                 instance_id,
                 error_code,
+                error_name = cimmeria_names::book().error_code(error_code),
                 reason = ctx.reason,
                 "onErrorCode queued for the client"
             );
@@ -221,9 +222,15 @@ pub(super) fn emit(
             wire_row!(
                 c,
                 state_field,
+                state_field_names = %cimmeria_wire::state_field::STATE_FLAGS.render(state_field),
                 prev_state_field = prev,
+                prev_state_field_names = prev.map(|p| tracing::field::display(cimmeria_wire::state_field::STATE_FLAGS.render(p))),
                 bits_set = prev.map(|p| state_field & !p),
+                bits_set_names = prev
+                    .map(|p| tracing::field::display(cimmeria_wire::state_field::STATE_FLAGS.render(state_field & !p))),
                 bits_cleared = prev.map(|p| p & !state_field),
+                bits_cleared_names = prev
+                    .map(|p| tracing::field::display(cimmeria_wire::state_field::STATE_FLAGS.render(p & !state_field))),
                 refcounts = space_mgr
                     .map(|m| refcounts(m, entity_id))
                     .unwrap_or_default()
