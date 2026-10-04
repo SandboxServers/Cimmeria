@@ -23,27 +23,42 @@ impl SpaceManager {
             world_name.to_string(),
             GRID_CELL_SIZE,
         );
-        // Try to load navmesh for this space
-        let nav_name = world_name.to_lowercase().replace(' ', "_");
-        let nav_path = format!("data/spaces/{nav_name}.nav");
-        let navmesh = match NavMesh::load(std::path::Path::new(&nav_path)) {
-            Ok(nm) => {
-                super::movement_telemetry::log_navmesh_loaded(
-                    space_id,
-                    world_name,
-                    nm.fingerprint(),
-                );
-                Some(nm)
-            }
-            Err(e) => {
+        // The world's own `.nav`, else its client map's (D-DA5, see
+        // `space_files`).
+        let world_id = cimmeria_wire::mercury::world_data::known_world_id(world_name);
+        let navmesh = match super::space_files::resolve_space_file(
+            &self.space_data_dir,
+            world_name,
+            "nav",
+        ) {
+            Ok(file) => match NavMesh::load(&file.path) {
+                Ok(nm) => {
+                    super::movement_telemetry::log_navmesh_loaded(
+                        space_id,
+                        world_name,
+                        world_id,
+                        file.source.label(),
+                        nm.fingerprint(),
+                    );
+                    Some(nm)
+                }
+                Err(e) => {
+                    tracing::warn!(target: "movement.navmesh", space_id, world = %world_name,
+                        world_id, path = %file.path.display(), file_source = file.source.label(),
+                        error = %e, reason = "navmesh_load_failed",
+                        "navmesh: .nav failed to load -- NPCs here path in straight lines through geometry and LoS/position checks fail open");
+                    None
+                }
+            },
+            Err(nav_path) => {
                 // Every navmesh consumer fails OPEN without a mesh
                 // (`find_path` -> None -> straight-line fallbacks,
                 // `has_line_of_sight` / `is_position_valid` -> true), so
                 // NPCs in this space path blind through geometry. That is
                 // not an "optional" condition, so surface it.
                 tracing::warn!(target: "movement.navmesh", space_id, world = %world_name,
-                    path = %nav_path, error = %e, reason = "navmesh_missing",
-                    "navmesh: no .nav file for space -- NPCs here path in straight lines through geometry and LoS/position checks fail open");
+                    world_id, path = %nav_path.display(), reason = "navmesh_missing",
+                    "navmesh: no .nav file for space or its client map -- NPCs here path in straight lines through geometry and LoS/position checks fail open");
                 None
             }
         };
@@ -58,7 +73,7 @@ impl SpaceManager {
             navmesh,
             occluder,
         };
-        tracing::debug!(space_id, world = %world_name, "Created space instance");
+        tracing::debug!(space_id, world = %world_name, world_id, "Created space instance");
         self.spaces.insert(space_id, instance);
     }
 

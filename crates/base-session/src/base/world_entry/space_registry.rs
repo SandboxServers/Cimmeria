@@ -5,7 +5,7 @@
 use std::collections::HashMap;
 use std::sync::Mutex;
 
-use crate::mercury::world_data::historical_cellblocks::historical_cellblock;
+use crate::mercury::world_data::added_worlds::added_world;
 use crate::mercury::DEFAULT_SPACE_ID;
 
 /// Thread-safe space registry mapping world_name -> space_id.
@@ -42,13 +42,24 @@ pub fn world_for_space(space_id: u32) -> Option<&'static str> {
 /// Hardcoded space ID fallback (used when CellService oneshot fails or is unavailable).
 ///
 /// `None` means there is no safe fallback and the caller must fail closed.
-/// That is the answer for the historical CellBlock worlds (1201–1207): the
-/// unknown-world default below is the stock `Castle_CellBlock` space, and a
-/// world-entry packet naming it for a player bound for `CellBlock43` would
-/// hand the client the stock map's space id for an entity the cell never
-/// placed there.
+/// That is the answer for every Cimmeria-added world (the historical
+/// CellBlocks 1201–1207 and the Debug Area 1300, see
+/// [`crate::mercury::world_data::added_worlds`]): the unknown-world default
+/// below is the stock `Castle_CellBlock` space, and a world-entry packet
+/// naming it for a player bound for `CellBlock43` or `DebugArea` would hand
+/// the client the stock map's space id for an entity the cell never placed
+/// there.
+///
+/// Shipped worlds other than the three listed still take that default. It
+/// is just as wrong for them, but failing them closed too is not safe yet:
+/// the no-cell paths (`cell_tx = None`) the gate-travel round-trip tests
+/// drive (`services::gate_round_trip_tests`, travelling to Castle) depend on
+/// it, and the real fix is a failure channel on the `CreateEntity` reply
+/// (see the KNOWN GAP in the cell's `handle_create_entity`), not a longer
+/// refusal list.
 pub fn resolve_space_id_fallback(world_name: &str) -> Option<u32> {
-    if historical_cellblock(world_name).is_some() {
+    // The callers log the refusal (`reason = "no_safe_space_fallback"`).
+    if added_world(world_name).is_some() {
         return None;
     }
     Some(match world_name {

@@ -1,5 +1,5 @@
 use super::space_registry::resolve_space_id_fallback;
-use crate::mercury::world_data::historical_cellblocks::HISTORICAL_CELLBLOCKS;
+use crate::mercury::world_data::historical_cellblocks::historical_cellblocks;
 use crate::mercury::DEFAULT_SPACE_ID;
 
 #[test]
@@ -31,7 +31,7 @@ fn historical_cellblocks_never_fall_back_into_the_stock_cellblock_space() {
         resolve_space_id_fallback("Castle_CellBlock"),
         Some(DEFAULT_SPACE_ID)
     );
-    for world in &HISTORICAL_CELLBLOCKS {
+    for world in historical_cellblocks() {
         assert_eq!(
             resolve_space_id_fallback(world.world),
             None,
@@ -39,4 +39,29 @@ fn historical_cellblocks_never_fall_back_into_the_stock_cellblock_space() {
             world.world
         );
     }
+}
+
+/// The Debug Area (1300) is shared, not instanced, but it has no stand-in
+/// space either: the default would put a player bound for `DebugArea` in the
+/// stock CellBlock space. Every added world fails closed; a shipped world the
+/// table does not list keeps the old default (see the function's docs for
+/// why that is not widened yet).
+#[test]
+fn every_added_world_fails_closed_including_the_debug_area() {
+    use crate::mercury::world_data::added_worlds::ADDED_WORLDS;
+
+    assert_eq!(resolve_space_id_fallback("DebugArea"), None);
+    for world in &ADDED_WORLDS {
+        assert_eq!(
+            resolve_space_id_fallback(world.world),
+            None,
+            "{}",
+            world.world
+        );
+    }
+    assert_eq!(
+        resolve_space_id_fallback("Ihpet_Crater_Light"),
+        Some(DEFAULT_SPACE_ID),
+        "the shipped map the Debug Area plays on is not an added world"
+    );
 }

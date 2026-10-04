@@ -6,6 +6,7 @@
 use super::*;
 
 mod ability_tree_info;
+mod added_worlds;
 mod bag_info;
 mod bandolier;
 mod entity_encoding;

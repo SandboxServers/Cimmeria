@@ -1,7 +1,7 @@
 # Cover Extraction (UE3 `.umap` → `resources.cover_*` seeds)
 
-> **Last updated**: 2026-09-25
-> **Status**: Castle_CellBlock (world 12) and Castle (world 8) extracted and seeded (NA21). Other worlds still have no cover rows.
+> **Last updated**: 2026-10-04
+> **Status**: Castle_CellBlock (world 12) and Castle (world 8) extracted and seeded (NA21); DebugArea (world 1300, the Ihpet_Crater_Light map) added by DA-01. Other worlds still have no cover rows.
 > **Evidence**: [cover-world-placement.md](../reverse-engineering/findings/cover-world-placement.md) (where the data lives), [cover-system.md](../reverse-engineering/findings/cover-system.md) (enum meanings, runtime slot layout)
 
 How the NPC cover system and the content engine's `player_entered_cover`
@@ -75,7 +75,9 @@ A cover set is what an NPC reserves against and what
   order, and node ids run 0.. within a set. The same client build always
   produces the same ids. A different build may renumber them.
 
-Result: Castle_CellBlock has 58 sets and Castle has 481. Most sets have 1
+Result: Castle_CellBlock has 58 sets, Castle has 481 and DebugArea has 706
+(6,324 nodes from the Ihpet_Crater_Light map, set ids 130000001 to
+130000706, inside `i32`). Most sets have 1
 to 8 nodes. The largest is 105 nodes in a 17 × 14 m courtyard in Castle.
 The desk is set **1200001**.
 
@@ -108,13 +110,15 @@ as the only decoder for that format.
 cargo run --release -p cimmeria-navmesh-extractor --bin cover_extract -- \
   --map "12=Castle_CellBlock=<CookedPC>/Maps/Castle_CellBlock" \
   --map "8=Castle=<CookedPC>/Maps/Castle" \
+  --map "1300=DebugArea=<CookedPC>/Maps/Ihpet_Crater_Light" \
   --sets-out db/resources/AI/Seed/cover_sets.sql \
   --nodes-out db/resources/AI/Seed/cover_nodes.sql \
   --client-build "Stargate Worlds-QA/Working (SGW.exe QA client, SGWGame/CookedPC)"
 ```
 
 `--map` takes `<world_id>=<world name>=<map directory>`, using `=` because
-a Windows path contains `:`. List every world that should have cover. The
+a Windows path contains `:`. The world name need not match the map: world
+1300 `DebugArea` is extracted from the `Ihpet_Crater_Light` map directory. List every world that should have cover. The
 tool rewrites both files whole, and a world you leave out loses its rows.
 It prints one summary line per map, with node, set and pattern counts,
 defaults applied and nodes skipped, and writes the same lines into both

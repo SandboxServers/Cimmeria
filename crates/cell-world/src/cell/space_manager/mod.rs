@@ -66,6 +66,7 @@ pub use crate::test_fixtures::occluder_fixtures;
 mod occlusion;
 pub use occlusion::{eye_height_for, occluder_probe, DEFAULT_EYE_HEIGHT, RESIDENCY_RADIUS};
 mod queries;
+mod space_files;
 mod spatial;
 pub use spatial::AttackLosPolicy;
 mod spawn;
@@ -419,6 +420,12 @@ pub struct SpaceManager {
     /// Loaded occluders by world file key (`castle_cellblock`), misses
     /// included; see `SpaceManager::occluder_for_world`.
     pub occluders: HashMap<String, Option<std::sync::Arc<cimmeria_occluder::PagedOccluder>>>,
+    /// World name key -> the `occluders` key its `.occ` resolved to: the
+    /// world's own, or its client map's (D-DA5, `space_files`).
+    pub(crate) occluder_files: HashMap<String, String>,
+    /// Where `.nav` / `.occ` files load from: `data/spaces` under the CWD.
+    /// A field so a test can point it at the repo copy.
+    pub space_data_dir: std::path::PathBuf,
     /// The residency gauges last reported per world key; see
     /// `SpaceManager::refresh_occluder_residency`.
     pub(crate) occluder_residency: HashMap<String, occlusion::ResidencyGauge>,
@@ -585,6 +592,8 @@ impl SpaceManager {
             ability_sequence_log: LogThrottle::default(),
             npc_detectors: Default::default(),
             occluders: HashMap::new(),
+            occluder_files: HashMap::new(),
+            space_data_dir: std::path::PathBuf::from(space_files::SPACE_DATA_DIR),
             occluder_residency: HashMap::new(),
             body_set_eye_heights: HashMap::new(),
             cover: super::cover::Cover::empty(),

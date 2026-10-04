@@ -35,16 +35,16 @@ The handoff reports that each VPatch output matched the destination MD5 stored i
 
 | Piece | Where | What it does |
 |---|---|---|
-| The table | `crates/wire/src/mercury/world_data/historical_cellblocks.rs` | `HISTORICAL_CELLBLOCKS`, the one Rust copy of the contract above |
+| The table | `crates/wire/src/mercury/world_data/added_worlds.rs` | `ADDED_WORLDS`, the one Rust copy of the contract above, shared since DA-01 with the Debug Area (1300); `historical_cellblocks()` / `historical_cellblock()` in `historical_cellblocks.rs` filter it to these seven |
 | World id and client map | `world_id_for_name`, `client_map_for_world` in `crates/wire/src/mercury/world_data/mod.rs` | `onClientMapLoad` sends `areaName = CellBlock43`, `mapPath = C43485_CellBlock`, `WorldID = 1201`; `setupWorldParameters` sends 1201 |
 | Seed | `db/resources/Worlds/Seed/worlds.sql` | Seven rows: `flags = 1`, `has_script = false`, `navmesh_mode = 'advisory'`, and the stock CellBlock row's movement values copied verbatim |
 | Spaces | `entities/spaces.xml` | Seven `Instanced="true"` entries with the stock CellBlock bounds; none in `entities/cell_spaces.xml` |
 | Client world table | `crates/resources/src/base/world_info_overrides.rs` | Seven `COOKED_WORLD_INFO` entries pushed per key on category 12; see [World info overrides](../../architecture/mission-pak-overrides.md#world-info-overrides-category-12) |
-| Fail-closed fallback | `resolve_space_id_fallback` in `crates/base-session/src/base/world_entry/space_registry.rs` | Returns `None` for these worlds. Gate travel ends the session and login refuses the entry, instead of falling back to the stock CellBlock space |
+| Fail-closed fallback | `resolve_space_id_fallback` in `crates/base-session/src/base/world_entry/space_registry.rs` | Returns `None` for these worlds (for every added world since DA-01). Gate travel ends the session and login refuses the entry, instead of falling back to the stock CellBlock space |
 
 The fallback only matters when the cell drops its `CreateEntity` reply, which today happens only when the create fails. The table's unknown-world default is the stock CellBlock space. Without the refusal, a player bound for `CellBlock43` would be handed a world entry for that space while the cell held their entity nowhere.
 
-Each arrival gets a fresh instance, as for the stock CellBlock. No `.nav` or `.occ` loads for these worlds: those files are keyed by world name (`data/spaces/cellblock43.nav`), and the stock `castle_cellblock.nav` would not match the older geometry anyway. With no mesh, movement is not contained, which is harmless in a world with no NPCs.
+Each arrival gets a fresh instance, as for the stock CellBlock. No `.nav` or `.occ` loads for these worlds: those files are keyed by world name (`data/spaces/cellblock43.nav`), with a fallback to the client map's file (`c43485_cellblock.nav`, which does not exist either; see [data/spaces/README.md](../../../data/spaces/README.md)), and the stock `castle_cellblock.nav` would not match the older geometry anyway. With no mesh, movement is not contained, which is harmless in a world with no NPCs.
 
 `sgw_player.world_id` is filled from `resources.worlds` by name when a gate-travel arrival persists, so the seed rows are also what records a player's world as 1201 rather than keeping the origin's id.
 
