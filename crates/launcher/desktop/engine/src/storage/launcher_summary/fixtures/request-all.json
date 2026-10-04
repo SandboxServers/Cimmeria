@@ -1,0 +1,405 @@
+{
+  "schema_version": 1,
+  "client_dropped": {
+    "overflow": 65535,
+    "expired": 0,
+    "rejected": 7
+  },
+  "summaries": [
+    {
+      "event_id": "000000e0-0000-4000-8000-000000000001",
+      "attempt_id": "000000a0-0000-4000-8000-000000000001",
+      "operation": "install",
+      "phase": "none",
+      "outcome": "failed",
+      "error_code": "unspecified",
+      "duration_ms": 0,
+      "retry_count": 100,
+      "launcher_version": "0.1.0",
+      "os": "windows",
+      "arch": "x86_64"
+    },
+    {
+      "event_id": "000000e0-0000-4000-8000-000000000002",
+      "attempt_id": "000000a0-0000-4000-8000-000000000002",
+      "operation": "prepare_runtime",
+      "phase": "platform_check",
+      "outcome": "failed",
+      "error_code": "platform_unavailable",
+      "duration_ms": 604800000,
+      "retry_count": 0,
+      "launcher_version": "0.1.0",
+      "os": "macos",
+      "arch": "aarch64"
+    },
+    {
+      "event_id": "000000e0-0000-4000-8000-000000000003",
+      "attempt_id": "000000a0-0000-4000-8000-000000000003",
+      "operation": "repair",
+      "phase": "compatibility_check",
+      "outcome": "failed",
+      "error_code": "launcher_too_old",
+      "retry_count": 0,
+      "launcher_version": "0.1.0",
+      "os": "linux",
+      "arch": "x86_64"
+    },
+    {
+      "event_id": "000000e0-0000-4000-8000-000000000004",
+      "attempt_id": "000000a0-0000-4000-8000-000000000004",
+      "operation": "uninstall",
+      "phase": "catalog_fetch",
+      "outcome": "failed",
+      "error_code": "invalid_directory",
+      "duration_ms": 4000,
+      "retry_count": 0,
+      "launcher_version": "0.1.0",
+      "os": "macos",
+      "arch": "x86_64"
+    },
+    {
+      "event_id": "000000e0-0000-4000-8000-000000000005",
+      "attempt_id": "000000a0-0000-4000-8000-000000000005",
+      "operation": "launch",
+      "phase": "manifest_verify",
+      "outcome": "failed",
+      "error_code": "manifest_unavailable",
+      "retry_count": 0,
+      "launcher_version": "0.1.0",
+      "os": "windows",
+      "arch": "aarch64"
+    },
+    {
+      "event_id": "000000e0-0000-4000-8000-000000000006",
+      "attempt_id": "000000a0-0000-4000-8000-000000000006",
+      "operation": "install",
+      "phase": "destination_check",
+      "outcome": "failed",
+      "error_code": "manifest_invalid",
+      "retry_count": 0,
+      "launcher_version": "0.1.0",
+      "os": "linux",
+      "arch": "aarch64"
+    },
+    {
+      "event_id": "000000e0-0000-4000-8000-000000000007",
+      "attempt_id": "000000a0-0000-4000-8000-000000000007",
+      "operation": "prepare_runtime",
+      "phase": "admission",
+      "outcome": "failed",
+      "error_code": "signing_key_unavailable",
+      "duration_ms": 7000,
+      "retry_count": 0,
+      "launcher_version": "0.1.0",
+      "os": "windows",
+      "arch": "x86_64"
+    },
+    {
+      "event_id": "000000e0-0000-4000-8000-000000000008",
+      "attempt_id": "000000a0-0000-4000-8000-000000000008",
+      "operation": "repair",
+      "phase": "starting",
+      "outcome": "failed",
+      "error_code": "state_invalid",
+      "retry_count": 0,
+      "launcher_version": "0.1.0",
+      "os": "macos",
+      "arch": "aarch64"
+    },
+    {
+      "event_id": "000000e0-0000-4000-8000-000000000009",
+      "attempt_id": "000000a0-0000-4000-8000-000000000009",
+      "operation": "uninstall",
+      "phase": "running",
+      "outcome": "failed",
+      "error_code": "local_io",
+      "retry_count": 0,
+      "launcher_version": "0.1.0",
+      "os": "linux",
+      "arch": "x86_64"
+    },
+    {
+      "event_id": "000000e0-0000-4000-8000-00000000000a",
+      "attempt_id": "000000a0-0000-4000-8000-00000000000a",
+      "operation": "launch",
+      "phase": "download",
+      "outcome": "failed",
+      "error_code": "destination_unavailable",
+      "retry_count": 0,
+      "launcher_version": "0.1.0",
+      "os": "macos",
+      "arch": "x86_64"
+    },
+    {
+      "event_id": "000000e0-0000-4000-8000-00000000000b",
+      "attempt_id": "000000a0-0000-4000-8000-00000000000b",
+      "operation": "install",
+      "phase": "extraction",
+      "outcome": "failed",
+      "error_code": "install_failed",
+      "duration_ms": 81234,
+      "retry_count": 0,
+      "phases": [
+        {
+          "phase": "starting",
+          "duration_ms": 12
+        },
+        {
+          "phase": "running",
+          "duration_ms": 40
+        },
+        {
+          "phase": "download",
+          "duration_ms": 81000
+        }
+      ],
+      "launcher_version": "0.1.0",
+      "os": "windows",
+      "arch": "aarch64"
+    },
+    {
+      "event_id": "000000e0-0000-4000-8000-00000000000c",
+      "attempt_id": "000000a0-0000-4000-8000-00000000000c",
+      "operation": "prepare_runtime",
+      "phase": "none",
+      "outcome": "failed",
+      "error_code": "content_invalid",
+      "retry_count": 0,
+      "launcher_version": "0.1.0",
+      "os": "linux",
+      "arch": "aarch64"
+    },
+    {
+      "event_id": "000000e0-0000-4000-8000-00000000000d",
+      "attempt_id": "000000a0-0000-4000-8000-00000000000d",
+      "operation": "repair",
+      "phase": "platform_check",
+      "outcome": "failed",
+      "error_code": "rosetta_required",
+      "duration_ms": 13000,
+      "retry_count": 0,
+      "launcher_version": "0.1.0",
+      "os": "windows",
+      "arch": "x86_64"
+    },
+    {
+      "event_id": "000000e0-0000-4000-8000-00000000000e",
+      "attempt_id": "000000a0-0000-4000-8000-00000000000e",
+      "operation": "uninstall",
+      "phase": "compatibility_check",
+      "outcome": "failed",
+      "error_code": "runtime_unavailable",
+      "retry_count": 0,
+      "launcher_version": "0.1.0",
+      "os": "macos",
+      "arch": "aarch64"
+    },
+    {
+      "event_id": "000000e0-0000-4000-8000-00000000000f",
+      "attempt_id": "000000a0-0000-4000-8000-00000000000f",
+      "operation": "launch",
+      "phase": "catalog_fetch",
+      "outcome": "failed",
+      "error_code": "prerequisite_failed",
+      "retry_count": 0,
+      "launcher_version": "0.1.0",
+      "os": "linux",
+      "arch": "x86_64"
+    },
+    {
+      "event_id": "000000e0-0000-4000-8000-000000000010",
+      "attempt_id": "000000a0-0000-4000-8000-000000000010",
+      "operation": "install",
+      "phase": "manifest_verify",
+      "outcome": "failed",
+      "error_code": "launch_not_started",
+      "duration_ms": 16000,
+      "retry_count": 0,
+      "launcher_version": "0.1.0",
+      "os": "macos",
+      "arch": "x86_64"
+    },
+    {
+      "event_id": "000000e0-0000-4000-8000-000000000011",
+      "attempt_id": "000000a0-0000-4000-8000-000000000011",
+      "operation": "prepare_runtime",
+      "phase": "destination_check",
+      "outcome": "failed",
+      "error_code": "launch_early_exit",
+      "retry_count": 0,
+      "launcher_version": "0.1.0",
+      "os": "windows",
+      "arch": "aarch64"
+    },
+    {
+      "event_id": "000000e0-0000-4000-8000-000000000012",
+      "attempt_id": "000000a0-0000-4000-8000-000000000012",
+      "operation": "repair",
+      "phase": "admission",
+      "outcome": "failed",
+      "error_code": "launch_exit_nonzero",
+      "retry_count": 0,
+      "launcher_version": "0.1.0",
+      "os": "linux",
+      "arch": "aarch64"
+    },
+    {
+      "event_id": "000000e0-0000-4000-8000-000000000013",
+      "attempt_id": "000000a0-0000-4000-8000-000000000013",
+      "operation": "install",
+      "phase": "extraction",
+      "outcome": "succeeded",
+      "duration_ms": 600000,
+      "retry_count": 0,
+      "phases": [
+        {
+          "phase": "starting",
+          "duration_ms": 0
+        },
+        {
+          "phase": "running",
+          "duration_ms": 5
+        },
+        {
+          "phase": "download",
+          "duration_ms": 400000
+        },
+        {
+          "phase": "extraction",
+          "duration_ms": 604800000
+        }
+      ],
+      "launcher_version": "0.1.0",
+      "os": "windows",
+      "arch": "x86_64"
+    },
+    {
+      "event_id": "000000e0-0000-4000-8000-000000000014",
+      "attempt_id": "000000a0-0000-4000-8000-000000000014",
+      "operation": "prepare_runtime",
+      "phase": "running",
+      "outcome": "succeeded",
+      "duration_ms": 45000,
+      "retry_count": 0,
+      "phases": [
+        {
+          "phase": "starting",
+          "duration_ms": 3
+        },
+        {
+          "phase": "running",
+          "duration_ms": 44997
+        }
+      ],
+      "launcher_version": "0.1.0",
+      "os": "macos",
+      "arch": "aarch64"
+    },
+    {
+      "event_id": "000000e0-0000-4000-8000-000000000015",
+      "attempt_id": "000000a0-0000-4000-8000-000000000015",
+      "operation": "repair",
+      "phase": "running",
+      "outcome": "succeeded",
+      "retry_count": 0,
+      "launcher_version": "0.1.0",
+      "os": "linux",
+      "arch": "x86_64"
+    },
+    {
+      "event_id": "000000e0-0000-4000-8000-000000000016",
+      "attempt_id": "000000a0-0000-4000-8000-000000000016",
+      "operation": "uninstall",
+      "phase": "starting",
+      "outcome": "succeeded",
+      "duration_ms": 20,
+      "retry_count": 0,
+      "phases": [
+        {
+          "phase": "starting",
+          "duration_ms": 20
+        }
+      ],
+      "launcher_version": "0.1.0",
+      "os": "macos",
+      "arch": "x86_64"
+    },
+    {
+      "event_id": "000000e0-0000-4000-8000-000000000017",
+      "attempt_id": "000000a0-0000-4000-8000-000000000017",
+      "operation": "launch",
+      "phase": "running",
+      "outcome": "succeeded",
+      "retry_count": 0,
+      "phases": [
+        {
+          "phase": "starting",
+          "duration_ms": 900
+        }
+      ],
+      "launcher_version": "999.999.999",
+      "os": "windows",
+      "arch": "aarch64"
+    },
+    {
+      "event_id": "000000e0-0000-4000-8000-000000000018",
+      "attempt_id": "000000a0-0000-4000-8000-000000000018",
+      "operation": "install",
+      "phase": "download",
+      "outcome": "cancelled",
+      "duration_ms": 5000,
+      "retry_count": 0,
+      "phases": [
+        {
+          "phase": "starting",
+          "duration_ms": 1
+        },
+        {
+          "phase": "running",
+          "duration_ms": 2
+        },
+        {
+          "phase": "download",
+          "duration_ms": 4997
+        }
+      ],
+      "launcher_version": "0.1.0",
+      "os": "linux",
+      "arch": "aarch64"
+    },
+    {
+      "event_id": "000000e0-0000-4000-8000-000000000019",
+      "attempt_id": "000000a0-0000-4000-8000-000000000019",
+      "operation": "launch",
+      "phase": "running",
+      "outcome": "unknown",
+      "retry_count": 0,
+      "launcher_version": "0.0.0",
+      "os": "windows",
+      "arch": "x86_64"
+    },
+    {
+      "event_id": "000000e0-0000-4000-8000-00000000001a",
+      "attempt_id": "000000a0-0000-4000-8000-00000000001a",
+      "operation": "install",
+      "phase": "starting",
+      "outcome": "unknown",
+      "retry_count": 0,
+      "phases": [],
+      "launcher_version": "0.1.0",
+      "os": "macos",
+      "arch": "aarch64"
+    },
+    {
+      "event_id": "000000e0-0000-4000-8000-00000000001b",
+      "attempt_id": "000000a0-0000-4000-8000-00000000001b",
+      "operation": "launch",
+      "phase": "starting",
+      "outcome": "cancelled",
+      "retry_count": 0,
+      "launcher_version": "0.1.0",
+      "os": "linux",
+      "arch": "x86_64"
+    }
+  ]
+}

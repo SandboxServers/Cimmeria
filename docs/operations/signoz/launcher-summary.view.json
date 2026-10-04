@@ -1,0 +1,26 @@
+{
+  "name": "Launcher summary — ingest batches",
+  "sourcePage": "logs",
+  "category": "launcher",
+  "tags": ["launcher", "launcher-summary"],
+  "compositeQuery": {
+    "queryType": "builder",
+    "panelType": "list",
+    "queries": [
+      {
+        "type": "builder_query",
+        "spec": {
+          "name": "A",
+          "signal": "logs",
+          "source": "",
+          "stepInterval": 0,
+          "filter": {
+            "expression": "service.name = 'cimmeria-server' AND scope_name = 'launcher.ingest' AND event = 'launcher_summary_batch'"
+          },
+          "having": { "expression": "" }
+        }
+      }
+    ]
+  },
+  "extraData": "{\"selectColumns\":[{\"name\":\"accepted\",\"signal\":\"logs\"},{\"name\":\"duplicate\",\"signal\":\"logs\"},{\"name\":\"rejected\",\"signal\":\"logs\"},{\"name\":\"client_dropped_overflow\",\"signal\":\"logs\"},{\"name\":\"client_dropped_expired\",\"signal\":\"logs\"},{\"name\":\"client_dropped_rejected\",\"signal\":\"logs\"},{\"name\":\"body\",\"signal\":\"logs\"}]}"
+}
