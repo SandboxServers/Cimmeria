@@ -272,6 +272,17 @@ impl NameBook {
     pub fn world(&self, world_id: impl Into<i64>) -> Option<&str> {
         self.get(Table::Worlds, world_id)
     }
+
+    /// The `world_id` of the world named `world`, the reverse of
+    /// [`world`](Self::world). Most seams carry the world by name only;
+    /// this pairs it with its ID. A scan, but `resources.worlds` is a
+    /// few dozen rows and the callers are Discord-rate seams.
+    pub fn world_id(&self, world: &str) -> Option<i64> {
+        self.tables[Table::Worlds.index()]
+            .iter()
+            .find(|&(_, name)| &**name == world)
+            .map(|(&id, _)| id)
+    }
 }
 
 #[cfg(test)]
@@ -354,6 +365,17 @@ mod tests {
         assert_eq!(book.item_list(7), Some("item_lists"));
         assert_eq!(book.applied_science(7), Some("applied_science"));
         assert_eq!(book.world(7), Some("worlds"));
+    }
+
+    /// `world_id` reverses `world`; an unknown name is `None`.
+    #[test]
+    fn world_id_reverses_world() {
+        let mut book = NameBook::empty();
+        book.insert(Table::Worlds, 4, "Castle_CellBlock");
+        book.insert(Table::Worlds, 9, "Harset");
+        assert_eq!(book.world_id("Harset"), Some(9));
+        assert_eq!(book.world_id("Castle_CellBlock"), Some(4));
+        assert_eq!(book.world_id("Nowhere"), None);
     }
 
     /// A template's display name goes through its `name_id` into `texts`;

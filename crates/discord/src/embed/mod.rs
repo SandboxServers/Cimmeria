@@ -19,12 +19,14 @@
 //! truncation is intentionally visible — the alternative (silently
 //! dropping the tail) hides bugs.
 //!
-//! The module is split along three seams:
+//! The module is split along these seams:
 //!
 //! - [`builder`] — the public entry points ([`build_embed_body`],
 //!   [`build_embed`]) that assemble the embed JSON.
-//! - [`format`] — the per-variant `format_event` formatter and its
-//!   string-building helpers.
+//! - [`format`] — the per-variant `format_event` formatter, its
+//!   string-building helpers, and `named`, the one `Name (#id)` renderer
+//!   for typed events.
+//! - [`format_gameplay`] — the gameplay and GM variants of the formatter.
 //! - [`tracing_fields`] — Rule 6 ID/name folding and the trace footer
 //!   for harvested `warn!`/`error!` events, driven by the pairing table
 //!   in [`naming`].
@@ -34,8 +36,11 @@
 mod budget;
 mod builder;
 mod format;
+mod format_gameplay;
 mod links;
 mod naming;
+#[cfg(test)]
+mod pairing_tests;
 mod tracing_fields;
 
 pub use builder::{build_embed, build_embed_body};

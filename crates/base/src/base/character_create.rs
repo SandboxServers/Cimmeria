@@ -507,11 +507,16 @@ pub(crate) async fn handle_create_character(
                 .ok()
                 .and_then(|c| c.get(&addr).and_then(|s| s.account_name.clone()));
             cimmeria_discord::emit_character_created(
-                account_id,
-                account_name,
-                name.clone(),
-                archetype,
-                world_location,
+                cimmeria_discord::Named::new(account_id, account_name),
+                cimmeria_discord::Named::new(player_id, Some(name.clone())),
+                cimmeria_discord::Named::new(
+                    archetype,
+                    cimmeria_names::archetype_name(archetype).map(str::to_string),
+                ),
+                cimmeria_discord::Named::from_parts(
+                    world_id.map(i64::from),
+                    Some(world_location.to_string()),
+                ),
             );
 
             // Send updated character list (Account entity already exists)

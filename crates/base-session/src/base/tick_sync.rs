@@ -115,13 +115,18 @@ pub async fn run_tick_loop(
                 idle.as_secs()
             );
             // Discord errors-channel: the peer went silent past the dead
-            // threshold. Account id is best-effort — the session is still
-            // in the map at this point (teardown runs after the loop).
-            let account_id = connected
+            // threshold. The account and character are best-effort — the
+            // session is still in the map at this point (teardown runs
+            // after the loop).
+            let (account, character) = connected
                 .lock()
                 .ok()
-                .and_then(|c| c.get(&addr).map(|s| s.account_id));
-            cimmeria_discord::emit_mercury_timeout(addr, account_id, idle.as_secs());
+                .and_then(|c| {
+                    c.get(&addr)
+                        .map(|s| (s.discord_account(), s.discord_character()))
+                })
+                .unwrap_or_default();
+            cimmeria_discord::emit_mercury_timeout(addr, account, character, idle.as_secs());
             break "inactivity_timeout";
         }
 

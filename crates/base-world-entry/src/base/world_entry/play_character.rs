@@ -201,10 +201,9 @@ pub async fn handle_play_character(
     // Discord world-channel: the character is now known (unlike the auth-time
     // login emit), so this carries name + world + spawn position.
     cimmeria_discord::emit_player_world_entry(
-        account_id,
-        entry_account_name,
-        entry_character_name,
-        entry_world_name,
+        cimmeria_discord::Named::new(account_id, entry_account_name),
+        cimmeria_discord::Named::new(player_id, Some(entry_character_name)),
+        cimmeria_base_session::base::discord_world(&entry_world_name),
         entry_position,
     );
 

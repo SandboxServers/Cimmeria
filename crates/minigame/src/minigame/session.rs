@@ -55,6 +55,10 @@ pub struct MinigameSession {
     pub player_level: u32,
     pub ticket: String,
     pub on_victory_chains: Vec<i64>,
+    /// The player's character name, from the base session that started the
+    /// game. The minigame server only ever sees the entity id; this is what
+    /// names the player in the Discord result (NT-10).
+    pub player_name: Option<String>,
     /// `tokio::time::Instant` rather than `std::time::Instant` so
     /// `tokio::time::pause()` / `advance()` drive the TTL deterministically
     /// in tests instead of a wall-clock sleep.
@@ -88,6 +92,14 @@ impl Default for SessionRegistry {
     }
 }
 
+impl MinigameSession {
+    /// The player as a Discord pair: the character's `player_id` and the
+    /// name the base registered the session with (NT-10).
+    pub fn discord_player(&self) -> cimmeria_discord::Named {
+        cimmeria_discord::Named::new(self.player_id, self.player_name.clone())
+    }
+}
+
 impl SessionRegistry {
     pub fn new() -> Self {
         Self {
@@ -111,6 +123,7 @@ impl SessionRegistry {
         intelligence: u32,
         player_level: u32,
         on_victory_chains: Vec<i64>,
+        player_name: Option<String>,
     ) -> Option<String> {
         let ticket = generate_ticket();
         let session = MinigameSession {
@@ -125,6 +138,7 @@ impl SessionRegistry {
             player_level,
             ticket: ticket.clone(),
             on_victory_chains,
+            player_name,
             created_at: Instant::now(),
             connected: false,
         };
@@ -339,7 +353,19 @@ mod tests {
     async fn register_and_authenticate() {
         let reg = SessionRegistry::new();
         let ticket = reg
-            .register(42, 1, "Livewire".into(), 1, 50, 12345, 0, 10, 5, vec![1017])
+            .register(
+                42,
+                1,
+                "Livewire".into(),
+                1,
+                50,
+                12345,
+                0,
+                10,
+                5,
+                vec![1017],
+                None,
+            )
             .await
             .unwrap();
 
@@ -351,7 +377,7 @@ mod tests {
     #[tokio::test]
     async fn wrong_ticket_fails() {
         let reg = SessionRegistry::new();
-        reg.register(42, 1, "Livewire".into(), 1, 50, 0, 0, 0, 1, vec![])
+        reg.register(42, 1, "Livewire".into(), 1, 50, 0, 0, 0, 1, vec![], None)
             .await;
 
         assert!(reg.authenticate(42, "WRONG", "Livewire").await.is_none());
@@ -361,7 +387,7 @@ mod tests {
     async fn wrong_game_name_fails() {
         let reg = SessionRegistry::new();
         let ticket = reg
-            .register(42, 1, "Livewire".into(), 1, 50, 0, 0, 0, 1, vec![])
+            .register(42, 1, "Livewire".into(), 1, 50, 0, 0, 0, 1, vec![], None)
             .await
             .unwrap();
 
@@ -371,12 +397,12 @@ mod tests {
     #[tokio::test]
     async fn duplicate_session_rejected() {
         let reg = SessionRegistry::new();
-        reg.register(42, 1, "Livewire".into(), 1, 50, 0, 0, 0, 1, vec![])
+        reg.register(42, 1, "Livewire".into(), 1, 50, 0, 0, 0, 1, vec![], None)
             .await
             .unwrap();
 
         assert!(reg
-            .register(42, 1, "Livewire".into(), 1, 50, 0, 0, 0, 1, vec![])
+            .register(42, 1, "Livewire".into(), 1, 50, 0, 0, 0, 1, vec![], None)
             .await
             .is_none());
     }
@@ -384,14 +410,14 @@ mod tests {
     #[tokio::test]
     async fn remove_allows_re_register() {
         let reg = SessionRegistry::new();
-        reg.register(42, 1, "Livewire".into(), 1, 50, 0, 0, 0, 1, vec![])
+        reg.register(42, 1, "Livewire".into(), 1, 50, 0, 0, 0, 1, vec![], None)
             .await
             .unwrap();
 
         reg.remove(42).await;
 
         assert!(reg
-            .register(42, 1, "Livewire".into(), 1, 50, 0, 0, 0, 1, vec![])
+            .register(42, 1, "Livewire".into(), 1, 50, 0, 0, 0, 1, vec![], None)
             .await
             .is_some());
     }
@@ -412,8 +438,20 @@ mod tests {
 
     /// Register a Livewire session for `entity_id` with no victory chains.
     async fn register_livewire(reg: &SessionRegistry, entity_id: u32) -> Option<String> {
-        reg.register(entity_id, 1, "Livewire".into(), 1, 50, 0, 0, 0, 1, vec![])
-            .await
+        reg.register(
+            entity_id,
+            1,
+            "Livewire".into(),
+            1,
+            50,
+            0,
+            0,
+            0,
+            1,
+            vec![],
+            None,
+        )
+        .await
     }
 
     /// A session whose SWF never connected must be evicted once it is older

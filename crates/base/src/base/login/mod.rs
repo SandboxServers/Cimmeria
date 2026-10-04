@@ -251,8 +251,7 @@ pub(crate) async fn handle_login(
     // (that happens at playCharacter), so the name is `None` here — the
     // world-entry emit carries the character once it's known.
     cimmeria_discord::emit_player_login(
-        login.account_id,
-        Some(login.account_name.clone()),
+        cimmeria_discord::Named::new(login.account_id, Some(login.account_name.clone())),
         None,
         addr,
     );
@@ -507,7 +506,7 @@ pub(crate) async fn handle_log_off(
     // Snapshot the identity + session duration here too, before
     // `destroy_client_entities` removes the session from the map — the
     // Discord logout emit below needs them.
-    let (acks, seq, enc_version, account_id, account_name, player_name, session_secs) = {
+    let (acks, seq, enc_version, account, character, session_secs) = {
         let mut clients = connected.lock().map_err(|_| "connected lock poisoned")?;
         let client = clients.get_mut(&addr).ok_or("no session for addr")?;
         client
@@ -522,19 +521,10 @@ pub(crate) async fn handle_log_off(
             .fetch_add(1, std::sync::atomic::Ordering::Relaxed)
             & cimmeria_mercury::packet::SEQUENCE_MASK;
         let enc_version = client.enc_version;
-        let account_id = client.account_id;
-        let account_name = client.account_name.clone();
-        let player_name = client.player_name.clone();
+        let account = client.discord_account();
+        let character = client.discord_character();
         let session_secs = client.connected_at.elapsed().as_secs();
-        (
-            acks,
-            seq,
-            enc_version,
-            account_id,
-            account_name,
-            player_name,
-            session_secs,
-        )
+        (acks, seq, enc_version, account, character, session_secs)
     };
 
     // Send LOGGED_OFF (0x37) with reason=0 to trigger immediate client-side
@@ -563,7 +553,7 @@ pub(crate) async fn handle_log_off(
     // `PlayerDisconnect { reason: Clean }` — by design (see the
     // `DisconnectReason::Clean` doc): logout is the gameplay-level event,
     // disconnect the connection-level one.
-    cimmeria_discord::emit_player_logout(account_id, account_name, player_name, session_secs);
+    cimmeria_discord::emit_player_logout(account, character, session_secs);
 
     Ok(())
 }

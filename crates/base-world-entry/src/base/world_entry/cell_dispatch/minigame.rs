@@ -34,6 +34,18 @@ pub(super) async fn start_minigame(
 ) {
     tracing::info!(entity_id, player_id, %game_name, difficulty, "Starting minigame session");
     if let Some(registry) = minigame_registry {
+        // The minigame server only sees the entity id; hand it the
+        // character's name so its Discord result names the player.
+        let player_name = entity_to_addr
+            .lock()
+            .ok()
+            .and_then(|m| m.get(&entity_id).copied())
+            .and_then(|a| {
+                connected
+                    .lock()
+                    .ok()
+                    .and_then(|c| c.get(&a).and_then(|s| s.player_name.clone()))
+            });
         let seed = rand::random::<u32>();
         let ticket = registry
             .register(
@@ -47,6 +59,7 @@ pub(super) async fn start_minigame(
                 0,
                 1, // abilities, intelligence, player_level
                 on_victory_chains,
+                player_name,
             )
             .await;
 

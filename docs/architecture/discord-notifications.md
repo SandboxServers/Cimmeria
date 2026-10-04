@@ -1,6 +1,6 @@
 # Discord notifications
 
-> **Last updated**: 2026-07-25
+> **Last updated**: 2026-10-04
 
 The server posts structured events to Discord channels via webhooks for
 development-time ops visibility — login bursts, world entry, errors,
@@ -128,15 +128,45 @@ footer (`trace_id 4bf92f…`) that a developer pastes into SigNoz (D-NT3). A
 32 digits for the trace, 16 for the span (from `spanId=` first).
 `signoz_url_in_a_field_value_renders_without_it` pins the guard.
 
-## Account + character naming
+## Naming in typed events
 
-Auth and world embeds show the **account name** (the login username) instead
-of a bare numeric id — `account_value` in `embed/format.rs` renders `name (#id)`,
-falling back to `#id` then `?`. The name is threaded from the login ticket
-(`PendingLogin.account_name` → `ConnectedClientState.account_name`), so no
-extra DB lookup happens at the Mercury login seam. Gameplay/world embeds also
-label the character on its own `Character` field rather than dropping a bare
-name into the description.
+Every object a typed `Event` names is a `Named { id, name }` pair
+(`event/named.rs`, NT-10), and every pair renders through one renderer,
+`named` in `embed/format.rs`: `Name (#id)`, then `#id` when the name is
+missing, the bare name when the ID is, and `?` when both are. It wraps the
+same `name_with_id` the tracing path folds pairs with, so a pair reads the
+same in every embed. Examples: `steve (#6)`, `Jaffa Guard (#9001)`,
+`Castle_CellBlock (#4)`, `#2576`.
+
+| Object | ID | Name, and where it comes from |
+|---|---|---|
+| Account | `account_id` | The login name (D-NT2), threaded from the login ticket (`PendingLogin.account_name` → `ConnectedClientState.account_name`), so no extra DB lookup happens at the Mercury login seam. |
+| Character | `player_id` | The character name: `ConnectedClientState` on the base (`discord_account` / `discord_character`), `CellEntity` on the cell (`SpaceManager::discord_character`). `entity:<id>` before the cell has cached either. |
+| NPC | cell `entity_id` | `CellEntity::npc_name`. A killer or GM target is a character when it has a `player_id`, an NPC otherwise (`SpaceManager::discord_entity`). |
+| World | `world_id` | The world name. The base reverses it through `NameBook::world_id`; the cell through `SpaceManager::world_id_for_world`. |
+| Mission, item type, dialog, template | the seed ID | The NameBook (`cimmeria_names::book()`). |
+| Archetype | `EArchetype` ordinal | `cimmeria_names::archetype_name`. |
+| Dialog choice | the cooked `ButtonID` | Only `-1` (a buttonless dialog closed) has a server-side name, `closed`. Button text lives in the client's `CookedDataDialogs.pak`, which the server does not index, so other buttons render `#id`. |
+| Minigame | its name | The minigame catalogue is keyed by name; there is no numeric ID. The player is the `player_id` and name the base hands the minigame server at registration; "For chains" lists the victory chains the game was played for, as `#id` (chains have no name). |
+
+Two kinds of field stay unpaired on purpose. `PlayerAuthFailed` carries only
+the attempted login name: a rejected login may name no account, and the auth
+path doesn't say which. Free-text fields (`cause`, `reason`, `source`, `args`)
+are not objects.
+
+`every_typed_event_renders_each_object_as_name_and_id` (`embed/pairing_tests.rs`)
+builds every variant with sentinel names and IDs and asserts each `Name (#id)`
+appears in the rendered embed. A new variant fails to compile until the
+test file's exhaustive match has an arm for it, and the test fails until the
+table covers every `EventKind`; neither check notices a new `Named` field on
+an existing variant, so add its expected string to that variant's row.
+`no_event_renders_the_player_ip` runs the same table against the IP rule
+above.
+
+The killer field is labelled from the death's `cause`, `Killer (player)` or
+`Killer (NPC)`, because a player killer's `#id` is a `player_id` and an NPC
+killer's is an `entity_id`. An `ItemUsed` target that is another player
+renders as that player's character pair; any other target is `entity:<id>`.
 
 ## Naming in harvested warnings and errors
 
@@ -213,16 +243,21 @@ fails to start with a clear error (typo guard).
 
 Two strategies, depending on the event type:
 
-**For new emit sites, use the typed helpers:**
+**For new emit sites, use the typed helpers.** Every object is a `Named`
+pair; pass what the seam has and let the renderer degrade:
 
 ```rust
-cimmeria_discord::emit_player_login(account_id, Some(character_name), addr);
-cimmeria_discord::emit_player_world_entry(account_id, name, world_name, pos);
-cimmeria_discord::emit_mission_completed(name, mission_id, mission_name);
+use cimmeria_discord::Named;
+
+cimmeria_discord::emit_player_login(Named::new(account_id, Some(login)), None, addr);
+cimmeria_discord::emit_mission_completed(
+    space_mgr.discord_character(entity_id),
+    Named::new(mission_id, cimmeria_names::book().mission(mission_id).map(str::to_string)),
+);
 // ...etc.
 ```
 
-Helpers live in [`crates/discord/src/lib.rs`](../../crates/discord/src/lib.rs); add a new one alongside the existing pattern when you add a new permanent emit seam.
+Helpers live in [`crates/discord/src/emit.rs`](../../crates/discord/src/emit.rs); add a new one alongside the existing pattern when you add a new permanent emit seam.
 
 **For existing `warn!`/`error!` sites with structured fields**, do nothing — the tracing layer already harvests them into `Event::TracingEvent` automatically. The [negative-logging convention](negative-logging-convention.md) (`reason=`, `entity_id=`, `rows_affected=`, etc.) is what gives those tracing events their structure; the embed builder reads the fields into the embed's `fields` array.
 
@@ -235,7 +270,7 @@ Wiring `emit_*` calls into the server is incremental. Current state:
 | `lifecycle` | `ServerStartup`, `ServerShutdown`, `ServerPanic` | from `server/src/main.rs` |
 | `auth` | `PlayerLogin`, `PlayerLogout`, `PlayerDisconnect`, `PlayerAuthFailed` | login/logoff/teardown in `base/`; auth-fail in `auth/handlers.rs` |
 | `world` | `PlayerWorldEntry`, `PlayerWorldExit` | entry in `play_character.rs`; exit on gate travel |
-| `gameplay` | `PlayerLevelUp`, `ItemUsed`, `MissionAccepted`, `MissionCompleted`, `MissionFailed`, `PlayerDeath`, `PlayerRespawn`, `CharacterCreated`, `NpcDeath`, `MinigameResult`, `Dialog` | level-up/item-used base-layer; mission/death/respawn/npc-death cell-side (see name cache below); character-create in `base/character_create.rs`; minigame in `minigame/server.rs` (entity-id only, no name); dialog in `cell/content/event_dispatch/dialog.rs` |
+| `gameplay` | `PlayerLevelUp`, `ItemUsed`, `MissionAccepted`, `MissionCompleted`, `MissionFailed`, `PlayerDeath`, `PlayerRespawn`, `CharacterCreated`, `NpcDeath`, `MinigameResult`, `Dialog` | level-up/item-used base-layer; mission/death/respawn/npc-death cell-side (see name cache below); character-create in `base/character_create.rs`; minigame in `minigame/server/result_dispatch.rs` (player name handed over at registration); dialog in `cell/content/event_dispatch/dialog.rs` |
 | `errors` | `Warning`/`Error` (harvest), `WireFormatError`, `DbError`, `MercuryTimeout` | decode/db/peer-silence seams in `base/` + `auth/`. **`movement.validation` warns are suppressed** — see below |
 | `gm` | `GmCommand` | `.`-console dispatch in `cell/console/mod.rs` |
 | `ops` | — | **deferred**: needs measurement infra |
@@ -298,10 +333,11 @@ a fix at the source, not a Discord filter.
 **Cell-side name cache.** The cell service has no character/GM display name of
 its own — names live in the base `ConnectedClientState`. `GmCommand` and the
 cell-side gameplay events (`MissionAccepted/Completed/Failed`, `PlayerDeath`,
-`PlayerRespawn`) read `CellEntity::character_name`, which is threaded in from the
-base via `BaseToCellMsg::InitPlayerState` at world entry. Emits fall back to
-`entity:<id>` if the name isn't cached yet. (Mission embeds carry no mission
-*name* — `MissionDefEntry` has none cell-side — only the id.)
+`PlayerRespawn`, `Dialog`) read `CellEntity::character_name` and
+`CellEntity::player_id`, which are threaded in from the base via
+`BaseToCellMsg::InitPlayerState` at world entry. Emits fall back to
+`entity:<id>` if neither is cached yet. Mission, dialog and template names come
+from the NameBook, not from `MissionDefEntry`.
 
 ### Deferred seams and why
 
@@ -354,7 +390,7 @@ See [colo-deploy.md → Discord notifications](../operations/colo-deploy.md#opti
 
 ## Testing
 
-- Unit tests in `crates/discord/src/` (covers formula, embed shape, truncation, rate limiter, retry/429 handling, layer harvest, recursion guard, whisper privacy, `movement.validation` suppression, Rule 6 pair folding and field budget, and the no-internal-links guard).
+- Unit tests in `crates/discord/src/` (covers formula, embed shape, truncation, rate limiter, retry/429 handling, layer harvest, recursion guard, whisper privacy, the player-IP rule, `movement.validation` suppression, Rule 6 pair folding and field budget, the typed-event pairing table, and the no-internal-links guard).
 - `MockSender` for tests that need to assert wire bytes without HTTP.
 - Wire-format tests for the embed JSON shape — title/description/field caps + `total_chars ≤ 6000` enforcement.
 
@@ -366,8 +402,12 @@ See [colo-deploy.md → Discord notifications](../operations/colo-deploy.md#opti
 2. Add the matching field to `EventToggles` (`crates/discord/src/config/toggles.rs`)
    + default + `is_enabled` arm.
 3. Route it in `router.rs::channel_for` (no `_` fallback — must be explicit).
-4. Add a `format_event` arm in `embed/format.rs`.
-5. Add a typed helper in `lib.rs` for emit-site authors.
-6. Document it in `config/discord.toml.example`.
+4. Add a `format_event` arm in `embed/format.rs` (or `embed/format_gameplay.rs`
+   for a gameplay or GM event). Every object field is a `Named` and renders
+   through `named`.
+5. Add a row to `every_variant` in `embed/pairing_tests.rs` and an arm to its
+   `variant_is_covered` match.
+6. Add a typed helper in `emit.rs` for emit-site authors.
+7. Document it in `config/discord.toml.example`.
 
 The `event_kind_all_matches_variant_count` test pins the count so step 2 not getting done trips a test failure immediately.

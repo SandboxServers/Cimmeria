@@ -30,6 +30,8 @@ cimmeria-game = { workspace = true }
 cimmeria-mercury = { workspace = true }
 # The item-used and level-up notifications.
 cimmeria-discord = { workspace = true }
+# Content names for the Discord pairs (Rule 6, NT-10).
+cimmeria-names = { workspace = true }
 # The trade-execute outcome counters.
 cimmeria-observability = { workspace = true }
 tokio = { workspace = true }

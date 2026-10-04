@@ -227,7 +227,10 @@ pub async fn handle_grant_xp(
     // when the player name is cached (same gate as the Discord emit).
     if !levels_gained.is_empty() {
         if let Some(name) = &player_name {
-            cimmeria_discord::emit_level_up(name.clone(), new_level);
+            cimmeria_discord::emit_level_up(
+                cimmeria_discord::Named::from_parts(player_id.map(i64::from), Some(name.clone())),
+                new_level,
+            );
 
             let name_owned = name.clone();
             let db_pool_clone = db_pool.clone();

@@ -1,10 +1,22 @@
 //! Per-variant formatter: turn an [`Event`] into the embed's title,
 //! description, fields, and timestamp strings.
+//!
+//! The gameplay and GM variants live in [`super::format_gameplay`]; this
+//! file holds the dispatcher, the lifecycle / auth / world / chat /
+//! error / ops variants, and the shared helpers.
 
-use crate::event::{ChatKind, DisconnectReason, Event, TracingEventKind};
+use crate::event::{ChatKind, DisconnectReason, Event, Named, TracingEventKind};
 
+use super::format_gameplay::format_gameplay;
+use super::naming::name_with_id;
 use super::tracing_fields::fold_fields;
 use super::MAX_FIELDS;
+
+/// One embed field: `(name, value, inline)`.
+pub(super) type Field = (String, String, bool);
+
+/// What a formatter returns: `(title, description, fields, timestamp_rfc3339)`.
+pub(super) type Formatted = (String, String, Vec<Field>, String);
 
 /// Per-variant formatter. Returns `(title, description, fields, timestamp_rfc3339)`.
 ///
@@ -13,7 +25,10 @@ use super::MAX_FIELDS;
 /// leave the server. This formatter is the single enforcement point for
 /// that invariant; the test `whisper_content_is_hidden_regardless_of_input`
 /// pins it.
-pub(super) fn format_event(event: &Event) -> (String, String, Vec<(String, String, bool)>, String) {
+///
+/// **Naming.** Every [`Named`] object renders through [`named`]:
+/// `Name (#id)`, `#id`, the bare name, or `?` (Rule 6, "Discord").
+pub(super) fn format_event(event: &Event) -> Formatted {
     match event {
         // ── Lifecycle ───────────────────────────────────────────────────
         Event::ServerStartup {
@@ -49,63 +64,42 @@ pub(super) fn format_event(event: &Event) -> (String, String, Vec<(String, Strin
 
         // ── Auth ────────────────────────────────────────────────────────
         Event::PlayerLogin {
-            account_id,
-            account_name,
-            character_name,
+            account,
+            character,
             addr: _,
             timestamp,
         } => (
-            format!(
-                "🔓 Login: {}",
-                character_name.as_deref().unwrap_or("(character select)")
-            ),
+            format!("🔓 Login: {}", character_or_select(character.as_ref())),
             String::new(),
-            vec![(
-                "Account".into(),
-                account_value(Some(*account_id), account_name.as_deref()),
-                true,
-            )],
+            vec![("Account".into(), named(account), true)],
             timestamp.to_rfc3339(),
         ),
         Event::PlayerLogout {
-            account_id,
-            account_name,
-            character_name,
+            account,
+            character,
             session_secs,
             timestamp,
         } => (
-            format!(
-                "🔒 Logout: {}",
-                character_name.as_deref().unwrap_or("(character select)")
-            ),
+            format!("🔒 Logout: {}", character_or_select(character.as_ref())),
             String::new(),
             vec![
-                (
-                    "Account".into(),
-                    account_value(Some(*account_id), account_name.as_deref()),
-                    true,
-                ),
+                ("Account".into(), named(account), true),
                 ("Session".into(), format_duration(*session_secs), true),
             ],
             timestamp.to_rfc3339(),
         ),
         Event::PlayerDisconnect {
-            account_id,
-            account_name,
-            character_name,
+            account,
+            character,
             addr: _,
             reason,
             session_secs,
             timestamp,
         } => (
             format!("⚠️ Disconnect: {}", reason_label(*reason)),
-            character_name.clone().unwrap_or_default(),
+            character.as_ref().map(named).unwrap_or_default(),
             vec![
-                (
-                    "Account".into(),
-                    account_value(*account_id, account_name.as_deref()),
-                    true,
-                ),
+                ("Account".into(), named(account), true),
                 ("Session".into(), format_duration(*session_secs), true),
             ],
             timestamp.to_rfc3339(),
@@ -124,47 +118,39 @@ pub(super) fn format_event(event: &Event) -> (String, String, Vec<(String, Strin
 
         // ── World ───────────────────────────────────────────────────────
         Event::PlayerWorldEntry {
-            account_id,
-            account_name,
-            character_name,
-            world_name,
+            account,
+            character,
+            world,
             position,
             timestamp,
         } => (
-            format!("🌍 Entered {}", world_name),
+            format!("🌍 Entered {}", named(world)),
             String::new(),
             vec![
-                ("Character".into(), character_name.clone(), true),
-                (
-                    "Account".into(),
-                    account_value(Some(*account_id), account_name.as_deref()),
-                    true,
-                ),
+                ("Character".into(), named(character), true),
+                ("Account".into(), named(account), true),
                 ("Position".into(), format_vec3(*position), true),
             ],
             timestamp.to_rfc3339(),
         ),
         Event::PlayerWorldExit {
-            account_id,
-            account_name,
-            character_name,
+            account,
+            character,
             from_world,
             to_world,
             timestamp,
         } => (
             format!(
                 "🚪 Left {} → {}",
-                from_world,
-                to_world.as_deref().unwrap_or("(unknown)")
+                named(from_world),
+                to_world
+                    .as_ref()
+                    .map_or_else(|| "(unknown)".to_string(), named)
             ),
             String::new(),
             vec![
-                ("Character".into(), character_name.clone(), true),
-                (
-                    "Account".into(),
-                    account_value(Some(*account_id), account_name.as_deref()),
-                    true,
-                ),
+                ("Character".into(), named(character), true),
+                ("Account".into(), named(account), true),
             ],
             timestamp.to_rfc3339(),
         ),
@@ -178,277 +164,31 @@ pub(super) fn format_event(event: &Event) -> (String, String, Vec<(String, Strin
             timestamp,
         } => {
             let (label, content) = format_chat(*kind, content);
-            let mut fields = vec![("Speaker".into(), speaker.clone(), true)];
+            let mut fields = vec![("Speaker".into(), named(speaker), true)];
             if let Some(r) = recipient {
-                fields.push(("To".into(), r.clone(), true));
+                fields.push(("To".into(), named(r), true));
             }
             (label.to_string(), content, fields, timestamp.to_rfc3339())
         }
 
-        // ── Gameplay ────────────────────────────────────────────────────
-        Event::PlayerLevelUp {
-            character_name,
-            new_level,
-            timestamp,
-        } => (
-            format!("⬆️ Level up: {}", character_name),
-            format!("Reached level {}", new_level),
-            Vec::new(),
-            timestamp.to_rfc3339(),
-        ),
-        Event::PlayerDeath {
-            character_name,
-            killer,
-            cause,
-            timestamp,
-        } => (
-            format!("💀 Death: {}", character_name),
-            cause.clone(),
-            vec![(
-                "Killer".into(),
-                killer.clone().unwrap_or_else(|| "(none)".into()),
-                true,
-            )],
-            timestamp.to_rfc3339(),
-        ),
-        Event::PlayerRespawn {
-            character_name,
-            world_name,
-            timestamp,
-        } => (
-            format!("🔁 Respawn: {}", character_name),
-            format!("In {}", world_name),
-            Vec::new(),
-            timestamp.to_rfc3339(),
-        ),
-        Event::MissionAccepted {
-            character_name,
-            mission_id,
-            mission_name,
-            timestamp,
-        } => (
-            format!(
-                "📜 Mission accepted: {}",
-                mission_label(*mission_id, mission_name.as_deref())
-            ),
-            String::new(),
-            vec![("Character".into(), character_name.clone(), true)],
-            timestamp.to_rfc3339(),
-        ),
-        Event::MissionCompleted {
-            character_name,
-            mission_id,
-            mission_name,
-            timestamp,
-        } => (
-            format!(
-                "✅ Mission completed: {}",
-                mission_label(*mission_id, mission_name.as_deref())
-            ),
-            String::new(),
-            vec![("Character".into(), character_name.clone(), true)],
-            timestamp.to_rfc3339(),
-        ),
-        Event::MissionFailed {
-            character_name,
-            mission_id,
-            mission_name,
-            reason,
-            timestamp,
-        } => (
-            format!(
-                "❌ Mission failed: {}",
-                mission_label(*mission_id, mission_name.as_deref())
-            ),
-            format!("_{}_", reason),
-            vec![("Character".into(), character_name.clone(), true)],
-            timestamp.to_rfc3339(),
-        ),
-        Event::MissionRewardGranted {
-            character_name,
-            mission_id,
-            xp,
-            cash,
-            items,
-            timestamp,
-        } => (
-            format!("🎁 Rewards: mission {}", mission_id),
-            String::new(),
-            vec![
-                ("Character".into(), character_name.clone(), true),
-                ("XP".into(), xp.to_string(), true),
-                ("Cash".into(), cash.to_string(), true),
-                ("Items".into(), format_item_list(items), false),
-            ],
-            timestamp.to_rfc3339(),
-        ),
-        Event::LootGenerated {
-            character_name,
-            source,
-            items,
-            timestamp,
-        } => (
-            format!("💰 Loot from {}", source),
-            String::new(),
-            vec![
-                ("Character".into(), character_name.clone(), true),
-                ("Items".into(), format_item_list(items), false),
-            ],
-            timestamp.to_rfc3339(),
-        ),
-        Event::ItemUsed {
-            character_name,
-            item_type_id,
-            target,
-            timestamp,
-        } => (
-            format!("🧪 Item used: type {}", item_type_id),
-            String::new(),
-            {
-                let mut f = vec![("Character".into(), character_name.clone(), true)];
-                if let Some(t) = target {
-                    f.push(("Target".into(), t.clone(), true));
-                }
-                f
-            },
-            timestamp.to_rfc3339(),
-        ),
-        Event::CharacterCreated {
-            account_id,
-            account_name,
-            character_name,
-            archetype,
-            world_name,
-            timestamp,
-        } => (
-            format!("✨ Character created: {}", character_name),
-            String::new(),
-            vec![
-                (
-                    "Account".into(),
-                    account_value(Some(*account_id), account_name.as_deref()),
-                    true,
-                ),
-                ("Archetype".into(), archetype.to_string(), true),
-                ("Start".into(), world_name.clone(), true),
-            ],
-            timestamp.to_rfc3339(),
-        ),
-        Event::NpcDeath {
-            npc_name,
-            killer,
-            cause,
-            world_name,
-            timestamp,
-        } => (
-            format!("☠️ NPC killed: {}", npc_name),
-            String::new(),
-            {
-                let mut f = vec![
-                    (
-                        "Killer".into(),
-                        killer.clone().unwrap_or_else(|| "(none)".into()),
-                        true,
-                    ),
-                    ("Cause".into(), cause.clone(), true),
-                ];
-                if let Some(w) = world_name {
-                    f.push(("World".into(), w.clone(), true));
-                }
-                f
-            },
-            timestamp.to_rfc3339(),
-        ),
-        Event::MinigameResult {
-            game,
-            character_name,
-            success,
-            timestamp,
-        } => (
-            format!(
-                "🎮 Minigame {}: {}",
-                if *success { "win" } else { "loss" },
-                game
-            ),
-            String::new(),
-            vec![("Character".into(), character_name.clone(), true)],
-            timestamp.to_rfc3339(),
-        ),
-        Event::Dialog {
-            character_name,
-            dialog_id,
-            choice,
-            timestamp,
-        } => (
-            match choice {
-                Some(b) => format!("💬 Dialog choice: #{} → option {}", dialog_id, b),
-                None => format!("💬 Dialog opened: #{}", dialog_id),
-            },
-            String::new(),
-            vec![("Character".into(), character_name.clone(), true)],
-            timestamp.to_rfc3339(),
-        ),
-
-        // ── GM ──────────────────────────────────────────────────────────
-        Event::GmCommand {
-            gm_name,
-            command,
-            args,
-            timestamp,
-        } => (
-            format!("👮 GM: /{}", command),
-            args.clone(),
-            vec![("By".into(), gm_name.clone(), true)],
-            timestamp.to_rfc3339(),
-        ),
-        Event::GmTeleport {
-            gm_name,
-            target,
-            world_name,
-            position,
-            timestamp,
-        } => (
-            format!("👮 GM teleport → {}", target),
-            format!("To {}", world_name),
-            vec![
-                ("By".into(), gm_name.clone(), true),
-                ("Position".into(), format_vec3(*position), true),
-            ],
-            timestamp.to_rfc3339(),
-        ),
-        Event::GmSpawn {
-            gm_name,
-            template_id,
-            template_name,
-            position,
-            timestamp,
-        } => (
-            format!(
-                "👮 GM spawn: {}",
-                template_name
-                    .clone()
-                    .unwrap_or_else(|| format!("template {}", template_id))
-            ),
-            String::new(),
-            vec![
-                ("By".into(), gm_name.clone(), true),
-                ("Template".into(), template_id.to_string(), true),
-                ("Position".into(), format_vec3(*position), true),
-            ],
-            timestamp.to_rfc3339(),
-        ),
-        Event::GmItemGrant {
-            gm_name,
-            recipient,
-            item_type_id,
-            quantity,
-            timestamp,
-        } => (
-            format!("👮 GM grant: {} × {}", quantity, item_type_id),
-            format!("To {}", recipient),
-            vec![("By".into(), gm_name.clone(), true)],
-            timestamp.to_rfc3339(),
-        ),
+        // ── Gameplay + GM ───────────────────────────────────────────────
+        Event::PlayerLevelUp { .. }
+        | Event::PlayerDeath { .. }
+        | Event::PlayerRespawn { .. }
+        | Event::MissionAccepted { .. }
+        | Event::MissionCompleted { .. }
+        | Event::MissionFailed { .. }
+        | Event::MissionRewardGranted { .. }
+        | Event::LootGenerated { .. }
+        | Event::ItemUsed { .. }
+        | Event::CharacterCreated { .. }
+        | Event::NpcDeath { .. }
+        | Event::MinigameResult { .. }
+        | Event::Dialog { .. }
+        | Event::GmCommand { .. }
+        | Event::GmTeleport { .. }
+        | Event::GmSpawn { .. }
+        | Event::GmItemGrant { .. } => format_gameplay(event),
 
         // ── Errors ──────────────────────────────────────────────────────
         Event::TracingEvent {
@@ -506,17 +246,20 @@ pub(super) fn format_event(event: &Event) -> (String, String, Vec<(String, Strin
         ),
         Event::MercuryTimeout {
             addr: _,
-            account_id,
+            account,
+            character,
             silence_secs,
             timestamp,
         } => (
             "⏱️ Mercury timeout".to_string(),
             format!("No traffic for {} s", silence_secs),
-            vec![(
-                "Account".into(),
-                account_id.map_or("?".into(), |a| a.to_string()),
-                true,
-            )],
+            {
+                let mut f = vec![("Account".into(), named(account), true)];
+                if let Some(c) = character {
+                    f.push(("Character".into(), named(c), true));
+                }
+                f
+            },
             timestamp.to_rfc3339(),
         ),
 
@@ -564,13 +307,13 @@ pub(super) fn format_event(event: &Event) -> (String, String, Vec<(String, Strin
             timestamp.to_rfc3339(),
         ),
         Event::AoiBurstWarning {
-            witness_id,
+            witness,
             burst_size,
             threshold,
             timestamp,
         } => (
             format!("🌪️ AoI burst: {} entities", burst_size),
-            format!("Witness {} (threshold {})", witness_id, threshold),
+            format!("Witness {} (threshold {})", named(witness), threshold),
             Vec::new(),
             timestamp.to_rfc3339(),
         ),
@@ -588,6 +331,36 @@ pub(super) fn format_event(event: &Event) -> (String, String, Vec<(String, Strin
 }
 
 // ── Helpers ─────────────────────────────────────────────────────────────
+
+/// The one renderer for a typed event's [`Named`] object: `Name (#id)`,
+/// `#id` when the name is missing, the bare name when the ID is, and `?`
+/// when both are. It is [`name_with_id`], the renderer the tracing path
+/// folds pairs with, so a pair reads the same in every embed. The account
+/// renders its login name this way too (D-NT2).
+pub(super) fn named(n: &Named) -> String {
+    let id = n.id.map(|i| i.to_string());
+    name_with_id(n.name.as_deref(), id.as_deref()).unwrap_or_else(|| "?".to_string())
+}
+
+/// A list of objects, eight at most, then a `+N` tail.
+pub(super) fn named_list(items: &[Named]) -> String {
+    const SHOWN: usize = 8;
+    if items.is_empty() {
+        return "(none)".to_string();
+    }
+    let head: Vec<String> = items.iter().take(SHOWN).map(named).collect();
+    if items.len() <= SHOWN {
+        head.join(", ")
+    } else {
+        format!("{}, … +{}", head.join(", "), items.len() - SHOWN)
+    }
+}
+
+/// The login/logout title's character: the pair, or the character-select
+/// placeholder before a character is picked.
+fn character_or_select(character: Option<&Named>) -> String {
+    character.map_or_else(|| "(character select)".to_string(), named)
+}
 
 fn format_chat(kind: ChatKind, content: &str) -> (&'static str, String) {
     let (label, body) = match kind {
@@ -616,41 +389,8 @@ fn reason_label(reason: DisconnectReason) -> &'static str {
     }
 }
 
-fn mission_label(id: i32, name: Option<&str>) -> String {
-    match name {
-        Some(n) => format!("`{}` ({})", n, id),
-        None => format!("#{}", id),
-    }
-}
-
-/// Render the "Account" field value, preferring the human-readable name and
-/// falling back to the numeric id. Player IPs are deliberately never shown.
-fn account_value(id: Option<u32>, name: Option<&str>) -> String {
-    match (name, id) {
-        (Some(n), Some(i)) => format!("{n} (#{i})"),
-        (Some(n), None) => n.to_string(),
-        (None, Some(i)) => format!("#{i}"),
-        (None, None) => "?".to_string(),
-    }
-}
-
-fn format_vec3(v: [f32; 3]) -> String {
+pub(super) fn format_vec3(v: [f32; 3]) -> String {
     format!("({:.1}, {:.1}, {:.1})", v[0], v[1], v[2])
-}
-
-fn format_item_list(items: &[i32]) -> String {
-    if items.is_empty() {
-        "(none)".to_string()
-    } else if items.len() <= 8 {
-        items
-            .iter()
-            .map(|i| i.to_string())
-            .collect::<Vec<_>>()
-            .join(", ")
-    } else {
-        let head: Vec<String> = items[..8].iter().map(|i| i.to_string()).collect();
-        format!("{}, … +{}", head.join(", "), items.len() - 8)
-    }
 }
 
 fn format_duration(secs: u64) -> String {
@@ -663,5 +403,27 @@ fn format_duration(secs: u64) -> String {
         format!("{}m {}s", mins, s)
     } else {
         format!("{}s", s)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// The typed renderer degrades the way Rule 6 says, down to `?`.
+    #[test]
+    fn named_degrades_to_id_then_name_then_question_mark() {
+        assert_eq!(named(&Named::new(6, Some("steve".into()))), "steve (#6)");
+        assert_eq!(named(&Named::new(6, None)), "#6");
+        assert_eq!(named(&Named::new(6, Some(String::new()))), "#6");
+        assert_eq!(named(&Named::name_only("steve")), "steve");
+        assert_eq!(named(&Named::default()), "?");
+    }
+
+    #[test]
+    fn named_list_caps_at_eight() {
+        let items: Vec<Named> = (1..=10).map(|i| Named::new(i, None)).collect();
+        assert_eq!(named_list(&items), "#1, #2, #3, #4, #5, #6, #7, #8, … +2");
+        assert_eq!(named_list(&[]), "(none)");
     }
 }

@@ -11,7 +11,7 @@
 use std::collections::HashSet;
 use std::sync::{Mutex, OnceLock};
 
-use crate::Event;
+use crate::{Event, Named};
 
 /// Who an event is about, as far as its payload says.
 #[derive(Debug, Default, PartialEq, Eq)]
@@ -23,81 +23,64 @@ pub struct Identity<'a> {
 
 /// The account and character an event names, if any.
 pub fn identity(event: &Event) -> Identity<'_> {
-    fn id<'a>(
-        account_id: Option<u32>,
-        account_name: Option<&'a String>,
-        character: Option<&'a String>,
-    ) -> Identity<'a> {
+    // An account ID outside `u32` cannot be a real account; it reads as
+    // no ID rather than wrapping onto someone else's.
+    fn account_id(n: &Named) -> Option<u32> {
+        n.id.and_then(|i| u32::try_from(i).ok())
+    }
+    fn id<'a>(account: Option<&'a Named>, character: Option<&'a Named>) -> Identity<'a> {
         Identity {
-            account_id,
-            account_name: account_name.map(String::as_str),
-            character: character.map(String::as_str),
+            account_id: account.and_then(account_id),
+            account_name: account.and_then(Named::name),
+            character: character.and_then(Named::name),
         }
     }
     match event {
         Event::PlayerLogin {
-            account_id,
-            account_name,
-            character_name,
-            ..
+            account, character, ..
         }
         | Event::PlayerLogout {
-            account_id,
-            account_name,
-            character_name,
-            ..
-        } => id(
-            Some(*account_id),
-            account_name.as_ref(),
-            character_name.as_ref(),
-        ),
-        Event::PlayerDisconnect {
-            account_id,
-            account_name,
-            character_name,
-            ..
-        } => id(*account_id, account_name.as_ref(), character_name.as_ref()),
-        Event::PlayerAuthFailed { account_name, .. } => id(None, Some(account_name), None),
+            account, character, ..
+        }
+        | Event::PlayerDisconnect {
+            account, character, ..
+        } => id(Some(account), character.as_ref()),
+        Event::PlayerAuthFailed { account_name, .. } => Identity {
+            account_name: Some(account_name),
+            ..Identity::default()
+        },
         Event::PlayerWorldEntry {
-            account_id,
-            account_name,
-            character_name,
-            ..
+            account, character, ..
         }
         | Event::PlayerWorldExit {
-            account_id,
-            account_name,
-            character_name,
-            ..
+            account, character, ..
         }
         | Event::CharacterCreated {
-            account_id,
-            account_name,
-            character_name,
-            ..
-        } => id(
-            Some(*account_id),
-            account_name.as_ref(),
-            Some(character_name),
-        ),
-        Event::PlayerLevelUp { character_name, .. }
-        | Event::PlayerDeath { character_name, .. }
-        | Event::PlayerRespawn { character_name, .. }
-        | Event::MissionAccepted { character_name, .. }
-        | Event::MissionCompleted { character_name, .. }
-        | Event::MissionFailed { character_name, .. }
-        | Event::MissionRewardGranted { character_name, .. }
-        | Event::LootGenerated { character_name, .. }
-        | Event::ItemUsed { character_name, .. }
-        | Event::MinigameResult { character_name, .. }
-        | Event::Dialog { character_name, .. } => id(None, None, Some(character_name)),
-        Event::Chat { speaker, .. } => id(None, None, Some(speaker)),
-        Event::GmCommand { gm_name, .. }
-        | Event::GmTeleport { gm_name, .. }
-        | Event::GmSpawn { gm_name, .. }
-        | Event::GmItemGrant { gm_name, .. } => id(None, None, Some(gm_name)),
-        Event::NpcDeath { killer, .. } => id(None, None, killer.as_ref()),
-        Event::MercuryTimeout { account_id, .. } => id(*account_id, None, None),
+            account, character, ..
+        } => id(Some(account), Some(character)),
+        Event::PlayerLevelUp { character, .. }
+        | Event::PlayerDeath { character, .. }
+        | Event::PlayerRespawn { character, .. }
+        | Event::MissionAccepted { character, .. }
+        | Event::MissionCompleted { character, .. }
+        | Event::MissionFailed { character, .. }
+        | Event::MissionRewardGranted { character, .. }
+        | Event::LootGenerated { character, .. }
+        | Event::ItemUsed { character, .. }
+        | Event::MinigameResult { character, .. }
+        | Event::Dialog { character, .. } => id(None, Some(character)),
+        Event::Chat { speaker, .. } => id(None, Some(speaker)),
+        Event::GmCommand { gm, .. }
+        | Event::GmTeleport { gm, .. }
+        | Event::GmSpawn { gm, .. }
+        | Event::GmItemGrant { gm, .. } => id(None, Some(gm)),
+        Event::NpcDeath { killer, .. } => id(None, killer.as_ref()),
+        // By account ID only, as before NT-10: the timeout gained its
+        // account name and character for the embed, not for muting.
+        Event::MercuryTimeout { account, .. } => Identity {
+            account_id: account_id(account),
+            ..Identity::default()
+        },
         Event::TracingEvent { fields, .. } => Identity {
             account_id: fields
                 .iter()

@@ -392,8 +392,9 @@ pub fn destroy_client_entities(
         account_eid,
         player_eid,
         account_id,
-        account_name,
         player_name,
+        discord_account,
+        discord_character,
         session_secs,
         ended,
         plugins,
@@ -413,7 +414,8 @@ pub fn destroy_client_entities(
         // Snapshot identity + session length for the Discord disconnect emit
         // before `remove` drops the state.
         let account_id = c.account_id;
-        let account_name = c.account_name.clone();
+        let discord_account = c.discord_account();
+        let discord_character = c.discord_character();
         let player_name = c.player_name.clone();
         let session_secs = c.connected_at.elapsed().as_secs();
         // Snapshot before `remove`: a character still in the world is
@@ -438,8 +440,9 @@ pub fn destroy_client_entities(
             account_eid,
             player_eid,
             account_id,
-            account_name,
             player_name,
+            discord_account,
+            discord_character,
             session_secs,
             ended,
             plugins,
@@ -577,9 +580,8 @@ pub fn destroy_client_entities(
     // is the one place that reports *why* a player dropped. The stable
     // `reason` label maps to a typed `DisconnectReason` for the embed.
     cimmeria_discord::emit_player_disconnect(
-        Some(account_id),
-        account_name,
-        player_name,
+        discord_account,
+        discord_character,
         addr,
         cimmeria_discord::DisconnectReason::from_label(reason),
         session_secs,

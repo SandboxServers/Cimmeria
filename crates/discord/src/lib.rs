@@ -34,6 +34,7 @@
 pub mod color;
 pub mod config;
 pub mod embed;
+mod emit;
 pub mod event;
 pub mod layer;
 pub mod mute;
@@ -41,7 +42,10 @@ pub mod router;
 pub mod sender;
 
 pub use config::{Config, ConfigError, ConfigWatcher, EventToggles};
-pub use event::{ChannelKind, ChatKind, DisconnectReason, Event, EventKind, TracingEventKind};
+pub use emit::*;
+pub use event::{
+    ChannelKind, ChatKind, DisconnectReason, Event, EventKind, Named, TracingEventKind,
+};
 pub use layer::DiscordLayer;
 pub use sender::{
     spawn as spawn_sender, DiscordSender, HttpDiscordSender, MockSender, QueueFull, SendError,
@@ -146,331 +150,6 @@ pub fn emit(event: Event) {
     }
 }
 
-// ── Typed convenience constructors ──────────────────────────────────────
-//
-// Each helper builds the Event variant + current timestamp + calls
-// `emit`. The point is to keep the call site terse:
-//
-//     cimmeria_discord::emit_player_login(account_id, Some(name), addr);
-//
-// rather than:
-//
-//     cimmeria_discord::emit(cimmeria_discord::Event::PlayerLogin {
-//         account_id, character_name: Some(name), addr,
-//         timestamp: chrono::Utc::now(),
-//     });
-//
-// Add a helper here for any event type that has a permanent emit site.
-
-use std::net::SocketAddr;
-
-pub fn emit_server_startup(version: impl Into<String>, bind_addrs: Vec<String>) {
-    emit(Event::ServerStartup {
-        version: version.into(),
-        bind_addrs,
-        timestamp: chrono::Utc::now(),
-    });
-}
-
-pub fn emit_server_shutdown(reason: impl Into<String>, uptime_secs: u64) {
-    emit(Event::ServerShutdown {
-        reason: reason.into(),
-        uptime_secs,
-        timestamp: chrono::Utc::now(),
-    });
-}
-
-pub fn emit_player_login(
-    account_id: u32,
-    account_name: Option<String>,
-    character_name: Option<String>,
-    addr: SocketAddr,
-) {
-    emit(Event::PlayerLogin {
-        account_id,
-        account_name,
-        character_name,
-        addr,
-        timestamp: chrono::Utc::now(),
-    });
-}
-
-pub fn emit_player_logout(
-    account_id: u32,
-    account_name: Option<String>,
-    character_name: Option<String>,
-    session_secs: u64,
-) {
-    emit(Event::PlayerLogout {
-        account_id,
-        account_name,
-        character_name,
-        session_secs,
-        timestamp: chrono::Utc::now(),
-    });
-}
-
-pub fn emit_player_disconnect(
-    account_id: Option<u32>,
-    account_name: Option<String>,
-    character_name: Option<String>,
-    addr: SocketAddr,
-    reason: DisconnectReason,
-    session_secs: u64,
-) {
-    emit(Event::PlayerDisconnect {
-        account_id,
-        account_name,
-        character_name,
-        addr,
-        reason,
-        session_secs,
-        timestamp: chrono::Utc::now(),
-    });
-}
-
-pub fn emit_player_auth_failed(
-    account_name: impl Into<String>,
-    addr: SocketAddr,
-    reason: impl Into<String>,
-) {
-    emit(Event::PlayerAuthFailed {
-        account_name: account_name.into(),
-        addr,
-        reason: reason.into(),
-        timestamp: chrono::Utc::now(),
-    });
-}
-
-pub fn emit_player_world_entry(
-    account_id: u32,
-    account_name: Option<String>,
-    character_name: impl Into<String>,
-    world_name: impl Into<String>,
-    position: [f32; 3],
-) {
-    emit(Event::PlayerWorldEntry {
-        account_id,
-        account_name,
-        character_name: character_name.into(),
-        world_name: world_name.into(),
-        position,
-        timestamp: chrono::Utc::now(),
-    });
-}
-
-pub fn emit_player_world_exit(
-    account_id: u32,
-    account_name: Option<String>,
-    character_name: impl Into<String>,
-    from_world: impl Into<String>,
-    to_world: Option<String>,
-) {
-    emit(Event::PlayerWorldExit {
-        account_id,
-        account_name,
-        character_name: character_name.into(),
-        from_world: from_world.into(),
-        to_world,
-        timestamp: chrono::Utc::now(),
-    });
-}
-
-pub fn emit_chat(
-    kind: ChatKind,
-    speaker: impl Into<String>,
-    recipient: Option<String>,
-    content: impl Into<String>,
-) {
-    emit(Event::Chat {
-        kind,
-        speaker: speaker.into(),
-        recipient,
-        content: content.into(),
-        timestamp: chrono::Utc::now(),
-    });
-}
-
-pub fn emit_level_up(character_name: impl Into<String>, new_level: u32) {
-    emit(Event::PlayerLevelUp {
-        character_name: character_name.into(),
-        new_level,
-        timestamp: chrono::Utc::now(),
-    });
-}
-
-pub fn emit_mission_accepted(
-    character_name: impl Into<String>,
-    mission_id: i32,
-    mission_name: Option<String>,
-) {
-    emit(Event::MissionAccepted {
-        character_name: character_name.into(),
-        mission_id,
-        mission_name,
-        timestamp: chrono::Utc::now(),
-    });
-}
-
-pub fn emit_mission_completed(
-    character_name: impl Into<String>,
-    mission_id: i32,
-    mission_name: Option<String>,
-) {
-    emit(Event::MissionCompleted {
-        character_name: character_name.into(),
-        mission_id,
-        mission_name,
-        timestamp: chrono::Utc::now(),
-    });
-}
-
-pub fn emit_gm_command(
-    gm_name: impl Into<String>,
-    command: impl Into<String>,
-    args: impl Into<String>,
-) {
-    emit(Event::GmCommand {
-        gm_name: gm_name.into(),
-        command: command.into(),
-        args: args.into(),
-        timestamp: chrono::Utc::now(),
-    });
-}
-
-pub fn emit_item_used(
-    character_name: impl Into<String>,
-    item_type_id: i32,
-    target: Option<String>,
-) {
-    emit(Event::ItemUsed {
-        character_name: character_name.into(),
-        item_type_id,
-        target,
-        timestamp: chrono::Utc::now(),
-    });
-}
-
-pub fn emit_character_created(
-    account_id: u32,
-    account_name: Option<String>,
-    character_name: impl Into<String>,
-    archetype: i32,
-    world_name: impl Into<String>,
-) {
-    emit(Event::CharacterCreated {
-        account_id,
-        account_name,
-        character_name: character_name.into(),
-        archetype,
-        world_name: world_name.into(),
-        timestamp: chrono::Utc::now(),
-    });
-}
-
-pub fn emit_npc_death(
-    npc_name: impl Into<String>,
-    killer: Option<String>,
-    cause: impl Into<String>,
-    world_name: Option<String>,
-) {
-    emit(Event::NpcDeath {
-        npc_name: npc_name.into(),
-        killer,
-        cause: cause.into(),
-        world_name,
-        timestamp: chrono::Utc::now(),
-    });
-}
-
-pub fn emit_minigame_result(
-    game: impl Into<String>,
-    character_name: impl Into<String>,
-    success: bool,
-) {
-    emit(Event::MinigameResult {
-        game: game.into(),
-        character_name: character_name.into(),
-        success,
-        timestamp: chrono::Utc::now(),
-    });
-}
-
-pub fn emit_dialog(character_name: impl Into<String>, dialog_id: i32, choice: Option<i32>) {
-    emit(Event::Dialog {
-        character_name: character_name.into(),
-        dialog_id,
-        choice,
-        timestamp: chrono::Utc::now(),
-    });
-}
-
-pub fn emit_wire_format_error(
-    kind: impl Into<String>,
-    addr: Option<SocketAddr>,
-    details: impl Into<String>,
-) {
-    emit(Event::WireFormatError {
-        kind: kind.into(),
-        addr,
-        details: details.into(),
-        timestamp: chrono::Utc::now(),
-    });
-}
-
-pub fn emit_db_error(operation: impl Into<String>, details: impl Into<String>) {
-    emit(Event::DbError {
-        operation: operation.into(),
-        details: details.into(),
-        timestamp: chrono::Utc::now(),
-    });
-}
-
-pub fn emit_mercury_timeout(addr: SocketAddr, account_id: Option<u32>, silence_secs: u64) {
-    emit(Event::MercuryTimeout {
-        addr,
-        account_id,
-        silence_secs,
-        timestamp: chrono::Utc::now(),
-    });
-}
-
-pub fn emit_mission_failed(
-    character_name: impl Into<String>,
-    mission_id: i32,
-    mission_name: Option<String>,
-    reason: impl Into<String>,
-) {
-    emit(Event::MissionFailed {
-        character_name: character_name.into(),
-        mission_id,
-        mission_name,
-        reason: reason.into(),
-        timestamp: chrono::Utc::now(),
-    });
-}
-
-pub fn emit_player_death(
-    character_name: impl Into<String>,
-    killer: Option<String>,
-    cause: impl Into<String>,
-) {
-    emit(Event::PlayerDeath {
-        character_name: character_name.into(),
-        killer,
-        cause: cause.into(),
-        timestamp: chrono::Utc::now(),
-    });
-}
-
-pub fn emit_player_respawn(character_name: impl Into<String>, world_name: impl Into<String>) {
-    emit(Event::PlayerRespawn {
-        character_name: character_name.into(),
-        world_name: world_name.into(),
-        timestamp: chrono::Utc::now(),
-    });
-}
-
 /// Install a panic hook that posts a [`Event::ServerPanic`] to the
 /// lifecycle channel before the default hook aborts the process.
 ///
@@ -548,6 +227,7 @@ mod tests {
     use crate::config::{ChannelConfig, EventToggles};
     use crate::event::{ChannelKind, ChatKind, DisconnectReason};
     use std::collections::HashMap;
+    use std::net::SocketAddr;
     use std::sync::OnceLock;
     use wiremock::matchers::method;
     use wiremock::{Mock, MockServer, ResponseTemplate};
@@ -654,54 +334,65 @@ mod tests {
         let _ = TESTS_INIT_GUARD.set(());
 
         // Fire every typed helper. Add a new line here when a new
-        // emit_* helper lands in lib.rs.
+        // emit_* helper lands in emit.rs.
         let addr: SocketAddr = "127.0.0.1:50000".parse().unwrap();
         emit_server_startup("0.1.0", vec!["addr".into()]);
         emit_server_shutdown("test", 100);
-        emit_player_login(1, Some("steve".into()), Some("alice".into()), addr);
-        emit_player_logout(1, Some("steve".into()), Some("alice".into()), 60);
-        emit_player_disconnect(
-            Some(1),
-            Some("steve".into()),
-            Some("alice".into()),
-            addr,
-            DisconnectReason::Timeout,
-            42,
-        );
+        let steve = || Named::new(1, Some("steve".into()));
+        let alice = || Named::new(12, Some("alice".into()));
+        let castle = || Named::new(4, Some("Castle".into()));
+        emit_player_login(steve(), Some(alice()), addr);
+        emit_player_logout(steve(), Some(alice()), 60);
+        emit_player_disconnect(steve(), Some(alice()), addr, DisconnectReason::Timeout, 42);
         emit_player_auth_failed("badname", addr, "invalid password");
-        emit_player_world_entry(1, Some("steve".into()), "alice", "Castle", [1.0, 2.0, 3.0]);
+        emit_player_world_entry(steve(), alice(), castle(), [1.0, 2.0, 3.0]);
         emit_player_world_exit(
-            1,
-            Some("steve".into()),
-            "alice",
-            "Castle",
-            Some("Tollana".into()),
+            steve(),
+            alice(),
+            castle(),
+            Some(Named::new(5, Some("Tollana".into()))),
         );
-        emit_chat(ChatKind::Global, "alice", None, "hello");
-        emit_level_up("alice", 5);
-        emit_mission_accepted("alice", 1234, Some("Find Ambernol".into()));
-        emit_mission_completed("alice", 1234, Some("Find Ambernol".into()));
-        emit_gm_command("steve", "/teleport", "alice 1,2,3");
-        emit_item_used("alice", 5001, Some("self".into()));
-        emit_character_created(1, Some("steve".into()), "asg", 2, "Castle");
+        emit_chat(ChatKind::Global, alice(), None, "hello");
+        emit_level_up(alice(), 5);
+        let mission = || Named::new(1234, Some("Find Ambernol".into()));
+        emit_mission_accepted(alice(), mission());
+        emit_mission_completed(alice(), mission());
+        emit_gm_command(steve(), "/teleport", "alice 1,2,3", Some(alice()));
+        emit_item_used(alice(), Named::new(5001, Some("Medkit".into())), None);
+        emit_character_created(
+            steve(),
+            Named::new(13, Some("asg".into())),
+            Named::new(2, Some("Commando".into())),
+            castle(),
+        );
         emit_npc_death(
-            "Jaffa Guard",
-            Some("alice".into()),
+            Named::new(9001, Some("Jaffa Guard".into())),
+            Some(Named::new(87, Some("Demon Jaffa".into()))),
+            Some(alice()),
             "player",
-            Some("Castle".into()),
+            Some(castle()),
         );
-        emit_minigame_result("Livewire", "alice", true);
-        emit_dialog("alice", 4242, Some(1));
+        emit_minigame_result("Livewire", alice(), true, vec![Named::new(1017, None)]);
+        emit_dialog(
+            alice(),
+            Named::new(4242, Some("Greeting".into())),
+            Some(Named::new(8, None)),
+        );
         emit_wire_format_error(
             "seq_out_of_range",
             Some(addr),
             "seq 0x1fffffff >= NULL_SEQUENCE",
         );
         emit_db_error("auth_user", "connection refused");
-        emit_mercury_timeout(addr, Some(1), 60);
-        emit_mission_failed("alice", 1234, Some("Find Ambernol".into()), "timer expired");
-        emit_player_death("alice", Some("Jaffa Guard".into()), "staff blast");
-        emit_player_respawn("alice", "Castle");
+        emit_mercury_timeout(addr, steve(), Some(alice()), 60);
+        emit_mission_failed(alice(), mission(), "timer expired");
+        emit_player_death(
+            alice(),
+            Some(Named::new(9001, Some("Jaffa Guard".into()))),
+            "staff blast",
+            Some(castle()),
+        );
+        emit_player_respawn(alice(), castle());
 
         const EXPECTED_EMITS: u64 = 24;
 

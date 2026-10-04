@@ -75,20 +75,24 @@ pub(super) async fn apply_death_transition(
     // the event makes no sense for mobs and would flood the channel during
     // combat.
     {
-        let killer = space_mgr.get_entity(attacker_id).and_then(|e| {
-            if attacker_is_player {
-                e.character_name.clone()
-            } else {
-                e.npc_name.clone()
-            }
-        });
+        // A player killer pairs with its `player_id`, an NPC with its
+        // `entity_id`. No attacker entity (environment) means no killer.
+        let killer = space_mgr
+            .get_entity(attacker_id)
+            .map(|_| space_mgr.discord_entity(attacker_id));
+        let world = space_mgr.discord_world_of(target_eid);
         if target_is_player {
             let character_name = space_mgr
                 .get_entity(target_eid)
                 .and_then(|e| e.character_name.clone())
                 .unwrap_or_else(|| format!("entity:{target_eid}"));
             let cause = if attacker_is_player { "pvp" } else { "pve" };
-            cimmeria_discord::emit_player_death(character_name.clone(), killer, cause);
+            cimmeria_discord::emit_player_death(
+                space_mgr.discord_character(target_eid),
+                killer,
+                cause,
+                world,
+            );
 
             // Contact-list Death fanout — cell→base hop. The base handler calls
             // `fanout_contact_event` with the player's name and EVENT_DEATH.
@@ -121,13 +125,19 @@ pub(super) async fn apply_death_transition(
             }
         } else {
             // NPC / mob death (off by default — high volume during combat).
-            let npc_name = space_mgr
-                .get_entity(target_eid)
-                .and_then(|e| e.npc_name.clone())
-                .unwrap_or_else(|| format!("entity:{target_eid}"));
+            // The NPC pairs its `entity_id` with its display name; the
+            // template pairs `template_id` with the template's designer name.
+            let npc = space_mgr.get_entity(target_eid);
+            let template = npc.and_then(|e| e.template_id).map(|t| {
+                cimmeria_discord::Named::new(
+                    t,
+                    cimmeria_names::book().template(t).map(str::to_string),
+                )
+            });
+            let npc =
+                cimmeria_discord::Named::new(target_eid, npc.and_then(|e| e.npc_name.clone()));
             let cause = if attacker_is_player { "player" } else { "npc" };
-            let world_name = space_mgr.get_entity_world_name(target_eid);
-            cimmeria_discord::emit_npc_death(npc_name, killer, cause, world_name);
+            cimmeria_discord::emit_npc_death(npc, template, killer, cause, world);
         }
     }
 

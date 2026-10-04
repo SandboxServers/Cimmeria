@@ -16,6 +16,7 @@ mod consumable_use;
 mod consumable_use_live_db_tests;
 #[cfg(test)]
 mod consumable_use_tests;
+mod discord_labels;
 mod effect_apply;
 mod engine_events;
 mod engine_loader;

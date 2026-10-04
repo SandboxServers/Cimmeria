@@ -448,11 +448,15 @@ pub async fn handle_gate_travel(
     // is the gate destination. (Snapshotted above before the new world
     // overwrites the connected state.)
     cimmeria_discord::emit_player_world_exit(
-        account_id,
-        account_name,
-        exit_name.clone().unwrap_or_else(|| "<unknown>".to_string()),
-        exit_from_world.unwrap_or_else(|| "<unknown>".to_string()),
-        Some(target_world_name.to_string()),
+        cimmeria_discord::Named::new(account_id, account_name),
+        cimmeria_discord::Named::new(active_player_id, exit_name.clone()),
+        exit_from_world.as_deref().map_or_else(
+            cimmeria_discord::Named::default,
+            cimmeria_base_session::base::discord_world,
+        ),
+        Some(cimmeria_base_session::base::discord_world(
+            target_world_name,
+        )),
     );
 
     // Contact-list GateTravel fanout (CM 89, eventId=GateTravel).
