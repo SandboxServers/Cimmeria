@@ -25,6 +25,7 @@ mod bank_org;
 mod broadcast_to_witnesses;
 mod create_entity_instance;
 mod disconnect_ability_snapshot;
+mod disconnect_lab_dummy;
 mod disconnect_persist_position;
 mod duel;
 mod general;

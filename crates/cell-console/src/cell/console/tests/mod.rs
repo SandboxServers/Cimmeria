@@ -12,6 +12,8 @@ use super::*;
 use crate::cell::messages::{CellToBaseMsg, GmGrantExpertise};
 use crate::cell::space_manager::SpaceManager;
 
+#[cfg(test)]
+mod ab_l2;
 mod am06_ammo;
 #[cfg(test)]
 mod bm07_black_market;

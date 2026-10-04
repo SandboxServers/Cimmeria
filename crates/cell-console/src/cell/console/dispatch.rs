@@ -10,9 +10,9 @@ use tokio::sync::mpsc;
 use super::registry::{Spec, Target, COMMANDS};
 use super::send_gm_feedback;
 use super::{
-    aggro, bank, black_market, bookmark, crafting, duel, entity, give, give_ability, gm, mail,
-    mission, net, org, org_create, patrol, pet, placement, query, seed, server, social, spawn,
-    squad, stats, travel,
+    abilities, aggro, bank, black_market, bookmark, crafting, duel, entity, give, give_ability, gm,
+    mail, mission, net, org, org_create, patrol, pet, placement, query, seed, server, social,
+    spawn, squad, stats, travel,
 };
 use crate::cell::messages::CellToBaseMsg;
 use crate::cell::space_manager::SpaceManager;
@@ -380,6 +380,10 @@ pub async fn exec(
         "infiniteammo" | "gmsetinfiniteammo" => {
             gm::set_infinite_ammo::set_infinite_ammo(caller_id, target_id, args, tx, space_mgr)
                 .await
+        }
+        // Ability lab commands (ability-mechanics AB-L2)
+        "effects" | "cooldowns" | "dummy" | "cleareffects" => {
+            abilities::dispatch(name, caller_id, args, target_id, tx, space_mgr).await
         }
         "giveability" => {
             give_ability::give_ability(caller_id, target_id, args, tx, space_mgr).await
