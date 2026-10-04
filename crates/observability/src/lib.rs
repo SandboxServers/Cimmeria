@@ -28,7 +28,7 @@
 //! [`docs/architecture/instrumentation-discipline.md`](../../docs/architecture/instrumentation-discipline.md))
 //!
 //! Metric labels must be enumerated, low-cardinality strings (`outcome`,
-//! `reason`, `kind`, `world_name`, `decision_outcome`). High-cardinality
+//! `reason`, `kind`, `world`, `decision_outcome`). High-cardinality
 //! correlators (`entity_id`, `player_id`, `peer`) belong in span/log
 //! fields, NEVER on a metric. ClickHouse merge-tree storing a label per
 //! entity degrades query performance non-linearly.
@@ -280,8 +280,8 @@ macro_rules! histogram {
 /// Adjust a gauge (up-down counter) by `delta` (positive or negative).
 ///
 /// ```ignore
-/// gauge_add!("cover_slots_held", 1, "world_name" => "Castle");
-/// gauge_add!("cover_slots_held", -1, "world_name" => "Castle");
+/// gauge_add!("cover_slots_held", 1, "world" => "Castle");
+/// gauge_add!("cover_slots_held", -1, "world" => "Castle");
 /// ```
 #[macro_export]
 macro_rules! gauge_add {
@@ -410,8 +410,8 @@ mod tests {
     /// gauge_add! macro emits +/- deltas without panicking.
     #[test]
     fn gauge_add_macro_is_safe_when_uninitialized() {
-        crate::gauge_add!("test_gauge", 1i64, "world_name" => "Castle");
-        crate::gauge_add!("test_gauge", -1i64, "world_name" => "Castle");
+        crate::gauge_add!("test_gauge", 1i64, "world" => "Castle");
+        crate::gauge_add!("test_gauge", -1i64, "world" => "Castle");
     }
 
     /// Concurrent emissions from two threads must not panic and must

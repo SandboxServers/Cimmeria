@@ -10,7 +10,7 @@ Every ID the server writes to a log line or posts to Discord appears with its na
 ```text
 before: ability_id=880 target=4123 space_id=12 reason=out_of_range
 after:  ability_id=880 ability_name="Staff Blast" target=4123 target_name="Jaffa Guard"
-        space_id=12 world_name="Castle_CellBlock" reason=out_of_range
+        space_id=12 world="Castle_CellBlock" reason=out_of_range
 ```
 
 Discord gets the same pairs, rendered as `Name (#id)`. The rest of the restoration team reads Discord, but only developers on the VPN can reach SigNoz, so **Discord messages never link to SigNoz** or to any other VPN-only host. Each message has to make sense on its own.
@@ -43,12 +43,12 @@ Nothing has been built yet. What the planning pass found:
 
 ## Design summary
 
-The full contract is NT-00 (Rule 6). All five decisions were settled on 2026-10-04. In short:
+The full contract is [instrumentation-discipline.md § Rule 6](../../architecture/instrumentation-discipline.md#rule-6--every-id-field-is-paired-with-its-name), written by NT-00, with the canonical key table. All five decisions were settled on 2026-10-04. In short:
 
-1. **Pair, don't replace.** The ID stays the join key. The name sits next to it under the same prefix: `ability_id` + `ability_name`, `target` + `target_name`, `space_id` + `world_name`. NT-00 publishes the canonical key table.
+1. **Pair, don't replace.** The ID stays the join key. The name sits next to it under the same prefix: `ability_id` + `ability_name`, `target` + `target_name`, `space_id` + `world`. [Rule 6](../../architecture/instrumentation-discipline.md#which-key-gets-which-name) has the canonical key table.
 2. **One lookup path per kind of ID.** Static content IDs go through a `NameBook` loaded at boot from `db/resources`, shared by base and cell, and refreshed on content reload (NT-01). Seed placeholders such as `NO ITEM NAME` count as unresolved. Runtime entity IDs are recycled slots, so they resolve through the live `SpaceManager` plus a bounded ring of recently departed entities (NT-02), never through the NameBook. Lookups return `Option<&str>`. tracing records an `Option` field only when it is `Some`, so an unresolved name is left out, never written as `"unknown"`.
 3. **A missing name means bad data.** A log line with `template_id` but no `template_name` points at a seed hole. NT-50 ships a saved SigNoz query for this.
-4. **Names are never metric labels.** Rule 4 stands. `world_name` stays the one approved label.
+4. **Names are never metric labels.** Rule 4 stands. `world` stays the one approved label.
 5. **Resolve late, and before teardown.** Same as Rule 5. The 10 Hz movement accept path pays nothing.
 6. **Discord stands on its own.** The server is private and team-only, so it shows the same names as SigNoz, account login names included (D-NT2). Every object appears as `Name (#id)`. There are no links to SigNoz, the admin API or any VPN-only host, and an embed-wide test enforces it. Player IPs and whisper text stay hidden, as today.
 
@@ -74,9 +74,11 @@ You coordinate this campaign. Work from [work-packets.md](work-packets.md) one p
 
 ## Ledger
 
+Coordinator launch: 2026-10-04 at `7e7ba5779` (baseline `a679e748c`). The cited paths changed only in AB-T6/AB-L2 additions (lab_dummy, ability metrics, the `metric_label!` note in Rule 4); none of that affects the plan.
+
 | Packet | Status | PR | Notes |
 |---|---|---|---|
-| NT-00 Rule 6 and key table | Ready | | |
+| NT-00 Rule 6 and key table | Done (PR #1191) | [#1191](https://github.com/SandboxServers/Cimmeria/pull/1191) | `space_id` pairs with `world`, not `world_name`; `player_name` kept over `character_name` |
 | NT-01 NameBook | Ready | | |
 | NT-02 Name helpers on the existing resolvers | BlockedDependency (NT-01) | | |
 | NT-03 Unpaired-ID scan and baseline | BlockedDependency (NT-00) | | |

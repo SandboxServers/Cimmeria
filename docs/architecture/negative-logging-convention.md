@@ -1,6 +1,6 @@
 # Negative-Logging Convention
 
-> **Last updated**: 2026-09-26
+> **Last updated**: 2026-10-04
 > **Status**: Convention adopted in issue #304 PR1 (2026-05-24). Applies to
 > every new patch that touches an expectation seam.
 
@@ -104,11 +104,12 @@ A third, cheap: state is released on `destroy_entity`.
 |---|---|---|
 | `player_id` | when applicable | The affected player. No aliases (`pid`). Log it, and every other numeric id (`design_id`, `account_id`, `entity_id`), **as a number**: pass an `Option<i32>` as the value itself (`player_id = e.player_id`), which omits the field when `None`, never `?e.player_id` or `%`. SigNoz types an attribute by the values it receives, so one Debug-formatted `"Some(72)"` creates a second, string-typed `player_id` key that a `player_id = 72` filter silently misses (2026-09-29: the bandolier equip-display rows; `design_id: "Some(5224)"` on `Player looted item`). |
 | `entity_id` | when applicable | The affected entity. No aliases (`eid`). |
-| `mob_id` / `mission_id` / `chain_id` / `step_id` / `space_id` / `cell_id` / `world_name` | when applicable | Canonical names per the existing logging surface. |
+| `mob_id` / `mission_id` / `chain_id` / `step_id` / `space_id` / `cell_id` | when applicable | Canonical names per the existing logging surface. |
+| `<prefix>_name` next to every ID (`ability_name`, `item_name`, `template_name`, `player_name`, `account_name`, `target_name`, …) | always, when the name resolves | The ID's name, under the same prefix, per [instrumentation-discipline.md § Rule 6](instrumentation-discipline.md#rule-6--every-id-field-is-paired-with-its-name), which holds the full key table and its exceptions. Pass an `Option<&str>` so an unresolved name is left out; never `"unknown"`, `""` or `"None"`. Use `player_name`, not `character_name`. An NPC line carries `entity_name` (or `npc_name` beside `npc_id`) **and** the `template_id` + `template_name` pair. An ID with nothing to name is marked `// nt:id-only <reason>`. |
 | `rows_affected` + `expected` | always paired on DB writes | Pair so a single ops query catches divergence. |
 | `phase` | optional | Short string naming a sub-step (e.g. `"create_base"` \| `"cascade"`). |
 | `reason` | optional | Short string naming why the expectation was unmet (e.g. `"entity_to_addr_miss"`, `"oneshot_dropped"`, `"rows_affected_zero"`). An expected miss logs at DEBUG under its own reason: a witness-send miss for a witness whose session just ended is `"witness_session_ended"`, not a WARN. |
-| `world` | when the seam is space-scoped | The **world name**, not only `space_id`. A space id is a runtime allocation that means nothing outside the running process, so a log carrying only `space_id` cannot be grouped by zone after the fact. Pair them — `space_id` still identifies the instance. |
+| `world` | when the seam is space-scoped | The **world name**, not only `space_id`. A space id is a runtime allocation that means nothing outside the running process, so a log carrying only `space_id` cannot be grouped by zone after the fact. Pair them — `space_id` still identifies the instance. `world` is Rule 6's name key for `space_id` and `world_id`; don't use `world_name`. |
 | `suppressed` | required on a Pattern D seam | Count of occurrences elided since this seam last emitted for this entity. `0` on the first row of an episode. |
 
 ### Credential fields

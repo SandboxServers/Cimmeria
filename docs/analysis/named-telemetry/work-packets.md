@@ -31,18 +31,19 @@
   |---|---|---|
   | `entity_id`, `target`, `attacker` | `entity_name`, `target_name`, `attacker_name` | player: character name; NPC: `name_id` text, and NPC lines also carry the template pair (D-NT5) |
   | `template_id` | `template_name` | `entity_templates.template_name` |
-  | `item_id` (instance), `item_type_id` / `type_id` | `item_name` | `items.name` via the type |
+  | `item_id` (instance), `item_type_id` | `item_name` | `items.name` via the type. A log `item_id` is often an instance ID, while the seed's `items.item_id` is a type ID: resolve an instance through its type, never by looking its ID up in `items` |
   | `ability_id` | `ability_name` | `abilities.name` |
   | `effect_id` | `effect_name` | `effects.name` |
   | `mission_id`, `step_id`, `objective_id` | `mission_name`, `step_name`, `objective_name` | `mission_label`, step / objective display text |
   | `dialog_id`, `dialog_set_id`, `speaker_id` | `dialog_name`, `dialog_set_name`, `speaker_name` | `dialogs.name` etc. |
-  | `space_id`, `world_id` | `world_name` | `SpaceManager` / `Worlds` |
+  | `space_id`, `world_id` | `world` | `SpaceManager` / `Worlds` |
   | `account_id` | `account_name` | session |
   | `player_id` | `player_name` | session / `sgw_player` |
   | `org_id` | `org_name` | organizations |
   | `archetype` | `archetype_name` | `archetype_name()` |
   | `error_code`, `moniker_id` | `error_name`, `moniker_name` | `error_texts.moniker_name`, `monikers.name` |
-  | `opcode`, `msg_id`, `method_id`, `method_index` | `method_name` | NT-30 table |
+  | `opcode`, `msg_id` | `msg_name` | NT-30 message table |
+  | `method_id`, `method_index` | `method_name` | NT-30 method table, per entity type |
 
   Existing names that disagree (`character_name` vs `player_name`) are listed with the one to keep. Sweeps converge on it.
 - The metric-label prohibition (a cross-reference to Rule 4) and the Discord rules (`Name (#id)`, no internal links).
@@ -90,7 +91,7 @@ Update [negative-logging-convention.md](../../architecture/negative-logging-conv
 
 **Depends:** NT-00 (D-NT4: blocking). **Effort:** M. **Reviewer:** testing-validation-engineer.
 
-- A source-scan test in the style of `crates/server/src/logging/target_scan_tests.rs`. It parses every `trace!/debug!/info!/warn!/error!/event!/info_span!`… call in `IN_PROCESS_CRATES`, and classifies **every** ID-shaped key (NT-00's default rule: any `*_id`, plus the bare entity keys), not just the keys the table lists. Each one must have its paired name key (default `<prefix>_name`, or the table's exception) in the same call, or an exemption. A table-only scan would let `witness_id` or `method_index` stay unpaired.
+- A source-scan test in the style of `crates/server/src/logging/target_scan_tests.rs`. It parses every `trace!/debug!/info!/warn!/error!/event!` call (event macros only; span constructors are outside Rule 6's scope) in `IN_PROCESS_CRATES`, and classifies **every** ID-shaped key (NT-00's default rule: any `*_id`, plus the bare entity keys), not just the keys the table lists. Each one must have its paired name key (default `<prefix>_name`, or the table's exception) in the same call, or an exemption. A table-only scan would let `witness_id` or `method_index` stay unpaired.
 - `crates/server/src/logging/unpaired_id_baseline.txt`: `path count` per file. The test fails if any file's count rises or a new file appears, and prints the offending call. It also fails if a count falls without the baseline being lowered, so the ratchet stays tight.
 - An inline `// nt:id-only <reason>` marker exempts one field: a pure slot counter, a test-only log, a hot path proven unreadable.
 - The first run's totals go into the ledger as the campaign baseline.
@@ -127,7 +128,7 @@ Update [negative-logging-convention.md](../../architecture/negative-logging-conv
 **Depends:** NT-00. **Effort:** S.
 
 - In the `TracingEvent` formatter (`crates/discord/src/embed/format.rs`), fold each `<p>_id`/`<p>_name` pair, and the `target`/`target_name` style pairs from the NT-00 table, into one embed field `<p>: Name (#id)`. Each pair then costs one of the 25 slots, not two. Order: identity first, then the event's object fields, then the rest.
-- Fold `account_id`/`player_id`/`player_name` into one "Who" field.
+- Fold `player_id`/`player_name` and `account_id`/`account_name` into one "Who" field, rendered `Name (#player_id) · login (#account_id)`; either half renders by the usual `Name (#id)` / `#id` rules when its name is missing.
 - **No internal links:** add a guard over the rendered embed JSON that rejects any `http(s)://` URL. Allowlist only public, team-reachable hosts (none today). Strip `trace_id`/`span_id` *URLs*. Put the trace ID in the footer as plain text (D-NT3).
 - Update [discord-notifications.md](../../architecture/discord-notifications.md): the naming section and a "no internal links" section next to the privacy sections.
 
@@ -157,6 +158,8 @@ Each sweep converts every unpaired ID field in its crates, shrinks the NT-03 bas
 
 Sweep notes:
 
+- **The `"world_name"` metric label (NT-25, coordinate with NT-23).** The NPC respawn counter at `cell/service/ticks/npc_respawn/mod.rs:413` is the one metric labelled `world_name`; every other world label is `world` (Rule 4). Rename it to `world`. It is a label rename, so check the SigNoz dashboards and saved views (`docs/operations/signoz/`) for queries on the old label first, and update them in the same PR.
+- **NPC names that break Rule 6 (NT-25).** Four sites log `npc_name = ….as_deref().unwrap_or("")`: `npc_ai/dispatch.rs` (two), `space_manager/npc_population.rs` and `playtest_friction_watch.rs`. Pass the `Option` through instead. `npc_population.rs` also logs `name = %record.template_name`; make it `template_name`.
 - **GM commands** name both the caller and the subject (Rule 5 § "Naming when an actor acts on someone else"), e.g. `player_name` + `subject_player_name`.
 - **Loops over many objects** (loot tables, witness lists) log a count plus at most the first few `Name (#id)` pairs. A per-row line is a volume regression.
 - **Wire crates** (`wire`, `mercury`, `wireclient`, `wire-log`) are left for NT-30. They have no content names to resolve.
@@ -170,7 +173,7 @@ Sweep notes:
 **Depends:** none. **Effort:** M. **Agent:** rust-gameserver-dev. Check `docs/protocol/*-dispatch-table.md` first.
 
 - One generated table, `wire::names`: Mercury message ID → name, and base/cell/client entity-method index → name, per entity type (clientIndex keyed, per the typeID rule). Reuse the existing per-module `method_name()` fns as its source where they already exist (`wire/src/base/organization.rs`, `cell_methods/organization/decode.rs`, `crafting/request.rs`, `cell-world/.../plugin/registry.rs`).
-- Every log field `opcode`, `msg_id`, `method_id`, `method_index` gets a `method_name` pair (about 48 sites today). `wire-log` and `mercury.tx_hole` output include the name.
+- Every log field `opcode`/`msg_id` gets a `msg_name` pair, and every `method_id`/`method_index` a `method_name` pair (about 48 sites today). A `msg_id` in an entity-method range gets both. `wire::names` exposes the two lookups separately. `wire-log` and `mercury.tx_hole` output include the name.
 - A test that every index in the dispatch tables resolves, and that the table agrees with the dispatch-table docs (a disagreement fails and names the row).
 
 ### NT-31 Flag, enum and error-code names
@@ -179,7 +182,7 @@ Sweep notes:
 
 - Bitflag fields (BSF state flags, effect flags, item flags; about 15 `flags = {:#x}` sites) log a `*_names` pair rendered `A|B|C`, from one `bitflags`-style formatter per flag set. Unknown bits render as `0x…`.
 - Numeric enum codes logged as integers (reason codes, `aiState`, movement type, dialog UI state, error codes) gain a name. Prefer logging the Rust enum with `?` when one exists. `error_code` pairs with `error_texts.moniker_name` from NT-01.
-- Positions: player-activity events that carry a position also carry `world_name`, and the enclosing spawn region's name when one contains the point (`regions.rs` already has region names). This is optional per site; the sweep owner decides.
+- Positions: player-activity events that carry a position also carry `world`, and the enclosing spawn region's name when one contains the point (`regions.rs` already has region names). This is optional per site; the sweep owner decides.
 
 ---
 
