@@ -1,5 +1,6 @@
 //! Verified, separately owned copies. A legacy ledger is never verification.
 //! Native composition only: dispatch these blocking functions on retained workers.
+mod artifacts;
 mod comparison;
 mod inventory;
 mod model;
@@ -9,12 +10,18 @@ pub use preparation::{
     abandon_preparation, inspect_preparation, list_preparations, PreparationRecord,
 };
 mod reference;
+#[cfg(any(test, feature = "test-support"))]
+pub mod test_support;
 mod worker;
 pub use worker::{start_confirmation, start_preview, ConfirmationWorker, PreviewWorker};
+#[cfg(all(test, target_os = "macos"))]
+mod artifacts_tests;
 #[cfg(all(test, target_os = "macos"))]
 mod cab_fixture;
 #[cfg(all(test, target_os = "macos"))]
 mod preparation_tests;
+#[cfg(all(test, target_os = "macos"))]
+mod publication_tests;
 #[cfg(all(test, target_os = "macos"))]
 mod recovery_tests;
 #[cfg(all(test, target_os = "macos"))]
@@ -24,7 +31,7 @@ mod tests;
 use super::*;
 use crate::{catalog::VerifiedRelease, OperationKind, OperationState};
 pub use model::*;
-pub use publication::{abandon, inspect, recover};
+pub use publication::{abandon, inspect, interrupted, recover, Interrupted};
 use sha2::{Digest, Sha256};
 use std::{io::Read, sync::Mutex};
 use tokio_util::sync::CancellationToken;
@@ -54,6 +61,48 @@ impl Preview {
     pub fn report(&self) -> &Report {
         &self.report
     }
+    pub fn signed_release(&self) -> &VerifiedRelease {
+        &self.release
+    }
+    /// Reference bytes replace managed files that are missing, modified or carry
+    /// the launcher's known setup transform; that needs explicit consent.
+    pub fn requires_normalization(&self) -> bool {
+        self.report.files.iter().any(|d| {
+            matches!(
+                d.classification,
+                Classification::Modified | Classification::Missing | Classification::KnownTransform
+            )
+        })
+    }
+    /// Imported game telemetry consent cannot be honoured by this build.
+    pub fn requires_telemetry_acceptance(&self) -> bool {
+        self.imported.config.telemetry.opted_in && !self.report.game_telemetry_available
+    }
+    /// The one consent rule, shared by review presentation and confirmation.
+    pub fn consent(&self, choices: &Choices) -> Result<(), Error> {
+        if !choices.old_game_closed
+            || (self.requires_normalization() && !choices.normalize_managed_files)
+            || (self.requires_telemetry_acceptance() && !choices.accept_unavailable_game_telemetry)
+        {
+            return Err(Error::ConsentRequired);
+        }
+        Ok(())
+    }
+    /// Release the source lock and private reference without confirming. Blocking:
+    /// the caller must not hold the state guard.
+    pub fn discard(mut self) {
+        self.preparation.release();
+    }
+}
+/// Imported configuration this copy cannot honour. It is refused, never rewritten.
+pub fn import_blocker(imported: &migration::LegacyImport) -> Option<Error> {
+    if imported.config.manifest_url != crate::catalog::URL {
+        return Some(Error::UnsupportedCatalog);
+    }
+    if imported.config.client_patches.dll_override.is_some() {
+        return Some(Error::UnsupportedConfiguration);
+    }
+    None
 }
 pub struct PreviewRequest {
     pub import_digest: String,
@@ -61,7 +110,8 @@ pub struct PreviewRequest {
     pub operation_revision: u64,
     pub preferences_revision: u64,
     pub release: VerifiedRelease,
-    pub artifacts: Artifacts,
+    /// Local fixture paths only. `None` fetches the signed blobs natively.
+    pub artifacts: Option<Artifacts>,
 }
 /// Native worker entry point; no renderer-supplied release/path is accepted by a
 /// bridge. Dropping a Preview cancels its unconfirmed private reference only.
@@ -71,7 +121,7 @@ pub fn preview(
     cancel: CancellationToken,
     progress: crate::install_progress::ProgressSink,
 ) -> Result<Preview, Error> {
-    preview_using(state, request, cancel, progress, Backend::Native)
+    preview_using(state, request, cancel, progress, Backend::Native, None)
 }
 
 pub(super) fn preview_using(
@@ -80,6 +130,7 @@ pub(super) fn preview_using(
     cancel: CancellationToken,
     progress: crate::install_progress::ProgressSink,
     backend: Backend,
+    transport: Option<artifacts::Transport>,
 ) -> Result<Preview, Error> {
     // Mac-native filesystem identity and no-clobber promotion are implemented in
     // this bounded phase. Other hosts fail closed pending their native tests.
@@ -106,14 +157,16 @@ pub(super) fn preview_using(
         if imported.confirmation != request.import_digest {
             return Err(Error::SourceChanged);
         }
-        if imported.config.manifest_url != crate::catalog::URL {
-            return Err(Error::UnsupportedCatalog);
-        }
-        if imported.config.client_patches.dll_override.is_some() {
-            return Err(Error::UnsupportedConfiguration);
+        if let Some(blocker) = import_blocker(&imported) {
+            return Err(blocker);
         }
         let destination =
             super::install_intent::fresh_destination(&request.destination, &owner.directory.root)?;
+        // Confirmation creates this folder itself. Refuse an existing one now,
+        // before a long preparation, rather than after the review.
+        if std::fs::symlink_metadata(&destination).is_ok() {
+            return Err(StorageError::InvalidDirectory.into());
+        }
         for source in [
             &imported.source.game_directory,
             &imported.source.launcher_directory,
@@ -147,49 +200,27 @@ pub(super) fn preview_using(
     };
     let mut preparation =
         preparation::Ownership::claim(state.clone(), &request, identity, servers.clone())?;
-    let adapter: Option<Box<dyn crate::install::SeedExtractor>> = match backend {
-        Backend::Native => None,
-        #[cfg(target_os = "macos")]
-        Backend::Wine(helper) => {
-            preparation.uncertain = true;
-            Some(Box::new(
-                tokio::runtime::Handle::try_current()
-                    .map_err(|_| StorageError::Io)?
-                    .block_on(crate::mac_wine::WineSeedExtractor::prepare(
-                        state.clone(),
-                        preparation.record.id,
-                        helper.path().to_path_buf(),
-                        cancel.clone(),
-                        progress.clone(),
-                    ))
-                    .map_err(|_| StorageError::PersistenceUncertain)?,
-            ))
-        }
-    };
-    let reference = reference::reconstruct(
-        &preparation.record.directory,
-        &request.release,
-        &request.artifacts,
+    let prepared = reference_and_comparison(
+        &state,
+        &request,
+        backend,
+        transport,
+        &mut preparation,
+        &imported,
+        &source,
         &servers,
         &cancel,
         progress,
-        adapter.as_deref(),
-    )?;
-    preparation.uncertain = false;
-    drop(adapter);
-    let files = comparison::compare(&imported.source.game_directory, &source, &reference)?;
-    if !files.iter().any(|d| {
-        matches!(
-            d.classification,
-            Classification::Matched | Classification::KnownTransform
-        )
-    }) {
-        return Err(Error::NoReusableFiles);
-    }
-    if inventory::scan(&imported.source.game_directory, &cancel)? != source {
-        return Err(Error::SourceChanged);
-    }
-    verify_import(&imported)?;
+    );
+    let (reference, files) = match prepared {
+        Ok(prepared) => prepared,
+        Err(error) => {
+            // This worker holds no state guard, so settle the owner now rather
+            // than leave a Running operation that nothing is working on.
+            preparation.release();
+            return Err(error);
+        }
+    };
     let report = Report {
         preview_handle: preparation.record.id,
         source: imported.source.game_directory.clone(),
@@ -213,6 +244,81 @@ pub(super) fn preview_using(
         _legacy_lock: legacy_lock,
     })
 }
+#[allow(clippy::too_many_arguments)]
+fn reference_and_comparison(
+    state: &Arc<Mutex<DesktopState>>,
+    request: &PreviewRequest,
+    backend: Backend,
+    transport: Option<artifacts::Transport>,
+    preparation: &mut preparation::Ownership,
+    imported: &migration::LegacyImport,
+    source: &inventory::Index,
+    servers: &[crate::client_setup::LoginServer],
+    cancel: &CancellationToken,
+    progress: crate::install_progress::ProgressSink,
+) -> Result<(reference::Reference, Vec<Difference>), Error> {
+    let fetched;
+    let artifacts = match &request.artifacts {
+        Some(artifacts) => artifacts,
+        None => {
+            let transport = match transport {
+                Some(transport) => transport,
+                None => artifacts::Transport::production()?,
+            };
+            let root = state
+                .lock()
+                .map_err(|_| StorageError::Io)?
+                .state_root()
+                .to_path_buf();
+            fetched = artifacts::fetch(&root, &transport, &request.release, cancel, &progress)?;
+            &fetched
+        }
+    };
+    let adapter: Option<Box<dyn crate::install::SeedExtractor>> = match backend {
+        Backend::Native => None,
+        #[cfg(target_os = "macos")]
+        Backend::Wine(helper) => {
+            preparation.uncertain = true;
+            Some(Box::new(
+                tokio::runtime::Handle::try_current()
+                    .map_err(|_| StorageError::Io)?
+                    .block_on(crate::mac_wine::WineSeedExtractor::prepare(
+                        state.clone(),
+                        preparation.record.id,
+                        helper.path().to_path_buf(),
+                        cancel.clone(),
+                        progress.clone(),
+                    ))
+                    .map_err(|_| StorageError::PersistenceUncertain)?,
+            ))
+        }
+    };
+    let reference = reference::reconstruct(
+        &preparation.record.directory,
+        &request.release,
+        artifacts,
+        servers,
+        cancel,
+        progress,
+        adapter.as_deref(),
+    )?;
+    preparation.uncertain = false;
+    drop(adapter);
+    let files = comparison::compare(&imported.source.game_directory, source, &reference)?;
+    if !files.iter().any(|d| {
+        matches!(
+            d.classification,
+            Classification::Matched | Classification::KnownTransform
+        )
+    }) {
+        return Err(Error::NoReusableFiles);
+    }
+    if inventory::scan(&imported.source.game_directory, cancel)? != *source {
+        return Err(Error::SourceChanged);
+    }
+    verify_import(imported)?;
+    Ok((reference, files))
+}
 /// Work ID is the only new identity provided at confirmation; content ownership
 /// gets a separate UUID. The caller consumes the exact native-held Preview once.
 pub fn confirm(
@@ -228,6 +334,7 @@ pub fn confirm(
         preview_handle,
         choices,
         cancel,
+        &crate::install_progress::ProgressSink::latest().0,
         |_| Ok(()),
     )
 }

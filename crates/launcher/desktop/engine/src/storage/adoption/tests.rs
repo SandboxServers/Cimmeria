@@ -5,8 +5,8 @@ use serde_json::json;
 pub(super) struct Fixture {
     pub(super) root: tempfile::TempDir,
     pub(super) state: Arc<Mutex<DesktopState>>,
-    source: migration::LegacySource,
-    seed: PathBuf,
+    pub(super) source: migration::LegacySource,
+    pub(super) seed: PathBuf,
     release: VerifiedRelease,
 }
 impl Fixture {
@@ -84,10 +84,10 @@ impl Fixture {
                 self.release.evidence().1,
             )
             .unwrap(),
-            artifacts: Artifacts {
+            artifacts: Some(Artifacts {
                 seed: self.seed.clone(),
                 patches: vec![],
-            },
+            }),
         }
     }
     pub(super) fn preview(&self) -> Result<Preview, Error> {

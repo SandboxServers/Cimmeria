@@ -1,6 +1,10 @@
 use super::tests::*;
 use super::*;
 
+fn sink() -> crate::install_progress::ProgressSink {
+    crate::install_progress::ProgressSink::latest().0
+}
+
 #[test]
 fn every_durable_publication_fault_reopens_without_redispatch_and_preserves_source() {
     for point in [
@@ -23,6 +27,7 @@ fn every_durable_publication_fault_reopens_without_redispatch_and_preserves_sour
                 handle,
                 choices(),
                 CancellationToken::new(),
+                &sink(),
                 |p| if p == point {
                     Err(StorageError::PersistenceUncertain.into())
                 } else {
@@ -70,6 +75,7 @@ fn missing_checkpoint_never_authorizes_recovery_or_automatic_copy_retry() {
         handle,
         choices(),
         CancellationToken::new(),
+        &sink(),
         |point| if point == publication::Point::Plan {
             Err(StorageError::Io.into())
         } else {
@@ -108,6 +114,7 @@ fn recovery_refuses_foreign_game_tree_and_stale_preferences() {
             handle,
             choices(),
             CancellationToken::new(),
+            &sink(),
             |point| if point == publication::Point::Staged {
                 Err(StorageError::Io.into())
             } else {

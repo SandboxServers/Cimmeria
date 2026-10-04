@@ -49,36 +49,46 @@ fn sync_tree(path: &Path) -> Result<(), Error> {
     sync(path)
 }
 pub(super) fn confirm(
-    preview: Preview,
+    mut preview: Preview,
     id: Uuid,
     handle: Uuid,
     choices: Choices,
     cancel: CancellationToken,
+    progress: &crate::install_progress::ProgressSink,
+    hook: impl FnMut(Point) -> Result<(), Error>,
+) -> Result<Provenance, Error> {
+    let result = copy_and_publish(&preview, id, handle, choices, &cancel, progress, hook);
+    // Staging no longer needs the reference, and recovery finishes from the stage
+    // alone. No state guard is held here, so settle its owner deterministically.
+    preview.preparation.release();
+    if result.is_ok() {
+        if let Ok(state) = preview.state.lock() {
+            artifacts::discard_store(&state.directory.root);
+        }
+    }
+    result
+}
+fn copy_and_publish(
+    preview: &Preview,
+    id: Uuid,
+    handle: Uuid,
+    choices: Choices,
+    cancel: &CancellationToken,
+    progress: &crate::install_progress::ProgressSink,
     mut hook: impl FnMut(Point) -> Result<(), Error>,
 ) -> Result<Provenance, Error> {
+    use crate::install_progress::ProgressReporter;
     if id.is_nil() || handle != preview.report.preview_handle {
         return Err(ContractError::IdentityConflict.into());
     }
-    if !choices.old_game_closed
-        || (!choices.normalize_managed_files
-            && preview.report.files.iter().any(|d| {
-                matches!(
-                    d.classification,
-                    Classification::Modified
-                        | Classification::Missing
-                        | Classification::KnownTransform
-                )
-            }))
-        || (preview.imported.config.telemetry.opted_in
-            && !choices.accept_unavailable_game_telemetry)
-    {
-        return Err(Error::ConsentRequired);
-    }
-    inventory::check_cancel(&cancel)?;
+    preview.consent(&choices)?;
+    inventory::check_cancel(cancel)?;
     verify_import(&preview.imported)?;
-    if inventory::scan(&preview.imported.source.game_directory, &cancel)? != preview.source {
+    if inventory::scan(&preview.imported.source.game_directory, cancel)? != preview.source {
         return Err(Error::SourceChanged);
     }
+    // Admission: the journal's Running Adopt operation, not this guard, excludes
+    // other work for the rest of the copy.
     let mut state = preview.state.lock().map_err(|_| StorageError::Io)?;
     preview.preparation.validate(&state)?;
     if state.preferences.revision != preview.before.revision {
@@ -169,11 +179,19 @@ pub(super) fn confirm(
     state
         .operations_mut()?
         .observe(id, OperationState::Running)?;
+    drop(state);
     let result = (|| {
         hook(Point::Plan)?;
-        // The state guard serializes publication with preference edits. This is a
-        // blocking worker API; never invoke it on the UI/command thread.
-        for (path, expected) in &preview.reference.index {
+        // The multi-gigabyte copy runs without the state guard, so status reads
+        // and other views stay responsive. Never invoke this on a command thread.
+        let total = preview.reference.index.len();
+        for (current, (path, expected)) in preview.reference.index.iter().enumerate() {
+            progress.report(crate::install::Progress::Extracting {
+                label: "Verified copy".into(),
+                current,
+                total,
+                filename: path.clone(),
+            });
             let reusable = preview.report.files.iter().find(|d| {
                 &d.path == path
                     && matches!(
@@ -186,28 +204,49 @@ pub(super) fn confirm(
                     &preview.imported.source.game_directory.join(source_path),
                     &stage.join(path),
                     &preview.source[source_path],
-                    &cancel,
+                    cancel,
                 )?;
             } else {
                 inventory::copy(
                     &preview.reference.prepared.join(path),
                     &stage.join(path),
                     expected,
-                    &cancel,
+                    cancel,
                 )?;
             }
         }
+        progress.report(crate::install::Progress::Extracting {
+            label: "Verified copy".into(),
+            current: total,
+            total,
+            filename: String::new(),
+        });
         crate::client_setup::prepare(&stage, &plan.installation.login_servers)?;
-        if inventory::content_digest(&inventory::scan(&stage, &cancel)?)?
+        if inventory::content_digest(&inventory::scan(&stage, cancel)?)?
             != provenance.reference_digest
         {
             return Err(Error::InvalidArtifact);
         }
-        if inventory::scan(&preview.imported.source.game_directory, &cancel)? != preview.source {
+        if inventory::scan(&preview.imported.source.game_directory, cancel)? != preview.source {
             return Err(Error::SourceChanged);
         }
         verify_import(&preview.imported)?;
         sync_tree(&stage)?;
+        // Publication is serialized with preference edits again. The operation
+        // must still be the one admitted above before any checkpoint is written.
+        let mut state = preview.state.lock().map_err(|_| StorageError::Io)?;
+        if state.requires_reopen() {
+            return Err(StorageError::PersistenceUncertain.into());
+        }
+        if !state
+            .operations
+            .snapshot()
+            .operation
+            .as_ref()
+            .is_some_and(|op| op.id == id && op.state == OperationState::Running)
+        {
+            return Err(ContractError::InvalidTransition.into());
+        }
         write_large(
             &state.directory.root,
             &name(id),
@@ -217,10 +256,11 @@ pub(super) fn confirm(
             },
         )?;
         hook(Point::Staged)?;
-        inventory::check_cancel(&cancel)?;
+        inventory::check_cancel(cancel)?;
         finish(&mut state, &plan, &mut hook)?;
         Ok(provenance)
     })();
+    let mut state = preview.state.lock().map_err(|_| StorageError::Io)?;
     if result == Err(Error::Cancelled) {
         state.operations_mut()?.request_cancel(id)?;
         state
@@ -233,6 +273,7 @@ pub(super) fn confirm(
                 .map_err(|_| StorageError::PersistenceUncertain)
         });
     }
+    drop(state);
     drop(owner);
     result
 }
@@ -370,6 +411,35 @@ pub fn inspect(state: &DesktopState, id: Uuid) -> Result<Record, Error> {
         return Err(StorageError::Corrupt.into());
     }
     Ok(record)
+}
+/// What an interrupted copy still allows. Reading this never mutates or redispatches.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Interrupted {
+    pub directory: PathBuf,
+    /// A verified Staged checkpoint exists, so `recover` can finish publication.
+    pub recoverable: bool,
+    /// Nothing was promoted, so `abandon` can end the operation.
+    pub abandonable: bool,
+}
+pub fn interrupted(state: &DesktopState, id: Uuid) -> Result<Interrupted, Error> {
+    let plan: Plan = read_large(&state.directory.root.join(plan_name(id)))?;
+    let op = state
+        .operations
+        .snapshot()
+        .operation
+        .as_ref()
+        .ok_or(ContractError::UnknownOperation)?;
+    if op.id != id || op.kind != OperationKind::Adopt || op.intent_digest != plan.digest()? {
+        return Err(StorageError::Corrupt.into());
+    }
+    Ok(Interrupted {
+        recoverable: inspect(state, id).is_ok(),
+        abandonable: matches!(
+            std::fs::symlink_metadata(plan.installation.destination.join("game")),
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound
+        ),
+        directory: plan.installation.destination,
+    })
 }
 /// Explicit reopen recovery finishes only an already verified Staged checkpoint.
 /// Missing checkpoints are quarantined; they never trigger extraction or copying.

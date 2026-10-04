@@ -229,7 +229,7 @@ async fn wine_case(cabinet: bool) {
     let f = Fixture::new();
     let before = f.source_snapshot();
     let mut request = f.request();
-    let bytes = std::fs::read(&request.artifacts.seed).unwrap();
+    let bytes = std::fs::read(&request.artifacts.as_ref().unwrap().seed).unwrap();
     let mut zip = zip::ZipArchive::new(std::io::Cursor::new(bytes)).unwrap();
     let entries: Vec<(String, Vec<u8>)> = (0..zip.len())
         .map(|i| {
@@ -268,7 +268,7 @@ async fn wine_case(cabinet: bool) {
             .collect::<Vec<_>>(),
     );
     request.release = crate::install_worker::fixtures::verified(&std::fs::read(&archive).unwrap());
-    request.artifacts.seed = archive;
+    request.artifacts.as_mut().unwrap().seed = archive;
     let helper = crate::mac_wine::HelperResource::open(
         PathBuf::from(
             std::env::var_os("CIMMERIA_WINE_HELPER").expect("native-built pinned helper"),
@@ -288,8 +288,8 @@ async fn wine_case(cabinet: bool) {
             .unwrap()
             .success());
     }
-    let worker = start_preview_wine(f.state.clone(), request, helper).unwrap();
-    let preview = worker.result.await.unwrap().unwrap();
+    let mut worker = start_preview_wine(f.state.clone(), request, helper).unwrap();
+    let preview = worker.wait().await.unwrap();
     let id = preview.report.preview_handle;
     assert!(matches!(
         preview.preparation.record.descriptor.backend,

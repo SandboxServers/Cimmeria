@@ -3,8 +3,9 @@ mod host;
 
 use cimmeria_launcher_engine::{NativeCommand, NativeSnapshot, StorageError};
 use host::{
-    GameUpdateCommand, GameUpdateStatus, InstallCommand, InstallStatus, JobError, LaunchCommand,
-    LaunchStatus, MigrationCommand, MigrationStatus, NativeHost, UpdaterCommand,
+    AdoptionCommand, AdoptionError, AdoptionStatus, GameUpdateCommand, GameUpdateStatus,
+    InstallCommand, InstallStatus, JobError, LaunchCommand, LaunchStatus, MigrationCommand,
+    MigrationStatus, NativeHost, UpdaterCommand,
 };
 use std::sync::Arc;
 use tauri::Manager;
@@ -205,6 +206,59 @@ async fn migration_command(
 }
 
 #[tauri::command]
+async fn adoption_command(
+    request: AdoptionCommand,
+    state: tauri::State<'_, Arc<NativeHost>>,
+) -> Result<AdoptionStatus, AdoptionError> {
+    request.validate()?;
+    let host = state.inner().clone();
+    tauri::async_runtime::spawn_blocking(move || host.adoption_command(request))
+        .await
+        .map_err(|_| AdoptionError::Io)?
+}
+
+#[tauri::command]
+async fn choose_adoption_destination(
+    app: tauri::AppHandle,
+    window: tauri::WebviewWindow,
+    state: tauri::State<'_, Arc<NativeHost>>,
+) -> Result<AdoptionStatus, AdoptionError> {
+    let host = state.inner().clone();
+    // Refuse before a dialog or the network when no preview could be admitted.
+    let checking = host.clone();
+    tauri::async_runtime::spawn_blocking(move || checking.adoption_choice_allowed())
+        .await
+        .map_err(|_| AdoptionError::Io)??;
+    let Some(location) = tauri::async_runtime::spawn_blocking(move || {
+        app.dialog()
+            .file()
+            .set_parent(&window)
+            .set_title("Choose where to create the verified Stargate Worlds copy")
+            .blocking_pick_folder()
+            .map(|folder| {
+                folder
+                    .into_path()
+                    .map_err(|_| AdoptionError::InvalidDirectory)
+            })
+            .transpose()
+    })
+    .await
+    .map_err(|_| AdoptionError::Io)??
+    else {
+        return tauri::async_runtime::spawn_blocking(move || host.adoption_status())
+            .await
+            .map_err(|_| AdoptionError::Io)?;
+    };
+    // Only the fixed, signed catalog names the release; the webview cannot.
+    let release = cimmeria_launcher_engine::catalog::fetch_release()
+        .await
+        .map_err(|_| AdoptionError::ReleaseUnavailable)?;
+    tauri::async_runtime::spawn_blocking(move || host.begin_adoption_preview(location, release))
+        .await
+        .map_err(|_| AdoptionError::Io)?
+}
+
+#[tauri::command]
 async fn choose_legacy_source(
     app: tauri::AppHandle,
     window: tauri::WebviewWindow,
@@ -253,7 +307,9 @@ fn main() {
             migration_command,
             updater_command,
             game_update_command,
-            choose_legacy_source
+            choose_legacy_source,
+            adoption_command,
+            choose_adoption_destination
         ])
         .run(tauri::generate_context!())
         .expect("desktop launcher could not initialize");

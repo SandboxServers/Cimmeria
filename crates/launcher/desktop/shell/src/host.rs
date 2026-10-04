@@ -5,10 +5,12 @@ use std::{
     sync::{Arc, Mutex},
 };
 
+mod adoption;
 mod game_update;
 #[cfg(test)]
 mod held_download;
 mod install;
+pub use adoption::{AdoptionCommand, AdoptionError, AdoptionStatus};
 pub use game_update::{GameUpdateCommand, GameUpdateStatus};
 mod updater;
 pub use updater::UpdaterCommand;
@@ -35,10 +37,13 @@ pub struct NativeHost {
     runtime_worker: Mutex<Option<cimmeria_launcher_engine::mac_wine::prerequisites::Worker>>,
     state: Mutex<Option<Arc<Mutex<DesktopState>>>>,
     migration_preview: Mutex<Option<migration::Preview>>,
+    adoption: Mutex<adoption::Adoption>,
     #[cfg(test)]
     repair_fixture: Option<repair::TestDispatch>,
     #[cfg(test)]
     game_update_fixture: Option<game_update::TestDispatch>,
+    #[cfg(test)]
+    adoption_fixture: Option<adoption::TestDispatch>,
     launch_resources: Option<cimmeria_launcher_engine::launch::Resources>,
     launch_worker: Mutex<Option<cimmeria_launcher_engine::launch::Worker>>,
     repair_worker: Mutex<Option<repair::Worker>>,
@@ -61,10 +66,13 @@ impl NativeHost {
             runtime_worker: Mutex::new(None),
             state: Mutex::new(None),
             migration_preview: Mutex::new(None),
+            adoption: Mutex::new(adoption::Adoption::default()),
             #[cfg(test)]
             repair_fixture: None,
             #[cfg(test)]
             game_update_fixture: None,
+            #[cfg(test)]
+            adoption_fixture: None,
             launch_resources: None,
             launch_worker: Mutex::new(None),
             repair_worker: Mutex::new(None),

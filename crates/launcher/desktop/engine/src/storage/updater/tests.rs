@@ -490,10 +490,10 @@ fn active_updater_refuses_early_mutation_but_preserves_consent_control() {
                 operation_revision: 0,
                 preferences_revision: 2,
                 release,
-                artifacts: crate::adoption::Artifacts {
+                artifacts: Some(crate::adoption::Artifacts {
                     seed: root.path().join("unused.zip"),
                     patches: vec![],
-                },
+                }),
             },
             tokio_util::sync::CancellationToken::new(),
             progress,

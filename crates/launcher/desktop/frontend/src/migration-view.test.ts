@@ -17,7 +17,7 @@ test('explicit confirmation, duplicate suppression and lost response reconcile w
  });
  try{await app.ready;await settle();click('choose-legacy');await app.settled();await settle();assert.equal(commits,0);assert.match(get('migration-details').textContent!,/C:\\\\Game/);assert.match(get('migration-consent').textContent!,/Game telemetry consent: off.*diagnostics: on \(unchanged\)/);
  click('confirm-migration');click('confirm-migration');assert.match(get('migration-status').textContent!,/Checking/);finish();await app.settled();await settle();assert.equal(commits,1);assert.equal((get('confirm-migration') as HTMLButtonElement).disabled,true);assert.match(get('migration-status').textContent!,/not retried/);
- await app.refresh();await settle();assert.equal(commits,1);assert.match(get('migration-status').textContent!,/does not enable Play, Repair or Uninstall/);assert.match(get('migration-status').textContent!,/separate empty folder/);assert.equal(get('migration-actions').hidden,true);
+ await app.refresh();await settle();assert.equal(commits,1);assert.match(get('migration-status').textContent!,/does not enable Play, Repair or Uninstall/);assert.match(get('migration-status').textContent!,/Verified copy adoption below/);assert.equal(get('migration-actions').hidden,true);
  }finally{await app.dispose();}
 });
 test('cancelled chooser and dismissed preview cannot commit; source errors demand fresh preview',async()=>{

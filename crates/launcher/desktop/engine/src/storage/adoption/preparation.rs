@@ -51,6 +51,7 @@ pub(super) struct Ownership {
     // Held through the worker and reviewed Preview, including observer loss.
     _lock: File,
     pub uncertain: bool,
+    released: bool,
 }
 impl Ownership {
     pub fn claim(
@@ -117,6 +118,7 @@ impl Ownership {
             record,
             _lock: lock,
             uncertain: false,
+            released: false,
         })
     }
     pub fn validate(&self, state: &DesktopState) -> Result<(), Error> {
@@ -148,13 +150,19 @@ impl Ownership {
         Ok(state.operations.snapshot().revision)
     }
 }
-impl Drop for Ownership {
-    fn drop(&mut self) {
-        // Never block recursively on a caller's state guard. Failure leaves the
-        // durable nonterminal owner for explicit reopen reconciliation.
-        let Ok(mut state) = self.state.try_lock() else {
+impl Ownership {
+    /// Settle this reference from a retained worker that holds no state guard:
+    /// wait for the mutex instead of leaving a Running owner with no worker.
+    pub fn release(&mut self) {
+        if std::mem::replace(&mut self.released, true) {
             return;
+        }
+        let state = self.state.clone();
+        if let Ok(mut state) = state.lock() {
+            self.settle(&mut state);
         };
+    }
+    fn settle(&self, state: &mut DesktopState) {
         if state.ensure_updater_idle().is_err() {
             return;
         }
@@ -166,7 +174,7 @@ impl Drop for Ownership {
             });
             return;
         }
-        if cleanup(&state, &self.record).is_err() {
+        if cleanup(state, &self.record).is_err() {
             return;
         }
         if state
@@ -181,6 +189,20 @@ impl Drop for Ownership {
                 let _ = ops.observe(self.record.id, OperationState::Cancelled);
             }
         }
+    }
+}
+impl Drop for Ownership {
+    fn drop(&mut self) {
+        if self.released {
+            return;
+        }
+        // Never block recursively on a caller's state guard. Failure leaves the
+        // durable nonterminal owner for explicit reopen reconciliation.
+        let state = self.state.clone();
+        let Ok(mut state) = state.try_lock() else {
+            return;
+        };
+        self.settle(&mut state);
     }
 }
 fn cleanup(state: &DesktopState, record: &PreparationRecord) -> Result<(), Error> {
