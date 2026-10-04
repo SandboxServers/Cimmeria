@@ -411,3 +411,26 @@ archive extraction or new shell-host/visual UAT occurred. CI retains the helper
 as a seven-day debug artifact for later supervised validation. Installation
 remains disabled until parent ownership, deadlines, staging promotion and
 reconciliation are connected. The helper is not a game launch worker.
+
+
+### 2026-10-04: native helper supervision
+
+Added native-owned process configuration and a host-PID recording callback before
+request dispatch. Protocol/progress observations and write, operation,
+cancellation and exit deadlines are bounded. Completion requires matching
+terminal identity, process exit and EOF; uncertain observations retain the
+reconciliation requirement. Cancellation writes obey the active deadline and
+cleanup uses only its remaining grace.
+
+The real-stdio harness exercises twelve scenarios, including ownership refusal,
+cooperative/unresponsive cancellation, malformed lifecycle results, progress
+flooding and direct-child cleanup after supervisor abort. A blocked-pipe unit
+regression covers the cancellation deadline. Native Windows real-worker
+supervisor integration awaits CI. Production journal callback and coordinator
+wiring remain pending. No GUI, Wine or frontend behavior changed; no Wine guest
+death or installation-readiness claim is made. Installation stays disabled and
+the final startup gate remains open.
+
+Validation: 142 engine tests and all twelve process-harness scenarios passed on
+macOS through the build lane; strict all-target clippy passed. Three default
+ignores retain the previously documented parent-fixture/real-client distinction.

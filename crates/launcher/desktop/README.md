@@ -246,7 +246,7 @@ this nested workspace. `.github/workflows/launcher-desktop.yml` adds explicit
 native Mac/Windows checks and the frontend/native logic UAT. Shared-source
 changes also run an existing-launcher Cargo check on native Windows.
 
-On 2026-10-04, **140 engine tests**, **two shell-host tests**, **14 frontend tests**, strict clippy, TypeScript
+On 2026-10-04, **142 engine tests**, **two shell-host tests**, **14 frontend tests**, strict clippy, TypeScript
 checking and formatting passed locally on macOS. Three engine tests are ignored by default: the subprocess fixture invoked by
 its parent, plus manual real-SGW-executable and real-client-RAR checks that
 remain unrun. Coverage includes command/schema
@@ -306,3 +306,37 @@ Catalog CI run `37183173769` passed both native platforms at `f8ea7b844`.
 The shared-installer/helper packets need their own native Windows results.
 Helper stdio mechanics are compiled and tested on Mac without running the
 Windows executable. Shell-host tests were last run in the preceding packet.
+
+
+## Native helper supervision
+
+`engine/src/helper_supervisor/` starts a native-selected executable with explicit
+arguments, working directory and environment; inherited environment variables
+are cleared. No deserialized or webview command accepts this configuration.
+The caller must persist operation admission first. After spawning, `record_host`
+must durably record the host PID before request dispatch, or refuse dispatch.
+Production journal integration for this callback remains pending.
+
+Protocol frames are limited to 8 KiB and event/progress channels retain one
+observation. Default deadlines are five seconds for request writes, thirty
+minutes for the operation, thirty seconds for cooperative cancellation and three
+seconds for terminal/exit completion. Cancellation writes share the remaining
+operation/cancellation deadline; cleanup cannot grant another cancellation
+budget. Synchronous spawning and the persistence callback are not time-bounded.
+
+Success requires a matching terminal event, successful process exit and stdout
+EOF. Silence, malformed/duplicate events, identity mismatch, contradictory exit
+and deadlines require reconciliation. These outcomes describe extraction, not
+installation or game readiness. Cleanup targets only the owned child; stopping
+a Wine host does not establish that its guest processes have exited. The native
+operation scope must outlive the webview and retain recovery state on uncertainty.
+
+A custom real-stdio harness exercises twelve scenarios, including failed
+ownership before dispatch, cancellation, an unresponsive child, progress flooding
+and supervisor abort. The abort case verifies direct-child OS-lock release.
+All twelve scenarios passed locally, alongside 142 engine tests and strict
+all-target clippy. A separate blocked-pipe regression checks cancellation-write deadlines. A
+Windows-only integration test connects the supervisor to the actual archive
+worker; its native CI result remains pending. No GUI or Wine execution was
+performed. This packet changes no frontend behavior, so frontend JS REPL/visual
+UAT does not apply. Installation remains disabled until coordinator integration.

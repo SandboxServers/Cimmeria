@@ -98,3 +98,15 @@ fn verification_handle_denies_mutation_and_replacement_until_extraction_finishes
         .open(&request.archive)
         .is_ok());
 }
+
+#[test]
+fn terminal_error_field_is_required_and_unknown_fields_are_rejected() {
+    let id = Uuid::new_v4();
+    let base = serde_json::json!({"schema_version":1,"operation_id":id,"event":"finished"});
+    assert!(serde_json::from_value::<WorkerEvent>(base.clone()).is_err());
+    let mut valid = base;
+    valid["error"] = serde_json::Value::Null;
+    assert!(serde_json::from_value::<WorkerEvent>(valid.clone()).is_ok());
+    valid["unexpected"] = serde_json::json!(true);
+    assert!(serde_json::from_value::<WorkerEvent>(valid).is_err());
+}

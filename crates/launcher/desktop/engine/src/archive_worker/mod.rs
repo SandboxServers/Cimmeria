@@ -14,7 +14,7 @@ use tokio_util::sync::CancellationToken;
 use uuid::Uuid;
 
 pub const MAX_FRAME: usize = 8192;
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct ExtractRequest {
     pub schema_version: u32,
@@ -24,14 +24,14 @@ pub struct ExtractRequest {
     pub destination: PathBuf,
     pub sha256: String,
 }
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct CancelRequest {
     pub schema_version: u32,
     pub operation_id: Uuid,
     pub cancel: bool,
 }
-#[derive(Debug, Clone, Copy, Serialize, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "snake_case")]
 pub enum ExtractError {
     InvalidRequest,
@@ -42,18 +42,24 @@ pub enum ExtractError {
     Archive,
 }
 
-#[derive(Debug, Serialize)]
+#[derive(Debug, Serialize, Deserialize)]
 pub struct WorkerEvent {
     pub schema_version: u32,
     pub operation_id: Option<Uuid>,
     #[serde(flatten)]
     pub event: EventKind,
 }
-#[derive(Debug, Serialize)]
-#[serde(tag = "event", rename_all = "snake_case")]
+#[derive(Debug, Serialize, Deserialize)]
+#[serde(tag = "event", rename_all = "snake_case", deny_unknown_fields)]
 pub enum EventKind {
-    Progress { current: u64, total: u64 },
-    Finished { error: Option<ExtractError> },
+    Progress {
+        current: u64,
+        total: u64,
+    },
+    Finished {
+        #[serde(deserialize_with = "required_error")]
+        error: Option<ExtractError>,
+    },
 }
 
 /// Bounded NDJSON, including its newline. EOF before a frame is distinct from
@@ -174,3 +180,9 @@ mod tests;
 
 mod process;
 pub use process::serve_stdio;
+
+fn required_error<'de, D: serde::Deserializer<'de>>(
+    deserializer: D,
+) -> Result<Option<ExtractError>, D::Error> {
+    Option::<ExtractError>::deserialize(deserializer)
+}

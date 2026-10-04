@@ -70,3 +70,53 @@ fn helper_reports_one_terminal_result_with_operation_identity() {
         }
     }
 }
+
+#[tokio::test]
+async fn native_supervisor_consumes_the_real_windows_helper_protocol() {
+    use cimmeria_launcher_engine::{archive_worker::ExtractRequest, helper_supervisor::*};
+    use tokio_util::sync::CancellationToken;
+    let root = tempfile::tempdir().unwrap();
+    let archive = root.path().join("supervised.zip");
+    let mut zip = zip::ZipWriter::new(std::fs::File::create(&archive).unwrap());
+    zip.start_file("verified.txt", zip::write::SimpleFileOptions::default())
+        .unwrap();
+    zip.write_all(b"native worker").unwrap();
+    zip.finish().unwrap();
+    let hash = Sha256::digest(std::fs::read(&archive).unwrap())
+        .iter()
+        .map(|byte| format!("{byte:02x}"))
+        .collect();
+    let destination = root.path().join("supervised output");
+    let (progress, _) = tokio::sync::watch::channel(None);
+    let mut pid_recorded = false;
+    let result = run(
+        HelperCommand {
+            executable: env!("CARGO_BIN_EXE_cimmeria-archive-worker").into(),
+            arguments: vec![],
+            directory: root.path().into(),
+            environment: Default::default(),
+        },
+        ExtractRequest {
+            schema_version: 1,
+            operation_id: Uuid::new_v4(),
+            archive,
+            destination: destination.clone(),
+            sha256: hash,
+        },
+        CancellationToken::new(),
+        progress,
+        Deadlines::default(),
+        |pid| {
+            assert!(pid > 0);
+            pid_recorded = true;
+            Ok(())
+        },
+    )
+    .await;
+    assert_eq!(result, Outcome::Completed);
+    assert!(pid_recorded);
+    assert_eq!(
+        std::fs::read(destination.join("verified.txt")).unwrap(),
+        b"native worker"
+    );
+}

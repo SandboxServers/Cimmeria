@@ -16,7 +16,7 @@ reqwest = { version = "0.12", default-features = false, features = ["rustls-tls"
 
 # Share the existing patch algorithms, including UPK normalization.
 cimmeria-patchset = { path = "../../../patchset" }
-tokio = { version = "1", features = ["macros", "rt", "rt-multi-thread", "time", "sync", "fs", "io-util"] }
+tokio = { version = "1", features = ["macros", "rt", "rt-multi-thread", "time", "sync", "fs", "io-util", "process"] }
 tokio-util = "0.7"
 futures-util = "0.3"
 sha2 = "0.11"
@@ -31,3 +31,8 @@ windows-sys = { version = "0.61", features = ["Win32_Foundation", "Win32_Storage
 [dev-dependencies]
 wiremock = "0.6"
 crc32fast = "1"
+
+[[test]]
+name = "helper_supervisor_process"
+path = "tests/helper_supervisor_process.rs"
+harness = false

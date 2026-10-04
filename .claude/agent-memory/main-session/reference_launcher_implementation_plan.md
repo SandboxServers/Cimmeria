@@ -57,3 +57,9 @@ Windows+Mac before the shell; shell/visual/game gates remain separate.
   Parent must keep stdin open/drain stdout and reconcile partial output. Mac
   tests exercise portable mechanics; native Windows process/sharing results and
   Wine/real-CAB UAT remain separate gates. No host invocation is wired yet.
+
+- Native helper supervisor now requires matching terminal identity, process exit
+  and EOF. A native-only callback records the host PID before dispatch; durable
+  coordinator wiring remains pending. Cancellation writes share the active
+  deadline and cleanup cannot renew that budget. Direct-child kill/OS-lock
+  release is tested, but does not prove Wine guest death. No UI worker is wired.
