@@ -179,6 +179,35 @@ impl DesktopState {
             .map(Some)
     }
 
+    /// Publish only a checkpointed Update's current release, retaining permanent
+    /// ownership and adoption provenance. Caller holds the permanent owner lock.
+    pub(super) fn publish_update_index(
+        &mut self,
+        owner: &InstallIntent,
+        previous: ReleaseIdentity,
+        target: ReleaseIdentity,
+    ) -> Result<(), StorageError> {
+        let mut record: Record =
+            read(&self.directory.root.join(NAME))?.ok_or(StorageError::Corrupt)?;
+        self.verify_adoption_record(&record)?;
+        let current = record
+            .current_release
+            .unwrap_or_else(|| record.intent.release_identity());
+        if record.intent != *owner
+            || (current != previous && current != target)
+            || read_ready(&owner.destination, owner)? != Some(target)
+        {
+            return Err(StorageError::Corrupt);
+        }
+        self.verify_release_identity(target)
+            .map_err(|_| StorageError::Corrupt)?;
+        record.schema_version = 3;
+        record.current_release = Some(target);
+        let result = atomic::write(&self.directory.root, NAME, &record);
+        self.preferences_uncertain |= result == Err(StorageError::PersistenceUncertain);
+        result
+    }
+
     /// Offline status re-verifies retained signed bytes against the installation
     /// digest on every call. No latest-catalog or network fallback is implied.
     pub fn installed_launcher_minimum(

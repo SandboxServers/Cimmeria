@@ -144,6 +144,7 @@ impl DesktopState {
         };
         // Refuse any foreign top-level content before admitting destructive work.
         inspect_tree(
+            &self.directory.root,
             &plan.installation.destination,
             &plan.installation,
             plan.release_identity(),
@@ -235,19 +236,31 @@ impl DesktopState {
                 // Only a durable detach checkpoint can justify a missing tombstone.
             }
             Err(error) if error.kind() == ErrorKind::NotFound => {
-                let owner = inspect_tree(root, &plan.installation, plan.release_identity(), false)?;
+                let owner = inspect_tree(
+                    &self.directory.root,
+                    root,
+                    &plan.installation,
+                    plan.release_identity(),
+                    false,
+                )?;
                 // Windows will not rename a directory containing a locked file.
                 // Admission is still serialized by DesktopState; no worker is live.
                 drop(owner);
                 std::fs::rename(root, &detached).map_err(|_| StorageError::Io)?;
                 sync(parent)?;
                 self.write_uninstall_record(&detached_name(plan.id), plan)?;
-                remove_detached(&detached, &plan.installation, plan.release_identity())?;
+                remove_detached(
+                    &self.directory.root,
+                    &detached,
+                    &plan.installation,
+                    plan.release_identity(),
+                )?;
             }
             Ok(_) => {
                 // Rename may have completed just before its checkpoint write.
                 if !committed_detachment {
                     drop(inspect_tree(
+                        &self.directory.root,
                         &detached,
                         &plan.installation,
                         plan.release_identity(),
@@ -255,7 +268,12 @@ impl DesktopState {
                     )?);
                     self.write_uninstall_record(&detached_name(plan.id), plan)?;
                 }
-                remove_detached(&detached, &plan.installation, plan.release_identity())?;
+                remove_detached(
+                    &self.directory.root,
+                    &detached,
+                    &plan.installation,
+                    plan.release_identity(),
+                )?;
             }
             Err(_) => return Err(StorageError::Io.into()),
         }
@@ -280,6 +298,7 @@ fn sync(path: &Path) -> Result<(), StorageError> {
 /// Validate the complete tree before deleting anything. No symlink/reparse entry
 /// is followed. Partial deletion may omit children but must retain its owner.
 fn inspect_tree(
+    state_root: &Path,
     root: &Path,
     intent: &InstallIntent,
     release: ReleaseIdentity,
@@ -302,8 +321,13 @@ fn inspect_tree(
         let name = entry.file_name();
         let name = name.to_str().ok_or(StorageError::UnsafeFile)?;
         let meta = std::fs::symlink_metadata(entry.path()).map_err(|_| StorageError::Io)?;
+        let auxiliary = meta.is_dir()
+            && failed_cleanup::plain(&meta)
+            && (repair::uninstall_artifact(state_root, &entry.path(), intent, partial)?
+                || update::uninstall_artifact(state_root, &entry.path(), intent, partial)?);
         if !failed_cleanup::plain(&meta)
-            || !((name == "game" || name == stage || name == cache) && meta.is_dir()
+            || !(auxiliary
+                || (name == "game" || name == stage || name == cache) && meta.is_dir()
                 || (name == ".cimmeria-install.json" || name == "content-ready.json")
                     && meta.is_file())
         {
@@ -329,11 +353,12 @@ fn inspect_tree(
 }
 
 fn remove_detached(
+    state_root: &Path,
     root: &Path,
     intent: &InstallIntent,
     release: ReleaseIdentity,
 ) -> Result<(), StorageError> {
-    let owner = inspect_tree(root, intent, release, true)?;
+    let owner = inspect_tree(state_root, root, intent, release, true)?;
     for entry in std::fs::read_dir(root).map_err(|_| StorageError::Io)? {
         let entry = entry.map_err(|_| StorageError::Io)?;
         if entry.file_name() == ".cimmeria-install.json" {

@@ -409,3 +409,79 @@ async fn confirmation_observer_loss_does_not_abort_the_retained_worker() {
     let state = f.state.lock().unwrap();
     assert_eq!(inspect(&state, id).unwrap().phase, Phase::Published);
 }
+
+#[tokio::test]
+async fn signed_update_preserves_adoption_provenance_and_exact_legacy_import() {
+    use crate::storage::update;
+    use std::io::{Cursor, Write};
+    use wiremock::{matchers::path, Mock, MockServer, ResponseTemplate};
+    let f = Fixture::new();
+    let source_before = f.source_snapshot();
+    commit(f.preview().unwrap()).unwrap();
+    let index_path = f.root.path().join("state/installed-content.json");
+    let before: serde_json::Value =
+        serde_json::from_slice(&std::fs::read(&index_path).unwrap()).unwrap();
+    let imported = std::fs::read(f.root.path().join("state/legacy-import.json")).unwrap();
+    let mut zip = zip::ZipWriter::new_append(Cursor::new(fixtures::archive(true))).unwrap();
+    zip.start_file("next-release.txt", zip::write::SimpleFileOptions::default())
+        .unwrap();
+    zip.write_all(b"updated authenticated seed").unwrap();
+    let seed = zip.finish().unwrap().into_inner();
+    let release = fixtures::verified(&seed);
+    let server = MockServer::start().await;
+    Mock::given(path("/seed.zip"))
+        .respond_with(ResponseTemplate::new(200).set_body_bytes(seed))
+        .mount(&server)
+        .await;
+    let plan = {
+        let mut state = f.state.lock().unwrap();
+        let installed = state.installed_content().unwrap().unwrap();
+        let revision = state.operations().snapshot().revision;
+        state
+            .admit_update(update::Request {
+                id: Uuid::new_v4(),
+                operation_revision: revision,
+                installation_id: installed.intent.operation_id,
+                expected_current: installed.current_release,
+                target: &release,
+                confirmed: true,
+            })
+            .unwrap()
+            .plan
+    };
+    let prepared = update::preparation::start(
+        f.state.clone(),
+        plan.id,
+        reqwest::Client::new(),
+        format!("{}/manifest.json", server.uri()),
+    )
+    .unwrap()
+    .result
+    .await
+    .unwrap()
+    .unwrap();
+    update::commit::start(f.state.clone(), prepared)
+        .unwrap()
+        .await
+        .unwrap()
+        .unwrap();
+    let after: serde_json::Value =
+        serde_json::from_slice(&std::fs::read(index_path).unwrap()).unwrap();
+    assert_eq!(before["adoption"], after["adoption"]);
+    assert_eq!(before["intent"], after["intent"]);
+    assert_eq!(
+        std::fs::read(f.root.path().join("state/legacy-import.json")).unwrap(),
+        imported
+    );
+    assert_eq!(f.source_snapshot(), source_before);
+    assert_eq!(
+        f.state
+            .lock()
+            .unwrap()
+            .installed_content()
+            .unwrap()
+            .unwrap()
+            .current_release,
+        plan.target
+    );
+}

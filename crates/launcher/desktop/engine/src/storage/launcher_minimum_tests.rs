@@ -243,3 +243,54 @@ fn signed_minimum_blocks_game_update_before_evidence_or_plan_publication() {
     assert!(matches!(result, Err(IntentError::LauncherTooOld)));
     assert_eq!(tree(root.path()), before);
 }
+
+#[test]
+fn signed_previous_minimum_blocks_separately_confirmed_update_rollback() {
+    // This admission guard models a committed prior update. Real reconstruction
+    // and rollback are exercised by update::journey_tests over signed HTTP seeds.
+    let (root, mut state, owner, _resources) = installed(NEXT_DAY);
+    std::fs::create_dir(owner.destination.join("game")).unwrap();
+    let target = release(OWN);
+    let revision = state.operations().snapshot().revision;
+    let plan = state
+        .admit_update(update::Request {
+            id: Uuid::new_v4(),
+            operation_revision: revision,
+            installation_id: owner.operation_id,
+            expected_current: owner.release_identity(),
+            target: &target,
+            confirmed: true,
+        })
+        .unwrap()
+        .plan;
+    state
+        .operations_mut()
+        .unwrap()
+        .observe(plan.id, OperationState::Running)
+        .unwrap();
+    installed_content::write_ready(&owner.destination, &owner, plan.target).unwrap();
+    state
+        .publish_update_index(&owner, plan.previous, plan.target)
+        .unwrap();
+    atomic::write(
+        &state.directory.root,
+        &format!("update-commit-{}.json", plan.id),
+        &serde_json::json!({"schema_version":2,"plan":plan,"phase":"published"}),
+    )
+    .unwrap();
+    state
+        .operations_mut()
+        .unwrap()
+        .observe(plan.id, OperationState::Succeeded)
+        .unwrap();
+    drop(state);
+    let mut state =
+        DesktopState::open_with_compatibility(&root.path().join("state"), policy(true)).unwrap();
+    let before = tree(root.path());
+    let revision = state.operations().snapshot().revision;
+    assert!(matches!(
+        state.admit_update_rollback(plan.id, Uuid::new_v4(), revision, plan.target, true),
+        Err(IntentError::LauncherTooOld)
+    ));
+    assert_eq!(tree(root.path()), before);
+}

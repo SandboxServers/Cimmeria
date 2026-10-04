@@ -60,6 +60,13 @@ impl DesktopState {
                 let cache = plan.work_directory().join("cache");
                 (plan.installation, stage, cache)
             }
+            OperationKind::Update => {
+                let plan = self.update_plan()?.ok_or(StorageError::Corrupt)?;
+                current_release = Some(plan.target);
+                let stage = plan.stage();
+                let cache = plan.work_directory().join("cache");
+                (plan.owner, stage, cache)
+            }
             OperationKind::Adopt => {
                 let plan = super::adoption::preparation::read_record(self, id)?
                     .ok_or(StorageError::Corrupt)?;
