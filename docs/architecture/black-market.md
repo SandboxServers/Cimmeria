@@ -453,7 +453,7 @@ The system is debuggable from SigNoz alone:
 - **Transitions** are DEBUG events — `bm.listed`, `bm.bid`,
   `bm.outbid_refund`, `bm.cancelled`, `bm.sold`, `bm.expired` — carrying
   `auction_id`, the seller and bidder ids, the bid and the escrowed cash
-  before and after, `item_def_id`, and the actor's `account_id` and
+  before and after, `item_type_id` (paired with `item_name`), and the actor's `account_id` and
   `player_id`.
 - **Refusals** are `bm.refused` at INFO with `reason` (`BMError::reason`)
   and `error_id`, and every request counts on

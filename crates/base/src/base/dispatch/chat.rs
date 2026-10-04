@@ -308,7 +308,7 @@ pub(super) async fn send_player_communication_at(
         entity_id = player_eid,
         speaker,
         channel,
-        target = if target.is_empty() { "<none>" } else { &target },
+        chat_target = if target.is_empty() { "<none>" } else { &target },
         text_len = text.len(),
         "sendPlayerCommunication"
     );

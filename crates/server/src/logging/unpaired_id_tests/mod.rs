@@ -353,13 +353,6 @@ fn unpaired_id_report() {
             .collect::<Vec<_>>()
             .join("\n")
     };
-    if let Ok(prefix) = std::env::var("NT_REPORT_SITES") {
-        for (_, sites) in scan.unpaired.iter().filter(|(p, _)| p.contains(prefix.as_str())) {
-            for s in sites {
-                println!("SITE {} {}", s.at, s.key);
-            }
-        }
-    }
     let mut keys = BTreeMap::new();
     let mut crates = BTreeMap::new();
     for (path, sites) in &scan.unpaired {
