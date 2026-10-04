@@ -266,3 +266,27 @@ async fn a_collapsed_area_effect_is_planned_skipped() {
     let resolved = the_one(rows(&all, "nvp_damage_resolved"), "nvp_damage_resolved");
     assert!(resolved.has_field("effect_id", "1574"), "{resolved:?}");
 }
+
+/// **Guard (AB-T3 with #1170 god mode).** An NVP hit on a god-mode target:
+/// the target keeps its Health, and `nvp_damage_resolved` says
+/// `god_mode = true`, so its `health_after` (logged before the restore)
+/// is read as the hit's damage, not what the target kept. Without the
+/// field the row claims a loss that was put back.
+#[tokio::test]
+async fn a_god_mode_target_s_nvp_row_says_god_mode() {
+    let (mut mgr, ability) = nvp_fixture();
+    mgr.get_entity_mut(NPC).unwrap().god_mode = true;
+    let seq = seq_rolling(&mgr, (1, NPC), 7200, false);
+    let logs = LogCapture::install();
+
+    fire(&mut mgr, &ability, seq).await;
+
+    assert_eq!(pools(&mgr).0, 1000, "god mode put the Health back");
+    let all = logs.all();
+    let resolved = the_one(rows(&all, "nvp_damage_resolved"), "nvp_damage_resolved");
+    assert!(resolved.has_field("god_mode", "true"), "{resolved:?}");
+    assert!(
+        !rows(&all, "god_mode_absorbed").is_empty(),
+        "the restore row says what was put back"
+    );
+}

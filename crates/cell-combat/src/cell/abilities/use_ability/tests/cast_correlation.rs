@@ -300,6 +300,36 @@ async fn a_dot_tick_logs_the_pools_before_and_after() {
     assert!(ended.has_field("player_id", &A_PID.to_string()));
 }
 
+/// **Regression guard (AB-T3 with #1170 god mode).** A DoT pulse on a
+/// god-mode target: `pulse_ticked` reports the pools the target kept (read
+/// after the restore), `god_mode = true`, and what was put back. Reading
+/// the pools before the restore would claim a Health loss that never stuck.
+#[tokio::test]
+async fn a_god_mode_targets_pulse_row_reports_the_kept_pools() {
+    let mut mgr = dot_mgr(2);
+    let (tx, _rx) = mpsc::channel(256);
+    assert!(handle_use_ability(A, DOT, MOB as i32, &tx, &mut mgr).await);
+    let mob = mgr.get_entity_mut(MOB).unwrap();
+    mob.god_mode = true;
+    let before = mob.stats.get(cimmeria_entity::stats::HEALTH).unwrap().cur;
+    for i in &mut mob.active_effects {
+        i.next_pulse_at = Instant::now() - Duration::from_secs(1);
+    }
+    let logs = LogCapture::install();
+
+    effect_pulse_tick(&NoContentEvents, &tx, &mut mgr).await;
+
+    let pulse = row(&logs.all(), "pulse_ticked");
+    assert!(pulse.has_field("god_mode", "true"), "{pulse:?}");
+    assert!(
+        pulse.has_field("health_before", &before.to_string())
+            && pulse.has_field("health_after", &before.to_string()),
+        "the row reports the kept Health: {pulse:?}"
+    );
+    let restored: i32 = pulse.fields["god_mode_restored_health"].parse().unwrap();
+    assert!(restored > 0, "and what god mode put back: {pulse:?}");
+}
+
 /// Assert `c` carries the core fields (rule 5, AB-T3): the invoker as the
 /// actor (`entity_id`, `player_id`), the ability and effect, the target,
 /// `stage`, and `target_player_id` when the target is a player.
