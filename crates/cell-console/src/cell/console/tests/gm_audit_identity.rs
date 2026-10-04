@@ -101,3 +101,64 @@ async fn gm_console_audit_omits_identity_when_unknown() {
          sentinel is indistinguishable from a real id in a log query; got {event:#?}"
     );
 }
+
+/// Rule 6 + Rule 5 § "actor on someone else": the audit line names the GM
+/// (`entity_name`, `player_name`, `account_name`) and, when the command
+/// resolved a target, the subject (`target_name`, `subject_player_id`,
+/// `subject_player_name`). Without the names a reader has to look three IDs
+/// up by hand to learn who ran the command on whom.
+#[tokio::test]
+async fn gm_console_audit_log_names_caller_and_subject() {
+    let capture = LogCapture::install();
+    let (mut mgr, gm, _npc) = setup();
+    if let Some(e) = mgr.get_entity_mut(gm) {
+        e.account_id = Some(ACCOUNT_ID);
+        e.player_id = Some(PLAYER_ID);
+        e.stamp_log_names(Some("O'Neill"), Some("sgc_gm"));
+    }
+    // A second player, selected and in view, as the command's subject.
+    let subject = 2u32;
+    mgr.create_entity(subject, "Agnos", [11.0, 0.0, 11.0], [0.0; 3])
+        .unwrap();
+    mgr.connect_entity(subject);
+    if let Some(e) = mgr.get_entity_mut(subject) {
+        e.is_player = true;
+        e.account_id = Some(7);
+        e.player_id = Some(34);
+        e.stamp_log_names(Some("Carter"), Some("sgc_sam"));
+    }
+    if let Some(e) = mgr.get_entity_mut(gm) {
+        e.current_target_id = Some(subject as i32);
+        e.witnesses
+            .insert(cimmeria_common::EntityId(subject as i32));
+    }
+
+    let (tx, _rx) = mpsc::channel(32);
+    super::super::dispatch::handle_console_command(
+        gm,
+        ".speed 5",
+        &tx,
+        &mut mgr,
+        &ChainEngine::new(),
+    )
+    .await;
+
+    let event = capture
+        .find_message(Level::INFO, AUDIT_MSG)
+        .expect("the GM audit line must fire on an accepted command");
+    for (key, want) in [
+        ("entity_name", "O'Neill"),
+        ("player_name", "O'Neill"),
+        ("account_name", "sgc_gm"),
+        ("target_id", "2"),
+        ("target_name", "Carter"),
+        ("subject_player_id", "34"),
+        ("subject_player_name", "Carter"),
+    ] {
+        assert!(
+            event.has_field(key, want),
+            "the GM audit line must name the caller and the subject: \
+             expected {key}={want}; got {event:#?}"
+        );
+    }
+}

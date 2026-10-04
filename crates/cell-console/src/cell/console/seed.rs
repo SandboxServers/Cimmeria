@@ -192,8 +192,11 @@ pub(crate) async fn confirm(
             tracing::warn!(
                 target: "authoring",
                 entity_id = caller_id,
+                entity_name = gm.player_name,
                 account_id = gm.account_id,
+                account_name = gm.account_name,
                 player_id = gm.player_id,
+                player_name = gm.player_name,
                 batch = %batch,
                 label = %c.label,
                 error = %e,
@@ -208,17 +211,22 @@ pub(crate) async fn confirm(
             tracing::info!(
                 target: "authoring",
                 entity_id = caller_id,
+                entity_name = gm.player_name,
                 account_id = gm.account_id,
+                account_name = gm.account_name,
                 player_id = gm.player_id,
+                player_name = gm.player_name,
                 batch = %batch,
                 seed_file = %c.seed_file,
                 label = %c.label,
                 op = s.op.as_str(),
                 npc_entity_id = s.entity_id,
-                spawn_id = s.spawn_id,
+                npc_entity_name = space_mgr.entity_label(s.entity_id),
+                spawn_id = s.spawn_id, // nt:id-only a spawnlist row, which has no name column
                 world = %s.world,
                 world_id = s.world_id,
                 template_id = s.template_id,
+                template_name = cimmeria_names::book().template(s.template_id),
                 x = s.x,
                 y = s.y,
                 z = s.z,
@@ -226,7 +234,7 @@ pub(crate) async fn confirm(
                 heading_deg = s.heading.to_degrees(),
                 tag = s.tag.as_deref(),
                 sql = %c.sql,
-                "seed spawn confirmed"
+                "seed spawn confirmed",
             );
         }
     }
@@ -249,8 +257,11 @@ pub(crate) async fn confirm(
         tracing::info!(
             target: "authoring",
             entity_id = caller_id,
+            entity_name = gm.player_name,
             account_id = gm.account_id,
+            account_name = gm.account_name,
             player_id = gm.player_id,
+            player_name = gm.player_name,
             batch = %batch,
             seed_file = %file,
             statements = stmts.len(),
@@ -388,7 +399,11 @@ async fn append_session_log(block: String) {
         {
             Ok(mut f) => {
                 if let Err(e) = f.write_all(block.as_bytes()) {
-                    tracing::warn!(path = %path.display(), error = %e, "authoring log append failed");
+                    tracing::warn!(
+                        path = %path.display(),
+                        error = %e,
+                        "authoring log append failed",
+                    );
                 }
             }
             Err(e) => {

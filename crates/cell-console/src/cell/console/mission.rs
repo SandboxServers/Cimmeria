@@ -80,7 +80,15 @@ pub(super) async fn fail(
             .await;
     }
 
-    tracing::info!(entity_id = target, mission_id, "GM .missionfail");
+    tracing::info!(
+        caller_id,
+        caller_name = space_mgr.entity_label(caller_id),
+        entity_id = target,
+        entity_name = space_mgr.entity_label(target),
+        mission_id,
+        mission_name = cimmeria_names::book().mission(mission_id),
+        "GM .missionfail"
+    );
 
     // Discord gameplay-channel. This path is GM-forced, so the reason is
     // fixed; the mission's name comes from the NameBook.

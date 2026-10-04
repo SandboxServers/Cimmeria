@@ -48,8 +48,9 @@ async fn respec_craft(entity_id: u32, tx: &mpsc::Sender<CellToBaseMsg>, space_mg
             target: "crafting",
             event = "no_player",
             entity_id,
+            entity_name = space_mgr.entity_label(entity_id),
             method = "respeccraft",
-            "respeccraft from an entity with no player_id; dropped"
+            "respeccraft from an entity with no player_id; dropped",
         );
         send_gm_feedback(
             entity_id,
@@ -68,10 +69,12 @@ async fn respec_craft(entity_id: u32, tx: &mpsc::Sender<CellToBaseMsg>, space_mg
             target: "crafting",
             event = "forward_failed",
             entity_id,
+            entity_name = space_mgr.entity_label(entity_id),
             player_id,
+            player_name = space_mgr.entity_label(entity_id),
             method = "respeccraft",
             error = %e,
-            "respeccraft could not be queued (base channel closed)"
+            "respeccraft could not be queued (base channel closed)",
         );
     }
 }

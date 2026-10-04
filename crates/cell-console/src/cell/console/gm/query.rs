@@ -133,7 +133,16 @@ pub(super) async fn handle_test_los(
         LineOfSight::Unknown => "UNKNOWN (no navmesh coverage; NPCs treat this as clear)",
     };
     let text = format!("testLOS {source_eid} → {target_eid}: {verdict}");
-    tracing::info!(entity_id, source_eid, target_eid, ?los, "testLOS");
+    tracing::info!(
+        entity_id,
+        entity_name = space_mgr.entity_label(entity_id),
+        source_entity_id = source_eid,
+        source_entity_name = space_mgr.entity_label(source_eid),
+        target_entity_id = target_eid,
+        target_entity_name = space_mgr.entity_label(target_eid),
+        ?los,
+        "testLOS"
+    );
     send_gm_feedback(entity_id, &text, tx).await;
     true
 }

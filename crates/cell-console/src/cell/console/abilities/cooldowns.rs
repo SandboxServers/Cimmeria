@@ -20,6 +20,7 @@
 use std::time::Instant;
 
 use cimmeria_entity::abilities::{serialize_timer_update, TIMER_ABILITY_COOLDOWN};
+use cimmeria_entity::name_intern::intern_opt;
 use tokio::sync::mpsc;
 
 use crate::cell::abilities::send_timer_update;
@@ -183,12 +184,16 @@ fn log_reset(
         target: "abilities.gm",
         event = "cooldowns_reset",
         entity_id = caller_id,
+        entity_name = who.player_name,
         account_id = who.account_id,
+        account_name = who.account_name,
         player_id = who.player_id,
+        player_name = who.player_name,
         requested_ability_id = requested,
+        requested_ability_name = requested.and_then(|a| intern_opt(cimmeria_names::book().ability(a))),
         cleared = ?cleared,
         cleared_count = cleared.len(),
         moniker_groups = monikers,
-        "GM cleared cooldowns and sent the client the clear timers"
+        "GM cleared cooldowns and sent the client the clear timers",
     );
 }

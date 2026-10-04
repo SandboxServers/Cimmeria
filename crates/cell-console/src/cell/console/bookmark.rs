@@ -23,7 +23,7 @@ use std::time::{Instant, SystemTime, UNIX_EPOCH};
 
 use cimmeria_cell_world::cell::effects::ability_snapshot::{log_ability_snapshot, SnapshotTrigger};
 use cimmeria_common::Vector3;
-use cimmeria_entity::cell_entity::CellEntity;
+use cimmeria_entity::cell_entity::{CellEntity, PlayerIdentity};
 use cimmeria_entity::stats::{FOCUS, HEALTH};
 use tokio::sync::mpsc;
 
@@ -93,9 +93,12 @@ pub(crate) struct EntitySnapshot {
     pub aggression_override: i32,
     pub threat_count: usize,
     pub threat_top_id: u32,
+    /// The top-threat entity's name, for the log row (Rule 6).
+    pub threat_top_name: Option<&'static str>,
     pub threat_top_value: f32,
     pub threat_on_caller: f32,
     pub follow_target_id: u32,
+    pub follow_target_name: Option<&'static str>,
     pub follow_min_distance: f32,
     pub follow_max_distance: f32,
     pub spawn_pos: Option<Vector3>,
@@ -115,6 +118,7 @@ pub(crate) struct EntitySnapshot {
     /// The entity's selected target (`setTargetID`), `0` when none. NPCs
     /// aim at `threat_top_id`; this is the player-side view.
     pub current_target_id: i32,
+    pub current_target_name: Option<&'static str>,
 }
 
 /// The full bookmark: the caller's own snapshot plus the scene around them.
@@ -133,6 +137,7 @@ pub(crate) struct Bookmark {
     pub navmesh_hash: Option<String>,
     pub caller: EntitySnapshot,
     pub selected_target_id: u32,
+    pub selected_target_name: Option<&'static str>,
     pub regions_inside: Vec<String>,
     pub missions_json: String,
     pub counters_json: String,
@@ -247,9 +252,11 @@ fn snapshot_entity(
         aggression_override: e.aggro.override_level.map_or(0, |l| l.level() as i32),
         threat_count: e.threat_list.len(),
         threat_top_id,
+        threat_top_name: label_of(space_mgr, threat_top_id),
         threat_top_value,
         threat_on_caller: e.threat_list.get(&caller_eid).copied().unwrap_or(0.0),
         follow_target_id: e.follow_target_id.unwrap_or(0),
+        follow_target_name: e.follow_target_id.and_then(|t| label_of(space_mgr, t)),
         follow_min_distance: e.follow_min_distance,
         follow_max_distance: e.follow_max_distance,
         spawn_pos: e.spawn_position,
@@ -265,7 +272,24 @@ fn snapshot_entity(
         ability_ids: crate::cell::space_manager::npc_identity::sorted_ability_ids(e),
         weapon_visual: crate::cell::space_manager::npc_identity::weapon_visual(e),
         current_target_id: e.current_target_id.unwrap_or(0),
+        current_target_name: e
+            .current_target_id
+            .and_then(|t| u32::try_from(t).ok())
+            .and_then(|t| label_of(space_mgr, t)),
     }
+}
+
+/// A related entity's name for a bookmark row, `None` for no entity (`0`).
+/// `entity_names` because its name is `'static`, so the snapshot owns it.
+fn label_of(space_mgr: &SpaceManager, entity_id: u32) -> Option<&'static str> {
+    (entity_id != 0)
+        .then(|| space_mgr.entity_names(entity_id).entity_name)
+        .flatten()
+}
+
+/// `name` for a log field, or `None` when blank, so the row never carries `""`.
+fn non_blank(name: &str) -> Option<&str> {
+    (!name.is_empty()).then_some(name)
 }
 
 /// Build the snapshot. Pure — no logging, no mutation.
@@ -349,6 +373,7 @@ pub(crate) fn capture(
         navmesh_hash: space_mgr.navmesh_short_hash(caller_id).map(str::to_owned),
         caller: snapshot_entity(caller, caller, target_id, space_mgr, now),
         selected_target_id: target_id.unwrap_or(0),
+        selected_target_name: target_id.and_then(|t| label_of(space_mgr, t)),
         regions_inside,
         missions_json: serde_json::Value::Array(missions).to_string(),
         counters_json: serde_json::to_string(&caller.counters).unwrap_or_default(),
@@ -388,15 +413,16 @@ fn v3(v: Option<Vector3>) -> String {
 fn emit_entity(bookmark_id: u64, rank: usize, s: &EntitySnapshot) {
     tracing::info!(
         target: "playtest.bookmark.entity",
-        bookmark_id,
+        bookmark_id, // nt:id-only a capture timestamp joining the rows of one .bug
         rank,
         entity_id = s.entity_id,
+        entity_name = non_blank(&s.name),
         is_player = s.is_player,
         is_selected_target = s.is_selected_target,
-        npc_name = %s.name,
         tag = %s.tag,
         template_id = s.template_id,
-        spawn_id = s.spawn_id,
+        template_name = cimmeria_names::book().template(s.template_id),
+        spawn_id = s.spawn_id, // nt:id-only a spawnlist row, which has no name column
         level = s.level,
         faction = s.faction,
         alignment = s.alignment,
@@ -440,9 +466,11 @@ fn emit_entity(bookmark_id: u64, rank: usize, s: &EntitySnapshot) {
         aggression_override = s.aggression_override,
         threat_count = s.threat_count,
         threat_top_id = s.threat_top_id,
+        threat_top_name = s.threat_top_name,
         threat_top_value = s.threat_top_value,
         threat_on_caller = s.threat_on_caller,
         follow_target_id = s.follow_target_id,
+        follow_target_name = s.follow_target_name,
         follow_min_distance = s.follow_min_distance,
         follow_max_distance = s.follow_max_distance,
         spawn_pos = %v3(s.spawn_pos),
@@ -456,25 +484,28 @@ fn emit_entity(bookmark_id: u64, rank: usize, s: &EntitySnapshot) {
         ability_ids = ?s.ability_ids,
         weapon_visual = %s.weapon_visual,
         current_target_id = s.current_target_id,
+        current_target_name = s.current_target_name,
         "playtest bookmark: entity near the tester at the moment of the report"
     );
 }
 
 /// Write the bookmark to telemetry: one header row, one row per entity.
-pub(crate) fn emit(b: &Bookmark, account_id: u32, player_id: i32, access_level: u32) {
+pub(crate) fn emit(b: &Bookmark, id: PlayerIdentity, access_level: u32) {
     let c = &b.caller;
     tracing::info!(
         target: "playtest.bookmark",
-        bookmark_id = b.bookmark_id,
+        bookmark_id = b.bookmark_id, // nt:id-only a capture timestamp joining the rows of one .bug
         note = %b.note,
         note_len = b.note.chars().count(),
-        account_id,
-        player_id,
+        account_id = id.account_id,
+        account_name = id.account_name,
+        player_id = id.player_id,
+        player_name = id.player_name,
         access_level,
         entity_id = c.entity_id,
-        name = %c.name,
+        entity_name = non_blank(&c.name),
         level = c.level,
-        world_name = %b.world_name,
+        world = %b.world_name,
         space_id = b.space_id,
         navmesh_loaded = b.navmesh_loaded,
         navmesh_hash = b.navmesh_hash.as_deref(),
@@ -505,6 +536,7 @@ pub(crate) fn emit(b: &Bookmark, account_id: u32, player_id: i32, access_level: 
         state_field_names = %cimmeria_wire::state_field::STATE_FLAGS.render(c.state_field),
         witness_count = c.witness_count,
         target_id = b.selected_target_id,
+        target_name = b.selected_target_name,
         last_interaction_target = b.last_interaction_target,
         offered_dialog_ids = ?b.offered_dialog_ids,
         active_bandolier_slot = b.active_bandolier_slot,
@@ -543,12 +575,7 @@ pub(crate) async fn bug(
     let access_level = space_mgr
         .get_entity(caller_id)
         .map_or(0, |e| e.access_level);
-    emit(
-        &b,
-        id.account_id.unwrap_or(0),
-        id.player_id.unwrap_or(0),
-        access_level,
-    );
+    emit(&b, id, access_level);
     // AB-T5: the ability state of the tester and of what they point at, on
     // the bookmark's id, so every UAT anchor records the state its row
     // started from.

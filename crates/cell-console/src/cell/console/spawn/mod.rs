@@ -178,9 +178,11 @@ async fn spawn_entity(
     {
         tracing::warn!(
             caller_id,
+            caller_name = space_mgr.entity_label(caller_id),
             template_id,
+            template_name = cimmeria_names::book().template(template_id),
             error = %e,
-            "spawn: GmSpawnNpc send to base failed — spawn dropped"
+            "spawn: GmSpawnNpc send to base failed — spawn dropped",
         );
         send_gm_feedback(
             caller_id,
@@ -361,7 +363,9 @@ async fn spawn_random(
                 // claiming all `count` were spawned.
                 tracing::warn!(
                     caller_id,
+                    caller_name = space_mgr.entity_label(caller_id),
                     template_id,
+                    template_name = cimmeria_names::book().template(template_id),
                     delivered,
                     requested = count,
                     "spawnrandom: GmSpawnNpc send failed — aborting remaining spawns: {e}"

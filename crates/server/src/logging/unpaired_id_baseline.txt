@@ -419,11 +419,6 @@ crates/cell/src/cell/service/ticks/regen.rs 16
 crates/cell/src/cell/service/ticks/reload_completion.rs 3
 crates/game/src/combat/damage.rs 1
 crates/mercury/src/instrumentation.rs 1
-crates/minigame/src/minigame/games/livewire/mod.rs 1
-crates/minigame/src/minigame/server/handshake.rs 2
-crates/minigame/src/minigame/server/mod.rs 10
-crates/minigame/src/minigame/server/result_dispatch.rs 1
-crates/minigame/src/minigame/session.rs 7
 crates/resources/src/base/dialog_overrides/patch.rs 5
 crates/resources/src/base/resources/apply_overrides.rs 17
 crates/wire-log/src/wire_log/mod.rs 2

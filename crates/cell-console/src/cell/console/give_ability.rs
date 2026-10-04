@@ -31,6 +31,7 @@
 //! (its def has no target argument) and writes the GM `gm_command` row
 //! instead of these.
 
+use cimmeria_entity::name_intern::intern_opt;
 use tokio::sync::mpsc;
 
 use super::send_gm_feedback;
@@ -51,9 +52,13 @@ async fn refuse(
         decision_outcome = "refused",
         reason,
         entity_id = caller_id,
+        entity_name = id.player_name,
         account_id = id.account_id,
+        account_name = id.account_name,
         player_id = id.player_id,
+        player_name = id.player_name,
         ability_id,
+        ability_name = ability_id.and_then(|a| intern_opt(cimmeria_names::book().ability(a))),
         "GM .giveability refused"
     );
     send_gm_feedback(caller_id, text, tx).await;
@@ -91,14 +96,21 @@ pub(super) async fn give_ability(
         }
     };
     let id = space_mgr.player_identity(caller_id);
+    let subject_name = space_mgr.entity_names(grant.subject).entity_name;
     tracing::info!(
         decision_outcome = "forwarded",
         entity_id = caller_id,
+        entity_name = id.player_name,
         account_id = id.account_id,
+        account_name = id.account_name,
         player_id = id.player_id,
+        player_name = id.player_name,
         subject_entity_id = grant.subject,
         subject_player_id = grant.player_id,
+        subject_entity_name = subject_name,
+        subject_player_name = subject_name,
         ability_id,
+        ability_name = cimmeria_names::book().ability(ability_id),
         fell_back_to_caller = grant.fallback_note.is_some(),
         persisted = false,
         "GM .giveability forwarded to the base"
@@ -111,11 +123,17 @@ pub(super) async fn give_ability(
             decision_outcome = "send_failed",
             reason = "cell_to_base_closed",
             entity_id = caller_id,
+            entity_name = id.player_name,
             account_id = id.account_id,
+            account_name = id.account_name,
             player_id = id.player_id,
+            player_name = id.player_name,
             subject_entity_id = grant.subject,
             subject_player_id = grant.player_id,
+            subject_entity_name = subject_name,
+        subject_player_name = subject_name,
             ability_id,
+            ability_name = cimmeria_names::book().ability(ability_id),
             error = %e,
             "GM .giveability: grant not sent to the base; nothing persisted"
         );

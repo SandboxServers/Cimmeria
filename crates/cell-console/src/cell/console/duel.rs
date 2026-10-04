@@ -163,10 +163,14 @@ pub(super) async fn duel_status(
         target: "duel",
         event = "duel.gm_status",
         account_id = gm.account_id,
+        account_name = gm.account_name,
         player_id = gm.player_id,
+        player_name = gm.player_name,
         entity_id = caller_id,
+        entity_name = gm.player_name,
         subject_player_id = subject.player_id,
-        "GM read a duel registry entry"
+        subject_player_name = %subject.name,
+        "GM read a duel registry entry",
     );
     let line = status_line(space_mgr, &subject, Instant::now());
     send_gm_feedback(caller_id, &format!(".duel_status: {line}"), tx).await;
@@ -237,12 +241,16 @@ async fn refuse(
         target: "duel",
         event = "duel.gm_rejected",
         account_id = gm.account_id,
+        account_name = gm.account_name,
         player_id = gm.player_id,
+        player_name = gm.player_name,
         entity_id = caller_id,
+        entity_name = gm.player_name,
         subject_player_id,
+        subject_player_name = subject_player_id.and_then(|p| space_mgr.player_entity_by_player_id(p)).and_then(|e| space_mgr.entity_label(e)),
         command = cmd,
         reason = u.reason,
-        "GM duel command refused: nothing was read or changed"
+        "GM duel command refused: nothing was read or changed",
     );
     send_gm_feedback(caller_id, &u.line, tx).await;
 }

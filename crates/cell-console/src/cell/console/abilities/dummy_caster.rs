@@ -88,10 +88,12 @@ pub(super) async fn run(
                 event = "lab_dummy_refused",
                 reason = "caster_ability",
                 entity_id = caller_id,
+                entity_name = space_mgr.entity_label(caller_id),
                 ability_id,
+                ability_name = cimmeria_names::book().ability(ability_id),
                 interval_secs = interval.as_secs(),
                 detail = %why,
-                "GM .dummy caster refused: the ability cannot be cast at its owner"
+                "GM .dummy caster refused: the ability cannot be cast at its owner",
             );
             return send_gm_feedback(caller_id, &format!(".dummy caster: {why}"), tx).await;
         }
@@ -127,13 +129,18 @@ pub(super) async fn run(
         target: "abilities.gm",
         event = "lab_caster_placed",
         entity_id = caller_id,
+        entity_name = owner.player_name,
         account_id = owner.account_id,
+        account_name = owner.account_name,
         player_id = owner.player_id,
+        player_name = owner.player_name,
         dummy_id,
+        dummy_name = space_mgr.entity_label(dummy_id),
         ability_id,
+        ability_name = cimmeria_names::book().ability(ability_id),
         interval_secs = interval.as_secs(),
         warmup_secs = warmup,
-        "GM placed a caster lab dummy"
+        "GM placed a caster lab dummy",
     );
     let line = format!(
         "dummy [{dummy_id}] placed: caster {dummy_name}; casts {name} ({ability_id}, warmup {warmup} s) at you every {} s while you are alive and in this space; gone in {} min, when you log out, or on .dummy clear",
@@ -239,11 +246,16 @@ pub(crate) async fn cast_due(
                 event = "lab_caster_held",
                 reason = hold.as_str(),
                 entity_id = owner_id,
+                entity_name = mark.owner_identity.player_name,
                 account_id = mark.owner_identity.account_id,
+                account_name = mark.owner_identity.account_name,
                 player_id = mark.owner_identity.player_id,
+                player_name = mark.owner_identity.player_name,
                 dummy_id,
+                dummy_name = space_mgr.entity_label(dummy_id),
                 ability_id,
-                "caster lab dummy held its cast"
+                ability_name = cimmeria_names::book().ability(ability_id),
+                "caster lab dummy held its cast",
             );
             continue;
         }
@@ -262,12 +274,17 @@ pub(crate) async fn cast_due(
             target: "abilities.gm",
             event = "lab_caster_cast",
             entity_id = owner_id,
+            entity_name = mark.owner_identity.player_name,
             account_id = mark.owner_identity.account_id,
+            account_name = mark.owner_identity.account_name,
             player_id = mark.owner_identity.player_id,
+            player_name = mark.owner_identity.player_name,
             dummy_id,
+            dummy_name = space_mgr.entity_label(dummy_id),
             ability_id,
+            ability_name = cimmeria_names::book().ability(ability_id),
             launched,
-            "caster lab dummy cast at its owner"
+            "caster lab dummy cast at its owner",
         );
     }
 }

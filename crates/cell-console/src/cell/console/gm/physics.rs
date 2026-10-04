@@ -37,7 +37,11 @@ pub(super) async fn handle_physics(
     let turn_on = match args.first() {
         Some(&b) => b,
         None => {
-            tracing::warn!(entity_id, "onPhysics: truncated args (need UINT8 bTurnOn)");
+            tracing::warn!(
+                entity_id,
+                entity_name = space_mgr.entity_label(entity_id),
+                "onPhysics: truncated args (need UINT8 bTurnOn)"
+            );
             send_gm_feedback(entity_id, "onPhysics: missing UINT8 bTurnOn", tx).await;
             return true;
         }
@@ -49,7 +53,11 @@ pub(super) async fn handle_physics(
     match space_mgr.get_entity_mut(entity_id) {
         Some(e) => e.movement_unrestricted = unrestricted,
         None => {
-            tracing::warn!(entity_id, "onPhysics: caller entity not found");
+            tracing::warn!(
+                entity_id,
+                entity_name = space_mgr.entity_label(entity_id),
+                "onPhysics: caller entity not found"
+            );
             send_gm_feedback(entity_id, "onPhysics: caller entity not found", tx).await;
             return true;
         }
@@ -57,6 +65,7 @@ pub(super) async fn handle_physics(
 
     tracing::info!(
         entity_id,
+        entity_name = space_mgr.entity_label(entity_id),
         turn_on,
         unrestricted,
         "onPhysics: movement validator bypass toggled"

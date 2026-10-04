@@ -269,10 +269,15 @@ pub(super) async fn set_speed(
     let caller = space_mgr.player_identity(caller_id);
     tracing::info!(
         caller_id,
+        caller_name = caller.player_name,
         account_id = caller.account_id,
+        account_name = caller.account_name,
         player_id = caller.player_id,
+        player_name = caller.player_name,
         target,
+        target_name = space_mgr.entity_label(target),
         target_player_id = target_id.player_id,
+        target_player_name = target_id.player_name,
         speed,
         is_player,
         "console .speed: movement/rotation speed mod applied"

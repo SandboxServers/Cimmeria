@@ -146,8 +146,11 @@ async fn forward(
         tracing::warn!(
             event = "bm.gm_rejected",
             account_id = gm.account_id,
+            account_name = gm.account_name,
             player_id = gm.player_id,
+            player_name = gm.player_name,
             entity_id = caller_id,
+            entity_name = gm.player_name,
             command = cmd,
             reason = "base_channel_closed",
             "GM Black Market command dropped: the base channel is closed"
@@ -168,8 +171,11 @@ async fn refuse(
     tracing::warn!(
         event = "bm.gm_rejected",
         account_id = gm.account_id,
+        account_name = gm.account_name,
         player_id = gm.player_id,
+        player_name = gm.player_name,
         entity_id = caller_id,
+        entity_name = gm.player_name,
         command = cmd,
         reason = r.reason,
         "GM Black Market command refused: nothing was sent to the base"

@@ -47,10 +47,26 @@ pub(super) async fn dispatch(
     match name {
         "learndiscipline" => learn(caller_id, target, player_id, args, tx).await,
         "forgetdiscipline" => forget(caller_id, target, player_id, args, tx).await,
-        "allcraft" => all_craft(caller_id, target, player_id, tx).await,
-        "craftkit" => craft_kit(caller_id, (target, account_id, player_id), args, tx).await,
+        "allcraft" => all_craft(caller_id, target, player_id, tx, space_mgr).await,
+        "craftkit" => {
+            craft_kit(
+                caller_id,
+                (target, account_id, player_id),
+                args,
+                tx,
+                space_mgr,
+            )
+            .await
+        }
         "learnblueprint" => {
-            learn_blueprint(caller_id, (target, account_id, player_id), args, tx).await
+            learn_blueprint(
+                caller_id,
+                (target, account_id, player_id),
+                args,
+                tx,
+                space_mgr,
+            )
+            .await
         }
         _ => {}
     }
@@ -138,7 +154,13 @@ async fn forget(
 /// blueprint, and "craft anywhere" for the target's session. The
 /// base holds the catalog and the persistence, so the cell only forwards;
 /// the base re-checks the caller's access level and sends the result lines.
-async fn all_craft(caller_id: u32, target: u32, player_id: i32, tx: &mpsc::Sender<CellToBaseMsg>) {
+async fn all_craft(
+    caller_id: u32,
+    target: u32,
+    player_id: i32,
+    tx: &mpsc::Sender<CellToBaseMsg>,
+    space_mgr: &SpaceManager,
+) {
     let grant = GmAllCraft {
         entity_id: target,
         player_id,
@@ -149,7 +171,9 @@ async fn all_craft(caller_id: u32, target: u32, player_id: i32, tx: &mpsc::Sende
             target: "crafting",
             event = "allcraft_send_failed",
             caller_id,
+            caller_name = space_mgr.entity_label(caller_id),
             target,
+            target_name = space_mgr.entity_label(target),
             error = %e,
             "allcraft could not be queued (base channel closed)"
         );
@@ -164,6 +188,7 @@ async fn craft_kit(
     target: GrantTarget,
     args: &[&str],
     tx: &mpsc::Sender<CellToBaseMsg>,
+    space_mgr: &SpaceManager,
 ) {
     let Some(blueprint_id) = super::parse_i32(caller_id, args, 0, "blueprintId", tx).await else {
         return;
@@ -183,6 +208,7 @@ async fn craft_kit(
             count,
         },
         tx,
+        space_mgr,
     )
     .await;
 }
@@ -193,6 +219,7 @@ async fn learn_blueprint(
     target: GrantTarget,
     args: &[&str],
     tx: &mpsc::Sender<CellToBaseMsg>,
+    space_mgr: &SpaceManager,
 ) {
     let Some(blueprint_id) = super::parse_i32(caller_id, args, 0, "blueprintId", tx).await else {
         return;
@@ -202,6 +229,7 @@ async fn learn_blueprint(
         target,
         GmCraftGrantKind::LearnBlueprint { blueprint_id },
         tx,
+        space_mgr,
     )
     .await;
 }
@@ -216,6 +244,7 @@ async fn send_grant(
     (entity_id, account_id, player_id): GrantTarget,
     grant: GmCraftGrantKind,
     tx: &mpsc::Sender<CellToBaseMsg>,
+    space_mgr: &SpaceManager,
 ) {
     let msg = GmCraftGrant {
         entity_id,
@@ -229,9 +258,13 @@ async fn send_grant(
             event = "forward_failed",
             kind = "gm_craft_grant",
             account_id,
+            account_name = space_mgr.player_identity(entity_id).account_name,
             player_id,
+            player_name = space_mgr.player_identity(entity_id).player_name,
             entity_id,
+            entity_name = space_mgr.entity_label(entity_id),
             gm_entity_id = caller_id,
+            gm_entity_name = space_mgr.entity_label(caller_id),
             error = %e,
             "GM crafting grant could not be queued (base channel closed)"
         );
