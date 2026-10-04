@@ -75,6 +75,12 @@ pub(crate) enum DecodeError {
         /// The `.def` name of the argument being read.
         arg: &'static str,
     },
+    /// Every argument decoded and bytes were left over: the payload is
+    /// longer than its `.def` says, so the decode may be misaligned.
+    TrailingBytes {
+        /// How many bytes were left.
+        n: usize,
+    },
 }
 
 impl DecodeError {
@@ -82,6 +88,15 @@ impl DecodeError {
     pub(crate) fn as_text(&self) -> String {
         match self {
             DecodeError::Truncated { arg } => format!("truncated in {arg}"),
+            DecodeError::TrailingBytes { .. } => "trailing_bytes".to_string(),
+        }
+    }
+
+    /// The left-over byte count, for the `trailing_bytes` field.
+    pub(crate) fn trailing(&self) -> Option<usize> {
+        match self {
+            DecodeError::TrailingBytes { n } => Some(*n),
+            DecodeError::Truncated { .. } => None,
         }
     }
 }
@@ -196,7 +211,10 @@ fn array_count(bytes: &[u8]) -> Option<u32> {
 
 /// Decode `args` from `bytes`. Each argument becomes `(field, value)`; an
 /// array argument also gets `<field>_count`, its declared length. On
-/// failure the arguments decoded so far are returned with the error.
+/// failure the arguments decoded so far are returned with the error. The
+/// bytes must be used up exactly: anything left after the last argument
+/// is [`DecodeError::TrailingBytes`] (the values are still returned), so a
+/// payload that is longer than its `.def` never passes as a clean decode.
 pub(crate) fn decode(
     args: &[Arg],
     bytes: &[u8],
@@ -215,7 +233,11 @@ pub(crate) fn decode(
         }
         out.push((a.field, v));
     }
-    (out, None)
+    let left = r.remaining();
+    (
+        out,
+        (left > 0).then_some(DecodeError::TrailingBytes { n: left }),
+    )
 }
 
 fn is_array(ty: &WireType) -> bool {
@@ -366,6 +388,23 @@ mod tests {
         assert_eq!(v, vec![("a", json!(1))]);
         assert_eq!(err, Some(DecodeError::Truncated { arg: "b" }));
         assert_eq!(err.unwrap().as_text(), "truncated in b");
+    }
+
+    /// Bytes left after the last argument are an error, with the count,
+    /// and the decoded values are kept.
+    #[test]
+    fn trailing_bytes_are_an_error() {
+        let bytes = [1, 0, 0, 0, 0xaa, 0xbb];
+        let (v, err) = decode(&[arg("a", WireType::I32)], &bytes);
+        assert_eq!(v, vec![("a", json!(1))]);
+        let err = err.expect("two bytes were left over");
+        assert_eq!(err, DecodeError::TrailingBytes { n: 2 });
+        assert_eq!(
+            (err.as_text().as_str(), err.trailing()),
+            ("trailing_bytes", Some(2))
+        );
+        // An exact payload is clean.
+        assert_eq!(decode(&[arg("a", WireType::I32)], &bytes[..4]).1, None);
     }
 
     /// A corrupt count (four billion elements in eight bytes) fails at

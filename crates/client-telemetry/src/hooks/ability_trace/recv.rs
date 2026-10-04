@@ -75,6 +75,9 @@ pub(crate) fn event(msg: &Message, bytes: &[u8]) -> Option<(&'static str, String
     let level = match err {
         Some(e) => {
             f.push(("decode_error", json!(e.as_text())));
+            if let Some(n) = e.trailing() {
+                f.push(("trailing_bytes", json!(n)));
+            }
             if capped {
                 "info"
             } else {
@@ -344,6 +347,29 @@ mod tests {
         reads.borrow_mut().clear();
         let _ = report(&msg(19, Receiver::Other, 16), read);
         assert_eq!(*reads.borrow(), vec![1, 16]);
+    }
+
+    /// A payload longer than its `.def` is a `warn` with `trailing_bytes`,
+    /// for every method: no method is allowed extra bytes.
+    #[test]
+    fn trailing_bytes_are_a_warn_for_every_method() {
+        let mut b = i32s(&[0x22]);
+        b.push(7);
+        let (level, _, f) = event(&msg(19, Receiver::Other, b.len()), &b).unwrap();
+        assert_eq!(level, "warn");
+        assert_eq!(get(&f, "decode_error"), json!("trailing_bytes"));
+        assert_eq!(get(&f, "trailing_bytes"), json!(1));
+        assert_eq!(get(&f, "state_field"), json!(0x22));
+        // The 26-byte `onSequence` plus one stray byte.
+        let mut s = i32s(&[1, 2, 2]);
+        s.push(1);
+        s.extend_from_slice(&0.0f32.to_le_bytes());
+        s.extend_from_slice(&0u32.to_le_bytes());
+        s.push(3);
+        s.extend(i32s(&[0]));
+        s.push(0);
+        let (level, _, f) = event(&msg(1, Receiver::Other, s.len()), &s).unwrap();
+        assert_eq!((level, get(&f, "trailing_bytes")), ("warn", json!(1)));
     }
 
     /// A payload longer than the cap is decoded from its head and says so.

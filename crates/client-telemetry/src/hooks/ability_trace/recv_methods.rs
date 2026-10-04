@@ -12,6 +12,10 @@
 //! both files and fails on any drift, and
 //! `tests::indices_match_the_dispatch_table` checks every index.
 //!
+//! No method here is allowed bytes after its last argument: the decoder
+//! reports any as `decode_error = trailing_bytes`. A method the server is
+//! known to pad would need its own flag on its row; none is today.
+//!
 //! `Ability_Interrupt` is not a method: it is an `onSequence` whose
 //! sequence the server picked for Kismet event 1002. The wire carries only
 //! the sequence id, so the recv row cannot name it; the client learns the
