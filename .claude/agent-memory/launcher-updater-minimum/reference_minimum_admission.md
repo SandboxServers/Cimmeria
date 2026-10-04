@@ -1,6 +1,6 @@
 # Native minimum-launcher admission reference
 
-2026-10-04: `desktop/engine/src/launcher_compatibility/` separates package identity
+2026-10-04: `crates/launcher/desktop/engine/src/launcher_compatibility/` separates package identity
 from legacy minimum ordering. `DesktopState::open` uses compiled stamps; native
 `open_with_compatibility` injects trusted known ordering. No release discovery or
 ordering persistence is implemented. Launch must use the read-only installed

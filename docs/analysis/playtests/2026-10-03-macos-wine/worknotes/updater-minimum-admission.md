@@ -73,6 +73,18 @@ Install/Launch admissions, reopen persisted state, and reject wrong-digest and
 corrupt cached evidence without mutation. Fixtures are signed with the existing
 test/development key and contain only inert helper bytes.
 
+Validation completed on macOS with pinned Rust 1.98.1, through the build lane:
+
+- Engine library suite: 322 passed, 15 ignored (337 total).
+- Engine all-target Clippy with warnings denied: passed.
+- Desktop workspace formatting: passed.
+- Revert verification: removing both minimum admission checks made the signed
+  Install and offline Launch regression tests fail; restoring the checks passed
+  the four admission tests again.
+
+The 15 existing ignored tests were not exercised. No new ownership mutation is
+introduced; the existing library ownership guards passed with the full suite.
+
 Shell error mapping and shared documentation/index integration belong to the
 coordinator. No frontend is changed here, so JS REPL/visual UAT is deferred until
 visible minimum-status wiring lands. Production release stamping, SemVer/package
