@@ -7,7 +7,9 @@ use crate::event::Event;
 
 use super::budget::{enforce_total_budget, truncate};
 use super::format::format_event;
-use super::{MAX_DESC, MAX_FIELDS, MAX_FIELD_VALUE, MAX_TITLE};
+use super::links::{strip_links_in_embed, ALLOWED_LINK_HOSTS};
+use super::tracing_fields::trace_footer;
+use super::{MAX_DESC, MAX_FIELDS, MAX_FIELD_VALUE, MAX_FOOTER, MAX_TITLE};
 
 /// Build the JSON body of a Discord webhook POST from one event.
 ///
@@ -60,6 +62,18 @@ pub fn build_embed(event: &Event) -> Value {
     if !fields_json.is_empty() {
         embed["fields"] = Value::Array(std::mem::take(&mut fields_json));
     }
+    // The trace ID rides in the footer as plain text a developer can
+    // paste into SigNoz (D-NT3), never as a link.
+    if let Event::TracingEvent { fields, .. } = event {
+        if let Some(text) = trace_footer(fields) {
+            embed["footer"] = json!({ "text": truncate(&text, MAX_FOOTER) });
+        }
+    }
+
+    // No internal links (Rule 6, "Discord"): runs over the whole
+    // rendered embed, every variant, before the budget pass so the
+    // budget sees the final strings.
+    strip_links_in_embed(&mut embed, ALLOWED_LINK_HOSTS);
 
     // Final guard: if the total character budget is exceeded, trim
     // description first (the most likely culprit), then fields, in

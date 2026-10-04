@@ -3,6 +3,7 @@
 
 use crate::event::{ChatKind, DisconnectReason, Event, TracingEventKind};
 
+use super::tracing_fields::fold_fields;
 use super::MAX_FIELDS;
 
 /// Per-variant formatter. Returns `(title, description, fields, timestamp_rfc3339)`.
@@ -462,15 +463,14 @@ pub(super) fn format_event(event: &Event) -> (String, String, Vec<(String, Strin
                 TracingEventKind::Error => "🛑 error",
             };
             let title = format!("{} — {}", title, target);
-            let mut field_pairs: Vec<(String, String, bool)> = fields
-                .iter()
-                .take(MAX_FIELDS - 1) // leave room for added fields
-                .map(|(k, v)| (k.clone(), v.clone(), true))
-                .collect();
-            // Always include the target as a field for grepability even
-            // when it's also in the title (titles get truncated; fields
-            // get their own truncation cap).
-            field_pairs.push(("Target".into(), target.clone(), false));
+            // Fold Rule 6 ID/name pairs into one field each, leaving
+            // one slot for the log target below.
+            let mut field_pairs = fold_fields(fields, MAX_FIELDS - 1);
+            // Always include the log target as a field for grepability
+            // even when it's also in the title (titles get truncated;
+            // fields get their own truncation cap). Not "Target": that
+            // label belongs to the folded `target` entity pair.
+            field_pairs.push(("Log target".into(), target.clone(), false));
             (title, message.clone(), field_pairs, timestamp.to_rfc3339())
         }
         Event::WireFormatError {
