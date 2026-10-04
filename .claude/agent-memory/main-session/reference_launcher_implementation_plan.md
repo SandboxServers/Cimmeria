@@ -336,3 +336,19 @@ Windows+Mac before the shell; shell/visual/game gates remain separate.
   drivers, 120s/8KiB bounds and stop/wait before assertions. Native Mac strict
   clippy passed lane064521-91420; execution pending native probe artifact.
   This is test supervision only, not production prerequisite integration.
+
+- Probe host decoding now rejects malformed/inconsistent reports and SDK/game
+  readiness claims. Empty enum variants needed struct form: serde accepted extra
+  fields on unit variants despite deny_unknown_fields; regression failed before
+  correction, all five portable tests pass lane065608-96143. Shared decoder is
+  used by the private Wine test; strict engine/probe clippy passes065645-96624.
+- Repair design is recorded in desktop/docs/repair.md: same-release reconstruction,
+  separate work/permanent owner IDs, old tree retained through preparation and a
+  recoverable two-rename commit. This is planned, not implemented.
+
+- Native x86 probe job37199961628 passed at14e1dfa6b; artifact11302821588,
+  exe SHA06518c33a0ae3b3f014511ee8e839eefc54d10a6ef111e5021e2fc0f6a0da255.
+  Private clean-Wine smoke passed24.316s lane065843-97656: SGW activation and all
+  five DLLs loaded with no vendor installers. Module loads cannot determine
+  installer necessity or game readiness; actual PhysX SDK remains unchecked.
+  Earlier e18cb0e51 desktop CI37198857452 passed both Mac and Windows.

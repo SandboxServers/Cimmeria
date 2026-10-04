@@ -12,7 +12,8 @@ implemented; patch notes load from a signed release manifest. Effect
 installation controls call native IPC on Windows and on Mac builds containing
 a helper verified against its compiled artifact identity. Mac builds without
 that resource retain settings and patch notes but cannot install. Content preparation does not establish runtime or
-Play readiness. Repair, removal, launch and telemetry export remain pending. The
+Play readiness. Confirmed uninstall and interrupted-removal recovery are wired
+through Settings. Repair, launch and telemetry export remain pending. The
 existing Windows egui launcher shares the downloader cancellation fixes.
 
 ## Native operation and storage contracts
@@ -513,7 +514,8 @@ newer frontend installation controls.
 controls to native IPC on Windows and verified-helper Mac builds. Install
 requires a selected folder and no current operation. Mac builds without the
 verified packaged helper cannot install. Settings saves refresh installation status. Repair,
-uninstall, runtime setup and Play remain unavailable.
+runtime setup and Play remain unavailable. Confirmed uninstall uses the saved
+installation identity; see [maintenance](docs/maintenance.md).
 
 The application-scoped Effect service inspects native state before each
 mutation, uses current revisions and never automatically replays a mutation
@@ -684,8 +686,8 @@ Missing ownership records or signed evidence remain errors.
 
 An older current successful Install can migrate on read. Selecting a folder never
 adopts its contents. This record does not grant launch/delete permission or prove
-readiness: current-operation, content and runtime checks remain required. There
-is no new UI or Repair execution in this packet.
+readiness: current-operation, content and runtime checks remain required. Repair
+execution remains unimplemented.
 
 Settings uninstall, explicit recovery and data-retention boundaries are described
 in [installed-content maintenance](docs/maintenance.md).

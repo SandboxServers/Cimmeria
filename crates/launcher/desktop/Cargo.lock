@@ -596,6 +596,7 @@ version = "0.1.0"
 dependencies = [
  "chrono",
  "cimmeria-patchset",
+ "cimmeria-runtime-probe",
  "crc32fast",
  "ed25519-dalek",
  "futures-util",

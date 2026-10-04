@@ -23,6 +23,12 @@ the absolute game-directory `PhysXLoader.dll`. Search is restricted to configure
 game/system directories and loader error dialogs are suppressed. Failed activation
 reports VC80 checks as `context_unavailable`; independent module checks continue.
 
+The host decoder bounds reports to 8 KiB and rejects unknown fields, unsupported
+schema/architecture, duplicate/missing/reordered components, impossible context
+results and any claim that the SDK or game ran. Empty state variants use explicit
+empty structs so Serde rejects extra fields; a regression test failed with unit
+variants and passes with this representation. The Wine smoke uses this decoder.
+
 The JSON report uses fixed component IDs with `loaded`, `unavailable` plus a
 Win32 error, or `context_unavailable`; it includes no paths. Both
 `physx_engine_checked` and `game_started` are always false. Loading a DLL can run
@@ -40,12 +46,13 @@ bash tools/build-lane/lane.sh cargo test --locked \
   --manifest-path crates/launcher/desktop/Cargo.toml -p cimmeria-runtime-probe
 ```
 
-Three portable tests passed locally (`20261004-063638-87802`), and native Mac
+Five portable tests passed locally (`20261004-065608-96143`), and native Mac
 strict clippy passed (`20261004-063517-87120`); neither compiles or executes the
 Windows-only implementation. The native Windows i686 CI job builds/tests,
 self-tests successful `kernel32` loading and a missing DLL, and uploads the helper.
 A Windows-only fixture exercises search configuration and invalid-manifest
-reporting through the actual probe. Native Windows results remain pending.
+reporting through the actual probe. Native Windows x86 clippy/tests/self-test passed at `14e1dfa6b` in run
+`37199961628`; later source changes still require their own Windows result.
 Before integration, a supervisor must enforce a deadline, bind the helper hash
 and validate ownership of the game root. No new frontend behavior or visual UAT
 is included.
@@ -98,5 +105,13 @@ bash tools/build-lane/lane.sh cargo test --locked \
 ```
 
 The harness passes native Mac strict clippy (lane `20261004-064521-91420`).
-Execution awaits the native Windows probe artifact; compilation alone does not
-prove Wine compatibility.
+Execution passed in 24.316 seconds (lane `20261004-065843-97656`) using the native
+Windows artifact from `14e1dfa6b`, run `37199961628`, artifact `11302821588`.
+Executable SHA256:
+`06518c33a0ae3b3f014511ee8e839eefc54d10a6ef111e5021e2fc0f6a0da255`.
+The clean prefix loaded the SGW activation context and all five checked modules
+without vendor installers. Therefore module loadability alone cannot establish
+that those installers are required or that Wine's implementations satisfy the
+game. PhysX SDK initialization, graphics and login remain unverified; the report
+kept both readiness-related flags false. The shared host decoder accepted the
+native artifact's unchanged schema after its stricter local validation changes.

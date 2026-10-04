@@ -32,6 +32,7 @@ libc = "0.2"
 windows-sys = { version = "0.61", features = ["Win32_Foundation", "Win32_Storage_Cabinets", "Win32_Storage_FileSystem", "Win32_System_Memory", "Win32_System_WindowsProgramming"] }
 
 [dev-dependencies]
+cimmeria-runtime-probe = { path = "../runtime-probe" }
 wiremock = "0.6"
 crc32fast = "1"
 

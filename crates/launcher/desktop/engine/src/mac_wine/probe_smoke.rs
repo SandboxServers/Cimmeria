@@ -90,15 +90,15 @@ async fn original_client_module_probe_in_private_wine_prefix() {
     stopped.unwrap();
     let (status, bytes) = attempt.expect("bounded probe deadline").unwrap();
     assert!(status.success(), "probe exit: {status}");
-    let report: serde_json::Value = serde_json::from_slice(&bytes).unwrap();
-    assert_eq!(report["schema_version"], 1);
-    assert_eq!(report["architecture"], "x86");
-    assert_eq!(report["physx_engine_checked"], false);
-    assert_eq!(report["game_started"], false);
-    let modules = report["modules"].as_array().unwrap();
+    let report = cimmeria_runtime_probe::decode_report(&bytes).unwrap();
+    assert_eq!(report.schema_version, 1);
+    assert_eq!(report.architecture, "x86");
+    assert!(!report.physx_engine_checked);
+    assert!(!report.game_started);
+    let modules = &report.modules;
     assert_eq!(modules.len(), 5);
-    assert_eq!(modules[4]["component"], "physx_loader");
+    assert_eq!(modules[4].component, "physx_loader");
     assert!(!String::from_utf8_lossy(&bytes).contains(&root_path.to_string_lossy().to_string()));
-    eprintln!("private Wine module evidence: {report}");
+    eprintln!("private Wine module evidence: {report:?}");
     // No vendor installers, graphics device, SGW process or login were exercised.
 }

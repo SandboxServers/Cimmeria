@@ -51,3 +51,8 @@ JS installation logic UAT passed. The UAT used fixture IPC to check confirmation
 dismissal, double-click protection, owned-folder targeting, acknowledged removal/
 reinstall and unchanged consent; it does not prove native deletion. No app
 was opened and no visual UAT is claimed; native Windows validation remains a gate.
+
+## Planned repair
+
+The [Repair design contract](repair.md) defines reconstruction, permanent ownership
+and recoverable replacement gates. Repair is not implemented or exposed in the UI.

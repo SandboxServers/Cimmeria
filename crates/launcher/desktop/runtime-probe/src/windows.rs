@@ -33,7 +33,7 @@ fn load_path(dll: &OsStr) -> LoadResult {
         }
     } else {
         unsafe { FreeLibrary(module) };
-        LoadResult::Loaded
+        LoadResult::Loaded {}
     }
 }
 struct Context {
@@ -101,7 +101,7 @@ pub fn probe(request: Request) -> Result<Report, &'static str> {
     let _search = SearchDirectory(cookie);
     let context = activation(&directory.join("SGW.exe"));
     let result = match &context {
-        Ok(_) => LoadResult::Loaded,
+        Ok(_) => LoadResult::Loaded {},
         Err(error) => LoadResult::Unavailable {
             win32_error: *error,
         },
@@ -118,7 +118,7 @@ pub fn probe(request: Request) -> Result<Report, &'static str> {
 /// CI exercises actual x86 loader success/failure without game code or a window.
 pub fn self_test() -> bool {
     unsafe { SetErrorMode(SEM_FAILCRITICALERRORS | SEM_NOGPFAULTERRORBOX) };
-    load("kernel32.dll") == LoadResult::Loaded
+    load("kernel32.dll") == LoadResult::Loaded {}
         && matches!(
             load("cimmeria-missing-probe-fixture.dll"),
             LoadResult::Unavailable { .. }
@@ -157,8 +157,8 @@ mod tests {
             report.activation_context,
             LoadResult::Unavailable { .. }
         ));
-        assert_eq!(report.modules[0].result, LoadResult::ContextUnavailable);
-        assert_eq!(report.modules[1].result, LoadResult::ContextUnavailable);
+        assert_eq!(report.modules[0].result, LoadResult::ContextUnavailable {});
+        assert_eq!(report.modules[1].result, LoadResult::ContextUnavailable {});
         assert!(matches!(
             report.modules[4].result,
             LoadResult::Unavailable { .. }
