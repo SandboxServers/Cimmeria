@@ -115,15 +115,13 @@ Executable SHA256:
 The clean prefix loaded the SGW activation context and all five checked modules
 without vendor installers. Therefore module loadability alone cannot establish
 that those installers are required or that Wine's implementations satisfy the
-game. PhysX SDK initialization, graphics and login remain unverified; the report
-kept both readiness-related flags false. That successful run used report schema 1 and did not attempt SDK initialization.
-The current strict schema-2 decoder requires a new helper; native Windows
-validation of the SDK change remains pending.
+game. That historical schema-1 run kept both flags false and did not attempt SDK
+initialization. The schema-2 Windows and SDK before/after results are below.
 
 The [experimental PhysX SDK probe](physx-probe.md) records the original loader ABI,
 implemented hash-pinned lifecycle and outstanding supervision gates. Null default
-allocator/output pointers remain experimental; no production integration or new
-frontend behavior is implemented.
+allocator/output pointers are verified for the original core; no production
+integration or new frontend behavior is implemented.
 
 ## SDK before/after check
 

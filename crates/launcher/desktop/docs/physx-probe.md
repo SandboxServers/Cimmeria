@@ -1,6 +1,6 @@
 # PhysX SDK probe: ABI evidence and supervised experiment
 
-**Status: experimental implementation; native Windows CI passed, Wine run pending.** The
+**Status: experimental implementation; native Windows CI and private Wine SDK lifecycle passed.** The
 [probe](prerequisites.md) now separates module loading from a PhysX SDK
 creation/release attempt. Production supervision/integration remains unfinished;
 this does not start SGW, create graphics devices or claim readiness.
@@ -79,8 +79,8 @@ production capability/readiness flags until its ABI assumptions and supervised
 failure paths have been validated. Native Windows SDK CI `37201203156` passed at
 `ebeaaaa47`; artifact `11302724959` contains executable SHA-256
 `3ed60ee8fba3a6b02bf860b559e5ca55f4c5b99836d88126b3f86865ebac3ebc`.
-The schema-2 baseline Wine run is pending. The earlier schema-1 module-load smoke
-is not SDK proof, and CI success alone does not establish real SDK initialization.
+The schema-2 before/after Wine result is recorded below. The earlier schema-1
+module-load smoke is not SDK proof, and CI success alone does not establish SDK initialization.
 
 ## Observed SDK lifecycle under Wine
 
