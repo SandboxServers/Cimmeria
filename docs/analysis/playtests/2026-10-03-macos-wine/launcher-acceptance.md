@@ -22,6 +22,15 @@ real-store Effect UAT for Apply, lost reply, cleanup and reopen. Latest frontend
 tests pass 60 and six scoped Update shell tests pass. Actual game Update,
 effective settings, observability and real packaged upgrade gates remain required.
 
+## Windows troubleshooting handoff
+
+Investigate concrete Windows failures locally through separate GitHub issues,
+not iterative GitHub-hosted CI diagnosis. The updater ShellExecute test stall is
+tracked in [#1194](https://github.com/SandboxServers/Cimmeria/issues/1194), with
+native log evidence, local reproduction, bounded acceptance and an unverified
+candidate patch. That candidate is not applied to the combined branch. Windows
+validation remains open; routine CI is not a substitute for the local handoff.
+
 ## Current wave
 
 Original campaign base: `0b10d869c869793ab506dbf9215ddb91714a244b`.
