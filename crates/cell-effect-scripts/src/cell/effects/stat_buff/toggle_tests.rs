@@ -337,7 +337,8 @@ fn a_held_toggle_at_another_entity_is_refused() {
         .is_some());
 }
 
-/// A passive (`EF_AlwaysPersist`, 809 Mental Fortitude's 854) holds on the
+/// A passive (`EF_AlwaysPersist`, a synthetic Mental Resistance row; the
+/// bound passives are 1450, 1731 and 1574) holds on the
 /// player and comes off with its `on_remove` (the respec).
 #[test]
 fn a_passive_holds_until_removed() {

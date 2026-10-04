@@ -1,8 +1,8 @@
 //! The passive pass at the three seams where the known set changes (world
 //! entry, a purchase or GM grant, a respec), and the stat update it owes.
 //!
-//! Since ability mechanics AB-08 a stat passive (809 Mental Fortitude,
-//! 1450 Cover Penetration) moves a stat through the timed effect ledger.
+//! Since ability mechanics AB-08 a stat passive (1450 Cover Penetration,
+//! 1731 Warrior's Resilience) moves a stat through the timed effect ledger.
 //! The client's numbers come from the base's world-entry burst before
 //! `InitPlayerState`, and nothing else flushes this entity's stats at these
 //! seams, so the pass sends the dirty stats itself when a script ran.
