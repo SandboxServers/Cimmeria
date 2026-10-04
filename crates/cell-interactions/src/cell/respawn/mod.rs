@@ -135,13 +135,11 @@ pub async fn handle_respawn(
 
     // Discord gameplay-channel (off by default). Fires for both the
     // same-world reanchor and the cross-world gate path; `target_world` is the
-    // world the player comes back up in. Cloned because it's moved into the
-    // GateTravel message on the cross-world branch below.
-    let respawn_character_name = space_mgr
-        .get_entity(entity_id)
-        .and_then(|e| e.character_name.clone())
-        .unwrap_or_else(|| format!("entity:{entity_id}"));
-    cimmeria_discord::emit_player_respawn(respawn_character_name, target_world.clone());
+    // world the player comes back up in.
+    cimmeria_discord::emit_player_respawn(
+        space_mgr.discord_character(entity_id),
+        space_mgr.discord_world(&target_world),
+    );
 
     // Close the Defeat Window first.
     let _ = tx

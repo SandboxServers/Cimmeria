@@ -35,7 +35,19 @@ async fn spawn_placeholder_session(
 
     let registry = SessionRegistry::new();
     let ticket = registry
-        .register(entity_id, 7, "Hack".into(), 1, 1, 0, 0, 0, 1, vec![4242])
+        .register(
+            entity_id,
+            7,
+            "Hack".into(),
+            1,
+            1,
+            0,
+            0,
+            0,
+            1,
+            vec![4242],
+            None,
+        )
         .await
         .expect("fresh registry must accept the session");
     // Go through the claiming path rather than building a `MinigameSession`
@@ -282,7 +294,7 @@ async fn a_closed_connection_leaves_the_entity_free_to_relaunch() {
 
     let registry = SessionRegistry::new();
     let ticket = registry
-        .register(4303, 7, "Hack".into(), 1, 1, 0, 0, 0, 1, vec![])
+        .register(4303, 7, "Hack".into(), 1, 1, 0, 0, 0, 1, vec![], None)
         .await
         .expect("fresh registry must accept the session");
 
@@ -346,7 +358,7 @@ async fn a_closed_connection_leaves_the_entity_free_to_relaunch() {
 
     assert!(
         registry
-            .register(4303, 7, "Hack".into(), 1, 1, 0, 0, 0, 1, vec![])
+            .register(4303, 7, "Hack".into(), 1, 1, 0, 0, 0, 1, vec![], None)
             .await
             .is_some(),
         "after a connection closes, the entity must be able to launch again \
@@ -379,7 +391,7 @@ async fn a_send_failure_during_handshake_still_reports_canceled() {
 
     let registry = SessionRegistry::new();
     let ticket = registry
-        .register(4304, 7, "Hack".into(), 1, 1, 0, 0, 0, 1, vec![])
+        .register(4304, 7, "Hack".into(), 1, 1, 0, 0, 0, 1, vec![], None)
         .await
         .expect("fresh registry must accept the session");
     let session = registry
@@ -433,7 +445,7 @@ async fn a_send_failure_during_handshake_still_reports_canceled() {
     );
     assert!(
         registry
-            .register(4304, 7, "Hack".into(), 1, 1, 0, 0, 0, 1, vec![])
+            .register(4304, 7, "Hack".into(), 1, 1, 0, 0, 0, 1, vec![], None)
             .await
             .is_some(),
         "the session must still be unregistered after a handshake failure",

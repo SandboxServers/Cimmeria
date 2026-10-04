@@ -11,6 +11,7 @@ use cimmeria_content_engine::triggers::{TriggerEvent, TriggerType};
 use crate::cell::messages::CellToBaseMsg;
 use crate::cell::space_manager::SpaceManager;
 
+use super::super::discord_labels;
 use super::super::executor;
 use super::super::mission_context::{populate_mission_context, populate_world_context};
 
@@ -38,13 +39,11 @@ pub async fn fire_dialog_open(
     }
 
     // Discord gameplay-channel: dialog opened (off by default — high volume).
-    {
-        let character_name = space_mgr
-            .get_entity(entity_id)
-            .and_then(|e| e.character_name.clone())
-            .unwrap_or_else(|| format!("entity:{entity_id}"));
-        cimmeria_discord::emit_dialog(character_name, dialog_id, None);
-    }
+    cimmeria_discord::emit_dialog(
+        space_mgr.discord_character(entity_id),
+        discord_labels::dialog(dialog_id),
+        None,
+    );
 
     let event = TriggerEvent {
         trigger_type: TriggerType::DialogOpen,
@@ -95,13 +94,11 @@ pub async fn fire_dialog_choice(
     }
 
     // Discord gameplay-channel: dialog choice (off by default — high volume).
-    {
-        let character_name = space_mgr
-            .get_entity(entity_id)
-            .and_then(|e| e.character_name.clone())
-            .unwrap_or_else(|| format!("entity:{entity_id}"));
-        cimmeria_discord::emit_dialog(character_name, dialog_id, Some(button_id));
-    }
+    cimmeria_discord::emit_dialog(
+        space_mgr.discord_character(entity_id),
+        discord_labels::dialog(dialog_id),
+        Some(discord_labels::choice(button_id)),
+    );
 
     let event = TriggerEvent {
         trigger_type: TriggerType::DialogChoice,

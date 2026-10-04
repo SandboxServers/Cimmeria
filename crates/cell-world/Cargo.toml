@@ -32,6 +32,8 @@ cimmeria-commands = { workspace = true }
 # `clock::Clock`, the injectable time source of the ring-transporter FSM.
 cimmeria-mercury = { workspace = true }
 cimmeria-common = { workspace = true }
+# `Named`, the ID + name pair the cell's Discord events carry (NT-10).
+cimmeria-discord = { workspace = true }
 cimmeria-entity = { workspace = true }
 cimmeria-observability = { workspace = true }
 tokio = { workspace = true }

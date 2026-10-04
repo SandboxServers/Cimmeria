@@ -3,10 +3,9 @@ use chrono::Utc;
 
 fn world_entry(account_id: u32, account: &str, character: &str) -> Event {
     Event::PlayerWorldEntry {
-        account_id,
-        account_name: Some(account.into()),
-        character_name: character.into(),
-        world_name: "Castle_CellBlock".into(),
+        account: Named::new(account_id, Some(account.into())),
+        character: Named::name_only(character),
+        world: Named::name_only("Castle_CellBlock"),
         position: [0.0; 3],
         timestamp: Utc::now(),
     }
@@ -14,7 +13,7 @@ fn world_entry(account_id: u32, account: &str, character: &str) -> Event {
 
 fn level_up(character: &str) -> Event {
     Event::PlayerLevelUp {
-        character_name: character.into(),
+        character: Named::name_only(character),
         new_level: 2,
         timestamp: Utc::now(),
     }

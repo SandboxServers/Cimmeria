@@ -338,6 +338,15 @@ pub struct ConnectedClientState {
     pub plugins: plugin::BasePlugins,
 }
 
+/// A world as a Discord pair: its `world_id` from the NameBook and its
+/// name. Base seams carry the world by name only.
+pub fn discord_world(world: &str) -> cimmeria_discord::Named {
+    cimmeria_discord::Named::from_parts(
+        cimmeria_names::book().world_id(world),
+        Some(world.to_string()),
+    )
+}
+
 impl ConnectedClientState {
     /// Next sequence number for an **unreliable** outbound packet —
     /// fetch-add on the unreliable counter, masked to the 28-bit Mercury
@@ -352,5 +361,23 @@ impl ConnectedClientState {
         self.next_seq_unreliable
             .fetch_add(1, std::sync::atomic::Ordering::Relaxed)
             & cimmeria_mercury::packet::SEQUENCE_MASK
+    }
+
+    /// The account as a Discord pair: `account_id` and the login name
+    /// (D-NT2), rendered `steve (#6)`.
+    pub fn discord_account(&self) -> cimmeria_discord::Named {
+        cimmeria_discord::Named::new(self.account_id, self.account_name.clone())
+    }
+
+    /// The character being played as a Discord pair: `player_id` and its
+    /// name. `None` at character select, before `playCharacter` sets either.
+    pub fn discord_character(&self) -> Option<cimmeria_discord::Named> {
+        if self.active_player_id.is_none() && self.player_name.is_none() {
+            return None;
+        }
+        Some(cimmeria_discord::Named::from_parts(
+            self.active_player_id.map(i64::from),
+            self.player_name.clone(),
+        ))
     }
 }

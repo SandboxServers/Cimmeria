@@ -83,12 +83,17 @@ pub(super) async fn fail(
     tracing::info!(entity_id = target, mission_id, "GM .missionfail");
 
     // Discord gameplay-channel. This path is GM-forced, so the reason is
-    // fixed; mission defs carry no name cell-side.
-    let character_name = space_mgr
-        .get_entity(target)
-        .and_then(|e| e.character_name.clone())
-        .unwrap_or_else(|| format!("entity:{target}"));
-    cimmeria_discord::emit_mission_failed(character_name, mission_id, None, "gm_forced");
+    // fixed; the mission's name comes from the NameBook.
+    cimmeria_discord::emit_mission_failed(
+        space_mgr.discord_character(target),
+        cimmeria_discord::Named::new(
+            mission_id,
+            cimmeria_names::book()
+                .mission(mission_id)
+                .map(str::to_string),
+        ),
+        "gm_forced",
+    );
 
     send_gm_feedback(
         caller_id,

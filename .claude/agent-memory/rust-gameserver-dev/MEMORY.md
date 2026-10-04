@@ -111,6 +111,7 @@ One line per topic file; the detail lives in the file. Keep hooks short (this in
 
 ## Observability
 
+- [discord-named-pairs-resolvers](discord-named-pairs-resolvers.md) — Discord Event objects are `Named` pairs (NT-10); base/cell/content resolvers; button text and minigame ids are unnameable.
 - [observability-test-and-throttle-traps](observability-test-and-throttle-traps.md) — counters unobservable in tests.
 - [ability-row-event-guard-and-cast-join](ability-row-event-guard-and-cast-join.md) — ability rows need `event` (source-scan guard); pre-mint rows lack cast_id; client_sent joins by payload.
 - [discord-noise-and-teardown-race](discord-noise-and-teardown-race.md) — SIGNOZ_ONLY_EVENTS; logOff witness-send race is DEBUG via departed_witnesses; colo warns that are real faults.

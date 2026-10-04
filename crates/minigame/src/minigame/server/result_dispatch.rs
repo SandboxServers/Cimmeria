@@ -28,15 +28,15 @@ pub(super) async fn send_minigame_result(
     result_tx: &mpsc::Sender<CellToBaseMsg>,
     entity_id: u32,
     game_name: &str,
+    player: &cimmeria_discord::Named,
     result_code: u8,
     on_victory_chains: Vec<i64>,
     phase: &'static str,
 ) {
     // Discord gameplay-channel: a minigame finished (on by default — low
-    // volume / high signal). The minigame server only holds the entity id,
-    // so the character name is best-effort (`entity:<id>`); resolving the
-    // display name would require a cross-service round-trip not worth the
-    // coupling here.
+    // volume / high signal). The player is the `player_id` and character
+    // name the base registered the session with; the victory chains are
+    // what the game was played for (chains have no name, so `#id`).
     //
     // `RESULT_CANCELED` is excluded: a player closing the minigame window
     // is not a game outcome, and reporting it would put a "lost" line in
@@ -44,8 +44,12 @@ pub(super) async fn send_minigame_result(
     if result_code != RESULT_CANCELED {
         cimmeria_discord::emit_minigame_result(
             game_name,
-            format!("entity:{entity_id}"),
+            player.clone().or_entity(entity_id),
             result_code == RESULT_VICTORY,
+            on_victory_chains
+                .iter()
+                .map(|&c| cimmeria_discord::Named::new(c, None))
+                .collect(),
         );
     }
 
@@ -91,6 +95,7 @@ mod tests {
             &tx,
             /* entity_id */ 4242,
             /* game_name */ "livewire",
+            &cimmeria_discord::Named::new(7, Some("Hacker".into())),
             RESULT_VICTORY,
             /* on_victory_chains */ vec![100, 200],
             /* phase */ "victory_message",
@@ -138,7 +143,16 @@ mod tests {
     async fn send_minigame_result_dispatches_through_open_channel() {
         let (tx, mut rx) = mpsc::channel::<CellToBaseMsg>(1);
 
-        send_minigame_result(&tx, 99, "hack", RESULT_DEFEAT, vec![], "failure_tick").await;
+        send_minigame_result(
+            &tx,
+            99,
+            "hack",
+            &cimmeria_discord::Named::default(),
+            RESULT_DEFEAT,
+            vec![],
+            "failure_tick",
+        )
+        .await;
 
         match rx.try_recv() {
             Ok(CellToBaseMsg::MinigameResult {

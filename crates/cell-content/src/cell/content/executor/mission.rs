@@ -6,6 +6,7 @@ use tokio::sync::mpsc;
 use cimmeria_content_engine::chain::ChainEngine;
 use cimmeria_entity::missions::{MissionObjective, STATUS_ACTIVE};
 
+use crate::cell::content::discord_labels;
 use crate::cell::messages::CellToBaseMsg;
 use crate::cell::space_manager::SpaceManager;
 
@@ -87,14 +88,13 @@ pub(super) async fn accept_or_advance(
         )
         .await;
 
-        // Discord gameplay-channel. Mission defs carry no name cell-side, so
-        // the mission id is the identifier; the player name comes from the
-        // entity's InitPlayerState-cached value.
-        let character_name = space_mgr
-            .get_entity(entity_id)
-            .and_then(|e| e.character_name.clone())
-            .unwrap_or_else(|| format!("entity:{entity_id}"));
-        cimmeria_discord::emit_mission_accepted(character_name, mission_id, None);
+        // Discord gameplay-channel. The mission's name comes from the
+        // NameBook; the character from the entity's InitPlayerState-cached
+        // values.
+        cimmeria_discord::emit_mission_accepted(
+            space_mgr.discord_character(entity_id),
+            discord_labels::mission(mission_id),
+        );
     } else {
         tracing::warn!(
             mission_id,
@@ -166,11 +166,10 @@ pub(super) async fn complete(
         // Discord gameplay-channel — only on the real active→completed
         // transition (guarded by `transitioned_from_active`), so retries and
         // failure-conversions don't post.
-        let character_name = space_mgr
-            .get_entity(entity_id)
-            .and_then(|e| e.character_name.clone())
-            .unwrap_or_else(|| format!("entity:{entity_id}"));
-        cimmeria_discord::emit_mission_completed(character_name, mission_id, None);
+        cimmeria_discord::emit_mission_completed(
+            space_mgr.discord_character(entity_id),
+            discord_labels::mission(mission_id),
+        );
     } else {
         tracing::debug!(
             entity_id,
@@ -379,11 +378,10 @@ pub(super) async fn complete_objective(
         )
         .await;
 
-        let character_name = space_mgr
-            .get_entity(entity_id)
-            .and_then(|e| e.character_name.clone())
-            .unwrap_or_else(|| format!("entity:{entity_id}"));
-        cimmeria_discord::emit_mission_completed(character_name, mission_id, None);
+        cimmeria_discord::emit_mission_completed(
+            space_mgr.discord_character(entity_id),
+            discord_labels::mission(mission_id),
+        );
     }
 }
 

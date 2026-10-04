@@ -35,6 +35,7 @@ mod cover_sight;
 pub use cover_sight::{NpcSight, SightOrigin};
 mod crossing_hold_state;
 mod deferred_content_actions;
+mod discord_labels;
 mod entities;
 mod gate_dial_state;
 mod interact_range;

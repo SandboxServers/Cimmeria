@@ -140,6 +140,9 @@ async fn run_session(
     // Send login success sequence (matching C++ exactly)
     let game_name = session.game_name.clone();
     let on_victory_chains = session.on_victory_chains.clone();
+    // Who the Discord result names: the character's `player_id` and the
+    // name the base handed over at registration.
+    let player = cimmeria_discord::Named::new(session.player_id, session.player_name.clone());
 
     // Whether a `MinigameResult` was dispatched upstream. Declared out here
     // rather than beside the game loop because the teardown below is shared
@@ -281,6 +284,7 @@ async fn run_session(
                                                     result_tx,
                                                     entity_id,
                                                     &game_name,
+                                                    &player,
                                                     RESULT_VICTORY,
                                                     on_victory_chains.clone(),
                                                     "victory_message",
@@ -295,6 +299,7 @@ async fn run_session(
                                                     result_tx,
                                                     entity_id,
                                                     &game_name,
+                                                    &player,
                                                     RESULT_DEFEAT,
                                                     vec![],
                                                     "failure_message",
@@ -344,6 +349,7 @@ async fn run_session(
                                     result_tx,
                                     entity_id,
                                     &game_name,
+                                    &player,
                                     RESULT_VICTORY,
                                     on_victory_chains.clone(),
                                     "victory_tick",
@@ -358,6 +364,7 @@ async fn run_session(
                                     result_tx,
                                     entity_id,
                                     &game_name,
+                                    &player,
                                     RESULT_DEFEAT,
                                     vec![],
                                     "failure_tick",
@@ -407,6 +414,7 @@ async fn run_session(
             result_tx,
             entity_id,
             &game_name,
+            &player,
             RESULT_CANCELED,
             vec![],
             "aborted",
