@@ -27,6 +27,9 @@
 
 pub mod permit;
 pub mod policy;
+pub mod run;
+
+pub use run::RunLease;
 
 use std::collections::VecDeque;
 use std::sync::{Arc, Mutex, OnceLock};
@@ -92,9 +95,22 @@ struct Inner {
 }
 
 /// The process's lease state.
-#[derive(Debug, Default)]
+#[derive(Debug)]
 pub struct LeaseBook {
     inner: Mutex<Inner>,
+    /// Bumped whenever the holder changes (acquire, takeover, release), so
+    /// a running UAT keep-alive notices a takeover at once instead of at
+    /// its next renewal ([`run::KeepAlive`]).
+    changes: tokio::sync::watch::Sender<u64>,
+}
+
+impl Default for LeaseBook {
+    fn default() -> Self {
+        Self {
+            inner: Mutex::default(),
+            changes: tokio::sync::watch::Sender::new(0),
+        }
+    }
 }
 
 static GLOBAL: OnceLock<Arc<LeaseBook>> = OnceLock::new();
@@ -235,6 +251,24 @@ impl Inner {
 }
 
 impl LeaseBook {
+    fn notify_change(&self) {
+        self.changes.send_modify(|n| *n = n.wrapping_add(1));
+    }
+
+    /// A receiver that wakes whenever the holder changes.
+    pub fn subscribe(&self) -> tokio::sync::watch::Receiver<u64> {
+        self.changes.subscribe()
+    }
+
+    /// The ttl of `id` while it is the current lease.
+    pub fn ttl_of(&self, id: &str) -> Option<u64> {
+        self.lock()
+            .current
+            .as_ref()
+            .filter(|l| l.lease_id == id)
+            .map(|l| l.ttl_s)
+    }
+
     fn lock(&self) -> std::sync::MutexGuard<'_, Inner> {
         // A panic while holding the lock leaves plain data; keep going.
         self.inner.lock().unwrap_or_else(|p| p.into_inner())
@@ -305,6 +339,8 @@ impl LeaseBook {
             purpose = %lease.purpose, ttl_s, forced = lease.took_over_from.is_some(),
             expires_at = %rfc3339(lease.expires_ms), "lab lease acquired");
         st.current = Some(lease.clone());
+        drop(st);
+        self.notify_change();
         Ok(lease)
     }
 
@@ -361,6 +397,8 @@ impl LeaseBook {
             reason: None,
         };
         st.remember(e.clone());
+        drop(st);
+        self.notify_change();
         Ok(e)
     }
 

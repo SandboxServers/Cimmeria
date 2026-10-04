@@ -62,6 +62,7 @@ One line per topic file; the detail lives in the file. Keep hooks short (this in
 
 - [stacked-pr-ship-title-and-ab-lab-tools.md](stacked-pr-ship-title-and-ab-lab-tools.md) — ship.py mistitles stacked PRs; AB-T5 snapshot builder, lab dummy = AI-skip extension, cooldown clear is type 2.
 - [lab-uat-runner-in-process-tool-calls.md](lab-uat-runner-in-process-tool-calls.md) — call rmcp tools by name in-process via the RequestContext extractor; chat marks before the action; capability table.
+- [lab-daemon-lease-gate.md](lab-daemon-lease-gate.md) — lease gate is hand-written call_tool; new tools need a policy line; runner touches its own lease; per-test lease books.
 - [ability-uat-staging-limits.md](ability-uat-staging-limits.md) — warmup and cleanse rows need .dummy caster (#1188); 1462/4306/2827 are effect ids; one graded press per row.
 - [lab-flow-first-live-run-findings.md](lab-flow-first-live-run-findings.md) — busy client after Create = bridge `dispatch timeout`; only SelfStatusWin is the HUD; outcome reads `ability.*`.
 

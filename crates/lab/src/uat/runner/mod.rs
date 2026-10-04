@@ -19,6 +19,7 @@ mod client_events;
 mod lab_commands;
 mod packet;
 mod players;
+mod revocation;
 mod session;
 
 use std::collections::{HashMap, HashSet};
@@ -152,6 +153,8 @@ pub struct Runner<'a, I: ToolInvoker> {
     pub(crate) p2: Result<SecondPlayer<'a, I>, String>,
     /// The character p2 last entered the world as.
     pub(crate) p2_in_world_as: Option<String>,
+    /// The lease-loss signal that stops the run ([`revocation`]).
+    pub(crate) revoked: Option<revocation::Revocation>,
 }
 
 impl<'a, I: ToolInvoker> Runner<'a, I> {
@@ -207,6 +210,7 @@ impl<'a, I: ToolInvoker> Runner<'a, I> {
             in_world_as: None,
             p2: Err(players::NO_P2.into()),
             p2_in_world_as: None,
+            revoked: None,
         };
         for s in &runner.req.sections {
             let entry = json!({ "path": s.path, "sha256": s.sha256, "section": s.spec.section.id });
@@ -316,11 +320,24 @@ impl<'a, I: ToolInvoker> Runner<'a, I> {
             event_marks: HashMap::new(),
         };
         ctx.blocked = self.static_blocks(spec, row);
+        if let Some(r) = self.revocation_reason() {
+            // The lease went before this row started: drive nothing.
+            ctx.blocked.push(format!("{}: {r}", revocation::REVOKED));
+        }
         let mut results: Vec<Option<ClauseResult>> = vec![None; row.expect.len()];
 
         let planned = self.req.plan_only && ctx.blocked.is_empty();
         if ctx.blocked.is_empty() && !self.req.plan_only {
-            self.drive_row(spec, row, &mut ctx, &mut results).await;
+            // Race the row against the lease: a takeover cuts it off at its
+            // next await (tool call, wait_ms sleep, server read).
+            let rx = self.revoked.clone();
+            let lost = tokio::select! {
+                _ = self.drive_row(spec, row, &mut ctx, &mut results) => None,
+                r = revocation::revoked(rx) => Some(r),
+            };
+            if let Some(r) = lost {
+                ctx.blocked.push(format!("{}: {r}", revocation::REVOKED));
+            }
         }
 
         let clauses: Vec<ClauseResult> = results.into_iter().flatten().collect();
@@ -523,5 +540,7 @@ mod ability_tests;
 mod packet_tests;
 #[cfg(test)]
 mod players_tests;
+#[cfg(test)]
+mod revocation_tests;
 #[cfg(test)]
 mod tests;

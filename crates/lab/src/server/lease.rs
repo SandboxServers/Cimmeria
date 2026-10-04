@@ -128,8 +128,28 @@ impl LabServer {
         request: &mut CallToolRequestParams,
     ) -> Result<Option<Permit>, McpError> {
         let tool = request.name.as_ref();
-        if policy::gate(tool) == Gate::Open {
-            return Ok(None);
+        match policy::gate(tool) {
+            Gate::Open => return Ok(None),
+            Gate::OwnLease => {
+                // The tool reads `lease_id` itself (its own argument), so it
+                // stays in the arguments; without one the tool acquires and
+                // sets up its own permit.
+                let given = request
+                    .arguments
+                    .as_ref()
+                    .and_then(|args| args.get(LEASE_ARG))
+                    .and_then(Value::as_str)
+                    .map(String::from);
+                let Some(id) = given else { return Ok(None) };
+                let book = self.supervisor.leases();
+                book.check(Some(&id), tool)
+                    .map_err(|e| McpError::invalid_params(e, Some(book.status())))?;
+                return Ok(Some(Permit::Lease {
+                    book: book.clone(),
+                    id,
+                }));
+            }
+            Gate::Lease => {}
         }
         let id = request
             .arguments
@@ -147,12 +167,13 @@ impl LabServer {
 }
 
 /// Add the required `lease_id` argument to every guarded tool's schema, so
-/// a client sees it in `tools/list` like any other argument.
+/// a client sees it in `tools/list` like any other argument. (An
+/// own-lease tool declares its optional `lease_id` in its own arguments.)
 pub(super) fn advertise_lease(tools: Vec<Tool>) -> Vec<Tool> {
     tools
         .into_iter()
         .map(|mut t| {
-            if policy::gate(t.name.as_ref()) == Gate::Open {
+            if policy::gate(t.name.as_ref()) != Gate::Lease {
                 return t;
             }
             let mut schema = (*t.input_schema).clone();

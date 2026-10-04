@@ -167,6 +167,76 @@ async fn a_takeover_mid_flow_stops_the_next_action() {
     assert!(started.elapsed() < std::time::Duration::from_secs(4));
 }
 
+fn status_json(resp: &Value) -> Value {
+    serde_json::from_str(resp["result"]["content"][0]["text"].as_str().unwrap()).unwrap()
+}
+
+/// A run with no `lease_id` takes a lease of its own (owner `lab_uat_run`)
+/// and releases it when it ends, here on a spec error.
+#[tokio::test]
+async fn a_uat_run_without_a_lease_takes_and_releases_its_own() {
+    let url = spawn_daemon(test_server()).await;
+    let mut s = McpSession::open(&url).await;
+    let specs = tempfile::tempdir().unwrap();
+    let _ = s
+        .call(
+            "lab_uat_run",
+            json!({ "specs_dir": specs.path().display().to_string() }),
+        )
+        .await;
+    let st = status_json(&s.call("lab_lease_status", json!({})).await);
+    assert_eq!(st["held"], false, "{st}");
+    assert_eq!(
+        st["recent"][0]["owner"],
+        crate::lease::run::UAT_RUN_OWNER,
+        "{st}"
+    );
+    assert_eq!(st["recent"][0]["how"], "released", "{st}");
+}
+
+/// Regression guard: a run cannot start while another session holds the
+/// lab; with the holder's own lease it runs and leaves the lease held; a
+/// plan needs no lease at all.
+#[tokio::test]
+async fn a_uat_run_respects_the_lease() {
+    let url = spawn_daemon(test_server()).await;
+    let mut a = McpSession::open(&url).await;
+    let mut b = McpSession::open(&url).await;
+    let a_id = lease_id(&acquire(&mut a, "session-a").await);
+    let specs = tempfile::tempdir().unwrap();
+    let dir = specs.path().display().to_string();
+
+    let r = b.call("lab_uat_run", json!({ "specs_dir": dir })).await;
+    let e = error_text(&r);
+    assert!(e.contains("session-a"), "{r}");
+
+    let r = b
+        .call(
+            "lab_uat_run",
+            json!({ "specs_dir": dir, "lease_id": "lease-guess" }),
+        )
+        .await;
+    assert!(error_text(&r).contains("not the current lease"), "{r}");
+
+    let r = b
+        .call(
+            "lab_uat_run",
+            json!({ "specs_dir": dir, "plan_only": true }),
+        )
+        .await;
+    assert!(!error_text(&r).contains("lease"), "{r}");
+
+    let r = a
+        .call("lab_uat_run", json!({ "specs_dir": dir, "lease_id": a_id }))
+        .await;
+    assert!(!error_text(&r).contains("lease"), "{r}");
+    let st = status_json(&a.call("lab_lease_status", json!({})).await);
+    assert_eq!(
+        st["lease"]["owner"], "session-a",
+        "a's lease survives the run"
+    );
+}
+
 /// `tools/list` advertises `lease_id` as a required argument exactly on the
 /// guarded tools.
 #[tokio::test]
@@ -207,6 +277,7 @@ fn every_routed_tool_is_classified() {
     let classified: HashSet<String> = policy::OPEN
         .iter()
         .chain(policy::LEASED)
+        .chain(policy::OWN_LEASE)
         .map(|s| s.to_string())
         .collect();
     let unclassified: Vec<_> = routed.difference(&classified).collect();

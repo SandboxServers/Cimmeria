@@ -281,7 +281,11 @@ impl Supervisor {
     pub async fn bridge_call(&self, method: &str, params: Value) -> Result<Value, String> {
         // Every client action of a lease-guarded tool passes here: stop
         // before it when the tool's lease was revoked (lease::permit).
-        crate::lease::permit::ensure(&format!("bridge {method}"))?;
+        // Letting go of every held key and button is always allowed: a run
+        // cut off mid-press cleans up with it after losing the lease.
+        if method != "input_release" {
+            crate::lease::permit::ensure(&format!("bridge {method}"))?;
+        }
         let seq = {
             let mut st = self.state.lock().await;
             st.journal.record(method, now_ms())
