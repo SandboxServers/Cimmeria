@@ -1,0 +1,48 @@
+## family shield
+generated: 5 effects
+   3148 TimedStat   Mitigation 10          "Single Target\nTarget +10% Physical Mitigation"
+        note: alias.xml: mitigation is a 0-100% stat, so +10% is 10 points (no D-AB09 conversion)
+        note: the text names Physical mitigation; the stat list has one untyped mitigation stat, so the type is dropped
+        note: the ability tooltip says "User Shield Toggle: +10% Mitigation"; the effect row is what executes
+        note: held toggle (pulse_duration 0, AF_TOGGLED): applies as a held entry once AB-08 lands
+   4270 TimedStat   Mitigation 15          "Single Target\nTarget +15% Physical Mitigation"
+        note: alias.xml: mitigation is a 0-100% stat, so +15% is 15 points (no D-AB09 conversion)
+        note: the text names Physical mitigation; the stat list has one untyped mitigation stat, so the type is dropped
+        note: held toggle (pulse_duration 0, AF_TOGGLED): applies as a held entry once AB-08 lands
+   4271 TimedStat   Mitigation 15          "Single Target\nTarget +15% Physical Mitigation"
+        note: alias.xml: mitigation is a 0-100% stat, so +15% is 15 points (no D-AB09 conversion)
+        note: the text names Physical mitigation; the stat list has one untyped mitigation stat, so the type is dropped
+        note: the ability tooltip says "User Shield Toggle: +15% Energy Density"; the effect row is what executes
+        note: held toggle (pulse_duration 0, AF_TOGGLED): applies as a held entry once AB-08 lands
+   4272 TimedStat   Mitigation 15          "Single Target\nTarget +15% Contamination Mitigation"
+        note: alias.xml: mitigation is a 0-100% stat, so +15% is 15 points (no D-AB09 conversion)
+        note: the text names Contamination mitigation; the stat list has one untyped mitigation stat, so the type is dropped
+        note: held toggle (pulse_duration 0, AF_TOGGLED): applies as a held entry once AB-08 lands
+   4306 AbsorbShield ShieldAmount 500, ShieldType Physical,Energy,Hazmat "Absorption:\n500 Physical\n500 Energy\n500 Contamination"
+        note: 500 per type, one pool each: Physical, Energy, Hazmat
+        note: 30 s, the effect's pulse_duration; drained sooner by damage
+        note: TCM_AERadius: lands on the caster today; AE routing is AB-07
+hand-authored, left alone: 0
+unparsed: 20
+  by category: no number 2, moniker 5, unit 0, turret 3, deployable 0, stat 5, routing 0, toggle 0, grammar 5
+   2253 (ability 1016) "Single Target\nUser Remove Effect of EFFECT_Shield": moniker: removes a shield or buff by moniker, the toggle-off or exclusivity half (AB-08)
+   3080 (ability 1017) "Single Target\nUser Remove Effect of EFFECT_Shield": moniker: removes a shield or buff by moniker, the toggle-off or exclusivity half (AB-08)
+   3084 (ability 1018) "SingleTarget\nUser Remove Effect of EFFECT_Shield": moniker: removes a shield or buff by moniker, the toggle-off or exclusivity half (AB-08)
+   3085 (ability 1019) "Interrupt Resistance Increase +10%": stat: a resist change under a shield's name is the stat family's (AB-08 for held toggles)
+   3107 (ability 1013) "Removes current shield effect": moniker: removes a shield or buff by moniker, the toggle-off or exclusivity half (AB-08)
+   3128 (ability 1231) "Aura target Collection: medium range": grammar: unrecognised text "Aura target Collection: medium range"
+   3129 (ability 1231) "Single Target Mental Resist: +15%": stat: a resist change under a shield's name is the stat family's (AB-08 for held toggles)
+   3146 (ability 1232) "Health Resist +15%": stat: a resist change under a shield's name is the stat family's (AB-08 for held toggles)
+   3147 (ability 1232) "Aura: Target Collection: Medium": grammar: unrecognised text "Aura: Target Collection: Medium"
+   3151 (ability 1235) "Single Target\nUser Remove Effect of EFFECT_Shield": moniker: removes a shield or buff by moniker, the toggle-off or exclusivity half (AB-08)
+   3353 (ability 1212) "+15% Phys AF": turret: it shields the user's turret, and turret summons are out of scope (D-AB11)
+   3354 (ability 1212) "+15% Energy AF": turret: it shields the user's turret, and turret summons are out of scope (D-AB11)
+   3355 (ability 1212) "+15% Contamination AF": turret: it shields the user's turret, and turret summons are out of scope (D-AB11)
+   4657 (ability 1569) "Energy Mitigation -100\nDuration 30 seconds": grammar: unrecognised text "Energy Mitigation -100 / Duration 30 seconds"
+   4785 (ability 1579) "Total Absorption:\nEnergy:": no number: "Energy:" names a type but no capacity
+   4811 (ability 1580) "BUFF_EnergyDistribution_150": grammar: unrecognised text "BUFF_EnergyDistribution_150"
+   4852 (ability 3265) "Total Absorption:\nEnergy:": no number: "Energy:" names a type but no capacity
+   4874 (ability 1580) "150 Damage taken": grammar: a damage counter ("absorbs damage and releases it slowly"), no shield shape
+   5303 (ability 1231) "Mental Resist +15%": stat: a resist change under a shield's name is the stat family's (AB-08 for held toggles)
+   5304 (ability 1232) "Health Resist +15%": stat: a resist change under a shield's name is the stat family's (AB-08 for held toggles)
+

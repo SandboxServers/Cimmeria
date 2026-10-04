@@ -6,9 +6,8 @@
 //! - [`MeleeDamage`] — `HealthDamage` raw damage
 //!
 //! v2 — buff/debuff scripts:
-//! - [`AbsorbShield`] — adds `ShieldAmount` to the matching ABSORB_*
-//!   pool so subsequent damage of that type is consumed from the
-//!   shield before HEALTH. Drains residual capacity on `on_remove`.
+//! - [`AbsorbShield`] — an absorb shield on the timed effect ledger (in
+//!   `shield/`, re-exported here)
 //! - [`Stun`] — sets `BSF_MOVEMENT_LOCK` on the target; cleared on
 //!   `on_remove` when the active-effect instance expires.
 //! - [`Suppression`] — per-pulse HEALTH chip via the `HealthDamage`
@@ -31,10 +30,8 @@ use super::{EffectContext, EffectScript};
 // The pool heals moved to `heal.rs` (this file is over the cap); re-exported
 // so `scripts::HealHealth` keeps resolving for the registry and pet scripts.
 pub use super::heal::{HealFocus, HealHealth};
-use cimmeria_entity::abilities::{DT_ENERGY, DT_HAZMAT, DT_PHYSICAL, DT_PSIONIC, DT_UNTYPED};
-use cimmeria_entity::stats::{
-    ABSORB_ENERGY, ABSORB_HAZMAT, ABSORB_PHYSICAL, ABSORB_PSIONIC, ABSORB_UNTYPED, FOCUS, HEALTH,
-};
+pub use super::shield::AbsorbShield;
+use cimmeria_entity::stats::{FOCUS, HEALTH};
 use cimmeria_wire::state_field::BSF_MOVEMENT_LOCK;
 
 // ── MeleeDamage ──────────────────────────────────────────────────────────
@@ -217,102 +214,6 @@ impl EffectScript for MeleePhysicalDamage {
             base_health_damage = health_damage,
             "MeleePhysicalDamage: Focus pierced, applied HEALTH bleed",
         );
-    }
-}
-
-// ── AbsorbShield ─────────────────────────────────────────────────────────
-
-/// Adds `ShieldAmount` to the target's matching ABSORB_* pool. Damage
-/// of that type will then drain the pool before bleeding through to
-/// HEALTH (see `cell::combat::damage::drain_absorption_pools`).
-///
-/// NVPs:
-///   - `ShieldAmount` (i32, required) — capacity to grant
-///   - `ShieldType`   (i32, optional) — damage type the shield blocks
-///     (DT_PHYSICAL/ENERGY/HAZMAT/PSIONIC/UNTYPED). Defaults to UNTYPED.
-///
-/// The shield pool persists on the target's StatList until damage
-/// drains it OR a pulsing instance carries the script and expires.
-/// **A timed shield has no working shape yet.** `pulse_count = 1` with
-/// `pulse_duration = <buff_seconds>` (the seed's timed-buff shape) is
-/// never registered (`EffectDef::is_pulsing` is false for it, audit
-/// B-30), so the pool would never drain on expiry; only a multi-pulse
-/// row registers, and it re-runs `on_apply` every pulse. Timed shields
-/// wait for the ability-mechanics timed-effect ledger (AB-04, AB-10;
-/// audit B-33).
-pub struct AbsorbShield;
-
-/// Resolve which ABSORB_* pool a `ShieldType` NVP maps to. Centralises
-/// the match so `on_apply` and `on_remove` agree on the target pool.
-fn shield_pool_id(damage_type: i8) -> i32 {
-    match damage_type {
-        DT_PHYSICAL => ABSORB_PHYSICAL,
-        DT_ENERGY => ABSORB_ENERGY,
-        DT_HAZMAT => ABSORB_HAZMAT,
-        DT_PSIONIC => ABSORB_PSIONIC,
-        DT_UNTYPED => ABSORB_UNTYPED,
-        _ => ABSORB_UNTYPED,
-    }
-}
-
-impl EffectScript for AbsorbShield {
-    fn on_apply(&self, ctx: &mut EffectContext) {
-        let amount = ctx.effect.param_i32("ShieldAmount");
-        if amount <= 0 {
-            return;
-        }
-        let damage_type = ctx.effect.param_i32("ShieldType") as i8;
-        let pool_id = shield_pool_id(damage_type);
-        let Some(target) = ctx.space_mgr.get_entity_mut(ctx.target_id) else {
-            return;
-        };
-        if let Some(pool) = target.stats.get_mut(pool_id) {
-            let new_cur = (pool.cur + amount).min(pool.max);
-            pool.update(pool.min, new_cur, pool.max);
-            tracing::info!(
-                target: "abilities",
-                event = "shield_granted",
-                source_id = ctx.source_id,
-                target_id = ctx.target_id,
-                effect_id = ctx.effect.effect_id,
-                damage_type,
-                amount,
-                pool_after = new_cur,
-                "AbsorbShield applied"
-            );
-        }
-    }
-
-    /// Drain any residual shield capacity granted by this effect when
-    /// the active-effect instance expires. Uses `ShieldAmount` as the
-    /// upper bound — we don't over-subtract if damage already chewed
-    /// through most of the pool. The drain is capped at the current
-    /// pool value via `stat.change()` clamping (min == 0 keeps it
-    /// non-negative).
-    fn on_remove(&self, ctx: &mut EffectContext) {
-        let amount = ctx.effect.param_i32("ShieldAmount");
-        if amount <= 0 {
-            return;
-        }
-        let pool_id = shield_pool_id(ctx.effect.param_i32("ShieldType") as i8);
-        let Some(target) = ctx.space_mgr.get_entity_mut(ctx.target_id) else {
-            return;
-        };
-        if let Some(pool) = target.stats.get_mut(pool_id) {
-            let to_drain = amount.min(pool.cur);
-            if to_drain > 0 {
-                pool.change(-to_drain);
-            }
-            tracing::info!(
-                target: "abilities",
-                event = "shield_expired",
-                target_id = ctx.target_id,
-                effect_id = ctx.effect.effect_id,
-                drained = to_drain,
-                pool_after = pool.cur,
-                "AbsorbShield expired — residual capacity drained"
-            );
-        }
     }
 }
 
@@ -674,65 +575,6 @@ mod tests {
     }
 
     #[test]
-    fn absorb_shield_adds_to_matching_pool() {
-        let mut mgr = make_mgr_with_target();
-        let mut params = HashMap::new();
-        params.insert("ShieldAmount".to_string(), "200".to_string());
-        params.insert("ShieldType".to_string(), DT_PHYSICAL.to_string());
-        let effect = EffectDef {
-            effect_id: 555,
-            ability_id: 1,
-            params,
-            ..Default::default()
-        };
-        let mut ctx = EffectContext {
-            source_id: 1,
-            target_id: 1,
-            effect: &effect,
-            space_mgr: &mut mgr,
-        };
-        AbsorbShield.on_apply(&mut ctx);
-        let pool = ctx
-            .space_mgr
-            .get_entity(1)
-            .unwrap()
-            .stats
-            .get(ABSORB_PHYSICAL)
-            .unwrap()
-            .cur;
-        assert_eq!(pool, 200, "shield grants 200 to ABSORB_PHYSICAL pool");
-    }
-
-    #[test]
-    fn absorb_shield_defaults_to_untyped_when_no_shield_type_nvp() {
-        let mut mgr = make_mgr_with_target();
-        let mut params = HashMap::new();
-        params.insert("ShieldAmount".to_string(), "100".to_string());
-        let effect = EffectDef {
-            effect_id: 556,
-            ability_id: 1,
-            params,
-            ..Default::default()
-        };
-        let mut ctx = EffectContext {
-            source_id: 1,
-            target_id: 1,
-            effect: &effect,
-            space_mgr: &mut mgr,
-        };
-        AbsorbShield.on_apply(&mut ctx);
-        let untyped = ctx
-            .space_mgr
-            .get_entity(1)
-            .unwrap()
-            .stats
-            .get(ABSORB_UNTYPED)
-            .unwrap()
-            .cur;
-        assert_eq!(untyped, 100);
-    }
-
-    #[test]
     fn stun_multi_source_keeps_lock_until_all_release() {
         // Phase K: two concurrent stuns from different invokers share
         // one `BSF_MOVEMENT_LOCK` bit via the refcounted state-flag
@@ -837,56 +679,6 @@ mod tests {
                 .has_state_flag(BSF_MOVEMENT_LOCK),
             "Stun on_remove must clear lock"
         );
-    }
-
-    #[test]
-    fn absorb_shield_on_remove_drains_residual_pool() {
-        // Phase I: shield with 200 amount drains 200 from pool on remove,
-        // capped by current pool value (no overdrain).
-        let mut mgr = make_mgr_with_target();
-        let mut params = HashMap::new();
-        params.insert("ShieldAmount".to_string(), "200".to_string());
-        params.insert("ShieldType".to_string(), DT_PHYSICAL.to_string());
-        let effect = EffectDef {
-            effect_id: 557,
-            ability_id: 1,
-            params,
-            ..Default::default()
-        };
-        let mut ctx = EffectContext {
-            source_id: 1,
-            target_id: 1,
-            effect: &effect,
-            space_mgr: &mut mgr,
-        };
-        AbsorbShield.on_apply(&mut ctx);
-        // Pool grew by 200
-        let before = ctx
-            .space_mgr
-            .get_entity(1)
-            .unwrap()
-            .stats
-            .get(ABSORB_PHYSICAL)
-            .unwrap()
-            .cur;
-        assert_eq!(before, 200);
-        // Pretend damage drained 50 from the pool before expiry
-        if let Some(t) = ctx.space_mgr.get_entity_mut(1) {
-            if let Some(stat) = t.stats.get_mut(ABSORB_PHYSICAL) {
-                stat.change(-50);
-            }
-        }
-        AbsorbShield.on_remove(&mut ctx);
-        // Pool drains by min(200, 150) = 150 → back to 0
-        let after = ctx
-            .space_mgr
-            .get_entity(1)
-            .unwrap()
-            .stats
-            .get(ABSORB_PHYSICAL)
-            .unwrap()
-            .cur;
-        assert_eq!(after, 0, "on_remove drains residual without going negative");
     }
 
     #[test]

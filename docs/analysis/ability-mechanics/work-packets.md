@@ -32,7 +32,7 @@ Parallel packets build against these names. A worker who needs to change one rai
 
 **Effect NVP generator** (AB-02), `tools/ability_mechanics/effect_nvps_from_desc.py`:
 
-- Reads `db/resources/Effects/Seed/effects.sql`, writes one generated block per family into `db/resources/Effects/Seed/effect_nvps.sql` between `-- ability-mechanics generated <family> begin` / `end` comment markers (not the docs-gen `gen:` syntax, which `tools/docs-gen/regen.py` owns), with `nvp_id`s in a reserved range per family (heal 20000-20999, damage 21000-22999, stat 23000-23999, shield 24000-24499). Hand-authored rows outside the markers are never touched.
+- Reads `db/resources/Effects/Seed/effects.sql`, writes one generated block per family into `db/resources/Effects/Seed/effect_nvps.sql` between `-- ability-mechanics generated <family> begin` / `end` comment markers (not the docs-gen `gen:` syntax, which `tools/docs-gen/regen.py` owns), with `nvp_id`s in a reserved range per family (heal 20000-20999, damage 21000-22999, stat 23000-23999, shield 24000-24499; AB-10 added cleanse 24500-24999). Hand-authored rows outside the markers are never touched.
 - `--report` lists every effect it could not parse. `--check` exits non-zero when the generated blocks differ from what it would write (a CI-friendly guard the live-DB test also runs).
 - NVP names: `HealthDamage`, `FocusDamage`, `HealPercentage`, `HealAmount`, and the stat names `StatBuff` reads (AB-04 extends the list).
 
@@ -206,6 +206,13 @@ Priority inside each wave: anything that changes what Heal Focus, Health Heal, R
 - **Change.** Shield effects get `ShieldAmount`/`ShieldType` rows from text where a number exists, and density/mitigation shields become ledger stat entries; `AbsorbShield`'s pool is removed on expiry. Cleanse effects ("Purges 2 Mental and 2 Health effects") map to `RemoveEffects` categories over ledger and pulsing entries.
 - **Tests.** Unit: a shield drains then expires to 0; a cleanse removes exactly the named count.
 - **Advisor.** `combat-systems-advisor`. **Depends.** AB-04.
+- **Status.** Review (2026-10-03, branch `abilities/ab-10-shields-cleanses`).
+  - **Ledger.** `TimedEffect` gains `absorb` pools (`cell_entity/absorb_pool.rs`), granted into the `absorb*` stats and taken back, as far as unspent, on any removal. `SpaceManager::settle_absorb_shields` charges what the damage seams drained to the pools, oldest first, and takes an empty shield off with the new `StatBuffRemoval::Drained`. `AbsorbShield` moved to `cell/effects/shield/` and is a ledger script (B-33 fixed).
+  - **Damage.** Shields stand in front of Focus: the pipeline drains them for Focus as well as Health damage (ADR decision 9 addendum, a deliberate departure from Python), and damage scripts and scripted DoT pulses pass their NVPs through the shields first (`combat/damage/absorb.rs`). The hit and each pulse settle the ledger.
+  - **Cleanse.** `RemoveEffects` moved to `cell/effects/cleanse/`: counts (`Mental:2`), pulsing and ledger effects, `RemovePolarity` (harmful from the caster or an ally only; a buff strip from a hostile only), queued icon clears.
+  - **Generator.** `shield` binds 5 effects and reports 20 (no number 2, moniker 5, turret 3, stat 5, grammar 5): Personal Shield's 4306 (`AbsorbShield`, 500 Physical/Energy/Hazmat, 30 s) and four toggled mitigation shields (`TimedStat`, `Mitigation`; held, so they apply once AB-08 lands). `cleanse` (new range 24500-24999) binds 4 purges (Absolution 4168/4169, Warrior's Will 2672, Clear: Mind 2827) and tags 42 resist-gated effects Mental/Kinetic/Health; it reports 53 (moniker 45, category 2, count 1, scope 2, grammar 3). Reports: `tools/ability_mechanics/reports/{shield,cleanse}.txt`.
+  - **Contract refinement.** `ability_is_beneficial` also counts an `AbsorbShield` or harmful `RemoveEffects` effect as beneficial on any ability type: their rows carry no beneficial bit (4306 is flags 342), and on the hostile path a Self shield or purge would land on the client's target.
+  - **Count.** `HAS_MECHANICS_TODAY` 262 to 270 (1013, 1016, 1017, 1018, 1235, 2027, 2099, 2865).
 
 ### AB-11. Heal numbers, clear flags and category cooldowns
 

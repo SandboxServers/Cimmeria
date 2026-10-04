@@ -49,7 +49,8 @@ use cimmeria_entity::cell_entity::{TimedEffectSpec, TimedStacking};
 use cimmeria_entity::stats::{
     ACCURACY, COORDINATION, COVER_ACCURACY, COVER_DEFENSE, CROUCHING_ACCURACY, CROUCHING_DEFENSE,
     DEFENSE, ENGAGEMENT, FOCUS_REGEN, FORTITUDE, HEALTH_REGEN, HEALTH_RES, INTELLIGENCE,
-    INTERRUPT_RES, KINETIC_RES, MENTAL_RES, MORALE, MOVEMENT_SPEED_MOD, PERCEPTION, RESPONSE,
+    INTERRUPT_RES, KINETIC_RES, MENTAL_RES, MITIGATION, MORALE, MOVEMENT_SPEED_MOD, PERCEPTION,
+    RESPONSE,
 };
 
 use super::{EffectContext, EffectScript};
@@ -61,7 +62,8 @@ pub use cimmeria_cell_world::cell::effects::stat_buff::*;
 
 /// `effect_nvps` names the ledger scripts read, and the stat each moves.
 /// The first six are the stimpacks' own words (Intellect moves the stat the
-/// server calls `INTELLIGENCE`); the rest are the `stat` family's
+/// server calls `INTELLIGENCE`); `Mitigation` is the `shield` family's
+/// (`families/shield.py`); the rest are the `stat` family's
 /// (`tools/ability_mechanics/families/stat.py` writes the same names, and
 /// `stat_nvp_names_match_the_generator` pins the two lists together). The
 /// regen names are AB-05's: the generator does not write them until the
@@ -87,6 +89,10 @@ pub const STAT_BUFF_NVPS: &[(&str, i32)] = &[
     ("MovementSpeedMod", MOVEMENT_SPEED_MOD),
     ("FocusRegen", FOCUS_REGEN),
     ("HealthRegen", HEALTH_REGEN),
+    // The `shield` family's mitigation shields (AB-10): `mitigation` is
+    // "armor mitigation percent (0-100%)" in `alias.xml`, so "+15%
+    // Mitigation" is 15 points with no conversion.
+    ("Mitigation", MITIGATION),
 ];
 
 /// The `(stat, delta)` pairs an effect's NVPs ask for; zero NVPs are
@@ -114,6 +120,7 @@ pub fn timed_spec(ctx: &EffectContext, stacking: TimedStacking) -> TimedEffectSp
         effect_flags: effect.flags,
         moniker_ids: ctx.space_mgr.ability_moniker_ids(effect.ability_id),
         stats: stat_mods(effect),
+        absorb: Vec::new(),
         duration_secs: Some(effect.pulse_duration),
         stacking,
         // `SpaceManager::apply_timed_effect` fills it from the invoker.

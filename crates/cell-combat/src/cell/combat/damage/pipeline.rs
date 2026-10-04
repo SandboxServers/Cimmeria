@@ -8,6 +8,7 @@
 //!
 //! Reference: `python/cell/AbilityManager.py:82-122` (DamageCalc.calculateDamage)
 
+use super::absorb::drain_absorption_pools;
 use super::qr::QrResult;
 use cimmeria_entity::abilities::{
     ClientEffectResult, DT_ENERGY, DT_HAZMAT, DT_PHYSICAL, DT_PSIONIC, SRC_MORTAL, SRC_NONE,
@@ -123,14 +124,12 @@ pub fn calculate_damage_penetrating(
     let qr_damage = (res_damage * (1.0 + qr_result.qr) * scale).round() as i32;
     let af_damage = (qr_damage - af_mitigation).max(0);
 
-    // Absorption shield: drain the matching ABSORB_*
-    // stat pool by `min(remaining_damage, pool_cur)` so shields are
-    // genuinely consumable, not just a flat subtraction. Each damage
-    // type drains its own pool. Health stat-id absorbs first; non-
-    // HEALTH stat-ids (focus) skip absorption to match the Python
-    // reference (only physical/elemental damage to HEALTH gets a
-    // shield treatment).
-    let (final_damage, absorbed) = if stat_id == HEALTH && af_damage > 0 {
+    // Absorption shield: drain the matching ABSORB_* stat pool by
+    // `min(remaining_damage, pool_cur)`, so shields are consumable, not a
+    // flat subtraction. Each damage type drains its own pool. Focus and
+    // Health damage both pass the shield (it stands in front of Focus,
+    // `absorb.rs`); other stat ids do not.
+    let (final_damage, absorbed) = if (stat_id == HEALTH || stat_id == FOCUS) && af_damage > 0 {
         drain_absorption_pools(defender, damage_type, af_damage)
     } else {
         (af_damage, 0)
@@ -175,47 +174,6 @@ pub fn calculate_damage_penetrating(
 
     let total_damage = actual_change.unsigned_abs() as i32;
     (results, total_damage)
-}
-
-/// Drain the absorption pool(s) matching `damage_type` by up to
-/// `incoming` damage. Returns `(damage_remaining_after_absorption,
-/// total_absorbed)`. Drains the elemental-specific pool first
-/// (ABSORB_PHYSICAL, ABSORB_ENERGY, etc.) before the catch-all
-/// generic pool, so shields placed on a specific damage type are
-/// consumed first when that damage type hits.
-fn drain_absorption_pools(defender: &mut StatList, damage_type: i8, incoming: i32) -> (i32, i32) {
-    let pools: &[i32] = match damage_type {
-        DT_PHYSICAL => &[
-            ABSORB_PHYSICAL,
-            ABSORB_PHYSICAL_ENERGY,
-            ABSORB_PHYSICAL_ITEM,
-        ],
-        DT_ENERGY => &[ABSORB_ENERGY, ABSORB_ENERGY_ENERGY, ABSORB_ENERGY_ITEM],
-        DT_HAZMAT => &[ABSORB_HAZMAT, ABSORB_HAZMAT_ENERGY, ABSORB_HAZMAT_ITEM],
-        DT_PSIONIC => &[ABSORB_PSIONIC, ABSORB_PSIONIC_ENERGY, ABSORB_PSIONIC_ITEM],
-        _ => &[ABSORB_UNTYPED, ABSORB_UNTYPED_ENERGY, ABSORB_UNTYPED_ITEM],
-    };
-
-    let mut remaining = incoming;
-    let mut absorbed_total = 0;
-    for &pool_id in pools {
-        if remaining == 0 {
-            break;
-        }
-        let Some(pool) = defender.get_mut(pool_id) else {
-            continue;
-        };
-        let available = pool.cur.max(0);
-        if available == 0 {
-            continue;
-        }
-        let drain = remaining.min(available);
-        // `change(-drain)` returns the actual delta (clamped by stat min/max)
-        let actual = pool.change(-drain).unsigned_abs() as i32;
-        absorbed_total += actual;
-        remaining -= actual;
-    }
-    (remaining, absorbed_total)
 }
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
@@ -523,9 +481,9 @@ mod tests {
     }
 
     #[test]
-    fn absorption_only_applies_to_health_damage_not_focus() {
-        // Focus damage should bypass the absorption pool — shields
-        // are HP-only.
+    fn absorption_applies_to_focus_damage_too() {
+        // A shield stands in front of Focus (ability mechanics AB-10): a
+        // Focus hit drains it, and a full pool leaves Focus untouched.
         let attacker = make_attacker();
         let mut defender = make_defender();
         if let Some(stat) = defender.get_mut(ABSORB_PHYSICAL) {
@@ -540,16 +498,14 @@ mod tests {
         };
         let (_results, _) = calculate_damage(&qr, 30, DT_PHYSICAL, FOCUS, &attacker, &mut defender);
 
-        // Shield pool untouched
-        assert_eq!(
-            defender.get(ABSORB_PHYSICAL).unwrap().cur,
-            1000,
-            "absorption pool must not drain on FOCUS damage"
-        );
-        // FOCUS took damage
         assert!(
-            defender.get(FOCUS).unwrap().cur < focus_before,
-            "FOCUS took damage normally"
+            defender.get(ABSORB_PHYSICAL).unwrap().cur < 1000,
+            "the pool drains on FOCUS damage"
+        );
+        assert_eq!(
+            defender.get(FOCUS).unwrap().cur,
+            focus_before,
+            "the shield took the whole Focus hit"
         );
     }
 

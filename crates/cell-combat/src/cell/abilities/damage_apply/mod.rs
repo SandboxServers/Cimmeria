@@ -292,6 +292,9 @@ async fn apply_hit(
     );
     effect_results.extend(script_results);
     total_health_damage += script_health_damage;
+    // AB-10: charge what the hit drained from the absorb stats to the
+    // shields on the ledger; an emptied one comes off (icon clear below).
+    space_mgr.settle_absorb_shields(target_eid);
 
     if let Some(shot) = &shot {
         ammo_damage::log_applied(
@@ -664,6 +667,8 @@ mod cover_tests;
 mod damage_seed_live_db_tests;
 #[cfg(test)]
 mod per_effect_damage_tests;
+#[cfg(test)]
+mod shield_tests;
 #[cfg(test)]
 mod single_damage_path_tests;
 #[cfg(test)]

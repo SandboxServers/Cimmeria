@@ -41,6 +41,7 @@ use std::time::{Duration, Instant};
 
 use crate::stats::StatList;
 
+use super::absorb_pool::AbsorbPool;
 use super::{CellEntity, PlayerIdentity};
 
 /// `EF_Beneficial_Effect` (1): which side of the client's effect bar an
@@ -105,6 +106,10 @@ pub struct TimedEffect {
     /// The stats it moved. Empty for an entry that only carries an icon
     /// and a duration.
     pub stats: Vec<AppliedStat>,
+    /// A shield's absorb pools (AB-10, `absorb_pool.rs`): mutable, drained
+    /// by damage, taken back off their stats when the entry comes off.
+    /// Empty for every other entry.
+    pub absorb: Vec<AbsorbPool>,
     /// Its full length in seconds (the effect's `pulse_duration`); 0 for a
     /// held entry.
     pub duration_secs: f32,
@@ -156,6 +161,9 @@ pub struct TimedEffectSpec {
     pub moniker_ids: Vec<i64>,
     /// `(stat_id, delta)` pairs. Zero deltas are dropped.
     pub stats: Vec<(i32, i32)>,
+    /// A shield's `(absorb stat_id, amount)` pools (AB-10). Empty for every
+    /// other entry.
+    pub absorb: Vec<(i32, i32)>,
     /// Seconds until it lapses, or `None` to hold it until removed.
     pub duration_secs: Option<f32>,
     pub stacking: TimedStacking,
@@ -271,7 +279,7 @@ impl CellEntity {
         let (present, missing_stats): (Vec<(i32, i32)>, Vec<(i32, i32)>) = wanted
             .iter()
             .partition(|&&(stat, _)| self.stats.get(stat).is_some());
-        if !wanted.is_empty() && present.is_empty() {
+        if !wanted.is_empty() && present.is_empty() && spec.absorb.is_empty() {
             return None;
         }
         let key = (spec.effect_id, spec.invoker_id);
@@ -291,6 +299,7 @@ impl CellEntity {
                     })
             })
             .collect();
+        let absorb = self.grant_absorb(&spec.absorb);
         let applied = TimedEffect {
             effect_id: spec.effect_id,
             ability_id: spec.ability_id,
@@ -298,6 +307,7 @@ impl CellEntity {
             effect_flags: spec.effect_flags,
             moniker_ids: spec.moniker_ids,
             stats,
+            absorb,
             duration_secs: spec.duration_secs.unwrap_or(0.0).max(0.0),
             expires_at: spec
                 .duration_secs
@@ -331,6 +341,7 @@ impl CellEntity {
         for s in &entry.stats {
             self.unshift_ledger_stat(s.stat_id, s.requested);
         }
+        self.release_absorb(&entry);
         if self.stat_buffs.has_effect(entry.effect_id) {
             self.mark_icon_stale(entry.effect_id);
         } else if !self
