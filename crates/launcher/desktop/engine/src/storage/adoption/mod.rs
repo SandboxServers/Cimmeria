@@ -198,6 +198,7 @@ fn idle(
     operation_revision: u64,
     preferences_revision: u64,
 ) -> Result<(), Error> {
+    state.ensure_updater_idle()?;
     if state.requires_reopen() {
         return Err(StorageError::PersistenceUncertain.into());
     }

@@ -156,3 +156,11 @@ test("an IPC timeout leaves a single save uncertain and releases the UI busy sta
     return new Promise(() => {});
   })), Effect.provide(TestClock.layer()))));
 });
+
+test("adoption operation remains an authoritative nonterminal native snapshot",async()=>{
+ const snapshot:NativeSnapshot={...initial(),operation:{schema_version:1,revision:1,operation:{id:"a13fa7b4-722b-44cb-a5e1-441af8b7b10b",kind:"adopt",intent_digest:Array(32).fill(0),state:"running"}}};
+ await Effect.runPromise(Effect.scoped(Effect.gen(function*(){
+  const launcher=yield* makeLauncher;yield* launcher.inspect;
+  assert.deepEqual((yield* launcher.snapshot).native,snapshot);
+ }).pipe(Effect.provide(bridgeLayer(async()=>snapshot)))));
+});

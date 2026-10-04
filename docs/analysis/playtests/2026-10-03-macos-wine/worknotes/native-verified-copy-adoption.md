@@ -213,3 +213,12 @@ whose identity does not change with releases, and separately authenticated curre
 release receipts, then adapt Repair/Uninstall/runtime consumers with compatibility
 coverage. Do not mutate the saved InstallIntent in place or call same-release
 Repair an Update.
+
+## Coordinator updater integration
+
+The early idle/recover/abandon updater guards are integrated. A busy-updater
+regression covers refused preview before reference/destination writes and refused
+recovery/abandonment. The frontend snapshot decoder recognizes the distinct Adopt
+operation while retaining normal nonterminal ownership gates. This does not expose
+an adoption UI or lift the Play restriction. Preview reconstruction still needs
+a retained preparation ownership record before the RAR/Wine helper phase.

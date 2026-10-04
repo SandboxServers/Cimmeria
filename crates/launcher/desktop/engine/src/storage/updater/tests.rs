@@ -457,10 +457,45 @@ fn active_updater_refuses_early_mutation_but_preserves_consent_control() {
         state.save_preferences(Some(root.path().join("other")), true, 1),
         Err(StorageError::Busy)
     );
+    assert!(matches!(
+        crate::adoption::recover(&mut state, id, 0),
+        Err(crate::adoption::Error::Storage(StorageError::Busy))
+    ));
+    assert!(matches!(
+        crate::adoption::abandon(&mut state, id, 0),
+        Err(crate::adoption::Error::Storage(StorageError::Busy))
+    ));
     assert_eq!(files(&state_path), before);
     assert!(!destination.exists());
     let saved = state.save_preferences(Some(destination), false, 1).unwrap();
     assert!(!saved.launcher_summary_consent);
     assert_eq!(saved.revision, 2);
     assert_eq!(state.operations().snapshot().revision, 0);
+    #[cfg(target_os = "macos")]
+    {
+        let before = files(&state_path);
+        let (progress, _) = crate::install_progress::ProgressSink::latest();
+        let result = crate::adoption::preview(
+            std::sync::Arc::new(std::sync::Mutex::new(state)),
+            crate::adoption::PreviewRequest {
+                import_digest: "unused".into(),
+                destination: root.path().join("adopted"),
+                operation_revision: 0,
+                preferences_revision: 2,
+                release,
+                artifacts: crate::adoption::Artifacts {
+                    seed: root.path().join("unused.zip"),
+                    patches: vec![],
+                },
+            },
+            tokio_util::sync::CancellationToken::new(),
+            progress,
+        );
+        assert!(matches!(
+            result,
+            Err(crate::adoption::Error::Storage(StorageError::Busy))
+        ));
+        assert_eq!(files(&state_path), before);
+        assert!(!root.path().join("adopted").exists());
+    }
 }

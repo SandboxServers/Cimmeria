@@ -373,6 +373,7 @@ pub fn inspect(state: &DesktopState, id: Uuid) -> Result<Record, Error> {
 /// Explicit reopen recovery finishes only an already verified Staged checkpoint.
 /// Missing checkpoints are quarantined; they never trigger extraction or copying.
 pub fn recover(state: &mut DesktopState, id: Uuid, revision: u64) -> Result<(), Error> {
+    state.ensure_updater_idle()?;
     if state.operations.snapshot().revision != revision {
         return Err(ContractError::StaleRevision.into());
     }
@@ -414,6 +415,7 @@ pub fn recover(state: &mut DesktopState, id: Uuid, revision: u64) -> Result<(), 
 /// Explicit abandonment retains quarantined bytes. It never removes an entire
 /// destination based on a missing receipt or a renderer's path claim.
 pub fn abandon(state: &mut DesktopState, id: Uuid, revision: u64) -> Result<(), Error> {
+    state.ensure_updater_idle()?;
     if state.operations.snapshot().revision != revision {
         return Err(ContractError::StaleRevision.into());
     }

@@ -173,3 +173,4 @@ Windows-helper ownership requirements. It does not establish game compatibility.
 - [Verified existing-user adoption contract](worknotes/adoption-contract-audit.md)
 - [Signed updater implementation and evidence](worknotes/signed-updater.md)
 - [Desktop updater contract](../../../../crates/launcher/desktop/docs/updater.md)
+- [Native verified-copy adoption foundation](worknotes/native-verified-copy-adoption.md)
