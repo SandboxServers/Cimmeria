@@ -60,7 +60,7 @@ use tokio::sync::mpsc;
 
 use crate::cell::combat;
 use crate::cell::messages::CellToBaseMsg;
-use crate::cell::space_manager::SpaceManager;
+use crate::cell::space_manager::{EntityNames, SpaceManager};
 
 /// Whether `entity_id` is a pet (it carries `PetState`).
 pub(in crate::cell) fn is_pet(space_mgr: &SpaceManager, entity_id: u32) -> bool {
@@ -85,6 +85,27 @@ pub(in crate::cell) fn owner_identity(
     match space_mgr.get_entity(owner_id) {
         Some(o) if o.is_player => o.identity(),
         _ => PlayerIdentity::UNKNOWN,
+    }
+}
+
+/// A pet's [`EntityNames`] for a `pets.ai` DEBUG row, or none when that
+/// level is off. Several of those rows repeat every tick (a pet walking
+/// back, a Passive pet being shot), and the names cost NameBook and
+/// interner reads (Rule 6: resolve only for a row that is written).
+pub(in crate::cell) fn debug_row_names(space_mgr: &SpaceManager, entity_id: u32) -> EntityNames {
+    if tracing::enabled!(target: "pets.ai", tracing::Level::DEBUG) {
+        space_mgr.entity_names(entity_id)
+    } else {
+        EntityNames::default()
+    }
+}
+
+/// [`debug_row_names`] for an entity already in hand.
+fn debug_row_names_of(e: &CellEntity) -> EntityNames {
+    if tracing::enabled!(target: "pets.ai", tracing::Level::DEBUG) {
+        EntityNames::of(e)
+    } else {
+        EntityNames::default()
     }
 }
 
@@ -170,6 +191,7 @@ pub(in crate::cell) fn log_threat_refusal(
         return;
     };
     let id = owner_identity(space_mgr, target.entity_id.0 as u32, pet.owner_id);
+    let names = debug_row_names_of(target);
     tracing::debug!(
         target: "pets.ai",
         entity_id = target.entity_id.0,
@@ -188,7 +210,15 @@ pub(in crate::cell) fn log_threat_refusal(
         owner_id = pet.owner_id,
         account_id = id.account_id,
         player_id = id.player_id,
+        entity_name = names.entity_name,
+        pet_name = names.entity_name,
+        template_id = names.template_id,
+        template_name = names.template_name,
+        owner_name = id.player_name,
+        account_name = id.account_name,
+        player_name = id.player_name,
         target_id = attacker_id,
+        target_name = space_mgr.entity_label(attacker_id),
         cause,
         "pet: threat refused -- the pet keeps following"
     );
@@ -213,6 +243,7 @@ pub(in crate::cell) fn log_fight_entered(
         return;
     };
     let id = owner_identity(space_mgr, pet_id, owner_id);
+    let names = debug_row_names(space_mgr, pet_id);
     tracing::debug!(
         target: "pets.ai",
         entity_id = pet_id,
@@ -222,7 +253,15 @@ pub(in crate::cell) fn log_fight_entered(
         owner_id,
         account_id = id.account_id,
         player_id = id.player_id,
+        entity_name = names.entity_name,
+        pet_name = names.entity_name,
+        template_id = names.template_id,
+        template_name = names.template_name,
+        owner_name = id.player_name,
+        account_name = id.account_name,
+        player_name = id.player_name,
         target_id = attacker_id,
+        target_name = space_mgr.entity_label(attacker_id),
         from = from.label(),
         cause,
         "pet: entered a fight"
@@ -292,6 +331,7 @@ pub(super) async fn pre_pass(
         // The summoner captured at summon: still the right player when the
         // owner entity is gone or its id was reused.
         let id = owner_identity(space_mgr, npc_id, owner_id);
+        let names = debug_row_names(space_mgr, npc_id);
         tracing::debug!(
             target: "pets.ai",
             entity_id = npc_id,
@@ -301,6 +341,13 @@ pub(super) async fn pre_pass(
             owner_id,
             account_id = id.account_id,
             player_id = id.player_id,
+            entity_name = names.entity_name,
+            pet_name = names.entity_name,
+            template_id = names.template_id,
+            template_name = names.template_name,
+            owner_name = id.player_name,
+            account_name = id.account_name,
+            player_name = id.player_name,
             reason,
             "pet: owner not available, holding until the owner sweep despawns it"
         );

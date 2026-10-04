@@ -49,6 +49,7 @@ pub(super) async fn sync_owner_combat(
     for mob_id in engaged {
         if let Some(state) = combat::enter_player_combat(space_mgr, owner_id, mob_id) {
             let id = super::owner_identity(space_mgr, pet_id, owner_id);
+            let names = super::debug_row_names(space_mgr, pet_id);
             tracing::debug!(
                 target: "pets.ai",
                 entity_id = pet_id,
@@ -58,7 +59,15 @@ pub(super) async fn sync_owner_combat(
                 owner_id,
                 account_id = id.account_id,
                 player_id = id.player_id,
+                entity_name = names.entity_name,
+                pet_name = names.entity_name,
+                template_id = names.template_id,
+                template_name = names.template_name,
+                owner_name = id.player_name,
+                account_name = id.account_name,
+                player_name = id.player_name,
                 target_id = mob_id,
+                target_name = space_mgr.entity_label(mob_id),
                 new_state = state,
                 new_state_names = %cimmeria_wire::state_field::STATE_FLAGS.render(state),
                 "pet: the pet's fight put its owner in combat"
@@ -106,6 +115,7 @@ pub(super) async fn sync_owner_combat(
     for mob_id in stale {
         if let Some(state) = combat::exit_player_combat(space_mgr, owner_id, mob_id) {
             let id = super::owner_identity(space_mgr, pet_id, owner_id);
+            let names = super::debug_row_names(space_mgr, pet_id);
             tracing::debug!(
                 target: "pets.ai",
                 entity_id = pet_id,
@@ -115,7 +125,15 @@ pub(super) async fn sync_owner_combat(
                 owner_id,
                 account_id = id.account_id,
                 player_id = id.player_id,
+                entity_name = names.entity_name,
+                pet_name = names.entity_name,
+                template_id = names.template_id,
+                template_name = names.template_name,
+                owner_name = id.player_name,
+                account_name = id.account_name,
+                player_name = id.player_name,
                 target_id = mob_id,
+                target_name = space_mgr.entity_label(mob_id),
                 new_state = state,
                 new_state_names = %cimmeria_wire::state_field::STATE_FLAGS.render(state),
                 "pet: the pet's fight ended, its owner left combat"

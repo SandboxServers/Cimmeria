@@ -131,3 +131,56 @@ async fn every_pets_ai_row_carries_the_pet_as_entity_id() {
         assert!(row.has_field("entity_id", &pet.to_string()), "{row:?}");
     }
 }
+
+/// Rule 6 (NT-25): a `pets.ai` row names the pet (`pet_name` and its
+/// template, D-NT5), the owner and the target next to their IDs. Driven
+/// through the engage refusal, with a NameBook naming the fixture (the book
+/// is process-global, so an empty one goes back after).
+#[test]
+fn a_pets_ai_row_names_the_pet_owner_and_target() {
+    let mut book = cimmeria_names::NameBook::empty();
+    book.insert(cimmeria_names::Table::Texts, 8087, "Test Pet");
+    book.insert(cimmeria_names::Table::Texts, 9001, "Jaffa Guard");
+    book.insert(
+        cimmeria_names::Table::Templates,
+        PET_FIXTURE_TEMPLATE_ID.into(),
+        "NT25_Pet_Template",
+    );
+    cimmeria_names::global().store(book);
+
+    let mut mgr = make_world();
+    add_pet_owner(&mut mgr, OWNER, "Agnos", [10.0, 0.0, 10.0], 12);
+    let owner = mgr.get_entity_mut(OWNER).unwrap();
+    owner.player_id = Some(OWNER_PLAYER_ID);
+    owner.stamp_log_names(Some("Tealc"), Some("tealc_login"));
+    let pet = mgr
+        .spawn_pet_from_template(OWNER, PET_FIXTURE_TEMPLATE_ID, 0)
+        .expect("pet spawns");
+    // Not the hostile faction, so the engagement refuses it.
+    add_mob(&mut mgr, MOB, [14.0, 0.0, 10.0], 0);
+    mgr.get_entity_mut(MOB).unwrap().name_id = Some(9001);
+
+    let logs = LogCapture::install();
+    tracing::callsite::rebuild_interest_cache();
+    let _ = super::super::engage::engage_stance_pick(
+        &mut mgr,
+        pet,
+        OWNER,
+        MOB,
+        super::super::stance::EngageWhy::DefendOwner,
+    );
+    cimmeria_names::global().store(cimmeria_names::NameBook::empty());
+
+    let row = pets_ai_row(&logs, "pet_engage_refused").expect("engage_refused row");
+    for (key, value) in [
+        ("entity_name", "Test Pet"),
+        ("pet_name", "Test Pet"),
+        ("template_name", "NT25_Pet_Template"),
+        ("owner_name", "Tealc"),
+        ("player_name", "Tealc"),
+        ("account_name", "tealc_login"),
+        ("target_name", "Jaffa Guard"),
+    ] {
+        assert!(row.has_field(key, value), "{key}={value} missing: {row:?}");
+    }
+}

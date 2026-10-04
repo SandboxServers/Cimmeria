@@ -11,7 +11,7 @@
 
 use super::transition::{world_label, AiTransitionReason};
 use crate::cell::combat::AggroCause;
-use crate::cell::space_manager::SpaceManager;
+use crate::cell::space_manager::{EntityNames, SpaceManager};
 
 // `AggroCause` itself lives next to `generate_threat` (it is part of that
 // public signature); the transition mapping is AI-side, so it lives here.
@@ -54,6 +54,7 @@ pub(in crate::cell) fn log_aggro_acquired(
         Some(t) if t.is_player => (t.player_id, t.account_id),
         _ => (None, None),
     };
+    let target_identity = target.filter(|t| t.is_player).map(|t| t.identity());
     // NPC-vs-NPC (#1009): who the NPC engaged, and both sides' factions, so
     // a standoff can be read from this row alone.
     let target_kind = match target {
@@ -62,10 +63,12 @@ pub(in crate::cell) fn log_aggro_acquired(
         None => "gone",
     };
     let target_faction = target.map(|t| t.faction);
-    let target_tag = target.and_then(|t| t.tag.as_deref()).unwrap_or("");
+    let target_tag = target.and_then(|t| t.tag.as_deref());
     let npc_to_target = target.map(|t| t.position.distance_to(&npc.position));
     let dy = target.map(|t| t.position.y - npc.position.y);
     let has_los = los_label(space_mgr.line_of_sight(npc_id, target_id));
+    let npc_names = EntityNames::of(npc);
+    let target_name = target.and_then(|t| EntityNames::of(t).entity_name);
 
     cimmeria_observability::counter!(
         "npc_ai_aggro_total",
@@ -77,18 +80,23 @@ pub(in crate::cell) fn log_aggro_acquired(
         event = "acquired",
         cause = cause.label(),
         npc_id,
-        tag = npc.tag.as_deref().unwrap_or(""),
+        npc_name = npc_names.entity_name,
+        tag = npc.tag.as_deref(),
         template_id = npc.template_id,
+        template_name = npc_names.template_name,
         world = world.as_str(),
         space_id = npc.space_id.0,
         from = from.label(),
         target_id,
+        target_name,
         target_kind,
         target_tag,
         npc_faction = npc.faction,
         target_faction,
         player_id,
+        player_name = target_identity.and_then(|i| i.player_name),
         account_id,
+        account_name = target_identity.and_then(|i| i.account_name),
         npc_to_target,
         dy,
         has_los,
@@ -176,6 +184,42 @@ mod tests {
         let t = transition(&logs);
         assert!(t.has_field("reason", "auto_aggro"), "{t:?}");
         assert!(t.has_field("to", "fighting"), "{t:?}");
+    }
+
+    /// Rule 6 (NT-25): the `acquired` row names the NPC (D-NT5: its
+    /// player-facing name and its template) and the player it engaged, next
+    /// to their IDs. The NameBook is process-global, so an empty one goes
+    /// back after.
+    #[test]
+    fn acquired_names_the_npc_its_template_and_the_player() {
+        let mut book = cimmeria_names::NameBook::empty();
+        book.insert(cimmeria_names::Table::Texts, 9001, "Jaffa Guard");
+        book.insert(cimmeria_names::Table::Templates, 5150, "NT25_Jaffa_Guard");
+        cimmeria_names::global().store(book);
+        let mut mgr = mgr();
+        mgr.get_entity_mut(1)
+            .unwrap()
+            .stamp_log_names(Some("Tealc"), Some("tealc_login"));
+        let npc = mgr.get_entity_mut(100).unwrap();
+        npc.name_id = Some(9001);
+        npc.template_id = Some(5150);
+        let logs = LogCapture::install();
+        tracing::callsite::rebuild_interest_cache();
+
+        let _ = generate_threat(&mut mgr, 1, 100, 1.0, AggroCause::Proximity);
+        cimmeria_names::global().store(cimmeria_names::NameBook::empty());
+
+        let row = acquired(&logs).pop().expect("acquired row");
+        for (k, v) in [
+            ("npc_name", "Jaffa Guard"),
+            ("template_id", "5150"),
+            ("template_name", "NT25_Jaffa_Guard"),
+            ("target_name", "Tealc"),
+            ("player_name", "Tealc"),
+            ("account_name", "tealc_login"),
+        ] {
+            assert!(row.has_field(k, v), "field {k}={v} missing: {row:?}");
+        }
     }
 
     /// More threat on an NPC that is already fighting is not a new

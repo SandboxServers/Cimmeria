@@ -139,6 +139,7 @@ pub(super) async fn npc_ai_leash(
             target: "npc_ai.leash",
             event = "replan",
             npc_id,
+            npc_name = space_mgr.entity_label(npc_id),
             had_route = route_end.is_some(),
             npc_to_spawn = horizontal_distance(&pos, &spawn),
             "NPC leashing without a route home: planned one"
@@ -241,7 +242,9 @@ async fn arrive(
             target: "npc_ai.leash",
             event = "follow_target_lost",
             npc_id,
+            npc_name = space_mgr.entity_label(npc_id),
             target_id,
+            target_name = space_mgr.entity_label(target_id),
             "NPC leash reset: follow target no longer in the space -- follow cleared, the escort idles until a chain re-arms it"
         );
     }

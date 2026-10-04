@@ -14,7 +14,7 @@ use std::time::{Duration, Instant};
 use cimmeria_common::Vector3;
 use cimmeria_entity::navigation::{LineOfSight, LosProbe};
 
-use crate::cell::space_manager::SpaceManager;
+use crate::cell::space_manager::{EntityNames, SpaceManager};
 
 pub(in crate::cell) const LOS_SAMPLE_INTERVAL: Duration = Duration::from_secs(5);
 
@@ -100,12 +100,13 @@ pub(in crate::cell) fn report(
     else {
         return;
     };
-    let (tag, template_id) = space_mgr
+    let (tag, template_id, names) = space_mgr
         .get_entity(a)
         .map(|e| {
             (
                 e.tag.clone().unwrap_or_default(),
                 e.template_id.unwrap_or(0),
+                EntityNames::of(e),
             )
         })
         .unwrap_or_default();
@@ -114,9 +115,12 @@ pub(in crate::cell) fn report(
         target: "npc_ai.los",
         event = "blocked",
         npc_id = a,
+        npc_name = names.entity_name,
         target_id = b,
+        target_name = space_mgr.entity_label(b),
         tag = %tag,
         template_id,
+        template_name = names.template_name,
         world = %world,
         space_id = space_mgr.get_entity_space_id(a).unwrap_or(0),
         result,

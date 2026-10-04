@@ -239,7 +239,7 @@ impl Cover {
             Ok(g) => g,
             Err(poisoned) => {
                 tracing::warn!(
-                    entity_id = entity_id.0,
+                    entity_id = entity_id.0, // nt:id-only cell-cover sees no entity table; the npc_ai caller row names the NPC
                     "cover reservations mutex poisoned during release_for_entity — recovering"
                 );
                 poisoned.into_inner()

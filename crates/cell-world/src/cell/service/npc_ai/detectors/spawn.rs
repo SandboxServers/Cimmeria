@@ -10,7 +10,7 @@
 //! request a path.
 
 use super::{MoveSource, NpcIdent};
-use crate::cell::space_manager::SpaceManager;
+use crate::cell::space_manager::{EntityNames, SpaceManager};
 
 /// Check a freshly spawned NPC against the `find_path` start box.
 pub fn check_spawn(space_mgr: &mut SpaceManager, npc_id: u32) {
@@ -39,11 +39,15 @@ pub fn check_spawn(space_mgr: &mut SpaceManager, npc_id: u32) {
         None
     };
     if let Some(reason) = skip {
+        let names = EntityNames::of(e);
         tracing::debug!(
             target: "spawner.npc_behaviour",
             event = "spawn_off_mesh_skipped",
             npc_id,
-            spawn_id,
+            npc_name = names.entity_name,
+            template_id = names.template_id,
+            template_name = names.template_name,
+            spawn_id, // nt:id-only spawnlist row id, the row has no name column
             reason,
             "spawner: start-box check skipped; stationary NPCs and props never path"
         );
@@ -85,10 +89,12 @@ pub fn check_spawn(space_mgr: &mut SpaceManager, npc_id: u32) {
         event = "spawn_off_mesh",
         npc_id,
         tag = %ident.tag,
+        npc_name = ident.npc_name,
         template_id = ident.template_id,
+        template_name = ident.template_name,
         world = %ident.world,
         space_id = ident.space_id,
-        spawn_id,
+        spawn_id, // nt:id-only spawnlist row id, the row has no name column
         x = pos.x,
         y = pos.y,
         z = pos.z,

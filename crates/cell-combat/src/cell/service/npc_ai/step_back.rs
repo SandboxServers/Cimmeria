@@ -156,7 +156,7 @@ pub(in crate::cell::service) fn step_back(
         }
         StepBackCall::Cooling { dead_zone: true } => {
             super::note_outcome("step_back_cooling");
-            log(&s, "step_back_cooling", None);
+            log(space_mgr, &s, "step_back_cooling", None);
             return StepBackOutcome::Hold;
         }
         StepBackCall::Step => {}
@@ -176,7 +176,7 @@ pub(in crate::cell::service) fn step_back(
     });
     let Some(waypoint) = waypoint.filter(|_| gain >= STEP_BACK_MIN_GAIN) else {
         super::note_outcome("step_back_cornered");
-        log(&s, "step_back_cornered", None);
+        log(space_mgr, &s, "step_back_cornered", None);
         return if dead_zone {
             StepBackOutcome::Hold
         } else {
@@ -197,7 +197,7 @@ pub(in crate::cell::service) fn step_back(
         "step_back"
     };
     super::note_outcome(outcome);
-    log(&s, outcome, Some(waypoint));
+    log(space_mgr, &s, outcome, Some(waypoint));
     StepBackOutcome::Stepped
 }
 
@@ -209,15 +209,30 @@ fn step_back_in_flight(space_mgr: &SpaceManager, npc_id: u32) -> bool {
         && space_mgr.npc_detectors.move_source(npc_id) == Some(super::detectors::MoveSource::Backup)
 }
 
-fn log(s: &StepBackStep, outcome: &'static str, waypoint: Option<Vector3>) {
+fn log(
+    space_mgr: &SpaceManager,
+    s: &StepBackStep,
+    outcome: &'static str,
+    waypoint: Option<Vector3>,
+) {
     let w = waypoint.unwrap_or(s.npc_pos);
+    // A cooling hold writes this row every tick: load the NameBook only when
+    // the row is on (a guard can't be taken inside the field's closure).
+    let book =
+        tracing::enabled!(target: "npc_ai", tracing::Level::DEBUG).then(cimmeria_names::book);
     tracing::debug!(
         target: "npc_ai",
         event = "decision",
         decision_outcome = outcome,
         npc_id = s.npc_id,
+        npc_name = space_mgr.entity_label(s.npc_id),
         target_id = s.target_id,
+        target_name = space_mgr.entity_label(s.target_id),
         ability_id = s.ability_id,
+        ability_name = s
+            .ability_id
+            .zip(book.as_ref())
+            .and_then(|(a, b)| b.ability(a)),
         dist_to_target = s.dist_to_target,
         min_range = s.min_range,
         comfort_range = comfort_range(s.min_range),

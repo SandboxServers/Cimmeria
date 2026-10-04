@@ -145,7 +145,9 @@ pub(super) async fn npc_ai_idle_auto_aggro(
     if is_player {
         tracing::info!(
             npc_id,
+            npc_name = space_mgr.entity_label(npc_id),
             player_id = target_id,
+            player_name = space_mgr.entity_label(target_id),
             dist,
             "NPC AI: proximity auto-aggro on a hostile player"
         );

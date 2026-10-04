@@ -6,7 +6,7 @@ use std::time::{Duration, Instant};
 use tokio::sync::mpsc;
 
 use crate::cell::messages::CellToBaseMsg;
-use crate::cell::space_manager::SpaceManager;
+use crate::cell::space_manager::{EntityNames, SpaceManager};
 
 use super::fight::npc_ai_fight;
 use super::follow::npc_ai_follow;
@@ -67,11 +67,14 @@ pub(in crate::cell::service) fn npc_is_incapacitated(
     };
     // Re-borrowed: `admit` above needed `&mut`.
     if let Some(e) = space_mgr.get_entity(npc_id) {
+        let names = EntityNames::of(e);
         tracing::warn!(
             target: "npc_ai.tick",
             npc_id,
-            npc_name = e.npc_name.as_deref().unwrap_or(""),
-            tag = e.tag.as_deref().unwrap_or(""),
+            npc_name = names.entity_name,
+            template_id = names.template_id,
+            template_name = names.template_name,
+            tag = e.tag.as_deref(),
             ai_state = ?e.ai_state(),
             state_field = e.state_field,
             state_field_names = %cimmeria_wire::state_field::STATE_FLAGS.render(e.state_field),
@@ -174,6 +177,7 @@ pub async fn npc_ai_tick(
                 target: "npc_ai",
                 event = "state_changed_mid_tick",
                 npc_id,
+                npc_name = space_mgr.entity_label(npc_id),
                 from = snapshot_state.label(),
                 to = ai_state.label(),
                 "NPC AI: state changed by an earlier turn this tick; running the current state"
@@ -462,11 +466,21 @@ fn log_ai_tick(
     let next = e.nav_path.front().copied();
     let [vx, vy, vz] = e.velocity;
     let los = target.map(|_| space_mgr.npc_line_of_sight(npc_id, target_id));
+    // The sampler above admits every tick of a fighting, leashing or
+    // witnessed NPC, so the row's own level gates the name lookup. Not
+    // earlier: the line-of-sight query feeds the `npc_ai.los` detector's
+    // sampler and rows, which must not depend on this row's level.
+    if !tracing::enabled!(target: "npc_ai.tick", tracing::Level::DEBUG) {
+        return;
+    }
+    let names = EntityNames::of(e);
     tracing::debug!(
         target: "npc_ai.tick",
         npc_id,
-        npc_name = e.npc_name.as_deref().unwrap_or(""),
-        tag = e.tag.as_deref().unwrap_or(""),
+        npc_name = names.entity_name,
+        template_id = names.template_id,
+        template_name = names.template_name,
+        tag = e.tag.as_deref(),
         state_before = ?state_before,
         ai_state = ?e.ai_state(),
         decision_outcome = outcome,
@@ -487,6 +501,7 @@ fn log_ai_tick(
         dest = ?dest.map(|p| [p.x, p.y, p.z]),
         dist_to_dest = ?dest.map(|p| p.distance_to(&e.position)),
         target_id,
+        target_name = space_mgr.entity_label(target_id),
         threat,
         threat_count = e.threat_list.len(),
         target_pos = ?target.map(|p| [p.x, p.y, p.z]),
@@ -503,7 +518,8 @@ fn log_ai_tick(
                 .attack_los_policy(npc_id, target_id, e.is_stationary, l)
                 .label()
         }),
-        follow_target_id = e.follow_target_id.unwrap_or(0),
+        follow_target_id = e.follow_target_id,
+        follow_target_name = e.follow_target_id.and_then(|f| space_mgr.entity_label(f)),
         npc_to_spawn = ?e.spawn_position.map(|p| p.distance_to(&e.position)),
         move_speed = e.move_speed,
         navmesh_loaded = space_mgr.space_has_navmesh(npc_id),
