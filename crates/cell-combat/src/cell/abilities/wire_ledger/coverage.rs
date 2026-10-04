@@ -16,10 +16,17 @@ pub(crate) const LEDGER_METHODS: &[(u16, &str)] = &[
     (14, "onEffectResults"),
     (19, "onStateFieldUpdate"),
     (20, "onStatUpdate"),
+    // The respawn resync, grants, training, respec, GM changes and the
+    // cell's player init (`origin` names the trigger); the base's
+    // world-entry bundle writes the same rows itself (`base-world-entry`
+    // `world_entry::map_loaded_wire_rows`).
+    (21, "onStatBaseUpdate"),
     // The ability system's own feedback lines (refusals, no ally); other
     // systems' chat does not go through this ledger.
     (28, "onPlayerCommunication"),
+    (101, "onKnownAbilitiesUpdate"),
     (121, "onErrorCode"),
+    (141, "onAbilityTreeInfo"),
 ];
 
 #[cfg(test)]
@@ -35,7 +42,8 @@ mod tests {
                 "onSequence" => 26,
                 "onTimerUpdate" => 21,
                 "onEffectResults" => 21,
-                "onStateFieldUpdate" | "onStatUpdate" => 4,
+                "onStateFieldUpdate" | "onStatUpdate" | "onStatBaseUpdate" => 4,
+                "onKnownAbilitiesUpdate" | "onAbilityTreeInfo" => 4,
                 "onErrorCode" => 7,
                 "onPlayerCommunication" => 10,
                 other => panic!("no minimal payload for {other}"),
@@ -69,11 +77,14 @@ mod tests {
             (being::ON_EFFECT_RESULTS, "onEffectResults"),
             (being::ON_STATE_FIELD_UPDATE, "onStateFieldUpdate"),
             (combatant::ON_STAT_UPDATE, "onStatUpdate"),
+            (combatant::ON_STAT_BASE_UPDATE, "onStatBaseUpdate"),
             (
                 communicator::ON_PLAYER_COMMUNICATION,
                 "onPlayerCommunication",
             ),
+            (player::ON_KNOWN_ABILITIES_UPDATE, "onKnownAbilitiesUpdate"),
             (player::ON_ERROR_CODE, "onErrorCode"),
+            (player::ON_ABILITY_TREE_INFO, "onAbilityTreeInfo"),
         ];
         assert_eq!(LEDGER_METHODS, &want[..]);
     }

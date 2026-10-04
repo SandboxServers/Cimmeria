@@ -179,6 +179,22 @@ pub async fn handle_map_loaded(
         );
     }
 
+    // AB-C7: the bundle's ability methods (`onStatBaseUpdate`,
+    // `onAbilityTreeInfo`, `onKnownAbilitiesUpdate`, ...) get their
+    // `abilities.wire` rows, now that every fragment is on the socket.
+    let account_id = connected
+        .lock()
+        .ok()
+        .and_then(|m| m.get(&addr).map(|c| c.account_id));
+    super::map_loaded_wire_rows::log_world_entry_ability_sends(
+        entry_info.player_entity_id,
+        account_id,
+        &player_data,
+        map_base_seq,
+        map_base_seq.wrapping_add(map_packets.len().saturating_sub(1) as u32)
+            & cimmeria_mercury::packet::SEQUENCE_MASK,
+    );
+
     let total_bytes: usize =
         enter_world_pkt.len() + map_packets.iter().map(|p| p.len()).sum::<usize>();
     let pkt_count = 1 + map_packets.len();

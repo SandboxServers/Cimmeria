@@ -143,7 +143,26 @@ pub(super) fn emit(
             ability_id = ctx.ability_id,
             stat_count = count,
             stats = stats.as_str(),
-            "onStatUpdate queued for the client"
+            "stat update queued for the client"
+        ),
+        Decoded::KnownAbilities { count, ref ids } => wire_row!(
+            c,
+            ability_count = count,
+            ability_ids = ids.as_str(),
+            reason = ctx.reason,
+            "onKnownAbilitiesUpdate queued for the client"
+        ),
+        Decoded::AbilityTree {
+            lists,
+            ref sizes,
+            total,
+        } => wire_row!(
+            c,
+            tree_lists = lists,
+            tree_sizes = sizes.as_str(),
+            tree_total = total,
+            reason = ctx.reason,
+            "onAbilityTreeInfo queued for the client"
         ),
         Decoded::Timer {
             id,

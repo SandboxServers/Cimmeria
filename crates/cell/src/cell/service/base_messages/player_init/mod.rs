@@ -251,7 +251,7 @@ pub(in crate::cell::service) async fn handle_init_player_state(
     // hotbar stays empty until the next `addAbility` call (which doesn't
     // happen unless the player visits a trainer), so even players with
     // 3+ starter abilities couldn't see or click any of them.
-    send_known_abilities_update(entity_id, tx, space_mgr).await;
+    send_known_abilities_update(entity_id, "world_entry", tx, space_mgr).await;
 
     // Re-send `onActiveSlotUpdate` for the bandolier — defensive resync
     // against a client-side initialization race documented in

@@ -125,7 +125,7 @@ pub(super) async fn handle_abilities_reset(
         "AbilitiesReset: cell mirrored + respec burst"
     );
 
-    send_known_abilities_update(entity_id, tx, space_mgr).await;
+    send_known_abilities_update(entity_id, "respec", tx, space_mgr).await;
     send_training_points(entity_id, training_points, tx).await;
     if let Err(e) = tx
         .send(CellToBaseMsg::EntityMethodCall {

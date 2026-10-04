@@ -179,17 +179,6 @@ EXCEPTIONS: Dict[Tuple[str, str], str] = {
         "the stock client has no event bound to it and cannot send it "
         "(findings/native-combat-debug.md); the server still logs a crafted call"
     ),
-    ("onStatBaseUpdate", SERVER_SEND): (
-        "sent only by world entry and the respawn resync as a full base-stat burst, "
-        "never by a cast; a cast moves current values (onStatUpdate)"
-    ),
-    ("onKnownAbilitiesUpdate", SERVER_SEND): (
-        "sent by grants, training, respec and world entry, not by a cast; "
-        "those paths log their own grant rows"
-    ),
-    ("onAbilityTreeInfo", SERVER_SEND): (
-        "sent by world entry and the respawn resync, not by a cast"
-    ),
 }
 
 

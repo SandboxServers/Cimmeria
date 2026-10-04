@@ -94,7 +94,7 @@ pub(super) async fn handle_gm_abilities_changed(
         "GmAbilitiesChanged: cell mirrored + one hotbar burst"
     );
 
-    send_known_abilities_update(entity_id, tx, space_mgr).await;
+    send_known_abilities_update(entity_id, "gm_abilities_changed", tx, space_mgr).await;
     if change == GmAbilityChange::Reset {
         send_training_points(entity_id, training_points, tx).await;
     }

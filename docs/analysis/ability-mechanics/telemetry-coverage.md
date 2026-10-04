@@ -26,11 +26,11 @@ Every ability-related entity method, and whether each side accounts for it where
 | `onEffectResults` | 14 | server to client | client-method-dispatch-table 14 | - | `abilities.wire` row | - | `client.ability.recv` | effect id = cast_id |
 | `onStateFieldUpdate` | 19 | server to client | client-method-dispatch-table 19 | - | `abilities.wire` row | - | `client.ability.recv` |  |
 | `onStatUpdate` | 20 | server to client | client-method-dispatch-table 20 | - | `abilities.wire` row | - | `client.ability.recv` |  |
-| `onStatBaseUpdate` | 21 | server to client | client-method-dispatch-table 21 | - | exception | - | `client.ability.recv` |  |
+| `onStatBaseUpdate` | 21 | server to client | client-method-dispatch-table 21 | - | `abilities.wire` row | - | `client.ability.recv` |  |
 | `onPlayerCommunication` | 28 | server to client | client-method-dispatch-table 28 | - | `abilities.wire` row | - | `client.ability.recv` | feedback channel only |
-| `onKnownAbilitiesUpdate` | 101 | server to client | client-method-dispatch-table 101 | - | exception | - | `client.ability.recv` |  |
+| `onKnownAbilitiesUpdate` | 101 | server to client | client-method-dispatch-table 101 | - | `abilities.wire` row | - | `client.ability.recv` |  |
 | `onErrorCode` | 121 | server to client | client-method-dispatch-table 121 | - | `abilities.wire` row | - | `client.ability.recv` |  |
-| `onAbilityTreeInfo` | 141 | server to client | client-method-dispatch-table 141 | - | exception | - | `client.ability.recv` |  |
+| `onAbilityTreeInfo` | 141 | server to client | client-method-dispatch-table 141 | - | `abilities.wire` row | - | `client.ability.recv` |  |
 
 ## Exceptions
 
@@ -38,9 +38,6 @@ Every ability-related entity method, and whether each side accounts for it where
 |---|---|---|
 | `toggleCombatDebug` | Client send hook | the stock client has no event bound to it and cannot send it (findings/native-combat-debug.md); the server still logs a crafted call |
 | `toggleCombatVerboseDebug` | Client send hook | the stock client has no event bound to it and cannot send it (findings/native-combat-debug.md); the server still logs a crafted call |
-| `onStatBaseUpdate` | Server send row | sent only by world entry and the respawn resync as a full base-stat burst, never by a cast; a cast moves current values (onStatUpdate) |
-| `onKnownAbilitiesUpdate` | Server send row | sent by grants, training, respec and world entry, not by a cast; those paths log their own grant rows |
-| `onAbilityTreeInfo` | Server send row | sent by world entry and the respawn resync, not by a cast |
 
 ## Sources
 

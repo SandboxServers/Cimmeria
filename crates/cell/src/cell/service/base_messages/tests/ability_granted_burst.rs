@@ -290,3 +290,29 @@ async fn level_gate_reads_the_level_hydrated_at_world_entry() {
         "a level-5 character must be able to train the level-5 node"
     );
 }
+
+/// AB-C7: the grant's `onKnownAbilitiesUpdate` writes its `abilities.wire`
+/// row naming the trigger. Passing another origin (or sending it raw)
+/// fails this.
+#[tokio::test]
+async fn a_grant_hotbar_refresh_writes_a_wire_row_naming_the_grant() {
+    let capture = crate::test_support::LogCapture::install();
+    let mut mgr = fixture(false);
+    let _ = deliver(&mut mgr, granted(597, 0, 1)).await;
+    let rows: Vec<_> = capture
+        .all()
+        .into_iter()
+        .filter(|c| {
+            c.target == "abilities.wire"
+                && c.has_field("event", "wire_sent")
+                && c.has_field("method", "onKnownAbilitiesUpdate")
+        })
+        .collect();
+    assert_eq!(rows.len(), 1, "{:#?}", capture.all());
+    assert!(
+        rows[0].has_field("origin", "ability_granted"),
+        "{:#?}",
+        rows[0]
+    );
+    assert!(rows[0].has_field("ability_count", "1"), "{:#?}", rows[0]);
+}
