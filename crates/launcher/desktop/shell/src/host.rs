@@ -7,7 +7,9 @@ use std::{
 
 mod install;
 mod launch;
+mod migration;
 pub use launch::{LaunchCommand, LaunchStatus};
+pub use migration::{MigrationCommand, MigrationStatus};
 mod repair;
 mod runtime_setup;
 pub use install::{InstallCommand, InstallStatus, JobError};
@@ -22,6 +24,7 @@ pub struct NativeHost {
     #[cfg(target_os = "macos")]
     runtime_worker: Mutex<Option<cimmeria_launcher_engine::mac_wine::prerequisites::Worker>>,
     state: Mutex<Option<Arc<Mutex<DesktopState>>>>,
+    migration_preview: Mutex<Option<migration::Preview>>,
     #[cfg(test)]
     repair_fixture: Option<repair::TestDispatch>,
     launch_resources: Option<cimmeria_launcher_engine::launch::Resources>,
@@ -41,6 +44,7 @@ impl NativeHost {
             #[cfg(target_os = "macos")]
             runtime_worker: Mutex::new(None),
             state: Mutex::new(None),
+            migration_preview: Mutex::new(None),
             #[cfg(test)]
             repair_fixture: None,
             launch_resources: None,

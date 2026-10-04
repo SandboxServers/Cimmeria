@@ -2,7 +2,10 @@
 mod host;
 
 use cimmeria_launcher_engine::{NativeCommand, NativeSnapshot, StorageError};
-use host::{InstallCommand, InstallStatus, JobError, LaunchCommand, LaunchStatus, NativeHost};
+use host::{
+    InstallCommand, InstallStatus, JobError, LaunchCommand, LaunchStatus, MigrationCommand,
+    MigrationStatus, NativeHost,
+};
 use std::sync::Arc;
 use tauri::Manager;
 use tauri_plugin_dialog::DialogExt;
@@ -140,6 +143,39 @@ async fn launch_command(
         .map_err(|_| JobError::Io)?
 }
 
+#[tauri::command]
+async fn migration_command(
+    request: MigrationCommand,
+    state: tauri::State<'_, Arc<NativeHost>>,
+) -> Result<MigrationStatus, cimmeria_launcher_engine::migration::MigrationError> {
+    let host = state.inner().clone();
+    tauri::async_runtime::spawn_blocking(move || host.migration_command(request))
+        .await
+        .map_err(|_| StorageError::Io)?
+}
+
+#[tauri::command]
+async fn choose_legacy_source(
+    app: tauri::AppHandle,
+    window: tauri::WebviewWindow,
+    state: tauri::State<'_, Arc<NativeHost>>,
+) -> Result<MigrationStatus, cimmeria_launcher_engine::migration::MigrationError> {
+    let host = state.inner().clone();
+    tauri::async_runtime::spawn_blocking(move || {
+        host.migration_command(MigrationCommand::Dismiss {schema_version: 1})?;
+        let Some(launcher) = app.dialog().file().set_parent(&window).set_title("Choose the folder beside your old launcher (launcher-config.json and install.json)").blocking_pick_folder() else {
+            return host.migration_command(MigrationCommand::Inspect {schema_version: 1});
+        };
+        let Some(game) = app.dialog().file().set_parent(&window).set_title("Choose the existing game root (launcher-installed.json)").blocking_pick_folder() else {
+            return host.migration_command(MigrationCommand::Inspect {schema_version: 1});
+        };
+        host.preview_migration(cimmeria_launcher_engine::migration::LegacySource {
+            launcher_directory: launcher.into_path().map_err(|_| StorageError::InvalidDirectory)?,
+            game_directory: game.into_path().map_err(|_| StorageError::InvalidDirectory)?,
+        })
+    }).await.map_err(|_| StorageError::Io)?
+}
+
 fn main() {
     tauri::Builder::default()
         .plugin(tauri_plugin_dialog::init())
@@ -160,7 +196,9 @@ fn main() {
             show_install_directory,
             fetch_patch_notes,
             install_command,
-            launch_command
+            launch_command,
+            migration_command,
+            choose_legacy_source
         ])
         .run(tauri::generate_context!())
         .expect("desktop launcher could not initialize");

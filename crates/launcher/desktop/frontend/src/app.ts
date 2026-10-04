@@ -1,3 +1,4 @@
+import { mountMigration } from './migration-view';
 import { mountLaunch } from './launch-view';
 import { mountInstall } from './install-view';
 import { mountLauncher, Invoke } from './view';
@@ -9,4 +10,5 @@ const invoke: Invoke = (command,args) => window.__TAURI__.core.invoke(command,ar
 const installation = mountInstall(document,invoke);
 const app = mountLauncher(document,invoke,()=>{void installation.refresh();});
 const play = mountLaunch(document,invoke,()=>{void installation.refresh(); void app.refresh();});
-window.addEventListener('pagehide', () => { void play.dispose(); void app.dispose(); void installation.dispose(); }, {once:true});
+const migration = mountMigration(document,invoke,()=>{void app.refresh(); void installation.refresh(); void play.refresh();});
+window.addEventListener('pagehide', () => { void migration.dispose(); void play.dispose(); void app.dispose(); void installation.dispose(); }, {once:true});

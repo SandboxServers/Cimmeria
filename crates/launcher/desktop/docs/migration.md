@@ -90,3 +90,37 @@ completion writes, and absent destructive ownership. A Unix subprocess holding
 `flock` verifies real cross-process contention against the legacy lock primitive.
 Windows-native lock interoperability, hardware power-loss durability, shell/UI
 confirmation, visual UAT and actual legacy-user installs remain unverified here.
+
+## Settings preview and confirmation
+
+Settings → **Select legacy folders…** opens two native folder dialogs: first the
+folder beside the old launcher, then the corresponding game root. Cancelling
+either leaves no confirmable preview. The review shows both selected folders,
+the original configured path, identity, configuration, separate consent choices,
+and the ordered historical ledger. **Confirm settings import** admits exactly
+that native-held preview and preferences revision; **Cancel import** discards it.
+The webview passes no source path in import IPC. Source edits or settings changes
+require a new preview. Unsupported records and an active old launcher show an
+actionable error rather than synthesizing identity or ownership.
+
+The Effect workflow suppresses duplicate clicks, exposes immediate pending
+feedback, and never retries a confirmation after a lost response. **Recheck
+import status** reads the saved native record. A reopening requirement is shown
+explicitly. Restart restores the import and preferences from app-data; a preview
+itself is session-only. Launcher-summary consent remains unchanged, while the
+legacy record retains its separate game telemetry choice. Imported configuration
+is archived for future parity work; it is not currently consumed by desktop Play.
+
+After import the UI says historical content is unverified and grants no Play,
+Repair or Uninstall capability. Continue using the old launcher for that game
+installation until verified adoption is available, or select a separate empty
+folder for a new desktop installation. Import does not modify legacy game files,
+replace the updater, or complete installed/update/launch parity.
+
+Shell tests exercise native-held confirmation, hostile extra fields, changed
+sources/preferences, repeat/reopen semantics and absent launch/removal ownership.
+`npm run uat:migration` in the frontend consumes the real native host test bridge
+(selected by `MIGRATION_UAT_BINARY`) and checks disk-backed identity, config,
+ledger and consent after reopening. This supplements frontend tests; native
+dialog interaction, packaged visual verification and Windows lock behavior
+remain separate gates.
