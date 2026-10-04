@@ -96,12 +96,12 @@ For each packaged app:
 | Initial egui offline drawing | Observed with `sandbox-exec` network denial and a system-only PATH; not a clean-machine test |
 | Initial Tauri window and interactions | Observed: dark UI, bundled notes, telemetry toggle, install simulation, settings and repair feedback |
 | User assessment of initial Tauri proof | Responsive, fast opening, preferred over egui; requested better resizing and closer approved styling |
-| Revised Tauri styling/resizing | Rebuilt; scrolling content and persistent Install/telemetry footer implemented. Visual review pending |
+| Revised Tauri styling/resizing | User reviewed the rebuilt app and reported everything passes except an unnecessary horizontal scrollbar. Follow-up limits content scrolling to the vertical axis, removes reserved scrollbar gutter, and allows flex text to shrink/wrap. Rebuilt; final scrollbar visual confirmation pending |
 | Tauri network-denied startup | Inconclusive: process remained alive, but automation could not bind its window; normal launch worked. Do not count as an offline pass |
 | Clean-machine installation and distribution trust | Pending |
 | Windows-native packaging | Not run; Windows handoff below |
 
-The local release ZIPs measured 4,542,178 bytes (egui) and 2,367,291 bytes
+Before the scrollbar follow-up, the local release ZIPs measured 4,542,178 bytes (egui) and 2,367,291 bytes
 (Tauri). These Mac sizes exclude any game compatibility runtime. They say
 nothing about Windows size with bundled WebView2. Both are local development
 artifacts, not signed/notarized distribution releases.
