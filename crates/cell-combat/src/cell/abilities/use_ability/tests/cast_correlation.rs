@@ -16,7 +16,7 @@ use std::time::{Duration, Instant};
 
 use cimmeria_entity::abilities::{EffectDef, EF_DONT_USE_QR};
 
-use super::duel_gate::{duel_mgr, A, A_PID, MOB};
+use super::duel_gate::{duel_mgr, A, A_PID, B, B_PID, MOB};
 use super::timed_buffs::{buff_mgr, AIM, AIM_EFFECT};
 use super::*;
 use crate::cell::abilities::resolve_warmups;
@@ -298,4 +298,96 @@ async fn a_dot_tick_logs_the_pools_before_and_after() {
     assert_eq!(ended.target, "abilities.pulse");
     assert!(ended.has_field("reason", "natural_end"));
     assert!(ended.has_field("player_id", &A_PID.to_string()));
+}
+
+/// Assert `c` carries the core fields (rule 5, AB-T3): the invoker as the
+/// actor (`entity_id`, `player_id`), the ability and effect, the target,
+/// `stage`, and `target_player_id` when the target is a player.
+fn assert_pulse_core(c: &Captured, target: u32, target_pid: Option<i32>, stage: &str) {
+    assert_eq!(c.target, "abilities.pulse", "{c:?}");
+    for (field, want) in [
+        ("entity_id", A.to_string()),
+        ("player_id", A_PID.to_string()),
+        ("ability_id", DOT.to_string()),
+        ("effect_id", DOT_EFFECT.to_string()),
+        ("target_id", target.to_string()),
+        ("stage", stage.to_string()),
+    ] {
+        assert!(c.has_field(field, &want), "{field} = {want}: {c:?}");
+    }
+    if let Some(pid) = target_pid {
+        assert!(c.has_field("target_player_id", &pid.to_string()), "{c:?}");
+    }
+}
+
+/// `dot_mgr(2)` with A's DoT registered straight onto `target`, due now.
+async fn dot_on(target: u32, health_damage: i32) -> SpaceManager {
+    let mut mgr = dot_mgr(2);
+    let effect = mgr.effect_defs.get_mut(&DOT_EFFECT).unwrap();
+    effect
+        .params
+        .insert("HealthDamage".to_string(), health_damage.to_string());
+    let effect = effect.clone();
+    let (tx, _rx) = mpsc::channel(256);
+    assert!(
+        crate::cell::effects::register_active_effect(
+            &mut mgr,
+            target,
+            A,
+            &effect,
+            Instant::now(),
+            &tx
+        )
+        .await
+    );
+    for i in &mut mgr.get_entity_mut(target).unwrap().active_effects {
+        i.next_pulse_at = Instant::now() - Duration::from_secs(1);
+    }
+    mgr
+}
+
+/// **Regression guard (AB-T3 review, rule 5).** Every `abilities.pulse` row
+/// (`pulse_ticked`, `pulse_ended`, `pulse_skipped_dead_target`,
+/// `pulse_surrender_floor`) names the invoker as the actor (`entity_id`),
+/// the ability, the target and its `player_id`, and the `stage`. Dropping
+/// any of them from a row fails here.
+#[tokio::test]
+async fn every_pulse_row_carries_the_core_fields() {
+    use cimmeria_entity::cell_entity::AiState;
+    use cimmeria_entity::stats::HEALTH;
+    let (tx, _rx) = mpsc::channel(256);
+
+    // A player target: a tick and the natural end.
+    let mut mgr = dot_on(B, 5).await;
+    let logs = LogCapture::install();
+    effect_pulse_tick(&NoContentEvents, &tx, &mut mgr).await;
+    let all = logs.all();
+    assert_pulse_core(&row(&all, "pulse_ticked"), B, Some(B_PID), "pulse");
+    assert_pulse_core(&row(&all, "pulse_ended"), B, Some(B_PID), "end");
+    drop(logs);
+
+    // A dead player target: the pulse is skipped.
+    let mut mgr = dot_on(B, 5).await;
+    let b = mgr.get_entity_mut(B).unwrap();
+    b.stats.get_mut(HEALTH).unwrap().update(0, 0, 100);
+    let logs = LogCapture::install();
+    effect_pulse_tick(&NoContentEvents, &tx, &mut mgr).await;
+    let all = logs.all();
+    assert_pulse_core(
+        &row(&all, "pulse_skipped_dead_target"),
+        B,
+        Some(B_PID),
+        "pulse",
+    );
+    drop(logs);
+
+    // A surrendered NPC: a lethal pulse is floored at 1.
+    let mut mgr = dot_on(MOB, 1_000).await;
+    let mob = mgr.get_entity_mut(MOB).unwrap();
+    crate::cell::service::npc_ai::force_ai_state(mob, AiState::Submit);
+    mob.stats.get_mut(HEALTH).unwrap().update(0, 5, 100);
+    let logs = LogCapture::install();
+    effect_pulse_tick(&NoContentEvents, &tx, &mut mgr).await;
+    let all = logs.all();
+    assert_pulse_core(&row(&all, "pulse_surrender_floor"), MOB, None, "pulse");
 }

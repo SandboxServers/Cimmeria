@@ -156,11 +156,15 @@ async fn fire_pulse(
         tracing::debug!(
             target: "abilities.pulse",
             event = "pulse_skipped_dead_target",
+            stage = "pulse",
             account_id = inst.invoker_identity.account_id,
             player_id = inst.invoker_identity.player_id,
+            entity_id = inst.invoker_id,
             target_id,
+            target_player_id = space_mgr.player_identity(target_id).player_id,
             invoker_id = inst.invoker_id,
             cast_id = inst.cast_id,
+            ability_id = inst.ability_id,
             effect_id = inst.effect_id,
             "Skipping pulse — target is dead"
         );
@@ -330,6 +334,8 @@ async fn fire_pulse(
     // NPC (H08 records explicit-attack behaviour rather than changing
     // it). Only the killing blow from a self-repeating source is
     // refused.
+    // Read before the mutable borrow below (rule 5: the subject's id).
+    let target_player_id = space_mgr.player_identity(target_id).player_id;
     if let Some(target) = space_mgr.get_entity_mut(target_id) {
         if !target.is_player && target.ai_state() == AiState::Submit {
             if let Some(stat) = target.stats.get_mut(HEALTH) {
@@ -338,10 +344,14 @@ async fn fire_pulse(
                     tracing::debug!(
                         target: "abilities.pulse",
                         event = "pulse_surrender_floor",
+                        stage = "pulse",
                         account_id = inst.invoker_identity.account_id,
                         player_id = inst.invoker_identity.player_id,
+                        entity_id = inst.invoker_id,
                         target_id,
+                        target_player_id,
                         cast_id = inst.cast_id,
+                        ability_id = inst.ability_id,
                         effect_id = inst.effect_id,
                         invoker_id = inst.invoker_id,
                         "Pulse would have killed a surrendered NPC -- health floored at 1"
@@ -400,6 +410,7 @@ async fn fire_pulse(
         stage = "pulse",
         account_id = who.account_id,
         player_id = who.player_id,
+        entity_id = inst.invoker_id,
         target_id,
         target_player_id = space_mgr.player_identity(target_id).player_id,
         invoker_id = inst.invoker_id,
