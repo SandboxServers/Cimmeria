@@ -91,6 +91,49 @@ pub fn fragment_map_loaded(
     })
 }
 
+/// The `onStateFieldUpdate` word the world-entry bundle sends (no flags).
+pub const WORLD_ENTRY_STATE_FIELD: u32 = 0;
+
+/// The `onStatUpdate` and `onStatBaseUpdate` argument bytes the world-entry
+/// bundle carries for `data`: the archetype's stats with the persisted
+/// bandolier ammo seeded. The base's `abilities.wire` rows read them back
+/// (AB-C7), so the rows report exactly what the bundle sent.
+pub fn world_entry_stat_args(data: &PlayerLoadData) -> (Vec<u8>, Vec<u8>) {
+    world_entry_stat_args_with(data, &archetype_stats(data.archetype))
+}
+
+fn world_entry_stat_args_with(
+    data: &PlayerLoadData,
+    stats: &super::ArchetypeStats,
+) -> (Vec<u8>, Vec<u8>) {
+    use cimmeria_entity::stats::{ArchetypeStatValues, StatList, AMMO_SLOT_1};
+    let mut stat_list = StatList::new();
+    stat_list.apply_archetype(&ArchetypeStatValues {
+        coordination: stats.coordination,
+        engagement: stats.engagement,
+        fortitude: stats.fortitude,
+        morale: stats.morale,
+        perception: stats.perception,
+        intelligence: stats.intelligence,
+        health: stats.health,
+        focus: stats.focus,
+        health_per_level: stats.health_per_level,
+        focus_per_level: stats.focus_per_level,
+    });
+    // Seed AmmoSlot{N} stats from persisted bandolier ammo so the UI
+    // shows the correct value at world entry. Without this seed every
+    // re-login sends the default (0, 0, 0) tuple — the cell-side
+    // InitPlayerState seeding (service.rs) sets the stats correctly on
+    // the entity but happens after this packet is already on the wire.
+    for (slot_id, item) in &data.bandolier_items {
+        let stat_id = AMMO_SLOT_1 + slot_id;
+        if let Some(stat) = stat_list.get_mut(stat_id) {
+            stat.update(0, item.current_ammo, item.clip_size);
+        }
+    }
+    (stat_list.serialize_all(), stat_list.serialize_all_base())
+}
+
 fn build_map_loaded_body_inner(
     body: &mut Vec<u8>,
     entity_id: u32,
@@ -205,7 +248,10 @@ fn build_map_loaded_body_inner(
     }
 
     // 6. onStateFieldUpdate(UINT32) — default 0
-    append_method!(method_idx::ON_STATE_FIELD_UPDATE, &0u32.to_le_bytes());
+    append_method!(
+        method_idx::ON_STATE_FIELD_UPDATE,
+        &WORLD_ENTRY_STATE_FIELD.to_le_bytes()
+    );
 
     // 7. onKismetEventSetUpdate(INT32) — default 1025
     append_method!(
@@ -217,36 +263,10 @@ fn build_map_loaded_body_inner(
     //    Uses StatList from entity crate — sends ALL stats, matching Python's
     //    `self.sendStats(self.client, False, False)` which sends everything.
     {
-        use cimmeria_entity::stats::{ArchetypeStatValues, StatList, AMMO_SLOT_1};
-        let mut stat_list = StatList::new();
-        stat_list.apply_archetype(&ArchetypeStatValues {
-            coordination: stats.coordination,
-            engagement: stats.engagement,
-            fortitude: stats.fortitude,
-            morale: stats.morale,
-            perception: stats.perception,
-            intelligence: stats.intelligence,
-            health: stats.health,
-            focus: stats.focus,
-            health_per_level: stats.health_per_level,
-            focus_per_level: stats.focus_per_level,
-        });
-        // Seed AmmoSlot{N} stats from persisted bandolier ammo so the UI
-        // shows the correct value at world entry. Without this seed every
-        // re-login sends the default (0, 0, 0) tuple — the cell-side
-        // InitPlayerState seeding (service.rs) sets the stats correctly on
-        // the entity but happens after this packet is already on the wire.
-        for (slot_id, item) in &data.bandolier_items {
-            let stat_id = AMMO_SLOT_1 + slot_id;
-            if let Some(stat) = stat_list.get_mut(stat_id) {
-                stat.update(0, item.current_ammo, item.clip_size);
-            }
-        }
+        let (stat_args, base_args) = world_entry_stat_args_with(data, stats);
         // onStatUpdate: dynamic values (min, current, max)
-        let stat_args = stat_list.serialize_all();
         append_method!(method_idx::ON_STAT_UPDATE, &stat_args);
         // onStatBaseUpdate: base values (same for fresh characters)
-        let base_args = stat_list.serialize_all_base();
         append_method!(method_idx::ON_STAT_BASE_UPDATE, &base_args);
     }
 

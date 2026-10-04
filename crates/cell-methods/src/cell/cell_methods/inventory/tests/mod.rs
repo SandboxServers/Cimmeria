@@ -10,6 +10,7 @@ use crate::cell::space_manager::SpaceManager;
 mod active_slot_abilities;
 mod active_slot_change;
 mod active_slot_held_effects;
+mod active_slot_wire_rows;
 mod ammo_change;
 mod move_item;
 mod slot_swap;

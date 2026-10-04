@@ -7,12 +7,16 @@
 //! itself, once the bundle's fragments are on the socket: one row per
 //! ability method in the bundle, `event = client_sent`, `origin =
 //! world_entry`, with the bundle's Mercury seq range. The payload fields
-//! come from the same `PlayerLoadData` the bundle was built from, and use
-//! the cell ledger's field names (`ability_count`, `ability_ids`,
-//! `tree_lists`, `tree_sizes`, `tree_total`).
+//! come from the same `PlayerLoadData` and the same stat builder
+//! (`world_entry_stat_args`) the bundle was built from, and use the cell
+//! ledger's field names: `state_field`; `stat_count`, `stats`
+//! (`stat_id:cur/max,...`); `ability_count`, `ability_ids`; `tree_lists`,
+//! `tree_sizes`, `tree_total`.
+
+use std::fmt::Write as _;
 
 use crate::mercury::method_idx;
-use crate::mercury::PlayerLoadData;
+use crate::mercury::{world_entry_stat_args, PlayerLoadData, WORLD_ENTRY_STATE_FIELD};
 
 /// `origin` of these rows.
 pub(super) const ORIGIN_WORLD_ENTRY: &str = "world_entry";
@@ -31,6 +35,29 @@ pub(super) const WORLD_ENTRY_ABILITY_METHODS: &[(u16, &str)] = &[
         "onKnownAbilitiesUpdate",
     ),
 ];
+
+/// `(count, "stat_id:cur/max,...")` of a `StatUpdateList` payload
+/// (`count:u32`, then `stat_id, min, cur, max` as `i32`s). A truncated
+/// payload lists what it holds.
+fn stat_summary(args: &[u8]) -> (u32, String) {
+    let at = |o: usize| {
+        args.get(o..o + 4)
+            .map(|b| i32::from_le_bytes([b[0], b[1], b[2], b[3]]))
+    };
+    let count = at(0).map_or(0, |c| c as u32);
+    let mut out = String::new();
+    for i in 0..count as usize {
+        let base = 4 + i * 16;
+        let (Some(id), Some(cur), Some(max)) = (at(base), at(base + 8), at(base + 12)) else {
+            break;
+        };
+        if !out.is_empty() {
+            out.push(',');
+        }
+        let _ = write!(out, "{id}:{cur}/{max}");
+    }
+    (count, out)
+}
 
 /// Write the rows for a world-entry bundle sent to `entity_id`'s client in
 /// packets `seq_first..=seq_last`.
@@ -90,8 +117,24 @@ pub(super) fn log_world_entry_ability_sends(
                 tree_total = trees.iter().map(Vec::len).sum::<usize>(),
                 "world-entry bundle sent: onAbilityTreeInfo"
             );
+        } else if method_index == method_idx::ON_STATE_FIELD_UPDATE {
+            row!(
+                state_field = WORLD_ENTRY_STATE_FIELD,
+                "world-entry bundle sent: onStateFieldUpdate"
+            );
         } else {
-            row!("world-entry bundle sent: ability method");
+            let (current, base) = world_entry_stat_args(data);
+            let args = if method_index == method_idx::ON_STAT_BASE_UPDATE {
+                base
+            } else {
+                current
+            };
+            let (count, stats) = stat_summary(&args);
+            row!(
+                stat_count = count,
+                stats = stats.as_str(),
+                "world-entry bundle sent: stat update"
+            );
         }
     }
 }
@@ -137,8 +180,19 @@ mod tests {
             .unwrap();
         assert!(tree.has_field("tree_sizes", "3/1/0"));
         assert!(tree.has_field("tree_total", "4"));
-        assert!(rows
+        let state = rows
             .iter()
-            .any(|r| r.has_field("method", "onStatBaseUpdate")));
+            .find(|r| r.has_field("method", "onStateFieldUpdate"))
+            .unwrap();
+        assert!(state.has_field("state_field", "0"), "{state:#?}");
+        // The stat rows read back what the bundle's builder sends.
+        let (current, base) = world_entry_stat_args(&data);
+        for (method, args) in [("onStatUpdate", current), ("onStatBaseUpdate", base)] {
+            let row = rows.iter().find(|r| r.has_field("method", method)).unwrap();
+            let (count, stats) = stat_summary(&args);
+            assert!(count > 0, "fixture: the archetype has stats");
+            assert!(row.has_field("stat_count", &count.to_string()), "{row:#?}");
+            assert!(row.has_field("stats", &stats), "{row:#?}");
+        }
     }
 }
