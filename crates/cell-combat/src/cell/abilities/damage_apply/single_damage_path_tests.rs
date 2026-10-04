@@ -256,3 +256,33 @@ async fn dont_use_qr_nvp_hit_deals_the_authored_base() {
 
     assert_eq!(pools(&mgr).0, 900);
 }
+
+/// **Guard (splash keeps the damage script, at the splash scale).** An
+/// explosive round's splash target (`HitKind::Splash`, fraction 0.5) takes
+/// Pistol Shot's script at half its NVPs: `FocusDamage` 75, `HealthDamage`
+/// round(7.5) = 8. Against 50 Focus: 50 absorbed, overflow 25, spill
+/// `(25*100/75)*75/300 = 8`, plus 8 = 16 Health. If splash cleared the
+/// damage scripts both pools stay `(1000, 50)`; if the scale were not
+/// applied the full 150/15 would leave `(952, 0)`.
+#[tokio::test]
+async fn splash_runs_the_damage_script_at_the_splash_scale() {
+    let effect = damage_effect(PISTOL_SHOT_EFFECT, Some("RangedPhysicalDamage"), 15, 150, 0);
+    let (mut mgr, ability) = fixture(PISTOL_SHOT, effect, 50);
+    let seq = seq_rolling(&mgr, (1, NPC), PISTOL_SHOT, false);
+    let (tx, _rx) = mpsc::channel(256);
+
+    apply_hit(
+        1,
+        NPC,
+        PISTOL_SHOT,
+        &Some(ability),
+        seq,
+        false,
+        HitKind::Splash { fraction: 0.5 },
+        &tx,
+        &mut mgr,
+    )
+    .await;
+
+    assert_eq!(pools(&mgr), (1000 - 16, 0));
+}
