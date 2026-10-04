@@ -495,4 +495,6 @@ Foreign shapes, stale requests and legacy unmarked commits remain gated. Explici
 confirmed abandonment now cancels pre-checkpoint work under ownership locks with
 no deletion; a new confirmed Repair can retry. Current-successful-operation
 backup cleanup now uses marker-last Deleting/Empty/Removed checkpoints. Historical
-cleanup, abandoned stages, Wine binding and UI remain open. Canonical contract/evidence: desktop docs/repair.md.
+cleanup, abandoned stages, Wine binding and UI remain open. ExtractionWork now
+separates current helper work identity/paths from the original install owner; Wine
+Repair dispatch is still gated. Contract/evidence: desktop docs/repair.md.

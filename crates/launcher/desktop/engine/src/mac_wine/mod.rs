@@ -207,14 +207,17 @@ impl SeedExtractor for WineSeedExtractor {
     ) -> Pin<Box<dyn Future<Output = Result<(), InstallError>> + Send + 'a>> {
         Box::pin(async move {
             let uncertain = || InstallError::SeedExtractionUncertain;
-            let stage = self
-                .intent
-                .destination
-                .join(format!(".cimmeria-stage-{}", self.intent.operation_id));
-            let cache = self
-                .intent
-                .destination
-                .join(format!(".cimmeria-cache-{}", self.intent.operation_id));
+            let work = self
+                .state
+                .lock()
+                .map_err(|_| uncertain())?
+                .extraction_work(self.intent.operation_id)
+                .map_err(|_| uncertain())?;
+            if work.operation_id != self.intent.operation_id || work.installation != self.intent {
+                return Err(uncertain());
+            }
+            let stage = work.stage;
+            let cache = work.cache;
             if request.destination != stage
                 || request.archive.parent() != Some(cache.as_path())
                 || std::fs::symlink_metadata(&stage).is_ok()

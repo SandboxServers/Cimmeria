@@ -285,3 +285,26 @@ native signed-ZIP fixtures on macOS; no original-client deletion or JS/visual UA
 is claimed.
 
 Strict clippy passed (`20261004-091608-52964`).
+
+
+## Extraction work identity for Wine integration
+
+Native `ExtractionWork` derives the current Install or Repair work ID, journal
+digest, permanent installation identity and stage/cache paths from the validated
+durable intent or plan. Repair uses its own work ID/digest without replacing the
+original installation owner. Helper journaling uses this descriptor to bind Wine
+attempts; extraction rechecks it before accepting paths. This describes identity,
+not admission, ownership locks or process quiescence.
+
+The Wine extractor's preparation guard still accepts only first installation;
+Repair Wine dispatch is not enabled. The next adapter step must retain the repair
+work ID separately through prefix ownership, helper requests and journal calls.
+The permanent installation ID cannot substitute for that work ID.
+
+Three new identity tests passed (`20261004-091918-53906`), covering distinct repair
+and installation identities, helper checkpoints/reopen, changed-plan refusal and
+native-backend refusal. The full engine suite passed 288 tests with 12 ignored
+(`20261004-092004-54235`). This includes existing helper journal and Mac adapter
+fixtures; no new real Wine repair extraction or frontend UAT is claimed.
+
+Strict clippy passed (`20261004-092031-54581`).

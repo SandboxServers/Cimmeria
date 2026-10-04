@@ -31,23 +31,11 @@ pub struct HelperRecord {
 }
 impl DesktopState {
     fn external_identity(&self, id: Uuid) -> Result<[u8; 32], IntentError> {
-        if self.requires_reopen() {
-            return Err(StorageError::PersistenceUncertain.into());
-        }
-        let operation = self
-            .operations()
-            .snapshot()
-            .operation
-            .as_ref()
-            .ok_or(ContractError::UnknownOperation)?;
-        if operation.id != id {
-            return Err(ContractError::UnknownOperation.into());
-        }
-        let intent = self.install_intent()?.ok_or(StorageError::Corrupt)?;
-        if intent.backend.is_native() {
+        let work = self.extraction_work(id)?;
+        if work.installation.backend.is_native() {
             return Err(ContractError::InvalidTransition.into());
         }
-        Ok(operation.intent_digest)
+        Ok(work.intent_digest)
     }
     pub fn helper_record(&self, id: Uuid) -> Result<Option<HelperRecord>, IntentError> {
         let digest = self.external_identity(id)?;
