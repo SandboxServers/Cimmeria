@@ -77,3 +77,27 @@ Frontend **55 passed**, type check and build passed. `npm run uat` against the
 newly built native `state_bridge` passed, including the Update journal reopen case.
 Formatting, scoped Markdown lint and diff checks passed. Windows execution,
 Update worker/publication/rollback and visual Update UI remain unverified.
+
+## Native game Update review boundary
+
+The shell now exposes a separate `game_update_command` inspection/check boundary.
+Checking fetches only the native catalog, verifies signed bytes and retains an
+opaque offer bound to the installed owner, current signed release and operation
+revision. The renderer cannot provide manifests, download URLs or destinations.
+Concurrent catalog checks cannot overwrite a later review. An intervening game
+operation invalidates the offer; process restart intentionally discards it.
+Selected-folder preferences do not redirect the installed target. Minimum-launcher
+compatibility and old/new manifest digests and patch IDs accompany the review.
+
+This removes the authenticated-offer blocker for the upcoming Update confirmation
+UI. It does not expose Apply, claim per-file modification detection or enable a
+visible Update button. The next integration connects retained preparation,
+confirmation, progress and recovery to this exact offer, then mounts the controls.
+
+Validation on the combined branch: three native host tests pass; the native JSON
+bridge is ignored during ordinary tests and was explicitly driven by
+`npm run uat:game-update`. That Effect/JS pass verifies signed old/new identities,
+unchanged saved preferences and operation state, lost-reply inspection and review
+invalidation after an actual native store reopen. Shell strict all-target Clippy,
+frontend type checking, formatting and diff checks pass. This pass does not cover
+live catalog networking, reconstruction, real IPC/webview or visual presentation.

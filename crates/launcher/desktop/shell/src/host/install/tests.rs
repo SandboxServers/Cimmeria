@@ -155,7 +155,7 @@ fn shared_native_owner_outlives_host_while_worker_retains_it() {
 pub(crate) fn fixture_release() -> VerifiedRelease {
     fixture_release_padded(0)
 }
-fn fixture_release_padded(padding: usize) -> VerifiedRelease {
+pub(crate) fn fixture_release_padded(padding: usize) -> VerifiedRelease {
     use ed25519_dalek::{Signer, SigningKey};
     // HTTPS-only production transport rejects this loopback HTTP URL locally.
     // No server, GUI, game download or production endpoint is contacted.

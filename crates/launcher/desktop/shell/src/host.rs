@@ -5,7 +5,9 @@ use std::{
     sync::{Arc, Mutex},
 };
 
+mod game_update;
 mod install;
+pub use game_update::{GameUpdateCommand, GameUpdateStatus};
 mod updater;
 pub use updater::UpdaterCommand;
 mod launch;
@@ -17,6 +19,7 @@ mod runtime_setup;
 pub use install::{InstallCommand, InstallStatus, JobError};
 
 pub struct NativeHost {
+    game_update_offer: Mutex<game_update::Offers>,
     updater_config: Option<cimmeria_launcher_engine::updater::Config>,
     updater_shutdown: Option<Arc<dyn Fn() + Send + Sync>>,
     root: PathBuf,
@@ -39,6 +42,7 @@ pub struct NativeHost {
 impl NativeHost {
     pub fn new(root: PathBuf) -> Self {
         Self {
+            game_update_offer: Mutex::new(game_update::Offers::default()),
             updater_config: None,
             updater_shutdown: None,
             root,

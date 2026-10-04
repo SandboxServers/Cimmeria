@@ -3,12 +3,44 @@ mod host;
 
 use cimmeria_launcher_engine::{NativeCommand, NativeSnapshot, StorageError};
 use host::{
-    InstallCommand, InstallStatus, JobError, LaunchCommand, LaunchStatus, MigrationCommand,
-    MigrationStatus, NativeHost, UpdaterCommand,
+    GameUpdateCommand, GameUpdateStatus, InstallCommand, InstallStatus, JobError, LaunchCommand,
+    LaunchStatus, MigrationCommand, MigrationStatus, NativeHost, UpdaterCommand,
 };
 use std::sync::Arc;
 use tauri::Manager;
 use tauri_plugin_dialog::DialogExt;
+
+#[tauri::command]
+async fn game_update_command(
+    request: GameUpdateCommand,
+    state: tauri::State<'_, Arc<NativeHost>>,
+) -> Result<GameUpdateStatus, JobError> {
+    request.validate()?;
+    let host = state.inner().clone();
+    match request {
+        GameUpdateCommand::Inspect { .. } => {
+            tauri::async_runtime::spawn_blocking(move || host.game_update_status())
+                .await
+                .map_err(|_| JobError::Io)?
+        }
+        GameUpdateCommand::Check {
+            operation_revision, ..
+        } => {
+            let checking = host.clone();
+            let check = tauri::async_runtime::spawn_blocking(move || {
+                checking.begin_game_update_check(operation_revision)
+            })
+            .await
+            .map_err(|_| JobError::Io)??;
+            let release = cimmeria_launcher_engine::catalog::fetch_release().await?;
+            tauri::async_runtime::spawn_blocking(move || {
+                host.finish_game_update_check(check, release)
+            })
+            .await
+            .map_err(|_| JobError::Io)?
+        }
+    }
+}
 
 #[tauri::command]
 async fn updater_command(
@@ -210,6 +242,7 @@ fn main() {
             launch_command,
             migration_command,
             updater_command,
+            game_update_command,
             choose_legacy_source
         ])
         .run(tauri::generate_context!())
