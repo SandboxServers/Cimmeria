@@ -38,6 +38,8 @@ pub(crate) struct Message {
     pub receiver: Receiver,
     /// `client.mercury.entity_method`'s delivery path.
     pub path: &'static str,
+    /// Whether the receiver is the local player (throttled apart).
+    pub local: bool,
     /// Argument bytes in the stream (`end - cursor`), before any cap.
     pub len: u32,
 }
@@ -94,7 +96,11 @@ pub(crate) fn event(msg: &Message, bytes: &[u8]) -> Option<(&'static str, String
         }
         None => "info",
     };
-    Some((level, format!("recv:{}", method.name), f))
+    Some((
+        level,
+        format!("recv:{}:{}", method.name, super::whose(msg.local)),
+        f,
+    ))
 }
 
 fn value_of<'a>(f: &'a [(&'static str, Value)], key: &str) -> Option<&'a Value> {
@@ -149,6 +155,7 @@ mod tests {
             entity_id: 4242,
             receiver,
             path: "delivered",
+            local: false,
             len: len as u32,
         }
     }
@@ -184,7 +191,10 @@ mod tests {
         b.extend_from_slice(&40i32.to_le_bytes());
         b.extend_from_slice(&[0, 3]);
         let (level, key, f) = event(&msg(14, Receiver::Other, b.len()), &b).unwrap();
-        assert_eq!((level, key.as_str()), ("info", "recv:onEffectResults"));
+        assert_eq!(
+            (level, key.as_str()),
+            ("info", "recv:onEffectResults:other")
+        );
         assert_eq!(get(&f, "method"), json!("onEffectResults"));
         assert_eq!(get(&f, "entity_id"), json!(4242));
         assert_eq!(get(&f, "cast_id"), json!(31337));
@@ -268,7 +278,10 @@ mod tests {
     fn state_field_updates_decode() {
         let b = i32s(&[0x22]);
         let (_, key, f) = event(&msg(19, Receiver::Other, 4), &b).unwrap();
-        assert_eq!(key, "recv:onStateFieldUpdate");
+        assert_eq!(key, "recv:onStateFieldUpdate:other");
+        let mut own = msg(19, Receiver::Player, 4);
+        own.local = true;
+        assert_eq!(event(&own, &b).unwrap().1, "recv:onStateFieldUpdate:self");
         assert_eq!(get(&f, "state_field"), json!(0x22));
     }
 

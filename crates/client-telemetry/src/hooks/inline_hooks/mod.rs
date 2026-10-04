@@ -34,6 +34,11 @@
 //! - [`ability_recv`] — the ability methods' arguments, decoded from the
 //!   `onEntityMethod` stream before the game reads it (`client.ability.recv`,
 //!   AB-C3, 2026-10-04). No hook of its own.
+//! - [`ability_apply`] — what the client applied: the effect bar, hotbar
+//!   cooldowns and stats (`client.ability.applied`, AB-C4, 2026-10-04); the
+//!   state-flag row rides [`state_flags`].
+//! - [`sequence_net_in`] — the `Event_NetIn_onSequence` handler's silent
+//!   drop (`client.sequence.dropped` `stage = net_in`, AB-C5, 2026-10-04).
 //! - [`net_out`] — the outgoing entity-method router (`client.net.out`).
 //! - [`sequence_manager`] — the `SequenceManager`'s silent drops of a
 //!   server `onSequence` (`client.sequence.dropped`, 2026-09-29).
@@ -43,7 +48,7 @@
 //!
 //! # What's installed
 //!
-//! 33 hooks. Every address below was re-checked against the QA
+//! 44 hooks. Every address below was re-checked against the QA
 //! `SGW.exe` on 2026-09-27 (function entry, `ret N` against the detour's
 //! argument count) and is covered by the [fingerprint
 //! gate](crate::fingerprint), which installs none of them on a build
@@ -91,6 +96,11 @@
 //! | `SequenceManager` `Event_Cache_ElementReady` (`this, evt, arg`, `ret 8`) | `0x00d06f30` | `client.sequence.dropped` (`no_source_entity`, `no_source_pawn`, `no_cooked_data`, `expired`) | per (path, Source entity) bucket |
 //! | sequence play step (`this, data, request, source`, `ret 0xc`) | `0x00d06dd0` | `client.sequence.dropped` (`culled_by_distance` at `debug`, `instance_refused`) | per (path, Source entity) bucket |
 //! | Kismet sequence instantiate (`this, out, name, pawn`, `ret 0xc`) | `0x00d067e0` | (records the play step's result; no event) | - |
+//! | `EffectSet` timer handler (`this, event, subject`, `ret 8`) | `0x00e09160` | `client.ability.applied` `effect_bar_*` | per-name bucket |
+//! | `EffectSet` entry lookup / effect-bar announce / display-data request (probes, `ret 4`) | `0x00e08570`, `0x00e0a9e0`, `0x00e0a810` | (feed the effect-bar row; no event) | - |
+//! | `CooldownManager` timer handler (`ret 8`) + button callback (`ret 0x10`) | `0x00ea6af0`, `0x00ea62b0` | `client.ability.applied` `cooldown` | per-name bucket |
+//! | `GameBeing` stat / base-stat handlers (`ret 8`) + their functors (`ret 0x10`) | `0x00e01f40`, `0x00e02060`, `0x00e004e0`, `0x00e005b0` | `client.ability.applied` `stat` / `stat_base` | per-name bucket |
+//! | `SequenceManager::onSequence` (`this, event, subject`, `ret 8`) | `0x00d05790` | `client.sequence.dropped` (`no_source_entity`, `stage = net_in`) | per (path, Source entity) bucket |
 //! | `ScriptedDebug` `log` / `warn` / `error` tolua bindings (`Debug:log` etc., `cdecl int(lua_State*)`; the logger they call, `0x0081c2e0`, is a bare `ret`) | `0x00aa1620`, `0x00aa1710`, `0x00aa1800` | `client.lua.debug_log` (`channel`, `source`, `text`) | per (channel, message shape) bucket |
 //!
 //! # Why MinHook
@@ -102,6 +112,9 @@
 
 #![allow(clippy::missing_safety_doc)] // FFI bindings — safety doc in fn-level
 
+// `client.ability.applied` (AB-C4).
+#[cfg(all(target_os = "windows", target_arch = "x86"))]
+mod ability_apply;
 // `client.ability.recv`: the ability methods' arguments, read from the
 // `onEntityMethod` stream (AB-C3).
 #[cfg(all(target_os = "windows", target_arch = "x86"))]
@@ -129,6 +142,8 @@ mod mercury_recv;
 mod net_out;
 #[cfg(all(target_os = "windows", target_arch = "x86"))]
 mod sequence_manager;
+#[cfg(all(target_os = "windows", target_arch = "x86"))]
+mod sequence_net_in;
 mod state_flags;
 
 use crate::queue::Producer;
@@ -194,11 +209,13 @@ unsafe fn install_inner(producer: Producer) {
     mercury_recv::install_all(&producer);
     sequence_manager::install_all(&producer);
     lua_debug_log::install_all(&producer);
+    ability_apply::install_all(&producer);
+    sequence_net_in::install_all(&producer);
 
     super::emit_info(
         &producer,
         "client.hooks.inline.install_complete",
-        [("hook_count", serde_json::json!(33))],
+        [("hook_count", serde_json::json!(44))],
     );
 }
 
@@ -433,6 +450,19 @@ mod tests {
             assert_eq!(super::mercury_recv::ADDR_PROCESS_PACKET, 0x0157fd20);
             assert_eq!(super::mercury_recv::ADDR_PROCESS_ORDERED_PACKET, 0x0157c820);
             assert_eq!(super::mercury_recv::ADDR_BUNDLE_UNPACK, 0x01579830);
+            // Ability telemetry (findings/ability-client-hook-anchors.md,
+            // 2026-10-04).
+            assert_eq!(super::ability_apply::ADDR_EFFECT_TIMER, 0x00e09160);
+            assert_eq!(super::ability_apply::ADDR_EFFECT_LOOKUP, 0x00e08570);
+            assert_eq!(super::ability_apply::ADDR_EFFECT_ANNOUNCE, 0x00e0a9e0);
+            assert_eq!(super::ability_apply::ADDR_EFFECT_DATA_REQUEST, 0x00e0a810);
+            assert_eq!(super::ability_apply::ADDR_COOLDOWN_TIMER, 0x00ea6af0);
+            assert_eq!(super::ability_apply::ADDR_COOLDOWN_UI, 0x00ea62b0);
+            assert_eq!(super::ability_apply::ADDR_STAT_HANDLER, 0x00e01f40);
+            assert_eq!(super::ability_apply::ADDR_STAT_BASE_HANDLER, 0x00e02060);
+            assert_eq!(super::ability_apply::ADDR_STAT_FUNCTOR, 0x00e004e0);
+            assert_eq!(super::ability_apply::ADDR_STAT_BASE_FUNCTOR, 0x00e005b0);
+            assert_eq!(super::sequence_net_in::ADDR_ON_SEQUENCE, 0x00d05790);
         }
     }
     /// Every inline-hooked address is a fingerprinted site, so a build
@@ -474,6 +504,21 @@ mod tests {
             super::lua_debug_log::ADDR_DEBUG_LOG,
             super::lua_debug_log::ADDR_DEBUG_WARN,
             super::lua_debug_log::ADDR_DEBUG_ERROR,
+            super::ability_apply::ADDR_EFFECT_TIMER,
+            super::ability_apply::ADDR_EFFECT_LOOKUP,
+            super::ability_apply::ADDR_EFFECT_ANNOUNCE,
+            super::ability_apply::ADDR_EFFECT_DATA_REQUEST,
+            super::ability_apply::ADDR_COOLDOWN_TIMER,
+            super::ability_apply::ADDR_COOLDOWN_UI,
+            super::ability_apply::ADDR_STAT_HANDLER,
+            super::ability_apply::ADDR_STAT_BASE_HANDLER,
+            super::ability_apply::ADDR_STAT_FUNCTOR,
+            super::ability_apply::ADDR_STAT_BASE_FUNCTOR,
+            super::sequence_net_in::ADDR_ON_SEQUENCE,
+            // Called, not hooked: the event-bag getters.
+            crate::hooks::ability_trace::event_bag::ADDR_GET_INT,
+            crate::hooks::ability_trace::event_bag::ADDR_GET_FLOAT,
+            crate::hooks::ability_trace::event_bag::ADDR_GET_BYTE,
         ];
         for addr in hooked {
             assert!(

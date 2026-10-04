@@ -46,9 +46,9 @@ fn stream_window(stream: u32) -> Option<(u32, u32)> {
     Some((cursor, end.checked_sub(cursor)?))
 }
 
-/// Who the message is for, and its delivery path, the way
-/// `onEntityMethod` decides it.
-fn receiver(mgr: u32, id: i32) -> (Receiver, &'static str) {
+/// Who the message is for, its delivery path (the way `onEntityMethod`
+/// decides it), and whether it is the local player.
+fn receiver(mgr: u32, id: i32) -> (Receiver, &'static str, bool) {
     let is_local = LiveMem
         .u32_at(mgr.wrapping_add(map::manager::LOCAL_PLAYER_ENTITY))
         .filter(|&p| p != 0)
@@ -68,7 +68,11 @@ fn receiver(mgr: u32, id: i32) -> (Receiver, &'static str) {
         Some(_) => Receiver::Other,
         None => Receiver::Unknown,
     };
-    (receiver, trace::delivery_path(type_id.is_some(), is_local))
+    (
+        receiver,
+        trace::delivery_path(type_id.is_some(), is_local),
+        is_local,
+    )
 }
 
 /// Decode and emit the message, if it is one of ours. Called before the
@@ -80,12 +84,13 @@ pub(super) fn report(mgr: *mut c_void, id: i32, msg_id: u32, stream: *mut c_void
     let Some((cursor, len)) = stream_window(stream as u32) else {
         return;
     };
-    let (receiver, path) = receiver(mgr as u32, id);
+    let (receiver, path, local) = receiver(mgr as u32, id);
     let msg = Message {
         msg_id,
         entity_id: id,
         receiver,
         path,
+        local,
         len,
     };
     let read = |n: usize| LiveMem.bytes_at(cursor, n.min(len as usize));

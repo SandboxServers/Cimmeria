@@ -82,6 +82,8 @@ mod imports;
 mod lua_error;
 
 #[cfg(all(target_os = "windows", target_arch = "x86"))]
+use crate::hooks::ability_trace::shown;
+#[cfg(all(target_os = "windows", target_arch = "x86"))]
 use imports::*;
 
 // ─── Saved originals (set at install time, used in detours) ─────
@@ -331,7 +333,17 @@ unsafe extern "C-unwind" fn lua_pcall_detour(
     }
     let original: unsafe extern "C-unwind" fn(*mut c_void, i32, i32, i32) -> i32 =
         unsafe { std::mem::transmute(orig_addr) };
+    // An ability UI handler (`client.ability.shown`): named, and its
+    // arguments read, before the call consumes them.
+    let shown = std::panic::catch_unwind(|| shown::before_call(l, nargs))
+        .ok()
+        .flatten();
     let status = original(l, nargs, nresults, errfunc);
+    if let Some(p) = shown {
+        let _ = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+            shown::after_call(p, Some(status))
+        }));
+    }
     if status != 0 {
         // The error value is on top of the stack. Read it after the call
         // has returned; the stack is left as the caller expects it.
@@ -362,7 +374,16 @@ unsafe extern "C-unwind" fn lua_call_detour(l: *mut c_void, nargs: i32, nresults
     }
     let original: unsafe extern "C-unwind" fn(*mut c_void, i32, i32) =
         unsafe { std::mem::transmute(orig_addr) };
+    let shown = std::panic::catch_unwind(|| shown::before_call(l, nargs))
+        .ok()
+        .flatten();
     original(l, nargs, nresults);
+    // Reached only when the call returned; a Lua error unwinds past it and
+    // is reported by the enclosing `lua_pcall` as `client.lua.error`.
+    if let Some(p) = shown {
+        let _ =
+            std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| shown::after_call(p, None)));
+    }
 }
 
 /// `lua_newstate(lua_Alloc f, void* ud) -> lua_State*`

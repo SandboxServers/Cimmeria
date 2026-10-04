@@ -1,5 +1,7 @@
 //! The client's half of an ability cast: what it received, decoded
-//! (`client.ability.recv`, AB-C3 of the ability-mechanics telemetry plan).
+//! (`client.ability.recv`, AB-C3 of the ability-mechanics telemetry plan),
+//! what it applied (`client.ability.applied`, AB-C4: [`applied`]) and what
+//! it asked its UI to show (`client.ability.shown`, AB-C5: [`shown`]).
 //!
 //! Plan: `docs/analysis/ability-mechanics/lab-uat-and-telemetry.md` Part 2.
 //! Anchors: `docs/reverse-engineering/findings/ability-client-hook-anchors.md`.
@@ -16,14 +18,20 @@
 //!
 //! Every event goes through one per-name token bucket: burst 8, then 4 a
 //! second, and the next event of that name carries the dropped count as
-//! `suppressed`. The name is the event's key (`recv:onEffectResults`), so
-//! a stat storm cannot hide an `onEffectResults`. The governor forwards
+//! `suppressed`. The name is the event's key (`recv:onEffectResults:self`),
+//! so a stat storm cannot hide an `onEffectResults`, and the key's last
+//! part ([`whose`]) keeps the local player's rows apart from every other
+//! being's, so a fight's NPC traffic cannot starve the player's own. The governor forwards
 //! `client.ability.*` untouched (`governor::classify`, `SourceThrottled`):
 //! the throttle here is the budget, and a second one in the governor would
 //! drop what this one already counted.
 
+pub(crate) mod applied;
+pub(crate) mod clock;
+pub(crate) mod event_bag;
 pub(crate) mod recv;
 pub(crate) mod recv_methods;
+pub(crate) mod shown;
 pub(crate) mod wire_decode;
 
 use std::sync::{Mutex, OnceLock};
@@ -39,6 +47,16 @@ pub(crate) const TARGET_RECV: &str = "client.ability.recv";
 
 static THROTTLE: Mutex<Option<NameThrottle>> = Mutex::new(None);
 static EPOCH: OnceLock<Instant> = OnceLock::new();
+
+/// The last part of a throttle key: `self` for the local player, `other`
+/// for anyone else (or unknown).
+pub(crate) fn whose(local: bool) -> &'static str {
+    if local {
+        "self"
+    } else {
+        "other"
+    }
+}
 
 /// Run the shared per-name bucket for `key`. Poisoning is ignored.
 pub(crate) fn throttle(key: &str) -> Decision {
