@@ -369,6 +369,11 @@ pub struct SpaceManager {
     /// `effects::cast_scope`): what the effect rows, ledger entries, pulsing
     /// instances and interrupt requests created under it carry as `cast_id`.
     pub current_cast_id: Option<i32>,
+    /// The invoker of the deferred effect being resolved right now (a pulse,
+    /// an expiry, a channel cancel), with the identity it snapshotted when
+    /// its cast registered it (`effects::cast_scope`). `None` inside a live
+    /// cast, where the caster is looked up.
+    pub current_invoker: Option<(u32, cimmeria_entity::cell_entity::PlayerIdentity)>,
     /// In-game combat and ability debug (AB-N1, `cell::combat_debug`): who
     /// has it on, and the notes of the casts being resolved.
     pub combat_debug: crate::cell::combat_debug::CombatDebug,
@@ -562,6 +567,7 @@ impl SpaceManager {
             pending_interrupts: Vec::new(),
             interrupt_nonce: 0,
             current_cast_id: None,
+            current_invoker: None,
             combat_debug: Default::default(),
             movement_validator: MovementValidator::new(),
             movement_telemetry: MovementTelemetry::default(),

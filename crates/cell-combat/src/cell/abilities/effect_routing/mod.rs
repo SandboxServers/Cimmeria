@@ -280,6 +280,7 @@ fn log_route(
     tracing::debug!(
         target: "abilities",
         event = EVENT_EFFECT_ROUTED,
+        cast_id = space_mgr.current_cast_id(),
         account_id = who.account_id,
         player_id = who.player_id,
         entity_id = caster_id,
@@ -397,6 +398,7 @@ pub(in crate::cell::abilities) fn secondary_scope(
         tracing::debug!(
             target: "abilities",
             event = EVENT_EFFECT_ROUTED,
+            cast_id = space_mgr.current_cast_id(),
             account_id = who.account_id,
             player_id = who.player_id,
             entity_id = caster_id,

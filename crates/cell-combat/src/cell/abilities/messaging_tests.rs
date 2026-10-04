@@ -108,6 +108,50 @@ async fn witnesses_only_with_no_observers_is_a_clean_zero() {
     assert!(drain(&mut rx).is_empty());
 }
 
+/// **Regression guard (colo smoke test, 2026-10-04).** A lone player's
+/// Heal Focus `onStatUpdate` fan-out found no witnesses and logged the one
+/// row of the cast with no `event` and no ids. The row now has a stable
+/// event, the player and the cast. Fails on revert: `event` is absent.
+#[tokio::test]
+async fn a_fan_out_with_no_witnesses_names_its_event_player_and_cast() {
+    let mut mgr = SpaceManager::new(1);
+    let xml = r#"<?xml version="1.0"?><Spaces><Space WorldName="Castle" Instanced="false" MinX="-800" MaxX="800" MinY="-800" MaxY="800" /></Spaces>"#;
+    mgr.parse_spaces_xml(xml).unwrap();
+    mgr.create_startup_spaces(
+        r#"<?xml version="1.0"?><Spaces><Space WorldName="Castle" /></Spaces>"#,
+    )
+    .unwrap();
+    mgr.create_entity(1, "Castle", [0.0; 3], [0.0; 3]).unwrap();
+    if let Some(p) = mgr.get_entity_mut(1) {
+        p.is_player = true;
+        p.player_id = Some(100);
+    }
+    mgr.connect_entity(1);
+    let _ = mgr.compute_aoi_changes();
+    let (tx, _rx) = mpsc::channel(64);
+    let logs = crate::test_support::LogCapture::install();
+
+    let outer = mgr.enter_cast_scope(Some(7));
+    send_entity_method_to_self_and_witnesses(1, 20, 0u32.to_le_bytes().to_vec(), &tx, &mgr).await;
+    mgr.exit_cast_scope(outer);
+
+    let row = logs
+        .all()
+        .into_iter()
+        .find(|c| c.target == "abilities.wire" && c.message_contains("no witnesses"))
+        .expect("the no-witnesses row");
+    assert!(row.has_field("event", EVENT_NO_WITNESSES), "{row:?}");
+    assert!(row.has_field("cast_id", "7"), "{row:?}");
+    assert!(row.has_field("player_id", "100"), "{row:?}");
+    assert!(row.has_field("entity_id", "1"), "{row:?}");
+    assert!(row.has_field("method", "onStatUpdate"), "{row:?}");
+    assert!(row.has_field("route", "self_and_witnesses"), "{row:?}");
+    assert!(row.has_field("self_send", "true"), "{row:?}");
+    // The owner's send still went out, so the text must not claim otherwise
+    // (Copilot on #1198).
+    assert!(!row.message_contains("nothing emitted"), "{row:?}");
+}
+
 /// Self + witnesses for a player: one `EntityMethodCall` to self, one
 /// `WitnessEntityMethod` per observer. Returns the witness count
 /// (not counting the self send).

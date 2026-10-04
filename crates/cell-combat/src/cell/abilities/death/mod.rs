@@ -191,6 +191,7 @@ pub(super) async fn apply_death_transition(
         for (player_entity_id, new_state) in to_broadcast {
             tracing::debug!(
                 target: "abilities",
+                event = "death_in_combat_cleared",
                 player_entity_id,
                 dying_npc = target_eid,
                 new_state,
@@ -226,6 +227,7 @@ pub(super) async fn apply_death_transition(
     for (player_entity_id, new_state) in auto_cycle_broadcasts {
         tracing::info!(
             target: "abilities",
+            event = "death_auto_cycle_cleared",
             player_entity_id,
             dying_target = target_eid,
             new_state,
@@ -263,6 +265,7 @@ pub(super) async fn apply_death_transition(
         if let Some(new_state) = crate::cell::combat::clear_auto_cycle(space_mgr, target_eid) {
             tracing::info!(
                 target: "abilities",
+                event = "death_own_auto_cycle_cleared",
                 player_entity_id = target_eid,
                 new_state,
                 "death: clearing dying player's own auto-cycle loop"
@@ -428,6 +431,7 @@ pub(super) async fn resolve_death(
 
     tracing::info!(
         target: "abilities",
+        event = "target_killed",
         attacker = attacker_id,
         target = target_eid,
         ability_id = ability_id.unwrap_or(-1),

@@ -70,6 +70,10 @@ impl EffectScript for CoverStance {
         tracing::debug!(
             target: "abilities",
             event = "cover_stance_applied",
+            cast_id = ctx.row_ids().cast_id,
+            account_id = ctx.row_ids().account_id,
+            player_id = ctx.row_ids().player_id,
+            target_player_id = ctx.row_ids().target_player_id,
             target_id = ctx.target_id,
             effect_id = ctx.effect.effect_id,
             delta,
@@ -100,6 +104,10 @@ impl EffectScript for RemoveCoverStance {
         tracing::debug!(
             target: "abilities",
             event = "cover_stance_removed",
+            cast_id = ctx.row_ids().cast_id,
+            account_id = ctx.row_ids().account_id,
+            player_id = ctx.row_ids().player_id,
+            target_player_id = ctx.row_ids().target_player_id,
             target_id = ctx.target_id,
             effect_id = ctx.effect.effect_id,
             delta,

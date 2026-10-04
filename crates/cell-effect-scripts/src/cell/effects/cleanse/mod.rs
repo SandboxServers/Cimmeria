@@ -164,7 +164,7 @@ pub struct RemoveEffects;
 impl EffectScript for RemoveEffects {
     fn on_apply(&self, ctx: &mut EffectContext) {
         let wanted = remove_categories(ctx.effect);
-        let who = ctx.space_mgr.player_identity(ctx.source_id);
+        let who = ctx.space_mgr.caster_identity(ctx.source_id);
         let target_who = ctx.space_mgr.player_identity(ctx.target_id);
         let polarity = polarity(ctx.effect);
         let rel = relation(ctx.space_mgr, ctx.source_id, ctx.target_id);
@@ -183,6 +183,7 @@ impl EffectScript for RemoveEffects {
             tracing::warn!(
                 target: "abilities",
                 event = "remove_effects_skipped",
+                cast_id = ctx.row_ids().cast_id,
                 reason,
                 account_id = who.account_id,
                 player_id = who.player_id,
@@ -238,6 +239,7 @@ impl EffectScript for RemoveEffects {
             tracing::info!(
                 target: "abilities",
                 event = "effect_removed_by_cleanse",
+                cast_id = ctx.row_ids().cast_id,
                 account_id = who.account_id,
                 player_id = who.player_id,
                 entity_id = ctx.source_id,
@@ -257,6 +259,7 @@ impl EffectScript for RemoveEffects {
         tracing::debug!(
             target: "abilities",
             event = "remove_effects_applied",
+            cast_id = ctx.row_ids().cast_id,
             account_id = who.account_id,
             player_id = who.player_id,
             entity_id = ctx.source_id,

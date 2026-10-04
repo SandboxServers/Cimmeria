@@ -110,6 +110,7 @@ pub(super) async fn grant_kill_xp(
     };
     tracing::info!(
         target: "abilities",
+        event = "kill_xp_granted",
         attacker = attacker_id,
         credited = recipient,
         via_pet = recipient != attacker_id,
@@ -135,6 +136,7 @@ pub(super) async fn grant_kill_xp(
         if let Err(e) = sent {
             tracing::error!(
                 target: "abilities",
+                event = "kill_xp_send_failed",
                 attacker = attacker_id, credited = recipient, target = target_eid, xp,
                 error = %e,
                 "GrantXP send to base failed -- player kill credit lost"
@@ -488,6 +490,7 @@ pub(super) async fn send_begin_aid_wait(
     .await;
     tracing::info!(
         target: "abilities",
+        event = "aid_wait_sent",
         target = target_eid,
         world = ?world_name,
         respawner_count = if matching_respawners.is_empty() { 1 } else { matching_respawners.len() },

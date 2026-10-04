@@ -71,6 +71,10 @@ fn heal_pool(ctx: &mut EffectContext, stat_id: i32, script: &'static str, event:
         tracing::debug!(
             target: "abilities",
             event = "heal_skipped_zero_percent",
+            cast_id = ctx.row_ids().cast_id,
+            account_id = ctx.row_ids().account_id,
+            player_id = ctx.row_ids().player_id,
+            target_player_id = ctx.row_ids().target_player_id,
             script,
             effect_id = ctx.effect.effect_id,
             source_id = ctx.source_id,
@@ -83,6 +87,10 @@ fn heal_pool(ctx: &mut EffectContext, stat_id: i32, script: &'static str, event:
         tracing::debug!(
             target: "abilities",
             event = "heal_skipped_no_target",
+            cast_id = ctx.row_ids().cast_id,
+            account_id = ctx.row_ids().account_id,
+            player_id = ctx.row_ids().player_id,
+            target_player_id = ctx.row_ids().target_player_id,
             script,
             effect_id = ctx.effect.effect_id,
             target_id = ctx.target_id,
@@ -107,6 +115,10 @@ fn heal_pool(ctx: &mut EffectContext, stat_id: i32, script: &'static str, event:
     tracing::info!(
         target: "abilities",
         event,
+        cast_id = ctx.row_ids().cast_id,
+        account_id = ctx.row_ids().account_id,
+        player_id = ctx.row_ids().player_id,
+        target_player_id = ctx.row_ids().target_player_id,
         source_id = ctx.source_id,
         target_id = ctx.target_id,
         effect_id = ctx.effect.effect_id,

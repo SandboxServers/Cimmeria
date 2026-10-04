@@ -58,12 +58,13 @@ impl EffectScript for AbsorbShield {
             (None, _) => Some("unknown_shield_type"),
             _ => None,
         };
-        let who = ctx.space_mgr.player_identity(ctx.source_id);
+        let who = ctx.space_mgr.caster_identity(ctx.source_id);
         let target_who = ctx.space_mgr.player_identity(ctx.target_id);
         if let Some(reason) = reason {
             tracing::warn!(
                 target: "abilities",
                 event = "shield_skipped",
+                cast_id = ctx.row_ids().cast_id,
                 reason,
                 account_id = who.account_id,
                 player_id = who.player_id,
@@ -87,6 +88,7 @@ impl EffectScript for AbsorbShield {
             tracing::warn!(
                 target: "abilities",
                 event = "shield_skipped",
+                cast_id = ctx.row_ids().cast_id,
                 reason = "target_not_ally",
                 account_id = who.account_id,
                 player_id = who.player_id,
@@ -118,6 +120,7 @@ impl EffectScript for AbsorbShield {
             tracing::debug!(
                 target: "abilities",
                 event = "shield_skipped",
+                cast_id = ctx.row_ids().cast_id,
                 reason = REASON_ABSORB_FULL,
                 account_id = who.account_id,
                 player_id = who.player_id,
@@ -155,6 +158,7 @@ impl EffectScript for AbsorbShield {
         tracing::info!(
             target: "abilities",
             event = "shield_granted",
+            cast_id = ctx.row_ids().cast_id,
             account_id = who.account_id,
             player_id = who.player_id,
             entity_id = ctx.source_id,

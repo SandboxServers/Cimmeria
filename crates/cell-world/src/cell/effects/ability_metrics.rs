@@ -185,6 +185,9 @@ pub fn abandon_pending_cast(space_mgr: &mut SpaceManager, entity_id: u32, reason
         return;
     };
     let caster = caster_label(caster.is_player);
+    let target_player_id = u32::try_from(pc.target_id)
+        .ok()
+        .and_then(|t| space_mgr.player_identity(t).player_id);
     tracing::debug!(
         target: "abilities",
         event = "warmup_abandoned",
@@ -197,6 +200,7 @@ pub fn abandon_pending_cast(space_mgr: &mut SpaceManager, entity_id: u32, reason
         cast_id = pc.cast_id(),
         ability_id = pc.ability_id,
         target_id = pc.target_id,
+        target_player_id,
         warmup_secs = pc.warmup_secs,
         "ability warmup abandoned: the caster was torn down before the cast fired"
     );

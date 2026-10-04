@@ -154,8 +154,8 @@ fn entry_monikers(ctx: &EffectContext) -> Vec<i64> {
             None => tracing::warn!(
                 target: "abilities",
                 event = "effect_moniker_unknown",
-                account_id = ctx.space_mgr.player_identity(ctx.source_id).account_id,
-                player_id = ctx.space_mgr.player_identity(ctx.source_id).player_id,
+                account_id = ctx.space_mgr.caster_identity(ctx.source_id).account_id,
+                player_id = ctx.space_mgr.caster_identity(ctx.source_id).player_id,
                 entity_id = ctx.source_id,
                 target_id = ctx.target_id,
                 target_player_id = ctx.space_mgr.player_identity(ctx.target_id).player_id,
@@ -184,7 +184,7 @@ fn apply_entry(ctx: &mut EffectContext, stacking: TimedStacking, script: &'stati
         None
     };
     if let Some(reason) = reason {
-        let who = ctx.space_mgr.player_identity(ctx.source_id);
+        let who = ctx.space_mgr.caster_identity(ctx.source_id);
         let target_who = ctx.space_mgr.player_identity(ctx.target_id);
         tracing::warn!(
             target: "abilities",

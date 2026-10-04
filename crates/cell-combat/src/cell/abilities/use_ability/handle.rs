@@ -108,7 +108,11 @@ pub async fn handle_use_ability(
     // whatever the client named (AB-01). See `beneficial`.
     let diverted = summon.is_some() || owner_pet || deploy.is_some();
     let client_target_id = target_id;
-    let Some((target_id, beneficial)) = super::beneficial::launch_target(
+    let Some(super::beneficial::LaunchTarget {
+        target_id,
+        beneficial,
+        resolved: beneficial_resolution,
+    }) = super::beneficial::launch_target(
         entity_id,
         ability_def.as_ref(),
         target_id,
@@ -522,6 +526,15 @@ pub async fn handle_use_ability(
         warmup_secs,
         ability_name = ability_def.as_ref().map_or("unknown", |d| &d.name),
         "useAbility: launched"
+    );
+    // A beneficial cast's launch resolution, now it has a `cast_id`.
+    super::beneficial::log_launch_resolution(
+        space_mgr,
+        entity_id,
+        ability_def.as_ref(),
+        client_target_id,
+        beneficial_resolution,
+        effect_seq,
     );
 
     // ── Send cooldown timer to the attacker's own client ──

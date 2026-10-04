@@ -48,7 +48,8 @@ pub(super) async fn pulse_one(
     tx: &mpsc::Sender<CellToBaseMsg>,
     space_mgr: &mut SpaceManager,
 ) {
-    let outer_cast = space_mgr.enter_cast_scope(inst.cast_id);
+    let outer_cast =
+        space_mgr.enter_effect_scope(inst.cast_id, inst.invoker_id, inst.invoker_identity);
     fire_pulse(target_id, inst, effect_def, tx, space_mgr).await;
     // Death first, threshold second: `dot_kill_credit` stamps `BSF_DEAD` on
     // a mob the pulse finished, which is exactly what
@@ -59,7 +60,7 @@ pub(super) async fn pulse_one(
     // honours.
     dot_kill_credit(target_id, inst.invoker_id, events, tx, space_mgr).await;
     events.pending_health_below(tx, space_mgr).await;
-    space_mgr.exit_cast_scope(outer_cast);
+    space_mgr.exit_effect_scope(outer_cast);
     // The pulse's debug lines (AB-N1), now its scope is closed.
     combat_debug::flush(tx, space_mgr).await;
 }

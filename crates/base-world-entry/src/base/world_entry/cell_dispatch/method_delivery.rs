@@ -15,6 +15,8 @@
 //! Ability methods (`onEffectResults`, `onTimerUpdate`, `onErrorCode`) also
 //! log `client_sent` with the Mercury seq when they go out; that is one
 //! integer match per method call, and no row at all for any other method.
+//! The row carries the payload fields that join it to the cell's `wire_sent`
+//! row, which names the cast (`method_join`).
 //!
 //! Two more paths hold or bundle methods. Before the client is ready (or
 //! behind a buffered introduction) a method is buffered
@@ -36,6 +38,7 @@ use super::super::super::deferred_aoi::DeferOutcome;
 use super::super::super::helpers::{BundleSendOutcome, WitnessSendOutcome};
 use super::super::super::session_identity;
 use super::super::super::ConnectedClientState;
+use super::method_join;
 use crate::wire_log::client_names::outbound_method_name;
 
 /// The methods whose successful send is logged too (`client_sent`): the
@@ -181,12 +184,15 @@ pub(super) fn log_batch_outcome(
 
 /// Log what became of one entity method addressed to `recipient_id`'s
 /// client (`entity_id` is the entity the method is about; the same id for
-/// an owner send).
+/// an owner send). `args` is the method's payload: a `client_sent` row
+/// carries the fields that join it to the cell's `wire_sent` row, and so to
+/// its cast (`method_join`).
 pub(super) fn log_method_outcome(
     outcome: WitnessSendOutcome,
     recipient_id: u32,
     entity_id: u32,
     method_index: u16,
+    args: &[u8],
     connected: &Arc<Mutex<HashMap<SocketAddr, ConnectedClientState>>>,
     entity_to_addr: &Arc<Mutex<HashMap<u32, SocketAddr>>>,
 ) {
@@ -195,6 +201,7 @@ pub(super) fn log_method_outcome(
             if is_ability_method(method_index) {
                 let who =
                     session_identity::identity_for_entity(connected, entity_to_addr, recipient_id);
+                let j = method_join::join_fields(method_index, args);
                 tracing::debug!(
                     target: "abilities.wire",
                     event = "client_sent",
@@ -206,6 +213,17 @@ pub(super) fn log_method_outcome(
                     account_id = who.account_id,
                     player_id = who.player_id,
                     seq,
+                    source_id = j.source_id,
+                    timer_id = j.timer_id,
+                    timer_type_code = j.timer_type_code,
+                    secondary_id = j.secondary_id,
+                    complete_at = j.complete_at,
+                    ability_id = j.ability_id,
+                    effect_id = j.effect_id,
+                    target_id = j.target_id,
+                    system_id = j.system_id,
+                    instance_id = j.instance_id,
+                    error_code = j.error_code,
                     "entity method sent to the client"
                 );
             }
@@ -372,6 +390,39 @@ mod tests {
         assert!(sent[0].has_field("method", "onErrorCode"));
         assert!(sent[0].fields.contains_key("seq"));
         assert!(drops(&logs).is_empty());
+    }
+
+    /// Colo smoke test, 2026-10-04: a Heal Focus cast's two `client_sent`
+    /// `onTimerUpdate` rows carried no field to join them to the cast. They
+    /// now carry the timer's id, type, secondary id and expiry, the fields
+    /// (and names) the cell's `wire_sent` row logs next to its `cast_id`.
+    /// Fails on revert: the row had only `method` and `seq`.
+    #[tokio::test]
+    async fn a_sent_timer_update_carries_the_fields_that_join_it_to_its_cast() {
+        use cimmeria_entity::abilities::{serialize_timer_update, TIMER_ABILITY_WARMUP};
+        let transport: Arc<dyn Transport> = Arc::new(TestTransport::new());
+        let (connected, e2a) = maps(true, true);
+        let logs = LogCapture::install();
+
+        let args = serialize_timer_update(597, TIMER_ABILITY_WARMUP, PLAYER as i32, 0, 2.0, 88.5);
+        aoi::entity_method_call(PLAYER, ON_TIMER_UPDATE, args, &transport, &connected, &e2a).await;
+
+        let sent: Vec<_> = logs
+            .all()
+            .into_iter()
+            .filter(|c| c.target == "abilities.wire" && c.has_field("event", "client_sent"))
+            .collect();
+        assert_eq!(sent.len(), 1, "{:#?}", logs.all());
+        let row = &sent[0];
+        assert!(row.has_field("timer_id", "597"), "{row:#?}");
+        assert!(
+            row.has_field("timer_type_code", &TIMER_ABILITY_WARMUP.to_string()),
+            "{row:#?}"
+        );
+        assert!(row.has_field("secondary_id", "0"), "{row:#?}");
+        assert!(row.has_field("source_id", &PLAYER.to_string()), "{row:#?}");
+        assert!(row.has_field("complete_at", "88.5"), "{row:#?}");
+        assert!(!row.fields.contains_key("effect_id"), "{row:#?}");
     }
 
     fn rows_with(logs: &LogCaptureGuard, event: &str) -> Vec<Captured> {

@@ -71,7 +71,7 @@ pub(super) fn apply_held(ctx: &mut EffectContext, spec: TimedEffectSpec, script:
     let effect_id = ctx.effect.effect_id;
     let ability_id = ctx.effect.ability_id;
     let (source, target) = (ctx.source_id, ctx.target_id);
-    let who = ctx.space_mgr.player_identity(source);
+    let who = ctx.space_mgr.caster_identity(source);
     let toggle = is_toggle(ctx);
     let kind = if toggle { "toggle" } else { "passive" };
     if source != target {
@@ -79,6 +79,7 @@ pub(super) fn apply_held(ctx: &mut EffectContext, spec: TimedEffectSpec, script:
         tracing::warn!(
             target: "abilities",
             event = "stat_buff_skipped",
+            cast_id = ctx.row_ids().cast_id,
             reason = "held_not_self",
             script,
             kind,
@@ -107,6 +108,8 @@ pub(super) fn apply_held(ctx: &mut EffectContext, spec: TimedEffectSpec, script:
             tracing::info!(
                 target: "abilities",
                 event = "toggle_pressed",
+                cast_id = ctx.row_ids().cast_id,
+                target_player_id = ctx.row_ids().target_player_id,
                 decision_outcome = if on { "off" } else { "on" },
                 account_id = who.account_id,
                 player_id = who.player_id,

@@ -49,6 +49,7 @@ pub(super) async fn hold_weapon_attack(
     if queued_attack_already_pending {
         tracing::debug!(
             target: "abilities",
+            event = "weapon_attack_already_queued",
             account_id = who.account_id,
             player_id = who.player_id,
             entity_id,
@@ -77,6 +78,7 @@ pub(super) async fn hold_weapon_attack(
     if slot_swap_in_progress {
         tracing::debug!(
             target: "abilities",
+            event = "weapon_swap_in_progress",
             account_id = who.account_id,
             player_id = who.player_id,
             entity_id,
@@ -111,6 +113,7 @@ pub(super) async fn hold_weapon_attack(
     }
     tracing::info!(
         target: "abilities",
+        event = "weapon_draw_queued",
         account_id = who.account_id,
         player_id = who.player_id,
         entity_id,

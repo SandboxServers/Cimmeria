@@ -26,9 +26,9 @@ use super::*;
 use crate::cell::abilities::resolve_warmups;
 use crate::test_support::{LogCapture, NoContentEvents};
 
-const HEAL_FOCUS: i32 = 597;
+pub(super) const HEAL_FOCUS: i32 = 597;
 const HEALTH_HEAL: i32 = 1646;
-const RECUPERATION: i32 = 1218;
+pub(super) const RECUPERATION: i32 = 1218;
 /// 2228 `MS020_080818_CallTarget`'s shape: Heal-typed, but it deals damage.
 const HEAL_TYPED_ATTACK: i32 = 2228;
 const NEUTRAL: u32 = 5;
@@ -61,7 +61,7 @@ fn heal(id: i32, target_type_id: i32, effect_id: i32, warmup: f32) -> AbilityDef
 }
 
 /// The fixture (module docs). `warmup` applies to 597 only.
-fn heal_mgr(warmup: f32) -> SpaceManager {
+pub(super) fn heal_mgr(warmup: f32) -> SpaceManager {
     let mut mgr = duel_mgr();
     crate::test_support::install_effect_scripts(&mut mgr);
     mgr.spawn_npc(NEUTRAL, "Castle", [1.0, 0.0, 1.0], [0.0; 3])
@@ -491,8 +491,8 @@ async fn a_self_heal_logs_beneficial_cast_and_no_444_warn() {
         .filter(|c| c.target == "abilities" && c.has_field("event", "beneficial_cast"))
         .collect();
     assert_eq!(rows.len(), 2, "one row at launch, one at fire: {rows:#?}");
-    // Launch is DEBUG (it runs before the dead/known/cooldown checks, so a
-    // forged packet cannot buy an INFO row); fire is INFO.
+    // Launch is DEBUG (the fire's INFO row is the one per committed cast);
+    // fire is INFO. Both carry the cast's id (`beneficial_cast_rows`).
     for (row, (stage, level)) in rows.iter().zip([
         ("launch", tracing::Level::DEBUG),
         ("fire", tracing::Level::INFO),

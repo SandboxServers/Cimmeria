@@ -78,13 +78,14 @@ pub fn lock_duration(effect: &EffectDef) -> Option<f32> {
 /// Put a `BSF_MovementLock` entry for `ctx`'s effect on its target.
 fn apply_lock(ctx: &mut EffectContext, kind: &'static str) {
     let effect = ctx.effect;
-    let who = ctx.space_mgr.player_identity(ctx.source_id);
+    let who = ctx.space_mgr.caster_identity(ctx.source_id);
     let target_who = ctx.space_mgr.player_identity(ctx.target_id);
     let duration = lock_duration(effect);
     if duration.is_some_and(|d| d <= 0.0) {
         tracing::warn!(
             target: "abilities",
             event = "crowd_control_skipped",
+            cast_id = ctx.row_ids().cast_id,
             reason = "no_duration",
             kind,
             account_id = who.account_id,
@@ -125,6 +126,7 @@ fn apply_lock(ctx: &mut EffectContext, kind: &'static str) {
     tracing::info!(
         target: "abilities",
         event = "crowd_control_applied",
+        cast_id = ctx.row_ids().cast_id,
         kind,
         account_id = who.account_id,
         player_id = who.player_id,
@@ -207,6 +209,10 @@ fn queue(ctx: &mut EffectContext, chance_pct: i32, cause: InterruptCause) {
     tracing::debug!(
         target: "abilities",
         event = "interrupt_requested",
+        cast_id = ctx.row_ids().cast_id,
+        account_id = ctx.row_ids().account_id,
+        player_id = ctx.row_ids().player_id,
+        target_player_id = ctx.row_ids().target_player_id,
         entity_id = ctx.source_id,
         target_id = ctx.target_id,
         effect_id = request.effect_id,

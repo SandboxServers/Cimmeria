@@ -32,6 +32,10 @@ use super::super::messages::CellToBaseMsg;
 use super::super::space_manager::SpaceManager;
 use super::wire_ledger::{self, WireCtx};
 
+/// `event` of a witness fan-out that found no witnesses (`abilities.wire`,
+/// DEBUG).
+pub(crate) const EVENT_NO_WITNESSES: &str = "wire_no_witnesses";
+
 /// Which audience one entity-method send goes to. Each of the three public
 /// helpers below is one of these; [`wire_ledger::send`] takes it directly.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -132,6 +136,7 @@ fn refuse_unbound_npc_method(entity_id: u32, method_index: u16, via: &'static st
     }
     tracing::warn!(
         target: "abilities.wire",
+        event = "wire_npc_method_unbound",
         entity_id,
         method_index,
         via,
@@ -226,6 +231,7 @@ fn witness_audience(
             if witnesses.is_empty() {
                 tracing::warn!(
                     target: "abilities.wire",
+                    event = "wire_npc_no_witnesses",
                     entity_id,
                     method_index,
                     "send_entity_method: NPC has no witnesses, method dropped"
@@ -236,11 +242,26 @@ fn witness_audience(
         WireRoute::Witnesses | WireRoute::SelfAndWitnesses => {
             let witnesses = space_mgr.get_witnesses_of(entity_id);
             if witnesses.is_empty() {
+                // Routine for a player alone in AoI: the self send (if the
+                // route has one) still goes out and the `wire_sent` row
+                // counts it. The row names the cast so a forensics query on
+                // `cast_id` reads it in sequence (2026-10-04 colo smoke test:
+                // it was the one row of a Heal Focus cast with no `event`).
+                let who = space_mgr.player_identity(entity_id);
                 tracing::debug!(
                     target: "abilities.wire",
-                    entity_id,
+                    event = EVENT_NO_WITNESSES,
+                    stage = "wire",
+                    method = wire_ledger::method_name(method_index),
                     method_index,
-                    "send_entity_method_to_witnesses: no witnesses; nothing emitted"
+                    entity_id,
+                    account_id = who.account_id,
+                    player_id = who.player_id,
+                    cast_id = space_mgr.current_cast_id(),
+                    route = route.label(),
+                    self_send = is_player && route == WireRoute::SelfAndWitnesses,
+                    "witness fan-out skipped: no witnesses in AoI (the owner's own send, \
+                     when the route has one, still goes out; see self_send)"
                 );
                 return witnesses;
             }
@@ -328,6 +349,7 @@ pub(crate) async fn deliver(
             // `wire_sent` row (AB-T4) carries the witness count at DEBUG.
             tracing::trace!(
                 target: "abilities.wire",
+                event = "wire_witness_routed",
                 witness_id,
                 entity_id,
                 method_index,
@@ -377,9 +399,17 @@ pub(crate) async fn deliver(
     if matches!(route, WireRoute::Witnesses | WireRoute::SelfAndWitnesses)
         && out.witnesses_addressed > 0
     {
+        let who = space_mgr.player_identity(entity_id);
         tracing::debug!(
             target: "abilities.wire",
+            event = "wire_fanned_out",
+            stage = "wire",
+            method = wire_ledger::method_name(method_index),
             entity_id,
+            account_id = who.account_id,
+            player_id = who.player_id,
+            cast_id = space_mgr.current_cast_id(),
+            route = route.label(),
             method_index,
             witness_count = out.witnesses_addressed,
             "send_entity_method_to_witnesses: fanned out"
@@ -408,7 +438,9 @@ pub async fn request_appearance_refresh(
             None => {
                 tracing::debug!(
                     target: "abilities.wire",
+                    event = "appearance_refresh_skipped",
                     entity_id,
+                reason = "no_player_id",
                     "request_appearance_refresh: player entity has no DB player_id (pre-load?), skipping"
                 );
                 return;
@@ -417,7 +449,9 @@ pub async fn request_appearance_refresh(
         Some(_) => {
             tracing::debug!(
                 target: "abilities.wire",
+                event = "appearance_refresh_skipped",
                 entity_id,
+                reason = "not_player",
                 "request_appearance_refresh: entity is not a player, skipping"
             );
             return;
@@ -425,7 +459,9 @@ pub async fn request_appearance_refresh(
         None => {
             tracing::debug!(
                 target: "abilities.wire",
+                event = "appearance_refresh_skipped",
                 entity_id,
+                reason = "entity_missing",
                 "request_appearance_refresh: entity not found in space_mgr, skipping"
             );
             return;

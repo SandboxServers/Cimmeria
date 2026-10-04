@@ -90,6 +90,10 @@ impl EffectScript for RadiationDamage {
             tracing::debug!(
                 target: "abilities",
                 event = "radiation_pulse_skipped",
+                cast_id = ctx.row_ids().cast_id,
+                account_id = ctx.row_ids().account_id,
+                player_id = ctx.row_ids().player_id,
+                target_player_id = ctx.row_ids().target_player_id,
                 reason = "target_missing",
                 source_id = ctx.source_id,
                 target_id = ctx.target_id,
@@ -106,6 +110,10 @@ impl EffectScript for RadiationDamage {
             tracing::debug!(
                 target: "abilities",
                 event = "radiation_pulse_skipped",
+                cast_id = ctx.row_ids().cast_id,
+                account_id = ctx.row_ids().account_id,
+                player_id = ctx.row_ids().player_id,
+                target_player_id = ctx.row_ids().target_player_id,
                 reason = "target_dead",
                 source_id = ctx.source_id,
                 target_id = ctx.target_id,
@@ -119,6 +127,10 @@ impl EffectScript for RadiationDamage {
         tracing::info!(
             target: "abilities",
             event = "radiation_pulse",
+            cast_id = ctx.row_ids().cast_id,
+            account_id = ctx.row_ids().account_id,
+            player_id = ctx.row_ids().player_id,
+            target_player_id = ctx.row_ids().target_player_id,
             source_id = ctx.source_id,
             target_id = ctx.target_id,
             effect_id = ctx.effect.effect_id,

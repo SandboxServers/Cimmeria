@@ -109,6 +109,7 @@ pub async fn handle_use_ability_on_ground(
         None => {
             tracing::warn!(
                 target: "abilities",
+                event = "ground_attacker_missing",
                 entity_id,
                 "useAbilityOnGroundTarget: attacker entity not found"
             );
@@ -155,6 +156,7 @@ pub async fn handle_use_ability_on_ground(
     if targets.is_empty() {
         tracing::debug!(
             target: "abilities",
+            event = "ground_no_enemy_in_radius",
             entity_id, ability_id, ?ground, radius,
             "useAbilityOnGroundTarget: no enemy in AoE radius; consuming cooldown/ammo without damage"
         );
@@ -166,6 +168,7 @@ pub async fn handle_use_ability_on_ground(
         let (primary_eid, _) = targets[0];
         tracing::debug!(
             target: "abilities",
+            event = "ground_primary_out_of_range",
             entity_id, ability_id, ?ground, primary_eid, max_range,
             "useAbilityOnGroundTarget: nearest target outside attacker's ability max_range; charging cooldown/ammo only"
         );
@@ -183,6 +186,7 @@ pub async fn handle_use_ability_on_ground(
     let (primary_eid, _) = targets[0];
     tracing::debug!(
         target: "abilities",
+        event = "ground_primary_cast",
         entity_id,
         ability_id,
         ?ground,
@@ -200,6 +204,7 @@ pub async fn handle_use_ability_on_ground(
         // the primary failing validation. Empty Vec means no kills.
         tracing::debug!(
             target: "abilities",
+            event = "ground_primary_rejected",
             entity_id,
             ability_id,
             primary_eid,
@@ -215,6 +220,7 @@ pub async fn handle_use_ability_on_ground(
     if super::use_ability::attach_ground_point(space_mgr, entity_id, ground) {
         tracing::debug!(
             target: "abilities",
+            event = "ground_primary_warming_up",
             entity_id,
             ability_id,
             primary_eid,
@@ -388,6 +394,7 @@ async fn apply_secondaries(
             .unwrap_or(0);
         tracing::debug!(
             target: "abilities",
+            event = "ground_secondary_hit",
             entity_id,
             ability_id,
             secondary_eid,

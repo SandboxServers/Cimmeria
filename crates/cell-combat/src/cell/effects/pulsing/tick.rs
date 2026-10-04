@@ -184,6 +184,9 @@ pub async fn effect_pulse_tick(
             // effect_id, not the full def.
             if let Some(effect_def) = space_mgr.effect_defs.get(&cleared_effect).cloned() {
                 if let Some(script_name) = effect_def.script_name.clone() {
+                    // The cast's scope closed long ago: the removal names the
+                    // instance's snapshotted cast and invoker (`cast_scope`).
+                    let outer = space_mgr.enter_effect_scope(cast_id, invoker, who);
                     let mut ctx = crate::cell::effects::EffectContext {
                         source_id: invoker,
                         target_id: entity_id,
@@ -191,6 +194,7 @@ pub async fn effect_pulse_tick(
                         space_mgr,
                     };
                     crate::cell::effects::dispatch_on_remove(&script_name, &mut ctx);
+                    space_mgr.exit_effect_scope(outer);
                 }
                 // Flush any stat dirty bits the on_remove produced (e.g.
                 // ABSORB_PHYSICAL drained by AbsorbShield::on_remove) so

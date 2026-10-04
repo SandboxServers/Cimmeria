@@ -115,6 +115,7 @@ impl Orchestrator {
             Ok(scripts) => cell.set_effect_scripts(scripts),
             Err(e) => tracing::error!(
                 target: "abilities",
+                event = "effect_scripts_invalid",
                 reason = "effect_scripts_invalid",
                 error = %e,
                 "the effect script table does not build -- the server will refuse to start"
@@ -276,7 +277,7 @@ impl Orchestrator {
         // stuns, stat buffs, cover stance) silently falls back to the legacy
         // NVP path: refuse, as for an incomplete plugin table.
         if state.cell.effect_scripts().is_empty() {
-            tracing::error!(target: "abilities", reason = "effect_scripts_empty",
+            tracing::error!(target: "abilities", event = "effect_scripts_empty", reason = "effect_scripts_empty",
                 "Cell service refused to start: no effect scripts are registered");
             return Err(OrchestratorError::CellStartFailed(
                 "no effect scripts are registered".to_string(),

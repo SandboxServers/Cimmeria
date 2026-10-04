@@ -66,6 +66,7 @@ pub(super) async fn commit_auto_cycle(
         if let Some(new_state) = combat::clear_auto_cycle(space_mgr, entity_id) {
             tracing::info!(
                 target: "abilities",
+                event = "auto_cycle_cleared_by_flag",
                 account_id = who.account_id,
                 player_id = who.player_id,
                 entity_id,
@@ -79,6 +80,7 @@ pub(super) async fn commit_auto_cycle(
     {
         tracing::info!(
             target: "abilities",
+            event = "auto_cycle_armed",
             account_id = who.account_id,
             player_id = who.player_id,
             entity_id,

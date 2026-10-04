@@ -84,6 +84,36 @@ pub struct EffectContext<'a> {
     pub space_mgr: &'a mut SpaceManager,
 }
 
+/// The core fields every effect-script row carries (AB-T1 rule 5): the
+/// caster's `account_id` / `player_id`, the cast's `cast_id` and the
+/// target's `target_player_id`. `None` fields are absent from the row (an
+/// NPC caster or target; a pulse outside any cast scope).
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub struct EffectRowIds {
+    pub account_id: Option<u32>,
+    pub player_id: Option<i32>,
+    pub cast_id: Option<i32>,
+    pub target_player_id: Option<i32>,
+}
+
+impl EffectContext<'_> {
+    /// [`EffectRowIds`] for this script run. A live cast's fire runs under
+    /// its cast scope; a deferred run (a pulse, a natural end, a channel
+    /// cancel) runs under the effect scope of the instance's snapshotted
+    /// `cast_id` and invoker identity (`cast_scope`), so `cast_id` and the
+    /// caster's ids name the cast that landed the effect even after the
+    /// caster left and its entity id was reused.
+    pub fn row_ids(&self) -> EffectRowIds {
+        let who = self.space_mgr.caster_identity(self.source_id);
+        EffectRowIds {
+            account_id: who.account_id,
+            player_id: who.player_id,
+            cast_id: self.space_mgr.current_cast_id(),
+            target_player_id: self.space_mgr.player_identity(self.target_id).player_id,
+        }
+    }
+}
+
 /// One executable behavior keyed by `script_name`. Implementors live in
 /// `cimmeria-cell-effect-scripts` and are registered in the
 /// [`registry::EffectScripts`] the cell installs on its `SpaceManager`.
@@ -120,6 +150,10 @@ pub fn dispatch_by_name(name: &str, ctx: &mut EffectContext) -> bool {
             tracing::debug!(
                 target: "abilities",
                 event = "effect_script_dispatch",
+                cast_id = ctx.row_ids().cast_id,
+                account_id = ctx.row_ids().account_id,
+                player_id = ctx.row_ids().player_id,
+                target_player_id = ctx.row_ids().target_player_id,
                 script = name,
                 source_id = ctx.source_id,
                 target_id = ctx.target_id,
@@ -144,6 +178,10 @@ pub fn dispatch_by_name(name: &str, ctx: &mut EffectContext) -> bool {
             tracing::warn!(
                 target: "abilities",
                 event = "effect_script_unknown",
+                cast_id = ctx.row_ids().cast_id,
+                account_id = ctx.row_ids().account_id,
+                player_id = ctx.row_ids().player_id,
+                target_player_id = ctx.row_ids().target_player_id,
                 script = name,
                 source_id = ctx.source_id,
                 target_id = ctx.target_id,
@@ -168,6 +206,10 @@ pub fn dispatch_on_remove(name: &str, ctx: &mut EffectContext) -> bool {
             tracing::debug!(
                 target: "abilities",
                 event = "effect_script_remove",
+                cast_id = ctx.row_ids().cast_id,
+                account_id = ctx.row_ids().account_id,
+                player_id = ctx.row_ids().player_id,
+                target_player_id = ctx.row_ids().target_player_id,
                 script = name,
                 source_id = ctx.source_id,
                 target_id = ctx.target_id,
@@ -187,8 +229,8 @@ pub fn dispatch_on_remove(name: &str, ctx: &mut EffectContext) -> bool {
                 stage = "end",
                 reason = "script_not_registered",
                 script = name,
-                account_id = ctx.space_mgr.player_identity(ctx.source_id).account_id,
-                player_id = ctx.space_mgr.player_identity(ctx.source_id).player_id,
+                account_id = ctx.space_mgr.caster_identity(ctx.source_id).account_id,
+                player_id = ctx.space_mgr.caster_identity(ctx.source_id).player_id,
                 source_id = ctx.source_id,
                 target_id = ctx.target_id,
                 target_player_id = ctx.space_mgr.player_identity(ctx.target_id).player_id,

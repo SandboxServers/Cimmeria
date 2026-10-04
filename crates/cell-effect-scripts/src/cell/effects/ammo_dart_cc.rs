@@ -56,6 +56,10 @@ impl EffectScript for MovementSlow {
             tracing::warn!(
                 target: "abilities",
                 event = "movement_slow_no_reduction",
+                cast_id = ctx.row_ids().cast_id,
+                account_id = ctx.row_ids().account_id,
+                player_id = ctx.row_ids().player_id,
+                target_player_id = ctx.row_ids().target_player_id,
                 source_id = ctx.source_id,
                 target_id = ctx.target_id,
                 effect_id = ctx.effect.effect_id,
@@ -91,6 +95,10 @@ impl EffectScript for MovementSlow {
         tracing::info!(
             target: "abilities",
             event = "movement_slow_applied",
+            cast_id = ctx.row_ids().cast_id,
+            account_id = ctx.row_ids().account_id,
+            player_id = ctx.row_ids().player_id,
+            target_player_id = ctx.row_ids().target_player_id,
             source_id = ctx.source_id,
             target_id = ctx.target_id,
             effect_id = effect.effect_id,
@@ -118,6 +126,10 @@ impl EffectScript for MovementSlow {
         tracing::info!(
             target: "abilities",
             event = "movement_slow_expired",
+            cast_id = ctx.row_ids().cast_id,
+            account_id = ctx.row_ids().account_id,
+            player_id = ctx.row_ids().player_id,
+            target_player_id = ctx.row_ids().target_player_id,
             source_id = ctx.source_id,
             target_id = ctx.target_id,
             effect_id,
