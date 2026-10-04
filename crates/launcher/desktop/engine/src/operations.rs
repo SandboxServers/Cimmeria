@@ -72,9 +72,12 @@ pub enum ContractError {
     UnknownOperation,
     InvalidTransition,
     PersistenceFailed,
+    PersistenceUncertain,
 }
 
-/// A store must atomically replace a journal or leave its previous value intact.
+/// A store atomically replaces a journal. A failure before replacement returns
+/// PersistenceFailed; uncertain durability after replacement must return
+/// PersistenceUncertain, forcing reopen before any further commands.
 /// Commit must not return success before the snapshot is durable. Callers must
 /// hold exclusive process ownership for the journal's lifetime.
 pub trait Journal {
@@ -86,6 +89,7 @@ pub trait Journal {
 pub struct Operations<J> {
     snapshot: Snapshot,
     journal: J,
+    requires_reopen: bool,
 }
 
 impl<J: Journal> Operations<J> {
@@ -98,7 +102,11 @@ impl<J: Journal> Operations<J> {
         if snapshot.revision > MAX_REVISION {
             return Err(ContractError::InvalidRevision);
         }
-        let mut controller = Self { snapshot, journal };
+        let mut controller = Self {
+            snapshot,
+            journal,
+            requires_reopen: false,
+        };
         if controller.snapshot.operation.as_ref().is_some_and(|op| {
             !op.state.terminal() && op.state != OperationState::ReconciliationRequired
         }) {
@@ -109,6 +117,11 @@ impl<J: Journal> Operations<J> {
         Ok(controller)
     }
 
+    pub fn requires_reopen(&self) -> bool {
+        self.requires_reopen
+    }
+
+    /// Last confirmed snapshot; adapters must also surface requires_reopen.
     pub fn snapshot(&self) -> &Snapshot {
         &self.snapshot
     }
@@ -123,6 +136,7 @@ impl<J: Journal> Operations<J> {
         intent_digest: [u8; 32],
         expected_revision: u64,
     ) -> Result<(Snapshot, bool), ContractError> {
+        self.ensure_writable()?;
         if let Some(op) = &self.snapshot.operation {
             if op.id == id {
                 return if op.kind == kind && op.intent_digest == intent_digest {
@@ -155,6 +169,7 @@ impl<J: Journal> Operations<J> {
     }
 
     pub fn request_cancel(&mut self, id: Uuid) -> Result<Snapshot, ContractError> {
+        self.ensure_writable()?;
         let op = self.current(id)?;
         if op.state.terminal() || op.state == OperationState::CancelRequested {
             return Ok(self.snapshot.clone());
@@ -167,6 +182,7 @@ impl<J: Journal> Operations<J> {
 
     /// Native worker observations only; never expose this as a webview command.
     pub fn observe(&mut self, id: Uuid, state: OperationState) -> Result<Snapshot, ContractError> {
+        self.ensure_writable()?;
         let previous = self.current(id)?.state;
         let allowed = matches!(
             (previous, state),
@@ -191,6 +207,7 @@ impl<J: Journal> Operations<J> {
         id: Uuid,
         state: OperationState,
     ) -> Result<Snapshot, ContractError> {
+        self.ensure_writable()?;
         if self.current(id)?.state != OperationState::ReconciliationRequired
             || !(state.terminal() || state == OperationState::Running)
         {
@@ -215,6 +232,14 @@ impl<J: Journal> Operations<J> {
         Ok(self.snapshot.clone())
     }
 
+    fn ensure_writable(&self) -> Result<(), ContractError> {
+        if self.requires_reopen {
+            Err(ContractError::PersistenceUncertain)
+        } else {
+            Ok(())
+        }
+    }
+
     fn publish(&mut self, mut next: Snapshot) -> Result<(), ContractError> {
         next.revision = self
             .snapshot
@@ -222,9 +247,12 @@ impl<J: Journal> Operations<J> {
             .checked_add(1)
             .filter(|revision| *revision <= MAX_REVISION)
             .ok_or(ContractError::InvalidRevision)?;
-        self.journal
-            .commit(&next)
-            .map_err(|_| ContractError::PersistenceFailed)?;
+        if let Err(error) = self.journal.commit(&next) {
+            if error == ContractError::PersistenceUncertain {
+                self.requires_reopen = true;
+            }
+            return Err(error);
+        }
         self.snapshot = next;
         Ok(())
     }

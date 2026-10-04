@@ -234,3 +234,15 @@ The misses are `serde`, `serde_core` and `thiserror`, which hash `OUT_DIR` (§3)
 - **A real run on this PR's worktree.** After building `cimmeria-cell-world` and its tests twice with `LANE_PRUNE=0`, `sweep.ps1 -Only <worktree>` took the target dir from 2.2 to 1.8 GB, and its incremental dir from 1.02 to 0.65 GB. The next edit-then-`cargo check` still built incrementally (2.1 s). With pruning on, the lane removed 109 MB and 62 MB after two edit-then-check jobs.
 
 #962's other workstream A item, measuring `debug = 0` or `strip = "debuginfo"` for test builds, is not part of this change.
+
+## Standalone desktop launcher validation
+
+The macOS/Windows launcher implementation in
+[`crates/launcher/desktop/`](../../crates/launcher/desktop/README.md) is a scoped
+exception to the Windows-only application build convention. Each OS builds
+natively, using the pinned toolchain and build lane; Windows cross-compilation
+remains unsupported. The root Cargo workspace and its generated graph do not
+include this nested workspace. `.github/workflows/launcher-desktop.yml` invokes
+its manifest explicitly on native Mac and Windows runners, including a
+headless JS/Effect-to-Rust persistence UAT. These checks do not establish
+packaged-webview behavior, game compatibility or self-contained first open.

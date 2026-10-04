@@ -199,3 +199,36 @@ fn json_contract_has_explicit_version_and_stable_state_tags() {
     )
     .is_err());
 }
+
+#[test]
+fn uncertain_commit_blocks_all_commands_until_reopened() {
+    struct Uncertain;
+    impl Journal for Uncertain {
+        fn commit(&mut self, _: &Snapshot) -> Result<(), ContractError> {
+            Err(ContractError::PersistenceUncertain)
+        }
+    }
+    let mut c = Operations::restore(Snapshot::default(), Uncertain).unwrap();
+    let id = Uuid::new_v4();
+    assert_eq!(
+        c.begin(id, OperationKind::Install, [1; 32], 0),
+        Err(ContractError::PersistenceUncertain)
+    );
+    assert!(c.requires_reopen());
+    assert_eq!(
+        c.begin(Uuid::new_v4(), OperationKind::Launch, [1; 32], 0),
+        Err(ContractError::PersistenceUncertain)
+    );
+    assert_eq!(
+        c.request_cancel(id),
+        Err(ContractError::PersistenceUncertain)
+    );
+    assert_eq!(
+        c.observe(id, OperationState::Succeeded),
+        Err(ContractError::PersistenceUncertain)
+    );
+    assert_eq!(
+        c.reconcile(id, OperationState::Failed),
+        Err(ContractError::PersistenceUncertain)
+    );
+}

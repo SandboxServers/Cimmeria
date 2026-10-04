@@ -12,6 +12,11 @@ Releases, applies declared patches in order, optionally launches the
 debug-Atera path (with or without the dev-session telemetry pipeline),
 and uploads debug logs to an Azure Blob SAS URL.
 
+The approved cross-platform replacement is being implemented separately in
+[`crates/launcher/desktop/`](../../crates/launcher/desktop/README.md). Its native
+state and Effect foundation do not yet install or launch the game. The existing
+Windows launcher described here remains the functional implementation.
+
 Located in [`crates/launcher/`](../../crates/launcher/) as the
 `sgw-launcher` crate. Built with **eframe (egui)** for a small, native
 window with no webview dependency.

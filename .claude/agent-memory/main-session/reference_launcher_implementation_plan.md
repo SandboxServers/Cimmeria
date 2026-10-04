@@ -19,3 +19,10 @@ acknowledged queue and validated lifted fields; these are not yet implemented.
 a tested operation contract (nine Mac tests), with an injected journal trait.
 It is a separate workspace, requiring explicit manifest checks. No file journal,
 Effect integration or mutation worker is connected yet; see the plan ledger.
+
+2026-10-04 foundation update: desktop `storage/` now implements process ownership,
+bounded persisted state and uncertain-commit gating. `frontend/` pins Effect
+4.0.0; headless UAT uses real Rust `commands.rs` through the `state_bridge`
+example and proves preference persistence across restart. Tauri UI, native
+app-data selection, migration, game workers and exporter remain unconnected.
+Standalone CI is `.github/workflows/launcher-desktop.yml`; root tests omit it.

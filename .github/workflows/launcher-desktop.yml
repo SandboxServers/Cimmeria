@@ -1,0 +1,63 @@
+name: desktop launcher
+
+on:
+  pull_request:
+    paths:
+      - 'crates/launcher/desktop/**'
+      - '.github/workflows/launcher-desktop.yml'
+      - '.github/actions/rust-toolchain/**'
+      - 'rust-toolchain.toml'
+      - 'tools/build-lane/**'
+  push:
+    branches: [main]
+    paths:
+      - 'crates/launcher/desktop/**'
+      - '.github/workflows/launcher-desktop.yml'
+      - '.github/actions/rust-toolchain/**'
+      - 'rust-toolchain.toml'
+      - 'tools/build-lane/**'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: desktop-launcher-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  native-engine:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [macos-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 15
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@v7
+      - uses: ./.github/actions/rust-toolchain
+        with:
+          components: rustfmt, clippy
+      - name: Format standalone workspace
+        run: cargo fmt --manifest-path crates/launcher/desktop/Cargo.toml -- --check
+      - name: Check native engine
+        run: bash tools/build-lane/lane.sh cargo clippy --locked --manifest-path crates/launcher/desktop/Cargo.toml -p cimmeria-launcher-engine --target-dir target/desktop --all-targets -- -D warnings
+      - name: Test native storage and operation contracts
+        run: bash tools/build-lane/lane.sh cargo test --locked --manifest-path crates/launcher/desktop/Cargo.toml -p cimmeria-launcher-engine --target-dir target/desktop
+      - uses: actions/setup-node@v6
+        with:
+          node-version: '24'
+      - name: Check Effect workflow
+        run: |
+          npm ci --ignore-scripts --prefix crates/launcher/desktop/frontend
+          npm run check --prefix crates/launcher/desktop/frontend
+          npm test --prefix crates/launcher/desktop/frontend
+      - name: Build native state harness
+        run: bash tools/build-lane/lane.sh cargo build --locked --manifest-path crates/launcher/desktop/Cargo.toml -p cimmeria-launcher-engine --target-dir target/desktop --example state_bridge
+      - name: JS logic UAT against native persistence
+        run: |
+          bridge=target/desktop/debug/examples/state_bridge
+          if [ "$RUNNER_OS" = Windows ]; then bridge="$bridge.exe"; fi
+          npm run uat --prefix crates/launcher/desktop/frontend -- "$PWD/$bridge"

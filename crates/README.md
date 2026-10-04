@@ -306,6 +306,6 @@ The live-DB run must be serialised — some guards share sentinel id ranges and 
 ## Standalone desktop launcher workspace
 
 [`launcher/desktop`](launcher/desktop/README.md) contains the new
-`cimmeria-launcher-engine` operation-contract scaffold. It is outside the root
+`cimmeria-launcher-engine` operation/storage foundation and the Effect frontend. It is outside the root
 Cargo workspace and generated crate graph; use its explicit manifest validation
 commands. Existing `sgw-launcher` behavior is unchanged.

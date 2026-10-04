@@ -88,7 +88,8 @@ request after an uncertain result must first reconcile the running process.
 Choose and pin the Effect release with schema/runtime/test dependencies together.
 Use its typed errors, services, scopes, interruption and test clock against real
 workflows; verify APIs against the pinned documentation before implementation.
-No Effect dependency or production workflow has been installed by this plan.
+The plan initially installed no dependency. The implementation ledger below
+records the later pinned Effect foundation; full game workflows remain pending.
 Effect's [scope guidance](https://effect.website/docs/v3/resource-management/scope/)
 supports scoped acquisition/finalization; keep acquisition short rather than
 putting a download in an uninterruptible registration step. Its
@@ -287,3 +288,26 @@ The tests use an in-memory journal. They do not prove crash durability, native
 worker dispatch, cross-process ownership or Windows behavior. No frontend
 changed, so no JS/visual UAT was run for this packet. Production release gates
 and final self-contained startup validation remain open.
+
+### 2026-10-04: native storage and Effect foundation (packets 1/2 partial)
+
+Added bounded disk journals, exclusive state-directory ownership, synced
+replacement and uncertain-commit handling. Native preferences persist an install
+path and separate default-off launcher-summary consent. Effect 4.0.0 now owns
+inspection/save sequencing, typed IPC validation, bounded read retries, stale
+snapshot rejection, uncertain-save reconciliation and scoped bounded updates.
+No save is automatically replayed after timeout or interruption.
+
+Validation on macOS: 23 Rust tests, eight Effect tests, strict all-target clippy,
+TypeScript and formatting passed. The single ignored Rust case is a subprocess
+fixture invoked by its parent. Sequential JS logic UAT exercised the actual
+Effect services and Rust handler across process restarts, verifying saved path,
+opt-in and opt-out persistence. A native Mac/Windows CI workflow now covers the
+standalone workspace explicitly; inspect its run before claiming Windows passed.
+
+Not covered: native webview/visual UAT (window not connected), power loss or
+kill-during-write, real game install/launch, Wine helper ownership, live summary
+export or self-contained first open. The child-kill test kills an idle process
+after its journal writes have finished. Next: connect the Tauri application
+with native app-data selection and settings UI, then actual installer workers.
+The settings store is new and does not yet migrate the egui configuration.
