@@ -49,7 +49,9 @@ pub async fn forget_player(
         // advances a healthy trip, it does not un-stick a stuck player.
         tracing::debug!(
             region_id,
+            region_name = space_mgr.ring_transporters.region_name(region_id),
             entity_id,
+            entity_name = space_mgr.entity_label(entity_id),
             reason = "participant_gone",
             "ring: passenger removed from destination expectation — queued a load-readiness \
              re-check for the remaining travellers"

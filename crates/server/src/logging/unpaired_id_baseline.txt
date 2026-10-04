@@ -1,7 +1,7 @@
 # Unpaired ID fields per file (Rule 6, NT-03). Only ever lowered.
 # Regenerate after pairing fields: NT_BASELINE_BLESS=1 cargo nextest run -p cimmeria-server unpaired_id
 # See crates/server/src/logging/unpaired_id_tests/mod.rs.
-# total 6891
+# total 6585
 crates/admin-api/src/routes/dev_session/handlers.rs 2
 crates/admin-api/src/routes/telemetry/handlers.rs 14
 crates/admin-api/src/routes/telemetry/replay.rs 33
@@ -126,12 +126,10 @@ crates/base-session/src/base/contact_list/ignore/resync.rs 18
 crates/base-session/src/base/cooked_data.rs 6
 crates/base-session/src/base/cooked_sync/mod.rs 4
 crates/base-session/src/base/cooked_sync/task.rs 13
-crates/base-session/src/base/deferred_aoi.rs 2
 crates/base-session/src/base/feedback.rs 4
 crates/base-session/src/base/gm_broadcast.rs 8
 crates/base-session/src/base/gm_feedback.rs 1
 crates/base-session/src/base/gm_spawn.rs 13
-crates/base-session/src/base/helpers/departed_witnesses.rs 4
 crates/base-session/src/base/helpers/mod.rs 18
 crates/base-session/src/base/helpers/reliable_send.rs 6
 crates/base-session/src/base/helpers/witness_broadcast.rs 1
@@ -173,28 +171,18 @@ crates/base-session/src/base/rate_limit/mod.rs 6
 crates/base-session/src/base/session_presence.rs 3
 crates/base-session/src/base/tick_sync.rs 1
 crates/base-world-entry/src/base/character/mod.rs 14
-crates/base-world-entry/src/base/world_entry/cell_dispatch/aoi.rs 17
-crates/base-world-entry/src/base/world_entry/cell_dispatch/aoi_dispatch.rs 13
 crates/base-world-entry/src/base/world_entry/cell_dispatch/bandolier.rs 16
 crates/base-world-entry/src/base/world_entry/cell_dispatch/chat_dispatch.rs 3
 crates/base-world-entry/src/base/world_entry/cell_dispatch/deferred_flush.rs 7
-crates/base-world-entry/src/base/world_entry/cell_dispatch/gate_teleport_dispatch.rs 2
 crates/base-world-entry/src/base/world_entry/cell_dispatch/method_delivery.rs 32
 crates/base-world-entry/src/base/world_entry/cell_dispatch/minigame.rs 5
 crates/base-world-entry/src/base/world_entry/cell_dispatch/org_dispatch.rs 14
-crates/base-world-entry/src/base/world_entry/cell_dispatch/player_ghost.rs 4
-crates/base-world-entry/src/base/world_entry/cell_dispatch/position.rs 4
 crates/base-world-entry/src/base/world_entry/cell_dispatch/system_options.rs 3
 crates/base-world-entry/src/base/world_entry/enable_entities.rs 5
-crates/base-world-entry/src/base/world_entry/gate_travel/address_grant.rs 21
-crates/base-world-entry/src/base/world_entry/gate_travel/mod.rs 10
-crates/base-world-entry/src/base/world_entry/gate_travel/persist_arrival.rs 6
 crates/base-world-entry/src/base/world_entry/looted_containers.rs 13
 crates/base-world-entry/src/base/world_entry/map_loaded.rs 3
 crates/base-world-entry/src/base/world_entry/map_loaded_wire_rows.rs 4
 crates/base-world-entry/src/base/world_entry/play_character.rs 6
-crates/base-world-entry/src/base/world_entry/reanchor_player.rs 5
-crates/base-world-entry/src/base/world_entry/teleport.rs 15
 crates/base-world-entry/src/base/world_entry_appearance/cinematic.rs 6
 crates/base-world-entry/src/base/world_entry_appearance/cinematic_aoi_hold/mod.rs 2
 crates/base-world-entry/src/base/world_entry_appearance/client_ready/mod.rs 19
@@ -419,11 +407,6 @@ crates/cell-effect-scripts/src/cell/effects/shield/mod.rs 40
 crates/cell-effect-scripts/src/cell/effects/stat_buff/held.rs 16
 crates/cell-effect-scripts/src/cell/effects/stat_buff/mod.rs 15
 crates/cell-effect-scripts/src/cell/effects/stat_buff/remove_by_moniker.rs 25
-crates/cell-interactions/src/cell/gate_travel/address_book.rs 5
-crates/cell-interactions/src/cell/gate_travel/dial_feedback.rs 2
-crates/cell-interactions/src/cell/gate_travel/mod.rs 26
-crates/cell-interactions/src/cell/gate_travel/sequences.rs 14
-crates/cell-interactions/src/cell/gate_travel/tick.rs 6
 crates/cell-interactions/src/cell/interactions/bank/expand.rs 29
 crates/cell-interactions/src/cell/interactions/bank/open.rs 11
 crates/cell-interactions/src/cell/interactions/bank/org_open.rs 25
@@ -447,7 +430,6 @@ crates/cell-interactions/src/cell/organization/squad/telemetry.rs 47
 crates/cell-interactions/src/cell/respawn/mod.rs 23
 crates/cell-interactions/src/cell/respawn/region_registration.rs 1
 crates/cell-interactions/src/cell/respawn/resync.rs 8
-crates/cell-interactions/src/cell/space_transfer/mod.rs 20
 crates/cell-interactions/src/cell/trade/state.rs 23
 crates/cell-interactions/src/cell/trade/wire.rs 10
 crates/cell-methods/src/cell/cell_methods/ability_manager.rs 2
@@ -491,9 +473,6 @@ crates/cell-world/src/cell/combat_debug/commands.rs 3
 crates/cell-world/src/cell/combat_debug/deliver.rs 14
 crates/cell-world/src/cell/combat_debug/mod.rs 8
 crates/cell-world/src/cell/cover/stance.rs 17
-crates/cell-world/src/cell/deployables/spawn.rs 14
-crates/cell-world/src/cell/deployables/teardown.rs 20
-crates/cell-world/src/cell/dispatch/gm_gate.rs 2
 crates/cell-world/src/cell/duel/challenge.rs 23
 crates/cell-world/src/cell/duel/effects.rs 3
 crates/cell-world/src/cell/duel/end.rs 21
@@ -514,12 +493,7 @@ crates/cell-world/src/cell/pets/owner_hooks.rs 46
 crates/cell-world/src/cell/pets/registry.rs 13
 crates/cell-world/src/cell/pets/spawn.rs 14
 crates/cell-world/src/cell/pets/teardown.rs 31
-crates/cell-world/src/cell/playtest_friction.rs 8
 crates/cell-world/src/cell/playtest_friction_watch.rs 13
-crates/cell-world/src/cell/ring_transport/regions.rs 3
-crates/cell-world/src/cell/ring_transport/runtime/teardown.rs 2
-crates/cell-world/src/cell/ring_transport/transporter/manager.rs 6
-crates/cell-world/src/cell/ring_transport/wire_helpers.rs 9
 crates/cell-world/src/cell/service/npc_ai/detectors/aggro_scan.rs 12
 crates/cell-world/src/cell/service/npc_ai/detectors/idle_parked.rs 2
 crates/cell-world/src/cell/service/npc_ai/detectors/leash.rs 11
@@ -530,18 +504,9 @@ crates/cell-world/src/cell/service/npc_ai/detectors/sweep.rs 3
 crates/cell-world/src/cell/service/npc_ai/detectors/threat.rs 4
 crates/cell-world/src/cell/service/npc_ai/movement_stop/mod.rs 1
 crates/cell-world/src/cell/service/npc_ai/transition.rs 2
-crates/cell-world/src/cell/space_manager/aoi.rs 9
-crates/cell-world/src/cell/space_manager/client_move.rs 1
-crates/cell-world/src/cell/space_manager/crossing_hold_state.rs 2
-crates/cell-world/src/cell/space_manager/entities.rs 8
-crates/cell-world/src/cell/space_manager/gate_dial_state.rs 1
-crates/cell-world/src/cell/space_manager/navmesh_containment.rs 1
 crates/cell-world/src/cell/space_manager/npc_population.rs 9
-crates/cell-world/src/cell/space_manager/spawn.rs 4
-crates/cell-world/src/cell/space_manager/target_lifetime.rs 2
 crates/cell-world/src/cell/space_manager/vault_session_end.rs 6
 crates/cell/src/cell/dispatch/ability_receipt.rs 3
-crates/cell/src/cell/dispatch/router.rs 1
 crates/cell/src/cell/service/base_messages/ability_granted.rs 17
 crates/cell/src/cell/service/base_messages/bandolier.rs 7
 crates/cell/src/cell/service/base_messages/gm_abilities.rs 6
@@ -549,22 +514,15 @@ crates/cell/src/cell/service/base_messages/gm_spawn.rs 5
 crates/cell/src/cell/service/base_messages/ignore.rs 14
 crates/cell/src/cell/service/base_messages/inventory_events.rs 23
 crates/cell/src/cell/service/base_messages/lab_console.rs 2
-crates/cell/src/cell/service/base_messages/lifecycle.rs 12
 crates/cell/src/cell/service/base_messages/minigame.rs 1
-crates/cell/src/cell/service/base_messages/mod.rs 3
-crates/cell/src/cell/service/base_messages/movement.rs 6
 crates/cell/src/cell/service/base_messages/org.rs 4
 crates/cell/src/cell/service/base_messages/player_init/mission_restore.rs 6
 crates/cell/src/cell/service/base_messages/player_init/mod.rs 16
-crates/cell/src/cell/service/base_messages/request_entity_update.rs 11
 crates/cell/src/cell/service/base_messages/respec.rs 5
-crates/cell/src/cell/service/startup.rs 1
 crates/cell/src/cell/service/ticks/auto_cycle.rs 13
 crates/cell/src/cell/service/ticks/cover.rs 3
 crates/cell/src/cell/service/ticks/crafting_stations.rs 3
 crates/cell/src/cell/service/ticks/holster.rs 4
-crates/cell/src/cell/service/ticks/npc_ground.rs 2
-crates/cell/src/cell/service/ticks/npc_movement.rs 2
 crates/cell/src/cell/service/ticks/npc_respawn/mod.rs 5
 crates/cell/src/cell/service/ticks/pending_holster.rs 4
 crates/cell/src/cell/service/ticks/regen.rs 16

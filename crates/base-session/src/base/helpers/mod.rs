@@ -635,6 +635,7 @@ where
                     witness_id,
                     map_size,
                     departed_witnesses::AddrMissPath::Unreliable,
+                    connected,
                 );
                 return WitnessSendOutcome::AddrUnresolved;
             }
@@ -731,6 +732,7 @@ where
                     witness_id,
                     map_size,
                     departed_witnesses::AddrMissPath::Reliable,
+                    connected,
                 );
                 return WitnessSendOutcome::AddrUnresolved;
             }
@@ -847,6 +849,7 @@ pub async fn send_bundle_to_witness_reliable(
                     witness_id,
                     map_size,
                     departed_witnesses::AddrMissPath::Bundle,
+                    connected,
                 );
                 return BundleSendOutcome::AddrUnresolved;
             }

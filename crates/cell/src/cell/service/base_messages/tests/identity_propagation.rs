@@ -433,4 +433,9 @@ async fn snap_back_send_failure_carries_account_and_player_id() {
          it is the one an operator reaches for when a player reports being \
          stuck",
     );
+    // Rule 6 (NT-23): the space the player was snapped in is named too.
+    assert!(
+        event.has_field("world", WORLD),
+        "the snap-back failure must name the world; got {event:#?}"
+    );
 }

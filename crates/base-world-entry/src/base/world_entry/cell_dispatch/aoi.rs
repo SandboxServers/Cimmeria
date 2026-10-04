@@ -19,8 +19,36 @@ use crate::mercury::{
 use super::super::super::helpers::{
     send_bundle_to_witness_reliable, send_to_witness, send_to_witness_reliable, WitnessSendOutcome,
 };
+use super::super::super::session_identity::player_name_for_entity;
 use super::super::super::ConnectedClientState;
 use super::{method_delivery, player_ghost};
+
+/// Where an AoI line's names come from (Rule 6). The base knows a player's
+/// name from its session and an NPC's only from the `name_id` its
+/// `EnteredAoI` carried; anything else is left off the line.
+///
+/// Every lookup runs inside a log macro, so only when that line is on, and
+/// never while the caller holds the `connected` lock.
+pub(super) struct AoiNames<'a> {
+    pub(super) connected: &'a Arc<Mutex<HashMap<SocketAddr, ConnectedClientState>>>,
+    pub(super) entity_to_addr: &'a Arc<Mutex<HashMap<u32, SocketAddr>>>,
+    pub(super) npc_name_id: Option<i32>,
+}
+
+impl AoiNames<'_> {
+    /// A player's character name (the witness, or a player observee).
+    pub(super) fn player(&self, entity_id: u32) -> Option<&'static str> {
+        player_name_for_entity(self.connected, self.entity_to_addr, entity_id)
+    }
+
+    /// The observee's name: an NPC's `name_id` text, else a player's name.
+    pub(super) fn observee(&self, entity_id: u32) -> Option<&'static str> {
+        match self.npc_name_id {
+            Some(n) => cimmeria_entity::name_intern::intern_opt(cimmeria_names::book().text(n)),
+            None => self.player(entity_id),
+        }
+    }
+}
 
 /// Emit the success-side (`aoi.create_emit`, DEBUG) or failure-side
 /// (`aoi.create_send_failed`, WARN) observability seam for one packet of
@@ -41,6 +69,7 @@ fn log_create_emit(
     class_id: u8,
     phase: &'static str,
     outcome: WitnessSendOutcome,
+    names: &AoiNames<'_>,
 ) {
     match outcome {
         WitnessSendOutcome::Sent { seq, bytes, .. } => {
@@ -48,8 +77,11 @@ fn log_create_emit(
                 target: "aoi.create_emit",
                 event = "create_emit",
                 witness_id,
+                witness_name = names.player(witness_id),
                 entity_id,
+                entity_name = names.observee(entity_id),
                 class_id,
+                class_name = cimmeria_wire::names::class_name(class_id),
                 phase,
                 addr_resolved = true,
                 bytes,
@@ -66,8 +98,11 @@ fn log_create_emit(
                 target: "aoi.create_send_failed",
                 event = "create_send_failed",
                 witness_id,
+                witness_name = names.player(witness_id),
                 entity_id,
+                entity_name = names.observee(entity_id),
                 class_id,
+                class_name = cimmeria_wire::names::class_name(class_id),
                 phase,
                 addr_resolved = failed.addr_resolved(),
                 reason = failed.failure_reason().unwrap_or("unknown"),
@@ -94,10 +129,18 @@ pub(super) async fn entered_aoi(
     connected: &Arc<Mutex<HashMap<SocketAddr, ConnectedClientState>>>,
     entity_to_addr: &Arc<Mutex<HashMap<u32, SocketAddr>>>,
 ) {
+    let names = AoiNames {
+        connected,
+        entity_to_addr,
+        npc_name_id: npc_data.as_ref().and_then(|n| n.name_id),
+    };
     tracing::debug!(
         witness_id,
+        witness_name = names.player(witness_id),
         entity_id,
+        entity_name = names.observee(entity_id),
         class_id,
+        class_name = cimmeria_wire::names::class_name(class_id),
         level,
         is_player = player_data.is_some(),
         "AoI: entity entered witness range"
@@ -122,7 +165,14 @@ pub(super) async fn entered_aoi(
         },
     )
     .await;
-    log_create_emit(witness_id, entity_id, class_id, "create_base", base_outcome);
+    log_create_emit(
+        witness_id,
+        entity_id,
+        class_id,
+        "create_base",
+        base_outcome,
+        &names,
+    );
     // Packet 2: createOnClient() property cascade (CellApp round-trip) — RELIABLE
     let cascade_outcome = send_to_witness_reliable(
         transport,
@@ -151,7 +201,14 @@ pub(super) async fn entered_aoi(
         },
     )
     .await;
-    log_create_emit(witness_id, entity_id, class_id, "cascade", cascade_outcome);
+    log_create_emit(
+        witness_id,
+        entity_id,
+        class_id,
+        "cascade",
+        cascade_outcome,
+        &names,
+    );
 }
 
 /// `CellToBaseMsg::LeftAoI` — entity left a witness's range.
@@ -163,7 +220,14 @@ pub(super) async fn left_aoi(
     connected: &Arc<Mutex<HashMap<SocketAddr, ConnectedClientState>>>,
     entity_to_addr: &Arc<Mutex<HashMap<u32, SocketAddr>>>,
 ) {
-    tracing::debug!(witness_id, entity_id, "AoI: entity left witness range");
+    tracing::debug!(
+        witness_id,
+        witness_name = player_name_for_entity(connected, entity_to_addr, witness_id),
+        entity_id,
+        // The base has no NPC name once the entity has left: players only.
+        entity_name = player_name_for_entity(connected, entity_to_addr, entity_id),
+        "AoI: entity left witness range"
+    );
     send_to_witness_reliable(
         transport,
         connected,
@@ -236,6 +300,7 @@ pub(super) async fn entity_method_call_batch(
     }
     tracing::debug!(
         entity_id,
+        entity_name = player_name_for_entity(connected, entity_to_addr, entity_id),
         batch_size = calls.len(),
         "CellService->client entity method call batch"
     );
@@ -262,6 +327,7 @@ pub(super) async fn entity_method_call(
 ) {
     tracing::debug!(
         entity_id,
+        entity_name = player_name_for_entity(connected, entity_to_addr, entity_id),
         method_index,
         method_name = cimmeria_wire::names::player_client_method(method_index),
         args_len = args.len(),
@@ -319,7 +385,11 @@ pub(super) async fn witness_entity_method(
 ) {
     tracing::debug!(
         witness_id,
+        witness_name = player_name_for_entity(connected, entity_to_addr, witness_id),
         entity_id,
+        entity_name = entity_is_player
+            .then(|| player_name_for_entity(connected, entity_to_addr, entity_id))
+            .flatten(),
         method_index,
         method_name = if entity_is_player {
             cimmeria_wire::names::player_client_method(method_index)
@@ -386,7 +456,13 @@ pub(super) async fn entity_invisible(
     connected: &Arc<Mutex<HashMap<SocketAddr, ConnectedClientState>>>,
     entity_to_addr: &Arc<Mutex<HashMap<u32, SocketAddr>>>,
 ) {
-    tracing::debug!(witness_id, entity_id, "Send ENTITY_INVISIBLE to witness");
+    tracing::debug!(
+        witness_id,
+        witness_name = player_name_for_entity(connected, entity_to_addr, witness_id),
+        entity_id,
+        entity_name = player_name_for_entity(connected, entity_to_addr, entity_id),
+        "Send ENTITY_INVISIBLE to witness"
+    );
     // RELIABLE — visibility-state change. Loss leaves the entity rendered
     // when it should be hidden.
     send_to_witness_reliable(

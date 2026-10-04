@@ -203,7 +203,9 @@ impl RingTransporterManager {
         // recoverable, so `warn`.
         tracing::warn!(
             region_id,
+            region_name = self.region_name(region_id),
             peer_region_id = peer_id,
+            peer_region_name = peer_id.and_then(|p| self.region_name(p)),
             state = ?state,
             reason = reason.as_str(),
             participants,
@@ -226,7 +228,9 @@ impl RingTransporterManager {
                     }
                     tracing::warn!(
                         region_id = peer_id,
+                        region_name = self.region_name(peer_id),
                         peer_region_id = region_id,
+                        peer_region_name = self.region_name(region_id),
                         state = ?peer_state,
                         reason = AbortReason::PeerAborted.as_str(),
                         "ring transport aborted: peer end torn down alongside its partner"
@@ -235,7 +239,9 @@ impl RingTransporterManager {
                 Some((back, peer_state)) if peer_state != State::Idle => {
                     tracing::warn!(
                         region_id,
+                        region_name = self.region_name(region_id),
                         peer_region_id = peer_id,
+                        peer_region_name = self.region_name(peer_id),
                         peer_back_pointer = back,
                         peer_state = ?peer_state,
                         reason = "peer_backpointer_mismatch",
@@ -349,6 +355,17 @@ impl RingTransporterManager {
             }
         }
         (emptied, rechecks)
+    }
+}
+
+impl RingTransporterManager {
+    /// The ring region's name for log lines (its `tag`), or `None` when the
+    /// region isn't loaded or has a blank tag (Rule 6: never `""`).
+    pub fn region_name(&self, region_id: i32) -> Option<&str> {
+        self.regions
+            .get(&region_id)
+            .map(|t| t.tag.as_str())
+            .filter(|t| !t.is_empty())
     }
 }
 

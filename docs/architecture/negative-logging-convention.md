@@ -113,6 +113,14 @@ A third, cheap: state is released on `destroy_entity`.
 | `world` | when the seam is space-scoped | The **world name**, not only `space_id`. A space id is a runtime allocation that means nothing outside the running process, so a log carrying only `space_id` cannot be grouped by zone after the fact. Pair them — `space_id` still identifies the instance. `world` is Rule 6's name key for `space_id` and `world_id`; don't use `world_name`. |
 | `suppressed` | required on a Pattern D seam | Count of occurrences elided since this seam last emitted for this entity. `0` on the first row of an episode. |
 
+Keys the named-telemetry sweeps renamed while pairing them (Rule 6), so a saved query on the old key finds nothing after the change:
+
+| Event | Old key | New key | Sweep |
+|---|---|---|---|
+| `navmesh_mode_summary` (target `movement.navmesh`, startup) | `world_name` | `world` | NT-23 |
+| `AoI: dynamicUpdate InteractionType (base→merged)` | `player_id` (held the witness's entity id) | `witness_id` + `witness_name` | NT-23 |
+| `TeleportPlayer: persistence UPDATE matched 0 rows` / `failed to persist position` | `pid` | `player_id` + `player_name` | NT-23 |
+
 ### Credential fields
 
 Never log a credential value in full, at any level: this covers SIDs, tickets, session keys, passwords and password hashes, and raw request bodies that carry them. Disk logs, the admin `/ws/logs` stream and SigNoz all keep what they receive, and a harvested SID or ticket is enough to hijack a pending login ([#440](https://github.com/SandboxServers/Cimmeria/issues/440)).

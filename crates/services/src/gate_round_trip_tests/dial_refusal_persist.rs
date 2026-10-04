@@ -14,6 +14,7 @@
 
 use std::sync::Arc;
 
+use cimmeria_entity::cell_entity::PlayerIdentity;
 use sqlx::PgPool;
 
 use crate::base::world_entry::persist_arrival;
@@ -198,6 +199,7 @@ async fn live_db_a_dial_to_an_unheld_address_arms_nothing_and_leaves_the_row_unt
         "Agnos",
         position,
         &[TARGET_GATE],
+        PlayerIdentity::UNKNOWN,
     )
     .await;
     let after = row_of(&pool, player_id).await;

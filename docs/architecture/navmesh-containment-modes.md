@@ -308,7 +308,7 @@ catalog in [observability.md](observability.md).
 
 - **`navmesh_mode_summary`** (INFO, once per resident meshed space at
   startup, from `SpaceManager::log_navmesh_summary`). Fields: `space_id`,
-  `world_name`, `navmesh_mode`, `poly_count`, `spawn_rows`,
+  `world`, `navmesh_mode`, `poly_count`, `spawn_rows`,
   `spawn_rows_off_mesh`. It is INFO and not WARN even at a high off-mesh
   count, because an advisory world is *expected* to have one and a WARN that
   fires every boot stops being read. The operator-actionable signal is the

@@ -248,8 +248,10 @@ pub(super) async fn handle_base_message(
                 // `entity:<id>` — surface the ordering bug rather than hiding it.
                 tracing::warn!(
                     entity_id,
-                    account_id,
+                    entity_name = character_name.as_deref(),
+                    account_id, // nt:id-only InitPlayerState carries no login name to pair
                     player_id,
+                    player_name = character_name.as_deref(),
                     "InitPlayerState: entity absent when caching character_name -- \
                      ConnectEntity ordering bug; cell-side emits will fall back to entity id"
                 );

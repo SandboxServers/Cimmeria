@@ -5,6 +5,7 @@
 use super::*;
 
 mod aoi;
+mod aoi_names;
 mod aoi_npc_corpse;
 mod aoi_player_intro;
 mod aoi_view_radius;

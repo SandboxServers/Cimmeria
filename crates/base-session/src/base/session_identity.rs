@@ -67,6 +67,23 @@ pub fn identity_for_entity(
         .map_or(PlayerIdentity::UNKNOWN, session_identity)
 }
 
+/// The character name of the player whose entity is `entity_id`, from its
+/// session: `None` for an NPC or an unmapped entity.
+///
+/// One map hop and no fallback scan (unlike [`identity_for_entity`]), so a
+/// debug line at AoI volume can name its witness. Call it inside the log
+/// macro, where it runs only when the line is on.
+pub fn player_name_for_entity(
+    connected: &Arc<Mutex<HashMap<SocketAddr, ConnectedClientState>>>,
+    entity_to_addr: &Arc<Mutex<HashMap<u32, SocketAddr>>>,
+    entity_id: u32,
+) -> Option<&'static str> {
+    let addr = entity_to_addr.lock().ok()?.get(&entity_id).copied()?;
+    let clients = connected.lock().ok()?;
+    let c = clients.get(&addr)?;
+    cimmeria_entity::name_intern::intern_opt(c.player_name.as_deref())
+}
+
 /// The identity of one session: the Rule 5 IDs and their Rule 6 names
 /// (`player_name` is the active character's, `account_name` the login).
 /// A name the session doesn't have yet is `None`, so it is left off the line.

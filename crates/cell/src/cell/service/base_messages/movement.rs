@@ -49,7 +49,14 @@ pub(super) async fn handle_entity_move(
     tx: &mpsc::Sender<CellToBaseMsg>,
     space_mgr: &mut SpaceManager,
 ) {
-    tracing::trace!(entity_id, ?position, "EntityMove");
+    // Fields are evaluated only when trace is enabled, so the 10 Hz path
+    // pays nothing for the name.
+    tracing::trace!(
+        entity_id,
+        entity_name = space_mgr.entity_label(entity_id),
+        ?position,
+        "EntityMove"
+    );
     // Server↔client space divergence. The write below is
     // server-authoritative (it uses the cell's own `entity_space`
     // binding, never `claimed_space_id`), so a mismatch cannot
@@ -70,9 +77,7 @@ pub(super) async fn handle_entity_move(
             // names the world the server believes the player is in —
             // the claimed id is by definition not a binding this
             // process can resolve.
-            let world = space_mgr
-                .world_name_for_space(actual_space_id)
-                .unwrap_or("unknown");
+            let world = space_mgr.world_name_for_space(actual_space_id);
             tracing::warn!(
                 target: "movement.validation",
                 entity_id,
@@ -82,8 +87,10 @@ pub(super) async fn handle_entity_move(
                 player_id = id.player_id,
                 player_name = id.player_name,
                 claimed_space_id,
+                claimed_world = space_mgr.world_name_for_space(claimed_space_id),
                 actual_space_id,
-                world = %world,
+                actual_world = world,
+                world,
                 reason = "space_mismatch",
                 "movement.space_mismatch: client claims a different space than \
                  the server binding (warn-only — write uses the server binding)"
@@ -113,6 +120,7 @@ pub(super) async fn handle_entity_move(
             vx = velocity[0],
             vy = velocity[1],
             vz = velocity[2],
+            entity_name = space_mgr.entity_label(entity_id),
             sample_index = sample,
             "player position update (sampled)"
         );
@@ -134,7 +142,7 @@ pub(super) async fn handle_entity_move(
             // alarm by default.
             tracing::debug!(
                 target: "movement.validation",
-                entity_id,
+                entity_id, // nt:id-only the entity is gone, nothing is left to name
                 reason = "entity_missing",
                 "EntityMove dropped: entity not in any space (likely post-disconnect)"
             );
@@ -179,7 +187,8 @@ pub(super) async fn handle_entity_move(
             // `handle_teleport_player` which emits
             // `BASEMSG_FORCED_POSITION` to the owner; the
             // existing teleport bundle is the right primitive.
-            send_snap_back(entity_id, space_id, last_valid, id, tx).await;
+            let world = space_mgr.world_name_for_space(space_id);
+            send_snap_back(entity_id, space_id, world, last_valid, id, tx).await;
         }
         ClientMoveOutcome::Recovered {
             reason,
@@ -195,7 +204,8 @@ pub(super) async fn handle_entity_move(
                 },
                 Instant::now(),
             );
-            send_snap_back(entity_id, space_id, recovered_to, id, tx).await;
+            let world = space_mgr.world_name_for_space(space_id);
+            send_snap_back(entity_id, space_id, world, recovered_to, id, tx).await;
         }
         ClientMoveOutcome::CorrectionSuppressed {
             reason,
@@ -248,6 +258,7 @@ fn hard_reject(
 async fn send_snap_back(
     entity_id: u32,
     space_id: u32,
+    world: Option<&str>,
     position: [f32; 3],
     id: PlayerIdentity,
     tx: &mpsc::Sender<CellToBaseMsg>,
@@ -269,6 +280,7 @@ async fn send_snap_back(
             player_id = id.player_id,
             player_name = id.player_name,
             space_id,
+            world,
             error = %e,
             reason = "snap_back_send_failed",
             "movement.snap_back_send_failed: snap-back TeleportPlayer send to \

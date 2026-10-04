@@ -11,7 +11,7 @@ use std::collections::{HashMap, HashSet};
 use cimmeria_common::EntityId;
 
 use super::super::messages::CellToBaseMsg;
-use super::SpaceManager;
+use super::{EntityNames, SpaceManager};
 
 /// A witness's per-template interaction entries
 /// (`CellEntity::available_interactions`).
@@ -110,15 +110,24 @@ impl SpaceManager {
         // Stable AoI-enter log — `aoi.entity_enter` event
         // name lets SigNoz answer "did entity X enter
         // player Y's view?" without grepping for the
-        // EnteredAoI message text.
-        tracing::debug!(
-            target: "aoi.entity_enter",
-            witness_id = player_id,
-            entity_id = eid,
-            space_id = space.space_id,
-            is_player = other.is_player,
-            "AoI: entity entered witness view"
-        );
+        // EnteredAoI message text. Names are resolved only when the
+        // line is on: this runs once per entity per AoI entry.
+        if tracing::enabled!(target: "aoi.entity_enter", tracing::Level::DEBUG) {
+            let names = EntityNames::of(other);
+            tracing::debug!(
+                target: "aoi.entity_enter",
+                witness_id = player_id,
+                witness_name = self.entity_label(player_id),
+                entity_id = eid,
+                entity_name = names.entity_name,
+                template_id = names.template_id,
+                template_name = names.template_name,
+                space_id = space.space_id,
+                world = %space.world_name,
+                is_player = other.is_player,
+                "AoI: entity entered witness view"
+            );
+        }
         let npc_data = if !other.is_player {
             Some(super::super::messages::NpcAoIData::from_entity(other))
         } else {
@@ -205,9 +214,12 @@ impl SpaceManager {
                     let merged = base | entries.iter().fold(0i64, |acc, &(_, _, f)| acc | f);
                     if merged != base {
                         tracing::info!(
-                            player_id,
+                            witness_id = player_id,
+                            witness_name = self.entity_label(player_id),
                             entity_id = eid,
+                            entity_name = EntityNames::of(other).entity_name,
                             template_id = tmpl_id,
+                            template_name = cimmeria_names::book().template(tmpl_id),
                             base,
                             merged,
                             "AoI: dynamicUpdate InteractionType (base→merged)"
@@ -316,13 +328,21 @@ impl SpaceManager {
         // Left AoI: in previous but not in current
         for &eid in &previous_aoi {
             if !current_aoi.contains(&eid) {
-                tracing::debug!(
-                    target: "aoi.entity_leave",
-                    witness_id = player_id,
-                    entity_id = eid,
-                    space_id = space.space_id,
-                    "AoI: entity left witness view"
-                );
+                if tracing::enabled!(target: "aoi.entity_leave", tracing::Level::DEBUG) {
+                    let names = self.entity_names(eid);
+                    tracing::debug!(
+                        target: "aoi.entity_leave",
+                        witness_id = player_id,
+                        witness_name = self.entity_label(player_id),
+                        entity_id = eid,
+                        entity_name = names.entity_name,
+                        template_id = names.template_id,
+                        template_name = names.template_name,
+                        space_id = space.space_id,
+                        world = %space.world_name,
+                        "AoI: entity left witness view"
+                    );
+                }
                 events.push(CellToBaseMsg::LeftAoI {
                     witness_id: player_id,
                     entity_id: eid,
@@ -350,6 +370,18 @@ impl SpaceManager {
             }
         }
 
+        // The name for the target-cleared line below, looked up before the
+        // mutable borrow and only when that line is on.
+        let left_target_name = if tracing::enabled!(tracing::Level::DEBUG) {
+            self.get_entity(player_id)
+                .and_then(|e| e.current_target_id)
+                .and_then(|t| u32::try_from(t).ok())
+                .filter(|t| previous_aoi.contains(t) && !current_aoi.contains(t))
+                .and_then(|t| self.entity_names(t).entity_name)
+        } else {
+            None
+        };
+
         // Update the witness set
         if let Some(entity) = self
             .spaces
@@ -361,7 +393,13 @@ impl SpaceManager {
             // witness set) is left alone.
             if let Some(t) = entity.current_target_id.and_then(|t| u32::try_from(t).ok()) {
                 if previous_aoi.contains(&t) && !current_aoi.contains(&t) {
-                    super::target_lifetime::drop_target_if(player_id, entity, t, "target_left_aoi");
+                    super::target_lifetime::drop_target_if(
+                        player_id,
+                        entity,
+                        t,
+                        left_target_name,
+                        "target_left_aoi",
+                    );
                 }
             }
             entity.witnesses = current_aoi.iter().map(|&id| EntityId(id as i32)).collect();

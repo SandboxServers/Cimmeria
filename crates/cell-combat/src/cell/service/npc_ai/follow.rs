@@ -120,6 +120,7 @@ pub(super) async fn npc_ai_follow(
     let dist = npc_pos.distance_to(&target_pos);
     // Stuck-escort detector (clears itself once the escort is back in band).
     crate::cell::playtest_friction::escort_tick(
+        space_mgr,
         npc_id,
         target_id,
         dist,

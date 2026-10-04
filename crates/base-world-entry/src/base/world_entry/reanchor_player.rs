@@ -44,7 +44,9 @@ use crate::mercury::{
     WorldEntryInfo, BASEMSG_CREATE_BASE_PLAYER, REPLY_FLAGS, SGWPLAYER_CLASS_ID,
 };
 
+use super::super::session_identity;
 use super::super::ConnectedClientState;
+use super::space_registry::world_for_space;
 
 /// Build the burst-body bytes: `CREATE_BASE_PLAYER` header + `enter_world_body`.
 ///
@@ -154,7 +156,7 @@ pub(crate) async fn handle_reanchor_player(
         .copied()
         .ok_or("Reanchor: no client addr for entity")?;
 
-    let (key, enc_version, pending_acks_arc, next_seq, appearance_args, tint_args, class_id) = {
+    let (key, enc_version, pending_acks_arc, next_seq, appearance_args, tint_args, class_id, id) = {
         let clients = connected.lock().map_err(|_| "connected lock poisoned")?;
         let c = clients
             .get(&addr)
@@ -167,6 +169,7 @@ pub(crate) async fn handle_reanchor_player(
             c.cached_appearance_args.clone(),
             c.cached_tint_args.clone(),
             c.player_class_id,
+            session_identity::session_identity(c),
         )
     };
 
@@ -177,6 +180,11 @@ pub(crate) async fn handle_reanchor_player(
     let class_id = class_id.unwrap_or_else(|| {
         tracing::warn!(
             entity_id,
+            entity_name = id.player_name,
+            account_id = id.account_id,
+            account_name = id.account_name,
+            player_id = id.player_id,
+            player_name = id.player_name,
             %addr,
             reason = "login_class_unknown",
             "Reanchor: no login class cached for this session; re-creating as SGWPlayer"
@@ -241,7 +249,18 @@ pub(crate) async fn handle_reanchor_player(
     );
     if has_replay {
         tracing::info!(
-            entity_id, %addr, space_id, ?position, class_id,
+            entity_id,
+            entity_name = id.player_name,
+            account_id = id.account_id,
+            account_name = id.account_name,
+            player_id = id.player_id,
+            player_name = id.player_name,
+            %addr,
+            space_id,
+            world = world_for_space(space_id),
+            ?position,
+            class_id,
+            class_name = cimmeria_wire::names::class_name(class_id),
             resent = "create_base_player,being_appearance,entity_tint",
             // The cell queues the rest right behind this burst
             // (`cell::respawn`: `send_client_hinted_regions`, the inventory
@@ -252,7 +271,13 @@ pub(crate) async fn handle_reanchor_player(
         );
     } else {
         tracing::warn!(
-            entity_id, %addr,
+            entity_id,
+            entity_name = id.player_name,
+            account_id = id.account_id,
+            account_name = id.account_name,
+            player_id = id.player_id,
+            player_name = id.player_name,
+            %addr,
             "Reanchor: cached appearance/tint missing — sent burst only, pawn may render blank"
         );
     }

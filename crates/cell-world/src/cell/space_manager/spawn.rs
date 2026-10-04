@@ -47,7 +47,13 @@ impl SpaceManager {
         space.entities.insert(entity_id, cell_entity);
         self.entity_space.insert(entity_id, space_id);
 
-        tracing::debug!(entity_id, space_id, ?position, "NPC entity spawned");
+        tracing::debug!(
+            entity_id, // nt:id-only unnamed until the spawner stamps its template
+            space_id,
+            world = %world_name,
+            ?position,
+            "NPC entity spawned"
+        );
         Ok(space_id)
     }
 
@@ -199,8 +205,9 @@ impl SpaceManager {
                     tracing::debug!(
                         target: "spawner.npc_behaviour",
                         event = "spawn_grounded",
-                        spawn_id = record.spawn_id,
+                        spawn_id = record.spawn_id, // nt:id-only spawn rows have no name column
                         template_id = record.template_id,
+                        template_name = cimmeria_names::book().template(record.template_id),
                         seeded_y = seeded.y,
                         floor_y = floor,
                         "NPC spawn Y moved onto the navmesh floor"

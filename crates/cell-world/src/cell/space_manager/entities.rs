@@ -8,7 +8,7 @@ use cimmeria_common::{EntityId, SpaceId, Vector3};
 use cimmeria_entity::cell_entity::{CellEntity, PlayerIdentity};
 
 use super::super::messages::CellToBaseMsg;
-use super::SpaceManager;
+use super::{EntityNames, SpaceManager};
 
 /// Outcome of [`SpaceManager::despawn_npc`].
 ///
@@ -99,7 +99,13 @@ impl SpaceManager {
         // identity from `BaseToCellMsg::CreateEntity`. That handler emits the
         // identity-bearing "CreateEntity" line for this same event — this one
         // is the spatial-grid insert, keyed by entity/space only.
-        tracing::debug!(entity_id, space_id, ?position, "Cell entity created");
+        tracing::debug!(
+            entity_id, // nt:id-only not stamped yet, the CreateEntity line names it
+            space_id,
+            world = self.world_name_for_space(space_id),
+            ?position,
+            "Cell entity created"
+        );
         Ok(space_id)
     }
 
@@ -310,11 +316,15 @@ impl SpaceManager {
         // is the client-controller registry the AoI tick iterates. They are
         // set together by `connect_entity`, but reading both means a future
         // change that forgets one still cannot route a player in here.
+        // Snapshot before the teardown below removes the entity (Rule 6).
+        let names = EntityNames::of(entity);
         if entity.is_player || space.players.contains(&entity_id) {
             tracing::warn!(
                 target: "console.despawn",
                 entity_id,
+                entity_name = names.entity_name,
                 space_id,
+                world = %space.world_name,
                 is_player = entity.is_player,
                 in_players_set = space.players.contains(&entity_id),
                 "despawn refused: target is a player — despawn_npc is NPC/spawnable-only"
@@ -356,7 +366,13 @@ impl SpaceManager {
                     // feedback.
                     tracing::warn!(
                         target: "console.despawn",
-                        witness_id, entity_id, error = %e,
+                        witness_id,
+                        witness_name = self.entity_label(witness_id),
+                        entity_id,
+                        entity_name = names.entity_name,
+                        template_id = names.template_id,
+                        template_name = names.template_name,
+                        error = %e,
                         "LeftAoI send to base failed during despawn"
                     );
                 }
@@ -399,6 +415,7 @@ impl SpaceManager {
                     player_id = id.player_id,
                     player_name = id.player_name,
                     space_id,
+                    world = %space.world_name,
                     "Entity connected (player)"
                 );
             }
@@ -503,7 +520,12 @@ impl SpaceManager {
                         .await
                     {
                         tracing::warn!(
-                            witness_id, entity_id,
+                            witness_id,
+                            witness_name = space
+                                .entities
+                                .get(&witness_id)
+                                .and_then(|w| w.identity().player_name),
+                            entity_id,
                             entity_name = id.player_name,
                             account_id = id.account_id,
                             account_name = id.account_name,

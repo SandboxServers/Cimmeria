@@ -537,7 +537,7 @@ impl CellService {
                     for (rid, r) in &regions {
                         if let Some(existing) = point_set_to_region.insert(r.point_set_id, *rid) {
                             tracing::error!(
-                                point_set_id = r.point_set_id,
+                                point_set_id = r.point_set_id, // nt:id-only ring point sets have no name column
                                 first_region = existing, second_region = *rid,
                                 "duplicate point_set_id across ring regions — routing will be non-deterministic"
                             );

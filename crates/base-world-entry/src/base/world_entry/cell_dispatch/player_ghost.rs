@@ -23,6 +23,7 @@ use crate::mercury::{
     compose_create_entity_cascade_body, compose_player_ghost_cascade_body, PlayerGhostCascade,
 };
 
+use super::super::super::session_identity::identity_for_entity;
 use super::super::super::ConnectedClientState;
 
 /// The observee's session-owned identity, cloned out from under the
@@ -87,7 +88,10 @@ pub(super) fn resolve_identity(
         None => tracing::warn!(
             target: "aoi.player_ghost_incomplete",
             witness_id,
+            witness_name = identity_for_entity(connected, entity_to_addr, witness_id).player_name,
             entity_id,
+            // The scan fallback can still name a session the map lost.
+            entity_name = identity_for_entity(connected, entity_to_addr, entity_id).player_name,
             addr_resolved = addr.is_some(),
             reason = "observee_session_unresolved",
             "Player entered AoI but its base session could not be resolved -- \
@@ -96,7 +100,9 @@ pub(super) fn resolve_identity(
         Some(id) if id.appearance_args.is_none() => tracing::warn!(
             target: "aoi.player_ghost_incomplete",
             witness_id,
+            witness_name = identity_for_entity(connected, entity_to_addr, witness_id).player_name,
             entity_id,
+            entity_name = Some(id.name.as_str()).filter(|n| !n.is_empty()),
             reason = "no_cached_appearance",
             "Player entered AoI with no cached BeingAppearance -- witness will see \
              a named entity with no body until the next appearance rebroadcast"

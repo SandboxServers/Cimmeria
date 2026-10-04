@@ -108,10 +108,15 @@ pub async fn handle_dial_gate(
         match space_mgr.cancel_gate_dial(entity_id) {
             Some(prev) => tracing::debug!(
                 entity_id,
+                entity_name = space_mgr.entity_label(entity_id),
                 cancelled_target = prev.target_address_id,
                 "onDialGate: cancel dial"
             ),
-            None => tracing::debug!(entity_id, "onDialGate: cancel dial (nothing armed)"),
+            None => tracing::debug!(
+                entity_id,
+                entity_name = space_mgr.entity_label(entity_id),
+                "onDialGate: cancel dial (nothing armed)"
+            ),
         }
         return false;
     }
@@ -155,7 +160,7 @@ pub async fn handle_dial_gate(
     // `dial_feedback`), on the first press.
     if let Err(refusal) = player_knows_stargate(entity_id, target_address_id, space_mgr) {
         space_mgr.cancel_gate_dial(entity_id);
-        send_dial_refusal(entity_id, target_address_id, refusal, tx).await;
+        send_dial_refusal(entity_id, target_address_id, refusal, tx, space_mgr).await;
         return false;
     }
 
@@ -166,7 +171,9 @@ pub async fn handle_dial_gate(
             space_mgr.cancel_gate_dial(entity_id);
             tracing::warn!(
                 entity_id,
+                entity_name = space_mgr.entity_label(entity_id),
                 target_address_id,
+                target_address_name = cimmeria_names::book().stargate(target_address_id),
                 reason = "stargate_address_not_found",
                 "onDialGate: invalid stargate address — pending dial cancelled"
             );
@@ -178,6 +185,7 @@ pub async fn handle_dial_gate(
                 target_address_id,
                 DialRefusal::UnknownAddress,
                 tx,
+                space_mgr,
             )
             .await;
             return false;
@@ -191,11 +199,20 @@ pub async fn handle_dial_gate(
             space_mgr.cancel_gate_dial(entity_id);
             tracing::warn!(
                 entity_id,
+                entity_name = space_mgr.entity_label(entity_id),
                 target_address_id,
+                target_address_name = cimmeria_names::book().stargate(target_address_id),
                 reason = "dial_entity_missing",
                 "onDialGate: entity not found"
             );
-            send_dial_refusal(entity_id, target_address_id, DialRefusal::NotInWorld, tx).await;
+            send_dial_refusal(
+                entity_id,
+                target_address_id,
+                DialRefusal::NotInWorld,
+                tx,
+                space_mgr,
+            )
+            .await;
             return false;
         }
     };
@@ -204,7 +221,11 @@ pub async fn handle_dial_gate(
     if gate.world_name == current_world {
         space_mgr.cancel_gate_dial(entity_id);
         tracing::debug!(
-            entity_id, target_address_id, world = %gate.world_name,
+            entity_id,
+            entity_name = space_mgr.entity_label(entity_id),
+            target_address_id,
+            target_address_name = cimmeria_names::book().stargate(target_address_id),
+            world = %gate.world_name,
             reason = "already_on_destination",
             "onDialGate: already in destination world — pending dial cancelled"
         );
@@ -213,6 +234,7 @@ pub async fn handle_dial_gate(
             target_address_id,
             DialRefusal::AlreadyOnDestination,
             tx,
+            space_mgr,
         )
         .await;
         return false;
@@ -229,8 +251,12 @@ pub async fn handle_dial_gate(
 
     if !world_has_stargate_region(space_mgr, &current_world) {
         tracing::warn!(
-            entity_id, target_address_id,
-            from = %current_world, to = %gate.world_name,
+            entity_id,
+            entity_name = space_mgr.entity_label(entity_id),
+            target_address_id,
+            target_address_name = cimmeria_names::book().stargate(target_address_id),
+            from = %current_world,
+            to = %gate.world_name,
             reason = "no_stargate_region",
             "onDialGate: origin world has no REGION_FLAG_Stargate region — \
              travelling on the dial instead of on the crossing (no gate \
@@ -261,9 +287,13 @@ pub async fn handle_dial_gate(
     }
 
     tracing::info!(
-        entity_id, target_address_id,
-        from = %current_world, to = %gate.world_name,
-        origin_event_set_id = ?origin_event_set_id,
+        entity_id,
+        entity_name = space_mgr.entity_label(entity_id),
+        target_address_id,
+        target_address_name = cimmeria_names::book().stargate(target_address_id),
+        from = %current_world,
+        to = %gate.world_name,
+        origin_event_set_id = ?origin_event_set_id, // nt:id-only event sets have no name column
         "Gate travel: dial accepted, gate opens in 4s"
     );
 
@@ -348,7 +378,9 @@ pub async fn on_stargate_passage(
     {
         tracing::warn!(
             entity_id,
+            entity_name = space_mgr.entity_label(entity_id),
             target_address_id,
+            target_address_name = cimmeria_names::book().stargate(target_address_id),
             reason = "on_stargate_passage_send_failed",
             "gate crossing: onStargatePassage could not be enqueued ({e}) \
              — the crossing still proceeds on the onSequence alone"
@@ -390,6 +422,7 @@ pub async fn handle_stargate_region_entered(
     let Some(dial) = space_mgr.gate_dial(entity_id).cloned() else {
         tracing::debug!(
             entity_id,
+            entity_name = space_mgr.entity_label(entity_id),
             "stargate region entered with no gate dialled — no travel"
         );
         return;
@@ -397,7 +430,9 @@ pub async fn handle_stargate_region_entered(
     if !dial.passable {
         tracing::debug!(
             entity_id,
+            entity_name = space_mgr.entity_label(entity_id),
             target_address_id = dial.target_address_id,
+            target_address_name = cimmeria_names::book().stargate(dial.target_address_id),
             "stargate region entered before the gate opened — no travel"
         );
         return;
@@ -405,7 +440,9 @@ pub async fn handle_stargate_region_entered(
 
     tracing::info!(
         entity_id,
+        entity_name = space_mgr.entity_label(entity_id),
         target_address_id = dial.target_address_id,
+        target_address_name = cimmeria_names::book().stargate(dial.target_address_id),
         target_world = %dial.target_world_name,
         "Stargate passed — crossing; world transition deferred behind the \
          crossing hold"
@@ -470,7 +507,9 @@ async fn perform_gate_travel(
     let Some(gate) = space_mgr.stargates.get(&target_address_id).cloned() else {
         tracing::warn!(
             entity_id,
+            entity_name = space_mgr.entity_label(entity_id),
             target_address_id,
+            target_address_name = cimmeria_names::book().stargate(target_address_id),
             "gate travel: destination vanished from the stargate cache"
         );
         return false;
@@ -501,8 +540,11 @@ async fn perform_gate_travel(
     if !arrival.is_usable() {
         tracing::warn!(
             entity_id,
+            entity_name = space_mgr.entity_label(entity_id),
             target_address_id,
+            target_address_name = cimmeria_names::book().stargate(target_address_id),
             stargate_id = target_address_id,
+            stargate_name = cimmeria_names::book().stargate(target_address_id),
             world = %gate.world_name,
             desired_x = arrival.position[0],
             desired_y = arrival.position[1],
@@ -515,7 +557,14 @@ async fn perform_gate_travel(
         );
         // Both callers (the immediate fallback and `crossing_tick`) end
         // here without a transfer, so tell the player once, from here.
-        send_dial_refusal(entity_id, target_address_id, DialRefusal::NoSafeArrival, tx).await;
+        send_dial_refusal(
+            entity_id,
+            target_address_id,
+            DialRefusal::NoSafeArrival,
+            tx,
+            space_mgr,
+        )
+        .await;
         return false;
     }
 
@@ -552,7 +601,10 @@ async fn perform_gate_travel(
         .await
     {
         tracing::error!(
-            entity_id, world = %gate.world_name, error = %e,
+            entity_id,
+            entity_name = space_mgr.entity_label(entity_id),
+            world = %gate.world_name,
+            error = %e,
             "gate travel: base channel closed — entity left in place, no transfer"
         );
         return false;

@@ -46,6 +46,7 @@ use cimmeria_wire::cell::client_methods::communicator::ON_PLAYER_COMMUNICATION;
 
 use crate::cell::client_methods::player::ON_ERROR_CODE;
 use crate::cell::messages::CellToBaseMsg;
+use crate::cell::space_manager::SpaceManager;
 
 /// `EErrorCodeSystem` value carried in `onErrorCode`'s `SystemID`.
 ///
@@ -131,6 +132,7 @@ pub(crate) async fn send_dial_refusal(
     target_address_id: i32,
     refusal: DialRefusal,
     tx: &mpsc::Sender<CellToBaseMsg>,
+    space_mgr: &SpaceManager,
 ) {
     for (method_index, args) in refusal_messages(refusal) {
         if let Err(e) = tx
@@ -143,7 +145,9 @@ pub(crate) async fn send_dial_refusal(
         {
             tracing::warn!(
                 entity_id,
+                entity_name = space_mgr.entity_label(entity_id),
                 target_address_id,
+                target_address_name = cimmeria_names::book().stargate(target_address_id),
                 refusal = refusal.reason(),
                 method_index,
                 method_name = cimmeria_wire::names::player_client_method(method_index),

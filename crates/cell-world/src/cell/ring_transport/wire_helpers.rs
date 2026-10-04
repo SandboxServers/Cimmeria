@@ -50,8 +50,11 @@ pub async fn send_play_sequence(
         Some(&id) => id,
         None => {
             tracing::warn!(
-                event_set_id,
+                entity_id,
+                entity_name = space_mgr.entity_label(entity_id),
+                event_set_id, // nt:id-only event sets have no name column to pair
                 event_id,
+                event_name = ?region_event,
                 "ring sequence not in event_sets_sequences map — kismet sequence will not play"
             );
             return;
@@ -120,6 +123,7 @@ pub async fn update_state_flag(
     {
         tracing::warn!(
             entity_id,
+            entity_name = space_mgr.entity_label(entity_id),
             flag,
             flag_names = %cimmeria_wire::state_field::STATE_FLAGS.render(flag),
             set,
@@ -180,7 +184,9 @@ pub async fn send_visible(
             // refresh but the desync is visible.
             tracing::warn!(
                 witness_id,
+                witness_name = space_mgr.entity_label(witness_id),
                 entity_id,
+                entity_name = space_mgr.entity_label(entity_id),
                 visible,
                 "ring send_visible: cell→base send failed -- witness will see desynced visibility: {e}"
             );
@@ -199,7 +205,9 @@ pub async fn send_destination_list(
         Some(r) => r,
         None => {
             tracing::warn!(
-                source_region_id,
+                entity_id,
+                entity_name = space_mgr.entity_label(entity_id),
+                source_region_id, // nt:id-only the region is not loaded, so it has no name
                 "send_destination_list: source region not in cache"
             );
             return;
@@ -211,7 +219,7 @@ pub async fn send_destination_list(
             let r = space_mgr.ring_regions.get(id);
             if r.is_none() {
                 tracing::warn!(
-                    invalid_id = id,
+                    invalid_id = id, // nt:id-only the id is not a loaded region, nothing to name
                     "ring destination id not in cache — skipping"
                 );
             }
@@ -229,7 +237,9 @@ pub async fn send_destination_list(
         .await;
     tracing::info!(
         entity_id,
+        entity_name = space_mgr.entity_label(entity_id),
         source_region_id,
+        source_region_name = Some(source.tag.as_str()).filter(|t| !t.is_empty()),
         destination_count = dests.len(),
         "Sent onRingTransporterList"
     );

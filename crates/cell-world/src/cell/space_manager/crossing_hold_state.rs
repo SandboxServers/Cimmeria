@@ -84,7 +84,9 @@ impl SpaceManager {
         if replaced.is_some() {
             tracing::warn!(
                 entity_id,
+                entity_name = self.entity_label(entity_id),
                 target_address_id,
+                target_address_name = cimmeria_names::book().stargate(target_address_id),
                 reason = "crossing_hold_replaced",
                 "gate crossing: a second hold was armed before the first \
                  one ran — this should not happen; the earlier hold's \
