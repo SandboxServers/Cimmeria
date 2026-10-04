@@ -8,6 +8,7 @@ mod client_paths;
 mod client_setup;
 mod client_telemetry_dll;
 mod config;
+mod game_process;
 mod identity;
 mod install;
 mod install_layout;
@@ -143,8 +144,10 @@ fn main() -> eframe::Result<()> {
 
     let options = eframe::NativeOptions {
         viewport: egui::ViewportBuilder::default()
-            .with_inner_size([760.0, 540.0])
-            .with_min_inner_size([640.0, 400.0])
+            // Layout A: a gate panel beside the main column. Below
+            // 760 px wide the panel folds away, as in the prototype.
+            .with_inner_size([1030.0, 720.0])
+            .with_min_inner_size([560.0, 520.0])
             .with_resizable(true)
             .with_title("Stargate Worlds Launcher"),
         ..Default::default()

@@ -2,7 +2,7 @@
 title: "SGW Launcher"
 type: explanation
 audience: engineers
-last_updated: 2026-09-29
+last_updated: 2026-10-03
 ---
 
 # SGW Launcher
@@ -33,14 +33,16 @@ window with no webview dependency.
 | **Seed install** | Downloads the seed (the whole client) once, verifies sha256, unpacks it into the install dir. The seed is a zip, or the archive.org client RAR, whose installer cabinets (`Data\DATA1-4.CAB`) are expanded straight into the installed layout. |
 | **Patch install** | Walks declared patches in order; downloads + unpacks each missing patch: overlay files, and patch sets whose deltas rebuild files from the player's own stock copies (`cimmeria-patchset`). |
 | **Client setup** | Restores the stock spelling of patched files (`EULA.lua`), writes the configured login servers into `LoginInternal.lua` and switches ASLR off in `SGW.exe`, after every install and before every launch (`src/client_setup/`). |
-| **Launch SGW** | Starts `SGW.exe` suspended, injects `cimmeria-client-patches.dll` (unless the player turned it off), and resumes it. With telemetry on, a telemetry session follows the game. See [Client patches DLL](#client-patches-dll). |
+| **Launch SGW** (**Play**) | Starts `SGW.exe` suspended, injects `cimmeria-client-patches.dll` (unless the player turned it off), and resumes it. The launcher follows the game until it exits, with or without telemetry; with telemetry on, a telemetry session follows it too. See [Client patches DLL](#client-patches-dll) and [UI and game lifecycle](#ui-and-game-lifecycle). |
+| **Running-game probe** | Finds any `SGW.exe` running from the install folder, including one the launcher did not start, so the Play tab shows it and file operations wait for it (`src/game_process.rs`). |
+| **Open in Explorer** | Shows the install folder; never creates it (`src/worker/open_folder.rs`). |
 | **Launch Atera Debug** | `cmd /C AtreaGameDebug.bat` (enabled only if Atera files were dropped into the install dir). |
 | **Launch + Telemetry** | Same as Atera Debug, plus the dev-session telemetry pipeline — mints a token, tails the client logs, and uploads chunks/bundles. It injects no DLL: the Atera bat starts `SGW.exe` itself. See `src/telemetry/` and [operations/telemetry.md](../operations/telemetry.md). |
 | **Fix ASLR** | `cmd /C AtreaFixASLR.bat` (enabled only if the Atera fix-ASLR bat is present). |
 | **Upload debug logs** | Zips `sgwdebuglog*` (case-blind) + `sessions/**` from the binaries directory and PUTs once to the Azure log SAS URL. |
 | **Self-update** | Checks GitHub Releases for a newer `launcher-*` release at startup and, on one click, downloads it, verifies it against the release's `.sha256`, swaps it in for the running exe and relaunches. See [Self-update](#self-update-srcself_update). |
 
-The launch buttons, client setup, adoption and the log upload all
+Play, the debug launches, client setup, adoption and the log upload all
 find the game through `src/install_layout.rs`, which resolves the
 directory holding `SGW.exe`: `<install>\Working\Binaries` in a full
 install, or the install path itself when it points straight at it.
@@ -234,8 +236,9 @@ carry. No released launcher ran it; it was removed with its state field
 The launcher's **Changes to your client** section lists every way it
 makes the player's client differ from the stock 2009 install, whether
 the launcher downloaded that install or the player pointed it at their
-own copy. It is open by default until the launcher manages a client,
-so a player sees the list before **Install / Update** or **Adopt**.
+own copy. Since the redesign (#1153) it sits in Settings › Advanced; it
+is open there by default until the launcher manages a client, so a
+player who opens Advanced sees the list before **Install** or **Adopt**.
 Nothing in it can be switched off except the two launch rows; the
 patches are what Cimmeria needs to play.
 
@@ -260,17 +263,32 @@ spec's.
 
 ### Telemetry is opt-in
 
-`telemetry.opted_in` defaults to `false`. Until the player answers it,
-a "Help us fix bugs? (optional)" prompt sits at the top of the window
-with **Turn on telemetry** and **No thanks**; either answer sets
-`telemetry.prompt_answered` and saves. The **Send telemetry (opt-in)**
-checkbox beside the launch buttons changes the choice later. Both write
-the status log line. The field used to be `enabled`, default `true`,
-and every launcher that saved its config wrote `"enabled": true`
-without asking; the rename means those configs load opted out.
+`telemetry.opted_in` defaults to `false`. The only control is the
+**Share diagnostic logs** checkbox in the footer of every view (Play,
+Patch Notes, and with Settings open), drawn by
+[`app/telemetry_panel.rs`](../../crates/launcher/src/app/telemetry_panel.rs).
+A click calls `record_choice`, which sets `opted_in`, sets
+`prompt_answered`, and saves the config at once. A failed save is shown
+under the checkbox and in the activity log; the choice then holds in
+memory for launches from that window. Installing, adopting and playing
+never set it. The one-time "Help us fix bugs?" prompt is gone (#1153);
+`prompt_answered` is still written so an older launcher reading the
+same config does not show it again. The field used to be `enabled`,
+default `true`, and every launcher that saved its config wrote
+`"enabled": true` without asking; the rename means those configs load
+opted out.
+
+A launch reads the choice once, in `LauncherApp::start_play`, and the
+reducer records it in `Lifecycle::Launching { telemetry }` /
+`Running { telemetry, .. }`. The footer's `caption(pref, session)`
+compares the two, so a change during play says it applies to the next
+launch and what the running session keeps ("Off from your next game
+launch. The game running now keeps sending diagnostics until it
+closes."). For a game the probe found but the launcher did not start
+(`Session::Unknown`), it claims nothing about that session.
 
 Opting in also loads the telemetry DLL into the game (owner decision
-2026-09-29). On **Launch SGW.exe** the launcher starts the telemetry
+2026-09-29). On **Play** the launcher starts the telemetry
 session first (a handshake of at most 10 s that writes
 `current-session.json`, which the DLL reads as it boots), then starts
 `SGW.exe` with the client-patches DLL and, after it,
@@ -279,7 +297,7 @@ build of the DLL (no `lab-bridge` feature) and write it to
 `<launcher dir>/client-telemetry/<sha256 prefix>/`; a dev launcher uses
 one beside itself ([`client_telemetry_dll.rs`](../../crates/launcher/src/client_telemetry_dll.rs)).
 A `lab-bridge` build is refused. When the session cannot start, or the
-DLL is missing or refused, the status log says so (`In-game telemetry:
+DLL is missing or refused, the activity log says so (`In-game telemetry:
 unavailable: …`) and the game starts without it; if injecting both DLLs
 fails, the launcher retries with the client patches alone, then plainly.
 Opted out, the launch is the client-patches launch and nothing else. A
@@ -304,14 +322,224 @@ shipped patches live in
 
 ---
 
-## Launch Surface
+## UI and Game Lifecycle
 
-| Button | Enabled when | Action |
+The window follows the approved single-game design of #1153 (layout A of
+the prototype at `e70b076a9`, `crates/launcher/prototype-macos/`). The
+player-facing walk-through is
+[launcher-guide.md § The launcher window](launcher-guide.md#the-launcher-window).
+This section is the engineering view: which module draws what, the state
+behind the one big button, and how the worker keeps conflicting jobs
+apart.
+
+### UI modules (`src/app/`)
+
+`LauncherApp` in `app/mod.rs` owns the UI state, builds every worker
+`Command`, and drains worker `Event`s once per frame (`drain_events`).
+The views are split by responsibility:
+
+| File | Draws / owns |
+|---|---|
+| `mod.rs` | `LauncherApp`, construction, the event drain, click handlers (`start_install`, `cancel_install`, `start_adopt`, `start_play`, `save_config`), the 2 s refresh (`refresh_install_state`) |
+| `shell.rs` | `eframe::App::ui`: the gate side panel (left out below `NARROW_WIDTH` = 760 px), the footer, the main column, header, tabs and gear |
+| `play_state.rs` | The reducer (`PlayState`), `install_status`, `primary_action`, and the guards `file_action_block` and `launch_block`. No egui, so it is unit-tested in `play_state_tests.rs` |
+| `play_tab.rs` | The status card, the primary button, **Play without updating**, **View details** |
+| `patch_notes.rs` | The Patch Notes tab; `rows()` projects the verified manifest |
+| `settings_panel.rs` | Game settings: install folder, **Open in Explorer**, the folder-change flow (`check_new_folder`), the disabled **Repair game** / **Uninstall…** |
+| `advanced_panel.rs` | Settings › Advanced: every tool the old single form had, and the reset confirmation modal |
+| `telemetry_panel.rs` | The **Share diagnostic logs** footer and its caption |
+| `client_changes_panel.rs` | "Changes to your client", inside Advanced |
+| `update_banner.rs` | Self-update banner, `min_launcher` gate, **Check for updates** |
+| `status_lines.rs` | Event → activity-log line (pure, tested) |
+| `theme.rs`, `gate_art.rs` | The palette and the painted gate motif |
+
+`theme::apply` calls `ctx.set_theme(egui::Theme::Dark)` and overwrites the
+dark visuals with the prototype's palette (blue-gray `BG` `#15191e`, cyan
+`ACCENT` `#87d5e7`), so the window stays dark when Windows is in light
+mode. `main.rs` opens the window at 1030 × 720, minimum 560 × 520.
+
+### The Play surface reducer (`app/play_state.rs`)
+
+`PlayState` holds four things: the file `operation`
+(`StartingInstall`, `Installing`, `Adopting`, or none), the game
+`Lifecycle`, the `probed_pids` from the last process probe, and the
+`ManifestSlot` (the verified manifest, the URL it came from, the last
+fetch error). `PlayState::apply(&Event, manifest_url)` is the only way
+events change it; the `click_*` methods give first-press feedback
+before the worker answers.
+
+```mermaid
+stateDiagram-v2
+    [*] --> Idle
+    Idle --> Launching: click_play(telemetry)
+    Launching --> Running: Launched(_, pid)
+    Launching --> Idle: LaunchError / Refused{Launch} / client setup failed
+    Running --> Idle: GameExited{pid} (same pid)
+    Running --> Idle: GameUntracked{pid} (probe takes over)
+```
+
+`activity()` folds the lifecycle and the probe together: a followed game
+wins, otherwise any probed pid means **Game running** with the
+telemetry state unknown.
+
+`primary_action(&PlayState, &Inputs)` picks the one button. Order
+matters: a running operation, then the game, then the `min_launcher`
+gate, then the install facts.
+
+| `Primary` | When |
+|---|---|
+| `Installing` | operation is `StartingInstall` or `Installing` (button: **Cancel**, enabled once `InstallStarted` arrives) |
+| `Busy("Adopting…")` | operation is `Adopting` |
+| `Launching` / `Running` | `activity()` is launching / running |
+| `Unavailable(reason)` | `launcher_blocked`; or the folder is not writable when an install, update or adopt would be next; or the manifest failed and nothing is installed; or the ledger says installed but `SGW.exe` is gone |
+| `ChooseFolder` | no install path |
+| `Adopt` | `SGW.exe` present and no `launcher-installed.json` |
+| `Install` | no ledger, manifest loaded (`Busy("Checking for game content…")` while it loads) |
+| `Update` | ledger seed differs from the manifest, or patches are missing; `offers_play_anyway` adds **Play without updating** when `SGW.exe` is present |
+| `Play` | up to date, or installed with no manifest to compare (`InstalledUnchecked`) |
+
+The play tab's `Unavailable` button is **Retry** (refetch the manifest)
+when the manifest failed with nothing cached, otherwise **Open settings**.
+
+`InstallComplete`, `InstallCancelled`, `InstallError`, `AdoptComplete`
+and `AdoptError` all end the operation and return
+`Effects { refresh_install: true }`, so the app re-reads
+`launcher-installed.json` and the client layout. A cancelled or failed
+install therefore shows whatever the ledger recorded, never an
+optimistic state. `Refused { action: Install, .. }` clears the
+operation; `Refused { action: Launch, .. }` drops a pending
+`Launching` back to `Idle`.
+
+**The manifest slot.** `begin_fetch(url)` drops a cached manifest that
+came from a different URL, because its relative blobs would resolve
+against the new URL. `ManifestFetched { url, .. }` and
+`ManifestError { url, .. }` carry their URL, and the reducer ignores one
+for a URL the app no longer uses. A failed refetch keeps the last
+verified manifest and records the error beside it.
+
+**The guards.** `file_action_block` (install, update, adopt, the
+install-folder change, the two client-state resets) is `Some` while any
+operation runs or the game is launching or running.
+`launch_block` (Play and the Atera debug launches) is `Some` while an
+operation runs, the game is launching or running, the launcher is below
+`min_launcher`, or `SGW.exe` is missing. Controls use them to disable
+themselves; the click handlers check them again.
+
+**Refresh.** Every `REFRESH_EVERY` (2 s), and after any install or
+folder change, `refresh_install_state` reloads the ledger, re-detects
+the client layout, re-probes writability (`app::folder_writable`: a
+missing folder is judged by its nearest existing parent, so the probe
+never creates the install folder), and runs the process probe.
+The frame asks for a repaint at that interval even with no input, so a
+game closed outside the launcher returns the card to **Play** without
+a mouse move.
+
+### Worker commands and events
+
+New with #1153 (all in [`worker/messages.rs`](../../crates/launcher/src/worker/messages.rs)):
+
+| Message | Direction | Meaning |
 |---|---|---|
-| **Launch SGW.exe** | `SGW.exe` exists | `SGW.exe` started suspended with `cwd = <install>`, the client-patches DLL injected, then resumed. When the player opted in (`telemetry.opted_in`) and the identity loaded, a telemetry session starts first, the telemetry DLL goes in after the client patches, and the session follows the game |
-| **Launch Atera Debug** | `AteraLoader.exe` **and** `AtreaGameDebug.bat` both present | `cmd /C AtreaGameDebug.bat` (cwd = install dir) |
-| **Launch + Telemetry** | Atera available, `telemetry.opted_in`, and identity loaded | Atera debug launch plus the telemetry pipeline |
-| **Fix ASLR** | `AtreaFixASLR.bat` present | `cmd /C AtreaFixASLR.bat` |
+| `Command::OpenInExplorer(path)` | UI → worker | Show the folder in `explorer.exe`. A missing folder is reported, never created (`open_folder::open_refusal`) |
+| `Event::InstallStarted` | worker → UI | The worker accepted an Install and claimed the install slot |
+| `Event::InstallCancelled` | worker → UI | The player cancelled; finished steps stay recorded |
+| `Event::Refused { action: Busy, reason }` | worker → UI | A command conflicted with running work and was not started; `reason` is the player-facing `Conflict` text |
+| `Event::GameExited { pid, exit_code }` | worker → UI | A game the launcher started and followed has exited, telemetry or not |
+| `Event::GameUntracked { pid }` | worker → UI | The game started but its pid could not be opened to wait on, or the wait failed: the launcher lost track of it, which is not an exit. No `GameExited` will come, so the probe takes over |
+| `Command::PrepareClient(ClientPrep)` | UI → worker | Apply a saved login-server list to the installed client now, under the maintenance slot |
+| `Event::SetupNote(String)` | worker → UI | One change client setup made (a renamed file, the server list, ASLR), for the activity log |
+| `Event::OpenFolderError(String)` | worker → UI | Explorer could not be opened, or the folder does not exist |
+| `Event::ManifestFetched { url, manifest }`, `Event::ManifestError { url, message }` | worker → UI | Now carry the URL they were fetched for |
+
+**Following the game.** `spawn_launch_sgw` wraps the game's exit future
+in `notify_exit`, which frees the worker's game slot and sends
+`GameExited` however the game was launched. Earlier launchers waited
+for the exit only on a telemetry launch; a plain launch now waits too, just
+to report it. If the helper's pid cannot be opened (`exit` is `None`),
+or the wait itself fails, the task sends `GameUntracked` instead: losing
+track of the game is not an exit, so the probe keeps guarding it.
+
+**Client setup runs in the worker.** Every launch carries a `ClientPrep`
+(install root and login servers). The worker runs client setup
+(`worker/client_prep.rs`) only after it has claimed the launch slot, so
+a refused launch writes nothing. A setup failure is a `LaunchError`, and
+the game does not start.
+
+### The activity guard (`worker/activity.rs`)
+
+A disabled button is only a hint: a click racing a state change, a stale
+frame, or a future caller can still dispatch. So `Worker::dispatch`
+checks every file-mutating or launching command against `Activity`, a
+`Mutex`-guarded record of what the worker itself is running, and answers
+a conflict with `Event::Refused` instead of starting it.
+
+| Command | Claims | Refused while |
+|---|---|---|
+| `Install`, `AdoptExisting` | `begin_install(install_dir)` → released by `end_install` when the task ends | an install runs, a launch is starting, the worker's game runs, or the probe finds an `SGW.exe` under `install_dir` |
+| `LaunchSgw`, `LaunchAteraDebug`, `LaunchAteraDebugWithTelemetry` | `begin_launch(dir)` → `game_started(pid)` → `game_ended()` | the same, or a maintenance job runs |
+| `WipeClientCache`, `WipeAllClientState`, `LaunchAteraFixAslr`, `PrepareClient` | `begin_maintenance(dir)` → released by `end_maintenance` when the job (for Fix ASLR, the bat) ends | any file job, a launch, or a game (any game for the resets, since the per-user client folders are shared); refused as `Busy::Files` |
+
+Each claim checks and claims under one lock, so nothing can start
+between the check and the file change. The Atera launches keep the
+launch slot until the probe sees `SGW.exe` (`Activity::wait_for_game`,
+up to 60 s; past that, a `LaunchError`), because the bat starts the game
+itself. A second click in the meantime is refused, and from then on the
+probe guards the game. Changing the install folder is a config edit on the UI
+thread, so it re-runs the process probe and `file_action_block` at the
+moment of the change, not only when the button was drawn.
+
+### The process probe (`src/game_process.rs`)
+
+`running_game_pids(install_dir)` walks a Toolhelp process snapshot for
+images named `SGW.exe` (case-blind) and reads each one's full image path
+with `QueryFullProcessImageNameW`. `select_game_pids` keeps a process
+whose image is under the install folder, compared lower-case,
+backslash-normalised, `\\?\`-stripped and by whole folder (so `SGW2`
+does not match `SGW`). It is conservative: a process whose image path
+cannot be read (another user's) counts as running from this install, and
+with no install path every `SGW.exe` counts. A false "running" only
+delays a file operation; a false "not running" could rewrite files under
+the game. On non-Windows hosts it returns nothing.
+
+The UI uses it every refresh (`PlayState::probed_pids`); the worker's
+`Activity::production()` uses it on every claim. That is what covers a
+reopened launcher, an Atera bat launch, another launcher window, and a
+`GameUntracked` game. Closing the launcher never stops the game: nothing
+in the launcher kills `SGW.exe`.
+
+**Tests.** `app/play_state_tests.rs` drives the reducer through install,
+cancel, failure, launch, exit (telemetry on and off), refusals and the
+guards. `worker/guard_tests.rs` dispatches real commands to a worker and
+checks refusals, a freed slot after a failed launch, and `GameExited` for
+a plain launch; `worker/activity.rs` tests the claims, including a probed
+game. `game_process.rs` tests the path match and the conservative cases,
+`patch_notes.rs` the manifest projection (order, blank fields, markup-like
+text, no fixed count), `settings_panel.rs` the folder check (it creates
+nothing), `open_folder.rs` the refusal, and `telemetry_panel.rs` the
+save round trip, a failed save and the captions.
+
+### Not in this release
+
+**Repair game** and **Uninstall…** are drawn disabled in
+`settings_panel.rs::show_maintenance`; they arrive as later PRs of #1153
+(see the [launcher-redesign ledger](../analysis/launcher-redesign/README.md)).
+Install / Update is not a repair: `install_all` skips everything
+`launcher-installed.json` records, so it cannot restore a deleted or
+damaged file.
+
+### Debug launches
+
+| Button (Settings › Advanced) | Enabled when | Action |
+|---|---|---|
+| **Launch Atera Debug** | `AteraLoader.exe` **and** `AtreaGameDebug.bat` both present, and `launch_block` is `None` | `cmd /C AtreaGameDebug.bat` (cwd = binaries dir) |
+| **Launch Atera + Telemetry** | Atera available, `telemetry.opted_in`, identity loaded, and `launch_block` is `None` | Atera debug launch plus the telemetry pipeline |
+| **Fix ASLR** | `AtreaFixASLR.bat` present, and `launch_block` is `None` | `cmd /C AtreaFixASLR.bat` |
+
+**Play** is the production launch: `SGW.exe` started suspended with
+`cwd = <binaries dir>`, the client-patches DLL injected, then resumed.
+When the player opted in (`telemetry.opted_in`) and the identity loaded,
+a telemetry session starts first, the telemetry DLL goes in after the
+client patches, and the session follows the game.
 
 The Atera batch files are **not** shipped by the launcher. Players who
 want the debug build drop the Atera tarball into the install directory
@@ -329,11 +557,11 @@ button is only needed for installs the launcher has never launched.
 `cimmeria-client-patches.dll` restores client features the 2009 client
 shipped unfinished, first the Black Market window. The decision record
 is [client-patches.md](../architecture/client-patches.md). On **Launch
-SGW.exe** the launcher:
+SGW.exe** (**Play**) the launcher:
 
 1. Decides whether to load it ([`client_patches/plan.rs`](../../crates/launcher/src/client_patches/plan.rs)).
    The checkbox **Load client patches (restores the Black Market
-   window)** under the launch buttons is `client_patches.enabled` in
+   window)** in Settings › Advanced › Client patches is `client_patches.enabled` in
    `launcher-config.json`. It is on by default, saved as soon as it
    changes, and independent of the telemetry opt-in.
 2. Finds the DLL ([`client_patches/dll_source.rs`](../../crates/launcher/src/client_patches/dll_source.rs)),
@@ -349,7 +577,7 @@ SGW.exe** the launcher:
    below). If injection fails, the helper kills the suspended process
    and the launcher starts the game without the DLL.
 
-Every launch that does not load the DLL says why in the status log
+Every launch that does not load the DLL says why in the activity log
 (`Client patches: off (launcher setting)…`, `…unavailable: …`, or
 `…not loaded (…)`), so a missing Black Market window is never silent.
 Atera debug launches never load it, because the bat starts `SGW.exe`
@@ -398,7 +626,7 @@ code-signing keys must be generated and kept on hardware (an HSM or a
 token), so they cannot be exported as a `.pfx`.
 
 **Order with the telemetry DLL.** Both DLLs MinHook `FEngineLoop::Tick`
-and the drop callee. When both go in (an opted-in **Launch SGW.exe**,
+and the drop callee. When both go in (an opted-in **Play**,
 and every lab launch), the client-patches DLL goes first. It hooks straight away and normally finds the stock prologues;
 the telemetry DLL reads its session file first, then chains on top.
 `injection_order` pins this order.
@@ -667,12 +895,22 @@ crates/launcher/
 └── src/
     ├── main.rs                 # eframe entry, tokio runtime
     ├── app/
-    │   ├── mod.rs              # eframe::App — state machine
-    │   ├── view.rs             # panel rendering
-    │   ├── telemetry_panel.rs  # telemetry opt-in prompt + checkbox
+    │   ├── mod.rs              # LauncherApp: state, event drain, click handlers
+    │   ├── shell.rs            # eframe::App::ui: side panel, header, tabs, footer
+    │   ├── play_state.rs       # Play surface reducer, primary_action, guards
+    │   ├── play_state_tests.rs # its tests
+    │   ├── play_tab.rs         # status card + primary action
+    │   ├── patch_notes.rs      # Patch Notes tab (verified manifest only)
+    │   ├── settings_panel.rs   # Game settings: folder, Explorer, Repair/Uninstall stubs
+    │   ├── advanced_panel.rs   # Settings › Advanced: the old form's tools
+    │   ├── telemetry_panel.rs  # "Share diagnostic logs" footer
     │   ├── update_banner.rs    # self-update banner + min_launcher gate
-    │   └── client_changes_panel.rs  # "Changes to your client" list
+    │   ├── client_changes_panel.rs  # "Changes to your client" list
+    │   ├── status_lines.rs     # event -> activity-log line
+    │   ├── theme.rs            # dark palette, buttons, cards
+    │   └── gate_art.rs         # painted gate motif
     ├── client_changes.rs       # every deviation from the stock client
+    ├── game_process.rs         # is SGW.exe running from this install? (Toolhelp)
     ├── config.rs               # LauncherConfig (next to .exe)
     ├── manifest.rs             # Manifest schema + fetch + Ed25519 verify
     ├── install.rs              # seed + patches + client setup orchestration
@@ -735,8 +973,12 @@ crates/launcher/
     │   ├── install_result.rs   # client.launcher.install_result, queued after an install
     │   └── process_watch.rs    # game-exit detection
     └── worker/
-        ├── mod.rs              # tokio worker
-        ├── launch_sgw.rs       # SGW.exe launch, DLL attempts and fallbacks
+        ├── mod.rs              # tokio worker, dispatch + Activity claims
+        ├── activity.rs         # refuses conflicting install / launch commands
+        ├── guard_tests.rs      # dispatch-level guard tests
+        ├── open_folder.rs      # Open in Explorer (never creates the folder)
+        ├── event_sender.rs     # event channel that wakes the UI
+        ├── launch_sgw.rs       # SGW.exe launch, DLL attempts and fallbacks, GameExited
         ├── launch_sgw_tests.rs # its tests (exact helper command lines)
         ├── launch_telemetry.rs # opted-in session: start before the game, follow it
         ├── self_update.rs      # update check / apply tasks -> UpdateEvent

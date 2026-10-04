@@ -2,7 +2,7 @@
 title: "Launcher Guide"
 type: how-to
 audience: players, operators
-last_updated: 2026-09-29
+last_updated: 2026-10-03
 ---
 
 # Launcher Guide
@@ -28,12 +28,18 @@ Azure Blob SAS for log uploads) see
 ## Contents
 
 - [Part 1 — For players](#part-1--for-players)
+  - [The launcher window](#the-launcher-window)
+  - [Install and Play](#install-and-play)
+  - [Share diagnostic logs](#share-diagnostic-logs)
+  - [Patch Notes](#patch-notes)
+  - [Game settings](#game-settings)
+  - [Advanced](#advanced)
   - [What it does (end-to-end)](#what-it-does-end-to-end)
   - [State files](#state-files)
   - [What "Install / Update" does internally](#what-install--update-does-internally)
   - [How the client finds its server](#how-the-client-finds-its-server)
   - [Install layout](#install-layout)
-  - [The launch buttons](#the-launch-buttons)
+  - [Debug launches](#debug-launches)
   - [Uploading debug logs](#uploading-debug-logs)
   - [Launcher updates](#launcher-updates)
 - [Part 2 — For operators (publishing patches)](#part-2--for-operators-publishing-patches)
@@ -51,24 +57,193 @@ Azure Blob SAS for log uploads) see
 
 ## Part 1 — For players
 
+### The launcher window
+
+The launcher is one dark window for one game, Stargate Worlds. It stays
+dark even when Windows uses light mode. It opens at 1030 × 720 and you
+can resize it down to 560 × 520.
+
+- **On the left**, a panel with the gate. When the window is narrower
+  than 760 pixels, the panel folds away and the main column takes the
+  whole window.
+- **At the top of the main column**, the launcher update banner when a
+  newer launcher exists (see [Launcher updates](#launcher-updates)), then
+  a heading that says where you stand.
+- **Two tabs**, **Play** and **Patch Notes**, and a gear (⚙) at their
+  right. The gear opens **Game settings** above whichever tab you are on;
+  click it again, or **Close**, to hide them.
+- **At the bottom of every view**, the **Share diagnostic logs** choice.
+  It stays there on both tabs and with the settings open.
+
+### Install and Play
+
+The Play tab has one status card and one big button. The button is
+whatever comes next, so you never pick from a list of launch modes:
+
+| You see | What it means | The button does |
+|---|---|---|
+| **Choose where to install** | No install folder is set | **Choose install folder** opens Game settings at the folder box |
+| **One setup. Then just Play.** | The folder has no game yet | **Install Stargate Worlds** downloads the game (the card gives its size), applies Cimmeria's patches and sets up the login servers |
+| **Stargate Worlds found in this folder** | The folder has `SGW.exe` that this launcher did not install | **Use this installation** adopts it: no download, Cimmeria's patches go on top. Its existing files are not checked |
+| **An update is ready** | New patches, or a new base game, are published | **Update** applies them. **Play without updating** starts the game you have |
+| **Installing** | An install or update is running | **Cancel** (see below) |
+| **● Ready to play** | Everything published is installed | **Play** |
+| **Starting Stargate Worlds…** | You pressed Play | Nothing; the button reads **Starting…** |
+| **● Game running** | Stargate Worlds is running from this install folder | Nothing; the button reads **Playing** |
+| **One more step before you play** | Something needs fixing first; the card says what | **Retry** when the game content list could not load, otherwise **Open settings** |
+
+Every click changes the card at once, before the work starts.
+
+**Installing.** Downloading and installing files are progress phases on
+the same card, with a progress bar and the file being worked on. You can
+switch tabs or open the settings while it runs. **Cancel** stops after
+the current step: what finished is kept, and the next **Install** or
+**Update** picks up from there (a half-downloaded file resumes). The
+card then says "Installation cancelled. What finished is kept; Install
+picks up from there." A failed install says "Installation failed: …"
+with the reason, and the button goes back to **Install** or **Update**,
+so you retry with one click. After any install, failed or not, the
+launcher reads its install record again, so the card always matches
+what is really on disk.
+
+**Playing.** **Play** prepares the client (login servers, ASLR, stock
+file names; see [What "Install / Update" does internally](#what-install--update-does-internally)),
+starts `SGW.exe` with Cimmeria's client patches, and shows **Game
+running** until the game closes. Then the card goes back to **Ready to
+play** and says "The game closed." If the game ended with an error code,
+the card gives the code and suggests **Upload Debug Logs** in
+Settings › Advanced. This works whether or not you share diagnostic logs.
+
+- Closing the launcher does not close the game.
+- If you open the launcher while the game is already running (you
+  closed the launcher and reopened it, or started the game another
+  way), it sees `SGW.exe` running from the install folder and shows
+  **Game running** too. It checks every two seconds, so the card goes
+  back to **Ready to play** shortly after the game closes.
+- While the game runs, or an install runs, everything that changes the
+  game's files is off: Install, Update, adopt, changing the install
+  folder and the client-state resets. A second Play is off too. If a
+  click gets through anyway, the launcher refuses it and the card says
+  `Not started: …` with the reason.
+
+**View details** under the button lists the install folder, whether
+`SGW.exe` was found, who installed it (this launcher, or an adopted copy
+that was not verified), the content manifest, and whether the client
+patches and diagnostic logs are on. A first install also reminds you
+that you need a server account to sign in inside the game.
+
+### Share diagnostic logs
+
+The checkbox at the bottom of the window is **off** until you turn it
+on. Installing, updating or playing never turns it on for you. **What
+is sent?** under it explains it:
+
+While the game runs, the launcher uploads the client's log files, and a
+small telemetry module (`cimmeria-client-telemetry.dll`) loaded into the
+game records in-game events: the game messages it receives, interface
+errors and its own status. Both go, with this install's random id, to
+the Cimmeria server, so crashes and bugs can be traced. Nothing is sent,
+and the module is not loaded, while the box is off.
+
+- **It is saved the moment you click it**, and it is the same on every
+  tab and after a restart. If it cannot be saved, a red line under it
+  says so; the choice then holds only until you close the launcher.
+- **It takes effect at your next game launch.** A game that is already
+  running keeps what it was started with. The caption under the box says
+  which applies: for example "Off from your next game launch. The game
+  running now keeps sending diagnostics until it closes." For a game the
+  launcher did not start itself, it says only that a change applies on
+  your next launch.
+
+The launcher no longer asks about this in a one-time prompt; the
+checkbox is always there instead. The telemetry design is in
+[client-telemetry.md](../architecture/client-telemetry.md) and
+[operations/telemetry.md](../operations/telemetry.md).
+
+### Patch Notes
+
+The Patch Notes tab lists the client patches the server publishes right
+now, in the order the content manifest lists them. Each row shows the
+patch's title (or its id when it has none) and its description, or
+"No description provided in the manifest."
+
+- The list comes only from the content manifest, after the launcher has
+  checked its signature. Nothing else is shown as a patch note.
+- It is **not** a list of what is installed on your computer. For that,
+  see **Changes to your client** in [Advanced](#advanced).
+- **Refresh** fetches the manifest again. If that fails, the old list
+  stays, marked "Could not refresh: … Showing the last list that
+  verified." If the first fetch fails, the tab says "Could not load
+  patch notes: …".
+
+### Game settings
+
+The gear opens **Game settings**:
+
+- **Install folder.** The folder the launcher installs to and plays from
+  (by default `%LOCALAPPDATA%\Stargate Worlds`).
+- **Open in Explorer ↗** shows the folder. The button never creates one:
+  a folder that does not exist is reported instead.
+- **Change folder…** points the launcher at another folder:
+  1. Type the full path, such as `C:\Games\Stargate Worlds`, and press
+     **Check folder**. The launcher refuses a relative path, a drive
+     root, a file, or the folder you already use.
+  2. It says what the folder holds: empty (Install downloads the game
+     there), a game this launcher manages, a game it has not adopted
+     (the Play tab offers to adopt it), or other files (the game installs
+     alongside them, and nothing there is removed). Checking creates
+     nothing.
+  3. **Use this folder** saves the change, and the launcher creates the
+     folder if it does not exist. The old installation stays where it
+     is; nothing is moved or deleted.
+
+  **Change folder…** and **Use this folder** are off while an install
+  runs or the game is running.
+- **Repair game** and **Uninstall…** are shown but **not available yet**;
+  they arrive in a later launcher update. Until then, **Install / Update**
+  in Advanced re-applies only what the launcher has not recorded as
+  installed. It does not replace a file that was deleted or damaged after
+  it was installed. See
+  [`SGW.exe` is missing, or a game file is damaged](#sgwexe-is-missing-or-a-game-file-is-damaged).
+
+### Advanced
+
+**Advanced**, at the bottom of Game settings, is closed by default. It
+holds every configuration and troubleshooting tool the launcher had
+before its redesign, each in its own section:
+
+| Section | What it holds |
+|---|---|
+| Login servers | The `Name = URL` list written into the client's `LoginInternal.lua`, and **Save login servers** (see [How the client finds its server](#how-the-client-finds-its-server)) |
+| Content manifest | The manifest URL, **Refresh**, and whether the manifest's signature verified. An edited URL is used only after **Refresh** |
+| Install, update and adopt | Manual **Install / Update** and **Cancel**, **Adopt existing install**, and what the install record says is still to apply |
+| Client patches | **Load client patches (restores the Black Market window)** |
+| Debug launches | **Launch Atera Debug**, **Launch Atera + Telemetry**, **Fix ASLR** (see [Debug launches](#debug-launches)) |
+| Debug logs | **Upload Debug Logs** (see [Uploading debug logs](#uploading-debug-logs)) |
+| Client state | **Reset client cache** and **Reset all client state…** |
+| Launcher updates | The running launcher's version and **Check for updates** |
+| Changes to your client | Every change Cimmeria makes to the stock client (see [What the launcher changes in your client](#what-the-launcher-changes-in-your-client)) |
+| Activity log | The last 100 lines of what the launcher did; copy them into a bug report |
+
+Their warnings and confirmations are unchanged. The ones that change the
+game's files (Install / Update, adopt, the two resets) are also off
+while the game runs.
+
 ### What it does (end-to-end)
 
 ```text
 1. Run sgw-launcher.exe (single ~5 MB file).
-2. Window appears with three editable fields:
-     - Install dir    (default: %LOCALAPPDATA%\Stargate Worlds)
-     - Login servers  (default: Cimmeria = http://play.cimmeria.app:8081),
-                      one `Name = URL` per line — written into the client's
-                      LoginInternal.lua, the list on the login screen
-     - Manifest URL   (default: the GitHub Release `content-current` tag,
-                      https://github.com/SandboxServers/Cimmeria/releases/
-                      download/content-current/manifest.json)
-3. Launcher auto-fetches manifest.json on startup.
-4. It compares the manifest against <install_dir>/launcher-installed.json:
-     a. If seed hash differs → seed not installed → "Install / Update" enabled
-     b. If any declared patch is missing → button enabled
-     c. If everything matches → "✔ Install is up to date"
-5. Click "Install / Update":
+2. The launcher fetches the content manifest (default: the GitHub
+   Release `content-current` tag,
+   https://github.com/SandboxServers/Cimmeria/releases/download/content-current/manifest.json)
+   and checks its signature. Only a manifest that verified is used.
+3. It compares the manifest against <install_dir>/launcher-installed.json
+   (the install record) and picks the Play tab's button:
+     a. No record and no SGW.exe   → "Install Stargate Worlds"
+     b. SGW.exe but no record      → "Use this installation" (adopt)
+     c. Seed differs or a patch is missing → "Update" (+ "Play without updating")
+     d. Everything matches          → "Play"
+4. Install / Update:
      - Download the seed (resumable via HTTP Range) → verify sha256 → unpack.
        The seed is a zip, or the archive.org client RAR, whose installer
        cabinets are expanded straight into the installed layout
@@ -77,10 +252,11 @@ Azure Blob SAS for log uploads) see
      - Client setup: restore stock file names (EULA.lua), write
        LoginInternal.lua, switch ASLR off in SGW.exe (also done before
        every launch)
-6. Click "Launch SGW.exe" (or "Launch Atera Debug" / "Launch + Telemetry" /
-   "Fix ASLR" if those files are present in the install directory).
-   Telemetry is off unless you turn it on.
-7. After playing, click "Upload Debug Logs" to zip+upload logs in one shot.
+5. Play: client setup again, then SGW.exe starts with the client patches
+   (and, if you share diagnostic logs, the telemetry module). The
+   launcher follows the game until it exits.
+6. After a crash, Settings › Advanced › Upload Debug Logs zips and
+   uploads the client's logs in one shot.
 ```
 
 ### State files
@@ -89,7 +265,7 @@ Four JSON files persist across runs:
 
 | File | Lives | Contents |
 |------|-------|----------|
-| `<exe>/launcher-config.json` | next to `launcher.exe` | `schema_version`, `install_path`, `login_servers` (`[{name, url}]`), `manifest_url`, and a `telemetry` object (`opted_in`, `prompt_answered`, `auth_url`; `auth_url` defaults to the public server's login port, `http://play.cimmeria.app:8081/api`). An old `server_host` field is ignored. Schema 2 moved that default: a schema-1 file whose `auth_url` is exactly the old `http://localhost:8443/api` is rewritten to the new default once. |
+| `<exe>/launcher-config.json` | next to `launcher.exe` | `schema_version`, `install_path`, `login_servers` (`[{name, url}]`), `manifest_url`, `client_patches` (`enabled`, on by default), and a `telemetry` object (`opted_in`, default `false`, the **Share diagnostic logs** box; `prompt_answered`, set whenever that choice is saved and kept from the retired one-time prompt; `auth_url`; `auth_url` defaults to the public server's login port, `http://play.cimmeria.app:8081/api`). An old `server_host` field is ignored. Schema 2 moved that default: a schema-1 file whose `auth_url` is exactly the old `http://localhost:8443/api` is rewritten to the new default once. |
 | `<install>/launcher-installed.json` | in the game dir | `seed_sha256`, `applied_patches: ["001-dialog-portraits", …]`, `seed_adopted`. An old `patched_host` field is ignored. |
 | `<exe>/uploaded.json` | next to `launcher.exe` | `[{sha256, blob_name, uploaded_at}, …]` — log-upload dedupe ledger |
 | `<exe>/telemetry-state.json` | next to `launcher.exe` | per-session telemetry runtime state, kept separate from the config so config rewrites don't churn it |
@@ -156,7 +332,8 @@ The client's login screen lists the servers `LoginMod.loadServerSystems()`
 defines in `LoginInternal.lua`. The stock file points at CME's dead QA and
 production login servers; the launcher replaces it with the configured
 list, CRLF and ASCII like the rest of the client's UI Lua, at the end of
-every install, on **Save**, and before every launch. Names and URLs may not
+every install, on **Save login servers** (Settings › Advanced), and
+before every launch. Names and URLs may not
 contain quotes or backslashes, so a setting can't break out of the Lua
 string. A Cimmeria auth server listens on `http://<host>:8081`.
 
@@ -172,8 +349,9 @@ one byte cleared is byte-identical to a known-good QA client's.
 
 Hitting **Cancel** flips a `CancellationToken` that the download stream
 checks on every chunk, and the unpack steps check between files. A
-cancelled install leaves the `.tmp-*.download` file on disk, so
-re-clicking Install / Update picks up where it stopped via
+cancelled install leaves the `.tmp-*.download` file on disk, and every
+seed or patch that finished stays recorded in `launcher-installed.json`,
+so the next **Install** or **Update** picks up where it stopped via
 `Range: bytes=N-`.
 
 Installing from the archive.org client RAR needs roughly 14 GB free on
@@ -222,44 +400,46 @@ Documents `Cache.en-US` is rewritten the next time the client connects.
 The launcher's **Reset client cache** button wipes only the Documents
 tier.
 
-### The launch buttons
+### Debug launches
 
-Four buttons, each enabled only when the relevant files exist in the
-binaries directory (see [`crates/launcher/src/app/view.rs`](../../crates/launcher/src/app/view.rs)::`show_launch_panel`):
+**Play** is the launch for players. Settings › Advanced › **Debug
+launches** has three more buttons for developers and modders. Each is on
+only when its files are in the folder that holds `SGW.exe`, and, like
+Play, only while no install runs and the game is not already running
+(see [`crates/launcher/src/app/advanced_panel.rs`](../../crates/launcher/src/app/advanced_panel.rs)::`show_debug_launches`):
 
-| Button | Enabled when | What it runs |
+| Button | On when | What it runs |
 |--------|------------|--------------|
-| **Launch SGW.exe** | `SGW.exe` exists | Starts `<binaries>/SGW.exe` (cwd = binaries dir) with the client patches loaded, unless you turned them off. With telemetry on, a telemetry session follows the game |
 | **Launch Atera Debug** | `AteraLoader.exe` **and** `AtreaGameDebug.bat` both present | `cmd /C AtreaGameDebug.bat` (cwd = binaries dir) |
-| **Launch + Telemetry** | Atera available **and** you opted into telemetry **and** launcher identity loaded | Same as Atera Debug, plus the dev-session telemetry pipeline — see [telemetry.md](../operations/telemetry.md) |
+| **Launch Atera + Telemetry** | Atera available **and** you share diagnostic logs **and** the launcher identity loaded | Same as Atera Debug, plus the dev-session telemetry pipeline — see [telemetry.md](../operations/telemetry.md) |
 | **Fix ASLR** | `AtreaFixASLR.bat` present | `cmd /C AtreaFixASLR.bat` |
 
-Under the buttons, **Load client patches (restores the Black Market
-window)** controls `cimmeria-client-patches.dll`, which the launcher
-loads into the game on **Launch SGW.exe**. It is on by default and has
-nothing to do with the telemetry setting. Turn it off only to rule the
-patches out when something misbehaves; the Black Market window will not
-open without them. The status log says on every launch when the patches
-were not loaded, and why. Atera debug launches never load them.
+The Atera bat starts `SGW.exe` itself, so the launcher cannot follow
+that game the way it follows one Play started. It notices the running
+`SGW.exe` instead, within two seconds, and the Play tab shows **Game
+running** until it closes.
 
-Beside it, **Send telemetry (opt-in)** is off until you turn it on. On,
-the launcher uploads the client's log files while you play, and loads a
-small telemetry module (`cimmeria-client-telemetry.dll`) into the game
-after the client patches, which records in-game events such as the game
-messages the client handles and interface errors. Both go to the
-Cimmeria server with this install's random id, so crashes and bugs can
-be traced. Telemetry goes to the server's login port, the same address
-the game logs in to, so it needs no setup. The module changes nothing
-in the game. If the launcher
-cannot reach the telemetry server, or the module is missing, the status
-log says so and the game starts without it. The launcher also asks once,
-at the top of the window; either answer is remembered, and a change
-applies from your next launch.
+**Load client patches (restores the Black Market window)**, in
+Settings › Advanced › **Client patches**, controls
+`cimmeria-client-patches.dll`, which the launcher loads into the game on
+**Play**. It is on by default, saved as soon as you change it, and has
+nothing to do with sharing diagnostic logs. Turn it off only to rule the
+patches out when something misbehaves; the Black Market window will not
+open without them. The activity log says on every launch when the
+patches were not loaded, and why. Atera debug launches never load them.
+
+When you share diagnostic logs, **Play** also loads the telemetry module
+after the client patches (see [Share diagnostic logs](#share-diagnostic-logs)).
+Telemetry goes to the server's login port, the same address the game
+logs in to, so it needs no setup. The module changes nothing in the
+game. If the launcher cannot reach the telemetry server, or the module
+is missing, the activity log says so and the game starts without it.
 
 ### What the launcher changes in your client
 
 Stargate Worlds needs the stock 2009 client, and Cimmeria changes it.
-The **Changes to your client** section lists every change: the login
+The **Changes to your client** section, in Settings › Advanced, lists
+every change: the login
 servers, ASLR flag and stock file names it sets before every launch, the
 folder it renames
 at install, each patch from the manifest and whether it is applied yet,
@@ -273,9 +453,10 @@ patches. Developers and modders drop the Atera tarball into the install
 directory themselves; the launcher detects the files and surfaces the
 buttons.
 
-The Atera debug build requires ASLR disabled on `SGW.exe`. Click
-**Fix ASLR** once after a fresh install, then the debug bat works on
-every subsequent launch.
+The Atera debug build requires ASLR disabled on `SGW.exe`. The launcher
+switches it off itself before every launch, Atera ones included, so
+**Fix ASLR** is only needed for a client the launcher has never
+prepared.
 
 For what Atera actually does at runtime see
 [../technical/atrealoader-exe.md](../technical/atrealoader-exe.md) and
@@ -283,7 +464,8 @@ For what Atera actually does at runtime see
 
 ### Uploading debug logs
 
-The **Upload Debug Logs** button collects:
+The **Upload Debug Logs** button, in Settings › Advanced › **Debug
+logs**, collects:
 
 - `<binaries>/sgwdebuglog*`, matched case-blind (the client writes
   `SGWDebugLog.log`) — BigWorld Mercury unicode log
@@ -313,8 +495,9 @@ friendly note. Only the official release pipeline injects the SAS.
 
 The launcher updates itself. At startup it asks GitHub once, in the
 background, whether a newer launcher release exists; the window opens
-straight away. Under the title, a small line shows the running version
-(`Launcher launcher-YYYYMMDD-<sha>`) and a **Check for updates** button.
+straight away. Settings › Advanced › **Launcher updates** shows the
+running version (`Launcher launcher-YYYYMMDD-<sha>`) and a **Check for
+updates** button.
 
 When a newer release exists, a banner at the top of the window reads
 **Launcher update available (launcher-…)** with an **Update now** button
@@ -329,7 +512,7 @@ and a link to the release notes. One click:
    the old name, and starts it with the same arguments. If the new one
    cannot be put in place or will not start, the old one is renamed back.
 4. Closes the old launcher as soon as the new one has started, without
-   waiting for you to touch its window. The new launcher's status log
+   waiting for you to touch its window. The new launcher's activity log
    says `Launcher updated from … to …`, and it deletes the `.old` file.
 
 The launcher keeps its file name, whatever you renamed it to, and the
@@ -343,7 +526,7 @@ version line reads `development build — updates disabled`.
 
 The check is one request to the GitHub API, which allows 60 anonymous
 requests an hour per address. When you are offline or over that limit,
-the status log says `Could not check for launcher updates: …` and the
+the activity log says `Could not check for launcher updates: …` and the
 launcher carries on; the next start checks again.
 
 > **Launcher `launcher-20260929-f518b57` and older have no updater.**
@@ -354,8 +537,10 @@ launcher carries on; the next start checks again.
 **Required updates.** The server's operator can require a minimum
 launcher version (the manifest's
 [`min_launcher`](#minimum-launcher-version-min_launcher)). When yours is
-older, a red line under the title says so, **Install / Update** and the
-launch buttons are off, and the banner offers the update. When the update
+older, a red line at the top of the main column says so, the Play tab
+says "This launcher is too old for the current game content. Update the
+launcher first.", Install, Update and every launch button are off, and
+the banner offers the update. When the update
 check could not run, it links to the releases page instead.
 
 ---
@@ -697,16 +882,24 @@ Signing stays offline.
 ## Troubleshooting
 
 Common issues players hit, with first-line diagnostic steps. Every
-error message also lands in the launcher's status panel — copy-paste
-that into a bug report if first-line fixes don't help.
+error message also lands in the launcher's activity log (Settings ›
+Advanced › **Activity log**) — copy-paste that into a bug report if
+first-line fixes don't help.
 
-### "Manifest error: …"
+### "Could not load the game content list", or "Manifest error: …"
 
-The launcher couldn't fetch or parse `manifest.json`.
+The launcher couldn't fetch, verify or parse `manifest.json`. The Play
+tab says "Could not load the game content list. Check your connection
+and retry." with a **Retry** button, Patch Notes says "Could not load
+patch notes: …", and Settings › Advanced › **Content manifest** shows
+`Manifest error: …` with the reason. A game that is already installed
+still shows **Play**: the launcher just cannot check it for updates.
+Press **Retry** (or **Refresh** on Patch Notes) once the cause is fixed.
 
 - **`error sending request` / DNS failures**: check your internet
-  connection. Verify the **Manifest URL** field in the launcher matches
-  what your server operator published.
+  connection. Verify the manifest URL in Settings › Advanced › **Content
+  manifest** matches what your server operator published. Changing the
+  URL and pressing **Refresh** drops the list from the old URL at once.
 - **HTTP 404**: the manifest URL is wrong, or the release asset it
   points at was never uploaded. Operators: confirm `manifest.json` is
   attached to the `content-current` release tag, and that the tag
@@ -723,8 +916,9 @@ The launcher couldn't fetch or parse `manifest.json`.
 
 The download completed but the file's SHA-256 didn't match the manifest.
 
-- Click **Install / Update** again — the launcher resumes from the
-  partial `.tmp-*.zip` file and may correct a transient corruption.
+- Click **Install** (or **Update**) again — the download that failed its
+  hash was deleted, so it starts that file again; anything that already
+  finished is kept.
 - If it persists: the CDN or the manifest is out of sync. Operators
   should re-publish the affected blob and verify the manifest hash
   matches.
@@ -741,16 +935,95 @@ The seed or patch blob URL returned a non-success status (anything outside
 - **5xx**: Azure transient error. Retry; if it sticks, check the Azure
   status page.
 
-### "Launch failed: File not found"
+### "Could not start the game: …" or "Launch failed: File not found"
 
 The launcher tried to launch SGW.exe / a batch file that isn't actually
 on disk.
 
-- Verify the **Install dir** field matches where the game is installed.
-- Click **Install / Update** to ensure the install is complete.
+- Check the install folder in Game settings (the gear) matches where the
+  game is installed. **Open in Explorer** shows it.
+- If `SGW.exe` itself is gone, see the next entry.
 - For Atera-debug launches: confirm `AteraLoader.exe` and
   `AtreaGameDebug.bat` are both in the install dir alongside SGW.exe.
   These files are not shipped by the launcher.
+
+### `SGW.exe` is missing, or a game file is damaged
+
+The Play tab says "SGW.exe is missing from the install folder", or the
+game misbehaves after a file was deleted or changed by hand.
+
+The launcher's install record (`launcher-installed.json`) says what it
+installed, not what is still on disk, and **Install / Update** skips
+everything the record lists. So it does not bring back a deleted
+`SGW.exe` or replace a damaged file. **Repair game** will, in a later
+launcher update; until then:
+
+- **Install into a new folder.** In Game settings, **Change folder…** to
+  an empty folder, **Use this folder**, then **Install Stargate Worlds**.
+  The old folder is left as it is; delete it yourself when the new one
+  works. This downloads the whole game again.
+- **Or reinstall in place.** Close the game, delete
+  `launcher-installed.json` from the install folder, and restart the
+  launcher. With `SGW.exe` gone, it offers **Install Stargate Worlds**,
+  which downloads the base game again over the folder and re-applies
+  every patch. With `SGW.exe` still there, it offers **Use this
+  installation** instead, which does not replace any file; use a new
+  folder then.
+
+### Play says "Game running" but the game is closed
+
+The launcher shows **Game running** while any `SGW.exe` runs from the
+install folder, including one it did not start, and also when it cannot
+read a running `SGW.exe`'s path (another Windows user's game, for
+example). It would rather wait than change files under a running game.
+
+- Wait two seconds: the launcher checks again every two seconds.
+- Open Task Manager (**Ctrl+Shift+Esc**), **Details** tab, and look for
+  `SGW.exe`. A game that crashed can stay there, frozen, with no window.
+  End it, and the Play tab goes back to **Ready to play**.
+- A game running from another folder does not count, so a second client
+  elsewhere does not block this one.
+
+### "Not started: …"
+
+The launcher refused a command because something else was running. The
+reason follows the colon:
+
+- **`an installation is in progress; wait for it to finish`**: let the
+  install finish, or **Cancel** it, then try again.
+- **`the game is already starting`**: you pressed Play twice. The first
+  press is starting the game; wait for it.
+- **`Stargate Worlds is running (pid N); close the game first`**: an
+  `SGW.exe` from this install folder is running. Close it (see the
+  previous entry if you think it is closed).
+
+Nothing was changed. The buttons are normally off in these cases; this
+message means a click got in just as the state changed.
+
+### "The install folder is not writable"
+
+The Play tab says "The install folder is not writable. Choose another
+folder in Settings." The launcher cannot write into the folder, usually
+because it is under `C:\Program Files` or another folder that needs
+admin rights. Use Game settings › **Change folder…** to pick a folder of
+your own, such as `%LOCALAPPDATA%\Stargate Worlds`. Running the
+launcher as administrator is not needed and not recommended.
+
+### "Could not open the folder: …"
+
+**Open in Explorer** shows only a folder that exists; it never creates
+one, and neither does the launcher's writability check. A new install
+folder appears when **Install Stargate Worlds** starts. Before that,
+there is nothing to open. If the folder should exist, check that its
+drive is connected and that you have rights there.
+
+### "Could not save this choice …" under Share diagnostic logs
+
+The launcher could not write `launcher-config.json` beside itself,
+usually because the launcher sits in a folder you cannot write to. The
+choice holds until you close the launcher, then reverts. Move the
+launcher and the files beside it to a folder of your own, and set the
+choice again.
 
 ### "Your ini (..\SGWGame\Config\SGWEditor.ini) file is outdated"
 
@@ -776,7 +1049,8 @@ not appear after a fresh install.
 - **No** keeps your settings, and the game asks again on the next
   launch.
 - To stop the dialog without losing settings, reinstall with a fixed
-  launcher: **Wipe → Client**, then **Install / Update**. The files get
+  launcher into an empty folder (Game settings › **Change folder…**,
+  then **Install Stargate Worlds**). The files get
   their 2009 dates back and match what your `SGW*.ini` files recorded.
   If you already answered **Yes** after an older launcher's install,
   your `SGW*.ini` files recorded that install's dates instead, so the
@@ -849,7 +1123,7 @@ for in an unsigned program.
 - **SmartScreen ("Windows protected your PC")** on `sgw-launcher.exe`:
   choose **More info → Run anyway**. Only do this for a launcher you
   downloaded from the project's GitHub Releases page.
-- **Defender removed or blocked `sgw-start32.exe`**: the status log shows
+- **Defender removed or blocked `sgw-start32.exe`**: the activity log shows
   `Client patches: not loaded (… sgw-start32.exe …)` and the game starts
   without them. Restore it from **Windows Security → Virus & threat
   protection → Protection history**, then add an exclusion for the
@@ -867,7 +1141,7 @@ Code signing would remove the need for this; it is deferred for now.
 
 ### The Black Market window does not open
 
-The Black Market window needs the client patches. Check the status log
+The Black Market window needs the client patches. Check the activity log
 from the launch:
 
 - **`Client patches: off (launcher setting)`**: tick **Load client
@@ -882,7 +1156,7 @@ from the launch:
   software removed it, see
   [Windows Defender or SmartScreen blocks the launcher](#windows-defender-or-smartscreen-blocks-the-launcher).
 - **`Client patches: not loaded (… remote_load_failed …)`**: the helper
-  ran but the DLL did not load into the game. Include the status log in
+  ran but the DLL did not load into the game. Include the activity log in
   a bug report.
 - **No such line**: the patches were loaded. They write
   `cimmeria-client-patches.log` next to `SGW.exe`; a line ending
@@ -900,7 +1174,7 @@ login screen comes after it. The client log (and telemetry's
 exist in group lua`.
 
 - **Fix**: update the launcher. Before every launch, and after every
-  **Install / Update**, it renames the file back; the status log says
+  **Install / Update**, it renames the file back; the activity log says
   "Renamed ... eula.lua back to its stock name EULA.lua".
 - **By hand**: rename `eula.lua` to `EULA.lua` in that folder. Keep the
   file; it is the patched one.
@@ -910,9 +1184,10 @@ install is not affected.
 
 ### SGW.exe launches but can't reach the server
 
-- Check the **Login servers** list: one `Name = http://host:8081` line
-  per server, with your operator's host. Click **Save**; the status log
-  says "Wrote the login server list" when the file changed.
+- Check the login servers in Settings › Advanced › **Login servers**:
+  one `Name = http://host:8081` line per server, with your operator's
+  host. Click **Save login servers**; the activity log says "Wrote the
+  login server list" when the file changed.
 - Open `Working\SGWGame\Content\UI\Startup\Login\LoginInternal.lua` and
   check it lists your server. The launcher rewrites it before every
   launch, so edit the list in the launcher, not the file.
@@ -939,7 +1214,8 @@ relevant entry, or play a new session to generate fresh logs.
 
 When asking for support:
 
-- Launcher's own status panel — copy the relevant lines.
+- The launcher's activity log (Settings › Advanced › **Activity log**) —
+  copy the relevant lines.
 - `<launcher.exe dir>/launcher-config.json` — your install path, server
   host, and manifest URL (the relevant config the launcher is using).
 - `<install_dir>/launcher-installed.json` — what the launcher thinks is

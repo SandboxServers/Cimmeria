@@ -2,7 +2,7 @@
 title: Unified In-Game UAT Guide
 type: how-to
 audience: in-game testers (the owner and playtesters) working through the restored systems on the colo; no programming needed
-last_updated: 2026-09-28
+last_updated: 2026-10-03
 companion_docs:
   - organizations-uat.md
   - ../content/debug-hub.md
@@ -17,7 +17,7 @@ companion_docs:
 # Unified In-Game UAT Guide
 
 > Type: how-to. Audience: an in-game tester who is not a programmer.
-> Updated: 2026-09-28. Companions: [debug hub](../content/debug-hub.md), [commands](../commands.md), [organizations UAT](organizations-uat.md), [Cellblock UAT guide](../analysis/castle-cellblock-rebuild/uat-guide.md), [zone operator guide](../analysis/zone-restoration-operator-guide.md), [telemetry runbook](../operations/npc-ai-telemetry-runbook.md).
+> Updated: 2026-10-03. Companions: [debug hub](../content/debug-hub.md), [commands](../commands.md), [organizations UAT](organizations-uat.md), [Cellblock UAT guide](../analysis/castle-cellblock-rebuild/uat-guide.md), [zone operator guide](../analysis/zone-restoration-operator-guide.md), [telemetry runbook](../operations/npc-ai-telemetry-runbook.md).
 
 ## Purpose and how to use it
 
@@ -48,6 +48,7 @@ This guide gathers every restored system's in-game acceptance test (UAT) into on
 | [Deployables](#deployables) | [deployables ledger, UAT](../analysis/deployables/README.md#uat-owner-colo-after-the-release) |
 | [Cooked-data resync](#cooked-data-resync) | This section (not a campaign; the design is [mission-pak-overrides.md](../architecture/mission-pak-overrides.md#why-every-mismatch-is-a-full-resync), #840) |
 | [Special ammo](#special-ammo) | [ammo session resume, UAT checklist](../analysis/ammo/handoffs/session-resume.md#uat-checklist) |
+| [Windows launcher](#windows-launcher) | [launcher-redesign UAT 2026-10-03](../analysis/launcher-redesign/uat-2026-10-03.md) |
 
 **How to work a section.** Read its prerequisites, then do each numbered step in order. Every step keeps the campaign's own step id (`U1`, `T25`, `B7`, ...), so you can report a result against it. The `Notes / known issues` column tells you when a failure is already known and should not be filed again.
 
@@ -192,6 +193,7 @@ Start from a **fresh character**, so the tutorial and every "first time" check r
 | 9. Owner only | Patched client | Historical cellblocks, ring transport Phase 1 | as needed |
 | 10. Crafting | New character, GM | Crafting steps 1-16 and 18-21 at the crafting corner; step 17 fits session 7 | 75 min |
 | 11. Special ammo | GM, plus a second character for AMMO-02, AMMO-03 and AMMO-18 | AMMO-01 to AMMO-03 first (the risks of the flag being on), then the debug-hub crate (AMMO-19), reloads, picker and damage (AMMO-04 to AMMO-17) in Castle Cellblock, loot in Castle (AMMO-20, AMMO-21), GM commands (AMMO-22, AMMO-23) | 90 min |
+| 12. Windows launcher | None; a Windows PC and a release launcher (LR-43 logs in with any character) | Launcher LR-01 to LR-44, outside the game | 90-120 min |
 
 Relog at every step boundary that a section asks for. Most defects these campaigns found were "correct until you relog".
 
@@ -970,6 +972,65 @@ Special ammo is a finite bag resource: Hollow Point, Armor Piercing, Incendiary,
 **Things only a human can check:** the icons, names and tooltips (AMMO-01); that no client crashes and what the buff bar shows (AMMO-02); the bars moving and the chat lines (AMMO-03, AMMO-07, AMMO-09, AMMO-18); damage numbers on the target and its neighbours (AMMO-12, AMMO-15); the Tranquilizer slow (AMMO-16).
 
 Source: [ammo session resume, UAT checklist](../analysis/ammo/handoffs/session-resume.md#uat-checklist); background in [weapon-ammo-reload.md](../gameplay/weapon-ammo-reload.md) and [the ammo ledger](../analysis/ammo/README.md).
+
+## Windows launcher
+
+The redesigned Windows launcher (#1153, PR 1): one dark window with an Install/Play surface, a Patch Notes tab, a settings gear, and the **Share diagnostic logs** choice at the bottom of every view. This section runs on your Windows PC, outside the game; only LR-43 logs in.
+
+**Status:** Not ready for UAT. PR 1 is in review; run this once a launcher release that contains it is published. **Repair game** and **Uninstall…** are disabled in PR 1 and arrive in PR 2 and PR 3.
+
+**Prerequisites:** native Windows 10 or 11; a release launcher with PR 1 (a dev build cannot pass LR-43); about 14 GB free for a first install; Task Manager (**Ctrl+Shift+Esc** › **Details**) to watch `SGW.exe`. Optional: a stock client folder to adopt (LR-12, LR-32) and the Atera tarball (LR-20, LR-39). Settings › Advanced › **Activity log** shows what the launcher did; copy its lines into every failure report. Player-facing help: [launcher guide](../client/launcher-guide.md#the-launcher-window).
+
+| # | Do | Expect | Notes / known issues |
+|---|---|---|---|
+| LR-01 | Start the launcher with Windows in dark mode | Dark blue-gray window, cyan primary button, gate panel, Play / Patch Notes tabs and a gear, **Share diagnostic logs** at the bottom | |
+| LR-02 | Switch Windows to light mode, restart the launcher | Exactly as dark as LR-01; all text readable | Dark only, by design |
+| LR-03 | Display scale 100 %, 150 %, 200 % (restart each time) | Nothing clipped or overlapping | Note scale and screen size |
+| LR-04 | Resize down to the minimum and back, across 760 px wide | Below 760 px the gate panel folds away; the footer always stays visible; minimum 560 × 520 | |
+| LR-05 | Keyboard only: **Tab**, then **Space** / **Enter** | Every control reachable, focus visible, activates | |
+| LR-06 | Read every text on all views | Grey text readable; long descriptions wrap | |
+| LR-07 | Clean first run | No telemetry prompt; **Share diagnostic logs · Off**; **One setup. Then just Play.** | |
+| LR-08 | **Install Stargate Worlds** once; switch tabs and open the gear while it runs | Card changes on the click; **Downloading**, then **Installing files**, with progress; progress carries on | |
+| LR-09 | **Cancel** during the download; restart; press the button again | "Installation cancelled. What finished is kept…"; same state after restart; download resumes | |
+| LR-10 | Disconnect the network mid-download; reconnect and retry | "Installation failed: …"; the retry resumes | |
+| LR-11 | Let the install finish; restart | "Installation complete."; **● Ready to play** before and after the restart | |
+| LR-12 | Point the folder at a stock client with no `launcher-installed.json` | **Use this installation**; "Existing installation adopted. Its files were not verified." | No download |
+| LR-13 | Remove one id from `applied_patches`; restart | **Update** and **Play without updating**; both work | |
+| LR-14 | Diagnostics off: **Play**, then quit the game | **Starting…**, **● Game running** / **Playing**, file actions off ("Close the game first."); back to **Play** within 2 s, no mouse move | |
+| LR-15 | Diagnostics on: repeat LR-14 | Same; caption "This game session: diagnostics on…"; activity log has the telemetry session result | |
+| LR-16 | Toggle the box while the game runs, from on and from off | "Off from your next game launch. The game running now keeps sending…"; "On from your next game launch. Nothing is sent for the game running now." | |
+| LR-17 | Close the launcher while the game runs | The game keeps running | |
+| LR-18 | Reopen the launcher while the game runs; then quit the game | **● Game running** within 2 s, file actions and Play off; back to **Ready to play** within 2 s | |
+| LR-19 | Click **Play** several times quickly | One `SGW.exe` only | |
+| LR-20 | Advanced › **Launch Atera Debug** | **● Game running** within 2 s; back to Play after the game closes | Atera files only |
+| LR-21 | During an install | Play, debug launches, **Change folder…** and the resets are off | |
+| LR-22 | Tick the box; visit every view | Same ticked box everywhere; **What is sent?** explains it | |
+| LR-23 | Restart the launcher | The choice is kept (both on and off) | |
+| LR-24 | Make `launcher-config.json` read-only, change the box | Red "Could not save this choice (…)…" line | Clear the flag after |
+| LR-25 | Open **Patch Notes** | One row per manifest patch in manifest order; id as title when none; "No description provided in the manifest." when blank; says it is not an install record | |
+| LR-26 | **Refresh** | **Refreshing…**, then the list | |
+| LR-27 | Offline, **Refresh** | "Could not refresh: … Showing the last list that verified." | |
+| LR-28 | Start offline; then reconnect and **Retry** | "Could not load patch notes: …"; an installed game still shows **Play**; an empty folder shows **Retry**, which then works | |
+| LR-29 | **Open in Explorer ↗** | Explorer opens at the install folder | |
+| LR-30 | **Change folder…** to a new path, **Check folder** | "Empty or not created yet…" and "…stays where it is; nothing is moved or deleted."; folder not created | |
+| LR-31 | **Use this folder** | "Install folder changed. … was not moved or deleted."; old folder untouched | The launcher then creates the new folder |
+| LR-32 | Check a folder with other files, an unadopted `SGW.exe`, the managed install | The matching description for each | |
+| LR-33 | Check a relative path, `C:\`, the current folder, a file | A red refusal each time | |
+| LR-34 | Hover **Repair game** and **Uninstall…** | Disabled; "Arrives in a later launcher update (#1153)." | PR 2 / PR 3 |
+| LR-35 | Advanced › **Login servers**: add a line, save, remove it, save | "Saved config." and "Wrote the login server list (LoginInternal.lua)." | |
+| LR-36 | Advanced › **Content manifest** › **Refresh** | "Signature verified. Schema 1, …" | |
+| LR-37 | Advanced › **Install, update and adopt** | Works like the Play tab's buttons | |
+| LR-38 | Advanced › **Client patches** off, **Play**; then on | "Client patches: off (launcher setting)…" on that launch | |
+| LR-39 | Advanced › **Fix ASLR** | Runs; off while the game runs | Atera files only |
+| LR-40 | Advanced › **Upload Debug Logs**, twice | "Uploaded …", then "Already uploaded" | Dev builds have no upload |
+| LR-41 | Advanced › **Reset client cache**; **Reset all client state…** › Cancel, then Delete everything | "Wiped Cache.en-US: …"; Cancel deletes nothing; "Wiped Firesky: …" | Clears your game settings |
+| LR-42 | Advanced › **Launcher updates**, **Changes to your client** | Version and **Check for updates**; every patch marked applied | |
+| LR-43 | Client patches on: **Play**, log in to the colo, open the Black Market at Machra | Login works; the window opens; no "Client patches: not loaded" line | Release launcher only; see [Black market](#black-market) |
+| LR-44 | Quit the game from inside it | "The game closed." and **Ready to play** | |
+
+Report with the [template below](#recording-results), `System: Windows launcher`, giving the Windows version, display scale, light or dark mode and the launcher version instead of a character.
+
+Source: [launcher-redesign UAT 2026-10-03](../analysis/launcher-redesign/uat-2026-10-03.md); background in the [launcher-redesign ledger](../analysis/launcher-redesign/README.md) and [sgw-launcher.md](../client/sgw-launcher.md#ui-and-game-lifecycle).
 
 ## Recording results
 

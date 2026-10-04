@@ -1,18 +1,32 @@
-//! egui app — top-level UI state machine and panels.
+//! egui app: the launcher window's state and its lifecycle.
 //!
-//! [`mod.rs`](self) holds the [`LauncherApp`] state struct, its
-//! construction + event-drain lifecycle, and the pure helper functions
-//! ([`status_line_for`], [`human_bytes`], [`should_show_adopt_button`])
-//! that are unit-tested without an egui frame. The panel rendering — the
-//! `eframe::App` impl and most `show_*` methods — lives in
-//! [`view`](self::view); the telemetry opt-in is in
-//! [`telemetry_panel`](self::telemetry_panel) and the "Changes to your
-//! client" list in [`client_changes_panel`](self::client_changes_panel).
+//! The window follows the approved single-game design (layout A):
+//! a gate panel on the left, and on the right one Install/Play surface,
+//! a Patch Notes tab, a settings gear, and the diagnostics opt-in in the
+//! footer of every view. This file holds [`LauncherApp`], its
+//! construction, the event drain, and the click handlers that dispatch
+//! worker commands. The rest:
+//!
+//! - [`play_state`]: the testable reducer behind the Install/Play surface
+//!   and the guards every file-changing control asks.
+//! - [`shell`]: the frame entry point, the side panel, header and tabs.
+//! - [`play_tab`], [`patch_notes`], [`settings_panel`],
+//!   [`advanced_panel`], [`telemetry_panel`]: the views.
+//! - [`theme`] and [`gate_art`]: the palette and the gate motif.
+//! - [`status_lines`]: event-to-text for the activity log.
 
+mod advanced_panel;
 mod client_changes_panel;
+mod gate_art;
+mod patch_notes;
+mod play_state;
+mod play_tab;
+mod settings_panel;
+mod shell;
+mod status_lines;
 mod telemetry_panel;
+mod theme;
 mod update_banner;
-mod view;
 
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
@@ -21,42 +35,70 @@ use eframe::egui;
 use tokio::runtime::Runtime;
 
 use crate::config::{config_path, LauncherConfig};
-use crate::install::Progress;
 use crate::launch::LaunchOptions;
-use crate::manifest::Manifest;
 use crate::state::InstalledState;
-use crate::worker::{Event, LaunchTelemetryConfig, Waker, Worker};
+use crate::worker::{
+    ClientPrep, Command, Event, LaunchSgwRequest, LaunchTelemetryConfig, Waker, Worker,
+};
+use play_state::{file_action_block, install_status, launch_block, Inputs, Notice, PlayState};
+use settings_panel::PendingFolder;
+use status_lines::{human_bytes, status_line_for};
 
 /// Upper bound on the status-log history kept in memory. Display already
 /// caps at the last 100 entries; this prevents the underlying Vec from
 /// growing without bound during long sessions full of events.
 const MAX_STATUS_LINES: usize = 1000;
 
+/// How often the install ledger, the client layout and the game process
+/// probe are re-read.
+const REFRESH_EVERY: std::time::Duration = std::time::Duration::from_secs(2);
+
+/// The main column's tabs. Settings is a panel above either, not a tab.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum Tab {
+    Play,
+    Notes,
+}
+
 pub struct LauncherApp {
     config: LauncherConfig,
-    /// Editable text buffer for the install-dir TextEdit widget. egui's
-    /// `TextEdit::singleline` takes `&mut String`, but the persisted
-    /// config field is `PathBuf` — this is the sync target.
+    /// The install folder as text, kept in step with
+    /// `config.install_path` by the folder-change flow.
     install_path_text: String,
+    /// The manifest URL being edited in Advanced; applied to the config
+    /// only by Refresh, which fetches and verifies that URL's manifest.
+    manifest_url_text: String,
     /// Editable `Name = URL` lines for the login servers; parsed into
     /// `config.login_servers` on Save.
     login_servers_text: String,
     config_path: PathBuf,
     worker: Worker,
-    last_progress: Option<Progress>,
     status: Vec<String>,
-    manifest: Option<Manifest>,
-    manifest_error: Option<String>,
     installed: InstalledState,
     launch_opts: LaunchOptions,
+    /// Whether the install folder accepts writes, re-probed on refresh.
+    writable: bool,
     last_refresh: std::time::Instant,
-    installing: bool,
+    /// The Install/Play surface's state: operation, game lifecycle,
+    /// progress, the verified manifest.
+    play: PlayState,
+    tab: Tab,
+    settings_open: bool,
+    show_details: bool,
+    /// The folder-change text box, while it is open.
+    folder_edit: Option<String>,
+    /// A checked folder waiting for "Use this folder".
+    pending_folder: Option<PendingFolder>,
+    /// The settings panel's last message: (is_error, text).
+    settings_notice: Option<(bool, String)>,
+    /// Set while the diagnostics choice could not be saved.
+    telemetry_save_error: Option<String>,
     /// True while a confirm modal for "Reset all client state" is open.
     /// Higher-blast-radius wipe — gates the entire Firesky/ tree, not
     /// just the cache subdir — so we double-prompt before nuking.
     confirm_wipe_all_open: bool,
-    /// Loaded once at app construction so each Launch+Telemetry click
-    /// doesn't re-read install.json from disk.
+    /// Loaded once at app construction so each launch doesn't re-read
+    /// install.json from disk.
     identity: Option<crate::identity::LauncherIdentity>,
     /// Launcher self-update state (banner, offer, `min_launcher` gate).
     update: update_banner::UpdateUi,
@@ -66,56 +108,48 @@ impl LauncherApp {
     /// `ctx` lets the worker wake the UI when a background job posts an
     /// event; without it a result waits for the next mouse move.
     pub fn new(runtime: Arc<Runtime>, ctx: egui::Context) -> Self {
+        theme::apply(&ctx);
         let cp = config_path();
         let config = LauncherConfig::load(&cp).unwrap_or_default();
         let worker = Worker::new(runtime, repaint_waker(ctx));
-        let installed = if path_is_empty(&config.install_path) {
-            InstalledState::default()
-        } else {
-            InstalledState::load(&config.install_path)
-        };
-        let launch_opts = if path_is_empty(&config.install_path) {
-            LaunchOptions::default()
-        } else {
-            LaunchOptions::detect(&crate::install_layout::binaries_dir(&config.install_path))
-        };
-        worker.fetch_manifest_now(config.manifest_url.clone());
         let install_path_text = config.install_path.to_string_lossy().into_owned();
         let login_servers_text = crate::client_setup::login_servers::to_text(&config.login_servers);
+        let manifest_url_text = config.manifest_url.clone();
         let identity =
             crate::identity::LauncherIdentity::load_or_mint(&crate::identity::identity_path()).ok();
         let mut app = Self {
             config,
             install_path_text,
+            manifest_url_text,
             login_servers_text,
             config_path: cp,
             worker,
-            last_progress: None,
             status: Vec::new(),
-            manifest: None,
-            manifest_error: None,
-            installed,
-            launch_opts,
+            installed: InstalledState::default(),
+            launch_opts: LaunchOptions::default(),
+            writable: true,
             last_refresh: std::time::Instant::now(),
-            installing: false,
+            play: PlayState::default(),
+            tab: Tab::Play,
+            settings_open: false,
+            show_details: false,
+            folder_edit: None,
+            pending_folder: None,
+            settings_notice: None,
+            telemetry_save_error: None,
             confirm_wipe_all_open: false,
             identity,
             update: update_banner::UpdateUi::new(crate::self_update::LauncherBuild::current()),
         };
+        app.refresh_install_state();
+        app.refresh_manifest();
         app.start_update_check();
         app
     }
 
-    /// Pull the latest text-buffer value into the persisted PathBuf so
-    /// the save path / install_dir comparisons all see the user's edit.
-    fn sync_install_path_from_text(&mut self) {
-        self.config.install_path = PathBuf::from(&self.install_path_text);
-    }
-
     /// Append a status line, dropping the oldest entries when the buffer
-    /// would exceed [`MAX_STATUS_LINES`]. The display only ever reads the
-    /// most-recent 100 entries (see [`Self::show_status_log`]) so older
-    /// drops are invisible to the user.
+    /// would exceed [`MAX_STATUS_LINES`]. The activity log only shows
+    /// the last 100, so older drops are invisible.
     fn push_status(&mut self, line: String) {
         self.status.push(line);
         if self.status.len() > MAX_STATUS_LINES {
@@ -124,51 +158,20 @@ impl LauncherApp {
         }
     }
 
+    /// Apply every queued worker event: the Play surface's reducer first,
+    /// then the side effects it asks for, then the activity-log line.
     fn drain_events(&mut self, ctx: &egui::Context) {
         while let Ok(ev) = self.worker.events_rx.try_recv() {
-            // Events that drive *non-status* UI state (manifest panel,
-            // progress bars, the installing/managed-install flags) get
-            // their side effects applied here. The status-log line — if
-            // any — comes from `status_line_for`, which is the single
-            // source of truth for ev-to-text translation and is unit
-            // tested directly.
+            let fx = self.play.apply(&ev, &self.config.manifest_url);
+            if fx.refresh_install {
+                self.refresh_install_state();
+            }
             match &ev {
-                Event::ManifestFetched(m) => {
-                    self.manifest = Some(m.clone());
-                    self.manifest_error = None;
-                }
-                Event::ManifestError(e) => {
-                    self.manifest_error = Some(e.clone());
-                }
-                Event::Progress(p) => {
-                    self.last_progress = Some(p.clone());
-                }
-                Event::InstallComplete => {
-                    self.installing = false;
-                    self.refresh_install_state();
-                }
-                Event::InstallError(_) => {
-                    self.installing = false;
-                }
-                Event::AdoptComplete => {
-                    self.refresh_install_state();
-                }
                 Event::Update(u) => self.on_update_event(u, ctx),
-                Event::AdoptError(_)
-                | Event::Wiped { .. }
-                | Event::WipeError(_)
-                | Event::Launched(..)
-                | Event::LaunchError(_)
-                | Event::ClientPatchesNote(_)
-                | Event::ClientTelemetryNote(_)
-                | Event::UploadStarted
-                | Event::UploadSkipped(_)
-                | Event::UploadComplete { .. }
-                | Event::UploadError(_)
-                | Event::TelemetrySessionComplete(_)
-                | Event::TelemetrySessionError(_) => {
-                    // Status-only events — handled below.
+                Event::OpenFolderError(e) => {
+                    self.settings_notice = Some((true, format!("Could not open the folder: {e}")));
                 }
+                _ => {}
             }
             if let Some(line) = status_line_for(&ev) {
                 self.push_status(line);
@@ -177,21 +180,51 @@ impl LauncherApp {
         }
     }
 
+    /// Re-read the ledger and client layout, re-probe writability, and
+    /// look for a running game. Every [`REFRESH_EVERY`], and after any
+    /// install or folder change.
     fn refresh_install_state(&mut self) {
-        if !path_is_empty(&self.config.install_path) {
-            let path = self.config.install_path.as_path();
-            self.installed = InstalledState::load(path);
-            self.launch_opts = LaunchOptions::detect(&crate::install_layout::binaries_dir(path));
-        } else {
+        let path = self.config.install_path.clone();
+        if path_is_empty(&path) {
             self.installed = InstalledState::default();
             self.launch_opts = LaunchOptions::default();
+            self.writable = false;
+        } else {
+            self.installed = InstalledState::load(&path);
+            self.launch_opts = LaunchOptions::detect(&crate::install_layout::binaries_dir(&path));
+            self.writable = folder_writable(&path);
         }
+        self.play.probed_pids = crate::game_process::running_game_pids(&path);
+        self.last_refresh = std::time::Instant::now();
+    }
+
+    /// The install facts the Play surface and the guards read.
+    fn inputs(&self) -> Inputs {
+        let folder_set = !path_is_empty(&self.config.install_path);
+        Inputs {
+            status: install_status(
+                folder_set,
+                folder_set && should_show_adopt_button(&self.config.install_path),
+                self.play.manifest.for_url(&self.config.manifest_url),
+                &self.installed,
+            ),
+            sgw_present: self.launch_opts.sgw_present,
+            writable: self.writable,
+            launcher_blocked: self.launcher_blocked(),
+        }
+    }
+
+    /// Fetch the manifest for the URL in use. Only a manifest whose
+    /// signature verified ever reaches the UI.
+    fn refresh_manifest(&mut self) {
+        let url = self.config.manifest_url.clone();
+        self.play.manifest.begin_fetch(&url);
+        self.worker.fetch_manifest_now(url);
     }
 
     /// Parse the login-server text, save the config, and apply the new
     /// list to an existing install right away.
     fn save_config(&mut self) {
-        self.sync_install_path_from_text();
         match crate::client_setup::login_servers::parse(&self.login_servers_text) {
             Ok(servers) => self.config.login_servers = servers,
             Err(e) => {
@@ -203,56 +236,103 @@ impl LauncherApp {
             Ok(_) => {
                 self.push_status("Saved config.".into());
                 self.refresh_install_state();
-                if self.launch_opts.sgw_present {
-                    self.prepare_client_for_launch();
+                // Apply the list to the installed client now; the worker
+                // refuses it while a game or another file job runs.
+                if self.launch_opts.sgw_present && file_action_block(&self.play).is_none() {
+                    self.worker
+                        .dispatch(Command::PrepareClient(self.client_prep()));
                 }
             }
             Err(e) => self.push_status(format!("Save failed: {e}")),
         }
     }
 
-    /// Write `LoginInternal.lua` and switch ASLR off before a launch.
-    /// Returns false when setup failed; callers then don't launch, since a
-    /// client with ASLR still on breaks the patches DLL and the RE
-    /// addresses, and one without the server list can't log in.
-    fn prepare_client_for_launch(&mut self) -> bool {
-        let result =
-            crate::client_setup::prepare(&self.config.install_path, &self.config.login_servers);
-        let (ok, lines) = setup_status_lines(&result);
-        for line in lines {
-            self.push_status(line);
+    /// Install or update from the verified manifest.
+    fn start_install(&mut self) {
+        let Some(manifest) = self
+            .play
+            .manifest
+            .for_url(&self.config.manifest_url)
+            .cloned()
+        else {
+            return;
+        };
+        if let Some(why) = file_action_block(&self.play) {
+            self.push_status(format!("Not started: {why}"));
+            return;
         }
-        ok
+        if let Err(e) = self.config.save(&self.config_path) {
+            self.push_status(format!("Save failed: {e}"));
+        }
+        self.play.click_install();
+        self.push_status("Starting install / update…".into());
+        self.worker.dispatch(Command::Install {
+            config: self.config.clone(),
+            manifest,
+        });
     }
-}
 
-/// Status lines for a client-setup result, and whether launching may go
-/// ahead. Extracted so the launch gate is testable without an egui frame.
-fn setup_status_lines(
-    result: &std::io::Result<crate::client_setup::SetupReport>,
-) -> (bool, Vec<String>) {
-    match result {
-        Ok(report) => {
-            let mut lines = Vec::new();
-            for r in &report.restored_names {
-                lines.push(format!(
-                    "Renamed {} back to its stock name {} (the game can't find it otherwise).",
-                    r.from.display(),
-                    r.to.file_name().unwrap_or_default().to_string_lossy()
-                ));
-            }
-            if report.login_servers_written {
-                lines.push("Wrote the login server list (LoginInternal.lua).".into());
-            }
-            if report.aslr == crate::client_setup::AslrOutcome::Disabled {
-                lines.push("Switched ASLR off in SGW.exe.".into());
-            }
-            (true, lines)
+    fn cancel_install(&mut self) {
+        self.worker.dispatch(Command::Cancel);
+        self.push_status("Cancel requested.".into());
+        self.play.notice = Some(Notice {
+            error: false,
+            text: "Cancelling… the current step finishes first.".into(),
+        });
+    }
+
+    /// Mark the folder's existing client as launcher-managed.
+    fn start_adopt(&mut self) {
+        let Some(manifest) = self
+            .play
+            .manifest
+            .for_url(&self.config.manifest_url)
+            .cloned()
+        else {
+            return;
+        };
+        if file_action_block(&self.play).is_some() {
+            return;
         }
-        Err(e) => (
-            false,
-            vec![format!("Not launching: client setup failed: {e}")],
-        ),
+        self.play.click_adopt();
+        self.push_status("Adopt requested…".into());
+        self.worker.dispatch(Command::AdoptExisting {
+            install_dir: self.config.install_path.clone(),
+            manifest,
+        });
+    }
+
+    /// Play: the worker claims the launch slot, runs client setup, then
+    /// launches with the client patches and, when opted in, telemetry.
+    /// The surface shows "Starting…" at once.
+    fn start_play(&mut self) {
+        if let Some(why) = launch_block(&self.play, &self.inputs()) {
+            self.push_status(format!("Not launching: {why}"));
+            return;
+        }
+        // Telemetry follows the game only when the player opted in and
+        // the identity loaded; the client patches are independent.
+        let telemetry = match &self.identity {
+            Some(id) if self.config.telemetry.opted_in => {
+                Some(build_telemetry_config(&self.config, id))
+            }
+            _ => None,
+        };
+        self.play.click_play(telemetry.is_some());
+        self.worker.dispatch(Command::LaunchSgw(LaunchSgwRequest {
+            install_dir: crate::install_layout::binaries_dir(&self.config.install_path),
+            prep: Some(self.client_prep()),
+            client_patches: self.config.client_patches.clone(),
+            telemetry,
+        }));
+    }
+
+    /// What the worker needs for client setup before a launch.
+    fn client_prep(&self) -> ClientPrep {
+        ClientPrep {
+            install_root: self.config.install_path.clone(),
+            login_servers: self.config.login_servers.clone(),
+        }
     }
 }
 
@@ -293,6 +373,20 @@ fn build_telemetry_config(
     }
 }
 
+/// Whether an install could write to `dir`, without creating it: a
+/// missing folder is judged by its nearest existing parent. The probe
+/// runs every refresh, so it must not make the folder appear on its own.
+fn folder_writable(dir: &Path) -> bool {
+    let mut probe = dir;
+    while !probe.exists() {
+        match probe.parent() {
+            Some(p) if !p.as_os_str().is_empty() => probe = p,
+            _ => return false,
+        }
+    }
+    probe.is_dir() && crate::launch::install_dir_writable(probe)
+}
+
 /// Whether to surface the "Adopt existing install" affordance.
 ///
 /// True iff the install at `install_path` has `SGW.exe` (at the top, or in
@@ -300,301 +394,25 @@ fn build_telemetry_config(
 /// `launcher-installed.json` marker file. The first condition rules
 /// out empty directories (those should go through the normal Install
 /// path); the second condition rules out installs the launcher
-/// already manages (those have nothing to adopt). Extracted from
-/// `show_install_panel` so the boolean decision is unit-testable
-/// without spinning up an egui frame.
+/// already manages (those have nothing to adopt). Extracted so the
+/// boolean decision is unit-testable without spinning up an egui frame.
 fn should_show_adopt_button(install_path: &Path) -> bool {
     crate::install_layout::sgw_exe(install_path).is_file()
         && !crate::state::InstalledState::path(install_path).exists()
 }
 
-/// Render a worker [`Event`] into the human-readable status-log line
-/// the UI appends to its scrollback. Pure formatting — extracted from
-/// `drain_events` so each Event arm has at least minimal coverage
-/// without needing an egui context. Returns `None` for events that
-/// don't translate to a status line on their own (manifest updates,
-/// progress ticks).
-fn status_line_for(event: &Event) -> Option<String> {
-    Some(match event {
-        Event::AdoptComplete => {
-            "Adopted existing install — patches will apply on top (seed bytes not verified).".into()
-        }
-        Event::AdoptError(e) => format!("Adopt failed: {e}"),
-        Event::Wiped { kind, report } => format!(
-            "Wiped {kind}: {} item(s), {} freed",
-            report.entries_removed,
-            human_bytes(report.bytes_freed)
-        ),
-        Event::WipeError(e) => format!("Wipe failed: {e}"),
-        Event::InstallComplete => "Install complete.".into(),
-        Event::InstallError(e) => format!("Install failed: {e}"),
-        Event::Launched(name, pid) => format!("Launched {name} (pid {pid})"),
-        Event::LaunchError(e) => format!("Launch failed: {e}"),
-        Event::ClientPatchesNote(n) => format!("Client patches: {n}"),
-        Event::ClientTelemetryNote(n) => format!("In-game telemetry: {n}"),
-        Event::UploadStarted => "Uploading logs…".into(),
-        Event::UploadSkipped(why) => format!("Log upload skipped: {why}"),
-        Event::UploadComplete { blob, bytes } => format!("Uploaded {bytes} bytes to {blob}"),
-        Event::UploadError(e) => format!("Log upload failed: {e}"),
-        Event::TelemetrySessionComplete(o) => {
-            let sha_short: String = o.bundle_sha256.chars().take(12).collect();
-            format!(
-                "Telemetry session complete — {} events, {} dropped, bundle {} (sha {})",
-                o.event_count,
-                o.dropped_lines,
-                human_bytes(o.bundle_bytes),
-                if sha_short.is_empty() {
-                    "n/a"
-                } else {
-                    sha_short.as_str()
-                }
-            )
-        }
-        Event::TelemetrySessionError(e) => format!("Telemetry session error: {e}"),
-        Event::Update(u) => return update_banner::update_status_line(u),
-        // Progress + manifest events drive other UI state, not the
-        // status log. Returning None makes that explicit.
-        Event::ManifestFetched(_) | Event::ManifestError(_) | Event::Progress(_) => return None,
-    })
-}
-
-/// The download progress label, e.g. `seed: 1.27 GB / 3.85 GB`.
-/// [`human_bytes`] already carries the unit, so none is appended.
-fn download_progress_line(label: &str, downloaded: u64, total: u64) -> String {
-    format!(
-        "{label}: {} / {}",
-        human_bytes(downloaded),
-        human_bytes(total)
-    )
-}
-
-fn human_bytes(n: u64) -> String {
-    const UNITS: &[&str] = &["B", "KB", "MB", "GB", "TB"];
-    let mut f = n as f64;
-    let mut i = 0;
-    while f >= 1024.0 && i + 1 < UNITS.len() {
-        f /= 1024.0;
-        i += 1;
-    }
-    if i == 0 {
-        format!("{n} B")
-    } else {
-        format!("{f:.2} {}", UNITS[i])
-    }
-}
-
 #[cfg(test)]
 mod tests {
-    use super::{
-        download_progress_line, human_bytes, setup_status_lines, should_show_adopt_button,
-        status_line_for, MAX_STATUS_LINES,
-    };
-    use crate::client_setup::{AslrOutcome, SetupReport};
+    use super::folder_writable;
 
-    // Bug shape: a failed client setup (SGW.exe locked, ASLR still on) used
-    // to be reported and then launched anyway.
+    // Bug shape: the 2-second refresh probed writability by creating the
+    // install folder, so any configured path appeared on disk unasked.
     #[test]
-    fn a_failed_client_setup_blocks_the_launch() {
-        let err: std::io::Result<SetupReport> = Err(std::io::Error::new(
-            std::io::ErrorKind::PermissionDenied,
-            "SGW.exe is locked",
-        ));
-        let (ok, lines) = setup_status_lines(&err);
-        assert!(!ok);
-        assert!(lines[0].starts_with("Not launching") && lines[0].contains("locked"));
-
-        let done: std::io::Result<SetupReport> = Ok(SetupReport {
-            restored_names: Vec::new(),
-            login_servers_written: true,
-            aslr: AslrOutcome::Disabled,
-        });
-        let (ok, lines) = setup_status_lines(&done);
-        assert!(ok);
-        assert_eq!(lines.len(), 2);
-    }
-
-    /// The EULA repair is visible in the status log, naming both spellings.
-    #[test]
-    fn a_restored_file_name_is_reported() {
-        let eula = std::path::Path::new("Working/SGWGame/Content/UI/Startup/EULA");
-        let done: std::io::Result<SetupReport> = Ok(SetupReport {
-            restored_names: vec![crate::client_setup::Restored {
-                from: eula.join("eula.lua"),
-                to: eula.join("EULA.lua"),
-            }],
-            login_servers_written: false,
-            aslr: AslrOutcome::AlreadyOff,
-        });
-        let (ok, lines) = setup_status_lines(&done);
-        assert!(ok);
-        assert_eq!(lines.len(), 1, "{lines:?}");
-        assert!(
-            lines[0].contains("eula.lua") && lines[0].contains("stock name EULA.lua"),
-            "{}",
-            lines[0]
-        );
-    }
-    use crate::client_paths::WipeReport;
-    use crate::worker::Event;
-
-    #[test]
-    fn human_bytes_formats_units() {
-        assert_eq!(human_bytes(0), "0 B");
-        assert_eq!(human_bytes(512), "512 B");
-        assert_eq!(human_bytes(2048), "2.00 KB");
-        assert_eq!(human_bytes(5 * 1024 * 1024), "5.00 MB");
-    }
-
-    // Bug shape: the line read "seed: 1.27 GB / 3.85 GB bytes", the unit
-    // printed twice.
-    #[test]
-    fn download_progress_line_prints_the_unit_once() {
-        const GIB: u64 = 1024 * 1024 * 1024;
-        assert_eq!(
-            download_progress_line("seed", GIB * 127 / 100, GIB * 385 / 100),
-            "seed: 1.27 GB / 3.85 GB"
-        );
-        assert_eq!(
-            download_progress_line("patch x", 10, 20),
-            "patch x: 10 B / 20 B"
-        );
-    }
-
-    // Drives the same drain-on-overflow shape that `push_status` uses, with
-    // a Vec we can inspect directly. Keeps the test free of the full
-    // LauncherApp construction (which requires a tokio runtime).
-    fn push_capped(buf: &mut Vec<String>, line: String) {
-        buf.push(line);
-        if buf.len() > MAX_STATUS_LINES {
-            let overflow = buf.len() - MAX_STATUS_LINES;
-            buf.drain(0..overflow);
-        }
-    }
-
-    #[test]
-    fn push_status_caps_at_max_lines() {
-        let mut buf = Vec::new();
-        for i in 0..(MAX_STATUS_LINES + 25) {
-            push_capped(&mut buf, format!("line {i}"));
-        }
-        assert_eq!(buf.len(), MAX_STATUS_LINES);
-        // Oldest 25 should have been dropped.
-        assert_eq!(buf.first().unwrap(), "line 25");
-        assert_eq!(
-            buf.last().unwrap(),
-            &format!("line {}", MAX_STATUS_LINES + 24)
-        );
-    }
-
-    #[test]
-    fn push_status_under_cap_does_not_drain() {
-        let mut buf = Vec::new();
-        for i in 0..10 {
-            push_capped(&mut buf, format!("{i}"));
-        }
-        assert_eq!(buf.len(), 10);
-        assert_eq!(buf.first().unwrap(), "0");
-    }
-
-    // Empty install dir: no SGW.exe + no marker → the Install panel
-    // should NOT surface the Adopt affordance (nothing to adopt).
-    #[test]
-    fn should_show_adopt_button_false_on_empty_dir() {
-        let dir = tempfile::tempdir().unwrap();
-        assert!(!should_show_adopt_button(dir.path()));
-    }
-
-    // SGW.exe present + no marker → adopt is the user's least-destructive
-    // path forward. This is the trigger condition.
-    #[test]
-    fn should_show_adopt_button_true_when_unmanaged_install_present() {
-        let dir = tempfile::tempdir().unwrap();
-        std::fs::write(dir.path().join("SGW.exe"), b"").unwrap();
-        assert!(should_show_adopt_button(dir.path()));
-    }
-
-    // Marker file already present → install is launcher-managed; adopt
-    // is a no-op (and would refuse with AlreadyManaged anyway). Hiding
-    // the button keeps the UI honest.
-    #[test]
-    fn should_show_adopt_button_false_when_already_managed() {
-        let dir = tempfile::tempdir().unwrap();
-        std::fs::write(dir.path().join("SGW.exe"), b"").unwrap();
-        std::fs::write(
-            crate::state::InstalledState::path(dir.path()),
-            r#"{"applied_patches":[],"seed_sha256":"h"}"#,
-        )
-        .unwrap();
-        assert!(!should_show_adopt_button(dir.path()));
-    }
-
-    // status_line_for covers every Event variant that produces a
-    // status entry. Wiped is the only one with non-trivial formatting
-    // (bytes-freed → human_bytes) — pin its exact shape against a
-    // realistic report.
-    #[test]
-    fn status_line_for_formats_adopt_complete() {
-        let line = status_line_for(&Event::AdoptComplete).unwrap();
-        assert!(line.contains("Adopted"), "got: {line}");
-        assert!(
-            line.contains("not verified"),
-            "must surface the trust trade-off, got: {line}"
-        );
-    }
-
-    #[test]
-    fn status_line_for_formats_client_patches_note() {
-        let line =
-            status_line_for(&Event::ClientPatchesNote("off (launcher setting).".into())).unwrap();
-        assert_eq!(line, "Client patches: off (launcher setting).");
-    }
-
-    #[test]
-    fn status_line_for_formats_client_telemetry_note() {
-        let line = status_line_for(&Event::ClientTelemetryNote("unavailable: x.".into())).unwrap();
-        assert_eq!(line, "In-game telemetry: unavailable: x.");
-    }
-
-    #[test]
-    fn status_line_for_formats_adopt_error() {
-        let line = status_line_for(&Event::AdoptError("boom".into())).unwrap();
-        assert_eq!(line, "Adopt failed: boom");
-    }
-
-    #[test]
-    fn status_line_for_formats_wiped_with_human_bytes() {
-        let line = status_line_for(&Event::Wiped {
-            kind: "Cache.en-US".into(),
-            report: WipeReport {
-                entries_removed: 3,
-                bytes_freed: 5 * 1024 * 1024,
-            },
-        })
-        .unwrap();
-        // Pin both the item count and the human-bytes rendering so a
-        // future change to either thread shows up as a test diff.
-        assert_eq!(line, "Wiped Cache.en-US: 3 item(s), 5.00 MB freed");
-    }
-
-    #[test]
-    fn status_line_for_formats_wipe_error() {
-        let line = status_line_for(&Event::WipeError("permission denied".into())).unwrap();
-        assert_eq!(line, "Wipe failed: permission denied");
-    }
-
-    #[test]
-    fn status_line_for_returns_none_for_progress_and_manifest_events() {
-        // These drive UI state directly (progress bars, manifest
-        // summary panel) — they don't belong in the scrolling status
-        // log. Returning None enforces that at the type level.
-        assert!(status_line_for(&Event::ManifestError("x".into())).is_none());
-        assert!(
-            status_line_for(&Event::Progress(crate::install::Progress::Downloading {
-                label: "seed".into(),
-                downloaded: 0,
-                total: 0,
-            },))
-            .is_none()
-        );
+    fn the_writability_probe_does_not_create_the_folder() {
+        let tmp = tempfile::tempdir().unwrap();
+        let target = tmp.path().join("a").join("Stargate Worlds");
+        assert!(folder_writable(&target));
+        assert!(!tmp.path().join("a").exists(), "nothing may be created");
+        assert!(folder_writable(tmp.path()));
     }
 }

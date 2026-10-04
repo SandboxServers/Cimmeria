@@ -304,6 +304,36 @@ Full LAN-setup details in [`multiplayer.md`](multiplayer.md).
 
 ---
 
+### The launcher's Play tab says "Game running", or a click says "Not started: …"
+
+**Symptom.** The Play tab shows **Game running** with a disabled **Playing** button although you closed the game, or Install, Update or Play answers `Not started: Stargate Worlds is running (pid N); close the game first`, `Not started: the game is already starting`, or `Not started: an installation is in progress; wait for it to finish`.
+
+**Root cause.** The launcher (since #1153) refuses to change game files under a running game, and refuses a second launch. Besides the game it started itself, it counts every `SGW.exe` whose image is under the install folder, plus any `SGW.exe` whose path it cannot read. A crashed client often stays in the process list with no window.
+
+**Fix.** Open Task Manager (**Ctrl+Shift+Esc**) › **Details**, end the leftover `SGW.exe`, and wait up to two seconds: the launcher re-checks every two seconds and the card returns to **Ready to play**. For an install in progress, let it finish or press **Cancel**. Nothing was changed by a refused command. Details: [launcher guide § Play says "Game running" but the game is closed](client/launcher-guide.md#play-says-game-running-but-the-game-is-closed).
+
+---
+
+### The launcher says "Could not load the game content list"
+
+**Symptom.** On a first install the Play tab shows "Could not load the game content list. Check your connection and retry." with a **Retry** button; Patch Notes shows "Could not load patch notes: …".
+
+**Root cause.** The launcher could not fetch the signed content manifest, or its signature did not verify. It never uses an unverified manifest, so it cannot install. An already-installed game still shows **Play**; it just is not checked for updates.
+
+**Fix.** Check your connection and press **Retry**. If it keeps failing, read the reason in the launcher's Settings (gear) › Advanced › **Content manifest**, and check the manifest URL there. Per-error advice: [launcher guide § Could not load the game content list](client/launcher-guide.md#could-not-load-the-game-content-list-or-manifest-error-).
+
+---
+
+### The launcher says the install folder is not writable, or `SGW.exe` is missing
+
+**Symptom.** The Play tab shows "One more step before you play" with "The install folder is not writable. Choose another folder in Settings." or "SGW.exe is missing from the install folder…".
+
+**Root cause.** Not writable: the folder needs admin rights (for example under `C:\Program Files`) or its drive is gone. Missing `SGW.exe`: the file was deleted or quarantined after install. The launcher's **Install / Update** re-applies only what its install record (`launcher-installed.json`) does not list, so it does not bring the file back; **Repair game** is not available yet (#1153).
+
+**Fix.** Not writable: Settings (gear) › **Change folder…**, pick a folder of your own such as `%LOCALAPPDATA%\Stargate Worlds`, **Check folder**, **Use this folder**. Missing `SGW.exe`: install into a new empty folder the same way, or close the game, delete `launcher-installed.json` from the install folder and restart the launcher, which then offers **Install Stargate Worlds** again. If antivirus removed the file, restore it first. Details: [launcher guide § SGW.exe is missing, or a game file is damaged](client/launcher-guide.md#sgwexe-is-missing-or-a-game-file-is-damaged).
+
+---
+
 ### AtreaRL won't launch / "DLL not found"
 
 **Symptom.** AtreaRL (the launcher) crashes or reports a missing DLL.
