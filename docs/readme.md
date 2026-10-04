@@ -90,6 +90,7 @@ Want to start contributing? Read **[../CONTRIBUTING.md](../CONTRIBUTING.md)** â€
 | [Tauri launcher implementation plan](analysis/playtests/2026-10-03-macos-wine/launcher-implementation-plan.md) | PR-sized Tauri + Effect workflow plan, Rust reuse audit, consent-aware install/launch summaries and final self-contained startup release gate |
 | [Desktop launcher implementation ledger](analysis/playtests/2026-10-03-macos-wine/launcher-implementation-ledger.md) | Dated delivery evidence, exact validation revisions and remaining launcher gates |
 | [Launcher acceptance and ownership](analysis/playtests/2026-10-03-macos-wine/launcher-acceptance.md) | Current delivery responsibilities, required journeys and release evidence |
+| [Signed game rollback UAT](analysis/playtests/2026-10-03-macos-wine/worknotes/game-update-rollback-uat.md) | Native-host signed rollback, separate retained backups, cancellation/cleanup and mounted Effect persistence evidence |
 | [Launcher delegation plan](analysis/playtests/2026-10-03-macos-wine/launcher-delegation-plan.md) | Isolated Codex/Claude workstreams, file ownership, copy-ready assignments and integration gates |
 | [Desktop launcher engine](../crates/launcher/desktop/README.md) | Tauri settings shell, native state and Effect workflows, persistence UAT and remaining game integration gates |
 | [Desktop Play integration](analysis/playtests/2026-10-03-macos-wine/worknotes/play-integration.md) | Native-owned launch, Effect lifecycle controls and persistence UAT boundaries |

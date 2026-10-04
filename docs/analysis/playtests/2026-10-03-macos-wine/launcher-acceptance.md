@@ -19,7 +19,8 @@ admission with [updater Apply](worknotes/updater-apply.md) and the
 and both updater native Effect UATs pass. These checks ran separately from the rebuild checkpoint. These changes have not
 yet advanced PR #1164's integration branch. Game Update now has native retained execution and mounted confirmation with
 real-store Effect UAT for Apply, lost reply, cleanup and reopen. Latest frontend
-tests pass 60 and six scoped Update shell tests pass. Actual game Update,
+tests pass 61 and eight scoped Update shell tests pass; mounted signed rollback
+and cleanup/reopen UAT also pass. Actual game Update,
 effective settings, observability and real packaged upgrade gates remain required.
 
 ## Windows troubleshooting handoff
@@ -66,7 +67,8 @@ documented fixture scopes. These are not gameplay or release evidence.
 - Native content Install and prerequisite preparation succeeded through the real
   app. The first recorded Play failed early; a separate graphics diagnostic
   reached the login screen according to the operator and later exited cleanly.
-  The corrected production path still needs a rerun. See [native UAT](worknotes/native-window-uat.md).
+  The current production Play path reached the SGW login screen, visually confirmed
+  by the operator; authentication/world entry remain unverified. See [native UAT](worknotes/native-window-uat.md).
 - Settings import is integrated. [Verified-copy adoption](worknotes/native-verified-copy-adoption.md)
   has a source-preserving native foundation, but no UI or Play enablement yet.
   Published RAR references, effective configuration and permanent-owner/current-

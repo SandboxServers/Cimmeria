@@ -675,3 +675,18 @@ The separate combined branch includes [owner/current-release and Update admissio
 It preserves the development rebuild checkpoint; PR #1164 integration is pending.
 Fixture evidence does not establish game Update execution/UI, effective settings,
 production updater configuration or signed packaged Mac/Windows upgrade readiness.
+
+### 2026-10-04: Mounted Update and rollback verification
+
+`8436ed4e8` connects signed game Update review to retained execution in Settings.
+`b525072a9` integrates [actual signed rollback UAT](worknotes/game-update-rollback-uat.md):
+eight host tests, 61 frontend tests, native-persistence mounted rollback/reopen
+UAT and strict scoped Clippy pass. Original and current backups remain separate;
+partial-download cancel/discard and interrupted preparation abandonment preserve
+the old game. These portable fixtures do not establish real Wine replacement.
+
+The current development build reached the actual SGW login screen through Play;
+operator visual confirmation is recorded in [native-window UAT](worknotes/native-window-uat.md).
+Authentication/world entry and windowed focus remain unverified. Windows updater
+diagnosis is handed off through issue #1194; migration settings/adoption UI remain
+independent implementation work. Full launcher acceptance is still open.

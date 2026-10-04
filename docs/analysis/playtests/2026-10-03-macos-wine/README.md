@@ -156,6 +156,8 @@ Windows-helper ownership requirements. It does not establish game compatibility.
 - [Dated implementation ledger](launcher-implementation-ledger.md)
 - [Migration audit](worknotes/migration-audit.md)
 - [Native-window UAT](worknotes/native-window-uat.md)
+- [Signed game Update execution](worknotes/game-update-native.md)
+- [Signed rollback and cleanup UAT](worknotes/game-update-rollback-uat.md)
 - [Repair handoff](worknotes/repair-ui.md)
 - [Acceptance checklist and current ownership](launcher-acceptance.md)
 - [Runtime provisioning evidence](runtime-provisioning.md)
