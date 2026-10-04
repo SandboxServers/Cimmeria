@@ -56,3 +56,5 @@ pub mod mac_wine;
 pub mod prerequisites;
 
 pub use storage::launch;
+
+pub mod launcher_compatibility;
