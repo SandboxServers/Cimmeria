@@ -448,6 +448,10 @@ pub(super) async fn fire_beneficial(
         resolution,
         pulsing_registered = pulsing,
         recipient_ids = ?recipients(&routed.landings),
+        recipient_player_ids = ?recipients(&routed.landings)
+            .into_iter()
+            .map(|id| space_mgr.player_identity(id).player_id)
+            .collect::<Vec<_>>(),
         target_health_before = before.0,
         target_health_after = after.0,
         target_focus_before = before.1,

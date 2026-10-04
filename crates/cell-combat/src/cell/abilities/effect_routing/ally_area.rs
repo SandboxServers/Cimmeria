@@ -64,6 +64,15 @@ pub(super) fn ally_landings(
         .into_iter()
         .partition(|&id| already_landed(earlier, id, effect));
     let who = space_mgr.player_identity(caster_id);
+    // Canonical subject ids beside the entity ids (instrumentation rule 5):
+    // every ally is a player, so each has a `player_id`.
+    let player_ids = |ids: &[u32]| -> Vec<Option<i32>> {
+        ids.iter()
+            .map(|&id| space_mgr.player_identity(id).player_id)
+            .collect()
+    };
+    let ally_player_ids = player_ids(&allies);
+    let skipped_player_ids = player_ids(&skipped);
     tracing::debug!(
         target: "abilities",
         event = EVENT_ALLY_AREA,
@@ -74,7 +83,9 @@ pub(super) fn ally_landings(
         effect_id = effect.effect_id,
         radius,
         ally_ids = ?allies,
+        ally_player_ids = ?ally_player_ids,
         skipped_same_script = ?skipped,
+        skipped_player_ids = ?skipped_player_ids,
         "beneficial area effect fanned out to the caster's allies in its radius"
     );
     allies

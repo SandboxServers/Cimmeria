@@ -8,9 +8,11 @@
 //! expires (AT-10). The launch half (validation, cooldown, `Ability_Begin`)
 //! never runs here, so each of these steps runs exactly once per cast.
 //!
-//! The effects are routed per effect (AB-07, `abilities::effect_routing`):
-//! a user half lands on the caster and a beneficial area half on the
-//! caster's allies before the target pipeline runs the rest.
+//! The effects are routed per effect (AB-07, `abilities::effect_routing`).
+//! The target pipeline runs the cast's target part first; then
+//! `land_routed` lands the user halves on the caster and the beneficial area
+//! halves on the caster's allies. That order is deliberate: a user buff
+//! (say +Accuracy) landed first would change the same cast's QR roll.
 
 use tokio::sync::mpsc;
 
@@ -319,6 +321,8 @@ async fn fire_at_target(
 }
 
 /// Land a non-beneficial cast's off-target effects and log where they went.
+/// Runs after [`fire_at_target`], so a user buff never changes the roll of
+/// the cast that granted it.
 async fn land_routed(
     entity_id: u32,
     ability_id: i32,
@@ -341,6 +345,11 @@ async fn land_routed(
         entity_id,
         ability_id,
         landed = ?landed,
+        landed_player_ids = ?routed
+            .landings
+            .iter()
+            .map(|l| space_mgr.player_identity(l.recipient).player_id)
+            .collect::<Vec<_>>(),
         pulsing_registered = pulsing,
         target_effects = ?routed.target_def.as_ref().map(|d| d.effect_ids.as_slice()),
         "off-target effects landed: user halves on the caster, beneficial area halves on allies"
