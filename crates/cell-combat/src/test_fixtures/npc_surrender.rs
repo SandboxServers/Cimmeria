@@ -118,6 +118,7 @@ pub fn install_ability_def(mgr: &mut SpaceManager) {
             required_ammo: 0,
             event_set_id: None,
             velocity: 0.0,
+            type_id: Default::default(),
         },
     );
 }

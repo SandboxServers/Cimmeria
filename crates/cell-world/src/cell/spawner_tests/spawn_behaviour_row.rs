@@ -39,6 +39,7 @@ fn ability(id: i32, event_set_id: Option<i32>) -> AbilityDef {
         required_ammo: 0,
         event_set_id,
         velocity: 0.0,
+        type_id: Default::default(),
     }
 }
 

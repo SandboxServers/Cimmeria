@@ -78,6 +78,15 @@ pub const TCM_AE_CONE: &str = "TCM_AECone";
 /// `damage_apply::qr_gate`. It was 32 (`EF_HasInductionBar`) and unread
 /// before AB-06 (B-24).
 pub const EF_DONT_USE_QR: u32 = 16;
+/// `EF_Beneficial_Effect` (`EEffectFlag` 1, a real client bit, the first
+/// token of `db/resources/Effects/Types/EEffectFlag.sql`): the effect helps
+/// whoever it lands on. [`super::ability_is_beneficial`] reads it
+/// (ability-mechanics D-AB02).
+pub const EF_BENEFICIAL_EFFECT: u32 = 1;
+/// `EF_ResolveOnAbilityUser` (`EEffectFlag` 131072, bit 17): the effect lands
+/// on the ability's user, not its target. A beneficial cast honours it in
+/// `use_ability/beneficial.rs` (AB-01); AB-07 owns it on every other path.
+pub const EF_RESOLVE_ON_ABILITY_USER: u32 = 131_072;
 /// `EF_AlwaysPersist` (`entities/defs/enumerations.xml` `EEffectFlag`, a
 /// real client bit): the effect of a
 /// passive ability, held for as long as the ability is known. The server
@@ -150,6 +159,10 @@ pub struct AbilityDef {
     pub required_ammo: i32,
     pub event_set_id: Option<i32>,
     pub velocity: f32,
+    /// `resources.abilities.type_id`. Only `Heal` changes anything today: it
+    /// lets a heal script stand in for the beneficial bit
+    /// ([`super::ability_is_beneficial`]); it is never enough on its own.
+    pub type_id: super::AbilityType,
 }
 
 /// A single effect within an ability (damage, heal, buff, etc).

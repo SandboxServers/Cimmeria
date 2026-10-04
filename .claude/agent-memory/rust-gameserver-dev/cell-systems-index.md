@@ -60,6 +60,7 @@ Moved out of MEMORY.md on 2026-09-28 (AM-12 compaction).
 - [per-shot-damage-seam-is-damage-apply.md](per-shot-damage-seam-is-damage-apply.md) — per-shot modifiers hook damage_apply, not effect scripts; MITIGATION cap 0 makes armour inert.
 - [ammo-reserve-round-trip.md](ammo-reserve-round-trip.md) — AM-02: base loop is sequential, so flush then trust the weapon row; load rounds at draw commit, not in the tick.
 - [support-shot-inverse-gate.md](support-shot-inverse-gate.md) — client useAbility has no friend/foe check; beneficial ammo's inverse #444 gate lives at launch, warmup and fire.
+- [beneficial-cast-resolution-and-abilitydef-fields.md](beneficial-cast-resolution-and-abilitydef-fields.md) — AB-01 resolver + #444 gate in use_ability/beneficial.rs; 2228 is a Heal-typed attack; new AbilityDef field = ~70 literals.
 - [ammo-on-hit-effect-needs-a-script.md](ammo-on-hit-effect-needs-a-script.md) — ammo on-hit effects need a script_name or the hit pulse never fires; no Radioactive dart toggle exists.
 - [effect-category-and-friendly-target-gaps.md](effect-category-and-friendly-target-gaps.md) — cleanses key on an `EffectCategory` NVP; no ally targeting (#444); new effect ids must not reach the client.
 - [pulsing-script-reapply-and-npc-cc.md](pulsing-script-reapply-and-npc-cc.md) — a pulsing script's on_apply runs per pulse/refresh, on_remove once: guard stateful scripts; NPCs ignore BSF_MOVEMENT_LOCK (#1049).

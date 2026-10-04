@@ -19,6 +19,10 @@ pub struct PendingCast {
     pub ability_id: i32,
     /// The `useAbility` target id; `0` for a target-less cast.
     pub target_id: i32,
+    /// The target id the client sent. Equal to `target_id` except for a
+    /// beneficial cast, whose launch resolved `target_id` to the caster or an
+    /// ally (AB-01); the fire re-resolves from this one.
+    pub wire_target_id: i32,
     /// The ground point of a `useAbilityOnGroundTarget` cast, used to
     /// collect the AoE secondaries when the cast fires.
     pub ground: Option<[f32; 3]>,

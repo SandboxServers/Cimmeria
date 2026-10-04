@@ -246,6 +246,7 @@ Later decisions live in two sibling files, with their numbers and text unchanged
 - [31. Special ammo modifies the shot directly, from `resources.ammo_modifiers` (ammo campaign AM-04, D-AM07)](abilities-and-effects-decisions-23-33.md#31-special-ammo-modifies-the-shot-directly-from-resourcesammo_modifiers-ammo-campaign-am-04-d-am07)
 - [32. NPC-vs-NPC: an NPC's area ability hits the NPCs it would target, and an NPC-only kill pays nobody (#1009)](abilities-and-effects-decisions-23-33.md#32-npc-vs-npc-an-npcs-area-ability-hits-the-npcs-it-would-target-and-an-npc-only-kill-pays-nobody-1009)
 - [33. The scripts live in a leaf crate and register with the cell at startup (#962 step 4)](abilities-and-effects-decisions-23-33.md#33-the-scripts-live-in-a-leaf-crate-and-register-with-the-cell-at-startup-962-step-4)
+- [34. A beneficial cast lands on the caster or an ally, never on a hostile (ability mechanics AB-01)](abilities-and-effects-decisions-23-33.md#34-a-beneficial-cast-lands-on-the-caster-or-an-ally-never-on-a-hostile-ability-mechanics-ab-01)
 
 ## Cross-cutting follow-ups
 

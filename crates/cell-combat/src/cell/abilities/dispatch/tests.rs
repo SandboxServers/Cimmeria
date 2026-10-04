@@ -46,6 +46,7 @@ fn ability_radius_reads_effect_nvp() {
         required_ammo: 0,
         event_set_id: None,
         velocity: 0.0,
+        type_id: Default::default(),
     };
 
     assert_eq!(ability_radius(&Some(ability), &mgr), 12.5);
@@ -101,6 +102,7 @@ fn ability_radius_falls_back_when_effects_have_no_radius() {
         required_ammo: 0,
         event_set_id: None,
         velocity: 0.0,
+        type_id: Default::default(),
     };
 
     assert_eq!(
@@ -208,6 +210,7 @@ fn make_aoe_scenario() -> (
             required_ammo: 1,
             event_set_id: None,
             velocity: 0.0,
+            type_id: Default::default(),
         },
     );
 

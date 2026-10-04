@@ -8,7 +8,6 @@
 //! space_manager access is delicate and a hand-rolled split here would just
 //! trade lines for `&mut` plumbing.
 
-use cimmeria_cell_world::cell::duel::DuelResources;
 use tokio::sync::mpsc;
 
 use cimmeria_entity::abilities::{
@@ -86,8 +85,25 @@ pub async fn handle_use_ability(
     let owner_pet = super::owner_pet::player_owner_pet_ability(space_mgr, entity_id, ability_id);
     // A deployable aims at its staged ground point (`abilities::deployable`).
     let deploy = super::super::deployable::player_deployable(space_mgr, entity_id, ability_id);
-    let target_id = if summon.is_some() || owner_pet || deploy.is_some() {
-        0
+    // A beneficial cast (a heal, a buff) lands on the caster or an ally,
+    // whatever the client named (AB-01). See `beneficial`.
+    let diverted = summon.is_some() || owner_pet || deploy.is_some();
+    let client_target_id = target_id;
+    let Some((target_id, beneficial)) = super::beneficial::launch_target(
+        entity_id,
+        ability_def.as_ref(),
+        target_id,
+        diverted,
+        tx,
+        space_mgr,
+    )
+    .await
+    else {
+        return false;
+    };
+    // The fire re-resolves a beneficial cast from what the client sent.
+    let wire_target_id = if beneficial {
+        client_target_id
     } else {
         target_id
     };
@@ -132,7 +148,8 @@ pub async fn handle_use_ability(
     // shooter and never on a hostile target. `None` for every other cast,
     // whose targeting is exactly the #444 rule below.
     let support = super::support_shot::beneficial_shot(space_mgr, entity_id, ability_def.as_ref());
-    let mut support_ally = false;
+    // A support shot at an ally or a beneficial cast: never arms auto-cycle.
+    let mut friendly_cast = false;
     let mut support_hostile = false;
     'validate: {
         let entity = match space_mgr.get_entity(entity_id) {
@@ -226,63 +243,24 @@ pub async fn handle_use_ability(
                     );
                     return false;
                 }
-                // Server-authority target-validity gate (#444), scoped to
-                // PLAYER attackers — that's the forgery vector. The
-                // single-target path resolves as damage unconditionally
-                // (see `apply_damage_to_target` — there is no offensive vs
-                // supportive branch), so a player may only target a hostile
-                // NPC. A non-hostile NPC (vendor / quest giver / neutral)
-                // must never take player damage, and another player is
-                // never a legitimate single-target target in today's
-                // PvE-only design. Mirrors the AoE (`abilities/dispatch/`)
-                // and cone (`abilities/cone_aoe.rs`) faction filters;
-                // without it a forged `useAbility` packet griefs vendors,
-                // quest NPCs, party members, or other players (the client
-                // UI restricts target selection, but the server must
-                // enforce it).
-                //
-                // NPC attackers are deliberately NOT gated here: NPC AI
-                // fight (`npc_ai`) calls this same entry point to attack a
-                // PLAYER, which is legitimate — the AI already picks valid
-                // targets server-side.
-                //
-                // Beneficial ammo has the inverse gate (AM-11d, below).
-                // TODO: supportive single-target *abilities* (heal/buff an
-                // ally) will need it too once an offensive/supportive
-                // ability flag exists — `AbilityDef` has no such field
-                // today, and `target_type_id` only encodes
-                // self/target/ground. The rule
-                // itself is `combat::player_may_attack`: a hostile NPC, or
-                // the attacker's engaged duel partner (SS-D2); pets obey the
-                // same function.
-                //
-                // A support shot (AM-11d) reverses the rule: an ally or the
-                // shooter is admitted, and a hostile target is refused with
-                // feedback once the borrow ends. Anything else (a vendor)
-                // still falls to the #444 refusal.
-                let support_target = support.map(|_| {
-                    super::support_shot::classify(entity, target, space_mgr.resources.duels())
-                });
-                if support_target == Some(super::support_shot::SupportTarget::Hostile) {
-                    support_hostile = true;
-                    break 'validate;
-                }
-                support_ally = support_target == Some(super::support_shot::SupportTarget::Ally);
-                if entity.is_player
-                    && !support_ally
-                    && !combat::player_may_attack(entity, target, space_mgr.resources.duels())
-                {
-                    tracing::warn!(
-                        entity_id,
-                        ability_id,
-                        target_id,
-                        target_is_player = target.is_player,
-                        target_faction = target.faction,
-                        "useAbility rejected -- player single-target ability against a \
-                         non-hostile target (friendly-fire / forged target); \
-                         damage pipeline not entered (#444)"
-                    );
-                    return false;
+                // The #444 gate and its two inversions (support shots,
+                // beneficial casts) live in `beneficial::target_gate`.
+                match super::beneficial::target_gate(
+                    entity,
+                    target,
+                    ability_id,
+                    support.is_some(),
+                    beneficial,
+                    space_mgr,
+                ) {
+                    super::beneficial::TargetGate::SupportHostile => {
+                        support_hostile = true;
+                        break 'validate;
+                    }
+                    super::beneficial::TargetGate::Refused => return false,
+                    super::beneficial::TargetGate::Admitted { friendly } => {
+                        friendly_cast = friendly
+                    }
                 }
                 // Range check, in metres: the loader converted the
                 // ability's UE3-unit ranges (#919). A player is also held
@@ -602,7 +580,7 @@ pub async fn handle_use_ability(
     // timer send is past.
     // A support shot at an ally never arms the loop: auto-cycle is an
     // attack loop, and its tick stops on any player it may not attack.
-    if is_player && auto_cycle_armed && !support_ally && (has_deactivate_flag || !never_arms) {
+    if is_player && auto_cycle_armed && !friendly_cast && (has_deactivate_flag || !never_arms) {
         if has_deactivate_flag {
             if let Some(new_state) = combat::clear_auto_cycle(space_mgr, entity_id) {
                 tracing::info!(
@@ -659,6 +637,7 @@ pub async fn handle_use_ability(
             super::warmup::WarmupStart {
                 ability_id,
                 target_id,
+                wire_target_id,
                 effect_seq,
                 warmup_secs,
                 event_set_id: ability_def.as_ref().and_then(|d| d.event_set_id),
@@ -677,6 +656,7 @@ pub async fn handle_use_ability(
         entity_id,
         ability_id,
         target_id,
+        wire_target_id,
         effect_seq,
         &ability_def,
         tx,

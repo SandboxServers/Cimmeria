@@ -242,6 +242,7 @@ fn make_cone_ability_with_effect(
             required_ammo: 1,
             event_set_id: None,
             velocity: 0.0,
+            type_id: Default::default(),
         },
     );
 }
@@ -374,6 +375,7 @@ async fn fan_out_cone_effects_no_cone_effects_returns_empty() {
             required_ammo: 0,
             event_set_id: None,
             velocity: 0.0,
+            type_id: Default::default(),
         },
     );
     spawn_npc(&mut mgr, 300, "W", [10.0, 0.0, 0.0]);
@@ -449,6 +451,7 @@ async fn fan_out_cone_effects_two_cones_apply_per_effect_not_unioned() {
             required_ammo: 1,
             event_set_id: None,
             velocity: 0.0,
+            type_id: Default::default(),
         },
     );
 

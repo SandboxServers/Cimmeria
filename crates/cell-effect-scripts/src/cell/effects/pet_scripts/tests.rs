@@ -62,6 +62,7 @@ fn ability(id: i32, flags: u32, effects: &[i32]) -> AbilityDef {
         required_ammo: 0,
         event_set_id: None,
         velocity: 0.0,
+        type_id: Default::default(),
     }
 }
 

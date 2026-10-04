@@ -35,6 +35,7 @@ This guide gathers every restored system's in-game acceptance test (UAT) into on
 | [Black market](#black-market) | [black-market uat.md](../analysis/black-market/uat.md) |
 | [NPC AI](#npc-ai) | [NPC AI session resume, owner checklist](../analysis/npc-ai-restoration/handoffs/session-resume.md#owner-uat-checklist-colo-after-the-next-release) |
 | [Ability trees](#ability-trees) | [AT-06 in work-packets.md](../analysis/ability-trees/work-packets.md#at-06-owner-uat-colo-after-the-release) |
+| [Ability mechanics](#ability-mechanics) | [ability-mechanics README, UAT milestones](../analysis/ability-mechanics/README.md#uat-milestones) |
 | [Dialog UI](#dialog-ui) | [DU-UAT in work-packets.md](../analysis/dialog-ui-redesign/work-packets.md#du-uat) |
 | [Castle Cellblock tutorial](#castle-cellblock-tutorial) | [Cellblock UAT guide](../analysis/castle-cellblock-rebuild/uat-guide.md) |
 | [Castle (world 8)](#castle-world-8) | [zone operator guide, runbook B](../analysis/zone-restoration-operator-guide.md#b-castle-world-8-ring-platform-build-current-main-all-of-ca00-ca10-merged) |
@@ -527,6 +528,28 @@ Buying abilities at a trainer with training points: three tree tabs per archetyp
 **Things only a human can check:** whether `onErrorCode` shows any text (3, 6, 9); whether the Ability window drops removed abilities after a respec (9); whether the charge bar appears and the cooldown resets on an interrupt (10); whether the XP bar stays sane at level 50 (8).
 
 Source: [AT-06 in work-packets.md](../analysis/ability-trees/work-packets.md#at-06-owner-uat-colo-after-the-release) and the [ability-trees session resume](../analysis/ability-trees/handoffs/session-resume.md#owner-uat-at-06).
+
+## Ability mechanics
+
+What the starter abilities do when pressed: heals, regeneration, damage numbers, buffs, toggles and crowd control. Wave 0 covers the heals.
+
+**Status:** Not ready for UAT. AB-01 (who a heal lands on) is in review; the rest of Wave 0 is not merged. Run these steps once the release notes list AB-01.
+
+**Prerequisites:** a fresh character of any archetype on the colo, a second player nearby, and a hostile mob. 597 Heal Focus, 1646 Health Heal and 1218 Recuperation are on the starter bar. Take some damage or spend some Focus first so a heal has something to restore.
+
+| # | Do | Expect | Notes / known issues |
+|---|---|---|---|
+| AB-U1 | Heal Focus with no target, then with yourself, the other player and a mob targeted | Each press restores your own Focus. The mob's and the other player's bars never move. | D-AB01. If a press does nothing at all, note whether the cooldown started: the client may not send it (B-15, AB-E1) |
+| AB-U2 | Health Heal with the other player targeted | Their Health rises; yours does not. | |
+| AB-U3 | Health Heal with yourself, a mob, or nothing targeted | Your own Health rises. The mob's never does. | D-AB02 proposed default (fall back to the caster). The owner may change it to a refusal with a feedback line |
+| AB-U4 | Recuperation on the other player | Their Health rises a little every second for 25 s. | |
+| AB-U5 | Out of combat, Heal Focus with a mob targeted | You stay out of combat: no combat stance, and the mob is not pulled. | Before AB-01 this put you in combat with the mob (B-14) |
+
+**SigNoz:** `scope_name = 'abilities' AND player_id = <id>`, `event = beneficial_cast` with `stage` (`launch`, `fire`), `wire_target_id`, `resolved_target_id` and `resolution` (`self_ability`, `ally`, `fallback_to_caster`); the heal itself is `heal_health` or `heal_focus` with `ability_id` 597, 1646 or 1218.
+
+**Things only a human can check:** whether the client sends a Heal Focus press at all (AB-U1); there is no floating heal number yet (AB-11), so watch the bars.
+
+Source: [ability-mechanics README, UAT milestones](../analysis/ability-mechanics/README.md#uat-milestones) and [AB-01 in work-packets.md](../analysis/ability-mechanics/work-packets.md#ab-01-beneficial-targeting-self-casts-land-on-the-caster-heals-on-allies-d-ab01-d-ab02).
 
 ## Dialog UI
 

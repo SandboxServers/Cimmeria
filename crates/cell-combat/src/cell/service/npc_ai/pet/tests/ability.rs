@@ -72,6 +72,7 @@ fn def_with_event_set(mgr: &mut SpaceManager, id: i32, event_set_id: Option<i32>
             required_ammo: 0,
             event_set_id,
             velocity: 100.0,
+            type_id: Default::default(),
         },
     );
 }

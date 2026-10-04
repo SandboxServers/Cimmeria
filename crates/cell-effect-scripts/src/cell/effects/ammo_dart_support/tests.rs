@@ -274,6 +274,7 @@ fn dart_shot() -> cimmeria_entity::abilities::AbilityDef {
         required_ammo: 1,
         event_set_id: None,
         velocity: 0.0,
+        type_id: Default::default(),
     }
 }
 

@@ -125,6 +125,8 @@ pub(crate) fn attach_ground_point(
 pub(super) struct WarmupStart {
     pub ability_id: i32,
     pub target_id: i32,
+    /// The client's target; differs from `target_id` for a beneficial cast.
+    pub wire_target_id: i32,
     pub effect_seq: i32,
     pub warmup_secs: f32,
     pub event_set_id: Option<i32>,
@@ -147,6 +149,7 @@ pub(super) async fn begin_warmup(
     let WarmupStart {
         ability_id,
         target_id,
+        wire_target_id,
         effect_seq,
         warmup_secs,
         event_set_id,
@@ -160,6 +163,7 @@ pub(super) async fn begin_warmup(
     caster.pending_cast = Some(PendingCast {
         ability_id,
         target_id,
+        wire_target_id,
         ground: None,
         effect_seq,
         fire_at: std::time::Instant::now() + std::time::Duration::from_secs_f32(warmup_secs),
