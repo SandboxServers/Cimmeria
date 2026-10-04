@@ -30,8 +30,8 @@
 # - A hostile cast rolls QR, and `.qr` (D-AU2) does not exist: a miss on the
 #   graded press FAILs a damage or debuff row. Check `qr_rolled` for the
 #   row's cast_id in SigNoz before filing it.
-# - AB-U20 and AB-U22 use `.dummy caster 1354`, which is not on the server yet
-#   until it merges: deleting their `blocked` line is the whole unblock.
+# - AB-U20 and AB-U22 use `.dummy caster 1354` (#1188): a lab dummy that
+#   casts Disabling Shot at its owner every 8 s through the real launch.
 
 schema = 1
 
@@ -1770,8 +1770,7 @@ filter = "event = 'stat_buff_applied' AND effect_id = 1462 AND ${cast_key}"
 id = "AB-U20"
 title = "Interrupting Shot during a caster dummy's warmup"
 expected = "The dummy's warmup is interrupted: Ability_Interrupt sent and received."
-blocked = ".dummy caster (not merged)"
-notes = "Unblock by deleting the blocked line once the `.dummy caster` GM command is on the server. The step waits for the dummy's next cast to start (its onSequence) and answers inside the 4 s warmup. God mode keeps the lab character alive between casts. A miss of the Interrupting Shot interrupts nothing (check qr_rolled)."
+notes = "The step waits for the dummy's next cast to start (its onSequence) and answers inside the 4 s warmup. God mode keeps the lab character alive between casts. A miss of the Interrupting Shot interrupts nothing (check qr_rolled)."
 setup = [
   { chat = "/gmgiveability 657", tier = "G", optional = true },
   { chat = "/gmsetgodmode 1", tier = "G" },
@@ -1985,8 +1984,7 @@ entity = "${player_entity_id}"
 id = "AB-U22"
 title = "Absolution removes the two Health debuffs a caster dummy's Disabling Shot left"
 expected = "Exactly the two named Health debuffs are removed, reason cleansed."
-blocked = ".dummy caster (not merged)"
-notes = "Unblock by deleting the blocked line once the `.dummy caster` GM command is on the server. Clear: Mind (2099) removes 0 until a Mental effect gets a held mechanic (a content decision). The dummy casts again every 8 s, so the removal is checked right after the press, before its next hit can land. A miss of Disabling Shot lands no debuff; the step waits up to 30 s for one that lands."
+notes = "Clear: Mind (2099) removes 0 until a Mental effect gets a held mechanic (a content decision). The dummy casts again every 8 s, so the removal is checked right after the press, before its next hit can land. A miss of Disabling Shot lands no debuff; the step waits up to 30 s for one that lands."
 setup = [
   { chat = "/gmgiveability 2865", tier = "G", optional = true },
   { chat = "/gmsetgodmode 1", tier = "G" },

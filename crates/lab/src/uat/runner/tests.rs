@@ -662,18 +662,19 @@ lua_condition = "true"
     assert_eq!(step.tier_source.as_deref(), Some("reported:ui_lua"));
 }
 
-/// AB-U20 and AB-U22 wait only on the `.dummy caster` GM command (a lab
-/// dummy that casts one ability at its owner through the real launch),
-/// which is not on the server yet: with their `blocked` line deleted they
-/// plan as ready, so unblocking them is that one-line change and nothing
-/// else in the rows is missing.
+/// AB-U20 and AB-U22 stage their NPC cast with the `.dummy caster` GM
+/// command (#1188: a lab dummy that casts one ability at its owner through
+/// the real launch). They are unblocked and plan as ready: nothing in the
+/// rows is missing.
 #[tokio::test]
 async fn the_caster_dummy_rows_are_ready_once_unblocked() {
     let path = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
         .join("../../docs/guides/uat-specs/abilities.toml");
-    let text = std::fs::read_to_string(&path)
-        .unwrap()
-        .replace("blocked = \".dummy caster (not merged)\"", "");
+    let text = std::fs::read_to_string(&path).unwrap();
+    assert!(
+        !text.contains("blocked = \".dummy caster"),
+        "AB-U20 and AB-U22 are unblocked"
+    );
     let spec = crate::uat::spec::parse(&text).unwrap();
     let mut fake = Fake::new(&[]);
     fake.tools = MAIN_TOOLS.split_whitespace().map(str::to_string).collect();
