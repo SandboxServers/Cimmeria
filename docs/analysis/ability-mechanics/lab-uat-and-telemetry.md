@@ -398,7 +398,7 @@ AB-L0 smoke, AB-L4, AB-L6 ──────────────────
   - AB-N2, AB-L4 and AB-L6.
 - **Second wave:** AB-T2 to AB-T5, AB-C1, AB-C3, AB-C5, AB-N1 and AB-L1/L2.
 - **Third wave:** AB-C2, AB-C4, AB-C6, AB-C7, AB-T6, AB-T7 and AB-L3.
-- **Live work:** AB-L0 and AB-R1 to AB-R3 take the lab lock, one at a time.
+- **Live work:** AB-L0 and AB-R1 to AB-R3 take the lab lease (`lab_lease_acquire`), one at a time.
 - **`use_ability/handle.rs` (612 lines):** AB-T1 lands first. AB-T2 moves its logging into the guard modules rather than growing the file.
 - **`messaging.rs`:** AB-T2 lands before AB-T4.
 

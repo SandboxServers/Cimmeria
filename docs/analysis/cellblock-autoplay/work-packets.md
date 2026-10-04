@@ -12,7 +12,7 @@
 - **Spec validation.** A spec change must pass `cargo test -p cimmeria-lab`, which validates every committed spec. When a planned tool lands, update the `committed_specs_plan_against_main_tools` pin in the same PR.
 - **Docs.** A new tool or capability alias updates the capability table (`crates/lab/src/uat/tools.rs`) and [automated-uat.md](../../guides/automated-uat.md). A new `server_*` tool also updates [live-research-lab.md](../../guides/live-research-lab.md) and the ADR's tool list. The CLAUDE.md doc map row for the live research lab applies.
 - **Telemetry.** New server tools and runner decisions log with `reason=` on refusal, per [negative-logging-convention.md](../../architecture/negative-logging-convention.md).
-- **Live work.** Take the lab lock first. Never run two live packets at once.
+- **Live work.** Take the lab lease (`lab_lease_acquire`) first. Never run two live packets at once.
 - **Wrong evidence.** A packet that disproves an **(unverified)** point fixes [scenario-map.md](scenario-map.md) or [livewire-autosolve.md](livewire-autosolve.md) in the same PR.
 
 Reference sections: **SM** is [scenario-map.md](scenario-map.md), **LW** is [livewire-autosolve.md](livewire-autosolve.md).

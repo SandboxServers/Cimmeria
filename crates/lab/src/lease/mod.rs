@@ -27,6 +27,9 @@
 
 pub mod permit;
 pub mod policy;
+pub mod run;
+
+pub use run::RunLease;
 
 use std::collections::VecDeque;
 use std::sync::{Arc, Mutex, OnceLock};

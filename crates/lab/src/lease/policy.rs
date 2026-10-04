@@ -32,7 +32,14 @@ pub enum Gate {
     Open,
     /// Needs `lease_id`; a valid one renews the lease.
     Lease,
+    /// `lease_id` optional: a given one must be current; without one the
+    /// tool takes a lease of its own for as long as it drives
+    /// (`lab_uat_run`, see [`super::RunLease`]).
+    OwnLease,
 }
+
+/// Tools that take a lease of their own when the caller passes none.
+pub const OWN_LEASE: &[&str] = &["lab_uat_run"];
 
 /// Tools that only look. Everything else needs the lease.
 pub const OPEN: &[&str] = &[
@@ -118,8 +125,8 @@ pub const LEASED: &[&str] = &[
     "lab_delete_character",
     "lab_ensure_character_slot",
     "lab_finish_dialog",
-    // UAT: a run drives everything; an attest writes the evidence bundle.
-    "lab_uat_run",
+    // UAT: an attest writes the evidence bundle. (`lab_uat_run` is
+    // OWN_LEASE.)
     "lab_uat_attest",
 ];
 
@@ -127,6 +134,8 @@ pub const LEASED: &[&str] = &[
 pub fn gate(tool: &str) -> Gate {
     if OPEN.contains(&tool) {
         Gate::Open
+    } else if OWN_LEASE.contains(&tool) {
+        Gate::OwnLease
     } else {
         Gate::Lease
     }
@@ -152,9 +161,13 @@ mod tests {
     }
 
     #[test]
-    fn no_tool_is_both_open_and_leased() {
-        for t in OPEN {
-            assert!(!LEASED.contains(t), "{t} is in both lists");
+    fn no_tool_is_in_two_lists() {
+        for t in OPEN.iter().chain(OWN_LEASE) {
+            assert!(!LEASED.contains(t), "{t} is in two lists");
         }
+        for t in OWN_LEASE {
+            assert!(!OPEN.contains(t), "{t} is in two lists");
+        }
+        assert_eq!(gate("lab_uat_run"), Gate::OwnLease);
     }
 }

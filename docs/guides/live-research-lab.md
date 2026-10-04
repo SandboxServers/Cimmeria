@@ -101,31 +101,34 @@ AteraLoader and AtreaRL are reference material for how a bridge *can* be
 built. They are not code to extend or vendor. Everything in the lab is our
 own, so the trust boundary is one we control end to end.
 
-## Before you drive the client: the lab lock and other sessions
+## Before you drive the client: the lab lease
 
 One workstation runs one lab client per instance, and several Claude
-sessions may each have their own `cimmeria-lab` supervisor connected. A
-supervisor owns its client: its watchdog relaunches the client when it
-dies, whoever killed it (seen 2026-10-04, when a client killed from one
-session came straight back under another session's supervisor). So:
+sessions may want it. Driving it takes the
+[lab lease](#the-lab-lease), which the supervisor enforces:
 
-1. **Take the lab lock first.** Create
-   `%LOCALAPPDATA%\cimmeria-lab\live.lock` as a directory (creating a
-   directory is atomic, so two sessions cannot both win), write your name
-   and purpose into `live.lock\owner`, and remove the directory when you
-   finish. If it exists, read `owner`: someone else is live. Wait and retry
-   every minute. This is the same lock
-   [automated-uat.md](automated-uat.md#before-you-start) asks for; it
-   applies to every lab tool that drives the client, not only UAT runs.
-2. **Look for peers.** Check `ListAgents` (in a session that has it) or
-   the coordinator's session files for another session doing lab work, and
-   coordinate with it before you start.
-3. **Find who owns a running `SGW.exe`.** The bridge listens inside the
-   client, on the instance's bridge port (8770 by default), and the
-   supervisor that owns the client holds an open connection to it. The
-   `sgw-start32` helper exits once it has injected the DLL, so the client's
-   own parent chain usually stops at `SGW.exe`; the supervisor's parent
-   chain names the session's `claude.exe`:
+1. **Take the lease first.** `lab_lease_acquire {owner, purpose}` returns a
+   `lease_id`; pass it to every tool that drives the client. A refusal names
+   who holds the lab, what for and since when: wait, or ask that session to
+   `lab_lease_release`. Take it over (`force: true` with a `reason`) only
+   when the holder is gone; the takeover is logged and the holder's next
+   call is told who took it. `lab_lease_status` shows the holder at any
+   time, and reading tools (screenshots, UI readers, status) need no lease.
+2. **Release it when you finish.** An idle lease expires after its
+   `ttl_s` (default 600 s) anyway, and with no lease held the watchdog
+   leaves a dead client down instead of relaunching it.
+3. **Run the shared daemon.** The lease covers every session only when
+   they all reach the same supervisor, the
+   [shared daemon](#the-shared-daemon-cimmeria-lab---http). A stdio
+   `cimmeria-lab` enforces the lease for its own session only, and its
+   watchdog relaunches its client whoever killed it (seen 2026-10-04, when
+   a client killed from one session came straight back under another
+   session's supervisor). While stdio supervisors still run on the
+   machine, find who owns a running `SGW.exe` before you touch it. The
+   bridge listens inside the client on the instance's bridge port (8770 by
+   default), and the supervisor that owns the client holds an open
+   connection to it; the supervisor's parent chain names the session's
+   `claude.exe`:
 
    ```powershell
    $sgw = (Get-Process SGW).Id
@@ -136,10 +139,14 @@ session came straight back under another session's supervisor). So:
    ```
 
    [`tools/lab/install.ps1`](../../tools/lab/install.ps1) prints the same
-   chain when it refuses to install over a running client.
-4. **Ask the owner to stop it.** Ask that session to call
-   `lab_client_stop`. Do not kill the client yourself: its supervisor
-   relaunches it, and the other session loses the state it was measuring.
+   chain when it refuses to install over a running client. Ask that
+   session to call `lab_client_stop` rather than killing the client
+   yourself.
+
+> **The folder lock is obsolete.** Before the lease, sessions agreed to
+> create `%LOCALAPPDATA%\cimmeria-lab\live.lock` as a directory before
+> driving. Nothing enforced it. Do not create it any more, and delete a
+> leftover one; the lease replaces it.
 
 ## How to run an experiment
 
@@ -246,10 +253,11 @@ against telemetry you are already emitting.
 
 ## Tools at a glance
 
-Supervisor (`cimmeria-lab`, stdio MCP on the dev box):
+Supervisor (`cimmeria-lab` on the dev box: the [shared daemon](#the-shared-daemon-cimmeria-lab---http), or stdio per session). Tools that drive the client need a `lease_id` ([the lab lease](#the-lab-lease)):
 
 | Tool | Purpose |
 |---|---|
+| `lab_lease_acquire` / `_renew` / `_release` / `_status` | Take, extend, give back and inspect the one-driver lab lease. A refusal names the holder; `force` with a `reason` takes over. |
 | `lab_client_start` / `_stop` / `_restart` | Own the SGW.exe lifecycle. |
 | `lab_client_status` | PID, uptime, heartbeat age, login state, crashes. |
 | `lab_login` | Log in with the client's own input (Escape through the intro movies, type the account and password, pick the server) and stop at character select. Credentials default to `lab-account.json`. See [Client flows](#client-flows). |
@@ -540,7 +548,7 @@ Every ability anchor was read statically from the QA `SGW.exe`, and the decoders
 
 AB-L0 of the [ability-mechanics lab plan](../analysis/ability-mechanics/lab-uat-and-telemetry.md#part-4-lab-tools-and-the-uat-run-ab-l-ab-r) is the first thing any live run does. It needs no code unless it fails:
 
-1. Hold the [lab lock](#before-you-drive-the-client-the-lab-lock-and-other-sessions), then [install from `main`](#install-or-update-the-lab) and reconnect the MCP server. Record the commit from `installed-from.txt`.
+1. Take the [lab lease](#before-you-drive-the-client-the-lab-lease), then [install from `main`](#install-or-update-the-lab) and restart the daemon (`pwsh tools/lab/daemon.ps1 restart`; with a stdio supervisor, reconnect the MCP server). Record the commit from `installed-from.txt`.
 2. Point the lab at the colo: the colo row in `lab-account.json`, and `CIMMERIA_LAB_MCP_URL` / `CIMMERIA_LAB_MCP_TOKEN` at its WireGuard-only endpoint ([colo-deploy.md](../operations/colo-deploy.md)).
 3. `server_sessions` answers. A 403 "Host header is not allowed" is gap G6 in the plan: the endpoint's allowed-hosts setting.
 4. `lab_uat_run { plan_only: true }` matches the [spec coverage table](automated-uat.md#spec-coverage): no row BLOCKED on a missing tool that the table says is routed.
@@ -570,7 +578,7 @@ Every state change also logs one `abilities.gm` row, so SigNoz shows who changed
 
 The ability-mechanics rows are [docs/guides/uat-specs/abilities.toml](uat-specs/abilities.toml), section `ability-mechanics` (AB-U1 to AB-U25 of the [unified UAT guide](unified-uat.md#ability-mechanics)). It runs on the colo with the GM lab account and a fresh Soldier per run. Each row places its ability on the bar in setup (N3), resets its cooldown, then makes the graded press with the bound hotbar key (N1); its clauses check the client's own `client.ability.*` rows, the server's `server_ability_state`, the packet tap and SigNoz.
 
-**Before you run it:** the lab lock, the AB-L0 smoke, `CIMMERIA_LAB_MCP_URL` and `CIMMERIA_LAB_MCP_TOKEN` set (without them every `server` and `packet` clause is UNVERIFIED), and, for the two-player rows, `lab-account.p2.json` naming `lab2`, which must be a GM account for p2's own `/gm*` lines ([Two clients](#two-clients-two-player-scenarios)).
+**Before you run it:** the lab lease (pass its `lease_id`, or let the run take its own), the AB-L0 smoke, `CIMMERIA_LAB_MCP_URL` and `CIMMERIA_LAB_MCP_TOKEN` set (without them every `server` and `packet` clause is UNVERIFIED), and, for the two-player rows, `lab-account.p2.json` naming `lab2`, which must be a GM account for p2's own `/gm*` lines ([Two clients](#two-clients-two-player-scenarios)).
 
 **Run it in batches.** Long rows can outlast an MCP call's timeout, so take about five rows at a time on one `run_dir`:
 
@@ -697,7 +705,7 @@ pieces from a worktree and installs them:
 | `cimmeria-start32` (release, i686) | `%LOCALAPPDATA%\cimmeria-lab\bin\sgw-start32.exe` |
 | `cimmeria-client-patches` (release, i686) | `%LOCALAPPDATA%\cimmeria-lab\bin\cimmeria_client_patches.dll` |
 
-1. Take the [lab lock](#before-you-drive-the-client-the-lab-lock-and-other-sessions).
+1. Take the [lab lease](#before-you-drive-the-client-the-lab-lease).
    The script refuses while any `SGW.exe` runs and prints its PID and the
    supervisor that owns it; ask that session to `lab_client_stop`.
 2. See the plan, then install. From PowerShell, in the checkout you want
@@ -716,7 +724,11 @@ pieces from a worktree and installs them:
    `<worktree>\target\`), keeps each replaced file as
    `<name>.<yyyymmdd>.old`, skips a file whose content has not changed,
    and writes the source commit to `bin\installed-from.txt`.
-3. Reconnect the supervisor. The running MCP server is still the old
+3. Restart the supervisor. With the
+   [shared daemon](#the-shared-daemon-cimmeria-lab---http),
+   `pwsh tools/lab/daemon.ps1 restart` copies the new
+   `bin\cimmeria-lab.exe` and every session uses it from its next call.
+   A stdio supervisor is still the old
    process (the script renamed its exe; it did not stop it). Run
    `/mcp reconnect cimmeria-lab`. If the server is still connected and
    the reconnect keeps the old process, stop that `cimmeria-lab.exe`
@@ -841,13 +853,22 @@ a test fails until every routed tool is classified. Guarded tools list
 | `lab_lease_*`, `lab_client_status`, `lab_crash_report`, `lab_timeline`, `lab_uat_report` | `lab_client_start` / `stop` / `restart` |
 | `lab_screenshot`, `lab_screenshot_region`, `lab_pixel_probe` | `client_lua_eval`, `client_wait_for` (its predicate is Lua), `client_mem_write`, `client_call_native`, `client_console`, `client_hook_install` / `remove` |
 | `client_module_info`, `client_mem_read`, `client_hook_list`, `client_input_status` | `client_events_read`, `client_wait_event`, `client_chat_log`, `client_combat_log` (shared cursors) |
-| `client_entity_table`, `client_ui_state`, `client_window_read`, `client_player_state`, `client_hotbar`, `lab_characters` | `client_entity_find` (it pins the shared unit slots and the one projection slot), `client_inventory` (its `snapshot` writes a shared table); every input, click, drag, world, combat and item tool; the `lab_*` login, character, play, dialog and logout flows; `lab_uat_run`, `lab_uat_attest` |
+| `client_entity_table`, `client_ui_state`, `client_window_read`, `client_player_state`, `client_hotbar`, `lab_characters` | `client_entity_find` (it pins the shared unit slots and the one projection slot), `client_inventory` (its `snapshot` writes a shared table); every input, click, drag, world, combat and item tool; the `lab_*` login, character, play, dialog and logout flows; `lab_uat_attest`; `lab_uat_run` (see below) |
 
 The four cursor reads are leased because they share one event store: two
 sessions reading through the same named cursor take events from each other,
 and the chat and combat logs install their client-side capture on first
 use. A session that only watches uses screenshots, the UI readers,
 `lab_timeline` and SigNoz.
+
+**`lab_uat_run` and the lease.** Pass your `lease_id` and the run drives
+under your lease. Omit it and the run takes a lease of its own (owner
+`lab_uat_run`, purpose naming the sections and rows), which is refused
+while someone else holds the lab and released when the run ends,
+whatever the outcome. The runner calls tools in-process, so it touches
+the lease before every step: a long run stays leased, and a takeover
+stops the run at its next step. `plan_only: true` drives nothing and
+needs no lease.
 
 **Stdio mode has the same rules.** A stdio supervisor enforces the lease
 too, so a tool behaves the same whichever transport reaches it. With one
@@ -859,3 +880,69 @@ one event on target `lab.lease` (field `event`, plus `owner` and
 `purpose`) in `labd.log`. The watchdog's refusal to relaunch is
 `event = "watchdog_idle_no_lease"` on the same target. The touch on every
 guarded call is `debug` only.
+
+### Cut over from stdio supervisors to the daemon
+
+Do this once per machine, at a quiet moment: it ends every session's own
+supervisor. Nothing here touches the server or the game install.
+
+1. **Quiesce.** Make sure no session is mid-run: `lab_lease_status` on any
+   session (stdio supervisors each have their own book, so ask around), and
+   look for `SGW.exe` with the owner query in
+   [Before you drive the client](#before-you-drive-the-client-the-lab-lease).
+   Have the owning session `lab_client_stop` its client.
+2. **Install the build.** `pwsh tools/lab/install.ps1` from the checkout
+   you want (it builds and installs to `%LOCALAPPDATA%\cimmeria-lab\bin\`).
+   The daemon needs PR 1 to 3 of the shared-daemon work, so install from a
+   `main` that has them.
+3. **Install the daemon task.** `pwsh tools/lab/daemon.ps1 install`. It
+   copies `bin\cimmeria-lab.exe` to `labd\`, generates
+   `CIMMERIA_LAB_DAEMON_TOKEN` if it is missing, imports `labd.env` from
+   the `env` block of the stdio `cimmeria-lab` entry in the repo's
+   `.mcp.json`, registers `CimmeriaLabDaemon` and starts it. Check
+   `labd.env`: it is the daemon's whole environment
+   (`CIMMERIA_LAB_INSTALL_DIR`, `CIMMERIA_LAB_START32`,
+   `CIMMERIA_LAB_PATCHES_DLL`, `CIMMERIA_LAB_SERVER_URL`,
+   `CIMMERIA_LAB_MCP_URL` and `CIMMERIA_LAB_MCP_TOKEN`), and paths into a
+   target dir should point at `bin\` instead. Edit it, then
+   `daemon.ps1 restart`.
+4. **Check it runs.** `pwsh tools/lab/daemon.ps1 status`: task `Running`,
+   a live pid, the port listening, the token set, and a
+   `lab daemon listening` line in the log tail.
+5. **Switch `.mcp.json`.** Replace the stdio `cimmeria-lab` entry with the
+   http one (`.mcp.json.example` has it as `cimmeria-lab-http`; rename it
+   to `cimmeria-lab` so tool names stay `mcp__cimmeria-lab__*`):
+
+   ```json
+   "cimmeria-lab": {
+     "type": "http",
+     "url": "http://127.0.0.1:8779/mcp",
+     "headersHelper": "pwsh -NoProfile -File <CIMMERIA_ROOT>\\tools\\lab\\labd-headers.ps1"
+   }
+   ```
+
+   Remove `cimmeria-lab-p2` too unless you drive the second client by
+   hand. Two-player UAT rows drive p2 from inside the daemon (under the
+   same lease); a stdio p2 supervisor is a second owner of that client,
+   with its own watchdog and no view of the daemon's lease.
+6. **Stop the stdio supervisors.** In every open session run `/mcp`
+   reconnect for `cimmeria-lab` (it now reaches the daemon). Then stop any
+   `cimmeria-lab.exe` still running from a target dir or `bin\`; only the
+   daemon's copy in `labd\` should be left:
+
+   ```powershell
+   Get-Process cimmeria-lab | Select-Object Id, Path
+   ```
+
+7. **Verify.** From any session: `lab_lease_status` answers (`held:
+   false`); `lab_uat_run {plan_only: true}` lists the routed tools and
+   needs no lease; `lab_lease_acquire` from one session is refused from a
+   second. Delete a leftover `%LOCALAPPDATA%\cimmeria-lab\live.lock`.
+
+**Roll back:** restore the stdio entry in `.mcp.json`, reconnect, and
+`pwsh tools/lab/daemon.ps1 uninstall`.
+
+**New builds after the cut-over:** `pwsh tools/lab/install.ps1`, then
+`pwsh tools/lab/daemon.ps1 restart` (the restart picks up the newer
+`bin\cimmeria-lab.exe`). Sessions reconnect on their next call, or with
+`/mcp`.

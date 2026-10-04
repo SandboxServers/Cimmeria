@@ -20,6 +20,7 @@ use serde_json::{json, Map, Value};
 
 use super::LabServer;
 use crate::client::BridgeClient;
+use crate::lease::RunLease;
 use crate::supervisor::{instance, session_file, Supervisor, SupervisorConfig};
 use crate::uat::attest::{attest, AttestRequest};
 use crate::uat::evidence::{default_root, RunDir, Verdict};
@@ -56,9 +57,15 @@ pub struct UatRunArgs {
     /// The lab character (default: lab-account.json's `character`).
     #[serde(default)]
     pub character: Option<String>,
-    /// Check specs and tool availability only; drive nothing.
+    /// Check specs and tool availability only; drive nothing (no lease).
     #[serde(default)]
     pub plan_only: bool,
+    /// Your lab lease (lab_lease_acquire), to run under it; each step renews
+    /// it. Omit it and the run takes a lease of its own (owner
+    /// `lab_uat_run`), refused while someone else holds the lab, and
+    /// releases it when the run ends.
+    #[serde(default)]
+    pub lease_id: Option<String>,
 }
 
 /// Args for `lab_uat_report`.
@@ -113,6 +120,10 @@ struct RouterInvoker<'a> {
     server: &'a LabServer,
     ctx: RequestContext<RoleServer>,
     names: HashSet<String>,
+    /// The run's lease. These calls skip the `call_tool` gate, so each one
+    /// touches it here: a long run stays leased, and a takeover stops the
+    /// run at its next step. `None` only for `plan_only` (drives nothing).
+    lease: Option<&'a RunLease>,
 }
 
 /// Tools the runner must never call: itself, re-entrantly.
@@ -134,6 +145,11 @@ impl ToolInvoker for RouterInvoker<'_> {
     async fn call(&self, name: &str, args: Value) -> ToolOutcome {
         if !self.has_tool(name) {
             return ToolOutcome::err(format!("tool {name} is not routed"));
+        }
+        if let Some(lease) = self.lease {
+            if let Err(e) = lease.touch(name) {
+                return ToolOutcome::err(format!("the run lost the lab lease: {e}"));
+            }
         }
         let obj = match args {
             Value::Object(o) => o,
@@ -261,6 +277,19 @@ fn text(v: &Value) -> CallToolResult {
     )])
 }
 
+/// The purpose an own run lease carries, so a refused session sees what
+/// the run is doing.
+fn run_purpose(a: &UatRunArgs) -> String {
+    let mut p = "UAT run".to_string();
+    if let Some(s) = a.sections.as_ref().filter(|s| !s.is_empty()) {
+        p.push_str(&format!(", sections {}", s.join(" ")));
+    }
+    if let Some(r) = a.rows.as_ref().filter(|r| !r.is_empty()) {
+        p.push_str(&format!(", rows {}", r.join(" ")));
+    }
+    p
+}
+
 fn run_dir_or_latest(arg: Option<&String>) -> Result<PathBuf, McpError> {
     match arg {
         Some(d) => Ok(PathBuf::from(d)),
@@ -272,13 +301,27 @@ fn run_dir_or_latest(arg: Option<&String>) -> Result<PathBuf, McpError> {
 #[tool_router(router = uat_router, vis = "pub(super)")]
 impl LabServer {
     #[tool(
-        description = "Run automated UAT rows from the TOML specs (docs/guides/uat-specs): reach each row's state with the lab flows, type a `.bug uat <row>` anchor, run setup and steps through the lab tools by name, check every expected clause, capture screenshots, and write an evidence bundle (run.json, rows/<section>/<row>.json, attachments, ledger.md). Returns each row's result (PASS, FAIL, BLOCKED, SKIPPED, NEEDS_HUMAN, UNVERIFIED, NATIVE_SHORTFALL) and the unified-uat.md \"Recording results\" blocks. A row never passes when a step ran below its required native level, a required clause is pending (SigNoz: attest with lab_uat_attest), or a tool it names is not routed (BLOCKED, naming the tool)."
+        description = "Run automated UAT rows from the TOML specs (docs/guides/uat-specs): reach each row's state with the lab flows, type a `.bug uat <row>` anchor, run setup and steps through the lab tools by name, check every expected clause, capture screenshots, and write an evidence bundle (run.json, rows/<section>/<row>.json, attachments, ledger.md). Returns each row's result (PASS, FAIL, BLOCKED, SKIPPED, NEEDS_HUMAN, UNVERIFIED, NATIVE_SHORTFALL) and the unified-uat.md \"Recording results\" blocks. A row never passes when a step ran below its required native level, a required clause is pending (SigNoz: attest with lab_uat_attest), or a tool it names is not routed (BLOCKED, naming the tool). Runs under the lab lease: pass your lease_id, or the run takes one of its own (owner lab_uat_run, refused while someone else holds the lab) and releases it when it ends; every step renews it, and a takeover stops the run at its next step. plan_only needs no lease."
     )]
     async fn lab_uat_run(
         &self,
         Parameters(a): Parameters<UatRunArgs>,
         ctx: RequestContext<RoleServer>,
     ) -> Result<CallToolResult, McpError> {
+        // The run's lease, held until this function returns (an own lease is
+        // released on drop, whatever the outcome). A plan drives nothing.
+        let run_lease = if a.plan_only {
+            None
+        } else {
+            let book = self.supervisor.leases().clone();
+            Some(match a.lease_id.clone() {
+                // The `call_tool` gate already checked it is current.
+                Some(id) => RunLease::caller(book, id),
+                None => RunLease::acquire_own(book, run_purpose(&a)).map_err(|e| {
+                    McpError::invalid_request(e, Some(self.supervisor.leases().status()))
+                })?,
+            })
+        };
         let dir = a
             .specs_dir
             .map(PathBuf::from)
@@ -322,6 +365,7 @@ impl LabServer {
             server: self,
             ctx: ctx.clone(),
             names: router_names(self),
+            lease: run_lease.as_ref(),
         };
         // The second player is set up only when a row needs it.
         let wants_p2 = req
@@ -340,6 +384,8 @@ impl LabServer {
                 server,
                 ctx,
                 names: router_names(server),
+                // One lease covers the lab: both players' steps touch it.
+                lease: run_lease.as_ref(),
             }
         });
         let second = match (&p2, &p2_inv) {

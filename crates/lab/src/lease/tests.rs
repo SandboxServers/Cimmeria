@@ -170,6 +170,38 @@ fn status_never_shows_the_lease_id() {
 }
 
 #[test]
+fn a_run_lease_of_its_own_is_released_when_the_run_ends() {
+    let book = Arc::new(LeaseBook::default());
+    {
+        let run = RunLease::acquire_own(book.clone(), "UAT run".into()).unwrap();
+        assert_eq!(book.status()["lease"]["owner"], run::UAT_RUN_OWNER);
+        run.touch("client_ui_click").unwrap();
+    }
+    assert!(!book.is_held());
+    assert_eq!(book.status()["recent"][0]["how"], "released");
+}
+
+#[test]
+fn a_run_lease_is_refused_while_held_and_stops_after_a_takeover() {
+    let book = Arc::new(LeaseBook::default());
+    let held = book.acquire(req("session-a")).unwrap();
+    let e = RunLease::acquire_own(book.clone(), "UAT run".into()).unwrap_err();
+    assert!(e.contains("session-a"), "{e}");
+
+    // A run under the caller's lease: a takeover stops it at the next step,
+    // and ending the run does not release a lease it never owned.
+    let run = RunLease::caller(book.clone(), held.lease_id.clone());
+    run.touch("client_ui_click").unwrap();
+    let b = book
+        .acquire(force("session-b", Some("run is stuck")))
+        .unwrap();
+    let e = run.touch("client_ui_click").unwrap_err();
+    assert!(e.contains("taken over"), "{e}");
+    drop(run);
+    book.check(Some(&b.lease_id), "client_ui_click").unwrap();
+}
+
+#[test]
 fn acquire_validates_owner_purpose_and_ttl() {
     let book = LeaseBook::default();
     assert!(book.acquire_at(req(" "), T0).is_err());

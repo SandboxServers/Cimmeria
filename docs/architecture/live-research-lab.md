@@ -1,6 +1,6 @@
 # ADR: Live Research Lab — MCP access to the running client and server
 
-> **Last updated**: 2026-09-19
+> **Last updated**: 2026-10-04
 > **Audience**: Engineers and AI agents (Claude Code) doing reverse engineering and live verification against a running SGW.exe and a running `cimmeria-server`
 > **Type**: Architecture decision record
 > **Status**: Proposed — owner decisions in §2 are settled; spikes in §8 gate Phases 2 and 3
@@ -14,7 +14,7 @@ Give the agent hands, eyes, and a body in a live game session, so the research r
 Three pieces:
 
 1. **Client bridge.** An inbound command channel added to the already-injected `cimmeria-client-telemetry` DLL, behind a `lab-bridge` cargo feature. It evaluates Lua on the client main thread, reads and writes memory, installs non-freezing logging hooks at any address, and calls native functions. Lua eval is the hot-loadable probe layer: new client probes need no rebuild.
-2. **Lab supervisor** (`cimmeria-lab`). An MCP server on the dev box: stdio per session, or one shared token-gated loopback HTTP daemon (`cimmeria-lab --http`) that every session reaches. It launches, injects, logs in, watches, screenshots, and restarts SGW.exe, and proxies tool calls to the bridge. It outlives client crashes, which is what makes unattended recovery possible.
+2. **Lab supervisor** (`cimmeria-lab`). An MCP server on the dev box: one shared, token-gated loopback HTTP daemon for every session, with an enforced one-driver lease (§11; stdio per session is the older setup). It launches, injects, logs in, watches, screenshots, and restarts SGW.exe, and proxies tool calls to the bridge. It outlives client crashes, which is what makes unattended recovery possible.
 3. **Server lab endpoint** (`cimmeria-lab-mcp`). An MCP endpoint inside `cimmeria-server` with a fixed tool set: dot-console passthrough with captured output, live entity and witness queries, per-session packet taps, log tail, read-only SQL. Token-gated, bound only to an address the operator names, reachable on the colo over WireGuard only.
 
 Sequencing is RE first: the client track (Phases 1 to 3) lands before the server track (Phases 4 and 5), though the two tracks are independent and can run in parallel.
@@ -109,7 +109,7 @@ Lives at `crates/client-telemetry/src/bridge/` (directory from day one: `mod.rs`
 
 ### 3.4 Lab supervisor (`crates/lab`, binary `cimmeria-lab`)
 
-A Windows-only MCP server, over stdio (one per session, the original setup) or as one shared daemon over streamable HTTP (`cimmeria-lab --http <127.0.0.1:port>`, run as a per-user scheduled task by `tools/lab/daemon.ps1`; loopback only, bearer token `CIMMERIA_LAB_DAEMON_TOKEN`, one per logon session). It reuses the launcher's `launch` and `inject` modules, which move into a library target so both binaries share them. It owns the SGW.exe process handle for the whole session.
+A Windows-only MCP server, over stdio (one per session, the original setup) or as one shared daemon over streamable HTTP (`cimmeria-lab --http <127.0.0.1:port>`, run as a per-user scheduled task by `tools/lab/daemon.ps1`; loopback only, bearer token `CIMMERIA_LAB_DAEMON_TOKEN`, one per logon session; an enforced one-driver lease governs it, §11). It reuses the launcher's `launch` and `inject` modules, which move into a library target so both binaries share them. It owns the SGW.exe process handle for the whole session.
 
 **Injection goes through the i686 `sgw-start32` helper (#985).** The supervisor is 64-bit and `SGW.exe` is 32-bit. A direct injection hands the remote thread the supervisor's own `LoadLibraryW`, which does not exist in a 32-bit process, and a suspended WOW64 target has no 32-bit kernel32 mapped to resolve it from, so until #985 the supervisor's own launch path never loaded the bridge (lab evidence came from manual injection). `lab_client_start` now runs the helper, as `sgw-launcher` does since #984: `start32::run` with the bridge DLL, then `RunningProcess::open` on the pid it reports. The helper lives beside `cimmeria-lab.exe` or at `CIMMERIA_LAB_START32`; the contract is in [crates/client-launch/README.md](../../crates/client-launch/README.md).
 
@@ -215,3 +215,64 @@ Phases 1 to 3 and Phases 4 to 5 touch disjoint crates and can run as parallel tr
 2. **Unhandled-exception filter ordering.** *Resolved (#685): replace, don't chain.* Our top-level filter installs last (runs first), writes a minidump + crash marker, and calls `TerminateProcess` — it never returns to UE3's filter or the CRT default. Rationale: UE3's handler pops a crash dialog / runs its own reporter, which would block the supervisor's fast relaunch (the point of §6). The previous filter pointer is captured for diagnostics but not invoked.
 3. **Hook capture at arbitrary addresses.** Mid-function hooks need instruction-length decoding for the trampoline. Function-entry-only in Phase 3 is acceptable if that proves fragile.
 4. **Share framing code with the Atrea bridge?** That ADR is still unbuilt. If the lab lands first, the Atrea bridge should adopt its transport module rather than define a second one.
+
+## 11. Addendum (2026-10-04): one shared supervisor, enforced lease
+
+**Status:** Accepted (owner-approved design, 2026-10-04). Supersedes the
+"stdio MCP server" transport in §3.4 as the supported setup, and the
+`live.lock` folder lock the operating guides asked for.
+
+### Context
+
+§3.4 made the supervisor a stdio MCP server, so every Claude session that
+connected spawned its own `cimmeria-lab`, each with its own heartbeat
+watchdog against the one `SGW.exe`. On 2026-10-04 three were running: a
+client one session closed came straight back under another session's
+watchdog, and a new build reached a session only when it reconnected. The
+coordination rule was a folder lock (`%LOCALAPPDATA%\cimmeria-lab\live.lock`)
+that nothing enforced.
+
+### Decision
+
+1. **One daemon.** `cimmeria-lab --http <127.0.0.1:port>` serves the same
+   tool surface over MCP streamable HTTP from one process. Every session's
+   MCP handler is a clone of one server around one `Supervisor`: one
+   watchdog, one owner of the client. It runs as a per-user scheduled task
+   (`tools/lab/daemon.ps1`: at logon, in the interactive session the client
+   needs, restart on failure) from its own copy of the exe. The edge is
+   fail-closed like §3.5: loopback bind only, bearer token
+   `CIMMERIA_LAB_DAEMON_TOKEN` of at least 32 bytes, loopback `Host` values
+   only, every `Origin` refused, one daemon per logon session (named mutex).
+   Stdio stays available and is still the default with no flag.
+2. **An enforced lease.** One holder at a time (`lab_lease_acquire {owner,
+   purpose, ttl_s}`, default 600 s, max 3600; `force` with a `reason` takes
+   over and is logged). Every tool that changes the client, drives its
+   input or UI, runs caller-chosen Lua or native code, or moves a shared
+   event cursor needs the current `lease_id`, checked in the MCP
+   `call_tool` handler before dispatch; a guarded call renews the lease.
+   Read-only tools stay open. A tool not classified is guarded.
+   `lab_uat_run` takes the caller's lease or one of its own for the run,
+   and touches it before every in-process step.
+3. **The watchdog relaunches only while leased.** With no lease held, a
+   dead client stays down (`watchdog_idle_no_lease`): nobody is driving it,
+   and a relaunch would fight whoever stopped it.
+
+### Consequences
+
+- The lease is per process. It covers every session only when they all
+  reach the daemon; a leftover stdio supervisor is a second owner with its
+  own book. The cut-over runbook in the
+  [operating guide](../guides/live-research-lab.md#cut-over-from-stdio-supervisors-to-the-daemon)
+  stops them.
+- Shared event cursors (`client_events_read`, `client_wait_event`, the
+  chat and combat logs) belong to the lease holder. A watching session uses
+  screenshots, the UI readers, `lab_timeline` and SigNoz.
+- Every lease change is one `lab.lease` event in `labd.log`, so who drove
+  the lab and when is reconstructable after the fact.
+- The same lease book covers the in-process second-player supervisor:
+  the lease is for the lab, not for one client.
+
+Implementation: `crates/lab/src/daemon/` (transport, auth, single
+instance, log rotation), `crates/lab/src/lease/` (book, policy, run lease),
+`crates/lab/src/server/lease.rs` (tools and gate). Operating detail:
+[live-research-lab.md, The shared daemon](../guides/live-research-lab.md#the-shared-daemon-cimmeria-lab---http).
