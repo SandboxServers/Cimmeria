@@ -28,7 +28,7 @@
 
   | ID key | Name key | Source |
   |---|---|---|
-  | `entity_id`, `target`, `attacker` | `entity_name`, `target_name`, `attacker_name` | player: character name; NPC: `name_id` text (D-NT5) |
+  | `entity_id`, `target`, `attacker` | `entity_name`, `target_name`, `attacker_name` | player: character name; NPC: `name_id` text, and NPC lines also carry the template pair (D-NT5) |
   | `template_id` | `template_name` | `entity_templates.template_name` |
   | `item_id` (instance), `item_type_id` / `type_id` | `item_name` | `items.name` via the type |
   | `ability_id` | `ability_name` | `abilities.name` |
@@ -36,7 +36,7 @@
   | `mission_id`, `step_id`, `objective_id` | `mission_name`, `step_name`, `objective_name` | `mission_label`, step / objective display text |
   | `dialog_id`, `dialog_set_id`, `speaker_id` | `dialog_name`, `dialog_set_name`, `speaker_name` | `dialogs.name` etc. |
   | `space_id`, `world_id` | `world_name` | `SpaceManager` / `Worlds` |
-  | `account_id` | `account_name` (SigNoz only, see D-NT2) | session |
+  | `account_id` | `account_name` | session |
   | `player_id` | `player_name` | session / `sgw_player` |
   | `org_id` | `org_name` | organizations |
   | `archetype` | `archetype_name` | `archetype_name()` |
@@ -53,7 +53,7 @@ Update [negative-logging-convention.md](../../architecture/negative-logging-conv
 
 ### NT-01 NameBook
 
-**Depends:** D-NT1. **Effort:** M. **Agents:** database-persistence (loader), rust-gameserver-dev.
+**Depends:** none (D-NT1: new crate `cimmeria-names`). **Effort:** M. **Agents:** database-persistence (loader), rust-gameserver-dev.
 
 **Scope.**
 
@@ -76,14 +76,14 @@ Update [negative-logging-convention.md](../../architecture/negative-logging-conv
 
 **Depends:** NT-01. **Effort:** S.
 
-- Extend `PlayerIdentity` with `player_name` (and `account_name`, for SigNoz only) on both resolvers. Rule 5 call sites get names for free.
-- `SpaceManager::entity_label(entity_id) -> Option<&str>`: character name for players, `name_id` text for NPCs (D-NT5).
+- Extend `PlayerIdentity` with `player_name` and `account_name` on both resolvers. Rule 5 call sites get names for free.
+- `SpaceManager::entity_label(entity_id) -> Option<&str>`: character name for players, `name_id` text for NPCs. NPC log lines carry this **and** `template_id` + `template_name` (D-NT5).
 - Snapshot the label at the top of `destroy_entity` / `disconnect_entity`, next to the identity snapshot.
 - Convert the Rule 5 guard `identity_propagation.rs` to assert the names as well.
 
 ### NT-03 Unpaired-ID scan and baseline
 
-**Depends:** NT-00, D-NT4. **Effort:** M. **Reviewer:** testing-validation-engineer.
+**Depends:** NT-00 (D-NT4: blocking). **Effort:** M. **Reviewer:** testing-validation-engineer.
 
 - A source-scan test in the style of `crates/server/src/logging/target_scan_tests.rs`. It parses every `trace!/debug!/info!/warn!/error!/event!/info_span!`… call in `IN_PROCESS_CRATES`, and finds each field whose key is in the NT-00 table's ID column without its paired name key in the same call.
 - `crates/server/src/logging/unpaired_id_baseline.txt`: `path count` per file. The test fails if any file's count rises or a new file appears, and prints the offending call. It also fails if a count falls without the baseline being lowered, so the ratchet stays tight.
@@ -96,7 +96,7 @@ Update [negative-logging-convention.md](../../architecture/negative-logging-conv
 
 ### NT-10 Discord typed events carry name and ID
 
-**Depends:** NT-01, D-NT2, D-NT5. **Effort:** M. **Agent:** rust-gameserver-dev.
+**Depends:** NT-01. **Effort:** M. **Agent:** rust-gameserver-dev.
 
 **Problem.** The typed events are half-named (README § Where things stand).
 
@@ -113,17 +113,17 @@ Update [negative-logging-convention.md](../../architecture/negative-logging-conv
   - `MinigameResult`: the minigame's ID and the object/mission it was for.
   - `MercuryTimeout`: character name when known.
 - One renderer, generalised from `account_value`: `Name (#id)`, `#id` when the name is missing, `?` when both are.
-- D-NT2 applied: the account field shows `account #id` plus the character, if decided.
+- D-NT2: the account field keeps the login name, `steve (#6)`, as today.
 
 **Tests.** A table-driven test that builds every `Event` variant with sentinel names and IDs and asserts both appear in the rendered body. Reverting any one variant's pairing fails it. The existing whisper and IP privacy guards stay green.
 
 ### NT-11 Discord tracing layer: fold pairs, no internal links
 
-**Depends:** NT-00, D-NT3. **Effort:** S.
+**Depends:** NT-00. **Effort:** S.
 
 - In the `TracingEvent` formatter (`crates/discord/src/embed/format.rs`), fold each `<p>_id`/`<p>_name` pair, and the `target`/`target_name` style pairs from the NT-00 table, into one embed field `<p>: Name (#id)`. Each pair then costs one of the 25 slots, not two. Order: identity first, then the event's object fields, then the rest.
 - Fold `account_id`/`player_id`/`player_name` into one "Who" field.
-- **No internal links:** add a guard over the rendered embed JSON that rejects any `http(s)://` URL. Allowlist only public, team-reachable hosts (none today). Strip `trace_id`/`span_id` *URLs*. If D-NT3 says yes, put the trace ID in the footer as plain text.
+- **No internal links:** add a guard over the rendered embed JSON that rejects any `http(s)://` URL. Allowlist only public, team-reachable hosts (none today). Strip `trace_id`/`span_id` *URLs*. Put the trace ID in the footer as plain text (D-NT3).
 - Update [discord-notifications.md](../../architecture/discord-notifications.md): the naming section and a "no internal links" section next to the privacy sections.
 
 **Tests.**
@@ -145,7 +145,7 @@ Each sweep converts every unpaired ID field in its crates, shrinks the NT-03 bas
 | NT-21 Missions, content, dialog | `cell-content`, `content-engine`, `cell-interactions` | mission accept/advance/complete, chain fire, dialog display/choice | L | mission-systems-advisor |
 | NT-22 Inventory, loot, vendor, crafting | `base-methods` (inventory, vendor, bank), `base-crafting`, loot in `cell-catalog` | move/equip/use, loot grant, vendor buy/sell, craft result | XL; may split in two | items-systems-advisor |
 | NT-23 World, movement, AoI, travel | `cell-world`, `cell` (movement, witness), gate travel in `base-world-entry` | movement reject, teleport, AoI enter/leave, gate travel | L | aoi-witness-broadcast, movement-teleport-advisor |
-| NT-24 Session, auth, world entry | `base`, `base-session`, `auth`, the rest of `base-world-entry` | login, play character, disconnect, timeout | M | network-security-auth (D-NT2) |
+| NT-24 Session, auth, world entry | `base`, `base-session`, `auth`, the rest of `base-world-entry` | login, play character, disconnect, timeout | M | network-security-auth |
 | NT-25 NPC AI, spawner, pets, cover | `npc_ai`, `cell-catalog` spawner, `cell-pets`, `cell-cover` | aggro, leash, spawn/respawn, pet summon | M | npc-ai-spawn-advisor |
 | NT-26 Social | `cell-org`, `cell-duel`, social parts of `base-methods` / `base-session` (mail, trade, BM, contacts, channels) | org change, mail send, trade execute, BM list/buy | M | social-systems-engineer |
 | NT-27 GM console and minigames | `cell-console`, `minigame` | every GM command (caller and subject named), minigame result | S | — |

@@ -43,24 +43,24 @@ Nothing has been built yet. What the planning pass found:
 
 ## Design summary
 
-The full contract is NT-00 (Rule 6). In short:
+The full contract is NT-00 (Rule 6). All five decisions were settled on 2026-10-04. In short:
 
 1. **Pair, don't replace.** The ID stays the join key. The name sits next to it under the same prefix: `ability_id` + `ability_name`, `target` + `target_name`, `space_id` + `world_name`. NT-00 publishes the canonical key table.
 2. **One lookup path.** A `NameBook` is loaded at boot from `db/resources`, shared by base and cell, and refreshed on content reload (NT-01). Lookups return `Option<&str>`. tracing records an `Option` field only when it is `Some`, so an unresolved name is left out, never written as `"unknown"`.
 3. **A missing name means bad data.** A log line with `template_id` but no `template_name` points at a seed hole. NT-50 ships a saved SigNoz query for this.
 4. **Names are never metric labels.** Rule 4 stands. `world_name` stays the one approved label.
 5. **Resolve late, and before teardown.** Same as Rule 5. The 10 Hz movement accept path pays nothing.
-6. **Discord stands on its own.** Every object appears as `Name (#id)`. There are no links to SigNoz, the admin API or any VPN-only host, and an embed-wide test enforces it. Player IPs and whisper text stay hidden, as today.
+6. **Discord stands on its own.** The server is private and team-only, so it shows the same names as SigNoz, account login names included (D-NT2). Every object appears as `Name (#id)`. There are no links to SigNoz, the admin API or any VPN-only host, and an embed-wide test enforces it. Player IPs and whisper text stay hidden, as today.
 
 ## Decisions
 
 | ID | Question | Recommendation | Status |
 |---|---|---|---|
-| D-NT1 | Where does `NameBook` live? | A new small crate, `cimmeria-names`, depending only on `cimmeria-entity` and sqlx, so base and cell can both use it without base pulling in cell crates. | Open |
-| D-NT2 | Discord already shows the account **login name** (`steve (#6)`). The restoration-team channel is wider than the dev team. Keep it? | Show character name and `account #id` only; leave the login name in SigNoz. A login name is half a credential. | Open |
-| D-NT3 | Should Discord error embeds carry the `trace_id` as **plain text** (not a link), so a developer can paste it into SigNoz? | Yes, as a short footer line. It is not a link, means nothing outside the VPN, and saves developers a search. | Open |
-| D-NT4 | Should the NT-03 scan block CI or only warn? | Block new unpaired IDs, with a per-file baseline that may only shrink. | Open |
-| D-NT5 | For NPCs, is `entity_name` the player-facing name or the template name? | `entity_name` = what the player sees (the `name_id` text). `template_id` + `template_name` stay as their own pair. | Open |
+| D-NT1 | Where does `NameBook` live? | A new small crate, `cimmeria-names`, depending only on `cimmeria-entity` and sqlx. | **Decided 2026-10-04:** new crate. |
+| D-NT2 | Discord shows the account **login name** (`steve (#6)`). Keep it? | The Discord server is private, team only. | **Decided 2026-10-04:** keep login names in Discord, paired with the account ID. |
+| D-NT3 | Should Discord error embeds carry the `trace_id` as **plain text** (not a link), so a developer can paste it into SigNoz? | Yes, as a short footer line. | **Decided 2026-10-04:** yes, plain text, never a link. |
+| D-NT4 | Should the NT-03 scan block CI or only warn? | Block. | **Decided 2026-10-04:** block new unpaired IDs; the per-file baseline may only shrink. |
+| D-NT5 | For NPCs, log the player-facing name or the template name? | Both. | **Decided 2026-10-04:** both, on every NPC line: `entity_name` = the player-facing `name_id` text, plus the `template_id` + `template_name` pair. |
 
 ## Coordinator launch prompt
 
@@ -77,11 +77,11 @@ You coordinate this campaign. Work from [work-packets.md](work-packets.md) one p
 | Packet | Status | PR | Notes |
 |---|---|---|---|
 | NT-00 Rule 6 and key table | Ready | | |
-| NT-01 NameBook | BlockedDecision (D-NT1) | | |
+| NT-01 NameBook | Ready | | |
 | NT-02 Name helpers on the existing resolvers | BlockedDependency (NT-01) | | |
-| NT-03 Unpaired-ID scan and baseline | BlockedDecision (D-NT4) | | |
-| NT-10 Discord typed events | BlockedDependency (NT-01) | | D-NT2, D-NT5 |
-| NT-11 Discord tracing layer: fold pairs, no internal links | BlockedDependency (NT-00) | | D-NT3 |
+| NT-03 Unpaired-ID scan and baseline | BlockedDependency (NT-00) | | |
+| NT-10 Discord typed events | BlockedDependency (NT-01) | | |
+| NT-11 Discord tracing layer: fold pairs, no internal links | BlockedDependency (NT-00) | | |
 | NT-20 Sweep: combat and effects | BlockedDependency (NT-02) | | |
 | NT-21 Sweep: missions, content, dialog | BlockedDependency (NT-02) | | |
 | NT-22 Sweep: inventory, loot, vendor, crafting | BlockedDependency (NT-02) | | |
