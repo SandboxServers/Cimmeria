@@ -16,17 +16,20 @@
 //!
 //! The rendering is `A|B|C` in table order. Bits no entry names render
 //! once, as a hex remainder at the end (`0x20`), so an unexpected bit shows
-//! instead of vanishing. A zero word renders `0x0`. `Display` writes
-//! straight into the event, so a disabled event costs nothing and an
-//! enabled one allocates nothing.
+//! instead of vanishing. A zero word renders `0x0`. The name string is
+//! rendered only when the event is enabled; an exporter that stores fields
+//! as strings (the OTLP appender) still allocates one per exported event,
+//! so keep `_names` fields off rows exported per packet or per tick.
 
 use std::fmt;
 
 /// A flag set's names: `(mask, name)` pairs in the order they render.
 ///
-/// A mask is usually one bit. A multi-bit mask names the word only when
-/// every one of its bits is set (the client's `EMailFlags` ships two such
-/// values, 4092 and 8196), and an entry with mask 0 never matches.
+/// A mask is usually one bit. A multi-bit mask (the client's `EMailFlags`
+/// ships two, 4092 and 8196) is an alias: a word exactly equal to it renders
+/// as that one name. Otherwise a multi-bit mask names the word only when
+/// every one of its bits is set, beside the single bits it overlaps. An
+/// entry with mask 0 never matches.
 #[derive(Debug, Clone, Copy)]
 pub struct FlagSet {
     names: &'static [(u64, &'static str)],
@@ -93,6 +96,16 @@ impl fmt::Display for FlagNames {
         if self.bits == 0 {
             return f.write_str("0x0");
         }
+        // An exact multi-bit alias is one value, not a set of single bits:
+        // `EMailFlags` 4092 is `MAIL_ToCommandRank6`, not ten recipients.
+        if let Some(&(_, name)) = self
+            .set
+            .names
+            .iter()
+            .find(|&&(mask, _)| mask == self.bits && mask.count_ones() > 1)
+        {
+            return f.write_str(name);
+        }
         let mut named = 0u64;
         let mut first = true;
         for &(mask, name) in self.set.names {
@@ -150,7 +163,8 @@ mod tests {
     fn multi_bit_mask_needs_every_bit() {
         const MULTI: FlagSet = FlagSet::new(&[(4, "V"), (0b1100, "VT")]);
         assert_eq!(MULTI.render(4u32).to_string(), "V");
-        assert_eq!(MULTI.render(0b1100u32).to_string(), "V|VT");
+        assert_eq!(MULTI.render(0b1100u32).to_string(), "VT");
+        assert_eq!(MULTI.render(0b1101u32).to_string(), "V|VT|0x1");
         assert_eq!(MULTI.render(0b1000u32).to_string(), "0x8");
     }
 }

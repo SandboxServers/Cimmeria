@@ -93,8 +93,10 @@ pub(crate) async fn handle_encrypted_datagram(
 
     tracing::debug!(
         %addr,
+        // No `flags_names` (NT-31): this row is exported for every inbound
+        // datagram, so a name string here costs an allocation per packet.
+        // The byte has eight bits; `PACKET_FLAGS` names them.
         flags = pkt.flags,
-        flags_names = %cimmeria_mercury::packet::PACKET_FLAGS.render(pkt.flags),
         body_len = pkt.body.len(),
         seq = ?pkt.seq_id,
         acks = ?pkt.acks,

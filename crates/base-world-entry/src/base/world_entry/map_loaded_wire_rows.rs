@@ -120,6 +120,7 @@ pub(super) fn log_world_entry_ability_sends(
         } else if method_index == method_idx::ON_STATE_FIELD_UPDATE {
             row!(
                 state_field = WORLD_ENTRY_STATE_FIELD,
+                state_field_names = %cimmeria_wire::state_field::STATE_FLAGS.render(WORLD_ENTRY_STATE_FIELD),
                 "world-entry bundle sent: onStateFieldUpdate"
             );
         } else {

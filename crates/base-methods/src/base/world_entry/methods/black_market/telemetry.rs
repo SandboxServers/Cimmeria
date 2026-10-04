@@ -109,7 +109,7 @@ pub fn log_failure(op: &'static str, actor: &Actor, auction_id: Option<i32>, f: 
             auction_id,
             reason = error.reason(),
             error_id = error.id(),
-            error_name = ?error,
+            bm_error = ?error,
             "Black Market request refused"
         ),
         Failure::Db { stage, error: e } => tracing::error!(
@@ -121,7 +121,7 @@ pub fn log_failure(op: &'static str, actor: &Actor, auction_id: Option<i32>, f: 
             auction_id,
             reason = error.reason(),
             error_id = error.id(),
-            error_name = ?error,
+            bm_error = ?error,
             stage,
             error = %e,
             "Black Market request failed in the database; nothing changed"

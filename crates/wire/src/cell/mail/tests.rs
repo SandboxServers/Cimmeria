@@ -231,6 +231,17 @@ fn mail_flag_names_match_enumerations_xml() {
         flags::MAIL_FLAGS.render(flags::MAIL_TO_VAULT).to_string(),
         "MAIL_ToVault"
     );
+    // The two anomalous values (audit A-12) render as the one token the
+    // client sent, not as the single bits they overlap. What they mean is
+    // still open (D-BV29); when that is decided, this output may change.
+    assert_eq!(
+        flags::MAIL_FLAGS.render(4092).to_string(),
+        "MAIL_ToCommandRank6"
+    );
+    assert_eq!(
+        flags::MAIL_FLAGS.render(8196).to_string(),
+        "MAIL_ToCommandRank7"
+    );
 }
 
 /// Every `EMailResultCodes` value equals the client's token, and the enum

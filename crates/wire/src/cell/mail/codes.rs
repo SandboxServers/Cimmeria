@@ -47,8 +47,9 @@ pub mod flags {
         | MAIL_TO_COMMAND_RANK7;
 
     /// `EMailFlags` names, for log lines (`recipient_flags_names`, NT-31).
-    /// The two multi-bit values (4092, 8196) name a word only when every
-    /// one of their bits is set.
+    /// A word exactly equal to one of the two multi-bit values (4092, 8196)
+    /// renders as that token alone. What those values mean is still open
+    /// (D-BV29), so the log shows the client's token and settles nothing.
     pub const MAIL_FLAGS: cimmeria_common::flag_names::FlagSet =
         cimmeria_common::flag_names::FlagSet::new(&[
             (MAIL_ARCHIVE as u64, "MAIL_Archive"),
