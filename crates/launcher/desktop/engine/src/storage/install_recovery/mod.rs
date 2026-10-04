@@ -110,6 +110,7 @@ pub fn reconcile(
     if !prepared {
         return Ok(Recovery::Partial);
     }
+    state.remember_prepared_content_with_owner(&owner)?;
     state
         .operations_mut()?
         .reconcile(intent.operation_id, OperationState::Succeeded)?;

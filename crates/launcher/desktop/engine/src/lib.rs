@@ -5,7 +5,7 @@ pub use operations::*;
 mod storage;
 pub use storage::{
     AdmissionRequest, DesktopState, ExtractionBackend, HelperPhase, HelperRecord, HelperResult,
-    InstallAdmission, InstallIntent, IntentError, Preferences, StorageError,
+    InstallAdmission, InstallIntent, InstalledContent, IntentError, Preferences, StorageError,
 };
 mod commands;
 pub use commands::{NativeCommand, NativeSnapshot};

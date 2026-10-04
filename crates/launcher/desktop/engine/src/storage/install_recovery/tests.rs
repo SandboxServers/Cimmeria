@@ -107,7 +107,8 @@ fn receipt_before_terminal_journal_recovers_prepared_content() {
         Recovery::ContentPrepared
     );
     drop(state);
-    let state = DesktopState::open(&root.path().join("state")).unwrap();
+    let mut state = DesktopState::open(&root.path().join("state")).unwrap();
+    assert_eq!(state.installed_content().unwrap().unwrap().intent, intent);
     assert_eq!(
         state
             .operations()

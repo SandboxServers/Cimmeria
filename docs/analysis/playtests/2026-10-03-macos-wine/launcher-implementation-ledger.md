@@ -573,3 +573,24 @@ Earlier CI `37195142523` passed both platforms at `6ad941268`. Windows CI
 `37195617733` failed while creating the junction fixture, before exercising
 cleanup: mixed path separators made `mklink` reject its argument. The fixture now
 normalizes separators and captures command output; native validation is pending.
+
+### 2026-10-04: independent installed-content reference
+
+`installed-content.json` records the prepared installation independently of the
+latest operation. Workers and recovery publish it after promotion/receipt, before
+terminal success; publication failure retains recovery. The reader returns the
+saved intent and reverified signed release after checking the per-ID intent,
+canonical owned root, marker and receipt. Missing game files or the entire game
+directory preserve identity needed by future Repair; an existing game directory
+must be ordinary and not a link/reparse point. Missing ownership records or signed
+evidence remain errors. Recovery reuses the verified owner under its held lock.
+A legacy current successful Install may migrate on read; selected folders are never adopted.
+Current-operation gates still apply, and the reference alone is neither readiness
+nor launch/delete permission. No frontend behavior changed; JS logic UAT is not
+applicable to this backend-only packet. Local engine/shell tests passed 246 with
+11 ignored (`20261004-060534-72136`); combined strict all-target clippy passed
+(`20261004-060607-72674`). Tests cover identity across reopen/new operation,
+legacy migration, uncommitted-reference gating, missing and redirected content,
+mismatched owner/evidence/schema, recovery and publication failure. Read-only
+review found no remaining blocker after the Windows held-lock correction.
+Final-revision native Windows validation remains pending.

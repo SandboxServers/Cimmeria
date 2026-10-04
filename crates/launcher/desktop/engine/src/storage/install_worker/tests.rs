@@ -120,6 +120,17 @@ async fn dispatch_installs_real_zip_and_persists_success_after_observer_drop() {
     assert!(content.join("Working/Binaries/SGW.exe").is_file());
     assert!(crate::client_setup::login_servers::path(&content).is_file());
     assert!(root.path().join("install/content-ready.json").is_file());
+    assert_eq!(
+        state
+            .lock()
+            .unwrap()
+            .installed_content()
+            .unwrap()
+            .unwrap()
+            .intent
+            .operation_id,
+        id
+    );
     assert!(!root
         .path()
         .join(format!("install/.cimmeria-stage-{id}"))
@@ -396,7 +407,7 @@ fn result_write_failure_preserves_recovery_gate() {
     // A non-regular result destination deterministically prevents publication.
     std::fs::create_dir(root.path().join("state/install-result.json")).unwrap();
     assert_eq!(
-        publish(&state, id, Outcome::ContentPrepared),
+        publish(&state, id, Outcome::InstallFailed),
         Outcome::ReconciliationRequired
     );
     let state = state.lock().unwrap();
@@ -411,4 +422,41 @@ fn result_write_failure_preserves_recovery_gate() {
         OperationState::ReconciliationRequired
     );
     assert_eq!(state.install_outcome(), Ok(None));
+}
+
+#[test]
+fn installation_reference_write_failure_cannot_publish_success() {
+    let release = verified(&archive(true));
+    let (root, state, id) = setup(&release);
+    let intent = {
+        let mut state = state.lock().unwrap();
+        state
+            .operations_mut()
+            .unwrap()
+            .observe(id, OperationState::Running)
+            .unwrap();
+        state.install_intent().unwrap().unwrap()
+    };
+    std::fs::create_dir_all(intent.destination.join("game")).unwrap();
+    for name in [".cimmeria-install.json", "content-ready.json"] {
+        atomic::write(&intent.destination, name, &intent).unwrap();
+    }
+    std::fs::create_dir(root.path().join("state/installed-content.json")).unwrap();
+    assert_eq!(
+        publish(&state, id, Outcome::ContentPrepared),
+        Outcome::ReconciliationRequired
+    );
+    assert_eq!(
+        state
+            .lock()
+            .unwrap()
+            .operations()
+            .snapshot()
+            .operation
+            .as_ref()
+            .unwrap()
+            .state,
+        OperationState::ReconciliationRequired
+    );
+    assert!(!root.path().join("state/install-result.json").exists());
 }

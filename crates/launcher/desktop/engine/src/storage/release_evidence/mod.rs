@@ -45,6 +45,13 @@ impl DesktopState {
     /// durable intent. Missing/corrupt evidence never triggers a new URL fetch.
     pub fn cached_install_release(&self) -> Result<VerifiedRelease, EvidenceError> {
         let intent = self.install_intent()?.ok_or(StorageError::Corrupt)?;
+        self.release_for_intent(&intent)
+    }
+
+    pub(super) fn release_for_intent(
+        &self,
+        intent: &InstallIntent,
+    ) -> Result<VerifiedRelease, EvidenceError> {
         let path = self.directory.root.join(name(intent.operation_id));
         ensure_regular_or_absent(&path)?;
         let file = File::open(path).map_err(|_| StorageError::Io)?;

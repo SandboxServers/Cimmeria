@@ -8,6 +8,8 @@ pub use release_evidence::EvidenceError;
 mod install_intent;
 pub mod install_recovery;
 mod install_result;
+mod installed_content;
+pub use installed_content::InstalledContent;
 pub mod install_worker;
 pub use install_intent::{
     AdmissionRequest, ExtractionBackend, InstallAdmission, InstallIntent, IntentError,

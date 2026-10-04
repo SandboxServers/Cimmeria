@@ -280,3 +280,17 @@ Windows+Mac before the shell; shell/visual/game gates remain separate.
   frontend change or JS UAT required. Enhanced real-release smoke now asserts the
   retained tree and four executable hashes; prior 312.55-second proof predates it.
   Windows junction fixture separator correction still needs native validation.
+
+- Independent installed-content seam is now implemented: schema-1
+  `installed-content.json` is published after promotion/receipt and before success,
+  including recovery. Read rechecks saved per-ID intent, signed evidence, owned
+  root, marker and receipt; missing game files or the entire game directory retain
+  Repair identity. Existing game directories must be ordinary/non-reparse; missing
+  ownership records or signed evidence still error. Recovery reuses the verified
+  owner under the held lock. Legacy current successful Install can migrate without adopting
+  selected folders. Publication failure retains recovery. This does not implement
+  Repair or grant launch/delete permission; current-operation gates remain required.
+
+  Local engine/shell246/11ignored and strict combined clippy passed; native Windows
+  held-lock recovery verification pending. Existing recovery regression now reads
+  installed identity after reopen; a new publication failure guard prevents success.

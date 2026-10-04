@@ -205,8 +205,9 @@ fn publish(state: &Mutex<DesktopState>, id: Uuid, outcome: Outcome) -> Outcome {
     let Ok(mut state) = state.lock() else {
         return Outcome::ReconciliationRequired;
     };
-    if outcome != Outcome::ReconciliationRequired
-        && state.prepare_install_result(id, outcome).is_err()
+    if (outcome == Outcome::ContentPrepared && state.remember_prepared_content().is_err())
+        || (outcome != Outcome::ReconciliationRequired
+            && state.prepare_install_result(id, outcome).is_err())
     {
         if let Ok(operations) = state.operations_mut() {
             let _ = operations.mark_uncertain(id);

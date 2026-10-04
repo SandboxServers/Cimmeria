@@ -670,3 +670,19 @@ folder/enabled-install/unchanged-consent case. Strict clippy passed. The real si
 seconds; its initial lane invocation later failed in a development-key harness
 run under the production key. The corrected `--lib` rerun passed in 312.55
 seconds (315.308 seconds lane, exit zero); see [validation details](docs/wine-validation.md#original-signed-release-content-smoke).
+
+## Installed-content identity
+
+`installed-content.json` preserves the installation identity independently of the
+latest operation and selected folder. It is written after promotion/receipt and
+before terminal success, including recovery; publication failure retains the
+recovery gate. Reading returns `InstalledContent` with a reverified signed release,
+matching saved per-ID intent, canonical owned root, owner marker and receipt.
+Missing game files or the entire `game` directory preserve identity for future
+Repair; an existing game directory must be ordinary and not a link/reparse point.
+Missing ownership records or signed evidence remain errors.
+
+An older current successful Install can migrate on read. Selecting a folder never
+adopts its contents. This record does not grant launch/delete permission or prove
+readiness: current-operation, content and runtime checks remain required. There
+is no new UI or Repair execution in this packet.
