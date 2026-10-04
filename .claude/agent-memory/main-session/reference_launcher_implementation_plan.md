@@ -308,3 +308,18 @@ Windows+Mac before the shell; shell/visual/game gates remain separate.
   Ten removal guards cover both final deletion crash windows; enhanced full
   signed-release Wine smoke now includes confirmed uninstall, pending helper rebuild.
   Shell/frontend still need confirmation and recovery wiring.
+
+- Uninstall is now wired through restricted shell IPC and Settings inline folder
+  confirmation. Status uses saved installation identity/path, never preferences.
+  Dismissal does not mutate; Effect pre-inspects, never replays a lost mutation
+  reply, and explicit Finish uninstall confirms the same ID. No cancel after
+  admission or Install cleanup/reconcile controls for Uninstall. Empty destination
+  permits fresh Install after success. Local native tests passed 257/11 ignored;
+  all 28 frontend tests/check/build and fixture-IPC JS UAT passed confirmation,
+  dismissal, double-click protection, owned path, reinstall and preserved consent.
+  No app opened or visual UAT. Retention-capable helper now staged from Windows CI
+  37197224000 at 1fa1a13ce (both platforms green). Enhanced smoke passed full
+  content and four prerequisite hashes, then correctly refused uninstall InUse:
+  fixture preclaim guard outlived publication. Fixture corrected; full rerun and
+  completed real uninstall pending. Strict clippy and updated Mac bundle passed;
+  packaged new helper SHA verified, app not opened.

@@ -480,3 +480,63 @@ fn cleanup_requires_confirmation_and_exposes_retry_without_dispatch() {
     assert!(!status.native.preferences.launcher_summary_consent);
     assert!(host.worker.lock().unwrap().is_none());
 }
+
+#[test]
+fn confirmed_uninstall_ipc_uses_owned_identity_and_preserves_consent() {
+    use cimmeria_launcher_engine::OperationState;
+    let root = tempfile::tempdir().unwrap();
+    let host = NativeHost::new(root.path().join("state"));
+    let id = Uuid::new_v4();
+    let intent = {
+        let store = host.store().unwrap();
+        let mut state = store.lock().unwrap();
+        state
+            .save_preferences(Some(root.path().join("game")), true, 0)
+            .unwrap();
+        let intent = state
+            .admit_install(id, 0, 1, &fixture_release(), vec![])
+            .unwrap()
+            .intent;
+        std::fs::create_dir_all(intent.destination.join("game")).unwrap();
+        for name in [".cimmeria-install.json", "content-ready.json"] {
+            std::fs::write(
+                intent.destination.join(name),
+                serde_json::to_vec(&intent).unwrap(),
+            )
+            .unwrap();
+        }
+        state
+            .operations_mut()
+            .unwrap()
+            .observe(id, OperationState::Running)
+            .unwrap();
+        state
+            .operations_mut()
+            .unwrap()
+            .observe(id, OperationState::Succeeded)
+            .unwrap();
+        intent
+    };
+    let status = host.install_status().unwrap();
+    assert_eq!(status.uninstall.unwrap().installation_id, id);
+    let removal = Uuid::new_v4();
+    let request = |confirmed| InstallCommand::Uninstall {
+        schema_version: 1,
+        operation_id: removal,
+        operation_revision: status.native.operation.revision,
+        installation_id: id,
+        confirmed,
+    };
+    assert_eq!(
+        host.install_command(request(false), None).unwrap_err(),
+        JobError::RecoveryRequired
+    );
+    assert!(intent.destination.exists());
+    let result = host.install_command(request(true), None).unwrap();
+    assert!(result.uninstall.is_none());
+    assert!(result.can_retry);
+    assert!(result.native.preferences.launcher_summary_consent);
+    assert!(!intent.destination.exists());
+    assert!(!result.can_reconcile);
+    assert!(!result.can_resume);
+}

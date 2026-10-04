@@ -26,6 +26,9 @@ export function mountInstall(document:Document,invoke:Invoke,uuid:()=>string=()=
   const cleanup=get<HTMLButtonElement>('clean-failed-install');
   const confirmation=get('cleanup-confirmation');
   let confirming:string|null=null;
+  const uninstall=get<HTMLButtonElement>('uninstall');
+  const uninstallConfirmation=get('uninstall-confirmation');
+  let uninstalling:{installationId:string;operationId:string;directory:string}|null=null;
   const progress=get<HTMLProgressElement>('install-progress');
   const abort=new AbortController();
   let current:InstallViewState={status:null,busy:false,needsInspection:true,error:null};
@@ -40,15 +43,23 @@ export function mountInstall(document:Document,invoke:Invoke,uuid:()=>string=()=
     const recovery=operation?.state==='reconciliation_required';
     const ready=!!status&&!status.native.requires_reopen&&!current.needsInspection&&!current.busy&&!pending;
     primary.disabled=!ready||!status?.install_supported||(!!operation&&!status?.can_retry)||!status.native.preferences.install_directory;
-    primary.textContent=status?.can_retry?'Retry installation':operation?.state==='succeeded'?'Content prepared':active?'Installing…':'Install Stargate Worlds';
-    const failed=operation?.state==='failed'||operation?.state==='cancelled';
+    const removed=operation?.kind==='uninstall'&&operation.state==='succeeded';
+    primary.textContent=removed?'Install Stargate Worlds':status?.can_retry?'Retry installation':operation?.state==='succeeded'?'Content prepared':active?(operation?.kind==='uninstall'?'Removing…':'Installing…'):'Install Stargate Worlds';
+    const failed=operation?.kind==='install'&&(operation.state==='failed'||operation.state==='cancelled');
     cleanup.hidden=!failed||status?.can_retry===true;
     cleanup.disabled=!ready;
     if(!failed||confirming!==operation?.id)confirming=null;
     confirmation.hidden=confirming===null;
     get<HTMLButtonElement>('confirm-cleanup').disabled=!ready;
     get<HTMLButtonElement>('dismiss-cleanup').disabled=pending||current.busy;
-    cancel.hidden=!active;
+    uninstall.disabled=!ready||active||!status?.uninstall;
+    uninstall.textContent=status?.uninstall?.recovery?'Finish uninstall…':'Uninstall…';
+    if(uninstalling?.installationId!==status?.uninstall?.installation_id)uninstalling=null;
+    uninstallConfirmation.hidden=uninstalling===null;
+    get('uninstall-directory').textContent=uninstalling?.directory??'';
+    get<HTMLButtonElement>('confirm-uninstall').disabled=!ready||active;
+    get<HTMLButtonElement>('dismiss-uninstall').disabled=pending||current.busy;
+    cancel.hidden=!active||operation?.kind!=='install';
     cancel.disabled=!ready||operation?.state==='cancel_requested';
     resume.hidden=!recovery||!status?.can_resume; resume.disabled=!ready||!status?.can_resume;
     recheck.hidden=!current.error&&!recovery;
@@ -58,9 +69,11 @@ export function mountInstall(document:Document,invoke:Invoke,uuid:()=>string=()=
       if(!status.progress.total)progress.removeAttribute('value');}
     let text='Checking installation…';
     if(current.error)text=errors[current.error];
-    else if(pending)text='Confirming installation request…';
+    else if(pending)text='Confirming operation…';
     else if(status){
-      if(operation?.state==='succeeded')text='Game content prepared. Runtime checks and Play are not connected in this build.';
+      if(removed)text='Game uninstalled. You can install it again when ready.';
+      else if(operation?.kind==='uninstall')text=recovery?'Uninstall was interrupted. Use Finish uninstall in Settings to confirm removal again.':active?'Removing game files…':'Inspect uninstall status before continuing.';
+      else if(operation?.state==='succeeded')text='Game content prepared. Runtime checks and Play are not connected in this build.';
       else if(recovery)text=status.can_resume||status.can_reconcile?'An interrupted installation was found. Inspect files or explicitly resume the saved attempt.':'An interrupted compatibility operation was found. Files are preserved; recovery is not available in this build. You can recheck status.';
       else if(active)text=operation?.state==='cancel_requested'?'Cancellation requested. Waiting for the installer to stop safely.':
         status.progress?.phase==='download'?'Downloading verified game content…':status.progress?.phase==='extraction'?'Extracting game content…':'Preparing installation…';
@@ -95,6 +108,12 @@ export function mountInstall(document:Document,invoke:Invoke,uuid:()=>string=()=
     const listener=()=>{if(!element.disabled)action();};
     element.addEventListener('click',listener);listeners.push(()=>element.removeEventListener('click',listener));
   };
+  on(uninstall,()=>{const target=current.status?.uninstall;if(!target)return;
+    uninstalling={installationId:target.installation_id,directory:target.directory,
+      operationId:target.recovery?current.status!.native.operation.operation!.id:uuid()};render();});
+  on(get<HTMLButtonElement>('dismiss-uninstall'),()=>{uninstalling=null;render();});
+  on(get<HTMLButtonElement>('confirm-uninstall'),()=>{const target=uninstalling;uninstalling=null;
+    if(target)void run(service=>service.uninstall(target.operationId,target.installationId));});
   on(cleanup,()=>{confirming=current.status?.native.operation.operation?.id??null;render();});
   on(get<HTMLButtonElement>('dismiss-cleanup'),()=>{confirming=null;render();});
   on(get<HTMLButtonElement>('confirm-cleanup'),()=>{const id=confirming;confirming=null;if(id)void run(service=>service.cleanFailed(id));});

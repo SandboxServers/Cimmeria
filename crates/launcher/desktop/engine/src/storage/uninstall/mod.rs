@@ -32,7 +32,53 @@ fn detached_name(id: Uuid) -> String {
     format!("uninstall-detached-{id}.json")
 }
 
+#[derive(Debug, Serialize)]
+pub struct Target {
+    pub installation_id: Uuid,
+    pub directory: PathBuf,
+    pub recovery: bool,
+}
+
 impl DesktopState {
+    /// Display/confirmation target only. Mutation independently checks identity.
+    pub fn uninstall_target(&mut self) -> Result<Option<Target>, StorageError> {
+        if self.requires_reopen() {
+            return Ok(None);
+        }
+        if let Some(op) = self.operations.snapshot().operation.as_ref() {
+            if op.kind == OperationKind::Uninstall {
+                if op.state == OperationState::Succeeded {
+                    return Ok(None);
+                }
+                let plan: Plan =
+                    read(&self.directory.root.join(name(op.id)))?.ok_or(StorageError::Corrupt)?;
+                if plan.schema_version != 1
+                    || plan.id != op.id
+                    || plan.digest()? != op.intent_digest
+                {
+                    return Err(StorageError::Corrupt);
+                }
+                return Ok(Some(Target {
+                    installation_id: plan.installation.operation_id,
+                    directory: plan.installation.destination,
+                    recovery: op.state == OperationState::ReconciliationRequired,
+                }));
+            }
+            if !op.state.terminal() {
+                return Ok(None);
+            }
+        }
+        match self.installed_content() {
+            Ok(installed) => Ok(installed.map(|installed| Target {
+                installation_id: installed.intent.operation_id,
+                directory: installed.intent.destination,
+                recovery: false,
+            })),
+            Err(StorageError::Busy) => Ok(None),
+            Err(error) => Err(error),
+        }
+    }
+
     /// Explicit user confirmation is required for each call, including recovery.
     /// Native command thread only: holds state ownership through stop and deletion.
     /// No cancellation after admission; a lost response requires inspection.

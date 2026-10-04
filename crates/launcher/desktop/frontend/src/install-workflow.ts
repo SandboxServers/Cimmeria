@@ -4,12 +4,14 @@ import { NativeSnapshot } from './contract';
 const Count = Schema.Int.check(Schema.isBetween({minimum:0, maximum:Number.MAX_SAFE_INTEGER}));
 export const InstallStatus = Schema.Struct({
   schema_version:Schema.Literal(1), native:NativeSnapshot, install_supported:Schema.Boolean, can_resume:Schema.Boolean, can_reconcile:Schema.Boolean, can_retry:Schema.Boolean,
+  uninstall:Schema.NullOr(Schema.Struct({installation_id:Schema.String,directory:Schema.String,recovery:Schema.Boolean})),
   progress:Schema.NullOr(Schema.Struct({phase:Schema.Literals(['download','extraction']), current:Count, total:Count})),
   outcome:Schema.NullOr(Schema.Literals(['content_prepared','cancelled','destination_unavailable','install_failed','content_invalid','reconciliation_required','rosetta_required','runtime_unavailable'])),
 });
 export type InstallStatus = typeof InstallStatus.Type;
 export type InstallRequest = {command:'inspect';schema_version:1} |
   {command:'install';schema_version:1;operation_id:string;operation_revision:number;preferences_revision:number} |
+  {command:'uninstall';schema_version:1;operation_id:string;operation_revision:number;installation_id:string;confirmed:true} |
   {command:'clean_failed';schema_version:1;operation_id:string;operation_revision:number;confirmed:true} |
   {command:'cancel';schema_version:1;operation_id:string} |
   {command:'resume'|'reconcile';schema_version:1;operation_id:string;operation_revision:number};
@@ -25,7 +27,7 @@ export const installBridgeLayer = (invoke:(request:InstallRequest)=>Promise<unkn
     code:typeof error==='string' && codes.includes(error as typeof codes[number]) ? error as typeof codes[number] : 'transport',
   })}).pipe(
     // Install may fetch two signed-release resources, each with a 15s deadline.
-    Effect.timeout(request.command==='install'||request.command==='reconcile'||request.command==='clean_failed' ? '35 seconds' : '5 seconds'),
+    Effect.timeout(request.command==='install'||request.command==='reconcile'||request.command==='clean_failed'||request.command==='uninstall' ? '35 seconds' : '5 seconds'),
     Effect.catchTag('TimeoutError',()=>Effect.fail(new InstallFailure({code:'transport'}))),
     Effect.flatMap(value=>Schema.decodeUnknownEffect(InstallStatus,{onExcessProperty:'error'})(value).pipe(
       Effect.mapError(()=>new InstallFailure({code:'schema'})),
@@ -90,7 +92,9 @@ export const makeInstallWorkflow = Effect.gen(function*(){
       status=yield* inspect;
     }
   }).pipe(Effect.tapError(failure));
-  return {inspect,install,cancel,resume:(id:string)=>recover('resume',id),
+  return {inspect,install,cancel,
+    uninstall:(id:string,installationId:string)=>mutate(status=>({command:'uninstall',schema_version:1,operation_id:id,
+      operation_revision:status.native.operation.revision,installation_id:installationId,confirmed:true})),resume:(id:string)=>recover('resume',id),
     cleanFailed:(id:string)=>mutate(status=>({command:'clean_failed',schema_version:1,operation_id:id,
       operation_revision:status.native.operation.revision,confirmed:true})),
     reconcile:(id:string)=>recover('reconcile',id),observe,snapshot:Ref.get(state),changes:Stream.fromPubSub(events)};

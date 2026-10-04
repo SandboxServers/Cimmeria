@@ -22,6 +22,13 @@ pub enum InstallCommand {
         operation_revision: u64,
         preferences_revision: u64,
     },
+    Uninstall {
+        schema_version: u32,
+        operation_id: Uuid,
+        operation_revision: u64,
+        installation_id: Uuid,
+        confirmed: bool,
+    },
     CleanFailed {
         schema_version: u32,
         operation_id: Uuid,
@@ -48,6 +55,7 @@ impl InstallCommand {
         let version = match self {
             Self::Inspect { schema_version }
             | Self::Install { schema_version, .. }
+            | Self::Uninstall { schema_version, .. }
             | Self::CleanFailed { schema_version, .. }
             | Self::Cancel { schema_version, .. }
             | Self::Resume { schema_version, .. }
@@ -152,6 +160,7 @@ pub struct InstallStatus {
     pub can_resume: bool,
     pub can_reconcile: bool,
     pub can_retry: bool,
+    pub uninstall: Option<cimmeria_launcher_engine::uninstall::Target>,
     pub progress: Option<JobProgress>,
     pub outcome: Option<Outcome>,
 }
@@ -228,7 +237,7 @@ impl NativeHost {
     }
 
     pub fn install_status(&self) -> Result<InstallStatus, JobError> {
-        let (native, native_backend, outcome, can_retry) = self.with_state(|state| {
+        let (native, native_backend, outcome, can_retry, uninstall) = self.with_state(|state| {
             Ok((
                 state.inspect(),
                 state
@@ -236,12 +245,18 @@ impl NativeHost {
                     .is_some_and(|intent| intent.backend.is_native()),
                 state.install_outcome()?,
                 state.can_retry_install(),
+                state.uninstall_target()?,
             ))
         })?;
         let recovery = !native.requires_reopen
             && native.operation.operation.as_ref().is_some_and(|op| {
                 op.state == cimmeria_launcher_engine::OperationState::ReconciliationRequired
             });
+        let install_recovery = native
+            .operation
+            .operation
+            .as_ref()
+            .is_some_and(|op| op.kind == cimmeria_launcher_engine::OperationKind::Install);
         let worker = self.worker.lock().map_err(|_| JobError::Io)?;
         let worker = worker.as_ref().filter(|worker| {
             native
@@ -256,8 +271,11 @@ impl NativeHost {
             native,
             install_supported: self.platform_backend().is_ok(),
             can_resume: recovery && native_backend && cfg!(windows),
-            can_reconcile: recovery && (native_backend || cfg!(target_os = "macos")),
+            can_reconcile: recovery
+                && install_recovery
+                && (native_backend || cfg!(target_os = "macos")),
             can_retry,
+            uninstall,
             progress: observed,
             outcome,
         })
@@ -299,6 +317,21 @@ impl NativeHost {
                     release,
                     self.platform_backend()?,
                 )?;
+            }
+            InstallCommand::Uninstall {
+                operation_id,
+                operation_revision,
+                installation_id,
+                confirmed,
+                ..
+            } => {
+                state.lock().map_err(|_| JobError::Io)?.uninstall(
+                    operation_id,
+                    operation_revision,
+                    installation_id,
+                    confirmed,
+                )?;
+                *worker = None;
             }
             InstallCommand::CleanFailed {
                 operation_id,

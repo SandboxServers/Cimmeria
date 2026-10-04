@@ -344,6 +344,9 @@ async fn original_signed_release_prepares_patched_content() {
     )
     .await;
     assert_eq!(outcome, Outcome::ContentPrepared);
+    // Production install() drops its claim before publish; the smoke preclaims
+    // only to preload the authenticated cache and must release it here too.
+    drop(_ownership);
     assert_eq!(publish(&state, id, outcome), Outcome::ContentPrepared);
     assert!(root.path().join("install/content-ready.json").exists());
     assert!(content_valid(&root.path().join("install/game"), &release));

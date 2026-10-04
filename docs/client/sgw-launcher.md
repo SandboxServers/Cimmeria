@@ -121,8 +121,8 @@ Publication uses a same-volume rename. An existing retained tree is accepted onl
 when relative paths, types, file sizes and SHA-256 hashes match exactly; extra or
 changed files, links, special files and Windows reparse points are refused.
 Cancellation is checked during inventory/hash reads and before publication.
-The currently staged Windows helper predates this change: rebuilding it and a
-real retention smoke remain required. Existing completed-install receipts do not
+The rebuilt Windows helper passed real content/retained-prerequisite hash checks;
+the full uninstall smoke rerun remains pending. Existing completed-install receipts do not
 prove prerequisites were retained or installed.
 
 Cabinets are expanded with Windows' FDI API (`FDICreate`/`FDICopy` in

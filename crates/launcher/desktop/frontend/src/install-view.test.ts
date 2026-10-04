@@ -6,7 +6,7 @@ import { mountInstall } from './install-view';
 import type { InstallRequest, InstallStatus } from './install-workflow';
 const html=await readFile(new URL('../ui/index.html',import.meta.url),'utf8');
 const id='d539d049-61b7-4c82-b3d7-cb9b7a991adc';
-const initial=():InstallStatus=>({schema_version:1,install_supported:true,can_resume:true,can_reconcile:true,can_retry:false,progress:null,outcome:null,native:{schema_version:1,
+const initial=():InstallStatus=>({schema_version:1,install_supported:true,can_resume:true,can_reconcile:true,can_retry:false,uninstall:null,progress:null,outcome:null,native:{schema_version:1,
   requires_reopen:false,operation:{schema_version:1,revision:0,operation:null},preferences:{schema_version:1,revision:1,
     install_directory:'/fixture',launcher_summary_consent:false}}});
 const flush=()=>new Promise<void>(resolve=>setImmediate(resolve));
@@ -85,5 +85,46 @@ test('Wine recovery cannot invoke native resume or reconciliation',async()=>{
   assert.match(ui.get('install-status').textContent!,/recovery is not available/);
   ui.click('resume-install');ui.click('inspect-install');await app.settled();
   assert.ok(calls.every(command=>command==='inspect'));
+ }finally{await app.dispose();}
+});
+
+test('uninstall requires confirmation, dismisses safely and enables reinstall only after acknowledgement',async()=>{
+ const ui=dom();let status:InstallStatus={...initial(),uninstall:{installation_id:id,directory:'/owned/game',recovery:false},
+  native:{...initial().native,operation:{schema_version:1,revision:3,operation:{id,kind:'install',intent_digest:Array(32).fill(0),state:'succeeded'}}}};
+ const removalId='11b003de-8094-43d7-8daa-f3f3bd577c40';const calls:InstallRequest[]=[];
+ const app=mountInstall(ui.document,async(_command,args)=>{const request=args!.request as InstallRequest;calls.push(request);
+  if(request.command==='uninstall'){assert.equal(request.installation_id,id);assert.equal(request.confirmed,true);
+   status={...status,uninstall:null,can_retry:true,outcome:null,native:{...status.native,
+    operation:{schema_version:1,revision:6,operation:{id:removalId,kind:'uninstall',intent_digest:Array(32).fill(0),state:'succeeded'}}}};}
+  return status;
+ },()=>removalId);
+ try{await app.ready;await flush();assert.equal(ui.get('uninstall').disabled,false);
+  ui.click('uninstall');assert.equal(ui.get('uninstall-confirmation').hidden,false);assert.equal(ui.get('uninstall-directory').textContent,'/owned/game');
+  assert.equal(calls.every(c=>c.command==='inspect'),true);ui.click('dismiss-uninstall');assert.equal(ui.get('uninstall-confirmation').hidden,true);
+  ui.click('uninstall');ui.click('confirm-uninstall');ui.click('confirm-uninstall');await app.settled();await flush();
+  assert.equal(calls.filter(c=>c.command==='uninstall').length,1);assert.equal(ui.get('install').disabled,false);
+  assert.equal(ui.get('install').textContent,'Install Stargate Worlds');assert.match(ui.get('install-status').textContent!,/Game uninstalled/);
+  assert.equal(status.native.preferences.launcher_summary_consent,false);
+ }finally{await app.dispose();}
+});
+
+test('lost uninstall reply only inspects; explicit recovery reuses operation identity',async()=>{
+ const ui=dom();const removalId='11b003de-8094-43d7-8daa-f3f3bd577c40';
+ let status:InstallStatus={...initial(),uninstall:{installation_id:id,directory:'/owned/game',recovery:false},
+  native:{...initial().native,operation:{schema_version:1,revision:3,operation:{id,kind:'install',intent_digest:Array(32).fill(0),state:'succeeded'}}}};
+ const calls:InstallRequest[]=[];
+ const app=mountInstall(ui.document,async(_command,args)=>{const request=args!.request as InstallRequest;calls.push(request);
+  if(request.command==='uninstall'){status={...status,uninstall:{...status.uninstall!,recovery:true},can_reconcile:false,can_resume:false,
+    native:{...status.native,operation:{schema_version:1,revision:5,operation:{id:removalId,kind:'uninstall',intent_digest:Array(32).fill(0),state:'reconciliation_required'}}}};
+   throw new Error('lost reply');}
+  return status;
+ },()=>removalId);
+ try{await app.ready;await flush();ui.click('uninstall');ui.click('confirm-uninstall');await app.settled();await flush();
+  assert.equal(calls.filter(c=>c.command==='uninstall').length,1);assert.equal(ui.get('uninstall').disabled,true);
+  ui.click('inspect-install');await app.settled();await flush();assert.equal(calls.filter(c=>c.command==='uninstall').length,1);
+  assert.equal(ui.get('uninstall').textContent,'Finish uninstall…');assert.equal(ui.get('cancel-install').hidden,true);
+  ui.click('uninstall');ui.click('confirm-uninstall');await app.settled();await flush();
+  const removals=calls.filter(c=>c.command==='uninstall');assert.equal(removals.length,2);
+  assert.ok(removals.every(c=>c.operation_id===removalId));assert.ok(calls.every(c=>c.command!=='reconcile'));
  }finally{await app.dispose();}
 });

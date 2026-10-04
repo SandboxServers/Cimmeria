@@ -6,7 +6,7 @@ import { parseHTML } from 'linkedom';
 import { mountInstall } from './.test-build/install-view.mjs';
 const html=await readFile(new URL('./ui/index.html',import.meta.url),'utf8');
 const id='7e438f46-9b99-450d-83b6-3c12436b403c';
-let status={schema_version:1,install_supported:true,can_resume:true,can_reconcile:true,can_retry:false,progress:null,outcome:null,native:{schema_version:1,requires_reopen:false,
+let status={schema_version:1,install_supported:true,can_resume:true,can_reconcile:true,can_retry:false,uninstall:null,progress:null,outcome:null,native:{schema_version:1,requires_reopen:false,
   preferences:{schema_version:1,revision:1,install_directory:'/fixture/app-data/Stargate Worlds',launcher_summary_consent:false},
   operation:{schema_version:1,revision:0,operation:null}}};
 const calls=[];const requests=[];
@@ -17,6 +17,12 @@ const invoke=async(_command,{request})=>{
   if(request.command==='clean_failed'){
     assert.equal(request.confirmed,true);
     status={...status,can_retry:true};
+  }
+  if(request.command==='uninstall'){
+    assert.equal(request.confirmed,true);assert.equal(request.installation_id,status.uninstall.installation_id);
+    status={...status,uninstall:null,can_retry:true,outcome:null,progress:null,native:{...status.native,
+      operation:{schema_version:1,revision:status.native.operation.revision+3,
+        operation:{id:request.operation_id,kind:'uninstall',intent_digest:Array(32).fill(0),state:'succeeded'}}}};
   }
   if(request.command==='cancel')status={...status,native:{...status.native,operation:{...status.native.operation,revision:2,
     operation:{...status.native.operation.operation,state:'cancel_requested'}}}};
@@ -99,3 +105,20 @@ assert.equal(calls.filter(x=>x==='clean_failed').length,1);
 await ui.app.dispose();
 console.log('PASS: cleanup requires confirmation, dismissal preserves files, acknowledged cleanup enables explicit retry; enabled recovery explicitly reconciles without resume or completion inference; unsupported Wine recovery only inspects;  Rosetta/runtime failure decoding and reopened feedback;  install, progress, explicit cancel, reconnect without replay, completion wins cancellation, no Play/consent inference.');
 console.log('NOT COVERED: native install IPC/filesystem, actual downloads/Wine, visual layout, OS dialogs, login/gameplay.');
+
+status={...status,can_retry:false,uninstall:{installation_id:replacementId,directory:'/fixture/owned-install',recovery:false},
+ native:{...status.native,operation:{...status.native.operation,revision:status.native.operation.revision+1,
+ operation:{...status.native.operation.operation,state:'succeeded'}}}};
+ui=mount('7a753523-bde2-4897-af71-6e1d73196681');await ui.app.ready;await settle(ui.app);
+const click=element=>ui.document.getElementById(element).dispatchEvent(new ui.window.Event('click'));
+click('uninstall');assert.equal(ui.document.getElementById('uninstall-confirmation').hidden,false);
+assert.equal(ui.document.getElementById('uninstall-directory').textContent,'/fixture/owned-install');
+assert.equal(calls.includes('uninstall'),false);click('dismiss-uninstall');
+assert.equal(ui.document.getElementById('uninstall-confirmation').hidden,true);
+click('uninstall');click('confirm-uninstall');click('confirm-uninstall');await settle(ui.app);
+assert.equal(calls.filter(x=>x==='uninstall').length,1);
+assert.equal(ui.document.getElementById('install').disabled,false);
+assert.equal(ui.document.getElementById('install').textContent,'Install Stargate Worlds');
+assert.equal(status.native.preferences.launcher_summary_consent,false);
+await ui.app.dispose();
+console.log('PASS: uninstall requires explicit confirmation of owned folder, dismissal sends nothing, double-click dispatches once, native acknowledgement enables reinstall, consent unchanged. Native disk persistence is separately covered by Rust host tests; this pass uses fixture IPC, not real deletion or visual UAT.');

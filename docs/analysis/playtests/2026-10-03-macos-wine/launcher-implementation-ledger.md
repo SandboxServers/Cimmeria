@@ -617,3 +617,31 @@ foreign files, links and pre-admission persistence failure. The ignored real
 signed-release Wine smoke now additionally performs confirmed uninstall after
 retention assertions; that enhanced smoke awaits a newly built Windows helper.
 No actual original-client removal result is claimed yet.
+
+### 2026-10-04: Settings uninstall and restricted IPC
+
+Restricted native Uninstall now supplies its saved installation ID/folder and
+recovery capability to Settings. Inline confirmation identifies removed files and
+modifications plus retained preferences/shared compatibility resources; dismissal
+does not mutate. Effect pre-inspects, observes the reply for 35 seconds and never
+replays a mutation after a lost reply. Explicit Finish uninstall confirms the same
+operation ID. No cancellation is offered after admission; Install cleanup/cancel/
+reconcile controls do not apply. Successful removal permits a new Install into an
+eligible empty destination.
+
+Engine/shell checks passed 257 tests with 11 ignored (`20261004-061858-78957`),
+including native host removal from disk and consent preservation. All 28 frontend
+tests, type checking/build and JS logic UAT passed. Fixture IPC exercised confirm/
+dismiss, double-click protection, owned-path targeting, acknowledged removal and
+fresh install, and unchanged consent; it does not validate native deletion. No app
+was opened or visual UAT performed.
+
+The retention-capable Windows helper from CI `37197224000` at `1fa1a13ce` is
+staged; that CI passed both platforms. Enhanced smoke `20261004-062038-80112`
+passed full-content preparation and all four prerequisite hashes, then correctly
+refused uninstall with `Storage(InUse)` because the fixture retained a preclaim
+guard beyond publication. Production releases that guard before publishing.
+The fixture is corrected and its full rerun (`20261004-062633-83023`) remains pending; no completed real
+uninstall is claimed. Final combined strict clippy passed (`20261004-062715-83742`);
+updated Mac development bundling passed (`20261004-062355-81738`) with the new
+helper resource SHA verified. The app was not opened.

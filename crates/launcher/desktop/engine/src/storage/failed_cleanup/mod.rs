@@ -11,8 +11,10 @@ impl DesktopState {
                 .operation
                 .as_ref()
                 .is_some_and(|op| {
-                    op.kind == OperationKind::Install
-                        && matches!(op.state, OperationState::Failed | OperationState::Cancelled)
+                    (op.kind == OperationKind::Install
+                        && matches!(op.state, OperationState::Failed | OperationState::Cancelled))
+                        || (op.kind == OperationKind::Uninstall
+                            && op.state == OperationState::Succeeded)
                 })
             && self
                 .preferences

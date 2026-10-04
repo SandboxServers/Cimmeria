@@ -687,5 +687,5 @@ adopts its contents. This record does not grant launch/delete permission or prov
 readiness: current-operation, content and runtime checks remain required. There
 is no new UI or Repair execution in this packet.
 
-Confirmed native uninstall and its recovery/retention boundaries are described in
-[installed-content maintenance](docs/maintenance.md); UI wiring is pending.
+Settings uninstall, explicit recovery and data-retention boundaries are described
+in [installed-content maintenance](docs/maintenance.md).

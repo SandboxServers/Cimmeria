@@ -31,6 +31,23 @@ Preferences, diagnostics consent, logs, signed evidence, managed runtime caches
 and extraction prefixes remain. This removes owned installed content, not all
 application data.
 
-The API is not wired to shell IPC or frontend controls yet. Windows-native
-validation and UI integration remain pending; no visual or gameplay result is
-claimed.
+## Settings flow and IPC
+
+Restricted `InstallCommand::Uninstall` exposes removal through the native host.
+Status supplies the saved installation ID, owned folder and recovery flag;
+preferences do not choose the removal target. Settings opens an inline confirmation
+showing the folder and explaining that files/modifications are removed while
+preferences and shared compatibility resources remain. Dismissal makes no mutation.
+
+Effect inspects native state before dispatch and observes the reply for up to
+35 seconds. Lost replies do not replay removal. Explicit **Finish uninstall**
+confirms recovery using the same operation ID. Install cancel, cleanup and
+reconcile controls do not apply to Uninstall. Successful removal enables a fresh
+Install when the chosen destination qualifies as empty.
+
+Local engine/shell checks passed 257 tests with 11 ignored, including host disk
+removal and consent preservation. All 28 frontend tests, type checking/build and
+JS installation logic UAT passed. The UAT used fixture IPC to check confirmation,
+dismissal, double-click protection, owned-folder targeting, acknowledged removal/
+reinstall and unchanged consent; it does not prove native deletion. No app
+was opened and no visual UAT is claimed; native Windows validation remains a gate.

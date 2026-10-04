@@ -251,18 +251,18 @@ resource. `helper-build.json` records provenance; it is not a trust source.
 The shell embeds the expected hash at compile time and resolves a fixed resource
 path, verifying again before release fetching/admission.
 
-For the tested debug helper, Windows CI run `37189445603` built commit
+The earlier tested debug helper came from Windows CI run `37189445603`, commit
 `17b949f4c8a5e37f9840177739ec8f6f4e85a9e4`; artifact SHA-256 is
 `5b51149c6a6c0a5f4403b3344433015f2db140bb45fe14e4425c0437b1605406`.
 From the repository root, set `CIMMERIA_WINE_HELPER` to the downloaded executable
 and run on macOS (the Tauri CLI must already be installed):
 
 ```bash
-export CIMMERIA_WINDOWS_HELPER_SHA256=5b51149c6a6c0a5f4403b3344433015f2db140bb45fe14e4425c0437b1605406
+export CIMMERIA_WINDOWS_HELPER_SHA256=d0c89fad444cb4dc6478f1db8a5e62bc54d5696ee2a84a63d740bf3a5b92c6a3
 export LAUNCHER_MANIFEST_PUBKEY_HEX=7d78f576e86c2a3993a35080538b122cf0d40bf7010a39e96483e7feac7d004e
 python3 crates/launcher/desktop/tools/stage-helper.py "$CIMMERIA_WINE_HELPER" \
   --sha256 "$CIMMERIA_WINDOWS_HELPER_SHA256" \
-  --revision 17b949f4c8a5e37f9840177739ec8f6f4e85a9e4
+  --revision 1fa1a13ce38fda449bc4e34037050612173271c6
 npm ci --ignore-scripts --prefix crates/launcher/desktop/frontend
 npm run build --prefix crates/launcher/desktop/frontend
 bash tools/build-lane/lane.sh bash crates/launcher/desktop/bundle-macos-dev.sh
@@ -365,9 +365,23 @@ not execute or probe any installer.
 
 An independent extraction from the authenticated original seed inventoried 119
 files totaling 160,028,982 bytes. This is archive evidence, not a successful
-retention run through the helper. The staged Windows helper is still the older
-build; rebuilding it and rerunning the real smoke are pending. The full-release
+retention run through the helper. The replacement helper is now built and staged:
+Windows CI run `37197224000`, artifact `11301459778`, source commit
+`1fa1a13ce38fda449bc4e34037050612173271c6`, SHA-256
+`d0c89fad444cb4dc6478f1db8a5e62bc54d5696ee2a84a63d740bf3a5b92c6a3`.
+The staging recipe above uses this retention-capable artifact. The full-release
 smoke now requires the retained directory and exact independently measured SHA-256
 hashes of four vendor executables; its earlier 312.55-second pass predates those
 assertions. Existing completed
 receipts do not establish prerequisite retention, installation or game readiness.
+
+The enhanced smoke (`20261004-062038-80112`) passed full-content preparation and
+all four retained prerequisite hashes, then uninstall correctly refused
+`Storage(InUse)`: the fixture retained its preclaim guard past publication, unlike
+the production worker. The fixture now drops that guard before publication. A
+corrected full run is pending; completed real uninstall is not yet proven.
+
+CI `37197224000` passed both platforms at the retention helper revision. Combined
+strict clippy passed (`20261004-062337-81520`). The updated Mac development bundle
+built (`20261004-062355-81738`) and its resource SHA matched the new helper digest;
+the app was not opened. These results do not establish visual/startup readiness.
