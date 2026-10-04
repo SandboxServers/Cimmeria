@@ -39,6 +39,8 @@ mod entities;
 mod gate_dial_state;
 mod interact_range;
 pub use interact_range::{interact_range, InteractRangeFail, MAX_INTERACT_DISTANCE};
+mod lab_dummy;
+pub use lab_dummy::{LabDummy, LAB_DUMMY_HEALTH, LAB_DUMMY_LIFETIME, LAB_DUMMY_MAX_PER_OWNER};
 mod lab_snapshots;
 mod lifecycle;
 mod live_tags;

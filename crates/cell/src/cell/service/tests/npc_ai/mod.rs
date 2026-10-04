@@ -107,6 +107,7 @@ mod combat_stance;
 mod crowd_control;
 mod dead_player_drop;
 mod follow_resume;
+mod lab_dummy;
 mod leash_reset;
 mod leash_walk;
 mod live_db_npc_vs_npc;

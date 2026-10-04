@@ -234,6 +234,9 @@ pub(super) async fn run_cell_loop(
                     // See `ticks::npc_respawn` for the full state +
                     // wire-burst sequence.
                     super::ticks::npc_respawn_tick(tx, &mut space_mgr).await;
+                    // Lab dummies (AB-L2, D-AU6) whose 10 minutes are up.
+                    // Returns at once when none is standing.
+                    crate::cell::console::abilities::lab_dummy_tick(tx, &mut space_mgr).await;
                     // Cover-detection — also 1 Hz. Scans every player for
                     // proximity to loaded cover sets; fires
                     // OnPlayerEnteredCover / OnPlayerLeftCover /

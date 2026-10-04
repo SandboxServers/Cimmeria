@@ -260,6 +260,11 @@ impl SpaceManager {
                 if e.is_player {
                     continue;
                 }
+                // A lab dummy (AB-L2, D-AU6) never gets an AI turn: no
+                // attack, no chase, no leash, however much threat it takes.
+                if e.extensions.contains::<super::LabDummy>() {
+                    continue;
+                }
                 let admitted = match e.class_id {
                     crate::mercury::SGWMOB_CLASS_ID => true,
                     // Pets think and move like mobs (A-22): without this they

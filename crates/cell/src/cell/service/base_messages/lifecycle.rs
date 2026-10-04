@@ -259,6 +259,8 @@ pub(super) async fn handle_disconnect_entity(
     space_mgr
         .fire_entity_hook(EntityHookPoint::AfterDisconnectTradeCancel, entity_id, tx)
         .await;
+    // AB-L2 (D-AU6): the GM's lab dummies go with the login.
+    crate::cell::console::abilities::despawn_lab_dummies_of(entity_id, tx, space_mgr).await;
     // BM-02: the Black Market session ends with the login; this is where a
     // window the client never answered is logged.
     crate::cell::cell_methods::black_market::on_disconnect(entity_id, space_mgr);
