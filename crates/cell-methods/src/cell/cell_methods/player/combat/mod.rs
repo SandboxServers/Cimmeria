@@ -22,6 +22,9 @@ use crate::cell::respawn;
 #[cfg(test)]
 mod tests;
 
+/// `packet_seq` is the Mercury seq of the client packet that carried the
+/// call (`None` from anywhere else); the receipt rows log it as
+/// `mercury_seq`, the join to the client's press (AB-T2).
 pub async fn dispatch(
     entity_id: u32,
     method_index: u16,
@@ -29,6 +32,7 @@ pub async fn dispatch(
     tx: &mpsc::Sender<CellToBaseMsg>,
     space_mgr: &mut SpaceManager,
     engine: &ChainEngine,
+    packet_seq: Option<u32>,
 ) -> bool {
     match method_index {
         CALL_FOR_AID => {
@@ -83,14 +87,21 @@ pub async fn dispatch(
         }
 
         USE_ABILITY => {
-            if args.len() >= 8 {
+            if args.len() < 8 {
+                short_args_row(
+                    entity_id,
+                    "useAbility",
+                    args.len(),
+                    8,
+                    packet_seq,
+                    space_mgr,
+                );
+            } else {
                 let ability_id = i32::from_le_bytes([args[0], args[1], args[2], args[3]]);
                 let target_id = i32::from_le_bytes([args[4], args[5], args[6], args[7]]);
-                // The receipt row (AB-T1, stage `recv`). The inbound Mercury
-                // packet seq that carried the call is not here: the base
-                // decodes it (`connect_loop::encrypted`) and forwards only
-                // `BaseToCellMsg::CellMethodCall { entity_id, method_index,
-                // args }`. Carrying it is AB-T2's plumbing.
+                // The receipt row (AB-T1, stage `recv`). `mercury_seq` is the
+                // inbound packet's sequence, the join to the client's press
+                // row (AB-T2); absent when the call came from no client packet.
                 let who = space_mgr.player_identity(entity_id);
                 tracing::debug!(
                     target: "abilities",
@@ -101,6 +112,7 @@ pub async fn dispatch(
                     entity_id,
                     ability_id,
                     wire_target_id = target_id,
+                    mercury_seq = packet_seq,
                     "useAbility"
                 );
 
@@ -122,7 +134,16 @@ pub async fn dispatch(
         }
 
         USE_ABILITY_ON_GROUND => {
-            if args.len() >= 16 {
+            if args.len() < 16 {
+                short_args_row(
+                    entity_id,
+                    "useAbilityOnGroundTarget",
+                    args.len(),
+                    16,
+                    packet_seq,
+                    space_mgr,
+                );
+            } else {
                 let ability_id = i32::from_le_bytes([args[0], args[1], args[2], args[3]]);
                 let x = f32::from_le_bytes([args[4], args[5], args[6], args[7]]);
                 let y = f32::from_le_bytes([args[8], args[9], args[10], args[11]]);
@@ -139,6 +160,7 @@ pub async fn dispatch(
                     x,
                     y,
                     z,
+                    mercury_seq = packet_seq,
                     "useAbilityOnGroundTarget"
                 );
 
@@ -196,6 +218,36 @@ pub async fn dispatch(
 
         _ => false,
     }
+}
+
+/// A cast press whose arguments are shorter than the method's fixed layout
+/// (AB-T2): the call is dropped before anything decodes it, so this row is
+/// the only trace of the press. DEBUG, because the client controls the
+/// bytes and could flood a WARN index.
+fn short_args_row(
+    entity_id: u32,
+    method: &'static str,
+    args_len: usize,
+    expected_len: usize,
+    packet_seq: Option<u32>,
+    space_mgr: &SpaceManager,
+) {
+    let who = space_mgr.player_identity(entity_id);
+    tracing::debug!(
+        target: "abilities",
+        event = "use_ability_args_short",
+        stage = "recv",
+        reason = "args_short",
+        account_id = who.account_id,
+        player_id = who.player_id,
+        entity_id,
+        method,
+        args_len,
+        expected_len,
+        mercury_seq = packet_seq,
+        "{method} receipt: expected {expected_len} argument bytes, got {args_len}; \
+         the press is dropped, the player sees nothing and no cooldown starts"
+    );
 }
 
 /// The server-side gates on the two player respawn entry points,

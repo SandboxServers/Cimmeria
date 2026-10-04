@@ -104,6 +104,13 @@ effect...` into the source (clippy `four_forward_slashes` caught it). Pass
 markers that do not start with `/`, or set `MSYS_NO_PATHCONV=1` in the
 script's own environment; check the spliced line after the edit.
 
+AB-T2 (2026-10-04): a Bash-tool command string loses every backslash-newline
+pair before the shell sees it, even inside a quoted `<<'EOF'` heredoc. A Rust
+string continuation (`"...; \` + newline) written through inline Python came
+out joined onto one line, and `'\r\n'` escapes in an inline script arrived as
+literal newlines, breaking the script. Write edit scripts with the Write tool
+and use `chr(13) + chr(10)` for CRLF; check continuations with `grep` after.
+
 Also, when the Dev Drive that holds the build-lane target dirs fills up
 ("no space on device"), delete only your own worktree's target dir under
 `CIMMERIA_TARGET_ROOT` and point `CIMMERIA_TARGET_ROOT` at a scratch

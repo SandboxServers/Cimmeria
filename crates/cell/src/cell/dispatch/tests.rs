@@ -156,7 +156,7 @@ async fn dispatch_trigger_region_enter_fires_event() {
     args.extend_from_slice(&0.0f32.to_le_bytes()); // y
     args.extend_from_slice(&0.0f32.to_le_bytes()); // z
 
-    dispatch_cell_method(1, CM_TRIGGER_REGION, &args, &tx, &mut mgr, &engine).await;
+    dispatch_cell_method(1, CM_TRIGGER_REGION, &args, &tx, &mut mgr, &engine, None).await;
 
     // No chains registered so no messages, but no panic = dispatch worked
     assert!(
@@ -195,7 +195,7 @@ async fn dispatch_trigger_region_exit() {
     args.push(0); // bEntering = false (exit)
     args.extend_from_slice(&[0u8; 12]);
 
-    dispatch_cell_method(1, CM_TRIGGER_REGION, &args, &tx, &mut mgr, &engine).await;
+    dispatch_cell_method(1, CM_TRIGGER_REGION, &args, &tx, &mut mgr, &engine, None).await;
     // No panic = success
 }
 
@@ -214,7 +214,7 @@ async fn dispatch_trigger_region_unknown_id_warns() {
     args.push(1);
     args.extend_from_slice(&[0u8; 12]);
 
-    dispatch_cell_method(1, CM_TRIGGER_REGION, &args, &tx, &mut mgr, &engine).await;
+    dispatch_cell_method(1, CM_TRIGGER_REGION, &args, &tx, &mut mgr, &engine, None).await;
     // Should warn but not panic, and produce no messages
     assert!(rx.try_recv().is_err());
 }
@@ -230,7 +230,7 @@ async fn dispatch_trigger_region_ignores_short_args() {
 
     // Only 4 bytes — less than required 17
     let args = vec![0u8; 4];
-    dispatch_cell_method(1, CM_TRIGGER_REGION, &args, &tx, &mut mgr, &engine).await;
+    dispatch_cell_method(1, CM_TRIGGER_REGION, &args, &tx, &mut mgr, &engine, None).await;
     // Should silently skip (no panic)
 }
 
@@ -271,7 +271,7 @@ async fn dispatch_reload_sends_entity_property() {
     let (tx, mut rx) = mpsc::channel(16);
 
     let args = vec![0u8]; // reloadType = 0
-    dispatch_cell_method(1, CM_REQUEST_RELOAD, &args, &tx, &mut mgr, &engine).await;
+    dispatch_cell_method(1, CM_REQUEST_RELOAD, &args, &tx, &mut mgr, &engine, None).await;
 
     // Reload sets the deadline but does NOT immediately refill — the magazine
     // stays at the pre-reload count until the reload tick runs past warmup.
@@ -327,7 +327,16 @@ async fn gm_gated_method_rejected_for_non_gm_caller() {
     let engine = cimmeria_content_engine::chain::ChainEngine::new();
     let (tx, mut rx) = mpsc::channel(16);
 
-    dispatch_cell_method(1, CM_WORLD_INSTANCE_RESET, &[], &tx, &mut mgr, &engine).await;
+    dispatch_cell_method(
+        1,
+        CM_WORLD_INSTANCE_RESET,
+        &[],
+        &tx,
+        &mut mgr,
+        &engine,
+        None,
+    )
+    .await;
 
     // Audit warn with the structured fields ops would pivot on.
     let event = capture
@@ -386,7 +395,16 @@ async fn gm_gated_method_allowed_for_gm_caller() {
     let engine = cimmeria_content_engine::chain::ChainEngine::new();
     let (tx, mut rx) = mpsc::channel(16);
 
-    dispatch_cell_method(1, CM_WORLD_INSTANCE_RESET, &[], &tx, &mut mgr, &engine).await;
+    dispatch_cell_method(
+        1,
+        CM_WORLD_INSTANCE_RESET,
+        &[],
+        &tx,
+        &mut mgr,
+        &engine,
+        None,
+    )
+    .await;
 
     assert!(
         capture
@@ -428,7 +446,7 @@ async fn gm_shout_rejected_for_player() {
         // isGlobal = 1, Text = "hi".
         let args = [1u8, 2, 0, 0, 0, b'h', 0, b'i', 0];
 
-        dispatch_cell_method(1, 222, &args, &tx, &mut mgr, &engine).await;
+        dispatch_cell_method(1, 222, &args, &tx, &mut mgr, &engine, None).await;
 
         let event = capture
             .find_message(tracing::Level::WARN, "GM-gated cell method rejected")
@@ -472,7 +490,7 @@ async fn non_gated_method_unaffected_by_gate_for_player() {
 
     // setTargetID (CM 0) with a target id — an ordinary player method.
     let args = 5i32.to_le_bytes().to_vec();
-    dispatch_cell_method(1, CM_SET_TARGET_ID, &args, &tx, &mut mgr, &engine).await;
+    dispatch_cell_method(1, CM_SET_TARGET_ID, &args, &tx, &mut mgr, &engine, None).await;
 
     // No onErrorCode (the gate didn't fire); the method ran normally.
     while let Ok(msg) = rx.try_recv() {
@@ -516,7 +534,7 @@ async fn dispatch_reload_already_full_no_message() {
     let engine = cimmeria_content_engine::chain::ChainEngine::new();
     let (tx, mut rx) = mpsc::channel(16);
 
-    dispatch_cell_method(1, CM_REQUEST_RELOAD, &[0u8], &tx, &mut mgr, &engine).await;
+    dispatch_cell_method(1, CM_REQUEST_RELOAD, &[0u8], &tx, &mut mgr, &engine, None).await;
 
     // No message sent when already full
     assert!(rx.try_recv().is_err());

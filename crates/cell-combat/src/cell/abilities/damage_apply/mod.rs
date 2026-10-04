@@ -142,6 +142,7 @@ async fn apply_hit(
         None => {
             // Defensive: entity vanished after the consume mutation. Flush
             // before exiting so the client still sees the ammo decrement.
+            silent_rows::hit_gone(space_mgr, entity_id, target_eid, ability_id, "caster_gone");
             if needs_ammo_stat_send {
                 flush_attacker_ammo_stat(entity_id, tx, space_mgr).await;
             }
@@ -153,7 +154,7 @@ async fn apply_hit(
     let target = match space_mgr.get_entity(target_eid) {
         Some(e) => e,
         None => {
-            tracing::debug!(target_eid, "apply_damage_to_target: target not found");
+            silent_rows::hit_gone(space_mgr, entity_id, target_eid, ability_id, "target_gone");
             // Flush ammo decrement even when target lookup fails — the shot
             // still left the chamber from the player's perspective.
             if needs_ammo_stat_send {
@@ -598,9 +599,11 @@ async fn apply_hit(
                 Some(e) if e.is_pulsing() && qr_gate::effect_lands(e, qr_result.result_code) => {
                     e.clone()
                 }
+                // A missing def was logged by `plan_hit_effects`.
                 _ => continue,
             };
-            let _ = crate::cell::effects::register_active_effect(
+            // `register_active_effect` logs each refusal itself (AB-T2).
+            crate::cell::effects::register_active_effect(
                 space_mgr,
                 target_eid,
                 entity_id,
@@ -650,6 +653,7 @@ mod effect_scripts;
 mod hit_ids;
 mod nvp_damage;
 mod qr_gate;
+mod silent_rows;
 
 #[cfg(test)]
 mod aggro_cause_tests;

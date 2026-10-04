@@ -22,10 +22,13 @@ use super::super::ConnectedClientState;
 /// Dispatch a cell-method message in the `0x80..=0xBF` range. Returns
 /// [`ControlFlow::Break`] to signal the encrypted dispatcher to `continue`
 /// the bundle scan (used when the message arrived before `mapLoaded` and
-/// must be ignored).
+/// must be ignored). `packet_seq` is the Mercury seq of the packet that
+/// carried the message; it rides to the cell for the receipt rows (AB-T2).
+#[allow(clippy::too_many_arguments)]
 pub(super) async fn dispatch_cell_method(
     id: u8,
     payload: &[u8],
+    packet_seq: Option<u32>,
     addr: SocketAddr,
     transport: &Arc<dyn Transport>,
     key: [u8; 32],
@@ -122,6 +125,7 @@ pub(super) async fn dispatch_cell_method(
                         entity_id: player_eid,
                         method_index,
                         args,
+                        packet_seq,
                     })
                     .await;
             }
@@ -134,6 +138,7 @@ pub(super) async fn dispatch_cell_method(
                     entity_id: player_eid,
                     method_index,
                     args: method_payload.to_vec(),
+                    packet_seq,
                 })
                 .await;
         }

@@ -248,7 +248,9 @@ impl SpaceManager {
         pred: impl Fn(&TimedEffect) -> bool,
     ) -> Vec<TimedEffect> {
         let target_who = self.player_identity(target);
+        let cast_id = self.current_cast_id();
         let Some(entity) = self.get_entity_mut(target) else {
+            log_nothing_removed(target, target_who, why, cast_id, "target_gone");
             return Vec::new();
         };
         let mut removed = Vec::new();
@@ -266,6 +268,9 @@ impl SpaceManager {
             let after = cur(entity, &entry);
             log_removed(target, target_who, &entry, why, before, after);
             removed.push(entry);
+        }
+        if removed.is_empty() {
+            log_nothing_removed(target, target_who, why, cast_id, "no_match");
         }
         removed
     }
@@ -362,4 +367,50 @@ pub(super) fn log_removed(
         stat_after = ?stat_after,
         "timed effect removed"
     );
+}
+
+/// A removal that took nothing off (AB-T2). The sweeps (expiry, death,
+/// damage, revive, a bandolier swap) ask every entity and usually match
+/// nothing, so they log at TRACE; a directed removal (a script's on_remove,
+/// a toggle, a cleanse, a moniker removal, a drained shield, a refresh)
+/// expected an entry, so DEBUG: its icon or stat may be left behind.
+fn log_nothing_removed(
+    target: u32,
+    target_who: PlayerIdentity,
+    why: StatBuffRemoval,
+    cast_id: Option<i32>,
+    reason: &'static str,
+) {
+    let sweep = matches!(
+        why,
+        StatBuffRemoval::Expired
+            | StatBuffRemoval::Death
+            | StatBuffRemoval::Damage
+            | StatBuffRemoval::Revive
+            | StatBuffRemoval::BandolierSwap
+    );
+    macro_rules! row {
+        ($level:ident) => {
+            tracing::$level!(
+                target: "abilities.ledger",
+                event = "stat_buff_remove_nothing",
+                stage = "ledger",
+                reason,
+                removal = why.reason(),
+                // The ledger API does not know who asked for the removal, so
+                // the target is named as the subject only, never as the
+                // actor: `account_id` / `player_id` would misattribute a
+                // cleanse of an ally to the ally (rule 5).
+                target_id = target,
+                target_player_id = target_who.player_id,
+                cast_id,
+                "timed effect ledger: a removal ({reason}) took no entry off the target; nothing changes on the client"
+            )
+        };
+    }
+    if sweep {
+        row!(trace);
+    } else {
+        row!(debug);
+    }
 }

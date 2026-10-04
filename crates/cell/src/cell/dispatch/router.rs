@@ -30,7 +30,7 @@ use cimmeria_cell_world::cell::plugin::CellMethodCall;
     name = "cell.dispatch",
     level = "debug",
     skip_all,
-    fields(entity_id, method_index, args_len = args.len(), space_id = tracing::field::Empty),
+    fields(entity_id, method_index, args_len = args.len(), packet_seq, space_id = tracing::field::Empty),
 )]
 pub async fn dispatch_cell_method(
     entity_id: u32,
@@ -39,6 +39,10 @@ pub async fn dispatch_cell_method(
     tx: &mpsc::Sender<CellToBaseMsg>,
     space_mgr: &mut SpaceManager,
     engine: &ChainEngine,
+    // The Mercury seq of the client packet that carried the call (`None`
+    // when it came from anywhere else). Telemetry only: the player
+    // dispatch hands it to the `useAbility` receipt row (AB-T2).
+    packet_seq: Option<u32>,
 ) {
     // Backfill space_id so SigNoz can pivot dispatches by world/instance.
     if let Some(e) = space_mgr.get_entity(entity_id) {
@@ -123,7 +127,17 @@ pub async fn dispatch_cell_method(
         return;
     }
     // SGWPlayer own methods (67–108) — needs engine for content chains
-    if cell_methods::player::dispatch(entity_id, method_index, args, tx, space_mgr, engine).await {
+    if cell_methods::player::dispatch_from_packet(
+        entity_id,
+        method_index,
+        args,
+        tx,
+        space_mgr,
+        engine,
+        packet_seq,
+    )
+    .await
+    {
         return;
     }
     // SGWGmPlayer own methods (109+) — the native gm*/debug surface. The GM
@@ -200,6 +214,7 @@ mod tests {
             &tx,
             &mut mgr,
             &engine,
+            None,
         )
         .await;
 

@@ -105,6 +105,9 @@ pub(in crate::cell::abilities) async fn fire_cast(
             needs_ammo_stat_send = true;
             let who = entity.identity();
             tracing::debug!(
+                target: "abilities",
+                event = "ammo_consumed",
+                stage = "fire",
                 account_id = who.account_id,
                 player_id = who.player_id,
                 entity_id,
@@ -251,6 +254,23 @@ async fn fire_at_target(
         // dirty ammo stat (e.g. ground-targeted ability that consumed ammo
         // without picking up a target via auto-aim). A cast that routed
         // every effect off its target has nothing to resolve on it either.
+        // Not an error (a Self buff lands through `land_routed`), but the
+        // target pipeline did nothing, so say so (AB-T2).
+        let who = space_mgr.player_identity(entity_id);
+        tracing::debug!(
+            target: "abilities",
+            event = "fire_target_skipped",
+            stage = "fire",
+            reason = if target_id <= 0 { "no_target" } else { "all_routed_away" },
+            account_id = who.account_id,
+            player_id = who.player_id,
+            entity_id,
+            cast_id = effect_seq,
+            ability_id,
+            target_id,
+            off_target_landings = routed.landings.len(),
+            "fire: expected a target to resolve the cast on, none took part (no target, or every effect routed to the caster or allies); no QR roll, no damage, only off-target effects land"
+        );
         if needs_ammo_stat_send {
             flush_attacker_ammo_stat(entity_id, tx, space_mgr).await;
         }

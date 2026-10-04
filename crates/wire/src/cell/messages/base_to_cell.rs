@@ -97,10 +97,16 @@ pub enum BaseToCellMsg {
     /// `method_index` is the flattened EXPOSED CellMethod index for the
     /// SGWPlayer entity type (0 = setTargetID, 1 = setMovementType, etc.).
     /// `args` contains the raw method arguments (after entity_id extraction).
+    /// `packet_seq` is the Mercury sequence of the client packet that
+    /// carried the call (`RxDelivery::bundle_seqs`), for telemetry only:
+    /// the `useAbility` receipt row logs it as `mercury_seq`, the join to
+    /// the client's press (ability-mechanics AB-T2). `None` when the call
+    /// did not come from a client bundle (a test, an internal forward).
     CellMethodCall {
         entity_id: u32,
         method_index: u16,
         args: Vec<u8>,
+        packet_seq: Option<u32>,
     },
 
     /// Chat message from a player, forwarded from BaseApp for spatial distribution.

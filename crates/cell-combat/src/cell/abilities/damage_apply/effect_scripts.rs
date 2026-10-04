@@ -21,6 +21,7 @@ use cimmeria_entity::stats::{FOCUS, HEALTH};
 
 use super::nvp_damage::{NvpDamage, NvpPlanner};
 use super::qr_gate::effect_lands;
+use super::silent_rows;
 use super::HitIds;
 use crate::cell::abilities::effect_plan::{
     PlannedEffect, PATH_NVP, PATH_SKIPPED, REASON_AFTER_HIT_SCRIPT, REASON_AMMO_ON_HIT,
@@ -80,9 +81,12 @@ pub(super) fn plan_hit_effects(
 ) -> HitEffects {
     let mut plan = HitEffects::default();
     let mut rows: Vec<PlannedEffect> = Vec::new();
+    let cast_id = space_mgr.current_cast_id();
     let Some(def) = ability_def else {
         let landed = result_code != RC_MISS;
         if landed {
+            // WARN beside the `effect_planned` row: the numbers are made up.
+            silent_rows::unknown_ability_fallback(ids, cast_id, UNKNOWN_ABILITY_HEALTH_DAMAGE);
             plan.nvp.push(NvpDamage {
                 effect_id: None,
                 health: UNKNOWN_ABILITY_HEALTH_DAMAGE,
@@ -109,6 +113,7 @@ pub(super) fn plan_hit_effects(
     let mut nvp = NvpPlanner::default();
     for &eid in &def.effect_ids {
         let Some(effect) = space_mgr.effect_defs.get(&eid) else {
+            silent_rows::effect_def_missing(ids, cast_id, eid, "plan");
             continue;
         };
         if !effect_lands(effect, result_code) {
@@ -155,6 +160,9 @@ pub(super) fn plan_hit_effects(
         }
     }
 
+    if let Some(eid) = on_hit_effect_id.filter(|eid| !space_mgr.effect_defs.contains_key(eid)) {
+        silent_rows::effect_def_missing(ids, cast_id, eid, "on_hit");
+    }
     if let Some(effect) = on_hit_effect_id.and_then(|eid| space_mgr.effect_defs.get(&eid)) {
         if effect.script_name.is_some() {
             plan.after_scripts.push(effect.effect_id);
@@ -205,6 +213,7 @@ pub(super) fn apply_damage_scripts(
     };
     for &eid in effect_ids {
         let Some(mut effect) = space_mgr.effect_defs.get(&eid).cloned() else {
+            silent_rows::effect_def_missing(ids, space_mgr.current_cast_id(), eid, "damage_script");
             continue;
         };
         scale_damage_nvps(&mut effect, scale);
@@ -290,8 +299,9 @@ pub(super) fn run_scripts(
     effect_ids: &[i32],
     damage_type: i8,
 ) {
-    for eid in effect_ids {
-        let Some(mut effect) = space_mgr.effect_defs.get(eid).cloned() else {
+    for &eid in effect_ids {
+        let Some(mut effect) = space_mgr.effect_defs.get(&eid).cloned() else {
+            silent_rows::effect_def_missing(ids, space_mgr.current_cast_id(), eid, "after_script");
             continue;
         };
         absorb_script_damage(space_mgr, ids, &mut effect, damage_type);
@@ -301,6 +311,7 @@ pub(super) fn run_scripts(
 
 fn dispatch(space_mgr: &mut SpaceManager, ids: HitIds, effect: &EffectDef) {
     let Some(script_name) = effect.script_name.as_deref() else {
+        silent_rows::script_name_missing(ids, space_mgr.current_cast_id(), effect.effect_id);
         return;
     };
     let mut ctx = crate::cell::effects::EffectContext {

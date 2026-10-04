@@ -269,3 +269,37 @@ fn a_shield_on_a_hostile_is_refused() {
         .find_event(Level::WARN, "not the caster or an ally", "target_not_ally")
         .is_some());
 }
+
+/// **Regression guard (AB-T2, ledger family).** A shield's `on_remove` that
+/// finds no entry (it expired or was cleansed first) discarded the empty
+/// take with `let _`. The script now logs `effect_on_remove_no_entry`, and
+/// the ledger its own `stat_buff_remove_nothing` at DEBUG (a directed
+/// removal that expected an entry).
+#[test]
+fn a_shield_removal_that_finds_no_entry_says_so() {
+    let mut mgr = make_mgr_with_target();
+    let effect = personal_shield();
+    let logs = LogCapture::install();
+    let mut ctx = EffectContext {
+        source_id: 1,
+        target_id: 1,
+        effect: &effect,
+        space_mgr: &mut mgr,
+    };
+    AbsorbShield.on_remove(&mut ctx);
+
+    let all = logs.all();
+    let script = all
+        .iter()
+        .find(|c| c.has_field("event", "effect_on_remove_no_entry"))
+        .unwrap_or_else(|| panic!("the script's row: {all:#?}"));
+    assert_eq!(script.target, "abilities.ledger");
+    assert!(script.has_field("script", "AbsorbShield"), "{script:?}");
+    assert!(script.has_field("effect_id", "4306"), "{script:?}");
+    let ledger = all
+        .iter()
+        .find(|c| c.has_field("event", "stat_buff_remove_nothing"))
+        .unwrap_or_else(|| panic!("the ledger's row: {all:#?}"));
+    assert_eq!(ledger.level, Level::DEBUG, "a directed removal: {ledger:?}");
+    assert!(ledger.has_field("reason", "no_match"), "{ledger:?}");
+}

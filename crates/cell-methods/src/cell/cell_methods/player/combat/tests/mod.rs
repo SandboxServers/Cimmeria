@@ -37,7 +37,7 @@ async fn dispatch_returns_false_for_unknown_method() {
     let mut mgr = make_mgr_with_player("Castle_CellBlock");
     let engine = ChainEngine::new();
     let (tx, _rx) = mpsc::channel(8);
-    let handled = dispatch(1, 9999, &[], &tx, &mut mgr, &engine).await;
+    let handled = dispatch(1, 9999, &[], &tx, &mut mgr, &engine, None).await;
     assert!(!handled);
 }
 
@@ -55,7 +55,7 @@ async fn use_ability_receipt_row_names_the_player() {
     let mut args = 7i32.to_le_bytes().to_vec();
     args.extend_from_slice(&42i32.to_le_bytes());
 
-    assert!(dispatch(1, USE_ABILITY, &args, &tx, &mut mgr, &engine).await);
+    assert!(dispatch(1, USE_ABILITY, &args, &tx, &mut mgr, &engine, Some(4711)).await);
 
     let recv = logs
         .all()
@@ -69,6 +69,8 @@ async fn use_ability_receipt_row_names_the_player() {
         ("player_id", "100"),
         ("ability_id", "7"),
         ("wire_target_id", "42"),
+        // AB-T2: the inbound Mercury seq, the join to the client's press.
+        ("mercury_seq", "4711"),
     ] {
         assert!(recv.has_field(k, v), "{k} = {v}: {recv:?}");
     }
@@ -89,8 +91,35 @@ async fn use_ability_with_short_args_silently_drops() {
     let engine = ChainEngine::new();
     let (tx, mut rx) = mpsc::channel(8);
 
-    let handled = dispatch(1, USE_ABILITY, &[1u8, 2, 3], &tx, &mut mgr, &engine).await;
+    let logs = crate::test_support::LogCapture::install();
+    let handled = dispatch(
+        1,
+        USE_ABILITY,
+        &[1u8, 2, 3],
+        &tx,
+        &mut mgr,
+        &engine,
+        Some(9),
+    )
+    .await;
     assert!(handled);
+    // AB-T2: the drop is no longer silent. One DEBUG row under `abilities`
+    // names the player, the lengths and the packet.
+    let row = logs
+        .all()
+        .into_iter()
+        .find(|c| c.has_field("event", "use_ability_args_short"))
+        .expect("a short useAbility logs its drop");
+    assert_eq!(row.target, "abilities");
+    assert_eq!(row.level, tracing::Level::DEBUG);
+    for (k, v) in [
+        ("player_id", "100"),
+        ("args_len", "3"),
+        ("expected_len", "8"),
+        ("mercury_seq", "9"),
+    ] {
+        assert!(row.has_field(k, v), "{k} = {v}: {row:?}");
+    }
     assert!(
         rx.try_recv().is_err(),
         "short USE_ABILITY must not emit packets"

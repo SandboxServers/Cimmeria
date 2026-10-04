@@ -23,6 +23,7 @@ use crate::mercury::game_clock;
 use super::super::auto_cycle_state::send_auto_cycle_state;
 use super::super::timer_update::send_timer_update;
 
+use super::gate_rows::{LaunchRefusal, LaunchRow};
 use super::weapon_redirect::resolve_weapon_redirect;
 
 /// Handle a `useAbility(abilityId, targetId)` cell method call.
@@ -73,6 +74,15 @@ pub async fn handle_use_ability(
         resolve_weapon_redirect(entity_id, ability_id, ability_def, space_mgr);
     // Rule 5: every row below names the player (`None` for an NPC caster).
     let who = space_mgr.player_identity(entity_id);
+    // Every early return logs one row through it (AB-T2, `gate_rows`).
+    let mut row = LaunchRow {
+        who,
+        entity_id,
+        ability_id,
+        ability_name: ability_def.as_ref().map_or("unknown", |d| d.name.as_str()),
+        wire_target_id: target_id,
+        target_id,
+    };
 
     // ── Pet summon (pets PT-03) ──
     //
@@ -102,8 +112,10 @@ pub async fn handle_use_ability(
     )
     .await
     else {
+        row.refused(LaunchRefusal::NoBeneficialTarget);
         return false;
     };
+    row.target_id = target_id;
     // The fire re-resolves a beneficial cast from what the client sent.
     let wire_target_id = if beneficial {
         client_target_id
@@ -131,13 +143,7 @@ pub async fn handle_use_ability(
     });
     if override_clears_loop {
         if let Some(new_state) = combat::clear_auto_cycle(space_mgr, entity_id) {
-            tracing::info!(
-                account_id = who.account_id,
-                player_id = who.player_id,
-                entity_id,
-                ability_id,
-                "auto-cycle: cleared by manual override (different ability fired)"
-            );
+            row.auto_cycle_overridden();
             send_auto_cycle_state(entity_id, new_state, tx, space_mgr).await;
         }
     }
@@ -163,20 +169,12 @@ pub async fn handle_use_ability(
     let mut friendly_cast = false;
     let mut support_hostile = false;
     'validate: {
-        let entity = match space_mgr.get_entity(entity_id) {
-            Some(e) => e,
-            None => {
-                tracing::warn!(
-                    account_id = who.account_id,
-                    player_id = who.player_id,
-                    entity_id,
-                    "useAbility: entity not found"
-                );
-                return false;
-            }
+        let Some(entity) = space_mgr.get_entity(entity_id) else {
+            row.refused(LaunchRefusal::CasterMissing);
+            return false;
         };
-
         if combat::is_dead_state(entity.state_field) {
+            row.refused(LaunchRefusal::CasterDead);
             return false;
         }
         if super::incapacitated::is_incapacitated(entity) {
@@ -187,15 +185,10 @@ pub async fn handle_use_ability(
         // `currentAbility` (an ability in its warmup) was set. The refusal
         // is silent, like the cooldown refusal below (AT-10).
         if let Some(pending) = entity.pending_cast.as_ref() {
-            tracing::debug!(
-                account_id = who.account_id,
-                player_id = who.player_id,
-                entity_id,
-                ability_id,
-                warming_ability_id = pending.ability_id,
-                warming_cast_id = pending.cast_id(),
-                "useAbility: already warming up an ability"
-            );
+            row.refused(LaunchRefusal::AlreadyWarming {
+                ability_id: pending.ability_id,
+                cast_id: pending.cast_id(),
+            });
             return false;
         }
         if !entity.abilities.has_ability(ability_id) {
@@ -225,13 +218,7 @@ pub async fn handle_use_ability(
                 //   spam-burn the log index just by sending bogus
                 //   ability ids on this client-controlled path.
                 if ability_def.is_some() {
-                    tracing::warn!(
-                        account_id = who.account_id,
-                        player_id = who.player_id,
-                        entity_id,
-                        ability_id,
-                        "useAbility: ability not in known set and not granted by active weapon"
-                    );
+                    row.refused(LaunchRefusal::NotKnown);
                     // A stale action-bar button after a respec (AT-08)
                     // lands here: the bar is client-side and keeps the
                     // binding. The press gets feedback (project rule). A
@@ -241,25 +228,13 @@ pub async fn handle_use_ability(
                         break 'validate;
                     }
                 } else {
-                    tracing::debug!(
-                        account_id = who.account_id,
-                        player_id = who.player_id,
-                        entity_id,
-                        ability_id,
-                        "useAbility: unknown ability_id (no server def — likely client-forged or stale)"
-                    );
+                    row.refused(LaunchRefusal::UnknownAbilityId);
                 }
                 return false;
             }
         }
         if entity.abilities.is_on_cooldown(ability_id) {
-            tracing::debug!(
-                account_id = who.account_id,
-                player_id = who.player_id,
-                entity_id,
-                ability_id,
-                "useAbility: ability on cooldown"
-            );
+            row.refused(LaunchRefusal::OnCooldown);
             return false;
         }
         if super::no_mechanics::lacks_mechanics(
@@ -286,14 +261,7 @@ pub async fn handle_use_ability(
             if let Some(target) = space_mgr.get_entity(target_id as u32) {
                 // Don't attack dead targets
                 if combat::is_dead_state(target.state_field) {
-                    tracing::debug!(
-                        account_id = who.account_id,
-                        player_id = who.player_id,
-                        entity_id,
-                        ability_id,
-                        target_id,
-                        "useAbility: target is dead"
-                    );
+                    row.refused(LaunchRefusal::TargetDead);
                     return false;
                 }
                 // The #444 gate and its two inversions (support shots,
@@ -450,9 +418,9 @@ pub async fn handle_use_ability(
     }
 
     // Mutable borrow for state changes
-    let entity = match space_mgr.get_entity_mut(entity_id) {
-        Some(e) => e,
-        None => return false,
+    let Some(entity) = space_mgr.get_entity_mut(entity_id) else {
+        row.refused(LaunchRefusal::CasterVanished);
+        return false;
     };
 
     // Check ammo for ranged abilities (players only — NPCs have infinite ammo).
@@ -470,27 +438,16 @@ pub async fn handle_use_ability(
     // effectively granting free ammo. The tick is the sole authority that
     // clears `reload_complete_at`, so we gate on its presence.
     if required_ammo > 0 && entity.is_player && entity.reload_complete_at.is_some() {
-        tracing::debug!(
-            account_id = who.account_id,
-            player_id = who.player_id,
-            entity_id,
-            ability_id,
-            "useAbility: reload in progress, blocking fire"
-        );
+        row.refused(LaunchRefusal::Reloading);
         return false;
     }
 
     let current_ammo = entity.active_ammo();
     if required_ammo > 0 && entity.is_player && current_ammo < required_ammo {
-        tracing::debug!(
-            account_id = who.account_id,
-            player_id = who.player_id,
-            entity_id,
-            ability_id,
-            current = current_ammo,
-            required = required_ammo,
-            "useAbility: not enough ammo"
-        );
+        row.refused(LaunchRefusal::NoAmmo {
+            current: current_ammo,
+            required: required_ammo,
+        });
         return false;
     }
 

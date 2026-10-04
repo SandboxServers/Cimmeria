@@ -124,14 +124,14 @@ fn assert_one_refusal(capture: &LogCaptureGuard, reason: &str, method: &str) {
 async fn call_for_aid(mgr: &mut SpaceManager, id: i32) -> mpsc::Receiver<CellToBaseMsg> {
     let engine = ChainEngine::new();
     let (tx, rx) = mpsc::channel(64);
-    assert!(dispatch(1, CALL_FOR_AID, &id.to_le_bytes(), &tx, mgr, &engine).await);
+    assert!(dispatch(1, CALL_FOR_AID, &id.to_le_bytes(), &tx, mgr, &engine, None).await);
     rx
 }
 
 async fn respawn(mgr: &mut SpaceManager) -> mpsc::Receiver<CellToBaseMsg> {
     let engine = ChainEngine::new();
     let (tx, rx) = mpsc::channel(64);
-    assert!(dispatch(1, RESPAWN, &[], &tx, mgr, &engine).await);
+    assert!(dispatch(1, RESPAWN, &[], &tx, mgr, &engine, None).await);
     rx
 }
 

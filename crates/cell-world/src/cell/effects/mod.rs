@@ -164,6 +164,27 @@ pub fn dispatch_on_remove(name: &str, ctx: &mut EffectContext) -> bool {
             script.on_remove(ctx);
             true
         }
-        None => false,
+        None => {
+            // Nothing registered under the name: no cleanup runs. Fine for
+            // an effect that mutated nothing on apply; a leak (a flag, a
+            // pool) for one whose script was renamed (AB-T2).
+            tracing::debug!(
+                target: "abilities.effect",
+                event = "effect_script_remove_unregistered",
+                stage = "end",
+                reason = "script_not_registered",
+                script = name,
+                account_id = ctx.space_mgr.player_identity(ctx.source_id).account_id,
+                player_id = ctx.space_mgr.player_identity(ctx.source_id).player_id,
+                source_id = ctx.source_id,
+                target_id = ctx.target_id,
+                target_player_id = ctx.space_mgr.player_identity(ctx.target_id).player_id,
+                cast_id = ctx.space_mgr.current_cast_id(),
+                effect_id = ctx.effect.effect_id,
+                ability_id = ctx.effect.ability_id,
+                "effect removal: expected a registered script to run on_remove, none is registered under this name; no cleanup runs, state the apply set may stay"
+            );
+            false
+        }
     }
 }

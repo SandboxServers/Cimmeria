@@ -148,9 +148,14 @@ fn apply_lock(ctx: &mut EffectContext, kind: &'static str) {
 /// Take `ctx`'s caster's entry of its effect off the target.
 fn remove_lock(ctx: &mut EffectContext) {
     let key = (ctx.effect.effect_id, ctx.source_id);
-    let _ = ctx
-        .space_mgr
-        .remove_timed_effects(ctx.target_id, StatBuffRemoval::Removed, |e| e.key() == key);
+    let removed =
+        ctx.space_mgr
+            .remove_timed_effects(ctx.target_id, StatBuffRemoval::Removed, |e| e.key() == key);
+    // Each removed entry logs `stat_buff_removed` in the ledger; an empty
+    // take is this script's own row (AB-T2).
+    if removed.is_empty() {
+        crate::cell::effects::script_rows::on_remove_found_nothing(ctx, "crowd_control");
+    }
 }
 
 /// Locks the target's movement and actions for the effect's duration

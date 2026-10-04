@@ -209,6 +209,7 @@ async fn an_aoe_secondary_crossing_fires_health_below() {
         &tx,
         &mut mgr,
         &engine,
+        None,
     )
     .await;
 

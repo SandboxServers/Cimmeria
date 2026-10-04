@@ -53,6 +53,8 @@ mod register;
 mod tick;
 
 #[cfg(test)]
+mod silent_rows_tests;
+#[cfg(test)]
 mod stun_tests;
 #[cfg(test)]
 mod tests;

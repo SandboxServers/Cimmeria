@@ -147,9 +147,14 @@ pub(crate) async fn handle_encrypted_datagram(
         tracing::trace!(%addr, client_seq = seq, "Queueing ACK for client reliable message");
         pending_acks.lock().unwrap().push(seq);
     }
-    for body in &delivery.bundles {
+    // Each bundle travels with the Mercury seq that carried it, so the
+    // `useAbility` receipt row can name the packet the client logged when it
+    // sent the press (ability-mechanics AB-T2).
+    for (i, body) in delivery.bundles.iter().enumerate() {
+        let packet_seq = delivery.bundle_seqs.get(i).copied().flatten();
         dispatch_client_bundle(
             body,
+            packet_seq,
             transport,
             addr,
             key,
@@ -205,6 +210,7 @@ fn receive_in_order(
 /// back-to-back messages) and dispatch each message.
 async fn dispatch_client_bundle(
     body: &[u8],
+    packet_seq: Option<u32>,
     transport: &Arc<dyn Transport>,
     addr: SocketAddr,
     key: [u8; 32],
@@ -536,6 +542,7 @@ async fn dispatch_client_bundle(
                 if cell_arms::dispatch_cell_method(
                     id,
                     payload,
+                    packet_seq,
                     addr,
                     transport,
                     key,
