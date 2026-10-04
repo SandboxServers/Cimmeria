@@ -174,3 +174,68 @@ async fn uncertain_seed_retains_input_and_partial_output_without_ledger() {
 async fn hash_failure_never_dispatches_external_seed() {
     exercise(false, true).await;
 }
+
+#[tokio::test]
+async fn complete_authenticated_seed_cache_works_offline_but_corruption_fetches_again() {
+    for corrupt in [false, true] {
+        let server = MockServer::start().await;
+        Mock::given(method("GET"))
+            .respond_with(ResponseTemplate::new(200).set_body_bytes(b"verified seed".to_vec()))
+            .expect(if corrupt { 1 } else { 0 })
+            .mount(&server)
+            .await;
+        let root = tempfile::tempdir().unwrap();
+        let cache = root.path().join("cache");
+        std::fs::create_dir(&cache).unwrap();
+        let hash: String = Sha256::digest(b"verified seed")
+            .iter()
+            .map(|b| format!("{b:02x}"))
+            .collect();
+        let manifest: Manifest = serde_json::from_value(serde_json::json!({
+            "schema":1,"seed":{"blob":"seed","size":13,"sha256":hash},"patches":[]
+        }))
+        .unwrap();
+        let archive = cache.join(format!(
+            ".tmp-seed-{}.download",
+            safe_sha_prefix(&hash).unwrap()
+        ));
+        std::fs::write(
+            &archive,
+            if corrupt {
+                b"corruptedseed"
+            } else {
+                b"verified seed"
+            },
+        )
+        .unwrap();
+        let extractor = Extractor {
+            calls: AtomicUsize::new(0),
+            uncertain: true,
+        };
+        let http = reqwest::Client::new();
+        let result = apply(
+            &InstallContext {
+                manifest_url: &format!("{}/manifest.json", server.uri()),
+                install_dir: &root.path().join("stage"),
+                manifest: &manifest,
+                login_servers: &[],
+                cancel: CancellationToken::new(),
+                progress: ProgressSink::latest().0,
+                http: &http,
+            },
+            &manifest.seed,
+            Some(SeedBackend {
+                extractor: &extractor,
+                cache_directory: &cache,
+            }),
+        )
+        .await;
+        assert!(matches!(result, Err(InstallError::SeedExtractionUncertain)));
+        assert_eq!(extractor.calls.load(Ordering::SeqCst), 1);
+        let requests = server.received_requests().await.unwrap();
+        assert!(requests
+            .iter()
+            .all(|request| !request.headers.contains_key("range")));
+        server.verify().await;
+    }
+}

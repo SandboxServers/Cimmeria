@@ -7,7 +7,7 @@ import { mountInstall } from './.test-build/install-view.mjs';
 const html=await readFile(new URL('./ui/index.html',import.meta.url),'utf8');
 const id='7e438f46-9b99-450d-83b6-3c12436b403c';
 let status={schema_version:1,install_supported:true,can_resume:true,can_reconcile:true,can_retry:false,progress:null,outcome:null,native:{schema_version:1,requires_reopen:false,
-  preferences:{schema_version:1,revision:1,install_directory:'/fixture/owned',launcher_summary_consent:false},
+  preferences:{schema_version:1,revision:1,install_directory:'/fixture/app-data/Stargate Worlds',launcher_summary_consent:false},
   operation:{schema_version:1,revision:0,operation:null}}};
 const calls=[];const requests=[];
 const invoke=async(_command,{request})=>{
@@ -25,6 +25,9 @@ const invoke=async(_command,{request})=>{
 const mount=(operationId=id)=>{const {document,window}=parseHTML(html);return {document,window,app:mountInstall(document,invoke,()=>operationId)};};
 const settle=async app=>{await app.settled();await new Promise(resolve=>setImmediate(resolve));};
 let ui=mount();await ui.app.ready;await settle(ui.app);
+assert.equal(ui.document.getElementById('install').disabled,false);
+assert.equal(status.native.preferences.install_directory,'/fixture/app-data/Stargate Worlds');
+assert.equal(status.native.preferences.launcher_summary_consent,false);
 ui.document.getElementById('install').dispatchEvent(new ui.window.Event('click'));await settle(ui.app);
 assert.equal(status.native.operation.operation.state,'running');
 assert.equal(ui.document.getElementById('cancel-install').hidden,false);

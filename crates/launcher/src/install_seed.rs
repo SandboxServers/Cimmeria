@@ -41,16 +41,58 @@ pub(super) async fn apply(
         .map_or(ctx.install_dir, |backend| backend.cache_directory);
     std::fs::create_dir_all(download_dir)?;
     let archive = download_dir.join(format!(".tmp-seed-{short_hash}.download"));
-    download_to_file(
-        ctx.http,
-        &url,
-        &archive,
-        ctx.cancel.clone(),
-        seed.size,
-        "seed",
-        &ctx.progress,
-    )
-    .await?;
+    // A complete, authenticated cache can survive an interrupted attempt.
+    // Reuse it even when the archive host is unavailable; extraction rechecks it.
+    let cached = archive.clone();
+    let expected = seed.sha256.clone();
+    let size = seed.size;
+    let cancel = ctx.cancel.clone();
+    let complete = tokio::task::spawn_blocking(move || -> Result<bool, InstallError> {
+        if cancel.is_cancelled() {
+            return Err(InstallError::Cancelled);
+        }
+        let meta = match std::fs::symlink_metadata(&cached) {
+            Ok(meta) => meta,
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(false),
+            Err(error) => return Err(error.into()),
+        };
+        if !meta.is_file() {
+            return Err(std::io::Error::other("seed cache is not a regular file").into());
+        }
+        if meta.len() != size {
+            return Ok(false);
+        }
+        match verify_sha256(&cached, &expected, "seed") {
+            Ok(()) => Ok(true),
+            Err(InstallError::HashMismatch { .. }) => {
+                if cancel.is_cancelled() {
+                    return Err(InstallError::Cancelled);
+                }
+                // A full-size corrupt file cannot resume: Range at EOF would
+                // receive 416 and keep failing. Fetch clean bytes from zero.
+                std::fs::remove_file(cached)?;
+                Ok(false)
+            }
+            Err(error) => Err(error),
+        }
+    })
+    .await
+    .map_err(|_| InstallError::Io(std::io::Error::other("seed cache verification failed")))??;
+    if ctx.cancel.is_cancelled() {
+        return Err(InstallError::Cancelled);
+    }
+    if !complete {
+        download_to_file(
+            ctx.http,
+            &url,
+            &archive,
+            ctx.cancel.clone(),
+            seed.size,
+            "seed",
+            &ctx.progress,
+        )
+        .await?;
+    }
     info!("Unpacking seed into {}", ctx.install_dir.display());
     let Some(backend) = backend else {
         return verify_and_unpack(ctx, &archive, ctx.install_dir, &seed.sha256, "seed").await;

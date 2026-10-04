@@ -224,3 +224,47 @@ Windows+Mac before the shell; shell/visual/game gates remain separate.
   plus confirmation/retry/consent UAT passed; combined strict clippy passed. Windows junction and
   visual checks pending. Actual failed-Wine cleanup passed24.096s after helper
   completion/content rejection; destination empty, retry enabled, consent unchanged. Reconcile/cleanup IPC 35 seconds.
+
+
+- Fresh revision-zero/no-operation settings save app-local-data/Stargate Worlds once,
+  consent off; no game directory/download/install starts. Existing saved/cleared
+  settings remain. Complete-size hash-verified seed cache avoids HTTP; confirmed complete hash mismatch
+  removes cache before non-Range HTTP; partial cache retained (fixture passed). Real signed
+  release RAR+seven-patches+setup+promotion smoke running, outcome pending.
+
+
+- Original signed-release full-content test passed314.73s: seed+seven patches,
+  production claim/shared setup/promotion/content receipt, consentfalse. Overall
+  initial lane failed later: missing --lib ran DEV-signature process harness with
+  production key. Correct --lib rerun pending; ordinary suites require no prodkey.
+  Strict clippy passed. No launch/login/gameplay claim.
+
+
+- File-cap split: requirements remain launcher-implementation-plan.md; dated
+  packet evidence moved intact to launcher-implementation-ledger.md beside it.
+  Existing launcher self-update contract moved to docs/client/launcher-self-update.md;
+  old launcher heading/anchor remains as a pointer. Campaign and docs indexes link
+  both. Continue recording new outcomes in the ledger, not the requirements plan.
+
+- Next prerequisite seam: shared `unpack::unpack` extracts the entire RAR to
+  `.tmp-unpack`, expands the installer cabinet set into the game destination,
+  then removes staging. The external seed seam also deletes the verified archive
+  after successful extraction. Original prerequisite installers therefore need an
+  explicit preservation/extraction contract before either cleanup. Issue #1121
+  identifies candidates under `Data/Prerequisites`; its package/import inventory
+  remains a claim until checked against archive/binary evidence. Do not infer
+  redistribution permission or game readiness from content extraction success.
+- Before repair/uninstall/launch: `DesktopState::install_intent` currently resolves
+  only the current operation when its kind is Install. A subsequent Launch or
+  Repair operation must not erase access to installation ownership/version.
+  Introduce a durable installed-content reference independent of the active
+  operation slot, reconciled against the existing intent/receipt and signed
+  release evidence, rather than treating a launch outcome as install state.
+
+
+- Corrected exact --lib real signed-release content smoke passed312.55s,
+  lane315.308s exit0: original seed+all seven patches+content validation+receipt,
+  consentfalse. Ordinary engine218/ten ignored, shell17/one ignored and combined
+  strict clippy passed. Latest-source Mac development bundle passed with known
+  STATIC_VCRUNTIME deprecation; final packaging/startup/gameplay remain unproven.
+  The earlier non-lib invocation's fixture-key failure is historical, not current.

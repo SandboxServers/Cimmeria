@@ -3,7 +3,7 @@
 > **Type:** Reference
 > **Audience:** Native launcher contributors and supervised testers
 > **Last updated:** 2026-10-04
-> **Companions:** [Desktop launcher](../README.md), [runtime provisioning evidence](../../../../docs/analysis/playtests/2026-10-03-macos-wine/runtime-provisioning.md), [implementation ledger](../../../../docs/analysis/playtests/2026-10-03-macos-wine/launcher-implementation-plan.md)
+> **Companions:** [Desktop launcher](../README.md), [runtime provisioning evidence](../../../../docs/analysis/playtests/2026-10-03-macos-wine/runtime-provisioning.md), [implementation ledger](../../../../docs/analysis/playtests/2026-10-03-macos-wine/launcher-implementation-ledger.md)
 
 Paths in this reference are relative to `crates/launcher/desktop/` unless stated
 otherwise. Shell commands run from the repository root. Mac content installation
@@ -313,3 +313,42 @@ recovery gate. Final checks, including stop/wait failure and timeout guards,
 passed 212 engine tests/eight ignored, 15 shell tests/one ignored and combined
 strict clippy. JS logic UAT passed reconciliation availability without resume or
 success inference; native IPC was mocked and visual behavior was not exercised.
+
+
+## Original signed-release content smoke
+
+Use the same `SGW_CLIENT_RAR`, `CIMMERIA_SMOKE_MANIFEST`, Windows helper and
+compile-time production verification key as the real-archive recipe above.
+Restrict this invocation to the library test:
+
+```bash
+bash tools/build-lane/lane.sh cargo test --locked \
+  --manifest-path crates/launcher/desktop/Cargo.toml \
+  -p cimmeria-launcher-engine --lib \
+  storage::install_worker::wine::tests::original_signed_release_prepares_patched_content \
+  -- --exact --ignored --nocapture
+```
+
+The `--lib` restriction is required for both production-key smoke commands.
+Ordinary suites and the standalone supervisor process harness use development-key
+fixtures; run those without `LAUNCHER_MANIFEST_PUBKEY_HEX` set to the production
+key. A name filter alone does not prevent a harness-free integration binary from
+running.
+
+On 2026-10-04, the full-content test itself passed in 314.73 seconds, covering the
+authenticated original seed, seven release patches, production destination claim,
+shared installation/client setup, content validation, promotion and receipt.
+Diagnostics consent remained false. The overall first lane invocation failed
+later because it omitted `--lib` and ran the development-signature process harness
+under the production key. The corrected library-only invocation passed in
+312.55 seconds (315.308 seconds lane, exit zero), confirming original seed, all
+seven patches, content validation and receipt, with consent false. This does not
+establish launch, login, gameplay or release performance.
+
+
+Final ordinary validation for this packet passed 218 engine tests/ten ignored,
+17 shell tests/one ignored and combined strict clippy. These ordinary checks ran
+without the production verification-key override. The latest-source development
+Mac bundle also built successfully, with the known `STATIC_VCRUNTIME` deprecation
+warning. Final packaging/startup validation remains deferred; bundle creation is
+not an application launch or gameplay result.

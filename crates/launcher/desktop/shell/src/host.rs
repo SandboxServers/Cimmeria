@@ -10,6 +10,7 @@ pub use install::{InstallCommand, InstallStatus, JobError};
 
 pub struct NativeHost {
     root: PathBuf,
+    default_install_directory: Option<PathBuf>,
     #[cfg(target_os = "macos")]
     helper: Option<cimmeria_launcher_engine::mac_wine::HelperResource>,
     state: Mutex<Option<Arc<Mutex<DesktopState>>>>,
@@ -19,11 +20,19 @@ impl NativeHost {
     pub fn new(root: PathBuf) -> Self {
         Self {
             root,
+            default_install_directory: None,
             #[cfg(target_os = "macos")]
             helper: None,
             state: Mutex::new(None),
             worker: Mutex::new(None),
         }
+    }
+
+    /// Only native app-data resolution supplies this path. It seeds untouched
+    /// preferences once, without creating a game directory or changing consent.
+    pub fn with_default_install_directory(mut self, directory: PathBuf) -> Self {
+        self.default_install_directory = Some(directory);
+        self
     }
 
     #[cfg(target_os = "macos")]
@@ -50,7 +59,24 @@ impl NativeHost {
     fn store(&self) -> Result<Arc<Mutex<DesktopState>>, StorageError> {
         let mut guard = self.state.lock().map_err(|_| StorageError::Io)?;
         if guard.is_none() {
-            *guard = Some(Arc::new(Mutex::new(DesktopState::open(&self.root)?)));
+            let mut state = DesktopState::open(&self.root)?;
+            if state.preferences().revision == 0
+                && state.preferences().install_directory.is_none()
+                && state.operations().snapshot().operation.is_none()
+            {
+                if let Some(directory) = &self.default_install_directory {
+                    // Windows game data belongs in LocalAppData, not a roaming
+                    // profile. Its app parent may differ from the settings root.
+                    if !directory.is_absolute() {
+                        return Err(StorageError::InvalidDirectory);
+                    }
+                    let parent = directory.parent().ok_or(StorageError::InvalidDirectory)?;
+                    std::fs::create_dir_all(parent).map_err(|_| StorageError::Io)?;
+                    let consent = state.preferences().launcher_summary_consent;
+                    state.save_preferences(Some(directory.clone()), consent, 0)?;
+                }
+            }
+            *guard = Some(Arc::new(Mutex::new(state)));
         }
         guard.as_ref().cloned().ok_or(StorageError::Io)
     }
@@ -138,5 +164,49 @@ mod tests {
         assert!(host
             .dispatch(NativeCommand::Inspect { schema_version: 1 })
             .is_ok());
+    }
+    #[test]
+    fn fresh_host_defaults_once_without_creating_game_files_or_enabling_consent() {
+        let root = tempfile::tempdir().unwrap();
+        let directory = root.path().join("Stargate Worlds");
+        let host = NativeHost::new(root.path().join("state"))
+            .with_default_install_directory(directory.clone());
+        let snapshot = host
+            .dispatch(NativeCommand::Inspect { schema_version: 1 })
+            .unwrap();
+        assert_eq!(
+            snapshot.preferences.install_directory,
+            Some(directory.clone())
+        );
+        assert_eq!(snapshot.preferences.revision, 1);
+        assert!(!snapshot.preferences.launcher_summary_consent);
+        assert!(!directory.exists());
+        drop(host);
+        let host = NativeHost::new(root.path().join("state"))
+            .with_default_install_directory(directory.clone());
+        let reopened = host
+            .dispatch(NativeCommand::Inspect { schema_version: 1 })
+            .unwrap();
+        assert_eq!(
+            reopened.preferences.install_directory,
+            Some(directory.clone())
+        );
+        assert_eq!(reopened.preferences.revision, 1);
+        host.dispatch(NativeCommand::SavePreferences {
+            schema_version: 1,
+            expected_revision: 1,
+            install_directory: None,
+            launcher_summary_consent: true,
+        })
+        .unwrap();
+        drop(host);
+        let reopened =
+            NativeHost::new(root.path().join("state")).with_default_install_directory(directory);
+        let snapshot = reopened
+            .dispatch(NativeCommand::Inspect { schema_version: 1 })
+            .unwrap();
+        assert_eq!(snapshot.preferences.install_directory, None);
+        assert_eq!(snapshot.preferences.revision, 2);
+        assert!(snapshot.preferences.launcher_summary_consent);
     }
 }

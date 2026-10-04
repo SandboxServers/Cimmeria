@@ -88,6 +88,7 @@ Want to start contributing? Read **[../CONTRIBUTING.md](../CONTRIBUTING.md)** �
 | [macOS/Wine playtest 2026-10-03](analysis/playtests/2026-10-03-macos-wine/README.md) | Resume the Apple Silicon bring-up: saved WoWSilicon OpenGL workaround, verified launcher UI, outstanding installation and human gameplay checks |
 | [Launcher platform options](analysis/playtests/2026-10-03-macos-wine/launcher-platform-options.md) | Research comparing shared egui/wgpu, Tauri and SwiftUI with Rust: porting boundaries, proposed performance gates, testing and maintenance tradeoffs; no architecture accepted |
 | [Tauri launcher implementation plan](analysis/playtests/2026-10-03-macos-wine/launcher-implementation-plan.md) | PR-sized Tauri + Effect workflow plan, Rust reuse audit, consent-aware install/launch summaries and final self-contained startup release gate |
+| [Desktop launcher implementation ledger](analysis/playtests/2026-10-03-macos-wine/launcher-implementation-ledger.md) | Dated delivery evidence, exact validation revisions and remaining launcher gates |
 | [Desktop launcher engine](../crates/launcher/desktop/README.md) | Tauri settings shell, native state and Effect workflows, persistence UAT and remaining game integration gates |
 | [Launcher packaging proof](../crates/launcher/prototype-packaging/README.md) | Authorized, throwaway Mac egui/Tauri packaging comparison: build and actual-model UAT commands, offline first-open criteria and Windows-native handoff; no production adoption |
 | [Historical CellBlocks](analysis/historical-cellblocks/README.md) | Seven recoverable historical states of the Castle CellBlock map (builds 43485–63682) as empty, instanced worlds 1201–1207 for side-by-side comparison with stock world 12: the world contract, the server wiring and category-12 world-info push, the client patch and its streaming-filename fix, and the risks the in-client UAT has to settle |
@@ -302,6 +303,7 @@ Analysis of game client binaries, launcher tools, and client asset inventories. 
 | Document | Description | Status |
 |----------|-------------|--------|
 | [sgw-launcher.md](client/sgw-launcher.md) | Launcher design: seed + patch manifest install, Atera-detection launch, single-PUT log upload, hostname patch | Complete |
+| [launcher-self-update.md](client/launcher-self-update.md) | Windows launcher updater identity, trust, download, swap and rollback contract | Complete |
 | [launcher-guide.md](client/launcher-guide.md) | User-facing guide: how the launcher works for players, how operators prepare and publish patches | Complete |
 | [launcher-distribution-setup.md](client/launcher-distribution-setup.md) | Operational runbook: GitHub Releases publish flow for content, Ed25519 manifest signing setup, Azure Blob SAS for log uploads | Complete |
 | [audio-voice-inventory.md](client/audio-voice-inventory.md) | Complete FMOD audio inventory: 280 .fev + 566 .fsb files, zone ambience, music, weapons, abilities, UI, dialog VO gap analysis | Complete |

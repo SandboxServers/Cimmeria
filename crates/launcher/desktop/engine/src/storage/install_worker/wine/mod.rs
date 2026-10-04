@@ -70,6 +70,29 @@ pub(super) async fn install(
     let Ok(_ownership) = claim(intent, state_root) else {
         return Outcome::DestinationUnavailable;
     };
+    install_claimed(
+        state,
+        intent,
+        release,
+        manifest_url,
+        http,
+        helper,
+        cancel,
+        progress,
+    )
+    .await
+}
+#[allow(clippy::too_many_arguments)]
+async fn install_claimed(
+    state: &Arc<Mutex<DesktopState>>,
+    intent: &InstallIntent,
+    release: &VerifiedRelease,
+    manifest_url: &str,
+    http: &reqwest::Client,
+    helper: PathBuf,
+    cancel: CancellationToken,
+    progress: ProgressSink,
+) -> Outcome {
     let adapter = match WineSeedExtractor::prepare(
         state.clone(),
         intent.operation_id,

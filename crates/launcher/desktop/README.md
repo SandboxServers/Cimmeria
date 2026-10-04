@@ -48,6 +48,14 @@ adapters must also surface `requires_reopen`. Windows-native engine checks have
 passed; power-loss durability remains unvalidated; OS sync calls alone do not
 prove hardware crash behavior.
 
+On the first untouched preferences state (revision zero, no saved path and no
+operation), the shell saves `<app-local-data>/Stargate Worlds` as the default folder
+with diagnostics consent off. This saves a preference only: it creates no game
+directory, downloads nothing and starts no installation. Only its native parent
+is created if needed; the existing app-data/state settings root is unchanged.
+Windows uses LocalAppData rather than roaming storage for the game path. Previously saved or
+explicitly cleared paths and consent choices are preserved.
+
 Preferences persist an optional absolute install path and separate default-off
 `launcher_summary_consent`. Saves require the current preference revision. An
 active operation blocks path changes but permits consent changes. The path check
@@ -137,6 +145,13 @@ Tokio watch channel. A stalled or disconnected observer cannot build a backlog
 or fail installation. The existing egui worker uses the legacy adapter and
 preserves its event stream. Progress is observational, not an operation journal
 or proof that the game is ready.
+
+Before HTTP, shared seed extraction checks an existing cache's complete declared
+size and SHA-256. Authenticated complete input is reused even if its host is
+unavailable; extraction verifies it again. A complete cache with a confirmed hash mismatch is deleted before a fresh
+non-Range download. Incomplete cache is retained for ordinary Range handling;
+downloaded content is still verified. A fixture proves zero requests for valid
+cache and one request for invalid cache. This does not enable automatic resume.
 
 The loopback installer test downloads a synthetic PE-in-ZIP seed, verifies its
 hash, extracts it, overlays a patch, writes the login file, disables ASLR and
@@ -242,42 +257,19 @@ this nested workspace. `.github/workflows/launcher-desktop.yml` adds explicit
 native Mac/Windows checks and the frontend/native logic UAT. Shared-source
 changes also run an existing-launcher Cargo check on native Windows.
 
-On 2026-10-04, **178 engine tests**, **two shell-host tests**, **14 frontend
-tests**, strict clippy, TypeScript checking and formatting passed locally on
-macOS. Three engine tests are ignored by default: the subprocess fixture invoked
-by its parent, plus manual real-SGW-executable and real-client-RAR checks that
-remain unrun. Coverage includes command/schema validation, ownership/retries,
-cancellation races, file failures before/after replacement, preference
-persistence, stale revisions, corrupt/future state, symlink rejection and
-bounded reads. A child process holds the lock while writing; its parent verifies
-exclusion, kills it and reopens interrupted state. That interrupts an idle child
-after completed writes, not a write in progress or a power failure. Effect tests
-use virtual time for retry/timeout behavior.
+Validation covers native ownership, persistence/revision guards, process locking,
+helper protocols, interrupted content and explicit cleanup. The lock/death test
+kills an idle child after committed writes; it is not a power-loss or
+kill-during-write simulation. Effect tests use virtual time for retry/timeout
+behavior. The settings JS UAT uses real Rust persistence across restart;
+installation-control UAT uses mocked IPC. Neither establishes native visual,
+keyboard or real-dialog behavior.
 
-The frontend suite includes eight workflow tests and six DOM tests covering
-navigation, disabled game actions, pending/failed consent saves, folder choice
-and cancellation, and disposal during pending IPC. Two shell-host tests cover
-lazy ownership, saved-folder resolution and retry after another owner releases
-the lock. Native shell compilation, its two host tests and clippy passed locally
-on macOS. No desktop window was opened for those checks.
-
-JS logic UAT mounts the actual HTML and view code in a headless DOM. It drives a
-checkbox through Effect, the Rust process harness and disk, then restarts the
-process and confirms persistence. It also checks restored settings and a mocked
-cancelled chooser without an extra save. Earlier workflow steps cover
-default-off consent, path persistence and persisted opt-out. The patch tab
-renders a notes response fixture as literal text while consent remains
-unchanged. Signature verification is covered separately in Rust, not by this DOM
-fixture. This does not exercise native webview rendering, Tauri command routing,
-real dialogs or file-manager reveal, keyboard behavior, gameplay or telemetry
-export.
-
-[CI run
-37181383914](https://github.com/SandboxServers/Cimmeria/actions/runs/37181383914)
-passed the Windows and macOS engine/frontend persistence checks at `69fc13d3f`,
-before the shell was added. CI now includes shell tests, clippy and executable
-builds. Run `37182711152` passed both native platforms at `aaf00cb9e`, after the
-Windows icon correction and before the catalog addition.
+Current external-asset evidence and smoke commands live in
+[Wine validation](docs/wine-validation.md). Dated counts and exact CI revisions
+live in the [implementation ledger](../../../docs/analysis/playtests/2026-10-03-macos-wine/launcher-implementation-ledger.md).
+An older green run never validates a later revision. Ignored external-asset tests
+must be reported separately when explicitly run.
 
 ## Next integration gates
 
@@ -671,3 +663,10 @@ unchanged consent. Combined strict clippy passed. Windows junction regression is
 but not locally run. Real failed-Wine cleanup passed in 24.096 seconds: the helper
 finished extraction, invalid content failed validation, confirmed cleanup emptied
 the game destination and enabled retry without changing consent. Native visual UAT remains open.
+
+Current default-folder/cache checks passed 218 engine tests/ten ignored and
+17 shell tests/one ignored. Mocked-native JS installation UAT passed the default
+folder/enabled-install/unchanged-consent case. Strict clippy passed. The real signed-release content test passed in 314.73
+seconds; its initial lane invocation later failed in a development-key harness
+run under the production key. The corrected `--lib` rerun passed in 312.55
+seconds (315.308 seconds lane, exit zero); see [validation details](docs/wine-validation.md#original-signed-release-content-smoke).

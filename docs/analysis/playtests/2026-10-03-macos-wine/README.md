@@ -138,3 +138,10 @@ see the plan's implementation ledger for tested scope and remaining work.
 Implementation evidence: [runtime provisioning](runtime-provisioning.md) records
 the pinned Wine inventory, candidate launch environment, distribution gates and
 Windows-helper ownership requirements. It does not establish game compatibility.
+
+
+## Launcher implementation references
+
+- [Requirements and delivery plan](launcher-implementation-plan.md)
+- [Dated implementation ledger](launcher-implementation-ledger.md)
+- [Runtime provisioning evidence](runtime-provisioning.md)

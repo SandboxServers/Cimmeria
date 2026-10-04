@@ -115,7 +115,10 @@ fn main() {
     tauri::Builder::default()
         .plugin(tauri_plugin_dialog::init())
         .setup(|app| {
-            let host = NativeHost::new(app.path().app_data_dir()?.join("state"));
+            let app_data = app.path().app_data_dir()?;
+            let host = NativeHost::new(app_data.join("state")).with_default_install_directory(
+                app.path().app_local_data_dir()?.join("Stargate Worlds"),
+            );
             #[cfg(target_os = "macos")]
             let host = host.with_bundled_helper(app.path().resource_dir()?);
             app.manage(Arc::new(host));

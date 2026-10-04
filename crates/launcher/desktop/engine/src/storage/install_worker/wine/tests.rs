@@ -291,3 +291,65 @@ async fn failed_wine_content_can_be_cleaned_for_a_new_attempt() {
     );
     server.verify().await;
 }
+
+#[tokio::test]
+#[ignore = "real signed release: requires original archive, release public key and Windows-native helper; downloads real patches"]
+async fn original_signed_release_prepares_patched_content() {
+    let source = PathBuf::from(std::env::var_os("SGW_CLIENT_RAR").expect("set original archive"));
+    let manifest =
+        PathBuf::from(std::env::var_os("CIMMERIA_SMOKE_MANIFEST").expect("set signed manifest"));
+    let release = crate::catalog::verify_release(
+        &std::fs::read(&manifest).unwrap(),
+        &std::fs::read(manifest.with_extension("json.sig")).unwrap(),
+    )
+    .unwrap();
+    let helper =
+        PathBuf::from(std::env::var_os("CIMMERIA_WINE_HELPER").expect("set native helper"));
+    let (root, state, id) = setup(
+        &release,
+        Sha256::digest(std::fs::read(&helper).unwrap()).into(),
+    );
+    let (intent, state_root) = {
+        let mut owner = state.lock().unwrap();
+        owner
+            .operations_mut()
+            .unwrap()
+            .observe(id, OperationState::Running)
+            .unwrap();
+        (
+            owner.install_intent().unwrap().unwrap(),
+            owner.directory.root.clone(),
+        )
+    };
+    // Use production ownership and preparation functions, preloading only the
+    // already-authenticated seed cache to avoid a second multi-GB download.
+    let _ownership = claim(&intent, &state_root).unwrap();
+    let cache = intent.destination.join(format!(".cimmeria-cache-{id}"));
+    std::fs::create_dir(&cache).unwrap();
+    let archive = cache.join(format!(
+        ".tmp-seed-{}.download",
+        &release.manifest().seed.sha256[..12]
+    ));
+    std::fs::copy(source, &archive).unwrap();
+    let http = download_client().unwrap();
+    let outcome = install_claimed(
+        &state,
+        &intent,
+        &release,
+        crate::catalog::URL,
+        &http,
+        helper,
+        CancellationToken::new(),
+        ProgressSink::latest().0,
+    )
+    .await;
+    assert_eq!(outcome, Outcome::ContentPrepared);
+    assert_eq!(publish(&state, id, outcome), Outcome::ContentPrepared);
+    assert!(root.path().join("install/content-ready.json").exists());
+    assert!(content_valid(&root.path().join("install/game"), &release));
+    assert!(!state.lock().unwrap().preferences().launcher_summary_consent);
+    eprintln!(
+        "Authenticated real seed and {} patches prepared; runtime/gameplay not tested",
+        release.manifest().patches.len()
+    );
+}
