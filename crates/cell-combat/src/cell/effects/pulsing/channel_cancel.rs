@@ -19,7 +19,7 @@ use cimmeria_entity::abilities::{
 };
 
 use crate::cell::abilities::wire_ledger::{self, WireCtx};
-use crate::cell::abilities::{send_timer_update, WireRoute};
+use crate::cell::abilities::{send_timer_update_ctx, WireRoute};
 use crate::cell::messages::CellToBaseMsg;
 use crate::cell::space_manager::SpaceManager;
 
@@ -145,7 +145,8 @@ pub async fn cancel_channels_from_attacker(
             0.0,
             0.0,
         );
-        send_timer_update(target_eid, zero_timer, tx, space_mgr).await;
+        let ctx = WireCtx::new("channel_cancel").reason("effect_cleared");
+        send_timer_update_ctx(target_eid, zero_timer, ctx, tx, space_mgr).await;
     }
 
     cancelled_count
@@ -329,7 +330,8 @@ pub async fn cancel_channels_for_invoker_ability(
             0.0,
             0.0,
         );
-        send_timer_update(target_eid, zero_timer, tx, space_mgr).await;
+        let ctx = WireCtx::new("channel_cancel").reason("effect_cleared");
+        send_timer_update_ctx(target_eid, zero_timer, ctx, tx, space_mgr).await;
     }
     cancelled_count
 }

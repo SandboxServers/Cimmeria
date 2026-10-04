@@ -11,7 +11,7 @@ use tokio::sync::mpsc;
 use cimmeria_entity::abilities::{serialize_timer_update, EffectDef, TIMER_DURATION_EFFECT};
 use cimmeria_entity::cell_entity::ActiveEffectInstance;
 
-use crate::cell::abilities::send_timer_update;
+use crate::cell::abilities::{send_timer_update_ctx, WireCtx};
 use crate::cell::messages::CellToBaseMsg;
 use crate::cell::space_manager::SpaceManager;
 
@@ -176,7 +176,11 @@ pub async fn register_active_effect(
         crate::mercury::game_clock::game_time_secs() + total_time,
     );
     // Target's own client only; an NPC target's timer has no client handler.
-    send_timer_update(target_id, timer_bytes, tx, space_mgr).await;
+    let ctx = WireCtx::new("pulse_register")
+        .cast(cast_id)
+        .ability(effect.ability_id)
+        .reason("effect_started");
+    send_timer_update_ctx(target_id, timer_bytes, ctx, tx, space_mgr).await;
 
     true
 }
