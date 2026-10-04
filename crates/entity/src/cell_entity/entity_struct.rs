@@ -71,6 +71,13 @@ pub struct CellEntity {
     /// `false`.
     pub movement_unrestricted: bool,
 
+    /// GM god mode (`gmSetGodMode`, SGWGmPlayer index 142, `/gmsetgodmode`).
+    /// While set, ability hits and effect pulses land everything except a
+    /// loss of Health or Focus: `cell::combat::god_mode` puts the pools back
+    /// and logs `god_mode_absorbed`. In-memory only, like
+    /// `movement_unrestricted`: a relog starts with it off.
+    pub god_mode: bool,
+
     /// Cell-local property values (CELL_PUBLIC, CELL_PRIVATE, etc.).
     pub properties: HashMap<String, PropertyValue>,
 

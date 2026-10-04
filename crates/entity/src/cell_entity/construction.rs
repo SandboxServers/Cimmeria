@@ -26,6 +26,7 @@ impl CellEntity {
             velocity: [0.0; 3],
             is_on_ground: true,
             movement_unrestricted: false,
+            god_mode: false,
             properties: HashMap::new(),
             witnesses: HashSet::new(),
             // NPC perception radius. A player's is raised to

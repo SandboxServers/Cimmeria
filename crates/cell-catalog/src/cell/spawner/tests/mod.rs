@@ -79,6 +79,7 @@
 
 mod live_db_ability_animation_links;
 mod live_db_ability_ranges;
+mod live_db_ability_sets;
 mod live_db_ammo_catalog;
 mod live_db_ammo_loot;
 mod live_db_castle_loot;

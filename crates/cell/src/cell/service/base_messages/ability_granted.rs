@@ -118,7 +118,7 @@ pub(super) async fn handle_ability_granted(
 /// The client tolerates an unsolicited `onTrainerOpen` when the trainer
 /// window isn't visible (UEvent_UI_TrainerOpen handler just shows the
 /// panel), so this is harmless.
-async fn resend_trainer_if_pinned(
+pub(super) async fn resend_trainer_if_pinned(
     entity_id: u32,
     training_points: i32,
     tx: &mpsc::Sender<CellToBaseMsg>,

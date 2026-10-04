@@ -28,6 +28,7 @@ mod disconnect_ability_snapshot;
 mod disconnect_persist_position;
 mod duel;
 mod general;
+mod gm_abilities;
 mod gm_ability_granted;
 mod gm_spawn_ready;
 mod identity_propagation;

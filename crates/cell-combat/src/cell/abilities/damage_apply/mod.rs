@@ -15,6 +15,7 @@ use cimmeria_entity::abilities::{serialize_effect_results, AbilityDef, DT_PHYSIC
 use cimmeria_entity::stats::HEALTH;
 
 use super::super::combat;
+use super::super::combat::god_mode::{DamageSource, GodModeGuard};
 use super::super::messages::CellToBaseMsg;
 use super::super::space_manager::SpaceManager;
 use cimmeria_cell_world::cell::duel;
@@ -254,6 +255,8 @@ async fn apply_hit(
     // Player targets only: the pools before the hit, for the `vitals`
     // `damage_taken` row logged once the hit (and any duel clamp) landed.
     let vitals_before = combat::vitals::player_snapshot(space_mgr, target_eid);
+    // GM god mode (142): snapshot the pools, put back any loss below.
+    let god_mode = GodModeGuard::arm(space_mgr, target_eid);
 
     // Apply health damage to target
     let target = match space_mgr.get_entity_mut(target_eid) {
@@ -296,6 +299,12 @@ async fn apply_hit(
     // AB-10: charge what the hit drained from the absorb stats to the
     // shields on the ledger; an emptied one comes off (icon clear below).
     space_mgr.settle_absorb_shields(target_eid);
+    if let Some(guard) = &god_mode {
+        let source = DamageSource::hit(entity_id, ability_id, "ability_hit");
+        if guard.restore_hit(space_mgr, source, &mut effect_results) {
+            total_health_damage = 0;
+        }
+    }
 
     if let Some(shot) = &shot {
         ammo_damage::log_applied(
@@ -495,6 +504,12 @@ async fn apply_hit(
     if !plan.after_scripts.is_empty() {
         effect_scripts::run_scripts(space_mgr, ids, &plan.after_scripts, damage_type);
         space_mgr.settle_absorb_shields(target_eid);
+        if let Some(guard) = &god_mode {
+            guard.restore(
+                space_mgr,
+                DamageSource::hit(entity_id, ability_id, "ability_script"),
+            );
+        }
         // D-SS20 again: a script's own HEALTH write (a bleed) from the
         // partner is held at 1 too, before the flush below and before the
         // effect-driven death sweep reads it.
@@ -667,6 +682,8 @@ mod bleed_death_tests;
 mod cover_tests;
 #[cfg(test)]
 mod damage_seed_live_db_tests;
+#[cfg(test)]
+mod god_mode_tests;
 #[cfg(test)]
 mod per_effect_damage_tests;
 #[cfg(test)]

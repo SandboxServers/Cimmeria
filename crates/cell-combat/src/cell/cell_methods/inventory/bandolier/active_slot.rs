@@ -581,6 +581,34 @@ pub async fn handle_request_active_slot_change(
     swap_weapon_granted_abilities_for_slot(entity_id, slot_id, tx, space_mgr).await;
 }
 
+/// The abilities the weapon in `entity_id`'s bandolier `slot_id` grants:
+/// its `items_event_sets` bindings for `EVENT_ITEM_RANGED`,
+/// `EVENT_ITEM_MELEE` and `EVENT_ITEM_USE_ABILITY`. Empty for an empty
+/// slot. The active-slot swap and the GM ability reset
+/// (`gmResetAbilities`, AB-N2) both reconcile against it.
+pub fn weapon_ability_set(
+    space_mgr: &SpaceManager,
+    entity_id: u32,
+    slot_id: i32,
+) -> std::collections::HashSet<i32> {
+    use crate::cell::spawner::{EVENT_ITEM_MELEE, EVENT_ITEM_RANGED, EVENT_ITEM_USE_ABILITY};
+    let item_id = space_mgr
+        .get_entity(entity_id)
+        .and_then(|e| e.bandolier_items.get(&slot_id).map(|b| b.item_id));
+    let Some(item_id) = item_id else {
+        return Default::default();
+    };
+    [EVENT_ITEM_RANGED, EVENT_ITEM_MELEE, EVENT_ITEM_USE_ABILITY]
+        .into_iter()
+        .filter_map(|event_id| {
+            space_mgr
+                .item_event_set_abilities
+                .get(&(item_id, event_id))
+                .copied()
+        })
+        .collect()
+}
+
 /// Compute the new weapon's `items_event_sets` bindings, hand them to
 /// [`cimmeria_entity::abilities::AbilityManager::swap_weapon_granted_abilities`],
 /// and broadcast `onKnownAbilitiesUpdate` if the set changed.
@@ -600,23 +628,12 @@ async fn swap_weapon_granted_abilities_for_slot(
     tx: &mpsc::Sender<CellToBaseMsg>,
     space_mgr: &mut SpaceManager,
 ) {
-    use crate::cell::spawner::{EVENT_ITEM_MELEE, EVENT_ITEM_RANGED, EVENT_ITEM_USE_ABILITY};
-    use std::collections::HashSet;
-
     // 1. New weapon's bindings — read item_id from the now-active slot,
     //    look up every relevant event_id in items_event_sets.
     let item_id = space_mgr
         .get_entity(entity_id)
         .and_then(|e| e.bandolier_items.get(&slot_id).map(|b| b.item_id));
-    let mut new_set: HashSet<i32> = HashSet::new();
-    if let Some(item_id) = item_id {
-        for event_id in [EVENT_ITEM_RANGED, EVENT_ITEM_MELEE, EVENT_ITEM_USE_ABILITY] {
-            if let Some(&ability_id) = space_mgr.item_event_set_abilities.get(&(item_id, event_id))
-            {
-                new_set.insert(ability_id);
-            }
-        }
-    }
+    let new_set = weapon_ability_set(space_mgr, entity_id, slot_id);
 
     // 2. Hand the new set to the diff helper; capture (removed, added).
     let (removed, added) = match space_mgr.get_entity_mut(entity_id) {

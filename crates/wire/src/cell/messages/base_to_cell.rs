@@ -313,6 +313,10 @@ pub enum BaseToCellMsg {
         outcome: crate::ability_tree::RespecOutcome,
     },
 
+    /// The base's answer to `CellToBaseMsg::GmAbilityBulk` (AB-N2); see
+    /// [`super::GmAbilitiesChanged`].
+    GmAbilitiesChanged(super::GmAbilitiesChanged),
+
     /// Inventory item was used by the player (in response to
     /// `CellToBaseMsg::UseInventoryItem` after base verified ownership).
     /// The cell fires the `OnItemUse` content event with `type_id` (item

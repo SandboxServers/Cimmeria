@@ -145,7 +145,7 @@ async fn gm_tail_method_executes_for_gm_caller() {
     assert!(!saw_error, "authorized gm call must not emit onErrorCode");
 }
 
-/// A GM sending an UNimplemented 109+ index (gmSetGodMode 142) passes the gate
+/// A GM sending an UNimplemented 109+ index (gmSetNoXP 143) passes the gate
 /// and hits the auth-gated router fall-through without panic and without any
 /// stray side-effect message.
 #[tokio::test]
@@ -161,8 +161,8 @@ async fn gm_tail_unimplemented_index_falls_through_without_panic() {
     let engine = cimmeria_content_engine::chain::ChainEngine::new();
     let (tx, mut rx) = mpsc::channel(16);
 
-    // 142 = gmSetGodMode — gated (>= 109) but no handler wired yet.
-    dispatch_cell_method(1, 142, &[1u8], &tx, &mut mgr, &engine).await;
+    // 143 = gmSetNoXP — gated (>= 109) but no handler wired yet.
+    dispatch_cell_method(1, 143, &[], &tx, &mut mgr, &engine).await;
 
     // No onErrorCode (gate passed), no side-effect message (no handler).
     assert!(

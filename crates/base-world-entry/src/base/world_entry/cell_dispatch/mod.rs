@@ -201,6 +201,17 @@ pub async fn route_cell_message(
             )
             .await
         }
+        CellToBaseMsg::GmAbilityBulk(bulk) => {
+            super::methods::progression::handle_gm_ability_bulk(
+                bulk,
+                ctx.db_pool,
+                ctx.transport,
+                ctx.connected,
+                ctx.entity_to_addr,
+                ctx.cell_tx,
+            )
+            .await
+        }
         CellToBaseMsg::ContactListCreate { .. }
         | CellToBaseMsg::ContactListDelete { .. }
         | CellToBaseMsg::ContactListRename { .. }

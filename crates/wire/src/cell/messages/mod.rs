@@ -27,9 +27,12 @@
 //!   special-ammo reload draw and switch return (ammo campaign AM-02).
 //! - `item_use` — `ConsumeItemForUse` and `ItemUseConsumed`, the native
 //!   consumable round trip (the base consumes, then the cell applies).
+//! - `ability_gm` — `GmAbilityBulk` and `GmAbilitiesChanged`, the GM bulk
+//!   ability round trip (`gmGiveAllAbilities`, `gmResetAbilities`; AB-N2).
 //! - `plugin_msg` — `PluginMsg`, the feature-message envelope carried by
 //!   `CellToBaseMsg::Plugin` (#962, plugin ADR §3.4).
 
+mod ability_gm;
 mod ammo_gm_cell_to_base;
 mod ammo_reserve;
 mod bank_base_to_cell;
@@ -53,6 +56,7 @@ pub use crate::crafting::{
     CraftRequest, CraftVerb, CraftingStations, GmAllCraft, GmCraftGrant, GmCraftGrantKind,
     GmGrantAppliedSciencePoints, GmGrantExpertise, RespecCraftOpen, StationChangeCause, StationSet,
 };
+pub use ability_gm::{GmAbilitiesChanged, GmAbilityBulk, GmAbilityChange};
 pub use ammo_gm_cell_to_base::GmGiveAmmo;
 pub use ammo_reserve::{AmmoReserveAnswer, AmmoReserveRequest, ReserveRefusal};
 pub use bank_base_to_cell::BankBaseToCell;

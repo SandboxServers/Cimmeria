@@ -302,6 +302,10 @@ pub struct SpaceManager {
     /// `cell/spawner/templates.rs` for why the round-trip is wrong for a
     /// chain's ordered action list.
     pub spawn_templates: HashMap<i32, super::spawner::SpawnRecord>,
+    /// NPC ability sets (`resources.ability_set_abilities`), set id → ids,
+    /// loaded at startup by [`super::spawner::load_ability_sets`]. Read by
+    /// `gmSetMobAbilitySet` (AB-N2); empty when the load failed.
+    pub ability_sets: HashMap<i32, Vec<i32>>,
     /// Summon ability → pet template (`resources.pet_summons`), loaded at
     /// startup by [`super::spawner::load_pet_summons`]. The ability pipeline
     /// asks `pet_summons.pet_summon_for(ability_id)` whether a fired ability
@@ -536,6 +540,7 @@ impl SpaceManager {
             loot_tables: HashMap::new(),
             respawners: Vec::new(),
             spawn_templates: HashMap::new(),
+            ability_sets: HashMap::new(),
             pet_summons: super::spawner::PetSummonCatalog::default(),
             deployable_specs: super::spawner::DeployableCatalog::default(),
             ammo_catalog: super::spawner::AmmoCatalog::default(),
