@@ -576,3 +576,19 @@ and gameplay are not covered. The separate Rust `state_bridge` settings UAT
 also passed its disk/restart checks. CI now runs the installation logic UAT. The approved settings preview predates these changes; native
 visual/keyboard inspection and actual Tauri installation IPC are still unverified.
 No game/runtime readiness or final startup validation is claimed.
+
+
+### 2026-10-04: seed extraction adapter boundary
+
+Added `install_all_with_seed_extractor` with a separate native-owned download
+cache and fresh content destination. Shared code authenticates the archive before
+adapter dispatch; patch overlays, preparation and ledger transitions retain their
+existing path. Uncertain extraction preserves input/partial output and requires
+reconciliation. Existing `install_all` callers are unchanged and no production
+caller uses the adapter yet. No Wine runtime was selected or invoked.
+
+The engine suite passed 181 tests, including three new seed tests. The enhanced
+seed subset also passed native-overlay/reuse checks. Strict all-target engine
+clippy and root formatting passed. Native backend/cache ownership, durable process identity, helper/Wine
+invocation and backend-aware recovery remain integration gates. No frontend
+behavior changed; frontend JS REPL/visual UAT does not apply to this packet.

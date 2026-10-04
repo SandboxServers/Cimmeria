@@ -110,6 +110,22 @@ the standalone lockfile resolves their dependencies independently. This includes
 the existing workspace-hack dependency transitively; the desktop workspace is
 still excluded from root aggregate checks.
 
+
+`install_all_with_seed_extractor` adds a seed-only native adapter boundary;
+existing `install_all` callers keep their current extraction path. `SeedBackend`
+separates the download cache from fresh content staging. The shared pipeline
+verifies the seed hash before invoking the adapter, while patch overlays,
+installation-state updates and client preparation remain shared. An uncertain
+external extraction retains authenticated input and partial output without
+recording the seed as applied; the desktop worker maps this distinct outcome to
+reconciliation. Successful extraction permits archive cleanup and normal patching.
+
+No production caller selects this backend yet. No Wine runtime was selected or
+invoked. Fixtures cover fresh output, native patch overlay and subsequent reuse,
+hash failure before adapter dispatch, and uncertainty retaining evidence without
+a completion ledger. The engine suite passed 181 tests; the three enhanced seed
+fixtures also passed separately. Strict all-target engine clippy and root formatting also passed.
+
 `install_progress::ProgressSink::latest()` retains one progress value through a
 Tokio watch channel. A stalled or disconnected observer cannot build a backlog
 or fail installation. The existing egui worker uses the legacy adapter and

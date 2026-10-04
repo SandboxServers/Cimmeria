@@ -126,3 +126,11 @@ Windows+Mac before the shell; shell/visual/game gates remain separate.
   pending; the approved settings preview predates this installation UI.
 - Resume CI 37188326146 passed both platforms at bf8029e28; newer shell CI
   37189445603 at 17b949f4c was still running when this evidence was recorded.
+
+
+- Seed-only extraction seam: install_all_with_seed_extractor accepts a native
+  backend and cache separate from fresh content. Shared hash verification precedes
+  dispatch; patch overlay/preparation/ledger stay shared. Uncertain extraction
+  retains evidence and maps to reconciliation. Existing callers stay unchanged;
+  no production backend or Wine runtime is selected/invoked yet. Engine tests181
+  and enhanced three-test seed subset passed; strict engine clippy/root fmt passed.

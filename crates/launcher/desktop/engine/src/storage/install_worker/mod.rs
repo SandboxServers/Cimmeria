@@ -236,6 +236,7 @@ async fn install_stage(
     .await;
     match result {
         Err(InstallError::Cancelled) => return Outcome::Cancelled,
+        Err(InstallError::SeedExtractionUncertain) => return Outcome::ReconciliationRequired,
         Err(_) => return Outcome::InstallFailed,
         Ok(()) => (),
     }

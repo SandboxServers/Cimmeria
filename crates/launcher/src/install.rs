@@ -27,10 +27,14 @@ use tokio::io::AsyncWriteExt;
 use tokio_util::sync::CancellationToken;
 use tracing::{info, warn};
 
+#[path = "install_seed.rs"]
+mod seed;
+pub use seed::{SeedBackend, SeedExtraction, SeedExtractor};
+
 use crate::install_layout;
 use crate::install_progress::{ProgressReporter, ProgressSink};
 use crate::install_report::{InstallReport, PatchOutcomeKind};
-use crate::manifest::{blob_url, Manifest, PatchEntry, SeedEntry};
+use crate::manifest::{blob_url, Manifest, PatchEntry};
 use crate::patch_dest::patch_dest;
 use crate::state::{InstalledState, StateError};
 use crate::unpack::{self, UnpackError, UnpackSink};
@@ -57,6 +61,8 @@ pub enum InstallError {
     InvalidSha256(String),
     #[error("Cancelled")]
     Cancelled,
+    #[error("External seed extraction requires reconciliation")]
+    SeedExtractionUncertain,
     #[error(transparent)]
     PatchDest(#[from] crate::patch_dest::NoSgwGameDir),
     /// Some patches failed; every other patch was still applied.
@@ -150,7 +156,19 @@ pub struct InstallContext<'a> {
 /// patch (for the install-result telemetry event).
 pub async fn install_all(ctx: InstallContext<'_>) -> (Result<(), InstallError>, InstallReport) {
     let mut report = InstallReport::default();
-    let result = install_all_into(ctx, &mut report).await;
+    let result = install_all_into(ctx, &mut report, None).await;
+    report.finish(&result);
+    (result, report)
+}
+
+/// Native platform adapters may replace only seed extraction. Downloads, hashes,
+/// installed-state transitions, patch ordering and preparation remain shared.
+pub async fn install_all_with_seed_extractor(
+    ctx: InstallContext<'_>,
+    backend: SeedBackend<'_>,
+) -> (Result<(), InstallError>, InstallReport) {
+    let mut report = InstallReport::default();
+    let result = install_all_into(ctx, &mut report, Some(backend)).await;
     report.finish(&result);
     (result, report)
 }
@@ -158,13 +176,16 @@ pub async fn install_all(ctx: InstallContext<'_>) -> (Result<(), InstallError>, 
 async fn install_all_into(
     ctx: InstallContext<'_>,
     report: &mut InstallReport,
+    backend: Option<SeedBackend<'_>>,
 ) -> Result<(), InstallError> {
-    std::fs::create_dir_all(ctx.install_dir)?;
+    if backend.is_none() {
+        std::fs::create_dir_all(ctx.install_dir)?;
+    }
     let mut state = InstalledState::load(ctx.install_dir);
 
     let seed_matches = state.seed_sha256.as_deref() == Some(ctx.manifest.seed.sha256.as_str());
     if !seed_matches {
-        apply_seed(&ctx, &ctx.manifest.seed).await?;
+        seed::apply(&ctx, &ctx.manifest.seed, backend).await?;
         report.seed_applied = true;
         // Re-seeding invalidates the applied-patches list.
         state = InstalledState {
@@ -233,26 +254,6 @@ async fn install_all_into(
         return Err(InstallError::PatchesFailed(failures));
     }
     Ok(())
-}
-
-async fn apply_seed(ctx: &InstallContext<'_>, seed: &SeedEntry) -> Result<(), InstallError> {
-    let url = blob_url(ctx.manifest_url, &seed.blob);
-    let short_hash = safe_sha_prefix(&seed.sha256)?;
-    let tmp = ctx
-        .install_dir
-        .join(format!(".tmp-seed-{short_hash}.download"));
-    download_to_file(
-        ctx.http,
-        &url,
-        &tmp,
-        ctx.cancel.clone(),
-        seed.size,
-        "seed",
-        &ctx.progress,
-    )
-    .await?;
-    info!("Unpacking seed into {}", ctx.install_dir.display());
-    verify_and_unpack(ctx, &tmp, ctx.install_dir, &seed.sha256, "seed").await
 }
 
 async fn apply_patch(ctx: &InstallContext<'_>, patch: &PatchEntry) -> Result<(), InstallError> {

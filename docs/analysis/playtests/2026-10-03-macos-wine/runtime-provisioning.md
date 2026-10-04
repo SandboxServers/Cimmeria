@@ -113,3 +113,41 @@ implementation. Require spanning-cabinet, path, cancellation and partial-output
 fixtures, then the real archive. Native ZIP/RAR fixture passes do not prove the
 retail chained cabinets work under Wine. Fresh-prefix prerequisites, helper
 ownership, injection, login and gameplay remain unverified.
+
+
+## Seed adapter integration status — 2026-10-04
+
+The shared installer now exposes a seed-only extraction adapter with download
+cache separate from fresh content staging. It verifies hashes before dispatch
+and preserves input/partial output on uncertain extraction. This is an interface
+and fixture-tested pipeline, not a configured Wine backend; existing production
+callers still use native extraction.
+
+Before selecting a backend, bind runtime/helper identity, cache and staging paths
+to durable operation ownership. The adapter must invoke the supervised Windows
+helper with native-owned arguments/environment, record host identity before
+request dispatch, and distinguish confirmed completion from lost observation.
+Recovery/resume must retain the same backend identity and reconcile retained
+input/output without inferring Wine guest death from host exit. Runtime/prefix
+provisioning, fresh-prefix prerequisites, cabinet-chain fixtures and real archive
+validation remain unimplemented integration gates. No Wine runtime was selected
+or executed by this packet.
+
+
+## Runtime artifact inspection — 2026-10-04
+
+Downloaded the pinned `WoWSilicon-WineRuntime-r17.tar.xz` from the
+[upstream release](https://github.com/WoWSilicon/WoWSilicon/releases/tag/wine-runtime-r17)
+with the GitHub CLI. Its 63,744,856-byte size and SHA-256 match the inventory
+above. Archive metadata inspection found 1,850 members under a single
+`.wine-runtime` root, with declared expanded file sizes totaling 407,600,761 bytes.
+`bin/wine` and `bin/wineserver` have mode `0755`. Of thirteen symlinks, twelve
+are under `bin/` and target `wine`; the remaining link is
+`lib/wine/x86_64-unix/libvulkan.1.dylib` → `../../external/libvulkan.1.dylib`.
+
+No member filename contains `license`, `copying` or `notice`. This filename check
+does not establish that license text is absent from file contents or companion
+materials, and does not clear redistribution. The archive was neither extracted
+nor executed. Hash and metadata checks establish artifact identity and layout,
+not runtime compatibility, successful provisioning or safe link handling by a
+future extractor.
