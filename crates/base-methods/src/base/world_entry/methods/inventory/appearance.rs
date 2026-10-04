@@ -16,6 +16,7 @@
 //! the wide query for now so behaviour is byte-identical to the grant
 //! path.
 
+use cimmeria_entity::known_names;
 use std::collections::HashMap;
 use std::net::SocketAddr;
 use std::sync::{Arc, Mutex};
@@ -50,7 +51,9 @@ pub async fn refresh_player_appearance(
             None => {
                 tracing::debug!(
                     entity_id,
+                    entity_name = known_names::player_name(player_id),
                     player_id,
+                    player_name = known_names::player_name(player_id),
                     "refresh_player_appearance: entity has no transport addr (disconnected?), skipping"
                 );
                 return;
@@ -62,7 +65,9 @@ pub async fn refresh_player_appearance(
             None => {
                 tracing::debug!(
                     entity_id,
+                    entity_name = known_names::player_name(player_id),
                     player_id,
+                    player_name = known_names::player_name(player_id),
                     "refresh_player_appearance: client state missing for addr, skipping"
                 );
                 return;

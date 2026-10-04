@@ -2,6 +2,7 @@
 //! BV-07): the `sgw_organization_vault_log` row (written in the move
 //! transaction), the `org_move_accepted` event, and the client updates.
 
+use cimmeria_entity::known_names;
 use sqlx::{Postgres, Transaction};
 
 use cimmeria_base_session::base::organization::handlers::{broadcast_to_org_except, OrgCtx};
@@ -148,28 +149,36 @@ pub(super) async fn after_org_commit(
         target: "bank",
         event = "org_move_accepted",
         account_id = actor.account_id,
+        account_name = known_names::account_name(actor.account_id),
         player_id = p.player_id,
+        player_name = known_names::player_name(p.player_id),
         entity_id = a.entity_id,
+        entity_name = known_names::player_name(p.player_id),
         org_id = p.org_id,
+        org_name = known_names::org_name(p.org_id),
         org_type = actor.access.org_type().name(),
         rank = actor.access.rank().as_u8(),
         perm = a.perm,
         item_id = p.item_id,
+        item_name = cimmeria_names::book().item(p.source.type_id),
         new_item_id = a.applied.new_item_id,
-        type_id = p.source.type_id,
+        new_item_name = cimmeria_names::book().item(p.source.type_id),
+        item_type_id = p.source.type_id,
         quantity = p.quantity,
         kind = a.kind(),
         direction = a.direction.as_str(),
         source_container_id = p.source.container_id,
-        source_slot_id = p.source.slot_id,
+        source_container_name = cimmeria_names::book().container(p.source.container_id),
+        source_slot_id = p.source.slot_id, // nt:id-only slot index, unnamed
         target_container_id = p.target_container_id,
-        target_slot_id = p.target_slot_id,
+        target_container_name = cimmeria_names::book().container(p.target_container_id),
+        target_slot_id = p.target_slot_id, // nt:id-only slot index, unnamed
         source_stack_before = sb,
         source_stack_after = sa,
         target_stack_before = tb,
         target_stack_after = ta,
         vault_slots = actor.vault_slots,
-        banker_id = vault.banker_id(),
+        banker_id = vault.banker_id(), // nt:id-only banker NPC, unnamed on the base
         distance = vault.distance(),
         "org_move_accepted: org vault move committed and logged"
     );
@@ -202,10 +211,15 @@ pub(super) async fn after_org_commit(
             target: "bank",
             event = "org_move_resync_failed",
             account_id = actor.account_id,
+            account_name = known_names::account_name(actor.account_id),
             player_id = p.player_id,
+            player_name = known_names::player_name(p.player_id),
             entity_id = a.entity_id,
+            entity_name = known_names::player_name(p.player_id),
             org_id = p.org_id,
+            org_name = known_names::org_name(p.org_id),
             item_id = p.item_id,
+            item_name = cimmeria_names::book().item(p.source.type_id),
             reason = "vault_read_failed",
             "org_move_resync_failed: the move committed but its vault rows could not be read \
              back; the client shows the old vault until it reopens: {e}"
@@ -281,10 +295,15 @@ async fn fan_out(a: &Accepted, actor: &OrgVaultActor, rows: Vec<i32>, ctx: &Move
             target: "bank",
             event = "org_move_resync_failed",
             account_id = actor.account_id,
+            account_name = known_names::account_name(actor.account_id),
             player_id = p.player_id,
+            player_name = known_names::player_name(p.player_id),
             entity_id = a.entity_id,
+            entity_name = known_names::player_name(p.player_id),
             org_id = p.org_id,
+            org_name = known_names::org_name(p.org_id),
             item_id = p.item_id,
+            item_name = cimmeria_names::book().item(p.source.type_id),
             reason = "fanout_read_failed",
             "org_move_resync_failed: the other members were not sent the vault rows: {e}"
         ),
@@ -311,10 +330,15 @@ async fn fan_out(a: &Accepted, actor: &OrgVaultActor, rows: Vec<i32>, ctx: &Move
         target: "bank",
         event = "org_vault_fanout",
         account_id = actor.account_id,
+        account_name = known_names::account_name(actor.account_id),
         player_id = p.player_id,
+        player_name = known_names::player_name(p.player_id),
         entity_id = a.entity_id,
+        entity_name = known_names::player_name(p.player_id),
         org_id = p.org_id,
+        org_name = known_names::org_name(p.org_id),
         item_id = p.item_id,
+        item_name = cimmeria_names::book().item(p.source.type_id),
         updated_recipients = updated,
         removed_ids = left.len(),
         removed_recipients = removed,

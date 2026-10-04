@@ -1,6 +1,7 @@
 //! After an equipment grant commits: the bandolier's active-slot broadcast
 //! and cell sync, and the appearance refresh for other equipment slots.
 
+use cimmeria_entity::known_names;
 use std::collections::HashMap;
 use std::net::SocketAddr;
 use std::sync::{Arc, Mutex};
@@ -128,8 +129,11 @@ pub(super) async fn equip_epilogue(
                     {
                         tracing::warn!(
                             entity_id,
+                            entity_name = known_names::player_name(player_id),
                             player_id,
+                            player_name = known_names::player_name(player_id),
                             item_id,
+                            item_name = cimmeria_names::book().item(item_id),
                             "GrantItem: cell channel closed sending UpdateBandolierItem: {e}"
                         );
                     }
@@ -143,10 +147,18 @@ pub(super) async fn equip_epilogue(
                     // SyncBandolierItems with whatever the DB actually has.
                     if matches!(row, Err(ref _e)) {
                         if let Err(e) = row {
-                            tracing::error!(item_id, "GrantItem: bandolier metadata lookup failed ({e}); falling back to sync_bandolier_after_inventory_change");
+                            tracing::error!(
+                                item_id,
+                                item_name = cimmeria_names::book().item(item_id),
+                                "GrantItem: bandolier metadata lookup failed ({e}); falling back to sync_bandolier_after_inventory_change"
+                            );
                         }
                     } else {
-                        tracing::warn!(item_id, "GrantItem: no resources.items row for granted bandolier item; falling back to full bandolier resync");
+                        tracing::warn!(
+                            item_id,
+                            item_name = cimmeria_names::book().item(item_id),
+                            "GrantItem: no resources.items row for granted bandolier item; falling back to full bandolier resync"
+                        );
                     }
                     super::super::super::vendor::helpers::sync_bandolier_after_inventory_change(
                         entity_id,
@@ -172,7 +184,13 @@ pub(super) async fn equip_epilogue(
     {
         Ok(v) => v,
         Err(e) => {
-            tracing::error!(player_id, item_id, "GrantItem: visual_component lookup failed (skipping appearance refresh): {e}");
+            tracing::error!(
+                player_id,
+                player_name = known_names::player_name(player_id),
+                item_id,
+                item_name = cimmeria_names::book().item(item_id),
+                "GrantItem: visual_component lookup failed (skipping appearance refresh): {e}"
+            );
             None
         }
     };
@@ -193,9 +211,13 @@ pub(super) async fn equip_epilogue(
     if visual.is_some() && container_id != 3 {
         tracing::info!(
             entity_id,
+            entity_name = known_names::player_name(player_id),
             player_id,
+            player_name = known_names::player_name(player_id),
             item_id,
+            item_name = cimmeria_names::book().item(item_id),
             container_id,
+            container_name = cimmeria_names::book().container(container_id),
             "Equipped non-bandolier item has visual — resending BeingAppearance"
         );
         refresh_player_appearance(

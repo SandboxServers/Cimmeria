@@ -190,6 +190,8 @@ pub(crate) async fn handle_login(
             Arc::clone(&cancelled),
         );
 
+        // Rule 6: helpers that log only an `account_id` name it from here.
+        cimmeria_entity::known_names::remember_account(login.account_id, &login.account_name);
         let mut clients = connected.lock().map_err(|_| "connected lock poisoned")?;
         clients.insert(
             addr,

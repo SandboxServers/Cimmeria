@@ -2,6 +2,7 @@
 //! first instance of a given design id. Used by `Action::RemoveItem` in the
 //! cell content executor (chains know item design ids, not instance ids).
 
+use cimmeria_entity::known_names;
 use std::collections::HashMap;
 use std::net::SocketAddr;
 use std::sync::{Arc, Mutex};
@@ -49,7 +50,13 @@ pub async fn handle_remove_inventory_item_by_type(
     let pool = match db_pool {
         Some(p) => p,
         None => {
-            tracing::debug!(player_id, type_id, "RemoveInventoryItemByType: no DB pool");
+            tracing::debug!(
+                player_id,
+                player_name = known_names::player_name(player_id),
+                item_type_id = type_id,
+                item_name = cimmeria_names::book().item(type_id),
+                "RemoveInventoryItemByType: no DB pool"
+            );
             return;
         }
     };
@@ -57,7 +64,9 @@ pub async fn handle_remove_inventory_item_by_type(
     if count <= 0 {
         tracing::warn!(
             player_id,
-            type_id,
+            player_name = known_names::player_name(player_id),
+            item_type_id = type_id,
+            item_name = cimmeria_names::book().item(type_id),
             count,
             "RemoveInventoryItemByType: invalid count"
         );
@@ -69,7 +78,9 @@ pub async fn handle_remove_inventory_item_by_type(
         Err(e) => {
             tracing::error!(
                 player_id,
-                type_id,
+                player_name = known_names::player_name(player_id),
+                item_type_id = type_id,
+                item_name = cimmeria_names::book().item(type_id),
                 "RemoveInventoryItemByType: begin tx failed: {e}"
             );
             return;
@@ -114,7 +125,9 @@ pub async fn handle_remove_inventory_item_by_type(
             let _ = tx.rollback().await;
             tracing::error!(
                 player_id,
-                type_id,
+                player_name = known_names::player_name(player_id),
+                item_type_id = type_id,
+                item_name = cimmeria_names::book().item(type_id),
                 "RemoveInventoryItemByType: source query failed: {e}"
             );
             return;
@@ -125,7 +138,9 @@ pub async fn handle_remove_inventory_item_by_type(
         let _ = tx.rollback().await;
         tracing::warn!(
             player_id,
-            type_id,
+            player_name = known_names::player_name(player_id),
+            item_type_id = type_id,
+            item_name = cimmeria_names::book().item(type_id),
             vault_open = vault.is_open(),
             "RemoveInventoryItemByType: no instance of this design id in a container the character can reach"
         );
@@ -143,7 +158,9 @@ pub async fn handle_remove_inventory_item_by_type(
         // silent extension of this one.
         tracing::warn!(
             player_id,
-            type_id,
+            player_name = known_names::player_name(player_id),
+            item_type_id = type_id,
+            item_name = cimmeria_names::book().item(type_id),
             requested = count,
             available = source.stack_size,
             "RemoveInventoryItemByType: requested count exceeds stack size; removing whole stack"
@@ -184,7 +201,9 @@ pub async fn handle_remove_inventory_item_by_type(
             // divergence in one place.
             tracing::warn!(
                 player_id,
-                type_id,
+                player_name = known_names::player_name(player_id),
+                item_type_id = type_id,
+                item_name = cimmeria_names::book().item(type_id),
                 rows_affected = rows,
                 expected = 1,
                 "RemoveInventoryItemByType: no rows changed -- item missing or stack underflow"
@@ -195,7 +214,9 @@ pub async fn handle_remove_inventory_item_by_type(
             let _ = tx.rollback().await;
             tracing::error!(
                 player_id,
-                type_id,
+                player_name = known_names::player_name(player_id),
+                item_type_id = type_id,
+                item_name = cimmeria_names::book().item(type_id),
                 "RemoveInventoryItemByType: update failed: {e}"
             );
             return;
@@ -213,7 +234,9 @@ pub async fn handle_remove_inventory_item_by_type(
                 let _ = tx.rollback().await;
                 tracing::error!(
                     player_id,
-                    type_id,
+                    player_name = known_names::player_name(player_id),
+                    item_type_id = type_id,
+                    item_name = cimmeria_names::book().item(type_id),
                     "RemoveInventoryItemByType: outbox enqueue failed, aborting: {e}"
                 );
                 return;
@@ -226,7 +249,9 @@ pub async fn handle_remove_inventory_item_by_type(
     if let Err(e) = tx.commit().await {
         tracing::error!(
             player_id,
-            type_id,
+            player_name = known_names::player_name(player_id),
+            item_type_id = type_id,
+            item_name = cimmeria_names::book().item(type_id),
             "RemoveInventoryItemByType: commit failed: {e}"
         );
         return;
@@ -255,8 +280,11 @@ pub async fn handle_remove_inventory_item_by_type(
 
     tracing::info!(
         entity_id,
+        entity_name = known_names::player_name(player_id),
         player_id,
-        type_id,
+        player_name = known_names::player_name(player_id),
+        item_type_id = type_id,
+        item_name = cimmeria_names::book().item(type_id),
         count,
         removed_all,
         total_items,

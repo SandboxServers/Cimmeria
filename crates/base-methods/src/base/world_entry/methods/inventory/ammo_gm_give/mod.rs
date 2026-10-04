@@ -15,6 +15,7 @@
 //! `ammo`: INFO when rounds were granted, WARN on a refusal, with the
 //! catalog's correlators and before/after totals.
 
+use cimmeria_entity::known_names;
 use std::collections::HashMap;
 use std::net::SocketAddr;
 use std::sync::{Arc, Mutex};
@@ -141,11 +142,17 @@ pub async fn handle_gm_give_ammo(
             decision_outcome = "refused",
             reason,
             entity_id = gm_entity_id,
+            entity_name = known_names::player_name(gm_player_id),
             account_id = gm_account_id,
+            account_name = known_names::account_name(gm_account_id),
             player_id = gm_player_id,
+            player_name = known_names::player_name(gm_player_id),
             subject_entity_id = entity_id,
+            subject_entity_name = known_names::player_name(player_id),
             subject_player_id = player_id,
+            subject_player_name = known_names::player_name(player_id),
             item_id,
+            item_name = cimmeria_names::book().item(item_id),
             ammo_type,
             quantity = rounds,
             "gm_give_ammo refused; nothing granted"
@@ -181,10 +188,15 @@ pub async fn handle_gm_give_ammo(
                 decision_outcome = "refused",
                 reason = reasons::DB_ERROR,
                 entity_id = gm_entity_id,
+                entity_name = known_names::player_name(gm_player_id),
                 account_id = gm_account_id,
+                account_name = known_names::account_name(gm_account_id),
                 player_id = gm_player_id,
+                player_name = known_names::player_name(gm_player_id),
                 subject_player_id = player_id,
+                subject_player_name = known_names::player_name(player_id),
                 item_id,
+                item_name = cimmeria_names::book().item(item_id),
                 ammo_type,
                 quantity = rounds,
                 error = %e,
@@ -210,11 +222,17 @@ pub async fn handle_gm_give_ammo(
         event = events::GM_GIVE_AMMO,
         decision_outcome = "granted",
         entity_id = gm_entity_id,
+        entity_name = known_names::player_name(gm_player_id),
         account_id = gm_account_id,
+        account_name = known_names::account_name(gm_account_id),
         player_id = gm_player_id,
+        player_name = known_names::player_name(gm_player_id),
         subject_entity_id = entity_id,
+        subject_entity_name = known_names::player_name(player_id),
         subject_player_id = player_id,
+        subject_player_name = known_names::player_name(player_id),
         item_id,
+        item_name = cimmeria_names::book().item(item_id),
         ammo_type,
         quantity = rounds,
         returned = out.returned,

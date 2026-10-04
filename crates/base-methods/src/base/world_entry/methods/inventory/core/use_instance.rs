@@ -27,6 +27,7 @@
 //! crafting subsystem decides the use and consumes the item in the same
 //! transaction ([`super::use_crafting_item`]).
 
+use cimmeria_entity::known_names;
 use std::collections::HashMap;
 use std::net::SocketAddr;
 use std::sync::{Arc, Mutex};
@@ -40,6 +41,7 @@ use super::access::{refuse_inaccessible, AccessOp};
 use super::use_crafting_item::offer_item_use;
 use crate::base::outbox::{self, CellOutboxPayload};
 use crate::base::resources::bag_max_slots;
+use crate::base::session_identity::identity_for_entity;
 use crate::base::ConnectedClientState;
 use crate::cell::messages::BaseToCellMsg;
 use cimmeria_base_session::base::plugin::ItemUseHookPoint;
@@ -102,7 +104,12 @@ pub async fn handle_use_inventory_item(
     let pool = match db_pool {
         Some(p) => p,
         None => {
-            tracing::debug!(player_id, item_id, "UseInventoryItem: no DB pool");
+            tracing::debug!(
+                player_id,
+                player_name = known_names::player_name(player_id),
+                item_id, // nt:id-only instance id, type unread yet
+                "UseInventoryItem: no DB pool"
+            );
             return;
         }
     };
@@ -167,13 +174,20 @@ pub async fn handle_use_inventory_item(
                 return;
             }
             tracing::warn!(
-                player_id, item_id,
+                player_id,
+                player_name = known_names::player_name(player_id),
+                item_id, // nt:id-only instance id, type unread yet
                 "UseInventoryItem: instance not found for this character — refusing to fire ItemUsed"
             );
             return;
         }
         Err(e) => {
-            tracing::error!(player_id, item_id, "UseInventoryItem: lookup failed: {e}");
+            tracing::error!(
+                player_id,
+                player_name = known_names::player_name(player_id),
+                item_id, // nt:id-only instance id, type unread yet
+                "UseInventoryItem: lookup failed: {e}"
+            );
             return;
         }
     };
@@ -218,8 +232,10 @@ pub async fn handle_use_inventory_item(
                 Err(e) => {
                     tracing::error!(
                         player_id,
+                        player_name = known_names::player_name(player_id),
                         item_id,
-                        type_id,
+                        item_type_id = type_id,
+                        item_name = cimmeria_names::book().item(type_id),
                         source_container = row.container_id,
                         "UseInventoryItem: auto-equip target resolve failed: {e}"
                     );
@@ -236,7 +252,11 @@ pub async fn handle_use_inventory_item(
                 // log loudly server-side and let the player notice the
                 // weapon is still equipped.
                 tracing::warn!(
-                    player_id, item_id, type_id,
+                    player_id,
+                    player_name = known_names::player_name(player_id),
+                    item_id,
+                    item_type_id = type_id,
+                    item_name = cimmeria_names::book().item(type_id),
                     source_container = row.container_id,
                     "UseInventoryItem: no destination slot for auto-equip/unequip — request ignored"
                 );
@@ -245,9 +265,12 @@ pub async fn handle_use_inventory_item(
         };
         tracing::info!(
             entity_id,
+            entity_name = known_names::player_name(player_id),
             player_id,
+            player_name = known_names::player_name(player_id),
             item_id,
-            type_id,
+            item_type_id = type_id,
+            item_name = cimmeria_names::book().item(type_id),
             source_container = row.container_id,
             target_container,
             target_slot,
@@ -292,9 +315,12 @@ pub async fn handle_use_inventory_item(
                 target: "base.plugin",
                 reason = "no_plugin",
                 entity_id,
+                entity_name = known_names::player_name(player_id),
                 player_id,
+                player_name = known_names::player_name(player_id),
                 item_id,
-                type_id,
+                item_type_id = type_id,
+                item_name = cimmeria_names::book().item(type_id),
                 "UseInventoryItem: crafting item but no base plugin takes it -- the use does \
                  nothing (is the crafting plugin missing from the table?)"
             );
@@ -304,10 +330,14 @@ pub async fn handle_use_inventory_item(
 
     tracing::info!(
         entity_id,
+        entity_name = known_names::player_name(player_id),
         player_id,
+        player_name = known_names::player_name(player_id),
         item_id,
-        type_id,
+        item_type_id = type_id,
+        item_name = cimmeria_names::book().item(type_id),
         target_id,
+        target_name = target_name(target_id, entity_to_addr, connected),
         "UseInventoryItem: firing ItemUsed (no consumption — chain decides)"
     );
 
@@ -338,9 +368,12 @@ pub async fn handle_use_inventory_item(
             // idempotent.
             tracing::error!(
                 entity_id,
+                entity_name = known_names::player_name(player_id),
                 player_id,
+                player_name = known_names::player_name(player_id),
                 item_id,
-                type_id,
+                item_type_id = type_id,
+                item_name = cimmeria_names::book().item(type_id),
                 "UseInventoryItem: outbox enqueue failed; ItemUsed not dispatched: {e}"
             );
             return;
@@ -352,7 +385,8 @@ pub async fn handle_use_inventory_item(
     } else {
         tracing::debug!(
             entity_id,
-            outbox_id,
+            entity_name = known_names::player_name(player_id),
+            outbox_id, // nt:id-only outbox row id, nothing to name
             "UseInventoryItem: no cell channel; row left for drainer"
         );
     }
@@ -453,4 +487,16 @@ pub(super) fn discord_item_target(
     Some(
         player.unwrap_or_else(|| cimmeria_discord::Named::name_only(format!("entity:{target_id}"))),
     )
+}
+
+/// The use target's name for a log line (Rule 6): the character name when
+/// the target is a connected player's entity. The base has no
+/// `SpaceManager`, so an NPC target is left unnamed, and `0` is no target.
+fn target_name(
+    target_id: i32,
+    entity_to_addr: &Arc<Mutex<HashMap<u32, SocketAddr>>>,
+    connected: &Arc<Mutex<HashMap<SocketAddr, ConnectedClientState>>>,
+) -> Option<&'static str> {
+    let eid = u32::try_from(target_id).ok().filter(|&eid| eid != 0)?;
+    identity_for_entity(connected, entity_to_addr, eid).player_name
 }

@@ -451,9 +451,9 @@ comes from, so every call site resolves it the same way.
 | `mission_id`, `step_id`, `objective_id` | `mission_name`, `step_name`, `objective_name` | `missions.mission_label`; step and objective display text |
 | `dialog_id`, `dialog_set_id`, `speaker_id` | `dialog_name`, `dialog_set_name`, `speaker_name` | `dialogs.name`, `dialog_sets.name`, `speakers.name` |
 | `space_id`, `world_id` | `world` | `SpaceManager` (a space's world) and the `Worlds` table |
-| `account_id` | `account_name` | The session's login name |
-| `player_id` | `player_name` | The session, or `sgw_player` |
-| `org_id` | `org_name` | Organizations |
+| `account_id` | `account_name` | The session's login name; where no session is in reach, `cimmeria_entity::known_names::account_name` (filled at login) |
+| `player_id` | `player_name` | The session, or `sgw_player`; where no session is in reach, `cimmeria_entity::known_names::player_name` (filled at `playCharacter`) |
+| `org_id` | `org_name` | Organizations: `cimmeria_entity::known_names::org_name`, filled when the base reads an organization's row |
 | `archetype` | `archetype_name` | `archetype_name()` |
 | `error_code`, `moniker_id` | `error_name`, `moniker_name` | `error_texts.moniker_name`, `monikers.name`. `error_name` is reserved for `error_texts`: a code from another vocabulary names its domain, as the Black Market's `error_id` pairs with `bm_error` (the `BMError` variant) |
 | A bitflag word (`state_field`, `flags`, `interaction_flags`, `recipient_flags`, `from_mask`, …) | `<key>_names` | The flag set's `FlagSet` table (`cimmeria_common::flag_names`), rendered `A\|B\|C` with unknown bits as one hex remainder; see [negative-logging-convention.md § Field naming rules](negative-logging-convention.md#field-naming-rules). Not on rows exported per packet or per tick (NT-31) |

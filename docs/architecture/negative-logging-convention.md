@@ -370,13 +370,25 @@ Target `bank`, all WARN. Each refusal carries the player-activity pair
 (`account_id`, `player_id`) plus `entity_id`, so "player X tried to move Y
 at time T and it failed" is answerable from SigNoz alone.
 
+Every ID on these rows, and on the BV-03, BV-07 and grant rows below,
+carries its Rule 6 name when the server knows it: `account_name`,
+`player_name`, `entity_name` (the player's character), `item_name`,
+`org_name`, and `container_name` under each container key's prefix
+(`target_container_name`: `MAIN`, `BANK`, ...). The base names players,
+accounts and organizations from `cimmeria_entity::known_names`, filled at
+login, `playCharacter` and the organization row reads, so a helper deep in
+a transaction can name them without the session. An instance `item_id`
+whose type the line has not read yet, slot indexes, the banker and the
+corpse (NPC entities the base cannot name) are marked `// nt:id-only`.
+`type_id` became `item_type_id` on every base inventory row (NT-22).
+
 | `event` (also the message prefix) | `reason` | Fields |
 |---|---|---|
-| `move_rejected` | `source_container_not_player_movable`, `target_container_not_player_movable` (the vault reasons are in the BV-03 section) | `account_id`, `player_id`, `entity_id`, `item_id`, `type_id`, `quantity`, `stack_size`, `source_container_id`, `source_slot_id`, `target_container_id`, `target_slot_id` |
+| `move_rejected` | `source_container_not_player_movable`, `target_container_not_player_movable` (the vault reasons are in the BV-03 section) | `account_id`, `player_id`, `entity_id`, `item_id`, `item_type_id`, `quantity`, `stack_size`, `source_container_id`, `source_slot_id`, `target_container_id`, `target_slot_id` |
 | `move_resync_skipped` | `refused_item_not_owned` (the refused move named an item the player does not own: a forged packet), `lock_timeout` (the move lock or the item's row lock could not be taken; an unlocked resend could overtake a concurrent write, so the client keeps its optimistic position until the next update of that item), `resync_read_failed` | `account_id` (when it was read before the failure), `player_id`, `entity_id`, `item_id` |
 | `move_rejected` (infrastructure) | `move_lock_begin_failed`, `move_lock_failed` (the move lock or the item's row lock), `refusal_context_query_failed`, `move_lock_release_failed` | `player_id`, `entity_id`, `item_id`; `account_id` only on `move_lock_release_failed`, the one failure after the account is read |
-| `grant_rejected` | `grant_into_storage_container` | `account_id`, `player_id`, `entity_id`, `type_id`, `quantity`, `target_container_id` |
-| `grant_rejected` (infrastructure) | `account_lookup_failed` | `player_id`, `entity_id`, `type_id`, `target_container_id` (no `account_id`: that is what failed to load) |
+| `grant_rejected` | `grant_into_storage_container` | `account_id`, `player_id`, `entity_id`, `item_type_id`, `quantity`, `target_container_id` |
+| `grant_rejected` (infrastructure) | `account_lookup_failed` | `player_id`, `entity_id`, `item_type_id`, `target_container_id` (no `account_id`: that is what failed to load) |
 
 The item fields of `move_rejected` are read at refusal time under the
 per-player move lock and the item's row lock, so they are the item's
@@ -481,7 +493,7 @@ bank refusal also sends a `CHAN_FEEDBACK` line before the snap-back.
 | `event` | Level | `reason` | Fields |
 |---|---|---|---|
 | `move_rejected` | WARN | the verdict's label: `no_vault_session`, `banker_out_of_range`, `banker_gone`, `banker_other_space`, `vault_session_other_space`, `player_missing`, `vault_scope_mismatch`; and `target_slot_beyond_bank_slots`, `mission_item_not_bankable`, `item_not_allowed_in_container`, `split_onto_occupied_slot` | the BV-01 fields, plus `vault_end` (`source` or `target`), `banker_id`, `distance`, `gm_override`, and `bank_slots` on the slot refusal |
-| `move_accepted` | DEBUG | none (success) | `account_id`, `player_id`, `entity_id`, `item_id`, `type_id`, `quantity`, `kind`, source and target container and slot, `source_stack_before`/`after`, `target_stack_before`/`after`, `bank_slots`, `banker_id`, `distance`, `gm_override` |
+| `move_accepted` | DEBUG | none (success) | `account_id`, `player_id`, `entity_id`, `item_id`, `item_type_id`, `quantity`, `kind`, source and target container and slot, `source_stack_before`/`after`, `target_stack_before`/`after`, `bank_slots`, `banker_id`, `distance`, `gm_override` |
 | `use_rejected` | WARN | `container_not_accessible` (a use or removal of an item in buyback, the org vaults, or the personal vault without an open verdict) | `account_id`, `player_id`, `entity_id`, `item_id`, `container`, `op` (`use` or `remove`), `vault_reason`, `banker_id` |
 | `use_rejected` (infrastructure) | WARN | `account_lookup_failed` | `player_id`, `entity_id`, `item_id` (no `account_id`: that is what failed to load) |
 | `bank_feedback_send_failed` | WARN | `no_client_address` (a refusal line had no session address to go to) | `player_id`, `entity_id`, `item_id` |
@@ -504,12 +516,12 @@ is a seam: the item goes back on the corpse, or its loss is logged.
 
 | `event` (also the message prefix) | Level | `reason` | Fields |
 |---|---|---|---|
-| `grant_refused` | INFO | `container_full`, `database_error`, `not_grantable_container` (the grant resolved to buyback, 16) | `account_id`, `player_id`, `entity_id`, `type_id`, `quantity`, `container_id` |
+| `grant_refused` | INFO | `container_full`, `database_error`, `not_grantable_container` (the grant resolved to buyback, 16) | `account_id`, `player_id`, `entity_id`, `item_type_id`, `quantity`, `container_id` |
 | `grant_outcome_unknown` | WARN | `commit_outcome_unknown` | as `grant_refused` |
-| `lookup_failed` | WARN | (`phase = placement`) | `player_id`, `entity_id`, `type_id`, `requested_container_id`, `error` |
+| `lookup_failed` | WARN | (`phase = placement`) | `player_id`, `entity_id`, `item_type_id`, `requested_container_id`, `error` |
 | `loot_restored` | INFO | the refusal: `storage_only`, `container_full`, `no_database`, `database_error` | `account_id`, `player_id`, `entity_id`, `corpse_id`, `index`, `item_id` + `item_name` (the item type; `type_id` before NT-21), `qty`, `container_id`, `reflagged` |
-| `loot_restore_failed` | WARN | `corpse_gone`, `corpse_changed`, `index_taken` (cell); `cell_channel_closed` (base) | as `loot_restored`, plus `refusal` |
-| `loot_restore_skipped` | WARN | `commit_outcome_unknown` | `account_id`, `player_id`, `entity_id`, `corpse_id`, `index`, `type_id`, `qty` |
+| `loot_restore_failed` | WARN | `corpse_gone`, `corpse_changed`, `index_taken` (cell); `cell_channel_closed` (base) | as `loot_restored`, plus `refusal`; the base row's item key is `item_type_id` |
+| `loot_restore_skipped` | WARN | `commit_outcome_unknown` | `account_id`, `player_id`, `entity_id`, `corpse_id`, `index`, `item_type_id`, `qty` |
 | `loot_grant_send_failed` | WARN | `restored`, or the restore miss | `player_id`, `entity_id`, `corpse_id`, `index`, `item_id` + `item_name` (`type_id` before NT-21), `qty`, `restored` |
 | `feedback_send_failed` | WARN | `send_error` | `account_id`, `player_id`, `entity_id` |
 
@@ -527,7 +539,7 @@ unit-tested (`persist::tests`).
 
 ## Native consumable seams (decision 28)
 
-A heal or buff item used from the bags ([consumables.md](../gameplay/consumables.md)). The cell rows use the module's own target (`cimmeria_cell_content::cell::content::consumable_use`), the base rows `cimmeria_base_methods::...::consume_for_use`, the stat-buff rows `abilities`. Every row carries `entity_id`, `account_id` and `player_id`, each with its name; the cell's use rows also `item_type_id` + `item_name` (`type_id` before NT-21) and, when known, `instance_id` and `ability_id` + `ability_name`.
+A heal or buff item used from the bags ([consumables.md](../gameplay/consumables.md)). The cell rows use the module's own target (`cimmeria_cell_content::cell::content::consumable_use`), the base rows `cimmeria_base_methods::...::consume_for_use`, the stat-buff rows `abilities`. Every row carries `entity_id`, `account_id` and `player_id`, each with its name; the cell's use rows also `item_type_id` + `item_name` (`type_id` before NT-21) and, when known, `instance_id` and `ability_id` + `ability_name`; the base rows carry `item_type_id` + `item_name` (NT-22).
 
 | `event` | Level | `reason` | Extra fields |
 |---|---|---|---|

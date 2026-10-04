@@ -2,6 +2,7 @@
 //! `InventoryItemMoveApplied`, the bandolier sync and the appearance
 //! refresh. Nothing here can undo the move; each step logs its own failure.
 
+use cimmeria_entity::known_names;
 use std::collections::HashMap;
 use std::net::SocketAddr;
 use std::sync::{Arc, Mutex};
@@ -77,8 +78,11 @@ pub(super) async fn after_commit(
 
     tracing::debug!(
         entity_id,
+        entity_name = known_names::player_name(player_id),
         player_id,
+        player_name = known_names::player_name(player_id),
         item_id,
+        item_name = cimmeria_names::book().item(type_id),
         total_items,
         "Inventory move persisted"
     );

@@ -7,6 +7,7 @@
 //! answered with `BaseToCellMsg::LootGrantRefused` and the cell puts the
 //! item back.
 
+use cimmeria_entity::known_names;
 use std::collections::HashMap;
 use std::net::SocketAddr;
 use std::sync::{Arc, Mutex};
@@ -126,11 +127,15 @@ pub async fn handle_loot_grant(
                     target: "inventory",
                     event = "loot_restore_failed",
                     account_id,
+                    account_name = known_names::account_name(account_id),
                     player_id,
+                    player_name = known_names::player_name(player_id),
                     entity_id,
-                    corpse_id = source.corpse_id,
+                    entity_name = known_names::player_name(player_id),
+                    corpse_id = source.corpse_id, // nt:id-only corpse NPC, unnamed on the base
                     index = source.index,
-                    type_id = item_id,
+                    item_type_id = item_id,
+                    item_name = cimmeria_names::book().item(item_id),
                     qty = count,
                     refusal = reason.as_str(),
                     reason = "cell_channel_closed",
@@ -143,11 +148,15 @@ pub async fn handle_loot_grant(
                 target: "inventory",
                 event = "loot_restore_skipped",
                 account_id,
+                account_name = known_names::account_name(account_id),
                 player_id,
+                player_name = known_names::player_name(player_id),
                 entity_id,
-                corpse_id = source.corpse_id,
+                entity_name = known_names::player_name(player_id),
+                corpse_id = source.corpse_id, // nt:id-only corpse NPC, unnamed on the base
                 index = source.index,
-                type_id = item_id,
+                item_type_id = item_id,
+                item_name = cimmeria_names::book().item(item_id),
                 qty = count,
                 reason = "commit_outcome_unknown",
                 "loot_restore_skipped: the grant's commit outcome is unknown, so the item stays off the corpse"
@@ -177,9 +186,13 @@ async fn grant(
 ) -> GrantOutcome {
     tracing::debug!(
         entity_id,
+        entity_name = known_names::player_name(player_id),
         player_id,
+        player_name = known_names::player_name(player_id),
         item_id,
+        item_name = cimmeria_names::book().item(item_id),
         container_id,
+        container_name = cimmeria_names::book().container(container_id),
         count,
         cell_tx_present = cell_tx.is_some(),
         "handle_grant_item: entered"
@@ -193,7 +206,13 @@ async fn grant(
     let pool = match db_pool {
         Some(p) => p,
         None => {
-            tracing::debug!(player_id, item_id, "GrantItem: no DB pool");
+            tracing::debug!(
+                player_id,
+                player_name = known_names::player_name(player_id),
+                item_id,
+                item_name = cimmeria_names::book().item(item_id),
+                "GrantItem: no DB pool"
+            );
             return GrantOutcome::Refused {
                 reason: GrantRefusal::NoDatabase,
                 container_id,
@@ -210,9 +229,13 @@ async fn grant(
                 event = "lookup_failed",
                 phase = "placement",
                 player_id,
+                player_name = known_names::player_name(player_id),
                 entity_id,
-                type_id = item_id,
+                entity_name = known_names::player_name(player_id),
+                item_type_id = item_id,
+                item_name = cimmeria_names::book().item(item_id),
                 requested_container_id = container_id,
+                requested_container_name = cimmeria_names::book().container(container_id),
                 error = %e,
                 "lookup_failed: could not read the item's container_sets; grant refused"
             );
@@ -252,11 +275,16 @@ async fn grant(
             target: "inventory",
             event = "grant_refused",
             account_id,
+            account_name = known_names::account_name(account_id),
             player_id,
+            player_name = known_names::player_name(player_id),
             entity_id,
-            type_id = item_id,
+            entity_name = known_names::player_name(player_id),
+            item_type_id = item_id,
+            item_name = cimmeria_names::book().item(item_id),
             quantity = count,
             container_id = target,
+            container_name = cimmeria_names::book().container(target),
             reason = reason.as_str(),
             "grant_refused: nothing was written"
         );
@@ -278,11 +306,16 @@ async fn grant(
                 target: "inventory",
                 event = "grant_refused",
                 account_id,
+                account_name = known_names::account_name(account_id),
                 player_id,
+                player_name = known_names::player_name(player_id),
                 entity_id,
-                type_id = item_id,
+                entity_name = known_names::player_name(player_id),
+                item_type_id = item_id,
+                item_name = cimmeria_names::book().item(item_id),
                 quantity = count,
                 container_id = target,
+                container_name = cimmeria_names::book().container(target),
                 reason = reason.as_str(),
                 "grant_refused: nothing was written"
             );
@@ -302,11 +335,16 @@ async fn grant(
                 target: "inventory",
                 event = "grant_outcome_unknown",
                 account_id,
+                account_name = known_names::account_name(account_id),
                 player_id,
+                player_name = known_names::player_name(player_id),
                 entity_id,
-                type_id = item_id,
+                entity_name = known_names::player_name(player_id),
+                item_type_id = item_id,
+                item_name = cimmeria_names::book().item(item_id),
                 quantity = count,
                 container_id = target,
+                container_name = cimmeria_names::book().container(target),
                 reason = "commit_outcome_unknown",
                 "grant_outcome_unknown: the commit failed without a server answer"
             );
@@ -318,19 +356,21 @@ async fn grant(
         target: "inventory",
         event = "grant_container_chosen",
         account_id,
+        account_name = known_names::account_name(account_id),
         player_id,
+        player_name = known_names::player_name(player_id),
         entity_id,
-        type_id = item_id,
-        // `design_id` is the same number under the name the cell's loot and
-        // "Item granted to player" rows use, so one SigNoz filter joins them.
-        design_id = item_id,
+        entity_name = known_names::player_name(player_id),
+        item_type_id = item_id,
         item_name = placement.item_name.as_deref(),
         quantity = count,
         container_sets = %format_container_sets(&placement.container_sets),
         requested_container_id = placement.requested,
+        requested_container_name = cimmeria_names::book().container(placement.requested),
         skipped_storage = placement.skipped_storage,
         container_id = committed.container_id,
-        slot_id = committed.slot_id,
+        container_name = cimmeria_names::book().container(committed.container_id),
+        slot_id = committed.slot_id, // nt:id-only slot index, unnamed
         qty_before = committed.qty_before,
         qty_after = committed.qty_after,
         "grant_container_chosen"
@@ -347,8 +387,11 @@ async fn grant(
     .await;
     tracing::debug!(
         entity_id,
+        entity_name = known_names::player_name(player_id),
         player_id,
+        player_name = known_names::player_name(player_id),
         item_id,
+        item_name = cimmeria_names::book().item(item_id),
         total_items,
         "Sent full onUpdateItem to client"
     );

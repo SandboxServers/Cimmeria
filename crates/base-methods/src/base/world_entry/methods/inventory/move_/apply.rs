@@ -5,17 +5,20 @@
 //! Each returns `None` after logging when a statement fails or matches the
 //! wrong number of rows; the caller then rolls back. None of them commits.
 
+use cimmeria_entity::known_names;
 use sqlx::{Postgres, Transaction};
 
 use super::{InventoryInstanceRow, Occupant};
 
 type MoveTx = Transaction<'static, Postgres>;
 
-/// Move the whole source stack into the empty target slot.
+/// Move the whole source stack into the empty target slot. `source` only
+/// names the item on a failure line.
 pub(super) async fn whole(
     tx: &mut MoveTx,
     player_id: i32,
     item_id: i32,
+    source: &InventoryInstanceRow,
     target_container_id: i32,
     target_slot_id: i32,
 ) -> Option<()> {
@@ -33,11 +36,23 @@ pub(super) async fn whole(
     match result {
         Ok(r) if r.rows_affected() == 1 => Some(()),
         Ok(_) => {
-            tracing::warn!(player_id, item_id, "MoveInventoryItem: no rows updated");
+            tracing::warn!(
+                player_id,
+                player_name = known_names::player_name(player_id),
+                item_id,
+                item_name = cimmeria_names::book().item(source.type_id),
+                "MoveInventoryItem: no rows updated"
+            );
             None
         }
         Err(e) => {
-            tracing::error!(player_id, item_id, "MoveInventoryItem: update failed: {e}");
+            tracing::error!(
+                player_id,
+                player_name = known_names::player_name(player_id),
+                item_id,
+                item_name = cimmeria_names::book().item(source.type_id),
+                "MoveInventoryItem: update failed: {e}"
+            );
             None
         }
     }
@@ -71,7 +86,9 @@ pub(super) async fn split(
         Err(e) => {
             tracing::error!(
                 player_id,
+                player_name = known_names::player_name(player_id),
                 item_id,
+                item_name = cimmeria_names::book().item(source.type_id),
                 "MoveInventoryItem: split decrement failed: {e}"
             );
             return None;
@@ -80,7 +97,9 @@ pub(super) async fn split(
     if update_rows != 1 {
         tracing::warn!(
             player_id,
+            player_name = known_names::player_name(player_id),
             item_id,
+            item_name = cimmeria_names::book().item(source.type_id),
             quantity,
             "MoveInventoryItem: split decrement matched 0 rows (concurrent modification?)"
         );
@@ -109,13 +128,21 @@ pub(super) async fn split(
         Ok(None) => {
             tracing::warn!(
                 player_id,
+                player_name = known_names::player_name(player_id),
                 item_id,
+                item_name = cimmeria_names::book().item(source.type_id),
                 "MoveInventoryItem: split insert returned no row"
             );
             None
         }
         Err(e) => {
-            tracing::error!(player_id, item_id, "MoveInventoryItem: split failed: {e}");
+            tracing::error!(
+                player_id,
+                player_name = known_names::player_name(player_id),
+                item_id,
+                item_name = cimmeria_names::book().item(source.type_id),
+                "MoveInventoryItem: split failed: {e}"
+            );
             None
         }
     }
@@ -156,7 +183,9 @@ pub(super) async fn merge(
         Ok(r) => {
             tracing::warn!(
                 player_id,
+                player_name = known_names::player_name(player_id),
                 item_id,
+                item_name = cimmeria_names::book().item(source.type_id),
                 rows_affected = r.rows_affected(),
                 expected = 1,
                 "MoveInventoryItem: merge take from source matched no row"
@@ -166,7 +195,9 @@ pub(super) async fn merge(
         Err(e) => {
             tracing::error!(
                 player_id,
+                player_name = known_names::player_name(player_id),
                 item_id,
+                item_name = cimmeria_names::book().item(source.type_id),
                 "MoveInventoryItem: merge take failed: {e}"
             );
             return None;
@@ -187,8 +218,11 @@ pub(super) async fn merge(
         Ok(r) => {
             tracing::warn!(
                 player_id,
+                player_name = known_names::player_name(player_id),
                 item_id,
+                item_name = cimmeria_names::book().item(source.type_id),
                 occupant_item_id = occupant.item_id,
+                occupant_item_name = cimmeria_names::book().item(occupant.type_id),
                 rows_affected = r.rows_affected(),
                 expected = 1,
                 "MoveInventoryItem: merge give to occupant matched no row"
@@ -198,8 +232,11 @@ pub(super) async fn merge(
         Err(e) => {
             tracing::error!(
                 player_id,
+                player_name = known_names::player_name(player_id),
                 item_id,
+                item_name = cimmeria_names::book().item(source.type_id),
                 occupant_item_id = occupant.item_id,
+                occupant_item_name = cimmeria_names::book().item(occupant.type_id),
                 "MoveInventoryItem: merge give failed: {e}"
             );
             None
@@ -249,7 +286,9 @@ pub(super) async fn swap(
         Ok(_) => {
             tracing::warn!(
                 player_id,
+                player_name = known_names::player_name(player_id),
                 item_id,
+                item_name = cimmeria_names::book().item(source.type_id),
                 "MoveInventoryItem: park-source matched 0 rows"
             );
             return None;
@@ -257,7 +296,9 @@ pub(super) async fn swap(
         Err(e) => {
             tracing::error!(
                 player_id,
+                player_name = known_names::player_name(player_id),
                 item_id,
+                item_name = cimmeria_names::book().item(source.type_id),
                 "MoveInventoryItem: park-source failed: {e}"
             );
             return None;
@@ -280,8 +321,11 @@ pub(super) async fn swap(
         Ok(_) => {
             tracing::warn!(
                 player_id,
+                player_name = known_names::player_name(player_id),
                 item_id,
+                item_name = cimmeria_names::book().item(source.type_id),
                 occupied_item_id = occupant.item_id,
+                occupied_item_name = cimmeria_names::book().item(occupant.type_id),
                 "MoveInventoryItem: swap-occupied matched 0 rows"
             );
             return None;
@@ -289,7 +333,9 @@ pub(super) async fn swap(
         Err(e) => {
             tracing::error!(
                 player_id,
+                player_name = known_names::player_name(player_id),
                 item_id,
+                item_name = cimmeria_names::book().item(source.type_id),
                 "MoveInventoryItem: swap-occupied failed: {e}"
             );
             return None;
@@ -312,13 +358,21 @@ pub(super) async fn swap(
         Ok(_) => {
             tracing::warn!(
                 player_id,
+                player_name = known_names::player_name(player_id),
                 item_id,
+                item_name = cimmeria_names::book().item(source.type_id),
                 "MoveInventoryItem: swap-source matched 0 rows"
             );
             None
         }
         Err(e) => {
-            tracing::error!(player_id, item_id, "MoveInventoryItem: swap failed: {e}");
+            tracing::error!(
+                player_id,
+                player_name = known_names::player_name(player_id),
+                item_id,
+                item_name = cimmeria_names::book().item(source.type_id),
+                "MoveInventoryItem: swap failed: {e}"
+            );
             None
         }
     }

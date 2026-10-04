@@ -7,6 +7,7 @@
 //! structs they parse into, and the canonical `INVENTORY_ITEM_SELECT`
 //! query string that the player-load path drift-guards against.
 
+use cimmeria_entity::known_names;
 use std::collections::HashMap;
 use std::net::SocketAddr;
 use std::sync::{Arc, Mutex};
@@ -124,6 +125,8 @@ struct InventoryRow {
 pub(super) struct InventoryInstanceRow {
     pub stack_size: i32,
     pub container_id: i32,
+    /// The design id, read only so the log lines can name the item (Rule 6).
+    pub type_id: i32,
 }
 
 /// Lighter row for [`handle_remove_inventory_item_by_type`], which needs
@@ -200,6 +203,7 @@ pub async fn send_full_inventory_resync(
         Err(e) => {
             tracing::warn!(
                 player_id,
+                player_name = known_names::player_name(player_id),
                 "send_full_inventory_resync: sgw_player lookup failed: {e}"
             );
             None
@@ -298,7 +302,9 @@ pub async fn send_full_inventory_resync(
     .await;
     tracing::info!(
         entity_id,
+        entity_name = known_names::player_name(player_id),
         player_id,
+        player_name = known_names::player_name(player_id),
         item_count = total,
         "Sent full inventory resync (onBagInfo + onActiveSlotUpdate + onCashChanged + onUpdateItem)"
     );
@@ -324,7 +330,9 @@ pub async fn send_full_inventory_update(
         Err(e) => {
             tracing::error!(
                     entity_id,
+                    entity_name = known_names::player_name(player_id),
                     player_id,
+                    player_name = known_names::player_name(player_id),
                     "send_full_inventory_update: query failed, refusing to broadcast empty inventory: {e}"
                 );
             return 0;
@@ -395,8 +403,10 @@ where
         Err(e) => {
             tracing::error!(
                 entity_id,
+                entity_name = known_names::player_name(player_id),
                 player_id,
-                item_id,
+                player_name = known_names::player_name(player_id),
+                item_id, // nt:id-only instance id, type unread yet
                 "send_inventory_item_update_via: query failed: {e}"
             );
             return false;

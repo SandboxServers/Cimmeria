@@ -19,3 +19,6 @@ pub use org_vault::{
     handle_org_vault_expand, handle_org_vault_open, OrgVaultExpandRequest, OrgVaultIo,
     OrgVaultOpenRequest,
 };
+
+#[cfg(test)]
+mod named_log_tests;

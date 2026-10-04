@@ -2,6 +2,7 @@
 //! (bank-vault BV-07; D-BV08, D-BV12).
 
 use cimmeria_entity::inventory::INV_BANK;
+use cimmeria_entity::known_names;
 
 use super::super::super::grant::item_allows_container;
 use super::super::bank_rules::{is_mission_item, MoveRefusal};
@@ -42,7 +43,9 @@ pub(super) async fn entering_vault(
             tracing::error!(
                 target: "bank",
                 player_id = req.player_id,
+                player_name = known_names::player_name(req.player_id),
                 item_id = req.item_id,
+                item_name = cimmeria_names::book().item(type_id),
                 "org vault move: mission-item lookup failed, refusing: {e}"
             );
             return Err(OrgMoveRefusal::Shared(MoveRefusal::MissionItem));

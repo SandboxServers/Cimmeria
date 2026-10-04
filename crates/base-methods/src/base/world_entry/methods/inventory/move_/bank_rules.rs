@@ -10,6 +10,7 @@
 //! answer: the player's `bank_slots` and whether the item is a mission item.
 
 use cimmeria_entity::inventory::{INV_BANK, INV_MISSION};
+use cimmeria_entity::known_names;
 use cimmeria_wire::cell::vault::VaultAccess;
 use sqlx::{Postgres, Transaction};
 
@@ -185,22 +186,28 @@ pub(super) fn log_move_accepted(m: &AcceptedVaultMove, vault: &VaultAccess) {
         target: "bank",
         event = "move_accepted",
         account_id = m.owner.account_id,
+        account_name = known_names::account_name(m.owner.account_id),
         player_id = m.player_id,
+        player_name = known_names::player_name(m.player_id),
         entity_id = m.entity_id,
+        entity_name = known_names::player_name(m.player_id),
         item_id = m.item_id,
-        type_id = m.type_id,
+        item_type_id = m.type_id,
+        item_name = cimmeria_names::book().item(m.type_id),
         quantity = m.quantity,
         kind = m.kind,
         source_container_id = m.source_container_id,
-        source_slot_id = m.source_slot_id,
+        source_container_name = cimmeria_names::book().container(m.source_container_id),
+        source_slot_id = m.source_slot_id, // nt:id-only slot index, unnamed
         target_container_id = m.target_container_id,
-        target_slot_id = m.target_slot_id,
+        target_container_name = cimmeria_names::book().container(m.target_container_id),
+        target_slot_id = m.target_slot_id, // nt:id-only slot index, unnamed
         source_stack_before = m.source_stack_before,
         source_stack_after = m.source_stack_after,
         target_stack_before = m.target_stack_before,
         target_stack_after = m.target_stack_after,
         bank_slots = i32::from(m.owner.bank_slots),
-        banker_id = vault.banker_id(),
+        banker_id = vault.banker_id(), // nt:id-only banker NPC, unnamed on the base
         gm_override = vault.gm_override(),
         distance = vault.distance(),
         "move_accepted: vault move committed"

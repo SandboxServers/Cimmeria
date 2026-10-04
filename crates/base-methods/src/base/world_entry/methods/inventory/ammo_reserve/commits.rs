@@ -10,6 +10,7 @@
 //! moves nothing.
 
 use cimmeria_entity::inventory::{INV_BANDOLIER, INV_CRAFTING, INV_MAIN};
+use cimmeria_entity::known_names;
 use sqlx::{PgPool, Postgres, Transaction};
 
 use super::{draw, return_rounds, AmmoDraw, AmmoReturn};
@@ -121,7 +122,11 @@ pub async fn commit_reload_draw(
         tracing::debug!(
             target: "ammo",
             event = "reload_draw_clip_mismatch",
-            player_id, slot_id, instance_id, clip_before, row_ammo,
+            player_id,
+            player_name = known_names::player_name(player_id),
+            slot_id, // nt:id-only slot index, unnamed
+            instance_id, // nt:id-only weapon instance in slot_id
+            clip_before, row_ammo,
             "reload draw: the cell's clip differs from the weapon row; the row wins"
         );
     }
@@ -180,7 +185,11 @@ pub async fn commit_switch_return(
         tracing::debug!(
             target: "ammo",
             event = "switch_return_clip_mismatch",
-            player_id, slot_id, instance_id, rounds, row_ammo = row.ammo,
+            player_id,
+            player_name = known_names::player_name(player_id),
+            slot_id, // nt:id-only slot index, unnamed
+            instance_id, // nt:id-only weapon instance in slot_id
+            rounds, row_ammo = row.ammo,
             "switch return: the cell's clip differs from the weapon row; the row wins"
         );
     }
