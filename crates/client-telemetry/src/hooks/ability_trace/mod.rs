@@ -21,12 +21,13 @@ pub(crate) mod decode;
 pub(crate) mod layout;
 pub(crate) mod press;
 pub(crate) mod seq_join;
+pub(crate) mod throttle;
 
 use std::sync::{Mutex, OnceLock};
 use std::time::Instant;
 
 use super::entity_trace::Fields;
-use super::name_throttle::{Decision, NameThrottle};
+use throttle::AbilityThrottle;
 
 /// A press the client saw, once its ability (or its failure) is known.
 pub(crate) const TARGET_PRESS: &str = "client.ability.press";
@@ -56,30 +57,6 @@ pub(crate) fn field<'a>(fields: &'a Fields, name: &str) -> Option<&'a serde_json
     fields.iter().find(|(k, _)| *k == name).map(|(_, v)| v)
 }
 
-// ---------------------------------------------------------------------
-// Volume: D-AU5, a burst of 8 then 4 a second per name, with the count of
-// suppressed events on the next one through.
-
-/// The per-name token buckets for every `client.ability.*` target.
-#[derive(Debug, Default)]
-pub(crate) struct AbilityThrottle {
-    table: NameThrottle,
-}
-
-impl AbilityThrottle {
-    /// Decide for one event under `key` at monotonic `now_ms`; `None` when
-    /// suppressed, else the fields with `suppressed` added when non-zero.
-    pub(crate) fn admit(&mut self, key: &str, mut fields: Fields, now_ms: u64) -> Option<Fields> {
-        let Decision::Emit { suppressed } = self.table.check(key, now_ms) else {
-            return None;
-        };
-        if suppressed > 0 {
-            fields.push(("suppressed", serde_json::json!(suppressed)));
-        }
-        Some(fields)
-    }
-}
-
 static THROTTLE: Mutex<Option<AbilityThrottle>> = Mutex::new(None);
 static EPOCH: OnceLock<Instant> = OnceLock::new();
 
@@ -95,15 +72,18 @@ pub(crate) fn report(outs: Vec<Out>) {
     for out in outs {
         #[cfg(test)]
         capture::record(&out);
+        let (target, level) = (out.target, out.level);
         let admitted = {
             let mut g = THROTTLE.lock().unwrap_or_else(|e| e.into_inner());
             g.get_or_insert_with(AbilityThrottle::default)
-                .admit(&out.key, out.fields, now_ms())
+                .admit(out, now_ms())
         };
         #[cfg(all(target_os = "windows", target_arch = "x86"))]
         if let Some(fields) = admitted {
-            crate::hooks::emit::emit(out.target, out.level, fields);
+            crate::hooks::emit::emit(target, level, fields);
         }
+        #[cfg(not(all(target_os = "windows", target_arch = "x86")))]
+        let _ = (target, level);
         #[cfg(not(all(target_os = "windows", target_arch = "x86")))]
         let _ = admitted;
     }
@@ -126,45 +106,5 @@ pub(crate) mod capture {
     /// Take everything recorded on this thread so far.
     pub(crate) fn take() -> Vec<Out> {
         SEEN.with(|s| std::mem::take(&mut *s.borrow_mut()))
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use serde_json::json;
-
-    fn row() -> Fields {
-        vec![("press_id", json!(1))]
-    }
-
-    /// D-AU5: eight back to back, then four a second, and the next event
-    /// through carries how many were dropped.
-    #[test]
-    fn the_throttle_is_a_burst_of_eight_then_four_a_second() {
-        let mut t = AbilityThrottle::default();
-        for i in 0..8 {
-            assert!(t.admit("press:hotbar", row(), 0).is_some(), "burst {i}");
-        }
-        for _ in 0..5 {
-            assert!(t.admit("press:hotbar", row(), 0).is_none());
-        }
-        let next = t
-            .admit("press:hotbar", row(), 250)
-            .expect("one token refilled");
-        assert_eq!(field(&next, "suppressed"), Some(&json!(5)));
-        assert!(t.admit("press:hotbar", row(), 250).is_none());
-    }
-
-    /// A storm on one name never silences another.
-    #[test]
-    fn one_hot_name_does_not_hide_another() {
-        let mut t = AbilityThrottle::default();
-        for _ in 0..100 {
-            t.admit("sent:useAbility", row(), 0);
-        }
-        let other = t.admit("sent:confirmationResponse", row(), 0);
-        assert!(other.is_some());
-        assert_eq!(field(&other.unwrap(), "suppressed"), None);
     }
 }
