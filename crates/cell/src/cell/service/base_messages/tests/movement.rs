@@ -244,7 +244,7 @@ async fn entity_move_space_mismatch_warns_but_still_applies() {
     // Rule 6 (NT-23): the server's space is named; the bogus claimed one
     // resolves to nothing, so its name is left off rather than "unknown".
     assert!(
-        event.has_field("actual_world", "Castle_CellBlock"),
+        event.has_field("world", "Castle_CellBlock"),
         "the server's binding must be named; got {event:#?}"
     );
     assert!(

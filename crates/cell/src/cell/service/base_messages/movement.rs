@@ -74,9 +74,9 @@ pub(super) async fn handle_entity_move(
             // `world` on this row too: the server-side binding is known
             // here, so a `movement.validation` dashboard filtered by
             // world must not silently drop space-mismatch rows. It
-            // names the world the server believes the player is in —
-            // the claimed id is by definition not a binding this
-            // process can resolve.
+            // names the world the server believes the player is in.
+            // The claimed space is named as `claimed_world` only when
+            // it is a space this process holds; otherwise it is left off.
             let world = space_mgr.world_name_for_space(actual_space_id);
             tracing::warn!(
                 target: "movement.validation",
@@ -88,8 +88,7 @@ pub(super) async fn handle_entity_move(
                 player_name = id.player_name,
                 claimed_space_id,
                 claimed_world = space_mgr.world_name_for_space(claimed_space_id),
-                actual_space_id,
-                actual_world = world,
+                actual_space_id, // nt:id-only named by the `world` field on this line
                 world,
                 reason = "space_mismatch",
                 "movement.space_mismatch: client claims a different space than \

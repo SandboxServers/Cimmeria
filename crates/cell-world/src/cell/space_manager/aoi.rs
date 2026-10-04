@@ -372,7 +372,10 @@ impl SpaceManager {
 
         // The name for the target-cleared line below, looked up before the
         // mutable borrow and only when that line is on.
-        let left_target_name = if tracing::enabled!(tracing::Level::DEBUG) {
+        let left_target_name = if tracing::enabled!(
+            target: super::target_lifetime::LOG_TARGET,
+            tracing::Level::DEBUG
+        ) {
             self.get_entity(player_id)
                 .and_then(|e| e.current_target_id)
                 .and_then(|t| u32::try_from(t).ok())

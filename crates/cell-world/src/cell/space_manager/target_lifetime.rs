@@ -30,6 +30,10 @@ use cimmeria_entity::cell_entity::CellEntity;
 
 use super::{EntityNames, SpaceManager};
 
+/// The target of the "stored target cleared" line: this module's path,
+/// so callers in other modules can gate a name lookup on the same target.
+pub(super) const LOG_TARGET: &str = module_path!();
+
 /// Drop `holder`'s stored target if it is `gone`. Returns whether it did.
 ///
 /// One debug line per clear, with `reason=` naming the event, so "why did my
@@ -50,6 +54,7 @@ pub(super) fn drop_target_if(
     }
     holder.current_target_id = None;
     tracing::debug!(
+        target: LOG_TARGET,
         holder_id,
         holder_name = EntityNames::of(holder).entity_name,
         target_id = gone,
@@ -73,7 +78,7 @@ impl SpaceManager {
             return Vec::new();
         };
         // Named only when the clear line is on: this runs on every destroy.
-        let gone_name = if tracing::enabled!(tracing::Level::DEBUG) {
+        let gone_name = if tracing::enabled!(target: LOG_TARGET, tracing::Level::DEBUG) {
             space
                 .entities
                 .get(&gone)
@@ -93,7 +98,12 @@ impl SpaceManager {
     /// Clear `holder`'s stored target if it is `target`. Returns whether it
     /// did. Used by the death burst for the killer alone.
     pub fn clear_target_of(&mut self, holder: u32, target: u32, reason: &'static str) -> bool {
-        let target_name = self.entity_names(target).entity_name;
+        // Named only when the clear line is on, like `clear_targets_on`.
+        let target_name = if tracing::enabled!(target: LOG_TARGET, tracing::Level::DEBUG) {
+            self.entity_names(target).entity_name
+        } else {
+            None
+        };
         self.get_entity_mut(holder)
             .is_some_and(|h| drop_target_if(holder, h, target, target_name, reason))
     }

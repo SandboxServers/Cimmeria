@@ -71,6 +71,7 @@ pub async fn run_tick_with_engine(
             if *count >= MAX_PER_REGION {
                 tracing::error!(
                     region_id,
+                    region_name = space_mgr.ring_transporters.region_name(region_id),
                     max = MAX_PER_REGION,
                     "ring tick: hit per-region transition cap — possible FSM loop"
                 );
@@ -141,6 +142,7 @@ async fn run_one_deadline(
     if live != Some(deadline) {
         tracing::debug!(
             region_id,
+            region_name = space_mgr.ring_transporters.region_name(region_id),
             snapshot = ?deadline,
             live = ?live,
             reason = "deadline_superseded",
@@ -191,7 +193,9 @@ async fn run_one_deadline(
     if deadline.is_warmup() && destination_for_warmup.is_none() {
         tracing::error!(
             region_id,
+            region_name = space_mgr.ring_transporters.region_name(region_id),
             destination_region_id = warmup_dst_id,
+            destination_region_name = space_mgr.ring_transporters.region_name(warmup_dst_id),
             reason = AbortReason::DestinationRegionMissing.as_str(),
             "ring warmup: destination region not loaded — aborting the trip and releasing \
              passengers rather than leaving them locked and hidden in SendWarmup"
@@ -231,7 +235,9 @@ async fn run_one_deadline(
         let dst = destination_for_warmup.as_ref();
         tracing::error!(
             region_id,
+            region_name = space_mgr.ring_transporters.region_name(region_id),
             destination_region_id = warmup_dst_id,
+            destination_region_name = space_mgr.ring_transporters.region_name(warmup_dst_id),
             destination_world = dst.map(|d| d.world_name.as_str()).unwrap_or_default(),
             pad_x = dst.map(|d| d.x).unwrap_or_default(),
             pad_y = dst.map(|d| d.y).unwrap_or_default(),
