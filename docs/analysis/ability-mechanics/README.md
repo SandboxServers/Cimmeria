@@ -1,7 +1,7 @@
 # Ability Mechanics
 
 > Type: how-to. Audience: Claude Code coordinator and implementing engineers.
-> Updated: 2026-10-03. Companions: [evidence audit](audit.md), [work packets](work-packets.md), [ability trees campaign](../ability-trees/README.md), [combat formulas status](../../reverse-engineering/findings/combat-formulas-status.md), [abilities ADR](../../architecture/abilities-and-effects-system.md), [documentation index](../../readme.md).
+> Updated: 2026-10-03. Companions: [evidence audit](audit.md), [work packets](work-packets.md), [full telemetry and lab UAT plan](lab-uat-and-telemetry.md), [ability trees campaign](../ability-trees/README.md), [combat formulas status](../../reverse-engineering/findings/combat-formulas-status.md), [abilities ADR](../../architecture/abilities-and-effects-system.md), [documentation index](../../readme.md).
 
 ## Purpose
 
