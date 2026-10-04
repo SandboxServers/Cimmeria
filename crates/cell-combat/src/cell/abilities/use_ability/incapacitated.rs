@@ -7,10 +7,12 @@
 //! transport and death set the bit too, and they have their own gates.
 //!
 //! A player's press is answered like AB-12's: `onErrorCode` plus a
-//! `CHAN_FEEDBACK` line, no cooldown, one `abilities` row. The auto-cycle
-//! loop's own relaunch is refused silently, so a stunned auto-attacker is
-//! not sent a line every tick, and the loop resumes when the lock clears.
-//! An NPC's cast is refused silently: its AI already holds while stunned.
+//! `CHAN_FEEDBACK` line, no cooldown, one `abilities` row, whichever ability
+//! it names. The auto-cycle tick never reaches here while its player is
+//! stunned: it waits armed (`ticks/auto_cycle.rs`), so a stunned
+//! auto-attacker is not sent a line every tick and the loop resumes when the
+//! lock clears. An NPC's cast is refused silently: its AI already holds
+//! while stunned.
 
 use tokio::sync::mpsc;
 
@@ -47,13 +49,6 @@ pub(super) async fn refuse_while_incapacitated(
         return;
     };
     let is_player = entity.is_player;
-    let loop_relaunch =
-        entity.abilities.auto_cycle && entity.abilities.auto_cycle_ability_id == Some(ability_id);
-    if loop_relaunch {
-        // The auto-cycle tick relaunches every 100 ms; the loop just waits.
-        tracing::trace!(target: "abilities", entity_id, ability_id, "auto-cycle paused: stunned");
-        return;
-    }
     let id = space_mgr.player_identity(entity_id);
     // DEBUG: a stunned client can press at will.
     tracing::debug!(

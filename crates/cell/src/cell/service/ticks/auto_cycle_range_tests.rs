@@ -1,5 +1,5 @@
-//! Range tests for `auto_cycle_tick`'s pre-gate: a target the launch would
-//! refuse on range is skipped silently, the loop stays armed, and nothing
+//! Pre-gate tests for `auto_cycle_tick`: a target the launch would refuse on
+//! range, or a stunned caster, is skipped silently, the loop stays armed, and nothing
 //! reaches the wire. The fixture is `auto_cycle_tests::make_auto_cycle_mgr`
 //! (player 1 at the origin, hostile NPC 50 at 5 m, ability 7).
 
@@ -82,5 +82,46 @@ async fn auto_cycle_tick_uses_the_weapons_reach_for_a_weapon_range_ability() {
     assert!(
         mgr.get_entity(1).unwrap().abilities.is_on_cooldown(7),
         "the 40 m weapon reaches 35 m: the tick must re-fire"
+    );
+}
+
+/// **Regression guard (AB-09a).** A stunned auto-attacker's loop waits armed
+/// and wire-silent (the handler would refuse with feedback every tick), and
+/// fires on the first tick after the stun's entry comes off. Revert proof:
+/// without the pre-gate the tick calls the handler, which sends
+/// `onErrorCode` plus the stunned line (`assert_skipped_silently` fails).
+#[tokio::test]
+async fn auto_cycle_tick_waits_silently_while_stunned_then_resumes() {
+    use cimmeria_entity::cell_entity::{TimedEffectSpec, TimedStacking};
+
+    let mut mgr = make_auto_cycle_mgr();
+    let stun = TimedEffectSpec {
+        effect_id: 1599,
+        ability_id: 1355,
+        invoker_id: 50,
+        state_flags: cimmeria_wire::state_field::BSF_MOVEMENT_LOCK,
+        duration_secs: Some(5.0),
+        stacking: TimedStacking::PerSource,
+        ..Default::default()
+    };
+    mgr.apply_timed_effect(1, stun, std::time::Instant::now())
+        .unwrap();
+    let _ = mgr.get_entity_mut(1).unwrap().take_ledger_state_change();
+
+    let (tx, mut rx) = mpsc::channel(64);
+    for _ in 0..3 {
+        auto_cycle_tick(&tx, &mut mgr, &empty_engine()).await;
+    }
+    assert_skipped_silently(&mgr, &mut rx);
+
+    let _ = mgr.remove_timed_effects(
+        1,
+        crate::cell::effects::stat_buff::StatBuffRemoval::Expired,
+        |_| true,
+    );
+    auto_cycle_tick(&tx, &mut mgr, &empty_engine()).await;
+    assert!(
+        mgr.get_entity(1).unwrap().abilities.is_on_cooldown(7),
+        "the loop resumes once the stun is off"
     );
 }

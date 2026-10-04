@@ -116,6 +116,39 @@ async fn a_stunned_player_cannot_cast() {
     assert_eq!(effect_results(&drain(&mut rx), 1), 1, "fires once free");
 }
 
+/// **Regression guard.** A manual press of the auto-cycle loop's own ability
+/// while stunned still gets the feedback: an armed loop does not mean the
+/// call came from the tick. The loop stays armed. Before, the refusal took
+/// any press of the loop's ability for the tick's relaunch and stayed silent
+/// (`feedback` fails).
+#[tokio::test]
+async fn a_stunned_manual_press_of_the_loop_ability_gets_feedback() {
+    let mut mgr = stun_mgr();
+    {
+        let p = mgr.get_entity_mut(1).unwrap();
+        p.abilities.auto_cycle = true;
+        p.abilities.auto_cycle_ability_id = Some(INSTANT_ABILITY);
+    }
+    stun(&mut mgr, 1);
+    let (tx, mut rx) = mpsc::channel(512);
+    assert!(!handle_use_ability(1, INSTANT_ABILITY, 2, &tx, &mut mgr).await);
+    let msgs = drain(&mut rx);
+    let line = cimmeria_wire::cell::chat::serialize_on_player_communication(
+        "SYSTEM",
+        0,
+        cimmeria_wire::cell::chat::CHAN_FEEDBACK,
+        INCAPACITATED_TEXT,
+    );
+    assert!(
+        calls(&msgs)
+            .iter()
+            .any(|(e, m, a)| *e == 1 && *m == method_idx::ON_PLAYER_COMMUNICATION && *a == line),
+        "feedback: {msgs:?}"
+    );
+    let p = mgr.get_entity(1).unwrap();
+    assert!(p.abilities.auto_cycle && p.abilities.auto_cycle_ability_id == Some(INSTANT_ABILITY));
+}
+
 /// A stunned NPC's cast is refused too, silently (its AI holds anyway).
 /// Without the gate its stun lands on the player (`silent` fails).
 #[tokio::test]

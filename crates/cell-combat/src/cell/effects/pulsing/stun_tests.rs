@@ -64,21 +64,6 @@ async fn pulse_all_due(mgr: &mut SpaceManager, tx: &mpsc::Sender<CellToBaseMsg>)
     effect_pulse_tick(&NoContentEvents, tx, mgr).await;
 }
 
-fn state_updates(rx: &mut mpsc::Receiver<CellToBaseMsg>) -> Vec<u32> {
-    let mut out = Vec::new();
-    while let Ok(m) = rx.try_recv() {
-        if let CellToBaseMsg::EntityMethodCall {
-            entity_id: 1,
-            method_index: ON_STATE_FIELD_UPDATE,
-            args,
-        } = m
-        {
-            out.push(u32::from_le_bytes(args[..4].try_into().unwrap()));
-        }
-    }
-    out
-}
-
 /// **Regression guard (the stun leak, the issue's repro).** A three-pulse
 /// stun: the hit, two re-dispatching pulses and the sweep's single
 /// `on_remove`. Afterwards `BSF_MovementLock` is clear and no reference is
@@ -103,26 +88,81 @@ async fn a_pulsing_stun_clears_the_lock_when_it_ends() {
     assert_eq!(target.state_flag_counts.get(&BSF_MOVEMENT_LOCK), None);
 }
 
-/// Wire: the stunned player's client (and its witnesses) gets one
-/// `onStateFieldUpdate` with the lock when the stun lands, none for the
-/// pulses that refresh it, and one clearing it when the entry expires.
+/// Observer player 3, three units from the stunned player 1, in AoI.
+const OBSERVER: u32 = 3;
+
+/// Every `onStateFieldUpdate` about player 1: `(recipient, args)`, the
+/// recipient being 1 for its own client and the witness id otherwise.
+fn state_field_sends(rx: &mut mpsc::Receiver<CellToBaseMsg>) -> Vec<(u32, Vec<u8>)> {
+    let mut out = Vec::new();
+    while let Ok(m) = rx.try_recv() {
+        match m {
+            CellToBaseMsg::EntityMethodCall {
+                entity_id: 1,
+                method_index: ON_STATE_FIELD_UPDATE,
+                args,
+            } => out.push((1, args)),
+            CellToBaseMsg::WitnessEntityMethod {
+                witness_id,
+                entity_id: 1,
+                method_index: ON_STATE_FIELD_UPDATE,
+                args,
+                entity_is_player,
+            } => {
+                assert!(entity_is_player, "player 1 is routed as a player");
+                out.push((witness_id, args));
+            }
+            _ => {}
+        }
+    }
+    out.sort();
+    out
+}
+
+/// **Regression guard (the state-field broadcast).** With an observer in
+/// AoI: the landed stun sends exactly one `onStateFieldUpdate` to the
+/// stunned player's client and one to the observer, both the 4-byte LE
+/// `0x40` (`BSF_MovementLock`); a same-caster refresh sends neither; the
+/// expiry sends exactly one `0` to each. Sending only to the entity's own
+/// client (`send_entity_method`) fails the observer's rows; dropping the
+/// flush fails all of them.
 #[tokio::test]
 async fn the_lock_is_broadcast_once_on_and_once_off() {
     let (mut mgr, mut stun) = setup();
+    mgr.create_entity(OBSERVER, "W", [3.0, 0.0, 0.0], [0.0; 3])
+        .unwrap();
+    {
+        let o = mgr.get_entity_mut(OBSERVER).unwrap();
+        o.is_player = true;
+        o.player_id = Some(300);
+    }
+    mgr.connect_entity(OBSERVER);
+    let _ = mgr.compute_aoi_changes();
+    assert!(mgr.get_witnesses_of(1).contains(&OBSERVER), "fixture");
     // Single-pulse: a plain 5 s ledger entry the stat-buff tick expires.
     stun.pulse_count = 1;
     stun.pulse_duration = 5.0;
     mgr.effect_defs.insert(stun.effect_id, stun.clone());
     let (tx, mut rx) = mpsc::channel(512);
+    let on = vec![0x40, 0x00, 0x00, 0x00];
+    let off = vec![0x00; 4];
 
     land(&mut mgr, &stun, &tx).await;
-    assert_eq!(state_updates(&mut rx), vec![BSF_MOVEMENT_LOCK], "on");
+    assert_eq!(
+        state_field_sends(&mut rx),
+        vec![(1, on.clone()), (OBSERVER, on)],
+        "on: one to each client"
+    );
 
-    // A same-caster re-hit refreshes the entry: no second broadcast.
+    // A same-caster re-hit refreshes the entry: nothing to either client.
     land(&mut mgr, &stun, &tx).await;
-    assert_eq!(state_updates(&mut rx), Vec::<u32>::new(), "refresh");
+    assert_eq!(state_field_sends(&mut rx), Vec::new(), "refresh");
 
     let expired = stat_buff_tick_at(Instant::now() + Duration::from_secs(6), &tx, &mut mgr).await;
     assert_eq!(expired, 1);
-    assert_eq!(state_updates(&mut rx), vec![0], "off");
+    assert_eq!(
+        state_field_sends(&mut rx),
+        vec![(1, off.clone()), (OBSERVER, off)],
+        "off: one to each client"
+    );
 }

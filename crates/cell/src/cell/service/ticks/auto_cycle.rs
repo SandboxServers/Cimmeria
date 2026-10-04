@@ -178,6 +178,14 @@ pub(in crate::cell::service) async fn auto_cycle_tick(
                 return None;
             }
 
+            // Stunned or knocked down (a timed-effect entry holds the
+            // movement lock, ability mechanics AB-09a): wait armed, without
+            // invoking the handler, which would refuse the re-fire with
+            // feedback every tick. The loop resumes when the lock clears.
+            if e.holds_ledger_flag(cimmeria_wire::state_field::BSF_MOVEMENT_LOCK) {
+                return None;
+            }
+
             // Mid-draw gate. When the player's weapon is mid-draw
             // animation (`pending_attack_at = Some`), `handle_use_ability`
             // rejects with `"weapon attack already queued (mid-draw),
