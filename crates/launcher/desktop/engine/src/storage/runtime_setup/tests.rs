@@ -3,6 +3,11 @@ use crate::{catalog::verify_release, state::InstalledState};
 use cimmeria_runtime_probe::{collect, physx::SdkResult, LoadResult};
 use ed25519_dalek::{Signer, SigningKey};
 fn fixture() -> (tempfile::TempDir, DesktopState, InstallIntent) {
+    fixture_with_runtime([7; 32])
+}
+pub(crate) fn fixture_with_runtime(
+    runtime: [u8; 32],
+) -> (tempfile::TempDir, DesktopState, InstallIntent) {
     let root = tempfile::tempdir().unwrap();
     let mut state = DesktopState::open(&root.path().join("state")).unwrap();
     state
@@ -21,7 +26,7 @@ fn fixture() -> (tempfile::TempDir, DesktopState, InstallIntent) {
             release: &release,
             login_servers: vec![],
             backend: ExtractionBackend::Wine {
-                runtime_sha256: [7; 32],
+                runtime_sha256: runtime,
                 helper_sha256: [8; 32],
             },
         })

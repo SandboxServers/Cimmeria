@@ -419,3 +419,15 @@ Windows+Mac before the shell; shell/visual/game gates remain separate.
   strict engine/shell clippy075146-24072. Effect decodes states and keeps Play gated;
   31frontendtests/logicUAT/typecheck/build pass (fixture IPC, no visual UAT).
   Prefix coordinator, runtime admission UI and explicit recovery remain unconnected.
+
+- Retained Mac prerequisite coordinator now owns installation marker, fresh
+  generation game-prefix marker and verified cachedruntime guard. It dispatches
+  the pinned x86worker headlessly, persists observation, stops/waits ownedprefix,
+  then publishes terminal prerequisite state. Observer loss cannot abort it.
+  Real original-binaries/MSI + dev-signed installed fixture passes26.297s075925-27636.
+  Observed/Quiescent-only recovery verifies absenthost, revision, owner andcache;
+  unknown helper loss remainsgated. Enhanced original-worker smoke passes27.997s
+  080238-28655 with synthetic preterminal snapshot + realQuiescent record followed
+  by explicit reconciliation, no installer replay or consent change. Threelocal
+  guards and strictclippy pass080135-28262/080139-28218. UI dispatch, packagedworker
+  resource and general crash recovery remain unfinished; no gameplay evidence.

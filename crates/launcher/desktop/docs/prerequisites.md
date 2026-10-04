@@ -244,8 +244,8 @@ The subprocess harness passes (`20261004-074153-19316`), exercising those cases,
 pre-dispatch cancellation, refused host recording and recording before request
 consumption. It uses real subprocesses with inert fixture results, not MSI or game
 execution. The real Wine smoke now exercises this supervisor too. Durable native
-storage is described below; production prefix coordination and recovery remain
-unconnected. The prior worker source `10d67a2b9` passed native Windows CI
+storage and native Mac prefix coordination are described below; shell admission
+and resource packaging remain unconnected. The prior worker source `10d67a2b9` passed native Windows CI
 `37203128166`; this does not validate the newer storage/UI packet.
 
 ## Durable runtime-setup state and integration boundary
@@ -272,8 +272,8 @@ including a crash between Quiescent persistence and terminal commit. Neither
 reopen nor an observed successful report permits automatic replay or inferred
 success. Preferences and diagnostics consent remain unchanged.
 
-Production Mac prefix creation/ownership, worker coordination, prefix-scoped
-cancellation and an explicit recovery API remain unfinished. There is no new UI
+Native Mac dispatch and constrained explicit reconciliation now exist as described
+below. Shell admission/resource packaging remain unwired; there is no new UI
 admission button. The Effect/view decodes compatibility-operation status for
 inspection, distinguishes interruption from completion, and keeps Play disabled:
 PhysX verification cannot bypass graphics or remaining launch gates.
@@ -287,3 +287,48 @@ library suite passed 247 tests with 11 explicit ignored smokes
 (`20261004-075254-24651`); strict engine/shell clippy passed
 (`20261004-075146-24072`) and the frontend build passed. Earlier worker CI/smokes
 do not validate this new state integration on Windows.
+
+## Retained Mac coordinator
+
+`mac_wine::prerequisites::dispatch` validates the planned helper hash and pinned
+runtime, then retains installed-root, exact generation-prefix and verified cached
+runtime locks. It creates a fresh headless game prefix distinct from extraction
+prefixes; existing generations are never adopted. Dropping the observer does not
+stop the retained worker. Its host callback persists identity before sending the
+request; observation is stored before verified-prefix stop/wait and durable finish.
+Unknown outcomes remain gated even when stop/wait succeeds. Resource failures or
+proven pre-spawn cancellation may terminate without asserting SDK evidence.
+
+Explicit `reconcile` accepts only Observed/Quiescent evidence with the recorded
+host absent, checks operation ID/revision again around resource acquisition, and
+revalidates exact prefix ownership and cached runtime under locks. Host absence
+uses signal zero, not PID termination; live/reused PIDs are refused. It stops/waits
+for the verified prefix before finishing. LaunchIntent/HostStarted or unknown
+results remain gated; this is not general crash/descendant recovery.
+
+With `SGW_PREREQUISITE_WORKER`, its matching `SGW_PREREQUISITE_WORKER_SHA256`,
+`SGW_PROBE_BINARIES` and `SGW_PHYSX_INSTALLER` set to the authenticated artifacts
+above, run the opt-in coordinator smoke without a production manifest-key override
+(the installed-content fixture is development-signed):
+
+```bash
+bash tools/build-lane/lane.sh cargo test --locked \
+  --manifest-path crates/launcher/desktop/Cargo.toml \
+  -p cimmeria-launcher-engine --lib \
+  mac_wine::prerequisites::tests::retained_coordinator_installs_checks_and_persists_owned_runtime \
+  -- --exact --ignored --nocapture
+```
+
+The real coordinator smoke passed in 26.297 seconds (`20261004-075925-27636`),
+using the original two SGW files/vendor MSI with a development-signed installed
+fixture. It dropped the observer, refused duplicate dispatch and preserved the
+installer/SDK result across reopen with consent false. This was not a full-seed
+installation or game UAT. The enhanced rerun passed in 27.997 seconds
+(`20261004-080238-28655`): it restored a synthetic preterminal operation snapshot
+while retaining the real Quiescent record, reopened behind reconciliation,
+refused a stale revision and explicitly stopped/reconciled the owned prefix.
+It did not rerun the installer. This simulates a specific durable-write gap;
+it does not validate actual power loss or an unobserved helper crash.
+Three local tests passed (`20261004-080135-28262`), as did strict clippy
+(`20261004-080139-28218`). No UI admission, packaged prerequisite resource or
+visual validation is claimed; prerequisite success still cannot enable Play.

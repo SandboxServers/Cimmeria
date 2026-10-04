@@ -22,6 +22,7 @@ use std::{
 use tokio_util::sync::CancellationToken;
 use uuid::Uuid;
 mod paths;
+pub mod prerequisites;
 pub(crate) mod recovery;
 mod resource;
 pub use resource::HelperResource;
