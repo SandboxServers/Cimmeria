@@ -375,14 +375,17 @@ Every flow returns `elapsed_ms` and a `steps` list with per-step timings. A fail
 What the flows guard against:
 
 - **Deleting the wrong character.** Delete and Play act on the *selected* slot, so the flow checks the client's `CharSelectMod.selectedCharacterIndex` and name after the click, and confirms a delete only when the prompt text names the character.
-- **Escape opening the game menu.** `lab_play_character` presses Escape only while a movie plays or while the map loads under a cutscene (character select gone, no HUD yet), plus three presses once a new character's intro dialog is up (the arrival cutscene keeps playing under it). With `skip_cutscene: false` it never presses Escape.
+- **Escape opening the game menu.** `lab_play_character` presses Escape only while a movie plays or from the moment character select goes away until the world HUD shows, one press per 1.5 s poll, up to the timeout. The HUD test is `SelfStatusWin` visible and nothing else: on the first live run a new character's intro dialog (and the minimap) read visible while the Bink arrival cutscene still played, and `SelfStatusWin` appeared only after an Escape. Once the HUD is up the flow stops pressing. With `skip_cutscene: false` it never presses Escape.
+- **A busy client after Create.** Right after Create the client's main thread is busy, and a bridge call can time out in its queue (`dispatch timeout`; the first live run failed there although the character was made). `lab_create_character` retries such timeouts until its 30 s budget, and once one has happened it also reads the character list, so a character that is already in the list counts as created. Any other bridge error still fails the step.
 - **Closing a dialog the wrong way.** `lab_finish_dialog` pages with Next until Done (the green checkmark) shows and never uses the close X, which sends choice -1. `accept: true` presses Accept on an offer with no Done.
 
 Typing covers letters, digits, space and `-_/.`; a password with other characters is refused before anything is typed. Names in character creation must be letters only.
 
 `client_entity_table` reads the `GameEntityManager` singleton (VA `0x01EF244C` plus the ASLR slide) and walks its three `std::map`s with one memory read per tree node and one per entity. Hundreds of small reads once starved the watchdog's heartbeat and got a healthy client killed; the watchdog now forgives a missed heartbeat while other bridge calls are completing (`heartbeat::BUSY_GRACE_MS`), and a crash relaunch logs back in with `lab_login` and plays the `lab-account.json` character.
 
-Not yet proven on the live client (the prototype scripts these port were): the EULA path, the server-row selection by name, the `SelfStatusWin`/`MinimapWin` world-HUD test for a returning character (the prototype only played new characters, whose intro dialog marks the world as loaded), `client_ui_state`'s root-window and chat sections, and `isReady()` through the vtable.
+Proven on the first live run (colo, 2026-10-04): `lab_create_character` made a level-1 Soldier that showed at character select, and `lab_play_character` entered the world on it. That run found the two problems fixed since (the create step's bridge timeout and the in-world test that accepted the intro dialog); the fixes themselves have not run live yet.
+
+Not yet proven on the live client (the prototype scripts these port were): the EULA path, the server-row selection by name, the `SelfStatusWin` world-HUD test for a returning character and for a new one after the Escapes, `client_ui_state`'s root-window and chat sections, and `isReady()` through the vtable.
 
 ## World tools
 
@@ -436,7 +439,19 @@ These tools drive combat the way a player does and say how they did it. Every re
 3. Not on the hotbar (default `fallback: window`): opens the Ability window with its bound key (N3 `AbilityMod.onToggleAbilityWin` when unbound), selects the tree tab, clicks `Ability_Button<i>` (N1), and closes the window again. An ability outside the trees (a GM `.giveability` grant) has no window button: use `place: true` or `fallback: lua`.
 4. `fallback: lua`: `useAbility(id, Unit.Target)`, N3.
 
-No slash command for abilities is known, so there is no N2 path. The result is read from the events that follow the press, for up to `observe_ms` (default 2500): `net.out useAbility*` (sent), `onTimerUpdate` (cooldown or warmup timer), `onSequence` (cast started), `onEffectResults` or a combat-text record (effect applied), `onErrorCode` (refused), and feedback chat lines. `result.verdict` is one of `effect_applied`, `refused`, `cast_started`, `refused_with_feedback`, `sent_no_reply`, `refused_client_side`, `nothing_observed`. CME events carry names, not payloads, so a timer or effect from another source inside the window counts too; the combat records name the ability. The hotbar button's cooldown after the press is included.
+No slash command for abilities is known, so there is no N2 path. The result is read from the events that follow the press, for up to `observe_ms` (default 2500), from both generations of client telemetry: the `cme.event` / `net.out` names and the ability trace's `ability.*` rows ([client-telemetry.md § Ability telemetry](../architecture/client-telemetry.md#ability-telemetry-clientability)).
+
+| Signal | Events |
+|---|---|
+| sent | `net.out useAbility*`, `ability.sent` |
+| refused by the client | `ability.press_dropped` (its `reason` is in `result.press_dropped`) |
+| cooldown or warmup timer | `onTimerUpdate` (`cme.event` or `ability.recv`), `ability.applied` `kind = cooldown` |
+| cast started | `onSequence` |
+| effect applied | `onEffectResults`, `ability.applied` `kind = stat`, `stat_base`, `effect_bar_add` or `effect_bar_refresh`, `ability.shown` combat text, a combat-text record |
+| refused by the server | `onErrorCode` |
+| feedback | speaker-less chat lines, `ability.shown` `feedback_line` |
+
+`result.verdict` is one of `effect_applied`, `refused`, `refused_client_side`, `cast_started` (a sequence or a timer, nothing landed yet), `refused_with_feedback`, `sent_no_reply`, `nothing_observed`. One message seen by several sources (its CME name, its `ability.recv` decode, its `ability.applied` row) counts once. Timers, stat changes and CME names carry no ability id, so a timer or a stat change from another source inside the window (regeneration, a damage-over-time) counts too; effect results, combat text, combat records and dropped presses name the ability, and another ability's are skipped. The hotbar button's cooldown after the press is included. With `place: true` the first hotbar read includes the empty buttons, which a fresh character's bar is made of.
 
 **`client_combat_log`** wraps `SCTMod.onUnitCombat`, the stock handler for `Events.UnitCombat`. The wrapper records the raw event (ability id and name, `HitType`, source and target unit names and whether each is the player, mortal, every stat change with value and result code) into a ring in `_G.CimmeriaLab`, then calls the original, so the SCT verbosity option cannot hide anything and the player sees no change. It re-subscribes `SCTWin`'s `Events.UnitCombat` to the same stock name after wrapping, in case the event system caches the resolved function; it never touches `SCTWin`'s `Events.PreRender` subscription, which the world tools own (a window holds one subscription per event). A second wrapper on `ChatMod.onMessageReceived` feeds `chat.line` events the same way. Capture starts at the first pump in the world (any `client_combat_log`, `client_wait_event` or `client_use_ability` call); an interface reload is noticed (the ring's epoch changes) and the wrappers are reinstalled.
 
@@ -453,13 +468,20 @@ Event kinds: `cme.event` (field `event`, e.g. `Event_NetIn_onEffectResults`; `ki
 
 ### Not yet verified on the live client (combat tools)
 
-These tools were written against the stock UI Lua and tested against a fake bridge only (the owner deferred live testing; still true on 2026-10-04). After the [AB-L0 smoke](#first-live-check-the-ab-l0-smoke), the first live run should check, in this order. Steps 1, 4 and 5 can be read against the native [`client.ability.*` rows](#ability-telemetry-in-the-lab-ring) for the same press: a `combat.hit` record should have an `ability.shown` row with `kind = combat_text` beside it, and every `net.out useAbility` an `ability.sent` with the same method.
+These tools were written against the stock UI Lua and tested against a fake bridge. The first live smoke run (colo, 2026-10-04) proved:
+
+- `client_hotbar {include_empty: true}` on a fresh level-1 Soldier lists all 100 buttons, `ActionButtons_<n>Button`, button 1 visible, every one empty (`action_id` 0, no action type).
+- `client_use_ability` sends `net.out useAbility` for a Heal Focus press, and the ability trace's rows reach the lab store within 2 s: `ability.applied` `kind = cooldown` for the warmup and cooldown timers (`timer_type` 1 and 2, both matching the server's two `onTimerUpdate` sends) and `ability.applied` `kind = stat`.
+
+That run also found two `client_use_ability` bugs, fixed since and not yet rerun live: `place: true` read the bar without its empty buttons and so found none to place on, and the verdict ignored the `ability.*` rows (`sent_no_reply` for that press).
+
+Still to check, in this order, after the [AB-L0 smoke](#first-live-check-the-ab-l0-smoke). Steps 1, 4 and 5 can be read against the native [`client.ability.*` rows](#ability-telemetry-in-the-lab-ring) for the same press: a `combat.hit` record should have an `ability.shown` row with `kind = combat_text` beside it, and every `net.out useAbility` an `ability.sent` with the same method.
 
 1. `client_combat_log` once in the world: `capture.status` is `installed`, then `ok` on the next call. Fire one shot: a `combat.hit` record arrives and the floating combat text still shows. No record means the event system kept the old handler; `installed_no_resubscribe` means the re-subscribe call failed.
 2. `chat.line`: an ability refusal (no target, out of range) arrives with an empty `speaker`, and a player's `/say` has one. `client_use_ability` treats speaker-less lines as feedback.
 3. `client_hotbar`: `getBindingKey` returns `key` as a virtual-key code (49 for `1`), and whether it carries modifier fields.
-4. `client_use_ability` on a bar ability with `press: key` and then `press: click`: both send `net.out useAbility`. Check the CME names it waits for appear as `Event_NetIn_onSequence`, `onEffectResults`, `onTimerUpdate` and `onErrorCode`, and that the button's cooldown reads back.
-5. The Ability-window path: `getBindingKey('ToggleAbility', 1)` resolves (else the window opens through the N3 toggle), the tab click switches `AbilityMod.currentTab`, and the `Ability_Button<i>` click casts. Then `place: true`: the ability lands on the first empty visible button and stays there after a relog.
+4. `client_use_ability` on a bar ability with `press: key` and then `press: click`: both send `net.out useAbility`. Check that the Heal Focus press now reads `effect_applied`, that a damaging ability's `onSequence` and `onEffectResults` arrive (as `cme.event` names and as `ability.recv` rows), that an untaught ability gives `ability.press_dropped` and `refused_client_side`, and that the button's cooldown reads back.
+5. The Ability-window path: `getBindingKey('ToggleAbility', 1)` resolves (else the window opens through the N3 toggle), the tab click switches `AbilityMod.currentTab`, and the `Ability_Button<i>` click casts. Then `place: true` on the empty bar: the ability lands on button 1 and stays there after a relog.
 6. `client_die_and_respawn`: `/gmsethealth 1 0` leaves the player alive (it does not kill), a lethal hit opens `PlayerDefeatWin` with the respawner list, Release respawns, and `respawn: auto` releases on the countdown.
 7. After an interface reload (anything that rebuilds the UI Lua state), the next pump reports `lua_epoch_changed` and combat capture resumes.
 
@@ -497,7 +519,7 @@ Since 2026-10-04 the telemetry DLL that every player runs follows one cast throu
 
 - `client_events_read` takes no filter: it returns every new event once, with its store seq, through its own cursor. That cursor belongs to whoever drives the lab, which is why the UAT runner never calls it.
 - A UAT `client_event` clause names the target with its prefix (`event = "client.ability.sent"`) and the runner strips it. The runner reads through `client_wait_event` with an explicit `since_seq`, so it shares no cursor with you. Clause fields: [automated-uat.md, Client event clauses](automated-uat.md#client-event-clauses-and-cast_id).
-- `client_use_ability` still reads the CME names (`net.out useAbility*`, `onEffectResults`, ...) for its verdict. The `ability.*` rows say the same with payloads, and the [first live check](#first-live-check-the-ab-l0-smoke) compares the two.
+- `client_use_ability` reads both the CME names (`net.out useAbility*`, `onEffectResults`, ...) and the `ability.*` rows for its verdict ([the signal table](#abilities-combat-and-event-waits)); the [first live check](#first-live-check-the-ab-l0-smoke) compares the two.
 
 **The throttle.** Every `client.ability.*` name gets a burst of 8, then 4 a second, and the next event of that name that gets through carries the count it dropped as `suppressed`. A press and its answer are kept or dropped together: rows with a `press_id` (`press_dropped`, `sent`, `sent_seq`) follow the decision made for their `press` row, and suppressed presses are counted only on the *next* `press` row. So a dropped `sent` leaves no row of its own, and a suppression at the very end of a window, with no press after it, cannot be seen. `recv`, `applied` and `shown` have their own buckets per method or kind, split by the local player (`self`) and everyone else (`other`), so NPC traffic cannot starve your own rows. Two more loss signals are separate from the throttle: `dropped` in a read (the bridge ring of 4096 was full) and `gap` (the supervisor's store of 8192 evicted past your cursor). Do not bound counts over a burst of more than 8 presses a second.
 
@@ -505,7 +527,7 @@ Since 2026-10-04 the telemetry DLL that every player runs follows one cast throu
 
 ### Not yet verified on the live client (ability hooks)
 
-Every ability anchor was read statically from the QA `SGW.exe`, and the decoders are tested against synthetic wire bytes and the checked-in definitions. No live client has loaded them. After the AB-L0 smoke below, check with one hotbar press each:
+Every ability anchor was read statically from the QA `SGW.exe`, and the decoders are tested against synthetic wire bytes and the checked-in definitions. The first live smoke run (colo, 2026-10-04) loaded them: `ability.press`, `ability.sent`, `ability.sent_seq` and `ability.applied` rows (cooldown timers of type 1 and 2, a stat update) were observed for a Heal Focus press. `ability.recv` was broken in that run and is being fixed in #1203; `ability.shown` and `ability.press_dropped` were not exercised. Still to check, with one hotbar press each:
 
 1. `client.hooks.inline.installed` lists the 12 press-and-send hooks (`ability_use_action`, `ability_use_ability`, `ability_slot`, `ability_lookup`, `ability_send_builder`, `ability_pet_action`, `ability_pet_send`, `ability_start_entity_message`, `ability_start_proxy_message`, `ability_channel_send`, `ability_nub_send`, `ability_seq_next`), the 11 apply hooks (`ability_effect_*`, `ability_cooldown_*`, `ability_stat_*`) and `sequence_net_in`.
 2. A hotbar press of a known ability gives `ability.press` then `ability.sent` with the same `press_id`, and an `ability.sent_seq` whose range contains the server's `use_ability_recv` `mercury_seq` (28-bit wrap: the join rule is in client-telemetry.md).
