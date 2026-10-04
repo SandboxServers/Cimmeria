@@ -4,11 +4,19 @@ mod host;
 use cimmeria_launcher_engine::{NativeCommand, NativeSnapshot, StorageError};
 use host::{
     InstallCommand, InstallStatus, JobError, LaunchCommand, LaunchStatus, MigrationCommand,
-    MigrationStatus, NativeHost,
+    MigrationStatus, NativeHost, UpdaterCommand,
 };
 use std::sync::Arc;
 use tauri::Manager;
 use tauri_plugin_dialog::DialogExt;
+
+#[tauri::command]
+async fn updater_command(
+    request: UpdaterCommand,
+    state: tauri::State<'_, Arc<NativeHost>>,
+) -> Result<cimmeria_launcher_engine::updater::Snapshot, cimmeria_launcher_engine::updater::Error> {
+    state.inner().updater_command(request).await
+}
 
 #[tauri::command]
 async fn launcher_command(
@@ -198,6 +206,7 @@ fn main() {
             install_command,
             launch_command,
             migration_command,
+            updater_command,
             choose_legacy_source
         ])
         .run(tauri::generate_context!())

@@ -8,6 +8,7 @@ pub mod migration;
 pub mod repair;
 pub mod runtime_setup;
 pub mod uninstall;
+pub mod updater;
 pub use helper_journal::{HelperPhase, HelperRecord, HelperResult};
 mod release_evidence;
 pub use release_evidence::EvidenceError;
@@ -36,7 +37,7 @@ const MAX_STATE_BYTES: u64 = 64 * 1024;
 const MAX_REVISION: u64 = 9_007_199_254_740_991;
 
 /// Safe codes for IPC. Detailed filesystem errors must remain local.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum StorageError {
     InUse,
@@ -166,6 +167,7 @@ impl DesktopState {
             preferences_uncertain: false,
         };
         state.recover_legacy_import()?;
+        state.recover_launcher_update()?;
         Ok(state)
     }
 
@@ -182,6 +184,7 @@ impl DesktopState {
     }
     /// Native adapter only; IPC exposes specific validated commands.
     pub fn operations_mut(&mut self) -> Result<&mut Operations<FileJournal>, StorageError> {
+        self.ensure_updater_idle()?;
         if self.requires_reopen() {
             return Err(StorageError::PersistenceUncertain);
         }

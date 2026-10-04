@@ -6,6 +6,8 @@ use std::{
 };
 
 mod install;
+mod updater;
+pub use updater::UpdaterCommand;
 mod launch;
 mod migration;
 pub use launch::{LaunchCommand, LaunchStatus};
@@ -15,6 +17,7 @@ mod runtime_setup;
 pub use install::{InstallCommand, InstallStatus, JobError};
 
 pub struct NativeHost {
+    updater_config: Option<cimmeria_launcher_engine::updater::Config>,
     root: PathBuf,
     default_install_directory: Option<PathBuf>,
     #[cfg(target_os = "macos")]
@@ -35,6 +38,7 @@ pub struct NativeHost {
 impl NativeHost {
     pub fn new(root: PathBuf) -> Self {
         Self {
+            updater_config: None,
             root,
             default_install_directory: None,
             #[cfg(target_os = "macos")]
