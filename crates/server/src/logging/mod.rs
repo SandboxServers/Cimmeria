@@ -34,6 +34,8 @@ mod pets_target_tests;
 mod stale_target_tests;
 #[cfg(test)]
 mod target_scan_tests;
+#[cfg(test)]
+mod unpaired_id_tests;
 
 use filters::{
     otel_client_log_filter, otel_network_log_filter, otel_server_log_filter, otel_trace_log_filter,

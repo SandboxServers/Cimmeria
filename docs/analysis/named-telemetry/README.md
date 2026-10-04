@@ -81,7 +81,7 @@ Coordinator launch: 2026-10-04 at `7e7ba5779` (baseline `a679e748c`). The cited 
 | NT-00 Rule 6 and key table | Done (PR #1191) | [#1191](https://github.com/SandboxServers/Cimmeria/pull/1191) | `space_id` pairs with `world`, not `world_name`; `player_name` kept over `character_name` |
 | NT-01 NameBook | In review | #1196 | `cimmeria-names`: 20 tables, loaded at base/cell boot and on content reload (`names.loaded`). Zero-row tables: `spawn_sets` (no seed rows; warns at boot). Pinned gaps (blank or placeholder, `crates/names/src/namebook_gaps.txt`): items 88, missions 4, mission_steps 22, mission_objectives 3,261, dialogs 1,436, dialog_sets 1,176, speakers 468, texts 15,682. Spec corrections: mission names are `mission_defn` (`mission_label` is the zone/group, 202 rows `NO MISSION LABEL`); `dialogs.name` is set on 6 rows only, so a dialog falls back to its first `dialog_set_maps.topic_text`; `UNUSED.*` is too broad (mission 819 is really "Unused Explosive"), so the shapes are `UNUSED`, `UNUSED.`, `UNUSED DIALOG*`, `UnusedDialog`, `UNUSED ERROR*`, `NO … NAME`, `NO … LABEL`, plus the `DELETE`/`DELETED` deletion markers as a word; the `UNUSED DIALOGUE` strings live in `dialog_screens`, which the book does not read. Fixed in passing: `base-session::archetype_name` mapped 7 to Jaffa (it is Shol'va) and had no 8; both archetype tables now read the seed spelling. |
 | NT-02 Name helpers on the existing resolvers | BlockedDependency (NT-01) | | |
-| NT-03 Unpaired-ID scan and baseline | BlockedDependency (NT-00) | | |
+| NT-03 Unpaired-ID scan and baseline | In review (PR #1200) | [#1200](https://github.com/SandboxServers/Cimmeria/pull/1200) | Baseline at `fbb838394`: 6,400 unpaired of 6,456 ID fields, 2,674 event calls, 548 files ([§ NT-03 baseline](#nt-03-baseline)). Three `session_id` lines in `dev_session/handlers.rs` carry `// nt:id-only` |
 | NT-10 Discord typed events | BlockedDependency (NT-01) | | |
 | NT-11 Discord tracing layer: fold pairs, no internal links | InReview | [#1199](https://github.com/SandboxServers/Cimmeria/pull/1199) | Pairing table in `crates/discord/src/embed/naming.rs` mirrors Rule 6; NT-03 carries its own copy, to share later. Tracing target field renamed `Log target` so it doesn't collide with the folded `target` pair. D-NT3's trace footer shows only once a site logs `trace_id` from the span context; that is a follow-up for NT-50 (`tracing-opentelemetry` dependency) |
 | NT-20 Sweep: combat and effects | BlockedDependency (NT-02) | | |
@@ -97,3 +97,45 @@ Coordinator launch: 2026-10-04 at `7e7ba5779` (baseline `a679e748c`). The cited 
 | NT-40 Client telemetry resolved at ingest | BlockedDependency (NT-01, NT-02, NT-30) | | |
 | NT-41 Lab tools return names | InReview | | The four server tools pair every ID with its name; the cell fills live names, the lab endpoint the NameBook ones. `server_witnesses` lists became `{ entity_id, entity_name, … }` objects. `client_entity_table` / `client_inventory` are served by the lab daemon from client memory, not the server, so they are left as they are. `spawn_id`, `class_id`, `stat_id` have no name table yet |
 | NT-50 Close-out | BlockedDependency (all) | | |
+
+### NT-03 baseline
+
+First run of `unpaired_id_fields_only_shrink`, 2026-10-04 at `fbb838394`. The scan read 2,674 event calls in the in-process crates (test code skipped) and found 6,456 ID-shaped fields, of which 6,400 are unpaired, in 548 files. The per-file numbers are in [`unpaired_id_baseline.txt`](../../../crates/server/src/logging/unpaired_id_baseline.txt). Rerun the breakdown below with `cargo nextest run -p cimmeria-server unpaired_id_report --run-ignored only --no-capture`; it also prints the top keys and files of each crate.
+
+Most of the count is Rule 5's identity pair: `player_id` and `account_id` stamp nearly every player line, so pairing them through the session resolvers (NT-02) clears about 30% at once.
+
+| Key | Unpaired | | Crate | Unpaired | Top keys |
+|---|---:|---|---|---:|---|
+| `entity_id` | 1,547 | | base-methods | 1,135 | `player_id` 327, `entity_id` 212, `item_id` 132 |
+| `player_id` | 1,155 | | cell-combat | 992 | `entity_id` 179, `player_id` 142, `account_id` 130, `ability_id` 98 |
+| `account_id` | 770 | | cell-content | 589 | `entity_id` 175, `chain_id` 82, `player_id` 62, `mission_id` 44 |
+| `ability_id` | 209 | | cell-world | 584 | `entity_id` 96, `player_id` 76, `account_id` 71, `template_id` 35 |
+| `item_id` | 187 | | base-session | 492 | `player_id` 115, `entity_id` 103, `account_id` 80, `org_id` 60 |
+| `target_id` | 145 | | cell-console | 475 | `entity_id` 185, `player_id` 76, `account_id` 67, `caller_id` 16 |
+| `target_player_id` | 121 | | cell-interactions | 397 | `entity_id` 123, `player_id` 56, `account_id` 44 |
+| `chain_id` | 103 | | cell-methods | 332 | `entity_id` 150, `player_id` 45, `partner_entity_id` 18 |
+| `org_id` | 99 | | base-crafting | 251 | `player_id` 65, `entity_id` 62, `account_id` 58 |
+| `template_id` | 88 | | base-world-entry | 231 | `entity_id` 75, `player_id` 52, `witness_id` 19 |
+| `owner_id` | 86 | | cell | 223 | `entity_id` 74, `player_id` 41, `account_id` 32 |
+| `effect_id` | 81 | | base | 203 | `account_id` 53, `player_id` 46, `entity_id` 45, `msg_id` 11 |
+| `npc_id` | 78 | | cell-effect-scripts | 202 | `effect_id` 42, `target_id` 33, `entity_id` 24, `ability_id` 23 |
+| `type_id` | 72 | | the other 14 crates | 294 | admin-api 49, cell-duel 63, cell-org 51, cell-pets 27, content-engine 26, resources 22 |
+| `mission_id` | 69 | | | | |
+| `method_index` | 68 | | | | |
+
+`type_id` (72) can never pair: Rule 6 has the sweeps rename it to its domain key first.
+
+Top files, for picking a sweep's first target:
+
+| File | Unpaired |
+|---|---:|
+| `cell-combat/src/cell/abilities/use_ability/summon.rs` | 75 |
+| `cell-content/src/cell/content/consumable_use.rs` | 60 |
+| `base-methods/src/base/world_entry/methods/mail/read.rs` | 56 |
+| `base-session/src/base/contact_list/handlers/header_ops.rs` | 55 |
+| `base-methods/src/base/world_entry/methods/progression/grant_ability.rs` | 52 |
+| `base/src/base/dispatch/chat.rs` | 52 |
+| `cell-world/src/cell/effects/stat_buff/ledger.rs` | 52 |
+| `base-session/src/base/contact_list/handlers/member_ops.rs` | 48 |
+| `cell-content/src/cell/content/executor/dialog/mod.rs` | 48 |
+| `cell-interactions/src/cell/organization/squad/telemetry.rs` | 47 |

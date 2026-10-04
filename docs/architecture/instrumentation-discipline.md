@@ -493,6 +493,15 @@ NPC lines are in scope too: unlike Rule 5's identity, an NPC has a
 name. Existing lines converge through the campaign's system sweeps
 (NT-20 to NT-27), and NT-03's baseline only shrinks.
 
+The scan is `unpaired_id_fields_only_shrink` in
+`crates/server/src/logging/unpaired_id_tests/`, and the baseline is
+`crates/server/src/logging/unpaired_id_baseline.txt` (unpaired fields
+per file). A sweep that pairs fields lowers the baseline in the same
+PR with `NT_BASELINE_BLESS=1 cargo nextest run -p cimmeria-server
+unpaired_id`. The scan applies the exceptions table by suffix and keeps
+the prefix (`dest_space_id` pairs with `dest_world`), and a dotted key
+pairs under the same path (`npc.template_id` with `npc.template_name`).
+
 ### Worked example
 
 A `trade.execute` handler that already has the dispatcher span:

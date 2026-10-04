@@ -393,6 +393,7 @@ This section is mined from review comments since the test push began. Each item 
 - **Run `cargo test --workspace`**, not just `-p cimmeria-services`. A workspace test job that only runs one crate lets failures in `cimmeria-mercury` and `cimmeria-content-engine` merge green (PR #151).
 - **Pass `--locked` in CI** so a stale `Cargo.lock` fails the job rather than silently re-resolving (PR #151).
 - **Install `clang` and `mold` explicitly in CI.** A `.cargo/config.toml` that selects them as the linker means the runner image's preinstalls aren't enough — the suite must be self-contained (PR #151).
+- **An ID on a log event needs its name (Rule 6).** `unpaired_id_fields_only_shrink` in `cimmeria-server` scans every `trace!`..`error!`/`event!` call in the in-process crates and blocks the build when a file has more unpaired ID fields than `crates/server/src/logging/unpaired_id_baseline.txt` allows. Pair the field ([instrumentation-discipline.md § Rule 6](docs/architecture/instrumentation-discipline.md#rule-6--every-id-field-is-paired-with-its-name)) or mark its line `// nt:id-only <reason>`. When you pair fields, the test fails until you lower the baseline: `NT_BASELINE_BLESS=1 bash tools/build-lane/lane.sh cargo nextest run -p cimmeria-server unpaired_id`, then commit the file. The baseline only shrinks.
 
 ---
 
