@@ -97,6 +97,7 @@ fn priority_is_level_and_the_must_keep_families() {
     assert!(is_priority(&native("client.telemetry.rollup", "info")));
     assert!(is_priority(&native("client.telemetry.health", "info")));
     assert!(is_priority(&native("client.dll.attached", "info")));
+    assert!(is_priority(&native("client.ability.recv", "info")));
     assert!(is_priority(&native("client.hooks.fingerprint", "info")));
     assert!(!is_priority(&native("client.lua.pcall", "debug")));
     assert!(is_priority(&native("client.entity.create", "info")));

@@ -315,6 +315,36 @@ Fields: `path`, `stage` (`cache_ready`, or `appearance_ready` when the play step
 
 **Not hooked: the `Event_NetIn_onSequence` handler (`0x00d05790`).** It drops a sequence whose `SourceID` has no client entity before any request exists. Its drop branch holds the ids only inside the event's CME `BasicPropertyTree` (read through `Mercury__unknown_00e3cba0` / `Detail__unknown_00438b50`), and that tree's layout is not verified, so a hook there could report only "something was dropped". Proposal: verify the property tree's node layout (the `SourceID` and `KismetEventSetSeqID` entries are `long` properties) in Ghidra, then hook `0x00d05790` with a thread-local flag set by a hook on the request parser `0x00d13780` (reached only when the Source exists): no parse means `path = no_source_entity`, `stage = net_in`. Until then, a server `abilities.sequence` row with a matching `client.mercury.entity_method` (`msg_id = 1`) and neither a ready-handler drop nor a spawned emitter points at this branch.
 
+## Ability telemetry: `client.ability.*`
+
+Added 2026-10-04 for the ability-mechanics campaign (Part 2 of [lab-uat-and-telemetry.md](../analysis/ability-mechanics/lab-uat-and-telemetry.md)). Anchors and their evidence: [ability-client-hook-anchors.md](../reverse-engineering/findings/ability-client-hook-anchors.md). These events follow one cast through the client by the server's `cast_id`. They are in the DLL every player gets (D-AU4), and each is also pushed to the lab ring under `lab-bridge` (kind = target without `client.`). **Live status: UNVERIFIED.** The decoders are tested against synthetic wire bytes and the checked-in definitions, and the anchors were read from the QA `SGW.exe`; none of it has run in a live client yet.
+
+**Volume (D-AU5).** One token bucket per event name: burst 8, then 4 a second, and the next event of that name carries the dropped count as `suppressed`. The name is the method or kind (`recv:onEffectResults`), so a stat storm cannot hide an `onEffectResults`. Because the hook already budgets them, the governor forwards `client.ability.*` untouched (`KeepReason::SourceThrottled` in `governor/classify.rs`), and the ingest's runaway guard replays them over budget (`PRIORITY_PREFIXES` in `admin-api` `session_budget.rs`).
+
+### What the client received: `client.ability.recv` (AB-C3)
+
+No new hook. The existing `EntityManager::onEntityMethod` detour (`0x00dd2b80`, network thread) reads the message's argument bytes before the original consumes them: its stream is a `MemoryIStream` (vtable `0x01b18e38`, cursor `+0x08`, end `+0x0c`), and the bytes `[cursor, end)` are the arguments in `.def` order. The cursor is never moved. A message id that cannot be one of the methods below costs one compare; an extended id (61, the player's `0xBD`) costs a one-byte read of its sub-index before the rest is read.
+
+The decoder is driven by a table of each method's `.def` argument list (`hooks/ability_trace/recv_methods.rs`). A test reads `entities/defs/` and `alias.xml` and fails if any argument name, type or dictionary layout drifts; another checks every index against [client-method-dispatch-table.md](../protocol/client-method-dispatch-table.md).
+
+| Method (index) | Receivers | Fields after the common ones |
+|---|---|---|
+| `onSequence` (1) | any being | `sequence_id`, `source_id`, `target_id`, `primary_target`, `impact_time`, `nvps_count`, `nvps` (`[name, value]` rows), `view_type`, `instance_id`; `cast_id` = `instance_id` when non-zero |
+| `onTimerUpdate` (12) | any being | `timer_id`, `timer_type`, `source_id`, `secondary_id`, `total_time`, `complete_time` (game-clock seconds) |
+| `onEffectResults` (14) | any being | `source_id`, `ability_id`, `effect_id`, `target_id`, `result_code`, `results_count`, `results` (`[StatID, Delta, DamageCode, StatResultCode]` rows); `cast_id` = `effect_id` |
+| `onStateFieldUpdate` (19) | any being | `state_field` |
+| `onStatUpdate` (20), `onStatBaseUpdate` (21) | any being | `stats_count`, `stats` (`[StatId, Min, Current, Max]` rows): one event per message, not per stat |
+| `onPlayerCommunication` (28) | player | `speaker`, `speaker_flags`, `channel`, `text`; **feedback channel (9) only**: other channels are players' chat and are not reported |
+| `onKnownAbilitiesUpdate` (101) | player | `ability_ids_count`, `ability_ids` |
+| `onErrorCode` (121) | player | `system_id`, `instance_id`, `error_code` |
+| `onAbilityTreeInfo` (141) | player | `ability_lists_count`, `ability_lists` |
+
+Common fields: `method`, `method_index`, `entity_id` (the receiver), `msg_id`, `len` (argument bytes), `path` (`delivered`, `local_player`, `queued`). A `queued` message is applied later, when its entity enters the world, so its receive time is not its apply time. Arrays keep their first 32 elements and strings their first 256 characters; the count fields always hold the full length. Level `info`; a payload that does not decode as its `.def` says is a `warn` with `decode_error` (`truncated in <ArgName>`), which bypasses the bucket.
+
+Indices 0 to 26 mean the same method on every being, so they are decoded for any receiver. 27 and up are `SGWPlayer`'s own and are decoded only for the local player or an entity of type 2 or 3 (`SGWPlayer`, `SGWGmPlayer`): an `SGWMob`'s index 28 is a different method. Extended ids are player-only for the same reason.
+
+`Ability_Interrupt` is not a method. It is an `onSequence` whose sequence the server looked up for Kismet event 1002, and the wire carries only the sequence id, so a recv row cannot name it; join it to the server's `abilities.sequence` row by `cast_id`. `onSendCombatDebug` is not a client method; the native combat-debug lines reach the client as feedback-channel `onPlayerCommunication`, which the table above reports.
+
 ## Engine layer: log sinks and subsystem seams
 
 The client already logs through five paths and swallows failures at a dozen seams, and none of it reached SigNoz. `src/hooks/sinks/` hooks the five logging paths; `src/hooks/seams/` hooks the seams where a failure is silent. The game layer (CME events, Mercury, entities, Lua, the UI) is separate: the tables above and `client.cme.event`. Recovered addresses, layouts and evidence: [`client-engine-sinks-and-seams.md`](../reverse-engineering/findings/client-engine-sinks-and-seams.md). **None of these has been seen from a live client yet**; the second table says what each one needs to be confirmed.

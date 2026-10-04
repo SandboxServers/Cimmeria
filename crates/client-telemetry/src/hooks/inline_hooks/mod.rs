@@ -31,6 +31,9 @@
 //! - [`entity_messages`] — inbound entity methods and properties, the
 //!   deferred-message queue and its replay (`client.mercury.entity_*`),
 //!   which also set the dispatch context the CME and drop events read.
+//! - [`ability_recv`] — the ability methods' arguments, decoded from the
+//!   `onEntityMethod` stream before the game reads it (`client.ability.recv`,
+//!   AB-C3, 2026-10-04). No hook of its own.
 //! - [`net_out`] — the outgoing entity-method router (`client.net.out`).
 //! - [`sequence_manager`] — the `SequenceManager`'s silent drops of a
 //!   server `onSequence` (`client.sequence.dropped`, 2026-09-29).
@@ -99,6 +102,10 @@
 
 #![allow(clippy::missing_safety_doc)] // FFI bindings — safety doc in fn-level
 
+// `client.ability.recv`: the ability methods' arguments, read from the
+// `onEntityMethod` stream (AB-C3).
+#[cfg(all(target_os = "windows", target_arch = "x86"))]
+mod ability_recv;
 mod anim_notify;
 // Its pure helpers (kind/level/throttle) run only from the i686 detour.
 #[cfg_attr(not(target_arch = "x86"), allow(dead_code))]

@@ -76,6 +76,11 @@ pub enum KeepReason {
     Failure,
     /// The governor's own rollup, repeat and health events.
     SelfReport,
+    /// The hook already throttles it per name at the source and puts the
+    /// dropped count on the next event (`client.ability.*`, D-AU5 of the
+    /// ability-mechanics plan). A second budget here would drop events the
+    /// hook's `suppressed` count does not know about.
+    SourceThrottled,
 }
 
 impl KeepReason {
@@ -90,6 +95,7 @@ impl KeepReason {
             KeepReason::SessionBoot => "session_boot",
             KeepReason::Failure => "failure",
             KeepReason::SelfReport => "self_report",
+            KeepReason::SourceThrottled => "source_throttled",
         }
     }
 }
@@ -207,6 +213,10 @@ pub const RULES: &[Rule] = &[
         Exact("client.engine.level_stream_slow"),
         KeepReason::Failure,
     ),
+    // The ability telemetry (AB-C3 to AB-C5): throttled per name in the
+    // hook (burst 8, 4 a second, `suppressed` on the next event), so the
+    // governor forwards it as is.
+    keep(Prefix("client.ability."), KeepReason::SourceThrottled),
     // Per-entity streams: the first K per entity survive world entry.
     per_entity(Exact("client.cme.event"), "name"),
     per_entity(Exact("client.mercury.entity_method"), "msg_id"),

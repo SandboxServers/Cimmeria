@@ -389,7 +389,8 @@ times what a governed client sends, and enough for a `raw` lab session.
 Over the budget the chunk is still accepted, so the uploader does not
 retry it, but only warn/error rows, session metadata and the must-keep DLL
 families (boot, hooks, entity lifecycle, Mercury anomalies, governor
-reports) are replayed. Every chunk that suppressed something logs:
+reports, and the ability rows `client.ability.*`, which the DLL already
+throttles per name) are replayed. Every chunk that suppressed something logs:
 
 ```text
 service.name = 'cimmeria-server' AND scope_name = 'launcher.ingest'

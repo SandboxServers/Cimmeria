@@ -182,6 +182,8 @@ const PRIORITY_PREFIXES: &[&str] = &[
     "client.mercury.request_misparse",
     "client.mercury.unpack_fault",
     "client.dispatch.method_dropped",
+    // Throttled per name in the DLL already (ability-mechanics D-AU5).
+    "client.ability.",
 ];
 
 /// Replay one chunk for `claims.sid` at `now_secs` under the process-wide

@@ -55,6 +55,7 @@ fn the_must_keep_targets_are_never_summarized() {
         ("client.dll.attached", KeepReason::SessionBoot),
         ("client.cme.catalog_done", KeepReason::SessionBoot),
         ("client.lua.error", KeepReason::Failure),
+        ("client.ability.recv", KeepReason::SourceThrottled),
         ("client.os.exception", KeepReason::Failure),
         ("client.ue3.assert", KeepReason::Failure),
         ("client.ue3.fatal_error", KeepReason::Failure),
