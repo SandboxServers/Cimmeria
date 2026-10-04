@@ -1,8 +1,0 @@
-[Unit]
-Description=Copy Discourse (board.cimmeria.app) backups to Azure Blob
-After=docker.service
-Requires=docker.service
-
-[Service]
-Type=oneshot
-ExecStart=/mnt/nvme/board-backup/sync.sh

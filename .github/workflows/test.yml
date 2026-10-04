@@ -154,8 +154,6 @@ jobs:
         run: python3 -m unittest discover -s tools/docs-gen -p "test_*.py"
       - name: token-profile contract and ingest tests
         run: python3 -m unittest discover -s tools/token-profile -p "test_*.py"
-      - name: agent-board CLI and broker tests
-        run: python3 -m unittest discover -s tools/agent-board -p "test_*.py"
       - uses: ./.github/actions/rust-toolchain
       # Generated doc blocks (test counts, crate graph, ...) are regenerated on
       # main by regen-docs.yml after the merge, so a stale block never fails a PR.
