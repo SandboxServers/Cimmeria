@@ -51,6 +51,7 @@
 // AM-10). The ammo families' scripts are in `cimmeria-cell-effect-scripts`.
 pub mod ammo_damage;
 pub mod ammo_explosive;
+pub mod interrupt_request;
 pub mod passives;
 pub mod pet_scripts;
 pub mod registry;

@@ -96,6 +96,9 @@ impl CellEntity {
     pub fn clear_all_state_flags(&mut self) {
         self.state_field = 0;
         self.state_flag_counts.clear();
+        // Timed-effect entries (a stun) held references the reset just
+        // dropped; they must not release them again later.
+        self.forfeit_ledger_flag_holds();
     }
 
     /// Convenience read: is the given flag bit set?

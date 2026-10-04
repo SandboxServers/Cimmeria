@@ -263,8 +263,9 @@ async fn arrive(
         npc.leash.home_route_partial = false;
         npc.leash.reaggro_suppressed_until = Some(now + REAGGRO_SUPPRESSION);
 
-        // No state-flag unsetting: a leashing NPC is alive, so BSF_DEAD and
-        // BSF_MOVEMENT_LOCK were never set on it.
+        // No state-flag unsetting: a leashing NPC is alive, so BSF_DEAD was
+        // never set on it, and a stun's BSF_MOVEMENT_LOCK reference belongs
+        // to its timed-effect entry, which releases it on expiry.
         let stat_update = npc.stats.serialize_dirty();
         npc.stats.clear_dirty();
         (stat_update, npc.state_field)

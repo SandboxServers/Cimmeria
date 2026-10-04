@@ -32,9 +32,11 @@ Parallel packets build against these names. A worker who needs to change one rai
 
 **Effect NVP generator** (AB-02), `tools/ability_mechanics/effect_nvps_from_desc.py`:
 
-- Reads `db/resources/Effects/Seed/effects.sql`, writes one generated block per family into `db/resources/Effects/Seed/effect_nvps.sql` between `-- ability-mechanics generated <family> begin` / `end` comment markers (not the docs-gen `gen:` syntax, which `tools/docs-gen/regen.py` owns), with `nvp_id`s in a reserved range per family (heal 20000-20999, damage 21000-22999, stat 23000-23999, shield 24000-24499). Hand-authored rows outside the markers are never touched.
+- Reads `db/resources/Effects/Seed/effects.sql`, writes one generated block per family into `db/resources/Effects/Seed/effect_nvps.sql` between `-- ability-mechanics generated <family> begin` / `end` comment markers (not the docs-gen `gen:` syntax, which `tools/docs-gen/regen.py` owns), with `nvp_id`s in a reserved range per family (heal 20000-20999, damage 21000-22999, stat 23000-23999, shield 24000-24499, cc 25000-25499; AB-09 took 25000 to leave 24500-24999 for the shield family to grow). Hand-authored rows outside the markers are never touched.
 - `--report` lists every effect it could not parse. `--check` exits non-zero when the generated blocks differ from what it would write (a CI-friendly guard the live-DB test also runs).
 - NVP names: `HealthDamage`, `FocusDamage`, `HealPercentage`, `HealAmount`, and the stat names `StatBuff` reads (AB-04 extends the list).
+
+**Ledger state flags and interrupt requests** (AB-09): `TimedEffectSpec::state_flags` / `TimedEffect::state_flags` (a `BSF_*` mask, 0 for none) make an entry hold one counted `state_field` reference per bit for its life (`cimmeria-entity` `cell_entity/stat_buff_flags.rs`); `flush_stat_buff_timers` sends the owed `onStateFieldUpdate` to the entity and its witnesses. `TimedEffectSpec` derives `Default`, so a later payload field (AB-10's absorb amount) is one more field with `..Default::default()` at the new call sites. `TimedStacking::PerEffect`: one entry per effect on the target, any invoker refreshes it. An effect script interrupts by calling `crowd_control::queue_interrupt` (an `InterruptRequest` on `SpaceManager::pending_interrupts`); combat's `effects::interrupt` resolves it. NVP names: `CcDuration` (seconds), `InterruptChance` (percent).
 
 **Timed effect ledger** (AB-04): `StatBuffLedger` generalises from six attributes to any `cimmeria_entity::stats` id. One entry per `(entity, effect_id, invoker)`, holding the stat deltas it applied, its expiry (or `None` for held toggle effects), its effect flags and its moniker ids. Removal reasons: `Expired`, `ToggledOff`, `RemovedByMoniker`, `Death`, `Damage`, `Revive`, `BandolierSwap`, `Cleansed`. The client sees the existing `onTimerUpdate(TIMER_DURATION_EFFECT)` with SecondaryId = effect id.
 
@@ -182,18 +184,21 @@ Priority inside each wave: anything that changes what Heal Focus, Health Heal, R
 - **Change.** Stun as a ledger entry that sets `BSF_MOVEMENT_LOCK` once and clears once; NPC movement and attack ticks honour it; knockdown uses the same lock with its own duration. Close #1049.
 - **Tests.** Unit: refresh does not leak the refcount (the #1049 shape). NPC AI: a stunned NPC neither moves nor fires. Wire: the state-field broadcast.
 - **Advisor.** `combat-systems-advisor`, `npc-ai-spawn-advisor`. **Depends.** AB-04.
+- **Status.** Review (2026-10-03, branch `abilities/ab-09-cc-stun-snare-interrupt`, with AB-09b and AB-09c in one PR). `Stun` moved to `cell-effect-scripts/src/cell/effects/crowd_control.rs` beside the new `Knockdown`; both are ledger entries holding `BSF_MovementLock` through the state-flag payload (contract above), for `CcDuration` seconds. The NPC fight tick holds (`decision_outcome = stunned`) and the movement tick freezes the route at zero velocity. The `cc` family binds 7 stuns and 19 knockdowns (Lethal Strike, Flashbang Grenade, Blinding Vision, Destruction and Disintegration Shot, Ashrak Dagger: Paralyze, Destruction Pulse; Takedown, Concussive Grenade, the mortars, C-4, Multi Pump's target half, Whirlwind, Arc of Fury, Staff Swing, Launch Grenade: Shockwave, ...); it reports 9 (two Secondary halves, three bare "Knockdown" rows with no duration, 2836's 10 s text on a 6 s row, Lord's Will's `EF_ClearOnDamage` snares, "Snare and Slow"). A stun does not interrupt a warmup (AT-10's open question). Stunned players are not refused server-side; the client locks its own movement.
 
 ### AB-09b. Snare and slow
 
 - **Change.** Snare and slow effects become `movementSpeedMod` ledger entries (D-AB09); `MovementSlow` migrates onto the ledger so its overshoot (ammo known issue) goes away. NPC movement reads the stat.
 - **Tests.** Unit: stacked slows revert exactly. NPC AI: a snared NPC's chase speed.
 - **Advisor.** `combat-systems-advisor`, `npc-ai-spawn-advisor`. **Depends.** AB-04.
+- **Status.** Review (2026-10-03, in AB-09's PR). The bare "Snare: N Seconds" rows (Snare Shot 1462, Disruption Shot 1461, Ashrak Dagger: Crippling Slash 4150) get `TimedStat` with `MovementSpeedMod -30`, a DESIGN default: the reduction of every snare that states one (1460, 1765, 3114, 4411; the stated ones are the `stat` family's). `MovementSlow` is a `PerEffect` ledger entry now, and effect 9142 is one 6 s pulse instead of 4 x 2 s. The NPC movement tick already scaled by `movementSpeedMod`; `npc_movement::cc_tests` pins the snared step.
 
 ### AB-09c. Interrupt
 
 - **Change.** An interrupt effect cancels the target's `pending_cast` and channels through a combat-side hook the effect layer can call (resolves the ammo "EMP has no interrupt" limit); `interruptRes` reduces the chance per `alias.xml`.
 - **Tests.** Pipeline: Interrupting Shot during an NPC warmup sends `Ability_Interrupt` and refunds as AT-10 does.
 - **Advisor.** `combat-systems-advisor`. **Depends.** AB-04.
+- **Status.** Review (2026-10-03, in AB-09's PR). `Interrupt` (effect 723, `InterruptChance 100`) and EMP rounds (`EmpDisrupt`, `InterruptChance 25`, DESIGN) queue an interrupt; combat resolves it in the hit's `flush_stat_buff_timers` (warmup through AT-10's cancel, refund, no lockout; channels through `cancel_channels_from_attacker`). Resist chance `(interruptRes + coordination) / 1000` per `alias.xml` and D-AB09. ADR decision 21's extension has the rule. 1771 "High Interrupt Chance" (a 5-pulse cone) states no number and is not bound.
 
 ### AB-09d. Resist rolls (D-AB13)
 

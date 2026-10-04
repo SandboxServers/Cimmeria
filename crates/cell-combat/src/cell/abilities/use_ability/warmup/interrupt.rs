@@ -39,6 +39,9 @@ pub(crate) enum InterruptReason {
     AmmoUnavailable,
     /// A respec removed the warming ability (AT-08).
     AbilityUnlearned,
+    /// Another entity's interrupt effect broke it (ability mechanics
+    /// AB-09c, `effects::interrupt`).
+    Interrupted,
 }
 
 impl InterruptReason {
@@ -52,6 +55,7 @@ impl InterruptReason {
             Self::NoLineOfSight => "no_line_of_sight",
             Self::AmmoUnavailable => "ammo_unavailable",
             Self::AbilityUnlearned => "ability_unlearned",
+            Self::Interrupted => "interrupt_effect",
         }
     }
 }

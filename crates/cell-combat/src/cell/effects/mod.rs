@@ -12,10 +12,12 @@
 //!
 //! [`pulsing`] — the async DoT/HoT/channel scheduler — is combat and stays
 //! here, beside [`stat_buffs`], the async half of the stat-buff ledger
-//! (expiry, duration timers, the death strip).
+//! (expiry, duration timers, the death strip, the state-field flush), and
+//! [`interrupt`], which resolves the interrupts effect scripts queue.
 
 pub use cimmeria_cell_world::cell::effects::*;
 
+pub mod interrupt;
 pub mod pulsing;
 pub mod stat_buffs;
 
