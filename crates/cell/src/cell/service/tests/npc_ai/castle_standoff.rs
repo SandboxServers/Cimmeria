@@ -27,7 +27,7 @@ const PLAYER: u32 = 1;
 
 /// `(cols, values)` of one single-row `INSERT INTO <table> (...) VALUES (...);`
 /// line, with quotes and `{...}` arrays kept whole.
-fn parse_insert(line: &str, table: &str) -> Option<HashMap<String, String>> {
+pub(super) fn parse_insert(line: &str, table: &str) -> Option<HashMap<String, String>> {
     let rest = line.strip_prefix(&format!("INSERT INTO {table} ("))?;
     let (cols, rest) = rest.split_once(") VALUES (")?;
     let body = rest.trim_end().strip_suffix(");")?;

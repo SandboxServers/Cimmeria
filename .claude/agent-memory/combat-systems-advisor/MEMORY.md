@@ -18,3 +18,4 @@
 - [damage-scripts-bypass-mitigation.md](damage-scripts-bypass-mitigation.md) — Rust damage scripts are raw (no QR/armour/absorb, python used qrCombatDamage); AB-06 made them the only path; mixed-QR abilities
 - [per-effect-nvp-resolution.md](per-effect-nvp-resolution.md) — AB-03 per-effect NVP damage: area-collapse rule, full-def callers (ground/splash) vs scoped cone fan-out, one SRC_MORTAL per hit
 - [timed-effect-ledger.md](timed-effect-ledger.md) — AB-04 ledger: PerSource vs stim stacking, baseline bounds, one icon per effect, clears, API gaps for AB-08/09/10
+- [npc-vs-npc-zone-review.md](npc-vs-npc-zone-review.md) — reviewing seeded NPC-vs-NPC zones: what #1009 code guarantees vs placement traps (DA-04 #1224)
