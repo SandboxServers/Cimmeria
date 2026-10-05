@@ -142,24 +142,24 @@ Recomputed 2026-09-27 directly from the feature rows, by script: every matrix ro
 | -- | Event / Scheduler System | 4 | 0 | 0 | 1 | 3 | 0 |
 | -- | Admin / GM Tools | 14 | 4 | 3 | 5 | 2 | 0 |
 | -- | Metrics / Telemetry | 9 | 4 | 3 | 2 | 0 | 0 |
-| | **TOTALS** | **<!-- gen:gap-count total -->493<!-- /gen:gap-count -->** | **<!-- gen:gap-count CW -->167<!-- /gen:gap-count -->** | **<!-- gen:gap-count NT -->127<!-- /gen:gap-count -->** | **<!-- gen:gap-count IM -->102<!-- /gen:gap-count -->** | **<!-- gen:gap-count KM -->94<!-- /gen:gap-count -->** | **<!-- gen:gap-count NU -->3<!-- /gen:gap-count -->** |
+| | **TOTALS** | **<!-- gen:gap-count total -->504<!-- /gen:gap-count -->** | **<!-- gen:gap-count CW -->167<!-- /gen:gap-count -->** | **<!-- gen:gap-count NT -->138<!-- /gen:gap-count -->** | **<!-- gen:gap-count IM -->102<!-- /gen:gap-count -->** | **<!-- gen:gap-count KM -->94<!-- /gen:gap-count -->** | **<!-- gen:gap-count NU -->3<!-- /gen:gap-count -->** |
 
 ### Summary Percentages
 
-The TOTALS line above and every number in this section are generated from the matrix rows by `tools/docs-gen/regen.py`, which reruns on `main` after every merge; edit the rows, never these numbers. The totals line sums to <!-- gen:gap-count total -->493<!-- /gen:gap-count --> features.
+The TOTALS line above and every number in this section are generated from the matrix rows by `tools/docs-gen/regen.py`, which reruns on `main` after every merge; edit the rows, never these numbers. The totals line sums to <!-- gen:gap-count total -->504<!-- /gen:gap-count --> features.
 
 | Status | Count | Percentage |
 |--------|-------|-----------|
-| Confirmed Working (CW) | <!-- gen:gap-count CW -->167<!-- /gen:gap-count --> | <!-- gen:gap-pct CW -->33.9%<!-- /gen:gap-pct --> |
-| Needs Test (NT) | <!-- gen:gap-count NT -->127<!-- /gen:gap-count --> | <!-- gen:gap-pct NT -->25.8%<!-- /gen:gap-pct --> |
-| Implemented (IM) | <!-- gen:gap-count IM -->102<!-- /gen:gap-count --> | <!-- gen:gap-pct IM -->20.7%<!-- /gen:gap-pct --> |
-| Known/Missing (KM) | <!-- gen:gap-count KM -->94<!-- /gen:gap-count --> | <!-- gen:gap-pct KM -->19.1%<!-- /gen:gap-pct --> |
+| Confirmed Working (CW) | <!-- gen:gap-count CW -->167<!-- /gen:gap-count --> | <!-- gen:gap-pct CW -->33.1%<!-- /gen:gap-pct --> |
+| Needs Test (NT) | <!-- gen:gap-count NT -->138<!-- /gen:gap-count --> | <!-- gen:gap-pct NT -->27.4%<!-- /gen:gap-pct --> |
+| Implemented (IM) | <!-- gen:gap-count IM -->102<!-- /gen:gap-count --> | <!-- gen:gap-pct IM -->20.2%<!-- /gen:gap-pct --> |
+| Known/Missing (KM) | <!-- gen:gap-count KM -->94<!-- /gen:gap-count --> | <!-- gen:gap-pct KM -->18.7%<!-- /gen:gap-pct --> |
 | Needed/Unknown (NU) | <!-- gen:gap-count NU -->3<!-- /gen:gap-count --> | <!-- gen:gap-pct NU -->0.6%<!-- /gen:gap-pct --> |
 
-**Code exists (CW + NT + IM)**: <!-- gen:gap-count CW+NT+IM -->396<!-- /gen:gap-count --> features (<!-- gen:gap-pct CW+NT+IM -->80.3%<!-- /gen:gap-pct -->)
-**Missing (KM + NU)**: <!-- gen:gap-count KM+NU -->97<!-- /gen:gap-count --> features (<!-- gen:gap-pct KM+NU -->19.7%<!-- /gen:gap-pct -->)
+**Code exists (CW + NT + IM)**: <!-- gen:gap-count CW+NT+IM -->407<!-- /gen:gap-count --> features (<!-- gen:gap-pct CW+NT+IM -->80.8%<!-- /gen:gap-pct -->)
+**Missing (KM + NU)**: <!-- gen:gap-count KM+NU -->97<!-- /gen:gap-count --> features (<!-- gen:gap-pct KM+NU -->19.2%<!-- /gen:gap-pct -->)
 
-**Tested end-to-end (CW)**: <!-- gen:gap-count CW -->167<!-- /gen:gap-count --> features (<!-- gen:gap-pct CW -->33.9%<!-- /gen:gap-pct -->).
+**Tested end-to-end (CW)**: <!-- gen:gap-count CW -->167<!-- /gen:gap-count --> features (<!-- gen:gap-pct CW -->33.1%<!-- /gen:gap-pct -->).
 
 ### Since 2026-09-25
 
