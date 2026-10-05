@@ -93,10 +93,19 @@ impl Trigger {
     }
 }
 
-/// `names.loaded` (INFO) with the named-row count of every table, and
-/// `names.tables_empty` (WARN) when any table resolved no name at all.
+/// `names.loaded` (INFO) with the named-row count of every table and the
+/// tables with no seed rows (`unseeded`), and `names.tables_empty` (WARN)
+/// only when a table has rows but none of them resolves to a name. A table
+/// with no rows at all is not a data hole (nothing can log an ID from it),
+/// and warning on it posted the same Discord embed on every boot.
 fn log_loaded(report: &LoadReport, trigger: Trigger, elapsed_ms: u128) {
     let n = |t: Table| report.count(t).named();
+    let unseeded = report
+        .unseeded_tables()
+        .iter()
+        .map(|t| t.as_str())
+        .collect::<Vec<_>>()
+        .join(",");
     tracing::info!(
         target: "names",
         event = "names.loaded",
@@ -129,9 +138,10 @@ fn log_loaded(report: &LoadReport, trigger: Trigger, elapsed_ms: u128) {
         sequences = n(Table::Sequences),
         dialog_set_maps = n(Table::DialogSetMaps),
         unresolved = report.unresolved(),
+        unseeded = %unseeded,
         "name book loaded"
     );
-    let empty = report.empty_tables();
+    let empty = report.nameless_tables();
     if !empty.is_empty() {
         let tables = empty
             .iter()
@@ -257,9 +267,9 @@ mod tests {
     }
 
     /// `names.loaded` carries every table's count and the trigger, and a
-    /// table with no names raises `names.tables_empty` naming it.
+    /// table whose rows all lack a name raises `names.tables_empty`.
     #[test]
-    fn loaded_event_carries_counts_and_warns_on_empty_tables() {
+    fn loaded_event_carries_counts_and_warns_on_nameless_tables() {
         use crate::load::TableCount;
         let capture = crate::test_support::LogCapture::install();
         let mut report = LoadReport::default();
@@ -281,7 +291,14 @@ mod tests {
                 placeholder: 3,
             },
         );
-        report.set(Table::Speakers, TableCount::default());
+        report.set(
+            Table::Speakers,
+            TableCount {
+                rows: 5,
+                blank: 3,
+                placeholder: 2,
+            },
+        );
         log_loaded(&report, Trigger::ContentReload, 12);
 
         let loaded = capture
@@ -298,6 +315,36 @@ mod tests {
             .find_event(tracing::Level::WARN, "no names", "no_named_rows")
             .expect("names.tables_empty");
         assert!(empty.has_field("tables", "speakers"));
+    }
+
+    /// A table with no seed rows at all (`spawn_sets`) is listed on
+    /// `names.loaded` as unseeded and raises no warning: the warning used
+    /// to post the same Discord embed on every boot.
+    #[test]
+    fn an_unseeded_table_is_reported_not_warned() {
+        use crate::load::TableCount;
+        let capture = crate::test_support::LogCapture::install();
+        let mut report = LoadReport::default();
+        for t in Table::ALL {
+            report.set(
+                t,
+                TableCount {
+                    rows: 4,
+                    blank: 0,
+                    placeholder: 0,
+                },
+            );
+        }
+        report.set(Table::SpawnSets, TableCount::default());
+        log_loaded(&report, Trigger::Boot, 3);
+
+        let loaded = capture
+            .find_message(tracing::Level::INFO, "name book loaded")
+            .expect("names.loaded");
+        assert!(loaded.has_field("unseeded", "spawn_sets"));
+        assert!(capture
+            .find_event(tracing::Level::WARN, "no names", "no_named_rows")
+            .is_none());
     }
 
     /// A full book raises no empty-table warning.
