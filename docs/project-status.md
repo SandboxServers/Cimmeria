@@ -148,7 +148,7 @@ Tools for working on the project rather than features of the server. They have n
 
 | Content Type | Total in DB | Tested/Verified | Notes |
 |--------------|-------------|-----------------|-------|
-| Zones | 92 world definitions (the Debug Area, world 1300, added 2026-10-05) | 2 (Castle Cellblock, Castle) played in client; Harset rebuilt, unplayed | Every world has a navmesh (#794) |
+| Zones | 91 shipped world definitions plus 8 Cimmeria-added worlds (historical CellBlocks 1201-1207, Debug Area 1300) | 2 (Castle Cellblock, Castle) played in client; Harset rebuilt, unplayed | Every shipped world has a navmesh (#794); the Debug Area uses Ihpet_Crater_Light's |
 | Missions | 1,041 | About 30 with content chains, about 22 played in client | Content engine drives mission chains generically; missions pay no cash or items yet (#310) |
 | Abilities | 1,887 | many | Three-bucket selection landed (#368), PR #420 closed ability gaps |
 | Items | 6,060 | ~30 routinely | Slappack stacking + bandolier discipline verified |
