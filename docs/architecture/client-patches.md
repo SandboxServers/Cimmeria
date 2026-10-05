@@ -245,6 +245,14 @@ runtime is a third-party release pinned by hash, so it cannot carry a patch;
 when a pinned runtime has the function fixed, the probe passes and the shim
 stops being installed.
 
+The other way to avoid the fault is to have the client load Microsoft's
+`msvcp80.dll` and `msvcr80.dll`, which the launcher's prerequisites already
+install into the prefix, with a Wine DLL override for the game. That has not
+been tried. It would also avoid any other fault in Wine's `strstreambuf`, and
+it only helps a launch that sets the override in a prefix that has the
+redistributable. If it is adopted, the probe here passes and this repair
+does nothing.
+
 ## Alternatives considered
 
 | Option | Why not |
