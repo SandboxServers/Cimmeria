@@ -26,7 +26,7 @@ The dashboard counts attempts from opted-in launchers whose summary the server s
 - **It is not an install success rate.** The share of `succeeded` among received attempts says nothing about the attempts that were not received.
 - **It is not a login or world-entry metric.** A launch counts as `succeeded` when the game process the launcher watched exited with code 0. It never means a login or a world entry: the launcher does not know whether the player logged in or reached a world.
 - **`unknown` is its own outcome.** It means the launcher lost sight of the attempt: it crashed or was closed mid-attempt, or it found a state it had to reconcile. Do not add it to `succeeded` or to `failed`.
-- **The rows are self-reported.** The token that authorises a summary needs no credential, so a summary can be forged within the per-address quota. Do not alert on these counts or set a target from them.
+- **The rows are self-reported.** The summary route is anonymous, so anyone can post correctly shaped rows within the per-address rate limit. The counts are useful for spotting failure patterns. Do not alert on them, set a target from them or read a success rate from them.
 - **A resent summary can be counted twice across a server restart.** The server drops a summary it has already accepted, but it remembers accepted ids in memory only. A launcher that resends after the server restarted is accepted again.
 
 ## The rows
@@ -121,7 +121,7 @@ It answers "is the ingest healthy?" with one row per request:
 - `client_dropped_*` are what the launcher says it discarded before sending: `overflow` (its queue was full), `expired` (older than 24 hours) and `rejected` (the server refused an earlier batch). These are the attempts the dashboard is missing.
 - `client_dropped_*` are at-least-once approximations. The launcher clears a counter only when the server answers the request that carried it, so a request it has to retry repeats the same numbers on a second batch row. Do not add them up across rows as if each row reported new drops.
 
-A request refused before its summaries are validated (kill switch, quota, a bad token, a malformed body or envelope) writes no batch row.
+A request refused before its summaries are validated (kill switch, rate limit, a wrong content type, a malformed body or envelope) writes no batch row.
 
 ## Importing
 
