@@ -103,12 +103,24 @@ impl LoadReport {
         self.counts[table as usize] = count;
     }
 
-    /// Tables where no row resolved to a name: an empty table, or one
-    /// whose every name is blank or a placeholder.
-    pub fn empty_tables(&self) -> Vec<Table> {
+    /// Tables that have seed rows but none that resolves to a name: every
+    /// name is blank or a placeholder, so IDs from them log without one.
+    pub fn nameless_tables(&self) -> Vec<Table> {
         Table::ALL
             .into_iter()
-            .filter(|t| self.count(*t).named() == 0)
+            .filter(|t| {
+                let c = self.count(*t);
+                c.rows > 0 && c.named() == 0
+            })
+            .collect()
+    }
+
+    /// Tables with no seed rows at all (`spawn_sets` today). Nothing can
+    /// log an ID from them, so they are reported, not warned about.
+    pub fn unseeded_tables(&self) -> Vec<Table> {
+        Table::ALL
+            .into_iter()
+            .filter(|t| self.count(*t).rows == 0)
             .collect()
     }
 
@@ -168,7 +180,7 @@ mod tests {
     }
 
     #[test]
-    fn empty_tables_lists_tables_with_no_names() {
+    fn nameless_and_unseeded_tables_are_told_apart() {
         let mut report = LoadReport::default();
         for t in Table::ALL {
             report.set(
@@ -189,7 +201,9 @@ mod tests {
             },
         );
         report.set(Table::Worlds, TableCount::default());
-        assert_eq!(report.empty_tables(), [Table::Speakers, Table::Worlds]);
+        // Speakers has rows but no names; Worlds has no rows at all.
+        assert_eq!(report.nameless_tables(), [Table::Speakers]);
+        assert_eq!(report.unseeded_tables(), [Table::Worlds]);
         assert_eq!(report.unresolved(), 24 + 3);
     }
 }
