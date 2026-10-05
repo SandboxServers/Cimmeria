@@ -127,11 +127,35 @@ async fn assist_radius_check_rejects_non_positive_values() {
 /// tuning without this test learning about it, or if a barracks guard moves
 /// out of its neighbours' reach. The Castle population's guard templates
 /// 181-186 tune it too, to 12 u (docs/analysis/castle-population/README.md,
-/// D-CP04); their group spacing is guarded in cimmeria-cell-catalog.
+/// D-CP04); their group spacing is guarded in cimmeria-cell-catalog. The
+/// Debug Area (world 1300, `docs/content/debug-area.md`) tunes its assist trio
+/// on purpose; it is pinned separately below rather than in this seed-wide set.
 #[tokio::test]
 async fn barracks_guards_assist_radius_covers_the_room() {
     let pool = require_db_or_skip!();
-    let spawns = load_spawns_from_db(&pool).await.expect("load spawns");
+    let all = load_spawns_from_db(&pool).await.expect("load spawns");
+    let debug_area: std::collections::BTreeSet<_> = all
+        .iter()
+        .filter(|s| s.world_name == "DebugArea" && s.assist_radius.is_some())
+        .map(|s| (s.template_id, s.assist_radius.map(f32::to_bits)))
+        .collect();
+    // The gallery places every hostile template, so templates 24 and 181-186
+    // carry their seeded radii there too; gallery spawns are passive, and a
+    // passive NPC never assists (DA-03).
+    let mut expected: std::collections::BTreeSet<_> =
+        [(1343, Some(10.0f32.to_bits()))].into_iter().collect();
+    expected.insert((24, Some(26.0f32.to_bits())));
+    for t in 181..=186 {
+        expected.insert((t, Some(12.0f32.to_bits())));
+    }
+    assert_eq!(
+        debug_area, expected,
+        "in the Debug Area only the assist trio (template 1343, 10 u) and the gallery's          copies of templates 24 and 181-186 carry an assist_radius"
+    );
+    let spawns: Vec<_> = all
+        .into_iter()
+        .filter(|s| s.world_name != "DebugArea")
+        .collect();
     let tuned: std::collections::BTreeSet<_> = spawns
         .iter()
         .filter(|s| s.assist_radius.is_some())
