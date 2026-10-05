@@ -6,35 +6,44 @@
 --
 -- Loaded right after spawnlist.sql (db/database.sql). Every row is a mobile
 -- `mob`: the spawner grounds its Y onto ihpet_crater_light.nav (D-DA5). On the
--- Z9 terrain the navmesh and the occluder's terrain disagree by up to 2 u, and
--- the pit's mesh undulates by about 2 u over its flat water collision plane
--- (y -33.28), so rows are authored near the mesh height and grounding finishes
+-- Z9 terrain the navmesh and the occluder's terrain disagree by up to 2 u, so
+-- rows are authored near the mesh height and grounding finishes
 -- the job. Heading is yaw = atan2(dx, dz). Placement is pinned on the real nav,
 -- occluder and cover by crates/cell/src/cell/service/tests/npc_ai/debug_area_combat/
 -- (arena.rs, cover.rs, death_respawn.rs) and in the DB by live_db.rs there.
 --
 
--- Z6 NPC-vs-NPC arena: the flat pit floor, centre (250, -32.4, -725), clear of
--- geometry for 40+ u. The crater floor stands 25-40 u above it on the north,
--- east and south; the gentle ramp in is from the south-west (x 190-200,
--- z -755..-790). Fight 1: the Praxis squad on x 238 faces the NID squad on x 262,
--- 24 u apart, inside both sides' 30 u aggro radius. A player watching anywhere
--- within 150 u (AoI) starts it; a player who walks down the ramp and shoots a
--- NID guard joins on the Praxis side. Fight 2, which no player can join, is on
--- the west half, 44+ u from every NID guard (outside their 30 u radius, so a
--- tester can walk up to it): the Green Sniper pair at z -716 against the Yellow
--- Faction pair at z -734..-736, 20-22 u apart. DA-08's ring pad at (210, -725)
--- sits between them, 10-12 u from the nearest; neither side targets players.
-INSERT INTO spawnlist (spawn_id, x, y, z, heading, world_id, template_id, tag, set_name) VALUES (13600, 238, -32.4, -721, 1.5708, 1300, 1370, 'DebugArea_Arena_Praxis1', NULL);
-INSERT INTO spawnlist (spawn_id, x, y, z, heading, world_id, template_id, tag, set_name) VALUES (13601, 238, -32.4, -725, 1.5708, 1300, 1371, 'DebugArea_Arena_Praxis2', NULL);
-INSERT INTO spawnlist (spawn_id, x, y, z, heading, world_id, template_id, tag, set_name) VALUES (13602, 238, -32.4, -729, 1.5708, 1300, 1370, 'DebugArea_Arena_Praxis3', NULL);
-INSERT INTO spawnlist (spawn_id, x, y, z, heading, world_id, template_id, tag, set_name) VALUES (13603, 262, -32.4, -721, -1.5708, 1300, 1372, 'DebugArea_Arena_NID1', NULL);
-INSERT INTO spawnlist (spawn_id, x, y, z, heading, world_id, template_id, tag, set_name) VALUES (13604, 262, -32.4, -725, -1.5708, 1300, 1372, 'DebugArea_Arena_NID2', NULL);
-INSERT INTO spawnlist (spawn_id, x, y, z, heading, world_id, template_id, tag, set_name) VALUES (13605, 262, -32.4, -729, -1.5708, 1300, 1372, 'DebugArea_Arena_NID3', NULL);
-INSERT INTO spawnlist (spawn_id, x, y, z, heading, world_id, template_id, tag, set_name) VALUES (13610, 214, -32.6, -716, -2.836, 1300, 1373, 'DebugArea_Arena_Green1', NULL);
-INSERT INTO spawnlist (spawn_id, x, y, z, heading, world_id, template_id, tag, set_name) VALUES (13611, 218, -32.35, -716, -2.657, 1300, 1373, 'DebugArea_Arena_Green2', NULL);
-INSERT INTO spawnlist (spawn_id, x, y, z, heading, world_id, template_id, tag, set_name) VALUES (13612, 206, -32.3, -734, 0.507, 1300, 1374, 'DebugArea_Arena_Yellow1', NULL);
-INSERT INTO spawnlist (spawn_id, x, y, z, heading, world_id, template_id, tag, set_name) VALUES (13613, 210, -31.95, -736, 0.291, 1300, 1374, 'DebugArea_Arena_Yellow2', NULL);
+-- Z6 NPC-vs-NPC arena: the east shelf, a flat terrain terrace at y -11.12
+-- east of the sunken pit, x 318-395, z -680..-749, 22 u above the pit's water
+-- plane. DA-F2 (2026-10-05) moved both fights here from the pit floor, which is
+-- a water collision plane (y -33.28, WaterCollisionPrefab_Square) that players
+-- sink through to the lakebed at y -52 while NPCs stand on the navmesh on top
+-- of it. The shelf is terrain (occluder layer Terrain, navmesh within 0.01 u)
+-- and no fluid volume reaches it, but it is the floor of a ruin: its low walls
+-- block sight at eye height almost everywhere. The rows below are the only
+-- 24 u, 3-against-3 layout on it whose nine sight lines are clear with 1 u to
+-- spare on both sides (a grid search on ihpet_crater_light.occ): the strip
+-- between the long east-west wall at z -736 and the south edge wall at z -749.
+-- The south edge is a 3-14 u drop; the way on is from the east, through the
+-- gap at x 390-400, z -738..-744, where DA-08's faction-yard ring pad stands
+-- (394, -738). Fight 1: the NID squad on x 354 faces the Praxis squad on x 378,
+-- 24 u apart, inside both sides' 30 u aggro radius. The NID guards stay 40 u
+-- from that pad, so a player who rings in is not pulled; one who walks west
+-- past the Praxis line comes within 30 u of the guards and joins on the Praxis
+-- side. A player watching within 150 u (AoI) starts the fight. Fight 2, which
+-- no player can join, is in the open room north of the long wall, 39+ u from
+-- every NID guard: the Green Sniper pair on x 364 against the Yellow Faction
+-- pair on x 343, 21 u apart. Neither fight-2 side targets players.
+INSERT INTO spawnlist (spawn_id, x, y, z, heading, world_id, template_id, tag, set_name) VALUES (13600, 378, -11.12, -738, -1.5708, 1300, 1370, 'DebugArea_Arena_Praxis1', NULL);
+INSERT INTO spawnlist (spawn_id, x, y, z, heading, world_id, template_id, tag, set_name) VALUES (13601, 378, -11.12, -742, -1.5708, 1300, 1371, 'DebugArea_Arena_Praxis2', NULL);
+INSERT INTO spawnlist (spawn_id, x, y, z, heading, world_id, template_id, tag, set_name) VALUES (13602, 378, -11.12, -746, -1.5708, 1300, 1370, 'DebugArea_Arena_Praxis3', NULL);
+INSERT INTO spawnlist (spawn_id, x, y, z, heading, world_id, template_id, tag, set_name) VALUES (13603, 354, -11.12, -738, 1.5708, 1300, 1372, 'DebugArea_Arena_NID1', NULL);
+INSERT INTO spawnlist (spawn_id, x, y, z, heading, world_id, template_id, tag, set_name) VALUES (13604, 354, -11.12, -742, 1.5708, 1300, 1372, 'DebugArea_Arena_NID2', NULL);
+INSERT INTO spawnlist (spawn_id, x, y, z, heading, world_id, template_id, tag, set_name) VALUES (13605, 354, -11.12, -746, 1.5708, 1300, 1372, 'DebugArea_Arena_NID3', NULL);
+INSERT INTO spawnlist (spawn_id, x, y, z, heading, world_id, template_id, tag, set_name) VALUES (13610, 364, -11.12, -700, -1.5708, 1300, 1373, 'DebugArea_Arena_Green1', NULL);
+INSERT INTO spawnlist (spawn_id, x, y, z, heading, world_id, template_id, tag, set_name) VALUES (13611, 364, -11.12, -696, -1.5708, 1300, 1373, 'DebugArea_Arena_Green2', NULL);
+INSERT INTO spawnlist (spawn_id, x, y, z, heading, world_id, template_id, tag, set_name) VALUES (13612, 343, -11.12, -700, 1.5708, 1300, 1374, 'DebugArea_Arena_Yellow1', NULL);
+INSERT INTO spawnlist (spawn_id, x, y, z, heading, world_id, template_id, tag, set_name) VALUES (13613, 343, -11.12, -696, 1.5708, 1300, 1374, 'DebugArea_Arena_Yellow2', NULL);
 
 -- Z8 cover course, the south compound's west wing (entry doorway at
 -- (204, 7.0, -926)). Rifleman 1 stands in the open hall 6.4 u from the nearest

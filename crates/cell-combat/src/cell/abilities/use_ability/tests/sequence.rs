@@ -268,6 +268,46 @@ async fn an_npc_attack_nobody_can_see_warns_no_witnesses() {
     assert!(warns[0].has_field("sequence_id", "15"), "{:?}", warns[0]);
 }
 
+/// **Regression guard (DA-F2, colo 2026-10-05).** The Debug Area arena's
+/// NPC-vs-NPC shots wrote `outcome=no_witnesses` WARNs whenever no player
+/// was near (Praxis Jaffa Guard -> NID Guard, Yellow Faction -> Green
+/// Sniper). Owner decision: an NPC shooting an NPC with no player involved
+/// writes nothing. Same unseen shooter as the test above, but the target is
+/// a second unseen NPC. The test above is the player-involved half (the
+/// target is player 1) and must keep its WARN. Fails when the
+/// `player_involved` gate in `sequence.rs` is reverted.
+#[tokio::test]
+async fn an_npc_shooting_an_npc_nobody_can_see_writes_nothing() {
+    const UNSEEN_NPC: u32 = 6;
+    const UNSEEN_TARGET: u32 = 7;
+    let mut mgr = scene();
+    arm_npc(&mut mgr, UNSEEN_NPC, ABILITY, Some(EVENT_SET));
+    mgr.create_entity(
+        UNSEEN_TARGET,
+        "Castle_CellBlock",
+        [0.0, 0.0, 15.0],
+        [0.0; 3],
+    )
+    .unwrap();
+    assert!(
+        mgr.get_witnesses_of(UNSEEN_NPC).is_empty(),
+        "fixture: nobody sees the new NPC yet"
+    );
+    let logs = LogCapture::install();
+
+    let (tx, _rx) = mpsc::channel(256);
+    assert!(
+        handle_use_ability(UNSEEN_NPC, ABILITY, UNSEEN_TARGET as i32, &tx, &mut mgr).await,
+        "control: the NPC's cast commits"
+    );
+
+    assert!(
+        sequence_warns(&logs.all(), "no_witnesses").is_empty(),
+        "{:#?}",
+        logs.all()
+    );
+}
+
 /// The fifth seam (stance): the Ability_End resolves and reaches a witness,
 /// but the NPC never had its `BSF_InCombat` stance announced, so the client
 /// draws no muzzle flash, tracer or weapon sound (colo, 2026-09-29). A Fighting

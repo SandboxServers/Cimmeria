@@ -10,7 +10,7 @@
 //! hold). Moving a row, changing a template, or rebuilding the mesh, occluder
 //! or cover under a zone fails here without a database.
 //!
-//! - [`arena`]: Z6, the NPC-vs-NPC arena in the pit (D-DA8).
+//! - [`arena`]: Z6, the NPC-vs-NPC arena on the east shelf (D-DA8, DA-F2).
 //! - [`cover`]: Z8, the cover course in the south compound's west wing.
 //! - [`death_respawn`]: Z9, the lethal squad and the respawn-timer targets
 //!   around respawner 131, and the navmesh placement of every DA-04 spawn.

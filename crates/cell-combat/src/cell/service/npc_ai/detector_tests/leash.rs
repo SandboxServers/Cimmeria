@@ -126,6 +126,64 @@ async fn two_leashes_are_not_a_loop() {
     assert!(rows(&logs, "npc_ai.leash", "loop").is_empty());
 }
 
+/// One won fight: a Fighting NPC at its spawn whose only threat target is
+/// dead. The tick drops the corpse, the list runs dry and the NPC leashes
+/// with `trigger=target_dead`; the next tick resets it home, Idle. The
+/// target is revived for the next round.
+async fn win_a_fight(mgr: &mut SpaceManager) {
+    if let Some(p) = mgr.get_entity_mut(PLAYER) {
+        if let Some(h) = p.stats.get_mut(cimmeria_entity::stats::HEALTH) {
+            h.update(0, 0, 100);
+        }
+    }
+    if let Some(npc) = mgr.get_entity_mut(NPC) {
+        crate::cell::service::npc_ai::force_ai_state(npc, AiState::Fighting);
+        npc.threat_list.insert(PLAYER, 10.0);
+    }
+    ai_tick(mgr).await; // target dead: Fighting -> Leashing (enter, target_dead)
+    ai_tick(mgr).await; // at spawn: reset, Idle
+    if let Some(p) = mgr.get_entity_mut(PLAYER) {
+        if let Some(h) = p.stats.get_mut(cimmeria_entity::stats::HEALTH) {
+            h.update(0, 100, 100);
+        }
+    }
+}
+
+/// **Regression guard (DA-F2, colo 2026-10-05).** Every Debug Area arena
+/// NPC wrote `event=loop` WARNs: it stood at its spawn, killed an enemy, the
+/// empty threat list sent it Leashing (`trigger=target_dead`), and three
+/// kills a minute read as an aggro/leash loop. A fight that ends in a kill
+/// is not a loop: three `target_dead` leashes write three `enter` rows and
+/// no `loop`. Fails when `detectors::leash::counts_toward_loop` is reverted
+/// (the third kill then writes the WARN).
+#[tokio::test]
+async fn leashes_after_kills_are_not_a_loop() {
+    let mut mgr = castle_mgr();
+    add_npc(
+        &mut mgr,
+        "Castle",
+        [0.0; 3],
+        Some([0.0; 3]),
+        AiState::Fighting,
+    );
+    add_threat_player(&mut mgr, "Castle", [10.0, 0.0, 0.0]);
+    let logs = LogCapture::install();
+    for _ in 0..4 {
+        win_a_fight(&mut mgr).await;
+    }
+    let enters = rows(&logs, "npc_ai.leash", "enter");
+    assert_eq!(enters.len(), 4, "one leash per kill: {:#?}", logs.all());
+    assert!(
+        enters.iter().all(|e| e.has_field("trigger", "target_dead")),
+        "{enters:#?}"
+    );
+    assert!(
+        rows(&logs, "npc_ai.leash", "loop").is_empty(),
+        "kills are not a loop: {:#?}",
+        rows(&logs, "npc_ai.leash", "loop")
+    );
+}
+
 /// The instant snap is reported as the fallback it is, with how far it
 /// jumped. `stale_path_len` is the S4 before-picture (the chase path the
 /// old snap left behind); since NA10's `snap_npc_to` it must read 0.

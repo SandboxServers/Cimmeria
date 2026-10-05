@@ -8,7 +8,7 @@ metadata:
 Measured on `ihpet_crater_light.nav/.occ` + `cover_extract` for world 1300 while authoring
 DA-04 (templates 1370-1377, spawns 13600-13641, own files `*_debug_area_combat.sql`).
 
-- **Pit (Z6):** occluder geometry slab top -33.2 for r <= 40-55 m around (250, -725);
+- **Pit (Z6), SUPERSEDED by DA-F2 (2026-10-05): the arena moved to the east shelf, see [[debug-area-arena-shelf-daf2]].** occluder geometry slab top -33.2 for r <= 40-55 m around (250, -725);
   nav floor -32.33. Crater floor 25-40 m above on N/E/S, but the **SW side is a gentle
   ramp** (a210: -32.6 at r60, -26 at r75, -17 at r120): a player there is inside the
   4 u band, so the NID squad sits on the EAST side (x 262), 40+ u from the ramp.
