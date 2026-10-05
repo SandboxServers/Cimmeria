@@ -296,7 +296,7 @@ Two lab sessions on 2026-10-05, both against the colo with the GM lab account (w
 
 ## Open follow-ups
 
-None of these blocks the campaign. Each names where the work lands.
+None of these blocks the campaign. Each names where the work lands. Fix **(o)** first: it is the only one that shows players something they should never see.
 
 | Id | Follow-up | Where |
 |---|---|---|
@@ -314,5 +314,10 @@ None of these blocks the campaign. Each names where the work lands.
 | (l) | Men'fa (SGU), gate 22: its arrival is about 190 m under the map, so it stays out of the dial hub (`HUB_EXCLUDED_GATES`) until an in-client look pins a real pad (check 24). | `crates/cell-interactions/src/cell/gate_travel/dial_hub.rs`, `stargates.arrival_*` |
 | (m) | The dial hub's GM grant (`gm_dial_hub_grant`) logs at WARN twice per GM session, at world entry and at the first DHD open, and WARNs flow to Discord. It follows the gmDHD `gm_address_grant` audit precedent. Decide whether GM audit lines should be INFO, or go to a dedicated audit channel. | `dial_hub.rs`; `crates/cell-console/src/cell/console/gm/travel.rs` |
 | (n) | `/gmdespawn` still sends target id 0 from the client (`00000000 7d 00000000`). It works only through the server's fallback to the GM's selected target (#1254). | 012's `/gmdespawn` declaration; the server fallback |
+| (o) | **Most important.** `.`-console commands typed in chat are echoed to the Say channel (`[<name>] says .gotolocation ...`), so nearby players see GM command text. The command still runs. A `.` line should be consumed by the console and never broadcast. | The chat path that hands `.` lines to the console (`crates/cell-console/src/cell/console/chat/mod.rs`, `dispatch.rs`); DA-06 observation O6 |
+| (p) | A heal shows no number: the server sends no `onEffectResults` for a heal (Health Heal on the Injured SGC Guard raised its health with nothing on screen). | `crates/cell-combat/src/cell/abilities/use_ability/beneficial.rs`; check 11 |
+| (q) | The client drops method 116 on the GM player class (`client.dispatch.method_dropped`, `type_id 3`, `method_index 116`) about once per `.gotolocation`. The teleport still works, through the forced position. Probably `onPlayerTeleport` on `SGWGmPlayer`. | GM class method table against the client's; DA-06 observation O2 |
+| (r) | "New Mission: Report to someone in charge." is announced again on every world entry, centre-screen and in chat. | Mission state sent at world entry; DA-06 observation O5 |
+| (s) | A ring hop makes the client send `setTargetID(<own id>)` and then `setTargetID(0)`. Harmless so far, but the server briefly holds the player as their own target. | Ring transport flow; re-check observation O-r3 |
 
 **Lab client state.** The lab client has 007, 009, 011 and 012 applied by hand with `cimmeria-patchset apply`, but its `launcher-installed.json` still lists only 001-006 and the black-market overlay. A launcher run would try to apply those four patches again. Reconcile the file, or let the launcher reinstall from stock, before the lab's next launcher Update.

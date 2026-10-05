@@ -173,10 +173,10 @@ ring-switch entity (template 3) renders one.
 - **Check on a real client.** With `SGW_PATCHED_CLIENT` set to a client
   that has 007 applied:
   `cargo test -p cimmeria-patchset real_client_debug_area_rings -- --ignored`.
-- **Publishing** (coordinator): add the printed manifest entry with
-  `"after": "007-castle-armory-ring"`, keep it the last link of its chain
-  (no entry `after` 010), re-check the `after` chain, sign the manifest
-  offline and upload it with the zip.
+- **Publishing (historical).** 010 was published at about 02:19Z on
+  2026-10-05 with `"after": "007-castle-armory-ring"` and pulled at about
+  02:50Z. It is retired: never publish it again (see the note at the top of
+  this section).
 
 ### 011-debug-area-rings-fix
 
@@ -296,13 +296,16 @@ Ihpet Crater, which streams the same chunk).
   ```
 
   `--alt-stock` is given once per alternative, in spec order.
-- **Publishing** (coordinator): add the manifest entry below with
-  `"after": "009-starter-hotbar"`, **remove 010 from the manifest** (and keep
-  it out: no test or file guards that, and a manifest that lists both leaves
-  a launcher without `alternatives` on the broken chunk), re-check the
-  `after` chain, sign offline, upload with the zip. The launcher applies
+- **Published** in the signed content manifest (`content-current`) on
+  2026-10-05 at about 05:55Z, with server release v2026-10-05.2. The blob URL
+  pins commit `fed73541` (#1247). The entry names
+  `"after": "009-starter-hotbar"`, and 010 is out of the manifest. Keep it
+  out: no test or file guards that, and a manifest that lists both leaves a
+  launcher without `alternatives` on the broken chunk. The launcher applies
   each manifest patch once, by id, so 011 also runs on installs that already
-  recorded 010 as applied.
+  recorded 010 as applied. The lab re-check on v2026-10-05.2 installed this
+  zip and loaded world 1300 and world 73
+  ([DA-06 results](../../docs/analysis/debug-area/README.md#da-06-results)).
 
   ```json
   {"id": "011-debug-area-rings-fix", "after": "009-starter-hotbar",
@@ -311,7 +314,7 @@ Ihpet Crater, which streams the same chunk).
   ```
 
   (plus `blob`, `title` and `description` as `cimmeria-patchset build`
-  prints them). The chunk 011 writes is sha256
+  printed them). The chunk 011 writes is sha256
   `52b4f3adc5cb7beb8f3e2728e90ea764603de0515e013b600f30a1c63199ede0`.
 
 ### 012-gm-slash-commands
@@ -436,10 +439,15 @@ DA-06, 2026-10-05). 012 ships that file, new, whole.
   folder with one empty file is enough) and any `--patched` directory.
   `committed_zip_carries_exactly_the_generated_xml` fails when the zip and
   the XML differ.
-- **Publishing** (coordinator): add the printed manifest entry with
-  `"after": "009-starter-hotbar"` (or the newest entry of the chain at that
-  time), re-check the `after` chain, sign the manifest offline and upload the
-  zip. Keep 012 terminal: nothing builds on it.
+- **Published** in the signed content manifest (`content-current`) on
+  2026-10-05 at about 05:55Z, with server release v2026-10-05.2. The blob URL
+  pins commit `e6468838` (#1254); size 47731, sha256
+  `6f55101b5fc6d9daad64619cb8b3add268737a48cd867fe09c9e8339249f6430`. Like
+  011, the entry names `"after": "009-starter-hotbar"`, not 011. The
+  launcher's `blocked_by_failure` checks only the one id named, so a ring
+  patch that fails to apply can't hold back the GM commands. Keep 012
+  terminal: nothing builds on it. The lab re-check on v2026-10-05.2 ran
+  `/gmspawnbycmd`, `/gmdespawn` and `/gmdhd 3` with it installed.
 
 Each spec carries a `title` and `description` for the launcher's
 **Changes to your client** list. `cimmeria-patchset build` copies them
