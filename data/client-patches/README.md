@@ -589,53 +589,29 @@ in world 73 as well (same map data).
 
   `transform` writes what the transform makes of the stock file into the
   `--patched` tree, so `build` diffs the two.
-- **Lab check of an earlier build (2026-10-05, applied by hand).** This and
-  the world 73 bullet below were run on the first build of this patch, whose
-  texture a Python script generated (result sha256 `14b5f65a...`). The pinned
-  result above is the transform's own output and has a different texture
-  encoding; the lab check of the pinned bytes replaces these bullets when it is
-  done. The earlier file (made by `cimmeria-patchset apply` from the stock file) was
-  copied over the lab client's stock `Ihpet_Crater_Light_MapData.upk` (the
-  client had 007, 011 and 012). A fresh character entered `Castle_CellBlock`
-  and `.gotolocation DebugArea` took it to world 1300: the map loaded in about
-  the same time as with the stock file, with no crash or hang, and the world
-  map showed the new picture. The player's marker at the Z1 arrival point
-  (251, -962) is inside the south compound building (stock: bare ground west of
-  the compound), the blue is only the top fifth, and there is no pink edge at
-  the right-hand border. With the seven stations fed to the ring list's own
-  Lua (`RingTransporterWorldMapMode.onRingTransporterList`, positions from the
-  seed, converted the way the client's unit positions are) the icons sit on
-  their pads: Gallery west and east in the north compound building, Pit
-  overlook, Arena shelf and Faction yard on the green slope between the
-  compounds, AI slope at its west edge, and Death yard on the south compound's
-  east flank. The stock picture, captured the same way, is the zoomed corner
-  described above. The lab client's file was put back to stock afterwards.
-- **World 73 (second lab pass, same day).** With the same result file a fresh
-  character went `Castle_CellBlock` to `.gotolocation Ihpet_Crater_Light`
-  (world 73): loaded with no crash or hang, and the world map, titled
-  `Ihpet_Crater_Light`, shows the new picture with the player's marker (251.25,
-  -989.8) at the south compound's gate. A `.gotolocation DebugArea` straight
-  from 73 (same map, no reload) ended with the lab client dead; the cause was
-  not established (the lab was under heavy build load, which kills the client
-  through the watchdog below), and the stock file was not tried on that
-  transition. A cellblock to 1300 load then worked again.
-- **What the lab check did not cover.** (1) A real click on a ring console: the
-  console was put on screen (226.9, -936.7, with the player at 224.6, -942) and
-  `client_world_click` timed out three times, first because the player's own
-  model covers the console and then in the MCP call itself, so the list was fed
-  to the same Lua with the server's own data instead of arriving as
-  `onRingTransporterList`. (2) Logging
-  in directly into a character saved in the Debug Area: the lab client died
-  within about 50 s of Play on that path, six times out of six, with the stock
-  file (2) and with 013's file (4), so the patch is not the cause. The lab
-  watchdog kills a client whose heartbeat misses five polls in a row (a world
-  load blocks the main thread for 40 to 60 s), and in the same lab the colo's
-  own player was in the Debug Area throughout; the loads that completed all went
-  through the cellblock with the lab polling constantly. Earlier loads of this
-  patch's first build through the cellblock died twice and succeeded once, the
-  stock file died once and succeeded twice; the final bytes loaded on the first
-  try. Treat a hang report from a tester as real, and look for it in a
-  first-login entry before blaming the picture.
+- **Lab check of the pinned bytes (2026-10-05, applied by hand).** The result
+  file (sha256 `856458c9...`, the transform's output from the stock file) was
+  installed over the lab client's stock `Ihpet_Crater_Light_MapData.upk` (the
+  client also had 011), in a combined run with patch 014's chunk, then the lab
+  client was put back to stock. **World 1300**: loaded with no crash or hang;
+  the world map shows blue only in about the top fifth, the player marker
+  inside the south compound, and nothing drawn off the map edge. **World 73**:
+  the same, no crash or hang, same map. **A real ring-console click** worked:
+  a real mouse right-click on the console (hover verified) opened ring mode
+  from the server's own `onRingTransporterList` with all eight icons on the
+  corrected art, and a real left click on an icon sent
+  `setRingTransporterDestination` and the trip completed. The evidence
+  screenshots (`013-w1300-worldmap-player-marker`, `013-w73-worldmap-player-marker`,
+  `013-w1300-compound-ring-list-real-click`) were captured in the lab run and are
+  not committed. An earlier build of this patch (a Python-generated texture,
+  sha256 `14b5f65a...`) was checked the same way on both worlds first.
+- **Lab pitfalls.** Logging in directly into a character saved in the Debug
+  Area made the lab client die within about 50 s of Play every time, with the
+  stock file and with 013's, so the patch is not the cause; the lab watchdog
+  kills a client whose heartbeat misses five polls in a row, and a world load
+  blocks the main thread for 40 to 60 s. Entering through `Castle_CellBlock`
+  and `.gotolocation` worked. The relogin eviction saves the old world over a
+  character's location, so re-pin its database location after `lab_login`.
 
 Not here, on purpose:
 
