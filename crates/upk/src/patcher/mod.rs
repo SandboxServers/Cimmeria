@@ -86,12 +86,30 @@ impl PatchSession {
         let exports =
             raw_tables::read_exports(&image, h.export_offset as usize, h.export_count as usize)?;
 
+        // The depends table must start right after the export table and end
+        // inside the file at `total_header_size`: `finish` copies exactly that
+        // span, so any other layout would copy the wrong bytes (or panic).
+        let exports_end = exports
+            .last()
+            .map_or(h.export_offset as usize, |(_, range)| range.end);
+        let bad_depends = || {
+            UpkError::Parse(format!(
+                "depends table at {} (header ends at {}, image is {} bytes) is not at the end of the export table ({exports_end})",
+                h.depends_offset,
+                h.total_header_size,
+                image.len()
+            ))
+        };
+        let depends_start = usize::try_from(h.depends_offset).map_err(|_| bad_depends())?;
+        let header_end = usize::try_from(h.total_header_size).map_err(|_| bad_depends())?;
+        if depends_start != exports_end || depends_start > header_end || header_end > image.len() {
+            return Err(bad_depends());
+        }
         // Every QA map chunk has one empty list per export. A package with
         // real dependency lists (a MapData package has one) is fine as long
         // as no export is added: the table is copied as it is, and adding an
         // export would need a proper walk, not an append (see `finish`).
-        let depends_len = (h.total_header_size - h.depends_offset) as usize;
-        let depends_all_empty = depends_len == exports.len() * 4;
+        let depends_all_empty = header_end - depends_start == exports.len() * 4;
 
         let all_names: Vec<String> = package.names.iter().map(|n| n.name.clone()).collect();
         let name_flags: Vec<u64> = package.names.iter().map(|n| n.flags).collect();
@@ -388,7 +406,7 @@ impl PatchSession {
     pub fn finish(mut self) -> Result<Vec<u8>> {
         if !self.depends_all_empty && !self.new_exports.is_empty() {
             return Err(UpkError::Parse(
-                "the depends table holds real lists; adding exports to this package                  needs a proper walk, not an append"
+                "the depends table holds real lists: adding exports needs a proper walk, not an append"
                     .into(),
             ));
         }

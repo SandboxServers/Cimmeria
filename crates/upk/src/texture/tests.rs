@@ -73,7 +73,7 @@ fn lzo_chunks_round_trip_and_are_pinned() {
         .map(|i| (i % 251) as u8 ^ (i / 997) as u8)
         .collect();
     let packed = lzo_chunks::pack(&data).unwrap();
-    assert_eq!(lzo_chunks::unpack(&packed).unwrap(), data);
+    assert_eq!(lzo_chunks::unpack(&packed, data.len()).unwrap(), data);
     assert_eq!(packed.len(), 20_087, "length");
     assert_eq!(fnv(&packed), 13_096_918_308_264_987_490, "hash");
 }
@@ -113,7 +113,14 @@ fn map_package() -> Vec<u8> {
         for lo in -1..=0i32 {
             let name = format!("tile_{:04x}{:04x}", hi as i16 as u16, lo as i16 as u16);
             let rgb = picture(8, 8, (hi * 2 + lo + 3) as usize);
-            let d = texture_data(&mut b, &[(0, 32, dxt1::encode(&rgb, 8, 8), 8)]);
+            let raw = dxt1::encode(&rgb, 8, 8);
+            // Alternate stored and LZO tiles: the real file's tiles are LZO.
+            let (flags, payload) = if (hi + lo) % 2 == 0 {
+                (texture2d::FLAG_LZO, lzo_chunks::pack(&raw).unwrap())
+            } else {
+                (0, raw)
+            };
+            let d = texture_data(&mut b, &[(flags, 32, payload, 8)]);
             b.export(0, 0, &name, d);
         }
     }
@@ -132,6 +139,8 @@ fn map_package() -> Vec<u8> {
     let d = texture_data(&mut b, &stock);
     b.export(0, 0, "overview", d);
     b.export(0, 0, "after", vec![1, 2, 3, 4]);
+    // The real package lists export 165 in export 1's depends; so does this one.
+    b.depends.insert(1, vec![8]);
     b.build()
 }
 
@@ -171,7 +180,7 @@ fn rebaking_a_world_map_is_deterministic_and_touches_only_the_overview() {
     // The golden value: every byte of the rebuilt package.
     assert_eq!(
         fnv(&out),
-        2_687_704_251_165_089_680,
+        3_340_055_874_709_719_910,
         "rebuilt package, {} bytes",
         out.len()
     );
@@ -184,6 +193,12 @@ fn rebaking_a_world_map_is_deterministic_and_touches_only_the_overview() {
         let same = before.read_export_data(b).unwrap() == after.read_export_data(a).unwrap();
         assert_eq!(same, a.object_name != "overview", "{}", a.object_name);
     }
+    // The depends table (a real one, with a list on export 1) is copied verbatim.
+    let span = |bytes: &[u8], h: &crate::PackageHeader| {
+        bytes[h.depends_offset as usize..h.total_header_size as usize].to_vec()
+    };
+    assert_eq!(span(&input, &before.header), span(&out, &after.header));
+    assert_eq!(span(&input, &before.header).len(), 8 * 4 + 4);
     let e = after
         .exports
         .iter()
@@ -206,7 +221,12 @@ fn rebaking_a_world_map_is_deterministic_and_touches_only_the_overview() {
         assert_eq!(&out[field..field + m.payload.len()], &m.payload[..]);
         at += 16 + m.payload.len() + 8;
     }
-    let top = dxt1::decode(&lzo_chunks::unpack(&tex.mips[0].payload).unwrap(), 16, 16).unwrap();
+    let top = dxt1::decode(
+        &lzo_chunks::unpack(&tex.mips[0].payload, 16 * 16 / 2).unwrap(),
+        16,
+        16,
+    )
+    .unwrap();
     // The picture fills the left 11 columns, so the pad (magenta) is on the right.
     assert!(
         top[(15 * 3)..(15 * 3 + 3)][1] < 90,
@@ -227,5 +247,57 @@ fn a_package_without_the_tiles_is_refused() {
     let path = write_temp("rebake-missing", &map_package());
     let err = rebake_world_map(&path, &p).unwrap_err().to_string();
     assert!(err.contains("tile_"), "{err}");
+    let _ = std::fs::remove_file(path);
+}
+
+/// Parameters that would allocate gigabytes or overflow must fail one patch
+/// with an error, and fail before the package is even opened.
+#[test]
+fn oversized_or_overflowing_parameters_are_refused_before_anything_is_read() {
+    let nowhere = std::path::Path::new("does-not-exist.upk");
+    let cases: Vec<(&str, Box<dyn Fn(&mut WorldMapRebake)>)> = vec![
+        ("huge size", Box::new(|p| p.size = 65_536)),
+        ("size not a multiple of 4", Box::new(|p| p.size = 18)),
+        ("tiny size", Box::new(|p| p.size = 4)),
+        ("carry beyond size", Box::new(|p| p.carry = 17)),
+        (
+            "lo spanning all of i32",
+            Box::new(|p| p.lo = (i32::MIN, i32::MAX)),
+        ),
+        ("hi beyond i16", Box::new(|p| p.hi = (30_000, 40_000))),
+        ("lo below i16", Box::new(|p| p.lo = (-40_000, -39_990))),
+        ("more than 256 columns", Box::new(|p| p.lo = (0, 256))),
+        ("reversed rows", Box::new(|p| p.hi = (2, 0))),
+    ];
+    for (what, change) in cases {
+        let mut p = params();
+        change(&mut p);
+        let err = rebake_world_map(nowhere, &p).unwrap_err().to_string();
+        assert!(err.contains("invalid"), "{what}: {err}");
+    }
+}
+
+#[test]
+fn a_package_that_claims_huge_textures_is_refused_without_allocating() {
+    // An overview mip of 2^30 texels a side.
+    let mut b = Builder::default();
+    for hi in 0..=2i32 {
+        for lo in -1..=0i32 {
+            let name = format!("tile_{:04x}{:04x}", hi as i16 as u16, lo as i16 as u16);
+            let raw = dxt1::encode(&picture(8, 8, 1), 8, 8);
+            let d = texture_data(&mut b, &[(0, 32, raw, 8)]);
+            b.export(0, 0, &name, d);
+        }
+    }
+    let d = texture_data(&mut b, &[(0, 8, vec![0; 8], 1 << 30)]);
+    b.export(0, 0, "overview", d);
+    let path = write_temp("rebake-huge-mip", &b.build());
+    let err = rebake_world_map(&path, &params()).unwrap_err().to_string();
+    assert!(err.contains("edge"), "{err}");
+
+    // A tile that claims a huge LZO payload is refused before the allocation.
+    let mut lie = lzo_chunks::pack(&[0u8; 32]).unwrap();
+    lie[12..16].copy_from_slice(&u32::MAX.to_le_bytes());
+    assert!(lzo_chunks::unpack(&lie, 32).is_err());
     let _ = std::fs::remove_file(path);
 }

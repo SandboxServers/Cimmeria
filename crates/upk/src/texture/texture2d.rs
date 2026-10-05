@@ -59,11 +59,14 @@ pub fn parse(data: &[u8], names: &[NameEntry]) -> Result<Texture2dData> {
         if size < 0 {
             return Err(UpkError::Parse("negative mip payload size".into()));
         }
+        let end = (at + 16)
+            .checked_add(size as usize)
+            .ok_or_else(|| UpkError::Parse("mip payload size overflows".into()))?;
         let payload = data
-            .get(at + 16..at + 16 + size as usize)
+            .get(at + 16..end)
             .ok_or_else(|| UpkError::Parse("mip payload runs past the export".into()))?
             .to_vec();
-        at += 16 + size as usize;
+        at = end;
         let (width, height) = (i32_at(data, at)?, i32_at(data, at + 4)?);
         at += 8;
         mips.push(Mip {

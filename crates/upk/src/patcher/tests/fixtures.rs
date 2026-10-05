@@ -16,6 +16,9 @@ pub(crate) struct Builder {
     pub(crate) name_flags: std::collections::HashMap<String, u64>,
     imports: Vec<RawImport>,
     pub(crate) exports: Vec<(RawExport, Vec<u8>)>,
+    /// Real dependency lists by export index; every other export gets the empty
+    /// list the QA chunks have.
+    pub(crate) depends: std::collections::HashMap<usize, Vec<i32>>,
 }
 
 impl Builder {
@@ -120,7 +123,13 @@ impl Builder {
         let import_offset = name_offset + names.len();
         let export_offset = import_offset + imports.len();
         let depends_offset = export_offset + entry_len;
-        let total_header_size = depends_offset + self.exports.len() * 4;
+        let mut depends = Vec::new();
+        for i in 0..self.exports.len() {
+            let list = self.depends.get(&i).map_or(&[][..], Vec::as_slice);
+            Self::i32s(&mut depends, &[list.len() as i32]);
+            Self::i32s(&mut depends, list);
+        }
+        let total_header_size = depends_offset + depends.len();
 
         let mut exports = Vec::new();
         let mut data = Vec::new();
@@ -161,7 +170,7 @@ impl Builder {
         out.extend_from_slice(&names);
         out.extend_from_slice(&imports);
         out.extend_from_slice(&exports);
-        out.resize(out.len() + self.exports.len() * 4, 0);
+        out.extend_from_slice(&depends);
         out.extend_from_slice(&data);
         out
     }

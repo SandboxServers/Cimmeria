@@ -258,7 +258,7 @@ Ihpet Crater, which streams the same chunk).
   restore).
 - **Which launchers do what.** The 010 -> 011 upgrade path needs a launcher
   with `alternatives` support, which no release has yet (the newest,
-  `launcher-20260929-0d71e26`, predates it). A launcher without it parses
+  `launcher-20260929-0d71e26` when 011 was published, predates it). A launcher without it parses
   the recipe (`Op` is not `deny_unknown_fields`), ignores `alternatives` and
   applies the primary, which is 010's own stock + 007 source: **that is
   correct on every clean install**, so fresh installs and everyone who never
@@ -538,6 +538,16 @@ in world 73 as well (same map data).
   fixed input and every byte of a rebuilt synthetic world-map package. A change
   to any of them fails there before it changes a player's result. The real
   result was also reproduced in a debug and a release build.
+- **Bounded input.** Every recipe parameter and every size read from the
+  package is checked before anything is allocated: `size` is a multiple of 4
+  in 8..=4096, `lo` and `hi` are ordered ranges inside `i16` of at most 256
+  chunks (so a tile name cannot alias another chunk's), `carry` is at most
+  `size`, tiles are square multiples of 4 up to 1024 texels, the mosaic is
+  capped at 256 MiB, an LZO payload may not claim more than its mip holds, and
+  a recipe that breaks a limit fails before the package is opened. A source file
+  whose SHA-256 is not the pinned one is refused before the transform runs, so a
+  non-stock `MapData` is never decoded. The tests that pin this are in
+  `crates/upk/src/texture/tests.rs` and `ihpet_world_map_tests.rs`.
 - **Result.** From the stock file (sha256
   `ea86f7c32b6d8e230c86191b5f048e080fc979e80d584bbdc878e3db5404a1f4`, the 2009
   file, 6,167,790 bytes) the transform gives 6,608,373 bytes, sha256
@@ -550,7 +560,7 @@ in world 73 as well (same map data).
   appended appears in the zip and that applying the zip gives the pinned hash.
 - **Launcher requirement.** The recipe holds a one-key object where older
   recipes hold a string. A launcher that predates the transform (the newest
-  release, `launcher-20260929-0d71e26`, does) cannot parse the recipe: the
+  release, `launcher-20261005-ba28f1a`, does) cannot parse the recipe: the
   patch fails with an "unknown variant `world_map_rebake`" error, nothing is
   written, the other patches apply (the launcher's one-failure-does-not-stop-the-rest
   behaviour, tested by
@@ -569,14 +579,22 @@ in world 73 as well (same map data).
 - **Rebuild.**
 
   ```bash
-  cimmeria-patchset transform data/client-patches/013-ihpet-world-map/patch.json       --stock <stock tree> --out <patched tree>
-  cimmeria-patchset build data/client-patches/013-ihpet-world-map/patch.json       --stock <stock tree> --patched <patched tree> --out data/client-patches/013-ihpet-world-map.zip       --blob-url https://raw.githubusercontent.com/SandboxServers/Cimmeria/<commit>/data/client-patches/013-ihpet-world-map.zip
+  cimmeria-patchset transform data/client-patches/013-ihpet-world-map/patch.json \
+      --stock <stock tree> --out <patched tree>
+  cimmeria-patchset build data/client-patches/013-ihpet-world-map/patch.json \
+      --stock <stock tree> --patched <patched tree> \
+      --out data/client-patches/013-ihpet-world-map.zip \
+      --blob-url https://raw.githubusercontent.com/SandboxServers/Cimmeria/<commit>/data/client-patches/013-ihpet-world-map.zip
   ```
 
   `transform` writes what the transform makes of the stock file into the
   `--patched` tree, so `build` diffs the two.
-- **Lab check (2026-10-05, applied by hand).** The result file (sha256
-  `14b5f65a...`, made by `cimmeria-patchset apply` from the stock file) was
+- **Lab check of an earlier build (2026-10-05, applied by hand).** This and
+  the world 73 bullet below were run on the first build of this patch, whose
+  texture a Python script generated (result sha256 `14b5f65a...`). The pinned
+  result above is the transform's own output and has a different texture
+  encoding; the lab check of the pinned bytes replaces these bullets when it is
+  done. The earlier file (made by `cimmeria-patchset apply` from the stock file) was
   copied over the lab client's stock `Ihpet_Crater_Light_MapData.upk` (the
   client had 007, 011 and 012). A fresh character entered `Castle_CellBlock`
   and `.gotolocation DebugArea` took it to world 1300: the map loaded in about

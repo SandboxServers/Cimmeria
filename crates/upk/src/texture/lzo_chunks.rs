@@ -20,15 +20,19 @@ fn u32_at(data: &[u8], at: usize) -> Result<u32> {
         .ok_or_else(|| UpkError::Parse("LZO chunk header is cut short".into()))
 }
 
-/// Decompress a chunked payload.
-pub fn unpack(payload: &[u8]) -> Result<Vec<u8>> {
+/// Decompress a chunked payload that must hold at most `max_len` bytes. The
+/// header's sizes come from the file, so they are checked before anything is
+/// allocated from them.
+pub fn unpack(payload: &[u8], max_len: usize) -> Result<Vec<u8>> {
     if u32_at(payload, 0)? != TAG {
         return Err(UpkError::Parse("LZO chunk tag is wrong".into()));
     }
     let block = u32_at(payload, 4)? as usize;
     let total = u32_at(payload, 12)? as usize;
-    if block == 0 {
-        return Err(UpkError::Parse("LZO chunk block size is zero".into()));
+    if block == 0 || total > max_len {
+        return Err(UpkError::Parse(format!(
+            "LZO chunk claims {total} bytes in blocks of {block}; at most {max_len} are allowed"
+        )));
     }
     let blocks = total.div_ceil(block);
     let mut at = 16 + 8 * blocks;

@@ -45,9 +45,23 @@ pub struct WorldMapRebake {
     pub carry: u32,
 }
 
+/// Limits on what a recipe or a package may ask for. A recipe is signed and a
+/// package is the player's own file, but a typo or a modified file must fail
+/// one patch with an error, never allocate gigabytes and take the launcher
+/// down with it.
+pub const MAX_SIZE: u32 = 4096;
+/// Chunk columns or rows.
+pub const MAX_CHUNKS: i64 = 256;
+/// Edge of one tile, texels.
+pub const MAX_TILE_EDGE: usize = 1024;
+/// Bytes of the stitched RGB mosaic.
+pub const MAX_MOSAIC_BYTES: usize = 256 * 1024 * 1024;
+
 /// Rebuild the overview texture of the package at `path` and return the new
 /// package file.
 pub fn rebake(path: &Path, p: &WorldMapRebake) -> Result<Vec<u8>> {
+    // Checked before the package is opened or anything is allocated.
+    chunk_counts(p)?;
     let mut session = PatchSession::open(path)?;
     let index = find_export(&session, &p.texture)?;
     let (mosaic, edge) = stitch(&session, p)?;
@@ -80,6 +94,14 @@ fn find_export(session: &PatchSession, name: &str) -> Result<usize> {
         .ok_or_else(|| UpkError::Parse(format!("the package has no export named {name}")))
 }
 
+/// Texels of a mip or tile edge from the file's `i32`, within `1..=max`.
+fn edge(value: i32, max: usize, what: &str) -> Result<usize> {
+    usize::try_from(value)
+        .ok()
+        .filter(|e| (1..=max).contains(e))
+        .ok_or_else(|| UpkError::Parse(format!("{what} edge {value} is outside 1..={max}")))
+}
+
 /// Decode every tile and paste it where its chunk belongs.
 /// Returns the mosaic and the edge of one tile in texels.
 fn stitch(session: &PatchSession, p: &WorldMapRebake) -> Result<(Vec<u8>, usize)> {
@@ -88,6 +110,8 @@ fn stitch(session: &PatchSession, p: &WorldMapRebake) -> Result<(Vec<u8>, usize)
     let mut mosaic = Vec::new();
     for hi in p.hi.0..=p.hi.1 {
         for lo in p.lo.0..=p.lo.1 {
+            // Both are inside i16 (checked in `chunk_counts`), so the name
+            // cannot alias another chunk's.
             let name = format!(
                 "{}{:04x}{:04x}",
                 p.tile_prefix, hi as i16 as u16, lo as i16 as u16
@@ -98,18 +122,24 @@ fn stitch(session: &PatchSession, p: &WorldMapRebake) -> Result<(Vec<u8>, usize)
                 .mips
                 .first()
                 .ok_or_else(|| UpkError::Parse(format!("{name} has no mips")))?;
-            let (w, h) = (top.width as usize, top.height as usize);
-            if w != h || (tile_edge != 0 && w != tile_edge) {
+            let w = edge(top.width, MAX_TILE_EDGE, &name)?;
+            let h = edge(top.height, MAX_TILE_EDGE, &name)?;
+            if w != h || !w.is_multiple_of(4) || (tile_edge != 0 && w != tile_edge) {
                 return Err(UpkError::Parse(format!(
-                    "{name} is {w}x{h}, not a square tile like the rest"
+                    "{name} is {w}x{h}, not a square multiple-of-4 tile like the rest"
                 )));
             }
             if mosaic.is_empty() {
                 tile_edge = w;
-                mosaic = vec![0u8; cols * w * rows * h * 3];
+                let bytes = cols
+                    .checked_mul(rows)
+                    .and_then(|c| c.checked_mul(w * h * 3))
+                    .filter(|&b| b <= MAX_MOSAIC_BYTES)
+                    .ok_or_else(|| UpkError::Parse("the tile mosaic would be too large".into()))?;
+                mosaic = vec![0u8; bytes];
             }
             let raw = if top.flags & texture2d::FLAG_LZO != 0 {
-                lzo_chunks::unpack(&top.payload)?
+                lzo_chunks::unpack(&top.payload, w * h / 2)?
             } else {
                 top.payload.clone()
             };
@@ -125,16 +155,26 @@ fn stitch(session: &PatchSession, p: &WorldMapRebake) -> Result<(Vec<u8>, usize)
     Ok((mosaic, tile_edge))
 }
 
+/// Validate the parameters and return the chunk columns and rows.
 fn chunk_counts(p: &WorldMapRebake) -> Result<(usize, usize)> {
-    if p.lo.1 < p.lo.0 || p.hi.1 < p.hi.0 || p.size < 8 || !p.size.is_multiple_of(4) {
-        return Err(UpkError::Parse(
-            "the world map parameters are not a valid grid".into(),
-        ));
+    let bad = |what: &str| UpkError::Parse(format!("the world map parameters are invalid: {what}"));
+    if !(8..=MAX_SIZE).contains(&p.size) || !p.size.is_multiple_of(4) {
+        return Err(bad("size must be a multiple of 4 in 8..=4096"));
     }
-    Ok((
-        (p.lo.1 - p.lo.0 + 1) as usize,
-        (p.hi.1 - p.hi.0 + 1) as usize,
-    ))
+    if p.carry > p.size {
+        return Err(bad("carry is larger than size"));
+    }
+    let span = |(a, b): (i32, i32), what: &str| {
+        let in_i16 = |v: i32| i16::try_from(v).is_ok();
+        let n = i64::from(b) - i64::from(a) + 1;
+        if !in_i16(a) || !in_i16(b) || !(1..=MAX_CHUNKS).contains(&n) {
+            return Err(bad(&format!(
+                "{what} must be an ordered range inside i16 of at most {MAX_CHUNKS} chunks"
+            )));
+        }
+        Ok(n as usize)
+    };
+    Ok((span(p.lo, "lo")?, span(p.hi, "hi")?))
 }
 
 /// The overview picture: the mosaic scaled to the map's share of the texture,
@@ -165,10 +205,8 @@ fn overview(mosaic: &[u8], edge: usize, p: &WorldMapRebake) -> Vec<u8> {
 
 /// One mip of the new texture, in the stock mip's format and size.
 fn rebuild_mip(old: &texture2d::Mip, overview: &[u8], size: usize) -> Result<texture2d::Mip> {
-    let (w, h) = (old.width as usize, old.height as usize);
-    if w == 0 || h == 0 {
-        return Err(UpkError::Parse("a mip has no pixels".into()));
-    }
+    let w = edge(old.width, size, "overview mip")?;
+    let h = edge(old.height, size, "overview mip")?;
     let image = if (w, h) == (size, size) {
         overview.to_vec()
     } else {

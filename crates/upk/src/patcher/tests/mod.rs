@@ -605,3 +605,80 @@ fn the_name_audit_descends_struct_arrays() {
     assert!(audit.not_audited.is_empty(), "{audit:?}");
     let _ = std::fs::remove_file(path);
 }
+
+/// A package whose second export has a real dependency list, as the MapData
+/// packages do (export 1 lists export 165 there).
+fn package_with_real_depends() -> Vec<u8> {
+    let mut b = Builder::default();
+    b.export(0, 0, "First", vec![1, 2, 3, 4]);
+    b.export(0, 0, "Second", vec![5, 6, 7, 8]);
+    b.depends.insert(1, vec![1, 2]);
+    b.build()
+}
+
+fn depends_bytes(bytes: &[u8]) -> Vec<u8> {
+    let pkg = Package::open(write_temp("depends-read", bytes)).unwrap();
+    let h = &pkg.header;
+    bytes[h.depends_offset as usize..h.total_header_size as usize].to_vec()
+}
+
+#[test]
+fn real_depends_lists_survive_a_replace_verbatim() {
+    let input = package_with_real_depends();
+    let before = depends_bytes(&input);
+    // Three lists' worth: an empty one (4 bytes) and one with two entries.
+    assert_eq!(before.len(), 4 + 4 + 8);
+    let path = write_temp("depends-in", &input);
+    let mut session = PatchSession::open(&path).unwrap();
+    session.replace_export_data(0, vec![9; 8]).unwrap();
+    let out = session.finish().unwrap();
+    assert_eq!(depends_bytes(&out), before);
+    let pkg = Package::open(write_temp("depends-out", &out)).unwrap();
+    assert_eq!(pkg.read_export_data(&pkg.exports[0]).unwrap(), vec![9; 8]);
+    assert_eq!(
+        pkg.read_export_data(&pkg.exports[1]).unwrap(),
+        vec![5, 6, 7, 8]
+    );
+    let _ = std::fs::remove_file(path);
+}
+
+#[test]
+fn adding_an_export_to_a_package_with_real_depends_lists_is_refused() {
+    let path = write_temp("depends-add", &package_with_real_depends());
+    let mut session = PatchSession::open(&path).unwrap();
+    let entry = session.raw_export(0).unwrap().clone();
+    session.add_export(entry, vec![0; 4]);
+    let err = session.finish().unwrap_err().to_string();
+    assert!(err.contains("proper walk"), "{err}");
+    assert!(!err.contains("  "), "stray spaces in the message: {err}");
+    let _ = std::fs::remove_file(path);
+}
+
+/// `finish` copies `depends_offset..total_header_size` as the depends table, so
+/// `open` must refuse any layout where that span is not what follows the export
+/// table. Each of these used to open or panic.
+#[test]
+fn a_depends_offset_that_is_not_the_end_of_the_export_table_is_refused() {
+    let input = package_with_real_depends();
+    let probe = Package::open(write_temp("depends-probe", &input)).unwrap();
+    let layout = super::raw_tables::SummaryLayout::locate(&input, &probe.header).unwrap();
+    let h = &probe.header;
+    for (what, value) in [
+        ("zero", 0),
+        ("one past the end of the header", h.total_header_size + 1),
+        ("inside the export table", h.depends_offset - 4),
+        ("after the export table's end", h.depends_offset + 4),
+        ("negative", -1),
+    ] {
+        let mut bytes = input.clone();
+        LittleEndian::write_i32(&mut bytes[layout.depends_offset_at..], value);
+        let path = write_temp("depends-bad", &bytes);
+        let err = PatchSession::open(&path).err();
+        assert!(
+            err.as_ref()
+                .is_some_and(|e| e.to_string().contains("depends table")),
+            "{what}: {err:?}"
+        );
+        let _ = std::fs::remove_file(path);
+    }
+}

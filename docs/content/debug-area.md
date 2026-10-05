@@ -559,8 +559,8 @@ overview picture, `world__default_` in `Ihpet_Crater_Light_MapData.upk`, is a
 1.99x zoom of the map's top-left corner. World 73 shows the same picture. The
 client draws only that picture, so nothing the server sends changes it; client
 patch `013-ihpet-world-map` rebuilds it from the map's own tiles. The evidence,
-the layout of the map data and the maintainer call on what the delta carries
-are in the [patch README](../../data/client-patches/README.md#013-ihpet-world-map).
+the layout of the map data and how the patch rebuilds the picture on the
+player's machine, with no picture data in the zip, are in the [patch README](../../data/client-patches/README.md#013-ihpet-world-map).
 
 ### What needs the client patch
 

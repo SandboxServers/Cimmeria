@@ -329,7 +329,9 @@ tool built, so a 4 MB map's delta is under 2 KB. `world_map_rebake`
 (`013-ihpet-world-map`) computes the whole result on the player's machine:
 it rebuilds a world map's overview texture from the package's own tiles,
 integer-only so the pinned result hash holds everywhere, and the delta is
-about 200 bytes. It is a one-key object in the recipe
+about 200 bytes (`cimmeria-patchset transform <patch.json> --stock <dir> --out <dir>`
+writes what such a transform makes of the stock file, the `--patched` tree that
+`build` then diffs). It is a one-key object in the recipe
 (`{"world_map_rebake": {...}}`), and a launcher that predates it cannot parse
 the recipe, so that patch fails alone with an "unknown variant" error and the
 others apply; publish the launcher release that knows a transform before the

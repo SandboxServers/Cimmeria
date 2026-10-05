@@ -55,21 +55,26 @@ fn committed_013_rebuilds_the_stock_map_data_file_with_the_rebake_transform() {
     assert_eq!(z.len(), 2);
 }
 
-/// The zero-CME-bytes rule: the zip carries a recipe and a delta that only
-/// covers what the transform leaves out, so no picture data. A zip that
-/// shipped the rebuilt texture (about 420 KB) or the stock package would break
-/// these bounds.
+/// The zero-CME-bytes rule, as an equality: the committed delta is an exact
+/// identity. Applied to any source of the right length it returns that source
+/// byte for byte, so its diff block is all zeros and it carries no extra
+/// bytes at all, which is where picture data would have to live. (A delta that
+/// stored a single byte of its own would change the output of this test.)
 #[test]
-fn committed_013_zip_carries_no_picture_data() {
+fn committed_013_delta_is_an_exact_identity_and_carries_no_picture_data() {
     let (r, mut z) = recipe(ID);
     let delta = entry(&mut z, &r.ops[0].delta);
-    let (_, _, extra, new_size) = bsdiff_blocks(&delta);
+    let (_, _, _, new_size) = bsdiff_blocks(&delta);
     assert!(
         new_size > 6_000_000,
         "result is {new_size} bytes, the stock file is 6,167,790"
     );
-    assert!(extra < 1_024, "extra block is {extra} compressed bytes");
-    assert!(delta.len() < 4_096, "delta is {} bytes", delta.len());
+    // Noise, so a delta that copied "the old file" rather than "whatever it is
+    // given" could not pass.
+    let source = crate::tests::noisy(0x5eed, new_size as usize);
+    let out = crate::apply::bspatch(&source, &delta).unwrap();
+    assert!(out == source, "the delta changes bytes of its source");
+    assert!(delta.len() < 1_024, "delta is {} bytes", delta.len());
     let zip_len = std::fs::metadata(
         Path::new(env!("CARGO_MANIFEST_DIR"))
             .join("../../data/client-patches")
@@ -77,7 +82,24 @@ fn committed_013_zip_carries_no_picture_data() {
     )
     .unwrap()
     .len();
-    assert!(zip_len < 8_192, "zip is {zip_len} bytes");
+    assert!(zip_len < 4_096, "zip is {zip_len} bytes");
+}
+
+/// A MapData file that is not the pinned stock one is refused on its hash
+/// alone: the transform never runs. The proof is the error: a file of garbage
+/// would make the transform itself fail with a package error, so a hash
+/// mismatch means it was never decoded.
+#[test]
+fn a_non_stock_map_data_file_is_refused_before_the_rebake_runs() {
+    let tree = tempfile::tempdir().unwrap();
+    crate::tests::write(tree.path(), MAPDATA, &crate::tests::noisy(7, 100_000));
+    let zip = Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join("../../data/client-patches/013-ihpet-world-map.zip");
+    let err = crate::apply(&zip, tree.path(), &mut |_| {}).unwrap_err();
+    assert!(
+        matches!(err, crate::PatchsetError::SourceMismatch { .. }),
+        "{err:?}"
+    );
 }
 
 /// Nothing in CI can run the transform on the real file (it is CME's map

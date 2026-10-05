@@ -20,12 +20,33 @@ use crate::{io_err, PatchsetError, Result};
 pub fn load(path: &Path, transform: &Transform) -> Result<(Vec<u8>, String)> {
     let raw = std::fs::read(path).map_err(io_err(path))?;
     let raw_sha = crate::sha256_hex(&raw);
-    let bytes = match transform {
+    Ok((transform_raw(path, raw, transform)?, raw_sha))
+}
+
+/// Read `path` and hand back its SHA-256 *before* any transform runs, then
+/// transform it only if `accept` likes the hash. A file that is not the one a
+/// recipe pins is refused without being decoded or rebuilt: the transforms
+/// allocate from sizes the file supplies, and a rebuild of a file nobody
+/// validated would only be thrown away.
+pub fn load_if(
+    path: &Path,
+    transform: &Transform,
+    accept: impl FnOnce(&str) -> bool,
+) -> Result<std::result::Result<Vec<u8>, String>> {
+    let raw = std::fs::read(path).map_err(io_err(path))?;
+    let raw_sha = crate::sha256_hex(&raw);
+    if !accept(&raw_sha) {
+        return Ok(Err(raw_sha));
+    }
+    Ok(Ok(transform_raw(path, raw, transform)?))
+}
+
+fn transform_raw(path: &Path, raw: Vec<u8>, transform: &Transform) -> Result<Vec<u8>> {
+    Ok(match transform {
         Transform::None => raw,
         Transform::UpkNormalize => upk_normalize(path)?,
         Transform::WorldMapRebake(p) => world_map_rebake(path, p)?,
-    };
-    Ok((bytes, raw_sha))
+    })
 }
 
 /// Rebuild a world map package's overview texture from its own tiles.
