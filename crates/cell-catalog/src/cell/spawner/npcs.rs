@@ -45,7 +45,7 @@ pub async fn load_spawns_from_db(pool: &PgPool) -> Result<Vec<SpawnRecord>, sqlx
                COALESCE(t.follow_max_distance, 5.0) AS follow_max_distance, \
                COALESCE(t.move_speed, 0.6) AS move_speed, \
                t.leash_distance, t.aggro_radius, t.assist_radius, s.aggression_override, \
-               t.use_cover, t.vault_scope, \
+               t.use_cover, t.vault_scope, t.training_dummy, \
                COALESCE(s.respawn_secs, t.respawn_secs) AS respawn_secs, \
                COALESCE( \
                  (SELECT array_agg(asa.ability_id ORDER BY asa.ability_id) \
@@ -128,6 +128,7 @@ pub async fn load_spawns_from_db(pool: &PgPool) -> Result<Vec<SpawnRecord>, sqlx
                 ),
                 use_cover: r.get::<Option<bool>, _>("use_cover"),
                 vault_scope,
+                training_dummy: r.get::<bool, _>("training_dummy"),
             })
         })
         .collect::<Result<Vec<_>, _>>()?;

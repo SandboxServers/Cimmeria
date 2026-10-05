@@ -57,6 +57,8 @@
 //!   stun's ledger entry comes off.
 //! - [`stop_hygiene`]  — NA10: a stopped NPC is broadcast with zero
 //!   velocity, and the leash snap keeps the spatial grid in sync.
+//! - [`training_dummy`] — D-DA7: an NPC spawned from a `training_dummy`
+//!   record gets the mark and dummy Health, and never fires back.
 //! - [`zero_health_guard`] — a 0-HEALTH NPC gets no AI turn, and an NPC
 //!   killed by an effect script's HEALTH bleed does not shoot back.
 //! - [`dead_player_drop`] — NA24: a killed player leaves every threat list at
@@ -138,6 +140,7 @@ mod stationary_los;
 mod step_back;
 mod stop_hygiene;
 mod tick_row;
+mod training_dummy;
 mod zero_health_guard;
 
 /// Build a non-instanced "Castle" space and seed an NPC at id=200 in

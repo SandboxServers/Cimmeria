@@ -260,9 +260,10 @@ impl SpaceManager {
                 if e.is_player {
                     continue;
                 }
-                // A lab dummy (AB-L2, D-AU6) never gets an AI turn: no
-                // attack, no chase, no leash, however much threat it takes.
-                if e.extensions.contains::<super::LabDummy>() {
+                // A training dummy (a seeded one, D-DA7, or a `.dummy`,
+                // AB-L2 / D-AU6) never gets an AI turn: no attack, no
+                // chase, no leash, however much threat it takes.
+                if e.extensions.contains::<super::TrainingDummy>() {
                     continue;
                 }
                 let admitted = match e.class_id {

@@ -104,6 +104,24 @@ pub(super) async fn grant_kill_xp(
     if target.is_player {
         return;
     }
+    // A training dummy (Debug Area D-DA7) pays nothing: it never fights
+    // back and respawns in 30 s, so a kill is a test, not a reward.
+    if target
+        .extensions
+        .contains::<crate::cell::space_manager::TrainingDummy>()
+    {
+        tracing::debug!(
+            target: "abilities",
+            event = "kill_xp_not_granted",
+            reason = "training_dummy",
+            attacker = attacker_id,
+            attacker_name = space_mgr.entity_label(attacker_id),
+            target = target_eid,
+            target_name = space_mgr.entity_label(target_eid),
+            "Kill XP not granted: the victim is a training dummy"
+        );
+        return;
+    }
     let base_xp = kill_xp(target.level);
     let KillXpPayout { recipient, xp } = match kill_xp_payout(space_mgr, attacker_id, base_xp) {
         Ok(payout) => payout,

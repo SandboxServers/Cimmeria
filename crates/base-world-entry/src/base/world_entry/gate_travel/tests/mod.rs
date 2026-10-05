@@ -24,6 +24,7 @@ use super::*;
 
 mod crafting_options;
 mod crafting_queue;
+mod gm_only_world;
 mod plugin_hooks;
 mod space_fallback;
 mod transfer;

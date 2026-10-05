@@ -5,6 +5,9 @@
 //! - `.cooldowns reset <abilityId>` clears that ability's cooldown and its
 //!   moniker groups'.
 //!
+//! The clearing itself is `cimmeria_cell_combat`'s
+//! [`reset_all_cooldowns`], shared with the Debug Area ability granter.
+//!
 //! **The client is told.** The hotbar sweep is the client's own timer, set by
 //! the launch's `onTimerUpdate(TIMER_ABILITY_COOLDOWN)`; clearing only the
 //! server's map would leave the button greyed out for the rest of the
@@ -17,31 +20,16 @@
 //!
 //! Caller only: a GM resets their own lab character, never another player.
 
-use std::time::Instant;
-
-use cimmeria_entity::abilities::{serialize_timer_update, TIMER_ABILITY_COOLDOWN};
 use cimmeria_entity::name_intern::intern_opt;
 use tokio::sync::mpsc;
 
-use crate::cell::abilities::send_timer_update;
+use crate::cell::abilities::clear_cooldown_timer;
+use crate::cell::abilities::{reset_all_cooldowns, send_timer_update, CooldownReset};
 use crate::cell::console::send_gm_feedback;
 use crate::cell::messages::CellToBaseMsg;
 use crate::cell::space_manager::SpaceManager;
 
 const USAGE: &str = ".cooldowns: usage .cooldowns | .cooldowns reset [abilityId]";
-
-/// The `onTimerUpdate` arguments that clear `ability_id`'s cooldown sweep on
-/// `caster_id`'s client.
-pub(crate) fn clear_cooldown_timer(ability_id: i32, caster_id: u32) -> Vec<u8> {
-    serialize_timer_update(
-        ability_id,
-        TIMER_ABILITY_COOLDOWN,
-        caster_id as i32,
-        0,
-        0.0,
-        0.0,
-    )
-}
 
 pub(super) async fn run(
     caller_id: u32,
@@ -92,32 +80,13 @@ async fn list(caller_id: u32, tx: &mpsc::Sender<CellToBaseMsg>, space_mgr: &Spac
 }
 
 async fn reset_all(caller_id: u32, tx: &mpsc::Sender<CellToBaseMsg>, space_mgr: &mut SpaceManager) {
-    let now = Instant::now();
-    let Some(caller) = space_mgr.get_entity_mut(caller_id) else {
+    let Some(CooldownReset {
+        abilities: running,
+        moniker_groups: monikers,
+    }) = reset_all_cooldowns(caller_id, tx, space_mgr).await
+    else {
         return;
     };
-    let mut running: Vec<i32> = caller
-        .abilities
-        .ability_cooldowns()
-        .filter(|(_, c)| c.expires_at > now)
-        .map(|(id, _)| id)
-        .collect();
-    running.sort_unstable();
-    let monikers = caller
-        .abilities
-        .moniker_cooldowns()
-        .filter(|(_, c)| c.expires_at > now)
-        .count();
-    caller.abilities.clear_all_cooldowns();
-    for &ability_id in &running {
-        send_timer_update(
-            caller_id,
-            clear_cooldown_timer(ability_id, caller_id),
-            tx,
-            space_mgr,
-        )
-        .await;
-    }
     log_reset(space_mgr, caller_id, None, &running, monikers);
     let line = if running.is_empty() && monikers == 0 {
         "cooldowns reset: none were running".to_string()

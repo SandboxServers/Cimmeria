@@ -30,6 +30,12 @@
 //!   (world 1300, templates 1330-1369, spawns 13200-13599): every row in its
 //!   zone, the stations' behaviour columns, and a passive gallery holding every
 //!   hostile template once or naming why not.
+//! - [`live_db_debug_area_plaza`]: live-DB guards for the Debug Area
+//!   services plaza and dummies range (DA-02, world 1300): placement, the
+//!   stationary flag, `DebugArea_*` tags, the training-dummy templates, the
+//!   plaza chains and the munitions vendor's list.
+//! - [`live_db_vendor_arbitrage`]: live-DB guard that no buy list sells an
+//!   item for less than any sell list pays for it (DA-02 review F1).
 //! - [`live_db_debug_hub`]: live-DB guards for the Castle_CellBlock
 //!   stasis-room debug hub seed (templates 300-304, spawns 400-404): role
 //!   columns, placement (the Gate Mail Clerk's spawn 490 included), the
@@ -93,6 +99,7 @@ mod live_db_castle_standoff;
 mod live_db_content_loaders;
 mod live_db_crafting_hub;
 mod live_db_debug_area_npcs;
+mod live_db_debug_area_plaza;
 mod live_db_debug_auctioneer;
 mod live_db_debug_banker;
 mod live_db_debug_hub;
@@ -107,5 +114,6 @@ mod live_db_pet_summons;
 mod live_db_pet_trainer;
 mod live_db_seed_sequences;
 mod live_db_spawnlist_sequence;
+mod live_db_vendor_arbitrage;
 mod live_db_weapon_ranges;
 mod npc_ability_animation;

@@ -89,7 +89,7 @@ macro_rules! entity_template_select {
                     COALESCE(t.follow_max_distance, 5.0) AS follow_max_distance, \
                     COALESCE(t.move_speed, 0.6) AS move_speed, \
                     t.leash_distance, t.aggro_radius, t.assist_radius, \
-                    t.use_cover, t.vault_scope, \
+                    t.use_cover, t.vault_scope, t.training_dummy, \
                     t.respawn_secs, \
                     COALESCE( \
                       (SELECT array_agg(asa.ability_id ORDER BY asa.ability_id) \
@@ -272,6 +272,7 @@ pub fn build_prototype(
         aggression_override: None,
         use_cover: row.try_get::<Option<bool>, _>("use_cover")?,
         vault_scope: decode_vault_scope(row)?,
+        training_dummy: row.try_get::<bool, _>("training_dummy")?,
     })
 }
 

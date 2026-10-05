@@ -61,3 +61,6 @@ pub use threat::{
     NPC_ATTACK_RANGE, NPC_DEFAULT_ABILITY, NPC_MELEE_RANGE, OOC_HOLSTER_DELAY,
 };
 pub use threat::{despawn_npc_releasing_combat, release_npc_from_player_combat};
+pub use threat::{
+    training_dummy_combat_tick, training_dummy_combat_tick_at, TRAINING_DUMMY_RELEASE_REASON,
+};

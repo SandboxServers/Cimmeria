@@ -7,7 +7,7 @@
 //! change mirrored onto whoever inherited a recycled entity id.
 
 use super::*;
-use crate::cell::messages::{CellToBaseMsg, GmAbilitiesChanged, GmAbilityChange};
+use crate::cell::messages::{CellToBaseMsg, GmAbilitiesChanged, GmAbilityChange, GmAbilitySource};
 use crate::mercury::method_idx;
 use cimmeria_entity::cell_entity::TreeProgress;
 
@@ -85,6 +85,7 @@ async fn gm_reset_mirror_leaves_the_starters_and_the_refund() {
             entity_id: GM,
             player_id: PLAYER_ID,
             change: GmAbilityChange::Reset,
+            source: GmAbilitySource::Command,
             added: vec![],
             removed: vec![TRAINED[0], TRAINED[1], QUEST],
             training_points: 3,
@@ -124,6 +125,7 @@ async fn gm_give_all_mirror_adds_every_id_in_one_burst() {
             entity_id: GM,
             player_id: PLAYER_ID,
             change: GmAbilityChange::GrantAll,
+            source: GmAbilitySource::Command,
             added: vec![700, 701],
             removed: vec![],
             training_points: 1,
@@ -137,6 +139,38 @@ async fn gm_give_all_mirror_adds_every_id_in_one_burst() {
     let progress = &mgr.get_entity(GM).unwrap().tree_progress;
     assert_eq!(progress.trained_abilities, TRAINED.to_vec());
     assert_eq!(progress.tree_points_spent, 2);
+}
+
+/// DA-02 review F4: a grant from the Debug Area granter NPC leads its
+/// result line with the NPC, not with a command the GM never typed.
+/// Revert proof: label every source as its command and the line says
+/// "gmGiveAllAbilities".
+#[tokio::test]
+async fn an_npc_granter_grant_is_labelled_as_the_granter() {
+    let utf16 = |s: &str| -> Vec<u8> { s.encode_utf16().flat_map(u16::to_le_bytes).collect() };
+    let says = |frames: &[(u16, Vec<u8>)], text: &str| {
+        let needle = utf16(text);
+        frames.iter().any(|(m, a)| {
+            *m == method_idx::ON_PLAYER_COMMUNICATION
+                && a.windows(needle.len()).any(|w| w == needle)
+        })
+    };
+    let mut mgr = fixture();
+    let frames = deliver(
+        &mut mgr,
+        GmAbilitiesChanged {
+            entity_id: GM,
+            player_id: PLAYER_ID,
+            change: GmAbilityChange::GrantAll,
+            source: GmAbilitySource::NpcGranter,
+            added: vec![700, 701],
+            removed: vec![],
+            training_points: 1,
+        },
+    )
+    .await;
+    assert!(says(&frames, "Ability granter: granted 2 abilities"));
+    assert!(!says(&frames, "gmGiveAllAbilities"));
 }
 
 /// **Guard: a reset keeps the equipped weapon's abilities.** The row holds
@@ -174,6 +208,7 @@ async fn gm_reset_mirror_regrants_the_equipped_weapons_abilities() {
             entity_id: GM,
             player_id: PLAYER_ID,
             change: GmAbilityChange::Reset,
+            source: GmAbilitySource::Command,
             added: vec![],
             removed: vec![TRAINED[0], TRAINED[1], QUEST, SHOT],
             training_points: 3,
@@ -213,6 +248,7 @@ async fn gm_bulk_mirror_for_another_character_is_ignored() {
             entity_id: GM,
             player_id: PLAYER_ID + 1,
             change: GmAbilityChange::Reset,
+            source: GmAbilitySource::Command,
             added: vec![],
             removed: vec![QUEST],
             training_points: 3,

@@ -64,6 +64,7 @@ pub(super) fn template(id: i32) -> SpawnRecord {
         aggression_override: None,
         use_cover: None,
         vault_scope: cimmeria_entity::cell_entity::VaultScope::Personal,
+        training_dummy: false,
     }
 }
 

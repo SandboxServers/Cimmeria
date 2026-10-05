@@ -495,6 +495,24 @@ pub(super) fn convert_action(row: &DbActionRow) -> Option<Action> {
         // interact trigger's `target_entity_id` (same source DisplayDialog
         // uses for the dialog portrait entity).
         "open_black_market" => Some(Action::OpenBlackMarket),
+        // Debug Area ability granter (DA-02). `change` is `grant_all` or
+        // `reset`; anything else is an authoring slip, and a granter that
+        // silently granted the wrong thing would be worse than none, so the
+        // row is dropped with a warn.
+        "gm_ability_bulk" => {
+            let raw = params.get("change").and_then(|v| v.as_str()).unwrap_or("");
+            match crate::actions::AbilityBulkChange::from_param(raw) {
+                Some(change) => Some(Action::GmAbilityBulk { change }),
+                None => {
+                    warn!(
+                        chain_id = row.chain_id, // nt:id-only the loader holds no chain description
+                        change = raw,
+                        "gm_ability_bulk: change must be \"grant_all\" or \"reset\"; action dropped"
+                    );
+                    None
+                }
+            }
+        }
         // Entity lifecycle verbs live in a sibling module (see
         // `action_spawn`); it returns `None` for anything it doesn't own,
         // which lands us on the same "unknown action_type" path as before.

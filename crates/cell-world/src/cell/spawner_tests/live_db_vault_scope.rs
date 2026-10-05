@@ -113,8 +113,9 @@ async fn vault_scope_check_rejects_an_unknown_value() {
 }
 
 /// The seeded-spawn loader reads the column too: the debug hub's Team and
-/// Command Bankers (spawns 471 and 472, bank-vault BV-10a) load `Team` and
-/// `Command`, and every other seeded spawn `Personal`. Fails if
+/// Command Bankers (spawns 471 and 472, bank-vault BV-10a) and their Debug
+/// Area plaza copies (13009 and 13010, DA-02) load `Team` and `Command`, and
+/// every other seeded spawn `Personal`. Fails if
 /// `load_spawns_from_db` stops selecting the column (both org Bankers would
 /// load `Personal`), or if another seeded template turns into an org Banker
 /// without this list being updated.
@@ -133,7 +134,13 @@ async fn seeded_spawns_load_vault_scope() {
     org.sort_by_key(|(id, _)| *id);
     assert_eq!(
         org,
-        vec![(471, VaultScope::Team), (472, VaultScope::Command)],
-        "only the hub's org Bankers load a non-personal vault_scope"
+        vec![
+            (471, VaultScope::Team),
+            (472, VaultScope::Command),
+            // The Debug Area plaza's copies (DA-02), same templates.
+            (13009, VaultScope::Team),
+            (13010, VaultScope::Command),
+        ],
+        "only the hub's and the Debug Area plaza's org Bankers load a non-personal vault_scope"
     );
 }

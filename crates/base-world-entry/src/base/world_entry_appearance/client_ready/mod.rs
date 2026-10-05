@@ -455,6 +455,21 @@ pub async fn handle_on_client_ready(
         build_on_client_ready_burst_bundle(entity_id, &appearance_args, &tint_args, &welcome_args);
     send_bundle_to_witness_reliable(transport, connected, entity_to_addr, entity_id, bundle).await;
 
+    // A non-GM refused a GM-only world (D-DA4) arrives here at their
+    // faction's start: tell them why, now that the world has loaded.
+    if let Some(line) = cimmeria_base_session::base::world_entry::gm_only_worlds::take_redirect_line(
+        pending.player_id,
+    ) {
+        cimmeria_base_session::base::gm_feedback::send_gm_feedback_to_client(
+            entity_id,
+            line,
+            transport,
+            connected,
+            entity_to_addr,
+        )
+        .await;
+    }
+
     // Push contact lists (Friends / Ignore + any custom lists) to the client.
     // Runs after the burst bundle so the entity is fully live on the client
     // before we start sending list-method packets. Also creates the system

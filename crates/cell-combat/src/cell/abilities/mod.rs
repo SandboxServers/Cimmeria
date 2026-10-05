@@ -35,6 +35,7 @@
 
 mod auto_cycle_state;
 mod cone_aoe;
+mod cooldown_reset;
 mod damage_apply;
 mod death;
 mod deployable;
@@ -63,6 +64,7 @@ mod tests;
 // Public re-exports — keep `crate::cell::abilities::Foo` paths stable for callers.
 pub use auto_cycle_state::send_auto_cycle_state;
 pub use cone_aoe::{collect_cone_targets, fan_out_cone_effects, log_effect_flag_categories};
+pub use cooldown_reset::{clear_cooldown_timer, reset_all_cooldowns, CooldownReset};
 pub use death::kill_npc_out_of_band;
 #[cfg(any(test, feature = "test-support"))]
 #[doc(hidden)]
