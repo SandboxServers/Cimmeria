@@ -80,12 +80,6 @@ pub const MISS_QUEUE_CAP: usize = 256;
 pub fn serve_miss(ctx: SyncContext, category_id: u32, key: u32) -> MissOutcome {
     let now = Instant::now();
     let addr = ctx.addr;
-    let account_id = ctx
-        .connected
-        .lock()
-        .ok()
-        .and_then(|c| c.get(&addr).map(|s| s.account_id))
-        .unwrap_or(0);
     let Some(token) = registry::session_token(&ctx.connected, addr) else {
         return MissOutcome::Refused {
             why: MissRefusal::NoSession,
@@ -110,7 +104,16 @@ pub fn serve_miss(ctx: SyncContext, category_id: u32, key: u32) -> MissOutcome {
             }
         }
         MissOutcome::Duplicate => {
-            tracing::debug!(%addr, account_id, category_id, key, "cooked-data miss already queued");
+            let who = super::session_identity::identity_for_addr(&ctx.connected, addr);
+            tracing::debug!(
+                %addr,
+                account_id = who.account_id,
+                account_name = who.account_name,
+                category_id,
+                category_name = super::resources::category_name(category_id),
+                key,
+                "cooked-data miss already queued"
+            );
         }
         MissOutcome::Refused { why, log } => {
             cimmeria_observability::counter!(
@@ -119,12 +122,15 @@ pub fn serve_miss(ctx: SyncContext, category_id: u32, key: u32) -> MissOutcome {
                 "reason" => why.reason(),
             );
             if let Some(suppressed) = log {
+                let who = super::session_identity::identity_for_addr(&ctx.connected, addr);
                 tracing::warn!(
                     %addr,
-                    account_id,
+                    account_id = who.account_id,
+                    account_name = who.account_name,
                     event = "cooked_data.miss_refused",
                     reason = why.reason(),
                     category_id,
+                    category_name = super::resources::category_name(category_id),
                     key,
                     suppressed,
                     "Refused a cooked-data cache miss"

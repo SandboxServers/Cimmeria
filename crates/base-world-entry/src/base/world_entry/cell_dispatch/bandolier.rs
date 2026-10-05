@@ -8,6 +8,7 @@ use std::sync::{Arc, Mutex};
 use cimmeria_mercury::transport::Transport;
 use sqlx::PgPool;
 
+use super::super::super::session_identity::identity_for_player;
 use super::super::super::ConnectedClientState;
 use super::super::methods::inventory::update_bandolier_ammo;
 
@@ -35,24 +36,38 @@ pub(super) async fn active_slot_update(
         // The schema column is `bandolier_slot` (see sgw_player.sql);
         // an earlier draft used `active_bandolier_slot` which never
         // existed and would hard-fail at runtime.
-        let updated = match sqlx::query(
-            "UPDATE sgw_player SET bandolier_slot = $1 WHERE player_id = $2",
-        )
-        .bind(slot_id)
-        .bind(player_id)
-        .execute(pool.as_ref())
-        .await
-        {
-            Ok(res) if res.rows_affected() == 0 => {
-                tracing::warn!(player_id, slot_id, "ActiveSlotUpdate: no rows updated");
-                false
-            }
-            Ok(_) => true,
-            Err(e) => {
-                tracing::warn!(player_id, slot_id, error = %e, "ActiveSlotUpdate: DB write failed");
-                false
-            }
-        };
+        let updated =
+            match sqlx::query("UPDATE sgw_player SET bandolier_slot = $1 WHERE player_id = $2")
+                .bind(slot_id)
+                .bind(player_id)
+                .execute(pool.as_ref())
+                .await
+            {
+                Ok(res) if res.rows_affected() == 0 => {
+                    tracing::warn!(
+                        entity_id,
+                        entity_name = identity_for_player(connected, player_id).player_name,
+                        player_id,
+                        player_name = identity_for_player(connected, player_id).player_name,
+                        slot_id, // nt:id-only bandolier slot index 0-4, not a named row
+                        "ActiveSlotUpdate: no rows updated"
+                    );
+                    false
+                }
+                Ok(_) => true,
+                Err(e) => {
+                    tracing::warn!(
+                        entity_id,
+                        entity_name = identity_for_player(connected, player_id).player_name,
+                        player_id,
+                        player_name = identity_for_player(connected, player_id).player_name,
+                        slot_id, // nt:id-only bandolier slot index 0-4, not a named row
+                        error = %e,
+                        "ActiveSlotUpdate: DB write failed"
+                    );
+                    false
+                }
+            };
         // Refresh the player's appearance after the slot is durable.
         // The appearance query at `player_load/core.rs` filters
         // bandolier visual components by the persisted `bandolier_slot`,
@@ -119,13 +134,14 @@ pub(super) async fn refresh_appearance(
     // the live holster state. The flag write itself is unconditional;
     // the rebroadcast below is too — see fn doc for why we don't
     // short-circuit on no-change.
-    {
-        let addr = match entity_to_addr.lock().unwrap().get(&entity_id).copied() {
+    let player_name = {
+        let addr = entity_to_addr.lock().unwrap().get(&entity_id).copied();
+        let addr = match addr {
             Some(a) => a,
             None => {
                 tracing::debug!(
-                    entity_id,
-                    player_id,
+                    entity_id, // nt:id-only the session is gone, so nothing names it
+                    player_id, // nt:id-only the session is gone, so nothing names it
                     holstered,
                     "RefreshAppearance: entity has no transport addr (disconnected?), skipping"
                 );
@@ -136,22 +152,28 @@ pub(super) async fn refresh_appearance(
         match clients.get_mut(&addr) {
             Some(c) => {
                 c.weapon_holstered = holstered;
+                // Named under the lock already held (interned: a hash hit),
+                // so the line below takes no second lock per combat
+                // transition.
+                cimmeria_entity::name_intern::intern_opt(c.player_name.as_deref())
             }
             None => {
                 tracing::debug!(
-                    entity_id,
-                    player_id,
+                    entity_id, // nt:id-only the session is gone, so nothing names it
+                    player_id, // nt:id-only the session is gone, so nothing names it
                     holstered,
                     "RefreshAppearance: client state missing for addr, skipping"
                 );
                 return;
             }
         }
-    }
+    };
 
     tracing::info!(
         entity_id,
+        entity_name = player_name,
         player_id,
+        player_name,
         holstered,
         "RefreshAppearance: cached holster flag updated; broadcasting BeingAppearance"
     );
@@ -185,6 +207,7 @@ pub(super) async fn bandolier_ammo_update(
     current_ammo: i32,
     cur_ammo_type: i32,
     db_pool: &Option<Arc<PgPool>>,
+    connected: &Arc<Mutex<HashMap<SocketAddr, ConnectedClientState>>>,
 ) {
     // `player_id` from the cell is the DB character_id (matches the
     // `ActiveSlotUpdate` convention right above).
@@ -201,8 +224,9 @@ pub(super) async fn bandolier_ammo_update(
     {
         tracing::warn!(
             player_id,
-            slot_id,
-            expected_instance_id,
+            player_name = identity_for_player(connected, player_id).player_name,
+            slot_id,              // nt:id-only bandolier slot index 0-4, not a named row
+            expected_instance_id, // nt:id-only inventory row id; naming it needs a DB read on the per-shot path
             current_ammo,
             cur_ammo_type,
             "BandolierAmmoUpdate: dropping out-of-range payload"
@@ -221,7 +245,13 @@ pub(super) async fn bandolier_ammo_update(
         .await
         {
             tracing::warn!(
-                player_id, slot_id, expected_instance_id, current_ammo, cur_ammo_type, error = %e,
+                player_id,
+                player_name = identity_for_player(connected, player_id).player_name,
+                slot_id, // nt:id-only bandolier slot index 0-4, not a named row
+                expected_instance_id, // nt:id-only inventory row id; naming it needs a DB read on the per-shot path
+                current_ammo,
+                cur_ammo_type,
+                error = %e,
                 "BandolierAmmoUpdate: DB write failed"
             );
         }

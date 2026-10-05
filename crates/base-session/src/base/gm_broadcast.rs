@@ -36,6 +36,11 @@ pub struct GmBroadcastActor {
     pub entity_id: u32,
     pub player_id: Option<i32>,
     pub account_id: Option<u32>,
+    /// The GM's character name, paired with `entity_id` and `player_id`
+    /// (Rule 6).
+    pub player_name: Option<&'static str>,
+    /// The GM's login name, paired with `account_id` (Rule 6).
+    pub account_name: Option<&'static str>,
 }
 
 /// Send `args` (a serialized `onPlayerCommunication`) reliably to every
@@ -49,14 +54,17 @@ pub async fn broadcast_to_online_players(
 
     // Snapshot the recipients and reserve each one's sequence number under
     // one lock; send after releasing it (never hold the map across await).
-    let targets: Vec<(SocketAddr, i32, u32, [u8; 32], _, u32, Vec<u32>)> = {
+    let targets: Vec<(SocketAddr, i32, String, u32, [u8; 32], _, u32, Vec<u32>)> = {
         let Ok(clients) = ctx.connected.lock() else {
             tracing::warn!(
                 target: "chat",
                 event = "chat.gm_broadcast_skipped",
                 entity_id = actor.entity_id,
+                entity_name = actor.player_name,
                 account_id = actor.account_id,
+                account_name = actor.account_name,
                 player_id = actor.player_id,
+                player_name = actor.player_name,
                 scope = "global",
                 reason = "session_map_poisoned",
                 "GM broadcast not sent: the session map lock is poisoned",
@@ -65,7 +73,7 @@ pub async fn broadcast_to_online_players(
         };
         let index = OnlinePlayerIndex::new(&clients);
         let mut targets = Vec::new();
-        for (_, player) in index.entries() {
+        for (name, player) in index.entries() {
             let Some(c) = clients.get(&player.addr) else {
                 continue;
             };
@@ -82,6 +90,8 @@ pub async fn broadcast_to_online_players(
             targets.push((
                 player.addr,
                 player.player_id,
+                // Owned for the failure line (Rule 6); a GM broadcast is rare.
+                name.to_owned(),
                 entity_id,
                 c.key,
                 c.enc_version,
@@ -92,7 +102,8 @@ pub async fn broadcast_to_online_players(
         targets
     };
 
-    for (addr, target_player_id, target_entity_id, key, version, seq, acks) in targets {
+    for (addr, target_player_id, target_name, target_entity_id, key, version, seq, acks) in targets
+    {
         let packet = build_player_entity_method_packet(
             &key,
             seq,
@@ -107,10 +118,15 @@ pub async fn broadcast_to_online_players(
                 target: "chat",
                 event = "chat.gm_broadcast_send_failed",
                 entity_id = actor.entity_id,
+                entity_name = actor.player_name,
                 account_id = actor.account_id,
+                account_name = actor.account_name,
                 player_id = actor.player_id,
+                player_name = actor.player_name,
                 target_player_id,
+                target_player_name = target_name.as_str(),
                 target_entity_id,
+                target_entity_name = target_name.as_str(),
                 %addr,
                 scope = "global",
                 reason = "send_error",
@@ -194,6 +210,8 @@ mod tests {
             entity_id: 9,
             player_id: Some(5),
             account_id: Some(6),
+            player_name: Some("Gm"),
+            account_name: Some("gm_login"),
         };
         let report = broadcast_to_online_players(&ctx, actor, &args).await;
 

@@ -124,7 +124,7 @@ pub async fn handle_on_client_ready(
     // still awaiting DB reads — a hold armed any later (say, next to
     // `send_cinematic`) lets those creates reach a client that is about to
     // play a fullscreen movie. See `cinematic_aoi_hold`.
-    let (pending, player_name, access_level, account_id, aoi_hold, plugins) = {
+    let (pending, player_name, access_level, account_id, aoi_hold, plugins, account_name) = {
         let mut clients = connected.lock().map_err(|_| "connected lock poisoned")?;
         let entry = clients.get_mut(&addr);
         match entry {
@@ -154,12 +154,14 @@ pub async fn handle_on_client_ready(
                     c.account_id,
                     aoi_hold,
                     c.plugins.clone(),
+                    // The login name for this function's lines (Rule 6).
+                    super::super::session_identity::session_identity(c).account_name,
                 )
             }
             // No session for this addr: `pending` is `None` so we bail below
             // before `account_id` is ever read. The 0 is unreachable filler,
             // not a sentinel any log will carry.
-            None => (None, None, 0, 0, None, Default::default()),
+            None => (None, None, 0, 0, None, Default::default(), None),
         }
     };
 
@@ -169,12 +171,18 @@ pub async fn handle_on_client_ready(
     };
 
     let entity_id = pending.entity_id;
+    // The character name for this function's lines: the entity is the
+    // player's own, so it names `entity_id` and `player_id` alike.
+    let name = player_name.as_deref();
 
     tracing::info!(
         %addr,
         entity_id,
+        entity_name = name,
         account_id,
+        account_name,
         player_id = pending.player_id,
+        player_name = name,
         world = %pending.world_name,
         "SGWPlayer.onClientReady received -- finalizing world entry"
     );
@@ -212,6 +220,7 @@ pub async fn handle_on_client_ready(
             Err(e) => {
                 tracing::error!(
                     player_id = pending.player_id,
+                    player_name = name,
                     "Archetype read failed; defaulting to 0 but logging error: {e}"
                 );
                 0
@@ -248,6 +257,7 @@ pub async fn handle_on_client_ready(
                 Err(e) => {
                     tracing::error!(
                     player_id = pending.player_id,
+                    player_name = name,
                     "Player init read failed; defaulting to XML defaults but logging error: {e}"
                 );
                     None
@@ -280,6 +290,7 @@ pub async fn handle_on_client_ready(
                 // and fight but whose every dial is refused.
                 tracing::warn!(
                     player_id = pending.player_id,
+                    player_name = name,
                     reason = "player_init_row_missing",
                     "Player init read matched no row -- bandolier, options and the \
                      stargate address book all default to empty; every dial is refused"
@@ -330,8 +341,11 @@ pub async fn handle_on_client_ready(
             // recovery requires the player to log out and back in.
             tracing::error!(
                 entity_id,
+                entity_name = name,
                 account_id,
+                account_name,
                 player_id = pending.player_id,
+                player_name = name,
                 "ConnectEntity: base→cell send failed -- cell will not see this player, all AoI traffic will drop: {e}"
             );
         }
@@ -364,9 +378,12 @@ pub async fn handle_on_client_ready(
             // will appear loaded but quests / hotbar will be empty.
             tracing::error!(
                 entity_id,
+                entity_name = name,
                 account_id,
+                account_name,
                 player_id = pending.player_id,
-                world_name = %pending.world_name,
+                player_name = name,
+                world = %pending.world_name,
                 "InitPlayerState: base→cell send failed -- player loaded with empty mission/ability state: {e}"
             );
         }
@@ -389,7 +406,8 @@ pub async fn handle_on_client_ready(
                 // the ring FSM stays in RemoteLoadWait forever.
                 tracing::error!(
                     entity_id,
-                    region_id,
+                    entity_name = name,
+                    region_id, // nt:id-only ring destination region; region names live on the cell
                     "AdvanceRingDestination: base→cell send failed -- ring FSM stuck, player invisible to other ring riders: {e}"
                 );
             }
@@ -425,6 +443,7 @@ pub async fn handle_on_client_ready(
         tracing::warn!(
             %addr,
             entity_id,
+            entity_name = name,
             "onClientReady: player_name not set on connected state — \
              sending welcome with generic Server speaker"
         );
@@ -577,6 +596,7 @@ pub async fn handle_on_client_ready(
                     // (rows_affected != expected) surfaces it.
                     tracing::error!(
                         player_id = pending.player_id,
+                        player_name = name,
                         rows_affected = 0,
                         expected = 1,
                         "first_login flag NOT cleared — cinematic will re-fire on next login (no matching player row?)"
@@ -586,6 +606,7 @@ pub async fn handle_on_client_ready(
                 Err(e) => {
                     tracing::warn!(
                         player_id = pending.player_id,
+                        player_name = name,
                         error = %e,
                         "Failed to clear first_login flag after cinematic dispatch; player will see intro again next login",
                     );
@@ -593,7 +614,12 @@ pub async fn handle_on_client_ready(
             }
         }
 
-        tracing::info!(%addr, entity_id, "First-login cinematic dispatched after onClientReady gate");
+        tracing::info!(
+            %addr,
+            entity_id,
+            entity_name = name,
+            "First-login cinematic dispatched after onClientReady gate"
+        );
     }
 
     // Flush any AoI messages the cell tried to dispatch while the client
@@ -632,7 +658,12 @@ pub async fn handle_on_client_ready(
         .await;
     }
 
-    tracing::info!(%addr, entity_id, "World entry finalized (BeingAppearance resent)");
+    tracing::info!(
+        %addr,
+        entity_id,
+        entity_name = name,
+        "World entry finalized (BeingAppearance resent)"
+    );
     Ok(())
 }
 

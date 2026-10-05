@@ -26,6 +26,7 @@ use super::super::cooked_data::{handle_element_data_request, handle_version_info
 use super::super::cooked_sync;
 use super::super::helpers::destroy_client_entities;
 use super::super::resources::ResourceCache;
+use super::super::session_identity;
 use super::super::world_entry::handle_enable_entities;
 use super::super::ConnectedClientState;
 use super::{account_arms, cell_arms, read_constant_payload, read_word_length_payload};
@@ -369,7 +370,7 @@ async fn dispatch_client_bundle(
                             ];
                             let dir = [payload[32] as i8, payload[33] as i8, payload[34] as i8];
                             tracing::trace!(
-                                entity_id,
+                                entity_id, // nt:id-only the 10 Hz movement path takes no lookup to name it
                                 ?pos,
                                 "AVATAR_UPDATE_EXPLICIT -> CellService"
                             );
@@ -425,23 +426,28 @@ async fn dispatch_client_bundle(
                     tracing::warn!(
                         %addr,
                         account_id,
+                        account_name = session_identity::identity_for_addr(connected, addr).account_name,
                         payload_len = payload.len(),
                         reason = "payload_too_short",
                         "REQUEST_ENTITY_UPDATE: payload shorter than the 4-byte entity id -- dropping"
                     );
                 } else {
-                    let witness_id = connected
-                        .lock()
-                        .unwrap()
-                        .get(&addr)
-                        .and_then(|c| c.player_entity_id);
+                    // The names ride the lock this read already takes
+                    // (interned, so a hash hit); one request per AoI entry
+                    // must not take a second lock just to name its lines.
+                    let (witness_id, who) = connected.lock().unwrap().get(&addr).map_or(
+                        (None, cimmeria_entity::cell_entity::PlayerIdentity::UNKNOWN),
+                        |c| (c.player_entity_id, session_identity::session_identity(c)),
+                    );
                     if let Some(witness_id) = witness_id {
                         if let Some(tx) = cell_tx {
                             let count = entity_ids.len();
                             tracing::debug!(
                                 %addr,
                                 account_id,
+                                account_name = who.account_name,
                                 witness_id,
+                                witness_name = who.player_name,
                                 count,
                                 "REQUEST_ENTITY_UPDATE -> cell::RequestEntityUpdate"
                             );
@@ -455,7 +461,9 @@ async fn dispatch_client_bundle(
                                 tracing::warn!(
                                     %addr,
                                     account_id,
+                                    account_name = who.account_name,
                                     witness_id,
+                                    witness_name = who.player_name,
                                     count,
                                     "REQUEST_ENTITY_UPDATE: cell send failed -- request dropped: {e}"
                                 );
@@ -464,7 +472,9 @@ async fn dispatch_client_bundle(
                             tracing::debug!(
                                 %addr,
                                 account_id,
+                                account_name = who.account_name,
                                 witness_id,
+                                witness_name = who.player_name,
                                 count = entity_ids.len(),
                                 "REQUEST_ENTITY_UPDATE: no cell channel -- ignoring"
                             );
@@ -473,6 +483,7 @@ async fn dispatch_client_bundle(
                         tracing::warn!(
                             %addr,
                             account_id,
+                            account_name = who.account_name,
                             count = entity_ids.len(),
                             reason = "no_player_entity",
                             "REQUEST_ENTITY_UPDATE before player entity is connected -- dropping"

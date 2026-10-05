@@ -120,6 +120,28 @@ pub struct RateActor {
     /// The session's player entity, so a drop joins the entity-scoped
     /// activity stream (instrumentation-discipline rule 5).
     pub entity_id: Option<u32>,
+    /// The character name, paired with `player_id` and `entity_id` (Rule 6).
+    pub player_name: Option<&'static str>,
+    /// The login name, paired with `account_id` (Rule 6).
+    pub account_name: Option<&'static str>,
+}
+
+impl RateActor {
+    /// The actor for the session `c` at `addr`. It interns the session's
+    /// names, so build it only on a path that logs it: the limited branch,
+    /// or a refusal that is logged on every outcome
+    /// (`communicator_unsupported`).
+    pub fn of(addr: SocketAddr, c: &super::ConnectedClientState) -> Self {
+        let id = super::session_identity::session_identity(c);
+        Self {
+            addr,
+            player_id: c.active_player_id,
+            account_id: c.account_id,
+            entity_id: c.player_entity_id,
+            player_name: id.player_name,
+            account_name: id.account_name,
+        }
+    }
 }
 
 /// Log a dropped action as `rate_limit.exceeded` and count it.
@@ -152,6 +174,8 @@ pub fn log_exceeded(
     let player_id = actor.player_id;
     let account_id = actor.account_id;
     let entity_id = actor.entity_id;
+    let player_name = actor.player_name;
+    let account_name = actor.account_name;
     if notify {
         tracing::warn!(
             target: "rate_limit",
@@ -159,8 +183,11 @@ pub fn log_exceeded(
             category = category.name(),
             %addr,
             player_id,
+            player_name,
             account_id,
+            account_name,
             entity_id,
+            entity_name = player_name,
             tokens,
             burst,
             refill_ms,
@@ -176,8 +203,11 @@ pub fn log_exceeded(
             category = category.name(),
             %addr,
             player_id,
+            player_name,
             account_id,
+            account_name,
             entity_id,
+            entity_name = player_name,
             tokens,
             burst,
             refill_ms,

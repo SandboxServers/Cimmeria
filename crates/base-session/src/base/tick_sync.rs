@@ -108,8 +108,15 @@ pub async fn run_tick_loop(
 
         let idle = last_recv.lock().unwrap().elapsed();
         if idle > INACTIVITY_TIMEOUT {
+            // The session is still in the map here (teardown runs after the
+            // loop), so the timeout line names who went silent (Rules 5, 6).
+            let who = super::session_identity::identity_for_addr(&connected, addr);
             tracing::info!(
                 %addr,
+                account_id = who.account_id,
+                account_name = who.account_name,
+                player_id = who.player_id,
+                player_name = who.player_name,
                 idle_secs = idle.as_secs(),
                 "Tick-sync stopping: client inactive for {}s",
                 idle.as_secs()
@@ -192,7 +199,12 @@ pub async fn run_tick_loop(
         }
 
         if sends.is_multiple_of(100) {
-            tracing::debug!(%addr, tick, seq_id, "Tick-sync heartbeat (every 100th)");
+            tracing::debug!(
+                %addr,
+                tick,
+                seq_id, // nt:id-only a sequence counter, not a named row
+                "Tick-sync heartbeat (every 100th)"
+            );
         }
 
         sends = sends.wrapping_add(1);

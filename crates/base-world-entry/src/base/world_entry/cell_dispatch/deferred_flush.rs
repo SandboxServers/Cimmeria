@@ -17,6 +17,7 @@ use crate::mercury::compose_create_entity_base_body;
 use super::super::super::deferred_aoi::{self, DeferredAoiMsg};
 use super::super::super::deferred_aoi_lifecycle::lifecycle_segments;
 use super::super::super::helpers::{send_bundle_to_witness_reliable, BundleSendOutcome};
+use super::super::super::session_identity::entity_name_for;
 use super::super::super::ConnectedClientState;
 use super::aoi::{entity_invisible, entity_method_call, left_aoi, witness_entity_method};
 use super::player_ghost;
@@ -30,6 +31,7 @@ use super::player_ghost;
 /// count instead.
 fn log_bundle_emit(
     witness_id: u32,
+    witness_name: Option<&'static str>,
     entered: usize,
     phase: &'static str,
     outcome: BundleSendOutcome,
@@ -45,6 +47,7 @@ fn log_bundle_emit(
                 target: "aoi.create_emit",
                 event = "create_emit",
                 witness_id,
+                witness_name,
                 entered,
                 phase,
                 addr_resolved = true,
@@ -63,6 +66,7 @@ fn log_bundle_emit(
                 target: "aoi.create_send_failed",
                 event = "create_send_failed",
                 witness_id,
+                witness_name,
                 entered,
                 phase,
                 addr_resolved = failed.addr_resolved(),
@@ -196,16 +200,21 @@ async fn dispatch_deferred(
         .iter()
         .map(|s| deferred_aoi::method_summary(s).0)
         .sum();
+    // One session lookup per flush names every line below (the witness is
+    // the flushing player); the per-entry lines take no lock.
+    let witness_name = entity_name_for(connected, entity_to_addr, witness_id);
     super::method_delivery::log_deferred_flush(
         addr,
         witness_id,
         trigger,
         &methods_buffered,
         methods_dispatched,
+        witness_name,
     );
     tracing::info!(
         %addr,
         witness_id,
+        witness_name,
         count = buffered_count,
         dispatched = segments.iter().map(Vec::len).sum::<usize>(),
         segments = segments.len(),
@@ -213,7 +222,15 @@ async fn dispatch_deferred(
         "Flushing deferred-AoI buffer"
     );
     for segment in segments {
-        dispatch_segment(witness_id, segment, transport, connected, entity_to_addr).await;
+        dispatch_segment(
+            witness_id,
+            witness_name,
+            segment,
+            transport,
+            connected,
+            entity_to_addr,
+        )
+        .await;
     }
 }
 
@@ -221,6 +238,7 @@ async fn dispatch_deferred(
 /// everything else in encounter order.
 async fn dispatch_segment(
     witness_id: u32,
+    witness_name: Option<&'static str>,
     buffered: Vec<DeferredAoiMsg>,
     transport: &Arc<dyn Transport>,
     connected: &Arc<Mutex<HashMap<SocketAddr, ConnectedClientState>>>,
@@ -265,7 +283,15 @@ async fn dispatch_segment(
                 tracing::debug!(
                     target: "aoi.introduce",
                     witness_id,
+                    witness_name,
                     entity_id,
+                    // An NPC's `name_id` text, no lock; a player is left off.
+                    entity_name = npc_data
+                        .as_deref()
+                        .and_then(|n| n.name_id)
+                        .and_then(|n| {
+                            cimmeria_entity::name_intern::intern_opt(cimmeria_names::book().text(n))
+                        }),
                     is_player = player_data.is_some(),
                     outcome = "flushed_on_ready",
                     "AoI introduce: witness now ready, flushing buffered entity introduction"
@@ -314,6 +340,7 @@ async fn dispatch_segment(
     if !phase1.is_empty() {
         tracing::debug!(
             witness_id,
+            witness_name,
             entered = entered_count,
             phase1_bytes = phase1.body_len(),
             phase1_packets = phase1.estimated_packet_count(),
@@ -327,11 +354,18 @@ async fn dispatch_segment(
             phase1,
         )
         .await;
-        log_bundle_emit(witness_id, entered_count, "create_base", outcome);
+        log_bundle_emit(
+            witness_id,
+            witness_name,
+            entered_count,
+            "create_base",
+            outcome,
+        );
     }
     if !phase2.is_empty() {
         tracing::debug!(
             witness_id,
+            witness_name,
             entered = entered_count,
             phase2_bytes = phase2.body_len(),
             phase2_packets = phase2.estimated_packet_count(),
@@ -345,7 +379,7 @@ async fn dispatch_segment(
             phase2,
         )
         .await;
-        log_bundle_emit(witness_id, entered_count, "cascade", outcome);
+        log_bundle_emit(witness_id, witness_name, entered_count, "cascade", outcome);
     }
 
     for msg in tail {

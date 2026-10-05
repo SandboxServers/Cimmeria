@@ -178,8 +178,15 @@ async fn send_method(
                             tracing::debug!(
                                 %addr,
                                 player_id,
+                                // The addressed player is named only while it is
+                                // still the session's character.
+                                player_name = (c.active_player_id == Some(player_id))
+                                    .then_some(c.player_name.as_deref())
+                                    .flatten(),
                                 account_id = c.account_id,
+                                account_name = c.account_name.as_deref(),
                                 session_player_id = c.active_player_id,
+                                session_player_name = c.player_name.as_deref(),
                                 method_index,
                                 method_name = cimmeria_wire::names::player_client_method(method_index),
                                 reason = if c.active_player_id == Some(player_id) {
@@ -241,6 +248,8 @@ async fn send_method(
         tracing::warn!(
             %addr,
             entity_id,
+            entity_name =
+                super::session_identity::identity_for_addr(ctx.connected, addr).player_name,
             method_index,
             method_name = cimmeria_wire::names::player_client_method(method_index),
             reason = "send_error",

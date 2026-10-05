@@ -32,6 +32,9 @@ mod teleport;
 
 #[cfg(test)]
 mod crafting_options_world_entry_tests;
+/// NT-24: the play-character path names the account, character and world.
+#[cfg(test)]
+mod named_world_entry_tests;
 /// SS-00: the online name index across world entry and reanchor.
 #[cfg(test)]
 mod player_index_lifecycle_tests;

@@ -147,7 +147,11 @@ pub(crate) async fn handle_create_character(
 
     // Skin tint validation (matches Python Account.py: ERROR_CharacterCreationInvalidSkinColor).
     if !(0..=15).contains(&skin_tint_color_id) {
-        tracing::info!(%addr, skin_tint_color_id, "createCharacter: invalid skin tint");
+        tracing::info!(
+            %addr,
+            skin_tint_color_id, // nt:id-only palette index 0-15, not a named row
+            "createCharacter: invalid skin tint"
+        );
         send_char_create_failed(transport, addr, key, connected, 2).await?;
         return Ok(());
     }
@@ -157,7 +161,11 @@ pub(crate) async fn handle_create_character(
         match chardef_lookup(char_def_id) {
             Some(info) => info,
             None => {
-                tracing::warn!(%addr, char_def_id, "createCharacter: unknown CharDefId");
+                tracing::warn!(
+                    %addr,
+                    char_def_id, // nt:id-only CharDef rows carry no name column to pair
+                    "createCharacter: unknown CharDefId"
+                );
                 send_char_create_failed(transport, addr, key, connected, 2).await?;
                 return Ok(());
             }
@@ -165,15 +173,16 @@ pub(crate) async fn handle_create_character(
 
     tracing::info!(
         %addr,
-        name = %name,
+        player_name = %name,
         extra_name = %extra_name,
-        char_def_id,
+        char_def_id, // nt:id-only CharDef rows carry no name column to pair
         alignment,
         archetype,
+        archetype_name = cimmeria_names::archetype_name(archetype),
         gender,
         bodyset,
         visual_count = visual_choices.len(),
-        skin_tint_color_id,
+        skin_tint_color_id, // nt:id-only palette index 0-15, not a named row
         "Creating character"
     );
 
@@ -257,20 +266,34 @@ pub(crate) async fn handle_create_character(
         let group = match visgroups.get(&vg_id) {
             Some(g) => g,
             None => {
-                tracing::warn!(%addr, vg_id, char_def_id, "Invalid visual group");
+                tracing::warn!(
+                    %addr,
+                    vg_id, // nt:id-only visual groups carry no name column to pair
+                    char_def_id, // nt:id-only CharDef rows carry no name column to pair
+                    "Invalid visual group"
+                );
                 send_char_create_failed(transport, addr, key, connected, 10003).await?;
                 return Ok(());
             }
         };
         if group.vis_type != "VIS_Optional" {
-            tracing::warn!(%addr, vg_id, "Choice not allowed for forced visual group");
+            tracing::warn!(
+                %addr,
+                vg_id, // nt:id-only visual groups carry no name column to pair
+                "Choice not allowed for forced visual group"
+            );
             send_char_create_failed(transport, addr, key, connected, 10003).await?;
             return Ok(());
         }
         let choice = match group.choices.get(&choice_id) {
             Some(c) => c,
             None => {
-                tracing::warn!(%addr, vg_id, choice_id, "Invalid choice for visual group");
+                tracing::warn!(
+                    %addr,
+                    vg_id, // nt:id-only visual groups carry no name column to pair
+                    choice_id, // nt:id-only visual choices carry no name column to pair
+                    "Invalid choice for visual group"
+                );
                 send_char_create_failed(transport, addr, key, connected, 10003).await?;
                 return Ok(());
             }
@@ -299,7 +322,12 @@ pub(crate) async fn handle_create_character(
                     });
                 }
             } else {
-                tracing::warn!(%addr, vg_id, char_def_id, "Missing choice for optional visual group");
+                tracing::warn!(
+                    %addr,
+                    vg_id, // nt:id-only visual groups carry no name column to pair
+                    char_def_id, // nt:id-only CharDef rows carry no name column to pair
+                    "Missing choice for optional visual group"
+                );
                 send_char_create_failed(transport, addr, key, connected, 10000).await?;
                 return Ok(());
             }
@@ -358,7 +386,7 @@ pub(crate) async fn handle_create_character(
         Ok(v) => v,
         Err(e) => {
             tracing::error!(
-                char_def_id,
+                char_def_id, // nt:id-only CharDef rows carry no name column to pair
                 "character_create: starting abilities lookup failed: {e}"
             );
             Vec::new()
@@ -366,10 +394,12 @@ pub(crate) async fn handle_create_character(
     };
 
     tracing::debug!(
-        %addr, char_def_id,
+        %addr,
+        char_def_id, // nt:id-only CharDef rows carry no name column to pair
         components = ?body_components,
         item_count = item_choices.len(),
         world_id = ?world_id,
+        world = world_location,
         ability_count = abilities.len(),
         "Resolved character creation visuals"
     );
@@ -459,13 +489,15 @@ pub(crate) async fn handle_create_character(
                         if any_valid_container {
                             tracing::warn!(
                                 %addr,
-                                item_id = item.item_id,
+                                item_type_id = item.item_id,
+                                item_name = cimmeria_names::book().item(item.item_id),
                                 "All valid containers full — starter item dropped"
                             );
                         } else {
                             tracing::warn!(
                                 %addr,
-                                item_id = item.item_id,
+                                item_type_id = item.item_id,
+                                item_name = cimmeria_names::book().item(item.item_id),
                                 "No valid container for starter item"
                             );
                         }
@@ -493,11 +525,22 @@ pub(crate) async fn handle_create_character(
                 .execute(pool.as_ref())
                 .await
                 {
-                    tracing::error!(%addr, item_id = item.item_id, error = %e, "Failed to insert starter item");
+                    tracing::error!(
+                        %addr,
+                        item_type_id = item.item_id,
+                        item_name = cimmeria_names::book().item(item.item_id),
+                        error = %e,
+                        "Failed to insert starter item"
+                    );
                 }
             }
 
-            tracing::info!(%addr, player_id, name = %name, "Character created successfully");
+            tracing::info!(
+                %addr,
+                player_id,
+                player_name = %name,
+                "Character created successfully"
+            );
 
             // Discord gameplay-channel: a new character was created (on by
             // default — low volume / high signal). Account name is best-effort
@@ -520,7 +563,12 @@ pub(crate) async fn handle_create_character(
             );
 
             // Send updated character list (Account entity already exists)
-            let characters = query_character_list(db_pool, account_id).await;
+            let characters = query_character_list(
+                db_pool,
+                account_id,
+                super::session_identity::identity_for_addr(connected, addr).account_name,
+            )
+            .await;
             let account_eid = get_account_entity_id(connected, addr)?;
             let (acks, seq) = drain_acks_and_seq(connected, addr)?;
             let enc_version = get_enc_version(connected, addr);
@@ -538,7 +586,7 @@ pub(crate) async fn handle_create_character(
         Err(e) => {
             let error_str = e.to_string();
             let error_code = if error_str.contains("sgw_player_player_name_key") {
-                tracing::info!(%addr, name = %name, "Character name already taken");
+                tracing::info!(%addr, player_name = %name, "Character name already taken");
                 1 // name taken
             } else {
                 tracing::error!(%addr, error = %e, "Character creation DB error");

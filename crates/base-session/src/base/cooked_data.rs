@@ -8,7 +8,7 @@ use crate::mercury::build_version_info;
 
 use super::cooked_sync::{self, EnqueueOutcome, SyncJob, VersionReply};
 use super::helpers::{drain_acks_and_seq, get_active_entity_id, get_enc_version};
-use super::resources::ResourceCache;
+use super::resources::{category_name, ResourceCache};
 use super::ConnectedClientState;
 
 /// Maximum XML bytes per `BASEMSG_RESOURCE_FRAGMENT` packet.
@@ -56,19 +56,17 @@ pub async fn handle_version_info_request(
     let client_version = u32::from_le_bytes([payload[4], payload[5], payload[6], payload[7]]);
 
     let reply = VersionReply::decide(resource_cache.as_deref(), category_id, client_version);
-    let account_id = connected
-        .lock()
-        .ok()
-        .and_then(|c| c.get(&addr).map(|s| s.account_id))
-        .unwrap_or(0);
+    let who = super::session_identity::identity_for_addr(connected, addr);
 
     tracing::info!(
         %addr,
-        account_id,
+        account_id = who.account_id,
+        account_name = who.account_name,
         event = "cooked_data.version_reply",
         outcome = reply.outcome(),
         reason = reply.reason(),
         category_id,
+        category_name = category_name(category_id),
         client_version,
         server_version = ?reply.server_version(),
         invalidate_all = matches!(reply, VersionReply::FullResync { .. }),
@@ -97,8 +95,10 @@ pub async fn handle_version_info_request(
             if outcome == EnqueueOutcome::AlreadyPending {
                 tracing::debug!(
                     %addr,
-                    account_id,
+                    account_id = who.account_id,
+                    account_name = who.account_name,
                     category_id,
+                    category_name = category_name(category_id),
                     "versionInfoRequest for a category already being resynced: ignored"
                 );
             }
@@ -162,7 +162,9 @@ pub async fn handle_element_data_request(
         tracing::warn!(
             %addr,
             category_id,
+            category_name = category_name(category_id),
             element_id,
+            element_name = element_name(category_id, element_id),
             reason = "no_resource_cache",
             "elementDataRequest: no resource cache loaded"
         );
@@ -174,6 +176,27 @@ pub async fn handle_element_data_request(
         element_id,
     );
     Ok(())
+}
+
+/// The name of one cooked-data element for logs (Rule 6), where the
+/// category's element IDs are content IDs the NameBook names: abilities,
+/// missions, items, dialogs, effects, worlds, stargates and containers.
+/// `None` for the other categories and for an unnamed ID. Owned, because
+/// the NameBook guard can't outlive the call: log branches only.
+pub(crate) fn element_name(category_id: u32, element_id: u32) -> Option<String> {
+    let book = cimmeria_names::book();
+    match category_id {
+        2 => book.ability(element_id),
+        3 => book.mission(element_id),
+        4 => book.item(element_id),
+        5 => book.dialog(element_id),
+        9 => book.effect(element_id),
+        12 => book.world(element_id),
+        13 => book.stargate(element_id),
+        14 => book.container(element_id),
+        _ => None,
+    }
+    .map(str::to_owned)
 }
 
 /// Compile-time lower-bound guard for `MAX_CHUNK`. The wire-level tests in

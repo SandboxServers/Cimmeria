@@ -34,6 +34,7 @@
 //! | drop identity from the `Recovered` warn | [`movement_recovery_carries_account_and_player_id`] |
 //! | drop identity from the `CorrectionSuppressed` error | [`correction_suppressed_carries_account_and_player_id`] |
 //! | stop threading identity into `send_snap_back` | [`snap_back_send_failure_carries_account_and_player_id`] |
+//! | drop a name from the `session.start` line (NT-24) | [`session_start_names_the_account_the_character_and_the_archetype`] |
 //!
 //! Each outcome branch resolves identity for itself, so a guard on one says
 //! nothing about the others — hence one test per branch rather than one for
@@ -437,5 +438,53 @@ async fn snap_back_send_failure_carries_account_and_player_id() {
     assert!(
         event.has_field("world", WORLD),
         "the snap-back failure must name the world; got {event:#?}"
+    );
+}
+
+/// `session.start` (`player entered world`) is the login half of the
+/// session timeline that `session.end` closes on the base. It names the
+/// account, the character and the archetype next to their IDs (Rule 6,
+/// NT-24); before, it carried only `character_name` and the raw IDs.
+#[tokio::test]
+async fn session_start_names_the_account_the_character_and_the_archetype() {
+    let capture = LogCapture::install();
+    let mut mgr = manager();
+    let (tx, _rx) = mpsc::channel(256);
+
+    create_via_base_message(&mut mgr, 7777, true, &tx).await;
+    handle_base_message(
+        BaseToCellMsg::InitPlayerState {
+            entity_id: 7777,
+            player_id: PLAYER_ID,
+            account_id: ACCOUNT_ID,
+            world_name: WORLD.into(),
+            archetype_id: 1,
+            saved_missions: vec![],
+            abilities: vec![],
+            active_bandolier_slot: 0,
+            bandolier_items: vec![],
+            system_options: cimmeria_entity::cell_entity::SystemOptions::default(),
+            access_level: 0,
+            known_stargates: vec![],
+            tree_progress: Default::default(),
+            level: 1,
+            character_name: Some(PLAYER_NAME.into()),
+            body_set: None,
+            looted_containers: Vec::new(),
+        },
+        &tx,
+        &mut mgr,
+        &ChainEngine::new(),
+        &[],
+    )
+    .await;
+
+    let event = capture
+        .find_message(Level::INFO, "player entered world")
+        .unwrap_or_else(|| panic!("no session.start line: {:#?}", capture.all()));
+    assert_identity(&event, "session.start must name who entered the world");
+    assert!(
+        event.has_field("archetype_name", "Soldier"),
+        "the archetype is named next to its ordinal: {event:#?}"
     );
 }

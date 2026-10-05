@@ -41,31 +41,35 @@ pub(super) async fn persist_system_options(
         return;
     };
 
-    match sqlx::query(
+    // `RETURNING player_name` is for the log line only (Rule 6); the message
+    // carries just the DB id. No row back is the old `rows_affected() == 0`.
+    match sqlx::query_scalar::<_, String>(
         "UPDATE sgw_player SET auto_reload = $1, reload_on_activate = $2 \
-         WHERE player_id = $3",
+         WHERE player_id = $3 \
+         RETURNING player_name",
     )
     .bind(auto_reload)
     .bind(reload_on_activate)
     .bind(player_id)
-    .execute(pool.as_ref())
+    .fetch_optional(pool.as_ref())
     .await
     {
-        Ok(res) if res.rows_affected() == 0 => {
+        Ok(None) => {
             // No row updated — typically a test fixture or a deleted
             // character. Loud because losing this silently means the
             // next relog hydrates to defaults and the user thinks the
             // checkbox didn't save.
             tracing::warn!(
-                player_id,
+                player_id, // nt:id-only no row matched, so nothing names it
                 auto_reload,
                 reload_on_activate,
                 "SystemOptionsUpdate: no rows updated (player row missing?)"
             );
         }
-        Ok(_) => {
+        Ok(Some(player_name)) => {
             tracing::info!(
                 player_id,
+                player_name = %player_name,
                 auto_reload,
                 reload_on_activate,
                 "SystemOptionsUpdate: persisted"
@@ -73,7 +77,7 @@ pub(super) async fn persist_system_options(
         }
         Err(e) => {
             tracing::warn!(
-                player_id,
+                player_id, // nt:id-only the write failed, so no row named it
                 auto_reload,
                 reload_on_activate,
                 error = %e,
@@ -180,7 +184,17 @@ mod tests {
 
         // First persist: flip both columns.
         let pool_opt = Some(Arc::new(pool.clone()));
+        let capture = crate::test_support::LogCapture::install();
         persist_system_options(player_id, false, true, &pool_opt).await;
+        // Rule 6: the persisted line names the character, read back by
+        // `RETURNING player_name` (NT-24).
+        let persisted = capture
+            .find_message(tracing::Level::INFO, "SystemOptionsUpdate: persisted")
+            .expect("persisted line");
+        assert!(
+            persisted.has_field("player_name", &format!("syso-{player_id}")),
+            "{persisted:#?}"
+        );
 
         let (a1, r1): (bool, bool) = sqlx::query_as(
             "SELECT auto_reload, reload_on_activate FROM sgw_player \

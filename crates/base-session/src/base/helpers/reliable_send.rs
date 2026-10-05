@@ -194,8 +194,11 @@ pub(super) fn shadow_register_reliable_send_with_details(
             ?fragment_count,
             message_count = ?details.message_count,
             account_id = state.account_id,
+            account_name = state.account_name.as_deref(),
             player_id = ?state.active_player_id,
+            player_name = state.player_name.as_deref(),
             entity_id = ?state.player_entity_id,
+            entity_name = state.player_name.as_deref(),
             "encrypted reliable datagram exceeds the Mercury UDP payload limit"
         );
     } else {
@@ -214,8 +217,11 @@ pub(super) fn shadow_register_reliable_send_with_details(
             ?fragment_count,
             message_count = ?details.message_count,
             account_id = state.account_id,
+            account_name = state.account_name.as_deref(),
             player_id = ?state.active_player_id,
+            player_name = state.player_name.as_deref(),
             entity_id = ?state.player_entity_id,
+            entity_name = state.player_name.as_deref(),
             "encrypted reliable datagram sent"
         );
     }

@@ -92,6 +92,63 @@ pub fn session_identity(c: &ConnectedClientState) -> PlayerIdentity {
         .with_names(c.player_name.as_deref(), c.account_name.as_deref())
 }
 
+/// The identity of the session at `addr`, for a line that has the address
+/// but not the session in hand. [`PlayerIdentity::UNKNOWN`] when the session
+/// is gone or the lock is poisoned.
+///
+/// Takes the `connected` lock: never call it while holding that lock.
+pub fn identity_for_addr(
+    connected: &Arc<Mutex<HashMap<SocketAddr, ConnectedClientState>>>,
+    addr: SocketAddr,
+) -> PlayerIdentity {
+    connected
+        .lock()
+        .ok()
+        .and_then(|clients| clients.get(&addr).map(session_identity))
+        .unwrap_or(PlayerIdentity::UNKNOWN)
+}
+
+/// The identity of the session playing character `player_id`, for a line
+/// that has only the DB id (cell→base persistence messages). A scan of
+/// `connected`: log branches only. [`PlayerIdentity::UNKNOWN`] when no
+/// session plays it or the lock is poisoned.
+///
+/// Takes the `connected` lock: never call it while holding that lock (use
+/// [`identity_for_player_in`] there).
+pub fn identity_for_player(
+    connected: &Arc<Mutex<HashMap<SocketAddr, ConnectedClientState>>>,
+    player_id: i32,
+) -> PlayerIdentity {
+    connected.lock().map_or(PlayerIdentity::UNKNOWN, |clients| {
+        identity_for_player_in(&clients, player_id)
+    })
+}
+
+/// [`identity_for_player`] over a map the caller already holds locked.
+pub fn identity_for_player_in(
+    clients: &HashMap<SocketAddr, ConnectedClientState>,
+    player_id: i32,
+) -> PlayerIdentity {
+    clients
+        .values()
+        .find(|c| c.active_player_id == Some(player_id))
+        .map_or(PlayerIdentity::UNKNOWN, session_identity)
+}
+
+/// The `entity_name` for an entity ID on the base (Rule 6): the character
+/// name when a session owns the entity. `None` for an NPC, because the base
+/// keeps no NPC names (the cell's lines name those), and for an entity with
+/// no session, so the field is left off rather than guessed.
+///
+/// Same cost and locking as [`identity_for_entity`]: log branches only.
+pub fn entity_name_for(
+    connected: &Arc<Mutex<HashMap<SocketAddr, ConnectedClientState>>>,
+    entity_to_addr: &Arc<Mutex<HashMap<u32, SocketAddr>>>,
+    entity_id: u32,
+) -> Option<&'static str> {
+    identity_for_entity(connected, entity_to_addr, entity_id).player_name
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

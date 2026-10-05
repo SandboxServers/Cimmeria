@@ -65,9 +65,17 @@ pub(super) async fn dispatch_cell_method(
         }
     }
 
-    let player_eid = {
+    // The character name rides the lock this read already takes (interned,
+    // so a hash hit): the lines below must not lock `connected` again just
+    // to name the player (Rule 6, hot-path rule).
+    let (player_eid, player_label) = {
         let clients = connected.lock().unwrap();
-        clients.get(&addr).and_then(|c| c.player_entity_id)
+        clients.get(&addr).map_or((None, None), |c| {
+            (
+                c.player_entity_id,
+                cimmeria_entity::name_intern::intern_opt(c.player_name.as_deref()),
+            )
+        })
     };
     let Some(player_eid) = player_eid else {
         tracing::trace!(
@@ -122,6 +130,10 @@ pub(super) async fn dispatch_cell_method(
             tracing::debug!(
                 %addr,
                 entity_id = entity_id_from_client,
+                // Named only when the client addresses its own entity.
+                entity_name = (entity_id_from_client == player_eid)
+                    .then_some(player_label)
+                    .flatten(),
                 sub_index,
                 method_index,
                 method_name = names::player_cell_method(method_index),
@@ -134,7 +146,12 @@ pub(super) async fn dispatch_cell_method(
             // so the model loads after the first-login intro movie.
             const CM_CANCEL_MOVIE: u16 = 108;
             if method_index == CM_CANCEL_MOVIE {
-                tracing::info!(%addr, entity_id = player_eid, "cancelMovie received — resending BeingAppearance + onEntityTint");
+                tracing::info!(
+                    %addr,
+                    entity_id = player_eid,
+                    entity_name = player_label,
+                    "cancelMovie received — resending BeingAppearance + onEntityTint"
+                );
                 handle_cancel_movie(transport, addr, player_eid, connected, entity_to_addr).await;
             }
 

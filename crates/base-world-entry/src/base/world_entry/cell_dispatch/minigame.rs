@@ -14,6 +14,7 @@ use crate::credential_redaction::CredentialPrefix;
 use crate::mercury::build_player_entity_method_packet;
 
 use super::super::super::helpers::send_to_witness_reliable;
+use super::super::super::session_identity::entity_name_for;
 use super::super::super::ConnectedClientState;
 
 /// `CellToBaseMsg::StartMinigame` — register a session ticket and push
@@ -32,7 +33,16 @@ pub(super) async fn start_minigame(
     minigame_external_host: &str,
     minigame_external_port: u16,
 ) {
-    tracing::info!(entity_id, player_id, %game_name, difficulty, "Starting minigame session");
+    let player_label = entity_name_for(connected, entity_to_addr, entity_id);
+    tracing::info!(
+        entity_id,
+        entity_name = player_label,
+        player_id,
+        player_name = player_label,
+        %game_name,
+        difficulty,
+        "Starting minigame session"
+    );
     if let Some(registry) = minigame_registry {
         // The minigame server only sees the entity id; hand it the
         // character's name so its Discord result names the player.
@@ -71,6 +81,7 @@ pub(super) async fn start_minigame(
             );
             tracing::info!(
                 entity_id,
+                entity_name = player_label,
                 %game_name,
                 ticket_prefix = %CredentialPrefix(&ticket),
                 "Sending onStartMinigame to client"
@@ -100,6 +111,7 @@ pub(super) async fn start_minigame(
         } else {
             tracing::warn!(
                 entity_id,
+                entity_name = player_label,
                 "Failed to register minigame session (duplicate?)"
             );
         }
@@ -119,6 +131,7 @@ pub(super) async fn minigame_result(
 ) {
     tracing::info!(
         entity_id,
+        entity_name = entity_name_for(connected, entity_to_addr, entity_id),
         result_code,
         result = cimmeria_wire::cell::client_methods::minigame::minigame_result_name(result_code),
         "Minigame result received"

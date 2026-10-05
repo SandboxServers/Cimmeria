@@ -24,6 +24,7 @@ use std::sync::{Arc, Mutex};
 use cimmeria_mercury::transport::Transport;
 
 use crate::base::gm_feedback::send_gm_feedback_to_client;
+use crate::base::session_identity::entity_name_for;
 use crate::base::ConnectedClientState;
 use crate::cell::messages::BaseToCellMsg;
 use crate::cell::spawner::{build_prototype, entity_template_select, SpawnRecord};
@@ -62,7 +63,9 @@ pub async fn handle_gm_spawn_npc(
         None => {
             tracing::warn!(
                 entity_id,
+                entity_name = entity_name_for(connected, entity_to_addr, entity_id),
                 template_id,
+                template_name = cimmeria_names::book().template(template_id),
                 "GmSpawnNpc: no DB pool, cannot resolve template"
             );
             return;
@@ -77,7 +80,9 @@ pub async fn handle_gm_spawn_npc(
             Ok(None) => {
                 tracing::warn!(
                     entity_id,
+                    entity_name = entity_name_for(connected, entity_to_addr, entity_id),
                     template_id,
+                    template_name = cimmeria_names::book().template(template_id),
                     "GmSpawnNpc: template not found in entity_templates — dropping spawn"
                 );
                 // Definitive failure feedback: the GM asked for a template the
@@ -101,7 +106,9 @@ pub async fn handle_gm_spawn_npc(
             Err(e) => {
                 tracing::error!(
                     entity_id,
+                    entity_name = entity_name_for(connected, entity_to_addr, entity_id),
                     template_id,
+                    template_name = cimmeria_names::book().template(template_id),
                     "GmSpawnNpc: entity_templates query failed: {e}"
                 );
                 // Distinct from the "template not found" line above: this is
@@ -121,8 +128,10 @@ pub async fn handle_gm_spawn_npc(
 
     tracing::info!(
         entity_id,
+        entity_name = entity_name_for(connected, entity_to_addr, entity_id),
         template_id,
         space_id,
+        world = %world_name,
         template_name = %record.template_name,
         "GmSpawnNpc: template resolved, replying to cell"
     );
@@ -138,8 +147,11 @@ pub async fn handle_gm_spawn_npc(
         {
             tracing::warn!(
                 entity_id,
+                entity_name = entity_name_for(connected, entity_to_addr, entity_id),
                 template_id,
+                template_name = cimmeria_names::book().template(template_id),
                 space_id,
+                world = %world_name,
                 "GmSpawnNpc: GmSpawnNpcReady send to cell failed: {e}"
             );
         }
@@ -149,7 +161,9 @@ pub async fn handle_gm_spawn_npc(
     } else {
         tracing::warn!(
             entity_id,
+            entity_name = entity_name_for(connected, entity_to_addr, entity_id),
             template_id,
+            template_name = cimmeria_names::book().template(template_id),
             "GmSpawnNpc: no cell channel — spawn dropped"
         );
     }

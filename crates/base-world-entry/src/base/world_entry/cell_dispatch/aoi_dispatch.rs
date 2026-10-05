@@ -235,10 +235,9 @@ pub(super) async fn entered_aoi(
             // its later `flushed_on_ready` row by (witness_id, entity_id).
             tracing::debug!(
                 target: "aoi.introduce",
-                witness_id,
-                witness_name = names.player(witness_id),
+                witness_id, // nt:id-only per AoI event; naming it would take a session lock (hot-path rule)
                 entity_id,
-                entity_name = names.observee(entity_id),
+                entity_name = names.npc(),
                 is_player = player_data.is_some(),
                 outcome = "deferred_not_ready",
                 "AoI introduce: witness pre-onClientReady, buffering entity introduction"
@@ -366,19 +365,8 @@ pub(super) async fn entity_moved(
         if deferred_aoi::should_hold_entity_traffic(connected, addr) {
             tracing::trace!(
                 %addr,
-                witness_id,
-                witness_name = super::super::super::session_identity::player_name_for_entity(
-                    connected,
-                    entity_to_addr,
-                    witness_id
-                ),
-                entity_id,
-                // Players only: the base has no NPC name outside EnteredAoI.
-                entity_name = super::super::super::session_identity::player_name_for_entity(
-                    connected,
-                    entity_to_addr,
-                    entity_id
-                ),
+                witness_id, // nt:id-only per AoI event; naming it would take a session lock (hot-path rule)
+                entity_id, // nt:id-only per AoI event; naming it would take a session lock (hot-path rule)
                 "Dropping EntityMoved while witness is pre-onClientReady"
             );
             return;
@@ -438,6 +426,8 @@ pub(super) async fn entity_method_call(
                 true,
                 method_index,
                 "client_not_ready",
+                connected,
+                entity_to_addr,
             );
             return;
         }
@@ -501,6 +491,8 @@ pub(super) async fn entity_method_call_batch(
                     true,
                     method_index,
                     "client_not_ready",
+                    connected,
+                    entity_to_addr,
                 );
             }
             return;
@@ -553,6 +545,8 @@ pub(super) async fn witness_entity_method(
             entity_is_player,
             method_index,
             "held_behind_create",
+            connected,
+            entity_to_addr,
         );
         return;
     }

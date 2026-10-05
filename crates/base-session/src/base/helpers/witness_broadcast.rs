@@ -42,7 +42,7 @@ pub async fn broadcast_to_witnesses(
     {
         tracing::warn!(
             target: "aoi.witness_broadcast_failed",
-            entity_id,
+            entity_id, // nt:id-only fires only once the cell is gone; no session map here to name it
             method_index,
             method_name = cimmeria_wire::names::player_client_method(method_index),
             reason = "cell_channel_closed",

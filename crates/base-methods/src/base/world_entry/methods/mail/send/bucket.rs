@@ -66,10 +66,9 @@ pub(super) async fn take_send_token(
             // Logged under the lock so the event carries the bucket state
             // the decision was made on.
             let actor = RateActor {
-                addr,
                 player_id: Some(caller.player_id),
-                account_id: c.account_id,
                 entity_id: Some(caller.entity_id),
+                ..RateActor::of(addr, c)
             };
             log_exceeded(RateCategory::MailSend, actor, notify, &c.rate_limits, now);
         }

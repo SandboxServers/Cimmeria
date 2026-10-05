@@ -85,7 +85,7 @@ pub async fn handle_play_character(
     let entry_info = query_world_entry(
         db_pool,
         account_id,
-        account_name,
+        account_name.clone(),
         player_id,
         access_level,
         entity_manager,
@@ -100,7 +100,10 @@ pub async fn handle_play_character(
     // the same connection isn't silently dropped.
     if entry_info.player_entity_id == super::methods::world_entry_db::NO_ENTITY_ID {
         tracing::error!(
-            %addr, player_id, account_id,
+            %addr,
+            player_id, // nt:id-only the character row failed to load, so nothing names it
+            account_id,
+            account_name = account_name.as_deref(),
             "World entry aborted: query_world_entry returned NO_ENTITY_ID sentinel"
         );
         if let Ok(mut clients) = connected.lock() {
@@ -130,13 +133,20 @@ pub async fn handle_play_character(
     // the GM gate (gm_gate.rs) covering 109+ and a verified gm* subset wired
     // in the cell router, flipping the class for GMs is safe.
 
+    let player_name = Some(player_load_data.player_name.as_str()).filter(|n| !n.is_empty());
     tracing::info!(
         %addr,
+        account_id,
+        account_name = account_name.as_deref(),
         player_id,
+        player_name,
         entity_id = entry_info.player_entity_id,
+        entity_name = player_name,
         space_id = entry_info.space_id,
+        world = %entry_info.world_name,
         pos = ?entry_info.pos,
         class_id = entry_info.class_id,
+        class_name = cimmeria_wire::names::class_name(entry_info.class_id),
         "World entry: sending RESET_ENTITIES (entity teardown)"
     );
 
