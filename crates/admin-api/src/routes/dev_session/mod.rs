@@ -66,9 +66,15 @@ pub use token::{
     SESSION_KIND_LAB, SESSION_KIND_PLAYER,
 };
 
-pub(crate) use handlers::{env_u32, kill_switch_active, QuotaPolicy};
+pub(crate) use handlers::{env_u32, kill_switch_active};
 pub(crate) use token::load_secret;
 
+// The launcher-summary ingest was the one reader of the mint's policy
+// outside this module, for the quota window. It has its own window now, so
+// only tests name the type from outside: `mint_for_test` below, and the
+// summary test that shows the two windows are separate.
+#[cfg(test)]
+pub(crate) use handlers::QuotaPolicy;
 #[cfg(test)]
 pub use token::env_lock;
 

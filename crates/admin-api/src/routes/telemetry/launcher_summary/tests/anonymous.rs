@@ -169,7 +169,7 @@ fn a_real_token_is_no_way_past_the_quota_or_the_kill_switch() {
         assert_eq!(post(&h, 1).expect("control").results, [Accepted]);
         let r = refusal(post(&h, 2).unwrap_err());
         assert_eq!(r.status, 429, "{r:?}");
-        assert_eq!(r.retry_after.as_deref(), Some("3601"));
+        assert_eq!(r.retry_after.as_deref(), Some("61"));
     }
 
     let mut h = Harness::new();

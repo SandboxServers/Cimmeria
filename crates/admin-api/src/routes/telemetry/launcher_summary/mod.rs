@@ -37,7 +37,7 @@
 //! | Status | When |
 //! |---|---|
 //! | 503 + `Retry-After` | `CIMMERIA_TELEMETRY_KILL_SWITCH=1`. |
-//! | 429 + `Retry-After` | The peer address is over its allowance (12 requests per 3600 s window by default, `CIMMERIA_TELEMETRY_SUMMARY_QUOTA_PER_IP`). Charged before the body is read or anything is parsed, so every refusal below counts, the 413 included. An IPv4-mapped IPv6 peer (`::ffff:a.b.c.d`) is counted as `a.b.c.d`. |
+//! | 429 + `Retry-After` | The peer address is over its allowance (12 requests per minute by default, `CIMMERIA_TELEMETRY_SUMMARY_QUOTA_PER_IP`; the window is a fixed 60 s of this route's own, so `Retry-After` is 61 at most). Charged before the body is read or anything is parsed, so every refusal below counts, the 413 included. An IPv4-mapped IPv6 peer (`::ffff:a.b.c.d`) is counted as `a.b.c.d`. |
 //! | 415 | `Content-Type` is not `application/json` (a `charset` parameter is allowed). |
 //! | 400 | The URI has a query string, an empty one (`?`) included. |
 //! | 413 | The body is over 64 KiB. Read by the handler, after the checks above, so a paused or over-quota caller is answered with nothing buffered. |

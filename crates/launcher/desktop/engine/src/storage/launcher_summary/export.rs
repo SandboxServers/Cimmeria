@@ -14,9 +14,10 @@
 //! `ConsentWithdrawn`. Bytes the server had already received cannot be recalled;
 //! their answer is never read or applied.
 //!
-//! The server allows each address only a few requests an hour. A `429` therefore
-//! ends the cycle at once, with no retry and no wait, and the rows stay queued
-//! for the next trigger: a retry would only spend more of the allowance.
+//! The server allows each address a fixed number of requests a minute (12 by
+//! default) and counts every one. A `429` therefore ends the cycle at once, with
+//! no retry and no wait, and the rows stay queued for the next trigger: a retry
+//! before the minute ends would only spend more of the allowance.
 //!
 //! The request itself is in `exchange.rs`. Nothing here can fail, delay or
 //! change the launcher's own work.

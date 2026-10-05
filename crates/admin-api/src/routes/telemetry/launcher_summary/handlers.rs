@@ -12,7 +12,7 @@ use axum::http::header::CONTENT_TYPE;
 use axum::Json;
 
 use crate::routes::dev_session::quota::{ip_key, WindowTable};
-use crate::routes::dev_session::{env_u32, kill_switch_active, QuotaPolicy};
+use crate::routes::dev_session::{env_u32, kill_switch_active};
 
 use super::dedup::Dedup;
 use super::dto::{is_json_content_type, validate, SummaryError, SummaryResponse, Verdict};
@@ -20,30 +20,39 @@ use super::envelope::parse_envelope;
 use super::rows::{emit_batch, emit_summary};
 use super::MAX_SUMMARY_BODY_BYTES;
 
-/// Requests per peer address per quota window. The route is anonymous, so
-/// this is the only thing between it and anyone who can reach the port,
-/// and it is deliberately low: a launcher sends one request per export
-/// cycle, a few an hour at most. Every request counts, the refused ones
-/// too.
+/// The summary quota's window: one minute, counted from an address's
+/// first request in it. It is this route's own and it is fixed. The
+/// dev-session mint and refresh quotas keep their hour and their knob
+/// (`CIMMERIA_TELEMETRY_QUOTA_WINDOW_SECS`), which this route does not
+/// read. The 429's `Retry-After` is what is left of this window, so it is
+/// never more than 61 seconds.
+const SUMMARY_QUOTA_WINDOW: Duration = Duration::from_secs(60);
+
+/// Requests per peer address per [`SUMMARY_QUOTA_WINDOW`]: 12 a minute,
+/// the rate the owner set on 2026-10-04. The route is anonymous, so this
+/// is the only thing between it and anyone who can reach the port. A
+/// launcher sends one request per export cycle, a few an hour at most, so
+/// the allowance is far above what one launcher uses. Every request
+/// counts, the refused ones too.
 ///
 /// The allowance belongs to the address, not to a machine: everyone behind
-/// one NAT, reverse proxy or tunnel shares it, and an operator behind such
-/// an address raises `CIMMERIA_TELEMETRY_SUMMARY_QUOTA_PER_IP`.
+/// one NAT, reverse proxy or tunnel shares it, and an operator with many
+/// launchers behind such an address may need to raise
+/// `CIMMERIA_TELEMETRY_SUMMARY_QUOTA_PER_IP`.
 const DEFAULT_SUMMARY_PER_IP: u32 = 12;
 
-/// Operator-tunable limits, read per request like the mint's
-/// [`QuotaPolicy`]: change the env and restart.
+/// The operator-tunable limit, read per request like the mint's
+/// `QuotaPolicy`: change the env and restart. The window is not part of
+/// it: see [`SUMMARY_QUOTA_WINDOW`].
 pub(super) struct IngestPolicy {
-    /// Shared with the mint quotas (`CIMMERIA_TELEMETRY_QUOTA_WINDOW_SECS`).
-    pub window: Duration,
-    /// `CIMMERIA_TELEMETRY_SUMMARY_QUOTA_PER_IP`; 0 disables the quota.
+    /// `CIMMERIA_TELEMETRY_SUMMARY_QUOTA_PER_IP`: requests per minute per
+    /// peer address; 0 disables the quota.
     pub per_ip: u32,
 }
 
 impl IngestPolicy {
     pub(super) fn from_env() -> Self {
         Self {
-            window: QuotaPolicy::from_env().window,
             per_ip: env_u32(
                 "CIMMERIA_TELEMETRY_SUMMARY_QUOTA_PER_IP",
                 DEFAULT_SUMMARY_PER_IP,
@@ -134,7 +143,7 @@ async fn read_body(body: Body) -> Result<Vec<u8>, SummaryError> {
 /// answered with nothing buffered and nothing parsed. The other side of
 /// that: anyone behind the same address as real launchers (a NAT, a
 /// tunnel) can use the allowance up and turn their summary posts into 429s
-/// until the window ends.
+/// until the minute ends.
 ///
 /// A query string is refused because of where it could be logged, not
 /// because of anything it could do here: no code reads it, and every row
@@ -161,7 +170,7 @@ pub(super) async fn ingest_inner(
     state.quota.check_and_record(
         ip_key(peer_ip),
         policy.per_ip,
-        policy.window,
+        SUMMARY_QUOTA_WINDOW,
         "summary/ip",
         now,
     )?;

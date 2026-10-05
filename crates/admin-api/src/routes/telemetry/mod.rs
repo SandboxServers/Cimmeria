@@ -45,7 +45,7 @@
 //! - [`launcher_summary`] — a third endpoint with its own router and rows:
 //!   `POST /api/telemetry/launcher-summary`, the desktop launcher's attempt
 //!   summaries. Unlike the two uploads it is anonymous (no token, a strict
-//!   payload schema and a low per-address quota instead). Not part of
+//!   payload schema and a per-address quota of 12 a minute instead). Not part of
 //!   [`routes`]; see [`launcher_summary_routes`].
 
 mod dto;

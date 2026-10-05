@@ -18,7 +18,7 @@ the rows it writes are in the
 
 The upload is anonymous: one `POST` of the schema-1 body, with no token, no
 session and no installation or machine identifier. The server takes that exact
-shape from anyone, within a low rate limit for each address, and refuses
+shape from anyone, within a rate limit for each address, and refuses
 everything else. So every row is self-reported: useful for spotting failure
 patterns, and never a basis for server state, alerts, success-rate claims or
 SLOs.
@@ -342,12 +342,14 @@ What an answer does to the cycle (`post` in `exchange.rs`):
 | 503 | Wait `Retry-After`, capped as above, then retry within the budget |
 | Anything else: 401, 403, 3xx, another 5xx, a timeout, a refused connection | Transient within the retry budget. Never delete |
 
-**Why a 429 is not retried.** The server allows each address only a few
-requests per window (12 an hour by default), and every request that reaches
-its handler is counted. A retry would spend more of the allowance and get the
-same answer, so the rows wait for the next trigger instead: the launcher
-starting, a tracked attempt ending, or a new pre-admission row. A row that is
-still queued 24 hours after it was created expires like any other.
+**Why a 429 is not retried.** The server allows each address a fixed number
+of requests per minute (12 by default), and every request that reaches its
+handler is counted. A retry before the minute ends would spend more of the
+allowance and get the same answer, and the exporter does not hold a cycle
+open to wait the minute out. The rows wait for the next trigger instead: the
+launcher starting, a tracked attempt ending, or a new pre-admission row. A
+row that is still queued 24 hours after it was created expires like any
+other.
 
 **Why 415 and 422 are permanent.** The route as written answers 415 only to a
 content type the exporter never sends, and never answers 422. Both are handled
@@ -434,19 +436,22 @@ Where they run:
 ## What a rollout packet must change
 
 This packet ships the mechanism switched off. The owner decided on 2026-10-04
-that the upload is anonymous, strictly structured and rate-limited; that
-decision activates nothing. Turning it on is a separate packet, after the
-maintainer's decisions recorded as open in the
-[public-activation gate](../../../../docs/architecture/launcher-summary-telemetry.md#public-activation-gate).
+that the upload is anonymous, strictly structured and rate-limited at 12
+requests a minute for each address, and that the server may serve the route
+on its public login port. Those decisions activate nothing: no launcher build
+has an endpoint. Turning it on is a separate packet, decided separately; what
+is still open is listed in the
+[design reference](../../../../docs/architecture/launcher-summary-telemetry.md#decisions-and-what-is-still-open).
 It has to change at least these:
 
 1. **Endpoint configuration.** `shell/src/host/summary.rs` passes
    `endpoint: None`. A rollout supplies a `SummaryEndpoint` from native
    configuration. There is deliberately no environment override. Today
    `SummaryEndpoint::parse` refuses plain `http://` to anything but loopback,
-   so the base must be an `https://` address. Sending to the plain-HTTP login
-   port instead needs a change to that policy as well as the maintainer's
-   decision on the mount.
+   so the base must be an `https://` address with a publicly trusted
+   certificate. The server may serve the route on its plain-HTTP login port
+   (owner decision, 2026-10-04), but that port cannot be the launcher's
+   endpoint under this policy.
 2. **Consent copy.** The frontend confirms a consent change with "Diagnostics
    choice saved. This build sends nothing." (`frontend/src/view.ts`). That
    sentence becomes false the moment an endpoint is configured. The copy must
@@ -458,7 +463,7 @@ It has to change at least these:
    the copy for both states.
 4. **Server side.** Deploy a server that serves the route where the endpoint
    points, and size `CIMMERIA_TELEMETRY_SUMMARY_QUOTA_PER_IP` for the address
-   launchers arrive from: the default of 12 requests per window is shared by
+   launchers arrive from: the default of 12 requests per minute is shared by
    everyone behind one NAT, proxy or tunnel. The route needs no HMAC secret.
    Import the SigNoz fixtures only after the first rows exist
    ([importing](../../../../docs/operations/signoz/launcher-summary-views.md#importing)).

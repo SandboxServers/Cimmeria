@@ -71,8 +71,8 @@ fn the_quota_answers_before_the_content_type() {
 
     let r = refusal(h.post_json(&body).unwrap_err());
     assert_eq!(r.status, 429, "{r:?}");
-    assert_eq!(r.retry_after.as_deref(), Some("3601"));
-    assert_eq!(r.body, "summary/ip quota exceeded — retry in 3601s");
+    assert_eq!(r.retry_after.as_deref(), Some("61"));
+    assert_eq!(r.body, "summary/ip quota exceeded — retry in 61s");
 }
 
 /// **The kill switch and the quota answer before the body is read.** An
@@ -98,7 +98,7 @@ fn the_kill_switch_and_the_quota_answer_before_the_body_size() {
 
     let r = refusal(h.post(&oversized()).unwrap_err());
     assert_eq!(r.status, 429, "{r:?}");
-    assert_eq!(r.retry_after.as_deref(), Some("3601"));
+    assert_eq!(r.retry_after.as_deref(), Some("61"));
 }
 
 /// Over quota, a request with a query string is a 429, not a 400. The first

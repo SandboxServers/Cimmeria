@@ -12,7 +12,7 @@
 //! the desktop launcher's attempt summaries. Unlike the other four it is
 //! anonymous: it takes no token, and never reads an `Authorization`
 //! header. Anyone who can reach this port can post correctly shaped rows
-//! within the rate limit (12 requests an hour per address by default,
+//! within the rate limit (12 requests a minute per address by default,
 //! `CIMMERIA_TELEMETRY_SUMMARY_QUOTA_PER_IP`), and anything that is not the
 //! exact schema-1 JSON payload is refused. The rows are self-reported:
 //! they are useful for spotting failure patterns and must never drive
@@ -20,10 +20,12 @@
 //! means nothing but closed enum values, bounded integers, UUIDs and a
 //! version triple can ever be stored.
 //!
-//! That route is outside the recorded four-route decision: serving it
-//! publicly needs the maintainer's explicit yes before a build carrying
-//! this merge is deployed. No shipped launcher calls it (the exporter's
-//! endpoint is unset).
+//! The owner approved serving that route on this port on 2026-10-04,
+//! which extends the four-route decision of 2026-09-29 to it as a fifth,
+//! and set its rate limit at 12 requests a minute per address the same
+//! day. No shipped launcher calls it: the exporter's endpoint is unset,
+//! and it accepts only `https://` (or `http://` to loopback), so this
+//! plain-HTTP port cannot be its endpoint.
 //!
 //! Only these routes are exposed. Everything else under `/api`
 //! (players, config, entities, the admin `/api/auth/login`) and the `/ws`

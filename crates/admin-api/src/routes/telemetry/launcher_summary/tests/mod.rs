@@ -34,7 +34,7 @@ use std::net::IpAddr;
 use std::pin::pin;
 use std::sync::{Arc, Mutex, MutexGuard};
 use std::task::{Context as TaskContext, Poll, Waker};
-use std::time::{Duration, Instant};
+use std::time::Instant;
 
 use axum::body::Body;
 use axum::extract::Request;
@@ -291,10 +291,7 @@ impl Harness {
     pub(super) fn new() -> Self {
         Self {
             state: IngestState::new(),
-            policy: IngestPolicy {
-                window: Duration::from_secs(3_600),
-                per_ip: 0,
-            },
+            policy: IngestPolicy { per_ip: 0 },
             uri: ROUTE.to_string(),
             headers: json_headers(),
             peer: "203.0.113.77".parse().unwrap(),

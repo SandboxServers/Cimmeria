@@ -29,7 +29,7 @@
 //!
 //! Trust. The upload is anonymous (`export.rs`): one `POST` of the v1 body, with
 //! no token, no session and no installation or machine identifier. The server
-//! takes that exact shape from anyone, within a low rate limit for each address,
+//! takes that exact shape from anyone, within a rate limit for each address,
 //! and refuses everything else. So anyone can post correctly shaped rows, and
 //! every row is self-reported: useful for spotting failure patterns, and never
 //! a basis for server state, alerts, success-rate claims or SLOs. The strict

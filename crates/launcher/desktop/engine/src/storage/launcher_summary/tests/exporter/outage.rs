@@ -55,8 +55,9 @@ async fn a_failing_post_is_tried_three_times_and_the_rows_stay() {
     }
 }
 
-// The server's limit is a few requests an hour for each address, so a retry
-// would only spend it. The `503` case is the control: the same answer under the
+// The server's limit is a fixed number of requests a minute for each address
+// (12 by default), and a retry before the minute ends would only spend it. The
+// `503` case is the control: the same answer under the
 // other status is retried, with the waits it names.
 #[tokio::test]
 async fn a_rate_limited_post_is_not_retried_and_the_rows_wait_for_the_next_trigger() {

@@ -2,6 +2,8 @@
 
 use std::time::Duration;
 
+use crate::routes::dev_session::QuotaPolicy;
+
 use super::super::dto::{SummaryError, Verdict::Accepted};
 use super::super::handlers::IngestPolicy;
 use super::super::MAX_SUMMARY_BODY_BYTES;
@@ -28,40 +30,144 @@ fn with_var<T>(name: &str, value: Option<&str>, f: impl FnOnce() -> T) -> T {
     out
 }
 
-/// **The default is low: 12 requests an hour per address.** With the policy
+/// **The default is 12 requests a minute per address.** With the policy
 /// an operator gets by setting nothing, twelve requests from one address
-/// are served and the thirteenth is a 429 that says to come back when the
-/// hour is up. A different address is still served.
+/// spread over 55 seconds are served and a thirteenth inside the same
+/// minute is a 429. Its `Retry-After` is what is left of the minute, so it
+/// is never more than 61 seconds. A different address is still served at
+/// that moment, and 61 seconds after its first request the refused address
+/// is served again.
 ///
-/// Raising `DEFAULT_SUMMARY_PER_IP` fails the thirteenth request's
-/// assertion.
+/// The last request pins the window: with the mint's hour it is a 429. The
+/// thirteenth pins the count: raising `DEFAULT_SUMMARY_PER_IP` serves it,
+/// and lowering it refuses one of the twelve.
 #[test]
-fn the_default_allowance_is_twelve_requests_an_hour_per_address() {
+fn the_default_allowance_is_twelve_requests_a_minute_per_address() {
     let _env = Env::install();
-    let policy = with_var(ENV_SUMMARY_QUOTA, None, || {
-        with_var(ENV_WINDOW, None, IngestPolicy::from_env)
-    });
-    assert_eq!(policy.window, Duration::from_secs(3_600));
     let mut h = Harness::new();
-    h.policy = policy;
+    h.policy = with_var(ENV_SUMMARY_QUOTA, None, IngestPolicy::from_env);
+    let first = h.now;
     let post = |h: &Harness, n: u32| h.post_json(&batch(vec![element(n)]));
 
-    for n in 1..=12 {
+    for n in 0..12 {
+        h.now = first + Duration::from_secs(u64::from(n) * 5);
         let served = post(&h, n).unwrap_or_else(|e| panic!("request {n} was refused: {e:?}"));
         assert_eq!(served.results, [Accepted], "request {n}");
     }
-    let (result, rows) = capture(|| post(&h, 13));
+    h.now = first + Duration::from_secs(59);
+    let (result, rows) = capture(|| post(&h, 12));
     let r = refusal(result.expect_err("the thirteenth request"));
     assert_eq!(r.status, 429, "{r:?}");
-    assert_eq!(r.retry_after.as_deref(), Some("3601"));
-    assert_eq!(r.body, "summary/ip quota exceeded — retry in 3601s");
+    assert_eq!(r.retry_after.as_deref(), Some("2"));
+    assert_eq!(r.body, "summary/ip quota exceeded — retry in 2s");
     assert!(
         rows.is_empty(),
         "an over-quota request wrote rows: {rows:#?}"
     );
 
+    let own = h.peer;
     h.peer = "203.0.113.78".parse().unwrap();
     assert_eq!(post(&h, 13).unwrap().results, [Accepted], "another address");
+
+    h.peer = own;
+    h.now = first + Duration::from_secs(61);
+    assert_eq!(
+        post(&h, 14).expect("a minute later").results,
+        [Accepted],
+        "the allowance returns after a minute, not after an hour"
+    );
+}
+
+/// **The allowance returns a minute after the address's first request.**
+/// With the default policy and the allowance spent in a burst, a request 59
+/// seconds later is still a 429 (the control: the minute has not ended) and
+/// one 61 seconds after the first is served. That starts a new minute with
+/// a full allowance: eleven more are served and the next is a 429.
+///
+/// Only statuses are asserted, so with the mint's hour as the window the
+/// failure is the request at 61 seconds.
+#[test]
+fn the_default_allowance_returns_a_minute_after_the_first_request() {
+    let _env = Env::install();
+    let mut h = Harness::new();
+    h.policy = with_var(ENV_SUMMARY_QUOTA, None, IngestPolicy::from_env);
+    let first = h.now;
+    let status = |h: &Harness, n: u32| match h.post_json(&batch(vec![element(n)])) {
+        Ok(_) => 200,
+        Err(e) => refusal(e).status,
+    };
+
+    let burst: Vec<_> = (0..13).map(|n| status(&h, n)).collect();
+    assert_eq!(burst[..12], [200; 12]);
+    assert_eq!(burst[12], 429);
+    h.now = first + Duration::from_secs(59);
+    assert_eq!(status(&h, 13), 429, "control: 59 s in");
+
+    h.now = first + Duration::from_secs(61);
+    assert_eq!(status(&h, 14), 200, "61 s after the first request");
+    let next: Vec<_> = (15..27).map(|n| status(&h, n)).collect();
+    assert_eq!(next[..11], [200; 11], "a full allowance in the new minute");
+    assert_eq!(next[11], 429);
+}
+
+/// **`Retry-After` is at most 61 seconds.** The longest wait is the one a
+/// burst gets: thirteen requests at one instant, with the default policy,
+/// and the thirteenth is told to come back in 61 seconds (the whole
+/// window, rounded up so a caller that waits exactly that long lands in
+/// the next one). Twelve at that instant are the control.
+#[test]
+fn a_burst_past_the_default_allowance_waits_61_seconds_at_most() {
+    let _env = Env::install();
+    let mut h = Harness::new();
+    h.policy = with_var(ENV_SUMMARY_QUOTA, None, IngestPolicy::from_env);
+    let post = |h: &Harness, n: u32| h.post_json(&batch(vec![element(n)]));
+
+    for n in 0..12 {
+        assert_eq!(post(&h, n).unwrap().results, [Accepted], "request {n}");
+    }
+    let r = refusal(post(&h, 12).expect_err("the thirteenth request"));
+    assert_eq!(r.status, 429, "{r:?}");
+    assert_eq!(r.retry_after.as_deref(), Some("61"));
+    assert_eq!(r.body, "summary/ip quota exceeded — retry in 61s");
+}
+
+/// **The window is this route's own.** The dev-session mint and refresh
+/// quotas take their window from `CIMMERIA_TELEMETRY_QUOTA_WINDOW_SECS`
+/// (an hour by default); the summary quota is a fixed minute and does not
+/// read it. With that variable set to two hours and an allowance of one,
+/// the second request 59 seconds in is a 429 and a third at 61 seconds is
+/// served.
+///
+/// Control: under the same variable the mint's policy does have a two-hour
+/// window, so the variable is spelled right and read by the code it
+/// belongs to. Unset, the mint's window is still its hour: this route
+/// changed nothing there.
+#[test]
+fn the_mint_quota_window_knob_does_not_move_the_summary_window() {
+    let _env = Env::install();
+    let mint_window = |value| with_var(ENV_WINDOW, value, || QuotaPolicy::from_env().window);
+    assert_eq!(mint_window(None), Duration::from_secs(3_600), "control");
+    assert_eq!(
+        mint_window(Some("7200")),
+        Duration::from_secs(7_200),
+        "control"
+    );
+
+    with_var(ENV_WINDOW, Some("7200"), || {
+        let mut h = Harness::new();
+        h.policy = IngestPolicy::from_env();
+        h.policy.per_ip = 1;
+        let first = h.now;
+        let post = |h: &Harness, n: u32| h.post_json(&batch(vec![element(n)]));
+
+        assert_eq!(post(&h, 1).unwrap().results, [Accepted]);
+        h.now = first + Duration::from_secs(59);
+        let r = refusal(post(&h, 2).unwrap_err());
+        assert_eq!(r.status, 429, "{r:?}");
+        assert_eq!(r.retry_after.as_deref(), Some("2"));
+        h.now = first + Duration::from_secs(61);
+        assert_eq!(post(&h, 3).unwrap().results, [Accepted], "a new minute");
+    });
 }
 
 /// **A blank variable is an unset one.** `docker/compose.yml` passes the
@@ -119,7 +225,7 @@ fn malformed_requests_spend_the_allowance() {
     h.headers = json;
     let r = refusal(h.post_json(&valid).unwrap_err());
     assert_eq!(r.status, 429, "{r:?}");
-    assert_eq!(r.retry_after.as_deref(), Some("3601"));
+    assert_eq!(r.retry_after.as_deref(), Some("61"));
 }
 
 /// **Oversized requests spend the allowance.** The quota is charged before
@@ -147,7 +253,7 @@ fn oversized_requests_spend_the_allowance() {
     }
     let r = refusal(h.post_json(&valid).unwrap_err());
     assert_eq!(r.status, 429, "{r:?}");
-    assert_eq!(r.retry_after.as_deref(), Some("3601"));
+    assert_eq!(r.retry_after.as_deref(), Some("61"));
 }
 
 /// **An IPv4-mapped peer is counted as its IPv4 address.** On a dual-stack
@@ -190,14 +296,14 @@ fn an_ipv4_mapped_peer_is_counted_as_its_ipv4_address() {
 }
 
 /// With an allowance of two, the third request from an address inside the
-/// window is a 429 naming the summary quota, another address is unaffected,
-/// and the allowance returns when the window ends.
+/// minute is a 429 naming the summary quota, another address is unaffected,
+/// and the allowance returns when the minute ends: still a 429 at 59
+/// seconds, served at 60.
 #[test]
 fn the_third_request_past_an_allowance_of_two_is_a_429() {
     let _env = Env::install();
     let mut h = Harness::new();
     h.policy.per_ip = 2;
-    h.policy.window = Duration::from_secs(60);
     let post = |h: &Harness, n: u32| h.post_json(&batch(vec![element(n)]));
 
     assert_eq!(post(&h, 1).unwrap().results, [Accepted]);
@@ -216,7 +322,9 @@ fn the_third_request_past_an_allowance_of_two_is_a_429() {
     assert_eq!(post(&h, 3).unwrap().results, [Accepted], "another address");
 
     h.peer = own;
-    h.now += Duration::from_secs(60);
+    h.now += Duration::from_secs(59);
+    assert_eq!(refusal(post(&h, 4).unwrap_err()).status, 429, "59 s in");
+    h.now += Duration::from_secs(1);
     assert_eq!(post(&h, 4).unwrap().results, [Accepted], "a new window");
 }
 
@@ -232,8 +340,8 @@ fn an_allowance_of_zero_disables_the_quota() {
     }
 }
 
-/// `CIMMERIA_TELEMETRY_SUMMARY_QUOTA_PER_IP` sizes the allowance: 12 when
-/// unset or unreadable (an operator typo must neither take the route down
+/// `CIMMERIA_TELEMETRY_SUMMARY_QUOTA_PER_IP` sizes the allowance per
+/// minute: 12 when unset or unreadable (an operator typo must neither take the route down
 /// nor open it up), the value when set, 0 to disable.
 ///
 /// The values tried are 0, the default or large: under `cargo test` the
