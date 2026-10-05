@@ -236,3 +236,30 @@ fn passive_da03_rows_are_still_npc_targets() {
         "a NEUTRAL pin is still a target"
     );
 }
+
+/// The reach guards above see the other packets' rows, not only DA-03's:
+/// DA-04's arena, cover-course and death-yard spawns (its block 13600-13799,
+/// `spawnlist_debug_area_combat.sql`) load through the same seed scan, faction
+/// 3, 27 and 29 squads included. If the scan stopped picking up another
+/// packet's file, the guards would pass on DA-03 alone; this fails instead.
+#[test]
+fn the_reach_guards_see_da04_rows() {
+    let records = world_records();
+    let da04: Vec<&SpawnRecord> = records
+        .iter()
+        .filter(|r| (13600..=13799).contains(&r.spawn_id))
+        .collect();
+    // Every INSERT line of DA-04's file is one world-1300 row.
+    let raw = seed("../../db/resources/Worlds/Seed/spawnlist_debug_area_combat.sql")
+        .lines()
+        .filter(|l| l.starts_with("INSERT INTO spawnlist"))
+        .count();
+    assert!(raw > 0, "DA-04's spawn file has rows");
+    assert_eq!(da04.len(), raw, "every DA-04 row reaches the guards");
+    for f in [3, 10, 27, 29] {
+        assert!(
+            da04.iter().any(|r| r.faction == Some(f)),
+            "a DA-04 faction-{f} row"
+        );
+    }
+}
