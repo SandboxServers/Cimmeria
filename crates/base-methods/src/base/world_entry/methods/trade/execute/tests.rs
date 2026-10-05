@@ -375,3 +375,71 @@ mod refusal_feedback {
         );
     }
 }
+
+mod item_moved_names {
+    //! Rule 6: `trade.item_moved`, the most-read trade event, names both
+    //! parties and the item next to their IDs.
+
+    use cimmeria_entity::cell_entity::PlayerIdentity;
+
+    use super::super::log_item_moved;
+    use super::super::placement::ItemMove;
+    use crate::test_support::LogCapture;
+
+    const ITEM_TYPE: i32 = 912_346;
+
+    fn mv() -> ItemMove {
+        ItemMove {
+            item_id: 5,
+            type_id: ITEM_TYPE,
+            from_entity: 70,
+            from_player: 12,
+            from_container: 1,
+            from_slot: 2,
+            to_entity: 71,
+            to_player: 13,
+            to_container: 1,
+            to_slot: 3,
+        }
+    }
+
+    fn identity(account: u32, player: i32, pn: &'static str, an: &'static str) -> PlayerIdentity {
+        PlayerIdentity {
+            account_id: Some(account),
+            player_id: Some(player),
+            player_name: Some(pn),
+            account_name: Some(an),
+        }
+    }
+
+    #[test]
+    fn names_both_parties_and_the_item() {
+        let mut book = cimmeria_names::NameBook::empty();
+        book.insert(
+            cimmeria_names::Table::Items,
+            i64::from(ITEM_TYPE),
+            "Zat'nik'tel",
+        );
+        cimmeria_names::global().store(book);
+        let capture = LogCapture::install();
+        log_item_moved(
+            &mv(),
+            &identity(6, 12, "Teal'c", "sgc_login"),
+            &identity(7, 13, "Daniel", "abydos_login"),
+        );
+        let ev = capture
+            .all()
+            .into_iter()
+            .find(|e| e.message_contains("trade: item changed hands"))
+            .expect("trade.item_moved row");
+        for (key, want) in [
+            ("player_name", "Teal'c"),
+            ("account_name", "sgc_login"),
+            ("target_player_name", "Daniel"),
+            ("target_account_name", "abydos_login"),
+            ("item_name", "Zat'nik'tel"),
+        ] {
+            assert!(ev.has_field(key, want), "{key}: {ev:#?}");
+        }
+    }
+}

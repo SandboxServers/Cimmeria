@@ -26,6 +26,7 @@ pub const GM_ACCESS_LEVEL: u32 = 2;
 pub(super) async fn fan_out_disband(
     ctx: &OrgCtx<'_>,
     org_id: i32,
+    org_name: Option<&str>,
     members: &[i32],
     reason: &'static str,
 ) -> usize {
@@ -34,19 +35,21 @@ pub(super) async fn fan_out_disband(
     let sent = send_to_members(
         ctx,
         org_id,
+        org_name,
         &recipients,
         &[(ON_ORGANIZATION_LEFT, args)],
         "organization_left_disbanded",
     )
     .await;
     for &m in &recipients {
-        membership_ended(ctx, m, org_id, OrgLeaveReason::Disbanded).await;
+        membership_ended(ctx, m, org_id, org_name, OrgLeaveReason::Disbanded).await;
     }
     tracing::debug!(
         target: "org",
         event = "disbanded",
         reason,
         org_id,
+        org_name,
         members = members.len(),
         recipients = sent,
         "organization disbanded"
@@ -86,6 +89,8 @@ pub async fn gm_disband(ctx: &OrgCtx<'_>, gm: GmCaller, org_id: i32) -> Result<u
         gm_audit: true,
         ..ActionRow::default()
     };
+    row.name_actor(ctx);
+    let actor_names = (row.account_name, row.player_name);
     let refuse = |row: ActionRow, why: OrgReject, text: String| async move {
         row.rejected(why);
         feedback(ctx, gm.entity_id, &text).await;
@@ -107,13 +112,16 @@ pub async fn gm_disband(ctx: &OrgCtx<'_>, gm: GmCaller, org_id: i32) -> Result<u
         )
         .await;
     };
-    let db_failed = |e: &dyn std::fmt::Display| {
+    let db_failed = |e: &dyn std::fmt::Display, org_name: Option<&str>| {
         tracing::warn!(
             target: "org",
             event = "org.disband_failed",
             account_id,
+            account_name = actor_names.0,
             player_id = gm.player_id,
+            player_name = actor_names.1,
             org_id,
+            org_name,
             reason = "db_error",
             error = %e,
             "organization disband failed in the database"
@@ -122,7 +130,7 @@ pub async fn gm_disband(ctx: &OrgCtx<'_>, gm: GmCaller, org_id: i32) -> Result<u
     let mut tx = match pool.begin().await {
         Ok(tx) => tx,
         Err(e) => {
-            db_failed(&e);
+            db_failed(&e, None);
             return refuse(
                 row,
                 OrgReject::DbError,
@@ -133,7 +141,9 @@ pub async fn gm_disband(ctx: &OrgCtx<'_>, gm: GmCaller, org_id: i32) -> Result<u
     };
     let actor = SystemActor::Gm {
         account_id: account_id.and_then(|a| i32::try_from(a).ok()),
+        account_name: actor_names.0,
         player_id: Some(gm.player_id),
+        player_name: actor_names.1,
         command: "org_disband",
     };
     let access = match OrgAccess::system(&mut tx, org_id, actor).await {
@@ -147,7 +157,7 @@ pub async fn gm_disband(ctx: &OrgCtx<'_>, gm: GmCaller, org_id: i32) -> Result<u
             .await;
         }
         Err(e) => {
-            db_failed(&e);
+            db_failed(&e, None);
             return refuse(
                 row,
                 OrgReject::DbError,
@@ -157,6 +167,7 @@ pub async fn gm_disband(ctx: &OrgCtx<'_>, gm: GmCaller, org_id: i32) -> Result<u
         }
     };
     row.org_type = Some(access.org_type().name());
+    row.org_name = access.org_name();
     let name: String = sqlx::query_scalar("SELECT name FROM sgw_organizations WHERE org_id = $1")
         .bind(org_id)
         .fetch_one(&mut *tx)
@@ -173,7 +184,7 @@ pub async fn gm_disband(ctx: &OrgCtx<'_>, gm: GmCaller, org_id: i32) -> Result<u
             .await;
         }
         Err(e) => {
-            db_failed(&e);
+            db_failed(&e, row.org_name);
             return refuse(
                 row,
                 OrgReject::DbError,
@@ -183,7 +194,7 @@ pub async fn gm_disband(ctx: &OrgCtx<'_>, gm: GmCaller, org_id: i32) -> Result<u
         }
     };
     if let Err(e) = tx.commit().await {
-        db_failed(&e);
+        db_failed(&e, row.org_name);
         return refuse(
             row,
             OrgReject::DbError,
@@ -191,7 +202,7 @@ pub async fn gm_disband(ctx: &OrgCtx<'_>, gm: GmCaller, org_id: i32) -> Result<u
         )
         .await;
     }
-    let told = fan_out_disband(ctx, org_id, &members, "gm").await;
+    let told = fan_out_disband(ctx, org_id, row.org_name, &members, "gm").await;
     feedback(
         ctx,
         gm.entity_id,

@@ -34,6 +34,7 @@ use sqlx::{Postgres, Transaction};
 use super::broadcast::broadcast_to_org;
 use super::edit_row::{units, EditRow};
 use super::fanout::{feedback, online_members, send_to_members};
+use super::log_names::label;
 use super::officer_notes::holders_locked;
 use super::order::org_order_guard;
 use super::targets::member_by_name;
@@ -110,6 +111,7 @@ pub async fn handle_set_text(
         to_units: Some(units(text)),
         ..EditRow::default()
     };
+    row.name_actor(ctx);
     let text = match org_text::validate(edit.field(), text) {
         Ok(t) => t,
         Err(r) => {
@@ -123,10 +125,12 @@ pub async fn handle_set_text(
     let decided = match ctx.db_pool.as_deref() {
         None => Err(OrgReject::NoDb),
         Some(pool) => match pool.begin().await {
-            Ok(mut tx) => match text_locked(&mut tx, player, org_id, edit, &text, &mut row).await {
-                Ok(d) => tx.commit().await.map(|()| d).map_err(|e| row.db_failed(&e)),
-                Err(why) => Err(why),
-            },
+            Ok(mut tx) => {
+                match text_locked(ctx, &mut tx, player, org_id, edit, &text, &mut row).await {
+                    Ok(d) => tx.commit().await.map(|()| d).map_err(|e| row.db_failed(&e)),
+                    Err(why) => Err(why),
+                }
+            }
             Err(e) => Err(row.db_failed(&e)),
         },
     };
@@ -150,6 +154,7 @@ pub async fn handle_set_text(
                 let sent = send_to_members(
                     ctx,
                     org_id,
+                    row.org_name,
                     &online,
                     &[(ON_ORGANIZATION_OFFICER_NOTE_UPDATE, args)],
                     "officer_note",
@@ -160,6 +165,7 @@ pub async fn handle_set_text(
                     event = "org.broadcast",
                     what = "officer_note",
                     org_id,
+                    org_name = row.org_name,
                     method_index = ON_ORGANIZATION_OFFICER_NOTE_UPDATE,
                     method_name = cimmeria_wire::names::player_client_method(ON_ORGANIZATION_OFFICER_NOTE_UPDATE),
                     required = OrgPermission::OFFICER_NOTES.bits(),
@@ -183,6 +189,7 @@ pub async fn handle_set_text(
 
 /// The locked part: membership, the bit, the target, then the write.
 async fn text_locked(
+    ctx: &OrgCtx<'_>,
     tx: &mut Transaction<'_, Postgres>,
     player: &OrgPlayer,
     org_id: i32,
@@ -195,6 +202,7 @@ async fn text_locked(
         .map_err(|e| row.db_failed(&e))?
         .ok_or(OrgReject::NotMember)?;
     row.org_type = Some(header.org_type.name());
+    row.org_name = label(&header.name);
     let access = member_access_locked(tx, org_id, player.player_id)
         .await
         .map_err(|e| row.db_failed(&e))?
@@ -221,6 +229,8 @@ async fn text_locked(
                 .map_err(|e| row.db_failed(&e))??;
             row.target_player_id = Some(t.player_id);
             row.target_account_id = u32::try_from(t.account_id).ok();
+            row.target_player_name = label(&t.name);
+            row.name_target(ctx);
             row.target_rank = Some(t.rank.as_u8());
             if t.player_id == player.player_id {
                 return Err(OrgReject::SelfTarget);

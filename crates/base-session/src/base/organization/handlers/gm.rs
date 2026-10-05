@@ -27,6 +27,7 @@ use sqlx::{Postgres, Transaction};
 use super::answer::{db_failed, refusal_text, refuse};
 use super::disband::{GmCaller, GM_ACCESS_LEVEL};
 use super::invite_response::{add_joined, announce_join};
+use super::log_names::label;
 use super::officer_notes::{sync_for_member_locked, NoteSync};
 use super::order::org_order_guard;
 use super::rank::announce_rank;
@@ -51,10 +52,18 @@ pub(super) fn gm_session(ctx: &OrgCtx<'_>, gm: GmCaller) -> Option<(OrgPlayer, u
     Some((player, level))
 }
 
-pub(super) fn gm_actor(player: &OrgPlayer, command: &'static str) -> SystemActor<'static> {
+/// The GM's identity for the `org.gm_access` audit line: ids from the
+/// session, names from the outcome row (`ActionRow::name_actor`).
+pub(super) fn gm_actor(
+    player: &OrgPlayer,
+    names: (Option<&'static str>, Option<&'static str>),
+    command: &'static str,
+) -> SystemActor<'static> {
     SystemActor::Gm {
         account_id: player.account_id.and_then(|a| i32::try_from(a).ok()),
+        account_name: names.0,
         player_id: Some(player.player_id),
+        player_name: names.1,
         command,
     }
 }
@@ -82,6 +91,7 @@ pub async fn gm_join(
         gm_audit: true,
         ..ActionRow::default()
     };
+    row.name_actor(ctx);
     let fail = |row: ActionRow, why: OrgReject| async move {
         let text = format!("org_join: refused ({}).", why.reason());
         refuse(ctx, &row, gm.entity_id, why, &text).await
@@ -109,11 +119,12 @@ pub async fn gm_join(
         Err(why) => return fail(row, why).await,
     };
     row.target_player_id = Some(target);
+    row.name_target(ctx);
     let Some(pool) = ctx.db_pool.as_deref() else {
         return fail(row, OrgReject::NoDb).await;
     };
     let joined = match pool.begin().await {
-        Ok(mut tx) => match join_locked(&mut tx, &caller, org_id, target, &mut row).await {
+        Ok(mut tx) => match join_locked(ctx, &mut tx, &caller, org_id, target, &mut row).await {
             Ok(j) => match tx.commit().await {
                 Ok(()) => Ok(j),
                 Err(e) => Err(db_failed(&row, &e)),
@@ -141,6 +152,7 @@ pub async fn gm_join(
 }
 
 async fn join_locked(
+    ctx: &OrgCtx<'_>,
     tx: &mut Transaction<'_, Postgres>,
     gm: &OrgPlayer,
     org_id: i32,
@@ -148,11 +160,16 @@ async fn join_locked(
     row: &mut ActionRow,
 ) -> Result<(OrgRank, String, String), OrgReject> {
     let db = |row: &ActionRow, e: &dyn std::fmt::Display| db_failed(row, e);
-    let access = OrgAccess::system(tx, org_id, gm_actor(gm, "org_join"))
-        .await
-        .map_err(|e| db(row, &e))?
-        .ok_or(OrgReject::NoSuchOrg)?;
+    let access = OrgAccess::system(
+        tx,
+        org_id,
+        gm_actor(gm, (row.account_name, row.player_name), "org_join"),
+    )
+    .await
+    .map_err(|e| db(row, &e))?
+    .ok_or(OrgReject::NoSuchOrg)?;
     row.org_type = Some(access.org_type().name());
+    row.org_name = access.org_name();
     let (org_name, memberless): (String, bool) = sqlx::query_as(
         "SELECT o.name, NOT EXISTS (SELECT 1 FROM sgw_organization_members m \
                                     WHERE m.org_id = o.org_id) \
@@ -175,6 +192,8 @@ async fn join_locked(
             .await
             .map_err(|e| db(row, &e))?;
     row.target_account_id = u32::try_from(account_id).ok();
+    row.target_player_name = label(&name);
+    row.name_target(ctx);
     add_joined(tx, &access, org_id, target, rank, row).await?;
     Ok((rank, org_name, name))
 }
@@ -204,6 +223,7 @@ pub async fn gm_rank(
         gm_audit: true,
         ..ActionRow::default()
     };
+    row.name_actor(ctx);
     let fail = |row: ActionRow, why: OrgReject| async move {
         let text = match why {
             OrgReject::OrgAmbiguous => refusal_text(why, "", None),
@@ -238,7 +258,7 @@ pub async fn gm_rank(
     let _order = org_order_guard(org_id).await;
     let decided = match pool.begin().await {
         Ok(mut tx) => {
-            match rank_locked(&mut tx, &caller, target_name, rank, org_id, &mut row).await {
+            match rank_locked(ctx, &mut tx, &caller, target_name, rank, org_id, &mut row).await {
                 Ok(d) => match tx.commit().await {
                     Ok(()) => Ok(d),
                     Err(e) => Err(db_failed(&row, &e)),
@@ -257,10 +277,15 @@ pub async fn gm_rank(
         event = "rank_changed",
         via = "gm",
         account_id = caller.account_id,
+        account_name = row.account_name,
         player_id = caller.player_id,
+        player_name = row.player_name,
         target_account_id = row.target_account_id,
+        target_account_name = row.target_account_name,
         target_player_id = target.player_id,
+        target_player_name = row.target_player_name,
         org_id,
+        org_name = org_name.as_str(),
         from_rank = target.rank.as_u8(),
         to_rank = to.as_u8(),
         "organization member rank changed"
@@ -282,6 +307,7 @@ pub async fn gm_rank(
 }
 
 async fn rank_locked(
+    ctx: &OrgCtx<'_>,
     tx: &mut Transaction<'_, Postgres>,
     gm: &OrgPlayer,
     target_name: &str,
@@ -290,16 +316,23 @@ async fn rank_locked(
     row: &mut ActionRow,
 ) -> Result<(MemberTarget, OrgRank, String, Option<NoteSync>), OrgReject> {
     let db = |row: &ActionRow, e: &dyn std::fmt::Display| db_failed(row, e);
-    let access = OrgAccess::system(tx, org_id, gm_actor(gm, "org_rank"))
-        .await
-        .map_err(|e| db(row, &e))?
-        .ok_or(OrgReject::NoSuchOrg)?;
+    let access = OrgAccess::system(
+        tx,
+        org_id,
+        gm_actor(gm, (row.account_name, row.player_name), "org_rank"),
+    )
+    .await
+    .map_err(|e| db(row, &e))?
+    .ok_or(OrgReject::NoSuchOrg)?;
     row.org_type = Some(access.org_type().name());
+    row.org_name = access.org_name();
     let target = member_by_name(tx, org_id, target_name)
         .await
         .map_err(|e| db(row, &e))??;
     row.target_player_id = Some(target.player_id);
     row.target_account_id = u32::try_from(target.account_id).ok();
+    row.target_player_name = label(&target.name);
+    row.name_target(ctx);
     row.target_rank = Some(target.rank.as_u8());
     let to = OrgRank::try_from(rank)
         .ok()
@@ -319,9 +352,10 @@ async fn rank_locked(
             .map_err(|e| db(row, &e))?;
     match set_rank(tx, &access, org_id, target.player_id, to).await {
         Ok(_) => {
-            let sync = sync_for_member_locked(tx, org_id, target.player_id, target.rank, to)
-                .await
-                .map_err(|e| db(row, &e))?;
+            let sync =
+                sync_for_member_locked(tx, org_id, row.org_name, target.player_id, target.rank, to)
+                    .await
+                    .map_err(|e| db(row, &e))?;
             Ok((target, to, org_name, sync))
         }
         Err(OrgStoreError::LeaderPinned) => Err(OrgReject::LeaderNotAssignable),

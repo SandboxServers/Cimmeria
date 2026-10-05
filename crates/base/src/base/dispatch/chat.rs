@@ -15,9 +15,13 @@ use std::time::Instant;
 
 use cimmeria_base_session::base::organization::handlers::chat::{self as org_chat, ChatSpeaker};
 use cimmeria_base_session::base::organization::handlers::OrgCtx;
+use cimmeria_base_session::base::session_identity::{
+    identity_for_entity, player_name_for_entity, session_identity,
+};
 use cimmeria_base_session::base::user_channels::{
     user_channel_registry, JoinOutcome, LeaveOutcome,
 };
+use cimmeria_entity::cell_entity::PlayerIdentity;
 use cimmeria_mercury::transport::Transport;
 use sqlx::PgPool;
 use tokio::sync::mpsc;
@@ -142,7 +146,7 @@ pub(super) async fn send_player_communication_at(
     //   - SPEAKER_DND if dndMessage is not None
     // SPEAKER_Petition (0x02) is in the enum but never set by the
     // Python reference, so it is intentionally not computed.
-    let (player_eid, speaker_flags_value, player_id, account_id, access_level, decision) = {
+    let (player_eid, speaker_flags_value, player_id, account_id, access_level, decision, ident) = {
         let mut clients = connected.lock().unwrap();
         match clients.get_mut(&addr) {
             Some(c) => {
@@ -176,6 +180,7 @@ pub(super) async fn send_player_communication_at(
                     c.account_id,
                     c.access_level,
                     decision,
+                    session_identity(c),
                 )
             }
             None => return,
@@ -195,11 +200,12 @@ pub(super) async fn send_player_communication_at(
         account_id: Some(account_id),
         player_id,
         entity_id: player_eid,
+        identity: ident,
     };
     let squad_refusal = |reason: &'static str, log_row: bool| {
         if channel == CHAN_SQUAD {
             squad_chat_rejected(
-                reason, log_row, account_id, player_id, player_eid, text_units,
+                reason, log_row, account_id, player_id, player_eid, ident, text_units,
             );
         }
         org_chat::log_refused_before_relay(channel, reason, log_row, &org_speaker, text_units);
@@ -222,6 +228,7 @@ pub(super) async fn send_player_communication_at(
         account_id,
         entity_id: player_eid,
         access_level,
+        identity: ident,
     };
     if refuse_channel(&feedback, who, channel).await {
         return;
@@ -238,8 +245,11 @@ pub(super) async fn send_player_communication_at(
             event = "chat.rejected",
             %addr,
             player_id,
+            player_name = ident.player_name,
             account_id,
+            account_name = ident.account_name,
             entity_id = player_eid,
+            entity_name = ident.player_name,
             channel,
             text_units,
             max_units = MAX_CHAT_TEXT_UNITS,
@@ -261,6 +271,7 @@ pub(super) async fn send_player_communication_at(
             entity_id: player_eid,
             player_id,
             account_id,
+            identity: ident,
         };
         tell::handle_tell(&feedback, sender, &target, &text, now).await;
         return;
@@ -290,6 +301,7 @@ pub(super) async fn send_player_communication_at(
             player_eid,
             player_id,
             account_id,
+            ident,
             speaker,
             speaker_flags_value,
             channel,
@@ -304,11 +316,14 @@ pub(super) async fn send_player_communication_at(
     tracing::info!(
         %addr,
         player_id,
+        player_name = ident.player_name,
         account_id,
+        account_name = ident.account_name,
         entity_id = player_eid,
+        entity_name = ident.player_name,
         speaker,
         channel,
-        target = if target.is_empty() { "<none>" } else { &target },
+        chat_target = if target.is_empty() { "<none>" } else { &target },
         text_len = text.len(),
         "sendPlayerCommunication"
     );
@@ -339,6 +354,7 @@ fn squad_chat_rejected(
     account_id: u32,
     player_id: Option<i32>,
     entity_id: Option<u32>,
+    ident: PlayerIdentity,
     text_units: usize,
 ) {
     if log_row {
@@ -348,8 +364,11 @@ fn squad_chat_rejected(
             outcome = "rejected",
             reason,
             account_id,
+            account_name = ident.account_name,
             player_id,
+            player_name = ident.player_name,
             entity_id,
+            entity_name = ident.player_name,
             recipients = 0,
             text_units,
             "squad chat rejected"
@@ -456,8 +475,11 @@ pub(super) async fn handle_chat_join(
                 event = "chat.channel_join_rejected",
                 %addr,
                 player_id = who.player_id,
+                player_name = who.identity.player_name,
                 account_id = who.account_id,
+                account_name = who.identity.account_name,
                 entity_id = who.entity_id,
+                entity_name = who.identity.player_name,
                 reason = reject.reason(),
                 detail = %reject,
                 "chatJoin refused: the channel name breaks the chat text rules, no channel joined",
@@ -482,10 +504,15 @@ pub(super) async fn handle_chat_join(
                 event = "chat.channel_joined",
                 %addr,
                 player_id = who.player_id,
+                player_name = who.identity.player_name,
                 account_id = who.account_id,
+                account_name = who.identity.account_name,
                 entity_id = who.entity_id,
+                entity_name = who.identity.player_name,
                 wire_id,
+                wire_name = %display_name,
                 display_id,
+                display_name = %display_name,
                 channel_name = %display_name,
                 created,
                 "chatJoin: joined a user channel",
@@ -497,8 +524,11 @@ pub(super) async fn handle_chat_join(
                 event = "chat.channel_join_rejected",
                 %addr,
                 player_id = who.player_id,
+                player_name = who.identity.player_name,
                 account_id = who.account_id,
+                account_name = who.identity.account_name,
                 entity_id = who.entity_id,
+                entity_name = who.identity.player_name,
                 reason = "already_member",
                 channel_name = %display_name,
                 "chatJoin refused: already a member of that channel",
@@ -516,8 +546,11 @@ pub(super) async fn handle_chat_join(
                 event = "chat.channel_join_rejected",
                 %addr,
                 player_id = who.player_id,
+                player_name = who.identity.player_name,
                 account_id = who.account_id,
+                account_name = who.identity.account_name,
                 entity_id = who.entity_id,
+                entity_name = who.identity.player_name,
                 reason = "player_limit",
                 "chatJoin refused: the caller already holds the maximum number of channels",
             );
@@ -529,8 +562,11 @@ pub(super) async fn handle_chat_join(
                 event = "chat.channel_join_rejected",
                 %addr,
                 player_id = who.player_id,
+                player_name = who.identity.player_name,
                 account_id = who.account_id,
+                account_name = who.identity.account_name,
                 entity_id = who.entity_id,
+                entity_name = who.identity.player_name,
                 reason = "server_limit",
                 "chatJoin refused: the server already holds the maximum number of channels",
             );
@@ -561,7 +597,11 @@ pub(super) async fn handle_chat_leave(
 ) {
     // chatLeave(UINT8 channelId)
     let display_id = if !payload.is_empty() { payload[0] } else { 0 };
-    tracing::debug!(%addr, channel_id = display_id, "chatLeave: leave requested");
+    tracing::debug!(
+        %addr,
+        channel_id = display_id, // nt:id-only client-supplied id read before the registry lookup
+        "chatLeave: leave requested"
+    );
 
     let feedback = FeedbackCtx {
         transport,
@@ -584,10 +624,15 @@ pub(super) async fn handle_chat_leave(
                 event = "chat.channel_left",
                 %addr,
                 player_id = who.player_id,
+                player_name = who.identity.player_name,
                 account_id = who.account_id,
+                account_name = who.identity.account_name,
                 entity_id = who.entity_id,
+                entity_name = who.identity.player_name,
                 wire_id,
+                wire_name = %display_name,
                 display_id,
+                display_name = %display_name,
                 channel_name = %display_name,
                 deleted,
                 "chatLeave: left a user channel",
@@ -599,10 +644,13 @@ pub(super) async fn handle_chat_leave(
                 event = "chat.channel_leave_rejected",
                 %addr,
                 player_id = who.player_id,
+                player_name = who.identity.player_name,
                 account_id = who.account_id,
+                account_name = who.identity.account_name,
                 entity_id = who.entity_id,
-                wire_id,
-                display_id,
+                entity_name = who.identity.player_name,
+                wire_id, // nt:id-only the registry has no name for an id the caller never joined
+                display_id, // nt:id-only client-supplied display id; it may name no channel at all
                 reason = "not_member",
                 "chatLeave refused: not a member of that channel, nothing left",
             );
@@ -630,6 +678,7 @@ async fn post_to_user_channel(
     player_eid: Option<u32>,
     player_id: Option<i32>,
     account_id: u32,
+    ident: PlayerIdentity,
     speaker: &str,
     speaker_flags: u8,
     channel: u8,
@@ -645,8 +694,11 @@ async fn post_to_user_channel(
             event = "chat.channel_post_rejected",
             %addr,
             player_id,
+            player_name = ident.player_name,
             account_id,
+            account_name = ident.account_name,
             entity_id,
+            entity_name = ident.player_name,
             channel,
             reason = "not_member",
             "sendPlayerCommunication refused: not a member of that channel, not forwarded",
@@ -665,6 +717,12 @@ async fn post_to_user_channel(
                 event = "chat.channel_send_skipped",
                 channel,
                 member_entity_id = member_entity,
+                member_entity_name = identity_for_entity(
+                    feedback.connected,
+                    entity_to_addr,
+                    *member_entity,
+                )
+                .player_name,
                 reason = "entity_to_addr_miss",
                 "user channel post: member has no known address, skipped",
             );
@@ -685,6 +743,11 @@ async fn post_to_user_channel(
                 event = "chat.channel_send_failed",
                 channel,
                 member_entity_id = member_entity,
+                member_entity_name = player_name_for_entity(
+                    feedback.connected,
+                    entity_to_addr,
+                    *member_entity,
+                ),
                 outcome = ?outcome,
                 "user channel post: send failed for a member",
             ),
@@ -695,8 +758,11 @@ async fn post_to_user_channel(
         event = "chat.channel_post",
         %addr,
         player_id,
+        player_name = ident.player_name,
         account_id,
+        account_name = ident.account_name,
         entity_id,
+        entity_name = ident.player_name,
         channel,
         recipients,
         text_units,
@@ -713,6 +779,8 @@ struct ChatSessionWho {
     entity_id: u32,
     player_id: Option<i32>,
     account_id: u32,
+    /// The session's names, for the log lines (Rule 6).
+    identity: PlayerIdentity,
 }
 
 fn who_at(
@@ -725,6 +793,7 @@ fn who_at(
         entity_id: c.player_entity_id?,
         player_id: c.active_player_id,
         account_id: c.account_id,
+        identity: session_identity(c),
     })
 }
 
@@ -776,8 +845,11 @@ pub(super) async fn handle_chat_set_afk(
             event = "chat.afk_set",
             %addr,
             player_id = c.active_player_id,
+            player_name = c.player_name.as_deref(),
             account_id = c.account_id,
+            account_name = c.account_name.as_deref(),
             entity_id = c.player_entity_id,
+            entity_name = c.player_name.as_deref(),
             afk_active = active,
             "chatSetAFKMessage",
         );
@@ -883,20 +955,24 @@ async fn away_message_allowed(
         Ok(_) | Err(TextReject::TooLong { .. }) => return true,
         Err(reject) => reject,
     };
-    let (player_id, account_id, entity_id) = feedback
+    let (ident, entity_id) = feedback
         .connected
         .lock()
         .unwrap()
         .get(&addr)
-        .map(|c| (c.active_player_id, Some(c.account_id), c.player_entity_id))
-        .unwrap_or_default();
+        .map_or((PlayerIdentity::UNKNOWN, None), |c| {
+            (session_identity(c), c.player_entity_id)
+        });
     tracing::warn!(
         target: "chat",
         event = "chat.away_rejected",
         %addr,
-        player_id,
-        account_id,
+        player_id = ident.player_id,
+        player_name = ident.player_name,
+        account_id = ident.account_id,
+        account_name = ident.account_name,
         entity_id,
+        entity_name = ident.player_name,
         kind,
         reason = reject.reason(),
         "away message refused: it breaks the chat text rules; previous state kept",

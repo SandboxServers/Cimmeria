@@ -33,6 +33,8 @@
 
 use std::net::SocketAddr;
 
+use cimmeria_entity::cell_entity::PlayerIdentity;
+use cimmeria_entity::name_intern::intern;
 use cimmeria_entity::organization::{OrgPermission, OrgType};
 use cimmeria_wire::cell::chat::{
     serialize_on_player_communication, CHAN_COMMAND, CHAN_OFFICER, CHAN_TEAM,
@@ -76,6 +78,9 @@ pub struct ChatSpeaker<'a> {
     pub account_id: Option<u32>,
     pub player_id: Option<i32>,
     pub entity_id: Option<u32>,
+    /// The speaker's session identity, read by the dispatcher under its own
+    /// lock so the outcome row names them without a second `connected` lock.
+    pub identity: PlayerIdentity,
 }
 
 /// The `org.chat` outcome row.
@@ -85,7 +90,11 @@ struct ChatRow {
     account_id: Option<u32>,
     player_id: Option<i32>,
     entity_id: Option<u32>,
+    /// The names that pair with the ids (Rule 6); `None` when not resolved.
+    account_name: Option<&'static str>,
+    player_name: Option<&'static str>,
     org_id: Option<i32>,
+    org_name: Option<&'static str>,
     org_type: Option<&'static str>,
     recipients: usize,
     text_units: usize,
@@ -101,9 +110,13 @@ impl ChatRow {
             reason,
             channel = self.channel,
             account_id = self.account_id,
+            account_name = self.account_name,
             player_id = self.player_id,
+            player_name = self.player_name,
             entity_id = self.entity_id,
+            entity_name = self.player_name,
             org_id = self.org_id,
+            org_name = self.org_name,
             org_type = self.org_type,
             recipients = self.recipients,
             text_units = self.text_units,
@@ -134,7 +147,11 @@ pub fn log_refused_before_relay(
         account_id: speaker.account_id,
         player_id: speaker.player_id,
         entity_id: speaker.entity_id,
+        // No session lookup here: the caller already refused the line.
+        account_name: None,
+        player_name: intern(speaker.name),
         org_id: None,
+        org_name: None,
         org_type: Some(org_type.name()),
         recipients: 0,
         text_units,
@@ -169,12 +186,16 @@ pub async fn relay_org_chat(ctx: &OrgCtx<'_>, speaker: ChatSpeaker<'_>, channel:
     let Some((org_type, required)) = org_channel(channel) else {
         return;
     };
+    let identity = speaker.identity;
     let mut row = ChatRow {
         channel,
         account_id: speaker.account_id,
         player_id: speaker.player_id,
         entity_id: speaker.entity_id,
+        account_name: identity.account_name,
+        player_name: identity.player_name,
         org_id: None,
+        org_name: None,
         org_type: Some(org_type.name()),
         recipients: 0,
         text_units: text.encode_utf16().count(),
@@ -201,7 +222,9 @@ pub async fn relay_org_chat(ctx: &OrgCtx<'_>, speaker: ChatSpeaker<'_>, channel:
                 target: "org",
                 event = "org.chat_lookup_failed",
                 account_id = speaker.account_id,
+                account_name = row.account_name,
                 player_id,
+                player_name = row.player_name,
                 channel,
                 reason = e.reason(),
                 error = %e,
@@ -223,6 +246,7 @@ pub async fn relay_org_chat(ctx: &OrgCtx<'_>, speaker: ChatSpeaker<'_>, channel:
         return;
     };
     row.org_id = Some(membership.header.org_id);
+    row.org_name = intern(&membership.header.name);
     if let Some(bits) = required {
         if !membership.display_permissions.contains(bits) {
             refuse(row, "missing_permission", NO_OFFICER_CHAT_TEXT).await;
@@ -247,9 +271,13 @@ pub async fn relay_org_chat(ctx: &OrgCtx<'_>, speaker: ChatSpeaker<'_>, channel:
             event = "org.send_failed",
             what = "chat_echo",
             org_id = membership.header.org_id,
+            org_name = membership.header.name.as_str(),
             account_id = speaker.account_id,
+            account_name = row.account_name,
             player_id,
+            player_name = row.player_name,
             entity_id,
+            entity_name = row.player_name,
             reason,
             "organization chat: the speaker's own copy could not be sent"
         );

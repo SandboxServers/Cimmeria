@@ -73,14 +73,19 @@ pub(super) async fn gm_mailbox(
     .await;
     match result {
         Ok((player_id, stored, s)) => {
+            let who = caller.identity();
             tracing::info!(
                 target: "mail",
                 event = "mail.gm_action",
                 action = "mailbox",
                 entity_id = actor.entity_id,
+                entity_name = who.player_name,
                 account_id = actor.account_id,
+                account_name = who.account_name,
                 player_id = actor.player_id,
+                player_name = who.player_name,
                 subject_player_id = player_id,
+                subject_player_name = stored.as_str(),
                 open = s.open,
                 archived = s.archived,
                 items = s.items,
@@ -95,7 +100,7 @@ pub(super) async fn gm_mailbox(
             }
         }
         Err(refusal) => {
-            rejected(actor, "mailbox", refusal.reason());
+            rejected(caller, actor, "mailbox", refusal.reason());
             feedback(caller, &refusal.text().replacen(".mail:", ".mailbox:", 1)).await;
         }
     }

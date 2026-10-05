@@ -20,6 +20,7 @@ use super::super::feedback::{
     send_to_current_player, FeedbackCtx, FeedbackOutcome, FEEDBACK_SPEAKER,
 };
 use super::super::organization::handlers::{OrgCtx, OrgPlayer};
+use super::super::session_identity::identity_for_entity;
 use crate::mercury::method_idx;
 
 /// The actor's client.
@@ -66,12 +67,20 @@ impl Actor<'_> {
             }
         };
         if let Err(reason) = outcome {
+            let who = identity_for_entity(
+                self.ctx.connected,
+                self.ctx.entity_to_addr,
+                self.player.entity_id,
+            );
             tracing::warn!(
                 target: "bank",
                 event = "bank_feedback_send_failed",
                 account_id = self.player.account_id,
+                account_name = who.account_name,
                 player_id = self.player.player_id,
+                player_name = who.player_name,
                 entity_id = self.player.entity_id,
+                entity_name = who.player_name,
                 reason,
                 what,
                 "bank_feedback_send_failed: the character is not in the world -- the player \

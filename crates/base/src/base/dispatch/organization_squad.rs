@@ -15,6 +15,9 @@ use cimmeria_base_session::base::organization::handlers::answer::IGNORED_TEXT;
 use cimmeria_base_session::base::organization::handlers::fanout::feedback;
 use cimmeria_base_session::base::organization::handlers::{OrgCtx, OrgPlayer};
 use cimmeria_base_session::base::player_index::{NameLookup, OnlinePlayerIndex};
+use cimmeria_base_session::base::session_identity::session_identity;
+use cimmeria_entity::cell_entity::PlayerIdentity;
+use cimmeria_entity::name_intern::intern_opt;
 use cimmeria_wire::base::organization::OrgBaseCall;
 use cimmeria_wire::cell::client_methods::organization::ORG_NOT_AVAILABLE_TEXT;
 
@@ -56,7 +59,10 @@ pub(super) async fn forward_squad_call(
 ) {
     let fwd = squad_message(call, player);
     if matches!(fwd, OrgBaseToCell::SquadInvite { .. }) {
-        if let Some(target_player_id) = invitee_ignores_inviter(ctx, player, target_name) {
+        if let Some((target_player_id, target_player_name)) =
+            invitee_ignores_inviter(ctx, player, target_name)
+        {
+            let identity = actor_identity(ctx, addr);
             // One outcome row on `squad`, since the cell never sees it.
             tracing::info!(
                 target: "squad",
@@ -64,9 +70,12 @@ pub(super) async fn forward_squad_call(
                 outcome = "rejected",
                 reason = "ignored",
                 account_id = player.account_id,
+                account_name = identity.account_name,
                 player_id = player.player_id,
+                player_name = identity.player_name,
                 entity_id = player.entity_id,
                 target_player_id,
+                target_player_name,
                 "squad action rejected"
             );
             cimmeria_observability::counter!(
@@ -84,13 +93,16 @@ pub(super) async fn forward_squad_call(
         Some(tx) => tx.send(BaseToCellMsg::Org(fwd)).await.is_ok(),
         None => false,
     };
+    let identity = actor_identity(ctx, addr);
     if forwarded {
         tracing::debug!(
             target: "org",
             event = "org.squad_forwarded",
             %addr,
             account_id = player.account_id,
+            account_name = identity.account_name,
             player_id = player.player_id,
+            player_name = identity.player_name,
             entity_id = player.entity_id,
             kind,
             "squad call forwarded to the cell"
@@ -102,13 +114,15 @@ pub(super) async fn forward_squad_call(
         event = "org.squad_forward_failed",
         %addr,
         account_id = player.account_id,
+        account_name = identity.account_name,
         player_id = player.player_id,
+        player_name = identity.player_name,
         entity_id = player.entity_id,
         kind,
         reason = "cell_unreachable",
         "squad call could not reach the cell -- answering with feedback"
     );
-    unreachable_outcome(kind, player);
+    unreachable_outcome(kind, player, identity);
     answer(
         answer_instance(call),
         ORG_NOT_AVAILABLE_TEXT,
@@ -120,11 +134,25 @@ pub(super) async fn forward_squad_call(
     .await;
 }
 
-/// The invitee's `player_id` when `typed` resolves to one online character
+/// The identity of the session at `addr`, for the log lines of one squad
+/// call; empty when the session is gone.
+fn actor_identity(ctx: &OrgCtx<'_>, addr: SocketAddr) -> PlayerIdentity {
+    ctx.connected
+        .lock()
+        .ok()
+        .and_then(|clients| clients.get(&addr).map(session_identity))
+        .unwrap_or(PlayerIdentity::UNKNOWN)
+}
+
+/// The invitee's `player_id` (with the name) when `typed` resolves to one online character
 /// whose cached Ignore list holds the inviter (by character id, or by the
 /// inviter's own session name). Any other lookup result forwards, and the
 /// cell answers it.
-fn invitee_ignores_inviter(ctx: &OrgCtx<'_>, player: &OrgPlayer, typed: &str) -> Option<i32> {
+fn invitee_ignores_inviter(
+    ctx: &OrgCtx<'_>,
+    player: &OrgPlayer,
+    typed: &str,
+) -> Option<(i32, Option<&'static str>)> {
     let clients = ctx.connected.lock().ok()?;
     let inviter_name = clients
         .values()
@@ -140,7 +168,7 @@ fn invitee_ignores_inviter(ctx: &OrgCtx<'_>, player: &OrgPlayer, typed: &str) ->
     let t = clients.get(&target.addr)?;
     let ignores = t.ignore.ignores_player(player.player_id)
         || (!inviter_name.is_empty() && t.ignore.ignores(&inviter_name));
-    ignores.then_some(target.player_id)
+    ignores.then(|| (target.player_id, intern_opt(t.player_name.as_deref())))
 }
 
 /// The squad action never reached the cell, so the cell logs no outcome
@@ -149,7 +177,7 @@ fn invitee_ignores_inviter(ctx: &OrgCtx<'_>, player: &OrgPlayer, typed: &str) ->
 /// same `squad_actions_total{action, outcome, reason}` series as
 /// `cimmeria_cell_world::cell::squad::count_action`, which the base cannot
 /// call (it does not depend on the cell crates).
-fn unreachable_outcome(kind: &str, player: &OrgPlayer) {
+fn unreachable_outcome(kind: &str, player: &OrgPlayer, identity: PlayerIdentity) {
     let (event, action) = if kind == "squad_kick" {
         ("squad.kick", "kick")
     } else {
@@ -161,7 +189,9 @@ fn unreachable_outcome(kind: &str, player: &OrgPlayer) {
         outcome = "rejected",
         reason = "cell_unreachable",
         account_id = player.account_id,
+        account_name = identity.account_name,
         player_id = player.player_id,
+        player_name = identity.player_name,
         entity_id = player.entity_id,
         "squad action rejected"
     );

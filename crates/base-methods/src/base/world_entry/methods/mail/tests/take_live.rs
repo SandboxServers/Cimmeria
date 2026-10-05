@@ -81,9 +81,11 @@ async fn live_db_take_cash_twice_credits_once() {
         ("cash", "500"),
         ("target_player_id", &sender.to_string()),
         ("mail_id", &mail_id.to_string()),
+        ("target_player_name", "SsmThreeSCash"),
     ] {
         assert!(taken.has_field(k, v), "{k}={v}: {taken:?}");
     }
+    assert_actor_names(&taken, "SsmThreeOCash");
 
     c.op(MailOp::TakeCash { mail_id }, Some(&pool), now).await;
     assert_eq!(

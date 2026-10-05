@@ -21,6 +21,7 @@ use tokio::sync::mpsc;
 use crate::cell::messages::CellToBaseMsg;
 use crate::cell::space_manager::SpaceManager;
 
+use super::duelist_names as names;
 use super::find_player;
 use super::response::abort_both;
 
@@ -39,11 +40,15 @@ pub async fn run_at(tx: &mpsc::Sender<CellToBaseMsg>, mgr: &mut SpaceManager, no
         tracing::debug!(
             target: "duel",
             event = "duel.challenge_expired",
-            duel_id = pending.duel_id,
+            duel_id = pending.duel_id, // nt:id-only duel row id with no name column; the duelists are named in the same event
             account_id = challenger.and_then(|p| p.account_id),
+            account_name = names::account_name_of(mgr, pending.challenger),
             player_id = pending.challenger,
+            player_name = names::player_name_of(mgr, pending.challenger),
             entity_id = challenger.map(|p| p.entity_id),
+            entity_name = names::entity_name(mgr, challenger.map(|p| p.entity_id)),
             target_player_id = pending.target,
+            target_player_name = names::player_name_of(mgr, pending.target),
             reason = "no_answer",
             "duel challenge expired unanswered"
         );

@@ -64,6 +64,8 @@ pub(super) struct Outcome {
     pub npc_entity_id: Option<u32>,
     pub name_units: Option<usize>,
     pub org_id: Option<i32>,
+    /// The new organization's name, set with `org_id`.
+    pub org_name: Option<String>,
     /// The founder's naquadah before and after, only when a cost was paid.
     pub cash: Option<(i32, i32)>,
 }
@@ -83,6 +85,7 @@ impl Outcome {
             npc_entity_id: None,
             name_units: None,
             org_id: None,
+            org_name: None,
             cash: None,
         }
     }
@@ -105,12 +108,17 @@ impl Outcome {
             outcome,
             reason,
             account_id = self.actor.account_id,
+            account_name = self.actor.account_name,
             player_id = self.actor.player_id,
+            player_name = self.actor.player_name,
             entity_id = self.entity_id,
+            // A player entity is named after its character.
+            entity_name = self.actor.player_name,
             org_type = self.org_type.name(),
-            npc_entity_id = self.npc_entity_id,
+            npc_entity_id = self.npc_entity_id, // nt:id-only the NPC lives in the cell, the base holds no NPC names
             name_units = self.name_units,
             org_id = self.org_id,
+            org_name = self.org_name.as_deref(),
             cost_before = self.cash.map(|c| c.0),
             cost_after = self.cash.map(|c| c.1),
             "organization {} {}",

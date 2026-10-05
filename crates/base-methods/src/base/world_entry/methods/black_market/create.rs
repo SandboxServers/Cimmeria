@@ -12,7 +12,9 @@ use super::escrow::{list_into_escrow, EscrowedItem};
 use super::helpers::now_unix_secs;
 use super::player_name;
 use super::send::{send_bm_auction_update, send_bm_error, send_item_removed, BmNet};
-use super::telemetry::{count_bm_outcome, db, log_failure, log_transition, Actor, Failure};
+use super::telemetry::{
+    count_bm_outcome, db, item_name, log_failure, log_transition, Actor, Failure,
+};
 use super::types::{auction_columns, auction_status, AuctionRow};
 use super::validate::{validate_listing_cap, validate_prices};
 use super::wire::{auction_length_seconds, clamp_auction_length, BMError};
@@ -74,13 +76,17 @@ pub async fn handle_create_auction(
     let now = now_unix_secs();
     match create_listing(pool, &actor, req, now).await {
         Ok((row, item)) => {
-            log_transition("bm.listed", actor.account_id, player_id, None, &row);
+            log_transition("bm.listed", &actor.who(), None, &row);
             tracing::info!(
                 entity_id,
+                entity_name = actor.player_name,
                 account_id = actor.account_id,
+                account_name = actor.account_name,
                 player_id,
-                sequence_id = row.sequence_id,
+                player_name = actor.player_name,
+                auction_id = row.sequence_id, // nt:id-only auctions have no name column; item_name names the listing
                 item_id,
+                item_name = item_name(row.item_def_id),
                 from_container = item.container_id,
                 expires_at = row.expires_at,
                 "createAuction: listing opened"
@@ -112,7 +118,9 @@ pub(super) async fn create_listing(
         tracing::info!(
             event = "bm.length_clamped",
             account_id = actor.account_id,
+            account_name = actor.account_name,
             player_id = actor.player_id,
+            player_name = actor.player_name,
             raw = req.auction_length,
             tier = tier as u8,
             "createAuction: auctionLength out of range, clamped to the nearest tier"

@@ -9,6 +9,7 @@
 
 use super::answer::refusal_text;
 use super::fanout::feedback;
+use super::log_names::identity_of_player;
 use super::telemetry::{count, OrgReject};
 use super::OrgCtx;
 
@@ -21,6 +22,12 @@ pub(super) struct EditRow {
     pub entity_id: Option<u32>,
     pub org_id: Option<i32>,
     pub org_type: Option<&'static str>,
+    /// The names that pair with the ids (Rule 6); see [`EditRow::name_actor`].
+    pub account_name: Option<&'static str>,
+    pub player_name: Option<&'static str>,
+    pub org_name: Option<&'static str>,
+    pub target_account_name: Option<&'static str>,
+    pub target_player_name: Option<&'static str>,
     /// The actor's rank, read under the lock.
     pub actor_rank: Option<u8>,
     /// `motd`, `note`, `officer_note` or `rank_name` (`TextField::name`).
@@ -43,6 +50,25 @@ pub(super) struct EditRow {
 }
 
 impl EditRow {
+    /// Fill the actor's names from their session (by `player_id`).
+    pub(super) fn name_actor(&mut self, ctx: &OrgCtx<'_>) {
+        if let Some(player_id) = self.player_id {
+            let id = identity_of_player(ctx, player_id);
+            self.account_name = id.account_name;
+            self.player_name = id.player_name;
+        }
+    }
+
+    /// Fill the target's names from their online session (by
+    /// `target_player_id`), keeping a `target_player_name` already set.
+    pub(super) fn name_target(&mut self, ctx: &OrgCtx<'_>) {
+        if let Some(player_id) = self.target_player_id {
+            let id = identity_of_player(ctx, player_id);
+            self.target_account_name = id.account_name;
+            self.target_player_name = id.player_name.or(self.target_player_name);
+        }
+    }
+
     /// The `ok` row. `after` is `changed` or `unchanged`.
     pub(super) fn ok(&self, after: &'static str) {
         tracing::info!(
@@ -51,16 +77,22 @@ impl EditRow {
             outcome = "ok",
             after,
             account_id = self.account_id,
+            account_name = self.account_name,
             player_id = self.player_id,
+            player_name = self.player_name,
             entity_id = self.entity_id,
+            entity_name = self.player_name,
             org_id = self.org_id,
+            org_name = self.org_name,
             org_type = self.org_type,
             actor_rank = self.actor_rank,
             field = self.field,
             from_units = self.from_units,
             to_units = self.to_units,
             target_account_id = self.target_account_id,
+            target_account_name = self.target_account_name,
             target_player_id = self.target_player_id,
+            target_player_name = self.target_player_name,
             target_rank = self.target_rank,
             rank = self.rank,
             from_mask = self.from_mask,
@@ -82,16 +114,22 @@ impl EditRow {
             outcome = "rejected",
             reason = why.reason(),
             account_id = self.account_id,
+            account_name = self.account_name,
             player_id = self.player_id,
+            player_name = self.player_name,
             entity_id = self.entity_id,
+            entity_name = self.player_name,
             org_id = self.org_id,
+            org_name = self.org_name,
             org_type = self.org_type,
             actor_rank = self.actor_rank,
             field = self.field,
             from_units = self.from_units,
             to_units = self.to_units,
             target_account_id = self.target_account_id,
+            target_account_name = self.target_account_name,
             target_player_id = self.target_player_id,
+            target_player_name = self.target_player_name,
             target_rank = self.target_rank,
             rank = self.rank,
             from_mask = self.from_mask,
@@ -130,8 +168,11 @@ impl EditRow {
             event = "org.action_failed",
             action = self.action,
             account_id = self.account_id,
+            account_name = self.account_name,
             player_id = self.player_id,
+            player_name = self.player_name,
             org_id = self.org_id,
+            org_name = self.org_name,
             reason = "db_error",
             error = %e,
             "organization edit failed in the database"

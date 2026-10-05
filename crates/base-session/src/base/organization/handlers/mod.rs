@@ -75,6 +75,7 @@ pub mod invite;
 pub mod invite_response;
 pub mod kick;
 pub mod leave;
+mod log_names;
 pub mod officer_notes;
 pub mod order;
 pub mod presence;

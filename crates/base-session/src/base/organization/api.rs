@@ -110,6 +110,7 @@
 //! committed. Under REPEATABLE READ, locking a row changed since the
 //! snapshot fails with a serialization error instead.
 
+use cimmeria_entity::name_intern::intern;
 use cimmeria_entity::organization::{OrgPermission, OrgRank, OrgType, UnknownValue};
 use sqlx::{Postgres, Transaction};
 
@@ -142,6 +143,9 @@ pub struct OrgHeader {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct OrgAccess {
     org_id: i32,
+    /// The organization's name, for log lines (Rule 6); interned so the
+    /// access stays `Copy`. `None` for a blank or oversized name.
+    org_name: Option<&'static str>,
     org_type: OrgType,
     rank: OrgRank,
     permissions: OrgPermission,
@@ -159,7 +163,9 @@ pub enum SystemActor<'a> {
     /// its `org.gm_action` row, written by the handler.
     Gm {
         account_id: Option<i32>,
+        account_name: Option<&'a str>,
         player_id: Option<i32>,
+        player_name: Option<&'a str>,
         command: &'a str,
     },
     /// The server itself (a sweep, a test fixture): logged as
@@ -170,6 +176,11 @@ pub enum SystemActor<'a> {
 impl OrgAccess {
     pub fn org_id(&self) -> i32 {
         self.org_id
+    }
+
+    /// The organization's name as the lock read it, for log lines.
+    pub fn org_name(&self) -> Option<&'static str> {
+        self.org_name
     }
 
     pub fn org_type(&self) -> OrgType {
@@ -217,7 +228,7 @@ impl OrgAccess {
             tracing::warn!(
                 target: "org",
                 event = "system_access",
-                org_id,
+                org_id, // nt:id-only no such organization, so there is no name
                 reason = "no_such_org",
                 "Organization lookup missed"
             );
@@ -226,15 +237,20 @@ impl OrgAccess {
         match actor {
             SystemActor::Gm {
                 account_id,
+                account_name,
                 player_id,
+                player_name,
                 command,
             } => tracing::info!(
                 target: "org",
                 event = "org.gm_access",
                 org_id,
+                org_name = header.name.as_str(),
                 org_type = header.org_type.name(),
                 account_id,
+                account_name,
                 player_id,
+                player_name,
                 command,
                 "GM acting on an organization"
             ),
@@ -242,6 +258,7 @@ impl OrgAccess {
                 target: "org",
                 event = "system_action",
                 org_id,
+                org_name = header.name.as_str(),
                 org_type = header.org_type.name(),
                 source,
                 "Server acting on an organization"
@@ -249,6 +266,7 @@ impl OrgAccess {
         }
         Ok(Some(OrgAccess {
             org_id,
+            org_name: intern(&header.name),
             org_type: header.org_type,
             rank: OrgRank::LEADER,
             permissions: OrgPermission::ALL,
@@ -282,7 +300,7 @@ pub async fn lock_org(
         tracing::warn!(
             target: "org",
             event = "lock_org",
-            org_id,
+            org_id, // nt:id-only no such organization, so there is no name
             reason = "no_such_org",
             "Organization lookup missed"
         );
@@ -346,18 +364,19 @@ pub async fn member_access_locked(
     org_id: i32,
     player_id: i32,
 ) -> Result<Option<OrgAccess>, sqlx::Error> {
-    let miss = |reason: &'static str| {
+    let miss = |reason: &'static str, org_name: Option<&str>| {
         tracing::warn!(
             target: "org",
             event = "member_access_locked",
             org_id,
-            player_id,
+            org_name,
+            player_id, // nt:id-only persistence layer holds ids only; the handler's outcome row names the player
             reason,
             "Organization access lookup missed"
         );
     };
-    let Some((_, tx_id)) = lock_org_with_tx(tx, org_id).await? else {
-        miss("no_such_org");
+    let Some((header, tx_id)) = lock_org_with_tx(tx, org_id).await? else {
+        miss("no_such_org", None);
         return Ok(None);
     };
     let row: Option<(i16, i16, i32)> = sqlx::query_as(
@@ -371,11 +390,12 @@ pub async fn member_access_locked(
     .fetch_optional(&mut **tx)
     .await?;
     let Some((org_type, rank, permissions)) = row else {
-        miss("not_a_member");
+        miss("not_a_member", Some(header.name.as_str()));
         return Ok(None);
     };
     let access = OrgAccess {
         org_id,
+        org_name: intern(&header.name),
         org_type: org_type_from_db(org_type)?,
         rank: rank_from_db(rank)?,
         permissions: permissions_from_db(permissions),
@@ -386,7 +406,8 @@ pub async fn member_access_locked(
         target: "org",
         event = "member_access_locked",
         org_id,
-        player_id,
+        org_name = header.name.as_str(),
+        player_id, // nt:id-only persistence layer holds ids only; the handler's outcome row names the player
         rank = access.rank.as_u8(),
         permissions = access.permissions.bits(),
         "Organization access read under the lock"

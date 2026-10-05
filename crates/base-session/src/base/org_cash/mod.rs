@@ -49,6 +49,7 @@ use cimmeria_wire::cell::client_methods::organization::{
 
 use super::organization::api::broadcast_to_org;
 use super::organization::handlers::{resolve_actor, OrgCtx, OrgPlayer};
+use super::session_identity::identity_for_entity;
 use persist::{transfer_cash, CashDirection, Seen, TransferOutcome, Transferred};
 use sends::Actor;
 
@@ -139,7 +140,14 @@ impl CashRefusal {
     name = "bank.org_cash_transfer",
     level = "info",
     skip_all,
-    fields(entity_id = entity_id, player_id = player_id, org_id = org_id)
+    fields(
+        entity_id = entity_id,
+        entity_name = tracing::field::Empty,
+        player_id = player_id,
+        player_name = tracing::field::Empty,
+        org_id = org_id,
+        org_name = tracing::field::Empty,
+    )
 )]
 pub async fn handle_transfer_cash(
     ctx: &OrgCtx<'_>,
@@ -149,15 +157,23 @@ pub async fn handle_transfer_cash(
     dir: CashDir,
 ) {
     let (direction, amount) = CashDirection::of(dir);
+    let who = identity_for_entity(ctx.connected, ctx.entity_to_addr, entity_id);
+    let span = tracing::Span::current();
+    span.record("player_name", who.player_name);
+    span.record("entity_name", who.player_name);
     let Some(player) = resolve_actor(ctx, player_id, entity_id) else {
         // No session plays that character as that entity, so there is no
-        // one to tell.
+        // one to tell. The organization is not read yet, so it has no name
+        // on this line.
         tracing::warn!(
             target: "bank",
             event = "org_cash_rejected",
             player_id,
+            player_name = who.player_name,
             entity_id,
-            org_id,
+            entity_name = who.player_name,
+            account_name = who.account_name,
+            org_id, // nt:id-only organization is not read before the actor check
             direction = direction.as_str(),
             amount,
             reason = CashRefusal::ActorMismatch.reason(),
@@ -215,13 +231,19 @@ async fn accepted(
     let recipients =
         broadcast_to_org(actor.ctx, org_id, ON_ORGANIZATION_CASH_UPDATE, &args, None).await;
     let p: OrgPlayer = actor.player;
+    let who = identity_for_entity(actor.ctx.connected, actor.ctx.entity_to_addr, p.entity_id);
+    tracing::Span::current().record("org_name", t.org_name.as_str());
     tracing::info!(
         target: "bank",
         event = "org_cash_transfer",
         account_id = t.account_id,
+        account_name = who.account_name,
         player_id = p.player_id,
+        player_name = who.player_name,
         entity_id = p.entity_id,
+        entity_name = who.player_name,
         org_id,
+        org_name = t.org_name.as_str(),
         org_type = t.org_type.name(),
         rank = t.rank.as_u8(),
         direction = direction.as_str(),
@@ -265,13 +287,21 @@ async fn reject(
         _ => None,
     };
     // Nothing moved, so each balance is the same before and after.
+    let who = identity_for_entity(actor.ctx.connected, actor.ctx.entity_to_addr, p.entity_id);
+    if let Some(name) = seen.org_name.as_deref() {
+        tracing::Span::current().record("org_name", name);
+    }
     tracing::warn!(
         target: "bank",
         event = "org_cash_rejected",
         account_id = p.account_id,
+        account_name = who.account_name,
         player_id = p.player_id,
+        player_name = who.player_name,
         entity_id = p.entity_id,
+        entity_name = who.player_name,
         org_id,
+        org_name = seen.org_name.as_deref(),
         org_type = seen.org_type.map(|t| t.name()),
         rank = seen.rank.map(|r| r.as_u8()),
         permissions = seen.permissions.map(|m| m.bits()),

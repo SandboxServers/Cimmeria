@@ -205,12 +205,15 @@ fn log_rows(rows: &[OrgEventRow], source: ExportSource) {
             target: "org",
             event = r.event.as_str(),
             reason = r.reason.as_str(),
-            org_id = r.org_id,
-            from_player_id = r.from_player_id,
-            from_account_id = r.from_account_id,
-            to_player_id = r.to_player_id,
-            to_account_id = r.to_account_id,
-            org_event_id = r.org_event_id,
+            // The trigger's row stores ids only, and the character or the
+            // organization it describes is often already deleted by the time
+            // it is exported, so no name can be read back.
+            org_id = r.org_id, // nt:id-only the organization is often disbanded by export time
+            from_player_id = r.from_player_id, // nt:id-only the row stores ids, the character may be deleted
+            from_account_id = r.from_account_id, // nt:id-only the row stores ids, the account name is not kept
+            to_player_id = r.to_player_id, // nt:id-only the row stores ids, the character may be deleted
+            to_account_id = r.to_account_id, // nt:id-only the row stores ids, the account name is not kept
+            org_event_id = r.org_event_id, // nt:id-only row id of an audit table with no name column
             at_unix_ms = r.at_unix_ms,
             source = source.as_str(),
             "Organization changed by the member-delete trigger"

@@ -23,6 +23,7 @@ use cimmeria_wire::cell::client_methods::organization::{
 };
 
 use super::fanout::{online_members, send_to_player, OnlineMember};
+use super::log_names::identity_of_player;
 use super::officer_notes::rank_reads_officer_notes;
 use super::presence::announce;
 use super::telemetry::{count, OrgReject};
@@ -182,7 +183,7 @@ pub async fn push_org_state(
     }
     .await;
     if let Err(e) = &result {
-        state_push_failed(org_id, player, e);
+        state_push_failed(ctx, org_id, None, player, e);
     }
     result
 }
@@ -221,14 +222,19 @@ async fn push_membership(
         roster_size: roster.len(),
         online_members: online.len(),
     };
+    let who = identity_of_player(ctx, player.player_id);
     tracing::info!(
         target: "org",
         event = "org.state_push",
         source,
         account_id = player.account_id,
+        account_name = who.account_name,
         player_id = player.player_id,
+        player_name = who.player_name,
         entity_id = player.entity_id,
+        entity_name = who.player_name,
         org_id,
+        org_name = membership.header.name.as_str(),
         org_type = membership.header.org_type.name(),
         rank = membership.rank.as_u8(),
         roster_size = summary.roster_size,
@@ -240,14 +246,25 @@ async fn push_membership(
     Ok((summary, roster))
 }
 
-fn state_push_failed(org_id: i32, player: &OrgPlayer, e: &PushError) {
+fn state_push_failed(
+    ctx: &OrgCtx<'_>,
+    org_id: i32,
+    org_name: Option<&str>,
+    player: &OrgPlayer,
+    e: &PushError,
+) {
+    let who = identity_of_player(ctx, player.player_id);
     tracing::warn!(
         target: "org",
         event = "org.state_push_failed",
         account_id = player.account_id,
+        account_name = who.account_name,
         player_id = player.player_id,
+        player_name = who.player_name,
         entity_id = player.entity_id,
+        entity_name = who.player_name,
         org_id,
+        org_name,
         reason = e.reason(),
         error = %e,
         "organization state could not be pushed to a member"
@@ -271,14 +288,18 @@ fn state_push_failed(org_id: i32, player: &OrgPlayer, e: &PushError) {
 )]
 pub async fn restore_on_login(ctx: &OrgCtx<'_>, player: &OrgPlayer) -> Vec<PushSummary> {
     let fail = |why: OrgReject, error: Option<&dyn std::fmt::Display>| {
+        let who = identity_of_player(ctx, player.player_id);
         tracing::info!(
             target: "org",
             event = "org.login_restore",
             outcome = "rejected",
             reason = why.reason(),
             account_id = player.account_id,
+            account_name = who.account_name,
             player_id = player.player_id,
+            player_name = who.player_name,
             entity_id = player.entity_id,
+            entity_name = who.player_name,
             error = error.map(tracing::field::display),
             "organization login restore failed"
         );
@@ -302,6 +323,7 @@ pub async fn restore_on_login(ctx: &OrgCtx<'_>, player: &OrgPlayer) -> Vec<PushS
                 announce(
                     ctx,
                     m.header.org_id,
+                    Some(m.header.name.as_str()),
                     m.header.org_type,
                     &roster,
                     player,
@@ -311,16 +333,26 @@ pub async fn restore_on_login(ctx: &OrgCtx<'_>, player: &OrgPlayer) -> Vec<PushS
                 .await;
                 pushed.push(summary);
             }
-            Err(e) => state_push_failed(m.header.org_id, player, &e),
+            Err(e) => state_push_failed(
+                ctx,
+                m.header.org_id,
+                Some(m.header.name.as_str()),
+                player,
+                &e,
+            ),
         }
     }
+    let who = identity_of_player(ctx, player.player_id);
     tracing::info!(
         target: "org",
         event = "org.login_restore",
         outcome = "ok",
         account_id = player.account_id,
+        account_name = who.account_name,
         player_id = player.player_id,
+        player_name = who.player_name,
         entity_id = player.entity_id,
+        entity_name = who.player_name,
         org_count = memberships.len(),
         pushed = pushed.len(),
         "organization state restored at world entry"

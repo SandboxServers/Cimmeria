@@ -65,7 +65,7 @@ pub(super) async fn broadcast_except(
             target: "org",
             event = "org.broadcast_failed",
             what,
-            org_id,
+            org_id, // nt:id-only the broadcast API takes the id alone and the roster read has no org name
             method_index = method_idx,
             method_name = cimmeria_wire::names::player_client_method(method_idx),
             reason,
@@ -111,6 +111,7 @@ pub(super) async fn broadcast_except(
     let sent = send_to_members(
         ctx,
         org_id,
+        None,
         &recipients,
         &[(method_idx, args.to_vec())],
         what,
@@ -120,7 +121,7 @@ pub(super) async fn broadcast_except(
         target: "org",
         event = "org.broadcast",
         what,
-        org_id,
+        org_id, // nt:id-only the broadcast API takes the id alone and the roster read has no org name
         method_index = method_idx,
         method_name = cimmeria_wire::names::player_client_method(method_idx),
         required = required.map(|r| r.bits()),

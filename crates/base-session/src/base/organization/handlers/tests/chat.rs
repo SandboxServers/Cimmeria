@@ -40,6 +40,7 @@ impl Fixture {
             account_id: Some(self.account_id as u32),
             player_id: Some(player_id),
             entity_id: Some(entity_id),
+            identity: cimmeria_entity::cell_entity::PlayerIdentity::UNKNOWN,
         };
         relay_org_chat(&self.ctx(), speaker, channel, text).await;
     }
@@ -269,6 +270,7 @@ async fn live_db_org_chat_seams_warn_with_reason() {
             account_id: Some(fx.account_id as u32),
             player_id: Some(player_id),
             entity_id: Some(entity_id),
+            identity: cimmeria_entity::cell_entity::PlayerIdentity::UNKNOWN,
         },
         CHAN_TEAM,
         "no db",

@@ -28,6 +28,7 @@ use cimmeria_entity::inventory::INV_AUCTION;
 use sqlx::PgConnection;
 
 use super::super::mail::SystemItem;
+use super::telemetry::item_name;
 use super::types::{AuctionRow, LISTABLE_BAGS};
 use super::wire::BMError;
 use crate::base::inventory_locks::take_inventory_locks;
@@ -150,9 +151,10 @@ pub async fn escrowed_item(
     if escrowed.is_none() {
         tracing::warn!(
             event = "bm.escrow_missing",
-            auction_id = auction.sequence_id,
-            seller_id = auction.seller_id,
+            auction_id = auction.sequence_id, // nt:id-only auctions have no name column; item_name names the listing
+            seller_id = auction.seller_id, // nt:id-only the escrow check loads no player row, and a log name gets no query
             item_id = auction.item_id,
+            item_name = item_name(auction.item_def_id),
             reason = "escrow_missing",
             "Black Market listing has no container-18 row; refusing to pay out a copy"
         );

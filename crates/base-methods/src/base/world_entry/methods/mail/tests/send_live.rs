@@ -61,6 +61,7 @@ async fn rows_for(pool: &PgPool, character_id: i32) -> Vec<MailRow> {
 #[tokio::test]
 async fn live_db_send_delivers_to_offline_recipient() {
     let pool = require_db_or_skip!();
+    let capture = crate::test_support::LogCapture::install();
     let (acct, sender, rcpt) = (BASE, BASE + 1, BASE + 2);
     cleanup(&pool, acct).await;
     insert_players(
@@ -99,6 +100,14 @@ async fn live_db_send_delivers_to_offline_recipient() {
         0,
         "the sender keeps no copy"
     );
+    // Rule 6: the sent row names the sender (the session's character and
+    // login) next to the ids.
+    let sent = capture
+        .all()
+        .into_iter()
+        .find(|e| e.has_field("event", "mail.sent"))
+        .expect("mail.sent");
+    assert_actor_names(&sent, "SessionNameIsNotStored");
 
     cleanup(&pool, acct).await;
 }

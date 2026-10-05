@@ -91,13 +91,21 @@ fn membership_ended(
     space_mgr: &mut SpaceManager,
 ) {
     let live = space_mgr.player_identity(entity_id);
+    // The slot may have been recycled since the base sent this; its names
+    // are the leaver's only while the live character is the same one.
+    let same_player = live.player_id == Some(player_id);
+    let player_name = live.player_name.filter(|_| same_player);
+    let account_name = live.account_name.filter(|_| same_player);
     tracing::debug!(
         target: "org",
         event = "org.membership_ended",
         account_id = live.account_id,
+        account_name,
         player_id,
+        player_name,
         entity_id,
-        org_id,
+        entity_name = player_name,
+        org_id, // nt:id-only the base message carries the id only; no org row is loaded on the cell
         reason = reason.as_u8(),
         live_entity = live.player_id == Some(player_id),
         "a player left a Team or Command"

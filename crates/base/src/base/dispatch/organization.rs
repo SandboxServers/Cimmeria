@@ -49,6 +49,8 @@ use cimmeria_base_session::base::helpers::send_to_witness_reliable;
 use cimmeria_base_session::base::organization::handlers::{
     handle_invite, handle_kick, handle_rank_change, InviteInto, OrgCtx, OrgPlayer,
 };
+use cimmeria_base_session::base::session_identity::session_identity;
+use cimmeria_entity::cell_entity::PlayerIdentity;
 use cimmeria_entity::organization::{route_org_id, OrgRoute, OrgType};
 use cimmeria_mercury::transport::Transport;
 use cimmeria_wire::base::organization::{decode_org_base_method, OrgBaseCall};
@@ -92,12 +94,20 @@ pub(super) async fn handle_org_base_method(
     db_pool: &Option<Arc<PgPool>>,
 ) {
     // The actor comes from this session, never from the payload.
-    let (account_id, player_id, entity_id) = {
+    let (account_id, player_id, entity_id, identity) = {
         let clients = connected.lock().unwrap();
-        clients.get(&addr).map_or((None, None, None), |c| {
-            (Some(c.account_id), c.active_player_id, c.player_entity_id)
-        })
+        clients
+            .get(&addr)
+            .map_or((None, None, None, PlayerIdentity::UNKNOWN), |c| {
+                (
+                    Some(c.account_id),
+                    c.active_player_id,
+                    c.player_entity_id,
+                    session_identity(c),
+                )
+            })
     };
+    let (account_name, player_name) = (identity.account_name, identity.player_name);
 
     let call = match decode_org_base_method(msg_id, payload) {
         Ok(call) => call,
@@ -110,7 +120,9 @@ pub(super) async fn handle_org_base_method(
                 msg_name = cimmeria_wire::names::server_msg_name(msg_id),
                 method_name = cimmeria_wire::names::player_inbound_method(msg_id, payload),
                 account_id,
+                account_name,
                 player_id,
+                player_name,
                 entity_id,
                 reason = e.reason(),
                 error = %e,
@@ -132,6 +144,7 @@ pub(super) async fn handle_org_base_method(
             method = call.method_name(),
             method_name = call.method_name(),
             account_id,
+            account_name,
             "organization base method from a session with no player entity"
         );
         return;
@@ -158,7 +171,9 @@ pub(super) async fn handle_org_base_method(
                 reason = "org_type_invalid",
                 %addr,
                 account_id,
+                account_name,
                 player_id,
+                player_name,
                 entity_id,
                 org_type,
                 "organizationInviteByType names no organization type"
@@ -210,9 +225,11 @@ pub(super) async fn handle_org_base_method(
                 method = call.method_name(),
                 method_name = call.method_name(),
                 account_id,
+                account_name,
                 player_id,
+                player_name,
                 entity_id,
-                instance_id = org_id,
+                instance_id = org_id, // nt:id-only squad route decided by id; no org row loaded here
                 "squad rank change has no handler; answering with feedback"
             );
             reply(ORG_NOT_AVAILABLE_TEXT).await;

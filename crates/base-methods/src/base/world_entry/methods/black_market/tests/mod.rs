@@ -28,6 +28,7 @@ mod buyout_and_rules;
 mod create_bid_cancel;
 mod delete_trigger;
 mod helpers;
+mod named_telemetry;
 mod refusals;
 mod search;
 mod settlement_mail;

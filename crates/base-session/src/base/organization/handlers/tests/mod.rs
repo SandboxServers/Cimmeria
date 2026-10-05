@@ -28,6 +28,7 @@ mod invite_response;
 mod kick;
 mod leave;
 mod lock_race;
+mod named_logs;
 mod officer_notes;
 mod org07_support;
 mod org08_support;

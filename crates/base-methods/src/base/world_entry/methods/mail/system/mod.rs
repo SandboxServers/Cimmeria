@@ -149,18 +149,22 @@ pub struct SystemMailSent {
 impl SystemMailSent {
     /// Log `mail.system_sent`. Call it after the transaction commits.
     pub fn log_sent(&self) {
+        let book = cimmeria_names::book();
         tracing::info!(
             target: "mail",
             event = "mail.system_sent",
             sender_name = %self.sender_name,
-            target_player_id = self.recipient_player_id,
-            mail_id = self.mail_id,
+            target_player_id = self.recipient_player_id, // nt:id-only recipient is locked by id only here, the calling path logs the named recipient
+            mail_id = self.mail_id, // nt:id-only mail row, its subject is player text kept out of logs
             cash = self.cash,
             item_source = self.item_source,
             item_id = self.item.map(|i| i.item_id),
-            type_id = self.item.map(|i| i.type_id),
+            item_type_id = self.item.map(|i| i.type_id),
+            item_name = self
+                .item
+                .and_then(|i| book.item(i.type_id)),
             stack_size = self.item.map(|i| i.stack_size),
-            source_character_id = self.item.map(|i| i.source_character_id),
+            source_character_id = self.item.map(|i| i.source_character_id), // nt:id-only mint sentinel or the holder of a server-held row, no name loaded
             recipient_open_mail = self.recipient_open_mail,
             over_cap = self.recipient_open_mail > super::send::MAILBOX_CAP,
             "system gate-mail delivered",
@@ -313,15 +317,19 @@ pub async fn send_system_mail_tx(
     .await;
     match result {
         Ok(written) => {
+            let book = cimmeria_names::book();
             tracing::debug!(
                 target: "mail",
                 event = "mail.system_staged",
                 sender_name = %mail.sender_name,
-                target_player_id = mail.recipient_player_id,
-                mail_id = written.mail_id,
+                target_player_id = mail.recipient_player_id, // nt:id-only recipient is locked by id only here, the calling path logs the named recipient
+                mail_id = written.mail_id, // nt:id-only mail row, its subject is player text kept out of logs
                 cash = mail.cash,
                 item_source = mail.item.source(),
                 item_id = written.item.map(|i| i.item_id),
+                item_name = written
+                    .item
+                    .and_then(|i| book.item(i.type_id)),
                 "system gate-mail written, awaiting the caller's commit",
             );
             Ok(SystemMailSent {
@@ -403,19 +411,21 @@ fn log_refused(mail: &SystemMail, e: &SystemMailError) {
         (_, SystemMailError::ItemNoCarriedBag { type_id }) => Some(*type_id),
         _ => None,
     };
+    let book = cimmeria_names::book();
     tracing::warn!(
         target: "mail",
         event = "mail.system_refused",
         reason = e.reason(),
         sender_name = %mail.sender_name,
-        target_player_id = mail.recipient_player_id,
+        target_player_id = mail.recipient_player_id, // nt:id-only refusal fires before the recipient row is read, no name loaded
         cash = mail.cash,
         item_source = mail.item.source(),
         item_id,
-        type_id,
-        container_id,
-        owner_player_id = owner,
-        expected_owner_player_id = expected_owner,
+        item_type_id = type_id,
+        item_name = type_id.and_then(|t| book.item(t)),
+        container_id, // nt:id-only inventory container of the refused row, not a named row
+        owner_player_id = owner, // nt:id-only holder of the refused row, no name loaded on this path
+        expected_owner_player_id = expected_owner, // nt:id-only caller-named owner, no name loaded on this path
         error = %e,
         "system gate-mail refused; nothing written",
     );

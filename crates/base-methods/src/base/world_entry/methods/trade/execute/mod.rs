@@ -43,6 +43,7 @@ use std::collections::HashMap;
 use std::net::SocketAddr;
 use std::sync::{Arc, Mutex};
 
+use cimmeria_entity::cell_entity::PlayerIdentity;
 use cimmeria_entity::trade::{
     serialize_on_trade_results, ETRADERESULTS_CANCELLED, ETRADERESULTS_COMPLETED,
 };
@@ -54,6 +55,7 @@ use super::super::inventory::core::send_full_inventory_update;
 use super::super::vendor::helpers::send_cash_changed_to_client;
 use crate::base::feedback::{send_feedback_line, FeedbackCtx};
 use crate::base::helpers;
+use crate::base::session_identity::identity_for_entity;
 use crate::mercury::{build_player_entity_method_packet, method_idx};
 
 mod abort;
@@ -121,9 +123,13 @@ pub async fn handle_execute_trade(
     let pool = match db_pool {
         Some(p) => p.clone(),
         None => {
+            let p1_id = identity_for_entity(connected, entity_to_addr, entity_id);
+            let p2_id = identity_for_entity(connected, entity_to_addr, partner_entity_id);
             tracing::warn!(
                 entity_id,
+                entity_name = p1_id.player_name,
                 partner_entity_id,
+                partner_entity_name = p2_id.player_name,
                 "ExecuteTrade: no DB pool — sending Cancelled to both"
             );
             cimmeria_observability::counter!(
@@ -181,28 +187,34 @@ pub async fn handle_execute_trade(
         item_instance_ids: p2_item_instance_ids,
         cash: p2_cash,
     };
-    let p1_account = account_of(connected, entity_to_addr, p1.entity_id);
-    let p2_account = account_of(connected, entity_to_addr, p2.entity_id);
+    let p1_identity = identity_for_entity(connected, entity_to_addr, p1.entity_id);
+    let p2_identity = identity_for_entity(connected, entity_to_addr, p2.entity_id);
 
     match atomic_swap(&pool, &p1, &p2).await {
         Ok(committed) => {
             for m in &committed.moves {
-                let (account_id, target_account_id) = if m.from_player == p1.player_id {
-                    (p1_account, p2_account)
+                let (from, to) = if m.from_player == p1.player_id {
+                    (&p1_identity, &p2_identity)
                 } else {
-                    (p2_account, p1_account)
+                    (&p2_identity, &p1_identity)
                 };
-                log_item_moved(m, account_id, target_account_id);
+                log_item_moved(m, from, to);
             }
             tracing::info!(
                 target: "trade.atomic_swap",
                 event = "trade.completed",
                 entity_id = p1.entity_id,
+                entity_name = p1_identity.player_name,
                 player_id = p1.player_id,
-                account_id = p1_account,
+                player_name = p1_identity.player_name,
+                account_id = p1_identity.account_id,
+                account_name = p1_identity.account_name,
                 target_entity_id = p2.entity_id,
+                target_entity_name = p2_identity.player_name,
                 target_player_id = p2.player_id,
-                target_account_id = p2_account,
+                target_player_name = p2_identity.player_name,
+                target_account_id = p2_identity.account_id,
+                target_account_name = p2_identity.account_name,
                 p1_items = p1.item_instance_ids.len(),
                 p2_items = p2.item_instance_ids.len(),
                 p1_cash = p1.cash,
@@ -290,13 +302,19 @@ pub async fn handle_execute_trade(
                 target: "trade.atomic_swap",
                 event = "trade.refused",
                 entity_id = p1.entity_id,
+                entity_name = p1_identity.player_name,
                 player_id = p1.player_id,
-                account_id = p1_account,
+                player_name = p1_identity.player_name,
+                account_id = p1_identity.account_id,
+                account_name = p1_identity.account_name,
                 target_entity_id = p2.entity_id,
+                target_entity_name = p2_identity.player_name,
                 target_player_id = p2.player_id,
-                target_account_id = p2_account,
+                target_player_name = p2_identity.player_name,
+                target_account_id = p2_identity.account_id,
+                target_account_name = p2_identity.account_name,
                 reason = label,
-                container_id = refusal_container(&reason),
+                container_id = refusal_container(&reason), // nt:id-only inventory container index, 0 when none; no name table
                 detail = %reason,
                 result = REFUSAL_RESULT,
                 "ExecuteTrade: atomic swap failed — sending Cancelled to both"
@@ -343,37 +361,40 @@ pub(super) struct TradeCommitted {
     pub(super) moves: Vec<ItemMove>,
 }
 
+/// `items.name` of an item type, interned so the line borrows no book guard.
+fn item_name(type_id: i32) -> Option<&'static str> {
+    cimmeria_names::book()
+        .item(type_id)
+        .and_then(cimmeria_entity::name_intern::intern)
+}
+
 /// One INFO per item that changed hands, with the bag and slot on both
 /// ends.
-fn log_item_moved(m: &ItemMove, account_id: Option<u32>, target_account_id: Option<u32>) {
+fn log_item_moved(m: &ItemMove, from: &PlayerIdentity, to: &PlayerIdentity) {
     tracing::info!(
         target: "trade.atomic_swap",
         event = "trade.item_moved",
         entity_id = m.from_entity,
+        entity_name = from.player_name,
         player_id = m.from_player,
-        account_id,
+        player_name = from.player_name,
+        account_id = from.account_id,
+        account_name = from.account_name,
         target_entity_id = m.to_entity,
+        target_entity_name = to.player_name,
         target_player_id = m.to_player,
-        target_account_id,
+        target_player_name = to.player_name,
+        target_account_id = to.account_id,
+        target_account_name = to.account_name,
         item_id = m.item_id,
-        type_id = m.type_id,
+        item_type_id = m.type_id,
+        item_name = item_name(m.type_id),
         container_before = m.from_container,
         slot_before = m.from_slot,
         container_after = m.to_container,
         slot_after = m.to_slot,
         "trade: item changed hands"
     );
-}
-
-/// The account behind `entity_id`'s session, if it is still connected.
-fn account_of(
-    connected: &Arc<Mutex<HashMap<SocketAddr, ConnectedClientState>>>,
-    entity_to_addr: &Arc<Mutex<HashMap<u32, SocketAddr>>>,
-    entity_id: u32,
-) -> Option<u32> {
-    let addr = *entity_to_addr.lock().ok()?.get(&entity_id)?;
-    let account = connected.lock().ok()?.get(&addr).map(|c| c.account_id);
-    account
 }
 
 /// Send one side its refusal line. A miss is logged by
@@ -390,11 +411,14 @@ async fn send_refusal_line(
         .ok()
         .and_then(|m| m.get(&side.entity_id).copied());
     let Some(addr) = addr else {
+        let identity = identity_for_entity(ctx.connected, entity_to_addr, side.entity_id);
         tracing::warn!(
             target: "trade.atomic_swap",
             event = "trade.feedback_send_failed",
             entity_id = side.entity_id,
+            entity_name = identity.player_name,
             player_id = side.player_id,
+            player_name = identity.player_name,
             reason = "entity_to_addr_miss",
             refusal = reason,
             "trade refusal line not sent: no address for the entity"

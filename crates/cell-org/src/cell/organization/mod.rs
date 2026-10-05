@@ -84,6 +84,7 @@ pub async fn dispatch(
                 target: "org",
                 event = "org.cell_method_malformed",
                 entity_id,
+                entity_name = space_mgr.entity_label(entity_id),
                 method_index,
                 method_name = cimmeria_wire::names::player_cell_method(method_index),
                 reason = e.reason(),
@@ -99,22 +100,22 @@ pub async fn dispatch(
             request_id,
             response,
         } if route_invite_request(request_id) != Some(InviteRoute::Base) => {
-            forward::log_squad_route(entity_id, method_index, None);
+            forward::log_squad_route(entity_id, method_index, None, space_mgr);
             squad::respond(entity_id, request_id, response != 0, tx, space_mgr).await;
         }
         OrgCellCall::InviteResponse { .. } => {
             forward::to_base(entity_id, method_index, None, args, tx, space_mgr).await;
         }
         OrgCellCall::Leave { org_id } if !base(org_id) => {
-            forward::log_squad_route(entity_id, method_index, Some(org_id));
+            forward::log_squad_route(entity_id, method_index, Some(org_id), space_mgr);
             squad::leave(entity_id, org_id, tx, space_mgr).await;
         }
         OrgCellCall::BroadcastMinimapPing { org_id, location } if !base(org_id) => {
-            forward::log_squad_route(entity_id, method_index, Some(org_id));
+            forward::log_squad_route(entity_id, method_index, Some(org_id), space_mgr);
             squad::broadcast_minimap_ping(entity_id, org_id, location, tx, space_mgr).await;
         }
         OrgCellCall::SquadSetLootMode { loot_mode } => {
-            forward::log_squad_route(entity_id, method_index, None);
+            forward::log_squad_route(entity_id, method_index, None, space_mgr);
             squad::set_loot_mode(entity_id, loot_mode, tx, space_mgr).await;
         }
         OrgCellCall::StrikeTeamResponse { org_id, response }
@@ -127,7 +128,7 @@ pub async fn dispatch(
         other if other.org_id().is_some_and(base) => {
             forward::to_base(entity_id, method_index, other.org_id(), args, tx, space_mgr).await;
         }
-        other => forward::answer(entity_id, method_index, &other, tx).await,
+        other => forward::answer(entity_id, method_index, &other, tx, space_mgr).await,
     }
     true
 }

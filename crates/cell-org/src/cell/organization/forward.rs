@@ -43,6 +43,7 @@ pub(super) async fn answer(
     method_index: u16,
     call: &OrgCellCall,
     tx: &mpsc::Sender<CellToBaseMsg>,
+    space_mgr: &SpaceManager,
 ) {
     tracing::debug!(
         target: "org",
@@ -50,29 +51,36 @@ pub(super) async fn answer(
         route = "rejected",
         reason = "not_available",
         entity_id,
+        entity_name = space_mgr.entity_label(entity_id),
         method_index,
         method_name = cimmeria_wire::names::player_cell_method(method_index),
         method = call.method_name(),
-        org_id = call.org_id(),
+        org_id = call.org_id(), // nt:id-only organization names live on the base; the cell holds only the id
         text_units = text_units(call),
         "UNIMPLEMENTED: {}",
         call.method_name()
     );
     let instance_id = call.org_id().unwrap_or(0);
-    send_unavailable_feedback(entity_id, method_index, instance_id, tx).await;
+    send_unavailable_feedback(entity_id, method_index, instance_id, tx, space_mgr).await;
 }
 
 /// Log the router's `route = squad` decision (the squad handler logs the
 /// outcome).
-pub(super) fn log_squad_route(entity_id: u32, method_index: u16, org_id: Option<i32>) {
+pub(super) fn log_squad_route(
+    entity_id: u32,
+    method_index: u16,
+    org_id: Option<i32>,
+    space_mgr: &SpaceManager,
+) {
     tracing::debug!(
         target: "org",
         event = "org.forward",
         route = "squad",
         entity_id,
+        entity_name = space_mgr.entity_label(entity_id),
         method_index,
         method_name = cimmeria_wire::names::player_cell_method(method_index),
-        org_id,
+        org_id, // nt:id-only organization names live on the base; the cell holds only the id
         "organization cell method routed to the squad handler"
     );
 }
@@ -97,7 +105,15 @@ pub(super) async fn to_base(
 ) {
     let id = space_mgr.player_identity(entity_id);
     let Some(player_id) = id.player_id else {
-        not_a_player(entity_id, method_index, org_id, id.account_id, tx).await;
+        not_a_player(
+            entity_id,
+            method_index,
+            org_id,
+            id.account_id,
+            tx,
+            space_mgr,
+        )
+        .await;
         return;
     };
     let msg = CellToBaseMsg::Org(OrgCellToBase::ForwardCellCall {
@@ -114,6 +130,7 @@ pub(super) async fn to_base(
         id.account_id,
         player_id,
         tx,
+        space_mgr,
     )
     .await;
 }
@@ -136,6 +153,7 @@ pub(super) async fn transfer_cash_to_base(
             Some(org_id),
             id.account_id,
             tx,
+            space_mgr,
         )
         .await;
         return;
@@ -154,6 +172,7 @@ pub(super) async fn transfer_cash_to_base(
         id.account_id,
         player_id,
         tx,
+        space_mgr,
     )
     .await;
 }
@@ -183,14 +202,25 @@ pub(super) async fn zero_cash(
         target: "bank",
         event = "org_cash_rejected",
         account_id = id.account_id,
+        account_name = id.account_name,
         player_id = id.player_id,
+        player_name = id.player_name,
         entity_id,
-        org_id,
+        entity_name = space_mgr.entity_label(entity_id),
+        org_id, // nt:id-only organization names live on the base; the cell holds only the id
         amount = 0,
         reason = "zero_amount",
         "org_cash_rejected: a transfer of zero naquadah -- nothing moved, the player sees a line"
     );
-    send_error_and_line(entity_id, super::TRANSFER_CASH, org_id, ZERO_CASH_TEXT, tx).await;
+    send_error_and_line(
+        entity_id,
+        super::TRANSFER_CASH,
+        org_id,
+        ZERO_CASH_TEXT,
+        tx,
+        space_mgr,
+    )
+    .await;
 }
 
 /// The refusal for a forward from an entity with no character.
@@ -200,6 +230,7 @@ async fn not_a_player(
     org_id: Option<i32>,
     account_id: Option<u32>,
     tx: &mpsc::Sender<CellToBaseMsg>,
+    space_mgr: &SpaceManager,
 ) {
     tracing::debug!(
         target: "org",
@@ -207,13 +238,15 @@ async fn not_a_player(
         route = "rejected",
         reason = "not_a_player",
         account_id,
+        account_name = space_mgr.player_identity(entity_id).account_name,
         entity_id,
+        entity_name = space_mgr.entity_label(entity_id),
         method_index,
         method_name = cimmeria_wire::names::player_cell_method(method_index),
-        org_id,
+        org_id, // nt:id-only organization names live on the base; the cell holds only the id
         "organization call from an entity with no character"
     );
-    send_unavailable_feedback(entity_id, method_index, org_id.unwrap_or(0), tx).await;
+    send_unavailable_feedback(entity_id, method_index, org_id.unwrap_or(0), tx, space_mgr).await;
 }
 
 async fn send_to_base(
@@ -224,6 +257,7 @@ async fn send_to_base(
     account_id: Option<u32>,
     player_id: i32,
     tx: &mpsc::Sender<CellToBaseMsg>,
+    space_mgr: &SpaceManager,
 ) {
     match tx.send(msg).await {
         Ok(()) => tracing::debug!(
@@ -231,22 +265,28 @@ async fn send_to_base(
             event = "org.forward",
             route = "base",
             account_id,
+            account_name = space_mgr.player_identity(entity_id).account_name,
             player_id,
+            player_name = space_mgr.player_identity(entity_id).player_name,
             entity_id,
+            entity_name = space_mgr.entity_label(entity_id),
             method_index,
             method_name = cimmeria_wire::names::player_cell_method(method_index),
-            org_id,
+            org_id, // nt:id-only organization names live on the base; the cell holds only the id
             "organization call forwarded to the base"
         ),
         Err(_) => tracing::warn!(
             target: "org",
             event = "org.forward_failed",
             account_id,
+            account_name = space_mgr.player_identity(entity_id).account_name,
             player_id,
+            player_name = space_mgr.player_identity(entity_id).player_name,
             entity_id,
+            entity_name = space_mgr.entity_label(entity_id),
             method_index,
             method_name = cimmeria_wire::names::player_cell_method(method_index),
-            org_id,
+            org_id, // nt:id-only organization names live on the base; the cell holds only the id
             reason = "cell_to_base_closed",
             "organization call could not be forwarded to the base"
         ),
@@ -281,14 +321,25 @@ pub(super) async fn unsolicited(
         reason = "unsolicited",
         route = "rejected",
         account_id = id.account_id,
+        account_name = id.account_name,
         player_id = id.player_id,
+        player_name = id.player_name,
         entity_id,
-        org_id,
+        entity_name = space_mgr.entity_label(entity_id),
+        org_id, // nt:id-only organization names live on the base; the cell holds only the id
         response,
         "organization response refused: nothing asked for it"
     );
     count_org_action(action, "rejected", "unsolicited");
-    send_error_and_line(entity_id, method_index, org_id, UNSOLICITED_TEXT, tx).await;
+    send_error_and_line(
+        entity_id,
+        method_index,
+        org_id,
+        UNSOLICITED_TEXT,
+        tx,
+        space_mgr,
+    )
+    .await;
 }
 
 /// The line an unsolicited strike-team or PvP-leave response gets.
@@ -305,6 +356,7 @@ pub(crate) async fn send_unavailable_feedback(
     method_index: u16,
     instance_id: i32,
     tx: &mpsc::Sender<CellToBaseMsg>,
+    space_mgr: &SpaceManager,
 ) {
     send_error_and_line(
         entity_id,
@@ -312,6 +364,7 @@ pub(crate) async fn send_unavailable_feedback(
         instance_id,
         ORG_NOT_AVAILABLE_TEXT,
         tx,
+        space_mgr,
     )
     .await;
 }
@@ -324,6 +377,7 @@ pub(super) async fn send_error_and_line(
     instance_id: i32,
     text: &str,
     tx: &mpsc::Sender<CellToBaseMsg>,
+    space_mgr: &SpaceManager,
 ) {
     let msgs = [
         CellToBaseMsg::EntityMethodCall {
@@ -343,6 +397,7 @@ pub(super) async fn send_error_and_line(
                 target: "org",
                 event = "org.feedback_send_failed",
                 entity_id,
+                entity_name = space_mgr.entity_label(entity_id),
                 method_index,
                 method_name = cimmeria_wire::names::player_client_method(method_index),
                 reason = "cell_to_base_closed",

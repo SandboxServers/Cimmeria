@@ -285,7 +285,7 @@ async fn live_db_gm_mail_refuses_cod_without_a_price() {
         )
         .expect("mail.gm_rejected reason=cod_price_invalid");
     assert!(row.has_field("cod", "0"));
-    assert!(row.has_field("type_id", &type_id.to_string()));
+    assert!(row.has_field("item_type_id", &type_id.to_string()));
 
     cleanup(&pool, acct).await;
 }

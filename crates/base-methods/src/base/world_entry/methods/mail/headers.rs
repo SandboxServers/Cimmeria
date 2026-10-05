@@ -59,15 +59,21 @@ struct Reader<'a> {
     player_id: i32,
     entity_id: Option<u32>,
     account_id: Option<u32>,
+    /// The reader's names (Rule 6); `None` when no session is at hand.
+    player_name: Option<&'static str>,
+    account_name: Option<&'static str>,
 }
 
 impl<'a> Reader<'a> {
     fn caller(ctx: &MailCtx<'a>) -> Self {
+        let who = ctx.identity();
         Self {
             pool: ctx.pool,
             player_id: ctx.player_id,
             entity_id: Some(ctx.entity_id),
             account_id: ctx.account_id(),
+            player_name: who.player_name,
+            account_name: who.account_name,
         }
     }
 }
@@ -88,6 +94,8 @@ pub(super) async fn read_one(
         player_id,
         entity_id: None,
         account_id: None,
+        player_name: None,
+        account_name: None,
     };
     read_headers(reader, Select::One { mail_id }).await
 }
@@ -137,10 +145,13 @@ fn to_wire(reader: Reader<'_>, rows: &[MailRow], now: i32) -> Headers {
                 tracing::warn!(
                     target: "mail",
                     entity_id = reader.entity_id,
+                    entity_name = reader.player_name,
                     player_id = reader.player_id,
+                    player_name = reader.player_name,
                     account_id = reader.account_id,
+                    account_name = reader.account_name,
                     reason = "cash_out_of_i32_range",
-                    mail_id = r.mail_id,
+                    mail_id = r.mail_id, // nt:id-only mail row, its subject is player text kept out of logs
                     db_cash = r.cash,
                     "Mail header cash truncated to i32 range"
                 );
@@ -192,11 +203,15 @@ fn to_wire(reader: Reader<'_>, rows: &[MailRow], now: i32) -> Headers {
 /// instead of lingering until relog.
 pub(super) async fn request_headers(ctx: &MailCtx<'_>, b_archive: u8) {
     let (entity_id, player_id, account_id) = (ctx.entity_id, ctx.player_id, ctx.account_id());
+    let who = ctx.identity();
     tracing::debug!(
         target: "mail",
         entity_id,
+        entity_name = who.player_name,
         player_id,
+        player_name = who.player_name,
         account_id,
+        account_name = who.account_name,
         b_archive,
         "Mail: querying headers"
     );
@@ -208,8 +223,11 @@ pub(super) async fn request_headers(ctx: &MailCtx<'_>, b_archive: u8) {
                 tracing::error!(
                     target: "mail",
                     entity_id,
+                    entity_name = who.player_name,
                     player_id,
+                    player_name = who.player_name,
                     account_id,
+                    account_name = who.account_name,
                     reason = "db_error",
                     error = %e,
                     "Mail: header query failed"
@@ -222,8 +240,11 @@ pub(super) async fn request_headers(ctx: &MailCtx<'_>, b_archive: u8) {
         target: "mail",
         event = "mail.headers_sent",
         entity_id,
+        entity_name = who.player_name,
         player_id,
+        player_name = who.player_name,
         account_id,
+        account_name = who.account_name,
         b_archive,
         count = headers.len(),
         attachments = attachments.len(),
@@ -254,12 +275,16 @@ pub(super) async fn refresh_one(ctx: &MailCtx<'_>, mail_id: i32) {
         match read_headers(Reader::caller(ctx), Select::One { mail_id }).await {
             Ok(read) => read,
             Err(e) => {
+                let who = ctx.identity();
                 tracing::error!(
                     target: "mail",
                     entity_id = ctx.entity_id,
+                    entity_name = who.player_name,
                     player_id = ctx.player_id,
+                    player_name = who.player_name,
                     account_id = ctx.account_id(),
-                    mail_id,
+                    account_name = who.account_name,
+                    mail_id, // nt:id-only mail row, its subject is player text kept out of logs
                     reason = "db_error",
                     error = %e,
                     "Mail: header refresh query failed"
@@ -308,6 +333,8 @@ mod tests {
             player_id: 1,
             entity_id: None,
             account_id: None,
+            player_name: None,
+            account_name: None,
         };
         let (headers, _) = to_wire(reader, &[row(sent_time)], NOW);
         headers[0].sent_time
