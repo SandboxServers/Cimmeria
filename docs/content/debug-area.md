@@ -58,8 +58,8 @@ in their own seed files:
   (chatter group 1), inside DA-09's block (templates 1400-1409, spawns
   13850-13869). See [System Lords' summit](#system-lords-summit).
 - DA-10 (Z10, the Visual NPC Lineup): `entity_templates_debug_area_lineup.sql`
-  (templates 1410-1571) and `spawnlist_debug_area_lineup.sql` (spawns
-  13870-14031), inside DA-10's block (templates 1410-1599, spawns
+  (templates 1410-1570) and `spawnlist_debug_area_lineup.sql` (spawns
+  13870-14030), inside DA-10's block (templates 1410-1599, spawns
   13870-14099). See [Visual NPC Lineup](#visual-npc-lineup).
 
 Heading 0 faces +Z and -1.5708 faces -X.
@@ -703,9 +703,9 @@ DA-06 checked these on 2026-10-05; each outcome is in the [ledger](../analysis/d
   animation on creature and staff bodies; 62 have blank nameplates.
 - DA-03: how the client colours a passive (NEUTRAL-override) faction-10 NPC has
   not been seen on this map. The largest gallery bodies may overlap at 8 m.
-- DA-10: the Visual NPC Lineup's 162 actors are within the 150 m AoI of the
+- DA-10: the Visual NPC Lineup's 161 actors are within the 150 m AoI of the
   Z1 arrival, the services plaza, the summit and the dummies range, so every
-  arrival in the compound now creates 162 more NPCs in the client.
+  arrival in the compound now creates 161 more NPCs in the client.
   How long that takes, and the frame rate with all of them in view, has not
   been measured. The two body sets with no reference mesh (`BS_RaJaff`,
   `HM_BodySet`) are expected to draw nothing or a placeholder, and the
@@ -1300,24 +1300,24 @@ and `live_db_ambient_chatter` in `cimmeria-cell-catalog`.
 
 ## Visual NPC Lineup
 
-Packet DA-10, zone Z10. 162 passive, friendly display actors in rows in the
+Packet DA-10, zone Z10. 161 passive, friendly display actors in rows in the
 east wing of the south compound: one for every distinct character look in
-`entity_templates` (156), plus one for each of the six character body sets
+`entity_templates` (155), plus one for each of the six character body sets
 no template uses. It is a catalogue of every visual appearance the seed can
 put on screen, the named cast and the hostile creatures included. It tests
 NPC appearance only: no actor fights, talks, trades or moves.
 
-**Appearances, not templates.** The 162 entries cover every distinct visual
-appearance, not every NPC template. 225 character templates share 156
+**Appearances, not templates.** The 161 entries cover every distinct visual
+appearance, not every NPC template. 225 character templates share 155
 looks; each actor is cloned from the lowest template id with its look and
 named after it, and the [spawn tables](#visual-npc-lineup-spawn-tables)
 list every template that shares each look, so any template can be traced
 to its actor. The coverage guard checks looks, not templates.
 
 **What a look is.** A template's body set, its component set (in any order),
-its primary and secondary colours, its skin tint and its static mesh as
-stored. NULL and an empty static mesh count as different looks, so the
-Nerus kit appears twice (templates 53 and 166; they draw alike). Props are
+its primary and secondary colours, its skin tint and its static mesh, with
+NULL and an empty static mesh counted as the same (see
+[Coverage delta](#coverage-delta-162--161)). Props are
 not characters: crates, terminals, corpses, consoles, deployables and mines
 (`GLB_Components.*` and `WP-Human.*` body sets) belong to a future **Z11
 Props / Interactables Gallery**, planned and not built. Every combination
@@ -1344,15 +1344,15 @@ Humanoids stand 2.25 m apart, creatures and machines 4 m, the large bodies
 |---|---:|---|---|---|
 | N1 | -888 | 305-318.5 | South | Humans, male (7) |
 | N2 | -893 | 323-345.5 | South | Humans, male (11) |
-| N3 | -902 | 306-353.25 | North | Humans, male (16), humans, female (6) |
-| N4 | -909 | 312-332.25 | South | Humans, female (3), Jaffa, male (7) |
+| N3 | -902 | 306-353.25 | North | Humans, male (15), humans, female (7) |
+| N4 | -909 | 312-332.25 | South | Humans, female (2), Jaffa, male (8) |
 | N5 | -914 | 302-335.75 | North | Jaffa, male (16) |
 | S1 | -937 | 306-337.5 | South | Jaffa, male (15) |
-| S2 | -942 | 316-338.5 | North | Jaffa, male (6), Jaffa, female (5) |
+| S2 | -942 | 316-338.5 | North | Jaffa, male (5), Jaffa, female (6) |
 | S3 | -947 | 329-351.5 | South | Jaffa, female (11) |
 | S4 | -952 | 315-335.25 | North | Jaffa, female (10) |
-| S5 | -956 | 307-340.5 | South | Jaffa, female (4), Goa'uld, male (10) |
-| S6 | -961 | 326-364.25 | North | Goa'uld, male (4), Goa'uld, female (6), Asgard (3), children (5) |
+| S5 | -956 | 307-340.5 | South | Jaffa, female (3), Goa'uld, male (11) |
+| S6 | -961 | 326-362 | North | Goa'uld, male (3), Goa'uld, female (6), Asgard (3), children (5) |
 | E1 | -909 | 348-382 | South | Creatures: rat, ScavDog, Lenny, Lenny Baby, Horden, Carnosaur, Rhinolion |
 | E3 | -937 | 362-382 | South | Twilla Tree, Ancient Drone, Straegis Fighter, Straegis Beacon, BattleWalker |
 | E4 | -942 | 347-359 | North | Android, Drone Tank, Prisoner retrieval unit, Malfunctioning Drone |
@@ -1379,7 +1379,12 @@ full mapping either way.
 
 **Display copies only.** An actor copies its source's body set,
 components, colours, skin tint, static mesh, level and `name_id`. Nothing
-else: no event set, ability set, ammo, loot, vendor lists, trainer list,
+else. It has no event set: the sources' event set 570 is only the plain
+"Players default event set" (the default animation sequences, no scripted
+hooks), and the actors are seeded without it. If the client shows an actor
+that does not idle or animate without it, 570 goes back on every actor;
+that is the one event set the lineup may carry. Nor does an actor carry an
+ability set, ammo, loot, vendor lists, trainer list,
 dialog speaker, interaction type or sets, weapon, patrol, wander, follow,
 speed, leash, aggro or assist radius, cover, respawn or training-dummy
 mark, and no content chain, mission step or dialog names it. Every actor
@@ -1417,7 +1422,7 @@ covers every body set. Neither has an eye height, so they look from the
 | Step | Expect | Fail |
 |---|---|---|
 | `.gotolocation DebugArea 300 6.8 -897` | Rows of standing actors east of you, the first rows humans | An empty wing; actors floating or sunk into the floor |
-| Walk the walkways in the order above | Every actor stands on the floor facing the walkway, each one different (the two Nerus actors excepted) | Two other identical actors; one facing a wall; one inside a wall |
+| Walk the walkways in the order above | Every actor stands on the floor facing the walkway, each one different, idling like its source | Two identical actors; one facing a wall; one inside a wall; one frozen in a T-pose or not animating |
 | Read the nameplates | Each reads `<name> #<id> <body set>`, matching the spawn tables | Blank, the source's bare name (the literal label did not take), or cut off (note where) |
 | Walk among them with `.aggro on`; shoot one | Nothing engages; the shot is refused (the target is not attackable); right-clicking starts nothing | An attack lands, an actor turns on you, or an error shows |
 | The six template-less actors (tags `DebugArea_VisualLineup_NoTemplate_*`) | The Android, the Drone Tank, Lenny Baby and the degenerated Asgard render | Report what the Ra Jaffa body set and `HM_BodySet` show: expected blank |
@@ -1427,14 +1432,14 @@ covers every body set. Neither has an eye height, so they look from the
 `entity_templates_debug_area_lineup.sql` with the next free id in
 1410-1599, set its look, level, `name_id` and nameplate from the new
 template, add a spawn in 13870-14099 on a free spot, and raise `ACTORS` in
-both guards. The rows are full; the east end of S6 (x 366-374) and the
-floor south of it (z -965, x 344-368) take about 14 more.
+both guards. The rows are full; the east end of S6 (x 364-374) and the
+floor south of it (z -965, x 344-368) take about 15 more.
 `debug_area::lineup` then checks the spot. A template that shares an
 existing look needs nothing: its look already has an actor (add it to that
 actor's row of the spawn tables).
 
-Seed: `entity_templates_debug_area_lineup.sql` (templates 1410-1571) and
-`spawnlist_debug_area_lineup.sql` (spawns 13870-14031), inside DA-10's
+Seed: `entity_templates_debug_area_lineup.sql` (templates 1410-1570) and
+`spawnlist_debug_area_lineup.sql` (spawns 13870-14030), inside DA-10's
 block (templates 1410-1599, spawns 13870-14099). Guards:
 `service::tests::npc_ai::debug_area::lineup` in `cimmeria-cell` (every
 actor stands on the navmesh and the occluder's terrain; a tester can walk
@@ -1444,12 +1449,39 @@ scan never engages a tester in front of any of them; no player or NPC
 single-target or area ability can hit one, and no hostile can aggro a
 tester beside one) and `live_db_debug_area_lineup` in
 `cimmeria-cell-catalog` (every look has one actor and every template-less
-body set one dressed actor, 162 in all, each with one spawn; every
+body set one dressed actor, 161 in all, each with one spawn; every
 behaviour column is empty and nothing in `resources` names an actor; every
 nameplate and tag names its source and body set; every row loads friendly
 and stationary). The wire test
 `a_display_name_follows_the_name_id_as_being_name_update` in
 `cimmeria-wire` pins the `onBeingNameUpdate` bytes.
+
+### Coverage delta: 162 → 161
+
+The lineup was first planned at 162 actors (156 looks plus 6 body sets) and
+was cut to 161, with the owner's approval, because two of those looks draw
+the same. Compared column for column, the character templates hold 156
+distinct looks. Two of them differ only in the static mesh:
+
+| Template | Name | Body set | Components, colours, skin tint | Static mesh |
+|---:|---|---|---|---|
+| 53 | Nerus | `BS_HumanMale.BS_HumanMale` | Nerus's NPC kit, the same set in the same order; colours 0, 0; tint 0 | NULL |
+| 166 | Sandbox Greeting NPC | `BS_HumanMale.BS_HumanMale` | identical to 53 | `''` (empty) |
+
+The client treats NULL and an empty static mesh alike (no static mesh: it
+builds the body from the body set and components), so the two draw the
+same. Debug Hub template 305 (Black Market Auctioneer) and DA-09's 1405
+(Debug Area - Nerus) carry the same look too. With static mesh NULL taken
+as `''`, 156 looks become 155; sorting the components on its own changes
+nothing. The actor is cloned from, and named after, template 53
+(`Nerus #53 BS_HumanMale`, tag `DebugArea_VisualLineup_53`), and the spawn
+table lists 53, 166, 305 and 1405 as its sources.
+
+The coverage guard (`live_db_debug_area_lineup`) uses the same rule: static
+mesh NULL equals `''`, and components are compared as a sorted set. Deleting
+the Nerus actor fails it with `templates whose look has no lineup actor
+(...): [(53, "Nerus"), (166, "Sandbox Greeting NPC"), (305, "Debug Hub -
+Black Market Auctioneer"), (1405, "Debug Area - Nerus")]`.
 
 ### Visual NPC Lineup spawn tables
 
@@ -1457,7 +1489,7 @@ and stationary). The wire test
 the actor stands for; the first is the one it was cloned from and is named
 after.
 
-#### Humans, male (34)
+#### Humans, male (33)
 
 | Spawn | Template | Nameplate | Row (x, z) | Templates with this look |
 |---:|---:|---|---|---|
@@ -1472,7 +1504,7 @@ after.
 | 13878 | 1418 | Mr. Woolsey #47 BS_HumanMale | N2 (325.25, -893) | 47 |
 | 13879 | 1419 | Dr. Daniel Jackson #51 BS_HumanMale | N2 (327.5, -893) | 51 |
 | 13880 | 1420 | Placeholder Gen. Jack O #52 BS_HumanMale | N2 (329.75, -893) | 52 |
-| 13881 | 1421 | Nerus #53 BS_HumanMale | N2 (332, -893) | 53, 305, 1405 |
+| 13881 | 1421 | Nerus #53 BS_HumanMale | N2 (332, -893) | 53, 166, 305, 1405 |
 | 13882 | 1422 | Warrick #55 BS_HumanMale | N2 (334.25, -893) | 55 |
 | 13883 | 1423 | Goldam #56 BS_HumanMale | N2 (336.5, -893) | 56 |
 | 13884 | 1424 | Major Davis #57 BS_HumanMale | N2 (338.75, -893) | 57 |
@@ -1482,189 +1514,188 @@ after.
 | 13888 | 1428 | HumanMale - Not For Us #150 BS_HumanMale | N3 (306, -902) | 150 |
 | 13889 | 1429 | Blue Faction Scientist #151 BS_HumanMale | N3 (308.25, -902) | 151 |
 | 13890 | 1430 | Lucian Slum Dweller #152 BS_HumanMale | N3 (310.5, -902) | 152, 1332, 1341 |
-| 13891 | 1431 | Nerus #166 BS_HumanMale | N3 (312.75, -902) | 166 |
-| 13892 | 1432 | Dr. Zuritska #168 BS_HumanMale | N3 (315, -902) | 168 |
-| 13893 | 1433 | NID Guard #172 BS_HumanMale | N3 (317.25, -902) | 172, 371, 1314 |
-| 13894 | 1434 | Op-CORE Soldier #174 BS_HumanMale | N3 (319.5, -902) | 174, 187, 1331, 1370 |
-| 13895 | 1435 | Op-CORE Soldier #175 BS_HumanMale | N3 (321.75, -902) | 175 |
-| 13896 | 1436 | Op-CORE Soldier #176 BS_HumanMale | N3 (324, -902) | 176 |
-| 13897 | 1437 | Sgt. Stanton #178 BS_HumanMale | N3 (326.25, -902) | 178, 188 |
-| 13898 | 1438 | Ogilvie #179 BS_HumanMale | N3 (328.5, -902) | 179 |
-| 13899 | 1439 | Opheltes #215 BS_HumanMale | N3 (330.75, -902) | 215, 218, 220 |
-| 13900 | 1440 | Basic Equipment Quarte #300 BS_HumanMale | N3 (333, -902) | 300 |
-| 13901 | 1441 | Airman Lance #302 BS_HumanMale | N3 (335.25, -902) | 302, 330 |
-| 13902 | 1442 | Common Materials Compo #314 BS_HumanMale | N3 (337.5, -902) | 314, 372 |
-| 13903 | 1443 | (no template) HM_BodySet | N3 (339.75, -902) | none |
+| 13891 | 1431 | Dr. Zuritska #168 BS_HumanMale | N3 (312.75, -902) | 168 |
+| 13892 | 1432 | NID Guard #172 BS_HumanMale | N3 (315, -902) | 172, 371, 1314 |
+| 13893 | 1433 | Op-CORE Soldier #174 BS_HumanMale | N3 (317.25, -902) | 174, 187, 1331, 1370 |
+| 13894 | 1434 | Op-CORE Soldier #175 BS_HumanMale | N3 (319.5, -902) | 175 |
+| 13895 | 1435 | Op-CORE Soldier #176 BS_HumanMale | N3 (321.75, -902) | 176 |
+| 13896 | 1436 | Sgt. Stanton #178 BS_HumanMale | N3 (324, -902) | 178, 188 |
+| 13897 | 1437 | Ogilvie #179 BS_HumanMale | N3 (326.25, -902) | 179 |
+| 13898 | 1438 | Opheltes #215 BS_HumanMale | N3 (328.5, -902) | 215, 218, 220 |
+| 13899 | 1439 | Basic Equipment Quarte #300 BS_HumanMale | N3 (330.75, -902) | 300 |
+| 13900 | 1440 | Airman Lance #302 BS_HumanMale | N3 (333, -902) | 302, 330 |
+| 13901 | 1441 | Common Materials Compo #314 BS_HumanMale | N3 (335.25, -902) | 314, 372 |
+| 13902 | 1442 | (no template) HM_BodySet | N3 (337.5, -902) | none |
 
 #### Humans, female (9)
 
 | Spawn | Template | Nameplate | Row (x, z) | Templates with this look |
 |---:|---:|---|---|---|
-| 13904 | 1444 | Samantha Carter #33 BS_HumanFemale | N3 (342, -902) | 33, 1301 |
-| 13905 | 1445 | Capt. Copplemann #48 BS_HumanFemale | N3 (344.25, -902) | 48 |
-| 13906 | 1446 | Oma Desala #49 BS_HumanFemale | N3 (346.5, -902) | 49 |
-| 13907 | 1447 | Vala Mal Doran #50 BS_HumanFemale | N3 (348.75, -902) | 50 |
-| 13908 | 1448 | HumanFemale Template #153 BS_HumanFemale | N3 (351, -902) | 153 |
-| 13909 | 1449 | Warden Muelbach #170 BS_HumanFemale | N3 (353.25, -902) | 170 |
-| 13910 | 1450 | Castle Medic #177 BS_HumanFemale | N4 (312, -909) | 177 |
-| 13911 | 1451 | Storage Lotaur #219 BS_HumanFemale | N4 (314.25, -909) | 219, 1374 |
-| 13912 | 1452 | Storage Officer #370 BS_HumanFemale | N4 (316.5, -909) | 370 |
+| 13903 | 1443 | Samantha Carter #33 BS_HumanFemale | N3 (339.75, -902) | 33, 1301 |
+| 13904 | 1444 | Capt. Copplemann #48 BS_HumanFemale | N3 (342, -902) | 48 |
+| 13905 | 1445 | Oma Desala #49 BS_HumanFemale | N3 (344.25, -902) | 49 |
+| 13906 | 1446 | Vala Mal Doran #50 BS_HumanFemale | N3 (346.5, -902) | 50 |
+| 13907 | 1447 | HumanFemale Template #153 BS_HumanFemale | N3 (348.75, -902) | 153 |
+| 13908 | 1448 | Warden Muelbach #170 BS_HumanFemale | N3 (351, -902) | 170 |
+| 13909 | 1449 | Castle Medic #177 BS_HumanFemale | N3 (353.25, -902) | 177 |
+| 13910 | 1450 | Storage Lotaur #219 BS_HumanFemale | N4 (312, -909) | 219, 1374 |
+| 13911 | 1451 | Storage Officer #370 BS_HumanFemale | N4 (314.25, -909) | 370 |
 
 #### Jaffa, male (44)
 
 | Spawn | Template | Nameplate | Row (x, z) | Templates with this look |
 |---:|---:|---|---|---|
-| 13913 | 1453 | Teal'c #30 BS_JaffaMale | N4 (318.75, -909) | 30 |
-| 13914 | 1454 | Jaffa #34 BS_JaffaMale | N4 (321, -909) | 34, 35 |
-| 13915 | 1455 | Bra'tac #59 BS_JaffaMale | N4 (323.25, -909) | 59 |
-| 13916 | 1456 | Bull Jaffa #82 BS_JaffaMale | N4 (325.5, -909) | 82 |
-| 13917 | 1457 | Asian Jaffa #83 BS_JaffaMale | N4 (327.75, -909) | 83 |
-| 13918 | 1458 | Cat Jaffa #84 BS_JaffaMale | N4 (330, -909) | 84 |
-| 13919 | 1459 | Cobra Jaffa #85 BS_JaffaMale | N4 (332.25, -909) | 85 |
-| 13920 | 1460 | Croc Jaffa #86 BS_JaffaMale | N5 (302, -914) | 86 |
-| 13921 | 1461 | Demon Jaffa #87 BS_JaffaMale | N5 (304.25, -914) | 87 |
-| 13922 | 1462 | Dragon Jaffa #88 BS_JaffaMale | N5 (306.5, -914) | 88 |
-| 13923 | 1463 | Eagle Jaffa #89 BS_JaffaMale | N5 (308.75, -914) | 89 |
-| 13924 | 1464 | Falcon Jaffa #90 BS_JaffaMale | N5 (311, -914) | 90 |
-| 13925 | 1465 | Horse Jaffa #91 BS_JaffaMale | N5 (313.25, -914) | 91 |
-| 13926 | 1466 | Hyena Jaffa #92 BS_JaffaMale | N5 (315.5, -914) | 92 |
-| 13927 | 1467 | Jackal Jaffa #93 BS_JaffaMale | N5 (317.75, -914) | 93, 1343 |
-| 13928 | 1468 | Mayan Jaffa #94 BS_JaffaMale | N5 (320, -914) | 94 |
-| 13929 | 1469 | Morrigan Jaffa #95 BS_JaffaMale | N5 (322.25, -914) | 95 |
-| 13930 | 1470 | Naga Jaffa #96 BS_JaffaMale | N5 (324.5, -914) | 96 |
-| 13931 | 1471 | Praxis Jaffa #97 BS_JaffaMale | N5 (326.75, -914) | 97, 159, 352 |
-| 13932 | 1472 | Praxis Jaffa 2 #98 BS_JaffaMale | N5 (329, -914) | 98 |
-| 13933 | 1473 | Ra Jaffa #99 BS_JaffaMale | N5 (331.25, -914) | 99, 144 |
-| 13934 | 1474 | Standard Jaffa #100 BS_JaffaMale | N5 (333.5, -914) | 100, 1333, 1340 |
-| 13935 | 1475 | Savarog Jaffa #101 BS_JaffaMale | N5 (335.75, -914) | 101, 1342 |
-| 13936 | 1476 | Tiki Jaffa #102 BS_JaffaMale | S1 (306, -937) | 102 |
-| 13937 | 1477 | Unas_1 #105 BS_JaffaMale | S1 (308.25, -937) | 105 |
-| 13938 | 1478 | Unas_2 #106 BS_JaffaMale | S1 (310.5, -937) | 106 |
-| 13939 | 1479 | Unas_3 #107 BS_JaffaMale | S1 (312.75, -937) | 107 |
-| 13940 | 1480 | Unas_4 #108 BS_JaffaMale | S1 (315, -937) | 108 |
-| 13941 | 1481 | Unas_5 #109 BS_JaffaMale | S1 (317.25, -937) | 109 |
-| 13942 | 1482 | Unas_6 #110 BS_JaffaMale | S1 (319.5, -937) | 110 |
-| 13943 | 1483 | Viking Jaffa #111 BS_JaffaMale | S1 (321.75, -937) | 111 |
-| 13944 | 1484 | Ra Jaffa 2 #142 BS_JaffaMale | S1 (324, -937) | 142 |
-| 13945 | 1485 | Ra's Officer #143 BS_JaffaMale | S1 (326.25, -937) | 143 |
-| 13946 | 1486 | JaffaMale Template - D #155 BS_JaffaMale | S1 (328.5, -937) | 155 |
-| 13947 | 1487 | Praxis Jaffa Guard #160 BS_JaffaMale | S1 (330.75, -937) | 160, 189, 351 |
-| 13948 | 1488 | Petbe #163 BS_JaffaMale | S1 (333, -937) | 163 |
-| 13949 | 1489 | Mala'c #200 BS_JaffaMale | S1 (335.25, -937) | 200, 201, 209 |
-| 13950 | 1490 | Bra'hin #202 BS_JaffaMale | S1 (337.5, -937) | 202 |
-| 13951 | 1491 | Ra's Jaffa #203 BS_JaffaMale | S2 (316, -942) | 203, 204, 205, 1406 |
-| 13952 | 1492 | Angry Jaffa #206 BS_JaffaMale | S2 (318.25, -942) | 206, 207, 208 |
-| 13953 | 1493 | Petbe #221 BS_JaffaMale | S2 (320.5, -942) | 221 |
-| 13954 | 1494 | Jaffa #1310 BS_JaffaMale | S2 (322.75, -942) | 1310, 1311, 1312, 1313 |
-| 13955 | 1495 | Praxis Jaffa Guard #1371 BS_JaffaMale | S2 (325, -942) | 1371 |
-| 13956 | 1496 | (no template) BS_RaJaff | S2 (327.25, -942) | none |
+| 13912 | 1452 | Teal'c #30 BS_JaffaMale | N4 (316.5, -909) | 30 |
+| 13913 | 1453 | Jaffa #34 BS_JaffaMale | N4 (318.75, -909) | 34, 35 |
+| 13914 | 1454 | Bra'tac #59 BS_JaffaMale | N4 (321, -909) | 59 |
+| 13915 | 1455 | Bull Jaffa #82 BS_JaffaMale | N4 (323.25, -909) | 82 |
+| 13916 | 1456 | Asian Jaffa #83 BS_JaffaMale | N4 (325.5, -909) | 83 |
+| 13917 | 1457 | Cat Jaffa #84 BS_JaffaMale | N4 (327.75, -909) | 84 |
+| 13918 | 1458 | Cobra Jaffa #85 BS_JaffaMale | N4 (330, -909) | 85 |
+| 13919 | 1459 | Croc Jaffa #86 BS_JaffaMale | N4 (332.25, -909) | 86 |
+| 13920 | 1460 | Demon Jaffa #87 BS_JaffaMale | N5 (302, -914) | 87 |
+| 13921 | 1461 | Dragon Jaffa #88 BS_JaffaMale | N5 (304.25, -914) | 88 |
+| 13922 | 1462 | Eagle Jaffa #89 BS_JaffaMale | N5 (306.5, -914) | 89 |
+| 13923 | 1463 | Falcon Jaffa #90 BS_JaffaMale | N5 (308.75, -914) | 90 |
+| 13924 | 1464 | Horse Jaffa #91 BS_JaffaMale | N5 (311, -914) | 91 |
+| 13925 | 1465 | Hyena Jaffa #92 BS_JaffaMale | N5 (313.25, -914) | 92 |
+| 13926 | 1466 | Jackal Jaffa #93 BS_JaffaMale | N5 (315.5, -914) | 93, 1343 |
+| 13927 | 1467 | Mayan Jaffa #94 BS_JaffaMale | N5 (317.75, -914) | 94 |
+| 13928 | 1468 | Morrigan Jaffa #95 BS_JaffaMale | N5 (320, -914) | 95 |
+| 13929 | 1469 | Naga Jaffa #96 BS_JaffaMale | N5 (322.25, -914) | 96 |
+| 13930 | 1470 | Praxis Jaffa #97 BS_JaffaMale | N5 (324.5, -914) | 97, 159, 352 |
+| 13931 | 1471 | Praxis Jaffa 2 #98 BS_JaffaMale | N5 (326.75, -914) | 98 |
+| 13932 | 1472 | Ra Jaffa #99 BS_JaffaMale | N5 (329, -914) | 99, 144 |
+| 13933 | 1473 | Standard Jaffa #100 BS_JaffaMale | N5 (331.25, -914) | 100, 1333, 1340 |
+| 13934 | 1474 | Savarog Jaffa #101 BS_JaffaMale | N5 (333.5, -914) | 101, 1342 |
+| 13935 | 1475 | Tiki Jaffa #102 BS_JaffaMale | N5 (335.75, -914) | 102 |
+| 13936 | 1476 | Unas_1 #105 BS_JaffaMale | S1 (306, -937) | 105 |
+| 13937 | 1477 | Unas_2 #106 BS_JaffaMale | S1 (308.25, -937) | 106 |
+| 13938 | 1478 | Unas_3 #107 BS_JaffaMale | S1 (310.5, -937) | 107 |
+| 13939 | 1479 | Unas_4 #108 BS_JaffaMale | S1 (312.75, -937) | 108 |
+| 13940 | 1480 | Unas_5 #109 BS_JaffaMale | S1 (315, -937) | 109 |
+| 13941 | 1481 | Unas_6 #110 BS_JaffaMale | S1 (317.25, -937) | 110 |
+| 13942 | 1482 | Viking Jaffa #111 BS_JaffaMale | S1 (319.5, -937) | 111 |
+| 13943 | 1483 | Ra Jaffa 2 #142 BS_JaffaMale | S1 (321.75, -937) | 142 |
+| 13944 | 1484 | Ra's Officer #143 BS_JaffaMale | S1 (324, -937) | 143 |
+| 13945 | 1485 | JaffaMale Template - D #155 BS_JaffaMale | S1 (326.25, -937) | 155 |
+| 13946 | 1486 | Praxis Jaffa Guard #160 BS_JaffaMale | S1 (328.5, -937) | 160, 189, 351 |
+| 13947 | 1487 | Petbe #163 BS_JaffaMale | S1 (330.75, -937) | 163 |
+| 13948 | 1488 | Mala'c #200 BS_JaffaMale | S1 (333, -937) | 200, 201, 209 |
+| 13949 | 1489 | Bra'hin #202 BS_JaffaMale | S1 (335.25, -937) | 202 |
+| 13950 | 1490 | Ra's Jaffa #203 BS_JaffaMale | S1 (337.5, -937) | 203, 204, 205, 1406 |
+| 13951 | 1491 | Angry Jaffa #206 BS_JaffaMale | S2 (316, -942) | 206, 207, 208 |
+| 13952 | 1492 | Petbe #221 BS_JaffaMale | S2 (318.25, -942) | 221 |
+| 13953 | 1493 | Jaffa #1310 BS_JaffaMale | S2 (320.5, -942) | 1310, 1311, 1312, 1313 |
+| 13954 | 1494 | Praxis Jaffa Guard #1371 BS_JaffaMale | S2 (322.75, -942) | 1371 |
+| 13955 | 1495 | (no template) BS_RaJaff | S2 (325, -942) | none |
 
 #### Jaffa, female (30)
 
 | Spawn | Template | Nameplate | Row (x, z) | Templates with this look |
 |---:|---:|---|---|---|
-| 13957 | 1497 | Moh'Katan #54 BS_JaffaFemale | S2 (329.5, -942) | 54 |
-| 13958 | 1498 | Asian Jaffa Female #112 BS_JaffaFemale | S2 (331.75, -942) | 112 |
-| 13959 | 1499 | Bull Jaffa Female #113 BS_JaffaFemale | S2 (334, -942) | 113 |
-| 13960 | 1500 | Cat Jaffa Female #114 BS_JaffaFemale | S2 (336.25, -942) | 114 |
-| 13961 | 1501 | Cobra Jaffa Female #115 BS_JaffaFemale | S2 (338.5, -942) | 115 |
-| 13962 | 1502 | Croc Jaffa Female #116 BS_JaffaFemale | S3 (329, -947) | 116 |
-| 13963 | 1503 | Demon Jaffa Female #117 BS_JaffaFemale | S3 (331.25, -947) | 117 |
-| 13964 | 1504 | Dragon Jaffa Female #118 BS_JaffaFemale | S3 (333.5, -947) | 118 |
-| 13965 | 1505 | Eagle Jaffa Female #119 BS_JaffaFemale | S3 (335.75, -947) | 119 |
-| 13966 | 1506 | Falcon Jaffa Female #120 BS_JaffaFemale | S3 (338, -947) | 120 |
-| 13967 | 1507 | Horse Jaffa Female #121 BS_JaffaFemale | S3 (340.25, -947) | 121 |
-| 13968 | 1508 | Hyena Jaffa Female #122 BS_JaffaFemale | S3 (342.5, -947) | 122 |
-| 13969 | 1509 | Jackal Jaffa Female #123 BS_JaffaFemale | S3 (344.75, -947) | 123 |
-| 13970 | 1510 | Mayan Jaffa Female #124 BS_JaffaFemale | S3 (347, -947) | 124 |
-| 13971 | 1511 | Morrigan Jaffa Femal #125 BS_JaffaFemale | S3 (349.25, -947) | 125 |
-| 13972 | 1512 | Naga Jaffa Female #126 BS_JaffaFemale | S3 (351.5, -947) | 126 |
-| 13973 | 1513 | Praxis Jaffa 2 Femal #127 BS_JaffaFemale | S4 (315, -952) | 127 |
-| 13974 | 1514 | Praxis Jaffa 1 Femal #128 BS_JaffaFemale | S4 (317.25, -952) | 128 |
-| 13975 | 1515 | Standard Jaffa Femal #129 BS_JaffaFemale | S4 (319.5, -952) | 129 |
-| 13976 | 1516 | Svarog Jaffa Female #130 BS_JaffaFemale | S4 (321.75, -952) | 130 |
-| 13977 | 1517 | Tiki Jaffa Female #131 BS_JaffaFemale | S4 (324, -952) | 131 |
-| 13978 | 1518 | Unas 1 Female #132 BS_JaffaFemale | S4 (326.25, -952) | 132 |
-| 13979 | 1519 | Unas 2 Female #133 BS_JaffaFemale | S4 (328.5, -952) | 133 |
-| 13980 | 1520 | Unas 3 Female #134 BS_JaffaFemale | S4 (330.75, -952) | 134 |
-| 13981 | 1521 | Unas 4 Female #135 BS_JaffaFemale | S4 (333, -952) | 135 |
-| 13982 | 1522 | Unas 5 Female #136 BS_JaffaFemale | S4 (335.25, -952) | 136 |
-| 13983 | 1523 | Unas 6 Female #137 BS_JaffaFemale | S5 (307, -956) | 137 |
-| 13984 | 1524 | Viking Jaffa Female #138 BS_JaffaFemale | S5 (309.25, -956) | 138 |
-| 13985 | 1525 | Clothed Jaffa Female #139 BS_JaffaFemale | S5 (311.5, -956) | 139 |
-| 13986 | 1526 | JaffaFemale Template #154 BS_JaffaFemale | S5 (313.75, -956) | 154 |
+| 13956 | 1496 | Moh'Katan #54 BS_JaffaFemale | S2 (327.25, -942) | 54 |
+| 13957 | 1497 | Asian Jaffa Female #112 BS_JaffaFemale | S2 (329.5, -942) | 112 |
+| 13958 | 1498 | Bull Jaffa Female #113 BS_JaffaFemale | S2 (331.75, -942) | 113 |
+| 13959 | 1499 | Cat Jaffa Female #114 BS_JaffaFemale | S2 (334, -942) | 114 |
+| 13960 | 1500 | Cobra Jaffa Female #115 BS_JaffaFemale | S2 (336.25, -942) | 115 |
+| 13961 | 1501 | Croc Jaffa Female #116 BS_JaffaFemale | S2 (338.5, -942) | 116 |
+| 13962 | 1502 | Demon Jaffa Female #117 BS_JaffaFemale | S3 (329, -947) | 117 |
+| 13963 | 1503 | Dragon Jaffa Female #118 BS_JaffaFemale | S3 (331.25, -947) | 118 |
+| 13964 | 1504 | Eagle Jaffa Female #119 BS_JaffaFemale | S3 (333.5, -947) | 119 |
+| 13965 | 1505 | Falcon Jaffa Female #120 BS_JaffaFemale | S3 (335.75, -947) | 120 |
+| 13966 | 1506 | Horse Jaffa Female #121 BS_JaffaFemale | S3 (338, -947) | 121 |
+| 13967 | 1507 | Hyena Jaffa Female #122 BS_JaffaFemale | S3 (340.25, -947) | 122 |
+| 13968 | 1508 | Jackal Jaffa Female #123 BS_JaffaFemale | S3 (342.5, -947) | 123 |
+| 13969 | 1509 | Mayan Jaffa Female #124 BS_JaffaFemale | S3 (344.75, -947) | 124 |
+| 13970 | 1510 | Morrigan Jaffa Femal #125 BS_JaffaFemale | S3 (347, -947) | 125 |
+| 13971 | 1511 | Naga Jaffa Female #126 BS_JaffaFemale | S3 (349.25, -947) | 126 |
+| 13972 | 1512 | Praxis Jaffa 2 Femal #127 BS_JaffaFemale | S3 (351.5, -947) | 127 |
+| 13973 | 1513 | Praxis Jaffa 1 Femal #128 BS_JaffaFemale | S4 (315, -952) | 128 |
+| 13974 | 1514 | Standard Jaffa Femal #129 BS_JaffaFemale | S4 (317.25, -952) | 129 |
+| 13975 | 1515 | Svarog Jaffa Female #130 BS_JaffaFemale | S4 (319.5, -952) | 130 |
+| 13976 | 1516 | Tiki Jaffa Female #131 BS_JaffaFemale | S4 (321.75, -952) | 131 |
+| 13977 | 1517 | Unas 1 Female #132 BS_JaffaFemale | S4 (324, -952) | 132 |
+| 13978 | 1518 | Unas 2 Female #133 BS_JaffaFemale | S4 (326.25, -952) | 133 |
+| 13979 | 1519 | Unas 3 Female #134 BS_JaffaFemale | S4 (328.5, -952) | 134 |
+| 13980 | 1520 | Unas 4 Female #135 BS_JaffaFemale | S4 (330.75, -952) | 135 |
+| 13981 | 1521 | Unas 5 Female #136 BS_JaffaFemale | S4 (333, -952) | 136 |
+| 13982 | 1522 | Unas 6 Female #137 BS_JaffaFemale | S4 (335.25, -952) | 137 |
+| 13983 | 1523 | Viking Jaffa Female #138 BS_JaffaFemale | S5 (307, -956) | 138 |
+| 13984 | 1524 | Clothed Jaffa Female #139 BS_JaffaFemale | S5 (309.25, -956) | 139 |
+| 13985 | 1525 | JaffaFemale Template #154 BS_JaffaFemale | S5 (311.5, -956) | 154 |
 
 #### Goa'uld, male (14)
 
 | Spawn | Template | Nameplate | Row (x, z) | Templates with this look |
 |---:|---:|---|---|---|
-| 13987 | 1527 | Prisoner 329 #17 BS_GoauldMale | S5 (316, -956) | 17, 46, 360 |
-| 13988 | 1528 | Ra #41 BS_GoauldMale | S5 (318.25, -956) | 41 |
-| 13989 | 1529 | Ba'al #42 BS_GoauldMale | S5 (320.5, -956) | 42 |
-| 13990 | 1530 | Ra #60 BS_GoauldMale | S5 (327, -956) | 60 |
-| 13991 | 1531 | Ra #61 BS_GoauldMale | S5 (329.25, -956) | 61 |
-| 13992 | 1532 | Ra #62 BS_GoauldMale | S5 (331.5, -956) | 62 |
-| 13993 | 1533 | Ra #63 BS_GoauldMale | S5 (333.75, -956) | 63 |
-| 13994 | 1534 | GoauldMale Template #158 BS_GoauldMale | S5 (336, -956) | 158 |
-| 13995 | 1535 | Ba'al #167 BS_GoauldMale | S5 (338.25, -956) | 167 |
-| 13996 | 1536 | Haughty Goa'uld #210 BS_GoauldMale | S5 (340.5, -956) | 210 |
-| 13997 | 1537 | Ashrak Assassin #211 BS_GoauldMale | S6 (326, -961) | 211 |
-| 13998 | 1538 | Lo'Taur Servant #353 BS_GoauldMale | S6 (328.25, -961) | 353 |
-| 13999 | 1539 | Ra #1400 BS_GoauldMale | S6 (330.5, -961) | 1400 |
-| 14000 | 1540 | Ba'al #1401 BS_GoauldMale | S6 (332.75, -961) | 1401 |
+| 13986 | 1526 | Prisoner 329 #17 BS_GoauldMale | S5 (313.75, -956) | 17, 46, 360 |
+| 13987 | 1527 | Ra #41 BS_GoauldMale | S5 (316, -956) | 41 |
+| 13988 | 1528 | Ba'al #42 BS_GoauldMale | S5 (318.25, -956) | 42 |
+| 13989 | 1529 | Ra #60 BS_GoauldMale | S5 (320.5, -956) | 60 |
+| 13990 | 1530 | Ra #61 BS_GoauldMale | S5 (327, -956) | 61 |
+| 13991 | 1531 | Ra #62 BS_GoauldMale | S5 (329.25, -956) | 62 |
+| 13992 | 1532 | Ra #63 BS_GoauldMale | S5 (331.5, -956) | 63 |
+| 13993 | 1533 | GoauldMale Template #158 BS_GoauldMale | S5 (333.75, -956) | 158 |
+| 13994 | 1534 | Ba'al #167 BS_GoauldMale | S5 (336, -956) | 167 |
+| 13995 | 1535 | Haughty Goa'uld #210 BS_GoauldMale | S5 (338.25, -956) | 210 |
+| 13996 | 1536 | Ashrak Assassin #211 BS_GoauldMale | S5 (340.5, -956) | 211 |
+| 13997 | 1537 | Lo'Taur Servant #353 BS_GoauldMale | S6 (326, -961) | 353 |
+| 13998 | 1538 | Ra #1400 BS_GoauldMale | S6 (328.25, -961) | 1400 |
+| 13999 | 1539 | Ba'al #1401 BS_GoauldMale | S6 (330.5, -961) | 1401 |
 
 #### Goa'uld, female (6)
 
 | Spawn | Template | Nameplate | Row (x, z) | Templates with this look |
 |---:|---:|---|---|---|
-| 14001 | 1541 | Anat #43 BS_GoauldFemale | S6 (335, -961) | 43, 1402 |
-| 14002 | 1542 | Athena #44 BS_GoauldFemale | S6 (337.25, -961) | 44 |
-| 14003 | 1543 | Morrigan #45 BS_GoauldFemale | S6 (339.5, -961) | 45 |
-| 14004 | 1544 | GoauldFemale Templa #157 BS_GoauldFemale | S6 (341.75, -961) | 157 |
-| 14005 | 1545 | Athena #1403 BS_GoauldFemale | S6 (344, -961) | 1403 |
-| 14006 | 1546 | Morrigan #1404 BS_GoauldFemale | S6 (346.25, -961) | 1404 |
+| 14000 | 1540 | Anat #43 BS_GoauldFemale | S6 (332.75, -961) | 43, 1402 |
+| 14001 | 1541 | Athena #44 BS_GoauldFemale | S6 (335, -961) | 44 |
+| 14002 | 1542 | Morrigan #45 BS_GoauldFemale | S6 (337.25, -961) | 45 |
+| 14003 | 1543 | GoauldFemale Templa #157 BS_GoauldFemale | S6 (339.5, -961) | 157 |
+| 14004 | 1544 | Athena #1403 BS_GoauldFemale | S6 (341.75, -961) | 1403 |
+| 14005 | 1545 | Morrigan #1404 BS_GoauldFemale | S6 (344, -961) | 1404 |
 
 #### Asgard (3)
 
 | Spawn | Template | Nameplate | Row (x, z) | Templates with this look |
 |---:|---:|---|---|---|
-| 14007 | 1547 | Thor #64 BS_Asgard | S6 (348.5, -961) | 64, 65 |
-| 14008 | 1548 | Asgard Template - DO NOT #156 BS_Asgard | S6 (350.75, -961) | 156 |
-| 14009 | 1549 | (no template) BS_Degenerated_Asgard | S6 (353, -961) | none |
+| 14006 | 1546 | Thor #64 BS_Asgard | S6 (346.25, -961) | 64, 65 |
+| 14007 | 1547 | Asgard Template - DO NOT #156 BS_Asgard | S6 (348.5, -961) | 156 |
+| 14008 | 1548 | (no template) BS_Degenerated_Asgard | S6 (350.75, -961) | none |
 
 #### Children (5)
 
 | Spawn | Template | Nameplate | Row (x, z) | Templates with this look |
 |---:|---:|---|---|---|
-| 14010 | 1550 | Nox Child Male #66 NPC_Child_BS | S6 (355.25, -961) | 66 |
-| 14011 | 1551 | Nox Child Female #67 NPC_Child_BS | S6 (357.5, -961) | 67 |
-| 14012 | 1552 | Blix #68 NPC_Child_BS | S6 (359.75, -961) | 68 |
-| 14013 | 1553 | NPC Child 1 #140 NPC_Child_BS | S6 (362, -961) | 140 |
-| 14014 | 1554 | NPC Child 2 #141 NPC_Child_BS | S6 (364.25, -961) | 141 |
+| 14009 | 1549 | Nox Child Male #66 NPC_Child_BS | S6 (353, -961) | 66 |
+| 14010 | 1550 | Nox Child Female #67 NPC_Child_BS | S6 (355.25, -961) | 67 |
+| 14011 | 1551 | Blix #68 NPC_Child_BS | S6 (357.5, -961) | 68 |
+| 14012 | 1552 | NPC Child 1 #140 NPC_Child_BS | S6 (359.75, -961) | 140 |
+| 14013 | 1553 | NPC Child 2 #141 NPC_Child_BS | S6 (362, -961) | 141 |
 
 #### Creatures (8)
 
 | Spawn | Template | Nameplate | Row (x, z) | Templates with this look |
 |---:|---:|---|---|---|
-| 14015 | 1555 | Rat #74 BS_MOB_Rat | E1 (348, -909) | 74 |
-| 14016 | 1556 | ScavDog #76 BS_MOB_ScavDog | E1 (352, -909) | 76 |
-| 14017 | 1557 | Lenny #73 BS_MOB_Lenny | E1 (356, -909) | 73 |
-| 14018 | 1558 | (no template) BS_MOB_LennyBaby | E1 (360, -909) | none |
-| 14019 | 1559 | Horden #72 BS_MOB_Horden | E1 (366, -909) | 72 |
-| 14020 | 1560 | Carnosaur #71 BS_MOB_Carnosaur | E1 (374, -909) | 71 |
-| 14021 | 1561 | Rhinolion #75 BS_MOB_Rhinolion00 | E1 (382, -909) | 75 |
-| 14022 | 1562 | Twilla Vines #80 BS_MOB_TwillaTree | E3 (362, -937) | 80 |
+| 14014 | 1554 | Rat #74 BS_MOB_Rat | E1 (348, -909) | 74 |
+| 14015 | 1555 | ScavDog #76 BS_MOB_ScavDog | E1 (352, -909) | 76 |
+| 14016 | 1556 | Lenny #73 BS_MOB_Lenny | E1 (356, -909) | 73 |
+| 14017 | 1557 | (no template) BS_MOB_LennyBaby | E1 (360, -909) | none |
+| 14018 | 1558 | Horden #72 BS_MOB_Horden | E1 (366, -909) | 72 |
+| 14019 | 1559 | Carnosaur #71 BS_MOB_Carnosaur | E1 (374, -909) | 71 |
+| 14020 | 1560 | Rhinolion #75 BS_MOB_Rhinolion00 | E1 (382, -909) | 75 |
+| 14021 | 1561 | Twilla Vines #80 BS_MOB_TwillaTree | E3 (362, -937) | 80 |
 
 #### Machines (9)
 
 | Spawn | Template | Nameplate | Row (x, z) | Templates with this look |
 |---:|---:|---|---|---|
-| 14023 | 1563 | (no template) BS_AN_Android | E4 (347, -942) | none |
-| 14024 | 1564 | (no template) BS_MOB_DroneTank | E4 (351, -942) | none |
-| 14025 | 1565 | Prisoner retrieval #4 BS_MOB_DroneFlyer | E4 (355, -942) | 4, 145 |
-| 14026 | 1566 | Malfunctioning Dron #69 MOB_Goauld_Drone | E4 (359, -942) | 69 |
-| 14027 | 1567 | Agnos Drone #81 MOB_AncientDrone_BS | E3 (368, -937) | 81 |
-| 14028 | 1568 | Straegis Figh #78 BS_MOB_StraegisFighter | E3 (372, -937) | 78, 350 |
-| 14029 | 1569 | Straegis Beaco #77 BS_MOB_StraegisBeacon | E3 (376, -937) | 77 |
-| 14030 | 1570 | BattleWalker #70 BS_MOB_BattleWalker | E3 (382, -937) | 70 |
-| 14031 | 1571 | Straegis Titan #79 BS_MOB_StraegisTitan | E2 (368.5, -922) | 79 |
+| 14022 | 1562 | (no template) BS_AN_Android | E4 (347, -942) | none |
+| 14023 | 1563 | (no template) BS_MOB_DroneTank | E4 (351, -942) | none |
+| 14024 | 1564 | Prisoner retrieval #4 BS_MOB_DroneFlyer | E4 (355, -942) | 4, 145 |
+| 14025 | 1565 | Malfunctioning Dron #69 MOB_Goauld_Drone | E4 (359, -942) | 69 |
+| 14026 | 1566 | Agnos Drone #81 MOB_AncientDrone_BS | E3 (368, -937) | 81 |
+| 14027 | 1567 | Straegis Figh #78 BS_MOB_StraegisFighter | E3 (372, -937) | 78, 350 |
+| 14028 | 1568 | Straegis Beaco #77 BS_MOB_StraegisBeacon | E3 (376, -937) | 77 |
+| 14029 | 1569 | BattleWalker #70 BS_MOB_BattleWalker | E3 (382, -937) | 70 |
+| 14030 | 1570 | Straegis Titan #79 BS_MOB_StraegisTitan | E2 (368.5, -922) | 79 |

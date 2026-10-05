@@ -1926,7 +1926,7 @@ at = "arrived"
 [[row]]
 id = "DA-U48"
 title = "The Visual NPC Lineup: one passive actor per look, none engages"
-expected = "In the south compound's east wing, 162 passive display actors face the walkways, one per character look in the seed plus the six template-less body sets, each nameplate reading <name> #<source template id> <body set>; walking the first walkway pulls nothing."
+expected = "In the south compound's east wing, 161 passive display actors face the walkways, one per character look in the seed plus the six template-less body sets, each nameplate reading <name> #<source template id> <body set>; walking the first walkway pulls nothing."
 notes = "DA-10. Rows, tags and the template-to-actor map: docs/content/debug-area.md#visual-npc-lineup. The nameplate label rides onBeingNameUpdate, not yet seen on a mob. DebugArea_VisualLineup_NoTemplate_BS_RaJaff and DebugArea_VisualLineup_NoTemplate_HM_BodySet have no reference mesh and are expected to draw nothing or a placeholder."
 setup = [
   { chat = ".aggro on", tier = "G" },

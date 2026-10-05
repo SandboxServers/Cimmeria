@@ -12,7 +12,7 @@
 //!   character body set no template uses has a dressed one, so a template
 //!   added later with a new look fails here until it gets a lineup row (the
 //!   guard counts looks, not templates);
-//! * the block holds each look once, 162 actors, each with one spawn;
+//! * the block holds each look once, 161 actors, each with one spawn;
 //! * every actor is a display copy only: no event set, ability set, loot,
 //!   dialog, interactions, patrol, wander or radius overrides, and nothing
 //!   anywhere in `resources` points at it;
@@ -30,9 +30,9 @@ mod live_db {
     const WORLD: &str = "DebugArea";
     const TEMPLATES: (i32, i32) = (1410, 1599);
     const SPAWNS: (i32, i32) = (13870, 14099);
-    /// 156 looks and 6 template-less body sets (owner-confirmed, 2026-10-05).
+    /// 155 looks and 6 template-less body sets (owner-approved, 2026-10-05).
     /// A template with a new look raises it: add its actor and bump this.
-    const ACTORS: i64 = 162;
+    const ACTORS: i64 = 161;
     /// World Object: friendly to players, hostile to nobody.
     const FRIENDLY_FACTION: i32 = 1;
     /// Tag prefix (D-DA6); the rest is the source template id, or
@@ -40,16 +40,18 @@ mod live_db {
     const TAG: &str = "DebugArea_VisualLineup_";
 
     /// `$query` behind a `look` CTE: each template's look, comparable across
-    /// rows: body set, components in name order, the two colours, skin tint
-    /// and static mesh as stored. Props (`GLB_Components.*`) and deployables
-    /// and mines (`WP-Human.*`) are not characters.
+    /// rows: body set, components as a sorted set, the two colours, skin tint
+    /// and static mesh with NULL and '' the same (the client draws both as no
+    /// static mesh; that merges Nerus, template 53, and template 166). Props
+    /// (`GLB_Components.*`) and deployables and mines (`WP-Human.*`) are not
+    /// characters.
     macro_rules! with_looks {
         ($query:literal) => {
             concat!(
                 "WITH look AS ( \
                    SELECT template_id, template_name, body_set, \
                           (SELECT array_agg(c ORDER BY c) FROM unnest(components) c) AS comps, \
-                          primary_color_id, secondary_color_id, skin_tint, static_mesh AS mesh \
+                          primary_color_id, secondary_color_id, skin_tint, \n                          coalesce(static_mesh, '') AS mesh \
                    FROM resources.entity_templates \
                    WHERE body_set NOT LIKE 'GLB\\_Components.%' \
                      AND body_set NOT LIKE 'WP-Human.%') ",
@@ -137,7 +139,7 @@ mod live_db {
         let pool = require_db_or_skip!();
         let (actors, looks): (i64, i64) = sqlx::query_as(with_looks!(
             "SELECT count(*), count(DISTINCT (body_set, comps, primary_color_id, \
-                    secondary_color_id, skin_tint, coalesce(mesh, '<NULL>'))) \
+                    secondary_color_id, skin_tint, mesh)) \
              FROM look WHERE template_id BETWEEN $1 AND $2"
         ))
         .bind(TEMPLATES.0)
@@ -145,7 +147,7 @@ mod live_db {
         .fetch_one(&pool)
         .await
         .expect("actor count must succeed");
-        assert_eq!(actors, ACTORS, "156 looks and 6 template-less body sets");
+        assert_eq!(actors, ACTORS, "155 looks and 6 template-less body sets");
         assert_eq!(actors, looks, "two lineup actors share a look");
 
         let spawns: Vec<(i32, i32, i32)> = sqlx::query_as(

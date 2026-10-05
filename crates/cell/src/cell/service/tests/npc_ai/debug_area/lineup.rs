@@ -12,8 +12,8 @@ use tokio::sync::mpsc;
 use super::*;
 use crate::cell::combat;
 
-/// The lineup's actors: 156 looks and 6 template-less body sets.
-const ACTORS: usize = 162;
+/// The lineup's actors: 155 looks and 6 template-less body sets.
+const ACTORS: usize = 161;
 /// DA-10's spawn block.
 const DA10_SPAWNS: std::ops::RangeInclusive<i32> = 13870..=14099;
 /// The Compound ring pad (`debug_area_rings.sql`), the station a tester

@@ -1,17 +1,17 @@
 ---
 name: debug-area-npc-lineup-da10
-description: DA-10 (2026-10-05) Z10 Visual NPC Lineup - 162 looks rule, display_name/onBeingNameUpdate nameplates, east-wing rows + ring pad, occluder-scan traps, unmeasurable body sets, live-db-test reload trap
+description: DA-10 (2026-10-05) Z10 Visual NPC Lineup - 161 looks rule, display_name/onBeingNameUpdate nameplates, east-wing rows + ring pad, occluder-scan traps, unmeasurable body sets, live-db-test reload trap
 metadata:
   type: project
 ---
 
 DA-10 (branch content/debug-area-npc-gallery, PR #1260, 2026-10-05): Z10 "Visual NPC Lineup",
-162 passive faction-1 display actors, templates 1410-1599 / spawns 13870-14099, seeds
+161 passive faction-1 display actors, templates 1410-1599 / spawns 13870-14099, seeds
 `*_debug_area_lineup.sql`, tags `DebugArea_VisualLineup_<source id>` / `..._NoTemplate_<bs>`.
 
-- **Look** (owner-confirmed) = body_set + sorted components + both colours + skin_tint +
-  static_mesh AS STORED (NULL != ''): 156 looks from 225 templates; the NULL/'' split makes two
-  Nerus actors (templates 53 and 166) that draw alike. Six body sets had no template: BS_RaJaff,
+- **Look** (owner-approved 161) = body_set + sorted components + both colours + skin_tint +
+  coalesce(static_mesh,''): 155 looks from 225 templates. Exact columns give 156: only Nerus
+  (53, NULL) vs Sandbox Greeting NPC (166, '') split, and they draw alike (doc "Coverage delta"). Six body sets had no template: BS_RaJaff,
   HM_BodySet, BS_AN_Android, BS_MOB_DroneTank, BS_MOB_LennyBaby, BS_Degenerated_Asgard. Guard
   `live_db_debug_area_lineup` counts looks, not templates; props go to a planned Z11.
 - **Nameplates:** `name_id` resolves to client-shipped text only; `entity_templates.name` is never
@@ -34,7 +34,9 @@ DA-10 (branch content/debug-area-npc-gallery, PR #1260, 2026-10-05): Z10 "Visual
   scratch test in `debug_area/` recompiles in ~5 s.
 - **live-db-test.sh reloads the worktree DB first**, so manual psql inserts are wiped; do revert
   proofs by editing the seed file (spawnlist.tag is UNIQUE: a renamed tag must be new).
-- AoI: the lineup is within 150 m of Z1/plaza/lords, so every compound arrival creates 162 more
-  NPCs - client cost unmeasured.
+- AoI: the lineup is within 150 m of Z1/plaza/lords, so every compound arrival creates 161 more
+  NPCs - client cost unmeasured. Lab 2026-10-05: the client hung loading world 1300 itself (before
+  any entity create) after the lab install's Ihpet fff80002 chunk was rewritten at 15:15; the
+  watchdog kills after ~5 s unreachable. Check that chunk's mtime before blaming seeds.
 
 Related: [[debug-area-map-survey]], [[debug-area-da03-stations]], [[template-seed-column-traps]].
