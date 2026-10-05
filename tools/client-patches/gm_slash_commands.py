@@ -126,8 +126,11 @@ def load_table(path: Path = TABLE) -> list[dict]:
 
 def usage(cmd: dict) -> str:
     words = [cmd["name"]]
-    words += [f"<{n}>" for _, n in cmd["mandatory"]]
-    words += [f"[{n}]" for _, n in cmd["optional"]]
+    # Square brackets for a required parameter, round for an optional one: the
+    # client prints Usage into chat, and a literal "<" is the riskier character
+    # there (CME's own file mostly uses [name] for required ones too).
+    words += [f"[{n}]" for _, n in cmd["mandatory"]]
+    words += [f"({n})" for _, n in cmd["optional"]]
     return " ".join(words)
 
 
@@ -169,9 +172,11 @@ def main() -> int:
     ap = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     ap.add_argument("--check", action="store_true", help="fail if the committed XML is stale")
     ap.add_argument("--summary", action="store_true", help="print counts and masks")
+    ap.add_argument("--table", type=Path, default=TABLE, help="read this table instead (experiments)")
+    ap.add_argument("--out", type=Path, default=XML, help="write this file instead (experiments)")
     args = ap.parse_args()
     try:
-        commands = load_table()
+        commands = load_table(args.table)
     except TableError as err:
         print(f"error: {err}", file=sys.stderr)
         return 2
@@ -185,13 +190,13 @@ def main() -> int:
             print(f"  mask 0x{mask:03X}: {len(names)} commands")
         return 0
     if args.check:
-        if not XML.exists() or XML.read_bytes() != xml:
-            print(f"error: {XML.relative_to(ROOT)} is stale; run {Path(__file__).name}", file=sys.stderr)
+        if not args.out.exists() or args.out.read_bytes() != xml:
+            print(f"error: {args.out} is stale; run {Path(__file__).name}", file=sys.stderr)
             return 1
-        print(f"ok: {len(commands)} commands, {XML.relative_to(ROOT)} is current")
+        print(f"ok: {len(commands)} commands, {args.out} is current")
         return 0
-    XML.write_bytes(xml)
-    print(f"wrote {XML.relative_to(ROOT)}: {len(commands)} commands, {len(xml)} bytes")
+    args.out.write_bytes(xml)
+    print(f"wrote {args.out}: {len(commands)} commands, {len(xml)} bytes")
     return 0
 
 

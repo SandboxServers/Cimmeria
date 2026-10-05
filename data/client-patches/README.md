@@ -189,16 +189,19 @@ DA-06, 2026-10-05). 012 ships that file, new, whole.
   fires (a name in `SGW.exe`) and the typed parameters in the order the
   client parses them. Every `Description` and `ParamDescription` is empty,
   every `Usage` is built from the word and the parameter names
-  (`/gmdhd <DestinationId>`), and the one comment says the file is generated.
+  (`/gmdhd [DestinationId]`: square brackets for a required parameter, round for an optional one), and the one comment says the file is generated.
   The QA client's file was read as a reverse-engineering reference for the
   command set and the schema only. Tests in
   `crates/patchset/src/gm_slash_commands_tests.rs` keep it that way: the
-  XML may hold no prose field (checked structurally), and no multi-word
-  string in it may match a SHA-256 in
+  XML may hold no prose field (checked structurally: that is the real guard,
+  because the file has no free-text channel left). As a tripwire on top, no
+  multi-word string in it may exactly match a SHA-256 in
   [cme-prose.sha256](012-gm-slash-commands/cme-prose.sha256), the hashes of
   every description, parameter description and comment line in the client's
   three files (CI has no client, and the repository does not hold the
   sentences; `tools/client-patches/cme_prose_hashes.py` writes the list).
+  Exact hashes catch a verbatim paste only, never a reworded copy, so a green
+  run of that test is not proof of anything on its own.
   `cargo test -p cimmeria-patchset gm_slash_commands -- --include-ignored`
   with `SGW_QA_CLIENT` set also compares the sentences themselves.
 - **The schema the client's parser demands** (a gSOAP-generated reader,
@@ -234,8 +237,12 @@ DA-06, 2026-10-05). 012 ships that file, new, whole.
   files and the client's own commands give, the map holds **266**, the number
   `/help` reports. Every `/gm*` row in [commands.md](../../docs/commands.md) is
   among them. One deliberate difference from the QA file: `/gmspawnbycmd` has
-  no `Access` there, so any player could type it; here it has `"p"` like the
-  rest.
+  no `Access` there. A command with no `Access` attribute gets mask 0
+  (`0x00a4c530` returns 0 for a null attribute), and mask 0 means usable at
+  every access level, so the client would let a level-0 player type it. Giving
+  it `"p"` like the rest closes that client-side hole and grants nothing: the
+  server gate (cell method 185 is above the GM index range) already refused it
+  for anyone below GM.
 - **Verified in the lab (da06, 2026-10-05, colo build 86fe5dcab, GM
   character, world 1300).** With the file installed: map size `0x10A` (266);
   `/help` ends "266 commands found."; `/gmdhd 3` sends `gmDHD` and the server

@@ -428,7 +428,8 @@ fn docs_and_xml_name_the_same_gm_commands() {
 
 /// Every string value in the file is a name or a mechanical build from names.
 /// No description, no parameter description, no prose comment: a file with
-/// none of those fields filled in cannot carry CME's sentences.
+/// none of those fields filled in has no place to put a sentence. This is the
+/// load-bearing guard for the no-CME-text rule.
 #[test]
 fn xml_has_no_prose_fields() {
     let p = parsed();
@@ -469,9 +470,9 @@ fn xml_has_no_prose_fields() {
                 param.name
             );
             usage.push(if param.tag == "MandatoryParam" {
-                format!("<{}>", param.name)
-            } else {
                 format!("[{}]", param.name)
+            } else {
+                format!("({})", param.name)
             });
         }
         assert_eq!(
@@ -483,12 +484,15 @@ fn xml_has_no_prose_fields() {
     }
 }
 
-/// Hashes of every description, parameter description and comment line in the
-/// QA client's three slash-command files (`cme-prose.sha256`, written by
-/// `tools/client-patches/cme_prose_hashes.py`). No multi-word string in our
-/// file may match one, so a CME sentence pasted into the XML, or into the
-/// table that generates it, fails in CI without the repository holding the
-/// sentence.
+/// A tripwire, not the guard: the guard is `xml_has_no_prose_fields`, which
+/// leaves the XML no free-text channel at all. This one holds SHA-256 hashes of
+/// every description, parameter description and comment line in the QA client's
+/// three slash-command files (`cme-prose.sha256`, written by
+/// `tools/client-patches/cme_prose_hashes.py`) and fails if a multi-word string
+/// in our file matches one exactly (after trimming, whitespace collapsing and
+/// ASCII lowercasing). That catches a verbatim paste without the repository
+/// holding the sentence, and only that: a reworded or partial copy hashes
+/// differently and passes. Do not read a green run here as "no CME prose".
 #[test]
 fn xml_contains_none_of_cmes_prose() {
     let hashes: HashSet<String> =

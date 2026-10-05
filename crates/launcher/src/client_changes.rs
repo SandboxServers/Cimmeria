@@ -309,8 +309,9 @@ pub fn builtin_description(id: &str) -> Option<(&'static str, &'static str)> {
             "GM slash commands",
             "Adds InternalSlashCommands.xml so the client recognizes the /gm commands (such \
              as /gmdhd and /gmgivexp); without it the stock client answers \"Invalid \
-             command.\" to every one. Only accounts with GM access can use them, and the \
-             server still checks. Adds one file to Common\\xml\\slash_commands.",
+             command.\" to every one. They are for GM accounts: the client hides them from \
+             ordinary players and the server refuses anyone below GM. Adds one file to \
+             Common\\xml\\slash_commands.",
         ),
         _ if id.starts_with(DEFAULT_ID_PREFIX) => (OVERLAY_TITLE, OVERLAY_DESCRIPTION),
         _ => return None,

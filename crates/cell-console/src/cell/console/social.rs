@@ -1,9 +1,9 @@
 //! Social console commands: `.announce [space] <text>`, the GM broadcast for
-//! a client without the native `/gmshout` binding (SS-C2, D-SS16), and the
+//! a client without the native `/gmsendgmshout` binding (SS-C2, D-SS16), and the
 //! chat mutes `.mute <name> <minutes> [reason]` / `.unmute <name>` (SS-C3,
 //! D-SS26).
 //!
-//! It sends exactly what `/gmshout` (`sendGMShout`, CM 222) sends, through
+//! It sends exactly what `/gmsendgmshout` (`sendGMShout`, CM 222) sends, through
 //! the same [`gm::shout::broadcast`]: the GM's name, the GM speaker flag,
 //! the server channel. Without a scope word the line goes to every online
 //! player; a first word of `space` (any case) keeps it to the GM's space

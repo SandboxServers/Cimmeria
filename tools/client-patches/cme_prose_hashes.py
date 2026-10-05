@@ -1,11 +1,13 @@
 #!/usr/bin/env python3
 """Write the SHA-256 list the no-CME-text guard for patch 012 checks against.
 
-Patch 012 ships an XML this project wrote. Its guard test must fail if a string of
-CME's own prose (a description, a parameter description or a comment from the
-client's slash-command XML) ever ends up in that file, and CI has no client to
-compare with. So the prose is committed as hashes only: a hash lets the test
-recognize a string without the repository holding it.
+Patch 012 ships an XML this project wrote. As a tripwire (the structural test in
+crates/patchset/src/gm_slash_commands_tests.rs is the real guard), a test fails if
+a string of CME's own prose (a description, a parameter description or a comment
+from the client's slash-command XML) ends up in that file verbatim. CI has no
+client to compare with, so the prose is committed as hashes only: a hash lets the
+test recognize an exact string without the repository holding it. It cannot
+recognize a reworded or partial copy.
 
     python tools/client-patches/cme_prose_hashes.py "<client>/Common/xml/slash_commands"
 
