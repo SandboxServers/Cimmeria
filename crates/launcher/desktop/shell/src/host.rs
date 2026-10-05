@@ -6,11 +6,13 @@ use std::{
 };
 
 mod adoption;
+mod game_telemetry;
 mod game_update;
 #[cfg(test)]
 mod held_download;
 mod install;
 pub use adoption::{AdoptionCommand, AdoptionError, AdoptionStatus};
+pub use game_telemetry::{GameTelemetryCommand, GameTelemetryStatus};
 pub use game_update::{GameUpdateCommand, GameUpdateStatus};
 mod updater;
 pub use updater::UpdaterCommand;

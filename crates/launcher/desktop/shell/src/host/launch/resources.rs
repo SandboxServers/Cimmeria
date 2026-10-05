@@ -4,6 +4,7 @@ use std::path::Path;
 pub(super) struct Digests<'a> {
     pub helper: Option<&'a str>,
     pub client_patches: Option<&'a str>,
+    pub client_telemetry: Option<&'a str>,
     pub d3d9: Option<&'a str>,
     pub rosetta_x87: Option<&'a str>,
     pub rosetta_x87_library: Option<&'a str>,
@@ -14,6 +15,7 @@ pub(super) fn bundled(root: &Path) -> Option<Resources> {
         &Digests {
             helper: option_env!("CIMMERIA_LAUNCH_HELPER_SHA256"),
             client_patches: option_env!("CIMMERIA_CLIENT_PATCHES_SHA256"),
+            client_telemetry: option_env!("CIMMERIA_CLIENT_TELEMETRY_SHA256"),
             d3d9: option_env!("CIMMERIA_D3D9_SHA256"),
             rosetta_x87: option_env!("CIMMERIA_ROSETTA_X87_SHA256"),
             rosetta_x87_library: option_env!("CIMMERIA_ROSETTA_X87_LIBRARY_SHA256"),
@@ -30,6 +32,13 @@ pub(super) fn bundled_with(root: &Path, digests: &Digests) -> Option<Resources> 
         "windows/cimmeria_client_patches.dll",
         digests.client_patches,
     );
+    // Opt-in and optional. A build that pins none, or whose DLL is replaced or
+    // is a lab build, cannot offer game telemetry; Play is unaffected.
+    let client_telemetry = artifact(
+        "windows/cimmeria_client_telemetry.dll",
+        digests.client_telemetry,
+    )
+    .filter(|dll| dll.refuse_lab_build().is_ok());
     let graphics = if cfg!(target_os = "macos") {
         let d3d9 = artifact("graphics/d3d9.dll", digests.d3d9)?;
         let rosetta_x87 = match (digests.rosetta_x87, digests.rosetta_x87_library) {
@@ -47,6 +56,7 @@ pub(super) fn bundled_with(root: &Path, digests: &Digests) -> Option<Resources> 
     Some(Resources {
         helper,
         client_patches,
+        client_telemetry,
         graphics,
     })
 }
@@ -75,6 +85,7 @@ mod tests {
         let digests = |client_patches| Digests {
             helper: Some(&helper),
             client_patches,
+            client_telemetry: None,
             d3d9: Some(&d3d9),
             rosetta_x87: None,
             rosetta_x87_library: None,

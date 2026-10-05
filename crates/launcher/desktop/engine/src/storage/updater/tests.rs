@@ -446,6 +446,7 @@ fn active_updater_refuses_early_mutation_but_preserves_consent_control() {
                 launch::Resources {
                     helper: artifact,
                     client_patches: None,
+                    client_telemetry: None,
                     graphics: None
                 }
             )

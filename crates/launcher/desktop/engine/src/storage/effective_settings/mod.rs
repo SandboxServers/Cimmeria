@@ -76,9 +76,20 @@ impl DesktopState {
         &self,
         bundled: launch::Resources,
     ) -> Result<Option<launch::Resources>, StorageError> {
-        let enabled = self
-            .effective_launch_binding()?
+        let binding = self.effective_launch_binding()?;
+        let enabled = binding
+            .as_ref()
             .is_none_or(|binding| binding.client_patches_enabled);
+        // The telemetry DLL goes only to an installation this launcher made, for
+        // a player who opted in here. An adopted copy's imported telemetry
+        // choice is still not honoured (see `adoption`), and an unreadable
+        // choice means no telemetry rather than no Play.
+        let telemetry =
+            binding.is_none() && self.game_telemetry().is_ok_and(|choice| choice.opted_in);
+        let bundled = launch::Resources {
+            client_telemetry: bundled.client_telemetry.filter(|_| telemetry),
+            ..bundled
+        };
         Ok(match (enabled, bundled.client_patches.is_some()) {
             (true, true) => Some(bundled),
             (true, false) => None,
@@ -96,7 +107,9 @@ pub(super) fn verify_launch_resources(
     binding: LaunchBinding,
     resources: &launch::Resources,
 ) -> Result<(), IntentError> {
-    if binding.client_patches_enabled != resources.client_patches.is_some() {
+    if binding.client_patches_enabled != resources.client_patches.is_some()
+        || resources.client_telemetry.is_some()
+    {
         return Err(ContractError::IdentityConflict.into());
     }
     resources.verify()
