@@ -35,11 +35,11 @@ many tests also updates the catalogue.
 
 | Metric | Count |
 |---|---:|
-| Tests (`#[test]` / `#[tokio::test]`) | 10,849 |
-| Files with tests | 1,882 |
-| Gated in CI (every crate but CI's exclude list) | 9,224 |
+| Tests (`#[test]` / `#[tokio::test]`) | 10,854 |
+| Files with tests | 1,884 |
+| Gated in CI (every crate but CI's exclude list) | 9,229 |
 | Live-DB tests (`require_db_or_skip!` in the body) | 1,584 |
-| Inventory threshold (5% of the tests) | 542 |
+| Inventory threshold (5% of the tests) | 543 |
 
 <!-- /gen:tests-totals -->
 
@@ -92,7 +92,7 @@ with no file in this directory yet.
 | `crates/client-telemetry` | `cimmeria-client-telemetry` | 649 | 126 | 0 | no | none |
 | `crates/base-methods` | `cimmeria-base-methods` | 614 | 133 | 435 | yes | none |
 | `crates/cell` | `cimmeria-cell` | 596 | 136 | 26 | yes | none |
-| `crates/cell-world` | `cimmeria-cell-world` | 541 | 95 | 32 | yes | none |
+| `crates/cell-world` | `cimmeria-cell-world` | 543 | 96 | 32 | yes | none |
 | `crates/cell-console` | `cimmeria-cell-console` | 501 | 82 | 1 | yes | none |
 | `crates/lab` | `cimmeria-lab` | 469 | 98 | 0 | no | none |
 | `crates/entity` | `cimmeria-entity` | 453 | 58 | 0 | yes | [entity.md](entity.md) |
@@ -119,9 +119,9 @@ with no file in this directory yet.
 | `crates/cell-cover` | `cimmeria-cell-cover` | 71 | 5 | 6 | yes | none |
 | `crates/wireclient` | `cimmeria-wireclient` | 61 | 16 | 0 | yes | [wireclient.md](wireclient.md) |
 | `crates/auth` | `cimmeria-auth` | 55 | 11 | 9 | yes | none |
+| `crates/cell-duel` | `cimmeria-cell-duel` | 53 | 12 | 0 | yes | none |
 | `crates/cell-pets` | `cimmeria-cell-pets` | 53 | 7 | 0 | yes | none |
 | `crates/test-support` | `cimmeria-test-support` | 52 | 7 | 8 | yes | none |
-| `crates/cell-duel` | `cimmeria-cell-duel` | 50 | 11 | 0 | yes | none |
 | `crates/game` | `cimmeria-game` | 48 | 12 | 0 | yes | [game.md](game.md) |
 | `crates/patch-wire` | `cimmeria-patch-wire` | 47 | 6 | 0 | yes | none |
 | `crates/services` | `cimmeria-services` | 45 | 13 | 20 | yes | [services.md](services.md) |
