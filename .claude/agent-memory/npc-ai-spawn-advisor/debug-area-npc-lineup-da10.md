@@ -40,4 +40,11 @@ DA-10 (branch content/debug-area-npc-gallery, PR #1260, 2026-10-05): Z10 "Visual
   timeout (about 30 s) terminate it; wait_for probes can't keep it alive. The fff80002 chunk was 011's
   output (rz10). Enter via Castle_CellBlock then `.gotolocation`; direct login into 1300 dies.
 
+- **Client memory is the real cap (lab 2026-10-05, #1260+#1274):** with all 223 world-1300 NPCs
+  delivered at Z1, the 32-bit client's working set went 1.1 -> 3.2 GB in 10 s (1-2 s hitch per
+  frame) and died on `CreateTexture E_OUTOFMEMORY`. ~150 NPCs (wedged run) survived at 43 FPS.
+  Unique-costume NPCs cost texture memory each; never put 160 distinct looks in one 150 m AoI.
+- **Oversize cascades:** Petbe #221's createOnClient cascade is 1504 B encrypted with its label;
+  the AoI cascade send was unguarded until #1274 (oversize_fragmented). Measure cascade size with
+  `build_create_entity_cascade` from the seed when adding labels or big kits.
 Related: [[debug-area-map-survey]], [[debug-area-da03-stations]], [[template-seed-column-traps]].
