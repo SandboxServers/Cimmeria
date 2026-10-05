@@ -657,7 +657,6 @@ pending. No local Windows compilation or real-game probe is claimed. Managed
 integration still requires helper hash/owned-root binding and supervisor deadlines.
 See [probe contracts](../../../../crates/launcher/desktop/docs/prerequisites.md).
 
-
 ### 2026-10-04: Settings Repair journey
 
 Settings connects confirmation against the saved installation identity, retained
@@ -688,3 +687,14 @@ the coordinator's RAR/FDI preflight (`198573ce7`). Current helper rebuild, full
 published seed, effective settings/UI and owner/current-release parity remain
 required. Latest integrated local engine tests pass 363, with 18 ignored;
 this includes the owner-lock correction described in the acceptance checklist.
+
+### 2026-10-04: consented launcher summaries and anonymous ingest (packets 6 and 7)
+
+PR #1205 adds the consented summary schema, bounded queue and exporter; an anonymous strict ingest (owner decision:
+no token, exact v1 payload, default 12 requests per address per window) writing `launcher.summary` rows; and
+unimported SigNoz fixtures. It is inert: no build configures an endpoint. See the
+[worknote](worknotes/observability.md) and [design reference](../../../architecture/launcher-summary-telemetry.md).
+Local Linux lane: engine 422 passed/4 ignored at `5bb73a450`; admin-api plus server nextest 236 passed at
+`1a5c4d08e`. The shell glue first compiles in that PR's `desktop launcher` CI: no run or result is recorded here,
+so inspect it before claiming Windows or macOS. Open: the maintainer's public login-listener mount decision, any
+production endpoint, and rollout consent copy and frontend UAT.
