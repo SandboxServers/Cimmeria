@@ -212,6 +212,7 @@ fn world_records() -> Vec<SpawnRecord> {
                 .and_then(MobAggression::from_level),
             use_cover: opt(t.get("use_cover")),
             vault_scope: VaultScope::Personal,
+            training_dummy: false,
         }
     })
     .collect()

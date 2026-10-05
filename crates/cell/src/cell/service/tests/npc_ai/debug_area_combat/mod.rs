@@ -197,6 +197,7 @@ fn parse_world_records() -> Vec<SpawnRecord> {
                     .and_then(MobAggression::from_level),
                 use_cover: text(t, "use_cover").map(|v| v == "true"),
                 vault_scope: VaultScope::Personal,
+                training_dummy: false,
             })
         })
         .collect()
