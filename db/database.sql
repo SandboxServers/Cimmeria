@@ -372,6 +372,7 @@
 \ir resources/Worlds/Seed/ring_transport_regions.sql
 \ir resources/Worlds/Seed/spawn_points.sql
 \ir resources/Worlds/Seed/spawn_sets.sql
+\ir resources/Worlds/Seed/spawn_sets_debug_area_lineup.sql
 \ir resources/Worlds/Seed/spawnlist.sql
 \ir resources/Worlds/Seed/spawnlist_debug_area_combat.sql
 \ir resources/Worlds/Seed/spawnlist_debug_area_lineup.sql
@@ -393,6 +394,7 @@
 \ir resources/Content/Seed/sgc_w1_chains.sql
 \ir resources/Content/Seed/debug_hub_chains.sql
 \ir resources/Content/Seed/debug_area_plaza_chains.sql
+\ir resources/Content/Seed/debug_area_lineup_chains.sql
 \ir resources/Content/Seed/debug_area_ring_chains.sql
 
 \ir resources/_foreign_keys.sql

@@ -501,7 +501,7 @@ pub async fn exec(
         }
         // B. spawn lifecycle + authoring
         "spawn" | "despawn" | "savespawn" | "delspawn" | "autosavespawn" | "respawnall"
-        | "spawnrandom" => {
+        | "spawnrandom" | "spawnset" => {
             spawn::dispatch(name, caller_id, args, target_id, tx, space_mgr, engine).await
         }
         // C. patrol authoring

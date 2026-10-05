@@ -1,7 +1,9 @@
 //! Live-DB guards for Z10, the Debug Area's Visual NPC Lineup (DA-10, world
-//! 1300): templates 1410-1599 and spawns 13870-14099, one passive display
+//! 1300): templates 1410-1589 and spawns 13870-14079, one passive display
 //! actor per distinct character look in `entity_templates`
-//! (`docs/content/debug-area.md#visual-npc-lineup`).
+//! (`docs/content/debug-area.md#visual-npc-lineup`), and the six Lineup
+//! attendants (templates 1590-1595, spawns 14090-14095) that switch its
+//! groups.
 //!
 //! The geometry (navmesh, occluder, walkways, reach, the aggro scan) is
 //! guarded on the real mesh by `cimmeria-cell`'s
@@ -18,7 +20,12 @@
 //!   anywhere in `resources` points at it;
 //! * every nameplate and tag names its source template and body set;
 //! * every row loads into world 1300 as a stationary, friendly (faction 1)
-//!   mob, and the footers leave both sequences past the block.
+//!   mob, and the footers leave both sequences past the block;
+//! * each attendant's click chain switches a lineup group that exists.
+//!
+//! The groups themselves (one per actor, size bound, off at boot) are
+//! guarded where they are loaded, in `cimmeria-cell-world`'s
+//! `spawner_tests::live_db_lineup_sets`.
 //!
 //! Each was proven to fail with a lineup template row deleted from the seed.
 mod live_db {
@@ -28,8 +35,14 @@ mod live_db {
     use crate::test_support::require_db_or_skip;
 
     const WORLD: &str = "DebugArea";
-    const TEMPLATES: (i32, i32) = (1410, 1599);
-    const SPAWNS: (i32, i32) = (13870, 14099);
+    /// The actors. The attendants follow them in DA-10's id blocks
+    /// (templates 1410-1599, spawns 13870-14099).
+    const TEMPLATES: (i32, i32) = (1410, 1589);
+    const SPAWNS: (i32, i32) = (13870, 14079);
+    const ATTENDANT_TEMPLATES: (i32, i32) = (1590, 1595);
+    const ATTENDANT_SPAWNS: (i32, i32) = (14090, 14095);
+    /// DA-10's reserved blocks, which the sequence footers clear.
+    const BLOCK_END: (i32, i32) = (1599, 14099);
     /// 155 looks and 6 template-less body sets (owner-approved, 2026-10-05).
     /// A template with a new look raises it: add its actor and bump this.
     const ACTORS: i64 = 161;
@@ -420,7 +433,52 @@ mod live_db {
                 .fetch_one(&pool)
                 .await
                 .expect("spawn sequence");
-        assert!(templates >= TEMPLATES.1 as i64, "template seq {templates}");
-        assert!(spawns >= SPAWNS.1 as i64, "spawn seq {spawns}");
+        assert!(templates >= BLOCK_END.0 as i64, "template seq {templates}");
+        assert!(spawns >= BLOCK_END.1 as i64, "spawn seq {spawns}");
+    }
+
+    /// Each Lineup attendant is a clickable world-1300 NPC whose tag fires
+    /// exactly one chain, and that chain's one `spawn_set` action names a
+    /// lineup group that exists (or clears the lineup's kind in world 1300).
+    /// The labels name the groups. Revert proof: point an attendant's
+    /// `set_id` at 1399, or drop its trigger row, and this names it.
+    #[tokio::test]
+    async fn debug_area_lineup_live_db_attendants_switch_existing_groups() {
+        let pool = require_db_or_skip!();
+        let rows: Vec<(i32, i32, String, Option<String>, i64, Option<i64>, Option<String>)> =
+            sqlx::query_as(
+                "SELECT s.spawn_id, t.interaction_type::int, s.tag, t.display_name,                         (SELECT count(*) FROM resources.content_triggers tr                           WHERE tr.event_type = 'interact_tag' AND tr.event_key = s.tag),                         (SELECT count(*) FROM resources.content_triggers tr                            JOIN resources.content_actions a ON a.chain_id = tr.chain_id                            LEFT JOIN resources.spawn_sets ss                              ON ss.set_id = (a.params->>'set_id')::int                           WHERE tr.event_type = 'interact_tag' AND tr.event_key = s.tag                             AND a.action_type = 'spawn_set'                             AND ((a.params->>'op' = 'show' AND ss.type = 'visual_lineup'                                   AND ss.world_id = 1300)                               OR (a.params->>'op' = 'clear'                                   AND a.params->>'kind' = 'visual_lineup'                                   AND (a.params->>'world_id')::int = 1300))),                         (SELECT ss.name FROM resources.content_triggers tr                            JOIN resources.content_actions a ON a.chain_id = tr.chain_id                            JOIN resources.spawn_sets ss                              ON ss.set_id = (a.params->>'set_id')::int                           WHERE tr.event_key = s.tag LIMIT 1)                  FROM resources.spawnlist s                  JOIN resources.entity_templates t ON t.template_id = s.template_id                  WHERE s.spawn_id BETWEEN $1 AND $2 AND s.world_id = 1300                    AND s.template_id BETWEEN $3 AND $4 AND s.set_name IS NULL                  ORDER BY 1",
+            )
+            .bind(ATTENDANT_SPAWNS.0)
+            .bind(ATTENDANT_SPAWNS.1)
+            .bind(ATTENDANT_TEMPLATES.0)
+            .bind(ATTENDANT_TEMPLATES.1)
+            .fetch_all(&pool)
+            .await
+            .expect("attendant query must succeed");
+        assert_eq!(rows.len(), 6, "six attendants: {rows:#?}");
+        let mut errors = Vec::new();
+        for (spawn, interaction, tag, label, triggers, good, set_name) in &rows {
+            let label = label.as_deref().unwrap_or("");
+            if *interaction == 0 {
+                errors.push(format!("{spawn}: no click cursor"));
+            }
+            if *triggers != 1 || *good != Some(1) {
+                errors.push(format!(
+                    "{tag}: {triggers} trigger(s), {good:?} valid spawn_set"
+                ));
+            }
+            let short = set_name
+                .as_deref()
+                .and_then(|n| n.strip_prefix("Visual NPC Lineup - "));
+            let fits = match short {
+                Some(group) => label.starts_with(&format!("Show {group} (")),
+                None => label == "Clear lineup",
+            };
+            if !fits {
+                errors.push(format!("{spawn}: label {label:?} for group {set_name:?}"));
+            }
+        }
+        assert!(errors.is_empty(), "{errors:#?}");
     }
 }

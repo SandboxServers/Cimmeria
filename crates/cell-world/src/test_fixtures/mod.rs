@@ -26,6 +26,8 @@
 //!   of it passes the AB-12 launch gate.
 //! - [`npc_spawn_record`]: a template-shaped `SpawnRecord` for spawning an
 //!   NPC through the real spawn-time derivations.
+//! - [`install_lineup_sets`] and the `LINEUP_*` constants: two switchable
+//!   spawn sets of one kind (DA-10).
 
 mod content_events;
 mod deployables;
@@ -34,6 +36,7 @@ pub mod occluder_fixtures;
 mod pets;
 mod space_manager;
 mod spawn_record;
+mod spawn_sets;
 
 pub use content_events::{NoContentEvents, RecordedContentEvent, RecordingContentEvents};
 pub use deployables::{
@@ -52,5 +55,9 @@ pub use pets::{
 };
 pub use space_manager::{make_space_manager, make_space_manager_with_player, seed_ability_defs};
 pub use spawn_record::npc_spawn_record;
+pub use spawn_sets::{
+    install_lineup_sets, LINEUP_KIND, LINEUP_SET_A, LINEUP_SET_A_NAME, LINEUP_SET_A_SIZE,
+    LINEUP_SET_B, LINEUP_SET_B_NAME, LINEUP_SET_B_SIZE, LINEUP_WORLD_ID,
+};
 
 pub use crate::cell::arrival::{test_fixture_mesh, test_insert_navmesh_space};

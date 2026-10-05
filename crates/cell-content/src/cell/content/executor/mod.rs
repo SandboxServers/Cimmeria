@@ -52,6 +52,7 @@ mod mail;
 mod mission;
 mod once_gate;
 mod spawn;
+mod spawn_set;
 mod stargate;
 mod stats;
 mod transport;

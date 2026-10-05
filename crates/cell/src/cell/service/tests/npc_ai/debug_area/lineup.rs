@@ -1,8 +1,11 @@
 //! Z10, the Visual NPC Lineup (DA-10, spawns 13870-14099), on the real
 //! `ihpet_crater_light.nav` and `.occ`, read from the seed files: every
-//! display actor stands on the ground the client draws, a player can walk
-//! up to each one from the Compound ring, they stand apart, and none of them
-//! can fight or be fought (`docs/content/debug-area.md#visual-npc-lineup`).
+//! display actor and Lineup attendant stands on the ground the client draws,
+//! a player can walk up to each one from the Compound ring, they stand
+//! apart, and none of them can fight or be fought
+//! (`docs/content/debug-area.md#visual-npc-lineup`). The actors spawn only
+//! while their group is shown; these tests place every one of them at once,
+//! as if all five groups were on.
 
 use std::f32::consts::PI;
 
@@ -14,8 +17,9 @@ use crate::cell::combat;
 
 /// The lineup's actors: 155 looks and 6 template-less body sets.
 const ACTORS: usize = 161;
-/// DA-10's spawn block.
-const DA10_SPAWNS: std::ops::RangeInclusive<i32> = 13870..=14099;
+/// The actors' spawns, and the six attendants' (the group buttons).
+const DA10_SPAWNS: std::ops::RangeInclusive<i32> = 13870..=14079;
+const ATTENDANT_SPAWNS: std::ops::RangeInclusive<i32> = 14090..=14095;
 /// The Compound ring pad (`debug_area_rings.sql`), the station a tester
 /// rings to.
 const RING_PAD: Vector3 = Vector3 {
@@ -44,12 +48,21 @@ const MIN_GAP_MOB: f32 = 3.5;
 /// stands beside.
 const MARGIN: f32 = 5.0;
 
+/// Every actor, then the six attendants.
 fn lineup() -> Vec<SpawnRecord> {
-    let rows: Vec<SpawnRecord> = world_records()
-        .into_iter()
+    let records = world_records();
+    let mut rows: Vec<SpawnRecord> = records
+        .iter()
         .filter(|r| DA10_SPAWNS.contains(&r.spawn_id))
+        .cloned()
         .collect();
     assert_eq!(rows.len(), ACTORS, "DA-10 seeds one actor per look");
+    rows.extend(
+        records
+            .into_iter()
+            .filter(|r| ATTENDANT_SPAWNS.contains(&r.spawn_id)),
+    );
+    assert_eq!(rows.len(), ACTORS + 6, "and six attendants");
     rows
 }
 
