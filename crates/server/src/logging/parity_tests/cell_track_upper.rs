@@ -591,6 +591,10 @@ fn cell_crate_events_keep_their_file_and_index() {
             "cimmeria_cell_duel::cell::duel::response",
         ),
         (
+            "cimmeria_cell_chatter=debug,",
+            "cimmeria_cell_chatter::cell::chatter",
+        ),
+        (
             "cimmeria_cell_org=debug,",
             "cimmeria_cell_org::cell::organization::creation",
         ),

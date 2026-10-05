@@ -197,6 +197,7 @@ systems  cell-combat, cell-content, cell-interactions, cell-methods, cell-consol
 leaves   cimmeria-cell-pets     PetsPlugin: the pet cell methods and the pet hooks
          cimmeria-cell-duel     DuelPlugin: the duel cell methods, the duel tick and the leave hooks
          cimmeria-cell-org      OrgPlugin: the organization cell methods, the disconnect and world-entry hooks
+         cimmeria-cell-chatter  ChatterPlugin: the ambient chatter tick (a new feature, Debug Area DA-09)
          cimmeria-cell-effect-scripts   every EffectScript and the EFFECT_SCRIPTS table (a registry, not a plugin)
          cimmeria-base-crafting CraftingPlugin: the crafting envelope consumers, the session and seam hooks, base::crafting
 root     cimmeria-services      the plugin tables; installs them on the CellService and the BaseService

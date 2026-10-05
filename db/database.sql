@@ -202,6 +202,8 @@
 \ir resources/Archetypes/Tables/char_creation_visgroups.sql
 \ir resources/Archetypes/Tables/disciplines.sql
 \ir resources/Archetypes/Tables/racial_paradigm.sql
+\ir resources/Dialogs/Tables/ambient_chatter_groups.sql
+\ir resources/Dialogs/Tables/ambient_chatter_lines.sql
 \ir resources/Dialogs/Tables/dialog_screen_buttons.sql
 \ir resources/Dialogs/Tables/dialog_screens.sql
 \ir resources/Dialogs/Tables/dialog_set_maps.sql
@@ -290,6 +292,7 @@
 \ir resources/Archetypes/Seed/char_creation_visgroups.sql
 \ir resources/Archetypes/Seed/disciplines.sql
 \ir resources/Archetypes/Seed/racial_paradigm.sql
+\ir resources/Dialogs/Seed/ambient_chatter_lords.sql
 \ir resources/Dialogs/Seed/dialog_screen_buttons.sql
 \ir resources/Dialogs/Seed/dialog_screens.sql
 \ir resources/Dialogs/Seed/dialog_set_maps.sql
@@ -311,6 +314,7 @@
 \ir resources/Entities/Seed/deployables.sql
 \ir resources/Entities/Seed/entity_templates.sql
 \ir resources/Entities/Seed/entity_templates_debug_area_combat.sql
+\ir resources/Entities/Seed/entity_templates_debug_area_lords.sql
 \ir resources/Entities/Seed/entity_templates_debug_area_npcs.sql
 \ir resources/Entities/Seed/entity_templates_debug_area_plaza.sql
 \ir resources/Entities/Seed/monikers.sql
@@ -369,6 +373,7 @@
 \ir resources/Worlds/Seed/spawn_sets.sql
 \ir resources/Worlds/Seed/spawnlist.sql
 \ir resources/Worlds/Seed/spawnlist_debug_area_combat.sql
+\ir resources/Worlds/Seed/spawnlist_debug_area_lords.sql
 \ir resources/Worlds/Seed/spawnlist_debug_area_npcs.sql
 \ir resources/Worlds/Seed/spawnlist_debug_area_plaza.sql
 \ir resources/Worlds/Seed/stargates.sql

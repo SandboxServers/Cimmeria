@@ -151,6 +151,13 @@ use crate::otel;
 /// `duel=debug` row exports; this row covers any untargeted row. No other
 /// crate's row is a prefix of it, and it is a prefix of none.
 ///
+/// `cimmeria_cell_chatter=debug` (Debug Area DA-09) does the same for the
+/// ambient chatter plugin crate: the chatter tick and `ChatterPlugin`. Its rows
+/// name the `chatter` target (an exchange start at INFO, each line at DEBUG,
+/// a skipped speaker at WARN), which the `chatter=debug` row exports, as it
+/// does the cell's catalog-load ERROR; this row covers any untargeted row. No
+/// other crate's row is a prefix of it, and it is a prefix of none.
+///
 /// `cimmeria_cell_org=debug` (#962 step 3) does the same for the org plugin
 /// crate: the organization router (cell methods 8-19), the Team and Command
 /// forward, the squad answer, leave, loot mode, ping, disconnect and
@@ -306,6 +313,7 @@ pub(crate) const OTEL_FILTER: &str = "info,\
                 cimmeria_cell_methods=debug,\
                 cimmeria_cell_pets=debug,\
                 cimmeria_cell_duel=debug,\
+                cimmeria_cell_chatter=debug,\
                 cimmeria_cell_org=debug,\
                 cimmeria_cell_effect_scripts=debug,\
                 cimmeria_base_crafting=debug,\
@@ -354,6 +362,7 @@ pub(crate) const OTEL_FILTER: &str = "info,\
                 chat=debug,rate_limit=debug,online_index=debug,\
                 mail=debug,\
                 duel=debug,\
+                chatter=debug,\
                 bank=debug,\
                 ammo=debug,\
                 vitals=debug,\

@@ -13,6 +13,20 @@ ALTER TABLE ONLY cover_sets
     ADD CONSTRAINT cover_sets_world_id_fkey FOREIGN KEY (world_id) REFERENCES worlds(world_id) ON UPDATE RESTRICT ON DELETE RESTRICT;
 
 --
+-- Name: ambient_chatter_groups_world_id_fkey; Type: FK CONSTRAINT; Schema: resources; Owner: -
+--
+
+ALTER TABLE ONLY ambient_chatter_groups
+    ADD CONSTRAINT ambient_chatter_groups_world_id_fkey FOREIGN KEY (world_id) REFERENCES worlds(world_id) ON UPDATE CASCADE ON DELETE CASCADE;
+
+--
+-- Name: ambient_chatter_lines_group_id_fkey; Type: FK CONSTRAINT; Schema: resources; Owner: -
+--
+
+ALTER TABLE ONLY ambient_chatter_lines
+    ADD CONSTRAINT ambient_chatter_lines_group_id_fkey FOREIGN KEY (group_id) REFERENCES ambient_chatter_groups(group_id) ON UPDATE CASCADE ON DELETE CASCADE;
+
+--
 -- TOC entry 3071 (class 2606 OID 63362)
 -- Name: abilities_event_set_id_fkey; Type: FK CONSTRAINT; Schema: resources; Owner: -
 --

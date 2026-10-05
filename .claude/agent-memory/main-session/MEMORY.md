@@ -22,6 +22,9 @@ Dated, sourced facts from top-level sessions, committed with the change that pro
 
 ## Reference
 
+- [reference_npc_costume_components.md](reference_npc_costume_components.md) — NPC components must be BodyComponent exports (query-index scan); Ra kit + NPC_Ra_Head_00/RaG fingernail = placeholder cube; female Goa'uld armour is Anat's kit only
+- [reference_ihpet_crater_light_render_gaps.md](reference_ihpet_crater_light_render_gaps.md) — world 1300/73 map: terrain draws white, north palace terrace white/magenta with grey void east of it; put showcase NPCs on paving
+- [reference_lab_local_server.md](reference_lab_local_server.md) — lab client on a local branch server: temp Local row in LoginInternal.lua, shard 'Test', seeded lab account, chat-focus and teleport gotchas
 - [reference_colo_docker_layout.md](reference_colo_docker_layout.md) — colo = two compose projects on signoz-net, mirrored in docker/ (2026-10-04); watchtower ignores compose edits; s6 cont-init can't gate the server; uid 1001; player telemetry via :8081
 - [reference_agent_board.md](reference_agent_board.md) — board.cimmeria.app (2026-10-04): per-agent accounts and keys, broker for campaigns; colo /24 is Spamhaus-SBL-listed so mail goes via Graph; some Azure storage clusters unreachable from the colo
 - [reference_lab_client_controls.md](reference_lab_client_controls.md) — lab driving: Q/E rotate, B bag, Tab target; mouse-look broken (no DI button); .gotoxyz moves the selected target; inventory reader fallback

@@ -1,0 +1,39 @@
+[package]
+name = "cimmeria-cell-chatter"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+publish = false
+description = "Ambient chatter as a cell plugin for the Cimmeria server emulator: groups of NPCs who talk among themselves in say chat on a schedule, heard by the players standing near them"
+
+# A feature leaf on the plugin model (docs/architecture/plugin-architecture.md,
+# #962): it registers one tick hook, and only the composition root
+# (cimmeria-services, which lists ChatterPlugin in the plugin table) and test
+# code depend on it. It must never become a dependency of a cell crate.
+[dependencies]
+# SpaceManager (its `resources` map holds the catalog and this plugin's run
+# state) and the plugin API (`cell::plugin`).
+cimmeria-cell-world = { workspace = true }
+# The catalog types the cell's startup loader fills
+# (`cell::spawner::AmbientChatterCatalog`).
+cimmeria-cell-catalog = { workspace = true }
+# The Base<->Cell message contract, the onPlayerCommunication index, its
+# serializer and the say channel id.
+cimmeria-wire = { workspace = true }
+cimmeria-common = { workspace = true }
+cimmeria-entity = { workspace = true }
+tokio = { workspace = true }
+tracing = { workspace = true }
+cimmeria-workspace-hack = { version = "0.1", path = "../workspace-hack" }
+
+[dev-dependencies]
+# `LogCapture`, re-exported from the `#[cfg(test)] mod test_support` shim in
+# lib.rs. Every crate with this dev-dependency must be listed in
+# tools/test-live-db.{sh,ps1}; `live_db_wrapper_lists_every_test_support_crate`
+# enforces it.
+cimmeria-test-support = { workspace = true }
+# The world fixtures (`make_space_manager`).
+cimmeria-cell-world = { workspace = true, features = ["test-support"] }
+# Speaker names in the tests: an NPC's name is its `name_id` text in the
+# process name book.
+cimmeria-names = { workspace = true }
