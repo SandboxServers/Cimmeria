@@ -56,8 +56,12 @@ const PROBE_SEQ: u32 = 1;
 /// (the witness, or the session's player); `kind` is the `send_kind` the
 /// `mercury.reliable_send` and `mercury.tx_hole` lines carry.
 ///
-/// Returns [`WitnessSendOutcome::Sent`] with the first sequence number used
-/// and the encrypted length (for a fragmented send, the body length), or
+/// The measuring build is the only one that logs: the builds after it run
+/// with tracing off ([`silent_build`]).
+///
+/// Returns [`WitnessSendOutcome::Sent`] with the first sequence number used,
+/// the encrypted bytes put on the wire and the datagram count (more than one
+/// when fragmented), or
 /// [`WitnessSendOutcome::ClientDisconnected`] /
 /// [`WitnessSendOutcome::SendError`]; never `AddrUnresolved`.
 pub async fn send_reliable_to_addr<F>(
@@ -117,23 +121,88 @@ where
         cimmeria_mercury::packet::max_plaintext_len(probe.len(), version)
     };
 
+    // The probe already read the key and version; the real build uses the
+    // same pair, so it frames exactly as the probe measured.
     let reserved = {
         let clients = connected.lock().unwrap();
         clients.get(&addr).map(|c| {
-            let seq = c.next_seq.fetch_add(1, Ordering::Relaxed) & SEQUENCE_MASK;
+            let raw_seq = c.next_seq.fetch_add(1, Ordering::Relaxed);
             let acks: Vec<u32> = cimmeria_mercury::packet::take_acks_for_plaintext(
                 &mut c.pending_acks.lock().unwrap(),
                 plaintext_bound,
-                c.enc_version,
+                version,
             );
-            (c.key, c.enc_version, seq, acks)
+            (raw_seq, acks)
         })
     };
-    let Some((key, version, seq, acks)) = reserved else {
+    let Some((raw_seq, acks)) = reserved else {
         log_client_disconnected(log_id, addr);
         return WitnessSendOutcome::ClientDisconnected;
     };
-    let packet = build_packet(&key, version, seq, &acks);
+    let seq = raw_seq & SEQUENCE_MASK;
+    let mut packet = silent_build(&build_packet, &key, version, seq, &acks);
+    if packet.len() > PACKET_MAX_SIZE && !acks.is_empty() {
+        // The ACKs did not fit after all (a builder whose body grows with its
+        // ACK list). The probe proved the packet fits without them: put them
+        // back for the next send and rebuild at the same seq.
+        requeue_acks(connected, addr, &acks);
+        tracing::warn!(
+            target: "mercury.reliable_send",
+            event = "ack_overflow_rebuilt",
+            peer = %addr,
+            witness_id = log_id,
+            send_kind = kind,
+            seq,
+            wire_len = packet.len(),
+            acks = acks.len(),
+            packet_max_size = PACKET_MAX_SIZE,
+            "reliable packet with ACKs is larger than the client buffer; rebuilt without them"
+        );
+        packet = silent_build(&build_packet, &key, version, seq, &[]);
+    }
+    if packet.len() > PACKET_MAX_SIZE {
+        // Still too big: the builder did not frame as it measured. Hand the
+        // reserved seq back if nobody has taken the next one, and fragment.
+        if let Some(body) = reframe_body(&packet, &key, version) {
+            let released = connected.lock().ok().is_some_and(|clients| {
+                clients.get(&addr).is_some_and(|c| {
+                    c.next_seq
+                        .compare_exchange(
+                            raw_seq.wrapping_add(1),
+                            raw_seq,
+                            Ordering::Relaxed,
+                            Ordering::Relaxed,
+                        )
+                        .is_ok()
+                })
+            });
+            if released {
+                return send_oversize_as_bundle(
+                    transport,
+                    connected,
+                    addr,
+                    log_id,
+                    kind,
+                    packet.len(),
+                    &body,
+                )
+                .await;
+            }
+        }
+        // The seq is taken and must be filled: send as built. The
+        // `mercury.reliable_send` WARN below names the packet.
+        tracing::error!(
+            target: "mercury.reliable_send",
+            event = "oversize_after_reserve",
+            peer = %addr,
+            witness_id = log_id,
+            send_kind = kind,
+            seq,
+            wire_len = packet.len(),
+            packet_max_size = PACKET_MAX_SIZE,
+            "reliable packet grew past the client buffer after its seq was reserved"
+        );
+    }
     let bytes = packet.len();
     if let Err(e) = transport.send_to(&packet, addr).await {
         tracing::warn!(
@@ -161,7 +230,45 @@ where
             first_message: None,
         },
     );
-    WitnessSendOutcome::Sent { addr, seq, bytes }
+    WitnessSendOutcome::Sent {
+        addr,
+        seq,
+        bytes,
+        packets: 1,
+    }
+}
+
+/// Build the packet with tracing switched off on this thread. The measuring
+/// build already emitted whatever the builder logs (an appearance-missing
+/// WARN, say); a second copy per send would be noise.
+fn silent_build<F>(
+    build_packet: &F,
+    key: &[u8; 32],
+    version: EncryptionVersion,
+    seq: u32,
+    acks: &[u32],
+) -> Vec<u8>
+where
+    F: Fn(&[u8; 32], EncryptionVersion, u32, &[u32]) -> Vec<u8>,
+{
+    tracing::dispatcher::with_default(&tracing::Dispatch::none(), || {
+        build_packet(key, version, seq, acks)
+    })
+}
+
+/// Return ACKs taken for a packet that will not carry them to the front of
+/// the session's pending list, oldest first, so the next send takes them.
+fn requeue_acks(
+    connected: &Arc<Mutex<HashMap<SocketAddr, ConnectedClientState>>>,
+    addr: SocketAddr,
+    acks: &[u32],
+) {
+    if let Ok(clients) = connected.lock() {
+        if let Some(c) = clients.get(&addr) {
+            let mut pending = c.pending_acks.lock().unwrap();
+            pending.splice(0..0, acks.iter().copied());
+        }
+    }
 }
 
 fn log_client_disconnected(log_id: u32, addr: SocketAddr) {
@@ -226,12 +333,14 @@ async fn send_oversize_as_bundle(
         BundleSendOutcome::Sent {
             addr,
             base_seq,
-            bytes,
+            packets,
+            wire_bytes,
             ..
         } => WitnessSendOutcome::Sent {
             addr,
             seq: base_seq,
-            bytes,
+            bytes: wire_bytes,
+            packets,
         },
         BundleSendOutcome::ClientDisconnected => WitnessSendOutcome::ClientDisconnected,
         BundleSendOutcome::AddrUnresolved
@@ -390,5 +499,6 @@ pub(super) async fn send_bundle_reliable_to_addr(
         base_seq,
         packets: packets.len(),
         bytes: body_len,
+        wire_bytes: packets.iter().map(Vec::len).sum(),
     }
 }

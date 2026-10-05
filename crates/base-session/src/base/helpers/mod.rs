@@ -85,11 +85,15 @@ use super::ConnectedClientState;
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum WitnessSendOutcome {
     /// Packet hit the wire. `seq` is the reliable/unreliable sequence
-    /// number consumed; `bytes` is the encrypted datagram length.
+    /// number consumed (the first one when fragmented); `bytes` is the
+    /// encrypted length of every datagram sent, summed; `packets` is how many
+    /// datagrams that was (more than one only for a reliable send whose body
+    /// did not fit one datagram).
     Sent {
         addr: SocketAddr,
         seq: u32,
         bytes: usize,
+        packets: usize,
     },
     /// `witness_id` had no entry in `entity_to_addr` — packet dropped.
     /// Mirrors the helper's `reason = "entity_to_addr_miss"` warn.
@@ -139,12 +143,14 @@ impl WitnessSendOutcome {
 pub enum BundleSendOutcome {
     /// All fragments hit the wire. `base_seq` is the first reserved seq;
     /// `packets` is the fragment count; `bytes` is the total accumulated
-    /// body length.
+    /// body length; `wire_bytes` is the encrypted length of every fragment,
+    /// summed.
     Sent {
         addr: SocketAddr,
         base_seq: u32,
         packets: usize,
         bytes: usize,
+        wire_bytes: usize,
     },
     /// `witness_id` had no entry in `entity_to_addr` — bundle dropped.
     AddrUnresolved,
@@ -440,7 +446,12 @@ where
         );
         return WitnessSendOutcome::SendError;
     }
-    WitnessSendOutcome::Sent { addr, seq, bytes }
+    WitnessSendOutcome::Sent {
+        addr,
+        seq,
+        bytes,
+        packets: 1,
+    }
 }
 
 /// Send an AoI packet to a specific witness's client — **reliable**
