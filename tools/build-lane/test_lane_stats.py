@@ -166,7 +166,8 @@ class LaneDiskTests(unittest.TestCase):
         self.target.mkdir(parents=True)
         self.env = dict(os.environ, LANE_ROOT=str(self.root / "lane-root"), LANE_SLOTS="2", RUSTC_WRAPPER="",
                         CIMMERIA_TARGET_ROOT=str(self.root / "targets"))
-        for var in ("LANE_METRICS_DIR", "LANE_MIN_FREE_GB", "LANE_PRUNE", "CIMMERIA_FORCE_DEV_DRIVE"):
+        # CI=true (GitHub sets it) keeps lane.sh out of quiet mode, and log pruning with it.
+        for var in ("CI", "LANE_VERBOSE", "LANE_METRICS_DIR", "LANE_MIN_FREE_GB", "LANE_PRUNE", "CIMMERIA_FORCE_DEV_DRIVE"):
             self.env.pop(var, None)
 
     def lane(self, *cmd, **env):

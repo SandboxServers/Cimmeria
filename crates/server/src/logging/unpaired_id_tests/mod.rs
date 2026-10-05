@@ -25,8 +25,10 @@
 //! as the workspace total doesn't rise, and refuses otherwise. (`force` is an
 //! alias kept for old instructions; it refuses a rise too.) Blessing under
 //! `CI` panics. A scanner change that starts seeing fields it missed raises
-//! the total legitimately: empty the baseline file, bless (an empty baseline
-//! accepts any counts), and say so in the PR. Because the ratchet counts per file, pairing one field and
+//! the total legitimately; that one case uses `NT_BASELINE_RESET=1` instead,
+//! which rewrites the baseline whatever the total does, prints the old and
+//! new totals, and records them in a `# reset` line of the file so the rise
+//! shows in review. Say why in the PR. Because the ratchet counts per file, pairing one field and
 //! adding another unpaired one in the same file passes; the `file:line`
 //! sites are only printed when a count rises.
 //!
@@ -54,6 +56,8 @@ use super::target_scan_tests::{crates_dir, is_test_path, rs_files, IN_PROCESS_CR
 
 const BASELINE: &str = "unpaired_id_baseline.txt";
 const BLESS_VAR: &str = "NT_BASELINE_BLESS";
+/// Rewrites the baseline even when the total rises: a scanner change only.
+const RESET_VAR: &str = "NT_BASELINE_RESET";
 
 /// One unpaired ID field: `crates/…/file.rs:line`, and its key.
 #[derive(Debug, Clone)]
@@ -214,6 +218,17 @@ fn render_baseline(counts: &BTreeMap<String, usize>) -> String {
     out
 }
 
+/// [`render_baseline`] plus a `# reset` line naming the old total, so a
+/// reset's rise is visible in the diff. The next bless drops the line.
+fn render_reset(counts: &BTreeMap<String, usize>, old: usize) -> String {
+    let rendered = render_baseline(counts);
+    let at = rendered.find(TOTAL_PREFIX).unwrap_or(rendered.len());
+    let new: usize = counts.values().sum();
+    let note = format!("# reset by {RESET_VAR}: total {old} -> {new} (a scanner change)
+");
+    format!("{}{note}{}", &rendered[..at], &rendered[at..])
+}
+
 /// The ratchet's verdict on `current` against `baseline`: what rose (with its
 /// sites) and what fell without the baseline following.
 fn compare(scan: &Scan, baseline: &BTreeMap<String, usize>) -> (Vec<String>, Vec<String>) {
@@ -279,6 +294,32 @@ fn unpaired_id_fields_only_shrink() {
     let text = std::fs::read_to_string(&path).unwrap_or_default();
     let baseline = parse_baseline(&text);
     let (rose, fell) = compare(&scan, &baseline);
+    if let Ok(mode) = std::env::var(RESET_VAR) {
+        assert!(
+            std::env::var_os("CI").is_none(),
+            "{RESET_VAR} is set under CI: a reset there would turn the guard off"
+        );
+        assert!(mode == "1", "{RESET_VAR}={mode}: use 1");
+        let counts: BTreeMap<String, usize> = scan
+            .unpaired
+            .iter()
+            .map(|(p, s)| (p.clone(), s.len()))
+            .collect();
+        let (old, new) = (
+            baseline.values().sum::<usize>(),
+            counts.values().sum::<usize>(),
+        );
+        std::fs::write(&path, render_reset(&counts, old)).unwrap();
+        let banner = format!(
+            "{RESET_VAR}: unpaired-ID baseline RESET, total {old} -> {new}.              Only a scanner change may do this; say why in the PR."
+        );
+        eprintln!("{banner}");
+        println!("{banner}");
+        for moved in &rose {
+            println!("reset over a per-file rise: {moved}");
+        }
+        return;
+    }
     if let Ok(mode) = std::env::var(BLESS_VAR) {
         assert!(
             std::env::var_os("CI").is_none(),

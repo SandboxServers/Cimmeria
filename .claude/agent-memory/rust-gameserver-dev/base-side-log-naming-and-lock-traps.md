@@ -10,7 +10,7 @@ Base-side Rule 6 naming (NT-24, 2026-10-04), `crates/base-session/src/base/sessi
 - `session_identity(&c)` when the session is in hand (also inside a held `connected` lock; it takes no lock).
 - `identity_for_addr(connected, addr)`: locks `connected`.
 - `identity_for_entity` / `entity_name_for(connected, entity_to_addr, eid)`: locks both maps one after the other, never nested. For an NPC id it scans all of `connected` and returns `None`.
-- `identity_for_player(connected, player_id)` for cell->base persistence messages that carry only the DB id. `identity_for_player_in(&clients, ..)` when the map is already locked.
+- `cimmeria_entity::known_names::player_name(player_id)` (and `account_name`, `org_name`) for lines that carry only the DB id, such as cell->base persistence messages: lock-free, filled at login/playCharacter. It replaced `identity_for_player`, removed in #1233.
 - The base has **no NPC names**. The one exception: AoI messages carry `NpcAoIData.name_id`, and `cimmeria_names::book().text(name_id)` names the NPC (`cell_dispatch/aoi_names.rs`).
 - At logout the session is already gone. `PersistPosition` / `SystemOptionsUpdate` read the name back with `UPDATE ... RETURNING player_name`, the name's only source at that point.
 
