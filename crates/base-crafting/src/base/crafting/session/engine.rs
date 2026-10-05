@@ -478,7 +478,6 @@ impl CraftingSessions {
         env: &InductionEnv,
     ) {
         if !self.still_active(ids, started.job_id, env) {
-            let player_label = known_names::player_name(ids.player_id);
             tracing::debug!(
                 target: "crafting",
                 event = "induction_start_skipped",
@@ -487,9 +486,9 @@ impl CraftingSessions {
                 account_id = ids.account_id,
                 account_name = known_names::account_name(ids.account_id),
                 player_id = ids.player_id,
-                player_name = player_label,
+                player_name = known_names::player_name(ids.player_id),
                 entity_id = ids.entity_id,
-                entity_name = player_label,
+                entity_name = known_names::player_name(ids.player_id),
                 "crafting induction no longer active; no bar sent"
             );
             return;

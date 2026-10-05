@@ -412,12 +412,11 @@ pub async fn handle_buyback_vendor_items(
     )
     .await;
 
-    let player_label = known_names::player_name(player_id);
     tracing::debug!(
         entity_id,
-        entity_name = player_label,
+        entity_name = known_names::player_name(player_id),
         player_id,
-        player_name = player_label,
+        player_name = known_names::player_name(player_id),
         vendor_template_id,
         vendor_template_name = cimmeria_names::owned::template(vendor_template_id),
         item_count = items.len(),

@@ -157,14 +157,13 @@ pub async fn handle_gm_grant_ability(
     // "granted ability X".
     let tell_gm = |text: String| async move {
         if active_player_of(gm_entity_id, connected, entity_to_addr) != Some(gm_player_id) {
-            let player_label = known_names::player_name(gm_player_id);
             tracing::debug!(
                 decision_outcome = "feedback_dropped",
                 reason = "gm_session_gone",
                 entity_id = gm_entity_id,
-                entity_name = player_label,
+                entity_name = known_names::player_name(gm_player_id),
                 player_id = gm_player_id,
-                player_name = player_label,
+                player_name = known_names::player_name(gm_player_id),
                 ability_id,
                 ability_name = cimmeria_names::book().ability(ability_id),
                 "GmGrantAbility: GM session gone or reused; feedback dropped"
@@ -265,17 +264,16 @@ pub async fn handle_gm_grant_ability(
             return;
         }
         Ok(GrantWrite::AlreadyKnown) => {
-            let player_label = known_names::player_name(gm_player_id);
             tracing::debug!(
                 decision_outcome = "refused",
                 reason = "already_known",
                 persisted = false,
                 entity_id = gm_entity_id,
-                entity_name = player_label,
+                entity_name = known_names::player_name(gm_player_id),
                 account_id,
                 account_name = known_names::account_name(account_id),
                 player_id = gm_player_id,
-                player_name = player_label,
+                player_name = known_names::player_name(gm_player_id),
                 subject_entity_id = entity_id,
                 subject_entity_name = known_names::player_name(player_id),
                 subject_player_id = player_id,

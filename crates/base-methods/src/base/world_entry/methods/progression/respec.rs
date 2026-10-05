@@ -164,7 +164,7 @@ pub async fn handle_reset_abilities(
     let Some(addr) = entity_to_addr.lock().unwrap().get(&entity_id).copied() else {
         tracing::warn!(
             entity_id,
-            entity_name = known_names::player_name(request.player_id),
+            entity_name = known_names::player_name(player_id),
             "ResetAbilities: no address for entity"
         );
         return;
@@ -299,7 +299,8 @@ pub async fn handle_reset_abilities(
                 entity_id,
                 entity_name = player_label,
                 player_id,
-                player_name = player_label, error = %e,
+                player_name = player_label,
+                error = %e,
                 "ResetAbilities: base→cell AbilitiesReset send failed; the cell keeps the \
                  pre-respec abilities and points until relog"
             );

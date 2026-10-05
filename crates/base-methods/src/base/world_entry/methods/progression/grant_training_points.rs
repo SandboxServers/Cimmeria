@@ -227,12 +227,12 @@ pub async fn handle_grant_training_points(
                 .await
             {
                 tracing::error!(
-                        entity_id,
-                entity_name = known_names::player_name(player_id),
-                        training_points = total,
-                        error = %e,
-                        "GrantTrainingPoints: base→cell send failed; counter and trainer gate stale until relog"
-                    );
+                    entity_id,
+                    entity_name = known_names::player_name(player_id),
+                    training_points = total,
+                    error = %e,
+                    "GrantTrainingPoints: base→cell send failed; counter and trainer gate stale until relog"
+                );
             }
         }
         None => tracing::warn!(

@@ -145,17 +145,18 @@ pub(super) async fn handle_item_used(
             return;
         }
     };
-    let player_label = space_mgr.entity_label(entity_id);
     tracing::debug!(
         entity_id,
-        entity_name = player_label,
+        entity_name = space_mgr.entity_label(entity_id),
         player_id,
-        player_name = player_label,
+        player_name = space_mgr.entity_label(entity_id),
         instance_id, // nt:id-only instance row of item_type_id
         item_type_id = type_id,
         item_name = cimmeria_names::book().item(type_id),
         target_id,
-        target_name = space_mgr.entity_label(u32::try_from(target_id).unwrap_or(0)),
+        target_name = u32::try_from(target_id)
+            .ok()
+            .and_then(|t| space_mgr.entity_label(t)),
         "ItemUsed: firing OnItemUse"
     );
     content::fire_item_use(

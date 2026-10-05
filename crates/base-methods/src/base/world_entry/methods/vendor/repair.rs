@@ -83,12 +83,11 @@ pub async fn handle_repair_inventory_item(
                 entity_to_addr,
             )
             .await;
-            let player_label = known_names::player_name(player_id);
             tracing::debug!(
                 entity_id,
-                entity_name = player_label,
+                entity_name = known_names::player_name(player_id),
                 player_id,
-                player_name = player_label,
+                player_name = known_names::player_name(player_id),
                 item_id, // nt:id-only instance id, type unread
                 repair_points,
                 total_items,
@@ -160,12 +159,11 @@ pub async fn handle_repair_inventory_items(
 
     let item_ids = normalize_item_ids(item_ids);
     if item_ids.is_empty() {
-        let player_label = known_names::player_name(player_id);
         tracing::debug!(
             entity_id,
-            entity_name = player_label,
+            entity_name = known_names::player_name(player_id),
             player_id,
-            player_name = player_label,
+            player_name = known_names::player_name(player_id),
             "RepairInventoryItems: empty item list"
         );
         return;
@@ -198,12 +196,11 @@ pub async fn handle_repair_inventory_items(
                 entity_to_addr,
             )
             .await;
-            let player_label = known_names::player_name(player_id);
             tracing::debug!(
                 entity_id,
-                entity_name = player_label,
+                entity_name = known_names::player_name(player_id),
                 player_id,
-                player_name = player_label,
+                player_name = known_names::player_name(player_id),
                 item_count = item_ids.len(),
                 repaired = r.rows_affected(),
                 total_items,
@@ -211,12 +208,11 @@ pub async fn handle_repair_inventory_items(
             );
         }
         Ok(_) => {
-            let player_label = known_names::player_name(player_id);
             tracing::debug!(
                 entity_id,
-                entity_name = player_label,
+                entity_name = known_names::player_name(player_id),
                 player_id,
-                player_name = player_label,
+                player_name = known_names::player_name(player_id),
                 item_count = item_ids.len(),
                 "RepairInventoryItems: no repairable items changed"
             );

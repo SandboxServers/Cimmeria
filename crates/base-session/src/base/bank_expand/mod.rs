@@ -445,16 +445,15 @@ pub async fn handle_expansion_quote(
 }
 
 fn quote_debug(caller: ExpandCaller, state: &ExpansionState, offered: bool, reason: Option<&str>) {
-    let player_label = known_names::player_name(caller.player_id);
     tracing::debug!(
         target: "bank",
         event = "expand_quote",
         account_id = caller.account_id,
         account_name = known_names::account_name(caller.account_id),
         player_id = caller.player_id,
-        player_name = player_label,
+        player_name = known_names::player_name(caller.player_id),
         entity_id = caller.entity_id,
-        entity_name = player_label,
+        entity_name = known_names::player_name(caller.player_id),
         offered,
         reason,
         bank_slots = state.bank_slots,
