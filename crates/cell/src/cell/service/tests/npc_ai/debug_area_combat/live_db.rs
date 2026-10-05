@@ -23,10 +23,10 @@ use crate::test_support::require_db_or_skip;
 
 /// `(tag prefix, rows, zone centre (x, z), zone radius)`.
 const ZONES: [(&str, usize, [f32; 2], f32); 7] = [
-    ("DebugArea_Arena_Praxis", 3, [250.0, -725.0], 50.0),
-    ("DebugArea_Arena_NID", 3, [250.0, -725.0], 50.0),
-    ("DebugArea_Arena_Green", 2, [250.0, -725.0], 50.0),
-    ("DebugArea_Arena_Yellow", 2, [250.0, -725.0], 50.0),
+    ("DebugArea_Arena_Praxis", 3, [354.0, -730.0], 40.0),
+    ("DebugArea_Arena_NID", 3, [354.0, -730.0], 40.0),
+    ("DebugArea_Arena_Green", 2, [354.0, -730.0], 40.0),
+    ("DebugArea_Arena_Yellow", 2, [354.0, -730.0], 40.0),
     ("DebugArea_Cover_Rifleman", 3, [165.0, -945.0], 30.0),
     ("DebugArea_Death_Operative", 4, [438.0, -916.0], 40.0),
     ("DebugArea_Respawn_", 2, [438.0, -916.0], 40.0),
@@ -48,8 +48,8 @@ fn with_prefix<'a>(rows: &'a [SpawnRecord], prefix: &str) -> Vec<&'a SpawnRecord
 }
 
 /// Every DA-04 spawn is in world 1300, carries a `DebugArea_` tag of one of
-/// the three zones, and stands inside its zone: the arena rows on the pit
-/// floor, the riflemen in the west wing (west of its doorway at x 204), the
+/// the three zones, and stands inside its zone: the arena rows on the east
+/// shelf (DA-F2), the riflemen in the west wing (west of its doorway at x 204), the
 /// Z9 rows around respawner 131.
 #[tokio::test]
 async fn live_db_debug_area_combat_spawns_stand_in_their_zones() {
@@ -64,7 +64,7 @@ async fn live_db_debug_area_combat_spawns_stand_in_their_zones() {
             let d = (r.x - cx).hypot(r.z - cz);
             assert!(d <= radius, "{:?} is {d:.1} u from its zone centre", r.tag);
             if prefix.starts_with("DebugArea_Arena_") {
-                assert!((r.y + 32.4).abs() < 1.0, "{:?} on the pit floor", r.tag);
+                assert!((r.y + 11.12).abs() < 1.0, "{:?} on the east shelf", r.tag);
             }
             if prefix.starts_with("DebugArea_Cover_") {
                 assert!(r.x < 204.0, "{:?} inside the west wing", r.tag);
@@ -376,8 +376,8 @@ async fn live_db_debug_area_combat_aggro_radii() {
     assert_eq!(
         radii,
         vec![
-            (1370, Some(30)),
-            (1371, Some(30)),
+            (1370, Some(28)),
+            (1371, Some(28)),
             (1372, Some(30)),
             (1373, Some(26)),
             (1374, Some(26)),
@@ -386,4 +386,103 @@ async fn live_db_debug_area_combat_aggro_radii() {
             (1377, None),
         ]
     );
+}
+
+/// Set `id`'s Health and Focus pools.
+fn set_pools(mgr: &mut SpaceManager, id: u32, health: i32, focus: i32) {
+    let e = mgr.get_entity_mut(id).unwrap();
+    e.stats
+        .get_mut(HEALTH)
+        .unwrap()
+        .update(0, health, health.max(1));
+    e.stats
+        .get_mut(FOCUS)
+        .unwrap()
+        .update(0, focus, focus.max(1));
+}
+
+/// **Regression guard (DA-F2, colo 2026-10-05).** Fight 1 with the seeded
+/// templates and abilities, at the arena's 24 u spacing, watched from above
+/// (out of the NID guards' 4 u band). The Praxis side is made unkillable and
+/// each NID guard dies to one hit and is respawned at once, so every Praxis
+/// fighter kills, resets and re-engages several times inside the leash-loop
+/// window. On the colo each such kill wrote `npc_ai.leash event=enter
+/// trigger=target_dead` and, from the third, the `event=loop` WARN. Over 60
+/// AI passes: hits land (guards die), every leash is a post-kill
+/// `target_dead` reset, and no `loop` row is written. Fails when
+/// `detectors::leash::counts_toward_loop` is reverted.
+#[tokio::test]
+async fn live_db_debug_area_arena_fight_cycles_without_a_leash_loop() {
+    let pool = require_db_or_skip!();
+    let templates = load_spawn_templates(&pool).await.expect("templates");
+    let rows = da04_rows(&pool).await;
+    let praxis_rows = with_prefix(&rows, "DebugArea_Arena_Praxis");
+    let nid_rows = with_prefix(&rows, "DebugArea_Arena_NID");
+    let mut mgr = fight_space(&pool, [12.0, 40.0, -60.0]).await;
+    mgr.connect_entity(PLAYER);
+    let praxis: Vec<u32> = (0..3).map(|i| 300_200 + i).collect();
+    let nid: Vec<u32> = (0..3).map(|i| 300_210 + i).collect();
+    for (i, (&p, &n)) in praxis.iter().zip(&nid).enumerate() {
+        let z = i as f32 * 4.0 - 4.0;
+        spawn(&mut mgr, &templates, p, praxis_rows[i].template_id, 0.0, z);
+        spawn(&mut mgr, &templates, n, nid_rows[i].template_id, 24.0, z);
+        set_pools(&mut mgr, p, 1_000_000, 1_000_000);
+        set_pools(&mut mgr, n, 1, 0);
+    }
+    let _ = mgr.compute_aoi_changes();
+    let all: Vec<u32> = praxis.iter().chain(&nid).copied().collect();
+    let (tx, mut rx) = mpsc::channel(65_536);
+    let logs = crate::test_support::LogCapture::install();
+    let mut kills = 0;
+    for _ in 0..60 {
+        pass(&mut mgr, &all, &tx, &mut rx).await;
+        for &n in &nid {
+            if mgr.get_entity(n).unwrap().ai_state() == AiState::Dead {
+                kills += 1;
+                mgr.get_entity_mut(n).unwrap().respawn_at = Some(std::time::Instant::now());
+            }
+        }
+        crate::cell::service::ticks::npc_respawn_tick(&tx, &mut mgr).await;
+        for &n in &nid {
+            if mgr.get_entity(n).unwrap().ai_state() != AiState::Dead {
+                let h = mgr.get_entity(n).unwrap().stats.get(HEALTH).unwrap().cur;
+                if h > 1 {
+                    set_pools(&mut mgr, n, 1, 0);
+                }
+            }
+        }
+        while rx.try_recv().is_ok() {}
+    }
+    let leash_rows = |event: &str| -> Vec<crate::test_support::Captured> {
+        logs.all()
+            .into_iter()
+            .filter(|c| c.target == "npc_ai.leash" && c.has_field("event", event))
+            .collect()
+    };
+    let enters = leash_rows("enter");
+    assert!(
+        kills >= 9,
+        "the Praxis squad must land hits and kill each guard several times; {kills} kills"
+    );
+    assert!(
+        enters.len() >= 9,
+        "each kill ends in a reset home: {} enter rows",
+        enters.len()
+    );
+    assert!(
+        enters.iter().all(|e| e.has_field("trigger", "target_dead")),
+        "no arena fighter gives up a live target: {enters:#?}"
+    );
+    assert!(
+        leash_rows("loop").is_empty(),
+        "kills are not an aggro/leash loop: {:#?}",
+        leash_rows("loop")
+    );
+    for &p in &praxis {
+        assert_ne!(
+            mgr.get_entity(p).unwrap().ai_state(),
+            AiState::Dead,
+            "fixture: the Praxis side is unkillable"
+        );
+    }
 }

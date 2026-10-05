@@ -175,80 +175,125 @@ west of it.
 
 ## NPC-vs-NPC arena
 
-Zone Z6 is the flat sunken pit north of the compound, centre
-(250.0, -32.4, -725.0). Its floor is clear of geometry for 40 m or more around
-the centre. The crater floor stands 25 to 40 m above it to the north, east and
-south. The gentle way in is a ramp from the south-west, around x 190-200,
-z -755 to -790. Two fights run there (D-DA8). Both are NPC-vs-NPC combat from
+Zone Z6 is the **east shelf**, a flat terrain terrace at y -11.12 east of the
+sunken pit, about x 318-395, z -680 to -749. Two fights run there (D-DA8). Both
+are NPC-vs-NPC combat from
 [#1009](../gameplay/npc-ai.md#npc-vs-npc-combat-1009).
+
+**Why not the pit (DA-F2).** DA-04 put the arena on the pit floor at
+(250, -32.4, -725). That floor is a water collision plane
+(`WaterCollisionPrefab_Square`, y -33.28) over a lakebed 10 to 25 m lower. The
+navmesh lies on the water, so the squads stood on it, but a player sinks
+through: the DA-06 live-client run found the player at y -52.03 and the squads
+drawn 19 m overhead. DA-F2 moved both fights to the shelf, 22 m above the
+water.
+
+- **Ground.** The shelf is terrain: the occluder's layer is Terrain, and the
+  navmesh agrees with it within 0.01 m. None of the map's nine fluid volumes
+  reaches it.
+- **Walls.** The shelf is the floor of a ruin, and its low walls block sight at
+  eye height almost everywhere. Fight 1 stands in the one strip where a
+  3-against-3 line 24 m apart has clear sight: between the long east-west wall
+  at z -736 and the south edge wall at z -749. A grid search on the occluder
+  found it. The rows are 3 m apart: with the third pair at z -746, the third
+  NID guard saw past the long wall's west end and pulled a tester standing in
+  the fight-2 room (#1244 review).
+- **Getting there.** The south edge is a 3 to 14 m drop. The way on is from
+  the east, through the gap at x 390-400, z -738 to -744. DA-08's faction-yard
+  ring pad (394, -10.59, -738) stands in that gap.
+- **Watching.** The terrain north of the shelf is 17 to 20 m above it. The
+  `arena.rs` test checks it as a spectator spot that nothing pulls.
 
 **Fight 1, Praxis against NID (joinable).** Faction 3 (Praxis) against faction
 10 (Straegis), the only seeded mutually hostile pair. Players react as faction
 3, so the Praxis squad is friendly to a player and cannot be damaged by one.
-The NID squad is hostile and damageable. To join on the Praxis side, walk down
-the ramp and shoot a NID guard. A NID guard also takes a player who comes within
-30 m on the pit floor. Kill credit goes to the killing blow: finish a NID
-guard the Praxis wore down and you get the full XP and loot; wear one down and
-let a Praxis finish it and you get nothing. That is the #1009 rule, not a bug.
+The NID squad is hostile and damageable.
+
+- **The lines.** The NID guards hold the west line (x 354) and the Praxis the
+  east line (x 378), so the guards stay 40 m from the faction-yard pad.
+- **Joining.** Walk in from the east past the Praxis line. Inside 30 m of the
+  guards they take you, and you fight on the Praxis side.
+- **Kill credit.** Credit goes to the killing blow. Finish a NID guard the
+  Praxis wore down and you get the full XP and loot; wear one down and let a
+  Praxis finish it and you get nothing. That is the #1009 rule, not a bug.
 
 | Spawn | Template | Tag | Name shown | Faction | Position (x, y, z) |
 |---:|---:|---|---|---:|---|
-| 13600 | 1370 | `DebugArea_Arena_Praxis1` | Op-CORE Soldier | 3 | (238, -32.4, -721) |
-| 13601 | 1371 | `DebugArea_Arena_Praxis2` | Praxis Jaffa Guard | 3 | (238, -32.4, -725) |
-| 13602 | 1370 | `DebugArea_Arena_Praxis3` | Op-CORE Soldier | 3 | (238, -32.4, -729) |
-| 13603 | 1372 | `DebugArea_Arena_NID1` | NID Guard | 10 | (262, -32.4, -721) |
-| 13604 | 1372 | `DebugArea_Arena_NID2` | NID Guard | 10 | (262, -32.4, -725) |
-| 13605 | 1372 | `DebugArea_Arena_NID3` | NID Guard | 10 | (262, -32.4, -729) |
+| 13600 | 1370 | `DebugArea_Arena_Praxis1` | Op-CORE Soldier | 3 | (378, -11.12, -738) |
+| 13601 | 1371 | `DebugArea_Arena_Praxis2` | Praxis Jaffa Guard | 3 | (378, -11.12, -741) |
+| 13602 | 1370 | `DebugArea_Arena_Praxis3` | Op-CORE Soldier | 3 | (378, -11.12, -744) |
+| 13603 | 1372 | `DebugArea_Arena_NID1` | NID Guard | 10 | (354, -11.12, -738) |
+| 13604 | 1372 | `DebugArea_Arena_NID2` | NID Guard | 10 | (354, -11.12, -741) |
+| 13605 | 1372 | `DebugArea_Arena_NID3` | NID Guard | 10 | (354, -11.12, -744) |
 
 **Fight 2, Lucia Green against Lucia Yellow (spectators only).** Faction 27
-against faction 29, one of the player-safe hostile pairs, on the pit's west
-half. It stands 44 m or more from every NID guard, outside their 30 m aggro
-radius, so a tester can walk right up to it, or loot-check a corpse, without
-being pulled into fight 1. DA-08's ring pad at (210, -33.28, -725) sits
-between the two pairs, 10-12 m from the nearest. Each side is hostile
-to the other and friendly to faction 3 both ways. Neither is hostile to faction
-3 or 10, so fight 1 and fight 2 never mix. No player can damage either side
-(only faction 10 is damageable). The fight shows that an NPC-only kill pays
-nobody: both templates carry loot table 2, yet the corpse rolls no loot, shows
-no loot cursor, pays no XP and moves no mission
-([combat-system.md](../gameplay/combat-system.md#npc-vs-npc-kills-pay-nobody-1009)).
-The server logs `loot.drop event=skipped reason=npc_only_kill loot_table_id=2`.
+against faction 29, one of the player-safe hostile pairs, in the open room
+north of the long wall.
+
+- **Distance from fight 1.** Fight 2 stands 39 m or more from every NID guard.
+  A tester can walk right up to it, or loot-check a corpse, and stay outside
+  the guards' 30 m aggro radius, so fight 1 never pulls them in.
+- **Factions.** Each side is hostile to the other and friendly to faction 3
+  both ways. Neither is hostile to faction 3 or 10, so fight 1 and fight 2
+  never mix. No player can damage either side (only faction 10 is
+  damageable).
+- **No pay.** The fight shows that an NPC-only kill pays nobody. Both
+  templates carry loot table 2, yet the corpse rolls no loot, shows no loot
+  cursor, pays no XP and moves no mission
+  ([combat-system.md](../gameplay/combat-system.md#npc-vs-npc-kills-pay-nobody-1009)).
+  The server logs `loot.drop event=skipped reason=npc_only_kill loot_table_id=2`.
 
 | Spawn | Template | Tag | Name shown | Faction | Position (x, y, z) |
 |---:|---:|---|---|---:|---|
-| 13610 | 1373 | `DebugArea_Arena_Green1` | Green Sniper | 27 | (214, -32.6, -716) |
-| 13611 | 1373 | `DebugArea_Arena_Green2` | Green Sniper | 27 | (218, -32.35, -716) |
-| 13612 | 1374 | `DebugArea_Arena_Yellow1` | Yellow Faction | 29 | (206, -32.3, -734) |
-| 13613 | 1374 | `DebugArea_Arena_Yellow2` | Yellow Faction | 29 | (210, -31.95, -736) |
+| 13610 | 1373 | `DebugArea_Arena_Green1` | Green Sniper | 27 | (364, -11.12, -700) |
+| 13611 | 1373 | `DebugArea_Arena_Green2` | Green Sniper | 27 | (364, -11.12, -696) |
+| 13612 | 1374 | `DebugArea_Arena_Yellow1` | Yellow Faction | 29 | (343, -11.12, -700) |
+| 13613 | 1374 | `DebugArea_Arena_Yellow2` | Yellow Faction | 29 | (343, -11.12, -696) |
 
 **Why it fights, and why it repeats.**
 
-- The squads stand 24 m apart (fight 2: 20 to 22 m). The templates set
-  `aggro_radius` 30 (fight 2: 26), so each side's Idle scan reaches the other.
-  The default radius, 18 m, would not.
+- The squads stand 24 m apart (fight 2: 21 m). The NID guards set
+  `aggro_radius` 30, the Praxis 28 and fight 2 26, so each side's Idle scan
+  reaches the other. The default radius, 18 m, would not.
+- The Praxis radius is 28, not 30. The Idle scan considers NPCs within twice
+  the radius, and the Praxis line is 59 m from the faction yard's damageable
+  faction-10 rows. At 28 the scan's reach is 56 m, which keeps the yard out
+  (the `debug_area::reach` guard).
 - The scan runs only while a player has the NPC in their AoI (150 m). From the
-  services plaza the pit is about 200 m away. Walk to the compound's north side
-  or the rim to start the fights. A fight already under way finishes without a
-  witness.
+  services plaza the shelf is about 230 m away. Walk to the faction yard or the
+  terrain north of the shelf to start the fights. A fight already under way
+  finishes without a witness.
 - The other way round: any player within 150 m keeps the arena cycling. That
-  includes testers at DA-02's dummy range (about 148 m) and DA-03's gallery
-  and assist slope (about 130 m). Every round writes `npc_ai.aggro
+  includes testers at the faction yard (about 60 m) and, just, the Gallery
+  east ring pad (about 149 m); the dummy range, the AI slope and the gallery
+  rows are out of range. Every round writes `npc_ai.aggro
   cause=proximity` and `loot.drop reason=npc_only_kill` rows, so filter
   SigNoz queries on the `DebugArea_Arena_` tag prefix (or exclude it) when
   you read another station's AI or DPS telemetry.
-- Every arena row respawns 30 s after death (template `respawn_secs`). The
-  winners walk home, heal to full on arrival and go Idle. The losers come back
-  and the scan starts the next round, after the 5 s post-reset window (NA12).
+- Every arena row respawns 30 s after death (template `respawn_secs`). A
+  winner whose threat list empties with the kill resets: it walks home (a
+  step, since it fights from its spawn), heals to full and goes Idle. The
+  losers come back and the scan starts the next round, after the 5 s
+  post-reset window (NA12).
+- These post-kill resets are not a leash loop. A leash triggered by
+  `target_dead` or `target_gone` is not counted toward `npc_ai.leash
+  event=loop` (DA-F2). Before that, every arena fighter that won three rounds
+  inside 60 s wrote the loop WARN, which the first 30 minutes of
+  v2026-10-05.1 on the colo showed for six arena rows.
+- With no player in AoI, the fights' dropped health, state and attack
+  updates write nothing. A no-witness WARN is written only when a player is
+  involved (see
+  [npc-ai.md](../gameplay/npc-ai.md#npc-vs-npc-combat-1009)).
 - The arena squads carry no loot (fight 1) and no `use_cover` (there is no
-  cover marker in the pit). The fight-1 Jaffa fires the Jaffa staff set (4)
+  cover marker on the shelf). The fight-1 Jaffa fires the Jaffa staff set (4)
   and carries the staff, the others the SMG set (3); the Yellow Faction pair
   keeps the pistol set (1) of its look's template, 219.
 
 **Spectators are not pulled.** The aggro scan has a 4 m vertical band. A
-player watching from the crater floor is 25 to 40 m above the pit and never
-becomes a candidate. A player on the low south-west ramp is inside the band
-but 40 m or more from the nearest NID guard. The Praxis and Lucia rows never
-target a player at all.
+player watching from the terrain north of the shelf is 17 to 20 m above it and
+never becomes a candidate. A player on the slope below the south edge is 7 m
+or more below it. A player on the shelf beside fight 2 is 49 m or more from the
+nearest NID guard. The Praxis and Lucia rows never target a player at all.
 
 ## Enemy gallery
 
@@ -454,8 +499,8 @@ the ring switch beside the pad that you right-click.
 | Compound | (224.0, 7.44, -938.0) | Z1 arrival (36 m), Z2 services plaza (32 m), Z8 cover course entry (23 m); Z3 dummies are 74 m north in the same compound | `DebugArea_Ring_Compound` | 35 |
 | Faction yard | (394.0, -10.59, -738.0) | Z4 faction yard, 52 m south | `DebugArea_Ring_FactionYard` | 36 |
 | AI slope | (81.0, 0.59, -782.0) | Z5 wanderer (36 m) and patrol (57 m) | `DebugArea_Ring_AiSlope` | 37 |
-| Arena rim | (176.0, -6.65, -702.0) | Z6 arena, the west ledge 26 m above the pit | `DebugArea_Ring_ArenaRim` | 38 |
-| Arena pit | (210.0, -32.74, -725.0) | Z6 arena floor, beside the friendly Praxis squad | `DebugArea_Ring_ArenaPit` | 39 |
+| Arena rim | (176.0, -6.65, -702.0) | The pit's west ledge, 26 m above the pit. Since DA-F2 moved the arena to the east shelf, it is 167 to 205 m from the squads, outside the 150 m AoI: arriving here neither shows nor starts the fights | `DebugArea_Ring_ArenaRim` | 38 |
+| Arena pit | (210.0, -32.74, -725.0) | The pit floor, on its water plane (K27). The arena left for the east shelf in DA-F2; DA-08's pad relocation moves this station beside it, at (331, -11.12, -693) | `DebugArea_Ring_ArenaPit` | 39 |
 | Gallery west | (127.0, 23.60, -559.0) | Z7 enemy gallery west half, 33 m north of the rows | `DebugArea_Ring_GalleryWest` | 40 |
 | Gallery east | (436.0, 23.63, -566.0) | Z7 enemy gallery east half, 26 m north of the rows | `DebugArea_Ring_GalleryEast` | 41 |
 | Death yard | (437.0, 11.84, -937.0) | Z9 death and respawn test and respawner B, 21 m north | `DebugArea_Ring_DeathYard` | 42 |
@@ -541,10 +586,18 @@ seed file, so another packet's NPCs take part as soon as they are seeded:
   `ihpet_crater_light.nav` and `.occ`, the world-1300 cover seed, and every
   world-1300 row of the seed files. It needs no database.
   - `arena.rs`: every arena row engages only the opposing squad when watched,
-    and nothing while nobody watches. A spectator on the rim or the far slope
-    is never pulled. A player in the pit is fought by the NID squad only.
-  - `arena.rs` also pins fight 2 at 40 m or more from every NID guard, and its
+    and nothing while nobody watches. A player on the shelf between the
+    squads is fought by the NID squad only.
+  - `arena_pull_map.rs` (DA-F2): a lone player stepped over a 2 m navmesh
+    grid around the shelf, at four heights, is engaged by a NID guard only
+    inside the fight-1 strip, never in the fight-2 room, on the terrain above,
+    on the slope below or on the east approach.
+  - `arena.rs` also pins fight 2 at 39 m or more from every NID guard, and its
     spectator spots include both sides of fight 2.
+  - `arena.rs` (DA-F2) checks that every arena row stands on occluder terrain
+    within 0.5 m, so a row moved back onto the pit's water plane fails, and
+    that the navmesh routes from the Z1 arrival and the east approach onto the
+    shelf.
   - `cover.rs`: rifleman 3 spawns holding its marker and the others in the
     open, its marker is beyond the other riflemen's cover search, and it
     engages a tester in the hall from the slot. Rifleman 2 sees its doorway
@@ -582,8 +635,12 @@ seed file, so another packet's NPCs take part as soon as they are seeded:
 
 - The pit "floor" is a water collision plane (`WaterCollisionPrefab_Square`,
   y -33.28; the terrain is 10-25 m below it), found by DA-08. The navmesh lies
-  on that plane, so the arena squads stand and walk on what renders as water.
-  Check in the client that they are not drawn swimming or sunk.
+  on that plane, but a player sinks to the lakebed (DA-06: y -52). DA-F2 moved
+  the arena squads off it to the east shelf. The arena-pit ring pad (region 39)
+  still sits on the water until DA-08's pad relocation lands.
+- The east shelf is a ruin floor, and its walls are checked only in the
+  occluder. Check in the client that fight 1's two lines see each other and
+  that the walk on from the east gap is open.
 - NPC heights on the Z9 terrain: the rows are grounded onto the navmesh, which
   is up to 2 m off the rendered terrain there.
 - Whether the client draws NPC-sourced hits on a non-player target

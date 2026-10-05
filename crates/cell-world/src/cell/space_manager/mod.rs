@@ -66,6 +66,7 @@ pub use npc_population::{spawn_instance_npcs_from_records, spawn_npcs_from_recor
 #[doc(hidden)]
 pub use crate::test_fixtures::occluder_fixtures;
 mod occlusion;
+mod player_presence;
 pub use occlusion::{eye_height_for, occluder_probe, DEFAULT_EYE_HEIGHT, RESIDENCY_RADIUS};
 mod queries;
 mod space_files;

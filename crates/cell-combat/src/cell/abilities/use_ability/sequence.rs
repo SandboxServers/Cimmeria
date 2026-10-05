@@ -24,7 +24,7 @@
 //! | `no_ability_def` | the ability has no `resources.abilities` row loaded |
 //! | `no_event_set` | its `event_set_id` is NULL, so nothing is looked up |
 //! | `no_end_sequence` | the event set has no Ability_End (1001) sequence |
-//! | `no_witnesses` | the NPC shot with nobody in AoI to see it |
+//! | `no_witnesses` | the NPC shot with nobody in AoI to see it, and a player is present (DA-F2: in AoI range of the shooter or target, or in the fight; an NPC-vs-NPC shot with no player around writes nothing) |
 //! | `stance_not_announced` | the NPC shot before its `BSF_InCombat` stance reached its witnesses, so the client draws no muzzle flash, tracer or weapon sound |
 //!
 //! The throttle is keyed by ability id (`SpaceManager::ability_sequence_log`)
@@ -328,7 +328,15 @@ pub(in crate::cell::abilities) async fn play_ability_sequence(
         }
     }
 
-    if warns && witness_count == 0 && is_npc(space_mgr, entity_id) {
+    // Nobody saw the shot. A fault only when a player is present: in AoI
+    // range of the shooter or its target, or in the fight (DA-F2:
+    // `SpaceManager::player_present`). NPC-vs-NPC with no player around
+    // writes nothing.
+    if warns
+        && witness_count == 0
+        && is_npc(space_mgr, entity_id)
+        && space_mgr.player_present(entity_id, u32::try_from(target_id).ok())
+    {
         if let Some(suppressed) = admit_warn(space_mgr, ability_id, "no_witnesses") {
             tracing::warn!(
                 target: "abilities.sequence",

@@ -44,6 +44,8 @@ pub mod aggro_scan;
 pub mod idle_parked;
 pub mod leash;
 #[cfg(test)]
+mod leash_loop_tests;
+#[cfg(test)]
 mod leash_names_tests;
 pub mod los;
 pub mod movement;

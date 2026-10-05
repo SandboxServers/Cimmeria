@@ -295,3 +295,105 @@ async fn broadcast_movement_type_none_clears_the_cache() {
     assert_eq!(movement_type_rows(&logs, "suppressed"), 2);
     assert!(drain(&mut rx).is_empty());
 }
+
+/// Two NPCs in a Castle space with no player anywhere near: NPC 10 has NPC
+/// 11 on its threat list, as an arena fighter does mid-fight. Player 1 stands
+/// 500 u away, outside every AoI, so nobody witnesses either NPC.
+fn npc_fight_nobody_watches() -> SpaceManager {
+    let mut mgr = SpaceManager::new(1);
+    let xml = r#"<?xml version="1.0"?><Spaces><Space WorldName="Castle" Instanced="false" MinX="-800" MaxX="800" MinY="-800" MaxY="800" /></Spaces>"#;
+    mgr.parse_spaces_xml(xml).unwrap();
+    mgr.create_startup_spaces(
+        r#"<?xml version="1.0"?><Spaces><Space WorldName="Castle" /></Spaces>"#,
+    )
+    .unwrap();
+    mgr.create_entity(1, "Castle", [500.0, 0.0, 500.0], [0.0; 3])
+        .unwrap();
+    if let Some(p) = mgr.get_entity_mut(1) {
+        p.is_player = true;
+        p.player_id = Some(100);
+    }
+    mgr.create_entity(10, "Castle", [0.0; 3], [0.0; 3]).unwrap();
+    mgr.create_entity(11, "Castle", [20.0, 0.0, 0.0], [0.0; 3])
+        .unwrap();
+    mgr.get_entity_mut(10).unwrap().threat_list.insert(11, 5.0);
+    mgr.connect_entity(1);
+    let _ = mgr.compute_aoi_changes();
+    assert!(
+        mgr.get_witnesses_of(10).is_empty(),
+        "fixture: nobody sees NPC 10"
+    );
+    mgr
+}
+
+fn no_witness_warns(logs: &crate::test_support::LogCaptureGuard) -> usize {
+    logs.all()
+        .into_iter()
+        .filter(|c| {
+            c.level == tracing::Level::WARN
+                && c.target == "abilities.wire"
+                && c.has_field("event", "wire_npc_no_witnesses")
+        })
+        .count()
+}
+
+/// **Regression guard (DA-F2, colo 2026-10-05).** The Debug Area arena's
+/// NPC-vs-NPC fights wrote `wire_npc_no_witnesses` WARNs for every health
+/// and state update while no player was near. Owner decision: with no
+/// player involved the drop writes nothing, at any level. Fails when the
+/// `player_present` gate in `witness_audience` is reverted.
+#[tokio::test]
+async fn an_npc_only_fight_nobody_watches_writes_no_witness_warn() {
+    let mgr = npc_fight_nobody_watches();
+    let (tx, mut rx) = mpsc::channel(64);
+    let logs = crate::test_support::LogCapture::install();
+
+    send_entity_method(10, 20, 0u32.to_le_bytes().to_vec(), &tx, &mgr).await;
+
+    assert!(drain(&mut rx).is_empty(), "nobody to send to");
+    assert_eq!(no_witness_warns(&logs), 0, "{:#?}", logs.all());
+    assert!(
+        !logs
+            .all()
+            .iter()
+            .any(|c| c.target == "abilities.wire" && c.message_contains("no witnesses")),
+        "no row at any level: {:#?}",
+        logs.all()
+    );
+}
+
+/// The other half of the DA-F2 rule: the same unseen NPC with a player on
+/// its threat list (a player is fighting it) still WARNs, because a player
+/// should have seen that update. Fails if the gate silences every NPC.
+#[tokio::test]
+async fn an_unseen_npc_a_player_is_fighting_still_warns() {
+    let mut mgr = npc_fight_nobody_watches();
+    mgr.get_entity_mut(10).unwrap().threat_list.insert(1, 5.0);
+    let (tx, _rx) = mpsc::channel(64);
+    let logs = crate::test_support::LogCapture::install();
+
+    send_entity_method(10, 20, 0u32.to_le_bytes().to_vec(), &tx, &mgr).await;
+
+    assert_eq!(no_witness_warns(&logs), 1, "{:#?}", logs.all());
+}
+
+/// **Review probe (#1244).** The WARN's own fault case: a player stands
+/// 30 u from the NPC, inside their AoI, but the witness set is stale (no AoI
+/// pass since they arrived), so the send finds no witness. The player is not
+/// fighting the NPC. They are present, so the drop is a fault and WARNs.
+/// Fails if the gate checks involvement only (it wrote 0 WARNs then).
+#[tokio::test]
+async fn a_player_in_range_with_a_stale_witness_set_still_warns() {
+    let mut mgr = npc_fight_nobody_watches();
+    mgr.update_position_preserving_facing(1, [30.0, 0.0, 0.0], [0.0; 3]);
+    assert!(
+        mgr.get_witnesses_of(10).is_empty(),
+        "fixture: the witness set is stale"
+    );
+    let (tx, _rx) = mpsc::channel(64);
+    let logs = crate::test_support::LogCapture::install();
+
+    send_entity_method(10, 20, 0u32.to_le_bytes().to_vec(), &tx, &mgr).await;
+
+    assert_eq!(no_witness_warns(&logs), 1, "{:#?}", logs.all());
+}

@@ -1187,11 +1187,11 @@ value = 1
 [[row]]
 id = "DA-U32"
 title = "The Praxis-vs-NID fight runs while you watch, and never pulls you"
-expected = "From the west rim (26 u above the pit), the three Praxis and three NID guards fight within 40 s; nothing targets you; the round repeats after the 30 s respawns."
-known_issues = ["K20", "K25", "K27"]
+expected = "From the terrain north of the east shelf (20 u above it), the three Praxis and three NID guards fight within 40 s; nothing targets you; the round repeats after the 30 s respawns."
+known_issues = ["K20", "K25"]
 setup = [
   { chat = ".aggro on", tier = "G" },
-  { chat = ".gotolocation DebugArea 176 -6 -702", tier = "G" },
+  { chat = ".gotolocation DebugArea 354 9 -660", tier = "G" },
   { tool = "client_wait_for", args = { lua_condition = "getCurrentWorldID() == 1300", timeout_ms = 60000 } },
 ]
 step = [{ wait_ms = 45000, label = "watch" }]
@@ -1212,22 +1212,22 @@ max_rows = 0
 id = "visuals"
 text = "the client draws the NPC-on-NPC hits (CP19)"
 source = "human"
-question = "Watching the pit: do the squads stand on the floor (K27: it is a water plane), fire with animations, and do the targets' health bars drop?"
+question = "Watching the shelf: do the squads stand on the ground (not floating or sunk), fire with animations, and do the targets' health bars drop?"
 required = false
 
 [[row]]
 id = "DA-U33"
 title = "A player can join the arena fight on the Praxis side"
-expected = "Walk down into the pit behind the Praxis line: the NID guards take you (30 u radius); the Praxis never target you."
+expected = "Walk onto the east shelf through its east gap and up to the Praxis line: the NID guards take you (30 u radius); the Praxis never target you."
 setup = [
   { chat = ".aggro on", tier = "G" },
   { chat = "/gmsetgodmode 1", tier = "G" },
-  { chat = ".gotolocation DebugArea 214 -32 -725", tier = "G" },
+  { chat = ".gotolocation DebugArea 420 -6 -741", tier = "G" },
   { tool = "client_wait_for", args = { lua_condition = "getCurrentWorldID() == 1300", timeout_ms = 60000 } },
   { wait_ms = 3000 },
 ]
 step = [
-  { tool = "@move_to", args = { point = { x = 234, y = -32.4, z = -725 }, arrival_m = 2, timeout_ms = 30000 }, label = "walk" },
+  { tool = "@move_to", args = { point = { x = 380, y = -11.1, z = -741 }, arrival_m = 2, timeout_ms = 30000 }, label = "walk" },
   { wait_ms = 10000 },
 ]
 teardown = [
@@ -1250,10 +1250,10 @@ max_rows = 0
 [[row]]
 id = "DA-U34"
 title = "The spectator pair's kill pays nobody"
-expected = "Lucia Green and Lucia Yellow fight on the pit's west half; a kill rolls no loot, shows no loot cursor and pays no XP."
+expected = "Lucia Green and Lucia Yellow fight in the open room on the east shelf, north of fight 1; a kill rolls no loot, shows no loot cursor and pays no XP."
 known_issues = ["K25"]
 setup = [
-  { chat = ".gotolocation DebugArea 176 -6 -702", tier = "G" },
+  { chat = ".gotolocation DebugArea 340 -11 -690", tier = "G" },
   { tool = "client_wait_for", args = { lua_condition = "getCurrentWorldID() == 1300", timeout_ms = 60000 } },
 ]
 step = [{ wait_ms = 75000, label = "watch" }]
