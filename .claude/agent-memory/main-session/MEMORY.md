@@ -9,6 +9,10 @@ Dated, sourced facts from top-level sessions, committed with the change that pro
 - [project_invisible_cellblock_guard.md](project_invisible_cellblock_guard.md) — Cellblock NID guard often unrendered on a fresh character though the client creates it; evidence, ruled-out causes (#838)
 - [project_enemy_combat_runtime_blockers.md](project_enemy_combat_runtime_blockers.md) — enemy-combat v3 handoff not imported; blockers: MITIGATION 0/0, forced DT_PHYSICAL, EF_DONT_USE_QR, DoT death
 
+## Closed campaigns
+
+- [project_named_telemetry_campaign.md](project_named_telemetry_campaign.md) — Named telemetry closed 2026-10-05: IDs paired with names, unpaired 7,039 to 0, 795 nt:id-only marks; not yet read in a live SigNoz session
+
 ## External handoffs reviewed, not imported
 
 - [project_final_re_bundles.md](project_final_re_bundles.md) — 2026-10-02 SGW final RE ZIPs: useful build/world indexes, absent databases and raw sources, evidence boundaries

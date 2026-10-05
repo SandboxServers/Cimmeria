@@ -48,7 +48,9 @@ into the ids struct (`HitIds::entity_name`) or use `EntityNames::of(entity)`.
   say so). Record span names in a block that drops the guard, resolve inline per log row.
 - `cimmeria-resources` now depends on `cimmeria-names`: the base loads the book before
   `ResourceCache::load_all`, so boot override rows can name items/dialogs/missions.
-  `cimmeria-wire` must not take it (no sqlx in wire), so wire rows exempt entity ids.
+  `cimmeria-wire` does not take it today (no sqlx in wire), so wire rows exempt entity ids.
+  That is a layering choice, not a rule (corrected 2026-10-05, NT-50b ledger follow-up 6):
+  a change that needs names on wire rows may add the dependency.
 - `cimmeria_entity::abilities::sequence_event_name` names Kismet `event_id`s (8000/8001 too).
 
 Related: [[ability-row-event-guard-and-cast-join]], [[tracing-span-fields-not-on-log-records]].
