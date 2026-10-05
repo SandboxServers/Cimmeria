@@ -29,6 +29,10 @@
 //! - [`live_db_castle_standoff`]: live-DB guards for the Castle standoff rows
 //!   and templates 187-189 (NPC-vs-NPC, #1009): faction 3, a hostile in reach,
 //!   and the templates they were cloned from left alone.
+//! - [`live_db_debug_area_lineup`]: live-DB guards for the Debug Area NPC
+//!   lineup (DA-10, world 1300, templates 1410-1599, spawns 13870-14099):
+//!   every character look has one friendly, stationary clone, so a template
+//!   with a new look fails until it is placed in the lineup.
 //! - [`live_db_debug_area_npcs`]: live-DB guards for Debug Area packet DA-03
 //!   (world 1300, templates 1330-1369, spawns 13200-13599): every row in its
 //!   zone, the stations' behaviour columns, and a passive gallery holding every
@@ -102,6 +106,7 @@ mod live_db_castle_seed;
 mod live_db_castle_standoff;
 mod live_db_content_loaders;
 mod live_db_crafting_hub;
+mod live_db_debug_area_lineup;
 mod live_db_debug_area_npcs;
 mod live_db_debug_area_plaza;
 mod live_db_debug_auctioneer;

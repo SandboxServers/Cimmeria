@@ -314,6 +314,7 @@
 \ir resources/Entities/Seed/deployables.sql
 \ir resources/Entities/Seed/entity_templates.sql
 \ir resources/Entities/Seed/entity_templates_debug_area_combat.sql
+\ir resources/Entities/Seed/entity_templates_debug_area_lineup.sql
 \ir resources/Entities/Seed/entity_templates_debug_area_lords.sql
 \ir resources/Entities/Seed/entity_templates_debug_area_npcs.sql
 \ir resources/Entities/Seed/entity_templates_debug_area_plaza.sql
@@ -373,6 +374,7 @@
 \ir resources/Worlds/Seed/spawn_sets.sql
 \ir resources/Worlds/Seed/spawnlist.sql
 \ir resources/Worlds/Seed/spawnlist_debug_area_combat.sql
+\ir resources/Worlds/Seed/spawnlist_debug_area_lineup.sql
 \ir resources/Worlds/Seed/spawnlist_debug_area_lords.sql
 \ir resources/Worlds/Seed/spawnlist_debug_area_npcs.sql
 \ir resources/Worlds/Seed/spawnlist_debug_area_plaza.sql

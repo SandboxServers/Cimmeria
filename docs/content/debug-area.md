@@ -30,8 +30,8 @@ player, the account and both worlds. The rule lives in
 `crates/base-session/src/base/world_entry/gm_only_worlds.rs`.
 
 This page covers the zones from packets DA-02, DA-03 and DA-04, the
-stargate (DA-07), the ring transports that link them (DA-08) and the
-System Lords' summit (DA-09).
+stargate (DA-07), the ring transports that link them (DA-08), the
+System Lords' summit (DA-09) and the NPC lineup (DA-10).
 [Which station tests what](#which-station-tests-what) (DA-05) maps each
 restored system to its station and UAT step. Each packet's rows are
 in their own seed files:
@@ -57,6 +57,10 @@ in their own seed files:
   13850-13856) and `db/resources/Dialogs/Seed/ambient_chatter_lords.sql`
   (chatter group 1), inside DA-09's block (templates 1400-1409, spawns
   13850-13869). See [System Lords' summit](#system-lords-summit).
+- DA-10 (Z10, the NPC lineup): `entity_templates_debug_area_lineup.sql`
+  (templates 1410-1570) and `spawnlist_debug_area_lineup.sql` (spawns
+  13870-14030), inside DA-10's block (templates 1410-1599, spawns
+  13870-14099). See [NPC lineup](#npc-lineup).
 
 Heading 0 faces +Z and -1.5708 faces -X.
 
@@ -96,6 +100,7 @@ DA-05's map from each restored system to the station that tests it. The step ids
 | Gate travel (outbound) | The Debug Area stargate (DA-07, #1232) | DA-U45 |
 | Ring transport | The eight ring stations (DA-08, #1234) | DA-U46 |
 | NPC appearance, ambient chatter | The System Lords' summit (DA-09) | DA-U47 |
+| NPC appearance: every model and costume | Z10 NPC lineup (DA-10) | DA-U48 |
 | GM console parity | Anywhere in world 1300 | [GM console command parity](../guides/unified-uat.md#gm-console-command-parity) |
 
 What only a live client can settle is the ordered [DA-06 checklist](../analysis/debug-area/README.md#da-06-live-client-checks).
@@ -694,6 +699,13 @@ DA-06 checked these on 2026-10-05; each outcome is in the [ledger](../analysis/d
   animation on creature and staff bodies; 62 have blank nameplates.
 - DA-03: how the client colours a passive (NEUTRAL-override) faction-10 NPC has
   not been seen on this map. The largest gallery bodies may overlap at 8 m.
+- DA-10: the NPC lineup's 161 NPCs are within the 150 m AoI of the Z1
+  arrival, the services plaza, the summit and the dummies range, so every
+  arrival in the compound now creates about 160 more NPCs in the client.
+  How long that takes, and the frame rate with all of them in view, has not
+  been measured. The two body sets with no reference mesh (`BS_RaJaff`,
+  `HM_BodySet`) are expected to draw nothing or a placeholder, and the
+  Straegis Titan (35 m tall) will clip the ruin walls around its court.
 
 ## DA-03 spawn tables
 
@@ -1279,3 +1291,342 @@ stand on the mesh and the paving, a listener is out of every hostile's
 reach, every line's speaker is seated and in earshot of the centre and of
 the landing spot, and neither the plaza nor a respawner hears the summit)
 and `live_db_ambient_chatter` in `cimmeria-cell-catalog`.
+
+## NPC lineup
+
+Packet DA-10, zone Z10. One friendly NPC for every distinct character look
+in `entity_templates` (155), plus one for each of the six character body
+sets that no template uses: 161 NPCs standing in rows in the east wing of
+the south compound. It is a catalogue of every model and costume the seed
+can put on screen, in one place, the named cast and the hostile creatures
+included. It tests NPC appearance only: no lineup NPC fights, talks, trades
+or moves.
+
+**What a look is.** A template's body set, its component set (in any order),
+its primary and secondary colours, its skin tint and its static mesh (NULL
+and an empty string count as the same). Props (`GLB_Components.*`) and
+deployables and mines (`WP-Human.*`) are not characters and are left out.
+Templates with the same look share one lineup NPC, cloned from the lowest
+template id: the 225 character templates outside the lineup make 155 looks.
+Every combination of the 2,300-odd body components is out of scope; the
+lineup shows what the seed uses.
+
+**Getting there.** `.gotolocation DebugArea 300 6.8 -897` lands in the
+doorway at the east wing's north-west corner, at the west end of the first
+walkway. On foot from the Compound ring pad (224, 7.44, -938), cross the
+courtyard to its north-east corner (about (282, -900)) and go east through
+the doorway, about 85 m; the System Lords' circle is on the way. The wing
+is an open-air walled ruin (x 297-392, z -969 to -881). Its floor reads as
+occluder terrain at y 6.58, where the navmesh is within 0.35 m of it; a
+1 m grid search with 1 m clear on each side picked the spots.
+
+**Rows.** Rows run east-west and face a walkway, so a tester walks between
+two rows and sees both. Heading 0 faces north (+z), pi faces south.
+Humanoids stand 2.25 m apart, creatures and machines 4 m, the large bodies
+8 m.
+
+| Row | z | x | Faces | Holds |
+|---|---:|---|---|---|
+| N1 | -888 | 305-318.5 | South | Humans, male (7) |
+| N2 | -893 | 323-345.5 | South | Humans, male (11) |
+| N3 | -902 | 306-353.25 | North | Humans, male (15), humans, female (7) |
+| N4 | -909 | 312-332.25 | South | Humans, female (2), Jaffa, male (8) |
+| N5 | -914 | 302-335.75 | North | Jaffa, male (16) |
+| S1 | -937 | 306-337.5 | South | Jaffa, male (15) |
+| S2 | -942 | 316-338.5 | North | Jaffa, male (5), Jaffa, female (6) |
+| S3 | -947 | 329-351.5 | South | Jaffa, female (11) |
+| S4 | -952 | 315-335.25 | North | Jaffa, female (10) |
+| S5 | -956 | 307-340.5 | South | Jaffa, female (3), Goa'uld, male (11) |
+| S6 | -961 | 326-362 | North | Goa'uld, male (3), Goa'uld, female (6), Asgard (3), children (5) |
+| E1 | -909 | 348-382 | South | Creatures: rat, ScavDog, Lenny, Lenny Baby, Horden, Carnosaur, Rhinolion |
+| E3 | -937 | 362-382 | South | Twilla Tree, Ancient Drone, Straegis Fighter, Straegis Beacon, BattleWalker |
+| E4 | -942 | 347-359 | North | Android, Drone Tank, Prisoner retrieval unit, Malfunctioning Drone |
+| E2 | -922 | 368.5 | North | The Straegis Titan, alone in the open court |
+
+The walk: N1 to N3 along the walkway from the doorway (z -897), N4 and N5
+on the next walkway (z -911.5), E1 east of them, then south through the gap
+at x 331-349 to S1 to S6 (walkways at z -939.5, -949.5 and -958.5), with
+the machines and the Titan east of S1 and S2.
+
+**What each NPC is.** A clone of its source template's appearance: body
+set, components, colours, skin tint, static mesh, level and `name_id`.
+Everything else is fixed: faction 1 (World Object), class mob, event set
+570 (the default sequence set that 150 of the 155 sources and the summit's
+lords carry), stationary, and no ability set, loot, vendor lists, dialog,
+interaction sets, speaker, patrol, wander or aggression override. Faction 1
+is friendly to players, and no faction in the reaction table is hostile to
+it. So players cannot attack a lineup NPC, it never looks for NPC targets,
+and no NPC takes it as one; a creature mob needs nothing extra. None can
+die, so none respawns. Template names read `DebugArea Lineup - <source
+template_name>`, and tags `DebugArea_Lineup_<source template id>`
+(`DebugArea_Lineup_<body set>` for the six bare ones).
+
+**Nameplates.** A clone shows its source's name. 82 of the 161 have no
+`name_id`, so their nameplate is blank, as their sources' are, and a few
+named sources point at an empty shipped name (template 4's, for example).
+The server can only send a `name_id`, so the template name of a nameless
+source cannot be shown; the spawn tables below map each tag to its source.
+
+**The six template-less body sets.** Each is dressed with the components
+`resources.body_components` lists for it:
+
+| Body set | Components | Expect |
+|---|---|---|
+| `MOB_AN_Android.BS_AN_Android` | `MOB_Android00` (Guts and Shell slots) | Renders: reference mesh `AN_Android`, measured |
+| `MOB_CA_DroneTank.BS_MOB_DroneTank` | `MOB_DroneTank00`, `MOB_DroneTreads00` | Renders: reference mesh `CADroneTank`, measured |
+| `MOB_Lenny.BS_MOB_LennyBaby` | `MOB_LennyBaby00` | Renders, tiny (0.21 m) |
+| `NPC_Asgard.BS_Degenerated_Asgard` | `NPC_Degenerated_Asgard_00` | Renders: reference mesh `Degenerated_Asgard` |
+| `AR_J_Ra.BS_RaJaff` | `BC_RaJaffa_500` | **Probably invisible or a placeholder.** Its reference mesh `Ra_500` is not an export of the `AR_J_Ra` package ([being-eye-heights.md](../reverse-engineering/findings/being-eye-heights.md)) |
+| `HM_Mesh.HM_BodySet` | The base head, torso, legs, hands and boots (`HM-BaseHead00_00` and the rest; its parts carry no slot names, so the five variant legs and torsos are left off) | **Probably invisible or a placeholder.** Its `body_sets` row names no reference mesh |
+
+Nobody has looked at these six in the client yet; that is the first thing
+to check (DA-U48). The two flagged ones are placed anyway, so the lineup
+covers every body set. Neither has an eye height, so they look from the
+1.5 m default.
+
+**How to test** (DA-U48 in the [unified UAT](../guides/unified-uat.md#debug-area)):
+
+| Step | Expect | Fail |
+|---|---|---|
+| `.gotolocation DebugArea 300 6.8 -897` | Rows of standing NPCs east of you, the first rows humans | An empty wing; NPCs floating or sunk into the floor |
+| Walk the walkways in the order above | Every NPC stands on the floor facing the walkway, each one different | Two identical NPCs side by side; one facing a wall; one inside a wall |
+| Read the names | The named cast reads as in its home zone (Teal'c, Hammond, Bra'tak, Thor and the rest) | A named source shows a blank or a wrong name |
+| Walk among them with `.aggro on` | Nothing engages; right-clicking an NPC starts nothing | An attack starts, an error shows, or a hostile pulls you |
+| The six bare body sets (tags `DebugArea_Lineup_BS_*` and `..._HM_BodySet`) | The Android, the Drone Tank, Lenny Baby and the degenerated Asgard render | Report what the Ra Jaffa body set and `HM_BodySet` show: expected blank |
+
+**Adding a template.** A template added with a new look fails
+`live_db_debug_area_lineup` until it gets a lineup row. Copy any row of
+`entity_templates_debug_area_lineup.sql` with the next free id in
+1410-1599, set its look, level and `name_id` from the new template, and add
+a spawn in 13870-14099 on a free spot. The rows are full; the open floor
+south of S6 (z -965, x 344-368) and the east end of S6 (x 364-374) take
+about 15 more. `debug_area::lineup` then checks the spot.
+
+Seed: `entity_templates_debug_area_lineup.sql` (templates 1410-1570) and
+`spawnlist_debug_area_lineup.sql` (spawns 13870-14030), inside DA-10's
+block (templates 1410-1599, spawns 13870-14099). Guards:
+`service::tests::npc_ai::debug_area::lineup` in `cimmeria-cell` (every NPC
+stands on the navmesh and the occluder's terrain; a tester can walk from
+the Compound ring pad and from the landing spot to 1.5 m in front of each
+one; the rows face their walkways and no two NPCs overlap; every NPC is
+faction 1, cannot be attacked, seeks no NPC target and is no NPC's target,
+and no hostile can aggro a tester beside one) and
+`live_db_debug_area_lineup` in `cimmeria-cell-catalog` (every look has one
+clone, every template-less body set a dressed one, each clone one spawn,
+and every row loads friendly and stationary).
+
+### NPC lineup spawn tables
+
+"Source" is the template the look was cloned from. "Nameplate" is the
+source's `name_id`; blank means none.
+
+#### Humans, male (33)
+
+| Spawn | Template | Source | Source template | Nameplate | Body set | Row (x, z) |
+|---:|---:|---:|---|---|---|---|
+| 13870 | 1410 | 10 | Col Marsh (pet) | moniker 7569 | BS_HumanMale | N1 (305, -888) |
+| 13871 | 1411 | 15 | Cellblock Guard | moniker 6961 | BS_HumanMale | N1 (307.25, -888) |
+| 13872 | 1412 | 24 | NID Guard | moniker 7417 | BS_HumanMale | N1 (309.5, -888) |
+| 13873 | 1413 | 25 | Interaction Debug NPC - DO NOT USE | blank | BS_HumanMale | N1 (311.75, -888) |
+| 13874 | 1414 | 26 | TestAvatar | blank | BS_HumanMale | N1 (314, -888) |
+| 13875 | 1415 | 28 | test avatar set - DO NOT USE | blank | BS_HumanMale | N1 (316.25, -888) |
+| 13876 | 1416 | 29 | General Hammond | moniker 7879 | BS_HumanMale | N1 (318.5, -888) |
+| 13877 | 1417 | 31 | Airman | moniker 8360 | BS_HumanMale | N2 (323, -893) |
+| 13878 | 1418 | 47 | Mr Woolsey | moniker 7884 | BS_HumanMale | N2 (325.25, -893) |
+| 13879 | 1419 | 51 | Daniel Jackson | moniker 7907 | BS_HumanMale | N2 (327.5, -893) |
+| 13880 | 1420 | 52 | Jack O'Neill | moniker 7283 | BS_HumanMale | N2 (329.75, -893) |
+| 13881 | 1421 | 53 | Nerus | moniker 7165 | BS_HumanMale | N2 (332, -893) |
+| 13882 | 1422 | 55 | Warrick | moniker 7322 | BS_HumanMale | N2 (334.25, -893) |
+| 13883 | 1423 | 56 | Goldam | moniker 7074 | BS_HumanMale | N2 (336.5, -893) |
+| 13884 | 1424 | 57 | Major Davis | moniker 7372 | BS_HumanMale | N2 (338.75, -893) |
+| 13885 | 1425 | 58 | Walter Harriman | moniker 26715 | BS_HumanMale | N2 (341, -893) |
+| 13886 | 1426 | 146 | NID Guard - Castle outside | moniker 7417 | BS_HumanMale | N2 (343.25, -893) |
+| 13887 | 1427 | 149 | Sgt. Gerschon | moniker 7034 | BS_HumanMale | N2 (345.5, -893) |
+| 13888 | 1428 | 150 | HumanMale - Not For Use | blank | BS_HumanMale | N3 (306, -902) |
+| 13889 | 1429 | 151 | Lucian - Blue Faction Scientist | moniker 7912 | BS_HumanMale | N3 (308.25, -902) |
+| 13890 | 1430 | 152 | Lucian - Slum Dweller | moniker 7920 | BS_HumanMale | N3 (310.5, -902) |
+| 13891 | 1431 | 168 | Castle_Zuritska | moniker 7066 | BS_HumanMale | N3 (312.75, -902) |
+| 13892 | 1432 | 172 | Castle_SurrenderGuard | moniker 7417 | BS_HumanMale | N3 (315, -902) |
+| 13893 | 1433 | 174 | Castle_OpCoreSoldier | moniker 7552 | BS_HumanMale | N3 (317.25, -902) |
+| 13894 | 1434 | 175 | Castle_OpCoreSoldier_Wander | moniker 7552 | BS_HumanMale | N3 (319.5, -902) |
+| 13895 | 1435 | 176 | Castle_OpCoreSoldier_Unarmed | moniker 7552 | BS_HumanMale | N3 (321.75, -902) |
+| 13896 | 1436 | 178 | Castle_SgtStanton | moniker 7036 | BS_HumanMale | N3 (324, -902) |
+| 13897 | 1437 | 179 | Castle_Ogilvie | moniker 7342 | BS_HumanMale | N3 (326.25, -902) |
+| 13898 | 1438 | 215 | Opheltes | moniker 7068 | BS_HumanMale | N3 (328.5, -902) |
+| 13899 | 1439 | 300 | Debug Hub - Vendor | moniker 8010 | BS_HumanMale | N3 (330.75, -902) |
+| 13900 | 1440 | 302 | Debug Hub - Dialog | moniker 7412 | BS_HumanMale | N3 (333, -902) |
+| 13901 | 1441 | 314 | Debug Hub - Crafting Supplies | moniker 27239 | BS_HumanMale | N3 (335.25, -902) |
+| 13902 | 1442 | - | none: no template uses this body set | blank | HM_BodySet | N3 (337.5, -902) |
+
+#### Humans, female (9)
+
+| Spawn | Template | Source | Source template | Nameplate | Body set | Row (x, z) |
+|---:|---:|---:|---|---|---|---|
+| 13903 | 1443 | 33 | Sam Carter | moniker 26986 | BS_HumanFemale | N3 (339.75, -902) |
+| 13904 | 1444 | 48 | CaptCoppleman | moniker 7035 | BS_HumanFemale | N3 (342, -902) |
+| 13905 | 1445 | 49 | Oma Desala | blank | BS_HumanFemale | N3 (344.25, -902) |
+| 13906 | 1446 | 50 | Vala Mal Doran | moniker 6989 | BS_HumanFemale | N3 (346.5, -902) |
+| 13907 | 1447 | 153 | HumanFemale Template - DO NOT USE | blank | BS_HumanFemale | N3 (348.75, -902) |
+| 13908 | 1448 | 170 | Castle_Muelbach | moniker 6965 | BS_HumanFemale | N3 (351, -902) |
+| 13909 | 1449 | 177 | Castle_Medic | moniker 6964 | BS_HumanFemale | N3 (353.25, -902) |
+| 13910 | 1450 | 219 | Storage Lo'taur | moniker 29463 | BS_HumanFemale | N4 (312, -909) |
+| 13911 | 1451 | 370 | Debug Hub - Banker | moniker 29462 | BS_HumanFemale | N4 (314.25, -909) |
+
+#### Jaffa, male (44)
+
+| Spawn | Template | Source | Source template | Nameplate | Body set | Row (x, z) |
+|---:|---:|---:|---|---|---|---|
+| 13912 | 1452 | 30 | Teal'c | moniker 7908 | BS_JaffaMale | N4 (316.5, -909) |
+| 13913 | 1453 | 34 | SGC Jaffa | moniker 8168 | BS_JaffaMale | N4 (318.75, -909) |
+| 13914 | 1454 | 59 | Bra'tak | moniker 7429 | BS_JaffaMale | N4 (321, -909) |
+| 13915 | 1455 | 82 | Bull Jaffa | blank | BS_JaffaMale | N4 (323.25, -909) |
+| 13916 | 1456 | 83 | Asian Jaffa | blank | BS_JaffaMale | N4 (325.5, -909) |
+| 13917 | 1457 | 84 | Cat Jaffa | blank | BS_JaffaMale | N4 (327.75, -909) |
+| 13918 | 1458 | 85 | Cobra Jaffa | blank | BS_JaffaMale | N4 (330, -909) |
+| 13919 | 1459 | 86 | Croc Jaffa | blank | BS_JaffaMale | N4 (332.25, -909) |
+| 13920 | 1460 | 87 | Demon Jaffa | blank | BS_JaffaMale | N5 (302, -914) |
+| 13921 | 1461 | 88 | Dragon Jaffa | blank | BS_JaffaMale | N5 (304.25, -914) |
+| 13922 | 1462 | 89 | Eagle Jaffa | blank | BS_JaffaMale | N5 (306.5, -914) |
+| 13923 | 1463 | 90 | Falcon Jaffa | blank | BS_JaffaMale | N5 (308.75, -914) |
+| 13924 | 1464 | 91 | Horse Jaffa | blank | BS_JaffaMale | N5 (311, -914) |
+| 13925 | 1465 | 92 | Hyena Jaffa | blank | BS_JaffaMale | N5 (313.25, -914) |
+| 13926 | 1466 | 93 | Jackal Jaffa | blank | BS_JaffaMale | N5 (315.5, -914) |
+| 13927 | 1467 | 94 | Mayan Jaffa | blank | BS_JaffaMale | N5 (317.75, -914) |
+| 13928 | 1468 | 95 | Morrigan Jaffa | blank | BS_JaffaMale | N5 (320, -914) |
+| 13929 | 1469 | 96 | Naga Jaffa | blank | BS_JaffaMale | N5 (322.25, -914) |
+| 13930 | 1470 | 97 | Praxis Jaffa | blank | BS_JaffaMale | N5 (324.5, -914) |
+| 13931 | 1471 | 98 | Praxis Jaffa 2 | blank | BS_JaffaMale | N5 (326.75, -914) |
+| 13932 | 1472 | 99 | Ra Jaffa | blank | BS_JaffaMale | N5 (329, -914) |
+| 13933 | 1473 | 100 | Standard Jaffa | blank | BS_JaffaMale | N5 (331.25, -914) |
+| 13934 | 1474 | 101 | Savarog Jaffa | blank | BS_JaffaMale | N5 (333.5, -914) |
+| 13935 | 1475 | 102 | Tiki Jaffa | blank | BS_JaffaMale | N5 (335.75, -914) |
+| 13936 | 1476 | 105 | Unas_1 | blank | BS_JaffaMale | S1 (306, -937) |
+| 13937 | 1477 | 106 | Unas_2 | blank | BS_JaffaMale | S1 (308.25, -937) |
+| 13938 | 1478 | 107 | Unas_3 | blank | BS_JaffaMale | S1 (310.5, -937) |
+| 13939 | 1479 | 108 | Unas_4 | blank | BS_JaffaMale | S1 (312.75, -937) |
+| 13940 | 1480 | 109 | Unas_5 | blank | BS_JaffaMale | S1 (315, -937) |
+| 13941 | 1481 | 110 | Unas_6 | blank | BS_JaffaMale | S1 (317.25, -937) |
+| 13942 | 1482 | 111 | Viking Jaffa | blank | BS_JaffaMale | S1 (319.5, -937) |
+| 13943 | 1483 | 142 | Ra Jaffa 2 | blank | BS_JaffaMale | S1 (321.75, -937) |
+| 13944 | 1484 | 143 | Ra's Officer | moniker 8920 | BS_JaffaMale | S1 (324, -937) |
+| 13945 | 1485 | 155 | JaffaMale Template - DO NOT USE | blank | BS_JaffaMale | S1 (326.25, -937) |
+| 13946 | 1486 | 160 | Praxis Jaffa Guard | moniker 8917 | BS_JaffaMale | S1 (328.5, -937) |
+| 13947 | 1487 | 163 | Petbe | moniker 7586 | BS_JaffaMale | S1 (330.75, -937) |
+| 13948 | 1488 | 200 | Mala'c | moniker 7590 | BS_JaffaMale | S1 (333, -937) |
+| 13949 | 1489 | 202 | Bra'hin | moniker 8356 | BS_JaffaMale | S1 (335.25, -937) |
+| 13950 | 1490 | 203 | Ra's Jaffa Infiltrator | moniker 7455 | BS_JaffaMale | S1 (337.5, -937) |
+| 13951 | 1491 | 206 | Angry Jaffa | moniker 8457 | BS_JaffaMale | S2 (316, -942) |
+| 13952 | 1492 | 221 | Petbe (hostile) | moniker 7586 | BS_JaffaMale | S2 (318.25, -942) |
+| 13953 | 1493 | 1310 | Debug Area - Training Dummy L1 | moniker 8168 | BS_JaffaMale | S2 (320.5, -942) |
+| 13954 | 1494 | 1371 | DebugArea Arena Praxis Jaffa | moniker 8917 | BS_JaffaMale | S2 (322.75, -942) |
+| 13955 | 1495 | - | none: no template uses this body set | blank | BS_RaJaff | S2 (325, -942) |
+
+#### Jaffa, female (30)
+
+| Spawn | Template | Source | Source template | Nameplate | Body set | Row (x, z) |
+|---:|---:|---:|---|---|---|---|
+| 13956 | 1496 | 54 | Moh'Katan | moniker 8259 | BS_JaffaFemale | S2 (327.25, -942) |
+| 13957 | 1497 | 112 | Asian Jaffa Female | blank | BS_JaffaFemale | S2 (329.5, -942) |
+| 13958 | 1498 | 113 | Bull Jaffa Female | blank | BS_JaffaFemale | S2 (331.75, -942) |
+| 13959 | 1499 | 114 | Cat Jaffa Female | blank | BS_JaffaFemale | S2 (334, -942) |
+| 13960 | 1500 | 115 | Cobra Jaffa Female | blank | BS_JaffaFemale | S2 (336.25, -942) |
+| 13961 | 1501 | 116 | Croc Jaffa Female | blank | BS_JaffaFemale | S2 (338.5, -942) |
+| 13962 | 1502 | 117 | Demon Jaffa Female | blank | BS_JaffaFemale | S3 (329, -947) |
+| 13963 | 1503 | 118 | Dragon Jaffa Female | blank | BS_JaffaFemale | S3 (331.25, -947) |
+| 13964 | 1504 | 119 | Eagle Jaffa Female | blank | BS_JaffaFemale | S3 (333.5, -947) |
+| 13965 | 1505 | 120 | Falcon Jaffa Female | blank | BS_JaffaFemale | S3 (335.75, -947) |
+| 13966 | 1506 | 121 | Horse Jaffa Female | blank | BS_JaffaFemale | S3 (338, -947) |
+| 13967 | 1507 | 122 | Hyena Jaffa Female | blank | BS_JaffaFemale | S3 (340.25, -947) |
+| 13968 | 1508 | 123 | Jackal Jaffa Female | blank | BS_JaffaFemale | S3 (342.5, -947) |
+| 13969 | 1509 | 124 | Mayan Jaffa Female | blank | BS_JaffaFemale | S3 (344.75, -947) |
+| 13970 | 1510 | 125 | Morrigan Jaffa Female | blank | BS_JaffaFemale | S3 (347, -947) |
+| 13971 | 1511 | 126 | Naga Jaffa Female | blank | BS_JaffaFemale | S3 (349.25, -947) |
+| 13972 | 1512 | 127 | Praxis Jaffa 2 Female | blank | BS_JaffaFemale | S3 (351.5, -947) |
+| 13973 | 1513 | 128 | Praxis Jaffa 1 Female | blank | BS_JaffaFemale | S4 (315, -952) |
+| 13974 | 1514 | 129 | Standard Jaffa Female | blank | BS_JaffaFemale | S4 (317.25, -952) |
+| 13975 | 1515 | 130 | Svarog Jaffa Female | blank | BS_JaffaFemale | S4 (319.5, -952) |
+| 13976 | 1516 | 131 | Tiki Jaffa Female | blank | BS_JaffaFemale | S4 (321.75, -952) |
+| 13977 | 1517 | 132 | Unas 1 Female | blank | BS_JaffaFemale | S4 (324, -952) |
+| 13978 | 1518 | 133 | Unas 2 Female | blank | BS_JaffaFemale | S4 (326.25, -952) |
+| 13979 | 1519 | 134 | Unas 3 Female | blank | BS_JaffaFemale | S4 (328.5, -952) |
+| 13980 | 1520 | 135 | Unas 4 Female | blank | BS_JaffaFemale | S4 (330.75, -952) |
+| 13981 | 1521 | 136 | Unas 5 Female | blank | BS_JaffaFemale | S4 (333, -952) |
+| 13982 | 1522 | 137 | Unas 6 Female | blank | BS_JaffaFemale | S4 (335.25, -952) |
+| 13983 | 1523 | 138 | Viking Jaffa Female | blank | BS_JaffaFemale | S5 (307, -956) |
+| 13984 | 1524 | 139 | Clothed Jaffa Female 1 | blank | BS_JaffaFemale | S5 (309.25, -956) |
+| 13985 | 1525 | 154 | JaffaFemale Template - DO NOT USE | blank | BS_JaffaFemale | S5 (311.5, -956) |
+
+#### Goa'uld, male (14)
+
+| Spawn | Template | Source | Source template | Nameplate | Body set | Row (x, z) |
+|---:|---:|---:|---|---|---|---|
+| 13986 | 1526 | 17 | Prisoner 329 | moniker 7030 | BS_GoauldMale | S5 (313.75, -956) |
+| 13987 | 1527 | 41 | Ra | moniker 20205 | BS_GoauldMale | S5 (316, -956) |
+| 13988 | 1528 | 42 | Ba'al | moniker 8186 | BS_GoauldMale | S5 (318.25, -956) |
+| 13989 | 1529 | 60 | Ra 2 | moniker 20205 | BS_GoauldMale | S5 (320.5, -956) |
+| 13990 | 1530 | 61 | Ra 3 | moniker 20205 | BS_GoauldMale | S5 (327, -956) |
+| 13991 | 1531 | 62 | Ra 4 | moniker 20205 | BS_GoauldMale | S5 (329.25, -956) |
+| 13992 | 1532 | 63 | Ra 5 | moniker 20205 | BS_GoauldMale | S5 (331.5, -956) |
+| 13993 | 1533 | 158 | GoauldMale Template - DO NOT USE | blank | BS_GoauldMale | S5 (333.75, -956) |
+| 13994 | 1534 | 167 | Sandbox Ba'al | moniker 8186 | BS_GoauldMale | S5 (336, -956) |
+| 13995 | 1535 | 210 | Haughty Goa'uld | moniker 8461 | BS_GoauldMale | S5 (338.25, -956) |
+| 13996 | 1536 | 211 | Ashrak Assassin | moniker 7751 | BS_GoauldMale | S5 (340.5, -956) |
+| 13997 | 1537 | 353 | Lo'Taur Servant | moniker 28891 | BS_GoauldMale | S6 (326, -961) |
+| 13998 | 1538 | 1400 | Debug Area - Ra | moniker 20205 | BS_GoauldMale | S6 (328.25, -961) |
+| 13999 | 1539 | 1401 | Debug Area - Ba'al | moniker 8186 | BS_GoauldMale | S6 (330.5, -961) |
+
+#### Goa'uld, female (6)
+
+| Spawn | Template | Source | Source template | Nameplate | Body set | Row (x, z) |
+|---:|---:|---:|---|---|---|---|
+| 14000 | 1540 | 43 | Anat | moniker 2850 | BS_GoauldFemale | S6 (332.75, -961) |
+| 14001 | 1541 | 44 | Athena | moniker 7563 | BS_GoauldFemale | S6 (335, -961) |
+| 14002 | 1542 | 45 | Morrigan | moniker 7521 | BS_GoauldFemale | S6 (337.25, -961) |
+| 14003 | 1543 | 157 | GoauldFemale Template - DO NOT USE | blank | BS_GoauldFemale | S6 (339.5, -961) |
+| 14004 | 1544 | 1403 | Debug Area - Athena | moniker 7563 | BS_GoauldFemale | S6 (341.75, -961) |
+| 14005 | 1545 | 1404 | Debug Area - Morrigan | moniker 7521 | BS_GoauldFemale | S6 (344, -961) |
+
+#### Asgard (3)
+
+| Spawn | Template | Source | Source template | Nameplate | Body set | Row (x, z) |
+|---:|---:|---:|---|---|---|---|
+| 14006 | 1546 | 64 | Thor | moniker 7435 | BS_Asgard | S6 (346.25, -961) |
+| 14007 | 1547 | 156 | Asgard Template - DO NOT USE | blank | BS_Asgard | S6 (348.5, -961) |
+| 14008 | 1548 | - | none: no template uses this body set | blank | BS_Degenerated_Asgard | S6 (350.75, -961) |
+
+#### Children (5)
+
+| Spawn | Template | Source | Source template | Nameplate | Body set | Row (x, z) |
+|---:|---:|---:|---|---|---|---|
+| 14009 | 1549 | 66 | Nox Child Male | blank | NPC_Child_BS | S6 (353, -961) |
+| 14010 | 1550 | 67 | Nox Child Female | blank | NPC_Child_BS | S6 (355.25, -961) |
+| 14011 | 1551 | 68 | Blix | moniker 7075 | NPC_Child_BS | S6 (357.5, -961) |
+| 14012 | 1552 | 140 | NPC Child 1 | blank | NPC_Child_BS | S6 (359.75, -961) |
+| 14013 | 1553 | 141 | NPC Child 2 | blank | NPC_Child_BS | S6 (362, -961) |
+
+#### Creatures (8)
+
+| Spawn | Template | Source | Source template | Nameplate | Body set | Row (x, z) |
+|---:|---:|---:|---|---|---|---|
+| 14014 | 1554 | 74 | AMBRat | moniker 7940 | BS_MOB_Rat | E1 (348, -909) |
+| 14015 | 1555 | 76 | ScavDog | blank | BS_MOB_ScavDog | E1 (352, -909) |
+| 14016 | 1556 | 73 | Lenny | moniker 7485 | BS_MOB_Lenny | E1 (356, -909) |
+| 14017 | 1557 | - | none: no template uses this body set | blank | BS_MOB_LennyBaby | E1 (360, -909) |
+| 14018 | 1558 | 72 | Horden | blank | BS_MOB_Horden | E1 (366, -909) |
+| 14019 | 1559 | 71 | Carnosaur | moniker 26846 | BS_MOB_Carnosaur | E1 (374, -909) |
+| 14020 | 1560 | 75 | Rhinolion | blank | BS_MOB_Rhinolion00 | E1 (382, -909) |
+| 14021 | 1561 | 80 | Twilla Tree | moniker 26844 | BS_MOB_TwillaTree | E3 (362, -937) |
+
+#### Machines (9)
+
+| Spawn | Template | Source | Source template | Nameplate | Body set | Row (x, z) |
+|---:|---:|---:|---|---|---|---|
+| 14022 | 1562 | - | none: no template uses this body set | blank | BS_AN_Android | E4 (347, -942) |
+| 14023 | 1563 | - | none: no template uses this body set | blank | BS_MOB_DroneTank | E4 (351, -942) |
+| 14024 | 1564 | 4 | Prisoner retrieval unit | moniker 7599 | BS_MOB_DroneFlyer | E4 (355, -942) |
+| 14025 | 1565 | 69 | Malfunctioning Drone | moniker 7438 | MOB_Goauld_Drone | E4 (359, -942) |
+| 14026 | 1566 | 81 | Ancient Drone | moniker 8128 | MOB_AncientDrone_BS | E3 (368, -937) |
+| 14027 | 1567 | 78 | Straegis Fighter | moniker 8090 | BS_MOB_StraegisFighter | E3 (372, -937) |
+| 14028 | 1568 | 77 | Straegis Beacon | moniker 6979 | BS_MOB_StraegisBeacon | E3 (376, -937) |
+| 14029 | 1569 | 70 | BattleWalker | blank | BS_MOB_BattleWalker | E3 (382, -937) |
+| 14030 | 1570 | 79 | Straegis Titan | moniker 7135 | BS_MOB_StraegisTitan | E2 (368.5, -922) |

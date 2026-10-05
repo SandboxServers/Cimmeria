@@ -1,5 +1,6 @@
 # Unified UAT, section "Debug Area" (world 1300, every station).
-# Guide: docs/guides/unified-uat.md#debug-area (DA-U1 to DA-U46).
+# Guide: docs/guides/unified-uat.md#debug-area (DA-U1 to DA-U46, and
+# DA-U48; DA-U47, the System Lords' summit, is in the guide only).
 # Reference: docs/content/debug-area.md (zones, spawn tables, how each
 # station works). Campaign: docs/analysis/debug-area/README.md.
 #
@@ -1921,3 +1922,44 @@ at = "console"
 name = "arrival"
 tool = "lab_screenshot"
 at = "arrived"
+
+[[row]]
+id = "DA-U48"
+title = "The NPC lineup: one friendly NPC per look, none engages"
+expected = "In the south compound's east wing, rows of standing NPCs face the walkways, one per character look in the seed (161 with the six template-less body sets); walking the first walkway pulls nothing."
+notes = "DA-10. Rows and tags: docs/content/debug-area.md#npc-lineup. 82 nameplates are blank, as their sources' are. The Ra Jaffa body set (DebugArea_Lineup_BS_RaJaff) and DebugArea_Lineup_HM_BodySet have no reference mesh and are expected to draw nothing or a placeholder."
+setup = [
+  { chat = ".aggro on", tier = "G" },
+  { chat = ".gotolocation DebugArea 300 6.8 -897", tier = "G" },
+  { tool = "client_wait_for", args = { lua_condition = "getCurrentWorldID() == 1300", timeout_ms = 60000 } },
+  { wait_ms = 5000 },
+]
+step = [
+  { tool = "@move_to", args = { waypoints = [{ x = 320, y = 6.8, z = -897 }, { x = 350, y = 6.8, z = -897 }], arrival_m = 3, timeout_ms = 90000 }, label = "walk" },
+  { wait_ms = 3000, label = "seen" },
+]
+teardown = [{ chat = ".gotolocation DebugArea 251 8 -962", optional = true }]
+[[row.expect]]
+id = "still-1300"
+text = "you are in world 1300 at the end of the walk"
+source = "tool"
+at = "seen"
+tool = "@player_state"
+pointer = "/world_id"
+op = "eq"
+value = 1300
+[[row.expect]]
+id = "nothing-pulled"
+text = "SigNoz: no lineup NPC acquired you"
+source = "signoz"
+filter = "scope_name = 'npc_ai.aggro' AND event = 'acquired' AND tag LIKE 'DebugArea_Lineup_%'"
+max_rows = 0
+[[row.expect]]
+id = "looks"
+text = "the lineup reads as rows of different, standing NPCs"
+source = "human"
+question = "Walking the first walkway (z -897): do the humans stand on the floor facing you, each dressed differently, none floating, sunk or inside a wall? Do the named ones (Hammond, O'Neill, Daniel Jackson) show their names? Walk on through the wing: do the Android, the Drone Tank, Lenny Baby and the degenerated Asgard render, and what do the Ra Jaffa body set and HM_BodySet show?"
+[[row.evidence]]
+name = "walkway"
+tool = "lab_screenshot"
+at = "seen"
