@@ -199,19 +199,14 @@ pub(super) async fn handle_interact(
     // interaction distance would break every ranged weapon.
     if !crate::cell::interactions::interact_target_in_range(entity_id, target_entity_u32, space_mgr)
     {
-        // A too-far click on most NPCs stays a silent drop (the client
-        // shows its own range cue); a Banker answers with a chat line and
-        // `vault_open_rejected reason=out_of_range` (bank-vault BV-02), and
-        // an organization registrar with a line and an
-        // `org.registrar_open reason=too_far` row (ORG-05).
-        crate::cell::interactions::reject_banker_out_of_range(
-            entity_id,
-            target_entity_u32,
-            tx,
-            space_mgr,
-        )
-        .await;
-        crate::cell::interactions::reject_registrar_out_of_range(
+        // Every too-far click gets a chat line (DA-F5): the client shows no
+        // range cue of its own, so a silent drop read as a dead button. A
+        // Banker answers with its own line and `vault_open_rejected
+        // reason=out_of_range` (bank-vault BV-02), an organization registrar
+        // with its line and an `org.registrar_open reason=too_far` row
+        // (ORG-05), and anything else with the generic line and an
+        // `interaction.out_of_range` row.
+        crate::cell::interactions::reject_interact_out_of_range(
             entity_id,
             target_entity_u32,
             tx,

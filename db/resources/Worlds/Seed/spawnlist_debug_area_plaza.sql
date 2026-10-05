@@ -63,11 +63,14 @@ INSERT INTO spawnlist (spawn_id, x, y, z, heading, world_id, template_id, tag, s
 INSERT INTO spawnlist (spawn_id, x, y, z, heading, world_id, template_id, tag, set_name, is_stationary) VALUES (13018, 249.28, 6.99, -912.86, 2.8798, 1300, 313, 'DebugArea_Station_Materials', NULL, true);
 
 -- Dummies range (D-DA7). Templates 1310-1314 carry `training_dummy`.
+-- The friendly dummy (13104) stands at the west end, 6 m past L1: at the
+-- line's east end (264) a wall footprint between x 259.4 and 261 (no
+-- navmesh) kept a healer more than 5 m away (DA-F7).
 INSERT INTO spawnlist (spawn_id, x, y, z, heading, world_id, template_id, tag, set_name, is_stationary) VALUES (13100, 240.0, 7.08, -872.0, 3.1416, 1300, 1310, 'DebugArea_Dummy_L1', NULL, true);
 INSERT INTO spawnlist (spawn_id, x, y, z, heading, world_id, template_id, tag, set_name, is_stationary) VALUES (13101, 246.0, 6.59, -872.0, 3.1416, 1300, 1311, 'DebugArea_Dummy_L10', NULL, true);
 INSERT INTO spawnlist (spawn_id, x, y, z, heading, world_id, template_id, tag, set_name, is_stationary) VALUES (13102, 252.0, 6.59, -872.0, 3.1416, 1300, 1312, 'DebugArea_Dummy_L25', NULL, true);
 INSERT INTO spawnlist (spawn_id, x, y, z, heading, world_id, template_id, tag, set_name, is_stationary) VALUES (13103, 258.0, 6.7, -872.0, 3.1416, 1300, 1313, 'DebugArea_Dummy_L50', NULL, true);
-INSERT INTO spawnlist (spawn_id, x, y, z, heading, world_id, template_id, tag, set_name, is_stationary) VALUES (13104, 264.0, 6.86, -872.0, 3.1416, 1300, 1314, 'DebugArea_Dummy_Friendly', NULL, true);
+INSERT INTO spawnlist (spawn_id, x, y, z, heading, world_id, template_id, tag, set_name, is_stationary) VALUES (13104, 234.0, 6.82, -872.0, 3.1416, 1300, 1314, 'DebugArea_Dummy_Friendly', NULL, true);
 
 -- These rows load after spawnlist.sql's own sequence footer, so they raise
 -- the sequence themselves. Floor 13799 is the top of the whole Debug Area

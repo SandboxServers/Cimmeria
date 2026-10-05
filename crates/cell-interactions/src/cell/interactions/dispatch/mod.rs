@@ -8,6 +8,7 @@
 
 mod initial_response;
 mod interact;
+mod range_feedback;
 
 #[cfg(test)]
 mod tests;
@@ -16,6 +17,7 @@ use crate::cell::space_manager::SpaceManager;
 
 pub use initial_response::handle_initial_response;
 pub use interact::handle_interact;
+pub use range_feedback::reject_interact_out_of_range;
 
 // The range rule lives in `cimmeria-cell-world` so the vault verdict (BV-03)
 // can be taken below this crate. `MAX_INTERACT_DISTANCE` stays `pub(super)`

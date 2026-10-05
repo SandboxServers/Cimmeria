@@ -4,7 +4,9 @@
 //! [`super::super::address_book`].
 
 use super::super::dial_feedback::{refusal_messages, DialRefusal};
-use super::super::dial_hub::{top_up_gm_dial_hub, update_stargate_address_args, HubTopUp};
+use super::super::dial_hub::{
+    top_up_gm_dial_hub, top_up_on_world_entry, update_stargate_address_args, HubTopUp,
+};
 use super::*;
 use crate::cell::client_methods::gate_travel::UPDATE_STARGATE_ADDRESS;
 
@@ -336,4 +338,43 @@ async fn a_held_address_on_a_world_with_no_space_is_refused_before_teardown() {
             "destination_world_not_loaded"
         )
         .is_some());
+}
+
+/// DA-F3: the world-entry pass finds the hub on the GM's own world and
+/// grants as the DHD-open pass does, logged with `trigger = world_entry`.
+/// A later DHD open then grants nothing, so the window opens on addresses
+/// the client resolved while the GM walked over. Off the hub's world the
+/// pass does nothing.
+#[tokio::test]
+async fn the_world_entry_pass_grants_on_the_hub_world_and_leaves_the_dhd_nothing_to_send() {
+    let capture = crate::test_support::LogCapture::install();
+    let mut mgr = hub_manager(GM);
+    let (tx, mut rx) = tokio::sync::mpsc::channel(32);
+
+    let top = top_up_on_world_entry(1, &tx, &mut mgr).await.unwrap();
+    assert_eq!(top.granted, vec![HARSET, SGC_W1]);
+    assert_eq!(
+        update_ids(&dial_feedback::drain(&mut rx)),
+        vec![HARSET, SGC_W1]
+    );
+    let warn = capture
+        .find_event(tracing::Level::WARN, "debug dial hub", "gm_dial_hub_grant")
+        .expect("the grant warn");
+    assert_eq!(
+        warn.fields.get("trigger").map(String::as_str),
+        Some("world_entry")
+    );
+
+    let on_open = top_up_gm_dial_hub(1, HUB, &tx, &mut mgr).await.unwrap();
+    assert!(on_open.granted.is_empty());
+    assert!(update_ids(&dial_feedback::drain(&mut rx)).is_empty());
+
+    let mut elsewhere = hub_manager(GM);
+    elsewhere.destroy_entity(1);
+    elsewhere
+        .create_entity(1, "Harset", [0.0; 3], [0.0; 3])
+        .unwrap();
+    elsewhere.get_entity_mut(1).unwrap().access_level = GM;
+    assert_eq!(top_up_on_world_entry(1, &tx, &mut elsewhere).await, None);
+    assert!(dial_feedback::drain(&mut rx).is_empty());
 }

@@ -2,7 +2,7 @@
 title: "Debug Area"
 type: reference
 audience: engineers, testers
-last_updated: 2026-10-04
+last_updated: 2026-10-05
 ---
 
 # Debug Area
@@ -12,7 +12,9 @@ client map Ihpet_Crater_Light (decisions D-DA1 to D-DA9 in the
 [campaign plan](../analysis/debug-area/README.md)). It is shared and always
 loaded, and only GMs can get there: `.gotolocation DebugArea` (or the native
 `/gmgotolocation`) lands on respawner 130's point at the south compound, which is
-the stargate's arrival pin (see [Stargate](#stargate)). Each zone
+the stargate's arrival pin (see [Stargate](#stargate)).
+`.gotolocation DebugArea <x> <y> <z>` moves you to those coordinates; it
+always moves you, never your selection (DA-F4). Each zone
 tests one group of server systems. Every spawn carries a `DebugArea_*` tag;
 the stasis-room hub's tests count `DebugHub_*`, so the two never mix (D-DA6).
 
@@ -843,6 +845,11 @@ an ability granter, an ability reset NPC and a munitions vendor. Zone Z3, the
 dummies range just north of it, holds five training dummies that never fight
 back (D-DA7).
 
+Right-clicking any NPC from more than 5 m away prints "You are too far away
+from <name>. Move closer to interact." in chat (DA-F5); a Banker and an
+organization registrar print their own lines. The server logs it as
+`event = "interaction.out_of_range"` with the distance.
+
 ### Where it is
 
 The plaza is centred on (252.0, 7.0, -923.0), in the courtyard of the crater
@@ -890,7 +897,7 @@ facing south towards the plaza.
 | 13101 | 1311 | `DebugArea_Dummy_L10` | Jaffa (level 10) | (246.00, 6.59, -872.00) | 3.1416 |
 | 13102 | 1312 | `DebugArea_Dummy_L25` | Jaffa (level 25) | (252.00, 6.59, -872.00) | 3.1416 |
 | 13103 | 1313 | `DebugArea_Dummy_L50` | Jaffa (level 50) | (258.00, 6.70, -872.00) | 3.1416 |
-| 13104 | 1314 | `DebugArea_Dummy_Friendly` | Injured SGC Guard | (264.00, 6.86, -872.00) | 3.1416 |
+| 13104 | 1314 | `DebugArea_Dummy_Friendly` | Injured SGC Guard | (234.00, 6.82, -872.00) | 3.1416 |
 
 Every spawn is `is_stationary`: none walks, and none is checked for being off
 the navmesh. The tags start `DebugArea_`, never `DebugHub_` (D-DA6), because
@@ -1035,6 +1042,21 @@ Right-click a hostile one to attack it, or target it and use any ability.
   room to land and shows its size; nothing but a heal changes its Health.
   Target it and cast a heal: the heal lands on it instead of falling back to
   you. Players cannot attack it, and no NPC targets it.
+- **The friendly dummy stands at the west end of the line**, 6 m past the
+  level-1 dummy, on open floor. It first stood at the east end (264), where a
+  wall footprint between x 259.4 and 261 kept a healer more than 5 m away,
+  out of Health Heal's range (DA-F7). The cell-world test
+  `the_friendly_dummy_is_reachable_and_visible_from_the_dummy_line` walks the
+  line to it on the navmesh and checks a healer 4 m out can see it.
+- **Heal feedback.** Health Heal (1646) and Recuperation (1218) show the
+  client's Medkit icon, the art the client gives its health-restore items
+  (Health Slappack, Plasma Burn Treatment Kit); the shipped entries had
+  `IconMissing`, and the shipped imagesets hold no health-heal ability icon
+  (`Heal_Focus_Heal` is Heal Focus's, already on the bar). A heal cast out of
+  range reads "Your target is out of range" instead of the raw
+  `CONDITION_FEEDBACK_OutsideWeaponRange` token. Both are cooked-data patches
+  the server pushes (`crates/resources/src/base/attribute_patches/`, DA-F6),
+  so a client resyncs abilities and error strings once on its next login.
 - They carry no ability set and no loot table, and the names are the client's
   "Jaffa" (8168) and "Injured SGC Guard" (7882).
 - A GM can place one anywhere with `.spawn 1310` (or 1311 to 1314); it is a
@@ -1047,6 +1069,8 @@ Right-click a hostile one to attack it, or target it and use any ability.
 |---|---|
 | Templates 1300-1302, 1310-1314 | `db/resources/Entities/Seed/entity_templates_debug_area_plaza.sql` |
 | Spawns 13001-13022, 13100-13104 | `db/resources/Worlds/Seed/spawnlist_debug_area_plaza.sql` |
+| Heal icons (1646, 1218) and the out-of-range text (error 42) | `crates/resources/src/base/attribute_patches/`, `db/resources/Abilities/Seed/abilities.sql`, `db/resources/Texts/Seed/error_texts.sql` |
+| The too-far `interact` line | `crates/cell-interactions/src/cell/interactions/dispatch/range_feedback.rs` |
 | Buy list 1300 (rows 13001-13019) | `db/resources/Items/Seed/item_lists_debug_area_plaza.sql` |
 | Chains 13000-13008 | `db/resources/Content/Seed/debug_area_plaza_chains.sql` |
 | The `training_dummy` column | `db/resources/Entities/Tables/entity_templates.sql` |
@@ -1065,6 +1089,9 @@ Right-click a hostile one to attack it, or target it and use any ability.
 | `cell-combat` `death/npc_only_kill_tests.rs` | A player's kill of a training dummy pays no XP, where the same mob unmarked pays |
 | `cell-combat` `combat/threat/training_dummy_release.rs` | A dummy's attackers stay in combat while hits land and leave it 10 s after the last; an ordinary NPC is left to its leash |
 | `cell-combat` `use_ability/tests/beneficial_training_dummy.rs` | A heal aimed at a friendly training dummy lands on it; an unmarked neutral NPC still falls back to the caster, and a hostile dummy is never healed |
+| `cell-world` `space_manager/tests/debug_area.rs` (`the_friendly_dummy_is_reachable_and_visible_from_the_dummy_line`) | The walk from the L1 dummy to the friendly dummy stays on navmesh polygons, and a healer 4 m out has line of sight past the occluder (DA-F7) |
+| `resources` `attribute_patches/tests.rs` | 1646 and 1218 are served with the Medkit icon and error 42 with readable text, nothing else in those entries changes, both categories resync, and the seed rows match (DA-F6) |
+| `cell-methods` `player/interaction/mod.rs` (`out_of_range_interact_on_a_plain_npc_tells_the_player_to_move_closer`), `cell-interactions` `dispatch/tests/mod.rs` | A too-far click on a plain NPC sends exactly one line naming it; a missing target sends nothing (DA-F5) |
 | `base-session` `world_entry/gm_only_worlds.rs`, `base-world-entry` `gate_travel/tests/gm_only_world.rs`, `base-methods` `world_entry_db.rs` (`live_db_a_non_gm_saved_in_the_debug_area_logs_in_at_the_faction_start`) | A non-GM is refused world 1300 on a cross-world transfer and at login and arrives at the Praxis or SGU start with a line owed; a GM goes in |
 | `cell-catalog` `spawner/tests/live_db_vendor_arbitrage.rs` | No buy list in the seed sells an item for less than any sell list pays for it |
 | `content-engine` `loader/tests/action_conversion.rs`, `interact_tag_linter` | `gm_ability_bulk` converts for `grant_all` and `reset` and drops anything else; the plaza's interact chains are allowlisted (template-default cursor bits) |
@@ -1076,12 +1103,19 @@ Area gate (stargate 29, packet DA-07). It is **outbound only**.
 
 **What it does.** Right-click the DHD beside the gate. If your account is a
 GM, the dialling window lists every gate on a world this server can load
-but one (Men'fa (SGU), below):
+but one (Men'fa (SGU), below), by name, from the first open:
 The Castle, Harset, Tollana, Omega Site, Beta Site E1, Men'fa (Praxis),
 both Ihpet Craters, Lucia, Agnos, SGC, SGC W1 and Dakara E1. Dial one, wait for
 the gate to open, walk into the event horizon. The extra addresses last
 until you leave the Debug Area and are never saved to your character; a
 gate you actually travel to stays learned, as after any gate trip.
+
+The addresses are granted when you arrive in the Debug Area, not when the
+DHD opens (DA-F3). The client looks each new address up in its cooked
+stargate table after it arrives and never redraws an open DHD, so addresses
+granted as the window opened listed as "Unknown" until it was reopened.
+Arriving gives the client the walk to the DHD to look them up. The DHD open
+still checks again and grants anything missing.
 
 **What it does not do.**
 
@@ -1092,7 +1126,7 @@ gate you actually travel to stays learned, as after any gate trip.
   GM demoted while inside gets no more on the next DHD open.
 - The 14 gates on worlds this server has no map for (Hebridan, Pen-Lai,
   Asgard High Council and the rest) are not offered. The server log names
-  them on every DHD open.
+  them on every arrival and DHD open.
 - `/gmdhd 29` is refused like any other dial into the Debug Area.
 
 - Men'fa (SGU) (Menfa_Light) is not offered either: its gate row is about
@@ -1111,7 +1145,7 @@ gate and facing away from it.
 
 | Step | Expect | Fail |
 |---|---|---|
-| As a GM, right-click the Debug Area DHD | The dialling window opens and lists the 13 gates above | Nothing opens; the list is empty or holds only your own addresses |
+| As a GM, arrive in the Debug Area and right-click its DHD | The dialling window opens and lists the 13 gates above by name on the first open | Nothing opens; the list is empty, holds only your own addresses, or shows "Unknown" rows |
 | Dial Harset | The gate opens about 4 s later; walking in loads Harset | Refusal line "Failed to dial: ..."; the gate never opens |
 | From any other world's DHD, look for "Debug Area" | Not listed | Listed, or dialable |
 
@@ -1120,7 +1154,8 @@ entry), so the non-GM branch is checked by the unit test
 `a_non_gm_at_the_hub_gets_no_addresses_and_cannot_dial`.
 
 Server log fields to search when it misbehaves: `reason = "gm_dial_hub_grant"`
-(one per GM DHD open: who, what was granted, what was left out),
+(one per GM arrival in the Debug Area and per DHD open: who, what was
+granted, what was left out; `trigger` is `world_entry` or `dhd_open`),
 `reason = "dial_hub_not_gm"`, `reason = "dial_hub_is_outbound_only"` (a dial
 into the Debug Area was refused). Mechanism and design:
 [gate-travel.md § Debug Area dial-out](../gameplay/gate-travel.md#debug-area-dial-out).

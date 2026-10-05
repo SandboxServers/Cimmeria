@@ -5,6 +5,8 @@
 #[cfg(test)]
 mod auto_cycle_starts_off;
 #[cfg(test)]
+mod debug_area_hub_grant;
+#[cfg(test)]
 mod reload_on_activate;
 #[cfg(test)]
 mod relog_mission_resurrection;

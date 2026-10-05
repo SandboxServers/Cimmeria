@@ -127,7 +127,7 @@ async fn legacy_p46_gotolocation_cross_world_preserves_subject_facing() {
     );
 }
 
-/// The subject is in instance B of an instanced world and names *that same
+/// The caller is in instance B of an instanced world and names *that same
 /// world*. They must stay in B.
 ///
 /// Regression shape: handing the world name straight to
@@ -136,7 +136,7 @@ async fn legacy_p46_gotolocation_cross_world_preserves_subject_facing() {
 /// through a full loading screen, just to change coordinates.
 #[tokio::test]
 async fn legacy_p46_gotolocation_own_instanced_world_keeps_the_current_instance() {
-    let (mut mgr, gm, _npc) = setup_worlds();
+    let (mut mgr, _gm, _npc) = setup_worlds();
     let instance_a = spawn_named_player(&mut mgr, 50, INSTANCED, [1.0, 0.0, 1.0], "Ana");
     let instance_b = spawn_named_player(&mut mgr, 51, INSTANCED, [2.0, 0.0, 2.0], "Bob");
     assert_ne!(instance_a, instance_b);
@@ -146,12 +146,12 @@ async fn legacy_p46_gotolocation_own_instanced_world_keeps_the_current_instance(
         "the default instance must be the OTHER one for this test to mean anything"
     );
 
-    // Subject = Bob, in instance B.
+    // Caller = Bob, in instance B.
     let t = run(
         "gotolocation",
-        gm,
+        51,
         &[INSTANCED, "55", "0", "66"],
-        Some(51),
+        None,
         &mut mgr,
     )
     .await;
@@ -169,41 +169,22 @@ async fn legacy_p46_gotolocation_own_instanced_world_keeps_the_current_instance(
     assert_eq!(
         mgr.get_entity_space_id(51),
         Some(instance_b),
-        "the subject must still be in instance B"
+        "the caller must still be in instance B"
     );
 }
 
-/// D15: an NPC selection cannot be moved across worlds.
+/// DA-F4 (deliberate departure from legacy `target or player`): with an NPC
+/// selected, `.gotolocation` in the caller's own world moves the **caller**
+/// and leaves the selection where it stands. Live, the legacy rule moved the
+/// Debug Area's friendly dummy, because the server kept a target the client
+/// had cleared with Escape. Restoring `target.unwrap_or(caller_id)` moves the
+/// NPC here and fails every assertion.
 #[tokio::test]
-async fn legacy_p46_gotolocation_npc_selection_cross_world_is_rejected() {
+async fn gotolocation_with_an_npc_selected_moves_the_caller_not_the_npc() {
     let (mut mgr, gm, npc) = setup_worlds();
     let npc_before = position_of(&mgr, npc);
-    let npc_space = mgr.get_entity_space_id(npc);
-
-    let t = run(
-        "gotolocation",
-        gm,
-        &[CASTLE, "70", "1", "80"],
-        Some(npc),
-        &mut mgr,
-    )
-    .await;
-
-    assert_no_move(&t);
-    assert!(
-        t.mentions("not a player"),
-        "an NPC subject must be refused with a clear reason (D15); got {:?}",
-        t.feedback
-    );
-    assert_eq!(position_of(&mgr, npc), npc_before);
-    assert_eq!(mgr.get_entity_space_id(npc), npc_space);
-}
-
-/// ...but the same command inside the NPC's own world is the in-place snap,
-/// which NPCs support (same as `.gotoxyz`).
-#[tokio::test]
-async fn legacy_p46_gotolocation_same_world_moves_a_selected_npc() {
-    let (mut mgr, gm, npc) = setup_worlds();
+    let gm_before = position_of(&mgr, gm);
+    let agnos = mgr.get_entity_space_id(gm).unwrap();
 
     let t = run(
         "gotolocation",
@@ -214,18 +195,48 @@ async fn legacy_p46_gotolocation_same_world_moves_a_selected_npc() {
     )
     .await;
 
-    assert_eq!(position_of(&mgr, npc), [44.0, 0.0, 45.0]);
-    assert!(
-        t.teleports.is_empty(),
-        "an NPC has no client to snap: {:?}",
-        t.teleports
+    assert_eq!(position_of(&mgr, gm), [44.0, 0.0, 45.0]);
+    assert_eq!(t.teleports, vec![(gm, agnos, [44.0, 0.0, 45.0], gm_before)]);
+    assert_eq!(
+        position_of(&mgr, npc),
+        npc_before,
+        "the selection must not move"
     );
-    assert!(t.gate_travels.is_empty());
     assert!(
-        t.mentions("Moving entity"),
-        "the caller must still be told; got {:?}",
+        t.has_line("Moving entity Vala to Agnos (44, 0, 45)"),
+        "the feedback names the caller; got {:?}",
         t.feedback
     );
+}
+
+/// The same across worlds: an NPC selection used to be refused for a
+/// cross-world move (D15, NPCs have no client to transfer). Now the caller
+/// travels and the NPC stays put.
+#[tokio::test]
+async fn gotolocation_cross_world_with_an_npc_selected_transfers_the_caller() {
+    let (mut mgr, gm, npc) = setup_worlds();
+    let npc_before = position_of(&mgr, npc);
+    let npc_space = mgr.get_entity_space_id(npc);
+    let castle = mgr
+        .default_space_for_world(CASTLE)
+        .expect("Castle has a startup space");
+
+    let t = run(
+        "gotolocation",
+        gm,
+        &[CASTLE, "70", "1", "80"],
+        Some(npc),
+        &mut mgr,
+    )
+    .await;
+
+    assert_eq!(
+        t.only_gate_travel(),
+        &(gm, CASTLE.to_string(), Some(castle), [70.0, 1.0, 80.0])
+    );
+    assert!(!t.mentions("not a player"), "got {:?}", t.feedback);
+    assert_eq!(position_of(&mgr, npc), npc_before);
+    assert_eq!(mgr.get_entity_space_id(npc), npc_space);
 }
 
 /// Non-finite coordinates are rejected by the shared `parse_f32` filter,

@@ -270,6 +270,12 @@ impl ResourceCache {
         // Stargates category (13) — disjoint from the others.
         let stargate_overridden = Self::apply_stargate_overrides(&mut categories);
         overridden_elements.extend(stargate_overridden);
+        // One-attribute patches (abilities 2, error strings 11), disjoint
+        // from every category above. `extend` would replace a category
+        // another pass already listed, so a test keeps them disjoint.
+        let attribute_patched =
+            crate::base::attribute_patches::apply_attribute_patches(&mut categories);
+        overridden_elements.extend(attribute_patched);
 
         Ok(Self {
             categories: Arc::new(categories),

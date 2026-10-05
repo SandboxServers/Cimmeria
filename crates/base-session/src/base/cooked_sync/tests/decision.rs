@@ -3,14 +3,15 @@
 use super::super::{resync_pending_version, VersionReply};
 use super::{committed_cache, server_version};
 
-/// `CookedDataAbilities.pak`: served, no Cimmeria overrides.
-const ABILITIES: u32 = 2;
+/// `CookedDataContainers.pak`: served, no Cimmeria overrides (abilities have
+/// had icon patches since DA-F6).
+const CONTAINERS: u32 = 14;
 /// `CookedWorldInfo.pak`: served, with the historical CellBlock overrides.
 const WORLD_INFO: u32 = 12;
 
 #[test]
 fn no_cache_echoes_the_client_version() {
-    let reply = VersionReply::decide(None, ABILITIES, 42);
+    let reply = VersionReply::decide(None, CONTAINERS, 42);
     assert_eq!(reply, VersionReply::NoServerData { client_version: 42 });
     assert_eq!(reply.server_version(), None);
     assert_eq!(reply.reason(), "category_not_served");
@@ -28,8 +29,8 @@ fn unserved_category_echoes_the_client_version() {
 #[test]
 fn matching_version_is_up_to_date() {
     let cache = committed_cache();
-    let served = server_version(ABILITIES);
-    let reply = VersionReply::decide(Some(&cache), ABILITIES, served);
+    let served = server_version(CONTAINERS);
+    let reply = VersionReply::decide(Some(&cache), CONTAINERS, served);
     assert_eq!(reply, VersionReply::UpToDate { version: served });
     assert_eq!(reply.outcome(), "up_to_date");
 }
@@ -38,15 +39,15 @@ fn matching_version_is_up_to_date() {
 #[test]
 fn mismatch_without_overrides_resyncs_the_whole_category() {
     let cache = committed_cache();
-    assert!(cache.overridden_elements(ABILITIES).is_empty());
-    let served = server_version(ABILITIES);
-    let reply = VersionReply::decide(Some(&cache), ABILITIES, served.wrapping_add(1));
+    assert!(cache.overridden_elements(CONTAINERS).is_empty());
+    let served = server_version(CONTAINERS);
+    let reply = VersionReply::decide(Some(&cache), CONTAINERS, served.wrapping_add(1));
     assert_eq!(
         reply,
         VersionReply::FullResync {
             client_version: served.wrapping_add(1),
             server_version: served,
-            entry_count: cache.category(ABILITIES).unwrap().elements.len() as u32,
+            entry_count: cache.category(CONTAINERS).unwrap().elements.len() as u32,
         }
     );
     assert_eq!(reply.reason(), "version_mismatch");
