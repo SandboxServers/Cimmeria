@@ -229,7 +229,8 @@ debug_area_plaza_chains.sql   DA-02 services plaza: 13000-13099 (13000-13008 use
 Tags fire chains in any world (`scope_id` is a label), so a copy of a hub
 NPC needs its own `DebugArea_*` tag and chain. The GM-only ability
 granter is gated inside its `gm_ability_bulk` action, not by a condition,
-so a non-GM's click still gets a refusal line.
+so a non-GM's click still gets a refusal line; the Lineup attendants'
+`spawn_set` action is gated the same way.
 
 ## Linked references
 

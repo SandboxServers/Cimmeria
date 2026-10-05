@@ -227,7 +227,12 @@ pub fn compose_create_entity_cascade_body(
     // corpses) or SGWDuelMarker dropped it (colo 2026-09-29: 7
     // `client.dispatch.method_dropped` rows, method 11, type_id 0).
     if let Some(d) = npc_data.filter(|_| class_binds_being_methods(class_id)) {
-        if let Some(name_id) = d.name_id {
+        let display_name = d.display_name.as_deref().filter(|n| !n.is_empty());
+        // A template with a literal nameplate sends no name id: the client's
+        // nameplate draws the `name_id` text whenever a mob has one, even
+        // after an `onBeingNameUpdate` (lab, 2026-10-05: lineup actors whose
+        // source had a name id read "Colonel Marsh", the rest their label).
+        if let Some(name_id) = d.name_id.filter(|_| display_name.is_none()) {
             if name_id != 0 {
                 append_entity_method(
                     &mut body,
@@ -240,9 +245,9 @@ pub fn compose_create_entity_cascade_body(
         }
         // 5b. onBeingNameUpdate(name): a template's literal nameplate
         // (`entity_templates.display_name`, the Debug Area's Visual NPC
-        // Lineup). Sent after the `name_id` text so it is the name the client
-        // ends with; the same SGWBeing method a player ghost's name rides.
-        if let Some(name) = d.display_name.as_deref().filter(|n| !n.is_empty()) {
+        // Lineup), in place of the name id; the same SGWBeing method a
+        // player ghost's name rides.
+        if let Some(name) = display_name {
             let mut args = Vec::with_capacity(4 + name.len() * 2);
             write_wstring(&mut args, name);
             append_entity_method(
@@ -627,11 +632,12 @@ mod being_name_id_tests {
     }
 
     /// A template with a `display_name` (the Visual NPC Lineup) sends it as
-    /// `onBeingNameUpdate`, byte for byte, after its `onBeingNameIDUpdate`,
-    /// so the literal name is the one the client keeps. Revert proof: drop
-    /// step 5b and this fails.
+    /// `onBeingNameUpdate`, byte for byte, and no `onBeingNameIDUpdate`: the
+    /// client's nameplate draws a mob's name-id text over any literal name
+    /// (lab, 2026-10-05). Revert proof: drop step 5b, or send the name id
+    /// again, and this fails.
     #[test]
-    fn a_display_name_follows_the_name_id_as_being_name_update() {
+    fn a_display_name_replaces_the_name_id_as_being_name_update() {
         let name = "Teal'c #30 BS_JaffaMale";
         let npc = NpcAoIData {
             display_name: Some(name.to_string()),
@@ -644,11 +650,13 @@ mod being_name_id_tests {
             Some(&npc),
         );
         let find = |needle: &[u8]| body.windows(needle.len()).position(|w| w == needle);
-        let id_at = find(&name_id_message(100011)).expect("onBeingNameIDUpdate");
-        let name_at = find(&being_name_message(100011, name)).expect("onBeingNameUpdate");
         assert!(
-            name_at > id_at,
-            "the literal name is sent after the name id"
+            find(&being_name_message(100011, name)).is_some(),
+            "onBeingNameUpdate carries the literal name"
+        );
+        assert!(
+            find(&name_id_message(100011)).is_none(),
+            "no name id, which the nameplate would draw instead"
         );
     }
 
@@ -679,6 +687,11 @@ mod being_name_id_tests {
                 Some(&npc),
             );
             assert!(!has_name_update(&body, 100012));
+            let id = name_id_message(100012);
+            assert!(
+                body.windows(id.len()).any(|w| w == id.as_slice()),
+                "the name id is still sent"
+            );
         }
         let prop = NpcAoIData {
             display_name: Some("Crate".into()),

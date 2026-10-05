@@ -26,4 +26,4 @@
 - [debug-area-map-survey.md](debug-area-map-survey.md) — cover-node counts per client map; Ihpet crater floor is one component; nav vs occluder terrain heights differ up to 3.3 m; player-safe NPC-vs-NPC faction pairs
 - [debug-area-da03-stations.md](debug-area-da03-stations.md) — DA-03 world 1300: factions 1/5/6/7/9 never fight (3 does), yard z shift, terrace trench z -602, gallery 99/101, 62 nameless
 - [debug-area-arena-shelf-daf2.md](debug-area-arena-shelf-daf2.md) — DA-F2: arena moved off the pit water to the east shelf (ruin walls, one valid layout); player_involved gates no-witness WARNs; loop ignores kills
-- [debug-area-npc-lineup-da10.md](debug-area-npc-lineup-da10.md) — DA-10 Visual NPC Lineup: 161 looks (NULL='' mesh), display_name via onBeingNameUpdate, faction 1 not training_dummy, scan traps
+- [debug-area-npc-lineup-da10.md](debug-area-npc-lineup-da10.md) — DA-10 Visual NPC Lineup: 161 looks as 5 switchable spawn sets; name_id beats onBeingNameUpdate on a mob plate; client frees textures 30-60 s late

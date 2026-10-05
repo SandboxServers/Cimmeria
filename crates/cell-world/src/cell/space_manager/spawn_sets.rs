@@ -172,6 +172,7 @@ impl SpaceManager {
             return Err(SpawnSetError::NoSpace);
         }
         let records = set.records.clone();
+        let set_name = set.name.clone();
         let mut live = Vec::with_capacity(records.len());
         for record in &records {
             let npc_id = self.allocate_npc_id();
@@ -181,6 +182,7 @@ impl SpaceManager {
                     target: "spawner",
                     event = "spawn_set_member_failed",
                     set_id,
+                    set_name = %set_name,
                     spawn_id = record.spawn_id, // nt:id-only spawnlist row id, the row has no name column
                     template_id = record.template_id,
                     template_name = %record.template_name,

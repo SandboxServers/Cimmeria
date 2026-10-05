@@ -218,7 +218,7 @@ async fn despawn_set(
             DespawnOutcome::NotFound | DespawnOutcome::RefusedPlayer => gone += 1,
         }
     }
-    tracing::debug!(
+    tracing::info!(
         target: "content",
         event = "spawn_set.despawned",
         set_id,

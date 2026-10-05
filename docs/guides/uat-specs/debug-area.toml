@@ -1925,20 +1925,26 @@ at = "arrived"
 
 [[row]]
 id = "DA-U48"
-title = "The Visual NPC Lineup: one passive actor per look, none engages"
-expected = "In the south compound's east wing, 161 passive display actors face the walkways, one per character look in the seed plus the six template-less body sets, each nameplate reading <name> #<source template id> <body set>; walking the first walkway pulls nothing."
-notes = "DA-10. Rows, tags and the template-to-actor map: docs/content/debug-area.md#visual-npc-lineup. The nameplate label rides onBeingNameUpdate, not yet seen on a mob. DebugArea_VisualLineup_NoTemplate_BS_RaJaff and DebugArea_VisualLineup_NoTemplate_HM_BodySet have no reference mesh and are expected to draw nothing or a placeholder. No NPC is sent its colours or skin tint, so 70 actors draw untinted and NID Guard #146 and Opheltes #215 draw identically (debug-area.md#colour-and-skin-tint-are-not-drawn)."
+title = "The Visual NPC Lineup: a group shown from its attendant, one passive actor per look, none engages"
+expected = "Right-clicking the Show Humans (42) attendant answers in chat and fills the east wing's human rows with 42 passive display actors facing the walkways, each nameplate reading <name> #<source template id> <body set>; walking the first walkway pulls nothing."
+notes = "DA-10. Groups, rows, tags and the template-to-actor map: docs/content/debug-area.md#visual-npc-lineup. The lineup is five spawn sets shown one at a time (all 161 at once ran the 32-bit client out of memory); the setup clears any group left on. HM_BodySet (a magenta box) and the Drone Tank (a magenta panel) are placeholders, not faults. No NPC is sent its colours or skin tint, so 70 actors draw untinted and NID Guard #146 and Opheltes #215 draw identically (debug-area.md#colour-and-skin-tint-are-not-drawn)."
 setup = [
   { chat = ".aggro on", tier = "G" },
-  { chat = ".gotolocation DebugArea 300 6.8 -897", tier = "G" },
+  { chat = ".gotolocation DebugArea 286 6.6 -899", tier = "G" },
   { tool = "client_wait_for", args = { lua_condition = "getCurrentWorldID() == 1300", timeout_ms = 60000 } },
+  { chat = ".spawnset clear", tier = "G" },
   { wait_ms = 5000 },
 ]
 step = [
-  { tool = "@move_to", args = { waypoints = [{ x = 320, y = 6.8, z = -897 }, { x = 350, y = 6.8, z = -897 }], arrival_m = 3, timeout_ms = 90000 }, label = "walk" },
+  { tool = "@world_click", args = { name = "Show Humans", expect = "nothing", settle_ms = 3000 }, label = "show" },
+  { wait_ms = 5000 },
+  { tool = "@move_to", args = { waypoints = [{ x = 300, y = 6.8, z = -897 }, { x = 320, y = 6.8, z = -897 }, { x = 350, y = 6.8, z = -897 }], arrival_m = 3, timeout_ms = 90000 }, label = "walk" },
   { wait_ms = 3000, label = "seen" },
 ]
-teardown = [{ chat = ".gotolocation DebugArea 251 8 -962", optional = true }]
+teardown = [
+  { chat = ".spawnset clear", tier = "G", optional = true },
+  { chat = ".gotolocation DebugArea 251 8 -962", optional = true },
+]
 [[row.expect]]
 id = "still-1300"
 text = "you are in world 1300 at the end of the walk"
@@ -1949,6 +1955,11 @@ pointer = "/world_id"
 op = "eq"
 value = 1300
 [[row.expect]]
+id = "shown-line"
+text = "the attendant's click answers that the Humans group is showing"
+source = "chat"
+contains = "Visual NPC Lineup - Humans: showing 42 actors"
+[[row.expect]]
 id = "nothing-pulled"
 text = "SigNoz: no lineup NPC acquired you"
 source = "signoz"
@@ -1958,7 +1969,7 @@ max_rows = 0
 id = "looks"
 text = "the lineup reads as rows of different, standing NPCs"
 source = "human"
-question = "Walking the first walkway (z -897): do the humans stand on the floor facing you, each dressed differently, none floating, sunk or inside a wall? Do the nameplates read <name> #<id> <body set> (for example General Hammond #29 BS_HumanMale), and are long ones cut off? Walk on through the wing: do the Android, the Drone Tank, Lenny Baby and the degenerated Asgard render, and what do the Ra Jaffa body set and HM_BodySet show?"
+question = "Walking the first walkway (z -897): do the humans stand on the floor facing you, each dressed differently, none floating, sunk or inside a wall? Do the nameplates read <name> #<id> <body set> (for example General Hammond #29 BS_HumanMale), and are long ones cut off? Is every other row of the wing empty (one group at a time)?"
 [[row.evidence]]
 name = "walkway"
 tool = "lab_screenshot"

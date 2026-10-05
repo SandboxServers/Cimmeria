@@ -703,17 +703,15 @@ DA-06 checked these on 2026-10-05; each outcome is in the [ledger](../analysis/d
   animation on creature and staff bodies; 62 have blank nameplates.
 - DA-03: how the client colours a passive (NEUTRAL-override) faction-10 NPC has
   not been seen on this map. The largest gallery bodies may overlap at 8 m.
-- DA-10: the Visual NPC Lineup's 161 actors are within the 150 m AoI of the
-  Z1 arrival, the services plaza, the summit and the dummies range, so every
-  arrival in the compound now creates 161 more NPCs in the client.
-  How long that takes, and the frame rate with all of them in view, has not
-  been measured. The two body sets with no reference mesh (`BS_RaJaff`,
-  `HM_BodySet`) are expected to draw nothing or a placeholder, and the
-  Straegis Titan (35 m tall) will clip the ruin walls around its court.
-  The lab saw the `onBeingNameUpdate` label become the mob's client-side
-  name (2026-10-05); the drawn nameplate is not yet screenshotted. Arrival
-  with the lineup currently wedges the reliable stream on one oversized
-  cascade: see [Arrival load](#arrival-load-and-the-oversized-cascade).
+- DA-10: the Visual NPC Lineup's groups are within the 150 m AoI of the Z1
+  arrival, the services plaza, the summit and the dummies range, so a group
+  that is on is created in every client that arrives in the compound. A
+  group costs the client up to about 1.3 GB of address space, and two
+  groups held at once (a quick switch) came within 160 MB of the 32-bit
+  client's 4 GB ceiling: see
+  [Arrival load and client memory](#arrival-load-and-client-memory).
+  `HM_BodySet` and the Drone Tank draw as placeholders, and the Straegis
+  Titan (35 m tall) clips the ruin walls around its court.
 
 ## DA-03 spawn tables
 
@@ -1309,6 +1307,13 @@ no template uses. It is a catalogue of every visual appearance the seed can
 put on screen, the named cast and the hostile creatures included. It tests
 NPC appearance only: no actor fights, talks, trades or moves.
 
+**One group at a time.** The 161 are five switchable groups, all off when
+the server starts. A GM shows one group for everyone in world 1300, and
+showing a group first clears the one that was on: all 161 at once ran the
+32-bit client out of memory (see
+[Arrival load and client memory](#arrival-load-and-client-memory)). See
+[Groups and the Lineup attendants](#groups-and-the-lineup-attendants).
+
 **Appearances, not templates.** The 161 entries cover every distinct visual
 appearance, not every NPC template. 225 character templates share 155
 looks; each actor is cloned from the lowest template id with its look and
@@ -1365,19 +1370,72 @@ on the next walkway (z -911.5), E1 east of them, then south through the gap
 at x 331-349 to S1 to S6 (walkways at z -939.5, -949.5 and -958.5), with
 the machines and the Titan east of S1 and S2.
 
+### Groups and the Lineup attendants
+
+The rows above stay where they are; each group is a stretch of them. A
+spawn set is the `spawnlist` rows whose `set_name` is its name
+(`spawn_sets_debug_area_lineup.sql`, type `visual_lineup`, world 1300).
+
+| Set | Group | Actors | Rows |
+|---:|---|---:|---|
+| 1301 | Humans, male and female, `HM_BodySet` included | 42 | N1-N3, N4 west |
+| 1302 | Jaffa, male, `BS_RaJaff` included | 44 | N4 east, N5, S1, S2 west |
+| 1303 | Jaffa, female | 30 | S2 east, S3, S4, S5 west |
+| 1304 | Goa'uld, Asgard and children | 28 | S5 east, S6 |
+| 1305 | Creatures and machines, the Straegis Titan included | 17 | E1-E4 |
+
+Nothing in a group spawns at startup. Showing a group spawns all its
+members; clearing it despawns them, takes any player out of combat with
+them and sends every player who sees one `LeftAoI`, so none stays on a
+client. A group that is on stays on until a GM switches it; a server
+restart turns every group off.
+
+**The Lineup attendants.** Six Airmen stand in a row on the courtyard
+ground north of the doorway path, at (281-291, 6.58, -894), 2 m apart and
+facing south onto the path. Their nameplates are the buttons, left to
+right: `Show Humans (42)`, `Show Jaffa male (44)`, `Show Jaffa female (30)`,
+`Show Goa'uld etc. (28)`, `Show Creatures (17)` and `Clear lineup`.
+Right-click one from within 5 m. Every click answers in chat on the first
+press:
+
+- a GM's click shows the group for everyone in the world and says so:
+  `Visual NPC Lineup - Humans: showing 42 actors for everyone in DebugArea
+  (one group at a time). Cleared first: Visual NPC Lineup - Jaffa male (44).`
+  A group already on answers `... is already showing (42 actors).`;
+- `Clear lineup` answers `Cleared ...` or `Nothing to clear: no group is
+  showing.`;
+- a player who is not a GM gets `Only a GM can switch the lineup. Nothing
+  changed.` and nothing changes.
+
+A click from further than 5 m gets the client's own "You are too far away"
+line. One attendant per button, rather than one attendant with a dialog of
+buttons: a custom dialog's buttons need a cooked dialog override, and those
+crashed the client (#943).
+
+**The same switch for GMs.** `.spawnset` lists the groups (`.spawnset
+list`, the default), shows one (`.spawnset on 1301`), hides one
+(`.spawnset off 1301`) or clears every group on in your world
+(`.spawnset clear`). The client's native GM methods `activateSpawnSet`
+(214) and `deactivateSpawnSet` (215) take the set id and do the same; the
+client has no slash command bound to them. Every switch, from any of the
+three doors, writes one `spawn_set.switched` row (target `content`, with
+`door`, `set_id`, `set_name`, `decision_outcome` and the line sent), a
+refusal included.
+
 **Nameplates.** Each actor's nameplate traces it: its name, the source
 template id and the body set, for example `Teal'c #30 BS_JaffaMale`. The
 name is the source's shown name (its `name_id` text), or its template name
 when it has none; the whole label is trimmed to 40 characters by shortening
 the name. The six template-less actors read `(no template) BS_AN_Android`
 and so on. The client resolves a `name_id` to its own shipped text, so a
-literal label needs another path: the template's new `display_name` column
-is sent as `onBeingNameUpdate(WSTRING)`, the SGWBeing method a player
-ghost's name already uses, right after the source's `name_id` text. If the
-client did not show it on a mob, the actor would fall back to the
-source's own name. Nobody has seen these labels in the client yet, nor how
-much of a 40-character name the nameplate shows; the spawn tables carry the
-full mapping either way.
+literal label needs another path: the template's `display_name` column is
+sent as `onBeingNameUpdate(WSTRING)`, the SGWBeing method a player ghost's
+name already uses, and the name id is then not sent at all. The lab showed
+why (2026-10-05): with both sent, the nameplate drew the `name_id` text
+(`Colonel Marsh`, `NID Guard`) and only actors whose source had no name id
+showed their label; with the name id left out, every actor shows its label.
+From a walkway the labels of neighbours 2.25 m apart overlap; step up to an
+actor to read its own. The spawn tables carry the full mapping either way.
 
 **Display copies only.** An actor copies its source's body set,
 components, colours, skin tint, static mesh, level and `name_id`. Nothing
@@ -1407,42 +1465,64 @@ template_name>`, and tags `DebugArea_VisualLineup_<source template id>`
 
 | Body set | Components | Expect |
 |---|---|---|
-| `MOB_AN_Android.BS_AN_Android` | `MOB_Android00` (Guts and Shell slots) | Renders: reference mesh `AN_Android`, measured |
-| `MOB_CA_DroneTank.BS_MOB_DroneTank` | `MOB_DroneTank00`, `MOB_DroneTreads00` | Renders: reference mesh `CADroneTank`, measured |
-| `MOB_Lenny.BS_MOB_LennyBaby` | `MOB_LennyBaby00` | Renders, tiny (0.21 m) |
-| `NPC_Asgard.BS_Degenerated_Asgard` | `NPC_Degenerated_Asgard_00` | Renders: reference mesh `Degenerated_Asgard` |
-| `AR_J_Ra.BS_RaJaff` | `BC_RaJaffa_500` | **Probably invisible or a placeholder.** Its reference mesh `Ra_500` is not an export of the `AR_J_Ra` package ([being-eye-heights.md](../reverse-engineering/findings/being-eye-heights.md)) |
-| `HM_Mesh.HM_BodySet` | The base head, torso, legs, hands and boots (`HM-BaseHead00_00` and the rest; its parts carry no slot names, so the five variant legs and torsos are left off) | **Probably invisible or a placeholder.** Its `body_sets` row names no reference mesh |
+| `MOB_AN_Android.BS_AN_Android` | `MOB_Android00` (Guts and Shell slots) | Renders: the white android (lab) |
+| `MOB_CA_DroneTank.BS_MOB_DroneTank` | `MOB_DroneTank00`, `MOB_DroneTreads00` | **A placeholder:** a flat magenta panel with a developer's face texture, not a drone tank (lab) |
+| `MOB_Lenny.BS_MOB_LennyBaby` | `MOB_LennyBaby00` | Loaded with its label; too small to judge from the walkway (0.21 m) |
+| `NPC_Asgard.BS_Degenerated_Asgard` | `NPC_Degenerated_Asgard_00` | Renders: a thin reddish humanoid (lab) |
+| `AR_J_Ra.BS_RaJaff` | `BC_RaJaffa_500` | Renders: a Jaffa in gold armour with a purple crest (lab), although its reference mesh `Ra_500` is not an export of the `AR_J_Ra` package ([being-eye-heights.md](../reverse-engineering/findings/being-eye-heights.md)) |
+| `HM_Mesh.HM_BodySet` | The base head, torso, legs, hands and boots (`HM-BaseHead00_00` and the rest; its parts carry no slot names, so the five variant legs and torsos are left off) | **A placeholder:** a magenta box (lab). Its `body_sets` row names no reference mesh |
 
-Nobody has looked at these six in the client yet; that is the first thing
-to check (DA-U48). The two flagged ones are placed anyway, so the lineup
-covers every body set. Neither has an eye height, so they look from the
-1.5 m default.
+Seen in the lab on 2026-10-05 with each group shown in turn. The two
+placeholders stay in the lineup, so it covers every body set; they are
+what the client draws for those body sets, not a seed fault. The Straegis
+Titan stands in its court as a dark, spiked body rising over the walls,
+clipping them as expected. Neither `BS_RaJaff` nor `HM_BodySet` has an eye
+height, so they look from the 1.5 m default.
 
 **How to test** (DA-U48 in the [unified UAT](../guides/unified-uat.md#debug-area)):
 
 | Step | Expect | Fail |
 |---|---|---|
-| `.gotolocation DebugArea 300 6.8 -897` | Rows of standing actors east of you, the first rows humans | An empty wing; actors floating or sunk into the floor |
-| Walk the walkways in the order above | Every actor stands on the floor facing the walkway, each one different, idling like its source | Two identical actors (NID Guard #146 and Opheltes #215 excepted: tint is not drawn); one facing a wall; one inside a wall; one frozen in a T-pose or not animating |
-| Read the nameplates | Each reads `<name> #<id> <body set>`, matching the spawn tables | Blank, the source's bare name (the literal label did not take), or cut off (note where) |
+| `.gotolocation DebugArea 286 6.6 -899` | Six Airmen north of you, labelled `Show Humans (42)` to `Clear lineup`; the wing behind them empty | An actor of the lineup already standing (a group on at startup); an attendant reading `Airman` |
+| Right-click `Show Humans (42)` from where you stand | The chat line `Visual NPC Lineup - Humans: showing 42 actors for everyone in DebugArea (one group at a time).`; the human rows fill in | No line; a line but no actors |
+| Walk the walkways of the group in the order above | Every actor stands on the floor facing the walkway, each one different, idling like its source | Two identical actors (NID Guard #146 and Opheltes #215 excepted: tint is not drawn); one facing a wall; one inside a wall; one frozen in a T-pose or not animating |
+| Read the nameplates up close | Each reads `<name> #<id> <body set>`, matching the spawn tables | Blank, the source's bare name (the literal label did not take), or cut off (note where) |
 | Walk among them with `.aggro on`; shoot one | Nothing engages; the shot is refused (the target is not attackable); right-clicking starts nothing | An attack lands, an actor turns on you, or an error shows |
-| The six template-less actors (tags `DebugArea_VisualLineup_NoTemplate_*`) | The Android, the Drone Tank, Lenny Baby and the degenerated Asgard render | Report what the Ra Jaffa body set and `HM_BodySet` show: expected blank |
+| Show each other group in turn, waiting about a minute between switches | Each line names what it cleared first; the old group's actors vanish as the new ones appear | Actors of two groups at once; a ghost actor that stays after its group is cleared; the client stops responding or closes |
+| The six template-less actors (tags `DebugArea_VisualLineup_NoTemplate_*`) | The Android, Lenny Baby, the degenerated Asgard and the Ra Jaffa render; the Drone Tank and `HM_BodySet` are placeholders (see the table above) | Anything else: report what it draws |
+| `Clear lineup`, and a non-GM's click on any attendant | `Cleared ...` empties the wing; the non-GM gets `Only a GM can switch the lineup. Nothing changed.` | A non-GM switches a group |
 
 **Adding a template.** A template added with a new look fails
 `live_db_debug_area_lineup` until it gets an actor. Copy any row of
 `entity_templates_debug_area_lineup.sql` with the next free id in
 1410-1599, set its look, level, `name_id` and nameplate from the new
-template, add a spawn in 13870-14099 on a free spot, and raise `ACTORS` in
-both guards. The rows are full; the east end of S6 (x 364-374) and the
-floor south of it (z -965, x 344-368) take about 15 more.
+template, add a spawn in 13870-14079 on a free spot with the `set_name` of
+the group its family belongs to, and raise `ACTORS` in the three guards
+(the group stays at most 44: `live_db_lineup_sets` checks it). The rows are
+full; the east end of S6 (x 364-374) and the floor south of it (z -965,
+x 344-368) take about 15 more.
 `debug_area::lineup` then checks the spot. A template that shares an
 existing look needs nothing: its look already has an actor (add it to that
 actor's row of the spawn tables).
 
-Seed: `entity_templates_debug_area_lineup.sql` (templates 1410-1570) and
-`spawnlist_debug_area_lineup.sql` (spawns 13870-14030), inside DA-10's
-block (templates 1410-1599, spawns 13870-14099). Guards:
+Seed: `entity_templates_debug_area_lineup.sql` (actors 1410-1570,
+attendants 1590-1595), `spawnlist_debug_area_lineup.sql` (actors
+13870-14030, attendants 14090-14095), `spawn_sets_debug_area_lineup.sql`
+(sets 1301-1305) and `debug_area_lineup_chains.sql` (the attendants'
+chains 14090-14095, action `spawn_set`), inside DA-10's block (templates
+1410-1599, spawns 13870-14099). The switch: `cimmeria-cell-content`'s
+`content::spawn_sets` (show, hide, clear) behind the `spawn_set` action,
+`.spawnset` and `gm::spawn_sets`; the cell keeps the sets in
+`SpaceManager::spawn_sets`. Guards for the switch: `gm::tests::spawn_sets`
+in `cimmeria-cell-console` (the GM gate on 214 and 215, exclusive groups
+with `LeftAoI` to every witness, repeat presses change nothing,
+`.spawnset`), `executor::tests::spawn_set` in `cimmeria-cell-content` (the
+attendant's GM gate and lines), `live_db_lineup_sets` in
+`cimmeria-cell-world` (every actor in exactly one group of at most 44, all
+off at boot, the attendants always spawned) and
+`debug_area_lineup_live_db_attendants_switch_existing_groups` (each
+attendant's chain switches a real group and its label names its size).
+Guards for the actors:
 `service::tests::npc_ai::debug_area::lineup` in `cimmeria-cell` (every
 actor stands on the navmesh and the occluder's terrain; a tester can walk
 from the Compound ring pad and from the landing spot to 1.5 m in front of
@@ -1455,8 +1535,9 @@ body set one dressed actor, 161 in all, each with one spawn; every
 behaviour column is empty and nothing in `resources` names an actor; every
 nameplate and tag names its source and body set; every row loads friendly
 and stationary). The wire test
-`a_display_name_follows_the_name_id_as_being_name_update` in
-`cimmeria-wire` pins the `onBeingNameUpdate` bytes.
+`a_display_name_replaces_the_name_id_as_being_name_update` in
+`cimmeria-wire` pins the `onBeingNameUpdate` bytes and that no name id is
+sent with them.
 
 ### Colour and skin tint are not drawn
 
@@ -1481,11 +1562,52 @@ The coverage guard keeps counting them as distinct looks, because the data
 says they are. Drawing the tint needs a server change to the cascade, which
 is raised with the owner separately.
 
-### Arrival load and the oversized cascade
+### Arrival load and client memory
 
-Measured in the lab on 2026-10-05, with a local server built from this
-branch. A fresh character went from Castle_CellBlock to the Z1 arrival
-(`.gotolocation DebugArea`), with and without the lineup's spawn rows:
+**Why the lineup is switched one group at a time.** The game client is a
+32-bit process. It is large-address-aware, so on 64-bit Windows it gets at
+most 4 GB of address space, and every NPC body and costume it draws takes
+textures and meshes out of that. With all 161 actors loaded at once
+(2026-10-05, after the oversized-cascade fix below), the client's working
+set went from 1,135 MB to 3,227 MB within 10 s of arrival, `CreateTexture`
+failed with `E_OUTOFMEMORY`, and the client stopped on an assertion in
+`FMallocCME.h:37`. 161 unique costumes do not fit beside the rest of the
+compound.
+
+**Per group.** Measured in the lab on 2026-10-05 (local server built from
+this branch, a fresh character standing in the east wing, the lab's
+SGW.exe sampled once a second). Arrival in the compound with no group on:
+working set 1,733 MB, private 2,012 MB, virtual 2,438 MB. Each group was
+then shown in turn, three full rounds (15 switches):
+
+| Shown | Virtual, while on (MB) | Peak virtual in the switch (MB) | Private, settled (MB) |
+|---|---:|---:|---:|
+| Humans (42) | 2,919-3,598 | 3,608 | 2,483-3,146 |
+| Jaffa, male (44) | 3,374-3,548 | 3,548 | 2,935-3,031 |
+| Jaffa, female (30) | 3,684-3,782 | 3,782 | 3,237-3,321 |
+| Goa'uld, Asgard and children (28) | 3,100-3,293 | **3,936** | 2,388-2,714 |
+| Creatures and machines (17) | 3,109-3,302 | 3,302 | 2,454-2,776 |
+
+The client does not free a cleared group's textures at once: it releases
+them in a burst 30-60 s later (virtual drops by 400-700 MB). So a switch
+made right after another holds the old group and the new one together, and
+the worst moment of the run, 3,936 MB of 4,096, came on switching from the
+Jaffa women to the Goa'uld before the Jaffa had been released. Across the
+three rounds the settled figures did not climb (private 2,765, 2,776 and
+2,454 MB after each round's last group), so swapping leaks nothing; the
+client kept about 0.5 GB more than at arrival, its own texture cache. No
+crash, no `mercury.tx_hole`, and three `oversize_fragmented` sends
+(Petbe #221's cascade, once per showing of the Jaffa men). The client held no
+actor of a cleared group afterwards (its entity table had only the shown
+group's ids).
+
+**Advice for testers:** wait about a minute between switches. The group
+sizes leave room for one group plus the compound; two big groups at once
+come close to the 4 GB ceiling.
+
+**The first measurement, before groups.** A fresh character went from
+Castle_CellBlock to the Z1 arrival (`.gotolocation DebugArea`), with and
+without the lineup's spawn rows:
 
 | At Z1 | With the lineup | Without it |
 |---|---:|---:|
@@ -1503,10 +1625,10 @@ behind it (the `mercury.tx_hole` stall): 74 NPCs, the lineup's and the
 plaza's, never appeared. Moh'Katan #54 is 1456 bytes and crosses the limit
 with eight piggybacked acks; three more cascades (Petbe #163, Anat #43 and
 the gallery's Petbe, which has no label) sit at 1440. The unguarded
-cascade send is a server bug that predates the lineup, and a Mercury fix
-is in progress. **The arrival cost above is acceptable only once that fix
-is in;** until then, arriving in the compound with the lineup seeded
-wedges the client.
+cascade send was a server bug that predates the lineup; #1274 fixed it (an
+oversized reliable packet is sent as a fragmented bundle), and with that
+fix the full lineup arrived and then ran the client out of memory, as
+above.
 
 ### Coverage delta: 162 → 161
 

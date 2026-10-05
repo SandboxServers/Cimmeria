@@ -409,9 +409,9 @@ Consequences for the server:
   corpse (`class_binds_being_methods` in `crates/wire/src/mercury/aoi/create.rs`).
 - **An NPC can carry a literal nameplate.** A template with
   `entity_templates.display_name` (only the Debug Area's Visual NPC Lineup, DA-10) gets
-  `onBeingNameUpdate(WSTRING)` in its AoI cascade right after `onBeingNameIDUpdate`, the same
-  method a player ghost's name rides. Same class gate. Whether the client draws it on a mob's
-  nameplate has not been seen yet (DA-U48).
+  `onBeingNameUpdate(WSTRING)` in its AoI cascade in place of `onBeingNameIDUpdate`, the same
+  method a player ghost's name rides. Same class gate. The name id is left out because the
+  client's nameplate draws a mob's name-id text over any `onBeingNameUpdate` (lab, 2026-10-05).
 - A method in the *bound nowhere* row always shows up in the drop oracle. Seen on the colo on
   2026-09-29: `onPlayerTeleport` (116) and `giveXPForLevel` (119). Sending them does nothing on
   a stock client; the six `onBM*` need the client patch in

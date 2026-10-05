@@ -373,9 +373,9 @@ INSERT INTO spawnlist (spawn_id, x, y, z, heading, world_id, template_id, tag, s
 INSERT INTO spawnlist (spawn_id, x, y, z, heading, world_id, template_id, tag, set_name, is_stationary) VALUES (14091, 283.00, 6.58, -894.00, 3.1416, 1300, 1591, 'DebugArea_LineupAttendant_1302', NULL, true);
 -- 14092 attendant: Show Jaffa female (30)
 INSERT INTO spawnlist (spawn_id, x, y, z, heading, world_id, template_id, tag, set_name, is_stationary) VALUES (14092, 285.00, 6.58, -894.00, 3.1416, 1300, 1592, 'DebugArea_LineupAttendant_1303', NULL, true);
--- 14093 attendant: Show Goa'uld, Asgard and children (28)
+-- 14093 attendant: Show Goa'uld etc. (28)
 INSERT INTO spawnlist (spawn_id, x, y, z, heading, world_id, template_id, tag, set_name, is_stationary) VALUES (14093, 287.00, 6.58, -894.00, 3.1416, 1300, 1593, 'DebugArea_LineupAttendant_1304', NULL, true);
--- 14094 attendant: Show Creatures and machines (17)
+-- 14094 attendant: Show Creatures (17)
 INSERT INTO spawnlist (spawn_id, x, y, z, heading, world_id, template_id, tag, set_name, is_stationary) VALUES (14094, 289.00, 6.58, -894.00, 3.1416, 1300, 1594, 'DebugArea_LineupAttendant_1305', NULL, true);
 -- 14095 attendant: Clear lineup
 INSERT INTO spawnlist (spawn_id, x, y, z, heading, world_id, template_id, tag, set_name, is_stationary) VALUES (14095, 291.00, 6.58, -894.00, 3.1416, 1300, 1595, 'DebugArea_LineupAttendant_Clear', NULL, true);

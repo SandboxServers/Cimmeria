@@ -1,6 +1,6 @@
 ---
 name: debug-area-npc-lineup-da10
-description: DA-10 (2026-10-05) Z10 Visual NPC Lineup - 161 looks rule, display_name/onBeingNameUpdate nameplates, east-wing rows + ring pad, occluder-scan traps, unmeasurable body sets, live-db-test reload trap
+description: DA-10 (2026-10-05) Z10 Visual NPC Lineup - 161 looks rule, five switchable spawn sets, name_id beats onBeingNameUpdate on a mob nameplate, client frees textures 30-60 s late, placeholder bodies, occluder-scan and live-db reload traps
 metadata:
   type: project
 ---
@@ -17,7 +17,9 @@ DA-10 (branch content/debug-area-npc-gallery, PR #1260, 2026-10-05): Z10 "Visual
 - **Nameplates:** `name_id` resolves to client-shipped text only; `entity_templates.name` is never
   loaded. Literal labels need `onBeingNameUpdate(WSTRING)` (SGWBeing idx 17, bound for every
   being class): DA-10 added `entity_templates.display_name` -> SpawnRecord -> CellEntity ->
-  NpcAoIData, sent after onBeingNameIDUpdate in the cascade. Unseen on a mob in the client.
+  NpcAoIData. **Lab: a mob's drawn nameplate is its `name_id` text whenever one was sent, even
+  after onBeingNameUpdate** (entity data showed the label, the plate did not). So a display_name
+  now REPLACES the name id in the cascade; every label then showed.
 - **Non-combat:** faction 1 is the switch (player damage gate is faction 10, nothing is hostile
   to 1). `training_dummy` was rejected: it shows 500k/1M Health on non-hostile dummies and DA-02's
   plaza guard pins the marked set to 1310-1314. Event set 570 = "Players default event set"
@@ -44,6 +46,18 @@ DA-10 (branch content/debug-area-npc-gallery, PR #1260, 2026-10-05): Z10 "Visual
   delivered at Z1, the 32-bit client's working set went 1.1 -> 3.2 GB in 10 s (1-2 s hitch per
   frame) and died on `CreateTexture E_OUTOFMEMORY`. ~150 NPCs (wedged run) survived at 43 FPS.
   Unique-costume NPCs cost texture memory each; never put 160 distinct looks in one 150 m AoI.
+- **Switchable groups (owner decision, same day):** 5 spawn sets 1301-1305 (spawnlist.set_name =
+  spawn_sets.name, type `visual_lineup`), partitioned out of the startup records
+  (`partition_spawn_sets`), exclusive per kind+world. Doors: native activateSpawnSet 214 /
+  deactivateSpawnSet 215 (def arg says "SpawnSet EntityID"; we use set_id), `.spawnset`, and
+  6 attendant NPCs (templates 1590-1595, INT_Trainer 128 for the cursor; content action
+  `spawn_set`). One NPC per button because custom dialogs crashed the client (#943).
+  Interact range is 5 m; labels longer than ~24 chars overlap at 2 m spacing.
+- **Swap memory:** the client releases a cleared group's textures 30-60 s AFTER the switch, so a
+  quick switch holds two groups: peak virtual 3,936 of 4,096 MB (no crash in 15 switches, no
+  leak across rounds). Tell testers to wait ~1 min between switches.
+- **Template-less bodies drawn:** Android, Degenerated Asgard and RaJaff (gold armour) render;
+  HM_BodySet = magenta box, MOB_DroneTank = magenta panel with a face texture (placeholders).
 - **Oversize cascades:** Petbe #221's createOnClient cascade is 1504 B encrypted with its label;
   the AoI cascade send was unguarded until #1274 (oversize_fragmented). Measure cascade size with
   `build_create_entity_cascade` from the seed when adding labels or big kits.

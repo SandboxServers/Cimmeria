@@ -440,25 +440,57 @@ mod live_db {
     /// Each Lineup attendant is a clickable world-1300 NPC whose tag fires
     /// exactly one chain, and that chain's one `spawn_set` action names a
     /// lineup group that exists (or clears the lineup's kind in world 1300).
-    /// The labels name the groups. Revert proof: point an attendant's
+    /// Each label reads `Show <group> (<its actor count>)`, or `Clear lineup`. Revert proof: point an attendant's
     /// `set_id` at 1399, or drop its trigger row, and this names it.
     #[tokio::test]
     async fn debug_area_lineup_live_db_attendants_switch_existing_groups() {
         let pool = require_db_or_skip!();
-        let rows: Vec<(i32, i32, String, Option<String>, i64, Option<i64>, Option<String>)> =
-            sqlx::query_as(
-                "SELECT s.spawn_id, t.interaction_type::int, s.tag, t.display_name,                         (SELECT count(*) FROM resources.content_triggers tr                           WHERE tr.event_type = 'interact_tag' AND tr.event_key = s.tag),                         (SELECT count(*) FROM resources.content_triggers tr                            JOIN resources.content_actions a ON a.chain_id = tr.chain_id                            LEFT JOIN resources.spawn_sets ss                              ON ss.set_id = (a.params->>'set_id')::int                           WHERE tr.event_type = 'interact_tag' AND tr.event_key = s.tag                             AND a.action_type = 'spawn_set'                             AND ((a.params->>'op' = 'show' AND ss.type = 'visual_lineup'                                   AND ss.world_id = 1300)                               OR (a.params->>'op' = 'clear'                                   AND a.params->>'kind' = 'visual_lineup'                                   AND (a.params->>'world_id')::int = 1300))),                         (SELECT ss.name FROM resources.content_triggers tr                            JOIN resources.content_actions a ON a.chain_id = tr.chain_id                            JOIN resources.spawn_sets ss                              ON ss.set_id = (a.params->>'set_id')::int                           WHERE tr.event_key = s.tag LIMIT 1)                  FROM resources.spawnlist s                  JOIN resources.entity_templates t ON t.template_id = s.template_id                  WHERE s.spawn_id BETWEEN $1 AND $2 AND s.world_id = 1300                    AND s.template_id BETWEEN $3 AND $4 AND s.set_name IS NULL                  ORDER BY 1",
-            )
-            .bind(ATTENDANT_SPAWNS.0)
-            .bind(ATTENDANT_SPAWNS.1)
-            .bind(ATTENDANT_TEMPLATES.0)
-            .bind(ATTENDANT_TEMPLATES.1)
-            .fetch_all(&pool)
-            .await
-            .expect("attendant query must succeed");
+        let rows: Vec<(
+            i32,
+            i32,
+            String,
+            Option<String>,
+            i64,
+            Option<i64>,
+            Option<String>,
+        )> = sqlx::query_as(
+            "SELECT s.spawn_id, t.interaction_type::int, s.tag, t.display_name, \
+                        (SELECT count(*) FROM resources.content_triggers tr \
+                          WHERE tr.event_type = 'interact_tag' AND tr.event_key = s.tag), \
+                        (SELECT count(*) FROM resources.content_triggers tr \
+                           JOIN resources.content_actions a ON a.chain_id = tr.chain_id \
+                           LEFT JOIN resources.spawn_sets ss \
+                             ON ss.set_id = (a.params->>'set_id')::int \
+                          WHERE tr.event_type = 'interact_tag' AND tr.event_key = s.tag \
+                            AND a.action_type = 'spawn_set' \
+                            AND ((a.params->>'op' = 'show' AND ss.type = 'visual_lineup' \
+                                  AND ss.world_id = 1300) \
+                              OR (a.params->>'op' = 'clear' \
+                                  AND a.params->>'kind' = 'visual_lineup' \
+                                  AND (a.params->>'world_id')::int = 1300))), \
+                        (SELECT count(m.spawn_id)::text FROM resources.content_triggers tr \
+                           JOIN resources.content_actions a ON a.chain_id = tr.chain_id \
+                           JOIN resources.spawn_sets ss \
+                             ON ss.set_id = (a.params->>'set_id')::int \
+                           JOIN resources.spawnlist m \
+                             ON m.set_name = ss.name AND m.world_id = ss.world_id \
+                          WHERE tr.event_key = s.tag AND a.params->>'op' = 'show') \
+                 FROM resources.spawnlist s \
+                 JOIN resources.entity_templates t ON t.template_id = s.template_id \
+                 WHERE s.spawn_id BETWEEN $1 AND $2 AND s.world_id = 1300 \
+                   AND s.template_id BETWEEN $3 AND $4 AND s.set_name IS NULL \
+                 ORDER BY 1",
+        )
+        .bind(ATTENDANT_SPAWNS.0)
+        .bind(ATTENDANT_SPAWNS.1)
+        .bind(ATTENDANT_TEMPLATES.0)
+        .bind(ATTENDANT_TEMPLATES.1)
+        .fetch_all(&pool)
+        .await
+        .expect("attendant query must succeed");
         assert_eq!(rows.len(), 6, "six attendants: {rows:#?}");
         let mut errors = Vec::new();
-        for (spawn, interaction, tag, label, triggers, good, set_name) in &rows {
+        for (spawn, interaction, tag, label, triggers, good, members) in &rows {
             let label = label.as_deref().unwrap_or("");
             if *interaction == 0 {
                 errors.push(format!("{spawn}: no click cursor"));
@@ -468,15 +500,13 @@ mod live_db {
                     "{tag}: {triggers} trigger(s), {good:?} valid spawn_set"
                 ));
             }
-            let short = set_name
-                .as_deref()
-                .and_then(|n| n.strip_prefix("Visual NPC Lineup - "));
-            let fits = match short {
-                Some(group) => label.starts_with(&format!("Show {group} (")),
+            // A label longer than this overlaps its neighbour's, 2 m away.
+            let fits = match members.as_deref().filter(|n| *n != "0") {
+                Some(n) => label.starts_with("Show ") && label.ends_with(&format!(" ({n})")),
                 None => label == "Clear lineup",
             };
-            if !fits {
-                errors.push(format!("{spawn}: label {label:?} for group {set_name:?}"));
+            if !fits || label.len() > 24 {
+                errors.push(format!("{spawn}: label {label:?} for {members:?} actors"));
             }
         }
         assert!(errors.is_empty(), "{errors:#?}");
