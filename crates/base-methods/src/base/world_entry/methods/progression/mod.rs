@@ -1,3 +1,4 @@
+use cimmeria_entity::known_names;
 use std::collections::HashMap;
 use std::net::SocketAddr;
 use std::sync::{Arc, Mutex};
@@ -51,7 +52,10 @@ pub async fn handle_grant_xp(
         match map.get(&entity_id) {
             Some(a) => *a,
             None => {
-                tracing::warn!(entity_id, "GrantXP: no address for entity");
+                tracing::warn!(
+                    entity_id, // nt:id-only no session found to name it
+                    "GrantXP: no address for entity"
+                );
                 return;
             }
         }
@@ -73,7 +77,10 @@ pub async fn handle_grant_xp(
         let state = match map.get(&addr) {
             Some(s) => s,
             None => {
-                tracing::warn!(entity_id, "GrantXP: no connected state for entity");
+                tracing::warn!(
+                    entity_id, // nt:id-only no session found to name it
+                    "GrantXP: no connected state for entity"
+                );
                 return;
             }
         };
@@ -130,6 +137,7 @@ pub async fn handle_grant_xp(
             .await
             {
                 Ok(None) => {
+                    let player_label = known_names::player_name(player_id);
                     tracing::warn!(
                         event = "persist_failed",
                         phase = "grant_xp_update",
@@ -137,8 +145,11 @@ pub async fn handle_grant_xp(
                         rows_affected = 0,
                         expected = 1,
                         account_id,
+                        account_name = known_names::account_name(account_id),
                         entity_id,
+                        entity_name = player_label,
                         player_id,
+                        player_name = player_label,
                         total_xp,
                         new_level,
                         "GrantXP: 0 rows updated (player_id missing from sgw_player); dropping wire emit"
@@ -158,9 +169,12 @@ pub async fn handle_grant_xp(
                     }
                 }
                 Err(e) => {
+                    let player_label = known_names::player_name(player_id);
                     tracing::error!(
                         entity_id,
+                        entity_name = player_label,
                         player_id,
+                        player_name = player_label,
                         "GrantXP: persistence UPDATE failed: {e}"
                     );
                     return;
@@ -175,7 +189,10 @@ pub async fn handle_grant_xp(
             // worse than a dropped grant, since the GM believes the grant
             // took effect when it will vanish on reconnect.
             tracing::warn!(
-                entity_id, total_xp, new_level,
+                entity_id,
+                entity_name = player_name.as_deref(),
+                total_xp,
+                new_level,
                 "GrantXP: no active_player_id — dropping grant (likely a pre-character-select grant)"
             );
             return;
@@ -185,6 +202,7 @@ pub async fn handle_grant_xp(
             // than fake a definitive success.
             tracing::warn!(
                 entity_id,
+                entity_name = player_name.as_deref(),
                 total_xp,
                 new_level,
                 "GrantXP: no DB pool — dropping grant (cannot persist XP/level)"
@@ -209,6 +227,7 @@ pub async fn handle_grant_xp(
 
     tracing::info!(
         entity_id,
+        entity_name = player_name.as_deref(),
         xp_amount,
         total_xp,
         new_level,
@@ -302,7 +321,14 @@ pub async fn handle_grant_xp(
     // persisted values so a node that just opened is trainable without a
     // relog (AT-03). Only on a level boundary: XP alone changes neither.
     if !levels_gained.is_empty() {
-        notify_cell_progression(cell_tx, entity_id, new_level, training_points).await;
+        notify_cell_progression(
+            cell_tx,
+            entity_id,
+            player_name.as_deref(),
+            new_level,
+            training_points,
+        )
+        .await;
     }
 
     // The bundle above reaches only the levelling player's own client —
@@ -345,6 +371,8 @@ pub async fn handle_grant_xp(
 async fn notify_cell_progression(
     cell_tx: &Option<tokio::sync::mpsc::Sender<crate::cell::messages::BaseToCellMsg>>,
     entity_id: u32,
+    // The character's name, only for the failure line (Rule 6).
+    entity_name: Option<&str>,
     level: u32,
     training_points: u32,
 ) {
@@ -363,6 +391,7 @@ async fn notify_cell_progression(
             target: "progression",
             event = "progression_changed_send_failed",
             entity_id,
+            entity_name,
             level,
             training_points,
             error = %e,
@@ -466,7 +495,14 @@ pub async fn handle_grant_cash(
         match map.get(&entity_id) {
             Some(a) => *a,
             None => {
-                tracing::warn!(entity_id, player_id, "GrantCash: no address for entity");
+                let player_label = known_names::player_name(player_id);
+                tracing::warn!(
+                    entity_id,
+                    entity_name = player_label,
+                    player_id,
+                    player_name = player_label,
+                    "GrantCash: no address for entity"
+                );
                 return;
             }
         }
@@ -485,18 +521,24 @@ pub async fn handle_grant_cash(
         {
             Ok(Some(total)) => total,
             Ok(None) => {
+                let player_label = known_names::player_name(player_id);
                 tracing::warn!(
                     entity_id,
+                    entity_name = player_label,
                     player_id,
+                    player_name = player_label,
                     amount,
                     "GrantCash: player row not found, dropping grant"
                 );
                 return;
             }
             Err(e) => {
+                let player_label = known_names::player_name(player_id);
                 tracing::error!(
                     entity_id,
+                    entity_name = player_label,
                     player_id,
+                    player_name = player_label,
                     amount,
                     "GrantCash: UPDATE failed: {e}"
                 );
@@ -505,7 +547,13 @@ pub async fn handle_grant_cash(
         };
 
         let total = new_total;
-        tracing::info!(entity_id, amount, total, "GrantCash: updated naquadah");
+        tracing::info!(
+            entity_id,
+            entity_name = known_names::player_name(player_id),
+            amount,
+            total,
+            "GrantCash: updated naquadah"
+        );
 
         send_to_witness_reliable(
             transport,
@@ -547,9 +595,12 @@ pub async fn handle_grant_cash(
         // grant entirely rather than emitting onCashChanged with the *delta*
         // as the absolute total — the client treats the payload as a new total
         // and would desync from what the server (eventually) persists.
+        let player_label = known_names::player_name(player_id);
         tracing::warn!(
             entity_id,
+            entity_name = player_label,
             player_id,
+            player_name = player_label,
             amount,
             "GrantCash: no DB pool, dropping grant (cannot send authoritative onCashChanged)"
         );

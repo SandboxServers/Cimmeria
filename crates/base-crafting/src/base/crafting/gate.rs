@@ -15,6 +15,7 @@
 
 use cimmeria_cell_catalog::crafting::Discipline;
 use cimmeria_cell_catalog::crafting::{shared_crafting_catalog, CraftType, CraftingCatalog};
+use cimmeria_entity::known_names;
 
 use super::feedback::CraftReject;
 use super::options::craft_anywhere;
@@ -68,14 +69,19 @@ pub async fn check(request: &CraftRequest, ctx: &CraftCtx<'_>) -> Result<(), Cra
         return Err(refused(&[]));
     };
     let lookup_failed = |phase: &'static str, error: &dyn std::fmt::Display| {
+        let account_id =
+            identity_for_entity(ctx.connected, ctx.entity_to_addr, request.entity_id).account_id;
+        let player_label = known_names::player_name(request.player_id);
         tracing::warn!(
             target: "crafting",
             event = "lookup_failed",
             phase,
-            account_id = identity_for_entity(ctx.connected, ctx.entity_to_addr, request.entity_id)
-                .account_id,
+            account_id,
+            account_name = known_names::account_name(account_id),
             player_id = request.player_id,
+            player_name = player_label,
             entity_id = request.entity_id,
+            entity_name = player_label,
             error = %error,
             "crafting gate lookup failed; treating as no tool"
         );

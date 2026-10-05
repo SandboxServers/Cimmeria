@@ -22,7 +22,7 @@ pub use catalog::{
     Blueprint, Component, ComponentRow, ComponentSet, CraftItemAttrs, CraftingCatalog, Discipline,
 };
 pub use constants::*;
-pub use shared::shared_crafting_catalog;
+pub use shared::{loaded_crafting_catalog, shared_crafting_catalog};
 
 #[cfg(test)]
 mod tests;

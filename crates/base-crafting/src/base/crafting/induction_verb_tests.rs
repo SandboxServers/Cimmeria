@@ -67,6 +67,7 @@ async fn a_completion_with_no_database_warns_and_refuses_the_job() {
         player_id: PLAYER,
         entity_id: ENTITY,
         gm_entity_id: None,
+        gm_name: None,
     };
     assert!(state_at_completion(&env, &ids).await.is_none());
 

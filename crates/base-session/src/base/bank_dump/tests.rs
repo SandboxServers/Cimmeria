@@ -130,6 +130,8 @@ fn refusal_reasons_are_stable() {
 /// line that says so.
 #[tokio::test]
 async fn no_pool_logs_db_unavailable() {
+    // NT-22 (Rule 6): the dumped character is named beside its id.
+    cimmeria_entity::known_names::remember_player(PLAYER_ID, "Walter Harriman");
     let capture = LogCapture::install();
     let lines = run_gm_dump(CALLER, &BankSubject::Player(PLAYER_ID), None).await;
     assert_eq!(lines, vec!["bankdump: no live DB connection".to_string()]);
@@ -140,6 +142,11 @@ async fn no_pool_logs_db_unavailable() {
     assert!(events[0].has_field("result", "refused"));
     assert!(events[0].has_field("reason", "db_unavailable"));
     assert!(events[0].has_field("target_player_id", &PLAYER_ID.to_string()));
+    assert!(
+        events[0].has_field("target_player_name", "Walter Harriman"),
+        "{:#?}",
+        events[0]
+    );
 }
 
 /// A pool that cannot connect: WARN `reason=query_failed`, the GM is told

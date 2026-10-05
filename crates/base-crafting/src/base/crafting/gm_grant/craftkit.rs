@@ -9,7 +9,9 @@
 //! The whole kit commits or nothing does. The target's client gets the
 //! inventory update and the cell its inventory events, as after a craft.
 
+use crate::base::crafting::telemetry as crafting_telemetry;
 use cimmeria_cell_catalog::crafting::{shared_crafting_catalog, CraftingCatalog};
+use cimmeria_entity::known_names;
 
 use super::{caller_is_gm, gm_line, lookup_failed, GrantIds};
 use crate::base::crafting::request::CraftCtx;
@@ -131,16 +133,22 @@ pub(super) async fn handle_craftkit(
         return;
     }
     let refused = |reason: &'static str| {
+        let player_label = known_names::player_name(ids.player_id);
         tracing::info!(
             target: "crafting",
             event = "gm_craftkit",
             outcome = "refused",
             reason,
             account_id = ids.account_id,
+            account_name = known_names::account_name(ids.account_id),
             player_id = ids.player_id,
+            player_name = player_label,
             entity_id = ids.entity_id,
+            entity_name = player_label,
             gm_entity_id = ids.gm_entity_id,
+            gm_entity_name = ids.gm_name,
             blueprint_id,
+            blueprint_name = crafting_telemetry::blueprint_name(blueprint_id),
             count,
             "craftkit refused; nothing was granted"
         );
@@ -180,6 +188,7 @@ pub(super) async fn handle_craftkit(
         player_id: ids.player_id,
         entity_id: ids.entity_id,
         gm_entity_id: Some(ids.gm_entity_id),
+        gm_name: ids.gm_name,
     };
     let plan = CraftTransaction {
         grant: grants,
@@ -188,15 +197,21 @@ pub(super) async fn handle_craftkit(
     let env = InductionEnv::from_ctx(ctx);
     match apply_grant_transaction(&env, pool, &job, &plan).await {
         Ok(applied) => {
+            let player_label = known_names::player_name(ids.player_id);
             tracing::info!(
                 target: "crafting",
                 event = "gm_craftkit",
                 outcome = "granted",
                 account_id = ids.account_id,
+                account_name = known_names::account_name(ids.account_id),
                 player_id = ids.player_id,
+                player_name = player_label,
                 entity_id = ids.entity_id,
+                entity_name = player_label,
                 gm_entity_id = ids.gm_entity_id,
+                gm_entity_name = ids.gm_name,
                 blueprint_id,
+                blueprint_name = crafting_telemetry::blueprint_name(blueprint_id),
                 count,
                 component_set = KIT_COMPONENT_SET,
                 granted = %applied.granted_field(),

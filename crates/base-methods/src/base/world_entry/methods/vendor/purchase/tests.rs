@@ -229,7 +229,7 @@ async fn live_db_pure_cash_purchase_debits_balance_and_grants_inventory_row() {
         ("account_id", account_id.to_string()),
         ("player_id", player_id.to_string()),
         ("entity_id", entity_id.to_string()),
-        ("type_id", PURE_CASH_DESIGN_ID.to_string()),
+        ("item_type_id", PURE_CASH_DESIGN_ID.to_string()),
         ("container_sets", "{17,15}".to_string()),
         ("requested_container_id", "1".to_string()),
         ("skipped_storage", "true".to_string()),
@@ -264,7 +264,7 @@ async fn live_db_pure_cash_purchase_debits_balance_and_grants_inventory_row() {
             "vendor_template_id",
             SEEDED_BUY_VENDOR_TEMPLATE_ID.to_string(),
         ),
-        ("design_id", PURE_CASH_DESIGN_ID.to_string()),
+        ("item_type_id", PURE_CASH_DESIGN_ID.to_string()),
         ("price", PURE_CASH_PRICE.to_string()),
         ("cash_before", "5000".to_string()),
         ("cash_after", (5_000 - PURE_CASH_PRICE).to_string()),
@@ -391,7 +391,7 @@ async fn live_db_purchase_rejected_when_player_cannot_afford() {
     );
     assert!(row.has_field("price", &PURE_CASH_PRICE.to_string()));
     assert!(row.has_field("cash", &(PURE_CASH_PRICE - 1).to_string()));
-    assert!(row.has_field("design_id", &PURE_CASH_DESIGN_ID.to_string()));
+    assert!(row.has_field("item_type_id", &PURE_CASH_DESIGN_ID.to_string()));
 
     cleanup(&pool, entity_id, account_id, player_id).await;
 }

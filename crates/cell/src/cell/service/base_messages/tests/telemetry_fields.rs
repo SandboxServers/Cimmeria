@@ -131,5 +131,6 @@ async fn item_granted_row_carries_design_id_and_identity() {
         .find_message(Level::DEBUG, "Item granted to player")
         .expect("granted row");
     assert!(row.has_field("design_id", "5224"), "{row:#?}");
+    assert!(row.has_field("item_type_id", "5224"), "{row:#?}");
     assert_numeric_identity(&row);
 }

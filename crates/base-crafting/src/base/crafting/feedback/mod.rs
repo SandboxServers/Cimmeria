@@ -15,11 +15,13 @@ mod reason;
 pub use reason::{Compared, CraftReject};
 
 use crate::base::crafting::sync::CraftClient;
+use crate::base::crafting::telemetry as crafting_telemetry;
 use crate::base::crafting::telemetry::{
     account_id_of, record_rejection, record_request, witness_send_failure, JobIds, Outcome,
 };
 use crate::base::helpers::send_to_witness_reliable;
 use crate::mercury::{build_player_entity_method_packet, method_idx};
+use cimmeria_entity::known_names;
 use cimmeria_wire::cell::chat::{serialize_on_player_communication, CHAN_FEEDBACK};
 
 /// `EErrorCodeSystem::ERRORCODE_SYSTEM_Ability`, the only system the enum
@@ -88,34 +90,46 @@ async fn refuse(
 ) {
     let reason = why.reason();
     let c = why.compared();
+    let player_label = known_names::player_name(player_id);
     tracing::info!(
         target: "crafting",
         event = "rejected",
         verb,
         account_id,
+        account_name = known_names::account_name(account_id),
         player_id,
+        player_name = player_label,
         entity_id,
+        entity_name = player_label,
         reason,
         discipline_id = c.discipline_id,
+        discipline_name = crafting_telemetry::discipline_name(c.discipline_id),
         asp = c.asp,
         paradigm_id = c.paradigm_id,
+        paradigm_name = c.paradigm_id.and_then(cimmeria_names::racial_paradigm_name),
         paradigm_level = c.paradigm_level,
         required_level = c.required_level,
         prerequisite_id = c.prerequisite_id,
+        prerequisite_name = crafting_telemetry::discipline_name(c.prerequisite_id),
         prerequisite_expertise = c.prerequisite_expertise,
         required_expertise = c.required_expertise,
         station_mask = c.station_mask,
         item_id = c.item_id,
-        design_id = c.design_id,
-        type_id = c.type_id,
+        item_name = cimmeria_names::owned::item(c.type_id),
+        design_item_type_id = c.design_id,
+        design_item_name = cimmeria_names::owned::item(c.design_id),
+        item_type_id = c.type_id,
         container_id = c.container_id,
+        container_name = cimmeria_names::owned::container(c.container_id),
         needed = c.needed,
         available = c.available,
         queue_limit = c.queue_limit,
         applied_science_id = c.applied_science_id,
+        applied_science_name = cimmeria_names::owned::applied_science(c.applied_science_id),
         tools = why.tools_considered(),
         blueprint_ids = why.blueprints_considered(),
         blueprint_id = c.blueprint_id,
+        blueprint_name = crafting_telemetry::blueprint_name(c.blueprint_id),
         quantity = c.quantity,
         type_ids = why.types_submitted(),
         tier = c.tier,
@@ -184,13 +198,17 @@ async fn send_line(
     )
     .await;
     if let Some(reason) = witness_send_failure(&outcome) {
+        let player_label = known_names::player_name(player_id);
         tracing::warn!(
             target: "crafting",
             event = "feedback_send_failed",
             verb,
             account_id,
+            account_name = known_names::account_name(account_id),
             player_id,
+            player_name = player_label,
             entity_id,
+            entity_name = player_label,
             method_index,
             method_name = cimmeria_wire::names::player_client_method(method_index),
             reason,

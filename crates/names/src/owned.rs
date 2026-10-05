@@ -15,6 +15,18 @@ pub fn item(item_type_id: impl Into<Option<i32>>) -> Option<String> {
     book().item(id).map(str::to_owned)
 }
 
+/// `entity_templates.template_name`, `None` for an absent or unnamed ID.
+pub fn template(template_id: impl Into<Option<i32>>) -> Option<String> {
+    let id = template_id.into()?;
+    book().template(id).map(str::to_owned)
+}
+
+/// `applied_science.name`, `None` for an absent or unnamed ID.
+pub fn applied_science(applied_science_id: impl Into<Option<i32>>) -> Option<String> {
+    let id = applied_science_id.into()?;
+    book().applied_science(id).map(str::to_owned)
+}
+
 /// `containers.name` of an inventory container (`MAIN`, `BANK`, ...),
 /// `None` for an absent or unnamed ID.
 pub fn container(container_id: impl Into<Option<i32>>) -> Option<String> {

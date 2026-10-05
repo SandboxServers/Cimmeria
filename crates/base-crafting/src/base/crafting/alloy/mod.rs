@@ -14,6 +14,8 @@
 //! The station gate ran before this verb: alloying needs a station, never a
 //! tool.
 
+use crate::base::crafting::telemetry as crafting_telemetry;
+use cimmeria_entity::known_names;
 use std::sync::Arc;
 
 use cimmeria_cell_catalog::crafting::{shared_crafting_catalog, CraftingCatalog};
@@ -66,14 +68,18 @@ pub async fn handle_alloy_in(
     if request.lower_tier_items.len() > MAX_ELEMENTARY_ITEMS {
         // Only a forged packet names more ids than the page has slots:
         // dropped like any other malformed crafting request, with no line.
+        let player_label = known_names::player_name(player_id);
         tracing::warn!(
             target: "crafting",
             event = "malformed",
             verb = VERB,
             reason = "too_many_elementary_items",
             account_id,
+            account_name = known_names::account_name(account_id),
             player_id,
+            player_name = player_label,
             entity_id,
+            entity_name = player_label,
             count = request.lower_tier_items.len(),
             limit = MAX_ELEMENTARY_ITEMS,
             "alloy request names more elementary items than the page has slots; dropped"
@@ -90,21 +96,27 @@ pub async fn handle_alloy_in(
                 player_id,
                 entity_id,
                 gm_entity_id: None,
+                gm_name: None,
             };
             resync_inventory(&InductionEnv::from_ctx(ctx), pool, &ids).await;
         }
     };
     let unavailable = CraftReject::Unavailable { action: ACTION };
     let lookup_failed = |phase: &'static str, id: i32, error: &str, class: &'static str| {
+        let player_label = known_names::player_name(player_id);
         tracing::warn!(
             target: "crafting",
             event = "lookup_failed",
             verb = VERB,
             phase,
             account_id,
+            account_name = known_names::account_name(account_id),
             player_id,
+            player_name = player_label,
             entity_id,
+            entity_name = player_label,
             blueprint_id = request.blueprint_id,
+            blueprint_name = crafting_telemetry::blueprint_name(request.blueprint_id),
             id,
             error_class = class,
             error,

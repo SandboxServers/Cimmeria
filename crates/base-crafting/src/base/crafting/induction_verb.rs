@@ -3,6 +3,7 @@
 //! answer, read the crafting state when the job completes, and tell the
 //! player the result.
 
+use cimmeria_entity::known_names;
 use std::sync::Arc;
 
 use cimmeria_cell_catalog::crafting::{shared_crafting_catalog, CraftingCatalog};
@@ -41,14 +42,19 @@ pub async fn load_request_inputs(
 ) -> Option<RequestInputs> {
     let unavailable = CraftReject::Unavailable { action };
     let lookup_failed = |phase: &'static str, error_class: &'static str, error: String| {
+        let account_id = account_id_of(entity_id, ctx.connected, ctx.entity_to_addr);
+        let player_label = known_names::player_name(player_id);
         tracing::warn!(
             target: "crafting",
             event = "lookup_failed",
             verb,
             phase,
-            account_id = account_id_of(entity_id, ctx.connected, ctx.entity_to_addr),
+            account_id,
+            account_name = known_names::account_name(account_id),
             player_id,
+            player_name = player_label,
             entity_id,
+            entity_name = player_label,
             error_class,
             error,
             "crafting request could not be read; refused as unavailable"
@@ -122,15 +128,19 @@ pub async fn state_at_completion(env: &InductionEnv, ids: &JobIds) -> Option<Cra
     match result {
         Ok(state) => Some(state),
         Err((error_class, error)) => {
+            let player_label = known_names::player_name(ids.player_id);
             tracing::warn!(
                 target: "crafting",
                 event = "lookup_failed",
                 verb = ids.verb,
                 phase = "completion_state",
-                job_id = ids.job_id,
+                job_id = ids.job_id, // nt:id-only induction job counter, unnamed
                 account_id = ids.account_id,
+                account_name = known_names::account_name(ids.account_id),
                 player_id = ids.player_id,
+                player_name = player_label,
                 entity_id = ids.entity_id,
+                entity_name = player_label,
                 error_class,
                 error,
                 "crafting state unreadable at completion; nothing was used"

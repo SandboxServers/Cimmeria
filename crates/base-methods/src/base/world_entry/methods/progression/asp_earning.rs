@@ -9,6 +9,7 @@
 //! cached level: a grant that writes a level the row already holds earns
 //! nothing, whatever the cache said.
 
+use cimmeria_entity::known_names;
 use cimmeria_game::player::APPLIED_SCIENCE_POINTS_PER_LEVEL;
 use sqlx::PgPool;
 
@@ -78,12 +79,16 @@ pub(super) fn log_asp_earned(
     level_after: i32,
     grant: &PersistedGrant,
 ) {
+    let player_label = known_names::player_name(player_id);
     tracing::info!(
         target: "crafting",
         event = "asp_earned",
         account_id,
+        account_name = known_names::account_name(account_id),
         player_id,
+        player_name = player_label,
         entity_id,
+        entity_name = player_label,
         level_before = grant.level_before,
         level_after,
         asp_before = grant.asp_before,

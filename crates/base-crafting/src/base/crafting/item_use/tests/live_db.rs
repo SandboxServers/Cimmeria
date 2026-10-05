@@ -68,7 +68,7 @@ async fn blueprint_item_teaches_is_consumed_and_pushes_the_list() {
         &learned,
         &[
             ("item_id", &slot.item.to_string()),
-            ("type_id", "6483"),
+            ("item_type_id", "6483"),
             ("blueprints", "25:false→true"),
             ("known_before", "1"),
             ("known_after", "2"),
@@ -160,7 +160,7 @@ async fn known_blueprint_item_is_refused_and_not_consumed() {
         &event(&capture, "rejected", slot),
         &[
             ("reason", "already_known"),
-            ("design_id", "8882"),
+            ("design_item_type_id", "8882"),
             ("blueprint_ids", "[367, 369]"),
         ],
     );
@@ -210,7 +210,7 @@ async fn guide_raises_its_paradigm_is_consumed_and_pushes_138() {
             ("paradigm_id", "3"),
             ("level_before", "1"),
             ("level_after", "2"),
-            ("type_id", "7808"),
+            ("item_type_id", "7808"),
             ("consumed", &format!("{}:7808:1→0", slot.item)),
         ],
     );

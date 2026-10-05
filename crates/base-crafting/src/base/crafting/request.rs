@@ -1,6 +1,7 @@
 //! The base's entry point for a crafting request: a `CraftRequest` in the
 //! `CellToBaseMsg::Plugin` envelope (#962 step 5).
 
+use cimmeria_entity::known_names;
 use std::collections::HashMap;
 use std::net::SocketAddr;
 use std::sync::{Arc, Mutex};
@@ -65,13 +66,18 @@ pub async fn handle_craft_request(request: CraftRequest, ctx: &CraftCtx<'_>) {
         allowed,
     } = request;
     let method = verb.method_name();
+    let account_id = account_id_of(entity_id, ctx.connected, ctx.entity_to_addr);
+    let player_label = known_names::player_name(player_id);
     tracing::info!(
         target: "crafting",
         event = "request",
         verb = method,
-        account_id = account_id_of(entity_id, ctx.connected, ctx.entity_to_addr),
+        account_id,
+        account_name = known_names::account_name(account_id),
         player_id,
+        player_name = player_label,
         entity_id,
+        entity_name = player_label,
         method,
         allowed,
         args = ?verb,

@@ -38,6 +38,7 @@ mod tests;
 #[cfg(test)]
 mod wire_tests;
 
+use cimmeria_entity::known_names;
 use std::collections::HashMap;
 use std::net::SocketAddr;
 use std::sync::{Arc, Mutex};
@@ -237,18 +238,22 @@ pub async fn handle_expand(
             cash_after,
             price,
         }) => {
+            let player_label = known_names::player_name(caller.player_id);
             tracing::info!(
                 target: "bank",
                 event = "expand",
                 account_id = caller.account_id,
+                account_name = known_names::account_name(caller.account_id),
                 player_id = caller.player_id,
+                player_name = player_label,
                 entity_id = caller.entity_id,
+                entity_name = player_label,
                 bank_slots_before = bank_slots_after - VAULT_EXPAND_STEP,
                 bank_slots_after,
                 price,
                 cash_before = cash_after + price,
                 cash_after,
-                banker_id = vault.banker_id(),
+                banker_id = vault.banker_id(), // nt:id-only banker NPC, unnamed on the base
                 gm_override = vault.gm_override(),
                 distance = vault.distance(),
                 trigger = trigger.as_str(),
@@ -338,19 +343,23 @@ async fn reject(
     error: Option<&str>,
 ) {
     let caller = client.caller;
+    let player_label = known_names::player_name(caller.player_id);
     tracing::warn!(
         target: "bank",
         event = "expand_rejected",
         account_id = caller.account_id,
+        account_name = known_names::account_name(caller.account_id),
         player_id = caller.player_id,
+        player_name = player_label,
         entity_id = caller.entity_id,
+        entity_name = player_label,
         reason = refusal.reason(),
         offered_slots = offer.map(|o| o.from_slots),
         offered_price = offer.map(|o| o.price),
         bank_slots = snapshot.bank_slots,
         cash = snapshot.cash,
         price = snapshot.price,
-        banker_id = vault.banker_id(),
+        banker_id = vault.banker_id(), // nt:id-only banker NPC, unnamed on the base
         gm_override = vault.gm_override(),
         distance = vault.distance(),
         trigger = client.trigger.map(ExpandTrigger::as_str),
@@ -440,8 +449,11 @@ fn quote_debug(caller: ExpandCaller, state: &ExpansionState, offered: bool, reas
         target: "bank",
         event = "expand_quote",
         account_id = caller.account_id,
+        account_name = known_names::account_name(caller.account_id),
         player_id = caller.player_id,
+        player_name = known_names::player_name(caller.player_id),
         entity_id = caller.entity_id,
+        entity_name = known_names::player_name(caller.player_id),
         offered,
         reason,
         bank_slots = state.bank_slots,
@@ -457,12 +469,16 @@ fn quote_warn(
     state: Option<&ExpansionState>,
     error: Option<&str>,
 ) {
+    let player_label = known_names::player_name(caller.player_id);
     tracing::warn!(
         target: "bank",
         event = "expand_quote",
         account_id = caller.account_id,
+        account_name = known_names::account_name(caller.account_id),
         player_id = caller.player_id,
+        player_name = player_label,
         entity_id = caller.entity_id,
+        entity_name = player_label,
         offered = false,
         reason,
         bank_slots = state.map(|s| s.bank_slots),

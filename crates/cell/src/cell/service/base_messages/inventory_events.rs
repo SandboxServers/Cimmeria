@@ -29,7 +29,19 @@ pub(super) async fn handle_inventory_item_move_applied(
     space_mgr: &mut SpaceManager,
     engine: &ChainEngine,
 ) {
-    tracing::debug!(entity_id, item_id, type_id, source = source_container_id, target = target_container_id, swapped_item_id = ?swapped_item_id, "Item moved in inventory");
+    tracing::debug!(
+        entity_id,
+        entity_name = space_mgr.entity_label(entity_id),
+        item_id,
+        item_type_id = type_id,
+        item_name = cimmeria_names::book().item(type_id),
+        source_container_id,
+        source_container_name = cimmeria_names::book().container(source_container_id),
+        target_container_id,
+        target_container_name = cimmeria_names::book().container(target_container_id),
+        swapped_item_id = ?swapped_item_id, // nt:id-only instance id, type not sent
+        "Item moved in inventory"
+    );
 
     const INV_BANDOLIER: i32 = 3;
     if target_container_id == INV_BANDOLIER && source_container_id != INV_BANDOLIER {
@@ -38,7 +50,9 @@ pub(super) async fn handle_inventory_item_move_applied(
             None => {
                 tracing::warn!(
                     entity_id,
-                    type_id,
+                    entity_name = space_mgr.entity_label(entity_id),
+                    item_type_id = type_id,
+                    item_name = cimmeria_names::book().item(type_id),
                     "InventoryItemMoveApplied: entity has no player_id — equip event dropped"
                 );
                 return;
@@ -53,11 +67,14 @@ pub(super) fn handle_inventory_item_removed(
     entity_id: u32,
     item_id: i32,
     source_container_id: i32,
+    space_mgr: &SpaceManager,
 ) {
     tracing::debug!(
         entity_id,
-        item_id,
-        source = source_container_id,
+        entity_name = space_mgr.entity_label(entity_id),
+        item_id, // nt:id-only instance id, type not sent
+        source_container_id,
+        source_container_name = cimmeria_names::book().container(source_container_id),
         "Item removed from inventory"
     );
 }
@@ -68,8 +85,9 @@ pub(super) fn handle_inventory_item_removed(
 /// (`grant::persist`, `vendor::purchase`, the crafting transaction) fills it
 /// from the grant's type id. It is logged as `design_id` so the row joins the
 /// cell's `Player looted item` and the base's `inventory`
-/// `grant_container_chosen` row (which also carries `item_name`); the old
-/// `item_id` field name stays for existing saved queries.
+/// `grant_container_chosen` row; the old `item_id` field name stays for
+/// existing saved queries. `item_type_id` is Rule 6's key for the same
+/// number, the one the joins move to once the loot rows are swept.
 pub(super) fn handle_inventory_item_granted(
     entity_id: u32,
     item_id: i32,
@@ -81,12 +99,18 @@ pub(super) fn handle_inventory_item_granted(
     let identity = space_mgr.player_identity(entity_id);
     tracing::debug!(
         account_id = identity.account_id,
+        account_name = identity.account_name,
         player_id = identity.player_id,
+        player_name = identity.player_name,
         entity_id,
+        entity_name = identity.player_name,
         item_id,
-        design_id = item_id,
+        item_type_id = item_id,
+        design_id = item_id, // nt:id-only join key, item_name names it
+        item_name = cimmeria_names::book().item(item_id),
         container_id,
-        slot_id,
+        container_name = cimmeria_names::book().container(container_id),
+        slot_id, // nt:id-only slot index, unnamed
         quantity,
         "Item granted to player"
     );
@@ -113,7 +137,9 @@ pub(super) async fn handle_item_used(
         None => {
             tracing::warn!(
                 entity_id,
-                type_id,
+                entity_name = space_mgr.entity_label(entity_id),
+                item_type_id = type_id,
+                item_name = cimmeria_names::book().item(type_id),
                 "ItemUsed: entity has no player_id — content event dropped"
             );
             return;
@@ -121,10 +147,16 @@ pub(super) async fn handle_item_used(
     };
     tracing::debug!(
         entity_id,
+        entity_name = space_mgr.entity_label(entity_id),
         player_id,
-        instance_id,
-        type_id,
+        player_name = space_mgr.entity_label(entity_id),
+        instance_id, // nt:id-only instance row of item_type_id
+        item_type_id = type_id,
+        item_name = cimmeria_names::book().item(type_id),
         target_id,
+        target_name = u32::try_from(target_id)
+            .ok()
+            .and_then(|t| space_mgr.entity_label(t)),
         "ItemUsed: firing OnItemUse"
     );
     content::fire_item_use(
