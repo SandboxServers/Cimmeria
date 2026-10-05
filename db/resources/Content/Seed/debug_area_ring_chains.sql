@@ -3,11 +3,11 @@
 -- (harset_space_chains.sql, chains 6001-6005): `interact_tag` on the console's
 -- spawn tag -> `trigger_transporter` with the region id.
 --
--- Chain ID range: 13810-13817 (DA-08).
+-- Chain ID range: 13810-13817 (DA-08), 13818 (DA-11).
 --
 -- No condition: every click works, for every character. No
 -- `set_interaction_type`: template 3 already carries interaction_type 32
--- (INT_RingNetwork) as a template default, so the eight chains are allowlisted
+-- (INT_RingNetwork) as a template default, so the nine chains are allowlisted
 -- in crates/content-engine/tests/it/interact_tag_linter.rs, as Harset's are.
 --
 -- `params` key is `regionId` (camelCase); the loader falls back to 0 on any
@@ -97,3 +97,13 @@ VALUES (13817, 'interact_tag', 'DebugArea_Ring_DeathYard', 'player', false, 0);
 
 INSERT INTO content_actions (chain_id, action_type, target_id, target_key, params, delay_ms, sort_order)
 VALUES (13817, 'trigger_transporter', NULL, NULL, '{"regionId": 42}', 0, 0);
+
+-- Chain 13818: DebugArea_Ring_Lineup -> region 43 (DA-11).
+INSERT INTO content_chains (chain_id, description, scope_type, scope_id, enabled, priority)
+VALUES (13818, 'Debug Area - Ring console Lineup: open destination list for region 43', 'space', 1300, true, 0);
+
+INSERT INTO content_triggers (chain_id, event_type, event_key, scope, once, sort_order)
+VALUES (13818, 'interact_tag', 'DebugArea_Ring_Lineup', 'player', false, 0);
+
+INSERT INTO content_actions (chain_id, action_type, target_id, target_key, params, delay_ms, sort_order)
+VALUES (13818, 'trigger_transporter', NULL, NULL, '{"regionId": 43}', 0, 0);

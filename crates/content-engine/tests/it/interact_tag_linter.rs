@@ -277,10 +277,10 @@ fn allowlist(filename: &str, chain_id: i32) -> bool {
         | ("debug_area_plaza_chains.sql", 13006) // DebugArea_LootCrate: template 304 default INT_NormalLoot
         | ("debug_area_plaza_chains.sql", 13007) // DebugArea_MailClerk: template 390 default INT_NonAStoryMissionAvaliable
         | ("debug_area_plaza_chains.sql", 13008) // DebugArea_Auctioneer: template 305 default INT_Auction, the seeded auctioneer marker
-        // debug_area_ring_chains.sql — the eight Debug Area ring consoles
-        // (DA-08). Template 3 carries INT_RingNetwork (32) as a template
+        // debug_area_ring_chains.sql — the nine Debug Area ring consoles
+        // (DA-08, DA-11). Template 3 carries INT_RingNetwork (32) as a template
         // default, exactly as for the Harset ring switches above.
-        | ("debug_area_ring_chains.sql", 13810..=13817)
+        | ("debug_area_ring_chains.sql", 13810..=13818)
         // space_castle_cellblock_chains.sql — baseline
         | ("space_castle_cellblock_chains.sql", 5014) // Preparation_ColMarsh: dialog NPC template default
         | ("space_castle_cellblock_chains.sql", 5015) // Preparation_ColMarsh: dialog NPC template default

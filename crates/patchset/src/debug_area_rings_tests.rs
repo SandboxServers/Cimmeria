@@ -223,15 +223,16 @@ pub(crate) fn seeded_rigs() -> Vec<(String, f32, f32)> {
         .collect()
 }
 
-/// The seed reader itself: eight stations, eight distinct rig paths.
+/// The seed reader itself: nine stations (011's eight and 014's Lineup),
+/// nine distinct rig paths.
 #[test]
-fn the_seed_names_eight_distinct_rigs() {
+fn the_seed_names_nine_distinct_rigs() {
     let rigs = seeded_rigs();
-    assert_eq!(rigs.len(), 8, "{rigs:?}");
+    assert_eq!(rigs.len(), 9, "{rigs:?}");
     let mut paths: Vec<_> = rigs.iter().map(|r| r.0.clone()).collect();
     paths.sort();
     paths.dedup();
-    assert_eq!(paths.len(), 8);
+    assert_eq!(paths.len(), 9);
 }
 
 /// In a rebuilt map, where the rig behind each `..._Seq[_N]` stands, as game

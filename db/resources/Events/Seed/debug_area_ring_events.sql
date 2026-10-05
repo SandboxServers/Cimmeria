@@ -1,5 +1,5 @@
 -- NEW CONTENT (Debug Area, DA-08): Kismet sequences, event sets and pad
--- trigger volumes for the eight Debug Area ring stations (world 1300).
+-- trigger volumes for the nine Debug Area ring stations (world 1300).
 -- docs/content/debug-area.md "Ring transports" and
 -- docs/gameplay/ring-transport-system.md "Debug Area ring network" describe them.
 --
@@ -13,9 +13,12 @@
 --   40  DebugArea_Ring_GalleryWest  (127, 23.06, -559)  Z7 enemy gallery, west half
 --   41  DebugArea_Ring_GalleryEast  (436, 23.09, -566)  Z7 enemy gallery, east half
 --   42  DebugArea_Ring_DeathYard    (437, 11.3, -937)  Z9 death and respawn test, respawner B
+--   43  DebugArea_Ring_Lineup       (287, 6.8, -914)  Z10 NPC lineup (DA-11)
 --
 -- The rigs exist only in a patched Ihpet_Crater_Light-fff80002.umap (client
--- patch 010-debug-area-rings, data/client-patches/README.md). Each is a copy
+-- patch 011-debug-area-rings-fix for regions 35-42, and
+-- 014-debug-area-lineup-ring on top of it for region 43;
+-- data/client-patches/README.md). Each is a copy
 -- of region 3's rig in Castle_CellBlock-fffeffff (sequence 772), cloned by
 -- `upk_patch clone-objects` into the chunk's Main_Sequence.Prefabs. Each copy
 -- took the next free instance number, so station N's sequence is
@@ -23,12 +26,13 @@
 --
 -- Clients resolve a sequence id through their own cooked catalogue, not this
 -- table: crates/resources/src/base/sequence_overrides.rs delivers these
--- sixteen ids per key at login. On a client without patch 010 the paths do
+-- eighteen ids per key at login. On a client without the patch the paths do
 -- not resolve and the trip runs without the animation.
 --
 -- Id blocks (DA-08): sequences 10189-10204, event sets 13810-13817, point
 -- sets 13810-13817, points 13810-13817. Set and point 13800 are DA-07's gate
--- volume (point_sets.sql), so this block starts at 13810.
+-- volume (point_sets.sql), so this block starts at 13810. DA-11 adds
+-- sequences 10205-10206 and set / point 13818 (the Lineup station).
 
 SET search_path = resources, pg_catalog;
 
@@ -96,9 +100,18 @@ INSERT INTO event_sets_sequences (event_set_id, sequence_id) VALUES (13817, 1020
 INSERT INTO event_sets_sequences (event_set_id, sequence_id) VALUES (13817, 10204);
 INSERT INTO point_sets (set_id, name, type, world_id, radius, height, shape, flags) VALUES (13817, 'DebugArea.RingDeathYard', 'AreaSet', 1300, 3.53, 1.77, 'Cylinder', 1);
 INSERT INTO point_set_points (set_id, point_id, x, y, z, yaw, pitch, roll) VALUES (13817, 13817, 437, 11.837, -937, 0, 0, 0);
+-- Lineup (region 43, DA-11): the ninth copy, which patch 014 clones into
+-- 011's chunk, takes the next instance number after 011's eight.
+INSERT INTO sequences (sequence_id, event_id, kismet_script_name) VALUES (10205, 8000, 'Ihpet_Crater_Light-fff80002.Main_Sequence.Prefabs.GLB-RingTransporterBase_TC00_Pf0_Seq_7');
+INSERT INTO sequences (sequence_id, event_id, kismet_script_name) VALUES (10206, 8001, 'Ihpet_Crater_Light-fff80002.Main_Sequence.Prefabs.GLB-RingTransporterBase_TC00_Pf0_Seq_7');
+INSERT INTO event_sets (event_set_id, name) VALUES (13818, 'DebugArea Ring Lineup');
+INSERT INTO event_sets_sequences (event_set_id, sequence_id) VALUES (13818, 10205);
+INSERT INTO event_sets_sequences (event_set_id, sequence_id) VALUES (13818, 10206);
+INSERT INTO point_sets (set_id, name, type, world_id, radius, height, shape, flags) VALUES (13818, 'DebugArea.RingLineup', 'AreaSet', 1300, 3.53, 1.77, 'Cylinder', 1);
+INSERT INTO point_set_points (set_id, point_id, x, y, z, yaw, pitch, roll) VALUES (13818, 13818, 287, 7.337, -914, 0, 0, 0);
 
 -- Sequences past every seeded row and past the DA-08 blocks. Each seed file
 -- that inserts explicit ids carries its own footer, since files load in turn.
-SELECT pg_catalog.setval('event_sets_event_set_id_seq', GREATEST((SELECT MAX(event_set_id) FROM event_sets), (SELECT last_value FROM event_sets_event_set_id_seq), 13817), true);
-SELECT pg_catalog.setval('point_sets_set_id_seq', GREATEST((SELECT MAX(set_id) FROM point_sets), (SELECT last_value FROM point_sets_set_id_seq), 13817), true);
-SELECT pg_catalog.setval('point_set_points_point_id_seq', GREATEST((SELECT MAX(point_id) FROM point_set_points), (SELECT last_value FROM point_set_points_point_id_seq), 13817), true);
+SELECT pg_catalog.setval('event_sets_event_set_id_seq', GREATEST((SELECT MAX(event_set_id) FROM event_sets), (SELECT last_value FROM event_sets_event_set_id_seq), 13818), true);
+SELECT pg_catalog.setval('point_sets_set_id_seq', GREATEST((SELECT MAX(set_id) FROM point_sets), (SELECT last_value FROM point_sets_set_id_seq), 13818), true);
+SELECT pg_catalog.setval('point_set_points_point_id_seq', GREATEST((SELECT MAX(point_id) FROM point_set_points), (SELECT last_value FROM point_set_points_point_id_seq), 13818), true);

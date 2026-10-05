@@ -30,8 +30,8 @@ player, the account and both worlds. The rule lives in
 `crates/base-session/src/base/world_entry/gm_only_worlds.rs`.
 
 This page covers the zones from packets DA-02, DA-03 and DA-04, the
-stargate (DA-07), the ring transports that link them (DA-08) and the
-System Lords' summit (DA-09).
+stargate (DA-07), the ring transports that link them (DA-08, DA-11) and
+the System Lords' summit (DA-09).
 [Which station tests what](#which-station-tests-what) (DA-05) maps each
 restored system to its station and UAT step. Each packet's rows are
 in their own seed files:
@@ -94,7 +94,7 @@ DA-05's map from each restored system to the station that tests it. The step ids
 | Death and respawn | Z9 death yard, respawners 130 and 131 | DA-U37, DA-U38 |
 | Starter kit and seeded characters | A new character at Z3; the seed | DA-U39 to DA-U44 |
 | Gate travel (outbound) | The Debug Area stargate (DA-07, #1232) | DA-U45 |
-| Ring transport | The eight ring stations (DA-08, #1234) | DA-U46 |
+| Ring transport | The nine ring stations (DA-08, #1234; Lineup, DA-11) | DA-U46 |
 | NPC appearance, ambient chatter | The System Lords' summit (DA-09) | DA-U47 |
 | GM console parity | Anywhere in world 1300 | [GM console command parity](../guides/unified-uat.md#gm-console-command-parity) |
 
@@ -492,10 +492,10 @@ test.
 
 ## Ring transports
 
-DA-08. Eight ring stations let a tester travel between the Debug Area's zones
-the way rings work elsewhere in the game: the rings rise around the pad, flash
-and drop, and the travellers arrive on the destination pad as its rings drop
-there. Every station reaches every other one.
+DA-08 and DA-11. Nine ring stations let a tester travel between the Debug
+Area's zones the way rings work elsewhere in the game: the rings rise around
+the pad, flash and drop, and the travellers arrive on the destination pad as
+its rings drop there. Every station reaches every other one.
 
 ### Stations
 
@@ -513,9 +513,12 @@ the ring switch beside the pad that you right-click.
 | Gallery west | (127.0, 23.60, -559.0) | Z7 enemy gallery west half, 33 m north of the rows | `DebugArea_Ring_GalleryWest` | 40 |
 | Gallery east | (436.0, 23.63, -566.0) | Z7 enemy gallery east half, 26 m north of the rows | `DebugArea_Ring_GalleryEast` | 41 |
 | Death yard | (437.0, 11.84, -937.0) | Z9 death and respawn test and respawner B, 21 m north | `DebugArea_Ring_DeathYard` | 42 |
+| Lineup | (287.0, 7.34, -914.0) | Z10 NPC lineup (DA-10): its doorway (300, 6.8, -897) is 21 m north-east, about 39 m on foot round the west end of the low wall north of the pad. The System Lords' summit is 23 m south (DA-11) | `DebugArea_Ring_Lineup` | 43 |
 
 No station is within 25 m of a hostile that can aggro (DA-03 and DA-04
-checked their seeded rows against these points). Region 38 keeps its place as a valid travel point (the Pit overlook); region 39 kept its id, tag
+checked their seeded rows against these points). From the Lineup pad the
+nearest hostile is a non-retaliating training dummy 51 m away, and the
+nearest NPC that aggroes, a Z8 rifleman, is 122 m away. Region 38 keeps its place as a valid travel point (the Pit overlook); region 39 kept its id, tag
 and sequences (`DebugArea_Ring_ArenaPit`, `..._Seq_3`) when DA-F1 moved it
 off the pit: the pit "floor" is the water collision plane at y -33.28, which
 the navmesh treats as ground, so the first pad (210, -33.28, -725) rendered
@@ -524,10 +527,21 @@ is the largest clear disc on the east shelf (radius 6.5 m of flat Terrain at
 y -11.12, nothing solid up to 8 m above it, found by DA-F2 on the real
 occluder and navmesh data); the console is 3 m east and 1.3 m south of it.
 
+The Lineup pad (DA-11) is on the courtyard paving north of the Lords' circle:
+the rig base stands on the paving's top at y 6.80 (occluder Geometry; the
+terrain around it is at 6.58), the navmesh is 0.17 m above it, and no column
+within 7.6 m holds anything solid below 3.5 m above the base, the widest clear
+footprint of the nine. The low wall along z -905 (x 285-294, 0.3 to 0.9 m
+high) is 9 m north, the east wing's wall 12 m east and the nearest Lords 23 m
+south. Its console stands where every other station's does relative to its
+rig (+2.88, +0.44, +1.32), not at the (290, 6.58, -915.3) first proposed: the
+rig is cloned unrotated, so that offset is the spot beside the rig that
+region 3's console has in Castle.
+
 ### Using a ring
 
 1. Right-click the console beside a pad. The destination list opens on the
-   world map, with the other seven stations as transporter icons.
+   world map, with the other eight stations as transporter icons.
 2. Pick a destination, then step onto the pad within 60 s.
 3. The rings play for about 4 s, you are moved, the destination pad's rings
    play, and you can move again about 5.5 s after arriving.
@@ -539,11 +553,16 @@ the destination pad may not see its rings drop: see the known limitation in
 
 ### What needs the client patch
 
-The rigs exist only in client patch `011-debug-area-rings-fix`
+The first eight rigs exist only in client patch `011-debug-area-rings-fix`
 ([data/client-patches](../../data/client-patches/README.md)), which needs
 `007-castle-armory-ring` applied first (or `010-debug-area-rings`, which it
-repairs). Without it the consoles and the trip still work, but there is no
-ring hardware on the pads and no animation.
+repairs). The Lineup rig is patch `014-debug-area-lineup-ring`, which
+rebuilds 011's chunk with a ninth copy of the same rig and applies only on
+top of 011
+([patch README](../../data/client-patches/README.md#014-debug-area-lineup-ring)).
+Without them the consoles and the trip still work, but there is no ring
+hardware on the pads and no animation (without 014 alone, only the Lineup pad
+is bare).
 
 **010 is retired: it hung the client.** 010 was published for about half an
 hour on 2026-10-05 and pulled. Any client that loaded the Ihpet Crater map
@@ -558,7 +577,7 @@ when the target's entry is narrower. `011` ships the rebuilt chunk, and it
 upgrades a 010 install in place from 010's own output: see the
 [patch README](../../data/client-patches/README.md#011-debug-area-rings-fix),
 which also has the byte-level evidence.
-World 73 (the live Ihpet Crater) uses the same map file, so it shows the eight
+World 73 (the live Ihpet Crater) uses the same map file, so it shows the nine
 ring platforms too. They do nothing there: world 73 has no pads, consoles or
 chains. The platforms and rings block players on the client
 (`bBlockActors`) but not on world 73's navmesh, which is fine for scenery.

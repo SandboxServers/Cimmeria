@@ -1,4 +1,4 @@
--- NEW CONTENT (Debug Area, DA-08): the eight Debug Area ring stations
+-- NEW CONTENT (Debug Area, DA-08, DA-11): the nine Debug Area ring stations
 -- (world 1300) and the console a player right-clicks at each one.
 --
 --   35  DebugArea_Ring_Compound     (224, 6.9, -938)  Z1 arrival, Z2 services plaza, Z3 dummies, Z8 cover course
@@ -9,8 +9,9 @@
 --   40  DebugArea_Ring_GalleryWest  (127, 23.06, -559)  Z7 enemy gallery, west half
 --   41  DebugArea_Ring_GalleryEast  (436, 23.09, -566)  Z7 enemy gallery, east half
 --   42  DebugArea_Ring_DeathYard    (437, 11.3, -937)  Z9 death and respawn test, respawner B
+--   43  DebugArea_Ring_Lineup       (287, 6.8, -914)  Z10 NPC lineup (DA-11), on the courtyard by the east wing's doorway
 --
--- Network: fully connected. Every station lists the other seven, so the
+-- Network: fully connected. Every station lists the other eight, so the
 -- destination list a console opens always offers the whole Debug Area. No
 -- cross-world destination: the Debug Area is GM-only (D-DA4), and a ring in
 -- another world that listed a Debug Area pad would hand ordinary players a
@@ -29,38 +30,44 @@
 -- destination list are in Content/Seed/debug_area_ring_chains.sql.
 --
 -- World 73 (the live Ihpet Crater) loads the same patched map and sees the
--- eight rigs as scenery: no region, console, chain or sequence is seeded for
+-- nine rigs as scenery: no region, console, chain or sequence is seeded for
 -- it, so nothing there can open or play them.
 --
 -- Id blocks (DA-08): ring regions 35-42, spawns 13810-13817. Spawn 13800 is
--- DA-07's DHD (spawnlist.sql).
+-- DA-07's DHD (spawnlist.sql). DA-11 adds region 43 and spawn 13818.
 
 SET search_path = resources, pg_catalog;
 
 -- Compound
-INSERT INTO ring_transport_regions (region_id, world_id, x, y, z, tag, height, radius, event_set_id, display_name_id, destination_region_ids, point_set_id, required_mission_id) VALUES (35, 1300, 224, 7.437, -938, 'DebugArea_Ring_CompoundRegion', 1.77, 3.53, 13810, 7508, '{36,37,38,39,40,41,42}', 13810, NULL);
+INSERT INTO ring_transport_regions (region_id, world_id, x, y, z, tag, height, radius, event_set_id, display_name_id, destination_region_ids, point_set_id, required_mission_id) VALUES (35, 1300, 224, 7.437, -938, 'DebugArea_Ring_CompoundRegion', 1.77, 3.53, 13810, 7508, '{36,37,38,39,40,41,42,43}', 13810, NULL);
 INSERT INTO spawnlist (spawn_id, x, y, z, heading, world_id, template_id, tag, set_name) VALUES (13810, 226.88, 7.34, -936.68, -2.0617, 1300, 3, 'DebugArea_Ring_Compound', NULL);
 -- Faction yard
-INSERT INTO ring_transport_regions (region_id, world_id, x, y, z, tag, height, radius, event_set_id, display_name_id, destination_region_ids, point_set_id, required_mission_id) VALUES (36, 1300, 394, -10.593, -738, 'DebugArea_Ring_FactionYardRegion', 1.77, 3.53, 13811, 7508, '{35,37,38,39,40,41,42}', 13811, NULL);
+INSERT INTO ring_transport_regions (region_id, world_id, x, y, z, tag, height, radius, event_set_id, display_name_id, destination_region_ids, point_set_id, required_mission_id) VALUES (36, 1300, 394, -10.593, -738, 'DebugArea_Ring_FactionYardRegion', 1.77, 3.53, 13811, 7508, '{35,37,38,39,40,41,42,43}', 13811, NULL);
 INSERT INTO spawnlist (spawn_id, x, y, z, heading, world_id, template_id, tag, set_name) VALUES (13811, 396.88, -10.69, -736.68, -2.0617, 1300, 3, 'DebugArea_Ring_FactionYard', NULL);
 -- AI slope
-INSERT INTO ring_transport_regions (region_id, world_id, x, y, z, tag, height, radius, event_set_id, display_name_id, destination_region_ids, point_set_id, required_mission_id) VALUES (37, 1300, 81, 0.587, -782, 'DebugArea_Ring_AiSlopeRegion', 1.77, 3.53, 13812, 7508, '{35,36,38,39,40,41,42}', 13812, NULL);
+INSERT INTO ring_transport_regions (region_id, world_id, x, y, z, tag, height, radius, event_set_id, display_name_id, destination_region_ids, point_set_id, required_mission_id) VALUES (37, 1300, 81, 0.587, -782, 'DebugArea_Ring_AiSlopeRegion', 1.77, 3.53, 13812, 7508, '{35,36,38,39,40,41,42,43}', 13812, NULL);
 INSERT INTO spawnlist (spawn_id, x, y, z, heading, world_id, template_id, tag, set_name) VALUES (13812, 83.88, 0.49, -780.68, -2.0617, 1300, 3, 'DebugArea_Ring_AiSlope', NULL);
 -- Arena rim
-INSERT INTO ring_transport_regions (region_id, world_id, x, y, z, tag, height, radius, event_set_id, display_name_id, destination_region_ids, point_set_id, required_mission_id) VALUES (38, 1300, 176, -6.653, -702, 'DebugArea_Ring_ArenaRimRegion', 1.77, 3.53, 13813, 7508, '{35,36,37,39,40,41,42}', 13813, NULL);
+INSERT INTO ring_transport_regions (region_id, world_id, x, y, z, tag, height, radius, event_set_id, display_name_id, destination_region_ids, point_set_id, required_mission_id) VALUES (38, 1300, 176, -6.653, -702, 'DebugArea_Ring_ArenaRimRegion', 1.77, 3.53, 13813, 7508, '{35,36,37,39,40,41,42,43}', 13813, NULL);
 INSERT INTO spawnlist (spawn_id, x, y, z, heading, world_id, template_id, tag, set_name) VALUES (13813, 178.88, -6.75, -700.68, -2.0617, 1300, 3, 'DebugArea_Ring_ArenaRim', NULL);
 -- Arena pit station (moved to the east shelf: the pit floor is a water plane)
-INSERT INTO ring_transport_regions (region_id, world_id, x, y, z, tag, height, radius, event_set_id, display_name_id, destination_region_ids, point_set_id, required_mission_id) VALUES (39, 1300, 331, -10.583, -693, 'DebugArea_Ring_ArenaPitRegion', 1.77, 3.53, 13814, 7508, '{35,36,37,38,40,41,42}', 13814, NULL);
+INSERT INTO ring_transport_regions (region_id, world_id, x, y, z, tag, height, radius, event_set_id, display_name_id, destination_region_ids, point_set_id, required_mission_id) VALUES (39, 1300, 331, -10.583, -693, 'DebugArea_Ring_ArenaPitRegion', 1.77, 3.53, 13814, 7508, '{35,36,37,38,40,41,42,43}', 13814, NULL);
 INSERT INTO spawnlist (spawn_id, x, y, z, heading, world_id, template_id, tag, set_name) VALUES (13814, 333.88, -10.68, -691.68, -2.0617, 1300, 3, 'DebugArea_Ring_ArenaPit', NULL);
 -- Gallery west
-INSERT INTO ring_transport_regions (region_id, world_id, x, y, z, tag, height, radius, event_set_id, display_name_id, destination_region_ids, point_set_id, required_mission_id) VALUES (40, 1300, 127, 23.597, -559, 'DebugArea_Ring_GalleryWestRegion', 1.77, 3.53, 13815, 7508, '{35,36,37,38,39,41,42}', 13815, NULL);
+INSERT INTO ring_transport_regions (region_id, world_id, x, y, z, tag, height, radius, event_set_id, display_name_id, destination_region_ids, point_set_id, required_mission_id) VALUES (40, 1300, 127, 23.597, -559, 'DebugArea_Ring_GalleryWestRegion', 1.77, 3.53, 13815, 7508, '{35,36,37,38,39,41,42,43}', 13815, NULL);
 INSERT INTO spawnlist (spawn_id, x, y, z, heading, world_id, template_id, tag, set_name) VALUES (13815, 129.88, 23.5, -557.68, -2.0617, 1300, 3, 'DebugArea_Ring_GalleryWest', NULL);
 -- Gallery east
-INSERT INTO ring_transport_regions (region_id, world_id, x, y, z, tag, height, radius, event_set_id, display_name_id, destination_region_ids, point_set_id, required_mission_id) VALUES (41, 1300, 436, 23.627, -566, 'DebugArea_Ring_GalleryEastRegion', 1.77, 3.53, 13816, 7508, '{35,36,37,38,39,40,42}', 13816, NULL);
+INSERT INTO ring_transport_regions (region_id, world_id, x, y, z, tag, height, radius, event_set_id, display_name_id, destination_region_ids, point_set_id, required_mission_id) VALUES (41, 1300, 436, 23.627, -566, 'DebugArea_Ring_GalleryEastRegion', 1.77, 3.53, 13816, 7508, '{35,36,37,38,39,40,42,43}', 13816, NULL);
 INSERT INTO spawnlist (spawn_id, x, y, z, heading, world_id, template_id, tag, set_name) VALUES (13816, 438.88, 23.53, -564.68, -2.0617, 1300, 3, 'DebugArea_Ring_GalleryEast', NULL);
 -- Death yard
-INSERT INTO ring_transport_regions (region_id, world_id, x, y, z, tag, height, radius, event_set_id, display_name_id, destination_region_ids, point_set_id, required_mission_id) VALUES (42, 1300, 437, 11.837, -937, 'DebugArea_Ring_DeathYardRegion', 1.77, 3.53, 13817, 7508, '{35,36,37,38,39,40,41}', 13817, NULL);
+INSERT INTO ring_transport_regions (region_id, world_id, x, y, z, tag, height, radius, event_set_id, display_name_id, destination_region_ids, point_set_id, required_mission_id) VALUES (42, 1300, 437, 11.837, -937, 'DebugArea_Ring_DeathYardRegion', 1.77, 3.53, 13817, 7508, '{35,36,37,38,39,40,41,43}', 13817, NULL);
 INSERT INTO spawnlist (spawn_id, x, y, z, heading, world_id, template_id, tag, set_name) VALUES (13817, 439.88, 11.74, -935.68, -2.0617, 1300, 3, 'DebugArea_Ring_DeathYard', NULL);
+-- Lineup (DA-11): the courtyard north of the Lords' circle, 20 m on foot from
+-- the Z10 lineup's doorway (300, 6.8, -897). The rig base stands on the
+-- paving's top (occluder Geometry 6.5-6.8; terrain 6.58 round it), and no
+-- column within 8 m of the pad holds anything solid below 8 m overhead.
+INSERT INTO ring_transport_regions (region_id, world_id, x, y, z, tag, height, radius, event_set_id, display_name_id, destination_region_ids, point_set_id, required_mission_id) VALUES (43, 1300, 287, 7.337, -914, 'DebugArea_Ring_LineupRegion', 1.77, 3.53, 13818, 7508, '{35,36,37,38,39,40,41,42}', 13818, NULL);
+INSERT INTO spawnlist (spawn_id, x, y, z, heading, world_id, template_id, tag, set_name) VALUES (13818, 289.88, 7.24, -912.68, -2.0617, 1300, 3, 'DebugArea_Ring_Lineup', NULL);
 
-SELECT pg_catalog.setval('ring_transport_regions_region_id_seq', GREATEST((SELECT MAX(region_id) FROM ring_transport_regions), (SELECT last_value FROM ring_transport_regions_region_id_seq), 42), true);
-SELECT pg_catalog.setval('spawnlist_spawn_id_seq', GREATEST((SELECT MAX(spawn_id) FROM spawnlist), (SELECT last_value FROM spawnlist_spawn_id_seq), 13817), true);
+SELECT pg_catalog.setval('ring_transport_regions_region_id_seq', GREATEST((SELECT MAX(region_id) FROM ring_transport_regions), (SELECT last_value FROM ring_transport_regions_region_id_seq), 43), true);
+SELECT pg_catalog.setval('spawnlist_spawn_id_seq', GREATEST((SELECT MAX(spawn_id) FROM spawnlist), (SELECT last_value FROM spawnlist_spawn_id_seq), 13818), true);
