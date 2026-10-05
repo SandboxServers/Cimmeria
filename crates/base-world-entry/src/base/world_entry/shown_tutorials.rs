@@ -125,7 +125,7 @@ pub(crate) async fn handle_record_tutorial_shown(
                 account_id = who.account_id,
                 account_name = who.account_name,
                 player_id,
-                session_player_id = who.player_id,
+                session_player_id = who.player_id, // nt:id-only the session's player, named by player_name on this row
                 player_name = who.player_name,
                 chain_id,
                 chain_name = chain_name.as_deref(),

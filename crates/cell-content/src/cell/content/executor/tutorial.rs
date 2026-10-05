@@ -166,8 +166,8 @@ pub async fn apply_tutorial_recorded(
             reason = "player_changed",
             entity_id,
             entity_name = who.player_name,
-            player_id,
-            current_player_id = who.player_id,
+            player_id, // nt:id-only the recorded character; it may have logged out, so no name is loaded
+            current_player_id = who.player_id, // nt:id-only named by entity_name on this row
             chain_id,
             chain_name = cimmeria_names::book().chain(chain_id),
             tutorial_id,

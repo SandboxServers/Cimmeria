@@ -157,7 +157,7 @@ fn convert_tutorial_shown(row: &DbConditionRow) -> Condition {
             chain_id = row.chain_id,
             chain_name = cimmeria_names::book().chain(row.chain_id),
             operator = %row.operator,
-            target_id = ?row.target_id,
+            target_id = ?row.target_id, // nt:id-only malformed or absent dialog id, nothing valid to name
             reason = "malformed_tutorial_shown",
             "tutorial_shown needs target_id = a tutorial dialog id and operator eq|neq \
              -- this row will never match",
