@@ -525,6 +525,17 @@ Kismet sequence), cloned by the same cloner with the same roots and the
   chunk: `cargo test -p cimmeria-patchset real_client_debug_area_lineup_ring -- --ignored`
   applies the zip to a copy, audits every name, and finds all nine rigs where
   the seed puts the pads.
+- **Lab check (2026-10-05).** A local server built from the DA-11 branch,
+  and the lab client with 014's chunk installed by hand over 011's: world
+  1300 and world 73 both loaded with no hang or crash, and the Lineup rig
+  stood lit on its pad in both. In world 1300 the Lineup console listed the
+  other eight stations and the Compound console listed the Lineup, its icon
+  where its coordinates put it on the world map. The trips Lineup to
+  Compound, Compound to Lineup, Lineup to Gallery east and back all
+  arrived, and the client ran both rigs' matinees for their full 6.05 s
+  every time. The client logs a `client.engine.load_failed` for each ring
+  sequence path it is sent, 011's as well as 014's, just before the matinee
+  plays, so that row is not a failure.
 - **Not published.** The entry to publish, as `cimmeria-patchset build`
   printed it (with `blob` pinned to the merge commit, plus its `title` and
   `description`):
