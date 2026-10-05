@@ -48,10 +48,8 @@ fn debug_area_is_a_shared_startup_space() {
 /// `debugarea.nav` / `.occ`.
 #[test]
 fn debug_area_space_runs_on_the_ihpet_crater_light_nav_and_occ() {
+    // The files are committed (not LFS), so a missing one is a failure.
     let dir = repo_file("data/spaces");
-    if !dir.join("ihpet_crater_light.nav").exists() {
-        return; // fixture-less checkout
-    }
     let mut mgr = SpaceManager::new(1);
     mgr.space_data_dir = dir;
     mgr.parse_spaces_xml(&entities_file("spaces.xml")).unwrap();

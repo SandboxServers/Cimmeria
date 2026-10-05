@@ -42,9 +42,15 @@ pub(crate) use super::{
 
 /// Look up the world_id for a world name (from db/resources/Worlds/Seed/worlds.sql).
 ///
-/// An unknown name is logged and answered with 1 (CombatSim), which makes the
-/// client load the wrong world; every `spaces.xml` world must resolve here
-/// (`every_declared_space_resolves_to_its_seed_world_id` guards that).
+/// The id the client keeps as its current world is `setupWorldParameters`'
+/// `worldId` (`getCurrentWorldID`: minimap name, world map, mission and squad
+/// map markers). `onClientMapLoad` also carries it, but the client reads that
+/// copy and discards it (SGW.exe `FUN_00df27f0`; see the bigworld-engine-advisor
+/// memory `client-world-id-and-same-map-load`). An unknown name is logged and
+/// answered with 1 (CombatSim), so the client would label the world as
+/// CombatSim; every `spaces.xml` world must resolve here
+/// (`every_declared_space_resolves_to_its_seed_world_id_and_client_map`
+/// guards that).
 pub(crate) fn world_id_for_name(world_name: &str) -> i32 {
     known_world_id(world_name).unwrap_or_else(|| {
         tracing::warn!(world = %world_name, "Unknown world_id — using 1 (CombatSim)");

@@ -136,3 +136,14 @@ transport, historical CellBlocks, gate travel) stay tested in their own zones.
 - NPC heights on open terrain (navmesh vs terrain gap).
 - Invisible walls or blockers at compound doorways.
 - The map's own Kismet or stargate prefab firing on load with no gate row seeded.
+- `.gotolocation DebugArea` from Ihpet_Crater_Light (world 73), and back. Both
+  send `mapPath = Ihpet_Crater_Light`, and the client skips the UE3 load when
+  `mapPath` equals the map it holds (SGW.exe `FUN_00df27f0`). Expected: no
+  loading screen, world 73's level state (Kismet, map actors) carries over,
+  and the entry still completes, because the client still sends
+  `onClientReady` and the base already finishes cross-world entries from it
+  (`handle_on_client_ready` synthesises `mapLoaded`). A stall would be fixed
+  server-side.
+- The minimap location text reads the world-1300 name
+  (`getWorldInfo(1300).Name`, from `setupWorldParameters.worldId`), and the
+  world map copes with an id that has no shipped map data.

@@ -14,7 +14,8 @@
 //! names these worlds is data, checked against it by tests:
 //!
 //! - [`super::world_id_for_name`] and [`super::client_map_for_world`], which
-//!   build `onClientMapLoad` and `setupWorldParameters`;
+//!   build `setupWorldParameters` (`worldId`, the client's current world) and
+//!   `onClientMapLoad` (`mapPath`, the package it loads);
 //! - the category-12 `CookedWorldInfo` entries the server pushes
 //!   (`cimmeria_resources::base::world_info_overrides`), which is how the
 //!   client learns the id exists at all;
@@ -40,12 +41,17 @@ pub enum AddedWorldOrigin {
 /// One Cimmeria-added world.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct AddedWorld {
-    /// `resources.worlds.world_id`, the `WorldID` sent in `onClientMapLoad`
-    /// and the cooked catalogue key (`_<world_id>`).
+    /// `resources.worlds.world_id`, the `worldId` sent in
+    /// `setupWorldParameters` (what the client takes as its current world;
+    /// `onClientMapLoad` repeats it and the client discards that copy) and the
+    /// cooked catalogue key (`_<world_id>`).
     pub world_id: i32,
     /// World name a GM types and the name the server keys the world by.
     pub world: &'static str,
     /// Client package the map loads from (`mapPath` in `onClientMapLoad`).
+    /// The client skips the UE3 load when `mapPath` equals the map it already
+    /// has, so travel between this world and the shipped world on the same map
+    /// keeps the loaded level (DA-06 checks the result).
     pub client_map: &'static str,
     /// `Flags` of the pushed `COOKED_WORLD_INFO` entry. Copied from the
     /// shipped entry of the map the world plays on: 1 for the CellBlock

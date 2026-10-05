@@ -74,9 +74,9 @@ fn declared_spaces() -> Vec<String> {
 /// map. Regression guard for the gap where Sewer_Falls (50), Dakara_E1 (61),
 /// Dakara_E1_StoryRm (62), Harset_Market (69), Harset_StorageRm (70),
 /// Ihpet_Crater_Dark (72), Ihpet_Crater_Light (73) and Menfa_Light (78) fell
-/// through to WorldID 1 (CombatSim): `onClientMapLoad` and
-/// `setupWorldParameters` told the client it was in CombatSim while it loaded
-/// the right map.
+/// through to world id 1 (CombatSim): the client loaded the right map, but
+/// `setupWorldParameters.worldId`, which sets the client's current world
+/// (minimap name, world map, mission and squad markers), said CombatSim.
 #[test]
 fn every_declared_space_resolves_to_its_seed_world_id_and_client_map() {
     let rows = seed_rows();

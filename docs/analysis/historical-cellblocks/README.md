@@ -36,7 +36,7 @@ The handoff reports that each VPatch output matched the destination MD5 stored i
 | Piece | Where | What it does |
 |---|---|---|
 | The table | `crates/wire/src/mercury/world_data/added_worlds.rs` | `ADDED_WORLDS`, the one Rust copy of the contract above, shared since DA-01 with the Debug Area (1300); `historical_cellblocks()` / `historical_cellblock()` in `historical_cellblocks.rs` filter it to these seven |
-| World id and client map | `world_id_for_name`, `client_map_for_world` in `crates/wire/src/mercury/world_data/mod.rs` | `onClientMapLoad` sends `areaName = CellBlock43`, `mapPath = C43485_CellBlock`, `WorldID = 1201`; `setupWorldParameters` sends 1201 |
+| World id and client map | `world_id_for_name`, `client_map_for_world` in `crates/wire/src/mercury/world_data/mod.rs` | `onClientMapLoad` sends `areaName = CellBlock43`, `mapPath = C43485_CellBlock`, `WorldID = 1201`; `setupWorldParameters` sends `worldId = 1201`, which is the copy the client keeps as its current world (it discards `onClientMapLoad`'s) |
 | Seed | `db/resources/Worlds/Seed/worlds.sql` | Seven rows: `flags = 1`, `has_script = false`, `navmesh_mode = 'advisory'`, and the stock CellBlock row's movement values copied verbatim |
 | Spaces | `entities/spaces.xml` | Seven `Instanced="true"` entries with the stock CellBlock bounds; none in `entities/cell_spaces.xml` |
 | Client world table | `crates/resources/src/base/world_info_overrides.rs` | Seven `COOKED_WORLD_INFO` entries pushed per key on category 12; see [World info overrides](../../architecture/mission-pak-overrides.md#world-info-overrides-category-12) |

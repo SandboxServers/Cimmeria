@@ -136,10 +136,19 @@ async fn aggro_column_checks_reject_bad_values() {
 /// it is an unkillable container now, Decision (@Cadacious, 2026-09-28).) The only seeded aggro radii are the Castle
 /// population's guard templates: 15 u inside (181-183), 20 u outside (184-186)
 /// (docs/analysis/castle-population/README.md, D-CP04).
+///
+/// The Debug Area (world 1300, `docs/content/debug-area.md`) is a GM test map
+/// that tunes both on purpose, station by station, and its own live-DB guards
+/// pin each one, so its rows are left out here.
 #[tokio::test]
 async fn seed_overrides_only_the_chain_armed_spawns() {
     let pool = require_db_or_skip!();
-    let spawns = load_spawns_from_db(&pool).await.expect("load spawns");
+    let spawns: Vec<_> = load_spawns_from_db(&pool)
+        .await
+        .expect("load spawns")
+        .into_iter()
+        .filter(|s| s.world_name != "DebugArea")
+        .collect();
     let mut overridden: Vec<_> = spawns
         .iter()
         .filter_map(|s| s.aggression_override.map(|l| (s.spawn_id, l)))
