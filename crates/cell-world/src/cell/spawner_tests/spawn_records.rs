@@ -73,6 +73,7 @@ fn make_test_record(world_name: &str, tag: Option<&str>, class: &str) -> SpawnRe
         vault_scope: cimmeria_entity::cell_entity::VaultScope::Personal,
         training_dummy: false,
         display_name: None,
+        tint: None,
     }
 }
 

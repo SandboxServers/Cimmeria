@@ -46,6 +46,7 @@ pub async fn load_spawns_from_db(pool: &PgPool) -> Result<Vec<SpawnRecord>, sqlx
                COALESCE(t.move_speed, 0.6) AS move_speed, \
                t.leash_distance, t.aggro_radius, t.assist_radius, s.aggression_override, \
                t.use_cover, t.vault_scope, t.training_dummy, t.display_name, \
+               t.send_tint, t.primary_color_id, t.secondary_color_id, t.skin_tint, \
                COALESCE(s.respawn_secs, t.respawn_secs) AS respawn_secs, \
                COALESCE( \
                  (SELECT array_agg(asa.ability_id ORDER BY asa.ability_id) \
@@ -130,6 +131,7 @@ pub async fn load_spawns_from_db(pool: &PgPool) -> Result<Vec<SpawnRecord>, sqlx
                 vault_scope,
                 training_dummy: r.get::<bool, _>("training_dummy"),
                 display_name: r.get::<Option<String>, _>("display_name"),
+                tint: super::templates::decode_tint(r)?,
             })
         })
         .collect::<Result<Vec<_>, _>>()?;

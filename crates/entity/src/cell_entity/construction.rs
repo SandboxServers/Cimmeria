@@ -54,6 +54,7 @@ impl CellEntity {
             tag: None,
             name_id: None,
             display_name: None,
+            tint: None,
             speaker_id: None,
             event_set_id: None,
             interaction_type_flags: 0,

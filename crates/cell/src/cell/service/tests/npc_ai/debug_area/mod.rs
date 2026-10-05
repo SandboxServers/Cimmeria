@@ -223,6 +223,7 @@ fn world_records() -> Vec<SpawnRecord> {
             vault_scope: VaultScope::Personal,
             training_dummy: false,
             display_name: None,
+            tint: None,
         }
     })
     .collect()

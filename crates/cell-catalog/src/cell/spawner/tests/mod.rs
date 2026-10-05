@@ -33,6 +33,9 @@
 //!   lineup (DA-10, world 1300, templates 1410-1599, spawns 13870-14099):
 //!   every character look has one passive display actor, so a template
 //!   with a new look fails until it is placed in the lineup.
+//! - [`live_db_debug_area_lineup_tint`]: the opt-in NPC tint (`send_tint`):
+//!   every lineup actor sends its source template's colours, no other
+//!   template opts in, and both loaders carry the wire `u32`s.
 //! - [`live_db_debug_area_npcs`]: live-DB guards for Debug Area packet DA-03
 //!   (world 1300, templates 1330-1369, spawns 13200-13599): every row in its
 //!   zone, the stations' behaviour columns, and a passive gallery holding every
@@ -107,6 +110,7 @@ mod live_db_castle_standoff;
 mod live_db_content_loaders;
 mod live_db_crafting_hub;
 mod live_db_debug_area_lineup;
+mod live_db_debug_area_lineup_tint;
 mod live_db_debug_area_npcs;
 mod live_db_debug_area_plaza;
 mod live_db_debug_auctioneer;

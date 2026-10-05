@@ -90,6 +90,7 @@ macro_rules! entity_template_select {
                     COALESCE(t.move_speed, 0.6) AS move_speed, \
                     t.leash_distance, t.aggro_radius, t.assist_radius, \
                     t.use_cover, t.vault_scope, t.training_dummy, t.display_name, \
+                    t.send_tint, t.primary_color_id, t.secondary_color_id, t.skin_tint, \
                     t.respawn_secs, \
                     COALESCE( \
                       (SELECT array_agg(asa.ability_id ORDER BY asa.ability_id) \
@@ -274,12 +275,38 @@ pub fn build_prototype(
         vault_scope: decode_vault_scope(row)?,
         training_dummy: row.try_get::<bool, _>("training_dummy")?,
         display_name: row.try_get::<Option<String>, _>("display_name")?,
+        tint: decode_tint(row)?,
     })
 }
 
 /// Decode `entity_templates.vault_scope` (D-BV09). The column's `CHECK`
 /// allows only the three scopes, so an unknown value is schema drift and
 /// fails the load rather than quietly becoming `Personal`.
+/// The template's `onEntityTint` colours when `send_tint` opts it in, else
+/// `None` (the NPC keeps `onEntityTint(0, 0, 0)`). A colour column wider than
+/// 32 bits fails the load, like an unknown `vault_scope`; the table's CHECK
+/// keeps the seed from holding one.
+pub(crate) fn decode_tint(
+    row: &sqlx::postgres::PgRow,
+) -> Result<Option<cimmeria_entity::cell_entity::EntityTint>, sqlx::Error> {
+    use sqlx::Row;
+
+    if !row.try_get::<bool, _>("send_tint")? {
+        return Ok(None);
+    }
+    let column = |name: &str| row.try_get::<i64, _>(name);
+    cimmeria_entity::cell_entity::EntityTint::from_template_columns(
+        column("primary_color_id")?,
+        column("secondary_color_id")?,
+        column("skin_tint")?,
+    )
+    .map(Some)
+    .map_err(|value| sqlx::Error::ColumnDecode {
+        index: "primary_color_id/secondary_color_id/skin_tint".to_string(),
+        source: format!("{value} is not a 32-bit colour").into(),
+    })
+}
+
 pub(crate) fn decode_vault_scope(
     row: &sqlx::postgres::PgRow,
 ) -> Result<cimmeria_entity::cell_entity::VaultScope, sqlx::Error> {
