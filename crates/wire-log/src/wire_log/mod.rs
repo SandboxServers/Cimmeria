@@ -147,8 +147,8 @@ pub fn log_outbound_entity_method(
         truncated = args_len > HEX_DUMP_CAP,
         args_hex = %args_hex,
         decoded = decoded_str.as_deref().unwrap_or(""),
-        witness_id,
-        target_entity_id,
+        witness_id, // nt:id-only per-packet row; wire-log has no entity registry
+        target_entity_id, // nt:id-only per-packet row; wire-log has no entity registry
         "wire_outbound"
     );
 

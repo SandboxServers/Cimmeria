@@ -6,7 +6,7 @@ use std::collections::{BTreeMap, BTreeSet};
 use super::pairing::{name_key_for, Verdict};
 use super::{
     baseline_total, bless_check, calls, compare, lexer, pairing, parse_baseline, render_baseline,
-    scan_source, Scan,
+    render_reset, scan_source, Scan,
 };
 
 /// `(key, verdict)` for every ID-shaped field of every event call in `src`.
@@ -460,6 +460,62 @@ fn f() {
     // forwarding.
     assert!(broken("macro_rules! m { ($e:expr) => { info!(a_name = $e, \"m\") }; }").is_empty());
     assert!(broken("macro_rules! m { ($l:expr) => { tracing::event!($l, \"m\") }; }").is_empty());
+}
+
+/// `tracing::$level!(…)` in a `macro_rules!` body is an event: its fields are
+/// fixed in the body and judged once, however many levels call it. A plain
+/// `$m!(…)` is not, and neither is a level wrapper's call site.
+#[test]
+fn level_parameter_event_macros_are_scanned() {
+    let src = "\
+macro_rules! row {
+    ($level:ident) => {
+        tracing::$level!(
+            target: \"abilities\",
+            ability_id = a,
+            ability_name = n,
+            npc_id = e,
+            \"refused\"
+        )
+    };
+}
+fn f(warned: bool) {
+    if warned { row!(warn) } else { row!(debug) }
+}
+";
+    assert_eq!(sites(src), [(7, "npc_id".to_string())]);
+    assert!(broken(src).is_empty());
+    assert!(keys("macro_rules! m { ($m:ident) => { $m!(a_id = 1) }; }").is_empty());
+    // With forwarded fields too, the call sites are expanded as before.
+    let forwarding = "\
+macro_rules! w {
+    ($level:ident, $($t:tt)*) => { tracing::$level!(entity_id = e, entity_name = n, $($t)*) };
+}
+fn f() { w!(info, item_id = i, \"x\"); }
+";
+    assert_eq!(sites(forwarding), [(4, "item_id".to_string())]);
+    // An unpaired field fixed in a forwarding body is counted once, in the
+    // body, not again at each call site.
+    let fixed_unpaired = "macro_rules! w {
+    ($($t:tt)*) => { tracing::info!(npc_id = n, $($t)*) };
+}
+fn f() { w!(\"a\"); w!(\"b\"); }
+";
+    assert_eq!(sites(fixed_unpaired), [(2, "npc_id".to_string())]);
+}
+
+/// A reset rewrites the rows and leaves the old total in a `# reset` line,
+/// which parsing skips, so the rise shows in the diff and nowhere else.
+#[test]
+fn reset_records_the_old_total_in_the_file() {
+    let counts: BTreeMap<String, usize> = [("crates/x/src/a.rs".to_string(), 5)].into();
+    let text = render_reset(&counts, 3);
+    assert!(
+        text.contains("# reset by NT_BASELINE_RESET: total 3 -> 5"),
+        "{text}"
+    );
+    assert_eq!(baseline_total(&text), Some(5));
+    assert_eq!(parse_baseline(&text), counts);
 }
 
 /// A bless may move counts between files (a rename or a split) but never

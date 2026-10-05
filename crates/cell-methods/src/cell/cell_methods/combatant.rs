@@ -30,7 +30,12 @@ pub async fn dispatch(
                 return true;
             }
             let crouched = args[0] as i8;
-            tracing::debug!(entity_id, crouched, "setCrouched");
+            tracing::debug!(
+                entity_id,
+                entity_name = space_mgr.entity_label(entity_id),
+                crouched,
+                "setCrouched"
+            );
 
             if let Some(e) = space_mgr.get_entity_mut(entity_id) {
                 let old = e.state_field;
@@ -72,7 +77,12 @@ pub async fn dispatch(
                 return true;
             }
             let holstered = args[0] != 0;
-            tracing::debug!(entity_id, holstered, "requestHolsterWeapon");
+            tracing::debug!(
+                entity_id,
+                entity_name = space_mgr.entity_label(entity_id),
+                holstered,
+                "requestHolsterWeapon"
+            );
 
             // Update server-side holster state on `CellEntity` rather
             // than the long-defunct `BSF_HOLSTER` bit of `state_field`

@@ -261,8 +261,8 @@ pub(super) fn mint_inner(
     );
     tracing::debug!(
         session_id = %session_id, // nt:id-only generated UUID, nothing to name
-        install_id = %claims.sub,
-        machine_id = %req.machine_id,
+        install_id = %claims.sub, // nt:id-only a generated install UUID, nothing to name
+        machine_id = %req.machine_id, // nt:id-only an opaque machine fingerprint, nothing to name
         "dev-session caller identifiers (debug-only)"
     );
     Ok(DevSessionResponse {

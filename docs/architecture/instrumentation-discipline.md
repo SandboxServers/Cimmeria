@@ -564,6 +564,10 @@ How the scan reads the code and the baseline:
   A wrapper with no call site in its file fails the build unless its
   forwarding line carries a marker. So does renaming an event macro in a
   `use tracing::... as ...` import.
+- **A level parameter counts.** `tracing::$level!(...)` in a
+  `macro_rules!` body, the shape that logs one field list at two levels,
+  is an event like any other: its fields are judged once, in the body,
+  however many levels its call sites pass.
 - **Lists of IDs are out of scope.** `effect_ids`, `target_player_ids`
   and other `*_ids` keys aren't ID-shaped under the default rule, and the
   scan doesn't count them.
@@ -571,8 +575,11 @@ How the scan reads the code and the baseline:
   of the per-file rows. A bless (`NT_BASELINE_BLESS=1`) accepts any
   per-file change, a moved or split file included, while that total
   doesn't rise, and refuses otherwise; it panics under `CI`. A scanner
-  change that finds more fields is the one legitimate rise: empty the
-  file and bless, and the `# total` line shows the rise in review.
+  change that finds more fields is the one legitimate rise. It uses
+  `NT_BASELINE_RESET=1` instead, which rewrites the baseline whatever the
+  total does, prints the old and new totals, and leaves a
+  `# reset by NT_BASELINE_RESET: total N -> M` line in the file, so the
+  rise shows in review. Say why in the PR.
 - **What the ratchet can't see:** pairing one field and adding a new
   unpaired one in the same file keeps that file's count, so it passes.
   Review catches that, not the scan.

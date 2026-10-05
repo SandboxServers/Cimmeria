@@ -5,7 +5,7 @@
 use tokio::sync::mpsc;
 
 use super::super::super::messages::CellToBaseMsg;
-use super::super::super::space_manager::SpaceManager;
+use super::super::super::space_manager::{EntityNames, SpaceManager};
 
 /// Promote any reload whose warmup deadline has elapsed: refill the active
 /// bandolier slot's magazine, clear `reload_complete_at`, send `onStatUpdate`
@@ -62,6 +62,7 @@ pub(in crate::cell::service) async fn reload_completion_tick(
                     entity.reload_complete_at = None;
                     tracing::warn!(
                         entity_id,
+                        entity_name = EntityNames::of(entity).entity_name,
                         "reload tick: deadline set without slot_id, clearing"
                     );
                     continue;
@@ -90,7 +91,8 @@ pub(in crate::cell::service) async fn reload_completion_tick(
             if new_ammo.is_none() {
                 tracing::debug!(
                     entity_id,
-                    slot_id,
+                    entity_name = EntityNames::of(entity).entity_name,
+                    slot_id, // nt:id-only a bandolier slot index, not a named object
                     "reload tick: pinned slot empty, no refill"
                 );
                 continue;

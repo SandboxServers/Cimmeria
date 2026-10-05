@@ -53,6 +53,7 @@ impl ResourceCache {
             let Some(original) = items.elements.get(&ov.item_id) else {
                 tracing::warn!(
                     item_id = ov.item_id,
+                    item_name = cimmeria_names::book().item(ov.item_id),
                     "item override skipped: entry not present in PAK",
                 );
                 continue;
@@ -63,6 +64,7 @@ impl ResourceCache {
                     applied.push(ov.item_id);
                     tracing::info!(
                         item_id = ov.item_id,
+                        item_name = cimmeria_names::book().item(ov.item_id),
                         new_icon = ?ov.new_icon_location,
                         new_max_stack_size = ?ov.new_max_stack_size,
                         "Applied Cimmeria item override",
@@ -71,6 +73,7 @@ impl ResourceCache {
                 None => {
                     tracing::warn!(
                         item_id = ov.item_id,
+                        item_name = cimmeria_names::book().item(ov.item_id),
                         "item override skipped: XML shape did not match — keeping unpatched entry",
                     );
                 }
@@ -81,6 +84,7 @@ impl ResourceCache {
             if items.elements.contains_key(&item.item_id) {
                 tracing::warn!(
                     item_id = item.item_id,
+                    item_name = item.name,
                     reason = "id_ships_in_pak",
                     "item addition skipped: the PAK already ships this id",
                 );
@@ -90,7 +94,7 @@ impl ResourceCache {
             applied.push(item.item_id);
             tracing::info!(
                 item_id = item.item_id,
-                name = item.name,
+                item_name = item.name,
                 icon = item.icon_location,
                 max_stack_size = item.max_stack_size,
                 "Added Cimmeria item definition",
@@ -166,6 +170,7 @@ impl ResourceCache {
             applied.push(ov.dialog_id);
             tracing::info!(
                 dialog_id = ov.dialog_id,
+                dialog_name = cimmeria_names::book().dialog(ov.dialog_id),
                 replaced_existing = was_present,
                 "Applied Cimmeria dialog override",
             );
@@ -231,6 +236,7 @@ impl ResourceCache {
             let Some(original) = missions.elements.get(&ov.mission_id) else {
                 tracing::warn!(
                     mission_id = ov.mission_id,
+                    mission_name = cimmeria_names::book().mission(ov.mission_id),
                     "mission override skipped: entry not present in PAK",
                 );
                 continue;
@@ -246,12 +252,14 @@ impl ResourceCache {
                     }
                     tracing::info!(
                         mission_id = ov.mission_id,
+                        mission_name = cimmeria_names::book().mission(ov.mission_id),
                         "Applied Cimmeria mission override",
                     );
                 }
                 None => {
                     tracing::warn!(
                         mission_id = ov.mission_id,
+                        mission_name = cimmeria_names::book().mission(ov.mission_id),
                         "mission override skipped: XML shape did not match — keeping unpatched entry",
                     );
                 }
@@ -266,7 +274,9 @@ impl ResourceCache {
             let Some(original) = missions.elements.get(&ov.mission_id) else {
                 tracing::warn!(
                     mission_id = ov.mission_id,
+                    mission_name = cimmeria_names::book().mission(ov.mission_id),
                     step_id = ov.step_id,
+                    step_name = cimmeria_names::book().mission_step(ov.step_id),
                     "step text override skipped: mission entry not present in PAK",
                 );
                 continue;
@@ -279,14 +289,18 @@ impl ResourceCache {
                     }
                     tracing::info!(
                         mission_id = ov.mission_id,
+                        mission_name = cimmeria_names::book().mission(ov.mission_id),
                         step_id = ov.step_id,
+                        step_name = cimmeria_names::book().mission_step(ov.step_id),
                         "Applied Cimmeria step text override",
                     );
                 }
                 None => {
                     tracing::warn!(
                         mission_id = ov.mission_id,
+                        mission_name = cimmeria_names::book().mission(ov.mission_id),
                         step_id = ov.step_id,
+                        step_name = cimmeria_names::book().mission_step(ov.step_id),
                         "step text override skipped: XML shape did not match — keeping unpatched entry",
                     );
                 }
@@ -345,7 +359,8 @@ impl ResourceCache {
             applied.push(ov.sequence_id);
             tracing::info!(
                 sequence_id = ov.sequence_id,
-                event_id = ov.event_id,
+                sequence_name = cimmeria_names::book().sequence(ov.sequence_id),
+                event_id = ov.event_id, // nt:id-only a Kismet event number, no name table for it
                 replaced_existing = was_present,
                 "Applied Cimmeria Kismet sequence override",
             );

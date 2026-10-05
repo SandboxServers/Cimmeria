@@ -74,6 +74,7 @@ pub(super) async fn forward_squad_call(
                 player_id = player.player_id,
                 player_name = identity.player_name,
                 entity_id = player.entity_id,
+                entity_name = identity.player_name,
                 target_player_id,
                 target_player_name,
                 "squad action rejected"
@@ -104,6 +105,7 @@ pub(super) async fn forward_squad_call(
             player_id = player.player_id,
             player_name = identity.player_name,
             entity_id = player.entity_id,
+            entity_name = identity.player_name,
             kind,
             "squad call forwarded to the cell"
         );
@@ -118,6 +120,7 @@ pub(super) async fn forward_squad_call(
         player_id = player.player_id,
         player_name = identity.player_name,
         entity_id = player.entity_id,
+        entity_name = identity.player_name,
         kind,
         reason = "cell_unreachable",
         "squad call could not reach the cell -- answering with feedback"
@@ -193,6 +196,7 @@ fn unreachable_outcome(kind: &str, player: &OrgPlayer, identity: PlayerIdentity)
         player_id = player.player_id,
         player_name = identity.player_name,
         entity_id = player.entity_id,
+        entity_name = identity.player_name,
         "squad action rejected"
     );
     cimmeria_observability::counter!(

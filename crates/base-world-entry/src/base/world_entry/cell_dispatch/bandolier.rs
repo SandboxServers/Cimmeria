@@ -8,7 +8,6 @@ use std::sync::{Arc, Mutex};
 use cimmeria_mercury::transport::Transport;
 use sqlx::PgPool;
 
-use super::super::super::session_identity::identity_for_player;
 use super::super::super::ConnectedClientState;
 use super::super::methods::inventory::update_bandolier_ammo;
 
@@ -46,9 +45,9 @@ pub(super) async fn active_slot_update(
                 Ok(res) if res.rows_affected() == 0 => {
                     tracing::warn!(
                         entity_id,
-                        entity_name = identity_for_player(connected, player_id).player_name,
+                        entity_name = cimmeria_entity::known_names::player_name(player_id),
                         player_id,
-                        player_name = identity_for_player(connected, player_id).player_name,
+                        player_name = cimmeria_entity::known_names::player_name(player_id),
                         slot_id, // nt:id-only bandolier slot index 0-4, not a named row
                         "ActiveSlotUpdate: no rows updated"
                     );
@@ -58,9 +57,9 @@ pub(super) async fn active_slot_update(
                 Err(e) => {
                     tracing::warn!(
                         entity_id,
-                        entity_name = identity_for_player(connected, player_id).player_name,
+                        entity_name = cimmeria_entity::known_names::player_name(player_id),
                         player_id,
-                        player_name = identity_for_player(connected, player_id).player_name,
+                        player_name = cimmeria_entity::known_names::player_name(player_id),
                         slot_id, // nt:id-only bandolier slot index 0-4, not a named row
                         error = %e,
                         "ActiveSlotUpdate: DB write failed"
@@ -207,7 +206,6 @@ pub(super) async fn bandolier_ammo_update(
     current_ammo: i32,
     cur_ammo_type: i32,
     db_pool: &Option<Arc<PgPool>>,
-    connected: &Arc<Mutex<HashMap<SocketAddr, ConnectedClientState>>>,
 ) {
     // `player_id` from the cell is the DB character_id (matches the
     // `ActiveSlotUpdate` convention right above).
@@ -224,7 +222,7 @@ pub(super) async fn bandolier_ammo_update(
     {
         tracing::warn!(
             player_id,
-            player_name = identity_for_player(connected, player_id).player_name,
+            player_name = cimmeria_entity::known_names::player_name(player_id),
             slot_id,              // nt:id-only bandolier slot index 0-4, not a named row
             expected_instance_id, // nt:id-only inventory row id; naming it needs a DB read on the per-shot path
             current_ammo,
@@ -246,7 +244,7 @@ pub(super) async fn bandolier_ammo_update(
         {
             tracing::warn!(
                 player_id,
-                player_name = identity_for_player(connected, player_id).player_name,
+                player_name = cimmeria_entity::known_names::player_name(player_id),
                 slot_id, // nt:id-only bandolier slot index 0-4, not a named row
                 expected_instance_id, // nt:id-only inventory row id; naming it needs a DB read on the per-shot path
                 current_ammo,

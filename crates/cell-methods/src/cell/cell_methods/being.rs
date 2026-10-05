@@ -17,7 +17,15 @@ pub async fn dispatch(
         SET_TARGET_ID => {
             if args.len() >= 4 {
                 let target_id = i32::from_le_bytes([args[0], args[1], args[2], args[3]]);
-                tracing::debug!(entity_id, target_id, "setTargetID");
+                tracing::debug!(
+                    entity_id,
+                    entity_name = space_mgr.entity_label(entity_id),
+                    target_id,
+                    target_name = u32::try_from(target_id)
+                        .ok()
+                        .and_then(|t| space_mgr.entity_label(t)),
+                    "setTargetID"
+                );
 
                 // Persist the player's live target so the auto-cycle loop
                 // driver can read it every re-fire. `target_id == 0` is
@@ -91,13 +99,20 @@ pub async fn dispatch(
                     other => {
                         tracing::warn!(
                             entity_id,
+                            entity_name = space_mgr.entity_label(entity_id),
                             movement_type = other,
                             "setMovementType: unknown EMobMovementType value, dropping"
                         );
                         None
                     }
                 };
-                tracing::debug!(entity_id, movement_type, ?kind, "setMovementType");
+                tracing::debug!(
+                    entity_id,
+                    entity_name = space_mgr.entity_label(entity_id),
+                    movement_type,
+                    ?kind,
+                    "setMovementType"
+                );
                 crate::cell::abilities::broadcast_movement_type(entity_id, kind, tx, space_mgr)
                     .await;
             }

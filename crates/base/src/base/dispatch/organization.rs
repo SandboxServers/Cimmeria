@@ -124,6 +124,7 @@ pub(super) async fn handle_org_base_method(
                 player_id,
                 player_name,
                 entity_id,
+                entity_name = player_name,
                 reason = e.reason(),
                 error = %e,
                 "organization base method payload did not decode"
@@ -175,6 +176,7 @@ pub(super) async fn handle_org_base_method(
                 player_id,
                 player_name,
                 entity_id,
+                entity_name = player_name,
                 org_type,
                 "organizationInviteByType names no organization type"
             );
@@ -229,6 +231,7 @@ pub(super) async fn handle_org_base_method(
                 player_id,
                 player_name,
                 entity_id,
+                entity_name = player_name,
                 instance_id = org_id, // nt:id-only squad route decided by id; no org row loaded here
                 "squad rank change has no handler; answering with feedback"
             );

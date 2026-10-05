@@ -2,7 +2,8 @@
 //! field keys it records.
 //!
 //! Event macros only: `trace!`, `debug!`, `info!`, `warn!`, `error!` and
-//! `event!`, with or without a `tracing::` path. Span constructors
+//! `event!`, with or without a `tracing::` path, plus `tracing::$level!` in a
+//! `macro_rules!` body whose level is a metavariable. Span constructors
 //! (`info_span!`, `#[instrument]`) are outside Rule 6, and their names never
 //! match here.
 
@@ -37,11 +38,26 @@ fn line_at(code: &str, at: usize) -> usize {
 }
 
 pub(super) fn event_calls(src: &str, masked: &Masked) -> Vec<Call> {
-    macro_calls(src, masked, EVENT_MACROS)
+    scan_calls(src, masked, EVENT_MACROS, true)
 }
 
 /// Every call of a macro named in `names`, parsed like an event macro.
 pub(super) fn macro_calls(src: &str, masked: &Masked, names: &[&str]) -> Vec<Call> {
+    scan_calls(src, masked, names, false)
+}
+
+/// Whether `tracing::$` ends at `start`: an event macro whose level is a
+/// `macro_rules!` metavariable (`tracing::$level!(…)`).
+fn is_level_param(code: &str, start: usize) -> bool {
+    code[..start]
+        .strip_suffix('$')
+        .is_some_and(|before| before.ends_with("tracing::"))
+}
+
+/// With `level_params`, a `tracing::$level!(…)` call counts as an event
+/// macro too. Its fields are fixed in the `macro_rules!` body, so it is one
+/// event however many levels its call sites pass.
+fn scan_calls(src: &str, masked: &Masked, names: &[&str], level_params: bool) -> Vec<Call> {
     let code = masked.code.as_str();
     let bytes = code.as_bytes();
     let mut out = Vec::new();
@@ -56,7 +72,9 @@ pub(super) fn macro_calls(src: &str, masked: &Masked, names: &[&str]) -> Vec<Cal
             i += 1;
         }
         let preceded = start > 0 && is_ident(char::from(bytes[start - 1]));
-        if preceded || !names.contains(&&code[start..i]) {
+        let named =
+            names.contains(&&code[start..i]) || (level_params && is_level_param(code, start));
+        if preceded || !named {
             continue;
         }
         // `info!(…)`, `info! {…}`, `info![…]`: whitespace (and masked

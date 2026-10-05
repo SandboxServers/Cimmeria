@@ -121,7 +121,7 @@ pub fn note(entity_id: u32, kind: &'static str, detail: impl Into<String>) -> u6
     let seq = with(entity_id, |j| j.push(kind, detail.clone(), Instant::now()));
     tracing::debug!(
         target: "player.journal",
-        entity_id,
+        entity_id, // nt:id-only the journal keys by entity id; the wire crate has no registry
         seq,
         kind,
         detail = %detail,

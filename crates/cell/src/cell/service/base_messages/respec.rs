@@ -50,8 +50,10 @@ pub(super) async fn handle_abilities_reset(
             target: "abilities",
             event = "respec_player_mismatch",
             entity_id,
-            player_id,
+            entity_name = space_mgr.entity_label(entity_id),
+            player_id, // nt:id-only the reset character has left this entity; no live name
             current_player_id = ?current,
+            current_player_name = space_mgr.player_identity(entity_id).player_name,
             "AbilitiesReset: entity no longer plays the reset character — ignoring"
         );
         return;
@@ -118,6 +120,7 @@ pub(super) async fn handle_abilities_reset(
         target: "abilities",
         event = "respec_applied",
         entity_id,
+        entity_name = space_mgr.entity_label(entity_id),
         refunded = ?refunded,
         training_points,
         naquadah,
@@ -139,6 +142,7 @@ pub(super) async fn handle_abilities_reset(
             target: "abilities",
             event = "respec_cash_send_failed",
             entity_id,
+            entity_name = space_mgr.entity_label(entity_id),
             naquadah,
             error = %e,
             "AbilitiesReset: onCashChanged send failed; the balance shows stale until relog"
