@@ -117,8 +117,11 @@ pub(super) async fn apply_death_transition(
                     event = "wire_send_failed",
                     method = "ContactListPresenceEvent",
                     entity_id = target_eid,
+                    entity_name = space_mgr.entity_label(target_eid),
                     account_id = who.account_id,
+                    account_name = who.account_name,
                     player_id = who.player_id,
+                    player_name = who.player_name,
                     reason = "cell_to_base_closed",
                     "death presence event not queued: the cell-to-base channel is closed, so                      contacts never see \"has died\""
                 );
@@ -203,6 +206,7 @@ pub(super) async fn apply_death_transition(
                 target: "abilities",
                 event = "death_in_combat_cleared",
                 player_entity_id,
+                player_entity_name = space_mgr.entity_label(player_entity_id),
                 dying_npc = target_eid,
                 new_state,
                 new_state_names = %cimmeria_wire::state_field::STATE_FLAGS.render(new_state),
@@ -240,6 +244,7 @@ pub(super) async fn apply_death_transition(
             target: "abilities",
             event = "death_auto_cycle_cleared",
             player_entity_id,
+            player_entity_name = space_mgr.entity_label(player_entity_id),
             dying_target = target_eid,
             new_state,
             new_state_names = %cimmeria_wire::state_field::STATE_FLAGS.render(new_state),
@@ -279,6 +284,7 @@ pub(super) async fn apply_death_transition(
                 target: "abilities",
                 event = "death_own_auto_cycle_cleared",
                 player_entity_id = target_eid,
+                player_entity_name = space_mgr.entity_label(target_eid),
                 new_state,
                 new_state_names = %cimmeria_wire::state_field::STATE_FLAGS.render(new_state),
                 "death: clearing dying player's own auto-cycle loop"
@@ -446,8 +452,11 @@ pub(super) async fn resolve_death(
         target: "abilities",
         event = "target_killed",
         attacker = attacker_id,
+        attacker_name = space_mgr.entity_label(attacker_id),
         target = target_eid,
+        target_name = space_mgr.entity_label(target_eid),
         ability_id = ability_id.unwrap_or(-1),
+        ability_name = cimmeria_cell_world::cell::effects::content_names::ability_name(ability_id),
         is_npc = !target_is_player,
         "Target killed!"
     );

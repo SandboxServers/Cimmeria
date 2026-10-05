@@ -63,8 +63,11 @@ pub(crate) async fn resolve_warmups(
                     "caster_gone"
                 },
                 account_id = who.account_id,
+                account_name = who.account_name,
                 player_id = who.player_id,
+                player_name = who.player_name,
                 entity_id,
+                entity_name = space_mgr.entity_label(entity_id),
                 "warmup tick: expected a warming cast on this caster, found none; the stale candidate is dropped and nothing fires"
             );
             space_mgr.pending_casts.remove(&entity_id);
@@ -79,19 +82,27 @@ pub(crate) async fn resolve_warmups(
         if now < pc.fire_at {
             // Still warming: not a refusal, so TRACE (one row per 100 ms
             // tick per warming caster). The interrupt and fire rows carry
-            // the outcome.
-            tracing::trace!(
-                target: "abilities",
-                event = "warmup_pending",
-                stage = "warmup",
-                account_id = space_mgr.player_identity(entity_id).account_id,
-                player_id = space_mgr.player_identity(entity_id).player_id,
-                entity_id,
-                cast_id = pc.cast_id(),
-                ability_id = pc.ability_id,
-                remaining_ms = pc.fire_at.saturating_duration_since(now).as_millis() as u64,
-                "warmup tick: cast still warming"
-            );
+            // the outcome. Per tick, so one identity copy names the caster
+            // (a player's `entity_name` is its character name) and the
+            // ability's name is left to the launch and fire rows.
+            if tracing::enabled!(target: "abilities", tracing::Level::TRACE) {
+                let who = space_mgr.player_identity(entity_id);
+                tracing::trace!(
+                    target: "abilities",
+                    event = "warmup_pending",
+                    stage = "warmup",
+                    account_id = who.account_id,
+                    account_name = who.account_name,
+                    player_id = who.player_id,
+                    player_name = who.player_name,
+                    entity_id,
+                    entity_name = who.player_name,
+                    cast_id = pc.cast_id(), // nt:id-only per-cast sequence number, no name exists
+                    ability_id = pc.ability_id, // nt:id-only per-tick row: the launch and fire rows name the ability
+                    remaining_ms = pc.fire_at.saturating_duration_since(now).as_millis() as u64,
+                    "warmup tick: cast still warming"
+                );
+            }
             continue;
         }
         if let Some(reason) =
@@ -354,11 +365,16 @@ async fn fire_and_credit(
         event = "warmup_complete",
         stage = "fire",
         account_id = who.account_id,
+        account_name = who.account_name,
         player_id = who.player_id,
+        player_name = who.player_name,
         entity_id,
-        cast_id = pc.cast_id(),
+        entity_name = space_mgr.entity_label(entity_id),
+        cast_id = pc.cast_id(), // nt:id-only per-cast sequence number, no name exists
         ability_id = pc.ability_id,
+        ability_name = cimmeria_names::book().ability(pc.ability_id),
         target_id = pc.target_id,
+        target_name = space_mgr.entity_label(pc.target_id as u32),
         warmup_secs = pc.warmup_secs,
         "ability warmup complete; firing the cast"
     );

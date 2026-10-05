@@ -33,6 +33,7 @@ fn pulse(effect_id: i32, invoker: u32) -> ActiveEffectInstance {
         invoker_position_at_register: None,
         cast_id: Some(12),
         invoker_identity: Default::default(),
+        invoker_name: None,
     }
 }
 

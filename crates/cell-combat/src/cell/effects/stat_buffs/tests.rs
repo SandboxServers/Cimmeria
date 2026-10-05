@@ -47,6 +47,7 @@ fn stim(stat_id: i32, delta: i32, effect_id: i32, flags: u32) -> TimedEffectSpec
         stacking: TimedStacking::ReplaceSameStat,
         state_flags: 0,
         invoker_identity: Default::default(),
+        invoker_name: None,
     }
 }
 
@@ -65,6 +66,7 @@ fn aim(invoker_id: u32) -> TimedEffectSpec {
         stacking: TimedStacking::PerSource,
         state_flags: 0,
         invoker_identity: Default::default(),
+        invoker_name: None,
     }
 }
 

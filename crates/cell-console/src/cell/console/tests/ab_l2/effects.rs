@@ -70,6 +70,7 @@ async fn ab_l2_effects_reads_the_selected_target() {
             invoker_position_at_register: None,
             cast_id: Some(12),
             invoker_identity: Default::default(),
+            invoker_name: None,
         });
 
     let out = lines(&console(&mut mgr, Some(npc), ".effects").await);

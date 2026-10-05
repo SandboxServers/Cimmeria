@@ -108,11 +108,16 @@ pub(crate) async fn interrupt_pending_cast(
         event = "warmup_interrupted",
         stage = "end",
         account_id = who.account_id,
+        account_name = who.account_name,
         player_id = who.player_id,
+        player_name = who.player_name,
         entity_id,
-        cast_id = pc.cast_id(),
+        entity_name = space_mgr.entity_label(entity_id),
+        cast_id = pc.cast_id(), // nt:id-only per-cast sequence number, no name exists
         ability_id = pc.ability_id,
+        ability_name = cimmeria_names::book().ability(pc.ability_id),
         target_id = pc.target_id,
+        target_name = space_mgr.entity_label(pc.target_id as u32),
         reason = reason.as_str(),
         cooldown_refunded,
         "ability warmup interrupted; the cast did not fire"

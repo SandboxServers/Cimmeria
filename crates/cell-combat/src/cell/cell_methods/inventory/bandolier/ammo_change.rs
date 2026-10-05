@@ -157,6 +157,7 @@ pub async fn handle_request_ammo_change(
     if args.len() < 8 {
         tracing::warn!(
             entity_id,
+            entity_name = space_mgr.entity_label(entity_id),
             args_len = args.len(),
             reason = "truncated_args",
             "requestAmmoChange: truncated args"
@@ -165,13 +166,20 @@ pub async fn handle_request_ammo_change(
     }
     let instance_id = i32::from_le_bytes([args[0], args[1], args[2], args[3]]);
     let ammo_type = i32::from_le_bytes([args[4], args[5], args[6], args[7]]);
-    tracing::debug!(entity_id, instance_id, ammo_type, "requestAmmoChange");
+    tracing::debug!(
+        entity_id,
+        entity_name = space_mgr.entity_label(entity_id),
+        instance_id, // nt:id-only weapon inventory instance, no name of its own
+        ammo_type,
+        "requestAmmoChange"
+    );
 
     let (id, verdict) = {
         let Some(entity) = space_mgr.get_entity(entity_id) else {
             tracing::warn!(
                 entity_id,
-                instance_id,
+                entity_name = space_mgr.entity_label(entity_id),
+                instance_id, // nt:id-only weapon inventory instance, no name of its own
                 ammo_type,
                 reason = "entity_not_found",
                 "requestAmmoChange: no cell entity for the sender"
@@ -260,8 +268,15 @@ pub async fn handle_request_ammo_change(
             }
             Err(e) => {
                 tracing::warn!(
-                    entity_id, player_id, slot_id, expected_instance_id,
-                    item_id = target.design_id, cur_ammo_type = ammo_type,
+                    entity_id,
+                    entity_name = id.player_name,
+                    player_id,
+                    player_name = id.player_name,
+                    slot_id, // nt:id-only bandolier slot index, not a named object
+                    expected_instance_id, // nt:id-only weapon inventory instance, no name of its own
+                    item_id = target.design_id,
+                    item_name = cimmeria_cell_world::cell::effects::content_names::item_name(target.design_id),
+                    cur_ammo_type = ammo_type,
                     error = %e,
                     "BandolierAmmoUpdate (ammo change) send failed; dirty marker preserved for retry"
                 );
@@ -271,6 +286,7 @@ pub async fn handle_request_ammo_change(
     } else {
         tracing::warn!(
             entity_id,
+            entity_name = space_mgr.entity_label(entity_id),
             reason = "no_player_id",
             "requestAmmoChange: entity has no player_id — skipping persist"
         );
@@ -295,10 +311,14 @@ pub async fn handle_request_ammo_change(
         target: "bandolier",
         event = "ammo_type_change",
         account_id = id.account_id,
+        account_name = id.account_name,
         player_id = id.player_id,
+        player_name = id.player_name,
         entity_id,
+        entity_name = space_mgr.entity_label(entity_id),
         item_id = target.design_id,
-        instance_id,
+        item_name = cimmeria_cell_world::cell::effects::content_names::item_name(target.design_id),
+        instance_id, // nt:id-only weapon inventory instance, no name of its own
         ammo_type,
         prev_ammo_type = target.prev_ammo_type,
         is_active_slot = is_active,
@@ -323,12 +343,17 @@ async fn reject(
         event = "ammo_type_change_rejected",
         reason = refusal.reason(),
         account_id = id.account_id,
+        account_name = id.account_name,
         player_id = id.player_id,
+        player_name = id.player_name,
         entity_id,
+        entity_name = id.player_name,
         item_id = ammo_item_id,
+        item_name = cimmeria_cell_world::cell::effects::content_names::item_name(ammo_item_id),
         ammo_type,
-        weapon_instance_id = instance_id,
+        weapon_instance_id = instance_id, // nt:id-only weapon inventory instance, no name of its own
         weapon_item_id = refusal.design_id(),
+        weapon_item_name = cimmeria_cell_world::cell::effects::content_names::item_name(refusal.design_id()),
         "requestAmmoChange refused; the slot is unchanged"
     );
     let args = serialize_on_player_communication("SYSTEM", 0, CHAN_FEEDBACK, refusal.text());
@@ -346,8 +371,11 @@ async fn reject(
             event = "ammo_feedback_send_failed",
             reason = "base_channel_closed",
             account_id = id.account_id,
+            account_name = id.account_name,
             player_id = id.player_id,
+            player_name = id.player_name,
             entity_id,
+            entity_name = id.player_name,
             refusal = refusal.reason(),
             "requestAmmoChange: refusal feedback line could not be queued"
         );

@@ -45,9 +45,13 @@ pub(super) async fn send_not_known_feedback(
             target: "abilities",
             event = "not_known_feedback_send_failed",
             account_id = who.account_id,
+            account_name = who.account_name,
             player_id = who.player_id,
+            player_name = who.player_name,
             entity_id,
+            entity_name = who.player_name,
             ability_id,
+            ability_name = cimmeria_names::book().ability(ability_id),
             "useAbility: the not-known onErrorCode could not be queued (base channel closed)"
         );
     } else {

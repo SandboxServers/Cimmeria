@@ -12,7 +12,7 @@
 //! `player_id` name the shield's invoker, `target_id` and
 //! `target_player_id` the entity that holds it.
 
-use crate::cell::space_manager::SpaceManager;
+use crate::cell::space_manager::{EntityNames, SpaceManager};
 
 use super::ledger::log_removed;
 use super::StatBuffRemoval;
@@ -43,24 +43,32 @@ impl SpaceManager {
                 .map_or(0, |b| b.absorb_remaining());
             // The shield's entry names who put it up and with which cast
             // (AB-T1): the pools live on the entry, so its `cast_id` is theirs.
-            let (who, cast_id) = settled
+            let (who, invoker_name, cast_id) = settled
                 .drained
                 .iter()
                 .chain(entity.stat_buffs.entries.iter())
                 .find(|b| b.key() == (effect_id, invoker_id))
-                .map(|b| (b.invoker_identity, b.cast_id))
+                .map(|b| (b.invoker_identity, b.invoker_name, b.cast_id))
                 .unwrap_or_default();
             tracing::debug!(
                 target: "abilities",
                 event = "shield_absorbed",
                 account_id = who.account_id,
+                account_name = who.account_name,
                 player_id = who.player_id,
+                player_name = who.player_name,
                 entity_id = invoker_id,
+                // The invoker as the entry snapshotted it (see `log_removed`).
+                entity_name = invoker_name,
                 target_id = target,
+                target_name = EntityNames::of(entity).entity_name,
                 target_player_id = target_who.player_id,
+                target_player_name = target_who.player_name,
                 effect_id,
-                cast_id,
+                effect_name = cimmeria_names::book().effect(effect_id),
+                cast_id, // nt:id-only per-cast sequence number, no name exists
                 stat_id,
+                stat_name = cimmeria_entity::stats::stat_name(stat_id),
                 absorbed,
                 absorb_left = left,
                 "shield pool absorbed damage"
@@ -77,6 +85,7 @@ impl SpaceManager {
             log_removed(
                 target,
                 target_who,
+                EntityNames::of(entity).entity_name,
                 entry,
                 StatBuffRemoval::Drained,
                 (restored.clone(), restored),

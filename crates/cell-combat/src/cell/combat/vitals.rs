@@ -57,6 +57,15 @@ pub fn player_snapshot(space_mgr: &SpaceManager, entity_id: u32) -> Option<Vital
         .map(|e| Vitals::of(&e.stats))
 }
 
+/// The attacker's and ability's names a `damage_taken` row carries, resolved
+/// once per hit by the caller (`HitIds`), not again here.
+#[derive(Debug, Clone, Copy, Default)]
+pub struct HitNames {
+    pub attacker: cimmeria_entity::cell_entity::PlayerIdentity,
+    pub attacker_name: Option<&'static str>,
+    pub ability_name: Option<&'static str>,
+}
+
 /// One `vitals` `event = "damage_taken"` row: a player took a hit.
 ///
 /// `before` is the [`player_snapshot`] taken before the damage was applied;
@@ -70,6 +79,7 @@ pub fn log_damage_taken(
     ability_id: i32,
     result_code: u8,
     before: Vitals,
+    names: HitNames,
 ) {
     let Some(target) = space_mgr.get_entity(target_eid) else {
         return;
@@ -80,12 +90,19 @@ pub fn log_damage_taken(
         target: "vitals",
         event = "damage_taken",
         account_id = id.account_id,
+        account_name = id.account_name,
         player_id = id.player_id,
+        player_name = id.player_name,
         entity_id = target_eid,
+        entity_name = id.player_name,
         space_id = target.space_id.0,
+        world = space_mgr.world_name_for_space(target.space_id.0 as u32),
         attacker_entity_id = attacker_eid,
-        attacker_player_id = space_mgr.player_identity(attacker_eid).player_id,
+        attacker_entity_name = names.attacker_name,
+        attacker_player_id = names.attacker.player_id,
+        attacker_player_name = names.attacker.player_name,
         ability_id,
+        ability_name = names.ability_name,
         result_code,
         result = crate::cell::abilities::metrics::QrOutcome::from_code(result_code).label(),
         health_before = before.health,
@@ -102,16 +119,21 @@ pub fn log_damage_taken(
 }
 
 /// One `vitals` `event = "combat_sample"` row for a player in combat.
-pub fn log_combat_sample(entity: &CellEntity) {
+/// `space_mgr` names the player's world.
+pub fn log_combat_sample(space_mgr: &SpaceManager, entity: &CellEntity) {
     let v = Vitals::of(&entity.stats);
     let id = entity.identity();
     tracing::debug!(
         target: "vitals",
         event = "combat_sample",
         account_id = id.account_id,
+        account_name = id.account_name,
         player_id = id.player_id,
+        player_name = id.player_name,
         entity_id = entity.entity_id.0,
+        entity_name = id.player_name,
         space_id = entity.space_id.0,
+        world = space_mgr.world_name_for_space(entity.space_id.0 as u32),
         health = v.health,
         health_max = v.health_max,
         focus = v.focus,
@@ -160,8 +182,16 @@ mod tests {
             .get_mut(HEALTH)
             .unwrap()
             .update(0, 70, 100);
+        mgr.get_entity_mut(1)
+            .unwrap()
+            .stamp_log_names(Some("Teal'c"), Some("tealc_login"));
+        let names = HitNames {
+            attacker_name: Some("Jaffa Guard"),
+            ability_name: Some("Staff Blast"),
+            ..HitNames::default()
+        };
         let capture = LogCapture::install();
-        log_damage_taken(&mgr, 1, 900, 579, 1, before);
+        log_damage_taken(&mgr, 1, 900, 579, 1, before, names);
         let row = capture
             .find_message(Level::DEBUG, "vitals: player took damage")
             .expect("damage_taken row");
@@ -173,6 +203,12 @@ mod tests {
             ("entity_id", "1"),
             ("attacker_entity_id", "900"),
             ("ability_id", "579"),
+            // Rule 6 (NT-20): the hit names who was hit, by whom, with what.
+            ("player_name", "Teal'c"),
+            ("account_name", "tealc_login"),
+            ("entity_name", "Teal'c"),
+            ("attacker_entity_name", "Jaffa Guard"),
+            ("ability_name", "Staff Blast"),
             ("health_before", "100"),
             ("health", "70"),
             ("health_max", "100"),
@@ -198,7 +234,7 @@ mod tests {
         let mut mgr = mgr_with_player();
         mgr.get_entity_mut(1).unwrap().threatened_mobs.insert(900);
         let capture = LogCapture::install();
-        log_combat_sample(mgr.get_entity(1).unwrap());
+        log_combat_sample(&mgr, mgr.get_entity(1).unwrap());
         let row = capture
             .find_message(Level::DEBUG, "vitals: in-combat sample")
             .expect("combat_sample row");

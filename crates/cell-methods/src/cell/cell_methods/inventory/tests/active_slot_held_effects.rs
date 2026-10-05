@@ -33,6 +33,7 @@ fn held(effect_id: i32, ability_id: i32, stat: i32) -> TimedEffectSpec {
         stacking: TimedStacking::PerSource,
         state_flags: 0,
         invoker_identity: Default::default(),
+        invoker_name: None,
     }
 }
 

@@ -78,14 +78,20 @@ pub async fn handle_use_ability(
         resolve_weapon_redirect(entity_id, ability_id, ability_def, space_mgr);
     // Rule 5: every row below names the player (`None` for an NPC caster).
     let who = space_mgr.player_identity(entity_id);
+    // One lookup for the client's target: it is the resolved target too
+    // until the launch resolves another (`LaunchRow::set_target`).
+    let wire_target_name = super::gate_rows::target_label(space_mgr, target_id);
     // Every early return logs one row through it (AB-T2, `gate_rows`).
     let mut row = LaunchRow {
         who,
         entity_id,
+        entity_name: space_mgr.entity_names(entity_id).entity_name,
         ability_id,
-        ability_name: ability_def.as_ref().map_or("unknown", |d| d.name.as_str()),
+        ability_name: ability_def.as_ref().map(|d| d.name.as_str()),
         wire_target_id: target_id,
+        wire_target_name,
         target_id,
+        target_name: wire_target_name,
         caster: metrics::caster_kind(space_mgr, entity_id),
         world: metrics::world_of(space_mgr, entity_id),
     };
@@ -125,7 +131,7 @@ pub async fn handle_use_ability(
         row.refused(LaunchRefusal::NoBeneficialTarget);
         return false;
     };
-    row.target_id = target_id;
+    row.set_target(space_mgr, target_id);
     // The fire re-resolves a beneficial cast from what the client sent.
     let wire_target_id = if beneficial {
         client_target_id
@@ -511,20 +517,33 @@ pub async fn handle_use_ability(
     let effect_seq = entity.abilities.next_effect_id();
     tracing::Span::current().record("cast_id", effect_seq);
 
+    // The launch row reuses the names the gate row resolved.
+    let launched_wire_target_name = if wire_target_id == row.target_id {
+        row.target_name
+    } else if wire_target_id == row.wire_target_id {
+        row.wire_target_name
+    } else {
+        super::gate_rows::target_label(space_mgr, wire_target_id)
+    };
     tracing::info!(
         target: "abilities",
         event = "ability_launched",
         stage = "launch",
         account_id = who.account_id,
+        account_name = who.account_name,
         player_id = who.player_id,
+        player_name = who.player_name,
         entity_id,
-        cast_id = effect_seq,
+        entity_name = row.entity_name,
+        cast_id = effect_seq, // nt:id-only per-cast sequence number, no name exists
         ability_id,
         target_id,
+        target_name = row.target_name,
         wire_target_id,
+        wire_target_name = launched_wire_target_name,
         cooldown_secs,
         warmup_secs,
-        ability_name = ability_def.as_ref().map_or("unknown", |d| &d.name),
+        ability_name = ability_def.as_ref().map(|d| d.name.as_str()),
         "useAbility: launched"
     );
     // A beneficial cast's launch resolution, now it has a `cast_id`.

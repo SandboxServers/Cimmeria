@@ -90,14 +90,20 @@ impl EffectScript for RadiationDamage {
             tracing::debug!(
                 target: "abilities",
                 event = "radiation_pulse_skipped",
-                cast_id = ctx.row_ids().cast_id,
+                cast_id = ctx.row_ids().cast_id, // nt:id-only per-cast sequence number, no name exists
                 account_id = ctx.row_ids().account_id,
+                account_name = ctx.row_ids().account_name,
                 player_id = ctx.row_ids().player_id,
+                player_name = ctx.row_ids().player_name,
                 target_player_id = ctx.row_ids().target_player_id,
+                target_player_name = ctx.row_ids().target_player_name,
                 reason = "target_missing",
                 source_id = ctx.source_id,
+                source_name = ctx.space_mgr.caster_label(ctx.source_id),
                 target_id = ctx.target_id,
+                target_name = ctx.space_mgr.entity_label(ctx.target_id),
                 effect_id = ctx.effect.effect_id,
+                effect_name = cimmeria_names::book().effect(ctx.effect.effect_id),
                 "RadiationDamage: target missing, pulse skipped"
             );
             return;
@@ -110,14 +116,20 @@ impl EffectScript for RadiationDamage {
             tracing::debug!(
                 target: "abilities",
                 event = "radiation_pulse_skipped",
-                cast_id = ctx.row_ids().cast_id,
+                cast_id = ctx.row_ids().cast_id, // nt:id-only per-cast sequence number, no name exists
                 account_id = ctx.row_ids().account_id,
+                account_name = ctx.row_ids().account_name,
                 player_id = ctx.row_ids().player_id,
+                player_name = ctx.row_ids().player_name,
                 target_player_id = ctx.row_ids().target_player_id,
+                target_player_name = ctx.row_ids().target_player_name,
                 reason = "target_dead",
                 source_id = ctx.source_id,
+                source_name = ctx.space_mgr.caster_label(ctx.source_id),
                 target_id = ctx.target_id,
+                target_name = ctx.space_mgr.entity_label(ctx.target_id),
                 effect_id = ctx.effect.effect_id,
+                effect_name = cimmeria_names::book().effect(ctx.effect.effect_id),
                 "RadiationDamage: target already dead, pulse skipped"
             );
             return;
@@ -127,13 +139,19 @@ impl EffectScript for RadiationDamage {
         tracing::info!(
             target: "abilities",
             event = "radiation_pulse",
-            cast_id = ctx.row_ids().cast_id,
+            cast_id = ctx.row_ids().cast_id, // nt:id-only per-cast sequence number, no name exists
             account_id = ctx.row_ids().account_id,
+            account_name = ctx.row_ids().account_name,
             player_id = ctx.row_ids().player_id,
+            player_name = ctx.row_ids().player_name,
             target_player_id = ctx.row_ids().target_player_id,
+            target_player_name = ctx.row_ids().target_player_name,
             source_id = ctx.source_id,
+            source_name = ctx.space_mgr.caster_label(ctx.source_id),
             target_id = ctx.target_id,
+            target_name = ctx.space_mgr.entity_label(ctx.target_id),
             effect_id = ctx.effect.effect_id,
+            effect_name = cimmeria_names::book().effect(ctx.effect.effect_id),
             damage,
             health_before = before,
             health_after = after,

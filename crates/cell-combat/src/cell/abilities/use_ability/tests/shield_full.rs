@@ -71,6 +71,7 @@ fn fill(mgr: &mut SpaceManager) {
             duration_secs: Some(30.0),
             stacking: TimedStacking::PerSource,
             invoker_identity: Default::default(),
+            invoker_name: None,
         },
         Instant::now(),
     )

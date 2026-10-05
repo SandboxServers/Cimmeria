@@ -45,3 +45,71 @@ pub(crate) fn token(enum_name: &str, name: &str) -> i64 {
         _ => panic!("{enum_name}::{name} is declared twice"),
     }
 }
+
+/// Pin a name table to an `enumerations.xml` block in both directions:
+/// every token's id names that token, and every id in `range` the block
+/// does not declare names nothing.
+fn assert_table_matches(
+    enum_name: &str,
+    table: fn(i32) -> Option<&'static str>,
+    range: std::ops::RangeInclusive<i32>,
+) {
+    let client = tokens(enum_name);
+    assert!(!client.is_empty(), "{enum_name}: no tokens found");
+    for (id, name) in &client {
+        assert_eq!(table(*id as i32), Some(name.as_str()), "{enum_name} {id}");
+    }
+    for id in range {
+        if !client.iter().any(|(v, _)| *v == i64::from(id)) {
+            assert_eq!(table(id), None, "{enum_name}: {id} is not declared");
+        }
+    }
+}
+
+/// `bag_name` (the `bag_name` log field) spells every bag ID the way the
+/// client's `EInventoryContainerId` does, and names nothing else.
+#[test]
+fn bag_names_are_the_client_einventorycontainerid_tokens() {
+    assert_table_matches(
+        "EInventoryContainerId",
+        cimmeria_entity::inventory::bag_name,
+        -1..=200,
+    );
+}
+
+/// `stat_name` (the `stat_name` log field) is the client's `EStats` token
+/// for every stat, and names nothing else.
+#[test]
+fn stat_names_are_the_client_estats_tokens() {
+    use cimmeria_entity::stats::stat_name;
+    let client = tokens("EStats");
+    for (id, name) in &client {
+        assert_eq!(stat_name(*id as i32), Some(name.as_str()), "stat {id}");
+    }
+    let declared: Vec<i32> = client.iter().map(|(id, _)| *id as i32).collect();
+    for id in -1..200 {
+        if !declared.contains(&id) {
+            assert_eq!(stat_name(id), None, "stat {id} is not in EStats");
+        }
+    }
+}
+
+/// `target_type_name` spells `ETargetType` the client's way.
+#[test]
+fn target_type_names_are_the_client_etargettype_tokens() {
+    assert_table_matches(
+        "ETargetType",
+        cimmeria_entity::abilities::target_type_name,
+        -1..=64,
+    );
+}
+
+/// `sequence_event_name` spells `ESequenceEventType` the client's way.
+#[test]
+fn sequence_event_names_are_the_client_tokens() {
+    assert_table_matches(
+        "ESequenceEventType",
+        cimmeria_entity::abilities::sequence_event_name,
+        -1..=10_000,
+    );
+}

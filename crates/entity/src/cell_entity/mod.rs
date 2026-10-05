@@ -59,6 +59,9 @@ pub struct ActiveEffectInstance {
     /// this, never a lookup of `invoker_id` at fire time
     /// (instrumentation-discipline rule 5).
     pub invoker_identity: PlayerIdentity,
+    /// The invoker's name, snapshotted with the identity: an NPC's too, so
+    /// a mob's DoT rows name it after it died or its id was reused (Rule 6).
+    pub invoker_name: Option<&'static str>,
 }
 
 mod ability_state;

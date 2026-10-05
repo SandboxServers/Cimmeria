@@ -382,8 +382,13 @@ pub struct SpaceManager {
     /// The invoker of the deferred effect being resolved right now (a pulse,
     /// an expiry, a channel cancel), with the identity it snapshotted when
     /// its cast registered it (`effects::cast_scope`). `None` inside a live
-    /// cast, where the caster is looked up.
-    pub current_invoker: Option<(u32, cimmeria_entity::cell_entity::PlayerIdentity)>,
+    /// cast, where the caster is looked up. The third field is its name,
+    /// snapshotted with the identity (an NPC's too).
+    pub current_invoker: Option<(
+        u32,
+        cimmeria_entity::cell_entity::PlayerIdentity,
+        Option<&'static str>,
+    )>,
     /// In-game combat and ability debug (AB-N1, `cell::combat_debug`): who
     /// has it on, and the notes of the casts being resolved.
     pub combat_debug: crate::cell::combat_debug::CombatDebug,

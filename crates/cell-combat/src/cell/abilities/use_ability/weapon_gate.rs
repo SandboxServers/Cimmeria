@@ -51,9 +51,13 @@ pub(super) async fn hold_weapon_attack(
             target: "abilities",
             event = "weapon_attack_already_queued",
             account_id = who.account_id,
+            account_name = who.account_name,
             player_id = who.player_id,
+            player_name = who.player_name,
             entity_id,
+            entity_name = space_mgr.entity_label(entity_id),
             ability_id,
+            ability_name = cimmeria_names::book().ability(ability_id),
             "useAbility: weapon attack already queued (mid-draw), ignoring input"
         );
         metrics::refused_in(
@@ -80,9 +84,13 @@ pub(super) async fn hold_weapon_attack(
             target: "abilities",
             event = "weapon_swap_in_progress",
             account_id = who.account_id,
+            account_name = who.account_name,
             player_id = who.player_id,
+            player_name = who.player_name,
             entity_id,
+            entity_name = space_mgr.entity_label(entity_id),
             ability_id,
+            ability_name = cimmeria_names::book().ability(ability_id),
             "useAbility: bandolier slot swap in progress, weapon attack blocked"
         );
         metrics::refused_in(
@@ -115,10 +123,15 @@ pub(super) async fn hold_weapon_attack(
         target: "abilities",
         event = "weapon_draw_queued",
         account_id = who.account_id,
+        account_name = who.account_name,
         player_id = who.player_id,
+        player_name = who.player_name,
         entity_id,
+        entity_name = space_mgr.entity_label(entity_id),
         ability_id,
+        ability_name = cimmeria_names::book().ability(ability_id),
         target_id,
+        target_name = space_mgr.entity_label(target_id as u32),
         "useAbility: holstered → queueing attack, drawing weapon first"
     );
     metrics::cast_in(space_mgr, entity_id, CastOutcome::Held);

@@ -130,7 +130,12 @@ pub async fn send_entity_method(
 /// entity (today only `onTimerUpdate`; see [`super::timer_update`]). Every
 /// such send is a silent drop on the witness's client, so reaching this is a
 /// caller that bypassed [`super::timer_update::send_timer_update`]: WARN.
-fn refuse_unbound_npc_method(entity_id: u32, method_index: u16, via: &'static str) -> bool {
+fn refuse_unbound_npc_method(
+    space_mgr: &SpaceManager,
+    entity_id: u32,
+    method_index: u16,
+    via: &'static str,
+) -> bool {
     if !super::timer_update::unbound_on_non_player(method_index) {
         return false;
     }
@@ -138,6 +143,7 @@ fn refuse_unbound_npc_method(entity_id: u32, method_index: u16, via: &'static st
         target: "abilities.wire",
         event = "wire_npc_method_unbound",
         entity_id,
+        entity_name = space_mgr.entity_label(entity_id),
         method_index,
         method_name = cimmeria_wire::names::any_entity_client_method(method_index),
         via,
@@ -225,7 +231,7 @@ fn witness_audience(
         WireRoute::SelfOnly => Vec::new(),
         WireRoute::EntityDefault if is_player => Vec::new(),
         WireRoute::EntityDefault => {
-            if refuse_unbound_npc_method(entity_id, method_index, "send_entity_method") {
+            if refuse_unbound_npc_method(space_mgr, entity_id, method_index, "send_entity_method") {
                 return Vec::new();
             }
             let witnesses = space_mgr.get_witnesses_of(entity_id);
@@ -234,6 +240,7 @@ fn witness_audience(
                     target: "abilities.wire",
                     event = "wire_npc_no_witnesses",
                     entity_id,
+                    entity_name = space_mgr.entity_label(entity_id),
                     method_index,
                     method_name = space_mgr.client_method_name(entity_id, method_index),
                     "send_entity_method: NPC has no witnesses, method dropped"
@@ -258,9 +265,12 @@ fn witness_audience(
                     method_index,
                     entity_id,
                     method_name = space_mgr.client_method_name(entity_id, method_index),
+                    entity_name = space_mgr.entity_label(entity_id),
                     account_id = who.account_id,
+                    account_name = who.account_name,
                     player_id = who.player_id,
-                    cast_id = space_mgr.current_cast_id(),
+                    player_name = who.player_name,
+                    cast_id = space_mgr.current_cast_id(), // nt:id-only per-cast sequence number, no name exists
                     route = route.label(),
                     self_send = is_player && route == WireRoute::SelfAndWitnesses,
                     "witness fan-out skipped: no witnesses in AoI (the owner's own send, \
@@ -270,6 +280,7 @@ fn witness_audience(
             }
             if !is_player
                 && refuse_unbound_npc_method(
+                    space_mgr,
                     entity_id,
                     method_index,
                     "send_entity_method_to_witnesses",
@@ -335,9 +346,13 @@ pub(crate) async fn deliver(
                 method_index,
                 method_name = space_mgr.client_method_name(entity_id, method_index),
                 entity_id,
+                entity_name = space_mgr.entity_label(entity_id),
                 recipient_id = entity_id,
+                recipient_name = space_mgr.entity_label(entity_id),
                 account_id = who.account_id,
+                account_name = who.account_name,
                 player_id = who.player_id,
+                player_name = who.player_name,
                 route = route.label(),
                 reason = "cell_to_base_closed",
                 "entity method not queued for the owner's client: the cell-to-base channel is \
@@ -354,8 +369,9 @@ pub(crate) async fn deliver(
             tracing::trace!(
                 target: "abilities.wire",
                 event = "wire_witness_routed",
-                witness_id,
+                witness_id, // nt:id-only one row per witness per send: no lookup on this path
                 entity_id,
+                entity_name = space_mgr.entity_label(entity_id),
                 method_index,
                 method_name = space_mgr.client_method_name(entity_id, method_index),
                 "send_entity_method: routing NPC method to witness"
@@ -394,6 +410,7 @@ pub(crate) async fn deliver(
             method_index,
             method_name = space_mgr.client_method_name(entity_id, method_index),
             entity_id,
+            entity_name = space_mgr.entity_label(entity_id),
             route = route.label(),
             witness_count = out.witnesses_addressed,
             failed_count = witness_failed,
@@ -412,9 +429,12 @@ pub(crate) async fn deliver(
             stage = "wire",
             method = wire_ledger::method_name(method_index),
             entity_id,
+            entity_name = space_mgr.entity_label(entity_id),
             account_id = who.account_id,
+            account_name = who.account_name,
             player_id = who.player_id,
-            cast_id = space_mgr.current_cast_id(),
+            player_name = who.player_name,
+            cast_id = space_mgr.current_cast_id(), // nt:id-only per-cast sequence number, no name exists
             route = route.label(),
             method_index,
             method_name = space_mgr.client_method_name(entity_id, method_index),
@@ -447,6 +467,7 @@ pub async fn request_appearance_refresh(
                     target: "abilities.wire",
                     event = "appearance_refresh_skipped",
                     entity_id,
+                    entity_name = space_mgr.entity_label(entity_id),
                 reason = "no_player_id",
                     "request_appearance_refresh: player entity has no DB player_id (pre-load?), skipping"
                 );
@@ -458,6 +479,7 @@ pub async fn request_appearance_refresh(
                 target: "abilities.wire",
                 event = "appearance_refresh_skipped",
                 entity_id,
+                entity_name = space_mgr.entity_label(entity_id),
                 reason = "not_player",
                 "request_appearance_refresh: entity is not a player, skipping"
             );
@@ -468,6 +490,7 @@ pub async fn request_appearance_refresh(
                 target: "abilities.wire",
                 event = "appearance_refresh_skipped",
                 entity_id,
+                entity_name = space_mgr.entity_label(entity_id),
                 reason = "entity_missing",
                 "request_appearance_refresh: entity not found in space_mgr, skipping"
             );
@@ -493,8 +516,11 @@ pub async fn request_appearance_refresh(
             event = "wire_send_failed",
             method = "RefreshAppearance",
             entity_id,
+            entity_name = space_mgr.entity_label(entity_id),
             account_id = space_mgr.player_identity(entity_id).account_id,
+            account_name = space_mgr.player_identity(entity_id).account_name,
             player_id,
+            player_name = space_mgr.player_identity(entity_id).player_name,
             holstered,
             reason = "cell_to_base_closed",
             "appearance refresh not queued: the cell-to-base channel is closed, so the weapon              draw or holster never reaches the player or their witnesses"

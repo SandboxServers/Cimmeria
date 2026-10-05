@@ -216,7 +216,9 @@ pub fn generate_threat(
                 target: "npc_ai.aggro",
                 event = "being_refused",
                 npc_id = target_id,
+                npc_name = space_mgr.entity_label(target_id),
                 attacker_id,
+                attacker_name = space_mgr.entity_label(attacker_id),
                 ai_state = target.ai_state().label(),
                 cause = cause.label(),
                 "threat refused: a being never enters combat"

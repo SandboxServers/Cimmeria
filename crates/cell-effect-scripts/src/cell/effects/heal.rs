@@ -71,14 +71,20 @@ fn heal_pool(ctx: &mut EffectContext, stat_id: i32, script: &'static str, event:
         tracing::debug!(
             target: "abilities",
             event = "heal_skipped_zero_percent",
-            cast_id = ctx.row_ids().cast_id,
+            cast_id = ctx.row_ids().cast_id, // nt:id-only per-cast sequence number, no name exists
             account_id = ctx.row_ids().account_id,
+            account_name = ctx.row_ids().account_name,
             player_id = ctx.row_ids().player_id,
+            player_name = ctx.row_ids().player_name,
             target_player_id = ctx.row_ids().target_player_id,
+            target_player_name = ctx.row_ids().target_player_name,
             script,
             effect_id = ctx.effect.effect_id,
+            effect_name = cimmeria_names::book().effect(ctx.effect.effect_id),
             source_id = ctx.source_id,
+            source_name = ctx.space_mgr.caster_label(ctx.source_id),
             target_id = ctx.target_id,
+            target_name = ctx.space_mgr.entity_label(ctx.target_id),
             "{script}: neither HealAmount nor HealPercentage is positive, no-op"
         );
         return;
@@ -87,13 +93,18 @@ fn heal_pool(ctx: &mut EffectContext, stat_id: i32, script: &'static str, event:
         tracing::debug!(
             target: "abilities",
             event = "heal_skipped_no_target",
-            cast_id = ctx.row_ids().cast_id,
+            cast_id = ctx.row_ids().cast_id, // nt:id-only per-cast sequence number, no name exists
             account_id = ctx.row_ids().account_id,
+            account_name = ctx.row_ids().account_name,
             player_id = ctx.row_ids().player_id,
+            player_name = ctx.row_ids().player_name,
             target_player_id = ctx.row_ids().target_player_id,
+            target_player_name = ctx.row_ids().target_player_name,
             script,
             effect_id = ctx.effect.effect_id,
+            effect_name = cimmeria_names::book().effect(ctx.effect.effect_id),
             target_id = ctx.target_id,
+            target_name = ctx.space_mgr.entity_label(ctx.target_id),
             "{script}: target entity missing, no-op"
         );
         return;
@@ -115,14 +126,21 @@ fn heal_pool(ctx: &mut EffectContext, stat_id: i32, script: &'static str, event:
     tracing::info!(
         target: "abilities",
         event,
-        cast_id = ctx.row_ids().cast_id,
+        cast_id = ctx.row_ids().cast_id, // nt:id-only per-cast sequence number, no name exists
         account_id = ctx.row_ids().account_id,
+        account_name = ctx.row_ids().account_name,
         player_id = ctx.row_ids().player_id,
+        player_name = ctx.row_ids().player_name,
         target_player_id = ctx.row_ids().target_player_id,
+        target_player_name = ctx.row_ids().target_player_name,
         source_id = ctx.source_id,
+        source_name = ctx.space_mgr.caster_label(ctx.source_id),
         target_id = ctx.target_id,
+        target_name = ctx.space_mgr.entity_label(ctx.target_id),
         effect_id = ctx.effect.effect_id,
+        effect_name = cimmeria_names::book().effect(ctx.effect.effect_id),
         ability_id = ctx.effect.ability_id,
+        ability_name = cimmeria_names::book().ability(ctx.effect.ability_id),
         mode,
         amount,
         percent,

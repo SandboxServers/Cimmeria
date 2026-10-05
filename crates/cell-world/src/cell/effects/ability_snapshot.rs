@@ -75,6 +75,7 @@ pub fn log_ability_snapshot(
             event = "ability_snapshot_skipped",
             reason = "entity_missing",
             entity_id,
+            entity_name = space_mgr.entity_label(entity_id),
             trigger = trigger.as_str(),
             "ability snapshot not written: the entity is gone"
         );
@@ -98,15 +99,19 @@ fn emit(
         target: "abilities.snapshot",
         event = "ability_snapshot",
         trigger = trigger.as_str(),
-        bookmark_id,
+        bookmark_id, // nt:id-only a UAT bookmark's sequence number, unnamed
         entity_id = s.entity_id,
+        entity_name = space_mgr.entity_label(s.entity_id),
         account_id = who.account_id,
+        account_name = who.account_name,
         player_id = who.player_id,
+        player_name = who.player_name,
         is_player = s.is_player,
         state_field = s.state_field,
         state_field_names = %cimmeria_wire::state_field::STATE_FLAGS.render(s.state_field),
-        pending_cast_id = s.pending_cast.as_ref().map(|p| p.cast_id),
+        pending_cast_id = s.pending_cast.as_ref().map(|p| p.cast_id), // nt:id-only per-cast sequence number, no name exists
         pending_ability_id = s.pending_cast.as_ref().map(|p| p.ability_id),
+        pending_ability_name = super::content_names::ability_name(s.pending_cast.as_ref().map(|p| p.ability_id)),
         cooldowns = s.cooldowns.len(),
         pulsing = s.pulsing.len(),
         ledger = s.ledger.len(),

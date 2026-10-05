@@ -52,10 +52,13 @@ impl SpaceManager {
         cast_id: Option<i32>,
         invoker_id: u32,
         invoker_identity: PlayerIdentity,
+        invoker_name: Option<&'static str>,
     ) -> EffectScope {
         EffectScope {
             cast_id: std::mem::replace(&mut self.current_cast_id, cast_id),
-            invoker: self.current_invoker.replace((invoker_id, invoker_identity)),
+            invoker: self
+                .current_invoker
+                .replace((invoker_id, invoker_identity, invoker_name)),
         }
     }
 
@@ -70,8 +73,20 @@ impl SpaceManager {
     /// otherwise the live lookup.
     pub fn caster_identity(&self, entity_id: u32) -> PlayerIdentity {
         match self.current_invoker {
-            Some((id, who)) if id == entity_id => who,
+            Some((id, who, _)) if id == entity_id => who,
             _ => self.player_identity(entity_id),
+        }
+    }
+
+    /// The name a row should give the effect's caster `entity_id` (Rule 6),
+    /// on the same terms as [`Self::caster_identity`]: inside a deferred
+    /// effect's scope the invoker may have left and its id been reused, so
+    /// it is named from the snapshot (a player's or an NPC's name) and never
+    /// from whoever holds the id now.
+    pub fn caster_label(&self, entity_id: u32) -> Option<&str> {
+        match self.current_invoker {
+            Some((id, _, name)) if id == entity_id => name,
+            _ => self.entity_label(entity_id),
         }
     }
 }
@@ -80,7 +95,7 @@ impl SpaceManager {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct EffectScope {
     cast_id: Option<i32>,
-    invoker: Option<(u32, PlayerIdentity)>,
+    invoker: Option<(u32, PlayerIdentity, Option<&'static str>)>,
 }
 
 #[cfg(test)]
@@ -109,7 +124,8 @@ mod tests {
         let snap = PlayerIdentity::new(Some(10), Some(71));
         assert_eq!(mgr.caster_identity(2), PlayerIdentity::UNKNOWN);
         let outer = mgr.enter_cast_scope(Some(9));
-        let prev = mgr.enter_effect_scope(Some(1), 2, snap);
+        let prev = mgr.enter_effect_scope(Some(1), 2, snap, Some("Jaffa Guard"));
+        assert_eq!(mgr.caster_label(2), Some("Jaffa Guard"));
         assert_eq!(mgr.current_cast_id(), Some(1));
         assert_eq!(mgr.caster_identity(2), snap);
         assert_eq!(

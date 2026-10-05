@@ -185,11 +185,16 @@ pub(super) async fn begin_warmup(
         event = "warmup_started",
         stage = "warmup",
         account_id = who.account_id,
+        account_name = who.account_name,
         player_id = who.player_id,
+        player_name = who.player_name,
         entity_id,
-        cast_id = effect_seq,
+        entity_name = space_mgr.entity_label(entity_id),
+        cast_id = effect_seq, // nt:id-only per-cast sequence number, no name exists
         ability_id,
+        ability_name = cimmeria_names::book().ability(ability_id),
         target_id,
+        target_name = space_mgr.entity_label(target_id as u32),
         warmup_secs,
         "ability warmup started; the cast fires when it expires"
     );

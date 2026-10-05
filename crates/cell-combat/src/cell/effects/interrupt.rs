@@ -148,13 +148,20 @@ async fn resolve_one(
             event = "interrupt_effect",
             decision_outcome = "nothing_to_interrupt",
             account_id = who.account_id,
+            account_name = who.account_name,
             player_id = who.player_id,
+            player_name = who.player_name,
             entity_id = r.source_id,
+            entity_name = space_mgr.entity_label(r.source_id),
             target_id = r.target_id,
+            target_name = space_mgr.entity_label(r.target_id),
             target_player_id = target_who.player_id,
+            target_player_name = target_who.player_name,
             effect_id = r.effect_id,
+            effect_name = cimmeria_names::book().effect(r.effect_id),
             ability_id = r.ability_id,
-            cast_id = r.cast_id,
+            ability_name = cimmeria_names::book().ability(r.ability_id),
+            cast_id = r.cast_id, // nt:id-only per-cast sequence number, no name exists
             "interrupt landed on a target with no warmup and no channel"
         );
         return;
@@ -186,19 +193,27 @@ async fn resolve_one(
         event = "interrupt_effect",
         decision_outcome = if lands { "interrupted" } else { "resisted" },
         account_id = who.account_id,
+        account_name = who.account_name,
         player_id = who.player_id,
+        player_name = who.player_name,
         entity_id = r.source_id,
+        entity_name = space_mgr.entity_label(r.source_id),
         target_id = r.target_id,
+        target_name = space_mgr.entity_label(r.target_id),
         target_player_id = target_who.player_id,
+        target_player_name = target_who.player_name,
         effect_id = r.effect_id,
+        effect_name = cimmeria_names::book().effect(r.effect_id),
         ability_id = r.ability_id,
+        ability_name = cimmeria_names::book().ability(r.ability_id),
         // AB-T1: the interrupting cast, and the warmup it broke (the
         // target's `cast_id`, which its `warmup_interrupted` row logs).
-        cast_id = r.cast_id,
-        interrupted_cast_id = warming.map(|w| w.1),
+        cast_id = r.cast_id, // nt:id-only per-cast sequence number, no name exists
+        interrupted_cast_id = warming.map(|w| w.1), // nt:id-only per-cast sequence number, no name exists
         cause = if incapacitated { "incapacitated" } else { "effect" },
         nonce = r.nonce,
         interrupted_ability_id = warming.map(|w| w.0),
+        interrupted_ability_name = cimmeria_cell_world::cell::effects::content_names::ability_name(warming.map(|w| w.0)),
         chance_pct = r.chance_pct,
         interrupt_res,
         coordination,

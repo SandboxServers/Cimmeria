@@ -60,9 +60,13 @@ pub(super) async fn maybe_trigger_auto_reload(
         target: "abilities",
         event = "auto_reload_triggered",
         account_id = who.account_id,
+        account_name = who.account_name,
         player_id = who.player_id,
+        player_name = who.player_name,
         entity_id,
+        entity_name = space_mgr.entity_label(entity_id),
         ability_id,
+        ability_name = cimmeria_names::book().ability(ability_id),
         "useAbility: auto-reload triggered (autoReload + clip empty)"
     );
     crate::cell::cell_methods::player::world::handle_reload(entity_id, tx, space_mgr).await;

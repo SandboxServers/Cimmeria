@@ -48,8 +48,12 @@ pub(super) async fn pulse_one(
     tx: &mpsc::Sender<CellToBaseMsg>,
     space_mgr: &mut SpaceManager,
 ) {
-    let outer_cast =
-        space_mgr.enter_effect_scope(inst.cast_id, inst.invoker_id, inst.invoker_identity);
+    let outer_cast = space_mgr.enter_effect_scope(
+        inst.cast_id,
+        inst.invoker_id,
+        inst.invoker_identity,
+        inst.invoker_name,
+    );
     fire_pulse(target_id, inst, effect_def, tx, space_mgr).await;
     // Death first, threshold second: `dot_kill_credit` stamps `BSF_DEAD` on
     // a mob the pulse finished, which is exactly what
@@ -165,14 +169,22 @@ async fn fire_pulse(
             event = "pulse_skipped_dead_target",
             stage = "pulse",
             account_id = inst.invoker_identity.account_id,
+            account_name = inst.invoker_identity.account_name,
             player_id = inst.invoker_identity.player_id,
+            player_name = inst.invoker_identity.player_name,
             entity_id = inst.invoker_id,
+            entity_name = inst.invoker_name,
             target_id,
+            target_name = space_mgr.entity_label(target_id),
             target_player_id = space_mgr.player_identity(target_id).player_id,
+            target_player_name = space_mgr.player_identity(target_id).player_name,
             invoker_id = inst.invoker_id,
-            cast_id = inst.cast_id,
+            invoker_name = inst.invoker_name,
+            cast_id = inst.cast_id, // nt:id-only per-cast sequence number, no name exists
             ability_id = inst.ability_id,
+            ability_name = cimmeria_names::book().ability(inst.ability_id),
             effect_id = inst.effect_id,
+            effect_name = cimmeria_names::book().effect(inst.effect_id),
             "Skipping pulse — target is dead"
         );
         return;
@@ -353,7 +365,7 @@ async fn fire_pulse(
     // it). Only the killing blow from a self-repeating source is
     // refused.
     // Read before the mutable borrow below (rule 5: the subject's id).
-    let target_player_id = space_mgr.player_identity(target_id).player_id;
+    let target_who = space_mgr.player_identity(target_id);
     if let Some(target) = space_mgr.get_entity_mut(target_id) {
         if !target.is_player && target.ai_state() == AiState::Submit {
             if let Some(stat) = target.stats.get_mut(HEALTH) {
@@ -364,14 +376,22 @@ async fn fire_pulse(
                         event = "pulse_surrender_floor",
                         stage = "pulse",
                         account_id = inst.invoker_identity.account_id,
+                        account_name = inst.invoker_identity.account_name,
                         player_id = inst.invoker_identity.player_id,
+                        player_name = inst.invoker_identity.player_name,
                         entity_id = inst.invoker_id,
+                        entity_name = inst.invoker_name,
                         target_id,
-                        target_player_id,
-                        cast_id = inst.cast_id,
+                        target_name = space_mgr.entity_label(target_id),
+                        target_player_id = target_who.player_id,
+                        target_player_name = target_who.player_name,
+                        cast_id = inst.cast_id, // nt:id-only per-cast sequence number, no name exists
                         ability_id = inst.ability_id,
+                        ability_name = cimmeria_names::book().ability(inst.ability_id),
                         effect_id = inst.effect_id,
+                        effect_name = cimmeria_names::book().effect(inst.effect_id),
                         invoker_id = inst.invoker_id,
+                        invoker_name = inst.invoker_name,
                         "Pulse would have killed a surrendered NPC -- health floored at 1"
                     );
                 }
@@ -431,14 +451,22 @@ async fn fire_pulse(
         event = "pulse_ticked",
         stage = "pulse",
         account_id = who.account_id,
+        account_name = who.account_name,
         player_id = who.player_id,
+        player_name = who.player_name,
         entity_id = inst.invoker_id,
+        entity_name = inst.invoker_name,
         target_id,
+        target_name = space_mgr.entity_label(target_id),
         target_player_id = space_mgr.player_identity(target_id).player_id,
+        target_player_name = space_mgr.player_identity(target_id).player_name,
         invoker_id = inst.invoker_id,
-        cast_id = inst.cast_id,
+        invoker_name = inst.invoker_name,
+        cast_id = inst.cast_id, // nt:id-only per-cast sequence number, no name exists
         effect_id = inst.effect_id,
+        effect_name = cimmeria_names::book().effect(inst.effect_id),
         ability_id = inst.ability_id,
+        ability_name = cimmeria_names::book().ability(inst.ability_id),
         path,
         script = effect.script_name.as_deref(),
         health_amount = effect.param_i32("HealthDamage"),

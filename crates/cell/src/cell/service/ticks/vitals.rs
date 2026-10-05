@@ -21,7 +21,7 @@ pub(in crate::cell::service) fn vitals_sample_tick(space_mgr: &SpaceManager) {
     for eid in space_mgr.all_player_entity_ids() {
         if let Some(e) = space_mgr.get_entity(eid) {
             if !e.threatened_mobs.is_empty() && e.state_field & BSF_DEAD == 0 {
-                log_combat_sample(e);
+                log_combat_sample(space_mgr, e);
             }
         }
     }

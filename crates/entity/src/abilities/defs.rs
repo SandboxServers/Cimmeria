@@ -48,6 +48,92 @@ pub const TARGET_SELF: i32 = 1;
 pub const TARGET_TARGET: i32 = 2;
 pub const TARGET_GROUND: i32 = 3;
 
+/// The client's `ETargetType` token for an ability's `target_type_id`, for
+/// the `target_type_name` log field (Rule 6). `None` for an undeclared ID.
+pub const fn target_type_name(target_type_id: i32) -> Option<&'static str> {
+    Some(match target_type_id {
+        TARGET_NONE => "TargetNONE",
+        TARGET_SELF => "TargetSelf",
+        TARGET_TARGET => "TargetTarget",
+        TARGET_GROUND => "TargetGround",
+        _ => return None,
+    })
+}
+
+/// The client's `ESequenceEventType` token for a sequence event ID
+/// (`Item_Unequip`, `Effect_Init`, ...), for the `event_name` log field next
+/// to `event_id` (Rule 6). `None` for an undeclared ID.
+pub const fn sequence_event_name(event_id: i32) -> Option<&'static str> {
+    Some(match event_id {
+        1000 => "Ability_Begin",
+        1001 => "Ability_End",
+        1002 => "Ability_Interrupt",
+        1003 => "Ability_Failed",
+        1004 => "Ability_ChannelBegin",
+        1006 => "Ability_ChannelFail",
+        1007 => "Ability_ChannelEnd",
+        2000 => "Effect_Init",
+        2001 => "Effect_Removed",
+        2002 => "Effect_Hit_Normal",
+        2003 => "Effect_Hit_Crit",
+        2004 => "Effect_Hit_Double_Crit",
+        2005 => "Effect_Hit_Glancing",
+        2006 => "Effect_Hit_Miss",
+        2007 => "Effect_Pulse_Begin",
+        2008 => "Effect_Pulse_End",
+        4000 => "Item_Equip",
+        4001 => "Item_Unequip",
+        4002 => "Item_Reload",
+        4003 => "Item_Use",
+        5000 => "Entity_Spawn",
+        5001 => "Entity_Death",
+        5002 => "Entity_Despawn",
+        5003 => "Entity_Alert",
+        5005 => "Entity_CombatStateChanged",
+        5006 => "Entity_HealthMonitor",
+        5007 => "Entity_Mission_NewMission",
+        5008 => "Entity_Mission_StepAdvance",
+        5009 => "Entity_Mission_Completion",
+        5010 => "Entity_Mission_ObjectiveUnlocked",
+        5011 => "Entity_Mission_MissionComplete",
+        5012 => "Entity_Enemy_Aggro",
+        5013 => "Entity_Enemy_Leash",
+        5014 => "Entity_Enemy_Death",
+        5015 => "Entity_Player_Level",
+        5016 => "Entity_FocusMonitor",
+        5017 => "Entity_Ally_Join",
+        5018 => "Entity_Ally_Leave",
+        5100 => "Entity_Defensive_Enter",
+        5101 => "Entity_Defensive_Exit",
+        5102 => "Entity_Conservative_Enter",
+        5103 => "Entity_Conservative_Exit",
+        5104 => "Entity_Aggressive_Enter",
+        5105 => "Entity_Aggressive_Exit",
+        6000 => "Designer_1",
+        6001 => "Designer_2",
+        6002 => "Designer_3",
+        6003 => "Designer_4",
+        6004 => "Designer_5",
+        6100 => "Stargate_MakeGate",
+        6101 => "Stargate_MakeGateFull",
+        6102 => "Stargate_MakeGateNow",
+        6103 => "Stargate_DestroyGate",
+        6104 => "Stargate_DestroyGateNow",
+        6105 => "Stargate_DialFailure",
+        6106 => "Stargate_DHD1",
+        6107 => "Stargate_DHD2",
+        6108 => "Stargate_DHD3",
+        6109 => "Stargate_DHD4",
+        6110 => "Stargate_DHD5",
+        6111 => "Stargate_DHD6",
+        6112 => "Stargate_DHD7",
+        6113 => "Stargate_CrossGate",
+        8000 => "Region_Teleport_Out",
+        8001 => "Region_Teleport_In",
+        _ => return None,
+    })
+}
+
 // ── Target collection methods (TCM) — per-effect dispatch shape ──────────
 //
 // Authored in the original game's data as string literals. We keep them as

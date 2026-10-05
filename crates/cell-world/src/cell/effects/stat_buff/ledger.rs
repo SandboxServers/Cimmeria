@@ -26,7 +26,7 @@ use cimmeria_entity::cell_entity::{
 use cimmeria_entity::abilities::EF_CLEAR_ON_DEATH;
 use cimmeria_wire::state_field::BSF_DEAD;
 
-use crate::cell::space_manager::SpaceManager;
+use crate::cell::space_manager::{EntityNames, SpaceManager};
 
 /// Why an entry came off: the `reason` of its `stat_buff_removed` row. The
 /// contract's list (work-packets "Timed effect ledger") plus the two the
@@ -134,6 +134,8 @@ impl SpaceManager {
         let who = self.player_identity(spec.invoker_id);
         // Snapshot now: a removal logged after the invoker left still names them.
         spec.invoker_identity = who;
+        // An NPC invoker's name too, so a mob's debuff rows name it (Rule 6).
+        spec.invoker_name = self.entity_names(spec.invoker_id).entity_name;
         // The cast resolving now (AB-T1): the entry's later rows (absorb,
         // expiry, removal) carry it after the scope has closed.
         spec.cast_id = self.current_cast_id();
@@ -148,14 +150,22 @@ impl SpaceManager {
                 event = "stat_buff_skipped",
                 reason = "target_missing",
                 account_id = who.account_id,
+                account_name = who.account_name,
                 player_id = who.player_id,
+                player_name = who.player_name,
                 entity_id = invoker_id,
+                entity_name = self.caster_label(invoker_id),
                 target_id = target,
+                target_name = self.entity_label(target),
                 target_player_id = target_who.player_id,
+                target_player_name = target_who.player_name,
                 source_id = invoker_id,
+                source_name = self.caster_label(invoker_id),
                 effect_id,
+                effect_name = cimmeria_names::book().effect(effect_id),
                 ability_id,
-                cast_id,
+                ability_name = cimmeria_names::book().ability(ability_id),
+                cast_id, // nt:id-only per-cast sequence number, no name exists
                 "timed effect target entity is gone; nothing applied"
             );
             return None;
@@ -166,13 +176,20 @@ impl SpaceManager {
                 event = "stat_buff_skipped",
                 reason = "target_dead",
                 account_id = who.account_id,
+                account_name = who.account_name,
                 player_id = who.player_id,
+                player_name = who.player_name,
                 entity_id = invoker_id,
+                entity_name = self.caster_label(invoker_id),
                 target_id = target,
+                target_name = self.entity_label(target),
                 target_player_id = target_who.player_id,
+                target_player_name = target_who.player_name,
                 effect_id,
+                effect_name = cimmeria_names::book().effect(effect_id),
                 ability_id,
-                cast_id,
+                ability_name = cimmeria_names::book().ability(ability_id),
+                cast_id, // nt:id-only per-cast sequence number, no name exists
                 "clear-on-death timed effect on a dead target; nothing applied"
             );
             return None;
@@ -198,14 +215,22 @@ impl SpaceManager {
                 event = "stat_buff_skipped",
                 reason = "stat_missing",
                 account_id = who.account_id,
+                account_name = who.account_name,
                 player_id = who.player_id,
+                player_name = who.player_name,
                 entity_id = invoker_id,
+                entity_name = self.caster_label(invoker_id),
                 target_id = target,
+                target_name = self.entity_label(target),
                 target_player_id = target_who.player_id,
+                target_player_name = target_who.player_name,
                 source_id = invoker_id,
+                source_name = self.caster_label(invoker_id),
                 effect_id,
+                effect_name = cimmeria_names::book().effect(effect_id),
                 ability_id,
-                cast_id,
+                ability_name = cimmeria_names::book().ability(ability_id),
+                cast_id, // nt:id-only per-cast sequence number, no name exists
                 stat_ids = ?stat_ids,
                 "timed effect names only stats the entity does not have; nothing applied"
             );
@@ -229,6 +254,7 @@ impl SpaceManager {
             log_removed(
                 target,
                 target_who,
+                EntityNames::of(entity).entity_name,
                 old,
                 StatBuffRemoval::Replaced,
                 (b, a),
@@ -240,14 +266,22 @@ impl SpaceManager {
             event = "stat_buff_applied",
             decision_outcome = if out.replaced.is_empty() { "applied" } else { "replaced" },
             account_id = who.account_id,
+            account_name = who.account_name,
             player_id = who.player_id,
+            player_name = who.player_name,
             entity_id = invoker_id,
+            entity_name = self.caster_label(invoker_id),
             target_id = target,
+            target_name = self.entity_label(target),
             target_player_id = target_who.player_id,
+            target_player_name = target_who.player_name,
             source_id = invoker_id,
+            source_name = self.caster_label(invoker_id),
             effect_id,
+            effect_name = cimmeria_names::book().effect(effect_id),
             ability_id,
-            cast_id,
+            ability_name = cimmeria_names::book().ability(ability_id),
+            cast_id, // nt:id-only per-cast sequence number, no name exists
             stats = ?out.applied.stats.iter().map(|s| (s.stat_id, s.requested, s.shift.cur)).collect::<Vec<_>>(),
             stat_before = ?before,
             stat_after = ?after,
@@ -268,13 +302,20 @@ impl SpaceManager {
                 target: "abilities",
                 event = "effect_bar_overflow",
                 account_id = who.account_id,
+                account_name = who.account_name,
                 player_id = who.player_id,
+                player_name = who.player_name,
                 entity_id = invoker_id,
+                entity_name = self.caster_label(invoker_id),
                 target_id = target,
+                target_name = self.entity_label(target),
                 target_player_id = target_who.player_id,
+                target_player_name = target_who.player_name,
                 effect_id,
+                effect_name = cimmeria_names::book().effect(effect_id),
                 ability_id,
-                cast_id,
+                ability_name = cimmeria_names::book().ability(ability_id),
+                cast_id, // nt:id-only per-cast sequence number, no name exists
                 beneficial,
                 icons,
                 slots = EFFECT_BAR_SLOTS_PER_SIDE,
@@ -331,7 +372,15 @@ impl SpaceManager {
             let before = cur(entity, &entity.stat_buffs.entries[idx]);
             let entry = entity.remove_timed_effect_at(idx);
             let after = cur(entity, &entry);
-            log_removed(target, target_who, &entry, why, (before, after), world);
+            log_removed(
+                target,
+                target_who,
+                EntityNames::of(entity).entity_name,
+                &entry,
+                why,
+                (before, after),
+                world,
+            );
             removed.push(entry);
         }
         if removed.is_empty() {
@@ -405,6 +454,7 @@ fn cur_of(snapshot: &[(i32, i32)], entry: &TimedEffect) -> Vec<Option<i32>> {
 pub(super) fn log_removed(
     target: u32,
     target_who: PlayerIdentity,
+    target_name: Option<&'static str>,
     entry: &TimedEffect,
     why: StatBuffRemoval,
     (stat_before, stat_after): (Vec<Option<i32>>, Vec<Option<i32>>),
@@ -418,14 +468,25 @@ pub(super) fn log_removed(
         decision_outcome = "removed",
         reason = why.reason(),
         account_id = who.account_id,
+        account_name = who.account_name,
         player_id = who.player_id,
+        player_name = who.player_name,
         entity_id = entry.invoker_id,
+        // The invoker as it was when the entry went on: by now it may be
+        // gone and its slot reused, so a live lookup could name the wrong
+        // entity. The entry snapshotted the name (an NPC's too).
+        entity_name = entry.invoker_name,
         target_id = target,
+        target_name,
         target_player_id = target_who.player_id,
+        target_player_name = target_who.player_name,
         source_id = entry.invoker_id,
+        source_name = entry.invoker_name,
         effect_id = entry.effect_id,
+        effect_name = cimmeria_names::book().effect(entry.effect_id),
         ability_id = entry.ability_id,
-        cast_id = entry.cast_id,
+        ability_name = cimmeria_names::book().ability(entry.ability_id),
+        cast_id = entry.cast_id, // nt:id-only per-cast sequence number, no name exists
         stat_ids = ?entry.stats.iter().map(|s| s.stat_id).collect::<Vec<_>>(),
         restored = ?entry.stats.iter().map(|s| (s.stat_id, -s.requested)).collect::<Vec<_>>(),
         absorb_left = ?entry.absorb.iter().map(|p| (p.stat_id, p.remaining)).collect::<Vec<_>>(),
@@ -471,6 +532,7 @@ fn log_nothing_removed(
                 // cleanse of an ally to the ally (rule 5).
                 target_id = target,
                 target_player_id = target_who.player_id,
+                target_player_name = target_who.player_name,
                 cast_id,
                 "timed effect ledger: a removal ({reason}) took no entry off the target; nothing changes on the client"
             )
@@ -482,3 +544,7 @@ fn log_nothing_removed(
         row!(debug);
     }
 }
+
+#[cfg(test)]
+#[path = "ledger_names_tests.rs"]
+mod names_tests;

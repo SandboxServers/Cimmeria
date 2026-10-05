@@ -36,16 +36,23 @@ impl EffectScript for RemoveByMoniker {
             tracing::warn!(
                 target: "abilities",
                 event = "stat_buff_skipped",
-                cast_id = ctx.row_ids().cast_id,
+                cast_id = ctx.row_ids().cast_id, // nt:id-only per-cast sequence number, no name exists
                 reason = "unknown_moniker",
                 script = "RemoveByMoniker",
                 account_id = who.account_id,
+                account_name = who.account_name,
                 player_id = who.player_id,
+                player_name = who.player_name,
                 entity_id = ctx.source_id,
+                entity_name = ctx.space_mgr.caster_label(ctx.source_id),
                 target_id = ctx.target_id,
+                target_name = ctx.space_mgr.entity_label(ctx.target_id),
                 target_player_id = target_who.player_id,
+                target_player_name = target_who.player_name,
                 effect_id = effect.effect_id,
+                effect_name = cimmeria_names::book().effect(effect.effect_id),
                 ability_id = effect.ability_id,
+                ability_name = cimmeria_names::book().ability(effect.ability_id),
                 moniker = %name,
                 "RemoveByMoniker effect names no effect moniker the server knows; nothing removed \
                  (check the effect's RemoveMoniker NVP)"
@@ -58,16 +65,23 @@ impl EffectScript for RemoveByMoniker {
             tracing::warn!(
                 target: "abilities",
                 event = "stat_buff_skipped",
-                cast_id = ctx.row_ids().cast_id,
+                cast_id = ctx.row_ids().cast_id, // nt:id-only per-cast sequence number, no name exists
                 reason = "remove_not_self",
                 script = "RemoveByMoniker",
                 account_id = who.account_id,
+                account_name = who.account_name,
                 player_id = who.player_id,
+                player_name = who.player_name,
                 entity_id = ctx.source_id,
+                entity_name = ctx.space_mgr.caster_label(ctx.source_id),
                 target_id = ctx.target_id,
+                target_name = ctx.space_mgr.entity_label(ctx.target_id),
                 target_player_id = target_who.player_id,
+                target_player_name = target_who.player_name,
                 effect_id = effect.effect_id,
+                effect_name = cimmeria_names::book().effect(effect.effect_id),
                 ability_id = effect.ability_id,
+                ability_name = cimmeria_names::book().ability(effect.ability_id),
                 "RemoveByMoniker removes only the caster's own entries; nothing removed"
             );
             return;
@@ -81,16 +95,24 @@ impl EffectScript for RemoveByMoniker {
         tracing::debug!(
             target: "abilities",
             event = "removed_by_moniker",
-            cast_id = ctx.row_ids().cast_id,
+            cast_id = ctx.row_ids().cast_id, // nt:id-only per-cast sequence number, no name exists
             account_id = who.account_id,
+            account_name = who.account_name,
             player_id = who.player_id,
+            player_name = who.player_name,
             entity_id = ctx.source_id,
+            entity_name = ctx.space_mgr.caster_label(ctx.source_id),
             target_id = ctx.target_id,
+            target_name = ctx.space_mgr.entity_label(ctx.target_id),
             target_player_id = target_who.player_id,
+            target_player_name = target_who.player_name,
             effect_id = effect.effect_id,
+            effect_name = cimmeria_names::book().effect(effect.effect_id),
             ability_id = own,
+            ability_name = cimmeria_names::book().ability(own),
             moniker = %name,
             moniker_id = moniker,
+            moniker_name = cimmeria_names::book().moniker(moniker),
             removed = removed.len(),
             removed_effect_ids = ?removed.iter().map(|b| b.effect_id).collect::<Vec<_>>(),
             "remove-by-moniker effect ran"

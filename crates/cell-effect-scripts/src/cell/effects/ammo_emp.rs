@@ -33,6 +33,8 @@
 
 use cimmeria_entity::stats::{FOCUS, HEALTH};
 
+use cimmeria_cell_world::cell::space_manager::EntityNames;
+
 use super::{EffectContext, EffectScript};
 
 /// Body-set prefixes (`entity_templates.body_set`, the package and the start
@@ -92,19 +94,26 @@ impl EffectScript for EmpDisrupt {
     fn on_apply(&self, ctx: &mut EffectContext) {
         let focus_damage = ctx.effect.param_i32("FocusDamage");
         let mech_damage = ctx.effect.param_i32("MechanicalHealthDamage");
-        let shooter_player_id = ctx
-            .space_mgr
-            .get_entity(ctx.source_id)
-            .and_then(|e| e.player_id);
+        // Snapshot the shooter before the target is borrowed for the hit:
+        // the rows below can't look anything up while it is. An EMP hit is
+        // rare, so naming it up front costs nothing that matters.
+        let shooter = ctx.space_mgr.player_identity(ctx.source_id);
+        let shooter_name = ctx.space_mgr.entity_names(ctx.source_id).entity_name;
 
         let Some(target) = ctx.space_mgr.get_entity_mut(ctx.target_id) else {
             tracing::debug!(
                 target: "ammo",
                 event = "ammo_emp_disrupt",
                 entity_id = ctx.source_id,
-                player_id = shooter_player_id,
+                entity_name = shooter_name,
+                account_id = shooter.account_id,
+            account_name = shooter.account_name,
+            player_id = shooter.player_id,
+            player_name = shooter.player_name,
                 target_entity_id = ctx.target_id,
+                target_entity_name = ctx.space_mgr.entity_label(ctx.target_id),
                 effect_id = ctx.effect.effect_id,
+                effect_name = cimmeria_names::book().effect(ctx.effect.effect_id),
                 reason = "target_missing",
                 "EMP round: target gone before the on-hit effect ran"
             );
@@ -132,10 +141,17 @@ impl EffectScript for EmpDisrupt {
             target: "ammo",
             event = "ammo_emp_disrupt",
             entity_id = ctx.source_id,
-            player_id = shooter_player_id,
+            entity_name = shooter_name,
+            account_id = shooter.account_id,
+            account_name = shooter.account_name,
+            player_id = shooter.player_id,
+            player_name = shooter.player_name,
             target_entity_id = ctx.target_id,
+            target_entity_name = EntityNames::of(target).entity_name,
             target_template_id = target.template_id,
+            target_template_name = cimmeria_cell_world::cell::effects::content_names::template_name(target.template_id),
             effect_id = ctx.effect.effect_id,
+            effect_name = cimmeria_names::book().effect(ctx.effect.effect_id),
             mechanical,
             focus_before = focus_cur,
             focus_drained,

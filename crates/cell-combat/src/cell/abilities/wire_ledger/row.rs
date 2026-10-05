@@ -21,14 +21,17 @@ macro_rules! wire_row {
             method_name = $c.method_name,
             origin = $c.origin,
             entity_id = $c.entity_id,
+            entity_name = $c.player_name,
             account_id = $c.account_id,
+            account_name = $c.account_name,
             player_id = $c.player_id,
+            player_name = $c.player_name,
             route = $c.route,
             self_sent = $c.self_sent,
             witness_count = $c.witness_count,
             witness_player_ids = $c.witness_player_ids.as_str(),
             failed_count = $c.failed_count,
-            cast_id = $c.cast_id,
+            cast_id = $c.cast_id, // nt:id-only per-cast sequence number, no name exists
             $($extra)+
         )
     };
@@ -44,7 +47,11 @@ struct Common {
     origin: &'static str,
     entity_id: u32,
     account_id: Option<u32>,
+    account_name: Option<&'static str>,
     player_id: Option<i32>,
+    /// Also the recipient's `entity_name`: a row's entity is the player
+    /// whose client the method is queued for.
+    player_name: Option<&'static str>,
     route: &'static str,
     self_sent: bool,
     witness_count: usize,
@@ -69,6 +76,13 @@ fn refcounts(space_mgr: &SpaceManager, entity_id: u32) -> String {
         .map(|(bit, n)| format!("{bit}:{n}"))
         .collect::<Vec<_>>()
         .join(",")
+}
+
+/// The label of the entity a wire argument names, when the row has a
+/// `SpaceManager` to ask.
+fn label(space_mgr: Option<&SpaceManager>, entity_id: i32) -> Option<&str> {
+    let entity_id = u32::try_from(entity_id).ok()?;
+    space_mgr.and_then(|m| m.entity_label(entity_id))
 }
 
 /// Write one row. `space_mgr` is `None` for a caller that holds only the
@@ -99,6 +113,8 @@ pub(super) fn emit(
         ids.sort_unstable();
         ids.iter().map(i32::to_string).collect::<Vec<_>>().join(",")
     });
+    // One book read per row, not one per name (a row per ability send).
+    let book = cimmeria_names::book();
     let c = Common {
         method: method_name(method_index),
         method_index,
@@ -109,7 +125,9 @@ pub(super) fn emit(
         origin: ctx.origin,
         entity_id,
         account_id: who.account_id,
+        account_name: who.account_name,
         player_id: who.player_id,
+        player_name: who.player_name,
         route: route.label(),
         self_sent: delivery.self_sent,
         witness_count: delivery.witness_ids.len(),
@@ -129,17 +147,23 @@ pub(super) fn emit(
             count,
             ref results,
         } => {
-            let target_player_id = u32::try_from(target_id)
+            let target_who = u32::try_from(target_id)
                 .ok()
                 .zip(space_mgr)
-                .and_then(|(t, m)| m.player_identity(t).player_id);
+                .map_or(PlayerIdentity::UNKNOWN, |(t, m)| m.player_identity(t));
             wire_row!(
                 c,
                 source_id,
+                source_name = label(space_mgr, source_id),
                 ability_id,
-                effect_id,
+                ability_name = book.ability(ability_id),
+                // The wire's EffectID carries the cast's `cast_id`, not an
+                // `effects` row (`hit_wire.rs`).
+                effect_id, // nt:id-only the wire EffectID is the cast_id sequence
                 target_id,
-                target_player_id,
+                target_name = label(space_mgr, target_id),
+                target_player_id = target_who.player_id,
+                target_player_name = target_who.player_name,
                 result_code,
                 results_count = count,
                 results = results.as_str(),
@@ -149,6 +173,7 @@ pub(super) fn emit(
         Decoded::StatUpdate { count, ref stats } => wire_row!(
             c,
             ability_id = ctx.ability_id,
+            ability_name = ctx.ability_id.and_then(|a| book.ability(a)),
             stat_count = count,
             stats = stats.as_str(),
             "stat update queued for the client"
@@ -191,12 +216,15 @@ pub(super) fn emit(
             wire_row!(
                 c,
                 ability_id,
+                ability_name = ability_id.and_then(|a| book.ability(a)),
                 effect_id,
+                effect_name = effect_id.and_then(|e| book.effect(e)),
                 timer_type = kind,
                 timer_type_code = timer_type,
-                timer_id = id,
+                timer_id = id, // nt:id-only runtime timer handle, nothing to name
                 source_id,
-                secondary_id,
+                source_name = label(space_mgr, source_id),
+                secondary_id, // nt:id-only a duration timer's effect id, named as effect_name
                 total_secs = f64::from(total_secs),
                 complete_at = f64::from(complete_at),
                 action,
@@ -217,10 +245,11 @@ pub(super) fn emit(
             wire_row!(
                 c,
                 ability_id,
-                system_id,
-                instance_id,
+                ability_name = ability_id.and_then(|a| book.ability(a)),
+                system_id,   // nt:id-only ERRORCODE_SYSTEM enum code, no name table
+                instance_id, // nt:id-only the ability (named as ability_name) or a system instance
                 error_code,
-                error_name = cimmeria_names::book().error_code(error_code),
+                error_name = book.error_code(error_code),
                 reason = ctx.reason,
                 "onErrorCode queued for the client"
             );
@@ -255,16 +284,21 @@ pub(super) fn emit(
         } => wire_row!(
             c,
             ability_id = ctx.ability_id,
+            ability_name = ctx.ability_id.and_then(|a| book.ability(a)),
             sequence_id,
+            sequence_name = book.sequence(sequence_id),
             source_id,
+            source_name = label(space_mgr, source_id),
             target_id,
-            instance_id,
+            target_name = label(space_mgr, target_id),
+            instance_id, // nt:id-only the phase's cast_id sequence, no name
             reason = ctx.reason,
             "onSequence queued for the client"
         ),
         Decoded::Communication { channel, ref text } => wire_row!(
             c,
             ability_id = ctx.ability_id,
+            ability_name = ctx.ability_id.and_then(|a| book.ability(a)),
             channel,
             text = text.as_str(),
             reason = ctx.reason,
@@ -273,6 +307,7 @@ pub(super) fn emit(
         Decoded::Other | Decoded::Short => wire_row!(
             c,
             ability_id = ctx.ability_id,
+            ability_name = ctx.ability_id.and_then(|a| book.ability(a)),
             reason = ctx.reason,
             decode = if matches!(decoded, Decoded::Short) {
                 "short"
