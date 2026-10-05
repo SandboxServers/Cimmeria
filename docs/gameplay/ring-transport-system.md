@@ -434,7 +434,7 @@ CREATE TABLE ring_transport_regions (
 | 31 | MenfaDark_Ring_00040000 | {30} | Paired |
 | 32 | MenfaDark_Ring_ffff0003 | {} | Dead end — receive only |
 
-#### Debug Area (world 1300) — 9 regions, fully connected (Cimmeria, DA-08)
+#### Debug Area (world 1300) — 9 regions, fully connected (Cimmeria, DA-08, DA-11)
 
 Not 2009 content. The GM-only Debug Area runs on the Ihpet_Crater_Light map, which has no ring hardware of its own: none of its 155 packages names a ring transporter, teleporter or `SeqEvent_RegionTeleport` (scanned 2026-10-04). Client patch `011-debug-area-rings-fix` (it replaces `010-debug-area-rings`, which hung the client and was pulled) clones region 3's rig (sequence 772, base 1192, rings 218-220/227/228, emitter 216, all in `Castle_CellBlock-fffeffff`) eight times into `Ihpet_Crater_Light-fff80002`, with its Kismet. Patch `014-debug-area-lineup-ring` (DA-11) clones a ninth copy, for the Lineup station, into the chunk 011 writes. That chunk sits in the middle of the crater, within 265 m of every station, so it is always streamed in (`LevelStreamingDistance` 500 m) and an arrival pad's rig is loaded when its Teleport In fires.
 

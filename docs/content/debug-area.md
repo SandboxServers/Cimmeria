@@ -615,7 +615,7 @@ What only the live client can show (DA-06 ran it on 2026-10-05; outcomes in the 
 | Sequences, event sets, trigger volumes | `db/resources/Events/Seed/debug_area_ring_events.sql` |
 | Console chains (`interact_tag` -> `trigger_transporter`) | `db/resources/Content/Seed/debug_area_ring_chains.sql` |
 | Sequence ids the client resolves | `crates/resources/src/base/sequence_overrides.rs` (`DEBUG_AREA_RING_RIGS`) |
-| Ring FSM | [ring-transport-system.md](../gameplay/ring-transport-system.md#debug-area-world-1300--8-regions-fully-connected-cimmeria-da-08) |
+| Ring FSM | [ring-transport-system.md](../gameplay/ring-transport-system.md#debug-area-world-1300--9-regions-fully-connected-cimmeria-da-08-da-11) |
 
 ## Reach between stations
 

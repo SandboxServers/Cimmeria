@@ -482,7 +482,11 @@ Kismet sequence), cloned by the same cloner with the same roots and the
   The launcher's `blocked_by_failure` checks only the id named, so a 014
   that fails (a GM-only world most players never enter) holds back nothing,
   and 012, which names `009-starter-hotbar`, is not behind either ring patch.
-  Chain nothing `after` 014.
+  Chain no unrelated patch `after` 014. A later patch that rewrites this
+  chunk again (a tenth rig, or a replacement for 011) must accept 014's
+  output (sha256 `2c505a6a...`) as a starting point, as a primary source or
+  an `alternatives` entry, because installs that have 014 hold that file
+  and not 011's.
 - **Instance number.** 011's chunk holds `..._Pf0_Seq` and `_Seq_0` to
   `_Seq_6`, so the ninth root sequence is
   `Ihpet_Crater_Light-fff80002.Main_Sequence.Prefabs.GLB-RingTransporterBase_TC00_Pf0_Seq_7`,

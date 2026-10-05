@@ -62,10 +62,12 @@ INSERT INTO spawnlist (spawn_id, x, y, z, heading, world_id, template_id, tag, s
 -- Death yard
 INSERT INTO ring_transport_regions (region_id, world_id, x, y, z, tag, height, radius, event_set_id, display_name_id, destination_region_ids, point_set_id, required_mission_id) VALUES (42, 1300, 437, 11.837, -937, 'DebugArea_Ring_DeathYardRegion', 1.77, 3.53, 13817, 7508, '{35,36,37,38,39,40,41,43}', 13817, NULL);
 INSERT INTO spawnlist (spawn_id, x, y, z, heading, world_id, template_id, tag, set_name) VALUES (13817, 439.88, 11.74, -935.68, -2.0617, 1300, 3, 'DebugArea_Ring_DeathYard', NULL);
--- Lineup (DA-11): the courtyard north of the Lords' circle, 20 m on foot from
--- the Z10 lineup's doorway (300, 6.8, -897). The rig base stands on the
+-- Lineup (DA-11): the courtyard north of the Lords' circle. The Z10 lineup's
+-- doorway (300, 6.8, -897) is 21 m away as the crow flies, about 39 m on foot
+-- round the west end of the low wall along z -905. The rig base stands on the
 -- paving's top (occluder Geometry 6.5-6.8; terrain 6.58 round it), and no
--- column within 8 m of the pad holds anything solid below 8 m overhead.
+-- column within 7.6 m of the pad holds anything solid between 0.3 m and
+-- 3.5 m above the base.
 INSERT INTO ring_transport_regions (region_id, world_id, x, y, z, tag, height, radius, event_set_id, display_name_id, destination_region_ids, point_set_id, required_mission_id) VALUES (43, 1300, 287, 7.337, -914, 'DebugArea_Ring_LineupRegion', 1.77, 3.53, 13818, 7508, '{35,36,37,38,39,40,41,42}', 13818, NULL);
 INSERT INTO spawnlist (spawn_id, x, y, z, heading, world_id, template_id, tag, set_name) VALUES (13818, 289.88, 7.24, -912.68, -2.0617, 1300, 3, 'DebugArea_Ring_Lineup', NULL);
 
