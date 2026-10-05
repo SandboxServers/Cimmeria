@@ -26,8 +26,10 @@ use super::methods::{query_player_load_data, query_world_stargates};
 use super::space_registry::resolve_space_id_fallback;
 
 mod address_grant;
+mod gm_only;
 mod persist_arrival;
 pub(crate) use address_grant::handle_grant_stargate_address;
+use gm_only::gm_only_gate_redirect;
 // The arrival write. A test hook too: the dial-refusal round trip in
 // `cimmeria-services` (`gate_round_trip_tests::dial_refusal_persist`), which
 // also drives the cell's dial handler, calls it through the `test-support`
@@ -295,6 +297,30 @@ pub async fn handle_gate_travel(
             c,
         );
     }
+
+    // A non-GM bound for a GM-only world (a GM `.summon`, a content
+    // teleport, a respawner there) arrives at their faction's start instead
+    // (D-DA4). Every cross-world route ends here, before `CreateEntity`, so
+    // this one check covers them all; the client then loads the home world.
+    let (target_world_name, position, rotation, destination_space_id, destination_ring_id) =
+        match gm_only_gate_redirect(
+            addr,
+            target_world_name,
+            active_player_id,
+            connected,
+            db_pool,
+        )
+        .await
+        {
+            Some(r) => (r.world, r.position, [0.0; 3], None, None),
+            None => (
+                target_world_name,
+                position,
+                rotation,
+                destination_space_id,
+                destination_ring_id,
+            ),
+        };
 
     // Tell CellService to create the entity in the new space and await the
     // resolved space_id via oneshot (needed for the world-entry wire packet).

@@ -73,3 +73,5 @@
 - [project_ab08_toggles_passives_review.md](project_ab08_toggles_passives_review.md) — AB-08 held toggles/passives cleared shape; passive-cast hole resolved (passive_yn loaded, casts refused at launch)
 - [pattern_deferred_name_resolution.md](pattern_deferred_name_resolution.md) — NT reviews: id captured at queue time, named at confirm = recycled-slot mislabel; subject names under actor keys
 - [exploit_public_ingest_cell_channel_dos.md](exploit_public_ingest_cell_channel_dos.md) — Public ingest -> shared 256-slot base->cell channel; try_send protects sender not cell; semaphore + is_closed (#1215)
+- [exploit_vendor_buy_sell_arbitrage.md](exploit_vendor_buy_sell_arbitrage.md) — Buy list priced under any sell list mints naquadah (DA-02 list 1300 SMG 1 vs 1000); ask for global no-arbitrage seed guard
+- [reference_world_1300_not_gm_enforced.md](reference_world_1300_not_gm_enforced.md) — DebugArea 1300 "GM-only" is no-stargate-row only; .summon/relog lands non-GMs; rigs there must self-gate

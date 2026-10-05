@@ -114,6 +114,20 @@ async fn a_player_kill_of_the_same_mob_still_pays() {
     assert_ne!(corpse.interaction_type_flags & INT_NORMAL_LOOT, 0);
 }
 
+/// D-DA7 (DA-02): a player's kill of a training dummy pays no XP; the dummy
+/// respawns in 30 s, so XP from it would be free. The test above is the
+/// control. Revert proof: drop the `TrainingDummy` check in `grant_kill_xp`
+/// and the player is paid.
+#[tokio::test]
+async fn a_training_dummy_kill_pays_no_xp() {
+    let (mut mgr, _friendly, hostile) = world();
+    mgr.get_entity_mut(hostile).unwrap().extensions.insert(
+        crate::cell::space_manager::TrainingDummy::new(std::time::Instant::now()),
+    );
+    let grants = kill(&mut mgr, hostile, PLAYER).await;
+    assert!(grants.is_empty(), "a dummy kill pays nobody: {grants:?}");
+}
+
 /// The skipped roll is not silent: one `loot.drop event=skipped
 /// reason=npc_only_kill` row with both entities and both factions.
 #[tokio::test]

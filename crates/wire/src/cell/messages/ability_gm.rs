@@ -7,6 +7,28 @@
 //! `onKnownAbilitiesUpdate` burst. Both commands act on the calling GM only:
 //! neither method has a target argument in `SGWGmPlayer.def`.
 
+/// Where a bulk change came from, so the audit trail names the real
+/// source (DA-02 review F4): the typed command, or the Debug Area's ability
+/// granter / reset NPC (content action `gm_ability_bulk`). Both are GM-gated
+/// on the cell; only the label and the player's lines differ.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum GmAbilitySource {
+    /// `/gmgiveallabilities` or `/gmresetabilities`, typed by the GM.
+    Command,
+    /// A click on the Debug Area ability granter or ability reset NPC.
+    NpcGranter,
+}
+
+impl GmAbilitySource {
+    /// The `source` value logs carry.
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::Command => "command",
+            Self::NpcGranter => "npc_granter",
+        }
+    }
+}
+
 /// Which bulk change a GM asked for.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum GmAbilityChange {
@@ -43,6 +65,8 @@ pub struct GmAbilityBulk {
     /// The GM's account, for the telemetry (`None` when unknown).
     pub account_id: Option<u32>,
     pub change: GmAbilityChange,
+    /// Who asked: the typed command or the NPC granter.
+    pub source: GmAbilitySource,
     /// [`GmAbilityChange::GrantAll`]: the archetype tree's ability ids, in
     /// tree order. Empty for [`GmAbilityChange::Reset`]: the base reads the
     /// starters from `resources.char_creation_abilities` itself.
@@ -58,6 +82,8 @@ pub struct GmAbilitiesChanged {
     /// `entity_id` now plays another character.
     pub player_id: i32,
     pub change: GmAbilityChange,
+    /// Echoed from the request.
+    pub source: GmAbilitySource,
     /// Ids now known that were not before, in row order.
     pub added: Vec<i32>,
     /// Ids no longer known, in their old row order.

@@ -277,6 +277,43 @@ mod live_db {
         }
     }
 
+    /// Review F5: the DA-02 templates (the GM granter and reset NPCs, the
+    /// 1-naquadah munitions vendor, the dummies) stand in world 1300 and only
+    /// at DA-02 spawn ids. A copy at another id or in a public world would
+    /// hand players a GM tool or a cheap store. Revert proof: insert a
+    /// spawnlist row of template 1302 in Castle_CellBlock and this fails.
+    #[tokio::test]
+    async fn da02_templates_are_placed_only_in_the_debug_area_plaza() {
+        let pool = require_db_or_skip!();
+        let stray: Vec<(i32, i32, String)> = sqlx::query_as(
+            "SELECT s.spawn_id, s.template_id, w.world \
+               FROM resources.spawnlist s \
+               JOIN resources.worlds w USING (world_id) \
+              WHERE s.template_id BETWEEN 1300 AND 1329 \
+                AND (s.world_id <> 1300 OR s.spawn_id NOT BETWEEN $1 AND $2) \
+              ORDER BY s.spawn_id",
+        )
+        .bind(FIRST_SPAWN)
+        .bind(LAST_SPAWN)
+        .fetch_all(&pool)
+        .await
+        .unwrap();
+        assert!(
+            stray.is_empty(),
+            "DA-02 templates placed elsewhere: {stray:?}"
+        );
+        let placed: i64 = sqlx::query_scalar(
+            "SELECT COUNT(*) FROM resources.spawnlist WHERE template_id BETWEEN 1300 AND 1329",
+        )
+        .fetch_one(&pool)
+        .await
+        .unwrap();
+        assert_eq!(
+            placed, 8,
+            "control: 1300-1302 and the five dummies are placed"
+        );
+    }
+
     /// The munitions vendor sells all fifteen special-ammo reserve stacks
     /// and a weapon for each family, everything at 1 naquadah.
     #[tokio::test]
@@ -298,7 +335,17 @@ mod live_db {
         .await
         .unwrap();
         assert_eq!(rows.len(), 19, "every row names a real item");
-        assert!(rows.iter().all(|&(_, price)| price == 1));
+        // 1 naquadah, except the two weapons sell list 2 buys back: priced
+        // at that buy-back, so nothing can be bought and sold at a profit
+        // (review F1; the seed-wide rule is `live_db_vendor_arbitrage`).
+        for &(design, price) in &rows {
+            let want = match design {
+                55 => 300,
+                21 => 1000,
+                _ => 1,
+            };
+            assert_eq!(price, want, "design {design}");
+        }
         let ammo: Vec<i32> =
             sqlx::query_scalar("SELECT item_id FROM resources.ammo_item_types ORDER BY item_id")
                 .fetch_all(&pool)

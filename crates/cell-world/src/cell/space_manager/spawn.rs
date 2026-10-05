@@ -374,7 +374,7 @@ fn apply_training_dummy(e: &mut CellEntity) {
         stat.set_current(current);
     }
     e.extensions
-        .insert(super::TrainingDummy::new(std::time::Instant::now()));
+        .insert(super::TrainingDummy::new(std::time::Instant::now()).with_rest_health(current));
 }
 
 /// Any `INT_Vendor*` bit (`EInteractionNotificationType` bits 13-21).

@@ -25,7 +25,9 @@ use tokio::sync::mpsc;
 use super::gm_ability_bulk::{persist_bulk, starter_abilities, BulkWrite};
 use super::handle_gm_ability_bulk;
 use super::tests::{cleanup, insert_test_account, insert_test_player, make_connected_state};
-use crate::cell::messages::{BaseToCellMsg, GmAbilitiesChanged, GmAbilityBulk, GmAbilityChange};
+use crate::cell::messages::{
+    BaseToCellMsg, GmAbilitiesChanged, GmAbilityBulk, GmAbilityChange, GmAbilitySource,
+};
 use crate::test_support::{database_url, require_db_or_skip, TestTransport};
 
 const GM: u32 = 9_302_001;
@@ -247,6 +249,7 @@ fn reset_msg(player_id: i32) -> GmAbilityBulk {
         player_id,
         account_id: None,
         change: GmAbilityChange::Reset,
+        source: GmAbilitySource::Command,
         ability_ids: vec![],
     }
 }
@@ -265,6 +268,7 @@ async fn live_db_gm_reset_handler_reports_the_diff_to_the_cell() {
         entity_id: GM,
         player_id: ID,
         change: GmAbilityChange::Reset,
+        source: GmAbilitySource::Command,
         added: vec![],
         removed: vec![QUEST, TRAINED[0], TRAINED[1]],
         training_points: 5,

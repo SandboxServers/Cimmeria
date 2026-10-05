@@ -18,7 +18,7 @@ use tokio::sync::mpsc;
 
 use crate::cell::console::gm::feedback::send_gm_feedback;
 use crate::cell::effects::passives::PassiveChange;
-use crate::cell::messages::{CellToBaseMsg, GmAbilitiesChanged, GmAbilityChange};
+use crate::cell::messages::{CellToBaseMsg, GmAbilitiesChanged, GmAbilityChange, GmAbilitySource};
 use crate::cell::space_manager::SpaceManager;
 
 use super::ability_granted::{resend_trainer_if_pinned, send_training_points};
@@ -35,11 +35,18 @@ pub(super) async fn handle_gm_abilities_changed(
         entity_id,
         player_id,
         change,
+        source,
         added,
         removed,
         training_points,
     } = changed;
-    let cmd = change.command();
+    // A granter click leads its lines with the NPC, not a command the GM
+    // never typed (DA-02 review F4).
+    let cmd = match (source, change) {
+        (GmAbilitySource::Command, _) => change.command(),
+        (GmAbilitySource::NpcGranter, GmAbilityChange::GrantAll) => "Ability granter",
+        (GmAbilitySource::NpcGranter, GmAbilityChange::Reset) => "Ability reset",
+    };
     // The base checked the session before its write, not before this reply.
     let current = space_mgr.get_entity(entity_id).and_then(|e| e.player_id);
     if current != Some(player_id) {
@@ -91,6 +98,7 @@ pub(super) async fn handle_gm_abilities_changed(
         player_id,
         player_name = identity.player_name,
         cmd,
+        source = source.as_str(),
         added = added.len(),
         removed = removed.len(),
         weapon_regranted = ?regranted,

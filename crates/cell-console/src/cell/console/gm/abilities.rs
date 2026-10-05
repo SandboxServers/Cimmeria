@@ -22,7 +22,7 @@ use super::super::give_ability::{plan_grant, send_grant};
 use super::command_log::{log_gm_command, Outcome};
 use super::feedback::send_gm_feedback;
 use super::{read_i32, GM_GIVE_ABILITY, GM_GIVE_ALL_ABILITIES, GM_RESET_ABILITIES};
-use crate::cell::messages::{CellToBaseMsg, GmAbilityBulk, GmAbilityChange};
+use crate::cell::messages::{CellToBaseMsg, GmAbilityBulk, GmAbilityChange, GmAbilitySource};
 use crate::cell::space_manager::{SpaceManager, TreeGrantRefusal};
 
 /// `gmGiveAbility(INT32 aAbilityID)`: grant one ability to the caller.
@@ -190,6 +190,7 @@ async fn forward_bulk(
         player_id,
         account_id: space_mgr.player_identity(entity_id).account_id,
         change,
+        source: GmAbilitySource::Command,
         ability_ids,
     });
     let outcome = if tx.send(msg).await.is_ok() {

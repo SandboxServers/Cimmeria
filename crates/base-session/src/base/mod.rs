@@ -53,6 +53,7 @@ pub mod world_entry_chat;
 /// The world-entry leaf the methods crate needs below world entry: the
 /// `world_name` -> `space_id` registry.
 pub mod world_entry {
+    pub mod gm_only_worlds;
     pub mod space_registry;
 
     #[cfg(test)]

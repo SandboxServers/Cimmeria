@@ -27,7 +27,7 @@ pub(super) async fn send_system_mail(
     player_id: i32,
     chain_id: i64,
     tx: &mpsc::Sender<CellToBaseMsg>,
-    space_mgr: &SpaceManager,
+    space_mgr: &mut SpaceManager,
 ) {
     let Action::SendSystemMail {
         sender_name,
@@ -55,6 +55,25 @@ pub(super) async fn send_system_mail(
             chain_id,
             chain_name = cimmeria_names::book().chain(chain_id),
             "send_system_mail: the chain's entity is not this player; no mail sent",
+        );
+        return;
+    }
+    // One firing per player per chain per second (DA-02 review F3): each
+    // one is a row-locked transaction on the base, even inside the mail's
+    // own cooldown window, and `interact` accepts any number of clicks.
+    if !space_mgr.chain_debounce(entity_id, chain_id, std::time::Instant::now()) {
+        // Module-path target: exported by `OTEL_FILTER`'s
+        // `cimmeria_cell_content=debug` row.
+        tracing::debug!(
+            event = "content.send_system_mail",
+            reason = "debounced",
+            entity_id,
+            entity_name = space_mgr.entity_names(entity_id).entity_name,
+            player_id,
+            player_name = identity.player_name,
+            chain_id,
+            chain_name = cimmeria_names::book().chain(chain_id),
+            "send_system_mail: a repeat inside the debounce window; nothing sent",
         );
         return;
     }

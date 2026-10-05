@@ -178,8 +178,20 @@ mod live_db {
                 .iter()
                 .filter(|r| r.template_id == template && r.world_name == "Castle_CellBlock")
                 .collect();
-            // The Debug Area plaza has its own copies (spawns 13013 and
-            // 13014, DA-02), guarded by `live_db_debug_area_plaza`.
+            // Every placement of the template, in any world: the hub's and
+            // the Debug Area plaza's copy (DA-02), nothing else.
+            let plaza = if template == 330 { 13013 } else { 13014 };
+            let mut everywhere: Vec<(i32, &str)> = records
+                .iter()
+                .filter(|r| r.template_id == template)
+                .map(|r| (r.spawn_id, r.world_name.as_str()))
+                .collect();
+            everywhere.sort_unstable();
+            assert_eq!(
+                everywhere,
+                vec![(spawn, "Castle_CellBlock"), (plaza, "DebugArea")],
+                "template {template} is placed in the hub and the plaza only"
+            );
             assert_eq!(
                 placed.len(),
                 1,

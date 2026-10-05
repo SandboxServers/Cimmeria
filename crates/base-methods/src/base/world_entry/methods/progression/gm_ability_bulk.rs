@@ -30,7 +30,9 @@ use sqlx::PgPool;
 
 use super::super::super::super::gm_feedback::send_gm_feedback_to_client;
 use super::super::super::super::ConnectedClientState;
-use crate::cell::messages::{BaseToCellMsg, GmAbilitiesChanged, GmAbilityBulk, GmAbilityChange};
+use crate::cell::messages::{
+    BaseToCellMsg, GmAbilitiesChanged, GmAbilityBulk, GmAbilityChange, GmAbilitySource,
+};
 
 /// What [`persist_bulk`] wrote.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -164,6 +166,7 @@ fn active_player_of(
         account_id = msg.account_id,
         player_id = msg.player_id,
         cmd = msg.change.command(),
+        source = msg.source.as_str(),
     )
 )]
 pub async fn handle_gm_ability_bulk(
@@ -179,9 +182,17 @@ pub async fn handle_gm_ability_bulk(
         player_id,
         account_id,
         change,
+        source,
         ability_ids,
     } = msg;
-    let cmd = change.command();
+    // The label the GM's lines lead with: the command they typed, or the
+    // NPC they clicked (review F4: a granter grant is not a typed command).
+    let cmd = match (source, change) {
+        (GmAbilitySource::Command, _) => change.command(),
+        (GmAbilitySource::NpcGranter, GmAbilityChange::GrantAll) => "Ability granter",
+        (GmAbilitySource::NpcGranter, GmAbilityChange::Reset) => "Ability reset",
+    };
+    let source_label = source.as_str();
     let refuse = |reason: &'static str, text: String| async move {
         tracing::warn!(
             target: "abilities",
@@ -193,6 +204,7 @@ pub async fn handle_gm_ability_bulk(
             account_id,
             player_id,
             cmd,
+            source = source_label,
             "GM bulk ability change refused"
         );
         // Only while the GM's entity still plays the GM's character: an
@@ -236,6 +248,7 @@ pub async fn handle_gm_ability_bulk(
                 account_id,
                 player_id,
                 cmd,
+                source = source_label,
                 error = %e,
                 "GM bulk ability change: database error"
             );
@@ -267,6 +280,7 @@ pub async fn handle_gm_ability_bulk(
         account_id,
         player_id,
         cmd,
+        source = source_label,
         added = added.len(),
         removed = removed.len(),
         training_points = write.training_points,
@@ -277,6 +291,7 @@ pub async fn handle_gm_ability_bulk(
         entity_id,
         player_id,
         change,
+        source,
         added,
         removed,
         training_points: write.training_points,
@@ -294,6 +309,7 @@ pub async fn handle_gm_ability_bulk(
             account_id,
             player_id,
             cmd,
+            source = source_label,
             "GM bulk ability change: no cell channel; the change shows after relog"
         );
         let text = format!("{cmd}: saved; it shows after you relog");

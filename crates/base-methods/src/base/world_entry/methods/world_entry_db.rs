@@ -8,6 +8,7 @@ use cimmeria_entity::manager::EntityManager;
 use crate::cell::messages::BaseToCellMsg;
 use crate::mercury::{WorldEntryInfo, DEFAULT_SPACE_ID, SGWGMPLAYER_CLASS_ID, SGWPLAYER_CLASS_ID};
 
+use super::super::gm_only_worlds::{gm_only_redirect, note_gm_only_redirect};
 use super::super::space_registry::resolve_space_id_fallback;
 
 /// Resolve the CREATE_BASE_PLAYER `class_id` byte from the caller's access
@@ -125,10 +126,11 @@ pub async fn query_world_entry(
         pos_x: f32,
         pos_y: f32,
         pos_z: f32,
+        alignment: i32,
     }
 
     match sqlx::query_as::<_, EntryRow>(
-        "SELECT player_name, world_location, pos_x, pos_y, pos_z \
+        "SELECT player_name, world_location, pos_x, pos_y, pos_z, alignment \
          FROM sgw_player WHERE player_id = $1 AND account_id = $2",
     )
     .bind(player_id)
@@ -136,7 +138,25 @@ pub async fn query_world_entry(
     .fetch_optional(pool.as_ref())
     .await
     {
-        Ok(Some(row)) => {
+        Ok(Some(mut row)) => {
+            // A non-GM saved in a GM-only world (a relog after a GM summon,
+            // a demoted GM) enters at their faction's start instead, before
+            // the cell ever places them there (D-DA4).
+            if let Some(redirect) =
+                gm_only_redirect(&row.world_location, access_level, row.alignment)
+            {
+                note_gm_only_redirect(
+                    "login",
+                    player_id,
+                    Some(&row.player_name),
+                    Some(account_id),
+                    account_name.as_deref(),
+                    access_level,
+                    &redirect,
+                );
+                row.world_location = redirect.world.to_string();
+                [row.pos_x, row.pos_y, row.pos_z] = redirect.position;
+            }
             // Kept whole so a refused entry below can hand the id back.
             let player_entity = entity_manager.lock().unwrap().create_entity("SGWPlayer");
             let player_eid = player_entity.0 as u32;
@@ -455,6 +475,80 @@ mod tests {
         assert_ne!(entry.player_entity_id, NO_ENTITY_ID);
         assert_eq!(entry.space_id, DEFAULT_SPACE_ID);
         assert_eq!(entry.world_name, "Castle_CellBlock");
+    }
+
+    /// Log in at `access_level`, answering the cell's `CreateEntity`.
+    /// Returns the world the cell was asked for and the entry.
+    async fn login_answered(
+        pool: PgPool,
+        account_id: i32,
+        player_id: i32,
+        access_level: u32,
+    ) -> (String, WorldEntryInfo) {
+        let mgr = Arc::new(std::sync::Mutex::new(EntityManager::new()));
+        let (cell_tx, mut cell_rx) = mpsc::channel(4);
+        let handle = tokio::spawn(async move {
+            let db = Some(Arc::new(pool));
+            let cell_tx = Some(cell_tx);
+            query_world_entry(
+                &db,
+                account_id as u32,
+                None,
+                player_id,
+                access_level,
+                &mgr,
+                &cell_tx,
+            )
+            .await
+        });
+        let msg = timeout(Duration::from_secs(5), cell_rx.recv())
+            .await
+            .expect("CreateEntity must not hang")
+            .expect("CreateEntity expected");
+        let BaseToCellMsg::CreateEntity {
+            world_name,
+            reply_tx,
+            ..
+        } = msg
+        else {
+            panic!("expected CreateEntity");
+        };
+        let _ = reply_tx.send(DEFAULT_SPACE_ID);
+        let entry = timeout(Duration::from_secs(5), handle)
+            .await
+            .expect("query_world_entry must not hang")
+            .unwrap();
+        (world_name, entry)
+    }
+
+    /// D-DA4: a non-GM saved in the Debug Area (a relog after a GM summon, a
+    /// demoted GM) logs in at the Praxis start, before the cell places them;
+    /// a GM saved there logs in there. Revert proof: drop the
+    /// `gm_only_redirect` block and the player's create names `DebugArea`.
+    #[tokio::test]
+    async fn live_db_a_non_gm_saved_in_the_debug_area_logs_in_at_the_faction_start() {
+        let pool = require_db_or_skip!();
+        for (offset, access_level, want) in [(4, 0, "Castle_CellBlock"), (6, 2, "DebugArea")] {
+            let account_id = HISTORICAL_LOGIN_BASE + offset;
+            let player_id = account_id + 1;
+            seed_player_in(&pool, account_id, player_id, "DebugArea").await;
+            let (created_in, entry) =
+                login_answered(pool.clone(), account_id, player_id, access_level).await;
+            sqlx::query("DELETE FROM account WHERE account_id = $1")
+                .bind(account_id)
+                .execute(&pool)
+                .await
+                .expect("cleanup sentinel account");
+            assert_eq!(created_in, want, "access level {access_level}");
+            assert_eq!(entry.world_name, want, "access level {access_level}");
+            if access_level == 0 {
+                assert_eq!(entry.pos, [-334.231, 73.472, -228.026]);
+                assert!(
+                    super::super::super::gm_only_worlds::take_redirect_line(player_id).is_some(),
+                    "the arrival owes the player the reason"
+                );
+            }
+        }
     }
 
     #[tokio::test]

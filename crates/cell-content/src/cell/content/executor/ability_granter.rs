@@ -35,7 +35,7 @@ use cimmeria_wire::cell::chat::{serialize_on_player_communication, CHAN_FEEDBACK
 
 use crate::cell::abilities::{reset_all_cooldowns, CooldownReset};
 use crate::cell::client_methods::communicator::ON_PLAYER_COMMUNICATION;
-use crate::cell::messages::{CellToBaseMsg, GmAbilityBulk, GmAbilityChange};
+use crate::cell::messages::{CellToBaseMsg, GmAbilityBulk, GmAbilityChange, GmAbilitySource};
 use crate::cell::space_manager::{SpaceManager, TreeGrantRefusal};
 
 /// The line a non-GM gets.
@@ -70,13 +70,34 @@ pub(super) async fn run(
             reason = "not_a_player",
             entity_id,
             entity_name = space_mgr.entity_label(entity_id),
-            chain_id, // nt:id-only the executor holds no chain description
+            chain_id,
+            chain_name = cimmeria_names::book().chain(chain_id),
             change = change.as_str(),
             "gm_ability_bulk fired for an entity that is not a player; nothing changed"
         );
         return;
     };
     let access_level = player.access_level;
+    // One firing per player per chain per second (review F3): a GM's click
+    // is a locked base write, and `interact` accepts any number of clicks.
+    // A double-click already got its line from the first.
+    if !space_mgr.chain_debounce(entity_id, chain_id, std::time::Instant::now()) {
+        // Module-path target: exported by `OTEL_FILTER`'s
+        // `cimmeria_cell_content=debug` row.
+        tracing::debug!(
+            event = EVENT,
+            decision_outcome = "debounced",
+            entity_id,
+            entity_name = who.player_name,
+            player_id = who.player_id,
+            player_name = who.player_name,
+            chain_id,
+            chain_name = cimmeria_names::book().chain(chain_id),
+            change = change.as_str(),
+            "ability granter: a repeat click inside the debounce window; ignored"
+        );
+        return;
+    }
     if !is_gm(access_level) {
         // A player clicking an NPC is ordinary play, not a fault.
         tracing::info!(
@@ -93,7 +114,8 @@ pub(super) async fn run(
             access_level,
             npc_entity_id,
             npc_entity_name = npc_name.as_deref(),
-            chain_id, // nt:id-only the executor holds no chain description
+            chain_id,
+            chain_name = cimmeria_names::book().chain(chain_id),
             change = change.as_str(),
             "ability granter refused: the player is not a GM"
         );
@@ -198,6 +220,9 @@ pub(super) async fn run(
         player_id,
         account_id: who.account_id,
         change: wire_change,
+        // The base logs and labels it as an NPC grant, not a typed
+        // command (review F4).
+        source: GmAbilitySource::NpcGranter,
         ability_ids: ability_ids.clone(),
     });
     if tx.send(msg).await.is_err() {
@@ -275,7 +300,8 @@ fn log_row(
         player_name = who.player_name,
         npc_entity_id,
         npc_entity_name = npc_name,
-        chain_id, // nt:id-only the executor holds no chain description
+        chain_id,
+            chain_name = cimmeria_names::book().chain(chain_id),
         change = change.as_str(),
         ability_count = ability_ids.len(),
         ability_ids = ?ability_ids,

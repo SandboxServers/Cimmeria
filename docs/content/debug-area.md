@@ -15,6 +15,17 @@ loaded, and only GMs can get there: `.gotolocation DebugArea` (or the native
 tests one group of server systems. Every spawn carries a `DebugArea_*` tag;
 the stasis-room hub's tests count `DebugHub_*`, so the two never mix (D-DA6).
 
+**GM only, enforced by the server.** An account below GameMaster (access
+level 2) never enters world 1300. At login and on every cross-world
+transfer (stargate, ring, content teleport, a respawner in another world,
+a GM `.summon` or `.gotolocation`) the base sends such a player to their
+faction's character-creation start instead (Praxis: the Castle_CellBlock
+stasis room; SGU: SGC_W1). Once that world has loaded they read "The Debug
+Area is for GMs only. You have been returned to your faction's starting
+point.", and the base logs a WARN `gm_only_world_refused` naming the
+player, the account and both worlds. The rule lives in
+`crates/base-session/src/base/world_entry/gm_only_worlds.rs`.
+
 This page covers the zones from packets DA-02, DA-03 and DA-04; DA-05
 completes it with the station index and the UAT mapping. Each packet's rows are
 in their own seed files:
@@ -773,8 +784,13 @@ and every running cooldown is cleared. The result is the same as typing
 2. The base saves them to the character (`sgw_player.abilities`, not a
    trainer purchase: no training points move, and a respec keeps them).
 3. The Abilities window refreshes (`onKnownAbilitiesUpdate`), and a second
-   line confirms: "gmGiveAllAbilities: granted 41 abilities from your tree
-   (saved; no points spent)".
+   line confirms: "Ability granter: granted 41 abilities from your tree
+   (saved; no points spent)". The base logs the grant with
+   `source = npc_granter`, so it is never mistaken for a typed
+   `/gmgiveallabilities` (`source = command`).
+
+A second click on the same NPC within a second is ignored: each click
+is a locked database write, and the first one already answered.
 
 If you already know the whole tree, the cooldowns are still cleared and a
 line says so. The action bar is not filled: the server cannot write it.
@@ -803,16 +819,19 @@ granter. Chain 13001, action `gm_ability_bulk` with change `reset`.
 
 ### Munitions vendor (template 1302)
 
-Right-click to open a store that sells, at 1 naquadah each (buy list 1300):
+Right-click to open a store that sells (buy list 1300):
 
 | Rows | Items |
 |---|---|
 | 13001-13005 | 100 rounds of each bullet special ammo: Armor Piercing, Hollow Point, Incendiary, EMP, Explosive (items 9000-9004) |
 | 13006-13015 | 100 of each dart special ammo: Poison, Disease, Tranquilizer, EMP, Radioactive, Stim, Coagulant, Nanite, Antidote, Adrenaline (9005-9014) |
 | 13016 | 5 Health Slappack TC1 (2893) |
-| 13017-13019 | One SI 3 9mm Pistol (55), SGHC 6 SMG (21) and CO2 Pistol Dartgun (3584) |
+| 13017-13019 | One SI 3 9mm Pistol (55) for 300 naquadah, SGHC 6 SMG (21) for 1000 and CO2 Pistol Dartgun (3584) for 1 |
 
-Sell, repair and recharge use list 2, as the hub vendor does. A purchase
+Everything else costs 1 naquadah. The pistol and the SMG cost what sell
+list 2 pays for them, so nothing here can be bought and sold back at a
+profit; `live_db_vendor_arbitrage` holds every buy list in the seed to that
+rule. Sell, repair and recharge use list 2, as the hub vendor does. A purchase
 lands in the main bag. The special ammo is drawn by a reload once
 `ammo.finite_special` is on (#1026). Deployables are abilities, not items:
 get them from the ability granter. The name is the client's "Consumables"
@@ -837,7 +856,7 @@ Right-click a hostile one to attack it, or target it and use any ability.
   entirely. A plain hostile NPC set to NEUTRAL still fires back once shot,
   which is why D-DA7 asked for the mark.
 - **They do not die in a test run.** 1,000,000 Health. If one is killed
-  anyway, it respawns 30 seconds later.
+  anyway, it respawns 30 seconds later, and the kill pays no XP.
 - **Combat ends on its own.** Ten seconds after the last hit on a dummy,
   everyone who hit it leaves combat with it (regeneration and the
   out-of-combat holster come back). A dummy has no leash to do that.
@@ -872,6 +891,9 @@ Right-click a hostile one to attack it, or target it and use any ability.
 | `cell-catalog` `spawner/tests/live_db_debug_area_plaza.rs` | Every DA-02 spawn is in world 1300, stationary, `DebugArea_*`-tagged, on a seeded template with a shipped name; the plaza NPCs on the ring and the plaza floor, the dummies on their line, all at least 2.5 apart; templates 1310-1314 and only they are training dummies, loaded as such by both loaders, hostile at levels 1, 10, 25 and 50 plus one friendly; each chain-driven NPC has one `interact_tag` chain running its action; buy list 1300 sells every special-ammo item |
 | `cell-content` `executor/tests/ability_granter.rs` | A GM gets exactly the tree abilities they lack (capstone included, no repeats), cleared cooldowns with the client's clear timers and a first-click line; a non-GM gets the refusal line and nothing else; a GM who knows the tree gets a line and no write; the reset forwards a reset |
 | `cell` `service/tests/npc_ai/training_dummy.rs` | An NPC spawned from a `training_dummy` record gets the mark and the dummy Health and never attacks its threat target, where the same record without the flag shoots; the friendly one starts at half Health |
+| `cell-combat` `death/npc_only_kill_tests.rs` | A player's kill of a training dummy pays no XP, where the same mob unmarked pays |
 | `cell-combat` `combat/threat/training_dummy_release.rs` | A dummy's attackers stay in combat while hits land and leave it 10 s after the last; an ordinary NPC is left to its leash |
 | `cell-combat` `use_ability/tests/beneficial_training_dummy.rs` | A heal aimed at a friendly training dummy lands on it; an unmarked neutral NPC still falls back to the caster, and a hostile dummy is never healed |
+| `base-session` `world_entry/gm_only_worlds.rs`, `base-world-entry` `gate_travel/tests/gm_only_world.rs`, `base-methods` `world_entry_db.rs` (`live_db_a_non_gm_saved_in_the_debug_area_logs_in_at_the_faction_start`) | A non-GM is refused world 1300 on a cross-world transfer and at login and arrives at the Praxis or SGU start with a line owed; a GM goes in |
+| `cell-catalog` `spawner/tests/live_db_vendor_arbitrage.rs` | No buy list in the seed sells an item for less than any sell list pays for it |
 | `content-engine` `loader/tests/action_conversion.rs`, `interact_tag_linter` | `gm_ability_bulk` converts for `grant_all` and `reset` and drops anything else; the plaza's interact chains are allowlisted (template-default cursor bits) |

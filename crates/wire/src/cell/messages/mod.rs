@@ -60,7 +60,7 @@ pub use crate::crafting::{
     CraftRequest, CraftVerb, CraftingStations, GmAllCraft, GmCraftGrant, GmCraftGrantKind,
     GmGrantAppliedSciencePoints, GmGrantExpertise, RespecCraftOpen, StationChangeCause, StationSet,
 };
-pub use ability_gm::{GmAbilitiesChanged, GmAbilityBulk, GmAbilityChange};
+pub use ability_gm::{GmAbilitiesChanged, GmAbilityBulk, GmAbilityChange, GmAbilitySource};
 pub use ammo_gm_cell_to_base::GmGiveAmmo;
 pub use ammo_reserve::{AmmoReserveAnswer, AmmoReserveRequest, ReserveRefusal};
 pub use bank_base_to_cell::BankBaseToCell;

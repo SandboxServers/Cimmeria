@@ -12,20 +12,26 @@
 //! (no hit landed in that time) is released through
 //! [`release_npc_from_player_combat`], the drain every non-death despawn
 //! uses: each player whose last threat it was leaves combat and is told.
+//! Its Health then goes back to the mark's `rest_health` and its witnesses
+//! see the bar refill, so damage never builds up across testers into a kill
+//! (DA-02 review F2).
 
 use std::time::Instant;
 
+use cimmeria_entity::stats::HEALTH;
 use tokio::sync::mpsc;
 
 use super::release_npc_from_player_combat;
+use crate::cell::abilities::send_entity_method_to_self_and_witnesses;
 use crate::cell::messages::CellToBaseMsg;
-use crate::cell::space_manager::SpaceManager;
+use crate::cell::space_manager::{SpaceManager, TrainingDummy};
+use crate::mercury::method_idx::ON_STAT_UPDATE;
 
 /// The `reason` of the release row.
 pub const TRAINING_DUMMY_RELEASE_REASON: &str = "training_dummy_quiet";
 
-/// Release every training dummy whose fight has gone quiet by `now`.
-/// Returns how many players left combat.
+/// Release every training dummy whose fight has gone quiet by `now`, and
+/// put its Health back. Returns how many players left combat.
 pub async fn training_dummy_combat_tick_at(
     now: Instant,
     tx: &mpsc::Sender<CellToBaseMsg>,
@@ -36,6 +42,7 @@ pub async fn training_dummy_combat_tick_at(
         exits +=
             release_npc_from_player_combat(dummy_id, TRAINING_DUMMY_RELEASE_REASON, tx, space_mgr)
                 .await;
+        refill_health(dummy_id, tx, space_mgr).await;
     }
     exits
 }
@@ -48,13 +55,48 @@ pub async fn training_dummy_combat_tick(
     training_dummy_combat_tick_at(Instant::now(), tx, space_mgr).await
 }
 
+/// Put a released dummy's Health back to its rest value and show it to the
+/// dummy's witnesses. A dead dummy is left to the respawn tick.
+async fn refill_health(
+    dummy_id: u32,
+    tx: &mpsc::Sender<CellToBaseMsg>,
+    space_mgr: &mut SpaceManager,
+) {
+    let update = {
+        let Some(e) = space_mgr.get_entity_mut(dummy_id) else {
+            return;
+        };
+        if crate::cell::combat::is_dead_state(e.state_field) {
+            return;
+        }
+        let Some(rest) = e.extensions.get::<TrainingDummy>().map(|m| m.rest_health) else {
+            return;
+        };
+        let Some(hp) = e.stats.get_mut(HEALTH) else {
+            return;
+        };
+        let target = rest.min(hp.max);
+        if hp.cur == target {
+            return;
+        }
+        hp.set_current(target);
+        let update = e.stats.serialize_dirty();
+        e.stats.clear_dirty();
+        update
+    };
+    if !update.is_empty() {
+        send_entity_method_to_self_and_witnesses(dummy_id, ON_STAT_UPDATE, update, tx, space_mgr)
+            .await;
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use std::time::Duration;
 
     use super::*;
     use crate::cell::combat::{generate_threat, AggroCause, BSF_IN_COMBAT};
-    use crate::cell::space_manager::{TrainingDummy, TRAINING_DUMMY_COMBAT_TIMEOUT};
+    use crate::cell::space_manager::TRAINING_DUMMY_COMBAT_TIMEOUT;
 
     const PLAYER: u32 = 1;
 
@@ -77,10 +119,11 @@ mod tests {
             .unwrap();
         let t0 = Instant::now();
         if marked {
-            mgr.get_entity_mut(npc)
-                .unwrap()
-                .extensions
-                .insert(TrainingDummy::new(t0));
+            let e = mgr.get_entity_mut(npc).unwrap();
+            e.extensions
+                .insert(TrainingDummy::new(t0).with_rest_health(1_000));
+            e.stats.get_mut(HEALTH).unwrap().update(0, 1_000, 1_000);
+            e.stats.clear_dirty();
         }
         let _ = generate_threat(&mut mgr, PLAYER, npc, 10.0, AggroCause::Damage);
         (mgr, npc, t0)
@@ -119,6 +162,41 @@ mod tests {
         assert!(!in_combat(&mgr), "the player left combat with the dummy");
         assert!(mgr.get_entity(npc).unwrap().threat_list.is_empty());
         assert!(mgr.get_entity(PLAYER).unwrap().threatened_mobs.is_empty());
+    }
+
+    /// F2: damage on a dummy does not build up across fights. The release
+    /// puts its Health back to the rest value and the clients are told.
+    /// Revert proof: drop the `refill_health` call and the dummy stays at
+    /// 400.
+    #[tokio::test]
+    async fn a_released_dummy_is_back_at_its_rest_health() {
+        let (mut mgr, npc, t0) = world(true);
+        let hp = mgr
+            .get_entity_mut(npc)
+            .unwrap()
+            .stats
+            .get_mut(HEALTH)
+            .unwrap();
+        hp.update(0, 400, 1_000);
+        // The player sees the dummy, so the refill has a witness to reach.
+        let _ = mgr.compute_aoi_changes();
+        let (tx, mut rx) = mpsc::channel(64);
+        training_dummy_combat_tick_at(t0, &tx, &mut mgr).await;
+        training_dummy_combat_tick_at(t0 + TRAINING_DUMMY_COMBAT_TIMEOUT, &tx, &mut mgr).await;
+        assert_eq!(
+            mgr.get_entity(npc).unwrap().stats.get(HEALTH).unwrap().cur,
+            1_000
+        );
+        let sent: Vec<_> = std::iter::from_fn(|| rx.try_recv().ok()).collect();
+        assert!(
+            sent.iter().any(|m| matches!(
+                m,
+                CellToBaseMsg::EntityMethodCall { entity_id, method_index: ON_STAT_UPDATE, .. }
+                    | CellToBaseMsg::WitnessEntityMethod { entity_id, method_index: ON_STAT_UPDATE, .. }
+                    if *entity_id == npc
+            )),
+            "the refill reaches the clients: {sent:#?}"
+        );
     }
 
     /// An ordinary NPC is not touched: its leash does that job.

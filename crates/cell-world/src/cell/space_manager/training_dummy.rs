@@ -29,7 +29,10 @@
 //!   which a seeded dummy never does. [`SpaceManager::quiet_training_dummies`]
 //!   finds a dummy whose threat has not moved for
 //!   [`TRAINING_DUMMY_COMBAT_TIMEOUT`]; the cell's 1 Hz sweep in
-//!   `cimmeria-cell-combat` then releases it from every player's combat.
+//!   `cimmeria-cell-combat` then releases it from every player's combat and
+//!   puts its Health back to [`TrainingDummy::rest_health`], so damage never
+//!   builds up across testers into a kill (review F2). A kill that happens
+//!   anyway pays no XP (`death::side_effects::grant_kill_xp`).
 
 use std::time::{Duration, Instant};
 
@@ -51,14 +54,27 @@ pub struct TrainingDummy {
     pub threat_seen: f32,
     /// When that total last changed (or the mark was placed).
     pub quiet_since: Instant,
+    /// The Health the dummy goes back to when its fight goes quiet: max for
+    /// a hostile dummy, half for the friendly heal target.
+    pub rest_health: i32,
 }
 
 impl TrainingDummy {
-    /// A fresh mark: no threat seen, quiet from `now`.
+    /// A fresh mark: no threat seen, quiet from `now`, resting at
+    /// [`TRAINING_DUMMY_HEALTH`].
     pub fn new(now: Instant) -> Self {
         Self {
             threat_seen: 0.0,
             quiet_since: now,
+            rest_health: TRAINING_DUMMY_HEALTH,
+        }
+    }
+
+    /// The same mark resting at `rest_health`.
+    pub fn with_rest_health(self, rest_health: i32) -> Self {
+        Self {
+            rest_health,
+            ..self
         }
     }
 }
@@ -80,6 +96,10 @@ impl SpaceManager {
         let mut out = Vec::new();
         for space in self.spaces.values_mut() {
             for e in space.entities.values_mut() {
+                // The mark first: this runs over every entity every second.
+                if !e.extensions.contains::<TrainingDummy>() {
+                    continue;
+                }
                 let total: f32 = e.threat_list.values().sum();
                 let empty = e.threat_list.is_empty();
                 let id = e.entity_id.0 as u32;

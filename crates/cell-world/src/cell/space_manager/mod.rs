@@ -27,6 +27,8 @@ pub use queries::PlayerNameLookup;
 pub type SpaceResources = cimmeria_entity::cell_entity::EntityExtensions;
 
 mod aoi;
+mod chain_debounce;
+pub use chain_debounce::{ChainDebounce, CHAIN_DEBOUNCE};
 mod authoring;
 mod client_move;
 mod cover_hit;

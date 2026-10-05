@@ -70,7 +70,15 @@ fn resolved(change: AbilityBulkChange) -> ResolvedActions {
     ResolvedActions {
         action_delays: Vec::new(),
         params,
-        actions: vec![(13000, Action::GmAbilityBulk { change })],
+        // The seeded chains: 13000 the granter, 13001 the reset NPC.
+        actions: vec![(chain_of(change), Action::GmAbilityBulk { change })],
+    }
+}
+
+fn chain_of(change: AbilityBulkChange) -> i64 {
+    match change {
+        AbilityBulkChange::GrantAll => 13000,
+        AbilityBulkChange::Reset => 13001,
     }
 }
 
@@ -229,4 +237,35 @@ async fn the_reset_npc_forwards_a_reset_for_the_gm() {
         "the base reads the starters"
     );
     assert!(says(&msgs, "back to your starter abilities"));
+}
+
+/// Review F3: a second click on the same NPC inside a second is dropped, so
+/// a scripted client cannot queue a locked base write per packet. Another
+/// NPC is its own window. Revert proof: drop the `chain_debounce` check and
+/// the second click forwards a second write.
+#[tokio::test]
+async fn a_repeat_click_inside_the_debounce_window_writes_nothing() {
+    let mut mgr = world(GM_LEVEL);
+    assert_eq!(
+        bulk(&click(&mut mgr, AbilityBulkChange::Reset).await).len(),
+        1
+    );
+    let again = click(&mut mgr, AbilityBulkChange::Reset).await;
+    assert!(again.is_empty(), "the repeat sends nothing: {again:#?}");
+    assert_eq!(
+        bulk(&click(&mut mgr, AbilityBulkChange::GrantAll).await).len(),
+        1,
+        "the granter is another chain"
+    );
+}
+
+/// Review F4: the granter's request tells the base it came from the NPC.
+#[tokio::test]
+async fn the_granter_marks_its_request_as_an_npc_grant() {
+    let mut mgr = world(GM_LEVEL);
+    let msgs = click(&mut mgr, AbilityBulkChange::GrantAll).await;
+    assert_eq!(
+        bulk(&msgs)[0].source,
+        crate::cell::messages::GmAbilitySource::NpcGranter
+    );
 }
