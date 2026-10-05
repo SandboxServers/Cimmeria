@@ -261,7 +261,6 @@ pub(super) async fn route(msg: CellToBaseMsg, ctx: &DispatchCtx<'_>) {
                 current_ammo,
                 cur_ammo_type,
                 ctx.db_pool,
-                ctx.connected,
             )
             .await
         }
@@ -572,7 +571,6 @@ pub(super) async fn bandolier_ammo_update(
     current_ammo: i32,
     cur_ammo_type: i32,
     db_pool: &Option<Arc<PgPool>>,
-    connected: &Arc<Mutex<HashMap<SocketAddr, ConnectedClientState>>>,
 ) {
     bandolier::bandolier_ammo_update(
         player_id,
@@ -581,7 +579,6 @@ pub(super) async fn bandolier_ammo_update(
         current_ammo,
         cur_ammo_type,
         db_pool,
-        connected,
     )
     .await;
 }
