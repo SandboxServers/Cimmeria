@@ -1,11 +1,13 @@
 # Launcher summary telemetry
 
 > **Type:** Reference
-> **Audience:** Engineers changing the summary mint, the ingest route, its rows or the desktop exporter, and the maintainer deciding whether to activate it
+> **Audience:** Engineers changing the ingest route, its rows or the desktop exporter, and the maintainer deciding whether to activate it
 > **Last updated:** 2026-10-04
 > **Companions:** [desktop-side contract](../../crates/launcher/desktop/docs/launcher-summaries.md), [telemetry operations](../operations/telemetry.md), [dashboard and saved view](../operations/signoz/launcher-summary-views.md), [dev-session telemetry](dev-session-telemetry.md), [target catalog](observability-target-catalog.md#launchersummary), [implementation assignment](../analysis/playtests/2026-10-03-macos-wine/worknotes/observability-implementation-assignment.md)
 
 The desktop launcher can report, with the player's consent, how each install, runtime-setup, repair, uninstall or launch attempt ended. A report is one row per attempt: closed enums, a few bounded integers and two random ids. The server validates a batch of those rows, drops the ones it has already accepted, and writes one typed log row per accepted summary.
+
+The upload is anonymous. There is no token, no mint step and no `Authorization` header: the launcher sends one `POST` and the server judges the body. Two things stand where a credential would: the route accepts only the exact schema-1 payload and refuses everything else, and each peer address gets a low number of requests per window (12 an hour by default).
 
 **Status: code only. Nothing here is deployed.** No distributed launcher build has a summary endpoint, so no launcher collects or sends a summary. The route exists in the server code on both listeners, and serving it publicly is an open maintainer decision (see [Public-activation gate](#public-activation-gate)). No part of this was run against a real collector or a real SigNoz; the proof is local fixtures and loopback tests.
 
@@ -23,30 +25,30 @@ They do not answer anything else, and the design keeps it that way:
 - **Not an install success rate.** The share of `succeeded` among received rows says nothing about the attempts that were not received.
 - **Not a login or world-entry metric.** A launch is `succeeded` when the game process the launcher watched exited with code 0. The launcher does not know whether the player logged in.
 - **Not a play-session timer.** A launch row carries the launcher's own preparation time and no total duration, because the total would be the length of the play session.
-- **Not game telemetry.** It has its own consent, its own token scope, its own route and its own rows. It shares the mint endpoint and the HMAC secret with [dev-session telemetry](dev-session-telemetry.md) and nothing else.
+- **Not game telemetry.** It has its own consent, its own route and its own rows, and it uses no dev-session token. What it shares with [dev-session telemetry](dev-session-telemetry.md) is the kill switch, the quota window setting and the quota-table code, and nothing else.
 
 ## Trust
 
-The summary mint needs no credential, like the player mint. So every summary is **self-reported and forgeable within the quotas**: anyone who can reach the mint can post rows that look like a launcher's.
+The route is anonymous, so anyone can post correctly shaped rows within the rate limit. Rows are self-reported; they are useful for spotting failure patterns and must never drive server state, alerts, success-rate claims or SLOs. The strict schema means nothing but closed enum values, bounded integers, UUIDs and a version triple can ever be stored.
 
-Rows from this pipeline must never drive server state, an alert or an SLO. They are for counting what opted-in launchers say happened.
+What bounds a stranger is not authentication:
 
-What bounds a forger is not authentication:
+- **The payload rule.** Only the schema-1 JSON envelope gets past the handler. A request that is anything else is refused whole, before a row is written ([Whole-request refusals](#whole-request-refusals)).
+- **Closed values.** Every stored value is a closed enum, a bounded integer, a parsed UUID or a parsed version triple. A stranger chooses among the same values a launcher can send and can put no text of their own in a row.
+- **The rate limit.** Each peer address gets 12 requests per window by default ([Anonymous access and the rate limit](#anonymous-access-and-the-rate-limit)). A request is at most 64 KiB and 32 summaries, so by default one address can add at most 384 summary rows per window.
+- **Fixed memory.** The dedup set has a fixed size, and the quota table is the fixed-size one the dev-session mint uses.
 
-- Every value is a closed enum, a bounded integer or a parsed UUID, so a forger chooses among the same values a launcher can send and can put no text of their own in a row.
-- The mint and the ingest are each limited per peer address ([Auth](#auth), [Ingest order](#ingest-order-and-validation)).
-- A request is at most 64 KiB and 32 summaries, and the dedup set has a fixed size.
-- A summary token has one scope, so it works on the summary route and nowhere else.
+None of this tells a real launcher from a script that sends the same bytes. That is the accepted cost of the design, and the reason for the rule above.
 
 ## Where the code lives
 
 | Piece | Path |
 |---|---|
-| Summary arm of the mint | `crates/admin-api/src/routes/dev_session/summary_mint.rs`, entered from `mint_inner` in `dev_session/handlers.rs` |
-| Scope and session-kind constants | `crates/admin-api/src/routes/dev_session/token.rs` |
-| Ingest route | `crates/admin-api/src/routes/telemetry/launcher_summary/`: `mod.rs` (router, body cap), `handlers.rs` (order of checks), `dto.rs` (wire types, validation, error bodies), `dedup.rs`, `rows.rs` |
+| Ingest route | `crates/admin-api/src/routes/telemetry/launcher_summary/`: `mod.rs` (router, body cap), `handlers.rs` (order of checks, the body read, the default allowance), `envelope.rs` (the one pass over the body: envelope rules, repeated keys), `dto.rs` (wire types, the content-type rule, element validation, error bodies), `dedup.rs`, `rows.rs` |
+| Kill switch and quota table (shared with the mint) | `kill_switch_active` and `env_u32` in `crates/admin-api/src/routes/dev_session/handlers.rs`, `WindowTable` and `ip_key` in `dev_session/quota.rs` |
 | Admin-listener mount | `api_routes` in `crates/admin-api/src/routes/mod.rs` |
 | Public login-listener mount | `login_port_telemetry_router` in `crates/admin-api/src/login_port.rs` |
+| Request span (both listeners) | `request_span` in `crates/admin-api/src/request_span.rs` |
 | Index routing | `CLIENT_TARGETS` in `crates/server/src/otel.rs` |
 | Producer and exporter | `crates/launcher/desktop/engine/src/storage/launcher_summary/` ([desktop-side contract](../../crates/launcher/desktop/docs/launcher-summaries.md)) |
 | Golden wire fixtures | `crates/launcher/desktop/engine/src/storage/launcher_summary/fixtures/` |
@@ -54,47 +56,23 @@ What bounds a forger is not authentication:
 
 ## Wire contract (schema version 1)
 
-### Endpoints
+### Endpoint
 
 | Path | Method | Auth | Body cap |
 |---|---|---|---|
-| `/api/auth/dev-session` with `"session_kind": "launcher_summary"` | POST | none; limited per peer address | 8 KiB |
-| `/api/telemetry/launcher-summary` | POST | `Authorization: Bearer <token>` with scope `launcher_summary.write` | 64 KiB (65,536 bytes) |
+| `/api/telemetry/launcher-summary` | POST | none; limited per peer address | 64 KiB (65,536 bytes) |
 
-Both paths are the same on the admin listener and on the public login listener. The launcher holds a base URL and appends `auth/dev-session` and `telemetry/launcher-summary` to it (`endpoint.rs`), so a base of `https://<host>/api/` produces the two paths above.
+The path is the same on the admin listener and on the public login listener. The launcher holds a base URL and appends `telemetry/launcher-summary` to it (`endpoint.rs`), so a base of `https://<host>/api/` produces the path above. That is the only URL the exporter ever requests.
 
-### Mint request and response
+### Request headers
 
-The request is the common dev-session body, and for a summary session it is exactly [`mint-request.json`](../../crates/launcher/desktop/engine/src/storage/launcher_summary/fixtures/mint-request.json):
-
-```json
-{ "install_id": "00000000-0000-4000-8000-0000000000aa",
-  "machine_id": "", "branch": "", "git_sha": "",
-  "launcher_version": "0.1.0", "tags": [],
-  "session_kind": "launcher_summary" }
-```
-
-| Field | Rule for a summary session |
+| Header | Rule |
 |---|---|
-| `session_kind` | Exactly `launcher_summary`. The summary arm is chosen by string equality before any quota is charged |
-| `install_id` | Passes the common check (1 to 128 bytes of ASCII alphanumerics, `-` or `_`) and is then discarded. The exporter sends a fresh random UUID with every mint and never stores it |
-| `machine_id`, `branch`, `git_sha` | Must be empty strings |
-| `tags` | Must be empty |
-| `launcher_version` | Exactly three dot-separated components of 1 to 3 ASCII digits |
+| `Content-Type` | Exactly one header, `application/json` in any letter case. A `charset` parameter is allowed and its value is not read. Anything else is a 415: no header, two headers, another media type, a `+json` type, any other parameter, a trailing `;` |
+| `Authorization` | Not used. The launcher sends none, and the handler never reads one, so a request with a token (a real dev-session token included) is treated exactly like one without |
+| `Content-Encoding` | Not used. The route inflates nothing, so a gzip body is a 400 whatever this header says |
 
-The identifier fields must be empty so that a build which sends them is refused instead of looking accepted.
-
-The response is the common `DevSessionResponse` (`session_id`, `token`, `expires_at_ms`, `upload_endpoint`, `chunk_max_bytes`, `flush_interval_ms`). The exporter reads `token` and ignores the rest, including `upload_endpoint`: its URLs come only from its own configuration.
-
-| Mint status | When |
-|---|---|
-| 200 | Token issued |
-| 400 | A non-empty identifier field or `tags`, a malformed `launcher_version`, a malformed `install_id`, or an unknown `session_kind` |
-| 413 | Body over 8 KiB |
-| 415, 422 | The `Json` extractor refused the body (no JSON content type, a missing field) before the handler ran. No quota is charged |
-| 429 + `Retry-After` | Over the summary mint allowance |
-| 500 | `CIMMERIA_TELEMETRY_HMAC_SECRET` is unset or shorter than 32 bytes |
-| 503 + `Retry-After: 60` | Kill switch |
+The exporter sends `Content-Type: application/json` and the batch, and nothing else of its own: no cookie and no identifier of the sender (`exchange.rs`).
 
 ### Ingest request
 
@@ -111,7 +89,11 @@ The response is the common `DevSessionResponse` (`session_id`, `token`, `expires
     "launcher_version": "0.1.0", "os": "windows", "arch": "x86_64" } ] }
 ```
 
-The body is plain JSON, not compressed. Every object is closed: an unknown key at the top level or in `client_dropped` fails the request, and an unknown key in an element rejects that element.
+The body is plain UTF-8 JSON, not compressed. Every object is closed: an unknown key at the top level or in `client_dropped` fails the request, and an unknown key in an element rejects that element.
+
+No key may be written twice. `serde_json` alone would keep the later value and report nothing, while another reader of the same bytes might keep the first. A repeat at the top level or anywhere in `client_dropped` fails the request; a repeat anywhere inside an element (the element itself, or an entry of its `phases`) rejects that element. Keys are compared after JSON unescaping (`envelope.rs`, `tests/repeated_keys.rs`).
+
+Each structure must be a JSON object. serde's derived structs would also read a positional array (`[0,0,0]` for `client_dropped`, twelve values in a row for a summary, `["starting", 12]` for a `phases` entry); `typed_object` in `dto.rs` refuses those before typing.
 
 Envelope rules. Breaking one is a 400 for the whole request:
 
@@ -150,7 +132,7 @@ These lists are exhaustive. The launcher's `request-all.json` fixture covers eve
 | `arch` | `x86_64`, `aarch64` |
 | result | `accepted`, `duplicate`, `rejected` |
 
-### Ingest response and statuses
+### Ingest response
 
 A request that passes the envelope checks gets `200 { "results": [ ... ] }`, one result per element of `summaries`, in the same order:
 
@@ -158,51 +140,89 @@ A request that passes the envelope checks gets `200 { "results": [ ... ] }`, one
 - `duplicate`: valid, but that `event_id` was already accepted. Inside one request, a repeated id is `accepted` and then `duplicate`.
 - `rejected`: the element broke a rule. The server does not say which, because the only honest description would quote the element.
 
-| Status | When | What the exporter does |
+One invalid element never fails its neighbours. A game-telemetry event placed between two valid summaries is `rejected` in its own position, and the two beside it are `accepted` and written (`a_game_telemetry_event_as_an_element_is_rejected_alone` in `tests/rejected.rs`).
+
+### Whole-request refusals
+
+Anything that is not the payload is refused as a whole. No row is written and no id is remembered. The rows below are in the order the server answers them.
+
+| Status | When | Body |
 |---|---|---|
-| 200 | The envelope is valid | Removes every answered row from its queue |
-| 400 | The body is not a JSON object, a top-level key is missing or unknown, `schema_version` is not 1, `client_dropped` is invalid, or `summaries` is not an array of 1 to 32 | Drops the batch for good and counts it |
-| 401 | No `Authorization: Bearer` header, or a token that fails to decode, fails its signature, has expired or lacks the summary scope | Mints again and retries, within its retry budget |
-| 413 | Body over 64 KiB | Drops the batch for good and counts it |
-| 429 + `Retry-After` | Over the per-address ingest allowance | Waits, then retries |
-| 500 | The HMAC secret is unusable | Retries |
-| 503 + `Retry-After: 60` | Kill switch | Waits, then retries |
+| 503 + `Retry-After: 60` | `CIMMERIA_TELEMETRY_KILL_SWITCH=1` | `Kill switch active — telemetry ingest is paused` |
+| 429 + `Retry-After` | The peer address has used its allowance. `Retry-After` is the rest of the window plus one second | `summary/ip quota exceeded — retry in Ns` |
+| 415 | `Content-Type` breaks the rule under [Request headers](#request-headers) | `Content-Type must be application/json` |
+| 400 | The URI has a query string, an empty one (`?`) included | `Query string not allowed` |
+| 413 | The body is over 64 KiB | `Body is over 64 KiB` |
+| 400 | The body is not the envelope: see the list below | A fixed sentence, such as `Body is not a JSON object` or `Repeated key` |
 
-A token that does not decode is a 401 here, never a 400: the exporter treats a 400 from this route as "this batch can never be delivered" and deletes it. Every refusal body is static text. No response repeats anything the caller sent, and no serde error text leaves the server (`SummaryError` in `dto.rs`). The exporter's full handling is in the [desktop-side contract](../../crates/launcher/desktop/docs/launcher-summaries.md#exporter-cycle-and-outcomes).
+The first four are answered before any of the body is read.
 
-## Auth
+What ends as a 400, each sent as `application/json`:
 
-**Scope.** A summary token carries exactly one scope, `launcher_summary.write` (`SCOPE_LAUNCHER_SUMMARY_WRITE`). The summary route requires it, and the two upload routes require `telemetry.write`, so neither kind of token works on the other's routes. `verify_bearer_scoped` in `telemetry/handlers.rs` does the check for both.
+- an empty body, whitespace, a form body, XML, or anything else that does not parse as one JSON value, such as the envelope followed by more text;
+- JSON whose top level is not an object: an array (the valid envelope wrapped in `[ ]` included), a string, a number, `null`;
+- JSON nested past the 128 levels `serde_json` reads (`deep_nesting_is_a_400` in `tests/envelope.rs`);
+- a key written twice at the top level or inside `client_dropped`;
+- a missing or unknown top-level key;
+- a `schema_version` that is not the integer 1;
+- an invalid `client_dropped`;
+- `summaries` that is not an array of 1 to 32 elements. An array of 30,000 two-byte elements fits in 64 KiB; it is refused by its count, and only its first 33 elements are ever built;
+- a gzip body, with or without `Content-Encoding: gzip`;
+- an NDJSON body or a single game-telemetry event, which the chunk upload would accept (`the_game_telemetry_line_is_a_real_upload_event` proves the test's line is a real one).
 
-**Session kind.** The token's `kind` claim is `launcher_summary` (`SESSION_KIND_LAUNCHER_SUMMARY`), and so is its `sub`. A player token's `sub` is the caller's `install_id`; a summary token's is a server constant, so the token carries nothing the caller chose and cannot tie a row to an installation. The `sid` is a server-minted UUID.
+`SummaryError` in `dto.rs` has exactly those five refusals (503, 429, 415, 413, 400), and the handler makes all of them: no extractor and no router layer answers for it. Every body is the server's text. The 400, 413, 415 and 503 bodies are fixed sentences, and the 429 body names the server's own counter and the seconds left. No response repeats anything the caller sent, and no serde error text leaves the server.
 
-**Lifetime.** The token is an ordinary dev-session token: the common 8-hour TTL, and the refresh route extends it like any other, keeping its scope and kind. What separates it from a player token is its scope, not its lifetime. The exporter never refreshes. It mints once per delivery attempt and never stores the token.
+### What the exporter does with each status
 
-**Mint quota.** Summary mints are counted per peer address on a table of their own (`Tables::mint_summary_ip`, reported as `mint/summary_ip`), so summary mints and player or lab mints cannot spend each other's allowance. The limit is `CIMMERIA_TELEMETRY_MINT_QUOTA_PER_IP`, over the shared window. Two differences from the player mint:
+| Status | What the exporter does |
+|---|---|
+| 200 with one known result per row | Removes every answered row from its queue |
+| 400, 413, 415, 422 | The server will never take this body: drops the batch for good and counts its rows as rejected |
+| 404, 405 | The server has no summary route: stops for the rest of the process run and keeps the rows |
+| 429 | Ends the cycle at once, with no retry and no wait, and keeps the rows. The allowance is low, and a retry would only spend more of it |
+| 503 | Waits `Retry-After`, capped at 60 s, then retries within its budget of two retries |
+| Anything else, a timeout or a refused connection | Transient: retries within the same budget and never deletes |
 
-- The allowance is charged before any field is validated, so a malformed summary mint spends it.
-- There is no per-`install_id` charge, because the exporter's `install_id` is random per mint.
+The exporter makes one request per attempt, the `POST`. Its full handling is in the [desktop-side contract](../../crates/launcher/desktop/docs/launcher-summaries.md#exporter-cycle-and-outcomes).
 
-**What the mint logs.** A successful summary mint writes one INFO row, `Minted launcher-summary token`, with `session_id`, `session_kind`, `launcher_version` (re-formatted from the parsed integers) and `exp`. It writes no `install_id` and no DEBUG identifiers row. A refused mint is logged like any other dev-session refusal (`log_refusal` in `dev_session/handlers.rs`): the over-quota WARN and the bad-request DEBUG row carry the peer address.
+## Anonymous access and the rate limit
 
-**Kill switch.** `CIMMERIA_TELEMETRY_KILL_SWITCH=1` makes the mint, the refresh and the summary route answer 503 with `Retry-After: 60`.
+**No token.** The route takes no credential of any kind. `ingest_inner` receives the whole request and reads one header from it, `Content-Type`. `tests/anonymous.rs` pins it: the golden requests are accepted with no `Authorization` header and with no HMAC secret configured, and a header that is sent anyway (garbage, or a real player or lab token) changes no verdict, no refusal and no row, and is no way past the quota or the kill switch.
+
+**No summary session kind.** The dev-session mint has no part in this flow. A mint request with `"session_kind": "launcher_summary"` is refused like any other unknown kind, with the same 400 and the same body (`launcher_summary_is_refused_as_an_unknown_session_kind` in `dev_session/session_kind_tests.rs`). The value `launcher_summary` survives in one place only: as the `cimmeria.session_kind` label on the rows ([Emitted rows](#emitted-rows)), where it tells these rows from the `player` and `lab` rows in the same index. It names no session.
+
+**The rate limit.** `CIMMERIA_TELEMETRY_SUMMARY_QUOTA_PER_IP` requests per peer address per window. The default is 12 (`DEFAULT_SUMMARY_PER_IP` in `handlers.rs`), `0` disables the limit, and a value that does not parse falls back to the default. The window is `CIMMERIA_TELEMETRY_QUOTA_WINDOW_SECS` (default 3,600 s), shared with the mint quotas, and starts at the address's first counted request.
+
+- **Every request shape counts,** the refused ones too. The allowance is charged before anything the caller sent is looked at and before the body is read, so a wrong content type, a query string, a malformed body or a body over 64 KiB spends it like an accepted request (`malformed_requests_spend_the_allowance` and `oversized_requests_spend_the_allowance` in `tests/quota.rs`).
+- **One refusal does not count.** A request under the kill switch is answered before the quota is charged.
+- **An IPv4-mapped address is counted as its IPv4 address.** On a dual-stack listener an IPv4 peer arrives as `::ffff:a.b.c.d`. The quota key folds IPv6 to its /64, and every mapped address is in the same one, so `ip_key` in `dev_session/quota.rs` takes the canonical form first: the mapped and the plain form of one address share an allowance, and two different mapped addresses do not (`ipv4_mapped_addresses_key_as_their_ipv4_address` beside `ip_key`, and `an_ipv4_mapped_peer_is_counted_as_its_ipv4_address` in `tests/quota.rs`). `ip_key` is the key of every per-address quota, so the dev-session mint and refresh quotas count a mapped peer the same way.
+- **Why 12.** A launcher sends one request per export cycle, and a cycle runs when the launcher starts, when a tracked attempt ends and when a failure before admission is queued. That is a few requests an hour, so a low limit leaves a single launcher room, and it is the only thing between the route and anyone who can reach the port.
+- **The allowance belongs to the address, not to a machine.** Everyone behind one NAT, reverse proxy or tunnel shares it, and no forwarded-for header is read. Behind a shared address the default is too low for more than a few launchers, and an operator there has to raise it. See [Known limits](#known-limits).
+
+**Kill switch.** `CIMMERIA_TELEMETRY_KILL_SWITCH=1` makes the route answer 503 with `Retry-After: 60`, as it does for the dev-session mint and refresh.
 
 ## Ingest order and validation
 
 `ingest_inner` in `launcher_summary/handlers.rs` runs these steps in this order, and `tests/order.rs` pins the order:
 
 1. **Kill switch.** 503.
-2. **Per-address quota.** `CIMMERIA_TELEMETRY_SUMMARY_QUOTA_PER_IP` requests per peer address per window (default 120; `0` disables; the window is `CIMMERIA_TELEMETRY_QUOTA_WINDOW_SECS`). Over it, 429.
-3. **Bearer token with the summary scope.** 401. The claims are then discarded: the token proves the caller went through the summary mint and nothing more.
-4. **Envelope.** 400.
-5. **Each element, alone.** A failing element becomes `rejected`; the others are unaffected.
-6. **Dedup.** Every verdict of the request is decided under one lock acquisition.
-7. **Rows.** One summary row and its phase rows per accepted summary, then one batch row.
-8. **Response.**
+2. **Per-address quota.** 429.
+3. **Content type.** 415.
+4. **Query string.** 400.
+5. **Body read, up to 64 KiB.** 413 past it.
+6. **Envelope.** 400.
+7. **Each element, alone.** A failing element becomes `rejected`; the others are unaffected.
+8. **Dedup.** Every verdict of the request is decided under one lock acquisition.
+9. **Rows.** One summary row and its phase rows per accepted summary, then one batch row.
+10. **Response.** 200.
 
-The cheap refusals come first so that a caller without a token, or over its allowance, costs neither an HMAC nor a JSON parse. The cost of that order is in [Known limits](#known-limits): a request with no token still spends the address's allowance.
+The quota comes before everything that reads the request, so a caller over its allowance costs no body buffering and no JSON parse. The cost of that order is in [Known limits](#known-limits): junk requests spend the address's allowance.
 
-The 64 KiB cap is a `DefaultBodyLimit` on the route, so an oversized body is a 413 before the handler runs. The handler takes the body as bytes, not through `Json<T>`: the extractor would answer a malformed body with serde's error text before the kill switch, the quota or the token had been checked.
+The handler takes the raw request, body unread, and reads the body itself at step 5 (`read_body` in `handlers.rs`). A `Bytes` or `Json<T>` extractor, or a `DefaultBodyLimit` layer in front of one, would buffer the body and answer an oversized or malformed one before the kill switch or the quota had been checked. So a request over 64 KiB is charged like any other, and a caller who is paused or over quota is answered with nothing buffered: `a_paused_ingest_answers_before_the_body_arrives` in `tests/routes.rs` sends the headers of a 64 KiB request and no body, and gets its 503. The cap is exact, 65,536 bytes are read and 65,537 are a 413 (`tests/body.rs`), and there is no shortcut on `Content-Length`, so a length-prefixed body and a chunked one take the same path.
+
+The query string is refused because of where it could be logged. No code reads it, and every row sits inside the listener's request span. Both routers in this crate record the path alone in that span (`request_span` in `crates/admin-api/src/request_span.rs`), but the handler cannot see what a listener it is mounted on records, so it refuses the request before the first row whatever the span holds.
+
+The query is the only part of the request target the handler checks. An absolute-form target (`POST http://host/api/telemetry/launcher-summary HTTP/1.1`) is served like the bare path; the span leaves its scheme and host out, as it leaves the query out.
 
 A refused request writes no row of this module's.
 
@@ -244,41 +264,44 @@ A summary or batch row never contains:
 - an account name, a character name or anything the player typed;
 - an installation id, a machine id, or any id that persists across attempts. `event_id` is minted per row and `attempt_id` per attempt, both by the engine, and schema version 1 has no installation correlator;
 - the journal's operation id, which the webview supplies and which is never exported;
-- the token's session (`sid`) or subject (`sub`), or the peer address;
+- the peer address, or anything from a header the caller sent;
 - a path, a URL, a file name or an error text;
 - the length of a play session.
 
 How the code keeps it that way:
 
-- **On the launcher,** every exported value is a closed enum, a bounded integer or an engine-minted UUID (`schema.rs`), and error detail is mapped to a closed code from the launcher's own result records.
-- **On the server,** no string the client sent survives validation. Enums are emitted through `as_str`, ids and the version are re-formatted from their parsed values, serde errors are discarded where they are produced, and the token's claims are dropped after the scope check.
+- **On the launcher,** every exported value is a closed enum, a bounded integer or an engine-minted UUID (`schema.rs`), and error detail is mapped to a closed code from the launcher's own result records. The request carries no token, cookie or sender identifier, and nothing a server answers is kept or sent back.
+- **On the server,** no string the client sent survives validation. Enums are emitted through `as_str`, ids and the version are re-formatted from their parsed values, and serde errors are discarded where they are produced. An `Authorization` header is never read, so nothing from one can be logged.
 
 The tests that pin this:
 
 | Test | File |
 |---|---|
-| `a_marker_in_an_element_reaches_no_row_and_no_response`, `a_marker_in_the_envelope_reaches_no_row_and_no_response`, `a_marker_as_the_token_reaches_no_row_and_no_response`, with the control `the_capture_would_see_an_echo` | `launcher_summary/tests/no_echo.rs` |
-| `no_row_carries_the_session_the_subject_or_the_peer` | `launcher_summary/tests/rows.rs` |
-| `a_summary_mint_logs_no_install_id_and_no_caller_string` | `dev_session/summary_mint_tests.rs` |
-| `a_query_string_reaches_no_span_no_event_and_no_response` | `crates/admin-api/src/login_port.rs` |
+| `a_marker_in_an_element_reaches_no_row_and_no_response`, `a_marker_in_the_envelope_reaches_no_row_and_no_response`, `a_marker_as_the_authorization_header_reaches_no_row_and_no_response`, `a_marker_as_the_content_type_reaches_no_row_and_no_response`, with the control `the_capture_would_see_an_echo` | `launcher_summary/tests/no_echo.rs` |
+| `no_row_carries_the_peer_or_a_token_the_caller_sent` | `launcher_summary/tests/rows.rs` |
+| `an_authorization_header_changes_no_verdict_and_reaches_no_row`, `an_authorization_header_changes_no_refusal` | `launcher_summary/tests/anonymous.rs` |
+| `every_request_is_anonymous_and_nothing_a_server_issues_is_kept` | `crates/launcher/desktop/engine/src/storage/launcher_summary/tests/exporter/delivery.rs` |
+| `a_query_string_reaches_no_span_no_event_and_no_response` (the login listener's router: a query string, and the host of an absolute-form target) | `crates/admin-api/src/login_port.rs` |
+| `the_admin_request_span_holds_the_path_alone` (the admin router: the same two) | `launcher_summary/tests/routes.rs` |
+| `a_query_string_is_a_400_and_writes_no_row` | `launcher_summary/tests/order.rs` |
+| `the_admin_router_refuses_a_query_string_before_any_row` | `launcher_summary/tests/routes.rs` |
 | `no_path_url_or_operation_id_reaches_the_queue_or_a_request_body` | `crates/launcher/desktop/engine/src/storage/install_worker/summary_tests.rs` |
 
-These claims cover the rows this module writes and the login listener's request span. They do not cover everything a listener may log about a connection; see the request-span entries under [Known limits](#known-limits).
+These claims cover the rows this module writes and the request span of both listeners' routers. They do not cover everything a listener may log about a connection; see the request-span entry under [Known limits](#known-limits).
 
 ## Golden fixtures: the cross-workspace contract
 
-The launcher's engine and the server live in different cargo workspaces, so neither can import the other's types. Five JSON files in `crates/launcher/desktop/engine/src/storage/launcher_summary/fixtures/` are the contract instead. Both sides test against the same files, so neither can drift alone. The server reaches them with `include_str!` relative to `CARGO_MANIFEST_DIR`.
+The launcher's engine and the server live in different cargo workspaces, so neither can import the other's types. Four JSON files in `crates/launcher/desktop/engine/src/storage/launcher_summary/fixtures/` are the contract instead. Both sides test against the same files, so neither can drift alone. The server reaches them with `include_str!` relative to `CARGO_MANIFEST_DIR`.
 
 | File | What it is | Engine side | Server side |
 |---|---|---|---|
-| `mint-request.json` | The exact mint body of a summary session | The engine's `MintRequest` serializes to it | The mint accepts it and issues only the summary scope |
 | `request-all.json` | One batch covering every enum value and numeric bound, every element valid | Round-trips through the strict wire types; every enum variant occurs in it | Every element is `accepted` and emitted as sent; the fixture covers every value of every server enum |
 | `request-mixed.json`, `response-mixed.json` | Three summaries whose results are `accepted`, `duplicate`, `rejected` | The exporter applies `response-mixed.json` | The real response to the request equals the response file |
 | `request-install-failure.json` | The body the engine really sends for one failed install, recorded from a real install worker with injected ids and clock | A real install worker's failure, delivered by the exporter to a loopback mock, produces this body, with the test's own `os` and `arch` (`install_worker/export_tests.rs`) | The ingest accepts it and emits it as recorded |
 
 The last row is the source-to-ingest proof: the engine test shows a real worker produces the file, and the server test shows the real ingest accepts it, with no hand-written body in between. No test runs the two halves in one process.
 
-Compare the files as JSON values, never as bytes: a Windows checkout may convert line endings. A change to a fixture must pass the engine tests and the admin-api tests in the same PR. The other fixture tests are in `launcher_summary/tests/golden.rs` on each side.
+Compare the files as JSON values, never as bytes: a Windows checkout may convert line endings. A change to a fixture must pass the engine tests and the admin-api tests in the same PR. The other fixture tests are in `launcher_summary/tests/golden.rs` on each side. There is no mint fixture, because there is no mint step.
 
 ## Known limits
 
@@ -286,19 +309,24 @@ Compare the files as JSON values, never as bytes: a Windows checkout may convert
 - **At-least-once delivery.** The launcher resends until it gets an answer. The server drops a resend it remembers, so a duplicate row needs a server restart, or more than 16,384 accepted ids, between the two deliveries.
 - **In-memory dedup.** The set is per process and lost on restart. Nothing persists it.
 - **Approximate counters.** `client_dropped_*` and a pre-admission row's `retry_count` are at-least-once approximations: a request the launcher has to retry repeats the same counters, and the server does not deduplicate them. Do not sum them across batch rows as if each reported new drops.
-- **The request span on the admin listener records the full URI.** The admin router (`build_router` in `crates/admin-api/src/lib.rs`) uses tower-http's default span, so a caller-chosen query string is a field of the span around every row of that request. The login listener's span (`request_span` in `login_port.rs`) records the path alone. The admin listener is private; this matters if it is ever exposed.
-- **The request span still records the caller's method and path** on both listeners. A request whose path or method matches no route gets a 404 or 405 and writes no rows, so that text appears once per request, not once per row.
-- **Tokenless requests are counted by the ingest quota.** The quota is charged before the token is checked. Anyone behind the same address as real launchers (a NAT, a tunnel) can use the allowance up without a token and turn those launchers' posts into 429s until the window ends. The refresh route avoids this by verifying first; doing the same here would change the pinned order.
-- **Behind a proxy the per-address limits are global.** No forwarded-for header is read, as for the other dev-session quotas.
-- **The summary token is not short-lived.** It has the common 8-hour TTL and can be refreshed up to the session cap. Its scope is the boundary.
+- **The request span still records the caller's method and path** on both listeners. It leaves out the query string and the scheme and host of an absolute-form target (`request_span` in `crates/admin-api/src/request_span.rs`, used by `build_router` and by `login_port_telemetry_router`), but the method and the path are the caller's text. A request whose path or method matches no route gets a 404 or 405 and writes no rows, so that text appears once per request, not once per row.
+- **The admin span no longer shows a query string on any admin route.** The span is the admin router's, not this route's, so the filters of the admin routes that do read a query (the login audit list, for one) are out of the request span too.
+- **Forged rows cannot be told from real ones.** The route is anonymous, and a script that sends the launcher's bytes is a launcher as far as the server can see. The rate limit bounds how many rows one address adds, not how many addresses add them.
+- **Junk spends a shared allowance.** Every request is counted, the refused and the oversized ones too. Anyone behind the same address as real launchers (a NAT, a tunnel) can use the allowance up with 12 requests of any content and turn those launchers' posts into 429s until the window ends.
+- **A shared address shares one allowance of 12.** No forwarded-for header is read, as for the dev-session quotas. Behind a reverse proxy or a tunnel every launcher arrives from one address, so the default limits the whole deployment to 12 requests per window until the operator raises `CIMMERIA_TELEMETRY_SUMMARY_QUOTA_PER_IP`.
+- **A rate-limited launcher waits, and a row can age out while it does.** A 429 ends the exporter's cycle with the rows still queued, and nothing retries until the next trigger (the launcher starting, or another attempt ending). A row that is still queued after 24 hours expires on the launcher and is only counted in `client_dropped.expired`.
+- **A retried request spends allowance again.** A cycle makes up to three POSTs when the server answers with a transient failure, and each one that reaches the handler is counted.
+- **An admitted request is buffered up to the cap.** A request inside the allowance with the right content type and no query string has up to 64 KiB of its body read into memory before it is parsed, and an oversized one is read up to the cap before its 413. The quota bounds how often one address can do that.
 - **A restart can misattribute one outcome.** If a process that never configured summaries (an older launcher, a tool) reconciled a tracked operation to a terminal state between two runs, the next run reports that terminal as observed (`tracker.rs`).
 - **The SigNoz fixtures are unimported.** Whether SigNoz accepts the dashboard and view JSON is untested ([launcher-summary-views.md](../operations/signoz/launcher-summary-views.md#status-fixtures-only-not-validated-against-a-live-signoz)).
 
 ## Public-activation gate
 
-Two things have to be decided by the maintainer, explicitly, before any summary leaves a player's machine. Neither is decided.
+**Decided (owner, 2026-10-04):** the upload is anonymous, accepts only the strictly structured schema-1 payload, and has a low per-address rate limit. That settles how the route is protected, and it is what this page describes. It does not activate anything.
 
-1. **The login-listener mount.** The recorded decision (@Cadacious, 2026-09-29) puts four telemetry routes on the public login port. `login_port_telemetry_router` now merges `/api/telemetry/launcher-summary` beside them as a fifth, which is outside that decision. The merge is its own commit so it can be accepted or dropped alone. A build carrying it must not be deployed until the maintainer says yes.
+Two things still have to be decided by the maintainer, explicitly, before any summary leaves a player's machine. Neither is decided.
+
+1. **The login-listener mount.** The recorded decision (@Cadacious, 2026-09-29) puts four telemetry routes on the public login port. `login_port_telemetry_router` now merges `/api/telemetry/launcher-summary` beside them as a fifth, which is outside that decision. The merge is its own commit so it can be accepted or dropped alone. What it would expose is the anonymous route above: on that port nothing stands between the internet and the handler but the payload rule and the rate limit. A build carrying it must not be deployed until the maintainer says yes.
 2. **A production endpoint.** The shell composes the exporter with `endpoint: None` (`crates/launcher/desktop/shell/src/host/summary.rs`), and there is no environment override. Shipping an endpoint is a rollout change with its own checklist: [what a rollout packet must change](../../crates/launcher/desktop/docs/launcher-summaries.md#what-a-rollout-packet-must-change).
 
 Until both are decided, the route exists and no shipped launcher has an endpoint, so the launcher's consent copy, "This build sends nothing", stays true.

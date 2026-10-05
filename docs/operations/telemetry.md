@@ -103,10 +103,11 @@ login port is acceptable, because the game's own login already sends the
 player's password over plain HTTP on that port.
 
 The code also merges a fifth route, `/api/telemetry/launcher-summary`, on
-both listeners (see [Launcher summaries](#launcher-summaries)). Serving it
-on the public port is outside that decision and needs the maintainer's
-explicit yes before a build carrying it is deployed. Nothing else from the
-admin API is served on `8081`.
+both listeners (see [Launcher summaries](#launcher-summaries)). Unlike the
+other four it is anonymous: it takes no token. Serving it on the public
+port is outside that decision and needs the maintainer's explicit yes
+before a build carrying it is deployed. Nothing else from the admin API is
+served on `8081`.
 
 The launcher sends telemetry to:
 
@@ -228,7 +229,7 @@ Three routes check the switch, and two do not:
 |---|---|
 | `/api/auth/dev-session` (every session kind) | 503 + `Retry-After: 60` |
 | `/api/auth/dev-session/refresh` | 503 + `Retry-After: 60` |
-| `/api/telemetry/launcher-summary` | 503 + `Retry-After: 60`, before the quota and the token are looked at |
+| `/api/telemetry/launcher-summary` | 503 + `Retry-After: 60`, before the quota is charged and before anything the caller sent, the body included, is read |
 | `/api/telemetry/upload-chunk` | Not checked: answers as usual |
 | `/api/telemetry/upload-bundle` | Not checked: answers as usual |
 
@@ -241,6 +242,32 @@ ssh cimmeria-server "systemctl set-environment CIMMERIA_TELEMETRY_KILL_SWITCH=1 
 ssh cimmeria-server "systemctl unset-environment CIMMERIA_TELEMETRY_KILL_SWITCH \
     && systemctl restart cimmeria-server"
 ```
+
+On a compose deployment (the colo) the switch is a line in the `.env`
+beside `compose.yml` (`/opt/cimmeria/.env` on the colo), which
+`docker/compose.yml` passes to the server as
+`${CIMMERIA_TELEMETRY_KILL_SWITCH:-}`. Run these in that directory:
+
+```bash
+# Pause: add the line, then recreate the container so it gets the new environment.
+# The leading newline keeps it off the end of a last line that has none.
+printf '\nCIMMERIA_TELEMETRY_KILL_SWITCH=1\n' >> .env
+docker compose -f compose.yml up -d cimmeria
+
+# Resume: remove the line, then recreate again
+sed -i '/^CIMMERIA_TELEMETRY_KILL_SWITCH=/d' .env
+docker compose -f compose.yml up -d cimmeria
+```
+
+No line, or a line with nothing after the `=`, is the switch off: compose
+then hands the server an empty value, and only `1` turns it on.
+
+**Recreating the container is not free.** It restarts the game server, so
+connected players are dropped, and this container reseeds its database on
+every start ([container.md → Volume / persistence](container.md#volume--persistence)).
+A running container's environment cannot be changed, so there is no
+compose form that avoids it. This compose form is written from
+`docker/compose.yml` and has not been run on the colo.
 
 Only the literal value `1` enables the kill switch — `true`/`yes`/etc
 are treated as off (intentional crispness of contract).
@@ -276,16 +303,57 @@ that header and falls back to launching without telemetry.
 | Variable | Default | Counts |
 |---|---|---|
 | `CIMMERIA_TELEMETRY_QUOTA_WINDOW_SECS` | `3600` | The window everything below is counted over. |
-| `CIMMERIA_TELEMETRY_MINT_QUOTA_PER_IP` | `120` | Mints per peer address per window. Player and lab mints share one counter; launcher-summary mints have a counter of their own with the same limit, so neither can spend the other's allowance. |
+| `CIMMERIA_TELEMETRY_MINT_QUOTA_PER_IP` | `120` | Mints per peer address per window. |
 | `CIMMERIA_TELEMETRY_MINT_QUOTA_PER_INSTALL` | `30` | Mints per `install_id` per window. |
 | `CIMMERIA_TELEMETRY_REFRESH_QUOTA_PER_IP` | `480` | Refreshes with a valid token per peer address per window. Charged only after the token verifies. |
 | `CIMMERIA_TELEMETRY_REFRESH_BAD_QUOTA_PER_IP` | `30` | Refresh calls whose token fails verification, per peer address per window. A separate counter, so junk tokens cannot spend the valid-token allowance. |
-| `CIMMERIA_TELEMETRY_SUMMARY_QUOTA_PER_IP` | `120` | Requests to `/api/telemetry/launcher-summary` per peer address per window. Charged before the token is checked, so a request with no token or a bad one is counted too. See [Launcher summaries](#launcher-summaries). |
+| `CIMMERIA_TELEMETRY_SUMMARY_QUOTA_PER_IP` | `12` | Requests to `/api/telemetry/launcher-summary` per peer address per window. The route is anonymous, so this low default is its rate limit. Charged before the body is read or anything is parsed, so malformed, oversized and refused requests count too. Shared by everyone behind one address: see [Launcher summaries](#launcher-summaries). |
 | `CIMMERIA_TELEMETRY_MAX_SESSION_SECS` | `86400` | How long one minted session may be extended by chained refreshes. Not a quota: `0` (or a negative value) does **not** disable the cap, it refuses every refresh. |
 
 Setting a quota to `0` disables that counter. A value that does not
 parse falls back to the default rather than refusing to serve — an
-operator typo must not take telemetry offline.
+operator typo must not take telemetry offline. A blank value does not
+parse, so it is the default too.
+
+### Changing a quota
+
+The server reads these variables from its own environment, so a change
+needs a restart. The example raises the launcher-summary limit to 60.
+
+```bash
+# systemd
+ssh cimmeria-server "systemctl set-environment CIMMERIA_TELEMETRY_SUMMARY_QUOTA_PER_IP=60 \
+    && systemctl restart cimmeria-server"
+
+# Back to the default
+ssh cimmeria-server "systemctl unset-environment CIMMERIA_TELEMETRY_SUMMARY_QUOTA_PER_IP \
+    && systemctl restart cimmeria-server"
+```
+
+On a compose deployment (the colo), in the directory that holds
+`compose.yml` and `.env`:
+
+```bash
+# Set it: one line in .env (edit the line if it is already there), then recreate
+printf '\nCIMMERIA_TELEMETRY_SUMMARY_QUOTA_PER_IP=60\n' >> .env
+docker compose -f compose.yml up -d cimmeria
+
+# Back to the default: remove the line, then recreate again
+sed -i '/^CIMMERIA_TELEMETRY_SUMMARY_QUOTA_PER_IP=/d' .env
+docker compose -f compose.yml up -d cimmeria
+```
+
+Recreating the container restarts the game server and reseeds its
+database, as under [Kill switch](#kill-switch), and this compose form has
+not been run on the colo either.
+
+`docker/compose.yml` passes four telemetry variables to the server:
+`CIMMERIA_TELEMETRY_HMAC_SECRET`, `CIMMERIA_TELEMETRY_UPLOAD_ENDPOINT`,
+`CIMMERIA_TELEMETRY_KILL_SWITCH` and
+`CIMMERIA_TELEMETRY_SUMMARY_QUOTA_PER_IP`. The other variables in the
+table above are not passed through: a line for one of them in `.env`
+reaches nothing until the variable is also added to the `cimmeria`
+service's `environment:` block.
 
 **Raise the per-IP mint quota if the admin port sits behind a proxy
 or a shared egress address.** The counter keys on the peer address,
@@ -338,7 +406,8 @@ Every uploaded `cimmeria-client` row carries `session_id` and `install_id`
 (the token's claims), `cimmeria.session_kind` (`lab` or `player`) and `lab`
 (`true`/`false`), plus `ts_ms` and `seq`. `launcher.summary` rows are the
 exception: they carry none of those identifiers, and their
-`cimmeria.session_kind` is `launcher_summary`. `client.native` rows also carry
+`cimmeria.session_kind` is `launcher_summary` (a row label only; no such
+session can be minted). `client.native` rows also carry
 `client_level`, the DLL's `fields` bag as JSON in `fields`, and, when the
 event has them, `account_id`, `player_id`, `method_index`, `level_name`,
 `dll_version`, `fingerprint_usable`, and on a governor rollup
@@ -441,29 +510,40 @@ code does when a summary arrives.
 - **Consent.** The desktop launcher's own `launcher_summary_consent`
   preference, off by default. It is separate from the telemetry opt-in under
   [Player opt-in](#player-opt-in) and never turns on game or DLL telemetry.
-- **Session kind and scope.** The launcher mints with
-  `"session_kind": "launcher_summary"`. The token carries the single scope
-  `launcher_summary.write`, and its subject is the constant
-  `launcher_summary`, not an `install_id`. The summary route requires that
-  scope and the upload routes refuse it; a player or lab token
-  (`telemetry.write`) is refused by the summary route.
-- **Route.** `POST /api/telemetry/launcher-summary`, JSON, at most 64 KiB and
-  32 summaries per request.
-- **Quotas.** `CIMMERIA_TELEMETRY_SUMMARY_QUOTA_PER_IP` (default `120` per
-  window, `0` disables) limits requests to the route per peer address. It is
-  charged before the token is checked, so anyone behind the same address as
-  real launchers can use the allowance up without a token. Summary mints are
-  counted on their own per-address counter, sized by
-  `CIMMERIA_TELEMETRY_MINT_QUOTA_PER_IP`; an over-quota mint logs
-  `scope=mint/summary_ip`. Behind a proxy or a shared egress address both are
-  one shared bucket, as for the other quotas.
+- **No token.** The route is anonymous. The launcher sends one `POST` with
+  no `Authorization` header, and there is no mint step. The server never
+  reads an `Authorization` header on this route, so a dev-session token is
+  worth nothing here, and the route works with no
+  `CIMMERIA_TELEMETRY_HMAC_SECRET` set. The dev-session mint refuses
+  `"session_kind": "launcher_summary"` like any other unknown kind.
+- **Route.** `POST /api/telemetry/launcher-summary`, with
+  `Content-Type: application/json` (a `charset` parameter is allowed), at
+  most 64 KiB and 32 summaries per request.
+- **Only the payload gets in.** The server accepts the exact schema-1 JSON
+  body and refuses everything else as a whole: 415 for another content
+  type, 400 for a URI with a query string, 413 over 64 KiB, 400 for a body
+  that is not the envelope (unparseable JSON, a gzip or NDJSON body, a
+  game-telemetry event, a wrong `schema_version`, a key written twice in
+  the envelope, 0 or more than 32 summaries). One invalid summary inside a
+  valid body is answered `rejected` in its position, and the valid ones
+  beside it are still accepted; a summary that writes a key twice is
+  invalid.
+- **Rate limit.** `CIMMERIA_TELEMETRY_SUMMARY_QUOTA_PER_IP` limits requests
+  per peer address per window (`CIMMERIA_TELEMETRY_QUOTA_WINDOW_SECS`,
+  3600 s). The default is `12`, and `0` disables it. Over it the route
+  answers 429 with `Retry-After`, and the launcher stops that export cycle
+  without retrying and keeps its rows for the next one. Every request is
+  counted, the malformed and the oversized (413) ones too; only a 503 under
+  the kill switch is not. An IPv4 peer seen as `::ffff:a.b.c.d` on a
+  dual-stack listener is counted as `a.b.c.d`.
 - **Kill switch.** The route answers 503 under
-  [the kill switch](#kill-switch).
+  [the kill switch](#kill-switch), before the quota is charged.
 - **Where the rows land.** `launcher.summary` rows go to
   `service.name = cimmeria-client`; the per-request `launcher_summary_batch`
   row goes to `cimmeria-server` under `launcher.ingest`. A request refused
-  before validation (kill switch, quota, token, malformed body) writes
-  neither.
+  as a whole (kill switch, rate limit, content type, query string,
+  oversized or malformed body) writes neither, and the handler logs nothing
+  about the refusal.
 - **Duplicates.** The server remembers the last 16,384 accepted ids in
   memory. A restart forgets them, so a summary resent after one is accepted
   again.
@@ -472,8 +552,22 @@ code does when a summary arrives.
   [signoz/launcher-summary-views.md](signoz/launcher-summary-views.md). The
   fixtures have not been imported into any SigNoz.
 
-The rows are self-reported and can be forged within the quotas. Do not alert
-on them or set a target from them.
+**Raise the limit behind a shared address.** The allowance belongs to the
+peer address, and no `X-Forwarded-For` header is read. Behind a NAT, a
+reverse proxy or a tunnel every launcher arrives from one address, so the
+default allows 12 summary requests per window for all of them together.
+Anyone behind that address can also spend the allowance with 12 requests of
+any content and turn the others' posts into 429s until the window ends. Size
+the limit for the number of launchers behind the address before pointing any
+launcher at the route. The commands, for systemd and for compose, are under
+[Changing a quota](#changing-a-quota).
+
+**Do not act on these rows.** The route is anonymous, so anyone can post
+correctly shaped rows within the rate limit. Rows are self-reported; they
+are useful for spotting failure patterns and must never drive server state,
+alerts, success-rate claims or SLOs. The strict schema means nothing but
+closed enum values, bounded integers, UUIDs and a version triple can ever
+be stored.
 
 ## Player opt-in
 
@@ -529,18 +623,18 @@ While it is off:
 
 | Path | Method | Auth | Purpose |
 |---|---|---|---|
-| `/api/auth/dev-session` | POST | none (anyone can mint), quota-limited | Mint a token for a launcher session, a lab session with `"session_kind": "lab"`, or a launcher-summary session with `"session_kind": "launcher_summary"` (any other value is a 400). |
+| `/api/auth/dev-session` | POST | none (anyone can mint), quota-limited | Mint a token for a launcher session, or a lab session with `"session_kind": "lab"` (any other value is a 400). |
 | `/api/auth/dev-session/refresh` | POST | bearer (own token), quota-limited | Extend an almost-expired token, up to the session cap. |
 | `/api/telemetry/upload-chunk` | POST | bearer | Streaming events (gzip(NDJSON)). |
 | `/api/telemetry/upload-bundle` | POST | bearer | End-of-session zip (multipart). |
-| `/api/telemetry/launcher-summary` | POST | bearer with scope `launcher_summary.write`, quota-limited | Desktop-launcher attempt summaries (JSON). See [Launcher summaries](#launcher-summaries). |
+| `/api/telemetry/launcher-summary` | POST | none (anonymous), strict payload, rate-limited per address | Desktop-launcher attempt summaries (JSON). Takes no token. See [Launcher summaries](#launcher-summaries). |
 
 A 503 with `Retry-After` on the mint, the refresh or the summary route
 means the kill switch is on; the two upload routes do not check it.
 A 429 with `Retry-After` means a quota was hit — see
 [Mint and refresh quotas](#mint-and-refresh-quotas). A 401 on upload
 endpoints means the token expired, was never valid, or does not carry
-the `telemetry.write` scope; a 401 on the summary route means the same
-for the `launcher_summary.write` scope; a 401 on refresh additionally
-means the session passed its lifetime cap, and the launcher's answer to
-all of them is to mint a fresh session.
+the `telemetry.write` scope; a 401 on refresh additionally means the
+session passed its lifetime cap, and the launcher's answer to all of
+them is to mint a fresh session. The summary route never answers 401: it
+reads no token.

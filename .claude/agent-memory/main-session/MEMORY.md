@@ -4,6 +4,7 @@ Dated, sourced facts from top-level sessions, committed with the change that pro
 
 ## Open investigations
 
+- [project_launcher_summary_observability_2026_10_04.md](project_launcher_summary_observability_2026_10_04.md) — 2026-10-04 consented launcher summaries: anonymous strict ingest (limit 12), inert (no endpoint); public mount and production endpoint await the maintainer
 - [project_mercury_tx_hole_size.md](project_mercury_tx_hole_size.md) — 2026-09-29 stall on 1488-byte datagrams (client reads 1472); cause was uncapped piggybacked ACKs, capped 2026-10-03; send/recv fingerprint telemetry
 - [project_cellblock_autoplay_campaign.md](project_cellblock_autoplay_campaign.md) — Cellblock autoplay planned 2026-09-29 (docs/analysis/cellblock-autoplay/); nothing built; installed labd predates #1099-#1102
 - [project_invisible_cellblock_guard.md](project_invisible_cellblock_guard.md) — Cellblock NID guard often unrendered on a fresh character though the client creates it; evidence, ruled-out causes (#838)
@@ -17,6 +18,10 @@ Dated, sourced facts from top-level sessions, committed with the change that pro
 - [project_texture_upscale_forensics.md](project_texture_upscale_forensics.md) — 512x256 10-mip DXT1 shape is stock-valid; silent failures mean bad data below mip 0; pixel-format enum fixed in #839
 
 ## Reference
+
+- [reference_loopback_exporter_test_seams_2026_10_04.md](reference_loopback_exporter_test_seams_2026_10_04.md) — WSL2 mirrored networking hangs on a closed 127.0.0.1 port (use `[::1]:9`); wiremock responder and pooled-server traps; engine reqwest has no `json`
+
+- [reference_desktop_engine_test_seams_2026_10_04.md](reference_desktop_engine_test_seams_2026_10_04.md) — desktop engine suite runs on Linux/WSL through the lane; launch, install-worker and uninstall test seams; `FileJournal::commit` sees every journal write
 
 - [reference_owner_lock_release_2026_10_04.md](reference_owner_lock_release_2026_10_04.md) — explicit unlock at Repair/prefix logical-owner drop; duplicate-handle regression and native CI boundary.
 

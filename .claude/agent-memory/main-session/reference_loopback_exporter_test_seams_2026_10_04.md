@@ -28,7 +28,9 @@ tests to the desktop engine (`crates/launcher/desktop/engine`) on 2026-10-04:
 - **The engine's `reqwest` has no `json` feature** (`rustls-tls`, `stream`
   only). Bodies are built with `serde_json::to_vec` plus an explicit
   `Content-Type`, and responses are read with `Response::chunk()`.
-- **Selecting on the consent cancel token around a request would make the
-  generation re-checks untestable**: the token fires inside the responder, so
-  the answer would never reach the code under test. The exporter selects on
-  it only around its wait, and decides under the lock.
+- **The exporter races its POST against the consent cancel token** (an
+  opt-out aborts the request in flight). Because the token fires inside a
+  responder, a race test that opts out can no longer reach the gate and
+  generation re-checks; the tests keep those guarded with changes that
+  invalidate the batch without cancelling (`Replaced`, `Moved` in
+  `tests/exporter/races.rs`).
