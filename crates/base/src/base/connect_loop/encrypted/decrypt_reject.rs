@@ -19,6 +19,12 @@
 //! HMAC?)" row pointed triage the wrong way (colo, 2026-09-26: one tester,
 //! 23 of these, two stuck logins).
 //!
+//! Only a login whose ticket is already consumed reaches this row: the
+//! retransmit of the login that created the channel. A plaintext login
+//! with a fresh ticket on the same address is a client that was killed and
+//! relaunched (its UDP port is fixed); `handle_datagram` sends that one to
+//! `handle_login` before this path runs (`login::relaunch`).
+//!
 //! A v1 encrypted datagram is always `16k + 16` bytes long. A 20-character
 //! ticket makes the plaintext login 41 bytes, so the two cannot collide,
 //! and `parse_baseapp_login` checks the full shape anyway.

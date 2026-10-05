@@ -9,7 +9,6 @@
 use std::collections::HashMap;
 use std::net::SocketAddr;
 use std::sync::{Arc, Mutex};
-use std::time::Instant;
 
 use sqlx::PgPool;
 use tokio::sync::mpsc;
@@ -23,13 +22,15 @@ use cimmeria_mercury::transport::{BidirectionalTransport, Transport};
 use crate::cell::messages::BaseToCellMsg;
 use crate::credential_redaction::CredentialPrefix;
 
-use super::login::{handle_login, parse_baseapp_login};
+use super::login::{handle_login, parse_baseapp_login, relaunch};
 use super::resources::ResourceCache;
 use super::ConnectedClientState;
 
 mod account_arms;
 mod cell_arms;
 mod encrypted;
+#[cfg(test)]
+mod relaunch_tests;
 
 pub(crate) use encrypted::handle_encrypted_datagram;
 
@@ -140,13 +141,7 @@ async fn handle_datagram(
     }
 
     // Check for an established encrypted channel first.
-    let channel_key: Option<(
-        MercuryEncryption,
-        [u8; 32],
-        u32,
-        Arc<Mutex<Vec<u32>>>,
-        Arc<Mutex<Instant>>,
-    )> = {
+    let channel_key: Option<(MercuryEncryption, [u8; 32], u32, Arc<Mutex<Vec<u32>>>)> = {
         let clients = connected.lock().map_err(|_| "connected lock poisoned")?;
         clients.get(&addr).map(|c| {
             (
@@ -154,14 +149,46 @@ async fn handle_datagram(
                 c.key,
                 c.account_id,
                 Arc::clone(&c.pending_acks),
-                Arc::clone(&c.last_recv),
             )
         })
     };
 
-    if let Some((enc, key, account_id, pending_acks, last_recv)) = channel_key {
-        // Update last-recv timestamp on every packet from this client.
-        *last_recv.lock().unwrap() = Instant::now();
+    if let Some((enc, key, account_id, pending_acks)) = channel_key {
+        // A client killed and relaunched comes back on the same
+        // address:port (fixed UDP port) with a fresh ticket. Its plaintext
+        // login goes to `handle_login`, which takes the address over from
+        // the dead session if the ticket's account owns it
+        // (`login::relaunch`). A retransmit of the login that created this
+        // channel carries a consumed ticket and falls through below.
+        if let Some((request_id, ticket_str)) =
+            relaunch::fresh_login_on_channel(raw, &enc, pending_logins)
+        {
+            tracing::info!(
+                %addr,
+                account_id,
+                account_name = super::session_identity::identity_for_addr(connected, addr).account_name,
+                ticket_prefix = %CredentialPrefix(&ticket_str),
+                "baseAppLogin with a fresh ticket on an established channel (client relaunch?)"
+            );
+            return handle_login(
+                transport,
+                addr,
+                request_id,
+                &ticket_str,
+                pending_logins,
+                connected,
+                entity_manager,
+                cell_tx,
+                entity_to_addr,
+                db_pool,
+                enc_version,
+                plugins,
+            )
+            .await;
+        }
+        // `last_recv` is refreshed inside, and only for a datagram that
+        // decrypts: garbage or a spoofed datagram must not keep a dead
+        // session alive.
         return handle_encrypted_datagram(
             transport,
             addr,

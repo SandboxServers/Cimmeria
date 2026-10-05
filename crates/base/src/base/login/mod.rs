@@ -22,6 +22,9 @@ use super::helpers::{destroy_client_entities, to_hex};
 use super::tick_sync::run_tick_loop;
 use super::ConnectedClientState;
 
+mod eviction;
+pub(crate) mod relaunch;
+
 /// Validate ticket, send Phase 3 reply + time-sync, register the encrypted channel.
 ///
 /// `level = "info"` because login is low-frequency and high-signal —
@@ -47,6 +50,26 @@ pub(crate) async fn handle_login(
     enc_version: EncryptionVersion,
     plugins: &BasePlugins,
 ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
+    // Peek before consuming: a login that arrived on an occupied address
+    // (a relaunched client, routed here by `relaunch::fresh_login_on_channel`)
+    // may only take the address over from a session of its own account.
+    let peeked = {
+        let map = pending_logins
+            .lock()
+            .map_err(|_| "pending_logins lock poisoned")?;
+        map.get(ticket).cloned()
+    };
+    if let Some(peeked) = &peeked {
+        if relaunch::cross_account_refusal(connected, addr, peeked).is_some() {
+            // Burned so a replayed datagram cannot log the refusal again.
+            pending_logins
+                .lock()
+                .map_err(|_| "pending_logins lock poisoned")?
+                .remove(ticket);
+            return Ok(());
+        }
+    }
+
     let login = {
         let mut map = pending_logins
             .lock()
@@ -91,59 +114,41 @@ pub(crate) async fn handle_login(
 
     let key = decode_session_key(&login.session_key)?;
 
-    // ── Duplicate login detection (KI-7) ────────────────────────────────────
-    // If this account already has an active session, evict the old one first.
-    // C++ checks ChannelManager.isPlayerOnline() at play-character time
-    // (Account.py:286-290), but we also guard at login to prevent stale sessions.
+    // ── Duplicate login detection (KI-7) and relaunch takeover ─────────────
+    // Evict every other session of this account first: one on another
+    // address (duplicate login) or one on this very address (a client
+    // relaunched on its fixed UDP port). C++ checks
+    // ChannelManager.isPlayerOnline() at play-character time
+    // (Account.py:286-290), but we also guard at login to prevent stale
+    // sessions.
+    eviction::evict_prior_sessions(
+        transport,
+        addr,
+        &login,
+        connected,
+        entity_manager,
+        cell_tx,
+        entity_to_addr,
+        db_pool,
+    )
+    .await?;
+    // Defence in depth for the relaunch gate: a session of another account
+    // still on this address would be overwritten below and orphaned (its
+    // tick loop and entities left running). `relaunch::cross_account_refusal`
+    // refuses that case before the ticket is consumed, so this never fires.
+    if connected
+        .lock()
+        .map_err(|_| "connected lock poisoned")?
+        .contains_key(&addr)
     {
-        let evict_addr: Option<(SocketAddr, [u8; 32], EncryptionVersion)> = {
-            let clients = connected.lock().map_err(|_| "connected lock poisoned")?;
-            clients.iter().find_map(|(existing_addr, c)| {
-                if c.account_id == login.account_id && *existing_addr != addr {
-                    Some((*existing_addr, c.key, c.enc_version))
-                } else {
-                    None
-                }
-            })
-        };
-        if let Some((old_addr, old_key, old_version)) = evict_addr {
-            tracing::warn!(
-                account_id = login.account_id,
-                account_name = %login.account_name,
-                %old_addr,
-                %addr,
-                "Duplicate login -- evicting old session"
-            );
-            // Send LOGGED_OFF to the old client so it gets an immediate teardown.
-            let (acks, seq) = {
-                let mut clients = connected.lock().map_err(|_| "connected lock poisoned")?;
-                if let Some(c) = clients.get_mut(&old_addr) {
-                    let acks: Vec<u32> = cimmeria_mercury::packet::take_piggyback_acks(
-                        &mut c.pending_acks.lock().unwrap(),
-                        c.enc_version,
-                    );
-                    let seq = c
-                        .next_seq
-                        .fetch_add(1, std::sync::atomic::Ordering::Relaxed)
-                        & cimmeria_mercury::packet::SEQUENCE_MASK;
-                    (acks, seq)
-                } else {
-                    (vec![], 0)
-                }
-            };
-            let pkt = build_logged_off(&old_key, seq, &acks, old_version);
-            let _ = transport.send_to(&pkt, old_addr).await;
-            destroy_client_entities(
-                connected,
-                entity_manager,
-                old_addr,
-                cell_tx,
-                entity_to_addr,
-                transport,
-                db_pool,
-                "duplicate_login",
-            );
-        }
+        tracing::error!(
+            %addr,
+            account_id = login.account_id,
+            account_name = %login.account_name,
+            reason = "address_still_occupied",
+            "Phase 3 login refused: another session still holds this address after eviction"
+        );
+        return Ok(());
     }
 
     tracing::info!(

@@ -77,6 +77,12 @@ pub(crate) async fn handle_encrypted_datagram(
         }
     };
 
+    // The client is alive: only a datagram that authenticated under the
+    // session key counts. Refreshing on every datagram from the address let
+    // garbage, a spoofed source, or a relaunched client's plaintext login
+    // retries keep a dead session registered past the inactivity reap.
+    touch_last_recv(connected, addr);
+
     // Full row to base.log, a counted 1-in-N sample to SigNoz (NA25).
     crate::firehose::log_decrypt_ok(&crate::firehose::DECRYPT_OK_SAMPLER, addr, &plaintext);
 
@@ -175,6 +181,23 @@ pub(crate) async fn handle_encrypted_datagram(
         .await?;
     }
     Ok(())
+}
+
+/// Refresh the session's `last_recv`, the tick-sync loop's inactivity
+/// clock. Called once per datagram that decrypted under the session key.
+fn touch_last_recv(
+    connected: &Arc<Mutex<HashMap<SocketAddr, ConnectedClientState>>>,
+    addr: SocketAddr,
+) {
+    let last_recv = connected
+        .lock()
+        .ok()
+        .and_then(|clients| clients.get(&addr).map(|c| Arc::clone(&c.last_recv)));
+    if let Some(last_recv) = last_recv {
+        if let Ok(mut at) = last_recv.lock() {
+            *at = std::time::Instant::now();
+        }
+    }
 }
 
 /// Run one decrypted client packet through the session's

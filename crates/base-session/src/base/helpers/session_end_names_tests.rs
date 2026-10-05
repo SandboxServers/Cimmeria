@@ -140,6 +140,9 @@ async fn inactivity_timeout_line_names_the_player_and_the_account() {
     let long_ago = Instant::now()
         .checked_sub(std::time::Duration::from_secs(61))
         .expect("host uptime must exceed 61 s to backdate last_recv");
+    // The loop tears down only the session it owns: hand it that
+    // session's own cancel flag, as `handle_login` does.
+    let cancelled = Arc::clone(&connected.lock().unwrap()[&addr].cancelled);
 
     crate::base::tick_sync::run_tick_loop(
         transport(),
@@ -149,7 +152,7 @@ async fn inactivity_timeout_line_names_the_player_and_the_account() {
         Arc::new(std::sync::atomic::AtomicU32::new(0)),
         Arc::new(Mutex::new(Vec::new())),
         Arc::new(Mutex::new(long_ago)),
-        Arc::new(std::sync::atomic::AtomicBool::new(false)),
+        cancelled,
         Arc::clone(&connected),
         entity_manager,
         None,

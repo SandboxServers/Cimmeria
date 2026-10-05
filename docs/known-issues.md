@@ -52,7 +52,9 @@ Features from the C++ reference that are stubbed or missing in the Rust rewrite.
 
 ### ~~KI-7: No duplicate login detection~~ — RESOLVED
 
-**Status**: Fixed. `handle_login()` now scans for existing sessions with the same `account_id`. If found, sends LOGGED_OFF (0x37) to the old client and evicts the old session before registering the new one.
+**Status**: Fixed. `handle_login()` now scans for existing sessions with the same `account_id`. If found, sends LOGGED_OFF (0x37) to the old client and evicts the old session before registering the new one (`crates/base/src/base/login/eviction.rs`).
+
+**Same address:port (fixed 2026-10-04).** The scan used to skip a session on the login's own address, and a login from a registered address never reached `handle_login` at all. A client killed and relaunched within the 60 s inactivity window (the client binds a fixed UDP port) could not log in until the old channel timed out: its `baseAppLogin` was dropped as `login_retry_on_channel`. A fresh ticket for the same account on an established channel now takes the address over (`disconnect_reason = relaunch_takeover`); a ticket for another account is refused. See [login-handshake.md](protocol/login-handshake.md#a-client-relaunched-on-the-same-addressport).
 
 ### KI-8: Ticket expiration is reaper-only — up to ~10s of over-life
 

@@ -353,6 +353,24 @@ In case a client ignores the resends too, both packets are capped at `HANDSHAKE_
 
 The `login_retry_on_channel` row carries `reply_outstanding`: `true` means the server has not seen the client's ACK of the reply, so the reply was probably lost and a resend is pending; `false` means the client acked the reply and is retrying anyway, the stuck-client case where a resend would change nothing.
 
+#### A client relaunched on the same address:port
+
+The SGW client binds a fixed UDP port (63888 on the colo). A client that is killed and relaunched therefore comes back on the **same** address:port as the session it left behind, and that session stays registered until the 60 s inactivity reap. Every datagram from a registered address goes to its encrypted channel, so before the fix the relaunched client's plaintext `baseAppLogin` failed to decrypt and was dropped as `login_retry_on_channel`. Meanwhile the old session's tick-sync loop kept sending packets under the old key, which the new client logged as "Dropped corrupted incoming packet". The player sat at "Logging in..." until the old channel timed out (colo, release v2026-10-05.1, DA-06 lab run).
+
+The base now tells a relaunch from a retransmit by the ticket. Tickets are single-use, so the retransmit of the login that created the channel carries a ticket that was consumed when the channel was registered. A relaunched client went back through SOAP login and carries a fresh, unconsumed one. A plaintext `baseAppLogin` on an established channel goes to `handle_login` when all of these hold (`crates/base/src/base/login/relaunch.rs`):
+
+1. It is a well-formed plaintext `baseAppLogin` and does **not** decrypt under the live session's key.
+2. Its ticket is still unconsumed in `pending_logins`.
+3. The ticket's account is the live session's account.
+
+A ticket for another account is refused (`reason = relaunch_account_mismatch`, WARN), the ticket is burned, and the live session stays up. Rule 3 is what makes a spoofed source address harmless. Anyone can spoof a live player's address:port, and anyone with an account can get a ticket for their own account. Without rule 3 that pair would let any account holder kick any player whose address they know. With it, a takeover needs a fresh ticket for the victim's own account, which takes the victim's password, and that already lets an attacker evict the victim from any address through the duplicate-login path.
+
+The new client cannot prove it holds the new session key before the takeover. Phase 3 is plaintext, and every new channel is registered on the ticket alone. The ticket and the key come from the same SOAP reply, so waiting for a first datagram under the new key would add nothing. There is no separate rate limit, because each takeover consumes a ticket and each ticket costs a full SOAP login.
+
+On a takeover, `login/eviction.rs` evicts the old session with `disconnect_reason = relaunch_takeover` through `destroy_client_entities`, the same teardown a duplicate login uses. The old character is announced offline, the cell is told to disconnect it (and persists its position before confirming), and the old tick-sync loop is cancelled. No `LOGGED_OFF` goes out: the old client is dead, and the packet would reach the new client under the old key. The new session, with its new key and a fresh channel, then replaces the old one in a single `connected` map write. The old loop sends at most one more tick under the old key before it sees its cancel flag, and its own teardown is owner-checked (`destroy_owned_client_entities`), so it cannot remove the new session. One WARN row marks the takeover: `reason = relaunch_takeover` with `account_id`, `account_name`, `player_id`, `player_name` and `old_session_secs`.
+
+Two related rules came with the fix. The inactivity clock (`last_recv`) now refreshes only for a datagram that decrypts under the session key, so garbage, a spoofed source or a relaunched client's plaintext retries cannot keep a dead session alive. And a retransmit of the original login keeps the behaviour described above: no teardown, one `login_retry_on_channel` row. The guards are in `crates/base/src/base/connect_loop/relaunch_tests.rs` and `crates/base-session/src/base/helpers/session_teardown_tests.rs`.
+
 ### Step 3: Enable Entities
 
 ```
