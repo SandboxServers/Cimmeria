@@ -15,6 +15,8 @@ There were two causes:
 
 Senders that reserve a range up front (enter-world, the reanchor appearance replay) size it with `fragment_count` and build with `build_fragmented_bundle`.
 
+Verified live 2026-10-05: Petbe #221's 1473-byte cascade went out as 2 fragments, the client's fragment group completed (`assembled_bytes=1473`), and there was no `tx_hole`.
+
 **Why:** fragmenting keeps the "one bundle == one client frame" semantics. A cascade split across separate packets would not.
 
 **How to apply:** for a new reliable sender with a data-sized body, use the fitted send. Never hand-allocate a sequence number and then build. The protocol doc is the authority: `docs/protocol/mercury-wire-format.md` § Reliable datagram size budget. Related: [[na38-client-orders-reliable-stream]], [[cell-gm-class-id-and-raw-bundle-blobs]].
