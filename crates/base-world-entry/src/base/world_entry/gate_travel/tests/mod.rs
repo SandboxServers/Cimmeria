@@ -27,6 +27,7 @@ mod crafting_queue;
 mod debug_area_hub;
 mod gm_only_world;
 mod plugin_hooks;
+mod session_replaced;
 mod space_fallback;
 mod transfer;
 mod world_name;

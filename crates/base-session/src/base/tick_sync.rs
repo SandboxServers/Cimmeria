@@ -184,6 +184,15 @@ pub async fn run_tick_loop(
         // `RETRANSMIT_BUDGET_PER_TICK` entries per scan, per
         // `mercury-wire-format` spec §1.7) and Karn's exponential backoff
         // internally.
+        //
+        // The scan reads whatever session holds `addr`. Re-check the cancel
+        // flag after the send's await: if a relaunch took the address over
+        // meanwhile, the session there is not ours and its channel is not
+        // ours to drive.
+        if cancelled.load(Ordering::Relaxed) {
+            tracing::info!(%addr, "Tick-sync stopping: session cancelled (torn down elsewhere)");
+            return;
+        }
         let retransmits = super::helpers::collect_pending_retransmits(&connected, addr);
         for (batch_index, raw) in retransmits.iter().enumerate() {
             tracing::debug!(

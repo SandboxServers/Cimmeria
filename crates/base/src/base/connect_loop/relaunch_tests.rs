@@ -372,3 +372,88 @@ async fn fresh_ticket_for_another_account_is_refused_and_burned() {
 
     rig.stop();
 }
+
+/// PR #1246 review, finding 1: an attacker spoofs the victim's
+/// address:port while it is free and registers there with a ticket for
+/// their own account. That ticket was issued (over TCP, unspoofable) to the
+/// attacker's real IP, so the session registers with a mismatched ticket IP.
+/// The victim's own login, whose ticket was issued to this address's IP,
+/// must evict the squatter instead of being refused and burned. Another
+/// account whose ticket is also mismatched must not. Fails with rule 4
+/// removed from `relaunch::address_claim`.
+#[tokio::test]
+async fn a_victims_login_evicts_a_squatter_that_registered_with_a_foreign_ticket_ip() {
+    let rig = Rig::new(52615);
+    let mut squat = pending(TICKET_B, OTHER_ACCOUNT_ID, KEY_B);
+    squat.client_ip = "198.51.100.66".parse().unwrap();
+    rig.issue(squat);
+    rig.deliver(&base_app_login(TICKET_B, 3, 1)).await;
+    assert_eq!(rig.session_key(), Some(KEY_B), "the squatter registered");
+    let squatter_flag = rig.session_flag();
+
+    // A third account, its ticket also issued elsewhere: refused.
+    const THIRD_TICKET: &str = "RELAUNCHC00000000003";
+    let mut third = pending(THIRD_TICKET, 0x5EED_0A09, [0xC3; 32]);
+    third.client_ip = "203.0.113.9".parse().unwrap();
+    rig.issue(third);
+    rig.deliver(&base_app_login(THIRD_TICKET, 4, 1)).await;
+    assert_eq!(
+        rig.session_key(),
+        Some(KEY_B),
+        "a foreign-IP ticket cannot reclaim the address"
+    );
+
+    let capture = LogCapture::install();
+    rig.issue(pending(TICKET_A, ACCOUNT_ID, KEY_A)); // issued to 127.0.0.1
+    rig.deliver(&base_app_login(TICKET_A, 5, 1)).await;
+
+    assert_eq!(
+        rig.session_key(),
+        Some(KEY_A),
+        "the victim's login must take its address back"
+    );
+    assert!(
+        squatter_flag.load(Ordering::Relaxed),
+        "the squatter is torn down"
+    );
+    assert!(
+        !rig.pending_logins.lock().unwrap().contains_key(TICKET_A),
+        "the victim's ticket is consumed by its own login"
+    );
+    let row = capture
+        .find_event(Level::WARN, "reclaims the address", "address_reclaimed")
+        .unwrap_or_else(|| panic!("no reclaim row; saw {:#?}", capture.all()));
+    assert!(row.has_field("account_id", &OTHER_ACCOUNT_ID.to_string()));
+    assert!(row.has_field("ticket_account_id", &ACCOUNT_ID.to_string()));
+    assert!(
+        capture
+            .find_message(Level::INFO, "Client entities cleaned up")
+            .is_some_and(|e| e.has_field("disconnect_reason", "address_reclaimed")),
+        "the squatter's teardown is labelled address_reclaimed"
+    );
+
+    rig.stop();
+}
+
+/// PR #1246 review, finding 5: a poisoned `connected` lock refuses the
+/// login rather than reading as "no session here".
+#[test]
+fn a_poisoned_connected_lock_refuses_the_takeover() {
+    use crate::base::login::relaunch::{address_claim, AddressClaim};
+
+    let connected: Connected = Arc::new(Mutex::new(HashMap::new()));
+    let poison = Arc::clone(&connected);
+    let _ = std::thread::spawn(move || {
+        let _guard = poison.lock().unwrap();
+        panic!("poison the connected map");
+    })
+    .join();
+    assert!(connected.is_poisoned());
+
+    let claim = address_claim(
+        &connected,
+        SocketAddr::from(([127, 0, 0, 1], 52616)),
+        &pending(TICKET_B, ACCOUNT_ID, KEY_B),
+    );
+    assert_eq!(claim, AddressClaim::Refused);
+}

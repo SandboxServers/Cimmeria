@@ -29,7 +29,8 @@ use super::super::resources::ResourceCache;
 use super::super::session_identity;
 use super::super::world_entry::handle_enable_entities;
 use super::super::ConnectedClientState;
-use super::{account_arms, cell_arms, read_constant_payload, read_word_length_payload};
+use super::{account_arms, cell_arms};
+use message_framing::{parse_request_entity_update, read_client_message_payload};
 
 /// Handle an encrypted datagram from a known connected client.
 ///
@@ -77,12 +78,6 @@ pub(crate) async fn handle_encrypted_datagram(
         }
     };
 
-    // The client is alive: only a datagram that authenticated under the
-    // session key counts. Refreshing on every datagram from the address let
-    // garbage, a spoofed source, or a relaunched client's plaintext login
-    // retries keep a dead session registered past the inactivity reap.
-    touch_last_recv(connected, addr);
-
     // Full row to base.log, a counted 1-in-N sample to SigNoz (NA25).
     crate::firehose::log_decrypt_ok(&crate::firehose::DECRYPT_OK_SAMPLER, addr, &plaintext);
 
@@ -119,12 +114,14 @@ pub(crate) async fn handle_encrypted_datagram(
     // clean-round RTT samples to the per-peer adaptive RTO (Karn's
     // algorithm) and tracks the transmit hole the tick-side watchdog
     // reports.
+    let mut acks_retired = 0;
     if !pkt.acks.is_empty() {
         if let Ok(clients) = connected.lock() {
             if let Some(state) = clients.get(&addr) {
                 if let Ok(mut channel) = state.channel.lock() {
                     let holes_before = channel.tx_holes;
                     let retired = channel.process_ack_footer(&pkt.acks);
+                    acks_retired = retired;
                     if channel.tx_holes > holes_before {
                         // The client acked a later reliable packet before an
                         // earlier one: that one was lost (or reordered).
@@ -150,8 +147,11 @@ pub(crate) async fn handle_encrypted_datagram(
     // BigWorld receiver runs (NA38): a reliable packet behind a gap waits
     // for the client's retransmit, a retransmitted duplicate (our ACK was
     // lost) is dropped instead of being dispatched a second time, and
-    // unreliable packets (movement) go straight through.
-    let Some((delivery, class_id)) = receive_in_order(connected, addr, pkt) else {
+    // unreliable packets (movement) go straight through. The gate's verdict
+    // also decides whether this datagram refreshes the inactivity clock: a
+    // datagram that authenticated but brings nothing new (a replay) does not
+    // keep the session alive (`liveness`).
+    let Some((delivery, class_id)) = receive_in_order(connected, addr, pkt, acks_retired) else {
         return Ok(());
     };
     if let Some(seq) = delivery.ack {
@@ -183,36 +183,25 @@ pub(crate) async fn handle_encrypted_datagram(
     Ok(())
 }
 
-/// Refresh the session's `last_recv`, the tick-sync loop's inactivity
-/// clock. Called once per datagram that decrypted under the session key.
-fn touch_last_recv(
-    connected: &Arc<Mutex<HashMap<SocketAddr, ConnectedClientState>>>,
-    addr: SocketAddr,
-) {
-    let last_recv = connected
-        .lock()
-        .ok()
-        .and_then(|clients| clients.get(&addr).map(|c| Arc::clone(&c.last_recv)));
-    if let Some(last_recv) = last_recv {
-        if let Ok(mut at) = last_recv.lock() {
-            *at = std::time::Instant::now();
-        }
-    }
-}
-
 /// Run one decrypted client packet through the session's
 /// [`cimmeria_mercury::channel::Channel`] receive gate.
 ///
 /// `None` when the session is gone (torn down between the lookup that
 /// found its key and now) or its channel lock is poisoned; the packet is
 /// dropped either way.
+///
+/// Also refreshes the session's inactivity clock when the packet is fresh
+/// (`liveness`): the gate accepted it as new, `acks_retired` (from its ACK
+/// footer) is non-zero, or its unreliable sequence advanced.
 fn receive_in_order(
     connected: &Arc<Mutex<HashMap<SocketAddr, ConnectedClientState>>>,
     addr: SocketAddr,
     pkt: ParsedPacket,
+    acks_retired: usize,
 ) -> Option<(RxDelivery, u8)> {
-    let clients = connected.lock().ok()?;
-    let Some(state) = clients.get(&addr) else {
+    let unreliable_seq = if pkt.is_reliable() { None } else { pkt.seq_id };
+    let mut clients = connected.lock().ok()?;
+    let Some(state) = clients.get_mut(&addr) else {
         tracing::debug!(
             %addr,
             reason = "session_gone",
@@ -220,8 +209,14 @@ fn receive_in_order(
         );
         return None;
     };
-    let mut channel = state.channel.lock().ok()?;
-    match channel.receive_parsed(pkt) {
+    let received = state.channel.lock().ok()?.receive_parsed(pkt);
+    liveness::record(
+        state,
+        received.as_ref().ok().map(|d| d.outcome),
+        unreliable_seq,
+        acks_retired,
+    );
+    match received {
         Ok(delivery) => Some((delivery, session_class::session_class_id(state))),
         Err(e) => {
             tracing::warn!(
@@ -608,110 +603,17 @@ async fn dispatch_client_bundle(
     Ok(())
 }
 
-/// Per-msg_id payload-length dispatch for the inbound client bundle.
-///
-/// Reads exactly one message's payload starting at `*offset` and
-/// advances `*offset` past it. Returns `None` only on truncation —
-/// the caller breaks the bundle scan in that case.
-///
-/// Two framing flavors per `messages.cpp::ClientMessageList`:
-///
-/// - **CONSTANT_LENGTH**: fixed-size payload with no length prefix.
-///   Width pinned per message in the table below. `read_constant_payload`
-///   advances by exactly that many bytes.
-/// - **WORD_LENGTH**: payload prefixed by `u16` little-endian length.
-///   `read_word_length_payload` reads the prefix, advances 2 bytes,
-///   then advances by `prefix` bytes.
-///
-/// **0x0B (`restoreClientAck`) is CONSTANT_LENGTH = 4**, per
-/// spec §2.5.2 and the sole emitter at
-/// `ghidra://SGW.exe@0x00dd8bc9` (writes literal `i32 = 0`).
-/// Parsing it as WORD_LENGTH reads the first two ack bytes as a
-/// `u16` length = 0, then misinterprets the remaining two ack bytes
-/// as the next msg_id (`0x00 0x00` → dispatches to `baseAppLogin`),
-/// cascade-failing every subsequent message in the bundle. The
-/// regression guard `restore_client_ack_consumes_exactly_four_bytes`
-/// pins this.
-fn read_client_message_payload<'a>(
-    msg_id: u8,
-    body: &'a [u8],
-    offset: &mut usize,
-) -> Option<&'a [u8]> {
-    match msg_id {
-        // --- System messages with CONSTANT_LENGTH ---
-        // 0x02: AVATAR_UPD_IMPLICIT (CONSTANT_LENGTH = 36)
-        0x02 => read_constant_payload(body, offset, 36),
-        // 0x03: AVATAR_UPDATE_EXPLICIT (CONSTANT_LENGTH = 40)
-        0x03 => read_constant_payload(body, offset, 40),
-        // 0x04: AVATAR_UPDW_IMPLICIT (CONSTANT_LENGTH = 36)
-        0x04 => read_constant_payload(body, offset, 36),
-        // 0x05: AVATAR_UPDW_EXPLICIT (CONSTANT_LENGTH = 40)
-        0x05 => read_constant_payload(body, offset, 40),
-        // 0x06: SWITCH_INTERFACE (CONSTANT_LENGTH = 0)
-        0x06 => read_constant_payload(body, offset, 0),
-        // 0x08: ENABLE_ENTITIES (CONSTANT_LENGTH = 8)
-        0x08 => read_constant_payload(body, offset, 8),
-        // 0x09: VIEWPORT_ACK (CONSTANT_LENGTH = 8)
-        0x09 => read_constant_payload(body, offset, 8),
-        // 0x0A: VEHICLE_ACK (CONSTANT_LENGTH = 8)
-        0x0A => read_constant_payload(body, offset, 8),
-        // 0x0B: RESTORE_CLIENT_ACK (CONSTANT_LENGTH = 4 — see doc above)
-        0x0B => read_constant_payload(body, offset, 4),
-        // 0x0C: DISCONNECT (CONSTANT_LENGTH = 1)
-        0x0C => read_constant_payload(body, offset, 1),
-
-        // --- System messages with WORD_LENGTH ---
-        // 0x07: REQUEST_ENTITY_UPDATE (WORD_LENGTH)
-        0x07 => read_word_length_payload(body, offset),
-
-        // --- Entity method calls (0xC0+): always WORD_LENGTH ---
-        //
-        // 0x0D `entityMessage` is intentionally NOT in the table:
-        // its wire byte is `0x80..0xFE` (cell method `m | 0x80`,
-        // base method `m | 0xC0`), NEVER the literal 0x0D. The
-        // wildcard arm catches both ranges as WORD_LENGTH per
-        // `ServerConnection_startEntityMessage` (0x00dd6a60) and
-        // `ServerConnection_startProxyMessage` (0x00dd6980). See
-        // audit doc §2.11 row `0x0D` for the disposition.
-        _ => read_word_length_payload(body, offset),
-    }
-}
-
-/// Parse a `requestEntityUpdate` (msg `0x07`) payload.
-///
-/// Wire layout (spec §2.5.2, corrected 2026-09-28 per issue #838): `[u32
-/// entityId][N × u32 cacheStamp]`. The client's `EntityManager::onEntityEnter`
-/// (`ghidra://SGW.exe@0x00dd24f0`) sends this once per non-player entity
-/// entering its AoI, with `N` always 0 on this client build -- BigWorld's
-/// cache-stamp versioning is never populated. See
-/// `docs/reverse-engineering/findings/request-entity-update-cache-stamp.md`
-/// for the full RE evidence. The pre-#838 layout here, `[u32 header][N × u32
-/// entity_id]`, was wrong: it read the entity id as a discardable header and
-/// treated the (always-empty) cache-stamp tail as the entity id list, so
-/// every real payload decoded to zero ids.
-///
-/// The cache-stamp values themselves are not interpreted -- the server has
-/// no per-property cache to diff them against, and every observed client
-/// build sends none.
-///
-/// Returns an empty `Vec` when the payload is shorter than the 4-byte entity
-/// id, else a single-element `Vec` containing it. Trailing cache-stamp bytes
-/// are consumed (ignored) rather than left to desync the bundle.
-fn parse_request_entity_update(payload: &[u8]) -> Vec<u32> {
-    if payload.len() < 4 {
-        return Vec::new();
-    }
-    let entity_id = u32::from_le_bytes([payload[0], payload[1], payload[2], payload[3]]);
-    vec![entity_id]
-}
-
 mod decrypt_reject;
+mod liveness;
+mod message_framing;
 mod session_class;
 
 #[cfg(test)]
 mod cache_routing_tests;
 #[cfg(test)]
 mod decrypt_reject_tests;
+#[cfg(test)]
+mod liveness_tests;
 #[cfg(test)]
 mod rx_order_tests;
 #[cfg(test)]

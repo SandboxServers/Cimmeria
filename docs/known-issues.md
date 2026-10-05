@@ -54,23 +54,23 @@ Features from the C++ reference that are stubbed or missing in the Rust rewrite.
 
 **Status**: Fixed. `handle_login()` now scans for existing sessions with the same `account_id`. If found, sends LOGGED_OFF (0x37) to the old client and evicts the old session before registering the new one (`crates/base/src/base/login/eviction.rs`).
 
-**Same address:port (fixed 2026-10-04).** The scan used to skip a session on the login's own address, and a login from a registered address never reached `handle_login` at all. A client killed and relaunched within the 60 s inactivity window (the client binds a fixed UDP port) could not log in until the old channel timed out: its `baseAppLogin` was dropped as `login_retry_on_channel`. A fresh ticket for the same account on an established channel now takes the address over (`disconnect_reason = relaunch_takeover`); a ticket for another account is refused. See [login-handshake.md](protocol/login-handshake.md#a-client-relaunched-on-the-same-addressport).
+**Same address:port (fixed 2026-10-04).** The scan used to skip a session on the login's own address, and a login from a registered address never reached `handle_login` at all. A client killed and relaunched within the 60 s inactivity window (the client binds a fixed UDP port) could not log in until the old channel timed out: its `baseAppLogin` was dropped as `login_retry_on_channel`. A fresh ticket for the same account on an established channel now takes the address over (`disconnect_reason = relaunch_takeover`). A ticket for another account is refused, unless the session there registered with a ticket issued to another IP and the new ticket was issued to this address's IP (a squatter on a spoofed address, `address_reclaimed`). See [login-handshake.md](protocol/login-handshake.md#a-client-relaunched-on-the-same-addressport).
 
-### KI-8: Ticket expiration is reaper-only — up to ~10s of over-life
+### ~~KI-8: Ticket expiration is reaper-only — up to ~10s of over-life~~ — RESOLVED
 
 **Severity**: Low (security)
-**Status**: Partially fixed — the "never expire" claim is stale.
-**Description**: `TICKET_TTL` is 30 s and `SESSION_TTL` is 300 s
-(`crates/auth/src/auth/mod.rs:41-45`), matching the C++ 30 s ticket
+**Status**: Fixed 2026-10-04 (PR #1246). `TICKET_TTL` is 30 s and `SESSION_TTL` is 300 s
+(`crates/auth/src/auth/mod.rs`), matching the C++ 30 s ticket
 lifetime. A reaper task sweeps both maps every `REAPER_INTERVAL`
-(`crates/auth/src/auth/service.rs:184-190`), and the Phase-2
+(`crates/auth/src/auth/service.rs`), and the Phase-2
 `ServerSelection` handler additionally checks `SESSION_TTL` inline
-(`crates/auth/src/auth/handlers.rs:247`).
+(`crates/auth/src/auth/handlers.rs`).
 
-**What remains**: the Phase-3 consume path does **not** check the TTL. `handle_login`
-does a bare `map.remove(ticket)` (`crates/base/src/base/login/mod.rs:45-58`),
-so a ticket stays usable until the reaper happens to run — up to roughly one
-reaper interval past its nominal 30 s expiry. Tracked as CAT-A-04 in
+The Phase-3 consume path used to do a bare `map.remove(ticket)`, so a ticket
+stayed usable until the reaper ran, up to one reaper interval past its 30 s
+expiry. `handle_login` now checks the ticket's age before consuming it and
+burns an expired one (`reason = ticket_expired`; guard
+`crates/base/src/base/login/tests/ticket_age.rs`). Tracked as CAT-A-04 in
 [`security-audit/2026-05-31-server-authority/findings/CAT-A-auth.md`](security-audit/2026-05-31-server-authority/findings/CAT-A-auth.md).
 
 ### ~~KI-9: requestCharacterVisuals does not query inventory~~ — RESOLVED

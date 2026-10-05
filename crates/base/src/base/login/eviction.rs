@@ -16,6 +16,11 @@
 //!   corrupted packet. The session is torn down with
 //!   `disconnect_reason = "relaunch_takeover"`. The gate that lets a login
 //!   reach this point on an occupied address is in `relaunch.rs`.
+//! - **Address reclaim**: another account's session on the same address
+//!   that registered with a ticket issued to a different IP, displaced by
+//!   a login whose ticket was issued to this address's IP (a squatter on a
+//!   spoofed address; `relaunch.rs` rule 4). No `LOGGED_OFF`, for the same
+//!   reason; `disconnect_reason = "address_reclaimed"`.
 //!
 //! Both go through `destroy_client_entities`: the old character is
 //! unlisted and announced offline, its cell entity is told to disconnect
@@ -62,12 +67,16 @@ struct Displaced {
 }
 
 /// Evict every session of `login`'s account, wherever it is, ahead of the
-/// new session at `addr`. See the module doc for the two cases.
+/// new session at `addr`. See the module doc for the two cases. With
+/// `evict_squatter`, the session on `addr` goes too whatever its account:
+/// `relaunch::address_claim` found it registered with a ticket issued to
+/// another IP while this login's ticket was issued to this address's IP.
 #[allow(clippy::too_many_arguments)]
 pub(super) async fn evict_prior_sessions(
     transport: &Arc<dyn Transport>,
     addr: SocketAddr,
     login: &PendingLogin,
+    evict_squatter: bool,
     connected: &Arc<Mutex<HashMap<SocketAddr, ConnectedClientState>>>,
     entity_manager: &Arc<Mutex<EntityManager>>,
     cell_tx: &Option<mpsc::Sender<BaseToCellMsg>>,
@@ -78,7 +87,7 @@ pub(super) async fn evict_prior_sessions(
         let clients = connected.lock().map_err(|_| "connected lock poisoned")?;
         clients
             .iter()
-            .filter(|(_, c)| c.account_id == login.account_id)
+            .filter(|(a, c)| c.account_id == login.account_id || (evict_squatter && **a == addr))
             .map(|(old_addr, c)| Displaced {
                 addr: *old_addr,
                 key: c.key,
@@ -90,7 +99,12 @@ pub(super) async fn evict_prior_sessions(
     };
 
     for old in displaced {
-        let reason = if old.addr == addr {
+        let reason = if old.addr == addr && old.identity.account_id != Some(login.account_id) {
+            // The squatter: `relaunch::address_claim` already wrote the WARN.
+            // No LOGGED_OFF: it would go to this address, which is the new
+            // client's.
+            super::relaunch::REASON_ADDRESS_RECLAIMED
+        } else if old.addr == addr {
             tracing::warn!(
                 %addr,
                 account_id = login.account_id,

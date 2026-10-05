@@ -177,8 +177,14 @@ fn teardown_session(
                 return false;
             }
         }
-        // Signal the tick-sync loop to exit before we remove the session.
+        // Signal the tick-sync loop to exit before we remove the session,
+        // and stop a first-login cinematic's appearance re-send loop with it.
+        // That loop reads whatever session holds the address each round, so
+        // left running after a relaunch takeover it would paint the new
+        // session's appearance onto the old entity id (or, once the id is
+        // recycled, onto another player).
         c.cancelled.store(true, Ordering::Relaxed);
+        c.cinematic_spam_cancel.store(true, Ordering::Relaxed);
         let account_eid = c.account_entity_id;
         let player_eid = c.player_entity_id;
         // Snapshot identity + session length for the Discord disconnect emit

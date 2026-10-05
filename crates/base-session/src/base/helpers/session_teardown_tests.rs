@@ -81,6 +81,35 @@ fn owned_teardown_removes_its_own_session() {
     assert!(own_flag.load(Ordering::Relaxed));
 }
 
+/// PR #1246 review, finding 3b: teardown also stops a first-login
+/// cinematic's appearance re-send loop. That loop reads whatever session
+/// holds the address each round, so after a relaunch takeover it would
+/// paint the new session's appearance onto the old entity id. Fails with
+/// the `cinematic_spam_cancel` store removed from `teardown_session`.
+#[test]
+fn teardown_stops_the_cinematic_appearance_loop() {
+    let addr: SocketAddr = "127.0.0.1:52504".parse().unwrap();
+    let (connected, _) = replacement_session(addr);
+    let spam_cancel = Arc::clone(&connected.lock().unwrap()[&addr].cinematic_spam_cancel);
+    assert!(!spam_cancel.load(Ordering::Relaxed));
+
+    destroy_client_entities(
+        &connected,
+        &Arc::new(Mutex::new(EntityManager::new())),
+        addr,
+        &None,
+        &Arc::new(Mutex::new(HashMap::new())),
+        &transport(),
+        &None,
+        "relaunch_takeover",
+    );
+
+    assert!(
+        spam_cancel.load(Ordering::Relaxed),
+        "the cinematic re-send loop must be told to stop with the session"
+    );
+}
+
 /// End to end through the loop: an old session's tick loop that times out
 /// after its address was taken over leaves the new session alone. Before
 /// the owner check, the loop's teardown keyed on the address alone and

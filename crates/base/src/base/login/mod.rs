@@ -50,24 +50,43 @@ pub(crate) async fn handle_login(
     enc_version: EncryptionVersion,
     plugins: &BasePlugins,
 ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
-    // Peek before consuming: a login that arrived on an occupied address
-    // (a relaunched client, routed here by `relaunch::fresh_login_on_channel`)
-    // may only take the address over from a session of its own account.
+    // Peek before consuming: a ticket that is too old, or that may not take
+    // over the session already on this address (a relaunched client, routed
+    // here by `relaunch::fresh_login_on_channel`), is burned without
+    // touching anything else.
     let peeked = {
         let map = pending_logins
             .lock()
             .map_err(|_| "pending_logins lock poisoned")?;
         map.get(ticket).cloned()
     };
-    if let Some(peeked) = &peeked {
-        if relaunch::cross_account_refusal(connected, addr, peeked).is_some() {
-            // Burned so a replayed datagram cannot log the refusal again.
-            pending_logins
-                .lock()
-                .map_err(|_| "pending_logins lock poisoned")?
-                .remove(ticket);
-            return Ok(());
-        }
+    let Some(peeked) = peeked else {
+        tracing::warn!(
+            ticket_prefix = %CredentialPrefix(ticket),
+            "Unknown or already-consumed ticket"
+        );
+        return Ok(());
+    };
+    // The reaper sweeps expired tickets only every few seconds; enforce the
+    // documented 30 s lifetime here too (KI-8).
+    let ticket_age = peeked.created.elapsed();
+    if ticket_age >= crate::auth::TICKET_TTL {
+        burn_ticket(pending_logins, ticket)?;
+        tracing::warn!(
+            %addr,
+            account_id = peeked.account_id,
+            account_name = %peeked.account_name,
+            ticket_age_ms = ticket_age.as_millis() as u64,
+            reason = "ticket_expired",
+            "Phase 3 ticket is past its lifetime; refusing the login"
+        );
+        return Ok(());
+    }
+    let claim = relaunch::address_claim(connected, addr, &peeked);
+    if claim == relaunch::AddressClaim::Refused {
+        // Burned so a replayed datagram cannot log the refusal again.
+        burn_ticket(pending_logins, ticket)?;
+        return Ok(());
     }
 
     let login = {
@@ -94,8 +113,12 @@ pub(crate) async fn handle_login(
     // (not reject) so NAT / dual-stack surface-IP differences are
     // measured before the gate hardens — this signal is lower-confidence
     // than the Phase-2 check because the Mercury UDP source address can
-    // differ from the SOAP source behind carrier-grade NAT.
-    if !crate::auth::client_ips_match(login.client_ip, addr.ip()) {
+    // differ from the SOAP source behind carrier-grade NAT. The result is
+    // kept on the session (`relaunch::TicketIpBinding`): a session that
+    // registered with a mismatched ticket IP can be reclaimed by a login
+    // whose ticket matches this address.
+    let ticket_ip_matched = crate::auth::client_ips_match(login.client_ip, addr.ip());
+    if !ticket_ip_matched {
         tracing::warn!(
             account_id = login.account_id,
             account_name = %login.account_name,
@@ -114,17 +137,29 @@ pub(crate) async fn handle_login(
 
     let key = decode_session_key(&login.session_key)?;
 
+    // Defence in depth for the relaunch gate, checked before anything is
+    // evicted: a session on this address that the claim does not entitle us
+    // to displace would otherwise be overwritten below and orphaned (its tick
+    // loop and entities left running), after the account's sessions on other
+    // addresses had already been logged off. `relaunch::address_claim`
+    // refuses that case before the ticket is consumed, so this never fires.
+    if address_blocked(connected, addr, login.account_id, claim)? {
+        log_address_still_occupied(addr, &login, "before_eviction");
+        return Ok(());
+    }
+
     // ── Duplicate login detection (KI-7) and relaunch takeover ─────────────
     // Evict every other session of this account first: one on another
     // address (duplicate login) or one on this very address (a client
-    // relaunched on its fixed UDP port). C++ checks
-    // ChannelManager.isPlayerOnline() at play-character time
-    // (Account.py:286-290), but we also guard at login to prevent stale
-    // sessions.
+    // relaunched on its fixed UDP port), plus a squatter on this address
+    // when the claim allows it. C++ checks ChannelManager.isPlayerOnline()
+    // at play-character time (Account.py:286-290), but we also guard at
+    // login to prevent stale sessions.
     eviction::evict_prior_sessions(
         transport,
         addr,
         &login,
+        claim == relaunch::AddressClaim::Squatter,
         connected,
         entity_manager,
         cell_tx,
@@ -132,22 +167,12 @@ pub(crate) async fn handle_login(
         db_pool,
     )
     .await?;
-    // Defence in depth for the relaunch gate: a session of another account
-    // still on this address would be overwritten below and orphaned (its
-    // tick loop and entities left running). `relaunch::cross_account_refusal`
-    // refuses that case before the ticket is consumed, so this never fires.
     if connected
         .lock()
         .map_err(|_| "connected lock poisoned")?
         .contains_key(&addr)
     {
-        tracing::error!(
-            %addr,
-            account_id = login.account_id,
-            account_name = %login.account_name,
-            reason = "address_still_occupied",
-            "Phase 3 login refused: another session still holds this address after eviction"
-        );
+        log_address_still_occupied(addr, &login, "after_eviction");
         return Ok(());
     }
 
@@ -246,7 +271,9 @@ pub(crate) async fn handle_login(
                 active_player_id: None,
                 pending_destination_ring_id: None,
                 channel: Mutex::new(channel),
-                extensions: Default::default(),
+                // Whether the ticket was issued to this address's IP (the
+                // relaunch gate's rule 4).
+                extensions: relaunch::binding_extensions(ticket_ip_matched),
                 // The service's plugin table (#962 step 5): hook sites
                 // read it off the session.
                 plugins: plugins.clone(),
@@ -288,6 +315,47 @@ pub(crate) async fn handle_login(
     ));
 
     Ok(())
+}
+
+/// Remove a ticket that is refused, so a replay of the same datagram
+/// finds nothing to act on.
+fn burn_ticket(
+    pending_logins: &Arc<Mutex<HashMap<String, PendingLogin>>>,
+    ticket: &str,
+) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
+    pending_logins
+        .lock()
+        .map_err(|_| "pending_logins lock poisoned")?
+        .remove(ticket);
+    Ok(())
+}
+
+/// `true` when a session on `addr` is one this login may not displace:
+/// another account's, unless the claim found it to be a squatter.
+fn address_blocked(
+    connected: &Arc<Mutex<HashMap<SocketAddr, ConnectedClientState>>>,
+    addr: SocketAddr,
+    account_id: u32,
+    claim: relaunch::AddressClaim,
+) -> Result<bool, Box<dyn std::error::Error + Send + Sync>> {
+    let clients = connected.lock().map_err(|_| "connected lock poisoned")?;
+    Ok(clients
+        .get(&addr)
+        .is_some_and(|c| c.account_id != account_id && claim != relaunch::AddressClaim::Squatter))
+}
+
+/// One ERROR for a login refused because another session holds its
+/// address. `stage` says whether the pre-eviction check or the
+/// post-eviction one caught it.
+fn log_address_still_occupied(addr: SocketAddr, login: &PendingLogin, stage: &'static str) {
+    tracing::error!(
+        %addr,
+        account_id = login.account_id,
+        account_name = %login.account_name,
+        stage,
+        reason = "address_still_occupied",
+        "Phase 3 login refused: another session holds this address and may not be displaced"
+    );
 }
 
 /// Reliable sequence of the `baseAppLogin` reply, the first packet of the

@@ -40,6 +40,8 @@ pub use persist_arrival::persist_arrival;
 #[cfg(not(any(test, feature = "test-support")))]
 use persist_arrival::persist_arrival;
 
+mod session_owner;
+
 #[cfg(test)]
 mod tests;
 
@@ -70,6 +72,12 @@ async fn abandon_unspaced_session(
     let mut id = cimmeria_entity::cell_entity::PlayerIdentity::UNKNOWN;
     if let Ok(mut clients) = connected.lock() {
         if let Some(c) = clients.get(&addr) {
+            // A relaunched client may have taken the address over while the
+            // transfer was in flight; its session is not ours to end.
+            if !session_owner::owns(c, entity_id) {
+                session_owner::log_replaced(addr, entity_id, "abandon_unspaced_session", c);
+                return;
+            }
             id = session_identity::session_identity(c);
             // Stop the tick-sync loop before the session goes, same as every
             // other teardown path.
@@ -513,7 +521,11 @@ pub async fn handle_gate_travel(
     // the wrong character on multi-character accounts.
     let player_load_data = query_player_load_data(db_pool, account_id, active_player_id).await;
 
-    // Entity teardown: Send RESET_ENTITIES
+    // Entity teardown: Send RESET_ENTITIES -- unless the address now belongs
+    // to another session (a relaunch took it over during the awaits above).
+    if !session_owner::still_owned(connected, addr, entity_id, "reset_entities")? {
+        return Ok(());
+    }
     let acks: Vec<u32> = {
         let mut pending = pending_acks_arc.lock().unwrap();
         cimmeria_mercury::packet::take_piggyback_acks(&mut pending, enc_version)
@@ -604,6 +616,10 @@ pub async fn handle_gate_travel(
     {
         let mut clients = connected.lock().map_err(|_| "connected lock poisoned")?;
         if let Some(c) = clients.get_mut(&addr) {
+            if !session_owner::owns(c, entity_id) {
+                session_owner::log_replaced(addr, entity_id, "store_pending_world_entry", c);
+                return Ok(());
+            }
             c.pending_player_entity_id = Some(entity_id);
             c.pending_world_entry = Some(entry_info);
             c.pending_player_load_data = Some(player_load_data);
