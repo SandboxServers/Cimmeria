@@ -127,9 +127,10 @@ fn oversized_requests_spend_the_allowance() {
 ///   one /64 (`::`), which is what the quota folds IPv6 to;
 /// - control: two native IPv6 addresses in one /64 still share a bucket.
 ///
-/// Without the canonical form the second request is served (the two forms
-/// are different keys) and the third is a 429 (every mapped address is the
-/// same key).
+/// The canonical form is taken in `ip_key` (`dev_session/quota.rs`), for
+/// every quota that keys on the peer. Without it the second request is
+/// served (the two forms are different keys) and the third is a 429 (every
+/// mapped address is the same key).
 #[test]
 fn an_ipv4_mapped_peer_is_counted_as_its_ipv4_address() {
     let _env = Env::install();

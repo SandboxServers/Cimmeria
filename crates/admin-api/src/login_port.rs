@@ -29,12 +29,11 @@
 //! (players, config, entities, the admin `/api/auth/login`) and the `/ws`
 //! and Swagger surfaces stay on the admin listener only.
 
-use axum::body::Body;
-use axum::http::Request;
 use axum::Router;
 use tower_http::trace::{DefaultOnFailure, DefaultOnResponse, TraceLayer};
-use tracing::{Level, Span};
+use tracing::Level;
 
+use crate::request_span::request_span;
 use crate::routes::{dev_session, telemetry};
 
 /// Router with exactly `/api/auth/dev-session`,
@@ -42,9 +41,13 @@ use crate::routes::{dev_session, telemetry};
 /// `/api/telemetry/upload-bundle` and `/api/telemetry/launcher-summary`,
 /// for the auth service to merge into its login router.
 ///
-/// The per-route body limits come with [`dev_session::routes`],
-/// [`telemetry::routes`] and [`telemetry::launcher_summary_routes`]. The
-/// first four need a dev-session token; the summary route is anonymous.
+/// The body limits of the first four routes come with
+/// [`dev_session::routes`] and [`telemetry::routes`], as layers. The
+/// summary route has no such layer: its handler takes the request unread
+/// and enforces its own 64 KiB cap while it reads the body, after the kill
+/// switch and the quota (see [`telemetry::launcher_summary_routes`]).
+///
+/// The first four need a dev-session token; the summary route is anonymous.
 /// The mint, refresh and summary quotas read the peer
 /// address, so the listener must serve with
 /// `into_make_service_with_connect_info::<SocketAddr>()`, which both auth
@@ -58,8 +61,8 @@ pub fn login_port_telemetry_router() -> Router {
                 telemetry::routes().merge(telemetry::launcher_summary_routes()),
             ),
         )
-        // The same per-request span as the admin router, except that it
-        // leaves the query string out: see `request_span`.
+        // The same per-request span as the admin router: the path
+        // without the query string. See `request_span`.
         .layer(
             TraceLayer::new_for_http()
                 .make_span_with(request_span)
@@ -68,49 +71,16 @@ pub fn login_port_telemetry_router() -> Router {
         )
 }
 
-/// The span around one request on the login port: tower-http's
-/// `DefaultMakeSpan` at INFO (name `request`; fields `method`, `uri`,
-/// `version`), except that `uri` is the path alone.
-///
-/// The default records the whole URI. This listener is public, and every
-/// row a handler writes sits inside this span, so a query string would put
-/// up to 64 KiB of caller-chosen text beside each of the 161 rows one
-/// launcher-summary request can write (the console and `server.log` layers
-/// print span fields on every event line). No route here reads a query
-/// string, so nothing is lost by dropping it.
-///
-/// The method and the path are still the caller's. A request whose path or
-/// method matches no route gets a 404 or 405 and writes no rows, so that
-/// text appears once per request, not once per row.
-///
-/// The target is spelled out as tower-http's own. The OTLP filter turns
-/// `tower` off (`OTEL_FILTER` in `crates/server/src/logging/filters.rs`), so
-/// tower-http's span is not exported; under this module's path the span
-/// would start being exported, and the console and file layers would file
-/// it under a different target than the admin router's.
-fn request_span(request: &Request<Body>) -> Span {
-    tracing::info_span!(
-        target: "tower_http::trace::make_span",
-        "request",
-        method = %request.method(),
-        uri = %request.uri().path(),
-        version = ?request.version(),
-    )
-}
-
 #[cfg(test)]
 mod tests {
     use std::net::SocketAddr;
-    use std::sync::{Arc, Mutex};
 
     use tokio::io::{AsyncReadExt, AsyncWriteExt};
     use tokio::net::{TcpListener, TcpStream};
-    use tracing::field::{Field, Visit};
-    use tracing::span::{Attributes, Id, Record};
-    use tracing::{Event, Subscriber};
-    use tracing_subscriber::layer::{Context, Layer, SubscriberExt};
+    use tracing_subscriber::layer::SubscriberExt;
 
     use super::login_port_telemetry_router;
+    use crate::request_span::recorder::Shown;
 
     /// Serve the router on an ephemeral loopback port the way the auth
     /// listeners do (with connect info), and return its address.
@@ -224,58 +194,17 @@ mod tests {
         );
     }
 
-    /// Everything a subscriber is shown, as `name=value` lines: each span's
-    /// name, target and fields (at creation and when recorded later) and
-    /// each event's fields. The capture layers elsewhere in this crate record
-    /// event fields only, which is why they could not see what a request
-    /// span holds.
-    #[derive(Clone, Default)]
-    struct Shown(Arc<Mutex<Vec<String>>>);
-
-    struct Lines<'a>(&'a mut Vec<String>);
-
-    impl Visit for Lines<'_> {
-        fn record_debug(&mut self, field: &Field, value: &dyn std::fmt::Debug) {
-            self.0.push(format!("{}={value:?}", field.name()));
-        }
-        fn record_str(&mut self, field: &Field, value: &str) {
-            self.0.push(format!("{}={value}", field.name()));
-        }
-    }
-
-    impl<S: Subscriber> Layer<S> for Shown {
-        fn on_new_span(&self, attrs: &Attributes<'_>, _: &Id, _: Context<'_, S>) {
-            let mut lines = self.0.lock().unwrap();
-            let metadata = attrs.metadata();
-            lines.push(format!(
-                "span={} target={}",
-                metadata.name(),
-                metadata.target()
-            ));
-            attrs.record(&mut Lines(&mut lines));
-        }
-        fn on_record(&self, _: &Id, values: &Record<'_>, _: Context<'_, S>) {
-            values.record(&mut Lines(&mut self.0.lock().unwrap()));
-        }
-        fn on_event(&self, event: &Event<'_>, _: Context<'_, S>) {
-            event.record(&mut Lines(&mut self.0.lock().unwrap()));
-        }
-    }
-
-    impl Shown {
-        fn lines(&self) -> Vec<String> {
-            self.0.lock().unwrap().clone()
-        }
-    }
-
     /// **No echo through the request span.** A query string on the summary
     /// route, and an `Authorization` header the anonymous route never
     /// reads, reach no span field, no event field and no response byte.
     /// The request span is recorded with the path alone, and with no
     /// header.
     ///
-    /// Putting `DefaultMakeSpan` back fails the first log assertion: its
-    /// `uri` field is the whole URI, marker included.
+    /// Putting `DefaultMakeSpan` back on this router fails the first log
+    /// assertion: its `uri` field is the whole URI, marker included. The
+    /// admin router's copy of this test, which also sends an absolute-form
+    /// target, is `the_admin_request_span_holds_the_path_alone` in
+    /// `routes/telemetry/launcher_summary/tests/routes.rs`.
     #[tokio::test]
     async fn a_query_string_reaches_no_span_no_event_and_no_response() {
         const MARKER: &str = "ZZMARKER";

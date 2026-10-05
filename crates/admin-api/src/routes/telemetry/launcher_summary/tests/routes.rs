@@ -1,8 +1,9 @@
 //! The route on a real listener: it is mounted on the admin router, it
 //! takes the launcher's request with no token, its body limit is 64 KiB to
-//! the byte, it refuses a query string before any row, and a paused ingest
-//! answers before the body arrives. These are the only tests here that
-//! open a socket; the login-port mount is checked beside its merge, in
+//! the byte, it refuses a query string before any row, the admin router's
+//! request span holds the path alone, and a paused ingest answers before
+//! the body arrives. These are the only tests here that open a socket; the
+//! login-port mount and its request span are checked beside its merge, in
 //! `login_port.rs`.
 //!
 //! They go through the process-wide ingest state, and all but the last read
@@ -19,11 +20,17 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use axum::Router;
+use cimmeria_services::audit::LoginEventBuffer;
 use cimmeria_services::orchestrator::Orchestrator;
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::net::{TcpListener, TcpStream};
+use tokio::sync::broadcast;
 use tracing_subscriber::layer::SubscriberExt;
 
+use crate::request_span::recorder::Shown;
+use crate::ws::broadcast_layer::LogBuffer;
+
+use super::super::rows::EVENT_SUMMARY;
 use super::super::{launcher_summary_routes, MAX_SUMMARY_BODY_BYTES};
 use super::{batch, batch_rows, element, summary_rows, Env, Rows};
 
@@ -55,12 +62,31 @@ async fn send(
     content_type: Option<&str>,
     body: &[u8],
 ) -> (u16, String) {
+    let response = exchange(addr, method, path, content_type, body).await;
+    let status = status_of(&response);
+    let body = response
+        .split_once("\r\n\r\n")
+        .map(|(_, body)| body.to_string())
+        .unwrap_or_default();
+    (status, body)
+}
+
+/// [`send`], returning the whole response: status line, headers and body.
+/// `target` goes on the request line as given, so it may be a path, a path
+/// with a query, or an absolute-form target.
+async fn exchange(
+    addr: SocketAddr,
+    method: &str,
+    target: &str,
+    content_type: Option<&str>,
+    body: &[u8],
+) -> String {
     let mut stream = TcpStream::connect(addr).await.unwrap();
     let content_type = content_type
         .map(|value| format!("Content-Type: {value}\r\n"))
         .unwrap_or_default();
     let mut request = format!(
-        "{method} {path} HTTP/1.1\r\nHost: {addr}\r\n{content_type}\
+        "{method} {target} HTTP/1.1\r\nHost: {addr}\r\n{content_type}\
          Content-Length: {}\r\nConnection: close\r\n\r\n",
         body.len()
     )
@@ -71,20 +97,19 @@ async fn send(
     let _ = stream.write_all(&request).await;
     let mut response = Vec::new();
     let _ = stream.read_to_end(&mut response).await;
-    let response = String::from_utf8_lossy(&response);
-    let status = response
+    String::from_utf8_lossy(&response).into_owned()
+}
+
+/// The status code on the first line of a whole response.
+fn status_of(response: &str) -> u16 {
+    response
         .lines()
         .next()
         .unwrap_or_default()
         .split_whitespace()
         .nth(1)
         .and_then(|code| code.parse().ok())
-        .unwrap_or_else(|| panic!("no status in response to {method} {path}: {response:?}"));
-    let body = response
-        .split_once("\r\n\r\n")
-        .map(|(_, body)| body.to_string())
-        .unwrap_or_default();
-    (status, body)
+        .unwrap_or_else(|| panic!("no status in response: {response:?}"))
 }
 
 /// The status of a JSON request whose body is `body_len` spaces.
@@ -191,11 +216,11 @@ async fn the_body_limit_is_64_kib_to_the_byte() {
 }
 
 /// **A query string is refused before any row, on the admin router.** The
-/// admin listener's request span records the whole URI, so this is the
-/// listener where a query string could otherwise stand beside a row. A
-/// valid body posted to `…/launcher-summary?ZZMARKER` is a static 400 and
-/// no summary, phase or batch row is written; the same body to the bare
-/// path is then accepted as new and written, which is the control.
+/// refusal does not rest on what a listener's request span records: this
+/// router is `api_routes` with no trace layer at all. A valid body posted
+/// to `…/launcher-summary?ZZMARKER` is a static 400 and no summary, phase
+/// or batch row is written; the same body to the bare path is then
+/// accepted as new and written, which is the control.
 ///
 /// The recorder is this thread's default subscriber: `#[tokio::test]` runs
 /// the listener's tasks on this thread, so it sees the handler's rows.
@@ -239,6 +264,96 @@ async fn the_admin_router_refuses_a_query_string_before_any_row() {
         let rows = recorded.snapshot();
         assert_eq!(summary_rows(&rows).len(), 1, "control: {rows:#?}");
         assert_eq!(batch_rows(&rows).len(), 1, "control: {rows:#?}");
+    }
+}
+
+/// **The admin router's request span holds the path alone.** Two requests
+/// go to the real admin router (`build_router`, trace layer included), and
+/// nothing either one's request target carries beyond the path reaches a
+/// span field, an event field or a response byte:
+///
+/// - a query string (`…/launcher-summary?ZZMARKER`), which the handler
+///   refuses;
+/// - an absolute-form target (`POST http://zzhost.example/api/…`), which
+///   is served like the bare path, so its summary and batch rows are
+///   written inside that request's span.
+///
+/// Putting `DefaultMakeSpan` back in `build_router` fails the log
+/// assertion twice over: its `uri` field is the whole request target, the
+/// marker in one span and the host in the other.
+#[tokio::test]
+async fn the_admin_request_span_holds_the_path_alone() {
+    const MARKER: &str = "ZZMARKER";
+    const HOST: &str = "zzhost";
+    let shown = Shown::default();
+    // See the same two lines in `login_port.rs`: a second live subscriber
+    // keeps a cached "nobody is listening" from hiding the request span,
+    // and the thread default sees the listener's tasks.
+    let _second = tracing::Dispatch::new(tracing_subscriber::registry());
+    let _default =
+        tracing::subscriber::set_default(tracing_subscriber::registry().with(shown.clone()));
+
+    // The orchestrator is only constructed, never started, and nothing
+    // subscribes to the two channels: no route used here reads them.
+    let app = crate::build_router(
+        Arc::new(Orchestrator::new(Default::default())),
+        broadcast::channel(1).0,
+        LogBuffer::new(),
+        broadcast::channel(1).0,
+        LoginEventBuffer::default(),
+    );
+    let addr = serve(app).await;
+    let json = Some("application/json");
+    let body = batch(vec![element(0x5a1)]).to_string().into_bytes();
+
+    let with_query = format!("{PATH}?{MARKER}");
+    let refused = exchange(addr, "POST", &with_query, json, &body).await;
+    if !paused_or_over_quota(status_of(&refused)) {
+        assert_eq!(status_of(&refused), 400, "{refused:?}");
+        assert!(refused.ends_with("Query string not allowed"), "{refused:?}");
+    }
+    let absolute = format!("http://{HOST}.example{PATH}");
+    let served = exchange(addr, "POST", &absolute, json, &body).await;
+    let wrote_rows = !paused_or_over_quota(status_of(&served));
+    if wrote_rows {
+        assert_eq!(status_of(&served), 200, "{served:?}");
+        assert!(
+            served.ends_with(r#"{"results":["accepted"]}"#),
+            "{served:?}"
+        );
+    }
+    let lines = shown.lines();
+
+    for text in [MARKER, HOST] {
+        assert!(!refused.contains(text), "{text} in {refused:?}");
+        assert!(!served.contains(text), "{text} in {served:?}");
+        assert!(
+            lines.iter().all(|line| !line.contains(text)),
+            "{text} in {lines:#?}"
+        );
+    }
+    // Not vacuous: the recorder saw both request spans, under tower-http's
+    // own target, each with the path as its `uri`; and the served request
+    // wrote its summary row while its span was open.
+    let count = |wanted: &str| lines.iter().filter(|line| *line == wanted).count();
+    assert_eq!(
+        count("span=request target=tower_http::trace::make_span"),
+        2,
+        "{lines:#?}"
+    );
+    assert_eq!(count(&format!("uri={PATH}")), 2, "{lines:#?}");
+    assert_eq!(count("method=POST"), 2, "{lines:#?}");
+    if wrote_rows {
+        assert_eq!(count(&format!("event={EVENT_SUMMARY}")), 1, "{lines:#?}");
+    }
+
+    // Control: the same recorder sees a marker placed in a span field,
+    // whether the field is set at creation or recorded later.
+    let span = tracing::info_span!("control", echo = MARKER, late = tracing::field::Empty);
+    span.record("late", MARKER);
+    let lines = shown.lines();
+    for wanted in [format!("echo={MARKER}"), format!("late={MARKER}")] {
+        assert!(lines.contains(&wanted), "no `{wanted}` in {lines:#?}");
     }
 }
 

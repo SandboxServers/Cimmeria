@@ -63,21 +63,19 @@
 //! refusals are static text, and rows are built from parsed values.
 //!
 //! The request span around those rows belongs to the listener, not to this
-//! module. On the public login port
-//! ([`crate::login_port_telemetry_router`]) it records the method, the
-//! path and the HTTP version, never the query string. The admin listener's
-//! router (`build_router` in `lib.rs`) still uses tower-http's default
-//! span, which records the full URI. That is why the handler refuses a
-//! query string before it writes a row: on the admin listener a request
-//! with one still gets a span, with the query in its `uri` field, but that
-//! span holds the 400 and no row of this module. What `lib.rs` records is
-//! unchanged, and the query check here is the only thing that keeps it out
-//! of the rows' span.
+//! module. Both routers in this crate, the public login port's
+//! ([`crate::login_port_telemetry_router`]) and the admin listener's
+//! ([`crate::build_router`]), use one span
+//! (`crate::request_span::request_span`). It records the method, the path
+//! and the HTTP version: never the query string, and never the scheme or
+//! host of an absolute-form target (`POST http://host/api/… HTTP/1.1`),
+//! which is served like the bare path.
 //!
-//! The query is the only part of the request target the handler checks. An
-//! absolute-form target (`POST http://host/api/… HTTP/1.1`) is served like
-//! the bare path, and on the admin listener its host is in the span's `uri`
-//! field beside the rows.
+//! The handler still refuses a query string before it writes a row. That
+//! check does not depend on the span: a router that mounts
+//! [`launcher_summary_routes`] under some other trace layer gets a 400 and
+//! no row of this module for such a request, whatever its span records.
+//! The query is the only part of the request target the handler checks.
 //!
 //! # Module layout
 //!

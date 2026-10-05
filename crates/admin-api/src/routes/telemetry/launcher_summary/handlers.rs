@@ -93,15 +93,6 @@ pub(super) async fn ingest(
     .map(Json)
 }
 
-/// The quota key for a peer. An IPv4 peer that reached a dual-stack
-/// listener arrives as the IPv4-mapped IPv6 address `::ffff:a.b.c.d`.
-/// [`ip_key`] folds IPv6 to its /64, and every mapped address has the same
-/// one (`::`), so uncanonicalised they would all share a single bucket,
-/// and none of them would share with the same host seen over plain IPv4.
-fn peer_key(peer_ip: IpAddr) -> u64 {
-    ip_key(peer_ip.to_canonical())
-}
-
 /// Read the body, refusing it once it passes [`MAX_SUMMARY_BODY_BYTES`]:
 /// the frame that would cross the cap is never copied in. There is no
 /// shortcut on `Content-Length`, so a length-prefixed body and a chunked
@@ -145,12 +136,14 @@ async fn read_body(body: Body) -> Result<Vec<u8>, SummaryError> {
 /// tunnel) can use the allowance up and turn their summary posts into 429s
 /// until the window ends.
 ///
-/// A query string is refused because of where it would be logged, not
-/// because of anything it could do here: no code reads it, but the
-/// listener's request span may record the whole URI (the admin listener's
-/// does), and every row this function writes sits inside that span.
-/// Refusing the request before the first row keeps a caller-chosen query
-/// string from ever standing beside one. The media type and the query are
+/// A query string is refused because of where it could be logged, not
+/// because of anything it could do here: no code reads it, and every row
+/// this function writes sits inside the listener's request span. Both
+/// routers in this crate record the path alone
+/// (`crate::request_span::request_span`), but this function cannot see
+/// what a listener it is mounted on records, so it refuses the request
+/// before the first row and a caller-chosen query string never stands
+/// beside one whatever the span holds. The media type and the query are
 /// checked before the body is read, so a request refused for either costs
 /// no buffering.
 pub(super) async fn ingest_inner(
@@ -163,8 +156,10 @@ pub(super) async fn ingest_inner(
     if kill_switch_active() {
         return Err(SummaryError::Paused);
     }
+    // `ip_key` counts an IPv4-mapped peer (`::ffff:a.b.c.d`, an IPv4
+    // caller on a dual-stack listener) as its IPv4 address.
     state.quota.check_and_record(
-        peer_key(peer_ip),
+        ip_key(peer_ip),
         policy.per_ip,
         policy.window,
         "summary/ip",
