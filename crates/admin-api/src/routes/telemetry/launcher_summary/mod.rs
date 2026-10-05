@@ -74,6 +74,11 @@
 //! unchanged, and the query check here is the only thing that keeps it out
 //! of the rows' span.
 //!
+//! The query is the only part of the request target the handler checks. An
+//! absolute-form target (`POST http://host/api/… HTTP/1.1`) is served like
+//! the bare path, and on the admin listener its host is in the span's `uri`
+//! field beside the rows.
+//!
 //! # Module layout
 //!
 //! - `dto` — the closed wire enums, element validation, the response and

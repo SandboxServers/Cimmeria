@@ -149,10 +149,10 @@ async fn read_body(body: Body) -> Result<Vec<u8>, SummaryError> {
 /// because of anything it could do here: no code reads it, but the
 /// listener's request span may record the whole URI (the admin listener's
 /// does), and every row this function writes sits inside that span.
-/// Refusing the request before the first row keeps caller-chosen URI text
-/// from ever standing beside one. The media type and the query are checked
-/// before the body is read, so a request refused for either costs no
-/// buffering.
+/// Refusing the request before the first row keeps a caller-chosen query
+/// string from ever standing beside one. The media type and the query are
+/// checked before the body is read, so a request refused for either costs
+/// no buffering.
 pub(super) async fn ingest_inner(
     state: &IngestState,
     policy: &IngestPolicy,
