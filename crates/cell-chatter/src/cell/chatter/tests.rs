@@ -227,3 +227,27 @@ async fn a_group_in_an_unloaded_world_is_silent() {
     run_at(&tx, &mut bare, Instant::now()).await;
     assert!(drain(&mut rx).is_empty());
 }
+
+/// A group with no gap and no line delays still returns from the tick: one
+/// exchange starts per group per tick, so the cell loop is never stuck
+/// replaying scenes. Revert proof: drop the one-start rule in `run_at` and
+/// this test never finishes.
+#[tokio::test]
+async fn a_zero_gap_group_starts_one_exchange_per_tick() {
+    let mut mgr = world();
+    let mut cat = catalog(WORLD_ID);
+    cat.groups[0].exchange_gap = Duration::ZERO;
+    for ex in &mut cat.groups[0].exchanges {
+        for l in &mut ex.lines {
+            l.delay = Duration::ZERO;
+        }
+    }
+    mgr.resources.insert(cat);
+    let (tx, mut rx) = mpsc::channel(256);
+    let t0 = Instant::now();
+    run_at(&tx, &mut mgr, t0).await;
+    // Exchange 1 (two lines) plays in full; exchange 2 waits for the next tick.
+    assert_eq!(drain(&mut rx).len(), 2);
+    run_at(&tx, &mut mgr, t0).await;
+    assert_eq!(drain(&mut rx), vec![(NEAR, say("Ba'al", "Cappuccino?"))]);
+}

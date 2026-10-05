@@ -124,7 +124,10 @@ impl AmbientChatterCatalog {
                 world_id: g.world_id,
                 name: g.name,
                 hear_radius: g.hear_radius,
-                exchange_gap: Duration::from_secs(g.exchange_gap_secs.max(0) as u64),
+                // At least 1 s whatever the row says: the tick starts one
+                // exchange per group per tick, and a zero gap would replay
+                // a scene every tick (the table's CHECK says 5 s or more).
+                exchange_gap: Duration::from_secs(g.exchange_gap_secs.max(1) as u64),
                 exchanges: exchanges
                     .into_iter()
                     .map(|(exchange_id, lines)| ChatterExchange {

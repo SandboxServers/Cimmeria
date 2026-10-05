@@ -33,9 +33,9 @@ pub struct ChatterRuntime {
     /// When the earliest group next has something due; `None` when no group
     /// can ever speak.
     next_due: Option<Instant>,
-    /// `(group_id, speaker_tag)` pairs already warned about, so a missing
+    /// `(group_id, speaker_tag, event)` already warned about, so a missing
     /// speaker logs once, not once per scene.
-    warned: HashSet<(i32, String)>,
+    warned: HashSet<(i32, String, &'static str)>,
 }
 
 #[derive(Debug)]
@@ -138,11 +138,19 @@ pub async fn run_at(tx: &mpsc::Sender<CellToBaseMsg>, space_mgr: &mut SpaceManag
         else {
             continue;
         };
-        // Bounded: every step moves the phase on to a later deadline or to
-        // the next line, and an exchange has finitely many lines.
+        // Bounded: at most one exchange starts per group per tick, and each
+        // other step moves on to a later deadline or to the next of an
+        // exchange's finitely many lines. Without the one-start rule a zero
+        // gap with zero-delay lines would loop here for ever (the seed's
+        // CHECK keeps the gap at 5 s or more, the loader at 1 s or more).
+        let mut started = false;
         while let Some(due) = state.run.due(now) {
             match due {
                 Due::Start { exchange } => {
+                    if started {
+                        break;
+                    }
+                    started = true;
                     if !speak::anyone_in_earshot(space, &group.speaker_tags(), group.hear_radius) {
                         state.run.no_audience(now);
                         continue;
@@ -223,14 +231,14 @@ fn speak_line(
     group: &ChatterGroup,
     exchange: usize,
     line: usize,
-    warned: &mut HashSet<(i32, String)>,
+    warned: &mut HashSet<(i32, String, &'static str)>,
 ) -> Vec<CellToBaseMsg> {
     let ex = &group.exchanges[exchange];
     let Some(l) = ex.lines.get(line) else {
         return Vec::new();
     };
     let Some(npc) = speak::speaker(space, &l.speaker_tag) else {
-        if warned.insert((group.group_id, l.speaker_tag.clone())) {
+        if warned.insert((group.group_id, l.speaker_tag.clone(), "speaker_missing")) {
             tracing::warn!(
                 target: "chatter",
                 event = "chatter.speaker_missing",
@@ -243,14 +251,15 @@ fn speak_line(
                 speaker_tag = %l.speaker_tag,
                 reason = "no_living_npc_with_tag",
                 "ambient chatter line skipped: no living NPC carries its speaker tag \
-                 (warned once per group and tag)"
+                 (a seed tag that names nobody, or a speaker who was killed; warned \
+                 once per group and tag)"
             );
         }
         return Vec::new();
     };
     let npc_id = npc.entity_id.0 as u32;
     let Some(name) = space_mgr.entity_label(npc_id) else {
-        if warned.insert((group.group_id, l.speaker_tag.clone())) {
+        if warned.insert((group.group_id, l.speaker_tag.clone(), "speaker_unnamed")) {
             tracing::warn!(
                 target: "chatter",
                 event = "chatter.speaker_unnamed",
