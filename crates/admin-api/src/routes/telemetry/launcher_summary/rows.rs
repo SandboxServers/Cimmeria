@@ -74,12 +74,12 @@ pub(super) fn emit_summary(summary: &Summary) {
     tracing::info!(
         target: "launcher.summary",
         event = EVENT_SUMMARY,
-        event_id = %summary.event_id,
-        attempt_id = %summary.attempt_id,
+        event_id = %summary.event_id, // nt:id-only random id the launcher minted for this summary; it names nothing
+        attempt_id = %summary.attempt_id, // nt:id-only random id the launcher minted for this attempt; it names nothing
         operation = summary.operation.as_str(),
         phase = summary.phase.as_str(),
         outcome = summary.outcome.as_str(),
-        error_code = summary.error_code.map(|code| code.as_str()),
+        error_code = summary.error_code.map(|code| code.as_str()), // nt:id-only already the name: a closed enum's string
         duration_ms = summary.duration_ms,
         duration_bucket = summary.duration_ms.map(duration_bucket),
         retry_count = summary.retry_count,
@@ -99,7 +99,7 @@ fn emit_phase(summary: &Summary, timing: &PhaseTiming, version: &Version) {
     tracing::info!(
         target: "launcher.summary",
         event = EVENT_PHASE,
-        attempt_id = %summary.attempt_id,
+        attempt_id = %summary.attempt_id, // nt:id-only random id the launcher minted for this attempt; it names nothing
         operation = summary.operation.as_str(),
         phase = timing.phase.as_str(),
         duration_ms = timing.duration_ms,
