@@ -21,7 +21,7 @@ pub(super) fn prepare(plan: &Plan) -> Result<PathBuf, IntentError> {
         .canonicalize()
         .map_err(|_| StorageError::UnsafeFile.into())
 }
-fn contained(root: &Path, target: &Path) -> Result<(), IntentError> {
+pub(super) fn contained(root: &Path, target: &Path) -> Result<(), IntentError> {
     let relative = target
         .strip_prefix(root)
         .map_err(|_| StorageError::UnsafeFile)?;

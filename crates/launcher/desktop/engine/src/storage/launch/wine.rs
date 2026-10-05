@@ -5,6 +5,7 @@ use cimmeria_runtime_probe::game_launch::Request;
 pub(super) fn prepare(
     plan: &Plan,
     state_root: &Path,
+    session: Option<&crate::game_telemetry::Session>,
 ) -> Result<
     (
         HelperCommand,
@@ -22,7 +23,13 @@ pub(super) fn prepare(
         .as_ref()
         .ok_or(StorageError::Corrupt)?;
     graphics.d3d9.stage(&binaries.join("d3d9.dll"))?;
-    let environment = game_environment(&resources.runtime, &resources.prefix, graphics)?;
+    let mut environment = game_environment(&resources.runtime, &resources.prefix, graphics)?;
+    let telemetry = telemetry::injected(plan, session);
+    if telemetry.is_some() {
+        for (key, value) in crate::game_telemetry::passthrough_environment() {
+            environment.insert(key.into(), value.into());
+        }
+    }
     let guest = |p: &Path| {
         mac_wine::paths::guest(p)
             .map(PathBuf::from)
@@ -33,10 +40,12 @@ pub(super) fn prepare(
         operation_id: plan.id,
         exe: guest(&binaries.join("SGW.exe"))?,
         directory: guest(&binaries)?,
+        // Patches first: the telemetry DLL shares their install lock.
         dlls: plan
             .resources
             .client_patches
             .iter()
+            .chain(telemetry)
             .map(|p| guest(p.path()))
             .collect::<Result<_, _>>()?,
     };

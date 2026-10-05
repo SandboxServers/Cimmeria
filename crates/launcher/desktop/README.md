@@ -15,7 +15,9 @@ that resource retain settings and patch notes but cannot install. Content prepar
 Play readiness. Confirmed uninstall and interrupted-removal recovery are wired
 through Settings. Settings also connects confirmed [Repair](docs/repair.md),
 precommit cancellation, recovery/abandonment and current-backup cleanup. [Play](docs/launch.md)
-now observes native game lifecycle; telemetry export and real-client/platform gates remain open.
+now observes native game lifecycle and, for a player who opts in, injects the
+[game-telemetry DLL](docs/launch.md#opt-in-game-telemetry) with a server session.
+Launcher-summary export and real-client/platform gates remain open.
 
 ## Native operation and storage contracts
 
@@ -232,10 +234,12 @@ npm run uat --prefix crates/launcher/desktop/frontend -- "$PWD/target/desktop/de
 ```
 
 The native-backed UATs (`uat:adoption`, `uat:launch`, `uat:migration`,
-`uat:game-update`, `uat:game-update-apply`, `uat:updater`, `uat:updater-apply`)
+`uat:game-telemetry`, `uat:game-update`, `uat:game-update-apply`, `uat:updater`,
+`uat:updater-apply`)
 each spawn an ignored bridge test from a Cargo test binary named by an
 environment variable. The updater pair needs the engine test binary in
-`UPDATER_UAT_BINARY`; the others need the shell test binary. The adoption
+`UPDATER_UAT_BINARY`; the others need the shell test binary
+(`GAME_TELEMETRY_UAT_BINARY` for the game-diagnostics toggle). The adoption
 bridge and its optional Wine backend are described in the
 [migration contract](docs/migration.md#verified-copy-adoption-in-settings).
 

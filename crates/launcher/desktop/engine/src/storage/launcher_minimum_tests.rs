@@ -126,6 +126,7 @@ fn installed(
     let resources = launch::Resources {
         helper: launch::Artifact::open(helper, &hash).unwrap(),
         client_patches: None,
+        client_telemetry: None,
         graphics: None,
     };
     (root, state, intent, resources)

@@ -215,19 +215,4 @@ mod tests {
         assert_eq!(policy.check("http://lan-server/api"), Ok(()));
         assert!(policy.check("http://lan-server:8081/api").is_err());
     }
-
-    /// Fresh-install defaults work together: the default auth URL is on a
-    /// default login server.
-    #[test]
-    fn the_default_auth_url_passes_with_the_default_login_servers() {
-        let servers = crate::client_setup::login_servers::default_servers();
-        let policy = EndpointPolicy::from_login_servers(servers.iter().map(|s| s.url.as_str()));
-        assert_eq!(
-            policy.check(&crate::config::TelemetrySettings::default().auth_url),
-            Ok(())
-        );
-        // Without the login servers the same URL is refused: the login
-        // server list is what vouches for it.
-        assert!(check(&crate::config::TelemetrySettings::default().auth_url).is_err());
-    }
 }

@@ -242,7 +242,7 @@ the SEH/EH epilogue, not actual behavior. The function returns normally after fi
 Logic:
 1. If `this+0x20` (CZipArchive handle) is non-null and CZipArchive state at `+0x5E` is not -1 (closed):
    return true immediately (already open).
-2. Iterate path vector at `this+0x14..0x18` to find the PAK file on disk.
+2. Iterate the archive vector at `this+0x14..0x18` (**corrected 2026-10-04**: it holds `CZipArchive*`, not paths; the names are the vector at `this+0x00`; see [Finding 8](#finding-8--where-the-category-version-is-read-and-how-the-read-fails-silently)) and work out each PAK's path under the cache directory.
 3. If path doesn't exist: call `FUN_0139dfb0` to create the directory.
    - On failure: log error `"Error creating cache archive directory: ..."` via log4cxx and return false.
 4. Open the ZIP archive via CZipArchive API.
@@ -284,6 +284,90 @@ Globals:
 `CacheLibrary` is 12 bytes. The actual ctor body is `FUN_0157ce00` (thin wrapper at `CacheLibrary_Ctor`
 `0x00478840` sets up SEH and calls it). The CacheLibrary holds an internal sorted map (std::map-like
 red-black tree) of category ID → LibCategory pointer.
+
+---
+
+## Finding 8 — Where the category version is read, and how the read fails silently
+
+**Confidence**: HIGH for the code paths (disassembly of the QA `SGW.exe`, 2026-10-04: function entries, `ret N`, every `call rel32` to each function). The Wine failure is explained in Finding 9.
+**Sources**: `0x00479340` (`ZipStorageBase::OpenArchive`), `0x00478f00`, `0x00478e10`, `0x01396900` (`CZipArchive::FindFile`), `0x01398af0` (`CZipArchive::ExtractFile` to a memory file), `0x00479e90`, `0x00479e10`.
+
+**Correction to Finding 6.** `this+0x10` is a `std::vector<CZipArchive*>` (begin `+0x14`, end `+0x18`), not a vector of paths. The PAK names are a `std::vector<std::wstring>` at `this+0x00` (begin `+0x04`, end `+0x08`, element size `0x1c`). `this+0x20` is the first archive once it is open, and the early return tests it and the archive's `+0x5e` (`0xffff` when closed).
+
+**The open mode.** For each archive, `OpenArchive` starts from mode 2 (create). It switches to 0 (open) only if `0x0139d3a0(path) == 1`, `0x0139de80(path, &size)` succeeds and `size > 0`; then to 1 (read-only) if `0x0139d2a0(path, &attributes)` succeeds and bit 0 is set. Then `0x01397ce0(path, mode, 0)`. A wrong answer from any of the three helpers opens an existing cache in create mode. The open sits in a `try`; the handler logs `Error opening static cache archive` and closes the archive.
+
+**The version read.** After the loop, if the archive vector is not empty, `OpenArchive` calls `0x00478f00(this, &this->version /* +0x24 */, archives[0])`:
+
+```text
+0x00478f00  thiscall(this, u32* out, CZipArchive* archive), ret 8
+  std::strstream stream                                   ; 0x00478970: basic_iostream<char> over
+                                                          ; strstreambuf(0), an empty dynamic buffer
+  if 0x00478e10(this, &stream, archive, L"MetaData"):     ; L"MetaData" at 0x017fe554
+      stream.read(out, 4)                                 ; basic_istream<char>::read, IAT 0x017ef6d0
+  ; otherwise *out is left as it was, and so it is when the read gets no bytes
+
+0x00478e10  thiscall(this, stream*, CZipArchive* archive, const wchar_t* name), ret 0xc, bool
+  index = archive->FindFile(name, 0, true)                ; 0x01396900, name-only search
+  if index == 0xffff: return false
+  CZipMemFile file(grow 0x400)
+  if !archive->ExtractFile(index, file, true, 0x10000): return false   ; 0x01398af0
+  if file.length == 0: return false
+  stream.write(file.data, file.length)                    ; basic_ostream<char>::write, IAT 0x017ef788
+  return true
+```
+
+A failed find or extraction leaves `this+0x24` at its previous value, 0 in a fresh process, and logs nothing. So does a stream that takes the bytes and does not give them back: the result of `read` is not checked. The stream class, its buffer and both calls are `MSVCP80.dll` imports (`??0strstreambuf@std@@QAE@H@Z` at IAT `0x017ef510`, `??0?$basic_iostream@...` at `0x017ef6f4`), so this hop runs whatever C++ runtime the process loaded. `0x00478f00` has three callers: `0x004798e6` (the tail of `OpenArchive`), `0x00479336` and `0x0047a36e` (the source-archive update). `FindFile` has two call sites in the client (`0x00478e3b`, `0x00478fc3`) and the memory `ExtractFile` one (`0x00478e70`).
+
+**The stamp.** `ServerSource_SetVersion` (`0x00479e90`, `thiscall(this, const u32*)`, `ret 4`) is `this->version = *arg; WriteMetaDataVersion(this)`, and has 21 call sites, one per category's `onVersionInfo` handler. The write path finds and replaces the existing `MetaData` entry: an archive written by a resync holds exactly one.
+
+**Under Wine on macOS (2026-10-04).** After a resync all 21 cache PAKs are valid, each with one `MetaData` entry holding the server's real version. A clean quit leaves them byte-identical. The next start opens all 22 cache PAKs read-write at full size and leaves them byte-identical, yet the client sends 0 for every category. `client.cooked.version_read` ([client-telemetry.md](../../architecture/client-telemetry.md#cooked-data-cache-clientcooked)) then showed, for all 21 archives with a `MetaData` entry and for both the writable and the bundled copy of each, that the entry is found and extracted and the read still leaves 0 (session of 2026-10-05 03:19 UTC). The step that fails is the stream: Finding 9.
+
+---
+
+## Finding 9 — Under Wine the version read gets no bytes back from `strstreambuf`
+
+**Confidence**: HIGH (the client's read path from Finding 8; disassembly of the `msvcp80.dll` in the pinned Wine runtime; Wine's source; and one live session, below).
+**Sources**: `SGW.exe` `0x00478970`, `0x00478e10`, `0x00478f00`; Wine `dlls/msvcp90/ios.c`, `strstreambuf_underflow` (`msvcp80.dll` is built from the same file); the runtime's `lib/wine/i386-windows/msvcp80.dll` (SHA-256 `6d4f49931c2be83b...`, export `?underflow@strstreambuf@std@@MAEHXZ` at `0x10074250`).
+
+**What the client does.** It writes the extracted `MetaData` bytes into a fresh dynamic `strstreambuf` and at once reads four back from the same stream, with no seek in between. The first write allocates the buffer and sets the get area empty (`setg(buf, buf, buf)`) and the high-water mark `_Seekhigh` to the buffer's start. The read therefore finds no characters and calls `underflow()`, whose job at that point is to notice that the put pointer has moved, raise `_Seekhigh` to it and widen the get area.
+
+**What Microsoft's runtime does.** `strstreambuf::underflow` compares `_Seekhigh` with `pptr()`, sets `_Seekhigh = pptr()`, calls `setg(eback(), gptr(), _Seekhigh)` and returns the first character. The read gets its four bytes.
+
+**What Wine's does.** The same function reads the get pointer where it means the put pointer:
+
+```c
+/* dlls/msvcp90/ios.c, strstreambuf_underflow */
+pptr = basic_streambuf_char_gptr(&this->base);   /* should be basic_streambuf_char_pptr */
+if(pptr > this->seekhigh)
+    this->seekhigh = pptr;
+
+if(this->seekhigh <= gptr)
+    return EOF;
+```
+
+`_Seekhigh` never moves, so a read that follows a write returns end of file. In the runtime's binary the function loads `this+0x20` (the pointer to the get-next pointer) for both values and never touches `this+0x24` (put-next) before the comparison with `this+0x44` (`_Seekhigh`):
+
+```text
+10074263  mov eax,[ecx+0x20] ; mov esi,[eax]     ; gptr
+10074270  mov ecx,[eax]                          ; "pptr": the same cell
+10074375  mov edx,[ebx+0x44]                     ; seekhigh
+10074378  cmp edx,ecx ; jae +7 ; mov [ebx+0x44],ecx
+10074381  cmp esi,edx ; jae -> return EOF
+```
+
+`basic_istream<char>::read` then sets `eofbit|failbit`, leaves the destination alone and returns. The client does not look. `this+0x24` stays 0 for every category, the client sends 0 in every `versionInfoRequest`, and the server resyncs all 21.
+
+**Seen live (2026-10-05 04:08 UTC, session `29ecefab-24be-4883-a614-dcd705bb9662`, read back from the server by its operator).** For all 21 archives with a `MetaData` entry, `client.cooked.version_read` had `outcome: stream_read_short`, `extract_ok: true`, `extract_len: 4` and the right bytes (`TextStrings.pak` `aa 16 00 00`, 5802; Items 44303; WorldInfo 33408; the bundled Items 7538), then `stream_held: 4`, `stream_read_requested: 4`, `stream_read_count: 0`, `stream_state: eof|fail`. Deflated entries (the writable cache) and stored ones (the bundled copy) behaved the same. Underneath, two `_read` calls per version read, none short, and no failed seek. `client.io.pak_open` fired 65 times, all `open_existing`, `deny_write`, `via: crt`.
+
+**Why the client loads Wine's runtime at all.** `SGW.exe`'s manifest asks for `Microsoft.VC80.CRT` 8.0.50727.762. The launcher's prerequisite step installs that redistributable, so the prefix has Microsoft's `msvcp80.dll` under `winsxs\x86_microsoft.vc80.crt_..._8.0.50727.762_...`, and Wine resolves the manifest to that directory: a crash dump of the client lists `MSVCP80.dll` and `MSVCR80.dll` at that path. What it maps there is its own builtin all the same (the module is `0xfb000` bytes, the builtin's size, and the process has the runtime's `lib/wine/i386-windows/msvcp80.dll` open), because with no override Wine tries the builtin before a native file. A `WINEDLLOVERRIDES` of `msvcp80,msvcr80=n` for the game should therefore select Microsoft's pair. That has not been tried.
+
+**What else it breaks.** Read entry (`0x00478e10`) has two callers: the version read, and `0x00479210`, which tries each of a storage's archives in turn for a named entry and is how a cached element is loaded. Both write into a caller's `strstream` that is read straight after. The `strstream` constructor (`0x00478970`) has 22 call sites across the client, the cooked-data loaders among them. Under Wine none of those reads gets data. For cooked data that is hidden today: with version 0 everywhere the server pushes every entry at each login and the client uses what arrives. A fix for the version alone would stop the pushes and leave the client with archives it cannot read. The fix has to make the stream work, which repairs every caller. Whether any of the other construct sites is behind the character-creation button that does nothing (same playtest) is not checked.
+
+**The repair.** `cimmeria-client-patches` probes the loaded runtime with the same write-then-read and, when it fails this way, points the `underflow` entry of `strstreambuf`'s vtable (entry 4 in the pinned runtime, found by the exported address) at a shim that raises `_Seekhigh` to the put pointer and then calls the runtime's own function ([client-patches.md](../../architecture/client-patches.md#a-runtime-repair-strstream-under-wine)). That repairs every caller at once.
+
+**The repair, live (2026-10-05 04:10 UTC, session `411f1000-158d-4d50-80eb-8a7ce8778115`, same machine and cache as the session above).** The patches log shows the probe failing (`wrote 4, read 0`), the shim going into vtable slot 4 and the probe then reading 4. All 42 version reads (21 archives, both copies) came back `outcome: read`, `version_kind: real`, `stream_read_count: 4`, `stream_state: good`, the cache copies with the server's current versions and the bundled ones with the 2009 build's. The process still had Wine's builtin `msvcp80.dll` and `msvcr80.dll` loaded, and nothing from `winsxs`. At the login (04:12:09 UTC) `client.cooked.versions_held` had 21 real and none pending, matching the server's versions, and the server answered `up_to_date` for all 21 categories and started no resync. The player created a character and was in the world under three minutes after start, where every earlier login on this machine was followed by about ten minutes of digest. The cache archives kept their sizes and entry counts across the login; `version_set` fired once per category, because an up-to-date reply stamps the same version again. Character creation, which had done nothing in every session before, worked; why it depends on the stream is not traced.
+
+**Scope.** Any Wine whose `msvcp80.dll` has this function as above: the pinned runtime (Wine 11.13) and Wine's `master` on 2026-10-04. It is not specific to macOS, Rosetta or the launcher. A prefix that loads Microsoft's `msvcp80.dll` instead does not have it.
 
 ---
 

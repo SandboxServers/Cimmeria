@@ -19,7 +19,13 @@ HELPERS = {
                "i686-pc-windows-msvc", 0x14C, 0x10B, "CIMMERIA_LAUNCH_HELPER_SHA256"),
     "client-patches": ("cimmeria_client_patches.dll", "client-patches-build.json",
                        "i686-pc-windows-msvc", 0x14C, 0x10B, "CIMMERIA_CLIENT_PATCHES_SHA256"),
+    "client-telemetry": ("cimmeria_client_telemetry.dll", "client-telemetry-build.json",
+                         "i686-pc-windows-msvc", 0x14C, 0x10B, "CIMMERIA_CLIENT_TELEMETRY_SHA256"),
 }
+DLLS = ("client-patches", "client-telemetry")
+# Present only in a `lab-bridge` build of the telemetry DLL, which can open an inbound
+# command port. The launchers refuse to load one into a player's game; so does staging.
+LAB_BRIDGE_MARKER = b"cimmeria-client-telemetry build flavour: lab-bridge"
 
 
 def stage(source: Path, destination: Path, expected: str, revision: str,
@@ -43,10 +49,12 @@ def stage(source: Path, destination: Path, expected: str, revision: str,
         raise ValueError("invalid PE header")
     if struct.unpack_from("<H", data, offset + 4)[0] != machine or struct.unpack_from("<H", data, offset + 24)[0] != magic:
         raise ValueError(f"helper must match {target} PE architecture")
-    if kind in ("launch", "client-patches"):
+    if kind == "launch" or kind in DLLS:
         is_dll = bool(struct.unpack_from("<H", data, offset + 22)[0] & 0x2000)
-        if is_dll != (kind == "client-patches"):
+        if is_dll != (kind in DLLS):
             raise ValueError("launch resources must match their executable or DLL role")
+    if kind == "client-telemetry" and LAB_BRIDGE_MARKER in data:
+        raise ValueError("refusing a lab-bridge build of the telemetry DLL")
     destination.mkdir(parents=True, exist_ok=True)
     with tempfile.NamedTemporaryFile(dir=destination, delete=False) as output:
         pending = Path(output.name)
@@ -54,6 +62,7 @@ def stage(source: Path, destination: Path, expected: str, revision: str,
             output.write(data)
             output.flush()
             os.fsync(output.fileno())
+            output.close()  # Windows refuses to rename or delete a file that is still open.
             pending.chmod(0o644)  # Bundled public resource must be readable by other Mac users.
             os.replace(pending, destination / filename)
         finally:

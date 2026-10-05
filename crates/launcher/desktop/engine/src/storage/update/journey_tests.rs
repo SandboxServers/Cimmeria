@@ -86,7 +86,16 @@ fn operation(state: &Mutex<DesktopState>) -> OperationState {
 async fn signed_update_reopen_repair_current_and_uninstall_keep_permanent_owner() {
     let (root, state, prepared, server) = fixture().await;
     let plan = prepared.plan.clone();
-    let owner_bytes = std::fs::read(plan.owner.destination.join(".cimmeria-install.json")).unwrap();
+    // Read through the held owner lock: Windows refuses a second handle
+    // while preparation retains it.
+    let owner_bytes = {
+        use std::io::{Read, Seek, SeekFrom};
+        let mut file = &*prepared._root_owner;
+        file.seek(SeekFrom::Start(0)).unwrap();
+        let mut bytes = Vec::new();
+        file.read_to_end(&mut bytes).unwrap();
+        bytes
+    };
     assert_eq!(
         commit::start(state.clone(), prepared)
             .unwrap()

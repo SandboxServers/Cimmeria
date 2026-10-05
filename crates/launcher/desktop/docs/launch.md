@@ -58,6 +58,16 @@ suspended-process creation, ordered injection and `resume_running` primitives.
 The retained original Windows process handle avoids an OpenProcess race when
 SGW exits immediately. No legacy launcher source behavior changes.
 
+The helper starts the game under plain `C:\...` paths. A native launcher sends
+canonical paths, which on Windows carry the verbatim `\\?\` prefix. Windows does
+not resolve `..` under a verbatim working directory, and `SGW.exe` finds its
+config as `..\SGWGame\Config\`, so with the prefix it quits at startup with
+"Failed to find default engine .ini file". The helper strips the prefix from the
+exe and the working directory with `cimmeria_client_launch::launch::strip_verbatim`,
+the function the Windows launcher already uses. A Wine guest path is already
+plain. Changing the helper changes its SHA-256, so restage it and rebuild the
+shell with the new `CIMMERIA_LAUNCH_HELPER_SHA256`.
+
 ### Development resource staging
 
 Native Windows [run 37214723035](https://github.com/SandboxServers/Cimmeria/actions/runs/37214723035)
@@ -274,6 +284,7 @@ the frontend cannot supply paths, executable names, environment or hashes.
 |---|---|
 | `CIMMERIA_LAUNCH_HELPER_SHA256` | `windows/cimmeria-launch-worker.exe` |
 | `CIMMERIA_CLIENT_PATCHES_SHA256` | `windows/cimmeria_client_patches.dll` |
+| `CIMMERIA_CLIENT_TELEMETRY_SHA256` | `windows/cimmeria_client_telemetry.dll` (optional, [opt-in](#opt-in-game-telemetry)) |
 | `CIMMERIA_D3D9_SHA256` | `graphics/d3d9.dll` (Mac required) |
 | `CIMMERIA_ROSETTA_X87_SHA256` | `graphics/rosettax87` (optional pair) |
 | `CIMMERIA_ROSETTA_X87_LIBRARY_SHA256` | `graphics/libRuntimeRosettax87` (optional pair) |
@@ -329,6 +340,78 @@ not the imported settings verify.
 
 The Play view has no separate message for refused imported settings yet. It
 shows the general "finish installation and compatibility checks" line.
+
+## Opt-in game telemetry
+
+The launch helper injects `cimmeria-client-telemetry` after the client patches
+when the player has opted in. It is off by default. The DLL observes the
+running game and uploads events and engine logs to the server; what it
+captures is described in [client-telemetry.md](../../../../docs/architecture/client-telemetry.md).
+
+**The choice is its own record.** `game-telemetry.json` in the state directory
+holds `opted_in` and, from the first opt-in, an install identity. The
+`game_telemetry_command` (`inspect`, `set`) reads and saves it. Launcher-summary
+consent (`preferences.json`) is a different choice and never turns it on, and
+saving one does not touch the other. Opting out keeps the identity, so a later
+opt-in is the same install to the server.
+
+**The DLL is an optional bundle resource.** A build that pins no
+`CIMMERIA_CLIENT_TELEMETRY_SHA256`, or whose DLL no longer matches, cannot offer
+game telemetry: `set` with `opted_in: true` fails with `platform_unavailable`
+and saves nothing. Play is unaffected. A `lab-bridge` build is refused three
+times: by `tools/stage-helper.py --kind client-telemetry`, when the shell
+resolves its bundle, and at admission. It is built natively by the
+`launcher runtime probe` workflow, which logs its SHA-256 next to the patch
+DLL's.
+
+**What Play does when it is on:**
+
+1. `resolve_play_resources` keeps the DLL in the launch resources. Admission
+   refuses it for a player who is not opted in, even from a host that skipped
+   resolution.
+2. The worker asks the installation's first login server for a session:
+   `POST <login server>/api/auth/dev-session`, with the identity and the tags
+   `desktop-launcher`, the host OS and `wine` or `native`. The wait is bounded
+   to 8 seconds. Addresses follow the Windows launcher's rule
+   (`telemetry/endpoint.rs`, compiled into the engine): https anywhere, plain
+   http only to this machine or to a login server's own host and port. The rule
+   is applied to the upload address the server returns as well.
+3. The session marker is written to `Working/Binaries/sessions/current-session.json`,
+   the file the DLL reads at boot. It is the same shape the Windows launcher
+   writes (`telemetry/session.rs`, compiled into the engine).
+4. The DLL is added to the helper's request after the patch DLL. The helper
+   already accepts two DLLs; it is unchanged.
+
+No session, a refused address or an unwritable marker means the DLL is left
+out and the game starts as it would with telemetry off. `game-telemetry-status.json`
+records which of those happened for the last launch (`attached`,
+`session_unavailable`, `endpoint_refused`, `session_not_written`), and Settings
+shows it. `attached` means the DLL was on the injection list with a marker on
+disk. It does not claim the DLL loaded or that an upload arrived; the DLL's own
+`cimmeria-client-telemetry.log` beside `SGW.exe` and the server are the evidence
+for those.
+
+A plan that does not carry the DLL serializes without a `client_telemetry` key,
+so plans written before this field existed keep their digests.
+
+**Capture switches.** The game's environment is built from scratch, so the
+DLL's developer switches are copied on purpose, and only when telemetry is
+attached: `CIMMERIA_CLIENT_CAPTURE`, `CIMMERIA_CLIENT_HOOKS_ENABLE` and
+`CIMMERIA_CLIENT_HOOKS_DISABLE`, each a short comma-separated list. Set them in
+the launcher's own environment, for example on macOS:
+
+```bash
+open --env CIMMERIA_CLIENT_CAPTURE=unfilter,firehose "<launcher bundle>"
+```
+
+**Not covered:**
+
+- An adopted copy still launches without game telemetry. Its imported choice
+  is reported as unavailable, as before.
+- The session token is minted once per Play and is not refreshed. A session
+  that outlives the token stops uploading.
+- The launcher does not tail `SGWDebugLog.log` or upload bundles, as the
+  Windows launcher's own telemetry runner does.
 
 ## Headless integration checks
 
