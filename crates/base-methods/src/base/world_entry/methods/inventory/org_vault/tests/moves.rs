@@ -116,7 +116,7 @@ async fn live_db_deposit_then_withdraw_round_trips_the_same_item_id() {
         ("kind", "deposit"),
         ("direction", "deposit"),
         ("item_id", &item.to_string()[..]),
-        ("type_id", &BANKABLE.to_string()[..]),
+        ("item_type_id", &BANKABLE.to_string()[..]),
         ("quantity", "5"),
         ("source_container_id", "1"),
         ("target_container_id", "19"),

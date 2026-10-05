@@ -34,6 +34,7 @@ use cimmeria_base_session::base::org_cash::sends::Actor;
 use cimmeria_base_session::base::organization::api::broadcast_to_org;
 use cimmeria_base_session::base::organization::handlers::{OrgCtx, OrgPlayer};
 use cimmeria_entity::cell_entity::VaultScope;
+use cimmeria_entity::known_names;
 use cimmeria_entity::organization::{OrgRank, OrgType};
 use cimmeria_wire::cell::client_methods::organization::{
     build_on_organization_cash_update, ON_ORGANIZATION_CASH_UPDATE,
@@ -334,15 +335,20 @@ async fn expand(
 }
 
 async fn quoted(actor: &Actor<'_>, req: &OrgVaultExpandRequest, s: Snapshot) {
+    let player_label = known_names::player_name(req.player_id);
     tracing::debug!(
         target: "bank",
         event = "expand_quote",
         offered = true,
         account_id = s.account_id,
+        account_name = known_names::account_name(s.account_id),
         player_id = req.player_id,
+        player_name = player_label,
         entity_id = req.entity_id,
+        entity_name = player_label,
         scope = req.scope.as_str(),
         org_id = s.org_id,
+        org_name = known_names::org_name(s.org_id),
         vault_slots = s.vault_slots,
         price = s.price,
         org_cash = s.org_cash,
@@ -371,14 +377,19 @@ async fn bought(actor: &Actor<'_>, req: &OrgVaultExpandRequest, b: Bought) {
         None,
     )
     .await;
+    let player_label = known_names::player_name(req.player_id);
     tracing::info!(
         target: "bank",
         event = "expand",
         account_id = b.account_id,
+        account_name = known_names::account_name(b.account_id),
         player_id = req.player_id,
+        player_name = player_label,
         entity_id = req.entity_id,
+        entity_name = player_label,
         scope = req.scope.as_str(),
         org_id = b.org_id,
+        org_name = known_names::org_name(b.org_id),
         org_type = OrgType::Team.name(),
         rank = b.rank.as_u8(),
         vault_slots_before = b.from,
@@ -390,13 +401,18 @@ async fn bought(actor: &Actor<'_>, req: &OrgVaultExpandRequest, b: Bought) {
         trigger = "gm_console",
         "expand: the Team vault grew one step, paid from the treasury"
     );
+    let player_label = known_names::player_name(req.player_id);
     tracing::info!(
         target: "bank",
         event = "org_cash_transfer",
         account_id = b.account_id,
+        account_name = known_names::account_name(b.account_id),
         player_id = req.player_id,
+        player_name = player_label,
         entity_id = req.entity_id,
+        entity_name = player_label,
         org_id = b.org_id,
+        org_name = known_names::org_name(b.org_id),
         org_type = OrgType::Team.name(),
         rank = b.rank.as_u8(),
         direction = CashDirection::VaultExpansion.as_str(),
@@ -430,14 +446,19 @@ async fn reject(
     let account_id = s
         .account_id
         .or(req.account_id.and_then(|a| i32::try_from(a).ok()));
+    let player_label = known_names::player_name(req.player_id);
     tracing::warn!(
         target: "bank",
         event = "expand_rejected",
         account_id,
+        account_name = known_names::account_name(account_id),
         player_id = req.player_id,
+        player_name = player_label,
         entity_id = req.entity_id,
+        entity_name = player_label,
         scope = req.scope.as_str(),
         org_id = s.org_id,
+        org_name = known_names::org_name(s.org_id),
         org_type = s.org_type.map(OrgType::name),
         rank = s.rank.map(OrgRank::as_u8),
         vault_slots = s.vault_slots,

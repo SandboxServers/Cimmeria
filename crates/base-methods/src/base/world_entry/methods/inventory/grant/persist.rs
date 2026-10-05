@@ -7,6 +7,7 @@
 //! (a loot pickup returns it to the corpse) without risking a duplicate.
 
 use cimmeria_cell_catalog::crafting::ItemFlags;
+use cimmeria_entity::known_names;
 use sqlx::PgPool;
 
 use super::super::super::vendor::serializers::reserve_free_inventory_slots;
@@ -53,7 +54,13 @@ pub(super) async fn persist_grant(
     let mut db_tx = match pool.begin().await {
         Ok(t) => t,
         Err(e) => {
-            tracing::error!(player_id, item_id, "GrantItem: begin tx failed: {e}");
+            tracing::error!(
+                player_id,
+                player_name = known_names::player_name(player_id),
+                item_id,
+                item_name = cimmeria_names::book().item(item_id),
+                "GrantItem: begin tx failed: {e}"
+            );
             return db_refused();
         }
     };
@@ -75,8 +82,11 @@ pub(super) async fn persist_grant(
         let _ = db_tx.rollback().await;
         tracing::error!(
             player_id,
+            player_name = known_names::player_name(player_id),
             item_id,
+            item_name = cimmeria_names::book().item(item_id),
             container_id,
+            container_name = cimmeria_names::book().container(container_id),
             "GrantItem: advisory lock failed: {e}"
         );
         return db_refused();
@@ -103,7 +113,9 @@ pub(super) async fn persist_grant(
                 let _ = db_tx.rollback().await;
                 tracing::error!(
                     player_id,
+                    player_name = known_names::player_name(player_id),
                     item_id,
+                    item_name = cimmeria_names::book().item(item_id),
                     "GrantItem: item flags lookup failed: {e}"
                 );
                 return db_refused();
@@ -189,8 +201,11 @@ pub(super) async fn persist_grant(
                 let _ = db_tx.rollback().await;
                 tracing::error!(
                     player_id,
+                    player_name = known_names::player_name(player_id),
                     item_id,
+                    item_name = cimmeria_names::book().item(item_id),
                     container_id,
+                    container_name = cimmeria_names::book().container(container_id),
                     "GrantItem: merge candidate lookup failed: {e}"
                 );
                 return db_refused();
@@ -212,16 +227,22 @@ pub(super) async fn persist_grant(
             let _ = db_tx.rollback().await;
             tracing::error!(
                 player_id,
+                player_name = known_names::player_name(player_id),
                 item_id,
+                item_name = cimmeria_names::book().item(item_id),
                 target_item_id = target.item_id,
+                target_item_name = cimmeria_names::book().item(item_id),
                 "GrantItem: stack merge UPDATE failed: {e}"
             );
             return db_refused();
         }
         tracing::info!(
             player_id,
+            player_name = known_names::player_name(player_id),
             item_id,
+            item_name = cimmeria_names::book().item(item_id),
             container_id,
+            container_name = cimmeria_names::book().container(container_id),
             slot = target.slot_id,
             count,
             "GrantItem: merged into existing stack"
@@ -243,14 +264,22 @@ pub(super) async fn persist_grant(
                 let _ = db_tx.rollback().await;
                 tracing::error!(
                     player_id,
+                    player_name = known_names::player_name(player_id),
                     item_id,
+                    item_name = cimmeria_names::book().item(item_id),
                     "GrantItem (merge): outbox enqueue failed, aborting: {e}"
                 );
                 return db_refused();
             }
         };
         if let Err(e) = db_tx.commit().await {
-            tracing::error!(player_id, item_id, "GrantItem (merge): commit failed: {e}");
+            tracing::error!(
+                player_id,
+                player_name = known_names::player_name(player_id),
+                item_id,
+                item_name = cimmeria_names::book().item(item_id),
+                "GrantItem (merge): commit failed: {e}"
+            );
             return commit_failed(&e);
         }
         return PersistOutcome::Committed(Committed {
@@ -275,8 +304,11 @@ pub(super) async fn persist_grant(
                     let _ = db_tx.rollback().await;
                     tracing::warn!(
                         player_id,
+                        player_name = known_names::player_name(player_id),
                         item_id,
+                        item_name = cimmeria_names::book().item(item_id),
                         container_id,
+                        container_name = cimmeria_names::book().container(container_id),
                         "GrantItem: reserve returned empty"
                     );
                     return PersistOutcome::Refused(GrantRefusal::ContainerFull);
@@ -286,8 +318,11 @@ pub(super) async fn persist_grant(
                 let _ = db_tx.rollback().await;
                 tracing::warn!(
                     player_id,
+                    player_name = known_names::player_name(player_id),
                     item_id,
+                    item_name = cimmeria_names::book().item(item_id),
                     container_id,
+                    container_name = cimmeria_names::book().container(container_id),
                     "GrantItem: container full"
                 );
                 return PersistOutcome::Refused(GrantRefusal::ContainerFull);
@@ -296,8 +331,11 @@ pub(super) async fn persist_grant(
                 let _ = db_tx.rollback().await;
                 tracing::error!(
                     player_id,
+                    player_name = known_names::player_name(player_id),
                     item_id,
+                    item_name = cimmeria_names::book().item(item_id),
                     container_id,
+                    container_name = cimmeria_names::book().container(container_id),
                     "GrantItem: slot reserve failed: {e}"
                 );
                 return db_refused();
@@ -318,7 +356,13 @@ pub(super) async fn persist_grant(
         Ok(Some(None)) | Ok(None) => 0,
         Err(e) => {
             let _ = db_tx.rollback().await;
-            tracing::error!(player_id, item_id, "GrantItem: charges lookup failed: {e}");
+            tracing::error!(
+                player_id,
+                player_name = known_names::player_name(player_id),
+                item_id,
+                item_name = cimmeria_names::book().item(item_id),
+                "GrantItem: charges lookup failed: {e}"
+            );
             return db_refused();
         }
     };
@@ -360,9 +404,12 @@ pub(super) async fn persist_grant(
         Ok(id) => {
             tracing::debug!(
                 player_id,
+                player_name = known_names::player_name(player_id),
                 item_id,
-                instance_id = id,
+                item_name = cimmeria_names::book().item(item_id),
+                instance_id = id, // nt:id-only instance row of item_id
                 container_id,
+                container_name = cimmeria_names::book().container(container_id),
                 slot = next_slot,
                 charges = default_charges,
                 "Item persisted to inventory"
@@ -371,7 +418,13 @@ pub(super) async fn persist_grant(
         }
         Err(e) => {
             let _ = db_tx.rollback().await;
-            tracing::error!(player_id, item_id, "Failed to persist item: {e}");
+            tracing::error!(
+                player_id,
+                player_name = known_names::player_name(player_id),
+                item_id,
+                item_name = cimmeria_names::book().item(item_id),
+                "Failed to persist item: {e}"
+            );
             return db_refused();
         }
     };
@@ -414,7 +467,8 @@ pub(super) async fn persist_grant(
                 bandolier_became_active = r.rows_affected() == 1;
                 tracing::debug!(
                     player_id,
-                    slot_id = next_slot,
+                    player_name = known_names::player_name(player_id),
+                    slot_id = next_slot, // nt:id-only slot index, unnamed
                     swapped = r.rows_affected() == 1,
                     "GrantItem: bandolier_slot reconciled (swapped only if previous selection vacant)"
                 );
@@ -423,7 +477,8 @@ pub(super) async fn persist_grant(
                 let _ = db_tx.rollback().await;
                 tracing::error!(
                     player_id,
-                    slot_id = next_slot,
+                    player_name = known_names::player_name(player_id),
+                    slot_id = next_slot, // nt:id-only slot index, unnamed
                     "GrantItem: bandolier_slot UPDATE failed inside tx, aborting grant: {e}"
                 );
                 return db_refused();
@@ -451,7 +506,9 @@ pub(super) async fn persist_grant(
             let _ = db_tx.rollback().await;
             tracing::error!(
                 player_id,
+                player_name = known_names::player_name(player_id),
                 item_id,
+                item_name = cimmeria_names::book().item(item_id),
                 "GrantItem: outbox enqueue failed, aborting: {e}"
             );
             return db_refused();
@@ -459,7 +516,13 @@ pub(super) async fn persist_grant(
     };
 
     if let Err(e) = db_tx.commit().await {
-        tracing::error!(player_id, item_id, "GrantItem: commit failed: {e}");
+        tracing::error!(
+            player_id,
+            player_name = known_names::player_name(player_id),
+            item_id,
+            item_name = cimmeria_names::book().item(item_id),
+            "GrantItem: commit failed: {e}"
+        );
         return commit_failed(&e);
     }
 

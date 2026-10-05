@@ -1,7 +1,7 @@
 # Unpaired ID fields per file (Rule 6, NT-03). Only ever lowered.
 # Regenerate after pairing fields: NT_BASELINE_BLESS=1 cargo nextest run -p cimmeria-server unpaired_id
 # See crates/server/src/logging/unpaired_id_tests/mod.rs.
-# total 1945
+# total 1405
 crates/admin-api/src/routes/dev_session/handlers.rs 2
 crates/base-crafting/src/base/crafting/allcraft.rs 18
 crates/base-crafting/src/base/crafting/alloy/mod.rs 7
@@ -26,34 +26,6 @@ crates/base-crafting/src/base/crafting/sync/mod.rs 12
 crates/base-crafting/src/base/crafting/telemetry.rs 10
 crates/base-crafting/src/base/crafting/transaction/client_sync.rs 5
 crates/base-crafting/src/base/crafting/transaction/failure.rs 15
-crates/base-methods/src/base/world_entry/methods/inventory/ammo.rs 3
-crates/base-methods/src/base/world_entry/methods/inventory/ammo_gm_give/mod.rs 17
-crates/base-methods/src/base/world_entry/methods/inventory/ammo_reserve/commits.rs 6
-crates/base-methods/src/base/world_entry/methods/inventory/ammo_reserve/requests.rs 31
-crates/base-methods/src/base/world_entry/methods/inventory/appearance.rs 4
-crates/base-methods/src/base/world_entry/methods/inventory/core/access.rs 11
-crates/base-methods/src/base/world_entry/methods/inventory/core/consume_for_use.rs 15
-crates/base-methods/src/base/world_entry/methods/inventory/core/mod.rs 8
-crates/base-methods/src/base/world_entry/methods/inventory/core/remove_by_type.rs 23
-crates/base-methods/src/base/world_entry/methods/inventory/core/remove_instance.rs 22
-crates/base-methods/src/base/world_entry/methods/inventory/core/use_instance.rs 31
-crates/base-methods/src/base/world_entry/methods/inventory/grant/equip_epilogue.rs 11
-crates/base-methods/src/base/world_entry/methods/inventory/grant/grant_item.rs 46
-crates/base-methods/src/base/world_entry/methods/inventory/grant/persist.rs 45
-crates/base-methods/src/base/world_entry/methods/inventory/grant/validation.rs 11
-crates/base-methods/src/base/world_entry/methods/inventory/move_/after_commit.rs 3
-crates/base-methods/src/base/world_entry/methods/inventory/move_/apply.rs 35
-crates/base-methods/src/base/world_entry/methods/inventory/move_/bank_rules.rs 10
-crates/base-methods/src/base/world_entry/methods/inventory/move_/container_policy.rs 38
-crates/base-methods/src/base/world_entry/methods/inventory/move_/finish.rs 28
-crates/base-methods/src/base/world_entry/methods/inventory/move_/mod.rs 23
-crates/base-methods/src/base/world_entry/methods/inventory/move_/org/apply.rs 12
-crates/base-methods/src/base/world_entry/methods/inventory/move_/org/mod.rs 16
-crates/base-methods/src/base/world_entry/methods/inventory/move_/org/record.rs 27
-crates/base-methods/src/base/world_entry/methods/inventory/move_/org/refusal.rs 23
-crates/base-methods/src/base/world_entry/methods/inventory/move_/org/rules.rs 2
-crates/base-methods/src/base/world_entry/methods/inventory/org_vault/expand.rs 16
-crates/base-methods/src/base/world_entry/methods/inventory/org_vault/open.rs 23
 crates/base-methods/src/base/world_entry/methods/missions/mod.rs 10
 crates/base-methods/src/base/world_entry/methods/player_load/core/inventory_items.rs 1
 crates/base-methods/src/base/world_entry/methods/player_load/core/player_data.rs 11

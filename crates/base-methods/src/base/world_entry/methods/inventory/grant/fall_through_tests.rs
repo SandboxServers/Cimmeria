@@ -135,7 +135,7 @@ async fn live_db_bank_first_component_lands_in_the_crafting_bag_for_every_caller
         ("account_id", account_id.to_string()),
         ("player_id", player_id.to_string()),
         ("entity_id", entity_id.to_string()),
-        ("type_id", type_id.to_string()),
+        ("item_type_id", type_id.to_string()),
         ("quantity", "1".to_string()),
         ("container_sets", "{17,15}".to_string()),
         ("skipped_storage", "true".to_string()),
@@ -147,12 +147,14 @@ async fn live_db_bank_first_component_lands_in_the_crafting_bag_for_every_caller
         assert_eq!(event.fields.get(key), Some(&value), "field `{key}`");
     }
     // The row names the item (2026-09-29 playtest: grant rows carried only a
-    // number): `design_id` numeric, `item_name` from the same placement read.
+    // number): `item_type_id` numeric, `item_name` from the same placement read.
     let name: String = sqlx::query_scalar("SELECT name FROM resources.items WHERE item_id = $1")
         .bind(type_id)
         .fetch_one(&pool)
         .await
         .expect("item name");
+    assert_eq!(event.fields.get("item_type_id"), Some(&type_id.to_string()));
+    // Kept for the cell rows' join until their sweep renames them.
     assert_eq!(event.fields.get("design_id"), Some(&type_id.to_string()));
     assert_eq!(event.fields.get("item_name"), Some(&name), "{event:#?}");
     assert!(

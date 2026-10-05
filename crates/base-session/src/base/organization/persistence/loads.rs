@@ -70,6 +70,8 @@ pub async fn load_memberships<'e>(
         rows.into_iter()
             .map(
                 |(org_id, org_type, name, motd, cash, experience, rank, perms)| {
+                    // Rule 6: vault and org lines name the organization from here.
+                    cimmeria_entity::known_names::remember_org(org_id, &name);
                     Ok(OrgMembership {
                         header: OrgHeader {
                             org_id,

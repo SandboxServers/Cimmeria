@@ -12,6 +12,7 @@
 //! Everything else is refused, and unknown ids are refused by default, so a
 //! future container never becomes movable by accident.
 
+use cimmeria_entity::known_names;
 use std::collections::HashMap;
 use std::net::SocketAddr;
 use std::sync::{Arc, Mutex};
@@ -187,13 +188,18 @@ pub(super) async fn refuse_move(
                     .await;
             }
             if let Err(e) = tx.rollback().await {
+                let player_label = known_names::player_name(player_id);
                 tracing::warn!(
                     target: "bank",
                     event = "move_rejected",
                     account_id = context.account_id,
+                    account_name = known_names::account_name(context.account_id),
                     player_id,
+                    player_name = player_label,
                     entity_id,
+                    entity_name = player_label,
                     item_id,
+                    item_name = cimmeria_names::owned::item(context.type_id),
                     reason = "move_lock_release_failed",
                     "move_rejected: rolling back the read-only lock transaction failed: {e}"
                 );
@@ -229,24 +235,31 @@ impl Refusal {
     /// so there is something to resend; `false` after logging
     /// `move_resync_skipped` when there is not.
     fn log(&self, context: &RefusalContext) -> bool {
+        let player_label = known_names::player_name(self.player_id);
         tracing::warn!(
             target: "bank",
             event = "move_rejected",
             account_id = context.account_id,
+            account_name = known_names::account_name(context.account_id),
             player_id = self.player_id,
+            player_name = player_label,
             entity_id = self.entity_id,
+            entity_name = player_label,
             item_id = self.item_id,
-            type_id = context.type_id,
+            item_name = cimmeria_names::owned::item(context.type_id),
+            item_type_id = context.type_id,
             quantity = self.quantity,
             stack_size = context.stack_size,
             source_container_id = context.source_container_id,
-            source_slot_id = context.source_slot_id,
+            source_container_name = cimmeria_names::owned::container(context.source_container_id),
+            source_slot_id = context.source_slot_id, // nt:id-only slot index, unnamed
             target_container_id = self.target_container_id,
-            target_slot_id = self.target_slot_id,
+            target_container_name = cimmeria_names::book().container(self.target_container_id),
+            target_slot_id = self.target_slot_id, // nt:id-only slot index, unnamed
             reason = self.refusal.reason(),
             vault_end = self.refusal.vault_end(),
             bank_slots = self.refusal.bank_slots(),
-            banker_id = self.vault.banker_id(),
+            banker_id = self.vault.banker_id(), // nt:id-only banker NPC, unnamed on the base
             gm_override = self.vault.gm_override(),
             distance = self.vault.distance(),
             "move_rejected: item stays put (snap-back follows unless move_resync_skipped)"
@@ -256,13 +269,18 @@ impl Refusal {
             // logs its own failure.
             return true;
         }
+        let player_label = known_names::player_name(self.player_id);
         tracing::warn!(
             target: "bank",
             event = "move_resync_skipped",
             account_id = context.account_id,
+            account_name = known_names::account_name(context.account_id),
             player_id = self.player_id,
+            player_name = player_label,
             entity_id = self.entity_id,
+            entity_name = player_label,
             item_id = self.item_id,
+            item_name = cimmeria_names::owned::item(context.type_id),
             reason = "refused_item_not_owned",
             "move_resync_skipped: the refused move named an item this player does not own; \
              nothing to snap back"
@@ -286,12 +304,15 @@ impl Refusal {
             .ok()
             .and_then(|m| m.get(&self.entity_id).copied());
         let Some(addr) = addr else {
+            let player_label = known_names::player_name(self.player_id);
             tracing::warn!(
                 target: "bank",
                 event = "bank_feedback_send_failed",
                 player_id = self.player_id,
+                player_name = player_label,
                 entity_id = self.entity_id,
-                item_id = self.item_id,
+                entity_name = player_label,
+                item_id = self.item_id, // nt:id-only instance id, move_rejected names it
                 reason = "no_client_address",
                 "bank_feedback_send_failed: no client address for the refusal line"
             );
@@ -307,13 +328,18 @@ impl Refusal {
     /// The locks could not be taken, so the item is not resent (see
     /// [`refuse_move`]).
     fn skip_unlocked_resend(&self, context: &RefusalContext) {
+        let player_label = known_names::player_name(self.player_id);
         tracing::warn!(
             target: "bank",
             event = "move_resync_skipped",
             account_id = context.account_id,
+            account_name = known_names::account_name(context.account_id),
             player_id = self.player_id,
+            player_name = player_label,
             entity_id = self.entity_id,
+            entity_name = player_label,
             item_id = self.item_id,
+            item_name = cimmeria_names::owned::item(context.type_id),
             reason = "lock_timeout",
             "move_resync_skipped: the move lock or the item's row lock could not be taken; \
              not resending an unlocked read that a concurrent write could overtake"
@@ -344,13 +370,18 @@ impl Refusal {
             // The row was read a moment ago under the same lock, so this is
             // a failed read, which `send_inventory_item_update_via` has
             // already logged with its error.
+            let player_label = known_names::player_name(self.player_id);
             tracing::warn!(
                 target: "bank",
                 event = "move_resync_skipped",
                 account_id = context.account_id,
+                account_name = known_names::account_name(context.account_id),
                 player_id = self.player_id,
+                player_name = player_label,
                 entity_id = self.entity_id,
+                entity_name = player_label,
                 item_id = self.item_id,
+                item_name = cimmeria_names::owned::item(context.type_id),
                 reason = "resync_read_failed",
                 "move_resync_skipped: could not read the refused item back; client not resynced"
             );
@@ -370,12 +401,15 @@ async fn take_move_lock(
     let mut tx = match pool.begin().await {
         Ok(tx) => tx,
         Err(e) => {
+            let player_label = known_names::player_name(player_id);
             tracing::warn!(
                 target: "bank",
                 event = "move_rejected",
                 player_id,
+                player_name = player_label,
                 entity_id,
-                item_id,
+                entity_name = player_label,
+                item_id, // nt:id-only instance id, type unread yet
                 reason = "move_lock_begin_failed",
                 "move_rejected: begin failed, not resyncing without the move lock: {e}"
             );
@@ -407,12 +441,15 @@ async fn take_move_lock(
         Ok(_) => Some(tx),
         Err(e) => {
             let _ = tx.rollback().await; // Defensible silent: the lock query already failed and is logged next.
+            let player_label = known_names::player_name(player_id);
             tracing::warn!(
                 target: "bank",
                 event = "move_rejected",
                 player_id,
+                player_name = player_label,
                 entity_id,
-                item_id,
+                entity_name = player_label,
+                item_id, // nt:id-only instance id, type unread yet
                 reason = "move_lock_failed",
                 "move_rejected: move or item row lock failed, not resyncing without it: {e}"
             );
@@ -447,12 +484,15 @@ where
     {
         Ok(row) => row.unwrap_or_default(),
         Err(e) => {
+            let player_label = known_names::player_name(player_id);
             tracing::warn!(
                 target: "bank",
                 event = "move_rejected",
                 player_id,
+                player_name = player_label,
                 entity_id,
-                item_id,
+                entity_name = player_label,
+                item_id, // nt:id-only instance id, type unread yet
                 reason = "refusal_context_query_failed",
                 "move_rejected: could not read the refused item's context: {e}"
             );

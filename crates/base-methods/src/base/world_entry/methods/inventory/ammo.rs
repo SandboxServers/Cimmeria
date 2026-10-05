@@ -1,5 +1,6 @@
 //! SQL helpers for persisting per-bandolier-slot ammo state.
 
+use cimmeria_entity::known_names;
 use sqlx::PgPool;
 
 /// Persist the current ammo and selected ammo subtype for a bandolier slot.
@@ -44,9 +45,10 @@ pub async fn update_bandolier_ammo(
 
     if res.rows_affected() == 0 {
         tracing::debug!(
-            character_id,
-            slot_id,
-            expected_instance_id,
+            player_id = character_id,
+            player_name = known_names::player_name(character_id),
+            slot_id,              // nt:id-only slot index, unnamed
+            expected_instance_id, // nt:id-only weapon instance in slot_id
             current_ammo,
             cur_ammo_type,
             "update_bandolier_ammo: no rows updated (slot empty or item instance swapped)"

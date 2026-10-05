@@ -200,6 +200,8 @@ pub async fn handle_play_character(
             // this account" lookup that would target the wrong character on
             // multi-character accounts.
             c.active_player_id = Some(player_id);
+            // Rule 6: helpers that log only a `player_id` name it from here.
+            cimmeria_entity::known_names::remember_player(player_id, &player_load_data.player_name);
             // Not listed in the online name index yet: the client has not
             // created this player entity. `handle_on_client_ready` lists it.
             c.pending_world_entry = Some(entry_info);

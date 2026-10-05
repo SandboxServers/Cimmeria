@@ -334,6 +334,8 @@ pub(super) async fn lock_org_with_tx(
     .fetch_optional(&mut **tx)
     .await?;
     row.map(|(org_id, org_type, name, motd, cash, experience, tx_id)| {
+        // Rule 6: vault and org lines name the organization from here.
+        cimmeria_entity::known_names::remember_org(org_id, &name);
         Ok((
             OrgHeader {
                 org_id,

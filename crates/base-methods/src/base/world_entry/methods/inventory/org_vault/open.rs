@@ -13,6 +13,7 @@
 //! Opening needs no bank bit: every member may look (D-BV12). The bits are
 //! checked per move.
 
+use cimmeria_entity::known_names;
 use std::collections::HashMap;
 use std::net::SocketAddr;
 use std::sync::{Arc, Mutex};
@@ -27,6 +28,7 @@ use super::super::core::{send_org_vault_items_via, OrgVaultSend};
 use super::access::{lock_actor, team_vault_slots, OrgLockMiss, OrgVaultActor};
 use crate::base::feedback::{send_feedback_line, FeedbackCtx};
 use crate::base::helpers::send_to_witness_reliable;
+use crate::base::world_entry::space_registry;
 use crate::base::ConnectedClientState;
 use crate::cell::messages::{BankBaseToCell, BaseToCellMsg};
 use crate::mercury::{build_player_entity_method_packet, method_idx};
@@ -127,7 +129,11 @@ pub fn org_vault_bag_info(bank_slots: i32, team_slots: i32) -> Vec<u8> {
 )]
 pub async fn handle_org_vault_open(req: OrgVaultOpenRequest, io: OrgVaultIo<'_>) {
     let Some(pool) = io.db_pool else {
-        tracing::debug!(entity_id = req.entity_id, "OrgVaultOpen: no DB pool");
+        tracing::debug!(
+            entity_id = req.entity_id,
+            entity_name = known_names::player_name(req.player_id),
+            "OrgVaultOpen: no DB pool"
+        );
         return;
     };
     let Some(player_id) = req.player_id else {
@@ -153,11 +159,15 @@ async fn open(
     io: &OrgVaultIo<'_>,
 ) -> Result<(i32, OrgVaultActor, usize), (OpenRefusal, Option<i32>, Option<i32>)> {
     let failed = |what: &str, e: sqlx::Error, org_id: Option<i32>| {
+        let player_label = known_names::player_name(player_id);
         tracing::error!(
             target: "bank",
             player_id,
+            player_name = player_label,
             entity_id = req.entity_id,
+            entity_name = player_label,
             org_id,
+            org_name = known_names::org_name(org_id),
             "OrgVaultOpen: {what} failed: {e}"
         );
         (OpenRefusal::QueryFailed, org_id, None)
@@ -240,13 +250,18 @@ async fn granted(
     io: &OrgVaultIo<'_>,
 ) {
     let perms = actor.access.permissions();
+    let player_label = known_names::player_name(player_id);
     tracing::debug!(
         target: "bank",
         event = "org_vault_opened",
         account_id = actor.account_id,
+        account_name = known_names::account_name(actor.account_id),
         player_id,
+        player_name = player_label,
         entity_id = req.entity_id,
+        entity_name = player_label,
         org_id,
+        org_name = known_names::org_name(org_id),
         org_type = actor.access.org_type().name(),
         rank = actor.access.rank().as_u8(),
         perm = "none",
@@ -256,8 +271,9 @@ async fn granted(
         scope = req.scope.as_str(),
         vault_slots = actor.vault_slots,
         item_count,
-        banker_id = req.banker_id,
+        banker_id = req.banker_id, // nt:id-only banker NPC, unnamed on the base
         space_id = req.space_id,
+        world = space_registry::world_for_space(req.space_id),
         distance = req.distance,
         "org_vault_opened: size and contents sent, asking the cell to open the window"
     );
@@ -272,13 +288,18 @@ async fn granted(
         banker_id: req.banker_id,
     });
     if let Err(e) = cell_tx.send(grant).await {
+        let player_label = known_names::player_name(player_id);
         tracing::warn!(
             target: "bank",
             event = "org_vault_open_rejected",
             account_id = actor.account_id,
+            account_name = known_names::account_name(actor.account_id),
             player_id,
+            player_name = player_label,
             entity_id = req.entity_id,
+            entity_name = player_label,
             org_id,
+            org_name = known_names::org_name(org_id),
             reason = "cell_channel_closed",
             "org_vault_open_rejected: the grant could not reach the cell, so no window opens: {e}"
         );
@@ -294,17 +315,23 @@ async fn refuse(
     io: &OrgVaultIo<'_>,
 ) {
     let account_id = db_account_id.or(req.account_id.and_then(|a| i32::try_from(a).ok()));
+    let player_label = known_names::player_name(req.player_id);
     tracing::warn!(
         target: "bank",
         event = "org_vault_open_rejected",
         account_id,
+        account_name = known_names::account_name(account_id),
         player_id = req.player_id,
+        player_name = player_label,
         entity_id = req.entity_id,
+        entity_name = player_label,
         org_id,
+        org_name = known_names::org_name(org_id),
         org_type = req.scope.org_type().map(|t| t.name()),
         scope = req.scope.as_str(),
-        banker_id = req.banker_id,
+        banker_id = req.banker_id, // nt:id-only banker NPC, unnamed on the base
         space_id = req.space_id,
+        world = space_registry::world_for_space(req.space_id),
         distance = req.distance,
         reason = refusal.reason(),
         "org_vault_open_rejected: the vault did not open -- the player sees a chat line saying why"
@@ -315,12 +342,16 @@ async fn refuse(
         .ok()
         .and_then(|m| m.get(&req.entity_id).copied());
     let Some(addr) = addr else {
+        let player_label = known_names::player_name(req.player_id);
         tracing::warn!(
             target: "bank",
             event = "bank_feedback_send_failed",
             account_id,
+            account_name = known_names::account_name(account_id),
             player_id = req.player_id,
+            player_name = player_label,
             entity_id = req.entity_id,
+            entity_name = player_label,
             reason = "no_client_address",
             "bank_feedback_send_failed: no client address for the org vault refusal line"
         );

@@ -6,6 +6,7 @@
 //! consume ([`super::consume_for_use`]), which also needs to know whether
 //! the unit was really taken and to hold the row to one design id.
 
+use cimmeria_entity::known_names;
 use std::collections::HashMap;
 use std::net::SocketAddr;
 use std::sync::{Arc, Mutex};
@@ -101,7 +102,13 @@ pub(super) async fn remove_instance(
     let pool = match db_pool {
         Some(p) => p,
         None => {
-            tracing::debug!(player_id, item_id, "RemoveInventoryItem: no DB pool");
+            tracing::debug!(
+                player_id,
+                player_name = known_names::player_name(player_id),
+                item_id,
+                item_name = cimmeria_names::owned::item(expected_type_id),
+                "RemoveInventoryItem: no DB pool"
+            );
             return false;
         }
     };
@@ -109,7 +116,9 @@ pub(super) async fn remove_instance(
     if quantity <= 0 {
         tracing::warn!(
             player_id,
+            player_name = known_names::player_name(player_id),
             item_id,
+            item_name = cimmeria_names::owned::item(expected_type_id),
             quantity,
             "RemoveInventoryItem: invalid quantity"
         );
@@ -121,7 +130,9 @@ pub(super) async fn remove_instance(
         Err(e) => {
             tracing::error!(
                 player_id,
+                player_name = known_names::player_name(player_id),
                 item_id,
+                item_name = cimmeria_names::owned::item(expected_type_id),
                 "RemoveInventoryItem: begin tx failed: {e}"
             );
             return false;
@@ -129,7 +140,7 @@ pub(super) async fn remove_instance(
     };
 
     let source = match sqlx::query_as::<_, InventoryInstanceRow>(
-        "SELECT stack_size, container_id \
+        "SELECT stack_size, container_id, type_id \
          FROM sgw_inventory WHERE character_id = $1 AND item_id = $2 \
            AND ($3::int IS NULL OR type_id = $3) \
          LIMIT 1 FOR UPDATE",
@@ -145,7 +156,9 @@ pub(super) async fn remove_instance(
             let _ = tx.rollback().await;
             tracing::error!(
                 player_id,
+                player_name = known_names::player_name(player_id),
                 item_id,
+                item_name = cimmeria_names::owned::item(expected_type_id),
                 "RemoveInventoryItem: source query failed: {e}"
             );
             return false;
@@ -156,8 +169,10 @@ pub(super) async fn remove_instance(
         let _ = tx.rollback().await;
         tracing::warn!(
             player_id,
-            item_id,
-            expected_type_id,
+            player_name = known_names::player_name(player_id),
+            item_id, // nt:id-only instance id, no such row to type
+            expected_item_type_id = expected_type_id,
+            expected_item_name = cimmeria_names::owned::item(expected_type_id),
             "RemoveInventoryItem: source item not found (or not of the expected type)"
         );
         return false;
@@ -213,7 +228,9 @@ pub(super) async fn remove_instance(
             // divergence in one place.
             tracing::warn!(
                 player_id,
+                player_name = known_names::player_name(player_id),
                 item_id,
+                item_name = cimmeria_names::owned::item(source.type_id),
                 rows_affected = rows,
                 expected = 1,
                 "RemoveInventoryItem: no rows changed -- item missing or stack underflow"
@@ -224,7 +241,9 @@ pub(super) async fn remove_instance(
             let _ = tx.rollback().await;
             tracing::error!(
                 player_id,
+                player_name = known_names::player_name(player_id),
                 item_id,
+                item_name = cimmeria_names::owned::item(source.type_id),
                 "RemoveInventoryItem: update failed: {e}"
             );
             return false;
@@ -247,7 +266,9 @@ pub(super) async fn remove_instance(
                 let _ = tx.rollback().await;
                 tracing::error!(
                     player_id,
+                    player_name = known_names::player_name(player_id),
                     item_id,
+                    item_name = cimmeria_names::owned::item(source.type_id),
                     "RemoveInventoryItem: outbox enqueue failed, aborting: {e}"
                 );
                 return false;
@@ -260,7 +281,9 @@ pub(super) async fn remove_instance(
     if let Err(e) = tx.commit().await {
         tracing::error!(
             player_id,
+            player_name = known_names::player_name(player_id),
             item_id,
+            item_name = cimmeria_names::owned::item(source.type_id),
             "RemoveInventoryItem: commit failed: {e}"
         );
         return false;
@@ -280,10 +303,14 @@ pub(super) async fn remove_instance(
     )
     .await;
 
+    let player_label = known_names::player_name(player_id);
     tracing::debug!(
         entity_id,
+        entity_name = player_label,
         player_id,
+        player_name = player_label,
         item_id,
+        item_name = cimmeria_names::owned::item(source.type_id),
         quantity,
         total_items,
         "Inventory remove persisted"

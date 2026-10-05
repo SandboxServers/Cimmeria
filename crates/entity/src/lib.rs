@@ -21,6 +21,7 @@ pub mod crafting;
 pub mod detour_ffi;
 pub mod interaction_flags;
 pub mod inventory;
+pub mod known_names;
 pub mod mailbox;
 pub mod manager;
 pub mod missions;

@@ -15,6 +15,7 @@
 //! - [`global`] / [`book`]: the process's book, shared by the base and the
 //!   cell. [`load_at_boot`] fills it once; [`reload`] swaps in a new one on
 //!   content reload.
+//! - [`owned`]: the same lookups copied out, for an ID held as an `Option`.
 //! - [`archetype_name`], [`racial_paradigm_name`], [`ammo_name`]: names from
 //!   small closed tables compiled in, which need no database.
 //!
@@ -32,6 +33,7 @@ mod book;
 mod fixed_tables;
 mod handle;
 mod load;
+pub mod owned;
 mod placeholder;
 
 pub use book::{NameBook, Table};

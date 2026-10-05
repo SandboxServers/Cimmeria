@@ -2,6 +2,7 @@
 //! of write (whole, split, merge, swap), the commit and the side effects.
 
 use cimmeria_entity::inventory::INV_BANK;
+use cimmeria_entity::known_names;
 use cimmeria_wire::cell::vault::VaultAccess;
 use sqlx::{Postgres, Transaction};
 
@@ -38,7 +39,7 @@ pub(super) async fn finish_move(
     // The vault's own rules (BV-03). The session verdict already passed at
     // both ends; what is left needs the database.
     let owner = if touches_vault(source.container_id, target_container_id) {
-        match vault_owner(&mut tx, &req).await {
+        match vault_owner(&mut tx, &req, &source).await {
             Some(owner) => Some(owner),
             None => {
                 let _ = tx.rollback().await;
@@ -58,9 +59,12 @@ pub(super) async fn finish_move(
         let _ = tx.rollback().await;
         tracing::warn!(
             player_id,
+            player_name = known_names::player_name(player_id),
             item_id,
-            type_id = source.type_id,
+            item_name = cimmeria_names::book().item(source.type_id),
+            item_type_id = source.type_id,
             target_container_id,
+            target_container_name = cimmeria_names::book().container(target_container_id),
             "MoveInventoryItem: item cannot be moved into target container"
         );
         // A vault move is refused visibly (`bank` log, line, snap-back);
@@ -90,7 +94,14 @@ pub(super) async fn finish_move(
         Ok(result) => result,
         Err(e) => {
             let _ = tx.rollback().await;
-            tracing::error!(player_id, target_container_id, target_slot_id, "MoveInventoryItem: occupied slot query failed: {e}");
+            tracing::error!(
+                player_id,
+                player_name = known_names::player_name(player_id),
+                target_container_id,
+                target_container_name = cimmeria_names::book().container(target_container_id),
+                target_slot_id, // nt:id-only slot index, unnamed
+                "MoveInventoryItem: occupied slot query failed: {e}"
+            );
             return;
         }
     };
@@ -121,8 +132,11 @@ pub(super) async fn finish_move(
                     let _ = tx.rollback().await;
                     tracing::error!(
                         player_id,
+                        player_name = known_names::player_name(player_id),
                         item_id,
+                        item_name = cimmeria_names::book().item(source.type_id),
                         occupied_item_id = occ.item_id,
+                        occupied_item_name = cimmeria_names::book().item(occ.type_id),
                         "MoveInventoryItem: occupant mission-item lookup failed: {e}"
                     );
                     return;
@@ -133,10 +147,14 @@ pub(super) async fn finish_move(
             let _ = tx.rollback().await;
             tracing::warn!(
                 player_id,
+                player_name = known_names::player_name(player_id),
                 item_id,
+                item_name = cimmeria_names::book().item(source.type_id),
                 occupied_item_id = occ.item_id,
+                occupied_item_name = cimmeria_names::book().item(occ.type_id),
                 occupied_item_type = occ.type_id,
                 source_container_id = source.container_id,
+                source_container_name = cimmeria_names::book().container(source.container_id),
                 "MoveInventoryItem: occupied item cannot be swapped into source container"
             );
             if owner.is_some() {
@@ -158,6 +176,7 @@ pub(super) async fn finish_move(
             &mut tx,
             player_id,
             item_id,
+            &source,
             target_container_id,
             target_slot_id,
         )
@@ -198,7 +217,13 @@ pub(super) async fn finish_move(
     };
 
     if let Err(e) = tx.commit().await {
-        tracing::error!(player_id, item_id, "MoveInventoryItem: commit failed: {e}");
+        tracing::error!(
+            player_id,
+            player_name = known_names::player_name(player_id),
+            item_id,
+            item_name = cimmeria_names::book().item(source.type_id),
+            "MoveInventoryItem: commit failed: {e}"
+        );
         return;
     }
 
@@ -237,13 +262,19 @@ pub(super) async fn finish_move(
 /// Read the player's `account_id` and `bank_slots` in the move transaction.
 /// `None`, logged, when the row is missing or the read fails; the caller
 /// rolls back.
-async fn vault_owner(tx: &mut MoveTx, req: &MoveRequest) -> Option<VaultOwner> {
+async fn vault_owner(
+    tx: &mut MoveTx,
+    req: &MoveRequest,
+    source: &InventoryInstanceRow,
+) -> Option<VaultOwner> {
     match read_vault_owner(tx, req.player_id).await {
         Ok(Some(owner)) => Some(owner),
         Ok(None) => {
             tracing::warn!(
                 player_id = req.player_id,
+                player_name = known_names::player_name(req.player_id),
                 item_id = req.item_id,
+                item_name = cimmeria_names::book().item(source.type_id),
                 "MoveInventoryItem: player row missing for a vault move"
             );
             None
@@ -251,7 +282,9 @@ async fn vault_owner(tx: &mut MoveTx, req: &MoveRequest) -> Option<VaultOwner> {
         Err(e) => {
             tracing::error!(
                 player_id = req.player_id,
+                player_name = known_names::player_name(req.player_id),
                 item_id = req.item_id,
+                item_name = cimmeria_names::book().item(source.type_id),
                 "MoveInventoryItem: vault owner read failed: {e}"
             );
             None
@@ -288,7 +321,9 @@ async fn deposit_refusal(
             // refused as if it were a mission item, and the error is logged.
             tracing::error!(
                 player_id = req.player_id,
+                player_name = known_names::player_name(req.player_id),
                 item_id = req.item_id,
+                item_name = cimmeria_names::book().item(source.type_id),
                 "MoveInventoryItem: mission-item lookup failed, refusing the deposit: {e}"
             );
             Some(MoveRefusal::MissionItem)
@@ -336,7 +371,9 @@ pub(super) async fn choose_shape(
             Err(e) => {
                 tracing::error!(
                     player_id = req.player_id,
+                    player_name = known_names::player_name(req.player_id),
                     item_id = req.item_id,
+                    item_name = cimmeria_names::book().item(source.type_id),
                     "MoveInventoryItem: max_stack_size lookup failed: {e}"
                 );
                 return Err(None);
@@ -350,9 +387,12 @@ pub(super) async fn choose_shape(
     if quantity < source.stack_size {
         tracing::warn!(
             player_id = req.player_id,
+            player_name = known_names::player_name(req.player_id),
             item_id = req.item_id,
+            item_name = cimmeria_names::book().item(source.type_id),
             target_container_id = req.target_container_id,
-            target_slot_id = req.target_slot_id,
+            target_container_name = cimmeria_names::book().container(req.target_container_id),
+            target_slot_id = req.target_slot_id, // nt:id-only slot index, unnamed
             "MoveInventoryItem: cannot split onto occupied slot"
         );
         return Err(Some(MoveRefusal::SplitOntoOccupied));
