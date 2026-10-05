@@ -7,7 +7,9 @@ use serde::Deserialize;
 use zip::write::SimpleFileOptions;
 
 use crate::case_path::resolve_existing_case;
-use crate::recipe::{safe_relative, Op, Recipe, Source, Transform, RECIPE_NAME, RECIPE_SCHEMA};
+use crate::recipe::{
+    safe_relative, Alternative, Op, Recipe, Source, Transform, RECIPE_NAME, RECIPE_SCHEMA,
+};
 use crate::{io_err, sha256_hex, transform, PatchsetError, Result};
 
 /// A patch spec, committed next to the files it ships
@@ -36,6 +38,19 @@ pub struct Spec {
 pub struct SpecOp {
     /// Install-relative path of the patched file.
     pub target: String,
+    pub sources: Vec<SpecSource>,
+    /// Other starting points for the same target, each with its own delta
+    /// (see [`crate::recipe::Op::alternatives`]). The `--stock` tree must
+    /// hold every alternative's source files, one starting point at a time:
+    /// [`build`] reads them from `--stock`, so a tree can only carry one
+    /// version of a file; use `alternative_stock_roots` for the others.
+    #[serde(default)]
+    pub alternatives: Vec<SpecAlternative>,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct SpecAlternative {
     pub sources: Vec<SpecSource>,
 }
 
@@ -93,6 +108,27 @@ pub fn build(
     stock_root: &Path,
     patched_root: &Path,
 ) -> Result<BuildReport> {
+    build_with_alternatives(spec, spec_dir, stock_root, &[], patched_root)
+}
+
+/// [`build`] for a spec with `alternatives`: alternative number `k`, counted
+/// across all ops in spec order, reads its sources from `alt_roots[k]`
+/// instead of `stock_root`. A tree can hold one version of a file, and an
+/// alternative's start is by definition a different version of the same file.
+pub fn build_with_alternatives(
+    spec: &Spec,
+    spec_dir: &Path,
+    stock_root: &Path,
+    alt_roots: &[PathBuf],
+    patched_root: &Path,
+) -> Result<BuildReport> {
+    let wanted = spec.ops.iter().map(|o| o.alternatives.len()).sum::<usize>();
+    if alt_roots.len() != wanted {
+        return Err(PatchsetError::Invalid(format!(
+            "the spec has {wanted} alternative(s) but {} --alt-stock tree(s) were given",
+            alt_roots.len()
+        )));
+    }
     let mut recipe = Recipe {
         schema: RECIPE_SCHEMA,
         ops: Vec::new(),
@@ -106,51 +142,53 @@ pub fn build(
             check_stock_case(stock_root, &s.path)?;
         }
     }
+    let mut alt_next = 0;
+    for op in &spec.ops {
+        for alt in &op.alternatives {
+            for s in &alt.sources {
+                check_stock_case(&alt_roots[alt_next], &s.path)?;
+            }
+            alt_next += 1;
+        }
+    }
     for f in &spec.files {
         check_stock_case(stock_root, &f.path)?;
     }
 
+    let mut alt_next = 0;
     for (n, op) in spec.ops.iter().enumerate() {
-        let mut image = Vec::new();
-        let mut sources = Vec::new();
-        for s in &op.sources {
-            let path = stock_root.join(safe_relative(&s.path)?);
-            let (bytes, sha256) = transform::load(&path, s.transform)?;
-            image.extend_from_slice(&bytes);
-            sources.push(Source {
-                path: s.path.clone(),
-                sha256,
-                transform: s.transform,
-                output_of: s.output_of.clone(),
-            });
-        }
         let target_path = patched_root.join(safe_relative(&op.target)?);
         let target = std::fs::read(&target_path).map_err(io_err(&target_path))?;
-        let delta = bsdiff(&image, &target).map_err(|detail| PatchsetError::Delta {
-            target: op.target.clone(),
-            detail,
-        })?;
-        // Prove the delta before shipping it.
-        let rebuilt =
-            crate::apply::bspatch(&image, &delta).map_err(|detail| PatchsetError::Delta {
-                target: op.target.clone(),
-                detail,
-            })?;
-        if rebuilt != target {
-            return Err(PatchsetError::Delta {
-                target: op.target.clone(),
-                detail: "delta does not reproduce the target".into(),
-            });
-        }
+
+        let (sources, delta) = delta_from(&op.target, &op.sources, stock_root, &target)?;
         let delta_name = format!("deltas/{n:03}.bsdiff");
         deltas.push((op.target.clone(), delta.len(), target.len()));
+        entries.push((delta_name.clone(), delta));
+
+        let mut alternatives = Vec::new();
+        for (k, alt) in op.alternatives.iter().enumerate() {
+            let (sources, delta) =
+                delta_from(&op.target, &alt.sources, &alt_roots[alt_next], &target)?;
+            alt_next += 1;
+            let name = format!("deltas/{n:03}-alt{}.bsdiff", k + 1);
+            deltas.push((
+                format!("{} (alternative {})", op.target, k + 1),
+                delta.len(),
+                target.len(),
+            ));
+            entries.push((name.clone(), delta));
+            alternatives.push(Alternative {
+                sources,
+                delta: name,
+            });
+        }
         recipe.ops.push(Op {
             target: op.target.clone(),
             sources,
-            delta: delta_name.clone(),
+            delta: delta_name,
             result_sha256: sha256_hex(&target),
+            alternatives,
         });
-        entries.push((delta_name, delta));
     }
 
     for f in &spec.files {
@@ -182,6 +220,46 @@ pub fn build(
         zip: zip_bytes,
         deltas,
     })
+}
+
+/// Read `specs` from `root` (applying their transforms), and diff the
+/// concatenation against `target`. Returns the recipe sources and the proven
+/// delta.
+fn delta_from(
+    target_path: &str,
+    specs: &[SpecSource],
+    root: &Path,
+    target: &[u8],
+) -> Result<(Vec<Source>, Vec<u8>)> {
+    let mut image = Vec::new();
+    let mut sources = Vec::new();
+    for s in specs {
+        let path = root.join(safe_relative(&s.path)?);
+        let (bytes, sha256) = transform::load(&path, s.transform)?;
+        image.extend_from_slice(&bytes);
+        sources.push(Source {
+            path: s.path.clone(),
+            sha256,
+            transform: s.transform,
+            output_of: s.output_of.clone(),
+        });
+    }
+    let delta = bsdiff(&image, target).map_err(|detail| PatchsetError::Delta {
+        target: target_path.to_string(),
+        detail,
+    })?;
+    // Prove the delta before shipping it.
+    let rebuilt = crate::apply::bspatch(&image, &delta).map_err(|detail| PatchsetError::Delta {
+        target: target_path.to_string(),
+        detail,
+    })?;
+    if rebuilt != target {
+        return Err(PatchsetError::Delta {
+            target: target_path.to_string(),
+            detail: "delta does not reproduce the target".into(),
+        });
+    }
+    Ok((sources, delta))
 }
 
 /// Refuse a spec path whose existing part the stock tree spells in

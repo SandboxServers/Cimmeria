@@ -15,6 +15,7 @@
 
 use cimmeria_base_crafting::CraftingPlugin;
 use cimmeria_base_session::base::plugin::{BasePlugin, BasePluginError, BasePlugins};
+use cimmeria_cell_chatter::ChatterPlugin;
 use cimmeria_cell_duel::DuelPlugin;
 use cimmeria_cell_org::OrgPlugin;
 use cimmeria_cell_pets::PetsPlugin;
@@ -23,14 +24,16 @@ use cimmeria_cell_world::cell::plugin::{CellPlugin, CellPlugins, PluginError};
 
 /// Every cell plugin, in hook-firing order.
 ///
-/// No two plugins share a hook point yet: pets use the owner-sweep and
-/// arrival stages and the base-destroy hook; duels use the gate-crossing
+/// Two plugins share a hook point: pets (the arrival VFX) and chatter (its
+/// tick) both run at the stat-buff stage, pets first. Chatter sends only NPC
+/// say lines, and nothing on the client relates them to a pet's arrival, so
+/// the order between them reaches no wire output that matters and no test
+/// pins it (ADR §3.2 asks for one only where it does). Pets also use the
+/// owner-sweep stage and the base-destroy hook; duels use the gate-crossing
 /// stage and the disconnect-teardown, travel and death hooks; org uses the
-/// base-disconnect and world-entry hooks. So the order reaches no wire
-/// output today; a plugin that joins a shared point must pin its order with
-/// a test (ADR §3.2).
-pub fn cell_plugin_table() -> [&'static dyn CellPlugin; 3] {
-    [&PetsPlugin, &DuelPlugin, &OrgPlugin]
+/// base-disconnect and world-entry hooks.
+pub fn cell_plugin_table() -> [&'static dyn CellPlugin; 4] {
+    [&PetsPlugin, &DuelPlugin, &OrgPlugin, &ChatterPlugin]
 }
 
 /// The built and checked plugin registry the orchestrator installs on the
@@ -79,7 +82,7 @@ mod tests {
     #[test]
     fn the_default_table_builds_and_is_complete() {
         let plugins = cell_plugins().expect("the shipped plugin table must build");
-        assert_eq!(plugins.plugin_names(), &["pets", "duel", "org"]);
+        assert_eq!(plugins.plugin_names(), &["pets", "duel", "org", "chatter"]);
         assert_eq!(
             plugins.cell_method_indices().collect::<Vec<_>>(),
             PLUGIN_OWNED_CELL_METHODS.to_vec()

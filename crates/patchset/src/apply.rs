@@ -4,7 +4,7 @@ use std::io::Read;
 use std::path::Path;
 
 use crate::case_path::resolve_existing_case;
-use crate::recipe::{safe_relative, Recipe, DELTA_DIR, RECIPE_NAME};
+use crate::recipe::{safe_relative, Op, Recipe, Source, DELTA_DIR, RECIPE_NAME};
 use crate::{io_err, sha256_hex, transform, PatchsetError, Result};
 
 /// What [`apply`] did.
@@ -65,36 +65,29 @@ pub fn apply(
                 continue;
             }
         }
-        let mut source_image = Vec::new();
-        for s in &op.sources {
-            let path = resolve_existing_case(install_dir, &safe_relative(&s.path)?);
-            if !path.is_file() {
-                return Err(PatchsetError::SourceMissing {
-                    path: s.path.clone(),
-                });
-            }
-            // One read: the hash covers the exact bytes used (for
-            // `UpkNormalize` see `transform::load`).
-            let (bytes, raw_sha) = transform::load(&path, s.transform)?;
-            if raw_sha != s.sha256 {
-                if let Some(patch) = &s.output_of {
-                    return Err(PatchsetError::PatchOutputMismatch {
-                        path: s.path.clone(),
-                        patch: patch.clone(),
-                        expected: s.sha256.clone(),
-                        actual: raw_sha,
-                    });
+        // The primary starting point first; when its sources are not what
+        // the install holds, the first alternative whose sources are. With
+        // none matching, the primary's error is the one worth reporting.
+        let mut chosen = None;
+        let mut first_error = None;
+        let starts = std::iter::once((&op.sources, &op.delta))
+            .chain(op.alternatives.iter().map(|a| (&a.sources, &a.delta)));
+        for (sources, delta) in starts {
+            match load_sources(install_dir, sources) {
+                Ok(image) => {
+                    chosen = Some((image, delta));
+                    break;
                 }
-                return Err(PatchsetError::SourceMismatch {
-                    path: s.path.clone(),
-                    expected: s.sha256.clone(),
-                    actual: raw_sha,
-                });
+                Err(e) => {
+                    first_error.get_or_insert(e);
+                }
             }
-            source_image.extend_from_slice(&bytes);
         }
-        let delta_index = archive.index_for_name(&op.delta).ok_or_else(|| {
-            PatchsetError::Invalid(format!("recipe names missing delta {}", op.delta))
+        let Some((source_image, delta_name)) = chosen else {
+            return Err(first_error.expect("an op always has a primary start"));
+        };
+        let delta_index = archive.index_for_name(delta_name).ok_or_else(|| {
+            PatchsetError::Invalid(format!("recipe names missing delta {delta_name}"))
         })?;
         let delta = read_entry(&mut archive, delta_index)?;
         let result = bspatch(&source_image, &delta).map_err(|detail| PatchsetError::Delta {
@@ -121,7 +114,7 @@ pub fn apply(
             .ops
             .iter()
             .filter(|op| op.target != name)
-            .any(|op| op.sources.iter().any(|s| s.path == name))
+            .any(|op| op_sources(op).any(|s| s.path == name))
     };
     pending.sort_by_key(|(_, _, name)| is_source(name));
     for (target, bytes, name) in pending {
@@ -147,6 +140,47 @@ pub fn apply(
         report.overlay_files += 1;
     }
     Ok(report)
+}
+
+/// Every source of an op, across its primary start and its alternatives.
+fn op_sources(op: &Op) -> impl Iterator<Item = &Source> {
+    op.sources
+        .iter()
+        .chain(op.alternatives.iter().flat_map(|a| &a.sources))
+}
+
+/// Read, normalize and hash-check `sources`, and return their concatenation:
+/// the image a delta applies to.
+fn load_sources(install_dir: &Path, sources: &[Source]) -> Result<Vec<u8>> {
+    let mut image = Vec::new();
+    for s in sources {
+        let path = resolve_existing_case(install_dir, &safe_relative(&s.path)?);
+        if !path.is_file() {
+            return Err(PatchsetError::SourceMissing {
+                path: s.path.clone(),
+            });
+        }
+        // One read: the hash covers the exact bytes used (for
+        // `UpkNormalize` see `transform::load`).
+        let (bytes, raw_sha) = transform::load(&path, s.transform)?;
+        if raw_sha != s.sha256 {
+            if let Some(patch) = &s.output_of {
+                return Err(PatchsetError::PatchOutputMismatch {
+                    path: s.path.clone(),
+                    patch: patch.clone(),
+                    expected: s.sha256.clone(),
+                    actual: raw_sha,
+                });
+            }
+            return Err(PatchsetError::SourceMismatch {
+                path: s.path.clone(),
+                expected: s.sha256.clone(),
+                actual: raw_sha,
+            });
+        }
+        image.extend_from_slice(&bytes);
+    }
+    Ok(image)
 }
 
 fn read_entry(archive: &mut zip::ZipArchive<std::fs::File>, index: usize) -> Result<Vec<u8>> {

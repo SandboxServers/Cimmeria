@@ -13,19 +13,19 @@ use std::path::Path;
 
 use crate::recipe::{Recipe, Transform, RECIPE_NAME};
 
-const IHPET: &str =
+pub(crate) const IHPET: &str =
     "Working/SGWGame/CookedPC/Maps/Ihpet_Crater_Light/Ihpet_Crater_Light-fff80002.umap";
-const ARMORY: &str =
+pub(crate) const ARMORY: &str =
     "Working/SGWGame/CookedPC/Maps/Castle_CellBlock/Castle_CellBlock-fffeffff.umap";
 
-fn committed_zip(id: &str) -> zip::ZipArchive<std::fs::File> {
+pub(crate) fn committed_zip(id: &str) -> zip::ZipArchive<std::fs::File> {
     let path = Path::new(env!("CARGO_MANIFEST_DIR"))
         .join("../../data/client-patches")
         .join(format!("{id}.zip"));
     zip::ZipArchive::new(std::fs::File::open(&path).unwrap()).unwrap()
 }
 
-fn entry(archive: &mut zip::ZipArchive<std::fs::File>, name: &str) -> Vec<u8> {
+pub(crate) fn entry(archive: &mut zip::ZipArchive<std::fs::File>, name: &str) -> Vec<u8> {
     let mut bytes = Vec::new();
     archive
         .by_name(name)
@@ -35,7 +35,7 @@ fn entry(archive: &mut zip::ZipArchive<std::fs::File>, name: &str) -> Vec<u8> {
     bytes
 }
 
-fn recipe(id: &str) -> (Recipe, zip::ZipArchive<std::fs::File>) {
+pub(crate) fn recipe(id: &str) -> (Recipe, zip::ZipArchive<std::fs::File>) {
     let mut z = committed_zip(id);
     let r = Recipe::parse(&entry(&mut z, RECIPE_NAME)).unwrap();
     (r, z)
@@ -55,7 +55,7 @@ fn offt(bytes: &[u8]) -> i64 {
 /// (compressed control, diff, extra block sizes, result size) from a delta's
 /// header. The extra block is the only part of a bsdiff delta that is not
 /// derived from the source image: bytes it stores reach the result verbatim.
-fn bsdiff_blocks(delta: &[u8]) -> (i64, i64, i64, i64) {
+pub(crate) fn bsdiff_blocks(delta: &[u8]) -> (i64, i64, i64, i64) {
     assert_eq!(&delta[..8], b"BSDIFF40", "not a bsdiff 4 delta");
     let (ctrl, diff, new_size) = (
         offt(&delta[8..16]),
@@ -142,6 +142,7 @@ fn a_donor_that_is_not_007_output_names_patch_007() {
         title: None,
         description: None,
         ops: vec![SpecOp {
+            alternatives: vec![],
             target: IHPET.into(),
             sources: vec![
                 SpecSource {
@@ -183,7 +184,7 @@ fn a_donor_that_is_not_007_output_names_patch_007() {
 
 /// `(Teleport Out sequence path, pad x, pad z)` per Debug Area station, read
 /// from the seed: region row -> event set -> sequence row.
-fn seeded_rigs() -> Vec<(String, f32, f32)> {
+pub(crate) fn seeded_rigs() -> Vec<(String, f32, f32)> {
     let seed = |rel: &str| {
         let root = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../db/resources");
         std::fs::read_to_string(root.join(rel)).unwrap()
@@ -235,7 +236,7 @@ fn the_seed_names_eight_distinct_rigs() {
 
 /// In a rebuilt map, where the rig behind each `..._Seq[_N]` stands, as game
 /// (x, z): the location of an `InterpActor` its `SeqVar_Object`s drive.
-fn rig_positions(map: &Path) -> Vec<(String, f32, f32)> {
+pub(crate) fn rig_positions(map: &Path) -> Vec<(String, f32, f32)> {
     use cimmeria_upk::{parse_tagged_properties, Package, PropValue};
     let pkg = Package::open(map).unwrap();
     let prop = |index: usize, offset: usize, name: &str| {
@@ -310,19 +311,8 @@ fn real_client_debug_area_rings() {
     let again = crate::apply(&zip, tree.path(), &mut |_| {}).unwrap();
     assert_eq!(again.already_current, vec![IHPET.to_string()]);
 
-    // Each seeded sequence path drives the rig on its own pad. The `_Seq` /
-    // `_Seq_N` names follow the `--first-at` order the map was built with; a
-    // reordered build would play the wrong station's rings.
-    let built = rig_positions(&tree.path().join(IHPET));
-    assert_eq!(built.len(), 8, "{built:?}");
-    for (path, x, z) in seeded_rigs() {
-        let (_, bx, bz) = built
-            .iter()
-            .find(|b| b.0 == path)
-            .unwrap_or_else(|| panic!("{path} is not in the rebuilt map: {built:?}"));
-        assert!(
-            (bx - x).abs() < 0.05 && (bz - z).abs() < 0.05,
-            "{path}: rig at ({bx}, {bz}), seeded pad at ({x}, {z})"
-        );
-    }
+    // 010 is retired. The seed's arena station moved off the water plane
+    // with 011, whose test (`real_client_debug_area_rings_fix`) checks every
+    // seeded rig position; 010's map still has the old arena rig.
+    let _ = rig_positions;
 }

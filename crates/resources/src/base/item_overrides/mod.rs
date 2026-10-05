@@ -157,7 +157,7 @@ pub fn apply_override(original: &[u8], ov: &ItemOverride) -> Option<Vec<u8>> {
 /// "first" == "only" in practice. If a future override needs to
 /// patch multiple attributes of the same name, this helper grows
 /// to take an anchor.
-fn patch_attr(xml: &str, attr_name: &str, new_value: &str) -> Option<String> {
+pub(crate) fn patch_attr(xml: &str, attr_name: &str, new_value: &str) -> Option<String> {
     let attr_open = format!("{attr_name}=\"");
     let attr_start = xml.find(&attr_open)?;
     let value_start = attr_start + attr_open.len();

@@ -84,6 +84,8 @@ cimmeria-cell = { workspace = true }
 cimmeria-cell-pets = { workspace = true }
 # Duels as a cell plugin (#962 step 2), in the plugin table beside pets.
 cimmeria-cell-duel = { workspace = true }
+# Ambient chatter (Debug Area DA-09): ChatterPlugin, the same way.
+cimmeria-cell-chatter = { workspace = true }
 # Squads and org creation (#962 step 3): OrgPlugin, the same way.
 cimmeria-cell-org = { workspace = true }
 # The effect scripts (#962 step 4, a registry move rather than a plugin):

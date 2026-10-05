@@ -509,6 +509,24 @@ impl CellService {
                     );
                 }
             }
+            // Ambient chatter (Debug Area DA-09): the NPC groups that talk
+            // among themselves, spoken by the `cimmeria-cell-chatter` plugin's
+            // tick from this resource. Not fatal: with no catalog the plugin
+            // finds nothing to say and every NPC stays silent.
+            match spawner::load_ambient_chatter(pool).await {
+                Ok(catalog) => {
+                    space_mgr.resources.insert(catalog);
+                }
+                Err(e) => {
+                    tracing::error!(
+                        target: "chatter",
+                        event = "catalog_load_failed",
+                        error = %e,
+                        "Failed to load ambient chatter -- no NPC group will \
+                         talk among itself for this process lifetime"
+                    );
+                }
+            }
             // Special ammo catalog (ammo campaign AM-F). Not fatal: with no
             // catalog every shot fires unmodified and no ammo type has a
             // reserve item, which is today's behaviour.

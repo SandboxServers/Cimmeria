@@ -60,6 +60,7 @@ members = [
     "crates/cell-methods",
     "crates/cell-pets",
     "crates/cell-duel",
+    "crates/cell-chatter",
     "crates/cell-org",
     "crates/cell-effect-scripts",
     "crates/cell",
@@ -106,6 +107,7 @@ default-members = [
     "crates/cell-methods",
     "crates/cell-pets",
     "crates/cell-duel",
+    "crates/cell-chatter",
     "crates/cell-org",
     "crates/cell-effect-scripts",
     "crates/cell",
@@ -278,6 +280,7 @@ cimmeria-cell-console = { path = "crates/cell-console" }
 cimmeria-cell-methods = { path = "crates/cell-methods" }
 cimmeria-cell-pets = { path = "crates/cell-pets" }
 cimmeria-cell-duel = { path = "crates/cell-duel" }
+cimmeria-cell-chatter = { path = "crates/cell-chatter" }
 cimmeria-base-crafting = { path = "crates/base-crafting" }
 cimmeria-cell-org = { path = "crates/cell-org" }
 cimmeria-cell-effect-scripts = { path = "crates/cell-effect-scripts" }

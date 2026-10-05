@@ -22,7 +22,7 @@ The runner never decides a row passed on weaker evidence than a tester would hav
 
 1. **Hold the lab lease.** Only one agent drives a client at a time, and the supervisor enforces it. Either pass `lab_uat_run` the `lease_id` from your own `lab_lease_acquire {owner, purpose}`, or pass none and the run takes a lease of its own (owner `lab_uat_run`) for its duration; both are refused while another session holds the lab, naming who. `plan_only` needs no lease. The `%LOCALAPPDATA%\cimmeria-lab\live.lock` folder lock is obsolete: do not create it. Run the [shared daemon](live-research-lab.md#the-shared-daemon-cimmeria-lab---http) so every session sees the same lease; a stdio supervisor's watchdog relaunches a client another session killed, so ask its owner for `lab_client_stop` instead ([live research lab, before you drive the client](live-research-lab.md#before-you-drive-the-client-the-lab-lease)). Install the lab binaries from the commit you test ([Install or update the lab](live-research-lab.md#install-or-update-the-lab)).
 2. **One `SGW.exe`, the `lab` account.** `lab_client_start` refuses while another client runs. The account and character come from `lab-account.json` ([live research lab, Setup](live-research-lab.md)). A two-player row adds a second client, `p2`, on its own account ([Two-player rows](#two-player-rows)).
-3. **Colo rule 6.** `.announce`, `/gmshout`, `.bm_seed`, `.mute` and content reloads need the owner's say-so in this session. The runner refuses them (the row is BLOCKED) unless the run passes that word in `owner_approvals`.
+3. **Colo rule 6.** `.announce`, `/gmsendgmshout` (and the old `/gmshout`), `.bm_seed`, `.mute` and content reloads need the owner's say-so in this session. The runner refuses them (the row is BLOCKED) unless the run passes that word in `owner_approvals`.
 4. **The screensaver.** A secure screensaver locks the desktop and stops the client rendering. Keep the display awake (hold `ES_DISPLAY_REQUIRED`) or stop a non-secure `*.scr` before launching.
 5. **Server evidence.** The runner reads `server_*` tools from `cimmeria-lab-mcp` when `CIMMERIA_LAB_MCP_URL` and `CIMMERIA_LAB_MCP_TOKEN` are set. When that endpoint is unreachable (the colo answered HTTP 403 "Host header is not allowed" on 2026-09-29), server and packet clauses are UNVERIFIED and the row rests on its SigNoz clauses, which you attest (below).
 
@@ -41,7 +41,7 @@ Call `lab_uat_run` from any MCP client of `cimmeria-lab`:
 | `specs_dir` | Spec directory; default `CIMMERIA_LAB_UAT_SPECS`, else the repo's `docs/guides/uat-specs` found from the working directory |
 | `run_dir` | Add rows to an existing run instead of starting one |
 | `server_version` | The server's `service.version` (git SHA) from SigNoz; can be attested later |
-| `owner_approvals` | Colo rule-6 words the owner approved: `announce`, `bm_seed`, `mute`, `gmshout`, `content_reload` |
+| `owner_approvals` | Colo rule-6 words the owner approved: `announce`, `bm_seed`, `mute`, `gmshout` (covers `/gmsendgmshout` and `/gmshout`), `content_reload` |
 | `vars` | Extra `${var}` values for the specs, such as `player_id` |
 | `character` | Override `lab-account.json`'s character |
 | `plan_only` | Check the specs and which tools exist; drive nothing. Ready rows come back SKIPPED, the rest BLOCKED with the missing tool named |

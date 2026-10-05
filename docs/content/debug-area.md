@@ -2,7 +2,7 @@
 title: "Debug Area"
 type: reference
 audience: engineers, testers
-last_updated: 2026-10-04
+last_updated: 2026-10-05
 ---
 
 # Debug Area
@@ -12,7 +12,9 @@ client map Ihpet_Crater_Light (decisions D-DA1 to D-DA9 in the
 [campaign plan](../analysis/debug-area/README.md)). It is shared and always
 loaded, and only GMs can get there: `.gotolocation DebugArea` (or the native
 `/gmgotolocation`) lands on respawner 130's point at the south compound, which is
-the stargate's arrival pin (see [Stargate](#stargate)). Each zone
+the stargate's arrival pin (see [Stargate](#stargate)).
+`.gotolocation DebugArea <x> <y> <z>` moves you to those coordinates; it
+always moves you, never your selection (DA-F4). Each zone
 tests one group of server systems. Every spawn carries a `DebugArea_*` tag;
 the stasis-room hub's tests count `DebugHub_*`, so the two never mix (D-DA6).
 
@@ -28,7 +30,8 @@ player, the account and both worlds. The rule lives in
 `crates/base-session/src/base/world_entry/gm_only_worlds.rs`.
 
 This page covers the zones from packets DA-02, DA-03 and DA-04, the
-stargate (DA-07) and the ring transports that link them (DA-08).
+stargate (DA-07), the ring transports that link them (DA-08) and the
+System Lords' summit (DA-09).
 [Which station tests what](#which-station-tests-what) (DA-05) maps each
 restored system to its station and UAT step. Each packet's rows are
 in their own seed files:
@@ -49,6 +52,11 @@ in their own seed files:
   1370-1377) and `db/resources/Worlds/Seed/spawnlist_debug_area_combat.sql`
   (spawns 13600-13641), inside DA-04's block (templates 1370-1399, spawns
   13600-13799).
+- DA-09 (the System Lords' summit): `entity_templates_debug_area_lords.sql`
+  (templates 1400-1406), `spawnlist_debug_area_lords.sql` (spawns
+  13850-13856) and `db/resources/Dialogs/Seed/ambient_chatter_lords.sql`
+  (chatter group 1), inside DA-09's block (templates 1400-1409, spawns
+  13850-13869). See [System Lords' summit](#system-lords-summit).
 
 Heading 0 faces +Z and -1.5708 faces -X.
 
@@ -87,6 +95,7 @@ DA-05's map from each restored system to the station that tests it. The step ids
 | Starter kit and seeded characters | A new character at Z3; the seed | DA-U39 to DA-U44 |
 | Gate travel (outbound) | The Debug Area stargate (DA-07, #1232) | DA-U45 |
 | Ring transport | The eight ring stations (DA-08, #1234) | DA-U46 |
+| NPC appearance, ambient chatter | The System Lords' summit (DA-09) | DA-U47 |
 | GM console parity | Anywhere in world 1300 | [GM console command parity](../guides/unified-uat.md#gm-console-command-parity) |
 
 What only a live client can settle is the ordered [DA-06 checklist](../analysis/debug-area/README.md#da-06-live-client-checks).
@@ -499,15 +508,21 @@ the ring switch beside the pad that you right-click.
 | Compound | (224.0, 7.44, -938.0) | Z1 arrival (36 m), Z2 services plaza (32 m), Z8 cover course entry (23 m); Z3 dummies are 74 m north in the same compound | `DebugArea_Ring_Compound` | 35 |
 | Faction yard | (394.0, -10.59, -738.0) | Z4 faction yard, 52 m south | `DebugArea_Ring_FactionYard` | 36 |
 | AI slope | (81.0, 0.59, -782.0) | Z5 wanderer (36 m) and patrol (57 m) | `DebugArea_Ring_AiSlope` | 37 |
-| Arena rim | (176.0, -6.65, -702.0) | The pit's west ledge, 26 m above the pit. Since DA-F2 moved the arena to the east shelf, it is 167 to 205 m from the squads, outside the 150 m AoI: arriving here neither shows nor starts the fights | `DebugArea_Ring_ArenaRim` | 38 |
-| Arena pit | (210.0, -32.74, -725.0) | The pit floor, on its water plane (K27). The arena left for the east shelf in DA-F2; DA-08's pad relocation moves this station beside it, at (331, -11.12, -693) | `DebugArea_Ring_ArenaPit` | 39 |
+| Pit overlook | (176.0, -6.65, -702.0) | The pit's west ledge, 26 m above the pit (a water plane, K27). No longer an arena-viewing spot: since DA-F2 moved the arena to the east shelf it is 167 to 205 m from the squads, outside the 150 m AoI, so a GM who rings here neither sees nor starts the fights | `DebugArea_Ring_ArenaRim` | 38 |
+| Arena shelf | (331.0, -10.58, -693.0) | Z6 arena, the east shelf, beside the fights: fight 2 (Lucia) is 12 to 33 m away, the fight 1 NID guards 50 m and its Praxis 65 m. The station to use for the arena | `DebugArea_Ring_ArenaPit` | 39 |
 | Gallery west | (127.0, 23.60, -559.0) | Z7 enemy gallery west half, 33 m north of the rows | `DebugArea_Ring_GalleryWest` | 40 |
 | Gallery east | (436.0, 23.63, -566.0) | Z7 enemy gallery east half, 26 m north of the rows | `DebugArea_Ring_GalleryEast` | 41 |
 | Death yard | (437.0, 11.84, -937.0) | Z9 death and respawn test and respawner B, 21 m north | `DebugArea_Ring_DeathYard` | 42 |
 
 No station is within 25 m of a hostile that can aggro (DA-03 and DA-04
-checked their seeded rows against these points). The pit "floor" is the
-water collision plane at y -33.28, which the navmesh treats as ground.
+checked their seeded rows against these points). Region 38 keeps its place as a valid travel point (the Pit overlook); region 39 kept its id, tag
+and sequences (`DebugArea_Ring_ArenaPit`, `..._Seq_3`) when DA-F1 moved it
+off the pit: the pit "floor" is the water collision plane at y -33.28, which
+the navmesh treats as ground, so the first pad (210, -33.28, -725) rendered
+on the water surface and players who stepped off sank to y -52. The new pad
+is the largest clear disc on the east shelf (radius 6.5 m of flat Terrain at
+y -11.12, nothing solid up to 8 m above it, found by DA-F2 on the real
+occluder and navmesh data); the console is 3 m east and 1.3 m south of it.
 
 ### Using a ring
 
@@ -524,11 +539,25 @@ the destination pad may not see its rings drop: see the known limitation in
 
 ### What needs the client patch
 
-The rigs exist only in client patch `010-debug-area-rings`
+The rigs exist only in client patch `011-debug-area-rings-fix`
 ([data/client-patches](../../data/client-patches/README.md)), which needs
-`007-castle-armory-ring` applied first. Without it the consoles and the trip
-still work, but there is no ring hardware on the pads and no animation.
+`007-castle-armory-ring` applied first (or `010-debug-area-rings`, which it
+repairs). Without it the consoles and the trip still work, but there is no
+ring hardware on the pads and no animation.
 
+**010 is retired: it hung the client.** 010 was published for about half an
+hour on 2026-10-05 and pulled. Any client that loaded the Ihpet Crater map
+with it (world 1300, or world 73) took an access violation at `SGW.exe+0xbc6a0`
+and froze. The cause was one name flag, not the rig: the cloned
+`LightingChannels` struct names a property `Dynamic`; in Castle's name table
+that entry loads on the client, in Ihpet's it is editor-only, and the client
+reads an editor-only name as `None`, which ends the property list early.
+Everything after it in the object is read three bytes off, and the next tag
+name is garbage. The cloner now gives a name its own client-loadable entry
+when the target's entry is narrower. `011` ships the rebuilt chunk, and it
+upgrades a 010 install in place from 010's own output: see the
+[patch README](../../data/client-patches/README.md#011-debug-area-rings-fix),
+which also has the byte-level evidence.
 World 73 (the live Ihpet Crater) uses the same map file, so it shows the eight
 ring platforms too. They do nothing there: world 73 has no pads, consoles or
 chains. The platforms and rings block players on the client
@@ -537,11 +566,12 @@ None is within 50 m of the DHD or the gate region. The patched chunk is
 the first Ihpet chunk to reference `GLB-Global` (a 9 MB package), which
 loads on demand for anyone within 500 m of it.
 
-What only the live client can show (DA-06):
+What only the live client can show (DA-06 ran it on 2026-10-05; outcomes in the [ledger](../analysis/debug-area/README.md#da-06-results)):
 
 - The cloned base platform has no lightmap (`LMT_None`) and no light
   environment, in a map with baked outdoor light. 007's interior copy
-  rendered lit; outdoors it may look black or flat.
+  rendered lit; outdoors it may look black or flat. DA-06: the Compound and
+  Death yard bases render lit (check 28).
 - The ring sound is the FMOD event `prp_gen/rings/transport`. Its waveform
   is in the stock `audio/genprp/prp_gen.fsb`, which patch 006 does not
   copy (006 copies `prp_gen.fev` and `prp_gen_gate.fsb` into `Audio/UI`).
@@ -549,8 +579,14 @@ What only the live client can show (DA-06):
   evidence yet that 007's Armory ring sound plays either: its phase 1
   in-client test is still pending, and SigNoz has no client log naming
   `rings/transport` or sequence 10187 (searched 2026-10-04, 30 days).
-- The arena pit pad sits on the lake's fluid plane; the chunk's
-  `SeqEvent_Touch` splash chain may splash on arrival.
+  DA-06: the client's `audio.event` `transport` starts and stops with
+  result 0; nobody has listened yet (check 30).
+- The arena station (region 39, the Arena shelf) moved off the water in DA-F1:
+  its rig stands on flat terrain at (331, -11.12, -693), and nothing on the
+  shelf is a fluid volume, so the chunk's `SeqEvent_Touch` splash chain does
+  not apply there. Check in the client that the rig's rings clear the ruin
+  walls just behind its rear pillars (da06 saw them close, not touching;
+  the v2026-10-05.2 re-check saw a gap, but never caught the rising discs).
 
 ### Seed and code
 
@@ -633,11 +669,14 @@ seed file, so another packet's NPCs take part as soon as they are seeded:
 
 ## Live-client risks
 
+DA-06 checked these on 2026-10-05; each outcome is in the [ledger](../analysis/debug-area/README.md#da-06-results), and what is still open is in its [follow-ups](../analysis/debug-area/README.md#open-follow-ups).
+
 - The pit "floor" is a water collision plane (`WaterCollisionPrefab_Square`,
   y -33.28; the terrain is 10-25 m below it), found by DA-08. The navmesh lies
   on that plane, but a player sinks to the lakebed (DA-06: y -52). DA-F2 moved
-  the arena squads off it to the east shelf. The arena-pit ring pad (region 39)
-  still sits on the water until DA-08's pad relocation lands.
+  the arena squads off it to the east shelf, and DA-F1 moved the arena ring
+  pad (region 39) there too. Only the Pit overlook pad (region 38) and the
+  pit's west ledge look down on the water now.
 - The east shelf is a ruin floor, and its walls are checked only in the
   occluder. Check in the client that fight 1's two lines see each other and
   that the walk on from the east gap is open.
@@ -843,6 +882,16 @@ an ability granter, an ability reset NPC and a munitions vendor. Zone Z3, the
 dummies range just north of it, holds five training dummies that never fight
 back (D-DA7).
 
+Right-clicking an NPC you can see from more than 5 m away prints "You are
+too far away from <name>. Move closer to interact." in chat (DA-F5); a Banker
+and an organization registrar print their own lines. The server logs it as
+`event = "interaction.out_of_range"` with the distance. Two limits: the line
+goes out only for an NPC in your view (in your AoI witness set or AoI radius),
+so a crafted `interact` on a far NPC id cannot read its name; and at most one
+line per 1.5 s, so clicking while you walk up does not fill chat. A dropped
+line logs `interaction.out_of_range_unseen` or
+`interaction.out_of_range_throttled` at DEBUG.
+
 ### Where it is
 
 The plaza is centred on (252.0, 7.0, -923.0), in the courtyard of the crater
@@ -890,7 +939,7 @@ facing south towards the plaza.
 | 13101 | 1311 | `DebugArea_Dummy_L10` | Jaffa (level 10) | (246.00, 6.59, -872.00) | 3.1416 |
 | 13102 | 1312 | `DebugArea_Dummy_L25` | Jaffa (level 25) | (252.00, 6.59, -872.00) | 3.1416 |
 | 13103 | 1313 | `DebugArea_Dummy_L50` | Jaffa (level 50) | (258.00, 6.70, -872.00) | 3.1416 |
-| 13104 | 1314 | `DebugArea_Dummy_Friendly` | Injured SGC Guard | (264.00, 6.86, -872.00) | 3.1416 |
+| 13104 | 1314 | `DebugArea_Dummy_Friendly` | Injured SGC Guard | (234.00, 6.82, -872.00) | 3.1416 |
 
 Every spawn is `is_stationary`: none walks, and none is checked for being off
 the navmesh. The tags start `DebugArea_`, never `DebugHub_` (D-DA6), because
@@ -1035,6 +1084,21 @@ Right-click a hostile one to attack it, or target it and use any ability.
   room to land and shows its size; nothing but a heal changes its Health.
   Target it and cast a heal: the heal lands on it instead of falling back to
   you. Players cannot attack it, and no NPC targets it.
+- **The friendly dummy stands at the west end of the line**, 6 m past the
+  level-1 dummy, on open floor. It first stood at the east end (264), where a
+  wall footprint between x 259.4 and 261 kept a healer more than 5 m away,
+  out of Health Heal's range (DA-F7). The cell-world test
+  `the_friendly_dummy_is_reachable_and_visible_from_the_dummy_line` walks the
+  line to it on the navmesh and checks a healer 4 m out can see it.
+- **Heal feedback.** Health Heal (1646) and Recuperation (1218) show the
+  client's Medkit icon, the art the client gives its health-restore items
+  (Health Slappack, Plasma Burn Treatment Kit); the shipped entries had
+  `IconMissing`, and the shipped imagesets hold no health-heal ability icon
+  (`Heal_Focus_Heal` is Heal Focus's, already on the bar). A heal cast out of
+  range reads "Your target is out of range" instead of the raw
+  `CONDITION_FEEDBACK_OutsideWeaponRange` token. Both are cooked-data patches
+  the server pushes (`crates/resources/src/base/attribute_patches/`, DA-F6),
+  so a client resyncs abilities and error strings once on its next login.
 - They carry no ability set and no loot table, and the names are the client's
   "Jaffa" (8168) and "Injured SGC Guard" (7882).
 - A GM can place one anywhere with `.spawn 1310` (or 1311 to 1314); it is a
@@ -1047,6 +1111,8 @@ Right-click a hostile one to attack it, or target it and use any ability.
 |---|---|
 | Templates 1300-1302, 1310-1314 | `db/resources/Entities/Seed/entity_templates_debug_area_plaza.sql` |
 | Spawns 13001-13022, 13100-13104 | `db/resources/Worlds/Seed/spawnlist_debug_area_plaza.sql` |
+| Heal icons (1646, 1218) and the out-of-range text (error 42) | `crates/resources/src/base/attribute_patches/`, `db/resources/Abilities/Seed/abilities.sql`, `db/resources/Texts/Seed/error_texts.sql` |
+| The too-far `interact` line | `crates/cell-interactions/src/cell/interactions/dispatch/range_feedback.rs` |
 | Buy list 1300 (rows 13001-13019) | `db/resources/Items/Seed/item_lists_debug_area_plaza.sql` |
 | Chains 13000-13008 | `db/resources/Content/Seed/debug_area_plaza_chains.sql` |
 | The `training_dummy` column | `db/resources/Entities/Tables/entity_templates.sql` |
@@ -1065,6 +1131,9 @@ Right-click a hostile one to attack it, or target it and use any ability.
 | `cell-combat` `death/npc_only_kill_tests.rs` | A player's kill of a training dummy pays no XP, where the same mob unmarked pays |
 | `cell-combat` `combat/threat/training_dummy_release.rs` | A dummy's attackers stay in combat while hits land and leave it 10 s after the last; an ordinary NPC is left to its leash |
 | `cell-combat` `use_ability/tests/beneficial_training_dummy.rs` | A heal aimed at a friendly training dummy lands on it; an unmarked neutral NPC still falls back to the caster, and a hostile dummy is never healed |
+| `cell-world` `space_manager/tests/debug_area.rs` (`the_friendly_dummy_is_reachable_and_visible_from_the_dummy_line`) | The walk from the L1 dummy to the friendly dummy stays on navmesh polygons, and a healer 4 m out has line of sight past the occluder (DA-F7) |
+| `resources` `attribute_patches/tests.rs` | 1646 and 1218 are served with the Medkit icon and error 42 with readable text, nothing else in those entries changes, both categories resync, and the seed rows match (DA-F6) |
+| `cell-methods` `player/interaction/mod.rs` (`out_of_range_interact_on_a_plain_npc_tells_the_player_to_move_closer`, `out_of_range_interact_on_an_npc_out_of_view_sends_nothing`, `repeated_out_of_range_clicks_send_one_line_per_interval`), `cell-interactions` `dispatch/tests/mod.rs` | A too-far click on a visible NPC sends exactly one line naming it; an NPC out of view or a missing target sends nothing; a second click inside 1.5 s sends nothing (DA-F5) |
 | `base-session` `world_entry/gm_only_worlds.rs`, `base-world-entry` `gate_travel/tests/gm_only_world.rs`, `base-methods` `world_entry_db.rs` (`live_db_a_non_gm_saved_in_the_debug_area_logs_in_at_the_faction_start`) | A non-GM is refused world 1300 on a cross-world transfer and at login and arrives at the Praxis or SGU start with a line owed; a GM goes in |
 | `cell-catalog` `spawner/tests/live_db_vendor_arbitrage.rs` | No buy list in the seed sells an item for less than any sell list pays for it |
 | `content-engine` `loader/tests/action_conversion.rs`, `interact_tag_linter` | `gm_ability_bulk` converts for `grant_all` and `reset` and drops anything else; the plaza's interact chains are allowlisted (template-default cursor bits) |
@@ -1076,12 +1145,19 @@ Area gate (stargate 29, packet DA-07). It is **outbound only**.
 
 **What it does.** Right-click the DHD beside the gate. If your account is a
 GM, the dialling window lists every gate on a world this server can load
-but one (Men'fa (SGU), below):
+but one (Men'fa (SGU), below), by name, from the first open:
 The Castle, Harset, Tollana, Omega Site, Beta Site E1, Men'fa (Praxis),
 both Ihpet Craters, Lucia, Agnos, SGC, SGC W1 and Dakara E1. Dial one, wait for
 the gate to open, walk into the event horizon. The extra addresses last
 until you leave the Debug Area and are never saved to your character; a
 gate you actually travel to stays learned, as after any gate trip.
+
+The addresses are granted when you arrive in the Debug Area, not when the
+DHD opens (DA-F3). The client looks each new address up in its cooked
+stargate table after it arrives and never redraws an open DHD, so addresses
+granted as the window opened listed as "Unknown" until it was reopened.
+Arriving gives the client the walk to the DHD to look them up. The DHD open
+still checks again and grants anything missing.
 
 **What it does not do.**
 
@@ -1092,7 +1168,7 @@ gate you actually travel to stays learned, as after any gate trip.
   GM demoted while inside gets no more on the next DHD open.
 - The 14 gates on worlds this server has no map for (Hebridan, Pen-Lai,
   Asgard High Council and the rest) are not offered. The server log names
-  them on every DHD open.
+  them on every arrival and DHD open.
 - `/gmdhd 29` is refused like any other dial into the Debug Area.
 
 - Men'fa (SGU) (Menfa_Light) is not offered either: its gate row is about
@@ -1111,7 +1187,7 @@ gate and facing away from it.
 
 | Step | Expect | Fail |
 |---|---|---|
-| As a GM, right-click the Debug Area DHD | The dialling window opens and lists the 13 gates above | Nothing opens; the list is empty or holds only your own addresses |
+| As a GM, arrive in the Debug Area and right-click its DHD | The dialling window opens and lists the 13 gates above by name on the first open | Nothing opens; the list is empty, holds only your own addresses, or shows "Unknown" rows |
 | Dial Harset | The gate opens about 4 s later; walking in loads Harset | Refusal line "Failed to dial: ..."; the gate never opens |
 | From any other world's DHD, look for "Debug Area" | Not listed | Listed, or dialable |
 
@@ -1120,7 +1196,83 @@ entry), so the non-GM branch is checked by the unit test
 `a_non_gm_at_the_hub_gets_no_addresses_and_cannot_dial`.
 
 Server log fields to search when it misbehaves: `reason = "gm_dial_hub_grant"`
-(one per GM DHD open: who, what was granted, what was left out),
+(one per GM arrival in the Debug Area and per DHD open: who, what was
+granted, what was left out; `trigger` is `world_entry` or `dhd_open`),
 `reason = "dial_hub_not_gm"`, `reason = "dial_hub_is_outbound_only"` (a dial
 into the Debug Area was refused). Mechanism and design:
 [gate-travel.md § Debug Area dial-out](../gameplay/gate-travel.md#debug-area-dial-out).
+
+## System Lords' summit
+
+Packet DA-09. Six System Lords stand in a circle on the east side of the
+south compound's courtyard and squabble in say chat. Ra's Jaffa stands
+behind his lord and says "Indeed." It tests NPC appearance (the lords are
+dressed from the client's own Goa'uld costume packages) and
+[ambient chatter](ambient-chatter.md), the NPC-to-NPC say-chat system this
+packet adds.
+
+**Getting there.** `.gotolocation DebugArea 282 7.2 -953`, which lands you
+4.5 m behind Ba'al, looking across the circle at Ra. On foot it is 30 m east
+of the services plaza and 36 m north-east of the Z1 arrival.
+
+**Seating.** The centre is (282.0, 6.9, -944.0), on the courtyard's paving
+(occluder geometry at 6.9, the navmesh 0.2-0.3 m above it), with nothing at
+head height for 7.5 m round. The nearest other NPC is 26 m away. Each lord
+stands on a 4.5 m ring facing the centre:
+
+| Spawn | Template | Tag | Name | Position (x, z) | Dressed in |
+|---:|---:|---|---|---|---|
+| 13850 | 1400 | `DebugArea_Lords_Ra` | Ra | (282.0, -939.5), north | His NPC kit: cape, dress, crowned helmet, torso and armour |
+| 13851 | 1402 | `DebugArea_Lords_Anat` | Anat | (285.9, -941.75) | Her full NPC kit |
+| 13852 | 1405 | `DebugArea_Lords_Nerus` | Nerus | (285.9, -946.25) | His NPC robes (a human body, as shipped) |
+| 13853 | 1401 | `DebugArea_Lords_Baal` | Ba'al | (282.0, -948.5), south, facing Ra | The dark, gold-trimmed Yellow Trader robes with his own head |
+| 13854 | 1403 | `DebugArea_Lords_Athena` | Athena | (278.1, -946.25) | Anat's gown and bracer, a circlet, her own white hair and head |
+| 13855 | 1404 | `DebugArea_Lords_Morrigan` | Morrigan | (278.1, -941.75) | Anat's breastplate, pauldron and boots, war paint, a ribbon device and her own head |
+| 13856 | 1406 | `DebugArea_Lords_RaJaffa` | Ra's Jaffa | (282.0, -936.5), behind Ra | Ra's Jaffa armour and a staff |
+
+Every lord is faction 1 (friendly), level 50 (the Jaffa 30), with no
+ability set and no loot. Players cannot attack them, and they never fight.
+The shipped templates (41-45, 53) leave Ba'al, Athena and Morrigan as heads
+on a bare base body. The client ships no female Goa'uld armour beyond
+Anat's NPC kit, so Athena and Morrigan each wear a different part of it:
+no two lords wear the same outfit, though the three women share Anat's
+red-and-bronze palette. Every component name is a `BodyComponent` export of
+the client's packages (`query-index scan <package> BodyComponent`).
+
+**Two things the lab check found** (2026-10-05, a local server on this
+branch, [ledger](../analysis/debug-area/README.md#da-09-system-lords-summit)):
+
+- Adding `NPC_Goauld.NPC_Ra_Head_00` or `NPC_RaG_FingerNail_00` to Ra's kit
+  makes the client draw its placeholder cube (a purple box with a face)
+  instead of Ra. Template 41's kit already carries his crowned head.
+- The summit first stood on the palace terrace north of the enemy gallery
+  (218, 30.9, -532). The terrain there draws white with magenta streaks in
+  this client, and the terrace east of it is unfinished grey void, so the
+  summit moved to the paved courtyard. Outdoor terrain all over this map
+  draws white in this client; paving and buildings draw properly.
+
+**The chatter.** Ambient chatter group 1 holds 17 exchanges of petty
+squabbles over thrones, lunch, the sun's paperwork, the sarcophagus rota,
+reply-all and, mostly, the shol'va Teal'c. One exchange starts when you
+come within 18 m of a lord. Its lines follow 3 to 9 s apart, sized to read
+the line before, then the summit is quiet for 30 s before the next. From
+the landing spot and anywhere in the circle you hear every lord. Nobody at
+the services plaza or the arrival hears them. Each line shows in the chat
+window as `[Lord] says <line>`.
+
+| Step | Expect | Fail |
+|---|---|---|
+| `.gotolocation DebugArea 282 7.2 -953` | Seven NPCs stand in a circle on the courtyard paving, named Ra, Anat, Nerus, Ba'al, Athena, Morrigan and Ra's Jaffa, each in a different outfit | An NPC missing, floating, sunk or a purple cube; two dressed alike |
+| Wait by the circle | Within a second or two a scene starts in chat, each line from the lord who says it | No line in 5 s; lines from "?" or an empty name |
+| Wait for the scene to end | 30 s of quiet, then the next scene | Lines run on without a pause; scenes repeat at once |
+| Walk 30 m away | The lines stop | Lines still arrive far from the circle |
+| Right-click a lord | Nothing happens: they are scenery | An attack starts or an error shows |
+
+Seed: `entity_templates_debug_area_lords.sql` (templates 1400-1406),
+`spawnlist_debug_area_lords.sql` (spawns 13850-13856) and
+`db/resources/Dialogs/Seed/ambient_chatter_lords.sql` (group 1). Guards:
+`service::tests::npc_ai::debug_area::lords` in `cimmeria-cell` (the lords
+stand on the mesh and the paving, a listener is out of every hostile's
+reach, every line's speaker is seated and in earshot of the centre and of
+the landing spot, and neither the plaza nor a respawner hears the summit)
+and `live_db_ambient_chatter` in `cimmeria-cell-catalog`.

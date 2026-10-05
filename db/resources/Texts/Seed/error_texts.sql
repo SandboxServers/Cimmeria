@@ -310,7 +310,7 @@ INSERT INTO error_texts (error_id, flags, language, moniker_id, moniker_name, te
 
 INSERT INTO error_texts (error_id, flags, language, moniker_id, moniker_name, text) VALUES (41, 0, 1033, 41, 'CONDITION_FEEDBACK_InsideWeaponRange ', 'CONDITION_FEEDBACK_InsideWeaponRange ');
 
-INSERT INTO error_texts (error_id, flags, language, moniker_id, moniker_name, text) VALUES (42, 0, 1033, 42, 'CONDITION_FEEDBACK_OutsideWeaponRange', 'CONDITION_FEEDBACK_OutsideWeaponRange');
+INSERT INTO error_texts (error_id, flags, language, moniker_id, moniker_name, text) VALUES (42, 0, 1033, 42, 'CONDITION_FEEDBACK_OutsideWeaponRange', 'Your target is out of range');
 
 INSERT INTO error_texts (error_id, flags, language, moniker_id, moniker_name, text) VALUES (43, 0, 1033, 43, 'CONDITION_FEEDBACK_OutsideDistanceCheck', 'CONDITION_FEEDBACK_OutsideDistanceCheck');
 

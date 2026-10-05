@@ -19,6 +19,7 @@
 //! Output is always uncompressed.
 
 mod host_splice;
+pub mod name_audit;
 mod object_clone;
 mod property_remap;
 pub mod raw_tables;
@@ -35,6 +36,10 @@ use raw_tables::{RawExport, RawImport, SummaryLayout, EXPORT_SERIAL_SIZE_AT, IMP
 
 pub use object_clone::{clone_objects, CloneReport, CloneRequest, ClonedObject, Placement};
 
+/// `RF_LoadForClient | RF_LoadForServer | RF_LoadForEdit`, the bits of a name
+/// entry's flags that decide which builds read it as a real name.
+const NAME_LOAD_MASK: u64 = 0x0007_0000_0000_0000;
+
 /// `PKG_StoreCompressed`; must be cleared when the output is uncompressed.
 const PKG_STORE_COMPRESSED: u32 = 0x0200_0000;
 
@@ -45,7 +50,11 @@ pub struct PatchSession {
     layout: SummaryLayout,
     names_end: usize,
     all_names: Vec<String>,
-    name_lookup: HashMap<String, i32>,
+    /// Flags of every name entry, original and new, in table order.
+    name_flags: Vec<u64>,
+    /// Lowercased name -> every table index holding it. A name can sit in the
+    /// table more than once: see [`PatchSession::ensure_name_with_flags`].
+    name_lookup: HashMap<String, Vec<i32>>,
     original_name_count: usize,
     new_name_flags: u64,
     imports: Vec<RawImport>,
@@ -86,9 +95,13 @@ impl PatchSession {
         }
 
         let all_names: Vec<String> = package.names.iter().map(|n| n.name.clone()).collect();
-        let mut name_lookup = HashMap::new();
+        let name_flags: Vec<u64> = package.names.iter().map(|n| n.flags).collect();
+        let mut name_lookup: HashMap<String, Vec<i32>> = HashMap::new();
         for (i, n) in all_names.iter().enumerate() {
-            name_lookup.entry(n.to_lowercase()).or_insert(i as i32);
+            name_lookup
+                .entry(n.to_lowercase())
+                .or_default()
+                .push(i as i32);
         }
         // New names take the flags most existing names carry.
         let mut flag_counts: HashMap<u64, usize> = HashMap::new();
@@ -109,6 +122,7 @@ impl PatchSession {
             layout,
             names_end,
             all_names,
+            name_flags,
             name_lookup,
             new_name_flags,
             imports,
@@ -131,15 +145,45 @@ impl PatchSession {
             .ok_or_else(|| UpkError::Parse(format!("name index {index} out of range")))
     }
 
-    /// Index of `name`, adding it to the name table if absent. UE3 names are
-    /// case-insensitive, so the lookup is too.
-    pub fn ensure_name(&mut self, name: &str) -> i32 {
-        if let Some(&i) = self.name_lookup.get(&name.to_lowercase()) {
+    /// Flags of the name table entry `index`.
+    pub fn name_flags(&self, index: i32) -> Result<u64> {
+        self.name_flags
+            .get(index as usize)
+            .copied()
+            .ok_or_else(|| UpkError::Parse(format!("name index {index} out of range")))
+    }
+
+    /// Index of an entry for `name` that loads wherever an entry with `wanted`
+    /// flags would, adding one when the table has none. UE3 names are
+    /// case-insensitive, so the lookup is too. There is deliberately no
+    /// flag-blind variant: reusing whatever entry carries the string is the
+    /// bug this exists to prevent.
+    ///
+    /// Every name entry carries `RF_LoadFor{Client,Server,Edit}` bits, and the
+    /// client's name-table loader (SGW.exe `0x4bad20`) stores an entry that
+    /// does not load on the client as FName `(0, 0)`, which is `None`. A
+    /// property tag named `None` ends the property list, so the rest of the
+    /// object is read from the wrong offset (the 010 crash: Ihpet's `Dynamic`
+    /// is editor-only there, Castle's is not, and the cloned
+    /// `LightingChannels` struct names `Dynamic`). A name that exists with
+    /// narrower load bits than the source's is therefore not reused: the
+    /// table gets a second entry with the source's bits, and only the clones
+    /// use it. The original entry, which stock data keeps reading as it
+    /// always did, is not touched.
+    pub fn ensure_name_with_flags(&mut self, name: &str, wanted: u64) -> i32 {
+        let key = name.to_lowercase();
+        let wanted = wanted & NAME_LOAD_MASK;
+        if let Some(&i) = self.name_lookup.get(&key).and_then(|candidates| {
+            candidates
+                .iter()
+                .find(|&&i| self.name_flags[i as usize] & wanted == wanted)
+        }) {
             return i;
         }
         let i = self.all_names.len() as i32;
         self.all_names.push(name.to_string());
-        self.name_lookup.insert(name.to_lowercase(), i);
+        self.name_flags.push(self.new_name_flags | wanted);
+        self.name_lookup.entry(key).or_default().push(i);
         i
     }
 
@@ -244,7 +288,10 @@ impl PatchSession {
             self.ensure_import_from(source, src.outer)?
         };
         let remap = |s: &mut Self, n: (i32, i32)| -> Result<(i32, i32)> {
-            Ok((s.ensure_name(source.name(n.0)?), n.1))
+            Ok((
+                s.ensure_name_with_flags(source.name(n.0)?, source.name_flags(n.0)?),
+                n.1,
+            ))
         };
         let entry = RawImport {
             class_package: remap(self, src.class_package)?,
@@ -344,8 +391,11 @@ impl PatchSession {
         let name_offset = out.len();
         let original_names = out[h.name_offset as usize..self.names_end].to_vec();
         out.extend_from_slice(&original_names);
-        for name in &self.all_names[self.original_name_count..] {
-            raw_tables::write_name_entry(&mut out, name, self.new_name_flags);
+        for (name, flags) in self.all_names[self.original_name_count..]
+            .iter()
+            .zip(&self.name_flags[self.original_name_count..])
+        {
+            raw_tables::write_name_entry(&mut out, name, *flags);
         }
 
         let import_offset = out.len();

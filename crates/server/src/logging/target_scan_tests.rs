@@ -44,6 +44,7 @@ pub(super) const IN_PROCESS_CRATES: &[&str] = &[
     "cell-methods",
     "cell-pets",
     "cell-duel",
+    "cell-chatter",
     "cell-org",
     "cell-effect-scripts",
     "commands",
@@ -400,6 +401,11 @@ fn scan_finds_known_targets() {
         // registry, response and tick (crates/cell-world).
         ("duel", Level::DEBUG),
         ("duel", Level::WARN),
+        // DA-09: the ambient chatter tick (crates/cell-chatter) and its
+        // catalog load (crates/cell).
+        ("chatter", Level::INFO),
+        ("chatter", Level::WARN),
+        ("chatter", Level::ERROR),
         // The bank-vault campaign (BV-02, D-BV19): `vault_session_opened` /
         // `vault_session_closed` (DEBUG, crates/cell-interactions and
         // crates/cell-world) and `vault_open_rejected` (WARN).

@@ -235,6 +235,8 @@ Help, who is online, and odds and ends.
 
 > **Tip for GMs:** these commands take **numbers**, not names. Use a target's numeric id (not a player's name), and they only affect things in your own area.
 
+> **"Invalid command." on every `/gm` command?** The game only knows these commands if your install has `Common\xml\slash_commands\InternalSlashCommands.xml`. The client reads that file (then `FinalSlashCommands.xml`) at startup, and it defines all 167 `/gm*` commands. A launcher install from the 2009 retail set ships only `SlashCommands.xml` and `FinalSlashCommands.xml`, so it has no `/gm` commands at all, whatever your account level (DA-06; the QA client tree has the file). The `.`-commands below work without it. With the file in place, a GameMaster account's characters can use them: the client checks each command's role mask (`0x2FF` for the `/gm` commands) against the access level the server sends, and 2 passes (confirmed in the lab, DA-F8). The launcher's patch `012-gm-slash-commands` (Update installs it) adds a project-written copy of the file: see [client patches](../data/client-patches/README.md#012-gm-slash-commands).
+
 ### Teleporting
 
 Jump yourself or pull others to you.
@@ -307,7 +309,7 @@ Set health/focus, target, and debug toggles.
 | `/gmsetnoaggro` | Toggle NPC aggro | ❌ Not yet | `<on>` (0/1) | `/gmsetnoaggro` |
 | `/gmsetnodamage` | Toggle timed damage immunity | ❌ Not yet | `<on>` (0/1) | `/gmsetnodamage` |
 | `/gmsetnotarget` | Make yourself untargetable | ❌ Not yet | `<on>` (0/1) | `/gmsetnotarget` |
-| `/gmsetnoxp` | Toggle XP gain off | ❌ Not yet | `<on>` (0/1) | `/gmsetnoxp` |
+| `/gmsetnoxp` | Toggle XP gain off | ❌ Not yet | none (the client sends no argument; one typed is ignored) | `/gmsetnoxp` |
 | `/gmsetomnipotent` | Toggle all-powerful debug mode | ❌ Not yet | `<on>` (0/1) | `/gmsetomnipotent` |
 | `/gmsetpvp` | Toggle your PvP flag | ❌ Not yet | `<on>` (0/1) | `/gmsetpvp` |
 | `/gmsetspectator` | Toggle spectator mode | ❌ Not yet | `<on>` (0/1) | `/gmsetspectator` |
@@ -321,7 +323,7 @@ Spawn, kill, and despawn NPCs.
 
 | Command | What it does | Works now? | Parameters | Example |
 |---|---|---|---|---|
-| `/gmdespawn` | Remove an NPC from the space (NPC-only) | ✅ Yes | `<entityId>` (numeric) | `/gmdespawn 5400` |
+| `/gmdespawn` | Remove an NPC from the space (NPC-only). The client sends no id, so the server removes the NPC you have selected; a player is refused | ✅ Yes | none (select the NPC first) | `/gmdespawn` |
 | `/gmdumpobjects` | Dump the object list to the log | ❌ Not yet | none | `/gmdumpobjects` |
 | `/gmkilltarget` | Kill an NPC via the canonical death sequence (NPC-only) | ✅ Yes | `<entityId>` (numeric) | `/gmkilltarget 5400` |
 | `/gmrespawn` | Respawn after death | ✅ Yes | none | `/gmrespawn` |
@@ -416,7 +418,7 @@ The five ability and combat debug commands (`/gmdebugability`, `/gmdebugabilityo
 | `/gmpetinvokecommand` | Give pet a command | ❌ Not yet | `<petId> <command>` | `/gmpetinvokecommand 9001 attack` |
 | `/gmremovebehavioreventset` | Remove a behavior event set | ❌ Not yet | `<id>` | `/gmremovebehavioreventset` |
 | `/gmremoveminigamecontact` | Remove a minigame contact | ❌ Not yet | `<contactId> <target>` | `/gmremoveminigamecontact` |
-| `/gmshout` | Send a server-channel line to your space or to every online player (`.announce` does the same) | ✅ Yes | `<global> <text>` (how the client splits the typed line is not recovered) | `/gmshout` |
+| `/gmsendgmshout` | Send a server-channel line to your space or to every online player (`.announce` does the same) | ✅ Yes | `<global> <text>` (how the client splits the typed line is not recovered) | `/gmsendgmshout` |
 | `/gmsetringdestination` | Set ring transporter destination | ✅ Yes | `<regionId> <destinationId>` | `/gmsetringdestination 3 7` |
 | `/gmspacequeuedresponse` | Respond to a queued-for-space prompt | ❌ Not yet | `<response>` | `/gmspacequeuedresponse 1` |
 | `/gmspacequeuereadyresponse` | Respond to a space-ready prompt | ❌ Not yet | `<response>` | `/gmspacequeuereadyresponse 1` |
@@ -590,7 +592,7 @@ once at the end.
 | Patrol authoring | `.path_add` `.path_show` `.path_clear` `.path_assign` `.path_unassign` `.path_set_seq` `.path_clear_seq` `.path_set_tp` `.path_clear_tp` `.path_set_tp_seq` `.path_set_tp_delay` | ✅ Yes — all except `.path_show` **queue a DB change** (`.seedconfirm` writes it; commit the seed) |
 | Server / maint | `.save` `.reloadmap` `.reloadres` `.removerespawner` `.loglevel` `.logclient` | ❌ Differs (see `.help`) |
 | Seed commit | `.seedconfirm` `.seedpending` `.seedcancel` | ✅ Yes |
-| Broadcast | `.announce` | ✅ Yes. `.announce <text>` reaches every online player, `.announce space <text>` only your space instance. Same line as `/gmshout`: your name, the GM flag, the server channel |
+| Broadcast | `.announce` | ✅ Yes. `.announce <text>` reaches every online player, `.announce space <text>` only your space instance. Same line as `/gmsendgmshout`: your name, the GM flag, the server channel |
 | Chat mutes | `.mute` `.unmute` | ✅ Yes (server side). `.mute <name> <minutes> [reason]` (1 to 10080) stops an online player's chat and tells; they are told for how long, and each refused line says how much is left. `.unmute <name>` lifts it. A mute holds across relog and ends at a server restart. A GM cannot be muted |
 | Ammo | `.giveammo` `.infiniteammo` (aliases `.gmgiveammo` `.gmsetinfiniteammo`) | ✅ Yes — `.giveammo <type> <rounds>` gives the selected player (else you) rounds of a special ammo type as bag stacks, filled to the 500-round cap. The type can be its number (`3`), its name in any case (`Bullet_Hollow_Point`, `hollowpoint`), `hp`/`ap`, or the ammo item id (`9001`); `emp` is ambiguous, so write `bullet_emp` or `dart_emp`. Default ammo is refused, since it is free. Counts above 5000 are cut to 5000, and rounds that do not fit in the bags are reported, never lost. `.infiniteammo on\|off` makes special-ammo reloads take nothing from the bags; the clip still empties and still needs a reload. It lasts until the server restarts, and `.infiniteammo` alone shows it. The native `/gmgiveammo` and `/gmsetinfiniteammo` do nothing: the client never sends them to the server, so use the `.` commands |
 | Grants | `.givecash` `.givexp` `.giveability` | ✅ Yes — `.giveability <abilityId>` gives the selected player (else you) the ability and **saves it to the character**: it survives relog and a trainer respec, costs no points, and refreshes the ability window at once. Pets UAT uses it for Summon Straegis (`.giveability 2826`) |
@@ -609,7 +611,7 @@ once at the end.
 | Teams and Commands | `.org_list` | ✅ Yes (read only). Lists every Team and Command with its id, member count and leader, oldest first, at most 50 lines |
 | Teams and Commands | `.org_set_perms <orgId> <rank> <mask>` | ✅ Yes (saved). Sets a rank's permission mask (decimal or `0x` hex). Only the bits the type's rank editor shows take your value (12 for a Team, 14 for a Command); the others keep what is stored, and the reply names the bits it ignored. Refuses the Leader rank (it always holds every bit), ranks the type does not use, and an edit that changes nothing. Online members get the new rank table |
 | Organizations | `.org_create <team\|command> <name>` | ✅ Yes (saved) — founds a Team or Command that you lead, without the Organization Registrar. The name is every word after the type. The base re-checks your GM access and applies the same rules as the registrar: the name rules, one Team and one Command per character, and the creation cost (0 for now). You get the organization window and a confirmation line, or the reason it was refused |
-| Travel | `.gotoxyz` `.goto` `.summon` `.gotolocation` `.gotospace` | ✅ Yes — world names match case-insensitively; `.gotospace` takes a loaded space id so it needs no world name at all. Coordinates are optional on both: `.gotolocation <world>` and `.gotospace <spaceId>` land on the world's entry point — the new-character start for `Castle_CellBlock` / `SGC_W1`, else the story ring pad (Castle: the Armory drop zone mission 688's ring ceremony lands on), else the stargate arrival, else the world's first authored respawner — and the feedback line says which one it used. `.summon <name>` always brings the player to **your** instance and current position; whatever you have selected is ignored (a deliberate departure from the original `target or player` rule) |
+| Travel | `.gotoxyz` `.goto` `.summon` `.gotolocation` `.gotospace` | ✅ Yes — world names match case-insensitively; `.gotospace` takes a loaded space id so it needs no world name at all. Coordinates are optional on both: `.gotolocation <world>` and `.gotospace <spaceId>` land on the world's entry point — the new-character start for `Castle_CellBlock` / `SGC_W1`, else the story ring pad (Castle: the Armory drop zone mission 688's ring ceremony lands on), else the stargate arrival, else the world's first authored respawner — and the feedback line says which one it used. `.summon <name>` always brings the player to **your** instance and current position; whatever you have selected is ignored (a deliberate departure from the original `target or player` rule). `.gotolocation` likewise always moves **you**, never your selection (DA-F4): the original moved the selection, and the client never tells the server when Escape clears its target frame, so a stale server-side selection got moved instead of the GM. To move a selected entity on purpose, use `.gotoxyz <x> <y> <z>` (same space) or `.goto <player>` |
 
 A few commands (`.debug_controller`, the server/maint family) report
 an honest limitation in-game where the Rust server handles the concern

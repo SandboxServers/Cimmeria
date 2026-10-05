@@ -31,3 +31,5 @@ cimmeria-workspace-hack = { version = "0.1", path = "../workspace-hack" }
 
 [dev-dependencies]
 tempfile = "3"
+# Parses patch 012's InternalSlashCommands.xml in its structure test.
+quick-xml = { workspace = true }

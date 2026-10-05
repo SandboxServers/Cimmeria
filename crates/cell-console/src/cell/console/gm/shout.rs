@@ -2,7 +2,7 @@
 //! Text)`, cell method 222, and the `.announce` console command, which both
 //! end in [`broadcast`].
 //!
-//! The native `/gmshout` is wired straight to CM 222 with no Lua in between
+//! The native `/gmsendgmshout` is wired straight to CM 222 with no Lua in between
 //! (SS-E1 `chat-wire-formats.md` C-Q2). Authorization is the dispatch
 //! layer's: CM 222 is in the SGWGmPlayer tail, so `gm_gate` has already
 //! refused anyone below GameMaster before this runs, and `.announce` only

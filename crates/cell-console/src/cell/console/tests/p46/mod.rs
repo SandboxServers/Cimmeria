@@ -6,10 +6,10 @@
 //!
 //! - [`goto`] — move the caller-or-selection to a *named player's* exact
 //!   position and exact instance.
-//! - [`summon`] — move a *named player* to the caller-or-selection's position
-//!   and instance (the same move with the roles swapped).
-//! - [`gotolocation`] — move the caller-or-selection to explicit coordinates
-//!   in a named world, with D15's default-instance rule.
+//! - [`summon`] — move a *named player* to the caller's position and
+//!   instance; the selection is ignored (owner decision 2026-09-20).
+//! - [`gotolocation`] — move the caller (never the selection, DA-F4) to
+//!   explicit coordinates in a named world, with D15's default-instance rule.
 //!
 //! What this suite does *not* re-prove: P44's name-matching rules
 //! (`cell::space_manager::tests::player_name_lookup`) and P45's

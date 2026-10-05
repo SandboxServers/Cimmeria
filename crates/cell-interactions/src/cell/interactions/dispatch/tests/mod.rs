@@ -95,8 +95,16 @@ async fn interact_requires_target_in_range() {
     let (tx, mut rx) = mpsc::channel(16);
     handle_interact(1, npc_id, &tx, &mut mgr).await;
 
-    // Should NOT send any response (too far)
-    assert!(rx.try_recv().is_err());
+    // Too far: no dialog, only the move-closer feedback line (DA-F5).
+    let mut methods = Vec::new();
+    while let Ok(CellToBaseMsg::EntityMethodCall { method_index, .. }) = rx.try_recv() {
+        methods.push(method_index);
+    }
+    assert_eq!(
+        methods,
+        vec![cimmeria_wire::cell::client_methods::communicator::ON_PLAYER_COMMUNICATION],
+        "a too-far interact opens nothing and sends one feedback line"
+    );
 }
 
 #[tokio::test]

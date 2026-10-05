@@ -328,6 +328,22 @@ for rows that report a real teardown, such as `session.end` and
 `Client entities cleaned up`. A per-session disconnect query must not
 count dropped datagrams.
 
+Only a login whose ticket is already consumed reaches
+`login_retry_on_channel`. A plaintext `baseAppLogin` with a fresh ticket
+on an established channel is a client killed and relaunched on its fixed
+UDP port, and goes to `handle_login` instead
+([login-handshake.md](../protocol/login-handshake.md#a-client-relaunched-on-the-same-addressport)).
+Its rows:
+
+| `reason` | Level | Meaning | Fields |
+|---|---|---|---|
+| `relaunch_takeover` | `warn!` | The fresh ticket is for the live session's account: the old session is evicted and the new login accepted. One row per takeover; the old session's `session.end` row carries `disconnect_reason = relaunch_takeover`. | `addr`, `account_id`, `account_name`, `player_id`, `player_name`, `old_session_secs` |
+| `relaunch_account_mismatch` | `warn!` | The fresh ticket is for another account and may not displace the live session. Refused, the ticket burned, the live session kept. A spoofed source address looks like this. Also `error!`, with only the ticket fields, when the session lock is poisoned. | `addr`, `account_id`, `account_name`, `player_id`, `player_name` (the live session), `ticket_account_id`, `ticket_account_name`, `ticket_ip_matches` |
+| `address_reclaimed` | `warn!` | The session on the address is another account's that registered with a ticket issued to a different IP, and this login's ticket was issued to this address's IP: a squatter on a spoofed address. It is evicted (its teardown carries `disconnect_reason = address_reclaimed`) and the login accepted. | `addr`, `account_id`, `account_name`, `player_id`, `player_name` (the squatter), `ticket_account_id`, `ticket_account_name` |
+| `ticket_expired` | `warn!` | Any Phase 3 login whose ticket is older than `TICKET_TTL` (30 s). The ticket is burned and nothing registered. | `addr`, `account_id`, `account_name`, `ticket_age_ms` |
+| `address_still_occupied` | `error!` | A login found a session it may not displace on its address, before eviction (`stage = before_eviction`) or still there after it (`after_eviction`), and was refused rather than orphan it. The address claim rules this out, so a row means a bug. | `addr`, `account_id`, `account_name`, `stage` |
+| `session_replaced` | `info!` | A task that resolved the address before a takeover found a newer session there and left it alone: the old tick-sync loop's teardown (with `disconnect_reason`), or a gate-transfer step (with `entity_id` and `step`: `reset_entities`, `store_pending_world_entry` or `abandon_unspaced_session`). | `addr`, `account_id`, `account_name`, `player_id`, `player_name` (the new session), plus `disconnect_reason` or `entity_id` and `step` |
+
 ## Cross-space cast refusal (#906)
 
 `useAbility` resolves its target id with `SpaceManager::get_entity`, which searches every space. A player's cast at a target that is not in the caster's space is refused in `use_ability/fire_los.rs` (at launch, which is also the fire for a zero-warmup cast) with one row on target `abilities` at `debug!`: `event = "cast_refused"`, `reason = "target_other_space"`, `entity_id`, `account_id`, `player_id`, `ability_id`, `target_id`, `caster_space_id`, `target_space_id`, `error_code`. DEBUG, because only a forged or stale packet names such a target, and a WARN would let it flood the log. The refusal is not silent: the caster gets `onErrorCode(0, ability_id, 0)`. If that cannot be queued, a WARN `cast_refused_send_failed` with the same identity fields says so. The guard is `a_target_in_another_space_is_refused_at_launch` in `use_ability/tests/target_validity.rs`.
@@ -567,7 +583,7 @@ The success rows are `consumable_used` (INFO, before and after HEALTH and FOCUS)
 
 ## Disconnect-teardown `DisconnectEntity` seam (issue #999)
 
-`destroy_client_entities` (`crates/base-session/src/base/helpers/mod.rs`) used
+`destroy_client_entities` (`crates/base-session/src/base/helpers/session_teardown.rs`) used
 to return the player's entity id to `EntityManager`'s free list *before*
 telling the cell to tear the mirrored cell entity down, over a bare
 `let _ = tx.try_send(BaseToCellMsg::DisconnectEntity { .. })`. A full or

@@ -42,7 +42,7 @@ Seven Communicator base methods do something — `chatJoin` (0xC0), `chatLeave` 
 | Ignore list | DONE (not client-tested) | `chatIgnore` edits the [contact list](contact-list.md)'s `Ignore` list; tells and spatial chat honour it, one way (D-SS15). See [Tells and Ignore](#tells-and-ignore) |
 | Friend list (nicknames) | NOT IMPL | `chatFriend` answers with a feedback line; `onNickChanged` is never sent |
 | Petition system | NOT IMPL | `petition`, `announcePetition` answer with a feedback line |
-| GM broadcast | DONE (not client-tested) | `/gmshout` (cell method 222 `sendGMShout`) and `.announce [space] <text>` send the GM's line to the GM's space or to every online player, on the server channel with the GM speaker flag. GameMaster and above only. See [GM broadcast](#gm-broadcast). The legacy `hearGMShout` hop is not used |
+| GM broadcast | DONE (not client-tested) | `/gmsendgmshout` (cell method 222 `sendGMShout`) and `.announce [space] <text>` send the GM's line to the GM's space or to every online player, on the server channel with the GM speaker flag. GameMaster and above only. See [GM broadcast](#gm-broadcast). The legacy `hearGMShout` hop is not used |
 | Localized communication | NOT IMPL | `onLocalizedCommunication` never sent |
 | Channel list | NOT IMPL | `chatList` answers with a feedback line |
 
@@ -110,12 +110,12 @@ Every built-in channel id is an `EChannel` value from `entities/defs/enumeration
 | squad | 4 | Turquoise | Relayed to the speaker's squad by the cell (ORG-03) |
 | command | 5 | Green | Handled on the base: the speaker's Command (ORG-09) |
 | officer | 6 | Green | Handled on the base: the members of the speaker's Command whose rank holds `OfficerChat` (ORG-09) |
-| server | 8 | Bright red line (`:1249`) **and a modal "Server Message" prompt** with an OK button (`:160-162`) | Server-to-client broadcasts only: `/gmshout` and `.announce` ([GM broadcast](#gm-broadcast)). A player line on 8 is refused at the base |
+| server | 8 | Bright red line (`:1249`) **and a modal "Server Message" prompt** with an OK button (`:160-162`) | Server-to-client broadcasts only: `/gmsendgmshout` and `.announce` ([GM broadcast](#gm-broadcast)). A player line on 8 is refused at the base |
 | feedback | 9 | Sky blue, Info tab (`:1250`, `:1274`) | Server-to-client system lines to one player: the login welcome, GM feedback, every refusal line. A player line on 9 is refused at the base |
 | tell | 10 | Purple (red for a GM speaker) | Player-to-player, handled on the base ([Tells and Ignore](#tells-and-ignore)) |
 | splash | 11 | Green | Nothing sends it yet. A player line on 11 is refused at the base |
 
-Id 7 is not an `EChannel` value. The client has no `ChatMod.ChannelMap` entry for it (`ChatWindow.lua:1297-1312`), and `onMessageReceived` calls `ChannelMap[channelId](...)` for every id below 12 (`:93-104`), so a line on 7 raises a Lua error in the chat window and shows nothing. `/gmshout` and `.announce` sent on 7 until SS-C4, so they were invisible. No server-to-client send may use 7, pinned by `no_chan_constant_is_seven` and `no_player_communication_call_uses_a_literal_channel`.
+Id 7 is not an `EChannel` value. The client has no `ChatMod.ChannelMap` entry for it (`ChatWindow.lua:1297-1312`), and `onMessageReceived` calls `ChannelMap[channelId](...)` for every id below 12 (`:93-104`), so a line on 7 raises a Lua error in the chat window and shows nothing. `/gmsendgmshout` and `.announce` sent on 7 until SS-C4, so they were invisible. No server-to-client send may use 7, pinned by `no_chan_constant_is_seven` and `no_player_communication_call_uses_a_literal_channel`.
 
 **No registration.** The server sends no `onChatJoined` at login (SS-C4, decided 2026-09-27):
 
@@ -203,7 +203,7 @@ Issue #1039. `chatJoin(WSTRING channelName, WSTRING password)` and `chatLeave(UI
 
 **Scope: global.** A user channel is server-wide, not per-world or per-space, matching the legacy `ChatChannelManager` singleton: gate travel changes a player's cell and space, never their base `SGWPlayer` entity, and membership is keyed on that entity id, so it survives gate travel untouched. Nothing here reaches the cell — unlike squad chat, a user channel has no spatial component to distribute.
 
-**Lifecycle and cleanup.** A character's membership in every channel it holds is dropped when its base entity is destroyed: both `logOff` variants (`base/dispatch/session.rs::handle_log_off`, full exit and return to character select) and the disconnect/timeout/duplicate-login teardown (`base-session/helpers/mod.rs::destroy_client_entities`) call `UserChannelRegistry::leave_all(entity_id)` — the same call sites that already drop queued crafting inductions. No `onChatLeft` is sent for this: there is no client left to tell. Gate travel is deliberately **not** one of these sites (the entity id it reuses is the same one channel membership is keyed on).
+**Lifecycle and cleanup.** A character's membership in every channel it holds is dropped when its base entity is destroyed: both `logOff` variants (`base/dispatch/session.rs::handle_log_off`, full exit and return to character select) and the disconnect/timeout/duplicate-login teardown (`base-session/helpers/session_teardown.rs::destroy_client_entities`) call `UserChannelRegistry::leave_all(entity_id)` — the same call sites that already drop queued crafting inductions. No `onChatLeft` is sent for this: there is no client left to tell. Gate travel is deliberately **not** one of these sites (the entity id it reuses is the same one channel membership is keyed on).
 
 **Limits (project policy, not recovered data).** A channel name is 1-32 UTF-16 units (`MAX_CHANNEL_NAME_UNITS`). A player may hold at most 10 channels at once (`MAX_CHANNELS_PER_PLAYER`); joining an 11th is refused with "You are in too many chat channels already." The server holds at most 200 channels at once (`MAX_USER_CHANNELS`), well under the 256-id ceiling the wire's `UINT8` display id imposes; past either cap, or if every wire id up to `u8::MAX` is somehow taken, a join is refused with "No more chat channels can be created right now." None of these numbers were recovered from the legacy server, which bounded neither.
 
@@ -229,7 +229,7 @@ A GameMaster (access level 2) or higher can send one line to many players (SS-C2
 
 | Entry point | Scope | Notes |
 |---|---|---|
-| `/gmshout` (native, cell method 222 `sendGMShout(UINT8 isGlobal, WSTRING Text)`) | `isGlobal = 0`: the GM's space instance. Any other value: every online player | The client sends it straight from the slash command, with no Lua in between. How the client splits the typed text into the two arguments is not recovered |
+| `/gmsendgmshout` (native, cell method 222 `sendGMShout(UINT8 isGlobal, WSTRING Text)`) | `isGlobal = 0`: the GM's space instance. Any other value: every online player | The client sends it straight from the slash command, with no Lua in between. How the client splits the typed text into the two arguments is not recovered |
 | `.announce <text>` | Every online player | For a client without the slash binding. The typed words are re-joined with single spaces |
 | `.announce space <text>` | The GM's space instance | `space` is matched in any case and only as the first word |
 
@@ -280,7 +280,7 @@ Events, all on the `chat` target: `chat.tell_delivered` (INFO), `chat.tell_refus
 ## Testing and GM tools
 
 - **UAT.** The owner's checklist is [SS-UAT](../analysis/social-systems/work-packets.md#ss-uat-owner-uat-colo-after-the-release), steps 7-10: tells, Ignore, the flood limit, GM broadcast and `.mute`; steps 9b-9c ([unified-uat.md](../guides/unified-uat.md#mail-chat-and-duels)) cover user channels: join, post from two clients, leave, relog and the refusal cases. Tells and Ignore need two accounts; a solo tester can check that a tell to their own name or to an offline name is refused.
-- **GM tools.** `/gmshout` and `.announce [space] <text>` broadcast; `.mute` / `.unmute` moderate. See [commands.md](../commands.md).
+- **GM tools.** `/gmsendgmshout` and `.announce [space] <text>` broadcast; `.mute` / `.unmute` moderate. See [commands.md](../commands.md).
 - **Two-client test.** `two_client_tell` in `crates/wireclient/tests/it/` exchanges a tell between two wire clients (type 11, not run in CI).
 - **SigNoz.** Chat logs on the `chat` target (`chat.tell_delivered`, `chat.tell_refused`, `chat.ignore_*`, `chat.gm_broadcast`, `chat.gm_mute`, `chat.channel_rejected`, `chat.method_unsupported`, `chat.channel_joined`, `chat.channel_left`, `chat.channel_join_rejected`, `chat.channel_leave_rejected`, `chat.channel_post`, `chat.channel_post_rejected`), and flood drops on `rate_limit`. Message text is never logged, only its length.
 

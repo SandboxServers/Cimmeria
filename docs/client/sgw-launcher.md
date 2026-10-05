@@ -316,7 +316,13 @@ transform, a bsdiff delta and the result's SHA-256. A source that is an
 earlier patch's output rather than a stock file carries `output_of` (the
 patch id), so a mismatch reports `PatchOutputMismatch` naming that patch
 instead of telling the player to reinstall the seed; launchers that
-predate the field ignore it. `upk_normalize`
+predate the field ignore it. An op may also list `alternatives`, other
+starting points (sources plus their own delta) for the same result: `apply`
+uses the primary when its sources match, else the first alternative whose
+sources do, and reports the primary's mismatch when none does. A patch that
+repairs a published patch uses it (`011-debug-area-rings-fix` rebuilds the
+map from the stock chunk, or from the retired 010's output). Launchers that
+predate the field ignore it and apply only the primary. `upk_normalize`
 decompresses a stock package and writes it back through `cimmeria-upk`'s
 append-only patcher, the starting point of every map our `upk_patch`
 tool built, so a 4 MB map's delta is under 2 KB. The launcher computes all

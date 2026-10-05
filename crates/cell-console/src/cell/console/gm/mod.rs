@@ -30,7 +30,7 @@
 //! - [`feedback`] — single-recipient `onPlayerCommunication` delivery.
 //! - [`physics`] — `onPhysics` movement-validator bypass (backs
 //!   `/gmsetfly`, `/gmsetghost`).
-//! - [`shout`] — `sendGMShout` GM broadcast (backs `/gmshout`; `.announce`
+//! - [`shout`] — `sendGMShout` GM broadcast (backs `/gmsendgmshout`; `.announce`
 //!   calls the same [`shout::broadcast`]).
 //! - [`abilities`] — the GM's own ability set: give one, give the whole
 //!   tree, reset to the starters (AB-N2).
@@ -262,7 +262,7 @@ pub const GM_PHYSICS: u16 = 221;
 
 // -- GM broadcast (222) ---------------------------------------------------------
 /// `sendGMShout(UINT8 isGlobal, WSTRING Text)` — def line 650. Offset 113.
-/// Backs `/gmshout`. `isGlobal = 0` reaches the GM's space, anything else
+/// Backs `/gmsendgmshout`. `isGlobal = 0` reaches the GM's space, anything else
 /// every online player (D-SS16). See [`shout::handle_send_gm_shout`].
 pub const GM_SEND_GM_SHOUT: u16 = 222;
 

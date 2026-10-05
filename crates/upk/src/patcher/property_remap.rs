@@ -42,7 +42,8 @@ pub struct Remapper<'a> {
 impl Remapper<'_> {
     pub fn name_index(&mut self, source_index: i32) -> Result<i32> {
         let name = self.source.name(source_index)?;
-        Ok(self.target.ensure_name(name))
+        let flags = self.source.name_flags(source_index)?;
+        Ok(self.target.ensure_name_with_flags(name, flags))
     }
 
     pub fn object(&mut self, source_ref: i32) -> Result<i32> {
@@ -61,7 +62,8 @@ impl Remapper<'_> {
     fn name_at(&mut self, data: &mut [u8], pos: usize) -> Result<String> {
         let source_index = LittleEndian::read_i32(&data[pos..]);
         let name = self.source.name(source_index)?.to_string();
-        let mapped = self.target.ensure_name(&name);
+        let flags = self.source.name_flags(source_index)?;
+        let mapped = self.target.ensure_name_with_flags(&name, flags);
         LittleEndian::write_i32(&mut data[pos..], mapped);
         Ok(name)
     }

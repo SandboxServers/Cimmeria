@@ -24,6 +24,8 @@
 //! - `pet_summons` — summon ability → pet template (`resources.pet_summons`).
 //! - `deployables` — deployable ability → template and its timing and pulse
 //!   effects (`resources.deployables`).
+//! - `ambient_chatter` — NPC-to-NPC say-chat groups and their scripted
+//!   exchanges (`resources.ambient_chatter_groups`, `ambient_chatter_lines`).
 //! - `templates` — prototype `SpawnRecord` per `entity_templates` row, for
 //!   the content engine's `spawn_entity` action (no `spawnlist` row exists
 //!   for a mission-scoped spawn).
@@ -33,6 +35,7 @@
 
 mod abilities;
 mod ability_sets;
+mod ambient_chatter;
 mod ammo_catalog;
 mod deployables;
 mod dialogs;
@@ -61,6 +64,10 @@ pub use abilities::{
     EVENT_ITEM_USE_ABILITY,
 };
 pub use ability_sets::load_ability_sets;
+pub use ambient_chatter::{
+    load_ambient_chatter, AmbientChatterCatalog, ChatterExchange, ChatterGroup, ChatterGroupRow,
+    ChatterLine, ChatterLineRow,
+};
 pub use ammo_catalog::{
     load_ammo_catalog, load_ammo_item_types, load_ammo_modifiers, AmmoCatalog, AmmoModifier,
 };

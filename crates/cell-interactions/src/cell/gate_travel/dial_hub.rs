@@ -10,15 +10,39 @@
 //! "GM at the hub" bypass instead would be a second authorization surface on
 //! a check whose whole value is having exactly one.
 //!
-//! **Why on DHD open and not on world entry.** The client is handed its whole
-//! address book once, by `setupStargateInfo` at map load, and the base sends
-//! that from the database. A top-up the cell pushed during world entry could
-//! race it and be overwritten. Opening the DHD comes after the map has
-//! loaded, so `updateStargateAddress` (client method 66) lands on a book the
-//! client already holds, and it is emitted before `onDisplayDHD` on the same
-//! ordered channel, so the window opens with the full list. It also re-checks
-//! the access level at the moment it matters: a GM demoted mid-session gets
-//! nothing more.
+//! **When: on world entry, and again on DHD open.** The grant runs when a
+//! GM's world entry into the hub's world finishes (`InitPlayerState`, from
+//! [`top_up_gm_on_hub_world_entry`]) and again, as a no-op unless something
+//! was missed, when the DHD opens ([`top_up_gm_dial_hub`]).
+//!
+//! The DHD-open-only version (DA-07) failed live (DA-06, DA-F3): the
+//! eleven granted gates listed as "Unknown" on the first open and could not
+//! be dialled, and reopening fixed it. The client's `updateStargateAddress`
+//! handler (`GateTravel` member `FUN_00e2eff0`, bound at `FUN_00e2f780`)
+//! does not resolve the address on receipt: for a new id it builds an
+//! address record, asks the cooked-data cache for the stargate element
+//! (`Detail__unknown_00e31650`) and parks the record in a pending vector
+//! (`this+0x34`) as well as the known list. The name and glyphs are filled
+//! when that element arrives, and an open DHD window is not refreshed when
+//! they are. Sent in the same tick as `onDisplayDHD`, the records were still
+//! pending when the window drew them. See
+//! `docs/reverse-engineering/findings/stargate-dhd-state-machine.md`.
+//!
+//! The earlier objection to a world-entry grant was that the base hands the
+//! client its whole book in `setupStargateInfo` at map load, so a cell push
+//! during world entry could land first and be overwritten. `InitPlayerState`
+//! does not have that race: the base sends it from `onClientReady`, which
+//! the client sends only after it has processed the `mapLoaded` bundle that
+//! carries `setupStargateInfo` (and on a cross-world transition the base
+//! sends the synthesised `mapLoaded` bundle before it forwards
+//! `InitPlayerState`). The cell's own book is stamped from the database in
+//! the same message just before the grant, so the grant is never lost to
+//! that stamp either. A GM then walks from the arrival to the DHD, which
+//! gives the cooked elements seconds to arrive instead of none.
+//!
+//! The DHD-open pass stays because it re-checks the access level at the
+//! moment it matters (a GM demoted mid-session gets nothing more) and covers
+//! any path into the world that skipped `InitPlayerState`.
 //!
 //! **What a GM is offered.** Every gate that is not a hub, is not on the
 //! hub's own world, and whose world [`SpaceManager::world_is_enterable`] —
@@ -82,13 +106,87 @@ pub(crate) struct HubTopUp {
     pub(crate) excluded: Vec<i32>,
 }
 
+/// What ran the top-up, for the log's `trigger` field.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum HubTopUpTrigger {
+    /// The GM's world entry into the hub's world finished (`InitPlayerState`).
+    WorldEntry,
+    /// The GM opened the hub's DHD.
+    DhdOpen,
+}
+
+impl HubTopUpTrigger {
+    fn label(self) -> &'static str {
+        match self {
+            Self::WorldEntry => "world_entry",
+            Self::DhdOpen => "dhd_open",
+        }
+    }
+}
+
 /// If `hub_stargate_id` is a `debug_dial_hub` gate and the caller is a GM,
 /// add every dialable gate to the caller's in-memory address book and tell
 /// the client. Returns `None` when nothing was attempted (not a hub, not a
-/// GM, no entity).
+/// GM, no entity). The DHD-open pass; see the module doc for why the
+/// world-entry pass ([`top_up_gm_on_hub_world_entry`]) runs first.
 pub(crate) async fn top_up_gm_dial_hub(
     entity_id: u32,
     hub_stargate_id: i32,
+    tx: &mpsc::Sender<CellToBaseMsg>,
+    space_mgr: &mut SpaceManager,
+) -> Option<HubTopUp> {
+    top_up(
+        entity_id,
+        hub_stargate_id,
+        HubTopUpTrigger::DhdOpen,
+        tx,
+        space_mgr,
+    )
+    .await
+}
+
+/// The world-entry pass: if the GM's world has a `debug_dial_hub` gate,
+/// grant as [`top_up_gm_dial_hub`] does, so the client has resolved every
+/// address before the GM reaches the DHD (DA-F3). Called from the cell's
+/// `InitPlayerState` handler after the address book is stamped from the
+/// database. A world with no hub, and a non-GM, are no-ops.
+pub async fn top_up_gm_on_hub_world_entry(
+    entity_id: u32,
+    tx: &mpsc::Sender<CellToBaseMsg>,
+    space_mgr: &mut SpaceManager,
+) {
+    let _ = top_up_on_world_entry(entity_id, tx, space_mgr).await;
+}
+
+/// [`top_up_gm_on_hub_world_entry`] with the result, for tests.
+pub(crate) async fn top_up_on_world_entry(
+    entity_id: u32,
+    tx: &mpsc::Sender<CellToBaseMsg>,
+    space_mgr: &mut SpaceManager,
+) -> Option<HubTopUp> {
+    let world = space_mgr.get_entity_world_name(entity_id)?;
+    // Lowest id, so the pick is stable if a world ever carries two hubs
+    // (`stargates` is a HashMap); the grant does not depend on which.
+    let hub_stargate_id = space_mgr
+        .stargates
+        .iter()
+        .filter(|(_, g)| g.debug_dial_hub && g.world_name == world)
+        .map(|(id, _)| *id)
+        .min()?;
+    top_up(
+        entity_id,
+        hub_stargate_id,
+        HubTopUpTrigger::WorldEntry,
+        tx,
+        space_mgr,
+    )
+    .await
+}
+
+async fn top_up(
+    entity_id: u32,
+    hub_stargate_id: i32,
+    trigger: HubTopUpTrigger,
     tx: &mpsc::Sender<CellToBaseMsg>,
     space_mgr: &mut SpaceManager,
 ) -> Option<HubTopUp> {
@@ -118,8 +216,9 @@ pub(crate) async fn top_up_gm_dial_hub(
             hub_stargate_id,
             hub_stargate_name = names.stargate(hub_stargate_id),
             world = %hub_world,
+            trigger = trigger.label(),
             reason = "dial_hub_not_gm",
-            "DHD opened at the debug dial hub by a non-GM — no address top-up; the DHD offers only the caller's own address book"
+            "debug dial hub: non-GM caller — no address top-up; the DHD offers only the caller's own address book"
         );
         return None;
     }
@@ -168,8 +267,9 @@ pub(crate) async fn top_up_gm_dial_hub(
     }
 
     // Audit line, shaped like gmDHD's `gm_address_grant`: a GM was handed
-    // addresses they did not earn. One row per DHD open with the whole list,
-    // so a SigNoz query on `reason` answers "who could dial what, when".
+    // addresses they did not earn. One row per pass that runs (world entry,
+    // DHD open) with the whole list, so a SigNoz query on `reason` answers
+    // "who could dial what, when".
     tracing::warn!(
         entity_id,
         entity_name,
@@ -199,13 +299,44 @@ pub(crate) async fn top_up_gm_dial_hub(
             })
             .collect::<Vec<_>>()
             .join(", "),
+        trigger = trigger.label(),
         reason = "gm_dial_hub_grant",
-        "debug dial hub: GM opened the DHD — granting every enterable gate for this session (in memory only); gates on worlds this server cannot load are left out"
+        "debug dial hub: granting a GM every enterable gate for this session (in memory only); gates on worlds this server cannot load are left out"
     );
 
-    // Legs 1 (the cell's book, above) and 2 (the client's), before
-    // `onDisplayDHD`: the caller emits that after this returns, on the same
-    // channel, so the window opens with the full list.
+    // Legs 1 (the cell's book, above) and 2 (the client's). On the DHD-open
+    // pass these go out before `onDisplayDHD` on the same channel; the
+    // world-entry pass is what gives the client time to resolve them (see
+    // the module doc).
+    //
+    // The world-entry pass runs inside `InitPlayerState`'s burst, so its
+    // ~11 updates ride one `EntityMethodCallBatch` (one packet), the way the
+    // region hints do since PR #410: separate reliable packets during world
+    // entry fed the #408 freeze.
+    if trigger == HubTopUpTrigger::WorldEntry {
+        if !result.granted.is_empty() {
+            let calls = result
+                .granted
+                .iter()
+                .map(|&id| (UPDATE_STARGATE_ADDRESS, update_stargate_address_args(id)))
+                .collect();
+            if let Err(e) = tx
+                .send(CellToBaseMsg::EntityMethodCallBatch { entity_id, calls })
+                .await
+            {
+                tracing::warn!(
+                    entity_id,
+                    entity_name,
+                    player_id,
+                    player_name,
+                    granted_count = result.granted.len(),
+                    reason = "dial_hub_notify_send_failed",
+                    "debug dial hub: the updateStargateAddress batch could not be enqueued ({e}) — the server will accept dials to these gates but the DHD will not list them"
+                );
+            }
+        }
+        return Some(result);
+    }
     for &id in &result.granted {
         if let Err(e) = tx
             .send(CellToBaseMsg::EntityMethodCall {

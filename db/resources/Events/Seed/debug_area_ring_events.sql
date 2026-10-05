@@ -9,7 +9,7 @@
 --   36  DebugArea_Ring_FactionYard  (394, -11.13, -738)  Z4 faction yard
 --   37  DebugArea_Ring_AiSlope      (81, 0.05, -782)  Z5 patrol, wander, leash and assist
 --   38  DebugArea_Ring_ArenaRim     (176, -7.19, -702)  Z6 NPC-vs-NPC arena, west rim
---   39  DebugArea_Ring_ArenaPit     (210, -33.28, -725)  Z6 NPC-vs-NPC arena, pit floor
+--   39  DebugArea_Ring_ArenaPit     (331, -11.12, -693)  Z6 NPC-vs-NPC arena, east shelf
 --   40  DebugArea_Ring_GalleryWest  (127, 23.06, -559)  Z7 enemy gallery, west half
 --   41  DebugArea_Ring_GalleryEast  (436, 23.09, -566)  Z7 enemy gallery, east half
 --   42  DebugArea_Ring_DeathYard    (437, 11.3, -937)  Z9 death and respawn test, respawner B
@@ -71,7 +71,7 @@ INSERT INTO event_sets (event_set_id, name) VALUES (13814, 'DebugArea Ring Arena
 INSERT INTO event_sets_sequences (event_set_id, sequence_id) VALUES (13814, 10197);
 INSERT INTO event_sets_sequences (event_set_id, sequence_id) VALUES (13814, 10198);
 INSERT INTO point_sets (set_id, name, type, world_id, radius, height, shape, flags) VALUES (13814, 'DebugArea.RingArenaPit', 'AreaSet', 1300, 3.53, 1.77, 'Cylinder', 1);
-INSERT INTO point_set_points (set_id, point_id, x, y, z, yaw, pitch, roll) VALUES (13814, 13814, 210, -32.743, -725, 0, 0, 0);
+INSERT INTO point_set_points (set_id, point_id, x, y, z, yaw, pitch, roll) VALUES (13814, 13814, 331, -10.583, -693, 0, 0, 0);
 -- Gallery west (region 40)
 INSERT INTO sequences (sequence_id, event_id, kismet_script_name) VALUES (10199, 8000, 'Ihpet_Crater_Light-fff80002.Main_Sequence.Prefabs.GLB-RingTransporterBase_TC00_Pf0_Seq_4');
 INSERT INTO sequences (sequence_id, event_id, kismet_script_name) VALUES (10200, 8001, 'Ihpet_Crater_Light-fff80002.Main_Sequence.Prefabs.GLB-RingTransporterBase_TC00_Pf0_Seq_4');

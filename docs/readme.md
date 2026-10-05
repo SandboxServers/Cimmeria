@@ -38,9 +38,9 @@ Want to start contributing? Read **[../CONTRIBUTING.md](../CONTRIBUTING.md)** �
 | Python game logic scripts | 164 |
 | Database rows (game data) | 112,626 |
 | Abilities / Items / Missions / Effects | 1,887 / 6,060 / 1,041 / 3,217 |
-| Documentation files | <!-- gen:docs-md-count -->698<!-- /gen:docs-md-count --> (`find docs -name '*.md' \| wc -l`) |
-| Rust tests (`#[test]` / `#[tokio::test]`) | <!-- gen:tests-total -->10,918<!-- /gen:tests-total --> across <!-- gen:tests-files -->1,897<!-- /gen:tests-files --> files (<!-- gen:tests-ci-gated -->9,293<!-- /gen:tests-ci-gated --> gated in CI) |
-| Live-DB regression guards | <!-- gen:tests-live-db -->1,597<!-- /gen:tests-live-db --> |
+| Documentation files | <!-- gen:docs-md-count -->699<!-- /gen:docs-md-count --> (`find docs -name '*.md' \| wc -l`) |
+| Rust tests (`#[test]` / `#[tokio::test]`) | <!-- gen:tests-total -->10,997<!-- /gen:tests-total --> across <!-- gen:tests-files -->1,914<!-- /gen:tests-files --> files (<!-- gen:tests-ci-gated -->9,370<!-- /gen:tests-ci-gated --> gated in CI) |
+| Live-DB regression guards | <!-- gen:tests-live-db -->1,599<!-- /gen:tests-live-db --> |
 | End-to-end PL/pgSQL smoke scripts | 3 |
 
 ## Document Map
@@ -158,7 +158,8 @@ Content-level audit of all game data plus the cradle-to-grave reference for the 
 | [interaction-flags.md](content/interaction-flags.md) | `EInteractionNotificationType` bitmask reference for `set_interaction_type` actions | Complete |
 | [dialog-ui-client-contract.md](content/dialog-ui-client-contract.md) | **REFERENCE** — the 2009 dialog window's real behaviour and the authoring rules that follow: window types, drawable button types, close semantics + the two hard rules, lure delivery, one-dialog-at-a-time eviction | Complete |
 | [equip-from-inventory-pattern.md](content/equip-from-inventory-pattern.md) | **EXPLANATION** — chain shape for granting weapons via a manual equip step instead of force-equipping into the bandolier (mission 622 / 641 worked examples) | Complete |
-| [debug-area.md](content/debug-area.md) | **REFERENCE** — the GM Debug Area (world 1300, Ihpet_Crater_Light): the services plaza with the GM ability granter, the training dummies, the faction yard, the AI behaviour slope, the NPC-vs-NPC arena, the passive enemy gallery, the cover course, the death and respawn test, the outbound-only stargate and the eight ring transport stations, with spawn tables, test procedures and a "Which station tests what" index mapping every restored system to its station and UAT step (DA-U1 to DA-U46) | Complete |
+| [debug-area.md](content/debug-area.md) | **REFERENCE** — the GM Debug Area (world 1300, Ihpet_Crater_Light): the services plaza with the GM ability granter, the training dummies, the faction yard, the AI behaviour slope, the NPC-vs-NPC arena, the passive enemy gallery, the cover course, the death and respawn test, the outbound-only stargate, the eight ring transport stations and the System Lords' summit, with spawn tables, test procedures and a "Which station tests what" index mapping every restored system to its station and UAT step (DA-U1 to DA-U47) | Complete |
+| [ambient-chatter.md](content/ambient-chatter.md) | **REFERENCE** — ambient chatter: NPC groups that talk among themselves in say chat on a schedule (the `ambient_chatter_*` seed tables, how a group plays, adding one, the `chatter` log events) | Complete |
 | [debug-hub.md](content/debug-hub.md) | **REFERENCE** — the five stasis-room debug NPCs in Castle_CellBlock: what each tests, placement, and what the hub cannot test | Complete |
 | [consumable-via-onitemuse-pattern.md](content/consumable-via-onitemuse-pattern.md) | **EXPLANATION** — when `item_use` should pair with `remove_item` (consumables) vs omit it (reusable tools); baseline audit + regression lint | Complete |
 | [content-engine.md](content/content-engine.md) | **REFERENCE** — the runtime: architecture, schema, lifecycle, observability, performance | Complete |

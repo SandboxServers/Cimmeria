@@ -143,9 +143,13 @@ pub(crate) async fn try_open_dhd(
 
     // At an outbound-only dial hub (the Debug Area gate), a GM's in-memory
     // address book is topped up with every gate they can travel to and the
-    // client is told, BEFORE `onDisplayDHD` below so the window opens with
-    // the full list. A no-op on every other gate and for non-GMs. The dial
-    // itself is still judged by the one address-book check.
+    // client is told. The world-entry pass (`InitPlayerState`) normally did
+    // this already, so this pass sends nothing; it stays as the re-check at
+    // the moment the DHD opens. Anything it does send goes out before
+    // `onDisplayDHD`, though the client may still draw those rows as
+    // "Unknown" until it has resolved them (DA-F3, see `dial_hub`). A no-op
+    // on every other gate and for non-GMs. The dial itself is still judged
+    // by the one address-book check.
     crate::cell::gate_travel::dial_hub::top_up_gm_dial_hub(entity_id, stargate_id, tx, space_mgr)
         .await;
 

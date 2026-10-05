@@ -91,15 +91,9 @@ pub async fn handle_interact(
             dist,
             "interact: too far away"
         );
-        super::super::bank::reject_banker_out_of_range(entity_id, target_entity_id, tx, space_mgr)
-            .await;
-        super::super::org_registrar::reject_registrar_out_of_range(
-            entity_id,
-            target_entity_id,
-            tx,
-            space_mgr,
-        )
-        .await;
+        // A line on every too-far click (DA-F5): the Banker's or
+        // registrar's own, else the generic one.
+        super::reject_interact_out_of_range(entity_id, target_entity_id, tx, space_mgr).await;
         return None;
     }
 

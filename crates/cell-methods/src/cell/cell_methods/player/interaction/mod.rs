@@ -492,6 +492,133 @@ mod tests {
         );
     }
 
+    /// DA-F5: a too-far click on an ordinary NPC answers with exactly one
+    /// feedback line naming it, and nothing else. Before, it was a silent
+    /// drop (the client draws no range cue), so the first press looked
+    /// dead. Reverting the call in the range gate back to the Banker and
+    /// registrar arms alone leaves `rx` empty here. A click on a missing
+    /// target still sends nothing.
+    #[tokio::test]
+    async fn out_of_range_interact_on_a_plain_npc_tells_the_player_to_move_closer() {
+        use cimmeria_wire::cell::client_methods::communicator::ON_PLAYER_COMMUNICATION;
+
+        const TAG: &str = "TestRangeNpc";
+        let mut mgr = make_space_manager();
+        let npc_id = space_with_tagged_npc(&mut mgr, TAG, 7.7);
+        mgr.get_entity_mut(npc_id).unwrap().npc_name = Some("Jay Test Abilities".into());
+        let engine = engine_with_interact_then_dialog(TAG, 9861, 9862);
+        let (tx, mut rx) = mpsc::channel(16);
+
+        dispatch(
+            1,
+            INTERACT,
+            &(npc_id as i32).to_le_bytes(),
+            &tx,
+            &mut mgr,
+            &engine,
+        )
+        .await;
+
+        let mut sent = Vec::new();
+        while let Ok(msg) = rx.try_recv() {
+            if let CellToBaseMsg::EntityMethodCall {
+                method_index, args, ..
+            } = msg
+            {
+                sent.push((method_index, args));
+            }
+        }
+        assert_eq!(sent.len(), 1, "exactly one message: {sent:?}");
+        assert_eq!(sent[0].0, ON_PLAYER_COMMUNICATION);
+        let text: Vec<u8> =
+            "You are too far away from Jay Test Abilities. Move closer to interact."
+                .encode_utf16()
+                .flat_map(u16::to_le_bytes)
+                .collect();
+        assert!(
+            sent[0].1.windows(text.len()).any(|w| w == text.as_slice()),
+            "the line names the NPC and says what to do"
+        );
+
+        let (tx, mut rx) = mpsc::channel(16);
+        dispatch(
+            1,
+            INTERACT,
+            &0x0BAD_F00Di32.to_le_bytes(),
+            &tx,
+            &mut mgr,
+            &engine,
+        )
+        .await;
+        assert!(rx.try_recv().is_err(), "a missing target gets no line");
+    }
+
+    /// Collect the method indices `dispatch` sent for one `interact`.
+    async fn interact_methods(
+        mgr: &mut SpaceManager,
+        engine: &ChainEngine,
+        target: u32,
+    ) -> Vec<u16> {
+        let (tx, mut rx) = mpsc::channel(16);
+        dispatch(
+            1,
+            INTERACT,
+            &(target as i32).to_le_bytes(),
+            &tx,
+            mgr,
+            engine,
+        )
+        .await;
+        let mut out = Vec::new();
+        while let Ok(CellToBaseMsg::EntityMethodCall { method_index, .. }) = rx.try_recv() {
+            out.push(method_index);
+        }
+        out
+    }
+
+    /// DA-F5 review (name oracle): a too-far click on an NPC the player
+    /// cannot see (1500 m away, not in its witness set, beyond its AoI
+    /// radius) sends nothing, so sweeping `interact(id)` cannot list the
+    /// named NPCs of a shared world. Removing the visibility gate makes this
+    /// send the line naming "Secret Rare Elite".
+    #[tokio::test]
+    async fn out_of_range_interact_on_an_npc_out_of_view_sends_nothing() {
+        const TAG: &str = "TestRangeNpc";
+        let mut mgr = make_space_manager();
+        let npc_id = space_with_tagged_npc(&mut mgr, TAG, 1500.0);
+        mgr.get_entity_mut(npc_id).unwrap().npc_name = Some("Secret Rare Elite".into());
+        assert!(!mgr
+            .get_entity(1)
+            .unwrap()
+            .get_witnesses()
+            .contains(&cimmeria_common::EntityId(npc_id as i32)));
+        let engine = engine_with_interact_then_dialog(TAG, 9861, 9862);
+
+        assert!(interact_methods(&mut mgr, &engine, npc_id).await.is_empty());
+    }
+
+    /// DA-F5 review (rate limit): two too-far clicks in quick succession
+    /// send one line; clicking while walking up does not spam chat. Removing
+    /// the throttle sends two.
+    #[tokio::test]
+    async fn repeated_out_of_range_clicks_send_one_line_per_interval() {
+        use cimmeria_wire::cell::client_methods::communicator::ON_PLAYER_COMMUNICATION;
+
+        const TAG: &str = "TestRangeNpc";
+        let mut mgr = make_space_manager();
+        let npc_id = space_with_tagged_npc(&mut mgr, TAG, 7.7);
+        let engine = engine_with_interact_then_dialog(TAG, 9861, 9862);
+
+        assert_eq!(
+            interact_methods(&mut mgr, &engine, npc_id).await,
+            vec![ON_PLAYER_COMMUNICATION]
+        );
+        assert!(
+            interact_methods(&mut mgr, &engine, npc_id).await.is_empty(),
+            "a second too-far click inside the interval sends nothing"
+        );
+    }
+
     /// Positive half of the gate: an in-range interact on a real target
     /// both pins and fires. Without this the two negatives above would
     /// pass with the gate stuck closed.

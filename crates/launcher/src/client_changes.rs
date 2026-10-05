@@ -305,6 +305,21 @@ pub fn builtin_description(id: &str) -> Option<(&'static str, &'static str)> {
              GM-only Debug Area uses. Changes one Ihpet Crater map file and needs the Castle \
              Armory ring patch (007) first.",
         ),
+        "011-debug-area-rings-fix" => (
+            "Debug Area ring transports (fix)",
+            "Replaces the Debug Area ring transport patch (010), which hung the client \
+             whenever it loaded the Ihpet Crater map. Adds eight working ring transport \
+             stations to that map and changes one Ihpet Crater map file. Needs the Castle \
+             Armory ring patch (007) first, unless 010 already applied.",
+        ),
+        "012-gm-slash-commands" => (
+            "GM slash commands",
+            "Adds InternalSlashCommands.xml so the client recognizes the /gm commands (such \
+             as /gmdhd and /gmgivexp); without it the stock client answers \"Invalid \
+             command.\" to every one. They are for GM accounts: the client hides them from \
+             ordinary players and the server refuses anyone below GM. Adds one file to \
+             Common\\xml\\slash_commands.",
+        ),
         _ if id.starts_with(DEFAULT_ID_PREFIX) => (OVERLAY_TITLE, OVERLAY_DESCRIPTION),
         _ => return None,
     };

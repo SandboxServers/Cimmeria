@@ -64,7 +64,7 @@
 //! - [`placement`] — selected-entity read/set position + orientation
 //!   (`location`, `rotation`).
 //! - [`social`] — the GM broadcast (`announce`), the console twin of the
-//!   native `/gmshout`.
+//!   native `/gmsendgmshout`.
 //! - [`duel`] — duel GM tools (`duel_status`, `duel_end`).
 //! - [`mail`] — mail GM tools (`mail`, `mailbox`, `mail_expire`).
 //! - [`squad`] — squad tools (`squad_invite`, `squad_join`, `squad_info`),
