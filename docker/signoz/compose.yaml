@@ -10,7 +10,10 @@
 #   - Paths are ./common/... instead of ../common/... (flat layout).
 #   - `signoz-net` is external, created once with `docker network create
 #     signoz-net`, so this stack and the game stack (../compose.yml) can be
-#     started in either order and either can run alone.
+#     started in either order and either can run alone. Only `signoz` and
+#     `otel-collector` join it; ClickHouse (passwordless `default` user) and
+#     ZooKeeper (anonymous login) stay on the project's own `signoz-internal`
+#     network, out of the game container's reach.
 #   - The UI and OTLP ports bind to ${SIGNOZ_UI_BIND} / ${OTLP_BIND}
 #     (default 127.0.0.1), not every interface.
 #   - The JWT secret comes from .env instead of upstream's literal "secret".
@@ -32,7 +35,7 @@ name: signoz
 
 x-common: &common
   networks:
-    - signoz-net
+    - signoz-internal
   restart: unless-stopped
   logging:
     options:
@@ -133,6 +136,9 @@ services:
     !!merge <<: *db-depend
     image: signoz/signoz:${VERSION:-v0.125.1}
     container_name: signoz
+    networks:
+      - signoz-internal
+      - signoz-net
     ports:
       # UI and query API. No public ingest happens here: player telemetry
       # enters through the game server's login port and reaches the
@@ -162,6 +168,10 @@ services:
     !!merge <<: *db-depend
     image: signoz/signoz-otel-collector:${OTELCOL_TAG:-v0.144.4}
     container_name: signoz-otel-collector
+    # signoz-net is how the game container reaches otel-collector:4317.
+    networks:
+      - signoz-internal
+      - signoz-net
     entrypoint:
       - /bin/sh
     command:
@@ -206,6 +216,8 @@ services:
         /signoz-otel-collector migrate async up
     restart: on-failure
 networks:
+  # Not `internal: true`: init-clickhouse downloads a UDF from github.com.
+  signoz-internal: {}
   signoz-net:
     name: signoz-net
     external: true

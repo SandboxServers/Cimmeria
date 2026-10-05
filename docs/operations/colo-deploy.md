@@ -22,7 +22,7 @@ Two Compose projects, joined by one Docker network:
 | `cimmeria` | `/opt/cimmeria` | `cimmeria` (game server + bundled Postgres), `watchtower` | [`docker/compose.yml`](../../docker/compose.yml) and overlays |
 | `signoz` | `/opt/cimmeria/signoz` | `signoz` (UI + query API), `signoz-otel-collector`, `signoz-clickhouse`, `signoz-zookeeper-1`, plus two one-shot init containers | [`docker/signoz/`](../../docker/signoz/), vendored from SigNoz v0.125.1 |
 
-The game container reaches the collector as `otel-collector:4317` on the external network `signoz-net`. Either project can be started first, and the game runs without SigNoz.
+The game container reaches the collector as `otel-collector:4317` on the external network `signoz-net`. Only `signoz` and `otel-collector` join that network; ClickHouse (passwordless `default` user) and ZooKeeper (anonymous login) sit on SigNoz's own internal network, out of the game container's reach. Either project can be started first, and the game runs without SigNoz.
 
 ### Ports
 
@@ -74,9 +74,12 @@ Server logs go to `CIMMERIA_LOG_DIR` (the colo uses a directory on its data disk
    sudo mkdir -p /opt/cimmeria && cd /opt/cimmeria
    curl -fsSL https://github.com/SandboxServers/Cimmeria/archive/refs/heads/main.tar.gz \
      | sudo tar -xz --strip-components=2 Cimmeria-main/docker
+   sudo chown -R "$USER": /opt/cimmeria
    ```
 
    That also brings the `Dockerfile`, `entrypoint.sh` and `s6/`, which the host doesn't use; they're harmless.
+
+   The commands below assume you run `docker compose` as a user in the `docker` group, not with `sudo`. The `docker compose` client reads `.env` and the compose files as the user who runs it, so that user owns `/opt/cimmeria` and each `.env` is mode 0600. If you run compose with `sudo` instead, skip the `chown`, keep the files owned by root, and use `sudo` for every `docker compose` command in this guide.
 
 2. **Create the shared network**, once per host:
 
@@ -88,8 +91,8 @@ Server logs go to `CIMMERIA_LOG_DIR` (the colo uses a directory on its data disk
 
    ```bash
    cd /opt/cimmeria/signoz
-   sudo cp .env.example .env && sudo chmod 0600 .env
-   sudoedit .env        # SIGNOZ_JWT_SECRET=$(openssl rand -hex 32); SIGNOZ_UI_BIND / OTLP_BIND if operators reach it over a LAN or VPN
+   install -m 0600 .env.example .env
+   $EDITOR .env         # SIGNOZ_JWT_SECRET=$(openssl rand -hex 32); SIGNOZ_UI_BIND / OTLP_BIND if operators reach it over a LAN or VPN
    docker compose up -d
    ```
 
@@ -99,8 +102,8 @@ Server logs go to `CIMMERIA_LOG_DIR` (the colo uses a directory on its data disk
 
    ```bash
    cd /opt/cimmeria
-   sudo cp .env.example .env && sudo chmod 0600 .env
-   sudoedit .env        # BASE_EXTERNAL is the one required value
+   install -m 0600 .env.example .env
+   $EDITOR .env         # BASE_EXTERNAL is the one required value
    docker compose up -d
    ```
 
@@ -150,8 +153,8 @@ The server can post lifecycle and error events to Discord webhooks ([discord-not
 **From a host file**, [`compose.discord-file.yml`](../../docker/compose.discord-file.yml) (what the colo does). Write `config/discord.toml` yourself, starting from [config/discord.toml.example](../../config/discord.toml.example); any channels, muted accounts and event toggles work without a new release.
 
 ```bash
-cd /opt/cimmeria && sudo mkdir -p config
-sudoedit config/discord.toml
+cd /opt/cimmeria && mkdir -p config
+install -m 0600 /dev/null config/discord.toml && $EDITOR config/discord.toml
 sudo chown 1001:1001 config/discord.toml && sudo chmod 0440 config/discord.toml
 ```
 
