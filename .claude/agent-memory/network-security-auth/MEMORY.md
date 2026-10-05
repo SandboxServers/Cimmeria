@@ -9,6 +9,7 @@
 - [worktree-build-gotchas.md](worktree-build-gotchas.md) — building/testing `cimmeria-services` from a worktree: junction `external/` in, and ignore 3 `cell/` log-capture tests that only fail under parallel `cargo test`.
 - [baseapp-login-retry-train.md](baseapp-login-retry-train.md) — 300 ms train of 41-byte "ciphertext length 25" decrypt failures = client re-sending plaintext baseAppLogin after acking the reply; client-side, unresolved (colo 2026-09-26).
 - [player-id-zero-sentinel-trap.md](player-id-zero-sentinel-trap.md) — `player_id: 0` is a DB-failure sentinel that reaches `PendingClientReadyInfo`; any fail-closed check keyed on it silently denies for the whole session after a DB blip. Read before adding an authorization read in `client_ready.rs`.
+- [relaunch-takeover-gate.md](relaunch-takeover-gate.md) — relaunch on same addr:port takes over its dead session; address claim (same account / squatter reclaim / refuse), liveness = fresh traffic only, re-verify addr ownership after awaits (2026-10-04).
 
 Inline-content section status:
 

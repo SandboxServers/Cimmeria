@@ -15,7 +15,7 @@ use crate::cell::messages::BaseToCellMsg;
 use crate::mercury::build_ongoing_tick_sync;
 use crate::mercury::game_clock;
 
-use super::helpers::destroy_client_entities;
+use super::helpers::destroy_owned_client_entities;
 use super::ConnectedClientState;
 
 /// Builds one tickSync packet for a single loop iteration.
@@ -97,12 +97,13 @@ pub async fn run_tick_loop(
     let disconnect_reason: &'static str = loop {
         tokio::time::sleep(game_clock::TICK_SYNC_INTERVAL).await;
 
-        // The cancelled flag is set by `handle_log_off`, which has
-        // already called `destroy_client_entities` itself — return
-        // before the post-loop cleanup runs so we don't double-stamp
-        // a second disconnect event under a misleading reason.
+        // The cancelled flag is set by `destroy_client_entities` (logOff,
+        // client disconnect, duplicate login, relaunch takeover), which
+        // has already torn the session down — return before the post-loop
+        // cleanup runs so we don't double-stamp a second disconnect event
+        // under a misleading reason.
         if cancelled.load(Ordering::Relaxed) {
-            tracing::info!(%addr, "Tick-sync stopping: session cancelled (logOff)");
+            tracing::info!(%addr, "Tick-sync stopping: session cancelled (torn down elsewhere)");
             return;
         }
 
@@ -183,6 +184,15 @@ pub async fn run_tick_loop(
         // `RETRANSMIT_BUDGET_PER_TICK` entries per scan, per
         // `mercury-wire-format` spec §1.7) and Karn's exponential backoff
         // internally.
+        //
+        // The scan reads whatever session holds `addr`. Re-check the cancel
+        // flag after the send's await: if a relaunch took the address over
+        // meanwhile, the session there is not ours and its channel is not
+        // ours to drive.
+        if cancelled.load(Ordering::Relaxed) {
+            tracing::info!(%addr, "Tick-sync stopping: session cancelled (torn down elsewhere)");
+            return;
+        }
         let retransmits = super::helpers::collect_pending_retransmits(&connected, addr);
         for (batch_index, raw) in retransmits.iter().enumerate() {
             tracing::debug!(
@@ -210,8 +220,11 @@ pub async fn run_tick_loop(
         sends = sends.wrapping_add(1);
     };
 
-    // Clean up entities for this disconnected client.
-    destroy_client_entities(
+    // Clean up entities for this disconnected client -- but only if the
+    // session at `addr` is still ours. A client relaunched on the same
+    // address:port replaces it (relaunch takeover), and this loop may have
+    // decided to time out just before that happened.
+    destroy_owned_client_entities(
         &connected,
         &entity_manager,
         addr,
@@ -220,5 +233,6 @@ pub async fn run_tick_loop(
         &transport,
         &db_pool,
         disconnect_reason,
+        &cancelled,
     );
 }

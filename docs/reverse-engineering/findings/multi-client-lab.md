@@ -47,7 +47,7 @@ Independently of the remote, the two games themselves also share a filing cabine
 | One `current-session.json` | `session_file::current_session_path`; the DLL reads `<Binaries>\sessions\current-session.json` at boot | Two launches rewrite one file: both DLLs get the same port and token, or the second overwrites the first before it has read it. |
 | Bridge port 8770 | `LabConfig` default, `CIMMERIA_LAB_BRIDGE` default | The second DLL cannot bind. Reproduced: `lab_second_client_on_the_same_session_cannot_bind` in `crates/sgw-testhost/tests/dll_boot.rs`. |
 | One supervisor pid | `SupervisorState.pid`, `running_sgw_pids` guard in `Supervisor::start` | `lab_client_start` refused while any `SGW.exe` ran. |
-| One credentials file | `sessions\lab-account.json` | A second client would log into the same account, and the server evicts the older session (`crates/base/src/base/login/mod.rs:110`, `duplicate_login`). |
+| One credentials file | `sessions\lab-account.json` | A second client would log into the same account, and the server evicts the older session (`crates/base/src/base/login/eviction.rs`, `duplicate_login`). |
 | One crash marker and minidump set | The DLL writes beside the session file | Two clients overwrite each other's evidence. |
 | Two DLL logs | `cimmeria-client-telemetry.log`, `cimmeria-client-patches.log`, both `File::create` in `binaries\` | Each client truncates the other's log. |
 | Named hook lock | `client-hookgate` `hook_lock_name(pid)` | Per process: fine. |
@@ -132,7 +132,7 @@ Run only two `SGW.exe`, each through its own named instance, on two different ac
 | Bind loop | `FUN_01584870` decompile; callers `Mercury_Nub_3`, `Mercury_Nub_9`, `FUN_01589f80` |
 | UE3 share mode | `FFileManagerWindows::CreateFileWriter` `0x004c6090` |
 | `SGW.lock` | file content `#Ghidra Lock File`, `SGW.gpr`/`SGW.rep` beside it |
-| Duplicate login | `crates/base/src/base/login/mod.rs` lines 110 to 139 |
+| Duplicate login and relaunch takeover | `crates/base/src/base/login/eviction.rs` (`evict_prior_sessions`), gate in `relaunch.rs` |
 | Environment reaches the game | `crates/client-launch/src/process.rs` `CreateProcessW(..., lpEnvironment = NULL, ...)` |
 | Two-instance isolation | `crates/sgw-testhost/tests/dll_boot.rs`, both new tests |
 

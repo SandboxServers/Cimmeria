@@ -46,7 +46,11 @@ const SESSION_TTL: Duration = Duration::from_secs(300);
 
 /// How long a Phase 2 ticket remains valid before Phase 3 must consume it.
 /// Matches the C++ `ShardLogonQueue::TicketExpiration` (30 seconds).
-const TICKET_TTL: Duration = Duration::from_secs(30);
+/// Enforced twice: the reaper sweeps expired tickets every
+/// `REAPER_INTERVAL`, and the BaseApp checks the age again when it
+/// consumes a ticket at Phase 3 (`cimmeria-base` `login::handle_login`), so a
+/// ticket cannot outlive this by up to one reaper interval.
+pub const TICKET_TTL: Duration = Duration::from_secs(30);
 
 /// How often the background reaper sweeps expired sessions and tickets.
 const REAPER_INTERVAL: Duration = Duration::from_secs(10);
