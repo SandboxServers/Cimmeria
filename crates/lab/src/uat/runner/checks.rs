@@ -12,10 +12,13 @@ use crate::uat::tier;
 
 /// Colo rule 6: these need the owner's say-so in the run's
 /// `owner_approvals` (the approval word is the second item).
-pub const OWNER_ONLY: [(&str, &str); 5] = [
+pub const OWNER_ONLY: [(&str, &str); 6] = [
     (".announce", "announce"),
     (".bm_seed", "bm_seed"),
     (".mute", "mute"),
+    // The client's typeable word for GM broadcasts is `/gmsendgmshout` (patch 012's
+    // slash-command file); `/gmshout` stays listed in case a client defines it.
+    ("/gmsendgmshout", "gmshout"),
     ("/gmshout", "gmshout"),
     ("server_content_reload", "content_reload"),
 ];

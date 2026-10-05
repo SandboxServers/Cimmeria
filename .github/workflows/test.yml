@@ -233,6 +233,10 @@ jobs:
       # and run locally (data/client-patches/009-starter-hotbar/test/run.lua).
       - name: run the starter hotbar logic UAT
         run: lua5.1 data/client-patches/009-starter-hotbar/test/run.lua
+      # 012-gm-slash-commands: the committed XML must be what the generator
+      # makes from commands.toml (the Rust tests pin the zip to that XML).
+      - name: check the generated GM slash command XML is current
+        run: python3 tools/client-patches/gm_slash_commands.py --check
 
   # cargo nextest against a live Postgres. Schema is loaded from
   # db/database.sql (which `\ir`-includes everything in db/sgw and

@@ -185,6 +185,19 @@ pub(super) async fn handle_despawn(
             return true;
         }
     };
+    // The native `/gmdespawn` takes no parameter and sends TargetID 0: the
+    // client does not fill in its selection (lab, DA-06, 2026-10-05). Treat 0
+    // as "the GM's selected target", the same intent-over-legacy rule `.summon`
+    // and `.gotolocation` follow. A negative id stays invalid.
+    let target_i32 = if target_i32 == 0 {
+        space_mgr
+            .get_entity(entity_id)
+            .and_then(|e| e.current_target_id)
+            .filter(|&id| id > 0)
+            .unwrap_or(0)
+    } else {
+        target_i32
+    };
     let target_eid = match u32::try_from(target_i32) {
         Ok(id) if id != 0 => id,
         _ => {
@@ -194,7 +207,12 @@ pub(super) async fn handle_despawn(
                 target_i32,
                 "gmDespawn: invalid target id"
             );
-            send_gm_feedback(entity_id, "gmDespawn: invalid target id", tx).await;
+            send_gm_feedback(
+                entity_id,
+                "gmDespawn: invalid target id (select an NPC first, or pass its id)",
+                tx,
+            )
+            .await;
             return true;
         }
     };

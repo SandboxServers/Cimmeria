@@ -2,7 +2,7 @@
 title: "GM gating for cell methods — access_level plumbing"
 type: explanation
 audience: engineers
-last_updated: 2026-07-25
+last_updated: 2026-10-05
 ---
 
 # GM gating for cell methods — `access_level` plumbing
@@ -164,13 +164,23 @@ things (static RE of SGW.exe, confirmed with lab memory reads in DA-06):
    2009 retail launcher install does not. Without it the map holds 104
    entries, none of them `/gm*`, and every one reads "Invalid command."
    (`FUN_00ae23f0`). The server cannot supply that file; it is client
-   content.
+   content. Client patch
+   [`012-gm-slash-commands`](../../data/client-patches/README.md#012-gm-slash-commands)
+   ships a project-written one (162 commands, no CME text), so **native
+   `/gm*` commands need patch 012 on launcher installs**; a client that already
+   has the file, such as a QA copy, gets it replaced.
 2. **The command's role mask must share a bit with the player's mask.**
    Each command has a required mask (`cmd+0xa8`) from its `Access` role
    letters (`g c C q Q a d D p m`; every `/gm*` command is `p`, Programmer).
    `SGWTextCommandMgr`'s check (vtable slot 1, `FUN_00c789e0`) refuses a
    command whose mask is non-zero and shares no bit with the global mask at
    `0x01df2d44`. A command with no `Access` has mask 0 and always passes.
+   The letters turn into a mask with an inverted test (`0x00a4c530` sets a
+   role's bit when `std::wstring::find` returns non-zero, and a letter at
+   position 0 returns 0), so `Access="p"` gives `0x2FF`: every role except
+   `p`. That passes access levels 1 to 4 and refuses 0. It is a cosmetic
+   client filter (a modified client skips it, and it cannot tell level 1 from
+   2); the gate above stays the authority and needs GameMaster (2).
 3. **That global mask is the `GENERICPROPERTY_AccessLevel` property.**
    `GameEntity`'s property handler (`FUN_00e6e9f0`, case 7) writes the value
    there through `FUN_00c73350`, for the bound player only. The mapLoaded

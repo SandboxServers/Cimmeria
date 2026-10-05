@@ -1,0 +1,8 @@
+{
+  "id": "012-gm-slash-commands",
+  "title": "GM slash commands",
+  "description": "Adds InternalSlashCommands.xml so the client recognizes the /gm commands (such as /gmdhd and /gmgivexp); without it the stock client answers \"Invalid command.\" to every one. They are for GM accounts: the client hides them from ordinary players and the server refuses anyone below GM. Adds one file to Common\\xml\\slash_commands.",
+  "files": [
+    {"path": "Common/xml/slash_commands/InternalSlashCommands.xml", "from": "InternalSlashCommands.xml"}
+  ]
+}

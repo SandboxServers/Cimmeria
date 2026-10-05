@@ -33,7 +33,7 @@ pub const CHAN_OFFICER: u8 = 6;
 /// Server channel — system broadcasts only. The client prints a line on it
 /// in bright red **and** opens a modal "Server Message" prompt
 /// (`ChatWindow.lua:160-162`), so only a broadcast meant to interrupt every
-/// player belongs here (`/gmshout`, `.announce`), never routine feedback.
+/// player belongs here (`/gmsendgmshout`, `.announce`), never routine feedback.
 pub const CHAN_SERVER: u8 = 8;
 /// Feedback channel — system lines to one player (GM feedback, refusals,
 /// the login welcome). Rendered as an ordinary sky-blue line in the Info

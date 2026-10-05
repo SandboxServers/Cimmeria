@@ -230,6 +230,49 @@ async fn kill_target_rejects_bad_ids_and_missing_target() {
     );
 }
 
+/// The native `/gmdespawn` sends TargetID 0 (the client does not fill in its
+/// selection, DA-06 lab 2026-10-05), so 0 means "the GM's selected target".
+/// Bug shape: before this, every `/gmdespawn` answered "invalid target id".
+#[tokio::test]
+async fn gm_despawn_with_id_zero_removes_the_selected_npc() {
+    let mut mgr = mgr_with_player(1, "Castle");
+    mgr.create_entity(2, "Castle", [0.0; 3], [0.0; 3]).unwrap(); // selected NPC
+    mgr.create_entity(3, "Castle", [0.0; 3], [0.0; 3]).unwrap(); // bystander NPC
+    mgr.get_entity_mut(1).unwrap().current_target_id = Some(2);
+    let (tx, _rx) = mpsc::channel(8);
+
+    assert!(
+        dispatch(
+            1,
+            GM_DESPAWN_BY_CMD,
+            &0i32.to_le_bytes(),
+            &tx,
+            &mut mgr,
+            &test_engine()
+        )
+        .await
+    );
+    assert!(mgr.get_entity(2).is_none(), "the selected NPC is despawned");
+    assert!(mgr.get_entity(3).is_some(), "other NPCs are untouched");
+
+    // A selected player is still refused, and an explicit id still wins.
+    mgr.get_entity_mut(3).unwrap().is_player = true;
+    mgr.get_entity_mut(3).unwrap().player_id = Some(300);
+    mgr.get_entity_mut(1).unwrap().current_target_id = Some(3);
+    assert!(
+        dispatch(
+            1,
+            GM_DESPAWN_BY_CMD,
+            &0i32.to_le_bytes(),
+            &tx,
+            &mut mgr,
+            &test_engine()
+        )
+        .await
+    );
+    assert!(mgr.get_entity(3).is_some(), "a selected player is refused");
+}
+
 #[tokio::test]
 async fn despawn_rejects_truncated_invalid_and_missing() {
     let mut mgr = mgr_with_player(1, "Castle");

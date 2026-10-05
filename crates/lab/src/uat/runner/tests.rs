@@ -395,6 +395,53 @@ contains = "Listed"
     assert_eq!(out.rows[0].result, "PASS", "{:?}", out.rows[0].reasons);
 }
 
+/// Colo rule 6: the native GM broadcast is owner-only under the word the client
+/// really types, `/gmsendgmshout` (patch 012), and under the old `/gmshout`.
+/// Bug shape: only the old word was listed, so unified-uat row 10's
+/// `/gmsendgmshout hello` would have gone to every colo player unapproved.
+#[tokio::test]
+async fn the_gm_broadcast_is_owner_only_under_both_words() {
+    for word in ["/gmsendgmshout", "/gmshout"] {
+        let line = format!("{word} hello");
+        let rows = format!(
+            r#"
+[[row]]
+id = "U0"
+title = "broadcast"
+expected = "red line"
+step = [{{ chat = "{line}" }}]
+[[row.expect]]
+id = "c"
+text = "t"
+source = "chat"
+contains = "hello"
+"#
+        );
+        let fake = Fake::new(&[(line.as_str(), &["hello"])]);
+        let (row, _) = run_one(&fake, &rows).await;
+        assert_eq!(row.result, RowResult::Blocked, "{word}");
+        assert!(
+            row.reasons.iter().any(|r| r.contains("colo rule 6")),
+            "{word}: {:?}",
+            row.reasons
+        );
+
+        let tmp = tempfile::tempdir().unwrap().keep();
+        let mut req = request(&tmp, &rows);
+        req.owner_approvals = vec!["gmshout".into()];
+        let out = Runner::new(&fake, None, req)
+            .unwrap()
+            .run_all()
+            .await
+            .unwrap();
+        assert_eq!(
+            out.rows[0].result, "PASS",
+            "{word}: {:?}",
+            out.rows[0].reasons
+        );
+    }
+}
+
 /// Chat 9a: a line echoed twice must fail a `count = 1` clause.
 #[tokio::test]
 async fn a_double_echo_fails_an_exactly_once_clause() {
