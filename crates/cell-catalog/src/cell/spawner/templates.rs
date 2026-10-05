@@ -279,9 +279,6 @@ pub fn build_prototype(
     })
 }
 
-/// Decode `entity_templates.vault_scope` (D-BV09). The column's `CHECK`
-/// allows only the three scopes, so an unknown value is schema drift and
-/// fails the load rather than quietly becoming `Personal`.
 /// The template's `onEntityTint` colours when `send_tint` opts it in, else
 /// `None` (the NPC keeps `onEntityTint(0, 0, 0)`). A colour column wider than
 /// 32 bits fails the load, like an unknown `vault_scope`; the table's CHECK
@@ -307,6 +304,9 @@ pub(crate) fn decode_tint(
     })
 }
 
+/// Decode `entity_templates.vault_scope` (D-BV09). The column's `CHECK`
+/// allows only the three scopes, so an unknown value is schema drift and
+/// fails the load rather than quietly becoming `Personal`.
 pub(crate) fn decode_vault_scope(
     row: &sqlx::postgres::PgRow,
 ) -> Result<cimmeria_entity::cell_entity::VaultScope, sqlx::Error> {
