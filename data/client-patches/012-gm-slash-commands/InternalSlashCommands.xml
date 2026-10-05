@@ -218,8 +218,8 @@
   </scmd:Command>
   <scmd:Command scmd:CommandName="/gmspawnbycmd" scmd:Access="p" scmd:Description="" scmd:EventName="Event_SlashCmd_Spawn" scmd:Usage="/gmspawnbycmd [DesignId] [X-Offset] [Z-Offset]">
     <scmd:MandatoryParam scmd:PType="String" scmd:ParamName="DesignId" scmd:ParamDescription=""/>
-    <scmd:MandatoryParam scmd:PType="Integer" scmd:ParamName="X-Offset" scmd:ParamDescription=""/>
-    <scmd:MandatoryParam scmd:PType="Integer" scmd:ParamName="Z-Offset" scmd:ParamDescription=""/>
+    <scmd:MandatoryParam scmd:PType="Float" scmd:ParamName="X-Offset" scmd:ParamDescription=""/>
+    <scmd:MandatoryParam scmd:PType="Float" scmd:ParamName="Z-Offset" scmd:ParamDescription=""/>
   </scmd:Command>
   <scmd:Command scmd:CommandName="/gmdespawn" scmd:Access="p" scmd:Description="" scmd:EventName="Event_SlashCmd_Despawn" scmd:Usage="/gmdespawn">
   </scmd:Command>

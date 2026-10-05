@@ -322,6 +322,22 @@ fn registers_the_commands_the_server_handles() {
     assert_eq!(params.len(), 1);
     assert!(params[0].contains(" Integer:"), "{params:?}");
     assert_eq!(shape("/gmsendgmshout").0, "Event_SlashCmd_GMShout");
+    // `gmSpawnByCmd(WSTRING, FLOAT, FLOAT)`. The QA file declares the offsets
+    // Integer, and in the lab (DA-06, 2026-10-05) `/gmspawnbycmd 1310 5 5` with
+    // Integer offsets crashed the client (access violation reading 0x8 at
+    // SGW.exe 0x00561778) before any cell method was sent. Float is what the
+    // handler and the def expect.
+    assert_eq!(
+        shape("/gmspawnbycmd"),
+        (
+            "Event_SlashCmd_Spawn".to_string(),
+            vec![
+                "MandatoryParam String:DesignId".to_string(),
+                "MandatoryParam Float:X-Offset".to_string(),
+                "MandatoryParam Float:Z-Offset".to_string(),
+            ]
+        )
+    );
     // The two words the QA tree defines twice resolve to the later entry (the
     // class that exists in SGW.exe, no parameters); the earlier one names a
     // class the binary does not have.

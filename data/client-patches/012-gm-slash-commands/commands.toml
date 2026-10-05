@@ -365,7 +365,7 @@ event = "Event_SlashCmd_RemoveBehaviorEventSet"
 [[command]]
 name = "/gmspawnbycmd"
 event = "Event_SlashCmd_Spawn"
-params = ["String DesignId", "Integer X-Offset", "Integer Z-Offset"]
+params = ["String DesignId", "Float X-Offset", "Float Z-Offset"]
 
 [[command]]
 name = "/gmdespawn"

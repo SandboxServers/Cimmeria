@@ -243,6 +243,21 @@ DA-06, 2026-10-05). 012 ships that file, new, whole.
   it `"p"` like the rest closes that client-side hole and grants nothing: the
   server gate (cell method 185 is above the GM index range) already refused it
   for anyone below GM.
+- **Parameter types matter: a wrong one crashes the client.** `PType` decides
+  how the typed text becomes the event's value, and the handler reads that
+  value as the type it expects. The QA file declares `/gmspawnbycmd`'s two
+  offsets `Integer`, while `gmSpawnByCmd` in `SGWGmPlayer.def` takes
+  `FLOAT, FLOAT`; in the lab (DA-06, 2026-10-05) `/gmspawnbycmd 1310 5 5` with
+  the Integer file raised an access violation reading `0x00000008` at
+  `SGW.exe` `0x00561778` before any cell method was sent, and the typed line
+  stayed in the chat box. Patch 012 declares them `Float`, like the def and
+  like `/gmgotoxyz`. The other 161 commands carry the QA file's types. A static
+  comparison against the exposed `SGWGmPlayer` methods found no other
+  same-arity type disagreement, but several commands take fewer typed
+  parameters than the cell method has arguments (the client fills in the target
+  id and similar), so that check cannot clear them; they are unverified beyond
+  the commands the lab ran (`/gmdhd`, `/gmgotolocation`, `/gmgotoxyz`,
+  `/gmgivexp`).
 - **Verified in the lab (da06, 2026-10-05, colo build 86fe5dcab, GM
   character, world 1300).** With the file installed: map size `0x10A` (266);
   `/help` ends "266 commands found."; `/gmdhd 3` sends `gmDHD` and the server
