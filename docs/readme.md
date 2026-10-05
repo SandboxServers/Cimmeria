@@ -102,6 +102,7 @@ Want to start contributing? Read **[../CONTRIBUTING.md](../CONTRIBUTING.md)** â€
 | [Desktop launcher engine](../crates/launcher/desktop/README.md) | Tauri settings shell, native state and Effect workflows, persistence UAT and remaining game integration gates |
 | [Desktop Play integration](analysis/playtests/2026-10-03-macos-wine/worknotes/play-integration.md) | Native-owned launch, Effect lifecycle controls and persistence UAT boundaries |
 | [Desktop updater parity research](analysis/playtests/2026-10-03-macos-wine/worknotes/updater-parity-research.md) | Legacy checksum trust, signed Tauri packages and remaining native recovery contracts |
+| [Desktop launcher release](../crates/launcher/desktop/docs/release.md) | What `/release-launcher` builds for the desktop launcher, the Windows preview's limits, and why macOS is deferred |
 | [Desktop signed package updater](../crates/launcher/desktop/docs/updater.md) | Settings check/download, signed-version verification and remaining Apply/recovery gates |
 | [Existing-user adoption contract](analysis/playtests/2026-10-03-macos-wine/worknotes/adoption-contract-audit.md) | Verified separate-copy migration, effective settings and installed Update requirements |
 | [Native launch ownership fix](analysis/playtests/2026-10-03-macos-wine/worknotes/launcher-launch-lock-fix.md) | Locked-handle launch preparation regression and native Windows validation handoff |
