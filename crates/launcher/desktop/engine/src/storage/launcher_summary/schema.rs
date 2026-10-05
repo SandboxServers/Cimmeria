@@ -11,7 +11,6 @@ pub const MAX_BATCH: usize = 32;
 pub const MAX_BODY_BYTES: usize = 64 * 1024;
 /// There are four timed phases; the server accepts up to this many entries.
 pub const MAX_PHASES: usize = 32;
-pub const SESSION_KIND: &str = "launcher_summary";
 
 // `ALL` is generated from the variant list, so it cannot fall behind the enum.
 macro_rules! closed_enum {
@@ -384,30 +383,4 @@ impl TryFrom<RawRequest> for SummaryRequest {
 #[serde(deny_unknown_fields)]
 pub struct SummaryResponse {
     pub results: Vec<SummaryResult>,
-}
-
-/// The mint body: `POST {base}/auth/dev-session`. `install_id` is a fresh random
-/// value for each mint and is never stored; the identity fields are always empty.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
-pub struct MintRequest {
-    install_id: Uuid,
-    machine_id: &'static str,
-    branch: &'static str,
-    git_sha: &'static str,
-    launcher_version: LauncherVersion,
-    tags: [&'static str; 0],
-    session_kind: &'static str,
-}
-impl MintRequest {
-    pub fn new(install_id: Uuid, launcher_version: LauncherVersion) -> Self {
-        Self {
-            install_id,
-            machine_id: "",
-            branch: "",
-            git_sha: "",
-            launcher_version,
-            tags: [],
-            session_kind: SESSION_KIND,
-        }
-    }
 }

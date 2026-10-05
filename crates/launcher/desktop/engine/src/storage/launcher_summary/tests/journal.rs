@@ -222,7 +222,8 @@ fn lost_observation_is_one_unknown_row_and_a_later_reconciled_terminal_adds_noth
 fn two_ends_without_a_finalize_between_them_are_both_kept() {
     let (_root, mut state, _clock) = opted_in();
     let first = begin(&mut state, OperationKind::Repair);
-    // Bypass the lazy finalize the way an admission closure does.
+    // Commit on the journal directly, so nothing finalizes between the two
+    // ends. No engine path does this: every admission finalizes first.
     state
         .operations
         .observe(first, OperationState::Failed)

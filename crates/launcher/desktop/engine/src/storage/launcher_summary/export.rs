@@ -1,25 +1,30 @@
 //! The exporter: one task that delivers queued summaries to the configured
-//! endpoint. A cycle mints a short-lived token, posts one batch and applies the
-//! server's verdicts.
+//! endpoint. A cycle takes one batch, posts it and applies the server's
+//! verdicts. The upload is anonymous: one request per attempt, carrying the
+//! batch and nothing else. No token is fetched, kept or sent, and there is no
+//! session and no sender identity.
 //!
 //! The state mutex is taken only on a blocking thread and never held across a
 //! request or a sleep. Consent, the endpoint and the queue generation are checked
-//! again after the mint, after every wait and before verdicts are applied, so a
-//! change in between sends and applies nothing.
+//! again after every wait and before verdicts are applied, so a change in
+//! between sends and applies nothing.
 //!
-//! Withdrawing consent also cancels the batch's token. A mint or POST still in
-//! flight is dropped, which aborts it, and a backoff wait ends at once; the
-//! cycle ends as `ConsentWithdrawn`. Bytes the server had already received
-//! cannot be recalled; their answer is never read or applied.
+//! Withdrawing consent also cancels the batch. A POST still in flight is
+//! dropped, which aborts it, and a backoff wait ends at once; the cycle ends as
+//! `ConsentWithdrawn`. Bytes the server had already received cannot be recalled;
+//! their answer is never read or applied.
 //!
-//! The token lives for one attempt and is never stored or logged. The requests
-//! themselves are in `exchange.rs`. Nothing here can fail, delay or change the
-//! launcher's own work.
+//! The server allows each address only a few requests an hour. A `429` therefore
+//! ends the cycle at once, with no retry and no wait, and the rows stay queued
+//! for the next trigger: a retry would only spend more of the allowance.
+//!
+//! The request itself is in `exchange.rs`. Nothing here can fail, delay or
+//! change the launcher's own work.
 use super::{
     batch::{Batch, ExportTarget, Take},
     endpoint::SummaryEndpoint,
-    exchange::{mint, post},
-    schema::{LauncherVersion, SummaryResult, MAX_BODY_BYTES},
+    exchange::post,
+    schema::{SummaryResult, MAX_BODY_BYTES},
     tracker::{lock, Gate},
     SummaryConfig,
 };
@@ -39,18 +44,17 @@ use tokio_util::sync::CancellationToken;
 use uuid::Uuid;
 
 pub(super) struct ExportTuning {
-    pub mint_timeout: Duration,
+    /// One deadline for the whole exchange, body included.
     pub post_timeout: Duration,
-    /// Retries after the first attempt of one cycle. Each one mints again.
+    /// Retries after the first attempt of one cycle. Each is one more POST.
     pub max_retries: u32,
-    /// The longest wait a server may ask for, and the wait when it names none.
+    /// The longest wait a `503` may ask for, and the wait when it names none.
     pub retry_after_cap: Duration,
     /// The wait before the n-th retry, from 1, after a transient failure.
     pub backoff: fn(u32) -> Duration,
 }
 impl ExportTuning {
     pub const PRODUCTION: Self = Self {
-        mint_timeout: Duration::from_secs(2),
         post_timeout: Duration::from_secs(2),
         max_retries: 2,
         retry_after_cap: Duration::from_secs(60),
@@ -68,15 +72,12 @@ fn jittered_backoff(retry: u32) -> Duration {
 pub(super) type Sleeper =
     Box<dyn Fn(Duration) -> Pin<Box<dyn Future<Output = ()> + Send>> + Send + Sync>;
 
-/// Everything a cycle needs besides the state. Tests replace the tuning, the
-/// sleeper and the id source; the endpoint and the client are production's.
+/// Everything a cycle needs besides the state. Tests replace the tuning and
+/// the sleeper; the endpoint and the client are production's.
 pub(super) struct ExportEnv {
     pub endpoint: SummaryEndpoint,
-    pub launcher_version: LauncherVersion,
     pub tuning: ExportTuning,
     pub sleep: Sleeper,
-    /// The mint's `install_id`: random for every mint and never stored.
-    pub mint_id: Box<dyn Fn() -> Uuid + Send + Sync>,
     pub http: reqwest::Client,
     // Latched by `StoppedForRun`: no further request in this process run.
     stopped: AtomicBool,
@@ -90,10 +91,8 @@ impl ExportEnv {
             .ok()?;
         Some(Self {
             endpoint: target.endpoint.clone(),
-            launcher_version: target.launcher_version,
             tuning: ExportTuning::PRODUCTION,
             sleep: Box::new(|wait| Box::pin(tokio::time::sleep(wait))),
-            mint_id: Box::new(Uuid::new_v4),
             http,
             stopped: AtomicBool::new(false),
         })
@@ -115,24 +114,27 @@ pub(in crate::storage) enum CycleOutcome {
     SkippedNoConsent,
     Empty,
     /// The server answered for the batch and every answered row left the queue.
-    /// A body refused as a whole (`400`, `413`) counts all its rows as rejected.
+    /// A body refused as a whole (`400`, `413`, `415`, `422`) counts all its
+    /// rows as rejected.
     Delivered {
         accepted: usize,
         duplicate: usize,
         rejected: usize,
     },
-    /// The gate closed or the queue was replaced mid-cycle. Nothing was applied.
+    /// The gate closed, the queue was replaced or another endpoint was
+    /// configured mid-cycle. Nothing more was sent and nothing was applied.
     ConsentWithdrawn,
-    /// The server has no summary routes. No further request in this process run.
+    /// The server has no summary route. No further request in this process run.
     StoppedForRun,
-    /// The retry budget ran out. The rows wait for the next trigger.
+    /// The retry budget ran out, or the server's rate limit was reached (`429`),
+    /// which is never retried. The rows wait for the next trigger.
     GaveUp,
     StateGone,
 }
 
 pub(super) enum Step {
     Done(CycleOutcome),
-    /// A transient failure. `Some` is the wait the server asked for.
+    /// A transient failure. `Some` is the wait a `503` asked for, capped.
     Retry(Option<Duration>),
 }
 
@@ -255,40 +257,23 @@ pub(super) async fn run_cycle(state: &Weak<Mutex<DesktopState>>, env: &ExportEnv
     }
 }
 
-// One request, unless or until consent is withdrawn. The cancelled token wins
-// over an answer that is ready at the same moment, and dropping the request
-// future aborts the request: nothing more is sent and no answer is read.
-async fn unless_withdrawn<T>(
-    batch: &Batch,
-    request: impl Future<Output = Result<T, Step>>,
-) -> Result<T, Step> {
-    tokio::select! {
-        biased;
-        () = batch.cancel.cancelled() => Err(Step::Done(CycleOutcome::ConsentWithdrawn)),
-        answered = request => answered,
-    }
-}
-
-// Mint, check again, post, apply. The token is a local of this one attempt.
+// Post and apply. The request races the batch's cancellation: a cancelled
+// batch wins over an answer that is ready at the same moment, and dropping the
+// request future aborts the request, so nothing more is sent and no answer is
+// read.
 async fn attempt(
     state: &Weak<Mutex<DesktopState>>,
     env: &ExportEnv,
     batch: &Arc<Batch>,
     body: &[u8],
 ) -> Step {
-    let token = match unless_withdrawn(batch, mint(env)).await {
-        Ok(token) => token,
-        Err(step) => return step,
-    };
-    // The gate, the endpoint or the queue may have changed while the mint was
-    // in flight, with or without a withdrawal.
-    if let Some(outcome) = stale(state, env, batch).await {
-        return Step::Done(outcome);
-    }
-    let posted = post(env, token, body.to_vec(), batch.summaries.len());
-    let verdicts = match unless_withdrawn(batch, posted).await {
-        Ok(verdicts) => verdicts,
-        Err(step) => return step,
+    let verdicts = tokio::select! {
+        biased;
+        () = batch.cancel.cancelled() => return Step::Done(CycleOutcome::ConsentWithdrawn),
+        answered = post(env, body.to_vec(), batch.summaries.len()) => match answered {
+            Ok(verdicts) => verdicts,
+            Err(step) => return step,
+        },
     };
     let count = |wanted: SummaryResult| match &verdicts {
         Verdicts::Each(results) => results.iter().filter(|result| **result == wanted).count(),

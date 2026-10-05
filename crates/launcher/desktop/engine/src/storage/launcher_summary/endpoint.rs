@@ -36,19 +36,10 @@ impl SummaryEndpoint {
         Some(Self { base })
     }
 
-    /// `POST` target for the dev-session mint.
-    pub fn mint_url(&self) -> Url {
-        self.route("auth/dev-session")
-    }
-
-    /// `POST` target for a summary batch.
+    /// `POST` target for a summary batch: the only URL ever requested.
     pub fn ingest_url(&self) -> Url {
-        self.route("telemetry/launcher-summary")
-    }
-
-    fn route(&self, path: &str) -> Url {
         let mut url = self.base.clone();
-        let joined = format!("{}{path}", url.path());
+        let joined = format!("{}telemetry/launcher-summary", url.path());
         url.set_path(&joined);
         url
     }
@@ -72,42 +63,39 @@ mod tests {
     use super::*;
 
     #[test]
-    fn https_and_loopback_http_are_accepted_with_exact_route_urls() {
-        for (base, mint, ingest) in [
+    fn https_and_loopback_http_are_accepted_with_the_exact_route_url() {
+        for (base, ingest) in [
             (
                 "https://summaries.example",
-                "https://summaries.example/auth/dev-session",
                 "https://summaries.example/telemetry/launcher-summary",
             ),
             (
                 "https://summaries.example/api/",
-                "https://summaries.example/api/auth/dev-session",
+                "https://summaries.example/api/telemetry/launcher-summary",
+            ),
+            (
+                "https://summaries.example/api",
                 "https://summaries.example/api/telemetry/launcher-summary",
             ),
             (
                 "http://localhost:8081",
-                "http://localhost:8081/auth/dev-session",
                 "http://localhost:8081/telemetry/launcher-summary",
             ),
             (
                 "http://127.0.0.1:9/base",
-                "http://127.0.0.1:9/base/auth/dev-session",
                 "http://127.0.0.1:9/base/telemetry/launcher-summary",
             ),
             (
                 "http://[::1]:9",
-                "http://[::1]:9/auth/dev-session",
                 "http://[::1]:9/telemetry/launcher-summary",
             ),
             // Scheme and host are compared in their normalised, lower-case form.
             (
                 "HTTP://LOCALHOST:8081",
-                "http://localhost:8081/auth/dev-session",
                 "http://localhost:8081/telemetry/launcher-summary",
             ),
         ] {
             let endpoint = SummaryEndpoint::parse(base).unwrap_or_else(|| panic!("{base}"));
-            assert_eq!(endpoint.mint_url().as_str(), mint);
             assert_eq!(endpoint.ingest_url().as_str(), ingest);
         }
     }

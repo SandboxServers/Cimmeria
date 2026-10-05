@@ -122,8 +122,15 @@ impl Default for WindowTable {
 /// Quota key for a peer address. IPv6 is folded to its /64 prefix:
 /// a single host is routinely handed a whole /64, so counting full
 /// addresses would let one machine mint without limit.
+///
+/// An IPv4-mapped IPv6 address (`::ffff:a.b.c.d`) is keyed as the IPv4
+/// address it carries. That is how an IPv4 peer arrives on a dual-stack
+/// listener, and every mapped address has the same /64 (`::`): folded as
+/// IPv6 they would all share one bucket, and none of them would share
+/// with the same host seen over plain IPv4. Every quota that keys on the
+/// peer goes through here, so this is the one place it is done.
 pub fn ip_key(addr: IpAddr) -> u64 {
-    match addr {
+    match addr.to_canonical() {
         IpAddr::V4(v4) => hash_bytes(&v4.octets()),
         IpAddr::V6(v6) => hash_bytes(&v6.octets()[..8]),
     }
@@ -307,6 +314,31 @@ mod tests {
         let other: IpAddr = "2001:db8:1:3::1".parse::<Ipv6Addr>().unwrap().into();
         assert_eq!(ip_key(a), ip_key(b));
         assert_ne!(ip_key(a), ip_key(other));
+    }
+
+    // An IPv4 peer on a dual-stack listener arrives as `::ffff:a.b.c.d`.
+    // It is keyed as that IPv4 address: the two forms of one host share
+    // a key, and two mapped hosts do not, although as IPv6 they lie in
+    // one /64. Without `to_canonical` both assertions fail.
+    #[test]
+    fn ipv4_mapped_addresses_key_as_their_ipv4_address() {
+        let mapped: IpAddr = "::ffff:203.0.113.5".parse().unwrap();
+        let plain: IpAddr = "203.0.113.5".parse().unwrap();
+        let other_mapped: IpAddr = "::ffff:203.0.113.6".parse().unwrap();
+        // The parser keeps the mapped form as IPv6, as a dual-stack
+        // socket reports it.
+        assert!(mapped.is_ipv6() && other_mapped.is_ipv6() && plain.is_ipv4());
+        assert_eq!(ip_key(mapped), ip_key(plain));
+        assert_ne!(ip_key(mapped), ip_key(other_mapped));
+
+        // Control: a native IPv6 address is still folded to its /64, and
+        // only to that.
+        let a: IpAddr = "2001:db8:1:2::1".parse().unwrap();
+        let b: IpAddr = "2001:db8:1:2:ffff:ffff:ffff:ffff".parse().unwrap();
+        let other: IpAddr = "2001:db8:1:3::1".parse().unwrap();
+        assert_eq!(ip_key(a), ip_key(b));
+        assert_ne!(ip_key(a), ip_key(other));
+        assert_eq!(ip_key(a), hash_bytes(&[0x20, 0x01, 0x0d, 0xb8, 0, 1, 0, 2]));
     }
 
     #[test]

@@ -245,7 +245,7 @@ fn publish(state: &Mutex<DesktopState>, id: Uuid, outcome: Outcome) -> Outcome {
     };
     let published = commit_result(&mut state, id, outcome);
     // The summary row is built now, while the result record is this attempt's.
-    // A retry is admitted without a finalize of its own and would replace it.
+    // Install admission finalizes too; this keeps the row independent of it.
     state.finalize_summaries();
     published
 }

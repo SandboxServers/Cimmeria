@@ -24,12 +24,10 @@ use std::collections::{BTreeMap, BTreeSet};
 
 use serde_json::Value;
 
-use crate::routes::dev_session::SESSION_KIND_LAUNCHER_SUMMARY;
-
 use super::dto::{Arch, ErrorCode, Operation, Os, Outcome, Phase, TimedPhase, Verdict};
 use super::rows::{
     duration_bucket, EVENT_BATCH, EVENT_PHASE, EVENT_SUMMARY, LAUNCHER_SUMMARY_BATCH_TARGET,
-    LAUNCHER_SUMMARY_TARGET,
+    LAUNCHER_SUMMARY_TARGET, ROW_SESSION_KIND,
 };
 use super::tests::{capture, Env, Harness, REQUEST_ALL};
 
@@ -223,7 +221,7 @@ fn closed_values(event: &str, key: &str) -> Option<BTreeSet<String>> {
         "duration_bucket" => [0, 1_000, 10_000, 60_000, 300_000, 1_800_000]
             .map(duration_bucket)
             .to_vec(),
-        "cimmeria.session_kind" => vec![SESSION_KIND_LAUNCHER_SUMMARY],
+        "cimmeria.session_kind" => vec![ROW_SESSION_KIND],
         _ => return None,
     };
     Some(values.into_iter().map(str::to_string).collect())

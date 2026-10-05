@@ -1,13 +1,13 @@
 //! Source to ingest: a real install worker's result is queued by the journal
-//! observer and delivered by the exporter to a loopback mock of the server's two
-//! routes. No launch code takes part, and a dead endpoint changes no result.
+//! observer and delivered by the exporter to a loopback mock of the server's one
+//! route. No launch code takes part, and a dead endpoint changes no result.
 use super::tests::outcome;
 use super::*;
 use crate::{
     client_setup::login_servers::default_servers,
     launcher_summary::{SummaryArch, SummaryOs},
     storage::launcher_summary::tests::{
-        exporter::{mount_ok, CycleOutcome, Rig, BACKOFFS, INGEST, MINT},
+        exporter::{mount_ok, CycleOutcome, Rig, BACKOFFS, INGEST},
         queue_bytes, queued,
     },
     OperationKind,
@@ -23,8 +23,7 @@ fn fixture(text: &str) -> Value {
 #[tokio::test]
 async fn a_failed_install_reaches_the_ingest_route_before_any_launch() {
     let release = verified(&archive(true));
-    let mut rig = Rig::start().await;
-    rig.fix_mint_id();
+    let rig = Rig::start().await;
     mount_ok(&rig.server).await;
     let id = Uuid::new_v4();
     {
@@ -58,20 +57,18 @@ async fn a_failed_install_reaches_the_ingest_route_before_any_launch() {
             rejected: 0,
         }
     );
-    assert_eq!(rig.paths().await, [MINT, INGEST]);
-    assert_eq!(
-        rig.bodies(MINT).await,
-        [fixture(include_str!(
-            "../launcher_summary/fixtures/mint-request.json"
-        ))]
-    );
+    // One anonymous request: nothing is fetched first, and nothing but the
+    // batch is sent.
+    assert_eq!(rig.paths().await, [INGEST]);
+    let requests = rig.server.received_requests().await.unwrap();
+    assert!(!requests[0].headers.contains_key("authorization"));
     // The fixture was recorded on one platform; `os` and `arch` are this build's.
     let mut golden = fixture(include_str!(
         "../launcher_summary/fixtures/request-install-failure.json"
     ));
     golden["summaries"][0]["os"] = json!(SummaryOs::current());
     golden["summaries"][0]["arch"] = json!(SummaryArch::current());
-    assert_eq!(rig.bodies(INGEST).await, [golden]);
+    assert_eq!(rig.posts().await, [golden]);
 
     let owner = rig.owner();
     assert_eq!(queued(&owner), [], "delivered rows leave the queue");

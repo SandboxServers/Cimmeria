@@ -27,6 +27,15 @@
 //!
 //! Failures before admission arrive through `summary_pre_admission_failure`.
 //!
+//! Trust. The upload is anonymous (`export.rs`): one `POST` of the v1 body, with
+//! no token, no session and no installation or machine identifier. The server
+//! takes that exact shape from anyone, within a low rate limit for each address,
+//! and refuses everything else. So anyone can post correctly shaped rows, and
+//! every row is self-reported: useful for spotting failure patterns, and never
+//! a basis for server state, alerts, success-rate claims or SLOs. The strict
+//! schema means nothing but closed enum values, bounded integers, UUIDs and a
+//! version triple can ever be stored.
+//!
 //! No entry point here can fail or change the result of the launcher's own work:
 //! each returns `()`, contains its own panics and counts what it swallowed.
 mod attempt;
@@ -45,10 +54,10 @@ pub(in crate::storage) mod tests;
 pub use endpoint::SummaryEndpoint;
 pub use export::start;
 pub use schema::{
-    DroppedCounts, LauncherVersion, Millis, MintRequest, PhaseDuration, RetryCount, Summary,
-    SummaryArch, SummaryErrorCode, SummaryOperation, SummaryOs, SummaryOutcome, SummaryPhase,
-    SummaryRequest, SummaryResponse, SummaryResult, TimedPhase, MAX_BATCH, MAX_BODY_BYTES,
-    MAX_PHASES, SCHEMA_VERSION, SESSION_KIND,
+    DroppedCounts, LauncherVersion, Millis, PhaseDuration, RetryCount, Summary, SummaryArch,
+    SummaryErrorCode, SummaryOperation, SummaryOs, SummaryOutcome, SummaryPhase, SummaryRequest,
+    SummaryResponse, SummaryResult, TimedPhase, MAX_BATCH, MAX_BODY_BYTES, MAX_PHASES,
+    SCHEMA_VERSION,
 };
 pub(super) use tracker::Shared;
 
@@ -145,7 +154,9 @@ impl DesktopState {
     /// Lazy and idempotent: turns a committed end into its queue entry. Runs at
     /// the start of `operations_mut`, a preferences save and every entry point,
     /// and right after the install worker's terminal commit, while the install
-    /// result it reads is still this attempt's.
+    /// result it reads is still this attempt's. Install admission commits on the
+    /// journal without `operations_mut` and runs it too, so every admission
+    /// finalizes the attempt before it while the journal still shows that one.
     pub(super) fn finalize_summaries(&mut self) {
         self.summary_guarded(|state| {
             state.summary_sync();

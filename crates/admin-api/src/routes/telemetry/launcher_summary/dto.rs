@@ -7,15 +7,15 @@
 //! version are re-formatted from their parsed values, and a serde error is
 //! discarded where it is produced.
 
-use axum::http::StatusCode;
+use axum::http::{HeaderValue, StatusCode};
 use axum::response::{IntoResponse, Response};
+use serde::de::DeserializeOwned;
 use serde::{Deserialize, Deserializer, Serialize};
 use serde_json::Value;
 use uuid::Uuid;
 
-use crate::routes::dev_session::{parse_version_triple, AuthError};
-
-use super::super::dto::IngestError;
+use crate::routes::dev_session::quota::QuotaExceeded;
+use crate::routes::dev_session::AuthError;
 
 /// The only request shape this route accepts.
 pub(super) const SCHEMA_VERSION: u64 = 1;
@@ -153,15 +153,6 @@ pub(super) struct ClientDropped {
     pub rejected: u16,
 }
 
-/// A request that passed the envelope checks. The elements are still
-/// untyped JSON: each is validated alone, so one bad element is rejected
-/// without failing the others.
-#[derive(Debug)]
-pub(super) struct Envelope {
-    pub client_dropped: ClientDropped,
-    pub elements: Vec<Value>,
-}
-
 /// One timed phase of a validated summary.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(super) struct PhaseTiming {
@@ -210,101 +201,84 @@ pub(super) struct SummaryResponse {
 /// refusal never repeats anything the caller sent.
 #[derive(Debug)]
 pub(super) enum SummaryError {
-    /// Kill switch, quota, a token that fails verification or the scope
-    /// check, or an unusable server secret.
-    Auth(AuthError),
-    MissingAuth,
+    /// `CIMMERIA_TELEMETRY_KILL_SWITCH=1`: 503 with `Retry-After`.
+    Paused,
+    /// The peer address has used its allowance: 429 with `Retry-After`.
+    OverQuota(QuotaExceeded),
+    /// `Content-Type` is not `application/json`: 415.
+    UnsupportedMediaType,
+    /// The body is over 64 KiB: 413.
+    TooLarge,
+    /// The request is not a post of the schema-1 envelope to the bare
+    /// path: 400.
     BadRequest(&'static str),
 }
 
 impl SummaryError {
-    const BAD_TOKEN: &'static str = "Token payload decode failed";
-    const MISSING_AUTH: &'static str = "Missing or malformed Authorization header";
-
-    pub(super) fn status(&self) -> StatusCode {
-        match self {
-            // A token that does not decode is a 401 here whatever its
-            // cause: the launcher treats a 400 from this route as "this
-            // batch can never be delivered" and deletes it.
-            SummaryError::Auth(AuthError::BadPayload(_) | AuthError::Json(_))
-            | SummaryError::MissingAuth => StatusCode::UNAUTHORIZED,
-            SummaryError::Auth(e) => e.status(),
-            SummaryError::BadRequest(_) => StatusCode::BAD_REQUEST,
-        }
-    }
+    pub(super) const CONTENT_TYPE: &'static str = "Content-Type must be application/json";
+    pub(super) const TOO_LARGE: &'static str = "Body is over 64 KiB";
+    pub(super) const QUERY: &'static str = "Query string not allowed";
 }
 
-impl From<AuthError> for SummaryError {
-    fn from(e: AuthError) -> Self {
-        SummaryError::Auth(e)
-    }
-}
-
-impl From<IngestError> for SummaryError {
-    /// The bearer check only ever fails these two ways; the other
-    /// `IngestError` variants belong to the chunk and bundle uploads.
-    fn from(e: IngestError) -> Self {
-        match e {
-            IngestError::Auth(e) => SummaryError::Auth(e),
-            _ => SummaryError::MissingAuth,
-        }
+impl From<QuotaExceeded> for SummaryError {
+    fn from(e: QuotaExceeded) -> Self {
+        SummaryError::OverQuota(e)
     }
 }
 
 impl IntoResponse for SummaryError {
     fn into_response(self) -> Response {
-        let status = self.status();
         match self {
-            // These two carry a base64 or JSON decoder message about the
-            // presented token. Replace it: this route's bodies are static.
-            SummaryError::Auth(AuthError::BadPayload(_) | AuthError::Json(_)) => {
-                (status, Self::BAD_TOKEN).into_response()
+            // The pause and the quota answer as the mint's do (status,
+            // `Retry-After`, wording), through the mint's one mapping. The
+            // quota text names the server's own counter and the wait, and
+            // nothing the caller wrote.
+            SummaryError::Paused => AuthError::KillSwitchActive.to_response(),
+            SummaryError::OverQuota(e) => AuthError::QuotaExceeded(e).to_response(),
+            SummaryError::UnsupportedMediaType => {
+                (StatusCode::UNSUPPORTED_MEDIA_TYPE, Self::CONTENT_TYPE).into_response()
             }
-            // The rest (503 and 429 with `Retry-After`, the scope, expiry
-            // and signature 401s, the secret 500) say nothing the caller
-            // wrote, and keep one mapping with the mint.
-            SummaryError::Auth(e) => e.to_response(),
-            SummaryError::MissingAuth => (status, Self::MISSING_AUTH).into_response(),
-            SummaryError::BadRequest(text) => (status, text).into_response(),
+            SummaryError::TooLarge => {
+                (StatusCode::PAYLOAD_TOO_LARGE, Self::TOO_LARGE).into_response()
+            }
+            SummaryError::BadRequest(text) => (StatusCode::BAD_REQUEST, text).into_response(),
         }
     }
 }
 
-/// Check the request envelope: a JSON object with exactly `schema_version`
-/// (the integer 1), `client_dropped` and 1 to 32 `summaries`. The element
-/// count is checked before any element is typed.
-pub(super) fn parse_envelope(body: &[u8]) -> Result<Envelope, SummaryError> {
-    let Ok(Value::Object(mut top)) = serde_json::from_slice::<Value>(body) else {
-        return Err(SummaryError::BadRequest("Body is not a JSON object"));
+/// True for `application/json`, alone or with a `charset` parameter, which
+/// is all the launcher sends. Any other media type (`text/plain`,
+/// `application/x-ndjson`, `application/gzip`, a `+json` suffix), any other
+/// parameter and a value that is not visible ASCII are refused: the route
+/// takes one payload and says so before it parses anything.
+///
+/// The charset's value is not read. The body is parsed as UTF-8 JSON
+/// whatever it claims, and a body that is not UTF-8 is a 400.
+pub(super) fn is_json_content_type(value: &HeaderValue) -> bool {
+    let Ok(text) = value.to_str() else {
+        return false;
     };
-    let (Some(schema_version), Some(client_dropped), Some(summaries)) = (
-        top.remove("schema_version"),
-        top.remove("client_dropped"),
-        top.remove("summaries"),
-    ) else {
-        return Err(SummaryError::BadRequest("Missing a required key"));
-    };
-    if !top.is_empty() {
-        return Err(SummaryError::BadRequest("Unknown top-level key"));
-    }
-    if schema_version.as_u64() != Some(SCHEMA_VERSION) {
-        return Err(SummaryError::BadRequest("Unsupported schema_version"));
-    }
-    let Ok(client_dropped) = serde_json::from_value::<ClientDropped>(client_dropped) else {
-        return Err(SummaryError::BadRequest("Invalid client_dropped"));
-    };
-    let elements = match summaries {
-        Value::Array(elements) if (1..=MAX_SUMMARIES).contains(&elements.len()) => elements,
-        _ => {
-            return Err(SummaryError::BadRequest(
-                "summaries must be an array of 1 to 32 elements",
-            ))
-        }
-    };
-    Ok(Envelope {
-        client_dropped,
-        elements,
-    })
+    let mut parts = text.split(';');
+    let essence = parts.next().unwrap_or_default().trim();
+    essence.eq_ignore_ascii_case("application/json")
+        && parts.all(|parameter| {
+            parameter
+                .split_once('=')
+                .is_some_and(|(name, _)| name.trim().eq_ignore_ascii_case("charset"))
+        })
+}
+
+/// Type a JSON object as `T`; anything that is not an object is `None`.
+///
+/// serde's derived structs also read from an array, taking the fields in
+/// declaration order, so `[0,0,0]` would pass for a `client_dropped` and
+/// twelve values in a row for a summary. The contract names objects, so
+/// every struct of the payload is typed through this.
+pub(super) fn typed_object<T: DeserializeOwned>(value: Value) -> Option<T> {
+    value
+        .is_object()
+        .then(|| serde_json::from_value(value).ok())
+        .flatten()
 }
 
 /// An optional key that, when present, must hold a value: an explicit
@@ -339,11 +313,35 @@ struct RawSummary {
     #[serde(default, deserialize_with = "present")]
     duration_ms: Option<u64>,
     retry_count: u64,
+    /// Left untyped: each entry is typed alone, as an object.
     #[serde(default, deserialize_with = "present")]
-    phases: Option<Vec<RawPhase>>,
+    phases: Option<Vec<Value>>,
     launcher_version: String,
     os: Os,
     arch: Arch,
+}
+
+/// A launcher version: exactly three dot-separated components of one to
+/// three ASCII digits. Returns the parsed integers, and callers emit those,
+/// never the string, so nothing the caller typed reaches a log line or a
+/// SigNoz field.
+pub(super) fn parse_version_triple(value: &str) -> Option<(u16, u16, u16)> {
+    // `str::parse` alone would take a leading `+`; the byte check also
+    // keeps non-ASCII digits out.
+    fn component(part: &str) -> Option<u16> {
+        let digits = (1..=3).contains(&part.len()) && part.bytes().all(|b| b.is_ascii_digit());
+        if !digits {
+            return None;
+        }
+        part.parse().ok()
+    }
+    let mut parts = value.split('.');
+    let triple = (
+        component(parts.next()?)?,
+        component(parts.next()?)?,
+        component(parts.next()?)?,
+    );
+    parts.next().is_none().then_some(triple)
 }
 
 /// A UUID in any spelling `Uuid::parse_str` reads (hyphenated, simple,
@@ -363,7 +361,7 @@ fn bounded_duration(ms: u64) -> Option<u32> {
 /// deliberately not kept, since the only honest description would quote
 /// the element.
 pub(super) fn validate(element: Value) -> Option<Summary> {
-    let raw: RawSummary = serde_json::from_value(element).ok()?;
+    let raw: RawSummary = typed_object(element)?;
     let event_id = parse_id(&raw.event_id)?;
     let attempt_id = parse_id(&raw.attempt_id)?;
     // `error_code` is required on a failure and forbidden otherwise.
@@ -383,6 +381,7 @@ pub(super) fn validate(element: Value) -> Option<Summary> {
     }
     let mut phases: Vec<PhaseTiming> = Vec::with_capacity(raw_phases.len());
     for entry in raw_phases {
+        let entry: RawPhase = typed_object(entry)?;
         if phases.iter().any(|seen| seen.phase == entry.phase) {
             return None;
         }

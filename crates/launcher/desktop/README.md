@@ -15,7 +15,8 @@ that resource retain settings and patch notes but cannot install. Content prepar
 Play readiness. Confirmed uninstall and interrupted-removal recovery are wired
 through Settings. Settings also connects confirmed [Repair](docs/repair.md),
 precommit cancellation, recovery/abandonment and current-backup cleanup. [Play](docs/launch.md)
-now observes native game lifecycle; telemetry export and real-client/platform gates remain open.
+now observes native game lifecycle. Consented [launcher summaries](docs/launcher-summaries.md) are connected,
+but this build configures no endpoint and sends nothing. Real-client/platform gates remain open.
 
 ## Native operation and storage contracts
 
@@ -61,10 +62,9 @@ explicitly cleared paths and consent choices are preserved.
 Preferences persist an optional absolute install path and separate default-off
 `launcher_summary_consent`. Saves require the current preference revision. An
 active operation blocks path changes but permits consent changes. The path check
-does not establish installation ownership or safe deletion. This flag is for
-future launcher summaries only; there is no exporter or game/DLL consent
-integration yet, and no immediate-export revocation claim is made by this
-packet.
+does not establish installation ownership or safe deletion. The flag gates
+[launcher summaries](docs/launcher-summaries.md) only, never game/DLL telemetry. Opt-out aborts a
+send in flight. This build configures no endpoint, so nothing is tracked, queued or sent.
 
 `engine/src/commands.rs` exposes versioned `inspect` and `save_preferences`
 commands. No command lets frontend callers set native operation outcomes or
@@ -275,7 +275,7 @@ must be reported separately when explicitly run.
 Verify the native window, keyboard behavior, actual Tauri IPC, folder chooser
 and saved-folder reveal interactively. Validate the newly connected Effect
 installation controls against actual native IPC, including cancellation and
-recovery. Platform provisioning, telemetry, migration/updater and final
+recovery. Platform provisioning, summary-export activation, migration/updater and final
 self-contained startup and release gates remain open.
 
 The shell includes PNG and Windows ICO resources. Tauri compiles the ICO into

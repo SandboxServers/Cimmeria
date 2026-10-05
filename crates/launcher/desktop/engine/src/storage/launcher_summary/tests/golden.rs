@@ -114,16 +114,6 @@ fn wire_names_are_exactly_the_contract_lists() {
 }
 
 #[test]
-fn mint_request_matches_the_golden_body() {
-    let install_id = Uuid::parse_str("00000000-0000-4000-8000-0000000000aa").unwrap();
-    let body = MintRequest::new(install_id, LauncherVersion::new((0, 1, 0)));
-    assert_eq!(
-        serde_json::to_value(body).unwrap(),
-        fixture(include_str!("../fixtures/mint-request.json"))
-    );
-}
-
-#[test]
 fn mixed_fixture_types_its_valid_rows_and_refuses_the_invalid_one() {
     let request = fixture(include_str!("../fixtures/request-mixed.json"));
     let rows = request["summaries"].as_array().unwrap();

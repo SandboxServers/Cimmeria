@@ -1,6 +1,8 @@
-//! The exporter's seam. It takes a batch under the state lock, sends it with the
+//! The exporter's seam. It takes a batch under the state lock, posts it with the
 //! lock released, and comes back to apply the verdicts. `generation` and the gate
 //! are checked again on every return, so a withdrawal in between applies nothing.
+//! A batch is all an upload carries: the request is anonymous, so there is no
+//! token, session or sender identity to take, keep or hand back here.
 //!
 //! Two counts are at-least-once approximations, not exact totals, by design in
 //! v1. A batch holds copies of what was queued when it was taken:
@@ -15,9 +17,7 @@
 //!   the verdict then removes, so that repeat is never reported.
 use super::{
     endpoint::SummaryEndpoint,
-    schema::{
-        DroppedCounts, LauncherVersion, Summary, SummaryRequest, SummaryResult, SCHEMA_VERSION,
-    },
+    schema::{DroppedCounts, Summary, SummaryRequest, SummaryResult, SCHEMA_VERSION},
     tracker::{lock, Gate, Tracker},
 };
 use crate::storage::DesktopState;
@@ -29,9 +29,9 @@ use uuid::Uuid;
 /// What one upload carries. The entries stay queued until a verdict removes them.
 pub(super) struct Batch {
     pub generation: u64,
-    /// Cancelled when consent is withdrawn. That aborts the exporter's mint or
-    /// POST in flight and ends its backoff wait. Whether anything may still be
-    /// sent or applied is decided under the lock, by the gate and `generation`.
+    /// Cancelled when consent is withdrawn. That aborts the exporter's POST in
+    /// flight and ends its backoff wait. Whether anything may still be sent or
+    /// applied is decided under the lock, by the gate and `generation`.
     pub cancel: CancellationToken,
     /// The drop counters as sent; exactly these are subtracted on success.
     pub dropped: DroppedCounts,
@@ -62,7 +62,6 @@ pub(super) enum Take {
 /// Fixed for the life of one configuration.
 pub(super) struct ExportTarget {
     pub endpoint: SummaryEndpoint,
-    pub launcher_version: LauncherVersion,
     /// Notified when a row is waiting.
     pub wake: Arc<Notify>,
     /// Cancelled when the state is dropped.
@@ -75,7 +74,6 @@ impl DesktopState {
         let tracker = lock(&self.summaries);
         tracker.active.as_ref().map(|active| ExportTarget {
             endpoint: active.endpoint.clone(),
-            launcher_version: active.version,
             wake: tracker.wake.clone(),
             shutdown: tracker.shutdown.clone(),
         })
@@ -125,8 +123,8 @@ impl DesktopState {
         .is_some()
     }
 
-    /// A permanent refusal of the whole body (`400`, `413`): the batch is dropped
-    /// and counted, and the counters it carried are sent again.
+    /// A permanent refusal of the whole body (`400`, `413`, `415`, `422`): the
+    /// batch is dropped and counted, and the counters it carried are sent again.
     pub(super) fn summary_reject_batch(&mut self, batch: &Batch) -> bool {
         if !self.summary_batch_current(batch.generation) {
             return false;

@@ -16,6 +16,13 @@ UUIDs. This page is the desktop side. The wire contract, the server's rules and
 the rows it writes are in the
 [design reference](../../../../docs/architecture/launcher-summary-telemetry.md).
 
+The upload is anonymous: one `POST` of the schema-1 body, with no token, no
+session and no installation or machine identifier. The server takes that exact
+shape from anyone, within a low rate limit for each address, and refuses
+everything else. So every row is self-reported: useful for spotting failure
+patterns, and never a basis for server state, alerts, success-rate claims or
+SLOs.
+
 ## Module map
 
 Everything lives in `engine/src/storage/launcher_summary/`, a child of
@@ -31,15 +38,17 @@ Everything lives in `engine/src/storage/launcher_summary/`, a child of
 | `queue.rs` | The on-disk queue file |
 | `consent.rs` | The consent transitions around the preferences write |
 | `batch.rs` | The exporter's seam into the state: take a batch, check it is still current, apply verdicts |
-| `export.rs` | The exporter task, `run_cycle` and its outcomes |
-| `exchange.rs` | The two HTTP requests of one delivery attempt |
-| `fixtures/` | The golden wire fixtures shared with the server |
+| `export.rs` | The exporter task, `run_cycle`, the tuning and the cycle outcomes |
+| `exchange.rs` | The one HTTP request of a delivery attempt, the anonymous `POST`, and what each status means |
+| `fixtures/` | The four golden wire fixtures shared with the server: three request bodies and one response. There is no mint fixture |
 | `tests/` | The suite; see [Tests](#tests-and-where-they-run) |
 
-Three files outside the folder take part:
+Four files outside the folder take part:
 
 - `engine/src/storage/mod.rs`: `FileJournal::commit` calls the observer, and
   `operations_mut` and `save_preferences_with` finalize and handle consent.
+- `engine/src/storage/install_intent/mod.rs`: install admission commits on the
+  journal without `operations_mut`, so `admit_install_with` finalizes first.
 - `engine/src/storage/install_worker/mod.rs`: a watcher task enters `download`
   and `extraction`, and `publish` finalizes right after the terminal commit.
 - `shell/src/host/summary.rs`: composition (`endpoint: None`), the product
@@ -115,10 +124,10 @@ worker drops its progress sink.
 whole `DesktopState`, because the error code is read from the launcher's own
 result records. So the observer only records the end, and
 `finalize_summaries` builds the row later. It is idempotent and runs at the
-start of `operations_mut`, a preferences save, every summary entry point and
-the exporter's batch take, and right after the install worker's terminal
-commit, while the result record is still that attempt's. One queue write stores
-the row and clears the tracking entry together.
+start of `operations_mut`, install admission, a preferences save, every summary
+entry point and the exporter's batch take, and right after the install worker's
+terminal commit, while the result record is still that attempt's. One queue
+write stores the row and clears the tracking entry together.
 
 The error code of a failed attempt:
 
@@ -130,7 +139,12 @@ The error code of a failed attempt:
 | Repair, uninstall | none | `unspecified` |
 
 Detail is read only while the journal's current operation is still that failed
-attempt. If a second attempt ended before the first was finalized, the first is
+attempt. Every admission therefore finalizes before its commit: launch, runtime
+setup, repair, uninstall and adoption admit through `operations_mut`, and
+install admission, which commits on the journal directly, calls
+`finalize_summaries` itself. A failed launch followed at once by an install
+keeps its code. Should a row still be built after another attempt took the
+journal, or a second attempt end before the first was finalized, the first is
 queued with `unspecified`: both rows are kept, and no detail is guessed.
 
 ## What a row says
@@ -213,8 +227,7 @@ write and `summary_consent_written` after it (`consent.rs`).
 **Opt-out (`true` to `false`).** Before the write, the engine:
 
 1. sets `export_blocked`, which closes the gate;
-2. cancels the batch's token, which aborts a mint or POST in flight and ends a
-   backoff wait;
+2. cancels the batch, which aborts a POST in flight and ends a backoff wait;
 3. forgets the tracked attempt and removes its tracking entry.
 
 After the write returns `Ok` or `PersistenceUncertain`, it replaces the queue
@@ -289,41 +302,56 @@ One cycle (`run_cycle` in `export.rs`):
    rows, expire old ones, check the gate, and copy the oldest rows (at most 32
    and at most 48 KiB serialized) with the queue's generation and drop counters.
    The rows stay queued.
-2. **Mint**: `POST {base}/auth/dev-session` with a fresh random `install_id`.
-   Only `token` is read from the answer.
-3. **Check again** that the gate is open, the endpoint is the configured one and
-   the generation is unchanged.
-4. **Post**: `POST {base}/telemetry/launcher-summary` with the bearer token.
-5. **Apply**, under the lock, only if the batch is still current: remove every
-   answered row and clear the counters that were sent.
+2. **Post**: one `POST {base}/telemetry/launcher-summary` with
+   `Content-Type: application/json` and the batch as the body. That is the
+   whole request. There is no mint step before it, and it carries no
+   `Authorization` header, no cookie and no identifier of the sender.
+3. **Apply**, under the lock, only if the gate is open, the endpoint is the
+   configured one and the generation is unchanged: remove every answered row
+   and clear the counters that were sent.
 
-The state mutex is never held across a request or a sleep.
+A transient answer leads to a wait and another post of the same body. After
+every wait the same three conditions are checked again, and a batch that is no
+longer current is neither sent nor applied. The state mutex is never held
+across a request or a sleep.
 
 | Setting | Production value (`ExportTuning::PRODUCTION`) |
 |---|---|
-| Timeout per request, body included | 2 s for the mint, 2 s for the post |
-| Retries per cycle | 2, so at most 3 attempts. Each retry mints again |
-| Wait on 429 or 503 | `Retry-After`, capped at 60 s; 60 s when the header is absent or unreadable |
+| Timeout for the request, body included | 2 s |
+| Retries per cycle | 2, so at most 3 POSTs |
+| Wait on 503 | `Retry-After`, capped at 60 s; 60 s when the header is absent or unreadable |
+| Wait on 429 | None. The cycle ends; see below |
 | Wait after another transient failure | Jittered backoff, 250 ms to 2 s |
-| Response read limit | 8 KiB for the mint, 4 KiB for the ingest |
+| Response read limit | 4 KiB, read only for a 200 |
 | Redirects | Never followed |
 
-The token is a local of one attempt. It must be non-empty, at most 4,096 bytes
-and a legal header value; it is marked sensitive, and it is never stored, cached
-across attempts or logged. Response bodies are parsed into closed types only.
+Nothing a server answers is kept between requests or sent back: the exporter
+stores no cookie, token or session, and creates no file of its own
+(`every_request_is_anonymous_and_nothing_a_server_issues_is_kept`). A response
+body is parsed into closed types only and never logged.
 
-What a status does to the cycle:
+What an answer does to the cycle (`post` in `exchange.rs`):
 
-| Step | Answer | Action |
-|---|---|---|
-| Mint | 200 with a usable token | Go on |
-| Mint | 400, 404, 405, 415, 422 | The server has no summary session kind: `StoppedForRun`. Rows stay queued |
-| Post | 200 with one known verdict per row | Remove the `accepted`, `duplicate` and `rejected` rows; add the rejected count to `dropped.rejected` |
-| Post | 200 with the wrong length, an unknown verdict, an unparseable or oversized body | Transient. Remove nothing |
-| Post | 400, 413 | Permanent: remove the batch and add its size to `dropped.rejected`. The counters it carried are sent again |
-| Post | 404, 405 | `StoppedForRun`. Rows stay queued |
-| Either | 429, 503 | Wait as above, within the retry budget |
-| Either | Anything else: 401, 3xx, 403, 5xx, a timeout, a refused connection, an unusable token | Transient within the retry budget. Never delete |
+| Answer | Action |
+|---|---|
+| 200 with one known verdict per row | Remove the `accepted`, `duplicate` and `rejected` rows; add the rejected count to `dropped.rejected` |
+| 200 with the wrong length, an unknown verdict, an unparseable or oversized body | Transient. Remove nothing |
+| 400, 413, 415, 422 | Permanent for that batch: remove it and add its size to `dropped.rejected`. The counters it carried are sent again |
+| 404, 405 | The server has no summary route: `StoppedForRun`. Rows stay queued |
+| 429 | End the cycle at once as `GaveUp`, without a retry and without waiting for `Retry-After`. Rows stay queued for the next trigger |
+| 503 | Wait `Retry-After`, capped as above, then retry within the budget |
+| Anything else: 401, 403, 3xx, another 5xx, a timeout, a refused connection | Transient within the retry budget. Never delete |
+
+**Why a 429 is not retried.** The server allows each address only a few
+requests per window (12 an hour by default), and every request that reaches
+its handler is counted. A retry would spend more of the allowance and get the
+same answer, so the rows wait for the next trigger instead: the launcher
+starting, a tracked attempt ending, or a new pre-admission row. A row that is
+still queued 24 hours after it was created expires like any other.
+
+**Why 415 and 422 are permanent.** The route as written answers 415 only to a
+content type the exporter never sends, and never answers 422. Both are handled
+anyway: a server that gives either would give it again for the same body.
 
 How a cycle ends (`CycleOutcome`):
 
@@ -332,10 +360,10 @@ How a cycle ends (`CycleOutcome`):
 | `SkippedNoEndpoint` | No endpoint is configured, or not the one this exporter was started for |
 | `SkippedNoConsent` | The gate is closed: no consent, an opt-out in doubt, or a state that must be reopened |
 | `Empty` | Nothing is queued |
-| `Delivered { accepted, duplicate, rejected }` | The server answered and every answered row left the queue. A body refused for good counts all its rows as rejected |
+| `Delivered { accepted, duplicate, rejected }` | The server answered and every answered row left the queue. A body refused for good (400, 413, 415, 422) counts all its rows as rejected |
 | `ConsentWithdrawn` | The gate closed or the queue was replaced mid-cycle. Nothing was applied |
-| `StoppedForRun` | The server has no summary routes. The task ends and makes no further request in this process run |
-| `GaveUp` | The retry budget ran out. The rows wait for the next trigger |
+| `StoppedForRun` | The server has no summary route. The task ends and makes no further request in this process run |
+| `GaveUp` | The retry budget ran out, or the server answered 429, which is never retried. The rows wait for the next trigger |
 | `StateGone` | The state was dropped. The task ends |
 
 Two counts are at-least-once approximations by design in v1 (`batch.rs`):
@@ -359,25 +387,29 @@ is the opt-in, which refuses to turn consent on over a queue it could not empty.
 |---|---|
 | `journal.rs` | One row per attempt with its closed code, admission eligibility, lost observation, a failed commit, no endpoint |
 | `timings.rs` | Phase totals, the launch row's single `starting` phase, lost observations, saturation |
-| `launch_rows.rs` | Launch outcomes and codes through the real launch worker |
+| `launch_rows.rs` | Launch outcomes and codes through the real launch worker, and a failed launch keeping its code when an install is admitted next |
 | `pre_admission.rs` | Coalescing, the `retry_count` ceiling, eviction rules |
 | `restart.rs` | Tracking on disk, rows without timings after a restart, the startup scrub |
 | `consent.rs` | Opt-out, a failed or uncertain opt-out write, opt-in, the inert component |
 | `queue_file.rs` | Size budgets, overflow, expiry, a broken queue file changing no launcher result |
 | `batch_seam.rs` | Batch size, verdicts, generation checks |
-| `isolation.rs` | Contained panics, a fault during a consent change, the consent-flag source scan |
+| `isolation.rs` | Contained panics (install admission's finalize included), a fault during a consent change, the consent-flag source scan |
 | `golden.rs` | The shared fixtures and every rule the server enforces |
-| `exporter/` | Delivery, outages and retries, hostile answers, races with consent changes, an opt-out aborting a held request, the task's lifetime, the production tuning |
+| `exporter/delivery.rs` | What a cycle sends and what it does with the answer: a queued row posted once, every verdict, a body refused for good, the drop counters, a resend after a lost answer, and that every request is anonymous and nothing a server issues is kept |
+| `exporter/outage.rs` | A server that is down, slow, overloaded, rate limiting, redirecting or without the route: exact request counts and waits. A 429 is one request and no retry |
+| `exporter/hostile.rs` | Answers a hostile or broken server could give; none removes a row |
+| `exporter/races.rs`, `exporter/held.rs` | The batch invalidated mid-cycle, and an opt-out aborting a POST the server is holding |
+| `exporter/task.rs` | When the task is spawned, what wakes it, surviving a give-up and a rate limit, and the production tuning |
 
 Outside the folder: `endpoint.rs` has its own tests,
 `install_worker/summary_tests.rs` covers the real install worker and the phase
 watcher, `install_worker/export_tests.rs` takes a real failed install through
-the exporter to a loopback mock of the two routes, and
+the exporter to a loopback mock of the server's one route, and
 `shell/src/host/summary.rs` tests the version parse, the `JobError` mapping and
 that noting a failure never opens the state.
 
-Every exporter test uses wiremock on loopback. No test contacts a real
-endpoint.
+Every exporter test uses wiremock on loopback and asserts the exact requests
+the mock received. No test contacts a real endpoint.
 
 Where they run:
 
@@ -401,8 +433,10 @@ Where they run:
 
 ## What a rollout packet must change
 
-This packet ships the mechanism switched off. Turning it on is a separate
-packet, after the maintainer's decision recorded as open in the
+This packet ships the mechanism switched off. The owner decided on 2026-10-04
+that the upload is anonymous, strictly structured and rate-limited; that
+decision activates nothing. Turning it on is a separate packet, after the
+maintainer's decisions recorded as open in the
 [public-activation gate](../../../../docs/architecture/launcher-summary-telemetry.md#public-activation-gate).
 It has to change at least these:
 
@@ -423,9 +457,10 @@ It has to change at least these:
    requires ([AGENTS.md](../../../../AGENTS.md)), covering opt-in, opt-out and
    the copy for both states.
 4. **Server side.** Deploy a server that serves the route where the endpoint
-   points, size `CIMMERIA_TELEMETRY_SUMMARY_QUOTA_PER_IP` and the mint allowance
-   for the address launchers arrive from, and import the SigNoz fixtures only
-   after the first rows exist
+   points, and size `CIMMERIA_TELEMETRY_SUMMARY_QUOTA_PER_IP` for the address
+   launchers arrive from: the default of 12 requests per window is shared by
+   everyone behind one NAT, proxy or tunnel. The route needs no HMAC secret.
+   Import the SigNoz fixtures only after the first rows exist
    ([importing](../../../../docs/operations/signoz/launcher-summary-views.md#importing)).
 5. **Native evidence.** Record the Windows and macOS runs of both suites for the
    revision that ships.

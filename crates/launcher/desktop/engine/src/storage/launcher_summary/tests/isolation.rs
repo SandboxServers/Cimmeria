@@ -57,10 +57,11 @@ fn a_panic_inside_any_summary_entry_point_stays_inside() {
         let owner = state.lock().unwrap();
         let faults = owner.summary_faults();
         if inject {
-            // Every entry point and every journal commit hit the fault: eight
-            // entry points (the preferences save and both `operations_mut`
-            // calls finalize first, so they count) and three journal commits.
-            assert_eq!(faults.panics, 11, "{faults:?}");
+            // Every entry point and every journal commit hit the fault: nine
+            // entry points (the preferences save, the install admission and
+            // both `operations_mut` calls finalize first, so they count) and
+            // three journal commits.
+            assert_eq!(faults.panics, 12, "{faults:?}");
             assert_eq!(queued(&owner), []);
         } else {
             assert_eq!(faults, SummaryFaults::default());

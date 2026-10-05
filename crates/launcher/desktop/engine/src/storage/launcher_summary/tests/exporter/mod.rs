@@ -1,4 +1,4 @@
-//! The exporter against a loopback mock of the server's two routes. Every test
+//! The exporter against a loopback mock of the server's one route. Every test
 //! awaits `run_cycle` itself, asserts its typed outcome and the exact requests
 //! the mock received. No backoff sleeps for real: the injected sleeper records.
 use super::*;
@@ -19,11 +19,17 @@ mod outage;
 mod races;
 mod task;
 
-pub(in crate::storage) const MINT: &str = "/auth/dev-session";
-pub(in crate::storage) const INGEST: &str = "/telemetry/launcher-summary";
-const TOKEN: &str = "mock-token";
-/// The `install_id` of `fixtures/mint-request.json`.
-const GOLDEN_INSTALL_ID: Uuid = Uuid::from_u128(0x0000_0000_0000_4000_8000_0000_0000_00aa);
+/// The mock is configured under a base path, as production's server is, so
+/// every asserted path pins that the route is joined to the configured base.
+const BASE_PATH: &str = "/api";
+/// The only path a summary request may have.
+pub(in crate::storage) const INGEST: &str = "/api/telemetry/launcher-summary";
+/// Headers that would identify or authenticate the sender. No request has one.
+const CREDENTIALS: [&str; 3] = ["authorization", "proxy-authorization", "cookie"];
+/// Every header a summary request carries, sorted. It is an allowlist: a
+/// request with any other header fails, so there is no `user-agent` and no
+/// header that could name the sender or the installation.
+const HEADERS: [&str; 4] = ["accept", "content-length", "content-type", "host"];
 /// Loopback with nothing listening. Not `127.0.0.1`: under WSL2 mirrored
 /// networking a connection to an unbound port there hangs instead of failing.
 const DEAD: &str = "http://[::1]:9";
@@ -45,15 +51,10 @@ fn backoff(retry: u32) -> Duration {
 /// What the injected sleeper saw, and what it does while "asleep".
 #[derive(Clone, Default)]
 pub(in crate::storage) struct Probe {
-    mints: Arc<AtomicU64>,
     sleeps: Arc<Mutex<Vec<Duration>>>,
     during_sleep: Arc<Mutex<Option<Box<dyn FnMut() + Send>>>>,
 }
 impl Probe {
-    /// How many mint ids were drawn: one for every attempt, answered or not.
-    fn mints(&self) -> u64 {
-        self.mints.load(Ordering::SeqCst)
-    }
     pub(in crate::storage) fn sleeps(&self) -> Vec<Duration> {
         self.sleeps.lock().unwrap().clone()
     }
@@ -68,7 +69,6 @@ fn test_env(state: &DesktopState) -> (ExportEnv, Probe) {
     let target = state.summary_export_target().expect("an endpoint");
     let mut env = ExportEnv::production(&target).expect("http client");
     env.tuning = ExportTuning {
-        mint_timeout: Duration::from_secs(30),
         post_timeout: Duration::from_secs(30),
         max_retries: 2,
         retry_after_cap: CAP,
@@ -82,12 +82,6 @@ fn test_env(state: &DesktopState) -> (ExportEnv, Probe) {
             action();
         }
         Box::pin(std::future::ready(()))
-    });
-    // Random for every mint, as in production; only counted here.
-    let seen = probe.clone();
-    env.mint_id = Box::new(move || {
-        seen.mints.fetch_add(1, Ordering::SeqCst);
-        Uuid::new_v4()
     });
     (env, probe)
 }
@@ -128,7 +122,7 @@ impl Rig {
     /// Configured for its own mock server. The user has not opted in.
     pub(in crate::storage) async fn start() -> Self {
         let server = MockServer::start().await;
-        let base = server.uri();
+        let base = format!("{}{BASE_PATH}", server.uri());
         Self::open(server, tempfile::tempdir().unwrap(), base, 0)
     }
 
@@ -143,7 +137,7 @@ impl Rig {
         let server = MockServer::start().await;
         let mut rig = Self::open(server, tempfile::tempdir().unwrap(), DEAD.into(), 0);
         // Should a host leave the connection hanging instead, the wait is short.
-        rig.env.tuning.mint_timeout = Duration::from_secs(3);
+        rig.env.tuning.post_timeout = Duration::from_secs(3);
         set_consent(&mut rig.owner(), true);
         rig
     }
@@ -192,18 +186,12 @@ impl Rig {
     }
 
     /// Starts the exporter task as `start` does, with a test environment of its
-    /// own and this rig's deadlines; `probe` then reports that task's waits.
+    /// own and this rig's deadline; `probe` then reports that task's waits.
     pub(in crate::storage) fn start_exporter(&mut self) -> Option<JoinHandle<()>> {
         let (mut env, probe) = test_env(&self.owner());
-        env.tuning.mint_timeout = self.env.tuning.mint_timeout;
         env.tuning.post_timeout = self.env.tuning.post_timeout;
         self.probe = probe;
         export::spawn(&self.state, config(Some(&self.base)), move |_| Some(env))
-    }
-
-    /// Mints the golden fixture's `install_id` instead of a random one.
-    pub(in crate::storage) fn fix_mint_id(&mut self) {
-        self.env.mint_id = Box::new(|| GOLDEN_INSTALL_ID);
     }
 
     fn meddler(&self) -> Meddler {
@@ -246,15 +234,59 @@ impl Rig {
         self.paths().await
     }
 
-    /// The JSON bodies received on `route`, in order.
-    pub(in crate::storage) async fn bodies(&self, route: &str) -> Vec<serde_json::Value> {
+    /// The JSON bodies received on the ingest route, in order.
+    pub(in crate::storage) async fn posts(&self) -> Vec<serde_json::Value> {
         let requests = self.server.received_requests().await.unwrap();
         requests
             .iter()
-            .filter(|request| request.url.path() == route)
+            .filter(|request| request.url.path() == INGEST)
             .map(|request| serde_json::from_slice(&request.body).unwrap())
             .collect()
     }
+
+    /// A cycle of an exporter started for the endpoint configured now.
+    async fn cycle_where_configured(&self) -> CycleOutcome {
+        let (env, _) = test_env(&self.owner());
+        run_cycle(&Arc::downgrade(&self.state), &env).await
+    }
+
+    /// Every request the mock received is a bare `POST` to the ingest route:
+    /// no query, no header that identifies or authenticates the sender, and no
+    /// header at all besides `HEADERS`, each with a value that says nothing.
+    /// `delivery.rs` has the control: the mock does record any other header.
+    async fn assert_anonymous(&self, context: &str) {
+        let host = self.server.address().to_string();
+        for request in self.server.received_requests().await.unwrap() {
+            assert_eq!(request.method.as_str(), "POST", "{context}");
+            assert_eq!(request.url.path(), INGEST, "{context}");
+            assert_eq!(request.url.query(), None, "{context}");
+            for name in CREDENTIALS {
+                assert!(!request.headers.contains_key(name), "{context}: {name}");
+            }
+            assert_eq!(header_names(&request), HEADERS, "{context}");
+            let length = request.body.len().to_string();
+            for (name, value) in [
+                ("accept", "*/*"),
+                ("content-length", length.as_str()),
+                ("content-type", "application/json"),
+                ("host", host.as_str()),
+            ] {
+                assert_eq!(request.headers[name], value, "{context}: {name}");
+            }
+        }
+    }
+}
+
+/// The name of every header of a recorded request, sorted. A header sent more
+/// than once is listed once for each value.
+fn header_names(request: &Request) -> Vec<&str> {
+    let mut names: Vec<&str> = request
+        .headers
+        .iter()
+        .map(|(name, _)| name.as_str())
+        .collect();
+    names.sort_unstable();
+    names
 }
 
 fn fail(state: &mut DesktopState, count: usize) {
@@ -265,24 +297,13 @@ fn fail(state: &mut DesktopState, count: usize) {
     state.finalize_summaries();
 }
 
-async fn mount(server: &MockServer, route: &str, responder: impl Respond + 'static) {
+/// The ingest route answers every `POST` with `responder`.
+async fn mount(server: &MockServer, responder: impl Respond + 'static) {
     Mock::given(method("POST"))
-        .and(path(route))
+        .and(path(INGEST))
         .respond_with(responder)
         .mount(server)
         .await;
-}
-
-/// The server's mint answer. Only `token` is meant to be used.
-fn minted() -> ResponseTemplate {
-    ResponseTemplate::new(200).set_body_json(serde_json::json!({
-        "session_id": "mock-session",
-        "token": TOKEN,
-        "expires_at_ms": 1_800_000_900_000_i64,
-        "upload_endpoint": "/telemetry/client-chunk",
-        "chunk_max_bytes": 65_536,
-        "flush_interval_ms": 5_000,
-    }))
 }
 
 fn results(verdicts: &[&str]) -> ResponseTemplate {
@@ -296,8 +317,16 @@ fn accept_all(request: &Request) -> ResponseTemplate {
     results(&vec!["accepted"; count])
 }
 
-/// Both routes answer as a server with the summary kind does.
+/// The route answers as the server does for a batch of valid rows.
 pub(in crate::storage) async fn mount_ok(server: &MockServer) {
-    mount(server, MINT, minted()).await;
-    mount(server, INGEST, accept_all).await;
+    mount(server, accept_all).await;
+}
+
+/// A second server with the summary route, and its base: a different valid
+/// endpoint.
+async fn elsewhere() -> (MockServer, String) {
+    let server = MockServer::start().await;
+    mount_ok(&server).await;
+    let base = format!("{}{BASE_PATH}", server.uri());
+    (server, base)
 }

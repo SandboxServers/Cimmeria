@@ -95,6 +95,43 @@ async fn a_launch_that_never_starts_is_one_failed_row_through_the_real_worker() 
     assert_ne!(rows[0].event_id, plan.id);
 }
 
+// The launch worker does not finalize after its terminal commit, so a failed
+// launch's row is still pending when the next attempt is admitted. Install
+// admission commits on the journal without `operations_mut` and has to
+// finalize first: once the install is the journal's operation, the launch's
+// record is no longer read and the row would say `unspecified`.
+#[tokio::test]
+async fn a_failed_launch_keeps_its_code_when_an_install_is_admitted_next() {
+    let (_root, state, _clock, plan) = admitted();
+    std::fs::write(plan.resources.helper.path(), b"replacement").unwrap();
+    let state = Arc::new(Mutex::new(state));
+    drop(launch::dispatch(state.clone(), plan.id).unwrap());
+    terminal(&state).await;
+    let mut owner = state.lock().unwrap();
+    assert_eq!(queued(&owner), [], "the launch row is still pending");
+    // The game directory is gone, so the selected directory takes a first
+    // install again. No engine call comes between the terminal and admission.
+    std::fs::remove_dir_all(&plan.installation.destination).unwrap();
+    let install = admit_install(&mut owner);
+    let current = owner.operations().snapshot().operation.clone().unwrap();
+    assert_eq!(
+        (current.id, current.kind),
+        (install, OperationKind::Install)
+    );
+    // Whatever runs next finds the install in the journal, not the launch.
+    owner.finalize_summaries();
+    let rows = queued(&owner);
+    assert_eq!(rows.len(), 1);
+    assert_eq!(
+        (rows[0].operation, rows[0].outcome, rows[0].error_code),
+        (
+            SummaryOperation::Launch,
+            SummaryOutcome::Failed,
+            Some(SummaryErrorCode::LaunchNotStarted)
+        )
+    );
+}
+
 #[tokio::test]
 async fn a_launch_cancelled_before_dispatch_is_one_cancelled_row() {
     let (_root, state, _clock, plan) = admitted();

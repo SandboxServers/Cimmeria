@@ -167,7 +167,6 @@ fn the_export_target_exists_only_with_an_endpoint_and_a_row_wakes_the_exporter()
     state.configure_summaries(config(Some(ENDPOINT)));
     let target = state.summary_export_target().expect("configured");
     assert_eq!(target.endpoint, SummaryEndpoint::parse(ENDPOINT).unwrap());
-    assert_eq!(target.launcher_version, LauncherVersion::new((0, 1, 0)));
     set_consent(&mut state, true);
 
     // No permit is stored until a row is waiting, then exactly one wake-up.

@@ -89,8 +89,8 @@ pub(in crate::storage) struct Tracker {
     pub(super) sources: Sources,
     pub(super) faults: SummaryFaults,
     /// Cancelled when consent is withdrawn, and then replaced. Every batch
-    /// carries a clone: cancelling aborts the exporter's mint or POST in flight
-    /// and ends its backoff wait.
+    /// carries a clone: cancelling aborts the exporter's POST in flight and
+    /// ends its backoff wait.
     pub(super) cancel: CancellationToken,
     /// Wakes the exporter when a row is waiting.
     pub(super) wake: Arc<Notify>,

@@ -270,16 +270,6 @@ fn unpack_and_replay(claims: &TokenClaims, zip_bytes: &[u8]) -> Result<(u64, u64
 }
 
 pub(super) fn verify_bearer(headers: &HeaderMap) -> Result<TokenClaims, IngestError> {
-    verify_bearer_scoped(headers, SCOPE_TELEMETRY_WRITE)
-}
-
-/// Verify the bearer token and require the scope `wanted`. Each ingest
-/// route names its own scope, so a token minted for one route family is
-/// refused by the other.
-pub(super) fn verify_bearer_scoped(
-    headers: &HeaderMap,
-    wanted: &'static str,
-) -> Result<TokenClaims, IngestError> {
     let raw = headers
         .get(axum::http::header::AUTHORIZATION)
         .and_then(|h| h.to_str().ok())
@@ -306,8 +296,10 @@ pub(super) fn verify_bearer_scoped(
     // The scope is the only thing that keeps a minted token from
     // being a general-purpose credential, so it has to be checked
     // here rather than assumed from the mint path.
-    if !claims.has_scope(wanted) {
-        return Err(IngestError::Auth(AuthError::MissingScope { wanted }));
+    if !claims.has_scope(SCOPE_TELEMETRY_WRITE) {
+        return Err(IngestError::Auth(AuthError::MissingScope {
+            wanted: SCOPE_TELEMETRY_WRITE,
+        }));
     }
     Ok(claims)
 }

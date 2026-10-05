@@ -7,7 +7,9 @@ use axum::Json;
 use serde_json::{json, Value};
 
 use super::super::dto::{SummaryError, SummaryResponse};
-use super::{batch, bearer, body_text, capture, element, Env, Harness, Row};
+use super::{
+    batch, body_text, capture, content_type, element, with_authorization, Env, Harness, Row,
+};
 
 const MARKER: &str = "ZZMARKER\nlevel=ERROR msg=forged";
 /// The part of the marker that survives any escaping of the newline.
@@ -115,22 +117,48 @@ fn a_marker_in_the_envelope_reaches_no_row_and_no_response() {
     }
 }
 
-/// The marker as the token (a header cannot hold the newline, so only the
-/// printable part): a 401 whose body does not repeat it, and no row.
+/// The marker as an `Authorization` header (a header cannot hold the
+/// newline, so only the printable part). The route does not read the
+/// header, so the request is accepted, and the marker is in neither the
+/// response nor any of the four rows.
 #[test]
-fn a_marker_as_the_token_reaches_no_row_and_no_response() {
+fn a_marker_as_the_authorization_header_reaches_no_row_and_no_response() {
     let _env = Env::install();
-    for token in [
+    for value in [
         NEEDLE.to_string(),
-        format!("{NEEDLE}.{NEEDLE}"),
-        format!("e30.{NEEDLE}"),
+        format!("Bearer {NEEDLE}"),
+        format!("Bearer {NEEDLE}.{NEEDLE}"),
+        format!("Bearer e30.{NEEDLE}"),
     ] {
         let mut h = Harness::new();
-        h.headers = bearer(&token);
+        h.headers = with_authorization(&value);
         let (result, rows) = capture(|| h.post_json(&batch(vec![element(1)])));
-        assert!(result.is_err(), "{token}");
         let text = response_text(result);
-        assert_clean(&token, &text, &rows);
+        assert_eq!(text, r#"{"results":["accepted"]}"#, "{value}");
+        assert_eq!(rows.len(), 4, "{value}: {rows:#?}");
+        assert_clean(&value, &text, &rows);
+    }
+}
+
+/// The marker as the content type: a 415 whose body does not repeat it,
+/// and no row.
+#[test]
+fn a_marker_as_the_content_type_reaches_no_row_and_no_response() {
+    let _env = Env::install();
+    for value in [
+        NEEDLE.to_string(),
+        format!("{NEEDLE}/json"),
+        format!("application/{NEEDLE}"),
+        format!("application/json; {NEEDLE}=1"),
+    ] {
+        let mut h = Harness::new();
+        h.headers = content_type(Some(&value));
+        let (result, rows) = capture(|| h.post_json(&batch(vec![element(1)])));
+        assert!(result.is_err(), "{value} must be refused");
+        let text = response_text(result);
+        assert_eq!(text, "Content-Type must be application/json", "{value}");
+        assert_clean(&value, &text, &rows);
+        assert!(rows.is_empty(), "{value}: {rows:#?}");
     }
 }
 

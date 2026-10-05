@@ -59,10 +59,10 @@ async fn the_task_delivers_at_start_and_on_each_new_row_and_ends_with_the_state(
     // A row left by an earlier run is sent without any trigger.
     rig.fail(1);
     let task = rig.start_exporter().expect("an exporter task");
-    assert_eq!(rig.paths_after(2).await, [MINT, INGEST]);
+    assert_eq!(rig.paths_after(1).await, [INGEST]);
     // A new terminal row wakes the task.
     rig.fail(1);
-    assert_eq!(rig.paths_after(4).await, [MINT, INGEST, MINT, INGEST]);
+    assert_eq!(rig.paths_after(2).await, [INGEST; 2]);
     queue_empties(&rig).await;
 
     // Positive control: while the state lives, its directory is locked.
@@ -80,18 +80,18 @@ async fn the_task_delivers_at_start_and_on_each_new_row_and_ends_with_the_state(
 }
 
 #[tokio::test]
-async fn the_task_ends_when_the_server_has_no_summary_routes() {
+async fn the_task_ends_when_the_server_has_no_summary_route() {
     let mut rig = Rig::opted_in().await;
-    mount(&rig.server, MINT, ResponseTemplate::new(404)).await;
+    mount(&rig.server, ResponseTemplate::new(404)).await;
     let rows = rig.fail(1);
     let task = rig.start_exporter().expect("an exporter task");
     ended(task).await;
-    assert_eq!(rig.paths().await, [MINT]);
+    assert_eq!(rig.paths().await, [INGEST]);
     assert_eq!(queued(&rig.owner()), rows);
     // No exporter is left to make a request, and none can be started again.
     assert!(rig.start_exporter().is_none());
     assert_eq!(rig.fail(1).len(), 2);
-    assert_eq!(rig.paths().await, [MINT]);
+    assert_eq!(rig.paths().await, [INGEST]);
 }
 
 async fn queue_empties(rig: &Rig) {
@@ -131,7 +131,7 @@ async fn a_task_started_without_consent_delivers_after_the_opt_in() {
 
     set_consent(&mut rig.owner(), true);
     assert_eq!(rig.fail(1).len(), 1);
-    assert_eq!(rig.paths_after(2).await, [MINT, INGEST]);
+    assert_eq!(rig.paths_after(1).await, [INGEST]);
     queue_empties(&rig).await;
     task.abort();
 }
@@ -139,33 +139,61 @@ async fn a_task_started_without_consent_delivers_after_the_opt_in() {
 #[tokio::test]
 async fn the_task_survives_giving_up_and_delivers_once_the_server_answers() {
     let mut rig = Rig::opted_in().await;
-    mount(&rig.server, MINT, minted()).await;
-    mount(&rig.server, INGEST, ResponseTemplate::new(500)).await;
+    mount(&rig.server, ResponseTemplate::new(500)).await;
     let waiting = rig.fail(1);
     let task = rig.start_exporter().expect("an exporter task");
     // The row was queued before the task started, so its wake-up is still
     // stored: the task runs the cycle at start and one more. Each makes three
     // attempts and gives up.
-    assert_eq!(rig.paths_after(12).await, [MINT, INGEST].repeat(6));
+    assert_eq!(rig.paths_after(6).await, [INGEST; 6]);
     assert_eq!(rig.probe.sleeps(), [BACKOFFS, BACKOFFS].concat());
     assert_eq!(queued(&rig.owner()), waiting, "the row waits");
 
-    // The server recovers. The next row wakes the same task, which sends both.
+    delivers_both_on_the_next_row(&rig).await;
+    task.abort();
+}
+
+// A rate-limited cycle is one request and no wait, and the task is still there
+// for the next trigger. The test above is the control: under a `500` the same
+// two cycles make six requests and wait four times.
+#[tokio::test]
+async fn the_task_survives_a_rate_limit_and_delivers_on_the_next_trigger() {
+    let mut rig = Rig::opted_in().await;
+    mount(
+        &rig.server,
+        ResponseTemplate::new(429).insert_header("retry-after", "3"),
+    )
+    .await;
+    let waiting = rig.fail(1);
+    let task = rig.start_exporter().expect("an exporter task");
+    // The cycle at start and the one for the stored wake-up: one request each.
+    // A retry would have recorded its wait before the second request was sent.
+    assert_eq!(rig.paths_after(2).await, [INGEST; 2]);
+    assert_eq!(rig.probe.sleeps(), []);
+    assert_eq!(queued(&rig.owner()), waiting, "the row waits");
+    assert!(!task.is_finished(), "the exporter stays alive");
+
+    delivers_both_on_the_next_row(&rig).await;
+    assert_eq!(rig.probe.sleeps(), []);
+    task.abort();
+}
+
+/// The server recovers. The next row wakes the same task, which sends that row
+/// and the one that was waiting in a single request.
+async fn delivers_both_on_the_next_row(rig: &Rig) {
     rig.server.reset().await;
     mount_ok(&rig.server).await;
     assert_eq!(rig.fail(1).len(), 2);
-    assert_eq!(rig.paths_after(2).await, [MINT, INGEST]);
-    queue_empties(&rig).await;
-    let posts = rig.bodies(INGEST).await;
+    assert_eq!(rig.paths_after(1).await, [INGEST]);
+    queue_empties(rig).await;
+    let posts = rig.posts().await;
     assert_eq!(posts.len(), 1);
     assert_eq!(posts[0]["summaries"].as_array().map(Vec::len), Some(2));
-    task.abort();
 }
 
 #[test]
 fn production_tuning_is_the_recorded_contract() {
     let tuning = ExportTuning::PRODUCTION;
-    assert_eq!(tuning.mint_timeout, Duration::from_secs(2));
     assert_eq!(tuning.post_timeout, Duration::from_secs(2));
     assert_eq!(tuning.max_retries, 2);
     assert_eq!(tuning.retry_after_cap, Duration::from_secs(60));

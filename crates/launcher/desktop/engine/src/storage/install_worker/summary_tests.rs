@@ -4,9 +4,7 @@ use super::tests::outcome;
 use super::*;
 use crate::{
     client_setup::login_servers::default_servers,
-    launcher_summary::{
-        MintRequest, Summary, SummaryErrorCode, SummaryOperation, SummaryOutcome, SummaryPhase,
-    },
+    launcher_summary::{Summary, SummaryErrorCode, SummaryOperation, SummaryOutcome, SummaryPhase},
     storage::launcher_summary::tests::{
         config, open_phase, queue_bytes, queued, upload_body, Clock, ENDPOINT,
     },
@@ -177,8 +175,8 @@ async fn a_successful_install_is_one_succeeded_row_with_its_download_and_extract
     assert!(rows[0].duration_ms.is_some());
 }
 
-// A retry is admitted without a finalize of its own. The failed attempt's row
-// must exist by then, built while the install result was still its own.
+// The worker finalizes right after its terminal commit, so the failed attempt's
+// row exists before a retry is admitted, built while the result was its own.
 #[tokio::test]
 async fn a_failed_install_is_finalized_before_a_retry_can_replace_its_result() {
     let release = verified(&archive(true));
@@ -198,7 +196,7 @@ async fn a_failed_install_is_finalized_before_a_retry_can_replace_its_result() {
     // What the queue holds before anything but the worker has run.
     let at_once = queued(&state.lock().unwrap());
     // The shell's retry: remove the failed attempt's files, then admit again.
-    // Neither call finalizes summaries.
+    // The row must already be there; `at_once` is taken before either call.
     let retry = Uuid::new_v4();
     {
         let mut owner = state.lock().unwrap();
@@ -410,11 +408,6 @@ async fn no_path_url_or_operation_id_reaches_the_queue_or_a_request_body() {
     assert_eq!(rows.len(), 1);
     let queue = queue_bytes(&owner).expect("queue file");
     let body = upload_body(&mut owner).expect("one row to upload");
-    let mint = serde_json::to_vec(&MintRequest::new(
-        Uuid::new_v4(),
-        crate::launcher_summary::LauncherVersion::new((0, 1, 0)),
-    ))
-    .unwrap();
     let row = serde_json::to_vec(&rows[0]).unwrap();
 
     let id_forms = [
@@ -434,7 +427,6 @@ async fn no_path_url_or_operation_id_reaches_the_queue_or_a_request_body() {
     for (name, bytes) in [
         ("queue file", &queue),
         ("ingest body", &body),
-        ("mint body", &mint),
         ("summary", &row),
     ] {
         for marker in markers {

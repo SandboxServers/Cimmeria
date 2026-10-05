@@ -117,6 +117,10 @@ impl DesktopState {
             u64,
         ) -> Result<bool, ContractError>,
     ) -> Result<InstallAdmission, IntentError> {
+        // This path commits on the journal without `operations_mut`, so it
+        // finalizes a pending summary itself, while the journal still shows the
+        // attempt that ended.
+        self.finalize_summaries();
         self.ensure_updater_idle()?;
         let AdmissionRequest {
             id,
