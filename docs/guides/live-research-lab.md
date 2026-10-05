@@ -396,18 +396,18 @@ The supervisor polls the bridge heartbeat (the client's Tick-drain counter) once
 - five failed polls in a row (`MAX_HEARTBEAT_FAILS`, about 30 s of stall), unless another bridge call completed within the last 5 s (`heartbeat::BUSY_GRACE_MS`);
 - polls that answer but show the counter stopped for 8 s (`HEARTBEAT_STALE_AFTER`).
 
-A world load blocks the main thread too: loads of Ihpet_Crater_Light (world 1300) took 19-42 s on a busy machine, with a further hitch after `mapLoaded`, and were killed mid-load. So before either rule kills, the watchdog checks the **load grace** (`supervisor::stall_grace`). It reads the main thread's CPU time from outside the process (`supervisor::main_thread`, the process's first-created thread), because nothing can be asked of the client while it is blocked. A thread that used at least 2 % of the interval since the last poll is busy, which is what a load looks like; a deadlocked thread or one in a crash dialog uses none. A busy stall waits up to 120 s, counted from the last Tick advance. An idle stall dies at the rules above, and a busy one dies at the cap. `CIMMERIA_LAB_LOAD_GRACE_SECS` changes the cap (in `labd.env` for the daemon; `0` turns the grace off).
+A world load blocks the main thread too: loads of Ihpet_Crater_Light (world 1300) took 19-42 s on a busy machine, with a further hitch after `mapLoaded`, and were killed mid-load. So before either rule kills, the watchdog checks the **load grace** (`supervisor::stall_grace`). It reads the main thread's CPU time from outside the process (`supervisor::main_thread`, the process's first-created thread), because nothing can be asked of the client while it is blocked. A thread that used at least 2 % of the interval since the last poll is busy, which is what a load looks like; a deadlocked thread or one in a crash dialog uses none. Busy is sticky for the stall: once one sample inside it shows work, the stall stays in grace until the Tick counter advances or the cap, so a disk-bound stretch of a load doesn't get it killed. The first two samples after the last Tick advance don't count, because they still cover frames the thread rendered before it stalled. A busy stall waits up to 120 s, counted from the last Tick advance. A stall that never showed work dies at the rules above, at the old time, and a busy one dies at the cap. `CIMMERIA_LAB_LOAD_GRACE_SECS` changes the cap (in `labd.env` for the daemon; `0` turns the grace off; at most 3600).
 
 What `labd.log` shows:
 
 | Line (`WARN`) | Meaning |
 |---|---|
-| `load grace in effect` | a kill rule tripped but the main thread is busy; `stalled_ms`, `grace_ms`, `fails` and `main_thread_cpu_ms` over `interval_ms` say how far in |
+| `load grace in effect` | a kill rule tripped but the stall has shown work; `stalled_ms`, `grace_ms`, `fails`, and `main_thread_cpu_ms` over `interval_ms` say how far in, and `busy_now` whether this last interval was busy too |
 | `client main thread busy past the load grace; terminating` | `load_in_progress=true`: a load, or a busy loop, outlasted the cap |
 | `client hung (main thread stalled and idle); terminating` | `load_in_progress=false`; `rule` is `heartbeat unreachable` or `heartbeat stale` |
 | `client process gone` | the process exited on its own |
 
-A spinning main thread also reads as busy, so a busy-loop hang now dies at the cap instead of after about 30 s.
+A spinning main thread also reads as busy, and so does a deadlock that strikes mid-load: both die at the cap instead of after about 30 s.
 
 After a kill the watchdog relaunches the client and logs back in, but only while someone holds the lease, and at most three crashes in ten minutes (`recovery cap reached (3 crashes / 10 min); not relaunching`). The count lives in the supervisor's memory, so it resets ten minutes after the oldest of those crashes, or when the supervisor restarts (`pwsh tools/lab/daemon.ps1 restart`). `lab_client_start` launches a client whatever the count.
 

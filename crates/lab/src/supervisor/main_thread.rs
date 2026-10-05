@@ -127,19 +127,47 @@ mod win {
 mod tests {
     use super::*;
 
-    /// This test's own process: its main thread exists, and a busy loop
-    /// on this thread shows up as CPU time. Windows only (the sampler is
-    /// a no-op elsewhere).
+    /// The sampler picks the process's first thread, not a newer one:
+    /// a thread spawned here (after the main thread and the test thread)
+    /// is never chosen, and its own busy loop shows as CPU time, which
+    /// pins the FILETIME-to-ms conversion. Windows only (the sampler is a
+    /// no-op elsewhere).
     #[cfg(windows)]
     #[test]
-    fn the_sampler_reads_a_live_main_thread() {
+    fn the_sampler_picks_the_first_thread_and_reads_its_cpu() {
+        use std::sync::mpsc;
+        use std::time::{Duration, Instant};
+        use windows_sys::Win32::System::Threading::GetCurrentThreadId;
+
+        let (tx, rx) = mpsc::channel();
+        let worker = std::thread::spawn(move || {
+            // SAFETY: no preconditions.
+            let tid = unsafe { GetCurrentThreadId() };
+            let t0 = Instant::now();
+            let mut x = 0u64;
+            while t0.elapsed() < Duration::from_millis(300) {
+                x = std::hint::black_box(x.wrapping_add(1));
+            }
+            tx.send(tid).unwrap();
+            std::thread::park();
+        });
+        let worker_tid = rx.recv().unwrap();
+
         let pid = std::process::id();
-        let tid = find_main_thread(pid).expect("a running process has a main thread");
-        assert!(thread_cpu_ms(tid).is_some());
+        let main = find_main_thread(pid).expect("a running process has a main thread");
+        assert_ne!(main, worker_tid, "the newest thread was picked");
+        let worker_cpu = thread_cpu_ms(worker_tid).expect("the worker is readable");
+        assert!(
+            worker_cpu >= 100,
+            "300 ms of spinning read as {worker_cpu} ms of CPU"
+        );
 
         let mut s = MainThreadCpu::default();
         assert_eq!(s.sample(pid, 0), None, "the first sample has no interval");
         assert!(s.sample(pid, 1_000).is_some());
+
+        worker.thread().unpark();
+        worker.join().unwrap();
     }
 
     #[test]

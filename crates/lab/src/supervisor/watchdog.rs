@@ -3,9 +3,9 @@
 //! quarantine the in-flight command, and relaunch within the recovery cap
 //! (ADR section 6). Split out of `mod.rs` to keep it under the file-size cap.
 
-use super::heartbeat::{self, HeartbeatState, BUSY_GRACE_MS};
+use super::heartbeat::HeartbeatState;
 use super::main_thread::MainThreadCpu;
-use super::stall_grace::{self, Poll, Verdict};
+use super::stall_grace::{self, Heartbeat, Poll, StallTracker, Verdict};
 use serde_json::Value;
 
 use super::flows::{self, login::LoginRequest};
@@ -26,7 +26,10 @@ impl Supervisor {
         );
         let started_ms = now_ms();
         let mut cpu = MainThreadCpu::default();
-        let mut fails = 0u32;
+        // Every kill decision but "the process is gone" lives in the
+        // tracker (pure, tested): the failure count, the stale rule and
+        // the load grace.
+        let mut tracker = StallTracker::new(MAX_HEARTBEAT_FAILS, grace);
         loop {
             tokio::time::sleep(WATCHDOG_POLL).await;
 
@@ -38,38 +41,39 @@ impl Supervisor {
                 }
             }
 
-            let poll = match self.bridge.heartbeat().await {
+            let hb = match self.bridge.heartbeat().await {
                 Ok(count) => {
-                    fails = 0;
                     let mut st = self.state.lock().await;
                     let ts = now_ms();
                     st.record_heartbeat(count, ts);
-                    Poll::Answered {
+                    Heartbeat::Answered {
                         stale: st.watchdog.observe(count, ts) == HeartbeatState::Stale,
                     }
                 }
                 Err(_) => {
-                    fails = heartbeat::next_fail_count(
-                        fails,
-                        self.bridge.ms_since_last_ok(),
-                        BUSY_GRACE_MS,
-                    );
                     if !process::is_alive(my_pid) {
-                        tracing::warn!(pid = my_pid, fails, "client process gone");
+                        tracing::warn!(pid = my_pid, "client process gone");
                         self.handle_death(my_pid).await;
                         return;
                     }
-                    Poll::Failed { fails }
+                    Heartbeat::Failed {
+                        ms_since_last_ok: self.bridge.ms_since_last_ok(),
+                    }
                 }
             };
 
-            // Sampled every poll so the interval is always the last one.
+            // Sampled every poll so each interval is the last one.
             let ts = now_ms();
-            let (cpu_ms, wall_ms) = cpu.sample(my_pid, ts).unwrap_or((0, 0));
-            let busy = stall_grace::main_thread_busy(cpu_ms, wall_ms);
+            let sample = cpu.sample(my_pid, ts);
+            let (cpu_ms, wall_ms) = sample.unwrap_or((0, 0));
             let stalled_ms = self.state.lock().await.watchdog.stalled_ms(ts, started_ms);
+            let step = tracker.step(hb, sample, ts, stalled_ms);
+            let fails = match step.poll {
+                Poll::Failed { fails } => fails,
+                Poll::Answered { .. } => 0,
+            };
 
-            match stall_grace::decide(poll, MAX_HEARTBEAT_FAILS, busy, stalled_ms, grace) {
+            match step.verdict {
                 Verdict::Continue => {}
                 Verdict::Grace { stalled_ms } => {
                     tracing::warn!(
@@ -79,6 +83,7 @@ impl Supervisor {
                         grace_ms = grace.as_millis() as u64,
                         main_thread_cpu_ms = cpu_ms,
                         interval_ms = wall_ms,
+                        busy_now = step.busy_now,
                         "client main thread stalled but busy (world load?); load grace in effect"
                     );
                 }
@@ -86,7 +91,7 @@ impl Supervisor {
                     loading,
                     stalled_ms,
                 } => {
-                    let rule = match poll {
+                    let rule = match step.poll {
                         Poll::Answered { .. } => "heartbeat stale",
                         Poll::Failed { .. } => "heartbeat unreachable",
                     };
