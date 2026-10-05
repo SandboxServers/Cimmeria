@@ -24,13 +24,15 @@
 //! hub's own world, and whose world [`SpaceManager::world_is_enterable`] —
 //! the gates on the fourteen 2009 worlds this server has no map for are left
 //! out and logged by name, because dialling one tears the traveller out of
-//! the Debug Area and then fails to create a space for them.
+//! the Debug Area and then fails to create a space for them. A gate whose
+//! arrival is known to be unusable is also left out, with its reason, until
+//! it is pinned ([`HUB_EXCLUDED_GATES`]).
 //!
 //! **Nothing is persisted.** The top-up lives on the cell entity and dies
 //! with it on the next transfer. A gate the GM actually travels to is then
 //! learned by the arrival unlock in `base::world_entry::gate_travel`, the
-//! same as a `gmDHD` dial; the hub itself never is (that statement filters
-//! `debug_dial_hub`).
+//! same as a `gmDHD` dial; the hub itself never enters an address book
+//! (that statement filters `debug_dial_hub`).
 
 use tokio::sync::mpsc;
 
@@ -51,6 +53,22 @@ pub(crate) fn update_stargate_address_args(stargate_id: i32) -> Vec<u8> {
     args
 }
 
+/// Gates the hub does not offer although their world can be entered, each
+/// with the reason the grant log carries. An entry leaves when its arrival is
+/// fixed (an `arrival_*` pin or a respawner for the world); the live-DB
+/// survey in `gate_travel/tests/debug_area_live_db.rs` re-measures it.
+///
+/// - 22 `Men'fa (SGU)`: the gate row (and the client's cooked entry) is at
+///   y -191.9, but `menfa_light.nav` has no polygon within 3 m of it and its
+///   playable surface at that XZ is near y 0, about 192 m above. Men'fa
+///   (Praxis), gate 7, has the same row and stands on `menfa_dark.nav`, so
+///   the two maps differ and only an in-client look can place the Light
+///   gate's pad (DA-06). World 78 has no respawner to fall back on.
+pub(crate) const HUB_EXCLUDED_GATES: &[(i32, &str)] = &[(
+    22,
+    "arrival ~192 m below menfa_light.nav's playable surface; needs an arrival_* pin (DA-06)",
+)];
+
 /// What [`top_up_gm_dial_hub`] did, for the caller's tests and the log.
 #[derive(Debug, Default, Clone, PartialEq, Eq)]
 pub(crate) struct HubTopUp {
@@ -60,6 +78,8 @@ pub(crate) struct HubTopUp {
     pub(crate) already_known: usize,
     /// Gates left out because their world cannot be entered here, ascending.
     pub(crate) unenterable: Vec<i32>,
+    /// Gates left out by [`HUB_EXCLUDED_GATES`], ascending.
+    pub(crate) excluded: Vec<i32>,
 }
 
 /// If `hub_stargate_id` is a `debug_dial_hub` gate and the caller is a GM,
@@ -106,12 +126,15 @@ pub(crate) async fn top_up_gm_dial_hub(
 
     let mut offered: Vec<(i32, String)> = Vec::new();
     let mut unenterable: Vec<(i32, String)> = Vec::new();
+    let mut excluded: Vec<(i32, String)> = Vec::new();
     for (&id, gate) in &space_mgr.stargates {
         if gate.debug_dial_hub || gate.world_name == hub_world {
             continue;
         }
         let row = (id, gate.world_name.clone());
-        if space_mgr.world_is_enterable(&gate.world_name) {
+        if HUB_EXCLUDED_GATES.iter().any(|(x, _)| *x == id) {
+            excluded.push(row);
+        } else if space_mgr.world_is_enterable(&gate.world_name) {
             offered.push(row);
         } else {
             unenterable.push(row);
@@ -119,6 +142,7 @@ pub(crate) async fn top_up_gm_dial_hub(
     }
     offered.sort_unstable_by_key(|(id, _)| *id);
     unenterable.sort_unstable_by_key(|(id, _)| *id);
+    excluded.sort_unstable_by_key(|(id, _)| *id);
 
     // `29:Debug Area@DebugArea`; the name is left out when the book has none.
     let label = |id: i32, world: &str| match names.stargate(id) {
@@ -129,6 +153,7 @@ pub(crate) async fn top_up_gm_dial_hub(
     let entity = space_mgr.get_entity_mut(entity_id)?;
     let mut result = HubTopUp {
         unenterable: unenterable.iter().map(|(id, _)| *id).collect(),
+        excluded: excluded.iter().map(|(id, _)| *id).collect(),
         ..HubTopUp::default()
     };
     let mut granted_labels: Vec<String> = Vec::new();
@@ -161,6 +186,17 @@ pub(crate) async fn top_up_gm_dial_hub(
         unenterable = %unenterable
             .iter()
             .map(|(id, world)| label(*id, world))
+            .collect::<Vec<_>>()
+            .join(", "),
+        excluded = %excluded
+            .iter()
+            .map(|(id, world)| {
+                let why = HUB_EXCLUDED_GATES
+                    .iter()
+                    .find(|(x, _)| x == id)
+                    .map_or("", |(_, why)| why);
+                format!("{} ({why})", label(*id, world))
+            })
             .collect::<Vec<_>>()
             .join(", "),
         reason = "gm_dial_hub_grant",

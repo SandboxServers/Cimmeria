@@ -68,9 +68,10 @@ CREATE TABLE stargates (
 --     refuses a hub gate as a destination even when the id is in the
 --     player's book, so a crafted `onDialGate` naming it is refused with
 --     the same bytes as an unknown address.
---   * Its address is never learned: the arrival unlock (both halves), the
---     content verb `grant_stargate_address`, the GM top-ups and the base
---     address append all skip hub gates.
+--   * Its address never enters an address book: the arrival unlock (both
+--     halves), the content verb `grant_stargate_address`, the GM top-ups and
+--     the base address append all skip hub gates. (The gate itself is in
+--     every client's cooked stargate table; that is a catalogue, not a book.)
 --   * A GM (access level >= 2) who opens the DHD on the hub's world gets
 --     every non-hub gate whose world this server can enter added to their
 --     in-memory address book for the session (audit-logged, never

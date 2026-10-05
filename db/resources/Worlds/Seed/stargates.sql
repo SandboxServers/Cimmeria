@@ -102,8 +102,8 @@ INSERT INTO stargates (address1, address2, address3, address4, address5, address
 -- resolves the gate's Kismet sequences by event id, and the client plays
 -- them on whichever map is loaded, so two rows can share one set.
 --
--- `debug_dial_hub = true`: outbound only. Nobody can dial it, nobody ever
--- learns it, and a GM who opens its DHD can dial every other gate this
+-- `debug_dial_hub = true`: outbound only. Nobody can dial it, it never
+-- enters an address book, and a GM who opens its DHD can dial every other gate this
 -- server can enter (column comment in Worlds/Tables/stargates.sql). Its
 -- 6-glyph address 38-37-36-35-34-33 is real only so the cooked entry the
 -- client is sent (`cimmeria_resources::base::stargate_overrides`) collides

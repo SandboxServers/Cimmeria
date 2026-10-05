@@ -52,7 +52,7 @@ The owner can reverse any of these. Each is recorded so a reviewer can find it.
 | D-DA1 | The Debug Area is a new server world **1300 `DebugArea`** on the shipped client map **Ihpet_Crater_Light**. | Only candidate with rooms, dense map-authored cover (6,324 `SGWSpecCoverNode`s), a flat 60 m sunken pit for an arena, a 420 m terrace for a gallery and a crater wall as its boundary. Survey: [npc-ai-spawn-advisor memory](../../../.claude/agent-memory/npc-ai-spawn-advisor/debug-area-map-survey.md). The original test maps (Combat_Terrain_Test, Mob_TestMap, InteriorCombatTest, MissionTest*) were never recovered in any archived build. |
 | D-DA2 | New id, served through cooked-data category 12 (`CookedWorldInfo`), not a remap of a shipped test world id (54, 53, 21, 1). | The category-12 route is proven in-client by the historical CellBlocks (1201-1207). Remapping a shipped `_N` entry breaks the "every shipped world served untouched" rule. |
 | D-DA3 | Shared and always loaded (`Instanced="false"`, listed in `cell_spaces.xml`). | Two testers can meet, NPC battles and respawn timers keep running. |
-| D-DA4 | GM-only travel *in*: `.gotolocation DebugArea` (and the native `/gmgotolocation`). **Amended 2026-10-04 (DA-07):** world 1300 does get a stargate row, gate 29 on the map's own gate prop, but it is outbound only (`stargates.debug_dial_hub`): nobody can dial it or learn its address, and a GM at its DHD can dial every gate on a world the server loads. `.gotolocation DebugArea` with no coordinates now lands on the gate's arrival pin, which is the Z1 point (respawner 130). | Keeps ordinary players out without a client patch; the seeded playtest accounts are GMs. The amendment is the owner's request: "I want to be able to outbound dial any gate in the game" from the Debug Area gate. A teleporter NPC in the stasis hub is left to the owner. Details: [gate-travel.md](../../gameplay/gate-travel.md#debug-area-dial-out). |
+| D-DA4 | GM-only travel *in*: `.gotolocation DebugArea` (and the native `/gmgotolocation`). **Amended 2026-10-04 (DA-07):** world 1300 does get a stargate row, gate 29 on the map's own gate prop, but it is outbound only (`stargates.debug_dial_hub`): nobody can dial it or learn its address, and a GM at its DHD can dial every gate on a world the server loads. `.gotolocation DebugArea` with no coordinates now lands on the gate's arrival pin, which is the Z1 point (respawner 130). DA-02 (#1230) enforces GM-only entry on the server: a non-GM is sent to their faction start at login and on every cross-world transfer, so the hub's non-GM branch is reachable only by a GM demoted while inside. | Keeps ordinary players out without a client patch; the seeded playtest accounts are GMs. The amendment is the owner's request: "I want to be able to outbound dial any gate in the game" from the Debug Area gate. A teleporter NPC in the stasis hub is left to the owner. Details: [gate-travel.md](../../gameplay/gate-travel.md#debug-area-dial-out). |
 | D-DA5 | The world reads the client map's navmesh and occluder files (`ihpet_crater_light.nav/.occ`) when it has none of its own. | Avoids a 5 MB copy per added world. |
 | D-DA6 | Tags `DebugArea_*`, never `DebugHub_*`. | The hub's tests count the `DebugHub_` prefix. |
 | D-DA7 | Training dummies never retaliate. | A NEUTRAL faction-10 NPC still fires back with 592 when shot, which spoils damage and heal measurements. Reuse the `.dummy` "never attacks" mechanism as a seedable flag. |
@@ -137,6 +137,15 @@ transport, historical CellBlocks, gate travel) stay tested in their own zones.
 - NPC heights on open terrain (navmesh vs terrain gap).
 - Invisible walls or blockers at compound doorways.
 - The map's own Kismet or stargate prefab firing on load. Gate 29 now carries the map gate's event set, so the gate opens and the DHD answers (DA-07); the dial-out itself needs a live check (DA-06).
+- DA-07 checks for DA-06: as a GM, the Debug Area DHD lists the 13 offered
+  gates after the category-13 resync, and a dial opens the gate and the
+  `DebugArea.Stargate` volume crosses it. Men'fa (SGU), gate 22: find the
+  real gate pad on Menfa_Light (the row is ~192 m below the playable
+  surface) and pin `stargates.arrival_*`, then drop it from
+  `HUB_EXCLUDED_GATES`. SGC W1 (gate 27): the landing beside its off-mesh
+  gate row. A non-GM on an ordinary world (Harset, say) opens a DHD after
+  the stargate-table resync, and their list and a dial still work: the
+  category-13 bump resyncs every player's gate table, not only GMs'.
 - `.gotolocation DebugArea` from Ihpet_Crater_Light (world 73), and back. Both
   send `mapPath = Ihpet_Crater_Light`, and the client skips the UE3 load when
   `mapPath` equals the map it holds (SGW.exe `FUN_00df27f0`). Expected: no

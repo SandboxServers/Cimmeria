@@ -905,26 +905,33 @@ The map's own stargate, 28 m behind the arrival point, is the Debug
 Area gate (stargate 29, packet DA-07). It is **outbound only**.
 
 **What it does.** Right-click the DHD beside the gate. If your account is a
-GM, the dialling window lists every gate on a world this server can load:
-The Castle, Harset, Tollana, Omega Site, Beta Site E1, both Men'fa, both
-Ihpet Craters, Lucia, Agnos, SGC, SGC W1 and Dakara E1. Dial one, wait for
+GM, the dialling window lists every gate on a world this server can load
+but one (Men'fa (SGU), below):
+The Castle, Harset, Tollana, Omega Site, Beta Site E1, Men'fa (Praxis),
+both Ihpet Craters, Lucia, Agnos, SGC, SGC W1 and Dakara E1. Dial one, wait for
 the gate to open, walk into the event horizon. The extra addresses last
 until you leave the Debug Area and are never saved to your character; a
 gate you actually travel to stays learned, as after any gate trip.
 
 **What it does not do.**
 
-- Nobody can dial the Debug Area, from anywhere, and no trip ever teaches
-  its address. The way back is `.gotolocation DebugArea`.
-- A non-GM sees only the addresses their character already holds.
+- Nobody can dial the Debug Area, from anywhere, and its address never
+  enters anyone's address book. The way back is `.gotolocation DebugArea`.
+- A non-GM never gets the extra addresses. Since DA-02 a non-GM cannot be in
+  the Debug Area at all (they are sent to their faction start), and even a
+  GM demoted while inside gets no more on the next DHD open.
 - The 14 gates on worlds this server has no map for (Hebridan, Pen-Lai,
   Asgard High Council and the rest) are not offered. The server log names
   them on every DHD open.
 - `/gmdhd 29` is refused like any other dial into the Debug Area.
 
-**Known arrival problems.** Two offered gates put you at a gate row that is
-off the navmesh: Men'fa (SGU) (Menfa_Light) and SGC W1. You land on the gate
-and the client drops you onto the floor nearby. Report anything worse.
+- Men'fa (SGU) (Menfa_Light) is not offered either: its gate row is about
+  192 m below the map's playable surface. It comes back once its arrival is
+  pinned from an in-client look.
+
+**Known arrival problem.** SGC W1's gate row is 3.4 m from the navmesh and
+1.3 m above the floor beside it. You land on the gate and the client drops
+you onto the floor. Report anything worse.
 
 **Landing spot.** `.gotolocation DebugArea` without coordinates lands on the
 gate's arrival point, the Z1 arrival (251.0, 8.0, -962.0), in front of the
@@ -934,10 +941,13 @@ gate and facing away from it.
 
 | Step | Expect | Fail |
 |---|---|---|
-| As a GM, right-click the Debug Area DHD | The dialling window opens and lists the 14 gates above | Nothing opens; the list is empty or holds only your own addresses |
+| As a GM, right-click the Debug Area DHD | The dialling window opens and lists the 13 gates above | Nothing opens; the list is empty or holds only your own addresses |
 | Dial Harset | The gate opens about 4 s later; walking in loads Harset | Refusal line "Failed to dial: ..."; the gate never opens |
-| Back in the Debug Area as a non-GM, right-click the DHD | The window opens with only that character's addresses | It lists every gate |
 | From any other world's DHD, look for "Debug Area" | Not listed | Listed, or dialable |
+
+A non-GM cannot reach the hub DHD in the client any more (DA-02's GM-only
+entry), so the non-GM branch is checked by the unit test
+`a_non_gm_at_the_hub_gets_no_addresses_and_cannot_dial`.
 
 Server log fields to search when it misbehaves: `reason = "gm_dial_hub_grant"`
 (one per GM DHD open: who, what was granted, what was left out),

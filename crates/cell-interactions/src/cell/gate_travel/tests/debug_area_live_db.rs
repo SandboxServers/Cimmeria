@@ -25,14 +25,18 @@ const GM: u32 = 2;
 /// SGC W2, Yotunheim, Vitrus, Meridian, Egypt, Pertho, Asgard High Council.
 const EXPECTED_UNENTERABLE: [i32; 14] = [1, 9, 11, 12, 13, 14, 16, 17, 18, 19, 21, 24, 26, 28];
 
+/// Gates on enterable worlds the hub still leaves out (`HUB_EXCLUDED_GATES`):
+/// 22 `Men'fa (SGU)`, whose row is ~192 m under `menfa_light.nav`'s
+/// playable surface.
+const EXPECTED_EXCLUDED: [i32; 1] = [22];
+
 /// Offered gates whose arrival is off their world's mesh with no respawner
 /// to fall back on (measured 2026-10-04 on the NA28 meshes):
-/// - 22 `Men'fa (SGU)` / Menfa_Light: nearest mesh 13.2 m away, 2.8 m below;
 /// - 27 `SGC W1` / SGC_W1: nearest mesh 3.4 m away, 1.3 m below.
 ///
-/// Both worlds are `advisory`, so the dial is accepted and the GM lands at
-/// the gate row; the client settles them onto whatever floor is there.
-const EXPECTED_OFF_MESH: [i32; 2] = [22, 27];
+/// SGC_W1 is `advisory`, so the dial is accepted and the GM lands at the
+/// gate row, a little above the floor beside it.
+const EXPECTED_OFF_MESH: [i32; 1] = [27];
 
 fn repo_file(rel: &str) -> String {
     let path = format!("{}/../../{rel}", env!("CARGO_MANIFEST_DIR"));
@@ -64,16 +68,17 @@ async fn live_db_every_gate_the_debug_area_offers_is_enterable_and_standable_or_
         "the gates left out of the Debug Area DHD changed — a world became \
          loadable or stopped being so; update this list and gate-travel.md"
     );
+    assert_eq!(top.excluded, EXPECTED_EXCLUDED);
     assert!(!top.granted.contains(&HUB));
     assert_eq!(
-        top.granted.len() + top.unenterable.len(),
+        top.granted.len() + top.unenterable.len() + top.excluded.len(),
         mgr.stargates.len() - 1,
-        "every gate but the hub is either offered or left out"
+        "every gate but the hub is offered, unenterable or excluded"
     );
 
     let mut off_mesh = Vec::new();
     let mut no_mesh = Vec::new();
-    for id in &top.granted {
+    for id in top.granted.iter().chain(&top.excluded) {
         let gate = &mgr.stargates[id];
         let nav = format!(
             "{}/../../data/spaces/{}.nav",
@@ -98,13 +103,20 @@ async fn live_db_every_gate_the_debug_area_offers_is_enterable_and_standable_or_
         // world has a mesh in the repo.
         assert_eq!(
             no_mesh.len(),
-            top.granted.len(),
+            top.granted.len() + top.excluded.len(),
             "partial meshes: {no_mesh:?}"
         );
         return;
     }
+    let (excluded_off, offered_off): (Vec<i32>, Vec<i32>) = off_mesh
+        .into_iter()
+        .partition(|id| top.excluded.contains(id));
     assert_eq!(
-        off_mesh, EXPECTED_OFF_MESH,
+        excluded_off, EXPECTED_EXCLUDED,
+        "an excluded gate's arrival became usable — drop it from HUB_EXCLUDED_GATES so the Debug Area offers it again"
+    );
+    assert_eq!(
+        offered_off, EXPECTED_OFF_MESH,
         "the offered gates whose arrival is unstandable changed; re-measure, \
          then update EXPECTED_OFF_MESH and gate-travel.md"
     );

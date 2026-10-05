@@ -18,4 +18,4 @@
 - [detour-nearest-poly-escapes-its-box.md](detour-nearest-poly-escapes-its-box.md) — Block on sight: findNearestPoly can return a point outside its box (4.8u over a ±4 band); re-check radius and dy
 - [na26-all-worlds-navmesh.md](na26-all-worlds-navmesh.md) — Every spaces.xml world has a .nav, all advisory but Cellblock; no reject telemetry; 13-bit span trap (crops superseded by NA28)
 - [tiled-navmesh-seams.md](tiled-navmesh-seams.md) — NA28 tiled XRCT meshes: seam-island trap, grid-phase loss, 22-bit poly-ref budget, rebuild validation recipe
-- [debug-area-dial-hub.md](debug-area-dial-hub.md) — DA-07 gate 29 outbound-only hub: grant-not-bypass, hub filters, 14 unloadable gate worlds, off-mesh 22/27, template-1 DHD trap
+- [debug-area-dial-hub.md](debug-area-dial-hub.md) — DA-07 gate 29 outbound-only hub: grant-not-bypass, hub filters, 14 unloadable gate worlds, gate 22 ~192 m under (excluded), off-mesh 27, template-1 DHD trap

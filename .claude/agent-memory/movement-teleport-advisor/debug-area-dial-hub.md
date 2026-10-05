@@ -22,13 +22,17 @@ bypass parameter. Grant on DHD open, not world entry, because the base's
 
 - "Enterable" = `SpaceManager::world_is_enterable` (startup space or instanced).
   14 of 28 2009 gate worlds have no space; dialling one destroys the cell
-  entity and then `find_or_create_space` errors. Plain `handle_dial_gate` still
-  has no such guard for non-hub dials (left alone: test fixtures dial worlds
-  that have no space).
-- Strict-arrival survey (as if enforced, NA28 meshes): only gate 22
-  Menfa_Light (13.2 m to mesh) and 27 SGC_W1 (3.4 m) are off-mesh with no
-  respawner; every other loadable gate row is on-mesh. All are advisory, so
-  production accepts them. Pinned in `gate_travel/tests/debug_area_live_db.rs`.
+  entity and then `find_or_create_space` errors. Since the review fix batch
+  `handle_dial_gate` refuses such a destination for EVERY dial
+  (`destination_world_not_loaded`), so test fixtures that dial a world must
+  declare it (startup space or `Instanced="true"` in their spaces XML).
+- Strict-arrival survey (as if enforced, NA28 meshes): gate 27 SGC_W1 (3.4 m)
+  is off-mesh with no respawner. Gate 22 Menfa_Light is far worse than the
+  "13.2 m" first reported: row y -191.9, the playable surface at that XZ is
+  near y 0 (~192 m above); Menfa_Dark gate 7 has the identical row and is
+  on-mesh, so the maps differ. 22 is on `HUB_EXCLUDED_GATES` until a DA-06
+  in-client pin. Always check `get_height_near` at y_ref 0, not just the
+  nearest poly within a box, before calling an arrival "a few metres off".
 - Template 1 (`GLB-DHD_00`) shipped `interaction_type = 0`: every DHD but the
   Castle's (162) was unclickable despite H01 claiming otherwise. DA-07 set 16.
 - Cooked `CookedDataStargates.pak` addresses differ from the seed for gates

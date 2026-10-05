@@ -121,6 +121,7 @@ async fn a_gm_at_the_hub_is_granted_every_enterable_gate_and_the_client_is_told(
             granted: vec![HARSET, SGC_W1],
             already_known: 0,
             unenterable: vec![HEBRIDAN],
+            excluded: vec![],
         })
     );
     let mut book = mgr.get_entity(1).unwrap().known_stargates.clone();
@@ -266,4 +267,73 @@ async fn reopening_the_hub_dhd_grants_nothing_twice() {
     assert!(update_ids(&dial_feedback::drain(&mut rx)).is_empty());
     let book = &mgr.get_entity(1).unwrap().known_stargates;
     assert_eq!(book.len(), 2, "no duplicates: {book:?}");
+}
+
+/// Gate 22 (Men'fa (SGU)) arrives ~192 m under its world's playable surface,
+/// so the hub leaves it out even though its world can be entered, and logs
+/// why. Emptying `HUB_EXCLUDED_GATES` grants it.
+#[tokio::test]
+async fn the_hub_leaves_out_a_gate_with_a_known_unusable_arrival() {
+    const MENFA_SGU: i32 = 22;
+    let capture = crate::test_support::LogCapture::install();
+    let mut mgr = hub_manager(GM);
+    mgr.stargates.extend([gate(MENFA_SGU, "Harset", false)]);
+    let (tx, mut rx) = tokio::sync::mpsc::channel(32);
+
+    let top = top_up_gm_dial_hub(1, HUB, &tx, &mut mgr).await.unwrap();
+
+    assert_eq!(top.excluded, vec![MENFA_SGU]);
+    assert!(!top.granted.contains(&MENFA_SGU));
+    assert!(!mgr
+        .get_entity(1)
+        .unwrap()
+        .known_stargates
+        .contains(&MENFA_SGU));
+    assert!(!update_ids(&dial_feedback::drain(&mut rx)).contains(&MENFA_SGU));
+    let warn = capture
+        .find_event(tracing::Level::WARN, "debug dial hub", "gm_dial_hub_grant")
+        .expect("the grant warn");
+    let excluded = warn.fields.get("excluded").cloned().unwrap_or_default();
+    assert!(
+        excluded.contains("22") && excluded.contains("arrival_* pin"),
+        "the grant log names gate 22 and why it is left out: {excluded:?}"
+    );
+}
+
+/// A held address whose world has no space on this server (a crafted dial,
+/// a `gmDHD` grant, a stale row) is refused while the traveller still stands
+/// in their world, with the standard unreachable line. The fixture has no
+/// gate volume, so without the guard in `handle_dial_gate` this dial would
+/// travel on the spot: `GateTravel` enqueued, cell entity destroyed, and the
+/// base unable to create a Hebridan space.
+#[tokio::test]
+async fn a_held_address_on_a_world_with_no_space_is_refused_before_teardown() {
+    let capture = crate::test_support::LogCapture::install();
+    let mut mgr = hub_manager(GM);
+    mgr.get_entity_mut(1).unwrap().known_stargates = vec![HEBRIDAN];
+    let (tx, mut rx) = tokio::sync::mpsc::channel(32);
+
+    assert!(!handle_dial_gate(1, HEBRIDAN, HUB, &tx, &mut mgr, &engine()).await);
+
+    let sent = dial_feedback::drain(&mut rx);
+    assert!(
+        gate_travels(&sent).is_empty(),
+        "no transfer to a world with no space"
+    );
+    assert!(
+        mgr.get_entity(1).is_some(),
+        "the traveller stays in their world"
+    );
+    assert!(mgr.gate_dial(1).is_none());
+    assert_eq!(
+        dial_feedback::feedback_lines(&sent),
+        vec![DialRefusal::NoSafeArrival.text()]
+    );
+    assert!(capture
+        .find_event(
+            tracing::Level::WARN,
+            "no space on this server",
+            "destination_world_not_loaded"
+        )
+        .is_some());
 }

@@ -95,6 +95,8 @@ The check is the first thing `handle_dial_gate` does after the `-1` cancel senti
 
 The refusal reaches the player as `onErrorCode` (121): `SystemID = 0` (`ERRORCODE_SYSTEM_Ability`, the only token the enum defines), `InstanceID = 0`, `ErrorCodeID = 180` (`CONDITION_FEEDBACK_EntityDoesNotHaveStargateAddress`). `InstanceID` is deliberately zero rather than the stargate id — under system 0 the client reads that field as an ability id.
 
+**A destination world with no space is refused before anything is torn down.** After the book check and the same-world check, `handle_dial_gate` refuses a gate whose world `SpaceManager::world_is_enterable` rejects (not in `cell_spaces.xml`, not instanced) with `reason = "destination_world_not_loaded"` and the unrecoverable-arrival line. Before this, a held address on one of the fourteen 2009 worlds with no map here (by `gmDHD`, a stale row or content) armed or travelled, `perform_gate_travel` destroyed the cell entity, and the base then failed to create a space: a player in no space. Only an address the player already holds reaches this check, so "unreachable" tells a client nothing new.
+
 Since #727 every dial refusal also sends a chat line on `CHAN_feedback`: `Failed to dial: not a known stargate address` for an address the player does not hold *and* for one that does not exist (the two are byte-identical, so the answer is not an existence oracle), plus lines for dialling your own world, dialling before the cell entity exists, and a destination with no standable arrival. The texts are in [stargate-dhd-state-machine.md](../reverse-engineering/findings/stargate-dhd-state-machine.md#dial-refusal-feedback-727-2026-09-28). `onDHDReply` (SGWPlayer client method 100) is *not* used for this: #1024 traced its client-side subscriber to the same `Communicator` chat component that renders this line, not to the DHD window, so switching to it would not gain a DHD-window popup — see the [render-target resolution](../reverse-engineering/findings/stargate-dhd-state-machine.md#ondhdreply-render-target-resolution-1024-2026-09-28).
 
 **Transit is not gated.** The check is on the dial and only the dial, matching 2009, which gates `onDialGate` and never `GateTravel.stargatePassed`. A player may walk through a wormhole somebody else opened.
@@ -159,7 +161,7 @@ The Debug Area (world 1300, [campaign plan](../analysis/debug-area/README.md), p
 The dial check stays `address_book::player_knows_stargate`, the only authorization surface ([Dial authorization](#dial-authorization)). The hub only adds a **grant**, the way `gmDHD` does:
 
 1. A player right-clicks the Debug Area DHD. `try_open_dhd` resolves the world's gate (29). Because it is a hub, `gate_travel::dial_hub::top_up_gm_dial_hub` runs **before** `onDisplayDHD` is sent.
-2. If the caller's server-side `access_level` is GM or higher (`is_gm`, 2+), every gate that is not a hub, is not on the hub's world, and whose world `SpaceManager::world_is_enterable` (a `cell_spaces.xml` startup space, or a world `spaces.xml` marks instanced) is added to the GM's **in-memory** address book. Each new one is sent to the client as `updateStargateAddress(id, 1, 0)` (client method 66) on the same ordered channel, so the DHD opens with the full list. One `warn` with `reason = "gm_dial_hub_grant"` records the GM, the gates granted (`id:name@world`) and the gates left out. A non-GM gets nothing (`reason = "dial_hub_not_gm"`, `info`), and their DHD offers only their own book.
+2. If the caller's server-side `access_level` is GM or higher (`is_gm`, 2+), every gate that is not a hub, is not on the hub's world, is not on `HUB_EXCLUDED_GATES` (gate 22, below), and whose world `SpaceManager::world_is_enterable` (a `cell_spaces.xml` startup space, or a world `spaces.xml` marks instanced) is added to the GM's **in-memory** address book. Each new one is sent to the client as `updateStargateAddress(id, 1, 0)` (client method 66) on the same ordered channel, so the DHD opens with the full list. One `warn` with `reason = "gm_dial_hub_grant"` records the GM, the gates granted (`id:name@world`) and the gates left out. A non-GM gets nothing (`reason = "dial_hub_not_gm"`, `info`), and their DHD offers only their own book.
 3. The dial is then judged like any other: the address is in the book, so `handle_dial_gate` arms it, and the dial logs name the destination gate (`target_address_name`, from the name book).
 
 The grant happens on DHD open, not at world entry. The base sends the client its whole book in `setupStargateInfo` at map load, so a push from the cell during world entry could race it and be overwritten. Opening the DHD also re-checks the access level when it matters.
@@ -179,18 +181,21 @@ No path can put gate 29 in a book or make it a destination:
 | Arrival unlock, both halves | `persist_arrival` filters `debug_dial_hub` |
 | Base address append | `append_known_stargate` filters `debug_dial_hub` |
 
+"Never enters an address book" is exact: gate 29's cooked catalogue entry (name, world 1300, glyphs) is resynced to every client, because the client resolves stargate ids in that table. Knowing the catalogue does not help: the dial carries the id, and the address-book check refuses id 29 before it reads the book.
+
 ### What a GM can dial from the Debug Area
 
 All 28 other gates are offered except the 14 on worlds this server cannot load. Those have a `resources.worlds` row but no space: CombatSim (1), Ihpet (9), Hebridan (11), Dakara E2 (12), Dakara E3 (13), Pen-Lai (14), Beta Site E2 (16), SGC W2 (17), Yotunheim (18), Vitrus (19), Meridian (21), Egypt (24), Pertho (26) and Asgard High Council (28). Dialling one would tear the GM out of the Debug Area and then fail to create a space for them, so they are left out and named in the grant log.
 
-The 14 offered gates are The Castle, Harset, Tollana, Omega Site, Beta Site E1, Men'fa (Praxis), Ihpet Crater (Praxis), Lucia, Agnos, Ihpet Crater (SGU), Men'fa (SGU), SGC, Dakara E1 and SGC W1. No dial from the Debug Area is refused for `arrival_unrecoverable`: every one of those worlds is navmesh `advisory`, so the arrival rules accept the authored point. Applied as if each world enforced its mesh, two would fail, and a live-DB test pins both:
+One more gate is left out although its world loads: **22 `Men'fa (SGU)`** (`HUB_EXCLUDED_GATES` in `dial_hub.rs`, named with its reason in the grant log). Its row, and the client's own cooked entry, put the gate at y -191.9, but `menfa_light.nav` has no polygon within 3 m of that point and its playable surface at the same XZ is near y 0, about 192 m higher. Men'fa (Praxis), gate 7, has the identical row and stands on `menfa_dark.nav`, so the Light map differs and only an in-client look can place its pad. World 78 has no respawner to fall back on. The same row is what any player who dials Men'fa (SGU) from elsewhere arrives on; an `arrival_*` pin from DA-06 fixes both, and then the entry comes off the list (a live-DB test fails when the arrival becomes usable, to say so).
+
+The 13 offered gates are The Castle, Harset, Tollana, Omega Site, Beta Site E1, Men'fa (Praxis), Ihpet Crater (Praxis), Lucia, Agnos, Ihpet Crater (SGU), SGC, Dakara E1 and SGC W1. No dial from the Debug Area is refused for `arrival_unrecoverable`: every one of those worlds is navmesh `advisory`, so the arrival rules accept the authored point. Applied as if each world enforced its mesh, one would fail, and a live-DB test pins it:
 
 | Gate | World | Measured (NA28 mesh) |
 |---|---|---|
-| 22 `Men'fa (SGU)` | Menfa_Light | Gate row off-mesh, nearest walkable point 13.2 m away and 2.8 m lower. No respawner |
 | 27 `SGC W1` | SGC_W1 | Gate row off-mesh, nearest walkable point 3.4 m away and 1.3 m lower. No respawner |
 
-A GM dialling either lands on the gate row and the client settles them onto whatever floor is there. Fixing them needs an in-client look and an `arrival_*` pin, or a respawner for the world. The other twelve arrivals are on their world's mesh.
+A GM dialling it lands on the gate row and the client settles them onto the floor beside it. The other twelve arrivals are on their world's mesh.
 
 ## Entity Definition (GateTravel.def)
 
