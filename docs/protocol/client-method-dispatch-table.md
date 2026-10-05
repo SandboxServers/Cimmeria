@@ -407,6 +407,11 @@ Consequences for the server:
   `onSequence`, which `SGWBeing` binds.
 - **`onBeingNameIDUpdate` goes to beings only.** The AoI cascade skips it for a class-0 prop or
   corpse (`class_binds_being_methods` in `crates/wire/src/mercury/aoi/create.rs`).
+- **An NPC can carry a literal nameplate.** A template with
+  `entity_templates.display_name` (only the Debug Area's Visual NPC Lineup, DA-10) gets
+  `onBeingNameUpdate(WSTRING)` in its AoI cascade right after `onBeingNameIDUpdate`, the same
+  method a player ghost's name rides. Same class gate. Whether the client draws it on a mob's
+  nameplate has not been seen yet (DA-U48).
 - A method in the *bound nowhere* row always shows up in the drop oracle. Seen on the colo on
   2026-09-29: `onPlayerTeleport` (116) and `giveXPForLevel` (119). Sending them does nothing on
   a stock client; the six `onBM*` need the client patch in

@@ -129,6 +129,10 @@ pub struct SpawnRecord {
     /// turn) and gives it the dummy Health. A template property, so a GM
     /// `.spawn` of the template is a dummy too.
     pub training_dummy: bool,
+    /// `entity_templates.display_name` (Debug Area DA-10): a literal
+    /// nameplate, sent as `onBeingNameUpdate` after the `name_id` text.
+    /// `None` for every shipped template.
+    pub display_name: Option<String>,
 }
 
 /// Map the DB `entity_templates.class` column to the wire class_id.

@@ -238,6 +238,21 @@ pub fn compose_create_entity_cascade_body(
                 );
             }
         }
+        // 5b. onBeingNameUpdate(name): a template's literal nameplate
+        // (`entity_templates.display_name`, the Debug Area's Visual NPC
+        // Lineup). Sent after the `name_id` text so it is the name the client
+        // ends with; the same SGWBeing method a player ghost's name rides.
+        if let Some(name) = d.display_name.as_deref().filter(|n| !n.is_empty()) {
+            let mut args = Vec::with_capacity(4 + name.len() * 2);
+            write_wstring(&mut args, name);
+            append_entity_method(
+                &mut body,
+                method_idx::ON_BEING_NAME_UPDATE,
+                idbase,
+                entity_id,
+                &args,
+            );
+        }
     }
 
     // 6. onEntityFlags
@@ -593,6 +608,84 @@ mod being_name_id_tests {
             contains(&body, &msg),
             "the mob cascade carries onBeingNameIDUpdate"
         );
+    }
+
+    /// The `onBeingNameUpdate` message for `name`: direct msg id `0x80 +
+    /// 17`, a u16 payload length, the entity id, then the WSTRING (u32 code
+    /// unit count, UTF-16LE).
+    fn being_name_message(entity_id: u32, name: &str) -> Vec<u8> {
+        let units: Vec<u16> = name.encode_utf16().collect();
+        let len = 4 + 4 + units.len() * 2;
+        let mut m = vec![0x91];
+        m.extend_from_slice(&(len as u16).to_le_bytes());
+        m.extend_from_slice(&entity_id.to_le_bytes());
+        m.extend_from_slice(&(units.len() as u32).to_le_bytes());
+        for u in units {
+            m.extend_from_slice(&u.to_le_bytes());
+        }
+        m
+    }
+
+    /// A template with a `display_name` (the Visual NPC Lineup) sends it as
+    /// `onBeingNameUpdate`, byte for byte, after its `onBeingNameIDUpdate`,
+    /// so the literal name is the one the client keeps. Revert proof: drop
+    /// step 5b and this fails.
+    #[test]
+    fn a_display_name_follows_the_name_id_as_being_name_update() {
+        let name = "Teal'c #30 BS_JaffaMale";
+        let npc = NpcAoIData {
+            display_name: Some(name.to_string()),
+            ..with_name_id()
+        };
+        let body = compose_create_entity_cascade_body(
+            100011,
+            crate::mercury::SGWMOB_CLASS_ID,
+            1,
+            Some(&npc),
+        );
+        let find = |needle: &[u8]| body.windows(needle.len()).position(|w| w == needle);
+        let id_at = find(&name_id_message(100011)).expect("onBeingNameIDUpdate");
+        let name_at = find(&being_name_message(100011, name)).expect("onBeingNameUpdate");
+        assert!(
+            name_at > id_at,
+            "the literal name is sent after the name id"
+        );
+    }
+
+    /// No `display_name` (every shipped template), or an empty one, sends no
+    /// `onBeingNameUpdate`; a prop never gets one either.
+    #[test]
+    fn no_display_name_sends_no_being_name_update() {
+        let header = |id: u32| {
+            let mut h = vec![0x91];
+            h.extend_from_slice(&[0, 0]);
+            h.extend_from_slice(&id.to_le_bytes());
+            h
+        };
+        let has_name_update = |body: &[u8], id: u32| {
+            let h = header(id);
+            body.windows(h.len())
+                .any(|w| w[0] == h[0] && w[3..] == h[3..])
+        };
+        for name in [None, Some(String::new())] {
+            let npc = NpcAoIData {
+                display_name: name,
+                ..with_name_id()
+            };
+            let body = compose_create_entity_cascade_body(
+                100012,
+                crate::mercury::SGWMOB_CLASS_ID,
+                1,
+                Some(&npc),
+            );
+            assert!(!has_name_update(&body, 100012));
+        }
+        let prop = NpcAoIData {
+            display_name: Some("Crate".into()),
+            ..with_name_id()
+        };
+        let body = compose_create_entity_cascade_body(100013, 0x00, 1, Some(&prop));
+        assert!(!has_name_update(&body, 100013));
     }
 
     #[test]

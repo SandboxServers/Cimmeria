@@ -1,23 +1,28 @@
-//! Live-DB guards for the Debug Area NPC lineup (DA-10, world 1300):
-//! templates 1410-1599 and spawns 13870-14099, one friendly clone of every
-//! distinct character look in `entity_templates`
-//! (`docs/content/debug-area.md#npc-lineup`).
+//! Live-DB guards for Z10, the Debug Area's Visual NPC Lineup (DA-10, world
+//! 1300): templates 1410-1599 and spawns 13870-14099, one passive display
+//! actor per distinct character look in `entity_templates`
+//! (`docs/content/debug-area.md#visual-npc-lineup`).
 //!
-//! The geometry (navmesh, occluder, walkways, reach) is guarded on the real
-//! mesh by `cimmeria-cell`'s `service::tests::npc_ai::debug_area::lineup`.
-//! These guards check the seed and what the loader hands the cell:
+//! The geometry (navmesh, occluder, walkways, reach, the aggro scan) is
+//! guarded on the real mesh by `cimmeria-cell`'s
+//! `service::tests::npc_ai::debug_area::lineup`. These guards check the seed
+//! and what the loader hands the cell:
 //!
-//! * every character look outside the block has a clone in it, and every
+//! * every character look outside the block has an actor in it, and every
 //!   character body set no template uses has a dressed one, so a template
-//!   added later with a new look fails here until it gets a lineup row;
-//! * the block holds each look once, and each clone has exactly one spawn;
+//!   added later with a new look fails here until it gets a lineup row (the
+//!   guard counts looks, not templates);
+//! * the block holds each look once, 162 actors, each with one spawn;
+//! * every actor is a display copy only: no event set, ability set, loot,
+//!   dialog, interactions, patrol, wander or radius overrides, and nothing
+//!   anywhere in `resources` points at it;
+//! * every nameplate and tag names its source template and body set;
 //! * every row loads into world 1300 as a stationary, friendly (faction 1)
-//!   mob with no ability set, loot, interactions, patrol or override;
-//! * the footers leave both sequences past the block.
+//!   mob, and the footers leave both sequences past the block.
 //!
 //! Each was proven to fail with a lineup template row deleted from the seed.
 mod live_db {
-    use std::collections::BTreeSet;
+    use std::collections::{BTreeMap, BTreeSet};
 
     use crate::cell::spawner::*;
     use crate::test_support::require_db_or_skip;
@@ -25,24 +30,26 @@ mod live_db {
     const WORLD: &str = "DebugArea";
     const TEMPLATES: (i32, i32) = (1410, 1599);
     const SPAWNS: (i32, i32) = (13870, 14099);
+    /// 156 looks and 6 template-less body sets (owner-confirmed, 2026-10-05).
+    /// A template with a new look raises it: add its actor and bump this.
+    const ACTORS: i64 = 162;
     /// World Object: friendly to players, hostile to nobody.
     const FRIENDLY_FACTION: i32 = 1;
-    /// The default sequence set every clone carries (`entity_templates`
-    /// event set 570, "Players default event set").
-    const DEFAULT_EVENT_SET: i32 = 570;
+    /// Tag prefix (D-DA6); the rest is the source template id, or
+    /// `NoTemplate_<body set>`.
+    const TAG: &str = "DebugArea_VisualLineup_";
 
     /// `$query` behind a `look` CTE: each template's look, comparable across
     /// rows: body set, components in name order, the two colours, skin tint
-    /// and static mesh ('' and NULL alike). Props (`GLB_Components.*`) and
-    /// deployables and mines (`WP-Human.*`) are not characters.
+    /// and static mesh as stored. Props (`GLB_Components.*`) and deployables
+    /// and mines (`WP-Human.*`) are not characters.
     macro_rules! with_looks {
         ($query:literal) => {
             concat!(
                 "WITH look AS ( \
                    SELECT template_id, template_name, body_set, \
                           (SELECT array_agg(c ORDER BY c) FROM unnest(components) c) AS comps, \
-                          primary_color_id, secondary_color_id, skin_tint, \
-                          coalesce(static_mesh, '') AS mesh \
+                          primary_color_id, secondary_color_id, skin_tint, static_mesh AS mesh \
                    FROM resources.entity_templates \
                    WHERE body_set NOT LIKE 'GLB\\_Components.%' \
                      AND body_set NOT LIKE 'WP-Human.%') ",
@@ -52,13 +59,13 @@ mod live_db {
     }
 
     /// Every character look in `entity_templates` outside the lineup block
-    /// has a clone in it, and every character body set that no template
-    /// outside the block uses has a dressed clone. This is the guard that
+    /// has an actor in it, and every character body set that no template
+    /// outside the block uses has one dressed actor. This is the guard that
     /// fails when a template with a new look is added without a lineup row.
     /// Revert proof: delete any lineup template row from the seed and this
-    /// names its source.
+    /// names every template with that look.
     #[tokio::test]
-    async fn debug_area_lineup_live_db_every_look_has_a_clone() {
+    async fn debug_area_lineup_live_db_every_look_has_an_actor() {
         let pool = require_db_or_skip!();
         let missing: Vec<(i32, String)> = sqlx::query_as(with_looks!(
             "SELECT s.template_id, s.template_name FROM look s \
@@ -78,7 +85,7 @@ mod live_db {
         .expect("look query must succeed");
         assert!(
             missing.is_empty(),
-            "templates whose look has no lineup clone (add one to \
+            "templates whose look has no lineup actor (add one to \
              entity_templates_debug_area_lineup.sql and a spawn to \
              spawnlist_debug_area_lineup.sql): {missing:?}"
         );
@@ -96,7 +103,7 @@ mod live_db {
         .expect("body set query must succeed");
         assert!(
             bare.is_empty(),
-            "character body sets with no template and no lineup clone: {bare:?}"
+            "character body sets with no template and no lineup actor: {bare:?}"
         );
         let dressed: Vec<(String, i64)> = sqlx::query_as(
             "SELECT t.body_set, count(*) FROM resources.entity_templates t \
@@ -112,7 +119,7 @@ mod live_db {
         .await
         .expect("dressed body set query must succeed");
         for (body_set, n) in &dressed {
-            assert_eq!(*n, 1, "{body_set}: one default-dressed clone");
+            assert_eq!(*n, 1, "{body_set}: one default-dressed actor");
         }
         assert_eq!(
             dressed.len(),
@@ -121,40 +128,25 @@ mod live_db {
         );
     }
 
-    /// The block holds each look once, every clone is a `DebugArea Lineup - `
-    /// template with a non-empty component list, and each has exactly one
-    /// world-1300 spawn in the block (and nothing else spawns there).
-    /// Revert proof: drop a spawn row, or duplicate a template row under a
-    /// new id, and this fails.
+    /// The block holds each look once, [`ACTORS`] in all, and each actor has
+    /// exactly one world-1300 spawn in the block (and nothing else spawns
+    /// there). Revert proof: drop a spawn row, or duplicate a template row
+    /// under a new id, and this fails.
     #[tokio::test]
-    async fn debug_area_lineup_live_db_one_clone_and_one_spawn_per_look() {
+    async fn debug_area_lineup_live_db_one_actor_and_one_spawn_per_look() {
         let pool = require_db_or_skip!();
-        let (clones, looks): (i64, i64) = sqlx::query_as(with_looks!(
+        let (actors, looks): (i64, i64) = sqlx::query_as(with_looks!(
             "SELECT count(*), count(DISTINCT (body_set, comps, primary_color_id, \
-                    secondary_color_id, skin_tint, mesh)) \
+                    secondary_color_id, skin_tint, coalesce(mesh, '<NULL>'))) \
              FROM look WHERE template_id BETWEEN $1 AND $2"
         ))
         .bind(TEMPLATES.0)
         .bind(TEMPLATES.1)
         .fetch_one(&pool)
         .await
-        .expect("clone count must succeed");
-        assert!(clones >= 161, "155 looks and 6 bare body sets: {clones}");
-        assert_eq!(clones, looks, "two lineup clones share a look");
-
-        let bad_names: Vec<(i32, String)> = sqlx::query_as(
-            "SELECT template_id, template_name FROM resources.entity_templates \
-             WHERE template_id BETWEEN $1 AND $2 \
-               AND (template_name NOT LIKE 'DebugArea Lineup - %' \
-                    OR coalesce(cardinality(components), 0) = 0) \
-             ORDER BY 1",
-        )
-        .bind(TEMPLATES.0)
-        .bind(TEMPLATES.1)
-        .fetch_all(&pool)
-        .await
-        .expect("template query must succeed");
-        assert!(bad_names.is_empty(), "{bad_names:?}");
+        .expect("actor count must succeed");
+        assert_eq!(actors, ACTORS, "156 looks and 6 template-less body sets");
+        assert_eq!(actors, looks, "two lineup actors share a look");
 
         let spawns: Vec<(i32, i32, i32)> = sqlx::query_as(
             "SELECT t.template_id, count(s.spawn_id)::int, \
@@ -172,7 +164,7 @@ mod live_db {
         .fetch_all(&pool)
         .await
         .expect("spawn query must succeed");
-        assert_eq!(spawns.len() as i64, clones);
+        assert_eq!(spawns.len() as i64, actors);
         for (t, all, in_block) in &spawns {
             assert!(
                 *all == 1 && *in_block == 1,
@@ -191,14 +183,173 @@ mod live_db {
         .fetch_one(&pool)
         .await
         .expect("stray query must succeed");
-        assert_eq!(strays, 0, "the lineup block spawns only lineup clones");
+        assert_eq!(strays, 0, "the lineup block spawns only lineup actors");
+    }
+
+    /// Every actor is a display copy only (owner requirement 4): faction 1,
+    /// class mob, no flags, and every behaviour column empty: no event set,
+    /// ability set, ammo, loot, vendor lists, trainer list, dialog speaker,
+    /// interaction type or sets, weapon, patrol, wander, follow, speed,
+    /// leash, aggro or assist radius, cover use, training-dummy mark or
+    /// respawn. Faction 1 is what makes it non-combat: players may damage
+    /// only faction 10, and no faction is hostile to 1. Revert proof: give a
+    /// clone event set 570 or ability set 2 and this names it.
+    #[tokio::test]
+    async fn debug_area_lineup_live_db_actors_are_display_copies_only() {
+        let pool = require_db_or_skip!();
+        let bad: Vec<(i32, String)> = sqlx::query_as(
+            "SELECT template_id, template_name FROM resources.entity_templates \
+             WHERE template_id BETWEEN $1 AND $2 AND NOT ( \
+                   faction = $3 AND class = 'mob' AND flags = 0 \
+               AND interaction_type = 0 AND event_set_id IS NULL \
+               AND ability_set_id IS NULL AND ammo_type IS NULL \
+               AND loot_table_id IS NULL AND buy_item_list IS NULL \
+               AND sell_item_list IS NULL AND repair_item_list IS NULL \
+               AND recharge_item_list IS NULL AND trainer_ability_list_id IS NULL \
+               AND speaker_id IS NULL AND interaction_set_id IS NULL \
+               AND cardinality(static_interaction_sets) = 0 \
+               AND weapon_item_id IS NULL AND patrol_path_id IS NULL \
+               AND wander_radius IS NULL AND follow_min_distance IS NULL \
+               AND follow_max_distance IS NULL AND move_speed IS NULL \
+               AND leash_distance IS NULL AND aggro_radius IS NULL \
+               AND assist_radius IS NULL AND use_cover IS NULL \
+               AND respawn_secs IS NULL AND NOT training_dummy \
+               AND coalesce(cardinality(components), 0) > 0) \
+             ORDER BY 1",
+        )
+        .bind(TEMPLATES.0)
+        .bind(TEMPLATES.1)
+        .bind(FRIENDLY_FACTION)
+        .fetch_all(&pool)
+        .await
+        .expect("template query must succeed");
+        assert!(
+            bad.is_empty(),
+            "lineup actors with behaviour attached: {bad:?}"
+        );
+
+        // Nothing else in `resources` (content chains, mission steps,
+        // dialogs, loot, spawn sets, ...) names a lineup template or spawn:
+        // every integer column called `template_id` or `spawn_id` outside
+        // the two seed tables, counted in the block.
+        let refs: Vec<(String, String, i64)> = sqlx::query_as(
+            "SELECT c.table_name::text, c.column_name::text, \
+                    (xpath('/row/n/text()', query_to_xml(format( \
+                      'SELECT count(*) AS n FROM resources.%I WHERE %I BETWEEN %s AND %s', \
+                      c.table_name, c.column_name, \
+                      CASE WHEN c.column_name LIKE '%spawn%' THEN $3 ELSE $1 END, \
+                      CASE WHEN c.column_name LIKE '%spawn%' THEN $4 ELSE $2 END), \
+                    false, true, '')))[1]::text::bigint \
+             FROM information_schema.columns c \
+             JOIN information_schema.tables t \
+               ON t.table_schema = c.table_schema AND t.table_name = c.table_name \
+             WHERE c.table_schema = 'resources' AND t.table_type = 'BASE TABLE' \
+               AND c.column_name IN ('template_id', 'spawn_id', 'entity_template_id') \
+               AND c.data_type IN ('integer', 'bigint') \
+               AND c.table_name NOT IN ('entity_templates', 'spawnlist') \
+             ORDER BY 1, 2",
+        )
+        .bind(TEMPLATES.0)
+        .bind(TEMPLATES.1)
+        .bind(SPAWNS.0)
+        .bind(SPAWNS.1)
+        .fetch_all(&pool)
+        .await
+        .expect("reference scan must succeed");
+        let pointing: Vec<_> = refs.iter().filter(|(_, _, n)| *n > 0).collect();
+        assert!(
+            pointing.is_empty(),
+            "seed rows that hook a lineup actor into content: {pointing:?}"
+        );
+
+        // Content chains, dialogs and the rest name NPCs by tag (trigger
+        // keys, action target keys, JSON params): no text or JSON column
+        // outside `spawnlist` mentions a lineup tag.
+        let tagged: Vec<(String, String, i64)> = sqlx::query_as(
+            "SELECT c.table_name::text, c.column_name::text, \
+                    (xpath('/row/n/text()', query_to_xml(format( \
+                      'SELECT count(*) AS n FROM resources.%I WHERE %I::text LIKE %L', \
+                      c.table_name, c.column_name, '%DebugArea\\_VisualLineup\\_%'), \
+                    false, true, '')))[1]::text::bigint \
+             FROM information_schema.columns c \
+             JOIN information_schema.tables t \
+               ON t.table_schema = c.table_schema AND t.table_name = c.table_name \
+             WHERE c.table_schema = 'resources' AND t.table_type = 'BASE TABLE' \
+               AND c.data_type IN ('text', 'character varying', 'json', 'jsonb') \
+               AND c.table_name <> 'spawnlist' \
+             ORDER BY 1, 2",
+        )
+        .fetch_all(&pool)
+        .await
+        .expect("tag scan must succeed");
+        assert!(tagged.len() > 50, "the tag scan covers the text columns");
+        let hooked: Vec<_> = tagged.iter().filter(|(_, _, n)| *n > 0).collect();
+        assert!(
+            hooked.is_empty(),
+            "seed rows that name a lineup tag: {hooked:?}"
+        );
+    }
+
+    /// Every actor's nameplate and tag trace it (owner requirement 3): the
+    /// tag is `DebugArea_VisualLineup_<source id>` and the `display_name`
+    /// ends `#<source id> <body set>`, where the source is a template outside
+    /// the block with the same look; a template-less actor is tagged
+    /// `..._NoTemplate_<body set>` and reads `(no template) <body set>`.
+    /// Every nameplate fits in 40 characters. Revert proof: point a tag at
+    /// another template, or clear a `display_name`, and this names it.
+    #[tokio::test]
+    async fn debug_area_lineup_live_db_nameplates_and_tags_name_the_source() {
+        let pool = require_db_or_skip!();
+        let rows: Vec<(i32, String, String, Option<String>, Option<i32>)> =
+            sqlx::query_as(with_looks!(
+                "SELECT c.template_id, c.body_set, s.tag, t.display_name, \
+                        (SELECT min(o.template_id) FROM look o \
+                          WHERE o.template_id NOT BETWEEN $1 AND $2 \
+                            AND (o.body_set, o.comps, o.primary_color_id, \
+                                 o.secondary_color_id, o.skin_tint, o.mesh) \
+                                IS NOT DISTINCT FROM \
+                                (c.body_set, c.comps, c.primary_color_id, \
+                                 c.secondary_color_id, c.skin_tint, c.mesh)) \
+                 FROM look c \
+                 JOIN resources.entity_templates t ON t.template_id = c.template_id \
+                 JOIN resources.spawnlist s ON s.template_id = c.template_id \
+                 WHERE c.template_id BETWEEN $1 AND $2 ORDER BY 1"
+            ))
+            .bind(TEMPLATES.0)
+            .bind(TEMPLATES.1)
+            .fetch_all(&pool)
+            .await
+            .expect("nameplate query must succeed");
+        assert_eq!(rows.len() as i64, ACTORS);
+        let mut errors = Vec::new();
+        let mut plates = BTreeMap::new();
+        for (id, body_set, tag, plate, source) in &rows {
+            let short = body_set.rsplit('.').next().unwrap_or(body_set);
+            let plate = plate.as_deref().unwrap_or("");
+            let (want_tag, want_tail) = match source {
+                Some(src) => (format!("{TAG}{src}"), format!(" #{src} {short}")),
+                None => (
+                    format!("{TAG}NoTemplate_{short}"),
+                    format!("(no template) {short}"),
+                ),
+            };
+            if *tag != want_tag {
+                errors.push(format!("{id}: tag {tag}, want {want_tag}"));
+            }
+            if !plate.ends_with(&want_tail) || plate.len() > 40 {
+                errors.push(format!("{id}: nameplate {plate:?}, want ...{want_tail:?}"));
+            }
+            if let Some(other) = plates.insert(plate.to_string(), *id) {
+                errors.push(format!("{id} and {other} share the nameplate {plate:?}"));
+            }
+        }
+        assert!(errors.is_empty(), "{errors:#?}");
     }
 
     /// Every lineup row loads into world 1300 as what it is meant to be: a
-    /// stationary, friendly mob that stands still and never fights, with a
-    /// unique `DebugArea_Lineup_` tag. Revert proof: give a clone faction 10,
-    /// an ability set or a loot table, or clear `is_stationary`, and this
-    /// names it.
+    /// stationary, friendly mob that stands still and never fights, carrying
+    /// its nameplate, with a unique tag. Revert proof: clear `is_stationary`
+    /// or drop `display_name` from the loader query, and this names it.
     #[tokio::test]
     async fn debug_area_lineup_live_db_rows_load_friendly_and_stationary() {
         let pool = require_db_or_skip!();
@@ -208,7 +359,7 @@ mod live_db {
             .into_iter()
             .filter(|r| (SPAWNS.0..=SPAWNS.1).contains(&r.spawn_id))
             .collect();
-        assert!(rows.len() >= 161, "every lineup row loads: {}", rows.len());
+        assert_eq!(rows.len() as i64, ACTORS, "every lineup row loads");
         let mut errors = Vec::new();
         let mut tags = BTreeSet::new();
         for r in &rows {
@@ -217,23 +368,20 @@ mod live_db {
             if r.world_name != WORLD {
                 why.push(format!("world {}", r.world_name));
             }
-            if !t.starts_with("DebugArea_Lineup_") || !tags.insert(t.to_string()) {
-                why.push("tag not a unique DebugArea_Lineup_*".into());
-            }
-            if !(TEMPLATES.0..=TEMPLATES.1).contains(&r.template_id) {
-                why.push(format!("template {} outside the block", r.template_id));
+            if !t.starts_with(TAG) || !tags.insert(t.to_string()) {
+                why.push("tag not a unique DebugArea_VisualLineup_*".into());
             }
             if r.faction != Some(FRIENDLY_FACTION) || r.class != "mob" {
                 why.push(format!("faction {:?} class {}", r.faction, r.class));
             }
-            if !r.is_stationary {
-                why.push("not stationary".into());
+            if !r.is_stationary || r.training_dummy {
+                why.push("not stationary, or a training dummy".into());
             }
-            if r.event_set_id != Some(DEFAULT_EVENT_SET) {
-                why.push(format!("event set {:?}", r.event_set_id));
+            if r.display_name.as_deref().is_none_or(str::is_empty) {
+                why.push("no nameplate".into());
             }
-            if !r.ability_ids.is_empty() || r.loot_table_id.is_some() {
-                why.push("has abilities or loot".into());
+            if r.event_set_id.is_some() || !r.ability_ids.is_empty() || r.loot_table_id.is_some() {
+                why.push("has an event set, abilities or loot".into());
             }
             if r.interaction_type != 0
                 || !r.static_interaction_sets.is_empty()

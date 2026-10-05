@@ -1,16 +1,19 @@
-//! The NPC lineup (DA-10, spawns 13870-14099) on the real
+//! Z10, the Visual NPC Lineup (DA-10, spawns 13870-14099), on the real
 //! `ihpet_crater_light.nav` and `.occ`, read from the seed files: every
-//! clone stands on the ground the client draws, a player can walk up to
-//! each one from the Compound ring, they stand apart, and none of them can
-//! fight or be fought (`docs/content/debug-area.md#npc-lineup`).
+//! display actor stands on the ground the client draws, a player can walk
+//! up to each one from the Compound ring, they stand apart, and none of them
+//! can fight or be fought (`docs/content/debug-area.md#visual-npc-lineup`).
 
 use std::f32::consts::PI;
 
 use cimmeria_common::Vector3;
+use tokio::sync::mpsc;
 
 use super::*;
 use crate::cell::combat;
 
+/// The lineup's actors: 156 looks and 6 template-less body sets.
+const ACTORS: usize = 162;
 /// DA-10's spawn block.
 const DA10_SPAWNS: std::ops::RangeInclusive<i32> = 13870..=14099;
 /// The Compound ring pad (`debug_area_rings.sql`), the station a tester
@@ -46,11 +49,7 @@ fn lineup() -> Vec<SpawnRecord> {
         .into_iter()
         .filter(|r| DA10_SPAWNS.contains(&r.spawn_id))
         .collect();
-    assert!(
-        rows.len() >= 161,
-        "DA-10 seeds a clone per look: {}",
-        rows.len()
-    );
+    assert_eq!(rows.len(), ACTORS, "DA-10 seeds one actor per look");
     rows
 }
 
@@ -194,6 +193,56 @@ fn the_lineup_is_friendly_and_out_of_every_hostiles_reach() {
                     "{:?} is {gap:.0} m from {:?}, inside {need:.0} m",
                     h.tag, l.tag
                 ));
+            }
+        }
+    }
+    assert!(bad.is_empty(), "{bad:#?}");
+}
+
+/// No lineup actor engages a tester who walks the rows, and none can be
+/// hit: through the production Idle aggro scan with the tester 1.5 m in
+/// front of every 8th actor (every actor is within 18 m of a stop), and
+/// through the single-target and area hit gates for a player and for every
+/// world-1300 NPC. A display copy of a hostile creature is as passive as the
+/// rest. Revert proof: give a clone faction 10 and the scan engages it.
+#[tokio::test]
+async fn no_lineup_actor_engages_a_tester_or_can_be_hit() {
+    let records = world_records();
+    let lineup = lineup();
+    if navmesh().is_none() {
+        return;
+    }
+    let mut bad = Vec::new();
+    for stop in lineup.iter().step_by(8) {
+        let at = Vector3::new(
+            stop.x + VIEW_DISTANCE * stop.heading.sin(),
+            stop.y,
+            stop.z + VIEW_DISTANCE * stop.heading.cos(),
+        );
+        let Some(mut mgr) = scene(&records, at) else {
+            return;
+        };
+        let (tx, _rx) = mpsc::channel(1024);
+        for l in &lineup {
+            let id = eid(l.spawn_id);
+            if crate::cell::service::npc_ai::npc_idle_aggro_scan_for_test(id, &tx, &mut mgr).await {
+                bad.push(format!("{:?} engaged a tester at {at:?}", l.tag));
+            }
+        }
+    }
+    let Some(mgr) = scene(&records, Vector3::new(0.0, 0.0, -2000.0)) else {
+        return;
+    };
+    let player = mgr.get_entity(PLAYER).unwrap();
+    for l in &lineup {
+        let e = mgr.get_entity(eid(l.spawn_id)).unwrap();
+        if combat::may_hit_in_area(player, e, &Default::default()) {
+            bad.push(format!("a player's area ability hits {:?}", l.tag));
+        }
+        for v in &records {
+            let ve = mgr.get_entity(eid(v.spawn_id)).unwrap();
+            if combat::may_hit_in_area(ve, e, &Default::default()) {
+                bad.push(format!("{:?}'s area ability hits {:?}", v.tag, l.tag));
             }
         }
     }

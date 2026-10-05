@@ -344,6 +344,7 @@ fn make_spawn_record(move_speed: f32) -> crate::cell::spawner::SpawnRecord {
         use_cover: None,
         vault_scope: cimmeria_entity::cell_entity::VaultScope::Personal,
         training_dummy: false,
+        display_name: None,
     }
 }
 

@@ -141,6 +141,11 @@ CREATE TABLE entity_templates (
     -- attacked, and its attackers leave combat 10 s after the last hit.
     -- See crates/cell-world/src/cell/space_manager/training_dummy.rs.
     training_dummy boolean DEFAULT false NOT NULL,
+    -- A literal nameplate (Debug Area DA-10, the Visual NPC Lineup): sent as
+    -- `onBeingNameUpdate(WSTRING)` right after the `name_id` text, so the
+    -- client shows it instead. NULL (every shipped template) sends nothing
+    -- and the nameplate is the `name_id` text alone.
+    display_name character varying(200),
     CONSTRAINT entity_templates_leash_distance_positive
         CHECK (leash_distance IS NULL OR leash_distance > 0.0),
     CONSTRAINT entity_templates_move_speed_positive
