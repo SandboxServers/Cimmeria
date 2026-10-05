@@ -34,6 +34,7 @@ use std::time::Instant;
 
 use tokio::sync::mpsc;
 
+use cimmeria_entity::known_names;
 use cimmeria_entity::stats::HEALTH;
 use cimmeria_wire::cell::client_methods::duel::{
     EDUEL_DEFEAT_CONNECTION, EDUEL_DEFEAT_FORFEIT, EDUEL_DEFEAT_HEALTH, EDUEL_DEFEAT_RANGE,
@@ -50,7 +51,7 @@ use super::outbound::{
     send_duel_entities_clear, send_line, send_pvp_flag, send_state_field, Recipient,
 };
 use super::registry::{Duel, DuelId, DuelState};
-use super::{combat, connected_player, find_player};
+use super::{combat, connected_player, duelist_log_names, find_player};
 
 /// Why the loser lost: the client's `EDuelDefeatReason` (`enumerations.xml`,
 /// pinned in `cimmeria_wire`). `LeftSquad` and `InDuel` have no path while
@@ -190,6 +191,13 @@ pub async fn end_engaged(
                 .account_id
                 .or_else(|| find_player(mgr, pid).and_then(|p| p.account_id))
         });
+    let names = [
+        duelist_log_names(mgr, entities[0], duel.challenger, accounts[0]),
+        duelist_log_names(mgr, entities[1], duel.target, accounts[1]),
+    ];
+    // The killer of a `Health` end may be an NPC, so it carries the
+    // template pair too (D-NT5); read before the clear like the rest.
+    let killer_names = killer.map(|k| mgr.entity_names(k)).unwrap_or_default();
     mgr.resources.duels_mut().end_duel(duel_id);
 
     let mut cleared = [false; 2];
@@ -236,17 +244,35 @@ pub async fn end_engaged(
         }
     }
     let loser = defeat.map(|(l, _)| l);
+    let winner = loser.and_then(|l| duel.opponent_of(l));
+    // The loser and winner are the two duelists, named from the snapshot.
+    let name_of = |pid: Option<i32>| {
+        pid.and_then(|p| {
+            if p == duel.challenger {
+                names[0].player_name
+            } else {
+                names[1].player_name
+            }
+        })
+    };
     tracing::debug!(
         target: "duel",
         event = "duel.ended",
-        duel_id,
+        duel_id, // nt:id-only duel row id with no name column; the duelists are named in the same event
         account_id = accounts[0],
+        account_name = names[0].account_name,
         player_id = duel.challenger,
+        player_name = names[0].player_name,
         entity_id = entities[0],
+        entity_name = names[0].entity_name,
         target_player_id = duel.target,
+        target_player_name = names[1].player_name,
         target_entity_id = entities[1],
+        target_entity_name = names[1].entity_name,
         target_account_id = accounts[1],
+        target_account_name = names[1].account_name,
         space_id = duel.space_id,
+        world = mgr.world_name_for_space(duel.space_id),
         state = "engaged",
         cleared = cleared[0],
         target_cleared = cleared[1],
@@ -255,10 +281,15 @@ pub async fn end_engaged(
         reason = reason.reason(),
         outcome = if defeat.is_some() { "decided" } else { "aborted" },
         loser_player_id = loser,
-        winner_player_id = loser.and_then(|l| duel.opponent_of(l)),
+        loser_player_name = name_of(loser),
+        winner_player_id = winner,
+        winner_player_name = name_of(winner),
         defeat_reason = defeat.map(|(_, r)| r.value()),
         defeat_reason_name = defeat.map(|(_, r)| tracing::field::debug(r)),
         killer_entity_id = killer,
+        killer_entity_name = killer_names.entity_name,
+        killer_template_id = killer_names.template_id,
+        killer_template_name = killer_names.template_name,
         clamped,
         "duel ended: PvP flags, duel entities and the combat pair cleared"
     );
@@ -355,14 +386,19 @@ async fn range_loser(
                 mgr.resources
                     .duels_mut()
                     .set_out_of_range(duel.duel_id, side, Some(now));
+                let me = duelist_log_names(mgr, p.entity_id, pids[side], p.account_id);
                 tracing::debug!(
                     target: "duel",
                     event = "duel.out_of_range",
-                    duel_id = duel.duel_id,
+                    duel_id = duel.duel_id, // nt:id-only duel row id with no name column; the duelists are named in the same event
                     account_id = p.account_id,
+                    account_name = me.account_name,
                     player_id = pids[side],
+                    player_name = me.player_name,
                     entity_id = p.entity_id,
+                    entity_name = me.entity_name,
                     target_player_id = pids[1 - side],
+                    target_player_name = known_names::player_name(pids[1 - side]),
                     distance,
                     arena_radius = ARENA_RADIUS,
                     grace_ms = RANGE_GRACE.as_millis() as u64,
@@ -377,14 +413,19 @@ async fn range_loser(
                 mgr.resources
                     .duels_mut()
                     .set_out_of_range(duel.duel_id, side, None);
+                let me = duelist_log_names(mgr, p.entity_id, pids[side], p.account_id);
                 tracing::debug!(
                     target: "duel",
                     event = "duel.back_in_range",
-                    duel_id = duel.duel_id,
+                    duel_id = duel.duel_id, // nt:id-only duel row id with no name column; the duelists are named in the same event
                     account_id = p.account_id,
+                    account_name = me.account_name,
                     player_id = pids[side],
+                    player_name = me.player_name,
                     entity_id = p.entity_id,
+                    entity_name = me.entity_name,
                     target_player_id = pids[1 - side],
+                    target_player_name = known_names::player_name(pids[1 - side]),
                     distance,
                     outside_ms = now.duration_since(since).as_millis() as u64,
                     "duelist came back into the arena: the range clock stopped"

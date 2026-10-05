@@ -30,6 +30,7 @@ use std::time::Instant;
 use cimmeria_entity::cell_entity::{PetBuff, PlayerIdentity};
 use cimmeria_entity::stats::StatList;
 
+use super::super::effects::content_names::{ability_name, effect_name};
 use super::super::space_manager::SpaceManager;
 
 /// Why a buff came off a pet: the `reason` of the `buff_removed` row.
@@ -125,18 +126,27 @@ impl SpaceManager {
         });
         let owner_id = state.owner_id;
         let id = self.pet_summoner_identity(pet);
+        let names = self.entity_names(pet);
         tracing::debug!(
             target: "pets.buff",
             event = "buff_applied",
             decision_outcome = "buff_applied",
             entity_id = pet,
+            entity_name = names.entity_name,
             pet_id = pet,
+            pet_name = names.entity_name,
             owner_id,
+            owner_name = id.player_name,
             account_id = id.account_id,
+            account_name = id.account_name,
             player_id = id.player_id,
+            player_name = id.player_name,
             template_id,
+            template_name = names.template_name,
             ability_id,
+            ability_name = ability_name(ability_id),
             effect_id,
+            effect_name = effect_name(effect_id),
             toggle = expires_at.is_none(),
             duration_secs = expires_at.map(|at| at.saturating_duration_since(Instant::now()).as_secs_f32()),
             stat_deltas = ?applied,
@@ -171,18 +181,27 @@ impl SpaceManager {
             }
         }
         let id = self.pet_summoner_identity(pet);
+        let names = self.entity_names(pet);
         tracing::debug!(
             target: "pets.buff",
             event = "buff_removed",
             decision_outcome = "buff_removed",
             entity_id = pet,
+            entity_name = names.entity_name,
             pet_id = pet,
+            pet_name = names.entity_name,
             owner_id,
+            owner_name = id.player_name,
             account_id = id.account_id,
+            account_name = id.account_name,
             player_id = id.player_id,
+            player_name = id.player_name,
             template_id,
+            template_name = names.template_name,
             ability_id = buff.ability_id,
+            ability_name = ability_name(buff.ability_id),
             effect_id,
+            effect_name = effect_name(effect_id),
             reason = why.reason(),
             stat_deltas = ?buff.stat_deltas,
             stats_before = ?before,

@@ -42,6 +42,7 @@ mod tests;
 use std::collections::HashMap;
 
 use cimmeria_entity::cell_entity::PlayerIdentity;
+use cimmeria_entity::known_names;
 
 use crate::cell::space_manager::SpaceManager;
 
@@ -128,10 +129,16 @@ impl CombatDebug {
                         target: "abilities.debug",
                         event = "combat_debug_record_evicted",
                         entity_id = oldest.caster_id,
+                        // No `SpaceManager` here: a player caster is named
+                        // from the record's snapshot, an NPC is left unnamed.
+                        entity_name = oldest.caster.player_name,
                         account_id = oldest.caster.account_id,
+                        account_name = oldest.caster.account_name,
                         player_id = oldest.caster.player_id,
-                        cast_id = oldest.cast_id,
+                        player_name = oldest.caster.player_name,
+                        cast_id = oldest.cast_id, // nt:id-only per-cast sequence number, no name exists
                         ability_id = oldest.ability_id,
+                        ability_name = crate::cell::effects::content_names::ability_name(oldest.ability_id),
                         notes = oldest.notes.len(),
                         open = MAX_OPEN_RECORDS,
                         "combat debug: oldest open record dropped unflushed"
@@ -156,9 +163,11 @@ impl CombatDebug {
                 target: "abilities.debug",
                 event = "combat_debug_watcher_dropped",
                 reason = "entity_destroyed",
-                entity_id,
+                entity_id, // nt:id-only the watcher's entity is destroyed; player_name names the watcher
                 account_id = s.account_id,
+                account_name = known_names::account_name(s.account_id),
                 player_id = s.player_id,
+                player_name = known_names::player_name(s.player_id),
                 "combat debug: watcher's entity destroyed; its toggles are cleared"
             );
         }

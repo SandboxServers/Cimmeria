@@ -38,6 +38,7 @@ use cimmeria_wire::cell::client_methods::pet::{
 };
 
 use super::super::messages::CellToBaseMsg;
+use super::super::space_manager::EntityNames;
 use super::PetRegistry;
 
 /// The stance a client assumes for a freshly created pet (`SGWPet.def`
@@ -73,19 +74,29 @@ pub fn pet_create_on_client_events(
         // WARN (negative-logging convention). `account_id` / `player_id` are
         // the summoner's (Rule 5), the `witness_*` pair the id's new holder.
         let owner = pets.summoner_identity(pet_id);
+        let names = EntityNames::of(entity);
         tracing::warn!(
             target: "pets.lifecycle",
             event = "pet_list_replay_refused",
             reason = "owner_identity_mismatch",
             entity_id = pet_id,
+            entity_name = names.entity_name,
             pet_id,
+            pet_name = names.entity_name,
             owner_id = pet.owner_id,
+            owner_name = owner.player_name,
             witness_id,
+            witness_name = EntityNames::of(witness).entity_name,
             account_id = owner.account_id,
+            account_name = owner.account_name,
             player_id = owner.player_id,
+            player_name = owner.player_name,
             witness_account_id = live.account_id,
+            witness_account_name = live.account_name,
             witness_player_id = live.player_id,
+            witness_player_name = live.player_name,
             template_id = entity.template_id,
+            template_name = names.template_name,
             "pet owner-only lists withheld: the owner's entity id now belongs to another entity"
         );
         return Vec::new();

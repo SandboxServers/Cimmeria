@@ -1,7 +1,7 @@
 # Unpaired ID fields per file (Rule 6, NT-03). Only ever lowered.
 # Regenerate after pairing fields: NT_BASELINE_BLESS=1 cargo nextest run -p cimmeria-server unpaired_id
 # See crates/server/src/logging/unpaired_id_tests/mod.rs.
-# total 661
+# total 387
 crates/base-methods/src/base/world_entry/methods/missions/mod.rs 10
 crates/base-methods/src/base/world_entry/methods/player_load/core/inventory_items.rs 1
 crates/base-methods/src/base/world_entry/methods/player_load/core/player_data.rs 11
@@ -23,21 +23,6 @@ crates/cell-methods/src/cell/cell_methods/player/vendor/session.rs 11
 crates/cell-methods/src/cell/cell_methods/player/vendor/train.rs 41
 crates/cell-methods/src/cell/cell_methods/player/world/auto_cycle.rs 18
 crates/cell-methods/src/cell/cell_methods/player/world/mod.rs 10
-crates/cell-world/src/cell/combat_debug/deliver.rs 14
-crates/cell-world/src/cell/combat_debug/mod.rs 8
-crates/cell-world/src/cell/cover/stance.rs 17
-crates/cell-world/src/cell/duel/challenge.rs 23
-crates/cell-world/src/cell/duel/end.rs 21
-crates/cell-world/src/cell/duel/gm.rs 9
-crates/cell-world/src/cell/duel/outbound.rs 11
-crates/cell-world/src/cell/duel/paths.rs 14
-crates/cell-world/src/cell/pets/arrival.rs 36
-crates/cell-world/src/cell/pets/buffs.rs 16
-crates/cell-world/src/cell/pets/create_on_client.rs 9
-crates/cell-world/src/cell/pets/owner_hooks.rs 46
-crates/cell-world/src/cell/pets/registry.rs 13
-crates/cell-world/src/cell/pets/teardown.rs 31
-crates/cell-world/src/cell/space_manager/vault_session_end.rs 6
 crates/cell/src/cell/service/base_messages/ability_granted.rs 17
 crates/cell/src/cell/service/base_messages/bandolier.rs 7
 crates/cell/src/cell/service/ticks/auto_cycle.rs 13
