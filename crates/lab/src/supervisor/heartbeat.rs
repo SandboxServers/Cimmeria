@@ -84,6 +84,13 @@ impl HeartbeatWatchdog {
             (now_ms - self.last_advance_ms).max(0)
         }
     }
+
+    /// Milliseconds the counter has not advanced, counted from no earlier
+    /// than `floor_ms` (the watchdog's start, for a stall before the first
+    /// observation). The load grace ([`super::stall_grace`]) is capped on it.
+    pub fn stalled_ms(&self, now_ms: i64, floor_ms: i64) -> i64 {
+        (now_ms - self.last_advance_ms.max(floor_ms)).max(0)
+    }
 }
 
 /// A failed heartbeat poll is forgiven when another bridge call succeeded
@@ -158,5 +165,16 @@ mod tests {
         assert_eq!(w.observe(1, 4_500), HeartbeatState::Alive);
         // The clock resets: another 4s stall is fine again.
         assert_eq!(w.observe(1, 8_000), HeartbeatState::Alive);
+    }
+
+    /// The stall clock runs from the last advance, or from the floor when
+    /// nothing has been observed (or the last advance predates it).
+    #[test]
+    fn stalled_ms_counts_from_the_last_advance_or_the_floor() {
+        let mut w = wd();
+        assert_eq!(w.stalled_ms(10_000, 4_000), 6_000, "no reading yet");
+        w.observe(7, 5_000);
+        assert_eq!(w.stalled_ms(35_000, 4_000), 30_000);
+        assert_eq!(w.stalled_ms(35_000, 20_000), 15_000);
     }
 }

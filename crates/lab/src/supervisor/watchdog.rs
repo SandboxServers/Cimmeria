@@ -3,7 +3,9 @@
 //! quarantine the in-flight command, and relaunch within the recovery cap
 //! (ADR section 6). Split out of `mod.rs` to keep it under the file-size cap.
 
-use super::heartbeat::{self, HeartbeatState, BUSY_GRACE_MS};
+use super::heartbeat::HeartbeatState;
+use super::main_thread::MainThreadCpu;
+use super::stall_grace::{self, Heartbeat, Poll, StallTracker, Verdict};
 use serde_json::Value;
 
 use super::flows::{self, login::LoginRequest};
@@ -19,7 +21,15 @@ impl Supervisor {
     }
 
     async fn watchdog_loop(&self, my_pid: u32) {
-        let mut fails = 0u32;
+        let grace = stall_grace::load_grace_from(
+            std::env::var(stall_grace::LOAD_GRACE_ENV).ok().as_deref(),
+        );
+        let started_ms = now_ms();
+        let mut cpu = MainThreadCpu::default();
+        // Every kill decision but "the process is gone" lives in the
+        // tracker (pure, tested): the failure count, the stale rule and
+        // the load grace.
+        let mut tracker = StallTracker::new(MAX_HEARTBEAT_FAILS, grace);
         loop {
             tokio::time::sleep(WATCHDOG_POLL).await;
 
@@ -31,32 +41,78 @@ impl Supervisor {
                 }
             }
 
-            match self.bridge.heartbeat().await {
+            let hb = match self.bridge.heartbeat().await {
                 Ok(count) => {
-                    fails = 0;
-                    let stale = {
-                        let mut st = self.state.lock().await;
-                        let ts = now_ms();
-                        st.record_heartbeat(count, ts);
-                        st.watchdog.observe(count, ts)
-                    };
-                    if stale == HeartbeatState::Stale {
-                        tracing::warn!(pid = my_pid, "heartbeat stale; terminating hung client");
-                        self.handle_death(my_pid).await;
-                        return;
+                    let mut st = self.state.lock().await;
+                    let ts = now_ms();
+                    st.record_heartbeat(count, ts);
+                    Heartbeat::Answered {
+                        stale: st.watchdog.observe(count, ts) == HeartbeatState::Stale,
                     }
                 }
                 Err(_) => {
-                    fails = heartbeat::next_fail_count(
-                        fails,
-                        self.bridge.ms_since_last_ok(),
-                        BUSY_GRACE_MS,
-                    );
-                    if !process::is_alive(my_pid) || fails >= MAX_HEARTBEAT_FAILS {
-                        tracing::warn!(pid = my_pid, fails, "client dead/unreachable");
+                    if !process::is_alive(my_pid) {
+                        tracing::warn!(pid = my_pid, "client process gone");
                         self.handle_death(my_pid).await;
                         return;
                     }
+                    Heartbeat::Failed {
+                        ms_since_last_ok: self.bridge.ms_since_last_ok(),
+                    }
+                }
+            };
+
+            // Sampled every poll so each interval is the last one.
+            let ts = now_ms();
+            let sample = cpu.sample(my_pid, ts);
+            let (cpu_ms, wall_ms) = sample.unwrap_or((0, 0));
+            let stalled_ms = self.state.lock().await.watchdog.stalled_ms(ts, started_ms);
+            let step = tracker.step(hb, sample, ts, stalled_ms);
+            let fails = match step.poll {
+                Poll::Failed { fails } => fails,
+                Poll::Answered { .. } => 0,
+            };
+
+            match step.verdict {
+                Verdict::Continue => {}
+                Verdict::Grace { stalled_ms } => {
+                    tracing::warn!(
+                        pid = my_pid,
+                        fails,
+                        stalled_ms,
+                        grace_ms = grace.as_millis() as u64,
+                        main_thread_cpu_ms = cpu_ms,
+                        interval_ms = wall_ms,
+                        busy_now = step.busy_now,
+                        "client main thread stalled but busy (world load?); load grace in effect"
+                    );
+                }
+                Verdict::Kill {
+                    loading,
+                    stalled_ms,
+                } => {
+                    let rule = match step.poll {
+                        Poll::Answered { .. } => "heartbeat stale",
+                        Poll::Failed { .. } => "heartbeat unreachable",
+                    };
+                    tracing::warn!(
+                        pid = my_pid,
+                        rule,
+                        fails,
+                        stalled_ms,
+                        load_in_progress = loading,
+                        grace_ms = grace.as_millis() as u64,
+                        main_thread_cpu_ms = cpu_ms,
+                        interval_ms = wall_ms,
+                        "{}",
+                        if loading {
+                            "client main thread busy past the load grace; terminating"
+                        } else {
+                            "client hung (main thread stalled and idle); terminating"
+                        }
+                    );
+                    self.handle_death(my_pid).await;
+                    return;
                 }
             }
         }
