@@ -6,20 +6,20 @@ use super::super::raw_tables::{self, RawExport, RawImport};
 use super::super::{clone_objects, CloneReport, CloneRequest, PatchSession, Placement};
 use crate::error::Result;
 
-pub(super) const NAME_FLAGS: u64 = 0x0007_0010_0000_0000;
+pub(crate) const NAME_FLAGS: u64 = 0x0007_0010_0000_0000;
 const RF_HAS_STACK: u64 = 0x0200_0000_0000_0000;
 
 #[derive(Default)]
-pub(super) struct Builder {
-    pub(super) names: Vec<String>,
+pub(crate) struct Builder {
+    pub(crate) names: Vec<String>,
     /// Flags for names that should not get [`NAME_FLAGS`].
-    pub(super) name_flags: std::collections::HashMap<String, u64>,
+    pub(crate) name_flags: std::collections::HashMap<String, u64>,
     imports: Vec<RawImport>,
-    pub(super) exports: Vec<(RawExport, Vec<u8>)>,
+    pub(crate) exports: Vec<(RawExport, Vec<u8>)>,
 }
 
 impl Builder {
-    pub(super) fn name(&mut self, s: &str) -> i32 {
+    pub(crate) fn name(&mut self, s: &str) -> i32 {
         if let Some(i) = self.names.iter().position(|n| n == s) {
             return i as i32;
         }
@@ -28,7 +28,7 @@ impl Builder {
     }
 
     /// Returns the import's (negative) ref.
-    pub(super) fn import(&mut self, class_pkg: &str, class: &str, outer: i32, name: &str) -> i32 {
+    pub(crate) fn import(&mut self, class_pkg: &str, class: &str, outer: i32, name: &str) -> i32 {
         let entry = RawImport {
             class_package: (self.name(class_pkg), 0),
             class_name: (self.name(class), 0),
@@ -40,7 +40,7 @@ impl Builder {
     }
 
     /// Returns the export's (positive, 1-based) ref.
-    pub(super) fn export(&mut self, class: i32, outer: i32, name: &str, data: Vec<u8>) -> i32 {
+    pub(crate) fn export(&mut self, class: i32, outer: i32, name: &str, data: Vec<u8>) -> i32 {
         let entry = RawExport {
             class_index: class,
             super_index: 0,
@@ -60,22 +60,22 @@ impl Builder {
     }
 
     /// Mark the most recent export as an actor (it serializes a state frame).
-    pub(super) fn mark_actor(&mut self) {
+    pub(crate) fn mark_actor(&mut self) {
         self.exports.last_mut().unwrap().0.object_flags |= RF_HAS_STACK;
     }
 
     /// Mark the most recent export as one the client loads (`RF_LoadForClient`).
-    pub(super) fn mark_client_loaded(&mut self) {
+    pub(crate) fn mark_client_loaded(&mut self) {
         self.exports.last_mut().unwrap().0.object_flags |= 0x0001_0000_0000_0000;
     }
 
-    pub(super) fn object_array_prop(&mut self, out: &mut Vec<u8>, name: &str, refs: &[i32]) {
+    pub(crate) fn object_array_prop(&mut self, out: &mut Vec<u8>, name: &str, refs: &[i32]) {
         self.tag(out, name, "ArrayProperty", 4 + refs.len() as i32 * 4);
         Self::i32s(out, &[refs.len() as i32]);
         Self::i32s(out, refs);
     }
 
-    pub(super) fn struct_array_prop(
+    pub(crate) fn struct_array_prop(
         &mut self,
         out: &mut Vec<u8>,
         name: &str,
@@ -89,13 +89,13 @@ impl Builder {
         }
     }
 
-    pub(super) fn i32s(out: &mut Vec<u8>, vals: &[i32]) {
+    pub(crate) fn i32s(out: &mut Vec<u8>, vals: &[i32]) {
         for v in vals {
             out.extend_from_slice(&v.to_le_bytes());
         }
     }
 
-    pub(super) fn build(&self) -> Vec<u8> {
+    pub(crate) fn build(&self) -> Vec<u8> {
         let mut names = Vec::new();
         for n in &self.names {
             let flags = self.name_flags.get(n).copied().unwrap_or(NAME_FLAGS);
@@ -166,23 +166,23 @@ impl Builder {
         out
     }
 
-    pub(super) fn tag(&mut self, out: &mut Vec<u8>, name: &str, ty: &str, size: i32) {
+    pub(crate) fn tag(&mut self, out: &mut Vec<u8>, name: &str, ty: &str, size: i32) {
         let (n, t) = (self.name(name), self.name(ty));
         Self::i32s(out, &[n, 0, t, 0, size, 0]);
     }
 
-    pub(super) fn object_prop(&mut self, out: &mut Vec<u8>, name: &str, obj: i32) {
+    pub(crate) fn object_prop(&mut self, out: &mut Vec<u8>, name: &str, obj: i32) {
         self.tag(out, name, "ObjectProperty", 4);
         Self::i32s(out, &[obj]);
     }
 
-    pub(super) fn bool_prop(&mut self, out: &mut Vec<u8>, name: &str, value: bool) {
+    pub(crate) fn bool_prop(&mut self, out: &mut Vec<u8>, name: &str, value: bool) {
         // Epic 486: the value is a 4-byte int that the tag's size does not count.
         self.tag(out, name, "BoolProperty", 0);
         Self::i32s(out, &[value as i32]);
     }
 
-    pub(super) fn vector_prop(&mut self, out: &mut Vec<u8>, name: &str, v: [f32; 3]) {
+    pub(crate) fn vector_prop(&mut self, out: &mut Vec<u8>, name: &str, v: [f32; 3]) {
         self.tag(out, name, "StructProperty", 12);
         let s = self.name("Vector");
         Self::i32s(out, &[s, 0]);
@@ -191,13 +191,13 @@ impl Builder {
         }
     }
 
-    pub(super) fn none(&mut self, out: &mut Vec<u8>) {
+    pub(crate) fn none(&mut self, out: &mut Vec<u8>) {
         let n = self.name("None");
         Self::i32s(out, &[n, 0]);
     }
 }
 
-pub(super) fn clone_actors(
+pub(crate) fn clone_actors(
     target: &mut PatchSession,
     source: &PatchSession,
     roots: &[usize],
@@ -211,18 +211,18 @@ pub(super) fn clone_actors(
     clone_objects(target, source, &request)
 }
 
-pub(super) fn temp_path(tag: &str) -> PathBuf {
+pub(crate) fn temp_path(tag: &str) -> PathBuf {
     std::env::temp_dir().join(format!("cimmeria-upk-{}-{tag}.upk", std::process::id()))
 }
 
-pub(super) fn write_temp(tag: &str, bytes: &[u8]) -> PathBuf {
+pub(crate) fn write_temp(tag: &str, bytes: &[u8]) -> PathBuf {
     let p = temp_path(tag);
     std::fs::write(&p, bytes).unwrap();
     p
 }
 
 /// A level package. `actors` lists the refs already in the level's actor array.
-pub(super) fn level_package(b: &mut Builder, actors: &[i32]) -> i32 {
+pub(crate) fn level_package(b: &mut Builder, actors: &[i32]) -> i32 {
     let level_class = b.import("Core", "Class", 0, "Level");
     let level_ref = b.exports.len() as i32 + 1;
     let mut data = Vec::new();
@@ -236,13 +236,13 @@ pub(super) fn level_package(b: &mut Builder, actors: &[i32]) -> i32 {
 
 /// Source package: a level, one StaticMeshActor at (100, 200, 300), and its
 /// component. Decoy exports keep source refs from lining up with target refs.
-pub(super) fn source_package() -> Vec<u8> {
+pub(crate) fn source_package() -> Vec<u8> {
     source_package_with_lod_data(&[0]) // empty LODData
 }
 
 /// [`source_package`] with `lod_data` (i32 words) as the component's native
 /// tail after its property list.
-pub(super) fn source_package_with_lod_data(lod_data: &[i32]) -> Vec<u8> {
+pub(crate) fn source_package_with_lod_data(lod_data: &[i32]) -> Vec<u8> {
     let mut b = Builder::default();
     let pkg = b.import("Core", "Package", 0, "GLB-Global");
     let mesh = b.import("Engine", "StaticMesh", pkg, "GLB-RingTransporterBase_TC00");
@@ -290,7 +290,7 @@ pub(super) fn source_package_with_lod_data(lod_data: &[i32]) -> Vec<u8> {
 
 /// Target package: a level holding one pre-existing actor, no mesh imports,
 /// and the class name in different case to exercise case-insensitive lookup.
-pub(super) fn target_package() -> Vec<u8> {
+pub(crate) fn target_package() -> Vec<u8> {
     let mut b = Builder::default();
     b.name("staticmeshactor");
     let other_class = b.import("Core", "Class", 0, "Trigger");
@@ -304,7 +304,7 @@ pub(super) fn target_package() -> Vec<u8> {
 ///   [3] SeqVar_Object (in rig) -> ring actor   [4] SeqEvent (in rig) -> links to the var
 ///   [5] ring InterpActor at (100, 0, 50)   [6] base StaticMeshActor at (100, 0, 0), yaw 0
 ///   [7] un-wired pad base at (0, 500, 0), yaw 16384 (90 degrees)
-pub(super) fn rig_package() -> Vec<u8> {
+pub(crate) fn rig_package() -> Vec<u8> {
     let mut b = Builder::default();
     let seq_class = b.import("Core", "Class", 0, "Sequence");
     let var_class = b.import("Core", "Class", 0, "SeqVar_Object");

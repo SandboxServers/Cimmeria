@@ -554,3 +554,71 @@ async fn cancelling_a_stalled_response_body_stops_the_download() {
     let _ = release.send(());
     server.await.unwrap();
 }
+
+/// A patch whose recipe names a source transform this launcher does not know
+/// (013-ihpet-world-map's `world_map_rebake` seen by a launcher that predates
+/// it) must fail alone, as one reported failure, and leave the patches after
+/// it to apply: the 2026-09-29 behaviour of a failing patch, not a failed run.
+#[tokio::test]
+async fn a_patch_with_a_transform_this_launcher_does_not_know_fails_alone() {
+    use crate::install_report::{PatchOutcomeKind as K, RunResult};
+    use wiremock::matchers::{method, path};
+    use wiremock::{Mock, MockServer, ResponseTemplate};
+
+    let recipe = br#"{"schema":1,"ops":[{"target":"a.bin","sources":[{"path":"a.bin","sha256":"00","transform":{"future_rebake":{}}}],"delta":"deltas/000.bsdiff","result_sha256":"00"}]}"#;
+    let unknown = zip_with("cimmeria-patch.json", recipe);
+    let good = zip_with("hello.txt", b"hi");
+    let server = MockServer::start().await;
+    for (name, body) in [("p/013.zip", &unknown), ("p/014.zip", &good)] {
+        Mock::given(method("GET"))
+            .and(path(format!("/{name}")))
+            .respond_with(ResponseTemplate::new(200).set_body_bytes(body.clone()))
+            .mount(&server)
+            .await;
+    }
+
+    let dir = tempfile::tempdir().unwrap();
+    let mut manifest = fake_manifest("5eed");
+    let patch = |id: &str, zip: &[u8]| PatchEntry {
+        blob: format!("p/{id}.zip"),
+        sha256: sha_hex(zip),
+        size: zip.len() as u64,
+        ..entry(id, None)
+    };
+    manifest.patches = vec![patch("013", &unknown), patch("014", &good)];
+    crate::state::InstalledState {
+        applied_patches: vec![],
+        seed_sha256: Some("5eed".into()),
+        seed_adopted: false,
+    }
+    .save(dir.path())
+    .unwrap();
+
+    let (tx, _rx) = unpack_ctx_parts();
+    let http = reqwest::Client::new();
+    let manifest_url = format!("{}/manifest.json", server.uri());
+    let ctx = InstallContext {
+        manifest_url: &manifest_url,
+        install_dir: dir.path(),
+        manifest: &manifest,
+        login_servers: &[],
+        cancel: CancellationToken::new(),
+        progress: tx.into(),
+        http: &http,
+    };
+    let (result, report) = install_all(ctx).await;
+    assert!(
+        matches!(result, Err(InstallError::PatchesFailed(_))),
+        "{result:?}"
+    );
+    assert_eq!(report.result, RunResult::PatchesFailed);
+    let outcomes: Vec<(&str, K)> = report
+        .patches
+        .iter()
+        .map(|p| (p.id.as_str(), p.outcome))
+        .collect();
+    assert_eq!(outcomes, vec![("013", K::Failed), ("014", K::Applied)]);
+    let reason = report.patches[0].reason.as_deref().unwrap_or_default();
+    assert!(reason.contains("future_rebake"), "{reason}");
+    assert_eq!(std::fs::read(dir.path().join("hello.txt")).unwrap(), b"hi");
+}

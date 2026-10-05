@@ -56,6 +56,8 @@ pub struct PatchSession {
     /// table more than once: see [`PatchSession::ensure_name_with_flags`].
     name_lookup: HashMap<String, Vec<i32>>,
     original_name_count: usize,
+    /// Whether the depends table is one empty list per export.
+    depends_all_empty: bool,
     new_name_flags: u64,
     imports: Vec<RawImport>,
     original_import_count: usize,
@@ -84,15 +86,12 @@ impl PatchSession {
         let exports =
             raw_tables::read_exports(&image, h.export_offset as usize, h.export_count as usize)?;
 
+        // Every QA map chunk has one empty list per export. A package with
+        // real dependency lists (a MapData package has one) is fine as long
+        // as no export is added: the table is copied as it is, and adding an
+        // export would need a proper walk, not an append (see `finish`).
         let depends_len = (h.total_header_size - h.depends_offset) as usize;
-        if depends_len != exports.len() * 4 {
-            // Every QA chunk inspected has one empty list per export. A package
-            // with real dependency lists needs a proper walk, not an append.
-            return Err(UpkError::Parse(format!(
-                "depends table is {depends_len} bytes for {} exports; expected 4 each",
-                exports.len()
-            )));
-        }
+        let depends_all_empty = depends_len == exports.len() * 4;
 
         let all_names: Vec<String> = package.names.iter().map(|n| n.name.clone()).collect();
         let name_flags: Vec<u64> = package.names.iter().map(|n| n.flags).collect();
@@ -116,6 +115,7 @@ impl PatchSession {
 
         let mut session = Self {
             original_name_count: all_names.len(),
+            depends_all_empty,
             original_import_count: imports.len(),
             package,
             image,
@@ -361,6 +361,20 @@ impl PatchSession {
         Ok(())
     }
 
+    /// Where [`PatchSession::finish`] will place the replacement data of
+    /// export `index` in the output file. Replacement data is appended in
+    /// export order after the original image, so this is right only while no
+    /// export with a lower index is replaced afterwards: call it, build the
+    /// data (which may embed absolute file offsets), and replace it last.
+    pub fn replacement_offset(&self, index: usize) -> usize {
+        self.image.len()
+            + self
+                .replaced
+                .range(..index)
+                .map(|(_, d)| d.len())
+                .sum::<usize>()
+    }
+
     /// Number of names, imports and exports this session has added.
     pub fn additions(&self) -> (usize, usize, usize) {
         (
@@ -372,6 +386,12 @@ impl PatchSession {
 
     /// Serialize the patched, uncompressed package.
     pub fn finish(mut self) -> Result<Vec<u8>> {
+        if !self.depends_all_empty && !self.new_exports.is_empty() {
+            return Err(UpkError::Parse(
+                "the depends table holds real lists; adding exports to this package                  needs a proper walk, not an append"
+                    .into(),
+            ));
+        }
         let h = self.package.header.clone();
         let mut out = std::mem::take(&mut self.image);
 
@@ -458,4 +478,4 @@ impl PatchSession {
 }
 
 #[cfg(test)]
-mod tests;
+pub(crate) mod tests;

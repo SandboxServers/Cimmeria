@@ -68,7 +68,16 @@ pub struct Source {
     pub output_of: Option<String>,
 }
 
-#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
+/// What is done to a source file before a delta is built or applied.
+///
+/// The unit variants serialize as plain strings (`"none"`,
+/// `"upk_normalize"`), the parameterised ones as one-key objects
+/// (`{"world_map_rebake": {...}}`). A launcher that predates a variant fails
+/// to parse the whole recipe with an "unknown variant" error: that patch
+/// fails cleanly and no file is touched (see `docs/client/launcher-guide.md`
+/// on how a failed patch is isolated), which is why a patch using a new
+/// variant must not be published before a launcher that knows it.
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum Transform {
     /// The file's bytes as they are.
@@ -77,12 +86,33 @@ pub enum Transform {
     /// A UE3 package decompressed and rewritten by `cimmeria-upk`'s
     /// patcher with no changes; see the crate docs.
     UpkNormalize,
+    /// A world map package with its overview texture rebuilt from the
+    /// package's own tiles, on the player's machine (see
+    /// `cimmeria_upk::texture::world_map`). The result is a pure function of
+    /// the file and these parameters, so the patch ships no picture data.
+    WorldMapRebake(WorldMapParams),
 }
 
 impl Transform {
     pub fn is_none(&self) -> bool {
-        *self == Self::None
+        matches!(self, Self::None)
     }
+}
+
+/// Parameters of [`Transform::WorldMapRebake`]; see
+/// `cimmeria_upk::texture::WorldMapRebake` for what each one means.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct WorldMapParams {
+    pub texture: String,
+    pub tile_prefix: String,
+    /// Inclusive chunk column range, west to east.
+    pub lo: [i32; 2],
+    /// Inclusive chunk row range, south to north.
+    pub hi: [i32; 2],
+    pub size: u32,
+    pub pad: [u8; 3],
+    pub carry: u32,
 }
 
 impl Recipe {

@@ -1,7 +1,7 @@
 //! Patcher tests run against small synthetic Epic-486 packages written to the
 //! temp dir, so they need no client files.
 
-mod fixtures;
+pub(crate) mod fixtures;
 
 use byteorder::{ByteOrder, LittleEndian};
 

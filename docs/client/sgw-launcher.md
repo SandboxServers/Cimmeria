@@ -325,7 +325,15 @@ map from the stock chunk, or from the retired 010's output). Launchers that
 predate the field ignore it and apply only the primary. `upk_normalize`
 decompresses a stock package and writes it back through `cimmeria-upk`'s
 append-only patcher, the starting point of every map our `upk_patch`
-tool built, so a 4 MB map's delta is under 2 KB. The launcher computes all
+tool built, so a 4 MB map's delta is under 2 KB. `world_map_rebake`
+(`013-ihpet-world-map`) computes the whole result on the player's machine:
+it rebuilds a world map's overview texture from the package's own tiles,
+integer-only so the pinned result hash holds everywhere, and the delta is
+about 200 bytes. It is a one-key object in the recipe
+(`{"world_map_rebake": {...}}`), and a launcher that predates it cannot parse
+the recipe, so that patch fails alone with an "unknown variant" error and the
+others apply; publish the launcher release that knows a transform before the
+patch that uses it, and set `min_launcher` to force the update. The launcher computes all
 ops before writing any, writes targets other ops read last, and skips ops
 whose target already has the result. Every path is resolved against the
 install's own directory listing first, so a file that exists keeps its

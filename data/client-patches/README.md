@@ -14,6 +14,8 @@ zip holds a `cimmeria-patch.json` recipe, the deltas, and files we wrote
 ourselves. See [docs/client/sgw-launcher.md](../../docs/client/sgw-launcher.md#patch-sets-cimmeria-patchset)
 for the format and [crates/patchset](../../crates/patchset/) for the code.
 
+**Transforms keep derived bytes off the server too.** A patch whose new bytes would be derived from CME's art (a re-baked texture, say) cannot ship them as a delta either: the delta would carry a resampled copy of CME pixels. Such a patch uses a source transform that computes the bytes on the player's machine from the player's own files, with deterministic code so the recipe can pin the result hash (`world_map_rebake`, patch 013). The zip then holds a recipe and a delta of a few hundred bytes. A transform is new launcher code: publish the launcher release before the patch that uses it.
+
 **Exception, 2026-09-29: small UI files ship whole.** A delta only applies to the exact stock file, so it fails on the clients many players already have (Project Giza, or a colo client with the portrait fix installed by hand), and before #1114 that one failure stopped every later patch. `008-dialog-portraits` therefore carries its five small UI files whole, as the Black Market overlay (`crates/client-patches/overlay/`) already does. Large binaries (maps, cooked-data PAKs) stay deltas. This was a maintainer-side call that accepts the distribution risk for small UI files.
 
 ## The patches
@@ -32,7 +34,7 @@ for the format and [crates/patchset](../../crates/patchset/) for the code.
 | `010-debug-area-rings` | **Retired 2026-10-05, superseded by 011: it hangs the client.** Eight ring transport rigs for the Debug Area, on the Ihpet_Crater_Light map (see below). | 1 map delta against the normalized stock map, with 007's Armory map as donor | 18 KB |
 | `011-debug-area-rings-fix` | **Supersedes 010.** The same eight rigs, rebuilt so the client loads them, with the arena station moved off the pit's water plane (see below). Needs 007 applied first, unless 010 already applied | 1 map op: a delta from the normalized stock map plus 007's Armory map, and an alternative delta from 010's output | 19 KB |
 | `012-gm-slash-commands` | The `/gm` slash commands (`/gmdhd`, `/gmgivexp`, ...): adds the `InternalSlashCommands.xml` the stock client lacks (see below) | 1 whole new file, written by this project (162 commands) | 48.7 KB |
-| `013-ihpet-world-map` | Fixes the Ihpet Crater world map art (Debug Area, world 1300, and the live Ihpet Crater, world 73): the stock overview picture is a 2x zoom of the map's top-left corner, so every icon sits on the wrong terrain. Rebuilds it from the map's own tiles (see below) | 1 delta (`Ihpet_Crater_Light_MapData.upk`) | 389 KB |
+| `013-ihpet-world-map` | Fixes the Ihpet Crater world map art (Debug Area, world 1300, and the live Ihpet Crater, world 73): the stock overview picture is a 2x zoom of the map's top-left corner, so every icon sits on the wrong terrain. Rebuilt on the player's machine from the map's own tiles by a new source transform, so the zip holds no picture data; **needs a launcher that knows the transform** (see below) | 1 recipe + a 219-byte delta | 1.4 KB |
 
 `002-castle-ring-transport` was **removed from the signed content
 manifest on 2026-09-29**, and `007-castle-armory-ring` supersedes it.
@@ -501,46 +503,78 @@ in world 73 as well (same map data).
   coordinates, or scaling the positions the server sends, would break the
   marker, the POIs and the readout, and half the pads would fall outside the
   texture.
-- **Fix.** `world__default_` is rebuilt from the 154 tiles: the 2816x3584
-  mosaic is scaled to 805x1024 and placed in the texture's top-left corner
-  (73.14 texels per chunk on both axes, as the map record says), and the rest
-  is magenta, which is what Harset's and Menfa's stock default textures use,
-  after an eight-texel carry of the last picture column so no DXT1 block or
-  bilinear tap mixes picture with magenta. Same format (DXT1), same size and
-  mip count (11), same LZO chunking as the stock export, with the export's serial
-  size and the one export after it (`Maps`) moved to match. Nothing else in the
-  package changes. The generator is
-  [tools/client-patches/ihpet_world_map.py](../../tools/client-patches/ihpet_world_map.py):
-  it reads the stock `Ihpet_Crater_Light_MapData.upk` (sha256
-  `ea86f7c32b6d8e230c86191b5f048e080fc979e80d584bbdc878e3db5404a1f4`, the
-  2009 file, 6,167,790 bytes), needs Pillow and lzallright, refuses any other
-  input, and is deterministic (two runs give the same bytes).
-- **Result.** 6,189,323 bytes, sha256
-  `14b5f65a4acdba2206a8ea2c4ad5273df82dc0cd7439823f20763b2305eb69d1`. The
-  zip holds one bsdiff delta of 397,851 bytes and is 398,603 bytes, sha256
-  `92a059abf2a03a351fb348c861b5ec0cfab6e0fcd6f4297775272a5a98ce28f5`.
-  `cimmeria-patchset apply` on a copy of the stock file gives the result's
-  hash.
-- **A maintainer call: the delta carries picture data.** Every other
-  patch's delta carries project-written bytes or records cloned inside the
-  same package. This one's delta carries the new texture's compressed bytes,
-  about 398 KB: our resampling of the stock tile art, not stock bytes, but
-  derived from it. The alternative that ships no CME-derived pixels is a
-  patchset transform that builds the picture on the player's machine from the
-  player's own tiles (a Rust port of this generator, with the same DXT1 and
-  LZO encoders). It was not built; ask before taking that on.
+- **Fix, with zero CME bytes in the zip.** The patch ships no picture data at
+  all. A new source transform, `world_map_rebake`
+  (`crates/patchset/src/transform.rs`, code in `crates/upk/src/texture/`),
+  runs on the player's machine: it reads the player's own
+  `Ihpet_Crater_Light_MapData.upk`, decodes its 154 DXT1 tiles, stitches them,
+  resamples the mosaic to the scale the map record describes (73.14 texels per
+  chunk, 805x1024 in the top-left of the 1024x1024 texture, the rest magenta
+  as in Harset's and Menfa's stock default textures, after an eight-texel
+  carry of the last picture column so no DXT1 block or bilinear tap mixes
+  picture with magenta), encodes DXT1 with the same 11 mips as stock, packs
+  the LZO chunks as stock does, and writes the new texture through
+  `cimmeria-upk`'s append-only patcher (the old texture stays in the file as
+  dead space; only the export table's entry for it moves). The recipe's
+  bsdiff delta then covers only what the transform leaves out, which is
+  nothing: 219 bytes.
+- **The parameters are data, not code.** The recipe names the texture, the tile
+  name prefix, the chunk bounds (`lo` -3..7, `hi` -13..0), the output size
+  (1024), the pad colour and the carry, so another map needs a new recipe and
+  no new code. Which maps: `Ihpet_Crater_Dark` has the same record and the same
+  2x texture and is the follow-up (a second recipe, tested in the lab first);
+  Castle and Menfa have patchwork default textures that this transform could
+  rebuild once someone decides what they should show.
+- **Deterministic by construction.** A launcher on another machine has to
+  reproduce the pinned result hash, so the pixel path has no floating point and
+  no third-party codec whose output can change: an integer area-average
+  resampler (`texture/resample.rs`, exact overlap weights, round half up,
+  checked against an exact-rational reference), our own DXT1 encoder
+  (`texture/dxt1.rs`: per-channel min and max, inset by 1/16 of the range,
+  RGB565, nearest palette colour by squared distance, ties to the lowest
+  index) and `lzokay-native`, pinned with `=0.1.0` in `crates/upk/Cargo.toml`.
+  `crates/upk/src/texture/tests.rs` pins golden values on synthetic input (no
+  game bytes): the resampler's output, the encoder's bytes, the LZO output of a
+  fixed input and every byte of a rebuilt synthetic world-map package. A change
+  to any of them fails there before it changes a player's result. The real
+  result was also reproduced in a debug and a release build.
+- **Result.** From the stock file (sha256
+  `ea86f7c32b6d8e230c86191b5f048e080fc979e80d584bbdc878e3db5404a1f4`, the 2009
+  file, 6,167,790 bytes) the transform gives 6,608,373 bytes, sha256
+  `856458c9998a88956f5a0573d5106f75d76e9389f661a7431d03e6ec29c6f1fe`. The zip
+  is 1,457 bytes (a 992-byte recipe and the 219-byte delta), sha256
+  `7a51dbf729c03fb4b903e9cc595b9699bf55aae94b6d6d100d504025a06d2a67`.
+  `committed_013_zip_carries_no_picture_data` fails if the zip grows past a few
+  KB, and the ignored `real_client_ihpet_world_map` test (run with the stock
+  file in `SGW_STOCK_MAPDATA`) checks that no 64-byte run of what the transform
+  appended appears in the zip and that applying the zip gives the pinned hash.
+- **Launcher requirement.** The recipe holds a one-key object where older
+  recipes hold a string. A launcher that predates the transform (the newest
+  release, `launcher-20260929-0d71e26`, does) cannot parse the recipe: the
+  patch fails with an "unknown variant `world_map_rebake`" error, nothing is
+  written, the other patches apply (the launcher's one-failure-does-not-stop-the-rest
+  behaviour, tested by
+  `a_patch_with_a_transform_this_launcher_does_not_know_fails_alone`) and the
+  run ends reporting one failed patch every time, because the patch is never
+  recorded as applied. **Publish a launcher release containing this transform
+  before the manifest entry for 013**, and set the manifest's `min_launcher` to
+  that release so older launchers show the update banner instead of a standing
+  error. The patch needs no stock-file mapping change: `PATCH_TARGETS` already
+  lists the file.
 - **Compatibility.** The source is the stock MapData file, which none of
   001-012 touch, so there is no ordering constraint; the manifest `after` is
-  free. It does not touch the Ihpet chunk that 011 writes, or the new ninth
-  ring rig's chunk. Light only: `Ihpet_Crater_Dark` carries the same defect
-  (the same record and a 2x default texture) and is a follow-up.
+  free. It does not touch the Ihpet chunk that 011 writes, or the ninth ring
+  rig's chunk. A MapData file that is not the stock one fails the source hash
+  check and is left alone, like any other patch.
 - **Rebuild.**
 
   ```bash
-  python tools/client-patches/ihpet_world_map.py --stock <stock>/Working/SGWGame/CookedPC/Maps/Ihpet_Crater_Light/Ihpet_Crater_Light_MapData.upk       --out <patched>/Working/SGWGame/CookedPC/Maps/Ihpet_Crater_Light/Ihpet_Crater_Light_MapData.upk
+  cimmeria-patchset transform data/client-patches/013-ihpet-world-map/patch.json       --stock <stock tree> --out <patched tree>
   cimmeria-patchset build data/client-patches/013-ihpet-world-map/patch.json       --stock <stock tree> --patched <patched tree> --out data/client-patches/013-ihpet-world-map.zip       --blob-url https://raw.githubusercontent.com/SandboxServers/Cimmeria/<commit>/data/client-patches/013-ihpet-world-map.zip
   ```
 
+  `transform` writes what the transform makes of the stock file into the
+  `--patched` tree, so `build` diffs the two.
 - **Lab check (2026-10-05, applied by hand).** The result file (sha256
   `14b5f65a...`, made by `cimmeria-patchset apply` from the stock file) was
   copied over the lab client's stock `Ihpet_Crater_Light_MapData.upk` (the

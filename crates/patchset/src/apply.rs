@@ -162,7 +162,7 @@ fn load_sources(install_dir: &Path, sources: &[Source]) -> Result<Vec<u8>> {
         }
         // One read: the hash covers the exact bytes used (for
         // `UpkNormalize` see `transform::load`).
-        let (bytes, raw_sha) = transform::load(&path, s.transform)?;
+        let (bytes, raw_sha) = transform::load(&path, &s.transform)?;
         if raw_sha != s.sha256 {
             if let Some(patch) = &s.output_of {
                 return Err(PatchsetError::PatchOutputMismatch {
