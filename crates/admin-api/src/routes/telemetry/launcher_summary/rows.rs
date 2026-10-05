@@ -18,14 +18,17 @@
 //!
 //! An optional value that is absent is omitted, never written as a
 //! sentinel: `tracing` records nothing for a `None` field. No row carries
-//! the token's session or subject, the peer address, or any string the
-//! client sent.
+//! the peer address, a request header, or any string the client sent.
 
 use std::fmt;
 
-use crate::routes::dev_session::SESSION_KIND_LAUNCHER_SUMMARY;
-
 use super::dto::{ClientDropped, PhaseTiming, Summary, SCHEMA_VERSION};
+
+/// The `cimmeria.session_kind` of every summary and phase row. It keeps
+/// them apart from the `player` and `lab` rows they share the
+/// `cimmeria-client` index with. It names no session: the route takes no
+/// token, and the dev-session mint refuses this value as a `session_kind`.
+pub(super) const ROW_SESSION_KIND: &str = "launcher_summary";
 
 /// Target of the per-summary and per-phase rows. The `tracing` calls below
 /// spell it out because the server's source scan
@@ -84,7 +87,7 @@ pub(super) fn emit_summary(summary: &Summary) {
         os = summary.os.as_str(),
         arch = summary.arch.as_str(),
         schema_version = SCHEMA_VERSION,
-        cimmeria.session_kind = SESSION_KIND_LAUNCHER_SUMMARY,
+        cimmeria.session_kind = ROW_SESSION_KIND,
         "launcher summary"
     );
     for timing in &summary.phases {
@@ -105,7 +108,7 @@ fn emit_phase(summary: &Summary, timing: &PhaseTiming, version: &Version) {
         os = summary.os.as_str(),
         arch = summary.arch.as_str(),
         schema_version = SCHEMA_VERSION,
-        cimmeria.session_kind = SESSION_KIND_LAUNCHER_SUMMARY,
+        cimmeria.session_kind = ROW_SESSION_KIND,
         "launcher phase"
     );
 }

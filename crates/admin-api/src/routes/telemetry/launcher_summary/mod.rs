@@ -6,10 +6,14 @@
 //! route validates a batch of those summaries, drops the ones it has
 //! already seen, and writes one typed log row per accepted summary.
 //!
+//! The route is anonymous: no token, no mint step, no `Authorization`
+//! header (one that is sent is never read). What it accepts instead is one
+//! exact payload, and everything else is refused before a row is written.
+//!
 //! It is a separate route from the chunk and bundle uploads on purpose.
-//! Those replay whatever a session sends under the `telemetry.write`
-//! scope; a summary token carries only `launcher_summary.write`, so
-//! neither kind of token works on the other's routes.
+//! Those need a dev-session token and replay whatever the session sends;
+//! this one needs none and can store nothing but the values listed under
+//! [Trust](#trust).
 //!
 //! # Contract (schema version 1)
 //!
@@ -25,11 +29,18 @@
 //!
 //! The answer is `200 { "results": ["accepted" | "duplicate" | "rejected", …] }`,
 //! one verdict per element in order. An element that breaks a rule is
-//! `rejected` alone. A request that breaks the envelope (malformed JSON, an
-//! unknown top-level key, a wrong `schema_version`, a bad `client_dropped`,
-//! 0 or more than 32 summaries) is a 400. The other statuses are 401 (no
-//! token, a bad one, or one without the summary scope), 413 (over 64 KiB),
-//! 429 and 503 (quota and kill switch, both with `Retry-After`).
+//! `rejected` alone, and the valid elements beside it are still accepted.
+//!
+//! Anything that is not that payload is refused whole, with a static body,
+//! in this order:
+//!
+//! | Status | When |
+//! |---|---|
+//! | 413 | The body is over 64 KiB (the router's body limit, before the handler). |
+//! | 503 + `Retry-After` | `CIMMERIA_TELEMETRY_KILL_SWITCH=1`. |
+//! | 429 + `Retry-After` | The peer address is over its allowance (12 requests per 3600 s window by default, `CIMMERIA_TELEMETRY_SUMMARY_QUOTA_PER_IP`). Charged before anything is parsed, so refused requests count. |
+//! | 415 | `Content-Type` is not `application/json` (a `charset` parameter is allowed). |
+//! | 400 | The body is not the envelope: unparseable JSON, a top level that is not an object, an unknown or missing top-level key, a wrong `schema_version`, a bad `client_dropped`, 0 or more than 32 summaries. A gzip body, an NDJSON body and a game-telemetry event all end here. |
 //!
 //! The golden fixtures in
 //! `crates/launcher/desktop/engine/src/storage/launcher_summary/fixtures/`
@@ -37,10 +48,12 @@
 //!
 //! # Trust
 //!
-//! The mint needs no credential, so every summary is self-reported and
-//! forgeable within the quota. The rows are for counting what opted-in
-//! launchers say happened. They must never drive server state, an alert
-//! or a success-rate target.
+//! The route is anonymous, so anyone can post correctly shaped rows within
+//! the rate limit. Rows are self-reported; they are useful for spotting
+//! failure patterns and must never drive server state, alerts,
+//! success-rate claims or SLOs. The strict schema means nothing but closed
+//! enum values, bounded integers, UUIDs and a version triple can ever be
+//! stored.
 //!
 //! No response body and no log row repeats anything the caller sent:
 //! refusals are static text, and rows are built from parsed values.
@@ -82,8 +95,10 @@ use axum::Router;
 pub use rows::{LAUNCHER_SUMMARY_BATCH_TARGET, LAUNCHER_SUMMARY_TARGET};
 
 /// Request-body cap. The launcher sends at most 48 KiB per request; the
-/// cap bounds what one request can make the server buffer before its
-/// token is checked.
+/// cap bounds what one request can make the server buffer before the kill
+/// switch and the quota are checked. A request over it is refused by the
+/// router's body limit and never reaches the handler, so it is not charged
+/// to the quota.
 pub const MAX_SUMMARY_BODY_BYTES: usize = 64 * 1024;
 
 /// The summary route alone. It is deliberately not part of

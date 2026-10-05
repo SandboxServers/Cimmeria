@@ -19,10 +19,8 @@
 //! and the `sub` claim is the caller's own `install_id`. What bounds
 //! the damage is therefore not authentication but three limits:
 //!
-//! - the token carries one scope, and each ingest endpoint refuses a
-//!   token without its own: `telemetry.write` for a player or lab session
-//!   (the upload endpoints), `launcher_summary.write` for a summary session
-//!   (the summary ingest);
+//! - the token carries only `telemetry.write`, and the ingest
+//!   endpoints refuse a token without it;
 //! - mint and refresh are quota-limited per peer address, and mint
 //!   additionally per `install_id` ([`quota`]);
 //! - a minted session cannot be extended past
@@ -32,8 +30,11 @@
 //! Binding a mint to a registered installation is still open; it
 //! needs a launcher-side handshake.
 //!
-//! `CIMMERIA_TELEMETRY_KILL_SWITCH=1` makes every mint and refresh, and
-//! the summary ingest, return 503 with `Retry-After: 60`.
+//! `CIMMERIA_TELEMETRY_KILL_SWITCH=1` makes every mint and refresh
+//! return 503 with `Retry-After: 60`. The anonymous launcher-summary
+//! ingest ([`crate::routes::telemetry::launcher_summary_routes`]) takes no
+//! token from here, but obeys the same switch and counts its per-address
+//! quota in a [`quota::WindowTable`].
 //!
 //! # Module layout
 //!
@@ -42,20 +43,14 @@
 //! - [`quota`] — the fixed-size mint/refresh counter tables.
 //! - `handlers` — the two axum handlers and their operator-tunable
 //!   policy.
-//! - `summary_mint` — the `session_kind = "launcher_summary"` arm of the
-//!   mint: its own per-address table, a server-constant `sub`, and no
-//!   caller-chosen identifier in the token or the log.
 
 pub mod quota;
 pub mod token;
 
 mod handlers;
-mod summary_mint;
 
 #[cfg(test)]
 mod session_kind_tests;
-#[cfg(test)]
-mod summary_mint_tests;
 #[cfg(test)]
 mod tests;
 
@@ -67,22 +62,21 @@ pub use handlers::{
     mint, refresh, DevSessionRequest, DevSessionResponse, RefreshRequest, TOKEN_TTL_SECONDS,
 };
 pub use token::{
-    decode_token, encode_token, AuthError, TokenClaims, MIN_SECRET_BYTES,
-    SCOPE_LAUNCHER_SUMMARY_WRITE, SCOPE_TELEMETRY_WRITE, SESSION_KIND_LAB,
-    SESSION_KIND_LAUNCHER_SUMMARY, SESSION_KIND_PLAYER,
+    decode_token, encode_token, AuthError, TokenClaims, MIN_SECRET_BYTES, SCOPE_TELEMETRY_WRITE,
+    SESSION_KIND_LAB, SESSION_KIND_PLAYER,
 };
 
 pub(crate) use handlers::{env_u32, kill_switch_active, QuotaPolicy};
-pub(crate) use summary_mint::parse_version_triple;
 pub(crate) use token::load_secret;
 
 #[cfg(test)]
 pub use token::env_lock;
 
-/// Mint through the real path with fresh quota tables, for the ingest tests
-/// under [`crate::routes::telemetry`]: a token those tests built by hand
-/// would not notice a change to what the mint issues. The caller holds
-/// [`env_lock`] and has set the HMAC secret.
+/// Mint through the real path with fresh quota tables, for the tests of
+/// the launcher-summary ingest under [`crate::routes::telemetry`]: they
+/// show that a real player or lab token changes nothing on that anonymous
+/// route, and a token built by hand would not notice a change to what the
+/// mint issues. The caller holds [`env_lock`] and has set the HMAC secret.
 #[cfg(test)]
 pub(crate) fn mint_for_test(req: DevSessionRequest) -> Result<DevSessionResponse, AuthError> {
     handlers::mint_inner(

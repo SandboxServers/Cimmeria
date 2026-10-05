@@ -9,10 +9,21 @@
 //! no config and no secret.
 //!
 //! A fifth route, `/api/telemetry/launcher-summary`, is merged below for
-//! the desktop launcher's attempt summaries. It is outside the recorded
-//! four-route decision: serving it publicly needs the maintainer's explicit
-//! yes before a build carrying this merge is deployed. No shipped launcher
-//! calls it (the exporter's endpoint is unset).
+//! the desktop launcher's attempt summaries. Unlike the other four it is
+//! anonymous: it takes no token, and never reads an `Authorization`
+//! header. Anyone who can reach this port can post correctly shaped rows
+//! within the rate limit (12 requests an hour per address by default,
+//! `CIMMERIA_TELEMETRY_SUMMARY_QUOTA_PER_IP`), and anything that is not the
+//! exact schema-1 JSON payload is refused. The rows are self-reported:
+//! they are useful for spotting failure patterns and must never drive
+//! server state, alerts, success-rate claims or SLOs. The strict schema
+//! means nothing but closed enum values, bounded integers, UUIDs and a
+//! version triple can ever be stored.
+//!
+//! That route is outside the recorded four-route decision: serving it
+//! publicly needs the maintainer's explicit yes before a build carrying
+//! this merge is deployed. No shipped launcher calls it (the exporter's
+//! endpoint is unset).
 //!
 //! Only these routes are exposed. Everything else under `/api`
 //! (players, config, entities, the admin `/api/auth/login`) and the `/ws`
@@ -33,7 +44,8 @@ use crate::routes::{dev_session, telemetry};
 ///
 /// The per-route body limits come with [`dev_session::routes`],
 /// [`telemetry::routes`] and [`telemetry::launcher_summary_routes`]. The
-/// mint, refresh and summary quotas read the peer
+/// first four need a dev-session token; the summary route is anonymous.
+/// The mint, refresh and summary quotas read the peer
 /// address, so the listener must serve with
 /// `into_make_service_with_connect_info::<SocketAddr>()`, which both auth
 /// listeners already do.
@@ -121,9 +133,14 @@ mod tests {
     /// response, head and body. Raw TCP keeps the test free of an
     /// HTTP-client dependency.
     async fn exchange(addr: SocketAddr, method: &str, path: &str) -> String {
+        exchange_with(addr, method, path, "").await
+    }
+
+    /// [`exchange`] with extra header lines, each ending in `\r\n`.
+    async fn exchange_with(addr: SocketAddr, method: &str, path: &str, headers: &str) -> String {
         let mut stream = TcpStream::connect(addr).await.unwrap();
         let request = format!(
-            "{method} {path} HTTP/1.1\r\nHost: {addr}\r\nContent-Length: 0\r\nConnection: close\r\n\r\n"
+            "{method} {path} HTTP/1.1\r\nHost: {addr}\r\n{headers}Content-Length: 0\r\nConnection: close\r\n\r\n"
         );
         stream.write_all(request.as_bytes()).await.unwrap();
         let mut response = Vec::new();
@@ -169,18 +186,32 @@ mod tests {
         );
     }
 
-    /// The launcher-summary ingest is the fifth route. Its handler checks
-    /// the kill switch and then the bearer token, so a bodyless POST gets a
-    /// 401 (or a 503 while another test holds the kill switch on); either
-    /// proves the handler ran. Dropping the merge above makes it a 404.
+    /// True if `response` is the summary handler's own answer to a
+    /// bodyless request with no `Content-Type`: its 415 with its static
+    /// body. A 503 (another test in this process holds the kill switch on)
+    /// or a 429 (the tests in this process have used up loopback's
+    /// allowance) also comes only from that handler.
+    fn summary_handler_ran(response: &str) -> bool {
+        let status_line = response.lines().next().unwrap_or_default();
+        (status_line.contains(" 415 ")
+            && response.ends_with("Content-Type must be application/json"))
+            || status_line.contains(" 503 ")
+            || status_line.contains(" 429 ")
+    }
+
+    /// The launcher-summary ingest is the fifth route, and the only
+    /// anonymous one. Its handler checks the kill switch, the quota and
+    /// then the content type, so a bodyless POST with no token and no
+    /// `Content-Type` gets the handler's own 415, not a 401. Dropping the
+    /// merge above makes it a 404.
     #[tokio::test]
     async fn login_port_router_answers_the_launcher_summary_route() {
         let addr = serve().await;
 
-        let summary = status(addr, "POST", "/api/telemetry/launcher-summary").await;
+        let summary = exchange(addr, "POST", "/api/telemetry/launcher-summary").await;
         assert!(
-            summary == 401 || summary == 503,
-            "launcher-summary not mounted: {summary}"
+            summary_handler_ran(&summary),
+            "launcher-summary not mounted: {summary:?}"
         );
         // The route takes POST only, and nothing else was mounted beside it.
         assert_eq!(
@@ -238,8 +269,10 @@ mod tests {
     }
 
     /// **No echo through the request span.** A query string on the summary
-    /// route reaches no span field, no event field and no response byte.
-    /// The request span is recorded with the path alone.
+    /// route, and an `Authorization` header the anonymous route never
+    /// reads, reach no span field, no event field and no response byte.
+    /// The request span is recorded with the path alone, and with no
+    /// header.
     ///
     /// Putting `DefaultMakeSpan` back fails the first log assertion: its
     /// `uri` field is the whole URI, marker included.
@@ -262,7 +295,13 @@ mod tests {
             tracing::subscriber::set_default(tracing_subscriber::registry().with(shown.clone()));
 
         let addr = serve().await;
-        let response = exchange(addr, "POST", &format!("{PATH}?{MARKER}")).await;
+        let response = exchange_with(
+            addr,
+            "POST",
+            &format!("{PATH}?{MARKER}"),
+            &format!("Authorization: Bearer {MARKER}\r\n"),
+        )
+        .await;
         let lines = shown.lines();
 
         assert!(!response.contains(MARKER), "{response:?}");
@@ -270,15 +309,11 @@ mod tests {
             lines.iter().all(|line| !line.contains(MARKER)),
             "{lines:#?}"
         );
-        // Not vacuous: the handler ran (401, or 503 while another test
-        // holds the kill switch on), and the request span was recorded
-        // with its three fields, the path among them, under the target
-        // tower-http's own span has.
-        let status_line = response.lines().next().unwrap_or_default();
-        assert!(
-            status_line.contains(" 401 ") || status_line.contains(" 503 "),
-            "{response:?}"
-        );
+        // Not vacuous: the handler ran (its 415 for the missing content
+        // type; see `summary_handler_ran`), and the request span was
+        // recorded with its three fields, the path among them, under the
+        // target tower-http's own span has.
+        assert!(summary_handler_ran(&response), "{response:?}");
         for wanted in [
             "span=request target=tower_http::trace::make_span".to_string(),
             "method=POST".to_string(),

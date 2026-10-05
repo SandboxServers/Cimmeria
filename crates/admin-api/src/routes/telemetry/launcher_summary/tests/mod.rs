@@ -5,21 +5,24 @@
 //! the rows and the verdicts its own request produced. Only `routes` uses a
 //! socket, for route exposure and the body limit.
 //!
-//! Tokens come from the real mint (`dev_session::mint_for_test`), so a
-//! change to what the mint issues shows up here.
+//! The route is anonymous, so the harness's request carries one header,
+//! `Content-Type: application/json`, and no `Authorization`. The tests in
+//! `anonymous` add a token (a real one, from `dev_session::mint_for_test`)
+//! only to show that it changes nothing.
 //!
 //! The items marked `pub(super)` are what `fixture_tests/` borrows to
 //! capture the rows of the golden request.
 
+mod anonymous;
 mod dedup;
 mod envelope;
 mod golden;
 mod no_echo;
 mod order;
 mod quota;
+mod rejected;
 mod routes;
 mod rows;
-mod scope;
 mod validation;
 
 use std::collections::BTreeMap;
@@ -52,7 +55,6 @@ macro_rules! fixture {
 }
 
 /// The golden wire fixtures, shared with the desktop launcher's exporter.
-const MINT_REQUEST: &str = fixture!("mint-request.json");
 pub(super) const REQUEST_ALL: &str = fixture!("request-all.json");
 const REQUEST_MIXED: &str = fixture!("request-mixed.json");
 /// Recorded from the engine's real install worker, not written by hand.
@@ -63,9 +65,11 @@ const ENV_SECRET: &str = "CIMMERIA_TELEMETRY_HMAC_SECRET";
 const ENV_KILL_SWITCH: &str = "CIMMERIA_TELEMETRY_KILL_SWITCH";
 const ENV_SUMMARY_QUOTA: &str = "CIMMERIA_TELEMETRY_SUMMARY_QUOTA_PER_IP";
 
-/// Holds the crate's env lock for the test, with a usable HMAC secret and
-/// the kill switch off; restores both variables on drop. `ingest_inner`
-/// reads both, so every test that calls it holds one of these.
+/// Holds the crate's env lock for the test, with the kill switch off and a
+/// usable HMAC secret; restores both variables on drop. `ingest_inner`
+/// reads the kill switch, so every test that calls it holds one of these.
+/// The ingest itself never reads the secret: it is set for the tests that
+/// mint a player or lab token to send along.
 pub(super) struct Env {
     _lock: MutexGuard<'static, ()>,
     prev_secret: Option<String>,
@@ -110,7 +114,7 @@ impl Drop for Env {
 }
 
 /// One captured log record.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub(super) struct Row {
     pub(super) target: String,
     pub(super) level: tracing::Level,
@@ -199,19 +203,38 @@ fn batch_rows(rows: &[Row]) -> Vec<&Row> {
     rows.iter().filter(|r| r.event() == EVENT_BATCH).collect()
 }
 
-fn bearer(token: &str) -> HeaderMap {
+/// The headers of the launcher's request: the content type and nothing
+/// else.
+fn json_headers() -> HeaderMap {
     let mut headers = HeaderMap::new();
     headers.insert(
-        axum::http::header::AUTHORIZATION,
-        HeaderValue::from_str(&format!("Bearer {token}")).unwrap(),
+        axum::http::header::CONTENT_TYPE,
+        HeaderValue::from_static("application/json"),
     );
     headers
 }
 
-/// A token minted by the real mint from the launcher's golden mint body.
-fn summary_token() -> String {
-    let req: DevSessionRequest = serde_json::from_str(MINT_REQUEST).unwrap();
-    mint_for_test(req).expect("summary mint").token
+/// The launcher's headers with `Content-Type` replaced, or removed.
+fn content_type(value: Option<&str>) -> HeaderMap {
+    let mut headers = HeaderMap::new();
+    if let Some(value) = value {
+        headers.insert(
+            axum::http::header::CONTENT_TYPE,
+            HeaderValue::from_str(value).unwrap(),
+        );
+    }
+    headers
+}
+
+/// The launcher's headers plus an `Authorization` header, which the route
+/// must ignore.
+fn with_authorization(value: &str) -> HeaderMap {
+    let mut headers = json_headers();
+    headers.insert(
+        axum::http::header::AUTHORIZATION,
+        HeaderValue::from_str(value).unwrap(),
+    );
+    headers
 }
 
 /// A player (`None`) or lab (`Some("lab")`) token from the real mint.
@@ -229,8 +252,8 @@ fn session_token(kind: Option<&str>) -> String {
     .token
 }
 
-/// One ingest under test: fresh state, a policy with the quota off, a
-/// valid summary token. Fields are public to the tests so each varies only
+/// One ingest under test: fresh state, a policy with the quota off, the
+/// launcher's headers. Fields are public to the tests so each varies only
 /// what it is about.
 pub(super) struct Harness {
     state: IngestState,
@@ -241,7 +264,7 @@ pub(super) struct Harness {
 }
 
 impl Harness {
-    /// Needs the secret, so call it with an [`Env`] held.
+    /// Posting reads the kill switch, so call it with an [`Env`] held.
     pub(super) fn new() -> Self {
         Self {
             state: IngestState::new(),
@@ -249,7 +272,7 @@ impl Harness {
                 window: Duration::from_secs(3_600),
                 per_ip: 0,
             },
-            headers: bearer(&summary_token()),
+            headers: json_headers(),
             peer: "203.0.113.77".parse().unwrap(),
             now: Instant::now(),
         }

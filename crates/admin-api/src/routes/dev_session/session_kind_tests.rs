@@ -98,6 +98,51 @@ fn an_unknown_session_kind_is_refused() {
     assert_eq!(status(err), axum::http::StatusCode::BAD_REQUEST);
 }
 
+/// `"launcher_summary"` is not a session kind. The launcher-summary ingest
+/// is anonymous and takes no token, so the mint has nothing to issue for
+/// it: the value is refused exactly as any other unknown kind is (the same
+/// status and the same body as a made-up one), and no token comes back. A
+/// lab mint through the same tables is the control.
+#[test]
+fn launcher_summary_is_refused_as_an_unknown_session_kind() {
+    let _g = EnvGuard::install();
+    let t = Tables::new();
+    let mint = |kind: &str| {
+        mint_inner(
+            &t,
+            &policy(10, 10, 10),
+            ip("203.0.113.5"),
+            request_of_kind(Some(kind)),
+            Instant::now(),
+            NOW_UNIX,
+        )
+    };
+
+    let err = mint("launcher_summary").expect_err("launcher_summary must not mint");
+    assert!(
+        matches!(
+            err,
+            AuthError::BadField {
+                field: "session_kind",
+                ..
+            }
+        ),
+        "{err:?}"
+    );
+    let unknown = mint("no_such_kind").expect_err("control: an unknown kind");
+    assert_eq!(err.to_string(), unknown.to_string());
+    assert_eq!(
+        err.to_string(),
+        "Invalid session_kind: must be \"player\" or \"lab\""
+    );
+    assert_eq!(status(err), axum::http::StatusCode::BAD_REQUEST);
+
+    let lab = mint("lab").expect("control: a lab mint");
+    let claims = decode_token(&lab.token, &secret()).unwrap();
+    assert_eq!(claims.kind.as_deref(), Some("lab"));
+    assert_eq!(claims.scope, ["telemetry.write"]);
+}
+
 /// The colo compose passes `${CIMMERIA_TELEMETRY_UPLOAD_ENDPOINT:-}`, so an
 /// operator who has not set it yet gives the server an empty string. The
 /// mint must still hand back a usable endpoint, not `""`.

@@ -3,6 +3,7 @@
 
 use serde_json::{json, Value};
 
+use super::super::dto::parse_version_triple;
 use super::super::dto::Verdict::{self, Accepted, Duplicate, Rejected};
 use super::{batch, capture, element, id, summary_rows, Env, Harness};
 
@@ -266,4 +267,18 @@ fn two_spellings_of_one_id_are_one_id() {
         set("event_id", json!(simple)),
     ]);
     assert_eq!(Harness::new().verdicts(&body), [Accepted, Accepted]);
+}
+
+/// The version rule on its own: three components of one to three ASCII
+/// digits, returned as integers.
+#[test]
+fn parse_version_triple_reads_three_short_ascii_components() {
+    assert_eq!(parse_version_triple("0.1.0"), Some((0, 1, 0)));
+    assert_eq!(parse_version_triple("999.999.999"), Some((999, 999, 999)));
+    assert_eq!(parse_version_triple("007.01.000"), Some((7, 1, 0)));
+    for bad in [
+        "", "1", "1.2", "1.2.3.4", "1.2.", ".1.2", "1000.0.0", "1.2.3 ",
+    ] {
+        assert_eq!(parse_version_triple(bad), None, "{bad:?}");
+    }
 }

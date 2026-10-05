@@ -7,7 +7,10 @@ use serde_json::json;
 use crate::routes::dev_session::{decode_token, load_secret};
 
 use super::super::rows::{duration_bucket, LAUNCHER_SUMMARY_BATCH_TARGET, LAUNCHER_SUMMARY_TARGET};
-use super::{batch, batch_rows, capture, element, id, phase_rows, summary_rows, Env, Harness};
+use super::{
+    batch, batch_rows, capture, element, id, phase_rows, session_token, summary_rows,
+    with_authorization, Env, Harness,
+};
 
 /// A summary carrying every optional field writes a row with exactly these
 /// keys, at INFO, on the summary target, with `event = launcher_summary`.
@@ -205,27 +208,27 @@ fn the_batch_row_has_exactly_these_keys() {
     assert_eq!(f["message"], "launcher summary batch");
 }
 
-/// No row says who sent the request: not the token's session id or
-/// subject, not the peer address. The token and the peer are the ones the
-/// request really carried, so their absence is not an accident of the
-/// fixture.
+/// No row says who sent the request: not the peer address, and nothing of
+/// a token the caller chose to send along. The token is a real player
+/// token from the mint and the peer is the one the request came from, so
+/// their absence is not an accident of the fixture.
 #[test]
-fn no_row_carries_the_session_the_subject_or_the_peer() {
+fn no_row_carries_the_peer_or_a_token_the_caller_sent() {
     let _env = Env::install();
-    let h = Harness::new();
-    let raw = h.headers[axum::http::header::AUTHORIZATION]
-        .to_str()
-        .unwrap();
-    let token = raw.strip_prefix("Bearer ").unwrap();
-    let claims = decode_token(token, &load_secret().unwrap()).unwrap();
+    let mut h = Harness::new();
+    let token = session_token(None);
+    let claims = decode_token(&token, &load_secret().unwrap()).unwrap();
+    h.headers = with_authorization(&format!("Bearer {token}"));
     let peer = h.peer.to_string();
 
     let (_, rows) = capture(|| h.verdicts(&batch(vec![element(1)])));
     assert_eq!(rows.len(), 4, "summary, two phases, batch: {rows:#?}");
     for row in &rows {
+        assert!(!row.mentions(&token), "token in {row:#?}");
         assert!(!row.mentions(&claims.sid), "session id in {row:#?}");
+        assert!(!row.mentions(&claims.sub), "install id in {row:#?}");
         assert!(!row.mentions(&peer), "peer address in {row:#?}");
-        for key in ["session_id", "install_id", "sub", "peer"] {
+        for key in ["session_id", "install_id", "sub", "peer", "authorization"] {
             assert!(!row.fields.contains_key(key), "{key} in {row:#?}");
         }
     }

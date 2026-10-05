@@ -5,25 +5,30 @@ use std::sync::OnceLock;
 use std::time::{Duration, Instant};
 
 use axum::extract::ConnectInfo;
+use axum::http::header::CONTENT_TYPE;
 use axum::http::HeaderMap;
 use axum::Json;
 use bytes::Bytes;
 
 use crate::routes::dev_session::quota::{ip_key, WindowTable};
-use crate::routes::dev_session::{
-    env_u32, kill_switch_active, AuthError, QuotaPolicy, SCOPE_LAUNCHER_SUMMARY_WRITE,
-};
+use crate::routes::dev_session::{env_u32, kill_switch_active, QuotaPolicy};
 
-use super::super::handlers::verify_bearer_scoped;
 use super::dedup::Dedup;
-use super::dto::{parse_envelope, validate, SummaryError, SummaryResponse, Verdict};
+use super::dto::{
+    is_json_content_type, parse_envelope, validate, SummaryError, SummaryResponse, Verdict,
+};
 use super::rows::{emit_batch, emit_summary};
 
-/// Requests per peer address per quota window, with or without a valid
-/// token. A launcher sends one request per export cycle, a few an hour at
-/// most; like the mint quota this is sized for a shared egress address,
-/// not for one machine.
-const DEFAULT_SUMMARY_PER_IP: u32 = 120;
+/// Requests per peer address per quota window. The route is anonymous, so
+/// this is the only thing between it and anyone who can reach the port,
+/// and it is deliberately low: a launcher sends one request per export
+/// cycle, a few an hour at most. Every request counts, the refused ones
+/// too.
+///
+/// The allowance belongs to the address, not to a machine: everyone behind
+/// one NAT, reverse proxy or tunnel shares it, and an operator behind such
+/// an address raises `CIMMERIA_TELEMETRY_SUMMARY_QUOTA_PER_IP`.
+const DEFAULT_SUMMARY_PER_IP: u32 = 12;
 
 /// Operator-tunable limits, read per request like the mint's
 /// [`QuotaPolicy`]: change the env and restart.
@@ -70,8 +75,8 @@ fn state() -> &'static IngestState {
 
 /// `POST /api/telemetry/launcher-summary`. The body is taken as bytes, not
 /// through `Json<T>`: the extractor would answer a malformed body with
-/// serde's error text before the kill switch, the quota or the token had
-/// been checked.
+/// serde's error text, and a wrong `Content-Type` with its own 415, before
+/// the kill switch or the quota had been checked.
 pub(super) async fn ingest(
     ConnectInfo(peer): ConnectInfo<SocketAddr>,
     headers: HeaderMap,
@@ -89,19 +94,20 @@ pub(super) async fn ingest(
 }
 
 /// The ingest, in the order the tests pin: kill switch (503), per-address
-/// quota (429), bearer token with the summary scope (401), envelope (400),
-/// then per-element validation, deduplication, the rows and the response.
+/// quota (429), `Content-Type` (415), envelope (400), then per-element
+/// validation, deduplication, the rows and the response.
 ///
-/// The cheap refusals come first so that a caller without a token, or over
-/// its allowance, costs neither an HMAC nor a JSON parse.
+/// The route is anonymous. There is no token, and nothing here reads the
+/// `Authorization` header: `headers` is consulted for `Content-Type` and
+/// for nothing else, so a caller who sends a token, a real one included,
+/// is treated exactly like one who sends none.
 ///
-/// The quota is therefore charged before the token is looked at, and a
-/// request with no token or a bad one spends the address's allowance like
-/// any other. Anyone behind the same address as real launchers (a NAT, a
-/// tunnel) can use it up without a token and turn their summary posts into
-/// 429s until the window ends. The refresh route closes the same hole by
-/// verifying first and counting failures on a table of their own; doing
-/// that here would change the pinned order.
+/// The quota is charged before anything the caller sent is looked at, so a
+/// request refused for its media type or its body spends the address's
+/// allowance like an accepted one, and a caller over the allowance costs
+/// no JSON parse. The other side of that: anyone behind the same address
+/// as real launchers (a NAT, a tunnel) can use the allowance up and turn
+/// their summary posts into 429s until the window ends.
 pub(super) fn ingest_inner(
     state: &IngestState,
     policy: &IngestPolicy,
@@ -111,22 +117,22 @@ pub(super) fn ingest_inner(
     now: Instant,
 ) -> Result<SummaryResponse, SummaryError> {
     if kill_switch_active() {
-        return Err(AuthError::KillSwitchActive.into());
+        return Err(SummaryError::Paused);
     }
-    state
-        .quota
-        .check_and_record(
-            ip_key(peer_ip),
-            policy.per_ip,
-            policy.window,
-            "summary/ip",
-            now,
-        )
-        .map_err(AuthError::from)?;
-    // The claims are deliberately unused: the token proves the caller went
-    // through the summary mint and nothing more. Its session and subject
-    // must not reach a row.
-    verify_bearer_scoped(headers, SCOPE_LAUNCHER_SUMMARY_WRITE)?;
+    state.quota.check_and_record(
+        ip_key(peer_ip),
+        policy.per_ip,
+        policy.window,
+        "summary/ip",
+        now,
+    )?;
+    // Exactly one `Content-Type`: with two, which one a proxy or a later
+    // reader would honour is not ours to guess.
+    let mut content_types = headers.get_all(CONTENT_TYPE).iter();
+    match (content_types.next(), content_types.next()) {
+        (Some(value), None) if is_json_content_type(value) => {}
+        _ => return Err(SummaryError::UnsupportedMediaType),
+    }
 
     let envelope = parse_envelope(body)?;
     let summaries: Vec<_> = envelope.elements.into_iter().map(validate).collect();
