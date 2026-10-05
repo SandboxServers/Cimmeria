@@ -20,6 +20,7 @@ mod bandolier_sync;
 mod bandolier_sync_ammo_type;
 mod bandolier_sync_reload;
 mod bandolier_update;
+mod bandolier_update_ammo;
 mod bank;
 mod bank_org;
 mod broadcast_to_witnesses;

@@ -33,6 +33,7 @@ otherwise. Nothing here is relabelled as retail evidence.
 | OD-CS05 | Every playable profile has Health and Focus (or resource) sustain before sustained solo combat. | none |
 | OD-CS06 | Each class gets exactly one free signature stock ability at its class-identity milestone: permanent, survives respec, costs no point, counts as owned and as branch credit. All other tree nodes stay trained. | none |
 | OD-CS07 | Status is FINAL_V1_SUBJECT_TO_CHANGE. | none |
+| OD-CS13 | Every gun is acquired empty: a newly acquired firearm has 0 rounds and the player reloads once (default reload is free and unlimited, D-AM02). Equip and swap never change the count. Reverses the 'starts loaded' clause of OD-CS03 and rules L4/L5; character-creation kits follow in CS-02. Pending lomiada's acknowledgement. | OD-CS03's "a granted firearm starts loaded"; L4; L5 |
 
 ### Locked implementation rules
 
@@ -43,8 +44,8 @@ Set by lomiada in the first preflight answer (2026-10-05).
 | L1 | Normal players do not use the starter-hotbar patch `009`. | 009 applies only to debug-kit profiles. A normal character's bar starts empty; tutorial 5882 tells the player to place Pistol Shot. |
 | L2 | The debug kit is an explicit start-profile flag, never derived from access level. | A `debug_kit` column on the start profile (CS-02). No kit choice reads `access_level`. |
 | L3 | Unknown start worlds fail closed. | Character creation refuses a profile whose world has no loaded cell space; `space_registry`'s silent Castle_CellBlock fallback becomes a loud refusal (CS-02). |
-| L4 | A firearm content grant loads `clip_size` when `clip_size > 0`. | The grant insert sets the clip, as character creation already does (CS-01b). |
-| L5 | Staff, ribbon and other zero-clip weapons are unchanged. | The `> 0` guard in L4; regression rows for 2797 and 4565 (CS-01b). |
+| L4 | ~~A firearm content grant loads `clip_size` when `clip_size > 0`.~~ | Superseded by OD-CS13. |
+| L5 | ~~Staff, ribbon and other zero-clip weapons are unchanged.~~ | Superseded by OD-CS13. |
 | L6 | Grant provenance survives reset and respec and stays distinguishable from trained abilities. | `sgw_player_ability_grants` with a `source_kind`; respec touches only `trained_abilities`; the GM / Debug NPC reset rebuilds from provenance (CS-01a). |
 
 ### Preflight answers
@@ -79,7 +80,8 @@ the repo root.
   `world_entry_point` also assume only CellBlock and SGC_W1. CS-02 replaces all
   of them with one start profile.
 - **Granted firearms arrive empty.** The content grant sets `ammo = charges`
-  (0 for 55, 21, 3260); creation loads `clip_size`. Fixed by L4.
+  (0 for 55, 21, 3260); creation loads `clip_size`. Kept as the rule by
+  OD-CS13; creation follows in CS-02.
 - **The trainer's spend gate is archetype-wide** (`tree_points_spent >=
   required_branch_points`); no per-branch credit exists. Free nodes satisfy
   prerequisites but add no spend.
@@ -209,7 +211,7 @@ the live UAT (CS-08).
 |---|---|---|---|
 | CS-00 | This ledger: OD-CS01..12, L1-L6, preflight findings, B1-B4, matrices. D-SA1 and D-CB06 marked superseded where recorded. | none | Open |
 | CS-01a | Grant provenance and the content grant action: `sgw_player_ability_grants`; a non-GM `grant_ability` content action (persist, provenance, `onKnownAbilitiesUpdate`, visible chat feedback); branch credit in the trainer spend gate (trained points plus the cost of granted tree nodes; refunds stay trained-only); the GM / Debug NPC reset rebuilds from starters plus provenance; GM grants recorded as `gm`. | none | Dispatched |
-| CS-01b | Content-granted firearms load `clip_size` when it is above 0 (L4, L5); dialog triggers set the `archetype` parameter. | none | Dispatched |
+| CS-01b | Dialog triggers set the `archetype` parameter (every player trigger now does; a missing value still reads -1 on purpose, 701's Human-branch fallback). The bandolier ammo counter (`AmmoSlot{N}`) mirrors a granted gun's count. The content executor no longer writes a guessed weapon into the occupied active slot. Guards that a content, mission, loot, GM or vendor acquisition gives a gun 0 rounds, and that equip and swap keep the count (OD-CS13). PR #1263. | none | Review |
 | CS-02 | Data-driven start profile (world, spawn, level, gear, grants, `debug_kit`, holding-state label); fail closed on an unknown world (L3); universal kit removed for canonical profiles; OD-CS08/09 holding states; seeded characters and drift test updated. | CS-01a | Planned |
 | CS-03 | Persisted one-time tutorial state; triggers for 5882 and 5883. | CS-01a | Planned |
 | CS-04 | CellBlock: M622 core grant and tutorials, M641 unchanged, M687 five-way loot tables and signatures. | CS-01a/b, CS-02, CS-03 | Planned |

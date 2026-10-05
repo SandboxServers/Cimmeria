@@ -495,6 +495,8 @@ mod allowlist_tests;
 #[cfg(test)]
 mod concurrency_tests;
 #[cfg(test)]
+mod equip_keeps_clip_tests;
+#[cfg(test)]
 mod named_log_tests;
 #[cfg(test)]
 mod refusal_infra_tests;
