@@ -37,6 +37,7 @@ fn def(id: i32, monikers: Vec<i64>) -> AbilityDef {
         target_type_id: 0,
         effect_ids: vec![],
         moniker_ids: monikers,
+        item_monikers: vec![],
         required_ammo: 0,
         event_set_id: None,
         velocity: 0.0,

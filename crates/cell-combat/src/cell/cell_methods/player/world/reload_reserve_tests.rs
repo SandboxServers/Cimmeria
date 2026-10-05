@@ -65,6 +65,7 @@ fn mgr(player_id: i32, ammo_type: i32, current: i32) -> SpaceManager {
             target_type_id: 0,
             effect_ids: vec![],
             moniker_ids: vec![],
+            item_monikers: vec![],
             required_ammo: 0,
             event_set_id: None,
             velocity: 0.0,

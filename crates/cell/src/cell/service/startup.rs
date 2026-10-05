@@ -460,6 +460,17 @@ impl CellService {
                     tracing::warn!("Failed to load weapon ranges: {e}");
                 }
             }
+            // The player weapon requirement (OD-CS11) reads these. Left
+            // empty on failure: every weapon-requiring ability is then
+            // refused for players, never let through.
+            match spawner::load_weapon_monikers(pool).await {
+                Ok(map) => {
+                    space_mgr.item_monikers = map;
+                }
+                Err(e) => {
+                    tracing::warn!("Failed to load item monikers: {e}");
+                }
+            }
             match spawner::load_loot_tables(pool).await {
                 Ok(tables) => {
                     space_mgr.loot_tables = tables;

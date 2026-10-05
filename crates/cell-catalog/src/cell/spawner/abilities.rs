@@ -94,7 +94,7 @@ pub async fn load_ability_defs(
         "SELECT ability_id, name, cooldown, warmup, flags, is_ranged, \
          min_range, max_range, target_type_id, effect_ids, \
          required_ammo, event_set_id, velocity, type_id::text AS type_id, \
-         passive_yn \
+         passive_yn, item_monikers \
          FROM resources.abilities",
     )
     .fetch_all(pool)
@@ -128,6 +128,9 @@ struct AbilityRow {
     type_id: String,
     /// `passive_yn` (NOT NULL).
     passive_yn: bool,
+    /// `item_monikers` (`bigint[]`, NOT NULL): the weapon monikers a
+    /// player's cast requires (OD-CS11).
+    item_monikers: Vec<i64>,
 }
 
 impl AbilityRow {
@@ -165,6 +168,7 @@ impl AbilityRow {
             target_type_id: self.target_type_id,
             effect_ids: self.effect_ids,
             moniker_ids: vec![],
+            item_monikers: self.item_monikers,
             required_ammo: self.required_ammo,
             event_set_id: self.event_set_id,
             velocity: self.velocity,
@@ -431,7 +435,19 @@ mod range_unit_tests {
             velocity: 100.0,
             type_id: "ABILITY_TYPE_DD".into(),
             passive_yn: false,
+            item_monikers: vec![],
         }
+    }
+
+    /// CS-07 (OD-CS11): `item_monikers` reaches `AbilityDef::item_monikers`,
+    /// which the use_ability launch checks against the active weapon.
+    /// Without it the requirement is empty and never enforced.
+    #[test]
+    fn item_monikers_reach_the_def() {
+        let mut r = row(0, 0);
+        r.item_monikers = vec![3_175_425_141];
+        assert_eq!(r.into_def().item_monikers, vec![3_175_425_141]);
+        assert!(row(0, 0).into_def().item_monikers.is_empty());
     }
 
     /// AB-08: `passive_yn` reaches `AbilityDef::passive`, which the launch

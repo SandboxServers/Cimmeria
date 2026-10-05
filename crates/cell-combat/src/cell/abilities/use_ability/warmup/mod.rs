@@ -101,9 +101,10 @@ pub(crate) fn is_casting(space_mgr: &SpaceManager, entity_id: u32) -> bool {
 ///
 /// Called straight after a committed launch, and a launch is refused while
 /// another cast warms up, so any parked cast is this one. It is not matched
-/// by ability id: the launch may have redirected the id the client sent
-/// (592 to the active weapon's ranged ability), and a mismatch here used to
-/// apply the splash damage at launch while the primary was still warming up.
+/// by ability id: the launch once redirected the id the client sent (592 to
+/// the active weapon's ranged ability, removed in CS-07), and a mismatch
+/// here used to apply the splash damage at launch while the primary was
+/// still warming up.
 pub(crate) fn attach_ground_point(
     space_mgr: &mut SpaceManager,
     entity_id: u32,

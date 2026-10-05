@@ -122,6 +122,8 @@ The Rust handler is `crates/base/src/base/character_create/` (`mod.rs` parses, v
 
 The visual-choice clothing (the Praxis prison set, glasses, accessories) is placed as before, first, then the profile's items, then the debug kit's.
 
+Pistol 55 (the debug kit's and the holding states' weapon) carries `ITEM_Pistol`, so with it drawn and loaded Pistol Shot (592) fires as itself. Since CS-07 there is no redirect to the weapon's RANGED binding (579 Pistol Auto Attack is the pistol's own weapon-granted attack, which right-click resolves); 592 with a non-pistol weapon drawn is refused with `WrongWeaponType` (`use_ability/weapon_requirement.rs`), and with an empty magazine (`required_ammo = 1`) it is refused with NoAmmo until the free reload.
+
 - **Level.** `start_level` (1 everywhere), with one training point and one Applied Science Point per level. It never comes from a mission's seeded level (the Dakara missions are level 3; the Free Jaffa start is level 1).
 - **Provenance.** Every profile ability with a kind other than `legacy_kit` gets an `sgw_player_ability_grants` row in the creation transaction, so it survives respec and the GM / Debug NPC reset and counts as branch credit ([grant provenance](../analysis/class-start-v6/README.md#grant-provenance-contract-cs-01a)). `legacy_kit` abilities get no row and no credit, as every starter did before.
 - **Guns start empty.** Every gun placed at creation has 0 rounds (OD-CS13 amendment, 2026-10-05); default reload is free, so the player reloads once. The holding states' pistol 55 is empty too: the one intended change to their otherwise literal behaviour.

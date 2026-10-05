@@ -37,6 +37,7 @@ fn ability(id: i32, flags: u32, effect_ids: Vec<i32>) -> AbilityDef {
         target_type_id: 1,
         effect_ids,
         moniker_ids: vec![SHARED_MONIKER, 3_212_632_871],
+        item_monikers: vec![],
         required_ammo: 0,
         event_set_id: None,
         velocity: 0.0,

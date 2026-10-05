@@ -276,6 +276,7 @@ fn dart_shot() -> cimmeria_entity::abilities::AbilityDef {
         target_type_id: 2,
         effect_ids: vec![],
         moniker_ids: vec![],
+        item_monikers: vec![],
         required_ammo: 1,
         event_set_id: None,
         velocity: 0.0,

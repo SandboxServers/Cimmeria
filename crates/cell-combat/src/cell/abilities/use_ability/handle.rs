@@ -26,7 +26,6 @@ use super::super::wire_ledger::WireCtx;
 
 use super::super::metrics::{self, FirePath, RefusalReason};
 use super::gate_rows::{LaunchRefusal, LaunchRow};
-use super::weapon_redirect::resolve_weapon_redirect;
 
 /// Handle a `useAbility(abilityId, targetId)` cell method call.
 ///
@@ -47,7 +46,8 @@ use super::weapon_redirect::resolve_weapon_redirect;
 /// Returns `false` when any pre-consume guard rejected the call (entity
 /// missing/dead, already warming up, no ability, a player's ability with no
 /// mechanic yet (AB-12, `no_mechanics`), on cooldown, reload in
-/// flight, no ammo, out-of-range, a target in another space (#906), or no
+/// flight, no ammo, the wrong weapon for a player (CS-07, `WrongWeaponType`),
+/// out-of-range, a target in another space (#906), or no
 /// fire-time line of sight for an explicit target). Ground-target AoE
 /// callers gate secondary-target damage on this return value.
 #[tracing::instrument(
@@ -66,16 +66,9 @@ pub async fn handle_use_ability(
     // The press reached the cell: `abilities_press_to_fire_ms` starts here.
     let pressed_at = std::time::Instant::now();
     // ── Look up ability definition from DB (before mutable borrow) ──
+    // The id the client sent is the id that fires: there is no redirect
+    // (CS-07 removed the 592 → active-weapon one, OD-CS11).
     let ability_def = space_mgr.ability_defs.get(&ability_id).cloned();
-
-    // ── Archetype-default weapon redirect (read-only) ──
-    //
-    // Resolves the archetype-default ranged starter (Pistol Shot, 592)
-    // to the active weapon's RANGED binding before validation runs. See
-    // `weapon_redirect::resolve_weapon_redirect` for the full rationale
-    // + scope limits.
-    let (ability_id, ability_def) =
-        resolve_weapon_redirect(entity_id, ability_id, ability_def, space_mgr);
     // Rule 5: every row below names the player (`None` for an NPC caster).
     let who = space_mgr.player_identity(entity_id);
     // One lookup for the client's target: it is the resolved target too
@@ -177,6 +170,9 @@ pub async fn handle_use_ability(
     let mut shield_full = false;
     // Stunned or knocked down (AB-09a): answered below, before any cost.
     let mut incapacitated = false;
+    // A player's active weapon misses the ability's required monikers
+    // (CS-07, OD-CS11): answered below with WrongWeaponType, before any cost.
+    let mut wrong_weapon = None;
     // Beneficial ammo (AM-11d): a support shot may land on an ally or the
     // shooter and never on a hostile target. `None` for every other cast,
     // whose targeting is exactly the #444 rule below.
@@ -248,6 +244,14 @@ pub async fn handle_use_ability(
                 }
                 return false;
             }
+        }
+        // The weapon requirement, players only (OD-CS11). Ahead of the
+        // cooldown so a press with the wrong weapon always gets feedback.
+        if let Some(wrong) =
+            super::weapon_requirement::wrong_weapon(space_mgr, entity, ability_def.as_ref())
+        {
+            wrong_weapon = Some(wrong);
+            break 'validate;
         }
         if entity.abilities.is_on_cooldown(ability_id) {
             row.refused(LaunchRefusal::OnCooldown);
@@ -354,6 +358,13 @@ pub async fn handle_use_ability(
             }
         }
         super::not_known::send_not_known_feedback(entity_id, who, ability_id, tx).await;
+        return false;
+    }
+
+    // The wrong weapon for the ability: WrongWeaponType, no cooldown.
+    if let (Some(wrong), Some(def)) = (wrong_weapon, ability_def.as_ref()) {
+        super::weapon_requirement::refuse_wrong_weapon(entity_id, def, wrong, tx, space_mgr).await;
+        row.count(RefusalReason::WrongWeaponType);
         return false;
     }
 

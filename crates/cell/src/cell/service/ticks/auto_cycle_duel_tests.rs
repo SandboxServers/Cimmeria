@@ -62,6 +62,7 @@ fn duel_loop_mgr() -> SpaceManager {
             target_type_id: 0,
             effect_ids: vec![crate::test_support::MECHANIC_FIXTURE_EFFECT],
             moniker_ids: vec![],
+            item_monikers: vec![],
             required_ammo: 0,
             event_set_id: None,
             velocity: 0.0,

@@ -14,7 +14,7 @@
 summons a pet. It rides the ordinary cast of decision 21, with three diversions in
 [`use_ability/summon.rs`](../../crates/cell-combat/src/cell/abilities/use_ability/summon.rs):
 
-- **Launch.** Straight after the weapon redirect, the client's `target_id` is replaced by 0.
+- **Launch.** At the top of the launch (where the weapon redirect ran until CS-07 removed it), the client's `target_id` is replaced by 0.
   The summon is a Self ability, so the client's target plays no part in it. With target 0
   the #444 target-validity gate never sees the cast. The gate itself is unchanged, so any
   other ability aimed at the caster still fails there. Two refusals run before the cooldown

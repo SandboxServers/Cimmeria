@@ -307,6 +307,19 @@ async fn slot_change_to_p90_revokes_pistol_abilities_grants_smg_and_broadcasts()
     // packet must have gone out carrying the post-swap known set.
     let mut saw_known_abilities_update: Option<Vec<i32>> = None;
     while let Ok(msg) = rx.try_recv() {
+        // CS-07: a weapon's basic attacks are transient. The swap grants
+        // them in the cell's known set only; nothing asks the base to
+        // persist an ability.
+        assert!(
+            !matches!(
+                msg,
+                CellToBaseMsg::TrainAbility { .. }
+                    | CellToBaseMsg::GmGrantAbility { .. }
+                    | CellToBaseMsg::GmAbilityBulk(_)
+                    | CellToBaseMsg::ContentGrantAbilities(_)
+            ),
+            "a weapon swap must not persist an ability: {msg:?}"
+        );
         if let CellToBaseMsg::EntityMethodCall {
             entity_id: 1,
             method_index,

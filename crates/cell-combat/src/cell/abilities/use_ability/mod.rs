@@ -2,9 +2,10 @@
 //!
 //! Submodule layout:
 //! - `handle` — the main `handle_use_ability` validate → consume → fire →
-//!   resolve flow (incl. the archetype-default weapon redirect). It mints
-//!   the cast's `cast_id` (AB-T1) and opens the cast scope around a
-//!   zero-warmup fire.
+//!   resolve flow. It mints the cast's `cast_id` (AB-T1) and opens the cast
+//!   scope around a zero-warmup fire.
+//! - `weapon_requirement` — the players-only weapon-moniker requirement
+//!   (CS-07, OD-CS11): `WrongWeaponType` feedback, no cooldown.
 //! - `auto_cycle_commit` — the launch's auto-cycle arm / deactivate-flag
 //!   clear, once the cooldown has started.
 //! - `beneficial` — who a player's cast lands on (AB-01): the #444 target
@@ -19,8 +20,6 @@
 //! - `auto_reload` — the post-fire auto-reload trigger (`maybe_trigger_auto_reload`).
 //! - `kill_credit` — `handle_use_ability_with_kill_credit`, the content-engine
 //!   `EntityDeath` wrapper for single-target player-driven casts.
-//! - `weapon_redirect` — the read-only archetype-default → active-weapon
-//!   RANGED ability redirect resolved at the top of the flow.
 //! - `fire` — the post-warmup half of a cast (ammo, `Ability_End`, target
 //!   resolution), run at once for a zero warmup or by the warmup tick.
 //! - `warmup` — the pending cast between `Ability_Begin` and the fire: the
@@ -63,7 +62,7 @@ mod summon;
 mod support_shot;
 mod warmup;
 mod weapon_gate;
-mod weapon_redirect;
+mod weapon_requirement;
 
 #[cfg(test)]
 mod tests;

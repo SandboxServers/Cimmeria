@@ -32,6 +32,7 @@ fn make_ability(ability_id: i32, effect_ids: Vec<i32>) -> AbilityDef {
         target_type_id: 1,
         effect_ids,
         moniker_ids: Vec::new(),
+        item_monikers: vec![],
         required_ammo: 0,
         event_set_id: None,
         velocity: 0.0,

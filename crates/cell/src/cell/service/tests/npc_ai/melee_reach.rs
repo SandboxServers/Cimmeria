@@ -90,6 +90,7 @@ fn seed_weapon_pair_defs(mgr: &mut crate::cell::space_manager::SpaceManager) {
                 target_type_id: 0,
                 effect_ids: vec![],
                 moniker_ids: vec![],
+                item_monikers: vec![],
                 required_ammo: 0,
                 event_set_id: Some(300),
                 velocity: 0.0,

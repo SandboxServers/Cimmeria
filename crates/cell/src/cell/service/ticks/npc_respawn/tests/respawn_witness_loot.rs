@@ -224,6 +224,7 @@ async fn kill_via_damage_apply_then_respawn_then_kill_again() {
             target_type_id: 0,
             effect_ids: vec![100],
             moniker_ids: vec![],
+            item_monikers: vec![],
             required_ammo: 0,
             event_set_id: None,
             velocity: 0.0,

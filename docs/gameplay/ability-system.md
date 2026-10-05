@@ -33,7 +33,7 @@ The `AbilityManager` class (in `deprecated/python/cell/AbilityManager.py`) manag
 | Minimum range check | DONE | #1016. A player's targeted cast closer than the ability's `min_range` is refused at launch and at warmup fire with `onErrorCode` 42 (`OutsideWeaponRange`), the same answer as out of range, and the auto-cycle loop skips the target silently. NPC casters are not held to it: the NPC fight tick backs away instead. See [the ADR, decision 30](../architecture/abilities-and-effects-decisions-23-33.md#30-a-players-cast-honours-min_range-and-a-useweaponrange-ability-reaches-as-far-as-the-weapon-1016-1017) |
 | Range units | DONE | `resources.abilities` ranges are UE3 units (100 per metre); the loader converts them to metres (#919). See [the ADR, decision 27](../architecture/abilities-and-effects-decisions-23-33.md#27-ability-ranges-are-ue3-units-in-the-data-and-metres-on-abilitydef-919) |
 | Position/facing check | NOT IMPL (Rust) | Python validated the front/flank/rear mask. Rust `AbilityDef` has no `positions` field and `handle_use_ability` checks no facing |
-| Weapon moniker requirement | DONE | `requiresWeapons()`, `itemMonikers` |
+| Weapon moniker requirement | DONE | CS-07 (OD-CS11). A **player's** cast of an ability whose `abilities.item_monikers` is non-empty is refused at launch unless the active bandolier item carries at least one of those monikers (any-match, python `AbilityInstance.canUse` + `SGWPlayer.hasItemMoniker`). An empty active slot fails any requirement; an ability with no requirement is unchanged; NPC and pet casts are not checked. The refusal comes before the cooldown, ammo and cost, and answers `onErrorCode(0, ability, 63)` (`CONDITION_FEEDBACK_WrongWeaponType`) plus a feedback line, logs `wrong_weapon_refused` and stops an auto-cycle loop armed on that ability (`use_ability/weapon_requirement.rs`). The id the client sends is the id that fires: the old 592 → active-weapon redirect is gone, so Pistol Shot needs a pistol. Per-ability audit: [weapon-requirement-audit.md](../analysis/class-start-v6/weapon-requirement-audit.md) |
 | AoE / cone targeting | DONE | `cell/abilities/cone_aoe/` — geometry, flag categories, and witness fan-out |
 | Ground-target abilities | DONE | `useAbilityOnGroundTarget` in `cell/abilities/dispatch/mod.rs`. Note it charges cooldown and ammo even when no enemy is in radius or the nearest target is beyond `max_range` |
 | Channeled abilities | DONE | Channel pulsing and cancellation in `cell/effects/pulsing/`, with the `AF_CHANNEL_ALLOWS_MOVEMENT` movement gate |
@@ -225,7 +225,7 @@ The game sends these only from a GM avatar, and the server's GM gate refuses the
 | InvalidEntity | `CONDITION_FEEDBACK_InvalidEntity` | Target doesn't exist |
 | NotLiving | `CONDITION_FEEDBACK_NotLiving` | Target or self is dead |
 | OutsideWeaponRange | `CONDITION_FEEDBACK_OutsideWeaponRange` | Too far / too close |
-| WrongWeaponType | `CONDITION_FEEDBACK_WrongWeaponType` | Required weapon moniker not equipped |
+| WrongWeaponType (63) | `CONDITION_FEEDBACK_WrongWeaponType` | Required weapon moniker not on the active weapon (players only, CS-07) |
 | AmmoCountLessThan | `CONDITION_FEEDBACK_AmmoCountLessThan` | Insufficient ammo |
 | WeaponCooldownNotReady | `CONDITION_FEEDBACK_WeaponCooldownNotReady` | Ability still on cooldown |
 | EntityDoesNotHaveAbility | `CONDITION_FEEDBACK_EntityDoesNotHaveAbility` | Ability not in entity list |

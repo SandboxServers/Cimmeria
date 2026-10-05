@@ -144,3 +144,15 @@ Edit the parser, run the tool, run the unit tests, and commit the parser and bot
 The snare amount is a DESIGN default, not text: the bare snares state none, and -30 % is what every snare that does state one uses (1460, 1765, 3114, 4411, which are the `stat` family's). Each such row's note says so.
 
 Reported instead of bound, by category: `scope` (a "Secondary" line or `EF_ResolveOnAbilityUser`, AB-07; `EF_ClearOnDamage`, AB-11; a beneficial, passive or toggled effect; a deployable), `pulse shape` (more than one pulse, no duration anywhere, or a text duration that disagrees with the row), `targeting` (a group or aura method, D-AB12) and `grammar`. `TCM_AERadius` and `TCM_AECone` rows are bound: the pipeline runs every effect of the ability on every target the fan-out hits. Resist rolls are not modelled (D-AB13), so every bound CC lands on a hit that is not a miss.
+
+## Weapon-requirement audit (Class Start v6 CS-07)
+
+`weapon_requirement_audit.py` is a separate, read-only tool. It audits every player-reachable ability (char-creation grants, archetype tree nodes, trainer lists, `items_event_sets` bindings, content `grant_ability` actions) whose `abilities.item_monikers` is non-empty against the shipped bandolier items' `moniker_ids`, and writes [`docs/analysis/class-start-v6/weapon-requirement-audit.md`](../../docs/analysis/class-start-v6/weapon-requirement-audit.md): PASS/FAIL per ability, the data-correction rows, and the weapon-granted abilities their own weapon does not satisfy. It reads the seeds only, never a database.
+
+```bash
+python tools/ability_mechanics/weapon_requirement_audit.py          # rewrite the doc
+python tools/ability_mechanics/weapon_requirement_audit.py --check  # exit 1 if the doc drifted
+python tools/ability_mechanics/weapon_requirement_audit.py --stdout # print, write nothing
+```
+
+`test_weapon_requirement_audit.py` pins the five Class Start starter cases against the seeds. Rerun the script when a seed changes an ability's `item_monikers`, an item's `moniker_ids`, or a player grant.

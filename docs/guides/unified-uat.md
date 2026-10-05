@@ -1086,7 +1086,7 @@ A GM-only test map, world 1300 `DebugArea` on the Ihpet_Crater_Light map, with o
 | NPC-only kills (DA-U32, DA-U34) | `scope_name = 'loot.drop' AND event = 'skipped' AND reason = 'npc_only_kill'` (`target_tag`, `attacker_tag`) |
 | Cover (DA-U35) | `scope_name IN ('cover.hold','cover.stance','cover.selection') AND template_id = 1375` |
 | Respawns (DA-U31, DA-U37, DA-U38) | `event = 'npc_respawn_recreate'` (`template_id`, `respawn_secs`); `scope_name = 'player.death'`; `scope_name = 'player.respawn'` (`respawner_id`, `reason`, `distance_m`) |
-| Starter kit (DA-U39 to DA-U41) | `event = 'character_created'` (`abilities`, `items`, `armed`); `event IN ('weapon_draw_queued','weapon_ability_redirect')` for the first Pistol Shot |
+| Starter kit (DA-U39 to DA-U41) | `event = 'character_created'` (`abilities`, `items`, `armed`); `event = 'weapon_draw_queued'` (then the 592 `ability_launched`; CS-07 removed `weapon_ability_redirect`) for the first Pistol Shot |
 
 **Things only a human can check:** that the map loads and every station stands on the floor, clear of walls (DA-06); the minimap text (DA-U1); the windows each plaza NPC opens; damage numbers and heal bars (DA-U19 to DA-U21); what the gallery and arena NPCs look like (DA-U29, DA-U32, DA-U34); whether a rifleman crouches in cover (DA-U35); the hotbar icons (DA-U42).
 

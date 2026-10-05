@@ -31,6 +31,7 @@ mod implemented;
 mod manager;
 mod range;
 mod shield_nvps;
+mod weapon_requirement;
 mod wire;
 
 pub use ability_type::AbilityType;

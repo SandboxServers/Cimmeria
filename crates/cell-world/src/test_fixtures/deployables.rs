@@ -51,6 +51,7 @@ pub fn deployable_ability_def() -> AbilityDef {
         target_type_id: 3,
         effect_ids: vec![DEPLOYABLE_PULSE_EFFECT, DEPLOYABLE_LIFETIME_EFFECT],
         moniker_ids: vec![],
+        item_monikers: vec![],
         required_ammo: 0,
         event_set_id: None,
         velocity: 100.0,
