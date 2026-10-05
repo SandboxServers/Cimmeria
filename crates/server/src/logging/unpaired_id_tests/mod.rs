@@ -5,7 +5,8 @@
 //! files skipped as in `target_scan_tests`, and each `#[cfg(test)]` item
 //! blanked in place, so production code after a test module still counts),
 //! finds each `trace!`, `debug!`,
-//! `info!`, `warn!`, `error!` and `event!` call, and judges every ID-shaped
+//! `info!`, `warn!`, `error!` and `event!` call (and each
+//! `tracing::$level!` call in a `macro_rules!` body), and judges every ID-shaped
 //! field against Rule 6 in `docs/architecture/instrumentation-discipline.md`:
 //! paired, exempted by `// nt:id-only <reason>` on its line, or unpaired.
 //! `pairing` has the key rules, `calls` the macro parser, `lexer` the masking
@@ -23,7 +24,9 @@
 //! which accepts any per-file change, a moved or split file included, as long
 //! as the workspace total doesn't rise, and refuses otherwise. (`force` is an
 //! alias kept for old instructions; it refuses a rise too.) Blessing under
-//! `CI` panics. Because the ratchet counts per file, pairing one field and
+//! `CI` panics. A scanner change that starts seeing fields it missed raises
+//! the total legitimately: empty the baseline file, bless (an empty baseline
+//! accepts any counts), and say so in the PR. Because the ratchet counts per file, pairing one field and
 //! adding another unpaired one in the same file passes; the `file:line`
 //! sites are only printed when a count rises.
 //!
@@ -388,5 +391,14 @@ fn unpaired_id_report() {
             top(ks, 10),
             top(fs, 10)
         );
+    }
+    // `NT_REPORT_SITES=<path substring>` lists the matching files' sites.
+    if let Ok(filter) = std::env::var("NT_REPORT_SITES") {
+        for (path, sites) in scan.unpaired.iter().filter(|(p, _)| p.contains(&filter)) {
+            println!("== sites in {path}");
+            for s in sites {
+                println!("    {}  {}", s.at, s.key);
+            }
+        }
     }
 }

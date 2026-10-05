@@ -215,6 +215,20 @@ class LaneDiskTests(unittest.TestCase):
         self.assertEqual(self.lane("true", LANE_PRUNE="0").returncode, 0)
         self.assertTrue(old.exists())
 
+    def test_log_pruning_keeps_a_fresh_empty_log_dir(self):
+        """Another lane's prune must not delete the dir of a job that has just made it: the job
+        then fails with "No such file" on its log (NT-40). An empty dir an hour old goes."""
+        logs = self.root / "lane-root" / "logs"
+        fresh, stale = logs / "waiting-wt", logs / "retired-wt"
+        fresh.mkdir(parents=True)
+        stale.mkdir()
+        two_hours_ago = time.time() - 2 * 3600
+        os.utime(stale, (two_hours_ago, two_hours_ago))
+        r = self.lane("true")
+        self.assertEqual(r.returncode, 0, r.stderr)
+        self.assertTrue(fresh.is_dir(), "a fresh empty log dir survives another lane's prune")
+        self.assertFalse(stale.exists(), "an empty log dir an hour old is pruned")
+
 
 @unittest.skipUnless(shutil.which("rustc"), "needs rustc")
 class SccacheWrapperTests(unittest.TestCase):

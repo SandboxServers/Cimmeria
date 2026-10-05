@@ -33,7 +33,13 @@ pub async fn dispatch(
             if args.len() >= 5 {
                 let effect_id = i32::from_le_bytes([args[0], args[1], args[2], args[3]]);
                 let accepted = args[4] != 0;
-                tracing::debug!(entity_id, effect_id, accepted, "confirmationResponse");
+                tracing::debug!(
+                    entity_id,
+                    entity_name = space_mgr.entity_label(entity_id),
+                    effect_id, // nt:id-only client-sent; effect def or instance id is unproven
+                    accepted,
+                    "confirmationResponse"
+                );
             }
             true
         }

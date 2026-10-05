@@ -564,6 +564,10 @@ How the scan reads the code and the baseline:
   A wrapper with no call site in its file fails the build unless its
   forwarding line carries a marker. So does renaming an event macro in a
   `use tracing::... as ...` import.
+- **A level parameter counts.** `tracing::$level!(...)` in a
+  `macro_rules!` body, the shape that logs one field list at two levels,
+  is an event like any other: its fields are judged once, in the body,
+  however many levels its call sites pass.
 - **Lists of IDs are out of scope.** `effect_ids`, `target_player_ids`
   and other `*_ids` keys aren't ID-shaped under the default rule, and the
   scan doesn't count them.

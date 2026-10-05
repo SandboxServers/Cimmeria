@@ -61,6 +61,7 @@ pub fn build_map_loaded_body(
     build_map_loaded_body_inner(&mut body, entity_id, data, world_entry, &stats);
     tracing::info!(
         entity_id,
+        entity_name = data.player_name.as_str(),
         body_bytes = body.len(),
         "mapLoaded: body assembled"
     );
@@ -177,7 +178,7 @@ fn build_map_loaded_body_inner(
             component_count = wire_components.len(),
             components = ?wire_components,
             holstered_weapon = ?data.weapon_visual,
-            skin_color_id = data.skin_color_id,
+            skin_color_id = data.skin_color_id, // nt:id-only a skin palette index with no name table
             "mapLoaded: BeingAppearance + onEntityTint data (spawn-holstered)"
         );
         let mut args = Vec::new();
@@ -301,6 +302,7 @@ fn build_map_loaded_body_inner(
         }
         tracing::info!(
             player_id = data.player_id,
+            player_name = data.player_name.as_str(),
             ability_count = data.abilities.len(),
             abilities = ?data.abilities,
             "mapLoaded: sending onKnownAbilitiesUpdate"

@@ -133,6 +133,8 @@ Parallel PRs used to conflict mostly in docs, not code: each one bumped the same
 
 Tip: `git config rerere.enabled true` makes git remember how you resolved a conflict and replay it on the next rebase.
 
+**Rebase onto a fixed commit.** Worktrees share their refs with the main checkout, so another session's `git fetch` moves `origin/main` while you rebase. Fetch, then rebase onto that exact commit: `git rebase $(git rev-parse origin/main)`, not `git rebase origin/main` (which a later fetch can move under a `--continue`). Before a force-push, check `git diff --stat origin/main...HEAD` lists only your PR's files. On 2026-10-04 a squash onto a moved `origin/main` briefly reverted a merged PR on a branch this way.
+
 ## Builds, worktrees and test databases
 
 Development builds run natively on Windows, from PowerShell or Git Bash. The tools below live under `tools/build-lane/`, `tools/dev-drive/`, `tools/build-hygiene/` and `tools/build-metrics/`; why they exist and what they measured is in [`docs/architecture/build-system.md`](../architecture/build-system.md).

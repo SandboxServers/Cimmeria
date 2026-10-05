@@ -1563,6 +1563,7 @@ name = "cimmeria-resources"
 version = "0.1.0"
 dependencies = [
  "cimmeria-entity",
+ "cimmeria-names",
  "cimmeria-test-support",
  "cimmeria-wire",
  "cimmeria-workspace-hack",

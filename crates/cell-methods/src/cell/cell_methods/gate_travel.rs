@@ -22,8 +22,11 @@ pub async fn dispatch(
                 let source_address_id = i32::from_le_bytes([args[4], args[5], args[6], args[7]]);
                 tracing::debug!(
                     entity_id,
+                    entity_name = space_mgr.entity_label(entity_id),
                     target_address_id,
+                    target_address_name = cimmeria_names::book().stargate(target_address_id),
                     source_address_id,
+                    source_address_name = cimmeria_names::book().stargate(source_address_id),
                     "onDialGate"
                 );
                 // Nothing to forward here: `handle_dial_gate` tells the

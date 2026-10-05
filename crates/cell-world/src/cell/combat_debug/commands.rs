@@ -299,8 +299,11 @@ pub async fn toggle_from_cell_method(
         method_index,
         method_name = cimmeria_wire::names::player_cell_method(method_index),
         entity_id,
+        entity_name = who.player_name,
         account_id = who.account_id,
+        account_name = who.account_name,
         player_id = who.player_id,
+        player_name = who.player_name,
         decision_outcome = outcome,
         reason,
         "combat debug toggle from a cell method"

@@ -530,10 +530,10 @@ fn log_nothing_removed(
                 // the target is named as the subject only, never as the
                 // actor: `account_id` / `player_id` would misattribute a
                 // cleanse of an ally to the ally (rule 5).
-                target_id = target,
+                target_id = target, // nt:id-only the ledger has no SpaceManager; target_player_name names a player
                 target_player_id = target_who.player_id,
                 target_player_name = target_who.player_name,
-                cast_id,
+                cast_id, // nt:id-only per-cast sequence number, no name exists
                 "timed effect ledger: a removal ({reason}) took no entry off the target; nothing changes on the client"
             )
         };

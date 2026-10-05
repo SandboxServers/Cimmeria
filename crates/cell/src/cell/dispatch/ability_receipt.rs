@@ -97,8 +97,11 @@ pub fn log_receipt(
         method_index,
         method_name = cimmeria_wire::names::player_cell_method(method_index),
         account_id = who.account_id,
+        account_name = who.account_name,
         player_id = who.player_id,
+        player_name = who.player_name,
         entity_id,
+        entity_name = who.player_name,
         args_len = args.len(),
         mercury_seq = packet_seq,
         "ability method received"

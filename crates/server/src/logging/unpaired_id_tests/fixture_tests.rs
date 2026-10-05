@@ -462,6 +462,40 @@ fn f() {
     assert!(broken("macro_rules! m { ($l:expr) => { tracing::event!($l, \"m\") }; }").is_empty());
 }
 
+/// `tracing::$level!(…)` in a `macro_rules!` body is an event: its fields are
+/// fixed in the body and judged once, however many levels call it. A plain
+/// `$m!(…)` is not, and neither is a level wrapper's call site.
+#[test]
+fn level_parameter_event_macros_are_scanned() {
+    let src = "\
+macro_rules! row {
+    ($level:ident) => {
+        tracing::$level!(
+            target: \"abilities\",
+            ability_id = a,
+            ability_name = n,
+            npc_id = e,
+            \"refused\"
+        )
+    };
+}
+fn f(warned: bool) {
+    if warned { row!(warn) } else { row!(debug) }
+}
+";
+    assert_eq!(sites(src), [(7, "npc_id".to_string())]);
+    assert!(broken(src).is_empty());
+    assert!(keys("macro_rules! m { ($m:ident) => { $m!(a_id = 1) }; }").is_empty());
+    // With forwarded fields too, the call sites are expanded as before.
+    let forwarding = "\
+macro_rules! w {
+    ($level:ident, $($t:tt)*) => { tracing::$level!(entity_id = e, entity_name = n, $($t)*) };
+}
+fn f() { w!(info, item_id = i, \"x\"); }
+";
+    assert_eq!(sites(forwarding), [(4, "item_id".to_string())]);
+}
+
 /// A bless may move counts between files (a rename or a split) but never
 /// raise the total, unless there is no baseline yet.
 #[test]

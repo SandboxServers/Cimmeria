@@ -2,7 +2,7 @@
 //! apply-then-persist path for the player's [`SystemOptions`] block.
 
 use crate::cell::messages::CellToBaseMsg;
-use crate::cell::space_manager::SpaceManager;
+use crate::cell::space_manager::{EntityNames, SpaceManager};
 use tokio::sync::mpsc;
 
 /// Parse the `updateSystemOptions(ARRAY <of> NameValuePair)` payload and
@@ -37,6 +37,7 @@ pub(super) async fn handle_update_system_options(
             // the user with toggles that look saved but never apply.
             tracing::warn!(
                 entity_id,
+                entity_name = space_mgr.entity_label(entity_id),
                 error = %e,
                 body_len = args.len(),
                 "updateSystemOptions: parse failed; options unchanged"
@@ -51,7 +52,7 @@ pub(super) async fn handle_update_system_options(
     let persist = {
         let Some(entity) = space_mgr.get_entity_mut(entity_id) else {
             tracing::warn!(
-                entity_id,
+                entity_id, // nt:id-only the entity is gone, so nothing is left to name
                 "updateSystemOptions: entity not found; options dropped"
             );
             return;
@@ -69,6 +70,7 @@ pub(super) async fn handle_update_system_options(
 
         tracing::info!(
             entity_id,
+            entity_name = EntityNames::of(entity).entity_name,
             count = pairs.len(),
             applied,
             auto_reload = entity.system_options.auto_reload,
@@ -78,6 +80,7 @@ pub(super) async fn handle_update_system_options(
         if !unknown.is_empty() {
             tracing::debug!(
                 entity_id,
+                entity_name = EntityNames::of(entity).entity_name,
                 ?unknown,
                 "updateSystemOptions: unknown option names (not yet supported)"
             );
