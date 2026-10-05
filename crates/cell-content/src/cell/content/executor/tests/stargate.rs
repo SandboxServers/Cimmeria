@@ -53,6 +53,7 @@ fn make_two_world_mgr() -> SpaceManager {
                 address_origin: id,
                 arrival: None,
                 event_set_id: None,
+                debug_dial_hub: false,
             },
         );
     }
@@ -169,6 +170,52 @@ async fn a_grant_writes_the_cell_book_tells_the_client_and_asks_the_base_to_pers
         }
         other => panic!("expected the persistence request second, got {other:?}"),
     }
+}
+
+/// The Debug Area gate (`debug_dial_hub`) is outbound only: no chain may
+/// teach it. All three legs stay silent — no book entry, no client method,
+/// no persistence request. Deleting the hub refusal in
+/// `grant_stargate_address` grants it like any other gate.
+#[tokio::test]
+async fn a_grant_of_the_debug_area_hub_is_refused_on_every_leg() {
+    const HUB: i32 = 29;
+    let mut mgr = make_two_world_mgr();
+    mgr.stargates.insert(
+        HUB,
+        StargateEntry {
+            world_name: "Harset".to_string(),
+            x: 0.0,
+            y: 0.0,
+            z: 0.0,
+            yaw: 0.0,
+            address_origin: 2,
+            arrival: None,
+            event_set_id: None,
+            debug_dial_hub: true,
+        },
+    );
+    let (tx, mut rx) = mpsc::channel(16);
+    let engine = ChainEngine::new();
+
+    execute_actions(grant(HUB), PLAYER_EID, PLAYER_ID, &tx, &mut mgr, &engine).await;
+
+    assert!(mgr
+        .get_entity(PLAYER_EID)
+        .unwrap()
+        .known_stargates
+        .is_empty());
+    let msgs = drain(&mut rx);
+    assert!(
+        !msgs.iter().any(|m| matches!(
+            m,
+            CellToBaseMsg::GrantStargateAddress { .. }
+                | CellToBaseMsg::EntityMethodCall {
+                    method_index: UPDATE_STARGATE_ADDRESS,
+                    ..
+                }
+        )),
+        "nothing about the hub may reach the client or the base: {msgs:?}"
+    );
 }
 
 /// Idempotency at the cell. A re-fired chain (a replayed minigame victory,

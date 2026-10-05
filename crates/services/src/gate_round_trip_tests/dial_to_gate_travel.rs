@@ -147,6 +147,7 @@ async fn dial_gate_to_handle_gate_travel_round_trips_destination_state() {
             // row, which is what an unpinned gate must keep doing.
             arrival: None,
             event_set_id: None,
+            debug_dial_hub: false,
         },
     );
     mgr.create_entity(ENTITY_ID, "Agnos", [10.0; 3], [0.0; 3])

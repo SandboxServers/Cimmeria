@@ -85,6 +85,31 @@ pub(super) async fn grant_stargate_address(
         return;
     }
 
+    // An outbound-only dial hub (the Debug Area gate, `debug_dial_hub`) is
+    // never a destination, so no chain may teach it: the dial gate would
+    // refuse it one layer down, and a hub id sitting in a persisted book is
+    // exactly the leak the hub rule exists to prevent.
+    if space_mgr
+        .stargates
+        .get(&stargate_id)
+        .is_some_and(|g| g.debug_dial_hub)
+    {
+        tracing::warn!(
+            entity_id,
+            entity_name = space_mgr.entity_names(entity_id).entity_name,
+            player_id,
+            player_name = space_mgr.player_identity(entity_id).player_name,
+            stargate_id,
+            stargate_name = cimmeria_names::book().stargate(stargate_id),
+            chain_id,
+            chain_name = cimmeria_names::book().chain(chain_id),
+            reason = "grant_dial_hub_outbound_only",
+            "grant_stargate_address: the id is an outbound-only dial hub -- nothing \
+             granted; nobody may hold a hub's address, fix the chain's target_id"
+        );
+        return;
+    }
+
     // Only a player has an address book. Every dispatcher derives the
     // executor's `player_id` as `entity.player_id.unwrap_or(0)`, so a
     // non-positive value means the actor carries no DB character — an NPC,

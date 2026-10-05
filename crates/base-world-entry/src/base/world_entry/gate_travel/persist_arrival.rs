@@ -89,6 +89,13 @@ pub async fn persist_arrival(
     // not the one being written on the line above. Verified against the live
     // schema across two consecutive hops.
     //
+    // The `debug_dial_hub` filter applies to BOTH halves (DA-07). The Debug
+    // Area gate is outbound only: leaving through it puts its world in the
+    // origin half, and `.gotolocation DebugArea` puts it in the destination
+    // half (`destination_gates` is that world's gate list, which is also the
+    // client's `worldStargateList` and so must keep the hub). Neither may
+    // teach a traveller its address.
+    //
     // Note the result is "existing order, then a sorted block", not a sorted
     // array — `mercury::world_data::map_loaded` serialises it in array order
     // into the client's dial list, so it is worth being precise about.
@@ -108,6 +115,8 @@ pub async fn persist_arrival(
                               WHERE w.world = sgw_player.world_location \
                             ) t \
                       WHERE t.x IS NOT NULL AND NOT (t.x = ANY(known_stargates)) \
+                        AND NOT EXISTS (SELECT 1 FROM resources.stargates h \
+                                         WHERE h.stargate_id = t.x AND h.debug_dial_hub) \
                     ) \
           WHERE player_id = $6 AND account_id = $7 \
       RETURNING known_stargates",

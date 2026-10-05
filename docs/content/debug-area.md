@@ -11,7 +11,8 @@ The Debug Area is server world **1300 `DebugArea`**, a GM test map on the shippe
 client map Ihpet_Crater_Light (decisions D-DA1 to D-DA9 in the
 [campaign plan](../analysis/debug-area/README.md)). It is shared and always
 loaded, and only GMs can get there: `.gotolocation DebugArea` (or the native
-`/gmgotolocation`) lands on respawner 130 at the south compound. Each zone
+`/gmgotolocation`) lands on respawner 130's point at the south compound, which is
+the stargate's arrival pin (see [Stargate](#stargate)). Each zone
 tests one group of server systems. Every spawn carries a `DebugArea_*` tag;
 the stasis-room hub's tests count `DebugHub_*`, so the two never mix (D-DA6).
 
@@ -897,3 +898,59 @@ Right-click a hostile one to attack it, or target it and use any ability.
 | `base-session` `world_entry/gm_only_worlds.rs`, `base-world-entry` `gate_travel/tests/gm_only_world.rs`, `base-methods` `world_entry_db.rs` (`live_db_a_non_gm_saved_in_the_debug_area_logs_in_at_the_faction_start`) | A non-GM is refused world 1300 on a cross-world transfer and at login and arrives at the Praxis or SGU start with a line owed; a GM goes in |
 | `cell-catalog` `spawner/tests/live_db_vendor_arbitrage.rs` | No buy list in the seed sells an item for less than any sell list pays for it |
 | `content-engine` `loader/tests/action_conversion.rs`, `interact_tag_linter` | `gm_ability_bulk` converts for `grant_all` and `reset` and drops anything else; the plaza's interact chains are allowlisted (template-default cursor bits) |
+
+## Stargate
+
+The map's own stargate, 28 m behind the arrival point, is the Debug
+Area gate (stargate 29, packet DA-07). It is **outbound only**.
+
+**What it does.** Right-click the DHD beside the gate. If your account is a
+GM, the dialling window lists every gate on a world this server can load
+but one (Men'fa (SGU), below):
+The Castle, Harset, Tollana, Omega Site, Beta Site E1, Men'fa (Praxis),
+both Ihpet Craters, Lucia, Agnos, SGC, SGC W1 and Dakara E1. Dial one, wait for
+the gate to open, walk into the event horizon. The extra addresses last
+until you leave the Debug Area and are never saved to your character; a
+gate you actually travel to stays learned, as after any gate trip.
+
+**What it does not do.**
+
+- Nobody can dial the Debug Area, from anywhere, and its address never
+  enters anyone's address book. The way back is `.gotolocation DebugArea`.
+- A non-GM never gets the extra addresses. Since DA-02 a non-GM cannot be in
+  the Debug Area at all (they are sent to their faction start), and even a
+  GM demoted while inside gets no more on the next DHD open.
+- The 14 gates on worlds this server has no map for (Hebridan, Pen-Lai,
+  Asgard High Council and the rest) are not offered. The server log names
+  them on every DHD open.
+- `/gmdhd 29` is refused like any other dial into the Debug Area.
+
+- Men'fa (SGU) (Menfa_Light) is not offered either: its gate row is about
+  192 m below the map's playable surface. It comes back once its arrival is
+  pinned from an in-client look.
+
+**Known arrival problem.** SGC W1's gate row is 3.4 m from the navmesh and
+1.3 m above the floor beside it. You land on the gate and the client drops
+you onto the floor. Report anything worse.
+
+**Landing spot.** `.gotolocation DebugArea` without coordinates lands on the
+gate's arrival point, the Z1 arrival (251.0, 8.0, -962.0), in front of the
+gate and facing away from it.
+
+**Checking it.**
+
+| Step | Expect | Fail |
+|---|---|---|
+| As a GM, right-click the Debug Area DHD | The dialling window opens and lists the 13 gates above | Nothing opens; the list is empty or holds only your own addresses |
+| Dial Harset | The gate opens about 4 s later; walking in loads Harset | Refusal line "Failed to dial: ..."; the gate never opens |
+| From any other world's DHD, look for "Debug Area" | Not listed | Listed, or dialable |
+
+A non-GM cannot reach the hub DHD in the client any more (DA-02's GM-only
+entry), so the non-GM branch is checked by the unit test
+`a_non_gm_at_the_hub_gets_no_addresses_and_cannot_dial`.
+
+Server log fields to search when it misbehaves: `reason = "gm_dial_hub_grant"`
+(one per GM DHD open: who, what was granted, what was left out),
+`reason = "dial_hub_not_gm"`, `reason = "dial_hub_is_outbound_only"` (a dial
+into the Debug Area was refused). Mechanism and design:
+[gate-travel.md § Debug Area dial-out](../gameplay/gate-travel.md#debug-area-dial-out).

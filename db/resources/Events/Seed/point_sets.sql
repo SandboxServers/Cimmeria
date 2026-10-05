@@ -323,5 +323,12 @@ INSERT INTO point_sets (set_id, name, type, world_id, radius, height, shape, fla
 --
 
 
+-- Debug Area gate volume (world 1300, packet DA-07): a copy of set 1011
+-- 'Ihpet_Crater_Light.Stargate' for world 1300, which loads the same client
+-- map. REGION_FLAG_Stargate (2) is what lets a dial from the Debug Area gate
+-- open the gate and wait for the player to walk through, instead of the
+-- no-gate-volume fallback that travels on the dial with no gate animation.
+INSERT INTO point_sets (set_id, name, type, world_id, radius, height, shape, flags) VALUES (13800, 'DebugArea.Stargate', 'AreaSet', 1300, 2.5, 10, 'Cylinder', 3);
+
 SELECT pg_catalog.setval('point_sets_set_id_seq', 2122, true);
 

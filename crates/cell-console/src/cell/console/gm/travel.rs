@@ -364,8 +364,27 @@ pub(super) async fn handle_dhd(
     // character's persisted address book, and the grant is audit-logged.
     // Mirrors 2009's `giveaddress` console command
     // (`deprecated/python/cell/commands/Player.py:74`).
-    if let Some(entity) = space_mgr.get_entity_mut(entity_id) {
-        let addr = i32::from(gate_addr);
+    //
+    // Never for an outbound-only dial hub (the Debug Area gate,
+    // `debug_dial_hub`): nobody may hold its address, GMs included. The dial
+    // below is refused for it anyway, by the address-book check; skipping the
+    // grant keeps the id out of the book so nothing else can mistake it for a
+    // known destination.
+    let addr = i32::from(gate_addr);
+    let is_hub = space_mgr
+        .stargates
+        .get(&addr)
+        .is_some_and(|g| g.debug_dial_hub);
+    if is_hub {
+        tracing::warn!(
+            entity_id,
+            entity_name = space_mgr.entity_label(entity_id),
+            gate_addr,
+            stargate_name = cimmeria_names::book().stargate(addr),
+            reason = "gm_address_grant_dial_hub_skipped",
+            "gmDHD: the address is an outbound-only dial hub — not granting it; the dial will be refused"
+        );
+    } else if let Some(entity) = space_mgr.get_entity_mut(entity_id) {
         if !entity.known_stargates.contains(&addr) {
             tracing::warn!(
                 entity_id,

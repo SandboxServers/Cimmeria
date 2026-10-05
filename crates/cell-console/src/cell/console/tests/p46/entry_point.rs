@@ -20,6 +20,7 @@ fn gate(world: &str, pos: [f32; 3], arrival: Option<[f32; 3]>) -> StargateEntry 
         address_origin: 1,
         arrival: arrival.map(|a| (a, 0.0)),
         event_set_id: None,
+        debug_dial_hub: false,
     }
 }
 

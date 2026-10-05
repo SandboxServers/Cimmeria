@@ -49,6 +49,7 @@ async fn interact_on_a_dhd_prop_routes_to_on_display_dhd() {
             address_origin: 15,
             arrival: None,
             event_set_id: None,
+            debug_dial_hub: false,
         },
     );
 

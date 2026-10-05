@@ -31,6 +31,7 @@ pub mod base {
     pub mod mission_overrides;
     pub mod resources;
     pub mod sequence_overrides;
+    pub mod stargate_overrides;
     pub mod world_info_overrides;
 }
 

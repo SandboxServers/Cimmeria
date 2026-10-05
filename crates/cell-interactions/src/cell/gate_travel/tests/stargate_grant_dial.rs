@@ -60,6 +60,7 @@ fn make_two_world_mgr() -> SpaceManager {
                 address_origin: id,
                 arrival: None,
                 event_set_id: None,
+                debug_dial_hub: false,
             },
         );
     }

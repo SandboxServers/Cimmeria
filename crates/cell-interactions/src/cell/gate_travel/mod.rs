@@ -46,6 +46,7 @@ use crate::cell::client_methods::gate_travel::ON_STARGATE_PASSAGE;
 
 mod address_book;
 mod dial_feedback;
+pub(crate) mod dial_hub;
 pub(crate) mod sequences;
 pub(crate) mod tick;
 
@@ -233,6 +234,39 @@ pub async fn handle_dial_gate(
             entity_id,
             target_address_id,
             DialRefusal::AlreadyOnDestination,
+            tx,
+            space_mgr,
+        )
+        .await;
+        return false;
+    }
+
+    // A destination world this cell cannot create a space for (fourteen of
+    // the 2009 gate list have a `resources.worlds` row but no map here) must
+    // be refused NOW, while the traveller is still standing in their world.
+    // Arming it, or travelling on the no-gate-volume fallback, ends in
+    // `perform_gate_travel` destroying the cell entity and the base's
+    // world-entry then failing `find_or_create_space`: a player in no space.
+    // The address book already let this dial through, so it is held — by a
+    // `gmDHD` grant, a stale row or content — and saying "unreachable" leaks
+    // nothing. Same line as an unrecoverable arrival.
+    if !space_mgr.world_is_enterable(&gate.world_name) {
+        space_mgr.cancel_gate_dial(entity_id);
+        tracing::warn!(
+            entity_id,
+            entity_name = space_mgr.entity_label(entity_id),
+            target_address_id,
+            target_address_name = cimmeria_names::book().stargate(target_address_id),
+            from = %current_world,
+            to = %gate.world_name,
+            reason = "destination_world_not_loaded",
+            "onDialGate: the destination world has no space on this server (not in \
+             cell_spaces.xml, not instanced) — refusing before anything is torn down"
+        );
+        send_dial_refusal(
+            entity_id,
+            target_address_id,
+            DialRefusal::NoSafeArrival,
             tx,
             space_mgr,
         )
