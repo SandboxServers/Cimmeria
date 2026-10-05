@@ -24,3 +24,10 @@ pow call, likely gamma). So the low byte is ignored and alpha is forced.
 - Sed/heredoc traps hit again here: build multi-line CRLF edits in a Python
   file written with the Write tool, not in a bash heredoc
   ([[bash-heredoc-backslash-and-metric-tests]]).
+- Where it shows: setTint (0x00e6df40) stores the colours on the entity
+  (+0xa0 flag, +0xa4 float4 x3); costume compositing (0x00ebcfe3) sets them
+  as material vector params TintBase / TintHighlight / TintSkin. Only some
+  packages name them (AR_H_Ablative/Ballistic00/Hazmat00/Lotar, AR_J_*,
+  BS_Asgard; TintSkin in BS_HumanMale/Female). Lab A/B 2026-10-05: the
+  colour-only pair 1426/1438 (AR_H_Clothing00) looks identical with tint on,
+  as the assets predict. Check package names before promising a visual diff.

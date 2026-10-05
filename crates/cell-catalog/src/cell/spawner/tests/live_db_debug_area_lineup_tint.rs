@@ -170,9 +170,10 @@ mod live_db {
 
     /// Exactly one pair of lineup actors shares body set, components (as a
     /// set) and static mesh: `NID Guard #146` (1426) and `Opheltes #215`
-    /// (1438). Only their tint tells them apart, so they are the A/B check
-    /// that the client draws it; both loaders must hand them different
-    /// tints, with the colours the seed holds. Revert proof: give 1438
+    /// (1438). Only their tint tells them apart in the data, so both
+    /// loaders must hand them different tints, with the colours the seed
+    /// holds. (On screen they look the same: their clothing reads no tint
+    /// parameter; see debug-area.md, "Colour and skin tint".) Revert proof: give 1438
     /// template 146's colours, or set `send_tint` off on either, and this
     /// fails.
     #[tokio::test]
