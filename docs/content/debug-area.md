@@ -559,11 +559,12 @@ None is within 50 m of the DHD or the gate region. The patched chunk is
 the first Ihpet chunk to reference `GLB-Global` (a 9 MB package), which
 loads on demand for anyone within 500 m of it.
 
-What only the live client can show (DA-06):
+What only the live client can show (DA-06 ran it on 2026-10-05; outcomes in the [ledger](../analysis/debug-area/README.md#da-06-results)):
 
 - The cloned base platform has no lightmap (`LMT_None`) and no light
   environment, in a map with baked outdoor light. 007's interior copy
-  rendered lit; outdoors it may look black or flat.
+  rendered lit; outdoors it may look black or flat. DA-06: the Compound and
+  Death yard bases render lit (check 28).
 - The ring sound is the FMOD event `prp_gen/rings/transport`. Its waveform
   is in the stock `audio/genprp/prp_gen.fsb`, which patch 006 does not
   copy (006 copies `prp_gen.fev` and `prp_gen_gate.fsb` into `Audio/UI`).
@@ -571,11 +572,14 @@ What only the live client can show (DA-06):
   evidence yet that 007's Armory ring sound plays either: its phase 1
   in-client test is still pending, and SigNoz has no client log naming
   `rings/transport` or sequence 10187 (searched 2026-10-04, 30 days).
+  DA-06: the client's `audio.event` `transport` starts and stops with
+  result 0; nobody has listened yet (check 30).
 - The arena station (region 39, the Arena shelf) moved off the water in DA-F1:
   its rig stands on flat terrain at (331, -11.12, -693), and nothing on the
   shelf is a fluid volume, so the chunk's `SeqEvent_Touch` splash chain does
   not apply there. Check in the client that the rig's rings clear the ruin
-  walls just behind its rear pillars (da06 saw them close, not touching).
+  walls just behind its rear pillars (da06 saw them close, not touching;
+  the v2026-10-05.2 re-check saw a gap, but never caught the rising discs).
 
 ### Seed and code
 
@@ -657,6 +661,8 @@ seed file, so another packet's NPCs take part as soon as they are seeded:
     point-set sequences.
 
 ## Live-client risks
+
+DA-06 checked these on 2026-10-05; each outcome is in the [ledger](../analysis/debug-area/README.md#da-06-results), and what is still open is in its [follow-ups](../analysis/debug-area/README.md#open-follow-ups).
 
 - The pit "floor" is a water collision plane (`WaterCollisionPrefab_Square`,
   y -33.28; the terrain is 10-25 m below it), found by DA-08. The navmesh lies
