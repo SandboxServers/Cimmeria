@@ -17,7 +17,7 @@ use crate::ability_tree::{
 };
 use crate::cell::interactions::{send_respec_rejection, trainer_pin};
 use crate::cell::messages::CellToBaseMsg;
-use crate::cell::space_manager::SpaceManager;
+use crate::cell::space_manager::{EntityNames, SpaceManager};
 
 /// How long after a forwarded respec another press is dropped. The base
 /// answers well inside it, so the press it drops is a double-click or a
@@ -96,7 +96,7 @@ pub(crate) async fn handle_reset_my_abilities(
             }
             TrainerPin::Trainer { in_range: true, .. } => None,
         };
-        (player_id, entity.log_names.player_name, refusal)
+        (player_id, EntityNames::of(entity).entity_name, refusal)
     };
 
     let now = Instant::now();

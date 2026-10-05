@@ -13,7 +13,7 @@
 //! echo responses.
 
 use crate::cell::messages::CellToBaseMsg;
-use crate::cell::space_manager::SpaceManager;
+use crate::cell::space_manager::{EntityNames, SpaceManager};
 use crate::mercury::read_wstring;
 use cimmeria_wire::base::contact_list::wire::MAX_MEMBERS_PER_REQUEST;
 use tokio::sync::mpsc;
@@ -62,7 +62,7 @@ fn resolve_player_id(
 ) -> Option<(i32, Option<&'static str>)> {
     let found = space_mgr
         .get_entity(entity_id)
-        .and_then(|e| e.player_id.map(|id| (id, e.log_names.player_name)));
+        .and_then(|e| e.player_id.map(|id| (id, EntityNames::of(e).entity_name)));
     match found {
         Some(who) => Some(who),
         None => {

@@ -5,7 +5,7 @@ use super::train_feedback::send_reject_feedback;
 use crate::ability_tree::{evaluate_train, TrainContext, TrainPlan, TrainReject};
 use crate::cell::interactions::trainer_pin;
 use crate::cell::messages::CellToBaseMsg;
-use crate::cell::space_manager::SpaceManager;
+use crate::cell::space_manager::{EntityNames, SpaceManager};
 use tokio::sync::mpsc;
 
 /// Train an ability — full validation + base-side persistence + debit.
@@ -74,7 +74,7 @@ pub(super) async fn handle_train_ability(
             entity.player_id,
             entity.archetype_id,
             entity.level as i32,
-            entity.log_names.player_name,
+            EntityNames::of(entity).entity_name,
         )
     };
 

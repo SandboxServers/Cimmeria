@@ -77,7 +77,7 @@ pub async fn dispatch(
                         entity_id,
                         entity_name = space_mgr.entity_label(entity_id),
                         region_id,
-                        region_name = %tag,
+                        region_name = (!tag.is_empty()).then_some(tag.as_str()),
                         b_entering,
                         "triggerClientHintedGenericRegion"
                     );
@@ -166,8 +166,9 @@ pub async fn dispatch(
                     entity_name = space_mgr.entity_label(entity_id),
                     region_id,
                     region_name = space_mgr.ring_transporters.region_name(region_id),
-                    destination_id,
-                    destination_name = space_mgr.ring_transporters.region_name(destination_id),
+                    destination_region_id = destination_id,
+                    destination_region_name =
+                        space_mgr.ring_transporters.region_name(destination_id),
                     "setRingTransporterDestination"
                 );
                 crate::cell::ring_transport::handle_select_destination(

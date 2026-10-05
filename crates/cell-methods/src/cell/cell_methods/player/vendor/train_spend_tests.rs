@@ -134,6 +134,9 @@ async fn train_requested_row_names_the_player_ability_and_archetype() {
     let mut book = cimmeria_names::NameBook::empty();
     book.insert(cimmeria_names::Table::Abilities, NODE.into(), "Staff Blast");
     cimmeria_names::global().store(book);
+    // The book is process-global: put the empty one back however the test
+    // ends, so no later test in this process reads "Staff Blast".
+    let _reset = ResetNameBook;
     let mut mgr = fixture(2, 4, 7);
     mgr.get_entity_mut(PLAYER)
         .unwrap()
@@ -156,5 +159,14 @@ async fn train_requested_row_names_the_player_ability_and_archetype() {
         ("archetype_name", "Scientist"),
     ] {
         assert!(row.has_field(k, v), "field {k}={v}: {:?}", row.fields);
+    }
+}
+
+/// Stores an empty global NameBook when dropped.
+struct ResetNameBook;
+
+impl Drop for ResetNameBook {
+    fn drop(&mut self) {
+        cimmeria_names::global().store(cimmeria_names::NameBook::empty());
     }
 }

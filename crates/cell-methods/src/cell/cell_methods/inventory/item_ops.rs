@@ -198,8 +198,8 @@ pub(super) async fn handle_use_item(
             entity_id,
             entity_name = space_mgr.entity_label(entity_id),
             item_id, // nt:id-only instance id; the cell holds no inventory to read its type
-            target_id,
-            target_name = space_mgr.entity_label(target_id as u32),
+            wire_target_id = target_id,
+            wire_target_name = space_mgr.entity_label(target_id as u32),
             "useItem"
         );
 
@@ -224,8 +224,8 @@ pub(super) async fn handle_use_item(
                     player_id,
                     player_name = space_mgr.player_identity(entity_id).player_name,
                     item_id, // nt:id-only instance id; the cell holds no inventory to read its type
-                    target_id,
-                    target_name = space_mgr.entity_label(target_id as u32),
+                    wire_target_id = target_id,
+                    wire_target_name = space_mgr.entity_label(target_id as u32),
                     error = %e,
                     "UseInventoryItem send to base failed -- item not consumed"
                 );

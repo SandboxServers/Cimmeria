@@ -15,7 +15,7 @@ use cimmeria_entity::trade::ETRADERESULTS_CANCELLED;
 use tokio::sync::mpsc;
 
 use crate::cell::messages::CellToBaseMsg;
-use crate::cell::space_manager::SpaceManager;
+use crate::cell::space_manager::{EntityNames, SpaceManager};
 
 use super::state::{cancel_session, clear_trade_state, partners_in_range};
 use super::wire::send_on_trade_results;
@@ -147,8 +147,8 @@ pub(super) async fn request_execute_trade(
         ExecuteTradeSnapshot {
             my_pid,
             p_pid,
-            my_name: me.log_names.player_name,
-            p_name: partner.log_names.player_name,
+            my_name: EntityNames::of(me).entity_name,
+            p_name: EntityNames::of(partner).entity_name,
             my_items: my_prop.items.iter().map(|t| t.instance_id).collect(),
             my_cash: my_prop.cash,
             p_items: p_prop.items.iter().map(|t| t.instance_id).collect(),
