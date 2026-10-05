@@ -45,9 +45,10 @@ None of this tells a real launcher from a script that sends the same bytes. That
 | Piece | Path |
 |---|---|
 | Ingest route | `crates/admin-api/src/routes/telemetry/launcher_summary/`: `mod.rs` (router, body cap), `handlers.rs` (order of checks, the body read, the default allowance), `envelope.rs` (the one pass over the body: envelope rules, repeated keys), `dto.rs` (wire types, the content-type rule, element validation, error bodies), `dedup.rs`, `rows.rs` |
-| Kill switch and quota table (shared with the mint) | `kill_switch_active` and `env_u32` in `crates/admin-api/src/routes/dev_session/handlers.rs`, `WindowTable` in `dev_session/quota.rs` |
+| Kill switch and quota table (shared with the mint) | `kill_switch_active` and `env_u32` in `crates/admin-api/src/routes/dev_session/handlers.rs`, `WindowTable` and `ip_key` in `dev_session/quota.rs` |
 | Admin-listener mount | `api_routes` in `crates/admin-api/src/routes/mod.rs` |
 | Public login-listener mount | `login_port_telemetry_router` in `crates/admin-api/src/login_port.rs` |
+| Request span (both listeners) | `request_span` in `crates/admin-api/src/request_span.rs` |
 | Index routing | `CLIENT_TARGETS` in `crates/server/src/otel.rs` |
 | Producer and exporter | `crates/launcher/desktop/engine/src/storage/launcher_summary/` ([desktop-side contract](../../crates/launcher/desktop/docs/launcher-summaries.md)) |
 | Golden wire fixtures | `crates/launcher/desktop/engine/src/storage/launcher_summary/fixtures/` |
@@ -194,7 +195,7 @@ The exporter makes one request per attempt, the `POST`. Its full handling is in 
 
 - **Every request shape counts,** the refused ones too. The allowance is charged before anything the caller sent is looked at and before the body is read, so a wrong content type, a query string, a malformed body or a body over 64 KiB spends it like an accepted request (`malformed_requests_spend_the_allowance` and `oversized_requests_spend_the_allowance` in `tests/quota.rs`).
 - **One refusal does not count.** A request under the kill switch is answered before the quota is charged.
-- **An IPv4-mapped address is counted as its IPv4 address.** On a dual-stack listener an IPv4 peer arrives as `::ffff:a.b.c.d`. The quota table folds IPv6 to its /64, and every mapped address is in the same one, so `peer_key` in `handlers.rs` takes the canonical form first: the mapped and the plain form of one address share an allowance, and two different mapped addresses do not (`an_ipv4_mapped_peer_is_counted_as_its_ipv4_address`).
+- **An IPv4-mapped address is counted as its IPv4 address.** On a dual-stack listener an IPv4 peer arrives as `::ffff:a.b.c.d`. The quota key folds IPv6 to its /64, and every mapped address is in the same one, so `ip_key` in `dev_session/quota.rs` takes the canonical form first: the mapped and the plain form of one address share an allowance, and two different mapped addresses do not (`ipv4_mapped_addresses_key_as_their_ipv4_address` beside `ip_key`, and `an_ipv4_mapped_peer_is_counted_as_its_ipv4_address` in `tests/quota.rs`). `ip_key` is the key of every per-address quota, so the dev-session mint and refresh quotas count a mapped peer the same way.
 - **Why 12.** A launcher sends one request per export cycle, and a cycle runs when the launcher starts, when a tracked attempt ends and when a failure before admission is queued. That is a few requests an hour, so a low limit leaves a single launcher room, and it is the only thing between the route and anyone who can reach the port.
 - **The allowance belongs to the address, not to a machine.** Everyone behind one NAT, reverse proxy or tunnel shares it, and no forwarded-for header is read. Behind a shared address the default is too low for more than a few launchers, and an operator there has to raise it. See [Known limits](#known-limits).
 
@@ -219,7 +220,9 @@ The quota comes before everything that reads the request, so a caller over its a
 
 The handler takes the raw request, body unread, and reads the body itself at step 5 (`read_body` in `handlers.rs`). A `Bytes` or `Json<T>` extractor, or a `DefaultBodyLimit` layer in front of one, would buffer the body and answer an oversized or malformed one before the kill switch or the quota had been checked. So a request over 64 KiB is charged like any other, and a caller who is paused or over quota is answered with nothing buffered: `a_paused_ingest_answers_before_the_body_arrives` in `tests/routes.rs` sends the headers of a 64 KiB request and no body, and gets its 503. The cap is exact, 65,536 bytes are read and 65,537 are a 413 (`tests/body.rs`), and there is no shortcut on `Content-Length`, so a length-prefixed body and a chunked one take the same path.
 
-The query string is refused because of where it would be logged. No code reads it, but the admin listener's request span records the whole URI and every row sits inside that span, so the request is refused before the first row ([Known limits](#known-limits)).
+The query string is refused because of where it could be logged. No code reads it, and every row sits inside the listener's request span. Both routers in this crate record the path alone in that span (`request_span` in `crates/admin-api/src/request_span.rs`), but the handler cannot see what a listener it is mounted on records, so it refuses the request before the first row whatever the span holds.
+
+The query is the only part of the request target the handler checks. An absolute-form target (`POST http://host/api/telemetry/launcher-summary HTTP/1.1`) is served like the bare path; the span leaves its scheme and host out, as it leaves the query out.
 
 A refused request writes no row of this module's.
 
@@ -278,12 +281,13 @@ The tests that pin this:
 | `no_row_carries_the_peer_or_a_token_the_caller_sent` | `launcher_summary/tests/rows.rs` |
 | `an_authorization_header_changes_no_verdict_and_reaches_no_row`, `an_authorization_header_changes_no_refusal` | `launcher_summary/tests/anonymous.rs` |
 | `every_request_is_anonymous_and_nothing_a_server_issues_is_kept` | `crates/launcher/desktop/engine/src/storage/launcher_summary/tests/exporter/delivery.rs` |
-| `a_query_string_reaches_no_span_no_event_and_no_response` | `crates/admin-api/src/login_port.rs` |
+| `a_query_string_reaches_no_span_no_event_and_no_response` (the login listener's router: a query string, and the host of an absolute-form target) | `crates/admin-api/src/login_port.rs` |
+| `the_admin_request_span_holds_the_path_alone` (the admin router: the same two) | `launcher_summary/tests/routes.rs` |
 | `a_query_string_is_a_400_and_writes_no_row` | `launcher_summary/tests/order.rs` |
 | `the_admin_router_refuses_a_query_string_before_any_row` | `launcher_summary/tests/routes.rs` |
 | `no_path_url_or_operation_id_reaches_the_queue_or_a_request_body` | `crates/launcher/desktop/engine/src/storage/install_worker/summary_tests.rs` |
 
-These claims cover the rows this module writes and the login listener's request span. They do not cover everything a listener may log about a connection; see the request-span entries under [Known limits](#known-limits).
+These claims cover the rows this module writes and the request span of both listeners' routers. They do not cover everything a listener may log about a connection; see the request-span entry under [Known limits](#known-limits).
 
 ## Golden fixtures: the cross-workspace contract
 
@@ -305,8 +309,8 @@ Compare the files as JSON values, never as bytes: a Windows checkout may convert
 - **At-least-once delivery.** The launcher resends until it gets an answer. The server drops a resend it remembers, so a duplicate row needs a server restart, or more than 16,384 accepted ids, between the two deliveries.
 - **In-memory dedup.** The set is per process and lost on restart. Nothing persists it.
 - **Approximate counters.** `client_dropped_*` and a pre-admission row's `retry_count` are at-least-once approximations: a request the launcher has to retry repeats the same counters, and the server does not deduplicate them. Do not sum them across batch rows as if each reported new drops.
-- **The request span on the admin listener records the full URI.** The admin router (`build_router` in `crates/admin-api/src/lib.rs`) uses tower-http's default span, and that is unchanged. The handler refuses a query string before it writes a row, so a query string is still a field of that request's span, beside the 400, but never of a span that holds a row of this module. The query is the only part of the request target the handler checks: an absolute-form target (`POST http://host/api/telemetry/launcher-summary HTTP/1.1`) is served like the bare path, and on the admin listener its host is then in the span's `uri` field beside the rows. The login listener's span (`request_span` in `login_port.rs`) records the path alone.
-- **The request span still records the caller's method and path** on both listeners. A request whose path or method matches no route gets a 404 or 405 and writes no rows, so that text appears once per request, not once per row.
+- **The request span still records the caller's method and path** on both listeners. It leaves out the query string and the scheme and host of an absolute-form target (`request_span` in `crates/admin-api/src/request_span.rs`, used by `build_router` and by `login_port_telemetry_router`), but the method and the path are the caller's text. A request whose path or method matches no route gets a 404 or 405 and writes no rows, so that text appears once per request, not once per row.
+- **The admin span no longer shows a query string on any admin route.** The span is the admin router's, not this route's, so the filters of the admin routes that do read a query (the login audit list, for one) are out of the request span too.
 - **Forged rows cannot be told from real ones.** The route is anonymous, and a script that sends the launcher's bytes is a launcher as far as the server can see. The rate limit bounds how many rows one address adds, not how many addresses add them.
 - **Junk spends a shared allowance.** Every request is counted, the refused and the oversized ones too. Anyone behind the same address as real launchers (a NAT, a tunnel) can use the allowance up with 12 requests of any content and turn those launchers' posts into 429s until the window ends.
 - **A shared address shares one allowance of 12.** No forwarded-for header is read, as for the dev-session quotas. Behind a reverse proxy or a tunnel every launcher arrives from one address, so the default limits the whole deployment to 12 requests per window until the operator raises `CIMMERIA_TELEMETRY_SUMMARY_QUOTA_PER_IP`.

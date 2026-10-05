@@ -103,6 +103,21 @@ services:
       # Blank falls back to http://localhost:8443/api/telemetry, which only
       # a launcher on this host can use.
       CIMMERIA_TELEMETRY_UPLOAD_ENDPOINT: "${CIMMERIA_TELEMETRY_UPLOAD_ENDPOINT:-}"
+      # Two optional operator controls, from the same .env file. Blank (no
+      # line in .env) keeps the server's defaults: ingest on, and 12
+      # requests per address per window on /api/telemetry/launcher-summary.
+      #
+      # Pause the dev-session mint, the refresh and the launcher-summary
+      # route (503). Only the literal 1 does it:
+      #   CIMMERIA_TELEMETRY_KILL_SWITCH=1
+      # The launcher-summary rate limit; 0 turns it off. Raise it when
+      # launchers reach this server from one shared address:
+      #   CIMMERIA_TELEMETRY_SUMMARY_QUOTA_PER_IP=60
+      # Either change needs the container recreated, which restarts the
+      # game server and reseeds the database (see below). Recipes:
+      # docs/operations/telemetry.md, "Kill switch" and "Changing a quota".
+      CIMMERIA_TELEMETRY_KILL_SWITCH: "${CIMMERIA_TELEMETRY_KILL_SWITCH:-}"
+      CIMMERIA_TELEMETRY_SUMMARY_QUOTA_PER_IP: "${CIMMERIA_TELEMETRY_SUMMARY_QUOTA_PER_IP:-}"
       OTEL_TRACES_SAMPLER: "always_on"
     # Intentionally NO `volumes:` for postgres data. The entrypoint
     # (`docker/entrypoint.sh`) reseeds /var/lib/postgresql/data from

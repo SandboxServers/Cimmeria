@@ -243,6 +243,32 @@ ssh cimmeria-server "systemctl unset-environment CIMMERIA_TELEMETRY_KILL_SWITCH 
     && systemctl restart cimmeria-server"
 ```
 
+On a compose deployment (the colo) the switch is a line in the `.env`
+beside `compose.yml` (`/opt/cimmeria/.env` on the colo), which
+`docker/compose.yml` passes to the server as
+`${CIMMERIA_TELEMETRY_KILL_SWITCH:-}`. Run these in that directory:
+
+```bash
+# Pause: add the line, then recreate the container so it gets the new environment.
+# The leading newline keeps it off the end of a last line that has none.
+printf '\nCIMMERIA_TELEMETRY_KILL_SWITCH=1\n' >> .env
+docker compose -f compose.yml up -d cimmeria
+
+# Resume: remove the line, then recreate again
+sed -i '/^CIMMERIA_TELEMETRY_KILL_SWITCH=/d' .env
+docker compose -f compose.yml up -d cimmeria
+```
+
+No line, or a line with nothing after the `=`, is the switch off: compose
+then hands the server an empty value, and only `1` turns it on.
+
+**Recreating the container is not free.** It restarts the game server, so
+connected players are dropped, and this container reseeds its database on
+every start ([container.md → Volume / persistence](container.md#volume--persistence)).
+A running container's environment cannot be changed, so there is no
+compose form that avoids it. This compose form is written from
+`docker/compose.yml` and has not been run on the colo.
+
 Only the literal value `1` enables the kill switch — `true`/`yes`/etc
 are treated as off (intentional crispness of contract).
 
@@ -286,7 +312,48 @@ that header and falls back to launching without telemetry.
 
 Setting a quota to `0` disables that counter. A value that does not
 parse falls back to the default rather than refusing to serve — an
-operator typo must not take telemetry offline.
+operator typo must not take telemetry offline. A blank value does not
+parse, so it is the default too.
+
+### Changing a quota
+
+The server reads these variables from its own environment, so a change
+needs a restart. The example raises the launcher-summary limit to 60.
+
+```bash
+# systemd
+ssh cimmeria-server "systemctl set-environment CIMMERIA_TELEMETRY_SUMMARY_QUOTA_PER_IP=60 \
+    && systemctl restart cimmeria-server"
+
+# Back to the default
+ssh cimmeria-server "systemctl unset-environment CIMMERIA_TELEMETRY_SUMMARY_QUOTA_PER_IP \
+    && systemctl restart cimmeria-server"
+```
+
+On a compose deployment (the colo), in the directory that holds
+`compose.yml` and `.env`:
+
+```bash
+# Set it: one line in .env (edit the line if it is already there), then recreate
+printf '\nCIMMERIA_TELEMETRY_SUMMARY_QUOTA_PER_IP=60\n' >> .env
+docker compose -f compose.yml up -d cimmeria
+
+# Back to the default: remove the line, then recreate again
+sed -i '/^CIMMERIA_TELEMETRY_SUMMARY_QUOTA_PER_IP=/d' .env
+docker compose -f compose.yml up -d cimmeria
+```
+
+Recreating the container restarts the game server and reseeds its
+database, as under [Kill switch](#kill-switch), and this compose form has
+not been run on the colo either.
+
+`docker/compose.yml` passes four telemetry variables to the server:
+`CIMMERIA_TELEMETRY_HMAC_SECRET`, `CIMMERIA_TELEMETRY_UPLOAD_ENDPOINT`,
+`CIMMERIA_TELEMETRY_KILL_SWITCH` and
+`CIMMERIA_TELEMETRY_SUMMARY_QUOTA_PER_IP`. The other variables in the
+table above are not passed through: a line for one of them in `.env`
+reaches nothing until the variable is also added to the `cimmeria`
+service's `environment:` block.
 
 **Raise the per-IP mint quota if the admin port sits behind a proxy
 or a shared egress address.** The counter keys on the peer address,
@@ -492,7 +559,8 @@ default allows 12 summary requests per window for all of them together.
 Anyone behind that address can also spend the allowance with 12 requests of
 any content and turn the others' posts into 429s until the window ends. Size
 the limit for the number of launchers behind the address before pointing any
-launcher at the route.
+launcher at the route. The commands, for systemd and for compose, are under
+[Changing a quota](#changing-a-quota).
 
 **Do not act on these rows.** The route is anonymous, so anyone can post
 correctly shaped rows within the rate limit. Rows are self-reported; they

@@ -195,19 +195,21 @@ mod tests {
     }
 
     /// **No echo through the request span.** A query string on the summary
-    /// route, and an `Authorization` header the anonymous route never
-    /// reads, reach no span field, no event field and no response byte.
-    /// The request span is recorded with the path alone, and with no
-    /// header.
+    /// route, an `Authorization` header the anonymous route never reads,
+    /// and the host of an absolute-form request target
+    /// (`POST http://zzhost.example/api/…`) reach no span field, no event
+    /// field and no response byte. The request span is recorded with the
+    /// path alone, and with no header.
     ///
-    /// Putting `DefaultMakeSpan` back on this router fails the first log
-    /// assertion: its `uri` field is the whole URI, marker included. The
-    /// admin router's copy of this test, which also sends an absolute-form
-    /// target, is `the_admin_request_span_holds_the_path_alone` in
+    /// Putting `DefaultMakeSpan` back on this router fails the log
+    /// assertions: its `uri` field is the whole request target, marker or
+    /// host included. The admin router's copy of this test is
+    /// `the_admin_request_span_holds_the_path_alone` in
     /// `routes/telemetry/launcher_summary/tests/routes.rs`.
     #[tokio::test]
     async fn a_query_string_reaches_no_span_no_event_and_no_response() {
         const MARKER: &str = "ZZMARKER";
+        const HOST: &str = "zzhost";
         const PATH: &str = "/api/telemetry/launcher-summary";
 
         let shown = Shown::default();
@@ -231,25 +233,32 @@ mod tests {
             &format!("Authorization: Bearer {MARKER}\r\n"),
         )
         .await;
+        let absolute = exchange(addr, "POST", &format!("http://{HOST}.example{PATH}")).await;
         let lines = shown.lines();
 
-        assert!(!response.contains(MARKER), "{response:?}");
-        assert!(
-            lines.iter().all(|line| !line.contains(MARKER)),
-            "{lines:#?}"
-        );
-        // Not vacuous: the handler ran (its 415 for the missing content
-        // type; see `summary_handler_ran`), and the request span was
-        // recorded with its three fields, the path among them, under the
-        // target tower-http's own span has.
+        for text in [MARKER, HOST] {
+            assert!(!response.contains(text), "{text} in {response:?}");
+            assert!(!absolute.contains(text), "{text} in {absolute:?}");
+            assert!(
+                lines.iter().all(|line| !line.contains(text)),
+                "{text} in {lines:#?}"
+            );
+        }
+        // Not vacuous: the handler ran both times (its 415 for the missing
+        // content type; see `summary_handler_ran`), so the absolute-form
+        // target was routed like the bare path, and each request's span
+        // was recorded with its three fields, the path among them, under
+        // the target tower-http's own span has.
         assert!(summary_handler_ran(&response), "{response:?}");
+        assert!(summary_handler_ran(&absolute), "{absolute:?}");
         for wanted in [
             "span=request target=tower_http::trace::make_span".to_string(),
             "method=POST".to_string(),
             format!("uri={PATH}"),
             "version=HTTP/1.1".to_string(),
         ] {
-            assert!(lines.contains(&wanted), "no `{wanted}` in {lines:#?}");
+            let count = lines.iter().filter(|line| **line == wanted).count();
+            assert_eq!(count, 2, "`{wanted}` in {lines:#?}");
         }
 
         // Control: the same recorder sees a marker placed in a span field,

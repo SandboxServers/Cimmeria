@@ -5,7 +5,10 @@ use std::time::Duration;
 use super::super::dto::{SummaryError, Verdict::Accepted};
 use super::super::handlers::IngestPolicy;
 use super::super::MAX_SUMMARY_BODY_BYTES;
-use super::{batch, capture, content_type, element, refusal, Env, Harness, ENV_SUMMARY_QUOTA};
+use super::{
+    batch, capture, content_type, element, refusal, Env, Harness, ENV_KILL_SWITCH,
+    ENV_SUMMARY_QUOTA,
+};
 
 const ENV_WINDOW: &str = "CIMMERIA_TELEMETRY_QUOTA_WINDOW_SECS";
 
@@ -59,6 +62,36 @@ fn the_default_allowance_is_twelve_requests_an_hour_per_address() {
 
     h.peer = "203.0.113.78".parse().unwrap();
     assert_eq!(post(&h, 13).unwrap().results, [Accepted], "another address");
+}
+
+/// **A blank variable is an unset one.** `docker/compose.yml` passes the
+/// kill switch and the summary quota as `${VAR:-}`, so a deployment whose
+/// `.env` names neither hands the server both variables set to the empty
+/// string. That has to mean the defaults: an allowance of twelve, and a
+/// request that is served.
+///
+/// Controls: with a value in it each variable is read. `3` is an allowance
+/// of three, and `1` is a 503.
+#[test]
+fn blank_values_from_compose_are_the_defaults() {
+    let _env = Env::install();
+    let post = |quota: &str, kill_switch: &str| {
+        with_var(ENV_SUMMARY_QUOTA, Some(quota), || {
+            with_var(ENV_KILL_SWITCH, Some(kill_switch), || {
+                let mut h = Harness::new();
+                h.policy = IngestPolicy::from_env();
+                let served = h
+                    .post_json(&batch(vec![element(1)]))
+                    .map(|response| response.results)
+                    .map_err(|e| refusal(e).status);
+                (h.policy.per_ip, served)
+            })
+        })
+    };
+
+    assert_eq!(post("", ""), (12, Ok(vec![Accepted])));
+    assert_eq!(post("3", ""), (3, Ok(vec![Accepted])), "control");
+    assert_eq!(post("", "1"), (12, Err(503)), "control");
 }
 
 /// **Refused requests spend the allowance.** The quota is charged before
