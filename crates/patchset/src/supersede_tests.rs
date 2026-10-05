@@ -28,6 +28,7 @@ fn op(target: &str, sources: &[&str]) -> SpecOp {
             .map(|p| SpecSource {
                 path: (*p).into(),
                 transform: Transform::None,
+                output_of: None,
             })
             .collect(),
     }

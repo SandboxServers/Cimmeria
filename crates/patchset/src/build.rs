@@ -45,6 +45,11 @@ pub struct SpecSource {
     pub path: String,
     #[serde(default)]
     pub transform: Transform,
+    /// Set when the source is another patch's output rather than a stock
+    /// file; copied into the recipe (see [`crate::recipe::Source::output_of`]).
+    /// The `--stock` tree must then hold that patch's output at this path.
+    #[serde(default)]
+    pub output_of: Option<String>,
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -116,6 +121,7 @@ pub fn build(
                 path: s.path.clone(),
                 sha256,
                 transform: s.transform,
+                output_of: s.output_of.clone(),
             });
         }
         let target_path = patched_root.join(safe_relative(&op.target)?);

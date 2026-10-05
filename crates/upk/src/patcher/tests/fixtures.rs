@@ -223,6 +223,12 @@ pub(super) fn level_package(b: &mut Builder, actors: &[i32]) -> i32 {
 /// Source package: a level, one StaticMeshActor at (100, 200, 300), and its
 /// component. Decoy exports keep source refs from lining up with target refs.
 pub(super) fn source_package() -> Vec<u8> {
+    source_package_with_lod_data(&[0]) // empty LODData
+}
+
+/// [`source_package`] with `lod_data` (i32 words) as the component's native
+/// tail after its property list.
+pub(super) fn source_package_with_lod_data(lod_data: &[i32]) -> Vec<u8> {
     let mut b = Builder::default();
     let pkg = b.import("Core", "Package", 0, "GLB-Global");
     let mesh = b.import("Engine", "StaticMesh", pkg, "GLB-RingTransporterBase_TC00");
@@ -260,7 +266,7 @@ pub(super) fn source_package() -> Vec<u8> {
     Builder::i32s(&mut comp, &[0, 99]);
     b.object_prop(&mut comp, "StaticMesh", mesh);
     b.none(&mut comp);
-    Builder::i32s(&mut comp, &[0]); // empty LODData
+    Builder::i32s(&mut comp, lod_data);
     assert_eq!(
         b.export(comp_class, actor_ref, "StaticMeshComponent", comp),
         comp_ref

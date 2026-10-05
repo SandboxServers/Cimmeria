@@ -16,6 +16,7 @@ mod readiness;
 mod stall;
 mod state_flag;
 mod support;
+mod witness_sequence;
 
 use tokio::sync::mpsc;
 
