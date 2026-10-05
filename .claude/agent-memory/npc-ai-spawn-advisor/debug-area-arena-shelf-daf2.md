@@ -26,7 +26,7 @@ colo SigNoz on v2026-10-05.1, plus review round 1.
   scene (move entities + `aggro.radius_override`) tried 168 configs in ~100 s.
 - **Ring pad 39 for daf1:** no 7 u clear disc on the shelf meets 12 u from fight 2 + 32 u from
   NIDs; best is (331, -693), clear r 6.5, console (334, -691.7).
-- **No-witness WARN rule.** `SpaceManager::player_present(entity, counterpart)`
+- **No-witness WARN rule (SUPERSEDED 2026-10-05 by #1265: the AoI clause now tests the shooter only; a player in range of only the target made false WARNs at the arena).** `SpaceManager::player_present(entity, counterpart)`
   (cell-world `space_manager/player_presence.rs`): a player has entity or counterpart within
   their own `aoi_radius` (stale-witness fault), OR entity/counterpart/threat-list key is player
   side (player, pet, deployable, LabDummy). Review round 1 added the in-range clause: the first

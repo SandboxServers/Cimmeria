@@ -329,9 +329,10 @@ pub(in crate::cell::abilities) async fn play_ability_sequence(
     }
 
     // Nobody saw the shot. A fault only when a player is present: in AoI
-    // range of the shooter or its target, or in the fight (DA-F2:
-    // `SpaceManager::player_present`). NPC-vs-NPC with no player around
-    // writes nothing.
+    // range of the shooter (whose witness list this is), or with a
+    // player-side target or threat entry (DA-F2, #1265:
+    // `SpaceManager::player_present`). A player who sees only the target
+    // is not a fault, and NPC-vs-NPC with no player around writes nothing.
     if warns
         && witness_count == 0
         && is_npc(space_mgr, entity_id)

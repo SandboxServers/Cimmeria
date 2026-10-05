@@ -292,7 +292,7 @@ async fn npc_fires_at(mgr: &mut SpaceManager, npc: u32, target: u32) {
 /// was near (Praxis Jaffa Guard -> NID Guard, Yellow Faction -> Green
 /// Sniper). Owner decision: an NPC shooting an NPC with no player present
 /// writes nothing. The pair stands 400 u from both players, outside their
-/// 100 u AoI. Fails when the `player_present` gate in `sequence.rs` is
+/// 150 u AoI. Fails when the `player_present` gate in `sequence.rs` is
 /// reverted.
 #[tokio::test]
 async fn an_npc_shooting_an_npc_with_no_player_near_writes_nothing() {
@@ -328,6 +328,34 @@ async fn an_npc_shooting_an_npc_beside_a_player_with_a_stale_witness_set_warns()
     assert_eq!(
         sequence_warns(&logs.all(), "no_witnesses").len(),
         1,
+        "{:#?}",
+        logs.all()
+    );
+}
+
+/// **Regression guard (colo 2026-10-05, Debug Area arena).** A player at
+/// the edge of the fight sees the target but not the shooter: the target
+/// stands 140 u from the players (inside their 150 u AoI), the shooter 160 u
+/// (outside it). The shooter has no witnesses and rightly so, so no WARN.
+/// Fails when the counterpart's AoI range counts toward `player_present`.
+#[tokio::test]
+async fn an_npc_shooting_a_target_a_player_sees_from_beyond_its_own_aoi_writes_nothing() {
+    let mut mgr = scene();
+    mgr.create_entity(6, "Castle_CellBlock", [0.0, 0.0, 160.0], [0.0; 3])
+        .unwrap();
+    arm_npc(&mut mgr, 6, ABILITY, Some(EVENT_SET));
+    mgr.create_entity(7, "Castle_CellBlock", [0.0, 0.0, 140.0], [0.0; 3])
+        .unwrap();
+    assert!(
+        mgr.player_in_aoi_of(7) && !mgr.player_in_aoi_of(6),
+        "fixture: the players see the target and not the shooter"
+    );
+    let logs = LogCapture::install();
+
+    npc_fires_at(&mut mgr, 6, 7).await;
+
+    assert!(
+        sequence_warns(&logs.all(), "no_witnesses").is_empty(),
         "{:#?}",
         logs.all()
     );
