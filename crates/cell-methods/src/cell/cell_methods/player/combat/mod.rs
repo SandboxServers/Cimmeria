@@ -44,7 +44,13 @@ pub async fn dispatch(
                 if respawn_refusal(entity_id, "callForAid", Some(respawner_id), space_mgr) {
                     return true;
                 }
-                tracing::info!(entity_id, respawner_id, "callForAid");
+                tracing::info!(
+                    entity_id,
+                    entity_name = space_mgr.entity_label(entity_id),
+                    respawner_id,
+                    respawner_name = cimmeria_names::book().respawner(respawner_id),
+                    "callForAid"
+                );
                 crate::cell::playtest_friction::respawned(entity_id);
                 crate::cell::player_journal::note(
                     entity_id,
@@ -69,7 +75,9 @@ pub async fn dispatch(
                     tracing::info!(
                         target: "player.respawn",
                         entity_id,
+                        entity_name = space_mgr.entity_label(entity_id),
                         respawner_id,
+                        respawner_name = cimmeria_names::book().respawner(respawner_id),
                         state_flags_before = b.0,
                         state_flags_before_names = %cimmeria_wire::state_field::STATE_FLAGS.render(b.0),
                         state_flags_after = a.0,
@@ -110,10 +118,15 @@ pub async fn dispatch(
                     event = "use_ability_recv",
                     stage = "recv",
                     account_id = who.account_id,
+                    account_name = who.account_name,
                     player_id = who.player_id,
+                    player_name = who.player_name,
                     entity_id,
+                    entity_name = who.player_name,
                     ability_id,
+                    ability_name = cimmeria_names::book().ability(ability_id),
                     wire_target_id = target_id,
+                    wire_target_name = space_mgr.entity_label(target_id as u32),
                     mercury_seq = packet_seq,
                     "useAbility"
                 );
@@ -156,9 +169,13 @@ pub async fn dispatch(
                     event = "use_ability_on_ground_recv",
                     stage = "recv",
                     account_id = who.account_id,
+                    account_name = who.account_name,
                     player_id = who.player_id,
+                    player_name = who.player_name,
                     entity_id,
+                    entity_name = who.player_name,
                     ability_id,
+                    ability_name = cimmeria_names::book().ability(ability_id),
                     x,
                     y,
                     z,
@@ -201,13 +218,21 @@ pub async fn dispatch(
             if respawn_refusal(entity_id, "respawn", None, space_mgr) {
                 return true;
             }
-            tracing::debug!(entity_id, "respawn (auto)");
+            tracing::debug!(
+                entity_id,
+                entity_name = space_mgr.entity_label(entity_id),
+                "respawn (auto)"
+            );
             respawn::handle_respawn(entity_id, -1, tx, space_mgr).await;
             true
         }
 
         UNSTUCK => {
-            tracing::info!(entity_id, "UNIMPLEMENTED: unstuck");
+            tracing::info!(
+                entity_id,
+                entity_name = space_mgr.entity_label(entity_id),
+                "UNIMPLEMENTED: unstuck"
+            );
             true
         }
 
@@ -241,8 +266,11 @@ fn short_args_row(
         stage = "recv",
         reason = "args_short",
         account_id = who.account_id,
+        account_name = who.account_name,
         player_id = who.player_id,
+        player_name = who.player_name,
         entity_id,
+        entity_name = who.player_name,
         method,
         args_len,
         expected_len,
@@ -293,12 +321,17 @@ fn respawn_refusal(
     };
     let id = e.identity();
     if !crate::cell::combat::is_dead_state(e.state_field) {
+        let book = cimmeria_names::book();
         tracing::debug!(
             target: "player.respawn",
             entity_id,
+            entity_name = id.player_name,
             account_id = id.account_id,
+            account_name = id.account_name,
             player_id = id.player_id,
+            player_name = id.player_name,
             respawner_id = respawner_id.unwrap_or(-1),
+            respawner_name = respawner_id.and_then(|r| book.respawner(r)),
             method,
             state_field = e.state_field,
             state_field_names = %cimmeria_wire::state_field::STATE_FLAGS.render(e.state_field),
@@ -320,9 +353,13 @@ fn respawn_refusal(
         tracing::debug!(
             target: "player.respawn",
             entity_id,
+            entity_name = id.player_name,
             account_id = id.account_id,
+            account_name = id.account_name,
             player_id = id.player_id,
+            player_name = id.player_name,
             respawner_id,
+            respawner_name = cimmeria_names::book().respawner(respawner_id),
             method,
             world = ?world,
             reason = "respawner_not_offered",

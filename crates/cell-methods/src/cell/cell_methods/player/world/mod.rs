@@ -73,7 +73,14 @@ pub async fn dispatch(
                 if let Some((tag, db_set_id, region_flags)) =
                     resolve_hinted_region(entity_id, region_id, b_entering, space_mgr)
                 {
-                    tracing::info!(entity_id, region_id, %tag, b_entering, "triggerClientHintedGenericRegion");
+                    tracing::info!(
+                        entity_id,
+                        entity_name = space_mgr.entity_label(entity_id),
+                        region_id,
+                        region_name = (!tag.is_empty()).then_some(tag.as_str()),
+                        b_entering,
+                        "triggerClientHintedGenericRegion"
+                    );
                     crate::cell::playtest_friction::region_hint(entity_id, region_id as u32);
                     crate::cell::player_journal::note(
                         entity_id,
@@ -131,14 +138,22 @@ pub async fn dispatch(
         REQUEST_RELOAD => {
             if !args.is_empty() {
                 let _reload_type = args[0];
-                tracing::debug!(entity_id, "requestReload");
+                tracing::debug!(
+                    entity_id,
+                    entity_name = space_mgr.entity_label(entity_id),
+                    "requestReload"
+                );
                 reload::handle_reload(entity_id, tx, space_mgr).await;
             }
             true
         }
 
         CHOSEN_REWARDS => {
-            tracing::info!(entity_id, "UNIMPLEMENTED: chosenRewards");
+            tracing::info!(
+                entity_id,
+                entity_name = space_mgr.entity_label(entity_id),
+                "UNIMPLEMENTED: chosenRewards"
+            );
             true
         }
 
@@ -148,8 +163,12 @@ pub async fn dispatch(
                 let destination_id = i32::from_le_bytes([args[4], args[5], args[6], args[7]]);
                 tracing::info!(
                     entity_id,
+                    entity_name = space_mgr.entity_label(entity_id),
                     region_id,
-                    destination_id,
+                    region_name = space_mgr.ring_transporters.region_name(region_id),
+                    destination_region_id = destination_id,
+                    destination_region_name =
+                        space_mgr.ring_transporters.region_name(destination_id),
                     "setRingTransporterDestination"
                 );
                 crate::cell::ring_transport::handle_select_destination(
@@ -166,7 +185,11 @@ pub async fn dispatch(
         }
 
         WORLD_INSTANCE_RESET => {
-            tracing::info!(entity_id, "UNIMPLEMENTED: onWorldInstanceReset");
+            tracing::info!(
+                entity_id,
+                entity_name = space_mgr.entity_label(entity_id),
+                "UNIMPLEMENTED: onWorldInstanceReset"
+            );
             true
         }
 
@@ -193,6 +216,7 @@ pub async fn dispatch(
 /// the report is actually written.
 fn refuse_hinted_region(
     entity_id: u32,
+    entity_name: Option<&str>,
     region_id: i32,
     region_tag: &str,
     position: Option<[f32; 3]>,
@@ -204,8 +228,9 @@ fn refuse_hinted_region(
     // and a `0.0` there would read as "standing at the origin".
     tracing::warn!(
         entity_id,
+        entity_name,
         region_id,
-        region_tag,
+        region_name = (!region_tag.is_empty()).then_some(region_tag),
         pos_x = position.map(|p| p[0]),
         pos_y = position.map(|p| p[1]),
         pos_z = position.map(|p| p[2]),
@@ -266,6 +291,7 @@ fn resolve_hinted_region(
     let Ok(runtime_id) = u32::try_from(region_id) else {
         return refuse_hinted_region(
             entity_id,
+            space_mgr.entity_label(entity_id),
             region_id,
             "",
             position,
@@ -277,6 +303,7 @@ fn resolve_hinted_region(
     let Some(region) = space_mgr.get_region(runtime_id) else {
         return refuse_hinted_region(
             entity_id,
+            space_mgr.entity_label(entity_id),
             region_id,
             "",
             position,
@@ -289,6 +316,7 @@ fn resolve_hinted_region(
     let Some(caller_world) = space_mgr.get_entity_world_name(entity_id) else {
         return refuse_hinted_region(
             entity_id,
+            space_mgr.entity_label(entity_id),
             region_id,
             &region.tag,
             position,
@@ -301,6 +329,7 @@ fn resolve_hinted_region(
     if region.world_name != caller_world {
         return refuse_hinted_region(
             entity_id,
+            space_mgr.entity_label(entity_id),
             region_id,
             &region.tag,
             position,
@@ -317,6 +346,7 @@ fn resolve_hinted_region(
         let Some(position) = position else {
             return refuse_hinted_region(
                 entity_id,
+                space_mgr.entity_label(entity_id),
                 region_id,
                 &region.tag,
                 position,
@@ -328,6 +358,7 @@ fn resolve_hinted_region(
         if !crate::cell::spawner::is_point_in_region(&region.points, position) {
             return refuse_hinted_region(
                 entity_id,
+                space_mgr.entity_label(entity_id),
                 region_id,
                 &region.tag,
                 Some(position),

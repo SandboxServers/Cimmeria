@@ -1,20 +1,4 @@
 # Unpaired ID fields per file (Rule 6, NT-03). Only ever lowered.
 # Regenerate after pairing fields: NT_BASELINE_BLESS=1 cargo nextest run -p cimmeria-server unpaired_id
 # See crates/server/src/logging/unpaired_id_tests/mod.rs.
-# total 317
-crates/cell-methods/src/cell/cell_methods/black_market/mod.rs 19
-crates/cell-methods/src/cell/cell_methods/contact_list/mod.rs 43
-crates/cell-methods/src/cell/cell_methods/inventory/item_ops.rs 34
-crates/cell-methods/src/cell/cell_methods/mail.rs 10
-crates/cell-methods/src/cell/cell_methods/missionary.rs 8
-crates/cell-methods/src/cell/cell_methods/player/combat/mod.rs 26
-crates/cell-methods/src/cell/cell_methods/player/interaction/dialog.rs 12
-crates/cell-methods/src/cell/cell_methods/player/interaction/interact.rs 14
-crates/cell-methods/src/cell/cell_methods/player/trade/handlers.rs 30
-crates/cell-methods/src/cell/cell_methods/player/trade/handoff.rs 14
-crates/cell-methods/src/cell/cell_methods/player/vendor/mod.rs 16
-crates/cell-methods/src/cell/cell_methods/player/vendor/respec.rs 11
-crates/cell-methods/src/cell/cell_methods/player/vendor/session.rs 11
-crates/cell-methods/src/cell/cell_methods/player/vendor/train.rs 41
-crates/cell-methods/src/cell/cell_methods/player/world/auto_cycle.rs 18
-crates/cell-methods/src/cell/cell_methods/player/world/mod.rs 10
+# total 0

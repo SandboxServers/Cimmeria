@@ -20,20 +20,35 @@ pub async fn dispatch(
     match method_index {
         REQUEST_MAIL_HEADERS => {
             let b_archive = if !args.is_empty() { args[0] } else { 0 };
-            tracing::debug!(entity_id, b_archive, "requestMailHeaders");
+            tracing::debug!(
+                entity_id,
+                entity_name = space_mgr.entity_label(entity_id),
+                b_archive,
+                "requestMailHeaders"
+            );
             crate::cell::mail::handle_request_mail_headers(entity_id, b_archive, tx, space_mgr)
                 .await;
             true
         }
         SEND_MAIL_MESSAGE => {
-            tracing::debug!(entity_id, payload_len = args.len(), "sendMailMessage");
+            tracing::debug!(
+                entity_id,
+                entity_name = space_mgr.entity_label(entity_id),
+                payload_len = args.len(),
+                "sendMailMessage"
+            );
             crate::cell::mail::handle_send_mail(entity_id, args, tx, space_mgr).await;
             true
         }
         ARCHIVE_MAIL_MESSAGE => {
             if args.len() >= 4 {
                 let mail_id = i32::from_le_bytes([args[0], args[1], args[2], args[3]]);
-                tracing::debug!(entity_id, mail_id, "archiveMailMessage");
+                tracing::debug!(
+                    entity_id,
+                    entity_name = space_mgr.entity_label(entity_id),
+                    mail_id, // nt:id-only mail row, its subject is player text kept out of logs
+                    "archiveMailMessage"
+                );
                 crate::cell::mail::handle_archive_mail(entity_id, mail_id, tx, space_mgr).await;
             }
             true
@@ -41,13 +56,18 @@ pub async fn dispatch(
         DELETE_MAIL_MESSAGE => {
             if args.len() >= 4 {
                 let mail_id = i32::from_le_bytes([args[0], args[1], args[2], args[3]]);
-                tracing::debug!(entity_id, mail_id, "deleteMailMessage");
+                tracing::debug!(
+                    entity_id,
+                    entity_name = space_mgr.entity_label(entity_id),
+                    mail_id, // nt:id-only mail row, its subject is player text kept out of logs
+                    "deleteMailMessage"
+                );
                 crate::cell::mail::handle_delete_mail(entity_id, mail_id, tx, space_mgr).await;
             }
             true
         }
         RETURN_MAIL_MESSAGE => {
-            if let Some(mail_id) = mail_id_arg(entity_id, "returnMailMessage", args) {
+            if let Some(mail_id) = mail_id_arg(entity_id, "returnMailMessage", args, space_mgr) {
                 forward(
                     entity_id,
                     "returnMailMessage",
@@ -62,7 +82,12 @@ pub async fn dispatch(
         REQUEST_MAIL_BODY => {
             if args.len() >= 4 {
                 let mail_id = i32::from_le_bytes([args[0], args[1], args[2], args[3]]);
-                tracing::debug!(entity_id, mail_id, "requestMailBody");
+                tracing::debug!(
+                    entity_id,
+                    entity_name = space_mgr.entity_label(entity_id),
+                    mail_id, // nt:id-only mail row, its subject is player text kept out of logs
+                    "requestMailBody"
+                );
                 crate::cell::mail::handle_request_mail_body(entity_id, mail_id, tx, space_mgr)
                     .await;
             }
@@ -70,7 +95,7 @@ pub async fn dispatch(
         }
         TAKE_CASH_FROM_MAIL => {
             let method = "takeCashFromMailMessage";
-            if let Some(mail_id) = mail_id_arg(entity_id, method, args) {
+            if let Some(mail_id) = mail_id_arg(entity_id, method, args, space_mgr) {
                 forward(
                     entity_id,
                     method,
@@ -87,7 +112,7 @@ pub async fn dispatch(
             // shipped client fills them with uninitialised stack (SS-E1
             // M-Q5), so the base chooses the slot itself.
             let method = "takeItemFromMailMessage";
-            if let Some(mail_id) = mail_id_arg(entity_id, method, args) {
+            if let Some(mail_id) = mail_id_arg(entity_id, method, args, space_mgr) {
                 let word = |at: usize| {
                     args.get(at..at + 4)
                         .map(|b| i32::from_le_bytes([b[0], b[1], b[2], b[3]]))
@@ -104,7 +129,7 @@ pub async fn dispatch(
         }
         PAY_COD_FOR_MAIL => {
             let method = "payCODForMailMessage";
-            if let Some(mail_id) = mail_id_arg(entity_id, method, args) {
+            if let Some(mail_id) = mail_id_arg(entity_id, method, args, space_mgr) {
                 forward(entity_id, method, MailOp::PayCod { mail_id }, tx, space_mgr).await;
             }
             true
@@ -115,13 +140,19 @@ pub async fn dispatch(
 
 /// The leading `INT32 MailId`, or `None` (logged) for a payload too short
 /// to hold one.
-fn mail_id_arg(entity_id: u32, method: &'static str, args: &[u8]) -> Option<i32> {
+fn mail_id_arg(
+    entity_id: u32,
+    method: &'static str,
+    args: &[u8],
+    space_mgr: &SpaceManager,
+) -> Option<i32> {
     match args.get(..4) {
         Some(b) => Some(i32::from_le_bytes([b[0], b[1], b[2], b[3]])),
         None => {
             tracing::warn!(
                 target: "mail",
                 entity_id,
+                entity_name = space_mgr.entity_label(entity_id),
                 method,
                 payload_len = args.len(),
                 reason = "truncated",
@@ -139,7 +170,12 @@ async fn forward(
     tx: &mpsc::Sender<CellToBaseMsg>,
     space_mgr: &SpaceManager,
 ) {
-    tracing::debug!(entity_id, method, "mail attachment op");
+    tracing::debug!(
+        entity_id,
+        entity_name = space_mgr.entity_label(entity_id),
+        method,
+        "mail attachment op"
+    );
     crate::cell::mail::handle_attachment_op(entity_id, method, op, tx, space_mgr).await;
 }
 

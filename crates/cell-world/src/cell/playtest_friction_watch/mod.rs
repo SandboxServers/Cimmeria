@@ -265,8 +265,8 @@ fn emit(entity_id: u32, entity_name: Option<&'static str>, f: &Friction) {
             reason = "client_region_hint_missing",
             entity_id,
             entity_name,
-            region_id, // nt:id-only runtime region id; region_tag on this line names it
-            region_tag = %region_tag,
+            region_id,
+            region_name = (!region_tag.is_empty()).then_some(region_tag.as_str()),
             dwell_secs,
             "friction: server sees the player inside a region but the client sent no hint for it -- region chains will not fire"
         ),

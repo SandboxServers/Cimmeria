@@ -135,6 +135,12 @@ Keys the named-telemetry sweeps renamed while pairing them (Rule 6), so a saved 
 | The ability loader (`spawner/abilities.rs`) | `type_id` (an `abilities.type_id` enum label) | `ability_type` | NT-25 |
 | `Loaded player data for mapLoaded` (`player_load/core/player_data.rs`) | `name` (held the character name) | `player_name` | NT-28c |
 | `Added Cimmeria item definition` (`resources/apply_overrides.rs`, boot) | `name` (held the item name) | `item_name` | NT-50a |
+| `triggerClientHintedGenericRegion` (accepted) | `tag` | `region_name` (left off when the tag is blank) | NT-28a |
+| `triggerClientHintedGenericRegion refused` | `region_tag` | `region_name` (left off when the region is unknown) | NT-28a |
+| `interact: no items_event_sets binding` (`event = weapon_unbound`) | `item_id` (held the weapon's design id) | `item_type_id` + `item_name` | NT-28a |
+| `setRingTransporterDestination` | `destination_id` | `destination_region_id` + `destination_region_name` | NT-28a |
+| `useItem` and `UseInventoryItem send to base failed` | `target_id` (the client's raw target) | `wire_target_id` + `wire_target_name` | NT-28a |
+| `friction: server sees the player inside a region…` (`signal = region_dwell_no_hint`) | `region_tag` | `region_name` | NT-28a |
 
 ### Credential fields
 

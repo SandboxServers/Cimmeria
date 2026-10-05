@@ -5,7 +5,7 @@ use super::train_feedback::send_reject_feedback;
 use crate::ability_tree::{evaluate_train, TrainContext, TrainPlan, TrainReject};
 use crate::cell::interactions::trainer_pin;
 use crate::cell::messages::CellToBaseMsg;
-use crate::cell::space_manager::SpaceManager;
+use crate::cell::space_manager::{EntityNames, SpaceManager};
 use tokio::sync::mpsc;
 
 /// Train an ability — full validation + base-side persistence + debit.
@@ -47,7 +47,7 @@ pub(super) async fn handle_train_ability(
     tx: &mpsc::Sender<CellToBaseMsg>,
     space_mgr: &mut SpaceManager,
 ) {
-    let (verdict, player_id, archetype_id, player_level) = {
+    let (verdict, player_id, archetype_id, player_level, player_name) = {
         let entity = match space_mgr.get_entity(entity_id) {
             Some(e) => e,
             None => return,
@@ -74,6 +74,7 @@ pub(super) async fn handle_train_ability(
             entity.player_id,
             entity.archetype_id,
             entity.level as i32,
+            EntityNames::of(entity).entity_name,
         )
     };
 
@@ -84,6 +85,7 @@ pub(super) async fn handle_train_ability(
                 &reject,
                 entity_id,
                 player_id,
+                player_name,
                 archetype_id,
                 player_level,
                 ability_id,
@@ -101,14 +103,18 @@ pub(super) async fn handle_train_ability(
         target: "abilities",
         event = "train_requested",
         entity_id,
+        entity_name = player_name,
         player_id,
+        player_name,
         ability_id,
+        ability_name = cimmeria_names::book().ability(ability_id),
         archetype_id = plan.archetype_id,
+        archetype_name = cimmeria_names::archetype_name(plan.archetype_id),
         tree_index = plan.tree_index,
         cost = plan.cost,
         "trainAbility: validation passed, requesting base persist + debit"
     );
-    warn_if_raw_cost_zero(entity_id, player_id, &plan);
+    warn_if_raw_cost_zero(entity_id, player_id, player_name, &plan);
     if let Err(e) = tx
         .send(CellToBaseMsg::TrainAbility {
             entity_id,
@@ -128,8 +134,11 @@ pub(super) async fn handle_train_ability(
             target: "abilities",
             event = "train_ability_send_failed",
             entity_id,
+            entity_name = player_name,
             player_id,
+            player_name,
             ability_id,
+            ability_name = cimmeria_names::book().ability(ability_id),
             error = %e,
             "TrainAbility cell→base send failed — training point not debited"
         );
@@ -142,15 +151,24 @@ pub(super) async fn handle_train_ability(
 /// `resources.abilities`. The debit uses the tree's `skill_point_cost`, so
 /// the purchase goes ahead; the WARN lets UAT see which nodes still carry
 /// an unsourced cost. The source value is never rewritten.
-fn warn_if_raw_cost_zero(entity_id: u32, player_id: i32, plan: &TrainPlan) {
+fn warn_if_raw_cost_zero(
+    entity_id: u32,
+    player_id: i32,
+    player_name: Option<&str>,
+    plan: &TrainPlan,
+) {
     if plan.raw_training_cost == 0 {
         tracing::warn!(
             target: "abilities",
             event = "train_raw_cost_zero",
             entity_id,
+            entity_name = player_name,
             player_id,
+            player_name,
             ability_id = plan.ability_id,
+            ability_name = cimmeria_names::book().ability(plan.ability_id),
             archetype_id = plan.archetype_id,
+            archetype_name = cimmeria_names::archetype_name(plan.archetype_id),
             tree_index = plan.tree_index,
             cost = plan.cost,
             "trainAbility: purchased node has raw training_cost 0 — debiting skill_point_cost"
@@ -165,6 +183,7 @@ fn log_rejection(
     reject: &TrainReject,
     entity_id: u32,
     player_id: Option<i32>,
+    player_name: Option<&str>,
     archetype_id: Option<i32>,
     player_level: i32,
     ability_id: i32,
@@ -172,28 +191,42 @@ fn log_rejection(
     // Only reachable after the player-id gate passed, so the fallback is
     // never logged.
     let pid = player_id.unwrap_or_default();
+    // Every arm below logs, so the names are resolved once, up front.
+    let book = cimmeria_names::book();
+    let ability_name = book.ability(ability_id);
+    let archetype_name = archetype_id.and_then(cimmeria_names::archetype_name);
     match reject {
         TrainReject::UnknownAbility => tracing::warn!(
             entity_id,
+            entity_name = player_name,
             ability_id,
+            ability_name,
             "trainAbility: ability_id not found in ability_defs — rejecting"
         ),
         TrainReject::NoPlayerId => tracing::warn!(
             entity_id,
+            entity_name = player_name,
             ability_id,
+            ability_name,
             "trainAbility: entity has no player_id — rejecting"
         ),
         // Replayed packet or UI double-click: a silent no-op.
         TrainReject::AlreadyKnown => tracing::debug!(
             entity_id,
+            entity_name = player_name,
             player_id = pid,
+            player_name,
             ability_id,
+            ability_name,
             "trainAbility: ability already known — no-op"
         ),
         TrainReject::NoArchetype => tracing::warn!(
             entity_id,
+            entity_name = player_name,
             player_id = pid,
+            player_name,
             ability_id,
+            ability_name,
             "trainAbility: entity has no archetype_id — rejecting"
         ),
         TrainReject::NotInArchetypeTree => tracing::info!(
@@ -201,9 +234,13 @@ fn log_rejection(
             event = "train_rejected",
             reason = reject.reason(),
             entity_id,
+            entity_name = player_name,
             player_id = pid,
+            player_name,
             archetype_id = archetype_id.unwrap_or_default(),
+            archetype_name,
             ability_id,
+            ability_name,
             "trainAbility: ability not in player's archetype tree — rejecting \
              (likely an unsupported archetype until Phase 7 content lands)"
         ),
@@ -212,8 +249,11 @@ fn log_rejection(
             event = "train_rejected",
             reason = reject.reason(),
             entity_id,
+            entity_name = player_name,
             player_id = pid,
+            player_name,
             ability_id,
+            ability_name,
             player_level,
             required_level = *required,
             "trainAbility: player level below required — rejecting"
@@ -223,8 +263,11 @@ fn log_rejection(
             event = "train_rejected",
             reason = reject.reason(),
             entity_id,
+            entity_name = player_name,
             player_id = pid,
+            player_name,
             ability_id,
+            ability_name,
             missing_prereq = *missing,
             "trainAbility: prerequisite ability not known — rejecting"
         ),
@@ -233,8 +276,11 @@ fn log_rejection(
             event = "train_rejected",
             reason = reject.reason(),
             entity_id,
+            entity_name = player_name,
             player_id = pid,
+            player_name,
             ability_id,
+            ability_name,
             required_branch_points = *required,
             tree_points_spent = *spent,
             "trainAbility: archetype-wide spend below the node's gate — rejecting"
@@ -244,8 +290,11 @@ fn log_rejection(
             event = "train_rejected",
             reason = reject.reason(),
             entity_id,
+            entity_name = player_name,
             player_id = pid,
+            player_name,
             ability_id,
+            ability_name,
             cost = *cost,
             training_points = *available,
             "trainAbility: not enough training points — rejecting"
@@ -262,9 +311,13 @@ fn log_rejection(
             event = "train_rejected",
             reason = reject.reason(),
             entity_id,
+            entity_name = player_name,
             player_id = pid,
+            player_name,
             archetype_id = archetype_id.unwrap_or_default(),
+            archetype_name,
             ability_id,
+            ability_name,
             "trainAbility: not at a trainer that teaches this ability — rejecting"
         ),
     }
