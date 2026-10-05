@@ -9,11 +9,10 @@
 //! * after [`partition_spawn_sets`] no lineup actor is left to spawn at
 //!   boot, every group is off, and the six attendants still spawn.
 //!
-//! Revert proofs: clear one row's `set_name` in the seed and
-//! `lineup_live_db_every_actor_is_in_one_group_off_at_boot` names it (and
-//! it spawns at boot); move a Jaffa row into the Humans group and the size
-//! bound fails; drop the `partition_spawn_sets` call's `retain` and the
-//! startup-records check fails.
+//! Revert proofs (each run against the seed): clear spawn 13870's
+//! `set_name` and `lineup_live_db_every_actor_is_in_one_group_off_at_boot`
+//! names it; move spawn 13911 from Humans into Jaffa male and the size bound
+//! names the 45-actor group.
 
 use std::collections::BTreeMap;
 

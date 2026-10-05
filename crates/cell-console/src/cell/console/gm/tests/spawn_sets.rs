@@ -8,12 +8,14 @@
 //! once (the full lineup ran the 32-bit client out of memory); a repeat
 //! press spawning a second copy of a set, or sending a second `LeftAoI`.
 //!
-//! Revert proofs: drop the `active_peers` loop in `show_spawn_set` and
+//! Revert proofs (each run): drop the `active_peers` loop in
+//! `show_spawn_set` and
 //! `spawn_set_showing_one_group_switches_the_other_off_for_every_witness`
-//! fails on set A's count; swap `despawn_npc_releasing_combat` for a bare
-//! `remove_entity` and the same test fails on the `LeftAoI` rows; drop the
-//! `is_active` early return in `show_spawn_set` and
-//! `spawn_set_repeat_presses_change_nothing` fails on the entity count.
+//! fails (set A stays on); skip `despawn_npc_releasing_combat` in
+//! `despawn_set` and it and `spawn_set_dot_console_on_list_clear` fail (the
+//! actors stay, no `LeftAoI`); drop both `is_active` guards (the early
+//! return in `show_spawn_set` and `spawn_set_members`' `AlreadyActive`) and
+//! `spawn_set_repeat_presses_change_nothing` fails with a second copy.
 
 use cimmeria_cell_world::test_fixtures::{
     install_lineup_sets, LINEUP_SET_A, LINEUP_SET_A_NAME, LINEUP_SET_A_SIZE, LINEUP_SET_B,
