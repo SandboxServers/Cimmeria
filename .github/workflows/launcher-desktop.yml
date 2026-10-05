@@ -10,6 +10,9 @@ on:
       - 'crates/workspace-hack/**'
       - 'Cargo.toml'
       - '.github/workflows/launcher-desktop.yml'
+      - 'tools/launcher-release/build-desktop.sh'
+      - 'crates/client-patches/**'
+      - 'crates/client-telemetry/**'
       - '.github/actions/rust-toolchain/**'
       - 'rust-toolchain.toml'
       - 'tools/build-lane/**'
@@ -23,6 +26,9 @@ on:
       - 'crates/workspace-hack/**'
       - 'Cargo.toml'
       - '.github/workflows/launcher-desktop.yml'
+      - 'tools/launcher-release/build-desktop.sh'
+      - 'crates/client-patches/**'
+      - 'crates/client-telemetry/**'
       - '.github/actions/rust-toolchain/**'
       - 'rust-toolchain.toml'
       - 'tools/build-lane/**'
@@ -98,3 +104,51 @@ jobs:
       - name: Check existing Windows launcher integration
         if: runner.os == 'Windows'
         run: bash tools/build-lane/lane.sh cargo check --locked -p sgw-launcher --all-targets --target-dir target/legacy-launcher
+
+  # launcher-release.yml's desktop job must not be first tested at release
+  # time. This runs the same tools/launcher-release/build-desktop.sh stages,
+  # in release profile, minus publishing: the i686 launch worker and game
+  # DLLs, staging them as bundled resources, the 64-bit launcher pinned to
+  # them, the artifact checks and the zip. No manifest key and no tag: it is
+  # a development build, as every PR build is.
+  release-dry-run:
+    name: desktop release build dry run (Windows)
+    runs-on: windows-latest
+    timeout-minutes: 60
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - uses: ./.github/actions/rust-toolchain
+        with:
+          targets: i686-pc-windows-msvc
+      - uses: Swatinem/rust-cache@v2
+        with:
+          shared-key: launcher-release-desktop-dry-run
+          save-if: ${{ github.ref == 'refs/heads/main' }}
+          workspaces: |
+            . -> target
+            crates/launcher/desktop -> ../../../target/desktop
+      - uses: actions/setup-node@v6
+        with:
+          node-version: '24'
+      - name: build the i686 launch worker and game DLLs
+        run: tools/launcher-release/build-desktop.sh helpers
+      - name: stage them as the launcher's bundled resources
+        run: tools/launcher-release/build-desktop.sh stage
+      - name: build the 64-bit desktop launcher, pinned to them
+        run: tools/launcher-release/build-desktop.sh launcher
+      - name: verify the artifacts
+        run: tools/launcher-release/build-desktop.sh verify
+      - name: package
+        run: tools/launcher-release/build-desktop.sh package dry-run
+      - name: Retain the package for inspection
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        with:
+          name: desktop-launcher-windows-dry-run
+          path: artifacts/stargate-worlds-launcher-desktop-windows-dry-run.zip*
+          retention-days: 7
+

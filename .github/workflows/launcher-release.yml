@@ -26,6 +26,16 @@ name: launcher-release
 # The release also carries the client-patches UI overlay packed as a manifest
 # patch by `pack-client-overlay`, for the operator to add to the signed
 # content manifest; see docs/client/launcher-distribution-setup.md.
+#
+# One release, two launchers. After the original launcher is published, the
+# `desktop-windows` job builds the desktop launcher (crates/launcher/desktop,
+# the Tauri one) for Windows and attaches it to the same release as a zip.
+# It is a preview: unsigned, no installer and no self-update yet; the job's
+# comments list what is still open. It runs after the publish and only adds
+# an asset, so a failure there leaves the original launcher's release as it
+# is, and the original launcher's self-update (which looks for the exact
+# name `sgw-launcher-<tag>.exe`) does not see the extra file. The macOS
+# build of the desktop launcher is deferred; see the end of this file.
 
 on:
   workflow_dispatch:
@@ -47,6 +57,9 @@ jobs:
     permissions:
       contents: write
     timeout-minutes: 45
+    outputs:
+      tag: ${{ steps.stamp.outputs.tag }}
+      epoch: ${{ steps.stamp.outputs.epoch }}
     env:
       CARGO_TERM_COLOR: always
       CARGO_INCREMENTAL: 0
@@ -182,3 +195,154 @@ jobs:
             --notes "${BODY}" \
             "artifacts/sgw-launcher-${TAG}.exe" "artifacts/sgw-launcher-${TAG}.exe.sha256" \
             "${overlay[@]}"
+
+  # The desktop launcher for Windows, attached to the release the job above
+  # created. Its build runs in stages from tools/launcher-release/build-desktop.sh,
+  # the same stages launcher-desktop.yml dry-runs on every desktop-launcher PR.
+  #
+  # What it ships: a zip holding cimmeria-launcher-desktop.exe with a windows/
+  # directory beside it (the 32-bit launch worker and the two game DLLs). The
+  # launcher refuses any of those three whose SHA-256 is not the one compiled
+  # into it, so they are built, staged and pinned in this one job.
+  #
+  # Still open before this is more than a preview:
+  #   - No installer. The launcher's own update path hands off to an NSIS
+  #     installer, which nothing builds or has tested, so this build cannot
+  #     update itself; no update feed or signing key is configured either
+  #     (crates/launcher/desktop/docs/updater.md).
+  #   - Unsigned, like the original launcher. The launch worker injects DLLs
+  #     into the game, which is what Defender and SmartScreen react to.
+  #   - Nothing installs the WebView2 runtime. Windows 11 has it; Windows 10
+  #     usually does.
+  #   - The window title and the UI still say "development".
+  #   - Tested natively on one Windows machine from a debug build
+  #     (2026-10-04: Install, Play, login, character select). Repair,
+  #     uninstall, game Update and adopting an existing copy were not.
+  desktop-windows:
+    name: desktop launcher (Windows) -> same release
+    needs: release
+    runs-on: windows-latest
+    permissions:
+      contents: write
+    timeout-minutes: 60
+    env:
+      CARGO_TERM_COLOR: always
+      CARGO_INCREMENTAL: 0
+      TAG: ${{ needs.release.outputs.tag }}
+    steps:
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0  # v6
+        with:
+          # The commit the release job stamped into the tag, not whatever
+          # main has become since.
+          ref: ${{ github.sha }}
+          persist-credentials: false
+
+      - uses: ./.github/actions/rust-toolchain
+        with:
+          targets: i686-pc-windows-msvc
+
+      - uses: Swatinem/rust-cache@e18b497796c12c097a38f9edb9d0641fb99eee32  # v2
+        with:
+          shared-key: launcher-release-desktop
+          workspaces: |
+            . -> target
+            crates/launcher/desktop -> ../../../target/desktop
+
+      - uses: actions/setup-node@v6
+        with:
+          node-version: '24'
+
+      - name: build the i686 launch worker and game DLLs
+        shell: bash
+        run: tools/launcher-release/build-desktop.sh helpers
+
+      - name: stage them as the launcher's bundled resources
+        shell: bash
+        run: tools/launcher-release/build-desktop.sh stage
+
+      # The manifest key is on this step only. The test suites use the
+      # development key and fail with the production one set.
+      - name: build the 64-bit desktop launcher, pinned to them
+        shell: bash
+        env:
+          LAUNCHER_MANIFEST_PUBKEY_HEX: ${{ secrets.LAUNCHER_MANIFEST_PUBKEY_HEX }}
+          # The same identity as the original launcher of this release, so
+          # a manifest's `min_launcher` treats the two alike.
+          CIMMERIA_LAUNCHER_TAG: ${{ needs.release.outputs.tag }}
+          CIMMERIA_LAUNCHER_BUILD_EPOCH: ${{ needs.release.outputs.epoch }}
+          CIMMERIA_BUILD_BRANCH: main
+          CIMMERIA_BUILD_GIT_SHA: ${{ github.sha }}
+        run: tools/launcher-release/build-desktop.sh launcher
+
+      - name: verify the artifacts
+        shell: bash
+        env:
+          CIMMERIA_LAUNCHER_TAG: ${{ needs.release.outputs.tag }}
+        run: tools/launcher-release/build-desktop.sh verify
+
+      - name: package
+        shell: bash
+        run: tools/launcher-release/build-desktop.sh package "${TAG}"
+
+      - name: upload build artifact (workflow run)
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a  # v7
+        with:
+          name: stargate-worlds-launcher-desktop-windows-${{ needs.release.outputs.tag }}
+          path: artifacts/stargate-worlds-launcher-desktop-windows-*
+          retention-days: 30
+
+      - name: attach to the release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_REPO: ${{ github.repository }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          ZIP="artifacts/stargate-worlds-launcher-desktop-windows-${TAG}.zip"
+          gh release upload "${TAG}" "${ZIP}" "${ZIP}.sha256"
+          BODY="$(gh release view "${TAG}" --json body --jq .body)"
+          BODY="${BODY}
+
+          **Desktop launcher for Windows (preview):** \`stargate-worlds-launcher-desktop-windows-${TAG}.zip\`. Unzip it anywhere and run \`cimmeria-launcher-desktop.exe\`; keep the \`windows\` folder beside it. It is unsigned, has no installer and does not update itself yet, and it needs the WebView2 runtime (part of Windows 11). The original launcher above is still the supported one."
+          gh release edit "${TAG}" --notes "${BODY}"
+
+  # ── Deferred: the desktop launcher for macOS ─────────────────────────────
+  #
+  # Not built here yet, on purpose. A Mac build that players can open needs
+  # things this repository does not have, and a build without them is one
+  # macOS refuses to run after download:
+  #
+  # 1. A Developer ID Application certificate. The only identity in use so
+  #    far is an "Apple Development" one on a maintainer's machine, which
+  #    signs builds for that developer's own Macs and nothing else. Developer
+  #    ID comes from a paid Apple Developer Program membership and has to
+  #    reach the runner as secrets (a base64 .p12 and its password, imported
+  #    into a temporary keychain), or the release build has to run on a Mac
+  #    that holds it.
+  # 2. Notarization. The signed app is submitted to Apple with `notarytool`
+  #    (an App Store Connect API key: key id, issuer id and the .p8, as
+  #    secrets) and the ticket stapled to it. Gatekeeper blocks a downloaded
+  #    app that is not notarized.
+  # 3. Hardened runtime and entitlements. Notarization requires the hardened
+  #    runtime, and the launcher starts Wine, an x86 process tree that maps
+  #    unsigned Windows code. Which entitlements that needs has not been
+  #    worked out or tested; every executable inside the bundle has to be
+  #    signed as well, the Wine runtime included if it is ever bundled.
+  # 4. The Windows pieces. The Mac bundle carries Windows-built files (the
+  #    archive, prerequisite and launch workers, the two game DLLs), each
+  #    pinned by SHA-256 at compile time. A macOS job would take them as
+  #    artifacts from a Windows job of this workflow and stage them with
+  #    crates/launcher/desktop/tools/stage-helper.py before compiling.
+  # 5. Redistribution of what it downloads or bundles. The Wine runtime is a
+  #    third-party release pinned by hash, the D3D9 translation layer has its
+  #    own licence, and the x87 accelerator's provenance is not cleared
+  #    (docs/analysis/playtests/2026-10-03-macos-wine/runtime-provisioning.md).
+  # 6. A package format (a .dmg or a zipped .app, arm64) and the same open
+  #    updater work as Windows.
+  #
+  # When those exist, the job is the `desktop-windows` job's shape: needs
+  # `release` for the tag, builds with `cargo tauri build --bundles app`
+  # (crates/launcher/desktop/bundle-macos-dev.sh is the development form),
+  # signs, notarizes, staples, and `gh release upload`s to the same tag.
+  # Until then Mac builds are made and signed locally for testing.
+
