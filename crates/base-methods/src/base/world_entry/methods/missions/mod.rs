@@ -1,5 +1,6 @@
 use std::sync::Arc;
 
+use cimmeria_entity::known_names;
 use sqlx::PgPool;
 
 use crate::cell::messages::SavedMission;
@@ -42,7 +43,9 @@ pub async fn query_saved_missions(
                     let status = i8::try_from(r.status).unwrap_or_else(|_| {
                         tracing::warn!(
                             player_id,
+                            player_name = known_names::player_name(player_id),
                             mission_id = r.mission_id,
+                            mission_name = cimmeria_names::book().mission(r.mission_id),
                             db_status = r.status,
                             "Mission status out of i8 range, clamping"
                         );
@@ -63,13 +66,18 @@ pub async fn query_saved_missions(
                 .collect();
             tracing::info!(
                 player_id,
+                player_name = known_names::player_name(player_id),
                 count = missions.len(),
                 "Loaded saved missions from DB"
             );
             missions
         }
         Err(e) => {
-            tracing::error!(player_id, "Failed to query saved missions: {e}");
+            tracing::error!(
+                player_id,
+                player_name = known_names::player_name(player_id),
+                "Failed to query saved missions: {e}"
+            );
             vec![]
         }
     }
@@ -79,7 +87,16 @@ pub async fn query_saved_missions(
     name = "mission.persist",
     level = "info",
     skip_all,
-    fields(player_id, mission_id, status, ?current_step_id, repeats),
+    fields(
+        player_id,
+        player_name = tracing::field::Empty,
+        mission_id,
+        mission_name = tracing::field::Empty,
+        status,
+        ?current_step_id,
+        current_step_name = tracing::field::Empty,
+        repeats,
+    ),
 )]
 pub async fn handle_mission_update(
     player_id: i32,
@@ -93,10 +110,28 @@ pub async fn handle_mission_update(
     repeats: i32,
     db_pool: &Option<Arc<PgPool>>,
 ) {
+    let player_name = known_names::player_name(player_id);
+    {
+        // The guard is dropped here: never held across the `.await` below.
+        let book = cimmeria_names::book();
+        let span = tracing::Span::current();
+        span.record("player_name", player_name);
+        span.record("mission_name", book.mission(mission_id));
+        span.record(
+            "current_step_name",
+            current_step_id.and_then(|s| book.mission_step(s)),
+        );
+    }
     let pool = match db_pool {
         Some(p) => p,
         None => {
-            tracing::debug!(player_id, mission_id, "MissionUpdate: no DB pool");
+            tracing::debug!(
+                player_id,
+                player_name,
+                mission_id,
+                mission_name = cimmeria_names::book().mission(mission_id),
+                "MissionUpdate: no DB pool"
+            );
             return;
         }
     };
@@ -135,12 +170,20 @@ pub async fn handle_mission_update(
     match result {
         Ok(_) => tracing::debug!(
             player_id,
+            player_name,
             mission_id,
+            mission_name = cimmeria_names::book().mission(mission_id),
             status,
             repeats,
             "Mission state persisted"
         ),
-        Err(e) => tracing::error!(player_id, mission_id, "Failed to persist mission: {e}"),
+        Err(e) => tracing::error!(
+            player_id,
+            player_name,
+            mission_id,
+            mission_name = cimmeria_names::book().mission(mission_id),
+            "Failed to persist mission: {e}"
+        ),
     }
 }
 

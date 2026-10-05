@@ -3,6 +3,7 @@ use std::sync::Arc;
 use sqlx::PgPool;
 use tokio::sync::mpsc;
 
+use cimmeria_entity::known_names;
 use cimmeria_entity::manager::EntityManager;
 
 use crate::cell::messages::BaseToCellMsg;
@@ -201,7 +202,7 @@ pub async fn query_world_entry(
                 }
             } else {
                 tracing::warn!(
-                    player_id, world = %row.world_location,
+                    player_id, player_name = %row.player_name, world = %row.world_location,
                     "query_world_entry: cell_tx is None at world entry — falling back to hardcoded space id table; this is likely a service-startup ordering bug"
                 );
                 resolve_space_id_fallback(&row.world_location)
@@ -211,7 +212,9 @@ pub async fn query_world_entry(
             // client a space the entity is not in.
             let Some(space_id) = resolved_space_id else {
                 tracing::error!(
-                    player_id, account_id, entity_id = player_eid,
+                    player_id, player_name = %row.player_name,
+                    account_id, account_name = account_name.as_deref(),
+                    entity_id = player_eid, entity_name = %row.player_name,
                     world = %row.world_location, reason = "no_safe_space_fallback",
                     "World entry refused: the cell did not place the entity and this world \
                      has no fallback space — returning sentinel entity id"
@@ -235,7 +238,9 @@ pub async fn query_world_entry(
         Ok(None) => {
             tracing::warn!(
                 player_id,
+                player_name = known_names::player_name(player_id),
                 account_id,
+                account_name = account_name.as_deref(),
                 "Character not found for world entry — returning sentinel entity id"
             );
             default_entry_with_eid(NO_ENTITY_ID)
@@ -243,7 +248,9 @@ pub async fn query_world_entry(
         Err(e) => {
             tracing::error!(
                 player_id,
+                player_name = known_names::player_name(player_id),
                 account_id,
+                account_name = account_name.as_deref(),
                 "Failed to query world entry ({e}) — returning sentinel entity id"
             );
             default_entry_with_eid(NO_ENTITY_ID)

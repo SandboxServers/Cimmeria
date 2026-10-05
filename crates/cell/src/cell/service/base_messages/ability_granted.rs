@@ -18,6 +18,7 @@
 //! `GmAbilityGranted` mirrors a GM `.giveability` grant: the known set and
 //! steps 1 and 3 above, with no provenance or point change.
 
+use cimmeria_entity::known_names;
 use tokio::sync::mpsc;
 
 use crate::ability_tree::training_points_property_args;
@@ -71,11 +72,18 @@ pub(super) async fn handle_ability_granted(
         space_mgr,
     )
     .await;
+    let identity = space_mgr.player_identity(entity_id);
     tracing::info!(
         target: "abilities",
         event = "granted",
         entity_id,
+        entity_name = identity.player_name,
+        account_id = identity.account_id,
+        account_name = identity.account_name,
+        player_id = identity.player_id,
+        player_name = identity.player_name,
         ability_id,
+        ability_name = cimmeria_names::book().ability(ability_id),
         training_points,
         tree_points_spent,
         "AbilityGranted: cell mirrored + hotbar refresh"
@@ -133,11 +141,16 @@ pub(super) async fn resend_trainer_if_pinned(
             .and_then(|t| t.template_id)
             .is_some_and(|tid| space_mgr.template_trainer_lists.contains_key(&tid));
         if is_trainer {
+            let trainer = space_mgr.entity_names(target);
             tracing::debug!(
                 target: "abilities",
                 event = "trainer_resend",
                 entity_id,
+                entity_name = space_mgr.entity_label(entity_id),
                 trainer_entity_id = target,
+                trainer_entity_name = trainer.entity_name,
+                template_id = trainer.template_id,
+                template_name = trainer.template_name,
                 training_points,
                 "re-sending onTrainerOpen to refresh trainable flags"
             );
@@ -160,17 +173,23 @@ pub(super) async fn handle_training_points_granted(
         tracing::warn!(
             target: "abilities",
             event = "training_points_granted_entity_missing",
-            entity_id,
+            entity_id, // nt:id-only entity already gone, no live name to read
             training_points,
             "TrainingPointsGranted: no cell entity; trainer gate keeps the old points"
         );
         return;
     };
     entity.tree_progress.training_points = training_points;
+    let identity = entity.identity();
     tracing::info!(
         target: "abilities",
         event = "training_points_granted",
         entity_id,
+        entity_name = identity.player_name,
+        account_id = identity.account_id,
+        account_name = identity.account_name,
+        player_id = identity.player_id,
+        player_name = identity.player_name,
         training_points,
         "TrainingPointsGranted: cell mirrored + counter refresh"
     );
@@ -202,9 +221,13 @@ pub(super) async fn handle_gm_ability_granted(
             target: "abilities",
             event = "gm_grant_player_mismatch",
             entity_id,
+            entity_name = space_mgr.entity_label(entity_id),
             player_id,
+            player_name = known_names::player_name(player_id),
             ability_id,
+            ability_name = cimmeria_names::book().ability(ability_id),
             current_player_id = ?current,
+            current_player_name = known_names::player_name(current),
             "GmAbilityGranted: entity no longer plays the granted character — ignoring"
         );
         return;
@@ -226,14 +249,18 @@ pub(super) async fn handle_gm_ability_granted(
         space_mgr,
     )
     .await;
-    let account_id = space_mgr.player_identity(entity_id).account_id;
+    let identity = space_mgr.player_identity(entity_id);
     tracing::info!(
         target: "abilities",
         event = "gm_granted",
         entity_id,
-        account_id,
+        entity_name = identity.player_name,
+        account_id = identity.account_id,
+        account_name = identity.account_name,
         player_id,
+        player_name = identity.player_name,
         ability_id,
+        ability_name = cimmeria_names::book().ability(ability_id),
         "GmAbilityGranted: cell mirrored + hotbar refresh"
     );
     send_known_abilities_update(entity_id, "gm_ability_granted", tx, space_mgr).await;
@@ -260,7 +287,7 @@ pub(super) async fn send_training_points(
         tracing::warn!(
             target: "abilities",
             event = "training_points_send_failed",
-            entity_id,
+            entity_id, // nt:id-only the base channel is closed; no SpaceManager here to name it
             training_points,
             error = %e,
             "AbilityGranted: training-point property send failed; counter stale until relog"
@@ -281,7 +308,7 @@ pub(super) fn handle_progression_changed(
         tracing::warn!(
             target: "abilities",
             event = "progression_changed_entity_missing",
-            entity_id,
+            entity_id, // nt:id-only entity already gone, no live name to read
             level,
             training_points,
             "ProgressionChanged: no cell entity; trainer gates keep the old level and points"
@@ -294,6 +321,7 @@ pub(super) fn handle_progression_changed(
         target: "abilities",
         event = "progression_changed",
         entity_id,
+        entity_name = entity.identity().player_name,
         level,
         training_points,
         "ProgressionChanged: cell level and training points updated"
