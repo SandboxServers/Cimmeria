@@ -157,7 +157,14 @@ LABEL org.opencontainers.image.title="cimmeria-server" \
 # in weeks. The release-pipeline Trivy scan is gating on `CRITICAL`,
 # so any unpatched CVE in the inherited base layer fails the release;
 # the apt upgrade closes that window at build time.
-RUN apt-get update \
+#
+# A builder with a warm cache reuses this layer for as long as its
+# instruction text is unchanged, so the upgrade would never run again.
+# CI passes the UTC date as APT_REFRESH, and the layer is rebuilt on the
+# first build of each day.
+ARG APT_REFRESH=unset
+RUN echo "apt refresh: ${APT_REFRESH}" \
+    && apt-get update \
     && apt-get -y upgrade \
     && apt-get install -y --no-install-recommends \
         xz-utils \

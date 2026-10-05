@@ -135,9 +135,11 @@ jobs:
           tags: ${{ steps.img.outputs.image }}:${{ steps.ver.outputs.version }}
           # OTLP `service.version` (crates/server/build.rs). Must match the
           # push pass below exactly, or that pass misses the cache and
-          # recompiles.
+          # recompiles. APT_REFRESH is the date key of the Dockerfile's
+          # `apt-get upgrade` layer.
           build-args: |
             CIMMERIA_GIT_SHA=${{ github.sha }}
+            APT_REFRESH=${{ steps.ver.outputs.date }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
           # No `provenance` / `sbom` here — incompatible with `load: true`.
@@ -173,6 +175,7 @@ jobs:
             ${{ steps.img.outputs.image }}:${{ steps.ver.outputs.version }}
           build-args: |
             CIMMERIA_GIT_SHA=${{ github.sha }}
+            APT_REFRESH=${{ steps.ver.outputs.date }}
           labels: |
             org.opencontainers.image.source=${{ github.server_url }}/${{ github.repository }}
             org.opencontainers.image.revision=${{ github.sha }}
