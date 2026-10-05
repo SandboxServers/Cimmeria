@@ -845,10 +845,15 @@ an ability granter, an ability reset NPC and a munitions vendor. Zone Z3, the
 dummies range just north of it, holds five training dummies that never fight
 back (D-DA7).
 
-Right-clicking any NPC from more than 5 m away prints "You are too far away
-from <name>. Move closer to interact." in chat (DA-F5); a Banker and an
-organization registrar print their own lines. The server logs it as
-`event = "interaction.out_of_range"` with the distance.
+Right-clicking an NPC you can see from more than 5 m away prints "You are
+too far away from <name>. Move closer to interact." in chat (DA-F5); a Banker
+and an organization registrar print their own lines. The server logs it as
+`event = "interaction.out_of_range"` with the distance. Two limits: the line
+goes out only for an NPC in your view (in your AoI witness set or AoI radius),
+so a crafted `interact` on a far NPC id cannot read its name; and at most one
+line per 1.5 s, so clicking while you walk up does not fill chat. A dropped
+line logs `interaction.out_of_range_unseen` or
+`interaction.out_of_range_throttled` at DEBUG.
 
 ### Where it is
 
@@ -1091,7 +1096,7 @@ Right-click a hostile one to attack it, or target it and use any ability.
 | `cell-combat` `use_ability/tests/beneficial_training_dummy.rs` | A heal aimed at a friendly training dummy lands on it; an unmarked neutral NPC still falls back to the caster, and a hostile dummy is never healed |
 | `cell-world` `space_manager/tests/debug_area.rs` (`the_friendly_dummy_is_reachable_and_visible_from_the_dummy_line`) | The walk from the L1 dummy to the friendly dummy stays on navmesh polygons, and a healer 4 m out has line of sight past the occluder (DA-F7) |
 | `resources` `attribute_patches/tests.rs` | 1646 and 1218 are served with the Medkit icon and error 42 with readable text, nothing else in those entries changes, both categories resync, and the seed rows match (DA-F6) |
-| `cell-methods` `player/interaction/mod.rs` (`out_of_range_interact_on_a_plain_npc_tells_the_player_to_move_closer`), `cell-interactions` `dispatch/tests/mod.rs` | A too-far click on a plain NPC sends exactly one line naming it; a missing target sends nothing (DA-F5) |
+| `cell-methods` `player/interaction/mod.rs` (`out_of_range_interact_on_a_plain_npc_tells_the_player_to_move_closer`, `out_of_range_interact_on_an_npc_out_of_view_sends_nothing`, `repeated_out_of_range_clicks_send_one_line_per_interval`), `cell-interactions` `dispatch/tests/mod.rs` | A too-far click on a visible NPC sends exactly one line naming it; an NPC out of view or a missing target sends nothing; a second click inside 1.5 s sends nothing (DA-F5) |
 | `base-session` `world_entry/gm_only_worlds.rs`, `base-world-entry` `gate_travel/tests/gm_only_world.rs`, `base-methods` `world_entry_db.rs` (`live_db_a_non_gm_saved_in_the_debug_area_logs_in_at_the_faction_start`) | A non-GM is refused world 1300 on a cross-world transfer and at login and arrives at the Praxis or SGU start with a line owed; a GM goes in |
 | `cell-catalog` `spawner/tests/live_db_vendor_arbitrage.rs` | No buy list in the seed sells an item for less than any sell list pays for it |
 | `content-engine` `loader/tests/action_conversion.rs`, `interact_tag_linter` | `gm_ability_bulk` converts for `grant_all` and `reset` and drops anything else; the plaza's interact chains are allowlisted (template-default cursor bits) |

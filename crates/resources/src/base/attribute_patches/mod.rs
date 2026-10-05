@@ -14,7 +14,6 @@
 //! reasons are on each row and in `docs/content/debug-area.md`.
 
 use std::collections::HashMap;
-use std::hash::{Hash, Hasher};
 
 use crate::base::item_overrides::patch_attr;
 use crate::base::resources::{category_name, CategoryData};
@@ -76,17 +75,33 @@ pub const ATTRIBUTE_PATCHES: &[AttributePatch] = &[
     },
 ];
 
-/// The metadata bump for one category: hashed from every field of its
-/// patches, low bit set so it is never 0 (a 0 bump would leave clients on the
-/// shipped version). Same discipline as `metadata_bump`.
+/// The metadata bump for one category: a 32-bit FNV-1a hash of every patch
+/// in it (element id, attribute, value), low bit set so it is never 0 (a 0
+/// bump would leave clients on the shipped version).
+///
+/// FNV-1a rather than `DefaultHasher` (which `metadata_bump` still uses):
+/// std may change `DefaultHasher`'s algorithm between releases, and a
+/// toolchain bump would then silently move the version and resync every
+/// client again. 32 bits rather than 16 makes it unlikely that a later edit
+/// lands on the same bump and leaves clients holding the stale entry.
 fn bump_for(category: u32) -> u32 {
-    let mut hasher = std::collections::hash_map::DefaultHasher::new();
+    const FNV_OFFSET: u32 = 0x811c_9dc5;
+    const FNV_PRIME: u32 = 0x0100_0193;
+    let mut hash = FNV_OFFSET;
+    let mut feed = |bytes: &[u8]| {
+        for &b in bytes {
+            hash ^= u32::from(b);
+            hash = hash.wrapping_mul(FNV_PRIME);
+        }
+    };
     for p in ATTRIBUTE_PATCHES.iter().filter(|p| p.category == category) {
-        p.element_id.hash(&mut hasher);
-        p.attribute.hash(&mut hasher);
-        p.value.hash(&mut hasher);
+        feed(&p.element_id.to_le_bytes());
+        feed(p.attribute.as_bytes());
+        feed(&[0]);
+        feed(p.value.as_bytes());
+        feed(&[0]);
     }
-    ((hasher.finish() as u32) & 0xFFFF) | 0x1
+    hash | 0x1
 }
 
 /// Apply [`ATTRIBUTE_PATCHES`] to the loaded categories, bump each patched

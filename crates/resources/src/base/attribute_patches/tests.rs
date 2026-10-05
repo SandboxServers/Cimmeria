@@ -86,12 +86,26 @@ fn served_entries_carry_the_patches_and_both_categories_resync() {
 /// Every patch targets an entry the PAK ships (a missing one would be
 /// skipped silently at startup) and no other override pass owns its
 /// category: `load_all` merges the per-category id lists with `extend`,
-/// which would replace one pass's list with another's.
+/// which would replace one pass's list with another's. The second half is
+/// read off the served cache, not a hand-kept list of the other passes: a
+/// patched category must list exactly this module's ids, so a future pass
+/// that also touches it fails here whichever of the two `extend`s wins.
 #[test]
 fn patches_target_shipped_entries_in_categories_no_other_pass_owns() {
-    const OTHER_PASSES: [u32; 6] = [1, 3, 4, 5, 12, 13];
+    let cache = ResourceCache::load_all(&data_dir()).expect("committed PAKs load");
     for p in ATTRIBUTE_PATCHES {
-        assert!(!OTHER_PASSES.contains(&p.category), "{p:?}");
+        let mut ours: Vec<u32> = ATTRIBUTE_PATCHES
+            .iter()
+            .filter(|q| q.category == p.category)
+            .map(|q| q.element_id)
+            .collect();
+        ours.sort_unstable();
+        assert_eq!(
+            cache.overridden_elements(p.category),
+            ours.as_slice(),
+            "category {} must be listed with exactly this module's patches",
+            p.category
+        );
         let pak = match p.category {
             CATEGORY_ABILITIES => "CookedDataAbilities.pak",
             CATEGORY_ERROR_STRINGS => "ErrorStrings.pak",
@@ -133,10 +147,19 @@ fn seed_rows_match_the_patches() {
 }
 
 /// A zero bump would leave clients on the shipped version; the low bit keeps
-/// every patched category's bump non-zero.
+/// every patched category's bump non-zero. The bump is FNV-1a, so its value
+/// is fixed across toolchains: pin it, so a change to the hash or to the
+/// patches is a visible edit here rather than a silent client resync.
 #[test]
-fn every_bump_is_non_zero() {
+fn every_bump_is_non_zero_and_stable() {
     for category in [CATEGORY_ABILITIES, CATEGORY_ERROR_STRINGS] {
         assert_eq!(super::bump_for(category) & 1, 1, "category {category}");
     }
+    assert_eq!(super::bump_for(CATEGORY_ABILITIES), PINNED_ABILITIES_BUMP);
+    assert_eq!(super::bump_for(CATEGORY_ERROR_STRINGS), PINNED_ERROR_BUMP);
 }
+
+/// FNV-1a of the two Medkit patches (computed independently in Python).
+const PINNED_ABILITIES_BUMP: u32 = 0x4d34_0d53;
+/// FNV-1a of the error-42 text patch.
+const PINNED_ERROR_BUMP: u32 = 0xef2d_c891;

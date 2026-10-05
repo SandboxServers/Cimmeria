@@ -353,9 +353,26 @@ async fn the_world_entry_pass_grants_on_the_hub_world_and_leaves_the_dhd_nothing
 
     let top = top_up_on_world_entry(1, &tx, &mut mgr).await.unwrap();
     assert_eq!(top.granted, vec![HARSET, SGC_W1]);
+    // One batch (one packet in the world-entry burst, PR #410 / #408), not
+    // one message per gate.
+    let sent = dial_feedback::drain(&mut rx);
+    assert_eq!(sent.len(), 1, "one batch: {sent:?}");
+    let CellToBaseMsg::EntityMethodCallBatch { entity_id, calls } = &sent[0] else {
+        panic!("expected an EntityMethodCallBatch, got {:?}", sent[0]);
+    };
+    assert_eq!(*entity_id, 1);
     assert_eq!(
-        update_ids(&dial_feedback::drain(&mut rx)),
-        vec![HARSET, SGC_W1]
+        calls,
+        &vec![
+            (
+                UPDATE_STARGATE_ADDRESS,
+                update_stargate_address_args(HARSET)
+            ),
+            (
+                UPDATE_STARGATE_ADDRESS,
+                update_stargate_address_args(SGC_W1)
+            ),
+        ]
     );
     let warn = capture
         .find_event(tracing::Level::WARN, "debug dial hub", "gm_dial_hub_grant")

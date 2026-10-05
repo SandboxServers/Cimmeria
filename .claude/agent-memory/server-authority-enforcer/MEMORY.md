@@ -77,3 +77,4 @@
 - [reference_world_1300_not_gm_enforced.md](reference_world_1300_not_gm_enforced.md) — DebugArea 1300 "GM-only" is no-stargate-row only; .summon/relog lands non-GMs; rigs there must self-gate
 - [project_debug_area_dial_hub_da07_review.md](project_debug_area_dial_hub_da07_review.md) — DA-07 gate 29 dial hub: grant-not-bypass cleared; hub filters per writer; Men'fa gate 22 ~192 m under floor
 - [exploit_address_reuse_session_takeover.md](exploit_address_reuse_session_takeover.md) — #1246 relaunch takeover: addr reused in ms; addr-keyed late writers, squat + replay keepalive residuals
+- [exploit_feedback_name_oracle.md](exploit_feedback_name_oracle.md) — #1252 DA-F5 too-far line names any same-space NPC by guessed id (no witness gate); sweepable roster

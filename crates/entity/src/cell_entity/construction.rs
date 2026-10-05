@@ -72,6 +72,7 @@ impl CellEntity {
             threatened_mobs: HashSet::new(),
             combat_exit_at: None,
             reload_complete_at: None,
+            last_range_feedback_at: None,
             reload_slot_id: None,
             pending_reload_at: None,
             pending_attack_at: None,

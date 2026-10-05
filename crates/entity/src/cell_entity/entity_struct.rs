@@ -388,6 +388,11 @@ pub struct CellEntity {
     /// prevents a mid-reload weapon swap from refilling the wrong magazine.
     /// `None` whenever `reload_complete_at` is `None`.
     pub reload_slot_id: Option<i32>,
+    /// When the last "too far away" line for an `interact` was sent to this
+    /// player (DA-F5). The line is rate-limited per player, so a client
+    /// clicking while it walks up, or a hostile one at packet rate, gets one
+    /// line per window, not one per packet.
+    pub last_range_feedback_at: Option<std::time::Instant>,
     /// When `Some(t)`, the player pressed reload while holstered. Phase A
     /// of the reload (redraw + Item_Equip draw animation) has already
     /// been dispatched; the actual reload start (cooldown timer +

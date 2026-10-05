@@ -308,6 +308,35 @@ async fn top_up(
     // pass these go out before `onDisplayDHD` on the same channel; the
     // world-entry pass is what gives the client time to resolve them (see
     // the module doc).
+    //
+    // The world-entry pass runs inside `InitPlayerState`'s burst, so its
+    // ~11 updates ride one `EntityMethodCallBatch` (one packet), the way the
+    // region hints do since PR #410: separate reliable packets during world
+    // entry fed the #408 freeze.
+    if trigger == HubTopUpTrigger::WorldEntry {
+        if !result.granted.is_empty() {
+            let calls = result
+                .granted
+                .iter()
+                .map(|&id| (UPDATE_STARGATE_ADDRESS, update_stargate_address_args(id)))
+                .collect();
+            if let Err(e) = tx
+                .send(CellToBaseMsg::EntityMethodCallBatch { entity_id, calls })
+                .await
+            {
+                tracing::warn!(
+                    entity_id,
+                    entity_name,
+                    player_id,
+                    player_name,
+                    granted_count = result.granted.len(),
+                    reason = "dial_hub_notify_send_failed",
+                    "debug dial hub: the updateStargateAddress batch could not be enqueued ({e}) — the server will accept dials to these gates but the DHD will not list them"
+                );
+            }
+        }
+        return Some(result);
+    }
     for &id in &result.granted {
         if let Err(e) = tx
             .send(CellToBaseMsg::EntityMethodCall {
