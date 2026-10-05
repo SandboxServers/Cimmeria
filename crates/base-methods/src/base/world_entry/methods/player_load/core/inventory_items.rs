@@ -51,7 +51,11 @@ pub(super) async fn query_inventory_items(
             })
             .collect(),
         Err(e) => {
-            tracing::error!(player_id, "Failed to query inventory items: {e}");
+            tracing::error!(
+                player_id,
+                player_name = cimmeria_entity::known_names::player_name(player_id),
+                "Failed to query inventory items: {e}"
+            );
             vec![]
         }
     }

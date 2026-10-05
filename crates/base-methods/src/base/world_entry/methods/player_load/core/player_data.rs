@@ -7,6 +7,7 @@
 
 use std::sync::Arc;
 
+use cimmeria_entity::known_names;
 use sqlx::PgPool;
 
 use super::super::meta::{default_player_load_data, player_ability_tree, query_bandolier_items};
@@ -71,14 +72,17 @@ pub async fn query_player_load_data(
     {
         Ok(Some(row)) => {
             tracing::info!(
-                player_id, level = row.level, archetype = row.archetype,
-                name = %row.player_name, bodyset = %row.bodyset,
+                player_id, player_name = %row.player_name, level = row.level,
+                archetype = row.archetype,
+                archetype_name = cimmeria_names::archetype_name(row.archetype),
+                bodyset = %row.bodyset,
                 base_components = ?row.components,
                 "Loaded player data for mapLoaded"
             );
             let items = query_inventory_items(pool.as_ref(), player_id).await;
             tracing::debug!(
                 player_id,
+                player_name = %row.player_name,
                 item_count = items.len(),
                 "Loaded inventory items"
             );
@@ -111,6 +115,7 @@ pub async fn query_player_load_data(
                     // separately below and is not affected here.
                     tracing::error!(
                         player_id,
+                        player_name = %row.player_name,
                         "Failed to query equipment visuals \u{2014} skipping equipment-slot visuals \
                          (helmet/armor/etc.); base body components from sgw_player still apply: {e}"
                     );
@@ -144,16 +149,16 @@ pub async fn query_player_load_data(
             {
                 Ok(v) => v,
                 Err(e) => {
-                    tracing::error!(player_id, "Failed to query active bandolier weapon visual — treating as no weapon: {e}");
+                    tracing::error!(player_id, player_name = %row.player_name, "Failed to query active bandolier weapon visual — treating as no weapon: {e}");
                     None
                 }
             };
 
             if !equipment_visuals.is_empty() {
-                tracing::debug!(player_id, visuals = ?equipment_visuals, "Equipment visual components");
+                tracing::debug!(player_id, player_name = %row.player_name, visuals = ?equipment_visuals, "Equipment visual components");
             }
             if let Some(ref w) = weapon_visual {
-                tracing::debug!(player_id, weapon_visual = %w, active_slot = row.bandolier_slot, "Active bandolier weapon visual");
+                tracing::debug!(player_id, player_name = %row.player_name, weapon_visual = %w, active_slot = row.bandolier_slot, "Active bandolier weapon visual");
             }
 
             components.extend(equipment_visuals);
@@ -163,6 +168,7 @@ pub async fn query_player_load_data(
 
             tracing::info!(
                 player_id,
+                player_name = %row.player_name,
                 bodyset = %row.bodyset,
                 final_component_count = components.len(),
                 final_components = ?components,
@@ -208,11 +214,21 @@ pub async fn query_player_load_data(
             }
         }
         Ok(None) => {
-            tracing::warn!(player_id, account_id, "Player not found for mapLoaded");
+            tracing::warn!(
+                player_id,
+                player_name = known_names::player_name(player_id),
+                account_id,
+                account_name = known_names::account_name(account_id),
+                "Player not found for mapLoaded"
+            );
             default_player_load_data()
         }
         Err(e) => {
-            tracing::error!(player_id, "Failed to query player load data: {e}");
+            tracing::error!(
+                player_id,
+                player_name = known_names::player_name(player_id),
+                "Failed to query player load data: {e}"
+            );
             default_player_load_data()
         }
     }

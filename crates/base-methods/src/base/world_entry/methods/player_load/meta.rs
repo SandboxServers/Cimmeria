@@ -4,6 +4,7 @@ use sqlx::PgPool;
 
 use cimmeria_cell_catalog::ability_tree;
 use cimmeria_entity::abilities::AbilityTreeData;
+use cimmeria_entity::known_names;
 
 use crate::mercury::PlayerLoadData;
 
@@ -124,7 +125,11 @@ pub async fn query_bandolier_items(
     {
         Ok(rows) => map_bandolier_rows(rows),
         Err(e) => {
-            tracing::error!(player_id, "query_bandolier_items failed: {e}");
+            tracing::error!(
+                player_id,
+                player_name = known_names::player_name(player_id),
+                "query_bandolier_items failed: {e}"
+            );
             vec![]
         }
     }
@@ -163,7 +168,9 @@ pub async fn player_ability_tree(
                 event = "tree_catalog_load_failed",
                 reason = "catalog_load_failed",
                 player_id,
+                player_name = known_names::player_name(player_id),
                 archetype_id,
+                archetype_name = cimmeria_names::archetype_name(archetype_id),
                 "Ability-tree catalog failed to load; sending an empty onAbilityTreeInfo: {e}"
             );
             AbilityTreeData::default()

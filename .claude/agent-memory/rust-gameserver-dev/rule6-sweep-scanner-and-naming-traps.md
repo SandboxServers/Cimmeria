@@ -41,4 +41,14 @@ the ID `// nt:id-only` with the reason; don't leave it silently in the baseline.
 row logs while the target is `&mut`-borrowed (NVP damage, absorb), resolve once per hit
 into the ids struct (`HitIds::entity_name`) or use `EntityNames::of(entity)`.
 
+**NT-28c mop-up (2026-10-04).**
+- A `// nt:id-only` marker on its own comment line above the field exempts nothing: the
+  scan reads only the field's own line (`mercury::instrumentation` `unified_frame` had one).
+- Never hold `cimmeria_names::book()` across an `.await` (arc-swap guard; the handle docs
+  say so). Record span names in a block that drops the guard, resolve inline per log row.
+- `cimmeria-resources` now depends on `cimmeria-names`: the base loads the book before
+  `ResourceCache::load_all`, so boot override rows can name items/dialogs/missions.
+  `cimmeria-wire` must not take it (no sqlx in wire), so wire rows exempt entity ids.
+- `cimmeria_entity::abilities::sequence_event_name` names Kismet `event_id`s (8000/8001 too).
+
 Related: [[ability-row-event-guard-and-cast-join]], [[tracing-span-fields-not-on-log-records]].

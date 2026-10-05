@@ -129,7 +129,7 @@ pub(super) async fn handle_abilities_reset(
     );
 
     send_known_abilities_update(entity_id, "respec", tx, space_mgr).await;
-    send_training_points(entity_id, training_points, tx).await;
+    send_training_points(entity_id, training_points, tx, space_mgr).await;
     if let Err(e) = tx
         .send(CellToBaseMsg::EntityMethodCall {
             entity_id,

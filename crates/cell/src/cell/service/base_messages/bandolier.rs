@@ -127,9 +127,11 @@ pub(in crate::cell::service) async fn handle_update_bandolier_item(
         } else {
             (false, false, false, (false, None), "entity missing")
         };
+    let identity = space_mgr.player_identity(entity_id);
     tracing::info!(
         entity_id,
-        slot_id,
+        entity_name = identity.player_name,
+        slot_id, // nt:id-only bandolier slot index 0-4, not a named row
         make_active,
         play_equip_anim,
         drew_weapon,
@@ -138,8 +140,10 @@ pub(in crate::cell::service) async fn handle_update_bandolier_item(
         // Numeric, never `?`: a Debug-formatted `Some(72)` lands in SigNoz
         // as a *string* `player_id` beside every other row's number, so a
         // `player_id = 72` filter silently misses these rows.
-        account_id = space_mgr.player_identity(entity_id).account_id,
+        account_id = identity.account_id,
+        account_name = identity.account_name,
         player_id = entity_state.1,
+        player_name = identity.player_name,
         anim_path,
         "UpdateBandolierItem: equip-display decision"
     );
@@ -321,8 +325,10 @@ pub(in crate::cell::service) async fn handle_sync_bandolier_items(
         } else {
             (false, false, false, false, (false, None), "entity missing")
         };
+    let identity = space_mgr.player_identity(entity_id);
     tracing::info!(
         entity_id,
+        entity_name = identity.player_name,
         active_bandolier_slot,
         play_equip_anim,
         play_holster_anim,
@@ -332,8 +338,10 @@ pub(in crate::cell::service) async fn handle_sync_bandolier_items(
         // Numeric, never `?`: a Debug-formatted `Some(72)` lands in SigNoz
         // as a *string* `player_id` beside every other row's number, so a
         // `player_id = 72` filter silently misses these rows.
-        account_id = space_mgr.player_identity(entity_id).account_id,
+        account_id = identity.account_id,
+        account_name = identity.account_name,
         player_id = entity_state.1,
+        player_name = identity.player_name,
         anim_path,
         "SyncBandolierItems: equip-display decision"
     );

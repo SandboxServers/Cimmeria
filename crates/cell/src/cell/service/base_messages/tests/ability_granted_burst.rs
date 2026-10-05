@@ -316,3 +316,50 @@ async fn a_grant_hotbar_refresh_writes_a_wire_row_naming_the_grant() {
     );
     assert!(rows[0].has_field("ability_count", "1"), "{:#?}", rows[0]);
 }
+
+/// NT-28c (Rule 6): the `granted` row names the ability, the character and
+/// the login next to their ids, so a trainer purchase reads in SigNoz
+/// without a seed lookup. Dropping any one name field fails this.
+#[tokio::test]
+async fn the_granted_row_names_the_ability_and_the_player() {
+    use cimmeria_names::{NameBook, Table};
+
+    /// The NameBook is process-global. nextest runs each test in its own
+    /// process; under `cargo test` this guard puts the empty book back even
+    /// when an assertion panics, so no other test sees the test's names.
+    struct EmptyBookOnDrop;
+    impl Drop for EmptyBookOnDrop {
+        fn drop(&mut self) {
+            cimmeria_names::global().store(NameBook::empty());
+        }
+    }
+
+    let mut book = NameBook::empty();
+    book.insert(Table::Abilities, 597, "NT28c Staff Blast");
+    cimmeria_names::global().store(book);
+    let _reset = EmptyBookOnDrop;
+    let mut mgr = fixture(false);
+    let p = mgr.get_entity_mut(PLAYER).unwrap();
+    p.account_id = Some(6);
+    p.stamp_log_names(Some("Gerger"), Some("gerger_login"));
+    let capture = crate::test_support::LogCapture::install();
+
+    let _ = deliver(&mut mgr, granted(597, 0, 1)).await;
+
+    let all = capture.all();
+    let row = all
+        .iter()
+        .find(|c| c.target == "abilities" && c.has_field("event", "granted"))
+        .unwrap_or_else(|| panic!("no granted row: {all:#?}"));
+    for (key, value) in [
+        ("ability_id", "597"),
+        ("ability_name", "NT28c Staff Blast"),
+        ("entity_name", "Gerger"),
+        ("player_id", "100"),
+        ("player_name", "Gerger"),
+        ("account_id", "6"),
+        ("account_name", "gerger_login"),
+    ] {
+        assert!(row.has_field(key, value), "{key}={value} missing: {row:#?}");
+    }
+}
