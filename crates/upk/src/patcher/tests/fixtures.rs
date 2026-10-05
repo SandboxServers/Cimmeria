@@ -6,12 +6,14 @@ use super::super::raw_tables::{self, RawExport, RawImport};
 use super::super::{clone_objects, CloneReport, CloneRequest, PatchSession, Placement};
 use crate::error::Result;
 
-const NAME_FLAGS: u64 = 0x0007_0010_0000_0000;
+pub(super) const NAME_FLAGS: u64 = 0x0007_0010_0000_0000;
 const RF_HAS_STACK: u64 = 0x0200_0000_0000_0000;
 
 #[derive(Default)]
 pub(super) struct Builder {
     pub(super) names: Vec<String>,
+    /// Flags for names that should not get [`NAME_FLAGS`].
+    pub(super) name_flags: std::collections::HashMap<String, u64>,
     imports: Vec<RawImport>,
     pub(super) exports: Vec<(RawExport, Vec<u8>)>,
 }
@@ -62,6 +64,11 @@ impl Builder {
         self.exports.last_mut().unwrap().0.object_flags |= RF_HAS_STACK;
     }
 
+    /// Mark the most recent export as one the client loads (`RF_LoadForClient`).
+    pub(super) fn mark_client_loaded(&mut self) {
+        self.exports.last_mut().unwrap().0.object_flags |= 0x0001_0000_0000_0000;
+    }
+
     pub(super) fn object_array_prop(&mut self, out: &mut Vec<u8>, name: &str, refs: &[i32]) {
         self.tag(out, name, "ArrayProperty", 4 + refs.len() as i32 * 4);
         Self::i32s(out, &[refs.len() as i32]);
@@ -91,7 +98,8 @@ impl Builder {
     pub(super) fn build(&self) -> Vec<u8> {
         let mut names = Vec::new();
         for n in &self.names {
-            raw_tables::write_name_entry(&mut names, n, NAME_FLAGS);
+            let flags = self.name_flags.get(n).copied().unwrap_or(NAME_FLAGS);
+            raw_tables::write_name_entry(&mut names, n, flags);
         }
         let mut imports = Vec::new();
         for i in &self.imports {
@@ -166,6 +174,12 @@ impl Builder {
     pub(super) fn object_prop(&mut self, out: &mut Vec<u8>, name: &str, obj: i32) {
         self.tag(out, name, "ObjectProperty", 4);
         Self::i32s(out, &[obj]);
+    }
+
+    pub(super) fn bool_prop(&mut self, out: &mut Vec<u8>, name: &str, value: bool) {
+        // Epic 486: the value is a 4-byte int that the tag's size does not count.
+        self.tag(out, name, "BoolProperty", 0);
+        Self::i32s(out, &[value as i32]);
     }
 
     pub(super) fn vector_prop(&mut self, out: &mut Vec<u8>, name: &str, v: [f32; 3]) {

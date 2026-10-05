@@ -507,9 +507,38 @@ never shifts anything:
   the other. The number is also what makes a same-package sequence clone
   addressable: `..._Pf0_Seq` becomes `..._Pf0_Seq_0`.
 
+- **Name entries carry load bits.** Every name-table entry has `RF_LoadForClient`
+  (`0x0001_0000_0000_0000`), `RF_LoadForServer` and `RF_LoadForEdit` in its
+  flags (`0x0007_0010_0000_0000` is the usual value). The name-table loader
+  (SGW.exe `0x4bad20`, the "serializing name map" step of the linker tick
+  `0x4beca0`) ANDs each entry's flags with the linker's load-context mask and
+  stores FName `(0, 0)`, which is `None`, when nothing is left. The FName
+  reader (`ULinkerLoad::operator<<(FName&)`, `0x4bc660`) then returns `None`
+  with no error and still consumes the 4-byte number. In a tagged property
+  list a `None` tag ends the list, and the rest of the object is read from
+  the wrong offset (the first sign was a name index like `0xB5000000`, three
+  bytes before a `None`, out of range, and an access violation at `0x4bc6a0`).
+  The string `Dynamic` is client-loadable in Castle's table and editor-only in
+  Ihpet's, so cloning Castle's `LightingChannels` struct (it names `Dynamic`)
+  into Ihpet froze the client (client patch 010, fixed in 011).
+  `PatchSession::ensure_name_with_flags` reuses a name only when the
+  target's entry has every load bit the source's had, and otherwise adds a
+  second entry for the same string, which the table allows and the original
+  entry's stock readers never see. A structural parse cannot detect this; the
+  `upk_patch` clone check and `upk_patch audit-names` read the names. Stock
+  packages do name editor-only entries, but only on objects that lack
+  `RF_LoadForClient` themselves (a `Brush`, a `DrawLightConeComponent`), which
+  the client never serializes, so the audit looks only at client-loaded
+  objects and is empty on any unmodified package.
+
 ```bash
 # Rewrite a chunk uncompressed with no content change
 upk_patch roundtrip <in.umap> <out.umap>
+
+# List property names, in client-loaded exports FROM.., that the client would read
+# as None (clone-objects runs this on its new objects and fails on a hit or on
+# an object it cannot follow; --strict does the same for audit-names)
+upk_patch audit-names <package> --from 250 [--strict]
 
 # Clone roots (0-based export indices in <source>) with everything outered to them.
 # <source> may be the same file as <target_in>.

@@ -47,7 +47,7 @@ pub struct SequenceOverride {
 const ARMORY_RING_RIG: &str =
     "Castle_Cellblock-fffeffff.Main_Sequence.Prefabs.GLB-RingTransporterBase_TC00_Pf0_Seq_0";
 
-/// The eight ring rigs client patch `010-debug-area-rings` clones into
+/// The eight ring rigs client patch `011-debug-area-rings-fix` clones into
 /// `Ihpet_Crater_Light-fff80002.umap` for the Debug Area (world 1300, DA-08),
 /// in station order: Compound, Faction yard, AI slope, Arena rim, Arena pit,
 /// Gallery west, Gallery east, Death yard. All eight are copies of region 3's

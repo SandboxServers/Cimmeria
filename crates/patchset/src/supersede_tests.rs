@@ -22,6 +22,7 @@ const ARMORY: &str =
 
 fn op(target: &str, sources: &[&str]) -> SpecOp {
     SpecOp {
+        alternatives: vec![],
         target: target.into(),
         sources: sources
             .iter()

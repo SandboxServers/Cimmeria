@@ -29,7 +29,8 @@ for the format and [crates/patchset](../../crates/patchset/) for the code.
 | `007-castle-armory-ring` | The ring rig on the CellBlock Armory pad (mission 688). This is 002's Armory op with the same source, delta and result, so installs that applied 002 skip it | 1 map delta against the normalized stock map | 2.6 KB |
 | `008-dialog-portraits` | **Supersedes 001.** The same five dialog-portrait files, shipped whole instead of as deltas, so it applies to any client: stock, Project Giza, or one that already carries a hand-installed portrait fix | 5 whole files | 93 KB |
 | `009-starter-hotbar` | Puts a new character's starting abilities on its action bar at first login (see below) | 1 delta (`ActionProfileDefault1.lua`) | 4.7 KB |
-| `010-debug-area-rings` | Eight working ring transport rigs in the Debug Area (world 1300), on the Ihpet_Crater_Light map (see below). **Needs 007 applied first** | 1 map delta against the normalized stock map, with 007's Armory map as donor | 18 KB |
+| `010-debug-area-rings` | **Retired 2026-10-05, superseded by 011: it hangs the client.** Eight ring transport rigs for the Debug Area, on the Ihpet_Crater_Light map (see below). | 1 map delta against the normalized stock map, with 007's Armory map as donor | 18 KB |
+| `011-debug-area-rings-fix` | **Supersedes 010.** The same eight rigs, rebuilt so the client loads them, with the arena station moved off the pit's water plane (see below). Needs 007 applied first, unless 010 already applied | 1 map op: a delta from the normalized stock map plus 007's Armory map, and an alternative delta from 010's output | 19 KB |
 | `012-gm-slash-commands` | The `/gm` slash commands (`/gmdhd`, `/gmgivexp`, ...): adds the `InternalSlashCommands.xml` the stock client lacks (see below) | 1 whole new file, written by this project (162 commands) | 48.7 KB |
 
 `002-castle-ring-transport` was **removed from the signed content
@@ -98,6 +99,13 @@ module loads that file after `ActionProfiles.lua`.
 
 ### 010-debug-area-rings
 
+> **Retired 2026-10-05: it freezes the client.** It was in the signed
+> manifest for about half an hour and was pulled. Installs that applied it
+> keep the broken Ihpet chunk (sha256 `62ef4acd...`) until
+> [011](#011-debug-area-rings-fix) repairs it. Never put it back in a
+> manifest. The section below is what 010 was meant to be; the cause of the
+> crash and the fix are in the 011 section.
+
 The ring stations of the GM-only Debug Area (DA-08,
 [debug-area.md § Ring transports](../../docs/content/debug-area.md#ring-transports)).
 One op rebuilds `Ihpet_Crater_Light-fff80002.umap`, the chunk in the
@@ -126,10 +134,10 @@ ring-switch entity (template 3) renders one.
     (a GM-only world most players never enter) skips nothing else.
   - `debug_area_rings_tests.rs` in `crates/patchset` fails if the pin,
     the `output_of` marker and 007's result ever disagree.
-  - **Superseding 007 means rebuilding 010.** 010 freezes 007's result
-    hash. A future patch that changes the Armory map (as 007 superseded
-    002) changes the donor, so 010 needs a new patch id rebuilt against
-    the new result and chained after the new patch.
+  - **Superseding 007 means rebuilding the rig patch.** 010 (and 011)
+    freeze 007's result hash. A future patch that changes the Armory map
+    (as 007 superseded 002) changes the donor, so the rig patch needs a new
+    patch id rebuilt against the new result and chained after the new patch.
 - **What the delta carries.** 17,057 bytes for a 2.26 MB map, rebuilt
   from the player's own stock Ihpet chunk and 007's Armory map. Its extra
   block, the only bytes that reach the map verbatim, is 487 bytes
@@ -169,6 +177,142 @@ ring-switch entity (template 3) renders one.
   `"after": "007-castle-armory-ring"`, keep it the last link of its chain
   (no entry `after` 010), re-check the `after` chain, sign the manifest
   offline and upload it with the zip.
+
+### 011-debug-area-rings-fix
+
+Replaces [010](#010-debug-area-rings), which hung every client that loaded
+the Ihpet Crater map (world 1300, the Debug Area, and world 73, the live
+Ihpet Crater, which streams the same chunk).
+
+- **Symptom (DA-06, 2026-10-05).** With 010, the client took a first-chance
+  `ACCESS_VIOLATION` (read) at `SGW.exe+0xbc6a0` (0x004bc6a0) right after the
+  streaming loader reached `Ihpet_Crater_Light-fff80001/fff80002`, then the
+  main thread stopped ticking and the watchdog killed it 30 s later. Three of
+  three tries; no other client log in 30 days has that address.
+- **Where.** The AV is in `ULinkerLoad`'s `operator<<(FName&)` (0x4bc660,
+  AV at 0x4bc6a0): it reads an int from the stream and indexes the linker's
+  name map with no bounds check. An x32dbg capture of the AV (names.Num 349,
+  which is Ihpet with the rig's names added) gave the index `0xB5000000`,
+  where `0xB5` is the name `None`: the reader stood three bytes before a
+  `None` terminator. The stack was the object `Serialize` path
+  (`UParticleSystemComponent` and `UStaticMeshComponent` ->
+  `UPrimitiveComponent::Serialize` -> the tagged property loop at 0x4b56e0,
+  whose `FPropertyTag` reader is 0x4b6a60), not the export-table parse. That
+  function does not look at flags; it is only where the misread surfaces.
+- **Cause.** Every name-table entry carries `RF_LoadForClient`,
+  `RF_LoadForServer` and `RF_LoadForEdit` bits (`0x0007_0000_0000_0000`;
+  client is `0x0001_...`). The name-table loader (`FUN_004bad20`, the
+  "serializing name map" step of the linker tick `FUN_004beca0`) ANDs each
+  entry's flags with the linker's load-context mask and, when nothing is
+  left, stores FName `(0, 0)`, which is `None`; the FName reader then returns
+  it and still consumes the 4-byte number. A property tag named `None` ends
+  the property list. The clones' component `LightingChannels` struct names
+  its second property `Dynamic`. In Castle's table `Dynamic` is
+  `0x0007_0010_0000_0000`; in Ihpet's it is `0x0004_0010_0000_0000`
+  (editor-only). The cloner reused Ihpet's entry by name, so the 48
+  components that name it (40 InterpActor components, 8
+  `ParticleSystemComponent`s) read as `None` mid-struct and every tag after
+  it was read from the wrong offset. Of the 326 stock names, `Dynamic` is the
+  only one whose flags differ from the donor's. That a nested `None` ends the
+  outer list's parse rests on the captures and the 48-versus-0 split below,
+  not on a decompile of the struct tag loop.
+- **Evidence that this is the whole story.** Client-loaded exports (object
+  flags with `RF_LoadForClient`) that name an entry the client does not load:
+  **48 of 765 in 010's chunk, 0 in 011's, 0 in stock Castle (1,571), 0 in
+  stock Ihpet (237), 0 in 007's Castle map.** Stock packages do name
+  editor-only entries (90 tags in stock Castle, 3 in stock Ihpet, for
+  example a `Dynamic` in Ihpet's `Brush_3.BrushComponent_7`), but only on
+  objects without `RF_LoadForClient` (a `Brush`, a `DrawLightConeComponent`,
+  an `InterpCurveEdSetup`), which the client never serializes.
+  `upk_patch audit-names <package>` reproduces the counts, and is empty on
+  any unmodified package.
+- **Bisect (lab, same chunk built from fewer roots).** The ring base
+  `StaticMeshActor` alone loads; the Kismet sequence alone loads; the five
+  `InterpActor`s, the `Emitter`, one full rig, and every mix that includes
+  either of those fail. Swapping meshes did not change that (a `StaticMeshActor`
+  with the ring-00 mesh plus an `InterpActor` with the base mesh still
+  fails): the base mesh component's `LightingChannels` struct names a
+  different property, so it never tripped.
+- **Why 007 worked.** 007 clones inside Castle, whose table is the donor's:
+  the names and their flags are the same entries.
+- **Fix.** `PatchSession::ensure_name_with_flags`
+  (`crates/upk/src/patcher/mod.rs`): a name is reused only when the
+  target's entry has every load bit the source entry had; otherwise the table
+  gets a second entry for the same string, with the source's bits, and the
+  clones use it. Stock objects keep reading the original entry. The chunk
+  has two `Dynamic` entries (index 67, editor-only; and a new one at the end)
+  and loads. `a_cloned_property_name_keeps_the_load_bits_it_had_in_the_source`
+  fails when the flag check is removed.
+- **One op, two starting points.** The op rebuilds the chunk from the normalized
+  stock Ihpet chunk plus 007's Armory map (clean installs), or, through the
+  recipe's new `alternatives` field, from 010's output alone (installs that
+  applied 010; sha256 `62ef4acd...`, pinned `output_of: 010-debug-area-rings`).
+  Both give the same bytes, sha256
+  `52b4f3adc5cb7beb8f3e2728e90ea764603de0515e013b600f30a1c63199ede0`.
+  The 010 path's delta is 402 bytes, and needs no Armory map. `apply` tries
+  the primary sources first and the alternatives in order; when none match it
+  reports the primary's error (the stock file is the one a player can
+  restore).
+- **Which launchers do what.** The 010 -> 011 upgrade path needs a launcher
+  with `alternatives` support, which no release has yet (the newest,
+  `launcher-20260929-0d71e26`, predates it). A launcher without it parses
+  the recipe (`Op` is not `deny_unknown_fields`), ignores `alternatives` and
+  applies the primary, which is 010's own stock + 007 source: **that is
+  correct on every clean install**, so fresh installs and everyone who never
+  applied 010 are served by every launcher. On a 010 install it fails with
+  the usual source mismatch and leaves the broken chunk untouched. As of
+  2026-10-05 the only install that applied 010 was repaired by hand, so no
+  launcher release, `min_launcher` gate or patch split was made for the
+  upgrade path; if another 010 install turns up, either release a launcher
+  with this field (and set `min_launcher`), or repair by hand with
+  `cimmeria-patchset apply 011-debug-area-rings-fix.zip --install <dir>` from
+  this repo's build (which does support it).
+- **Arena station moved.** The first arena station stood on the pit's water
+  plane, where the client draws water and players who step off sink to y -52.
+  Region 39 now sits on the east shelf at (331, -11.12, -693), the largest
+  clear disc on it (DA-F2 surveyed the real occluder and navmesh data). The
+  rig is the fifth `--first-at` copy, so it keeps instance `_Seq_3`; only the
+  seed coordinates and the copy's position changed.
+- **No new CME bytes.** The primary delta is 17,049 bytes (010's was 17,057)
+  and the alternative 402. `committed_011_deltas_ship_no_verbatim_map_bytes`
+  in `crates/patchset/src/debug_area_rings_fix_tests.rs` pins both, and
+  `the_readme_states_the_committed_011_zip_and_result_hashes` fails when the
+  zip and this file stop agreeing.
+- **Rebuild.** Use the cloner built from this repo (it adds the name entry):
+
+  ```bash
+  upk_patch clone-objects <stock>/.../Ihpet_Crater_Light-fff80002.umap \
+      <007-applied>/.../Castle_CellBlock-fffeffff.umap <patched>/.../Ihpet_Crater_Light-fff80002.umap \
+      --roots 772,1192,216,218,219,220,227,228 --map 764:104 \
+      --first-at -93800,22400,690   --first-at -73800,39400,-1113 \
+      --first-at -78200,8100,5      --first-at -70200,17600,-719 \
+      --first-at -69300,33100,-1112 --first-at -55900,12700,2306 \
+      --first-at -56600,43600,2309  --first-at -93700,43700,1130
+  cimmeria-patchset build data/client-patches/011-debug-area-rings-fix/patch.json \
+      --stock <stock tree: stock Ihpet chunk + 007's Castle_CellBlock-fffeffff.umap> \
+      --alt-stock <tree holding 010's Ihpet chunk, sha256 62ef4acd...> \
+      --patched <tree with the rebuilt chunk> --out data/client-patches/011-debug-area-rings-fix.zip \
+      --blob-url https://raw.githubusercontent.com/SandboxServers/Cimmeria/<commit>/data/client-patches/011-debug-area-rings-fix.zip
+  ```
+
+  `--alt-stock` is given once per alternative, in spec order.
+- **Publishing** (coordinator): add the manifest entry below with
+  `"after": "009-starter-hotbar"`, **remove 010 from the manifest** (and keep
+  it out: no test or file guards that, and a manifest that lists both leaves
+  a launcher without `alternatives` on the broken chunk), re-check the
+  `after` chain, sign offline, upload with the zip. The launcher applies
+  each manifest patch once, by id, so 011 also runs on installs that already
+  recorded 010 as applied.
+
+  ```json
+  {"id": "011-debug-area-rings-fix", "after": "009-starter-hotbar",
+   "size": 19033,
+   "sha256": "34fa0127a61a6955469be811dc2e3ab8c9564117dc7930c1a64a79d9c58f4621"}
+  ```
+
+  (plus `blob`, `title` and `description` as `cimmeria-patchset build`
+  prints them). The chunk 011 writes is sha256
+  `52b4f3adc5cb7beb8f3e2728e90ea764603de0515e013b600f30a1c63199ede0`.
 
 ### 012-gm-slash-commands
 

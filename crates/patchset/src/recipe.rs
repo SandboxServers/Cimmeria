@@ -32,6 +32,23 @@ pub struct Op {
     pub delta: String,
     /// SHA-256 of the rebuilt file.
     pub result_sha256: String,
+    /// Other starting points that reach the same `result_sha256`, each with
+    /// its own delta. The launcher uses `sources` + `delta` when the install
+    /// matches them, and otherwise the first alternative whose sources all
+    /// match. A patch that repairs a published patch uses this: one image
+    /// from the stock file, one from the broken output. Launchers that
+    /// predate the field ignore it, so they only apply the primary.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub alternatives: Vec<Alternative>,
+}
+
+/// One more way to rebuild an [`Op`]'s target: see [`Op::alternatives`].
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct Alternative {
+    /// Concatenated in order to form this delta's source image.
+    pub sources: Vec<Source>,
+    /// Zip entry holding the bsdiff delta.
+    pub delta: String,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -76,7 +93,11 @@ impl Recipe {
         }
         for op in &recipe.ops {
             safe_relative(&op.target)?;
-            for s in &op.sources {
+            for s in op
+                .sources
+                .iter()
+                .chain(op.alternatives.iter().flat_map(|a| &a.sources))
+            {
                 safe_relative(&s.path)?;
             }
         }
@@ -129,6 +150,7 @@ mod tests {
                 ],
                 delta: "deltas/0.bsdiff".into(),
                 result_sha256: "cc".into(),
+                alternatives: Vec::new(),
             }],
         };
         let json = serde_json::to_string(&r).unwrap();

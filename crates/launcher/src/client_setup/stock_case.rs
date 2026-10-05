@@ -47,7 +47,7 @@ pub const PATCH_TARGETS: &[&str] = &[
     "Working/binaries/SGWLogConfig.xml",
     // 009-starter-hotbar
     "Working/SGWGame/Content/UI/Core/ActionButtons/ActionProfileDefault1.lua",
-    // 010-debug-area-rings
+    // 010-debug-area-rings (retired); 011-debug-area-rings-fix writes the same file.
     "Working/SGWGame/CookedPC/Maps/Ihpet_Crater_Light/Ihpet_Crater_Light-fff80002.umap",
     // 012-gm-slash-commands: a new file, next to the stock `SlashCommands.xml`
     // (the client reads the directory from `SlashCommandXMLPath` in

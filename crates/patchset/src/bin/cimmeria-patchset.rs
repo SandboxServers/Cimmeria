@@ -2,7 +2,7 @@
 //! launcher manifests.
 //!
 //! ```text
-//! cimmeria-patchset build <patch.json> --stock <dir> --patched <dir> --out <zip> [--blob-url <url>]
+//! cimmeria-patchset build <patch.json> --stock <dir> --patched <dir> --out <zip> [--blob-url <url>] [--alt-stock <dir>]...
 //! cimmeria-patchset apply <zip> --install <dir>
 //! cimmeria-patchset sign <manifest.json> --key <private-key-file>
 //! cimmeria-patchset verify <manifest.json> --pubkey <hex>
@@ -19,7 +19,7 @@ use std::process::ExitCode;
 use cimmeria_patchset::{apply, build, signing, Spec};
 
 const USAGE: &str = "usage:
-  cimmeria-patchset build <patch.json> --stock <dir> --patched <dir> --out <zip> [--blob-url <url>]
+  cimmeria-patchset build <patch.json> --stock <dir> --patched <dir> --out <zip> [--blob-url <url>] [--alt-stock <dir>]...
   cimmeria-patchset apply <zip> --install <dir>
   cimmeria-patchset sign <manifest.json> --key <private-key-file>
   cimmeria-patchset verify <manifest.json> --pubkey <hex>
@@ -53,6 +53,15 @@ impl Args {
             .map(|(_, v)| v.as_str())
     }
 
+    /// Every value of a repeatable flag, in command-line order.
+    fn all(&self, name: &str) -> Vec<&str> {
+        self.flags
+            .iter()
+            .filter(|(n, _)| n == name)
+            .map(|(_, v)| v.as_str())
+            .collect()
+    }
+
     fn required(&self, name: &str) -> Result<&str, String> {
         self.flag(name).ok_or(format!("missing --{name}"))
     }
@@ -78,10 +87,16 @@ fn run(args: Args) -> Result<(), String> {
             let spec_path = PathBuf::from(args.arg(1, "<patch.json>")?);
             let spec = Spec::load(&spec_path).map_err(e)?;
             let spec_dir = spec_path.parent().unwrap_or(Path::new("."));
-            let report = build::build(
+            let alt_roots: Vec<PathBuf> = args
+                .all("alt-stock")
+                .into_iter()
+                .map(PathBuf::from)
+                .collect();
+            let report = build::build_with_alternatives(
                 &spec,
                 spec_dir,
                 Path::new(args.required("stock")?),
+                &alt_roots,
                 Path::new(args.required("patched")?),
             )
             .map_err(e)?;

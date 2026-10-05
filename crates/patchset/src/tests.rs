@@ -70,6 +70,7 @@ fn fixture() -> Fixture {
         description: None,
         ops: vec![
             SpecOp {
+                alternatives: vec![],
                 target: "Working/SGWGame/UI/Dialog.lua".into(),
                 sources: vec![SpecSource {
                     path: "Working/SGWGame/UI/Dialog.lua".into(),
@@ -78,6 +79,7 @@ fn fixture() -> Fixture {
                 }],
             },
             SpecOp {
+                alternatives: vec![],
                 target: "Working/SGWGame/Maps/cell.umap".into(),
                 sources: vec![
                     SpecSource {
@@ -198,6 +200,7 @@ fn a_target_other_ops_read_is_written_last() {
         b"patched donor",
     );
     let donor_op = SpecOp {
+        alternatives: vec![],
         target: "Working/SGWGame/Maps/donor.umap".into(),
         sources: vec![SpecSource {
             path: "Working/SGWGame/Maps/donor.umap".into(),
@@ -318,6 +321,7 @@ fn a_target_spelled_in_another_case_keeps_the_stock_name() {
         title: None,
         description: None,
         ops: vec![SpecOp {
+            alternatives: vec![],
             target: format!("{eula_dir}/eula.lua"),
             sources: vec![SpecSource {
                 path: format!("{eula_dir}/eula.lua"),
@@ -406,6 +410,7 @@ fn real_client_ring_maps() {
         title: None,
         description: None,
         ops: vec![SpecOp {
+            alternatives: vec![],
             target: format!("{m}/Castle_CellBlock-fffeffff.umap"),
             sources: vec![norm(format!("{m}/Castle_CellBlock-fffeffff.umap"))],
         }],
