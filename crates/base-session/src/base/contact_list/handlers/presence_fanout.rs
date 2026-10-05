@@ -15,11 +15,24 @@ use sqlx::PgPool;
 
 use crate::base::contact_list::persistence::find_watchers;
 use crate::base::contact_list::wire::{
-    build_on_contact_list_event, DATA_OFFLINE, DATA_ONLINE, EVENT_LOGGED_IN_STATUS,
+    build_on_contact_list_event, DATA_OFFLINE, DATA_ONLINE, EVENT_DEATH, EVENT_GAIN_LEVEL,
+    EVENT_GATE_TRAVEL, EVENT_LOGGED_IN_STATUS,
 };
 use crate::base::helpers::send_to_witness_reliable;
 use crate::base::ConnectedClientState;
 use crate::mercury::{build_player_entity_method_packet, method_idx};
+
+/// The `EVENT_*` bitfield value as its name, for the log's `event_name`.
+/// `None` for a value that is not one of the four single-bit events.
+fn contact_event_name(event_id: u32) -> Option<&'static str> {
+    match event_id {
+        EVENT_LOGGED_IN_STATUS => Some("LoggedInStatus"),
+        EVENT_GAIN_LEVEL => Some("GainLevel"),
+        EVENT_DEATH => Some("Death"),
+        EVENT_GATE_TRAVEL => Some("GateTravel"),
+        _ => None,
+    }
+}
 
 /// Collect entity_ids of connected clients whose `active_player_id` is in
 /// `watcher_set`. Pure extraction helper; unit-tested separately.
@@ -68,6 +81,7 @@ pub async fn fanout_contact_event(
             tracing::warn!(
                 player_name,
                 event_id,
+                event_name = contact_event_name(event_id),
                 "ContactList presence fanout: no DB pool, skipping"
             );
             return;
@@ -80,6 +94,7 @@ pub async fn fanout_contact_event(
             tracing::error!(
                 player_name,
                 event_id,
+                event_name = contact_event_name(event_id),
                 "ContactList presence fanout: find_watchers failed: {e}"
             );
             return;
@@ -104,6 +119,7 @@ pub async fn fanout_contact_event(
                 tracing::error!(
                     player_name,
                     event_id,
+                    event_name = contact_event_name(event_id),
                     "ContactList presence fanout: connected lock poisoned"
                 );
                 return;
@@ -137,6 +153,7 @@ pub async fn fanout_contact_event(
     tracing::debug!(
         player_name,
         event_id,
+        event_name = contact_event_name(event_id),
         data_value,
         watcher_count = watcher_ids.len(),
         "ContactList: presence fanout complete"

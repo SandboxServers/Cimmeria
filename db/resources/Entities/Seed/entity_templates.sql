@@ -54,7 +54,13 @@ INSERT INTO entity_templates (template_id, static_mesh, body_set, components, fl
 
 INSERT INTO entity_templates (template_id, static_mesh, body_set, components, flags, interaction_type, event_set_id, level, alignment, faction, name_id, name, patrol_path_id, patrol_point_delay, template_name, class, buy_item_list, sell_item_list, repair_item_list, recharge_item_list, ability_set_id, ammo_type, loot_table_id, primary_color_id, secondary_color_id, skin_tint, weapon_item_id, static_interaction_sets, trainer_ability_list_id, speaker_id, has_dynamic_properties, interaction_set_id, move_speed) VALUES (22, 'GLB-Global.GLB-RingTransporterSwitch_00', 'GLB_Components.WorldObject_WallTerminal', NULL, 0, 0, NULL, 1, NULL, NULL, NULL, NULL, NULL, NULL, 'Door control panel', 'being', NULL, NULL, NULL, NULL, NULL, NULL, NULL, 0, 0, 0, NULL, '{}', NULL, NULL, true, NULL, NULL);
 
-INSERT INTO entity_templates (template_id, static_mesh, body_set, components, flags, interaction_type, event_set_id, level, alignment, faction, name_id, name, patrol_path_id, patrol_point_delay, template_name, class, buy_item_list, sell_item_list, repair_item_list, recharge_item_list, ability_set_id, ammo_type, loot_table_id, primary_color_id, secondary_color_id, skin_tint, weapon_item_id, static_interaction_sets, trainer_ability_list_id, speaker_id, has_dynamic_properties, interaction_set_id, move_speed) VALUES (1, 'GLB-Global.GLB-DHD_00', 'GLB_Components.WorldObject_Small', NULL, 0, 0, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, 'DHD', 'spawnable', NULL, NULL, NULL, NULL, NULL, NULL, NULL, 0, 0, 0, NULL, '{6891}', NULL, NULL, true, NULL, NULL);
+-- Template 1 (DHD) carries interaction_type 16 = INT_DHD (DA-07). It shipped
+-- 0, so the DHD props spawned from it (Harset, Tollana, Lucia, Omega Site,
+-- Beta Site E1, Dakara E1, both Ihpet Craters, Men'fa (Praxis) and the Debug
+-- Area) were not right-clickable and `try_open_dhd` never saw them; only the
+-- Castle's template 162 opened. The Harset H01 worknote already described
+-- template 1 as carrying the bit.
+INSERT INTO entity_templates (template_id, static_mesh, body_set, components, flags, interaction_type, event_set_id, level, alignment, faction, name_id, name, patrol_path_id, patrol_point_delay, template_name, class, buy_item_list, sell_item_list, repair_item_list, recharge_item_list, ability_set_id, ammo_type, loot_table_id, primary_color_id, secondary_color_id, skin_tint, weapon_item_id, static_interaction_sets, trainer_ability_list_id, speaker_id, has_dynamic_properties, interaction_set_id, move_speed) VALUES (1, 'GLB-Global.GLB-DHD_00', 'GLB_Components.WorldObject_Small', NULL, 0, 16, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, 'DHD', 'spawnable', NULL, NULL, NULL, NULL, NULL, NULL, NULL, 0, 0, 0, NULL, '{6891}', NULL, NULL, true, NULL, NULL);
 
 INSERT INTO entity_templates (template_id, static_mesh, body_set, components, flags, interaction_type, event_set_id, level, alignment, faction, name_id, name, patrol_path_id, patrol_point_delay, template_name, class, buy_item_list, sell_item_list, repair_item_list, recharge_item_list, ability_set_id, ammo_type, loot_table_id, primary_color_id, secondary_color_id, skin_tint, weapon_item_id, static_interaction_sets, trainer_ability_list_id, speaker_id, has_dynamic_properties, interaction_set_id, move_speed) VALUES (17, NULL, 'BS_GoauldMale.BS_GoauldMale', '{AR_G_Praxis.AR_GM_PB1_PH100,AR_G_Praxis.AR_GM_PL1_PB100,AR_G_Praxis.AR_GM_PL1_PL101,AR_G_Praxis.AR_GM_PT1_PT101,AR_G_Praxis.AR_GM_PT1_PT106,BS_GoauldMale.BS_GM_Boots_00,BS_GoauldMale.BS_GM_Hands_00,BS_GoauldMale.BS_GM_Torso_00,NPC_Goauld.NPC_GM_Letha_Head_BC}', 0, 0, NULL, 30, 0, 3, 7030, NULL, NULL, NULL, 'Prisoner 329', 'mob', NULL, NULL, NULL, NULL, NULL, NULL, NULL, 0, 0, -1772406528, NULL, '{}', NULL, 253, true, NULL, NULL);
 
@@ -1262,9 +1268,9 @@ INSERT INTO entity_templates (template_id, static_mesh, body_set, components, fl
 
 -- Past every seeded row and every reserved campaign template block (Harset
 -- 200-299, debug hub 300-304, black market 305-309, crafting 310-329, organizations 330-349, pets
--- 350-369, bank 370-389, social 390-399, deployables 400-409), and never
--- lowered, so a row inserted without a template_id never takes a seeded or
--- reserved id. Raise the floor when a block is reserved above 409;
--- live_db_seed_sequences.rs guards it.
-SELECT pg_catalog.setval('entity_templates_template_id_seq', GREATEST((SELECT MAX(template_id) FROM entity_templates), (SELECT last_value FROM entity_templates_template_id_seq), 409), true);
+-- 350-369, bank 370-389, social 390-399, deployables 400-409, the Debug Area
+-- 1300-1399 for DA-02..DA-04), and never lowered, so a row inserted without a
+-- template_id never takes a seeded or reserved id. Raise the floor when a block
+-- is reserved above 1399; live_db_seed_sequences.rs guards it.
+SELECT pg_catalog.setval('entity_templates_template_id_seq', GREATEST((SELECT MAX(template_id) FROM entity_templates), (SELECT last_value FROM entity_templates_template_id_seq), 1399), true);
 

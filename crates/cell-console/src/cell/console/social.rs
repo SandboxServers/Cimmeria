@@ -54,8 +54,11 @@ pub(super) async fn announce(
                 target: "chat",
                 event = "chat.gm_broadcast_rejected",
                 entity_id = caller_id,
+                entity_name = id.player_name,
                 account_id = id.account_id,
+                account_name = id.account_name,
                 player_id = id.player_id,
+                player_name = id.player_name,
                 source = "console",
                 reason = "no_text",
                 "GM broadcast rejected: .announce had no text",
@@ -133,15 +136,18 @@ pub(super) async fn mute(
                 minutes: m.minutes,
                 reason: m.reason,
             };
-            forward(caller_id, "mute", msg, tx).await;
+            forward(caller_id, id.player_name, "mute", msg, tx).await;
         }
         Err((reason, line)) => {
             tracing::warn!(
                 target: "chat",
                 event = "chat.gm_mute_refused",
                 entity_id = caller_id,
+                entity_name = id.player_name,
                 account_id = id.account_id,
+                account_name = id.account_name,
                 player_id = id.player_id,
+                player_name = id.player_name,
                 source = "console",
                 reason,
                 "GM .mute refused on the cell: bad arguments, the GM was told",
@@ -167,15 +173,18 @@ pub(super) async fn unmute(
                 account_id: id.account_id,
                 target_name: name,
             };
-            forward(caller_id, "unmute", msg, tx).await;
+            forward(caller_id, id.player_name, "unmute", msg, tx).await;
         }
         Err((reason, line)) => {
             tracing::warn!(
                 target: "chat",
                 event = "chat.gm_unmute_refused",
                 entity_id = caller_id,
+                entity_name = id.player_name,
                 account_id = id.account_id,
+                account_name = id.account_name,
                 player_id = id.player_id,
+                player_name = id.player_name,
                 source = "console",
                 reason,
                 "GM .unmute refused on the cell: bad arguments, the GM was told",
@@ -190,6 +199,7 @@ pub(super) async fn unmute(
 /// only logged.
 async fn forward(
     caller_id: u32,
+    caller_name: Option<&str>,
     command: &'static str,
     msg: ChatCellToBase,
     tx: &mpsc::Sender<CellToBaseMsg>,
@@ -199,6 +209,7 @@ async fn forward(
             target: "chat",
             event = "chat.gm_mute_refused",
             entity_id = caller_id,
+            entity_name = caller_name,
             command,
             reason = "base_channel_closed",
             "GM mute command not delivered: the cell-to-base channel is closed",

@@ -312,7 +312,11 @@ change to the checkbox applies from the next launch.
 A patch zip with a `cimmeria-patch.json` recipe rebuilds files from the
 player's own stock client instead of shipping them, so the project never
 hosts CME bytes. Each op names stock sources (with SHA-256), an optional
-transform, a bsdiff delta and the result's SHA-256. `upk_normalize`
+transform, a bsdiff delta and the result's SHA-256. A source that is an
+earlier patch's output rather than a stock file carries `output_of` (the
+patch id), so a mismatch reports `PatchOutputMismatch` naming that patch
+instead of telling the player to reinstall the seed; launchers that
+predate the field ignore it. `upk_normalize`
 decompresses a stock package and writes it back through `cimmeria-upk`'s
 append-only patcher, the starting point of every map our `upk_patch`
 tool built, so a 4 MB map's delta is under 2 KB. The launcher computes all

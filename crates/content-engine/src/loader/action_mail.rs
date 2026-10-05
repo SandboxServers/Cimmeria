@@ -34,6 +34,7 @@ pub(super) fn convert_send_system_mail(row: &DbActionRow) -> Option<Action> {
     let drop_row = |why: &str| {
         warn!(
             chain_id = row.chain_id,
+            chain_name = cimmeria_names::book().chain(row.chain_id),
             ?params,
             "send_system_mail: {why}; dropping the action row"
         );

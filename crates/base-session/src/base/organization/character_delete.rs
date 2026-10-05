@@ -46,20 +46,22 @@ pub async fn delete_character(
     account_id: i32,
 ) -> Result<CharacterDeletion, sqlx::Error> {
     let mut tx = pool.begin().await?;
-    let owned: Option<i32> = sqlx::query_scalar(
-        "SELECT player_id FROM sgw_player WHERE player_id = $1 AND account_id = $2 FOR UPDATE",
+    // The names are read with the lock and before the delete, so the lines
+    // below can still name a character that no longer exists.
+    let owned: Option<(String, Option<String>)> = sqlx::query_as(
+        "SELECT p.player_name, a.account_name FROM sgw_player p          LEFT JOIN account a ON a.account_id = p.account_id          WHERE p.player_id = $1 AND p.account_id = $2 FOR UPDATE OF p",
     )
     .bind(player_id)
     .bind(account_id)
     .fetch_optional(&mut *tx)
     .await?;
-    if owned.is_none() {
+    let Some((player_name, account_name)) = owned else {
         tx.rollback().await?;
         tracing::debug!(
             target: "org",
             event = "delete_character",
-            player_id,
-            account_id,
+            player_id, // nt:id-only no owned character matched, so no name was read
+            account_id, // nt:id-only no owned character matched, so no name was read
             rows_affected = 0u64,
             "Character delete matched no owned character"
         );
@@ -67,7 +69,7 @@ pub async fn delete_character(
             deleted: false,
             org_events: Vec::new(),
         });
-    }
+    };
     let deleted = sqlx::query("DELETE FROM sgw_player WHERE player_id = $1 AND account_id = $2")
         .bind(player_id)
         .bind(account_id)
@@ -84,7 +86,9 @@ pub async fn delete_character(
                 event = "org_events_export",
                 reason = "db_error",
                 player_id,
+                player_name = player_name.as_str(),
                 account_id,
+                account_name = account_name.as_deref(),
                 error = %e,
                 "Character deleted, but its organization events were not exported; the startup sweep will log them"
             );
@@ -95,7 +99,9 @@ pub async fn delete_character(
         target: "org",
         event = "delete_character",
         player_id,
+        player_name = player_name.as_str(),
         account_id,
+        account_name = account_name.as_deref(),
         rows_affected = deleted.rows_affected(),
         org_events = org_events.len(),
         "Character deleted"

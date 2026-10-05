@@ -31,6 +31,11 @@
 //! so a gate travel or a character switch between the lookup and the send
 //! cannot deliver to the wrong entity.
 
+use std::collections::HashMap;
+use std::net::SocketAddr;
+use std::sync::Mutex;
+
+use cimmeria_entity::cell_entity::PlayerIdentity;
 use sqlx::PgPool;
 
 use super::headers::read_one;
@@ -39,6 +44,8 @@ use crate::base::feedback::{
     CHAN_FEEDBACK, FEEDBACK_SPEAKER,
 };
 use crate::base::player_index::OnlinePlayerIndex;
+use crate::base::session_identity::session_identity;
+use crate::base::ConnectedClientState;
 use crate::cell::mail;
 use crate::mercury::method_idx;
 
@@ -121,13 +128,20 @@ pub(super) async fn notify_delivered(
         };
         OnlinePlayerIndex::new(&clients)
             .find_player(recipient)
-            .map(|p| (p.addr, clients.get(&p.addr).map(|c| c.account_id)))
+            .map(|p| (p.addr, clients.get(&p.addr).map(session_identity)))
     };
-    let Some((addr, account_id)) = online else {
-        skipped(recipient, None, mail_id, delivery, "offline");
+    let Some((addr, who)) = online else {
+        skipped(
+            recipient,
+            PlayerIdentity::UNKNOWN,
+            mail_id,
+            delivery,
+            "offline",
+        );
         return NotifyOutcome::Offline;
     };
 
+    let who = who.unwrap_or(PlayerIdentity::UNKNOWN);
     let (headers, attachments) = match read_one(pool, recipient, mail_id).await {
         Ok(read) => read,
         Err(e) => {
@@ -135,8 +149,10 @@ pub(super) async fn notify_delivered(
                 target: "mail",
                 event = "mail.notify_failed",
                 player_id = recipient,
-                account_id,
-                mail_id,
+                player_name = who.player_name,
+                account_id = who.account_id,
+                account_name = who.account_name,
+                mail_id, // nt:id-only mail row, its subject is player text kept out of logs
                 delivery = delivery.name(),
                 reason = "db_error",
                 error = %e,
@@ -146,7 +162,7 @@ pub(super) async fn notify_delivered(
         }
     };
     let Some(header) = headers.first() else {
-        skipped(recipient, account_id, mail_id, delivery, "mail_gone");
+        skipped(recipient, who, mail_id, delivery, "mail_gone");
         return NotifyOutcome::MailGone;
     };
 
@@ -161,7 +177,7 @@ pub(super) async fn notify_delivered(
     )
     .await;
     if line_outcome != FeedbackOutcome::Sent {
-        skipped(recipient, account_id, mail_id, delivery, "not_in_world");
+        skipped(recipient, who, mail_id, delivery, "not_in_world");
         return NotifyOutcome::NotSent;
     }
     // One row, `ResetCategory` 0: an upsert that leaves the rest of the
@@ -173,10 +189,14 @@ pub(super) async fn notify_delivered(
         target: "mail",
         event = "mail.notified",
         player_id = recipient,
-        account_id,
+        player_name = who.player_name,
+        account_id = who.account_id,
+        account_name = who.account_name,
         entity_id,
-        mail_id,
+        entity_name = who.player_name,
+        mail_id, // nt:id-only mail row, its subject is player text kept out of logs
         source_player_id = header.from_id,
+        source_player_name = (header.from_id != 0).then_some(header.from_text.as_str()),
         delivery = delivery.name(),
         header_pushed = header_outcome == FeedbackOutcome::Sent,
         "online recipient told of new gate-mail",
@@ -184,9 +204,27 @@ pub(super) async fn notify_delivered(
     NotifyOutcome::Notified
 }
 
+/// The session identity of `player_id` if they are online, else
+/// [`PlayerIdentity::UNKNOWN`]. For log lines about a player who may be
+/// offline (the expiry sweep): no query, so an offline player's name is
+/// absent rather than looked up.
+pub(super) fn online_identity(
+    connected: &Mutex<HashMap<SocketAddr, ConnectedClientState>>,
+    player_id: i32,
+) -> PlayerIdentity {
+    let clients = match connected.lock() {
+        Ok(g) => g,
+        Err(p) => p.into_inner(),
+    };
+    OnlinePlayerIndex::new(&clients)
+        .find_player(player_id)
+        .and_then(|p| clients.get(&p.addr))
+        .map_or(PlayerIdentity::UNKNOWN, session_identity)
+}
+
 fn skipped(
     recipient: i32,
-    account_id: Option<u32>,
+    who: PlayerIdentity,
     mail_id: i32,
     delivery: Delivery,
     reason: &'static str,
@@ -195,8 +233,10 @@ fn skipped(
         target: "mail",
         event = "mail.notify_skipped",
         player_id = recipient,
-        account_id,
-        mail_id,
+        player_name = who.player_name,
+        account_id = who.account_id,
+        account_name = who.account_name,
+        mail_id, // nt:id-only mail row, its subject is player text kept out of logs
         delivery = delivery.name(),
         reason,
         "new-mail notification not sent",

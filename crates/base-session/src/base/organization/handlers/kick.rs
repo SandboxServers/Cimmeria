@@ -24,6 +24,7 @@ use sqlx::{Postgres, Transaction};
 use super::answer::{db_failed, refusal_text, refuse};
 use super::broadcast::broadcast_to_org;
 use super::fanout::{feedback, membership_ended, send_to_player};
+use super::log_names::{identity_of_player, label};
 use super::targets::{member_by_name, online_now, MemberTarget};
 use super::telemetry::{ActionRow, OrgReject};
 use super::{OrgCtx, OrgPlayer};
@@ -63,19 +64,22 @@ pub async fn handle_kick(
         org_id: Some(org_id),
         ..ActionRow::default()
     };
+    row.name_actor(ctx);
     let Some(pool) = ctx.db_pool.as_deref() else {
         let text = refusal_text(OrgReject::NoDb, KICK_SELF_TEXT, None);
         return refuse(ctx, &row, player.entity_id, OrgReject::NoDb, &text).await;
     };
     let decided = match pool.begin().await {
-        Ok(mut tx) => match kick_locked(&mut tx, player, org_id, target_name, &mut row).await {
-            Ok(k) => match tx.commit().await {
-                Ok(()) => Ok(k),
-                Err(e) => Err(db_failed(&row, &e)),
-            },
-            // Dropping `tx` rolls back.
-            Err(why) => Err(why),
-        },
+        Ok(mut tx) => {
+            match kick_locked(ctx, &mut tx, player, org_id, target_name, &mut row).await {
+                Ok(k) => match tx.commit().await {
+                    Ok(()) => Ok(k),
+                    Err(e) => Err(db_failed(&row, &e)),
+                },
+                // Dropping `tx` rolls back.
+                Err(why) => Err(why),
+            }
+        }
         Err(e) => Err(db_failed(&row, &e)),
     };
     let k = match decided {
@@ -91,10 +95,15 @@ pub async fn handle_kick(
         event = "member_left",
         reason = "kicked",
         account_id = player.account_id,
+        account_name = row.account_name,
         player_id = player.player_id,
+        player_name = row.player_name,
         target_account_id = row.target_account_id,
+        target_account_name = row.target_account_name,
         target_player_id = k.target.player_id,
+        target_player_name = row.target_player_name,
         org_id,
+        org_name = k.org_name.as_str(),
         from_rank = k.target.rank.as_u8(),
         "organization member kicked"
     );
@@ -103,6 +112,7 @@ pub async fn handle_kick(
             target: "org",
             event = "org_events_export",
             org_id,
+            org_name = k.org_name.as_str(),
             reason = "db_error",
             error = %e,
             "organization audit rows not exported; the startup sweep will"
@@ -116,14 +126,19 @@ pub async fn handle_kick(
         let left = build_on_organization_left(OrgLeaveReason::Kicked, org_id);
         if let Err(reason) = send_to_player(ctx, m.entity_id, &[(ON_ORGANIZATION_LEFT, left)]).await
         {
+            let who = identity_of_player(ctx, m.player_id);
             tracing::warn!(
                 target: "org",
                 event = "org.send_failed",
                 what = "organization_left_kicked",
                 org_id,
+                org_name = k.org_name.as_str(),
                 target_account_id = m.account_id,
+                target_account_name = who.account_name,
                 target_player_id = m.player_id,
+                target_player_name = who.player_name,
                 entity_id = m.entity_id,
+                entity_name = who.player_name,
                 reason,
                 "onOrganizationLeft could not be sent to the kicked member"
             );
@@ -134,7 +149,7 @@ pub async fn handle_kick(
             &format!("You were removed from {}.", k.org_name),
         )
         .await;
-        membership_ended(ctx, m, org_id, OrgLeaveReason::Kicked).await;
+        membership_ended(ctx, m, org_id, Some(&k.org_name), OrgLeaveReason::Kicked).await;
     }
     let member_id = kicked_online.map_or(0, |m| m.entity_id as i32);
     let args = build_on_member_left_organization(
@@ -157,6 +172,7 @@ pub async fn handle_kick(
 /// The locked part: authorize, find the target and remove them, inside
 /// `tx`.
 async fn kick_locked(
+    ctx: &OrgCtx<'_>,
     tx: &mut Transaction<'_, Postgres>,
     player: &OrgPlayer,
     org_id: i32,
@@ -169,6 +185,7 @@ async fn kick_locked(
         .map_err(|e| db(row, &e))?
         .ok_or(OrgReject::NotMember)?;
     row.org_type = Some(header.org_type.name());
+    row.org_name = label(&header.name);
     let access = member_access_locked(tx, org_id, player.player_id)
         .await
         .map_err(|e| db(row, &e))?
@@ -182,6 +199,8 @@ async fn kick_locked(
         .map_err(|e| db(row, &e))??;
     row.target_player_id = Some(target.player_id);
     row.target_account_id = u32::try_from(target.account_id).ok();
+    row.target_player_name = label(&target.name);
+    row.name_target(ctx);
     row.target_rank = Some(target.rank.as_u8());
     if target.player_id == player.player_id {
         return Err(OrgReject::SelfTarget);

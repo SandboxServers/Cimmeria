@@ -76,9 +76,14 @@ pub async fn fan_out_cone_effects(
 
     if union_for_death_snapshot.is_empty() {
         tracing::debug!(
+            target: "abilities",
+            event = "cone_aoe_no_secondaries",
             entity_id,
+            entity_name = space_mgr.entity_label(entity_id),
             primary_target_id,
+            primary_target_name = space_mgr.entity_label(primary_target_id),
             ability_id,
+            ability_name = cimmeria_names::book().ability(ability_id),
             cone_count = cone_effect_ids.len(),
             "cone_aoe: no secondaries in any cone spec — primary-only damage"
         );
@@ -86,9 +91,14 @@ pub async fn fan_out_cone_effects(
     }
 
     tracing::info!(
+        target: "abilities",
+        event = "cone_aoe_fan_out",
         entity_id,
+        entity_name = space_mgr.entity_label(entity_id),
         primary_target_id,
+        primary_target_name = space_mgr.entity_label(primary_target_id),
         ability_id,
+        ability_name = cimmeria_names::book().ability(ability_id),
         cone_count = cone_effect_ids.len(),
         unique_secondary_count = union_for_death_snapshot.len(),
         "cone_aoe: fanning out to cone secondaries (per-effect)"

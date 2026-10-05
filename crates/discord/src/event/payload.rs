@@ -6,7 +6,7 @@ use std::net::SocketAddr;
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 
-use super::EventKind;
+use super::{EventKind, Named};
 
 // ── Severity: drives embed color ────────────────────────────────────────
 
@@ -57,29 +57,32 @@ pub enum Event {
     //
     // `addr` is carried for correlation but is NOT rendered in the embed —
     // player IPs are deliberately kept out of Discord (see `embed::format`).
+    //
+    // `account` is the login name and `account_id` (D-NT2). `character` is
+    // the character name and its `player_id`; it is `None` before a
+    // character is picked.
     PlayerLogin {
-        account_id: u32,
-        account_name: Option<String>,
-        character_name: Option<String>,
+        account: Named,
+        character: Option<Named>,
         addr: SocketAddr,
         timestamp: DateTime<Utc>,
     },
     PlayerLogout {
-        account_id: u32,
-        account_name: Option<String>,
-        character_name: Option<String>,
+        account: Named,
+        character: Option<Named>,
         session_secs: u64,
         timestamp: DateTime<Utc>,
     },
     PlayerDisconnect {
-        account_id: Option<u32>,
-        account_name: Option<String>,
-        character_name: Option<String>,
+        account: Named,
+        character: Option<Named>,
         addr: SocketAddr,
         reason: DisconnectReason,
         session_secs: u64,
         timestamp: DateTime<Utc>,
     },
+    /// The only account field without an ID: a rejected login names an
+    /// account that may not exist, and the auth path does not say which.
     PlayerAuthFailed {
         account_name: String,
         addr: SocketAddr,
@@ -88,20 +91,20 @@ pub enum Event {
     },
 
     // ─── World ──────────────────────────────────────────────────────────
+    //
+    // A world is `resources.worlds`: `world_id` and the world's name.
     PlayerWorldEntry {
-        account_id: u32,
-        account_name: Option<String>,
-        character_name: String,
-        world_name: String,
+        account: Named,
+        character: Named,
+        world: Named,
         position: [f32; 3],
         timestamp: DateTime<Utc>,
     },
     PlayerWorldExit {
-        account_id: u32,
-        account_name: Option<String>,
-        character_name: String,
-        from_world: String,
-        to_world: Option<String>,
+        account: Named,
+        character: Named,
+        from_world: Named,
+        to_world: Option<Named>,
         timestamp: DateTime<Utc>,
     },
 
@@ -112,130 +115,144 @@ pub enum Event {
     /// of how the channel is toggled.
     Chat {
         kind: ChatKind,
-        speaker: String,
-        recipient: Option<String>,
+        speaker: Named,
+        recipient: Option<Named>,
         content: String,
         timestamp: DateTime<Utc>,
     },
 
     // ─── Gameplay ───────────────────────────────────────────────────────
+    //
+    // `character` is the character name and its `player_id`.
     PlayerLevelUp {
-        character_name: String,
+        character: Named,
         new_level: u32,
         timestamp: DateTime<Utc>,
     },
+    /// `killer` is a character (`player_id`) for a PvP death and an NPC
+    /// (`entity_id`) otherwise.
     PlayerDeath {
-        character_name: String,
-        killer: Option<String>,
+        character: Named,
+        killer: Option<Named>,
         cause: String,
+        world: Option<Named>,
         timestamp: DateTime<Utc>,
     },
     PlayerRespawn {
-        character_name: String,
-        world_name: String,
+        character: Named,
+        world: Named,
         timestamp: DateTime<Utc>,
     },
     MissionAccepted {
-        character_name: String,
-        mission_id: i32,
-        mission_name: Option<String>,
+        character: Named,
+        mission: Named,
         timestamp: DateTime<Utc>,
     },
     MissionCompleted {
-        character_name: String,
-        mission_id: i32,
-        mission_name: Option<String>,
+        character: Named,
+        mission: Named,
         timestamp: DateTime<Utc>,
     },
     MissionFailed {
-        character_name: String,
-        mission_id: i32,
-        mission_name: Option<String>,
+        character: Named,
+        mission: Named,
         reason: String,
         timestamp: DateTime<Utc>,
     },
     MissionRewardGranted {
-        character_name: String,
-        mission_id: i32,
+        character: Named,
+        mission: Named,
         xp: u64,
         cash: i64,
-        items: Vec<i32>,
+        /// Item types (`item_id` in the seed) and their names.
+        items: Vec<Named>,
         timestamp: DateTime<Utc>,
     },
     LootGenerated {
-        character_name: String,
+        character: Named,
         source: String,
-        items: Vec<i32>,
+        /// Item types (`item_id` in the seed) and their names.
+        items: Vec<Named>,
         timestamp: DateTime<Utc>,
     },
+    /// `item` is the item type (`item_id` in the seed), not the instance.
     ItemUsed {
-        character_name: String,
-        item_type_id: i32,
-        target: Option<String>,
+        character: Named,
+        item: Named,
+        target: Option<Named>,
         timestamp: DateTime<Utc>,
     },
-    /// A new character was created on an account.
+    /// A new character was created on an account. `archetype` is the
+    /// `EArchetype` ordinal and its name.
     CharacterCreated {
-        account_id: u32,
-        account_name: Option<String>,
-        character_name: String,
-        archetype: i32,
-        world_name: String,
+        account: Named,
+        character: Named,
+        archetype: Named,
+        world: Named,
         timestamp: DateTime<Utc>,
     },
     /// An NPC / mob died. The player-side counterpart is [`Self::PlayerDeath`].
     NpcDeath {
-        npc_name: String,
-        killer: Option<String>,
+        /// The NPC's cell `entity_id` and display name.
+        npc: Named,
+        /// `template_id` and the template's designer name.
+        template: Option<Named>,
+        /// A character (`player_id`) or another NPC (`entity_id`).
+        killer: Option<Named>,
         /// `"pvp"` is impossible here; `cause` is `"player"` (killed by a
         /// player) or `"npc"` (killed by another NPC / environment).
         cause: String,
-        world_name: Option<String>,
+        world: Option<Named>,
         timestamp: DateTime<Utc>,
     },
-    /// A minigame finished and reported a result upstream. `character_name`
-    /// is best-effort — the minigame server only holds the entity id, so it
-    /// falls back to `entity:<id>` when the name can't be resolved.
+    /// A minigame finished and reported a result upstream. `game` is the
+    /// minigame's name, which is also its ID: the minigame catalogue is
+    /// keyed by name, not number. `victory_chains` are the content chains
+    /// a win fires, i.e. what the game was played for; chains carry no
+    /// name, so they render as `#id`.
     MinigameResult {
         game: String,
-        character_name: String,
+        character: Named,
         success: bool,
+        victory_chains: Vec<Named>,
         timestamp: DateTime<Utc>,
     },
     /// A player interacted with an NPC dialog (opened it or picked an option).
     Dialog {
-        character_name: String,
-        dialog_id: i32,
-        /// `None` = the dialog was opened; `Some(button)` = an option chosen.
-        choice: Option<i32>,
+        character: Named,
+        dialog: Named,
+        /// `None` = the dialog was opened; `Some(button)` = an option
+        /// chosen: the cooked `ButtonID` and the button's text when known.
+        choice: Option<Named>,
         timestamp: DateTime<Utc>,
     },
 
     // ─── GM ─────────────────────────────────────────────────────────────
     GmCommand {
-        gm_name: String,
+        gm: Named,
         command: String,
         args: String,
+        /// The entity the command acted on, when it has one.
+        target: Option<Named>,
         timestamp: DateTime<Utc>,
     },
     GmTeleport {
-        gm_name: String,
-        target: String,
-        world_name: String,
+        gm: Named,
+        target: Named,
+        world: Named,
         position: [f32; 3],
         timestamp: DateTime<Utc>,
     },
     GmSpawn {
-        gm_name: String,
-        template_id: i32,
-        template_name: Option<String>,
+        gm: Named,
+        template: Named,
         position: [f32; 3],
         timestamp: DateTime<Utc>,
     },
     GmItemGrant {
-        gm_name: String,
-        recipient: String,
-        item_type_id: i32,
+        gm: Named,
+        recipient: Named,
+        item: Named,
         quantity: i32,
         timestamp: DateTime<Utc>,
     },
@@ -269,7 +286,9 @@ pub enum Event {
     },
     MercuryTimeout {
         addr: SocketAddr,
-        account_id: Option<u32>,
+        account: Named,
+        /// `None` while the session is still at character select.
+        character: Option<Named>,
         silence_secs: u64,
         timestamp: DateTime<Utc>,
     },
@@ -298,7 +317,7 @@ pub enum Event {
         timestamp: DateTime<Utc>,
     },
     AoiBurstWarning {
-        witness_id: u32,
+        witness: Named,
         burst_size: u32,
         threshold: u32,
         timestamp: DateTime<Utc>,

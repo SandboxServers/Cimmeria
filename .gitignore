@@ -133,6 +133,8 @@ config/*.local
 *.local.config
 .env
 .env.*
+# Templates with no values (docker/.env.example, docker/signoz/.env.example).
+!.env.example
 
 # =============================================================================
 # Server Runtime (PostgreSQL data, logs)

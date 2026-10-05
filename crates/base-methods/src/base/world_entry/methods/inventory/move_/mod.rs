@@ -11,6 +11,7 @@
 //! - [`org`]: moves into, out of and within the Team and Command vaults
 //!   (BV-07), routed away before any lock.
 
+use cimmeria_entity::known_names;
 use std::collections::HashMap;
 use std::net::SocketAddr;
 use std::sync::{Arc, Mutex};
@@ -147,7 +148,12 @@ pub async fn handle_move_inventory_item_with_vault(
     let pool = match db_pool {
         Some(p) => p,
         None => {
-            tracing::debug!(player_id, item_id, "MoveInventoryItem: no DB pool");
+            tracing::debug!(
+                player_id,
+                player_name = known_names::player_name(player_id),
+                item_id, // nt:id-only instance id, type unread yet
+                "MoveInventoryItem: no DB pool"
+            );
             return;
         }
     };
@@ -271,9 +277,11 @@ async fn move_item(req: MoveRequest, vault: &VaultAccess, ctx: &MoveCtx<'_>) {
     if target_container_id <= 0 || target_slot_id < min_slot || over_ceiling {
         tracing::warn!(
             player_id,
-            item_id,
+            player_name = known_names::player_name(player_id),
+            item_id, // nt:id-only instance id, type unread yet
             target_container_id,
-            target_slot_id,
+            target_container_name = cimmeria_names::book().container(target_container_id),
+            target_slot_id, // nt:id-only slot index, unnamed
             quantity,
             min_slot,
             max_slots,
@@ -285,7 +293,12 @@ async fn move_item(req: MoveRequest, vault: &VaultAccess, ctx: &MoveCtx<'_>) {
     let mut tx = match ctx.pool.begin().await {
         Ok(tx) => tx,
         Err(e) => {
-            tracing::error!(player_id, item_id, "MoveInventoryItem: begin failed: {e}");
+            tracing::error!(
+                player_id,
+                player_name = known_names::player_name(player_id),
+                item_id, // nt:id-only instance id, type unread yet
+                "MoveInventoryItem: begin failed: {e}"
+            );
             return;
         }
     };
@@ -310,8 +323,10 @@ async fn move_item(req: MoveRequest, vault: &VaultAccess, ctx: &MoveCtx<'_>) {
         let _ = tx.rollback().await;
         tracing::error!(
             player_id,
-            item_id,
+            player_name = known_names::player_name(player_id),
+            item_id, // nt:id-only instance id, type unread yet
             target_container_id,
+            target_container_name = cimmeria_names::book().container(target_container_id),
             "MoveInventoryItem: advisory lock failed: {e}"
         );
         return;
@@ -334,8 +349,10 @@ async fn move_item(req: MoveRequest, vault: &VaultAccess, ctx: &MoveCtx<'_>) {
         let _ = tx.rollback().await;
         tracing::error!(
             player_id,
-            item_id,
+            player_name = known_names::player_name(player_id),
+            item_id, // nt:id-only instance id, type unread yet
             target_container_id,
+            target_container_name = cimmeria_names::book().container(target_container_id),
             "MoveInventoryItem: target container lock failed: {e}"
         );
         return;
@@ -357,7 +374,8 @@ async fn move_item(req: MoveRequest, vault: &VaultAccess, ctx: &MoveCtx<'_>) {
             let _ = tx.rollback().await;
             tracing::warn!(
                 player_id,
-                item_id,
+                player_name = known_names::player_name(player_id),
+                item_id, // nt:id-only instance id, type unread yet
                 "MoveInventoryItem: source item not found"
             );
             // With a Team or Command vault open, an unknown item is most
@@ -371,7 +389,8 @@ async fn move_item(req: MoveRequest, vault: &VaultAccess, ctx: &MoveCtx<'_>) {
             let _ = tx.rollback().await;
             tracing::error!(
                 player_id,
-                item_id,
+                player_name = known_names::player_name(player_id),
+                item_id, // nt:id-only instance id, type unread yet
                 "MoveInventoryItem: source query failed: {e}"
             );
             return;
@@ -428,7 +447,9 @@ async fn locked_move(
         let _ = tx.rollback().await;
         tracing::warn!(
             player_id,
+            player_name = known_names::player_name(player_id),
             item_id,
+            item_name = cimmeria_names::book().item(source.type_id),
             quantity,
             stack_size = source.stack_size,
             "MoveInventoryItem: requested quantity exceeds stack — rejecting"
@@ -455,8 +476,11 @@ async fn locked_move(
             let _ = tx.rollback().await;
             tracing::error!(
                 player_id,
+                player_name = known_names::player_name(player_id),
                 item_id,
+                item_name = cimmeria_names::book().item(source.type_id),
                 source_container_id = source.container_id,
+                source_container_name = cimmeria_names::book().container(source.container_id),
                 "MoveInventoryItem: source container lock failed: {e}"
             );
             return;
@@ -470,6 +494,8 @@ async fn locked_move(
 mod allowlist_tests;
 #[cfg(test)]
 mod concurrency_tests;
+#[cfg(test)]
+mod named_log_tests;
 #[cfg(test)]
 mod refusal_infra_tests;
 #[cfg(test)]

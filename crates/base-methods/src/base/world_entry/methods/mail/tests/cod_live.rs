@@ -106,9 +106,11 @@ async fn live_db_pay_cod_twice_debits_once() {
         ("naquadah_after", "700"),
         ("target_player_id", &sender.to_string()),
         ("payment_mail_id", &payments[0].0.to_string()),
+        ("target_player_name", "SsmThreeCodSTwice"),
     ] {
         assert!(paid.has_field(k, v), "{k}={v}: {paid:?}");
     }
+    assert_actor_names(&paid, "SsmThreeCodPTwice");
 
     c.op(MailOp::PayCod { mail_id }, Some(&pool), now).await;
     assert_eq!(

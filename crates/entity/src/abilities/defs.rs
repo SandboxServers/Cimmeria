@@ -48,6 +48,92 @@ pub const TARGET_SELF: i32 = 1;
 pub const TARGET_TARGET: i32 = 2;
 pub const TARGET_GROUND: i32 = 3;
 
+/// The client's `ETargetType` token for an ability's `target_type_id`, for
+/// the `target_type_name` log field (Rule 6). `None` for an undeclared ID.
+pub const fn target_type_name(target_type_id: i32) -> Option<&'static str> {
+    Some(match target_type_id {
+        TARGET_NONE => "TargetNONE",
+        TARGET_SELF => "TargetSelf",
+        TARGET_TARGET => "TargetTarget",
+        TARGET_GROUND => "TargetGround",
+        _ => return None,
+    })
+}
+
+/// The client's `ESequenceEventType` token for a sequence event ID
+/// (`Item_Unequip`, `Effect_Init`, ...), for the `event_name` log field next
+/// to `event_id` (Rule 6). `None` for an undeclared ID.
+pub const fn sequence_event_name(event_id: i32) -> Option<&'static str> {
+    Some(match event_id {
+        1000 => "Ability_Begin",
+        1001 => "Ability_End",
+        1002 => "Ability_Interrupt",
+        1003 => "Ability_Failed",
+        1004 => "Ability_ChannelBegin",
+        1006 => "Ability_ChannelFail",
+        1007 => "Ability_ChannelEnd",
+        2000 => "Effect_Init",
+        2001 => "Effect_Removed",
+        2002 => "Effect_Hit_Normal",
+        2003 => "Effect_Hit_Crit",
+        2004 => "Effect_Hit_Double_Crit",
+        2005 => "Effect_Hit_Glancing",
+        2006 => "Effect_Hit_Miss",
+        2007 => "Effect_Pulse_Begin",
+        2008 => "Effect_Pulse_End",
+        4000 => "Item_Equip",
+        4001 => "Item_Unequip",
+        4002 => "Item_Reload",
+        4003 => "Item_Use",
+        5000 => "Entity_Spawn",
+        5001 => "Entity_Death",
+        5002 => "Entity_Despawn",
+        5003 => "Entity_Alert",
+        5005 => "Entity_CombatStateChanged",
+        5006 => "Entity_HealthMonitor",
+        5007 => "Entity_Mission_NewMission",
+        5008 => "Entity_Mission_StepAdvance",
+        5009 => "Entity_Mission_Completion",
+        5010 => "Entity_Mission_ObjectiveUnlocked",
+        5011 => "Entity_Mission_MissionComplete",
+        5012 => "Entity_Enemy_Aggro",
+        5013 => "Entity_Enemy_Leash",
+        5014 => "Entity_Enemy_Death",
+        5015 => "Entity_Player_Level",
+        5016 => "Entity_FocusMonitor",
+        5017 => "Entity_Ally_Join",
+        5018 => "Entity_Ally_Leave",
+        5100 => "Entity_Defensive_Enter",
+        5101 => "Entity_Defensive_Exit",
+        5102 => "Entity_Conservative_Enter",
+        5103 => "Entity_Conservative_Exit",
+        5104 => "Entity_Aggressive_Enter",
+        5105 => "Entity_Aggressive_Exit",
+        6000 => "Designer_1",
+        6001 => "Designer_2",
+        6002 => "Designer_3",
+        6003 => "Designer_4",
+        6004 => "Designer_5",
+        6100 => "Stargate_MakeGate",
+        6101 => "Stargate_MakeGateFull",
+        6102 => "Stargate_MakeGateNow",
+        6103 => "Stargate_DestroyGate",
+        6104 => "Stargate_DestroyGateNow",
+        6105 => "Stargate_DialFailure",
+        6106 => "Stargate_DHD1",
+        6107 => "Stargate_DHD2",
+        6108 => "Stargate_DHD3",
+        6109 => "Stargate_DHD4",
+        6110 => "Stargate_DHD5",
+        6111 => "Stargate_DHD6",
+        6112 => "Stargate_DHD7",
+        6113 => "Stargate_CrossGate",
+        8000 => "Region_Teleport_Out",
+        8001 => "Region_Teleport_In",
+        _ => return None,
+    })
+}
+
 // ── Target collection methods (TCM) — per-effect dispatch shape ──────────
 //
 // Authored in the original game's data as string literals. We keep them as
@@ -65,18 +151,30 @@ pub const TCM_SINGLE: &str = "TCM_Single";
 pub const TCM_AE_RADIUS: &str = "TCM_AERadius";
 pub const TCM_AE_CONE: &str = "TCM_AECone";
 
-// ── Effect flags (subset of `resources.effects.flags` bitmask) ───────────
+// ── Effect flags (`resources.effects.flags`, client `EEffectFlag`) ──────
 //
-// Authored as a packed integer per-effect. The bits we honor today:
-pub const EF_INTERRUPT_CHANCE: u32 = 16; // category: interrupt roll
-pub const EF_STUN: u32 = 12; // category: stun on apply (target loses controls)
-pub const EF_DONT_USE_QR: u32 = 32; // category: bypass QR (always-hit)
-pub const EF_MENTAL_RESIST_ROLL: u32 = 64; // category: target rolls resist
-pub const EF_SUPPRESSION: u32 = 76; // category: movement slow + accuracy debuff
-pub const EF_EXTRA_DAMAGE: u32 = 512; // category: bonus damage on second pulse
-pub const EF_DOT: u32 = 516; // category: damage-over-time (pulses)
+// A packed bitmask per effect; the values are the client's
+// `entities/defs/enumerations.xml` `EEffectFlag` tokens. Only the bits the
+// server reads have a constant here. The old "category" constants
+// (`EF_STUN = 12`, `EF_DOT = 516`, ...) were not client bits and are gone
+// (ability-mechanics B-25); `cone_aoe/flag_categories.rs` names every bit
+// for the logs.
+/// `EF_DontUseQR` (`EEffectFlag` 16, already 16 in client build 0.58674):
+/// the effect never rolls QR and always lands as `RC_Hit` (D-AB07). Read by
+/// `damage_apply::qr_gate`. It was 32 (`EF_HasInductionBar`) and unread
+/// before AB-06 (B-24).
+pub const EF_DONT_USE_QR: u32 = 16;
+/// `EF_Beneficial_Effect` (`EEffectFlag` 1, a real client bit, the first
+/// token of `db/resources/Effects/Types/EEffectFlag.sql`): the effect helps
+/// whoever it lands on. [`super::ability_is_beneficial`] reads it
+/// (ability-mechanics D-AB02).
+pub const EF_BENEFICIAL_EFFECT: u32 = 1;
+/// `EF_ResolveOnAbilityUser` (`EEffectFlag` 131072, bit 17): the effect lands
+/// on the ability's user, not its target. A beneficial cast honours it in
+/// `use_ability/beneficial.rs` (AB-01); AB-07 owns it on every other path.
+pub const EF_RESOLVE_ON_ABILITY_USER: u32 = 131_072;
 /// `EF_AlwaysPersist` (`entities/defs/enumerations.xml` `EEffectFlag`, a
-/// real client bit, unlike the category values above): the effect of a
+/// real client bit): the effect of a
 /// passive ability, held for as long as the ability is known. The server
 /// applies such an effect when the ability is learned and removes it when
 /// the ability is unlearned (pets PT-08, 4968 "Pet Summon Speed increase").
@@ -147,6 +245,14 @@ pub struct AbilityDef {
     pub required_ammo: i32,
     pub event_set_id: Option<i32>,
     pub velocity: f32,
+    /// `resources.abilities.type_id`. Only `Heal` changes anything today: it
+    /// lets a heal script stand in for the beneficial bit
+    /// ([`super::ability_is_beneficial`]); it is never enough on its own.
+    pub type_id: super::AbilityType,
+    /// `resources.abilities.passive_yn`: known, never cast. Its
+    /// `EF_AlwaysPersist` effects run through `apply_passives`; a cast of it
+    /// is refused at launch (ability mechanics AB-08).
+    pub passive: bool,
 }
 
 /// A single effect within an ability (damage, heal, buff, etc).

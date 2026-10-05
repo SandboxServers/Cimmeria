@@ -94,6 +94,7 @@ pub(crate) fn arm_timeout(
         event = "hold_started",
         %addr,
         witness_id,
+        witness_name = crate::base::session_identity::identity_for_addr(&connected, addr).player_name,
         token = hold.token,
         hold_ms = HOLD_DURATION.as_millis() as u64,
         "Cinematic AoI hold: entity introductions buffered until the movie ends"
@@ -218,6 +219,7 @@ async fn release(
         event = "hold_released",
         %addr,
         witness_id,
+        witness_name = crate::base::session_identity::identity_for_addr(connected, addr).player_name,
         reason = reason.as_str(),
         flushed,
         held_ms = held_for.as_millis() as u64,

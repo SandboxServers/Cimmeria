@@ -78,6 +78,7 @@ fn rejected(
     actor: PlayerIdentity,
     entity_id: u32,
     npc_entity_id: u32,
+    npc_entity_name: Option<&str>,
     org_type: OrgType,
     reason: &'static str,
     distance: Option<f32>,
@@ -88,9 +89,13 @@ fn rejected(
         outcome = "rejected",
         reason,
         account_id = actor.account_id,
+        account_name = actor.account_name,
         player_id = actor.player_id,
+        player_name = actor.player_name,
         entity_id,
+        entity_name = actor.player_name,
         npc_entity_id,
+        npc_entity_name,
         org_type = org_type.name(),
         distance,
         max_distance = distance.map(|_| MAX_INTERACT_DISTANCE),
@@ -99,7 +104,12 @@ fn rejected(
     count_org_action("registrar_open", "rejected", reason);
 }
 
-async fn line(entity_id: u32, text: &str, tx: &mpsc::Sender<CellToBaseMsg>) {
+async fn line(
+    entity_id: u32,
+    entity_name: Option<&str>,
+    text: &str,
+    tx: &mpsc::Sender<CellToBaseMsg>,
+) {
     let msg = CellToBaseMsg::EntityMethodCall {
         entity_id,
         method_index: ON_PLAYER_COMMUNICATION,
@@ -111,6 +121,7 @@ async fn line(entity_id: u32, text: &str, tx: &mpsc::Sender<CellToBaseMsg>) {
             event = "org.feedback_send_failed",
             reason = "cell_to_base_closed",
             entity_id,
+            entity_name,
             "registrar feedback could not be queued"
         );
     }
@@ -148,11 +159,12 @@ pub(crate) async fn try_open_org_registrar(
             actor,
             entity_id,
             target_entity_id,
+            space_mgr.entity_label(target_entity_id),
             org_type,
             "too_far",
             distance,
         );
-        line(entity_id, REGISTRAR_TOO_FAR_TEXT, tx).await;
+        line(entity_id, actor.player_name, REGISTRAR_TOO_FAR_TEXT, tx).await;
         return true;
     }
     let Some(player_id) = actor.player_id else {
@@ -161,11 +173,12 @@ pub(crate) async fn try_open_org_registrar(
             actor,
             entity_id,
             target_entity_id,
+            space_mgr.entity_label(target_entity_id),
             org_type,
             "not_ready",
             None,
         );
-        line(entity_id, REGISTRAR_UNAVAILABLE_TEXT, tx).await;
+        line(entity_id, actor.player_name, REGISTRAR_UNAVAILABLE_TEXT, tx).await;
         return true;
     };
     let msg = CellToBaseMsg::Org(OrgCellToBase::RegistrarOpen {
@@ -180,28 +193,36 @@ pub(crate) async fn try_open_org_registrar(
             event = "org.registrar_forward_failed",
             reason = "cell_to_base_closed",
             account_id = actor.account_id,
+            account_name = actor.account_name,
             player_id,
+            player_name = actor.player_name,
             entity_id,
+            entity_name = actor.player_name,
             "registrar request could not reach the base"
         );
         rejected(
             actor,
             entity_id,
             target_entity_id,
+            space_mgr.entity_label(target_entity_id),
             org_type,
             "base_unreachable",
             None,
         );
-        line(entity_id, REGISTRAR_UNAVAILABLE_TEXT, tx).await;
+        line(entity_id, actor.player_name, REGISTRAR_UNAVAILABLE_TEXT, tx).await;
         return true;
     }
     tracing::debug!(
         target: "org",
         event = "org.registrar_forwarded",
         account_id = actor.account_id,
+        account_name = actor.account_name,
         player_id,
+        player_name = actor.player_name,
         entity_id,
+        entity_name = actor.player_name,
         npc_entity_id = target_entity_id,
+        npc_entity_name = space_mgr.entity_label(target_entity_id),
         org_type = org_type.name(),
         "registrar click forwarded to the base for the eligibility check"
     );
@@ -225,15 +246,17 @@ pub async fn reject_registrar_out_of_range(
         Err(InteractRangeFail::TooFar { dist }) => Some(dist),
         _ => None,
     };
+    let actor = space_mgr.player_identity(entity_id);
     rejected(
-        space_mgr.player_identity(entity_id),
+        actor,
         entity_id,
         target_entity_id,
+        space_mgr.entity_label(target_entity_id),
         org_type,
         "too_far",
         distance,
     );
-    line(entity_id, REGISTRAR_TOO_FAR_TEXT, tx).await;
+    line(entity_id, actor.player_name, REGISTRAR_TOO_FAR_TEXT, tx).await;
     true
 }
 

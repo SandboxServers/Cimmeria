@@ -215,6 +215,24 @@ fn permission_bits_match_enumerations_xml() {
     assert_eq!(union, OrgPermission::ALL.bits());
 }
 
+/// The log-name table spells every token as the client does (NT-31).
+#[test]
+fn permission_names_match_enumerations_xml() {
+    let xml = xml_enum("EOrganizationPermission");
+    let ours: BTreeMap<String, i64> = ORG_PERMISSIONS
+        .entries()
+        .iter()
+        .map(|&(m, n)| (n.to_owned(), m as i64))
+        .collect();
+    assert_eq!(ours, xml);
+    assert_eq!(
+        ORG_PERMISSIONS
+            .render((OrgPermission::INVITE | OrgPermission::MOTD).bits())
+            .to_string(),
+        "EORG_PERM_Invite|EORG_PERM_MOTD"
+    );
+}
+
 #[test]
 fn permission_wire_mask_drops_undefined_bits() {
     assert_eq!(OrgPermission::from_wire(-1), OrgPermission::ALL);

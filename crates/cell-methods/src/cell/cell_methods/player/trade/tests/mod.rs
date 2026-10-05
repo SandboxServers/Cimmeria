@@ -19,6 +19,7 @@ mod handlers;
 mod handlers_validation;
 mod handoff;
 mod lock_state;
+mod named_telemetry;
 
 /// Set up two players in the same space, separated by `dist` along the
 /// X axis. Both are flagged `is_player = true` and given player IDs so

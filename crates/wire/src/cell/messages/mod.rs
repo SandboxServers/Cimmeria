@@ -27,9 +27,15 @@
 //!   special-ammo reload draw and switch return (ammo campaign AM-02).
 //! - `item_use` — `ConsumeItemForUse` and `ItemUseConsumed`, the native
 //!   consumable round trip (the base consumes, then the cell applies).
+//! - `ability_gm` — `GmAbilityBulk` and `GmAbilitiesChanged`, the GM bulk
+//!   ability round trip (`gmGiveAllAbilities`, `gmResetAbilities`; AB-N2).
 //! - `plugin_msg` — `PluginMsg`, the feature-message envelope carried by
 //!   `CellToBaseMsg::Plugin` (#962, plugin ADR §3.4).
+//! - `entity_labels` — `EntityLabelsRequest`, sent on its own ingest-to-cell
+//!   channel (never the gameplay one): the telemetry ingest naming entity
+//!   IDs from late client rows (NT-40).
 
+mod ability_gm;
 mod ammo_gm_cell_to_base;
 mod ammo_reserve;
 mod bank_base_to_cell;
@@ -41,6 +47,7 @@ mod chat_cell_to_base;
 mod content_mail_cell_to_base;
 mod data;
 mod duel_base_to_cell;
+mod entity_labels;
 mod item_use;
 mod lab;
 mod loot_grant;
@@ -53,6 +60,7 @@ pub use crate::crafting::{
     CraftRequest, CraftVerb, CraftingStations, GmAllCraft, GmCraftGrant, GmCraftGrantKind,
     GmGrantAppliedSciencePoints, GmGrantExpertise, RespecCraftOpen, StationChangeCause, StationSet,
 };
+pub use ability_gm::{GmAbilitiesChanged, GmAbilityBulk, GmAbilityChange, GmAbilitySource};
 pub use ammo_gm_cell_to_base::GmGiveAmmo;
 pub use ammo_reserve::{AmmoReserveAnswer, AmmoReserveRequest, ReserveRefusal};
 pub use bank_base_to_cell::BankBaseToCell;
@@ -66,10 +74,14 @@ pub use data::{
     MailOp, MailSend, MailSendReject, NpcAoIData, NpcVitals, PlayerAoIData, SavedMission,
 };
 pub use duel_base_to_cell::DuelBaseToCell;
+pub use entity_labels::{
+    EntityLabelQuery, EntityLabelsReply, EntityLabelsRequest, ENTITY_LABEL_CHANNEL_CAPACITY,
+    ENTITY_LABEL_QUERY_CAP,
+};
 pub use item_use::{ConsumeItemForUse, ItemUseConsumed};
 pub use lab::{
-    LabEntityFilter, LabEntitySnapshot, LabQuery, LabQueryReply, LabQueryResult, LabRadius,
-    LabRadiusCenter, LabWitnessReport, LAB_ENTITY_QUERY_CAP,
+    LabEntityFilter, LabEntityNames, LabEntityRef, LabEntitySnapshot, LabQuery, LabQueryReply,
+    LabQueryResult, LabRadius, LabRadiusCenter, LabWitnessReport, LAB_ENTITY_QUERY_CAP,
 };
 pub use loot_grant::{GrantRefusal, LootGrantSource};
 pub use mail_gm_cell_to_base::{MailGmActor, MailGmCellToBase};

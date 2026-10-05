@@ -67,6 +67,7 @@ crates/resources/src/base/resources/mod.rs  (CategoryData / ResourceCache)
         |   crates/resources/src/base/item_overrides.rs        (category 4)
         |   crates/resources/src/base/dialog_overrides/        (category 5)
         |   crates/resources/src/base/world_info_overrides.rs  (category 12)
+        |   crates/resources/src/base/stargate_overrides.rs    (category 13)
         v
 crates/base-session/src/base/cooked_data.rs   (versionInfoRequest, elementDataRequest)
 crates/base-session/src/base/cooked_sync/     (decision; full-category resync, paced)

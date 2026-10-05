@@ -23,6 +23,7 @@ const _: () = assert!(
      TRADE_REQUEST ≤ TRADE_LOCK_STATE ≤ CANCEL_MOVIE"
 );
 
+/// [`dispatch_from_packet`] for a call that came from no client packet.
 pub async fn dispatch(
     entity_id: u32,
     method_index: u16,
@@ -31,9 +32,33 @@ pub async fn dispatch(
     space_mgr: &mut SpaceManager,
     engine: &ChainEngine,
 ) -> bool {
+    dispatch_from_packet(entity_id, method_index, args, tx, space_mgr, engine, None).await
+}
+
+/// Route a player cell method. `packet_seq` is the Mercury seq of the
+/// client packet that carried the call, `None` when it came from anywhere
+/// else. Only the combat receipt rows read it (AB-T2).
+pub async fn dispatch_from_packet(
+    entity_id: u32,
+    method_index: u16,
+    args: &[u8],
+    tx: &mpsc::Sender<CellToBaseMsg>,
+    space_mgr: &mut SpaceManager,
+    engine: &ChainEngine,
+    packet_seq: Option<u32>,
+) -> bool {
     match method_index {
         CALL_FOR_AID..=RESET_MY_ABILITIES => {
-            super::combat::dispatch(entity_id, method_index, args, tx, space_mgr, engine).await
+            super::combat::dispatch(
+                entity_id,
+                method_index,
+                args,
+                tx,
+                space_mgr,
+                engine,
+                packet_seq,
+            )
+            .await
         }
         WHO..=INITIAL_RESPONSE => {
             super::interaction::dispatch(entity_id, method_index, args, tx, space_mgr, engine).await

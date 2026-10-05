@@ -24,7 +24,8 @@
 --   9141 Disease: Suppression chip of 2 HEALTH on the hit and on each of 9
 --        pulses 2 s apart (20 HEALTH over 18 s): same total, slower.
 --   9142 Tranquilizer: MovementSlow, MOVEMENT_SPEED_MOD down 40 (to 60% speed)
---        for 3 pulses 2 s apart, restored at expiry 6 s after the hit.
+--        for 6 s after the hit: one timed-ledger entry (one pulse of 6 s since
+--        ability mechanics AB-09b; it was 4 pulses 2 s apart, the same 6 s).
 --
 -- The Poison and Disease effects each carry an EffectCategory nvp (Poison,
 -- Disease). AM-11c's Antidote dart matches on it to cleanse them, the way
@@ -39,7 +40,7 @@ SET search_path = resources, pg_catalog;
 
 INSERT INTO effects (effect_id, ability_id, delay, effect_desc, effect_sequence, flags, icon_location, pulse_count, pulse_duration, tcm_param1, tcm_param2, target_collection_method, use_ability_velocity, is_channeled, name, target_collection_id, event_set_id, script_name) VALUES (9140, 990, 0, 'Poison dart: 4 Health every 2 s, 5 times', 0, 0, 'set:CoreWidgets image:IconMissing', 5, 2, NULL, NULL, 'TCM_Single', false, false, 'Poison Dart Toxin', 0, NULL, 'Suppression');
 INSERT INTO effects (effect_id, ability_id, delay, effect_desc, effect_sequence, flags, icon_location, pulse_count, pulse_duration, tcm_param1, tcm_param2, target_collection_method, use_ability_velocity, is_channeled, name, target_collection_id, event_set_id, script_name) VALUES (9141, 991, 0, 'Disease dart: 2 Health every 2 s, 10 times', 0, 0, 'set:CoreWidgets image:IconMissing', 10, 2, NULL, NULL, 'TCM_Single', false, false, 'Disease Dart Infection', 0, NULL, 'Suppression');
-INSERT INTO effects (effect_id, ability_id, delay, effect_desc, effect_sequence, flags, icon_location, pulse_count, pulse_duration, tcm_param1, tcm_param2, target_collection_method, use_ability_velocity, is_channeled, name, target_collection_id, event_set_id, script_name) VALUES (9142, 998, 0, 'Tranquilizer dart: movement speed -40 for 6 s', 0, 0, 'set:CoreWidgets image:IconMissing', 4, 2, NULL, NULL, 'TCM_Single', false, false, 'Tranquilizer Dart Sedation', 0, NULL, 'MovementSlow');
+INSERT INTO effects (effect_id, ability_id, delay, effect_desc, effect_sequence, flags, icon_location, pulse_count, pulse_duration, tcm_param1, tcm_param2, target_collection_method, use_ability_velocity, is_channeled, name, target_collection_id, event_set_id, script_name) VALUES (9142, 998, 0, 'Tranquilizer dart: movement speed -40 for 6 s', 0, 0, 'set:CoreWidgets image:IconMissing', 1, 6, NULL, NULL, 'TCM_Single', false, false, 'Tranquilizer Dart Sedation', 0, NULL, 'MovementSlow');
 
 INSERT INTO effect_nvps (nvp_id, effect_id, name, value) VALUES (9140, 9140, 'HealthDamage', '4');
 INSERT INTO effect_nvps (nvp_id, effect_id, name, value) VALUES (9141, 9140, 'EffectCategory', 'Poison');

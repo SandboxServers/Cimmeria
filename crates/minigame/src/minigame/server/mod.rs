@@ -107,11 +107,20 @@ async fn handle_connection(
     // by ticket so a stale task can never unregister a *newer* session that
     // was registered for the same entity after this one was swept.
     let ticket = session.ticket.clone();
+    // For the closing row, which outlives the session `run_session` takes.
+    let player = session.discord_player();
 
     run_session(stream, &registry, &result_tx, session, game, buf, buf_len).await;
 
     registry.remove_if_ticket(entity_id, &ticket).await;
-    tracing::info!(entity_id, game = %game_name, "Minigame session ended");
+    tracing::info!(
+        entity_id,
+        entity_name = player.name(),
+        player_id = player.id,
+        player_name = player.name(),
+        game = %game_name,
+        "Minigame session ended"
+    );
 }
 
 /// Drive one authenticated session: room join, game loop, teardown.
@@ -140,6 +149,9 @@ async fn run_session(
     // Send login success sequence (matching C++ exactly)
     let game_name = session.game_name.clone();
     let on_victory_chains = session.on_victory_chains.clone();
+    // Who the Discord result names: the character's `player_id` and the
+    // name the base handed over at registration.
+    let player = session.discord_player();
 
     // Whether a `MinigameResult` was dispatched upstream. Declared out here
     // rather than beside the game loop because the teardown below is shared
@@ -238,7 +250,15 @@ async fn run_session(
             break 'session;
         }
 
-        tracing::info!(entity_id, game = %game_name, room_id, "Minigame started");
+        tracing::info!(
+            entity_id,
+            entity_name = player.name(),
+            player_id = player.id,
+            player_name = player.name(),
+            game = %game_name,
+            room_id, // nt:id-only a SmartFox room number allocated per session
+            "Minigame started"
+        );
 
         // Phase 3: Game loop with tick timer
         let tick_interval = if game.needs_tick() {
@@ -273,7 +293,14 @@ async fn run_session(
                                                 }
                                             }
                                             GameOutput::Victory => {
-                                                tracing::info!(entity_id, game = %game_name, "Minigame victory");
+                                                tracing::info!(
+                                                    entity_id,
+                                                    entity_name = player.name(),
+                                                    player_id = player.id,
+                                                    player_name = player.name(),
+                                                    game = %game_name,
+                                                    "Minigame victory",
+                                                );
                                                 game_complete = true;
                                                 result_reported = true;
                                                 // Fire victory chains
@@ -281,6 +308,7 @@ async fn run_session(
                                                     result_tx,
                                                     entity_id,
                                                     &game_name,
+                                                    &player,
                                                     RESULT_VICTORY,
                                                     on_victory_chains.clone(),
                                                     "victory_message",
@@ -288,13 +316,21 @@ async fn run_session(
                                                 .await;
                                             }
                                             GameOutput::Failure => {
-                                                tracing::info!(entity_id, game = %game_name, "Minigame failure");
+                                                tracing::info!(
+                                                    entity_id,
+                                                    entity_name = player.name(),
+                                                    player_id = player.id,
+                                                    player_name = player.name(),
+                                                    game = %game_name,
+                                                    "Minigame failure",
+                                                );
                                                 game_complete = true;
                                                 result_reported = true;
                                                 send_minigame_result(
                                                     result_tx,
                                                     entity_id,
                                                     &game_name,
+                                                    &player,
                                                     RESULT_DEFEAT,
                                                     vec![],
                                                     "failure_message",
@@ -305,13 +341,21 @@ async fn run_session(
                                     }
                                 }
                                 _ => {
-                                    tracing::warn!(entity_id, "Unexpected message type during game");
+                                    tracing::warn!(
+                                        entity_id,
+                                        entity_name = player.name(),
+                                        "Unexpected message type during game",
+                                    );
                                 }
                             }
                         }
                         None => {
                             // Connection closed
-                            tracing::debug!(entity_id, "Minigame connection closed");
+                            tracing::debug!(
+                                entity_id,
+                                entity_name = player.name(),
+                                "Minigame connection closed",
+                            );
                             game_complete = true;
                         }
                     }
@@ -337,13 +381,21 @@ async fn run_session(
                                 }
                             }
                             GameOutput::Victory => {
-                                tracing::info!(entity_id, game = %game_name, "Minigame victory (tick)");
+                                tracing::info!(
+                                    entity_id,
+                                    entity_name = player.name(),
+                                    player_id = player.id,
+                                    player_name = player.name(),
+                                    game = %game_name,
+                                    "Minigame victory (tick)",
+                                );
                                 game_complete = true;
                                 result_reported = true;
                                 send_minigame_result(
                                     result_tx,
                                     entity_id,
                                     &game_name,
+                                    &player,
                                     RESULT_VICTORY,
                                     on_victory_chains.clone(),
                                     "victory_tick",
@@ -351,13 +403,21 @@ async fn run_session(
                                 .await;
                             }
                             GameOutput::Failure => {
-                                tracing::info!(entity_id, game = %game_name, "Minigame timeout");
+                                tracing::info!(
+                                    entity_id,
+                                    entity_name = player.name(),
+                                    player_id = player.id,
+                                    player_name = player.name(),
+                                    game = %game_name,
+                                    "Minigame timeout",
+                                );
                                 game_complete = true;
                                 result_reported = true;
                                 send_minigame_result(
                                     result_tx,
                                     entity_id,
                                     &game_name,
+                                    &player,
                                     RESULT_DEFEAT,
                                     vec![],
                                     "failure_tick",
@@ -393,8 +453,11 @@ async fn run_session(
     if !result_reported {
         tracing::info!(
             entity_id,
+            entity_name = player.name(),
+            player_id = player.id,
+            player_name = player.name(),
             game = %game_name,
-            "Minigame aborted -- client closed without reporting a result"
+            "Minigame aborted -- client closed without reporting a result",
         );
         for output in game.aborted() {
             if let GameOutput::Send(vars) = output {
@@ -407,6 +470,7 @@ async fn run_session(
             result_tx,
             entity_id,
             &game_name,
+            &player,
             RESULT_CANCELED,
             vec![],
             "aborted",

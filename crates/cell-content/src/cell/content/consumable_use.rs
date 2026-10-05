@@ -91,6 +91,7 @@ pub(super) const FEEDBACK_NOT_LIVING: u16 = 14;
 pub(super) const FULL_HEALTH_TEXT: &str = "You are already at full health.";
 pub(super) const FULL_FOCUS_TEXT: &str = "You are already at full focus.";
 pub(super) const DEAD_TEXT: &str = "You cannot use that while dead.";
+pub(super) const INCAPACITATED_TEXT: &str = "You cannot use that while stunned.";
 pub(super) const NOT_IMPLEMENTED_TEXT: &str = "This item has no effect yet.";
 
 /// What an item's event-5 ability does, when this path can apply it.
@@ -161,6 +162,9 @@ pub(super) fn classify(type_id: i32, space_mgr: &SpaceManager) -> Classification
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(super) enum Refusal {
     Dead,
+    /// Stunned or knocked down: python's `PLAYER_STATE_Stun` is "no
+    /// ability/item use" (ability mechanics AB-09a).
+    Incapacitated,
     /// Every pool the item heals is full; carries the first one.
     AtMax(i32),
     /// A bag consumable whose event-5 ability this path cannot apply yet
@@ -172,6 +176,7 @@ impl Refusal {
     fn reason(self) -> &'static str {
         match self {
             Self::Dead => "dead",
+            Self::Incapacitated => "incapacitated",
             Self::AtMax(_) => "already_at_max",
             Self::NotImplemented => "consumable_not_implemented",
         }
@@ -185,13 +190,14 @@ impl Refusal {
         match self {
             Self::Dead => Some(FEEDBACK_NOT_LIVING),
             Self::AtMax(_) => Some(FEEDBACK_STAT_AT_MAX),
-            Self::NotImplemented => None,
+            Self::NotImplemented | Self::Incapacitated => None,
         }
     }
 
     fn text(self) -> &'static str {
         match self {
             Self::Dead => DEAD_TEXT,
+            Self::Incapacitated => INCAPACITATED_TEXT,
             Self::AtMax(FOCUS) => FULL_FOCUS_TEXT,
             Self::AtMax(_) => FULL_HEALTH_TEXT,
             Self::NotImplemented => NOT_IMPLEMENTED_TEXT,
@@ -224,6 +230,11 @@ pub(super) fn refusal(
     if crate::cell::combat::is_dead_state(entity.state_field) {
         return Some(Refusal::Dead);
     }
+    // A stun's or knockdown's timed-effect entry, not the bare bit: ring
+    // transport sets the lock too.
+    if entity.holds_ledger_flag(crate::cell::combat::BSF_MOVEMENT_LOCK) {
+        return Some(Refusal::Incapacitated);
+    }
     if plan.buffs || plan.heals.is_empty() {
         return None;
     }
@@ -255,9 +266,13 @@ pub(super) async fn try_native_use(
                 event = "consumable_skipped",
                 reason = "placeholder_ability",
                 entity_id,
+                entity_name = space_mgr.entity_names(entity_id).entity_name,
                 player_id,
-                type_id,
+                player_name = space_mgr.player_identity(entity_id).player_name,
+                item_type_id = type_id,
+                item_name = cimmeria_names::book().item(type_id),
                 ability_id = PLACEHOLDER_ITEM_USE_ABILITY,
+                ability_name = cimmeria_names::book().ability(PLACEHOLDER_ITEM_USE_ABILITY),
                 "item use: event-5 binding is the Heal Focus filler; not applied"
             );
             return false;
@@ -271,12 +286,17 @@ pub(super) async fn try_native_use(
                     reason = Refusal::NotImplemented.reason(),
                     cause = reason,
                     entity_id,
+                    entity_name = id.player_name,
                     account_id = id.account_id,
+                    account_name = id.account_name,
                     player_id,
+                    player_name = id.player_name,
                     item_id = instance_id,
-                    instance_id,
-                    type_id,
+                    instance_id, // nt:id-only an inventory row id; item_name names its item type
+                    item_type_id = type_id,
+                    item_name = cimmeria_names::book().item(type_id),
                     ability_id,
+                    ability_name = cimmeria_names::book().ability(ability_id),
                     "item use refused: a bag consumable whose effect is not implemented; \
                      nothing consumed"
                 );
@@ -287,9 +307,13 @@ pub(super) async fn try_native_use(
                 event = "consumable_skipped",
                 reason,
                 entity_id,
+                entity_name = space_mgr.entity_names(entity_id).entity_name,
                 player_id,
-                type_id,
+                player_name = space_mgr.player_identity(entity_id).player_name,
+                item_type_id = type_id,
+                item_name = cimmeria_names::book().item(type_id),
                 ability_id,
+                ability_name = cimmeria_names::book().ability(ability_id),
                 "item use: event-5 ability has an effect this path cannot apply; chains decide"
             );
             return false;
@@ -301,10 +325,15 @@ pub(super) async fn try_native_use(
             event = "consumable_skipped",
             reason = "chain_owns_item",
             entity_id,
+            entity_name = id.player_name,
             account_id = id.account_id,
+            account_name = id.account_name,
             player_id,
-            type_id,
+            player_name = id.player_name,
+            item_type_id = type_id,
+            item_name = cimmeria_names::book().item(type_id),
             ability_id = plan.ability_id,
+            ability_name = cimmeria_names::book().ability(plan.ability_id),
             "item use: an item_use chain owns this item; the native consumable path stands aside"
         );
         return false;
@@ -312,7 +341,7 @@ pub(super) async fn try_native_use(
     if let Some(refused) = refusal(&plan, entity_id, space_mgr) {
         let stat = match refused {
             Refusal::AtMax(stat) => Some(stat),
-            Refusal::Dead | Refusal::NotImplemented => None,
+            Refusal::Dead | Refusal::Incapacitated | Refusal::NotImplemented => None,
         };
         let (cur, max) = stat
             .and_then(|s| {
@@ -328,12 +357,17 @@ pub(super) async fn try_native_use(
             decision_outcome = "refused",
             reason = refused.reason(),
             entity_id,
+            entity_name = id.player_name,
             account_id = id.account_id,
+            account_name = id.account_name,
             player_id,
-            instance_id,
-            type_id,
+            player_name = id.player_name,
+            instance_id, // nt:id-only an inventory row id; item_name names its item type
+            item_type_id = type_id,
+            item_name = cimmeria_names::book().item(type_id),
             ability_id = plan.ability_id,
-            stat_id = stat,
+            ability_name = cimmeria_names::book().ability(plan.ability_id),
+            stat_id = stat, // nt:id-only stats have no name table, only stat_ids.rs constants
             stat_cur = cur,
             stat_max = max,
             "item use refused: it would do nothing; nothing consumed"
@@ -349,10 +383,15 @@ pub(super) async fn try_native_use(
             event = "consumable_skipped",
             reason = "no_instance_id",
             entity_id,
+            entity_name = id.player_name,
             account_id = id.account_id,
+            account_name = id.account_name,
             player_id,
-            type_id,
+            player_name = id.player_name,
+            item_type_id = type_id,
+            item_name = cimmeria_names::book().item(type_id),
             ability_id = plan.ability_id,
+            ability_name = cimmeria_names::book().ability(plan.ability_id),
             "item use: ItemUsed carries no instance id; nothing consumed or applied"
         );
         return true;
@@ -369,10 +408,14 @@ pub(super) async fn try_native_use(
             event = "consumable_consume_send_failed",
             reason = "cell_to_base_closed",
             entity_id,
+            entity_name = id.player_name,
             account_id = id.account_id,
+            account_name = id.account_name,
             player_id,
-            instance_id,
-            type_id,
+            player_name = id.player_name,
+            instance_id, // nt:id-only an inventory row id; item_name names its item type
+            item_type_id = type_id,
+            item_name = cimmeria_names::book().item(type_id),
             error = %e,
             "item use: ConsumeItemForUse could not be queued; nothing consumed or applied"
         );
@@ -381,11 +424,16 @@ pub(super) async fn try_native_use(
     tracing::debug!(
         event = "consumable_consume_requested",
         entity_id,
+        entity_name = id.player_name,
         account_id = id.account_id,
+        account_name = id.account_name,
         player_id,
-        instance_id,
-        type_id,
+        player_name = id.player_name,
+        instance_id, // nt:id-only an inventory row id; item_name names its item type
+        item_type_id = type_id,
+        item_name = cimmeria_names::book().item(type_id),
         ability_id = plan.ability_id,
+        ability_name = cimmeria_names::book().ability(plan.ability_id),
         "item use: asked the base to consume one unit before applying"
     );
     true
@@ -416,11 +464,17 @@ pub async fn apply_consumed_item(
             event = "consumable_apply_skipped",
             reason,
             entity_id,
+            entity_name = id.player_name,
             account_id = id.account_id,
+            account_name = id.account_name,
             player_id,
-            instance_id,
-            type_id,
+            player_name = id.player_name,
+            instance_id, // nt:id-only an inventory row id; item_name names its item type
+            item_type_id = type_id,
+            item_name = cimmeria_names::book().item(type_id),
             ability_id,
+            ability_name =
+                ability_id.and_then(|a| cimmeria_names::book().ability(a).map(str::to_owned)),
             "item use: the unit was consumed but its effect was not applied"
         );
     };
@@ -445,16 +499,21 @@ pub async fn apply_consumed_item(
     let after = pools(entity_id, space_mgr);
     let buffs = space_mgr
         .get_entity(entity_id)
-        .map_or(0, |e| e.stat_buffs.buffs.len());
+        .map_or(0, |e| e.stat_buffs.entries.len());
     tracing::info!(
         event = "consumable_used",
         decision_outcome = "applied",
         entity_id,
+        entity_name = id.player_name,
         account_id = id.account_id,
+        account_name = id.account_name,
         player_id,
-        instance_id,
-        type_id,
+        player_name = id.player_name,
+        instance_id, // nt:id-only an inventory row id; item_name names its item type
+        item_type_id = type_id,
+        item_name = cimmeria_names::book().item(type_id),
         ability_id = plan.ability_id,
+        ability_name = cimmeria_names::book().ability(plan.ability_id),
         heals = ?plan.heals,
         stat_buff = plan.buffs,
         registered,
@@ -513,10 +572,15 @@ async fn send_refusal(
                 event = "consumable_feedback_send_failed",
                 reason = "cell_to_base_closed",
                 entity_id,
+                entity_name = id.player_name,
                 account_id = id.account_id,
+                account_name = id.account_name,
                 player_id = id.player_id,
+                player_name = id.player_name,
                 ability_id,
+                ability_name = cimmeria_names::book().ability(ability_id),
                 method_index,
+                method_name = cimmeria_wire::names::player_client_method(method_index),
                 "item use refusal feedback could not be queued; the click shows nothing"
             );
         }

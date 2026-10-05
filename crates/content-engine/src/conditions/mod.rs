@@ -364,6 +364,7 @@ impl Condition {
                     // exists to close.
                     tracing::debug!(
                         expected_world_id = world_id,
+                        expected_world = cimmeria_names::book().world(*world_id),
                         "Condition::World evaluated against a context with no world_id — \
                          failing closed; the firing dispatcher did not populate it"
                     );

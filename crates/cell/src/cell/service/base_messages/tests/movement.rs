@@ -241,6 +241,20 @@ async fn entity_move_space_mismatch_warns_but_still_applies() {
          `world` — here the *server's* binding, since the claimed id is by \
          definition not one this process can resolve; got {event:#?}"
     );
+    // Rule 6 (NT-23): the server's space is named; the bogus claimed one
+    // resolves to nothing, so its name is left off rather than "unknown".
+    assert!(
+        event.has_field("world", "Castle_CellBlock"),
+        "the server's binding must be named; got {event:#?}"
+    );
+    assert!(
+        !event.fields.contains_key("claimed_world"),
+        "an unresolvable claimed space must not be named; got {event:#?}"
+    );
+    assert!(
+        !event.has_field("world", "unknown"),
+        "a resolvable space must never log the `unknown` placeholder; got {event:#?}"
+    );
 }
 
 /// Wire-format byte contract: the snap-back path's `TeleportPlayer`

@@ -159,12 +159,26 @@ mod live_db {
         for (template, spawn, tag, _, scope) in ORG_BANKERS {
             let placed: Vec<&SpawnRecord> = records
                 .iter()
-                .filter(|r| r.template_id == template)
+                .filter(|r| r.template_id == template && r.world_name == "Castle_CellBlock")
                 .collect();
+            // Every placement of the template, in any world: the hub's and
+            // the Debug Area plaza's copy (DA-02), nothing else.
+            let plaza = if template == 371 { 13009 } else { 13010 };
+            let mut everywhere: Vec<(i32, &str)> = records
+                .iter()
+                .filter(|r| r.template_id == template)
+                .map(|r| (r.spawn_id, r.world_name.as_str()))
+                .collect();
+            everywhere.sort_unstable();
+            assert_eq!(
+                everywhere,
+                vec![(spawn, "Castle_CellBlock"), (plaza, "DebugArea")],
+                "template {template} is placed in the hub and the plaza only"
+            );
             assert_eq!(
                 placed.len(),
                 1,
-                "template {template} is placed exactly once"
+                "template {template} is placed once in the hub"
             );
             let s = placed[0];
             assert_eq!(s.spawn_id, spawn);

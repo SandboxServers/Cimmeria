@@ -22,6 +22,7 @@ use cimmeria_entity::cell_entity::PetState;
 use cimmeria_wire::cell::chat::{serialize_on_player_communication, CHAN_FEEDBACK};
 use tokio::sync::mpsc;
 
+use crate::cell::abilities::wire_ledger::{self, WireCtx};
 use crate::cell::messages::CellToBaseMsg;
 use crate::cell::service::npc_ai::pet::{
     engage_pet_target, fight_refusal, target_state_refusal, PetEngagement,
@@ -97,14 +98,23 @@ pub(super) async fn engage_fired_order(
         target: "pets.command",
         event = "order_engaged",
         entity_id = order.owner_id,
+        entity_name = space_mgr.entity_label(order.owner_id),
         pet_id,
+        pet_name = space_mgr.entity_label(pet_id),
         owner_id = order.owner_id,
+        owner_name = summoner.player_name,
         account_id = summoner.account_id,
+        account_name = summoner.account_name,
         player_id = summoner.player_id,
+        player_name = summoner.player_name,
         template_id,
+        template_name = cimmeria_cell_world::cell::effects::content_names::template_name(template_id),
         ability_id,
+        ability_name = cimmeria_names::book().ability(ability_id),
         target_id = order.target_id,
+        target_name = space_mgr.entity_label(order.target_id),
         fired_target_id = fired_target,
+        fired_target_name = space_mgr.entity_label(fired_target as u32),
         engaged = reason.is_none(),
         reason,
         "pet order: the ordered cast fired"
@@ -140,12 +150,19 @@ pub(crate) async fn on_cast_interrupted(
         target: "pets.command",
         event = "order_interrupted",
         entity_id = order.owner_id,
+        entity_name = space_mgr.entity_label(order.owner_id),
         pet_id,
+        pet_name = space_mgr.entity_label(pet_id),
         owner_id = order.owner_id,
+        owner_name = summoner.player_name,
         account_id = summoner.account_id,
+        account_name = summoner.account_name,
         player_id = summoner.player_id,
+        player_name = summoner.player_name,
         ability_id,
+        ability_name = cimmeria_names::book().ability(ability_id),
         target_id = order.target_id,
+        target_name = space_mgr.entity_label(order.target_id),
         reason,
         "pet order: the ordered cast was interrupted in its warmup; nothing engaged"
     );
@@ -173,6 +190,7 @@ async fn send_order_feedback(
         (crate::mercury::method_idx::ON_ERROR_CODE, err),
         (crate::mercury::method_idx::ON_PLAYER_COMMUNICATION, chat),
     ] {
+        let row = wire_ledger::prepare(method_index, &args);
         let msg = CellToBaseMsg::EntityMethodCall {
             entity_id: owner_id,
             method_index,
@@ -180,19 +198,35 @@ async fn send_order_feedback(
         };
         if tx.send(msg).await.is_err() {
             let summoner = space_mgr.pets.summoner_identity(pet_id);
+            crate::cell::abilities::metrics::wire_send_failed_in(
+                space_mgr,
+                owner_id,
+                crate::cell::abilities::metrics::WireMessage::from_method(method_index),
+            );
             tracing::warn!(
                 target: "pets.command",
                 event = "order_feedback_send_failed",
                 entity_id = owner_id,
+                entity_name = space_mgr.entity_label(owner_id),
                 pet_id,
+                pet_name = space_mgr.entity_label(pet_id),
                 owner_id,
+                owner_name = summoner.player_name,
                 account_id = summoner.account_id,
+                account_name = summoner.account_name,
                 player_id = summoner.player_id,
+                player_name = summoner.player_name,
                 method_index,
+                method_name = cimmeria_wire::names::player_client_method(method_index),
                 reason = "feedback_send_failed",
                 "pet order feedback could not be queued (base channel closed)"
             );
             return;
         }
+        row.sent_to_owner(
+            space_mgr,
+            owner_id,
+            WireCtx::new("pet_order").ability(ability_id),
+        );
     }
 }

@@ -57,6 +57,7 @@ pub fn splash_of(effect: &EffectDef) -> Option<Splash> {
             target: "ammo",
             event = "ammo_splash_bad_fraction",
             effect_id = effect.effect_id,
+            effect_name = cimmeria_names::book().effect(effect.effect_id),
             value = raw.map(String::as_str),
             "on-hit radius effect has no SplashDamageFraction in (0, 1]; the shot does not splash"
         );

@@ -12,12 +12,21 @@
 //!   targeted path and ground-target AoE so cooldown/ammo consume happens
 //!   once per invocation but damage applies to each target in radius.
 //! - `death` — ordered wire protocol burst when a target dies.
+//! - `effect_routing` — where each effect of a cast lands (AB-07): user
+//!   halves on the caster, beneficial area halves on its allies, and the
+//!   scoped defs a ground cast's and a splash's secondary targets take.
+//! - `effect_plan` — the `abilities.effect` `effect_planned` row: one per
+//!   effect per target, its path and reason (AB-T3).
 //! - `deployable` — deployable abilities (Phase 0): the ground-point
 //!   launch, the fire that places the object, and its pulse tick.
 //! - `auto_cycle_state` — the broadcast every `BSF_AUTO_CYCLING` transition
 //!   goes through.
 //! - `messaging` — entity-method routing (player vs witness) + dirty-stat flush.
+//! - `movement_type` — the NPC movement-type cache (nothing goes on the wire).
 //! - `timer_update` — `onTimerUpdate` goes to the owning player's client only.
+//! - `wire_ledger` — the `abilities.wire` row for every client-bound ability
+//!   send (AB-T4).
+//! - `metrics` — the AB-T6 counters and histograms and their label enums.
 //! - `loot_drop` — on-death loot generation + interaction-flag updates.
 //! - `resolve` — per-weapon ability resolution (items_event_sets lookup).
 //! - `rng` — deterministic pseudo-random for combat rolls.
@@ -26,18 +35,28 @@
 
 mod auto_cycle_state;
 mod cone_aoe;
+mod cooldown_reset;
 mod damage_apply;
 mod death;
 mod deployable;
 mod dispatch;
+mod effect_plan;
+mod effect_routing;
+#[cfg(test)]
+mod enumerations_xml;
 mod loot_drop;
 mod messaging;
+#[cfg(test)]
+mod method_name_log_tests;
+pub(crate) mod metrics;
+mod movement_type;
 #[cfg(test)]
 mod movement_type_log_tests;
 mod resolve;
 mod rng;
 mod timer_update;
 mod use_ability;
+pub(crate) mod wire_ledger;
 
 #[cfg(test)]
 mod tests;
@@ -45,6 +64,7 @@ mod tests;
 // Public re-exports — keep `crate::cell::abilities::Foo` paths stable for callers.
 pub use auto_cycle_state::send_auto_cycle_state;
 pub use cone_aoe::{collect_cone_targets, fan_out_cone_effects, log_effect_flag_categories};
+pub use cooldown_reset::{clear_cooldown_timer, reset_all_cooldowns, CooldownReset};
 pub use death::kill_npc_out_of_band;
 #[cfg(any(test, feature = "test-support"))]
 #[doc(hidden)]
@@ -53,9 +73,11 @@ pub use deployable::{deployable_tick, deployable_tick_at};
 pub use dispatch::handle_use_ability_on_ground;
 pub use loot_drop::{roll_loot_entries, INT_NORMAL_LOOT};
 pub use messaging::{
-    broadcast_movement_type, request_appearance_refresh, send_entity_method,
-    send_entity_method_to_self_and_witnesses, send_entity_method_to_witnesses,
+    request_appearance_refresh, send_entity_method, send_entity_method_to_self_and_witnesses,
+    send_entity_method_to_witnesses, Delivery, WireRoute,
 };
+pub use movement_type::broadcast_movement_type;
+pub use wire_ledger::{send_ledgered as send_entity_method_ledgered, WireCtx};
 // `send_entity_method_to_witnesses` and `send_entity_method_to_self_and_witnesses`
 // land here for #278 child PRs to adopt. They stay private to the `messaging`
 // module until the first child callsite migrates — at which point the
@@ -63,7 +85,7 @@ pub use messaging::{
 pub use resolve::{
     ability_for_active_weapon, ability_for_item, is_ability_granted_by_active_weapon,
 };
-pub use timer_update::{send_timer_update, TimerRoute};
+pub use timer_update::{send_timer_update, send_timer_update_ctx, TimerRoute};
 pub use use_ability::{
     credit_ground_deaths, fire_line_of_sight, interrupt_unlearned_cast, warmup_tick, FireLos,
 };

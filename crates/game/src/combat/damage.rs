@@ -64,7 +64,7 @@ pub fn calculate_damage(
 
     tracing::trace!(
         source = event.source_entity_id,
-        target = event.target_entity_id,
+        target = event.target_entity_id, // nt:id-only the game crate has no entity registry to name it
         base = event.base_amount,
         armor = target_armor,
         crit = event.is_critical,

@@ -12,7 +12,7 @@ pub(super) struct Client {
     pub(super) player_id: i32,
     transport: Arc<TestTransport>,
     dyn_transport: Arc<dyn Transport>,
-    connected: Arc<Mutex<HashMap<SocketAddr, ConnectedClientState>>>,
+    pub(super) connected: Arc<Mutex<HashMap<SocketAddr, ConnectedClientState>>>,
     entity_to_addr: Arc<Mutex<HashMap<u32, SocketAddr>>>,
 }
 
@@ -26,6 +26,7 @@ impl Client {
         state.player_entity_id = Some(entity_id);
         state.active_player_id = Some(player_id);
         state.player_name = Some(session_name.to_string());
+        state.account_name = Some(SESSION_ACCOUNT_NAME.to_string());
         state.account_id = 0x7300_0001;
         let transport = Arc::new(TestTransport::default());
         Self {

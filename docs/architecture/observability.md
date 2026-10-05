@@ -1,7 +1,7 @@
 # Server observability — design and tool choice
 
 **Status:** Accepted (2026-05-25)
-**Last updated:** 2026-10-03 (target catalog moved to [observability-target-catalog.md](observability-target-catalog.md))
+**Last updated:** 2026-10-05 (named-telemetry saved views, NT-50b). Before that 2026-10-03 (target catalog moved to [observability-target-catalog.md](observability-target-catalog.md))
 **Confidence:** High
 
 ## Context
@@ -50,6 +50,19 @@ For stream (1):
   identity providers for browsers, no inbound firewall ports.
   Optional; skip the profile flag if you'd rather open the SigNoz UI
   port directly behind a VPN or LAN gate.
+
+> **Deployment layout update, 2026-10-04.** The single-file layout
+> above was replaced to match what the colo actually ran. The colo
+> runs two Compose projects joined by the external `signoz-net`
+> network: the game server and watchtower
+> ([`docker/compose.yml`](../../docker/compose.yml)), and SigNoz's own
+> upstream compose file, now vendored at v0.125.1 in
+> [`docker/signoz/`](../../docker/signoz/). SigNoz v0.125 folds the
+> query service, frontend and alertmanager into one `signoz` service
+> (UI on 8080). The Cloudflare Tunnel was never deployed and no longer
+> has a compose service; operators use the VPN. See
+> [colo-deploy.md](../operations/colo-deploy.md) and
+> [signoz-remote-access.md](../operations/signoz-remote-access.md).
 
 For stream (2): the launcher now uploads to cimmeria-server's own
 `/api/telemetry/upload-{chunk,bundle}` endpoints. The server validates
@@ -214,9 +227,16 @@ per-session is a record attribute instead:
 | `ts_ms`, `seq` | The uploader's clock and sequence number |
 | `client_target` | The DLL's event name (`client.lua.pcall`); also the log body |
 | `client_level` | The DLL's level string, kept when it is not one the server knows |
-| `account_id`, `player_id`, `method_index`, `level_name`, `dll_version`, `fingerprint_usable` | Lifted from the DLL's `fields` bag when the event carries them; absent otherwise, never `0` |
+| `class_id` + `class_name`, `method_index` + `method_name`, `msg_id` + `msg_name` | Lifted from the DLL's `fields` bag (`type_id` becomes `class_id`) and named from the NT-30 wire tables: `method_index` is a flat ClientMethod index, looked up in the row's entity type when it has one; `msg_id` is read from the server's interface on `client.net.out` and `client.ability.sent*`, the client's otherwise |
+| `entity_id`, `target_id`, `source_id`, `pet_id` + `<prefix>_name` | Entity IDs, named by the cell after whoever held the slot when the client wrote the row: the row's `ts_ms` mapped onto the server clock by a per-session offset (receive time minus the chunk's newest `ts_ms`, the smallest in the last 5 minutes), in the space the session last reported, once per (space, entity) per chunk. Unnamed when the cell can't say, or is busy |
+| `ability_id` + `ability_name`, `item_type_id` + `item_name` | Named from the NameBook |
+| `address` + `address_name` | A native SGW.exe address, named from the committed symbol table (`crates/admin-api/src/routes/telemetry/client_symbols.tsv`), exact entry points only |
+| `level_name`, `dll_version`, `fingerprint_usable` | Lifted from the DLL's `fields` bag on status targets (`client.telemetry.*`, `client.dll.*`, `client.hooks.*`, `client.streaming.*`, `client.ui.*`); absent otherwise, never `0` |
+| `names_source` | Always `client_claimed`: every ID a name was resolved from (and the space and time an entity name used) is the uploaded row's own claim, so a name is what the row says, not a server observation |
 | `rollup_target`, `rollup_count` | On a `client.telemetry.rollup` row: the target the governor summarized and how many events the row stands for (`count`, lifted only alongside `rollup_target`). `sum(rollup_count)` by `rollup_target` recovers totals |
 | `fields` | The DLL's whole `fields` bag as JSON |
+
+Every lifted key is absent when the event lacks it, and every name is absent when it doesn't resolve (Rule 6), never `0` or `""`. `tracing` caps an event at 32 fields, so a row is replayed in one of two shapes, chosen by its DLL target: a status target carries `level_name`, `dll_version`, `fingerprint_usable` and the rollup pair, every other target the ID and name pairs. Both carry the identity, the address pair and `fields`. The DLL's own `account_id` and `player_id` claims are not lifted: identity is the token's. The upload routes are public, so naming entity IDs is held at arm's length from the game: the cell is asked on a small channel of its own (never the gameplay channel), read only when no gameplay message waits, with at most one request in flight and none for rows the session budget refuses; a busy link replays the chunk unnamed.
 
 `client_target` values added 2026-09-29, all under `client.native`:
 `client.lua.debug_log` (the UI's `Debug:log` / `warn` / `error` lines and the
@@ -315,6 +335,30 @@ Every event with a stable `target:` is a queryable surface in SigNoz. The catalo
 
 Moved to [observability-target-catalog.md](observability-target-catalog.md#npc_aidecision_outcome-enum).
 
+### Saved views for named telemetry
+
+Rule 6 ([instrumentation-discipline.md](instrumentation-discipline.md#rule-6--every-id-field-is-paired-with-its-name)) puts a name next to every logged ID, so two saved Logs Explorer views read the result. Both live under the `named-telemetry` category, and their definitions are committed in the `signoz_create_view` shape used for the [NPC AI views](../operations/signoz/npc-ai-views.md#recreating-a-view):
+
+| View | Definition | What it is for |
+|---|---|---|
+| **Named telemetry — Logs with names** | [logs-with-names.view.json](../operations/signoz/logs-with-names.view.json) | Every `cimmeria-server` row, with the common name keys as columns: `player_name`, `account_name`, `entity_name`, `template_name`, `world`, `ability_name`, `item_name`, `mission_name`, `msg_name`, `method_name`. Start here and narrow with `AND <key> = <value>` |
+| **Named telemetry — Missing names** | [missing-names.view.json](../operations/signoz/missing-names.view.json) | Rows that carry a content ID with no name beside it: `template_id`, `item_type_id`, `ability_id`, `effect_id`, `mission_id`, `dialog_id` or `chain_id` without its `_name` key. A content name is absent only when the NameBook couldn't resolve it, so each row points at a seed hole or a placeholder (`NO ITEM NAME`) |
+
+Entity keys (`entity_id`, `target`, `player_id`) are left out of **Missing names** on purpose: a departed entity or an unloaded character is unnamed by design, not by bad data.
+
+A list view can't group, so to see *which* IDs have no name, run one count per key as a table query in Logs Explorer (or as a dashboard panel, in the `npc-ai-health.dashboard.json` table shape):
+
+```text
+Filter:    service.name = 'cimmeria-server' AND template_id EXISTS AND template_name NOT EXISTS
+Aggregate: count()
+Group by:  template_id
+```
+
+Swap the pair for each key in the table above (`item_type_id` / `item_name`, `ability_id` / `ability_name`, and so on). A row in the result is an ID the seed has no usable name for: fix it in `db/resources/`, or add it to the NameBook's pinned gaps (`crates/names/src/namebook_gaps.txt`) if the client has no name for it either.
+
+> [!NOTE]
+> SigNoz refuses a filter on a key it has never ingested (`key ... not found`; see [npc-ai-views.md](../operations/signoz/npc-ai-views.md)). Several name keys (`effect_name`, `chain_name`, `mission_name`) are new with the named-telemetry campaign, so create these views after the first session on a build that includes it (`1d032a500` or later). Neither view had been created on the colo when they were committed: SigNoz was unreachable during the campaign.
+
 ### Metrics
 
 A third OTLP signal — alongside traces and logs — ships counters,
@@ -327,7 +371,7 @@ use cimmeria_observability::{counter, histogram, gauge_add};
 
 counter!("trade_swaps_total", "outcome" => "completed");
 histogram!("trade_swap_duration_seconds", elapsed_secs, "outcome" => "completed");
-gauge_add!("cover_slots_held", 1, "world_name" => "Castle");
+gauge_add!("cover_slots_held", 1, "world" => "Castle");
 ```
 
 Instruments are lazily registered on first emission via the global
@@ -338,13 +382,13 @@ the rest of the OTLP pipeline.
 
 The metrics provider uses a `PeriodicReader` with the default OTLP
 emit cadence (60s). The metric exporter shares the same OTLP endpoint
-+ protocol as the trace/log exporters — SigNoz ingests all three
+and protocol as the trace/log exporters — SigNoz ingests all three
 signals via one collector.
 
 **Label cardinality.** Per
 [instrumentation-discipline.md](instrumentation-discipline.md#rule-4--metric-labels-are-enumerated-spanlog-fields-are-correlators):
 metric labels must be enumerated low-cardinality strings (`outcome`,
-`reason`, `kind`, `world_name`, `decision_outcome`). High-cardinality
+`reason`, `kind`, `world`, `decision_outcome`). High-cardinality
 correlators (`entity_id`, `player_id`, `peer`) belong in span/log
 fields. A counter labelled by `player_id` would degrade ClickHouse's
 merge-tree query performance non-linearly.
@@ -478,7 +522,10 @@ The integration plan from this side:
   (SigNoz's ~6 services). All vendored into one self-contained
   `docker/compose.yml` so the deploy unit stays a single file, but
   upgrades require a manual re-vendor of the inlined SigNoz config
-  sections alongside the image-tag bump.
+  sections alongside the image-tag bump. (2026-10-04: now two compose
+  projects with SigNoz vendored in `docker/signoz/`; upgrades are still
+  a manual re-vendor, see
+  [signoz-deployment.md → Upgrading SigNoz](../operations/signoz-deployment.md#upgrading-signoz).)
 - The Cosmos write path is gone. If we ever want it back, we'd
   re-introduce `cosmos_log.rs` alongside (not instead of) the OTLP
   layer — they coexisted fine in earlier iterations.
@@ -532,6 +579,7 @@ unexpected entity-count spike. SigNoz supports alert rules; none are defined.
 - Deployment runbook: [signoz-deployment.md](../operations/signoz-deployment.md)
 - Remote access runbook: [signoz-remote-access.md](../operations/signoz-remote-access.md)
 - NPC AI telemetry runbook (post-session views + dashboard): [npc-ai-telemetry-runbook.md](../operations/npc-ai-telemetry-runbook.md); exported objects in [operations/signoz/](../operations/signoz/npc-ai-views.md)
+- Named-telemetry saved views: [logs-with-names.view.json](../operations/signoz/logs-with-names.view.json), [missing-names.view.json](../operations/signoz/missing-names.view.json) ([how to use them](#saved-views-for-named-telemetry)); campaign ledger: [analysis/named-telemetry/](../analysis/named-telemetry/README.md)
 - Instrumentation helpers: [`crates/mercury/src/instrumentation.rs`](../../crates/mercury/src/instrumentation.rs)
 - OTLP exporter: [`crates/server/src/otel.rs`](../../crates/server/src/otel.rs)
 - Launcher ingest endpoint: [`crates/admin-api/src/routes/telemetry/`](../../crates/admin-api/src/routes/telemetry/)

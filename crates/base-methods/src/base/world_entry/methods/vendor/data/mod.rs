@@ -1,3 +1,4 @@
+use cimmeria_entity::known_names;
 use std::sync::Arc;
 
 use sqlx::PgPool;
@@ -59,7 +60,11 @@ pub async fn load_store_buy_items(pool: &Arc<PgPool>, item_list_id: Option<i32>)
     {
         Ok(rows) => rows,
         Err(e) => {
-            tracing::error!(item_list_id, "OpenVendorStore: buy list query failed: {e}");
+            tracing::error!(
+                item_list_id,
+                item_list_name = cimmeria_names::book().item_list(item_list_id),
+                "OpenVendorStore: buy list query failed: {e}"
+            );
             return Vec::new();
         }
     };
@@ -85,6 +90,7 @@ pub async fn load_store_buy_items(pool: &Arc<PgPool>, item_list_id: Option<i32>)
                 // than showing an empty store.
                 tracing::error!(
                     item_list_id,
+                    item_list_name = cimmeria_names::book().item_list(item_list_id),
                     "OpenVendorStore: item price query failed, refusing to display partial store: {e}"
                 );
                 return Vec::new();
@@ -159,6 +165,7 @@ pub async fn load_vendor_sell_prices(
         Err(e) => {
             tracing::error!(
                 item_list_id,
+                item_list_name = cimmeria_names::book().item_list(item_list_id),
                 "OpenVendorStore: sell price query failed: {e}"
             );
             Vec::new()
@@ -191,7 +198,11 @@ pub async fn load_vendor_buyback_prices(pool: &Arc<PgPool>, player_id: i32) -> V
             })
             .collect(),
         Err(e) => {
-            tracing::error!(player_id, "OpenVendorStore: buyback query failed: {e}");
+            tracing::error!(
+                player_id,
+                player_name = known_names::player_name(player_id),
+                "OpenVendorStore: buyback query failed: {e}"
+            );
             Vec::new()
         }
     }
@@ -230,7 +241,11 @@ pub async fn load_vendor_repair_prices(
             })
             .collect(),
         Err(e) => {
-            tracing::error!(item_list_id, "OpenVendorStore: repair price query failed: {e}");
+            tracing::error!(
+                item_list_id,
+                item_list_name = cimmeria_names::book().item_list(item_list_id),
+                "OpenVendorStore: repair price query failed: {e}"
+            );
             Vec::new()
         }
     }
@@ -270,7 +285,11 @@ pub async fn load_vendor_recharge_prices(
             })
             .collect(),
         Err(e) => {
-            tracing::error!(item_list_id, "OpenVendorStore: recharge price query failed: {e}");
+            tracing::error!(
+                item_list_id,
+                item_list_name = cimmeria_names::book().item_list(item_list_id),
+                "OpenVendorStore: recharge price query failed: {e}"
+            );
             Vec::new()
         }
     }

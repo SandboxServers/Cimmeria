@@ -298,6 +298,7 @@ async fn execute_transfer(
     if !position.iter().all(|c| c.is_finite()) || !rotation.iter().all(|c| c.is_finite()) {
         tracing::warn!(
             entity_id,
+            entity_name = space_mgr.entity_label(entity_id),
             ?position,
             ?rotation,
             "space_transfer: non-finite destination rejected"
@@ -317,7 +318,10 @@ async fn execute_transfer(
             .map(|e| (e.is_player, e.player_id)),
     );
     let Some((origin_space_id, (is_player, player_id))) = subject else {
-        tracing::warn!(entity_id, "space_transfer: subject entity not found");
+        tracing::warn!(
+            entity_id, // nt:id-only the entity is not in any space, nothing to name
+            "space_transfer: subject entity not found"
+        );
         return Err(TransferRejected::EntityNotFound);
     };
 
@@ -326,6 +330,7 @@ async fn execute_transfer(
     if !is_player {
         tracing::warn!(
             entity_id,
+            entity_name = space_mgr.entity_label(entity_id),
             "space_transfer: subject is not a player — cross-world transfer refused (D15)"
         );
         return Err(TransferRejected::NotAPlayer);
@@ -354,8 +359,11 @@ async fn execute_transfer(
             else {
                 tracing::warn!(
                     entity_id,
+                    entity_name = id.player_name,
                     account_id = id.account_id,
+                    account_name = id.account_name,
                     player_id = id.player_id,
+                    player_name = id.player_name,
                     world = %world_name,
                     "space_transfer: unknown destination world"
                 );
@@ -373,9 +381,12 @@ async fn execute_transfer(
             else {
                 tracing::warn!(
                     entity_id,
+                    entity_name = id.player_name,
                     account_id = id.account_id,
+                    account_name = id.account_name,
                     player_id = id.player_id,
-                    requested_space_id = space_id,
+                    player_name = id.player_name,
+                    requested_space_id = space_id, // nt:id-only the instance is unloaded, it has no world
                     "space_transfer: destination instance is no longer loaded"
                 );
                 return Err(TransferRejected::InstanceNotLoaded(space_id));
@@ -388,7 +399,9 @@ async fn execute_transfer(
     if destination_space_id == Some(origin_space_id) {
         tracing::debug!(
             entity_id,
+            entity_name = id.player_name,
             origin_space_id,
+            origin_world = space_mgr.world_name_for_space(origin_space_id),
             "space_transfer: destination is the entity's current space — no transfer needed"
         );
         return Ok(TransferOutcome::SameSpace {
@@ -431,8 +444,11 @@ async fn execute_transfer(
     {
         tracing::warn!(
             entity_id,
+            entity_name = id.player_name,
             account_id = id.account_id,
+            account_name = id.account_name,
             player_id = id.player_id,
+            player_name = id.player_name,
             world = %world_name,
             "space_transfer: base channel closed — entity left in place"
         );
@@ -464,14 +480,23 @@ async fn execute_transfer(
         space_mgr,
     )
     .await;
+    // Snapshot the origin's world first: an instance torn down with its
+    // last player has no world afterwards.
+    let origin_world =
+        cimmeria_entity::name_intern::intern_opt(space_mgr.world_name_for_space(origin_space_id));
     space_mgr.destroy_entity(entity_id);
 
     tracing::info!(
         entity_id,
+        entity_name = id.player_name,
         account_id = id.account_id,
+        account_name = id.account_name,
         player_id = id.player_id,
+        player_name = id.player_name,
         origin_space_id,
+        origin_world,
         ?destination_space_id,
+        destination_world = %world_name,
         world = %world_name,
         "space_transfer: GateTravel enqueued, entity torn out of origin space"
     );

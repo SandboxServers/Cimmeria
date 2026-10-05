@@ -104,16 +104,17 @@ pub fn text_of(window: &str) -> String {
     format!("(({g} ~= nil and {g}:getText()) or \"\")")
 }
 
-/// Lua expression: the in-world HUD is up. `SelfStatusWin` and
-/// `MinimapWin` belong to the world UI; a new character's intro dialog
-/// counts too, since it opens over the arrival cutscene.
+/// The player's own status frame: part of the world HUD.
+pub const SELF_STATUS_WIN: &str = "SelfStatusWin";
+
+/// Lua expression: the in-world HUD is up, meaning `SelfStatusWin` is
+/// visible. Nothing else will do: on the first live run (colo,
+/// 2026-10-04) a new character's arrival cutscene (a Bink movie, not
+/// `MoviePlayerWin`) was still on screen while `MinimapWin` or the intro
+/// `DialogWin` already read visible, and `SelfStatusWin` became visible
+/// only after an Escape skipped the cutscene.
 pub fn world_up() -> String {
-    format!(
-        "({} or {} or {})",
-        visible("SelfStatusWin"),
-        visible("MinimapWin"),
-        visible(DIALOG_WIN)
-    )
+    visible(SELF_STATUS_WIN)
 }
 
 /// Lua expression: the `title: message` of the first visible prompt, or nil.

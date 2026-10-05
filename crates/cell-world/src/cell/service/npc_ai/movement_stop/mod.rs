@@ -38,7 +38,7 @@ use cimmeria_common::Vector3;
 use cimmeria_entity::cell_entity::CellEntity;
 
 use super::detectors::MoveSource;
-use crate::cell::space_manager::SpaceManager;
+use crate::cell::space_manager::{EntityNames, SpaceManager};
 
 /// Why an NPC was stopped. Enumerated because it is a SigNoz group-by key on
 /// the `movement.npc event=stop` row.
@@ -98,10 +98,14 @@ pub fn stop_npc_movement(space_mgr: &mut SpaceManager, npc_id: u32, reason: Stop
     let nav_path_len = npc.nav_path.len();
     let [vx, vy, vz] = npc.velocity;
     if stop_movement_on(npc) {
+        let names = EntityNames::of(npc);
         tracing::debug!(
             target: "movement.npc",
             event = "stop",
             npc_id,
+            npc_name = names.entity_name,
+            template_id = names.template_id,
+            template_name = names.template_name,
             reason = reason.label(),
             nav_path_len,
             prior_speed = (vx * vx + vy * vy + vz * vz).sqrt(),

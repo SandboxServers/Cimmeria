@@ -6,6 +6,7 @@
 //! [`player_accessible`](super::super::move_::player_accessible), beside the
 //! move allowlist: 1-15, and 17 only with a vault session.
 
+use cimmeria_entity::known_names;
 use std::collections::HashMap;
 use std::net::SocketAddr;
 use std::sync::{Arc, Mutex};
@@ -68,30 +69,37 @@ pub(super) async fn refuse_inaccessible(
         {
             Ok(id) => id,
             Err(e) => {
+                let player_label = known_names::player_name(player_id);
                 tracing::warn!(
                     target: "bank",
                     event = "use_rejected",
                     player_id,
+                    player_name = player_label,
                     entity_id,
-                    item_id,
+                    entity_name = player_label,
+                    item_id, // nt:id-only instance id, type unread yet
                     reason = "account_lookup_failed",
                     "use_rejected: could not read the account for the refusal: {e}"
                 );
                 None
             }
         };
+    let player_label = known_names::player_name(player_id);
     tracing::warn!(
         target: "bank",
         event = "use_rejected",
         account_id,
+        account_name = known_names::account_name(account_id),
         player_id,
+        player_name = player_label,
         entity_id,
-        item_id,
+        entity_name = player_label,
+        item_id, // nt:id-only instance id, type unread yet
         container = container_id,
         op = op.label(),
         reason = "container_not_accessible",
         vault_reason = vault.reason(),
-        banker_id = vault.banker_id(),
+        banker_id = vault.banker_id(), // nt:id-only banker NPC, unnamed on the base
         "use_rejected: the item is not in a container the player can reach"
     );
     let text = if container_id == INV_BANK {
@@ -104,12 +112,15 @@ pub(super) async fn refuse_inaccessible(
         .ok()
         .and_then(|m| m.get(&entity_id).copied());
     let Some(addr) = addr else {
+        let player_label = known_names::player_name(player_id);
         tracing::warn!(
             target: "bank",
             event = "bank_feedback_send_failed",
             player_id,
+            player_name = player_label,
             entity_id,
-            item_id,
+            entity_name = player_label,
+            item_id, // nt:id-only instance id, type unread yet
             reason = "no_client_address",
             "bank_feedback_send_failed: no client address for the use refusal line"
         );

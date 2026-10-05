@@ -227,6 +227,8 @@ async fn kill_via_damage_apply_then_respawn_then_kill_again() {
             required_ammo: 0,
             event_set_id: None,
             velocity: 0.0,
+            type_id: Default::default(),
+            passive: false,
         },
     );
     mgr.connect_entity(1);

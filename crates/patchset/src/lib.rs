@@ -67,6 +67,16 @@ pub enum PatchsetError {
         actual: String,
     },
     #[error(
+        "{path} does not match patch {patch}'s output (expected sha256 {expected}, found {actual}). \
+         This patch builds on {patch}; it cannot apply until {patch} has applied."
+    )]
+    PatchOutputMismatch {
+        path: String,
+        patch: String,
+        expected: String,
+        actual: String,
+    },
+    #[error(
         "{path} is spelled {on_disk} in the stock client; spec paths must use the stock          spelling, since the game looks some files up case-sensitively"
     )]
     CaseMismatch { path: String, on_disk: String },
@@ -103,6 +113,10 @@ pub(crate) fn sha256_hex(bytes: &[u8]) -> String {
         .collect()
 }
 
+#[cfg(test)]
+mod debug_area_rings_tests;
+#[cfg(test)]
+mod starter_hotbar_tests;
 #[cfg(test)]
 mod supersede_tests;
 #[cfg(test)]

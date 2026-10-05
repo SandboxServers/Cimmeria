@@ -31,6 +31,8 @@
 //! see [`transporter`] for the timeout table and audit defect H-B3 for what
 //! their absence cost.
 
+#[cfg(test)]
+mod debug_area_live_db_tests;
 pub mod regions;
 pub mod runtime;
 pub mod transporter;

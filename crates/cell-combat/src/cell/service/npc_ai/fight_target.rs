@@ -50,6 +50,18 @@ impl Dropped {
             Self::OutOfPerception => "target_out_of_aoi",
         }
     }
+
+    /// The drop a pass reports when it drops several targets: a live target
+    /// lost (`OutOfPerception`) outranks a corpse or a vanished entity
+    /// dropped after it. Since DA-F2 `target_dead` and `target_gone` leashes
+    /// do not count toward the aggro/leash loop, so a corpse lower on the
+    /// list must not hide a chase given up (#1244 review).
+    fn merge(prev: Option<Self>, next: Self) -> Self {
+        match prev {
+            Some(Self::OutOfPerception) => Self::OutOfPerception,
+            _ => next,
+        }
+    }
 }
 
 /// The highest-threat live target, or `None` when the fight is over.
@@ -146,7 +158,9 @@ pub(super) async fn select_target(
             target: "npc_ai",
             event = "target_dropped",
             npc_id,
+            npc_name = space_mgr.entity_label(npc_id),
             target_id,
+            target_name = space_mgr.entity_label(target_id),
             why = dropped.label(),
             "NPC AI: dropping threat target"
         );
@@ -154,7 +168,7 @@ pub(super) async fn select_target(
             npc.leash.target_lost_since = None;
         }
         super::leash::drop_threat_target(npc_id, target_id, tx, space_mgr).await;
-        last_drop = Some(dropped);
+        last_drop = Some(Dropped::merge(last_drop, dropped));
     }
 }
 
@@ -196,7 +210,9 @@ pub(in crate::cell) async fn purge_dead_target_from_threat(
             target: "npc_ai",
             event = "target_dropped",
             npc_id,
+            npc_name = space_mgr.entity_label(npc_id),
             target_id = dead_id,
+            target_name = space_mgr.entity_label(dead_id),
             why = Dropped::Dead.label(),
             "NPC AI: dropping threat target (target died)"
         );

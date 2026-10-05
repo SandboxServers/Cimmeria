@@ -17,6 +17,11 @@
 #     "https://github.com/SandboxServers/Cimmeria/releases/latest/download/compose.discord.yml"
 #   docker compose -f compose.yml -f compose.discord.yml up -d
 #
+# Or add it to COMPOSE_FILE in .env so a bare `docker compose up -d`
+# keeps it. The colo uses the host-file route instead
+# (compose.discord-file.yml), which takes any channel set without a new
+# release; use one or the other. See docs/operations/colo-deploy.md.
+#
 # # What this overlay does
 #
 # Passes the Discord TOML to the container in `DISCORD_CONFIG_TOML`.

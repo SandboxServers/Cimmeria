@@ -105,9 +105,11 @@ pub async fn insert_cash_log(
 }
 
 /// A committed transfer, with both balances before and after.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Transferred {
     pub account_id: i32,
+    /// The treasury's organization name, read under the lock (log only).
+    pub org_name: String,
     pub org_type: OrgType,
     pub rank: OrgRank,
     pub player_cash_before: i32,
@@ -118,9 +120,11 @@ pub struct Transferred {
 
 /// What a refused transfer had read when it stopped, for the log and the
 /// actor's resync. Nothing was written.
-#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct Seen {
     pub account_id: Option<i32>,
+    /// The organization's name once the row was locked (log only).
+    pub org_name: Option<String>,
     pub org_type: Option<OrgType>,
     pub rank: Option<OrgRank>,
     pub permissions: Option<OrgPermission>,
@@ -133,7 +137,7 @@ pub struct Seen {
     pub member: bool,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub enum TransferOutcome {
     Done(Transferred),
     Refused(CashRefusal, Seen),
@@ -171,6 +175,7 @@ pub async fn transfer_cash(
         return refused(CashRefusal::NoSuchOrg, seen);
     };
     seen.org_type = Some(header.org_type);
+    seen.org_name = Some(header.name.clone());
     seen.org_cash = Some(header.cash);
     let Some(access) = member_access_locked(&mut tx, org_id, player_id).await? else {
         return refused(CashRefusal::NotAMember, seen);
@@ -282,6 +287,7 @@ pub async fn transfer_cash(
     tx.commit().await?;
     Ok(TransferOutcome::Done(Transferred {
         account_id,
+        org_name: header.name,
         org_type: header.org_type,
         rank: access.rank(),
         player_cash_before: wallet_before,

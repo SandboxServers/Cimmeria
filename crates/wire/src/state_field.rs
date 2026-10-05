@@ -67,3 +67,66 @@ pub const BSF_IN_COMBAT: u32 = 1 << 3;
 /// helpers means clearing one source doesn't drop the others.
 /// From python `Atrea.enums.BSF_MovementLock = 6`.
 pub const BSF_MOVEMENT_LOCK: u32 = 1 << 6;
+
+/// Every `EStateField` token, as a mask, for log lines (`state_flags_names`,
+/// NT-31). Bit 8 (`BSF_Holster`) is named though the client ignores it and
+/// the server no longer sets it: a log that shows it points at whatever
+/// stale path wrote it.
+pub const STATE_FLAGS: cimmeria_common::flag_names::FlagSet =
+    cimmeria_common::flag_names::FlagSet::new(&[
+        (1 << 0, "BSF_Dead"),
+        (1 << 1, "BSF_AutoCycling"),
+        (1 << 2, "BSF_Crouching"),
+        (1 << 3, "BSF_InCombat"),
+        (1 << 4, "BSF_PlayingMinigame"),
+        (1 << 5, "BSF_InStealth"),
+        (1 << 6, "BSF_MovementLock"),
+        (1 << 7, "BSF_Walking"),
+        (1 << 8, "BSF_Holster"),
+    ]);
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// `EStateField` tokens are bit indices; the table holds masks.
+    #[test]
+    fn state_flags_match_enumerations_xml() {
+        let path = concat!(
+            env!("CARGO_MANIFEST_DIR"),
+            "/../../entities/defs/enumerations.xml"
+        );
+        let xml = std::fs::read_to_string(path).expect("read enumerations.xml");
+        let start = xml.find("<EStateField>").expect("EStateField");
+        let end = start + xml[start..].find("</EStateField>").expect("closing tag");
+        let client: Vec<(u64, String)> = xml[start..end]
+            .split("<Token>")
+            .skip(1)
+            .map(|t| {
+                let field = |tag: &str| {
+                    let a = t.find(&format!("<{tag}>")).unwrap() + tag.len() + 2;
+                    let b = t.find(&format!("</{tag}>")).unwrap();
+                    t[a..b].trim().to_owned()
+                };
+                let bit: u32 = field("Value").parse().expect("bit index");
+                (1u64 << bit, field("Name"))
+            })
+            .collect();
+        let ours: Vec<(u64, String)> = STATE_FLAGS
+            .entries()
+            .iter()
+            .map(|&(m, n)| (m, n.to_owned()))
+            .collect();
+        assert_eq!(ours, client);
+    }
+
+    #[test]
+    fn state_flags_render_the_masks_the_server_sets() {
+        let word = BSF_DEAD | BSF_MOVEMENT_LOCK;
+        assert_eq!(
+            STATE_FLAGS.render(word).to_string(),
+            "BSF_Dead|BSF_MovementLock"
+        );
+        assert_eq!(STATE_FLAGS.render(1u32 << 9).to_string(), "0x200");
+    }
+}

@@ -268,11 +268,14 @@ async fn forward(
             target: "mail",
             event = "mail.gm_rejected",
             account_id = gm.account_id,
+            account_name = gm.account_name,
             player_id = gm.player_id,
+            player_name = gm.player_name,
             entity_id = caller_id,
+            entity_name = gm.player_name,
             command = cmd,
             reason = "base_channel_closed",
-            "GM mail command dropped: the base channel is closed"
+            "GM mail command dropped: the base channel is closed",
         );
     }
 }
@@ -290,11 +293,14 @@ async fn refuse(
         target: "mail",
         event = "mail.gm_rejected",
         account_id = gm.account_id,
+        account_name = gm.account_name,
         player_id = gm.player_id,
+        player_name = gm.player_name,
         entity_id = caller_id,
+        entity_name = gm.player_name,
         command = cmd,
         reason = r.reason,
-        "GM mail command refused: nothing was written"
+        "GM mail command refused: nothing was written",
     );
     send_gm_feedback(caller_id, &r.line, tx).await;
 }

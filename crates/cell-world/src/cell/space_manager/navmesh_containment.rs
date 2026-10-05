@@ -94,7 +94,7 @@ impl SpaceManager {
             tracing::info!(
                 target: "movement.navmesh",
                 space_id = space.space_id,
-                world_name = %world,
+                world = %world,
                 navmesh_mode = self.navmesh_mode(world).as_db_str(),
                 poly_count = nav.poly_count(),
                 spawn_rows = total,

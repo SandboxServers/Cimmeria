@@ -156,32 +156,68 @@ fn log_effect_flag_categories_no_op_on_zero_flags() {
         flags: 0,
         ..Default::default()
     };
-    log_effect_flag_categories(10, 20, 30, &effect);
+    log_effect_flag_categories(&SpaceManager::new(1), 10, 20, 30, &effect);
 }
 
+/// The log names the client's `EEffectFlag` bits (B-25). The old category
+/// constants read 144 (deployable pulse row 5066) as "stun" +
+/// "interrupt_chance" and 12 as "stun"; the real bits are named here.
 #[test]
-fn log_effect_flag_categories_recognizes_each_category_bit() {
-    // Exercise each EF_* path so the match arms aren't dark code.
-    // The assertion is structural — the function returns without
-    // panic when each flag is set in isolation.
-    use cimmeria_entity::abilities::{
-        EF_DOT, EF_INTERRUPT_CHANCE, EF_MENTAL_RESIST_ROLL, EF_STUN, EF_SUPPRESSION,
-    };
-    for flag in [
-        EF_STUN,
-        EF_INTERRUPT_CHANCE,
-        EF_MENTAL_RESIST_ROLL,
-        EF_SUPPRESSION,
-        EF_DOT,
-    ] {
+fn effect_flag_names_are_the_client_eeffectflag_tokens() {
+    use super::flag_categories::EFFECT_FLAGS;
+    // The whole table, against the client's declaration (not a copy).
+    let client: Vec<(i64, String)> =
+        crate::cell::abilities::enumerations_xml::tokens("EEffectFlag");
+    let ours: Vec<(i64, String)> = EFFECT_FLAGS
+        .entries()
+        .iter()
+        .map(|&(bit, name)| (bit as i64, name.to_string()))
+        .collect();
+    assert_eq!(ours, client, "EFFECT_FLAGS must equal EEffectFlag");
+    // And the rendering reads it: one bit per name, mixed rows split.
+    for (bit, name) in &client {
+        assert_eq!(EFFECT_FLAGS.render(*bit as u32).to_string(), *name);
+    }
+    assert_eq!(
+        EFFECT_FLAGS.render(144u32).to_string(),
+        "EF_DontUseQR|EF_SequenceOnPulse"
+    );
+    // A bit past the client's last token is kept, as hex.
+    let past_last = client.last().map(|(v, _)| (*v as u32) << 1).unwrap();
+    assert_eq!(EFFECT_FLAGS.render(past_last).to_string(), "0x2000000");
+    // Every bit is logged without panicking, unknown ones included.
+    for bit in 0..32 {
         let effect = EffectDef {
             effect_id: 1,
             ability_id: 1,
-            flags: flag,
+            flags: 1 << bit,
             ..Default::default()
         };
-        log_effect_flag_categories(10, 20, 30, &effect);
+        log_effect_flag_categories(&SpaceManager::new(1), 10, 20, 30, &effect);
     }
+}
+
+/// The emitted row carries the bit names next to the raw word (NT-31), with
+/// an undefined bit kept as hex. Removing `flags_names` from the event
+/// fails this.
+#[test]
+fn effect_flag_row_carries_flags_names() {
+    let capture = crate::test_support::LogCapture::install();
+    let effect = EffectDef {
+        effect_id: 5066,
+        ability_id: 1,
+        flags: 144 | (1 << 30),
+        ..Default::default()
+    };
+    log_effect_flag_categories(&SpaceManager::new(1), 10, 20, 30, &effect);
+    let row = capture
+        .find_message(tracing::Level::DEBUG, "effect carries EEffectFlag bits")
+        .expect("effect flag row");
+    assert!(
+        row.has_field("flags_names", "EF_DontUseQR|EF_SequenceOnPulse|0x40000000"),
+        "{row:#?}"
+    );
+    assert!(row.has_field("flags", "1073741968"), "{row:#?}");
 }
 
 // ── fan_out_cone_effects integration tests ──────────────────────────────
@@ -231,6 +267,8 @@ fn make_cone_ability_with_effect(
             required_ammo: 1,
             event_set_id: None,
             velocity: 0.0,
+            type_id: Default::default(),
+            passive: false,
         },
     );
 }
@@ -363,6 +401,8 @@ async fn fan_out_cone_effects_no_cone_effects_returns_empty() {
             required_ammo: 0,
             event_set_id: None,
             velocity: 0.0,
+            type_id: Default::default(),
+            passive: false,
         },
     );
     spawn_npc(&mut mgr, 300, "W", [10.0, 0.0, 0.0]);
@@ -438,6 +478,8 @@ async fn fan_out_cone_effects_two_cones_apply_per_effect_not_unioned() {
             required_ammo: 1,
             event_set_id: None,
             velocity: 0.0,
+            type_id: Default::default(),
+            passive: false,
         },
     );
 

@@ -24,6 +24,7 @@ use sqlx::{Postgres, Transaction};
 use super::answer::{db_failed, refusal_text, refuse, type_title};
 use super::broadcast::broadcast_except;
 use super::fanout::feedback;
+use super::log_names::label;
 use super::push::push_org_state;
 use super::targets::online_now;
 use super::telemetry::{ActionRow, OrgReject};
@@ -67,6 +68,7 @@ pub async fn handle_invite_response(
         request_id: Some(request_id),
         ..ActionRow::default()
     };
+    row.name_actor(ctx);
     let fail = |row: ActionRow, why: OrgReject, org_type: Option<OrgType>| async move {
         let text = match why {
             // The responder is the one already placed.
@@ -91,17 +93,24 @@ pub async fn handle_invite_response(
     };
     row.org_id = Some(invite.org_id);
     row.org_type = Some(invite.org_type.name());
+    row.org_name = invite.org_name.as_deref().and_then(label);
     row.target_player_id = Some(invite.inviter_player_id);
+    row.target_player_name = label(&invite.inviter_name);
+    row.name_target(ctx);
     let inviter_online = online_now(ctx, invite.inviter_player_id);
     row.target_account_id = inviter_online.and_then(|m| m.account_id);
     tracing::debug!(
         target: "org",
         event = "invite_consumed",
         account_id = player.account_id,
+        account_name = row.account_name,
         player_id = player.player_id,
+        player_name = row.player_name,
         target_player_id = invite.inviter_player_id,
+        target_player_name = row.target_player_name,
         org_id = invite.org_id,
-        request_id,
+        org_name = row.org_name,
+        request_id, // nt:id-only base-local invite counter, nothing to name
         accepted = accept,
         "organization invite answered"
     );
@@ -184,9 +193,12 @@ fn take(
             target: "org",
             event = "invite_expired",
             org_id = gone.org_id,
-            request_id = gone.request_id,
+            org_name = gone.org_name.as_deref(),
+            request_id = gone.request_id, // nt:id-only base-local invite counter, nothing to name
             player_id = gone.inviter_player_id,
+            player_name = gone.inviter_name.as_str(),
             target_player_id = gone.invitee_player_id,
+            target_player_name = mine.player_name.as_deref(),
             "organization invite expired unanswered"
         );
     }
@@ -222,6 +234,7 @@ async fn join_locked(
     // row is the authority (and keeps `add_member`'s rank check honest).
     let rank = OrgRank::entry_for(header.org_type);
     row.to_rank = Some(rank.as_u8());
+    row.org_name = label(&header.name);
     add_joined(tx, &inviter, invite.org_id, player.player_id, rank, row).await?;
     let name: String =
         sqlx::query_scalar("SELECT player_name FROM sgw_player WHERE player_id = $1")
@@ -249,9 +262,17 @@ pub(super) async fn add_joined(
                 event = "member_joined",
                 via = row.action,
                 account_id = row.account_id,
+                account_name = row.account_name,
                 player_id = row.player_id,
+                player_name = row.player_name,
                 target_player_id = player_id,
+                target_player_name = if row.player_id == Some(player_id) {
+                    row.player_name
+                } else {
+                    row.target_player_name
+                },
                 org_id,
+                org_name = actor.org_name(),
                 org_type = actor.org_type().name(),
                 rank = rank.as_u8(),
                 "organization member joined"

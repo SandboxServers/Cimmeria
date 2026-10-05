@@ -34,6 +34,7 @@ use std::sync::{Arc, Mutex};
 
 use sqlx::PgPool;
 
+use super::super::super::session_identity;
 use super::super::super::ConnectedClientState;
 
 /// Append `stargate_id` to the player's address book, exactly once.
@@ -44,7 +45,7 @@ use super::super::super::ConnectedClientState;
 /// `account_id` is not redundant with the `player_id` primary key: it is
 /// the ownership predicate that makes a wrong `player_id` **miss** rather
 /// than land on a stranger's row.
-async fn append_known_stargate(
+pub(super) async fn append_known_stargate(
     pool: &PgPool,
     player_id: i32,
     account_id: i32,
@@ -56,10 +57,16 @@ async fn append_known_stargate(
                  SELECT COALESCE(array_agg(DISTINCT t.x ORDER BY t.x), '{}'::integer[]) \
                    FROM (SELECT unnest($1::integer[]) AS x) t \
                   WHERE t.x IS NOT NULL AND NOT (t.x = ANY(known_stargates)) \
+                    AND NOT EXISTS (SELECT 1 FROM resources.stargates h \
+                                     WHERE h.stargate_id = t.x AND h.debug_dial_hub) \
                 ) \
           WHERE player_id = $2 AND account_id = $3 \
       RETURNING known_stargates",
     )
+    // The `debug_dial_hub` filter is the hub rule's last line: an
+    // outbound-only gate (the Debug Area's) never reaches a persisted book,
+    // whatever the cell sent. The cell's content verb already refuses it.
+    //
     // A one-element array rather than a scalar `$1::integer`, so the
     // statement is `persist_arrival`'s append verbatim. It also means a
     // future multi-address grant is a bind change, not a rewrite.
@@ -85,10 +92,14 @@ pub(crate) async fn handle_grant_stargate_address(
     entity_to_addr: &Arc<Mutex<HashMap<u32, SocketAddr>>>,
 ) {
     let Some(pool) = db_pool else {
+        let id = session_identity::identity_for_entity(connected, entity_to_addr, entity_id);
         tracing::warn!(
             entity_id,
+            entity_name = id.player_name,
             player_id,
+            player_name = id.player_name,
             stargate_id,
+            stargate_name = cimmeria_names::book().stargate(stargate_id),
             reason = "grant_address_no_db_pool",
             "GrantStargateAddress: no DB pool -- the address works for this session \
              only and is lost on relog"
@@ -101,10 +112,15 @@ pub(crate) async fn handle_grant_stargate_address(
         map.get(&entity_id).copied()
     };
     let Some(addr) = addr else {
+        // The scan fallback can still find the session the map lost.
+        let id = session_identity::identity_for_entity(connected, entity_to_addr, entity_id);
         tracing::warn!(
             entity_id,
+            entity_name = id.player_name,
             player_id,
+            player_name = id.player_name,
             stargate_id,
+            stargate_name = cimmeria_names::book().stargate(stargate_id),
             reason = "grant_address_no_client_addr",
             "GrantStargateAddress: no client address for the entity -- cannot resolve \
              the owning account, so the grant is not persisted"
@@ -117,13 +133,16 @@ pub(crate) async fn handle_grant_stargate_address(
             Ok(c) => c,
             Err(poisoned) => poisoned.into_inner(),
         };
-        clients.get(&addr).map(|c| c.account_id)
+        clients
+            .get(&addr)
+            .map(|c| (c.account_id, session_identity::session_identity(c)))
     };
-    let Some(account_id) = account_id else {
+    let Some((account_id, id)) = account_id else {
         tracing::warn!(
-            entity_id,
-            player_id,
+            entity_id, // nt:id-only no session for it, so there is no name
+            player_id, // nt:id-only no session for it, so there is no name
             stargate_id,
+            stargate_name = cimmeria_names::book().stargate(stargate_id),
             %addr,
             reason = "grant_address_no_session",
             "GrantStargateAddress: no connected-client state for the address -- cannot \
@@ -139,9 +158,13 @@ pub(crate) async fn handle_grant_stargate_address(
         Ok(Some(known)) => {
             tracing::debug!(
                 entity_id,
+                entity_name = id.player_name,
                 player_id,
+                player_name = id.player_name,
                 account_id,
+                account_name = id.account_name,
                 stargate_id,
+                stargate_name = cimmeria_names::book().stargate(stargate_id),
                 known_count = known.len(),
                 "GrantStargateAddress: address book persisted"
             );
@@ -149,9 +172,13 @@ pub(crate) async fn handle_grant_stargate_address(
         Ok(None) => {
             tracing::warn!(
                 entity_id,
+                entity_name = id.player_name,
                 player_id,
+                player_name = id.player_name,
                 account_id,
+                account_name = id.account_name,
                 stargate_id,
+                stargate_name = cimmeria_names::book().stargate(stargate_id),
                 rows_affected = 0,
                 expected = 1,
                 reason = "grant_address_rows_affected_zero",
@@ -163,9 +190,13 @@ pub(crate) async fn handle_grant_stargate_address(
         Err(e) => {
             tracing::error!(
                 entity_id,
+                entity_name = id.player_name,
                 player_id,
+                player_name = id.player_name,
                 account_id,
+                account_name = id.account_name,
                 stargate_id,
+                stargate_name = cimmeria_names::book().stargate(stargate_id),
                 reason = "grant_address_persist_failed",
                 "GrantStargateAddress: failed to persist the address ({e}) -- it works \
                  for this session only and is lost on relog"

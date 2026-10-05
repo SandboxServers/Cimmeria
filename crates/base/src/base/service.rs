@@ -135,6 +135,9 @@ impl BaseService {
             .map(|(addr, c)| OnlinePlayer {
                 id: c.player_entity_id.unwrap_or(0),
                 name: c.player_name.clone().unwrap_or_default(),
+                player_id: c.active_player_id,
+                account_id: c.account_id,
+                account_name: c.account_name.clone(),
                 archetype: archetype_name(c.player_archetype.unwrap_or(0)),
                 level: c.player_level.unwrap_or(1),
                 zone: c.world_name.clone().unwrap_or_default(),
@@ -233,6 +236,11 @@ impl BaseService {
 
         let pending_logins = Arc::clone(&self.pending_logins);
         let db_pool = self.db_pool.clone();
+        // The process name book (NT-01), shared with the cell: whichever
+        // service starts first reads the database.
+        if let Some(pool) = db_pool.as_deref() {
+            cimmeria_names::load_at_boot(pool).await;
+        }
 
         let resource_cache = match ResourceCache::load_all(&self.data_dir) {
             Ok(cache) => Some(Arc::new(cache)),
@@ -388,7 +396,10 @@ impl BaseService {
         if !self.is_running {
             return Err(BaseError::NotRunning);
         }
-        tracing::debug!(%entity_id, "Destroying base entity");
+        tracing::debug!(
+            %entity_id, // nt:id-only stub that holds no entity, so no name exists
+            "Destroying base entity"
+        );
         Ok(())
     }
 }

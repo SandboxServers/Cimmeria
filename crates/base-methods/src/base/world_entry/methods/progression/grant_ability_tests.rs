@@ -321,6 +321,16 @@ async fn live_db_giveability_mirror_failure_names_the_gm_and_the_subject() {
     let pool = require_db_or_skip!();
     const ID: i32 = 0x7030_0A06;
     let s = Sessions::new(ID, GM_PLAYER);
+    // NT-22 (Rule 6): the GM, the subject and the ability are named.
+    cimmeria_entity::known_names::remember_player(GM_PLAYER, "George Hammond");
+    cimmeria_entity::known_names::remember_player(ID, "Cameron Mitchell");
+    let mut book = cimmeria_names::NameBook::empty();
+    book.insert(
+        cimmeria_names::Table::Abilities,
+        i64::from(ABILITY),
+        "Staff Blast",
+    );
+    cimmeria_names::global().store(book);
     let closed = {
         let (tx, rx) = mpsc::channel(1);
         drop(rx);
@@ -341,6 +351,11 @@ async fn live_db_giveability_mirror_failure_names_the_gm_and_the_subject() {
             ("subject_entity_id", SUBJECT.to_string()),
             ("subject_player_id", ID.to_string()),
             ("ability_id", ABILITY.to_string()),
+            ("player_name", "George Hammond".to_string()),
+            ("entity_name", "George Hammond".to_string()),
+            ("subject_player_name", "Cameron Mitchell".to_string()),
+            ("subject_entity_name", "Cameron Mitchell".to_string()),
+            ("ability_name", "Staff Blast".to_string()),
         ] {
             assert!(e.has_field(k, &v), "{reason}: {k}={v}: {e:#?}");
         }

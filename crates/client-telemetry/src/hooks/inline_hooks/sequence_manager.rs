@@ -18,9 +18,12 @@
 //! event reports as `stage = appearance_ready`.
 //!
 //! The first drop site, the `Event_NetIn_onSequence` handler
-//! (`0x00d05790`), is not hooked: the only ids it holds on its drop branch
-//! are in the event's CME property tree, whose layout is not verified.
-//! See `docs/architecture/client-telemetry.md`.
+//! (`0x00d05790`), is hooked in [`super::sequence_net_in`] (AB-C5): it
+//! reads the event's fields through the game's own getters instead of the
+//! property tree.
+//!
+//! A play step that instantiates is reported as `client.ability.shown`
+//! `kind = sequence_played`.
 //!
 //! Event: `client.sequence.dropped` (`info`; `debug` for the view-distance
 //! cull), throttled per (path, Source entity): burst 8, then 4 a second.
@@ -120,7 +123,7 @@ fn now_secs() -> u32 {
 }
 
 /// Emit one drop through the per-(path, Source) throttle.
-fn report(drop: &SequenceDrop, stage: &'static str) {
+pub(super) fn report(drop: &SequenceDrop, stage: &'static str) {
     let key = format!("{TARGET}:{}", drop.path.as_str());
     let decision = trace::throttle(&key, drop.ids.source_id.unwrap_or(-1));
     if let Some(f) = trace::with_suppressed(drop.fields(stage), decision) {
@@ -199,6 +202,14 @@ unsafe extern "thiscall-unwind" fn play_detour(
                 },
                 stage,
             );
+        } else if p.requested {
+            // Played: `client.ability.shown` `kind = sequence_played`
+            // (AB-C5), with the cooked event id (1002 is the interrupt).
+            let f =
+                crate::hooks::ability_trace::shown::sequence_played_fields(&ids, event_id, stage);
+            if let Some(f) = crate::hooks::ability_trace::admit("shown:sequence_played", || f) {
+                emit(crate::hooks::ability_trace::shown::TARGET_SHOWN, "info", f);
+            }
         }
     });
 }

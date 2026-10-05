@@ -108,7 +108,10 @@ pub async fn handle_use_ability_on_ground(
         Some(e) => e.space_id,
         None => {
             tracing::warn!(
+                target: "abilities",
+                event = "ground_attacker_missing",
                 entity_id,
+                entity_name = space_mgr.entity_label(entity_id),
                 "useAbilityOnGroundTarget: attacker entity not found"
             );
             return Vec::new();
@@ -153,7 +156,14 @@ pub async fn handle_use_ability_on_ground(
 
     if targets.is_empty() {
         tracing::debug!(
-            entity_id, ability_id, ?ground, radius,
+            target: "abilities",
+            event = "ground_no_enemy_in_radius",
+            entity_id,
+            entity_name = space_mgr.entity_label(entity_id),
+            ability_id,
+            ability_name = cimmeria_names::book().ability(ability_id),
+            ?ground,
+            radius,
             "useAbilityOnGroundTarget: no enemy in AoE radius; consuming cooldown/ammo without damage"
         );
         handle_use_ability(entity_id, ability_id, 0, tx, space_mgr).await;
@@ -163,7 +173,16 @@ pub async fn handle_use_ability_on_ground(
     if !primary_in_range {
         let (primary_eid, _) = targets[0];
         tracing::debug!(
-            entity_id, ability_id, ?ground, primary_eid, max_range,
+            target: "abilities",
+            event = "ground_primary_out_of_range",
+            entity_id,
+            entity_name = space_mgr.entity_label(entity_id),
+            ability_id,
+            ability_name = cimmeria_names::book().ability(ability_id),
+            ?ground,
+            primary_eid,
+            primary_name = space_mgr.entity_label(primary_eid),
+            max_range,
             "useAbilityOnGroundTarget: nearest target outside attacker's ability max_range; charging cooldown/ammo only"
         );
         handle_use_ability(entity_id, ability_id, 0, tx, space_mgr).await;
@@ -179,8 +198,12 @@ pub async fn handle_use_ability_on_ground(
     // starts cooldown, sends timer/sequence/state-field, applies damage).
     let (primary_eid, _) = targets[0];
     tracing::debug!(
+        target: "abilities",
+        event = "ground_primary_cast",
         entity_id,
+        entity_name = space_mgr.entity_label(entity_id),
         ability_id,
+        ability_name = cimmeria_names::book().ability(ability_id),
         ?ground,
         primary_eid,
         radius,
@@ -195,8 +218,12 @@ pub async fn handle_use_ability_on_ground(
         // Don't apply secondary damage — that would deal free hits despite
         // the primary failing validation. Empty Vec means no kills.
         tracing::debug!(
+            target: "abilities",
+            event = "ground_primary_rejected",
             entity_id,
+            entity_name = space_mgr.entity_label(entity_id),
             ability_id,
+            ability_name = cimmeria_names::book().ability(ability_id),
             primary_eid,
             "useAbilityOnGroundTarget: primary cast rejected; suppressing AoE secondaries"
         );
@@ -209,8 +236,12 @@ pub async fn handle_use_ability_on_ground(
     // (`fire_ground_cast_after_warmup`).
     if super::use_ability::attach_ground_point(space_mgr, entity_id, ground) {
         tracing::debug!(
+            target: "abilities",
+            event = "ground_primary_warming_up",
             entity_id,
+            entity_name = space_mgr.entity_label(entity_id),
             ability_id,
+            ability_name = cimmeria_names::book().ability(ability_id),
             primary_eid,
             "useAbilityOnGroundTarget: primary is warming up; AoE secondaries deferred to the fire"
         );
@@ -226,6 +257,9 @@ pub async fn handle_use_ability_on_ground(
         space_mgr,
     )
     .await;
+    // The secondaries resolve outside the primary's cast scope: their
+    // debug lines (AB-N1) go out here.
+    cimmeria_cell_world::cell::combat_debug::flush(tx, space_mgr).await;
     deaths_since(space_mgr, alive_before)
 }
 
@@ -268,6 +302,7 @@ pub(super) async fn fire_ground_cast_after_warmup(
         entity_id,
         ability_id,
         primary_eid as i32,
+        primary_eid as i32,
         effect_seq,
         &ability_def,
         tx,
@@ -283,6 +318,9 @@ pub(super) async fn fire_ground_cast_after_warmup(
         space_mgr,
     )
     .await;
+    // The secondaries resolve outside the primary's cast scope: their
+    // debug lines (AB-N1) go out here.
+    cimmeria_cell_world::cell::combat_debug::flush(tx, space_mgr).await;
     deaths_since(space_mgr, alive_before)
 }
 
@@ -344,6 +382,13 @@ fn alive_snapshot(space_mgr: &SpaceManager, targets: &[(u32, f32)]) -> Vec<(u32,
 }
 
 /// Apply the AoE damage to each secondary target.
+///
+/// A secondary takes the ground cast's area part only
+/// ([`super::effect_routing::secondary_scope`], AB-07): the primary's own
+/// single-target damage and DoTs stay on the primary, and the user halves
+/// on the caster. Before AB-07 every secondary took the whole ability, so
+/// 3170 hit each one with its single-target 4728 and the per-effect NVP rule
+/// then dropped its radius 4729.
 async fn apply_secondaries(
     entity_id: u32,
     ability_id: i32,
@@ -352,6 +397,11 @@ async fn apply_secondaries(
     tx: &mpsc::Sender<CellToBaseMsg>,
     space_mgr: &mut SpaceManager,
 ) {
+    if secondaries.is_empty() {
+        return;
+    }
+    let scoped = super::effect_routing::secondary_scope(space_mgr, entity_id, ability_def);
+    let ability_def = &scoped;
     // Secondary targets: damage only, fresh effect_seq per target so the
     // client can correlate per-target effect packets independently. Each
     // `next_effect_id()` call mints a unique value off the attacker's
@@ -362,8 +412,12 @@ async fn apply_secondaries(
             .map(|e| e.abilities.next_effect_id())
             .unwrap_or(0);
         tracing::debug!(
+            target: "abilities",
+            event = "ground_secondary_hit",
             entity_id,
+            entity_name = space_mgr.entity_label(entity_id),
             ability_id,
+            ability_name = cimmeria_names::book().ability(ability_id),
             secondary_eid,
             secondary_seq,
             "useAbilityOnGroundTarget: AoE — secondary target via apply_damage_to_target"

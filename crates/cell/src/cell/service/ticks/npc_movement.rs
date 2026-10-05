@@ -1,4 +1,5 @@
 use cimmeria_entity::stats::StatList;
+use cimmeria_wire::state_field::BSF_MOVEMENT_LOCK;
 
 use super::super::super::space_manager::SpaceManager;
 use super::npc_ground::{grounded_vertical_speed, grounded_y, YSource, MOVEMENT_TICK_SECS};
@@ -102,6 +103,16 @@ pub(in crate::cell::service) fn npc_movement_tick(space_mgr: &mut SpaceManager) 
         .collect();
 
     for npc_id in moving_npcs {
+        // Stunned or knocked down (`BSF_MovementLock`, a timed-effect
+        // entry, ability mechanics AB-09a): stand still and keep the route
+        // for when the lock clears. The AoI tick resends velocity every
+        // 100 ms, so zero it or witnesses see the NPC run in place.
+        if let Some(npc) = space_mgr.get_entity_mut(npc_id) {
+            if npc.has_state_flag(BSF_MOVEMENT_LOCK) {
+                npc.velocity = [0.0; 3];
+                continue;
+            }
+        }
         // Read the next waypoint, move_speed, and remaining path length
         let (next_wp, move_speed, cur_pos, path_len) = {
             let npc = match space_mgr.get_entity(npc_id) {
@@ -204,6 +215,7 @@ pub(in crate::cell::service) fn npc_movement_tick(space_mgr: &mut SpaceManager) 
                 target: "movement.npc",
                 event = "waypoint_reached",
                 npc_id,
+                npc_name = space_mgr.entity_label(npc_id),
                 wp_x = next_wp.x,
                 wp_y = next_wp.y,
                 wp_z = next_wp.z,
@@ -256,6 +268,7 @@ pub(in crate::cell::service) fn npc_movement_tick(space_mgr: &mut SpaceManager) 
                     target: "movement.npc",
                     event = "step",
                     npc_id,
+                    npc_name = space_mgr.entity_label(npc_id),
                     cur_x = cur_pos.x, cur_y = cur_pos.y, cur_z = cur_pos.z,
                     new_x, new_y, new_z,
                     wp_x = next_wp.x, wp_y = next_wp.y, wp_z = next_wp.z,
@@ -285,3 +298,7 @@ pub(in crate::cell::service) fn npc_movement_tick(space_mgr: &mut SpaceManager) 
 #[cfg(test)]
 #[path = "npc_movement_tests.rs"]
 mod tests;
+
+#[cfg(test)]
+#[path = "npc_movement_cc_tests.rs"]
+mod cc_tests;

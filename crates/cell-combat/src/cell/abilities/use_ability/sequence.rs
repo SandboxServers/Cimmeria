@@ -24,7 +24,7 @@
 //! | `no_ability_def` | the ability has no `resources.abilities` row loaded |
 //! | `no_event_set` | its `event_set_id` is NULL, so nothing is looked up |
 //! | `no_end_sequence` | the event set has no Ability_End (1001) sequence |
-//! | `no_witnesses` | the NPC shot with nobody in AoI to see it |
+//! | `no_witnesses` | the NPC shot with nobody in AoI to see it, and a player is present (DA-F2: in AoI range of the shooter or target, or in the fight; an NPC-vs-NPC shot with no player around writes nothing) |
 //! | `stance_not_announced` | the NPC shot before its `BSF_InCombat` stance reached its witnesses, so the client draws no muzzle flash, tracer or weapon sound |
 //!
 //! The throttle is keyed by ability id (`SpaceManager::ability_sequence_log`)
@@ -49,7 +49,8 @@ use super::super::super::space_manager::SpaceManager;
 use super::super::super::spawner::{
     EVENT_ABILITY_BEGIN, EVENT_ABILITY_END, EVENT_ABILITY_INTERRUPT,
 };
-use super::super::messaging::send_entity_method_to_self_and_witnesses;
+use super::super::messaging::WireRoute;
+use super::super::wire_ledger::{self, WireCtx};
 
 /// Window for the per-ability `abilities.sequence` WARNs. The condition is a
 /// seed defect that holds until the next deploy, so one row a minute per
@@ -166,9 +167,13 @@ pub(super) fn warn_unanimated_npc_attack(
         event = "ability_end",
         outcome,
         source_id = entity_id,
+        source_name = space_mgr.entity_label(entity_id),
         target_id,
+        target_name = space_mgr.entity_label(target_id as u32),
         ability_id,
+        ability_name = cimmeria_names::book().ability(ability_id),
         event_set_id = event_set_id.unwrap_or(0),
+        event_set_name = cimmeria_cell_world::cell::effects::content_names::event_set_name(event_set_id),
         suppressed,
         "PlaySequence: NPC attack expected an Ability_End onSequence but none can be resolved \
          -- damage lands with no attack animation on any client"
@@ -223,13 +228,22 @@ pub(in crate::cell::abilities) async fn play_ability_sequence(
                 "no_end_sequence",
             );
         } else if warns {
+            let who = space_mgr.player_identity(entity_id);
             tracing::debug!(
                 target: "abilities.sequence",
                 event = "ability_end",
                 outcome = "no_end_sequence",
+                account_id = who.account_id,
+                account_name = who.account_name,
+                player_id = who.player_id,
+                player_name = who.player_name,
                 source_id = entity_id,
+                source_name = space_mgr.entity_label(entity_id),
+                cast_id = instance_id, // nt:id-only per-cast sequence number, no name exists
                 ability_id,
+                ability_name = cimmeria_names::book().ability(ability_id),
                 event_set_id,
+                event_set_name = cimmeria_cell_world::cell::effects::content_names::event_set_name(event_set_id),
                 "onSequence: no Ability_End sequence found for event_set"
             );
         }
@@ -244,22 +258,40 @@ pub(in crate::cell::abilities) async fn play_ability_sequence(
         space_mgr, entity_id, ability_id, target_id,
     );
     let args = ability_sequence_args(sequence_id, entity_id, target_id, instance_id);
-    let witness_count = send_entity_method_to_self_and_witnesses(
+    let witness_count = wire_ledger::send(
         entity_id,
         crate::mercury::method_idx::ON_SEQUENCE,
         args,
+        WireRoute::SelfAndWitnesses,
+        WireCtx::new("ability_sequence")
+            .cast(Some(instance_id))
+            .ability(ability_id)
+            .reason(phase.event()),
         tx,
         space_mgr,
     )
-    .await;
+    .await
+    .witnesses_addressed;
+    let who = space_mgr.player_identity(entity_id);
     tracing::debug!(
         target: "abilities.sequence",
         event = phase.event(),
+        account_id = who.account_id,
+        account_name = who.account_name,
+        player_id = who.player_id,
+        player_name = who.player_name,
         source_id = entity_id,
+        source_name = space_mgr.entity_label(entity_id),
+        // The sequence's InstanceId is the cast's `cast_id` (AB-T1).
+        cast_id = instance_id, // nt:id-only per-cast sequence number, no name exists
         target_id,
+        target_name = space_mgr.entity_label(target_id as u32),
         ability_id,
+        ability_name = cimmeria_names::book().ability(ability_id),
         sequence_id,
+        sequence_name = cimmeria_cell_world::cell::effects::content_names::sequence_name(sequence_id),
         event_set_id,
+        event_set_name = cimmeria_cell_world::cell::effects::content_names::event_set_name(event_set_id),
         witness_count,
         "onSequence broadcast: {}",
         phase.describe()
@@ -281,9 +313,13 @@ pub(in crate::cell::abilities) async fn play_ability_sequence(
                 event = "ability_end",
                 outcome = "stance_not_announced",
                 source_id = entity_id,
+                source_name = space_mgr.entity_label(entity_id),
                 target_id,
+                target_name = space_mgr.entity_label(target_id as u32),
                 ability_id,
+                ability_name = cimmeria_names::book().ability(ability_id),
                 sequence_id,
+                sequence_name = cimmeria_cell_world::cell::effects::content_names::sequence_name(sequence_id),
                 witness_count,
                 suppressed,
                 "PlaySequence: NPC fired an Ability_End before its BSF_InCombat stance was \
@@ -292,16 +328,28 @@ pub(in crate::cell::abilities) async fn play_ability_sequence(
         }
     }
 
-    if warns && witness_count == 0 && is_npc(space_mgr, entity_id) {
+    // Nobody saw the shot. A fault only when a player is present: in AoI
+    // range of the shooter or its target, or in the fight (DA-F2:
+    // `SpaceManager::player_present`). NPC-vs-NPC with no player around
+    // writes nothing.
+    if warns
+        && witness_count == 0
+        && is_npc(space_mgr, entity_id)
+        && space_mgr.player_present(entity_id, u32::try_from(target_id).ok())
+    {
         if let Some(suppressed) = admit_warn(space_mgr, ability_id, "no_witnesses") {
             tracing::warn!(
                 target: "abilities.sequence",
                 event = "ability_end",
                 outcome = "no_witnesses",
                 source_id = entity_id,
+                source_name = space_mgr.entity_label(entity_id),
                 target_id,
+                target_name = space_mgr.entity_label(target_id as u32),
                 ability_id,
+                ability_name = cimmeria_names::book().ability(ability_id),
                 sequence_id,
+                sequence_name = cimmeria_cell_world::cell::effects::content_names::sequence_name(sequence_id),
                 suppressed,
                 "PlaySequence: NPC attack onSequence expected at least one witness but had \
                  none -- the target is not seeing the NPC that shoots it"

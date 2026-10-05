@@ -39,6 +39,8 @@ async fn sync_bandolier_items_active_slot_gained_partial_clip_triggers_reload_on
             required_ammo: 0,
             event_set_id: None,
             velocity: 0.0,
+            type_id: Default::default(),
+            passive: false,
         },
     );
     if let Some(e) = mgr.get_entity_mut(1) {
@@ -116,6 +118,8 @@ async fn sync_bandolier_items_with_option_off_does_not_reload_on_activate() {
             required_ammo: 0,
             event_set_id: None,
             velocity: 0.0,
+            type_id: Default::default(),
+            passive: false,
         },
     );
     if let Some(e) = mgr.get_entity_mut(1) {

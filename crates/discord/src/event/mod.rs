@@ -6,18 +6,21 @@
 //! Events route to one of 8 channels (`ChannelKind`). The mapping lives in
 //! [`crate::router`] and is exhaustively tested.
 //!
-//! The module is split along three seams:
+//! The module is split along four seams:
 //!
 //! - [`channel_kind`] — the logical destination [`ChannelKind`].
 //! - [`event_kind`] — the [`EventKind`] discriminant (toggle/router key).
+//! - [`named`] — [`Named`], the ID + name pair every object field carries.
 //! - [`payload`] — the rich [`Event`] enum plus its supporting enums
 //!   ([`DisconnectReason`], [`ChatKind`], [`TracingEventKind`],
 //!   [`Severity`]) and the discriminant/severity derivations.
 
 mod channel_kind;
 mod event_kind;
+mod named;
 mod payload;
 
 pub use channel_kind::ChannelKind;
 pub use event_kind::EventKind;
+pub use named::Named;
 pub use payload::{ChatKind, DisconnectReason, Event, Severity, TracingEventKind};

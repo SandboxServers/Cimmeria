@@ -2,8 +2,16 @@
 //!
 //! Submodule layout:
 //! - `handle` — the main `handle_use_ability` validate → consume → fire →
-//!   resolve flow (incl. the archetype-default weapon redirect and the
-//!   auto-cycle arm/clear classification).
+//!   resolve flow (incl. the archetype-default weapon redirect). It mints
+//!   the cast's `cast_id` (AB-T1) and opens the cast scope around a
+//!   zero-warmup fire.
+//! - `auto_cycle_commit` — the launch's auto-cycle arm / deactivate-flag
+//!   clear, once the cooldown has started.
+//! - `beneficial` — who a player's cast lands on (AB-01): the #444 target
+//!   gate, `resolve_cast_target` (Self casts on the caster, heals on allies,
+//!   the D-AB02 fallback) and the damage-free `fire_beneficial`.
+//! - `gate_rows` — the launch's refusal rows (AB-T2): one `abilities` row
+//!   for every early return that has no answer of its own.
 //! - `cast_range` — the range gate shared by the launch and the warmup
 //!   fire: the maximum for every caster, the `min_range` for players
 //!   (#1016), and the `onErrorCode` 42 refusal.
@@ -19,6 +27,11 @@
 //!   launch side, the 100 ms tick, and the interrupt (AT-10).
 //! - `not_known` — the `onErrorCode` 167 answer to a press of an ability
 //!   the player does not know.
+//! - `no_mechanics` — `ability_has_mechanics` and the AB-12 refusal of a
+//!   press that cannot do anything: `onErrorCode`, a feedback line, no
+//!   cooldown (D-AB10).
+//! - `weapon_gate` — the weapon-attack launch gates: the holstered-draw
+//!   queue, one queued shot at a time, the slot-swap lockout.
 //! - `summon` — the pet-summon diversions (pets PT-03): the launch refusals,
 //!   and the fire that spawns the pet instead of resolving a target.
 //! - `owner_pet` — owner abilities that act on the owner's pet (pets PT-08):
@@ -31,18 +44,25 @@
 //!   `onSequence`: shared packing, owner + witnesses routing, and the NPC
 //!   attack-animation WARNs (NA43).
 
+mod auto_cycle_commit;
 mod auto_reload;
+mod beneficial;
 mod cast_range;
 mod fire;
 mod fire_los;
+mod gate_rows;
 mod handle;
+mod incapacitated;
 mod kill_credit;
+mod no_mechanics;
 mod not_known;
 mod owner_pet;
 mod sequence;
+mod shield_full;
 mod summon;
 mod support_shot;
 mod warmup;
+mod weapon_gate;
 mod weapon_redirect;
 
 #[cfg(test)]
@@ -64,6 +84,7 @@ pub(crate) use warmup::{attach_ground_point, interrupt_pending_cast, is_casting,
 pub use warmup::{interrupt_unlearned_cast, warmup_tick};
 
 pub use fire_los::{fire_line_of_sight, FireLos};
+pub(in crate::cell::abilities) use support_shot::{classify, SupportTarget};
 
 #[cfg(any(test, feature = "test-support"))]
 #[doc(hidden)]

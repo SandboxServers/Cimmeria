@@ -121,7 +121,7 @@ async fn no_database_refuses_every_request_visibly() {
     let answered = capture
         .all()
         .iter()
-        .filter(|e| e.has_field("method", "onBMError") && e.has_field("sent", "true"))
+        .filter(|e| e.has_field("method_name", "onBMError") && e.has_field("sent", "true"))
         .count();
     assert_eq!(answered, 4, "every press gets onBMError");
 }

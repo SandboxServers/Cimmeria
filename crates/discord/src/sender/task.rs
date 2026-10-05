@@ -200,9 +200,8 @@ mod tests {
 
     fn login_event() -> Event {
         Event::PlayerLogin {
-            account_id: 1,
-            account_name: Some("steve".into()),
-            character_name: Some("alice".into()),
+            account: crate::Named::new(1, Some("steve".into())),
+            character: Some(crate::Named::new(12, Some("alice".into()))),
             addr: "127.0.0.1:50000".parse().unwrap(),
             timestamp: Utc::now(),
         }

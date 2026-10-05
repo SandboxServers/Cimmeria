@@ -28,6 +28,7 @@ pub(super) async fn forward(
             target: "crafting",
             event = "no_player",
             entity_id,
+            entity_name = space_mgr.entity_label(entity_id),
             method = verb.method_name(),
             "crafting request from an entity with no player_id; dropped"
         );
@@ -47,7 +48,9 @@ pub(super) async fn forward(
             target: "crafting",
             event = "forward_failed",
             entity_id,
+            entity_name = space_mgr.entity_label(entity_id),
             player_id,
+            player_name = space_mgr.player_identity(entity_id).player_name,
             error = %e,
             "crafting request could not be queued (base channel closed)"
         );

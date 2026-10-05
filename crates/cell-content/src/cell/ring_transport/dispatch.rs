@@ -64,8 +64,11 @@ async fn dispatch_effect_inner(
             // authoring needs it.
             tracing::debug!(
                 entity_id,
+                entity_name = space_mgr.entity_label(entity_id),
                 region_id,
+                region_name = space_mgr.ring_transporters.region_name(region_id),
                 destination_id,
+                destination_name = space_mgr.ring_transporters.region_name(destination_id),
                 "ring: onTeleportOut event (no chain trigger registered)"
             );
         }
@@ -114,7 +117,11 @@ async fn dispatch_effect_inner(
                     // space, so nothing here is left hidden or locked.
                     tracing::error!(
                         entity_id,
+                        entity_name = space_mgr.entity_label(entity_id),
                         destination_region_id,
+                        destination_region_name = space_mgr
+                            .ring_transporters
+                            .region_name(destination_region_id),
                         "TeleportPlayer effect: entity missing from space — destination ring \
                          stays in RemoteLoadWait until REMOTE_LOAD_WAIT_TIMEOUT releases it"
                     );
@@ -194,7 +201,11 @@ async fn dispatch_effect_inner(
                 // aborts it, releases this player and makes the ring
                 // selectable again (H02). No retry: the channel is gone.
                 tracing::error!(
-                    entity_id, %world_name, destination_region_id,
+                    entity_id,
+                    entity_name = space_mgr.entity_label(entity_id),
+                    %world_name,
+                    destination_region_id,
+                    destination_region_name = space_mgr.ring_transporters.region_name(destination_region_id),
                     reason = "cell_to_base_closed",
                     error = %e,
                     "TeleportCrossWorld: cell→base GateTravel send failed; player and pets left in place"
@@ -227,7 +238,10 @@ async fn dispatch_effect_inner(
         } => {
             let Some(player_id) = space_mgr.get_entity(entity_id).and_then(|e| e.player_id) else {
                 tracing::error!(
-                    entity_id, region_id,
+                    entity_id,
+                    entity_name = space_mgr.entity_label(entity_id),
+                    region_id,
+                    region_name = space_mgr.ring_transporters.region_name(region_id),
                     "FireTeleportIn: entity has no player_id — refusing to fire chain (would miscredit arrival content)"
                 );
                 return;
@@ -281,7 +295,9 @@ pub(super) async fn mark_player_loaded(
     if !recorded {
         tracing::warn!(
             entity_id,
+            entity_name = space_mgr.entity_label(entity_id),
             dst_region_id,
+            dst_region_name = space_mgr.ring_transporters.region_name(dst_region_id),
             reason = "load_not_expected",
             "ring: load notification for a player the destination ring is not \
              expecting — not counted towards readiness (it would satisfy the \
@@ -393,8 +409,15 @@ async fn same_world_teleport(
         })
         .await
     {
-        tracing::error!(entity_id, space_id, ?position, error = %e,
-            "TeleportPlayer: cell→base channel send failed");
+        tracing::error!(
+            entity_id,
+            entity_name = space_mgr.entity_label(entity_id),
+            space_id,
+            world = space_mgr.world_name_for_space(space_id),
+            ?position,
+            error = %e,
+            "TeleportPlayer: cell→base channel send failed"
+        );
         return false;
     }
     // The owner's pet follows at `Effect::ShowPlayer`, when the owner

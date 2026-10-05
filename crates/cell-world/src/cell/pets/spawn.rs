@@ -109,18 +109,28 @@ impl SpaceManager {
         let id = self.player_identity(owner);
         match &result {
             Ok(pet_id) => {
+                let pet = self.entity_names(*pet_id);
+                let space_id = self.get_entity_space_id(*pet_id);
                 tracing::info!(
                     target: "pets.lifecycle",
                     decision_outcome = "summoned",
                     event = "summoned",
                     entity_id = *pet_id,
+                    entity_name = pet.entity_name,
                     pet_id = *pet_id,
+                    pet_name = pet.entity_name,
                     owner_id = owner,
+                    owner_name = id.player_name,
                     account_id = id.account_id,
+                    account_name = id.account_name,
                     player_id = id.player_id,
+                    player_name = id.player_name,
                     template_id,
+                    template_name = pet.template_name,
                     ability_id = summon_ability_id,
-                    space_id = self.get_entity_space_id(*pet_id),
+                    ability_name = cimmeria_names::book().ability(summon_ability_id),
+                    space_id,
+                    world = space_id.and_then(|s| self.world_name_for_space(s)),
                     "pet summoned"
                 );
             }
@@ -133,11 +143,17 @@ impl SpaceManager {
                     decision_outcome = "summon_failed",
                     event = "summon_failed",
                     entity_id = owner,
+                    entity_name = id.player_name,
                     owner_id = owner,
+                    owner_name = id.player_name,
                     account_id = id.account_id,
+                    account_name = id.account_name,
                     player_id = id.player_id,
+                    player_name = id.player_name,
                     template_id,
+                    template_name = cimmeria_names::book().template(template_id),
                     ability_id = summon_ability_id,
+                    ability_name = cimmeria_names::book().ability(summon_ability_id),
                     reason = e.reason(),
                     error = %e,
                     "pet summon failed"

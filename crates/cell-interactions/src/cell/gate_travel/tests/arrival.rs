@@ -46,6 +46,7 @@ fn gate(world: &str, pos: [f32; 3], yaw: f32, arrival: Option<([f32; 3], f32)>) 
         address_origin: 18,
         arrival,
         event_set_id: None,
+        debug_dial_hub: false,
     }
 }
 

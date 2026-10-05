@@ -11,6 +11,7 @@ use std::ops::ControlFlow;
 use std::sync::{Arc, Mutex};
 
 use cimmeria_mercury::transport::Transport;
+use cimmeria_wire::names;
 use sqlx::PgPool;
 use tokio::sync::mpsc;
 
@@ -22,10 +23,13 @@ use super::super::ConnectedClientState;
 /// Dispatch a cell-method message in the `0x80..=0xBF` range. Returns
 /// [`ControlFlow::Break`] to signal the encrypted dispatcher to `continue`
 /// the bundle scan (used when the message arrived before `mapLoaded` and
-/// must be ignored).
+/// must be ignored). `packet_seq` is the Mercury seq of the packet that
+/// carried the message; it rides to the cell for the receipt rows (AB-T2).
+#[allow(clippy::too_many_arguments)]
 pub(super) async fn dispatch_cell_method(
     id: u8,
     payload: &[u8],
+    packet_seq: Option<u32>,
     addr: SocketAddr,
     transport: &Arc<dyn Transport>,
     key: [u8; 32],
@@ -61,12 +65,26 @@ pub(super) async fn dispatch_cell_method(
         }
     }
 
-    let player_eid = {
+    // The character name rides the lock this read already takes (interned,
+    // so a hash hit): the lines below must not lock `connected` again just
+    // to name the player (Rule 6, hot-path rule).
+    let (player_eid, player_label) = {
         let clients = connected.lock().unwrap();
-        clients.get(&addr).and_then(|c| c.player_entity_id)
+        clients.get(&addr).map_or((None, None), |c| {
+            (
+                c.player_entity_id,
+                cimmeria_entity::name_intern::intern_opt(c.player_name.as_deref()),
+            )
+        })
     };
     let Some(player_eid) = player_eid else {
-        tracing::trace!(%addr, msg_id = format_args!("{:#04x}", id), "Cell method before world entry -- ignored");
+        tracing::trace!(
+            %addr,
+            msg_id = format_args!("{:#04x}", id),
+            msg_name = names::server_msg_name(id),
+            method_name = names::player_inbound_method(id, payload),
+            "Cell method before world entry -- ignored"
+        );
         return ControlFlow::Continue(());
     };
 
@@ -74,6 +92,8 @@ pub(super) async fn dispatch_cell_method(
         tracing::trace!(
             %addr,
             msg_id = format_args!("{:#04x}", id),
+            msg_name = names::server_msg_name(id),
+            method_name = names::player_inbound_method(id, payload),
             "Ignoring cell method until mapLoaded arrives"
         );
         return ControlFlow::Break(());
@@ -81,7 +101,16 @@ pub(super) async fn dispatch_cell_method(
 
     // Strip 4-byte entityId prefix (always present per entity_message_handler.cpp:18-20)
     if payload.len() < 4 {
-        tracing::warn!(%addr, msg_id = format_args!("{:#04x}", id), payload_len = payload.len(), "Cell method payload too short for entityId prefix");
+        // `method_name` is absent for the 0xBD sub-slot, whose index is in
+        // the bytes this payload is too short for.
+        tracing::warn!(
+            %addr,
+            msg_id = format_args!("{:#04x}", id),
+            msg_name = names::server_msg_name(id),
+            method_name = names::player_inbound_method(id, payload),
+            payload_len = payload.len(),
+            "Cell method payload too short for entityId prefix"
+        );
         return ControlFlow::Break(());
     }
     let entity_id_from_client =
@@ -101,8 +130,13 @@ pub(super) async fn dispatch_cell_method(
             tracing::debug!(
                 %addr,
                 entity_id = entity_id_from_client,
+                // Named only when the client addresses its own entity.
+                entity_name = (entity_id_from_client == player_eid)
+                    .then_some(player_label)
+                    .flatten(),
                 sub_index,
                 method_index,
+                method_name = names::player_cell_method(method_index),
                 payload_hex = %payload[..payload.len().min(12)].iter().map(|b| format!("{:02x}", b)).collect::<String>(),
                 "Extended cell method (0xBD)"
             );
@@ -112,7 +146,12 @@ pub(super) async fn dispatch_cell_method(
             // so the model loads after the first-login intro movie.
             const CM_CANCEL_MOVIE: u16 = 108;
             if method_index == CM_CANCEL_MOVIE {
-                tracing::info!(%addr, entity_id = player_eid, "cancelMovie received — resending BeingAppearance + onEntityTint");
+                tracing::info!(
+                    %addr,
+                    entity_id = player_eid,
+                    entity_name = player_label,
+                    "cancelMovie received — resending BeingAppearance + onEntityTint"
+                );
                 handle_cancel_movie(transport, addr, player_eid, connected, entity_to_addr).await;
             }
 
@@ -122,6 +161,7 @@ pub(super) async fn dispatch_cell_method(
                         entity_id: player_eid,
                         method_index,
                         args,
+                        packet_seq,
                     })
                     .await;
             }
@@ -134,6 +174,7 @@ pub(super) async fn dispatch_cell_method(
                     entity_id: player_eid,
                     method_index,
                     args: method_payload.to_vec(),
+                    packet_seq,
                 })
                 .await;
         }

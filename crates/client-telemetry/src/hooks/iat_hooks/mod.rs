@@ -82,6 +82,8 @@ mod imports;
 mod lua_error;
 
 #[cfg(all(target_os = "windows", target_arch = "x86"))]
+use crate::hooks::ability_trace::shown;
+#[cfg(all(target_os = "windows", target_arch = "x86"))]
 use imports::*;
 
 // ─── Saved originals (set at install time, used in detours) ─────
@@ -331,7 +333,15 @@ unsafe extern "C-unwind" fn lua_pcall_detour(
     }
     let original: unsafe extern "C-unwind" fn(*mut c_void, i32, i32, i32) -> i32 =
         unsafe { std::mem::transmute(orig_addr) };
+    // An ability UI handler (`client.ability.shown`): named, and its
+    // arguments read, before the call consumes them.
+    let shown = std::panic::catch_unwind(|| shown::before_call(l, nargs))
+        .ok()
+        .flatten();
     let status = original(l, nargs, nresults, errfunc);
+    if let Some(p) = shown {
+        shown::after_call(p, shown::Completion::Pcall(status));
+    }
     if status != 0 {
         // The error value is on top of the stack. Read it after the call
         // has returned; the stack is left as the caller expects it.
@@ -362,7 +372,18 @@ unsafe extern "C-unwind" fn lua_call_detour(l: *mut c_void, nargs: i32, nresults
     }
     let original: unsafe extern "C-unwind" fn(*mut c_void, i32, i32) =
         unsafe { std::mem::transmute(orig_addr) };
+    let shown = std::panic::catch_unwind(|| shown::before_call(l, nargs))
+        .ok()
+        .flatten();
+    // A Lua error inside the handler is a C++ throw that unwinds through
+    // this frame; the guard's drop reports the call as `raised` on the way
+    // (see `shown::ReportOnExit` for why that is sound). The enclosing
+    // `lua_pcall` still reports the error itself as `client.lua.error`.
+    let guard = shown.map(|p| shown::ReportOnExit::new(p, shown::after_call));
     original(l, nargs, nresults);
+    if let Some(g) = guard {
+        g.finish(shown::Completion::Returned);
+    }
 }
 
 /// `lua_newstate(lua_Alloc f, void* ud) -> lua_State*`

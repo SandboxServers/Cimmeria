@@ -48,9 +48,11 @@ pub async fn handle_map_loaded(
     _db_pool: &Option<Arc<PgPool>>,
 ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     // Take the pending data (consumes it -- enter-world only runs once per mapLoaded)
-    let (entry_info, player_data) = {
+    let (entry_info, player_data, who) = {
         let mut clients = connected.lock().map_err(|_| "connected lock poisoned")?;
         let c = clients.get_mut(&addr).ok_or("addr not in connected map")?;
+        // The session's identity for this function's lines (Rules 5 and 6).
+        let who = super::super::session_identity::session_identity(c);
         let entry = c
             .pending_map_loaded
             .take()
@@ -59,13 +61,15 @@ pub async fn handle_map_loaded(
             .pending_player_load_data
             .take()
             .unwrap_or_else(default_player_load_data);
-        (entry, data)
+        (entry, data, who)
     };
 
     tracing::info!(
         %addr,
         player_entity_id = entry_info.player_entity_id,
+        player_entity_name = who.player_name,
         space_id = entry_info.space_id,
+        world = %entry_info.world_name,
         "Enter world: client map loaded -- sending VIEWPORT + CELL + POSITION + entity data"
     );
 
@@ -179,13 +183,37 @@ pub async fn handle_map_loaded(
         );
     }
 
+    // AB-C7: the bundle's ability methods (`onStatBaseUpdate`,
+    // `onAbilityTreeInfo`, `onKnownAbilitiesUpdate`, ...) get their
+    // `abilities.wire` rows, now that every fragment is on the socket.
+    super::map_loaded_wire_rows::log_world_entry_ability_sends(
+        entry_info.player_entity_id,
+        who.account_id,
+        who.account_name,
+        &player_data,
+        map_base_seq,
+        map_base_seq.wrapping_add(map_packets.len().saturating_sub(1) as u32)
+            & cimmeria_mercury::packet::SEQUENCE_MASK,
+    );
+
     let total_bytes: usize =
         enter_world_pkt.len() + map_packets.iter().map(|p| p.len()).sum::<usize>();
     let pkt_count = 1 + map_packets.len();
-    tracing::info!(%addr, player = %player_data.player_name,
-        level = player_data.level, archetype = player_data.archetype,
+    tracing::info!(
+        %addr,
+        account_id = who.account_id,
+        account_name = who.account_name,
+        player_id = player_data.player_id,
+        player_name = %player_data.player_name,
+        world = %entry_info.world_name,
+        level = player_data.level,
+        archetype = player_data.archetype,
+        archetype_name = cimmeria_names::archetype_name(player_data.archetype),
         packets = pkt_count,
-        "World entry complete ({} bytes across {} packets)", total_bytes, pkt_count);
+        "World entry complete ({} bytes across {} packets)",
+        total_bytes,
+        pkt_count
+    );
 
     // first_login DB clear is deferred to `handle_on_client_ready` so the
     // flag only clears after we've actually fired `onPlayMovie` — if the
@@ -407,5 +435,70 @@ mod tests {
             2,
             "abort-on-first-failure: standalone enter-world + 1 fragment = 2 sends"
         );
+        // A half-sent bundle claims no ability sends (AB-C7).
+        assert!(
+            !capture
+                .all()
+                .iter()
+                .any(|c| c.target == "abilities.wire" && c.has_field("origin", "world_entry")),
+            "no world-entry wire rows for a bundle that did not go out"
+        );
+    }
+
+    /// AB-C7 full accounting, through the handler: a world entry whose
+    /// bundle went out writes one `abilities.wire` row per ability method
+    /// in it, naming the trigger and the account. Removing the handler's
+    /// `log_world_entry_ability_sends` call fails this.
+    #[tokio::test]
+    async fn a_sent_world_entry_bundle_writes_its_ability_wire_rows() {
+        use crate::test_support::{LogCapture, TestTransport};
+
+        let capture = LogCapture::install();
+        let transport: Arc<dyn Transport> = Arc::new(TestTransport::new());
+        let addr: SocketAddr = "127.0.0.1:55503".parse().unwrap();
+        let mut client = crate::test_support::test_default_connected_client_state();
+        client.account_id = 4321;
+        client.pending_map_loaded = Some(crate::mercury::types::WorldEntryInfo {
+            player_entity_id: 7778,
+            space_id: 0x0001_0042,
+            pos: [0.0; 3],
+            rot: [0.0; 3],
+            world_name: "Agnos".to_string(),
+            class_id: 2,
+            world_stargates: Vec::new(),
+        });
+        let connected: Arc<Mutex<HashMap<SocketAddr, ConnectedClientState>>> =
+            Arc::new(Mutex::new(HashMap::from([(addr, client)])));
+
+        let _ = handle_map_loaded(
+            &transport,
+            addr,
+            [0u8; 32],
+            &connected,
+            &None,
+            &Arc::new(Mutex::new(HashMap::new())),
+            &None,
+        )
+        .await;
+
+        let rows: Vec<_> = capture
+            .all()
+            .into_iter()
+            .filter(|c| {
+                c.target == "abilities.wire"
+                    && c.has_field("event", "client_sent")
+                    && c.has_field("origin", "world_entry")
+            })
+            .collect();
+        let methods: Vec<&str> = super::super::map_loaded_wire_rows::WORLD_ENTRY_ABILITY_METHODS
+            .iter()
+            .map(|(_, m)| *m)
+            .collect();
+        assert_eq!(rows.len(), methods.len(), "{rows:#?}");
+        for (row, method) in rows.iter().zip(&methods) {
+            assert!(row.has_field("method", method), "{row:#?}");
+            assert!(row.has_field("entity_id", "7778"), "{row:#?}");
+            assert!(row.has_field("account_id", "4321"), "{row:#?}");
+        }
     }
 }

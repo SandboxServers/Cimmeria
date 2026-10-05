@@ -53,6 +53,7 @@ pub(super) async fn handle(witness_id: u32, mut entity_ids: Vec<u32>, space_mgr:
     if truncated {
         tracing::warn!(
             witness_id,
+            witness_name = space_mgr.entity_label(witness_id),
             requested,
             cap = MAX_REQUEST_ENTITIES,
             reason = "request_too_large",
@@ -68,9 +69,12 @@ pub(super) async fn handle(witness_id: u32, mut entity_ids: Vec<u32>, space_mgr:
     let Some(witness) = space_mgr.get_entity(witness_id) else {
         tracing::warn!(
             witness_id,
+            witness_name = identity.player_name,
             requested,
             account_id = identity.account_id,
+            account_name = identity.account_name,
             player_id = identity.player_id,
+            player_name = identity.player_name,
             reason = "witness_not_in_space",
             "RequestEntityUpdate: witness entity not found -- dropping"
         );
@@ -94,11 +98,18 @@ pub(super) async fn handle(witness_id: u32, mut entity_ids: Vec<u32>, space_mgr:
             // another entity's state to a witness that hasn't earned
             // visibility of it -- same anti-probe posture as before this fix.
             unknown += 1;
+            let names = space_mgr.entity_names(entity_id);
             tracing::warn!(
                 witness_id,
+                witness_name = identity.player_name,
                 entity_id,
+                entity_name = names.entity_name,
+                template_id = names.template_id,
+                template_name = names.template_name,
                 account_id = identity.account_id,
+                account_name = identity.account_name,
                 player_id = identity.player_id,
+                player_name = identity.player_name,
                 reason = "not_in_witness_aoi",
                 "RequestEntityUpdate: id outside witness's AoI -- refusing"
             );
@@ -110,13 +121,16 @@ pub(super) async fn handle(witness_id: u32, mut entity_ids: Vec<u32>, space_mgr:
     // at debug. The `unknown` branch above already warns per occurrence.
     tracing::debug!(
         witness_id,
+        witness_name = identity.player_name,
         requested,
         truncated,
         known,
         unknown,
         entity_ids = ?requested_ids,
         account_id = identity.account_id,
+        account_name = identity.account_name,
         player_id = identity.player_id,
+        player_name = identity.player_name,
         "RequestEntityUpdate acknowledged"
     );
 }

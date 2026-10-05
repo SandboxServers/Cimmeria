@@ -1,7 +1,7 @@
 # Ability Mechanics
 
 > Type: how-to. Audience: Claude Code coordinator and implementing engineers.
-> Updated: 2026-10-03. Companions: [evidence audit](audit.md), [work packets](work-packets.md), [ability trees campaign](../ability-trees/README.md), [combat formulas status](../../reverse-engineering/findings/combat-formulas-status.md), [abilities ADR](../../architecture/abilities-and-effects-system.md), [documentation index](../../readme.md).
+> Updated: 2026-10-03. Companions: [evidence audit](audit.md), [work packets](work-packets.md), [full telemetry and lab UAT plan](lab-uat-and-telemetry.md), [telemetry coverage matrix](telemetry-coverage.md), [ability trees campaign](../ability-trees/README.md), [combat formulas status](../../reverse-engineering/findings/combat-formulas-status.md), [abilities ADR](../../architecture/abilities-and-effects-system.md), [documentation index](../../readme.md).
 
 ## Purpose
 
@@ -93,7 +93,7 @@ You are the Claude Code coordinator for the ability-mechanics campaign. Implemen
 
 Add these to [guides/unified-uat.md](../../guides/unified-uat.md) when the first packet merges (the guide follows the ledgers; it is not edited before anything ships).
 
-1. **After Wave 0 (heals):** on the colo, as a fresh character of any archetype: Heal Focus with no target, with yourself, with a mob, with another player targeted. Health Heal the same four ways. Recuperation on another player. Every press visibly heals someone or answers with a feedback line; the mob's bars never rise. SigNoz: `heal_health`, `heal_focus` with `ability_id` 597/1646/1218 and the new `beneficial_target` field.
+1. **After Wave 0 (heals):** on the colo, as a fresh character of any archetype: Heal Focus with no target, with yourself, with a mob, with another player targeted. Health Heal the same four ways. Recuperation on another player. Every press visibly heals someone or answers with a feedback line; the mob's bars never rise. SigNoz: `heal_health`, `heal_focus` with `ability_id` 597/1646/1218, and AB-01's `beneficial_cast` row (`stage`, `wire_target_id`, `resolved_target_id`, `resolution`). Steps AB-U1 to AB-U5 in the [unified UAT guide](../../guides/unified-uat.md#ability-mechanics).
 2. **After AB-05 (regen):** take Focus damage, stand still, watch Focus return within about half a minute out of combat and slowly in combat. SigNoz: `regen_started` with the per-second amounts.
 3. **After Wave 1 (damage and buffs):** each archetype's tree root deals its tooltip damage; Aim shows a 15 s buff icon that expires; Leadership speeds Focus regen for 20 s.
 4. **After Wave 2 (toggles and CC):** stance on, stance off, switch stance; Snare Shot slows a mob for 15 s; Takedown knocks it down.

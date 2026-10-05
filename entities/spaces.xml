@@ -17,6 +17,8 @@
 	<Space WorldName="CellBlock63" Instanced="true" MinX="-800" MaxX="800" MinY="-800" MaxY="800" />
 	<Space WorldName="Dakara_E1" Instanced="false" MinX="-2000" MaxX="2000" MinY="-2000" MaxY="2000" />
 	<Space WorldName="Dakara_E1_StoryRm" Instanced="true" MinX="0" MaxX="200" MinY="0" MaxY="200" />
+	<!-- World 1300, the GM Debug Area on the Ihpet_Crater_Light map (docs/analysis/debug-area/README.md). Bounds are ihpet_crater_light.nav's build crop (x -300..800, z -1300..40) with a margin. -->
+	<Space WorldName="DebugArea" Instanced="false" MinX="-400" MaxX="900" MinY="-1400" MaxY="200" />
 	<Space WorldName="Harset" Instanced="false" MinX="-1000" MaxX="800" MinY="-800" MaxY="800" />
 	<Space WorldName="Harset_CmdCenter" Instanced="false" MinX="-400" MaxX="400" MinY="-400" MaxY="400" />
 	<Space WorldName="Harset_Market" Instanced="true" MinX="0" MaxX="0" MinY="0" MaxY="0" />

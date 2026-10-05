@@ -234,3 +234,62 @@ fn feedback_text_rides_chan_feedback() {
 fn error_code_args_are_system_instance_code() {
     assert_eq!(error_code_args(214), [0, 0, 0, 0, 0, 0xD6, 0x00]);
 }
+
+/// NT-22 (Rule 6): the `rejected` event, crafting's most-read line, names
+/// what it carries: the character, the login, the paradigm and the item.
+/// Removing any of the name fields fails it.
+#[tokio::test]
+async fn rejected_event_names_the_player_the_paradigm_and_the_item() {
+    const NAMED_ITEM: i32 = 0x7000_D2B0;
+    let mut book = cimmeria_names::NameBook::empty();
+    book.insert(
+        cimmeria_names::Table::Items,
+        i64::from(NAMED_ITEM),
+        "Naquadah Ore",
+    );
+    cimmeria_names::global().store(book);
+    cimmeria_entity::known_names::remember_player(PLAYER_ID, "Bra'tac");
+    cimmeria_entity::known_names::remember_account(SESSION_ACCOUNT_ID, "nt22_crafter");
+    let session = OneSession::new(ENTITY, 55726);
+
+    let capture = LogCapture::install();
+    let paradigm = CraftReject::ParadigmTooLow {
+        discipline_id: 82,
+        discipline: "Ceramic Composites".into(),
+        paradigm_id: 2,
+        paradigm: "Human",
+        required: 3,
+        have: 1,
+    };
+    reject(
+        "spendAppliedSciencePoints",
+        ENTITY,
+        PLAYER_ID,
+        &paradigm,
+        session.client(),
+    )
+    .await;
+    let event = crafting_event(capture.all(), "rejected");
+    let paradigm_name = cimmeria_names::racial_paradigm_name(2).expect("seeded paradigm 2");
+    for (field, value) in [
+        ("player_name", "Bra'tac"),
+        ("entity_name", "Bra'tac"),
+        ("account_name", "nt22_crafter"),
+        ("paradigm_name", paradigm_name),
+    ] {
+        assert!(event.has_field(field, value), "{field}={value}: {event:#?}");
+    }
+
+    let capture = LogCapture::install();
+    let item = CraftReject::NotResearchable {
+        item_id: 0x7000_D2B1,
+        type_id: NAMED_ITEM,
+    };
+    reject("research", ENTITY, PLAYER_ID, &item, session.client()).await;
+    let event = crafting_event(capture.all(), "rejected");
+    assert!(
+        event.has_field("item_type_id", &NAMED_ITEM.to_string()),
+        "{event:#?}"
+    );
+    assert!(event.has_field("item_name", "Naquadah Ore"), "{event:#?}");
+}

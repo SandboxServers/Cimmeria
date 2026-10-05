@@ -8,6 +8,7 @@ use std::time::Duration;
 use serde_json::{json, Value};
 use sha2::{Digest, Sha256};
 
+use super::players::Who;
 use super::{now_ms, RowCtx, Runner};
 use crate::uat::evidence::Anchor;
 use crate::uat::invoke::ToolInvoker;
@@ -64,19 +65,7 @@ impl<I: ToolInvoker> Runner<'_, I> {
         args: Value,
         ctx: &mut RowCtx,
     ) -> Result<Value, String> {
-        let a = ActionSpec {
-            tool: Some(tool.to_string()),
-            args: Some(args),
-            ..Default::default()
-        };
-        let rec = self.exec(&a, Role::Setup, ctx).await;
-        let out = if rec.ok {
-            Ok(rec.result.clone())
-        } else {
-            Err(format!("{tool}: {}", rec.error.clone().unwrap_or_default()))
-        };
-        ctx.actions.push(rec);
-        out
+        self.setup_call_on(Who::P1, tool, args, ctx).await
     }
 
     /// Bring the client to `state`. Uses the flows by name, so a missing

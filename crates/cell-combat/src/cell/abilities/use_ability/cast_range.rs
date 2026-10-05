@@ -16,6 +16,7 @@ use tokio::sync::mpsc;
 
 use cimmeria_entity::abilities::{RangeBounds, RangeRefusal};
 
+use crate::cell::abilities::wire_ledger::{self, WireCtx};
 use crate::cell::messages::CellToBaseMsg;
 use crate::cell::space_manager::SpaceManager;
 
@@ -74,37 +75,60 @@ pub(crate) async fn refuse_out_of_range(
         reason = failure.refusal.reason(),
         phase,
         entity_id,
+        entity_name = space_mgr.entity_label(entity_id),
         account_id = id.account_id,
+        account_name = id.account_name,
         player_id = id.player_id,
+        player_name = id.player_name,
         ability_id,
+        ability_name = cimmeria_names::book().ability(ability_id),
         target_id,
+        target_name = space_mgr.entity_label(target_id),
         distance = failure.distance,
         min_range = failure.bounds.min,
         max_range = failure.bounds.max,
         error_code = CONDITION_FEEDBACK_OUTSIDE_WEAPON_RANGE,
+        error_name = cimmeria_names::book().error_code(CONDITION_FEEDBACK_OUTSIDE_WEAPON_RANGE),
         "useAbility refused: the target is outside the ability's range (onErrorCode 42)"
     );
     if !is_player {
         return;
     }
+    let args = out_of_range_error_args(ability_id);
+    let row = wire_ledger::prepare(crate::mercury::method_idx::ON_ERROR_CODE, &args);
     if tx
         .send(CellToBaseMsg::EntityMethodCall {
             entity_id,
             method_index: crate::mercury::method_idx::ON_ERROR_CODE,
-            args: out_of_range_error_args(ability_id),
+            args,
         })
         .await
         .is_err()
     {
+        crate::cell::abilities::metrics::wire_send_failed_in(
+            space_mgr,
+            entity_id,
+            crate::cell::abilities::metrics::WireMessage::OnErrorCode,
+        );
         tracing::warn!(
             target: "abilities",
             event = "cast_refused_send_failed",
             reason = failure.refusal.reason(),
             entity_id,
+            entity_name = space_mgr.entity_label(entity_id),
             account_id = id.account_id,
+            account_name = id.account_name,
             player_id = id.player_id,
+            player_name = id.player_name,
             ability_id,
+            ability_name = cimmeria_names::book().ability(ability_id),
             "useAbility: the out-of-range onErrorCode could not be queued (base channel closed)"
+        );
+    } else {
+        row.sent_to_owner(
+            space_mgr,
+            entity_id,
+            WireCtx::new("cast_range").reason(failure.refusal.reason()),
         );
     }
 }

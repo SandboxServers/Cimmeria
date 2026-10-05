@@ -27,6 +27,8 @@ pub use queries::PlayerNameLookup;
 pub type SpaceResources = cimmeria_entity::cell_entity::EntityExtensions;
 
 mod aoi;
+mod chain_debounce;
+pub use chain_debounce::{ChainDebounce, CHAIN_DEBOUNCE};
 mod authoring;
 mod client_move;
 mod cover_hit;
@@ -35,14 +37,25 @@ mod cover_sight;
 pub use cover_sight::{NpcSight, SightOrigin};
 mod crossing_hold_state;
 mod deferred_content_actions;
+mod departed_ring;
+pub use departed_ring::{DepartedEntities, DepartedEntity, DEPARTED_CAP, DEPARTED_RETENTION};
+mod discord_labels;
 mod entities;
+mod entity_labels;
+pub use entity_labels::EntityNames;
 mod gate_dial_state;
 mod interact_range;
 pub use interact_range::{interact_range, InteractRangeFail, MAX_INTERACT_DISTANCE};
+mod lab_dummy;
+pub use lab_dummy::{
+    LabCaster, LabDummy, LAB_CASTER_DEFAULT_INTERVAL, LAB_DUMMY_HEALTH, LAB_DUMMY_LIFETIME,
+    LAB_DUMMY_MAX_PER_OWNER,
+};
 mod lab_snapshots;
 mod lifecycle;
 mod live_tags;
 mod loot_lists;
+mod method_names;
 mod movement_telemetry;
 mod navmesh_containment;
 pub mod npc_identity;
@@ -53,13 +66,19 @@ pub use npc_population::{spawn_instance_npcs_from_records, spawn_npcs_from_recor
 #[doc(hidden)]
 pub use crate::test_fixtures::occluder_fixtures;
 mod occlusion;
+mod player_presence;
 pub use occlusion::{eye_height_for, occluder_probe, DEFAULT_EYE_HEIGHT, RESIDENCY_RADIUS};
 mod queries;
+mod space_files;
 mod spatial;
 pub use spatial::AttackLosPolicy;
 mod spawn;
 mod step_region_replay;
 mod target_lifetime;
+mod training_dummy;
+mod tree_grant;
+pub use training_dummy::{TrainingDummy, TRAINING_DUMMY_COMBAT_TIMEOUT, TRAINING_DUMMY_HEALTH};
+pub use tree_grant::{TreeGrantPlan, TreeGrantRefusal};
 mod vault_access;
 pub use vault_access::{vault_access, vault_move_allowed, VaultReject};
 mod vault_session_end;
@@ -182,6 +201,9 @@ pub struct SpaceManager {
     pub(crate) world_spaces: HashMap<String, u32>,
     /// Entity ID → space_id lookup for quick entity → space resolution.
     pub entity_space: HashMap<u32, u32>,
+    /// Recently destroyed entities per space, so a late log row can still
+    /// name a recycled entity ID (NT-02; see `entity_label_at`).
+    pub departed: DepartedEntities,
     /// Next local index for space ID allocation.
     pub(crate) next_local_id: u32,
     /// Next NPC entity ID (starts at 100_000 to avoid player ID collision).
@@ -302,6 +324,10 @@ pub struct SpaceManager {
     /// `cell/spawner/templates.rs` for why the round-trip is wrong for a
     /// chain's ordered action list.
     pub spawn_templates: HashMap<i32, super::spawner::SpawnRecord>,
+    /// NPC ability sets (`resources.ability_set_abilities`), set id → ids,
+    /// loaded at startup by [`super::spawner::load_ability_sets`]. Read by
+    /// `gmSetMobAbilitySet` (AB-N2); empty when the load failed.
+    pub ability_sets: HashMap<i32, Vec<i32>>,
     /// Summon ability → pet template (`resources.pet_summons`), loaded at
     /// startup by [`super::spawner::load_pet_summons`]. The ability pipeline
     /// asks `pet_summons.pet_summon_for(ability_id)` whether a fired ability
@@ -351,6 +377,28 @@ pub struct SpaceManager {
     /// `pending_ai_retries` it is a candidate set: an entry whose entity
     /// is gone or whose `pending_cast` is `None` is dropped by the tick.
     pub pending_casts: std::collections::HashSet<u32>,
+    /// Interrupts an effect script queued for combat to resolve (AB-09c,
+    /// `effects::interrupt_request`). Empty between bursts.
+    pub pending_interrupts: Vec<crate::cell::effects::interrupt_request::InterruptRequest>,
+    /// The last nonce handed to an interrupt request (its roll seed).
+    pub interrupt_nonce: u64,
+    /// The cast being resolved right now, if any (AB-T1,
+    /// `effects::cast_scope`): what the effect rows, ledger entries, pulsing
+    /// instances and interrupt requests created under it carry as `cast_id`.
+    pub current_cast_id: Option<i32>,
+    /// The invoker of the deferred effect being resolved right now (a pulse,
+    /// an expiry, a channel cancel), with the identity it snapshotted when
+    /// its cast registered it (`effects::cast_scope`). `None` inside a live
+    /// cast, where the caster is looked up. The third field is its name,
+    /// snapshotted with the identity (an NPC's too).
+    pub current_invoker: Option<(
+        u32,
+        cimmeria_entity::cell_entity::PlayerIdentity,
+        Option<&'static str>,
+    )>,
+    /// In-game combat and ability debug (AB-N1, `cell::combat_debug`): who
+    /// has it on, and the notes of the casts being resolved.
+    pub combat_debug: crate::cell::combat_debug::CombatDebug,
     /// Server-authoritative movement validator. Consulted by
     /// `apply_client_position_update` on every inbound client position:
     /// bounds + navmesh + teleport hard-reject, speed warn-only. Holds a
@@ -384,6 +432,12 @@ pub struct SpaceManager {
     /// Loaded occluders by world file key (`castle_cellblock`), misses
     /// included; see `SpaceManager::occluder_for_world`.
     pub occluders: HashMap<String, Option<std::sync::Arc<cimmeria_occluder::PagedOccluder>>>,
+    /// World name key -> the `occluders` key its `.occ` resolved to: the
+    /// world's own, or its client map's (D-DA5, `space_files`).
+    pub(crate) occluder_files: HashMap<String, String>,
+    /// Where `.nav` / `.occ` files load from: `data/spaces` under the CWD.
+    /// A field so a test can point it at the repo copy.
+    pub space_data_dir: std::path::PathBuf,
     /// The residency gauges last reported per world key; see
     /// `SpaceManager::refresh_occluder_residency`.
     pub(crate) occluder_residency: HashMap<String, occlusion::ResidencyGauge>,
@@ -503,6 +557,7 @@ impl SpaceManager {
             spaces: HashMap::new(),
             world_spaces: HashMap::new(),
             entity_space: HashMap::new(),
+            departed: DepartedEntities::default(),
             next_local_id: 0,
             next_npc_id: 100_000,
             dialog_set_maps: HashMap::new(),
@@ -527,6 +582,7 @@ impl SpaceManager {
             loot_tables: HashMap::new(),
             respawners: Vec::new(),
             spawn_templates: HashMap::new(),
+            ability_sets: HashMap::new(),
             pet_summons: super::spawner::PetSummonCatalog::default(),
             deployable_specs: super::spawner::DeployableCatalog::default(),
             ammo_catalog: super::spawner::AmmoCatalog::default(),
@@ -537,12 +593,19 @@ impl SpaceManager {
             deployables: super::deployables::DeployableRegistry::default(),
             pending_ai_retries: std::collections::HashSet::new(),
             pending_casts: std::collections::HashSet::new(),
+            pending_interrupts: Vec::new(),
+            interrupt_nonce: 0,
+            current_cast_id: None,
+            current_invoker: None,
+            combat_debug: Default::default(),
             movement_validator: MovementValidator::new(),
             movement_telemetry: MovementTelemetry::default(),
             zero_health_npc_log: LogThrottle::default(),
             ability_sequence_log: LogThrottle::default(),
             npc_detectors: Default::default(),
             occluders: HashMap::new(),
+            occluder_files: HashMap::new(),
+            space_data_dir: std::path::PathBuf::from(space_files::SPACE_DATA_DIR),
             occluder_residency: HashMap::new(),
             body_set_eye_heights: HashMap::new(),
             cover: super::cover::Cover::empty(),

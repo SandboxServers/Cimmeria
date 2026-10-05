@@ -10,6 +10,10 @@ Dated, sourced facts from top-level sessions, committed with the change that pro
 - [project_invisible_cellblock_guard.md](project_invisible_cellblock_guard.md) — Cellblock NID guard often unrendered on a fresh character though the client creates it; evidence, ruled-out causes (#838)
 - [project_enemy_combat_runtime_blockers.md](project_enemy_combat_runtime_blockers.md) — enemy-combat v3 handoff not imported; blockers: MITIGATION 0/0, forced DT_PHYSICAL, EF_DONT_USE_QR, DoT death
 
+## Closed campaigns
+
+- [project_named_telemetry_campaign.md](project_named_telemetry_campaign.md) — Named telemetry closed 2026-10-05: IDs paired with names, unpaired 7,039 to 0, 795 nt:id-only marks; not yet read in a live SigNoz session
+
 ## External handoffs reviewed, not imported
 
 - [project_final_re_bundles.md](project_final_re_bundles.md) — 2026-10-02 SGW final RE ZIPs: useful build/world indexes, absent databases and raw sources, evidence boundaries
@@ -38,6 +42,8 @@ Dated, sourced facts from top-level sessions, committed with the change that pro
 
 - [reference_macos_wgl_forward_compat.md](reference_macos_wgl_forward_compat.md) — 2026-10-03: WoWSilicon launcher WGL rejection is missing forward-compatible flag; CX_FWD_COMPAT_GL_CTX=1 opens launcher and manifest; game UAT pending
 
+- [reference_colo_docker_layout.md](reference_colo_docker_layout.md) — colo = two compose projects on signoz-net, mirrored in docker/ (2026-10-04); watchtower ignores compose edits; s6 cont-init can't gate the server; uid 1001; player telemetry via :8081
+- [reference_agent_board.md](reference_agent_board.md) — board.cimmeria.app (2026-10-04): per-agent accounts and keys, broker for campaigns; colo /24 is Spamhaus-SBL-listed so mail goes via Graph; some Azure storage clusters unreachable from the colo
 - [reference_lab_client_controls.md](reference_lab_client_controls.md) — lab driving: Q/E rotate, B bag, Tab target; mouse-look broken (no DI button); .gotoxyz moves the selected target; inventory reader fallback
 
 - [reference_auto_cycle_client_telemetry_2026_10_03.md](reference_auto_cycle_client_telemetry_2026_10_03.md) — AutoAttack.lua icon vs T binding, Sep 29 target-0 clears; #1144 colo UAT passed 2026-10-03; auto-cycle no longer persisted (owner: always off on login, #1148)

@@ -71,6 +71,13 @@ pub struct CellEntity {
     /// `false`.
     pub movement_unrestricted: bool,
 
+    /// GM god mode (`gmSetGodMode`, SGWGmPlayer index 142, `/gmsetgodmode`).
+    /// While set, ability hits and effect pulses land everything except a
+    /// loss of Health or Focus: `cell::combat::god_mode` puts the pools back
+    /// and logs `god_mode_absorbed`. In-memory only, like
+    /// `movement_unrestricted`: a relog starts with it off.
+    pub god_mode: bool,
+
     /// Cell-local property values (CELL_PUBLIC, CELL_PRIVATE, etc.).
     pub properties: HashMap<String, PropertyValue>,
 
@@ -143,6 +150,20 @@ pub struct CellEntity {
     /// than rendered as `"None"` — see
     /// `docs/architecture/instrumentation-discipline.md` §Rule 5.
     pub account_id: Option<u32>,
+
+    /// The names log lines pair with [`Self::account_id`] and
+    /// [`Self::player_id`] (Rule 6), interned once when they are stamped
+    /// (`CreateEntity`, `InitPlayerState`) so [`Self::identity`] is a plain
+    /// copy. Log-only: no game logic reads them. `character_name` stays the
+    /// game's name and is still set only by `InitPlayerState`, so name
+    /// lookups (`find_online_player_by_name`) are unchanged by NT-02.
+    pub log_names: super::LogNames,
+
+    /// Wall-clock time this entity was created in its space. Entity IDs are
+    /// recycled slots, so naming an ID at a past time (a delayed client
+    /// telemetry row) has to check the time against this before trusting
+    /// the live occupant: see `SpaceManager::entity_label_at`.
+    pub created_at: std::time::SystemTime,
 
     /// Archetype ID for content engine conditions. Set from character data on connect.
     pub archetype_id: Option<i32>,
@@ -436,11 +457,12 @@ pub struct CellEntity {
     /// [`ActiveEffectInstance`] for the per-instance state.
     pub active_effects: Vec<ActiveEffectInstance>,
 
-    /// Timed stat buffs (the consumable stimpacks), at most one per stat,
-    /// with the client timer clears they still owe. `pulse_count = 1`
-    /// effects never register in `active_effects`, so these carry their
-    /// own duration; the cell's stat-buff tick expires them. Empty for
-    /// almost every entity. See [`super::StatBuffLedger`].
+    /// The timed effect ledger: stat-changing effects with a duration (the
+    /// consumable stimpacks, ability buffs and debuffs), one per
+    /// `(effect_id, invoker_id)`, with the client timer clears they still
+    /// owe. `pulse_count = 1` effects never register in `active_effects`,
+    /// so these carry their own duration; the cell's stat-buff tick expires
+    /// them. Empty for almost every entity. See [`super::StatBuffLedger`].
     pub stat_buffs: super::StatBuffLedger,
 
     // ── NPC AI state ──────────────────────────────────────────────────────────
@@ -509,7 +531,7 @@ pub struct CellEntity {
     /// bookmark's `last_movement_type` field.
     ///
     /// **Ownership**: written only by
-    /// [`cell::abilities::messaging::broadcast_movement_type`], which
+    /// [`cell::abilities::movement_type::broadcast_movement_type`], which
     /// dedups and logs each change. Its callers are the NPC AI state
     /// entries and the inbound `setMovementType` cell-method handler.
     /// Write through the helper, not directly, so the change is logged.

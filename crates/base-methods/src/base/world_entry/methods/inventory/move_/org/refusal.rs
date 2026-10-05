@@ -17,6 +17,7 @@
 //!   and the fan-out did not reach this client): `onRemoveItem`, so
 //!   the stale item leaves the window.
 
+use cimmeria_entity::known_names;
 use sqlx::{Postgres, Transaction};
 
 use cimmeria_base_session::base::organization::api::lock_org;
@@ -173,12 +174,15 @@ pub(super) async fn refuse_org_move(
     let mut tx = match ctx.pool.begin().await {
         Ok(tx) => Some(tx),
         Err(e) => {
+            let player_label = known_names::player_name(req.player_id);
             tracing::warn!(
                 target: "bank",
                 event = "org_move_rejected",
                 player_id = req.player_id,
+                player_name = player_label,
                 entity_id = req.entity_id,
-                item_id = req.item_id,
+                entity_name = player_label,
+                item_id = req.item_id, // nt:id-only instance id, type unread yet
                 reason = "move_lock_begin_failed",
                 "org_move_rejected: begin failed, not resyncing without the locks: {e}"
             );
@@ -189,12 +193,15 @@ pub(super) async fn refuse_org_move(
         Some(tx) => match lock_and_find(tx, req, org_id).await {
             Ok(v) => v,
             Err(e) => {
+                let player_label = known_names::player_name(req.player_id);
                 tracing::warn!(
                     target: "bank",
                     event = "org_move_rejected",
                     player_id = req.player_id,
+                    player_name = player_label,
                     entity_id = req.entity_id,
-                    item_id = req.item_id,
+                    entity_name = player_label,
+                    item_id = req.item_id, // nt:id-only instance id, type unread yet
                     reason = "move_lock_failed",
                     "org_move_rejected: the refusal's locks or read failed, not resyncing: {e}"
                 );
@@ -207,31 +214,39 @@ pub(super) async fn refuse_org_move(
         Some(Where::Carried(f) | Where::Vault(f)) => Some(f),
         _ => None,
     };
+    let player_label = known_names::player_name(req.player_id);
     tracing::warn!(
         target: "bank",
         event = "org_move_rejected",
         account_id,
+        account_name = known_names::account_name(account_id),
         player_id = req.player_id,
+        player_name = player_label,
         entity_id = req.entity_id,
+        entity_name = player_label,
         org_id,
+        org_name = known_names::org_name(org_id),
         org_type = actor.map(|a| a.org_type),
         rank = actor.map(|a| a.rank),
         perm = refusal.perm(),
         item_id = req.item_id,
-        type_id = item.and_then(|f| f.type_id),
+        item_name = cimmeria_names::owned::item(item.and_then(|f| f.type_id)),
+        item_type_id = item.and_then(|f| f.type_id),
         quantity = req.quantity,
         stack_size = item.and_then(|f| f.stack_size),
         source_container_id = item.and_then(|f| f.container_id),
-        source_slot_id = item.and_then(|f| f.slot_id),
+        source_container_name = cimmeria_names::owned::container(item.and_then(|f| f.container_id)),
+        source_slot_id = item.and_then(|f| f.slot_id), // nt:id-only slot index, unnamed
         target_container_id = req.target_container_id,
-        target_slot_id = req.target_slot_id,
+        target_container_name = cimmeria_names::book().container(req.target_container_id),
+        target_slot_id = req.target_slot_id, // nt:id-only slot index, unnamed
         reason = refusal.reason(),
         vault_end = refusal.vault_end(),
         vault_slots = match refusal {
             OrgMoveRefusal::VaultSlotLocked { vault_slots } => Some(vault_slots),
             _ => None,
         },
-        banker_id = vault.banker_id(),
+        banker_id = vault.banker_id(), // nt:id-only banker NPC, unnamed on the base
         distance = vault.distance(),
         "org_move_rejected: item stays put (snap-back follows unless move_resync_skipped)"
     );
@@ -265,12 +280,15 @@ pub(super) async fn refuse_org_move(
                 )
                 .await
                 {
+                    let player_label = known_names::player_name(req.player_id);
                     tracing::warn!(
                         target: "bank",
                         event = "move_resync_skipped",
                         player_id = req.player_id,
+                        player_name = player_label,
                         entity_id = req.entity_id,
-                        item_id = req.item_id,
+                        entity_name = player_label,
+                        item_id = req.item_id, // nt:id-only instance id, org_move_rejected names it
                         reason = "resync_read_failed",
                         "move_resync_skipped: could not read the vault row back: {e}"
                     );
@@ -357,12 +375,15 @@ async fn send_line(req: &MoveRequest, text: &str, ctx: &MoveCtx<'_>) {
         .ok()
         .and_then(|m| m.get(&req.entity_id).copied());
     let Some(addr) = addr else {
+        let player_label = known_names::player_name(req.player_id);
         tracing::warn!(
             target: "bank",
             event = "bank_feedback_send_failed",
             player_id = req.player_id,
+            player_name = player_label,
             entity_id = req.entity_id,
-            item_id = req.item_id,
+            entity_name = player_label,
+            item_id = req.item_id, // nt:id-only instance id, org_move_rejected names it
             reason = "no_client_address",
             "bank_feedback_send_failed: no client address for the org vault refusal line"
         );

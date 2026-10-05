@@ -68,10 +68,14 @@ pub async fn reject_vault_open(
         target: "bank",
         event = "vault_open_rejected",
         account_id = id.account_id,
+        account_name = id.account_name,
         player_id = id.player_id,
+        player_name = id.player_name,
         entity_id,
+        entity_name = id.player_name,
         reason = reject.reason(),
         banker_id,
+        banker_name = banker_id.and_then(|b| space_mgr.entity_label(b)),
         distance,
         "vault_open_rejected: the vault did not open -- the player sees a chat line saying why"
     );
@@ -100,8 +104,11 @@ pub(super) async fn send_bank_feedback(
             target: "bank",
             event = "bank_feedback_send_failed",
             account_id = id.account_id,
+            account_name = id.account_name,
             player_id = id.player_id,
+            player_name = id.player_name,
             entity_id,
+            entity_name = id.player_name,
             reason = "base_channel_closed",
             error = %e,
             "bank feedback line could not be queued (base channel closed) -- \

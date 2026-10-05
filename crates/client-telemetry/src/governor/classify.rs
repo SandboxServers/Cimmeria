@@ -76,6 +76,13 @@ pub enum KeepReason {
     Failure,
     /// The governor's own rollup, repeat and health events.
     SelfReport,
+    /// `client.ability.*`: press, drop and send rows (AB-C1, AB-C2) and
+    /// recv, applied and shown rows (AB-C3 to AB-C5). The hook already
+    /// holds them to D-AU5's per-name budget (burst 8, 4 a second, the
+    /// dropped count on the next event), a press must stay joinable to
+    /// its answer, and a second budget here would drop events the hook's
+    /// `suppressed` count does not know about.
+    AbilityTrace,
 }
 
 impl KeepReason {
@@ -90,6 +97,7 @@ impl KeepReason {
             KeepReason::SessionBoot => "session_boot",
             KeepReason::Failure => "failure",
             KeepReason::SelfReport => "self_report",
+            KeepReason::AbilityTrace => "ability_trace",
         }
     }
 }
@@ -207,6 +215,9 @@ pub const RULES: &[Rule] = &[
         Exact("client.engine.level_stream_slow"),
         KeepReason::Failure,
     ),
+    // Every ability row (AB-C1 to AB-C5): throttled per name at the hook,
+    // and the governor must not split a press from its answer.
+    keep(Prefix("client.ability."), KeepReason::AbilityTrace),
     // Per-entity streams: the first K per entity survive world entry.
     per_entity(Exact("client.cme.event"), "name"),
     per_entity(Exact("client.mercury.entity_method"), "msg_id"),

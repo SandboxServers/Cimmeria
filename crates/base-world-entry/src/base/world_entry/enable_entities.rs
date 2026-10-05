@@ -24,6 +24,7 @@ use crate::mercury::{build_char_list, build_create_player};
 
 use super::super::character::query_character_list;
 use super::super::helpers::{drain_acks_and_seq, get_account_entity_id, get_enc_version};
+use super::super::session_identity::identity_for_addr;
 use super::super::ConnectedClientState;
 
 /// Handle `ENABLE_ENTITIES` (0x08) -- dispatches char list or create-player step.
@@ -79,7 +80,9 @@ pub async fn handle_enable_entities(
         tracing::info!(
             %addr,
             player_entity_id = entry_info.player_entity_id,
+            player_entity_name = identity_for_addr(connected, addr).player_name,
             space_id = entry_info.space_id,
+            world = %entry_info.world_name,
             seq,
             appearance_prewarm = load_data.is_some(),
             "Create player: sending CREATE_BASE_PLAYER + onClientMapLoad (waiting for mapLoaded)"
@@ -103,7 +106,9 @@ pub async fn handle_enable_entities(
             tracing::error!(
                 %addr,
                 player_entity_id = entry_info.player_entity_id,
+                player_entity_name = identity_for_addr(connected, addr).player_name,
                 space_id = entry_info.space_id,
+                world = %entry_info.world_name,
                 seq,
                 "Create player: transport.send_to failed before staging pending_map_loaded: {e}"
             );
@@ -154,12 +159,16 @@ pub async fn handle_enable_entities(
     }
 
     // Query characters from DB
-    let characters = query_character_list(db_pool, account_id).await;
+    let account_name = identity_for_addr(connected, addr).account_name;
+    let characters = query_character_list(db_pool, account_id, account_name).await;
     let account_eid = get_account_entity_id(connected, addr)?;
 
     tracing::info!(
         %addr,
+        account_id,
+        account_name,
         account_entity_id = account_eid,
+        account_entity_name = account_name,
         count = characters.len(),
         "Phase 4: sending character list ({})",
         if characters.is_empty() { "creation screen" } else { "select screen" }

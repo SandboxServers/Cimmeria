@@ -31,6 +31,9 @@ pub(super) fn handle_lab_query(
             Some(report) => Ok(LabQueryReply::Witnesses { report }),
             None => Err(format!("entity {entity_id} does not exist")),
         },
+        LabQuery::AbilityState { entity_id } => Ok(LabQueryReply::AbilityState {
+            state: space_mgr.ability_state(entity_id),
+        }),
     };
 
     // The receiver is dropped only if the lab endpoint gave up waiting (client

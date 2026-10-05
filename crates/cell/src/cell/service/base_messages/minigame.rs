@@ -19,7 +19,19 @@ pub(super) async fn handle_minigame_result(
     space_mgr: &mut SpaceManager,
     engine: &ChainEngine,
 ) {
-    tracing::info!(entity_id, result_code, chains = ?on_victory_chains, "Minigame result");
+    let id = space_mgr.player_identity(entity_id);
+    tracing::info!(
+        entity_id,
+        entity_name = id.player_name,
+        account_id = id.account_id,
+        account_name = id.account_name,
+        player_id = id.player_id,
+        player_name = id.player_name,
+        result_code,
+        result = cimmeria_wire::cell::client_methods::minigame::minigame_result_name(result_code),
+        chains = ?on_victory_chains,
+        "Minigame result"
+    );
     if result_code == 1 {
         // Victory — fire on_victory_chains through the content engine
         let player_id = space_mgr

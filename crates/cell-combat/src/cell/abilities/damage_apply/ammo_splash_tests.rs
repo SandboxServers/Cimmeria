@@ -408,3 +408,45 @@ async fn a_splash_kill_from_a_ground_cast_is_credited() {
     );
     assert!(mgr.get_entity(SHOOTER).unwrap().last_aoe_deaths.is_empty());
 }
+
+/// **Regression guard (AB-07, the AB-03 review carry-over).** A shot with a
+/// DoT splashes its direct hit only: the splash target loses the same with
+/// the DoT on the ability as without it. Before AB-07 the splash target
+/// took the DoT's first tick (at the splash fraction) with no DoT
+/// registered behind it, so the two losses differed.
+#[tokio::test]
+async fn splash_takes_the_direct_hit_not_the_dot() {
+    async fn splashed(with_dot: bool) -> i32 {
+        const DOT: i32 = 101;
+        let mut mgr = scene(BULLET_EXPLOSIVE, TCM_AE_RADIUS, |m| {
+            npc(m, 3, [13.0, 0.0, 10.0], true);
+            if with_dot {
+                let mut params = std::collections::HashMap::new();
+                params.insert("HealthDamage".to_string(), "5000".to_string());
+                m.effect_defs.insert(
+                    DOT,
+                    EffectDef {
+                        effect_id: DOT,
+                        pulse_count: 8,
+                        pulse_duration: 1.0,
+                        params,
+                        ..Default::default()
+                    },
+                );
+                m.ability_defs
+                    .get_mut(&ABILITY)
+                    .unwrap()
+                    .effect_ids
+                    .push(DOT);
+            }
+        });
+        shoot(&mut mgr).await;
+        lost(&mgr, 3)
+    }
+    let (plain, with_dot) = (splashed(false).await, splashed(true).await);
+    assert!(plain > 0, "the splash ran");
+    assert_eq!(
+        with_dot, plain,
+        "the DoT's tick never reaches a splash target"
+    );
+}

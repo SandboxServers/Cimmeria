@@ -58,7 +58,9 @@ pub(super) async fn request_expansion_quote(
             target: "bank",
             event = "expand_quote_skipped",
             account_id = id.account_id,
+            account_name = id.account_name,
             entity_id,
+            entity_name = id.player_name,
             reason = "no_player_id",
             "expand_quote_skipped: the entity has no character id, no expansion offer"
         );
@@ -75,8 +77,11 @@ pub(super) async fn request_expansion_quote(
             target: "bank",
             event = "expand_quote_send_failed",
             account_id = id.account_id,
+            account_name = id.account_name,
             player_id,
+            player_name = id.player_name,
             entity_id,
+            entity_name = id.player_name,
             reason = "base_channel_closed",
             error = %e,
             "expand_quote_send_failed: the quote could not reach the base -- the vault is \
@@ -125,9 +130,16 @@ pub async fn offer_vault_expansion(
             target: "bank",
             event = "expand_offer_dropped",
             account_id = id.account_id,
+            account_name = id.account_name,
             player_id,
+            // The entity may now play another character: name the offer's.
+            player_name = (id.player_id == Some(player_id))
+                .then_some(id.player_name)
+                .flatten(),
             entity_id,
+            entity_name = id.player_name,
             speaker_id,
+            speaker_name = space_mgr.entity_label(speaker_id),
             bank_slots = from_slots,
             reason,
             "expand_offer_dropped: the vault session changed before the offer arrived -- \
@@ -143,9 +155,13 @@ pub async fn offer_vault_expansion(
             target: "bank",
             event = "expand_offer_suppressed",
             account_id = id.account_id,
+            account_name = id.account_name,
             player_id,
+            player_name = id.player_name,
             entity_id,
+            entity_name = id.player_name,
             speaker_id,
+            speaker_name = space_mgr.entity_label(speaker_id),
             bank_slots = from_slots,
             price,
             reason = "dialog_quarantined",
@@ -181,9 +197,15 @@ pub async fn show_expand_offer(
         target: "bank",
         event = "expand_offered",
         account_id = id.account_id,
+        account_name = id.account_name,
         player_id = id.player_id,
+        player_name = id.player_name,
         entity_id,
+        entity_name = id.player_name,
         banker_id = (!gm_override).then_some(speaker_id),
+        banker_name = (!gm_override)
+            .then(|| space_mgr.entity_label(speaker_id))
+            .flatten(),
         gm_override,
         bank_slots = from_slots,
         price,
@@ -227,9 +249,12 @@ pub async fn answer_vault_expansion(
             target: "bank",
             event = "expand_dismissed",
             account_id = id.account_id,
+            account_name = id.account_name,
             player_id = id.player_id,
+            player_name = id.player_name,
             entity_id,
-            button_id,
+            entity_name = id.player_name,
+            button_id, // nt:id-only an authored dialog button ordinal; no name table holds it
             reason = if button_id == -1 { "closed" } else { "unexpected_button" },
             "expand_dismissed: the Expand dialog was answered without its button -- nothing bought"
         );
@@ -271,7 +296,9 @@ async fn request_expansion(
             target: "bank",
             event = "expand_rejected",
             account_id = id.account_id,
+            account_name = id.account_name,
             entity_id,
+            entity_name = id.player_name,
             reason = "player_missing",
             trigger = trigger.as_str(),
             "expand_rejected: the entity has no character id -- nothing bought"
@@ -308,8 +335,11 @@ async fn request_expansion(
             target: "bank",
             event = "expand_rejected",
             account_id = id.account_id,
+            account_name = id.account_name,
             player_id,
+            player_name = id.player_name,
             entity_id,
+            entity_name = id.player_name,
             reason = "base_channel_closed",
             trigger = trigger.as_str(),
             bank_slots = offer.map(|o| o.from_slots),
@@ -334,8 +364,11 @@ pub async fn refuse_non_gm_expand(
         target: "bank",
         event = "expand_rejected",
         account_id = id.account_id,
+        account_name = id.account_name,
         player_id = id.player_id,
+        player_name = id.player_name,
         entity_id,
+        entity_name = id.player_name,
         reason = "not_gm",
         trigger = ExpandTrigger::GmConsole.as_str(),
         "expand_rejected: .bankexpand from a player without GM access -- nothing bought"

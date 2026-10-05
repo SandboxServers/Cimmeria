@@ -25,8 +25,11 @@ last_updated: 2026-09-27
 > direction.
 > **Verified continuously** by `cimmeria-wire`'s `mercury::def_conformance` ([crates/wire/src/mercury/def_conformance/](../../crates/wire/src/mercury/def_conformance/), #801): it replays the flattening rule
 > below over `entities/defs/` in CI and fails on any constant that drifts from it
-> (`method_idx`, the per-interface tables, the SGWMob and SGWPet indices, and the
-> `wire-log` name table).
+> (`method_idx`, the per-interface tables, the SGWMob and SGWPet indices). The
+> log-name tables in `cimmeria_wire::names` are generated from the same flattener,
+> and `names::doc_conformance` checks every row of this page against them: a row
+> whose index and method disagree with the generated table fails CI with this
+> file's line number (NT-30, named telemetry).
 > **Total methods**: 157 (indices 0–156)
 > **Encoding**: Methods 0–60 use direct wire encoding (`msg_id = 0x80 + index`);
 > methods 61+ use extended encoding (`msg_id = 0xBD`, sub-byte = `index - 61`).
@@ -323,6 +326,10 @@ Every method in this block has an argument serializer, `build_on_<method>`, in [
 
 `onErrorCode` (121), `onOrganizationCreationResult` (134) and `launchOrganizationCreation` (135) have serializers in [`crates/wire/src/cell/client_methods/player.rs`](../../crates/wire/src/cell/client_methods/player.rs) (`build_on_error_code`, `build_on_organization_creation_result`, `build_launch_organization_creation`), each with a byte test. 134 and 135 go out with the extended encoding (sub-slot 73 and 74). Since ORG-05 the cell sends 135 when an eligible player right-clicks an organization registrar, and the base sends 134 for every named creation: `(1, 0)` on success, or `(0, RetCode)` on a refusal. The `Result` and `RetCode` values are project policy, not recovered data (`org_creation_ret_code` in `player.rs`; [organization-system.md § Creation](../gameplay/organization-system.md#creation-org-05)).
 
+#### Names that look like client methods but are not
+
+`onSendCombatDebug` and `onSendEventDebug` are declared in `SGWPlayer.def` under `<CellMethods>` without `<Exposed/>` (lines 685 and 690), so they are server-internal cell methods with no client method index. The client has no handler, event or string for either, so a server cannot show a debug line through them. Debug text reaches a player only as a chat line, `onPlayerCommunication` (28) on the feedback channel. Evidence: [native-combat-debug.md](../reverse-engineering/findings/native-combat-debug.md).
+
 #### Crafting payloads (112, 136-140)
 
 The server-side serializers are in `crates/wire/src/crafting/client_methods.rs`, each byte-exact tested. Integers are little-endian; an `ARRAY` is a `u32` element count followed by the elements.
@@ -503,6 +510,26 @@ internal property-list lookup key matches its `.def` `<ArgName>` string exactly 
 `GamePet__OnPetStanceUpdateChanged` (`0x00d3a260`) keys on `"aStance"` — i.e. this confirms
 which method each decompiled handler implements, not that the flattening rule assigned it the
 number claimed above.
+
+## SGWGmPlayer Client Method Dispatch Table
+
+> **Entity type**: SGWGmPlayer (`class_id = 0x03`), the class a GM account's player is created as.
+> **Total methods**: 163 (indices 0-162). `SGWGmPlayer.def` declares `<Parent>SGWPlayer</Parent>`
+> with an empty `<Implements>`, so its own six `<ClientMethods>` append after SGWPlayer's 157 and
+> nothing before them renumbers. The idbase stays 61, so all six use the extended encoding
+> (`0xBD`, sub-byte = `index - 61`).
+
+| Index | Method | Args |
+|-------|--------|------|
+| 0-156 | *(SGWPlayer — see the table above)* | — |
+| 157 | `onLOSResult` | `VECTOR3 aStart, VECTOR3 aEnd, INT8 aClear` |
+| 158 | `onShowWaypoints` | `WSTRING pointSetName, FLOAT radius, WaypointList wayPoints` |
+| 159 | `onShowPath` | `INT32 aEntityId, UINT8 aMovementType, ARRAY<VECTOR3> aPath` |
+| 160 | `onDisableShowPath` | `INT32 aEntityId` |
+| 161 | `onSetTarget` | `INT32 aEntityId` |
+| 162 | `onShowNavigation` | `WSTRING aChunkName, ARRAY<NavigationPolygon> aNavPolyList` |
+
+Extended encoding: sub-bytes 96-101. Source: `entities/defs/SGWGmPlayer.def` `<ClientMethods>`.
 
 ## Derivation
 

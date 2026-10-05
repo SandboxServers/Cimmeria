@@ -99,6 +99,7 @@ pub async fn load_ring_regions(pool: &PgPool) -> Result<HashMap<i32, RingRegion>
             if dst == *id {
                 tracing::warn!(
                     region_id = id,
+                    region_name = %region.tag,
                     "ring region lists itself as destination — dropping"
                 );
                 continue;
@@ -106,6 +107,7 @@ pub async fn load_ring_regions(pool: &PgPool) -> Result<HashMap<i32, RingRegion>
             if !known.contains(&dst) {
                 tracing::warn!(
                     region_id = id,
+                    region_name = %region.tag,
                     dst,
                     "ring region destination not in table — dropping"
                 );
@@ -148,6 +150,7 @@ pub fn audit_ring_pads(
         .map(|r| {
             tracing::error!(
                 region_id = r.region_id,
+                region_name = %r.tag,
                 tag = %r.tag,
                 world_name = %r.world_name,
                 pad_x = r.x,

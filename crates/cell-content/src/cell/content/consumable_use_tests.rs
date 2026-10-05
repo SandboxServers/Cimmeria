@@ -30,6 +30,9 @@ use crate::cell::spawner::EVENT_ITEM_USE_ABILITY;
 use crate::test_support::LogCapture;
 use cimmeria_wire::cell::vault::VaultAccess;
 
+#[path = "consumable_use_stunned_tests.rs"]
+mod stunned;
+
 const PLAYER: u32 = 1;
 const PLAYER_ID: i32 = 42;
 const INSTANCE: i32 = 0x7000_D1C1;
@@ -63,6 +66,8 @@ fn ability(ability_id: i32, effect_ids: Vec<i32>) -> AbilityDef {
         required_ammo: 0,
         event_set_id: None,
         velocity: 0.0,
+        type_id: Default::default(),
+        passive: false,
     }
 }
 
@@ -514,7 +519,10 @@ async fn the_not_implemented_refusal_logs_its_reason() {
             "consumable_not_implemented",
         )
         .expect("WARN reason=consumable_not_implemented");
-    assert_eq!(row.fields.get("type_id").map(String::as_str), Some("6206"));
+    assert_eq!(
+        row.fields.get("item_type_id").map(String::as_str),
+        Some("6206")
+    );
     assert_eq!(
         row.fields.get("item_id").map(String::as_str),
         Some(INSTANCE.to_string().as_str())
@@ -595,8 +603,8 @@ async fn a_consumed_mark_v_stim_buffs_both_stats_and_sends_both_icons() {
     apply_consumed_item(consumed(STIM_V), &tx, &mut mgr).await;
     let e = mgr.get_entity(PLAYER).unwrap();
     assert_eq!(e.stats.get(COORDINATION).unwrap().cur, 17);
-    assert_eq!(e.stat_buffs.buffs.len(), 2);
-    assert!(e.stat_buffs.buffs.iter().all(|b| b.timer_sent));
+    assert_eq!(e.stat_buffs.entries.len(), 2);
+    assert!(e.stat_buffs.entries.iter().all(|b| b.timer_sent));
     let icons: Vec<i32> = method_calls(&drain(&mut rx))
         .into_iter()
         .filter(|(m, _)| *m == crate::cell::client_methods::being::ON_TIMER_UPDATE)
@@ -616,7 +624,7 @@ async fn a_second_different_stim_keeps_the_first_buff() {
     apply_consumed_item(consumed(STIM_V), &tx, &mut mgr).await;
     let e = mgr.get_entity(PLAYER).unwrap();
     assert_eq!(e.stats.get(COORDINATION).unwrap().cur, 17);
-    assert_eq!(e.stat_buffs.buffs.len(), 2);
+    assert_eq!(e.stat_buffs.entries.len(), 2);
 }
 
 #[tokio::test]

@@ -64,6 +64,7 @@ pub async fn handle_play_character(
                     Arc::clone(&c.next_seq),
                     c.access_level,
                     c.enc_version,
+                    c.account_name.clone(),
                 ))
             } else {
                 None
@@ -74,7 +75,7 @@ pub async fn handle_play_character(
         }
     };
 
-    let (pending_acks_arc, next_seq, access_level, enc_version) = match arcs {
+    let (pending_acks_arc, next_seq, access_level, enc_version, account_name) = match arcs {
         Some(a) => a,
         None => return Ok(()),
     };
@@ -84,6 +85,7 @@ pub async fn handle_play_character(
     let entry_info = query_world_entry(
         db_pool,
         account_id,
+        account_name.clone(),
         player_id,
         access_level,
         entity_manager,
@@ -98,7 +100,10 @@ pub async fn handle_play_character(
     // the same connection isn't silently dropped.
     if entry_info.player_entity_id == super::methods::world_entry_db::NO_ENTITY_ID {
         tracing::error!(
-            %addr, player_id, account_id,
+            %addr,
+            player_id, // nt:id-only the character row failed to load, so nothing names it
+            account_id,
+            account_name = account_name.as_deref(),
             "World entry aborted: query_world_entry returned NO_ENTITY_ID sentinel"
         );
         if let Ok(mut clients) = connected.lock() {
@@ -128,13 +133,20 @@ pub async fn handle_play_character(
     // the GM gate (gm_gate.rs) covering 109+ and a verified gm* subset wired
     // in the cell router, flipping the class for GMs is safe.
 
+    let player_name = Some(player_load_data.player_name.as_str()).filter(|n| !n.is_empty());
     tracing::info!(
         %addr,
+        account_id,
+        account_name = account_name.as_deref(),
         player_id,
+        player_name,
         entity_id = entry_info.player_entity_id,
+        entity_name = player_name,
         space_id = entry_info.space_id,
+        world = %entry_info.world_name,
         pos = ?entry_info.pos,
         class_id = entry_info.class_id,
+        class_name = cimmeria_wire::names::class_name(entry_info.class_id),
         "World entry: sending RESET_ENTITIES (entity teardown)"
     );
 
@@ -188,6 +200,8 @@ pub async fn handle_play_character(
             // this account" lookup that would target the wrong character on
             // multi-character accounts.
             c.active_player_id = Some(player_id);
+            // Rule 6: helpers that log only a `player_id` name it from here.
+            cimmeria_entity::known_names::remember_player(player_id, &player_load_data.player_name);
             // Not listed in the online name index yet: the client has not
             // created this player entity. `handle_on_client_ready` lists it.
             c.pending_world_entry = Some(entry_info);
@@ -201,10 +215,9 @@ pub async fn handle_play_character(
     // Discord world-channel: the character is now known (unlike the auth-time
     // login emit), so this carries name + world + spawn position.
     cimmeria_discord::emit_player_world_entry(
-        account_id,
-        entry_account_name,
-        entry_character_name,
-        entry_world_name,
+        cimmeria_discord::Named::new(account_id, entry_account_name),
+        cimmeria_discord::Named::new(player_id, Some(entry_character_name)),
+        cimmeria_base_session::base::discord_world(&entry_world_name),
         entry_position,
     );
 

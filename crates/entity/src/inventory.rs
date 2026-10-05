@@ -31,6 +31,36 @@ pub const INV_AUCTION: i32 = 18;
 pub const INV_TEAM_BANK: i32 = 19;
 pub const INV_COMMAND_BANK: i32 = 20;
 
+/// The client's `EInventoryContainerId` token for a bag ID, for the
+/// `bag_name` log field next to `bag_id` (Rule 6). `None` for an ID the
+/// client does not declare, so a forged one logs without a name.
+pub const fn bag_name(container_id: i32) -> Option<&'static str> {
+    Some(match container_id {
+        INV_MAIN => "INV_Main",
+        INV_MISSION => "INV_Mission",
+        INV_BANDOLIER => "INV_Bandolier",
+        INV_HEAD => "INV_Head",
+        INV_FACE => "INV_Face",
+        INV_NECK => "INV_Neck",
+        INV_CHEST => "INV_Chest",
+        INV_HANDS => "INV_Hands",
+        INV_WAIST => "INV_Waist",
+        INV_BACK => "INV_Back",
+        INV_LEGS => "INV_Legs",
+        INV_FEET => "INV_Feet",
+        INV_ARTIFACT1 => "INV_Artifact1",
+        INV_ARTIFACT2 => "INV_Artifact2",
+        INV_CRAFTING => "INV_Crafting",
+        INV_BUYBACK => "INV_Buyback",
+        INV_BANK => "INV_Bank",
+        INV_AUCTION => "INV_Auction",
+        INV_TEAM_BANK => "INV_TeamBank",
+        INV_COMMAND_BANK => "INV_CommandBank",
+        100 => "INV_Incoming",
+        _ => return None,
+    })
+}
+
 /// Max items per container: the one capacity table.
 ///
 /// Values are `BAG_SIZES` in `deprecated/python/common/Constants.py:142-163`. Every

@@ -112,11 +112,22 @@ pub(super) fn resolve_weapon_redirect(
     // behavior. The `combat.use_ability` span (INFO)
     // already records every commit; this DEBUG just
     // discriminates the redirect path inside it.
+    let who = space_mgr.player_identity(entity_id);
     tracing::debug!(
+        target: "abilities",
+        event = "weapon_ability_redirect",
+        account_id = who.account_id,
+        account_name = who.account_name,
+        player_id = who.player_id,
+        player_name = who.player_name,
         entity_id,
+        entity_name = space_mgr.entity_label(entity_id),
         original_ability_id = ability_id,
+        original_ability_name = cimmeria_names::book().ability(ability_id),
         weapon_ability_id = weapon_ranged_ability,
+        weapon_ability_name = cimmeria_names::book().ability(weapon_ranged_ability),
         item_id,
+        item_name = cimmeria_cell_world::cell::effects::content_names::item_name(item_id),
         "useAbility: redirecting archetype-default ranged \
          auto-attack to active weapon's RANGED binding"
     );
@@ -155,6 +166,8 @@ mod tests {
             required_ammo: 1,
             event_set_id: None,
             velocity: 0.0,
+            type_id: Default::default(),
+            passive: false,
         }
     }
 

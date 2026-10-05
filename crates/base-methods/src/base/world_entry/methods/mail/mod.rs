@@ -27,11 +27,13 @@ use std::ops::Deref;
 use std::sync::{Arc, Mutex};
 use std::time::Instant;
 
+use cimmeria_entity::cell_entity::PlayerIdentity;
 use cimmeria_mercury::transport::Transport;
 use sqlx::PgPool;
 
 use super::super::super::helpers::send_to_witness_reliable;
 use super::super::super::ConnectedClientState;
+use crate::base::session_identity::identity_for_entity;
 use crate::cell::messages::MailOp;
 use crate::mercury::build_player_entity_method_packet;
 
@@ -104,6 +106,13 @@ impl Caller<'_> {
         clients.get(&addr).map(|c| c.account_id)
     }
 
+    /// The caller's session identity with the names that pair with its IDs
+    /// (Rule 6). Resolve it inside the branch that logs; every field is
+    /// absent once the session is gone.
+    pub(super) fn identity(&self) -> PlayerIdentity {
+        identity_for_entity(self.connected, self.entity_to_addr, self.entity_id)
+    }
+
     /// The caller's client address, if the entity still has one.
     pub(super) fn addr(&self) -> Option<SocketAddr> {
         let guard = match self.entity_to_addr.lock() {
@@ -168,9 +177,14 @@ pub(super) async fn route(caller: Caller<'_>, op: MailOp, pool: Option<&PgPool>,
     };
 
     let Some(pool) = pool else {
+        let who = caller.identity();
         tracing::debug!(
             entity_id = caller.entity_id,
+            entity_name = who.player_name,
             player_id = caller.player_id,
+            player_name = who.player_name,
+            account_id = who.account_id,
+            account_name = who.account_name,
             "Mail request: no DB pool available"
         );
         return;

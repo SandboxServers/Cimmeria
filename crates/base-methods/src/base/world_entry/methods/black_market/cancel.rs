@@ -16,7 +16,7 @@ use super::helpers::{lock_players, now_unix_secs};
 use super::payout_mail::{mail_payout, refund_standing_bid, Payout, PayoutReason, PayoutRole};
 use super::send::{send_bm_auction_remove, send_bm_error, BmNet};
 use super::telemetry::{
-    count_bm_outcome, db, log_failure, log_outbid_refund, log_transition, Actor, Failure,
+    count_bm_outcome, db, item_name, log_failure, log_outbid_refund, log_transition, Actor, Failure,
 };
 use super::types::{auction_columns, auction_status, AuctionRow};
 use super::validate::validate_cancel;
@@ -72,23 +72,21 @@ pub async fn handle_cancel_auction(
                     c.before.current_bid,
                 );
             }
-            log_transition(
-                "bm.cancelled",
-                actor.account_id,
-                player_id,
-                Some(&c.before),
-                &c.after,
-            );
+            log_transition("bm.cancelled", &actor.who(), Some(&c.before), &c.after);
             for p in &c.payouts {
-                p.log(actor.account_id, player_id);
+                p.log(&actor.who());
             }
             tracing::info!(
                 entity_id,
+                entity_name = actor.player_name,
                 account_id = actor.account_id,
+                account_name = actor.account_name,
                 player_id,
-                sequence_id,
+                player_name = actor.player_name,
+                auction_id = sequence_id, // nt:id-only auctions have no name column; item_name names the listing
                 returned_item_id = c.after.item_id,
-                mail_id = c.payouts.first().map(|p| p.mail.mail_id),
+                returned_item_name = item_name(c.after.item_def_id),
+                mail_id = c.payouts.first().map(|p| p.mail.mail_id), // nt:id-only mail rows carry no name, only a subject
                 "cancelAuction: cancelled, item mailed back"
             );
             count_bm_outcome("cancel", "ok");

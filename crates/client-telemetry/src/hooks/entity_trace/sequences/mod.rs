@@ -170,6 +170,11 @@ impl SequenceDrop {
         }
         if let Some(v) = ids.instance_id {
             f.push(("instance_id", json!(v)));
+            // The server sends the cast's id as the sequence's `InstanceId`
+            // (ability-mechanics AB-T1); 0 is "no instance".
+            if v != 0 {
+                f.push(("cast_id", json!(v)));
+            }
         }
         if let Some(e) = self.event_id {
             f.push(("event_id", json!(e)));

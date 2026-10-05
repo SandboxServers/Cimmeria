@@ -2,10 +2,14 @@
 title: Live Research Lab — the research rulebook
 type: how-to
 audience: engineers and AI agents doing RE / live verification against a running SGW.exe + cimmeria-server
-last_updated: 2026-09-29
+last_updated: 2026-10-04
 companion_docs:
   - ../architecture/live-research-lab.md
   - ../architecture/client-telemetry.md
+  - automated-uat.md
+  - ../commands.md
+  - ../analysis/ability-mechanics/lab-uat-and-telemetry.md
+  - ../../tools/lab/install.ps1
   - ../architecture/observability.md
   - re-toolchain-setup.md
   - reverse-engineering-with-claude.md
@@ -97,6 +101,53 @@ AteraLoader and AtreaRL are reference material for how a bridge *can* be
 built. They are not code to extend or vendor. Everything in the lab is our
 own, so the trust boundary is one we control end to end.
 
+## Before you drive the client: the lab lease
+
+One workstation runs one lab client per instance, and several Claude
+sessions may want it. Driving it takes the
+[lab lease](#the-lab-lease), which the supervisor enforces:
+
+1. **Take the lease first.** `lab_lease_acquire {owner, purpose}` returns a
+   `lease_id`; pass it to every tool that drives the client. A refusal names
+   who holds the lab, what for and since when: wait, or ask that session to
+   `lab_lease_release`. Take it over (`force: true` with a `reason`) only
+   when the holder is gone; the takeover is logged and the holder's next
+   call is told who took it. `lab_lease_status` shows the holder at any
+   time, and reading tools (screenshots, UI readers, status) need no lease.
+2. **Release it when you finish.** An idle lease expires after its
+   `ttl_s` (default 600 s) anyway, and with no lease held the watchdog
+   leaves a dead client down instead of relaunching it.
+3. **Run the shared daemon.** The lease covers every session only when
+   they all reach the same supervisor, the
+   [shared daemon](#the-shared-daemon-cimmeria-lab---http). A stdio
+   `cimmeria-lab` enforces the lease for its own session only, and its
+   watchdog relaunches its client whoever killed it (seen 2026-10-04, when
+   a client killed from one session came straight back under another
+   session's supervisor). While stdio supervisors still run on the
+   machine, find who owns a running `SGW.exe` before you touch it. The
+   bridge listens inside the client on the instance's bridge port (8770 by
+   default), and the supervisor that owns the client holds an open
+   connection to it; the supervisor's parent chain names the session's
+   `claude.exe`:
+
+   ```powershell
+   $sgw = (Get-Process SGW).Id
+   $port = (Get-NetTCPConnection -OwningProcess $sgw -State Listen).LocalPort
+   Get-NetTCPConnection -RemotePort $port -State Established |
+     ForEach-Object { Get-CimInstance Win32_Process -Filter "ProcessId=$($_.OwningProcess)" } |
+     Select-Object ProcessId, ParentProcessId, Name
+   ```
+
+   [`tools/lab/install.ps1`](../../tools/lab/install.ps1) prints the same
+   chain when it refuses to install over a running client. Ask that
+   session to call `lab_client_stop` rather than killing the client
+   yourself.
+
+> **The folder lock is obsolete.** Before the lease, sessions agreed to
+> create `%LOCALAPPDATA%\cimmeria-lab\live.lock` as a directory before
+> driving. Nothing enforced it. Do not create it any more, and delete a
+> leftover one; the lease replaces it.
+
 ## How to run an experiment
 
 The loop, concretely (ADR §4):
@@ -118,9 +169,8 @@ The loop, concretely (ADR §4):
 ### Reading the merged timeline
 
 `lab_timeline` interleaves local client events with server packet-tap
-rows on **one clock**. Client events (bridge heartbeat today; the full
-hook-hit / Lua-print / Mercury-dispatch ring once #686 lands) arrive on
-the dev-box clock; packet-tap rows arrive on the server clock. The
+rows on **one clock**. Client events (the bridge heartbeat today; see the
+note below) arrive on the dev-box clock; packet-tap rows arrive on the server clock. The
 supervisor estimates the offset between the two from the packet-tap round
 trip and projects the client events onto the server clock, so a client
 observation and the packet that caused it line up.
@@ -146,14 +196,18 @@ original `client_ts_ms` for client events, and a `kind`
 durable copy under the dev-session id — use SigNoz for anything you need
 to keep or share; use `lab_timeline` for the fast inner loop.
 
-> **Today vs. later.** The client side of the timeline is currently the
-> bridge heartbeat ring — enough to answer "did the client's main thread
-> keep ticking while the server sent packet X". The rich client-event ring
-> (`client_events_read`, #686) was stopped by the owner; when it lands it
-> plugs into the same offset/merge machinery with no downstream change.
-> Until then, `lab_timeline` is useful but heartbeat-only on the client
-> side, and the clock offset is a coarse estimate from the packet-tap
-> round trip (there is no dedicated server ping tool yet).
+> **What it merges today.** The client side of the timeline is still the
+> bridge heartbeat ring: enough to answer "did the client's main thread
+> keep ticking while the server sent packet X". The rich client events
+> (CME events, `net.out`, entity lifecycle, Lua errors, and the
+> `ability.*` rows below) do exist now: the supervisor drains them into
+> its event store, and `client_events_read` and `client_wait_event` read
+> them. `lab_timeline` does not merge that store yet: its seam
+> (`drain_event_ring` in `crates/lab/src/timeline/client_events.rs`)
+> returns nothing. Until it is wired, read client events with
+> `client_wait_event` and line them up with the tap by hand. The clock
+> offset is a coarse estimate from the packet-tap round trip (there is no
+> dedicated server ping tool yet).
 
 ### Did the client accept what the server sent?
 
@@ -178,8 +232,8 @@ client seams is
 
 ### The free Lua-VM check (SigNoz Q1)
 
-Before you build any autologin probe, answer the open question from the
-#685 spike — **is the Lua VM alive at the login screen?** — for free, with
+Before you build any autologin probe, answer the open question from
+the #685 spike — **is the Lua VM alive at the login screen?** — for free, with
 no new probe. The client already emits a `client.lua.newstate` event when
 the Lua state is created, and it ships to SigNoz under your dev-session id.
 Query it:
@@ -199,10 +253,11 @@ against telemetry you are already emitting.
 
 ## Tools at a glance
 
-Supervisor (`cimmeria-lab`, stdio MCP on the dev box):
+Supervisor (`cimmeria-lab` on the dev box: the [shared daemon](#the-shared-daemon-cimmeria-lab---http), or stdio per session). Tools that drive the client need a `lease_id` ([the lab lease](#the-lab-lease)):
 
 | Tool | Purpose |
 |---|---|
+| `lab_lease_acquire` / `_renew` / `_release` / `_status` | Take, extend, give back and inspect the one-driver lab lease. A refusal names the holder; `force` with a `reason` takes over. |
 | `lab_client_start` / `_stop` / `_restart` | Own the SGW.exe lifecycle. |
 | `lab_client_status` | PID, uptime, heartbeat age, login state, crashes. |
 | `lab_login` | Log in with the client's own input (Escape through the intro movies, type the account and password, pick the server) and stop at character select. Credentials default to `lab-account.json`. See [Client flows](#client-flows). |
@@ -239,9 +294,38 @@ Supervisor (`cimmeria-lab`, stdio MCP on the dev box):
 
 Server endpoint (`cimmeria-lab-mcp`, in-server, token-gated HTTP —
 WireGuard-only on the colo): `server_console_*`, `server_sessions`,
-`server_entity_*`, `server_witnesses`, `server_packet_tap_*`,
+`server_entity_*`, `server_witnesses`, `server_ability_state`, `server_packet_tap_*`,
 `server_log_tail`, `server_content_reload`, `server_db_query`. See ADR
 §3.5 for the full set; `docs/operations/colo-deploy.md` for the port.
+`lab_uat_run` drives the packet tap itself for a row with `packet`
+clauses ([automated-uat.md](automated-uat.md#packet-clauses)): one tap
+per row from the anchor to teardown, always stopped.
+
+### Names next to IDs in the server tools
+
+`server_entity_get`, `server_entity_query`, `server_witnesses` and `server_sessions` pair every ID with its name, per Rule 6 of [instrumentation-discipline.md](../architecture/instrumentation-discipline.md#rule-6--every-id-field-is-paired-with-its-name). A name that does not resolve is left out of the reply, never `null`, `""` or `"unknown"`: a `template_id` with no `template_name` is a seed hole worth reporting.
+
+| Tool | ID → name keys |
+|---|---|
+| `server_entity_get`, `server_entity_query` | `entity_id` → `entity_name` (character name; for an NPC its `npc_name`, else the text of its `name_id` or its template's); `template_id` → `template_name`; `space_id` → `world`; `archetype_id` → `archetype_name`; `current_target_id` → `current_target_name` (a live target in the same space) |
+| `server_witnesses` | The entity's `entity_name`, `template_id` + `template_name` and `world`. `witnessed_by` and `witnesses` are lists of `{ entity_id, entity_name, template_id, template_name }`, not bare IDs |
+| `server_sessions` | `entity_id` → `entity_name`, `player_id` → `player_name`, `account_id` → `account_name`, and the zone as `world` |
+
+The cell fills the names it holds live (a character or NPC name, the space's world, the target's name); the lab endpoint fills the seed names from the NameBook (`cimmeria-names`) on the way out. The older keys stay for existing callers: `name` and `world_name` on a snapshot, `name` and `zone` on a session row. The snapshot's `spawn_id`, `class_id`, `faction` and per-stat `stat_id` have no name table and stay bare.
+
+`client_entity_table` and `client_inventory` are answered by the lab daemon from the client's memory and UI Lua; the server never sees those replies, so it does not name them. `client_inventory` already carries the client's item names; `client_entity_table` reports only IDs (use `client_entity_find` or `server_entity_get` for the name).
+
+Before and after for an NPC (`server_entity_get`, trimmed, illustrative IDs):
+
+```json
+// before
+{ "entity_id": 900, "space_id": 3, "world_name": "Castle_CellBlock", "name": null,
+  "template_id": 7001, "current_target_id": 100 }
+// after
+{ "entity_id": 900, "entity_name": "Jaffa Guard", "space_id": 3, "world": "Castle_CellBlock",
+  "world_name": "Castle_CellBlock", "name": null, "template_id": 7001,
+  "template_name": "Jaffa_Guard_T1", "current_target_id": 100, "current_target_name": "Tealc" }
+```
 
 ## Driving the client with its own input
 
@@ -262,13 +346,13 @@ Trade, duels, squads and teams, mail between players, player-to-player visibilit
 ```json
 "cimmeria-lab-p2": {
   "type": "stdio",
-  "command": "<CIMMERIA_ROOT>\\target\\debug\\cimmeria-lab.exe",
+  "command": "<LOCALAPPDATA>\\cimmeria-lab\\bin\\cimmeria-lab.exe",
   "env": {
     "CIMMERIA_LAB_INSTANCE": "p2",
     "CIMMERIA_LAB_BRIDGE_PORT": "8771",
     "CIMMERIA_LAB_INSTALL_DIR": "<SGW_INSTALL_DIR>",
-    "CIMMERIA_LAB_START32": "...",
-    "CIMMERIA_LAB_PATCHES_DLL": "..."
+    "CIMMERIA_LAB_START32": "<LOCALAPPDATA>\\cimmeria-lab\\bin\\sgw-start32.exe",
+    "CIMMERIA_LAB_PATCHES_DLL": "<LOCALAPPDATA>\\cimmeria-lab\\bin\\cimmeria_client_patches.dll"
   }
 }
 ```
@@ -288,6 +372,13 @@ Its tools show up under the second server's name, so an agent addresses a player
 **Two accounts.** A second login on the same account evicts the first client (`duplicate_login`), so the second instance needs its own account and `lab-account.p2.json`. The seed has `lab` plus `lab2` to `lab5` (account ids 10 to 14, same password as the other seed accounts); give each instance its own account in its `lab-account.<instance>.json`, and keep all five in the Discord `muted_accounts` list.
 
 **Focus.** A client whose window is not in the foreground runs at below-normal priority with a 5 ms sleep per tick (`FEngineLoop::Tick`). Turn on `client_input_focus` (virtual focus) for both instances: it answers `GetForegroundWindow` per process, so neither is throttled and each keeps reading its own lab input. Real keyboard and mouse still go to the window in front, so do not type while a scenario runs. Both windows open at the same place and size; screenshots use `PrintWindow` per window, so an overlapped window still captures.
+
+**Two-player UAT rows.** `lab_uat_run` drives p2 itself for a `players = 2` row ([automated-uat.md, Two-player rows](automated-uat.md#two-player-rows)). It runs from the default instance and, on the first such row, makes an in-process supervisor for the second instance with that instance's session file, credentials, logs and bridge port. It keeps that supervisor for the life of the server, so p2's client stays up between runs. You need:
+
+- `sessions\lab-account.p2.json` with its own account (`lab2`) and a `character`. Without it, two-player rows are BLOCKED and the reason names the file;
+- `CIMMERIA_LAB_UAT_P2` only to use another instance name (default `p2`), and `CIMMERIA_LAB_UAT_P2_BRIDGE_PORT` only to use another bridge port (default: this instance's port + 1, so 8771).
+
+Do not also run a separate `cimmeria-lab-p2` server for the same instance while a run drives it. Both would own p2's session file, and whichever starts second has its client start refused, which BLOCKs the row with that error. Virtual focus is turned on for each client by the runner's chat macro.
 
 **When to use `wireclient` instead.** A second player that only has to exist and answer (a duel partner, a body to be visible, a trade or squad counterpart driven with `cell_method`/`base_method`) needs no window at all: use `sparbot` or `GameSession` from `crates/wireclient` ([wireclient.md](../architecture/wireclient.md)). It has no throttling and no shared client cache, and needs its own account too. Use a second full client when the second player's UI is part of what is being tested.
 
@@ -318,14 +409,17 @@ Every flow returns `elapsed_ms` and a `steps` list with per-step timings. A fail
 What the flows guard against:
 
 - **Deleting the wrong character.** Delete and Play act on the *selected* slot, so the flow checks the client's `CharSelectMod.selectedCharacterIndex` and name after the click, and confirms a delete only when the prompt text names the character.
-- **Escape opening the game menu.** `lab_play_character` presses Escape only while a movie plays or while the map loads under a cutscene (character select gone, no HUD yet), plus three presses once a new character's intro dialog is up (the arrival cutscene keeps playing under it). With `skip_cutscene: false` it never presses Escape.
+- **Escape opening the game menu.** `lab_play_character` presses Escape only while a movie plays or from the moment character select goes away until the world HUD shows, one press per 1.5 s poll, up to the timeout. The HUD test is `SelfStatusWin` visible and nothing else: on the first live run a new character's intro dialog (and the minimap) read visible while the Bink arrival cutscene still played, and `SelfStatusWin` appeared only after an Escape. Once the HUD is up the flow stops pressing. With `skip_cutscene: false` it never presses Escape.
+- **A busy client after Create.** Right after Create the client's main thread is busy, and a bridge call can time out in its queue (`dispatch timeout`; the first live run failed there although the character was made). `lab_create_character` retries such timeouts until its 30 s budget, and once one has happened it also reads the character list, so a character that is already in the list counts as created. Any other bridge error still fails the step.
 - **Closing a dialog the wrong way.** `lab_finish_dialog` pages with Next until Done (the green checkmark) shows and never uses the close X, which sends choice -1. `accept: true` presses Accept on an offer with no Done.
 
 Typing covers letters, digits, space and `-_/.`; a password with other characters is refused before anything is typed. Names in character creation must be letters only.
 
 `client_entity_table` reads the `GameEntityManager` singleton (VA `0x01EF244C` plus the ASLR slide) and walks its three `std::map`s with one memory read per tree node and one per entity. Hundreds of small reads once starved the watchdog's heartbeat and got a healthy client killed; the watchdog now forgives a missed heartbeat while other bridge calls are completing (`heartbeat::BUSY_GRACE_MS`), and a crash relaunch logs back in with `lab_login` and plays the `lab-account.json` character.
 
-Not yet proven on the live client (the prototype scripts these port were): the EULA path, the server-row selection by name, the `SelfStatusWin`/`MinimapWin` world-HUD test for a returning character (the prototype only played new characters, whose intro dialog marks the world as loaded), `client_ui_state`'s root-window and chat sections, and `isReady()` through the vtable.
+Proven on the first live run (colo, 2026-10-04): `lab_create_character` made a level-1 Soldier that showed at character select, and `lab_play_character` entered the world on it. That run found the two problems fixed since (the create step's bridge timeout and the in-world test that accepted the intro dialog); the fixes themselves have not run live yet.
+
+Not yet proven on the live client (the prototype scripts these port were): the EULA path, the server-row selection by name, the `SelfStatusWin` world-HUD test for a returning character and for a new one after the Escapes, `client_ui_state`'s root-window and chat sections, and `isReady()` through the vtable.
 
 ## World tools
 
@@ -354,7 +448,7 @@ How they work:
 
 ### Not yet verified on the live client
 
-These tools were written and tested against a simulated client only (the lab lock was not available); the Ghidra facts above are static. The first live run should check, in this order:
+These tools were written and tested against a simulated client only (the lab lock was not available); the Ghidra facts above are static. Still true on 2026-10-04: no live run has happened. Start that run with the [AB-L0 smoke](#first-live-check-the-ab-l0-smoke), which installs fresh binaries and proves the supervisor, the server endpoint and the new ability hooks; then check, in this order:
 
 1. `client_entity_find {include_player: true}`: the player's `position.client` equals `unitPosition(Unit.Player)` from `client_lua_eval`, and `yaw_deg` matches `unitOrientation(Unit.Player) * 360` (a fraction of a turn, per `FUN_00aeb9b0`). Compare `position.server` with `.location` to confirm the swizzle.
 2. The private-slot pin: debug-hub NPC names and levels read correctly; no Lua error or UI glitch after `Event_UI_UnitMappingChanged` for slots 7700+. Check `call_native` returns cleanly for the thiscall slot writer.
@@ -379,7 +473,19 @@ These tools drive combat the way a player does and say how they did it. Every re
 3. Not on the hotbar (default `fallback: window`): opens the Ability window with its bound key (N3 `AbilityMod.onToggleAbilityWin` when unbound), selects the tree tab, clicks `Ability_Button<i>` (N1), and closes the window again. An ability outside the trees (a GM `.giveability` grant) has no window button: use `place: true` or `fallback: lua`.
 4. `fallback: lua`: `useAbility(id, Unit.Target)`, N3.
 
-No slash command for abilities is known, so there is no N2 path. The result is read from the events that follow the press, for up to `observe_ms` (default 2500): `net.out useAbility*` (sent), `onTimerUpdate` (cooldown or warmup timer), `onSequence` (cast started), `onEffectResults` or a combat-text record (effect applied), `onErrorCode` (refused), and feedback chat lines. `result.verdict` is one of `effect_applied`, `refused`, `cast_started`, `refused_with_feedback`, `sent_no_reply`, `refused_client_side`, `nothing_observed`. CME events carry names, not payloads, so a timer or effect from another source inside the window counts too; the combat records name the ability. The hotbar button's cooldown after the press is included.
+No slash command for abilities is known, so there is no N2 path. The result is read from the events that follow the press, for up to `observe_ms` (default 2500), from both generations of client telemetry: the `cme.event` / `net.out` names and the ability trace's `ability.*` rows ([client-telemetry.md § Ability telemetry](../architecture/client-telemetry.md#ability-telemetry-clientability)).
+
+| Signal | Events |
+|---|---|
+| sent | `net.out useAbility*`, `ability.sent` |
+| refused by the client | `ability.press_dropped` (its `reason` is in `result.press_dropped`) |
+| cooldown or warmup timer | `onTimerUpdate` (`cme.event` or `ability.recv`), `ability.applied` `kind = cooldown` |
+| cast started | `onSequence` |
+| effect applied | `onEffectResults`, `ability.applied` `kind = stat`, `stat_base`, `effect_bar_add` or `effect_bar_refresh`, `ability.shown` combat text, a combat-text record |
+| refused by the server | `onErrorCode` |
+| feedback | speaker-less chat lines, `ability.shown` `feedback_line` |
+
+`result.verdict` is one of `effect_applied`, `refused`, `refused_client_side`, `cast_started` (a sequence or a timer, nothing landed yet), `refused_with_feedback`, `sent_no_reply`, `nothing_observed`. One message seen by several sources (its CME name, its `ability.recv` decode, its `ability.applied` row) counts once. Timers, stat changes and CME names carry no ability id, so a timer or a stat change from another source inside the window (regeneration, a damage-over-time) counts too; effect results, combat text, combat records and dropped presses name the ability, and another ability's are skipped. The hotbar button's cooldown after the press is included. With `place: true` the first hotbar read includes the empty buttons, which a fresh character's bar is made of.
 
 **`client_combat_log`** wraps `SCTMod.onUnitCombat`, the stock handler for `Events.UnitCombat`. The wrapper records the raw event (ability id and name, `HitType`, source and target unit names and whether each is the player, mortal, every stat change with value and result code) into a ring in `_G.CimmeriaLab`, then calls the original, so the SCT verbosity option cannot hide anything and the player sees no change. It re-subscribes `SCTWin`'s `Events.UnitCombat` to the same stock name after wrapping, in case the event system caches the resolved function; it never touches `SCTWin`'s `Events.PreRender` subscription, which the world tools own (a window holds one subscription per event). A second wrapper on `ChatMod.onMessageReceived` feeds `chat.line` events the same way. Capture starts at the first pump in the world (any `client_combat_log`, `client_wait_event` or `client_use_ability` call); an interface reload is noticed (the ring's epoch changes) and the wrappers are reinstalled.
 
@@ -392,19 +498,129 @@ No slash command for abilities is known, so there is no N2 path. The result is r
 - `client_events_read` keeps a cursor too (`events_read`), so it still returns each event once, now with its seq.
 - A reader whose cursor fell behind the oldest kept event gets `gap: true`. Events the bridge ring dropped while full are counted as `dropped`, and `cme.event` names past the throttle (8 burst, then 4 per second) carry a `suppressed` count.
 
-Event kinds: `cme.event` (field `event`, e.g. `Event_NetIn_onEffectResults`; `kind` `net_in`, `action`, ...), `net.out` (`method`, `entity_id`), `entity.*`, `cegui.log` (`message`), `lua.error`, `lua.print`, `hook.hit` from the bridge; `combat.hit` and `chat.line` (`text`, `channel`, `channel_name`, `speaker`) from the Lua rings. Predicates are case-insensitive globs: `name` matches `event`, `method`, `name`, `ability_name` or `channel_name`; `text` is a substring (or a glob with `*`/`?`) of `text`, `message` or `line`; `fields` compares field by field.
+Event kinds: `cme.event` (field `event`, e.g. `Event_NetIn_onEffectResults`; `kind` `net_in`, `action`, ...), `net.out` (`method`, `entity_id`), `entity.*`, `cegui.log` (`message`), `lua.error`, `lua.print`, `hook.hit`, the native ability rows `ability.press`, `ability.press_dropped`, `ability.sent`, `ability.sent_seq`, `ability.recv`, `ability.applied`, `ability.shown` and `sequence.dropped` ([Ability telemetry in the lab ring](#ability-telemetry-in-the-lab-ring)) from the bridge; `combat.hit` and `chat.line` (`text`, `channel`, `channel_name`, `speaker`) from the Lua rings. Predicates are case-insensitive globs: `name` matches `event`, `method`, `name`, `ability_name` or `channel_name`; `text` is a substring (or a glob with `*`/`?`) of `text`, `message` or `line`; `fields` compares field by field.
 
 ### Not yet verified on the live client (combat tools)
 
-These tools were written against the stock UI Lua and tested against a fake bridge only (the owner deferred live testing). The first live run should check, in this order:
+These tools were written against the stock UI Lua and tested against a fake bridge. The first live smoke run (colo, 2026-10-04) proved:
+
+- `client_hotbar {include_empty: true}` on a fresh level-1 Soldier lists all 100 buttons, `ActionButtons_<n>Button`, button 1 visible, every one empty (`action_id` 0, no action type).
+- `client_use_ability` sends `net.out useAbility` for a Heal Focus press, and the ability trace's rows reach the lab store within 2 s: `ability.applied` `kind = cooldown` for the warmup and cooldown timers (`timer_type` 1 and 2, both matching the server's two `onTimerUpdate` sends) and `ability.applied` `kind = stat`.
+
+That run also found two `client_use_ability` bugs, fixed since and not yet rerun live: `place: true` read the bar without its empty buttons and so found none to place on, and the verdict ignored the `ability.*` rows (`sent_no_reply` for that press).
+
+Still to check, in this order, after the [AB-L0 smoke](#first-live-check-the-ab-l0-smoke). Steps 1, 4 and 5 can be read against the native [`client.ability.*` rows](#ability-telemetry-in-the-lab-ring) for the same press: a `combat.hit` record should have an `ability.shown` row with `kind = combat_text` beside it, and every `net.out useAbility` an `ability.sent` with the same method.
 
 1. `client_combat_log` once in the world: `capture.status` is `installed`, then `ok` on the next call. Fire one shot: a `combat.hit` record arrives and the floating combat text still shows. No record means the event system kept the old handler; `installed_no_resubscribe` means the re-subscribe call failed.
 2. `chat.line`: an ability refusal (no target, out of range) arrives with an empty `speaker`, and a player's `/say` has one. `client_use_ability` treats speaker-less lines as feedback.
 3. `client_hotbar`: `getBindingKey` returns `key` as a virtual-key code (49 for `1`), and whether it carries modifier fields.
-4. `client_use_ability` on a bar ability with `press: key` and then `press: click`: both send `net.out useAbility`. Check the CME names it waits for appear as `Event_NetIn_onSequence`, `onEffectResults`, `onTimerUpdate` and `onErrorCode`, and that the button's cooldown reads back.
-5. The Ability-window path: `getBindingKey('ToggleAbility', 1)` resolves (else the window opens through the N3 toggle), the tab click switches `AbilityMod.currentTab`, and the `Ability_Button<i>` click casts. Then `place: true`: the ability lands on the first empty visible button and stays there after a relog.
+4. `client_use_ability` on a bar ability with `press: key` and then `press: click`: both send `net.out useAbility`. Check that the Heal Focus press now reads `effect_applied`, that a damaging ability's `onSequence` and `onEffectResults` arrive (as `cme.event` names and as `ability.recv` rows), that an untaught ability gives `ability.press_dropped` and `refused_client_side`, and that the button's cooldown reads back.
+5. The Ability-window path: `getBindingKey('ToggleAbility', 1)` resolves (else the window opens through the N3 toggle), the tab click switches `AbilityMod.currentTab`, and the `Ability_Button<i>` click casts. Then `place: true` on the empty bar: the ability lands on button 1 and stays there after a relog.
 6. `client_die_and_respawn`: `/gmsethealth 1 0` leaves the player alive (it does not kill), a lethal hit opens `PlayerDefeatWin` with the respawner list, Release respawns, and `respawn: auto` releases on the countdown.
 7. After an interface reload (anything that rebuilds the UI Lua state), the next pump reports `lua_epoch_changed` and combat capture resumes.
+
+## Ability telemetry in the lab ring
+
+Since 2026-10-04 the telemetry DLL that every player runs follows one cast through the client natively, with no lab Lua: the press, whether the client sent it, what it sent, what came back, what the stock handlers applied and what the UI drew. The events go to SigNoz (`service.name = 'cimmeria-client'`, the target in `client_target`) for every player. In a DLL built `--features lab-bridge` each one is also pushed onto the bridge ring, so the lab reads it within one pump, without a SigNoz round trip. The ring kind is the target without `client.`. This section is how the lab reads them; the full field lists, hook addresses and decoders are in [client-telemetry.md, Ability telemetry](../architecture/client-telemetry.md#ability-telemetry-clientability).
+
+| Target (ring kind) | What it says | Fields you match on most |
+|---|---|---|
+| `client.ability.press` (`ability.press`) | The press chain knows the ability, or knows the press failed | `press_id`, `source` (`hotbar` or `lua`), `slot`, `ability_id`, `target_id`, `self_cast`, `pending_expired`, `suppressed` |
+| `client.ability.press_dropped` (`ability.press_dropped`) | The client threw the press away itself, before the wire | `press_id`, `ability_id`, `reason` (`bad_args`, `no_action`, `pet_missing`, `not_known`, `pet_state_flag`, `pet_ability_flag`, `not_connected`, `class_mismatch`), `drop_site` |
+| `client.ability.sent` (`ability.sent`) | The router sent an allowlisted method (`useAbility`, `useAbilityOnGroundTarget`, the pet sends, `confirmationResponse`, `trainAbility`, `resetMyAbilities`, the `gmDebug*` methods) | `send_id`, `press_id`, `press_to_sent_ms`, `method`, `ability_id`, `target_id`, `client_target_id` |
+| `client.ability.sent_seq` (`ability.sent_seq`) | The packets that carried the send | `send_id`, `press_id`, `mercury_seq_first`, `mercury_seq_last`, `packets` |
+| `client.ability.recv` (`ability.recv`) | An ability method arrived, payload decoded | `method` (`onSequence`, `onTimerUpdate`, `onEffectResults`, `onStateFieldUpdate`, `onStatUpdate`, `onStatBaseUpdate`, feedback-channel `onPlayerCommunication`, `onKnownAbilitiesUpdate`, `onErrorCode`, `onAbilityTreeInfo`), `entity_id`, `path`, `cast_id`, `send_id`, `send_reply`, `sent_to_recv_ms`, `decode_error` |
+| `client.ability.applied` (`ability.applied`) | What the stock handler did with it | `kind` (`effect_bar_add`, `effect_bar_refresh`, `effect_bar_clear`, `effect_bar_ignored`, `cooldown`, `stat`, `stat_base`, `state_flag`), `entity_id`, `effect_id` or `ability_id`, `ui`, `outcome`, `recv_to_applied_ms` |
+| `client.ability.shown` (`ability.shown`) | The UI Lua handler that drew it, and whether it failed | `kind` (`combat_text`, `combat_chat_line`, `feedback_line`, `effect_bar_ui`, `sequence_played`), `handler`, `status`, `ability_id`, `text`, `cast_id`, `interrupt` |
+| `client.sequence.dropped` (`sequence.dropped`) | The `SequenceManager` threw a sequence away (now also at net-in) | `path`, `stage`, `sequence_id`, `entity_id`, `cast_id` |
+
+`client.ability.timing` (the per-stage latency histograms) is built by the uploader's governor and goes to SigNoz only; the intervals themselves ride on the `sent`, `recv` and `applied` rows above.
+
+**Reading them.**
+
+- `client_wait_event` is the tool to use. `kind` takes a glob (`ability.*`); `name` matches `method`, so `{kind: "ability.recv", name: "onEffectResults"}` waits for the results; `entity_id` matches `entity_id`, `source_id` or `target_id`; and `fields` compares field by field. The `kind` field that `applied` and `shown` rows carry is a field, not the store kind: write `{kind: "ability.applied", fields: {kind: "cooldown"}}`. Arm first, then press, then wait:
+
+  ```jsonc
+  // client_wait_event
+  { "arm": true }
+  // client_use_ability
+  { "ability_id": 597, "press": "key" }
+  // client_wait_event: did the press leave the client, and with which target?
+  { "kind": "ability.sent", "fields": { "ability_id": 597 }, "timeout_ms": 3000 }
+  // client_wait_event: the answer, joined to the send by press_id
+  { "kind": "ability.recv", "name": "onEffectResults", "timeout_ms": 3000 }
+  ```
+
+- `client_events_read` takes no filter: it returns every new event once, with its store seq, through its own cursor. That cursor belongs to whoever drives the lab, which is why the UAT runner never calls it.
+- A UAT `client_event` clause names the target with its prefix (`event = "client.ability.sent"`) and the runner strips it. The runner reads through `client_wait_event` with an explicit `since_seq`, so it shares no cursor with you. Clause fields: [automated-uat.md, Client event clauses](automated-uat.md#client-event-clauses-and-cast_id).
+- `client_use_ability` reads both the CME names (`net.out useAbility*`, `onEffectResults`, ...) and the `ability.*` rows for its verdict ([the signal table](#abilities-combat-and-event-waits)); the [first live check](#first-live-check-the-ab-l0-smoke) compares the two.
+
+**The throttle.** Every `client.ability.*` name gets a burst of 8, then 4 a second, and the next event of that name that gets through carries the count it dropped as `suppressed`. A press and its answer are kept or dropped together: rows with a `press_id` (`press_dropped`, `sent`, `sent_seq`) follow the decision made for their `press` row, and suppressed presses are counted only on the *next* `press` row. So a dropped `sent` leaves no row of its own, and a suppression at the very end of a window, with no press after it, cannot be seen. `recv`, `applied` and `shown` have their own buckets per method or kind, split by the local player (`self`) and everyone else (`other`), so NPC traffic cannot starve your own rows. Two more loss signals are separate from the throttle: `dropped` in a read (the bridge ring of 4096 was full) and `gap` (the supervisor's store of 8192 evicted past your cursor). Do not bound counts over a burst of more than 8 presses a second.
+
+**The kill switch.** `CIMMERIA_CLIENT_HOOKS_DISABLE` leaves named inline hooks uninstalled: a comma-separated list of the `hook` names that `client.hooks.inline.installed` reports, where a trailing `*` matches a prefix and `all` matches every inline hook. `ability_*` leaves out the 23 ability hooks (12 for presses and sends, 11 for what the handlers applied), and `sequence_net_in` the `onSequence` net-in drop. The `recv` and `shown` rows ride on hooks that existed before (the `onEntityMethod` detour and the `lua_pcall` / `lua_call` detours), so `ability_*` does not stop them. The DLL reads the variable once, when it installs its hooks. The client inherits the supervisor's environment, so put the variable in the `env` block of the `cimmeria-lab` MCP entry, reconnect the MCP server, then `lab_client_restart`. If a client misbehaves on the wire after login, try `ability_nub_send,ability_channel_send,ability_seq_next` first: an extra frame around a Mercury send is the kind of change that once broke `processOrderedPacket` ([client-telemetry.md](../architecture/client-telemetry.md#ability-telemetry-clientability)).
+
+### Not yet verified on the live client (ability hooks)
+
+Every ability anchor was read statically from the QA `SGW.exe`, and the decoders are tested against synthetic wire bytes and the checked-in definitions. The first live smoke run (colo, 2026-10-04) loaded them: `ability.press`, `ability.sent`, `ability.sent_seq` and `ability.applied` rows (cooldown timers of type 1 and 2, a stat update) were observed for a Heal Focus press. `ability.recv` was broken in that run and is being fixed in #1203; `ability.shown` and `ability.press_dropped` were not exercised. Still to check, with one hotbar press each:
+
+1. `client.hooks.inline.installed` lists the 12 press-and-send hooks (`ability_use_action`, `ability_use_ability`, `ability_slot`, `ability_lookup`, `ability_send_builder`, `ability_pet_action`, `ability_pet_send`, `ability_start_entity_message`, `ability_start_proxy_message`, `ability_channel_send`, `ability_nub_send`, `ability_seq_next`), the 11 apply hooks (`ability_effect_*`, `ability_cooldown_*`, `ability_stat_*`) and `sequence_net_in`.
+2. A hotbar press of a known ability gives `ability.press` then `ability.sent` with the same `press_id`, and an `ability.sent_seq` whose range contains the server's `use_ability_recv` `mercury_seq` (28-bit wrap: the join rule is in client-telemetry.md).
+3. `client_target_id` on `ability.sent` equals the server's `setTargetID` (the field is `client_target_inferred` until this holds).
+4. A press of an ability the client was never taught gives `ability.press_dropped` with `reason = not_known`; a non-GM character's `/gmdebugcombat` gives `class_mismatch`.
+5. `ability.recv` `onEffectResults` carries the server's `cast_id`, an `ability.applied` `cooldown` row has `outcome = applied`, and an `ability.shown` `combat_text` row arrives beside the lab's own `combat.hit` record.
+6. The client stays connected and in sync through a minute of presses. If not, use the kill switch above and record which hook it was.
+
+### First live check: the AB-L0 smoke
+
+AB-L0 of the [ability-mechanics lab plan](../analysis/ability-mechanics/lab-uat-and-telemetry.md#part-4-lab-tools-and-the-uat-run-ab-l-ab-r) is the first thing any live run does. It needs no code unless it fails:
+
+1. Take the [lab lease](#before-you-drive-the-client-the-lab-lease), then [install from `main`](#install-or-update-the-lab) and restart the daemon (`pwsh tools/lab/daemon.ps1 restart`; with a stdio supervisor, reconnect the MCP server). Record the commit from `installed-from.txt`.
+2. Point the lab at the colo: the colo row in `lab-account.json`, and `CIMMERIA_LAB_MCP_URL` / `CIMMERIA_LAB_MCP_TOKEN` at its WireGuard-only endpoint ([colo-deploy.md](../operations/colo-deploy.md)).
+3. `server_sessions` answers. A 403 "Host header is not allowed" is gap G6 in the plan: the endpoint's allowed-hosts setting.
+4. `lab_uat_run { plan_only: true }` matches the [spec coverage table](automated-uat.md#spec-coverage): no row BLOCKED on a missing tool that the table says is routed.
+5. One hotbar press, checked against the list above. Write the SHAs and the result into the plan's ledger.
+
+## Ability lab commands
+
+The ability rows need a target that holds still, a way to reset cooldowns and effects between presses, and a server readout to compare with the client. These commands do that from the lab character's chat (`client_type_text`, or the UAT runner's `chat` setup lines, tier G). They are setup and readback, never the graded press. Details, refusals and limits: [commands.md](../commands.md).
+
+| Command | Use it for | UAT capability |
+|---|---|---|
+| `.dummy [hostile\|friendly\|clear] [templateId]` | A target 3 m in front of you: 1,000,000 Health, no AI, no respawn; template 34 unless you name one. At most 4 each, gone after 10 minutes, on logout or on `.dummy clear` | `@dummy` (stores `${dummy_id}`) |
+| `.dummy caster <abilityId> [intervalSecs]` | The same hostile dummy, casting that ability at you every interval (default 8 s) through the real NPC launch, so its warmup can be interrupted and its effects cleansed. The ability UAT uses `.dummy caster 1354` | `@dummy` |
+| `.effects [target]` | Your selected target's ability state (else yours) in chat: Health, Focus, state field, warmup, cooldowns, pulses, ledger entries, held flags. Read-only | `@ability_state` reads the full form, `server_ability_state` |
+| `.cooldowns [reset [id]]` | List your cooldowns, or clear them all or one; the client gets the clear timer, so the hotbar sweep stops too | `@cooldowns_reset` |
+| `.cleareffects [target]` | Strip every timed and pulsing effect from your selected target (else you), reason `cleansed` | `@clear_effects` |
+| `/gmgiveability <id>`, `/gmgiveallabilities`, `/gmresetabilities` | Teach one ability, the archetype's whole tree, or reset to the starters; no training points | `chat` setup line |
+| `/gmsetgodmode <0\|1>` | Take no Health or Focus damage from hits and DoTs (they show "Absorbed"); yourself only, off at relog | `chat` setup line |
+| `/gmsetmobabilityset <setId>` | Give your selected mob an NPC ability set until it respawns | `chat` setup line |
+| `/gmdebugcombat`, `/gmdebugcombatverbose`, `/gmdebugability <id>`, `/gmdebugabilityonmob <id>`, `/gmdebugheal` | Combat and ability debug lines, delivered as feedback-channel chat lines that start `[CD #<cast id>]`. The client sends them only from a GM character ([native-combat-debug.md](../reverse-engineering/findings/native-combat-debug.md)) | `chat` setup line; read with `client_chat_log` or an `ability.recv` `onPlayerCommunication` row |
+
+Every state change also logs one `abilities.gm` row, so SigNoz shows who changed what.
+
+**Colo rule 6.** These commands act on you, your selection or your own dummies. On the colo, keep it that way: place your own dummies and clear only your own (`.dummy clear` cannot remove anyone else's); select only your lab character or your own dummy before `.cleareffects`; use `/gmsetmobabilityset` only on a mob you spawned; and leave other players' mobs and characters alone, even for a read. `.cooldowns` never touches another player.
+
+## The ability UAT section
+
+The ability-mechanics rows are [docs/guides/uat-specs/abilities.toml](uat-specs/abilities.toml), section `ability-mechanics` (AB-U1 to AB-U25 of the [unified UAT guide](unified-uat.md#ability-mechanics)). It runs on the colo with the GM lab account and a fresh Soldier per run. Each row places its ability on the bar in setup (N3), resets its cooldown, then makes the graded press with the bound hotbar key (N1); its clauses check the client's own `client.ability.*` rows, the server's `server_ability_state`, the packet tap and SigNoz.
+
+**Before you run it:** the lab lease (pass its `lease_id`, or let the run take its own), the AB-L0 smoke, `CIMMERIA_LAB_MCP_URL` and `CIMMERIA_LAB_MCP_TOKEN` set (without them every `server` and `packet` clause is UNVERIFIED), and, for the two-player rows, `lab-account.p2.json` naming `lab2`, which must be a GM account for p2's own `/gm*` lines ([Two clients](#two-clients-two-player-scenarios)).
+
+**Run it in batches.** Long rows can outlast an MCP call's timeout, so take about five rows at a time on one `run_dir`:
+
+```jsonc
+// lab_uat_run: see what can run first
+{ "sections": ["ability-mechanics"], "plan_only": true }
+// then the first batch; pass the returned run_dir to every later batch
+{ "sections": ["ability-mechanics"], "rows": ["AB-U1a", "AB-U1b", "AB-U1c", "AB-U3a", "AB-U3b"],
+  "server_version": "<service.version>" }
+```
+
+**Attest SigNoz.** The runner has no SigNoz client: every SigNoz clause comes back PENDING with its filter. The filters name the cast by `${cast_key}`, which the runner fills in after each press: the cast id together with its caster (`cast_id = C AND (entity_id = E OR source_id = E OR invoker_id = E)`), because a cast id is unique per caster, not per server. Run each filter with the SigNoz MCP, then `lab_uat_attest` the rows; finish with `lab_uat_report { ledger: true }`. How the runner finds the cast (`client_recv`, `seq_join`, `press_window`): [automated-uat.md](automated-uat.md#client-event-clauses-and-cast_id).
+
+**The server tools it uses.** `server_ability_state` (through `@ability_state`, defaulting to the lab character) for every `server` clause; `server_packet_tap_*` for the `packet` clauses (one tap per row, anchor to teardown); `server_log_tail` for the `seq_join` and `press_window` cast lookups; `server_db_query` where a row compares damage with the seed; `server_sessions` to find the character's session.
+
+**What can run.** 25 one-player rows are ready. The five two-player rows (AB-U1d, AB-U2, AB-U4, AB-U13a/b) run once p2 is set up and are BLOCKED, with the reason, until then; AB-U10 (`.qr`, D-AU2), AB-U24 and AB-U25 are BLOCKED on open decisions. The current list is the `ability-mechanics` row of the [spec coverage table](automated-uat.md#spec-coverage). `.qr` does not exist, so a miss on a graded hostile press fails a damage or debuff row: check `qr_rolled` for the row's cast in SigNoz before filing it. A FAIL becomes a fix packet in the plan's ledger.
 
 ## UI readers and item tools
 
@@ -428,7 +644,7 @@ Quirks to keep in mind:
 - Items in the Mission and Crafting tabs share `InventoryWin` with Main: a drag between two tabs of the same window is refused, because both ends cannot be on screen at once.
 - Vault slots can be read and dragged only while the vault window is open at a banker.
 
-**Not yet proven on the live client.** These tools were built and unit-tested against fixtures and a Lua 5.1 mock of the bindings (every reader chunk loads and runs under Lua 5.1), without a live client. The first live session should check:
+**Not yet proven on the live client.** These tools were built and unit-tested against fixtures and a Lua 5.1 mock of the bindings (every reader chunk loads and runs under Lua 5.1), without a live client; still true on 2026-10-04. After the [AB-L0 smoke](#first-live-check-the-ab-l0-smoke), the first live session should check:
 
 1. `client_chat_log`: a typed `/say` line appears once, with `channel: "Say"`, the chat window's colour and tab; a `/tell` error arrives as a `Feedback` line; the chat window still shows every line; a second `client_chat_log` with the same cursor returns nothing new, while `client_wait_event {kind: "chat.line"}` still sees the line.
 2. `client_window_read {kind: "loot"}` and `{kind: "trainer"}` at the debug hub's crate and trainer: items and abilities match the windows.
@@ -498,5 +714,264 @@ account a password inside that set.
 `cimmeria-lab.exe` (or at `CIMMERIA_LAB_START32`). The supervisor is 64-bit
 and cannot inject into the 32-bit client itself; the helper starts
 `SGW.exe` suspended, injects the bridge DLL at the game's bitness and
-resumes it (#985). Build it with
-`cargo build -p cimmeria-start32 --target i686-pc-windows-msvc`.
+resumes it (#985). The install script below builds and places it.
+
+### Install or update the lab
+
+The lab runs from installed copies, not from a target dir, so a build of
+`main` changes nothing until you install it. Nothing refreshes them on
+their own: on 2026-10-04 the installed DLL still dated from 2026-09-29.
+[`tools/lab/install.ps1`](../../tools/lab/install.ps1) builds the four
+pieces from a worktree and installs them:
+
+| Built (through the build lane) | Installed to |
+|---|---|
+| `cimmeria-lab` (release, host) | `%LOCALAPPDATA%\cimmeria-lab\bin\cimmeria-lab.exe` |
+| `cimmeria-client-telemetry --features lab-bridge` (release, i686) | `%LOCALAPPDATA%\cimmeria-lab\bin\cimmeria_client_telemetry.dll`, and `<CIMMERIA_LAB_INSTALL_DIR>\Binaries\cimmeria-client-telemetry.dll`, the one the supervisor injects unless `CIMMERIA_LAB_DLL` names another |
+| `cimmeria-start32` (release, i686) | `%LOCALAPPDATA%\cimmeria-lab\bin\sgw-start32.exe` |
+| `cimmeria-client-patches` (release, i686) | `%LOCALAPPDATA%\cimmeria-lab\bin\cimmeria_client_patches.dll` |
+
+1. Take the [lab lease](#before-you-drive-the-client-the-lab-lease).
+   The script refuses while any `SGW.exe` runs and prints its PID and the
+   supervisor that owns it; ask that session to `lab_client_stop`.
+2. See the plan, then install. From PowerShell, in the checkout you want
+   to install (default: the current repository):
+
+   ```powershell
+   pwsh tools/lab/install.ps1 -DryRun
+   pwsh tools/lab/install.ps1                     # or -Worktree <path>
+   ```
+
+   `-InstallDir` names the SGW install when neither
+   `CIMMERIA_LAB_INSTALL_DIR` nor the main checkout's `.mcp.json` does.
+   `-SkipBuild` installs what the target dir already holds. The script
+   finds the outputs in the target dir the lane uses
+   (`$CIMMERIA_TARGET_ROOT\<worktree>\` on a Dev Drive, else
+   `<worktree>\target\`), keeps each replaced file as
+   `<name>.<yyyymmdd>.old`, skips a file whose content has not changed,
+   and writes the source commit to `bin\installed-from.txt`.
+3. Restart the supervisor. With the
+   [shared daemon](#the-shared-daemon-cimmeria-lab---http),
+   `pwsh tools/lab/daemon.ps1 restart` copies the new
+   `bin\cimmeria-lab.exe` and every session uses it from its next call.
+   A stdio supervisor is still the old
+   process (the script renamed its exe; it did not stop it). Run
+   `/mcp reconnect cimmeria-lab`. If the server is still connected and
+   the reconnect keeps the old process, stop that `cimmeria-lab.exe`
+   first; the reconnect then spawns the new one. The script lists the
+   running supervisors' PIDs. Stop only your own session's: another
+   session's supervisor is that session's lab.
+4. Verify: `lab_uat_run { plan_only: true }` lists the tools the new
+   build routes, and `lab_client_start` launches with the new DLL.
+
+To roll back, rename the `.old` copies back over the installed files and
+reconnect again.
+
+## The shared daemon (`cimmeria-lab --http`)
+
+By default every Claude session starts its own stdio `cimmeria-lab`, and
+each one runs its own heartbeat watchdog against the same `SGW.exe`. Three
+sessions meant three watchdogs: one relaunched a client another session
+had just closed, and a new build reached a session only when it
+reconnected. The daemon is one `cimmeria-lab` for the whole machine, so
+there is one supervisor, one watchdog and one owner of the client. Every
+session reaches it over MCP streamable HTTP. Stdio stays the default, so
+existing `.mcp.json` entries keep working until you switch.
+
+What the daemon refuses:
+
+| Check | Refusal |
+|---|---|
+| `--http` is not a loopback address (`127.0.0.1`, `::1`) | exit 2 at start |
+| `CIMMERIA_LAB_DAEMON_TOKEN` unset or under 32 bytes | exit 2 at start |
+| another daemon holds the `Local\cimmeria-labd` mutex, or the port is taken | exit 3 at start; the log names the holder's pid from `labd.pid` |
+| a request without `Authorization: Bearer <token>` | `401`, before any MCP session |
+| a `Host` header other than `localhost`, `127.0.0.1` or `::1` (DNS rebinding) | `403` |
+| any `Origin` header (no browser has a reason to call it) | `403` |
+
+### Run it
+
+```powershell
+pwsh tools/lab/daemon.ps1 install   # copy the exe, make the token, import env, register + start the task
+pwsh tools/lab/daemon.ps1 status    # task state, pid, port, token present, last log lines
+pwsh tools/lab/daemon.ps1 restart   # pick up a newer build (see below)
+pwsh tools/lab/daemon.ps1 stop
+pwsh tools/lab/daemon.ps1 start
+pwsh tools/lab/daemon.ps1 uninstall
+```
+
+`install` registers the per-user scheduled task `CimmeriaLabDaemon`: it
+starts at logon, in your interactive session (the client needs the
+desktop), and restarts after a crash. Its files are in
+`%LOCALAPPDATA%\cimmeria-lab`:
+
+| File | What it is |
+|---|---|
+| `labd\cimmeria-lab.exe` | the daemon's own copy of the exe, so a rebuild or `tools/lab/install.ps1` is never blocked by the running daemon |
+| `labd.env` | the supervisor's environment, `KEY=VALUE` per line, imported once from the `env` block of the stdio `cimmeria-lab` entry in `.mcp.json` (`install -Force` re-imports) |
+| `labd.log` | the daemon log; rotates at 10 MiB, five old files kept (`labd.1.log` ...) |
+| `labd-task.log` | the task wrapper's start and exit lines |
+| `labd.pid` | pid and address of the running daemon |
+
+The token is the user environment variable `CIMMERIA_LAB_DAEMON_TOKEN`,
+which `install` generates when it is missing. Claude Code gets it from
+`tools/lab/labd-headers.ps1`, the entry's `headersHelper`, which reads the
+user environment directly, so the token never lands in `.mcp.json` and a
+fresh token works without restarting Claude Code:
+
+```json
+"cimmeria-lab": {
+  "type": "http",
+  "url": "http://127.0.0.1:8779/mcp",
+  "headersHelper": "pwsh -NoProfile -File <CIMMERIA_ROOT>\\tools\\lab\\labd-headers.ps1"
+}
+```
+
+`.mcp.json.example` carries this entry as `cimmeria-lab-http`. To switch,
+rename it to `cimmeria-lab` and delete the stdio `cimmeria-lab` entry.
+
+**A new build.** `restart` copies
+`%LOCALAPPDATA%\cimmeria-lab\bin\cimmeria-lab.exe` (what
+`tools/lab/install.ps1` installs), else the repo's
+`target\debug\cimmeria-lab.exe`, over the daemon's copy when it is newer
+(`-Exe <path>` names one explicitly), then starts the task. Every session
+gets the new build on its next call; a session whose MCP connection broke
+reconnects with `/mcp`. The game client keeps running across a daemon
+restart, but the new daemon does not adopt it: stop the client first
+(`lab_client_stop`) or start a fresh one afterwards.
+
+### The lab lease
+
+One agent drives the lab client at a time, and the supervisor enforces it.
+Take the lease before you drive, pass its id to every tool that drives, and
+release it when you are done:
+
+```text
+lab_lease_acquire {owner: "session-name", purpose: "ability UAT AB-3"}
+  -> {lease_id: "lease-...", expires_at, ttl_s: 600}
+client_ui_click {window: "Login_LoginButton", lease_id: "lease-..."}
+lab_lease_release {lease_id: "lease-..."}
+```
+
+| Rule | What happens |
+|---|---|
+| A tool that drives the client is called without `lease_id`, or with one that is not the current lease | refused: the message says to call `lab_lease_acquire`, names the holder if there is one, and says when and how a stale lease ended (released, expired, or taken over by whom and why) |
+| `lab_lease_acquire` while someone holds the lease | refused, naming the holder, their purpose and since when |
+| `lab_lease_acquire {force: true, reason}` | takes the lease over; logged at `WARN`; the new lease and `lab_lease_status` record the previous holder |
+| any guarded call with the current lease | renews the lease for its `ttl_s` (a touch) |
+| the lease is taken over, released or expires while a guarded tool is still running | the tool stops before its next bridge call, key or click press, or process launch, with an error starting `lease revoked`; key and button releases still go through, so nothing is left held |
+| no call for `ttl_s` seconds (default 600, 30 to 3600) | the lease expires and is logged; `lab_lease_renew` extends it explicitly |
+| the client dies while nobody holds a lease | the watchdog leaves it down and logs `watchdog_idle_no_lease`; with a lease it relaunches and logs back in as before, and stops if the last lease goes during the relaunch |
+
+`lab_lease_status` shows the holder, purpose, since, expiry and the last few
+leases with how they ended. It never shows a lease id: the id is what lets
+a session drive, so only the acquirer gets it.
+
+**Which tools need the lease.** A tool needs it when it changes the client,
+drives its input or UI, runs Lua or native code the caller chooses, or
+moves a shared read cursor. The list is `OPEN` / `LEASED` in
+`crates/lab/src/lease/policy.rs`; a tool missing from both is guarded, and
+a test fails until every routed tool is classified. Guarded tools list
+`lease_id` as a required argument in `tools/list`.
+
+| Open (no lease) | Leased |
+|---|---|
+| `lab_lease_*`, `lab_client_status`, `lab_crash_report`, `lab_timeline`, `lab_uat_report` | `lab_client_start` / `stop` / `restart` |
+| `lab_screenshot`, `lab_screenshot_region`, `lab_pixel_probe` | `client_lua_eval`, `client_wait_for` (its predicate is Lua), `client_mem_write`, `client_call_native`, `client_console`, `client_hook_install` / `remove` |
+| `client_module_info`, `client_mem_read`, `client_hook_list`, `client_input_status` | `client_events_read`, `client_wait_event`, `client_chat_log`, `client_combat_log` (shared cursors) |
+| `client_entity_table`, `client_ui_state`, `client_window_read`, `client_player_state`, `client_hotbar`, `lab_characters` | `client_entity_find` (it pins the shared unit slots and the one projection slot), `client_inventory` (its `snapshot` writes a shared table); every input, click, drag, world, combat and item tool; the `lab_*` login, character, play, dialog and logout flows; `lab_uat_attest`; `lab_uat_run` (see below) |
+
+The four cursor reads are leased because they share one event store: two
+sessions reading through the same named cursor take events from each other,
+and the chat and combat logs install their client-side capture on first
+use. A session that only watches uses screenshots, the UI readers,
+`lab_timeline` and SigNoz.
+
+**`lab_uat_run` and the lease.** Pass your `lease_id` and the run drives
+under your lease. Omit it and the run takes a lease of its own (owner
+`lab_uat_run`, purpose naming the sections and rows), which is refused
+while someone else holds the lab and released when the run ends,
+whatever the outcome. A keep-alive renews the lease every third of its
+ttl for the whole run, so `wait_ms` steps (which call no tool) never let
+it lapse. The moment the lease is taken over or released, the run stops:
+the row being driven is cut off at its next await and BLOCKED, every
+remaining row is BLOCKED without being driven (reason `lease revoked`),
+and the run lets go of every held key and button. `plan_only: true`
+drives nothing and needs no lease.
+
+**Stdio mode has the same rules.** A stdio supervisor enforces the lease
+too, so a tool behaves the same whichever transport reaches it. With one
+stdio supervisor per session the lease only covers that session's own
+supervisor, which is why the daemon is the supported setup.
+
+**Telemetry.** Each acquire, renew, release, expire and forced takeover is
+one event on target `lab.lease` (field `event`, plus `owner` and
+`purpose`) in `labd.log`. The watchdog's refusal to relaunch is
+`event = "watchdog_idle_no_lease"` on the same target. The touch on every
+guarded call is `debug` only.
+
+### Cut over from stdio supervisors to the daemon
+
+Do this once per machine, at a quiet moment: it ends every session's own
+supervisor. Nothing here touches the server or the game install.
+
+1. **Quiesce.** Make sure no session is mid-run: `lab_lease_status` on any
+   session (stdio supervisors each have their own book, so ask around), and
+   look for `SGW.exe` with the owner query in
+   [Before you drive the client](#before-you-drive-the-client-the-lab-lease).
+   Have the owning session `lab_client_stop` its client.
+2. **Install the build.** `pwsh tools/lab/install.ps1` from the checkout
+   you want (it builds and installs to `%LOCALAPPDATA%\cimmeria-lab\bin\`).
+   The daemon needs PR 1 to 3 of the shared-daemon work, so install from a
+   `main` that has them.
+3. **Install the daemon task.** `pwsh tools/lab/daemon.ps1 install`. It
+   copies `bin\cimmeria-lab.exe` to `labd\`, generates
+   `CIMMERIA_LAB_DAEMON_TOKEN` if it is missing, imports `labd.env` from
+   the `env` block of the stdio `cimmeria-lab` entry in the repo's
+   `.mcp.json`, registers `CimmeriaLabDaemon` and starts it. Check
+   `labd.env`: it is the daemon's whole environment
+   (`CIMMERIA_LAB_INSTALL_DIR`, `CIMMERIA_LAB_START32`,
+   `CIMMERIA_LAB_PATCHES_DLL`, `CIMMERIA_LAB_SERVER_URL`,
+   `CIMMERIA_LAB_MCP_URL` and `CIMMERIA_LAB_MCP_TOKEN`), and paths into a
+   target dir should point at `bin\` instead. Edit it, then
+   `daemon.ps1 restart`.
+4. **Check it runs.** `pwsh tools/lab/daemon.ps1 status`: task `Running`,
+   a live pid, the port listening, the token set, and a
+   `lab daemon listening` line in the log tail.
+5. **Switch `.mcp.json`.** Replace the stdio `cimmeria-lab` entry with the
+   http one (`.mcp.json.example` has it as `cimmeria-lab-http`; rename it
+   to `cimmeria-lab` so tool names stay `mcp__cimmeria-lab__*`):
+
+   ```json
+   "cimmeria-lab": {
+     "type": "http",
+     "url": "http://127.0.0.1:8779/mcp",
+     "headersHelper": "pwsh -NoProfile -File <CIMMERIA_ROOT>\\tools\\lab\\labd-headers.ps1"
+   }
+   ```
+
+   Remove `cimmeria-lab-p2` too unless you drive the second client by
+   hand. Two-player UAT rows drive p2 from inside the daemon (under the
+   same lease); a stdio p2 supervisor is a second owner of that client,
+   with its own watchdog and no view of the daemon's lease.
+6. **Stop the stdio supervisors.** In every open session run `/mcp`
+   reconnect for `cimmeria-lab` (it now reaches the daemon). Then stop any
+   `cimmeria-lab.exe` still running from a target dir or `bin\`; only the
+   daemon's copy in `labd\` should be left:
+
+   ```powershell
+   Get-Process cimmeria-lab | Select-Object Id, Path
+   ```
+
+7. **Verify.** From any session: `lab_lease_status` answers (`held:
+   false`); `lab_uat_run {plan_only: true}` lists the routed tools and
+   needs no lease; `lab_lease_acquire` from one session is refused from a
+   second. Delete a leftover `%LOCALAPPDATA%\cimmeria-lab\live.lock`.
+
+**Roll back:** restore the stdio entry in `.mcp.json`, reconnect, and
+`pwsh tools/lab/daemon.ps1 uninstall`.
+
+**New builds after the cut-over:** `pwsh tools/lab/install.ps1`, then
+`pwsh tools/lab/daemon.ps1 restart` (the restart picks up the newer
+`bin\cimmeria-lab.exe`). Sessions reconnect on their next call, or with
+`/mcp`.

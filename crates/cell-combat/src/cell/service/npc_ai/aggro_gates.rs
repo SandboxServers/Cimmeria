@@ -102,10 +102,14 @@ pub(in crate::cell) fn evaluate_npc_candidate(
     if !combat::npc_may_target_npc(npc, c) {
         return None;
     }
+    // A missing HEALTH stat reads as dead, as in the fight tick's
+    // `fight_target::select_target`: the scan must not engage what the
+    // next fight pass drops as `target_dead` (#1244 review; latent, since
+    // `StatList::new` always holds HEALTH).
     let zero_health = c
         .stats
         .get(cimmeria_entity::stats::HEALTH)
-        .is_some_and(|s| s.cur <= 0);
+        .is_none_or(|s| s.cur <= 0);
     if combat::is_dead_state(c.state_field) || c.ai_state() == AiState::Dead || zero_health {
         return Some(Err(AggroReject::Dead));
     }

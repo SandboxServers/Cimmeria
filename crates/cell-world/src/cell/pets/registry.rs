@@ -216,16 +216,31 @@ impl SpaceManager {
                 PetReject::NotOwner { owner_id } => Some(owner_id),
                 _ => None,
             };
+            // The real owner is named from its summon-time capture, never
+            // from whoever holds its entity id now (#889).
+            let owner_name = owner_id.and(self.pets.summoner_identity(claimed).player_name);
             tracing::debug!(
                 target: "pets.command",
                 event = "ownership_rejected",
                 reason = reject.reason(),
                 entity_id = caller,
+                entity_name = id.player_name,
                 caller_id = caller,
+                caller_name = id.player_name,
                 account_id = id.account_id,
+                account_name = id.account_name,
                 player_id = id.player_id,
+                player_name = id.player_name,
                 pet_id = claimed,
+                // The client picks `claimed`: name it only when it is a
+                // registered pet, never an arbitrary player or NPC.
+                pet_name = self
+                    .pets
+                    .is_pet(claimed)
+                    .then(|| self.entity_label(claimed))
+                    .flatten(),
                 owner_id,
+                owner_name,
                 "pet command names a pet the caller does not own"
             );
         }
@@ -254,17 +269,27 @@ impl SpaceManager {
             Ok(recipient) => recipient,
             Err(refusal) => {
                 let summoner = self.pets.summoner_identity(attacker);
+                let pet = self.entity_names(attacker);
                 tracing::warn!(
                     target: "pets.credit",
                     event = "credit_refused",
                     reason = refusal.reason,
                     entity_id = attacker,
+                    entity_name = pet.entity_name,
                     pet_id = attacker,
+                    pet_name = pet.entity_name,
+                    template_id = pet.template_id,
+                    template_name = pet.template_name,
                     owner_id = refusal.owner_id,
+                    owner_name = summoner.player_name,
                     account_id = summoner.account_id,
+                    account_name = summoner.account_name,
                     player_id = summoner.player_id,
+                    player_name = summoner.player_name,
                     holder_account_id = refusal.holder.account_id,
+                    holder_account_name = refusal.holder.account_name,
                     holder_player_id = refusal.holder.player_id,
+                    holder_player_name = refusal.holder.player_name,
                     "pet kill credit withheld: the owner's entity id no longer belongs to the summoner"
                 );
                 None

@@ -53,6 +53,7 @@ pub mod world_entry_chat;
 /// The world-entry leaf the methods crate needs below world entry: the
 /// `world_name` -> `space_id` registry.
 pub mod world_entry {
+    pub mod gm_only_worlds;
     pub mod space_registry;
 
     #[cfg(test)]
@@ -69,6 +70,10 @@ pub mod world_entry_appearance {
 /// table and the fragment builder. Test-only.
 #[cfg(test)]
 mod resource_fragment_tests;
+
+/// `ConnectedClientState`'s Discord pairs (NT-10). Test-only.
+#[cfg(test)]
+mod discord_pair_tests;
 
 // Cooked-data delivery serves the resource cache (`cimmeria-resources`).
 use cimmeria_resources::base::resources;
@@ -98,6 +103,11 @@ pub enum BaseError {
 pub struct OnlinePlayer {
     pub id: u32,
     pub name: String,
+    /// The character's DB `player_id`, once `playCharacter` set it.
+    pub player_id: Option<i32>,
+    pub account_id: u32,
+    /// The login name; `None` if the login path did not record one.
+    pub account_name: Option<String>,
     pub archetype: &'static str,
     pub level: i32,
     pub zone: String,
@@ -106,17 +116,10 @@ pub struct OnlinePlayer {
     pub session: String,
 }
 
+/// The archetype's name for the admin API's online list, from
+/// [`cimmeria_names::archetype_name`]; "Unknown" outside 0 to 8.
 pub fn archetype_name(id: i32) -> &'static str {
-    match id {
-        1 => "Soldier",
-        2 => "Commando",
-        3 => "Scientist",
-        4 => "Archaeologist",
-        5 => "Asgard",
-        6 => "Goa'uld",
-        7 => "Jaffa",
-        _ => "Unknown",
-    }
+    cimmeria_names::archetype_name(id).unwrap_or("Unknown")
 }
 
 // ── Per-connection state ──────────────────────────────────────────────────────
@@ -340,6 +343,15 @@ pub struct ConnectedClientState {
     pub plugins: plugin::BasePlugins,
 }
 
+/// A world as a Discord pair: its `world_id` from the NameBook and its
+/// name. Base seams carry the world by name only.
+pub fn discord_world(world: &str) -> cimmeria_discord::Named {
+    cimmeria_discord::Named::from_parts(
+        cimmeria_names::book().world_id(world),
+        Some(world.to_string()),
+    )
+}
+
 impl ConnectedClientState {
     /// Next sequence number for an **unreliable** outbound packet —
     /// fetch-add on the unreliable counter, masked to the 28-bit Mercury
@@ -354,5 +366,23 @@ impl ConnectedClientState {
         self.next_seq_unreliable
             .fetch_add(1, std::sync::atomic::Ordering::Relaxed)
             & cimmeria_mercury::packet::SEQUENCE_MASK
+    }
+
+    /// The account as a Discord pair: `account_id` and the login name
+    /// (D-NT2), rendered `steve (#6)`.
+    pub fn discord_account(&self) -> cimmeria_discord::Named {
+        cimmeria_discord::Named::new(self.account_id, self.account_name.clone())
+    }
+
+    /// The character being played as a Discord pair: `player_id` and its
+    /// name. `None` at character select, before `playCharacter` sets either.
+    pub fn discord_character(&self) -> Option<cimmeria_discord::Named> {
+        if self.active_player_id.is_none() && self.player_name.is_none() {
+            return None;
+        }
+        Some(cimmeria_discord::Named::from_parts(
+            self.active_player_id.map(i64::from),
+            self.player_name.clone(),
+        ))
     }
 }

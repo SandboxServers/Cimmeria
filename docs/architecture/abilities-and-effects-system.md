@@ -57,7 +57,9 @@ The PR initially added a separate `movement_lock_reasons: HashSet<(u32, i32)>` f
 
 **Reversibility:** Already the simpler design — no commitment to walk back.
 
-**Code:** [`crates/entity/src/cell_entity/state_flags.rs`](../../crates/entity/src/cell_entity/state_flags.rs), `Stun::on_apply` / `on_remove` in [`crates/cell-effect-scripts/src/cell/effects/scripts.rs`](../../crates/cell-effect-scripts/src/cell/effects/scripts.rs).
+**Code:** [`crates/entity/src/cell_entity/state_flags.rs`](../../crates/entity/src/cell_entity/state_flags.rs).
+
+**Extended (ability mechanics AB-09a, 2026-10-03): one reference per timed-effect entry, not per `on_apply`.** The counter was right; the old `Stun` script used it wrong. It took a reference on every `on_apply` and released one on `on_remove`, and the pulse layer calls `on_apply` on every pulse and on a same-source re-hit, so a pulsing or refreshed stun left the counter above zero and the bit set for good; a `pulse_count = 1` stun never got an instance and never released at all. Stun and knockdown are now entries on the timed effect ledger (decision 28) with a **state-flag payload**: `TimedEffectSpec::state_flags` / `TimedEffect::state_flags` name the `BSF_*` bits the entry holds, and the ledger takes one counted reference per bit when the entry goes on and releases it when the entry comes off ([`stat_buff_flags.rs`](../../crates/entity/src/cell_entity/stat_buff_flags.rs)). Entries are keyed by `(effect, invoker)`, so a script that runs again replaces its own entry, releasing before it retakes. Two casters' stuns still hold two references. `clear_all_state_flags` (respawn, revive) forfeits the entries' holds so a stale entry cannot release a newer stun's reference. The ledger records the `state_field` from before its first unsent change, and `flush_stat_buff_timers` sends `onStateFieldUpdate` to the entity and its witnesses only when the value really changed, so a refresh sends nothing. Duration is the effect's `CcDuration` NVP (the generator's `cc` family), else its pulse span; a channelled stun is held until its instance's `on_remove`. The NPC fight tick holds (`decision_outcome = stunned`) and the NPC movement tick freezes the route with zero velocity while the bit is set. Python's `SGWBeing` lists `PLAYER_STATE_Stun` as "BSF_MovementLock + No ability/item use", and the client reads bit 6 for movement only, so the server enforces the rest: a landed stun or knockdown queues an unrolled interrupt (`InterruptCause::Incapacitated`, decision 21's extension) that ends the target's warmup and channels; `handle_use_ability` refuses a stunned caster before any cost (`use_ability/incapacitated.rs`: a player gets `onErrorCode` 15 and "You cannot do that while stunned.", the auto-cycle relaunch waits silently, an NPC is refused silently); a native consumable is refused the same way. The test is a ledger entry holding the lock (`holds_ledger_flag`), not the bare bit, which death and ring transport also set. The duel-end strip removes the partner's ledger entries too (`duel/effects.rs`, reason `duel_ended`). Resist rolls are not modelled (D-AB13): a stun that is not a miss lands. Scripts: `Stun`, `Knockdown` in [`crowd_control.rs`](../../crates/cell-effect-scripts/src/cell/effects/crowd_control.rs). Guards: `stat_buff_flags::tests`, `crowd_control::tests`, `pulsing::stun_tests` (the issue's three-pulse repro and the state-field broadcast), `npc_ai::crowd_control` and `npc_movement::cc_tests` in `cimmeria-cell`.
 
 ### 4. Stacking semantics: same-source refresh, multi-source stack
 
@@ -121,7 +123,7 @@ For channelled effects (`pulse_count = 0`), we register with `MAX_CHANNEL_PULSES
 | TCM | Effect rows (DB seed) | Route |
 |---|---|---|
 | `TCM_Single` | 2,795 (87%) | `apply_damage_to_target` (primary only) |
-| `TCM_AERadius` | 300 (9%) | `handle_use_ability_on_ground` for ground-targeted; primary-only for everything else |
+| `TCM_AERadius` | 300 (9%) | `handle_use_ability_on_ground` for ground-targeted (its secondaries take the area part only); a beneficial one of a player's non-ground cast fans out to the caster's allies; primary-only for everything else (decision 35) |
 | `TCM_AECone` | 99 (3%) | `cone_aoe::fan_out_cone_effects` after primary commits |
 
 **Why:** Each TCM has a different anchor and different geometry, so a unified "collect_targets(tcm, args)" entrypoint would push the dispatch one layer deeper without removing the per-TCM code. Three call sites match three real call paths.
@@ -146,7 +148,12 @@ For channelled effects (`pulse_count = 0`), we register with `MAX_CHANNEL_PULSES
 
 **Reversibility:** Drain order is per-damage-type table inside `drain_absorption_pools`; trivially swapped. Changing the HEALTH-only rule means understanding the FOCUS-drain content semantics first.
 
-**Code:** [`crates/cell-combat/src/cell/combat/damage/pipeline.rs`](../../crates/cell-combat/src/cell/combat/damage/pipeline.rs) — `drain_absorption_pools` + `calculate_damage`.
+**Code:** [`crates/cell-combat/src/cell/combat/damage/absorb.rs`](../../crates/cell-combat/src/cell/combat/damage/absorb.rs) — `drain_absorption_pools`, called from `calculate_damage` in [`pipeline.rs`](../../crates/cell-combat/src/cell/combat/damage/pipeline.rs).
+
+**Addendum (ability mechanics AB-10, 2026-10-03).** Two changes:
+
+- **Focus damage absorbs too.** SGW's Focus is the outer damage pool, so a shield behind it did nothing until Focus was gone, and every authored shield ("Absorption: 500 Physical") was inert. The drain now applies to Focus and Health damage alike, in the pool's own points, Focus first where a seam deals both (a Focus-gated script, `RangedPhysicalDamage` or `MeleePhysicalDamage`, passes only its Focus half, since its Health half lands only when Focus breaks; a scripted pulse takes its damage type from its script): the pipeline (NVP hits and unscripted DoT pulses), and `absorb_damage_nvps`, which runs a damage script's `FocusDamage` / `HealthDamage` through the shields before the script writes the pools (scripted hits and scripted pulses). This departs from the Python reference on purpose.
+- **A shield is a timed effect ledger entry.** `AbsorbShield` puts one entry per `(effect, caster)` on the ledger with one mutable pool per damage type, and adds each pool to its `absorb*` stat (the client's view). Every seam that drains the stats then calls `SpaceManager::settle_absorb_shields`, which charges the drain to the pools, oldest entry first, and takes off an empty shield (`StatBuffRemoval::Drained`, logged `drained`). Removing an entry for any other reason (expiry, death, refresh, a cleanse) takes its unspent pool back off the stat, so a timed shield no longer outlives itself (audit B-33). Capacity on the stat that no pool owns is spent first. [Decision 28](abilities-and-effects-decisions-23-33.md#28-native-consumables-the-base-consumes-before-the-cell-applies-and-timed-stat-buffs-live-in-their-own-ledger) has the ledger side.
 
 ### 10. Script-name dispatch over flag-bit dispatch for effect categories
 
@@ -161,6 +168,16 @@ For channelled effects (`pulse_count = 0`), we register with `MAX_CHANNEL_PULSES
 **Reversibility:** Could route flags into the dispatcher later (add a "if flags & EF_STUN, also run Stun" path) without breaking script_name routing.
 
 **Code:** the registry type in [`crates/cell-world/src/cell/effects/registry.rs`](../../crates/cell-world/src/cell/effects/registry.rs), the script table in [`crates/cell-effect-scripts/src/cell/effects/registry.rs`](../../crates/cell-effect-scripts/src/cell/effects/registry.rs) (decision 33).
+
+**Addendum (2026-10-03, ability-mechanics AB-06, D-AB07).** Three changes refine this decision:
+
+- **A damage script is its effect's only damage path.** An effect whose `script_name` is `RangedPhysicalDamage`, `MeleePhysicalDamage`, `RangedEnergyDamage` or `MeleeDamage` no longer also feeds its `HealthDamage`/`FocusDamage` NVPs to the legacy QR pipeline; before, both ran and Pistol Shot and Strike hit twice. The script runs where the NVP damage runs (before the hit's death check), with its two NVPs scaled by the hit's cover, special-ammo and splash scale, and its HEALTH change is the `onEffectResults` entry. Every other script still runs after the hit.
+- **A miss lands nothing.** A QR-rolled effect whose roll is `RC_MISS` deals no NVP damage, runs no script and registers no pulses.
+- **One flag bit now drives behaviour: `EF_DontUseQR` (16).** An effect carrying it never misses; a hit whose every effect carries it takes no roll (`RC_Hit`, the authored base damage). The old category constants (`EF_STUN = 12`, `EF_DOT = 516`, ...) were not client bits and are gone; the flag log names the client's `EEffectFlag` tokens.
+
+Starter damage drops as a result. Code: [`damage_apply/effect_scripts.rs`](../../crates/cell-combat/src/cell/abilities/damage_apply/effect_scripts.rs) and [`damage_apply/qr_gate.rs`](../../crates/cell-combat/src/cell/abilities/damage_apply/qr_gate.rs).
+
+**Addendum (2026-10-03, ability-mechanics AB-03, B-21).** The NVP path resolves each `TCM_Single` effect on its own instead of keeping the last positive `HealthDamage`/`FocusDamage` of any effect, so a direct hit and its DoT both land, one `onEffectResults` HEALTH entry each. `EF_DontUseQR` is read per effect: in a mixed ability the flagged effect resolves at the unrolled QR (its base) whatever the hit rolled, a miss included. Cone and radius effects keep the old collapse on a hit and land only when no direct (non-pulsing) `TCM_Single` damage effect does; their secondaries get them through the fan-outs as before. Code: [`damage_apply/nvp_damage.rs`](../../crates/cell-combat/src/cell/abilities/damage_apply/nvp_damage.rs).
 
 ### 11. Channel-interrupt distance = 0.5m
 
@@ -238,13 +255,17 @@ Later decisions live in two sibling files, with their numbers and text unchanged
 - [31. Special ammo modifies the shot directly, from `resources.ammo_modifiers` (ammo campaign AM-04, D-AM07)](abilities-and-effects-decisions-23-33.md#31-special-ammo-modifies-the-shot-directly-from-resourcesammo_modifiers-ammo-campaign-am-04-d-am07)
 - [32. NPC-vs-NPC: an NPC's area ability hits the NPCs it would target, and an NPC-only kill pays nobody (#1009)](abilities-and-effects-decisions-23-33.md#32-npc-vs-npc-an-npcs-area-ability-hits-the-npcs-it-would-target-and-an-npc-only-kill-pays-nobody-1009)
 - [33. The scripts live in a leaf crate and register with the cell at startup (#962 step 4)](abilities-and-effects-decisions-23-33.md#33-the-scripts-live-in-a-leaf-crate-and-register-with-the-cell-at-startup-962-step-4)
+- [34. A beneficial cast lands on the caster or an ally, never on a hostile (ability mechanics AB-01)](abilities-and-effects-decisions-23-33.md#34-a-beneficial-cast-lands-on-the-caster-or-an-ally-never-on-a-hostile-ability-mechanics-ab-01)
+- [35. Each effect of a cast lands where its routing says (ability mechanics AB-07)](abilities-and-effects-decisions-23-33.md#35-each-effect-of-a-cast-lands-where-its-routing-says-ability-mechanics-ab-07)
+- [36. GM god mode puts Health and Focus back at the two damage seams (ability mechanics AB-N2)](abilities-and-effects-decisions-23-33.md#36-gm-god-mode-puts-health-and-focus-back-at-the-two-damage-seams-ability-mechanics-ab-n2)
 
 ## Cross-cutting follow-ups
 
 These were considered and deliberately deferred:
 
-- **Mental resist rolls** — `EF_MENTAL_RESIST_ROLL = 64` flag is parsed and observable but no roll mechanic. Needs a design pass: what's the formula (attacker PSIONIC vs defender MENTAL_RES?), how does it interact with QR, what's the wire surface for "resisted" results (new `SRC_*` code? new `onEffectResults` variant?). Picking a model now risks baking the wrong one into the 64 mental-resist effects in DB.
-- **Stun stacking nuance** — multi-source stuns share one `BSF_MOVEMENT_LOCK` bit via refcount, but per-stun-duration tracking isn't on the wire. The client sees one buff icon for "stunned" even when two stuns are pulsing. Acceptable for v1; needs design + wire-format work to surface per-source durations.
+- **Mental resist rolls** — no roll mechanic. (The old `EF_MENTAL_RESIST_ROLL = 64` constant was not a client bit, 64 is `EF_SequenceOnFinish`, and AB-06 removed it; the resists are their own "Resist Roll" effects, ability-mechanics AB-09d.) Needs a design pass: what's the formula (attacker PSIONIC vs defender MENTAL_RES?), how does it interact with QR, what's the wire surface for "resisted" results (new `SRC_*` code? new `onEffectResults` variant?). Picking a model now risks baking the wrong one into the 64 mental-resist effects in DB.
+- **Stun stacking nuance** — multi-source stuns share one `BSF_MOVEMENT_LOCK` bit via refcount, but per-stun-duration tracking isn't on the wire. The client sees one icon per stun effect (the ledger's one icon per `effect_id`, with the latest expiry of its entries). Acceptable; per-source durations would need design + wire-format work.
+- **Stunned players' movement** — the client disables its own movement input on `BSF_MovementLock`; the server refuses a stunned player's casts and consumables (AB-09a) but not its position updates.
 - **Per-archetype tree content authoring** (~560 rows × 7 archetypes) — pure content design work, no engine blockers.
 - **Effect VFX sequences** — most ranged abilities share a generic beam sequence; per-weapon polish.
 - **AoE for radius effects on single-target abilities** — `TCM_AERadius` effects attached to a `TARGET_TARGET` ability (e.g. proximity-mine detonations) don't yet fan out at primary-cast. Needs an explicit detonation trigger pattern.

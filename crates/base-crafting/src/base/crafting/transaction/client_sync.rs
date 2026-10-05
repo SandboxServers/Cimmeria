@@ -4,6 +4,7 @@
 //! `onUpdateItem` is upsert-only: a stack that no longer exists must be
 //! removed with `onRemoveItem`, or the client keeps showing it.
 
+use cimmeria_entity::known_names;
 use std::sync::Arc;
 
 use cimmeria_entity::crafting::serialize_on_update_discipline;
@@ -153,14 +154,19 @@ async fn send_items(
     {
         Ok(rows) => rows,
         Err(e) => {
+            let player_label = known_names::player_name(ids.player_id);
             tracing::warn!(
                 target: "crafting",
                 event = "client_sync_failed",
-                job_id = ids.job_id,
+                job_id = ids.job_id, // nt:id-only induction job counter, unnamed
                 account_id = ids.account_id,
+                account_name = known_names::account_name(ids.account_id),
                 player_id = ids.player_id,
+                player_name = player_label,
                 gm_entity_id = ids.gm_entity_id,
+                gm_entity_name = ids.gm_name,
                 entity_id = ids.entity_id,
+                entity_name = player_label,
                 what = if filter.is_some() { "update_item" } else { "resync" },
                 reason = "inventory_read_failed",
                 error_class = crate::base::crafting::telemetry::sql_error_class(&e),

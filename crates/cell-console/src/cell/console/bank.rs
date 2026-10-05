@@ -78,8 +78,10 @@ pub(super) async fn dump(
                 result = "refused",
                 reason = "caller_not_player",
                 account_id = id.account_id,
+                account_name = id.account_name,
                 entity_id = caller_id,
-                "gm_action: bankdump refused"
+                entity_name = id.player_name,
+                "gm_action: bankdump refused",
             );
             send_gm_feedback(
                 caller_id,
@@ -94,6 +96,14 @@ pub(super) async fn dump(
         BankSubject::Player(id) => Some(*id),
         BankSubject::Name(_) => None,
     };
+    // A typed name is GM input, not a resolved character, so the failure row
+    // logs it as `target_player_arg` (owned: `subject` moves into the
+    // message). The caller's own dump is named from their identity.
+    let target_player_arg = match &subject {
+        BankSubject::Player(_) => None,
+        BankSubject::Name(name) => Some(name.clone()),
+    };
+    let target_player_name = target_player_id.and(id.player_name);
     let msg = CellToBaseMsg::Bank(BankCellToBase::GmDump {
         entity_id: caller_id,
         account_id: id.account_id,
@@ -108,11 +118,16 @@ pub(super) async fn dump(
             result = "refused",
             reason = "base_channel_closed",
             account_id = id.account_id,
+            account_name = id.account_name,
             player_id = id.player_id,
+            player_name = id.player_name,
             entity_id = caller_id,
+            entity_name = id.player_name,
             target_player_id,
+            target_player_name,
+            target_player_arg = target_player_arg.as_deref(),
             error = %e,
-            "gm_action: bankdump could not reach the base"
+            "gm_action: bankdump could not reach the base",
         );
     }
 }
@@ -136,9 +151,12 @@ pub(crate) fn log_non_gm_bankdump(entity_id: u32, space_mgr: &SpaceManager) {
         result = "refused",
         reason = "not_gm",
         account_id = id.account_id,
+        account_name = id.account_name,
         player_id = id.player_id,
+        player_name = id.player_name,
         entity_id,
-        "gm_action: bankdump refused"
+        entity_name = id.player_name,
+        "gm_action: bankdump refused",
     );
 }
 
@@ -179,12 +197,15 @@ pub(super) async fn org_expand(
             target: "bank",
             event = "expand_rejected",
             account_id = id.account_id,
+            account_name = id.account_name,
             player_id = id.player_id,
+            player_name = id.player_name,
             entity_id = caller_id,
+            entity_name = id.player_name,
             scope = scope.map(VaultScope::as_str),
             reason,
             trigger = "gm_console",
-            "expand_rejected: .orgvaultexpand refused on the cell -- nothing bought"
+            "expand_rejected: .orgvaultexpand refused on the cell -- nothing bought",
         );
     };
     let Some((scope, from_slots)) = parse_org_expand_args(args) else {
@@ -252,12 +273,15 @@ pub(crate) async fn refuse_non_gm_org_expand(
         target: "bank",
         event = "expand_rejected",
         account_id = id.account_id,
+        account_name = id.account_name,
         player_id = id.player_id,
+        player_name = id.player_name,
         entity_id,
+        entity_name = id.player_name,
         scope = VaultScope::Team.as_str(),
         reason = "not_gm",
         trigger = "gm_console",
-        "expand_rejected: .orgvaultexpand from a player without GM access -- nothing bought"
+        "expand_rejected: .orgvaultexpand from a player without GM access -- nothing bought",
     );
     send_gm_feedback(
         entity_id,

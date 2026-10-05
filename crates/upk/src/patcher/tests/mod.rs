@@ -8,7 +8,8 @@ use byteorder::{ByteOrder, LittleEndian};
 use super::{clone_objects, CloneRequest, PatchSession, Placement};
 use crate::Package;
 use fixtures::{
-    clone_actors, level_package, rig_package, source_package, target_package, write_temp, Builder,
+    clone_actors, level_package, rig_package, source_package, source_package_with_lod_data,
+    target_package, write_temp, Builder,
 };
 
 #[test]
@@ -157,6 +158,97 @@ fn clone_rejects_an_array_it_cannot_type() {
     assert!(e.to_string().contains("Touching"), "{e}");
     assert!(e.to_string().contains("not a known object array"), "{e}");
     let _ = [src_path, dst_path].map(std::fs::remove_file);
+}
+
+/// Clone the fixture actor whose component ends in `lod_data`.
+fn clone_with_lod_data(tag: &str, lod_data: &[i32]) -> crate::error::Result<Vec<u8>> {
+    let src_path = write_temp(
+        &format!("{tag}-src"),
+        &source_package_with_lod_data(lod_data),
+    );
+    let dst_path = write_temp(&format!("{tag}-dst"), &target_package());
+    let source = PatchSession::open(&src_path).unwrap();
+    let mut target = PatchSession::open(&dst_path).unwrap();
+    let result = clone_actors(&mut target, &source, &[2], Placement::Offset([0.0; 3]))
+        .and_then(|_| target.finish());
+    let _ = [src_path, dst_path].map(std::fs::remove_file);
+    result
+}
+
+#[test]
+fn an_unlit_mesh_component_lod_entry_is_copied_verbatim() {
+    // One LODInfo with no shadow maps and LMT_None: region 3's ring base
+    // (Castle_CellBlock-fffeffff export 1616), which the cloner used to refuse.
+    let bytes = clone_with_lod_data("lod1", &[1, 0, 0, 0]).unwrap();
+    let out = write_temp("lod1-out", &bytes);
+    let pkg = Package::open(&out).unwrap();
+    let comp = pkg.read_export_data(&pkg.exports[3]).unwrap();
+    let tail: Vec<i32> = comp[comp.len() - 16..]
+        .chunks(4)
+        .map(LittleEndian::read_i32)
+        .collect();
+    assert_eq!(tail, vec![1, 0, 0, 0]);
+    let _ = std::fs::remove_file(out);
+}
+
+#[test]
+fn a_lod_entry_with_baked_lighting_is_refused() {
+    // A non-zero light-map type means texture refs follow; copying them
+    // verbatim would point at unrelated objects in the target.
+    for lod_data in [&[1, 0, 0, 1][..], &[2, 0, 0, 0][..], &[1, 0, 0, 0, 0][..]] {
+        let e = clone_with_lod_data("lodx", lod_data).unwrap_err();
+        assert!(
+            e.to_string().contains("post-property data"),
+            "{lod_data:?}: {e}"
+        );
+    }
+}
+
+#[test]
+fn repeated_rig_clones_into_one_session_get_their_own_sequence_names() {
+    // DA-08 clones one rig eight times into one chunk; each copy's Kismet must
+    // be addressable by its own object path, so each root sequence needs its
+    // own instance number and its own SequenceObjects entry.
+    let path = write_temp("rig2", &rig_package());
+    let source = PatchSession::open(&path).unwrap();
+    let mut target = PatchSession::open(&path).unwrap();
+    let mut names = Vec::new();
+    let mut actor_counts = Vec::new();
+    for at in [[0.0, 1000.0, 0.0], [0.0, 2000.0, 0.0]] {
+        let report = clone_objects(
+            &mut target,
+            &source,
+            &CloneRequest {
+                roots: &[2, 6, 5],
+                mapped: &[(1, 1)],
+                placement: Placement::FirstActorAt(at),
+            },
+        )
+        .unwrap();
+        names.push(report.objects[0].name.clone());
+        actor_counts.push(report.level_actor_count.unwrap());
+        // The base (first actor root) lands on the point; the ring keeps its
+        // 50-unit lift above it.
+        let ring = report.objects.iter().find(|o| o.class == "InterpActor");
+        assert_eq!(ring.unwrap().location, Some([at[0], at[1], 50.0]));
+    }
+    assert_eq!(names, vec!["Rig_Seq_0", "Rig_Seq_1"]);
+    assert_eq!(actor_counts, vec![(3, 5), (5, 7)]);
+
+    let out = write_temp("rig2-out", &target.finish().unwrap());
+    let pkg = Package::open(&out).unwrap();
+    let data = pkg.read_export_data(&pkg.exports[1]).unwrap();
+    let seq_objects = crate::parse_tagged_properties(&data, 4, &pkg.names)
+        .into_iter()
+        .find(|p| p.name == "SequenceObjects")
+        .unwrap();
+    let crate::PropValue::Array(bytes) = seq_objects.value else {
+        panic!("SequenceObjects is not an array");
+    };
+    let refs: Vec<i32> = bytes.chunks(4).map(LittleEndian::read_i32).collect();
+    // Count 3: the original rig (3) and both clones (9, then 9 + 5 exports).
+    assert_eq!(refs, vec![3, 3, 9, 14]);
+    let _ = [path, out].map(std::fs::remove_file);
 }
 
 #[test]

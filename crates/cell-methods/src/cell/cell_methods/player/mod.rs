@@ -12,4 +12,4 @@ pub mod world;
 // `interaction.rs::dispatch` routes through it.
 
 pub use constants::*;
-pub use dispatch::dispatch;
+pub use dispatch::{dispatch, dispatch_from_packet};

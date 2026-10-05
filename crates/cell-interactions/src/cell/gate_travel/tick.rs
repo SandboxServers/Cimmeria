@@ -32,7 +32,9 @@ pub async fn gate_dial_tick(tx: &mpsc::Sender<CellToBaseMsg>, space_mgr: &mut Sp
     for (entity_id, dial) in opened {
         tracing::info!(
             entity_id,
+            entity_name = space_mgr.entity_label(entity_id),
             target_address_id = dial.target_address_id,
+            target_address_name = cimmeria_names::book().stargate(dial.target_address_id),
             target_world = %dial.target_world_name,
             "Gate dial timer expired — opening gate"
         );
@@ -70,7 +72,9 @@ pub async fn crossing_tick(tx: &mpsc::Sender<CellToBaseMsg>, space_mgr: &mut Spa
     for (entity_id, crossing) in ready {
         tracing::info!(
             entity_id,
+            entity_name = space_mgr.entity_label(entity_id),
             target_address_id = crossing.target_address_id,
+            target_address_name = cimmeria_names::book().stargate(crossing.target_address_id),
             "Crossing hold elapsed — running the deferred world transition"
         );
         let travelled =
@@ -78,7 +82,9 @@ pub async fn crossing_tick(tx: &mpsc::Sender<CellToBaseMsg>, space_mgr: &mut Spa
         if !travelled {
             tracing::warn!(
                 entity_id,
+                entity_name = space_mgr.entity_label(entity_id),
                 target_address_id = crossing.target_address_id,
+                target_address_name = cimmeria_names::book().stargate(crossing.target_address_id),
                 reason = "deferred_travel_failed",
                 "gate crossing: deferred travel failed after the cinematic \
                  hold — releasing the movement lock so the traveller is \

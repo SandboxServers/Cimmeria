@@ -16,7 +16,7 @@ use super::send::{send_bm_auction_remove, send_bm_auction_update, send_bm_error,
 use super::settle::{settle_locked, SettleCause, SettleError, SettledAuction};
 use super::sweep::notify_settled;
 use super::telemetry::{
-    count_bm_outcome, db, log_failure, log_outbid_refund, log_transition, Actor, Failure,
+    count_bm_outcome, db, item_name, log_failure, log_outbid_refund, log_transition, Actor, Failure,
 };
 use super::types::{auction_columns, AuctionRow};
 use super::validate::{is_buyout, is_open, validate_bid};
@@ -85,20 +85,18 @@ pub async fn handle_place_bid(
             p.mail.recipient_player_id,
             done.before.current_bid,
         );
-        p.log(actor.account_id, player_id);
+        p.log(&actor.who());
     }
-    log_transition(
-        "bm.bid",
-        actor.account_id,
-        player_id,
-        Some(&done.before),
-        &done.after,
-    );
+    log_transition("bm.bid", &actor.who(), Some(&done.before), &done.after);
     tracing::info!(
         entity_id,
+        entity_name = actor.player_name,
         account_id = actor.account_id,
+        account_name = actor.account_name,
         player_id,
-        sequence_id,
+        player_name = actor.player_name,
+        auction_id = sequence_id, // nt:id-only auctions have no name column; item_name names the listing
+        item_name = item_name(done.after.item_def_id),
         bid_amount,
         charged = done.after.current_bid,
         buyout = done.settled.is_some(),
@@ -115,13 +113,12 @@ pub async fn handle_place_bid(
     if let Some(settled) = &done.settled {
         log_transition(
             "bm.sold",
-            actor.account_id,
-            player_id,
+            &actor.who(),
             Some(&settled.before),
             &settled.after,
         );
         for p in &settled.payouts {
-            p.log(actor.account_id, player_id);
+            p.log(&actor.who());
         }
         count_bm_outcome("bid", "buyout");
         notify_settled(net, pool, settled).await;

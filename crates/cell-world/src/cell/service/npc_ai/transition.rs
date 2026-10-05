@@ -28,7 +28,7 @@
 
 use cimmeria_entity::cell_entity::{AiState, CellEntity};
 
-use crate::cell::space_manager::SpaceManager;
+use crate::cell::space_manager::{EntityNames, SpaceManager};
 
 /// Why an NPC's AI state changed. Enumerated, never free text: the label is
 /// a metric label and a SigNoz group-by key.
@@ -191,8 +191,11 @@ pub fn set_ai_state_on(
         target: "npc_ai.transition",
         event = "state_change",
         npc_id = npc.entity_id.0,
+        // Resolved in the macro, so only when this row is enabled.
+        npc_name = EntityNames::of(npc).entity_name,
         tag = npc.tag.as_deref().unwrap_or(""),
         template_id = npc.template_id,
+        template_name = EntityNames::of(npc).template_name,
         world,
         space_id = npc.space_id.0,
         from = from.label(),

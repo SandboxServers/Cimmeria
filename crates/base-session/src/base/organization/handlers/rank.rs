@@ -31,6 +31,7 @@ use sqlx::{Postgres, Transaction};
 use super::answer::{db_failed, refusal_text, refuse};
 use super::broadcast::broadcast_to_org;
 use super::fanout::feedback;
+use super::log_names::label;
 use super::officer_notes::{sync_for_member_locked, NoteSync};
 use super::order::org_order_guard;
 use super::targets::{member_by_name, online_now, MemberTarget};
@@ -66,6 +67,7 @@ pub async fn handle_rank_change(
         to_rank: Some(rank),
         ..ActionRow::default()
     };
+    row.name_actor(ctx);
     // Held until the last send: the rank move may change who reads officer
     // notes, and its sync must not cross another edit's fanout (ORG-08).
     let _order = org_order_guard(org_id).await;
@@ -73,7 +75,7 @@ pub async fn handle_rank_change(
         None => Err(OrgReject::NoDb),
         Some(pool) => match pool.begin().await {
             Ok(mut tx) => {
-                match rank_locked(&mut tx, player, org_id, target_name, rank, &mut row).await {
+                match rank_locked(ctx, &mut tx, player, org_id, target_name, rank, &mut row).await {
                     Ok(d) => match tx.commit().await {
                         Ok(()) => Ok(d),
                         Err(e) => Err(db_failed(&row, &e)),
@@ -95,10 +97,15 @@ pub async fn handle_rank_change(
         target: "org",
         event = "rank_changed",
         account_id = player.account_id,
+        account_name = row.account_name,
         player_id = player.player_id,
+        player_name = row.player_name,
         target_account_id = row.target_account_id,
+        target_account_name = row.target_account_name,
         target_player_id = target.player_id,
+        target_player_name = row.target_player_name,
         org_id,
+        org_name = org_name.as_str(),
         from_rank = target.rank.as_u8(),
         to_rank = to.as_u8(),
         "organization member rank changed"
@@ -153,6 +160,7 @@ pub(super) async fn announce_rank(
 /// Returns the target (with the rank they held), the new rank, the
 /// organization's name and the officer-note sync the move needs.
 async fn rank_locked(
+    ctx: &OrgCtx<'_>,
     tx: &mut Transaction<'_, Postgres>,
     player: &OrgPlayer,
     org_id: i32,
@@ -166,6 +174,7 @@ async fn rank_locked(
         .map_err(|e| db(row, &e))?
         .ok_or(OrgReject::NotMember)?;
     row.org_type = Some(header.org_type.name());
+    row.org_name = label(&header.name);
     let access = member_access_locked(tx, org_id, player.player_id)
         .await
         .map_err(|e| db(row, &e))?
@@ -176,6 +185,8 @@ async fn rank_locked(
         .map_err(|e| db(row, &e))??;
     row.target_player_id = Some(target.player_id);
     row.target_account_id = u32::try_from(target.account_id).ok();
+    row.target_player_name = label(&target.name);
+    row.name_target(ctx);
     row.target_rank = Some(target.rank.as_u8());
     if target.player_id == player.player_id {
         return Err(OrgReject::SelfTarget);
@@ -203,9 +214,10 @@ async fn rank_locked(
     }
     match set_rank(tx, &access, org_id, target.player_id, to).await {
         Ok(_) => {
-            let sync = sync_for_member_locked(tx, org_id, target.player_id, target.rank, to)
-                .await
-                .map_err(|e| db(row, &e))?;
+            let sync =
+                sync_for_member_locked(tx, org_id, row.org_name, target.player_id, target.rank, to)
+                    .await
+                    .map_err(|e| db(row, &e))?;
             Ok((target, to, header.name, sync))
         }
         // Ruled out above, under the lock; kept typed in case a caller

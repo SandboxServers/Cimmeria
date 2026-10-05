@@ -346,7 +346,7 @@ fn the_startup_summary_counts_off_mesh_spawn_rows() {
         )
         .expect("the startup summary must emit one INFO per meshed world");
 
-    assert!(event.has_field("world_name", "Harset"));
+    assert!(event.has_field("world", "Harset"));
     assert!(
         event.has_field("navmesh_mode", "advisory"),
         "the line must name the mode, or it cannot answer \
@@ -409,6 +409,7 @@ fn spawn_row(world: &str, pos: [f32; 3]) -> crate::cell::spawner::SpawnRecord {
         aggression_override: None,
         use_cover: None,
         vault_scope: cimmeria_entity::cell_entity::VaultScope::Personal,
+        training_dummy: false,
     }
 }
 

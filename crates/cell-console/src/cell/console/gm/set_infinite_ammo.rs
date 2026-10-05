@@ -41,8 +41,11 @@ pub(crate) async fn set_infinite_ammo(
                     decision_outcome = "refused",
                     reason = reasons::BAD_ARGS,
                     entity_id = caller_id,
+                    entity_name = caller.player_name,
                     account_id = caller.account_id,
+                    account_name = caller.account_name,
                     player_id = caller.player_id,
+                    player_name = caller.player_name,
                     "infinite ammo: bad argument; nothing changed"
                 );
                 send_gm_feedback(
@@ -64,10 +67,14 @@ pub(crate) async fn set_infinite_ammo(
             decision_outcome = "refused",
             reason = reasons::NOT_A_PLAYER,
             entity_id = caller_id,
+            entity_name = caller.player_name,
             account_id = caller.account_id,
+            account_name = caller.account_name,
             player_id = caller.player_id,
+            player_name = caller.player_name,
             subject_entity_id = subject,
-            "infinite ammo: no character id; nothing changed"
+            subject_entity_name = space_mgr.entity_label(subject),
+            "infinite ammo: no character id; nothing changed",
         );
         send_gm_feedback(
             caller_id,
@@ -86,13 +93,18 @@ pub(crate) async fn set_infinite_ammo(
             event = events::GM_INFINITE_AMMO_TOGGLED,
             decision_outcome = "set",
             entity_id = caller_id,
+            entity_name = caller.player_name,
             account_id = caller.account_id,
+            account_name = caller.account_name,
             player_id = caller.player_id,
+            player_name = caller.player_name,
             subject_entity_id = subject,
+            subject_entity_name = space_mgr.entity_label(subject),
             subject_player_id = player_id,
+            subject_player_name = space_mgr.entity_label(subject),
             on,
             changed,
-            "infinite ammo switch set"
+            "infinite ammo switch set",
         );
     }
     let prefix = match (want.is_some(), changed) {

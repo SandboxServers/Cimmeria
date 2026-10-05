@@ -26,7 +26,7 @@ use sqlx::PgPool;
 
 use super::send::BmNet;
 use crate::base::gm_feedback::send_gm_feedback_to_client;
-use crate::base::ConnectedClientState;
+use crate::base::{session_identity, ConnectedClientState};
 use crate::cell::messages::BmGmActor;
 
 mod expire;
@@ -64,6 +64,16 @@ impl<'a> GmCtx<'a> {
         }
     }
 
+    /// The GM's session identity, for the names on a log row. Call it inside
+    /// the branch that logs: it takes the session locks.
+    fn identity(&self) -> cimmeria_entity::cell_entity::PlayerIdentity {
+        session_identity::identity_for_entity(
+            self.net.connected,
+            self.net.entity_to_addr,
+            self.actor.entity_id,
+        )
+    }
+
     /// One feedback line to the GM.
     async fn tell(&self, text: &str) {
         send_gm_feedback_to_client(
@@ -80,14 +90,18 @@ impl<'a> GmCtx<'a> {
     /// `reason = db_error` is ERROR, anything else WARN.
     async fn refuse(&self, command: &'static str, reason: &'static str, line: &str) {
         let a = self.actor;
+        let id = self.identity();
         if reason == "db_error" {
             tracing::error!(
                 event = "bm.gm_rejected",
                 command,
                 reason,
                 entity_id = a.entity_id,
+                entity_name = id.player_name,
                 account_id = a.account_id,
+                account_name = id.account_name,
                 player_id = a.player_id,
+                player_name = id.player_name,
                 detail = line,
                 "Black Market GM command failed"
             );
@@ -97,8 +111,11 @@ impl<'a> GmCtx<'a> {
                 command,
                 reason,
                 entity_id = a.entity_id,
+                entity_name = id.player_name,
                 account_id = a.account_id,
+                account_name = id.account_name,
                 player_id = a.player_id,
+                player_name = id.player_name,
                 "Black Market GM command refused: nothing changed"
             );
         }

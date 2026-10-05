@@ -99,90 +99,94 @@ OTLP exporter.
 ## Architecture at a glance
 
 ```text
-cimmeria-server
+cimmeria-server (container `cimmeria`, or native)
    │
    ├── tracing-subscriber (in-proc)
    │     ├── console layer        → stdout
    │     ├── per-system log files → logs/*.log
    │     ├── BroadcastLayer       → admin WebSocket
-   │     └── OpenTelemetryLayer   → OTLP gRPC :4317
+   │     └── OpenTelemetryLayer   → OTLP gRPC otel-collector:4317 (over signoz-net)
    │                                       │
    │                                       ▼
-   │                              otel-collector (SigNoz)
+   │                              signoz-otel-collector
    │                                       │
    │                                       ▼
-   │                              ClickHouse
+   │                              signoz-clickhouse
    │                                       │
    │                                       ▼
-   │                              SigNoz frontend :3301
+   │                              signoz (UI + query API) :8080
 ```
+
+Player telemetry does not take a separate path into SigNoz. Opted-in
+launchers upload to the game server's login port
+(`:8081/api/telemetry/*`), and the server replays those rows into the
+same collector over `signoz-net` as `service.name = cimmeria-client`.
 
 The OpenTelemetry layer is opt-in: if `OTEL_EXPORTER_OTLP_ENDPOINT` is
 unset, the layer is never instantiated and the OTLP code path never
 runs. This is the "off by default" stance — the integration only
 activates when an operator explicitly points it at a collector.
 
-## Colo deployment (single file, single command)
+## Colo deployment
 
-[`docker/compose.yml`](../../docker/compose.yml) is fully
-self-contained. The whole deployment unit is that one file. Copy it
-to the colo box and bring it up — no companion config files, no
-external repos, no setup script:
+The colo runs two Compose projects joined by the external Docker
+network `signoz-net`:
 
-```bash
-scp docker/compose.yml colo:/opt/cimmeria/
-ssh colo "cd /opt/cimmeria && docker compose -f compose.yml up -d"
-```
+- [`docker/compose.yml`](../../docker/compose.yml) — the `cimmeria`
+  game server and `watchtower`, in `/opt/cimmeria`.
+- [`docker/signoz/compose.yaml`](../../docker/signoz/compose.yaml) —
+  SigNoz, in `/opt/cimmeria/signoz`. It is SigNoz's own single-node
+  compose file, vendored at v0.125.1 with the config files it mounts
+  copied beside it. The header of that file lists every Cimmeria
+  change to upstream.
 
-That single file contains:
-
-- The `cimmeria` + `watchtower` services (game server with auto-update).
-- The full vendored SigNoz stack (zookeeper-1, clickhouse,
-  otel-collector-migrator, otel-collector, query-service,
-  alertmanager, frontend) — pinned at SigNoz v0.55.0.
-- Profile-gated `cloudflared` (Cloudflare Tunnel) and `otel-smoke`
-  (wire-path verifier).
-- All SigNoz config files (users.xml, cluster.xml, otel-collector
-  config, prometheus.yml, alertmanager.yml, nginx-config.conf,
-  alerts.yml) inlined as Docker Compose `configs:` blocks.
-
-Profile flags:
+Setup, ports, `.env` values and day-to-day operation are in
+[colo-deploy.md](colo-deploy.md). The short version:
 
 ```bash
-docker compose -f compose.yml up -d                          # core: game + signoz
-docker compose -f compose.yml --profile tunnel up -d         # + cloudflare tunnel
-docker compose -f compose.yml --profile smoke up otel-smoke  # wire-path verify
+docker network create signoz-net            # once per host
+cd /opt/cimmeria/signoz
+cp .env.example .env && $EDITOR .env        # SIGNOZ_JWT_SECRET at least
+docker compose up -d
 ```
 
-Wait ~90 seconds for ClickHouse to finish initialising
-(`docker compose -f compose.yml logs clickhouse | grep "Ready"`).
-SigNoz UI is then at `http://<colo-host>:3301`. With
-`--profile tunnel` the UI is also reachable via your Cloudflare
-domain — see [signoz-remote-access.md](signoz-remote-access.md).
+Allow about two minutes for the first boot: `init-clickhouse` downloads
+a ClickHouse function from GitHub and the migrator creates the schema.
+Then open the UI on `${SIGNOZ_UI_BIND}:8080` and create the admin
+account. The first visitor creates it, so do it straight away.
 
 ### Verify the wire path
 
+From the host, send one log record to the collector's HTTP receiver:
+
 ```bash
-docker compose -f compose.yml --profile smoke up otel-smoke
+curl -sf -X POST http://127.0.0.1:4318/v1/logs \
+  -H 'Content-Type: application/json' \
+  -d '{"resourceLogs":[{"resource":{"attributes":[{"key":"service.name","value":{"stringValue":"cimmeria-smoke"}}]},"scopeLogs":[{"logRecords":[{"body":{"stringValue":"SigNoz wire path smoke"},"severityText":"INFO"}]}]}]}'
 ```
 
-Then in the SigNoz UI → Logs → filter `service.name = cimmeria-smoke`
-and confirm the "SigNoz wire path smoke" body appears within ~10s.
+Use the `OTLP_BIND` address instead of `127.0.0.1` if you changed it.
+Then in the SigNoz UI → Logs, filter `service.name = cimmeria-smoke`
+and confirm the body appears within ~10s. For the game server itself,
+`docker logs cimmeria 2>&1 | grep '\[otel\] Streaming'` shows the
+endpoint it exports to.
 
 ## Local dev (running cimmeria-server natively, only SigNoz in Docker)
 
 When developing locally with `cimmeria-server.exe` running natively
-(not in Docker), bring up only the SigNoz half of the same file by
-listing the SigNoz service names:
+(not in Docker), run the same SigNoz stack the colo runs:
 
 ```bash
-docker compose -f docker/compose.yml up -d \
-  zookeeper-1 clickhouse otel-collector-migrator \
-  otel-collector query-service alertmanager frontend
+docker network create signoz-net
+cd docker/signoz
+cp .env.example .env        # set SIGNOZ_JWT_SECRET (openssl rand -hex 32)
+docker compose up -d
 ```
 
-Then run the server natively with the OTLP endpoint pointed at the
-exposed collector:
+The defaults publish OTLP on `localhost:4317` (gRPC) and
+`localhost:4318` (HTTP), and the UI on `http://localhost:8080`, where
+the first visit asks you to create the admin account. Then run the
+server natively with the OTLP endpoint pointed at the collector:
 
 ```powershell
 $env:OTEL_EXPORTER_OTLP_ENDPOINT = "http://localhost:4317"
@@ -192,114 +196,114 @@ $env:OTEL_SERVICE_NAME = "cimmeria-server"
 
 ## Upgrading SigNoz
 
-The vendored config sections at the bottom of `docker/compose.yml`
-correspond to a pinned SigNoz release (currently v0.55.0). To
-upgrade:
+[`docker/signoz/`](../../docker/signoz/) is a vendored copy of
+`deploy/docker/docker-compose.yaml` and the `deploy/common/` files it
+mounts, from `github.com/SigNoz/signoz`. The images and the config
+files are coupled; upgrade them together, in one PR:
 
-1. Bump the image tags in the services block (`signoz/query-service`,
-   `signoz/frontend`, `signoz/signoz-otel-collector`,
-   `signoz/signoz-schema-migrator`, `signoz/alertmanager`).
-2. Re-vendor the `configs:` content from a fresh clone of
-   `github.com/SigNoz/signoz/deploy/docker/clickhouse-setup/` and
-   `deploy/docker/common/nginx-config.conf` at the new tag.
-3. Commit + push. The next watchtower poll picks up the cimmeria
-   image; redeploying `compose.yml` swaps the SigNoz tags.
-
-The SigNoz images and configs are tightly coupled — bump them
-together, not separately.
+1. Read the SigNoz release notes between the current version and the
+   target for breaking changes and manual migration steps.
+2. From a checkout of SigNoz at the target tag, carry the image tags
+   in `deploy/docker/docker-compose.yaml` (`signoz/signoz`,
+   `signoz/signoz-otel-collector`, `clickhouse/clickhouse-server`,
+   `signoz/zookeeper`) and any service changes into
+   `docker/signoz/compose.yaml`.
+3. Re-copy `deploy/common/clickhouse/*.xml`,
+   `deploy/common/signoz/otel-collector-opamp-config.yaml` and
+   `deploy/docker/otel-collector-config.yaml`.
+4. Re-apply the Cimmeria deltas listed in the header of
+   `docker/signoz/compose.yaml`: `name: signoz`, the `./common` paths,
+   the external `signoz-net`, the `SIGNOZ_UI_BIND` / `OTLP_BIND` port
+   binds, the `SIGNOZ_JWT_SECRET` variable, and the
+   `transform/claude-code-scrub` processor in the collector config. The
+   processor must stay in the `logs` and `metrics` pipelines (see
+   [claude-code-telemetry.md](claude-code-telemetry.md)). Update the
+   version and commit noted in the header.
+5. Test locally with the
+   [Local dev](#local-dev-running-cimmeria-server-natively-only-signoz-in-docker)
+   steps, including the wire-path check.
+6. On the colo, copy the new `docker/signoz/` files into
+   `/opt/cimmeria/signoz` and run `docker compose up -d` there. The
+   named volumes (`signoz-clickhouse`, `signoz-sqlite`,
+   `signoz-zookeeper-1`) persist, so data, dashboards and alert rules
+   carry over. The game server keeps running while the collector
+   restarts.
 
 ### Resource budget
 
-SigNoz's footprint on the colo box:
+SigNoz's footprint on the colo box (measured 2026-10-04, v0.125.1):
 
-| Container | RAM | Disk (steady-state) |
+| Container | RAM | Disk |
 |---|---|---|
-| ClickHouse | ~1.5 GB | ~10 GB/month at current packet rate |
-| Query Service | ~150 MB | — |
-| Alertmanager | ~50 MB | — |
-| Frontend | ~30 MB | — |
-| OTel Collector | ~80 MB | — |
+| `signoz-clickhouse` | ~2.7 GB | ~37 GB after four months (`signoz-clickhouse` volume) |
+| `signoz-zookeeper-1` | ~0.9 GB | ~0.3 GB |
+| `signoz-otel-collector` | ~0.2 GB | — |
+| `signoz` (UI + query API) | ~60 MB | a few MB (`signoz-sqlite`) |
 
-ClickHouse compression on the JSONL packet stream runs ~10× —
-3–5 KB/sec of structured tracing events compresses to ~0.3–0.5 KB/sec
-on disk. The 10 GB/month figure assumes the current dev traffic
-volume (single-digit concurrent players). Production scaling math
-lives in [docs/architecture/observability.md](../architecture/observability.md).
+Production scaling math lives in
+[docs/architecture/observability.md](../architecture/observability.md).
 
 ### Retention
 
-ClickHouse defaults to **indefinite** retention, which will eventually
-fill the disk on a long-lived colo box. Recommended defaults to
-configure after first bring-up via the SigNoz UI's *Settings →
-Retention* page (per-signal TTL, applied via ClickHouse `MODIFY TTL`):
+Set retention after first bring-up in the SigNoz UI's settings
+(per-signal TTL, applied by ClickHouse). ClickHouse is the only part of
+the host that grows without bound. Recommended starting points:
 
-| Signal | Cold storage (S3/move) | Delete |
-|---|---|---|
-| Traces | 7 days | 14 days |
-| Logs | 14 days | 30 days |
-| Metrics | 30 days | 90 days |
+| Signal | Delete after |
+|---|---|
+| Traces | 14 days |
+| Logs | 30 days |
+| Metrics | 90 days |
 
 Adjust upward if disk capacity allows — Mercury packet rows are the
 most useful for retroactive forensics and benefit from longer
-retention. Adjust downward (or wire up S3 archival) if disk pressure
-becomes a concern.
+retention. Adjust downward if disk pressure becomes a concern.
 
-### Alert receivers
+### Alerts
 
-The vendored `alertmanager-config` ships with a single `null` receiver
-— alerts are accepted by Alertmanager and discarded silently. Before
-relying on alerts, edit the `alertmanager-config` block in your copy
-of `compose.yml` and add a real receiver (Slack webhook, email SMTP,
-PagerDuty, etc.). Do not commit your webhook URL back to the repo;
-keep operator credentials in your colo-local copy only.
+SigNoz v0.125 runs its alert manager inside the `signoz` container
+(`SIGNOZ_ALERTMANAGER_PROVIDER=signoz`); there is no separate
+Alertmanager service or config file. Configure notification channels
+(Slack, email, webhooks) and alert rules in the UI. They are stored in
+the `signoz-sqlite` volume, not in the repo, so webhook URLs never
+touch git.
 
 ### Security
 
-- SigNoz UI on port 3301 has no built-in auth. Use the
-  `--profile tunnel` Cloudflare Tunnel (see
-  [signoz-remote-access.md](signoz-remote-access.md)) or restrict to
-  LAN/VPN access. Do not publish 3301 to the public internet.
-- The OTLP collector ports (4317/4318) bind to `127.0.0.1` by default
-  via the `OTLP_BIND` interpolation in `compose.yml`. Override to a
-  specific LAN IP only behind a firewall — the collector accepts
-  unauthenticated ingest from any reachable client.
-- ClickHouse runs with an empty `default` user password. The DB is
-  only reachable on the compose internal network — if you ever expose
-  port 9000 to a host network, set a password in the
-  `clickhouse-users` config block first.
+- The UI and query API on `8080` have their own login. Session tokens
+  are signed with `SIGNOZ_JWT_SECRET` from `docker/signoz/.env`.
+  Upstream ships the literal `secret`, which is why the vendored
+  compose refuses to start without a value. Publish `8080` on
+  `127.0.0.1` (the default) or a LAN/VPN address via `SIGNOZ_UI_BIND`.
+  As of 2026-10-04 the colo's network edge forwards `8080` from the
+  internet; nothing a player runs needs it.
+- The OTLP collector (`4317`/`4318`) accepts unauthenticated ingest
+  from anyone who can reach it. The vendored compose publishes it on
+  `OTLP_BIND`, default `127.0.0.1`; set a LAN/VPN address only for
+  exporters on that network. Never forward `4317` or `4318` from the
+  internet. The game container doesn't need them published: it
+  reaches `otel-collector:4317` over `signoz-net`.
+- ClickHouse runs with an empty `default` user password and is not
+  published; only containers on `signoz-net` reach it. If you ever
+  publish `9000` or `8123`, set a password in
+  `docker/signoz/common/clickhouse/users.xml` first.
 
 ## Operational notes
-
-### Updating SigNoz
-
-The SigNoz stack is **vendored** into `docker/compose.yml`. Upgrading
-is a two-part change:
-
-1. Bump the image tags in the services block at the top of
-   `docker/compose.yml` (`signoz/query-service`, `signoz/frontend`,
-   `signoz/signoz-otel-collector`, `signoz/signoz-schema-migrator`,
-   `signoz/alertmanager`).
-2. Re-vendor the `configs:` blocks at the bottom of `compose.yml`
-   from a fresh clone of
-   `github.com/SigNoz/signoz/deploy/docker/clickhouse-setup/` (and
-   `deploy/docker/common/nginx-config.conf`) at the new tag.
-
-Bump them together, in one commit, with a smoke test of the OTLP
-path. The configs are tightly coupled to the image versions — image
-bumps without config re-vendoring can break silently.
 
 ### Disabling the integration
 
 Two ways to fully disable SigNoz ingestion without removing code:
 
-1. **Unset the env var.** Set `OTEL_EXPORTER_OTLP_ENDPOINT=""` in your
-   environment override before `docker compose up`. The exporter
-   never initialises; the OTLP layer is omitted from the subscriber
-   stack. Zero cost.
-2. **Take down the SigNoz services.** `docker compose -f compose.yml
-   stop clickhouse otel-collector query-service alertmanager frontend
-   zookeeper-1`. The exporter will log connection-refused errors but
-   the game server keeps running fine — exporter failure is non-fatal.
+1. **Unset the endpoint.** Set `OTEL_EXPORTER_OTLP_ENDPOINT=` (empty)
+   in `/opt/cimmeria/.env` and run `docker compose up -d`. The exporter
+   never initialises, the OTLP layer is omitted from the subscriber
+   stack, and the container skips its wait for the collector. Zero
+   cost.
+2. **Stop SigNoz.** `docker compose down` in `/opt/cimmeria/signoz`.
+   The game server logs export errors but keeps running — exporter
+   failure is non-fatal. Without the first step, each container start
+   waits up to `OTEL_WAIT_TIMEOUT` (120 s) for the collector before
+   starting without it.
 
 ### Finding navmesh holes from telemetry
 
@@ -388,8 +392,10 @@ remain the source of truth for retroactive deep-dives.
 
 | Symptom | Likely cause | Fix |
 |---|---|---|
-| SigNoz UI loads but "no data" | OTLP collector unreachable from `cimmeria-server` | Verify both containers are in the same compose project (default network). `docker compose -f compose.yml ps` should show all 9 services. |
-| `otel-smoke` succeeds but server data missing | Subscriber filter dropped events, or you are querying the wrong index | TRACE rows are only in `service.name = 'cimmeria-trace'`; wire DEBUG/INFO only in `cimmeria-network`. Otherwise check the filters in [`crates/server/src/logging/filters.rs`](../../crates/server/src/logging/filters.rs) |
-| ClickHouse OOM | Default `max_memory_usage` too low for ingestion burst | Edit the `clickhouse-users` `configs:` block in `compose.yml` (raise `max_memory_usage` in the `default` profile), restart the `clickhouse` container |
-| Tunnel up, browser shows 502 | Frontend not yet ready (~90s cold start) | Wait, then `docker compose -f compose.yml logs frontend` |
-| Server logs say "[otel] Exporter init failed" | Collector address misconfigured | Verify `OTEL_EXPORTER_OTLP_ENDPOINT` and that `:4317` is reachable |
+| SigNoz UI loads but "no data" | OTLP collector unreachable from `cimmeria-server` | `docker logs cimmeria` should contain `[otel] Streaming to http://otel-collector:4317`. `docker network inspect signoz-net` should list both `cimmeria` and `signoz-otel-collector`. |
+| `network signoz-net declared as external, but could not be found` | The shared network was never created | `docker network create signoz-net`, then `docker compose up -d` again |
+| Wire-path check succeeds but server data missing | Subscriber filter dropped events, or you are querying the wrong index | TRACE rows are only in `service.name = 'cimmeria-trace'`; wire DEBUG/INFO only in `cimmeria-network`. Otherwise check the filters in [`crates/server/src/logging/filters.rs`](../../crates/server/src/logging/filters.rs) |
+| ClickHouse OOM | `max_memory_usage` too low for an ingestion burst | Raise `max_memory_usage` in the `default` profile of `docker/signoz/common/clickhouse/users.xml`, copy it to the host, then `docker restart signoz-clickhouse` |
+| `signoz-otel-collector` keeps restarting | Schema migrations unfinished or failed (`migrate sync check` fails) | `docker logs signoz-telemetrystore-migrator`; it must exit 0 |
+| UI unreachable right after `up` | Cold start (~2 min on first boot) | Wait, then `docker logs signoz --tail 50` |
+| Server logs say "[otel] Exporter init failed" | Collector address misconfigured | Verify `OTEL_EXPORTER_OTLP_ENDPOINT` and that `otel-collector:4317` is reachable on `signoz-net` |

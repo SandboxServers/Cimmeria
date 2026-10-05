@@ -24,6 +24,7 @@ use cimmeria_wire::cell::client_methods::duel::{TEXT_DUEL_ABORTED, TEXT_DUEL_ENG
 use crate::cell::messages::CellToBaseMsg;
 use crate::cell::space_manager::SpaceManager;
 
+use super::duelist_names as names;
 use super::outbound::{
     send_duel_entities_set, send_line, send_pvp_flag, send_state_field, Recipient,
 };
@@ -72,14 +73,21 @@ pub(super) async fn on_countdown_end(
     tracing::debug!(
         target: "duel",
         event = "duel.engaged",
-        duel_id,
+        duel_id, // nt:id-only duel row id with no name column; the duelists are named in the same event
         account_id = challenger.account_id,
+        account_name = names::account_name(mgr, Some(challenger.entity_id)),
         player_id = duel.challenger,
+        player_name = names::player_name(mgr, Some(challenger.entity_id)),
         entity_id = challenger.entity_id,
+        entity_name = names::entity_name(mgr, Some(challenger.entity_id)),
         target_player_id = duel.target,
+        target_player_name = names::player_name(mgr, Some(target.entity_id)),
         target_entity_id = target.entity_id,
+        target_entity_name = names::entity_name(mgr, Some(target.entity_id)),
         target_account_id = target.account_id,
+        target_account_name = names::account_name(mgr, Some(target.entity_id)),
         space_id = duel.space_id,
+        world = names::world(mgr, duel.space_id),
         state = "engaged",
         pvp_flag_witnesses = witnesses[0],
         target_pvp_flag_witnesses = witnesses[1],
@@ -105,13 +113,19 @@ async fn abort_countdown(
     tracing::debug!(
         target: "duel",
         event = "duel.engage_refused",
-        duel_id = duel.duel_id,
+        duel_id = duel.duel_id, // nt:id-only duel row id with no name column; the duelists are named in the same event
         account_id = challenger.and_then(|p| p.account_id),
+        account_name = names::account_name_of(mgr, duel.challenger),
         player_id = duel.challenger,
+        player_name = names::player_name_of(mgr, duel.challenger),
         entity_id = challenger.map(|p| p.entity_id),
+        entity_name = names::entity_name(mgr, challenger.map(|p| p.entity_id)),
         target_player_id = duel.target,
+        target_player_name = names::player_name_of(mgr, duel.target),
         target_entity_id = target.map(|p| p.entity_id),
+        target_entity_name = names::entity_name(mgr, target.map(|p| p.entity_id)),
         space_id = duel.space_id,
+        world = names::world(mgr, duel.space_id),
         gone,
         reason = "duelist_gone",
         "duel countdown ended with a duelist out of the world or the space; aborted"

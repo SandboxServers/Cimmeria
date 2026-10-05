@@ -1,18 +1,26 @@
 # SigNoz remote access via Cloudflare Tunnel
 
-The SigNoz frontend speaks plain HTTP on port 3301 with no built-in
-authentication. Publishing that port to the public internet would be
-asking for trouble. This document covers the recommended hardening
-path: terminate auth at Cloudflare's edge, run an outbound-only
-tunnel from the colo box, never open an inbound firewall port.
+> **Status (checked 2026-10-04): not deployed.** The colo runs no
+> `cloudflared` container, service or config. Operators reach the
+> SigNoz UI over the private network (VPN). This guide is the plan for
+> reaching it without the VPN; the commands below are untested on the
+> colo.
+
+The SigNoz UI and query API speak plain HTTP on port 8080 (the
+`signoz` service in [`docker/signoz/compose.yaml`](../../docker/signoz/compose.yaml)).
+SigNoz has its own login, but publishing that port to the internet
+still puts the whole query API one password (or one leaked JWT
+secret) away from anyone. This document covers the hardening path:
+terminate auth at Cloudflare's edge, run an outbound-only tunnel from
+the colo box, never open an inbound firewall port.
 
 Cloudflare Tunnel was picked over Tailscale, WireGuard, and
 Caddy+Authelia because it needs no inbound firewall hole, no client
 software on the viewer's machine, and no certificate management — the
-`cloudflared` daemon dials outbound and Cloudflare Access handles
-authentication in front of a UI that has none of its own. The service
-definition is at [`docker/compose.yml:283-298`](../../docker/compose.yml)
-(profile-gated behind `--profile tunnel`).
+`cloudflared` daemon dials outbound and Cloudflare Access puts a
+second authentication layer in front of SigNoz's own. It runs as a
+standalone container on the `signoz-net` network; neither compose
+project defines it.
 
 ## Architecture
 
@@ -30,11 +38,11 @@ Cloudflare argo tunnel
         │
         │ outbound TCP from colo to *.cfargotunnel.com
         ▼
-cloudflared (in colo, docker container)
+cloudflared (in colo, docker container on signoz-net)
         │
-        │ HTTP localhost
+        │ HTTP over signoz-net
         ▼
-SigNoz frontend :3301
+signoz (UI + query API) :8080
 ```
 
 No inbound firewall ports. No Let's Encrypt automation to maintain.
@@ -78,8 +86,8 @@ Note the UUID — you'll need it.
 
 ### 3. Drop credentials on the colo box
 
-Copy the credentials JSON to the colo box at the path the compose
-overlay expects:
+Copy the credentials JSON to the colo box at the path the container
+mounts:
 
 ```bash
 scp ~/.cloudflared/<uuid>.json colo:/etc/cloudflared/credentials.json
@@ -94,13 +102,12 @@ tunnel: cimmeria-signoz
 credentials-file: /etc/cloudflared/credentials.json
 ingress:
   - hostname: signoz.<your-domain>
-    service: http://frontend:3301
+    service: http://signoz:8080
   - service: http_status:404
 ```
 
-The `frontend:3301` hostname resolves inside the Docker network
-because all services in `docker/compose.yml` share the project's
-default network — no explicit network configuration needed.
+The `signoz` hostname resolves because the `cloudflared` container
+joins the `signoz-net` network (step 6).
 
 ### 4. Point DNS at the tunnel
 
@@ -124,20 +131,28 @@ In the Cloudflare Zero Trust dashboard:
      **Access → Service Auth → Service Tokens**; this generates a
      `CF-Access-Client-Id` and `CF-Access-Client-Secret` pair.
 
-### 6. Bring up the stack
+### 6. Start cloudflared
+
+Run it as a standalone container on `signoz-net`, with a pinned image
+tag (check [cloudflared releases](https://github.com/cloudflare/cloudflared/releases)
+for the current one):
 
 ```bash
-docker compose -f docker/compose.yml --profile tunnel up -d
+docker run -d --name cimmeria-cloudflared --restart unless-stopped \
+  --network signoz-net \
+  -v /etc/cloudflared:/etc/cloudflared:ro \
+  cloudflare/cloudflared:<pinned tag> \
+  tunnel --no-autoupdate run --config /etc/cloudflared/config.yml cimmeria-signoz
 ```
 
-The single self-contained compose file already defines the
-`cloudflared` service guarded by `profiles: [tunnel]`; `--profile
-tunnel` flips it on. Without the flag, the rest of the stack (game
-server + SigNoz) comes up without any outbound tunnel.
+The game server and SigNoz don't depend on it; start and stop it on
+its own. The container dials Cloudflare's edge, and the tunnel becomes
+routable. Hit `https://signoz.<your-domain>` —
+Cloudflare Access prompts for auth, then proxies you to the SigNoz
+login page.
 
-The cloudflared container starts, dials Cloudflare's edge, and the
-tunnel becomes routable. Hit `https://signoz.<your-domain>` —
-Cloudflare Access prompts for auth, then proxies you to the SigNoz UI.
+Once this works, the edge no longer needs to forward `8080`; set
+`SIGNOZ_UI_BIND` back to `127.0.0.1` or the LAN/VPN address.
 
 ## How browser auth works
 
@@ -148,9 +163,9 @@ application → subsequent requests are passed through with the JWT
 attached as `Cf-Access-Jwt-Assertion` header.
 
 The JWT is verifiable via Cloudflare's public key set if the SigNoz
-backend ever needs to know who the user is — but for now we treat
-Access as a black-box auth wall and let SigNoz serve all authenticated
-requests as anonymous admin.
+backend ever needs to know who the user is. SigNoz doesn't check it;
+behind Access, users still sign in to SigNoz with their own SigNoz
+account.
 
 ## How machine auth works (Cimmeria-MCP)
 
@@ -169,8 +184,9 @@ CF-Access-Client-Id: ${CF_ACCESS_CLIENT_ID}
 CF-Access-Client-Secret: ${CF_ACCESS_CLIENT_SECRET}
 ```
 
-Cloudflare's edge validates the pair, lets the request through, and
-SigNoz never sees the credentials. Revoking machine access is a single
+Cloudflare's edge validates the pair and lets the request through.
+SigNoz never sees those credentials; the request still needs a SigNoz
+API key (created in the SigNoz UI) for SigNoz's own auth. Revoking machine access is a single
 click in the Cloudflare dashboard — "delete service token" — which
 takes effect at the edge within seconds. No coordinated key rotation
 across multiple systems.
@@ -210,25 +226,20 @@ These tools are implemented in the separate `Cimmeria-MCP` repository
 | Symptom | Likely cause | Fix |
 |---|---|---|
 | Browser stuck on Cloudflare login | Identity provider blocked / cookies disabled | Try a private window; check IdP status |
-| 502 Bad Gateway | Tunnel up but frontend down | `docker compose logs frontend` |
+| 502 Bad Gateway | Tunnel up but SigNoz down, or `cloudflared` not on `signoz-net` | `docker logs signoz --tail 50`; `docker network inspect signoz-net` should list `cimmeria-cloudflared` |
 | 403 with no auth prompt | Access policy denied (e.g. email mismatch) | Check **Access → Logs** for the denial reason |
 | Cimmeria-MCP getting 401 from SigNoz | Service token missing or wrong env var name | Verify both `CF-Access-Client-Id` and `-Secret` headers are attached |
-| Tunnel keeps reconnecting | `cloudflared` upgrade incompatibility | Pin a specific cloudflared image tag in the overlay |
+| Tunnel keeps reconnecting | `cloudflared` upgrade incompatibility | Pin a specific cloudflared image tag in the `docker run` command |
 
 ## Disabling remote access
 
-Stop just the cloudflared service; the rest of the stack keeps
+Stop and remove the container; the game server and SigNoz keep
 running:
 
 ```bash
-docker compose -f docker/compose.yml stop cloudflared
+docker rm -f cimmeria-cloudflared
 ```
 
-Or bring the whole stack back up without `--profile tunnel`:
-
-```bash
-docker compose -f docker/compose.yml up -d
-```
-
-The local-machine UI at `http://localhost:3301` (or an SSH tunnel
-forwarded equivalent) still works.
+The UI stays reachable on its `SIGNOZ_UI_BIND` address, or through an
+SSH tunnel (`ssh -L 8080:127.0.0.1:8080 <host>`, then
+`http://localhost:8080`).

@@ -57,11 +57,13 @@ const NO_CARRIED_BAG: Refusal = Refusal {
 };
 
 /// A committed cash take.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub(super) struct CashTaken {
     pub(super) amount: i32,
     pub(super) balance: Balance,
     pub(super) sender_id: Option<i32>,
+    /// The sender's stored name, for the log line only; `None` for server mail.
+    pub(super) sender_name: Option<String>,
 }
 
 /// CAT-G-02: move a mail's gift cash to its owner, once.
@@ -111,6 +113,7 @@ pub(super) async fn take_cash_tx(
         amount,
         balance,
         sender_id: mail.sender_id,
+        sender_name: mail.sender_id.map(|_| mail.sender_name),
     })
 }
 
@@ -118,14 +121,19 @@ pub(super) async fn take_cash_tx(
 pub(super) async fn take_cash(ctx: &MailCtx<'_>, mail_id: i32) {
     match take_cash_tx(ctx.pool, ctx.player_id, mail_id).await {
         Ok(taken) => {
+            let who = ctx.identity();
             tracing::info!(
                 target: "mail",
                 event = "mail.cash_taken",
                 entity_id = ctx.entity_id,
+                entity_name = who.player_name,
                 player_id = ctx.player_id,
+                player_name = who.player_name,
                 account_id = ctx.account_id(),
+                account_name = who.account_name,
                 target_player_id = taken.sender_id,
-                mail_id,
+                target_player_name = taken.sender_name.as_deref(),
+                mail_id, // nt:id-only mail row, its subject is player text kept out of logs
                 cash = taken.amount,
                 naquadah_before = taken.balance.before,
                 naquadah_after = taken.balance.after,
@@ -148,13 +156,15 @@ pub(super) async fn take_cash(ctx: &MailCtx<'_>, mail_id: i32) {
 /// `CellOutboxPayload::InventoryItemGranted`: the cell's handler for it is
 /// one debug line and a main-bag item is no cell state. If that handler
 /// ever grows behaviour, both mail paths need the payload.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub(super) struct ItemTaken {
     pub(super) item: EscrowItem,
     /// The bag it landed in: 1, or 15 for a crafting component.
     pub(super) container_id: i32,
     pub(super) slot_id: i32,
     pub(super) sender_id: Option<i32>,
+    /// The sender's stored name, for the log line only; `None` for server mail.
+    pub(super) sender_name: Option<String>,
 }
 
 /// The carried bag a take would place an item of `type_id` in: the first
@@ -252,6 +262,7 @@ pub(super) async fn take_item_tx(
         container_id,
         slot_id,
         sender_id: mail.sender_id,
+        sender_name: mail.sender_id.map(|_| mail.sender_name),
     })
 }
 
@@ -263,30 +274,42 @@ pub(super) async fn take_item(
     client_container_id: i32,
     client_slot_id: i32,
 ) {
+    let who = ctx.identity();
     tracing::debug!(
         target: "mail",
         entity_id = ctx.entity_id,
+        entity_name = who.player_name,
         player_id = ctx.player_id,
-        mail_id,
-        client_container_id,
-        client_slot_id,
+        player_name = who.player_name,
+        account_id = who.account_id,
+        account_name = who.account_name,
+        mail_id, // nt:id-only mail row, its subject is player text kept out of logs
+        client_container_id, // nt:id-only client-sent bag index, ignored by the server
+        client_slot_id, // nt:id-only client-sent slot index, ignored by the server
         "Mail: take item (client container and slot ignored, SS-E1 M-Q5)"
     );
     match take_item_tx(ctx.pool, ctx.player_id, mail_id).await {
         Ok(taken) => {
+            let who = ctx.identity();
+            let book = cimmeria_names::book();
             tracing::info!(
                 target: "mail",
                 event = "mail.item_taken",
                 entity_id = ctx.entity_id,
+                entity_name = who.player_name,
                 player_id = ctx.player_id,
+                player_name = who.player_name,
                 account_id = ctx.account_id(),
+                account_name = who.account_name,
                 target_player_id = taken.sender_id,
-                mail_id,
+                target_player_name = taken.sender_name.as_deref(),
+                mail_id, // nt:id-only mail row, its subject is player text kept out of logs
                 item_id = taken.item.item_id,
-                type_id = taken.item.type_id,
+                item_type_id = taken.item.type_id,
+                item_name = book.item(taken.item.type_id),
                 stack_size = taken.item.stack_size,
-                container_id = taken.container_id,
-                slot_id = taken.slot_id,
+                container_id = taken.container_id, // nt:id-only inventory bag index (1 or 15), not a named row
+                slot_id = taken.slot_id, // nt:id-only slot index inside a bag, a counter with no name
                 "gate-mail item moved from escrow to its owner's backpack",
             );
             send_full_inventory_update(

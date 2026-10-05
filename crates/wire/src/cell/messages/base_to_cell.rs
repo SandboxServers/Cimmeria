@@ -51,6 +51,13 @@ pub enum BaseToCellMsg {
         /// only after `onClientReady`, which is too late for the world-entry
         /// movement and lifecycle logs. `None` for NPCs.
         player_id: Option<i32>,
+        /// The login name paired with `account_id` (Rule 6). Stamped at
+        /// birth for the same reason as the IDs. `None` for NPCs.
+        account_name: Option<String>,
+        /// The character name paired with `player_id` (Rule 6), stamped as
+        /// the entity's `character_name` at birth; `InitPlayerState`
+        /// re-asserts it. `None` for NPCs.
+        player_name: Option<String>,
         reply_tx: tokio::sync::oneshot::Sender<u32>,
     },
 
@@ -97,10 +104,16 @@ pub enum BaseToCellMsg {
     /// `method_index` is the flattened EXPOSED CellMethod index for the
     /// SGWPlayer entity type (0 = setTargetID, 1 = setMovementType, etc.).
     /// `args` contains the raw method arguments (after entity_id extraction).
+    /// `packet_seq` is the Mercury sequence of the client packet that
+    /// carried the call (`RxDelivery::bundle_seqs`), for telemetry only:
+    /// the `useAbility` receipt row logs it as `mercury_seq`, the join to
+    /// the client's press (ability-mechanics AB-T2). `None` when the call
+    /// did not come from a client bundle (a test, an internal forward).
     CellMethodCall {
         entity_id: u32,
         method_index: u16,
         args: Vec<u8>,
+        packet_seq: Option<u32>,
     },
 
     /// Chat message from a player, forwarded from BaseApp for spatial distribution.
@@ -312,6 +325,10 @@ pub enum BaseToCellMsg {
         player_id: i32,
         outcome: crate::ability_tree::RespecOutcome,
     },
+
+    /// The base's answer to `CellToBaseMsg::GmAbilityBulk` (AB-N2); see
+    /// [`super::GmAbilitiesChanged`].
+    GmAbilitiesChanged(super::GmAbilitiesChanged),
 
     /// Inventory item was used by the player (in response to
     /// `CellToBaseMsg::UseInventoryItem` after base verified ownership).

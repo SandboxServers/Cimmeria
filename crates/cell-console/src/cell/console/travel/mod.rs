@@ -141,12 +141,18 @@ async fn snap_in_current_space(
     let caller = space_mgr.player_identity(caller_id);
     tracing::info!(
         caller_id,
+        caller_name = caller.player_name,
         account_id = caller.account_id,
+        account_name = caller.account_name,
         player_id = caller.player_id,
+        player_name = caller.player_name,
         entity,
+        entity_name = space_mgr.entity_label(entity),
         subject_player_id = subject.player_id,
+        subject_player_name = subject.player_name,
         ?position,
         space_id,
+        world = space_mgr.world_name_for_space(space_id),
         is_player,
         command = cmd,
         "GM console travel: moving entity within its space"
@@ -177,13 +183,18 @@ async fn snap_in_current_space(
         {
             tracing::warn!(
                 caller_id,
+                caller_name = caller.player_name,
                 account_id = caller.account_id,
+                account_name = caller.account_name,
                 player_id = caller.player_id,
+                player_name = caller.player_name,
                 entity,
+                entity_name = subject.player_name,
                 subject_player_id = subject.player_id,
+                subject_player_name = subject.player_name,
                 command = cmd,
                 error = %err,
-                "console travel: base channel closed, snap not sent"
+                "console travel: base channel closed, snap not sent",
             );
             return false; // don't claim a snap that never sent.
         }
@@ -429,6 +440,9 @@ async fn move_subject(
     // UNKNOWN for the very command that caused it.
     let caller = space_mgr.player_identity(caller_id);
     let subject_id = space_mgr.player_identity(subject);
+    let origin_world = space_mgr
+        .world_name_for_space(origin_space_id)
+        .map(str::to_owned);
 
     // `.gotospace` holds a space id it has already confirmed is loaded, so it
     // takes the by-id entry point and never touches the world-name table —
@@ -458,17 +472,29 @@ async fn move_subject(
     // happened (P45 handoff).
     match outcome {
         Ok(TransferOutcome::Transferred { space_id }) => {
+            // Rule 6: the destination's world id rides with its name.
+            let world_id = space_mgr
+                .canonical_world_name(world_name)
+                .and_then(|w| space_mgr.world_id_for_world(w));
             tracing::info!(
+                world_id,
                 caller_id,
+                caller_name = caller.player_name,
                 account_id = caller.account_id,
+                account_name = caller.account_name,
                 player_id = caller.player_id,
+                player_name = caller.player_name,
                 subject,
+                subject_name = subject_id.player_name,
                 subject_player_id = subject_id.player_id,
+                subject_player_name = subject_id.player_name,
                 origin_space_id,
+                origin_world = origin_world.as_deref(),
                 destination_space_id = ?space_id,
+                destination_world = world_name,
                 world = world_name,
                 command = cmd,
-                "GM console travel: cross-space transfer enqueued"
+                "GM console travel: cross-space transfer enqueued",
             );
             send_gm_feedback(caller_id, success, tx).await;
         }

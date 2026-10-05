@@ -490,6 +490,7 @@ async fn live_db_chain_1357_executed_grants_harset_to_the_player_and_the_client(
             address_origin: 6,
             arrival: None,
             event_set_id: None,
+            debug_dial_hub: false,
         },
     );
     mgr.create_entity(PLAYER_EID, "Castle", [800.0, 55.0, 515.0], [0.0; 3])

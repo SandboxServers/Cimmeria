@@ -98,6 +98,9 @@ pub struct ActionRecord {
     /// The individual tool calls a chat line or reader expanded into.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub calls: Vec<Value>,
+    /// `p2` when the second lab client ran it (two-player rows).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub client: Option<String>,
 }
 
 /// One expected clause's outcome.
@@ -120,6 +123,9 @@ pub struct ClauseResult {
     pub query: Option<Value>,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub evidence_refs: Vec<String>,
+    /// `p2` when the clause read the second lab client.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub client: Option<String>,
 }
 
 /// An attachment written next to the row JSON.

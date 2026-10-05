@@ -5,3 +5,4 @@
 - [Build-rule copies beyond the doc map](reference_build_rule_copies.md) — Every file that repeats build rules; sweep them all when the toolchain, lane or build flow changes.
 - [Campaign close-out status sweep](reference_campaign_closeout_status_docs.md) — Other sections a close-out must touch; matrix rows are generator input, TOTALS generated; lint-md and MD029 traps.
 - [Close-out flag flip traps](reference_closeout_flag_flip_traps.md) — Flipping a flag default breaks old fixtures; catalog drift sweep; harness worktree lacks external/; lane masks exit code.
+- [UAT spec authoring traps](reference_uat_spec_authoring.md) — "Ready" = MAIN_TOOLS in the plan test; typable chat; GM steps cost N1; which SigNoz rows carry the spawn tag.

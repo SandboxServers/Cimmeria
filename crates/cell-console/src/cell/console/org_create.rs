@@ -47,10 +47,13 @@ fn refused(gm: PlayerIdentity, entity_id: u32, org_type: Option<OrgType>, reason
         outcome = "rejected",
         reason,
         account_id = gm.account_id,
+        account_name = gm.account_name,
         player_id = gm.player_id,
+        player_name = gm.player_name,
         entity_id,
+        entity_name = gm.player_name,
         org_type = org_type.map(OrgType::name),
-        "GM organization command rejected"
+        "GM organization command rejected",
     );
     count_org_action("gm_org_create", "rejected", reason);
 }
@@ -103,9 +106,12 @@ pub(super) async fn org_create(
         target: "org",
         event = "org.gm_create_forwarded",
         account_id = gm.account_id,
+        account_name = gm.account_name,
         player_id,
+        player_name = gm.player_name,
         entity_id = caller_id,
+        entity_name = gm.player_name,
         org_type = org_type.name(),
-        "GM organization creation forwarded to the base"
+        "GM organization creation forwarded to the base",
     );
 }

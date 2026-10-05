@@ -52,15 +52,19 @@ pub async fn gm_seed(ctx: GmCtx<'_>, count: u8, db_pool: &Option<Arc<PgPool>>) {
         }
     };
     let (first, last) = (ids[0], ids[ids.len() - 1]);
+    let id = ctx.identity();
     tracing::info!(
         event = "bm.gm_action",
         action = "bm_seed",
         entity_id = ctx.actor.entity_id,
+        entity_name = id.player_name,
         account_id = ctx.actor.account_id,
+        account_name = id.account_name,
         player_id = ctx.actor.player_id,
+        player_name = id.player_name,
         count = ids.len(),
-        first_auction_id = first,
-        last_auction_id = last,
+        first_auction_id = first, // nt:id-only seeded system listings have no name column
+        last_auction_id = last,   // nt:id-only seeded system listings have no name column
         "GM .bm_seed listed system-seller auctions"
     );
     ctx.tell(&format!(

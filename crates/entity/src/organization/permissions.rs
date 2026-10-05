@@ -4,6 +4,38 @@ use std::ops::{BitAnd, BitOr, BitOrAssign, Not};
 
 use super::types::{OrgRank, OrgType};
 
+/// `EOrganizationPermission` names, for log lines (`from_mask_names`,
+/// `to_mask_names`, NT-31).
+pub const ORG_PERMISSIONS: cimmeria_common::flag_names::FlagSet =
+    cimmeria_common::flag_names::FlagSet::new(&[
+        (1, "EORG_PERM_DoNotUse"),
+        (2, "EORG_PERM_Invite"),
+        (4, "EORG_PERM_Promote"),
+        (8, "EORG_PERM_Demote"),
+        (16, "EORG_PERM_Eject"),
+        (32, "EORG_PERM_RosterNotes"),
+        (64, "EORG_PERM_OfficerNotes"),
+        (128, "EORG_PERM_RankNames"),
+        (256, "EORG_PERM_OfficerChat"),
+        (512, "EORG_PERM_EmailLists"),
+        (1024, "EORG_PERM_MOTD"),
+        (2048, "EORG_PERM_HistoryLog"),
+        (4096, "EORG_PERM_Calendar"),
+        (8192, "EORG_PERM_RecruitDesc"),
+        (16384, "EORG_PERM_Adjectives"),
+        (32768, "EORG_PERM_Insignia"),
+        (65536, "EORG_PERM_DepositBank"),
+        (131072, "EORG_PERM_WithdrawBank"),
+        (262144, "EORG_PERM_DepositCash"),
+        (524288, "EORG_PERM_WithdrawCash"),
+        (1048576, "EORG_PERM_ViewBankLogs"),
+        (2097152, "EORG_PERM_LeaderChat"),
+        (4194304, "EORG_PERM_AllianceChat"),
+        (8388608, "EORG_PERM_AlterPerms"),
+        (16777216, "EORG_PERM_TransferLeader"),
+        (33554432, "EORG_PERM_AllianceCmds"),
+    ]);
+
 /// `EOrganizationPermission` (`enumerations.xml:1907`, UINT32): 26 flag bits.
 ///
 /// Carried as an `INT32` mask by `organizationSetRankPermissions` (CM 16)

@@ -24,6 +24,8 @@
 use std::net::SocketAddr;
 use std::time::Instant;
 
+use cimmeria_entity::cell_entity::PlayerIdentity;
+use cimmeria_entity::name_intern::intern_opt;
 use cimmeria_wire::cell::chat::{
     serialize_on_player_communication, serialize_on_tell_sent, CHAN_TELL,
 };
@@ -75,6 +77,8 @@ pub(super) struct TellSender<'a> {
     pub entity_id: Option<u32>,
     pub player_id: Option<i32>,
     pub account_id: u32,
+    /// The sender's session names, for the log lines (Rule 6).
+    pub identity: PlayerIdentity,
 }
 
 /// The resolved recipient, read under one lock. Deliberately no entity id:
@@ -85,9 +89,19 @@ struct Recipient {
     name: String,
     player_id: i32,
     account_id: u32,
+    /// The recipient's login, interned for the log lines; `None` when unset.
+    account_name: Option<&'static str>,
     ignores_sender: bool,
     flags: u8,
     away_message: Option<String>,
+}
+
+impl Recipient {
+    /// The recipient's character name, or `None` when the session has none
+    /// (never `""`, Rule 6).
+    fn name_opt(&self) -> Option<&str> {
+        Some(self.name.as_str()).filter(|n| !n.is_empty())
+    }
 }
 
 enum Resolution {
@@ -120,6 +134,7 @@ fn resolve(ctx: &FeedbackCtx<'_>, sender: &TellSender<'_>, target: &str) -> Reso
         name: c.player_name.clone().unwrap_or_default(),
         player_id: found.player_id,
         account_id: c.account_id,
+        account_name: intern_opt(c.account_name.as_deref()),
         ignores_sender: session_ignores(&clients, found.addr, sender.name),
         flags,
         // DND wins over AFK: it is the stronger "leave me be".
@@ -147,23 +162,28 @@ pub(super) async fn handle_tell(
     text: &str,
     now: Instant,
 ) {
-    let refuse = |reason: &'static str, target_player_id: Option<i32>| {
-        tracing::debug!(
-            target: "chat",
-            event = "chat.tell_refused",
-            addr = %sender.addr,
-            player_id = sender.player_id,
-            account_id = sender.account_id,
-            entity_id = sender.entity_id,
-            target_player_id,
-            target_name = %shown(target),
-            reason,
-            "tell refused, feedback sent to the sender",
-        );
-    };
+    let refuse =
+        |reason: &'static str, target_player_id: Option<i32>, target_player_name: Option<&str>| {
+            tracing::debug!(
+                target: "chat",
+                event = "chat.tell_refused",
+                addr = %sender.addr,
+                player_id = sender.player_id,
+                player_name = sender.identity.player_name,
+                account_id = sender.account_id,
+                account_name = sender.identity.account_name,
+                entity_id = sender.entity_id,
+                entity_name = sender.identity.player_name,
+                target_player_id,
+                target_player_name,
+                target_name = %shown(target),
+                reason,
+                "tell refused, feedback sent to the sender",
+            );
+        };
 
     if target.is_empty() {
-        refuse("no_target", None);
+        refuse("no_target", None, None);
         send_feedback_line(ctx, sender.addr, TELL_NO_TARGET_TEXT).await;
         return;
     }
@@ -179,8 +199,11 @@ pub(super) async fn handle_tell(
             event = "chat.tell_refused",
             addr = %sender.addr,
             player_id = sender.player_id,
+            player_name = sender.identity.player_name,
             account_id = sender.account_id,
+            account_name = sender.identity.account_name,
             entity_id = sender.entity_id,
+            entity_name = sender.identity.player_name,
             target_units = target.encode_utf16().count(),
             reason = reject.reason(),
             "tell refused: the target is not a valid character name",
@@ -196,17 +219,17 @@ pub(super) async fn handle_tell(
     let recipient = match resolve(ctx, &sender, target) {
         Resolution::Found(r) => r,
         Resolution::Myself => {
-            refuse("self", sender.player_id);
+            refuse("self", sender.player_id, sender.identity.player_name);
             send_feedback_line(ctx, sender.addr, TELL_SELF_TEXT).await;
             return;
         }
         Resolution::Refused(NameLookup::Ambiguous) => {
-            refuse("ambiguous", None);
+            refuse("ambiguous", None, None);
             send_feedback_line(ctx, sender.addr, &ambiguous_text(target)).await;
             return;
         }
         Resolution::Refused(_) => {
-            refuse("not_online", None);
+            refuse("not_online", None, None);
             send_feedback_line(ctx, sender.addr, &not_online_text(target)).await;
             return;
         }
@@ -216,7 +239,11 @@ pub(super) async fn handle_tell(
     after_resolve_hook::run(ctx);
 
     if recipient.ignores_sender {
-        refuse("recipient_ignores_sender", Some(recipient.player_id));
+        refuse(
+            "recipient_ignores_sender",
+            Some(recipient.player_id),
+            recipient.name_opt(),
+        );
         send_feedback_line(ctx, sender.addr, &not_accepting_text(&recipient.name)).await;
         return;
     }
@@ -239,7 +266,7 @@ pub(super) async fn handle_tell(
             FeedbackOutcome::NotInWorld => "recipient_not_in_world",
             _ => "recipient_send_failed",
         };
-        refuse(reason, Some(recipient.player_id));
+        refuse(reason, Some(recipient.player_id), recipient.name_opt());
         send_feedback_line(ctx, sender.addr, &not_online_text(&recipient.name)).await;
         return;
     }
@@ -275,11 +302,17 @@ pub(super) async fn handle_tell(
         event = "chat.tell_delivered",
         addr = %sender.addr,
         player_id = sender.player_id,
+        player_name = sender.identity.player_name,
         account_id = sender.account_id,
+        account_name = sender.identity.account_name,
         entity_id = sender.entity_id,
+        entity_name = sender.identity.player_name,
         target_player_id = recipient.player_id,
+        target_player_name = recipient.name_opt(),
         target_account_id = recipient.account_id,
+        target_account_name = recipient.account_name,
         target_entity_id = recipient_eid,
+        target_entity_name = recipient.name_opt(),
         text_units = text.encode_utf16().count(),
         away_reply = away_message.is_some(),
         away_reply_withheld_muted = recipient_muted && recipient.away_message.is_some(),

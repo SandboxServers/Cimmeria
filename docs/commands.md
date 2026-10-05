@@ -252,8 +252,8 @@ XP, money, items, abilities, and more.
 
 | Command | What it does | Works now? | Parameters | Example |
 |---|---|---|---|---|
-| `/gmgiveability` | Give a specific ability | ❌ Not yet | `<abilityId>` | `/gmgiveability` |
-| `/gmgiveallabilities` | Give every ability | ❌ Not yet | none | `/gmgiveallabilities` |
+| `/gmgiveability` | Give yourself one ability without spending a training point. It is saved to your character, survives relog and a trainer respec, and your ability window updates at once. Refused, with a line saying why, for an unknown id or one you already know | ✅ Yes | `<abilityId>` | `/gmgiveability 2826` |
+| `/gmgiveallabilities` | Give yourself every ability in your archetype's tree (all three branches) in one go. Saved, no training points spent, one ability-window refresh, and a line with the count | ✅ Yes | none | `/gmgiveallabilities` |
 | `/gmgiveammo` | Give special-ammo rounds | ✅ Yes, as `.giveammo` | `<ammo type> <rounds>` | `.giveammo hollowpoint 500` |
 | `/gmgiveappliedsciencepoints` | Give yourself applied-science points | ✅ Yes | `<points>` (positive int) | `/gmgiveappliedsciencepoints 25` |
 | `/gmgiveblueprint` | Give a crafting blueprint | ❌ Not yet | `<blueprintId>` | `/gmgiveblueprint` |
@@ -282,8 +282,8 @@ Set health/focus, target, and debug toggles.
 | Command | What it does | Works now? | Parameters | Example |
 |---|---|---|---|---|
 | `/gmchangeammo` | Switch ammo type | ✅ Yes | `<itemId> <ammoType>` | `/gmchangeammo 8800 3` |
-| `/gminvokeability` | Use an ability on a target | ✅ Yes | `<abilityId> <targetId>` | `/gminvokeability 4201 5310` |
-| `/gmresetabilities` | Reset abilities (GM) | ❌ Not yet | none | `/gmresetabilities` |
+| `/gminvokeability` | Use an ability on a target. No exposed cell method exists for it (`SGWAbilityManager.invokeAbility` is server-only), so the server never receives it; earlier versions of this page wrongly said it worked | ❌ No | `<abilityId> <targetId>` | `/gminvokeability 4201 5310` |
+| `/gmresetabilities` | Reset your abilities to your archetype's starters: trained, quest and GM-given abilities are removed and your spent tree points come back. No trainer needed and no naquadah charged (unlike the trainer's Respec) | ✅ Yes | none | `/gmresetabilities` |
 | `/gmrespec` | Full respec (GM) | ❌ Not yet | none | `/gmrespec` |
 | `/gmsetarchetype` | Set a character's archetype | ❌ Not yet | `<archetypeId>` | `/gmsetarchetype` |
 | `/gmsetflag` | Force-set a state flag | ❌ Not yet | `<flagId> <force>` | `/gmsetflag` |
@@ -291,7 +291,7 @@ Set health/focus, target, and debug toggles.
 | `/gmsetfocus` | Set current focus | ✅ Yes | `<amount> <targetId>` | `/gmsetfocus 300 0` |
 | `/gmsetfocusmax` | Set maximum focus | ✅ Yes | `<amount> <targetId>` | `/gmsetfocusmax 400 0` |
 | `/gmsetghost` | Toggle ghost (no-collision) mode | ❌ Not yet | `<on>` (0/1) | `/gmsetghost` |
-| `/gmsetgodmode` | Toggle invincibility | ❌ Not yet | `<on>` (0/1) | `/gmsetgodmode` |
+| `/gmsetgodmode` | Take no Health or Focus damage from ability hits and damage over time; hits show "Absorbed". Heals, buffs and debuffs still land. Only ever on yourself, and off again when you relog | ✅ Yes | `<on>` (0/1) | `/gmsetgodmode 1` |
 | `/gmsethealth` | Set current health on yourself or a target | ✅ Yes | `<amount> <targetId>` (amount ≥ 0; target 0 = self) | `/gmsethealth 500 0` |
 | `/gmsethealthmax` | Set maximum health | ✅ Yes | `<amount> <targetId>` | `/gmsethealthmax 1000 0` |
 | `/gmsethidegm` | Toggle GM visibility | ❌ Not yet | `<on>` (0/1) | `/gmsethidegm` |
@@ -300,7 +300,7 @@ Set health/focus, target, and debug toggles.
 | `/gmsetinfiniteammo` | Special-ammo reloads take nothing from your bags | ✅ Yes, as `.infiniteammo` | `[on\|off]` | `.infiniteammo on` |
 | `/gmsetinvulnerable` | Toggle invulnerability | ❌ Not yet | `<on>` (0/1) | `/gmsetinvulnerable` |
 | `/gmsetlevel` | Set a character's level | ❌ Not yet | `<level>` | `/gmsetlevel` |
-| `/gmsetmobabilityset` | Set an NPC's ability set | ❌ Not yet | `<setId>` | `/gmsetmobabilityset` |
+| `/gmsetmobabilityset` | Give your selected mob the abilities of an NPC ability set (`resources.ability_set_abilities`) until it respawns. Refused for a player, a mob in another area, or an unknown set | ✅ Yes | `<setId>` | `/gmsetmobabilityset 350` |
 | `/gmsetmobattribute` | Set an NPC attribute | ❌ Not yet | `<target> <attr> <type> <value>` | `/gmsetmobattribute` |
 | `/gmsetmobstance` | Set an NPC's stance | ❌ Not yet | `<stance>` | `/gmsetmobstance` |
 | `/gmsetmobvariable` | Set a generic NPC variable | ❌ Not yet | `<var> <value>` | `/gmsetmobvariable` |
@@ -334,7 +334,7 @@ Dial a gate by raw address.
 
 | Command | What it does | Works now? | Parameters | Example |
 |---|---|---|---|---|
-| `/gmdhd` | Dial a stargate by numeric address | ✅ Yes | `<gateAddress>` (positive int) | `/gmdhd 14` |
+| `/gmdhd` | Dial a stargate by numeric address. Never the Debug Area's outbound-only gate 29, which nobody can dial; from the Debug Area, right-click its DHD instead to dial any gate | ✅ Yes | `<gateAddress>` (positive int) | `/gmdhd 14` |
 
 ### Looking Things Up
 
@@ -380,19 +380,21 @@ Assign, advance, and inspect missions on yourself.
 
 Combat, AI, and minigame debug switches.
 
+The five ability and combat debug commands (`/gmdebugability`, `/gmdebugabilityonmob`, `/gmdebugcombat`, `/gmdebugcombatverbose`, `/gmdebugheal`; the heal one's keyword is name-derived, like the others) are sent by the game only from a Game Master character; from a normal character the game drops them silently before they leave your computer. The game has no combat-debug window: the server's debug lines arrive as ordinary chat lines on the feedback channel, each starting `[CD #<cast id>]`. Details: [native-combat-debug.md](reverse-engineering/findings/native-combat-debug.md) and [In-game combat debug](gameplay/ability-system.md#in-game-combat-debug).
+
 | Command | What it does | Works now? | Parameters | Example |
 |---|---|---|---|---|
 | `/gmaddbehavioreventset` | Add a behavior event set | ❌ Not yet | `<id>` | `/gmaddbehavioreventset` |
 | `/gmchat` | Send a GM chat message | ❌ Not yet | `<text>` | `/gmchat` |
 | `/gmconfirmeffect` | Respond to an effect-confirmation prompt | ✅ Yes | `<choice>` | `/gmconfirmeffect 1` |
-| `/gmdebugability` | Toggle ability debug | ❌ Not yet | `<abilityId>` | `/gmdebugability` |
-| `/gmdebugabilityonmob` | Run an ability on an NPC for debug | ❌ Not yet | `<abilityId>` | `/gmdebugabilityonmob` |
+| `/gmdebugability` | Toggle debug lines for one ability (its casts by you or on you); `0` clears the list | ✅ Yes | `<abilityId>` | `/gmdebugability 592` |
+| `/gmdebugabilityonmob` | Print your selected mob's casts of one ability (`0`: all) to you | ✅ Yes | `<abilityId>` | `/gmdebugabilityonmob 0` |
 | `/gmdebugbehaviorsonmob` | Stream an NPC's behavior state | ❌ Not yet | none | `/gmdebugbehaviorsonmob` |
-| `/gmdebugcombat` | Toggle combat debug info | 🚧 Partly | none | `/gmdebugcombat` |
-| `/gmdebugcombatverbose` | Toggle verbose combat debug | 🚧 Partly | none | `/gmdebugcombatverbose` |
+| `/gmdebugcombat` | Toggle combat debug: one chat line per hit you land or take (roll, result, pools) | ✅ Yes | none | `/gmdebugcombat` |
+| `/gmdebugcombatverbose` | Toggle verbose combat debug: adds effect plans, damage, ledger and pulses | ✅ Yes | none | `/gmdebugcombatverbose` |
 | `/gmdebugevents` | Toggle event debug | ❌ Not yet | `<target> <level>` | `/gmdebugevents` |
 | `/gmdebugflash` | Toggle Flash UI debug | ❌ Not yet | none | `/gmdebugflash` |
-| `/gmdebugheal` | Toggle healing debug info | 🚧 Partly | none | `/gmdebugheal` |
+| `/gmdebugheal` | Toggle heal debug: one chat line per heal or buff you cast or receive | ✅ Yes | none | `/gmdebugheal` |
 | `/gmdebuginteract` | Force an interaction for debug | ❌ Not yet | none | `/gmdebuginteract` |
 | `/gmdebugjoinminigame` | Join a minigame for debug | ❌ Not yet | `<gameId>` | `/gmdebugjoinminigame` |
 | `/gmdebugminigameinstance` | Inspect a minigame instance | ❌ Not yet | `<instanceId>` | `/gmdebugminigameinstance` |
@@ -594,6 +596,7 @@ once at the end.
 | Grants | `.givecash` `.givexp` `.giveability` | ✅ Yes — `.giveability <abilityId>` gives the selected player (else you) the ability and **saves it to the character**: it survives relog and a trainer respec, costs no points, and refreshes the ability window at once. Pets UAT uses it for Summon Straegis (`.giveability 2826`) |
 | Pets | `.pet summon <templateId\|abilityId>` `.pet dismiss` `.pet stance <0-2>` `.pet info` `.pet list` | ✅ Yes (server side) — `summon` spawns a pet beside you at once, with no warmup, replacing your current pet; an id with a `pet_summons` row (2826) is the summon ability, anything else a template id (350). `stance` is 0 passive, 1 defensive, 2 aggressive. `info` shows the selected pet, else yours: owner, stance, abilities, toggled-off abilities, AI state, distance to its owner, last teleport. `list` shows every pet in your space with its owner. Nothing is saved: pets are per session |
 | Playtest bookmark | `.bug <note>` | ✅ Yes. Snapshots you, your target and every entity within 60 units into SigNoz with your note, so a tester's "this looks wrong" can be found later; see the [telemetry runbook](operations/npc-ai-telemetry-runbook.md#start-from-a-bug-bookmark) |
+| Ability lab | `.effects` `.cooldowns [reset [abilityId]]` `.dummy [hostile\|friendly\|clear] [templateId]` `.dummy caster <abilityId> [intervalSecs]` `.cleareffects` | ✅ Yes (server side; no legacy counterpart, ability-mechanics AB-L2). `.effects` shows the ability state of your selected target (else you) in a few chat lines: Health, Focus, the state field and any warmup, then cooldowns, pulsing effects, effect-ledger entries (stat deltas, time left or held, absorb pools, cast id) and held state flags; the lab's `server_ability_state` returns the same snapshot in full, and every `.bug` writes it to SigNoz (`abilities.snapshot`). `.cooldowns` lists your running cooldowns; `.cooldowns reset` clears all of yours and `.cooldowns reset <abilityId>` one (with its moniker groups), and each sends your client the clear timer so the hotbar sweep stops too (the one-ability form sends it even when the server had none running). It never touches another player. `.dummy` (or `.dummy friendly`) places a target 3 m in front of you, facing you: template 34 (SGC Jaffa) unless you name one, 1,000,000 Health, its template's Defense and Accuracy (printed in the reply), **no AI at all** so it never attacks, chases or leashes, and no respawn. `hostile` makes it faction 10, so your attacks land; `friendly` makes it faction 9 (Friendly_Ambient), so attacks are refused and no NPC targets it, whatever the template's own faction. Taking a dummy away (clear, expiry, logout) also takes everyone who hit it out of combat with it, and combat with a dummy also ends on its own 10 s after the last hit. A `friendly` dummy is an ally for beneficial casts, so a heal or buff aimed at it lands on it instead of falling back to you. The Debug Area's seeded training dummies (templates 1310-1314, [debug-area.md](content/debug-area.md)) carry the same never-fights-back mark without the owner, lifetime or cap, and `.spawn 1310` places one anywhere (D-DA7). It goes after 10 minutes, when you log out, or on `.dummy clear`, which removes only your own; at most 4 each. `.dummy caster <abilityId> [intervalSecs]` places the same hostile dummy, but every interval (default 8 s, 1-290, so at least two casts fit its 10 minutes; the first comes one interval after placement) it turns to you and casts that ability at you through the normal NPC launch, so its warmup can be interrupted or stunned and its effects land and can be cleansed (the ability UAT uses `.dummy caster 1354`, Disabling Shot, a 4 s warmup). It still never moves, chases or picks another target, and it holds while you are dead or in another space. It refuses, with a reason, an unknown, passive or beneficial ability, one that cannot reach you 3 m away, and an interval shorter than the ability's cooldown or not longer than its warmup. Casters count toward the 4. `.cleareffects` strips every timed and pulsing effect from your selected target (else you), reason `cleansed`: stats, absorb pools and stun locks come back off and the client's effect icons clear. Each change also logs one `abilities.gm` row. `.qr` (forced QR outcome) waits on the owner (D-AU2) |
 | Duels | `.duel_status` `.duel_end` | ✅ Yes. `.duel_status [name]` shows a player's duel or duel challenge (yours with no name): the other player, the duel number, the stage and the seconds left. `.duel_end <name>` ends that duel or challenge in any stage, sends both players "Duel aborted", and starts no challenge cooldown. For a second duelist when testing alone, see `sparbot` in [the wireclient doc](architecture/wireclient.md#sparbot-a-duel-partner-for-solo-testing) |
 | Bank | `.bank` `.bankdump` `.bankexpand` `.orgvaultexpand` | ✅ Yes. `.bank` opens your own personal vault wherever you stand, with no Banker; any later right-click on an NPC closes the session. A player without GM access who types `.bank` is told it needs GM access, and the line is not said aloud. `.bankdump [name]` lists a character's personal vault (container 17) in chat, read-only: one line per item with its slot, name, type id, stack size and item id, and the vault size (`bank_slots`). With no name it lists your own. The name is matched exactly (case-sensitive) against every character, so an offline character works too. A row in a slot past the vault size is flagged `(beyond bank_slots)`, because the client's vault window cannot show it. `.bankexpand` buys one +10 expansion of your own vault at the seeded price (`resources.bank_expansion_price`, 100 naquadah per step), through the same purchase the Banker's Expand dialog uses: it needs your vault open (a `.bank` session, which skips the Banker distance, or a Banker in range), charges your own naquadah, stops at 100 slots, and answers in chat either way. It is the only way to expand a vault while the Banker's dialog is held back (#943). A player without GM access is told it needs GM access, and the line is not said aloud. `.orgvaultexpand [team\|command] [from_slots]` expands your Team vault by +10 at the same seeded price, paid from the Team treasury, and only for the Team's leader: with no size it tells you the current size, the price and the treasury, and `.orgvaultexpand 40` (the current size) buys the step, so repeating it buys nothing twice. It stops at 100 slots; a Command vault is fixed at 100 and is refused. A player without GM access is told it needs GM access |
 | Mail | `.mail` `.mailbox` `.mail_expire` | ✅ Yes. `.mail [to <name>] [cash <n>] [item <typeId> [qty]] [cod <n>] [<subject>]` sends yourself (or `<name>`, online or not) a mail with minted cash and a minted item, no postage; the options come first in any order, the first other word starts the subject, and a number right after the type id is the quantity. With `cod <n>` the mail is a COD mail from your character, so the payment comes back to you; it needs an item and no cash. `.mailbox [name]` shows a mailbox's open and archived mail, its system and quarantined mail, what is in escrow and the next expiry. `.mail_expire <mailId>` makes a mail due now and expires it at once as the sweep would (returned, deleted or quarantined) and says which; archived and quarantined mail are refused |

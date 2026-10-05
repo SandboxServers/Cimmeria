@@ -43,13 +43,21 @@
 //!   ([`cancel_channels_from_attacker`], [`cancel_channels_for_invoker_ability`])
 //!   and the per-tick movement-interrupt sweep
 //!   ([`channel_interrupt_on_movement_tick`]).
-//! - [`tick`] — [`effect_pulse_tick`] (the per-cell scheduler) and the
-//!   single-pulse apply path.
+//! - [`tick`] — [`effect_pulse_tick`], the per-cell scheduler.
+//! - `pulse` — one pulse: the apply path and the content hooks it owes,
+//!   under the `combat.effect_tick` span and its cast's scope (AB-T1).
 
 mod channel_cancel;
+mod pulse;
 mod register;
 mod tick;
 
+#[cfg(test)]
+mod channel_cancel_cast_tests;
+#[cfg(test)]
+mod silent_rows_tests;
+#[cfg(test)]
+mod stun_tests;
 #[cfg(test)]
 mod tests;
 #[cfg(test)]

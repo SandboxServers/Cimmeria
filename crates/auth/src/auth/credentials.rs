@@ -160,6 +160,7 @@ pub(super) async fn validate_credentials(
                     // failed login rather than panic.
                     tracing::error!(
                         account_id = row.account_id,
+                        account_name,
                         reason = "argon2_hash_missing",
                         "account marked argon2id but password_hash_v2 is NULL"
                     );
@@ -197,7 +198,7 @@ pub(super) async fn validate_credentials(
             // Migration failure is logged but must NOT fail the login: the
             // credential already verified, and the legacy hash still works on
             // the next attempt.
-            migrate_to_argon2id(db, row.account_id, pw).await;
+            migrate_to_argon2id(db, row.account_id, account_name, pw).await;
             Ok(validated)
         }
 
@@ -205,6 +206,7 @@ pub(super) async fn validate_credentials(
         (algo, _) => {
             tracing::error!(
                 account_id = row.account_id,
+                account_name,
                 password_algo = algo,
                 reason = "unknown_password_algo",
                 "account has an unrecognised password_algo"
@@ -274,7 +276,7 @@ fn verify_argon2id(plaintext: &str, stored_phc: &str) -> bool {
 /// Best-effort: any failure (hashing or DB) is logged per the negative-logging
 /// convention and swallowed. The caller has already verified the credential, so
 /// a failed migration must not fail the login.
-async fn migrate_to_argon2id(db: &PgPool, account_id: i32, plaintext: &str) {
+async fn migrate_to_argon2id(db: &PgPool, account_id: i32, account_name: &str, plaintext: &str) {
     let phc = match hash_argon2id(plaintext) {
         Some(h) => h,
         None => return, // already logged in hash_argon2id
@@ -293,11 +295,16 @@ async fn migrate_to_argon2id(db: &PgPool, account_id: i32, plaintext: &str) {
 
     match result {
         Ok(r) if r.rows_affected() == 1 => {
-            tracing::info!(account_id, "migrated account to argon2id on login");
+            tracing::info!(
+                account_id,
+                account_name,
+                "migrated account to argon2id on login"
+            );
         }
         Ok(r) => {
             tracing::warn!(
                 account_id,
+                account_name,
                 rows_affected = r.rows_affected(),
                 reason = "argon2_migration_no_row",
                 "argon2id migration UPDATE matched an unexpected row count"
@@ -306,6 +313,7 @@ async fn migrate_to_argon2id(db: &PgPool, account_id: i32, plaintext: &str) {
         Err(e) => {
             tracing::warn!(
                 account_id,
+                account_name,
                 error = %e,
                 reason = "argon2_migration_db_error",
                 "argon2id migration UPDATE failed; login still succeeds on legacy hash"

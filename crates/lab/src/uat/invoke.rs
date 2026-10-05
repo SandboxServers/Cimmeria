@@ -8,6 +8,7 @@
 //! scripted fake.
 
 use std::future::Future;
+use std::pin::Pin;
 
 use base64::Engine as _;
 use serde_json::{json, Value};
@@ -97,6 +98,20 @@ pub fn normalize_result(v: &Value) -> ToolOutcome {
     }
 }
 
+/// A boxed tool-call future (the server invoker is used as a trait
+/// object, so its future cannot be `impl Future`).
+pub type BoxedOutcome<'a> = Pin<Box<dyn Future<Output = ToolOutcome> + Send + 'a>>;
+
+/// Calls the in-server lab endpoint's `server_*` tools. [`ServerTools`]
+/// is the HTTP client; tests script a fake so packet-tap clauses can be
+/// graded against canned tap output.
+pub trait ServerInvoker: Send + Sync {
+    /// The endpoint, for the run manifest.
+    fn url(&self) -> &str;
+    /// One `tools/call`; transport errors come back as a failed outcome.
+    fn call<'a>(&'a self, name: &'a str, args: Value) -> BoxedOutcome<'a>;
+}
+
 /// HTTP MCP client for the in-server lab endpoint (`server_*` tools).
 /// Configured from `CIMMERIA_LAB_MCP_URL` + `CIMMERIA_LAB_MCP_TOKEN`,
 /// like `lab_timeline`. When the endpoint refuses (the colo's HTTP 403
@@ -156,6 +171,16 @@ impl ServerTools {
             Ok(result) => normalize_result(&result),
             Err(e) => ToolOutcome::err(e),
         }
+    }
+}
+
+impl ServerInvoker for ServerTools {
+    fn url(&self) -> &str {
+        ServerTools::url(self)
+    }
+
+    fn call<'a>(&'a self, name: &'a str, args: Value) -> BoxedOutcome<'a> {
+        Box::pin(ServerTools::call(self, name, args))
     }
 }
 

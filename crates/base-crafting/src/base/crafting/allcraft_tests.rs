@@ -115,11 +115,16 @@ type Sessions = (
 );
 
 /// A target session and a GM session at `gm_access_level`.
+/// The GM caller's character name, which `gm_allcraft` logs beside its
+/// entity id.
+const GM_NAME: &str = "General Hammond";
+
 fn sessions(gm_access_level: u32) -> Sessions {
     let target: SocketAddr = "127.0.0.1:55741".parse().unwrap();
     let gm: SocketAddr = "127.0.0.1:55742".parse().unwrap();
     let mut gm_state = test_default_connected_client_state();
     gm_state.access_level = gm_access_level;
+    gm_state.player_name = Some(GM_NAME.to_string());
     let mut target_state = test_default_connected_client_state();
     target_state.account_id = ACCOUNT as u32;
     target_state.active_player_id = Some(PLAYER);
@@ -232,6 +237,9 @@ async fn live_db_allcraft_persists_the_full_crafting_state() {
     ] {
         assert!(event.has_field(field, &value), "{field}: {event:#?}");
     }
+    // NT-22 (Rule 6): the GM is named from the session read with its access
+    // level, not only by entity id.
+    assert!(event.has_field("gm_entity_name", GM_NAME), "{event:#?}");
     assert!(capture
         .all()
         .iter()

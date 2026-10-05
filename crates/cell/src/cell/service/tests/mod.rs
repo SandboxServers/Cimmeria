@@ -18,6 +18,7 @@
 use crate::cell::space_manager::SpaceManager;
 
 mod bandolier;
+mod entity_label_channel;
 mod npc_ai;
 mod npc_ai_auto_aggro;
 mod npc_ai_cover;

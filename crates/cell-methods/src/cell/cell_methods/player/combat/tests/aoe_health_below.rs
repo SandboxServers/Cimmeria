@@ -158,6 +158,8 @@ fn arm_player_with_ability(mgr: &mut SpaceManager, health_damage: i32) {
             required_ammo: 0,
             event_set_id: None,
             velocity: 0.0,
+            type_id: Default::default(),
+            passive: false,
         },
     );
     if let Some(p) = mgr.get_entity_mut(PLAYER_EID) {
@@ -207,6 +209,7 @@ async fn an_aoe_secondary_crossing_fires_health_below() {
         &tx,
         &mut mgr,
         &engine,
+        None,
     )
     .await;
 

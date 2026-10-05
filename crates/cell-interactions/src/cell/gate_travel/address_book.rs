@@ -17,7 +17,12 @@
 use super::dial_feedback::DialRefusal;
 use crate::cell::space_manager::SpaceManager;
 
-/// Does this player's address book contain `target_address_id`?
+/// May this player dial `target_address_id`: is it in their address book,
+/// and is it a gate anybody may dial at all?
+///
+/// The second half is the outbound-only rule for a `debug_dial_hub` gate
+/// (the Debug Area's, DA-07): it is refused here even when the id is in the
+/// book, so the whole dial authorization stays this one function.
 ///
 /// On refusal returns the [`DialRefusal`] to report; the caller cancels any
 /// dial in flight, tells the player (`dial_feedback::send_dial_refusal`) and
@@ -42,13 +47,38 @@ pub(super) fn player_knows_stargate(
         // entity.
         tracing::warn!(
             entity_id,
+            entity_name = space_mgr.entity_label(entity_id),
             target_address_id,
+            target_address_name = cimmeria_names::book().stargate(target_address_id),
             reason = "dial_entity_missing",
             "onDialGate: no cell entity for the caller — refusing the dial; \
              the client is told to try again"
         );
         return Err(DialRefusal::NotInWorld);
     };
+    // Outbound-only hub gates (the Debug Area's, `debug_dial_hub`) are never
+    // a destination, whoever asks and whatever their book says. Checked
+    // before the book, not after it, so an id that slipped into a book by any
+    // route — a seed edit, a stale row, a future grant path that forgot the
+    // filter — still cannot be dialled. Same refusal as an unknown address,
+    // byte for byte: the hub's id is not something a client may probe for.
+    if let Some(gate) = space_mgr.stargates.get(&target_address_id) {
+        if gate.debug_dial_hub {
+            tracing::warn!(
+                entity_id,
+                entity_name = space_mgr.entity_label(entity_id),
+                player_id = entity.player_id,
+                player_name = entity.identity().player_name,
+                target_address_id,
+                target_address_name = cimmeria_names::book().stargate(target_address_id),
+                world = %gate.world_name,
+                in_book = entity.known_stargates.contains(&target_address_id),
+                reason = "dial_hub_is_outbound_only",
+                "onDialGate: the target is an outbound-only dial hub — nobody may dial it; refusing as an unknown address"
+            );
+            return Err(DialRefusal::UnknownAddress);
+        }
+    }
     if entity.known_stargates.contains(&target_address_id) {
         return Ok(());
     }
@@ -63,8 +93,11 @@ pub(super) fn player_knows_stargate(
     // from "holds addresses, just not this one".
     tracing::warn!(
         entity_id,
+        entity_name = space_mgr.entity_label(entity_id),
         player_id = entity.player_id,
+        player_name = entity.identity().player_name,
         target_address_id,
+        target_address_name = cimmeria_names::book().stargate(target_address_id),
         known_count = entity.known_stargates.len(),
         reason = "unknown_stargate_address",
         "onDialGate: address is not in the player's known list — refusing the dial; \

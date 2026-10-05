@@ -55,7 +55,9 @@ pub fn interact_target_in_range(
         Err(InteractRangeFail::PlayerMissing) => {
             tracing::info!(
                 entity_id,
+                entity_name = space_mgr.entity_label(entity_id),
                 target_entity_id,
+                target_entity_name = space_mgr.entity_label(target_entity_id),
                 "interact: player entity not found"
             );
             false
@@ -63,7 +65,9 @@ pub fn interact_target_in_range(
         Err(InteractRangeFail::TargetMissing) => {
             tracing::info!(
                 entity_id,
+                entity_name = space_mgr.entity_label(entity_id),
                 target_entity_id,
+                target_entity_name = space_mgr.entity_label(target_entity_id),
                 "interact: target entity not found"
             );
             false
@@ -71,7 +75,9 @@ pub fn interact_target_in_range(
         Err(InteractRangeFail::OtherSpace) => {
             tracing::info!(
                 entity_id,
+                entity_name = space_mgr.entity_label(entity_id),
                 target_entity_id,
+                target_entity_name = space_mgr.entity_label(target_entity_id),
                 "interact: target is in another space"
             );
             false
@@ -79,7 +85,9 @@ pub fn interact_target_in_range(
         Err(InteractRangeFail::TooFar { dist }) => {
             tracing::info!(
                 entity_id,
+                entity_name = space_mgr.entity_label(entity_id),
                 target_entity_id,
+                target_entity_name = space_mgr.entity_label(target_entity_id),
                 dist,
                 max = MAX_INTERACT_DISTANCE,
                 "interact: too far away"

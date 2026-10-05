@@ -93,6 +93,8 @@ fn seed_weapon_pair_defs(mgr: &mut crate::cell::space_manager::SpaceManager) {
                 required_ammo: 0,
                 event_set_id: Some(300),
                 velocity: 0.0,
+                type_id: Default::default(),
+                passive: false,
             },
         );
     }

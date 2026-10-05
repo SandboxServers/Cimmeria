@@ -112,6 +112,7 @@ pub async fn handle_content_system_mail(
         entity_to_addr,
     };
     let account_id = msg.account_id.or_else(|| caller.account_id());
+    let who = caller.identity();
     let result = match db_pool.as_deref() {
         Some(pool) => write_content_mail(pool, &msg, i64::from(now_secs())).await,
         None => Err(ContentRefusal::NoPool),
@@ -126,14 +127,18 @@ pub async fn handle_content_system_mail(
                 event = "content.send_system_mail",
                 outcome = "sent",
                 entity_id = msg.entity_id,
+                entity_name = who.player_name,
                 account_id,
+                account_name = who.account_name,
                 player_id = msg.player_id,
-                chain_id = msg.chain_id,
-                mail_id = done.sent.mail_id,
+                player_name = who.player_name,
+                chain_id = msg.chain_id, // nt:id-only content chain row, the chain has no player-facing name
+                mail_id = done.sent.mail_id, // nt:id-only mail row, its subject is player text kept out of logs
                 sender_name = %msg.sender_name,
                 cash = msg.cash,
                 item_id = item.map(|i| i.item_id),
-                type_id = item.map(|i| i.type_id),
+                item_type_id = item.map(|i| i.type_id),
+                item_name = done.item_name.as_deref(),
                 stack_size = item.map(|i| i.stack_size),
                 cooldown_key,
                 cooldown_secs = msg.cooldown.as_ref().map(|c| c.secs),
@@ -160,17 +165,24 @@ pub async fn handle_content_system_mail(
                 ContentRefusal::Mail(e) => Some(e.to_string()),
                 _ => None,
             };
+            let book = cimmeria_names::book();
             tracing::warn!(
                 target: "content",
                 event = "content.send_system_mail",
                 reason = refusal.reason(),
                 entity_id = msg.entity_id,
+                entity_name = who.player_name,
                 account_id,
+                account_name = who.account_name,
                 player_id = msg.player_id,
-                chain_id = msg.chain_id,
+                player_name = who.player_name,
+                chain_id = msg.chain_id, // nt:id-only content chain row, the chain has no player-facing name
                 sender_name = %msg.sender_name,
                 cash = msg.cash,
-                type_id = msg.item.map(|(t, _)| t),
+                item_type_id = msg.item.map(|(t, _)| t),
+                item_name = msg
+                    .item
+                    .and_then(|(t, _)| book.item(t)),
                 quantity = msg.item.map(|(_, q)| q),
                 cooldown_key,
                 last_used_at,
@@ -320,10 +332,13 @@ async fn feedback(caller: &Caller<'_>, text: &str) {
     let Some(addr) = caller.addr() else {
         // `mail`, not `content`: the content target ships at INFO, and a
         // player who logged out before the answer is not worth a WARN.
+        let who = caller.identity();
         tracing::debug!(
             target: "mail",
             entity_id = caller.entity_id,
+            entity_name = who.player_name,
             player_id = caller.player_id,
+            player_name = who.player_name,
             reason = "no_session",
             "content mail feedback dropped: the player has no client address",
         );

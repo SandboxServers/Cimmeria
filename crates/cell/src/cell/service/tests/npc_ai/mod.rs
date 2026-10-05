@@ -53,8 +53,12 @@
 //! - [`combat_stance`] — a Fighting NPC is announced `BSF_InCombat` to its
 //!   witnesses before its first shot (once per fight), and announced clear
 //!   when it leaves the fight.
+//! - [`crowd_control`] — AB-09a: a stunned NPC holds its fire until the
+//!   stun's ledger entry comes off.
 //! - [`stop_hygiene`]  — NA10: a stopped NPC is broadcast with zero
 //!   velocity, and the leash snap keeps the spatial grid in sync.
+//! - [`training_dummy`] — D-DA7: an NPC spawned from a `training_dummy`
+//!   record gets the mark and dummy Health, and never fires back.
 //! - [`zero_health_guard`] — a 0-HEALTH NPC gets no AI turn, and an NPC
 //!   killed by an effect script's HEALTH bleed does not shoot back.
 //! - [`dead_player_drop`] — NA24: a killed player leaves every threat list at
@@ -75,6 +79,14 @@
 //!   query (CI guard) and the `#[ignore]`d 10 v 10 tick benchmark.
 //! - [`castle_standoff`] — #1009 on the real `castle.nav` / `castle.occ`: every
 //!   `Castle_Standoff_*` seed row engages a NID guard.
+//! - [`debug_area_combat`] — DA-04 on the real `ihpet_crater_light.nav` /
+//!   `.occ` and world-1300 cover: the Z6 arena fights and their spectators,
+//!   the Z8 riflemen's cover, the Z9 lethal squad and respawn targets, and
+//!   live-DB guards for the same seed.
+//! - [`debug_area`] — Debug Area DA-03 on the real `ihpet_crater_light.nav` /
+//!   `.occ`: the faction yard, AI behaviour slope and enemy gallery rows
+//!   stand on mesh and terrain, the gallery never pulls or rallies, the pen
+//!   and the assist trio engage as documented, and no station reaches another.
 //! - [`live_db_npc_vs_npc`] — #1009 live-DB smoke: a seeded standoff marine and
 //!   NID guard fight to a death with the seeded abilities; nobody is paid.
 //!
@@ -102,8 +114,13 @@ mod attack_sequence;
 mod being_follower;
 mod castle_standoff;
 mod combat_stance;
+mod crowd_control;
 mod dead_player_drop;
+mod debug_area;
+mod debug_area_combat;
+mod despawning_release;
 mod follow_resume;
+mod lab_dummy;
 mod leash_reset;
 mod leash_walk;
 mod live_db_npc_vs_npc;
@@ -123,6 +140,7 @@ mod stationary_los;
 mod step_back;
 mod stop_hygiene;
 mod tick_row;
+mod training_dummy;
 mod zero_health_guard;
 
 /// Build a non-instanced "Castle" space and seed an NPC at id=200 in
@@ -215,6 +233,8 @@ pub(super) fn seed_default_ability(mgr: &mut SpaceManager, min_range: i32, max_r
             required_ammo: 0,
             event_set_id: None,
             velocity: 0.0,
+            type_id: Default::default(),
+            passive: false,
         },
     );
 }

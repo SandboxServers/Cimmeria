@@ -11,8 +11,10 @@ Client-to-server cell method calls. Only methods with `<Exposed/>` in the .def f
 get a wire index. Non-exposed methods are server-internal and **skipped** in numbering.
 
 **Verified continuously** by `cimmeria-wire`'s `mercury::def_conformance` ([crates/wire/src/mercury/def_conformance/](../../crates/wire/src/mercury/def_conformance/), #801): it flattens the exposed CellMethods of
-`SGWPlayer.def` and `SGWGmPlayer.def` and checks every `CM_*` constant (through
-`cell_method_name`) and every GM constant against them.
+`SGWPlayer.def` and `SGWGmPlayer.def` and checks every `CM_*` constant and every
+GM constant against them. Every indexed row of this page, the GM inventory tables
+included, is checked against the generated `cimmeria_wire::names` tables by
+`names::doc_conformance`, so a row that drifts fails CI with its line number.
 
 ## Wire Encoding
 
@@ -50,7 +52,7 @@ Source: `entities/defs/interfaces/SGWBeing.def`
 | Index | Method | Exposed | Args |
 |-------|--------|---------|------|
 | 0 | setTargetID | YES | INT32 targetId |
-| 1 | setMovementType | YES | UINT8 aMovementType (`EMobMovementType`: Cover=0, CombatAdvance=1, Patrol=2, Follow=3, Wander=4, Leash=5, Avoid=6). Client to server only. The server sends no movement type back: witness method index 1 on every NPC type is `onSequence`, and the client has no NetIn `SetMovementType` handler. NPC state entries record the value in `last_movement_type` for telemetry and send nothing (`crate::cell::abilities::messaging::broadcast_movement_type`, NA10 #779). The client animates NPC gait from `EntityMoved` velocity. |
+| 1 | setMovementType | YES | UINT8 aMovementType (`EMobMovementType`: Cover=0, CombatAdvance=1, Patrol=2, Follow=3, Wander=4, Leash=5, Avoid=6). Client to server only. The server sends no movement type back: witness method index 1 on every NPC type is `onSequence`, and the client has no NetIn `SetMovementType` handler. NPC state entries record the value in `last_movement_type` for telemetry and send nothing (`crate::cell::abilities::movement_type::broadcast_movement_type`, NA10 #779). The client animates NPC gait from `EntityMoved` velocity. |
 | - | onPetSpawn | no | |
 | - | onPetDeath | no | |
 | - | onPetDetection | no | |
@@ -72,9 +74,9 @@ Source: `entities/defs/interfaces/SGWAbilityManager.def`
 
 | Index | Method | Exposed | Args |
 |-------|--------|---------|------|
-| 2 | toggleCombatDebug | YES | (none) |
-| 3 | toggleCombatVerboseDebug | YES | (none) |
-| 4 | confirmationResponse | YES | INT8 choice |
+| 2 | toggleCombatDebug | YES | (none). The stock client has no event bound to this method and cannot send it ([native-combat-debug.md](../reverse-engineering/findings/native-combat-debug.md)) |
+| 3 | toggleCombatVerboseDebug | YES | (none). Same: the stock client cannot send it |
+| 4 | confirmationResponse | YES | INT32 aEffectId, UINT8 aAccepted (the client sends it from `Event_NetOut_ConfirmEffect`; an earlier revision of this row said `INT8 choice`) |
 | - | onHealthZeroed | no | |
 | - | invokeAbility | no | |
 | - | resolveAbility | no | |
@@ -297,8 +299,8 @@ Source: `entities/defs/SGWPlayer.def` lines 564-1109
 | 82 | rechargeItems | YES | ARRAY\<INT32\> itemIds | 667 |
 | - | requestAdditionalLoot | no | | 672 |
 | - | operateGateLoc | no | | 680 |
-| - | onSendCombatDebug | no | | 685 |
-| - | onSendEventDebug | no | | 690 |
+| - | onSendCombatDebug | no | WSTRING simple, WSTRING verbose. Server-internal: not a client method, no client handler or renderer exists (the client has no such method name) | 685 |
+| - | onSendEventDebug | no | STRING. Server-internal, as above | 690 |
 | - | startAutoCycleAbility | no | | 694 |
 | - | clearAbilities | no | | 698 |
 | 83 | setAutoCycle | YES | INT8 enabled | 701 |
@@ -569,7 +571,7 @@ beyond the 3 verified handlers above.
 | 133 | `gmGiveItem(WSTRING DesignId, INT32 qty)` | `/GiveItem` | **`gm/give.rs` → `GrantItem`** | **DONE** |
 | 134 | `gmGiveCash(INT32 amount)` | `/GiveNaqahdah` | `cell/console/gm/give.rs` → `GrantCash` | **DONE** |
 | 135 | `gmRemoveItem(ItemID id, INT16 qty)` | — | `cell/console/gm/give.rs` → `RemoveInventoryItem` | **DONE** |
-| 136 | `gmGiveAbility(INT32 abilityID)` | `/GiveAbility` | `progression/mod.rs:400 handle_train_ability` (debits a point; need no-debit variant) | ADAPT |
+| 136 | `gmGiveAbility(INT32 abilityID)` | `/GiveAbility` | `cell/console/gm/abilities.rs` → the `.giveability` grant (`give_ability::plan_grant`, caller only) → `CellToBaseMsg::GmGrantAbility` → `progression/grant_ability.rs` (appends to `abilities`, no point debit) → `GmAbilityGranted` burst (AB-N2) | **DONE** |
 | 137 | `gmGiveTrainingPoints(INT32 n)` | — | `cell/console/gm/give_training_points.rs` → `CellToBaseMsg::GrantTrainingPoints` → `progression/grant_training_points.rs handle_grant_training_points` (one guarded `UPDATE ... RETURNING`, refused past `i32::MAX`) → `BaseToCellMsg::TrainingPointsGranted` (cell mirrors `tree_progress.training_points`, sends `onEntityProperty(TrainingPoints)`, re-sends a pinned trainer) | **DONE** |
 | 138 | `gmGiveRespawner(INT32 mobID)` | `/GiveRespawner` | — (respawner persistence not implemented) | NEW |
 | 139 | `gmGiveExpertise(INT32 disc, INT32 amt)` | — | `cell/console/gm/give.rs handle_give_expertise` → `CellToBaseMsg::GrantExpertise` → `base/crafting/handlers.rs handle_grant_expertise` (load/clamp/save + `onUpdateDiscipline` 136) | **DONE** |
@@ -580,7 +582,7 @@ beyond the 3 verified handlers above.
 
 | Idx | Method (args) | Stock cmd | Cimmeria primitive | Status |
 |-----|---------------|-----------|--------------------|--------|
-| 142 | `gmSetGodMode(UINT8 on)` | `/SetGodMode` | — (no godmode flag; gate would live in `cell/combat/damage.rs:161`) | NEW |
+| 142 | `gmSetGodMode(UINT8 on)` | `/SetGodMode` | `cell/console/gm/god_mode.rs` → `CellEntity::god_mode` (caller only); `cell-combat` `combat/god_mode.rs` puts Health/Focus back at the hit and pulse seams, logs `god_mode_absorbed` (AB-N2) | **DONE** |
 | 143 | `gmSetNoXP()` | `/SetNoXP` | — (no XP-immunity flag) | NEW |
 | 144 | `gmSetNoDamage()` | `/SetNoDamageTimedMode` | — (no damage-immunity flag) | NEW |
 | 145 | `gmSetNoAggro(UINT8 on)` | `/SetNoAggro` | — (NPC threat seeding has no gate) | NEW |
@@ -591,12 +593,12 @@ beyond the 3 verified handlers above.
 | 150 | `gmSetFocusMax(INT32 amt, INT64 target)` | — | `cell/console/gm/stats.rs` → `set_max(FOCUS)` | **DONE** |
 | 151 | `gmSetFlag(INT32 flagId, UINT8 force)` | — | `state_flags.rs:36 set_state_flag` (ref-counted; raw force-set caveat) | ADAPT |
 | 152 | `gmSetLevel(INT32 level)` | — | `stat_list.rs:305 scale_for_level` + level write + recompute (no single fn) | ADAPT |
-| 153 | `gmResetAbilities()` | — | — | NEW |
-| 154 | `gmGiveAllAbilities()` | — | — (enumerate archetype tree + bulk insert + burst) | NEW |
+| 153 | `gmResetAbilities()` | — | `cell/console/gm/abilities.rs` → `CellToBaseMsg::GmAbilityBulk(Reset)` → `progression/gm_ability_bulk.rs` (abilities = archetype starters from `char_creation_abilities`, spend refunded, no trainer, no charge) → `GmAbilitiesChanged` burst (AB-N2) | **DONE** |
+| 154 | `gmGiveAllAbilities()` | — | `cell/console/gm/abilities.rs` → `ability_tree_catalog.tree(archetype)` → `GmAbilityBulk(GrantAll)` → `progression/gm_ability_bulk.rs` (one `UPDATE`, no points) → one `GmAbilitiesChanged` burst (AB-N2) | **DONE** |
 | 155 | `gmRespec()` | — | — | NEW |
 | 156 | `gmSetTarget(WSTRING nameOrID)` | — | `cell/console/gm/world.rs` → `current_target_id` + onTargetUpdate (numeric id only) | **DONE** |
 | 157 | `gmSetMobStance(INT32 stance)` | — | — (no stance field separate from `AiState`) | NEW |
-| 158 | `gmSetMobAbilitySet(INT32 setId)` | — | `entity/abilities.rs` mutate `known_abilities` (player-oriented) | ADAPT |
+| 158 | `gmSetMobAbilitySet(INT32 setId)` | — | `cell/console/gm/mob_ability_set.rs` → selected NPC's known set = `SpaceManager::ability_sets[setId]` (`resources.ability_set_abilities`, in memory until respawn) (AB-N2) | **DONE** |
 
 #### Travel (159–163)
 
@@ -622,14 +624,14 @@ beyond the 3 verified handlers above.
 
 | Idx | Method (args) | Stock cmd | Cimmeria primitive | Status |
 |-----|---------------|-----------|--------------------|--------|
-| 169 | `gmDebugAbility(INT32 abilityId)` | — | — | NEW |
-| 170 | `gmDebugCombat()` | — | stub `cell_methods/ability_manager.rs:22` (also gated as in-range idx 2) | ADAPT |
-| 171 | `gmDebugCombatVerbose()` | — | log-only stub (in-range idx 3) | ADAPT |
-| 172 | `gmDebugHeal()` | — | stub `cell_methods/combatant.rs:59` (in-range idx 6) | ADAPT |
+| 169 | `gmDebugAbility(INT32 abilityId)` | — | `cell-console` `gm/combat_debug.rs` (AB-N1): toggles `debugAbilityList`; `0` clears | DONE |
+| 170 | `gmDebugCombat()` | — | `cell-console` `gm/combat_debug.rs` (AB-N1); idx 2 shares the toggle | DONE |
+| 171 | `gmDebugCombatVerbose()` | — | `cell-console` `gm/combat_debug.rs` (AB-N1); idx 3 shares the toggle | DONE |
+| 172 | `gmDebugHeal()` | — | `cell-console` `gm/combat_debug.rs` (AB-N1): heal-debug toggle; idx 6 shares it | DONE |
 | 173 | `gmDebugStartMinigame(INT32 gameId)` | — | `minigame/session.rs:60 register` + cell dispatch stub | ADAPT |
 | 174 | `gmDebugSpectateMinigame()` | — | cell stub `cell_methods/minigame.rs` | ADAPT |
 | 175 | `gmDebugJoinMinigame()` | — | cell stub | ADAPT |
-| 176 | `gmDebugAbilityOnMob(INT32 abilityID)` | — | — | NEW |
+| 176 | `gmDebugAbilityOnMob(INT32 abilityID)` | — | `cell-console` `gm/combat_debug.rs` (AB-N1): the selected mob's casts print to the GM | DONE |
 | 177 | `gmDebugBehaviorsOnMob()` | — | read `ai_state`/`threat_list` + stream callback | ADAPT |
 | 178 | `gmDebugPathsOnMob()` | — | read `cell_entity/mod.rs:493 nav_path` + `onShowPath` callback | ADAPT |
 | 179 | `gmDebugEvents(INT32 target, INT32 level)` | — | — | NEW |
@@ -712,6 +714,8 @@ explicitly in `requires_gm` (see [gm-cell-method-gating.md](../architecture/gm-c
 `2 toggleCombatDebug`, `3 toggleCombatVerboseDebug`, `6 toggleHealDebug` (log-only
 stubs today), and `92 onWorldInstanceReset` (CAT-N-01, High — destroys + recreates
 the space instance; **NEW**, keep gated, no handler).
+
+The `gmDebug*` methods (169 to 172, 176) are sent by the stock client only from an `SGWGmPlayer` avatar: the client drops the call before the wire for any other class ([native-combat-debug.md](../reverse-engineering/findings/native-combat-debug.md#can-a-non-gm-account-send-them)).
 
 #### How to add a handler
 

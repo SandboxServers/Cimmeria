@@ -120,7 +120,8 @@ pub fn record_tcp_frame(dir: Direction, msg_id: u8, payload_len: usize) {
         target: "mercury.packet",
         dir = dir.as_str(),
         transport = "tcp",
-        msg_id,
+        // No service frames with `UnifiedCodec` today.
+        msg_id, // nt:id-only Unified inter-service frame ids have no name table
         len = payload_len,
         "unified_frame"
     );

@@ -246,33 +246,41 @@ impl From<Refusal> for OpError {
 /// first press. Nothing was written (the transaction rolled back).
 pub(super) async fn answer_failure(ctx: &MailCtx<'_>, op: Op, mail_id: i32, err: OpError) {
     let (entity_id, player_id, account_id) = (ctx.entity_id, ctx.player_id, ctx.account_id());
-    // The mail's sender for `target_player_id`. The transaction rolled back,
-    // so this is a plain owner-scoped read of the row as it stands; absent
-    // for someone else's mail and for server mail.
-    let target_player_id = match &err {
-        OpError::Refused(r) if *r != NOT_FOUND => sqlx::query_scalar::<_, Option<i32>>(
-            "SELECT sender_id FROM sgw_gate_mail WHERE mail_id = $1 AND character_id = $2",
+    let who = ctx.identity();
+    // The mail's sender for `target_player_id` and its name. The transaction
+    // rolled back, so this is a plain owner-scoped read of the row as it
+    // stands; absent for someone else's mail and for server mail.
+    let sender = match &err {
+        OpError::Refused(r) if *r != NOT_FOUND => sqlx::query_as::<_, (Option<i32>, String)>(
+            "SELECT sender_id, sender_name FROM sgw_gate_mail              WHERE mail_id = $1 AND character_id = $2",
         )
         .bind(mail_id)
         .bind(player_id)
         .fetch_optional(ctx.pool)
         .await
         .ok()
-        .flatten()
         .flatten(),
         _ => None,
     };
+    let target_player_id = sender.as_ref().and_then(|(id, _)| *id);
+    let target_player_name = target_player_id
+        .and(sender.as_ref())
+        .map(|(_, name)| name.as_str());
     let text = match &err {
         OpError::Refused(refusal) => {
             tracing::warn!(
                 target: "mail",
                 event = "mail.op_refused",
                 entity_id,
+                entity_name = who.player_name,
                 player_id,
+                player_name = who.player_name,
                 account_id,
+                account_name = who.account_name,
                 target_player_id,
+                target_player_name,
                 op = op.name(),
-                mail_id,
+                mail_id, // nt:id-only mail row, its subject is player text kept out of logs
                 reason = refusal.reason,
                 "Mail: attachment op refused"
             );
@@ -283,10 +291,13 @@ pub(super) async fn answer_failure(ctx: &MailCtx<'_>, op: Op, mail_id: i32, err:
                 target: "mail",
                 event = "mail.op_failed",
                 entity_id,
+                entity_name = who.player_name,
                 player_id,
+                player_name = who.player_name,
                 account_id,
+                account_name = who.account_name,
                 op = op.name(),
-                mail_id,
+                mail_id, // nt:id-only mail row, its subject is player text kept out of logs
                 reason = *reason,
                 "Mail: a locked conditional write changed the wrong row count; rolled back"
             );
@@ -297,10 +308,13 @@ pub(super) async fn answer_failure(ctx: &MailCtx<'_>, op: Op, mail_id: i32, err:
                 target: "mail",
                 event = "mail.op_failed",
                 entity_id,
+                entity_name = who.player_name,
                 player_id,
+                player_name = who.player_name,
                 account_id,
+                account_name = who.account_name,
                 op = op.name(),
-                mail_id,
+                mail_id, // nt:id-only mail row, its subject is player text kept out of logs
                 reason = "db_error",
                 error = %e,
                 "Mail: attachment op failed; rolled back"

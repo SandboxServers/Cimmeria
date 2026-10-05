@@ -30,7 +30,14 @@ use cimmeria_cell_world::cell::plugin::CellMethodCall;
     name = "cell.dispatch",
     level = "debug",
     skip_all,
-    fields(entity_id, method_index, args_len = args.len(), space_id = tracing::field::Empty),
+    fields(
+        entity_id,
+        method_index,
+        method_name = cimmeria_wire::names::player_cell_method(method_index),
+        args_len = args.len(),
+        packet_seq,
+        space_id = tracing::field::Empty
+    ),
 )]
 pub async fn dispatch_cell_method(
     entity_id: u32,
@@ -39,11 +46,19 @@ pub async fn dispatch_cell_method(
     tx: &mpsc::Sender<CellToBaseMsg>,
     space_mgr: &mut SpaceManager,
     engine: &ChainEngine,
+    // The Mercury seq of the client packet that carried the call (`None`
+    // when it came from anywhere else). Telemetry only: the player
+    // dispatch hands it to the `useAbility` receipt row (AB-T2).
+    packet_seq: Option<u32>,
 ) {
     // Backfill space_id so SigNoz can pivot dispatches by world/instance.
     if let Some(e) = space_mgr.get_entity(entity_id) {
         tracing::Span::current().record("space_id", e.space_id.0);
     }
+
+    // The receipt row of an ability method (AB-C7), before the GM gate so
+    // a refused `gmDebug*` call still records that it arrived.
+    super::ability_receipt::log_receipt(entity_id, method_index, args, packet_seq, space_mgr);
 
     // Server-authority GM gate (#475 / CAT-N-03). For GM/debug method
     // indices, reject any caller whose `CellEntity::access_level` is below
@@ -123,7 +138,17 @@ pub async fn dispatch_cell_method(
         return;
     }
     // SGWPlayer own methods (67–108) — needs engine for content chains
-    if cell_methods::player::dispatch(entity_id, method_index, args, tx, space_mgr, engine).await {
+    if cell_methods::player::dispatch_from_packet(
+        entity_id,
+        method_index,
+        args,
+        tx,
+        space_mgr,
+        engine,
+        packet_seq,
+    )
+    .await
+    {
         return;
     }
     // SGWGmPlayer own methods (109+) — the native gm*/debug surface. The GM
@@ -143,7 +168,9 @@ pub async fn dispatch_cell_method(
     // warn-filtered ops dashboard.
     tracing::warn!(
         entity_id,
+        entity_name = space_mgr.entity_label(entity_id),
         method_index,
+        method_name = cimmeria_wire::names::player_cell_method(method_index),
         args_len = args.len(),
         "Unhandled cell method call -- no registered handler for this index; client behaviour may diverge silently"
     );
@@ -200,6 +227,7 @@ mod tests {
             &tx,
             &mut mgr,
             &engine,
+            None,
         )
         .await;
 

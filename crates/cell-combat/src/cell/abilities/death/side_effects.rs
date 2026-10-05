@@ -17,7 +17,8 @@ use crate::cell::messages::CellToBaseMsg;
 use crate::cell::space_manager::SpaceManager;
 
 use super::super::loot_drop::kill_xp;
-use super::super::messaging::{send_entity_method, send_entity_method_to_self_and_witnesses};
+use super::super::messaging::WireRoute;
+use super::super::wire_ledger::{self, WireCtx};
 
 /// Kismet event id for the death animation. Event set 1025 (Mob) drives
 /// it for both NPCs and players today; if they ever diverge, branch on
@@ -51,10 +52,12 @@ pub(super) async fn send_death_sequence(
     seq_args.push(0); // ViewType
     seq_args.extend_from_slice(&0i32.to_le_bytes()); // InstanceId
 
-    send_entity_method_to_self_and_witnesses(
+    wire_ledger::send(
         target_eid,
         crate::mercury::method_idx::ON_SEQUENCE,
         seq_args,
+        WireRoute::SelfAndWitnesses,
+        WireCtx::new("death").reason("entity_death"),
         tx,
         space_mgr,
     )
@@ -63,9 +66,13 @@ pub(super) async fn send_death_sequence(
         target: "abilities.sequence",
         event = "entity_death",
         source_id = target_eid,
+        source_name = space_mgr.entity_label(target_eid),
         target_id = target_eid,
+        target_name = space_mgr.entity_label(target_eid),
         sequence_id = death_seq_id,
+        sequence_name = cimmeria_cell_world::cell::effects::content_names::sequence_name(death_seq_id),
         event_set_id = esid,
+        event_set_name = cimmeria_cell_world::cell::effects::content_names::event_set_name(esid),
         "onSequence broadcast: Entity_Death (death animation)"
     );
 }
@@ -97,6 +104,24 @@ pub(super) async fn grant_kill_xp(
     if target.is_player {
         return;
     }
+    // A training dummy (Debug Area D-DA7) pays nothing: it never fights
+    // back and respawns in 30 s, so a kill is a test, not a reward.
+    if target
+        .extensions
+        .contains::<crate::cell::space_manager::TrainingDummy>()
+    {
+        tracing::debug!(
+            target: "abilities",
+            event = "kill_xp_not_granted",
+            reason = "training_dummy",
+            attacker = attacker_id,
+            attacker_name = space_mgr.entity_label(attacker_id),
+            target = target_eid,
+            target_name = space_mgr.entity_label(target_eid),
+            "Kill XP not granted: the victim is a training dummy"
+        );
+        return;
+    }
     let base_xp = kill_xp(target.level);
     let KillXpPayout { recipient, xp } = match kill_xp_payout(space_mgr, attacker_id, base_xp) {
         Ok(payout) => payout,
@@ -106,10 +131,14 @@ pub(super) async fn grant_kill_xp(
         }
     };
     tracing::info!(
+        target: "abilities",
+        event = "kill_xp_granted",
         attacker = attacker_id,
+        attacker_name = space_mgr.entity_label(attacker_id),
         credited = recipient,
         via_pet = recipient != attacker_id,
         target = target_eid,
+        target_name = space_mgr.entity_label(target_eid),
         mob_level = target.level,
         base_xp,
         xp,
@@ -130,7 +159,14 @@ pub(super) async fn grant_kill_xp(
     else {
         if let Err(e) = sent {
             tracing::error!(
-                attacker = attacker_id, credited = recipient, target = target_eid, xp,
+                target: "abilities",
+                event = "kill_xp_send_failed",
+                attacker = attacker_id,
+                attacker_name = space_mgr.entity_label(attacker_id),
+                credited = recipient,
+                target = target_eid,
+                target_name = space_mgr.entity_label(target_eid),
+                xp,
                 error = %e,
                 "GrantXP send to base failed -- player kill credit lost"
             );
@@ -149,12 +185,19 @@ pub(super) async fn grant_kill_xp(
             target: "pets.credit",
             event = "pet_kill_credited",
             entity_id = attacker_id,
+            entity_name = space_mgr.entity_label(attacker_id),
             pet_id = attacker_id,
+            pet_name = space_mgr.entity_label(attacker_id),
             owner_id = recipient,
+            owner_name = id.player_name,
             account_id = id.account_id,
+            account_name = id.account_name,
             player_id = id.player_id,
+            player_name = id.player_name,
             victim_id = target_eid,
+            victim_name = space_mgr.entity_label(target_eid),
             victim_template_id = target.template_id,
+            victim_template_name = cimmeria_cell_world::cell::effects::content_names::template_name(target.template_id),
             victim_level = target.level,
             base_xp,
             xp_granted = xp,
@@ -169,12 +212,19 @@ pub(super) async fn grant_kill_xp(
             event = "pet_kill_credit_undelivered",
             reason = "send_failed",
             entity_id = attacker_id,
+            entity_name = space_mgr.entity_label(attacker_id),
             pet_id = attacker_id,
+            pet_name = space_mgr.entity_label(attacker_id),
             owner_id = recipient,
+            owner_name = id.player_name,
             account_id = id.account_id,
+            account_name = id.account_name,
             player_id = id.player_id,
+            player_name = id.player_name,
             victim_id = target_eid,
+            victim_name = space_mgr.entity_label(target_eid),
             victim_template_id = target.template_id,
+            victim_template_name = cimmeria_cell_world::cell::effects::content_names::template_name(target.template_id),
             victim_level = target.level,
             base_xp,
             xp_granted = xp,
@@ -357,12 +407,21 @@ fn log_no_kill_xp(
             event = "kill_xp_not_granted",
             reason,
             entity_id = pet_id,
+            entity_name = space_mgr.entity_label(pet_id),
             pet_id,
+            pet_name = space_mgr.entity_label(pet_id),
             owner_id,
+            // From the summon-time capture, like the ids: never whoever
+            // holds `owner_id` now (#889).
+            owner_name = id.player_name,
             account_id,
+            account_name = id.account_name,
             player_id,
+            player_name = id.player_name,
             attacker = attacker_id,
+            attacker_name = space_mgr.entity_label(attacker_id),
             victim_id = target_eid,
+            victim_name = space_mgr.entity_label(target_eid),
             base_xp,
             transfer_xp,
             max_kill_xp = MAX_KILL_XP,
@@ -372,10 +431,13 @@ fn log_no_kill_xp(
         // A player's (scale 1.0) kill whose `kill_xp` alone overflows: a
         // corrupt victim level. No pet, so the module target.
         tracing::warn!(
+            target: "abilities",
             event = "kill_xp_not_granted",
             reason,
             attacker = attacker_id,
+            attacker_name = space_mgr.entity_label(attacker_id),
             victim_id = target_eid,
+            victim_name = space_mgr.entity_label(target_eid),
             base_xp,
             max_kill_xp = MAX_KILL_XP,
             "Kill XP not granted: the payout exceeds the XP ceiling"
@@ -386,21 +448,33 @@ fn log_no_kill_xp(
             event = "kill_xp_not_granted",
             reason,
             entity_id = pet_id,
+            entity_name = space_mgr.entity_label(pet_id),
             pet_id,
+            pet_name = space_mgr.entity_label(pet_id),
             owner_id,
+            // From the summon-time capture, like the ids: never whoever
+            // holds `owner_id` now (#889).
+            owner_name = id.player_name,
             account_id,
+            account_name = id.account_name,
             player_id,
+            player_name = id.player_name,
             attacker = attacker_id,
+            attacker_name = space_mgr.entity_label(attacker_id),
             victim_id = target_eid,
+            victim_name = space_mgr.entity_label(target_eid),
             base_xp,
             "kill involving a pet paid no XP"
         );
     } else {
         tracing::debug!(
+            target: "abilities",
             event = "kill_xp_not_granted",
             reason,
             attacker = attacker_id,
+            attacker_name = space_mgr.entity_label(attacker_id),
             victim_id = target_eid,
+            victim_name = space_mgr.entity_label(target_eid),
             base_xp,
             "Kill XP not granted"
         );
@@ -440,11 +514,15 @@ pub(super) async fn send_begin_aid_wait(
     tracing::info!(
         target: "player.death",
         entity_id = target_eid,
+        entity_name = space_mgr.entity_label(target_eid),
         account_id = id.account_id,
+        account_name = id.account_name,
         player_id = id.player_id,
+        player_name = id.player_name,
         killer = attacker_id,
         killer_name = %killer_name,
         ability_id = ability_id.unwrap_or(-1),
+        ability_name = cimmeria_names::book().ability(ability_id.unwrap_or(-1)),
         world = ?world_name,
         x = px,
         y = py,
@@ -469,16 +547,21 @@ pub(super) async fn send_begin_aid_wait(
         }
     }
 
-    send_entity_method(
+    wire_ledger::send(
         target_eid,
         crate::mercury::method_idx::ON_BEGIN_AID_WAIT,
         aid_args,
+        WireRoute::EntityDefault,
+        WireCtx::new("death").reason("aid_wait"),
         tx,
         space_mgr,
     )
     .await;
     tracing::info!(
+        target: "abilities",
+        event = "aid_wait_sent",
         target = target_eid,
+        target_name = space_mgr.entity_label(target_eid),
         world = ?world_name,
         respawner_count = if matching_respawners.is_empty() { 1 } else { matching_respawners.len() },
         respawner_ids = ?matching_respawners.iter().map(|r| r.respawner_id).collect::<Vec<_>>(),

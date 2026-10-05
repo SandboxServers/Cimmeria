@@ -45,6 +45,7 @@ pub async fn dispatch(
             } else {
                 tracing::warn!(
                     entity_id,
+                    entity_name = space_mgr.entity_label(entity_id),
                     args_len = args.len(),
                     "trainAbility: truncated args (need 4 bytes ability_id)"
                 );
@@ -81,8 +82,11 @@ pub async fn dispatch(
                         action,
                         reason = "no_vendor_session",
                         account_id = identity.account_id,
+                        account_name = identity.account_name,
                         player_id = identity.player_id,
+                        player_name = identity.player_name,
                         entity_id,
+                        entity_name = identity.player_name,
                         op = op_name,
                         "vendor op: no active vendor context (player_id or vendor_entity unset)"
                     );
@@ -100,9 +104,13 @@ pub async fn dispatch(
                         action,
                         reason = "malformed_args",
                         account_id = identity.account_id,
+                        account_name = identity.account_name,
                         player_id = session.player_id,
+                        player_name = identity.player_name,
                         entity_id,
+                        entity_name = identity.player_name,
                         vendor_entity_id = session.vendor_entity_id,
+                        vendor_entity_name = space_mgr.entity_label(session.vendor_entity_id as u32),
                         op = op_name,
                         args_len = args.len(),
                         "vendor op: malformed item array in args"
@@ -120,11 +128,7 @@ pub async fn dispatch(
             let validated_template_id = match trailing_template_id {
                 Some(client_id) => {
                     match validate_template_id(
-                        entity_id,
-                        identity.account_id,
-                        action,
-                        &session,
-                        client_id,
+                        entity_id, identity, action, &session, client_id, space_mgr,
                     ) {
                         Some(server_id) => Some(server_id),
                         None => return true,
@@ -143,7 +147,7 @@ pub async fn dispatch(
                         items,
                     },
                     None => {
-                        log_missing_template(entity_id, identity, action, &session);
+                        log_missing_template(entity_id, identity, action, &session, space_mgr);
                         return true;
                     }
                 },
@@ -156,7 +160,7 @@ pub async fn dispatch(
                         items,
                     },
                     None => {
-                        log_missing_template(entity_id, identity, action, &session);
+                        log_missing_template(entity_id, identity, action, &session, space_mgr);
                         return true;
                     }
                 },
@@ -169,7 +173,7 @@ pub async fn dispatch(
                         items,
                     },
                     None => {
-                        log_missing_template(entity_id, identity, action, &session);
+                        log_missing_template(entity_id, identity, action, &session, space_mgr);
                         return true;
                     }
                 },
@@ -195,9 +199,13 @@ pub async fn dispatch(
                     action,
                     reason = "base_channel_closed",
                     account_id = identity.account_id,
+                    account_name = identity.account_name,
                     player_id = session.player_id,
+                    player_name = identity.player_name,
                     entity_id,
+                    entity_name = identity.player_name,
                     vendor_entity_id = session.vendor_entity_id,
+                    vendor_entity_name = space_mgr.entity_label(session.vendor_entity_id as u32),
                     op = op_name,
                     "vendor op: cell->base channel closed: {e}"
                 );
@@ -216,6 +224,7 @@ fn log_missing_template(
     identity: cimmeria_entity::cell_entity::PlayerIdentity,
     action: &'static str,
     session: &session::VendorSession,
+    space_mgr: &SpaceManager,
 ) {
     tracing::warn!(
         target: "vendor",
@@ -223,9 +232,13 @@ fn log_missing_template(
         action,
         reason = "missing_template_id",
         account_id = identity.account_id,
+        account_name = identity.account_name,
         player_id = session.player_id,
+        player_name = identity.player_name,
         entity_id,
+        entity_name = identity.player_name,
         vendor_entity_id = session.vendor_entity_id,
+        vendor_entity_name = space_mgr.entity_label(session.vendor_entity_id as u32),
         "vendor op: missing vendor_template_id"
     );
 }

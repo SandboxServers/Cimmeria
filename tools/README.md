@@ -56,6 +56,8 @@ These scripts run standalone with Python 3.x — they don't need the server runn
 |---|---|
 | `extract_tests.py` | Regenerate the test inventory under [`docs/testing/inventory/`](../docs/testing/inventory/). Walks the workspace `members` from the root `Cargo.toml`, catalogues every `#[test]` / `#[tokio::test]` with the line its `fn` is actually on and whether the body is a live-DB guard, and preserves the hand-curated table columns across regeneration. `--check` and `--verify-links` are drift gates that exit non-zero and write nothing; only `--write` modifies the repo. Stock Python 3, no dependencies. See [maintenance.md](../docs/testing/inventory/maintenance.md). |
 | `ability_trees/generate_seed.py` | Validate the canonical ability-tree workbook and regenerate `archetype_ability_tree.sql`, `trainer_abilities.sql` and the committed JSON export. `--check` exits 1 on drift. Needs openpyxl unless run with `--from-json`. See [ability_trees/README.md](ability_trees/README.md). |
+| `telemetry-coverage/abilities.py` | The ability telemetry coverage gate (ability-mechanics AB-C7): crosses every ability method in the dispatch tables with the server receipt row, the server send row and the client send and receive hooks, by scanning the code tables each side keeps for it, and writes [telemetry-coverage.md](../docs/analysis/ability-mechanics/telemetry-coverage.md). `--check` exits 1 on drift or on an empty cell with no listed exception; CI runs it with its unit tests. Stock Python 3. |
+| `signoz/abilities/` | The ability SigNoz saved views (one cast in order, refusals by reason, wire sends for a player) and the ability-metrics dashboard, as reviewable JSON for import (AB-T7). See [signoz/abilities/README.md](signoz/abilities/README.md). |
 | `token-profile/` | Token profiler for AI-assisted work (#957). Wave 0 holds the data contract: the SQLite `schema.sql`, the transcript format and trigger rules, the PR attribution rules, and a synthetic fixture with contract tests. See [token-profile/README.md](token-profile/README.md). |
 
 ## Build Tooling
@@ -75,6 +77,15 @@ How the Rust workspace is built on developer and agent machines. Why each piece 
 | `dev-drive/Copy-WarmTarget.ps1` | Seeds a new worktree's target dir from a warm one by ReFS block cloning. |
 | `build-hygiene/sweep.ps1` | Runs `cargo-sweep` over every target dir on the machine. Don't run it while anything builds. |
 | `build-metrics/measure-build.ps1` | Controlled build measurements: cold build, edit loop, `cargo check`, peak memory, target size. |
+
+## Lab Tooling
+
+| Script | Purpose |
+|---|---|
+| `lab/install.ps1` | Builds the Live Research Lab from a worktree through the build lane (`cimmeria-lab`; the `lab-bridge` telemetry DLL, `sgw-start32` and the patch DLL for i686) and installs them to `%LOCALAPPDATA%\cimmeria-lab\bin\` and the game's `Binaries\`. Refuses while an `SGW.exe` runs and names its supervisor; keeps each replaced file as `<name>.<yyyymmdd>.old`; `-DryRun` changes nothing. See [Install or update the lab](../docs/guides/live-research-lab.md#install-or-update-the-lab). |
+| `lab/daemon.ps1` | Runs the shared lab supervisor (`cimmeria-lab --http`) as the per-user scheduled task `CimmeriaLabDaemon`: `install` (copy the exe to `%LOCALAPPDATA%\cimmeria-lab\labd\`, generate `CIMMERIA_LAB_DAEMON_TOKEN`, import `labd.env` from `.mcp.json`, register and start), `start`, `stop`, `restart` (picks up a newer build), `status`, `uninstall`. See [The shared daemon](../docs/guides/live-research-lab.md#the-shared-daemon-cimmeria-lab---http). |
+| `lab/labd-lib.ps1`, `lab/test-labd-lib.ps1` | The daemon script's helpers (UTF-8 `labd.env` read and write, the stale-`labd.pid` check by exe path and start time, the recorded bind) and their tests: `pwsh -NoProfile -File tools/lab/test-labd-lib.ps1`, and the same under `powershell` (the task runs Windows PowerShell 5.1). |
+| `lab/labd-headers.ps1` | The `headersHelper` of the daemon's `.mcp.json` entry: prints the bearer header from the user environment, so the token never lands in `.mcp.json`. |
 
 ## Lint & Check Scripts
 

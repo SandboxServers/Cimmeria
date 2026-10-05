@@ -57,8 +57,12 @@ pub fn collect_cone_targets(
     let dir_len = (dx * dx + dz * dz).sqrt();
     if dir_len < 1e-3 {
         tracing::debug!(
+            target: "abilities",
+            event = "cone_aoe_primary_stacked",
             attacker_id,
+            attacker_name = space_mgr.entity_label(attacker_id),
             primary_target_id,
+            primary_target_name = space_mgr.entity_label(primary_target_id),
             "cone_aoe: primary stacked on attacker — skipping cone fan-out"
         );
         return Vec::new();

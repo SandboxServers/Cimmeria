@@ -36,6 +36,7 @@ use sqlx::PgPool;
 /// storing NaN would make the next world entry undefined.
 pub(super) async fn persist_position(
     player_id: i32,
+    player_name: Option<&str>,
     world_name: &str,
     position: [f32; 3],
     db_pool: &Option<Arc<PgPool>>,
@@ -49,6 +50,7 @@ pub(super) async fn persist_position(
     if !position.iter().all(|c| c.is_finite()) {
         tracing::warn!(
             player_id,
+            player_name,
             world = world_name,
             ?position,
             reason = "non_finite_position",
@@ -76,6 +78,7 @@ pub(super) async fn persist_position(
         Ok(res) if res.rows_affected() == 0 => {
             tracing::warn!(
                 player_id,
+                player_name,
                 world = world_name,
                 ?position,
                 "PersistPosition: no rows updated (player row missing?)"
@@ -84,6 +87,7 @@ pub(super) async fn persist_position(
         Ok(_) => {
             tracing::info!(
                 player_id,
+                player_name,
                 world = world_name,
                 x = position[0],
                 y = position[1],
@@ -94,6 +98,7 @@ pub(super) async fn persist_position(
         Err(e) => {
             tracing::warn!(
                 player_id,
+                player_name,
                 world = world_name,
                 ?position,
                 error = %e,
@@ -197,7 +202,14 @@ mod tests {
             "fixture sanity: the seed must carry a resources.worlds row named Castle"
         );
 
-        persist_position(player_id, "Castle", [411.349, 70.111, 987.685], &pool_opt).await;
+        persist_position(
+            player_id,
+            None,
+            "Castle",
+            [411.349, 70.111, 987.685],
+            &pool_opt,
+        )
+        .await;
 
         let stored = read_position(&pool, player_id).await;
         assert_eq!(
@@ -238,6 +250,7 @@ mod tests {
 
         persist_position(
             player_id,
+            None,
             "NoSuchWorld_PersistPositionGuard",
             [1.0, 2.0, 3.0],
             &pool_opt,
@@ -279,7 +292,14 @@ mod tests {
         let before = read_position(&pool, player_id).await;
         let capture = LogCapture::install();
 
-        persist_position(player_id, "Castle", [f32::NAN, 70.0, 987.0], &pool_opt).await;
+        persist_position(
+            player_id,
+            None,
+            "Castle",
+            [f32::NAN, 70.0, 987.0],
+            &pool_opt,
+        )
+        .await;
 
         let after = read_position(&pool, player_id).await;
         assert_eq!(
@@ -315,7 +335,7 @@ mod tests {
             .await;
 
         let capture = LogCapture::install();
-        persist_position(phantom_id, "Castle", [1.0, 2.0, 3.0], &pool_opt).await;
+        persist_position(phantom_id, None, "Castle", [1.0, 2.0, 3.0], &pool_opt).await;
 
         let event = capture
             .find_message(tracing::Level::WARN, "PersistPosition: no rows updated")

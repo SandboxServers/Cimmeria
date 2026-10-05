@@ -102,6 +102,9 @@ pub(super) async fn handle(
         return;
     };
     let template_id = pet_template_id(space_mgr, pet);
+    // Taken before `state` borrows the space manager for the rest of the
+    // command; a command is one owner press, not a hot path.
+    let pet_names = space_mgr.entity_names(pet);
     let Some(state) = space_mgr
         .get_entity_mut(pet)
         .and_then(|e| e.extensions.get_mut::<PetState>())
@@ -120,7 +123,11 @@ pub(super) async fn handle(
             owner_id = caller.owner_id,
             account_id = caller.account_id,
             player_id = caller.player_id,
+            owner_name = caller.player_name,
+            account_name = caller.account_name,
+            player_name = caller.player_name,
             pet_id,
+            pet_name = pet_names.entity_name,
             requested = stance,
             current = current.label(),
             reason = "stance_not_allowed",
@@ -130,6 +137,7 @@ pub(super) async fn handle(
         send_to_owner(
             caller,
             pet,
+            pet_names.entity_name,
             ON_PET_STANCE_UPDATE,
             build_pet_stance_update(current.wire()),
             tx,
@@ -147,6 +155,7 @@ pub(super) async fn handle(
     send_to_owner(
         caller,
         pet,
+        pet_names.entity_name,
         ON_PET_STANCE_UPDATE,
         build_pet_stance_update(resolved.wire()),
         tx,
@@ -160,8 +169,13 @@ pub(super) async fn handle(
         owner_id = caller.owner_id,
         account_id = caller.account_id,
         player_id = caller.player_id,
+        owner_name = caller.player_name,
+        account_name = caller.account_name,
+        player_name = caller.player_name,
         pet_id = pet,
+        pet_name = pet_names.entity_name,
         template_id,
+        template_name = pet_names.template_name,
         requested = stance,
         source = source.label(),
         stance_before = stance_before.label(),

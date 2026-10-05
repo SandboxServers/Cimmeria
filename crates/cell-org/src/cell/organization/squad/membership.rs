@@ -84,6 +84,18 @@ pub async fn on_disconnect(
     }
 }
 
+/// The squad roster's name for `player_id`, for a log field. `None` when the
+/// player is in no squad.
+fn member_name(space_mgr: &SpaceManager, player_id: i32) -> Option<&str> {
+    let squads = space_mgr.resources.squads();
+    let squad = squads.squad(squads.squad_of(player_id)?)?;
+    squad
+        .members()
+        .iter()
+        .find(|m| m.player_id == player_id)
+        .map(|m| m.name.as_str())
+}
+
 /// The squad member whose last entity was `entity_id`, when that entity is
 /// gone (gate transit). `None`, logged, otherwise.
 fn in_transit_member(space_mgr: &SpaceManager, entity_id: u32) -> Option<i32> {
@@ -94,7 +106,7 @@ fn in_transit_member(space_mgr: &SpaceManager, entity_id: u32) -> Option<i32> {
         tracing::debug!(
             target: "squad",
             event = "squad.disconnect_no_member",
-            entity_id,
+            entity_id, // nt:id-only the entity is already gone and in no squad, so nothing can name it
             "disconnect for an entity that is gone and in no squad"
         );
         return None;
@@ -105,9 +117,11 @@ fn in_transit_member(space_mgr: &SpaceManager, entity_id: u32) -> Option<i32> {
         tracing::warn!(
             target: "squad",
             event = "squad.disconnect_stale_entity",
-            entity_id,
+            entity_id, // nt:id-only the recorded entity id is stale, so no live entity answers to it
             player_id,
+            player_name = member_name(space_mgr, player_id),
             live_entity_id = live,
+            live_entity_name = space_mgr.entity_label(live),
             reason = "stale_entity_id",
             "disconnect names a squad member's old entity id; member kept"
         );
@@ -116,8 +130,9 @@ fn in_transit_member(space_mgr: &SpaceManager, entity_id: u32) -> Option<i32> {
     tracing::debug!(
         target: "squad",
         event = "squad.disconnect_in_transit",
-        entity_id,
+        entity_id, // nt:id-only the entity is gone in gate transit, so nothing can name it
         player_id,
+        player_name = member_name(space_mgr, player_id),
         "disconnect of a squad member in gate transit"
     );
     Some(player_id)

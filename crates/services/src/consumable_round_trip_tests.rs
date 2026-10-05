@@ -453,7 +453,7 @@ async fn live_db_stimpacks_buff_their_stat_and_two_different_stats_both_hold() {
     assert_eq!(out.consumed, 1);
     assert_eq!(stat(&mgr, ENGAGEMENT), 15, "+5 Engagement");
     assert_eq!(stat(&mgr, COORDINATION), 15, "the first buff still holds");
-    let buffs = &mgr.get_entity(ENTITY).unwrap().stat_buffs.buffs;
+    let buffs = &mgr.get_entity(ENTITY).unwrap().stat_buffs.entries;
     assert_eq!(buffs.len(), 2);
     assert!(buffs.iter().all(|b| b.duration_secs == 3600.0));
     teardown(&pool).await;

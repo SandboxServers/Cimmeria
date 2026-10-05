@@ -11,8 +11,10 @@ mod live_db {
     /// The highest reserved campaign spawn id: debug hub 400-404, black
     /// market 405-409, crafting
     /// 410-429, organizations 430-449, pets 450-469, bank 470-489, social
-    /// 490-499. Raise it with the seed's `setval` when a block is added.
-    const HIGHEST_RESERVED_SPAWN_ID: i64 = 499;
+    /// 490-499, Debug Area 13000-13799 (DA-02..DA-04, reserved by the
+    /// `spawnlist.sql` footer). Raise it with the seed's `setval` when a block
+    /// is added.
+    const HIGHEST_RESERVED_SPAWN_ID: i64 = 13799;
 
     #[tokio::test]
     async fn spawnlist_sequence_starts_past_every_reserved_spawn_id() {

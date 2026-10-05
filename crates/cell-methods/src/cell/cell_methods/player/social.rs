@@ -11,7 +11,7 @@ pub async fn dispatch(
     // Unused since ORG_CREATION left for the org plugin; kept so every
     // SGWPlayer sub-dispatcher has the same shape.
     _tx: &mpsc::Sender<CellToBaseMsg>,
-    _space_mgr: &mut SpaceManager,
+    space_mgr: &mut SpaceManager,
 ) -> bool {
     match method_index {
         // PET_INVOKE_ABILITY / PET_ABILITY_TOGGLE / PET_CHANGE_STANCE (88..=90)
@@ -44,6 +44,7 @@ pub async fn dispatch(
                 let challenge = i32::from_le_bytes([args[0], args[1], args[2], args[3]]);
                 tracing::info!(
                     entity_id,
+                    entity_name = space_mgr.entity_label(entity_id),
                     challenge,
                     "UNIMPLEMENTED: onClientChallengeResponse"
                 );
@@ -66,7 +67,11 @@ pub async fn dispatch(
         // regressed — the trade sub-range arm is missing or
         // mis-ordered.
         CANCEL_MOVIE => {
-            tracing::info!(entity_id, "UNIMPLEMENTED: cancelMovie");
+            tracing::info!(
+                entity_id,
+                entity_name = space_mgr.entity_label(entity_id),
+                "UNIMPLEMENTED: cancelMovie"
+            );
             true
         }
 

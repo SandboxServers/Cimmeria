@@ -19,6 +19,10 @@
 //! the on-hit effect would need `pulse_count > 1`, which re-fires `on_apply`
 //! and drains again every pulse. See `worknotes/AM-09.md`.
 //!
+//! Since ability mechanics AB-09c a hit also breaks the target's warmup and
+//! channels at the row's `InterruptChance` (25 %, DESIGN), resisted by its
+//! `interruptRes`: the script queues the request and combat resolves it.
+//!
 //! # Which targets are mechanical
 //!
 //! There is no mechanical flag on an entity, a template or a faction
@@ -28,6 +32,8 @@
 //! [`MECHANICAL_BODY_SETS`]. A player is never mechanical.
 
 use cimmeria_entity::stats::{FOCUS, HEALTH};
+
+use cimmeria_cell_world::cell::space_manager::EntityNames;
 
 use super::{EffectContext, EffectScript};
 
@@ -88,19 +94,26 @@ impl EffectScript for EmpDisrupt {
     fn on_apply(&self, ctx: &mut EffectContext) {
         let focus_damage = ctx.effect.param_i32("FocusDamage");
         let mech_damage = ctx.effect.param_i32("MechanicalHealthDamage");
-        let shooter_player_id = ctx
-            .space_mgr
-            .get_entity(ctx.source_id)
-            .and_then(|e| e.player_id);
+        // Snapshot the shooter before the target is borrowed for the hit:
+        // the rows below can't look anything up while it is. An EMP hit is
+        // rare, so naming it up front costs nothing that matters.
+        let shooter = ctx.space_mgr.player_identity(ctx.source_id);
+        let shooter_name = ctx.space_mgr.entity_names(ctx.source_id).entity_name;
 
         let Some(target) = ctx.space_mgr.get_entity_mut(ctx.target_id) else {
             tracing::debug!(
                 target: "ammo",
                 event = "ammo_emp_disrupt",
                 entity_id = ctx.source_id,
-                player_id = shooter_player_id,
+                entity_name = shooter_name,
+                account_id = shooter.account_id,
+            account_name = shooter.account_name,
+            player_id = shooter.player_id,
+            player_name = shooter.player_name,
                 target_entity_id = ctx.target_id,
+                target_entity_name = ctx.space_mgr.entity_label(ctx.target_id),
                 effect_id = ctx.effect.effect_id,
+                effect_name = cimmeria_names::book().effect(ctx.effect.effect_id),
                 reason = "target_missing",
                 "EMP round: target gone before the on-hit effect ran"
             );
@@ -128,10 +141,17 @@ impl EffectScript for EmpDisrupt {
             target: "ammo",
             event = "ammo_emp_disrupt",
             entity_id = ctx.source_id,
-            player_id = shooter_player_id,
+            entity_name = shooter_name,
+            account_id = shooter.account_id,
+            account_name = shooter.account_name,
+            player_id = shooter.player_id,
+            player_name = shooter.player_name,
             target_entity_id = ctx.target_id,
+            target_entity_name = EntityNames::of(target).entity_name,
             target_template_id = target.template_id,
+            target_template_name = cimmeria_cell_world::cell::effects::content_names::template_name(target.template_id),
             effect_id = ctx.effect.effect_id,
+            effect_name = cimmeria_names::book().effect(ctx.effect.effect_id),
             mechanical,
             focus_before = focus_cur,
             focus_drained,
@@ -139,6 +159,11 @@ impl EffectScript for EmpDisrupt {
             health_damage,
             "EMP round disrupted the target"
         );
+        // The disruption also breaks a cast, at the row's InterruptChance
+        // (ability mechanics AB-09c); combat rolls it against interruptRes.
+        if let Some(chance) = super::crowd_control::stated_interrupt_chance(ctx.effect) {
+            super::crowd_control::queue_interrupt(ctx, chance);
+        }
     }
 }
 
@@ -351,6 +376,8 @@ mod tests {
         );
         assert_eq!(effect.param_i32("FocusDamage"), FOCUS_DAMAGE);
         assert_eq!(effect.param_i32("MechanicalHealthDamage"), MECH_DAMAGE);
+        // AB-09c: a quarter of EMP hits break a cast (DESIGN).
+        assert_eq!(effect.param_i32("InterruptChance"), 25);
 
         let name: String =
             sqlx::query_scalar("SELECT name FROM resources.abilities WHERE ability_id = 1445")

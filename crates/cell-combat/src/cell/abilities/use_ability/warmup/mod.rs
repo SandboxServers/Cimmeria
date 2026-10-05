@@ -36,7 +36,8 @@ use crate::cell::messages::CellToBaseMsg;
 use crate::cell::space_manager::SpaceManager;
 use crate::mercury::game_clock;
 
-use super::super::timer_update::send_timer_update;
+use super::super::timer_update::send_timer_update_ctx;
+use super::super::wire_ledger::WireCtx;
 use super::sequence::{play_ability_sequence, AbilityPhase, PhaseSequence};
 
 pub use interrupt::interrupt_unlearned_cast;
@@ -125,9 +126,13 @@ pub(crate) fn attach_ground_point(
 pub(super) struct WarmupStart {
     pub ability_id: i32,
     pub target_id: i32,
+    /// The client's target; differs from `target_id` for a beneficial cast.
+    pub wire_target_id: i32,
     pub effect_seq: i32,
     pub warmup_secs: f32,
     pub event_set_id: Option<i32>,
+    /// When the cell received the press (`abilities_press_to_fire_ms`).
+    pub received_at: std::time::Instant,
 }
 
 /// Start a committed cast's warmup: park it on the caster, play
@@ -147,21 +152,26 @@ pub(super) async fn begin_warmup(
     let WarmupStart {
         ability_id,
         target_id,
+        wire_target_id,
         effect_seq,
         warmup_secs,
         event_set_id,
+        received_at,
     } = start;
 
     let Some(caster) = space_mgr.get_entity_mut(entity_id) else {
         return;
     };
     let is_player = caster.is_player;
+    let who = caster.identity();
     let weapon_instance = active_weapon_instance(caster);
     caster.pending_cast = Some(PendingCast {
         ability_id,
         target_id,
+        wire_target_id,
         ground: None,
         effect_seq,
+        received_at,
         fire_at: std::time::Instant::now() + std::time::Duration::from_secs_f32(warmup_secs),
         warmup_secs,
         anchor: caster.position,
@@ -173,9 +183,18 @@ pub(super) async fn begin_warmup(
     tracing::debug!(
         target: "abilities",
         event = "warmup_started",
+        stage = "warmup",
+        account_id = who.account_id,
+        account_name = who.account_name,
+        player_id = who.player_id,
+        player_name = who.player_name,
         entity_id,
+        entity_name = space_mgr.entity_label(entity_id),
+        cast_id = effect_seq, // nt:id-only per-cast sequence number, no name exists
         ability_id,
+        ability_name = cimmeria_names::book().ability(ability_id),
         target_id,
+        target_name = space_mgr.entity_label(target_id as u32),
         warmup_secs,
         "ability warmup started; the cast fires when it expires"
     );
@@ -206,6 +225,10 @@ pub(super) async fn begin_warmup(
             // Absolute, on the client's game clock, like the cooldown timer.
             game_clock::game_time_secs() + warmup_secs,
         );
-        send_timer_update(entity_id, timer_args, tx, space_mgr).await;
+        let ctx = WireCtx::new("ability_warmup")
+            .cast(Some(effect_seq))
+            .ability(ability_id)
+            .reason("warmup_start");
+        send_timer_update_ctx(entity_id, timer_args, ctx, tx, space_mgr).await;
     }
 }

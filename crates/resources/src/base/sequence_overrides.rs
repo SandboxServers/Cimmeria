@@ -47,6 +47,35 @@ pub struct SequenceOverride {
 const ARMORY_RING_RIG: &str =
     "Castle_Cellblock-fffeffff.Main_Sequence.Prefabs.GLB-RingTransporterBase_TC00_Pf0_Seq_0";
 
+/// The eight ring rigs client patch `010-debug-area-rings` clones into
+/// `Ihpet_Crater_Light-fff80002.umap` for the Debug Area (world 1300, DA-08),
+/// in station order: Compound, Faction yard, AI slope, Arena rim, Arena pit,
+/// Gallery west, Gallery east, Death yard. All eight are copies of region 3's
+/// rig, so each copy's root sequence took the next free instance number under
+/// `Main_Sequence.Prefabs`: the first has no suffix, the rest `_0` to `_6`.
+/// Seeded as event sets 13810-13817 in
+/// `db/resources/Events/Seed/debug_area_ring_events.sql`.
+pub const DEBUG_AREA_RING_RIGS: [&str; 8] = [
+    "Ihpet_Crater_Light-fff80002.Main_Sequence.Prefabs.GLB-RingTransporterBase_TC00_Pf0_Seq",
+    "Ihpet_Crater_Light-fff80002.Main_Sequence.Prefabs.GLB-RingTransporterBase_TC00_Pf0_Seq_0",
+    "Ihpet_Crater_Light-fff80002.Main_Sequence.Prefabs.GLB-RingTransporterBase_TC00_Pf0_Seq_1",
+    "Ihpet_Crater_Light-fff80002.Main_Sequence.Prefabs.GLB-RingTransporterBase_TC00_Pf0_Seq_2",
+    "Ihpet_Crater_Light-fff80002.Main_Sequence.Prefabs.GLB-RingTransporterBase_TC00_Pf0_Seq_3",
+    "Ihpet_Crater_Light-fff80002.Main_Sequence.Prefabs.GLB-RingTransporterBase_TC00_Pf0_Seq_4",
+    "Ihpet_Crater_Light-fff80002.Main_Sequence.Prefabs.GLB-RingTransporterBase_TC00_Pf0_Seq_5",
+    "Ihpet_Crater_Light-fff80002.Main_Sequence.Prefabs.GLB-RingTransporterBase_TC00_Pf0_Seq_6",
+];
+
+/// Teleport Out / Teleport In for Debug Area station `n`: ids `10189 + 2n` and
+/// `10190 + 2n`.
+const fn debug_area_ring(n: usize, event_id: u32) -> SequenceOverride {
+    SequenceOverride {
+        sequence_id: 10189 + 2 * n as u32 + (event_id - 8000),
+        event_id,
+        kismet_script_name: DEBUG_AREA_RING_RIGS[n],
+    }
+}
+
 /// All Cimmeria-introduced sequences. Adding one:
 ///
 ///   1. Add the row to `db/resources/Events/Seed/sequences.sql` so the server's
@@ -66,6 +95,22 @@ pub const SEQUENCE_OVERRIDES: &[SequenceOverride] = &[
         event_id: 8001,
         kismet_script_name: ARMORY_RING_RIG,
     },
+    debug_area_ring(0, 8000),
+    debug_area_ring(0, 8001),
+    debug_area_ring(1, 8000),
+    debug_area_ring(1, 8001),
+    debug_area_ring(2, 8000),
+    debug_area_ring(2, 8001),
+    debug_area_ring(3, 8000),
+    debug_area_ring(3, 8001),
+    debug_area_ring(4, 8000),
+    debug_area_ring(4, 8001),
+    debug_area_ring(5, 8000),
+    debug_area_ring(5, 8001),
+    debug_area_ring(6, 8000),
+    debug_area_ring(6, 8001),
+    debug_area_ring(7, 8000),
+    debug_area_ring(7, 8001),
 ];
 
 fn escape_xml_attr(text: &str) -> String {
@@ -167,5 +212,90 @@ mod tests {
             .map(|o| (o.sequence_id, o.event_id))
             .collect();
         assert_eq!(events, vec![(10187, 8000), (10188, 8001)]);
+    }
+
+    /// Every Debug Area rig is reachable from a client: one Teleport Out and
+    /// one Teleport In per station, at the ids
+    /// `db/resources/Events/Seed/debug_area_ring_events.sql` seeds. A rig
+    /// missing here never animates, because the client resolves the id only
+    /// through its own catalogue.
+    #[test]
+    fn each_debug_area_rig_has_teleport_out_and_in_at_its_seeded_ids() {
+        for (n, rig) in DEBUG_AREA_RING_RIGS.iter().enumerate() {
+            let events: Vec<(u32, u32)> = SEQUENCE_OVERRIDES
+                .iter()
+                .filter(|o| o.kismet_script_name == *rig)
+                .map(|o| (o.sequence_id, o.event_id))
+                .collect();
+            let out = 10189 + 2 * n as u32;
+            assert_eq!(
+                events,
+                vec![(out, 8000), (out + 1, 8001)],
+                "station {n}: {rig}"
+            );
+        }
+    }
+
+    /// The eight copies have eight object paths. Two stations sharing one
+    /// path would make the second rig unreachable and fire the first.
+    #[test]
+    fn debug_area_rig_paths_are_distinct_and_in_the_patched_chunk() {
+        let mut paths = DEBUG_AREA_RING_RIGS.to_vec();
+        assert!(paths
+            .iter()
+            .all(|p| p.starts_with("Ihpet_Crater_Light-fff80002.Main_Sequence.Prefabs.")));
+        paths.sort_unstable();
+        paths.dedup();
+        assert_eq!(paths.len(), 8);
+    }
+
+    /// `(sequence_id, event_id, kismet_script_name)` from every
+    /// `INSERT INTO sequences` row of a seed file.
+    fn seeded_sequences(rel: &str) -> Vec<(u32, u32, String)> {
+        let path = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("../../db/resources/Events/Seed")
+            .join(rel);
+        std::fs::read_to_string(&path)
+            .unwrap_or_else(|e| panic!("{}: {e}", path.display()))
+            .lines()
+            .filter(|l| l.starts_with("INSERT INTO sequences ("))
+            .map(|l| {
+                let v = &l[l.find("VALUES (").unwrap() + 8..l.rfind(");").unwrap()];
+                let mut f = v.splitn(3, ", ");
+                let id = f.next().unwrap().parse().unwrap();
+                let event = f.next().unwrap().parse().unwrap();
+                (id, event, f.next().unwrap().trim_matches('\'').to_string())
+            })
+            .collect()
+    }
+
+    /// The client plays what `SEQUENCE_OVERRIDES` says; the server's event
+    /// sets resolve through the seeded `sequences` rows. Each override must
+    /// match its seed row exactly, or the server would fire one id while the
+    /// client plays another rig (a swapped pair passes every other test).
+    #[test]
+    fn every_override_matches_its_seeded_sequence_row() {
+        let mut seeded = seeded_sequences("sequences.sql");
+        seeded.extend(seeded_sequences("debug_area_ring_events.sql"));
+        for ov in SEQUENCE_OVERRIDES {
+            let rows: Vec<_> = seeded.iter().filter(|r| r.0 == ov.sequence_id).collect();
+            assert_eq!(
+                rows,
+                vec![&(
+                    ov.sequence_id,
+                    ov.event_id,
+                    ov.kismet_script_name.to_string()
+                )],
+                "sequence {} must be seeded once, as the override says",
+                ov.sequence_id
+            );
+        }
+        // And the Debug Area seed holds nothing the overrides do not deliver.
+        for (id, _, path) in seeded_sequences("debug_area_ring_events.sql") {
+            assert!(
+                SEQUENCE_OVERRIDES.iter().any(|o| o.sequence_id == id),
+                "seeded sequence {id} ({path}) never reaches a client"
+            );
+        }
     }
 }

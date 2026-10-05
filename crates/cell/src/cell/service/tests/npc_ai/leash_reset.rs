@@ -183,6 +183,45 @@ async fn target_out_of_aoi_for_the_grace_period_is_lost() {
     assert!(mgr.get_entity(PLAYER).unwrap().threatened_mobs.is_empty());
 }
 
+/// **Review guard (#1244, finding 5).** One pass drops a live player lost
+/// past the grace period (the top threat) and then a corpse lower on the
+/// list. The leash must say `target_out_of_aoi`, not the corpse's
+/// `target_dead`: since DA-F2 a `target_dead` leash does not count toward
+/// the aggro/leash loop, so a later corpse would hide a real chase given up.
+/// Fails if `select_target` labels the leash with the last drop.
+#[tokio::test]
+async fn a_lost_live_target_outranks_a_corpse_in_the_leash_trigger() {
+    const CORPSE: u32 = 102;
+    let mut mgr = fight_fixture([0.0; 3], [150.0, 0.0, 0.0]);
+    mgr.create_entity(CORPSE, "Castle", [5.0, 0.0, 0.0], [0.0; 3])
+        .unwrap();
+    if let Some(c) = mgr.get_entity_mut(CORPSE) {
+        if let Some(h) = c.stats.get_mut(HEALTH) {
+            h.update(0, 0, 100);
+        }
+    }
+    let npc = mgr.get_entity_mut(NPC).unwrap();
+    npc.threat_list.insert(PLAYER, 10.0);
+    npc.threat_list.insert(CORPSE, 1.0);
+    npc.leash.target_lost_since = Some(Instant::now() - Duration::from_secs(6));
+    let logs = LogCapture::install();
+
+    ai_tick(&mut mgr).await;
+
+    assert_eq!(mgr.get_entity(NPC).unwrap().ai_state(), AiState::Leashing);
+    let enters: Vec<_> = logs
+        .all()
+        .into_iter()
+        .filter(|c| c.target == "npc_ai.leash" && c.has_field("event", "enter"))
+        .collect();
+    assert_eq!(enters.len(), 1, "{:#?}", logs.all());
+    assert!(
+        enters[0].has_field("trigger", "target_out_of_aoi"),
+        "{:?}",
+        enters[0]
+    );
+}
+
 /// Snap fallback: no navmesh means no route home, so the leash tick snaps
 /// the NPC to spawn, heals it and goes Idle under `leash_snap_fallback`,
 /// with no route left behind.

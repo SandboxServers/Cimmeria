@@ -116,7 +116,7 @@ async fn live_db_grant_into_vault_is_refused() {
         ("account_id", ACCOUNT_ID.to_string()),
         ("player_id", PLAYER_ID.to_string()),
         ("entity_id", ENTITY_ID.to_string()),
-        ("type_id", type_id.to_string()),
+        ("item_type_id", type_id.to_string()),
         ("quantity", "1".to_string()),
         ("target_container_id", "17".to_string()),
     ] {
@@ -163,7 +163,7 @@ async fn grant_refusal_logs_account_lookup_failed_when_the_database_is_down() {
         ("event", "grant_rejected".to_string()),
         ("player_id", PLAYER_ID.to_string()),
         ("entity_id", ENTITY_ID.to_string()),
-        ("type_id", "4242".to_string()),
+        ("item_type_id", "4242".to_string()),
         ("target_container_id", "17".to_string()),
     ] {
         assert_eq!(event.fields.get(key), Some(&value), "field `{key}`");

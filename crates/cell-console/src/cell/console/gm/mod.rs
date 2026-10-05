@@ -32,16 +32,29 @@
 //!   `/gmsetfly`, `/gmsetghost`).
 //! - [`shout`] — `sendGMShout` GM broadcast (backs `/gmshout`; `.announce`
 //!   calls the same [`shout::broadcast`]).
+//! - [`abilities`] — the GM's own ability set: give one, give the whole
+//!   tree, reset to the starters (AB-N2).
+//! - [`god_mode`] — `gmSetGodMode`, the damage-seam flag (AB-N2).
+//! - [`mob_ability_set`] — `gmSetMobAbilitySet` on the selected mob (AB-N2).
+//! - [`command_log`] — the one `gm_command` row each AB-N2 and AB-N1
+//!   command writes.
+//! - [`combat_debug`] — the native combat-debug toggles 169-172 and 176
+//!   (AB-N1); the lines come from `cimmeria_cell_world::cell::combat_debug`.
 //!
 //! The full 117-method inventory + handler-status map (DONE/REUSE/ADAPT/NEW)
 //! lives in `docs/protocol/cell-method-dispatch-table.md`; the ADAPT roadmap
 //! is in `docs/architecture/gm-cell-method-adapt-plan.md`.
 
+mod abilities;
+mod combat_debug;
+mod command_log;
 pub mod feedback;
 mod give;
 pub(crate) mod give_ammo;
 mod give_training_points;
+mod god_mode;
 mod missions;
+mod mob_ability_set;
 mod organizations;
 mod physics;
 mod query;
@@ -55,7 +68,7 @@ mod world;
 use tokio::sync::mpsc;
 
 use crate::cell::messages::CellToBaseMsg;
-use crate::cell::space_manager::SpaceManager;
+use crate::cell::space_manager::{EntityNames, SpaceManager};
 
 // ── Flattened SGWGmPlayer cell-method indices ────────────────────────────────
 //
@@ -94,6 +107,17 @@ pub const GM_GIVE_CASH: u16 = 134;
 /// `ItemID` resolves to INT32 (`entities/defs/alias.xml`).
 pub const GM_REMOVE_ITEM: u16 = 135;
 
+// -- Abilities (136, 153, 154) -----------------------------------------------
+/// `gmGiveAbility(INT32 aAbilityID)` — def line 202. Offset 27. Grants one
+/// ability to the caller without a training point (AB-N2).
+pub const GM_GIVE_ABILITY: u16 = 136;
+/// `gmResetAbilities()` — def line 293. Offset 44. The caller's abilities
+/// back to the archetype starters, spend refunded (AB-N2).
+pub const GM_RESET_ABILITIES: u16 = 153;
+/// `gmGiveAllAbilities()` — def line 296. Offset 45. Every ability in the
+/// caller's archetype tree (AB-N2).
+pub const GM_GIVE_ALL_ABILITIES: u16 = 154;
+
 // -- Training points (137) ---------------------------------------------------
 /// `gmGiveTrainingPoints(INT32 aNumTrainingPoints)` — def line 207. Offset 28.
 /// Grants ability-tree training points to the caller. Routes through
@@ -113,6 +137,11 @@ pub const GM_GIVE_EXPERTISE: u16 = 139;
 /// `cimmeria-base-crafting`'s `handlers::handle_grant_applied_science`.
 pub const GM_GIVE_APPLIED_SCIENCE_POINTS: u16 = 140;
 
+// -- God mode (142) -------------------------------------------------------------
+/// `gmSetGodMode(UINT8 bTurnOn)` — def line 236. Offset 33. The caller takes
+/// no Health or Focus damage while on (AB-N2).
+pub const GM_SET_GOD_MODE: u16 = 142;
+
 // -- Set health / focus (147–150) ---------------------------------------------
 /// `gmSetHealth(INT32 Amount, INT64 TargetId)` — def line 259. Offset 38.
 pub const GM_SET_HEALTH: u16 = 147;
@@ -127,6 +156,11 @@ pub const GM_SET_FOCUS_MAX: u16 = 150;
 /// `gmSetTarget(WSTRING aNameOrID)` — def line 302. Offset 47. Numeric-id form
 /// only (name resolution is not wired into the cell).
 pub const GM_SET_TARGET: u16 = 156;
+
+// -- Mob ability set (158) ------------------------------------------------------
+/// `gmSetMobAbilitySet(INT32 aAbilitySetId)` — def line 318. Offset 49. Swaps
+/// the selected mob onto an NPC ability set (AB-N2).
+pub const GM_SET_MOB_ABILITY_SET: u16 = 158;
 
 // -- Travel (159, 162, 163) ---------------------------------------------------
 /// `gmDHD(INT8 aGateAddress)` — def line 325. Offset 50. Dials a stargate.
@@ -187,6 +221,21 @@ pub const GM_RESPAWN: u16 = 189;
 /// `gmKillTarget(INT64 TargetId)` — def line 482. Offset 81. NPC-only.
 pub const GM_KILL_TARGET: u16 = 190;
 
+// -- Combat debug (169-172, 176; AB-N1) ---------------------------------------
+/// `gmDebugAbility(INT32 aAbilityId)` — def line 378. Offset 60. Toggles the
+/// ability in the caller's `debugAbilityList`; 0 clears the list.
+pub const GM_DEBUG_ABILITY: u16 = 169;
+/// `gmDebugCombat()` — def line 383. Offset 61. Toggles combat debug.
+pub const GM_DEBUG_COMBAT: u16 = 170;
+/// `gmDebugCombatVerbose()` — def line 387. Offset 62. Toggles verbose
+/// combat debug.
+pub const GM_DEBUG_COMBAT_VERBOSE: u16 = 171;
+/// `gmDebugHeal()` — def line 391. Offset 63. Toggles heal debug.
+pub const GM_DEBUG_HEAL: u16 = 172;
+/// `gmDebugAbilityOnMob(INT32 AbilityID)` — def line 408. Offset 67. The
+/// selected mob's casts of that ability (0: all) print to the caller.
+pub const GM_DEBUG_ABILITY_ON_MOB: u16 = 176;
+
 // -- Debug (180) --------------------------------------------------------------
 /// `gmDebugMobData(INT32 aSpaceID, INT32 target)` — def line 427. Offset 71.
 /// Dumps a mob's debug data via feedback.
@@ -242,6 +291,23 @@ pub async fn dispatch(
         GM_GIVE_EXPERTISE => give::handle_give_expertise(entity_id, args, tx, space_mgr).await,
         GM_GIVE_APPLIED_SCIENCE_POINTS => {
             give::handle_give_applied_science(entity_id, args, tx, space_mgr).await
+        }
+        // -- abilities (AB-N2) --
+        GM_GIVE_ABILITY => abilities::handle_give_ability(entity_id, args, tx, space_mgr).await,
+        GM_RESET_ABILITIES => abilities::handle_reset_abilities(entity_id, tx, space_mgr).await,
+        GM_GIVE_ALL_ABILITIES => {
+            abilities::handle_give_all_abilities(entity_id, tx, space_mgr).await
+        }
+        GM_SET_GOD_MODE => god_mode::handle_set_god_mode(entity_id, args, tx, space_mgr).await,
+        GM_SET_MOB_ABILITY_SET => {
+            mob_ability_set::handle_set_mob_ability_set(entity_id, args, tx, space_mgr).await
+        }
+        // -- combat debug (AB-N1) --
+        GM_DEBUG_COMBAT | GM_DEBUG_COMBAT_VERBOSE | GM_DEBUG_HEAL => {
+            combat_debug::handle_toggle(entity_id, method_index, tx, space_mgr).await
+        }
+        GM_DEBUG_ABILITY | GM_DEBUG_ABILITY_ON_MOB => {
+            combat_debug::handle_ability_toggle(entity_id, method_index, args, tx, space_mgr).await
         }
         // -- stats --
         GM_SET_HEALTH => stats::handle_set_health(entity_id, args, false, tx, space_mgr).await,
@@ -345,7 +411,8 @@ pub(super) fn resolve_self_or_target(
         Err(_) => {
             tracing::warn!(
                 entity_id = caller_id,
-                target,
+                entity_name = space_mgr.entity_label(caller_id),
+                target_raw = target,
                 cmd,
                 "GM cmd: target id out of u32 range"
             );
@@ -358,7 +425,9 @@ pub(super) fn resolve_self_or_target(
         Some(t) => {
             tracing::warn!(
                 entity_id = caller_id,
-                target_eid,
+                entity_name = space_mgr.entity_label(caller_id),
+                target_entity_id = target_eid,
+                target_entity_name = EntityNames::of(t).entity_name,
                 target_space = t.space_id.0,
                 caller_space = ?caller_space,
                 cmd,
@@ -369,7 +438,8 @@ pub(super) fn resolve_self_or_target(
         None => {
             tracing::warn!(
                 entity_id = caller_id,
-                target_eid,
+                entity_name = space_mgr.entity_label(caller_id),
+                target_entity_id = target_eid, // nt:id-only the target is gone, so it has no name
                 cmd,
                 "GM cmd: target not found"
             );

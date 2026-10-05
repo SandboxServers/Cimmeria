@@ -7,6 +7,7 @@ use crate::base::feedback::FeedbackCtx;
 use crate::base::gm_broadcast::{broadcast_to_online_players, GmBroadcastActor};
 use crate::base::mutes::gm::{apply_gm_mute, apply_gm_unmute, GmActor, GmMuteCtx};
 use crate::base::mutes::mute_table;
+use crate::base::session_identity;
 use crate::cell::messages::ChatCellToBase;
 
 use super::DispatchCtx;
@@ -25,10 +26,14 @@ pub(super) async fn route(msg: ChatCellToBase, ctx: &DispatchCtx<'_>) {
                 transport: ctx.transport,
                 connected: ctx.connected,
             };
+            let gm =
+                session_identity::identity_for_entity(ctx.connected, ctx.entity_to_addr, entity_id);
             let actor = GmBroadcastActor {
                 entity_id,
                 player_id,
                 account_id,
+                player_name: gm.player_name,
+                account_name: gm.account_name,
             };
             let report = broadcast_to_online_players(&feedback, actor, &args).await;
             // The cell logged `chat.gm_broadcast` (actor, scope, text) when
@@ -38,8 +43,11 @@ pub(super) async fn route(msg: ChatCellToBase, ctx: &DispatchCtx<'_>) {
                 target: "chat",
                 event = "chat.gm_broadcast_delivered",
                 entity_id,
+                entity_name = gm.player_name,
                 player_id,
+                player_name = gm.player_name,
                 account_id,
+                account_name = gm.account_name,
                 source,
                 scope = "global",
                 delivered = report.delivered,

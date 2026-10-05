@@ -1,8 +1,8 @@
-//! Surfaces A, B, C and H: ClientMethod indices (server to client).
+//! Surfaces A, B and C: ClientMethod indices (server to client).
 
 use std::collections::BTreeMap;
 
-use super::source::{block, block_consts, file_consts, read, rust_files_under};
+use super::source::{block_consts, file_consts, rust_files_under};
 use super::{assert_no_mismatches, flatten, mismatches, Section};
 
 /// A: `mercury::method_idx`. `pub use` re-exports carry no literal and are
@@ -34,9 +34,6 @@ const LOCAL_COPY_ALIASES: &[(&str, &str)] = &[
     ("PVP_FLAG", "onEntityProperty"),
     ("DUEL_CLEAR", "onDuelEntitiesClear"),
 ];
-
-/// H: the wire-log name table (157 literal arms, sourced from the doc).
-const OUTBOUND_NAMES: &str = "wire-log/src/wire_log/client_names.rs";
 
 #[test]
 fn method_idx_constants_match_the_flattened_client_methods() {
@@ -115,45 +112,4 @@ fn local_client_method_copies_match_the_flattened_client_methods() {
         found.extend(mismatches(&consts, &player, 0, LOCAL_COPY_ALIASES, ""));
     }
     assert_no_mismatches("local ClientMethod copies", found);
-}
-
-#[test]
-fn outbound_method_names_are_the_flattened_client_methods() {
-    let player = flatten("SGWPlayer", Section::Client);
-    let text = read(OUTBOUND_NAMES);
-    let body = block(&text, "pub fn outbound_method_name");
-    let mut arms = Vec::new();
-    let mut has_unknown = false;
-    for line in body.lines() {
-        let Some((pattern, name)) = line.trim().split_once("=>") else {
-            continue;
-        };
-        let name = name.trim().trim_end_matches(',').trim_matches('"');
-        match pattern.trim() {
-            "_" => has_unknown = name == "unknown",
-            idx => arms.push((
-                idx.parse::<usize>()
-                    .unwrap_or_else(|_| panic!("arm `{}` is not a literal", line.trim())),
-                name.to_string(),
-            )),
-        }
-    }
-    assert!(
-        has_unknown,
-        "outbound_method_name has no `_ => \"unknown\"` arm"
-    );
-    let expected: Vec<(usize, String)> = player.iter().cloned().enumerate().collect();
-    let wrong: Vec<String> = expected
-        .iter()
-        .zip(arms.iter().map(Some).chain(std::iter::repeat(None)))
-        .filter(|(e, a)| Some(*e) != *a)
-        .map(|((i, want), got)| format!("{i}: def {want}, table {got:?}"))
-        .collect();
-    assert!(
-        wrong.is_empty() && arms.len() == player.len(),
-        "{OUTBOUND_NAMES} disagrees with entities/defs ({} arms, {} methods):\n  {}",
-        arms.len(),
-        player.len(),
-        wrong.join("\n  ")
-    );
 }

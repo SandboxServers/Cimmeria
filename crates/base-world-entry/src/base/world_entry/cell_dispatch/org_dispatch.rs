@@ -35,6 +35,7 @@ use cimmeria_wire::cell::cell_methods::organization::{decode_org_cell_method, Or
 
 use crate::cell::messages::OrgCellToBase;
 
+use super::super::super::session_identity;
 use super::DispatchCtx;
 
 fn org_ctx<'a>(ctx: &DispatchCtx<'a>) -> OrgCtx<'a> {
@@ -147,12 +148,17 @@ async fn forward(
 ) {
     // Range first, before a single byte is decoded.
     if !FORWARDABLE.contains(&method_index) {
+        let who =
+            session_identity::identity_for_entity(ctx.connected, ctx.entity_to_addr, entity_id);
         tracing::warn!(
             target: "org",
             event = "org.forward_rejected",
             player_id,
+            player_name = who.player_name,
             entity_id,
+            entity_name = who.player_name,
             method_index,
+            method_name = cimmeria_wire::names::player_cell_method(method_index),
             reason = "method_out_of_range",
             "forwarded organization cell call outside 8..=17"
         );
@@ -161,12 +167,17 @@ async fn forward(
     let call = match decode_org_cell_method(method_index, args) {
         Ok(call) => call,
         Err(e) => {
+            let who =
+                session_identity::identity_for_entity(ctx.connected, ctx.entity_to_addr, entity_id);
             tracing::warn!(
                 target: "org",
                 event = "org.forward_rejected",
                 player_id,
+                player_name = who.player_name,
                 entity_id,
+                entity_name = who.player_name,
                 method_index,
+                method_name = cimmeria_wire::names::player_cell_method(method_index),
                 reason = e.reason(),
                 error = %e,
                 "forwarded organization cell call did not decode"
@@ -178,13 +189,18 @@ async fn forward(
     // The cell named the actor from its own entity; confirm it is still
     // this session's character in the world.
     let Some(player) = resolve_actor(&octx, player_id, entity_id) else {
+        let who =
+            session_identity::identity_for_entity(ctx.connected, ctx.entity_to_addr, entity_id);
         tracing::warn!(
             target: "org",
             event = "org.actor_mismatch",
             player_id,
+            player_name = who.player_name,
             entity_id,
+            entity_name = who.player_name,
             method_index,
-            org_id = call.org_id(),
+            method_name = cimmeria_wire::names::player_cell_method(method_index),
+            org_id = call.org_id(), // nt:id-only org names need a DB read; the org handlers' lines pair it
             reason = "actor_mismatch",
             "forwarded organization call no longer matches a session in the world"
         );
@@ -225,27 +241,39 @@ async fn forward(
         }
         OrgCellCall::StrikeTeamResponse { .. } | OrgCellCall::PvpLeaveResponse { .. } => {
             // The cell refuses both as unsolicited and never forwards them.
+            let who =
+                session_identity::identity_for_entity(ctx.connected, ctx.entity_to_addr, entity_id);
             tracing::warn!(
                 target: "org",
                 event = "org.forward_rejected",
                 account_id = player.account_id,
+                account_name = who.account_name,
                 player_id,
+                player_name = who.player_name,
                 entity_id,
+                entity_name = who.player_name,
                 method_index,
+                method_name = cimmeria_wire::names::player_cell_method(method_index),
                 reason = "unsolicited",
                 "forwarded strike-team / PvP-leave response: nothing ever asked"
             );
         }
         call => {
+            let who =
+                session_identity::identity_for_entity(ctx.connected, ctx.entity_to_addr, entity_id);
             tracing::debug!(
                 target: "org",
                 event = "org.forward_unimplemented",
                 account_id = player.account_id,
+                account_name = who.account_name,
                 player_id,
+                player_name = who.player_name,
                 entity_id,
+                entity_name = who.player_name,
                 method_index,
+                method_name = cimmeria_wire::names::player_cell_method(method_index),
                 method = call.method_name(),
-                org_id = call.org_id(),
+                org_id = call.org_id(), // nt:id-only org names need a DB read; the org handlers' lines pair it
                 "organization cell method has no base handler yet; answered with feedback"
             );
             not_available(&octx, entity_id, call.org_id().unwrap_or(0)).await;

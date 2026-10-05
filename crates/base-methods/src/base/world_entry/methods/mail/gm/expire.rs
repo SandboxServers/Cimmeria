@@ -5,6 +5,7 @@ use sqlx::PgPool;
 
 use super::super::claim::unix_now;
 use super::super::expiry::{expire_and_tell, ExpiryPath, SweepSource, SweepSummary};
+use super::super::notify::online_identity;
 use super::super::Caller;
 use super::feedback;
 use crate::base::feedback::FeedbackCtx;
@@ -83,15 +84,20 @@ pub(super) async fn gm_expire(
         &mut summary,
     )
     .await;
+    let who = caller.identity();
     tracing::info!(
         target: "mail",
         event = "mail.gm_action",
         action = "mail_expire",
         entity_id = actor.entity_id,
+        entity_name = who.player_name,
         account_id = actor.account_id,
+        account_name = who.account_name,
         player_id = actor.player_id,
+        player_name = who.player_name,
         subject_player_id = owner,
-        mail_id,
+        subject_player_name = online_identity(caller.connected, owner).player_name,
+        mail_id, // nt:id-only mail row, its subject is player text kept out of logs
         expires_at = now,
         path = expired.as_ref().map(|e| e.path.name()),
         "GM .mail_expire made a mail due",
@@ -123,6 +129,7 @@ async fn refuse_expire(
     error: Option<sqlx::Error>,
 ) {
     let error = error.map(|e| e.to_string());
+    let who = caller.identity();
     if reason == "db_error" {
         tracing::error!(
             target: "mail",
@@ -130,9 +137,12 @@ async fn refuse_expire(
             command = "mail_expire",
             reason,
             entity_id = actor.entity_id,
+            entity_name = who.player_name,
             account_id = actor.account_id,
+            account_name = who.account_name,
             player_id = actor.player_id,
-            mail_id,
+            player_name = who.player_name,
+            mail_id, // nt:id-only mail row, its subject is player text kept out of logs
             error,
             "GM .mail_expire failed",
         );
@@ -143,9 +153,12 @@ async fn refuse_expire(
             command = "mail_expire",
             reason,
             entity_id = actor.entity_id,
+            entity_name = who.player_name,
             account_id = actor.account_id,
+            account_name = who.account_name,
             player_id = actor.player_id,
-            mail_id,
+            player_name = who.player_name,
+            mail_id, // nt:id-only mail row, its subject is player text kept out of logs
             "GM mail command refused",
         );
     }

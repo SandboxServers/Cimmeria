@@ -20,6 +20,7 @@ mod respawn_fork;
 mod respawn_pets;
 mod respawn_regions;
 mod respawn_resync;
+mod respawn_resync_wire_rows;
 mod respawn_target;
 
 /// Build a SpaceManager with one player at id=1 in the

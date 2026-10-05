@@ -33,7 +33,7 @@ use cimmeria_mercury::encryption::EncryptionVersion;
 use cimmeria_mercury::transport::Transport;
 
 use super::super::helpers::{drain_acks_and_seq, get_enc_version, shadow_register_reliable_send};
-use super::super::resources::ResourceCache;
+use super::super::resources::{category_name, ResourceCache};
 use super::super::ConnectedClientState;
 use super::decision::resync_pending_version;
 use super::registry::{self, DeferredAction, Miss, Next, SyncJob};
@@ -42,6 +42,7 @@ use crate::mercury::{
     build_resource_fragment, build_version_info, build_version_info_to_player, FRAG_FIRST,
     FRAG_FIRST_AND_LAST, FRAG_LAST, FRAG_MIDDLE,
 };
+use cimmeria_entity::cell_entity::PlayerIdentity;
 
 /// Everything the task needs from the session that started it.
 #[derive(Clone)]
@@ -89,7 +90,7 @@ pub(super) fn spawn(ctx: SyncContext, token: Arc<AtomicU32>) {
 }
 
 async fn run(ctx: SyncContext, token: Arc<AtomicU32>) {
-    let account_id = account_id(&ctx);
+    let who = session_who(&ctx);
     let mut current: Option<InProgress> = None;
     loop {
         // Wait for room before choosing what to send, so a miss that
@@ -99,8 +100,8 @@ async fn run(ctx: SyncContext, token: Arc<AtomicU32>) {
             Err(_) => Next::Gone,
         };
         let result = match step {
-            Next::Miss(miss) => serve_miss(&ctx, &token, miss, account_id).await,
-            Next::Start(job) => match start(&ctx, &token, job, account_id).await {
+            Next::Miss(miss) => serve_miss(&ctx, &token, miss, who).await,
+            Next::Start(job) => match start(&ctx, &token, job, who).await {
                 Ok(p) => {
                     current = Some(p);
                     Ok(())
@@ -113,7 +114,7 @@ async fn run(ctx: SyncContext, token: Arc<AtomicU32>) {
                     push_next_entry(&ctx, &token, p).await
                 } else {
                     let p = current.take().expect("checked above");
-                    finish(&ctx, &token, p, account_id).await
+                    finish(&ctx, &token, p, who).await
                 }
             }
             Next::Idle => return,
@@ -121,10 +122,10 @@ async fn run(ctx: SyncContext, token: Arc<AtomicU32>) {
         };
         if let Err(abandon) = result {
             if let Some(p) = &current {
-                warn_abandoned(&ctx, account_id, p, abandon);
+                warn_abandoned(&ctx, who, p, abandon);
             }
             for lost in registry::abandon(ctx.addr, &token) {
-                warn_never_started(&ctx, account_id, lost);
+                warn_never_started(&ctx, who, lost);
             }
             return;
         }
@@ -135,7 +136,7 @@ async fn start(
     ctx: &SyncContext,
     token: &Arc<AtomicU32>,
     job: SyncJob,
-    account_id: u32,
+    who: PlayerIdentity,
 ) -> Result<InProgress, Abandon> {
     let mut keys: Vec<u32> = ctx
         .cache
@@ -150,9 +151,11 @@ async fn start(
         .sum();
     tracing::info!(
         addr = %ctx.addr,
-        account_id,
+        account_id = who.account_id,
+        account_name = who.account_name,
         event = "cooked_data.sync_start",
         category_id = job.category_id,
+        category_name = category_name(job.category_id),
         client_version = job.client_version,
         server_version = job.server_version,
         entry_count = keys.len(),
@@ -199,16 +202,18 @@ async fn finish(
     ctx: &SyncContext,
     token: &Arc<AtomicU32>,
     mut p: InProgress,
-    account_id: u32,
+    who: PlayerIdentity,
 ) -> Result<(), Abandon> {
     send_version_info(ctx, token, p.job.category_id, p.job.server_version, false).await?;
     p.packets += 1;
     tracing::info!(
         addr = %ctx.addr,
-        account_id,
+        account_id = who.account_id,
+        account_name = who.account_name,
         event = "cooked_data.sync_finish",
         outcome = "complete",
         category_id = p.job.category_id,
+        category_name = category_name(p.job.category_id),
         client_version = p.job.client_version,
         server_version = p.job.server_version,
         entry_count = p.entries,
@@ -218,17 +223,18 @@ async fn finish(
         "Cooked-data resync finished"
     );
     cimmeria_observability::counter!("cooked_data_resyncs_total", "outcome" => "complete");
-    release(ctx, account_id, registry::finish_job(ctx.addr, token));
+    release(ctx, who, registry::finish_job(ctx.addr, token));
     Ok(())
 }
 
-fn release(ctx: &SyncContext, account_id: u32, deferred: Vec<DeferredAction>) {
+fn release(ctx: &SyncContext, who: PlayerIdentity, deferred: Vec<DeferredAction>) {
     if deferred.is_empty() {
         return;
     }
     tracing::info!(
         addr = %ctx.addr,
-        account_id,
+        account_id = who.account_id,
+        account_name = who.account_name,
         event = "cooked_data.world_entry_released",
         held_actions = deferred.len(),
         "Held cooked-data categories resynced: releasing world entry"
@@ -242,7 +248,7 @@ async fn serve_miss(
     ctx: &SyncContext,
     token: &Arc<AtomicU32>,
     miss: Miss,
-    account_id: u32,
+    who: PlayerIdentity,
 ) -> Result<(), Abandon> {
     // Validated when queued; the cache is immutable.
     let Some(xml) = ctx.cache.get(miss.category_id, miss.key) else {
@@ -251,9 +257,11 @@ async fn serve_miss(
     let packets = send_entry(ctx, token, miss.category_id, miss.key, xml).await?;
     tracing::info!(
         addr = %ctx.addr,
-        account_id,
+        account_id = who.account_id,
+        account_name = who.account_name,
         event = "cooked_data.miss_served",
         category_id = miss.category_id,
+        category_name = category_name(miss.category_id),
         key = miss.key,
         bytes = xml.len(),
         packets,
@@ -284,7 +292,9 @@ async fn send_entry(
         tracing::error!(
             addr = %ctx.addr,
             category_id,
+            category_name = category_name(category_id),
             element_id,
+            element_name = super::super::cooked_data::element_name(category_id, element_id),
             bytes = xml.len(),
             reason = "entry_exceeds_256_fragments",
             "Cooked-data entry too large for one transfer: skipped"
@@ -432,22 +442,23 @@ fn alloc_data_id(ctx: &SyncContext) -> Option<u16> {
     Some(id)
 }
 
-fn account_id(ctx: &SyncContext) -> u32 {
-    ctx.connected
-        .lock()
-        .ok()
-        .and_then(|c| c.get(&ctx.addr).map(|s| s.account_id))
-        .unwrap_or(0)
+/// The session's account and its login name for the task's lines (Rules 5
+/// and 6), read once when the task starts. Both absent if the session has
+/// already gone.
+fn session_who(ctx: &SyncContext) -> PlayerIdentity {
+    super::super::session_identity::identity_for_addr(&ctx.connected, ctx.addr)
 }
 
-fn warn_abandoned(ctx: &SyncContext, account_id: u32, p: &InProgress, abandon: Abandon) {
+fn warn_abandoned(ctx: &SyncContext, who: PlayerIdentity, p: &InProgress, abandon: Abandon) {
     tracing::warn!(
         addr = %ctx.addr,
-        account_id,
+        account_id = who.account_id,
+        account_name = who.account_name,
         event = "cooked_data.sync_finish",
         outcome = "abandoned",
         reason = abandon.reason(),
         category_id = p.job.category_id,
+        category_name = category_name(p.job.category_id),
         client_version = p.job.client_version,
         server_version = p.job.server_version,
         entries_sent = p.entries,
@@ -461,14 +472,16 @@ fn warn_abandoned(ctx: &SyncContext, account_id: u32, p: &InProgress, abandon: A
     cimmeria_observability::counter!("cooked_data_resyncs_total", "outcome" => "abandoned");
 }
 
-fn warn_never_started(ctx: &SyncContext, account_id: u32, job: SyncJob) {
+fn warn_never_started(ctx: &SyncContext, who: PlayerIdentity, job: SyncJob) {
     tracing::warn!(
         addr = %ctx.addr,
-        account_id,
+        account_id = who.account_id,
+        account_name = who.account_name,
         event = "cooked_data.sync_finish",
         outcome = "abandoned",
         reason = "session_gone_before_start",
         category_id = job.category_id,
+        category_name = category_name(job.category_id),
         client_version = job.client_version,
         server_version = job.server_version,
         entries_sent = 0u32,

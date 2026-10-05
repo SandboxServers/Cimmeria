@@ -73,7 +73,7 @@ pub async fn handle_mail_gm(
         entity_to_addr,
     };
     let Some(pool) = db_pool.as_deref() else {
-        rejected(actor, msg.kind(), "no_db_pool");
+        rejected(&caller, actor, msg.kind(), "no_db_pool");
         feedback(&caller, "Mail is unavailable: the server has no database.").await;
         return;
     };
@@ -193,6 +193,8 @@ pub(super) async fn gm_send(
             if let Some(system) = &sent.system {
                 system.log_sent();
             }
+            let who = caller.identity();
+            let book = cimmeria_names::book();
             tracing::info!(
                 target: "mail",
                 event = "mail.gm_action",
@@ -201,15 +203,22 @@ pub(super) async fn gm_send(
                 // a currency-flow query tells GM minting from player mail.
                 minted = true,
                 entity_id = actor.entity_id,
+                entity_name = who.player_name,
                 account_id = actor.account_id,
+                account_name = who.account_name,
                 player_id = actor.player_id,
+                player_name = who.player_name,
                 subject_player_id = sent.recipient_id,
-                mail_id = sent.mail_id,
+                subject_player_name = sent.recipient_name.as_str(),
+                mail_id = sent.mail_id, // nt:id-only mail row, its subject is player text kept out of logs
                 cash = request.cash,
                 cod = request.cod,
-                type_id = request.item.map(|(t, _)| t),
+                item_type_id = request.item.map(|(t, _)| t),
+                item_name = request
+                    .item
+                    .and_then(|(t, _)| book.item(t)),
                 quantity = request.item.map(|(_, q)| q),
-                escrow_item_id = sent.escrow_item_id,
+                escrow_item_id = sent.escrow_item_id, // nt:id-only escrow copy of the item already named by item_name on this line
                 "GM .mail sent",
             );
             let fb = FeedbackCtx {
@@ -249,18 +258,26 @@ pub(super) async fn gm_send(
         Err(refusal) => {
             // Everything the GM asked for, so a refused mint can be read
             // back from SigNoz alone.
+            let who = caller.identity();
+            let book = cimmeria_names::book();
             tracing::warn!(
                 target: "mail",
                 event = "mail.gm_rejected",
                 command = "send",
                 reason = refusal.reason(),
                 entity_id = actor.entity_id,
+                entity_name = who.player_name,
                 account_id = actor.account_id,
+                account_name = who.account_name,
                 player_id = actor.player_id,
+                player_name = who.player_name,
                 to = request.to.as_deref(),
                 cash = request.cash,
                 cod = request.cod,
-                type_id = request.item.map(|(t, _)| t),
+                item_type_id = request.item.map(|(t, _)| t),
+                item_name = request
+                    .item
+                    .and_then(|(t, _)| book.item(t)),
                 quantity = request.item.map(|(_, q)| q),
                 error = %refusal.detail(),
                 "GM mail command refused",
@@ -375,25 +392,32 @@ async fn resolve_one(conn: &mut PgConnection, name: &str) -> Result<(i32, String
 }
 
 /// Log a refused GM mail command.
-fn rejected(actor: MailGmActor, kind: &'static str, reason: &'static str) {
+fn rejected(caller: &Caller<'_>, actor: MailGmActor, kind: &'static str, reason: &'static str) {
+    let who = caller.identity();
     tracing::warn!(
         target: "mail",
         event = "mail.gm_rejected",
         command = kind,
         reason,
         entity_id = actor.entity_id,
+        entity_name = who.player_name,
         account_id = actor.account_id,
+        account_name = who.account_name,
         player_id = actor.player_id,
+        player_name = who.player_name,
         "GM mail command refused",
     );
 }
 
 async fn feedback(caller: &Caller<'_>, text: &str) {
     let Some(addr) = caller.addr() else {
+        let who = caller.identity();
         tracing::debug!(
             target: "mail",
             entity_id = caller.entity_id,
+            entity_name = who.player_name,
             player_id = caller.player_id,
+            player_name = who.player_name,
             reason = "no_session",
             "GM mail feedback dropped: the GM has no client address",
         );

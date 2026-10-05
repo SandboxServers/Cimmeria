@@ -5,6 +5,7 @@
 //! `item_allows_container` (the container-placement gate the move/grant paths
 //! consult). Pure code movement.
 
+use cimmeria_entity::known_names;
 use std::sync::Arc;
 
 use sqlx::PgPool;
@@ -36,8 +37,10 @@ pub async fn item_allows_container(pool: &Arc<PgPool>, type_id: i32, container_i
         Ok(row) => row.flatten(),
         Err(e) => {
             tracing::error!(
-                type_id,
+                item_type_id = type_id,
+                item_name = cimmeria_names::book().item(type_id),
                 container_id,
+                container_name = cimmeria_names::book().container(container_id),
                 "item_allows_container query failed: {e}"
             );
             return false;
@@ -92,28 +95,39 @@ pub(super) async fn refuse_storage_grant(
         {
             Ok(id) => id,
             Err(e) => {
+                let player_label = known_names::player_name(player_id);
                 tracing::warn!(
                     target: "bank",
                     event = "grant_rejected",
                     player_id,
+                    player_name = player_label,
                     entity_id,
-                    type_id,
+                    entity_name = player_label,
+                    item_type_id = type_id,
+                    item_name = cimmeria_names::book().item(type_id),
                     target_container_id = container_id,
+                    target_container_name = cimmeria_names::book().container(container_id),
                     reason = "account_lookup_failed",
                     "grant_rejected: could not read the account id: {e}"
                 );
                 None
             }
         };
+    let player_label = known_names::player_name(player_id);
     tracing::warn!(
         target: "bank",
         event = "grant_rejected",
         account_id,
+        account_name = known_names::account_name(account_id),
         player_id,
+        player_name = player_label,
         entity_id,
-        type_id,
+        entity_name = player_label,
+        item_type_id = type_id,
+        item_name = cimmeria_names::book().item(type_id),
         quantity,
         target_container_id = container_id,
+        target_container_name = cimmeria_names::book().container(container_id),
         reason = "grant_into_storage_container",
         "grant_rejected: grants never write into the vaults or auction escrow"
     );

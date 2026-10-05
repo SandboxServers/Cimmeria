@@ -125,12 +125,7 @@ async fn refuse(p: Press<'_, '_>, method: &'static str, text: &str) {
         let Some(c) = clients.get_mut(&p.addr) else {
             return;
         };
-        let actor = RateActor {
-            addr: p.addr,
-            player_id: c.active_player_id,
-            account_id: c.account_id,
-            entity_id: c.player_entity_id,
-        };
+        let actor = RateActor::of(p.addr, c);
         let decision = if c.access_level >= CHAT_EXEMPT_ACCESS_LEVEL {
             RateDecision::Allowed
         } else {
@@ -152,8 +147,11 @@ async fn refuse(p: Press<'_, '_>, method: &'static str, text: &str) {
         event = "chat.method_unsupported",
         addr = %p.addr,
         player_id = actor.player_id,
+        player_name = actor.player_name,
         account_id = actor.account_id,
+        account_name = actor.account_name,
         entity_id = actor.entity_id,
+        entity_name = actor.player_name,
         method,
         payload_len = p.payload_len,
         reason = "not_implemented",

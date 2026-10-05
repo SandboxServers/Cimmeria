@@ -27,8 +27,9 @@ pub fn tree_info(
             target: "abilities",
             event = "tree_missing",
             reason = "archetype_has_no_tree",
-            player_id,
+            player_id, // nt:id-only the caller passes only the id: player load runs before a name is at hand
             archetype_id,
+            archetype_name = cimmeria_names::archetype_name(archetype_id),
             "Archetype has no ability-tree rows; sending an empty onAbilityTreeInfo"
         );
         return data;
@@ -44,9 +45,11 @@ pub fn tree_info(
                 target: "abilities",
                 event = "tree_node_dropped",
                 reason = "tree_index_out_of_range",
-                player_id,
+                player_id, // nt:id-only the caller passes only the id: player load runs before a name is at hand
                 archetype_id,
+                archetype_name = cimmeria_names::archetype_name(archetype_id),
                 ability_id = node.ability_id,
+                ability_name = cimmeria_names::book().ability(node.ability_id),
                 tree_index = node.tree_index,
                 "Ability-tree node outside the three onAbilityTreeInfo branches; dropped"
             ),

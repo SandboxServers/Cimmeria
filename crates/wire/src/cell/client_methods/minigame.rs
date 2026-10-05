@@ -26,3 +26,15 @@ pub const MINIGAME_CALL_RESULT: u16 = 62;
 pub const MINIGAME_CALL_ABORT: u16 = 63;
 /// Show NPC minigame contact card.
 pub const SHOW_MINIGAME_CONTACT: u16 = 64;
+
+/// The name of a `MinigameResult` code (C++ `MinigameResult`, the minigame
+/// server's `RESULT_*`), for log lines (NT-31). `None` for a code the
+/// server never sends.
+pub fn minigame_result_name(result_code: u8) -> Option<&'static str> {
+    match result_code {
+        0 => Some("canceled"),
+        1 => Some("victory"),
+        2 => Some("defeat"),
+        _ => None,
+    }
+}

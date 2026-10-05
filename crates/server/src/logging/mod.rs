@@ -18,6 +18,12 @@ use cimmeria_admin_api::ws::broadcast_layer::{BroadcastLayer, LogBuffer, LogEntr
 use crate::otel;
 
 #[cfg(test)]
+mod abilities_event_field_tests;
+#[cfg(test)]
+mod abilities_target_tests;
+#[cfg(test)]
+mod client_entity_names_tests;
+#[cfg(test)]
 mod client_index_tests;
 #[cfg(test)]
 mod deployables_target_tests;
@@ -30,6 +36,8 @@ mod pets_target_tests;
 mod stale_target_tests;
 #[cfg(test)]
 mod target_scan_tests;
+#[cfg(test)]
+mod unpaired_id_tests;
 
 use filters::{
     otel_client_log_filter, otel_network_log_filter, otel_server_log_filter, otel_trace_log_filter,

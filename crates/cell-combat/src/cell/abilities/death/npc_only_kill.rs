@@ -35,7 +35,9 @@ pub(super) fn log_npc_only_kill(space_mgr: &SpaceManager, target_eid: u32, attac
         target_tag = target.and_then(|t| t.tag.as_deref()).unwrap_or(""),
         target_faction = target.map(|t| t.faction),
         loot_table_id = target.and_then(|t| t.loot_table_id),
+        loot_table_name = cimmeria_cell_world::cell::effects::content_names::loot_table_name(target.and_then(|t| t.loot_table_id)),
         attacker_id,
+        attacker_name = space_mgr.entity_label(attacker_id),
         attacker_tag = killer.and_then(|k| k.tag.as_deref()).unwrap_or(""),
         attacker_faction = killer.map(|k| k.faction),
         "death: NPC-only kill -- no loot rolled, no XP, no mission credit"

@@ -4,7 +4,7 @@
 //! that is never the stock CellBlock's.
 
 use super::super::*;
-use cimmeria_wire::mercury::world_data::historical_cellblocks::HISTORICAL_CELLBLOCKS;
+use cimmeria_wire::mercury::world_data::historical_cellblocks::historical_cellblocks;
 
 fn entities_file(name: &str) -> String {
     let path = format!("{}/../../entities/{name}", env!("CARGO_MANIFEST_DIR"));
@@ -22,7 +22,7 @@ fn shipped_manager() -> SpaceManager {
 #[test]
 fn every_historical_cellblock_is_declared_instanced() {
     let mgr = shipped_manager();
-    for world in &HISTORICAL_CELLBLOCKS {
+    for world in historical_cellblocks() {
         assert!(
             mgr.is_world_instanced(world.world),
             "{} must be Instanced=\"true\" in spaces.xml",
@@ -46,7 +46,7 @@ fn every_historical_cellblock_is_declared_instanced() {
 fn no_historical_cellblock_is_a_startup_space() {
     let cell_spaces = entities_file("cell_spaces.xml");
     let mgr = shipped_manager();
-    for world in &HISTORICAL_CELLBLOCKS {
+    for world in historical_cellblocks() {
         assert!(
             !cell_spaces.contains(&format!("\"{}\"", world.world)),
             "{} must not appear in cell_spaces.xml",
@@ -61,7 +61,7 @@ fn no_historical_cellblock_is_a_startup_space() {
 fn each_arrival_gets_its_own_space_in_its_own_world() {
     let mut mgr = shipped_manager();
     let stock = mgr.find_or_create_space("Castle_CellBlock").unwrap();
-    for world in &HISTORICAL_CELLBLOCKS {
+    for world in historical_cellblocks() {
         let first = mgr.find_or_create_space(world.world).unwrap();
         let second = mgr.find_or_create_space(world.world).unwrap();
         assert_ne!(

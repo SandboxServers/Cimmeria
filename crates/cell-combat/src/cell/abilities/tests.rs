@@ -101,6 +101,8 @@ async fn consume_ammo_writes_ammoslot_stat_and_marks_dirty() {
             required_ammo: 1,
             event_set_id: None,
             velocity: 0.0,
+            type_id: Default::default(),
+            passive: false,
         },
     );
 

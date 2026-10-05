@@ -27,6 +27,7 @@ Moved out of MEMORY.md to keep the index under its read limit. One line per topi
 - [stat-with-no-consumer-trap.md](stat-with-no-consumer-trap.md) — a stat in `StatList` may have no reader; the dirty-publish pattern.
 - [ring-transport-fsm.md](ring-transport-fsm.md) — `disconnect_entity` vs `destroy_entity`; `BSF_*` bits are ref-counted.
 - [cross-world-transfer-flow.md](cross-world-transfer-flow.md) — `handle_gate_travel` is the back half; fake default-instance mechanisms.
+- [damage-seams-and-gm-index-pins.md](damage-seams-and-gm-index-pins.md) — two damage seams (apply_hit, fire_pulse); scripts write stats directly; two tests pin an unimplemented GM index.
 - [session-scoped-cell-state-hooks.md](session-scoped-cell-state-hooks.md) — per-session cell state: key by player_id, tear down on DisconnectEntity only.
 - [revert-proof-commit-first.md](revert-proof-commit-first.md) — commit before a revert-proof run; git checkout -- <dir> also wipes uncommitted work.
 - [destroy-entity-vs-despawn-npc.md](destroy-entity-vs-despawn-npc.md) — `destroy_entity` sends no LeftAoI; use `despawn_npc` for visible removals.
@@ -60,8 +61,16 @@ Moved out of MEMORY.md on 2026-09-28 (AM-12 compaction).
 - [per-shot-damage-seam-is-damage-apply.md](per-shot-damage-seam-is-damage-apply.md) — per-shot modifiers hook damage_apply, not effect scripts; MITIGATION cap 0 makes armour inert.
 - [ammo-reserve-round-trip.md](ammo-reserve-round-trip.md) — AM-02: base loop is sequential, so flush then trust the weapon row; load rounds at draw commit, not in the tick.
 - [support-shot-inverse-gate.md](support-shot-inverse-gate.md) — client useAbility has no friend/foe check; beneficial ammo's inverse #444 gate lives at launch, warmup and fire.
+- [beneficial-cast-resolution-and-abilitydef-fields.md](beneficial-cast-resolution-and-abilitydef-fields.md) — AB-01 resolver + #444 gate in use_ability/beneficial.rs; 2228 is a Heal-typed attack; new AbilityDef field = ~70 literals.
 - [ammo-on-hit-effect-needs-a-script.md](ammo-on-hit-effect-needs-a-script.md) — ammo on-hit effects need a script_name or the hit pulse never fires; no Radioactive dart toggle exists.
 - [effect-category-and-friendly-target-gaps.md](effect-category-and-friendly-target-gaps.md) — cleanses key on an `EffectCategory` NVP; no ally targeting (#444); new effect ids must not reach the client.
-- [pulsing-script-reapply-and-npc-cc.md](pulsing-script-reapply-and-npc-cc.md) — a pulsing script's on_apply runs per pulse/refresh, on_remove once: guard stateful scripts; NPCs ignore BSF_MOVEMENT_LOCK (#1049).
+- [pulsing-script-reapply-and-npc-cc.md](pulsing-script-reapply-and-npc-cc.md) — on_apply runs per pulse/refresh, on_remove once: put stateful scripts on the ledger (state_flags since AB-09); script interrupts queue for combat.
 - [mechanical-target-signal-is-body-set](mechanical-target-signal-is-body-set.md) — no mechanical flag exists; use `ammo_emp::is_mechanical` (body_set prefixes); EMP split from grenade 2864.
 - [on-hit-fanout-and-recursive-async-send](on-hit-fanout-and-recursive-async-send.md) — scripts can't damage secondaries (no wire/death); fan out in damage_apply; box recursion as a named dyn Send.
+- [effect-flag-64-marks-sequenced-damage](effect-flag-64-marks-sequenced-damage.md) — AB-03: NVP damage per TCM_Single effect; single-shot flag-64 rows are vs-low-Focus/chain/barrage follow-ups, never give them NVPs.
+- [timed-effect-ledger-and-stat-routing](timed-effect-ledger-and-stat-routing.md) — AB-04 ledger keyed (effect, invoker); script writes it; routing traps for binding stat effects; ability monikers are broad.
+- [effect-routing-and-scoped-defs](effect-routing-and-scoped-defs.md) — AB-07 per-effect routing: user/area halves land after the target part; ground/splash scoped defs; routing.py mirror.
+- [held-toggles-and-stance-moniker](held-toggles-and-stance-moniker.md) — AB-08 held entries: toggle switch is the last held effect, EFFECT_Stance = CRC-32 via EffectMoniker NVP, held icon horizon.
+- [absorb-shield-ledger-and-cleanse-categories](absorb-shield-ledger-and-cleanse-categories.md) — AB-10: shields mirror into absorb* stats, every drain seam must settle; categories from co-sequenced resist rolls; shield rows lack the beneficial bit.
+- [combat-debug-notes-and-flush-points](combat-debug-notes-and-flush-points.md) — AB-N1: note beside the AB-T3 row via SpaceManager.combat_debug; lines leave only at scope-close flushes; damage_apply/mod.rs near cap.
+- [lab-caster-dummy-and-mental-cleanse-gap](lab-caster-dummy-and-mental-cleanse-gap.md) — .dummy caster = LabCaster + 1 Hz sweep into handle_use_ability; 0.5 s floor cooldown in tests; no seeded Mental effect holds.

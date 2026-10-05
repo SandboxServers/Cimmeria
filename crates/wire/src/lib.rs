@@ -84,6 +84,8 @@ pub mod containers;
 pub mod firehose;
 pub mod hex;
 pub mod mercury;
+/// Names for Mercury message ids and entity-method indices, for logs.
+pub mod names;
 pub mod state_field;
 
 // Generic helpers come from `cimmeria-test-support` (a dev-dependency); tests

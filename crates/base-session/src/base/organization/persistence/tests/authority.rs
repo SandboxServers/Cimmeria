@@ -60,7 +60,9 @@ async fn live_db_access_is_tied_to_its_transaction() {
         org,
         SystemActor::Gm {
             account_id: Some(fx.account_id),
+            account_name: None,
             player_id: Some(p1),
+            player_name: None,
             command: ".org_disband",
         },
     )

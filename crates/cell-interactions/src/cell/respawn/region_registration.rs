@@ -86,6 +86,7 @@ pub async fn send_client_hinted_regions(
     {
         tracing::warn!(
             entity_id,
+            entity_name = space_mgr.entity_names(entity_id).entity_name,
             world = %world_name,
             region_count,
             error = %e,

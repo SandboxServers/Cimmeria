@@ -90,6 +90,7 @@ impl LivewireGame {
         if session.difficulty > 4 {
             tracing::warn!(
                 entity_id = session.entity_id,
+                entity_name = session.player_name.as_deref(),
                 difficulty = session.difficulty,
                 "Livewire: difficulty clamped to 4 -- the game has no table \
                  above 4; fix the authored difficulty in the seed row"

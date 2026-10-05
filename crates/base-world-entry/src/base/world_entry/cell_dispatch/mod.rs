@@ -57,6 +57,8 @@ mod deferred_flush;
 mod gate_teleport_dispatch;
 mod inventory_dispatch;
 mod item_grant_dispatch;
+mod method_delivery;
+mod method_join;
 mod minigame;
 mod org_dispatch;
 mod player_ghost;
@@ -198,6 +200,17 @@ pub async fn route_cell_message(
                 ctx.transport,
                 ctx.connected,
                 ctx.entity_to_addr,
+            )
+            .await
+        }
+        CellToBaseMsg::GmAbilityBulk(bulk) => {
+            super::methods::progression::handle_gm_ability_bulk(
+                bulk,
+                ctx.db_pool,
+                ctx.transport,
+                ctx.connected,
+                ctx.entity_to_addr,
+                ctx.cell_tx,
             )
             .await
         }

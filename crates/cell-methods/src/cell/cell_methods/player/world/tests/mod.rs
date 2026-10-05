@@ -129,6 +129,7 @@ async fn entering_a_stargate_region_with_an_open_dial_travels() {
             address_origin: 18,
             arrival: None,
             event_set_id: None,
+            debug_dial_hub: false,
         },
     );
     let runtime_id = mgr.next_region_id;
@@ -215,6 +216,7 @@ async fn exiting_a_stargate_region_does_not_travel() {
             address_origin: 18,
             arrival: None,
             event_set_id: None,
+            debug_dial_hub: false,
         },
     );
     let runtime_id = mgr.next_region_id;

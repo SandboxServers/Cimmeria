@@ -70,6 +70,28 @@ fn a_gap_holds_later_reliable_packets_until_the_retransmit_fills_it() {
     assert!(ch.rx_window.is_empty());
 }
 
+/// **Regression guard (AB-T2).** Each delivered bundle names the Mercury
+/// seq that carried it, index for index, including the ones a gap-filler
+/// releases from the buffer and an unreliable packet's. The receipt row of
+/// `useAbility` logs it as `mercury_seq`, the join to the client's press.
+#[test]
+fn every_delivered_bundle_carries_its_own_packet_seq() {
+    let mut ch = anchored_at(10);
+    ch.receive_parsed(reliable(12, b"later")).unwrap();
+    let filled = ch.receive_parsed(reliable(10, b"first")).unwrap();
+    assert_eq!(bodies(&filled), vec![b"first".as_slice()]);
+    assert_eq!(filled.bundle_seqs, vec![Some(10)]);
+    let gap = ch.receive_parsed(reliable(11, b"gap")).unwrap();
+    assert_eq!(bodies(&gap), vec![b"gap".as_slice(), b"later".as_slice()]);
+    assert_eq!(
+        gap.bundle_seqs,
+        vec![Some(11), Some(12)],
+        "a released packet keeps its own seq, not the gap-filler's"
+    );
+    let moved = ch.receive_parsed(unreliable(40, b"move")).unwrap();
+    assert_eq!(moved.bundle_seqs, vec![Some(40)]);
+}
+
 #[test]
 fn duplicates_are_dropped_but_acked() {
     let mut ch = anchored_at(0);
@@ -201,4 +223,7 @@ fn a_reliable_fragmented_bundle_arriving_reversed_is_delivered_once() {
     assert!(ch.receive_parsed(frag(1)).unwrap().bundles.is_empty());
     let done = ch.receive_parsed(frag(0)).unwrap();
     assert_eq!(bodies(&done), vec![b"AAABBBCCC".as_slice()]);
+    // AB-T2: the reassembled bundle is known by its first fragment's seq
+    // (`frag_begin`), not by the seq of the fragment that completed it (12).
+    assert_eq!(done.bundle_seqs, vec![Some(10)]);
 }

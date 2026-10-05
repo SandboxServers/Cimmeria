@@ -18,6 +18,7 @@ use cimmeria_entity::manager::EntityManager;
 use cimmeria_mercury::channel::RxDelivery;
 use cimmeria_mercury::encryption::MercuryEncryption;
 use cimmeria_mercury::packet::{parse_incoming, ParsedPacket};
+use cimmeria_wire::names;
 
 use crate::cell::messages::BaseToCellMsg;
 
@@ -25,6 +26,7 @@ use super::super::cooked_data::{handle_element_data_request, handle_version_info
 use super::super::cooked_sync;
 use super::super::helpers::destroy_client_entities;
 use super::super::resources::ResourceCache;
+use super::super::session_identity;
 use super::super::world_entry::handle_enable_entities;
 use super::super::ConnectedClientState;
 use super::{account_arms, cell_arms, read_constant_payload, read_word_length_payload};
@@ -93,6 +95,9 @@ pub(crate) async fn handle_encrypted_datagram(
 
     tracing::debug!(
         %addr,
+        // No `flags_names` (NT-31): this row is exported for every inbound
+        // datagram, so a name string here costs an allocation per packet.
+        // The byte has eight bits; `PACKET_FLAGS` names them.
         flags = pkt.flags,
         body_len = pkt.body.len(),
         seq = ?pkt.seq_id,
@@ -140,16 +145,22 @@ pub(crate) async fn handle_encrypted_datagram(
     // for the client's retransmit, a retransmitted duplicate (our ACK was
     // lost) is dropped instead of being dispatched a second time, and
     // unreliable packets (movement) go straight through.
-    let Some(delivery) = receive_in_order(connected, addr, pkt) else {
+    let Some((delivery, class_id)) = receive_in_order(connected, addr, pkt) else {
         return Ok(());
     };
     if let Some(seq) = delivery.ack {
         tracing::trace!(%addr, client_seq = seq, "Queueing ACK for client reliable message");
         pending_acks.lock().unwrap().push(seq);
     }
-    for body in &delivery.bundles {
+    // Each bundle travels with the Mercury seq that carried it, so the
+    // `useAbility` receipt row can name the packet the client logged when it
+    // sent the press (ability-mechanics AB-T2).
+    for (i, body) in delivery.bundles.iter().enumerate() {
+        let packet_seq = delivery.bundle_seqs.get(i).copied().flatten();
         dispatch_client_bundle(
             body,
+            packet_seq,
+            class_id,
             transport,
             addr,
             key,
@@ -176,7 +187,7 @@ fn receive_in_order(
     connected: &Arc<Mutex<HashMap<SocketAddr, ConnectedClientState>>>,
     addr: SocketAddr,
     pkt: ParsedPacket,
-) -> Option<RxDelivery> {
+) -> Option<(RxDelivery, u8)> {
     let clients = connected.lock().ok()?;
     let Some(state) = clients.get(&addr) else {
         tracing::debug!(
@@ -188,7 +199,7 @@ fn receive_in_order(
     };
     let mut channel = state.channel.lock().ok()?;
     match channel.receive_parsed(pkt) {
-        Ok(delivery) => Some(delivery),
+        Ok(delivery) => Some((delivery, session_class::session_class_id(state))),
         Err(e) => {
             tracing::warn!(
                 %addr,
@@ -205,6 +216,10 @@ fn receive_in_order(
 /// back-to-back messages) and dispatch each message.
 async fn dispatch_client_bundle(
     body: &[u8],
+    packet_seq: Option<u32>,
+    // The clientIndex of the session's entity, read by the receive gate:
+    // it decides what a base method id (0xC0+) means in the logs below.
+    class_id: u8,
     transport: &Arc<dyn Transport>,
     addr: SocketAddr,
     key: [u8; 32],
@@ -255,14 +270,14 @@ async fn dispatch_client_bundle(
         let payload = match payload_result {
             Some(p) => p,
             None => {
-                tracing::trace!(%addr, msg_id = format_args!("{:#04x}", msg_id), "Bundle truncated");
+                tracing::trace!(%addr, msg_id = format_args!("{:#04x}", msg_id), msg_name = names::server_msg_name(msg_id), entity_type = names::class_name(class_id), "Bundle truncated");
                 break;
             }
         };
 
-        tracing::debug!(%addr, msg_id = format_args!("{:#04x}", msg_id), payload_len = payload.len(), "Client bundle message");
+        tracing::debug!(%addr, msg_id = format_args!("{:#04x}", msg_id), msg_name = names::server_msg_name(msg_id), method_name = names::inbound_method(class_id, msg_id, payload), entity_type = names::class_name(class_id), payload_len = payload.len(), "Client bundle message");
 
-        crate::wire_log::log_inbound(addr, msg_id, payload);
+        crate::wire_log::log_inbound(addr, class_id, msg_id, payload);
 
         // Dispatch message.
         //
@@ -355,7 +370,7 @@ async fn dispatch_client_bundle(
                             ];
                             let dir = [payload[32] as i8, payload[33] as i8, payload[34] as i8];
                             tracing::trace!(
-                                entity_id,
+                                entity_id, // nt:id-only the 10 Hz movement path takes no lookup to name it
                                 ?pos,
                                 "AVATAR_UPDATE_EXPLICIT -> CellService"
                             );
@@ -411,23 +426,28 @@ async fn dispatch_client_bundle(
                     tracing::warn!(
                         %addr,
                         account_id,
+                        account_name = session_identity::identity_for_addr(connected, addr).account_name,
                         payload_len = payload.len(),
                         reason = "payload_too_short",
                         "REQUEST_ENTITY_UPDATE: payload shorter than the 4-byte entity id -- dropping"
                     );
                 } else {
-                    let witness_id = connected
-                        .lock()
-                        .unwrap()
-                        .get(&addr)
-                        .and_then(|c| c.player_entity_id);
+                    // The names ride the lock this read already takes
+                    // (interned, so a hash hit); one request per AoI entry
+                    // must not take a second lock just to name its lines.
+                    let (witness_id, who) = connected.lock().unwrap().get(&addr).map_or(
+                        (None, cimmeria_entity::cell_entity::PlayerIdentity::UNKNOWN),
+                        |c| (c.player_entity_id, session_identity::session_identity(c)),
+                    );
                     if let Some(witness_id) = witness_id {
                         if let Some(tx) = cell_tx {
                             let count = entity_ids.len();
                             tracing::debug!(
                                 %addr,
                                 account_id,
+                                account_name = who.account_name,
                                 witness_id,
+                                witness_name = who.player_name,
                                 count,
                                 "REQUEST_ENTITY_UPDATE -> cell::RequestEntityUpdate"
                             );
@@ -441,7 +461,9 @@ async fn dispatch_client_bundle(
                                 tracing::warn!(
                                     %addr,
                                     account_id,
+                                    account_name = who.account_name,
                                     witness_id,
+                                    witness_name = who.player_name,
                                     count,
                                     "REQUEST_ENTITY_UPDATE: cell send failed -- request dropped: {e}"
                                 );
@@ -450,7 +472,9 @@ async fn dispatch_client_bundle(
                             tracing::debug!(
                                 %addr,
                                 account_id,
+                                account_name = who.account_name,
                                 witness_id,
+                                witness_name = who.player_name,
                                 count = entity_ids.len(),
                                 "REQUEST_ENTITY_UPDATE: no cell channel -- ignoring"
                             );
@@ -459,6 +483,7 @@ async fn dispatch_client_bundle(
                         tracing::warn!(
                             %addr,
                             account_id,
+                            account_name = who.account_name,
                             count = entity_ids.len(),
                             reason = "no_player_entity",
                             "REQUEST_ENTITY_UPDATE before player entity is connected -- dropping"
@@ -536,6 +561,7 @@ async fn dispatch_client_bundle(
                 if cell_arms::dispatch_cell_method(
                     id,
                     payload,
+                    packet_seq,
                     addr,
                     transport,
                     key,
@@ -551,7 +577,7 @@ async fn dispatch_client_bundle(
                 }
             }
             _ => {
-                tracing::trace!(%addr, msg_id = format_args!("{:#04x}", msg_id), payload_len = payload.len(), "Unhandled client message");
+                tracing::trace!(%addr, msg_id = format_args!("{:#04x}", msg_id), msg_name = names::server_msg_name(msg_id), method_name = names::inbound_method(class_id, msg_id, payload), entity_type = names::class_name(class_id), payload_len = payload.len(), "Unhandled client message");
             }
         }
     }
@@ -657,6 +683,7 @@ fn parse_request_entity_update(payload: &[u8]) -> Vec<u32> {
 }
 
 mod decrypt_reject;
+mod session_class;
 
 #[cfg(test)]
 mod cache_routing_tests;

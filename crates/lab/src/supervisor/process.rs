@@ -201,6 +201,9 @@ mod win {
     /// Post a window message to the game (no focus needed; delivered on
     /// the game's own message loop).
     pub fn post_message(hwnd: isize, msg: u32, wparam: usize, lparam: isize) -> Result<(), String> {
+        // Every posted input passes here; a revoked lease stops it (but
+        // never a key or button release: lease::permit::ensure_input).
+        crate::lease::permit::ensure_input(msg)?;
         // SAFETY: PostMessageW only queues; a stale hwnd fails cleanly.
         let ok = unsafe { PostMessageW(hwnd as HWND, msg, wparam, lparam) };
         if ok == 0 {

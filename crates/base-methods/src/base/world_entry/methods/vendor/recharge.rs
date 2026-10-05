@@ -1,3 +1,4 @@
+use cimmeria_entity::known_names;
 use std::collections::HashMap;
 use std::net::SocketAddr;
 use std::sync::{Arc, Mutex};
@@ -47,7 +48,11 @@ pub async fn handle_recharge_inventory_items(
     let pool = match db_pool {
         Some(p) => p,
         None => {
-            tracing::debug!(player_id, "RechargeInventoryItems: no DB pool");
+            tracing::debug!(
+                player_id,
+                player_name = known_names::player_name(player_id),
+                "RechargeInventoryItems: no DB pool"
+            );
             return;
         }
     };
@@ -56,7 +61,9 @@ pub async fn handle_recharge_inventory_items(
     if item_ids.is_empty() {
         tracing::debug!(
             entity_id,
+            entity_name = known_names::player_name(player_id),
             player_id,
+            player_name = known_names::player_name(player_id),
             "RechargeInventoryItems: empty item list"
         );
         return;
@@ -69,9 +76,12 @@ pub async fn handle_recharge_inventory_items(
     let mut tx = match pool.begin().await {
         Ok(tx) => tx,
         Err(e) => {
+            let player_label = known_names::player_name(player_id);
             tracing::error!(
                 entity_id,
+                entity_name = player_label,
                 player_id,
+                player_name = player_label,
                 "RechargeInventoryItems: begin tx failed: {e}"
             );
             return;
@@ -97,9 +107,12 @@ pub async fn handle_recharge_inventory_items(
     .await
     {
         let _ = tx.rollback().await;
+        let player_label = known_names::player_name(player_id);
         tracing::error!(
             entity_id,
+            entity_name = player_label,
             player_id,
+            player_name = player_label,
             "RechargeInventoryItems: lock query failed: {e}"
         );
         return;
@@ -127,9 +140,12 @@ pub async fn handle_recharge_inventory_items(
         Ok(r) => r.rows_affected(),
         Err(e) => {
             let _ = tx.rollback().await;
+            let player_label = known_names::player_name(player_id);
             tracing::error!(
                 entity_id,
+                entity_name = player_label,
                 player_id,
+                player_name = player_label,
                 item_count = item_ids.len(),
                 "RechargeInventoryItems: update failed: {e}"
             );
@@ -138,9 +154,12 @@ pub async fn handle_recharge_inventory_items(
     };
 
     if let Err(e) = tx.commit().await {
+        let player_label = known_names::player_name(player_id);
         tracing::error!(
             entity_id,
+            entity_name = player_label,
             player_id,
+            player_name = player_label,
             "RechargeInventoryItems: commit failed: {e}"
         );
         return;
@@ -158,7 +177,9 @@ pub async fn handle_recharge_inventory_items(
         .await;
         tracing::debug!(
             entity_id,
+            entity_name = known_names::player_name(player_id),
             player_id,
+            player_name = known_names::player_name(player_id),
             item_count = item_ids.len(),
             recharged,
             total_items,
@@ -167,7 +188,9 @@ pub async fn handle_recharge_inventory_items(
     } else {
         tracing::debug!(
             entity_id,
+            entity_name = known_names::player_name(player_id),
             player_id,
+            player_name = known_names::player_name(player_id),
             item_count = item_ids.len(),
             "RechargeInventoryItems: no rechargeable items changed"
         );

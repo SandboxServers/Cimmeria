@@ -124,6 +124,8 @@ fn heed_our_calling(mgr: &mut SpaceManager) {
             required_ammo: 0,
             event_set_id: None,
             velocity: 100.0,
+            type_id: Default::default(),
+            passive: false,
         },
     );
     mgr.effect_defs.insert(
@@ -162,6 +164,8 @@ async fn heed_our_calling_makes_the_summon_instant() {
         required_ammo: 0,
         event_set_id: Some(1121),
         velocity: 100.0,
+        type_id: Default::default(),
+        passive: false,
     };
     assert_ne!(summon.flags & AF_SPEED_PET, 0);
     let warmup = |mgr: &SpaceManager| {

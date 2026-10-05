@@ -9,10 +9,11 @@
 
 use cimmeria_cell_world::cell::duel::DuelResources;
 use cimmeria_content_engine::chain::ChainEngine;
+use cimmeria_entity::known_names;
 use tokio::sync::mpsc;
 
 use crate::cell::messages::CellToBaseMsg;
-use crate::cell::space_manager::SpaceManager;
+use crate::cell::space_manager::{EntityNames, SpaceManager};
 
 /// Drive the server-side auto-cycle (auto-fire) loop.
 ///
@@ -178,6 +179,14 @@ pub(in crate::cell::service) async fn auto_cycle_tick(
                 return None;
             }
 
+            // Stunned or knocked down (a timed-effect entry holds the
+            // movement lock, ability mechanics AB-09a): wait armed, without
+            // invoking the handler, which would refuse the re-fire with
+            // feedback every tick. The loop resumes when the lock clears.
+            if e.holds_ledger_flag(cimmeria_wire::state_field::BSF_MOVEMENT_LOCK) {
+                return None;
+            }
+
             // Mid-draw gate. When the player's weapon is mid-draw
             // animation (`pending_attack_at = Some`), `handle_use_ability`
             // rejects with `"weapon attack already queued (mid-draw),
@@ -251,10 +260,15 @@ pub(in crate::cell::service) async fn auto_cycle_tick(
                         target: "duel",
                         event = "duel.auto_cycle_stopped",
                         account_id = id.account_id,
+                        account_name = id.account_name,
                         player_id = id.player_id,
+                        player_name = id.player_name,
                         entity_id,
+                        entity_name = id.player_name,
                         target_player_id,
+                        target_player_name = known_names::player_name(target_player_id),
                         target_entity_id = target_id,
+                        target_entity_name = target_label(space_mgr, target_id),
                         reason = "not_duel_opponent",
                         "auto_cycle_tick: player target is not the caster's duel opponent — clearing loop"
                     );
@@ -268,12 +282,20 @@ pub(in crate::cell::service) async fn auto_cycle_tick(
                     .await;
                 } else {
                     let id = space_mgr.player_identity(entity_id);
+                    let target = target_names(space_mgr, target_id);
                     tracing::info!(
                         account_id = id.account_id,
+                        account_name = id.account_name,
                         player_id = id.player_id,
+                        player_name = id.player_name,
                         entity_id,
+                        entity_name = id.player_name,
                         ability_id,
+                        ability_name = cimmeria_names::book().ability(ability_id),
                         target_id,
+                        target_name = target.entity_name,
+                        template_id = target.template_id,
+                        template_name = target.template_name,
                         reason,
                         "auto_cycle_tick: clearing loop"
                     );
@@ -283,10 +305,16 @@ pub(in crate::cell::service) async fn auto_cycle_tick(
             }
             continue;
         }
+        // A rejected re-fire (out of ammo) repeats every tick, so the names
+        // are resolved inside the macro, only when the row is enabled, and
+        // the target carries its label alone (no template pair).
         tracing::debug!(
             entity_id,
+            entity_name = space_mgr.entity_label(entity_id),
             ability_id,
+            ability_name = cimmeria_names::book().ability(ability_id),
             target_id,
+            target_name = target_label(space_mgr, target_id),
             "auto_cycle_tick: re-firing"
         );
         // Route loop-driven re-fires through the kill-credit wrapper
@@ -308,6 +336,21 @@ pub(in crate::cell::service) async fn auto_cycle_tick(
         // re-evaluates. A committed re-fire restarts the cooldown so
         // this same player won't fire again until that elapses.
     }
+}
+
+/// The names of the loop's target. `target_id <= 0` is "no target", so it
+/// names nothing.
+fn target_names(space_mgr: &SpaceManager, target_id: i32) -> EntityNames {
+    u32::try_from(target_id)
+        .ok()
+        .filter(|&t| t > 0)
+        .map(|t| space_mgr.entity_names(t))
+        .unwrap_or_default()
+}
+
+/// [`target_names`]' `entity_name` alone.
+fn target_label(space_mgr: &SpaceManager, target_id: i32) -> Option<&'static str> {
+    target_names(space_mgr, target_id).entity_name
 }
 
 #[cfg(test)]

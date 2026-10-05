@@ -375,3 +375,32 @@ async fn regen_tick_skips_focus_when_max_is_zero() {
     // HP regen still ran — that's covered by other tests; this one only
     // pins the focus-skip invariant.
 }
+
+/// **Regression guard (AB-T2, regen family).** A player regenerating Health
+/// with a full Focus pool skipped Focus without a row. The skip is now a
+/// TRACE sample under `vitals` naming the pool, and Health still regens.
+#[tokio::test]
+async fn regen_tick_logs_a_full_pool_skip_at_trace() {
+    let mut mgr = make_test_space_mgr();
+    setup_player(&mut mgr, 1, 50, 100, 2);
+    set_focus(&mut mgr, 1, 300, 300, 5);
+    let (tx, _rx) = mpsc::channel::<CellToBaseMsg>(16);
+    let logs = crate::test_support::LogCapture::install();
+
+    crate::cell::service::ticks::regen_tick(&tx, &mut mgr).await;
+
+    let all = logs.all();
+    let skip = all
+        .iter()
+        .find(|c| c.has_field("event", "regen_skipped") && c.has_field("reason", "pool_full"))
+        .unwrap_or_else(|| panic!("the full Focus pool's skip row: {all:#?}"));
+    assert_eq!(skip.target, "vitals");
+    assert_eq!(skip.level, tracing::Level::TRACE);
+    assert!(skip.has_field("pool_id", &FOCUS.to_string()), "{skip:?}");
+    assert!(skip.has_field("player_id", "100"), "{skip:?}");
+    assert_eq!(
+        mgr.get_entity(1).unwrap().stats.get(HEALTH).unwrap().cur,
+        52,
+        "health still regenerates"
+    );
+}

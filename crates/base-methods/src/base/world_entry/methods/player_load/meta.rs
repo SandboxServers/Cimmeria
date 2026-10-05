@@ -4,6 +4,7 @@ use sqlx::PgPool;
 
 use cimmeria_cell_catalog::ability_tree;
 use cimmeria_entity::abilities::AbilityTreeData;
+use cimmeria_entity::known_names;
 
 use crate::mercury::PlayerLoadData;
 
@@ -124,7 +125,11 @@ pub async fn query_bandolier_items(
     {
         Ok(rows) => map_bandolier_rows(rows),
         Err(e) => {
-            tracing::error!(player_id, "query_bandolier_items failed: {e}");
+            tracing::error!(
+                player_id,
+                player_name = known_names::player_name(player_id),
+                "query_bandolier_items failed: {e}"
+            );
             vec![]
         }
     }
@@ -163,7 +168,9 @@ pub async fn player_ability_tree(
                 event = "tree_catalog_load_failed",
                 reason = "catalog_load_failed",
                 player_id,
+                player_name = known_names::player_name(player_id),
                 archetype_id,
+                archetype_name = cimmeria_names::archetype_name(archetype_id),
                 "Ability-tree catalog failed to load; sending an empty onAbilityTreeInfo: {e}"
             );
             AbilityTreeData::default()
@@ -438,5 +445,49 @@ mod tests {
              bumping the constant",
             cimmeria_entity::stats::ARCHETYPE_COUNT,
         );
+    }
+
+    /// A seeded playtest character logs in armed: the login bandolier query
+    /// reads Test Soldier's (player 62) starter pistol from the seed in the
+    /// active slot 0, loaded, with its default ammo type. Reverting the
+    /// seeded pistol row in `db/sgw/Inventory/Seed/sgw_inventory.sql` (or
+    /// its `ammo = 15`) fails here, which is what the colo playtesters get
+    /// after every deploy.
+    #[tokio::test]
+    async fn live_db_seeded_character_logs_in_with_the_loaded_starter_pistol() {
+        let pool = require_db_or_skip!();
+        const SEEDED_PLAYER: i32 = 62;
+        const STARTER_PISTOL: i32 = 55;
+        let (clip_size, default_ammo): (i32, i32) = sqlx::query_as(
+            "SELECT clip_size, array_position(enum_range(NULL::resources.\"EAmmoType\"), \
+                    default_ammo_type) - 1 \
+             FROM resources.items WHERE item_id = $1",
+        )
+        .bind(STARTER_PISTOL)
+        .fetch_one(&pool)
+        .await
+        .expect("the starter pistol is seeded");
+        let active_slot: i32 =
+            sqlx::query_scalar("SELECT bandolier_slot FROM sgw_player WHERE player_id = $1")
+                .bind(SEEDED_PLAYER)
+                .fetch_one(&pool)
+                .await
+                .expect("player 62 is seeded");
+
+        let db_pool = Some(Arc::new(pool.clone()));
+        let items = query_bandolier_items(&db_pool, SEEDED_PLAYER).await;
+        let (_, pistol) = items
+            .iter()
+            .find(|(slot, _)| *slot == active_slot)
+            .unwrap_or_else(|| {
+                panic!("player 62 has nothing in its active bandolier slot {active_slot}")
+            });
+        assert_eq!(pistol.item_id, STARTER_PISTOL, "the starter pistol");
+        assert_eq!(pistol.clip_size, clip_size);
+        assert_eq!(
+            pistol.current_ammo, clip_size,
+            "loaded: the first Pistol Shot fires"
+        );
+        assert_eq!(pistol.cur_ammo_type, default_ammo, "its default ammo type");
     }
 }

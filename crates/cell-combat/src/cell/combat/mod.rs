@@ -22,6 +22,7 @@ pub use cimmeria_cell_world::cell::combat::{aggression, faction_reaction, health
 pub mod auto_cycle;
 pub mod damage;
 pub mod damage_credit;
+pub mod god_mode;
 pub mod state;
 pub mod threat;
 pub mod vitals;
@@ -37,9 +38,11 @@ pub use auto_cycle::{
     arm_auto_cycle, auto_cycle_target_stop_reason, clear_auto_cycle, clear_auto_cycle_for_target,
     is_auto_cycle_target_valid,
 };
+pub(crate) use damage::{absorb_damage_nvps, drain_absorption_pools, script_damage_type};
 pub use damage::{
     attacker_cover_qr, calculate_damage, calculate_damage_penetrating, calculate_damage_scaled,
-    calculate_qr, calculate_result, cover_reduction, CoverReduction, CoverSide, QrResult,
+    calculate_qr, calculate_result, cover_reduction, resolve_damage, CoverReduction, CoverSide,
+    DamageOutcome, QrResult,
 };
 pub use damage_credit::{note_pre_damage_health, HealthBelowSample};
 pub use health_threshold::{health_pct, health_pct_from, HealthPct};
@@ -56,4 +59,8 @@ pub use threat::{
     clear_dead_npc_from_all_player_threat, drain_npc_from_player_combat, enter_player_combat,
     exit_player_combat, generate_threat, AggroCause, HOLSTER_ANIMATION_DURATION, LEASH_DISTANCE,
     NPC_ATTACK_RANGE, NPC_DEFAULT_ABILITY, NPC_MELEE_RANGE, OOC_HOLSTER_DELAY,
+};
+pub use threat::{despawn_npc_releasing_combat, release_npc_from_player_combat};
+pub use threat::{
+    training_dummy_combat_tick, training_dummy_combat_tick_at, TRAINING_DUMMY_RELEASE_REASON,
 };

@@ -61,6 +61,10 @@ For example, to look for native subscribers to the trade-result event (the kind 
 | `I:<addr>,<n>` | Disassemble `n` instructions from `addr` (default 30). |
 | `DATAAT:<addr>` | Show the defined data at `addr` and its components. |
 | `DEM:<mangled>` | Demangle an MSVC symbol. |
+| `IF:<addr>` | Disassemble the whole function containing `<addr>`. |
+| `RE:<regex>` | Scan every instruction's text for the regex and print the function and address of each hit (capped at 400). Avoid `^`, `&`, `<`, `>` and the pipe character: `cmd` treats them as operators (use `\s` for spaces and no anchors). |
+| `BYTES:<addr>+<n>` | Hex dump `<n>` bytes (default 64) where no code or function is defined. Use it to find a function prologue in an undisassembled region, then `F:` it. |
+| `U16:<text>` | Find `<text>` as UTF-16LE in initialized memory and list each hit with its references. The string search does not define wide literals. |
 | `BLOCKS` | List the memory blocks. |
 
 ## Caveats
@@ -69,7 +73,7 @@ For example, to look for native subscribers to the trade-result event (the kind 
 - **`DEM` does not demangle raw RTTI type-name strings** (`.?AV?$...`). Demangle those by hand; the finding docs show worked examples.
 - **Always pass `-readOnly`.** It guarantees nothing in the project changes. The project is still opened exclusively: a killed or crashed run can leave `SGW.lock` and `SGW.lock~` in the project folder. If no Ghidra or `java` process is running, delete those two files and retry.
 - **Each run pays JVM start and project open**, whatever the token count: 7-30 s in [experiment G](../../../docs/analysis/token-usage/experiment-g.md) on a warm machine, up to a minute or two cold. Batch tokens into one run.
-- **A comma ends the token.** `analyzeHeadless.bat` passes its arguments through `cmd`, which splits at commas even inside quotes, so `VT:<addr>,<n>` and `I:<addr>,<n>` lose `<n>` and fall back to 12 slots and 30 instructions.
+- **A comma ends the token.** `analyzeHeadless.bat` passes its arguments through `cmd`, which splits at commas even inside quotes, so `VT:<addr>,<n>` and `I:<addr>,<n>` lose `<n>` and fall back to 12 slots and 30 instructions. Write `VT:<addr>+<n>` and `I:<addr>+<n>` instead: `+` is accepted as the separator.
 - **A compile error skips the whole script** but the run still exits 0. Check the output for `error:` before trusting a quiet result.
 - The Java class name must match the file name (`Probe`).
 

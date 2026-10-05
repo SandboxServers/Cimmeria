@@ -15,14 +15,27 @@ use crate::uat::invoke::{ToolInvoker, ToolOutcome};
 use crate::uat::spec;
 
 /// A pretend client.
-struct Fake {
+pub(super) struct Fake {
     tools: HashSet<String>,
     /// Typed chat line → lines the "server" answers with.
     replies: HashMap<String, Vec<String>>,
     chat: Mutex<Vec<String>>,
     typed: Mutex<String>,
     lua: Value,
-    calls: Mutex<Vec<String>>,
+    pub(super) calls: Mutex<Vec<String>>,
+    /// Every call with its arguments (the two-player tests read these).
+    pub(super) log: Mutex<Vec<(String, Value)>>,
+    /// The flows' client state: running, and the login screen reached.
+    running: Mutex<bool>,
+    login: Mutex<String>,
+    /// The character `client_player_state` reports.
+    name: String,
+    /// The lab event store (`client_wait_event`), and the events a tool
+    /// call or typed line adds to it (see `ability_tests`).
+    pub(super) events: Mutex<Vec<Value>>,
+    pub(super) triggers: Mutex<Vec<(String, String, Value)>>,
+    /// How long after the call the fake press "goes out" (`press_ms`).
+    pub(super) press_delay_ms: Mutex<i64>,
 }
 
 const BASE_TOOLS: [&str; 9] = [
@@ -38,7 +51,7 @@ const BASE_TOOLS: [&str; 9] = [
 ];
 
 impl Fake {
-    fn new(replies: &[(&str, &[&str])]) -> Self {
+    pub(super) fn new(replies: &[(&str, &[&str])]) -> Self {
         Self {
             tools: BASE_TOOLS.iter().map(|s| s.to_string()).collect(),
             replies: replies
@@ -49,11 +62,41 @@ impl Fake {
             typed: Mutex::new(String::new()),
             lua: json!({ "ok": true, "results": ["40"] }),
             calls: Mutex::new(vec![]),
+            log: Mutex::new(vec![]),
+            running: Mutex::new(true),
+            login: Mutex::new("in_world".into()),
+            name: "Labone".into(),
+            events: Mutex::new(vec![]),
+            triggers: Mutex::new(vec![]),
+            press_delay_ms: Mutex::new(0),
         }
+    }
+
+    /// A client that is not running yet, playing `name` once in world.
+    pub(super) fn stopped(mut self, name: &str) -> Self {
+        *self.running.lock().unwrap() = false;
+        *self.login.lock().unwrap() = "not_started".into();
+        self.name = name.to_string();
+        self
+    }
+
+    /// An in-world client whose player state reports `name`.
+    pub(super) fn named(mut self, name: &str) -> Self {
+        self.name = name.to_string();
+        self
+    }
+
+    pub(super) fn names(&self) -> Vec<String> {
+        self.calls.lock().unwrap().clone()
     }
 
     fn without(mut self, tool: &str) -> Self {
         self.tools.remove(tool);
+        self
+    }
+
+    pub(super) fn with(mut self, tool: &str) -> Self {
+        self.tools.insert(tool.to_string());
         self
     }
 }
@@ -71,13 +114,37 @@ impl ToolInvoker for Fake {
 
     async fn call(&self, name: &str, args: Value) -> ToolOutcome {
         self.calls.lock().unwrap().push(name.to_string());
+        // A press fires its events itself, after noting the seq before.
+        if name != "client_use_ability" {
+            self.fire(name);
+        }
+        self.log
+            .lock()
+            .unwrap()
+            .push((name.to_string(), args.clone()));
         let ok = |json: Value| ToolOutcome {
             ok: true,
             json,
             ..Default::default()
         };
         match name {
-            "lab_client_status" => ok(json!({ "running": true, "login_state": "in_world" })),
+            "lab_client_status" => ok(json!({
+                "running": *self.running.lock().unwrap(),
+                "login_state": *self.login.lock().unwrap(),
+            })),
+            "lab_client_start" => {
+                *self.running.lock().unwrap() = true;
+                ok(json!({ "pid": 1 }))
+            }
+            "lab_login" | "lab_logout" => {
+                *self.login.lock().unwrap() = "character_select".into();
+                ok(json!({}))
+            }
+            "lab_play_character" => {
+                *self.login.lock().unwrap() = "in_world".into();
+                ok(json!({ "dialog_open": false }))
+            }
+            "client_player_state" => ok(json!({ "name": self.name, "level": 12 })),
             "client_type_text" => {
                 *self.typed.lock().unwrap() = args["text"].as_str().unwrap_or_default().to_string();
                 ok(json!({ "typed": true }))
@@ -86,6 +153,7 @@ impl ToolInvoker for Fake {
                 let mut typed = self.typed.lock().unwrap();
                 if !typed.is_empty() {
                     let line = std::mem::take(&mut *typed);
+                    self.fire(&format!("chat:{line}"));
                     let mut chat = self.chat.lock().unwrap();
                     if let Some(note) = line.strip_prefix(".bug ") {
                         chat.push(format!(
@@ -101,9 +169,18 @@ impl ToolInvoker for Fake {
             "client_ui_state" => ok(json!({ "chat_tail": *self.chat.lock().unwrap() })),
             "client_lua_eval" => ok(self.lua.clone()),
             "client_wait_for" => ok(json!({ "met": true, "elapsed_ms": 5 })),
-            "client_target" => {
+            "client_wait_event" => ok(self.wait_event(&args)),
+            "client_use_ability" => ok(self.use_ability(&args)),
+            "lab_fail" => ToolOutcome::err("scripted failure"),
+            // The click lands unless the spec allows the targetUnit fallback,
+            // which this fake then reports taking.
+            "client_target" if args["name"] == "Nobody" => {
+                ToolOutcome::err("no entity named Nobody")
+            }
+            "client_target" if args["allow_fallback"] == true => {
                 ok(json!({ "native_level": "ui_lua", "counts_as_native_pass": false }))
             }
+            "client_target" => ok(json!({ "native_level": "real_input", "target": args["name"] })),
             "lab_screenshot" => ToolOutcome {
                 ok: true,
                 json: json!("client window 8x8"),
@@ -115,7 +192,7 @@ impl ToolInvoker for Fake {
     }
 }
 
-const HEAD: &str = r#"
+pub(super) const HEAD: &str = r#"
 schema = 1
 [section]
 id = "gm-parity"
@@ -124,7 +201,7 @@ guide = "unified-uat.md#gm-console-command-parity"
 ledger = "legacy-command-parity/README.md"
 "#;
 
-fn request(root: &std::path::Path, rows: &str) -> RunRequest {
+pub(super) fn request(root: &std::path::Path, rows: &str) -> RunRequest {
     let text = format!("{HEAD}{rows}");
     let spec = spec::parse(&text).unwrap();
     RunRequest {
@@ -403,7 +480,8 @@ contains = "deleted"
     ]);
     let (row, _) = run_one(&fake, rows).await;
     assert_eq!(row.result, RowResult::Pass, "{:?}", row.reasons);
-    assert_eq!(row.vars["mail_id"], "42");
+    // A whole number is kept as one (it still types as "42").
+    assert_eq!(row.vars["mail_id"], 42);
 }
 
 /// Plan-only drives nothing and reports every row SKIPPED or BLOCKED.
@@ -448,7 +526,8 @@ lab_client_status lab_client_stop lab_crash_report lab_create_character lab_dele
 lab_ensure_character_slot lab_finish_dialog lab_login lab_logout lab_pixel_probe \
 lab_play_character lab_screenshot lab_screenshot_region lab_timeline \
 client_entity_find client_target client_world_click client_move_to client_camera \
-client_hotbar client_use_ability client_combat_log client_die_and_respawn client_wait_event";
+client_hotbar client_use_ability client_combat_log client_die_and_respawn client_wait_event \
+client_player_state";
 
 /// Plan every committed spec against today's tools: the rows the lab can
 /// drive now come back SKIPPED (ready), and the rows waiting on a planned
@@ -458,6 +537,18 @@ client_hotbar client_use_ability client_combat_log client_die_and_respawn client
 async fn committed_specs_plan_against_main_tools() {
     let dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../docs/guides/uat-specs");
     let sections = crate::uat::load_sections(&dir, None).unwrap();
+    let abilities = sections
+        .iter()
+        .find(|s| s.spec.section.id == "ability-mechanics")
+        .expect("abilities.toml is committed")
+        .spec
+        .clone();
+    let debug_area = sections
+        .iter()
+        .find(|s| s.spec.section.id == "debug-area")
+        .expect("debug-area.toml is committed")
+        .spec
+        .clone();
     let mut fake = Fake::new(&[]);
     fake.tools = MAIN_TOOLS.split_whitespace().map(str::to_string).collect();
     let tmp = tempfile::tempdir().unwrap().keep();
@@ -505,6 +596,55 @@ async fn committed_specs_plan_against_main_tools() {
         "BLOCKED",
         "rule 6 without approval"
     );
+    // Ability mechanics (AB-R0), every row: a one-player row with no
+    // standing reason plans as ready against today's tools (so a row that
+    // picks up an unrouted tool fails here); every other row is BLOCKED
+    // with its own reason, or the second-player one.
+    for row in &abilities.rows {
+        let got = result("ability-mechanics", &row.id);
+        let want = if row.blocked.is_some() || row.players > 1 {
+            "BLOCKED"
+        } else {
+            "SKIPPED"
+        };
+        assert_eq!(got.result, want, "{}: {:?}", row.id, got.reasons);
+        let why = row.blocked.as_deref().unwrap_or("second lab instance");
+        if want == "BLOCKED" {
+            assert!(
+                got.reasons.iter().any(|x| x.contains(why)),
+                "{}: {:?}",
+                row.id,
+                got.reasons
+            );
+        }
+    }
+    assert!(abilities.rows.len() >= 33, "the section lost rows");
+    // Debug Area (DA-05), every row: a row with no standing reason plans as
+    // ready against today's tools, so a station row that picks up an
+    // unrouted tool fails here; a blocked row reports its own reason.
+    assert!(debug_area.rows.len() >= 46, "the section lost rows");
+    for row in &debug_area.rows {
+        let got = result("debug-area", &row.id);
+        match &row.blocked {
+            Some(why) => {
+                assert_eq!(got.result, "BLOCKED", "{}: {:?}", row.id, got.reasons);
+                assert!(
+                    got.reasons.iter().any(|x| x.contains(why.as_str())),
+                    "{}",
+                    row.id
+                );
+            }
+            None => assert_eq!(got.result, "SKIPPED", "{}: {:?}", row.id, got.reasons),
+        }
+    }
+    // Two players: BLOCKED until a second lab instance is configured.
+    let m12 = result("gm-parity", "M1-2");
+    assert_eq!(m12.result, "BLOCKED");
+    assert!(
+        m12.reasons[0].contains("second lab instance"),
+        "{:?}",
+        m12.reasons
+    );
     assert!(fake.calls.lock().unwrap().is_empty());
     for r in &out.rows {
         println!(
@@ -544,4 +684,44 @@ lua_condition = "true"
         .find(|a| a.tool.as_deref() == Some("client_target"))
         .unwrap();
     assert_eq!(step.tier_source.as_deref(), Some("reported:ui_lua"));
+}
+
+/// AB-U20 and AB-U22 stage their NPC cast with the `.dummy caster` GM
+/// command (#1188: a lab dummy that casts one ability at its owner through
+/// the real launch). They are unblocked and plan as ready: nothing in the
+/// rows is missing.
+#[tokio::test]
+async fn the_caster_dummy_rows_are_ready_once_unblocked() {
+    let path = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join("../../docs/guides/uat-specs/abilities.toml");
+    let text = std::fs::read_to_string(&path).unwrap();
+    assert!(
+        !text.contains("blocked = \".dummy caster"),
+        "AB-U20 and AB-U22 are unblocked"
+    );
+    let spec = crate::uat::spec::parse(&text).unwrap();
+    let mut fake = Fake::new(&[]);
+    fake.tools = MAIN_TOOLS.split_whitespace().map(str::to_string).collect();
+    let req = RunRequest {
+        sections: vec![LoadedSpec {
+            path: "abilities.toml".into(),
+            sha256: "0".into(),
+            spec,
+        }],
+        rows: Some(vec!["AB-U20".into(), "AB-U22".into()]),
+        root: tempfile::tempdir().unwrap().keep(),
+        lab_character: Some("Labone".into()),
+        plan_only: true,
+        no_settle: true,
+        ..Default::default()
+    };
+    let out = Runner::new(&fake, None, req)
+        .unwrap()
+        .run_all()
+        .await
+        .unwrap();
+    assert_eq!(out.rows.len(), 2);
+    for r in &out.rows {
+        assert_eq!(r.result, "SKIPPED", "{}: {:?}", r.row, r.reasons);
+    }
 }

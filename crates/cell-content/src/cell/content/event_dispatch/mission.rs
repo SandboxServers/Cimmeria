@@ -67,10 +67,14 @@ pub(in crate::cell::content) fn fire_mission_accepted<'a>(
 
         let resolved = engine.resolve_event(&event, &ctx);
         if !resolved.actions.is_empty() {
+            let id = space_mgr.player_identity(entity_id);
             tracing::info!(
                 entity_id,
+                entity_name = space_mgr.entity_label(entity_id),
                 player_id,
+                player_name = id.player_name,
                 mission_id,
+                mission_name = cimmeria_names::book().mission(mission_id),
                 actions = resolved.actions.len(),
                 "fire_mission_accepted: matched"
             );
@@ -78,7 +82,9 @@ pub(in crate::cell::content) fn fire_mission_accepted<'a>(
         } else {
             tracing::debug!(
                 entity_id,
+                entity_name = space_mgr.entity_label(entity_id),
                 mission_id,
+                mission_name = cimmeria_names::book().mission(mission_id),
                 "fire_mission_accepted: no chains matched"
             );
         }
@@ -126,10 +132,14 @@ pub(in crate::cell::content) fn fire_mission_completed<'a>(
 
         let resolved = engine.resolve_event(&event, &ctx);
         if !resolved.actions.is_empty() {
+            let id = space_mgr.player_identity(entity_id);
             tracing::info!(
                 entity_id,
+                entity_name = space_mgr.entity_label(entity_id),
                 player_id,
+                player_name = id.player_name,
                 mission_id,
+                mission_name = cimmeria_names::book().mission(mission_id),
                 actions = resolved.actions.len(),
                 "fire_mission_completed: matched"
             );
@@ -137,7 +147,9 @@ pub(in crate::cell::content) fn fire_mission_completed<'a>(
         } else {
             tracing::debug!(
                 entity_id,
+                entity_name = space_mgr.entity_label(entity_id),
                 mission_id,
+                mission_name = cimmeria_names::book().mission(mission_id),
                 "fire_mission_completed: no chains matched"
             );
         }
@@ -193,10 +205,14 @@ pub fn fire_mission_abandoned<'a>(
 
         let resolved = engine.resolve_event(&event, &ctx);
         if !resolved.actions.is_empty() {
+            let id = space_mgr.player_identity(entity_id);
             tracing::info!(
                 entity_id,
+                entity_name = space_mgr.entity_label(entity_id),
                 player_id,
+                player_name = id.player_name,
                 mission_id,
+                mission_name = cimmeria_names::book().mission(mission_id),
                 actions = resolved.actions.len(),
                 "fire_mission_abandoned: matched"
             );
@@ -204,7 +220,9 @@ pub fn fire_mission_abandoned<'a>(
         } else {
             tracing::debug!(
                 entity_id,
+                entity_name = space_mgr.entity_label(entity_id),
                 mission_id,
+                mission_name = cimmeria_names::book().mission(mission_id),
                 "fire_mission_abandoned: no chains matched"
             );
         }

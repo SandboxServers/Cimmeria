@@ -4,17 +4,56 @@
 
 use serde_json::{json, Value};
 
-use super::evidence::Verdict;
+use super::evidence::{clip, Verdict};
 use super::spec::{ExpectSpec, Op, Source};
 
 /// Value at a JSON pointer (`/chat_tail/0`); the whole value for `None`
 /// or `""`. A lua_eval result is a string; when it parses as JSON the
 /// parsed value is compared, so `return 40` compares as the number 40.
+///
+/// A segment may end in selectors, `[key=value]`, that pick the first
+/// array element whose `key` equals `value` (numbers numerically):
+/// `/state/stats[stat_id=8]/cur` reads one stat out of
+/// `server_ability_state`'s list without knowing its index.
 pub fn json_at<'a>(v: &'a Value, pointer: Option<&str>) -> Option<&'a Value> {
     match pointer {
         None | Some("") => Some(v),
-        Some(p) => v.pointer(p),
+        Some(p) if !p.contains('[') => v.pointer(p),
+        Some(p) => select_path(v, p),
     }
+}
+
+/// [`json_at`] for a pointer with `[key=value]` selectors.
+fn select_path<'a>(v: &'a Value, pointer: &str) -> Option<&'a Value> {
+    let mut cur = v;
+    for seg in pointer.strip_prefix('/')?.split('/') {
+        let (name, mut sels) = match seg.find('[') {
+            Some(i) => (&seg[..i], &seg[i..]),
+            None => (seg, ""),
+        };
+        if !name.is_empty() {
+            let key = name.replace("~1", "/").replace("~0", "~");
+            cur = match cur {
+                Value::Object(o) => o.get(&key)?,
+                Value::Array(a) => a.get(key.parse::<usize>().ok()?)?,
+                _ => return None,
+            };
+        }
+        while let Some(rest) = sels.strip_prefix('[') {
+            let end = rest.find(']')?;
+            let (k, want) = rest[..end].split_once('=')?;
+            let want = Value::String(want.to_string());
+            cur = cur
+                .as_array()?
+                .iter()
+                .find(|e| e.get(k).is_some_and(|got| loose_eq(got, &want)))?;
+            sels = &rest[end + 1..];
+        }
+        if !sels.is_empty() {
+            return None;
+        }
+    }
+    Some(cur)
 }
 
 fn as_f64(v: &Value) -> Option<f64> {
@@ -55,11 +94,24 @@ fn loose_eq(a: &Value, b: &Value) -> bool {
     }
 }
 
-/// Apply `op` (default: `eq` when a value is given, else `truthy`).
+/// Apply `op` (default: `eq` when a value is given, else `truthy`) with no
+/// tolerance. Test-only: every runtime path calls [`compare_tol`] with the
+/// clause's `tolerance`, so `approx` can never lose it.
+#[cfg(test)]
 pub fn compare(
     op: Option<Op>,
     observed: Option<&Value>,
     value: Option<&Value>,
+) -> Result<bool, String> {
+    compare_tol(op, observed, value, None)
+}
+
+/// [`compare`] with the clause's `tolerance`, which `approx` needs.
+pub fn compare_tol(
+    op: Option<Op>,
+    observed: Option<&Value>,
+    value: Option<&Value>,
+    tolerance: Option<f64>,
 ) -> Result<bool, String> {
     let op = op.unwrap_or(if value.is_some() { Op::Eq } else { Op::Truthy });
     let need = || value.ok_or_else(|| format!("{op:?} needs a value"));
@@ -76,6 +128,12 @@ pub fn compare(
         Op::Matches => {
             let re = regex::Regex::new(&as_text(need()?)).map_err(|e| e.to_string())?;
             re.is_match(&as_text(obs))
+        }
+        Op::Approx => {
+            let want = as_f64(need()?).ok_or("approx needs a numeric value")?;
+            let tol = tolerance.ok_or("approx needs a tolerance")?;
+            // A hair of slack so `15 ± 1` keeps 16.0 after float noise.
+            as_f64(obs).is_some_and(|h| (h - want).abs() <= tol + 1e-9)
         }
         Op::Gt | Op::Gte | Op::Lt | Op::Lte | Op::LenGte => {
             let want = as_f64(need()?).ok_or("a numeric op needs a numeric value")?;
@@ -161,7 +219,8 @@ pub fn eval_chat(c: &ExpectSpec, lines: &[String]) -> (Verdict, Value, Option<St
 
 /// Grade a SigNoz clause from attested rows: `min_rows`/`max_rows` on the
 /// count (default: at least one row), and `field` `op` `value` on every
-/// key row when given.
+/// key row when given. Packet clauses grade their matching rows the same
+/// way ([`grade_packet`]).
 pub fn grade_signoz(c: &ExpectSpec, row_count: u64, rows: &[Value]) -> Result<Verdict, String> {
     let min = c
         .min_rows
@@ -175,12 +234,104 @@ pub fn grade_signoz(c: &ExpectSpec, row_count: u64, rows: &[Value]) -> Result<Ve
         }
         for r in rows {
             let v = r.get(field.as_str()).or_else(|| r.pointer(field));
-            if !compare(c.op, v, c.value.as_ref())? {
+            if !compare_tol(c.op, v, c.value.as_ref(), c.tolerance)? {
                 return Ok(Verdict::Fail);
             }
         }
     }
     Ok(Verdict::Pass)
+}
+
+/// A tap row's direction for a clause's `direction`.
+fn tap_dir(direction: Option<&str>) -> &'static str {
+    match direction {
+        Some("to_server") => "in",
+        _ => "out",
+    }
+}
+
+/// One tapped message flattened for grading: the decoded fields at the
+/// top level (so `field = "cooldown"` reads the message's own argument),
+/// with the tap's columns (`ts_ms`, `dir`, `msg_name`, `target_entity_id`,
+/// `args_len`, `args_hex`) beside them. A decoded field never shadows a
+/// tap column; `/decoded/...` pointers still reach the original.
+pub fn packet_row(m: &Value) -> Value {
+    let mut out = match m.get("decoded") {
+        Some(Value::Object(d)) => d.clone(),
+        _ => serde_json::Map::new(),
+    };
+    if let Value::Object(cols) = m {
+        for (k, v) in cols {
+            out.insert(k.clone(), v.clone());
+        }
+    }
+    Value::Object(out)
+}
+
+/// Whether a tapped message is one the clause names.
+pub fn packet_matches(c: &ExpectSpec, entity: Option<u64>, m: &Value) -> bool {
+    let name_ok = m
+        .get("msg_name")
+        .and_then(Value::as_str)
+        .zip(c.message.as_deref())
+        .is_some_and(|(have, want)| have.eq_ignore_ascii_case(want));
+    let dir_ok = m.get("dir").and_then(Value::as_str) == Some(tap_dir(c.direction.as_deref()));
+    let entity_ok =
+        entity.is_none_or(|e| m.get("target_entity_id").and_then(Value::as_u64) == Some(e));
+    // `match_fields` picks which messages the count and `field` apply to
+    // ("at least one onStateFieldUpdate with dead = true"), as it does for
+    // client_event clauses.
+    let fields_ok = c.match_fields.as_ref().is_none_or(|want| {
+        let row = packet_row(m);
+        want.iter()
+            .all(|(k, v)| row.get(k).is_some_and(|got| loose_eq(got, v)))
+    });
+    name_ok && dir_ok && entity_ok && fields_ok
+}
+
+/// Grade a packet clause against one `server_packet_tap_read` result
+/// (`{messages, dropped, ...}`). Returns the verdict, the observation for
+/// the bundle and a detail line. A ring that dropped messages cannot
+/// prove an upper bound or "every row", so such a PASS is UNVERIFIED.
+/// A read without a `messages` array or a numeric `dropped` is not an
+/// empty, lossless tap: it proves nothing, so it is UNVERIFIED too.
+pub fn grade_packet(
+    c: &ExpectSpec,
+    entity: Option<u64>,
+    tap: &Value,
+) -> (Verdict, Value, Option<String>) {
+    let (Some(all), Some(dropped)) = (
+        tap.get("messages").and_then(Value::as_array),
+        tap.get("dropped").and_then(Value::as_u64),
+    ) else {
+        return (
+            Verdict::Unverified,
+            clip(tap, 300),
+            Some("the tap read has no messages array or no numeric dropped count".into()),
+        );
+    };
+    let rows: Vec<Value> = all
+        .iter()
+        .filter(|m| packet_matches(c, entity, m))
+        .map(packet_row)
+        .collect();
+    let observed = json!({
+        "matching_rows": rows.len(),
+        "tapped_rows": all.len(),
+        "dropped": dropped,
+        "rows": clip(&json!(rows.iter().take(5).collect::<Vec<_>>()), 1500),
+    });
+    let verdict = match grade_signoz(c, rows.len() as u64, &rows) {
+        Ok(v) => v,
+        Err(e) => return (Verdict::Unverified, observed, Some(e)),
+    };
+    if verdict == Verdict::Pass && dropped > 0 && (c.max_rows.is_some() || c.field.is_some()) {
+        let why = format!(
+            "the tap ring dropped {dropped} message(s), so an upper bound or an every-row check cannot be proven"
+        );
+        return (Verdict::Unverified, observed, Some(why));
+    }
+    (verdict, observed, None)
 }
 
 /// A one-line statement of what the clause wants, for the bundle.
@@ -236,6 +387,54 @@ pub fn describe(c: &ExpectSpec) -> String {
             }
             if let Some(f) = &c.field {
                 s.push_str(&format!("; every row {f} {}", opv(c.op, &c.value)));
+                if let Some(t) = c.tolerance {
+                    s.push_str(&format!(" ± {t}"));
+                }
+            }
+            s
+        }
+        Source::Packet => {
+            let mut s = format!(
+                "packet {} {}",
+                c.direction.as_deref().unwrap_or("?"),
+                c.message.as_deref().unwrap_or("?")
+            );
+            if let Some(e) = &c.entity {
+                s.push_str(&format!(" for entity {}", as_text(e)));
+            }
+            if let Some(m) = c.min_rows {
+                s.push_str(&format!(" (>= {m} rows)"));
+            }
+            if let Some(m) = c.max_rows {
+                s.push_str(&format!(" (<= {m} rows)"));
+            }
+            if let Some(f) = &c.field {
+                s.push_str(&format!("; every row {f} {}", opv(c.op, &c.value)));
+                if let Some(t) = c.tolerance {
+                    s.push_str(&format!(" ± {t}"));
+                }
+            }
+            s
+        }
+        Source::ClientEvent => {
+            let mut s = format!("client event {}", c.event.as_deref().unwrap_or("?"));
+            if let Some(m) = &c.match_fields {
+                s.push_str(&format!(" where {}", Value::Object(m.clone())));
+            }
+            if let Some(l) = &c.since {
+                s.push_str(&format!(" since {l}"));
+            }
+            if let Some(m) = c.min_rows {
+                s.push_str(&format!(" (>= {m} events)"));
+            }
+            if let Some(m) = c.max_rows {
+                s.push_str(&format!(" (<= {m} events)"));
+            }
+            if let Some(f) = &c.field {
+                s.push_str(&format!("; every event {f} {}", opv(c.op, &c.value)));
+                if let Some(t) = c.tolerance {
+                    s.push_str(&format!(" ± {t}"));
+                }
             }
             s
         }
@@ -244,85 +443,5 @@ pub fn describe(c: &ExpectSpec) -> String {
 }
 
 #[cfg(test)]
-mod tests {
-    use super::*;
-
-    fn clause(src: &str) -> ExpectSpec {
-        let t = format!("id = \"c\"\ntext = \"t\"\n{src}");
-        toml::from_str(&t).unwrap()
-    }
-
-    fn s(v: &[&str]) -> Vec<String> {
-        v.iter().map(|x| x.to_string()).collect()
-    }
-
-    #[test]
-    fn lua_strings_compare_as_numbers() {
-        assert!(compare(Some(Op::Eq), Some(&json!("40")), Some(&json!(40))).unwrap());
-        assert!(compare(Some(Op::Gte), Some(&json!("6")), Some(&json!(6))).unwrap());
-        assert!(!compare(Some(Op::Gt), Some(&json!("n/a")), Some(&json!(1))).unwrap());
-        assert!(compare(None, Some(&json!("true")), None).unwrap());
-        assert!(!compare(None, Some(&json!("false")), None).unwrap());
-        assert!(compare(Some(Op::Absent), None, None).unwrap());
-        assert!(compare(Some(Op::LenGte), Some(&json!([1, 2])), Some(&json!(2))).unwrap());
-    }
-
-    #[test]
-    fn new_lines_follow_a_sliding_tail() {
-        let before = s(&["a", "b", "c"]);
-        assert_eq!(
-            new_lines(&before, &s(&["b", "c", "d", "e"])),
-            (s(&["d", "e"]), true)
-        );
-        // Repeated text: the longest overlap wins, so a second "c" is new.
-        assert_eq!(
-            new_lines(&before, &s(&["a", "b", "c", "c"])),
-            (s(&["c"]), true)
-        );
-        // Cleared box (relog): everything is new, flagged.
-        assert_eq!(new_lines(&before, &s(&["x"])), (s(&["x"]), false));
-        assert_eq!(new_lines(&[], &s(&["x"])), (s(&["x"]), true));
-    }
-
-    #[test]
-    fn chat_count_catches_a_double_echo() {
-        let c = clause("source = \"chat\"\ncontains = \"hi\"\ncount = 1");
-        let (v, obs, _) = eval_chat(&c, &s(&["[Say] Labone: hi", "[Say] Labone: hi"]));
-        assert_eq!(v, Verdict::Fail);
-        assert_eq!(obs["match_count"], 2);
-        assert_eq!(eval_chat(&c, &s(&["[Say] Labone: hi"])).0, Verdict::Pass);
-    }
-
-    #[test]
-    fn chat_capture_takes_group_one() {
-        let c = clause("source = \"chat\"\nmatches = 'Bookmark (\\d+) recorded'");
-        let (v, _, cap) = eval_chat(&c, &s(&["Bookmark 1790650000123 recorded: 3 of 3"]));
-        assert_eq!(v, Verdict::Pass);
-        assert_eq!(cap.as_deref(), Some("1790650000123"));
-    }
-
-    #[test]
-    fn absent_passes_only_with_no_match() {
-        let c = clause("source = \"chat\"\ncontains = \"error\"\nabsent = true");
-        assert_eq!(eval_chat(&c, &s(&["fine"])).0, Verdict::Pass);
-        assert_eq!(eval_chat(&c, &s(&["an error"])).0, Verdict::Fail);
-    }
-
-    #[test]
-    fn signoz_rows_and_fields_grade() {
-        let c = clause("source = \"signoz\"\nfilter = \"x\"");
-        assert_eq!(grade_signoz(&c, 0, &[]).unwrap(), Verdict::Fail);
-        assert_eq!(grade_signoz(&c, 2, &[]).unwrap(), Verdict::Pass);
-        let c = clause(
-            "source = \"signoz\"\nfilter = \"x\"\nfield = \"outcome\"\nop = \"eq\"\nvalue = \"up_to_date\"",
-        );
-        let ok = [json!({"outcome": "up_to_date"})];
-        let bad = [json!({"outcome": "full_resync"})];
-        assert_eq!(grade_signoz(&c, 1, &ok).unwrap(), Verdict::Pass);
-        assert_eq!(grade_signoz(&c, 1, &bad).unwrap(), Verdict::Fail);
-        assert!(grade_signoz(&c, 1, &[]).is_err());
-        let none = clause("source = \"signoz\"\nfilter = \"x\"\nmax_rows = 0");
-        assert_eq!(grade_signoz(&none, 0, &[]).unwrap(), Verdict::Pass);
-        assert_eq!(grade_signoz(&none, 1, &[]).unwrap(), Verdict::Fail);
-    }
-}
+#[path = "clause_tests.rs"]
+mod tests;

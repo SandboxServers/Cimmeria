@@ -47,8 +47,29 @@ pub struct ActiveEffectInstance {
     /// `invoker.position` and cancels the channel if the caster moved
     /// more than `CHANNEL_INTERRUPT_DISTANCE` from this anchor.
     pub invoker_position_at_register: Option<Vector3>,
+    /// The cast that registered (or last refreshed) it: the invoker's
+    /// `effect_seq` for that launch (ability-mechanics AB-T1), so every pulse
+    /// row joins its launch row. `None` when no cast was resolving (a test
+    /// fixture, a content-applied effect). A cast id is per invoker, so the
+    /// join key is `(invoker_id, cast_id)`.
+    pub cast_id: Option<i32>,
+    /// The invoker's canonical identity, snapshotted when the cast registered
+    /// (or last refreshed) it. A pulse outlives its invoker (a disconnect,
+    /// a despawn) and entity ids are recycled, so the pulse and end rows log
+    /// this, never a lookup of `invoker_id` at fire time
+    /// (instrumentation-discipline rule 5).
+    pub invoker_identity: PlayerIdentity,
+    /// The invoker's name, snapshotted with the identity: an NPC's too, so
+    /// a mob's DoT rows name it after it died or its id was reused (Rule 6).
+    pub invoker_name: Option<&'static str>,
 }
 
+mod ability_state;
+#[cfg(test)]
+mod ability_state_tests;
+mod absorb_pool;
+#[cfg(test)]
+mod absorb_pool_tests;
 mod aggression;
 mod ai_state;
 mod appearance;
@@ -63,6 +84,7 @@ mod offered_dialogs;
 mod pending_cast;
 mod pet;
 mod stat_buff;
+mod stat_buff_flags;
 #[cfg(test)]
 mod stat_buff_tests;
 mod state_flags;
@@ -72,19 +94,24 @@ mod vault_session;
 mod weapon_action;
 mod witness_aoi;
 
+pub use ability_state::{
+    AbilityStateSnapshot, AbsorbPoolState, CooldownState, LedgerEntryState, LedgerStatDelta,
+    MonikerCooldownState, PendingCastState, PulsingEffectState, StatState, StateFlagRefcount,
+};
+pub use absorb_pool::{AbsorbPool, AbsorbSettlement};
 pub use aggression::{AggroProfile, MobAggression};
 pub use appearance::filter_holstered_weapon;
 pub use crafting_stations::CraftingStationState;
 pub use entity_struct::CellEntity;
 pub use extensions::EntityExtensions;
-pub use identity::PlayerIdentity;
+pub use identity::{LogNames, PlayerIdentity};
 pub use leash_state::{ChaseRoute, LeashState};
 pub use offered_dialogs::MAX_OFFERED_DIALOGS;
 pub use pending_cast::PendingCast;
 pub use pet::{PetBuff, PetStance, PetState, UnknownPetStance, ALL_STANCES_MASK};
 pub use stat_buff::{
-    shift_stat_widening, unshift_stat, ActiveStatBuff, StatBuffApplied, StatBuffLedger,
-    StatBuffSpec, StatShift,
+    shift_stat_widening, unshift_stat, AppliedStat, StatBuffLedger, StatShift, TimedEffect,
+    TimedEffectApplied, TimedEffectSpec, TimedStacking, EFFECT_BAR_SLOTS_PER_SIDE,
 };
 pub use system_options::SystemOptions;
 pub use tree_progress::TreeProgress;

@@ -160,6 +160,7 @@ pub async fn handle_chat_message(
             // rule, tell the sender why instead of dropping it on the floor.
             tracing::debug!(
                 entity_id,
+                entity_name = space_mgr.entity_label(entity_id),
                 channel,
                 "Chat: player attempted to speak on the system-only server channel"
             );
@@ -183,6 +184,7 @@ pub async fn handle_chat_message(
             // shape here instead of only logging.
             tracing::debug!(
                 entity_id,
+                entity_name = space_mgr.entity_label(entity_id),
                 channel,
                 "Chat channel not handled by CellService -- feedback sent to sender"
             );

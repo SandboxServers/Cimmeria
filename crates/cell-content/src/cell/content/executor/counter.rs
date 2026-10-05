@@ -27,14 +27,25 @@ pub(super) fn increment(
     if let Some(entity) = space_mgr.get_entity_mut(entity_id) {
         let entry = entity.counters.entry(counter_name.clone()).or_insert(0);
         *entry = entry.saturating_add(amount);
+        let new_value = *entry;
         tracing::debug!(
-            entity_id, player_id, %counter_name, amount,
-            new_value = *entry, chain_id,
+            entity_id,
+            entity_name = crate::cell::space_manager::EntityNames::of(entity).entity_name,
+            player_id,
+            player_name = entity.identity().player_name,
+            %counter_name,
+            amount,
+            new_value,
+            chain_id,
+            chain_name = cimmeria_names::book().chain(chain_id),
             "Content: incremented counter"
         );
     } else {
         tracing::warn!(
-            entity_id, %counter_name, chain_id,
+            entity_id, // nt:id-only the entity is gone, so there is no name to resolve
+            %counter_name,
+            chain_id,
+            chain_name = cimmeria_names::book().chain(chain_id),
             "Content: increment_counter source entity missing — counter not updated"
         );
     }
@@ -53,7 +64,14 @@ pub(super) fn reset(
     if let Some(entity) = space_mgr.get_entity_mut(entity_id) {
         let removed = entity.counters.remove(&counter_name);
         tracing::debug!(
-            entity_id, player_id, %counter_name, ?removed, chain_id,
+            entity_id,
+            entity_name = crate::cell::space_manager::EntityNames::of(entity).entity_name,
+            player_id,
+            player_name = entity.identity().player_name,
+            %counter_name,
+            ?removed,
+            chain_id,
+            chain_name = cimmeria_names::book().chain(chain_id),
             "Content: reset counter"
         );
     }

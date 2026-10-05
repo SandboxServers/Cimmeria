@@ -288,6 +288,7 @@ pub(crate) const OTEL_FILTER: &str = "info,\
                 cimmeria_wire::firehose=debug,\
                 cimmeria_wire::hex=debug,\
                 cimmeria_wire::mercury=debug,\
+                cimmeria_wire::names=debug,\
                 cimmeria_wire::state_field=debug,\
                 cimmeria_wire_log=debug,\
                 cimmeria_cell_cover=debug,\
@@ -324,6 +325,7 @@ pub(crate) const OTEL_FILTER: &str = "info,\
                 aoi.entity_enter=debug,aoi.entity_leave=debug,\
                 aoi.create_emit=debug,\
                 aoi.introduce=debug,\
+                base.entity_method=debug,\
                 movement.npc=debug,movement.player=debug,\
                 movement.navmesh=debug,\
                 npc_ai=debug,\
@@ -499,12 +501,16 @@ pub(crate) const FILE_LAYERS: &[FileLayer] = &[
              cimmeria_cell_world::cell::space_manager=trace,\
              cimmeria_cell_world::cell::space_manager::npc_population=off",
     },
+    // `abilities` (and its `abilities.*` children) since AB-T7 moved the
+    // ability modules' last module-path rows onto named targets: without it
+    // those rows would have left this file.
     FileLayer {
         file: "combat.log",
         directives: "off,\
              cimmeria_cell_combat::cell::combat=trace,\
              cimmeria_cell_world::cell::combat=trace,\
-             cimmeria_cell_combat::cell::abilities=trace",
+             cimmeria_cell_combat::cell::abilities=trace,\
+             abilities=trace",
     },
     FileLayer {
         file: "content.log",

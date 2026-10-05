@@ -34,8 +34,8 @@ pub async fn send_on_trade_results(
         .await
     {
         tracing::warn!(
-            entity_id,
-            partner_entity_id,
+            entity_id, // nt:id-only no SpaceManager here; the channel only closes at shutdown
+            partner_entity_id, // nt:id-only no SpaceManager here; the channel only closes at shutdown
             result,
             error = %e,
             "send onTradeResults: cell→base channel closed",
@@ -62,7 +62,10 @@ pub async fn send_on_trade_state_to_both(
             _ => {
                 tracing::warn!(
                     entity_id,
+                    entity_name = space_mgr.entity_names(entity_id).entity_name,
                     partner_entity_id,
+                    partner_entity_name =
+                        space_mgr.entity_names(partner_entity_id as u32).entity_name,
                     "send_on_trade_state_to_both: missing proposal state"
                 );
                 return;
@@ -71,7 +74,9 @@ pub async fn send_on_trade_state_to_both(
         _ => {
             tracing::warn!(
                 entity_id,
+                entity_name = space_mgr.entity_names(entity_id).entity_name,
                 partner_entity_id,
+                partner_entity_name = space_mgr.entity_names(partner_entity_id as u32).entity_name,
                 "send_on_trade_state_to_both: missing entity"
             );
             return;
@@ -102,7 +107,9 @@ pub async fn send_on_trade_state_to_both(
     {
         tracing::warn!(
             entity_id,
+            entity_name = space_mgr.entity_names(entity_id).entity_name,
             partner_entity_id,
+            partner_entity_name = space_mgr.entity_names(partner_entity_id as u32).entity_name,
             error = %e,
             "send onTradeState (a): cell→base channel closed",
         );
@@ -120,7 +127,9 @@ pub async fn send_on_trade_state_to_both(
     {
         tracing::warn!(
             entity_id = partner_entity_id,
+            entity_name = space_mgr.entity_names(partner_entity_id as u32).entity_name,
             partner_entity_id = entity_id,
+            partner_entity_name = space_mgr.entity_names(entity_id).entity_name,
             error = %e,
             "send onTradeState (b): cell→base channel closed",
         );

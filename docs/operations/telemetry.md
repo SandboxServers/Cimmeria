@@ -182,9 +182,11 @@ logs the same reason at ERROR. When it is working, the startup line is
    ```
 
    Route DNS with `cloudflared tunnel route dns cimmeria-signoz
-   telemetry.<your-domain>`, and run the tunnel profile
-   (`--profile tunnel`). The `path` rule keeps the rest of the admin API,
-   which has no authentication (#439), off the public hostname.
+   telemetry.<your-domain>`, and start the `cloudflared` container on
+   `signoz-net` as [signoz-remote-access.md](signoz-remote-access.md)
+   shows (the colo runs no tunnel as of 2026-10-04). The `path` rule
+   keeps the rest of the admin API, which has no authentication (#439),
+   off the public hostname.
 3. **Set both variables in `/opt/cimmeria/.env`** (the file
    `docker compose` reads beside `compose.yml`; it is never committed):
 
@@ -199,7 +201,9 @@ logs the same reason at ERROR. When it is working, the startup line is
    endpoint falls back to `http://localhost:8443/api/telemetry`, which
    only a launcher on the colo itself can reach.
 4. **Recreate the container** so it picks up the environment:
-   `docker compose -f compose.yml up -d cimmeria`.
+   `docker compose up -d` in `/opt/cimmeria`. Leave out `-f compose.yml`:
+   it would override `COMPOSE_FILE` and recreate the container without
+   its overlays (Discord file, lab endpoint).
 5. **Check it.** `docker logs cimmeria 2>&1 | grep "dev-session telemetry"`
    shows the enabled line. From any machine,
    `curl -s -o /dev/null -w '%{http_code}\n' -X POST -H 'Content-Type: application/json' -d '{}' http://play.cimmeria.app:8081/api/auth/dev-session`
@@ -478,7 +482,8 @@ times what a governed client sends, and enough for a `raw` lab session.
 Over the budget the chunk is still accepted, so the uploader does not
 retry it, but only warn/error rows, session metadata and the must-keep DLL
 families (boot, hooks, entity lifecycle, Mercury anomalies, governor
-reports) are replayed. Every chunk that suppressed something logs:
+reports, and the ability rows `client.ability.*`, which the DLL already
+throttles per name) are replayed. Every chunk that suppressed something logs:
 
 ```text
 service.name = 'cimmeria-server' AND scope_name = 'launcher.ingest'

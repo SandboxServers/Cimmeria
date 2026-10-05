@@ -5,6 +5,7 @@
 //! vendor A then submit a purchase against vendor B's item lists.
 
 use crate::cell::space_manager::SpaceManager;
+use cimmeria_entity::cell_entity::PlayerIdentity;
 
 /// Resolved vendor session for the player, looked up from server-side state.
 ///
@@ -36,28 +37,36 @@ pub(super) fn vendor_context(entity_id: u32, space_mgr: &SpaceManager) -> Option
 
 /// Validate that the client-supplied template id matches the vendor that was
 /// opened. Returns the authoritative server-side id on success, or `None` after
-/// logging the mismatch.
+/// logging the mismatch. `space_mgr` only names the vendor on a refusal.
 pub(super) fn validate_template_id(
     entity_id: u32,
-    account_id: Option<u32>,
+    identity: PlayerIdentity,
     action: &'static str,
     session: &VendorSession,
     client_template_id: i32,
+    space_mgr: &SpaceManager,
 ) -> Option<i32> {
     match session.server_template_id {
         Some(server_id) if server_id == client_template_id => Some(server_id),
         Some(server_id) => {
+            let book = cimmeria_names::book();
             tracing::warn!(
                 target: "vendor",
                 event = "refused",
                 action,
                 reason = "template_mismatch",
-                account_id,
+                account_id = identity.account_id,
+                account_name = identity.account_name,
                 player_id = session.player_id,
+                player_name = identity.player_name,
                 entity_id,
+                entity_name = identity.player_name,
                 server_template_id = server_id,
+                server_template_name = book.template(server_id),
                 client_template_id,
+                client_template_name = book.template(client_template_id),
                 vendor_entity_id = session.vendor_entity_id,
+                vendor_entity_name = space_mgr.entity_label(session.vendor_entity_id as u32),
                 "vendor op rejected: client supplied template id does not match opened vendor"
             );
             None
@@ -68,11 +77,16 @@ pub(super) fn validate_template_id(
                 event = "refused",
                 action,
                 reason = "vendor_has_no_template",
-                account_id,
+                account_id = identity.account_id,
+                account_name = identity.account_name,
                 player_id = session.player_id,
+                player_name = identity.player_name,
                 entity_id,
+                entity_name = identity.player_name,
                 client_template_id,
+                client_template_name = cimmeria_names::book().template(client_template_id),
                 vendor_entity_id = session.vendor_entity_id,
+                vendor_entity_name = space_mgr.entity_label(session.vendor_entity_id as u32),
                 "vendor op rejected: opened vendor has no template id (server cannot validate)"
             );
             None
@@ -189,7 +203,8 @@ mod vendor_context_tests {
 #[cfg(test)]
 mod refusal_telemetry_tests {
     use super::{validate_template_id, VendorSession};
-    use crate::test_support::LogCapture;
+    use crate::test_support::{make_space_manager, LogCapture};
+    use cimmeria_entity::cell_entity::PlayerIdentity;
     use tracing::Level;
 
     /// A spoofed template id is refused on the `vendor` target with the
@@ -202,8 +217,13 @@ mod refusal_telemetry_tests {
             vendor_entity_id: 4100,
             server_template_id: Some(31),
         };
+        let mgr = make_space_manager();
+        let identity = PlayerIdentity::new(Some(6), Some(72));
         let capture = LogCapture::install();
-        assert_eq!(validate_template_id(9, Some(6), "sell", &session, 99), None);
+        assert_eq!(
+            validate_template_id(9, identity, "sell", &session, 99, &mgr),
+            None
+        );
         let row = capture
             .find_event(Level::WARN, "vendor op rejected", "template_mismatch")
             .expect("refusal row");

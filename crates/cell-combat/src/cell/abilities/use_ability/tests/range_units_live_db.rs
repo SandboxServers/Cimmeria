@@ -18,13 +18,17 @@ async fn seeded_double_blast_range_is_30_metres() {
     let def = defs
         .get(&JAFFA_DOUBLE_BLAST)
         .expect("1652 Jaffa: Double Blast must be seeded");
+    // The range is the subject; the shared no-op effect keeps the AB-12
+    // no-mechanic refusal (which runs before the range check) out of it.
+    let mut def = def.clone();
+    def.effect_ids = vec![FIXTURE_EFFECT];
 
     assert!(
-        !fire_at_hostile(def, 29.0).await,
+        !fire_at_hostile(&def, 29.0).await,
         "1652 (MaxRange 3000 UE3 units = 30 m) must reach a target at 29 m"
     );
     assert!(
-        fire_at_hostile(def, 3000.0).await,
+        fire_at_hostile(&def, 3000.0).await,
         "1652 must refuse a target 3000 m away; a raw 3000 would accept it"
     );
 }

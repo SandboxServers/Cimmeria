@@ -32,7 +32,11 @@ pub async fn dispatch(
 ) -> bool {
     match method_index {
         WHO => {
-            tracing::info!(entity_id, "UNIMPLEMENTED: who");
+            tracing::info!(
+                entity_id,
+                entity_name = space_mgr.entity_label(entity_id),
+                "UNIMPLEMENTED: who"
+            );
             true
         }
 

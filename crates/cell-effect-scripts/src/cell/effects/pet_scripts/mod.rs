@@ -73,9 +73,13 @@ fn target_is_pet(ctx: &EffectContext, script: &'static str) -> bool {
         reason = "target_not_a_pet",
         script,
         entity_id = ctx.target_id,
+        entity_name = ctx.space_mgr.entity_label(ctx.target_id),
         source_id = ctx.source_id,
+        source_name = ctx.space_mgr.caster_label(ctx.source_id),
         effect_id = ctx.effect.effect_id,
+        effect_name = cimmeria_names::book().effect(ctx.effect.effect_id),
         ability_id = ctx.effect.ability_id,
+        ability_name = cimmeria_names::book().ability(ctx.effect.ability_id),
         "a pet effect script ran on something that is not a pet; nothing applied"
     );
     false
@@ -110,8 +114,11 @@ impl EffectScript for PetStatBuff {
                 reason = "no_stat_nvps",
                 script = "PetStatBuff",
                 entity_id = ctx.target_id,
+                entity_name = ctx.space_mgr.entity_label(ctx.target_id),
                 effect_id,
+                effect_name = cimmeria_names::book().effect(effect_id),
                 ability_id,
+                ability_name = cimmeria_names::book().ability(ability_id),
                 "PetStatBuff effect has no stat NVP; nothing applied"
             );
             return;
@@ -139,8 +146,11 @@ impl EffectScript for PetStatBuff {
                 reason = "no_duration",
                 script = "PetStatBuff",
                 entity_id = ctx.target_id,
+                entity_name = ctx.space_mgr.entity_label(ctx.target_id),
                 effect_id,
+                effect_name = cimmeria_names::book().effect(effect_id),
                 ability_id,
+                ability_name = cimmeria_names::book().ability(ability_id),
                 "PetStatBuff effect is neither toggled nor timed; nothing applied"
             );
             return;
@@ -184,8 +194,11 @@ impl EffectScript for PetDeathTimer {
                 reason = "no_duration",
                 script = "PetDeathTimer",
                 entity_id = ctx.target_id,
+                entity_name = ctx.space_mgr.entity_label(ctx.target_id),
                 effect_id = ctx.effect.effect_id,
+                effect_name = cimmeria_names::book().effect(ctx.effect.effect_id),
                 ability_id = ctx.effect.ability_id,
+                ability_name = cimmeria_names::book().ability(ctx.effect.ability_id),
                 "PetDeathTimer effect has no duration; the pet is not doomed"
             );
             return;
@@ -207,12 +220,19 @@ impl EffectScript for PetDeathTimer {
             event = "doom_armed",
             decision_outcome = "doom_armed",
             entity_id = pet,
+            entity_name = ctx.space_mgr.entity_label(pet),
             pet_id = pet,
+            pet_name = ctx.space_mgr.entity_label(pet),
             owner_id,
+            owner_name = id.player_name,
             account_id = id.account_id,
+            account_name = id.account_name,
             player_id = id.player_id,
+            player_name = id.player_name,
             ability_id = ctx.effect.ability_id,
+            ability_name = cimmeria_names::book().ability(ctx.effect.ability_id),
             effect_id = ctx.effect.effect_id,
+            effect_name = cimmeria_names::book().effect(ctx.effect.effect_id),
             doom_secs = secs,
             "To The Death armed: the pet dies when the timer runs out"
         );
@@ -270,11 +290,17 @@ impl PetSummonSpeed {
             event = if applied { "summon_speed_applied" } else { "summon_speed_removed" },
             decision_outcome = if applied { "summon_speed_applied" } else { "summon_speed_removed" },
             entity_id,
+            entity_name = ctx.space_mgr.entity_label(entity_id),
             owner_id = entity_id,
+            owner_name = id.player_name,
             account_id = id.account_id,
+            account_name = id.account_name,
             player_id = id.player_id,
+            player_name = id.player_name,
             ability_id = ctx.effect.ability_id,
+            ability_name = cimmeria_names::book().ability(ctx.effect.ability_id),
             effect_id = ctx.effect.effect_id,
+            effect_name = cimmeria_names::book().effect(ctx.effect.effect_id),
             speed_pet_before = before,
             speed_pet_after = value,
             "passive summon speed on the owner's speedPet"
@@ -292,8 +318,11 @@ impl EffectScript for PetSummonSpeed {
                 reason = "no_speed_nvp",
                 script = "PetSummonSpeed",
                 entity_id = ctx.target_id,
+                entity_name = ctx.space_mgr.entity_label(ctx.target_id),
                 effect_id = ctx.effect.effect_id,
+                effect_name = cimmeria_names::book().effect(ctx.effect.effect_id),
                 ability_id = ctx.effect.ability_id,
+                ability_name = cimmeria_names::book().ability(ctx.effect.ability_id),
                 "PetSummonSpeed effect has no positive SpeedPet NVP; nothing applied"
             );
             return;

@@ -1176,6 +1176,14 @@ INSERT INTO spawnlist (spawn_id, x, y, z, heading, world_id, template_id, tag, s
 --
 INSERT INTO spawnlist (spawn_id, x, y, z, heading, world_id, template_id, tag, set_name, is_stationary) VALUES (405, -328.48, 73.472, -222.52, -2.3829, 12, 305, 'BlackMarket_Auctioneer', NULL, true);
 
+-- Debug Area DHD (world 1300, packet DA-07). The DHD beside the map's own
+-- gate prop, at the same spot as the world-73 DHD on the same client map
+-- (spawn 154). Template 1 carries INT_DHD, so right-clicking it opens the
+-- dialling UI; a GM who does gets every gate this server can enter
+-- (stargates.debug_dial_hub, gate 29). Id 13800 is DA-07's, above the
+-- DA-02..04 spawn blocks (13000-13799).
+INSERT INTO spawnlist (spawn_id, x, y, z, heading, world_id, template_id, tag, set_name) VALUES (13800, 245.442993, 8.93599987, -983.388977, 0, 1300, 1, 'DebugArea_DHD', NULL);
+
 --
 -- TOC entry 3335 (class 0 OID 0)
 -- Dependencies: 256
@@ -1185,10 +1193,11 @@ INSERT INTO spawnlist (spawn_id, x, y, z, heading, world_id, template_id, tag, s
 
 -- Past every seeded row and every reserved campaign spawn block (debug hub
 -- 400-404, black market 405-409, crafting 410-429, organizations 430-449, pets 450-469, bank
--- 470-489, social 490-499), so a row inserted without a spawn_id (the
--- `.savespawn` seed SQL) never takes a used or reserved id. Raise the floor
--- when a new block is reserved above 499; live_db_spawnlist_sequence.rs
+-- 470-489, social 490-499, the Debug Area 13000-13799 for DA-02..DA-04), so
+-- a row inserted without a spawn_id (the `.savespawn` seed SQL) never takes a
+-- used or reserved id. Raise the floor when a new block is reserved above
+-- 13799; live_db_spawnlist_sequence.rs
 -- and live_db_seed_sequences.rs guard it. `last_value` keeps a reload from
 -- ever lowering it. Same form as the crafting CR-11 footers.
-SELECT pg_catalog.setval('spawnlist_spawn_id_seq', GREATEST((SELECT MAX(spawn_id) FROM spawnlist), (SELECT last_value FROM spawnlist_spawn_id_seq), 499), true);
+SELECT pg_catalog.setval('spawnlist_spawn_id_seq', GREATEST((SELECT MAX(spawn_id) FROM spawnlist), (SELECT last_value FROM spawnlist_spawn_id_seq), 13799), true);
 

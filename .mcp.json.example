@@ -17,6 +17,13 @@
     "                 plugin server started.",
     "  x64dbg       : Dynamic analysis via dariushoule/x64dbg-automate. Requires",
     "                 x96dbg.exe launched with the x64dbg-automate plugin loaded.",
+    "  cimmeria-lab-http : the same supervisor as ONE shared daemon for every",
+    "                 Claude session (cimmeria-lab --http, a per-user scheduled",
+    "                 task: pwsh tools/lab/daemon.ps1 install). Loopback only;",
+    "                 the bearer token comes from labd-headers.ps1, which reads",
+    "                 the CIMMERIA_LAB_DAEMON_TOKEN user env var. To switch,",
+    "                 rename it to cimmeria-lab and delete the stdio entry",
+    "                 (runbook: docs/guides/live-research-lab.md).",
     "  cimmeria-lab-p2 : optional second lab client (named instance; its own port,",
     "                 session file and lab-account.p2.json). See the two-clients",
     "                 section of docs/guides/live-research-lab.md.",
@@ -70,6 +77,11 @@
         "CIMMERIA_LAB_MCP_URL": "http://127.0.0.1:8444/mcp",
         "CIMMERIA_LAB_MCP_TOKEN": "REPLACE_WITH_LAB_MCP_TOKEN_32B_MIN"
       }
+    },
+    "cimmeria-lab-http": {
+      "type": "http",
+      "url": "http://127.0.0.1:8779/mcp",
+      "headersHelper": "pwsh -NoProfile -File <CIMMERIA_ROOT>\\tools\\lab\\labd-headers.ps1"
     },
     "cimmeria-lab-p2": {
       "type": "stdio",

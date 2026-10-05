@@ -32,6 +32,7 @@
 //!            `python/cell/SGWSpawnableEntity.py`
 
 mod abilities;
+mod ability_sets;
 mod ammo_catalog;
 mod deployables;
 mod dialogs;
@@ -59,6 +60,7 @@ pub use abilities::{
     EVENT_ITEM_MELEE, EVENT_ITEM_RANGED, EVENT_ITEM_RELOAD, EVENT_ITEM_UNEQUIP, EVENT_ITEM_USE,
     EVENT_ITEM_USE_ABILITY,
 };
+pub use ability_sets::load_ability_sets;
 pub use ammo_catalog::{
     load_ammo_catalog, load_ammo_item_types, load_ammo_modifiers, AmmoCatalog, AmmoModifier,
 };

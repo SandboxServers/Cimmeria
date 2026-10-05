@@ -21,6 +21,8 @@ pub mod world_entry {
 
     // `world_entry_db` resolves world names through the space registry.
     pub(crate) use cimmeria_base_session::base::world_entry::space_registry;
+    // ...and refuses a non-GM a GM-only world (D-DA4).
+    pub(crate) use cimmeria_base_session::base::world_entry::gm_only_worlds;
 }
 
 /// The appearance builder the inventory's equip refresh resends.

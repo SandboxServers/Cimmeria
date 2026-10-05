@@ -41,6 +41,8 @@ cimmeria-wire = { workspace = true }
 cimmeria-content-engine = { workspace = true }
 cimmeria-common = { workspace = true }
 cimmeria-entity = { workspace = true }
+# The process name book, loaded at startup and on content reload (NT-01).
+cimmeria-names = { workspace = true }
 # The movement-validation and NPC respawn counters.
 cimmeria-observability = { workspace = true }
 tokio = { workspace = true }

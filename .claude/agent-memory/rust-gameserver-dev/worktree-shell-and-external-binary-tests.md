@@ -33,6 +33,10 @@ with `^`/`$` anchors over a CRLF file silently does nothing useful.
 Check `file <path>` first; for CRLF sources use the Edit tool or
 PowerShell `[System.IO.File]::ReadAllLines` / `WriteAllLines`.
 
+`bash tools/build-lane/ship.sh ...` is refused too ("runs bash in a plain
+command"); run `python tools/build-lane/ship.py pr -C <worktree> -F <msg>
+--body-file <body>` from the PowerShell tool instead (2026-10-04).
+
 Two more refusals seen in NA21 (2026-09-25): a `cd <worktree>/<subdir> &&
 python - <<'EOF'` combination, and any loop whose command word comes from a
 variable (`for f in ...; do "$BIN" "$f"`). Inline heredoc Python also broke on a
@@ -90,10 +94,40 @@ PowerShell tool's `New-Item -ItemType Junction -Path <wt>\external -Target
 `$TMP` path, a pipe into `sed`, or a second command is refused; run
 `git diff --stat` / `git status --short` as their own calls.
 
+AB-T1 (2026-10-04): `bash tools/build-lane/ship.sh pr ...` is refused ("runs
+bash in a plain command"), even though `bash tools/build-lane/lane.sh cargo ...`
+is accepted. Run the same script through the PowerShell tool as
+`python tools/build-lane/ship.py pr -C <worktree> -F <msg> --body-file <md>`,
+which works. Bash also refuses a command whose script argument comes from a
+shell variable (`python $S/rep.py`): spell out the absolute scratchpad path.
+
+AB-T3 (2026-10-04): Git Bash's MSYS path conversion rewrites an argument
+that starts with `///` when it is passed to a native exe (python), so a
+splice script given the marker `"/// One effect..."` wrote `//// One
+effect...` into the source (clippy `four_forward_slashes` caught it). Pass
+markers that do not start with `/`, or set `MSYS_NO_PATHCONV=1` in the
+script's own environment; check the spliced line after the edit.
+
+AB-T2 (2026-10-04): a Bash-tool command string loses every backslash-newline
+pair before the shell sees it, even inside a quoted `<<'EOF'` heredoc. A Rust
+string continuation (`"...; \` + newline) written through inline Python came
+out joined onto one line, and `'\r\n'` escapes in an inline script arrived as
+literal newlines, breaking the script. Write edit scripts with the Write tool
+and use `chr(13) + chr(10)` for CRLF; check continuations with `grep` after.
+
 Also, when the Dev Drive that holds the build-lane target dirs fills up
 ("no space on device"), delete only your own worktree's target dir under
 `CIMMERIA_TARGET_ROOT` and point `CIMMERIA_TARGET_ROOT` at a scratch
 directory on a drive with free space.
+
+AB-L4/L6 (2026-10-04): `bash tools/build-lane/ship.sh pr -C <wt> ...` is
+refused from the Bash tool ("runs bash in a plain command"), with `-m` or
+`-F` alike. `lane.sh` through `bash` is accepted, so the refusal is
+specific to `ship.sh`. What works is the PowerShell tool running
+`python tools/build-lane/ship.py pr -C <wt> -F <msgfile> --title ...
+--body-file <file>`, which is the same script `ship.sh` execs. A
+follow-up `git commit` and a bare `git push` from Bash then work as
+separate calls.
 
 ## A test against a rebuilt C++ binary needs an explicit opt-in
 

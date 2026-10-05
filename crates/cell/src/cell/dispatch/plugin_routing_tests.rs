@@ -37,7 +37,7 @@ async fn plugin_owned_methods_route_to_the_installed_plugin() {
     let engine = ChainEngine::new();
 
     for &index in PLUGIN_OWNED_CELL_METHODS {
-        dispatch_cell_method(1, index, &[], &tx, &mut mgr, &engine).await;
+        dispatch_cell_method(1, index, &[], &tx, &mut mgr, &engine, None).await;
     }
 
     let malformed = count(&capture, |c| {
@@ -90,7 +90,7 @@ async fn a_missing_plugin_logs_unhandled_for_each_plugin_owned_method() {
     let engine = ChainEngine::new();
 
     for &index in PLUGIN_OWNED_CELL_METHODS {
-        dispatch_cell_method(1, index, &[0; 12], &tx, &mut mgr, &engine).await;
+        dispatch_cell_method(1, index, &[0; 12], &tx, &mut mgr, &engine, None).await;
     }
 
     for &index in PLUGIN_OWNED_CELL_METHODS {

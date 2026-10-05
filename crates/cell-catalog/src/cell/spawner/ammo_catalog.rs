@@ -85,6 +85,16 @@ impl AmmoCatalog {
         self.ammo_type_by_item.get(&item_id).copied()
     }
 
+    /// Whether `ability_id` is the toggle ability of some ammo row. The
+    /// server never launches a toggle (D-AM07), but a press of one must not
+    /// draw the "no effect" refusal either (ability-mechanics AB-12): it
+    /// names ammo the player can load.
+    pub fn is_toggle_ability(&self, ability_id: i32) -> bool {
+        self.modifiers
+            .values()
+            .any(|m| m.toggle_ability_id == ability_id)
+    }
+
     /// Number of modifier rows.
     pub fn modifier_count(&self) -> usize {
         self.modifiers.len()
@@ -178,5 +188,16 @@ mod tests {
         let catalog = AmmoCatalog::default();
         assert_eq!(catalog.modifier(BULLET_HOLLOW_POINT), None);
         assert_eq!(catalog.item_id_for(BULLET_HOLLOW_POINT), None);
+        assert!(!catalog.is_toggle_ability(715));
+    }
+
+    /// A toggle ability is matched by ability id, never by ammo type or item.
+    #[test]
+    fn toggle_abilities_match_by_ability_id() {
+        let catalog = AmmoCatalog::from_rows([HP], [(BULLET_HOLLOW_POINT, 9001)]);
+        assert!(catalog.is_toggle_ability(715));
+        assert!(!catalog.is_toggle_ability(719));
+        assert!(!catalog.is_toggle_ability(BULLET_HOLLOW_POINT));
+        assert!(!catalog.is_toggle_ability(9001));
     }
 }

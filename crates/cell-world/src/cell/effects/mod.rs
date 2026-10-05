@@ -49,8 +49,15 @@
 
 // The special-ammo shot helpers the damage path reads (ammo campaign AM-04,
 // AM-10). The ammo families' scripts are in `cimmeria-cell-effect-scripts`.
+// The AB-T5 state snapshot row (`abilities.snapshot`) and the AB-T6 damage,
+// heal and ledger metrics.
+pub mod ability_metrics;
+pub mod ability_snapshot;
 pub mod ammo_damage;
 pub mod ammo_explosive;
+pub mod cast_scope;
+pub mod content_names;
+pub mod interrupt_request;
 pub mod passives;
 pub mod pet_scripts;
 pub mod registry;
@@ -76,6 +83,44 @@ pub struct EffectContext<'a> {
     /// Mutable space manager — scripts read source stats then mutate the
     /// target. Borrow discipline lives inside each script.
     pub space_mgr: &'a mut SpaceManager,
+}
+
+/// The core fields every effect-script row carries (AB-T1 rule 5): the
+/// caster's `account_id` / `player_id`, the cast's `cast_id` and the
+/// target's `target_player_id`, each identity with its name (Rule 6).
+/// `None` fields are absent from the row (an NPC caster or target; a pulse
+/// outside any cast scope).
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub struct EffectRowIds {
+    pub account_id: Option<u32>,
+    pub account_name: Option<&'static str>,
+    pub player_id: Option<i32>,
+    pub player_name: Option<&'static str>,
+    pub cast_id: Option<i32>,
+    pub target_player_id: Option<i32>,
+    pub target_player_name: Option<&'static str>,
+}
+
+impl EffectContext<'_> {
+    /// [`EffectRowIds`] for this script run. A live cast's fire runs under
+    /// its cast scope; a deferred run (a pulse, a natural end, a channel
+    /// cancel) runs under the effect scope of the instance's snapshotted
+    /// `cast_id` and invoker identity (`cast_scope`), so `cast_id` and the
+    /// caster's ids name the cast that landed the effect even after the
+    /// caster left and its entity id was reused.
+    pub fn row_ids(&self) -> EffectRowIds {
+        let who = self.space_mgr.caster_identity(self.source_id);
+        let target = self.space_mgr.player_identity(self.target_id);
+        EffectRowIds {
+            account_id: who.account_id,
+            account_name: who.account_name,
+            player_id: who.player_id,
+            player_name: who.player_name,
+            cast_id: self.space_mgr.current_cast_id(),
+            target_player_id: target.player_id,
+            target_player_name: target.player_name,
+        }
+    }
 }
 
 /// One executable behavior keyed by `script_name`. Implementors live in
@@ -114,23 +159,54 @@ pub fn dispatch_by_name(name: &str, ctx: &mut EffectContext) -> bool {
             tracing::debug!(
                 target: "abilities",
                 event = "effect_script_dispatch",
+                cast_id = ctx.row_ids().cast_id, // nt:id-only per-cast sequence number, no name exists
+                account_id = ctx.row_ids().account_id,
+                account_name = ctx.row_ids().account_name,
+                player_id = ctx.row_ids().player_id,
+                player_name = ctx.row_ids().player_name,
+                target_player_id = ctx.row_ids().target_player_id,
+                target_player_name = ctx.row_ids().target_player_name,
                 script = name,
                 source_id = ctx.source_id,
+                source_name = ctx.space_mgr.caster_label(ctx.source_id),
                 target_id = ctx.target_id,
+                target_name = ctx.space_mgr.entity_label(ctx.target_id),
                 effect_id = ctx.effect.effect_id,
+                effect_name = cimmeria_names::book().effect(ctx.effect.effect_id),
                 "Dispatching effect script"
             );
+            // AB-T6: what the script did to its target's pools is the
+            // damage and heal histograms' scripted share (heals, damage
+            // scripts, scripted pulses). The NVP paths record their own.
+            let before = ability_metrics::PoolSample::take(ctx.space_mgr, ctx.target_id);
             script.on_apply(ctx);
+            if let (Some(before), Some(after)) = (
+                before,
+                ability_metrics::PoolSample::take(ctx.space_mgr, ctx.target_id),
+            ) {
+                let world = ability_metrics::world_of(ctx.space_mgr, ctx.target_id);
+                before.record_change(after, world);
+            }
             true
         }
         None => {
             tracing::warn!(
                 target: "abilities",
                 event = "effect_script_unknown",
+                cast_id = ctx.row_ids().cast_id, // nt:id-only per-cast sequence number, no name exists
+                account_id = ctx.row_ids().account_id,
+                account_name = ctx.row_ids().account_name,
+                player_id = ctx.row_ids().player_id,
+                player_name = ctx.row_ids().player_name,
+                target_player_id = ctx.row_ids().target_player_id,
+                target_player_name = ctx.row_ids().target_player_name,
                 script = name,
                 source_id = ctx.source_id,
+                source_name = ctx.space_mgr.caster_label(ctx.source_id),
                 target_id = ctx.target_id,
+                target_name = ctx.space_mgr.entity_label(ctx.target_id),
                 effect_id = ctx.effect.effect_id,
+                effect_name = cimmeria_names::book().effect(ctx.effect.effect_id),
                 "Effect has script_name but no script registered — falling \
                  back to legacy NVP path; add the script to the EFFECT_SCRIPTS \
                  table in cimmeria-cell-effect-scripts or correct the effect's \
@@ -151,15 +227,53 @@ pub fn dispatch_on_remove(name: &str, ctx: &mut EffectContext) -> bool {
             tracing::debug!(
                 target: "abilities",
                 event = "effect_script_remove",
+                cast_id = ctx.row_ids().cast_id, // nt:id-only per-cast sequence number, no name exists
+                account_id = ctx.row_ids().account_id,
+                account_name = ctx.row_ids().account_name,
+                player_id = ctx.row_ids().player_id,
+                player_name = ctx.row_ids().player_name,
+                target_player_id = ctx.row_ids().target_player_id,
+                target_player_name = ctx.row_ids().target_player_name,
                 script = name,
                 source_id = ctx.source_id,
+                source_name = ctx.space_mgr.caster_label(ctx.source_id),
                 target_id = ctx.target_id,
+                target_name = ctx.space_mgr.entity_label(ctx.target_id),
                 effect_id = ctx.effect.effect_id,
+                effect_name = cimmeria_names::book().effect(ctx.effect.effect_id),
                 "Dispatching effect script on_remove"
             );
             script.on_remove(ctx);
             true
         }
-        None => false,
+        None => {
+            // Nothing registered under the name: no cleanup runs. Fine for
+            // an effect that mutated nothing on apply; a leak (a flag, a
+            // pool) for one whose script was renamed (AB-T2).
+            tracing::debug!(
+                target: "abilities.effect",
+                event = "effect_script_remove_unregistered",
+                stage = "end",
+                reason = "script_not_registered",
+                script = name,
+                account_id = ctx.space_mgr.caster_identity(ctx.source_id).account_id,
+                account_name = ctx.space_mgr.caster_identity(ctx.source_id).account_name,
+                player_id = ctx.space_mgr.caster_identity(ctx.source_id).player_id,
+                player_name = ctx.space_mgr.caster_identity(ctx.source_id).player_name,
+                source_id = ctx.source_id,
+                source_name = ctx.space_mgr.caster_label(ctx.source_id),
+                target_id = ctx.target_id,
+                target_name = ctx.space_mgr.entity_label(ctx.target_id),
+                target_player_id = ctx.space_mgr.player_identity(ctx.target_id).player_id,
+                target_player_name = ctx.space_mgr.player_identity(ctx.target_id).player_name,
+                cast_id = ctx.space_mgr.current_cast_id(), // nt:id-only per-cast sequence number, no name exists
+                effect_id = ctx.effect.effect_id,
+                effect_name = cimmeria_names::book().effect(ctx.effect.effect_id),
+                ability_id = ctx.effect.ability_id,
+                ability_name = cimmeria_names::book().ability(ctx.effect.ability_id),
+                "effect removal: expected a registered script to run on_remove, none is registered under this name; no cleanup runs, state the apply set may stay"
+            );
+            false
+        }
     }
 }

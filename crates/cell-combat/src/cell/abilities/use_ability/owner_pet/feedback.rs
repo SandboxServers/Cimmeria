@@ -13,6 +13,7 @@ use cimmeria_entity::cell_entity::PlayerIdentity;
 use cimmeria_wire::cell::chat::{serialize_on_player_communication, CHAN_FEEDBACK};
 
 use super::super::super::super::messages::CellToBaseMsg;
+use crate::cell::abilities::wire_ledger::{self, WireCtx};
 
 /// `ERRORCODE_SYSTEM_Ability`, the only `EErrorCodeSystem` value.
 const ERRORCODE_SYSTEM_ABILITY: u8 = 0;
@@ -78,6 +79,7 @@ async fn send(
     args: Vec<u8>,
     tx: &mpsc::Sender<CellToBaseMsg>,
 ) {
+    let row = wire_ledger::prepare(method_index, &args);
     if tx
         .send(CellToBaseMsg::EntityMethodCall {
             entity_id: owner,
@@ -87,18 +89,30 @@ async fn send(
         .await
         .is_err()
     {
+        crate::cell::abilities::metrics::wire_send_failed(
+            crate::cell::abilities::metrics::WireMessage::from_method(method_index),
+            crate::cell::abilities::metrics::UNKNOWN_WORLD,
+        );
         tracing::warn!(
             target: "pets.buff",
             event = "feedback_send_failed",
             decision_outcome = "feedback_send_failed",
             reason = "cell_to_base_closed",
             entity_id = owner,
+            entity_name = id.player_name,
             owner_id = owner,
+            owner_name = id.player_name,
             account_id = id.account_id,
+            account_name = id.account_name,
             player_id = id.player_id,
+            player_name = id.player_name,
             ability_id,
+            ability_name = cimmeria_names::book().ability(ability_id),
             method_index,
+            method_name = cimmeria_wire::names::player_client_method(method_index),
             "owner-pet ability feedback could not be queued (base channel closed)"
         );
+    } else {
+        row.sent_to_owner_as(id, owner, WireCtx::new("owner_pet").ability(ability_id));
     }
 }

@@ -14,8 +14,10 @@ use cimmeria_wire::state_field::BSF_MOVEMENT_LOCK;
 use super::*;
 use crate::cell::effects::ammo_damage::shot_ammo;
 use crate::cell::effects::test_fixtures::make_mgr_with_target;
+use crate::cell::effects::{EffectContext, EffectScript};
 use crate::cell::space_manager::SpaceManager;
 use crate::cell::spawner::{AmmoCatalog, AmmoModifier};
+use cimmeria_entity::abilities::EffectDef;
 
 /// The on-hit effects and rows `ammo_modifiers_dart_support.sql` seeds.
 /// `live_db_dart_support_seed_rows` pins the seed to these.
@@ -110,6 +112,9 @@ fn dot(id: i32, category: Option<&str>, script: Option<&str>) -> EffectDef {
 
 fn instance(effect_id: i32, invoker_id: u32) -> ActiveEffectInstance {
     ActiveEffectInstance {
+        invoker_identity: Default::default(),
+        invoker_name: None,
+        cast_id: None,
         effect_id,
         ability_id: 0,
         invoker_id,
@@ -274,6 +279,8 @@ fn dart_shot() -> cimmeria_entity::abilities::AbilityDef {
         required_ammo: 1,
         event_set_id: None,
         velocity: 0.0,
+        type_id: Default::default(),
+        passive: false,
     }
 }
 

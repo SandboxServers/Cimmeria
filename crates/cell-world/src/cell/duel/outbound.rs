@@ -12,6 +12,7 @@
 
 use tokio::sync::mpsc;
 
+use cimmeria_entity::known_names;
 use cimmeria_wire::cell::chat::{serialize_on_player_communication, CHAN_FEEDBACK};
 use cimmeria_wire::cell::client_methods::being::ON_STATE_FIELD_UPDATE;
 use cimmeria_wire::cell::client_methods::communicator::ON_PLAYER_COMMUNICATION;
@@ -190,12 +191,18 @@ async fn send_to_self_and_witnesses(
                 target: "duel",
                 event = "duel.send_failed",
                 account_id = to.account_id,
+                account_name = known_names::account_name(to.account_id),
                 player_id = to.player_id,
+                player_name = known_names::player_name(to.player_id),
                 entity_id = to.entity_id,
+                entity_name = mgr.entity_label(to.entity_id),
                 target_player_id = to.other_player_id,
+                target_player_name = known_names::player_name(to.other_player_id),
                 witness_id,
+                witness_name = mgr.entity_label(witness_id),
                 method_index,
-                duel_id,
+                method_name = cimmeria_wire::names::player_client_method(method_index),
+                duel_id, // nt:id-only duel row id with no name column; the duelists are named in the same event
                 reason = "cell_to_base_closed",
                 "duel client method could not be queued to a witness"
             );
@@ -225,11 +232,17 @@ async fn send(
             target: "duel",
             event = "duel.send_failed",
             account_id = to.account_id,
+            account_name = known_names::account_name(to.account_id),
             player_id = to.player_id,
+            player_name = known_names::player_name(to.player_id),
+            // No `SpaceManager` here: the recipient entity is the player's.
             entity_id = to.entity_id,
+            entity_name = known_names::player_name(to.player_id),
             target_player_id = to.other_player_id,
+            target_player_name = known_names::player_name(to.other_player_id),
             method_index,
-            duel_id,
+            method_name = cimmeria_wire::names::player_client_method(method_index),
+            duel_id, // nt:id-only duel row id with no name column; the duelists are named in the same event
             reason = "cell_to_base_closed",
             "duel client method could not be queued to the base"
         );

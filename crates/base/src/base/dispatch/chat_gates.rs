@@ -22,6 +22,7 @@
 use std::net::SocketAddr;
 use std::time::Instant;
 
+use cimmeria_entity::cell_entity::PlayerIdentity;
 use cimmeria_wire::cell::chat::{
     CHAN_CHAT, CHAN_COMMAND, CHAN_EMOTE, CHAN_FEEDBACK, CHAN_OFFICER, CHAN_SAY, CHAN_SERVER,
     CHAN_SPLASH, CHAN_SQUAD, CHAN_TEAM, CHAN_TELL, CHAN_YELL,
@@ -73,6 +74,8 @@ pub(super) struct Speaker {
     pub account_id: u32,
     pub entity_id: Option<u32>,
     pub access_level: u32,
+    /// The session's names, for the refusal logs (Rule 6).
+    pub identity: PlayerIdentity,
 }
 
 /// Refuse `channel` if the allowlist does not hold it: log
@@ -87,8 +90,11 @@ pub(super) async fn refuse_channel(feedback: &FeedbackCtx<'_>, who: Speaker, cha
         event = "chat.channel_rejected",
         addr = %who.addr,
         player_id = who.player_id,
+        player_name = who.identity.player_name,
         account_id = who.account_id,
+        account_name = who.identity.account_name,
         entity_id = who.entity_id,
+        entity_name = who.identity.player_name,
         channel,
         reason = refusal.reason,
         "sendPlayerCommunication refused at the base: players cannot speak on this channel, not forwarded",
@@ -122,12 +128,15 @@ pub(super) async fn refuse_if_muted(
         event = "chat.muted_refused",
         addr = %who.addr,
         player_id,
+        player_name = who.identity.player_name,
         account_id = who.account_id,
+        account_name = who.identity.account_name,
         entity_id = who.entity_id,
+        entity_name = who.identity.player_name,
         channel,
         tell = channel == CHAN_TELL,
         remaining_secs = remaining.as_secs(),
-        muted_by_account_id = mute.by_account_id,
+        muted_by_account_id = mute.by_account_id, // nt:id-only MuteEntry stores the muting GM's account id only, no name
         reason = "muted",
         "chat line refused: the speaker is muted by a GM, not forwarded",
     );

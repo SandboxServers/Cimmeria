@@ -1,6 +1,6 @@
 //! Category 12 (`CookedWorldInfo.pak`): the committed PAK stays the file
-//! clients ship with, and the historical CellBlock worlds (1201–1207) ride
-//! the per-key handshake on top of it.
+//! clients ship with, and the Cimmeria-added worlds (the historical CellBlocks
+//! 1201–1207 and the Debug Area 1300) ride the per-key handshake on top of it.
 
 use super::super::*;
 use crate::base::world_info_overrides::{
@@ -38,15 +38,15 @@ fn on_disk_world_info_pak_is_the_client_shipped_file() {
     }
 }
 
-/// The handshake contract: category 12 names exactly the seven historical
-/// worlds in `InvalidKeys`, serves a version a shipped client does not hold
-/// (so it learns about them), and leaves every shipped world untouched.
+/// The handshake contract: category 12 names exactly the added worlds in
+/// `InvalidKeys`, serves a version a shipped client does not hold (so it
+/// learns about them), and leaves every shipped world untouched.
 #[test]
-fn world_info_takes_the_per_key_handshake_for_the_historical_cellblocks() {
+fn world_info_takes_the_per_key_handshake_for_the_added_worlds() {
     let cache = ResourceCache::load_all(data_dir()).expect("committed PAKs load");
     assert_eq!(
         cache.overridden_elements(CATEGORY_WORLD_INFO),
-        [1201, 1202, 1203, 1204, 1205, 1206, 1207].as_slice()
+        [1201, 1202, 1203, 1204, 1205, 1206, 1207, 1300].as_slice()
     );
 
     let served = cache.category(CATEGORY_WORLD_INFO).expect("category 12");
@@ -118,9 +118,9 @@ fn generated_world_info_xml_matches_shipped_entries() {
 }
 
 /// Each generated entry is well-formed XML whose `COOKED_WORLD_INFO`
-/// attributes name the historical world, its own client package and id.
+/// attributes name the added world, its client package, id and flag.
 #[test]
-fn generated_entries_parse_and_name_the_historical_package() {
+fn generated_entries_parse_and_name_the_added_worlds_package() {
     use quick_xml::events::Event;
     use quick_xml::Reader;
 
@@ -149,10 +149,31 @@ fn generated_entries_parse_and_name_the_historical_package() {
         assert_eq!(attrs["World"], ov.world);
         assert_eq!(attrs["ClientMap"], ov.client_map);
         assert_ne!(attrs["ClientMap"], attrs["World"]);
-        assert_eq!(attrs["Flags"], "1");
+        assert_eq!(attrs["Flags"], ov.flags.to_string());
         assert_eq!(attrs["MinPerDay"], "1440");
         assert_eq!(attrs["MinToRealMin"], "1");
     }
+}
+
+/// The Debug Area's entry is the shipped `_73` (Ihpet_Crater_Light) entry
+/// with only its world name and id changed: the client is told to load the
+/// map it already knows, with that map's own flags and day length.
+#[test]
+fn debug_area_entry_is_the_shipped_ihpet_crater_light_entry_renamed() {
+    let shipped = shipped_world_info();
+    let light = String::from_utf8_lossy(shipped.elements.get(&73).expect("_73 ships")).into_owned();
+    let debug = WORLD_INFO_OVERRIDES
+        .iter()
+        .find(|o| o.world_id == 1300)
+        .expect("DebugArea override");
+    let expected = light
+        .replace("World=\"Ihpet_Crater_Light\"", "World=\"DebugArea\"")
+        .replace("WorldID=\"73\"", "WorldID=\"1300\"");
+    assert_ne!(expected, light, "the shipped entry has the expected shape");
+    assert_eq!(
+        String::from_utf8_lossy(&generate_world_info_xml(debug)),
+        expected
+    );
 }
 
 #[test]

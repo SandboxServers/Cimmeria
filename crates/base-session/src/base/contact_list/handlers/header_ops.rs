@@ -32,9 +32,16 @@ pub async fn handle_create(
     let pool = match db_pool {
         Some(p) => p.as_ref(),
         None => {
+            let who = crate::base::session_identity::identity_for_entity(
+                connected,
+                entity_to_addr,
+                entity_id,
+            );
             tracing::warn!(
                 entity_id,
+                entity_name = who.player_name,
                 player_id,
+                player_name = who.player_name,
                 "ContactListCreate: no DB pool, dropping"
             );
             return;
@@ -43,7 +50,20 @@ pub async fn handle_create(
 
     match create_list(pool, player_id, &name, flags).await {
         Ok(list_id) => {
-            tracing::info!(entity_id, player_id, list_id, name, "ContactList: created");
+            let who = crate::base::session_identity::identity_for_entity(
+                connected,
+                entity_to_addr,
+                entity_id,
+            );
+            tracing::info!(
+                entity_id,
+                entity_name = who.player_name,
+                player_id,
+                player_name = who.player_name,
+                list_id, // nt:id-only list row is player-owned, no name loaded at this site
+                name,
+                "ContactList: created"
+            );
             let args = build_on_contact_list_update(list_id, &name, flags);
             send_to_witness_reliable(
                 transport,
@@ -65,9 +85,16 @@ pub async fn handle_create(
             .await;
         }
         Err(e) => {
+            let who = crate::base::session_identity::identity_for_entity(
+                connected,
+                entity_to_addr,
+                entity_id,
+            );
             tracing::warn!(
                 entity_id,
+                entity_name = who.player_name,
                 player_id,
+                player_name = who.player_name,
                 name,
                 "ContactListCreate: DB error (duplicate name?): {e}"
             );
@@ -88,10 +115,17 @@ pub async fn handle_delete(
     let pool = match db_pool {
         Some(p) => p.as_ref(),
         None => {
+            let who = crate::base::session_identity::identity_for_entity(
+                connected,
+                entity_to_addr,
+                entity_id,
+            );
             tracing::warn!(
                 entity_id,
+                entity_name = who.player_name,
                 player_id,
-                list_id,
+                player_name = who.player_name,
+                list_id, // nt:id-only list row is player-owned, no name loaded at this site
                 "ContactListDelete: no DB pool"
             );
             return;
@@ -100,7 +134,19 @@ pub async fn handle_delete(
 
     match delete_list(pool, player_id, list_id).await {
         Ok(true) => {
-            tracing::info!(entity_id, player_id, list_id, "ContactList: deleted");
+            let who = crate::base::session_identity::identity_for_entity(
+                connected,
+                entity_to_addr,
+                entity_id,
+            );
+            tracing::info!(
+                entity_id,
+                entity_name = who.player_name,
+                player_id,
+                player_name = who.player_name,
+                list_id, // nt:id-only list row is player-owned, no name loaded at this site
+                "ContactList: deleted"
+            );
             let args = build_on_contact_list_delete(list_id);
             send_to_witness_reliable(
                 transport,
@@ -122,18 +168,32 @@ pub async fn handle_delete(
             .await;
         }
         Ok(false) => {
+            let who = crate::base::session_identity::identity_for_entity(
+                connected,
+                entity_to_addr,
+                entity_id,
+            );
             tracing::warn!(
                 entity_id,
+                entity_name = who.player_name,
                 player_id,
-                list_id,
+                player_name = who.player_name,
+                list_id, // nt:id-only list row is player-owned, no name loaded at this site
                 "ContactListDelete: list not found or not owned by player"
             );
         }
         Err(e) => {
+            let who = crate::base::session_identity::identity_for_entity(
+                connected,
+                entity_to_addr,
+                entity_id,
+            );
             tracing::error!(
                 entity_id,
+                entity_name = who.player_name,
                 player_id,
-                list_id,
+                player_name = who.player_name,
+                list_id, // nt:id-only list row is player-owned, no name loaded at this site
                 "ContactListDelete: DB error: {e}"
             );
         }
@@ -154,10 +214,17 @@ pub async fn handle_rename(
     let pool = match db_pool {
         Some(p) => p.as_ref(),
         None => {
+            let who = crate::base::session_identity::identity_for_entity(
+                connected,
+                entity_to_addr,
+                entity_id,
+            );
             tracing::warn!(
                 entity_id,
+                entity_name = who.player_name,
                 player_id,
-                list_id,
+                player_name = who.player_name,
+                list_id, // nt:id-only list row is player-owned, no name loaded at this site
                 "ContactListRename: no DB pool"
             );
             return;
@@ -169,7 +236,20 @@ pub async fn handle_rename(
             // Re-read flags to compose the full CM 85 response.
             match load_list_header(pool, player_id, list_id).await {
                 Ok(Some((_, flags))) => {
-                    tracing::info!(entity_id, player_id, list_id, name, "ContactList: renamed");
+                    let who = crate::base::session_identity::identity_for_entity(
+                        connected,
+                        entity_to_addr,
+                        entity_id,
+                    );
+                    tracing::info!(
+                        entity_id,
+                        entity_name = who.player_name,
+                        player_id,
+                        player_name = who.player_name,
+                        list_id, // nt:id-only list row is player-owned, no name loaded at this site
+                        name,
+                        "ContactList: renamed"
+                    );
                     let args = build_on_contact_list_update(list_id, &name, flags as u32);
                     send_to_witness_reliable(
                         transport,
@@ -191,36 +271,64 @@ pub async fn handle_rename(
                     .await;
                 }
                 Ok(None) => {
+                    let who = crate::base::session_identity::identity_for_entity(
+                        connected,
+                        entity_to_addr,
+                        entity_id,
+                    );
                     tracing::warn!(
                         entity_id,
+                        entity_name = who.player_name,
                         player_id,
-                        list_id,
+                        player_name = who.player_name,
+                        list_id, // nt:id-only list row is player-owned, no name loaded at this site
                         "ContactListRename: list disappeared between rename and reload"
                     );
                 }
                 Err(e) => {
+                    let who = crate::base::session_identity::identity_for_entity(
+                        connected,
+                        entity_to_addr,
+                        entity_id,
+                    );
                     tracing::error!(
                         entity_id,
+                        entity_name = who.player_name,
                         player_id,
-                        list_id,
+                        player_name = who.player_name,
+                        list_id, // nt:id-only list row is player-owned, no name loaded at this site
                         "ContactListRename: reload after rename failed: {e}"
                     );
                 }
             }
         }
         Ok(false) => {
+            let who = crate::base::session_identity::identity_for_entity(
+                connected,
+                entity_to_addr,
+                entity_id,
+            );
             tracing::warn!(
                 entity_id,
+                entity_name = who.player_name,
                 player_id,
-                list_id,
+                player_name = who.player_name,
+                list_id, // nt:id-only list row is player-owned, no name loaded at this site
                 "ContactListRename: list not found or not owned"
             );
         }
         Err(e) => {
+            let who = crate::base::session_identity::identity_for_entity(
+                connected,
+                entity_to_addr,
+                entity_id,
+            );
             tracing::error!(
                 entity_id,
+                entity_name = who.player_name,
                 player_id,
-                list_id,
+                player_name = who.player_name,
+                list_id, // nt:id-only list row is player-owned, no name loaded at this site
                 "ContactListRename: DB error: {e}"
             );
         }
@@ -241,10 +349,17 @@ pub async fn handle_flags_update(
     let pool = match db_pool {
         Some(p) => p.as_ref(),
         None => {
+            let who = crate::base::session_identity::identity_for_entity(
+                connected,
+                entity_to_addr,
+                entity_id,
+            );
             tracing::warn!(
                 entity_id,
+                entity_name = who.player_name,
                 player_id,
-                list_id,
+                player_name = who.player_name,
+                list_id, // nt:id-only list row is player-owned, no name loaded at this site
                 "ContactListFlagsUpdate: no DB pool"
             );
             return;
@@ -254,10 +369,17 @@ pub async fn handle_flags_update(
     match update_flags(pool, player_id, list_id, flags).await {
         Ok(true) => match load_list_header(pool, player_id, list_id).await {
             Ok(Some((name, _))) => {
+                let who = crate::base::session_identity::identity_for_entity(
+                    connected,
+                    entity_to_addr,
+                    entity_id,
+                );
                 tracing::info!(
                     entity_id,
+                    entity_name = who.player_name,
                     player_id,
-                    list_id,
+                    player_name = who.player_name,
+                    list_id, // nt:id-only list row is player-owned, no name loaded at this site
                     flags,
                     "ContactList: flags updated"
                 );
@@ -282,35 +404,63 @@ pub async fn handle_flags_update(
                 .await;
             }
             Ok(None) => {
+                let who = crate::base::session_identity::identity_for_entity(
+                    connected,
+                    entity_to_addr,
+                    entity_id,
+                );
                 tracing::warn!(
                     entity_id,
+                    entity_name = who.player_name,
                     player_id,
-                    list_id,
+                    player_name = who.player_name,
+                    list_id, // nt:id-only list row is player-owned, no name loaded at this site
                     "ContactListFlagsUpdate: list disappeared between update and reload"
                 );
             }
             Err(e) => {
+                let who = crate::base::session_identity::identity_for_entity(
+                    connected,
+                    entity_to_addr,
+                    entity_id,
+                );
                 tracing::error!(
                     entity_id,
+                    entity_name = who.player_name,
                     player_id,
-                    list_id,
+                    player_name = who.player_name,
+                    list_id, // nt:id-only list row is player-owned, no name loaded at this site
                     "ContactListFlagsUpdate: reload failed: {e}"
                 );
             }
         },
         Ok(false) => {
+            let who = crate::base::session_identity::identity_for_entity(
+                connected,
+                entity_to_addr,
+                entity_id,
+            );
             tracing::warn!(
                 entity_id,
+                entity_name = who.player_name,
                 player_id,
-                list_id,
+                player_name = who.player_name,
+                list_id, // nt:id-only list row is player-owned, no name loaded at this site
                 "ContactListFlagsUpdate: list not found or not owned"
             );
         }
         Err(e) => {
+            let who = crate::base::session_identity::identity_for_entity(
+                connected,
+                entity_to_addr,
+                entity_id,
+            );
             tracing::error!(
                 entity_id,
+                entity_name = who.player_name,
                 player_id,
-                list_id,
+                player_name = who.player_name,
+                list_id, // nt:id-only list row is player-owned, no name loaded at this site
                 "ContactListFlagsUpdate: DB error: {e}"
             );
         }

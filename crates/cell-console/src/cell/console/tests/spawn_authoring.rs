@@ -281,3 +281,48 @@ async fn spawn_authoring_seedconfirm_emits_the_full_row_to_telemetry() {
         .expect("one block event per seed file");
     assert_eq!(block.fields.get("batch"), spawn.fields.get("batch"));
 }
+
+/// Rule 6, resolve before teardown: the NPC a `.delspawn` removed is named
+/// on its `seed spawn confirmed` row by the name it had when the GM queued
+/// the change. By `.seedconfirm` the NPC is gone and its slot can hold
+/// another entity, so a lookup at confirm time would name the wrong one.
+#[tokio::test]
+async fn spawn_authoring_seedconfirm_names_the_npc_as_queued() {
+    use cimmeria_names::{NameBook, Table};
+    const QUEUED_NAME_ID: i32 = 27_001;
+    const REUSED_NAME_ID: i32 = 27_002;
+    let mut book = NameBook::empty();
+    book.insert(Table::Texts, QUEUED_NAME_ID.into(), "Unas Hunter");
+    book.insert(Table::Texts, REUSED_NAME_ID.into(), "Jaffa Patrol");
+    cimmeria_names::global().store(book);
+
+    let (mut mgr, gm, npc) = setup();
+    if let Some(e) = mgr.get_entity_mut(npc) {
+        e.spawn_id = Some(42);
+        e.name_id = Some(QUEUED_NAME_ID);
+    }
+    run(&mut mgr, gm, ".delspawn").await;
+    assert!(mgr.get_entity(npc).is_none(), ".delspawn despawns the NPC");
+
+    // Recycle the slot with a different NPC before the GM confirms.
+    mgr.spawn_npc(npc, "Agnos", [12.0, 0.0, 12.0], [0.0; 3])
+        .unwrap();
+    if let Some(e) = mgr.get_entity_mut(npc) {
+        e.name_id = Some(REUSED_NAME_ID);
+    }
+
+    let capture = LogCapture::install();
+    run(&mut mgr, gm, ".seedconfirm").await;
+    let row = capture
+        .all()
+        .into_iter()
+        .find(|e| e.target == "authoring" && e.message_contains("seed spawn confirmed"))
+        .expect("the confirmed delete emits its spawn row");
+    cimmeria_names::global().store(NameBook::empty());
+
+    assert!(
+        row.has_field("npc_entity_name", "Unas Hunter"),
+        "the row must name the NPC the GM deleted, not the slot's new \
+         occupant; got {row:#?}"
+    );
+}

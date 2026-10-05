@@ -2,7 +2,7 @@
 title: "Finding: Ability Trainer UI Client Evidence (AT-E1)"
 type: reference
 audience: contributors doing RE, ability-trees campaign workers
-last_updated: 2026-09-27
+last_updated: 2026-10-04
 ---
 
 # Finding: Ability Trainer UI Client Evidence (AT-E1)
@@ -18,31 +18,42 @@ last_updated: 2026-09-27
 
 **Confidence: HIGH — confirmed by decompile of both native functions.**
 
-The client exposes five Lua-bound natives for the trainer/ability system. All are registered via a `#ferror in function '<name>'` string next to the Lua-argument-check shim; the shim calls into a small inner function that does the real work:
+The client exposes six Lua-bound natives for the trainer/ability system. All are registered via a `#ferror in function '<name>'` string next to the Lua-argument-check shim; the shim calls into a small inner function that does the real work:
 
 | Lua-visible name | Shim (arg-check) address | Inner function address | Reads from |
 |---|---|---|---|
 | `getTrainingTreeCount()` | `0x00aa2ac0` | `0x00ad8700` | `GameEntityManager::instance()+0x8c → +0x50` |
 | `getTrainableList(tab)` | `0x00aa2ba0` | `0x00add0a0` | same `+0x8c → +0x50` field, indexed by `tab-1` |
-| `getTrainableInfo(id)` | `0x00aa2c20` | `0x00add1b0` | `GameEntityManager::instance()+0x8c → +0x3c` |
+| `getTrainableInfo(id)` | `0x00aa2c20` | `0x00add1b0` | `+0x8c → +0x50` (the trainer entry, through `FUN_00e19890`) and `+0x8c → +0x3c` (`haveIt`) |
+| `getAbilityList()` | `0x00aa2740` | `0x00adb810` | `+0x8c → +0x3c → +0xc` (the known-ability ids); **takes no arguments** |
 | `buyTrainable(id)` | `0x00aa2ca0` | `0x00ad8720` (sender) | — |
 | `respecAbilities()` | `0x00aa2d80` | `0x00aeacd0` (sender) | — |
 
+The shims are tolua++ code with strict arity: `0x00403280` is `tolua_isnoobj` (`lua_gettop(L) < n`), `0x00403330` is `tolua_isnumber`, and `0x00402f40` is `tolua_error`. A shim that opens with `isnoobj(L,1)` takes no arguments and raises when given one; `getTrainableList(tab)` checks `isnumber(L,1)` and then `isnoobj(L,2)`.
+
 `GameEntityManager::instance()` is `FUN_00c66ad0`, which asserts against `.\Src\GameEntityManager.cpp` and returns the singleton at `0x01ef244c` — already catalogued in `docs/reverse-engineering/address-map.md` as `g_EntityManager`. The two sub-fields at `+0x50` and `+0x3c` under the player entity pointer at `instance()+0x8c` are **two independently populated containers**:
 
-- **`+0x50` is the ability-tree cache** — an array-of-arrays. `getTrainingTreeCount()` (`0x00ad8700`) returns its outer size; `getTrainableList(tab)` (`0x00add0a0`) bounds-checks `1 <= tab <= treeCount`, indexes the outer array at `tab-1`, then walks the inner array **in the order it was stored** (a plain begin→end iterator loop calling `FUN_00ada620` per element to build the returned Lua table). This container is populated from `onAbilityTreeInfo` (client method 141, `ARRAY<ARRAY<INT32>> AbilityLists`).
-- **`+0x3c` is the trainer's offered-ability map** — a lookup keyed by ability id, populated from `onTrainerOpen` (client method 113, `ARRAY<TrainerAbility>` where `TrainerAbility = FIXED_DICT{INT32 abilityID, UINT8 trainable}`, `entities/defs/alias.xml:417-422`).
+- **`+0x50` is the training data**: the ability-tree cache and the trainer's offered-ability entries. The tree cache is an array-of-arrays. `getTrainingTreeCount()` (`0x00ad8700`) returns its outer size; `getTrainableList(tab)` (`0x00add0a0`) bounds-checks `1 <= tab <= treeCount`, indexes the outer array at `tab-1`, then walks the inner array **in the order it was stored** (a plain begin→end iterator loop calling `FUN_00ada620` per element to build the returned Lua table). It is populated from `onAbilityTreeInfo` (client method 141, `ARRAY<ARRAY<INT32>> AbilityLists`). The offered-ability entries, which `getTrainableInfo` finds by id through `FUN_00e19890`, come from `onTrainerOpen` (client method 113, `ARRAY<TrainerAbility>` where `TrainerAbility = FIXED_DICT{INT32 abilityID, UINT8 trainable}`, `entities/defs/alias.xml:417-422`).
+- **`+0x3c` is the player's known abilities** (the client `AbilitySet`), filled by `onKnownAbilitiesUpdate`. `FUN_00d2a000` finds an ability by id in its `std::map<int, AbilityData*>` at `+0x28`; the id array at `+0xc` (`FUN_00d29d90` returns it) is what `getAbilityList` returns.
 
 **`getTrainableInfo(id)` (`0x00add1b0`) is the join point**, and it is asymmetric:
 
-1. It looks the id up in the **trainer map** (`+0x3c`). If the id is **not present**, the function returns *without ever writing any field* onto the Lua result table — no `id`, no `name`, nothing. Back in `Ability.lua:75`, `trainableInfo.id == nil` is exactly the guard that hides the button (`AbilityMod.refreshButton(nil, i, AbilityUnavailable)` → `buttonWin:hide()`). **This confirms A-23: a tree node absent from the trainer's offered list is hidden, not greyed** — down to the exact byte-level mechanism, not just the Lua-side symptom.
+1. It looks the id up in the **trainer's offered entries** (`+0x50`, through `FUN_00e19890`). If the id is **not present**, the function returns *without ever writing any field* onto the Lua result table — no `id`, no `name`, nothing. Back in `Ability.lua:75`, `trainableInfo.id == nil` is exactly the guard that hides the button (`AbilityMod.refreshButton(nil, i, AbilityUnavailable)` → `buttonWin:hide()`). **This confirms A-23: a tree node absent from the trainer's offered list is hidden, not greyed** — down to the exact byte-level mechanism, not just the Lua-side symptom.
 2. If the id **is** present, the function reads `id`/`name`/`description`/`icon`/`trainingCost` off the matched entry, then computes two fields the wire never carries directly:
-   - `haveIt`: a **separate** lookup (via `FUN_00d2a000`) against the player's known-abilities set — i.e. "do I already know this ability" is **client-computed from the known-abilities cache** (populated by `onKnownAbilitiesUpdate`), not read off the trainer entry.
+   - `haveIt`: a **separate** lookup, `FUN_00d2a000` on the known-abilities `AbilitySet` at `+0x3c` — i.e. "do I already know this ability" is **client-computed from the known-abilities cache** (populated by `onKnownAbilitiesUpdate`), not read off the trainer entry.
    - `trainable`: `NOT haveIt AND (wire trainable byte != 0)` — the exact byte the server sent in `onTrainerOpen`'s per-entry array (offset `+4` inside the 5-byte `TrainerAbility` entry), gated client-side by "don't offer to train something I already have."
 
-**Order**: the tree window's button order comes from **`onAbilityTreeInfo`'s array order** (the tree), not the trainer's offered-list order — `getTrainableList` never touches the trainer map at all; it only walks the `+0x50` tree cache.
+**Order**: the tree window's button order comes from **`onAbilityTreeInfo`'s array order** (the tree), not the trainer's offered-list order — `getTrainableList` only walks the tree arrays, never the offered entries.
 
 **Cap beyond `MAX_BUTTONS = 30`**: none found. The native loop that builds the Lua table for a tab (`FUN_00add0a0`) walks the *entire* inner array with no length ceiling; the only limit is `Ability.lua`'s own `for i=1,AbilityMod.MAX_BUTTONS do ... trainableList[i]` — ids beyond index 30 in a branch are simply never read. Confirms A-22's finding is a Lua-side cap only.
+
+The `+0x3c`/`+0x50` roles above were swapped in this document until 2026-10-04, when a headless Ghidra decompile of `0x00add1b0` showed the trainer entry coming from `+0x50` and `haveIt` from `+0x3c`.
+
+### `getAbilityList()`: the known-ability list (2026-10-04)
+
+The stock UI Lua never calls it, but `getAbilityList` is a registered native (registered at `0x00ad4c84` inside `FUN_00acbb10`). Its shim `0x00aa2740` opens with `tolua_isnoobj(L,1)`, so it **takes no arguments**: `getAbilityList(2)` raises "error in function 'getAbilityList'". It then calls `FUN_00adb810`, which walks the id array at `player->+0x3c->+0xc` and builds a Lua array with `FUN_00ada620`, the per-id pusher `getTrainableList` uses. The result is the client's known-ability ids, as `onKnownAbilitiesUpdate` filled them.
+
+The `UIAbilityGroup` enum, registered next to it, is `None = 0`, `Training = 1`, `KnownAbility = 2`, `Inventory = 3` (getter constants: `FLDZ`, `FLD1`, double `2.0` at `0x01866fe0`, double `3.0` at `0x0183db60`). It is the `groupId` of `Events.AbilityUpdate(groupId, abilityId)`, not an argument of `getAbilityList`. Client patch `009-starter-hotbar` calls `getAbilityList()` to find the abilities to put on a new character's bar.
 
 ---
 
@@ -165,6 +176,7 @@ Both `getExperience()` and `getMaxExperience()` are cached property reads with *
 | `GameEntityManager::instance()` singleton | `0x00c66ad0` → asserts against `GameEntityManager.cpp`; singleton at `0x01ef244c` (`g_EntityManager` in `address-map.md`) | Decompile |
 | `getTrainingTreeCount` shim / inner | `0x00aa2ac0` / `0x00ad8700` | Decompile |
 | `getTrainableList` shim / inner | `0x00aa2ba0` / `0x00add0a0` | Decompile |
+| `getAbilityList` shim / inner (zero arguments) | `0x00aa2740` / `0x00adb810` | Headless decompile (2026-10-04) |
 | `getTrainableInfo` shim / inner | `0x00aa2c20` / `0x00add1b0` | Decompile |
 | `buyTrainable` shim / inner | `0x00aa2ca0` / `0x00ad8720` | Decompile |
 | `respecAbilities` shim / inner | `0x00aa2d80` / `0x00aeacd0` | Decompile |
