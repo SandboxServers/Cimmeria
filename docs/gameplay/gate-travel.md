@@ -168,6 +168,8 @@ The grant happens at world entry (DA-F3). DA-07 granted on DHD open only, and in
 
 The earlier objection to a world-entry grant was that `setupStargateInfo` at map load could overwrite it. `InitPlayerState` cannot race it: the base sends that message from `onClientReady`, which the client sends only after processing the `mapLoaded` bundle that carries `setupStargateInfo` (on a cross-world transition the base sends the synthesised `mapLoaded` bundle before it forwards `InitPlayerState`). The DHD-open pass stays as the re-check when it matters: a GM demoted mid-session gets nothing more.
 
+**Grants that reach the client only by `updateStargateAddress` dial fine (lab-verified 2026-10-05).** A playtest report of a GM who could not dial the hub's gates was checked against both suspects: a character with an empty book, whose 13 addresses arrive only as world-entry `updateStargateAddress` pushes, and a client whose category-13 cache came from a resync in an earlier session (gate 29 is then read from the persisted cache, not from that session's push). Both dial: a lab GM dialled Harset from the window after SGC_W1 → Debug Area and after Castle_CellBlock → Debug Area, and the reporting tester dialled Lucia about seven times after a relog, every dial with `source_address_id = 29`. The one failed session is unexplained; the client never sent `onDialGate` in it. How the stock window dials, including the first click it ignores, is [unified UAT K29](../guides/unified-uat.md#current-known-issues).
+
 Nothing is persisted. The top-up dies with the cell entity on the next transfer. A gate the GM actually travels to is then learned by the arrival unlock, the same as after a `gmDHD` dial.
 
 ### Outbound only
