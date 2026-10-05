@@ -25,7 +25,9 @@
 //! confirm, so a request-time refusal needs no inventory resync; a refusal
 //! at completion gets one from the transaction.
 
+use crate::base::crafting::telemetry as crafting_telemetry;
 use cimmeria_cell_catalog::crafting::shared_crafting_catalog;
+use cimmeria_entity::known_names;
 use sqlx::PgPool;
 
 use super::feedback::{feedback_text_args, reject, CraftReject};
@@ -213,9 +215,13 @@ impl Who {
             verb = VERB,
             phase,
             account_id = self.account_id,
+            account_name = known_names::account_name(self.account_id),
             player_id = self.player_id,
+            player_name = known_names::player_name(self.player_id),
             entity_id = self.entity_id,
+            entity_name = known_names::player_name(self.player_id),
             blueprint_id = self.blueprint_id,
+            blueprint_name = crafting_telemetry::blueprint_name(self.blueprint_id),
             error_class = error.class(),
             error = %error.text(),
             "craft: a lookup the decision needs failed"
@@ -282,13 +288,17 @@ async fn send_note(client: CraftClient<'_>, entity_id: u32, player_id: i32, text
     )
     .await;
     if let Some(reason) = witness_send_failure(&outcome) {
+        let account_id = account_id_of(entity_id, client.connected, client.entity_to_addr);
         tracing::warn!(
             target: "crafting",
             event = "client_sync_failed",
             verb = VERB,
-            account_id = account_id_of(entity_id, client.connected, client.entity_to_addr),
+            account_id,
+            account_name = known_names::account_name(account_id),
             player_id,
+            player_name = known_names::player_name(player_id),
             entity_id,
+            entity_name = known_names::player_name(player_id),
             what = "craft_queued",
             method,
             reason,

@@ -85,7 +85,7 @@ async fn live_db_an_item_that_is_not_researchable_is_refused() {
     };
     let fields = [
         ("item_id", item.to_string()),
-        ("type_id", PLAIN.to_string()),
+        ("item_type_id", PLAIN.to_string()),
     ];
     assert_refused(&f, &capture, item, vec![], why, &fields).await;
     f.cleanup().await;

@@ -27,6 +27,7 @@ mod transaction;
 pub use pending::{take, with_session, PendingRespec, Taken, RESPEC_WINDOW};
 pub use transaction::{respec_in_db, RespecFailure, Respecced};
 
+use cimmeria_entity::known_names;
 use std::time::Instant;
 
 use cimmeria_wire::crafting::RespecCraftOpen;
@@ -73,8 +74,11 @@ pub async fn handle_respec_open(msg: RespecCraftOpen, ctx: &CraftCtx<'_>) {
         event = "request",
         verb = VERB_OPEN,
         account_id,
+        account_name = known_names::account_name(account_id),
         player_id,
+        player_name = known_names::player_name(player_id),
         entity_id,
+        entity_name = known_names::player_name(player_id),
         "crafting request"
     );
     let unavailable = CraftReject::Unavailable { action: ACTION };
@@ -121,8 +125,11 @@ pub async fn handle_respec_open(msg: RespecCraftOpen, ctx: &CraftCtx<'_>) {
             phase = "session",
             verb = VERB_OPEN,
             account_id,
+            account_name = known_names::account_name(account_id),
             player_id,
+            player_name = known_names::player_name(player_id),
             entity_id,
+            entity_name = known_names::player_name(player_id),
             "crafting respec for an entity with no session; nothing opened"
         );
         return;
@@ -132,8 +139,11 @@ pub async fn handle_respec_open(msg: RespecCraftOpen, ctx: &CraftCtx<'_>) {
         event = "respec_prompted",
         verb = VERB_OPEN,
         account_id,
+        account_name = known_names::account_name(account_id),
         player_id,
+        player_name = known_names::player_name(player_id),
         entity_id,
+        entity_name = known_names::player_name(player_id),
         cost = RESPEC_COST,
         disciplines = state.discipline_ids.len(),
         asp = state.applied_science_points,
@@ -233,8 +243,11 @@ pub(crate) async fn confirm_with(
                     rows_affected = failure.rows_affected,
                     expected = 1u64,
                     account_id,
+                    account_name = known_names::account_name(account_id),
                     player_id,
+                    player_name = known_names::player_name(player_id),
                     entity_id,
+                    entity_name = known_names::player_name(player_id),
                     "respec: the player row is missing, rolled back"
                 ),
             }
@@ -248,8 +261,11 @@ pub(crate) async fn confirm_with(
         event = "respec",
         verb = VERB_CONFIRM,
         account_id,
+        account_name = known_names::account_name(account_id),
         player_id,
+        player_name = known_names::player_name(player_id),
         entity_id,
+        entity_name = known_names::player_name(player_id),
         cleared = %format_cleared(&done.cleared),
         disciplines_cleared = done.cleared.len(),
         asp_refund = done.refund,
@@ -302,8 +318,11 @@ fn warn_persist_failed(
         error_class = error.map(sql_error_class),
         error = error.map(tracing::field::display),
         account_id,
+        account_name = known_names::account_name(account_id),
         player_id,
+        player_name = known_names::player_name(player_id),
         entity_id,
+        entity_name = known_names::player_name(player_id),
         "crafting respec: nothing was changed"
     );
 }

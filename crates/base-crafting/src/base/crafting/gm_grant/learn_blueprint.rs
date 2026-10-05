@@ -7,8 +7,10 @@
 //! `onUpdateKnownCrafts` (139). The success event is `blueprint_learned`,
 //! in the shape a Blueprint item's use logs, with `source=gm`.
 
+use crate::base::crafting::telemetry as crafting_telemetry;
 use cimmeria_cell_catalog::crafting::shared_crafting_catalog;
 use cimmeria_entity::crafting::CraftingState;
+use cimmeria_entity::known_names;
 
 use super::{caller_is_gm, gm_line, lookup_failed, GrantIds};
 use crate::base::crafting::inventory_locks::take_inventory_locks;
@@ -78,10 +80,15 @@ pub(super) async fn handle_learn_blueprint(ids: GrantIds, blueprint_id: i32, ctx
             outcome = "refused",
             reason = why.reason(),
             account_id = ids.account_id,
+            account_name = known_names::account_name(ids.account_id),
             player_id = ids.player_id,
+            player_name = known_names::player_name(ids.player_id),
             entity_id = ids.entity_id,
+            entity_name = known_names::player_name(ids.player_id),
             gm_entity_id = ids.gm_entity_id,
+            gm_entity_name = ids.gm_name,
             blueprint_id,
+            blueprint_name = crafting_telemetry::blueprint_name(blueprint_id),
             "learnblueprint refused; nothing was taught"
         );
     };
@@ -97,10 +104,15 @@ pub(super) async fn handle_learn_blueprint(ids: GrantIds, blueprint_id: i32, ctx
             expected = 1u64,
             error_class = sql_error_class(e),
             account_id = ids.account_id,
+            account_name = known_names::account_name(ids.account_id),
             player_id = ids.player_id,
+            player_name = known_names::player_name(ids.player_id),
             entity_id = ids.entity_id,
+            entity_name = known_names::player_name(ids.player_id),
             gm_entity_id = ids.gm_entity_id,
+            gm_entity_name = ids.gm_name,
             blueprint_id,
+            blueprint_name = crafting_telemetry::blueprint_name(blueprint_id),
             error = %e,
             "learnblueprint save failed; nothing was taught"
         );
@@ -196,10 +208,15 @@ pub(super) async fn handle_learn_blueprint(ids: GrantIds, blueprint_id: i32, ctx
         event = "blueprint_learned",
         source = "gm",
         account_id = ids.account_id,
+        account_name = known_names::account_name(ids.account_id),
         player_id = ids.player_id,
+        player_name = known_names::player_name(ids.player_id),
         entity_id = ids.entity_id,
+        entity_name = known_names::player_name(ids.player_id),
         gm_entity_id = ids.gm_entity_id,
+        gm_entity_name = ids.gm_name,
         blueprint_id,
+        blueprint_name = crafting_telemetry::blueprint_name(blueprint_id),
         blueprints = %format!("{blueprint_id}:false→true"),
         known_before,
         known_after,

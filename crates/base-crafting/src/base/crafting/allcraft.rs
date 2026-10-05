@@ -14,6 +14,8 @@
 
 use cimmeria_cell_catalog::crafting::shared_crafting_catalog;
 use cimmeria_entity::crafting::CraftingState;
+use cimmeria_entity::known_names;
+use cimmeria_entity::name_intern::intern_opt;
 use cimmeria_wire::crafting::GmAllCraft;
 
 use super::inventory_locks::take_inventory_locks;
@@ -63,21 +65,25 @@ pub fn apply_all_craft(
     }
 }
 
-/// The caller's session access level; 0 when it has no session.
-pub(super) fn caller_access_level(gm_entity_id: u32, ctx: &CraftCtx<'_>) -> u32 {
+/// The caller's session access level (0 when it has no session) and its
+/// character name for the GM's log lines (Rule 6), read in one lookup.
+pub(super) fn caller_access(gm_entity_id: u32, ctx: &CraftCtx<'_>) -> (u32, Option<&'static str>) {
     let Some(addr) = ctx
         .entity_to_addr
         .lock()
         .ok()
         .and_then(|m| m.get(&gm_entity_id).copied())
     else {
-        return 0;
+        return (0, None);
     };
     ctx.connected
         .lock()
         .ok()
-        .and_then(|c| c.get(&addr).map(|c| c.access_level))
-        .unwrap_or(0)
+        .and_then(|c| {
+            c.get(&addr)
+                .map(|c| (c.access_level, intern_opt(c.player_name.as_deref())))
+        })
+        .unwrap_or((0, None))
 }
 
 /// Paradigm levels in id order, for the `gm_allcraft` before/after fields.
@@ -105,6 +111,9 @@ pub async fn handle_gm_all_craft(msg: GmAllCraft, ctx: &CraftCtx<'_>) {
         gm_entity_id,
     } = msg;
     let account_id = identity_for_entity(ctx.connected, ctx.entity_to_addr, entity_id).account_id;
+    // The caller's access and name in one read: the check below and the
+    // GM's log lines both use it.
+    let (access_level, gm_name) = caller_access(gm_entity_id, ctx);
     let feedback = |text: String| async move {
         send_gm_feedback_to_client(
             gm_entity_id,
@@ -121,24 +130,31 @@ pub async fn handle_gm_all_craft(msg: GmAllCraft, ctx: &CraftCtx<'_>) {
             event = "lookup_failed",
             phase,
             account_id,
+            account_name = known_names::account_name(account_id),
             player_id,
+            player_name = known_names::player_name(player_id),
             entity_id,
+            entity_name = known_names::player_name(player_id),
             gm_entity_id,
+            gm_entity_name = gm_name,
             error = %error,
             "allcraft could not read what it grants"
         );
     };
 
-    let access_level = caller_access_level(gm_entity_id, ctx);
     if access_level < GM_ACCESS_LEVEL {
         tracing::warn!(
             target: "crafting",
             event = "gm_allcraft",
             outcome = "refused",
             account_id,
+            account_name = known_names::account_name(account_id),
             player_id,
+            player_name = known_names::player_name(player_id),
             entity_id,
+            entity_name = known_names::player_name(player_id),
             gm_entity_id,
+            gm_entity_name = gm_name,
             access_level,
             "allcraft from a caller below GameMaster; refused"
         );
@@ -185,8 +201,11 @@ pub async fn handle_gm_all_craft(msg: GmAllCraft, ctx: &CraftCtx<'_>) {
             expected = 1u64,
             error_class = sql_error_class(e),
             account_id,
+            account_name = known_names::account_name(account_id),
             player_id,
+            player_name = known_names::player_name(player_id),
             entity_id,
+            entity_name = known_names::player_name(player_id),
             error = %e,
             "allcraft save failed; nothing was granted"
         );
@@ -257,8 +276,11 @@ pub async fn handle_gm_all_craft(msg: GmAllCraft, ctx: &CraftCtx<'_>) {
             what = "allcraft_state",
             reason,
             account_id,
+            account_name = known_names::account_name(account_id),
             player_id,
+            player_name = known_names::player_name(player_id),
             entity_id,
+            entity_name = known_names::player_name(player_id),
             "allcraft's discipline, paradigm and blueprint update did not reach the client"
         );
     }
@@ -269,9 +291,13 @@ pub async fn handle_gm_all_craft(msg: GmAllCraft, ctx: &CraftCtx<'_>) {
         event = "gm_allcraft",
         outcome = "granted",
         account_id,
+        account_name = known_names::account_name(account_id),
         player_id,
+        player_name = known_names::player_name(player_id),
         entity_id,
+        entity_name = known_names::player_name(player_id),
         gm_entity_id,
+        gm_entity_name = gm_name,
         disciplines_before,
         disciplines_after = state.discipline_ids.len(),
         blueprints_before,

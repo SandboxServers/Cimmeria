@@ -192,6 +192,7 @@ impl Fixture {
             player_id: self.player_id,
             entity_id: self.entity_id,
             gm_entity_id: None,
+            gm_name: None,
         }
     }
 

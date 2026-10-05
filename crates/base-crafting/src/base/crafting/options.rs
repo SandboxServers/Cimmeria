@@ -21,6 +21,7 @@
 //! is still loading the world never reaches an entity the client has not
 //! created. Every send logs `event = "options_changed"` with its cause.
 
+use cimmeria_entity::known_names;
 use std::collections::HashMap;
 use std::net::SocketAddr;
 use std::sync::{Arc, Mutex};
@@ -240,8 +241,11 @@ fn update_options(
             event = "lookup_failed",
             phase = "session",
             account_id = identity.account_id,
+            account_name = known_names::account_name(identity.account_id),
             player_id = identity.player_id,
+            player_name = known_names::player_name(identity.player_id),
             entity_id,
+            entity_name = known_names::player_name(identity.player_id),
             cause = cause.as_str(),
             "crafting options update for an entity with no session; dropped"
         );
@@ -252,8 +256,11 @@ fn update_options(
         target: "crafting",
         event = "options_changed",
         account_id,
+        account_name = known_names::account_name(account_id),
         player_id,
+        player_name = known_names::player_name(player_id),
         entity_id,
+        entity_name = known_names::player_name(player_id),
         cause = cause.as_str(),
         stations = ?per_section(&options, |s| &s.entities),
         tools = ?per_section(&options, |s| &s.items),
@@ -358,8 +365,11 @@ async fn send_options(
         what = "crafting_options",
         reason,
         account_id,
+        account_name = known_names::account_name(account_id),
         player_id,
+        player_name = known_names::player_name(player_id),
         entity_id,
+        entity_name = known_names::player_name(player_id),
         "onUpdateCraftingOptions did not reach the client"
     );
     false
@@ -400,13 +410,17 @@ pub async fn refresh_tools_from_rows(
     let table = match tool_table(pool).await {
         Ok(t) => t,
         Err(e) => {
+            let account_id = identity_for_entity(connected, entity_to_addr, entity_id).account_id;
             tracing::warn!(
                 target: "crafting",
                 event = "lookup_failed",
                 phase = "tool_table",
-                account_id = identity_for_entity(connected, entity_to_addr, entity_id).account_id,
+                account_id,
+                account_name = known_names::account_name(account_id),
                 player_id,
+                player_name = known_names::player_name(player_id),
                 entity_id,
+                entity_name = known_names::player_name(player_id),
                 error = %e,
                 "Field Crafting Tool table could not be loaded; tools unchanged"
             );
@@ -487,13 +501,18 @@ pub async fn login_options(
         Some(pool) => match load_held_tools(pool, player_id).await {
             Ok(tools) => Some(tools),
             Err(e) => {
+                let account_id =
+                    identity_for_entity(connected, entity_to_addr, entity_id).account_id;
                 tracing::warn!(
                     target: "crafting",
                     event = "lookup_failed",
                     phase = "login_tools",
-                    account_id = identity_for_entity(connected, entity_to_addr, entity_id).account_id,
+                    account_id,
+                    account_name = known_names::account_name(account_id),
                     player_id,
+                    player_name = known_names::player_name(player_id),
                     entity_id,
+                    entity_name = known_names::player_name(player_id),
                     error = %e,
                     "crafting bag read failed at login; sending options without tools"
                 );

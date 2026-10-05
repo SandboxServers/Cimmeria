@@ -8,10 +8,12 @@
 //! metric. Every event logs under target `crafting` with an `event` field;
 //! the catalog is the `crafting` row of `docs/architecture/observability.md`.
 
+use cimmeria_entity::known_names;
 use std::collections::HashMap;
 use std::net::SocketAddr;
 use std::sync::{Arc, Mutex};
 
+use cimmeria_cell_catalog::crafting::loaded_crafting_catalog;
 use cimmeria_wire::cell::client_methods::being::ON_TIMER_UPDATE;
 
 use super::session::InductionEnv;
@@ -78,6 +80,26 @@ pub fn account_id_of(
     identity_for_entity(connected, entity_to_addr, entity_id).account_id
 }
 
+/// `disciplines.name` for a log line (Rule 6), from the crafting catalog
+/// once something has loaded it. `None` for an absent or unknown id, and
+/// before the first load.
+pub fn discipline_name(discipline_id: impl Into<Option<i32>>) -> Option<String> {
+    let id = discipline_id.into()?;
+    let catalog = loaded_crafting_catalog()?;
+    let name = catalog.disciplines.get(&id)?.name.trim();
+    (!name.is_empty()).then(|| name.to_owned())
+}
+
+/// A blueprint's name for a log line (Rule 6). `blueprints` has no name
+/// column: the client shows a blueprint as the item it makes, so it is
+/// named for its product. `None` for an absent or unknown id, a blueprint
+/// with no product, and before the catalog's first load.
+pub fn blueprint_name(blueprint_id: impl Into<Option<i32>>) -> Option<String> {
+    let id = blueprint_id.into()?;
+    let product = loaded_crafting_catalog()?.blueprints.get(&id)?.product_id;
+    cimmeria_names::owned::item(product)
+}
+
 /// Why a single-message send to the player did not go out, as the `reason`
 /// of a send-failure WARN; `None` when it was sent.
 pub fn witness_send_failure(outcome: &WitnessSendOutcome) -> Option<&'static str> {
@@ -129,6 +151,8 @@ pub struct JobIds {
     /// rather than the player's own induction. Carried on the transaction
     /// and client-sync events; omitted for a player's job.
     pub gm_entity_id: Option<u32>,
+    /// The GM's character name, paired with `gm_entity_id` (Rule 6).
+    pub gm_name: Option<&'static str>,
 }
 
 /// How an induction job ended: the `outcome` label of
@@ -201,11 +225,15 @@ pub async fn send_to_player(
         tracing::debug!(
             target: "crafting",
             event = "client_sync_failed",
-            job_id = ids.job_id,
+            job_id = ids.job_id, // nt:id-only induction job counter, unnamed
             account_id = ids.account_id,
+            account_name = known_names::account_name(ids.account_id),
             player_id = ids.player_id,
+            player_name = known_names::player_name(ids.player_id),
             gm_entity_id = ids.gm_entity_id,
+            gm_entity_name = ids.gm_name,
             entity_id,
+            entity_name = known_names::player_name(ids.player_id),
             what,
             method,
             reason,
@@ -216,11 +244,15 @@ pub async fn send_to_player(
     tracing::warn!(
         target: "crafting",
         event = "client_sync_failed",
-        job_id = ids.job_id,
+        job_id = ids.job_id, // nt:id-only induction job counter, unnamed
         account_id = ids.account_id,
+        account_name = known_names::account_name(ids.account_id),
         player_id = ids.player_id,
+        player_name = known_names::player_name(ids.player_id),
         gm_entity_id = ids.gm_entity_id,
+        gm_entity_name = ids.gm_name,
         entity_id,
+        entity_name = known_names::player_name(ids.player_id),
         what,
         method,
         reason,

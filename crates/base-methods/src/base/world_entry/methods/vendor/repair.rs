@@ -1,3 +1,4 @@
+use cimmeria_entity::known_names;
 use std::collections::HashMap;
 use std::net::SocketAddr;
 use std::sync::{Arc, Mutex};
@@ -32,7 +33,12 @@ pub async fn handle_repair_inventory_item(
     let pool = match db_pool {
         Some(p) => p,
         None => {
-            tracing::debug!(player_id, item_id, "RepairInventoryItem: no DB pool");
+            tracing::debug!(
+                player_id,
+                player_name = known_names::player_name(player_id),
+                item_id, // nt:id-only instance id, type unread
+                "RepairInventoryItem: no DB pool"
+            );
             return;
         }
     };
@@ -40,7 +46,8 @@ pub async fn handle_repair_inventory_item(
     if item_id <= 0 || !repair_ratio.is_finite() || repair_ratio <= 0.0 {
         tracing::warn!(
             player_id,
-            item_id,
+            player_name = known_names::player_name(player_id),
+            item_id, // nt:id-only instance id, type unread
             repair_ratio,
             "RepairInventoryItem: invalid item or ratio"
         );
@@ -78,8 +85,10 @@ pub async fn handle_repair_inventory_item(
             .await;
             tracing::debug!(
                 entity_id,
+                entity_name = known_names::player_name(player_id),
                 player_id,
-                item_id,
+                player_name = known_names::player_name(player_id),
+                item_id, // nt:id-only instance id, type unread
                 repair_points,
                 total_items,
                 "Inventory item repaired"
@@ -88,7 +97,8 @@ pub async fn handle_repair_inventory_item(
         Ok(_) => {
             tracing::debug!(
                 player_id,
-                item_id,
+                player_name = known_names::player_name(player_id),
+                item_id, // nt:id-only instance id, type unread
                 repair_points,
                 "RepairInventoryItem: no repairable item changed"
             );
@@ -96,7 +106,8 @@ pub async fn handle_repair_inventory_item(
         Err(e) => {
             tracing::error!(
                 player_id,
-                item_id,
+                player_name = known_names::player_name(player_id),
+                item_id, // nt:id-only instance id, type unread
                 "RepairInventoryItem: update failed: {e}"
             );
         }
@@ -137,7 +148,11 @@ pub async fn handle_repair_inventory_items(
     let pool = match db_pool {
         Some(p) => p,
         None => {
-            tracing::debug!(player_id, "RepairInventoryItems: no DB pool");
+            tracing::debug!(
+                player_id,
+                player_name = known_names::player_name(player_id),
+                "RepairInventoryItems: no DB pool"
+            );
             return;
         }
     };
@@ -146,7 +161,9 @@ pub async fn handle_repair_inventory_items(
     if item_ids.is_empty() {
         tracing::debug!(
             entity_id,
+            entity_name = known_names::player_name(player_id),
             player_id,
+            player_name = known_names::player_name(player_id),
             "RepairInventoryItems: empty item list"
         );
         return;
@@ -181,7 +198,9 @@ pub async fn handle_repair_inventory_items(
             .await;
             tracing::debug!(
                 entity_id,
+                entity_name = known_names::player_name(player_id),
                 player_id,
+                player_name = known_names::player_name(player_id),
                 item_count = item_ids.len(),
                 repaired = r.rows_affected(),
                 total_items,
@@ -190,13 +209,17 @@ pub async fn handle_repair_inventory_items(
         }
         Ok(_) => tracing::debug!(
             entity_id,
+            entity_name = known_names::player_name(player_id),
             player_id,
+            player_name = known_names::player_name(player_id),
             item_count = item_ids.len(),
             "RepairInventoryItems: no repairable items changed"
         ),
         Err(e) => tracing::error!(
             entity_id,
+            entity_name = known_names::player_name(player_id),
             player_id,
+            player_name = known_names::player_name(player_id),
             item_count = item_ids.len(),
             "RepairInventoryItems: update failed: {e}"
         ),

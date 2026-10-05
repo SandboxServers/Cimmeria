@@ -25,6 +25,7 @@ pub mod rule;
 #[cfg(test)]
 mod tests;
 
+use cimmeria_entity::known_names;
 use std::sync::Arc;
 
 use cimmeria_cell_catalog::crafting::CraftingCatalog;
@@ -87,15 +88,19 @@ pub async fn research_job(
     let state = match load_crafting_state(&inputs.pool, player_id).await {
         Ok(state) => state,
         Err(e) => {
+            let account_id = account_id_of(entity_id, ctx.connected, ctx.entity_to_addr);
             tracing::warn!(
                 target: "crafting",
                 event = "lookup_failed",
                 verb = VERB,
                 phase = "crafting_state",
-                account_id = account_id_of(entity_id, ctx.connected, ctx.entity_to_addr),
+                account_id,
+                account_name = known_names::account_name(account_id),
                 player_id,
+                player_name = known_names::player_name(player_id),
                 entity_id,
-                item_id,
+                entity_name = known_names::player_name(player_id),
+                item_id, // nt:id-only instance id, type unread yet
                 error_class = sql_error_class(&e),
                 error = %e,
                 "crafting state unreadable at the research request; refused as unavailable"
@@ -193,12 +198,16 @@ impl InductionJob for ResearchJob {
                     target: "crafting",
                     event = "blueprint_learned",
                     verb = VERB,
-                    job_id = done.ids.job_id,
+                    job_id = done.ids.job_id, // nt:id-only induction job counter, unnamed
                     account_id = done.ids.account_id,
+                    account_name = known_names::account_name(done.ids.account_id),
                     player_id = done.ids.player_id,
+                    player_name = known_names::player_name(done.ids.player_id),
                     entity_id = done.ids.entity_id,
+                    entity_name = known_names::player_name(done.ids.player_id),
                     item_id = self.item.item_id,
-                    type_id = self.item.type_id,
+                    item_name = cimmeria_names::book().item(self.item.type_id),
+                    item_type_id = self.item.type_id,
                     blueprints = %learned.field(),
                     known_before = learned.known_before,
                     known_after = learned.blueprint_ids.len(),

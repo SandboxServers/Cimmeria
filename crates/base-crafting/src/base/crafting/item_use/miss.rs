@@ -10,6 +10,7 @@
 //!   press after the commit; the row is gone, so only this record knows);
 //! - an existing instance of a crafting item owned by someone else.
 
+use cimmeria_entity::known_names;
 use std::collections::VecDeque;
 use std::sync::{Mutex, OnceLock};
 
@@ -75,9 +76,12 @@ pub async fn is_crafting_miss(
                 verb = super::VERB,
                 phase = "item_miss",
                 account_id,
+                account_name = known_names::account_name(account_id),
                 player_id,
+                player_name = known_names::player_name(player_id),
                 entity_id,
-                item_id,
+                entity_name = known_names::player_name(player_id),
+                item_id, // nt:id-only instance id, type unread yet
                 error = %e,
                 "crafting item miss lookup failed; treated as an ordinary item"
             );

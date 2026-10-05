@@ -23,6 +23,7 @@
 //! is INFO so it is still exported (`OTEL_FILTER` has `vendor=info`); a
 //! server-side failure is WARN. `vendor.*` spans stay as they were.
 
+use cimmeria_entity::known_names;
 use std::collections::HashMap;
 use std::net::SocketAddr;
 use std::sync::{Arc, Mutex};
@@ -142,10 +143,14 @@ impl VendorLog {
             event = "store_opened",
             action = self.action,
             account_id = self.account_id,
+            account_name = known_names::account_name(self.account_id),
             player_id = self.player_id,
+            player_name = known_names::player_name(self.player_id),
             entity_id = self.entity_id,
-            vendor_entity_id = self.vendor_entity_id,
+            entity_name = known_names::player_name(self.player_id),
+            vendor_entity_id = self.vendor_entity_id, // nt:id-only vendor NPC, unnamed on base
             vendor_template_id = self.vendor_template_id,
+            vendor_template_name = cimmeria_names::owned::template(self.vendor_template_id),
             buy_count = buy,
             sell_count = sell,
             buyback_count = buyback,
@@ -170,11 +175,16 @@ impl VendorLog {
             event = "transaction",
             action = self.action,
             account_id = self.account_id,
+            account_name = known_names::account_name(self.account_id),
             player_id = self.player_id,
+            player_name = known_names::player_name(self.player_id),
             entity_id = self.entity_id,
-            vendor_entity_id = self.vendor_entity_id,
+            entity_name = known_names::player_name(self.player_id),
+            vendor_entity_id = self.vendor_entity_id, // nt:id-only vendor NPC, unnamed on base
             vendor_template_id = self.vendor_template_id,
-            design_id = item.design_id,
+            vendor_template_name = cimmeria_names::owned::template(self.vendor_template_id),
+            item_type_id = item.design_id,
+            item_name = cimmeria_names::owned::item(item.design_id),
             item_id = item.item_id,
             quantity = item.quantity,
             price = item.price,
@@ -192,11 +202,16 @@ impl VendorLog {
             event = "refused",
             action = self.action,
             account_id = self.account_id,
+            account_name = known_names::account_name(self.account_id),
             player_id = self.player_id,
+            player_name = known_names::player_name(self.player_id),
             entity_id = self.entity_id,
-            vendor_entity_id = self.vendor_entity_id,
+            entity_name = known_names::player_name(self.player_id),
+            vendor_entity_id = self.vendor_entity_id, // nt:id-only vendor NPC, unnamed on base
             vendor_template_id = self.vendor_template_id,
-            design_id = item.design_id,
+            vendor_template_name = cimmeria_names::owned::template(self.vendor_template_id),
+            item_type_id = item.design_id,
+            item_name = cimmeria_names::owned::item(item.design_id),
             item_id = item.item_id,
             quantity = item.quantity,
             price = item.price,
@@ -218,11 +233,16 @@ impl VendorLog {
             event = "failed",
             action = self.action,
             account_id = self.account_id,
+            account_name = known_names::account_name(self.account_id),
             player_id = self.player_id,
+            player_name = known_names::player_name(self.player_id),
             entity_id = self.entity_id,
-            vendor_entity_id = self.vendor_entity_id,
+            entity_name = known_names::player_name(self.player_id),
+            vendor_entity_id = self.vendor_entity_id, // nt:id-only vendor NPC, unnamed on base
             vendor_template_id = self.vendor_template_id,
-            design_id = item.design_id,
+            vendor_template_name = cimmeria_names::owned::template(self.vendor_template_id),
+            item_type_id = item.design_id,
+            item_name = cimmeria_names::owned::item(item.design_id),
             item_id = item.item_id,
             quantity = item.quantity,
             price = item.price,
@@ -264,13 +284,50 @@ mod tests {
             ("entity_id", "900"),
             ("vendor_entity_id", "4100"),
             ("vendor_template_id", "31"),
-            ("design_id", "5224"),
+            ("item_type_id", "5224"),
             ("quantity", "2"),
             ("price", "150"),
         ] {
             assert_eq!(row.fields.get(k).map(String::as_str), Some(v), "field {k}");
         }
         assert!(!row.fields.contains_key("item_id"), "no row id, no field");
+    }
+
+    /// NT-22 (Rule 6): the transaction row, the vendor's most-read line,
+    /// names the character, the login, the vendor and the item. The vendor
+    /// NPC's entity id stays unnamed on the base; its template names it.
+    #[test]
+    fn completed_row_names_the_player_the_vendor_and_the_item() {
+        let mut book = cimmeria_names::NameBook::empty();
+        book.insert(cimmeria_names::Table::Items, 5224, "Zat'nik'tel");
+        book.insert(cimmeria_names::Table::Templates, 31, "Vendor_Weapons_SGC");
+        cimmeria_names::global().store(book);
+        cimmeria_entity::known_names::remember_player(72, "Jack O'Neill");
+        cimmeria_entity::known_names::remember_account(6_u32, "nt22_vendor");
+        let capture = LogCapture::install();
+        log().completed(
+            VendorItem::design(5224).quantity(1).price(150),
+            1,
+            Some(500),
+            Some(350),
+        );
+        let row = capture
+            .find_message(Level::INFO, "vendor: transaction committed")
+            .expect("transaction row");
+        for (k, v) in [
+            ("player_name", "Jack O'Neill"),
+            ("entity_name", "Jack O'Neill"),
+            ("account_name", "nt22_vendor"),
+            ("vendor_template_name", "Vendor_Weapons_SGC"),
+            ("item_type_id", "5224"),
+            ("item_name", "Zat'nik'tel"),
+        ] {
+            assert_eq!(
+                row.fields.get(k).map(String::as_str),
+                Some(v),
+                "field {k}: {row:#?}"
+            );
+        }
     }
 
     #[test]

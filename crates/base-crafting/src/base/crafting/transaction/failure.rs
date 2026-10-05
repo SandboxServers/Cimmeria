@@ -1,6 +1,7 @@
 //! Why a crafting transaction did not commit, and the `persist_failed`
 //! event for every rollback that is not a game-rule refusal.
 
+use cimmeria_entity::known_names;
 use sqlx::postgres::PgQueryResult;
 
 use crate::base::crafting::feedback::CraftReject;
@@ -58,11 +59,15 @@ pub(super) fn expect_rows(
     tracing::warn!(
         target: "crafting",
         event = "persist_failed",
-        job_id = ids.job_id,
+        job_id = ids.job_id, // nt:id-only induction job counter, unnamed
         account_id = ids.account_id,
+        account_name = known_names::account_name(ids.account_id),
         player_id = ids.player_id,
+        player_name = known_names::player_name(ids.player_id),
         gm_entity_id = ids.gm_entity_id,
+        gm_entity_name = ids.gm_name,
         entity_id = ids.entity_id,
+        entity_name = known_names::player_name(ids.player_id),
         phase,
         reason = "rows_affected_mismatch",
         rows_affected,
@@ -85,11 +90,15 @@ pub(super) fn log_persist_failed(ids: &JobIds, err: &CraftTxError) {
         CraftTxError::Db { phase, error } => tracing::warn!(
             target: "crafting",
             event = "persist_failed",
-            job_id = ids.job_id,
+            job_id = ids.job_id, // nt:id-only induction job counter, unnamed
             account_id = ids.account_id,
+            account_name = known_names::account_name(ids.account_id),
             player_id = ids.player_id,
+            player_name = known_names::player_name(ids.player_id),
             gm_entity_id = ids.gm_entity_id,
+            gm_entity_name = ids.gm_name,
             entity_id = ids.entity_id,
+            entity_name = known_names::player_name(ids.player_id),
             phase,
             reason = "db_error",
             error_class = sql_error_class(error),
@@ -100,11 +109,15 @@ pub(super) fn log_persist_failed(ids: &JobIds, err: &CraftTxError) {
         CraftTxError::Invalid { phase, reason } => tracing::warn!(
             target: "crafting",
             event = "persist_failed",
-            job_id = ids.job_id,
+            job_id = ids.job_id, // nt:id-only induction job counter, unnamed
             account_id = ids.account_id,
+            account_name = known_names::account_name(ids.account_id),
             player_id = ids.player_id,
+            player_name = known_names::player_name(ids.player_id),
             gm_entity_id = ids.gm_entity_id,
+            gm_entity_name = ids.gm_name,
             entity_id = ids.entity_id,
+            entity_name = known_names::player_name(ids.player_id),
             phase,
             reason,
             "crafting transaction refused its plan -- rolled back, nothing applied"
@@ -125,6 +138,7 @@ mod tests {
         player_id: 43,
         entity_id: 44,
         gm_entity_id: None,
+        gm_name: None,
     };
 
     fn assert_identity(e: &crate::test_support::Captured) {

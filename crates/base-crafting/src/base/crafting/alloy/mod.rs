@@ -14,6 +14,8 @@
 //! The station gate ran before this verb: alloying needs a station, never a
 //! tool.
 
+use crate::base::crafting::telemetry as crafting_telemetry;
+use cimmeria_entity::known_names;
 use std::sync::Arc;
 
 use cimmeria_cell_catalog::crafting::{shared_crafting_catalog, CraftingCatalog};
@@ -72,8 +74,11 @@ pub async fn handle_alloy_in(
             verb = VERB,
             reason = "too_many_elementary_items",
             account_id,
+            account_name = known_names::account_name(account_id),
             player_id,
+            player_name = known_names::player_name(player_id),
             entity_id,
+            entity_name = known_names::player_name(player_id),
             count = request.lower_tier_items.len(),
             limit = MAX_ELEMENTARY_ITEMS,
             "alloy request names more elementary items than the page has slots; dropped"
@@ -90,6 +95,7 @@ pub async fn handle_alloy_in(
                 player_id,
                 entity_id,
                 gm_entity_id: None,
+                gm_name: None,
             };
             resync_inventory(&InductionEnv::from_ctx(ctx), pool, &ids).await;
         }
@@ -102,9 +108,13 @@ pub async fn handle_alloy_in(
             verb = VERB,
             phase,
             account_id,
+            account_name = known_names::account_name(account_id),
             player_id,
+            player_name = known_names::player_name(player_id),
             entity_id,
+            entity_name = known_names::player_name(player_id),
             blueprint_id = request.blueprint_id,
+            blueprint_name = crafting_telemetry::blueprint_name(request.blueprint_id),
             id,
             error_class = class,
             error,

@@ -10,6 +10,8 @@
 //! racing a spend can neither drop the spent point nor the learned
 //! discipline.
 
+use crate::base::crafting::telemetry as crafting_telemetry;
+use cimmeria_entity::known_names;
 use std::collections::HashMap;
 use std::net::SocketAddr;
 use std::sync::{Arc, Mutex};
@@ -58,8 +60,11 @@ pub async fn handle_grant_expertise(
             // client update the server can't back.
             tracing::warn!(
                 entity_id,
+                entity_name = known_names::player_name(player_id),
                 player_id,
+                player_name = known_names::player_name(player_id),
                 discipline_id,
+                discipline_name = crafting_telemetry::discipline_name(discipline_id),
                 amount,
                 "GrantExpertise: no DB pool, dropping grant"
             );
@@ -72,8 +77,11 @@ pub async fn handle_grant_expertise(
         Err(e) => {
             tracing::error!(
                 entity_id,
+                entity_name = known_names::player_name(player_id),
                 player_id,
+                player_name = known_names::player_name(player_id),
                 discipline_id,
+                discipline_name = crafting_telemetry::discipline_name(discipline_id),
                 amount,
                 "GrantExpertise: transaction failed: {e}"
             );
@@ -91,8 +99,11 @@ pub async fn handle_grant_expertise(
 
     tracing::info!(
         entity_id,
+        entity_name = known_names::player_name(player_id),
         player_id,
+        player_name = known_names::player_name(player_id),
         discipline_id,
+        discipline_name = crafting_telemetry::discipline_name(discipline_id),
         new_expertise,
         "GrantExpertise: persisted expertise"
     );
@@ -185,7 +196,9 @@ pub async fn handle_grant_applied_science(
         None => {
             tracing::warn!(
                 entity_id,
+                entity_name = known_names::player_name(player_id),
                 player_id,
+                player_name = known_names::player_name(player_id),
                 amount,
                 "GrantAppliedSciencePoints: no DB pool, dropping grant"
             );
@@ -220,8 +233,11 @@ pub async fn handle_grant_applied_science(
                 rows_affected = 0,
                 expected = 1,
                 account_id,
+                account_name = known_names::account_name(account_id),
                 player_id,
+                player_name = known_names::player_name(player_id),
                 entity_id,
+                entity_name = known_names::player_name(player_id),
                 amount,
                 "GrantAppliedSciencePoints: no sgw_player row -- nothing granted"
             );
@@ -241,8 +257,11 @@ pub async fn handle_grant_applied_science(
                 event = "persist_failed",
                 phase = "asp_grant_update",
                 account_id,
+                account_name = known_names::account_name(account_id),
                 player_id,
+                player_name = known_names::player_name(player_id),
                 entity_id,
+                entity_name = known_names::player_name(player_id),
                 amount,
                 error_class = sql_error_class(&e),
                 error = %e,
@@ -264,8 +283,11 @@ pub async fn handle_grant_applied_science(
         target: "crafting",
         event = "asp_granted",
         account_id,
+        account_name = known_names::account_name(account_id),
         player_id,
+        player_name = known_names::player_name(player_id),
         entity_id,
+        entity_name = known_names::player_name(player_id),
         amount,
         asp_before,
         asp_after,

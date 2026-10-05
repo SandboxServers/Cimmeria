@@ -1,3 +1,4 @@
+use cimmeria_entity::known_names;
 use std::collections::HashMap;
 use std::net::SocketAddr;
 use std::sync::{Arc, Mutex};
@@ -278,8 +279,11 @@ pub async fn handle_paid_repair_inventory_items(
 
     tracing::debug!(
         entity_id,
+        entity_name = known_names::player_name(player_id),
         player_id,
+        player_name = known_names::player_name(player_id),
         vendor_template_id,
+        vendor_template_name = cimmeria_names::book().template(vendor_template_id),
         item_count = item_ids.len(),
         total_cost,
         total_items,

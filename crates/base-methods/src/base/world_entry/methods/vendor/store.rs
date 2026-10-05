@@ -184,7 +184,17 @@ pub async fn send_store_open_to_client(
         },
     )
     .await;
-    tracing::trace!(entity_id, vendor_entity_id, "Sent onStoreOpen");
+    tracing::trace!(
+        entity_id,
+        entity_name = crate::base::session_identity::identity_for_entity(
+            connected,
+            entity_to_addr,
+            entity_id
+        )
+        .player_name,
+        vendor_entity_id, // nt:id-only vendor NPC, unnamed on base
+        "Sent onStoreOpen"
+    );
 }
 
 /// Send vendor store price updates to client.

@@ -59,7 +59,7 @@ fn assert_rejected(capture: &LogCaptureGuard, f: &VerbFixture, item: i32, known:
         ("account_id", f.account_id.to_string()),
         ("entity_id", f.entity_id.to_string()),
         ("item_id", item.to_string()),
-        ("type_id", ITEM.to_string()),
+        ("item_type_id", ITEM.to_string()),
         ("applied_science_id", "1".to_string()),
         ("tech_comp", "20".to_string()),
         ("item_disciplines", "21,22".to_string()),
@@ -203,6 +203,7 @@ async fn live_db_the_transaction_refuses_a_research_the_player_can_no_longer_lea
         player_id: f.player_id,
         entity_id: f.entity_id,
         gm_entity_id: None,
+        gm_name: None,
     };
 
     let result = apply_craft_transaction(&f.env, &ids, &plan).await;

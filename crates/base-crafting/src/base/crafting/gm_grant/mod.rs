@@ -11,9 +11,10 @@
 //!   component lands in the crafting bag).
 //! - [`learn_blueprint`]: teach one blueprint and push the full list (139).
 
+use cimmeria_entity::known_names;
 use cimmeria_wire::crafting::{GmCraftGrant, GmCraftGrantKind};
 
-use super::allcraft::{caller_access_level, GM_ACCESS_LEVEL};
+use super::allcraft::{caller_access, GM_ACCESS_LEVEL};
 use super::request::CraftCtx;
 use super::telemetry::account_id_of;
 use crate::base::gm_feedback::send_gm_feedback_to_client;
@@ -32,15 +33,22 @@ pub(crate) struct GrantIds {
     pub player_id: i32,
     pub entity_id: u32,
     pub gm_entity_id: u32,
+    /// The GM's character name, paired with `gm_entity_id` (Rule 6).
+    pub gm_name: Option<&'static str>,
+    /// The GM's session access level, read with `gm_name`.
+    pub gm_access_level: u32,
 }
 
 /// Handle a [`GmCraftGrant`] from the `CellToBaseMsg::Plugin` envelope.
 pub async fn handle_gm_craft_grant(msg: GmCraftGrant, ctx: &CraftCtx<'_>) {
+    let (gm_access_level, gm_name) = caller_access(msg.gm_entity_id, ctx);
     let ids = GrantIds {
         account_id: account_id_of(msg.entity_id, ctx.connected, ctx.entity_to_addr),
         player_id: msg.player_id,
         entity_id: msg.entity_id,
         gm_entity_id: msg.gm_entity_id,
+        gm_name,
+        gm_access_level,
     };
     match msg.grant {
         GmCraftGrantKind::Kit {
@@ -62,7 +70,7 @@ async fn caller_is_gm(
     ids: GrantIds,
     ctx: &CraftCtx<'_>,
 ) -> bool {
-    let access_level = caller_access_level(ids.gm_entity_id, ctx);
+    let access_level = ids.gm_access_level;
     if access_level >= GM_ACCESS_LEVEL {
         return true;
     }
@@ -72,9 +80,13 @@ async fn caller_is_gm(
         outcome = "refused",
         reason = "not_gm",
         account_id = ids.account_id,
+        account_name = known_names::account_name(ids.account_id),
         player_id = ids.player_id,
+        player_name = known_names::player_name(ids.player_id),
         entity_id = ids.entity_id,
+        entity_name = known_names::player_name(ids.player_id),
         gm_entity_id = ids.gm_entity_id,
+        gm_entity_name = ids.gm_name,
         access_level,
         "GM crafting grant from a caller below GameMaster; refused"
     );
@@ -95,9 +107,13 @@ fn lookup_failed(command: &'static str, phase: &'static str, ids: GrantIds, erro
         command,
         phase,
         account_id = ids.account_id,
+        account_name = known_names::account_name(ids.account_id),
         player_id = ids.player_id,
+        player_name = known_names::player_name(ids.player_id),
         entity_id = ids.entity_id,
+        entity_name = known_names::player_name(ids.player_id),
         gm_entity_id = ids.gm_entity_id,
+        gm_entity_name = ids.gm_name,
         error,
         "GM crafting grant could not read what it needs"
     );

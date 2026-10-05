@@ -17,6 +17,14 @@ use super::CraftingCatalog;
 
 static SHARED: OnceCell<Arc<CraftingCatalog>> = OnceCell::const_new();
 
+/// The catalog if a caller has loaded it already, without loading it. For
+/// log lines naming a blueprint or a discipline (Rule 6): a line written
+/// before the first load leaves the name off rather than wait on the
+/// database.
+pub fn loaded_crafting_catalog() -> Option<Arc<CraftingCatalog>> {
+    SHARED.get().cloned()
+}
+
 /// The catalog, loaded from `pool` on first use.
 ///
 /// Every later call returns the first snapshot whatever `pool` it passes;

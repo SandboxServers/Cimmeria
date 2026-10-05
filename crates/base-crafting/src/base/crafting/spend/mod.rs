@@ -20,10 +20,12 @@
 //! client never changes its own tree or count on a click, so a refusal needs
 //! no correction push.
 
+use crate::base::crafting::telemetry as crafting_telemetry;
 use cimmeria_cell_catalog::crafting::{
     racial_paradigm_name, shared_crafting_catalog, CraftingCatalog,
 };
 use cimmeria_entity::crafting::CraftingState;
+use cimmeria_entity::known_names;
 use sqlx::PgPool;
 
 use super::feedback::{reject, CraftReject};
@@ -235,9 +237,13 @@ pub async fn handle_spend(entity_id: u32, player_id: i32, discipline_id: i32, ct
             verb = VERB,
             phase = "no_pool",
             account_id,
+            account_name = known_names::account_name(account_id),
             player_id,
+            player_name = known_names::player_name(player_id),
             entity_id,
+            entity_name = known_names::player_name(player_id),
             discipline_id,
+            discipline_name = crafting_telemetry::discipline_name(discipline_id),
             "spend: no database pool"
         );
         reject(VERB, entity_id, player_id, &unavailable, client).await;
@@ -252,9 +258,13 @@ pub async fn handle_spend(entity_id: u32, player_id: i32, discipline_id: i32, ct
                 verb = VERB,
                 phase = "catalog_load",
                 account_id,
+                account_name = known_names::account_name(account_id),
                 player_id,
+                player_name = known_names::player_name(player_id),
                 entity_id,
+                entity_name = known_names::player_name(player_id),
                 discipline_id,
+                discipline_name = crafting_telemetry::discipline_name(discipline_id),
                 error_class = sql_error_class(&e),
                 error = %e,
                 "spend: crafting catalog load failed"
@@ -275,9 +285,13 @@ pub async fn handle_spend(entity_id: u32, player_id: i32, discipline_id: i32, ct
                 event = "learned",
                 verb = VERB,
                 account_id,
+                account_name = known_names::account_name(account_id),
                 player_id,
+                player_name = known_names::player_name(player_id),
                 entity_id,
+                entity_name = known_names::player_name(player_id),
                 discipline_id,
+                discipline_name = crafting_telemetry::discipline_name(discipline_id),
                 expertise_before,
                 expertise_after = LEARNED_EXPERTISE,
                 asp_before,
@@ -304,9 +318,13 @@ pub async fn handle_spend(entity_id: u32, player_id: i32, discipline_id: i32, ct
                     verb = VERB,
                     phase = failure.phase,
                     account_id,
+                    account_name = known_names::account_name(account_id),
                     player_id,
+                    player_name = known_names::player_name(player_id),
                     entity_id,
+                    entity_name = known_names::player_name(player_id),
                     discipline_id,
+                    discipline_name = crafting_telemetry::discipline_name(discipline_id),
                     error_class = sql_error_class(e),
                     error = %e,
                     "spend: transaction failed, rolled back"
@@ -320,9 +338,13 @@ pub async fn handle_spend(entity_id: u32, player_id: i32, discipline_id: i32, ct
                     rows_affected = failure.rows_affected,
                     expected = 1u64,
                     account_id,
+                    account_name = known_names::account_name(account_id),
                     player_id,
+                    player_name = known_names::player_name(player_id),
                     entity_id,
+                    entity_name = known_names::player_name(player_id),
                     discipline_id,
+                    discipline_name = crafting_telemetry::discipline_name(discipline_id),
                     "spend: a write touched fewer rows than it had to, rolled back"
                 ),
             }

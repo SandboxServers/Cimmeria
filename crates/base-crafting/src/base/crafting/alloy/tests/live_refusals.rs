@@ -231,7 +231,10 @@ async fn live_db_the_current_tier_item_must_be_the_carried_component() {
         "A chosen component is not the one this needs. Nothing was used.",
     )
     .await;
-    assert!(e.has_field("design_id", &COMPONENT.to_string()), "{e:#?}");
+    assert!(
+        e.has_field("design_item_type_id", &COMPONENT.to_string()),
+        "{e:#?}"
+    );
 
     let banked = f.stack(COMPONENT, INV_BANK, 0, 1).await;
     assert_refused(

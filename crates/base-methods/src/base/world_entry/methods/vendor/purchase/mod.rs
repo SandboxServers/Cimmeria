@@ -1,3 +1,4 @@
+use cimmeria_entity::known_names;
 use std::collections::HashMap;
 use std::net::SocketAddr;
 use std::sync::{Arc, Mutex};
@@ -326,15 +327,21 @@ pub async fn handle_purchase_vendor_items(
             target: "inventory",
             event = "grant_container_chosen",
             account_id = placement.account_id,
+            account_name = known_names::account_name(placement.account_id),
             player_id,
+            player_name = known_names::player_name(player_id),
             entity_id,
-            type_id = design_id,
+            entity_name = known_names::player_name(player_id),
+            item_type_id = design_id,
+            item_name = cimmeria_names::book().item(*design_id),
             quantity,
             container_sets = %placement.container_sets_text(*design_id),
             requested_container_id = INV_MAIN,
+            requested_container_name = cimmeria_names::book().container(INV_MAIN),
             skipped_storage = placement.skipped_storage(*design_id, *container_id),
             container_id,
-            slot_id,
+            container_name = cimmeria_names::book().container(*container_id),
+            slot_id, // nt:id-only slot index, unnamed
             qty_before = 0,
             qty_after = quantity,
             source = "vendor_purchase",
@@ -383,8 +390,11 @@ pub async fn handle_purchase_vendor_items(
 
     tracing::debug!(
         entity_id,
+        entity_name = known_names::player_name(player_id),
         player_id,
+        player_name = known_names::player_name(player_id),
         vendor_template_id,
+        vendor_template_name = cimmeria_names::owned::template(vendor_template_id),
         item_count = items.len(),
         total_items,
         cash_spent = total_cash_cost,

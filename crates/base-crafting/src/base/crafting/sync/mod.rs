@@ -29,6 +29,7 @@
 //! (`python/cell/SGWPlayer.py:510`, `:524`), so a relog lost the client's
 //! disciplines, expertise and paradigm levels.
 
+use cimmeria_entity::known_names;
 use std::collections::HashMap;
 use std::net::SocketAddr;
 use std::sync::{Arc, Mutex};
@@ -212,8 +213,11 @@ pub async fn push_crafting_on_login(
                     error_class = sql_error_class(&e),
                     error = %e,
                     account_id,
+                    account_name = known_names::account_name(account_id),
                     player_id,
+                    player_name = known_names::player_name(player_id),
                     entity_id,
+                    entity_name = known_names::player_name(player_id),
                     "crafting login sync: load failed -- the client keeps no \
                      disciplines or paradigm levels until the next world entry"
                 );
@@ -231,8 +235,11 @@ pub async fn push_crafting_on_login(
                 target: "crafting",
                 event = "login_sync",
                 account_id,
+                account_name = known_names::account_name(account_id),
                 player_id,
+                player_name = known_names::player_name(player_id),
                 entity_id,
+                entity_name = known_names::player_name(player_id),
                 disciplines = state.map(|s| s.discipline_ids.len()),
                 paradigms = state.map(|s| s.racial_paradigm_levels.len()),
                 blueprints = state.map(|s| s.blueprint_ids.len()),
@@ -251,8 +258,11 @@ pub async fn push_crafting_on_login(
             reason = "send",
             error_class,
             account_id,
+            account_name = known_names::account_name(account_id),
             player_id,
+            player_name = known_names::player_name(player_id),
             entity_id,
+            entity_name = known_names::player_name(player_id),
             "crafting login sync: bundle not sent -- the client keeps no \
              disciplines or paradigm levels until the next world entry"
         ),
@@ -266,14 +276,18 @@ fn warn_push_failed(
     reason: &'static str,
     client: CraftClient<'_>,
 ) {
+    let account_id = account_id_of(entity_id, client.connected, client.entity_to_addr);
     tracing::warn!(
         target: "crafting",
         event = "push_failed",
         what,
         reason,
-        account_id = account_id_of(entity_id, client.connected, client.entity_to_addr),
+        account_id,
+        account_name = known_names::account_name(account_id),
         player_id,
+        player_name = known_names::player_name(player_id),
         entity_id,
+        entity_name = known_names::player_name(player_id),
         "crafting state push not sent -- the client shows stale crafting state"
     );
 }

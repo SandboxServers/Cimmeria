@@ -1,3 +1,4 @@
+use cimmeria_entity::known_names;
 use std::collections::HashMap;
 use std::net::SocketAddr;
 use std::sync::{Arc, Mutex};
@@ -95,7 +96,13 @@ pub async fn sync_bandolier_after_inventory_change_with_options(
     let mut db_tx = match pool.begin().await {
         Ok(t) => t,
         Err(e) => {
-            tracing::error!(entity_id, player_id, "sync_bandolier: begin tx failed: {e}");
+            tracing::error!(
+                entity_id,
+                entity_name = known_names::player_name(player_id),
+                player_id,
+                player_name = known_names::player_name(player_id),
+                "sync_bandolier: begin tx failed: {e}"
+            );
             return;
         }
     };
@@ -112,7 +119,9 @@ pub async fn sync_bandolier_after_inventory_change_with_options(
             let _ = db_tx.rollback().await;
             tracing::error!(
                 entity_id,
+                entity_name = known_names::player_name(player_id),
                 player_id,
+                player_name = known_names::player_name(player_id),
                 "sync_bandolier: read slot failed: {e}"
             );
             return;
@@ -127,7 +136,9 @@ pub async fn sync_bandolier_after_inventory_change_with_options(
             let _ = db_tx.rollback().await;
             tracing::error!(
                 entity_id,
+                entity_name = known_names::player_name(player_id),
                 player_id,
+                player_name = known_names::player_name(player_id),
                 "sync_bandolier: read items failed: {e}"
             );
             return;
@@ -141,7 +152,13 @@ pub async fn sync_bandolier_after_inventory_change_with_options(
     // the next non-empty change.
     if bandolier_items.is_empty() {
         if let Err(e) = db_tx.commit().await {
-            tracing::error!(entity_id, player_id, "sync_bandolier: commit failed: {e}");
+            tracing::error!(
+                entity_id,
+                entity_name = known_names::player_name(player_id),
+                player_id,
+                player_name = known_names::player_name(player_id),
+                "sync_bandolier: commit failed: {e}"
+            );
             return;
         }
         if let Some(tx) = cell_tx {
@@ -158,7 +175,9 @@ pub async fn sync_bandolier_after_inventory_change_with_options(
                 // re-sync.
                 tracing::warn!(
                     entity_id,
+                    entity_name = known_names::player_name(player_id),
                     player_id,
+                    player_name = known_names::player_name(player_id),
                     active_bandolier_slot = old_active,
                     bandolier_items_count = 0,
                     phase = "empty_bandolier",
@@ -207,7 +226,9 @@ pub async fn sync_bandolier_after_inventory_change_with_options(
             let _ = db_tx.rollback().await;
             tracing::error!(
                 entity_id,
+                entity_name = known_names::player_name(player_id),
                 player_id,
+                player_name = known_names::player_name(player_id),
                 active_slot,
                 "Failed to update bandolier slot: {e}"
             );
@@ -215,14 +236,22 @@ pub async fn sync_bandolier_after_inventory_change_with_options(
         }
         tracing::debug!(
             entity_id,
+            entity_name = known_names::player_name(player_id),
             player_id,
+            player_name = known_names::player_name(player_id),
             active_slot,
             "Bandolier active slot updated"
         );
     }
 
     if let Err(e) = db_tx.commit().await {
-        tracing::error!(entity_id, player_id, "sync_bandolier: commit failed: {e}");
+        tracing::error!(
+            entity_id,
+            entity_name = known_names::player_name(player_id),
+            player_id,
+            player_name = known_names::player_name(player_id),
+            "sync_bandolier: commit failed: {e}"
+        );
         return;
     }
 
@@ -267,7 +296,9 @@ pub async fn sync_bandolier_after_inventory_change_with_options(
             // desync until next re-sync.
             tracing::warn!(
                 entity_id,
+                entity_name = known_names::player_name(player_id),
                 player_id,
+                player_name = known_names::player_name(player_id),
                 active_bandolier_slot = active_slot,
                 bandolier_items_count = item_count,
                 phase = "non_empty",
