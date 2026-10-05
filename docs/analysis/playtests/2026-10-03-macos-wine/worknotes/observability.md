@@ -9,7 +9,7 @@ The consented launcher-summary flow is implemented from the journal to local
 ingest and query fixtures. Nothing is activated: the distributed build has no
 endpoint, so no launcher collects or sends anything.
 
-Two owner decisions on 2026-10-04 changed the work after the first draft PR:
+Four owner decisions on 2026-10-04 changed the work after the first draft PR:
 
 1. **The upload is anonymous.** "Allow anonymous upload of launcher telemetry
    data, but only our structured payload; anything else gets rejected. Put a
@@ -17,6 +17,10 @@ Two owner decisions on 2026-10-04 changed the work after the first draft PR:
    from the first design are gone.
 2. **This session took over the coordinator's role** for the track, so the
    files the assignment reserved for the coordinator were edited here.
+3. **The public login-port mount is approved.** The route may be served on the
+   public login listener (port 8081), extending the four-route decision of
+   2026-09-29 to this fifth route.
+4. **The rate limit is 12 requests per minute per IP.**
 
 ## Revision boundary
 
@@ -31,7 +35,9 @@ Two owner decisions on 2026-10-04 changed the work after the first draft PR:
 | `35f29c0ad396e47bbecae18865f07b2f3587395e` | Docs and first handoff |
 | `4361679e796702de32dd1c7f0a71574c972e74dc` | Merge of the integration branch at `ece32e585517c82c54e8991b15b3263b6aa03aff` |
 | `36067b517db76a787eec3f5a820ccfcb74adbbeb` | Anonymous, strict, low-rate-limited upload; coordinator items |
-| `98398690d` and this note's commit | Docs, indexes, ledger, this worknote and project memory |
+| `98398690d`, `d82c6b58c` | Docs, indexes, ledger, worknote rewrite and project memory |
+| `8f5e082f42344cc1c58d7343aac8c46af94df864` | 12 per minute per address; public mount recorded as approved; racy egui test fixed |
+| (this note's commit) | Docs and records for those two decisions |
 
 No history was rewritten. The merge commit exists because the integration
 branch moved and a conflicted PR gets no CI. It keeps both sides of the two
@@ -61,8 +67,8 @@ Only full trees were built and tested, never the commits one by one.
   counts are not double-counted. Timings are omitted after a restart.
 - **Server.** `POST /api/telemetry/launcher-summary` takes no token. It accepts
   only the exact v1 JSON object and refuses everything else with a static body.
-  The per-address limit defaults to 12 per window and is charged before any
-  body is read. Rows are typed INFO records in the `cimmeria-client` index.
+  The per-address limit is 12 requests per minute (its own fixed 60 s window)
+  and is charged before any body is read. Rows are typed INFO records in the `cimmeria-client` index.
 - **Operator fixtures.** A dashboard and a saved view under
   `docs/operations/signoz/`, with an offline test that checks every key and
   enum literal against the rows the ingest really emits.
@@ -71,13 +77,14 @@ Only full trees were built and tested, never the commits one by one.
 
 1. **Host.** The session ran in WSL2 with no native Windows Rust toolchain, so
    nothing was built natively on Windows locally. CI is the native evidence.
-2. **Rate limit value.** "Low" was read as 12 requests per address per window
-   (the existing 3600 s window). Behind a shared address, such as a NAT or a
-   tunnel, every launcher shares it and the operator must raise
-   `CIMMERIA_TELEMETRY_SUMMARY_QUOTA_PER_IP`.
-3. **The anonymous decision is not the public-mount decision.** It was read as
-   deciding how the route is exposed, not as the maintainer's yes to serving it
-   on the public login listener. That commit stays separate.
+2. **Rate limit window.** "12 requests per minute per IP" is implemented as a
+   fixed 60 s window that starts at an address's first request, not a sliding
+   one, so a caller can send up to twice the allowance across a window
+   boundary. Everyone behind one address, such as a NAT or a tunnel, shares it;
+   `CIMMERIA_TELEMETRY_SUMMARY_QUOTA_PER_IP` raises it.
+3. **Two earlier assumptions were replaced by decisions.** The first anonymous
+   commit read "low" as 12 per hour and treated the public mount as undecided;
+   decisions 3 and 4 above settled both.
 4. **Phase durations** use the assignment's "equivalently bounded typed
    representation": a `phases` list on the terminal summary.
 5. **Launch rows carry no play-session length.** The journal commits `Running`
@@ -117,30 +124,33 @@ Only full trees were built and tested, never the commits one by one.
 ## Commands and results
 
 All compiling commands ran through `tools/build-lane/lane.sh` on Linux, on the
-tree of `36067b517db76a787eec3f5a820ccfcb74adbbeb`.
+tree of `8f5e082f42344cc1c58d7343aac8c46af94df864`.
 
 | Command | Result |
 |---|---|
 | `cargo fmt --all -- --check` | clean |
 | `cargo fmt --all --manifest-path crates/launcher/desktop/Cargo.toml -- --check` | clean |
 | `cargo clippy -p cimmeria-admin-api -p cimmeria-server --all-targets -- -D warnings` | ok |
-| `cargo nextest run -p cimmeria-admin-api -p cimmeria-server` | 236 passed |
-| `cargo test -p cimmeria-admin-api --lib` (one process) | 160 passed |
+| `cargo nextest run -p cimmeria-admin-api -p cimmeria-server` | 239 passed |
+| `cargo test -p cimmeria-admin-api --lib` (one process) | 163 passed |
+| `cargo nextest run -p sgw-launcher a_finished_manifest_fetch_wakes_the_ui`, 25 times | passed each time |
 | `cargo clippy --locked --manifest-path crates/launcher/desktop/Cargo.toml -p cimmeria-launcher-engine --target-dir target/desktop --all-targets -- -D warnings` | ok |
 | `cargo test --locked --manifest-path crates/launcher/desktop/Cargo.toml -p cimmeria-launcher-engine --target-dir target/desktop` | 423 passed, 4 ignored |
 
 CI on PR #1205 passed all 22 checks at `4361679e796702de32dd1c7f0a71574c972e74dc`
 (the token-based design), including `native-engine` on windows-latest and
 macos-latest. Those jobs were the first native run of the engine suite and the
-first real compile, lint and test of the shell files. Read the PR for the
-result at the anonymous head; it is not recorded here.
+first real compile, lint and test of the shell files. At `d82c6b58c` (the
+first anonymous head) 18 checks passed and one failed: `cargo llvm-cov
+(launcher)`, on the racy egui test fixed in `8f5e082f4`. Read the PR for the
+result at the current head; it is not recorded here.
 
 Guards that were revert-verified (the fix removed from one file, the named test
 failing, the file restored): the journal observer call, admission-time
 eligibility, the `export_blocked` gate, the exporter's re-checks and its
 in-flight cancel, the 429 no-retry rule, the finalize after an install terminal
 and at install admission, phase re-entry, the unknown and launch timing rules,
-the default limit of 12, the charge before the body read, the content-type,
+the default limit of 12 and its 60 s window, the charge before the body read, the content-type,
 query and repeated-key refusals, the non-object refusal, address
 canonicalisation, the dedup insert and its single lock, the `CLIENT_TARGETS`
 entry, the request span on both routers and both router merges.
@@ -162,7 +172,9 @@ entry, the request span on both routers and both router merges.
   alerts, success rates or SLOs.
 - **Invisible attempts.** A failure to open the state, and an attempt that
   never exports within 24 hours, are not reported.
-- **Dedup is in memory.** A resend after a server restart is counted twice.
+- **Dedup is in memory.** A resend after a server restart is counted twice. At
+  12 requests a minute, one address can fill the 16,384-id set in about 43
+  minutes, after which an old id it resends is accepted again.
 - **The admin span change is wider than this route.** No admin route's request
   span carries its query string any more.
 - **Compose passes only the summary limit.** The mint and refresh quota
@@ -172,14 +184,15 @@ entry, the request span on both routers and both router merges.
   timed out in about half of the local scratch-crate runs, before and after
   this change. It passed in CI.
 
-## Remaining public-activation gate
+## What is still open
 
-Two maintainer decisions are open, and neither is implied by this branch:
+The route is approved for the public login listener and its limit is set. What
+remains is turning the launcher on, which is a later and separately decided
+rollout:
 
-1. **The login-listener mount** (`25ae129751ca434f75ee3dd90f50d5351b43b635`).
-   The recorded decision covers four routes; this is a fifth. Removing that
-   commit's merge line leaves the route on the admin listener only.
-2. **A production endpoint.** The exporter accepts only `https`, or `http` to
-   loopback, and uses bundled webpki roots, so the plain-HTTP login port cannot
-   be the endpoint and a publicly trusted certificate is required. A rollout
-   packet must also change the consent copy and add frontend UAT.
+1. **A production endpoint.** No build configures one. The exporter accepts
+   only `https`, or `http` to loopback, and uses bundled webpki roots, so the
+   plain-HTTP login port cannot be the launcher's endpoint and a publicly
+   trusted certificate is required.
+2. **Consent copy and frontend UAT.** The copy still says "This build sends
+   nothing", which stays true until an endpoint exists.

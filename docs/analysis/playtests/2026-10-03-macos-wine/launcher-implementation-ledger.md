@@ -690,11 +690,11 @@ this includes the owner-lock correction described in the acceptance checklist.
 
 ### 2026-10-04: consented launcher summaries and anonymous ingest (packets 6 and 7)
 
-PR #1205 adds the consented summary schema, bounded queue and exporter; an anonymous strict ingest (owner decision:
-no token, exact v1 payload, default 12 requests per address per window) writing `launcher.summary` rows; and
-unimported SigNoz fixtures. It is inert: no build configures an endpoint. See the
+PR #1205 adds the consented summary schema, bounded queue and exporter; an anonymous strict ingest (owner decisions,
+2026-10-04: no token, exact v1 payload, 12 requests a minute per address, public login-port mount approved) writing
+`launcher.summary` rows; and unimported SigNoz fixtures. It is inert: no build configures an endpoint. See the
 [worknote](worknotes/observability.md) and [design reference](../../../architecture/launcher-summary-telemetry.md).
-Local Linux lane at `36067b517`: engine 423 passed/4 ignored; admin-api plus server nextest 236 passed. CI passed
+Local Linux lane at `8f5e082f4`: engine 423 passed/4 ignored; admin-api plus server nextest 239 passed. CI passed
 all 22 checks, native Windows and macOS included, at `4361679e7` (the earlier token design); read the PR for the
-anonymous head before claiming it. Open: the maintainer's public login-listener mount decision, any production
-endpoint, and rollout consent copy and frontend UAT.
+current head before claiming it. Open, as a later and separately decided rollout: a production endpoint (https,
+publicly trusted certificate; not the plain-HTTP login port), and the consent copy and frontend UAT.

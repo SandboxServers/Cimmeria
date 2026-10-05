@@ -80,7 +80,7 @@ documented fixture scopes. These are not gameplay or release evidence.
 | Confirmed uninstall | Existing Settings confirmation and native ownership checks | Integrated confirmation/dismiss/removal/recovery UAT; integration |
 | Signed GitHub manifest patch notes | Actual Tauri tab rendered seven verified entries; wrong-key rejection observed | Refresh/reconnect after integrated changes; integration |
 | Default-off optional summary consent | Separate persisted preference; exporter implemented, inert, activation gated, with local opt-out race and failure-isolation tests | Native Windows/macOS CI result; consent copy and frontend UAT in the rollout packet; integration |
-| Focused observability | Implemented, inert, activation gated: producer, queue, exporter, anonymous strict ingest and offline-guarded query fixtures ([handoff](worknotes/observability.md)) | Maintainer decision on the public login-listener mount; production endpoint; fixtures checked against a live SigNoz; integration |
+| Focused observability | Implemented, inert, activation gated: producer, queue, exporter, anonymous strict ingest and offline-guarded query fixtures ([handoff](worknotes/observability.md)) | Production endpoint (https, publicly trusted certificate), decided with the rollout; fixtures checked against a live SigNoz; integration. The owner approved the public login-port mount and set the limit at 12 requests a minute per address on 2026-10-04 |
 | Migration and identity/consent preservation | Explicit settings import and verified-copy foundation integrated | Published-client adoption, effective settings, UI, permanent owner/current release and game Update |
 | Single updater owner and version/asset mapping | Native minimum gates and signed check/download integrated; composed persistence UAT passed | Apply/restart/rollback, resume, production configuration and Windows replacement parity |
 | Tests, docs and project memory | Existing baseline artifacts | Per-packet guards, fresh bounded review, matching docs/indexes and findings |
@@ -112,4 +112,7 @@ External observability discovery `56b2599aa` is integrated. The
 records current shared ownership, endpoint disabled, separate public-mount review
 and the requirement to retain bounded phase-duration evidence. The
 [implementation handoff](worknotes/observability.md) records the result on draft
-PR #1205: implemented, inert, activation gated.
+PR #1205: implemented, inert, activation gated. On 2026-10-04 the owner approved
+the public login-port mount and set the rate limit at 12 requests a minute per
+address. No build has an endpoint; a production endpoint, the consent copy and
+the frontend UAT remain a later, separately decided rollout.

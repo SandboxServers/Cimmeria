@@ -114,9 +114,9 @@ stateless router holding those four routes and, since 2026-10-04, a fifth:
 the launcher-summary ingest. Launcher summaries do not use dev-session
 tokens: that route is anonymous, and the mint refuses `launcher_summary`
 as a session kind like any other unknown one (see
-[launcher-summary-telemetry.md](launcher-summary-telemetry.md)). The fifth
-route is outside the decision above and needs the maintainer's explicit yes
-before a build carrying it is deployed. The router comes with the routes'
+[launcher-summary-telemetry.md](launcher-summary-telemetry.md)). The owner
+approved serving the fifth route on the login port on 2026-10-04, which
+extends the decision above to it. The router comes with the routes'
 body limits and a per-request trace span like the admin router's, except
 that it records the path without the query string. The composition
 root (`crates/server/src/main.rs`) hands it to the auth service through

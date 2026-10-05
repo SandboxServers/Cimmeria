@@ -196,7 +196,7 @@ Two more are passed through the same way and are optional; left out or blank, th
 ```bash
 # Pause the mint, the refresh and the launcher-summary route. Only the literal 1 does it.
 CIMMERIA_TELEMETRY_KILL_SWITCH=1
-# Launcher-summary requests per address per window. Default 12; 0 turns the limit off.
+# Launcher-summary requests per address per minute. Default 12; 0 turns the limit off.
 CIMMERIA_TELEMETRY_SUMMARY_QUOTA_PER_IP=60
 ```
 

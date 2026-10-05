@@ -104,10 +104,10 @@ player's password over plain HTTP on that port.
 
 The code also merges a fifth route, `/api/telemetry/launcher-summary`, on
 both listeners (see [Launcher summaries](#launcher-summaries)). Unlike the
-other four it is anonymous: it takes no token. Serving it on the public
-port is outside that decision and needs the maintainer's explicit yes
-before a build carrying it is deployed. Nothing else from the admin API is
-served on `8081`.
+other four it is anonymous: it takes no token. The owner approved serving
+it on the public port on 2026-10-04, which extends that decision to it as a
+fifth route. No launcher build has a summary endpoint, so nothing calls it
+yet. Nothing else from the admin API is served on `8081`.
 
 The launcher sends telemetry to:
 
@@ -302,12 +302,12 @@ that header and falls back to launching without telemetry.
 
 | Variable | Default | Counts |
 |---|---|---|
-| `CIMMERIA_TELEMETRY_QUOTA_WINDOW_SECS` | `3600` | The window everything below is counted over. |
+| `CIMMERIA_TELEMETRY_QUOTA_WINDOW_SECS` | `3600` | The window the mint and refresh quotas below are counted over. The summary quota does not use it. |
 | `CIMMERIA_TELEMETRY_MINT_QUOTA_PER_IP` | `120` | Mints per peer address per window. |
 | `CIMMERIA_TELEMETRY_MINT_QUOTA_PER_INSTALL` | `30` | Mints per `install_id` per window. |
 | `CIMMERIA_TELEMETRY_REFRESH_QUOTA_PER_IP` | `480` | Refreshes with a valid token per peer address per window. Charged only after the token verifies. |
 | `CIMMERIA_TELEMETRY_REFRESH_BAD_QUOTA_PER_IP` | `30` | Refresh calls whose token fails verification, per peer address per window. A separate counter, so junk tokens cannot spend the valid-token allowance. |
-| `CIMMERIA_TELEMETRY_SUMMARY_QUOTA_PER_IP` | `12` | Requests to `/api/telemetry/launcher-summary` per peer address per window. The route is anonymous, so this low default is its rate limit. Charged before the body is read or anything is parsed, so malformed, oversized and refused requests count too. Shared by everyone behind one address: see [Launcher summaries](#launcher-summaries). |
+| `CIMMERIA_TELEMETRY_SUMMARY_QUOTA_PER_IP` | `12` | Requests to `/api/telemetry/launcher-summary` per peer address per minute (owner decision, 2026-10-04). The window is a fixed 60 s of the route's own. The route is anonymous, so this is its rate limit. Charged before the body is read or anything is parsed, so malformed, oversized and refused requests count too. Shared by everyone behind one address: see [Launcher summaries](#launcher-summaries). |
 | `CIMMERIA_TELEMETRY_MAX_SESSION_SECS` | `86400` | How long one minted session may be extended by chained refreshes. Not a quota: `0` (or a negative value) does **not** disable the cap, it refuses every refresh. |
 
 Setting a quota to `0` disables that counter. A value that does not
@@ -529,9 +529,11 @@ code does when a summary arrives.
   beside it are still accepted; a summary that writes a key twice is
   invalid.
 - **Rate limit.** `CIMMERIA_TELEMETRY_SUMMARY_QUOTA_PER_IP` limits requests
-  per peer address per window (`CIMMERIA_TELEMETRY_QUOTA_WINDOW_SECS`,
-  3600 s). The default is `12`, and `0` disables it. Over it the route
-  answers 429 with `Retry-After`, and the launcher stops that export cycle
+  per peer address per minute (owner decision, 2026-10-04). The default is
+  `12`, and `0` disables it. The window is a fixed 60 seconds of this
+  route's own, and `CIMMERIA_TELEMETRY_QUOTA_WINDOW_SECS` does not change
+  it. Over the limit the route answers 429 with a `Retry-After` of 61
+  seconds at most, and the launcher stops that export cycle
   without retrying and keeps its rows for the next one. Every request is
   counted, the malformed and the oversized (413) ones too; only a 503 under
   the kill switch is not. An IPv4 peer seen as `::ffff:a.b.c.d` on a
@@ -552,15 +554,17 @@ code does when a summary arrives.
   [signoz/launcher-summary-views.md](signoz/launcher-summary-views.md). The
   fixtures have not been imported into any SigNoz.
 
-**Raise the limit behind a shared address.** The allowance belongs to the
+**A shared address shares the limit.** The allowance belongs to the
 peer address, and no `X-Forwarded-For` header is read. Behind a NAT, a
 reverse proxy or a tunnel every launcher arrives from one address, so the
-default allows 12 summary requests per window for all of them together.
-Anyone behind that address can also spend the allowance with 12 requests of
-any content and turn the others' posts into 429s until the window ends. Size
-the limit for the number of launchers behind the address before pointing any
-launcher at the route. The commands, for systemd and for compose, are under
-[Changing a quota](#changing-a-quota).
+default allows 12 summary requests per minute for all of them together.
+A launcher sends a few requests an hour, so that is room for many of them,
+but anyone behind that address can also spend the allowance with 12
+requests of any content and turn the others' posts into 429s until the
+minute ends, and do it again the next minute. Check the limit against the
+number of launchers behind the address before pointing any launcher at the
+route, and raise it if they would need more. The commands, for systemd and
+for compose, are under [Changing a quota](#changing-a-quota).
 
 **Do not act on these rows.** The route is anonymous, so anyone can post
 correctly shaped rows within the rate limit. Rows are self-reported; they

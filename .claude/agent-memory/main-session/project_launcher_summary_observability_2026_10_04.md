@@ -1,6 +1,6 @@
 ---
 name: project-launcher-summary-observability
-description: "Launcher-summary observability (track O) built 2026-10-04: anonymous strict ingest (no mint or scope, default limit 12), inert by design, two open maintainer gates, where the hooks live"
+description: "Launcher-summary observability (track O) built 2026-10-04: anonymous strict ingest (no mint or scope, 12 requests a minute per address), public login-port mount approved, inert by design (no endpoint), where the hooks live"
 metadata:
   type: project
 ---
@@ -20,15 +20,21 @@ install-admission gap this note used to list as open is closed (see below).
   the exact schema-1 payload: no mint, no token, no scope and no
   `Authorization` header. The server refuses anything else whole and limits
   each peer address (`CIMMERIA_TELEMETRY_SUMMARY_QUOTA_PER_IP`, default 12 per
-  window, charged before the body is read). A dev-session mint for kind
+  minute, charged before the body is read). The window is a fixed 60 s of the
+  route's own; the mint and refresh quotas keep theirs
+  (`CIMMERIA_TELEMETRY_QUOTA_WINDOW_SECS`, an hour). A dev-session mint for kind
   `launcher_summary` is refused as an unknown kind. Rows are self-reported, so
   never alert on them or read a success rate from them.
 - **It is inert in every build.** The shell passes `endpoint: None`
   (`crates/launcher/desktop/shell/src/host/summary.rs`), so nothing is tracked,
   queued or sent. Tests inject a loopback endpoint.
-- **Two maintainer decisions are open:** the public login-listener mount (its
-  own commit, do not squash) and any production endpoint. The exporter refuses
-  plain `http` except to loopback, so the 8081 login port cannot be the
+- **Owner decisions, 2026-10-04:** the route may be served on the public login
+  port (8081), which extends the four-route decision of 2026-09-29 to it as a
+  fifth, and its rate limit is 12 requests per minute per peer address.
+- **Still open, as a later and separately decided rollout:** a production
+  endpoint, the consent copy change and the frontend UAT. The exporter accepts
+  only `https` (bundled webpki roots, so a publicly trusted certificate) or
+  loopback `http`, so the plain-HTTP login port cannot be the launcher's
   endpoint.
 - **The only producer hook is the journal.** `FileJournal::commit` in
   `engine/src/storage/mod.rs` calls the observer; rows are finalized lazily at
@@ -51,11 +57,11 @@ install-admission gap this note used to list as open is closed (see below).
   response, no mint fixture. Both workspaces test against them; a change must
   pass the engine suite and the admin-api suite.
 
-**Why:** the assignment required an inert, consent-gated flow with the public
+**Why:** the assignment required an inert, consent-gated flow with the
 activation left to the maintainer.
 
-**How to apply:** before changing any of this, read "Public-activation gate"
-in the design doc and do not add an endpoint, an env override or a frontend
-copy change without that decision. Related:
+**How to apply:** before changing any of this, read "Decisions and what is
+still open" in the design doc and do not add an endpoint, an env override or a
+frontend copy change without the rollout decision. Related:
 [[reference-desktop-engine-test-seams]],
 [[reference-loopback-exporter-test-seams]].

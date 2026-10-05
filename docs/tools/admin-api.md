@@ -64,9 +64,10 @@ deployment therefore keeps the loopback `ADMIN_BIND`.
 
 The login port's router holds five routes and nothing else from this API: those four, and
 `POST /api/telemetry/launcher-summary`, which is also served on this listener. The fifth is
-anonymous (it takes no token) and is outside the four-route decision: serving it publicly
-needs the maintainer's explicit decision before a build carrying it is deployed
-([launcher-summary-telemetry.md](../architecture/launcher-summary-telemetry.md#public-activation-gate)).
+anonymous (it takes no token). The owner approved serving it on the login port on
+2026-10-04, which extends the four-route decision to it; no launcher build has a summary
+endpoint yet
+([launcher-summary-telemetry.md](../architecture/launcher-summary-telemetry.md#decisions-and-what-is-still-open)).
 
 Containers are different: a Docker published port forwards to the container's bridge
 address and cannot reach an in-container loopback bind, so the image sets
@@ -514,7 +515,7 @@ complete surface:
 | `POST /api/auth/dev-session/refresh` | `routes/dev_session/mod.rs` — quota-limited; 401 once the session passes its lifetime cap |
 | `POST /api/telemetry/upload-chunk` | `routes/telemetry/mod.rs` |
 | `POST /api/telemetry/upload-bundle` | `routes/telemetry/mod.rs` |
-| `POST /api/telemetry/launcher-summary` | `routes/telemetry/launcher_summary/mod.rs` — desktop-launcher attempt summaries. Anonymous: no token, and an `Authorization` header is never read. Accepts only the exact schema-1 JSON payload: `Content-Type` other than `application/json` (a `charset` parameter is allowed) is a 415, a query string is a 400, over 64 KiB is a 413, a body that is not the envelope (a key written twice included) is a 400; one invalid summary in a valid body is `rejected` alone. Limited to 12 requests per peer address per window by default (`CIMMERIA_TELEMETRY_SUMMARY_QUOTA_PER_IP`; 429 + `Retry-After`), charged before the body is read or anything is parsed, so an oversized request counts; 503 under the telemetry kill switch. Rows are self-reported and must not drive server state or alerts. Merged by name in `routes/mod.rs` (this listener) and `login_port.rs` (the login port), not part of `telemetry::routes()`. Contract: [launcher-summary-telemetry.md](../architecture/launcher-summary-telemetry.md) |
+| `POST /api/telemetry/launcher-summary` | `routes/telemetry/launcher_summary/mod.rs` — desktop-launcher attempt summaries. Anonymous: no token, and an `Authorization` header is never read. Accepts only the exact schema-1 JSON payload: `Content-Type` other than `application/json` (a `charset` parameter is allowed) is a 415, a query string is a 400, over 64 KiB is a 413, a body that is not the envelope (a key written twice included) is a 400; one invalid summary in a valid body is `rejected` alone. Limited to 12 requests per peer address per minute by default (`CIMMERIA_TELEMETRY_SUMMARY_QUOTA_PER_IP`, a fixed 60 s window of its own; 429 + `Retry-After`), charged before the body is read or anything is parsed, so an oversized request counts; 503 under the telemetry kill switch. Rows are self-reported and must not drive server state or alerts. Merged by name in `routes/mod.rs` (this listener) and `login_port.rs` (the login port), not part of `telemetry::routes()`. Contract: [launcher-summary-telemetry.md](../architecture/launcher-summary-telemetry.md) |
 | `GET /swagger-ui`, `GET /api-docs/openapi.json` | `crates/admin-api/src/lib.rs:117` |
 
 Note that `/api/editor/*` is an **HTTP** chain-editor persistence surface —
