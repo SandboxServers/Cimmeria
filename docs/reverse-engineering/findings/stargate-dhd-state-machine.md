@@ -271,9 +271,20 @@ The client stores Stargate addresses as 6-element arrays of UINT8 glyphs. The re
 1. **StargateTriggerFailed wire fields** — event is confirmed present (RTTI + registration stub) but no emitter was found. Likely: a failure reason code (INT8 or INT32) or possibly zero-argument. Needs server-side `.py` or a live packet capture.
 2. **Gate address struct layout** — the 6-glyph address is resolved from `this+0x18` (vector of pointers). The pointed-to struct layout is partially known: `FUN_00d2d8f0(ptr, index)` reads one UINT8 glyph. Full struct size unknown.
 3. ~~**onDHDReply binary payload and UI**~~ — **Resolved 2026-09-28 (#1024) for the render target**: it is a `Communicator` chat-cluster event, not a DHD-window message; see the [render-target resolution](#ondhdreply-render-target-resolution-1024-2026-09-28). Still open: the exact `Communicator::onDHDReply(...)` handler body address (the bound method pointer lives in a heap instance, not a vtable — see point 5 of the resolution) and a live packet-capture/visual confirmation of the on-screen text. Neither is needed to answer #1024 (DHD window vs. not), but both would raise this from static-RE to observed-behavior confidence.
-4. **Pending address vector** (`this+0x28`/`0x2c`) — what populates the pending list vs active list (`this+0x18`/`0x1c`)? Hypothesis: pending = addresses player knows but the local gate can't dial yet (e.g., requires server-side gate to be active). Needs Ghidra cross-reference on `updateStargateAddress` handler.
+4. ~~**Pending address vector**~~ — **Partly resolved 2026-10-05 (DA-F3)**; see [the `updateStargateAddress` handler](#updatestargateaddress-handler-da-f3). The hypothesis above was wrong: the vector at `this+0x34` holds addresses waiting for their cooked stargate element, not addresses the local gate cannot dial. Still open: the exact layout of the `this+0x14`/`this+0x24` lists (known and hidden, by the branch structure).
 
 ---
+
+## `updateStargateAddress` handler (DA-F3)
+
+**Static RE, 2026-10-05, headless Ghidra; behaviour confirmed live in DA-06.**
+
+- `GateTravel`'s constructor-time subscription (`FUN_00e2f780`) binds ten NetIn handlers through `CME::EventSignal::MemberCallback` thunks. The fifth, built by `FUN_00e30360` (callback ctor `FUN_00e2fe20`, vtable `0x019d8fb4`, RTTI getter `0x00e2fe90`), binds `Event_NetIn_updateStargateAddress` to `FUN_00e2eff0`.
+- `FUN_00e2eff0` reads `addressId`, `hasAddress` and `hidden`. With `hasAddress = 0` it removes the id from the two lists at `this+0x14` and `this+0x24` and from the vector at `this+0x34`.
+- With `hasAddress = 1` it takes the id's record out of the target list if one is there. Otherwise it allocates a new 0x1c-byte record (`Detail__unknown_00d2da80(record, id, hidden)`), calls `Detail__unknown_00e31650(Detail__unknown_004786f0(), &id)` and pushes the record onto `this+0x34`. The record then goes onto `this+0x14` (`hidden = 0`) or `this+0x24` (`hidden = 1`).
+- `Detail__unknown_00e31650` on the `004786f0` singleton is the request for the stargate's cooked element. The cooked-data callbacks around `GateTravel` are `Event_Cache_ElementReady` / `ElementError` listeners, so the element arrives later, and the name and glyphs are filled then.
+
+**Consequence.** An address that arrives in the same tick as `onDisplayDHD` is drawn before its element is ready: the DHD lists it as "Unknown" and clicking it fills no glyphs. The window does not refresh when the element lands; reopening it does. DA-06 saw exactly this for the eleven Debug Area hub grants. The server now grants them at world entry ([gate-travel.md § Debug Area dial-out](../../gameplay/gate-travel.md#debug-area-dial-out)). An address from `setupStargateInfo` at map load has had seconds to resolve by the time anyone opens a DHD.
 
 ## Related Documents
 

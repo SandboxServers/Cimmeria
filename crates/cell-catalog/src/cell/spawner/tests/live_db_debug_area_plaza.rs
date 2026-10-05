@@ -44,7 +44,9 @@ mod live_db {
     const PLAZA_Y: (f32, f32) = (6.5, 7.6);
 
     const DUMMY_LINE_Z: f32 = -872.0;
-    const DUMMY_LINE_X: (f32, f32) = (240.0, 264.0);
+    /// 234 (friendly, west end since DA-F7) to 258 (L50). Nothing east of
+    /// 259: a wall footprint runs from x 259.4 to 261 on the line.
+    const DUMMY_LINE_X: (f32, f32) = (234.0, 258.0);
     const DUMMY_Y: (f32, f32) = (6.0, 7.6);
 
     const HOSTILE_FACTION: i32 = 10;

@@ -1,9 +1,12 @@
 //! Player-administration travel console commands: `.gotoxyz`, `.goto`,
 //! `.summon`, `.gotolocation`.
 //!
-//! All four share legacy's `entity = target or player` precedence
-//! (`Target::None` + in-handler `target.unwrap_or(caller_id)`) and all four
-//! feed back to the *caller*, never the moved entity (D03).
+//! `.gotoxyz`, `.goto` and `.gotospace` share legacy's `entity = target or
+//! player` precedence (`Target::None` + in-handler
+//! `target.unwrap_or(caller_id)`). `.summon` and `.gotolocation` deliberately
+//! do not: `.summon` always brings the named player to the caller, and
+//! `.gotolocation` always moves the caller (DA-F4). All of them feed back to
+//! the *caller*, never the moved entity (D03).
 //!
 //! # The two move mechanisms
 //!
@@ -345,9 +348,7 @@ pub(super) async fn dispatch(
     match name {
         "goto" => named_destination::goto(caller_id, target, args, tx, space_mgr).await,
         "summon" => named_destination::summon(caller_id, args, tx, space_mgr).await,
-        "gotolocation" => {
-            named_destination::goto_location(caller_id, target, args, tx, space_mgr).await
-        }
+        "gotolocation" => named_destination::goto_location(caller_id, args, tx, space_mgr).await,
         "gotospace" => goto_space(caller_id, target, args, tx, space_mgr).await,
         _ => {}
     }

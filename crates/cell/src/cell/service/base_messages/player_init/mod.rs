@@ -352,6 +352,16 @@ pub(in crate::cell::service) async fn handle_init_player_state(
         }
     }
 
+    // A GM entering the Debug Area is granted every gate the hub DHD offers
+    // now, not when the DHD opens: the client resolves each new address
+    // from its cooked cache asynchronously and an open DHD never redraws,
+    // so a grant sent with `onDisplayDHD` lists as "Unknown" (DA-F3). The
+    // address book was stamped from the database just before this handler
+    // ran, and `setupStargateInfo` reached the client before its
+    // `onClientReady`, so nothing overwrites the grant. A no-op on every
+    // world without a `debug_dial_hub` gate and for non-GMs.
+    crate::cell::gate_travel::top_up_gm_on_hub_world_entry(entity_id, tx, space_mgr).await;
+
     // `reloadOnActivate` activation site for the world-entry path
     // (initial login, gate travel, cross-world ring). Same-world
     // respawn is deliberately NOT a trigger site — `ReanchorPlayer`

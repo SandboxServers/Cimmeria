@@ -25,6 +25,7 @@
 #![warn(unreachable_pub)]
 
 pub mod base {
+    pub mod attribute_patches;
     pub mod chardef;
     pub mod dialog_overrides;
     pub mod item_overrides;

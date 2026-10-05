@@ -9,9 +9,11 @@
 //! |---|---|---|
 //! | `.goto` | `target or player` | the named player's exact space + position |
 //! | `.summon` | the named player | the **caller's** space + position |
-//! | `.gotolocation` | `target or player` | the named world, explicit coordinates or its entry point |
+//! | `.gotolocation` | the **caller** | the named world, explicit coordinates or its entry point |
 //!
-//! Legacy: `deprecated/python/cell/commands/Player.py:298-365`.
+//! Legacy: `deprecated/python/cell/commands/Player.py:298-365`. `.summon`
+//! and `.gotolocation` both depart from legacy's `target or player` rule;
+//! each function says why.
 
 use tokio::sync::mpsc;
 
@@ -171,10 +173,23 @@ pub(super) async fn summon(
     .await;
 }
 
-/// `.gotolocation <worldName> [<x> <y> <z>]` — move the selected target (or
-/// the caller) to explicit coordinates in a named world, or, with the world
-/// alone, to that world's entry point ([`super::world_entry_point`] —
-/// a deliberate deviation, legacy always required coordinates).
+/// `.gotolocation <worldName> [<x> <y> <z>]` — move the caller to explicit
+/// coordinates in a named world, or, with the world alone, to that world's
+/// entry point ([`super::world_entry_point`] — a deliberate deviation,
+/// legacy always required coordinates).
+///
+/// **Deliberate departure from legacy: the caller always moves.**
+/// `Player.py:344-365` moves `entity = target or player`. Under the project
+/// rule for GM commands (plain-English intent over legacy parity, as with
+/// `.summon`), "go to location" means "take me there". The legacy rule bit
+/// in the Debug Area's live run (DA-06, DA-F4): with the Injured SGC Guard
+/// selected, `.gotolocation DebugArea 262 7 -877` moved the guard, and every
+/// UAT row starts with that command. The client does not tell the server
+/// when Escape clears its target frame (it sends no `setTargetID(0)`), so
+/// a GM cannot even see that the server still holds a selection. Native
+/// `gmGotoLocation` (162) already moves only the caller. To move a selected
+/// entity on purpose, `.gotoxyz <x> <y> <z>` still moves the selection in
+/// its own space, and `.goto <player>` moves it to a named player.
 ///
 /// Legacy `gotoLocation` (`Player.py:344-365`) validated the world against
 /// `world_info` and reported `"Unable to find world: %s"`; here that check is
@@ -189,7 +204,6 @@ pub(super) async fn summon(
 /// loading screen just to change coordinates.
 pub(super) async fn goto_location(
     caller_id: u32,
-    target: Option<u32>,
     args: &[&str],
     tx: &mpsc::Sender<CellToBaseMsg>,
     space_mgr: &mut SpaceManager,
@@ -250,7 +264,8 @@ pub(super) async fn goto_location(
     };
     let [x, y, z] = position;
 
-    let subject = target.unwrap_or(caller_id);
+    // The caller, never the selection: see the doc comment.
+    let subject = caller_id;
     let Some(origin_space_id) = space_mgr.get_entity_space_id(subject) else {
         send_gm_feedback(caller_id, "gotolocation: entity not found", tx).await;
         return;

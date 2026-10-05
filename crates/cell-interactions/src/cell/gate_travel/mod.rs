@@ -52,6 +52,7 @@ pub(crate) mod tick;
 
 use address_book::player_knows_stargate;
 use dial_feedback::{send_dial_refusal, DialRefusal};
+pub use dial_hub::top_up_gm_on_hub_world_entry;
 pub(crate) use sequences::world_has_stargate_region;
 pub use tick::{crossing_tick, gate_dial_tick};
 

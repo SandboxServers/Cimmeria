@@ -31,7 +31,7 @@ pub(super) const SPECS: &[Spec] = &[
         1,
         4,
         Target::None,
-        "Move the target (or yourself) to a named world: its entry point, or coordinates (worldName [x y z])",
+        "Move yourself to a named world: its entry point, or coordinates (worldName [x y z]); your selection is ignored",
     ),
     spec(
         "gotospace",

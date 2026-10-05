@@ -14,7 +14,11 @@
 #   `.gotolocation DebugArea <x> <y> <z>` and waiting for world 1300
 #   (`client_wait_for`), so the rows run in any order. The coordinates are
 #   the station points in debug-area.md; heights are a little above the
-#   floor, so the player settles onto it.
+#   floor, so the player settles onto it. `.gotolocation` always moves the
+#   tester, never the current selection (DA-F4), so a row may follow a
+#   targeting row: the client clears its target frame on Escape without
+#   telling the server, and the old `target or player` rule moved the
+#   previous row's NPC instead.
 # - Clicks stand within 3.5 u of the NPC (interact range is 5 u) and use
 #   `@world_click` by name, which picks the nearest match: three Bankers are
 #   "Storage Officer" and two registrars are "Organization Registrar".
@@ -685,7 +689,7 @@ title = "A heal on the friendly dummy lands on it"
 expected = "Target the Injured SGC Guard (starts at half Health) and cast Health Heal: its bar rises; your own Health does not change."
 known_issues = ["DA-06"]
 setup = [
-  { chat = ".gotolocation DebugArea 264 7.2 -876", tier = "G" },
+  { chat = ".gotolocation DebugArea 234 7.2 -876", tier = "G" },
   { tool = "client_wait_for", args = { lua_condition = "getCurrentWorldID() == 1300", timeout_ms = 60000 } },
   { wait_ms = 3000 },
   { tool = "@use_ability", args = { ability_id = 1646, place = true }, optional = true },
