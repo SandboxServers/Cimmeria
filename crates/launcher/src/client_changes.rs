@@ -305,6 +305,13 @@ pub fn builtin_description(id: &str) -> Option<(&'static str, &'static str)> {
              GM-only Debug Area uses. Changes one Ihpet Crater map file and needs the Castle \
              Armory ring patch (007) first.",
         ),
+        "012-gm-slash-commands" => (
+            "GM slash commands",
+            "Adds InternalSlashCommands.xml so the client recognizes the /gm commands (such \
+             as /gmdhd and /gmgivexp); without it the stock client answers \"Invalid \
+             command.\" to every one. Only accounts with GM access can use them, and the \
+             server still checks. Adds one file to Common\\xml\\slash_commands.",
+        ),
         _ if id.starts_with(DEFAULT_ID_PREFIX) => (OVERLAY_TITLE, OVERLAY_DESCRIPTION),
         _ => return None,
     };

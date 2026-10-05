@@ -1,0 +1,768 @@
+# Project-maintained table behind patch 012-gm-slash-commands.
+#
+# One entry per typeable /gm* command the Stargate Worlds client registers from
+# Common/xml/slash_commands/InternalSlashCommands.xml. Only identifiers and
+# types live here: the command word, the client event class it fires
+# (Event_SlashCmd_*, from SGW.exe), and the typed parameters in the order the
+# client parses them. There is no help or description text, by design (the
+# project ships no CME-authored text). The generator
+# (tools/client-patches/gm_slash_commands.py) turns this table into the XML.
+#
+# access: the role letters the client's parser reads from the Access attribute.
+# Its mask code treats a letter at the first position as ABSENT and every other
+# role as present, so "p" gives mask 0x2FF, which any non-zero server access
+# level passes (the client-side filter only; the server still gates every
+# GM method). See data/client-patches/README.md, patch 012.
+access = "p"
+
+# params:   mandatory parameters, "<Type> <Name>", Type one of
+#           Boolean, Integer, Float, String.
+# optional: optional parameters, same shape, after the mandatory ones.
+
+[[command]]
+name = "/gmmissionassign"
+event = "Event_SlashCmd_MissionAssign"
+params = ["String MissionDesignId", "Boolean DisplayAcceptWindow"]
+
+[[command]]
+name = "/gmmissionclear"
+event = "Event_SlashCmd_MissionClear"
+params = ["String DesignID"]
+
+[[command]]
+name = "/gmmissionclearactive"
+event = "Event_SlashCmd_MissionClearActive"
+
+[[command]]
+name = "/gmmissionclearhistory"
+event = "Event_SlashCmd_MissionClearHistory"
+
+[[command]]
+name = "/gmmissionlist"
+event = "Event_SlashCmd_MissionList"
+
+[[command]]
+name = "/gmmissionlistfull"
+event = "Event_SlashCmd_MissionListFull"
+
+[[command]]
+name = "/gmmissiondetails"
+event = "Event_SlashCmd_MissionDetails"
+params = ["String MissionDesignId"]
+
+[[command]]
+name = "/gmmissionadvance"
+event = "Event_SlashCmd_MissionAdvance"
+params = ["String MissionDesignId", "Integer StepToAdvanceTo"]
+
+[[command]]
+name = "/gmmissionreset"
+event = "Event_SlashCmd_MissionReset"
+params = ["String MissionDesignId", "Integer StepToAdvanceTo"]
+
+[[command]]
+name = "/gmmissioncomplete"
+event = "Event_SlashCmd_MissionComplete"
+params = ["String MissionDesignId", "Boolean TurnIn"]
+
+[[command]]
+name = "/gmmissionsetavailable"
+event = "Event_SlashCmd_MissionSetAvailable"
+params = ["String MissionDesignId"]
+
+[[command]]
+name = "/gmmissionabandon"
+event = "Event_SlashCmd_MissionAbandon"
+params = ["String MissionDesignId"]
+
+[[command]]
+name = "/gmshowtargetlocation"
+event = "Event_SlashCmd_ShowTargetLocation"
+
+[[command]]
+name = "/gmlistabilities"
+event = "Event_SlashCmd_ListAbilities"
+
+[[command]]
+name = "/gmshowflag"
+event = "Event_SlashCmd_ShowFlag"
+optional = ["Integer flagId"]
+
+[[command]]
+name = "/gmlistinteractions"
+event = "Event_SlashCmd_ListInteractions"
+
+[[command]]
+name = "/gmgetmobattribute"
+event = "Event_SlashCmd_GetMobAttribute"
+params = ["String attribute"]
+
+[[command]]
+name = "/gmshowmobcount"
+event = "Event_SlashCmd_ShowMobCount"
+params = ["Integer SpaceID"]
+
+[[command]]
+name = "/gmshowip"
+event = "Event_SlashCmd_ShowIP"
+
+[[command]]
+name = "/gmshowinventory"
+event = "Event_SlashCmd_ShowInventory"
+
+[[command]]
+name = "/gmshowplayer"
+event = "Event_SlashCmd_ShowPlayer"
+
+[[command]]
+name = "/gmgivexp"
+event = "Event_SlashCmd_GiveXp"
+params = ["Integer XpAmount"]
+
+[[command]]
+name = "/gmgiveitem"
+event = "Event_SlashCmd_GiveItem"
+params = ["String DesignId", "Integer Quantity"]
+
+[[command]]
+name = "/gmgivecash"
+event = "Event_SlashCmd_GiveNaqahdah"
+params = ["Integer Amount"]
+
+[[command]]
+name = "/gmremoveitem"
+event = "Event_SlashCmd_GMDeleteItem"
+params = ["String ItemName", "Integer Quantity"]
+
+[[command]]
+name = "/gmgiveability"
+event = "Event_SlashCmd_GiveAbility"
+params = ["Integer AbilityId"]
+
+[[command]]
+name = "/gmgivetrainingpoints"
+event = "Event_SlashCmd_GiveTrainingPoints"
+params = ["Integer numPoints"]
+
+[[command]]
+name = "/gmgiverespawner"
+event = "Event_SlashCmd_GiveRespawner"
+params = ["Integer RespawnerMobId"]
+
+[[command]]
+name = "/gmgiveexpertise"
+event = "Event_SlashCmd_GiveExpertise"
+params = ["Integer disciplineId", "Integer expertise"]
+
+[[command]]
+name = "/gmgiveappliedsciencepoints"
+event = "Event_SlashCmd_GiveAppliedSciencePoints"
+params = ["Integer points"]
+
+[[command]]
+name = "/gmgiveracialparadigmlevels"
+event = "Event_SlashCmd_GiveRacialParadigmLevels"
+params = ["Integer racialParadigmId", "Integer levels"]
+
+[[command]]
+name = "/gmsetgodmode"
+event = "Event_SlashCmd_SetGodMode"
+params = ["Boolean on/off"]
+
+[[command]]
+name = "/gmsetnoxp"
+event = "Event_SlashCmd_SetNoXP"
+params = ["Boolean on/off"]
+
+[[command]]
+name = "/gmsetnodamage"
+event = "Event_SlashCmd_SetNoDamageTimedMode"
+
+[[command]]
+name = "/gmsetnoaggro"
+event = "Event_SlashCmd_SetNoAggro"
+params = ["Boolean on/off"]
+
+[[command]]
+name = "/gmsetspeed"
+event = "Event_SlashCmd_SetSpeed"
+params = ["Float Multiplier"]
+
+[[command]]
+name = "/gmsethealth"
+event = "Event_SlashCmd_SetHealth"
+params = ["Integer Amount", "Integer TargetId"]
+
+[[command]]
+name = "/gmsethealthmax"
+event = "Event_SlashCmd_SetHealthMax"
+params = ["Integer Amount", "Integer TargetId"]
+
+[[command]]
+name = "/gmsetfocus"
+event = "Event_SlashCmd_SetFocus"
+params = ["Integer Amount", "Integer TargetId"]
+
+[[command]]
+name = "/gmsetfocusmax"
+event = "Event_SlashCmd_SetFocusMax"
+params = ["Integer Amount", "Integer TargetId"]
+
+[[command]]
+name = "/gmsetflag"
+event = "Event_SlashCmd_SetFlag"
+params = ["Integer aFlagId", "Integer aForceVal"]
+
+[[command]]
+name = "/gmsetlevel"
+event = "Event_SlashCmd_SetLevel"
+params = ["Integer Level"]
+
+[[command]]
+name = "/gmresetabilities"
+event = "Event_SlashCmd_ResetAbilities"
+
+[[command]]
+name = "/gmgiveallabilities"
+event = "Event_SlashCmd_GiveAllAbilities"
+
+[[command]]
+name = "/gmrespec"
+event = "Event_SlashCmd_Respec"
+
+[[command]]
+name = "/gmsettarget"
+event = "Event_SlashCmd_SetTarget"
+params = ["String NameOrID"]
+
+[[command]]
+name = "/gmsetmobstance"
+event = "Event_SlashCmd_SetMobStance"
+params = ["Integer StanceID"]
+
+[[command]]
+name = "/gmsetmobabilityset"
+event = "Event_SlashCmd_SetMobAbilitySet"
+optional = ["Integer abilitySetId"]
+
+[[command]]
+name = "/gmdhd"
+event = "Event_SlashCmd_DHD"
+params = ["Integer DestinationId"]
+
+[[command]]
+name = "/gmgoto"
+event = "Event_SlashCmd_Goto"
+params = ["String TargetName"]
+
+[[command]]
+name = "/gmsummon"
+event = "Event_SlashCmd_Summon"
+params = ["String TargetName"]
+
+[[command]]
+name = "/gmgotolocation"
+event = "Event_SlashCmd_GotoLocation"
+params = ["String WorldName", "Float X-Coordinate", "Float Y-Coordinate", "Float Z-Coordinate"]
+
+[[command]]
+name = "/gmgotoxyz"
+event = "Event_SlashCmd_GotoXYZ"
+params = ["Float X-Coordinate", "Float Y-Coordinate", "Float Z-Coordinate"]
+
+[[command]]
+name = "/gmreloadorganizations"
+event = "Event_SlashCmd_ReloadOrganizations"
+
+[[command]]
+name = "/gmreloadinventory"
+event = "Event_SlashCmd_ReloadInventory"
+
+[[command]]
+name = "/gmusers"
+event = "Event_SlashCmd_Users"
+
+[[command]]
+name = "/gmsethidegm"
+event = "Event_SlashCmd_SetHideGM"
+params = ["Boolean on/off"]
+
+[[command]]
+name = "/gmprintstats"
+event = "Event_SlashCmd_PrintStats"
+params = ["String Stat"]
+
+[[command]]
+name = "/gmdebugability"
+event = "Event_SlashCmd_AbilityDebug"
+params = ["Integer AbilityId"]
+
+[[command]]
+name = "/gmdebugcombat"
+event = "Event_SlashCmd_CombatDebug"
+
+[[command]]
+name = "/gmdebugcombatverbose"
+event = "Event_SlashCmd_CombatDebugVerbose"
+
+[[command]]
+name = "/gmdebugheal"
+event = "Event_SlashCmd_HealDebug"
+
+[[command]]
+name = "/gmdebugstartminigame"
+event = "Event_SlashCmd_DebugStartMinigame"
+params = ["Integer gameId"]
+
+[[command]]
+name = "/gmdebugspectateminigame"
+event = "Event_SlashCmd_DebugSpectateMinigame"
+
+[[command]]
+name = "/gmdebugjoinminigame"
+event = "Event_SlashCmd_DebugJoinMinigame"
+
+[[command]]
+name = "/gmdebugabilityonmob"
+event = "Event_SlashCmd_DebugAbilityOnMob"
+params = ["Integer AbilityID"]
+
+[[command]]
+name = "/gmdebugbehaviorsonmob"
+event = "Event_SlashCmd_DebugBehaviorsOnMob"
+
+[[command]]
+name = "/gmdebugpathsonmob"
+event = "Event_SlashCmd_DebugPathsOnMob"
+
+[[command]]
+name = "/gmdebugevents"
+event = "Event_SlashCmd_DebugEvents"
+params = ["Integer TargetId", "Integer InformLevel"]
+
+[[command]]
+name = "/gmmobdata"
+event = "Event_SlashCmd_MobData"
+params = ["Integer SpaceId", "Integer TargetId"]
+
+[[command]]
+name = "/gmdebuginteract"
+event = "Event_SlashCmd_DebugInteract"
+
+[[command]]
+name = "/gmemitbehavioreventonmob"
+event = "Event_SlashCmd_EmitBehaviorEventOnMob"
+params = ["Integer EventID"]
+
+[[command]]
+name = "/gmaddbehavioreventset"
+event = "Event_SlashCmd_AddBehaviorEventSet"
+
+[[command]]
+name = "/gmremovebehavioreventset"
+event = "Event_SlashCmd_RemoveBehaviorEventSet"
+
+[[command]]
+name = "/gmspawnbycmd"
+event = "Event_SlashCmd_Spawn"
+params = ["String DesignId", "Integer X-Offset", "Integer Z-Offset"]
+
+[[command]]
+name = "/gmdespawn"
+event = "Event_SlashCmd_Despawn"
+
+[[command]]
+name = "/gmrechargeitem"
+event = "Event_SlashCmd_RechargeItem"
+params = ["Integer ItemId"]
+
+[[command]]
+name = "/gmsetmobattribute"
+event = "Event_SlashCmd_SetMobAttribute"
+params = ["String attribute", "String attributeType", "Integer value"]
+
+[[command]]
+name = "/gmrespawn"
+event = "Event_SlashCmd_Respawn"
+
+[[command]]
+name = "/gmkilltarget"
+event = "Event_SlashCmd_Kill"
+params = ["Integer TargetId"]
+
+[[command]]
+name = "/debugminigamecomplete"
+event = "Event_SlashCmd_MinigameComplete"
+params = ["Integer ResultCode"]
+
+[[command]]
+name = "/gmgiveminigamecontact"
+event = "Event_SlashCmd_GiveMinigameContact"
+params = ["Integer ContactId", "Integer TargetId"]
+
+[[command]]
+name = "/gmremoveminigamecontact"
+event = "Event_SlashCmd_RemoveMinigameContact"
+params = ["Integer ContactId", "Integer TargetId"]
+
+[[command]]
+name = "/gmgivestargateaddress"
+event = "Event_SlashCmd_GiveStargateAddress"
+params = ["String AddressId", "Boolean Hidden"]
+
+[[command]]
+name = "/gmremovestargateaddress"
+event = "Event_SlashCmd_RemoveStargateAddress"
+params = ["String AddressId"]
+
+[[command]]
+name = "/gmloadconstants"
+event = "Event_SlashCmd_LoadConstants"
+
+[[command]]
+name = "/gmloadability"
+event = "Event_SlashCmd_LoadAbility"
+params = ["Integer aAbilityId"]
+
+[[command]]
+name = "/gmreloadscripts"
+event = "Event_SlashCmd_LoadNACSI"
+params = ["Integer nacsiId"]
+
+[[command]]
+name = "/gmloadabilityset"
+event = "Event_SlashCmd_LoadAbilitySet"
+params = ["Integer aAbilitySetId"]
+
+[[command]]
+name = "/gmloadbehavior"
+event = "Event_SlashCmd_LoadBehavior"
+params = ["Integer behaviorEventSetId"]
+
+[[command]]
+name = "/gmloadmob"
+event = "Event_SlashCmd_LoadMOB"
+params = ["Integer mobId"]
+
+[[command]]
+name = "/gmloaddialogset"
+event = "Event_SlashCmd_ShowDialog"
+params = ["Integer interactionSetId"]
+
+[[command]]
+name = "/gmloaditem"
+event = "Event_SlashCmd_LoadItem"
+params = ["Integer itemId"]
+
+[[command]]
+name = "/gmloadmission"
+event = "Event_SlashCmd_LoadMission"
+params = ["Integer missionId"]
+
+[[command]]
+name = "/gmsetmobvariable"
+event = "Event_SlashCmd_SetMobVariable"
+params = ["Integer variable", "Integer value"]
+
+[[command]]
+name = "/gmentererroraistate"
+event = "Event_SlashCmd_EnterErrorAIState"
+
+[[command]]
+name = "/gmexiterroraistate"
+event = "Event_SlashCmd_ExitErrorAIState"
+
+[[command]]
+name = "/gmperfstatsbychannel"
+event = "Event_SlashCmd_PerfStatsByChannel"
+params = ["Boolean aOnOff"]
+
+[[command]]
+name = "/gmshowinstanceflag"
+event = "Event_SlashCmd_ShowInstanceFlag"
+params = ["Integer aFlagNumber"]
+
+[[command]]
+name = "/gmsetinstanceflag"
+event = "Event_SlashCmd_SetInstanceFlag"
+params = ["Integer aFlagNumber", "Integer aFlagValue"]
+
+[[command]]
+name = "/gmspawnentityloot"
+event = "Event_SlashCmd_ShowSpawns"
+params = ["Integer EntityId", "Integer LootTableID"]
+
+[[command]]
+name = "/gmtestlos"
+event = "Event_SlashCmd_TestLOS"
+params = ["Integer sourceID", "Integer targetID"]
+
+[[command]]
+name = "/gmtogglecombatlos"
+event = "Event_SlashCmd_ToggleCombatLOS"
+
+[[command]]
+name = "/gmtrackmob"
+event = "Event_SlashCmd_ShowMobPaths"
+
+[[command]]
+name = "/gmonxrayeyes"
+event = "Event_SlashCmd_XRayEyes"
+params = ["Boolean on/off"]
+
+[[command]]
+name = "/gmoninvisible"
+event = "Event_SlashCmd_Invisible"
+params = ["Boolean on/off"]
+
+[[command]]
+name = "/gmonphysics"
+event = "Event_SlashCmd_Physics"
+params = ["Boolean on/off"]
+
+[[command]]
+name = "/gmsendgmshout"
+event = "Event_SlashCmd_GMShout"
+params = ["Boolean isGlobal", "String Text"]
+
+[[command]]
+name = "/gmregeneratecoverlinks"
+event = "Event_SlashCmd_RegenerateCoverLinks"
+params = ["Float normalLimit", "Integer maxLinks", "Float maxDistance"]
+
+[[command]]
+name = "/gmchangecoverweight"
+event = "Event_SlashCmd_ChangeCoverWeight"
+params = ["Float distance", "Float defCover", "Float offCover", "Float move", "Float crossPath", "Float cover"]
+
+[[command]]
+name = "/gmchangecoverstanceweight"
+event = "Event_SlashCmd_ChangeCoverStanceWeight"
+params = ["String stance", "Float distance", "Float defCover", "Float offCover", "Float move", "Float crossPath", "Float cover"]
+
+[[command]]
+name = "/gmhelpfull"
+event = "Event_SlashCmd_HelpFull"
+
+[[command]]
+name = "/gmtestsequence"
+event = "Event_SlashCmd_TestSequence"
+
+[[command]]
+name = "/gmrepairitem"
+event = "Event_SlashCmd_RepairItem"
+params = ["Integer ItemId", "Float RepairRatio"]
+
+[[command]]
+name = "/gmgiveammo"
+event = "Event_SlashCmd_GiveAmmo"
+
+[[command]]
+name = "/gmgivefaction"
+event = "Event_SlashCmd_GiveFaction"
+
+[[command]]
+name = "/gmsetfaction"
+event = "Event_SlashCmd_SetFaction"
+
+[[command]]
+name = "/gminvokeability"
+event = "Event_SlashCmd_InvokeAbility"
+
+[[command]]
+name = "/gmsettechskill"
+event = "Event_SlashCmd_SetTechSkill"
+
+[[command]]
+name = "/gmgiveblueprint"
+event = "Event_SlashCmd_GiveBlueprint"
+
+[[command]]
+name = "/gmgivegearset"
+event = "Event_SlashCmd_GiveGearset"
+
+[[command]]
+name = "/gmgiveinventory"
+event = "Event_SlashCmd_GiveInventory"
+
+[[command]]
+name = "/gmdebugminigameinstance"
+event = "Event_SlashCmd_DebugMinigameInstance"
+params = ["Integer instanceId", "Integer seed", "Integer techcomp"]
+
+[[command]]
+name = "/gmdebugflash"
+event = "Event_SlashCmd_DebugFlash"
+
+[[command]]
+name = "/gmshowlog"
+event = "Event_SlashCmd_ShowLog"
+optional = ["Boolean on/off"]
+
+[[command]]
+name = "/gmsetinfiniteammo"
+event = "Event_SlashCmd_SetInfiniteAmmo"
+optional = ["Boolean on/off"]
+
+[[command]]
+name = "/gmsetinvulnerable"
+event = "Event_SlashCmd_SetInvulnerable"
+optional = ["Boolean on/off"]
+
+[[command]]
+name = "/gmsetomnipotent"
+event = "Event_SlashCmd_SetOmnipotent"
+
+[[command]]
+name = "/gmsetignorefocus"
+event = "Event_SlashCmd_SetIgnoreFocus"
+optional = ["Boolean on/off"]
+
+[[command]]
+name = "/gmsetignorehealth"
+event = "Event_SlashCmd_SetIgnoreHealth"
+optional = ["Boolean on/off"]
+
+[[command]]
+name = "/gmsetfly"
+event = "Event_SlashCmd_SetFly"
+optional = ["Boolean on/off"]
+
+[[command]]
+name = "/gmsetghost"
+event = "Event_SlashCmd_SetGhost"
+optional = ["Boolean on/off"]
+
+[[command]]
+name = "/gmsetspectator"
+event = "Event_SlashCmd_SetSpectator"
+optional = ["Boolean on/off"]
+
+[[command]]
+name = "/gmsetnotarget"
+event = "Event_SlashCmd_SetNoTarget"
+optional = ["Boolean on/off"]
+
+[[command]]
+name = "/gmsetpvp"
+event = "Event_SlashCmd_SetPVP"
+params = ["Boolean on/off"]
+
+[[command]]
+name = "/gmsetarchetype"
+event = "Event_SlashCmd_SetArchetype"
+
+[[command]]
+name = "/gmtimeofday"
+event = "Event_SlashCmd_TimeofDay"
+params = ["Float Time", "Float Wind", "Integer Weather"]
+
+[[command]]
+name = "/gmtoggleautocycleability"
+event = "Event_SlashCmd_toggleAutoCycleAbility"
+
+[[command]]
+name = "/gmshowcover"
+event = "Event_SlashCmd_ShowCover"
+params = ["Boolean on/off"]
+
+[[command]]
+name = "/gmshowcommandwaypoints"
+event = "Event_SlashCmd_ShowCommandWaypoints"
+params = ["Boolean on/off"]
+
+[[command]]
+name = "/gmshowspawnset"
+event = "Event_SlashCmd_ShowSpawnSet"
+
+[[command]]
+name = "/gmshowarea"
+event = "Event_SlashCmd_ShowArea"
+
+[[command]]
+name = "/gmshowregion"
+event = "Event_SlashCmd_ShowRegion"
+params = ["String Type"]
+
+[[command]]
+name = "/gmchat"
+event = "Event_SlashCmd_GMChat"
+params = ["String Text"]
+
+[[command]]
+name = "/gmloadinteractionset"
+event = "Event_SlashCmd_LoadInteractionSet"
+
+[[command]]
+name = "/gmpetinvokeability"
+event = "Event_SlashCmd_PetInvokeAbility"
+params = ["Integer entityId", "Integer abilityId"]
+
+[[command]]
+name = "/gmpetinvokecommand"
+event = "Event_SlashCmd_PetInvokeCommand"
+params = ["Integer entityId", "Integer commandId"]
+
+[[command]]
+name = "/gmpetabilitytoggle"
+event = "Event_SlashCmd_PetAbilityToggle"
+params = ["Integer entityId", "Integer abilityId", "Integer toggle"]
+
+[[command]]
+name = "/gmchangeammo"
+event = "Event_SlashCmd_ChangeAmmo"
+params = ["Integer ammoType"]
+
+[[command]]
+name = "/gmforceclientcrash"
+event = "Event_SlashCmd_ForceClientCrash"
+
+[[command]]
+name = "/gmforcerendercrash"
+event = "Event_SlashCmd_ForceRenderThreadCrash"
+
+[[command]]
+name = "/gmsetringdestination"
+event = "Event_SlashCmd_SetRingTransporterDestination"
+params = ["Integer regionId", "Integer destinationId"]
+
+[[command]]
+name = "/gmdumpobjects"
+event = "Event_SlashCmd_DumpObjects"
+
+[[command]]
+name = "/gmspacequeuestatus"
+event = "Event_SlashCmd_SpaceQueueStatus"
+
+[[command]]
+name = "/gmspacequeuedresponse"
+event = "Event_SlashCmd_SpaceQueuedResponse"
+
+[[command]]
+name = "/gmspacequeuereadyresponse"
+event = "Event_SlashCmd_SpaceQueueReadyResponse"
+
+[[command]]
+name = "/gmconfirmeffect"
+event = "Event_SlashCmd_ConfirmEffect"
+params = ["Integer EffectId", "Boolean Response"]
+
+[[command]]
+name = "/gmshowtriggers"
+event = "Event_SlashCmd_ShowTriggers"
+
+[[command]]
+name = "/gmshowwaypoints"
+event = "Event_SlashCmd_ShowWaypoints"
+
+[[command]]
+name = "/gmshownavmesh"
+event = "Event_SlashCmd_ShowNavMesh"
+
+[[command]]
+name = "/gmshowmemory"
+event = "Event_SlashCmd_ShowMemory"
+
+[[command]]
+name = "/gmdebugtarget"
+event = "Event_SlashCmd_DebugTarget"

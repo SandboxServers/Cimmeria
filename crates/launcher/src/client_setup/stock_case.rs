@@ -36,15 +36,23 @@ pub const PATCH_TARGETS: &[&str] = &[
     "Working/SGWGame/SourceCache.en-us/CookedDataKismetSeqEvent.pak",
     "Working/SGWGame/SourceCache.en-us/CookedDataKismetSetEvent.pak",
     "Working/SGWGame/SourceCache.en-us/CookedInteractionSet.pak",
+    // 003-cooked-data also adds one file no cabinet ships.
+    "Working/SGWGame/SourceCache.en-us/CookedBehaviorEvents.pak",
     // 005-login-delay: the one the published recipe misspells.
     "Working/SGWGame/Content/UI/Startup/EULA/EULA.lua",
     // 006-gate-sound-bank: new files, in the stock `audio/ui` directory.
     "Working/SGWGame/Content/audio/ui/prp_gen.fev",
     "Working/SGWGame/Content/audio/ui/prp_gen_gate.fsb",
+    // 004-log-config: a new file, in the stock `binaries` directory.
+    "Working/binaries/SGWLogConfig.xml",
     // 009-starter-hotbar
     "Working/SGWGame/Content/UI/Core/ActionButtons/ActionProfileDefault1.lua",
     // 010-debug-area-rings
     "Working/SGWGame/CookedPC/Maps/Ihpet_Crater_Light/Ihpet_Crater_Light-fff80002.umap",
+    // 012-gm-slash-commands: a new file, next to the stock `SlashCommands.xml`
+    // (the client reads the directory from `SlashCommandXMLPath` in
+    // GameplayEngine.ini: `..\..\Common\xml\slash_commands`).
+    "Common/xml/slash_commands/InternalSlashCommands.xml",
 ];
 
 /// One file [`restore`] renamed, as paths relative to the install.
@@ -167,10 +175,11 @@ mod tests {
         assert_eq!(listed(&eula), ["EULA.lua"]);
     }
 
-    /// Every op target in every patch spec is listed here, spelled exactly
-    /// the same, so a spec in the wrong case (the `eula.lua` bug) or a new
-    /// patch nobody added here fails the build. The list itself is the
-    /// cabinets' spelling; see [`PATCH_TARGETS`].
+    /// Every op target and every whole-file path in every patch spec is
+    /// listed here, spelled exactly the same, so a spec in the wrong case
+    /// (the `eula.lua` bug) or a new patch nobody added here fails the
+    /// build. The list itself is the cabinets' spelling; see
+    /// [`PATCH_TARGETS`].
     #[test]
     fn every_patch_target_is_listed() {
         let dir =
@@ -183,8 +192,19 @@ mod tests {
             }
             let spec: serde_json::Value =
                 serde_json::from_slice(&std::fs::read(&spec_path).unwrap()).unwrap();
-            for op in spec["ops"].as_array().into_iter().flatten() {
-                let target = op["target"].as_str().unwrap();
+            let targets = spec["ops"]
+                .as_array()
+                .into_iter()
+                .flatten()
+                .map(|op| op["target"].as_str().unwrap())
+                .chain(
+                    spec["files"]
+                        .as_array()
+                        .into_iter()
+                        .flatten()
+                        .map(|f| f["path"].as_str().unwrap()),
+                );
+            for target in targets {
                 assert!(
                     PATCH_TARGETS.contains(&target),
                     "{} targets {target}, which PATCH_TARGETS doesn't list in that spelling",
@@ -194,5 +214,24 @@ mod tests {
             }
         }
         assert!(seen > 0, "no patch specs found under {}", dir.display());
+    }
+
+    /// Patch 012 adds a new file the stock client doesn't have; a tool that
+    /// lowercases the tree must not leave the client unable to find it.
+    /// Bug shape: dropping the 012 line from `PATCH_TARGETS` leaves
+    /// `internalslashcommands.xml` as it is.
+    #[test]
+    fn a_lowercased_slash_command_file_gets_its_stock_name_back() {
+        let dir = tempfile::tempdir().unwrap();
+        let slash = dir.path().join("Common/xml/slash_commands");
+        std::fs::create_dir_all(&slash).unwrap();
+        std::fs::write(slash.join("internalslashcommands.xml"), b"ours").unwrap();
+        std::fs::write(slash.join("SlashCommands.xml"), b"stock").unwrap();
+
+        restore(dir.path()).unwrap();
+        assert_eq!(
+            listed(&slash),
+            ["InternalSlashCommands.xml", "SlashCommands.xml"]
+        );
     }
 }

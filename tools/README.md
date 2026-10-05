@@ -47,6 +47,7 @@ Scripts for reverse-engineering the game client (UE3/BigWorld binaries).
 | `investigate_corruption.py` | Investigate packet/data corruption patterns |
 | `re_parity.py` | LLM-free structural parity check for reverse-engineered functions — compares a reconstruction against Ghidra decompile/disasm (11 parity signals + objective call/control-flow gap verifier). Drives the `/re-verify` reverser/checker loop. Run `python tools/re_parity.py --selftest`. |
 | `re/ghidra-headless/Probe.java` | Read-only headless-Ghidra probe of `SGW.exe` (decompile, xrefs, string and function-name search, vtable dumps) run through `analyzeHeadless.bat -noanalysis -readOnly`, for when the Ghidra MCP bridge is unavailable. Java, not Python: see [re/ghidra-headless/README.md](re/ghidra-headless/README.md). |
+| `client-patches/gm_slash_commands.py` / `client-patches/cme_prose_hashes.py` | Generate patch 012's `InternalSlashCommands.xml` from `data/client-patches/012-gm-slash-commands/commands.toml` (`--check` for CI); write the SHA-256 list that keeps CME-authored text out of it. See [data/client-patches/README.md](../data/client-patches/README.md#012-gm-slash-commands) |
 
 These scripts run standalone with Python 3.x — they don't need the server running.
 

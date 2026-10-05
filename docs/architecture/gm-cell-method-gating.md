@@ -2,7 +2,7 @@
 title: "GM gating for cell methods — access_level plumbing"
 type: explanation
 audience: engineers
-last_updated: 2026-07-25
+last_updated: 2026-10-05
 ---
 
 # GM gating for cell methods — `access_level` plumbing
@@ -102,6 +102,29 @@ the gate, then (for a GM) hit the router's "unhandled cell method" warn arm. A
 verified subset (gmGiveItem 133, gmGotoXYZ 163, gmKillTarget 190) is implemented;
 the full per-index table lives in
 [cell-method-dispatch-table.md](../protocol/cell-method-dispatch-table.md#sgwgmplayer-extension-indices-109--473--cat-n-04).
+
+## The client's own filter, and patch 012
+
+The native `/gm*` slash commands are a client feature, and on a launcher
+install the client does not have them: the command map is built from XML
+files, and the stock 2009 seed lacks `InternalSlashCommands.xml`, which
+defines every `/gm*` word. Without it a GM typing `/gmdhd 3` gets "Invalid
+command." and nothing reaches this gate. Client patch
+[`012-gm-slash-commands`](../../data/client-patches/README.md#012-gm-slash-commands)
+adds a project-written copy of that file, so **native `/gm*` commands need
+patch 012 on launcher installs** (a client that already has the file, such
+as a QA copy, gets it replaced).
+
+The client applies a filter of its own before it sends anything: each
+command carries an `Access` mask and is usable only when the mask is 0 or
+shares a bit with the player's access level, which the server sends as
+`onEntityProperty(GENERICPROPERTY_AccessLevel = 7, level)`. Patch 012 gives
+every command `Access="p"`, which the client's parser turns into `0x2FF`
+(`SGW.exe` `0x00a4c530`, `0x00c789e0`), so access levels 1 to 4 pass and
+level 0 is refused with "Invalid command." and left out of `/help`. That
+filter is cosmetic: it is the client's, a modified client skips it, and it
+cannot tell level 1 from level 2. **This gate stays the authority** and
+requires GameMaster (2) for every restricted index.
 
 ## Why not per-call plumbing?
 
