@@ -2,7 +2,7 @@
 
 > **Diátaxis type**: explanation (ADR)
 > **Audience**: engineers extending `cimmeria-client-patches`, or deciding where a new client-side fix belongs
-> **Last updated**: 2026-09-27
+> **Last updated**: 2026-10-04
 > **Status**: Accepted (decision D2 of the [Black Market plan](../analysis/black-market/README.md), 2026-09-26). The Black Market receive and send paths are built, and verified only statically and by unit tests. The launcher injects the DLL on every `SGW.exe` launch (BM-06), and the UI overlay lives in `crates/client-patches/overlay/` (BM-05).
 
 ## Context
@@ -196,6 +196,52 @@ The launcher side is BM-06; the operator detail is in
   detection.** The crate's `build.rs` embeds an `asInvoker` manifest so the
   i686 test harness starts without elevation. `cimmeria-patch-wire` does the
   same.
+
+## A runtime repair: `strstream` under Wine
+
+One thing the DLL does is not a shelved feature. Under Wine, the client
+cannot read its own cooked-data cache: it reads each archive entry through a
+`std::strstream`, writing the bytes in and reading them straight back, and
+`strstreambuf::underflow` in Wine's `msvcp80.dll` returns end of file for a
+read that follows a write. The client does not check, keeps version 0 for
+every cooked category and is resynced in full at every login, about ten
+minutes each time. The mechanism and its evidence are Finding 9 of
+[cooked-data-pipeline.md](../reverse-engineering/findings/cooked-data-pipeline.md#finding-9--under-wine-the-version-read-gets-no-bytes-back-from-strstreambuf).
+
+The repair (`strstream_underflow/`) lives here because gameplay needs it and
+it has to be in the process before the cache is opened. It runs on the
+bootstrap thread straight after the first fingerprint check, before the wait
+for `lua51.dll`, and does not depend on the Black Market installing.
+
+- **Only under Wine.** It looks for `wine_get_version` in `ntdll.dll`. On
+  Windows it does nothing and logs one line.
+- **Only if a probe fails.** It builds a `strstreambuf(0)` through the
+  runtime's own exports, writes four bytes and reads four back. A runtime
+  that returns them is left alone, so a Wine that fixes the function, or a
+  prefix that loads Microsoft's `msvcp80.dll`, is never touched.
+- **Only if the object looks as expected.** After the probe's write, the put
+  area must hold four bytes and the high-water mark must still be at the
+  buffer's start. Any other shape is logged and left alone.
+- **One pointer is written.** The entry of `strstreambuf`'s vtable that holds
+  the address the DLL exports as `?underflow@strstreambuf@std@@MAEHXZ` is
+  pointed at a shim. The entry is found by that address, not by an index.
+  No code is patched and MinHook is not involved.
+- **The shim does what Microsoft's function does first.** It raises
+  `_Seekhigh` (`+0x44`) to the put pointer when writes have passed it, then
+  calls the runtime's own `underflow`, which is correct once the mark is
+  right.
+- **It checks itself.** The probe runs again after the swap. If the round
+  trip still fails, the slot is put back.
+
+This is the only place the DLL writes outside `SGW.exe`, and it uses no
+`SGW.exe` address, so the fingerprint table does not list it. It is not
+specific to the desktop launcher or to macOS: any launcher that injects this
+DLL into a client under Wine gets it.
+
+It is a workaround for a fault that belongs upstream. The launcher's Wine
+runtime is a third-party release pinned by hash, so it cannot carry a patch;
+when a pinned runtime has the function fixed, the probe passes and the shim
+stops being installed.
 
 ## Alternatives considered
 

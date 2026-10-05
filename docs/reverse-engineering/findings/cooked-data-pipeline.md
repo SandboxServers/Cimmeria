@@ -361,6 +361,8 @@ if(this->seekhigh <= gptr)
 
 **What else it breaks.** Read entry (`0x00478e10`) has two callers: the version read, and `0x00479210`, which tries each of a storage's archives in turn for a named entry and is how a cached element is loaded. Both write into a caller's `strstream` that is read straight after. The `strstream` constructor (`0x00478970`) has 22 call sites across the client, the cooked-data loaders among them. Under Wine none of those reads gets data. For cooked data that is hidden today: with version 0 everywhere the server pushes every entry at each login and the client uses what arrives. A fix for the version alone would stop the pushes and leave the client with archives it cannot read. The fix has to make the stream work, which repairs every caller. Whether any of the other construct sites is behind the character-creation button that does nothing (same playtest) is not checked.
 
+**The repair.** `cimmeria-client-patches` probes the loaded runtime with the same write-then-read and, when it fails this way, points the `underflow` entry of `strstreambuf`'s vtable (entry 4 in the pinned runtime, found by the exported address) at a shim that raises `_Seekhigh` to the put pointer and then calls the runtime's own function ([client-patches.md](../../architecture/client-patches.md#a-runtime-repair-strstream-under-wine)). That repairs every caller at once.
+
 **Scope.** Any Wine whose `msvcp80.dll` has this function as above: the pinned runtime (Wine 11.13) and Wine's `master` on 2026-10-04. It is not specific to macOS, Rosetta or the launcher. A prefix that loads Microsoft's `msvcp80.dll` instead does not have it.
 
 ---
