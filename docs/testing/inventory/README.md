@@ -35,9 +35,9 @@ many tests also updates the catalogue.
 
 | Metric | Count |
 |---|---:|
-| Tests (`#[test]` / `#[tokio::test]`) | 11,773 |
-| Files with tests | 2,070 |
-| Gated in CI (every crate but CI's exclude list) | 9,518 |
+| Tests (`#[test]` / `#[tokio::test]`) | 11,786 |
+| Files with tests | 2,072 |
+| Gated in CI (every crate but CI's exclude list) | 9,531 |
 | Live-DB tests (`require_db_or_skip!` in the body) | 1,618 |
 | Inventory threshold (5% of the tests) | 589 |
 
@@ -98,8 +98,8 @@ with no file in this directory yet.
 | `crates/lab` | `cimmeria-lab` | 488 | 100 | 0 | no | none |
 | `crates/entity` | `cimmeria-entity` | 455 | 59 | 0 | yes | [entity.md](entity.md) |
 | `crates/navmesh-extractor` | `cimmeria-navmesh-extractor` | 449 | 52 | 0 | yes | none |
-| `crates/base-session` | `cimmeria-base-session` | 429 | 79 | 186 | yes | none |
-| `crates/mercury` | `cimmeria-mercury` | 338 | 56 | 0 | yes | [mercury.md](mercury.md) |
+| `crates/base-session` | `cimmeria-base-session` | 438 | 80 | 186 | yes | none |
+| `crates/mercury` | `cimmeria-mercury` | 339 | 56 | 0 | yes | [mercury.md](mercury.md) |
 | `crates/base-crafting` | `cimmeria-base-crafting` | 323 | 59 | 142 | yes | none |
 | `crates/wire` | `cimmeria-wire` | 319 | 58 | 0 | yes | none |
 | `crates/cell-methods` | `cimmeria-cell-methods` | 283 | 47 | 8 | yes | none |
@@ -107,7 +107,7 @@ with no file in this directory yet.
 | `crates/cell-catalog` | `cimmeria-cell-catalog` | 217 | 55 | 124 | yes | none |
 | `crates/cell-interactions` | `cimmeria-cell-interactions` | 215 | 37 | 1 | yes | none |
 | `crates/base` | `cimmeria-base` | 201 | 40 | 13 | yes | none |
-| `crates/base-world-entry` | `cimmeria-base-world-entry` | 190 | 53 | 31 | yes | none |
+| `crates/base-world-entry` | `cimmeria-base-world-entry` | 193 | 54 | 31 | yes | none |
 | `crates/admin-api` | `cimmeria-admin-api` | 184 | 27 | 0 | yes | none |
 | `crates/cell-effect-scripts` | `cimmeria-cell-effect-scripts` | 162 | 19 | 21 | yes | none |
 | `crates/resources` | `cimmeria-resources` | 152 | 22 | 0 | yes | none |
