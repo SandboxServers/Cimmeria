@@ -326,7 +326,7 @@ A failed find or extraction leaves `this+0x24` at its previous value, 0 in a fre
 
 ## Finding 9 — Under Wine the version read gets no bytes back from `strstreambuf`
 
-**Confidence**: HIGH for the mechanism (the client's read path from Finding 8; disassembly of the `msvcp80.dll` in the pinned Wine runtime; Wine's source). The live event that shows the short read is the `stream_*` group of `client.cooked.version_read`, added for this.
+**Confidence**: HIGH (the client's read path from Finding 8; disassembly of the `msvcp80.dll` in the pinned Wine runtime; Wine's source; and one live session, below).
 **Sources**: `SGW.exe` `0x00478970`, `0x00478e10`, `0x00478f00`; Wine `dlls/msvcp90/ios.c`, `strstreambuf_underflow` (`msvcp80.dll` is built from the same file); the runtime's `lib/wine/i386-windows/msvcp80.dll` (SHA-256 `6d4f49931c2be83b...`, export `?underflow@strstreambuf@std@@MAEHXZ` at `0x10074250`).
 
 **What the client does.** It writes the extracted `MetaData` bytes into a fresh dynamic `strstreambuf` and at once reads four back from the same stream, with no seek in between. The first write allocates the buffer and sets the get area empty (`setg(buf, buf, buf)`) and the high-water mark `_Seekhigh` to the buffer's start. The read therefore finds no characters and calls `underflow()`, whose job at that point is to notice that the put pointer has moved, raise `_Seekhigh` to it and widen the get area.
@@ -356,6 +356,8 @@ if(this->seekhigh <= gptr)
 ```
 
 `basic_istream<char>::read` then sets `eofbit|failbit`, leaves the destination alone and returns. The client does not look. `this+0x24` stays 0 for every category, the client sends 0 in every `versionInfoRequest`, and the server resyncs all 21.
+
+**Seen live (2026-10-05 04:08 UTC, session `29ecefab-24be-4883-a614-dcd705bb9662`, read back from the server by its operator).** For all 21 archives with a `MetaData` entry, `client.cooked.version_read` had `outcome: stream_read_short`, `extract_ok: true`, `extract_len: 4` and the right bytes (`TextStrings.pak` `aa 16 00 00`, 5802; Items 44303; WorldInfo 33408; the bundled Items 7538), then `stream_held: 4`, `stream_read_requested: 4`, `stream_read_count: 0`, `stream_state: eof|fail`. Deflated entries (the writable cache) and stored ones (the bundled copy) behaved the same. Underneath, two `_read` calls per version read, none short, and no failed seek. `client.io.pak_open` fired 65 times, all `open_existing`, `deny_write`, `via: crt`.
 
 **Why the client loads Wine's runtime at all.** `SGW.exe`'s manifest asks for `Microsoft.VC80.CRT` 8.0.50727.762. The launcher's prerequisite step installs that redistributable, so the prefix has Microsoft's `msvcp80.dll` under `winsxs\x86_microsoft.vc80.crt_..._8.0.50727.762_...`. Wine also ships its own assembly as version 8.0.50727.9672, and its side-by-side lookup takes the highest build that satisfies the request, so the builtin wins. The running client maps `msvcp80.dll` and `msvcr80.dll` from the runtime's `lib/wine/i386-windows/`.
 
