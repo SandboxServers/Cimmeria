@@ -83,6 +83,20 @@ impl SpaceManager {
         self.spaces.len()
     }
 
+    /// Can a traveller be delivered to `world_name` on this cell?
+    ///
+    /// The same two cases [`Self::find_or_create_space`] accepts: a
+    /// non-instanced world with a startup space (listed in
+    /// `cell_spaces.xml`), or a world `spaces.xml` marks instanced. Anything
+    /// else — most of the 2009 gate list (Hebridan, Pen-Lai, Asgard High
+    /// Council, ...), which has a `resources.worlds` row but no map this
+    /// server loads — makes `find_or_create_space` fail *after* the
+    /// traveller's cell entity is gone, so a caller choosing destinations
+    /// asks first.
+    pub fn world_is_enterable(&self, world_name: &str) -> bool {
+        self.world_spaces.contains_key(world_name) || self.is_world_instanced(world_name)
+    }
+
     /// Look up the space_id for a world name.
     pub fn space_id_for_world(&self, world_name: &str) -> Option<u32> {
         self.world_spaces.get(world_name).copied()

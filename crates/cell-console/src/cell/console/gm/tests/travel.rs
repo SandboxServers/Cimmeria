@@ -568,6 +568,7 @@ async fn gm_dhd_arms_a_dial_where_a_gate_volume_exists_and_travels_where_none_do
                 address_origin: 18,
                 arrival: None,
                 event_set_id: None,
+                debug_dial_hub: false,
             },
         );
         mgr
@@ -627,6 +628,50 @@ async fn gm_dhd_arms_a_dial_where_a_gate_volume_exists_and_travels_where_none_do
     assert!(mgr.gate_dial(1).is_none(), "the fallback arms nothing");
 }
 
+/// `gmDHD` must not open a way INTO the Debug Area: the outbound-only dial
+/// hub (`debug_dial_hub`, gate 29) is never granted, GMs included, and the
+/// dial is refused. Deleting the hub skip in `handle_dhd` puts 29 in the
+/// GM's book; deleting the hub arm of the address-book check makes the dial
+/// travel.
+#[tokio::test]
+async fn gm_dhd_never_grants_or_dials_the_debug_area_hub() {
+    use crate::cell::spawner::StargateEntry;
+
+    const HUB: i32 = 29;
+
+    let mut mgr = mgr_with_player(1, "Castle");
+    mgr.stargates.insert(
+        HUB,
+        StargateEntry {
+            world_name: "Agnos".to_string(),
+            x: 1.0,
+            y: 2.0,
+            z: 3.0,
+            yaw: 0.0,
+            address_origin: 2,
+            arrival: None,
+            event_set_id: None,
+            debug_dial_hub: true,
+        },
+    );
+
+    let (tx, mut rx) = mpsc::channel(16);
+    assert!(dispatch(1, GM_DHD, &[HUB as u8], &tx, &mut mgr, &test_engine()).await);
+
+    let msgs = drain(&mut rx);
+    assert!(
+        !msgs
+            .iter()
+            .any(|m| matches!(m, CellToBaseMsg::GateTravel { .. })),
+        "nobody may travel into the dial hub, a GM included. Got {msgs:?}"
+    );
+    assert!(
+        !mgr.get_entity(1).unwrap().known_stargates.contains(&HUB),
+        "the hub's address must never enter a book"
+    );
+    assert!(mgr.gate_dial(1).is_none());
+}
+
 /// `gmDHD` reaches `handle_dial_gate`, which enforces the caller's address
 /// book (CAT-O-01). A GM debugging a world they have never visited does not
 /// hold its address, so the arm grants it for the session first — without
@@ -655,6 +700,7 @@ async fn gm_dhd_grants_the_address_it_needs_and_dials() {
             address_origin: 4,
             arrival: None,
             event_set_id: None,
+            debug_dial_hub: false,
         },
     );
     assert!(

@@ -334,7 +334,7 @@ Dial a gate by raw address.
 
 | Command | What it does | Works now? | Parameters | Example |
 |---|---|---|---|---|
-| `/gmdhd` | Dial a stargate by numeric address | ✅ Yes | `<gateAddress>` (positive int) | `/gmdhd 14` |
+| `/gmdhd` | Dial a stargate by numeric address. Never the Debug Area's outbound-only gate 29, which nobody can dial; from the Debug Area, right-click its DHD instead to dial any gate | ✅ Yes | `<gateAddress>` (positive int) | `/gmdhd 14` |
 
 ### Looking Things Up
 

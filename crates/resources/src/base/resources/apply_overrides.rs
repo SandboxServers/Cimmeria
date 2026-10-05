@@ -12,11 +12,12 @@ use std::collections::HashMap;
 
 use super::metadata_bump::{
     compute_dialog_metadata_bump, compute_item_metadata_bump, compute_metadata_bump,
-    compute_sequence_metadata_bump, compute_world_info_metadata_bump,
+    compute_sequence_metadata_bump, compute_stargate_metadata_bump,
+    compute_world_info_metadata_bump,
 };
 use super::{
     CategoryData, ResourceCache, CATEGORY_DIALOGS, CATEGORY_ITEMS, CATEGORY_KISMET_SEQUENCES,
-    CATEGORY_MISSIONS, CATEGORY_WORLD_INFO,
+    CATEGORY_MISSIONS, CATEGORY_STARGATES, CATEGORY_WORLD_INFO,
 };
 
 impl ResourceCache {
@@ -434,6 +435,74 @@ impl ResourceCache {
             "Cimmeria world info overrides applied; metadata bumped",
         );
         overridden.insert(CATEGORY_WORLD_INFO, applied);
+
+        overridden
+    }
+
+    /// Add Cimmeria's gates (the Debug Area's, 29) to the freshly-loaded
+    /// `CookedDataStargates` category and bump its metadata so a client's
+    /// next `versionInfoRequest` takes the per-key handshake.
+    ///
+    /// Same shape as [`Self::apply_world_info_overrides`], with one guard
+    /// it does not need: an addition whose id the PAK already ships is
+    /// skipped with a warn, because generating it would replace a real gate
+    /// the client knows (the item additions' rule).
+    pub(super) fn apply_stargate_overrides(
+        categories: &mut HashMap<u32, CategoryData>,
+    ) -> HashMap<u32, Vec<u32>> {
+        use crate::base::stargate_overrides::{generate_stargate_xml, STARGATE_ADDITIONS};
+
+        let mut overridden: HashMap<u32, Vec<u32>> = HashMap::new();
+        if STARGATE_ADDITIONS.is_empty() {
+            return overridden;
+        }
+
+        let Some(stargates) = categories.get_mut(&CATEGORY_STARGATES) else {
+            tracing::warn!(
+                category = CATEGORY_STARGATES,
+                "CookedDataStargates not loaded; skipping stargate additions"
+            );
+            return overridden;
+        };
+
+        let mut applied: Vec<u32> = Vec::with_capacity(STARGATE_ADDITIONS.len());
+        for gate in STARGATE_ADDITIONS {
+            if stargates.elements.contains_key(&gate.stargate_id) {
+                tracing::warn!(
+                    stargate_id = gate.stargate_id,
+                    stargate_name = gate.name,
+                    reason = "id_ships_in_pak",
+                    "stargate addition skipped: the PAK already ships this id",
+                );
+                continue;
+            }
+            stargates
+                .elements
+                .insert(gate.stargate_id, generate_stargate_xml(gate));
+            applied.push(gate.stargate_id);
+            tracing::info!(
+                stargate_id = gate.stargate_id,
+                world_id = gate.world_id, // nt:id-only the cooked addition carries no world name; the gate name says which
+                stargate_name = gate.name,
+                "Added Cimmeria stargate definition",
+            );
+        }
+
+        if applied.is_empty() {
+            return overridden;
+        }
+
+        let bump = compute_stargate_metadata_bump(STARGATE_ADDITIONS);
+        stargates.metadata = stargates.metadata.wrapping_add(bump);
+        applied.sort_unstable();
+        tracing::info!(
+            category = CATEGORY_STARGATES,
+            count = applied.len(),
+            bump,
+            bumped_metadata = stargates.metadata,
+            "Cimmeria stargate additions applied; metadata bumped",
+        );
+        overridden.insert(CATEGORY_STARGATES, applied);
 
         overridden
     }

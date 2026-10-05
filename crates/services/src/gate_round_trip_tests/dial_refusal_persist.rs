@@ -134,6 +134,7 @@ async fn live_db_a_dial_to_an_unheld_address_arms_nothing_and_leaves_the_row_unt
             address_origin: 18,
             arrival: None,
             event_set_id: None,
+            debug_dial_hub: false,
         },
     );
     mgr.create_entity(ENTITY_ID, "Agnos", [10.0; 3], [0.0; 3])

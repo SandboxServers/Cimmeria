@@ -1,10 +1,11 @@
 //! `.gotolocation DebugArea` (world 1300, docs/analysis/debug-area/README.md)
-//! through the real `entities/spaces.xml`: the world has no character start,
-//! story ring pad or stargate (D-DA4), so naming it alone lands on its
-//! lowest-id respawner, 130, the Z1 arrival.
+//! through the real `entities/spaces.xml`: the world has no character start
+//! or story ring pad, so naming it alone lands on its stargate arrival. Gate
+//! 29 (the outbound-only Debug Area gate, DA-07; D-DA4 as amended) pins that
+//! arrival to the Z1 point, which is also respawner 130.
 
 use super::*;
-use crate::cell::spawner::RespawnerDef;
+use crate::cell::spawner::{RespawnerDef, StargateEntry};
 
 const ARRIVAL_130: [f32; 3] = [251.0, 8.0, -962.0];
 const RESPAWN_TEST_131: [f32; 3] = [438.0, 10.4, -916.0];
@@ -33,11 +34,27 @@ fn setup_debug_area() -> (SpaceManager, u32) {
         .push(respawner(131, "DebugArea", RESPAWN_TEST_131));
     mgr.respawners
         .push(respawner(130, "DebugArea", ARRIVAL_130));
+    // `resources.stargates` row 29 as seeded: the gate prop's transform,
+    // with the arrival pinned to Z1.
+    mgr.stargates.insert(
+        29,
+        StargateEntry {
+            world_name: "DebugArea".to_string(),
+            x: 251.25,
+            y: 10.606,
+            z: -989.781,
+            yaw: 0.0,
+            address_origin: 2,
+            arrival: Some((ARRIVAL_130, 0.0)),
+            event_set_id: Some(10005),
+            debug_dial_hub: true,
+        },
+    );
     (mgr, gm)
 }
 
 #[tokio::test]
-async fn gotolocation_debug_area_alone_lands_on_respawner_130() {
+async fn gotolocation_debug_area_alone_lands_on_the_gate_arrival_at_z1() {
     let (mut mgr, gm) = setup_debug_area();
     let debug_space = mgr.default_space_for_world("DebugArea");
     assert!(debug_space.is_some(), "DebugArea is a shared startup space");
@@ -51,6 +68,9 @@ async fn gotolocation_debug_area_alone_lands_on_respawner_130() {
         world, "DebugArea",
         "the transfer carries the declared spelling"
     );
-    assert_eq!(pos, ARRIVAL_130);
-    assert!(t.mentions("[respawner]"), "got {:?}", t.feedback);
+    assert_eq!(
+        pos, ARRIVAL_130,
+        "gate 29's arrival pin, not the gate prop's origin (251.25, 10.606, -989.781)"
+    );
+    assert!(t.mentions("[stargate arrival]"), "got {:?}", t.feedback);
 }

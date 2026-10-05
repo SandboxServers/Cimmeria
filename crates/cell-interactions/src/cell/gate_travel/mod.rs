@@ -46,6 +46,7 @@ use crate::cell::client_methods::gate_travel::ON_STARGATE_PASSAGE;
 
 mod address_book;
 mod dial_feedback;
+pub(crate) mod dial_hub;
 pub(crate) mod sequences;
 pub(crate) mod tick;
 

@@ -95,6 +95,28 @@ INSERT INTO stargates (address1, address2, address3, address4, address5, address
 -- (2026-09-27). The gate prop row itself stays unknown.
 INSERT INTO stargates (address1, address2, address3, address4, address5, address6, address_origin, stargate_id, name, pitch, prefab_sequence, roll, world_id, x_pos, y_pos, yaw, z_pos, event_set_id, arrival_x, arrival_y, arrival_z, arrival_yaw) VALUES (38, 29, 27, 14, 8, 23, 15, 15, 'Agnos', 0, 'Agnos.Main_Sequence.Prefabs.GLB-Stargate_Prefab_Seq', 0, 10, 0, 0, 0, 0, 10002, 20.640, 34.939, 15.890, 0);
 
+-- Gate 29 (Debug Area, world 1300, packet DA-07) is a Cimmeria addition: the
+-- Ihpet_Crater_Light map's own gate prop, which world 1300 loads. Same
+-- prefab sequence, transform, point-of-origin glyph (2) and event set (10005)
+-- as gate 20, because it IS that prop on the same client map: the event set
+-- resolves the gate's Kismet sequences by event id, and the client plays
+-- them on whichever map is loaded, so two rows can share one set.
+--
+-- `debug_dial_hub = true`: outbound only. Nobody can dial it, nobody ever
+-- learns it, and a GM who opens its DHD can dial every other gate this
+-- server can enter (column comment in Worlds/Tables/stargates.sql). Its
+-- 6-glyph address 38-37-36-35-34-33 is real only so the cooked entry the
+-- client is sent (`cimmeria_resources::base::stargate_overrides`) collides
+-- with no shipped address; no player can hold it.
+--
+-- Nobody arrives through this gate (it cannot be dialled), so its arrival
+-- pin only places `.gotolocation DebugArea` with no coordinates, which uses
+-- a world's stargate arrival as its entry point. Pinned to the Z1 arrival
+-- (respawner 130, docs/analysis/debug-area/README.md), 28 m out in front
+-- of the gate and facing away from it (yaw 0 = +Z), rather than on the
+-- prop's origin inside the gate's own REGION_FLAG_Stargate volume.
+INSERT INTO stargates (address1, address2, address3, address4, address5, address6, address_origin, stargate_id, name, pitch, prefab_sequence, roll, world_id, x_pos, y_pos, yaw, z_pos, event_set_id, debug_dial_hub, arrival_x, arrival_y, arrival_z, arrival_yaw) VALUES (38, 37, 36, 35, 34, 33, 2, 29, 'Debug Area', 0, 'Ihpet_Crater_Light.Main_Sequence.Prefabs.GLB-Stargate_Prefab_Seq', 0, 1300, 251.25, 10.606, 0, -989.78100600000005, 10005, true, 251.0, 8.0, -962.0, 0);
+
 --
 -- TOC entry 3336 (class 0 OID 0)
 -- Dependencies: 259

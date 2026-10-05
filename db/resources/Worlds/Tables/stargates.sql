@@ -26,6 +26,7 @@ CREATE TABLE stargates (
     arrival_y double precision,
     arrival_z double precision,
     arrival_yaw double precision,
+    debug_dial_hub boolean DEFAULT false NOT NULL,
     CONSTRAINT stargates_arrival_all_or_nothing CHECK (
         (arrival_x IS NULL AND arrival_y IS NULL AND arrival_z IS NULL AND arrival_yaw IS NULL)
         OR
@@ -57,3 +58,23 @@ CREATE TABLE stargates (
 -- valid partial arrival. `arrival_yaw` is a facing, not a delta; when the
 -- group is NULL the loader falls back to `yaw`.
 
+--
+-- Debug dial hub (Debug Area DA-07).
+--
+-- `debug_dial_hub = true` marks a Cimmeria-authored gate that is OUTBOUND
+-- ONLY and lets a GM dial every other gate from its DHD:
+--
+--   * Nobody can dial INTO it. `handle_dial_gate`'s address-book check
+--     refuses a hub gate as a destination even when the id is in the
+--     player's book, so a crafted `onDialGate` naming it is refused with
+--     the same bytes as an unknown address.
+--   * Its address is never learned: the arrival unlock (both halves), the
+--     content verb `grant_stargate_address`, the GM top-ups and the base
+--     address append all skip hub gates.
+--   * A GM (access level >= 2) who opens the DHD on the hub's world gets
+--     every non-hub gate whose world this server can enter added to their
+--     in-memory address book for the session (audit-logged, never
+--     persisted).
+--
+-- Gate 29 (`Debug Area`, world 1300) is the only hub. See
+-- docs/gameplay/gate-travel.md#debug-area-dial-out.

@@ -189,6 +189,13 @@ const CATEGORY_KISMET_SEQUENCES: u32 = 1;
 /// cooked-data invalidation handshake.
 const CATEGORY_WORLD_INFO: u32 = 12;
 
+/// Category id for `CookedDataStargates.pak` (see [`CATEGORY_PAKS`]).
+/// `setupStargateInfo` / `updateStargateAddress` carry bare stargate ids the
+/// client resolves in this catalogue, so a gate the shipped PAK lacks (the
+/// Debug Area's, 29) must be pushed via the cooked-data invalidation
+/// handshake.
+const CATEGORY_STARGATES: u32 = 13;
+
 mod apply_overrides;
 mod metadata_bump;
 
@@ -198,7 +205,7 @@ mod metadata_bump;
 #[cfg(test)]
 use metadata_bump::{
     compute_dialog_metadata_bump, compute_item_metadata_bump, compute_metadata_bump,
-    compute_world_info_metadata_bump,
+    compute_stargate_metadata_bump, compute_world_info_metadata_bump,
 };
 
 impl ResourceCache {
@@ -260,6 +267,9 @@ impl ResourceCache {
         // World info category (12) — disjoint from the others.
         let world_info_overridden = Self::apply_world_info_overrides(&mut categories);
         overridden_elements.extend(world_info_overridden);
+        // Stargates category (13) — disjoint from the others.
+        let stargate_overridden = Self::apply_stargate_overrides(&mut categories);
+        overridden_elements.extend(stargate_overridden);
 
         Ok(Self {
             categories: Arc::new(categories),

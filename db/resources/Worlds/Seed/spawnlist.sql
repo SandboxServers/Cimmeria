@@ -1176,6 +1176,14 @@ INSERT INTO spawnlist (spawn_id, x, y, z, heading, world_id, template_id, tag, s
 --
 INSERT INTO spawnlist (spawn_id, x, y, z, heading, world_id, template_id, tag, set_name, is_stationary) VALUES (405, -328.48, 73.472, -222.52, -2.3829, 12, 305, 'BlackMarket_Auctioneer', NULL, true);
 
+-- Debug Area DHD (world 1300, packet DA-07). The DHD beside the map's own
+-- gate prop, at the same spot as the world-73 DHD on the same client map
+-- (spawn 154). Template 1 carries INT_DHD, so right-clicking it opens the
+-- dialling UI; a GM who does gets every gate this server can enter
+-- (stargates.debug_dial_hub, gate 29). Id 13800 is DA-07's, above the
+-- DA-02..04 spawn blocks (13000-13799).
+INSERT INTO spawnlist (spawn_id, x, y, z, heading, world_id, template_id, tag, set_name) VALUES (13800, 245.442993, 8.93599987, -983.388977, 0, 1300, 1, 'DebugArea_DHD', NULL);
+
 --
 -- TOC entry 3335 (class 0 OID 0)
 -- Dependencies: 256

@@ -110,6 +110,8 @@ A mismatch happens when a client first meets a build whose served version it doe
 | New Kismet sequences (category 1) | `crates/resources/src/base/sequence_overrides.rs` | `SequenceOverride`, `SEQUENCE_OVERRIDES`, `generate_sequence_xml` |
 | New worlds (category 12) | `crates/resources/src/base/world_info_overrides.rs` | `WorldInfoOverride`, `WORLD_INFO_OVERRIDES`, `generate_world_info_xml` |
 | Apply the world-info entries + bump | `crates/resources/src/base/resources/apply_overrides.rs` | `ResourceCache::apply_world_info_overrides` |
+| New stargates (category 13) | `crates/resources/src/base/stargate_overrides.rs` | `StargateAddition`, `STARGATE_ADDITIONS`, `generate_stargate_xml` |
+| Apply the stargate entries + bump | `crates/resources/src/base/resources/apply_overrides.rs` | `ResourceCache::apply_stargate_overrides` |
 
 ## The XML-index gotcha
 
@@ -245,6 +247,12 @@ Field naming follows [docs/architecture/negative-logging-convention.md](negative
 4. Add the row to the zone's `patch_seed_agreement_<zone>.rs` guards, which check the plan against the seed and run it against the committed `data/cache/CookedDataDialogs.pak`. The patcher keeps the original entry when a plan cannot apply, so without that guard a typo'd dialog or screen id leaves no failing test.
 
 The Castle_CellBlock table carries twelve `StripAll` rows (DU-02a: navigation-only Accept / Receive Item buttons, including the 3999 read-to-end soft-lock). The Castle table carries three `OnlyOn` rows (DU-02b: 2573, 5861 and 2576 keep one button, on their final screen, so the mission 701 briefings fire their chains when read to the end). A patch plan participates in the metadata bump, so editing one resyncs the dialogs category on the next handshake; an empty table writes nothing to the hasher, so shipping the engine with no rows leaves the dialogs metadata exactly where it was and no client refetches for a change it cannot see.
+
+## Stargate additions (category 13)
+
+`CookedDataStargates.pak` (category 13, shipped `MetaData` 4568) is the client's gate table: one `COOKED_STARGATE` entry per stargate id, with its world, prefab sequence, transform and six-glyph address. `setupStargateInfo` and `updateStargateAddress` carry bare ids the client resolves here, so a gate the server adds needs an entry too. The shipped PAK holds ids 1-28.
+
+The only addition is gate 29, the Debug Area's ([gate-travel.md](../gameplay/gate-travel.md#debug-area-dial-out)): gate 20's entry with the id, world (1300), name and address changed. An addition whose id the PAK already ships is skipped with a warn, like an item addition. Tests pin the generator to the shipped `_20` entry attribute for attribute, check that the address collides with no shipped gate, and (live DB, `cimmeria-services`) that the entry agrees with `resources.stargates` row 29.
 
 ## World info overrides (category 12)
 

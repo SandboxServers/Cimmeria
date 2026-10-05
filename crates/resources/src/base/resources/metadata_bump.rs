@@ -142,6 +142,28 @@ pub(super) fn compute_sequence_metadata_bump(
 /// Companion bump for the world info category. Hashes every field of each
 /// generated `COOKED_WORLD_INFO` entry, so identical override content gives
 /// an identical version across server starts and any edit changes it.
+/// Content-derived bump for the stargate additions (category 13). Hashes
+/// every field the generated XML carries, so any edit to an addition changes
+/// the served version and clients refetch it.
+pub(super) fn compute_stargate_metadata_bump(
+    additions: &[crate::base::stargate_overrides::StargateAddition],
+) -> u32 {
+    use std::hash::{Hash, Hasher};
+    let mut hasher = std::collections::hash_map::DefaultHasher::new();
+    for g in additions {
+        g.stargate_id.hash(&mut hasher);
+        g.world_id.hash(&mut hasher);
+        g.name.hash(&mut hasher);
+        g.prefab_sequence.hash(&mut hasher);
+        for f in [g.x, g.y, g.z, g.yaw, g.pitch, g.roll] {
+            f.to_bits().hash(&mut hasher);
+        }
+        g.address.hash(&mut hasher);
+        g.address_origin.hash(&mut hasher);
+    }
+    ((hasher.finish() as u32) & 0xFFFF) | 0x1
+}
+
 pub(super) fn compute_world_info_metadata_bump(
     overrides: &[crate::base::world_info_overrides::WorldInfoOverride],
 ) -> u32 {

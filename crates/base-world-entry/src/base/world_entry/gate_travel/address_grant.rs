@@ -45,7 +45,7 @@ use super::super::super::ConnectedClientState;
 /// `account_id` is not redundant with the `player_id` primary key: it is
 /// the ownership predicate that makes a wrong `player_id` **miss** rather
 /// than land on a stranger's row.
-async fn append_known_stargate(
+pub(super) async fn append_known_stargate(
     pool: &PgPool,
     player_id: i32,
     account_id: i32,
@@ -57,10 +57,16 @@ async fn append_known_stargate(
                  SELECT COALESCE(array_agg(DISTINCT t.x ORDER BY t.x), '{}'::integer[]) \
                    FROM (SELECT unnest($1::integer[]) AS x) t \
                   WHERE t.x IS NOT NULL AND NOT (t.x = ANY(known_stargates)) \
+                    AND NOT EXISTS (SELECT 1 FROM resources.stargates h \
+                                     WHERE h.stargate_id = t.x AND h.debug_dial_hub) \
                 ) \
           WHERE player_id = $2 AND account_id = $3 \
       RETURNING known_stargates",
     )
+    // The `debug_dial_hub` filter is the hub rule's last line: an
+    // outbound-only gate (the Debug Area's) never reaches a persisted book,
+    // whatever the cell sent. The cell's content verb already refuses it.
+    //
     // A one-element array rather than a scalar `$1::integer`, so the
     // statement is `persist_arrival`'s append verbatim. It also means a
     // future multi-address grant is a bind change, not a rewrite.

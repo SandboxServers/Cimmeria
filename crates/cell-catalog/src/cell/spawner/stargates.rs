@@ -36,6 +36,13 @@ pub struct StargateEntry {
     /// (6113) through `SpaceManager::sequence_map`. Nullable in the seed:
     /// most unbuilt worlds' gates have no prefab and carry NULL.
     pub event_set_id: Option<i32>,
+    /// `stargates.debug_dial_hub` — an outbound-only GM dial hub (the Debug
+    /// Area gate, 29). Nobody may dial it or learn it, and a GM who opens its
+    /// DHD may dial every other gate this server can enter. Read by the dial
+    /// refusal in `cell::gate_travel::address_book` and the GM top-up in
+    /// `cell::gate_travel::dial_hub`; see the column comment in
+    /// `db/resources/Worlds/Tables/stargates.sql`.
+    pub debug_dial_hub: bool,
 }
 
 impl StargateEntry {
@@ -64,7 +71,7 @@ pub async fn load_stargates(
         "SELECT s.stargate_id, w.world AS world_name, \
                 s.x_pos, s.y_pos, s.z_pos, s.yaw, s.address_origin, \
                 s.arrival_x, s.arrival_y, s.arrival_z, s.arrival_yaw, \
-                s.event_set_id \
+                s.event_set_id, s.debug_dial_hub \
          FROM resources.stargates s \
          JOIN resources.worlds w ON s.world_id = w.world_id \
          ORDER BY s.stargate_id",
@@ -116,6 +123,7 @@ pub async fn load_stargates(
                 address_origin: r.get("address_origin"),
                 arrival,
                 event_set_id: r.get::<Option<i32>, _>("event_set_id"),
+                debug_dial_hub: r.get("debug_dial_hub"),
             },
         );
     }
@@ -138,6 +146,7 @@ mod tests {
             address_origin: 6,
             arrival,
             event_set_id: None,
+            debug_dial_hub: false,
         }
     }
 

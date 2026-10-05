@@ -2,12 +2,12 @@
 title: "Gate Travel System"
 type: reference
 audience: engineers
-last_updated: 2026-09-25
+last_updated: 2026-10-04
 ---
 
 # Gate Travel System
 
-> **Last updated**: 2026-09-25
+> **Last updated**: 2026-10-04 (Debug Area dial-out, DA-07)
 > **Status**: Zone transition and ring transport both work. Two of the fourteen `Stargate_*` sequence events (6100, 6113) now fire and fan to witnesses; `onStargatePassage` (client method 68) is now sent to the crossing player; the world transition after a walk-through crossing is deferred behind a movement-locked, timeout-bounded hold so a Kismet cinematic has a scheduled window to play. DHD chevrons and squad travel are still missing. **Evidence-policy correction (NA35, 2026-09-25):** the deprecated legacy server never had working gate travel end to end, so "the 2009 server did/didn't emit event X" is not evidence about the 2009 client's expectations. `docs/reverse-engineering/findings/stargate-dial-and-travel-sequences.md` re-grounds the dial-timing and gate-crossing-cinematic questions in the client binary alone; D-CA20 in `docs/analysis/castle-rebuild/README.md` records the correction and supersedes D-CA10's framing without editing it.
 
 ## Overview
@@ -66,6 +66,7 @@ The yaw is carried through unchanged even when the position falls back to a resp
 | DHD chevron lock animations | NOT IMPL, and not implementable server-side | Events 6106–6112 exist in the DB for every gate. NA35 confirmed the DHD dial UI never reports in-progress glyph selection to the server (`onDialGate` carries only the finished address) — there is no wire-level signal to key a server-driven chevron broadcast on, so this is a client-patch-only feature, not merely an unimplemented one |
 | Stargate witness visibility | DONE | Both gate sequences fan to every witness of the dialer plus the dialer, one `onSequence` each. The 2009 server sent to `self.client` only; this is a deliberate addition |
 | Squad leader gate travel | NOT IMPL | `processSquadLeaderGateTravel` defined; blocked on the group system |
+| Debug Area dial-out | DONE | Gate 29 on world 1300 is an outbound-only dial hub: a GM at its DHD can dial every gate on a world this server loads, and nobody can dial it. See [Debug Area dial-out](#debug-area-dial-out) |
 | Gate address discovery | DONE | Two grant paths: a committed gate arrival, and the content action `grant_stargate_address` (Harset H55), which is the port of 2009's `Act_StargateAddress` node. The content grant is visible without a relog — it sends client method 66 `updateStargateAddress`. `giveStargateAddressStr` / `removeStargateAddressStr` are defined and unimplemented; there is still no revoke path |
 
 ## DHD interaction
@@ -77,6 +78,8 @@ Three things are easy to get wrong here:
 - **`address_origin` is a glyph (1-38), not an identifier.** It repeats across rows (value 1 on both `SGC W2` and `SGC`, 13 on both Dakara E2 and E3), so it must never be used as a key into the `stargates` map, which is keyed by `stargate_id`. The emit validates against the **authored glyph range**, not just the wire's `UINT8` domain: `0`, `39`-`255` and anything that fails `u8::try_from` all refuse to emit. The column is `INT32` and the wire slot is `UINT8`, so neither type is the domain — a value outside 1-38 serialises perfectly cleanly and reaches the client as a DHD with no symbol to render, which reads as a client bug rather than the seed error it is. Refusing to emit is what makes it findable (`reason = "address_origin_out_of_range"`).
 - **The known-address list is not sent here.** It rides `setupStargateInfo` at world entry; the client filters against what it already has.
 - **Two gates on one world resolve deterministically** by lowest `stargate_id`, because `stargates` is a `HashMap` and an unordered pick would hand the client a different glyph across restarts.
+
+Template 1 (`GLB-DHD_00`, every DHD prop but the Castle's) shipped with `interaction_type = 0`, so until DA-07 those props were not right-clickable and only the Castle's template 162 opened the dialling UI. Template 1 now carries `INT_DHD` too, which makes the DHDs at Harset, Tollana, Lucia, Omega Site, Beta Site E1, Dakara E1, both Ihpet Craters, Men'fa (Praxis) and the Debug Area open. A live-DB guard checks that every spawned DHD prop can be clicked and stands on a world with a gate row.
 
 A DHD prop on a world with no `stargates` row logs `reason = "no_stargate_for_world"` and shows the player nothing. The 2009 server sent a free-text `onError` here; Cimmeria's `onErrorCode` is an enum-coded surface with no free-text arm, so there is nowhere for that string to go. Acceptable while every seeded DHD has a gate.
 
@@ -96,9 +99,13 @@ Since #727 every dial refusal also sends a chat line on `CHAN_feedback`: `Failed
 
 **Transit is not gated.** The check is on the dial and only the dial, matching 2009, which gates `onDialGate` and never `GateTravel.stargatePassed`. A player may walk through a wormhole somebody else opened.
 
+**Outbound-only gates are refused here too.** A `stargates` row with `debug_dial_hub = true` (only the Debug Area's, gate 29) is never a destination. `player_knows_stargate` refuses it *before* reading the book, so the id cannot be dialled even if it got into a book somehow, and the refusal is byte-identical to an unknown address's. That keeps the outbound-only rule inside the one authorization function. See [Debug Area dial-out](#debug-area-dial-out).
+
 **`gmDHD` is not exempted in the primitive.** An `access_level` branch would put a second authorization surface on a check whose whole value is having exactly one. Instead the GM arm — already authorized against the session's access level — tops the caller's *in-memory* address book up with a `reason = "gm_address_grant"` audit warn before dialling. Nothing is persisted; this mirrors 2009's `giveaddress` console command.
 
 ## Address unlock on arrival
+
+Neither half of the unlock ever learns an outbound-only gate (`debug_dial_hub`): the statement filters them out of the origin and the destination union alike. Leaving the Debug Area puts its gate in the origin half, and `.gotolocation DebugArea` puts it in the destination half.
 
 A committed gate arrival appends the addresses the trip taught the traveller, in the same `sgw_player` UPDATE that persists the destination world and position ([`base/world_entry/gate_travel/persist_arrival.rs`](../../crates/base-world-entry/src/base/world_entry/gate_travel/persist_arrival.rs)).
 
@@ -131,6 +138,59 @@ Refusals are never silent: an id with no `stargates` row, a non-player actor, an
 **Castle mission 708 is the first consumer.** Chain 1357 (the Livewire victory that repairs the DHD) grants `stargate_id = 3`, Harset. Step 4462 — "Use the DHD to dial the Stargate to Harset" — was unreachable before that row existed.
 
 **There is no revoke verb.** 2009's node had a `Remove` port and no shipped content used it; `revoke_stargate_address` can be added when a chain needs one.
+
+## Debug Area dial-out
+
+The Debug Area (world 1300, [campaign plan](../analysis/debug-area/README.md), packet DA-07) keeps the Ihpet_Crater_Light map's own stargate. Standing at it, a GM can dial **every gate on a world this server can load**, and nobody can dial *into* the Debug Area. Getting back is `.gotolocation DebugArea` only.
+
+### The gate
+
+| Piece | Seed | Notes |
+|---|---|---|
+| Gate row | `stargates` 29 `Debug Area`, world 1300 | Same prefab sequence, transform, point-of-origin glyph (2) and event set (10005) as gate 20 `Ihpet Crater (SGU)`, because it is the same prop on the same client map. An event set binds a gate's Kismet sequences by event id and the client plays them on whatever map is loaded, so two rows can share 10005. `debug_dial_hub = true` |
+| Address | 38-37-36-35-34-33 | Unique among every seeded and shipped gate, so a glyph sequence typed into the DHD never resolves to it. No player can hold it |
+| Arrival pin | (251.0, 8.0, -962.0), yaw 0 | Z1, the same point as respawner 130, 28 m in front of the gate and facing away from it. Nobody arrives *through* gate 29, so the pin only places `.gotolocation DebugArea` with no coordinates (the stargate arrival is a world's entry point). It keeps that landing outside the gate's own volume |
+| Gate volume | `point_sets` 13800 `DebugArea.Stargate` | A copy of set 1011 for world 1300. With it, a dial opens the gate and waits for the GM to walk through. Without it, the dial would travel at once with no gate animation |
+| DHD | `spawnlist` 13800 `DebugArea_DHD`, template 1 | Where the world-73 DHD stands on the same map |
+| Cooked entry | category 13 addition `_29` (`crates/resources/src/base/stargate_overrides.rs`) | `setupStargateInfo` and `updateStargateAddress` carry bare ids that the client resolves in `CookedDataStargates`. The shipped PAK holds ids 1-28, so the server adds 29 in memory and bumps the category version (the #840 handshake, like the Debug Area's world info entry). A live-DB test holds the seed row and the cooked entry together |
+
+### Authorization: one surface, one grant
+
+The dial check stays `address_book::player_knows_stargate`, the only authorization surface ([Dial authorization](#dial-authorization)). The hub only adds a **grant**, the way `gmDHD` does:
+
+1. A player right-clicks the Debug Area DHD. `try_open_dhd` resolves the world's gate (29). Because it is a hub, `gate_travel::dial_hub::top_up_gm_dial_hub` runs **before** `onDisplayDHD` is sent.
+2. If the caller's server-side `access_level` is GM or higher (`is_gm`, 2+), every gate that is not a hub, is not on the hub's world, and whose world `SpaceManager::world_is_enterable` (a `cell_spaces.xml` startup space, or a world `spaces.xml` marks instanced) is added to the GM's **in-memory** address book. Each new one is sent to the client as `updateStargateAddress(id, 1, 0)` (client method 66) on the same ordered channel, so the DHD opens with the full list. One `warn` with `reason = "gm_dial_hub_grant"` records the GM, the gates granted (`id:name@world`) and the gates left out. A non-GM gets nothing (`reason = "dial_hub_not_gm"`, `info`), and their DHD offers only their own book.
+3. The dial is then judged like any other: the address is in the book, so `handle_dial_gate` arms it, and the dial logs name the destination gate (`target_address_name`, from the name book).
+
+The grant happens on DHD open, not at world entry. The base sends the client its whole book in `setupStargateInfo` at map load, so a push from the cell during world entry could race it and be overwritten. Opening the DHD also re-checks the access level when it matters.
+
+Nothing is persisted. The top-up dies with the cell entity on the next transfer. A gate the GM actually travels to is then learned by the arrival unlock, the same as after a `gmDHD` dial.
+
+### Outbound only
+
+No path can put gate 29 in a book or make it a destination:
+
+| Path | Guard |
+|---|---|
+| A dial naming 29 (DHD or crafted `onDialGate`) | `player_knows_stargate` refuses a hub before reading the book, with the unknown-address bytes |
+| `gmDHD 29` | Not granted (`reason = "gm_address_grant_dial_hub_skipped"`), then refused by the dial check |
+| The hub top-up | Skips every hub |
+| Content `grant_stargate_address` | Refused (`reason = "grant_dial_hub_outbound_only"`): no book entry, no client method, no base write |
+| Arrival unlock, both halves | `persist_arrival` filters `debug_dial_hub` |
+| Base address append | `append_known_stargate` filters `debug_dial_hub` |
+
+### What a GM can dial from the Debug Area
+
+All 28 other gates are offered except the 14 on worlds this server cannot load. Those have a `resources.worlds` row but no space: CombatSim (1), Ihpet (9), Hebridan (11), Dakara E2 (12), Dakara E3 (13), Pen-Lai (14), Beta Site E2 (16), SGC W2 (17), Yotunheim (18), Vitrus (19), Meridian (21), Egypt (24), Pertho (26) and Asgard High Council (28). Dialling one would tear the GM out of the Debug Area and then fail to create a space for them, so they are left out and named in the grant log.
+
+The 14 offered gates are The Castle, Harset, Tollana, Omega Site, Beta Site E1, Men'fa (Praxis), Ihpet Crater (Praxis), Lucia, Agnos, Ihpet Crater (SGU), Men'fa (SGU), SGC, Dakara E1 and SGC W1. No dial from the Debug Area is refused for `arrival_unrecoverable`: every one of those worlds is navmesh `advisory`, so the arrival rules accept the authored point. Applied as if each world enforced its mesh, two would fail, and a live-DB test pins both:
+
+| Gate | World | Measured (NA28 mesh) |
+|---|---|---|
+| 22 `Men'fa (SGU)` | Menfa_Light | Gate row off-mesh, nearest walkable point 13.2 m away and 2.8 m lower. No respawner |
+| 27 `SGC W1` | SGC_W1 | Gate row off-mesh, nearest walkable point 3.4 m away and 1.3 m lower. No respawner |
+
+A GM dialling either lands on the gate row and the client settles them onto whatever floor is there. Fixing them needs an in-client look and an `arrival_*` pin, or a respawner for the world. The other twelve arrivals are on their world's mesh.
 
 ## Entity Definition (GateTravel.def)
 
@@ -213,7 +273,7 @@ STATE_IDLE
 
 ## Data References
 
-- **Stargate addresses**: 28 in `db/resources/Worlds/Seed/stargates.sql`; the nullable `arrival_x/y/z/yaw` columns and the `stargates_arrival_all_or_nothing` CHECK are declared in `db/resources/Worlds/Tables/stargates.sql`
+- **Stargate addresses**: 29 in `db/resources/Worlds/Seed/stargates.sql` (the 28 from 2009 plus the Debug Area's 29); the nullable `arrival_x/y/z/yaw` columns and the `stargates_arrival_all_or_nothing` CHECK are declared in `db/resources/Worlds/Tables/stargates.sql`
 - **Respawners**: `db/resources/Worlds/Seed/respawners.sql` — the arrival fallback pool. A world with no row has no recovery from an off-mesh gate
 - **Ring transporter regions**: `RingTransporterRegion` definitions
 - **Kismet events**: `Region_Teleport_Out`, `Region_Teleport_In`
