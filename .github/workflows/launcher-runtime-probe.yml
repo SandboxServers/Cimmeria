@@ -68,6 +68,11 @@ jobs:
         run: |
           bash tools/build-lane/lane.sh cargo build --locked -p cimmeria-client-patches --target i686-pc-windows-msvc --target-dir target/client-patches
           sha256sum target/client-patches/i686-pc-windows-msvc/debug/cimmeria_client_patches.dll
+      - name: Build the player game-telemetry resource natively
+        # No `lab-bridge` feature: the desktop launcher refuses a lab build, as the Windows launcher does.
+        run: |
+          bash tools/build-lane/lane.sh cargo build --locked -p cimmeria-client-telemetry --target i686-pc-windows-msvc --target-dir target/client-telemetry
+          sha256sum target/client-telemetry/i686-pc-windows-msvc/debug/cimmeria_client_telemetry.dll
       - name: Retain x86 probe for managed Wine validation
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
         with:
@@ -77,6 +82,7 @@ jobs:
             target/runtime-probe/i686-pc-windows-msvc/debug/cimmeria-prerequisite-worker.exe
             target/runtime-probe/i686-pc-windows-msvc/debug/cimmeria-launch-worker.exe
             target/client-patches/i686-pc-windows-msvc/debug/cimmeria_client_patches.dll
+            target/client-telemetry/i686-pc-windows-msvc/debug/cimmeria_client_telemetry.dll
           retention-days: 7
 
   local-lab-tools:
