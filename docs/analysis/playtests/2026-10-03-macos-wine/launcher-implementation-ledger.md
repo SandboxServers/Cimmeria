@@ -752,3 +752,14 @@ fixture validation; actual SGW computer-use and Windows remain unverified.
 See the [checkpoint](worknotes/macbook-testing-checkpoint.md) for the test
 failure caveat, exact branch boundary and remaining gates. No new coordinator
 build, UAT, release or additional worker assignment accompanies this record.
+
+### 2026-10-04: consented launcher summaries and anonymous ingest (packets 6 and 7)
+
+PR #1205 adds the consented summary schema, bounded queue and exporter; an anonymous strict ingest (owner decisions,
+2026-10-04: no token, exact v1 payload, 12 requests a minute per address, public login-port mount approved) writing
+`launcher.summary` rows; and unimported SigNoz fixtures. It is inert: no build configures an endpoint. See the
+[worknote](worknotes/observability.md) and [design reference](../../../architecture/launcher-summary-telemetry.md).
+Local Linux lane at `8f5e082f4`: engine 423 passed/4 ignored; admin-api plus server nextest 239 passed. CI passed
+all 22 checks, native Windows and macOS included, at `4361679e7` (the earlier token design); read the PR for the
+current head before claiming it. Open, as a later and separately decided rollout: a production endpoint (https,
+publicly trusted certificate; not the plain-HTTP login port), and the consent copy and frontend UAT.

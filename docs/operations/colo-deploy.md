@@ -191,6 +191,17 @@ CIMMERIA_TELEMETRY_HMAC_SECRET=<openssl rand -hex 64>
 CIMMERIA_TELEMETRY_UPLOAD_ENDPOINT=http://play.cimmeria.app:8081/api/telemetry
 ```
 
+Two more are passed through the same way and are optional; left out or blank, the server keeps its defaults:
+
+```bash
+# Pause the mint, the refresh and the launcher-summary route. Only the literal 1 does it.
+CIMMERIA_TELEMETRY_KILL_SWITCH=1
+# Launcher-summary requests per address per minute. Default 12; 0 turns the limit off.
+CIMMERIA_TELEMETRY_SUMMARY_QUOTA_PER_IP=60
+```
+
+The commands for both are in [telemetry.md → Kill switch](telemetry.md#kill-switch) and [telemetry.md → Changing a quota](telemetry.md#changing-a-quota).
+
 The telemetry routes are also served on the public login port (8081), and players' launchers accept plain HTTP to the host and port of a login server they use, so no tunnel is needed (decision @Cadacious, 2026-09-29). A Cloudflare Tunnel hostname limited to `^/api/(auth/dev-session|telemetry/)` at `http://cimmeria:8443` is optional. Then `docker compose -f compose.yml up -d cimmeria`, and check `docker logs cimmeria 2>&1 | grep "dev-session telemetry"` says `mint and ingest enabled`. A missing or short secret does not stop the game server; it logs `dev_session_secret_unusable` at startup instead. The full steps, the optional tunnel rule and the checks are in [telemetry.md → Enable client telemetry on the colo](telemetry.md#enable-client-telemetry-on-the-colo).
 
 ## Optional: Claude Code telemetry

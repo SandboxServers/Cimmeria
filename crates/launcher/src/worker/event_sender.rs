@@ -106,6 +106,12 @@ mod tests {
                 .expect("channel closed")
         });
         assert!(matches!(ev, Event::ManifestError(_)), "got {ev:?}");
+        // The sender queues the event and then wakes, so the event can be
+        // read before the wake has run. Wait for the wake; do not race it.
+        let deadline = std::time::Instant::now() + std::time::Duration::from_secs(5);
+        while count.load(Ordering::SeqCst) == 0 && std::time::Instant::now() < deadline {
+            std::thread::yield_now();
+        }
         assert_eq!(count.load(Ordering::SeqCst), 1);
     }
 

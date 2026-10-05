@@ -6,6 +6,7 @@ pub(crate) mod extraction_work;
 mod failed_cleanup;
 mod helper_journal;
 pub mod launch;
+pub mod launcher_summary;
 pub mod migration;
 pub mod repair;
 pub mod runtime_setup;
@@ -89,6 +90,7 @@ impl Drop for Directory {
 
 pub struct FileJournal {
     directory: Arc<Directory>,
+    summaries: launcher_summary::Shared,
 }
 impl Journal for FileJournal {
     fn commit(&mut self, snapshot: &Snapshot) -> Result<(), ContractError> {
@@ -98,7 +100,10 @@ impl Journal for FileJournal {
             } else {
                 ContractError::PersistenceFailed
             }
-        })
+        })?;
+        // Confirmed commits only. The observer cannot fail or alter this result.
+        launcher_summary::observe_commit(&self.summaries, snapshot);
+        Ok(())
     }
 }
 
@@ -110,6 +115,7 @@ pub struct DesktopState {
     preferences: Preferences,
     directory: Arc<Directory>,
     preferences_uncertain: bool,
+    summaries: launcher_summary::Shared,
 }
 
 impl DesktopState {
@@ -149,11 +155,15 @@ impl DesktopState {
             read(&directory.root.join("preferences.json"))?.unwrap_or_default();
         validate_preferences(&preferences)?;
         let snapshot: Snapshot = read(&directory.root.join("operation.json"))?.unwrap_or_default();
+        // Inert until configure_summaries; the summary queue is not read here.
+        let summaries =
+            launcher_summary::shared(&directory.root, preferences.launcher_summary_consent);
         // Do not overwrite bad/newer state with defaults, including on restore.
         let operations = Operations::restore(
             snapshot,
             FileJournal {
                 directory: directory.clone(),
+                summaries: summaries.clone(),
             },
         )
         .map_err(|error| match error {
@@ -168,6 +178,7 @@ impl DesktopState {
             preferences,
             directory,
             preferences_uncertain: false,
+            summaries,
         };
         state.recover_legacy_import()?;
         state.recover_launcher_update()?;
@@ -187,6 +198,7 @@ impl DesktopState {
     }
     /// Native adapter only; IPC exposes specific validated commands.
     pub fn operations_mut(&mut self) -> Result<&mut Operations<FileJournal>, StorageError> {
+        self.finalize_summaries();
         self.ensure_updater_idle()?;
         if self.requires_reopen() {
             return Err(StorageError::PersistenceUncertain);
@@ -223,6 +235,7 @@ impl DesktopState {
         expected_revision: u64,
         write: impl FnOnce(&Path, &Preferences) -> Result<(), StorageError>,
     ) -> Result<Preferences, StorageError> {
+        self.finalize_summaries();
         if install_directory != self.preferences.install_directory {
             self.ensure_updater_idle()?;
         }
@@ -254,11 +267,18 @@ impl DesktopState {
             launcher_summary_consent,
         };
         validate_preferences(&next)?;
-        if let Err(error) = write(&self.directory.root, &next) {
-            self.preferences_uncertain = error == StorageError::PersistenceUncertain;
-            return Err(error);
+        // Withdrawal closes the summary gate before the write; granting consent
+        // first empties the summary queue, and fails here if it cannot.
+        let consent = self.summary_consent_requested(launcher_summary_consent)?;
+        let written = write(&self.directory.root, &next);
+        match written {
+            Ok(()) => self.preferences = next,
+            Err(error) => {
+                self.preferences_uncertain = error == StorageError::PersistenceUncertain;
+            }
         }
-        self.preferences = next;
+        self.summary_consent_written(consent, written);
+        written?;
         Ok(self.preferences.clone())
     }
 }
