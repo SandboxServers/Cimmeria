@@ -56,6 +56,7 @@ pub(super) fn expect_rows(
     if rows_affected == expected {
         return Ok(());
     }
+    let player_label = known_names::player_name(ids.player_id);
     tracing::warn!(
         target: "crafting",
         event = "persist_failed",
@@ -63,11 +64,11 @@ pub(super) fn expect_rows(
         account_id = ids.account_id,
         account_name = known_names::account_name(ids.account_id),
         player_id = ids.player_id,
-        player_name = known_names::player_name(ids.player_id),
+        player_name = player_label,
         gm_entity_id = ids.gm_entity_id,
         gm_entity_name = ids.gm_name,
         entity_id = ids.entity_id,
-        entity_name = known_names::player_name(ids.player_id),
+        entity_name = player_label,
         phase,
         reason = "rows_affected_mismatch",
         rows_affected,
@@ -87,41 +88,47 @@ pub(super) fn expect_rows(
 pub(super) fn log_persist_failed(ids: &JobIds, err: &CraftTxError) {
     match err {
         CraftTxError::Rejected(_) | CraftTxError::RowsAffected { .. } => {}
-        CraftTxError::Db { phase, error } => tracing::warn!(
-            target: "crafting",
-            event = "persist_failed",
-            job_id = ids.job_id, // nt:id-only induction job counter, unnamed
-            account_id = ids.account_id,
-            account_name = known_names::account_name(ids.account_id),
-            player_id = ids.player_id,
-            player_name = known_names::player_name(ids.player_id),
-            gm_entity_id = ids.gm_entity_id,
-            gm_entity_name = ids.gm_name,
-            entity_id = ids.entity_id,
-            entity_name = known_names::player_name(ids.player_id),
-            phase,
-            reason = "db_error",
-            error_class = sql_error_class(error),
-            sqlstate = %sqlstate(error),
-            error = %error,
-            "crafting transaction failed -- rolled back, nothing applied"
-        ),
-        CraftTxError::Invalid { phase, reason } => tracing::warn!(
-            target: "crafting",
-            event = "persist_failed",
-            job_id = ids.job_id, // nt:id-only induction job counter, unnamed
-            account_id = ids.account_id,
-            account_name = known_names::account_name(ids.account_id),
-            player_id = ids.player_id,
-            player_name = known_names::player_name(ids.player_id),
-            gm_entity_id = ids.gm_entity_id,
-            gm_entity_name = ids.gm_name,
-            entity_id = ids.entity_id,
-            entity_name = known_names::player_name(ids.player_id),
-            phase,
-            reason,
-            "crafting transaction refused its plan -- rolled back, nothing applied"
-        ),
+        CraftTxError::Db { phase, error } => {
+            let player_label = known_names::player_name(ids.player_id);
+            tracing::warn!(
+                target: "crafting",
+                event = "persist_failed",
+                job_id = ids.job_id, // nt:id-only induction job counter, unnamed
+                account_id = ids.account_id,
+                account_name = known_names::account_name(ids.account_id),
+                player_id = ids.player_id,
+                player_name = player_label,
+                gm_entity_id = ids.gm_entity_id,
+                gm_entity_name = ids.gm_name,
+                entity_id = ids.entity_id,
+                entity_name = player_label,
+                phase,
+                reason = "db_error",
+                error_class = sql_error_class(error),
+                sqlstate = %sqlstate(error),
+                error = %error,
+                "crafting transaction failed -- rolled back, nothing applied"
+            );
+        }
+        CraftTxError::Invalid { phase, reason } => {
+            let player_label = known_names::player_name(ids.player_id);
+            tracing::warn!(
+                target: "crafting",
+                event = "persist_failed",
+                job_id = ids.job_id, // nt:id-only induction job counter, unnamed
+                account_id = ids.account_id,
+                account_name = known_names::account_name(ids.account_id),
+                player_id = ids.player_id,
+                player_name = player_label,
+                gm_entity_id = ids.gm_entity_id,
+                gm_entity_name = ids.gm_name,
+                entity_id = ids.entity_id,
+                entity_name = player_label,
+                phase,
+                reason,
+                "crafting transaction refused its plan -- rolled back, nothing applied"
+            );
+        }
     }
 }
 

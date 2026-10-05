@@ -68,6 +68,7 @@ pub async fn handle_alloy_in(
     if request.lower_tier_items.len() > MAX_ELEMENTARY_ITEMS {
         // Only a forged packet names more ids than the page has slots:
         // dropped like any other malformed crafting request, with no line.
+        let player_label = known_names::player_name(player_id);
         tracing::warn!(
             target: "crafting",
             event = "malformed",
@@ -76,9 +77,9 @@ pub async fn handle_alloy_in(
             account_id,
             account_name = known_names::account_name(account_id),
             player_id,
-            player_name = known_names::player_name(player_id),
+            player_name = player_label,
             entity_id,
-            entity_name = known_names::player_name(player_id),
+            entity_name = player_label,
             count = request.lower_tier_items.len(),
             limit = MAX_ELEMENTARY_ITEMS,
             "alloy request names more elementary items than the page has slots; dropped"
@@ -102,6 +103,7 @@ pub async fn handle_alloy_in(
     };
     let unavailable = CraftReject::Unavailable { action: ACTION };
     let lookup_failed = |phase: &'static str, id: i32, error: &str, class: &'static str| {
+        let player_label = known_names::player_name(player_id);
         tracing::warn!(
             target: "crafting",
             event = "lookup_failed",
@@ -110,9 +112,9 @@ pub async fn handle_alloy_in(
             account_id,
             account_name = known_names::account_name(account_id),
             player_id,
-            player_name = known_names::player_name(player_id),
+            player_name = player_label,
             entity_id,
-            entity_name = known_names::player_name(player_id),
+            entity_name = player_label,
             blueprint_id = request.blueprint_id,
             blueprint_name = crafting_telemetry::blueprint_name(request.blueprint_id),
             id,

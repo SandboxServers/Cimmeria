@@ -222,6 +222,7 @@ pub async fn send_to_player(
         return true;
     };
     if matches!(outcome, WitnessSendOutcome::ClientDisconnected) {
+        let player_label = known_names::player_name(ids.player_id);
         tracing::debug!(
             target: "crafting",
             event = "client_sync_failed",
@@ -229,11 +230,11 @@ pub async fn send_to_player(
             account_id = ids.account_id,
             account_name = known_names::account_name(ids.account_id),
             player_id = ids.player_id,
-            player_name = known_names::player_name(ids.player_id),
+            player_name = player_label,
             gm_entity_id = ids.gm_entity_id,
             gm_entity_name = ids.gm_name,
             entity_id,
-            entity_name = known_names::player_name(ids.player_id),
+            entity_name = player_label,
             what,
             method,
             reason,
@@ -241,6 +242,7 @@ pub async fn send_to_player(
         );
         return false;
     }
+    let player_label = known_names::player_name(ids.player_id);
     tracing::warn!(
         target: "crafting",
         event = "client_sync_failed",
@@ -248,11 +250,11 @@ pub async fn send_to_player(
         account_id = ids.account_id,
         account_name = known_names::account_name(ids.account_id),
         player_id = ids.player_id,
-        player_name = known_names::player_name(ids.player_id),
+        player_name = player_label,
         gm_entity_id = ids.gm_entity_id,
         gm_entity_name = ids.gm_name,
         entity_id,
-        entity_name = known_names::player_name(ids.player_id),
+        entity_name = player_label,
         what,
         method,
         reason,

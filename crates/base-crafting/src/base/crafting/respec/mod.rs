@@ -69,6 +69,7 @@ pub async fn handle_respec_open(msg: RespecCraftOpen, ctx: &CraftCtx<'_>) {
     } = msg;
     let client = ctx.client();
     let account_id = account_id_of(entity_id, ctx.connected, ctx.entity_to_addr);
+    let player_label = known_names::player_name(player_id);
     tracing::info!(
         target: "crafting",
         event = "request",
@@ -76,9 +77,9 @@ pub async fn handle_respec_open(msg: RespecCraftOpen, ctx: &CraftCtx<'_>) {
         account_id,
         account_name = known_names::account_name(account_id),
         player_id,
-        player_name = known_names::player_name(player_id),
+        player_name = player_label,
         entity_id,
-        entity_name = known_names::player_name(player_id),
+        entity_name = player_label,
         "crafting request"
     );
     let unavailable = CraftReject::Unavailable { action: ACTION };
@@ -119,6 +120,7 @@ pub async fn handle_respec_open(msg: RespecCraftOpen, ctx: &CraftCtx<'_>) {
         s.pending_respec.replace(pending).is_some()
     }) else {
         // No session means no client to prompt either.
+        let player_label = known_names::player_name(player_id);
         tracing::warn!(
             target: "crafting",
             event = "lookup_failed",
@@ -127,13 +129,14 @@ pub async fn handle_respec_open(msg: RespecCraftOpen, ctx: &CraftCtx<'_>) {
             account_id,
             account_name = known_names::account_name(account_id),
             player_id,
-            player_name = known_names::player_name(player_id),
+            player_name = player_label,
             entity_id,
-            entity_name = known_names::player_name(player_id),
+            entity_name = player_label,
             "crafting respec for an entity with no session; nothing opened"
         );
         return;
     };
+    let player_label = known_names::player_name(player_id);
     tracing::info!(
         target: "crafting",
         event = "respec_prompted",
@@ -141,9 +144,9 @@ pub async fn handle_respec_open(msg: RespecCraftOpen, ctx: &CraftCtx<'_>) {
         account_id,
         account_name = known_names::account_name(account_id),
         player_id,
-        player_name = known_names::player_name(player_id),
+        player_name = player_label,
         entity_id,
-        entity_name = known_names::player_name(player_id),
+        entity_name = player_label,
         cost = RESPEC_COST,
         disciplines = state.discipline_ids.len(),
         asp = state.applied_science_points,
@@ -234,28 +237,32 @@ pub(crate) async fn confirm_with(
                     player_id,
                     entity_id,
                 ),
-                None => tracing::warn!(
-                    target: "crafting",
-                    event = "persist_failed",
-                    verb = VERB_CONFIRM,
-                    phase = failure.phase,
-                    reason = "rows_affected_short",
-                    rows_affected = failure.rows_affected,
-                    expected = 1u64,
-                    account_id,
-                    account_name = known_names::account_name(account_id),
-                    player_id,
-                    player_name = known_names::player_name(player_id),
-                    entity_id,
-                    entity_name = known_names::player_name(player_id),
-                    "respec: the player row is missing, rolled back"
-                ),
+                None => {
+                    let player_label = known_names::player_name(player_id);
+                    tracing::warn!(
+                        target: "crafting",
+                        event = "persist_failed",
+                        verb = VERB_CONFIRM,
+                        phase = failure.phase,
+                        reason = "rows_affected_short",
+                        rows_affected = failure.rows_affected,
+                        expected = 1u64,
+                        account_id,
+                        account_name = known_names::account_name(account_id),
+                        player_id,
+                        player_name = player_label,
+                        entity_id,
+                        entity_name = player_label,
+                        "respec: the player row is missing, rolled back"
+                    );
+                }
             }
             reject(VERB_CONFIRM, entity_id, player_id, &unavailable, client).await;
             return;
         }
     };
 
+    let player_label = known_names::player_name(player_id);
     tracing::info!(
         target: "crafting",
         event = "respec",
@@ -263,9 +270,9 @@ pub(crate) async fn confirm_with(
         account_id,
         account_name = known_names::account_name(account_id),
         player_id,
-        player_name = known_names::player_name(player_id),
+        player_name = player_label,
         entity_id,
-        entity_name = known_names::player_name(player_id),
+        entity_name = player_label,
         cleared = %format_cleared(&done.cleared),
         disciplines_cleared = done.cleared.len(),
         asp_refund = done.refund,
@@ -310,6 +317,7 @@ fn warn_persist_failed(
     player_id: i32,
     entity_id: u32,
 ) {
+    let player_label = known_names::player_name(player_id);
     tracing::warn!(
         target: "crafting",
         event = "persist_failed",
@@ -320,9 +328,9 @@ fn warn_persist_failed(
         account_id,
         account_name = known_names::account_name(account_id),
         player_id,
-        player_name = known_names::player_name(player_id),
+        player_name = player_label,
         entity_id,
-        entity_name = known_names::player_name(player_id),
+        entity_name = player_label,
         "crafting respec: nothing was changed"
     );
 }

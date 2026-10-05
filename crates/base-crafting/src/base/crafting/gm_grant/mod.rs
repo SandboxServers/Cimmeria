@@ -74,6 +74,7 @@ async fn caller_is_gm(
     if access_level >= GM_ACCESS_LEVEL {
         return true;
     }
+    let player_label = known_names::player_name(ids.player_id);
     tracing::warn!(
         target: "crafting",
         event,
@@ -82,9 +83,9 @@ async fn caller_is_gm(
         account_id = ids.account_id,
         account_name = known_names::account_name(ids.account_id),
         player_id = ids.player_id,
-        player_name = known_names::player_name(ids.player_id),
+        player_name = player_label,
         entity_id = ids.entity_id,
-        entity_name = known_names::player_name(ids.player_id),
+        entity_name = player_label,
         gm_entity_id = ids.gm_entity_id,
         gm_entity_name = ids.gm_name,
         access_level,
@@ -101,6 +102,7 @@ async fn caller_is_gm(
 
 /// A `lookup_failed` WARN for a read the grant could not make.
 fn lookup_failed(command: &'static str, phase: &'static str, ids: GrantIds, error: &str) {
+    let player_label = known_names::player_name(ids.player_id);
     tracing::warn!(
         target: "crafting",
         event = "lookup_failed",
@@ -109,9 +111,9 @@ fn lookup_failed(command: &'static str, phase: &'static str, ids: GrantIds, erro
         account_id = ids.account_id,
         account_name = known_names::account_name(ids.account_id),
         player_id = ids.player_id,
-        player_name = known_names::player_name(ids.player_id),
+        player_name = player_label,
         entity_id = ids.entity_id,
-        entity_name = known_names::player_name(ids.player_id),
+        entity_name = player_label,
         gm_entity_id = ids.gm_entity_id,
         gm_entity_name = ids.gm_name,
         error,

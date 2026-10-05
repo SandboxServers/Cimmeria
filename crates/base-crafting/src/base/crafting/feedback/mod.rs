@@ -90,6 +90,7 @@ async fn refuse(
 ) {
     let reason = why.reason();
     let c = why.compared();
+    let player_label = known_names::player_name(player_id);
     tracing::info!(
         target: "crafting",
         event = "rejected",
@@ -97,9 +98,9 @@ async fn refuse(
         account_id,
         account_name = known_names::account_name(account_id),
         player_id,
-        player_name = known_names::player_name(player_id),
+        player_name = player_label,
         entity_id,
-        entity_name = known_names::player_name(player_id),
+        entity_name = player_label,
         reason,
         discipline_id = c.discipline_id,
         discipline_name = crafting_telemetry::discipline_name(c.discipline_id),
@@ -197,6 +198,7 @@ async fn send_line(
     )
     .await;
     if let Some(reason) = witness_send_failure(&outcome) {
+        let player_label = known_names::player_name(player_id);
         tracing::warn!(
             target: "crafting",
             event = "feedback_send_failed",
@@ -204,9 +206,9 @@ async fn send_line(
             account_id,
             account_name = known_names::account_name(account_id),
             player_id,
-            player_name = known_names::player_name(player_id),
+            player_name = player_label,
             entity_id,
-            entity_name = known_names::player_name(player_id),
+            entity_name = player_label,
             method_index,
             method_name = cimmeria_wire::names::player_client_method(method_index),
             reason,

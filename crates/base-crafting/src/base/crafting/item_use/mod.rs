@@ -67,6 +67,7 @@ pub async fn handle_crafting_item_use(
 ) -> Option<ConsumedItem> {
     let client = ctx.client();
     let account_id = account_id_of(entity_id, ctx.connected, ctx.entity_to_addr);
+    let player_label = known_names::player_name(player_id);
     tracing::info!(
         target: "crafting",
         event = "request",
@@ -74,14 +75,15 @@ pub async fn handle_crafting_item_use(
         account_id,
         account_name = known_names::account_name(account_id),
         player_id,
-        player_name = known_names::player_name(player_id),
+        player_name = player_label,
         entity_id,
-        entity_name = known_names::player_name(player_id),
+        entity_name = player_label,
         item_id, // nt:id-only instance id, type unread yet
         "crafting item used"
     );
     let unavailable = CraftReject::Unavailable { action: ACTION };
     let Some(pool) = ctx.db_pool else {
+        let player_label = known_names::player_name(player_id);
         tracing::warn!(
             target: "crafting",
             event = "persist_failed",
@@ -90,9 +92,9 @@ pub async fn handle_crafting_item_use(
             account_id,
             account_name = known_names::account_name(account_id),
             player_id,
-            player_name = known_names::player_name(player_id),
+            player_name = player_label,
             entity_id,
-            entity_name = known_names::player_name(player_id),
+            entity_name = player_label,
             item_id, // nt:id-only instance id, type unread yet
             "crafting item use: no database pool"
         );
@@ -130,6 +132,7 @@ pub async fn handle_crafting_item_use(
             known_before,
             known_after,
         } => {
+            let player_label = known_names::player_name(player_id);
             tracing::info!(
                 target: "crafting",
                 event = "blueprint_learned",
@@ -137,9 +140,9 @@ pub async fn handle_crafting_item_use(
                 account_id,
                 account_name = known_names::account_name(account_id),
                 player_id,
-                player_name = known_names::player_name(player_id),
+                player_name = player_label,
                 entity_id,
-                entity_name = known_names::player_name(player_id),
+                entity_name = player_label,
                 item_id,
                 item_name = cimmeria_names::book().item(type_id),
                 item_type_id = type_id,
@@ -156,6 +159,7 @@ pub async fn handle_crafting_item_use(
             level_before,
             level_after,
         } => {
+            let player_label = known_names::player_name(player_id);
             tracing::info!(
                 target: "crafting",
                 event = "paradigm_raised",
@@ -163,9 +167,9 @@ pub async fn handle_crafting_item_use(
                 account_id,
                 account_name = known_names::account_name(account_id),
                 player_id,
-                player_name = known_names::player_name(player_id),
+                player_name = player_label,
                 entity_id,
-                entity_name = known_names::player_name(player_id),
+                entity_name = player_label,
                 item_id,
                 item_name = cimmeria_names::book().item(type_id),
                 item_type_id = type_id,
@@ -205,40 +209,46 @@ fn warn_failure(
         "persist_failed"
     };
     match &failure.error {
-        Some(e) => tracing::warn!(
-            target: "crafting",
-            event,
-            verb = VERB,
-            phase = failure.phase,
-            reason = failure.reason,
-            account_id,
-            account_name = known_names::account_name(account_id),
-            player_id,
-            player_name = known_names::player_name(player_id),
-            entity_id,
-            entity_name = known_names::player_name(player_id),
-            item_id, // nt:id-only instance id, type unread yet
-            error_class = sql_error_class(e),
-            error = %e,
-            "crafting item use: transaction failed, rolled back; nothing was used"
-        ),
-        None => tracing::warn!(
-            target: "crafting",
-            event,
-            verb = VERB,
-            phase = failure.phase,
-            reason = failure.reason,
-            rows_affected = failure.rows_affected,
-            expected = failure.expected,
-            account_id,
-            account_name = known_names::account_name(account_id),
-            player_id,
-            player_name = known_names::player_name(player_id),
-            entity_id,
-            entity_name = known_names::player_name(player_id),
-            item_id, // nt:id-only instance id, type unread yet
-            "crafting item use: refused by the data, rolled back; nothing was used"
-        ),
+        Some(e) => {
+            let player_label = known_names::player_name(player_id);
+            tracing::warn!(
+                target: "crafting",
+                event,
+                verb = VERB,
+                phase = failure.phase,
+                reason = failure.reason,
+                account_id,
+                account_name = known_names::account_name(account_id),
+                player_id,
+                player_name = player_label,
+                entity_id,
+                entity_name = player_label,
+                item_id, // nt:id-only instance id, type unread yet
+                error_class = sql_error_class(e),
+                error = %e,
+                "crafting item use: transaction failed, rolled back; nothing was used"
+            );
+        }
+        None => {
+            let player_label = known_names::player_name(player_id);
+            tracing::warn!(
+                target: "crafting",
+                event,
+                verb = VERB,
+                phase = failure.phase,
+                reason = failure.reason,
+                rows_affected = failure.rows_affected,
+                expected = failure.expected,
+                account_id,
+                account_name = known_names::account_name(account_id),
+                player_id,
+                player_name = player_label,
+                entity_id,
+                entity_name = player_label,
+                item_id, // nt:id-only instance id, type unread yet
+                "crafting item use: refused by the data, rolled back; nothing was used"
+            );
+        }
     }
 }
 

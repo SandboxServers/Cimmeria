@@ -323,15 +323,16 @@ pub async fn handle_purchase_vendor_items(
     );
 
     for (design_id, container_id, slot_id, quantity) in &granted {
+        let player_label = known_names::player_name(player_id);
         tracing::info!(
             target: "inventory",
             event = "grant_container_chosen",
             account_id = placement.account_id,
             account_name = known_names::account_name(placement.account_id),
             player_id,
-            player_name = known_names::player_name(player_id),
+            player_name = player_label,
             entity_id,
-            entity_name = known_names::player_name(player_id),
+            entity_name = player_label,
             item_type_id = design_id,
             item_name = cimmeria_names::book().item(*design_id),
             quantity,
@@ -388,11 +389,12 @@ pub async fn handle_purchase_vendor_items(
     )
     .await;
 
+    let player_label = known_names::player_name(player_id);
     tracing::debug!(
         entity_id,
-        entity_name = known_names::player_name(player_id),
+        entity_name = player_label,
         player_id,
-        player_name = known_names::player_name(player_id),
+        player_name = player_label,
         vendor_template_id,
         vendor_template_name = cimmeria_names::owned::template(vendor_template_id),
         item_count = items.len(),

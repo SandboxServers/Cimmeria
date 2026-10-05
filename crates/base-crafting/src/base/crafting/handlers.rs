@@ -58,11 +58,12 @@ pub async fn handle_grant_expertise(
             // Mirror GrantCash's no-DB stance: without persistence there's no
             // authoritative expertise to send, so drop rather than emit a
             // client update the server can't back.
+            let player_label = known_names::player_name(player_id);
             tracing::warn!(
                 entity_id,
-                entity_name = known_names::player_name(player_id),
+                entity_name = player_label,
                 player_id,
-                player_name = known_names::player_name(player_id),
+                player_name = player_label,
                 discipline_id,
                 discipline_name = crafting_telemetry::discipline_name(discipline_id),
                 amount,
@@ -75,11 +76,12 @@ pub async fn handle_grant_expertise(
     let new_expertise = match grant_expertise_in_db(pool, player_id, discipline_id, amount).await {
         Ok(v) => v,
         Err(e) => {
+            let player_label = known_names::player_name(player_id);
             tracing::error!(
                 entity_id,
-                entity_name = known_names::player_name(player_id),
+                entity_name = player_label,
                 player_id,
-                player_name = known_names::player_name(player_id),
+                player_name = player_label,
                 discipline_id,
                 discipline_name = crafting_telemetry::discipline_name(discipline_id),
                 amount,
@@ -97,11 +99,12 @@ pub async fn handle_grant_expertise(
         }
     };
 
+    let player_label = known_names::player_name(player_id);
     tracing::info!(
         entity_id,
-        entity_name = known_names::player_name(player_id),
+        entity_name = player_label,
         player_id,
-        player_name = known_names::player_name(player_id),
+        player_name = player_label,
         discipline_id,
         discipline_name = crafting_telemetry::discipline_name(discipline_id),
         new_expertise,
@@ -194,11 +197,12 @@ pub async fn handle_grant_applied_science(
     let pool = match db_pool {
         Some(p) => p,
         None => {
+            let player_label = known_names::player_name(player_id);
             tracing::warn!(
                 entity_id,
-                entity_name = known_names::player_name(player_id),
+                entity_name = player_label,
                 player_id,
-                player_name = known_names::player_name(player_id),
+                player_name = player_label,
                 amount,
                 "GrantAppliedSciencePoints: no DB pool, dropping grant"
             );
@@ -225,6 +229,7 @@ pub async fn handle_grant_applied_science(
     let (asp_before, asp_after) = match updated {
         Ok(Some(totals)) => totals,
         Ok(None) => {
+            let player_label = known_names::player_name(player_id);
             tracing::error!(
                 target: "crafting",
                 event = "persist_failed",
@@ -235,9 +240,9 @@ pub async fn handle_grant_applied_science(
                 account_id,
                 account_name = known_names::account_name(account_id),
                 player_id,
-                player_name = known_names::player_name(player_id),
+                player_name = player_label,
                 entity_id,
-                entity_name = known_names::player_name(player_id),
+                entity_name = player_label,
                 amount,
                 "GrantAppliedSciencePoints: no sgw_player row -- nothing granted"
             );
@@ -252,6 +257,7 @@ pub async fn handle_grant_applied_science(
             return;
         }
         Err(e) => {
+            let player_label = known_names::player_name(player_id);
             tracing::error!(
                 target: "crafting",
                 event = "persist_failed",
@@ -259,9 +265,9 @@ pub async fn handle_grant_applied_science(
                 account_id,
                 account_name = known_names::account_name(account_id),
                 player_id,
-                player_name = known_names::player_name(player_id),
+                player_name = player_label,
                 entity_id,
-                entity_name = known_names::player_name(player_id),
+                entity_name = player_label,
                 amount,
                 error_class = sql_error_class(&e),
                 error = %e,
@@ -279,15 +285,16 @@ pub async fn handle_grant_applied_science(
         }
     };
 
+    let player_label = known_names::player_name(player_id);
     tracing::info!(
         target: "crafting",
         event = "asp_granted",
         account_id,
         account_name = known_names::account_name(account_id),
         player_id,
-        player_name = known_names::player_name(player_id),
+        player_name = player_label,
         entity_id,
-        entity_name = known_names::player_name(player_id),
+        entity_name = player_label,
         amount,
         asp_before,
         asp_after,

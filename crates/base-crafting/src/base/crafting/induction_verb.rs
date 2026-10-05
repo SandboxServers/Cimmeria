@@ -43,6 +43,7 @@ pub async fn load_request_inputs(
     let unavailable = CraftReject::Unavailable { action };
     let lookup_failed = |phase: &'static str, error_class: &'static str, error: String| {
         let account_id = account_id_of(entity_id, ctx.connected, ctx.entity_to_addr);
+        let player_label = known_names::player_name(player_id);
         tracing::warn!(
             target: "crafting",
             event = "lookup_failed",
@@ -51,9 +52,9 @@ pub async fn load_request_inputs(
             account_id,
             account_name = known_names::account_name(account_id),
             player_id,
-            player_name = known_names::player_name(player_id),
+            player_name = player_label,
             entity_id,
-            entity_name = known_names::player_name(player_id),
+            entity_name = player_label,
             error_class,
             error,
             "crafting request could not be read; refused as unavailable"
@@ -127,6 +128,7 @@ pub async fn state_at_completion(env: &InductionEnv, ids: &JobIds) -> Option<Cra
     match result {
         Ok(state) => Some(state),
         Err((error_class, error)) => {
+            let player_label = known_names::player_name(ids.player_id);
             tracing::warn!(
                 target: "crafting",
                 event = "lookup_failed",
@@ -136,9 +138,9 @@ pub async fn state_at_completion(env: &InductionEnv, ids: &JobIds) -> Option<Cra
                 account_id = ids.account_id,
                 account_name = known_names::account_name(ids.account_id),
                 player_id = ids.player_id,
-                player_name = known_names::player_name(ids.player_id),
+                player_name = player_label,
                 entity_id = ids.entity_id,
-                entity_name = known_names::player_name(ids.player_id),
+                entity_name = player_label,
                 error_class,
                 error,
                 "crafting state unreadable at completion; nothing was used"

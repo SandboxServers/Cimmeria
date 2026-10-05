@@ -133,6 +133,7 @@ pub(super) async fn handle_craftkit(
         return;
     }
     let refused = |reason: &'static str| {
+        let player_label = known_names::player_name(ids.player_id);
         tracing::info!(
             target: "crafting",
             event = "gm_craftkit",
@@ -141,9 +142,9 @@ pub(super) async fn handle_craftkit(
             account_id = ids.account_id,
             account_name = known_names::account_name(ids.account_id),
             player_id = ids.player_id,
-            player_name = known_names::player_name(ids.player_id),
+            player_name = player_label,
             entity_id = ids.entity_id,
-            entity_name = known_names::player_name(ids.player_id),
+            entity_name = player_label,
             gm_entity_id = ids.gm_entity_id,
             gm_entity_name = ids.gm_name,
             blueprint_id,
@@ -196,6 +197,7 @@ pub(super) async fn handle_craftkit(
     let env = InductionEnv::from_ctx(ctx);
     match apply_grant_transaction(&env, pool, &job, &plan).await {
         Ok(applied) => {
+            let player_label = known_names::player_name(ids.player_id);
             tracing::info!(
                 target: "crafting",
                 event = "gm_craftkit",
@@ -203,9 +205,9 @@ pub(super) async fn handle_craftkit(
                 account_id = ids.account_id,
                 account_name = known_names::account_name(ids.account_id),
                 player_id = ids.player_id,
-                player_name = known_names::player_name(ids.player_id),
+                player_name = player_label,
                 entity_id = ids.entity_id,
-                entity_name = known_names::player_name(ids.player_id),
+                entity_name = player_label,
                 gm_entity_id = ids.gm_entity_id,
                 gm_entity_name = ids.gm_name,
                 blueprint_id,

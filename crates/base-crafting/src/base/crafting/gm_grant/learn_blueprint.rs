@@ -74,6 +74,7 @@ pub(super) async fn handle_learn_blueprint(ids: GrantIds, blueprint_id: i32, ctx
         return;
     }
     let refused = |why: LearnRefusal| {
+        let player_label = known_names::player_name(ids.player_id);
         tracing::info!(
             target: "crafting",
             event = "gm_learnblueprint",
@@ -82,9 +83,9 @@ pub(super) async fn handle_learn_blueprint(ids: GrantIds, blueprint_id: i32, ctx
             account_id = ids.account_id,
             account_name = known_names::account_name(ids.account_id),
             player_id = ids.player_id,
-            player_name = known_names::player_name(ids.player_id),
+            player_name = player_label,
             entity_id = ids.entity_id,
-            entity_name = known_names::player_name(ids.player_id),
+            entity_name = player_label,
             gm_entity_id = ids.gm_entity_id,
             gm_entity_name = ids.gm_name,
             blueprint_id,
@@ -95,6 +96,7 @@ pub(super) async fn handle_learn_blueprint(ids: GrantIds, blueprint_id: i32, ctx
     let persist_failed = |phase: &'static str, e: &sqlx::Error| {
         // A player row that is not there is `RowNotFound`: no row matched.
         let rows_affected: Option<u64> = matches!(e, sqlx::Error::RowNotFound).then_some(0);
+        let player_label = known_names::player_name(ids.player_id);
         tracing::warn!(
             target: "crafting",
             event = "persist_failed",
@@ -106,9 +108,9 @@ pub(super) async fn handle_learn_blueprint(ids: GrantIds, blueprint_id: i32, ctx
             account_id = ids.account_id,
             account_name = known_names::account_name(ids.account_id),
             player_id = ids.player_id,
-            player_name = known_names::player_name(ids.player_id),
+            player_name = player_label,
             entity_id = ids.entity_id,
-            entity_name = known_names::player_name(ids.player_id),
+            entity_name = player_label,
             gm_entity_id = ids.gm_entity_id,
             gm_entity_name = ids.gm_name,
             blueprint_id,
@@ -203,6 +205,7 @@ pub(super) async fn handle_learn_blueprint(ids: GrantIds, blueprint_id: i32, ctx
         return;
     }
 
+    let player_label = known_names::player_name(ids.player_id);
     tracing::info!(
         target: "crafting",
         event = "blueprint_learned",
@@ -210,9 +213,9 @@ pub(super) async fn handle_learn_blueprint(ids: GrantIds, blueprint_id: i32, ctx
         account_id = ids.account_id,
         account_name = known_names::account_name(ids.account_id),
         player_id = ids.player_id,
-        player_name = known_names::player_name(ids.player_id),
+        player_name = player_label,
         entity_id = ids.entity_id,
-        entity_name = known_names::player_name(ids.player_id),
+        entity_name = player_label,
         gm_entity_id = ids.gm_entity_id,
         gm_entity_name = ids.gm_name,
         blueprint_id,

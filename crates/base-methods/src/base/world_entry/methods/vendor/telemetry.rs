@@ -138,6 +138,7 @@ impl VendorLog {
     /// `store_opened`.
     pub(crate) fn opened(&self, counts: [usize; 5]) {
         let [buy, sell, buyback, repair, recharge] = counts;
+        let player_label = known_names::player_name(self.player_id);
         tracing::info!(
             target: "vendor",
             event = "store_opened",
@@ -145,9 +146,9 @@ impl VendorLog {
             account_id = self.account_id,
             account_name = known_names::account_name(self.account_id),
             player_id = self.player_id,
-            player_name = known_names::player_name(self.player_id),
+            player_name = player_label,
             entity_id = self.entity_id,
-            entity_name = known_names::player_name(self.player_id),
+            entity_name = player_label,
             vendor_entity_id = self.vendor_entity_id, // nt:id-only vendor NPC, unnamed on base
             vendor_template_id = self.vendor_template_id,
             vendor_template_name = cimmeria_names::owned::template(self.vendor_template_id),
@@ -170,6 +171,7 @@ impl VendorLog {
         cash_before: Option<i64>,
         cash_after: Option<i64>,
     ) {
+        let player_label = known_names::player_name(self.player_id);
         tracing::info!(
             target: "vendor",
             event = "transaction",
@@ -177,9 +179,9 @@ impl VendorLog {
             account_id = self.account_id,
             account_name = known_names::account_name(self.account_id),
             player_id = self.player_id,
-            player_name = known_names::player_name(self.player_id),
+            player_name = player_label,
             entity_id = self.entity_id,
-            entity_name = known_names::player_name(self.player_id),
+            entity_name = player_label,
             vendor_entity_id = self.vendor_entity_id, // nt:id-only vendor NPC, unnamed on base
             vendor_template_id = self.vendor_template_id,
             vendor_template_name = cimmeria_names::owned::template(self.vendor_template_id),
@@ -197,6 +199,7 @@ impl VendorLog {
 
     /// `refused`: the player's request was refused, nothing was written.
     pub(crate) fn refused(&self, reason: &'static str, item: VendorItem) {
+        let player_label = known_names::player_name(self.player_id);
         tracing::info!(
             target: "vendor",
             event = "refused",
@@ -204,9 +207,9 @@ impl VendorLog {
             account_id = self.account_id,
             account_name = known_names::account_name(self.account_id),
             player_id = self.player_id,
-            player_name = known_names::player_name(self.player_id),
+            player_name = player_label,
             entity_id = self.entity_id,
-            entity_name = known_names::player_name(self.player_id),
+            entity_name = player_label,
             vendor_entity_id = self.vendor_entity_id, // nt:id-only vendor NPC, unnamed on base
             vendor_template_id = self.vendor_template_id,
             vendor_template_name = cimmeria_names::owned::template(self.vendor_template_id),
@@ -228,6 +231,7 @@ impl VendorLog {
         item: VendorItem,
         error: &dyn std::fmt::Display,
     ) {
+        let player_label = known_names::player_name(self.player_id);
         tracing::warn!(
             target: "vendor",
             event = "failed",
@@ -235,9 +239,9 @@ impl VendorLog {
             account_id = self.account_id,
             account_name = known_names::account_name(self.account_id),
             player_id = self.player_id,
-            player_name = known_names::player_name(self.player_id),
+            player_name = player_label,
             entity_id = self.entity_id,
-            entity_name = known_names::player_name(self.player_id),
+            entity_name = player_label,
             vendor_entity_id = self.vendor_entity_id, // nt:id-only vendor NPC, unnamed on base
             vendor_template_id = self.vendor_template_id,
             vendor_template_name = cimmeria_names::owned::template(self.vendor_template_id),

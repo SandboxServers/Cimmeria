@@ -67,6 +67,7 @@ pub async fn handle_craft_request(request: CraftRequest, ctx: &CraftCtx<'_>) {
     } = request;
     let method = verb.method_name();
     let account_id = account_id_of(entity_id, ctx.connected, ctx.entity_to_addr);
+    let player_label = known_names::player_name(player_id);
     tracing::info!(
         target: "crafting",
         event = "request",
@@ -74,9 +75,9 @@ pub async fn handle_craft_request(request: CraftRequest, ctx: &CraftCtx<'_>) {
         account_id,
         account_name = known_names::account_name(account_id),
         player_id,
-        player_name = known_names::player_name(player_id),
+        player_name = player_label,
         entity_id,
-        entity_name = known_names::player_name(player_id),
+        entity_name = player_label,
         method,
         allowed,
         args = ?verb,

@@ -70,6 +70,7 @@ pub async fn is_crafting_miss(
     match found {
         Ok(found) => found,
         Err(e) => {
+            let player_label = known_names::player_name(player_id);
             tracing::warn!(
                 target: "crafting",
                 event = "lookup_failed",
@@ -78,9 +79,9 @@ pub async fn is_crafting_miss(
                 account_id,
                 account_name = known_names::account_name(account_id),
                 player_id,
-                player_name = known_names::player_name(player_id),
+                player_name = player_label,
                 entity_id,
-                entity_name = known_names::player_name(player_id),
+                entity_name = player_label,
                 item_id, // nt:id-only instance id, type unread yet
                 error = %e,
                 "crafting item miss lookup failed; treated as an ordinary item"

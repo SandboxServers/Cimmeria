@@ -71,6 +71,7 @@ pub async fn check(request: &CraftRequest, ctx: &CraftCtx<'_>) -> Result<(), Cra
     let lookup_failed = |phase: &'static str, error: &dyn std::fmt::Display| {
         let account_id =
             identity_for_entity(ctx.connected, ctx.entity_to_addr, request.entity_id).account_id;
+        let player_label = known_names::player_name(request.player_id);
         tracing::warn!(
             target: "crafting",
             event = "lookup_failed",
@@ -78,9 +79,9 @@ pub async fn check(request: &CraftRequest, ctx: &CraftCtx<'_>) -> Result<(), Cra
             account_id,
             account_name = known_names::account_name(account_id),
             player_id = request.player_id,
-            player_name = known_names::player_name(request.player_id),
+            player_name = player_label,
             entity_id = request.entity_id,
-            entity_name = known_names::player_name(request.player_id),
+            entity_name = player_label,
             error = %error,
             "crafting gate lookup failed; treating as no tool"
         );

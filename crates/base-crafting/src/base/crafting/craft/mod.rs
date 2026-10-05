@@ -209,6 +209,7 @@ struct Who {
 
 impl Who {
     fn lookup_failed(&self, phase: &'static str, error: &dyn LookupError) {
+        let player_label = known_names::player_name(self.player_id);
         tracing::warn!(
             target: "crafting",
             event = "lookup_failed",
@@ -217,9 +218,9 @@ impl Who {
             account_id = self.account_id,
             account_name = known_names::account_name(self.account_id),
             player_id = self.player_id,
-            player_name = known_names::player_name(self.player_id),
+            player_name = player_label,
             entity_id = self.entity_id,
-            entity_name = known_names::player_name(self.player_id),
+            entity_name = player_label,
             blueprint_id = self.blueprint_id,
             blueprint_name = crafting_telemetry::blueprint_name(self.blueprint_id),
             error_class = error.class(),
@@ -289,6 +290,7 @@ async fn send_note(client: CraftClient<'_>, entity_id: u32, player_id: i32, text
     .await;
     if let Some(reason) = witness_send_failure(&outcome) {
         let account_id = account_id_of(entity_id, client.connected, client.entity_to_addr);
+        let player_label = known_names::player_name(player_id);
         tracing::warn!(
             target: "crafting",
             event = "client_sync_failed",
@@ -296,9 +298,9 @@ async fn send_note(client: CraftClient<'_>, entity_id: u32, player_id: i32, text
             account_id,
             account_name = known_names::account_name(account_id),
             player_id,
-            player_name = known_names::player_name(player_id),
+            player_name = player_label,
             entity_id,
-            entity_name = known_names::player_name(player_id),
+            entity_name = player_label,
             what = "craft_queued",
             method,
             reason,

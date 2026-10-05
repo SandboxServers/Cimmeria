@@ -89,6 +89,7 @@ pub async fn research_job(
         Ok(state) => state,
         Err(e) => {
             let account_id = account_id_of(entity_id, ctx.connected, ctx.entity_to_addr);
+            let player_label = known_names::player_name(player_id);
             tracing::warn!(
                 target: "crafting",
                 event = "lookup_failed",
@@ -97,9 +98,9 @@ pub async fn research_job(
                 account_id,
                 account_name = known_names::account_name(account_id),
                 player_id,
-                player_name = known_names::player_name(player_id),
+                player_name = player_label,
                 entity_id,
-                entity_name = known_names::player_name(player_id),
+                entity_name = player_label,
                 item_id, // nt:id-only instance id, type unread yet
                 error_class = sql_error_class(&e),
                 error = %e,
@@ -194,6 +195,7 @@ impl InductionJob for ResearchJob {
                 return JobOutcome::Failed;
             };
             if let Some(learned) = &applied.blueprints {
+                let player_label = known_names::player_name(done.ids.player_id);
                 tracing::info!(
                     target: "crafting",
                     event = "blueprint_learned",
@@ -202,9 +204,9 @@ impl InductionJob for ResearchJob {
                     account_id = done.ids.account_id,
                     account_name = known_names::account_name(done.ids.account_id),
                     player_id = done.ids.player_id,
-                    player_name = known_names::player_name(done.ids.player_id),
+                    player_name = player_label,
                     entity_id = done.ids.entity_id,
-                    entity_name = known_names::player_name(done.ids.player_id),
+                    entity_name = player_label,
                     item_id = self.item.item_id,
                     item_name = cimmeria_names::book().item(self.item.type_id),
                     item_type_id = self.item.type_id,

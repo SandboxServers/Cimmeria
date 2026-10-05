@@ -125,6 +125,7 @@ pub async fn handle_gm_all_craft(msg: GmAllCraft, ctx: &CraftCtx<'_>) {
         .await;
     };
     let lookup_failed = |phase: &'static str, error: &dyn std::fmt::Display| {
+        let player_label = known_names::player_name(player_id);
         tracing::warn!(
             target: "crafting",
             event = "lookup_failed",
@@ -132,9 +133,9 @@ pub async fn handle_gm_all_craft(msg: GmAllCraft, ctx: &CraftCtx<'_>) {
             account_id,
             account_name = known_names::account_name(account_id),
             player_id,
-            player_name = known_names::player_name(player_id),
+            player_name = player_label,
             entity_id,
-            entity_name = known_names::player_name(player_id),
+            entity_name = player_label,
             gm_entity_id,
             gm_entity_name = gm_name,
             error = %error,
@@ -143,6 +144,7 @@ pub async fn handle_gm_all_craft(msg: GmAllCraft, ctx: &CraftCtx<'_>) {
     };
 
     if access_level < GM_ACCESS_LEVEL {
+        let player_label = known_names::player_name(player_id);
         tracing::warn!(
             target: "crafting",
             event = "gm_allcraft",
@@ -150,9 +152,9 @@ pub async fn handle_gm_all_craft(msg: GmAllCraft, ctx: &CraftCtx<'_>) {
             account_id,
             account_name = known_names::account_name(account_id),
             player_id,
-            player_name = known_names::player_name(player_id),
+            player_name = player_label,
             entity_id,
-            entity_name = known_names::player_name(player_id),
+            entity_name = player_label,
             gm_entity_id,
             gm_entity_name = gm_name,
             access_level,
@@ -193,6 +195,7 @@ pub async fn handle_gm_all_craft(msg: GmAllCraft, ctx: &CraftCtx<'_>) {
     let persist_failed = |phase: &'static str, e: &sqlx::Error| {
         // A player row that is not there is `RowNotFound`: no row matched.
         let rows_affected: Option<u64> = matches!(e, sqlx::Error::RowNotFound).then_some(0);
+        let player_label = known_names::player_name(player_id);
         tracing::warn!(
             target: "crafting",
             event = "persist_failed",
@@ -203,9 +206,9 @@ pub async fn handle_gm_all_craft(msg: GmAllCraft, ctx: &CraftCtx<'_>) {
             account_id,
             account_name = known_names::account_name(account_id),
             player_id,
-            player_name = known_names::player_name(player_id),
+            player_name = player_label,
             entity_id,
-            entity_name = known_names::player_name(player_id),
+            entity_name = player_label,
             error = %e,
             "allcraft save failed; nothing was granted"
         );
@@ -270,6 +273,7 @@ pub async fn handle_gm_all_craft(msg: GmAllCraft, ctx: &CraftCtx<'_>) {
     )
     .await;
     if let Some(reason) = outcome.failure_reason() {
+        let player_label = known_names::player_name(player_id);
         tracing::warn!(
             target: "crafting",
             event = "push_failed",
@@ -278,14 +282,15 @@ pub async fn handle_gm_all_craft(msg: GmAllCraft, ctx: &CraftCtx<'_>) {
             account_id,
             account_name = known_names::account_name(account_id),
             player_id,
-            player_name = known_names::player_name(player_id),
+            player_name = player_label,
             entity_id,
-            entity_name = known_names::player_name(player_id),
+            entity_name = player_label,
             "allcraft's discipline, paradigm and blueprint update did not reach the client"
         );
     }
     enable_craft_anywhere(entity_id, ctx.transport, ctx.connected, ctx.entity_to_addr).await;
 
+    let player_label = known_names::player_name(player_id);
     tracing::info!(
         target: "crafting",
         event = "gm_allcraft",
@@ -293,9 +298,9 @@ pub async fn handle_gm_all_craft(msg: GmAllCraft, ctx: &CraftCtx<'_>) {
         account_id,
         account_name = known_names::account_name(account_id),
         player_id,
-        player_name = known_names::player_name(player_id),
+        player_name = player_label,
         entity_id,
-        entity_name = known_names::player_name(player_id),
+        entity_name = player_label,
         gm_entity_id,
         gm_entity_name = gm_name,
         disciplines_before,

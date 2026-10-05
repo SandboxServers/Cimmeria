@@ -135,15 +135,16 @@ fn log_dropped(
         .map(|(id, verb)| format!("{id}:{verb}"))
         .collect::<Vec<_>>()
         .join(",");
+    let player_label = known_names::player_name(ids.player_id);
     tracing::info!(
         target: "crafting",
         event = "queue_dropped",
         account_id = ids.account_id,
         account_name = known_names::account_name(ids.account_id),
         player_id = ids.player_id,
-        player_name = known_names::player_name(ids.player_id),
+        player_name = player_label,
         entity_id = ids.entity_id,
-        entity_name = known_names::player_name(ids.player_id),
+        entity_name = player_label,
         reason = reason.label(),
         cause,
         jobs_dropped = jobs.len(),
@@ -245,6 +246,7 @@ impl CraftingSessions {
                 SubmitOutcome::Started
             }
             Enqueued::Queued { position } => {
+                let player_label = known_names::player_name(player_id);
                 tracing::info!(
                     target: "crafting",
                     event = "queued",
@@ -253,9 +255,9 @@ impl CraftingSessions {
                     account_id = ids.account_id,
                     account_name = known_names::account_name(ids.account_id),
                     player_id,
-                    player_name = known_names::player_name(player_id),
+                    player_name = player_label,
                     entity_id,
-                    entity_name = known_names::player_name(player_id),
+                    entity_name = player_label,
                     position,
                     queue_len,
                     "crafting induction queued"
@@ -328,6 +330,7 @@ impl CraftingSessions {
         };
         let verb = job.verb();
         let ids = JobIds { verb, ..ids };
+        let player_label = known_names::player_name(ids.player_id);
         tracing::info!(
             target: "crafting",
             event = "induction_expired",
@@ -336,9 +339,9 @@ impl CraftingSessions {
             account_id = ids.account_id,
             account_name = known_names::account_name(ids.account_id),
             player_id = ids.player_id,
-            player_name = known_names::player_name(ids.player_id),
+            player_name = player_label,
             entity_id,
-            entity_name = known_names::player_name(ids.player_id),
+            entity_name = player_label,
             queue_len,
             "crafting induction expired"
         );
@@ -363,6 +366,7 @@ impl CraftingSessions {
             .await;
         match outcome {
             JobOutcome::Completed(report) => {
+                let player_label = known_names::player_name(ids.player_id);
                 tracing::info!(
                     target: "crafting",
                     event = "completed",
@@ -371,9 +375,9 @@ impl CraftingSessions {
                     account_id = ids.account_id,
                     account_name = known_names::account_name(ids.account_id),
                     player_id = ids.player_id,
-                    player_name = known_names::player_name(ids.player_id),
+                    player_name = player_label,
                     entity_id,
-                    entity_name = known_names::player_name(ids.player_id),
+                    entity_name = player_label,
                     blueprint_id = %opt(report.blueprint_id),
                     blueprint_name = crafting_telemetry::blueprint_name(report.blueprint_id),
                     item_id = %opt(report.item_id), // nt:id-only instance, see consumed
@@ -474,6 +478,7 @@ impl CraftingSessions {
         env: &InductionEnv,
     ) {
         if !self.still_active(ids, started.job_id, env) {
+            let player_label = known_names::player_name(ids.player_id);
             tracing::debug!(
                 target: "crafting",
                 event = "induction_start_skipped",
@@ -482,14 +487,15 @@ impl CraftingSessions {
                 account_id = ids.account_id,
                 account_name = known_names::account_name(ids.account_id),
                 player_id = ids.player_id,
-                player_name = known_names::player_name(ids.player_id),
+                player_name = player_label,
                 entity_id = ids.entity_id,
-                entity_name = known_names::player_name(ids.player_id),
+                entity_name = player_label,
                 "crafting induction no longer active; no bar sent"
             );
             return;
         }
         let expires_at = send_induction_timer(env, ids, started.timer_id).await;
+        let player_label = known_names::player_name(ids.player_id);
         tracing::info!(
             target: "crafting",
             event = "induction_started",
@@ -498,9 +504,9 @@ impl CraftingSessions {
             account_id = ids.account_id,
             account_name = known_names::account_name(ids.account_id),
             player_id = ids.player_id,
-            player_name = known_names::player_name(ids.player_id),
+            player_name = player_label,
             entity_id = ids.entity_id,
-            entity_name = known_names::player_name(ids.player_id),
+            entity_name = player_label,
             timer_id = started.timer_id, // nt:id-only client timer id, unnamed
             queue_len,
             expires_at,

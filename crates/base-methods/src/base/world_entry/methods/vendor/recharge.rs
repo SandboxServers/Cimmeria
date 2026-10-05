@@ -59,11 +59,12 @@ pub async fn handle_recharge_inventory_items(
 
     let item_ids = normalize_item_ids(item_ids);
     if item_ids.is_empty() {
+        let player_label = known_names::player_name(player_id);
         tracing::debug!(
             entity_id,
-            entity_name = known_names::player_name(player_id),
+            entity_name = player_label,
             player_id,
-            player_name = known_names::player_name(player_id),
+            player_name = player_label,
             "RechargeInventoryItems: empty item list"
         );
         return;
@@ -76,11 +77,12 @@ pub async fn handle_recharge_inventory_items(
     let mut tx = match pool.begin().await {
         Ok(tx) => tx,
         Err(e) => {
+            let player_label = known_names::player_name(player_id);
             tracing::error!(
                 entity_id,
-                entity_name = known_names::player_name(player_id),
+                entity_name = player_label,
                 player_id,
-                player_name = known_names::player_name(player_id),
+                player_name = player_label,
                 "RechargeInventoryItems: begin tx failed: {e}"
             );
             return;
@@ -106,11 +108,12 @@ pub async fn handle_recharge_inventory_items(
     .await
     {
         let _ = tx.rollback().await;
+        let player_label = known_names::player_name(player_id);
         tracing::error!(
             entity_id,
-            entity_name = known_names::player_name(player_id),
+            entity_name = player_label,
             player_id,
-            player_name = known_names::player_name(player_id),
+            player_name = player_label,
             "RechargeInventoryItems: lock query failed: {e}"
         );
         return;
@@ -138,11 +141,12 @@ pub async fn handle_recharge_inventory_items(
         Ok(r) => r.rows_affected(),
         Err(e) => {
             let _ = tx.rollback().await;
+            let player_label = known_names::player_name(player_id);
             tracing::error!(
                 entity_id,
-                entity_name = known_names::player_name(player_id),
+                entity_name = player_label,
                 player_id,
-                player_name = known_names::player_name(player_id),
+                player_name = player_label,
                 item_count = item_ids.len(),
                 "RechargeInventoryItems: update failed: {e}"
             );
@@ -151,11 +155,12 @@ pub async fn handle_recharge_inventory_items(
     };
 
     if let Err(e) = tx.commit().await {
+        let player_label = known_names::player_name(player_id);
         tracing::error!(
             entity_id,
-            entity_name = known_names::player_name(player_id),
+            entity_name = player_label,
             player_id,
-            player_name = known_names::player_name(player_id),
+            player_name = player_label,
             "RechargeInventoryItems: commit failed: {e}"
         );
         return;
@@ -171,22 +176,24 @@ pub async fn handle_recharge_inventory_items(
             entity_to_addr,
         )
         .await;
+        let player_label = known_names::player_name(player_id);
         tracing::debug!(
             entity_id,
-            entity_name = known_names::player_name(player_id),
+            entity_name = player_label,
             player_id,
-            player_name = known_names::player_name(player_id),
+            player_name = player_label,
             item_count = item_ids.len(),
             recharged,
             total_items,
             "Inventory items recharged"
         );
     } else {
+        let player_label = known_names::player_name(player_id);
         tracing::debug!(
             entity_id,
-            entity_name = known_names::player_name(player_id),
+            entity_name = player_label,
             player_id,
-            player_name = known_names::player_name(player_id),
+            player_name = player_label,
             item_count = item_ids.len(),
             "RechargeInventoryItems: no rechargeable items changed"
         );
