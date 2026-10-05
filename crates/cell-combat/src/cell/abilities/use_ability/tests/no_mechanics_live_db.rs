@@ -90,7 +90,8 @@ async fn seeded_has_mechanics_count_live_db() {
     );
 }
 
-/// Never refuse what works today: the five starters, Cover Stance, Reload, every
+/// Never refuse what works today: the five starters, the shot the starter
+/// pistol turns Pistol Shot into, Cover Stance, Reload, every
 /// ammo toggle, every pet summon, every deployable and every owner-pet
 /// ability. The lists come from the seed tables, so a new row is guarded
 /// too.
@@ -105,6 +106,14 @@ async fn abilities_that_work_today_have_mechanics_live_db() {
     )
     .await;
     let summons = ids(&pool, "SELECT ability_id FROM resources.pet_summons").await;
+    // What Pistol Shot (592) fires once the starter pistol is drawn: the
+    // RANGED binding (event 7) of every `char_creation_items` weapon.
+    let starter_weapon_shots = ids(
+        &pool,
+        "SELECT DISTINCT ies.ability_id FROM resources.char_creation_items ci \
+         JOIN resources.items_event_sets ies ON ies.item_id = ci.item_id AND ies.event_id = 7",
+    )
+    .await;
     let deployables = ids(&pool, "SELECT ability_id FROM resources.deployables").await;
     let owner_pet: Vec<i32> = mgr
         .ability_defs
@@ -114,11 +123,16 @@ async fn abilities_that_work_today_have_mechanics_live_db() {
         .collect();
     assert!(!toggles.is_empty(), "ammo toggles are seeded");
     assert!(!summons.is_empty(), "pet summons are seeded");
+    assert!(
+        !starter_weapon_shots.is_empty(),
+        "the starter pistol has a ranged binding"
+    );
     assert!(!deployables.is_empty(), "deployables are seeded");
     assert!(!owner_pet.is_empty(), "owner-pet abilities are seeded");
 
-    let groups: [(&str, Vec<i32>); 7] = [
+    let groups: [(&str, Vec<i32>); 8] = [
         ("starter", STARTERS.to_vec()),
+        ("starter weapon shot", starter_weapon_shots),
         ("cover stance", vec![COVER_STANCE_ABILITY]),
         ("reload", vec![ABILITY_RELOAD_WEAPON]),
         ("ammo toggle", toggles),

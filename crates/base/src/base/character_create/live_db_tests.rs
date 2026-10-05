@@ -59,7 +59,7 @@ const TEST_SKIN_TINT: i32 = 0;
 /// means the access_level bind/column was lost.
 const SESSION_ACCESS_LEVEL: u32 = 2;
 
-async fn cleanup(pool: &PgPool, account_id: i32) {
+pub(super) async fn cleanup(pool: &PgPool, account_id: i32) {
     // sgw_inventory FKs to sgw_player(player_id); delete starter items
     // (if any) by joining back through the account before the player row.
     let _ = sqlx::query(
@@ -82,7 +82,7 @@ async fn cleanup(pool: &PgPool, account_id: i32) {
 /// Insert the test account with `accesslevel = 2` to mirror a real GM
 /// account. The handler reads the level from session state, not this
 /// row, but seeding it keeps the fixture self-consistent.
-async fn insert_account(pool: &PgPool, account_id: i32, access_level: i32) {
+pub(super) async fn insert_account(pool: &PgPool, account_id: i32, access_level: i32) {
     sqlx::query(
         "INSERT INTO account (account_id, account_name, password, accesslevel) \
          VALUES ($1, $2, '', $3)",
@@ -95,7 +95,7 @@ async fn insert_account(pool: &PgPool, account_id: i32, access_level: i32) {
     .expect("insert account");
 }
 
-fn make_connected(
+pub(super) fn make_connected(
     addr: SocketAddr,
     account_id: u32,
     access_level: u32,
@@ -117,7 +117,7 @@ fn make_connected(
 /// `[WSTRING Name][WSTRING ExtraName][INT32 CharDefId]
 ///  [u32 VisualChoiceCount][count × {INT32 VisGroupId, INT32 ChoiceId}]
 ///  [INT32 SkinTintColorID]`.
-fn build_create_character_payload(
+pub(super) fn build_create_character_payload(
     name: &str,
     extra_name: &str,
     char_def_id: i32,

@@ -14,8 +14,13 @@ use super::chardef::chardef_lookup;
 use super::helpers::{
     drain_acks_and_seq, get_access_level, get_account_entity_id, get_enc_version,
 };
-use super::resources::{bag_min_slot, pick_first_open_bag, BAG_FILL_ORDER};
 use super::ConnectedClientState;
+
+mod starter_kit;
+use starter_kit::{
+    describe_abilities, describe_items, has_loaded_bandolier_weapon, insert_starter_inventory,
+    load_starter_abilities, load_starter_items, StarterItem,
+};
 
 /// Handle `createCharacter` (0xC4) -- parse args and INSERT into sgw_player.
 #[tracing::instrument(
@@ -259,7 +264,13 @@ pub(crate) async fn handle_create_character(
         item_bound: bool,
         item_durability: i32,
     }
-    let mut resolved: HashMap<i32, ResolvedChoice> = HashMap::new();
+    // Keyed in visual-group order (a BTreeMap, not a HashMap) so the
+    // components array and the starter-item placement come out the same on
+    // every run: two item choices can compete for one bag (glasses and an
+    // accessory both want Face, 5), and which one wins must not depend on
+    // hash order. The seeded characters copy this order.
+    let mut resolved: std::collections::BTreeMap<i32, ResolvedChoice> =
+        std::collections::BTreeMap::new();
 
     // Client choices must target VIS_Optional groups only
     for &(vg_id, choice_id) in &visual_choices {
@@ -311,7 +322,7 @@ pub(crate) async fn handle_create_character(
 
     // Auto-select forced groups; reject missing optional groups
     for (&vg_id, group) in &visgroups {
-        if let std::collections::hash_map::Entry::Vacant(e) = resolved.entry(vg_id) {
+        if let std::collections::btree_map::Entry::Vacant(e) = resolved.entry(vg_id) {
             if group.vis_type == "VIS_Forced" {
                 if let Some((_, choice)) = group.choices.iter().next() {
                     e.insert(ResolvedChoice {
@@ -337,19 +348,15 @@ pub(crate) async fn handle_create_character(
     // ── Separate body components from item components (Account.py:156-161) ───
 
     let mut body_components: Vec<String> = Vec::new();
-    struct ItemChoice {
-        item_id: i32,
-        item_bound: bool,
-        item_durability: i32,
-    }
-    let mut item_choices: Vec<ItemChoice> = Vec::new();
+    let mut item_choices: Vec<StarterItem> = Vec::new();
 
     for choice in resolved.values() {
         if let Some(item_id) = choice.item_id {
-            item_choices.push(ItemChoice {
-                item_id,
-                item_bound: choice.item_bound,
-                item_durability: choice.item_durability,
+            item_choices.push(StarterItem {
+                item_type_id: item_id,
+                stack_size: 1,
+                bound: Some(choice.item_bound),
+                durability: choice.item_durability,
             });
         } else {
             body_components.push(choice.component.clone());
@@ -374,30 +381,31 @@ pub(crate) async fn handle_create_character(
             }
         };
 
-    // ── Look up starting abilities (Account.py:166) ───
+    // ── Look up starting abilities (Account.py:166) and the starter kit ───
 
-    let abilities: Vec<i32> = match sqlx::query_scalar(
-        "SELECT ability_id FROM resources.char_creation_abilities WHERE char_def_id = $1",
-    )
-    .bind(char_def_id)
-    .fetch_all(pool.as_ref())
-    .await
-    {
-        Ok(v) => v,
-        Err(e) => {
-            tracing::error!(
-                char_def_id, // nt:id-only CharDef rows carry no name column to pair
-                "character_create: starting abilities lookup failed: {e}"
-            );
-            Vec::new()
+    // A lookup that fails is a failed creation, not a character without its
+    // kit: nothing would ever add the missing abilities or pistol later.
+    let (starter_abilities, kit_items) = match (
+        load_starter_abilities(pool.as_ref(), char_def_id).await,
+        load_starter_items(pool.as_ref(), char_def_id).await,
+    ) {
+        (Ok(a), Ok(i)) => (a, i),
+        _ => {
+            send_char_create_failed(transport, addr, key, connected, 3).await?;
+            return Ok(());
         }
     };
+    let abilities: Vec<i32> = starter_abilities.iter().map(|a| a.ability_id).collect();
+    // The visual-choice items first (clothes onto the body), then the
+    // char_creation_items kit (the pistol into the bandolier).
+    let mut starter_items = item_choices;
+    starter_items.extend(kit_items);
 
     tracing::debug!(
         %addr,
         char_def_id, // nt:id-only CharDef rows carry no name column to pair
         components = ?body_components,
-        item_count = item_choices.len(),
+        item_count = starter_items.len(),
         world_id = ?world_id,
         world = world_location,
         ability_count = abilities.len(),
@@ -417,6 +425,34 @@ pub(crate) async fn handle_create_character(
     // a GM account's characters were created at access_level 0 and carried no
     // GM marker on every load.
     let access_level = get_access_level(connected, addr) as i32;
+
+    // Account name is best-effort from the live session state; the creation
+    // log lines and the Discord notification carry it.
+    let account_name = connected
+        .lock()
+        .ok()
+        .and_then(|c| c.get(&addr).and_then(|s| s.account_name.clone()));
+
+    // The character row and its starter inventory commit together: a kit
+    // that can't be placed rolls the character back and the client gets
+    // the DB-error code, rather than a character that exists for good
+    // without its pistol.
+    let mut tx = match pool.begin().await {
+        Ok(tx) => tx,
+        Err(e) => {
+            tracing::error!(
+                event = "character_create_failed",
+                reason = "db_error",
+                %addr,
+                account_id,
+                account_name = account_name.as_deref(),
+                error = %e,
+                "character_create: could not open the creation transaction"
+            );
+            send_char_create_failed(transport, addr, key, connected, 3).await?;
+            return Ok(());
+        }
+    };
 
     let result = sqlx::query_scalar::<_, i32>(
         "INSERT INTO sgw_player \
@@ -449,106 +485,63 @@ pub(crate) async fn handle_create_character(
     // Likewise one Applied Science Point at level 1; each level gained adds
     // one more in `handle_grant_xp`. The column default is 0.
     .bind(cimmeria_game::player::STARTING_APPLIED_SCIENCE_POINTS)
-    .fetch_one(pool.as_ref())
+    .fetch_one(&mut *tx)
     .await;
 
     match result {
         Ok(player_id) => {
             // ── Insert starter items into sgw_inventory (Account.py:182-207) ───
 
-            let mut slot_indices: HashMap<i32, i32> = HashMap::new();
-            for item in &item_choices {
-                // Look up which containers this item can go into
-                let container_sets = sqlx::query_scalar::<_, Vec<i32>>(
-                    "SELECT container_sets FROM resources.items WHERE item_id = $1",
-                )
-                .bind(item.item_id)
-                .fetch_optional(pool.as_ref())
-                .await
-                .ok()
-                .flatten()
-                .unwrap_or_default();
-
-                // Pick the first bag that's both valid for this item AND
-                // still has room. Pre-fix this picked the first valid bag
-                // unconditionally and `continue`d if it was full — so an
-                // item that could overflow to a later bag was silently
-                // dropped (live observation 2026-06-02: item 4343 lost
-                // at character create because its primary bag filled up
-                // first while a later valid bag still had room).
-                let bag_id = match pick_first_open_bag(&container_sets, &slot_indices) {
-                    Some(bag) => bag,
-                    None => {
-                        // Either the item has no valid container (content
-                        // gap) or every valid container is genuinely full.
-                        // Both are operator-actionable — surface the
-                        // distinction so a real content gap doesn't get
-                        // confused with "too many starter items."
-                        let any_valid_container =
-                            BAG_FILL_ORDER.iter().any(|b| container_sets.contains(b));
-                        if any_valid_container {
-                            tracing::warn!(
-                                %addr,
-                                item_type_id = item.item_id,
-                                item_name = cimmeria_names::book().item(item.item_id),
-                                "All valid containers full — starter item dropped"
-                            );
-                        } else {
-                            tracing::warn!(
-                                %addr,
-                                item_type_id = item.item_id,
-                                item_name = cimmeria_names::book().item(item.item_id),
-                                "No valid container for starter item"
-                            );
-                        }
-                        continue;
+            let placed =
+                match insert_starter_inventory(&mut tx, addr, player_id, &name, &starter_items)
+                    .await
+                {
+                    Ok(placed) => placed,
+                    Err(_) => {
+                        // `insert_starter_inventory` logged the item and reason.
+                        let _ = tx.rollback().await;
+                        send_char_create_failed(transport, addr, key, connected, 3).await?;
+                        return Ok(());
                     }
                 };
-
-                let entry = slot_indices
-                    .entry(bag_id)
-                    .or_insert_with(|| bag_min_slot(bag_id));
-                let current_slot = *entry;
-                *entry += 1;
-
-                if let Err(e) = sqlx::query(
-                    "INSERT INTO sgw_inventory \
-                     (container_id, slot_id, type_id, character_id, durability, bound) \
-                     VALUES ($1, $2, $3, $4, $5, $6)",
-                )
-                .bind(bag_id)
-                .bind(current_slot)
-                .bind(item.item_id)
-                .bind(player_id)
-                .bind(item.item_durability)
-                .bind(item.item_bound)
-                .execute(pool.as_ref())
-                .await
-                {
-                    tracing::error!(
-                        %addr,
-                        item_type_id = item.item_id,
-                        item_name = cimmeria_names::book().item(item.item_id),
-                        error = %e,
-                        "Failed to insert starter item"
-                    );
-                }
+            if let Err(e) = tx.commit().await {
+                tracing::error!(
+                    event = "character_create_failed",
+                    reason = "db_error",
+                    %addr,
+                    account_id,
+                    account_name = account_name.as_deref(),
+                    player_id,
+                    player_name = %name,
+                    error = %e,
+                    "character_create: commit failed"
+                );
+                send_char_create_failed(transport, addr, key, connected, 3).await?;
+                return Ok(());
             }
 
+            // One line with everything the character starts with, named
+            // (Rule 6), so "why can't lomiada fire?" is one SigNoz query.
             tracing::info!(
+                event = "character_created",
                 %addr,
+                account_id,
+                account_name = account_name.as_deref(),
                 player_id,
                 player_name = %name,
+                char_def_id, // nt:id-only char_def rows carry no name column
+                archetype,
+                archetype_name = cimmeria_names::archetype_name(archetype),
+                world_id = ?world_id,
+                world = world_location,
+                abilities = %describe_abilities(&starter_abilities),
+                items = %describe_items(&placed),
+                armed = has_loaded_bandolier_weapon(&placed),
                 "Character created successfully"
             );
 
             // Discord gameplay-channel: a new character was created (on by
-            // default — low volume / high signal). Account name is best-effort
-            // from the live session state.
-            let account_name = connected
-                .lock()
-                .ok()
-                .and_then(|c| c.get(&addr).and_then(|s| s.account_name.clone()));
+            // default — low volume / high signal).
             cimmeria_discord::emit_character_created(
                 cimmeria_discord::Named::new(account_id, account_name),
                 cimmeria_discord::Named::new(player_id, Some(name.clone())),
@@ -629,8 +622,13 @@ fn validate_character_name(name: &str) -> Result<(), &'static str> {
 }
 
 #[cfg(test)]
-#[path = "character_create_live_db_tests.rs"]
-mod character_create_live_db_tests;
+mod live_db_tests;
+
+#[cfg(test)]
+mod seed_parity_live_db_tests;
+
+#[cfg(test)]
+mod kit_rollback_live_db_tests;
 
 #[cfg(test)]
 mod tests {

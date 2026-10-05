@@ -46,6 +46,7 @@ mod sequence;
 mod sequence_phases;
 mod shield_full;
 mod silent_paths;
+mod starter_kit_live_db;
 mod summon;
 mod summon_live_db;
 mod summon_logs;
