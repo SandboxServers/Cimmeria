@@ -8,7 +8,7 @@ use cimmeria_launcher_engine::{
     adoption::{self, Choices},
     catalog::VerifiedRelease,
 };
-#[cfg(test)]
+#[cfg(all(test, target_os = "macos"))]
 use cimmeria_launcher_engine::{OperationKind, OperationState};
 use uuid::Uuid;
 mod contract;
@@ -16,7 +16,7 @@ mod review;
 mod status;
 use contract::{Activity, Backend};
 pub use contract::{AdoptionCommand, AdoptionError, AdoptionStatus};
-#[cfg(test)]
+#[cfg(all(test, target_os = "macos"))]
 use contract::{Completed, Imported, Phase, Reconciliation};
 use review::Review;
 #[cfg(all(test, target_os = "macos"))]

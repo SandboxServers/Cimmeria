@@ -19,6 +19,7 @@ Dated, sourced facts from top-level sessions, committed with the change that pro
 
 ## Reference
 
+- [reference_desktop_launcher_windows_native.md](reference_desktop_launcher_windows_native.md) — first native Windows run (2026-10-04): release key for dev builds, staged resources, verbatim-path Play failure, #1194 dialog, lock and socket test traps
 - [reference_desktop_game_telemetry_2026_10_04.md](reference_desktop_game_telemetry_2026_10_04.md) — desktop launcher game telemetry (PR #1241) proven under Wine; plan-digest trap; rosettax87 breaks launch supervision; engine tests run on Linux
 - [Native updater handoff](../updater-handoff-fix/reference_native_handoff.md) — shutdown follows successful spawn even if later persistence fails; fixture regression and platform limits.
 

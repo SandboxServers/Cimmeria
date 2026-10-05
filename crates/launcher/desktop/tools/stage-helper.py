@@ -62,6 +62,7 @@ def stage(source: Path, destination: Path, expected: str, revision: str,
             output.write(data)
             output.flush()
             os.fsync(output.fileno())
+            output.close()  # Windows refuses to rename or delete a file that is still open.
             pending.chmod(0o644)  # Bundled public resource must be readable by other Mac users.
             os.replace(pending, destination / filename)
         finally:
