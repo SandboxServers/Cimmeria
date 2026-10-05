@@ -123,15 +123,16 @@ pub async fn handle_loot_grant(
                 None => false,
             };
             if !sent {
+                let player_label = known_names::player_name(player_id);
                 tracing::warn!(
                     target: "inventory",
                     event = "loot_restore_failed",
                     account_id,
                     account_name = known_names::account_name(account_id),
                     player_id,
-                    player_name = known_names::player_name(player_id),
+                    player_name = player_label,
                     entity_id,
-                    entity_name = known_names::player_name(player_id),
+                    entity_name = player_label,
                     corpse_id = source.corpse_id, // nt:id-only corpse NPC, unnamed on the base
                     index = source.index,
                     item_type_id = item_id,
@@ -144,15 +145,16 @@ pub async fn handle_loot_grant(
             }
         }
         GrantOutcome::CommitUnknown { account_id } => {
+            let player_label = known_names::player_name(player_id);
             tracing::warn!(
                 target: "inventory",
                 event = "loot_restore_skipped",
                 account_id,
                 account_name = known_names::account_name(account_id),
                 player_id,
-                player_name = known_names::player_name(player_id),
+                player_name = player_label,
                 entity_id,
-                entity_name = known_names::player_name(player_id),
+                entity_name = player_label,
                 corpse_id = source.corpse_id, // nt:id-only corpse NPC, unnamed on the base
                 index = source.index,
                 item_type_id = item_id,
@@ -184,11 +186,12 @@ async fn grant(
     connected: &Arc<Mutex<HashMap<SocketAddr, ConnectedClientState>>>,
     entity_to_addr: &Arc<Mutex<HashMap<u32, SocketAddr>>>,
 ) -> GrantOutcome {
+    let player_label = known_names::player_name(player_id);
     tracing::debug!(
         entity_id,
-        entity_name = known_names::player_name(player_id),
+        entity_name = player_label,
         player_id,
-        player_name = known_names::player_name(player_id),
+        player_name = player_label,
         item_id,
         item_name = cimmeria_names::book().item(item_id),
         container_id,
@@ -224,14 +227,15 @@ async fn grant(
     let placement = match resolve_placement(pool, player_id, item_id, container_id).await {
         Ok(p) => p,
         Err(e) => {
+            let player_label = known_names::player_name(player_id);
             tracing::warn!(
                 target: "inventory",
                 event = "lookup_failed",
                 phase = "placement",
                 player_id,
-                player_name = known_names::player_name(player_id),
+                player_name = player_label,
                 entity_id,
-                entity_name = known_names::player_name(player_id),
+                entity_name = player_label,
                 item_type_id = item_id,
                 item_name = cimmeria_names::book().item(item_id),
                 requested_container_id = container_id,
@@ -271,15 +275,16 @@ async fn grant(
     // there (an item that lists buyback and no carried bag) is refused.
     if target == INV_BUYBACK {
         let reason = GrantRefusal::NotGrantable;
+        let player_label = known_names::player_name(player_id);
         tracing::info!(
             target: "inventory",
             event = "grant_refused",
             account_id,
             account_name = known_names::account_name(account_id),
             player_id,
-            player_name = known_names::player_name(player_id),
+            player_name = player_label,
             entity_id,
-            entity_name = known_names::player_name(player_id),
+            entity_name = player_label,
             item_type_id = item_id,
             item_name = cimmeria_names::book().item(item_id),
             quantity = count,
@@ -302,15 +307,16 @@ async fn grant(
     let committed = match persist_grant(pool, entity_id, player_id, item_id, target, count).await {
         PersistOutcome::Committed(c) => c,
         PersistOutcome::Refused(reason) => {
+            let player_label = known_names::player_name(player_id);
             tracing::info!(
                 target: "inventory",
                 event = "grant_refused",
                 account_id,
                 account_name = known_names::account_name(account_id),
                 player_id,
-                player_name = known_names::player_name(player_id),
+                player_name = player_label,
                 entity_id,
-                entity_name = known_names::player_name(player_id),
+                entity_name = player_label,
                 item_type_id = item_id,
                 item_name = cimmeria_names::book().item(item_id),
                 quantity = count,
@@ -331,15 +337,16 @@ async fn grant(
             };
         }
         PersistOutcome::CommitUnknown => {
+            let player_label = known_names::player_name(player_id);
             tracing::warn!(
                 target: "inventory",
                 event = "grant_outcome_unknown",
                 account_id,
                 account_name = known_names::account_name(account_id),
                 player_id,
-                player_name = known_names::player_name(player_id),
+                player_name = player_label,
                 entity_id,
-                entity_name = known_names::player_name(player_id),
+                entity_name = player_label,
                 item_type_id = item_id,
                 item_name = cimmeria_names::book().item(item_id),
                 quantity = count,
@@ -352,16 +359,21 @@ async fn grant(
         }
     };
 
+    let player_label = known_names::player_name(player_id);
     tracing::info!(
         target: "inventory",
         event = "grant_container_chosen",
         account_id,
         account_name = known_names::account_name(account_id),
         player_id,
-        player_name = known_names::player_name(player_id),
+        player_name = player_label,
         entity_id,
-        entity_name = known_names::player_name(player_id),
+        entity_name = player_label,
         item_type_id = item_id,
+        // `design_id` is the same number under the key the cell's loot and
+        // "Item granted to player" rows and the crafting session-resume recipe
+        // join on; it stays until the cell sweeps move those to `item_type_id`.
+        design_id = item_id, // nt:id-only join key, item_name names it
         item_name = placement.item_name.as_deref(),
         quantity = count,
         container_sets = %format_container_sets(&placement.container_sets),
@@ -385,11 +397,12 @@ async fn grant(
         entity_to_addr,
     )
     .await;
+    let player_label = known_names::player_name(player_id);
     tracing::debug!(
         entity_id,
-        entity_name = known_names::player_name(player_id),
+        entity_name = player_label,
         player_id,
-        player_name = known_names::player_name(player_id),
+        player_name = player_label,
         item_id,
         item_name = cimmeria_names::book().item(item_id),
         total_items,

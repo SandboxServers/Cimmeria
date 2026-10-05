@@ -49,11 +49,12 @@ pub async fn refresh_player_appearance(
         let addr = match entity_to_addr.lock().unwrap().get(&entity_id).copied() {
             Some(a) => a,
             None => {
+                let player_label = known_names::player_name(player_id);
                 tracing::debug!(
                     entity_id,
-                    entity_name = known_names::player_name(player_id),
+                    entity_name = player_label,
                     player_id,
-                    player_name = known_names::player_name(player_id),
+                    player_name = player_label,
                     "refresh_player_appearance: entity has no transport addr (disconnected?), skipping"
                 );
                 return;
@@ -63,11 +64,12 @@ pub async fn refresh_player_appearance(
         match clients.get(&addr) {
             Some(c) => (c.account_id, c.weapon_holstered),
             None => {
+                let player_label = known_names::player_name(player_id);
                 tracing::debug!(
                     entity_id,
-                    entity_name = known_names::player_name(player_id),
+                    entity_name = player_label,
                     player_id,
-                    player_name = known_names::player_name(player_id),
+                    player_name = player_label,
                     "refresh_player_appearance: client state missing for addr, skipping"
                 );
                 return;

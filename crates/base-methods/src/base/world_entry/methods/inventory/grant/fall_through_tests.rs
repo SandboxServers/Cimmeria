@@ -154,6 +154,8 @@ async fn live_db_bank_first_component_lands_in_the_crafting_bag_for_every_caller
         .await
         .expect("item name");
     assert_eq!(event.fields.get("item_type_id"), Some(&type_id.to_string()));
+    // Kept for the cell rows' join until their sweep renames them.
+    assert_eq!(event.fields.get("design_id"), Some(&type_id.to_string()));
     assert_eq!(event.fields.get("item_name"), Some(&name), "{event:#?}");
     assert!(
         capture

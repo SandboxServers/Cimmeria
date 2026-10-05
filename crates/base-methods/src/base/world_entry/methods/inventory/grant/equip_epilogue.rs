@@ -127,11 +127,12 @@ pub(super) async fn equip_epilogue(
                         })
                         .await
                     {
+                        let player_label = known_names::player_name(player_id);
                         tracing::warn!(
                             entity_id,
-                            entity_name = known_names::player_name(player_id),
+                            entity_name = player_label,
                             player_id,
-                            player_name = known_names::player_name(player_id),
+                            player_name = player_label,
                             item_id,
                             item_name = cimmeria_names::book().item(item_id),
                             "GrantItem: cell channel closed sending UpdateBandolierItem: {e}"
@@ -209,11 +210,12 @@ pub(super) async fn equip_epilogue(
     // and up) doesn't go through the cell side, so we still need
     // this call for those.
     if visual.is_some() && container_id != 3 {
+        let player_label = known_names::player_name(player_id);
         tracing::info!(
             entity_id,
-            entity_name = known_names::player_name(player_id),
+            entity_name = player_label,
             player_id,
-            player_name = known_names::player_name(player_id),
+            player_name = player_label,
             item_id,
             item_name = cimmeria_names::book().item(item_id),
             container_id,

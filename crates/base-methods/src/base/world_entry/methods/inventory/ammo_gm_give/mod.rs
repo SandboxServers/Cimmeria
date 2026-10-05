@@ -136,21 +136,23 @@ pub async fn handle_gm_give_ammo(
         }
     };
     let refuse = |reason: &'static str, text: String| async move {
+        let player_label = known_names::player_name(gm_player_id);
+        let subject_label = known_names::player_name(player_id);
         tracing::warn!(
             target: "ammo",
             event = events::GM_GIVE_AMMO,
             decision_outcome = "refused",
             reason,
             entity_id = gm_entity_id,
-            entity_name = known_names::player_name(gm_player_id),
+            entity_name = player_label,
             account_id = gm_account_id,
             account_name = known_names::account_name(gm_account_id),
             player_id = gm_player_id,
-            player_name = known_names::player_name(gm_player_id),
+            player_name = player_label,
             subject_entity_id = entity_id,
-            subject_entity_name = known_names::player_name(player_id),
+            subject_entity_name = subject_label,
             subject_player_id = player_id,
-            subject_player_name = known_names::player_name(player_id),
+            subject_player_name = subject_label,
             item_id,
             item_name = cimmeria_names::book().item(item_id),
             ammo_type,
@@ -182,17 +184,18 @@ pub async fn handle_gm_give_ammo(
     let out = match grant_rounds(pool, player_id, ammo_type, rounds).await {
         Ok(out) => out,
         Err(e) => {
+            let player_label = known_names::player_name(gm_player_id);
             tracing::error!(
                 target: "ammo",
                 event = events::GM_GIVE_AMMO,
                 decision_outcome = "refused",
                 reason = reasons::DB_ERROR,
                 entity_id = gm_entity_id,
-                entity_name = known_names::player_name(gm_player_id),
+                entity_name = player_label,
                 account_id = gm_account_id,
                 account_name = known_names::account_name(gm_account_id),
                 player_id = gm_player_id,
-                player_name = known_names::player_name(gm_player_id),
+                player_name = player_label,
                 subject_player_id = player_id,
                 subject_player_name = known_names::player_name(player_id),
                 item_id,
@@ -217,20 +220,22 @@ pub async fn handle_gm_give_ammo(
         refuse(reason, line).await;
         return;
     }
+    let player_label = known_names::player_name(gm_player_id);
+    let subject_label = known_names::player_name(player_id);
     tracing::info!(
         target: "ammo",
         event = events::GM_GIVE_AMMO,
         decision_outcome = "granted",
         entity_id = gm_entity_id,
-        entity_name = known_names::player_name(gm_player_id),
+        entity_name = player_label,
         account_id = gm_account_id,
         account_name = known_names::account_name(gm_account_id),
         player_id = gm_player_id,
-        player_name = known_names::player_name(gm_player_id),
+        player_name = player_label,
         subject_entity_id = entity_id,
-        subject_entity_name = known_names::player_name(player_id),
+        subject_entity_name = subject_label,
         subject_player_id = player_id,
-        subject_player_name = known_names::player_name(player_id),
+        subject_player_name = subject_label,
         item_id,
         item_name = cimmeria_names::book().item(item_id),
         ammo_type,

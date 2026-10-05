@@ -278,11 +278,12 @@ pub async fn handle_remove_inventory_item_by_type(
     )
     .await;
 
+    let player_label = known_names::player_name(player_id);
     tracing::info!(
         entity_id,
-        entity_name = known_names::player_name(player_id),
+        entity_name = player_label,
         player_id,
-        player_name = known_names::player_name(player_id),
+        player_name = player_label,
         item_type_id = type_id,
         item_name = cimmeria_names::book().item(type_id),
         count,

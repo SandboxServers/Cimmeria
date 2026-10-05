@@ -145,15 +145,16 @@ pub(super) async fn after_org_commit(
 ) {
     let (sb, sa, tb, ta) = a.stacks();
     let p = &a.plan;
+    let player_label = known_names::player_name(p.player_id);
     tracing::debug!(
         target: "bank",
         event = "org_move_accepted",
         account_id = actor.account_id,
         account_name = known_names::account_name(actor.account_id),
         player_id = p.player_id,
-        player_name = known_names::player_name(p.player_id),
+        player_name = player_label,
         entity_id = a.entity_id,
-        entity_name = known_names::player_name(p.player_id),
+        entity_name = player_label,
         org_id = p.org_id,
         org_name = known_names::org_name(p.org_id),
         org_type = actor.access.org_type().name(),
@@ -207,15 +208,16 @@ pub(super) async fn after_org_commit(
     )
     .await
     {
+        let player_label = known_names::player_name(p.player_id);
         tracing::warn!(
             target: "bank",
             event = "org_move_resync_failed",
             account_id = actor.account_id,
             account_name = known_names::account_name(actor.account_id),
             player_id = p.player_id,
-            player_name = known_names::player_name(p.player_id),
+            player_name = player_label,
             entity_id = a.entity_id,
-            entity_name = known_names::player_name(p.player_id),
+            entity_name = player_label,
             org_id = p.org_id,
             org_name = known_names::org_name(p.org_id),
             item_id = p.item_id,
@@ -291,22 +293,25 @@ async fn fan_out(a: &Accepted, actor: &OrgVaultActor, rows: Vec<i32>, ctx: &Move
             .await;
         }
         Ok(None) => {}
-        Err(e) => tracing::warn!(
-            target: "bank",
-            event = "org_move_resync_failed",
-            account_id = actor.account_id,
-            account_name = known_names::account_name(actor.account_id),
-            player_id = p.player_id,
-            player_name = known_names::player_name(p.player_id),
-            entity_id = a.entity_id,
-            entity_name = known_names::player_name(p.player_id),
-            org_id = p.org_id,
-            org_name = known_names::org_name(p.org_id),
-            item_id = p.item_id,
-            item_name = cimmeria_names::book().item(p.source.type_id),
-            reason = "fanout_read_failed",
-            "org_move_resync_failed: the other members were not sent the vault rows: {e}"
-        ),
+        Err(e) => {
+            let player_label = known_names::player_name(p.player_id);
+            tracing::warn!(
+                target: "bank",
+                event = "org_move_resync_failed",
+                account_id = actor.account_id,
+                account_name = known_names::account_name(actor.account_id),
+                player_id = p.player_id,
+                player_name = player_label,
+                entity_id = a.entity_id,
+                entity_name = player_label,
+                org_id = p.org_id,
+                org_name = known_names::org_name(p.org_id),
+                item_id = p.item_id,
+                item_name = cimmeria_names::book().item(p.source.type_id),
+                reason = "fanout_read_failed",
+                "org_move_resync_failed: the other members were not sent the vault rows: {e}"
+            );
+        }
     }
     let left = a.left_vault();
     let mut removed = 0;
@@ -326,15 +331,16 @@ async fn fan_out(a: &Accepted, actor: &OrgVaultActor, rows: Vec<i32>, ctx: &Move
         )
         .await;
     }
+    let player_label = known_names::player_name(p.player_id);
     tracing::debug!(
         target: "bank",
         event = "org_vault_fanout",
         account_id = actor.account_id,
         account_name = known_names::account_name(actor.account_id),
         player_id = p.player_id,
-        player_name = known_names::player_name(p.player_id),
+        player_name = player_label,
         entity_id = a.entity_id,
-        entity_name = known_names::player_name(p.player_id),
+        entity_name = player_label,
         org_id = p.org_id,
         org_name = known_names::org_name(p.org_id),
         item_id = p.item_id,

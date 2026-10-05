@@ -38,9 +38,18 @@ struct Who {
     name: &'static str,
 }
 
-fn name_the_world(who: &Who) {
+/// The decoy every instance id is named in the test book: a line that
+/// looked an instance id up as an item type would log it instead of
+/// `ITEM_NAME`.
+const DECOY: &str = "Decoy: an instance id looked up as a type";
+
+/// Name the item type, and each of `instances` with [`DECOY`].
+fn name_the_world(who: &Who, instances: &[i32]) {
     let mut book = NameBook::empty();
     book.insert(Table::Items, i64::from(SLAPPACK), ITEM_NAME);
+    for &instance in instances {
+        book.insert(Table::Items, i64::from(instance), DECOY);
+    }
     book.insert(Table::Containers, 1, "MAIN");
     cimmeria_names::global().store(book);
     known_names::remember_player(who.player_id, who.name);
@@ -142,7 +151,7 @@ async fn live_db_grant_container_chosen_names_the_player_and_the_bag() {
         name: "Cameron Mitchell",
     };
     setup(&pool, &who).await;
-    name_the_world(&who);
+    name_the_world(&who, &[]);
     let s = session(who.entity_id, 40970);
     let capture = LogCapture::install();
 
@@ -183,8 +192,8 @@ async fn live_db_item_use_names_the_player_and_the_item() {
         name: "Jonas Quinn",
     };
     setup(&pool, &who).await;
-    name_the_world(&who);
     let item = insert(&pool, who.player_id, 0).await;
+    name_the_world(&who, &[item]);
     let s = session(who.entity_id, 40971);
     let capture = LogCapture::install();
 
@@ -226,8 +235,8 @@ async fn live_db_inventory_move_names_the_player_and_the_item() {
         name: "Hank Landry",
     };
     setup(&pool, &who).await;
-    name_the_world(&who);
     let item = insert(&pool, who.player_id, 0).await;
+    name_the_world(&who, &[item]);
     let s = session(who.entity_id, 40972);
     let capture = LogCapture::install();
 

@@ -95,13 +95,14 @@ pub(super) async fn refuse_storage_grant(
         {
             Ok(id) => id,
             Err(e) => {
+                let player_label = known_names::player_name(player_id);
                 tracing::warn!(
                     target: "bank",
                     event = "grant_rejected",
                     player_id,
-                    player_name = known_names::player_name(player_id),
+                    player_name = player_label,
                     entity_id,
-                    entity_name = known_names::player_name(player_id),
+                    entity_name = player_label,
                     item_type_id = type_id,
                     item_name = cimmeria_names::book().item(type_id),
                     target_container_id = container_id,
@@ -112,15 +113,16 @@ pub(super) async fn refuse_storage_grant(
                 None
             }
         };
+    let player_label = known_names::player_name(player_id);
     tracing::warn!(
         target: "bank",
         event = "grant_rejected",
         account_id,
         account_name = known_names::account_name(account_id),
         player_id,
-        player_name = known_names::player_name(player_id),
+        player_name = player_label,
         entity_id,
-        entity_name = known_names::player_name(player_id),
+        entity_name = player_label,
         item_type_id = type_id,
         item_name = cimmeria_names::book().item(type_id),
         quantity,

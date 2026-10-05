@@ -25,12 +25,23 @@
 //!
 //! Names are interned ([`crate::name_intern`]), so a map entry costs one
 //! pointer. Each map holds at most [`MAX_KNOWN`] IDs; past that a new ID is
-//! not remembered and its lines leave the name out. A poisoned lock resolves
-//! to `None`: an observability helper never panics the path it describes.
+//! not remembered, its lines leave the name out, and one `known_names.full`
+//! WARN names the map. A name the interner refuses (blank, over 64 bytes, or
+//! the interner itself full) removes the ID's entry, so a rename never keeps
+//! the old name. A poisoned lock resolves to `None`: an observability helper
+//! never panics the path it describes.
+//!
+//! # Coverage
+//!
+//! Only what the base has read since it started: players who have played a
+//! character, accounts that have logged in, and organizations whose row was
+//! read. An offline player named in a vault, mail or member line resolves to
+//! `None` and the line leaves the name off.
 //!
 //! See `docs/architecture/instrumentation-discipline.md` §Rule 6.
 
 use std::collections::HashMap;
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{LazyLock, RwLock};
 
 use crate::name_intern::intern;
@@ -38,31 +49,68 @@ use crate::name_intern::intern;
 /// Most IDs each map remembers.
 pub const MAX_KNOWN: usize = 65_536;
 
-static PLAYERS: LazyLock<RwLock<HashMap<i64, &'static str>>> =
-    LazyLock::new(|| RwLock::new(HashMap::new()));
-static ACCOUNTS: LazyLock<RwLock<HashMap<i64, &'static str>>> =
-    LazyLock::new(|| RwLock::new(HashMap::new()));
-static ORGS: LazyLock<RwLock<HashMap<i64, &'static str>>> =
-    LazyLock::new(|| RwLock::new(HashMap::new()));
+/// One ID -> name map, with the one-time warning for when it fills.
+struct Registry {
+    kind: &'static str,
+    map: LazyLock<RwLock<HashMap<i64, &'static str>>>,
+    full_warned: AtomicBool,
+}
 
-fn remember(map: &RwLock<HashMap<i64, &'static str>>, id: i64, name: &str) {
-    let Some(name) = intern(name) else {
-        return;
-    };
-    if map.read().ok().and_then(|m| m.get(&id).copied()) == Some(name) {
-        return;
+impl Registry {
+    const fn new(kind: &'static str) -> Self {
+        Self {
+            kind,
+            map: LazyLock::new(|| RwLock::new(HashMap::new())),
+            full_warned: AtomicBool::new(false),
+        }
     }
-    let Ok(mut m) = map.write() else {
-        return;
-    };
-    if m.len() < MAX_KNOWN || m.contains_key(&id) {
-        m.insert(id, name);
+
+    /// Store `name` for `id`. A name that can't be interned (blank, too
+    /// long, or the interner is full) removes the entry instead, so a
+    /// rename never leaves the old name behind: an unnamed line is right,
+    /// a wrongly named one is not.
+    fn remember(&self, id: i64, name: &str) {
+        let Some(name) = intern(name) else {
+            if let Ok(mut m) = self.map.write() {
+                m.remove(&id);
+            }
+            return;
+        };
+        if self.lookup(id) == Some(name) {
+            return;
+        }
+        let full = {
+            let Ok(mut m) = self.map.write() else {
+                return;
+            };
+            if m.len() < MAX_KNOWN || m.contains_key(&id) {
+                m.insert(id, name);
+                false
+            } else {
+                true
+            }
+        };
+        // Warned with the lock released, as the interner does.
+        if full && !self.full_warned.swap(true, Ordering::Relaxed) {
+            tracing::warn!(
+                target: "names",
+                event = "known_names.full",
+                reason = "cap_reached",
+                kind = self.kind,
+                cap = MAX_KNOWN,
+                "known_names map is full: new IDs are left unnamed on log lines"
+            );
+        }
+    }
+
+    fn lookup(&self, id: i64) -> Option<&'static str> {
+        self.map.read().ok()?.get(&id).copied()
     }
 }
 
-fn lookup(map: &RwLock<HashMap<i64, &'static str>>, id: i64) -> Option<&'static str> {
-    map.read().ok()?.get(&id).copied()
-}
+static PLAYERS: Registry = Registry::new("player");
+static ACCOUNTS: Registry = Registry::new("account");
+static ORGS: Registry = Registry::new("org");
 
 /// An ID as the log sites hold it: the database's `i32`, the session's
 /// `u32`, or either in an `Option` (an identity half not known yet).
@@ -87,43 +135,46 @@ macro_rules! logged_id {
 }
 logged_id!(i32, u32, i64);
 
-/// Remember the character name of `player_id`. A blank name is ignored.
+/// Remember the character name of `player_id`. A blank or uninternable
+/// name forgets the old one.
 pub fn remember_player(player_id: impl LoggedId, name: &str) {
     if let Some(id) = player_id.key() {
-        remember(&PLAYERS, id, name);
+        PLAYERS.remember(id, name);
     }
 }
 
-/// Remember the login name of `account_id`. A blank name is ignored.
+/// Remember the login name of `account_id`. A blank or uninternable name
+/// forgets the old one.
 pub fn remember_account(account_id: impl LoggedId, name: &str) {
     if let Some(id) = account_id.key() {
-        remember(&ACCOUNTS, id, name);
+        ACCOUNTS.remember(id, name);
     }
 }
 
-/// Remember the display name of a Team or Command. A blank name is ignored.
+/// Remember the display name of a Team or Command. A blank or uninternable
+/// name forgets the old one.
 pub fn remember_org(org_id: impl LoggedId, name: &str) {
     if let Some(id) = org_id.key() {
-        remember(&ORGS, id, name);
+        ORGS.remember(id, name);
     }
 }
 
 /// The character name of `player_id`, when a session has played it since
 /// the server started.
 pub fn player_name(player_id: impl LoggedId) -> Option<&'static str> {
-    lookup(&PLAYERS, player_id.key()?)
+    PLAYERS.lookup(player_id.key()?)
 }
 
 /// The login name of `account_id`, when it has logged in since the server
 /// started.
 pub fn account_name(account_id: impl LoggedId) -> Option<&'static str> {
-    lookup(&ACCOUNTS, account_id.key()?)
+    ACCOUNTS.lookup(account_id.key()?)
 }
 
 /// The display name of `org_id`, when the base has read its row since the
 /// server started (a member's login, or any locked organization change).
 pub fn org_name(org_id: impl LoggedId) -> Option<&'static str> {
-    lookup(&ORGS, org_id.key()?)
+    ORGS.lookup(org_id.key()?)
 }
 
 #[cfg(test)]
@@ -146,12 +197,24 @@ mod tests {
     }
 
     #[test]
-    fn a_rename_overwrites_and_blank_is_ignored() {
+    fn a_rename_overwrites_the_old_name() {
         let pid = PID + 1;
         remember_player(pid, "Old Name");
         remember_player(pid, "New Name");
-        remember_player(pid, "  ");
         assert_eq!(player_name(pid), Some("New Name"));
+    }
+
+    /// A new name that can't be interned (here, too long) drops the old
+    /// one: a renamed row must not keep logging under its old name.
+    #[test]
+    fn an_uninternable_rename_removes_the_old_name() {
+        let pid = PID + 4;
+        remember_player(pid, "Old Name");
+        remember_player(pid, &"x".repeat(crate::name_intern::MAX_NAME_BYTES + 1));
+        assert_eq!(player_name(pid), None);
+        remember_player(pid, "Back Again");
+        remember_player(pid, "  ");
+        assert_eq!(player_name(pid), None, "a blank name unnames it too");
     }
 
     #[test]

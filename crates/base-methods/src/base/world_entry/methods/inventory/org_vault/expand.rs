@@ -335,6 +335,7 @@ async fn expand(
 }
 
 async fn quoted(actor: &Actor<'_>, req: &OrgVaultExpandRequest, s: Snapshot) {
+    let player_label = known_names::player_name(req.player_id);
     tracing::debug!(
         target: "bank",
         event = "expand_quote",
@@ -342,9 +343,9 @@ async fn quoted(actor: &Actor<'_>, req: &OrgVaultExpandRequest, s: Snapshot) {
         account_id = s.account_id,
         account_name = known_names::account_name(s.account_id),
         player_id = req.player_id,
-        player_name = known_names::player_name(req.player_id),
+        player_name = player_label,
         entity_id = req.entity_id,
-        entity_name = known_names::player_name(req.player_id),
+        entity_name = player_label,
         scope = req.scope.as_str(),
         org_id = s.org_id,
         org_name = known_names::org_name(s.org_id),
@@ -376,15 +377,16 @@ async fn bought(actor: &Actor<'_>, req: &OrgVaultExpandRequest, b: Bought) {
         None,
     )
     .await;
+    let player_label = known_names::player_name(req.player_id);
     tracing::info!(
         target: "bank",
         event = "expand",
         account_id = b.account_id,
         account_name = known_names::account_name(b.account_id),
         player_id = req.player_id,
-        player_name = known_names::player_name(req.player_id),
+        player_name = player_label,
         entity_id = req.entity_id,
-        entity_name = known_names::player_name(req.player_id),
+        entity_name = player_label,
         scope = req.scope.as_str(),
         org_id = b.org_id,
         org_name = known_names::org_name(b.org_id),
@@ -399,15 +401,16 @@ async fn bought(actor: &Actor<'_>, req: &OrgVaultExpandRequest, b: Bought) {
         trigger = "gm_console",
         "expand: the Team vault grew one step, paid from the treasury"
     );
+    let player_label = known_names::player_name(req.player_id);
     tracing::info!(
         target: "bank",
         event = "org_cash_transfer",
         account_id = b.account_id,
         account_name = known_names::account_name(b.account_id),
         player_id = req.player_id,
-        player_name = known_names::player_name(req.player_id),
+        player_name = player_label,
         entity_id = req.entity_id,
-        entity_name = known_names::player_name(req.player_id),
+        entity_name = player_label,
         org_id = b.org_id,
         org_name = known_names::org_name(b.org_id),
         org_type = OrgType::Team.name(),
@@ -443,15 +446,16 @@ async fn reject(
     let account_id = s
         .account_id
         .or(req.account_id.and_then(|a| i32::try_from(a).ok()));
+    let player_label = known_names::player_name(req.player_id);
     tracing::warn!(
         target: "bank",
         event = "expand_rejected",
         account_id,
         account_name = known_names::account_name(account_id),
         player_id = req.player_id,
-        player_name = known_names::player_name(req.player_id),
+        player_name = player_label,
         entity_id = req.entity_id,
-        entity_name = known_names::player_name(req.player_id),
+        entity_name = player_label,
         scope = req.scope.as_str(),
         org_id = s.org_id,
         org_name = known_names::org_name(s.org_id),

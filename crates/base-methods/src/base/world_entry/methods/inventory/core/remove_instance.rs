@@ -230,7 +230,7 @@ pub(super) async fn remove_instance(
                 player_id,
                 player_name = known_names::player_name(player_id),
                 item_id,
-                item_name = cimmeria_names::book().item(source.type_id),
+                item_name = cimmeria_names::owned::item(source.type_id),
                 rows_affected = rows,
                 expected = 1,
                 "RemoveInventoryItem: no rows changed -- item missing or stack underflow"
@@ -243,7 +243,7 @@ pub(super) async fn remove_instance(
                 player_id,
                 player_name = known_names::player_name(player_id),
                 item_id,
-                item_name = cimmeria_names::book().item(source.type_id),
+                item_name = cimmeria_names::owned::item(source.type_id),
                 "RemoveInventoryItem: update failed: {e}"
             );
             return false;
@@ -268,7 +268,7 @@ pub(super) async fn remove_instance(
                     player_id,
                     player_name = known_names::player_name(player_id),
                     item_id,
-                    item_name = cimmeria_names::book().item(source.type_id),
+                    item_name = cimmeria_names::owned::item(source.type_id),
                     "RemoveInventoryItem: outbox enqueue failed, aborting: {e}"
                 );
                 return false;
@@ -283,7 +283,7 @@ pub(super) async fn remove_instance(
             player_id,
             player_name = known_names::player_name(player_id),
             item_id,
-            item_name = cimmeria_names::book().item(source.type_id),
+            item_name = cimmeria_names::owned::item(source.type_id),
             "RemoveInventoryItem: commit failed: {e}"
         );
         return false;
@@ -303,13 +303,14 @@ pub(super) async fn remove_instance(
     )
     .await;
 
+    let player_label = known_names::player_name(player_id);
     tracing::debug!(
         entity_id,
-        entity_name = known_names::player_name(player_id),
+        entity_name = player_label,
         player_id,
-        player_name = known_names::player_name(player_id),
+        player_name = player_label,
         item_id,
-        item_name = cimmeria_names::book().item(source.type_id),
+        item_name = cimmeria_names::owned::item(source.type_id),
         quantity,
         total_items,
         "Inventory remove persisted"

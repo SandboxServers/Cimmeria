@@ -33,6 +33,8 @@ mod one_item_select_tests;
 mod remove_by_type;
 mod remove_instance;
 #[cfg(test)]
+mod remove_type_read_tests;
+#[cfg(test)]
 mod resync_tests;
 mod use_crafting_item;
 #[cfg(test)]
@@ -126,7 +128,10 @@ pub(super) struct InventoryInstanceRow {
     pub stack_size: i32,
     pub container_id: i32,
     /// The design id, read only so the log lines can name the item (Rule 6).
-    pub type_id: i32,
+    /// `Option` so a log-only read can never fail a removal: the column is
+    /// declared nullable on `sgw_inventory` (the inherited `NOT NULL` on
+    /// `sgw_inventory_base` rules NULL out today).
+    pub type_id: Option<i32>,
 }
 
 /// Lighter row for [`handle_remove_inventory_item_by_type`], which needs
@@ -300,11 +305,12 @@ pub async fn send_full_inventory_resync(
         entity_to_addr,
     )
     .await;
+    let player_label = known_names::player_name(player_id);
     tracing::info!(
         entity_id,
-        entity_name = known_names::player_name(player_id),
+        entity_name = player_label,
         player_id,
-        player_name = known_names::player_name(player_id),
+        player_name = player_label,
         item_count = total,
         "Sent full inventory resync (onBagInfo + onActiveSlotUpdate + onCashChanged + onUpdateItem)"
     );
@@ -328,11 +334,12 @@ pub async fn send_full_inventory_update(
     {
         Ok(rows) => rows,
         Err(e) => {
+            let player_label = known_names::player_name(player_id);
             tracing::error!(
                     entity_id,
-                    entity_name = known_names::player_name(player_id),
+                    entity_name = player_label,
                     player_id,
-                    player_name = known_names::player_name(player_id),
+                    player_name = player_label,
                     "send_full_inventory_update: query failed, refusing to broadcast empty inventory: {e}"
                 );
             return 0;
@@ -401,11 +408,12 @@ where
     {
         Ok(row) => row,
         Err(e) => {
+            let player_label = known_names::player_name(player_id);
             tracing::error!(
                 entity_id,
-                entity_name = known_names::player_name(player_id),
+                entity_name = player_label,
                 player_id,
-                player_name = known_names::player_name(player_id),
+                player_name = player_label,
                 item_id, // nt:id-only instance id, type unread yet
                 "send_inventory_item_update_via: query failed: {e}"
             );

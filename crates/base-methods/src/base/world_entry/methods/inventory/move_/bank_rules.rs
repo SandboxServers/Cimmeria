@@ -182,15 +182,16 @@ pub(super) struct AcceptedVaultMove {
 
 /// `move_accepted` (DEBUG, target `bank`), logged after the commit.
 pub(super) fn log_move_accepted(m: &AcceptedVaultMove, vault: &VaultAccess) {
+    let player_label = known_names::player_name(m.player_id);
     tracing::debug!(
         target: "bank",
         event = "move_accepted",
         account_id = m.owner.account_id,
         account_name = known_names::account_name(m.owner.account_id),
         player_id = m.player_id,
-        player_name = known_names::player_name(m.player_id),
+        player_name = player_label,
         entity_id = m.entity_id,
-        entity_name = known_names::player_name(m.player_id),
+        entity_name = player_label,
         item_id = m.item_id,
         item_type_id = m.type_id,
         item_name = cimmeria_names::book().item(m.type_id),

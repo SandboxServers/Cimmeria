@@ -159,12 +159,13 @@ async fn open(
     io: &OrgVaultIo<'_>,
 ) -> Result<(i32, OrgVaultActor, usize), (OpenRefusal, Option<i32>, Option<i32>)> {
     let failed = |what: &str, e: sqlx::Error, org_id: Option<i32>| {
+        let player_label = known_names::player_name(player_id);
         tracing::error!(
             target: "bank",
             player_id,
-            player_name = known_names::player_name(player_id),
+            player_name = player_label,
             entity_id = req.entity_id,
-            entity_name = known_names::player_name(req.player_id),
+            entity_name = player_label,
             org_id,
             org_name = known_names::org_name(org_id),
             "OrgVaultOpen: {what} failed: {e}"
@@ -249,15 +250,16 @@ async fn granted(
     io: &OrgVaultIo<'_>,
 ) {
     let perms = actor.access.permissions();
+    let player_label = known_names::player_name(player_id);
     tracing::debug!(
         target: "bank",
         event = "org_vault_opened",
         account_id = actor.account_id,
         account_name = known_names::account_name(actor.account_id),
         player_id,
-        player_name = known_names::player_name(player_id),
+        player_name = player_label,
         entity_id = req.entity_id,
-        entity_name = known_names::player_name(req.player_id),
+        entity_name = player_label,
         org_id,
         org_name = known_names::org_name(org_id),
         org_type = actor.access.org_type().name(),
@@ -286,15 +288,16 @@ async fn granted(
         banker_id: req.banker_id,
     });
     if let Err(e) = cell_tx.send(grant).await {
+        let player_label = known_names::player_name(player_id);
         tracing::warn!(
             target: "bank",
             event = "org_vault_open_rejected",
             account_id = actor.account_id,
             account_name = known_names::account_name(actor.account_id),
             player_id,
-            player_name = known_names::player_name(player_id),
+            player_name = player_label,
             entity_id = req.entity_id,
-            entity_name = known_names::player_name(req.player_id),
+            entity_name = player_label,
             org_id,
             org_name = known_names::org_name(org_id),
             reason = "cell_channel_closed",
@@ -312,15 +315,16 @@ async fn refuse(
     io: &OrgVaultIo<'_>,
 ) {
     let account_id = db_account_id.or(req.account_id.and_then(|a| i32::try_from(a).ok()));
+    let player_label = known_names::player_name(req.player_id);
     tracing::warn!(
         target: "bank",
         event = "org_vault_open_rejected",
         account_id,
         account_name = known_names::account_name(account_id),
         player_id = req.player_id,
-        player_name = known_names::player_name(req.player_id),
+        player_name = player_label,
         entity_id = req.entity_id,
-        entity_name = known_names::player_name(req.player_id),
+        entity_name = player_label,
         org_id,
         org_name = known_names::org_name(org_id),
         org_type = req.scope.org_type().map(|t| t.name()),
@@ -338,15 +342,16 @@ async fn refuse(
         .ok()
         .and_then(|m| m.get(&req.entity_id).copied());
     let Some(addr) = addr else {
+        let player_label = known_names::player_name(req.player_id);
         tracing::warn!(
             target: "bank",
             event = "bank_feedback_send_failed",
             account_id,
             account_name = known_names::account_name(account_id),
             player_id = req.player_id,
-            player_name = known_names::player_name(req.player_id),
+            player_name = player_label,
             entity_id = req.entity_id,
-            entity_name = known_names::player_name(req.player_id),
+            entity_name = player_label,
             reason = "no_client_address",
             "bank_feedback_send_failed: no client address for the org vault refusal line"
         );

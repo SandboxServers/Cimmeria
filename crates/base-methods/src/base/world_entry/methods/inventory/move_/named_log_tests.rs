@@ -19,10 +19,18 @@ const ACCOUNT: i32 = 0x7000_D200;
 const PLAYER: i32 = 0x7000_D201;
 const ENTITY: u32 = 0x7000_D2E0;
 const SLAPPACK: i32 = 2893;
+const INSTANCE: i32 = 0x7000_D2A0;
 
 fn name_the_world() {
     let mut book = NameBook::empty();
     book.insert(Table::Items, i64::from(SLAPPACK), "Slappack TC1");
+    // The moved instance's id names a decoy: a line that looked the
+    // instance id up as an item type would log it instead.
+    book.insert(
+        Table::Items,
+        i64::from(INSTANCE),
+        "Decoy: instance id as a type",
+    );
     book.insert(Table::Containers, 1, "MAIN");
     book.insert(Table::Containers, 17, "BANK");
     cimmeria_names::global().store(book);
@@ -51,7 +59,7 @@ fn move_accepted_names_the_player_the_item_and_both_containers() {
             },
             entity_id: ENTITY,
             player_id: PLAYER,
-            item_id: 0x7000_D2A0,
+            item_id: INSTANCE,
             type_id: SLAPPACK,
             quantity: 1,
             source_container_id: 1,

@@ -262,11 +262,12 @@ pub async fn handle_use_inventory_item(
                 return;
             }
         };
+        let player_label = known_names::player_name(player_id);
         tracing::info!(
             entity_id,
-            entity_name = known_names::player_name(player_id),
+            entity_name = player_label,
             player_id,
-            player_name = known_names::player_name(player_id),
+            player_name = player_label,
             item_id,
             item_type_id = type_id,
             item_name = cimmeria_names::book().item(type_id),
@@ -310,13 +311,14 @@ pub async fn handle_use_inventory_item(
         )
         .await;
         if !handled {
+            let player_label = known_names::player_name(player_id);
             tracing::warn!(
                 target: "base.plugin",
                 reason = "no_plugin",
                 entity_id,
-                entity_name = known_names::player_name(player_id),
+                entity_name = player_label,
                 player_id,
-                player_name = known_names::player_name(player_id),
+                player_name = player_label,
                 item_id,
                 item_type_id = type_id,
                 item_name = cimmeria_names::book().item(type_id),
@@ -327,11 +329,12 @@ pub async fn handle_use_inventory_item(
         return;
     }
 
+    let player_label = known_names::player_name(player_id);
     tracing::info!(
         entity_id,
-        entity_name = known_names::player_name(player_id),
+        entity_name = player_label,
         player_id,
-        player_name = known_names::player_name(player_id),
+        player_name = player_label,
         item_id,
         item_type_id = type_id,
         item_name = cimmeria_names::book().item(type_id),
@@ -364,11 +367,12 @@ pub async fn handle_use_inventory_item(
             // outbox row would lose its retry safety net on next failure).
             // The player can re-use the item; ownership lookup above is
             // idempotent.
+            let player_label = known_names::player_name(player_id);
             tracing::error!(
                 entity_id,
-                entity_name = known_names::player_name(player_id),
+                entity_name = player_label,
                 player_id,
-                player_name = known_names::player_name(player_id),
+                player_name = player_label,
                 item_id,
                 item_type_id = type_id,
                 item_name = cimmeria_names::book().item(type_id),

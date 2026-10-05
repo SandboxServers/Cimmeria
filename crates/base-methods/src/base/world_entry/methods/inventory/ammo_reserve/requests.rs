@@ -98,14 +98,15 @@ async fn answer(io: &ReserveIo<'_>, msg: AmmoReserveAnswer) {
         None => false,
     };
     if !sent {
+        let player_label = known_names::player_name(player_id);
         tracing::warn!(
             target: "ammo",
             event = "reserve_answer_send_failed",
             reason = "cell_channel_closed",
             entity_id,
-            entity_name = known_names::player_name(player_id),
+            entity_name = player_label,
             player_id,
-            player_name = known_names::player_name(player_id),
+            player_name = player_label,
             kind,
             "ammo reserve: the answer could not reach the cell; the database is \
              already settled, the clip display catches up on the next reload"
@@ -192,6 +193,7 @@ async fn handle_reload_draw(
             {
                 Ok(o) => o,
                 Err(e) => {
+                    let player_label = known_names::player_name(player_id);
                     tracing::error!(
                         target: "ammo",
                         event = events::RELOAD_REFUSED,
@@ -199,9 +201,9 @@ async fn handle_reload_draw(
                         account_id,
                         account_name = known_names::account_name(account_id),
                         player_id,
-                        player_name = known_names::player_name(player_id),
+                        player_name = player_label,
                         entity_id,
-                        entity_name = known_names::player_name(player_id),
+                        entity_name = player_label,
                         ammo_type,
                         slot_id, // nt:id-only slot index, unnamed
                         instance_id, // nt:id-only weapon instance in slot_id
@@ -220,15 +222,16 @@ async fn handle_reload_draw(
                 push_stack_changes(io, pool, entity_id, player_id, &c.draw.changes).await;
             }
             if c.requested > 0 {
+                let player_label = known_names::player_name(player_id);
                 tracing::debug!(
                     target: "ammo",
                     event = events::RELOAD_DRAW,
                     account_id,
                     account_name = known_names::account_name(account_id),
                     player_id,
-                    player_name = known_names::player_name(player_id),
+                    player_name = player_label,
                     entity_id,
-                    entity_name = known_names::player_name(player_id),
+                    entity_name = player_label,
                     item_id = c.draw.item_id,
                     item_name = cimmeria_names::owned::item(c.draw.item_id),
                     ammo_type,
@@ -247,6 +250,7 @@ async fn handle_reload_draw(
         }
         Err(refusal) => {
             if refusal != ReserveRefusal::DbError {
+                let player_label = known_names::player_name(player_id);
                 tracing::warn!(
                     target: "ammo",
                     event = events::RELOAD_REFUSED,
@@ -254,9 +258,9 @@ async fn handle_reload_draw(
                     account_id,
                     account_name = known_names::account_name(account_id),
                     player_id,
-                    player_name = known_names::player_name(player_id),
+                    player_name = player_label,
                     entity_id,
-                    entity_name = known_names::player_name(player_id),
+                    entity_name = player_label,
                     ammo_type,
                     slot_id, // nt:id-only slot index, unnamed
                     instance_id, // nt:id-only weapon instance in slot_id
@@ -315,6 +319,7 @@ async fn handle_switch_return(
         {
             Ok(o) => o,
             Err(e) => {
+                let player_label = known_names::player_name(player_id);
                 tracing::error!(
                     target: "ammo",
                     event = events::AMMO_SWITCH_RETURN,
@@ -322,9 +327,9 @@ async fn handle_switch_return(
                     account_id,
                     account_name = known_names::account_name(account_id),
                     player_id,
-                    player_name = known_names::player_name(player_id),
+                    player_name = player_label,
                     entity_id,
-                    entity_name = known_names::player_name(player_id),
+                    entity_name = player_label,
                     ammo_type = from_ammo_type,
                     to_ammo_type, rounds,
                     error = %e,
@@ -340,15 +345,16 @@ async fn handle_switch_return(
             if let Some(pool) = io.db_pool {
                 push_stack_changes(io, pool, entity_id, player_id, &c.ret.changes).await;
             }
+            let player_label = known_names::player_name(player_id);
             tracing::debug!(
                 target: "ammo",
                 event = events::AMMO_SWITCH_RETURN,
                 account_id,
                 account_name = known_names::account_name(account_id),
                 player_id,
-                player_name = known_names::player_name(player_id),
+                player_name = player_label,
                 entity_id,
-                entity_name = known_names::player_name(player_id),
+                entity_name = player_label,
                 item_id = c.ret.item_id,
                 item_name = cimmeria_names::owned::item(c.ret.item_id),
                 ammo_type = from_ammo_type,
@@ -367,6 +373,7 @@ async fn handle_switch_return(
         }
         Err(refusal) => {
             if refusal != ReserveRefusal::DbError {
+                let player_label = known_names::player_name(player_id);
                 tracing::warn!(
                     target: "ammo",
                     event = events::AMMO_SWITCH_RETURN,
@@ -374,9 +381,9 @@ async fn handle_switch_return(
                     account_id,
                     account_name = known_names::account_name(account_id),
                     player_id,
-                    player_name = known_names::player_name(player_id),
+                    player_name = player_label,
                     entity_id,
-                    entity_name = known_names::player_name(player_id),
+                    entity_name = player_label,
                     ammo_type = from_ammo_type,
                     to_ammo_type,
                     slot_id, // nt:id-only slot index, unnamed

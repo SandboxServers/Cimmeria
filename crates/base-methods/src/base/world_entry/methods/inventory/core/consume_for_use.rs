@@ -86,16 +86,17 @@ pub async fn handle_consume_item_for_use(
         // `remove_instance` logged the cause (row gone, another type, an
         // inaccessible container, a database error). This row ties it to
         // the use: nothing was consumed, so nothing will be applied.
+        let player_label = known_names::player_name(player_id);
         tracing::info!(
             event = "consumable_consume_refused",
             decision_outcome = "not_consumed",
             reason = "not_removed",
             entity_id,
-            entity_name = known_names::player_name(player_id),
+            entity_name = player_label,
             account_id,
             account_name = known_names::account_name(account_id),
             player_id,
-            player_name = known_names::player_name(player_id),
+            player_name = player_label,
             instance_id, // nt:id-only instance row of item_type_id
             item_type_id = type_id,
             item_name = cimmeria_names::book().item(type_id),
@@ -114,30 +115,32 @@ pub async fn handle_consume_item_for_use(
         None => false,
     };
     if sent {
+        let player_label = known_names::player_name(player_id);
         tracing::debug!(
             event = "consumable_consumed",
             decision_outcome = "consumed",
             entity_id,
-            entity_name = known_names::player_name(player_id),
+            entity_name = player_label,
             account_id,
             account_name = known_names::account_name(account_id),
             player_id,
-            player_name = known_names::player_name(player_id),
+            player_name = player_label,
             instance_id, // nt:id-only instance row of item_type_id
             item_type_id = type_id,
             item_name = cimmeria_names::book().item(type_id),
             "item use: one unit consumed; the cell applies the effect"
         );
     } else {
+        let player_label = known_names::player_name(player_id);
         tracing::error!(
             event = "consumable_apply_send_failed",
             reason = "cell_channel_closed",
             entity_id,
-            entity_name = known_names::player_name(player_id),
+            entity_name = player_label,
             account_id,
             account_name = known_names::account_name(account_id),
             player_id,
-            player_name = known_names::player_name(player_id),
+            player_name = player_label,
             instance_id, // nt:id-only instance row of item_type_id
             item_type_id = type_id,
             item_name = cimmeria_names::book().item(type_id),
