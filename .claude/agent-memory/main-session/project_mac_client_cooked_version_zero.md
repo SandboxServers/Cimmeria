@@ -25,7 +25,7 @@ Found 2026-10-04 on a Mac mini (M4, macOS 27.0.1, pinned Wine runtime r17, stock
 
 **It is wider than the version.** The `strstream` constructor (`0x00478970`) has 22 call sites, and every cached element load goes archive → `strstream` → read. A fix that only repairs the version would stop the server pushes and leave the client unable to read its cache. Fix the stream.
 
-**What `client.cooked.version_read` shows for it:** `outcome: stream_read_short`, `extract_version` real, `stream_held: 4`, `stream_read_count: 0`, `stream_state: eof|fail`, `version: 0`.
+**What `client.cooked.version_read` shows for it (seen live 2026-10-05 04:08 UTC, session `29ecefab…`, all 21 archives):** `outcome: stream_read_short`, `extract_version` real, `stream_held: 4`, `stream_read_count: 0`, `stream_state: eof|fail`, `version: 0`.
 
 **Related, also open:** Create New Character does nothing (no error, nothing sent) in a session that was just resynced; not checked whether one of the other `strstream` sites is behind it. Bundled `SourceCache` already matches the server for 16 of 21 categories including `TextStrings`, so seeding the writable cache at install would cut a first login's push to about 27%, but only once the version read works.
 

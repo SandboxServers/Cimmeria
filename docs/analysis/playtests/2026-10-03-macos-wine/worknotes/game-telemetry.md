@@ -101,6 +101,12 @@ Recorded on the same machine on 2026-10-04:
   [cooked-data-pipeline.md](../../../../reverse-engineering/findings/cooked-data-pipeline.md).
   The event now carries each hop (`zip_*`, `extract_*`, `stream_*`, `crt_*`)
   and names this outcome `stream_read_short`.
+
+  A start with that DLL (session `29ecefab-24be-4883-a614-dcd705bb9662`,
+  2026-10-05 04:08 UTC, no login) showed it for all 21 archives: the right
+  four bytes extracted, four bytes held by the stream, none read back,
+  `eof|fail`. The file calls underneath were clean, and `client.io.pak_open`
+  fired 65 times through the C runtime's open.
 - **The resync looks like a freeze.** The server finishes pushing in about two
   minutes. The client then spends about eight more writing entries, rewriting
   `TextStrings.pak` (29,126 entries) as it grows, and neither draws nor sends
