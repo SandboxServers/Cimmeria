@@ -72,7 +72,10 @@ pub(in crate::cell::service) async fn holster_timer_tick(
         }
         tracing::info!(
             entity_id,
+            entity_name = space_mgr.entity_label(entity_id),
             active_item_id,
+            active_item_name =
+                cimmeria_cell_world::cell::effects::content_names::item_name(active_item_id),
             duration_ms = duration.as_millis() as u64,
             "holster_timer_tick: phase 1 — playing Item_Unequip; appearance deferred"
         );
@@ -127,6 +130,7 @@ pub(in crate::cell::service) async fn holster_timer_tick(
         }
         tracing::info!(
             entity_id,
+            entity_name = space_mgr.entity_label(entity_id),
             "holster_timer_tick: phase 2 — animation done, removing weapon mesh"
         );
         super::super::super::abilities::request_appearance_refresh(entity_id, tx, space_mgr).await;
@@ -177,6 +181,7 @@ pub(in crate::cell::service) async fn pending_slot_swap_tick(
     for (entity_id, target_slot) in ready {
         tracing::info!(
             entity_id,
+            entity_name = space_mgr.entity_label(entity_id),
             target_slot,
             "pending_slot_swap_tick: holster animation done, finalizing swap"
         );

@@ -24,8 +24,11 @@ Pair them by hand; the launch-refusal row is one of the most-read combat rows.
   left and the id been reused. Use `SpaceManager::caster_label` or the entry's
   `invoker_identity.player_name`.
 - Pet rows: `owner_name` from the summon-time identity, never the live `owner_id` (#889).
-- Several rows logged an entity id under `player_id` (`threat` enter/exit_combat,
-  `assist_joined`, idle auto-aggro, leash `player_combat_exit`). Rename the key, then pair.
+- Rows logged an entity id under `player_id` (`threat` enter/exit_combat, and npc_ai rows
+  NT-25 owned). Rename the key, then pair.
+- A logged item *type* is `item_type_id` (+ `item_name`); `item_id` is reserved for instances.
+- The NameBook has `loot_table`, `event_set`, `sequence` and `chain` lookups (NT-21): don't
+  mark those IDs unnameable.
 - The wire `onEffectResults` EffectID is the cast_id, not an `effects` row: don't name it.
 - Rows naming an ability `"unknown"` violated Rule 6; pass `Option<&str>`.
 
@@ -33,7 +36,8 @@ Pair them by hand; the launch-refusal row is one of the most-read combat rows.
 enabled, but `OTEL_FILTER` exports every cimmeria crate and `npc_ai`/`abilities` at DEBUG
 and the file layers write some at TRACE, so in practice debug rows are on: a lookup in a
 per-tick row (`npc_ai` `decision`, `npc_ai.tick`, `warmup_pending`, per-witness rows) is
-paid every tick. NT-20 left those IDs unpaired rather than add lookups. Where a
+paid every tick. Name them from fields already in hand (`identity()`, `log_names`), or mark
+the ID `// nt:id-only` with the reason; don't leave it silently in the baseline. Where a
 row logs while the target is `&mut`-borrowed (NVP damage, absorb), resolve once per hit
 into the ids struct (`HitIds::entity_name`) or use `EntityNames::of(entity)`.
 

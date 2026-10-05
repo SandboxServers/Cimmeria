@@ -106,6 +106,7 @@ pub(crate) struct PlanIds {
     pub caster_id: u32,
     pub target_id: u32,
     pub ability_id: i32,
+    pub ability_name: Option<&'static str>,
     pub cast_id: Option<i32>,
     pub caster: PlayerIdentity,
     pub target: PlayerIdentity,
@@ -128,6 +129,9 @@ impl PlanIds {
             caster_id,
             target_id,
             ability_id,
+            ability_name: cimmeria_cell_world::cell::effects::content_names::ability_name(
+                ability_id,
+            ),
             cast_id: space_mgr.current_cast_id(),
             caster: space_mgr.player_identity(caster_id),
             target: space_mgr.player_identity(target_id),
@@ -240,7 +244,7 @@ impl PlannedEffect {
             entity_name = ids.caster_name,
             cast_id = ids.cast_id, // nt:id-only per-cast sequence number, no name exists
             ability_id = ids.ability_id,
-            ability_name = cimmeria_names::book().ability(ids.ability_id),
+            ability_name = ids.ability_name,
             effect_id = self.effect_id,
             effect_name = cimmeria_cell_world::cell::effects::content_names::effect_name(self.effect_id),
             target_id = ids.target_id,

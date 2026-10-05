@@ -285,7 +285,8 @@ pub(super) fn emit(
             c,
             ability_id = ctx.ability_id,
             ability_name = ctx.ability_id.and_then(|a| book.ability(a)),
-            sequence_id, // nt:id-only sequences have no NameBook name table
+            sequence_id,
+            sequence_name = book.sequence(sequence_id),
             source_id,
             source_name = label(space_mgr, source_id),
             target_id,

@@ -197,6 +197,7 @@ async fn apply_hit(
         entity_id,
         target_eid,
         ability_id,
+        ability_name: cimmeria_cell_world::cell::effects::content_names::ability_name(ability_id),
         actor: space_mgr.player_identity(entity_id),
         target: space_mgr.player_identity(target_eid),
         entity_name: space_mgr.entity_names(entity_id).entity_name,

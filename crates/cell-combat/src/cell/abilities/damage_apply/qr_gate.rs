@@ -87,7 +87,7 @@ pub(super) fn roll_hit(
         entity_name = ids.entity_name,
         cast_id = ids.cast_id, // nt:id-only per-cast sequence number, no name exists
         ability_id = ids.ability_id,
-        ability_name = cimmeria_names::book().ability(ids.ability_id),
+        ability_name = ids.ability_name,
         target_player_id = ids.target.player_id,
         target_player_name = ids.target.player_name,
         target_id = ids.target_eid,

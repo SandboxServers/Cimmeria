@@ -69,8 +69,10 @@ pub(super) async fn send_death_sequence(
         source_name = space_mgr.entity_label(target_eid),
         target_id = target_eid,
         target_name = space_mgr.entity_label(target_eid),
-        sequence_id = death_seq_id, // nt:id-only sequences have no NameBook name table
-        event_set_id = esid, // nt:id-only event sets have no NameBook name table
+        sequence_id = death_seq_id,
+        sequence_name = cimmeria_cell_world::cell::effects::content_names::sequence_name(death_seq_id),
+        event_set_id = esid,
+        event_set_name = cimmeria_cell_world::cell::effects::content_names::event_set_name(esid),
         "onSequence broadcast: Entity_Death (death animation)"
     );
 }

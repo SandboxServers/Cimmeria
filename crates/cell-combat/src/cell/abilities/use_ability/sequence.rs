@@ -172,7 +172,8 @@ pub(super) fn warn_unanimated_npc_attack(
         target_name = space_mgr.entity_label(target_id as u32),
         ability_id,
         ability_name = cimmeria_names::book().ability(ability_id),
-        event_set_id = event_set_id.unwrap_or(0), // nt:id-only event sets have no NameBook name table
+        event_set_id = event_set_id.unwrap_or(0),
+        event_set_name = cimmeria_cell_world::cell::effects::content_names::event_set_name(event_set_id),
         suppressed,
         "PlaySequence: NPC attack expected an Ability_End onSequence but none can be resolved \
          -- damage lands with no attack animation on any client"
@@ -241,7 +242,8 @@ pub(in crate::cell::abilities) async fn play_ability_sequence(
                 cast_id = instance_id, // nt:id-only per-cast sequence number, no name exists
                 ability_id,
                 ability_name = cimmeria_names::book().ability(ability_id),
-                event_set_id, // nt:id-only event sets have no NameBook name table
+                event_set_id,
+                event_set_name = cimmeria_cell_world::cell::effects::content_names::event_set_name(event_set_id),
                 "onSequence: no Ability_End sequence found for event_set"
             );
         }
@@ -286,8 +288,10 @@ pub(in crate::cell::abilities) async fn play_ability_sequence(
         target_name = space_mgr.entity_label(target_id as u32),
         ability_id,
         ability_name = cimmeria_names::book().ability(ability_id),
-        sequence_id, // nt:id-only sequences have no NameBook name table
-        event_set_id, // nt:id-only event sets have no NameBook name table
+        sequence_id,
+        sequence_name = cimmeria_cell_world::cell::effects::content_names::sequence_name(sequence_id),
+        event_set_id,
+        event_set_name = cimmeria_cell_world::cell::effects::content_names::event_set_name(event_set_id),
         witness_count,
         "onSequence broadcast: {}",
         phase.describe()
@@ -314,7 +318,8 @@ pub(in crate::cell::abilities) async fn play_ability_sequence(
                 target_name = space_mgr.entity_label(target_id as u32),
                 ability_id,
                 ability_name = cimmeria_names::book().ability(ability_id),
-                sequence_id, // nt:id-only sequences have no NameBook name table
+                sequence_id,
+                sequence_name = cimmeria_cell_world::cell::effects::content_names::sequence_name(sequence_id),
                 witness_count,
                 suppressed,
                 "PlaySequence: NPC fired an Ability_End before its BSF_InCombat stance was \
@@ -335,7 +340,8 @@ pub(in crate::cell::abilities) async fn play_ability_sequence(
                 target_name = space_mgr.entity_label(target_id as u32),
                 ability_id,
                 ability_name = cimmeria_names::book().ability(ability_id),
-                sequence_id, // nt:id-only sequences have no NameBook name table
+                sequence_id,
+                sequence_name = cimmeria_cell_world::cell::effects::content_names::sequence_name(sequence_id),
                 suppressed,
                 "PlaySequence: NPC attack onSequence expected at least one witness but had \
                  none -- the target is not seeing the NPC that shoots it"

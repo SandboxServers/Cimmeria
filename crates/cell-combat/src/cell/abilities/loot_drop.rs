@@ -46,7 +46,8 @@ pub(super) fn generate_loot_on_death(target_eid: u32, space_mgr: &mut SpaceManag
                 target: "abilities",
                 event = "loot_table_empty",
                 target_eid,
-                loot_table_id, // nt:id-only NameBook has no loot_tables lookup (description only)
+                loot_table_id,
+                loot_table_name = cimmeria_cell_world::cell::effects::content_names::loot_table_name(loot_table_id),
                 "No loot table entries found"
             );
             return;
@@ -115,7 +116,8 @@ pub fn roll_loot_entries(
                 target: "abilities",
                 event = "loot_entry_bad_quantity",
                 owner,
-                loot_table_id, // nt:id-only NameBook has no loot_tables lookup (description only)
+                loot_table_id,
+                loot_table_name = cimmeria_cell_world::cell::effects::content_names::loot_table_name(loot_table_id),
                 // `design_id` stays for the cell/base loot join (NT-22a);
                 // `item_type_id` is its Rule 6 key and carries the name.
                 design_id = entry.design_id, // nt:id-only kept for the loot join; item_type_id is named
@@ -135,7 +137,8 @@ pub fn roll_loot_entries(
                 target: "abilities",
                 event = "loot_generated",
                 owner,
-                loot_table_id, // nt:id-only NameBook has no loot_tables lookup (description only)
+                loot_table_id,
+                loot_table_name = cimmeria_cell_world::cell::effects::content_names::loot_table_name(loot_table_id),
                 // `design_id` stays for the cell/base loot join (NT-22a);
                 // `item_type_id` is its Rule 6 key and carries the name.
                 design_id = entry.design_id, // nt:id-only kept for the loot join; item_type_id is named

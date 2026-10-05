@@ -37,3 +37,24 @@ pub fn item_name(item_type_id: impl Into<Option<i32>>) -> Option<&'static str> {
         .into()
         .and_then(|id| intern_opt(cimmeria_names::book().item(id)))
 }
+
+/// `loot_tables.description` for an optional loot table ID.
+pub fn loot_table_name(loot_table_id: impl Into<Option<i32>>) -> Option<&'static str> {
+    loot_table_id
+        .into()
+        .and_then(|id| intern_opt(cimmeria_names::book().loot_table(id)))
+}
+
+/// The name of an optional event set ID (`resources.event_sets`).
+pub fn event_set_name(event_set_id: impl Into<Option<i32>>) -> Option<&'static str> {
+    event_set_id
+        .into()
+        .and_then(|id| intern_opt(cimmeria_names::book().event_set(id)))
+}
+
+/// The name of an optional sequence ID (`resources.sequences`).
+pub fn sequence_name(sequence_id: impl Into<Option<i32>>) -> Option<&'static str> {
+    sequence_id
+        .into()
+        .and_then(|id| intern_opt(cimmeria_names::book().sequence(id)))
+}

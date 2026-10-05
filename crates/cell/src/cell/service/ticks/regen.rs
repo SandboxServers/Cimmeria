@@ -88,8 +88,11 @@ pub(in crate::cell::service) async fn regen_tick(
                     event = "regen_skipped",
                     reason = "entity_gone",
                     account_id = who.account_id,
+                    account_name = who.account_name,
                     player_id = who.player_id,
+                    player_name = who.player_name,
                     entity_id,
+                    entity_name = who.player_name,
                     "regen tick: player left between the eligibility pass and the regen; nothing applied"
                 );
                 continue;
@@ -106,9 +109,13 @@ pub(in crate::cell::service) async fn regen_tick(
                         event = "regen_skipped",
                         reason = if pool.is_some() { "pool_full" } else { "no_pool_stat" },
                         entity_id,
+                        entity_name = entity.log_names.player_name,
                         account_id = entity.account_id,
+                        account_name = entity.log_names.account_name,
                         player_id = entity.player_id,
+                        player_name = entity.log_names.player_name,
                         pool_id,
+                        pool_name = cimmeria_entity::stats::stat_name(pool_id),
                         "regen tick: this pool needs no regen; the other pool still regenerates"
                     ),
                 }
@@ -138,8 +145,11 @@ pub(in crate::cell::service) async fn regen_tick(
                 event = "regen_skipped",
                 reason = "nothing_dirty",
                 account_id = who.account_id,
+                account_name = who.account_name,
                 player_id = who.player_id,
+                player_name = who.player_name,
                 entity_id,
+                entity_name = who.player_name,
                 "regen tick: eligible but no pool changed; no onStatUpdate sent"
             );
         }
@@ -197,8 +207,11 @@ fn log_regen_transitions(space_mgr: &mut SpaceManager, eligible: &[u32], pools: 
                 target: "vitals",
                 event = "regen_started",
                 account_id = id.account_id,
+                account_name = id.account_name,
                 player_id = id.player_id,
+                player_name = id.player_name,
                 entity_id,
+                entity_name = id.player_name,
                 health = v.health,
                 health_max = v.health_max,
                 focus = v.focus,
@@ -220,8 +233,11 @@ fn log_regen_transitions(space_mgr: &mut SpaceManager, eligible: &[u32], pools: 
                 target: "vitals",
                 event = "regen_stopped",
                 account_id = id.account_id,
+                account_name = id.account_name,
                 player_id = id.player_id,
+                player_name = id.player_name,
                 entity_id,
+                entity_name = id.player_name,
                 reason,
                 regen_ticks = ticks,
                 health = v.health,

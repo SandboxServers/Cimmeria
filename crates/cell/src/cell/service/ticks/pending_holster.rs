@@ -59,8 +59,11 @@ pub(in crate::cell::service) async fn pending_attack_tick(
         }
         tracing::info!(
             entity_id,
+            entity_name = space_mgr.entity_label(entity_id),
             ability_id,
+            ability_name = cimmeria_names::book().ability(ability_id),
             target_id,
+            target_name = space_mgr.entity_label(target_id as u32),
             "pending_attack_tick: draw window elapsed, firing queued attack"
         );
         // Route Phase-B queued attacks through the kill-credit
@@ -127,6 +130,7 @@ pub(in crate::cell::service) async fn pending_reload_tick(
     for entity_id in ready {
         tracing::info!(
             entity_id,
+            entity_name = space_mgr.entity_label(entity_id),
             "pending_reload_tick: draw window elapsed, starting deferred reload"
         );
         // `handle_reload` clears `pending_reload_at` at the top of its

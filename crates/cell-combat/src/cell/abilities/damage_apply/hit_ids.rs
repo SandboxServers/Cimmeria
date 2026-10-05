@@ -12,6 +12,8 @@ pub(super) struct HitIds {
     pub(super) entity_id: u32,
     pub(super) target_eid: u32,
     pub(super) ability_id: i32,
+    /// `ability_id`'s name, resolved once per hit for the hit's rows.
+    pub(super) ability_name: Option<&'static str>,
     pub(super) actor: PlayerIdentity,
     pub(super) target: PlayerIdentity,
     /// The attacker's and target's names (Rule 6), resolved once per hit:
@@ -37,6 +39,7 @@ impl HitIds {
             caster_id: self.entity_id,
             target_id: self.target_eid,
             ability_id: self.ability_id,
+            ability_name: self.ability_name,
             cast_id: self.cast_id,
             caster: self.actor,
             target: self.target,

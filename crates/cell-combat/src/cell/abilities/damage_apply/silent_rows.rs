@@ -34,7 +34,7 @@ pub(super) fn effect_def_missing(
         caster_name = ids.entity_name,
         cast_id, // nt:id-only per-cast sequence number, no name exists
         ability_id = ids.ability_id,
-        ability_name = cimmeria_names::book().ability(ids.ability_id),
+        ability_name = ids.ability_name,
         effect_id,
         effect_name = cimmeria_names::book().effect(effect_id),
         target_id = ids.target_eid,
@@ -64,7 +64,7 @@ pub(super) fn unknown_ability_fallback(ids: HitIds, cast_id: Option<i32>, health
         caster_name = ids.entity_name,
         cast_id, // nt:id-only per-cast sequence number, no name exists
         ability_id = ids.ability_id,
-        ability_name = cimmeria_names::book().ability(ids.ability_id),
+        ability_name = ids.ability_name,
         target_id = ids.target_eid,
         target_name = ids.target_name,
         target_player_id = ids.target.player_id,
@@ -90,7 +90,7 @@ pub(super) fn script_name_missing(ids: HitIds, cast_id: Option<i32>, effect_id: 
         entity_name = ids.entity_name,
         cast_id, // nt:id-only per-cast sequence number, no name exists
         ability_id = ids.ability_id,
-        ability_name = cimmeria_names::book().ability(ids.ability_id),
+        ability_name = ids.ability_name,
         effect_id,
         effect_name = cimmeria_names::book().effect(effect_id),
         target_id = ids.target_eid,

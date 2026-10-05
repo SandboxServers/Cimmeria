@@ -495,7 +495,8 @@ fn queue_arrival_vfx(space_mgr: &mut SpaceManager, owner: u32, pet_id: u32, temp
             pet_name = space_mgr.entity_label(pet_id),
             template_id,
             template_name = cimmeria_names::book().template(template_id),
-            event_set_id = SUMMON_TARGET_EVENT_SET, // nt:id-only event sets have no NameBook name table
+            event_set_id = SUMMON_TARGET_EVENT_SET,
+            event_set_name = cimmeria_cell_world::cell::effects::content_names::event_set_name(SUMMON_TARGET_EVENT_SET),
             "summon target VFX not in the sequence map; the pet arrives without it"
         );
         return;
