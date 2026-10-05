@@ -83,13 +83,31 @@ impl Client {
 
     /// Everything sent to this client since the last call, decoded.
     pub(super) fn take(&self) -> Vec<Received> {
-        self.transport
+        let mut pending = Vec::new();
+        let out = self
+            .transport
             .drain()
             .into_iter()
             .filter(|(to, _)| *to == self.addr)
-            .map(|(_, p)| decode(&p, self.entity_id))
-            .collect()
+            .filter_map(|(_, p)| reassemble(&p, &mut pending, self.entity_id))
+            .collect();
+        assert!(pending.is_empty(), "a fragmented bundle never completed");
+        out
     }
+}
+
+/// A body past one datagram goes out as a fragmented bundle (#1274); hold
+/// its pieces until the last one and decode the joined body.
+fn reassemble(packet: &[u8], pending: &mut Vec<u8>, entity_id: u32) -> Option<Received> {
+    use cimmeria_mercury::packet::{parse_incoming, FLAG_FRAGMENTED};
+    let enc = cimmeria_mercury::encryption::MercuryEncryption::from_session_key([0u8; 32]);
+    let pt = enc.decrypt(packet).expect("decrypt test packet");
+    let parsed = parse_incoming(&pt).expect("parse test packet");
+    if parsed.flags & FLAG_FRAGMENTED == 0 {
+        return Some(decode_body(&parsed.body, entity_id));
+    }
+    pending.extend_from_slice(&parsed.body);
+    (parsed.seq_id == parsed.frag_end).then(|| decode_body(&std::mem::take(pending), entity_id))
 }
 
 /// One decoded client method.
@@ -130,7 +148,11 @@ pub(super) enum Received {
 pub(super) fn decode(packet: &[u8], entity_id: u32) -> Received {
     let enc = cimmeria_mercury::encryption::MercuryEncryption::from_session_key([0u8; 32]);
     let pt = enc.decrypt(packet).expect("decrypt test packet");
-    let body = &pt[1..pt.len() - 4];
+    let parsed = cimmeria_mercury::packet::parse_incoming(&pt).expect("parse test packet");
+    decode_body(&parsed.body, entity_id)
+}
+
+fn decode_body(body: &[u8], entity_id: u32) -> Received {
     assert_eq!(
         u32::from_le_bytes(body[3..7].try_into().unwrap()),
         entity_id,
