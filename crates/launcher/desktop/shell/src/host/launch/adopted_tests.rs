@@ -26,6 +26,7 @@ fn reopened(legacy: &Legacy) -> NativeHost {
     host.launch_resources = Some(launch::Resources {
         helper: artifact("launch-worker.exe"),
         client_patches: None,
+        client_telemetry: None,
         graphics: Some(launch::Graphics {
             d3d9: artifact("d3d9.dll"),
             rosetta_x87: None,

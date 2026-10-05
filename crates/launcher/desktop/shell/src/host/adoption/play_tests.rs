@@ -41,6 +41,7 @@ fn bundle(host: &mut NativeHost, directory: &Path, patches: bool) {
     host.launch_resources = Some(launch::Resources {
         helper: artifact("launch-worker.exe"),
         client_patches: patches.then(|| artifact("client-patches.dll")),
+        client_telemetry: None,
         graphics: Some(launch::Graphics {
             d3d9: artifact("d3d9.dll"),
             rosetta_x87: None,

@@ -3,9 +3,9 @@ mod host;
 
 use cimmeria_launcher_engine::{NativeCommand, NativeSnapshot, StorageError};
 use host::{
-    AdoptionCommand, AdoptionError, AdoptionStatus, GameUpdateCommand, GameUpdateStatus,
-    InstallCommand, InstallStatus, JobError, LaunchCommand, LaunchStatus, MigrationCommand,
-    MigrationStatus, NativeHost, UpdaterCommand,
+    AdoptionCommand, AdoptionError, AdoptionStatus, GameTelemetryCommand, GameTelemetryStatus,
+    GameUpdateCommand, GameUpdateStatus, InstallCommand, InstallStatus, JobError, LaunchCommand,
+    LaunchStatus, MigrationCommand, MigrationStatus, NativeHost, UpdaterCommand,
 };
 use std::sync::Arc;
 use tauri::Manager;
@@ -223,6 +223,17 @@ async fn launch_command(
 }
 
 #[tauri::command]
+async fn game_telemetry_command(
+    request: GameTelemetryCommand,
+    state: tauri::State<'_, Arc<NativeHost>>,
+) -> Result<GameTelemetryStatus, JobError> {
+    let host = state.inner().clone();
+    tauri::async_runtime::spawn_blocking(move || host.game_telemetry_command(request))
+        .await
+        .map_err(|_| JobError::Io)?
+}
+
+#[tauri::command]
 async fn migration_command(
     request: MigrationCommand,
     state: tauri::State<'_, Arc<NativeHost>>,
@@ -332,6 +343,7 @@ fn main() {
             fetch_patch_notes,
             install_command,
             launch_command,
+            game_telemetry_command,
             migration_command,
             updater_command,
             game_update_command,

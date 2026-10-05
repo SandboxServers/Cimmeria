@@ -24,7 +24,8 @@ pub(super) fn spawn(path: &Path, args: &[String]) -> Result<(), Error> {
             Foundation::CloseHandle,
             UI::{
                 Shell::{
-                    ShellExecuteExW, SEE_MASK_NOASYNC, SEE_MASK_NOCLOSEPROCESS, SHELLEXECUTEINFOW,
+                    ShellExecuteExW, SEE_MASK_FLAG_NO_UI, SEE_MASK_NOASYNC,
+                    SEE_MASK_NOCLOSEPROCESS, SHELLEXECUTEINFOW,
                 },
                 WindowsAndMessaging::SW_SHOW,
             },
@@ -47,7 +48,10 @@ pub(super) fn spawn(path: &Path, args: &[String]) -> Result<(), Error> {
         let verb: Vec<u16> = "open".encode_utf16().chain(Some(0)).collect();
         let mut info: SHELLEXECUTEINFOW = unsafe { std::mem::zeroed() };
         info.cbSize = std::mem::size_of::<SHELLEXECUTEINFOW>() as u32;
-        info.fMask = SEE_MASK_NOCLOSEPROCESS | SEE_MASK_NOASYNC;
+        // Report ordinary launch errors through the saved updater result instead
+        // of blocking this worker on an unowned Shell error dialog. Windows
+        // security prompts (including elevation) are explicitly exempt from NO_UI.
+        info.fMask = SEE_MASK_NOCLOSEPROCESS | SEE_MASK_NOASYNC | SEE_MASK_FLAG_NO_UI;
         info.lpVerb = verb.as_ptr();
         info.lpFile = file.as_ptr();
         info.lpParameters = parameters.as_ptr();

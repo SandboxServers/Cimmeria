@@ -597,6 +597,17 @@ port. If the DLL is missing, or is a `lab-bridge` build, the launcher
 says so in its status log and starts the game without it; play is never
 blocked. See [client-telemetry.md](../architecture/client-telemetry.md#who-gets-the-dll).
 
+The desktop launcher (`crates/launcher/desktop/`, macOS and Windows) has the
+same opt-in as its own choice: the **Send game diagnostics while playing**
+checkbox in Settings, off by default and separate from its setup-diagnostics
+checkbox. While it is on, Play mints a session on the login server, writes
+`current-session.json` beside the game and injects the DLL after the client
+patches. Its sessions carry the tags `desktop-launcher`, the host OS and `wine`
+or `native`. It does not tail logs or upload bundles, and it mints one token
+per Play without refreshing it. The capture switches stay off unless a
+developer sets `CIMMERIA_CLIENT_CAPTURE` in the launcher's own environment.
+Contract: [launch.md § Opt-in game telemetry](../../crates/launcher/desktop/docs/launch.md#opt-in-game-telemetry).
+
 While it is off:
 
 - No `/api/auth/dev-session` POST fires.

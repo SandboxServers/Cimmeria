@@ -53,6 +53,17 @@ impl Artifact {
         }
         Ok(())
     }
+    /// A `lab-bridge` build of the telemetry DLL can open an inbound command
+    /// port. The pinned digest already names a player build; this is the same
+    /// second check the Windows launcher makes before loading one into a game.
+    pub fn refuse_lab_build(&self) -> Result<(), IntentError> {
+        const MARKER: &[u8] = b"cimmeria-client-telemetry build flavour: lab-bridge";
+        let bytes = std::fs::read(&self.path).map_err(|_| StorageError::Io)?;
+        if bytes.windows(MARKER.len()).any(|window| window == MARKER) {
+            return Err(StorageError::UnsafeFile.into());
+        }
+        Ok(())
+    }
     #[cfg(target_os = "macos")]
     pub(super) fn stage(&self, path: &Path) -> Result<(), IntentError> {
         self.verify()?;
@@ -92,6 +103,10 @@ pub struct Resources {
     /// None explicitly launches without client patches; never enables game telemetry.
     pub client_patches: Option<Artifact>,
     pub graphics: Option<Graphics>,
+    /// The opt-in game-telemetry DLL. Absent from a plan that does not inject
+    /// it, so such a plan serializes, and digests, exactly as it did before.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub client_telemetry: Option<Artifact>,
 }
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(deny_unknown_fields)]
@@ -105,6 +120,9 @@ impl Resources {
         self.helper.verify()?;
         if let Some(patches) = &self.client_patches {
             patches.verify()?;
+        }
+        if let Some(telemetry) = &self.client_telemetry {
+            telemetry.verify()?;
         }
         if let Some(graphics) = &self.graphics {
             graphics.d3d9.verify()?;

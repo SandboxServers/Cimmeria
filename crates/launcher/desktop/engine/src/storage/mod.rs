@@ -4,6 +4,7 @@ mod atomic;
 pub mod effective_settings;
 pub(crate) mod extraction_work;
 mod failed_cleanup;
+pub mod game_telemetry;
 mod helper_journal;
 pub mod launch;
 pub mod launcher_summary;

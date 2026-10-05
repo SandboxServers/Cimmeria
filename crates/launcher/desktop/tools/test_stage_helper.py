@@ -27,6 +27,7 @@ class StagingTests(unittest.TestCase):
             for kind, filename, flags in [
                 ("launch", "cimmeria-launch-worker.exe", 0),
                 ("client-patches", "cimmeria_client_patches.dll", 0x2000),
+                ("client-telemetry", "cimmeria_client_telemetry.dll", 0x2000),
             ]:
                 with self.subTest(kind=kind):
                     existing = target / filename
@@ -48,6 +49,33 @@ class StagingTests(unittest.TestCase):
                     receipt = json.loads((target / module.HELPERS[kind][1]).read_text())
                     self.assertEqual(receipt["sha256"], digest)
                     self.assertEqual(receipt["target"], "i686-pc-windows-msvc")
+
+    def test_a_lab_bridge_telemetry_build_is_refused_whatever_its_digest(self):
+        with tempfile.TemporaryDirectory() as root:
+            root = Path(root)
+            source = root / "resource"
+            target = root / "bundle"
+            target.mkdir()
+            data = bytearray(512)
+            data[:2] = b"MZ"
+            struct.pack_into("<I", data, 60, 128)
+            data[128:132] = b"PE\0\0"
+            struct.pack_into("<H", data, 132, 0x14C)
+            struct.pack_into("<H", data, 150, 0x2000)
+            struct.pack_into("<H", data, 152, 0x10B)
+            player = bytes(data)
+            data[200:200 + len(module.LAB_BRIDGE_MARKER)] = module.LAB_BRIDGE_MARKER
+            source.write_bytes(data)
+            with self.assertRaises(ValueError):
+                module.stage(source, target, hashlib.sha256(data).hexdigest(), "c" * 40,
+                             "client-telemetry")
+            self.assertFalse((target / "cimmeria_client_telemetry.dll").exists())
+            # The same marker in the patch DLL's slot is not this check's business.
+            module.stage(source, target, hashlib.sha256(data).hexdigest(), "c" * 40, "client-patches")
+            source.write_bytes(player)
+            module.stage(source, target, hashlib.sha256(player).hexdigest(), "c" * 40,
+                         "client-telemetry")
+            self.assertEqual((target / "cimmeria_client_telemetry.dll").read_bytes(), player)
 
     def test_identity_and_architecture_gate_precede_replacement(self):
         with tempfile.TemporaryDirectory() as root:

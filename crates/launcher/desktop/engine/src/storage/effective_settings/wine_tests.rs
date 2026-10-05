@@ -38,6 +38,7 @@ fn bundle(root: &Path, patches: bool) -> Resources {
     Resources {
         helper: artifact(root, "helper.exe"),
         client_patches: patches.then(|| artifact(root, "patches.dll")),
+        client_telemetry: None,
         graphics: Some(Graphics {
             d3d9: artifact(root, "d3d9.dll"),
             rosetta_x87: None,

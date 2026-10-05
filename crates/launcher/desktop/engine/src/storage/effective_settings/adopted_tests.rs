@@ -42,6 +42,7 @@ fn bundle(root: &Path, patches: bool) -> Resources {
     Resources {
         helper: artifact("helper.exe"),
         client_patches: patches.then(|| artifact("patches.dll")),
+        client_telemetry: None,
         graphics: None,
     }
 }

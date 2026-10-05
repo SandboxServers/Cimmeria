@@ -190,6 +190,7 @@ Windows-helper ownership requirements. It does not establish game compatibility.
 - [Effective imported settings for adopted Play](worknotes/effective-settings.md)
 - [Opt-in Mac app identity for the Wine process](worknotes/wine-computer-use.md)
 - [Adoption, settings and Wine identity integration](worknotes/uat-integration.md)
+- [Opt-in game telemetry in the desktop launcher](worknotes/game-telemetry.md)
 
 - [MacBook testing checkpoint and remaining acceptance](worknotes/macbook-testing-checkpoint.md)
 - [Historical native launcher research (SwiftUI proposal, superseded)](native-launcher-research.md)
