@@ -664,10 +664,12 @@ async fn send_to_witness_reliable_returns_sent_outcome_on_success() {
             addr: got_addr,
             seq,
             bytes,
+            packets,
         } => {
             assert_eq!(got_addr, addr, "Sent carries the resolved witness addr");
             assert_eq!(seq, 0, "fresh session consumes reliable seq 0");
             assert_eq!(bytes, 12, "Sent carries the on-wire packet length");
+            assert_eq!(packets, 1, "one datagram");
         }
         other => panic!("expected Sent, got {other:?}"),
     }
