@@ -26,6 +26,8 @@ mod concurrency_tests;
 #[cfg(test)]
 mod crafting_supplies_tests;
 #[cfg(test)]
+mod empty_gun_tests;
+#[cfg(test)]
 mod tests;
 
 const INV_MAIN: i32 = 1;

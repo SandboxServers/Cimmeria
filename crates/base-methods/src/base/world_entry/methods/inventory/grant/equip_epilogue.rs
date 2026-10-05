@@ -107,12 +107,10 @@ pub(super) async fn equip_epilogue(
                         item_id: row.item_id,
                         clip_size: row.clip_size,
                         default_ammo_type: row.default_ammo_type_id,
-                        // A freshly granted firearm starts loaded with the
-                        // default ammo subtype: the same value the grant
-                        // INSERT just wrote to `sgw_inventory.ammo` (L4/L5).
-                        current_ammo: cimmeria_entity::cell_entity::BandolierItem::granted_ammo(
-                            row.clip_size,
-                        ),
+                        // A freshly granted gun is empty, as the grant
+                        // INSERT wrote it (OD-CS13): the player reloads
+                        // once. The cell mirrors this 0 into AmmoSlot{N}.
+                        current_ammo: 0,
                         cur_ammo_type: row.default_ammo_type_id,
                     };
                     if let Err(e) = tx

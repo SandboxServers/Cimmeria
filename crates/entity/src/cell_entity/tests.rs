@@ -229,18 +229,6 @@ fn set_slot_ammo_clamps_and_marks_dirty() {
     assert_eq!(entity.stats.get(crate::stats::AMMO_SLOT_1).unwrap().cur, 0);
 }
 
-/// L4/L5: a granted firearm starts with a full clip; a zero-clip design
-/// (staff 2797, ribbon device 4565) or a non-weapon starts at 0, and a
-/// corrupt negative clip never yields negative ammo.
-#[test]
-fn granted_ammo_is_the_clip_for_firearms_and_zero_otherwise() {
-    assert_eq!(BandolierItem::granted_ammo(15), 15); // pistol 55
-    assert_eq!(BandolierItem::granted_ammo(30), 30); // SMG 21
-    assert_eq!(BandolierItem::granted_ammo(250), 250); // LMG 3260
-    assert_eq!(BandolierItem::granted_ammo(0), 0); // 2797, 4565
-    assert_eq!(BandolierItem::granted_ammo(-1), 0);
-}
-
 #[test]
 fn set_slot_ammo_unequipped_returns_none() {
     let mut entity = make_entity();

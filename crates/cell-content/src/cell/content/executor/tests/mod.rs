@@ -8,6 +8,8 @@
 //!   the tree grant, the cooldown clear and the first-click lines.
 //! - [`effects`]          — `Action::LaunchAbility` / `Action::ApplyEffect`
 //!   (server-initiated effect application, target resolution).
+//! - [`grant_item`]       — `Action::GrantItem` for a gun leaves the cell
+//!   bandolier to the base (CS-01b).
 //! - [`stats`]            — `Action::ChangeStat` (heal / clamp / damage /
 //!   set-to-max / ammo-stat skip).
 //! - [`inventory_counter`] — `Action::RemoveItem`, increment / reset counter.
@@ -42,6 +44,7 @@ pub(super) use tokio::sync::mpsc;
 mod ability_granter;
 mod deferred;
 mod effects;
+mod grant_item;
 mod inventory_counter;
 mod mail;
 mod mission;

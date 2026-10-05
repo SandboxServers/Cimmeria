@@ -32,8 +32,8 @@ use cimmeria_content_engine::conditions::{ComparisonOp, Condition};
 use cimmeria_content_engine::triggers::Trigger;
 
 use super::{
-    fire_mission_abandoned, fire_mission_accepted, fire_mission_completed, fire_player_flanked_npc,
-    fire_stargate_crossed, fire_stargate_dialed,
+    fire_dialog_choice, fire_dialog_open, fire_mission_abandoned, fire_mission_accepted,
+    fire_mission_completed, fire_player_flanked_npc, fire_stargate_crossed, fire_stargate_dialed,
 };
 use crate::cell::space_manager::SpaceManager;
 use crate::cell::spawner::WorldRow;
@@ -50,6 +50,11 @@ const COUNTER: &str = "world_gate_fired";
 /// Mission id the three mission dispatchers are fired with. Not a seeded
 /// mission: the dispatchers key on the id alone.
 const MISSION_ID: i32 = 9_157;
+/// Dialog id the two dialog dispatchers are fired with. Not a seeded dialog.
+const DIALOG_ID: i32 = 9_158;
+/// `EArchetype` values: Shol'va, the archetype the gate names, and Soldier.
+const SHOLVA: i32 = 7;
+const SOLDIER: i32 = 1;
 
 /// Both Harset worlds with their real ids stamped on, and a connected
 /// player plus one NPC standing in `world_name`.
@@ -91,16 +96,36 @@ fn make_mgr(world_name: &str) -> SpaceManager {
 /// A chain on `trigger`, gated `world eq 57`, whose only action bumps a
 /// counter on the acting player (observable without a database).
 fn harset_gated_engine(id: i64, trigger: Trigger) -> ChainEngine {
+    gated_engine(
+        id,
+        trigger,
+        Condition::World {
+            operator: ComparisonOp::Eq,
+            world_id: HARSET,
+        },
+    )
+}
+
+/// A chain on `trigger`, gated `archetype eq 7`, that bumps the counter.
+fn sholva_gated_engine(id: i64, trigger: Trigger) -> ChainEngine {
+    gated_engine(
+        id,
+        trigger,
+        Condition::Archetype {
+            operator: ComparisonOp::Eq,
+            archetype_id: SHOLVA,
+        },
+    )
+}
+
+fn gated_engine(id: i64, trigger: Trigger, condition: Condition) -> ChainEngine {
     let mut engine = ChainEngine::new();
     engine.register_chain(Chain {
         id,
-        name: format!("test: world-gated {id}"),
+        name: format!("test: gated {id}"),
         enabled: true,
         trigger,
-        conditions: vec![Condition::World {
-            operator: ComparisonOp::Eq,
-            world_id: HARSET,
-        }],
+        conditions: vec![condition],
         actions: vec![Action::IncrementCounter {
             counter_name: COUNTER.to_string(),
             amount: 1,
@@ -127,6 +152,8 @@ enum Dispatcher {
     MissionAccepted,
     MissionCompleted,
     MissionAbandoned,
+    DialogOpen,
+    DialogChoice,
 }
 
 impl Dispatcher {
@@ -147,6 +174,12 @@ impl Dispatcher {
             },
             Self::MissionAbandoned => Trigger::OnMissionAbandoned {
                 mission_id: MISSION_ID,
+            },
+            Self::DialogOpen => Trigger::OnDialogOpen {
+                dialog_id: DIALOG_ID,
+            },
+            Self::DialogChoice => Trigger::OnDialogChoice {
+                dialog_id: DIALOG_ID,
             },
         }
     }
@@ -172,17 +205,28 @@ impl Dispatcher {
             Self::MissionAbandoned => {
                 fire_mission_abandoned(PLAYER_EID, PLAYER_ID, MISSION_ID, engine, &tx, mgr).await;
             }
+            Self::DialogOpen => {
+                fire_dialog_open(PLAYER_EID, PLAYER_ID, DIALOG_ID, engine, &tx, mgr).await;
+            }
+            Self::DialogChoice => {
+                fire_dialog_choice(PLAYER_EID, PLAYER_ID, DIALOG_ID, 1, engine, &tx, mgr).await;
+            }
         }
     }
 }
 
-const ALL: [Dispatcher; 6] = [
+/// Every player-scoped dispatcher this contract covers. A new player
+/// trigger belongs here, so it inherits both the `world` and the
+/// `archetype` guard below.
+const ALL: [Dispatcher; 8] = [
     Dispatcher::StargateDialed,
     Dispatcher::StargateCrossed,
     Dispatcher::PlayerFlankedNpc,
     Dispatcher::MissionAccepted,
     Dispatcher::MissionCompleted,
     Dispatcher::MissionAbandoned,
+    Dispatcher::DialogOpen,
+    Dispatcher::DialogChoice,
 ];
 
 /// A `world eq 57` chain fires for a player standing in Harset, through
@@ -215,5 +259,31 @@ async fn world_gated_chain_does_not_fire_in_the_adjacent_world() {
             "{dispatcher:?}: a `world eq 57` chain must NOT fire for a player in \
              Harset_CmdCenter (68)",
         );
+    }
+}
+
+/// The `archetype` contract (CS-01b): every player-scoped dispatcher sets the
+/// `archetype` param from the acting player. An `archetype eq 7` chain fires
+/// for a Shol'va and not for a Soldier, through each dispatcher. The positive
+/// half goes red when a dispatcher forgets the param (it then reads -1);
+/// the negative half proves the gate still discriminates.
+#[tokio::test]
+async fn archetype_gated_chain_fires_only_for_that_archetype() {
+    for (i, dispatcher) in ALL.into_iter().enumerate() {
+        for (archetype, expected) in [(SHOLVA, true), (SOLDIER, false)] {
+            let engine = sholva_gated_engine(0x7007_0120 + i as i64, dispatcher.trigger());
+            let mut mgr = make_mgr("Harset");
+            if let Some(p) = mgr.get_entity_mut(PLAYER_EID) {
+                p.archetype_id = Some(archetype);
+            }
+            dispatcher.fire(&engine, &mut mgr).await;
+            assert_eq!(
+                fired(&mgr),
+                expected,
+                "{dispatcher:?}: an `archetype eq 7` chain for a player of archetype \
+                 {archetype}: a Shol'va-only miss means the dispatcher did not set the \
+                 `archetype` param",
+            );
+        }
     }
 }

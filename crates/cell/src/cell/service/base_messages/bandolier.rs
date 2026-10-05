@@ -97,10 +97,10 @@ pub(in crate::cell::service) async fn handle_update_bandolier_item(
         if let Some(entity) = space_mgr.get_entity_mut(entity_id) {
             // Mirror the slot's magazine into AmmoSlot{N}, as
             // `SyncBandolierItems` does: the client's bandolier counter reads
-            // the stat, not the item. A chain grant seeds it optimistically
-            // before the base round-trip, but a GM give or a loot pickup into
-            // the bandolier reaches the cell only through here, so without
-            // this a granted (loaded, L4) weapon showed no rounds.
+            // the stat, not the item. Every grant into the bandolier (content,
+            // mission, loot, GM) reaches the cell only through here, so
+            // without this the counter of a granted gun stayed blank instead
+            // of showing its empty clip (0 of clip_size, OD-CS13).
             let stat_id = cimmeria_entity::stats::AMMO_SLOT_1 + slot_id;
             if let Some(stat) = entity.stats.get_mut(stat_id) {
                 stat.update(0, item.current_ammo, item.clip_size);

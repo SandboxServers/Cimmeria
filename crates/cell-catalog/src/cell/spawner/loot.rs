@@ -93,9 +93,8 @@ pub async fn load_item_containers(
 
 /// Cached weapon stats for runtime item grants.
 ///
-/// The content engine's `GrantItem` action seeds bandolier slots and AmmoSlot
-/// stats from this cache so the client renders the loaded magazine for
-/// the new weapon. Mirrors the per-row clip_size + default_ammo_type that
+/// Read by the holster tick, the active-slot swap, `requestAmmoChange` and
+/// the bandolier sync. Mirrors the per-row clip_size + default_ammo_type that
 /// `BANDOLIER_ITEMS_QUERY` reads for player_load.
 ///
 /// `allowed_ammo_types` is the whitelist of subtypes a player may pick via
