@@ -94,6 +94,12 @@ pub struct DllSession {
     /// switches on.
     #[serde(default)]
     pub capture: Option<crate::capture::CaptureConfig>,
+    /// The launcher's own labels for the session (the desktop launcher sends
+    /// `desktop-launcher`, the host OS and `wine` or `native`). The server
+    /// keeps the mint request's tags out of the event stream, so the DLL
+    /// repeats them on `client.dll.attached`, where a query can filter on them.
+    #[serde(default)]
+    pub tags: Vec<String>,
 }
 
 /// The `lab` block of `current-session.json` — bind address, port,
@@ -250,6 +256,9 @@ pub fn identity_fields(session: &DllSession) -> HashMap<String, serde_json::Valu
         "session_id".to_string(),
         serde_json::Value::String(session.session_id.clone()),
     );
+    if !session.tags.is_empty() {
+        h.insert("session_tags".to_string(), serde_json::json!(session.tags));
+    }
     h
 }
 
@@ -499,11 +508,43 @@ mod tests {
             },
             lab: None,
             capture: None,
+            tags: vec![],
         };
         let f = identity_fields(&s);
         assert_eq!(f.len(), 3);
         assert_eq!(f["install_id"], serde_json::json!("i-X"));
         assert_eq!(f["machine_id"], serde_json::json!("m-X"));
         assert_eq!(f["session_id"], serde_json::json!("s-X"));
+        // A launcher that labels its session gets the labels on the first
+        // event; one that does not adds no key.
+        let tagged = DllSession {
+            tags: vec!["desktop-launcher".into(), "macos".into(), "wine".into()],
+            ..s
+        };
+        let f = identity_fields(&tagged);
+        assert_eq!(f.len(), 4);
+        assert_eq!(
+            f["session_tags"],
+            serde_json::json!(["desktop-launcher", "macos", "wine"])
+        );
+    }
+
+    /// The marker the desktop launcher writes carries `tags`; one from an
+    /// older launcher has none and still parses.
+    #[test]
+    fn tags_are_optional_in_the_marker() {
+        let with: DllSession = serde_json::from_str(
+            r#"{"install_id":"i","machine_id":"m","session_id":"s",
+                "telemetry":{"enabled":true,"token":"t","upload_endpoint":"u"},
+                "tags":["desktop-launcher","macos","wine"]}"#,
+        )
+        .unwrap();
+        assert_eq!(with.tags, ["desktop-launcher", "macos", "wine"]);
+        let without: DllSession = serde_json::from_str(
+            r#"{"install_id":"i","machine_id":"m","session_id":"s",
+                "telemetry":{"enabled":true,"token":"t","upload_endpoint":"u"}}"#,
+        )
+        .unwrap();
+        assert!(without.tags.is_empty());
     }
 }

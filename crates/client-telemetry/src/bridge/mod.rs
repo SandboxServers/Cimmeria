@@ -319,6 +319,7 @@ mod tests {
             },
             lab,
             capture: None,
+            tags: vec![],
         }
     }
 

@@ -315,6 +315,10 @@ Fields: `path`, `stage` (`cache_ready`, or `appearance_ready` when the play step
 
 **Not hooked: the `Event_NetIn_onSequence` handler (`0x00d05790`).** It drops a sequence whose `SourceID` has no client entity before any request exists. Its drop branch holds the ids only inside the event's CME `BasicPropertyTree` (read through `Mercury__unknown_00e3cba0` / `Detail__unknown_00438b50`), and that tree's layout is not verified, so a hook there could report only "something was dropped". Proposal: verify the property tree's node layout (the `SourceID` and `KismetEventSetSeqID` entries are `long` properties) in Ghidra, then hook `0x00d05790` with a thread-local flag set by a hook on the request parser `0x00d13780` (reached only when the Source exists): no parse means `path = no_source_entity`, `stage = net_in`. Until then, a server `abilities.sequence` row with a matching `client.mercury.entity_method` (`msg_id = 1`) and neither a ready-handler drop nor a spawned emitter points at this branch.
 
+## Session tags on `client.dll.attached`
+
+A launcher may label its session in `current-session.json` (`tags`, an array of strings). The desktop launcher sends `desktop-launcher`, the host OS and `wine` or `native`. The server takes the same tags in the mint request but does not put them on the session's events, so the DLL repeats them as `session_tags` on `client.dll.attached` (2026-10-04). A marker without `tags`, or with an empty list, adds no field.
+
 ## Cooked-data cache: `client.cooked.*`
 
 Added 2026-10-04 after a Mac play session under Wine in which the client sent `versionInfoRequest` with version 0 for all 21 categories at every login, although its cache PAKs held the server's real versions. The server resynced everything each time and saw only the 0. These events say what the client read out of each archive, which step of a failed read failed, and what it holds when it asks. Background: [cooked-data-pipeline.md](../reverse-engineering/findings/cooked-data-pipeline.md), Finding 8.
