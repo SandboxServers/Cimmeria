@@ -6,6 +6,7 @@
 //! and sends `BaseToCellMsg::TrainingPointsGranted`; the cell mirrors the
 //! points and sends the client counter.
 
+use cimmeria_entity::known_names;
 use std::collections::HashMap;
 use std::net::SocketAddr;
 use std::sync::{Arc, Mutex};
@@ -98,9 +99,12 @@ pub async fn handle_grant_training_points(
 
     // The cell refuses this first; a corrupted message must not debit.
     if amount <= 0 {
+        let player_label = known_names::player_name(player_id);
         tracing::warn!(
             entity_id,
+            entity_name = player_label,
             player_id,
+            player_name = player_label,
             amount,
             "GrantTrainingPoints: non-positive amount — rejecting"
         );
@@ -108,9 +112,12 @@ pub async fn handle_grant_training_points(
         return;
     }
     let Some(pool) = db_pool else {
+        let player_label = known_names::player_name(player_id);
         tracing::warn!(
             entity_id,
+            entity_name = player_label,
             player_id,
+            player_name = player_label,
             amount,
             "GrantTrainingPoints: no DB pool, dropping grant"
         );
@@ -118,9 +125,12 @@ pub async fn handle_grant_training_points(
         return;
     };
     let Some(addr) = entity_to_addr.lock().unwrap().get(&entity_id).copied() else {
+        let player_label = known_names::player_name(player_id);
         tracing::warn!(
             entity_id,
+            entity_name = player_label,
             player_id,
+            player_name = player_label,
             "GrantTrainingPoints: no address for entity"
         );
         return;
@@ -136,10 +146,14 @@ pub async fn handle_grant_training_points(
     .get(&addr)
     .and_then(|s| s.active_player_id);
     if active != Some(player_id) {
+        let player_label = known_names::player_name(player_id);
         tracing::warn!(
             entity_id,
+            entity_name = player_label,
             player_id,
+            player_name = player_label,
             active_player_id = ?active,
+            active_player_name = known_names::player_name(active),
             "GrantTrainingPoints: session is not playing the resolved character — rejecting"
         );
         refuse("character is no longer active").await;
@@ -149,9 +163,12 @@ pub async fn handle_grant_training_points(
     let total = match persist_training_points_grant(pool, player_id, amount).await {
         Ok(Some(total)) => total,
         Ok(None) => {
+            let player_label = known_names::player_name(player_id);
             tracing::warn!(
                 entity_id,
+                entity_name = player_label,
                 player_id,
+                player_name = player_label,
                 amount,
                 "GrantTrainingPoints: UPDATE matched 0 rows (player missing, or the \
                  total would pass i32::MAX) — nothing granted"
@@ -160,9 +177,12 @@ pub async fn handle_grant_training_points(
             return;
         }
         Err(e) => {
+            let player_label = known_names::player_name(player_id);
             tracing::error!(
                 entity_id,
+                entity_name = player_label,
                 player_id,
+                player_name = player_label,
                 amount,
                 "GrantTrainingPoints: UPDATE failed: {e}"
             );
@@ -186,9 +206,12 @@ pub async fn handle_grant_training_points(
         }
     }
 
+    let player_label = known_names::player_name(player_id);
     tracing::info!(
         entity_id,
+        entity_name = player_label,
         player_id,
+        player_name = player_label,
         amount,
         training_points = total,
         "GrantTrainingPoints: persisted"
@@ -204,15 +227,17 @@ pub async fn handle_grant_training_points(
                 .await
             {
                 tracing::error!(
-                    entity_id,
-                    training_points = total,
-                    error = %e,
-                    "GrantTrainingPoints: base→cell send failed; counter and trainer gate stale until relog"
-                );
+                        entity_id,
+                entity_name = known_names::player_name(player_id),
+                        training_points = total,
+                        error = %e,
+                        "GrantTrainingPoints: base→cell send failed; counter and trainer gate stale until relog"
+                    );
             }
         }
         None => tracing::warn!(
             entity_id,
+            entity_name = known_names::player_name(player_id),
             training_points = total,
             "GrantTrainingPoints: no cell channel; counter and trainer gate stale until relog"
         ),

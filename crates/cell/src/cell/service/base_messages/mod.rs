@@ -419,6 +419,7 @@ pub(super) async fn handle_base_message(
                 entity_id,
                 item_id,
                 source_container_id,
+                space_mgr,
             );
         }
 

@@ -9,6 +9,7 @@
 //! declares the vault from the database anyway), and a recycled entity id
 //! never delivers one player's vault size or balance to another.
 
+use cimmeria_entity::known_names;
 use std::collections::HashMap;
 use std::net::SocketAddr;
 use std::sync::{Arc, Mutex};
@@ -86,12 +87,16 @@ impl Client<'_> {
             }
         };
         if let Err(reason) = outcome {
+            let player_label = known_names::player_name(self.caller.player_id);
             tracing::warn!(
                 target: "bank",
                 event = "bank_feedback_send_failed",
                 account_id = self.caller.account_id,
+                account_name = known_names::account_name(self.caller.account_id),
                 player_id = self.caller.player_id,
+                player_name = player_label,
                 entity_id = self.caller.entity_id,
+                entity_name = player_label,
                 reason,
                 what,
                 "bank_feedback_send_failed: the character is not in the world -- the player \

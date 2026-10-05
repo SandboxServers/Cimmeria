@@ -21,6 +21,7 @@
 //!   needs no trainer, charges nothing, and also removes quest and GM
 //!   grants: it is the clean slate a test run starts from.
 
+use cimmeria_entity::known_names;
 use std::collections::HashMap;
 use std::net::SocketAddr;
 use std::sync::{Arc, Mutex};
@@ -183,6 +184,7 @@ pub async fn handle_gm_ability_bulk(
     } = msg;
     let cmd = change.command();
     let refuse = |reason: &'static str, text: String| async move {
+        let player_label = known_names::player_name(player_id);
         tracing::warn!(
             target: "abilities",
             event = "gm_ability_bulk",
@@ -190,8 +192,11 @@ pub async fn handle_gm_ability_bulk(
             reason,
             persisted = false,
             entity_id,
+            entity_name = player_label,
             account_id,
+            account_name = known_names::account_name(account_id),
             player_id,
+            player_name = player_label,
             cmd,
             "GM bulk ability change refused"
         );
@@ -226,6 +231,7 @@ pub async fn handle_gm_ability_bulk(
             return;
         }
         Err(e) => {
+            let player_label = known_names::player_name(player_id);
             tracing::error!(
                 target: "abilities",
                 event = "gm_ability_bulk",
@@ -233,8 +239,11 @@ pub async fn handle_gm_ability_bulk(
                 reason = "db_error",
                 persisted = false,
                 entity_id,
+                entity_name = player_label,
                 account_id,
+                account_name = known_names::account_name(account_id),
                 player_id,
+                player_name = player_label,
                 cmd,
                 error = %e,
                 "GM bulk ability change: database error"
@@ -258,14 +267,18 @@ pub async fn handle_gm_ability_bulk(
         .copied()
         .filter(|id| !write.after.contains(id))
         .collect();
+    let player_label = known_names::player_name(player_id);
     tracing::info!(
         target: "abilities",
         event = "gm_ability_bulk",
         decision_outcome = "persisted",
         persisted = true,
         entity_id,
+        entity_name = player_label,
         account_id,
+        account_name = known_names::account_name(account_id),
         player_id,
+        player_name = player_label,
         cmd,
         added = added.len(),
         removed = removed.len(),
@@ -286,13 +299,17 @@ pub async fn handle_gm_ability_bulk(
         None => false,
     };
     if !sent {
+        let player_label = known_names::player_name(player_id);
         tracing::error!(
             target: "abilities",
             event = "gm_ability_bulk",
             decision_outcome = "mirror_send_failed",
             entity_id,
+            entity_name = player_label,
             account_id,
+            account_name = known_names::account_name(account_id),
             player_id,
+            player_name = player_label,
             cmd,
             "GM bulk ability change: no cell channel; the change shows after relog"
         );

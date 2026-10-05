@@ -14,6 +14,7 @@
 //! ability list the client's bar draws from is `sgw_player.abilities`,
 //! which this `UPDATE` strips. See the AT-08 worknote.
 
+use cimmeria_entity::known_names;
 use std::collections::HashMap;
 use std::net::SocketAddr;
 use std::sync::{Arc, Mutex};
@@ -132,18 +133,28 @@ pub async fn handle_reset_abilities(
         cost,
     } = request;
     let Some(pool) = db_pool else {
-        tracing::warn!(entity_id, player_id, "ResetAbilities: no DB pool");
+        let player_label = known_names::player_name(player_id);
+        tracing::warn!(
+            entity_id,
+            entity_name = player_label,
+            player_id,
+            player_name = player_label,
+            "ResetAbilities: no DB pool"
+        );
         return;
     };
 
     // A negative cost would pay the player for a respec. Only a corrupted
     // message carries one; refuse before the UPDATE.
     if cost < 0 {
+        let player_label = known_names::player_name(player_id);
         tracing::warn!(
             target: "abilities",
             event = "respec_negative_cost",
             entity_id,
+            entity_name = player_label,
             player_id,
+            player_name = player_label,
             cost,
             "ResetAbilities: negative cost — rejecting"
         );
@@ -151,7 +162,11 @@ pub async fn handle_reset_abilities(
     }
 
     let Some(addr) = entity_to_addr.lock().unwrap().get(&entity_id).copied() else {
-        tracing::warn!(entity_id, "ResetAbilities: no address for entity");
+        tracing::warn!(
+            entity_id,
+            entity_name = known_names::player_name(request.player_id),
+            "ResetAbilities: no address for entity"
+        );
         return;
     };
 
@@ -164,12 +179,16 @@ pub async fn handle_reset_abilities(
         };
         let active = map.get(&addr).and_then(|s| s.active_player_id);
         if active != Some(player_id) {
+            let player_label = known_names::player_name(player_id);
             tracing::warn!(
                 target: "abilities",
                 event = "respec_player_mismatch",
                 entity_id,
+                entity_name = player_label,
                 player_id,
+                player_name = player_label,
                 active_player_id = ?active,
+                active_player_name = known_names::player_name(active),
                 "ResetAbilities: session is not playing the validated character — rejecting"
             );
             return;
@@ -179,17 +198,27 @@ pub async fn handle_reset_abilities(
     let outcome = match persist_respec(pool, player_id, cost).await {
         Ok(Some(o)) => o,
         Ok(None) => {
+            let player_label = known_names::player_name(player_id);
             tracing::warn!(
                 target: "abilities",
                 event = "respec_player_missing",
                 entity_id,
+                entity_name = player_label,
                 player_id,
+                player_name = player_label,
                 "ResetAbilities: no sgw_player row — nothing reset"
             );
             return;
         }
         Err(e) => {
-            tracing::error!(entity_id, player_id, "ResetAbilities: UPDATE failed: {e}");
+            let player_label = known_names::player_name(player_id);
+            tracing::error!(
+                entity_id,
+                entity_name = player_label,
+                player_id,
+                player_name = player_label,
+                "ResetAbilities: UPDATE failed: {e}"
+            );
             return;
         }
     };
@@ -211,11 +240,14 @@ pub async fn handle_reset_abilities(
             {
                 state.player_training_points = Some((*training_points).max(0) as u32);
             }
+            let player_label = known_names::player_name(player_id);
             tracing::info!(
                 target: "abilities",
                 event = "respec_persisted",
                 entity_id,
+                entity_name = player_label,
                 player_id,
+                player_name = player_label,
                 refunded = ?refunded,
                 training_points,
                 naquadah,
@@ -223,24 +255,34 @@ pub async fn handle_reset_abilities(
                 "ResetAbilities: trainer abilities removed, points refunded, naquadah charged"
             );
         }
-        RespecOutcome::NothingToReset => tracing::info!(
-            target: "abilities",
-            event = "respec_rejected",
-            reason = "nothing_trained",
-            entity_id,
-            player_id,
-            "ResetAbilities: nothing trainer-bought — no change, no charge"
-        ),
-        RespecOutcome::NotEnoughNaquadah { naquadah } => tracing::info!(
-            target: "abilities",
-            event = "respec_rejected",
-            reason = "not_enough_naquadah",
-            entity_id,
-            player_id,
-            naquadah,
-            cost,
-            "ResetAbilities: too little naquadah — no change"
-        ),
+        RespecOutcome::NothingToReset => {
+            let player_label = known_names::player_name(player_id);
+            tracing::info!(
+                target: "abilities",
+                event = "respec_rejected",
+                reason = "nothing_trained",
+                entity_id,
+                entity_name = player_label,
+                player_id,
+                player_name = player_label,
+                "ResetAbilities: nothing trainer-bought — no change, no charge"
+            );
+        }
+        RespecOutcome::NotEnoughNaquadah { naquadah } => {
+            let player_label = known_names::player_name(player_id);
+            tracing::info!(
+                target: "abilities",
+                event = "respec_rejected",
+                reason = "not_enough_naquadah",
+                entity_id,
+                entity_name = player_label,
+                player_id,
+                player_name = player_label,
+                naquadah,
+                cost,
+                "ResetAbilities: too little naquadah — no change"
+            );
+        }
     }
 
     if let Some(tx) = cell_tx {
@@ -252,8 +294,12 @@ pub async fn handle_reset_abilities(
             })
             .await
         {
+            let player_label = known_names::player_name(player_id);
             tracing::error!(
-                entity_id, player_id, error = %e,
+                entity_id,
+                entity_name = player_label,
+                player_id,
+                player_name = player_label, error = %e,
                 "ResetAbilities: base→cell AbilitiesReset send failed; the cell keeps the \
                  pre-respec abilities and points until relog"
             );
